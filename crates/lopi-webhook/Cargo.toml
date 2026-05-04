@@ -1,0 +1,18 @@
+[package]
+name = "lopi-webhook"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "GitHub webhook receiver for lopi"
+
+[dependencies]
+lopi-core.workspace = true
+lopi-orchestrator.workspace = true
+tokio.workspace = true
+axum.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+tracing.workspace = true

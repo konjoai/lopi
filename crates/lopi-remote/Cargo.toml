@@ -1,0 +1,20 @@
+[package]
+name = "lopi-remote"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Telegram + WhatsApp remote control for lopi"
+
+[dependencies]
+lopi-core.workspace = true
+lopi-orchestrator.workspace = true
+tokio.workspace = true
+teloxide.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+reqwest.workspace = true
+axum.workspace = true

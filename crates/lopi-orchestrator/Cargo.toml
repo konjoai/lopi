@@ -1,0 +1,19 @@
+[package]
+name = "lopi-orchestrator"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Task queue and bounded agent pool for lopi"
+
+[dependencies]
+lopi-core.workspace = true
+lopi-agent.workspace = true
+lopi-memory.workspace = true
+tokio.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+dashmap.workspace = true
+serde.workspace = true
+chrono.workspace = true

@@ -1,0 +1,17 @@
+[package]
+name = "lopi-git"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Git isolation and diff-scope checks for lopi"
+
+[dependencies]
+lopi-core.workspace = true
+git2.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+glob.workspace = true
+tokio.workspace = true
+tracing.workspace = true

@@ -1,0 +1,4 @@
+[build]
+# Enable native CPU optimizations for release builds.
+# Comment this out for portable distribution builds.
+rustflags = ["-C", "target-cpu=native"]
