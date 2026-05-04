@@ -119,12 +119,12 @@ async fn main() -> Result<()> {
             let store = MemoryStore::open(db_path()).await?;
             let bus: EventBus<TaskStatus> = EventBus::new(256);
             let queue = TaskQueue::new();
-            let pool = AgentPool::new(max_agents, repo, queue, bus.clone());
+            let pool = AgentPool::new(max_agents, repo, queue.clone(), bus.clone())
+                .with_store(store.clone());
 
             println!("🚢 lopi sail — max_agents={max_agents}, web on :{port}");
-            // Boot pool in background; serve web in foreground.
             tokio::spawn(pool.run());
-            lopi_ui::web::serve(store, bus, &host, port).await?;
+            lopi_ui::web::serve(store, bus, queue, &host, port).await?;
         }
     }
     Ok(())

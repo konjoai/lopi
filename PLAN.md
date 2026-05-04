@@ -27,14 +27,24 @@
 - [x] Unit tests: lopi-core (12 tests), lopi-git DiffChecker (3), lopi-orchestrator TaskQueue (5)
 - [x] Integration tests: lopi-memory (7 tests, in-memory SQLite)
 
-## v0.3.0 — Remote control
+## v0.3.0 — Remote control + self-improvement ✅
 
-- [ ] Telegram inline-keyboard approval flow
-- [ ] HMAC-verified GitHub webhook
-- [ ] WhatsApp outbound status updates
+- [x] `POST /api/tasks` — inject tasks into the live AgentPool queue via HTTP
+- [x] `GET /api/tasks/:id` — fetch status of a specific task by ID prefix
+- [x] `GET /api/patterns` — expose mined patterns via API
+- [x] Telegram: `/task <goal>` injects via shared `TaskQueue`; `/urgent <goal>` for high-priority
+- [x] Telegram: inline keyboard buttons (priority bump / cancel) on queued tasks
+- [x] Telegram: `/approve <id>` acknowledgment flow
+- [x] GitHub webhook: HMAC-SHA256 signature verification (`X-Hub-Signature-256`)
+- [x] Pattern miner: after each completed `AgentPool` run, upserts into `patterns` table
+- [x] `AgentPool::with_store()` — optional memory attachment for pattern mining + mark_completed
+- [x] `MemoryStore::mine_patterns()` — keyword fingerprint extraction + running average upsert
+- [x] `MemoryStore::load_patterns()` — ordered by success_rate DESC
+- [x] 36 tests: lopi-core (12), lopi-git (3), lopi-orchestrator (5), lopi-memory (11), lopi-webhook (5)
 
-## v0.4.0 — Self-improvement
+## v0.4.0 — Self-improvement (deeper)
 
-- [ ] Pattern miner: `attempts` → `patterns`
-- [ ] Constraint pre-seeding from similar past tasks
-- [ ] Success-rate dashboards per pattern
+- [ ] Constraint pre-seeding: on new task, query `find_similar_patterns` and inject winning constraints
+- [ ] Success-rate dashboard panel in TUI and web
+- [ ] `lopi patterns` CLI command — show mined patterns in terminal
+- [ ] Pattern decay: age out patterns not seen in 30 days

@@ -1610,10 +1610,13 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "axum",
+ "hex",
+ "hmac",
  "lopi-core",
  "lopi-orchestrator",
  "serde",
  "serde_json",
+ "sha2",
  "tokio",
  "tracing",
 ]

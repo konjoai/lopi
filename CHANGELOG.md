@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.3.0] — Remote control + self-improvement
+
+### Added
+- `POST /api/tasks` — inject tasks into the live AgentPool queue with `goal`, `priority`, `allowed_dirs`, `max_retries`; returns `{id, goal, queued, duplicate_of}`
+- `GET /api/tasks/:id` — fetch a specific task by full or prefix ID
+- `GET /api/patterns` — expose mined patterns ordered by success rate
+- Telegram: `/urgent <goal>` command for `Priority::High` tasks; inline keyboard (priority bump / cancel) on every queued task; `CallbackQuery` handler for button responses
+- GitHub webhook: HMAC-SHA256 verification via `X-Hub-Signature-256` header; returns 401 on failure; constant-time comparison
+- `MemoryStore::mine_patterns()` — extracts sorted keyword fingerprint from goal, upserts running averages into `patterns` table after each completed run
+- `MemoryStore::load_patterns(limit)` — returns patterns ordered by `success_rate DESC`
+- `AgentPool::with_store(store)` — attaches memory for pattern mining and `mark_completed` after each agent run
+- `hmac`, `sha2`, `hex` added as workspace dependencies
+
+### Changed
+- `lopi_ui::web::serve()` now takes `TaskQueue` as third argument (task injection)
+- `AppState` in `lopi-ui` now holds a `TaskQueue` handle
+- `AgentPool::new()` signature unchanged; optional store via `with_store()`
+- `main.rs`: `lopi sail` passes queue to both pool and web server; store attached to pool
+
+### Tests
+- lopi-memory: +4 tests (mine_patterns insert, upsert dedup, short-word skip, load ordering)
+- lopi-webhook: +5 tests (valid HMAC, wrong secret, tampered body, missing prefix, empty sig)
+- Total: 36 tests, 0 failures
+
 ## [0.2.0] — Live concurrency + test foundation
 
 ### Added

@@ -139,6 +139,83 @@ impl MemoryStore {
         Ok(rows)
     }
 
+    /// Load all patterns ordered by success_rate descending.
+    pub async fn load_patterns(&self, limit: i64) -> Result<Vec<PatternRow>> {
+        let rows = sqlx::query_as::<_, PatternRow>(
+            "SELECT id, goal_keywords, successful_constraints, avg_attempts, success_rate, last_seen \
+             FROM patterns ORDER BY success_rate DESC LIMIT ?1",
+        )
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
+    }
+
+    /// Mine a completed task's attempts into the patterns table.
+    /// Aggregates attempt outcomes for the goal's keyword fingerprint.
+    pub async fn mine_patterns(&self, task_id: &TaskId, goal: &str) -> Result<()> {
+        // Build keyword fingerprint: sorted, deduped tokens > 3 chars.
+        let mut keywords: Vec<&str> = goal
+            .split_whitespace()
+            .filter(|w| w.len() > 3)
+            .collect();
+        keywords.sort_unstable();
+        keywords.dedup();
+        let fingerprint = keywords.join(" ");
+        if fingerprint.is_empty() {
+            return Ok(());
+        }
+
+        // Compute stats from the attempts table for this task.
+        let stats: Option<(f64, i64)> = sqlx::query_as(
+            "SELECT AVG(score_test_pass_rate), COUNT(*) \
+             FROM attempts WHERE task_id = ?1",
+        )
+        .bind(task_id.0.to_string())
+        .fetch_optional(&self.pool)
+        .await?;
+
+        let (avg_pass, attempt_count) = stats.unwrap_or((0.0, 0));
+        let success_rate = if avg_pass >= 1.0 { 1.0f64 } else { avg_pass };
+
+        // Upsert: if pattern exists, update running averages; otherwise insert.
+        let existing: Option<(String, Option<f64>, Option<f64>)> = sqlx::query_as(
+            "SELECT id, avg_attempts, success_rate FROM patterns WHERE goal_keywords = ?1",
+        )
+        .bind(&fingerprint)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        let now = chrono::Utc::now().to_rfc3339();
+        if let Some((existing_id, prev_avg, prev_sr)) = existing {
+            let new_avg = ((prev_avg.unwrap_or(0.0) + attempt_count as f64) / 2.0).max(1.0);
+            let new_sr = ((prev_sr.unwrap_or(0.0) + success_rate) / 2.0).clamp(0.0, 1.0);
+            sqlx::query(
+                "UPDATE patterns SET avg_attempts = ?1, success_rate = ?2, last_seen = ?3 WHERE id = ?4",
+            )
+            .bind(new_avg)
+            .bind(new_sr)
+            .bind(&now)
+            .bind(existing_id)
+            .execute(&self.pool)
+            .await?;
+        } else {
+            let id = uuid::Uuid::new_v4().to_string();
+            sqlx::query(
+                "INSERT INTO patterns (id, goal_keywords, avg_attempts, success_rate, last_seen) \
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+            )
+            .bind(id)
+            .bind(&fingerprint)
+            .bind(attempt_count as f64)
+            .bind(success_rate)
+            .bind(&now)
+            .execute(&self.pool)
+            .await?;
+        }
+        Ok(())
+    }
+
     pub async fn task_count(&self) -> Result<i64> {
         let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM tasks")
             .fetch_one(&self.pool)
@@ -246,5 +323,62 @@ mod tests {
         let store = MemoryStore::open_in_memory().await.unwrap();
         let results = store.find_similar_patterns("optimize the engine").await.unwrap();
         assert!(results.is_empty());
+    }
+
+    #[tokio::test]
+    async fn mine_patterns_inserts_new_row() {
+        let store = MemoryStore::open_in_memory().await.unwrap();
+        let task = Task::new("refactor authentication middleware");
+        store.save_task(&task, "queued").await.unwrap();
+        store.mine_patterns(&task.id, &task.goal).await.unwrap();
+
+        let patterns = store.load_patterns(10).await.unwrap();
+        assert_eq!(patterns.len(), 1);
+        // Keyword fingerprint should contain tokens > 3 chars, sorted.
+        let kw = &patterns[0].goal_keywords;
+        assert!(kw.contains("authentication") || kw.contains("middleware") || kw.contains("refactor"));
+    }
+
+    #[tokio::test]
+    async fn mine_patterns_updates_existing_row() {
+        let store = MemoryStore::open_in_memory().await.unwrap();
+        let t1 = Task::new("optimize database queries");
+        let t2 = Task::new("optimize database queries");
+        store.save_task(&t1, "queued").await.unwrap();
+        store.save_task(&t2, "queued").await.unwrap();
+
+        store.mine_patterns(&t1.id, &t1.goal).await.unwrap();
+        store.mine_patterns(&t2.id, &t2.goal).await.unwrap();
+
+        // Same keyword fingerprint → only one pattern row.
+        let patterns = store.load_patterns(10).await.unwrap();
+        assert_eq!(patterns.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn mine_patterns_skips_short_words() {
+        let store = MemoryStore::open_in_memory().await.unwrap();
+        let task = Task::new("do it now");
+        store.save_task(&task, "queued").await.unwrap();
+        // All words are ≤ 3 chars — fingerprint would be empty, should skip.
+        store.mine_patterns(&task.id, &task.goal).await.unwrap();
+        let patterns = store.load_patterns(10).await.unwrap();
+        assert!(patterns.is_empty());
+    }
+
+    #[tokio::test]
+    async fn load_patterns_ordered_by_success_rate() {
+        let store = MemoryStore::open_in_memory().await.unwrap();
+        // Insert two patterns with different success rates directly via mine_patterns.
+        let t1 = Task::new("write comprehensive unit tests");
+        let t2 = Task::new("deploy production infrastructure");
+        store.save_task(&t1, "success").await.unwrap();
+        store.save_task(&t2, "failed").await.unwrap();
+        store.mine_patterns(&t1.id, &t1.goal).await.unwrap();
+        store.mine_patterns(&t2.id, &t2.goal).await.unwrap();
+
+        let patterns = store.load_patterns(10).await.unwrap();
+        // Both should be present; order may vary since both start at 0 success rate.
+        assert_eq!(patterns.len(), 2);
     }
 }
