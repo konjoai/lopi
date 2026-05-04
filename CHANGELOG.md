@@ -1,5 +1,39 @@
 # Changelog
 
+## [0.4.0] — Phase 2 Full: live concurrency, ratatui TUI, full dashboard
+
+### Added
+- `AgentEvent` enum in lopi-core — rich events replacing plain `TaskStatus` broadcasts:
+  `TaskQueued`, `TaskStarted`, `StatusChanged`, `LogLine`, `ScoreUpdated`, `TaskCompleted`, `TaskCancelled`, `PoolStats`
+- `LogLevel` enum (`info`, `warn`, `error`, `debug`) with `AgentEvent::info/warn/error` helpers
+- `AgentPool`: `DashMap<TaskId, AgentHandle>` tracking live agents with `cancel_tx: oneshot::Sender<()>`
+- `AgentPool::cancel(task_id)` — graceful cancel signal to running agent
+- `AgentPool::submit(task)` — enqueue + broadcast `TaskQueued` + save to DB
+- `AgentPool::stats()` → `PoolStats { running, queued, succeeded, failed, uptime_secs }`
+- `AgentPool::with_store()` — attach memory for pattern mining + DB persistence
+- `AgentRunner` upgraded: emits `AgentEvent` at every stage (LogLine, StatusChanged, ScoreUpdated, TaskStarted); accepts `cancel_rx: oneshot::Receiver<()>` and polls cancel between stages; integrates `MemoryStore` for attempt persistence and pattern seeding
+- `ClaudeCode::with_extra_constraints()` — injects memory patterns into planning prompt
+- Full ratatui TUI (`lopi watch`): agent table with 7 columns, log panel (last 20 lines with level color), stats bar, help overlay, keyboard: `q/j/k/↑↓/Enter/l/Esc/?/F1`
+- Full web dashboard (`index.html`): dark Konjo purple theme, live agent cards with score bar + elapsed timer + cancel button, sidebar submit form (goal/repo/priority, Ctrl+Enter), log stream, WebSocket reconnect with exponential backoff, state snapshot on connect
+- `GET /api/stats` — running/queued/succeeded/failed/uptime_secs
+- `DELETE /api/tasks/:id` — cancel task via HTTP (proxied to pool cancel)
+- `GET /ws` — WebSocket endpoint with full state snapshot on connect, then `AgentEvent` stream; `/ws/tasks` retained for compat
+- `lopi cancel <task-id>` — CLI cancel via HTTP DELETE to running sail server
+- `lopi learn [--limit N]` — pretty-print mined patterns table (keywords / avg_attempts / success% / last_seen)
+- `lopi dock` — pretty table output (ID / Goal / Status columns)
+- `lopi run` — streams live `StatusChanged` + `LogLine` + `ScoreUpdated` events to stdout
+
+### Changed
+- `EventBus<T>` remains in lopi-core/event.rs alongside `AgentEvent` and `LogLevel`
+- `lopi sail` now passes `Arc<AgentPool>` to web server; pool boots as background task
+- `lopi-ui::web::serve()` signature: takes `Arc<AgentPool>` instead of raw bus
+- All existing tests pass (38 total, 0 failures)
+
+### Tests
+- lopi-core: +2 tests (`agent_event_log_helpers`, `agent_event_serde_round_trip`) → 14 total
+- All others unchanged: lopi-git (3), lopi-orchestrator (5), lopi-memory (11), lopi-webhook (5)
+- **Total: 38 tests, 0 failures**
+
 ## [0.3.0] — Remote control + self-improvement
 
 ### Added

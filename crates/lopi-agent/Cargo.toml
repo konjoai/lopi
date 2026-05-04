@@ -10,6 +10,7 @@ description = "The lopi agent loop: Plan -> Implement -> Test -> Score -> Retry 
 [dependencies]
 lopi-core.workspace = true
 lopi-git.workspace = true
+lopi-memory.workspace = true
 tokio.workspace = true
 anyhow.workspace = true
 thiserror.workspace = true

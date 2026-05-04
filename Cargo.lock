@@ -1487,7 +1487,9 @@ dependencies = [
  "lopi-memory",
  "lopi-orchestrator",
  "lopi-ui",
+ "reqwest",
  "serde",
+ "serde_json",
  "tokio",
  "toml",
  "tracing",
@@ -1501,6 +1503,7 @@ dependencies = [
  "anyhow",
  "lopi-core",
  "lopi-git",
+ "lopi-memory",
  "serde",
  "serde_json",
  "thiserror",
@@ -1602,6 +1605,7 @@ dependencies = [
  "tower 0.4.13",
  "tower-http",
  "tracing",
+ "uuid",
 ]
 
 [[package]]

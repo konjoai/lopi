@@ -6,7 +6,7 @@ pub mod event;
 pub use task::{Task, TaskId, TaskStatus, Priority, TaskSource};
 pub use agent::{AgentRun, Attempt, AgentState, Score};
 pub use config::LopiConfig;
-pub use event::EventBus;
+pub use event::{AgentEvent, EventBus, LogLevel};
 
 #[cfg(test)]
 mod tests {
@@ -125,7 +125,28 @@ mod tests {
         let bus: EventBus<String> = EventBus::new(16);
         let mut rx = bus.subscribe();
         bus.send("hello".to_string());
-        // recv() is async; test synchronously via try_recv.
         assert_eq!(rx.try_recv().unwrap(), "hello");
+    }
+
+    #[test]
+    fn agent_event_log_helpers() {
+        let tid = TaskId::new();
+        let ev = AgentEvent::info(tid, "test message");
+        match ev {
+            AgentEvent::LogLine { line, .. } => assert_eq!(line, "test message"),
+            _ => panic!("wrong variant"),
+        }
+    }
+
+    #[test]
+    fn agent_event_serde_round_trip() {
+        let tid = TaskId::new();
+        let ev = AgentEvent::info(tid, "hello from agent");
+        let json = serde_json::to_string(&ev).unwrap();
+        let back: AgentEvent = serde_json::from_str(&json).unwrap();
+        match back {
+            AgentEvent::LogLine { line, .. } => assert_eq!(line, "hello from agent"),
+            _ => panic!("wrong variant"),
+        }
     }
 }

@@ -31,13 +31,14 @@ lopi is the Konjo agent runtime. It runs Claude Code agents concurrently, each i
 - [x] `claude --output-format json` with `ClaudeOutput` struct + fallback
 - [x] 27 tests: lopi-core (12), lopi-git (3), lopi-orchestrator (5), lopi-memory (7)
 
-**Remaining in Phase 2 (v0.2.x):**
-- [ ] ratatui TUI: live agent table (goal / status / attempt / score / branch / elapsed), log panel, keyboard controls
-- [ ] Web dashboard upgrade (single-file, dark Konjo theme):
-  - Live agent grid (cards: goal, status, progress bar, score, branch)
-  - Task queue panel (submit new task via form)
-  - Log stream panel (tail of recent events)
-  - Stats bar (total tasks / pass rate / avg retries / uptime)
+**Shipped in Phase 2 full (v0.4.0):**
+- [x] ratatui TUI: live agent table (goal / status / attempt / score / branch / elapsed), log panel, keyboard controls (q/j/k/Enter/l/Esc/?), help overlay
+- [x] Web dashboard: full dark Konjo theme, live agent cards, score bar, elapsed timer, cancel button
+- [x] Stats bar: Running / Queued / Done / Failed with live counts
+- [x] Task submit panel in sidebar: goal textarea, repo, priority, Ctrl+Enter shortcut
+- [x] Log stream panel: color-coded by level, auto-scroll, per-task ID prefix
+- [x] WebSocket reconnect with exponential backoff (1s→2s→4s→30s max), state resync on reconnect
+- [x] Connection indicator pill (🟢 Live / 🟡 Reconnecting / 🔴 Offline)
 
 ---
 

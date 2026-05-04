@@ -83,6 +83,8 @@ lopi-agent.workspace = true
 lopi-memory.workspace = true
 lopi-orchestrator.workspace = true
 lopi-ui.workspace = true
+reqwest.workspace = true
+serde_json.workspace = true
 
 [profile.release]
 lto = "fat"

@@ -36,6 +36,8 @@ pub struct ClaudeCode {
     timeout: Duration,
     /// Use `--output-format json` for structured output (requires Claude Code ≥ 1.x).
     json_output: bool,
+    /// Constraints seeded from pattern memory — injected into the planning prompt.
+    extra_constraints: Vec<String>,
 }
 
 impl ClaudeCode {
@@ -45,7 +47,13 @@ impl ClaudeCode {
             cli_path: "claude".into(),
             timeout: Duration::from_secs(300),
             json_output: true,
+            extra_constraints: vec![],
         }
+    }
+
+    pub fn with_extra_constraints(mut self, constraints: Vec<String>) -> Self {
+        self.extra_constraints = constraints;
+        self
     }
 
     pub fn with_cli(mut self, cli_path: impl Into<String>) -> Self {
@@ -65,13 +73,18 @@ impl ClaudeCode {
 
     /// Ask Claude Code to produce a plan for `task`. Returns the plan text.
     pub async fn plan(&self, task: &Task) -> Result<String> {
+        let memory_hint = if self.extra_constraints.is_empty() {
+            String::new()
+        } else {
+            format!("\nSuccessful patterns from memory:\n{}", self.extra_constraints.join("\n"))
+        };
         let prompt = format!(
             "You are running inside lopi. Produce a concise implementation plan for this task. \
              Output a numbered list of steps only.\n\n\
              Goal: {goal}\n\
              Constraints: {constraints:?}\n\
              Allowed dirs: {allowed:?}\n\
-             Forbidden dirs: {forbidden:?}",
+             Forbidden dirs: {forbidden:?}{memory_hint}",
             goal = task.goal,
             constraints = task.constraints,
             allowed = task.allowed_dirs,
