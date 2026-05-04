@@ -1,4 +1,4 @@
-# 🚢 lopi
+# ⛵️ lopi
 
 > High-performance Rust agent orchestrator for Claude Code.
 > By [KonjoAI](https://github.com/konjoai).
