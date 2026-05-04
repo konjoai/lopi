@@ -241,13 +241,10 @@ async fn main() -> Result<()> {
             println!();
 
             // Spawn pool dispatch loop in background.
-            let pool_clone = Arc::clone(&pool);
+            // AgentPool::clone() is cheap — all fields are Arc-wrapped.
+            let pool_for_dispatch = (*pool).clone();
             tokio::spawn(async move {
-                if let Err(e) = Arc::into_inner(pool_clone)
-                    .expect("pool not shared yet")
-                    .run()
-                    .await
-                {
+                if let Err(e) = pool_for_dispatch.run().await {
                     tracing::error!("pool error: {e}");
                 }
             });
