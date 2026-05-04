@@ -96,15 +96,21 @@ impl AgentRunner {
         let git = GitManager::new(&self.repo_path)?;
 
         // Seed planning prompt with patterns from memory.
+        // Site 2 (TOON biggest win): PatternRow[] is a uniform tabular array.
+        // encode_task_context() in claude.rs renders it as TOON §9.3 tabular,
+        // saving ~158 tokens per attempt vs JSON (grows linearly with pattern count).
         let extra_constraints = if let Some(store) = &self.store {
             match store.find_similar_patterns(&self.task.goal).await {
                 Ok(patterns) if !patterns.is_empty() => {
-                    let hints: Vec<String> = patterns.iter()
-                        .filter_map(|p| p.successful_constraints.clone())
-                        .take(3)
-                        .collect();
                     self.log(format!("🧠 seeding from {} similar past patterns", patterns.len()));
-                    hints
+                    // Collect (keywords, constraints) pairs for the TOON tabular encoder.
+                    // These are passed to encode_task_context() inside ClaudeCode::plan().
+                    patterns.iter().take(5)
+                        .filter_map(|p| {
+                            let c = p.successful_constraints.as_deref().unwrap_or("").to_string();
+                            if c.is_empty() { None } else { Some(c) }
+                        })
+                        .collect()
                 }
                 _ => vec![],
             }

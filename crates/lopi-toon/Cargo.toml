@@ -1,0 +1,15 @@
+[package]
+name = "lopi-toon"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "TOON (Token-Oriented Object Notation) encoder/decoder for lopi"
+
+[dependencies]
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+serde_json = { version = "1", features = ["preserve_order"] }

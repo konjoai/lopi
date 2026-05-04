@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.6.0] — lopi-toon: TOON encoder/decoder + prompt token reduction
+
+### Added
+- `crates/lopi-toon` — full TOON v3.0 encoder and decoder per spec (https://toonformat.dev/)
+  - `encode(value: &Value) -> String` — encodes JSON data model to TOON
+  - `decode(input: &str) -> Result<Value>` — decodes TOON back to JSON with strict validation
+  - `encode_task_context(goal, allowed, forbidden, constraints, patterns)` — lopi-specific helper
+  - Encoder: tabular arrays (§9.3), inline primitive arrays (§9.1), expanded mixed arrays (§9.4)
+  - Encoder: minimal quoting per §7.2 — reserved words, numeric-like strings, special chars
+  - Encoder: canonical number format — no exponents, no trailing zeros, -0→0, NaN/Inf→null
+  - Decoder: root form discovery (§5), keyed vs root array headers (§5 fix)
+  - Decoder: inline arrays, tabular rows, expanded list items, nested objects
+  - Decoder: `split_on_delim` respects quoted strings; strict count/width enforcement
+  - 29 tests covering: all scalar types, quoting edge cases, flat/nested objects, all array forms,
+    spec example round-trip, token efficiency assertion
+- `lopi-agent/src/claude.rs` — TOON integrated at all three sites from token analysis:
+  - **Site 1** (`plan()`, `implement()`): constraints/allowed_dirs/forbidden_dirs arrays
+    encoded as TOON §9.1 inline arrays (~17 tokens/prompt saved, ~14% reduction)
+  - **Site 2** (`plan()` via `runner.rs`): pattern memory injected as TOON context
+    (~158 tokens/attempt saved, grows linearly with pattern count — the dominant win)
+  - **Site 3** (`fix()`): error text is free-form prose — TOON intentionally skipped (no gain)
+- At 100 tasks/day, estimated **-1.9M tokens/month** net reduction
+
+### Changed
+- `lopi-agent` now depends on `lopi-toon`
+- `claude.rs::plan()` prompt uses `encode_task_context()` for structured context block
+- `claude.rs::implement()` uses TOON scope block for allowed/forbidden dirs
+- `claude.rs::fix()` uses inline TOON array for allowed_dirs (prose errors unchanged)
+
+### Tests
+- lopi-toon: 29 new tests — 0 failures
+- **Total: 75 tests, 0 failures**
+
 ## [0.5.0] — Phase 4: Scheduled Tasks, Repo Profiles, lopi watch --remote
 
 ### Added

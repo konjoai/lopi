@@ -8,6 +8,7 @@ members = [
     "crates/lopi-ui",
     "crates/lopi-remote",
     "crates/lopi-webhook",
+    "crates/lopi-toon",
 ]
 resolver = "2"
 
@@ -57,6 +58,7 @@ lopi-orchestrator = { path = "crates/lopi-orchestrator" }
 lopi-ui = { path = "crates/lopi-ui" }
 lopi-remote = { path = "crates/lopi-remote" }
 lopi-webhook = { path = "crates/lopi-webhook" }
+lopi-toon = { path = "crates/lopi-toon" }
 
 [package]
 name = "lopi"
