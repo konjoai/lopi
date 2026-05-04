@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.5.0] — Phase 4: Scheduled Tasks, Repo Profiles, lopi watch --remote
+
+### Added
+- `ScheduleEntry` type in `lopi-core` — `name`, `repo`, `goal`, `cron`, `priority`, `allowed_dirs`, `forbidden_dirs`; fully serde-compatible with `[[schedules]]` TOML arrays
+- `RepoProfile` type in `lopi-core` — per-repo `.lopi.toml` profile with `allowed_dirs`, `forbidden_dirs`, `test_command`, `lint_command`, `default_constraints`, `max_retries`; `apply(&mut Task)` merges non-empty overrides
+- `RepoProfile::load_from_repo(path)` — reads `<repo>/.lopi.toml`, returns `Default` if not found
+- `LopiConfig::find_and_load()` — auto-discovers `./lopi.toml` then `~/.lopi/lopi.toml`
+- `lopi-orchestrator::scheduler` module — `boot(entries, pool)` registers async cron jobs via `tokio-cron-scheduler`; `next_run_times(cron, n)` computes upcoming fire times
+- `lopi schedules list` — prints configured schedules with next UTC run time
+- `lopi watch --remote <url>` — connects to a running `lopi sail` WebSocket, injects events into local bus, drives the ratatui TUI from network events
+- `lopi watch --local` — original isolated local bus behaviour
+- `lopi sail` boots the cron scheduler alongside the agent pool if `[[schedules]]` are configured
+- `lopi run` reads per-repo `.lopi.toml` and applies it before submitting the task
+- `.lopi.toml.example` — per-repo profile template
+- Updated `lopi.toml.example` with commented `[[schedules]]` examples
+
+### Tests
+- lopi-core: +6 tests (schedule_entry_deserializes, config_with_schedules, config_empty_schedules, repo_profile_default, repo_profile_apply_overrides, repo_profile_apply_skips_empty) → **20 total**
+- lopi-orchestrator: +2 tests (next_run_times_valid_expr, next_run_times_invalid_expr) → **7 total**
+- **Total: 46 tests, 0 failures**
+
 ## [0.4.0] — Phase 2 Full: live concurrency, ratatui TUI, full dashboard
 
 ### Added

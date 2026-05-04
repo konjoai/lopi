@@ -1,0 +1,23 @@
+# Per-repo lopi profile — place this file at <repo-root>/.lopi.toml
+# lopi merges these settings over global defaults when running tasks in this repo.
+
+# Restrict agents to these directories (overrides global default_allowed_dirs).
+allowed_dirs = ["src/", "tests/", "lib/"]
+
+# Never touch these paths (overrides global default_forbidden_dirs).
+forbidden_dirs = [".github/", "infra/", "Cargo.toml", "vendor/"]
+
+# Custom test command (default: auto-detected from Cargo.toml / package.json).
+# test_command = "cargo nextest run"
+
+# Custom lint command (default: cargo clippy for Rust repos).
+# lint_command = "cargo clippy -- -D warnings"
+
+# Constraints always prepended to the agent's planning prompt for this repo.
+default_constraints = [
+    "do not add new dependencies without explicit approval",
+    "keep public API surface unchanged unless the goal requires it",
+]
+
+# Override max retries for this repo (default: 3).
+# max_retries = 5

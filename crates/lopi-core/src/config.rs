@@ -10,6 +10,8 @@ pub struct LopiConfig {
     pub remote: RemoteConfig,
     #[serde(default)]
     pub web: WebConfig,
+    #[serde(default)]
+    pub schedules: Vec<ScheduleEntry>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -75,6 +77,79 @@ impl Default for WebConfig {
     }
 }
 
+/// A single cron-scheduled lopi task entry from `lopi.toml`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ScheduleEntry {
+    /// Human-readable name shown in `lopi schedules list`.
+    pub name: String,
+    /// Absolute path to the git repo this task runs against.
+    pub repo: PathBuf,
+    /// The agent goal (passed to `lopi run --goal`).
+    pub goal: String,
+    /// Standard 5-field cron expression, e.g. `"0 2 * * *"` (2am daily).
+    pub cron: String,
+    /// Optional priority override ("low", "normal", "high", "critical").
+    #[serde(default = "default_priority_str")]
+    pub priority: String,
+    /// Allowed dirs override (falls back to global git config if empty).
+    #[serde(default)]
+    pub allowed_dirs: Vec<String>,
+    /// Forbidden dirs override.
+    #[serde(default)]
+    pub forbidden_dirs: Vec<String>,
+}
+
+/// Per-repo profile loaded from `<repo>/.lopi.toml`.
+/// Fields present here override the global config for that repo.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct RepoProfile {
+    /// Override allowed dirs for this repo.
+    #[serde(default)]
+    pub allowed_dirs: Vec<String>,
+    /// Override forbidden dirs for this repo.
+    #[serde(default)]
+    pub forbidden_dirs: Vec<String>,
+    /// Command used to run tests (default: cargo test / npm test detection).
+    pub test_command: Option<String>,
+    /// Command used for linting (default: cargo clippy detection).
+    pub lint_command: Option<String>,
+    /// Extra constraints always injected into the planning prompt for this repo.
+    #[serde(default)]
+    pub default_constraints: Vec<String>,
+    /// Max retries override.
+    pub max_retries: Option<u8>,
+}
+
+impl RepoProfile {
+    /// Load `.lopi.toml` from the repo root. Returns `Default` if not found.
+    pub fn load_from_repo(repo_path: &std::path::Path) -> Self {
+        let p = repo_path.join(".lopi.toml");
+        if !p.exists() {
+            return Self::default();
+        }
+        std::fs::read_to_string(&p)
+            .ok()
+            .and_then(|s| toml::from_str(&s).ok())
+            .unwrap_or_default()
+    }
+
+    /// Apply this profile's overrides onto a `Task`, filling in non-default values.
+    pub fn apply(&self, task: &mut crate::task::Task) {
+        if !self.allowed_dirs.is_empty() {
+            task.allowed_dirs = self.allowed_dirs.clone();
+        }
+        if !self.forbidden_dirs.is_empty() {
+            task.forbidden_dirs = self.forbidden_dirs.clone();
+        }
+        if !self.default_constraints.is_empty() {
+            task.constraints.extend(self.default_constraints.clone());
+        }
+        if let Some(r) = self.max_retries {
+            task.max_retries = r;
+        }
+    }
+}
+
 fn default_max_agents() -> usize { 4 }
 fn default_log_level() -> String { "info".into() }
 fn default_db_path() -> PathBuf { PathBuf::from("~/.lopi/lopi.db") }
@@ -85,11 +160,121 @@ fn default_forbidden() -> Vec<String> { vec![".github/".into(), "infra/".into(),
 fn default_true() -> bool { true }
 fn default_port() -> u16 { 3000 }
 fn default_host() -> String { "127.0.0.1".into() }
+fn default_priority_str() -> String { "normal".into() }
 
 impl LopiConfig {
     pub fn load(path: &std::path::Path) -> anyhow::Result<Self> {
         let text = std::fs::read_to_string(path)?;
         let cfg: Self = toml::from_str(&text)?;
         Ok(cfg)
+    }
+
+    /// Try loading from `./lopi.toml` then `~/.lopi/lopi.toml`. Returns `None` if neither exists.
+    pub fn find_and_load() -> Option<Self> {
+        let candidates = [
+            PathBuf::from("lopi.toml"),
+            PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".lopi").join("lopi.toml"),
+        ];
+        for p in &candidates {
+            if p.exists() {
+                return Self::load(p).ok();
+            }
+        }
+        None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn schedule_entry_deserializes() {
+        let toml = r#"
+name = "nightly-lint"
+repo = "/Users/wesleyscholl/myrepo"
+goal = "Fix all clippy warnings"
+cron = "0 2 * * *"
+priority = "low"
+"#;
+        let entry: ScheduleEntry = toml::from_str(toml).unwrap();
+        assert_eq!(entry.name, "nightly-lint");
+        assert_eq!(entry.cron, "0 2 * * *");
+        assert_eq!(entry.priority, "low");
+    }
+
+    #[test]
+    fn config_with_schedules_deserializes() {
+        let toml = r#"
+[lopi]
+max_agents = 2
+
+[claude]
+cli_path = "claude"
+
+[git]
+default_allowed_dirs = ["src/"]
+default_forbidden_dirs = [".github/"]
+
+[[schedules]]
+name = "weekly-deps"
+repo = "/repo"
+goal = "Update dependencies"
+cron = "0 9 * * MON"
+"#;
+        let cfg: LopiConfig = toml::from_str(toml).unwrap();
+        assert_eq!(cfg.schedules.len(), 1);
+        assert_eq!(cfg.schedules[0].name, "weekly-deps");
+        assert_eq!(cfg.lopi.max_agents, 2);
+    }
+
+    #[test]
+    fn config_empty_schedules_is_default() {
+        let toml = r#"
+[lopi]
+max_agents = 4
+
+[claude]
+cli_path = "claude"
+
+[git]
+default_allowed_dirs = ["src/"]
+default_forbidden_dirs = []
+"#;
+        let cfg: LopiConfig = toml::from_str(toml).unwrap();
+        assert!(cfg.schedules.is_empty());
+    }
+
+    #[test]
+    fn repo_profile_default_is_empty() {
+        let p = RepoProfile::default();
+        assert!(p.allowed_dirs.is_empty());
+        assert!(p.test_command.is_none());
+    }
+
+    #[test]
+    fn repo_profile_apply_overrides_task() {
+        let mut task = crate::task::Task::new("do something");
+        let profile = RepoProfile {
+            allowed_dirs: vec!["lib/".into()],
+            forbidden_dirs: vec!["vendor/".into()],
+            default_constraints: vec!["no new dependencies".into()],
+            max_retries: Some(5),
+            ..Default::default()
+        };
+        profile.apply(&mut task);
+        assert_eq!(task.allowed_dirs, vec!["lib/"]);
+        assert_eq!(task.max_retries, 5);
+        assert!(task.constraints.contains(&"no new dependencies".to_string()));
+    }
+
+    #[test]
+    fn repo_profile_apply_skips_empty_overrides() {
+        let mut task = crate::task::Task::new("do something");
+        let original_allowed = task.allowed_dirs.clone();
+        let profile = RepoProfile::default();
+        profile.apply(&mut task);
+        // Empty profile should not override task defaults.
+        assert_eq!(task.allowed_dirs, original_allowed);
     }
 }

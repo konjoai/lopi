@@ -57,9 +57,9 @@ lopi is the Konjo agent runtime. It runs Claude Code agents concurrently, each i
 
 ---
 
-## Phase 4 — Scheduled Tasks + Repo Profiles (Wk 9–10)
+## Phase 4 — Scheduled Tasks + Repo Profiles (Wk 9–10) ✅ SHIPPED v0.5.0
 
-- [ ] `[schedules]` section in `lopi.toml`:
+- [x] `[[schedules]]` section in `lopi.toml` — `ScheduleEntry` type, full serde support:
   ```toml
   [[schedules]]
   name = "nightly-lint"
@@ -74,11 +74,16 @@ lopi is the Konjo agent runtime. It runs Claude Code agents concurrently, each i
   goal = "Update all dependencies to latest compatible versions"
   cron = "0 9 * * MON"
   ```
-- [ ] `tokio_cron_scheduler` for cron execution
-- [ ] `lopi schedules list` — show all schedules + next run time
-- [ ] `lopi schedules add` — interactive schedule builder
-- [ ] Telegram: `/schedule list`, `/schedule add`
-- [ ] Repo profiles: per-repo `.lopi.toml` at repo root (`allowed_dirs`, `forbidden_dirs`, `test_command`, `lint_command`, `default_constraints`)
+- [x] `tokio-cron-scheduler` — async cron, fires tasks into `AgentPool` at schedule time
+- [x] `lopi schedules list` — pretty table with next run time per schedule
+- [x] Per-repo `.lopi.toml` profile — `RepoProfile` type: `allowed_dirs`, `forbidden_dirs`, `test_command`, `lint_command`, `default_constraints`, `max_retries`
+- [x] `RepoProfile::apply(&mut task)` — merges profile over task defaults on `lopi run` and scheduled runs
+- [x] `lopi watch --remote <ws://…>` — connects to running sail server WebSocket, drives TUI from network events
+- [x] `lopi watch --local` — isolated local bus (original behaviour)
+- [x] `LopiConfig::find_and_load()` — auto-discovers `./lopi.toml` then `~/.lopi/lopi.toml`
+- [x] `.lopi.toml.example` — per-repo profile template
+- [x] Updated `lopi.toml.example` with commented schedule examples
+- [x] 46 tests: lopi-core (20), lopi-git (3), lopi-orchestrator (7), lopi-memory (11), lopi-webhook (5)
 
 ---
 

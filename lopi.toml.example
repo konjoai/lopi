@@ -24,3 +24,29 @@ auto_pr = true
 [web]
 port = 3000
 host = "127.0.0.1"
+
+# ── Scheduled tasks ───────────────────────────────────────────────────────────
+# Each [[schedules]] entry fires a task at a cron interval.
+# Run `lopi schedules list` to see next run times.
+
+# [[schedules]]
+# name = "nightly-lint"
+# repo = "/Users/wesleyscholl/myrepo"
+# goal = "Fix all clippy warnings and formatting issues"
+# cron = "0 2 * * *"      # 2am every night (5-field: min hour dom month dow)
+# priority = "low"         # low | normal | high | critical
+
+# [[schedules]]
+# name = "weekly-deps"
+# repo = "/Users/wesleyscholl/myrepo"
+# goal = "Update all dependencies to latest compatible versions"
+# cron = "0 9 * * MON"    # 9am every Monday
+# priority = "normal"
+
+# [[schedules]]
+# name = "ci-watchdog"
+# repo = "/Users/wesleyscholl/myrepo"
+# goal = "Investigate and fix the most recent CI failure"
+# cron = "*/30 * * * *"   # Every 30 minutes
+# priority = "high"
+# allowed_dirs = ["src/", "tests/", ".github/workflows/"]

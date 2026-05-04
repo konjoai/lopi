@@ -46,6 +46,8 @@ glob = "0.3"
 hmac = "0.12"
 sha2 = "0.10"
 hex = "0.4"
+tokio-cron-scheduler = { version = "0.10", features = ["signal"] }
+tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
 
 lopi-core = { path = "crates/lopi-core" }
 lopi-git = { path = "crates/lopi-git" }
@@ -85,6 +87,11 @@ lopi-orchestrator.workspace = true
 lopi-ui.workspace = true
 reqwest.workspace = true
 serde_json.workspace = true
+tokio-cron-scheduler.workspace = true
+tokio-tungstenite.workspace = true
+chrono.workspace = true
+futures.workspace = true
+uuid.workspace = true
 
 [profile.release]
 lto = "fat"

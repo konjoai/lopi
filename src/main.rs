@@ -1,9 +1,9 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use lopi_agent::AgentRunner;
-use lopi_core::{AgentEvent, EventBus, Task, TaskStatus};
+use lopi_core::{AgentEvent, EventBus, LopiConfig, RepoProfile, Task, TaskStatus};
 use lopi_memory::MemoryStore;
-use lopi_orchestrator::{AgentPool, TaskQueue};
+use lopi_orchestrator::{boot_scheduler, next_run_times, AgentPool, TaskQueue};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -31,20 +31,25 @@ enum Commands {
         #[arg(short, long, default_value = ".")]
         repo: PathBuf,
     },
-    /// Watch live agent status in a full ratatui TUI
-    Watch,
+    /// Watch live agent status (TUI). Use --remote to connect to a running sail server.
+    Watch {
+        /// Connect to a running lopi sail server WebSocket instead of a local bus.
+        #[arg(long, default_value = "ws://127.0.0.1:3000/ws")]
+        remote: Option<String>,
+        /// Use a local bus only (ignore any running sail server).
+        #[arg(long)]
+        local: bool,
+    },
     /// Tail agent events (history or live)
     Tail {
-        /// Filter by task ID prefix
         #[arg(short, long)]
         task_id: Option<String>,
-        /// Show history from DB instead of waiting for live events
         #[arg(long)]
         history: bool,
     },
     /// List all tasks and their status from the database
     Dock,
-    /// Start the web dashboard + agent pool (lopi sail --port 3000)
+    /// Start the web dashboard + agent pool
     Sail {
         #[arg(short, long, default_value = "3000")]
         port: u16,
@@ -65,6 +70,15 @@ enum Commands {
         #[arg(short, long, default_value = "20")]
         limit: i64,
     },
+    /// Manage scheduled tasks
+    #[command(subcommand)]
+    Schedules(ScheduleCmd),
+}
+
+#[derive(Subcommand)]
+enum ScheduleCmd {
+    /// List all configured schedules with next run times
+    List,
 }
 
 fn db_path() -> PathBuf {
@@ -74,32 +88,40 @@ fn db_path() -> PathBuf {
 
 fn fmt_status(s: &str) -> &str {
     match s {
-        "queued"      => "⏳ queued",
-        "planning"    => "📋 planning",
-        "implementing"=> "🔨 implementing",
-        "testing"     => "🧪 testing",
-        "scoring"     => "📊 scoring",
-        "success"     => "✅ success",
-        "failed"      => "❌ failed",
-        "rolled_back" => "⏪ rolled back",
-        _             => s,
+        "queued"       => "⏳ queued",
+        "planning"     => "📋 planning",
+        "implementing" => "🔨 implementing",
+        "testing"      => "🧪 testing",
+        "scoring"      => "📊 scoring",
+        "success"      => "✅ success",
+        "failed"       => "❌ failed",
+        "rolled_back"  => "⏪ rolled back",
+        _              => s,
     }
 }
 
 fn status_label(s: &TaskStatus) -> String {
     match s {
-        TaskStatus::Queued        => "queued".into(),
-        TaskStatus::Planning      => "planning".into(),
-        TaskStatus::Implementing  => "implementing".into(),
-        TaskStatus::Testing       => "testing".into(),
-        TaskStatus::Scoring       => "scoring".into(),
+        TaskStatus::Queued       => "queued".into(),
+        TaskStatus::Planning     => "planning".into(),
+        TaskStatus::Implementing => "implementing".into(),
+        TaskStatus::Testing      => "testing".into(),
+        TaskStatus::Scoring      => "scoring".into(),
         TaskStatus::Retrying { attempt } => format!("retrying (attempt {attempt})"),
         TaskStatus::Success { branch, pr_url } => format!(
             "success ✅ branch={branch}{}",
             pr_url.as_deref().map(|u| format!(", pr={u}")).unwrap_or_default()
         ),
         TaskStatus::Failed { reason } => format!("failed ❌ {reason}"),
-        TaskStatus::RolledBack    => "rolled back".into(),
+        TaskStatus::RolledBack   => "rolled back".into(),
+    }
+}
+
+fn load_config(path: Option<&PathBuf>) -> Option<LopiConfig> {
+    if let Some(p) = path {
+        LopiConfig::load(p).ok()
+    } else {
+        LopiConfig::find_and_load()
     }
 }
 
@@ -113,6 +135,7 @@ async fn main() -> Result<()> {
         .init();
 
     let cli = Cli::parse();
+    let cfg = load_config(cli.config.as_ref());
 
     match cli.command {
         // ── lopi run ────────────────────────────────────────────
@@ -120,10 +143,20 @@ async fn main() -> Result<()> {
             println!("🚢 lopi run");
             println!("   goal: {goal}");
             println!("   repo: {}", repo.display());
+
+            // Apply per-repo profile.
+            let profile = RepoProfile::load_from_repo(&repo);
+            let has_profile = !profile.allowed_dirs.is_empty()
+                || profile.max_retries.is_some()
+                || !profile.default_constraints.is_empty();
+            if has_profile {
+                println!("   profile: .lopi.toml found — applying overrides");
+            }
             println!();
 
             let store = MemoryStore::open(db_path()).await?;
-            let task = Task::new(goal);
+            let mut task = Task::new(goal);
+            profile.apply(&mut task);
             let task_id = task.id;
             let id_short = &task_id.0.to_string()[..8];
             store.save_task(&task, "queued").await.ok();
@@ -136,7 +169,6 @@ async fn main() -> Result<()> {
             runner.store = Some(store.clone());
 
             let mut rx = bus.subscribe();
-            // Stream events to stdout while agent runs.
             let print_task = tokio::spawn(async move {
                 loop {
                     match rx.recv().await {
@@ -167,13 +199,16 @@ async fn main() -> Result<()> {
         }
 
         // ── lopi watch ──────────────────────────────────────────
-        Commands::Watch => {
-            // Standalone watch — creates a local bus (events only visible to this session).
-            // In a real deployment, watch would connect to a running `lopi sail` via WebSocket.
-            let bus: EventBus<AgentEvent> = EventBus::new(512);
-            println!("👁  lopi watch — TUI starting (q to quit)");
-            println!("   Tip: run `lopi sail` first to see live agent events here.");
-            lopi_ui::tui::run(bus).await?;
+        Commands::Watch { remote, local } => {
+            if local {
+                let bus: EventBus<AgentEvent> = EventBus::new(512);
+                println!("👁  lopi watch (local bus — no running sail server)");
+                lopi_ui::tui::run(bus).await?;
+            } else {
+                let ws_url = remote.unwrap_or_else(|| "ws://127.0.0.1:3000/ws".into());
+                println!("👁  lopi watch — connecting to {ws_url}");
+                watch_remote(ws_url).await?;
+            }
         }
 
         // ── lopi tail ───────────────────────────────────────────
@@ -192,8 +227,7 @@ async fn main() -> Result<()> {
                     );
                 }
             } else {
-                println!("📋 lopi tail — waiting for live events (Ctrl-C to stop)");
-                println!("   Use --history to view past tasks, or run `lopi sail` for a live server.");
+                println!("📋 lopi tail — use --history or run `lopi sail` for a live server");
                 tokio::signal::ctrl_c().await?;
             }
         }
@@ -205,6 +239,7 @@ async fn main() -> Result<()> {
             println!("⚓ lopi dock — {} task(s)\n", history.len());
             if history.is_empty() {
                 println!("  No tasks yet. Try: lopi run --goal \"write a test\"");
+                return Ok(());
             }
             let w = 50usize;
             println!("  {:<8}  {:<w$}  {}", "ID", "Goal", "Status");
@@ -212,10 +247,7 @@ async fn main() -> Result<()> {
             for t in history {
                 let goal = if t.goal.len() > w { format!("{}…", &t.goal[..w-1]) } else { t.goal.clone() };
                 println!("  {:<8}  {:<w$}  {}",
-                    &t.id[..8.min(t.id.len())],
-                    goal,
-                    fmt_status(&t.status)
-                );
+                    &t.id[..8.min(t.id.len())], goal, fmt_status(&t.status));
             }
         }
 
@@ -235,13 +267,25 @@ async fn main() -> Result<()> {
             println!("   dashboard: http://{host}:{port}");
             println!("   api:       http://{host}:{port}/api/tasks");
             println!("   ws:        ws://{host}:{port}/ws");
-            println!();
-            println!("   Submit a task:  POST http://{host}:{port}/api/tasks");
-            println!("   Or use:         lopi run --goal \"...\" --repo {}", repo.display());
+
+            // Boot schedules from config.
+            let schedules = cfg.as_ref().map(|c| c.schedules.clone()).unwrap_or_default();
+            if !schedules.is_empty() {
+                println!("   schedules: {} configured", schedules.len());
+                let pool_sched = (*pool).clone();
+                tokio::spawn(async move {
+                    match boot_scheduler(schedules, pool_sched).await {
+                        Ok(_sched) => {
+                            // Keep the scheduler alive — dropping it stops all jobs.
+                            // Block forever so the task (and scheduler) stays alive.
+                            tokio::signal::ctrl_c().await.ok();
+                        }
+                        Err(e) => tracing::error!("scheduler boot failed: {e}"),
+                    }
+                });
+            }
             println!();
 
-            // Spawn pool dispatch loop in background.
-            // AgentPool::clone() is cheap — all fields are Arc-wrapped.
             let pool_for_dispatch = (*pool).clone();
             tokio::spawn(async move {
                 if let Err(e) = pool_for_dispatch.run().await {
@@ -249,19 +293,17 @@ async fn main() -> Result<()> {
                 }
             });
 
-            // Serve web in foreground.
             lopi_ui::web::serve(store, bus, queue, pool, &host, port).await?;
         }
 
         // ── lopi cancel ─────────────────────────────────────────
         Commands::Cancel { task_id } => {
-            // Cancel via HTTP if a sail server is running on default port; otherwise report.
             let url = format!("http://127.0.0.1:3000/api/tasks/{task_id}");
             match reqwest_cancel(&url).await {
                 Ok(msg) => println!("{msg}"),
                 Err(_) => {
-                    println!("⚠️  No running lopi sail server found on :3000.");
-                    println!("   Start lopi sail first, or use the web dashboard to cancel.");
+                    println!("⚠️  No running lopi sail server on :3000.");
+                    println!("   Start `lopi sail` first or use the web dashboard.");
                 }
             }
         }
@@ -280,13 +322,42 @@ async fn main() -> Result<()> {
             for p in patterns {
                 let kw = if p.goal_keywords.len() > 40 {
                     format!("{}…", &p.goal_keywords[..39])
-                } else {
-                    p.goal_keywords.clone()
-                };
+                } else { p.goal_keywords.clone() };
                 let avg = p.avg_attempts.map(|a| format!("{a:.1}")).unwrap_or_else(|| "-".into());
-                let sr = p.success_rate.map(|s| format!("{:.0}%", s * 100.0)).unwrap_or_else(|| "-".into());
-                let ts = &p.last_seen[..10.min(p.last_seen.len())];
+                let sr  = p.success_rate.map(|s| format!("{:.0}%", s * 100.0)).unwrap_or_else(|| "-".into());
+                let ts  = &p.last_seen[..10.min(p.last_seen.len())];
                 println!("  {:<40}  {:>10}  {:>10}  {}", kw, avg, sr, ts);
+            }
+        }
+
+        // ── lopi schedules ──────────────────────────────────────
+        Commands::Schedules(ScheduleCmd::List) => {
+            let schedules = cfg.as_ref().map(|c| c.schedules.clone()).unwrap_or_default();
+            if schedules.is_empty() {
+                println!("⏰ lopi schedules — none configured");
+                println!();
+                println!("  Add [[schedules]] entries to lopi.toml:");
+                println!();
+                println!("  [[schedules]]");
+                println!("  name = \"nightly-lint\"");
+                println!("  repo = \"/path/to/repo\"");
+                println!("  goal = \"Fix all clippy warnings\"");
+                println!("  cron = \"0 2 * * *\"");
+                return Ok(());
+            }
+
+            println!("⏰ lopi schedules — {} configured\n", schedules.len());
+            let w = 30usize;
+            println!("  {:<20}  {:<w$}  {:<14}  Next run (UTC)", "Name", "Goal", "Cron");
+            println!("  {}", "─".repeat(20 + 2 + w + 2 + 14 + 2 + 26));
+            for s in &schedules {
+                let goal = if s.goal.len() > w { format!("{}…", &s.goal[..w-1]) } else { s.goal.clone() };
+                let next = next_run_times(&s.cron, 1)
+                    .into_iter()
+                    .next()
+                    .map(|t| t.format("%Y-%m-%d %H:%M UTC").to_string())
+                    .unwrap_or_else(|| "invalid cron".into());
+                println!("  {:<20}  {:<w$}  {:<14}  {}", s.name, goal, s.cron, next);
             }
         }
     }
@@ -294,13 +365,72 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+/// Connect to a running lopi sail WebSocket and drive the TUI from network events.
+async fn watch_remote(ws_url: String) -> Result<()> {
+    use tokio_tungstenite::tungstenite::Message as WsMsg;
+    use futures::StreamExt;
+
+    let bus: EventBus<AgentEvent> = EventBus::new(512);
+    let bus_tx = bus.clone();
+
+    // Try to connect; if it fails immediately, fall back to local mode.
+    let (mut ws, _) = match tokio_tungstenite::connect_async(&ws_url).await {
+        Ok(pair) => pair,
+        Err(e) => {
+            println!("⚠️  Could not connect to {ws_url}: {e}");
+            println!("   Falling back to local bus. Run `lopi sail` to get live events.");
+            let local_bus: EventBus<AgentEvent> = EventBus::new(512);
+            return lopi_ui::tui::run(local_bus).await;
+        }
+    };
+
+    println!("   connected — starting TUI (q to quit)");
+
+    // Pump WebSocket messages into the local bus on a background task.
+    let pump = tokio::spawn(async move {
+        while let Some(msg) = ws.next().await {
+            match msg {
+                Ok(WsMsg::Text(text)) => {
+                    if let Ok(ev) = serde_json::from_str::<AgentEvent>(&text) {
+                        bus_tx.send(ev);
+                    } else if let Ok(snap) = serde_json::from_str::<serde_json::Value>(&text) {
+                        // Handle snapshot message: synthesise TaskQueued events for each task.
+                        if snap.get("type").and_then(|v| v.as_str()) == Some("snapshot") {
+                            if let Some(tasks) = snap.get("tasks").and_then(|v| v.as_array()) {
+                                for t in tasks {
+                                    let id_str = t.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                                    let goal   = t.get("goal").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                                    if let Ok(uuid) = id_str.parse::<uuid::Uuid>() {
+                                        bus_tx.send(AgentEvent::TaskQueued {
+                                            task_id: lopi_core::TaskId(uuid),
+                                            goal,
+                                            priority: lopi_core::Priority::Normal,
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                Ok(WsMsg::Close(_)) | Err(_) => break,
+                _ => {}
+            }
+        }
+    });
+
+    lopi_ui::tui::run(bus).await?;
+    pump.abort();
+    Ok(())
+}
+
 async fn reqwest_cancel(url: &str) -> Result<String> {
     let client = reqwest::Client::new();
     let resp = client.delete(url).send().await.context("HTTP DELETE failed")?;
-    let body: serde_json::Value = resp.json::<serde_json::Value>().await?;
+    let body = resp.json::<serde_json::Value>().await?;
     if body.get("cancelled").and_then(|v: &serde_json::Value| v.as_bool()).unwrap_or(false) {
-        Ok(format!("⛔ Task cancelled."))
+        Ok("⛔ Task cancelled.".into())
     } else {
-        Ok(format!("ℹ️  {}", body.get("reason").and_then(|v: &serde_json::Value| v.as_str()).unwrap_or("unknown")))
+        Ok(format!("ℹ️  {}",
+            body.get("reason").and_then(|v: &serde_json::Value| v.as_str()).unwrap_or("unknown")))
     }
 }
