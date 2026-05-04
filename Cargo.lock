@@ -1517,6 +1517,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror",
+ "tokio",
  "toml",
  "uuid",
 ]
@@ -1559,6 +1560,7 @@ dependencies = [
  "dashmap",
  "lopi-agent",
  "lopi-core",
+ "lopi-git",
  "lopi-memory",
  "serde",
  "tokio",
@@ -1591,6 +1593,7 @@ dependencies = [
  "futures",
  "lopi-core",
  "lopi-memory",
+ "lopi-orchestrator",
  "ratatui",
  "serde",
  "serde_json",

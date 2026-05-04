@@ -13,7 +13,7 @@ struct PrioEntry {
 
 impl Ord for PrioEntry {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        // Higher priority first; older sequence first as tiebreaker.
+        // Higher priority first; lower seq (older) first as tiebreaker.
         self.priority
             .cmp(&other.priority)
             .then_with(|| other.seq.cmp(&self.seq))
@@ -52,7 +52,7 @@ impl TaskQueue {
         }
     }
 
-    /// Enqueue a task. Returns Some(existing_id) if a task with the same goal is already queued.
+    /// Enqueue `task`. Returns `Some(existing_id)` if an identical goal is already queued (dedup).
     pub async fn push(&self, task: Task) -> Option<TaskId> {
         let goal_key = task.goal.trim().to_lowercase();
         if let Some(existing) = self.inner.seen_goals.get(&goal_key) {
@@ -69,7 +69,7 @@ impl TaskQueue {
         None
     }
 
-    /// Pop the next task, awaiting if the queue is empty.
+    /// Pop the highest-priority task, awaiting if the queue is empty.
     pub async fn pop(&self) -> Task {
         loop {
             {
@@ -97,4 +97,69 @@ impl TaskQueue {
 
 impl Default for TaskQueue {
     fn default() -> Self { Self::new() }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lopi_core::Priority;
+
+    fn make_task(goal: &str, priority: Priority) -> Task {
+        let mut t = Task::new(goal);
+        t.priority = priority;
+        t
+    }
+
+    #[tokio::test]
+    async fn fifo_same_priority() {
+        let q = TaskQueue::new();
+        q.push(make_task("first", Priority::Normal)).await;
+        q.push(make_task("second", Priority::Normal)).await;
+        assert_eq!(q.pop().await.goal, "first");
+        assert_eq!(q.pop().await.goal, "second");
+    }
+
+    #[tokio::test]
+    async fn higher_priority_wins() {
+        let q = TaskQueue::new();
+        q.push(make_task("low", Priority::Low)).await;
+        q.push(make_task("critical", Priority::Critical)).await;
+        q.push(make_task("normal", Priority::Normal)).await;
+        assert_eq!(q.pop().await.goal, "critical");
+        assert_eq!(q.pop().await.goal, "normal");
+        assert_eq!(q.pop().await.goal, "low");
+    }
+
+    #[tokio::test]
+    async fn goal_dedup_returns_existing_id() {
+        let q = TaskQueue::new();
+        let t = make_task("fix the bug", Priority::Normal);
+        let id = t.id;
+        assert!(q.push(t).await.is_none());
+        // Same goal (case-insensitive, trimmed) should dedup.
+        let dup = make_task("Fix the Bug", Priority::High);
+        let existing = q.push(dup).await;
+        assert_eq!(existing, Some(id));
+        assert_eq!(q.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn len_and_is_empty() {
+        let q = TaskQueue::new();
+        assert!(q.is_empty());
+        q.push(make_task("a", Priority::Normal)).await;
+        assert_eq!(q.len(), 1);
+        assert!(!q.is_empty());
+        q.pop().await;
+        assert!(q.is_empty());
+    }
+
+    #[tokio::test]
+    async fn pop_after_push_clears_dedup() {
+        let q = TaskQueue::new();
+        q.push(make_task("goal x", Priority::Normal)).await;
+        q.pop().await;
+        // After pop the goal should be de-registered so we can push again.
+        assert!(q.push(make_task("goal x", Priority::Normal)).await.is_none());
+    }
 }

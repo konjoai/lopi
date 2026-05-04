@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.2.0] — Live concurrency + test foundation
+
+### Added
+- `lopi-core::EventBus<T>` — thin tokio broadcast wrapper for workspace-wide event fanout
+- `TaskStatus` is now `Clone + PartialEq` (derived in lopi-core)
+- `AgentRunner::standalone()` — creates its own isolated bus for `lopi run`
+- `AgentRunner::new()` — takes a shared `EventBus<TaskStatus>` for pool integration
+- `AgentPool` now receives and propagates the shared bus to every spawned runner
+- `lopi sail` boots the `AgentPool` as a background task; exposes `/ws/tasks` WebSocket endpoint
+- WebSocket handler fans out serialized `TaskStatus` JSON to all connected clients; handles lag gracefully
+- `lopi run` streams live status events to stdout while the agent executes
+- `lopi tail --history` shows past tasks from SQLite; `--task-id` filters by prefix
+- `ClaudeCode` upgraded to use `--output-format json` with `ClaudeOutput` struct and transparent fallback for older CLI versions
+- `MemoryStore::open_in_memory()` for test isolation
+- `MemoryStore::task_count()` helper
+- 27 tests across lopi-core (12), lopi-git (3), lopi-orchestrator (5), lopi-memory (7)
+
+### Changed
+- `lopi-ui::web::serve()` now takes `EventBus<TaskStatus>` as second argument
+- `lopi-orchestrator::AgentPool::new()` now takes `EventBus<TaskStatus>`
+- `lopi-core` dependency added to `lopi-ui` and root binary
+
 All notable changes to lopi.
 
 ## [0.1.0] — Initial scaffold

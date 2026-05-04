@@ -20,6 +20,7 @@ impl std::fmt::Display for TaskId {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(PartialEq)]
 pub enum TaskStatus {
     Queued,
     Planning,

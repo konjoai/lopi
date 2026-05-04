@@ -10,6 +10,7 @@ description = "TUI dashboard and web API for lopi"
 [dependencies]
 lopi-core.workspace = true
 lopi-memory.workspace = true
+lopi-orchestrator.workspace = true
 tokio.workspace = true
 axum.workspace = true
 tower.workspace = true
