@@ -81,6 +81,37 @@ async fn handle(
         tracing::info!("queued CI fix task for {repo} (event: {event})");
     }
 
+    // PR review loop: when a reviewer requests changes, re-queue the task with the
+    // review body injected as a constraint so lopi can address the feedback automatically.
+    if event == "pull_request_review" {
+        let action = payload.get("action").and_then(|v| v.as_str()).unwrap_or("");
+        let state  = payload.get("review").and_then(|r| r.get("state")).and_then(|v| v.as_str()).unwrap_or("");
+        if action == "submitted" && state == "changes_requested" {
+            let review_body = payload
+                .get("review")
+                .and_then(|r| r.get("body"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .trim()
+                .to_string();
+            let pr_title = payload
+                .get("pull_request")
+                .and_then(|pr| pr.get("title"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown PR")
+                .to_string();
+            let goal = format!("Address review feedback on PR '{pr_title}' in {repo}");
+            let mut t = Task::new(goal);
+            t.priority = Priority::High;
+            t.source = TaskSource::Webhook { repo: repo.clone(), event: event.clone() };
+            if !review_body.is_empty() {
+                t.constraints.push(format!("Review feedback: {review_body}"));
+            }
+            s.queue.push(t).await;
+            tracing::info!("queued PR review fix task for {repo}: {pr_title}");
+        }
+    }
+
     (StatusCode::OK, "ok").into_response()
 }
 

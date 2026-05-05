@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
 
@@ -47,6 +48,9 @@ pub struct Task {
     pub max_retries: u8,
     pub created_at: DateTime<Utc>,
     pub source: TaskSource,
+    /// Override repository path for this task. Pool default is used when None.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repo_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -69,6 +73,7 @@ impl Task {
             max_retries: 3,
             created_at: Utc::now(),
             source: TaskSource::Cli,
+            repo_path: None,
         }
     }
 }

@@ -15,13 +15,15 @@ impl Scorer {
     /// Run the project's test + lint commands and produce a Score.
     /// Detection is intentionally simple: prefer `cargo` if Cargo.toml exists,
     /// else fall back to `npm test`. Failures populate `Score.errors`.
+    #[tracing::instrument(skip(self))]
     pub async fn score(&self) -> Result<Score> {
         let mut score = Score::new(0.0, 0, 0);
 
         let cargo_toml = self.repo_path.join("Cargo.toml");
         if cargo_toml.exists() {
-            // cargo test
+            // cargo test — use sccache if available to skip unchanged artifact recompilation
             let out = Command::new("cargo")
+                .env("RUSTC_WRAPPER", "sccache")
                 .arg("test").arg("--quiet")
                 .current_dir(&self.repo_path)
                 .output()
@@ -35,6 +37,7 @@ impl Scorer {
             }
             // cargo clippy as the lint signal.
             let lint = Command::new("cargo")
+                .env("RUSTC_WRAPPER", "sccache")
                 .arg("clippy").arg("--quiet").arg("--").arg("-D").arg("warnings")
                 .current_dir(&self.repo_path)
                 .output()

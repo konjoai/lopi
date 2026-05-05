@@ -137,7 +137,7 @@ impl ClaudeCode {
             format!("allowed[{}]: {}\n", allowed.len(), allowed.join(","))
         };
 
-        let failures = errors.join("\n");
+        let failures = compress_errors(errors);
         let prompt = format!(
             "The previous attempt failed. Fix the failures below.\n\
              {allowed_str}\n\
@@ -150,7 +150,105 @@ impl ClaudeCode {
         Ok(out.text().to_string())
     }
 
+    /// Stream plan steps as they are generated. Returns a channel receiver that emits
+    /// numbered plan steps (lines matching `^\d+\.`) and a join handle that resolves to
+    /// the full plan text when the claude process exits.
+    pub fn plan_streaming(
+        &self,
+        task: &Task,
+    ) -> (tokio::task::JoinHandle<Result<String>>, tokio::sync::mpsc::Receiver<String>) {
+        use tokio::io::{AsyncBufReadExt, BufReader};
+
+        let (tx, rx) = tokio::sync::mpsc::channel::<String>(64);
+
+        let all_constraints: Vec<String> = task.constraints.iter()
+            .chain(self.extra_constraints.iter())
+            .cloned()
+            .collect();
+        let allowed: Vec<String> = task.allowed_dirs.clone();
+        let forbidden: Vec<String> = task.forbidden_dirs.clone();
+        let goal = task.goal.clone();
+        let cli_path = self.cli_path.clone();
+        let repo_path = self.repo_path.clone();
+        let timeout = self.timeout;
+
+        let handle = tokio::spawn(async move {
+            let ctx = lopi_toon::encode_task_context(
+                &goal,
+                &allowed.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+                &forbidden.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+                &all_constraints.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+                &[],
+            );
+            let prompt = format!(
+                "You are running inside lopi. \
+                 Produce a concise implementation plan. \
+                 Output a numbered list of steps only.\n\n\
+                 ## Task context (TOON)\n{ctx}"
+            );
+
+            let mut child = tokio::process::Command::new(&cli_path)
+                .arg("-p").arg(&prompt)
+                .current_dir(&repo_path)
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::null())
+                .spawn()
+                .context("spawning claude for streaming plan")?;
+
+            let stdout = child.stdout.take().context("claude stdout unavailable")?;
+            let mut reader = BufReader::new(stdout).lines();
+            let mut full_text = String::new();
+
+            let deadline = tokio::time::sleep(timeout);
+            tokio::pin!(deadline);
+
+            loop {
+                tokio::select! {
+                    line = reader.next_line() => {
+                        match line? {
+                            Some(l) => {
+                                // Emit numbered plan steps immediately so the implement
+                                // worker can begin applying them speculatively.
+                                if l.trim_start().chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false) {
+                                    let _ = tx.send(l.clone()).await;
+                                }
+                                full_text.push_str(&l);
+                                full_text.push('\n');
+                            }
+                            None => break,
+                        }
+                    }
+                    _ = &mut deadline => {
+                        child.kill().await.ok();
+                        anyhow::bail!("claude plan stream timed out");
+                    }
+                }
+            }
+            child.wait().await.ok();
+            Ok(full_text)
+        });
+
+        (handle, rx)
+    }
+
+    /// Apply a single plan step to the repository.
+    pub async fn implement_step(&self, task: &Task, step: &str) -> Result<()> {
+        let allowed: Vec<&str> = task.allowed_dirs.iter().map(|s| s.as_str()).collect();
+        let scope = lopi_toon::encode_task_context(&task.goal, &allowed, &[], &[], &[]);
+        let prompt = format!(
+            "Apply this single implementation step to the repository. Make only the changes described.\n\n\
+             ## Scope\n{scope}\n\n\
+             ## Step\n{step}"
+        );
+        let out = self.run(&prompt).await?;
+        if !out.succeeded() {
+            anyhow::bail!("step failed: {}", out.text());
+        }
+        Ok(())
+    }
+
     async fn run(&self, prompt: &str) -> Result<ClaudeOutput> {
+
         let mut cmd = Command::new(&self.cli_path);
         cmd.arg("-p").arg(prompt);
         if self.json_output {
@@ -184,4 +282,28 @@ impl ClaudeCode {
             })
         }
     }
+}
+
+/// Strip Rust backtrace noise and deduplicate repeated error blocks to reduce fix-prompt token count.
+/// Removes lines matching `at src/`, `note: run with RUST_BACKTRACE`, and limits each error to
+/// 30 lines. Identical adjacent blocks are collapsed to one copy.
+fn compress_errors(errors: &[String]) -> String {
+    let mut seen: Vec<String> = Vec::with_capacity(errors.len());
+    for err in errors {
+        let compressed: String = err
+            .lines()
+            .filter(|line| {
+                let t = line.trim();
+                !t.starts_with("note: run with RUST_BACKTRACE")
+                    && !t.starts_with("stack backtrace:")
+                    && !(t.starts_with("at ") && (t.contains("src/") || t.contains(".rs:")))
+            })
+            .take(30)
+            .collect::<Vec<_>>()
+            .join("\n");
+        if !seen.contains(&compressed) {
+            seen.push(compressed);
+        }
+    }
+    seen.join("\n---\n")
 }
