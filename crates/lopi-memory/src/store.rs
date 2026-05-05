@@ -34,9 +34,18 @@ fn keyword_fingerprint(goal: &str) -> String {
     words.join(" ")
 }
 
+/// SQLite dual-pool store: one serialising write connection, up to 8 read-only connections.
+///
+/// SQLite supports only one concurrent writer. Using a single-connection write pool
+/// ensures INSERT/UPDATE/DELETE/DDL statements never contend on the write lock.
+/// A separate read-only pool with up to 8 connections allows concurrent SELECT queries
+/// without blocking or being blocked by writes (WAL mode makes this safe).
 #[derive(Clone)]
 pub struct MemoryStore {
-    pool: SqlitePool,
+    /// Single-connection pool — serialises all mutations.
+    write_pool: SqlitePool,
+    /// Read-only pool — up to 8 concurrent readers.
+    read_pool: SqlitePool,
 }
 
 impl MemoryStore {
@@ -46,22 +55,40 @@ impl MemoryStore {
             std::fs::create_dir_all(parent).ok();
         }
         let url = format!("sqlite://{}", path.display());
-        let opts = SqliteConnectOptions::from_str(&url)
-            .context("parsing sqlite path")?
+
+        // Write pool: single connection, full WAL + synchronous=NORMAL pragmas.
+        let write_opts = SqliteConnectOptions::from_str(&url)
+            .context("parsing sqlite path (write)")?
             .create_if_missing(true)
             .pragma("journal_mode", "WAL")
             .pragma("synchronous", "NORMAL")
             .pragma("busy_timeout", "5000");
-        let pool = SqlitePoolOptions::new()
-            .max_connections(20)
-            .connect_with(opts)
+        let write_pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(write_opts)
             .await
-            .context("opening sqlite pool")?;
-        Self::apply_schema(&pool).await?;
-        Ok(Self { pool })
+            .context("opening sqlite write pool")?;
+
+        // Apply schema through the write connection before handing out reads.
+        Self::apply_schema(&write_pool).await?;
+
+        // Read pool: up to 8 connections, read-only mode.
+        let read_opts = SqliteConnectOptions::from_str(&url)
+            .context("parsing sqlite path (read)")?
+            .read_only(true)
+            .pragma("busy_timeout", "5000");
+        let read_pool = SqlitePoolOptions::new()
+            .max_connections(8)
+            .connect_with(read_opts)
+            .await
+            .context("opening sqlite read pool")?;
+
+        Ok(Self { write_pool, read_pool })
     }
 
     /// Open an in-memory SQLite database — useful for tests.
+    /// In-memory databases do not support WAL or multiple connections sharing state,
+    /// so a single pool services both reads and writes.
     pub async fn open_in_memory() -> Result<Self> {
         let opts = SqliteConnectOptions::from_str("sqlite::memory:")
             .context("parsing in-memory sqlite")?;
@@ -71,7 +98,8 @@ impl MemoryStore {
             .await
             .context("opening in-memory sqlite pool")?;
         Self::apply_schema(&pool).await?;
-        Ok(Self { pool })
+        // Use the same pool for both reads and writes — safe for single-connection in-memory DB.
+        Ok(Self { write_pool: pool.clone(), read_pool: pool })
     }
 
     async fn apply_schema(pool: &SqlitePool) -> Result<()> {
@@ -101,7 +129,7 @@ impl MemoryStore {
         .bind(status)
         .bind(task.created_at.to_rfc3339())
         .bind(source)
-        .execute(&self.pool)
+        .execute(&self.write_pool)
         .await?;
         Ok(())
     }
@@ -113,7 +141,7 @@ impl MemoryStore {
         .bind(status)
         .bind(Utc::now().to_rfc3339())
         .bind(id.0.to_string())
-        .execute(&self.pool)
+        .execute(&self.write_pool)
         .await?;
         Ok(())
     }
@@ -141,7 +169,7 @@ impl MemoryStore {
         .bind(&attempt.outcome)
         .bind(errors)
         .bind(attempt.created_at.to_rfc3339())
-        .execute(&self.pool)
+        .execute(&self.write_pool)
         .await?;
         Ok(())
     }
@@ -153,7 +181,7 @@ impl MemoryStore {
              ORDER BY created_at DESC LIMIT ?1",
         )
         .bind(limit)
-        .fetch_all(&self.pool)
+        .fetch_all(&self.read_pool)
         .await?;
         Ok(rows)
     }
@@ -170,7 +198,7 @@ impl MemoryStore {
             "SELECT id, goal_keywords, successful_constraints, avg_attempts, success_rate, last_seen \
              FROM patterns",
         )
-        .fetch_all(&self.pool)
+        .fetch_all(&self.read_pool)
         .await?;
 
         let mut scored: Vec<(f32, PatternRow)> = all
@@ -191,7 +219,7 @@ impl MemoryStore {
              FROM patterns ORDER BY success_rate DESC LIMIT ?1",
         )
         .bind(limit)
-        .fetch_all(&self.pool)
+        .fetch_all(&self.read_pool)
         .await?;
         Ok(rows)
     }
@@ -203,12 +231,13 @@ impl MemoryStore {
             return Ok(());
         }
 
+        // Reads can go through the read pool.
         let stats: Option<(f64, i64)> = sqlx::query_as(
             "SELECT AVG(score_test_pass_rate), COUNT(*) \
              FROM attempts WHERE task_id = ?1",
         )
         .bind(task_id.0.to_string())
-        .fetch_optional(&self.pool)
+        .fetch_optional(&self.read_pool)
         .await?;
 
         let (avg_pass, attempt_count) = stats.unwrap_or((0.0, 0));
@@ -218,7 +247,7 @@ impl MemoryStore {
             "SELECT id, avg_attempts, success_rate FROM patterns WHERE goal_keywords = ?1",
         )
         .bind(&fingerprint)
-        .fetch_optional(&self.pool)
+        .fetch_optional(&self.read_pool)
         .await?;
 
         let now = Utc::now().to_rfc3339();
@@ -232,7 +261,7 @@ impl MemoryStore {
             .bind(new_sr)
             .bind(&now)
             .bind(existing_id)
-            .execute(&self.pool)
+            .execute(&self.write_pool)
             .await?;
         } else {
             let id = uuid::Uuid::new_v4().to_string();
@@ -245,7 +274,7 @@ impl MemoryStore {
             .bind(attempt_count as f64)
             .bind(success_rate)
             .bind(&now)
-            .execute(&self.pool)
+            .execute(&self.write_pool)
             .await?;
         }
         Ok(())
@@ -253,7 +282,7 @@ impl MemoryStore {
 
     pub async fn task_count(&self) -> Result<i64> {
         let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM tasks")
-            .fetch_one(&self.pool)
+            .fetch_one(&self.read_pool)
             .await?;
         Ok(row.0)
     }
@@ -290,7 +319,7 @@ impl MemoryStore {
         .bind(m.tools_parallel as i64)
         .bind(m.estimated_cost_usd)
         .bind(m.timestamp.to_rfc3339())
-        .execute(&self.pool)
+        .execute(&self.write_pool)
         .await?;
         Ok(())
     }

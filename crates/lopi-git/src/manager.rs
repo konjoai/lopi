@@ -1,7 +1,16 @@
 use anyhow::{Context, Result};
 use git2::{Repository, BranchType, ResetType};
+use once_cell::sync::Lazy;
 use std::path::{Path, PathBuf};
+use tokio::sync::Mutex;
 use crate::diff::DiffChecker;
+
+/// Workspace-level mutex that serialises worktree creation.
+///
+/// git2's `Repository::branch()` + `checkout_tree()` sequence is not atomic:
+/// two concurrent calls racing on the same repo can corrupt the index or HEAD ref.
+/// A single process-wide lock is sufficient because lopi agents share one process.
+static WORKTREE_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 
 pub struct GitManager {
     repo_path: PathBuf,
@@ -27,9 +36,14 @@ impl GitManager {
     }
 
     /// Create + check out a new branch from HEAD.
+    ///
+    /// Holds the process-wide `WORKTREE_LOCK` for the duration of the operation
+    /// so that parallel agents cannot interleave `branch()` + `checkout_tree()` calls
+    /// on the same repository.
     pub async fn checkout_new_branch(&self, name: &str) -> Result<()> {
         let name = name.to_string();
         let repo_path = self.repo_path.clone();
+        let _guard = WORKTREE_LOCK.lock().await;
         tokio::task::spawn_blocking(move || -> Result<()> {
             let repo = Repository::open(&repo_path)?;
             let head_commit = repo.head()?.peel_to_commit()?;
@@ -46,6 +60,16 @@ impl GitManager {
         .await
         .context("join error in checkout_new_branch")??;
         Ok(())
+    }
+
+    /// Return env-var overrides to set when spawning agent sub-processes in this worktree.
+    ///
+    /// Setting `CARGO_TARGET_DIR` to a worktree-local path prevents parallel agents from
+    /// contending on the shared workspace `target/` directory during `cargo build`/`cargo test`.
+    pub fn worktree_env(&self) -> Vec<(String, String)> {
+        vec![
+            ("CARGO_TARGET_DIR".to_string(), ".cargo-target".to_string()),
+        ]
     }
 
     /// Verify the working-tree diff vs HEAD only touches allowed dirs.

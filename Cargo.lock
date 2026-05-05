@@ -1671,6 +1671,7 @@ dependencies = [
  "serde_json",
  "thiserror",
  "tokio",
+ "tokio-util",
  "tracing",
  "uuid",
 ]
@@ -1712,6 +1713,7 @@ dependencies = [
  "git2",
  "glob",
  "lopi-core",
+ "once_cell",
  "thiserror",
  "tokio",
  "tracing",
@@ -1748,6 +1750,7 @@ dependencies = [
  "serde",
  "tokio",
  "tokio-cron-scheduler",
+ "tokio-util",
  "tracing",
 ]
 
@@ -3483,6 +3486,7 @@ dependencies = [
  "bytes",
  "futures-core",
  "futures-sink",
+ "futures-util",
  "pin-project-lite",
  "tokio",
 ]

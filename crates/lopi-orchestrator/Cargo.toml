@@ -13,6 +13,7 @@ lopi-agent.workspace = true
 lopi-git.workspace = true
 lopi-memory.workspace = true
 tokio.workspace = true
+tokio-util.workspace = true
 tokio-cron-scheduler.workspace = true
 chrono.workspace = true
 cron = "0.12"

@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::sync::oneshot;
+use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 pub struct AgentRunner {
@@ -22,9 +23,16 @@ pub struct AgentRunner {
     pub speculative: bool,
     /// Session context window — tracks phase transitions and token pressure across the agent run.
     pub context: ContextWindow,
+    /// Hard upper bound on total attempt iterations before the runner gives up.
+    /// Prevents runaway agents from looping indefinitely when `task.max_retries` is very high.
+    pub max_turns: u32,
     cancel_rx: Option<oneshot::Receiver<()>>,
+    /// Second cancellation mechanism — compatible with `tokio_util::sync::CancellationToken`
+    /// for structured cancellation from the pool `JoinSet`.
+    cancel_token: CancellationToken,
     attempt_counter: Arc<AtomicUsize>,
     attempts_made: u8,
+    turn_count: u32,
 }
 
 impl AgentRunner {
@@ -47,9 +55,12 @@ impl AgentRunner {
             dry_run: false,
             speculative: false,
             context: ContextWindow::new(Self::CONTEXT_BUDGET),
+            max_turns: 25,
             cancel_rx: Some(cancel_rx),
+            cancel_token: CancellationToken::new(),
             attempt_counter,
             attempts_made: 0,
+            turn_count: 0,
         }
     }
 
@@ -65,11 +76,20 @@ impl AgentRunner {
             dry_run: false,
             speculative: false,
             context: ContextWindow::new(Self::CONTEXT_BUDGET),
+            max_turns: 25,
             cancel_rx: Some(cancel_rx),
+            cancel_token: CancellationToken::new(),
             attempt_counter: Arc::new(AtomicUsize::new(0)),
             attempts_made: 0,
+            turn_count: 0,
         };
         (runner, bus)
+    }
+
+    /// Return a child token derived from this runner's `CancellationToken`.
+    /// The pool can cancel this token to abort the runner from a `JoinSet` teardown.
+    pub fn cancel_token(&self) -> CancellationToken {
+        self.cancel_token.clone()
     }
 
     pub fn attempts_made(&self) -> u8 {
@@ -95,6 +115,12 @@ impl AgentRunner {
     }
 
     fn check_cancel(&mut self) -> bool {
+        // Check the structured CancellationToken first (pool JoinSet teardown path).
+        if self.cancel_token.is_cancelled() {
+            self.log("⛔ cancelled via token");
+            return true;
+        }
+        // Then check the legacy oneshot cancel channel (web API / CLI path).
         if let Some(mut rx) = self.cancel_rx.take() {
             match rx.try_recv() {
                 Ok(_) | Err(oneshot::error::TryRecvError::Closed) => {
@@ -159,6 +185,19 @@ impl AgentRunner {
         let scorer = Scorer::new(&self.repo_path);
 
         for attempt in 0..self.task.max_retries {
+            // Hard stop: prevent runaway agents from looping past the turn cap.
+            self.turn_count += 1;
+            if self.turn_count > self.max_turns {
+                let status = TaskStatus::Failed {
+                    reason: format!(
+                        "TurnLimitExceeded {{ limit: {}, task_id: {} }}",
+                        self.max_turns, self.task.id
+                    ),
+                };
+                self.status(status.clone(), self.attempts_made);
+                return Ok(status);
+            }
+
             if self.check_cancel() {
                 return Ok(TaskStatus::Failed { reason: "Cancelled".into() });
             }

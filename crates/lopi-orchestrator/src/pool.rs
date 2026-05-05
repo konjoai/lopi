@@ -6,7 +6,8 @@ use lopi_memory::MemoryStore;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
-use tokio::sync::{oneshot, Semaphore};
+use tokio::sync::{oneshot, Mutex, Semaphore};
+use tokio::task::JoinSet;
 use tracing::{error, info, warn};
 
 use crate::queue::TaskQueue;
@@ -16,7 +17,7 @@ use crate::queue::TaskQueue;
 pub struct AgentHandle {
     pub goal: String,
     pub cancel_tx: Option<oneshot::Sender<()>>,
-    pub status: Arc<tokio::sync::RwLock<TaskStatus>>,
+    /// Current attempt count — updated atomically by the runner, read lock-free.
     pub attempt: Arc<AtomicUsize>,
     pub started_at: std::time::Instant,
 }
@@ -31,7 +32,11 @@ pub struct PoolCounters {
 
 #[derive(Clone)]
 pub struct AgentPool {
+    /// Global concurrency cap — across all repos.
     permits: Arc<Semaphore>,
+    /// Per-repo semaphore — prevents one repo from monopolising all agent slots.
+    repo_permits: Arc<DashMap<PathBuf, Arc<Semaphore>>>,
+    max_agents: usize,
     queue: TaskQueue,
     repo_path: PathBuf,
     /// All AgentEvents: TaskQueued, TaskStarted, StatusChanged, LogLine, TaskCompleted.
@@ -41,6 +46,8 @@ pub struct AgentPool {
     handles: Arc<DashMap<TaskId, Arc<tokio::sync::RwLock<AgentHandle>>>>,
     counters: Arc<PoolCounters>,
     started_at: Arc<std::time::Instant>,
+    /// Structured task tracker — allows `shutdown()` to abort all running agents.
+    join_set: Arc<Mutex<JoinSet<()>>>,
 }
 
 impl AgentPool {
@@ -52,6 +59,8 @@ impl AgentPool {
     ) -> Self {
         Self {
             permits: Arc::new(Semaphore::new(max_agents)),
+            repo_permits: Arc::new(DashMap::new()),
+            max_agents,
             queue,
             repo_path,
             bus,
@@ -59,7 +68,16 @@ impl AgentPool {
             handles: Arc::new(DashMap::new()),
             counters: Arc::new(PoolCounters::default()),
             started_at: Arc::new(std::time::Instant::now()),
+            join_set: Arc::new(Mutex::new(JoinSet::new())),
         }
+    }
+
+    /// Abort all running agent tasks and wait for them to finish.
+    /// Call this on graceful shutdown to avoid orphaned git operations.
+    pub async fn shutdown(&self) {
+        let mut js = self.join_set.lock().await;
+        js.abort_all();
+        while js.join_next().await.is_some() {}
     }
 
     pub fn with_store(mut self, store: MemoryStore) -> Self {
@@ -116,32 +134,47 @@ impl AgentPool {
     pub async fn run(self) -> Result<()> {
         loop {
             let task = self.queue.pop().await;
+
+            // Resolve the repo for this task (task-level override or pool default).
+            let repo = task.repo_path.clone().unwrap_or_else(|| self.repo_path.clone());
+
+            // Acquire global concurrency permit.
             let permit = self.permits.clone().acquire_owned().await?;
+
+            // Acquire per-repo permit — caps concurrency on any single repo to max_agents.
+            let repo_sem = self.repo_permits
+                .entry(repo.clone())
+                .or_insert_with(|| Arc::new(Semaphore::new(self.max_agents)))
+                .clone();
+            let repo_permit = repo_sem.acquire_owned().await?;
+
             let task_id = task.id;
             let goal = task.goal.clone();
 
             let (cancel_tx, cancel_rx) = oneshot::channel::<()>();
-            let status = Arc::new(tokio::sync::RwLock::new(TaskStatus::Queued));
             let attempt = Arc::new(AtomicUsize::new(0));
 
             let handle = Arc::new(tokio::sync::RwLock::new(AgentHandle {
                 goal: goal.clone(),
                 cancel_tx: Some(cancel_tx),
-                status: status.clone(),
                 attempt: attempt.clone(),
                 started_at: std::time::Instant::now(),
             }));
             self.handles.insert(task_id, handle);
             self.counters.running.fetch_add(1, Ordering::Relaxed);
 
-            let repo = self.repo_path.clone();
             let bus = self.bus.clone();
             let store = self.store.clone();
             let handles = self.handles.clone();
             let counters = self.counters.clone();
+            let join_set = self.join_set.clone();
 
-            tokio::spawn(async move {
+            let mut js = join_set.lock().await;
+            // Drain any completed tasks to keep the JoinSet from growing unboundedly.
+            while js.try_join_next().is_some() {}
+            js.spawn(async move {
                 let _permit = permit;
+                let _repo_permit = repo_permit;
                 let outcome = run_one(task, repo, bus.clone(), store, cancel_rx, attempt).await;
                 handles.remove(&task_id);
                 counters.running.fetch_sub(1, Ordering::Relaxed);
@@ -170,6 +203,7 @@ pub struct PoolStats {
     pub uptime_secs: u64,
 }
 
+#[tracing::instrument(skip(bus, store, cancel_rx, attempt_counter), fields(task_id = %task.id, goal = %task.goal))]
 async fn run_one(
     task: Task,
     repo: PathBuf,

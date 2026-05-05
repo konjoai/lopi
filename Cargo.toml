@@ -54,6 +54,7 @@ sha2 = "0.10"
 hex = "0.4"
 tokio-cron-scheduler = { version = "0.10", features = ["signal"] }
 tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
+tokio-util = { version = "0.7", features = ["rt"] }
 
 lopi-core = { path = "crates/lopi-core" }
 lopi-context = { path = "crates/lopi-context" }
