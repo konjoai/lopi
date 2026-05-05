@@ -3,6 +3,35 @@ use chrono::{DateTime, Utc};
 use uuid::Uuid;
 use crate::task::TaskId;
 
+/// Per-turn observability record emitted after each claude invocation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TurnMetrics {
+    pub turn_id: Uuid,
+    pub task_id: TaskId,
+    pub session_id: Uuid,
+    pub model: String,
+    pub attempt_number: u8,
+    // Token accounting
+    pub input_tokens: u32,
+    pub output_tokens: u32,
+    pub cache_read_input_tokens: u32,
+    pub cache_write_input_tokens: u32,
+    // Latency
+    pub ttft_ms: u64,
+    pub turn_latency_ms: u64,
+    pub tool_execution_ms: u64,
+    // Context state
+    pub context_tokens: u32,
+    pub context_pressure: f32,
+    pub evictions_this_turn: u8,
+    // Tool calls
+    pub tool_calls: u8,
+    pub tools_parallel: bool,
+    // Cost
+    pub estimated_cost_usd: f64,
+    pub timestamp: DateTime<Utc>,
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum AgentState {
     Idle,

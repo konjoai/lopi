@@ -28,3 +28,33 @@ CREATE TABLE IF NOT EXISTS patterns (
     success_rate REAL,
     last_seen TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS turn_metrics (
+    turn_id            TEXT PRIMARY KEY,
+    task_id            TEXT NOT NULL,
+    session_id         TEXT NOT NULL,
+    model              TEXT NOT NULL,
+    attempt_number     INTEGER NOT NULL DEFAULT 1,
+    input_tokens       INTEGER NOT NULL DEFAULT 0,
+    output_tokens      INTEGER NOT NULL DEFAULT 0,
+    cache_read_tokens  INTEGER NOT NULL DEFAULT 0,
+    cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+    ttft_ms            INTEGER NOT NULL DEFAULT 0,
+    turn_latency_ms    INTEGER NOT NULL DEFAULT 0,
+    tool_execution_ms  INTEGER NOT NULL DEFAULT 0,
+    context_tokens     INTEGER NOT NULL DEFAULT 0,
+    context_pressure   REAL NOT NULL DEFAULT 0,
+    evictions          INTEGER NOT NULL DEFAULT 0,
+    tool_calls         INTEGER NOT NULL DEFAULT 0,
+    tools_parallel     INTEGER NOT NULL DEFAULT 0,
+    estimated_cost_usd REAL NOT NULL DEFAULT 0,
+    timestamp          TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_turn_metrics_task ON turn_metrics(task_id);
+CREATE INDEX IF NOT EXISTS idx_turn_metrics_ts ON turn_metrics(timestamp);
+
+PRAGMA journal_mode=WAL;
+CREATE INDEX IF NOT EXISTS idx_tasks_created_at ON tasks(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_attempts_task_id ON attempts(task_id);
+CREATE INDEX IF NOT EXISTS idx_patterns_keywords ON patterns(goal_keywords);
+ALTER TABLE patterns ADD COLUMN embedding TEXT;
