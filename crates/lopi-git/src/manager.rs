@@ -61,10 +61,7 @@ impl GitManager {
             let repo = Repository::open(&repo_path)?;
             let mut paths: Vec<String> = vec![];
             // Diff workdir vs HEAD tree; if there's no HEAD yet, treat all index entries as additions.
-            let head_tree = match repo.head().ok().and_then(|h| h.peel_to_tree().ok()) {
-                Some(t) => Some(t),
-                None => None,
-            };
+            let head_tree = repo.head().ok().and_then(|h| h.peel_to_tree().ok());
             let diff = repo.diff_tree_to_workdir_with_index(head_tree.as_ref(), None)?;
             diff.foreach(
                 &mut |delta, _| {

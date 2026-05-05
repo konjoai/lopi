@@ -6,6 +6,7 @@ use lopi_memory::MemoryStore;
 use lopi_orchestrator::{boot_scheduler, next_run_times, AgentPool, TaskQueue};
 use std::path::PathBuf;
 use std::sync::Arc;
+use tracing_subscriber::prelude::*;
 
 #[derive(Parser)]
 #[command(
@@ -30,6 +31,12 @@ enum Commands {
         goal: String,
         #[arg(short, long, default_value = ".")]
         repo: PathBuf,
+        /// Print the plan and exit without making any changes
+        #[arg(long)]
+        dry_run: bool,
+        /// Apply plan steps speculatively as they stream (reduces wall-clock time)
+        #[arg(long)]
+        speculative: bool,
     },
     /// Watch live agent status (TUI). Use --remote to connect to a running sail server.
     Watch {
@@ -127,20 +134,45 @@ fn load_config(path: Option<&PathBuf>) -> Option<LopiConfig> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn")),
-        )
-        .init();
+    // Initialize tracing with optional OpenTelemetry OTLP export.
+    // Set OTEL_EXPORTER_OTLP_ENDPOINT (e.g. http://localhost:4317) to enable export.
+    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn"));
+
+    let fmt_layer = tracing_subscriber::fmt::layer();
+
+    if std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").is_ok() {
+        let otlp_exporter = opentelemetry_otlp::new_exporter().tonic();
+        let tracer = opentelemetry_otlp::new_pipeline()
+            .tracing()
+            .with_exporter(otlp_exporter)
+            .with_trace_config(opentelemetry_sdk::trace::config().with_resource(
+                opentelemetry_sdk::Resource::new(vec![
+                    opentelemetry::KeyValue::new("service.name", "lopi"),
+                ]),
+            ))
+            .install_batch(opentelemetry_sdk::runtime::Tokio)
+            .expect("failed to install OTel tracer");
+        let otel_layer = tracing_opentelemetry::layer().with_tracer(tracer);
+        tracing_subscriber::registry()
+            .with(env_filter)
+            .with(fmt_layer)
+            .with(otel_layer)
+            .init();
+    } else {
+        tracing_subscriber::registry()
+            .with(env_filter)
+            .with(fmt_layer)
+            .init();
+    }
 
     let cli = Cli::parse();
     let cfg = load_config(cli.config.as_ref());
 
     match cli.command {
         // ── lopi run ────────────────────────────────────────────
-        Commands::Run { goal, repo } => {
-            println!("🚢 lopi run");
+        Commands::Run { goal, repo, dry_run, speculative } => {
+            println!("🚢 lopi run{}", if dry_run { " (dry-run)" } else { "" });
             println!("   goal: {goal}");
             println!("   repo: {}", repo.display());
 
@@ -167,6 +199,8 @@ async fn main() -> Result<()> {
 
             let (mut runner, bus) = AgentRunner::standalone(task.clone(), repo);
             runner.store = Some(store.clone());
+            runner.dry_run = dry_run;
+            runner.speculative = speculative;
 
             let mut rx = bus.subscribe();
             let print_task = tokio::spawn(async move {
@@ -242,7 +276,7 @@ async fn main() -> Result<()> {
                 return Ok(());
             }
             let w = 50usize;
-            println!("  {:<8}  {:<w$}  {}", "ID", "Goal", "Status");
+            println!("  {:<8}  {:<w$}  Status", "ID", "Goal");
             println!("  {}", "─".repeat(8 + 2 + w + 2 + 20));
             for t in history {
                 let goal = if t.goal.len() > w { format!("{}…", &t.goal[..w-1]) } else { t.goal.clone() };
@@ -317,7 +351,7 @@ async fn main() -> Result<()> {
                 println!("  No patterns yet. Patterns are mined after each completed task.");
                 return Ok(());
             }
-            println!("  {:<40}  {:>10}  {:>10}  {}", "Keywords", "Avg Att.", "Success%", "Last seen");
+            println!("  {:<40}  {:>10}  {:>10}  Last seen", "Keywords", "Avg Att.", "Success%");
             println!("  {}", "─".repeat(80));
             for p in patterns {
                 let kw = if p.goal_keywords.len() > 40 {

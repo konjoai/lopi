@@ -70,15 +70,47 @@ impl TaskQueue {
     }
 
     /// Pop the highest-priority task, awaiting if the queue is empty.
+    ///
+    /// Before dispatching, scans the queue for tasks whose keyword fingerprint overlaps
+    /// more than 50% with the dequeued task and merges their constraints in. The merged tasks are
+    /// removed from the queue, reducing redundant agent runs for near-duplicate goals.
     pub async fn pop(&self) -> Task {
         loop {
             {
                 let mut heap = self.inner.heap.lock().await;
                 if let Some(entry) = heap.pop() {
-                    if let Some((_, t)) = self.inner.tasks.remove(&entry.id) {
-                        let goal_key = t.goal.trim().to_lowercase();
+                    if let Some((_, mut task)) = self.inner.tasks.remove(&entry.id) {
+                        let goal_key = task.goal.trim().to_lowercase();
                         self.inner.seen_goals.remove(&goal_key);
-                        return t;
+
+                        // Keyword fingerprint of the dequeued task.
+                        let primary_kws = keyword_set(&task.goal);
+
+                        // Collect IDs of queued tasks with > 50% keyword overlap.
+                        let mut to_merge: Vec<TaskId> = vec![];
+                        for item in self.inner.tasks.iter() {
+                            let overlap = keyword_overlap(&primary_kws, &keyword_set(&item.goal));
+                            if overlap > 0.5 {
+                                to_merge.push(*item.key());
+                            }
+                        }
+
+                        // Merge constraints from overlapping tasks, then remove them.
+                        for id in to_merge {
+                            if let Some((_, merged)) = self.inner.tasks.remove(&id) {
+                                let mk = merged.goal.trim().to_lowercase();
+                                self.inner.seen_goals.remove(&mk);
+                                // Inject the merged task's constraints as additional context.
+                                for c in merged.constraints {
+                                    if !task.constraints.contains(&c) {
+                                        task.constraints.push(c);
+                                    }
+                                }
+                            }
+                            // Remove from heap lazily — orphaned entries are skipped on next pop.
+                        }
+
+                        return task;
                     }
                 }
             }
@@ -97,6 +129,19 @@ impl TaskQueue {
 
 impl Default for TaskQueue {
     fn default() -> Self { Self::new() }
+}
+
+fn keyword_set(goal: &str) -> std::collections::HashSet<String> {
+    goal.split_whitespace()
+        .filter(|w| w.len() > 3)
+        .map(|w| w.to_lowercase())
+        .collect()
+}
+
+fn keyword_overlap(a: &std::collections::HashSet<String>, b: &std::collections::HashSet<String>) -> f64 {
+    if a.is_empty() || b.is_empty() { return 0.0; }
+    let intersection = a.intersection(b).count();
+    intersection as f64 / a.union(b).count() as f64
 }
 
 #[cfg(test)]

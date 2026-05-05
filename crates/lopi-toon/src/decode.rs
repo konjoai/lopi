@@ -254,12 +254,8 @@ impl<'a> Parser<'a> {
     // Parse list items (lines starting with "- ") at the given depth.
     fn parse_list_items_at(&mut self, depth: usize) -> Result<Value, ToonError> {
         let mut items: Vec<Value> = Vec::new();
-        loop {
-            // Clone out what we need before any mutation.
-            let (line_depth, line_content, lineno) = match self.peek() {
-                Some(l) => (l.depth, l.content.clone(), l.lineno),
-                None => break,
-            };
+        while let Some(l) = self.peek() {
+            let (line_depth, line_content, lineno) = (l.depth, l.content.clone(), l.lineno);
             if line_depth != depth { break; }
             if !line_content.starts_with("- ") && line_content != "-" { break; }
 
@@ -406,7 +402,7 @@ fn try_parse_header(s: &str) -> Option<Header> {
         let field_str = &r[..end];
         let fs: Vec<String> = split_on_delim(field_str, delim)
             .into_iter()
-            .map(|f| decode_key(&f.trim().to_string()))
+            .map(|f| decode_key(f.trim()))
             .collect();
         (Some(fs), &r[end + 1..])
     } else {
@@ -478,8 +474,8 @@ fn unescape_char(c: char) -> Option<char> {
 
 /// Parse optional delimiter symbol from start of rest (after N digits, before "]").
 fn parse_delim_sym(s: &str) -> (char, &str) {
-    if s.starts_with('\t') { ('\t', &s[1..]) }
-    else if s.starts_with('|') { ('|', &s[1..]) }
+    if let Some(rest) = s.strip_prefix('\t') { ('\t', rest) }
+    else if let Some(rest) = s.strip_prefix('|') { ('|', rest) }
     else { (',', s) }
 }
 
@@ -491,7 +487,7 @@ fn parse_key_rest(s: &str) -> Option<(String, &str)> {
         // Quoted key
         let (k, rest) = parse_quoted_key(s)?;
         let rest = rest.strip_prefix(':')?;
-        let rest = if rest.starts_with(' ') { &rest[1..] } else { rest };
+        let rest = rest.strip_prefix(' ').unwrap_or(rest);
         Some((k, rest))
     } else {
         // Unquoted key: must match ^[A-Za-z_][A-Za-z0-9_.]* (but we also allow any non-"["
@@ -501,7 +497,7 @@ fn parse_key_rest(s: &str) -> Option<(String, &str)> {
         // Key must not be empty and must not contain spaces.
         if key_part.is_empty() || key_part.contains(' ') { return None; }
         let rest = &s[colon + 1..];
-        let rest = if rest.starts_with(' ') { &rest[1..] } else { rest };
+        let rest = rest.strip_prefix(' ').unwrap_or(rest);
         Some((decode_key(key_part), rest))
     }
 }

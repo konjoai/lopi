@@ -1,4 +1,5 @@
 use anyhow::Result;
+use lopi_context::{ContentBlock, ContextWindow, Phase, PinPolicy, Role, TaggedMessage};
 use lopi_core::{AgentEvent, Attempt, EventBus, Task, TaskId, TaskStatus};
 use lopi_git::GitManager;
 use lopi_memory::MemoryStore;
@@ -8,18 +9,28 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::sync::oneshot;
+use uuid::Uuid;
 
 pub struct AgentRunner {
     pub task: Task,
     pub repo_path: PathBuf,
     pub bus: EventBus<AgentEvent>,
     pub store: Option<MemoryStore>,
+    /// When true: generate and print the plan, then exit without touching git.
+    pub dry_run: bool,
+    /// When true: apply plan steps speculatively as they stream instead of waiting for the full plan.
+    pub speculative: bool,
+    /// Session context window — tracks phase transitions and token pressure across the agent run.
+    pub context: ContextWindow,
     cancel_rx: Option<oneshot::Receiver<()>>,
     attempt_counter: Arc<AtomicUsize>,
     attempts_made: u8,
 }
 
 impl AgentRunner {
+    /// Token budget for the context window — 75% of Claude claude-sonnet-4-6's 200K context.
+    const CONTEXT_BUDGET: usize = 150_000;
+
     pub fn new(
         task: Task,
         repo_path: PathBuf,
@@ -33,6 +44,9 @@ impl AgentRunner {
             repo_path,
             bus,
             store,
+            dry_run: false,
+            speculative: false,
+            context: ContextWindow::new(Self::CONTEXT_BUDGET),
             cancel_rx: Some(cancel_rx),
             attempt_counter,
             attempts_made: 0,
@@ -48,6 +62,9 @@ impl AgentRunner {
             task,
             repo_path,
             store: None,
+            dry_run: false,
+            speculative: false,
+            context: ContextWindow::new(Self::CONTEXT_BUDGET),
             cancel_rx: Some(cancel_rx),
             attempt_counter: Arc::new(AtomicUsize::new(0)),
             attempts_made: 0,
@@ -92,7 +109,27 @@ impl AgentRunner {
         false
     }
 
+    /// Pin the task goal as a Boot-phase turn so it's always visible across evictions.
+    fn boot_context(&mut self) {
+        let content = vec![ContentBlock::Text(format!("Task goal: {}", self.task.goal))];
+        let msg = TaggedMessage {
+            id: Uuid::new_v4(),
+            role: Role::User,
+            content,
+            tokens: 0,
+            pin: PinPolicy::Always,
+            phase: Phase::Boot,
+            evict_after: None,
+            tool_pair_id: None,
+            is_conclusion: false,
+        };
+        self.context.push(msg).ok();
+    }
+
+    #[tracing::instrument(skip(self), fields(task_id = %self.task.id, goal = %self.task.goal))]
     pub async fn run(&mut self) -> Result<TaskStatus> {
+        self.boot_context();
+
         let git = GitManager::new(&self.repo_path)?;
 
         // Seed planning prompt with patterns from memory.
@@ -144,34 +181,87 @@ impl AgentRunner {
             }
 
             self.status(TaskStatus::Planning, attempt + 1);
+            self.context.transition_phase(Phase::Planning);
+            tracing::info!(pressure = self.context.token_pressure(), "context at planning");
             self.log("📋 planning…");
 
-            let plan = match claude.plan(&self.task).await {
-                Ok(p) => { self.log(format!("✅ plan ready ({} chars)", p.len())); p }
-                Err(e) => {
-                    self.warn(format!("plan failed: {e}"));
+            if self.speculative {
+                // Speculative mode: apply plan steps as they stream from claude.
+                let (plan_handle, mut step_rx) = claude.plan_streaming(&self.task);
+                self.status(TaskStatus::Implementing, attempt + 1);
+                self.context.transition_phase(Phase::Implementation);
+                tracing::info!(pressure = self.context.token_pressure(), "context at speculative implementation");
+                self.log("⚡ speculative: applying steps as plan streams…");
+
+                while let Some(step) = step_rx.recv().await {
+                    self.log(format!("  ↳ {step}"));
+                    if let Err(e) = claude.implement_step(&self.task, &step).await {
+                        self.warn(format!("speculative step failed: {e}"));
+                    }
+                }
+
+                // Wait for plan to finish; use the accumulated text for dry-run logging.
+                let plan = match plan_handle.await {
+                    Ok(Ok(p)) => p,
+                    Ok(Err(e)) => {
+                        let e = anyhow::anyhow!("{e}");
+                        self.warn(format!("plan stream failed: {e}"));
+                        git.hard_rollback().await.ok();
+                        git.checkout_default().await.ok();
+                        self.status(TaskStatus::Retrying { attempt: attempt + 1 }, attempt + 1);
+                        continue;
+                    }
+                    Err(e) => {
+                        let e = anyhow::anyhow!("{e}");
+                        self.warn(format!("plan stream failed: {e}"));
+                        git.hard_rollback().await.ok();
+                        git.checkout_default().await.ok();
+                        self.status(TaskStatus::Retrying { attempt: attempt + 1 }, attempt + 1);
+                        continue;
+                    }
+                };
+                self.log(format!("✅ speculative plan+implement done ({} chars)", plan.len()));
+            } else {
+                // Standard mode: wait for full plan, then implement in one pass.
+                let plan = match claude.plan(&self.task).await {
+                    Ok(p) => { self.log(format!("✅ plan ready ({} chars)", p.len())); p }
+                    Err(e) => {
+                        self.warn(format!("plan failed: {e}"));
+                        git.hard_rollback().await.ok();
+                        git.checkout_default().await.ok();
+                        self.status(TaskStatus::Retrying { attempt: attempt + 1 }, attempt + 1);
+                        continue;
+                    }
+                };
+
+                // Dry-run: print plan and exit without touching git or running tests.
+                if self.dry_run {
+                    self.log("🔍 dry-run — plan generated, no changes applied");
+                    for line in plan.lines() {
+                        self.log(line.to_string());
+                    }
+                    git.checkout_default().await.ok();
+                    return Ok(TaskStatus::Failed { reason: "dry-run complete".into() });
+                }
+
+                if self.check_cancel() {
+                    git.hard_rollback().await.ok();
+                    git.checkout_default().await.ok();
+                    return Ok(TaskStatus::Failed { reason: "Cancelled".into() });
+                }
+
+                self.status(TaskStatus::Implementing, attempt + 1);
+                self.context.transition_phase(Phase::Implementation);
+                tracing::info!(pressure = self.context.token_pressure(), "context at implementation");
+                self.log("🔨 implementing…");
+
+                if let Err(e) = claude.implement(&self.task, &plan).await {
+                    self.warn(format!("implement failed: {e}"));
                     git.hard_rollback().await.ok();
                     git.checkout_default().await.ok();
                     self.status(TaskStatus::Retrying { attempt: attempt + 1 }, attempt + 1);
                     continue;
                 }
-            };
-
-            if self.check_cancel() {
-                git.hard_rollback().await.ok();
-                git.checkout_default().await.ok();
-                return Ok(TaskStatus::Failed { reason: "Cancelled".into() });
-            }
-
-            self.status(TaskStatus::Implementing, attempt + 1);
-            self.log("🔨 implementing…");
-
-            if let Err(e) = claude.implement(&self.task, &plan).await {
-                self.warn(format!("implement failed: {e}"));
-                git.hard_rollback().await.ok();
-                git.checkout_default().await.ok();
-                self.status(TaskStatus::Retrying { attempt: attempt + 1 }, attempt + 1);
-                continue;
             }
 
             if let Err(e) = git.check_diff_scope(&self.task.allowed_dirs, &self.task.forbidden_dirs).await {
@@ -183,6 +273,8 @@ impl AgentRunner {
             }
 
             self.status(TaskStatus::Testing, attempt + 1);
+            self.context.transition_phase(Phase::Testing);
+            tracing::info!(pressure = self.context.token_pressure(), "context at testing");
             self.log("🧪 running tests…");
             let score = scorer.score().await?;
 
@@ -205,6 +297,11 @@ impl AgentRunner {
 
             if score.passed() {
                 self.log("✅ tests pass — committing…");
+                self.context.pin_conclusion(
+                    format!("Sprint succeeded — pass={:.0}% diff={}L", score.test_pass_rate * 100.0, score.diff_lines),
+                    Phase::Conclusion,
+                );
+                tracing::info!(pressure = self.context.token_pressure(), "context at conclusion");
                 git.commit_all(&format!("lopi: {}", self.task.goal)).await.ok();
                 let pr_url = git.open_pr(&branch, &self.task.goal).await.ok();
                 if let Some(ref url) = pr_url {
