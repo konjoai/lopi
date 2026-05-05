@@ -318,6 +318,68 @@ impl ClaudeCode {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lopi_core::Task;
+
+    #[test]
+    fn select_model_haiku_for_minimal_task() {
+        // 0 constraints + 2 default allowed_dirs = size 2 → Haiku
+        let t = Task::new("fix a typo");
+        assert_eq!(select_model(&t, 0), MODEL_HAIKU);
+    }
+
+    #[test]
+    fn select_model_sonnet_for_medium_task() {
+        let mut t = Task::new("implement feature");
+        t.constraints = vec!["no new deps".into(), "keep API stable".into()];
+        // 2 constraints + 2 default dirs = size 4 → Sonnet
+        assert_eq!(select_model(&t, 0), MODEL_SONNET);
+    }
+
+    #[test]
+    fn select_model_opus_for_large_task() {
+        let mut t = Task::new("big refactor");
+        t.constraints = vec!["c1".into(), "c2".into(), "c3".into(), "c4".into(), "c5".into()];
+        // 5 constraints + 2 dirs = size 7 → Opus
+        assert_eq!(select_model(&t, 0), MODEL_OPUS);
+    }
+
+    #[test]
+    fn select_model_escalates_to_opus_at_attempt_2() {
+        let t = Task::new("simple task");
+        assert_eq!(select_model(&t, 2), MODEL_OPUS);
+    }
+
+    #[test]
+    fn select_model_escalates_to_opus_at_attempt_3() {
+        let t = Task::new("simple task");
+        assert_eq!(select_model(&t, 3), MODEL_OPUS);
+    }
+
+    #[test]
+    fn compress_errors_removes_backtrace_noise() {
+        let errors = vec![
+            "error[E0308]: mismatched types\n  at src/main.rs:10\nnote: run with RUST_BACKTRACE=1\nstack backtrace:\n  at src/foo.rs:5".to_string(),
+        ];
+        let out = compress_errors(&errors);
+        assert!(!out.contains("RUST_BACKTRACE"));
+        assert!(!out.contains("stack backtrace:"));
+        assert!(!out.contains("at src/"));
+        assert!(out.contains("mismatched types"));
+    }
+
+    #[test]
+    fn compress_errors_deduplicates_identical_blocks() {
+        let block = "error: cannot borrow as mutable".to_string();
+        let errors = vec![block.clone(), block.clone(), block.clone()];
+        let out = compress_errors(&errors);
+        // Only one copy should survive deduplication
+        assert_eq!(out.matches("cannot borrow").count(), 1);
+    }
+}
+
 /// Strip Rust backtrace noise and deduplicate repeated error blocks to reduce fix-prompt token count.
 /// Removes lines matching `at src/`, `note: run with RUST_BACKTRACE`, and limits each error to
 /// 30 lines. Identical adjacent blocks are collapsed to one copy.

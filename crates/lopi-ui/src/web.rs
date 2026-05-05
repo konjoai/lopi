@@ -55,50 +55,52 @@ pub struct AppState {
     patterns_cache: Arc<Mutex<TtlCache>>,
 }
 
-pub async fn serve(
-    store: MemoryStore,
-    bus: EventBus<AgentEvent>,
-    queue: TaskQueue,
-    pool: Arc<AgentPool>,
-    host: &str,
-    port: u16,
-) -> Result<()> {
-    let (serialized_tx, _) = broadcast::channel::<Arc<str>>(512);
-    let serialized_tx = Arc::new(serialized_tx);
+impl AppState {
+    pub fn new(
+        store: MemoryStore,
+        bus: EventBus<AgentEvent>,
+        queue: TaskQueue,
+        pool: Arc<AgentPool>,
+    ) -> Self {
+        let (serialized_tx, _) = broadcast::channel::<Arc<str>>(512);
+        let serialized_tx = Arc::new(serialized_tx);
 
-    // Bridge: subscribe to raw AgentEvent bus, serialize once, re-broadcast as Arc<str>.
-    // One serialization per event regardless of how many WS/SSE connections are open.
-    {
-        let mut rx = bus.subscribe();
-        let tx = serialized_tx.clone();
-        tokio::spawn(async move {
-            loop {
-                match rx.recv().await {
-                    Ok(ev) => {
-                        if let Ok(json) = serde_json::to_string(&ev) {
-                            let _ = tx.send(Arc::from(json.as_str()));
+        // Bridge: subscribe to raw AgentEvent bus, serialize once, re-broadcast as Arc<str>.
+        {
+            let mut rx = bus.subscribe();
+            let tx = serialized_tx.clone();
+            tokio::spawn(async move {
+                loop {
+                    match rx.recv().await {
+                        Ok(ev) => {
+                            if let Ok(json) = serde_json::to_string(&ev) {
+                                let _ = tx.send(Arc::from(json.as_str()));
+                            }
                         }
+                        Err(broadcast::error::RecvError::Lagged(n)) => {
+                            tracing::warn!("serializer bridge lagged {n} events");
+                        }
+                        Err(broadcast::error::RecvError::Closed) => break,
                     }
-                    Err(broadcast::error::RecvError::Lagged(n)) => {
-                        tracing::warn!("serializer bridge lagged {n} events");
-                    }
-                    Err(broadcast::error::RecvError::Closed) => break,
                 }
-            }
-        });
+            });
+        }
+
+        Self {
+            store,
+            bus,
+            queue,
+            pool,
+            serialized_tx,
+            tasks_cache: Arc::new(Mutex::new(TtlCache::new(Duration::from_secs(2)))),
+            patterns_cache: Arc::new(Mutex::new(TtlCache::new(Duration::from_secs(30)))),
+        }
     }
+}
 
-    let state = AppState {
-        store,
-        bus,
-        queue,
-        pool,
-        serialized_tx,
-        tasks_cache: Arc::new(Mutex::new(TtlCache::new(Duration::from_secs(2)))),
-        patterns_cache: Arc::new(Mutex::new(TtlCache::new(Duration::from_secs(30)))),
-    };
-
-    let app = Router::new()
+/// Build the axum router with all routes wired to `state`.
+pub fn build_app(state: AppState) -> Router {
+    Router::new()
         .route("/", get(index))
         .route("/api/health", get(health))
         .route("/api/tasks", get(list_tasks).post(create_task))
@@ -111,7 +113,19 @@ pub async fn serve(
         // Legacy endpoint — kept for compat.
         .route("/ws/tasks", get(ws_handler))
         .layer(CorsLayer::permissive())
-        .with_state(state);
+        .with_state(state)
+}
+
+pub async fn serve(
+    store: MemoryStore,
+    bus: EventBus<AgentEvent>,
+    queue: TaskQueue,
+    pool: Arc<AgentPool>,
+    host: &str,
+    port: u16,
+) -> Result<()> {
+    let state = AppState::new(store, bus, queue, pool);
+    let app = build_app(state);
 
     let addr: SocketAddr = format!("{host}:{port}").parse()?;
     tracing::info!("🌐 lopi sail: http://{addr}  ws://{addr}/ws  sse://{addr}/sse  metrics://{addr}/metrics");
@@ -313,6 +327,98 @@ async fn sse_handler(State(s): State<AppState>) -> impl IntoResponse {
 /// WebSocket — on connect, send a state snapshot, then stream pre-serialized AgentEvent JSON.
 async fn ws_handler(ws: WebSocketUpgrade, State(s): State<AppState>) -> impl IntoResponse {
     ws.on_upgrade(move |socket| handle_ws(socket, s))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
+    use lopi_orchestrator::AgentPool;
+    use std::path::PathBuf;
+    use tower::ServiceExt;
+
+    async fn test_app() -> Router {
+        let store = lopi_memory::MemoryStore::open_in_memory().await.unwrap();
+        let bus: EventBus<AgentEvent> = EventBus::new(16);
+        let queue = TaskQueue::new();
+        let pool = Arc::new(AgentPool::new(
+            1,
+            PathBuf::from("."),
+            queue.clone(),
+            bus.clone(),
+        ));
+        let state = AppState::new(store, bus, queue, pool);
+        build_app(state)
+    }
+
+    #[tokio::test]
+    async fn health_returns_200() {
+        let app = test_app().await;
+        let resp = app
+            .oneshot(Request::builder().uri("/api/health").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn stats_returns_200_with_required_fields() {
+        let app = test_app().await;
+        let resp = app
+            .oneshot(Request::builder().uri("/api/stats").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert!(json.get("running").is_some());
+        assert!(json.get("queued").is_some());
+    }
+
+    #[tokio::test]
+    async fn tasks_list_returns_200() {
+        let app = test_app().await;
+        let resp = app
+            .oneshot(Request::builder().uri("/api/tasks").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert!(json.get("tasks").is_some());
+    }
+
+    #[tokio::test]
+    async fn metrics_returns_prometheus_text() {
+        let app = test_app().await;
+        let resp = app
+            .oneshot(Request::builder().uri("/metrics").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let ct = resp.headers()
+            .get(axum::http::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        assert!(ct.contains("text/plain"));
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let body = String::from_utf8_lossy(&bytes);
+        assert!(body.contains("lopi_agents_running"));
+    }
+
+    #[tokio::test]
+    async fn patterns_returns_200() {
+        let app = test_app().await;
+        let resp = app
+            .oneshot(Request::builder().uri("/api/patterns").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert!(json.get("patterns").is_some());
+    }
 }
 
 async fn handle_ws(mut socket: WebSocket, state: AppState) {

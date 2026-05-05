@@ -115,3 +115,50 @@ impl AgentRun {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn score_weighted_perfect() {
+        let s = Score::new(1.0, 0, 0);
+        assert!((s.weighted() - 1.0).abs() < 0.001, "perfect score should be 1.0");
+    }
+
+    #[test]
+    fn score_weighted_lint_penalty() {
+        // 4 errors × 0.05 = 0.20 penalty
+        let s = Score::new(1.0, 4, 0);
+        assert!((s.weighted() - 0.8).abs() < 0.001);
+    }
+
+    #[test]
+    fn score_weighted_size_penalty() {
+        // 1000 lines → (1000/1000) × 0.1 = 0.10 penalty
+        let s = Score::new(1.0, 0, 1000);
+        assert!((s.weighted() - 0.9).abs() < 0.001);
+    }
+
+    #[test]
+    fn score_weighted_lint_penalty_caps_at_half() {
+        // 20 errors × 0.05 = 1.0, capped at 0.5
+        let s = Score::new(1.0, 20, 0);
+        assert!((s.weighted() - 0.5).abs() < 0.001);
+    }
+
+    #[test]
+    fn score_weighted_size_penalty_caps_at_0_3() {
+        // 5000 lines → (5.0) × 0.1 = 0.5, capped at 0.3
+        let s = Score::new(1.0, 0, 5000);
+        assert!((s.weighted() - 0.7).abs() < 0.001);
+    }
+
+    #[test]
+    fn score_weighted_combined_penalties() {
+        // pass_rate=0.8, lint=2 (penalty 0.10), size=500 (penalty 0.05)
+        let s = Score::new(0.8, 2, 500);
+        let expected = 0.8 - 0.10 - 0.05;
+        assert!((s.weighted() - expected).abs() < 0.001);
+    }
+}
