@@ -13,6 +13,30 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tokio::process::Command;
 
+// ── Model identifiers ─────────────────────────────────────────────────────────
+
+pub const MODEL_HAIKU: &str = "claude-haiku-4-5-20251001";
+pub const MODEL_SONNET: &str = "claude-sonnet-4-6";
+pub const MODEL_OPUS: &str = "claude-opus-4-7";
+
+/// Route a task to the cheapest model capable of handling its complexity.
+///
+/// Heuristic: task size = constraints + allowed_dirs count.
+/// - ≤ 2: Haiku (read-only discovery, simple rewrites) — ~20× cheaper than Opus
+/// - 3–6: Sonnet (default — implementation, test writing)
+/// - > 6 or retry ≥ 2: Opus (complex multi-file changes, repeated failures)
+pub fn select_model(task: &Task, attempt: u8) -> &'static str {
+    if attempt >= 2 {
+        return MODEL_OPUS;  // escalate on repeated failure
+    }
+    let size = task.constraints.len() + task.allowed_dirs.len();
+    match size {
+        0..=2 => MODEL_HAIKU,
+        3..=6 => MODEL_SONNET,
+        _     => MODEL_OPUS,
+    }
+}
+
 /// Structured output from `claude --output-format json`.
 #[derive(Debug, Deserialize)]
 pub struct ClaudeOutput {
@@ -38,6 +62,8 @@ pub struct ClaudeCode {
     json_output: bool,
     /// Constraints seeded from pattern memory — injected into the planning prompt.
     extra_constraints: Vec<String>,
+    /// Model to use for CLI calls. None = let the CLI pick its default.
+    model: Option<String>,
 }
 
 impl ClaudeCode {
@@ -48,7 +74,13 @@ impl ClaudeCode {
             timeout: Duration::from_secs(300),
             json_output: true,
             extra_constraints: vec![],
+            model: None,
         }
+    }
+
+    pub fn with_model(mut self, model: impl Into<String>) -> Self {
+        self.model = Some(model.into());
+        self
     }
 
     pub fn with_cli(mut self, cli_path: impl Into<String>) -> Self {
@@ -248,11 +280,13 @@ impl ClaudeCode {
     }
 
     async fn run(&self, prompt: &str) -> Result<ClaudeOutput> {
-
         let mut cmd = Command::new(&self.cli_path);
         cmd.arg("-p").arg(prompt);
         if self.json_output {
             cmd.arg("--output-format").arg("json");
+        }
+        if let Some(model) = &self.model {
+            cmd.arg("--model").arg(model);
         }
         cmd.current_dir(&self.repo_path);
 

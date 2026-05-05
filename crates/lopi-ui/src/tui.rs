@@ -206,23 +206,37 @@ async fn run_loop<B: ratatui::backend::Backend>(
 ) -> Result<()> {
     let mut state = AppState::new();
     let mut rx = bus.subscribe();
+    let mut needs_redraw = true;
+    let mut last_timer_redraw = Instant::now();
+    // Elapsed timers in AgentRow update every second — refresh at that cadence when idle.
+    const TIMER_INTERVAL: Duration = Duration::from_secs(1);
 
     loop {
-        // Drain all pending events before drawing.
+        // Drain all pending agent events; mark dirty on any arrival.
         loop {
             match rx.try_recv() {
-                Ok(ev) => state.handle_event(ev),
+                Ok(ev) => { state.handle_event(ev); needs_redraw = true; }
                 Err(tokio::sync::broadcast::error::TryRecvError::Empty) => break,
                 Err(tokio::sync::broadcast::error::TryRecvError::Lagged(n)) => {
                     tracing::warn!("TUI lagged {n} events");
+                    needs_redraw = true;
                 }
                 Err(tokio::sync::broadcast::error::TryRecvError::Closed) => return Ok(()),
             }
         }
 
-        terminal.draw(|f| draw(f, &mut state))?;
+        // Periodic timer refresh so elapsed counters don't freeze when idle.
+        if last_timer_redraw.elapsed() >= TIMER_INTERVAL {
+            needs_redraw = true;
+            last_timer_redraw = Instant::now();
+        }
 
-        if event::poll(Duration::from_millis(100))? {
+        if needs_redraw {
+            terminal.draw(|f| draw(f, &mut state))?;
+            needs_redraw = false;
+        }
+
+        if event::poll(Duration::from_millis(50))? {
             if let Event::Key(key) = event::read()? {
                 match (key.code, key.modifiers) {
                     (KeyCode::Char('q'), _) | (KeyCode::Char('c'), KeyModifiers::CONTROL) => {
@@ -265,6 +279,7 @@ async fn run_loop<B: ratatui::backend::Backend>(
                     }
                     _ => {}
                 }
+                needs_redraw = true;
             }
         }
     }

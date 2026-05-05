@@ -3,7 +3,7 @@ use lopi_context::{ContentBlock, ContextWindow, Phase, PinPolicy, Role, TaggedMe
 use lopi_core::{AgentEvent, Attempt, EventBus, Task, TaskId, TaskStatus};
 use lopi_git::GitManager;
 use lopi_memory::MemoryStore;
-use crate::claude::ClaudeCode;
+use crate::claude::{select_model, ClaudeCode};
 use crate::scorer::Scorer;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -196,10 +196,16 @@ impl AgentRunner {
             vec![]
         };
 
-        let claude = ClaudeCode::new(&self.repo_path).with_extra_constraints(extra_constraints);
         let scorer = Scorer::new(&self.repo_path);
 
         for attempt in 0..self.task.max_retries {
+            // Model routing (4.5): route to cheapest model capable of this task's complexity.
+            // Escalates to Opus after the first retry failure.
+            let model = select_model(&self.task, attempt);
+            let claude = ClaudeCode::new(&self.repo_path)
+                .with_extra_constraints(extra_constraints.clone())
+                .with_model(model);
+            tracing::info!(model, attempt, "model selected for attempt");
             // Hard stop: prevent runaway agents from looping past the turn cap.
             self.turn_count += 1;
             if self.turn_count > self.max_turns {

@@ -205,4 +205,5 @@ impl GitManager {
         let url = String::from_utf8_lossy(&out.stdout).trim().to_string();
         Ok(url)
     }
+
 }
