@@ -1,0 +1,13 @@
+[package]
+name = "lopi-ratelimit"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Token-bucket rate limiter and circuit breaker for lopi's Anthropic API calls"
+
+[dependencies]
+tokio = { version = "1", features = ["time", "sync", "macros", "rt"] }
+thiserror = "1"
+tracing = "0.1"

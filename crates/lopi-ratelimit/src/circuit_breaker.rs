@@ -1,0 +1,194 @@
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+use tokio::sync::Mutex;
+
+/// Observable state of the circuit breaker.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BreakerState {
+    /// Normal — requests pass through.
+    Closed,
+    /// Tripped — requests are rejected without forwarding.
+    Open,
+    /// Recovery probe — one request is allowed through to test the downstream.
+    HalfOpen,
+}
+
+/// Errors returned by `CircuitBreaker::check()`.
+#[derive(Debug, thiserror::Error)]
+pub enum BreakerError {
+    #[error("circuit breaker is open — service unavailable")]
+    Open,
+    #[error("hourly cost cap exceeded: ${cap:.2}/hr")]
+    CostCapExceeded { cap: f64 },
+}
+
+/// Adaptive circuit breaker combining failure counting with a per-hour cost cap.
+///
+/// Two independent trip conditions:
+/// 1. Consecutive failures ≥ `failure_threshold` → Open for `open_duration`.
+/// 2. Accumulated cost this hour ≥ `cost_per_hour_limit` → Open until hourly reset.
+///
+/// After `open_duration` elapses, the breaker transitions to HalfOpen and allows
+/// one probe request through. `record_success()` closes it; `record_failure()` reopens it.
+pub struct CircuitBreaker {
+    inner: Arc<Mutex<BreakerInner>>,
+}
+
+struct BreakerInner {
+    state: BreakerState,
+    failure_count: u32,
+    failure_threshold: u32,
+    last_failure: Option<Instant>,
+    open_duration: Duration,
+    cost_per_hour_limit: f64,
+    cost_this_hour: f64,
+    hour_start: Instant,
+}
+
+impl CircuitBreaker {
+    /// Create a new breaker.
+    ///
+    /// - `failure_threshold`: consecutive failures before tripping.
+    /// - `open_duration`: how long to stay Open before moving to HalfOpen.
+    /// - `cost_per_hour_limit`: USD/hr cap — breaker trips when exceeded.
+    pub fn new(failure_threshold: u32, open_duration: Duration, cost_per_hour_limit: f64) -> Self {
+        Self {
+            inner: Arc::new(Mutex::new(BreakerInner {
+                state: BreakerState::Closed,
+                failure_count: 0,
+                failure_threshold,
+                last_failure: None,
+                open_duration,
+                cost_per_hour_limit,
+                cost_this_hour: 0.0,
+                hour_start: Instant::now(),
+            })),
+        }
+    }
+
+    /// Returns `Ok(())` if the request should proceed, or an error explaining why not.
+    pub async fn check(&self) -> Result<(), BreakerError> {
+        let mut inner = self.inner.lock().await;
+        // Reset hourly cost counter on the hour boundary.
+        if inner.hour_start.elapsed() >= Duration::from_secs(3600) {
+            inner.cost_this_hour = 0.0;
+            inner.hour_start = Instant::now();
+        }
+        if inner.cost_this_hour >= inner.cost_per_hour_limit {
+            return Err(BreakerError::CostCapExceeded { cap: inner.cost_per_hour_limit });
+        }
+        match inner.state {
+            BreakerState::Closed => Ok(()),
+            BreakerState::Open => {
+                if let Some(t) = inner.last_failure {
+                    if t.elapsed() >= inner.open_duration {
+                        inner.state = BreakerState::HalfOpen;
+                        return Ok(());
+                    }
+                }
+                Err(BreakerError::Open)
+            }
+            BreakerState::HalfOpen => Ok(()),
+        }
+    }
+
+    /// Call after a successful downstream response. Resets failure count and closes the breaker.
+    pub async fn record_success(&self) {
+        let mut inner = self.inner.lock().await;
+        inner.failure_count = 0;
+        inner.state = BreakerState::Closed;
+    }
+
+    /// Call after a failed downstream response. May trip the breaker to Open.
+    pub async fn record_failure(&self) {
+        let mut inner = self.inner.lock().await;
+        inner.failure_count += 1;
+        inner.last_failure = Some(Instant::now());
+        if inner.failure_count >= inner.failure_threshold {
+            inner.state = BreakerState::Open;
+            tracing::warn!(
+                failures = inner.failure_count,
+                threshold = inner.failure_threshold,
+                "circuit breaker opened due to consecutive failures"
+            );
+        }
+    }
+
+    /// Accumulate cost against the hourly cap. May trip the breaker if the cap is exceeded.
+    pub async fn record_cost(&self, usd: f64) {
+        let mut inner = self.inner.lock().await;
+        inner.cost_this_hour += usd;
+        if inner.cost_this_hour >= inner.cost_per_hour_limit {
+            inner.state = BreakerState::Open;
+            inner.last_failure = Some(Instant::now());
+            tracing::warn!(
+                cost = inner.cost_this_hour,
+                cap = inner.cost_per_hour_limit,
+                "circuit breaker opened: hourly cost cap exceeded"
+            );
+        }
+    }
+
+    /// Read the current breaker state without modifying it.
+    pub async fn state(&self) -> BreakerState {
+        self.inner.lock().await.state
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn starts_closed() {
+        let cb = CircuitBreaker::new(3, Duration::from_secs(30), 10.0);
+        assert_eq!(cb.state().await, BreakerState::Closed);
+        assert!(cb.check().await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn trips_on_failure_threshold() {
+        let cb = CircuitBreaker::new(3, Duration::from_secs(30), 10.0);
+        cb.record_failure().await;
+        cb.record_failure().await;
+        assert_eq!(cb.state().await, BreakerState::Closed);
+        cb.record_failure().await;
+        assert_eq!(cb.state().await, BreakerState::Open);
+        assert!(matches!(cb.check().await, Err(BreakerError::Open)));
+    }
+
+    #[tokio::test]
+    async fn success_resets_failure_count() {
+        let cb = CircuitBreaker::new(3, Duration::from_secs(30), 10.0);
+        cb.record_failure().await;
+        cb.record_failure().await;
+        cb.record_success().await;
+        assert_eq!(cb.state().await, BreakerState::Closed);
+        // Next two failures should not trip (counter reset).
+        cb.record_failure().await;
+        cb.record_failure().await;
+        assert_eq!(cb.state().await, BreakerState::Closed);
+    }
+
+    #[tokio::test]
+    async fn trips_on_cost_cap() {
+        let cb = CircuitBreaker::new(10, Duration::from_secs(30), 5.0);
+        cb.record_cost(3.0).await;
+        assert_eq!(cb.state().await, BreakerState::Closed);
+        cb.record_cost(2.5).await;
+        assert_eq!(cb.state().await, BreakerState::Open);
+        assert!(matches!(cb.check().await, Err(BreakerError::CostCapExceeded { .. })));
+    }
+
+    #[tokio::test]
+    async fn cost_cap_error_message_contains_cap() {
+        let cb = CircuitBreaker::new(10, Duration::from_secs(30), 7.5);
+        cb.record_cost(8.0).await;
+        match cb.check().await {
+            Err(BreakerError::CostCapExceeded { cap }) => {
+                assert!((cap - 7.5).abs() < f64::EPSILON);
+            }
+            other => panic!("expected CostCapExceeded, got: {other:?}"),
+        }
+    }
+}
