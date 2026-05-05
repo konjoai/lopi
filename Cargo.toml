@@ -55,6 +55,7 @@ hex = "0.4"
 tokio-cron-scheduler = { version = "0.10", features = ["signal"] }
 tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
 tokio-util = { version = "0.7", features = ["rt"] }
+mimalloc = { version = "0.1", default-features = false }
 
 lopi-core = { path = "crates/lopi-core" }
 lopi-context = { path = "crates/lopi-context" }
@@ -81,6 +82,7 @@ name = "lopi"
 path = "src/main.rs"
 
 [dependencies]
+mimalloc.workspace = true
 tokio.workspace = true
 clap.workspace = true
 anyhow.workspace = true

@@ -8,9 +8,24 @@ use crate::scorer::Scorer;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::Duration;
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
+
+/// Full-jitter exponential backoff for transient failures.
+///
+/// Computes: sleep = Uniform(0, min(cap, base * 2^attempt))
+///
+/// This is the "Full Jitter" strategy from the AWS Architecture blog:
+/// avoids thundering-herd by randomising the wait uniformly over [0, ceiling].
+fn backoff_secs(attempt: u8, base_ms: u64) -> Duration {
+    let cap_ms: u64 = 30_000;
+    let ceiling = (base_ms * (1u64 << attempt.min(10))).min(cap_ms);
+    // rand::random is seeded from OS entropy — safe and lock-free.
+    let jitter = rand::random::<u64>() % ceiling.max(1);
+    Duration::from_millis(jitter)
+}
 
 pub struct AgentRunner {
     pub task: Task,
@@ -379,7 +394,11 @@ impl AgentRunner {
             git.hard_rollback().await.ok();
             git.checkout_default().await.ok();
             self.status(TaskStatus::Retrying { attempt: attempt + 1 }, attempt + 1);
-            self.log(format!("♻️ retry {}/{}", attempt + 1, self.task.max_retries));
+            // Full-jitter exponential backoff before the next attempt.
+            // Base 500 ms — caps at 30 s. Prevents thundering-herd on transient failures.
+            let wait = backoff_secs(attempt, 500);
+            self.log(format!("♻️ retry {}/{} (backoff {}ms)", attempt + 1, self.task.max_retries, wait.as_millis()));
+            tokio::time::sleep(wait).await;
         }
 
         let status = TaskStatus::Failed { reason: "Max retries exceeded".into() };
