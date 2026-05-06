@@ -1,4 +1,4 @@
-# PLAN.md — lopi Master Plan
+# PLAN.md -- lopi Master Plan
 
 ## Vision
 
@@ -6,12 +6,12 @@ lopi is the Konjo agent runtime. It runs Claude Code agents concurrently, each i
 
 ---
 
-## Phase 1 — MVP Core (Wk 1–3) ✅ SHIPPED v0.1.0
+## Phase 1 -- MVP Core (Wk 1-3) SHIPPED v0.1.0
 
 - [x] Cargo workspace (8 crates)
 - [x] lopi-core types (`Task`, `Score`, `AgentRun`, `EventBus`)
 - [x] lopi-git: branch isolation, rollback, `DiffChecker`
-- [x] lopi-agent: Plan → Implement → Test → Score → Retry → PR loop
+- [x] lopi-agent: Plan -> Implement -> Test -> Score -> Retry -> PR loop
 - [x] lopi-memory: SQLite persistence (`tasks`, `attempts`, `patterns`)
 - [x] lopi-orchestrator: `AgentPool` + `TaskQueue` (priority + dedup)
 - [x] lopi-ui: axum API + ratatui skeleton
@@ -20,7 +20,7 @@ lopi is the Konjo agent runtime. It runs Claude Code agents concurrently, each i
 
 ---
 
-## Phase 2 — N Parallel Agents + Live Dashboard (Wk 4–6) ✅ SHIPPED v0.2.0
+## Phase 2 -- N Parallel Agents + Live Dashboard (Wk 4-6) SHIPPED v0.2.0
 
 - [x] `AgentPool`: real Semaphore-bounded concurrency (`--max-agents`)
 - [x] `EventBus<TaskStatus>`: real-time status broadcasts via `tokio::broadcast`
@@ -37,29 +37,29 @@ lopi is the Konjo agent runtime. It runs Claude Code agents concurrently, each i
 - [x] Stats bar: Running / Queued / Done / Failed with live counts
 - [x] Task submit panel in sidebar: goal textarea, repo, priority, Ctrl+Enter shortcut
 - [x] Log stream panel: color-coded by level, auto-scroll, per-task ID prefix
-- [x] WebSocket reconnect with exponential backoff (1s→2s→4s→30s max), state resync on reconnect
-- [x] Connection indicator pill (🟢 Live / 🟡 Reconnecting / 🔴 Offline)
+- [x] WebSocket reconnect with exponential backoff (1s->2s->4s->30s max), state resync on reconnect
+- [x] Connection indicator pill (Live / Reconnecting / Offline)
 
 ---
 
-## Phase 3 — Remote Control + Self-Improvement (Wk 7–10) ✅ SHIPPED v0.3.0
+## Phase 3 -- Remote Control + Self-Improvement (Wk 7-10) SHIPPED v0.3.0
 
-- [x] `POST /api/tasks` — inject tasks into live `AgentPool` queue
-- [x] `GET /api/tasks/:id` — fetch status by ID prefix
-- [x] `GET /api/patterns` — mined pattern feed ordered by success rate
+- [x] `POST /api/tasks` -- inject tasks into live `AgentPool` queue
+- [x] `GET /api/tasks/:id` -- fetch status by ID prefix
+- [x] `GET /api/patterns` -- mined pattern feed ordered by success rate
 - [x] Telegram: `/task`, `/urgent`, `/status`, `/approve`, `/dock`
 - [x] Telegram: inline keyboard (priority bump / cancel) on every queued task
 - [x] Telegram: `CallbackQuery` handler for button responses
 - [x] GitHub webhook: HMAC-SHA256 (`X-Hub-Signature-256`), 401 on bad sig, constant-time comparison
 - [x] Pattern miner: keyword fingerprint extraction + running average upsert after each run
-- [x] `AgentPool::with_store()` — mines patterns + marks completed after every agent run
+- [x] `AgentPool::with_store()` -- mines patterns + marks completed after every agent run
 - [x] 36 tests: lopi-core (12), lopi-git (3), lopi-orchestrator (5), lopi-memory (11), lopi-webhook (5)
 
 ---
 
-## Phase 4 — Scheduled Tasks + Repo Profiles (Wk 9–10) ✅ SHIPPED v0.5.0
+## Phase 4 -- Scheduled Tasks + Repo Profiles (Wk 9-10) SHIPPED v0.5.0
 
-- [x] `[[schedules]]` section in `lopi.toml` — `ScheduleEntry` type, full serde support:
+- [x] `[[schedules]]` section in `lopi.toml` -- `ScheduleEntry` type, full serde support:
   ```toml
   [[schedules]]
   name = "nightly-lint"
@@ -74,47 +74,47 @@ lopi is the Konjo agent runtime. It runs Claude Code agents concurrently, each i
   goal = "Update all dependencies to latest compatible versions"
   cron = "0 9 * * MON"
   ```
-- [x] `tokio-cron-scheduler` — async cron, fires tasks into `AgentPool` at schedule time
-- [x] `lopi schedules list` — pretty table with next run time per schedule
-- [x] Per-repo `.lopi.toml` profile — `RepoProfile` type: `allowed_dirs`, `forbidden_dirs`, `test_command`, `lint_command`, `default_constraints`, `max_retries`
-- [x] `RepoProfile::apply(&mut task)` — merges profile over task defaults on `lopi run` and scheduled runs
-- [x] `lopi watch --remote <ws://…>` — connects to running sail server WebSocket, drives TUI from network events
-- [x] `lopi watch --local` — isolated local bus (original behaviour)
-- [x] `LopiConfig::find_and_load()` — auto-discovers `./lopi.toml` then `~/.lopi/lopi.toml`
-- [x] `.lopi.toml.example` — per-repo profile template
+- [x] `tokio-cron-scheduler` -- async cron, fires tasks into `AgentPool` at schedule time
+- [x] `lopi schedules list` -- pretty table with next run time per schedule
+- [x] Per-repo `.lopi.toml` profile -- `RepoProfile` type: `allowed_dirs`, `forbidden_dirs`, `test_command`, `lint_command`, `default_constraints`, `max_retries`
+- [x] `RepoProfile::apply(&mut task)` -- merges profile over task defaults on `lopi run` and scheduled runs
+- [x] `lopi watch --remote <ws://...>` -- connects to running sail server WebSocket, drives TUI from network events
+- [x] `lopi watch --local` -- isolated local bus (original behaviour)
+- [x] `LopiConfig::find_and_load()` -- auto-discovers `./lopi.toml` then `~/.lopi/lopi.toml`
+- [x] `.lopi.toml.example` -- per-repo profile template
 - [x] Updated `lopi.toml.example` with commented schedule examples
 - [x] 46 tests: lopi-core (20), lopi-git (3), lopi-orchestrator (7), lopi-memory (11), lopi-webhook (5)
 
 ---
 
-## Phase 5 — Self-Improvement Engine (Wk 11–14)
+## Phase 5 -- Self-Improvement Engine (Wk 11-14)
 
-- [ ] Pattern learning: before running a new task, query similar past tasks → suggest constraints that worked → pre-load into system prompt
-- [ ] `lopi learn` CLI command — show pattern library, success rates, top constraints
-- [ ] Failure post-mortem: when all retries fail, run a "post-mortem" Claude session that analyzes the error log → generates new constraint/approach suggestion → stored as a pattern
-- [ ] Self-modification loop (guarded): lopi can be given tasks targeting its own codebase in `crates/` — ONLY when `allow_self_modify = true` in config; same git isolation and PR workflow applies
+- [x] Pattern learning: before running a new task, query similar past tasks -> suggest constraints that worked -> pre-load into system prompt
+- [x] `lopi learn` CLI command -- show pattern library, success rates, top constraints
+- [ ] Failure post-mortem: when all retries fail, run a "post-mortem" Claude session that analyzes the error log -> generates new constraint/approach suggestion -> stored as a pattern
+- [ ] Self-modification loop (guarded): lopi can be given tasks targeting its own codebase in `crates/` -- ONLY when `allow_self_modify = true` in config; same git isolation and PR workflow applies
 - [ ] Adaptive retry: if attempt N failed with error type X, adjust prompt strategy for attempt N+1 (pass error + suggest different approach)
 - [ ] Scoring evolution: score weights configurable and tunable based on which metrics correlate with user-approved PRs vs rejected ones
-- [ ] `lopi learn` — browse pattern library interactively
+- [ ] `lopi learn` -- browse pattern library interactively
 
 ---
 
-## Phase 6 — GitHub Webhooks + CI Integration (Wk 15–16)
+## Phase 6 -- GitHub Webhooks + CI Integration (Wk 15-16)
 
 - [ ] `lopi-webhook` fully wired end-to-end:
-  - CI failure → auto-queue fix task at `Priority::High`
-  - Issue labeled `lopi:fix` → auto-queue
-  - PR review comment → feed back to agent for revision
-- [ ] `lopi serve-webhooks --port 3001` — dedicated webhook server command
+  - CI failure -> auto-queue fix task at `Priority::High`
+  - Issue labeled `lopi:fix` -> auto-queue
+  - PR review comment -> feed back to agent for revision
+- [ ] `lopi serve-webhooks --port 3001` -- dedicated webhook server command
 - [ ] GitHub App mode: register as a GitHub App for proper auth + org-wide hooks
 - [ ] Configurable rules: which events trigger which task templates
 - [ ] HMAC verification for all event types (already implemented for CI failures in v0.3.0)
 
 ---
 
-## Phase 7 — Production Web UI (Wk 17–20)
+## Phase 7 -- Production Web UI (Wk 17-20)
 
-- [ ] Proper React (or Svelte) frontend — separate from embedded HTML:
+- [ ] Proper React (or Svelte) frontend -- separate from embedded HTML:
   - Auth: simple token-based login
   - Agent dashboard: real-time agent cards with expandable log panels
   - Task composer: goal editor, repo picker, constraint builder, schedule toggle
@@ -127,12 +127,12 @@ lopi is the Konjo agent runtime. It runs Claude Code agents concurrently, each i
 
 ---
 
-## Phase 8 — Native Mobile App (Wk 21–28)
+## Phase 8 -- Native Mobile App (Wk 21-28)
 
 - [ ] React Native (shares TypeScript + API types with web frontend)
 - [ ] Push notifications via FCM/APNs: task completed, PR opened, CI fixed, task failed
 - [ ] Per-task conversation threads (mirrors Telegram thread model natively)
-- [ ] Voice input: dictate a task goal → transcribe → queue
+- [ ] Voice input: dictate a task goal -> transcribe -> queue
 - [ ] Quick actions widget (iOS/Android): "New task", "View dock", "Approve PRs"
 - [ ] WebSocket connection with reconnect + offline queue (the "better than Claude Dispatch" goal)
 - [ ] Connection indicator: green/amber/red dot for lopi server reachability
@@ -141,15 +141,15 @@ lopi is the Konjo agent runtime. It runs Claude Code agents concurrently, each i
 
 ---
 
-## Phase 9 — Intelligence + Evolution (Ongoing)
+## Phase 9 -- Intelligence + Evolution (Ongoing)
 
-- [ ] Multi-agent roles: Planner agent decomposes complex goals → spawns Implementer agents → Reviewer agent checks diff before PR
+- [ ] Multi-agent roles: Planner agent decomposes complex goals -> spawns Implementer agents -> Reviewer agent checks diff before PR
 - [ ] Cross-repo awareness: agents can read (not write) other repos for context
-- [ ] Goal decomposition: `lopi plan "Refactor the auth module"` → Claude breaks into subtasks → runs in dependency order
-- [ ] Embedding-based memory: store attempt summaries as vectors → semantic search for similar past work
+- [ ] Goal decomposition: `lopi plan "Refactor the auth module"` -> Claude breaks into subtasks -> runs in dependency order
+- [ ] Embedding-based memory: store attempt summaries as vectors -> semantic search for similar past work
 - [ ] Agent-to-agent communication: agents leave structured notes for each other via lopi-memory
-- [ ] Leaderboard: track which constraint templates produce the highest pass rates → surface as suggested starting points
-- [ ] Feedback loop: user marks approved PRs as "good" / rejected as "bad" → tune scoring weights accordingly
+- [ ] Leaderboard: track which constraint templates produce the highest pass rates -> surface as suggested starting points
+- [ ] Feedback loop: user marks approved PRs as "good" / rejected as "bad" -> tune scoring weights accordingly
 
 ---
 
@@ -157,15 +157,15 @@ lopi is the Konjo agent runtime. It runs Claude Code agents concurrently, each i
 
 | Metric | Value |
 |--------|-------|
-| Tests | 36 passing, 0 failing |
+| Tests | 57 passing, 0 failing |
 | Build | Clean (0 warnings) |
-| Crates | 8 |
-| CLI commands | `run`, `watch`, `tail`, `dock`, `sail` |
+| Crates | 11 |
+| CLI commands | `run`, `watch`, `tail`, `dock`, `sail`, `learn`, `cancel`, `schedules` |
 | API endpoints | `GET /api/tasks`, `POST /api/tasks`, `GET /api/tasks/:id`, `GET /api/patterns`, `GET /api/health`, `GET /ws/tasks` |
-| Latest release | v0.3.0 |
+| Latest release | v0.6.0 |
 
 ---
 
-*KONJO — Know, Outline, Nail, Justify, Optimize.*
+*KONJO -- Know, Outline, Nail, Justify, Optimize.*
 *Plan, build, test, ship, rest, repeat.*
-*ᨀᨚᨐᨚ — build the ship. make it seaworthy.*
+*build the ship. make it seaworthy.*
