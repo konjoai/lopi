@@ -172,17 +172,23 @@ Bottom-left. JetBrains Mono. Color-coded by level (info=ice, warn=ember, error=r
 - [x] Mock data store driving the Forge for standalone demo
 - [x] Main hero layout
 
-### Sprint UI-2 — Real Data Integration
-- [ ] WebSocket client connected to `/ws/tasks`
-- [ ] TaskStatus + AgentEvent types mirroring lopi-core
-- [ ] Real Forge driving from live agent state
-- [ ] Thought stream wired to agent planning text
-- [ ] Log terminal wired to task log
+### Sprint UI-2 — Real Data Integration ✅ SHIPPED
+- [x] WebSocket client connected to `/ws` (canonical) + `/ws/tasks` (legacy)
+- [x] TaskStatus + AgentEvent types mirroring lopi-core verbatim
+- [x] Real Forge driving from live agent state via `TurnMetrics` events
+- [x] Defensive runtime parser (53 tests covering all variants + malformed input)
+- [x] Cross-language wire-format contract tests in lopi-core
 
-### Sprint UI-3 — Constellation + Multi-Agent
-- [ ] Constellation page: all agents orbiting in 3D
-- [ ] Click-to-zoom into individual Forge views
-- [ ] Cross-agent insights (which agents share patterns?)
+### Sprint UI-3 — Constellation + Multi-Agent ✅ SHIPPED (core)
+- [x] `/constellation` route — full-canvas 3D orbital view of all agents
+- [x] Click any body → focuses it and returns to `/` for the deep-dive Forge view
+- [x] Hover tooltip with goal, repo, phase, pressure
+- [x] Per-body streamlined Fresnel shader (cheaper than full Forge for many bodies)
+- [x] Trails — last 64 positions per body recorded as a colored line
+- [x] Center beacon (lopi core) with ice/ember pulse
+- [x] Background starfield with parallax rotation
+- [x] Top-bar view switcher: Forge ↔ Constellation
+- [ ] Cross-agent insights (which agents share patterns?) — deferred to UI-3.1
 
 ### Sprint UI-4 — Production Embed
 - [ ] `vite build` produces static assets in `web/dist/`
