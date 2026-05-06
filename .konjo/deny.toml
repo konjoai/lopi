@@ -1,0 +1,55 @@
+# cargo-deny configuration — Konjo Quality Framework
+# Run: cargo deny check
+# Docs: https://embarkstudios.github.io/cargo-deny/
+
+[licenses]
+# Allowed open-source licenses — conservative set covering common Rust crates
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-DFS-2016",
+    "CC0-1.0",
+    "Zlib",
+    "OpenSSL",
+]
+# Copyleft licenses require all derivative works to be open-source — not allowed
+# in a product codebase without explicit legal review
+copyleft = "deny"
+unlicensed = "deny"
+# Confidence threshold: crates whose license is ambiguous get denied
+confidence-threshold = 0.8
+
+[advisories]
+# rustsec/advisory-db is the Rust security advisory database
+db-urls = ["https://github.com/rustsec/advisory-db"]
+# Known vulnerabilities: hard block
+vulnerability = "deny"
+# Unmaintained crates: warn (not always exploitable, but watch them)
+unmaintained = "warn"
+# Yanked versions: hard block (yanked = the crate author pulled it for a reason)
+yanked = "deny"
+notice = "warn"
+
+[bans]
+# Duplicate versions of the same crate waste compile time and inflate binary size.
+# Warn, not deny — blocking on transitive version drift would be too disruptive.
+multiple-versions = "warn"
+# Wildcard version specs ("*") make reproducible builds impossible
+wildcards = "deny"
+# Highlight crates (not banned, just tracked for awareness)
+highlight = "simplest-path"
+
+# Example bans — add as the project grows:
+# deny = [
+#   { name = "openssl", reason = "prefer rustls; openssl links a C library" },
+# ]
+
+[sources]
+# Only allow crates from crates.io — no unknown registries or git sources in production
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

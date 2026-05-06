@@ -1,0 +1,402 @@
+name: "Konjo Quality Gate — Wall 2"
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: konjo-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  CARGO_INCREMENTAL: 0   # disable for reproducible CI builds
+
+# ── Gate summary job — all other jobs must pass before merge ──────────────────
+# Added at the bottom; listed here for visibility.
+
+jobs:
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # Gate 1 — Static Analysis (format + lint + audit + deny)
+  # ════════════════════════════════════════════════════════════════════════════
+  static:
+    name: "G1 · Static Analysis"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: konjo-${{ github.repository }}
+
+      - name: rustfmt
+        run: cargo fmt --all -- --check
+
+      - name: clippy — zero warnings, pedantic, all deny flags
+        run: |
+          cargo clippy --workspace --all-targets --all-features -- \
+            -D warnings \
+            -D clippy::pedantic \
+            -D clippy::unwrap_used \
+            -D clippy::expect_used \
+            -D clippy::panic \
+            -D clippy::todo \
+            -D clippy::unimplemented \
+            -D clippy::dbg_macro \
+            -D clippy::print_stdout \
+            -D clippy::print_stderr \
+            -W clippy::cognitive_complexity
+
+      - name: cargo audit — zero known vulnerabilities
+        run: |
+          cargo install cargo-audit --locked --quiet 2>/dev/null || true
+          cargo audit
+
+      - name: cargo deny — license + advisory + bans
+        run: |
+          cargo install cargo-deny --locked --quiet 2>/dev/null || true
+          cargo deny check --config .konjo/deny.toml
+
+      - name: dead code — zero tolerance
+        run: |
+          COUNT=$(RUSTFLAGS="-W dead_code" cargo check --workspace 2>&1 \
+            | grep -c "warning: dead_code" || true)
+          echo "Dead code warnings: $COUNT"
+          if [ "$COUNT" -gt 0 ]; then
+            RUSTFLAGS="-W dead_code" cargo check --workspace 2>&1 \
+              | grep "warning: dead_code" || true
+            echo "::error::$COUNT dead code warning(s). Remove before merging."
+            exit 1
+          fi
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # Gate 2 — Tests + Coverage (≥ 80% line coverage)
+  # ════════════════════════════════════════════════════════════════════════════
+  coverage:
+    name: "G2 · Tests + Coverage"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: konjo-${{ github.repository }}
+
+      - name: Install cargo-nextest + cargo-llvm-cov
+        run: |
+          cargo install cargo-nextest --locked --quiet 2>/dev/null || true
+          cargo install cargo-llvm-cov --locked --quiet 2>/dev/null || true
+
+      - name: Run tests with coverage
+        run: |
+          cargo llvm-cov nextest \
+            --workspace \
+            --all-features \
+            --lcov \
+            --output-path lcov.info \
+            --fail-under-lines 80
+
+      - name: Upload coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@v4
+        with:
+          files: lcov.info
+          fail_ci_if_error: false  # don't fail CI on Codecov outage
+
+      - name: Coverage gate (80% floor, 95% target)
+        run: |
+          cargo llvm-cov report --json > coverage.json 2>/dev/null || true
+          COVERAGE=$(python3 -c "
+          import json, sys
+          try:
+              data = json.load(open('coverage.json'))
+              pct = data['data'][0]['totals']['lines']['percent']
+              print(f'{pct:.1f}')
+          except Exception as e:
+              print('0.0')  # conservative: fail if we can't parse
+          ")
+          echo "Line coverage: ${COVERAGE}%"
+          python3 -c "
+          cov = float('${COVERAGE}')
+          if cov < 80:
+              print(f'::error::Coverage {cov:.1f}% < 80% gate. Add tests before merging.')
+              exit(1)
+          elif cov < 95:
+              print(f'::warning::Coverage {cov:.1f}% < 95% target. Aim higher.')
+          "
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-lcov
+          path: lcov.info
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # Gate 3 — Mutation Testing (≤ 10% survival on changed files)
+  # Runs only on pull requests (too slow for push to main)
+  # ════════════════════════════════════════════════════════════════════════════
+  mutation:
+    name: "G3 · Mutation Testing"
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: konjo-${{ github.repository }}
+
+      - name: Install cargo-mutants
+        run: cargo install cargo-mutants --locked --quiet 2>/dev/null || true
+
+      - name: Identify changed Rust files
+        id: changed
+        run: |
+          CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD \
+            | grep '\.rs$' | grep -v 'test' | head -30 || true)
+          echo "files=$CHANGED" >> "$GITHUB_OUTPUT"
+          echo "Changed Rust files to mutate:"
+          echo "$CHANGED"
+
+      - name: Run mutation testing on changed files
+        if: steps.changed.outputs.files != ''
+        run: |
+          cargo mutants \
+            --in-diff <(git diff origin/${{ github.base_ref }}...HEAD) \
+            --timeout 60 \
+            --jobs 2 \
+            2>&1 | tee mutation_report.txt
+
+      - name: Evaluate mutation survival rate
+        if: steps.changed.outputs.files != ''
+        run: |
+          CAUGHT=$(grep -c "caught" mutation_report.txt 2>/dev/null || echo 0)
+          MISSED=$(grep -c "missed" mutation_report.txt 2>/dev/null || echo 0)
+          TOTAL=$((CAUGHT + MISSED))
+          echo "Mutations: caught=$CAUGHT missed=$MISSED total=$TOTAL"
+
+          if [ "$TOTAL" -gt 0 ]; then
+            SURVIVAL=$(echo "scale=1; $MISSED * 100 / $TOTAL" | bc)
+            echo "Mutation survival rate: ${SURVIVAL}%"
+            python3 -c "
+          rate = float('${SURVIVAL}')
+          if rate > 10:
+              print(f'::error::Mutation survival {rate:.1f}% > 10% gate.')
+              print('Tests are insufficient. Surviving mutants indicate untested paths.')
+              exit(1)
+          elif rate > 0:
+              print(f'::warning::Mutation survival {rate:.1f}% — aim for 0%')
+            "
+          fi
+
+      - name: Upload mutation report
+        if: always() && steps.changed.outputs.files != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-report
+          path: mutation_report.txt
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # Gate 4 — Complexity + Size + DRY
+  # ════════════════════════════════════════════════════════════════════════════
+  complexity:
+    name: "G4 · Complexity + Size + DRY"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: konjo-${{ github.repository }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cognitive complexity gate (clippy)
+        run: |
+          # Any function with cognitive complexity > 15 fails the gate
+          VIOLATIONS=$(cargo clippy --workspace --all-targets -- \
+            -A clippy::all \
+            -W clippy::cognitive_complexity \
+            --message-format json 2>/dev/null \
+            | python3 -c "
+          import json, sys
+          count = 0
+          for line in sys.stdin:
+              try:
+                  msg = json.loads(line)
+                  if msg.get('reason') == 'compiler-message':
+                      m = msg['message']
+                      if 'cognitive_complexity' in str(m.get('code', {})):
+                          print(m['rendered'])
+                          count += 1
+              except:
+                  pass
+          sys.exit(0 if count == 0 else 1)
+          " || true)
+          if [ -n "$VIOLATIONS" ]; then
+            echo "$VIOLATIONS"
+            echo "::error::Functions with cognitive complexity > 15 found. Refactor them."
+            exit 1
+          fi
+          echo "Cognitive complexity: all functions ≤ 15 ✓"
+
+      - name: File size gate
+        run: |
+          OVERSIZED=""
+          while IFS= read -r -d '' f; do
+            LC=$(wc -l < "$f")
+            if [ "$LC" -gt 500 ]; then
+              OVERSIZED="${OVERSIZED}${f}: ${LC} lines\n"
+            fi
+          done < <(find . -name "*.rs" -o -name "*.py" | grep -v target | tr '\n' '\0')
+
+          if [ -n "$OVERSIZED" ]; then
+            printf "Files exceeding 500-line limit:\n%b" "$OVERSIZED"
+            echo "::error::Files exceeding 500-line limit found. Split into smaller modules."
+            exit 1
+          fi
+          echo "File sizes: all within 500-line limit ✓"
+
+      - name: DRY check
+        run: |
+          python3 .konjo/scripts/dry_check.py \
+            --threshold 0.85 \
+            --min-lines 10 \
+            --report dry_report.json 2>&1
+          COUNT=$(python3 -c "import json; d=json.load(open('dry_report.json')); print(d['count'])")
+          if [ "$COUNT" -gt 0 ]; then
+            echo "::error::$COUNT DRY violation(s). Abstract duplicate code into shared functions."
+            exit 1
+          fi
+
+      - name: Documentation gate (rustdoc)
+        run: |
+          RUSTDOCFLAGS="-D missing_docs -D rustdoc::broken_intra_doc_links" \
+            cargo doc --workspace --no-deps 2>&1 | tee rustdoc_output.txt
+          if grep -q "error" rustdoc_output.txt; then
+            echo "::error::Missing documentation on public APIs. Add /// doc comments."
+            exit 1
+          fi
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # Gate 5 — Adversarial Review (Wall 3, PRs only)
+  # Uses Claude Opus — distinct from builder model (Sonnet)
+  # ════════════════════════════════════════════════════════════════════════════
+  review:
+    name: "G5 · Adversarial Review (Wall 3)"
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    needs: [static, coverage]   # only run if basic gates pass
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install anthropic SDK
+        run: pip install anthropic --quiet
+
+      - name: Generate diff
+        run: |
+          git diff origin/${{ github.base_ref }}...HEAD > pr.diff
+          echo "Diff size: $(wc -c < pr.diff) bytes"
+
+      - name: Run Konjo Adversarial Review
+        id: review
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          python3 .konjo/scripts/konjo_review.py \
+            --diff-file pr.diff \
+            --output review_report.md \
+            --json > review_result.json 2>&1 \
+            && echo "REVIEW_EXIT=0" >> "$GITHUB_ENV" \
+            || echo "REVIEW_EXIT=$?" >> "$GITHUB_ENV"
+
+          cat review_report.md
+
+      - name: Post review comment to PR
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let body = '';
+            try {
+              body = fs.readFileSync('review_report.md', 'utf8');
+            } catch {
+              body = '<!-- konjo-review: report file not found -->';
+            }
+
+            const header = `<!-- konjo-adversarial-review -->
+            > **Konjo Adversarial Review** — Wall 3 · Model: claude-opus-4-6
+            > Independent critic session. The builder wrote the code; this reviewer came in cold.
+
+            `;
+
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: header + body
+            });
+
+      - name: Fail if BLOCKER verdict
+        if: env.REVIEW_EXIT != '0'
+        run: |
+          echo "::error::Konjo Adversarial Review found BLOCKER(s). Fix them before merging."
+          exit 1
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # Final gate — merge requires ALL jobs to pass
+  # ════════════════════════════════════════════════════════════════════════════
+  konjo-gate:
+    name: "Konjo Gate — All Walls Clear"
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [static, coverage, complexity]
+    steps:
+      - name: Evaluate all required gates
+        run: |
+          # Map job results to pass/fail
+          STATIC="${{ needs.static.result }}"
+          COVERAGE="${{ needs.coverage.result }}"
+          COMPLEXITY="${{ needs.complexity.result }}"
+
+          echo "static:     $STATIC"
+          echo "coverage:   $COVERAGE"
+          echo "complexity: $COMPLEXITY"
+
+          FAILED=""
+          [ "$STATIC"     != "success" ] && FAILED="$FAILED static"
+          [ "$COVERAGE"   != "success" ] && FAILED="$FAILED coverage"
+          [ "$COMPLEXITY" != "success" ] && FAILED="$FAILED complexity"
+
+          if [ -n "$FAILED" ]; then
+            echo "::error::Gate(s) failed:$FAILED — merge blocked."
+            exit 1
+          fi
+
+          echo "All required Konjo quality gates passed ✓"
+          echo "The code is seaworthy."

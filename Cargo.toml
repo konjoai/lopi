@@ -110,6 +110,12 @@ opentelemetry_sdk.workspace = true
 opentelemetry-otlp.workspace = true
 tracing-opentelemetry.workspace = true
 
+[dev-dependencies]
+# cargo-husky auto-installs .cargo-husky/hooks/pre-commit into .git/hooks/pre-commit
+# on every `cargo build` or `cargo test` — zero manual hook setup required.
+# user-hooks feature: reads from .cargo-husky/hooks/ instead of generating a default hook.
+cargo-husky = { version = "1", default-features = false, features = ["user-hooks"] }
+
 [profile.release]
 lto = "fat"
 codegen-units = 1
