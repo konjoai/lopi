@@ -76,4 +76,35 @@ mod tests {
         let c = DiffChecker::new(vec!["src/".into()], vec![]);
         assert!(c.validate(&["infra/terraform/main.tf".into()]).is_err());
     }
+
+    #[test]
+    fn empty_allowed_and_forbidden_permits_anything() {
+        let c = DiffChecker::new(vec![], vec![]);
+        assert!(c.validate(&["any/path/file.rs".into()]).is_ok());
+    }
+
+    #[test]
+    fn forbidden_overrides_allowed_for_same_prefix() {
+        let c = DiffChecker::new(vec!["src/".into()], vec!["src/generated/".into()]);
+        assert!(c.validate(&["src/generated/proto.rs".into()]).is_err());
+    }
+
+    #[test]
+    fn multiple_paths_one_outside_fails_entire_batch() {
+        let c = DiffChecker::new(vec!["src/".into()], vec![]);
+        let paths = vec!["src/lib.rs".into(), "README.md".into()];
+        assert!(c.validate(&paths).is_err());
+    }
+
+    #[test]
+    fn empty_path_list_always_passes() {
+        let c = DiffChecker::new(vec!["src/".into()], vec![".github/".into()]);
+        assert!(c.validate(&[]).is_ok());
+    }
+
+    #[test]
+    fn glob_matches_nested_paths() {
+        let c = DiffChecker::new(vec!["src/".into()], vec![]);
+        assert!(c.validate(&["src/a/b/deep/file.rs".into()]).is_ok());
+    }
 }

@@ -1800,12 +1800,14 @@ name = "lopi-agent"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "futures",
  "lopi-context",
  "lopi-core",
  "lopi-git",
  "lopi-memory",
  "lopi-toon",
  "rand",
+ "reqwest",
  "serde",
  "serde_json",
  "thiserror",

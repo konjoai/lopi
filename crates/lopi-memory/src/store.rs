@@ -347,7 +347,9 @@ pub struct PatternRow {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lopi_core::{Attempt, Task};
+    use lopi_core::{Attempt, Task, TurnMetrics, TaskId};
+    use uuid::Uuid;
+    use chrono::Utc;
 
     #[test]
     fn jaccard_sim_identical() {
@@ -513,5 +515,62 @@ mod tests {
 
         let patterns = store.load_patterns(10).await.unwrap();
         assert_eq!(patterns.len(), 2);
+    }
+
+    fn make_turn_metrics(task_id: TaskId) -> TurnMetrics {
+        TurnMetrics {
+            turn_id: Uuid::new_v4(),
+            task_id,
+            session_id: Uuid::new_v4(),
+            model: "claude-sonnet-4-6".into(),
+            attempt_number: 1,
+            input_tokens: 500,
+            output_tokens: 200,
+            cache_read_input_tokens: 0,
+            cache_write_input_tokens: 100,
+            ttft_ms: 300,
+            turn_latency_ms: 1200,
+            tool_execution_ms: 50,
+            context_tokens: 4000,
+            context_pressure: 0.25,
+            evictions_this_turn: 0,
+            tool_calls: 2,
+            tools_parallel: false,
+            estimated_cost_usd: 0.003,
+            timestamp: Utc::now(),
+        }
+    }
+
+    #[tokio::test]
+    async fn save_turn_metrics_succeeds() {
+        let store = MemoryStore::open_in_memory().await.unwrap();
+        let task = Task::new("measure tokens");
+        store.save_task(&task, "queued").await.unwrap();
+        let m = make_turn_metrics(task.id);
+        store.save_turn_metrics(&m).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn save_turn_metrics_dedup_on_same_turn_id() {
+        let store = MemoryStore::open_in_memory().await.unwrap();
+        let task = Task::new("measure tokens deduplicated");
+        store.save_task(&task, "queued").await.unwrap();
+        let mut m = make_turn_metrics(task.id);
+        let fixed_id = Uuid::new_v4();
+        m.turn_id = fixed_id;
+        store.save_turn_metrics(&m).await.unwrap();
+        // Second insert with same turn_id should silently succeed (ON CONFLICT DO NOTHING)
+        store.save_turn_metrics(&m).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn task_count_increments_per_save() {
+        let store = MemoryStore::open_in_memory().await.unwrap();
+        assert_eq!(store.task_count().await.unwrap(), 0);
+        for i in 0..3u8 {
+            let t = Task::new(format!("task count test {i}"));
+            store.save_task(&t, "queued").await.unwrap();
+        }
+        assert_eq!(store.task_count().await.unwrap(), 3);
     }
 }
