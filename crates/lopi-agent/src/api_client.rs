@@ -219,7 +219,7 @@ impl AnthropicClient {
         let stream = resp.bytes_stream();
         use futures::StreamExt;
         let mut lines = BufReader::new(tokio_util::io::StreamReader::new(
-            stream.map(|r| r.map_err(std::io::Error::other)),
+            stream.map(|r: reqwest::Result<bytes::Bytes>| r.map_err(std::io::Error::other)),
         ))
         .lines();
 

@@ -122,10 +122,38 @@ impl AgentRunner {
     }
 
     fn status(&self, s: TaskStatus, attempt: u8) {
+        // Emit phase-aligned cognition metrics alongside the status change so the
+        // Forge UI animates in lockstep with the agent's lifecycle. Activity is a
+        // phase heuristic until Sprint G wires real tokens/sec from the SDK.
+        let activity = match &s {
+            TaskStatus::Planning => 0.45_f32,
+            TaskStatus::Implementing => 0.85_f32,
+            TaskStatus::Testing => 0.55_f32,
+            TaskStatus::Scoring => 0.30_f32,
+            TaskStatus::Retrying { .. } => 0.40_f32,
+            TaskStatus::Success { .. } | TaskStatus::Failed { .. } | TaskStatus::RolledBack => 0.0_f32,
+            TaskStatus::Queued => 0.10_f32,
+        };
+        self.emit_turn_metrics(activity);
         self.bus.send(AgentEvent::StatusChanged {
             task_id: self.id(),
             status: s,
             attempt,
+        });
+    }
+
+    /// Emit a TurnMetrics event for the live UI. Pressure comes from the
+    /// ContextWindow; activity is supplied by the caller (phase-derived for now).
+    /// Cost is 0.0 until Sprint G — the CLI subprocess path doesn't expose
+    /// per-turn token accounting.
+    fn emit_turn_metrics(&self, activity: f32) {
+        let pressure = self.context.token_pressure();
+        self.bus.send(AgentEvent::TurnMetrics {
+            task_id: self.id(),
+            pressure,
+            activity,
+            tokens_per_sec: 0.0,
+            cost_usd: 0.0,
         });
     }
 

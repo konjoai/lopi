@@ -152,6 +152,9 @@ impl AppState {
             AgentEvent::PoolStats { queued, .. } => {
                 self.queued_count = queued;
             }
+            // TurnMetrics drives the web UI's Forge shader. The TUI doesn't
+            // visualize per-turn pressure/activity — silently consume.
+            AgentEvent::TurnMetrics { .. } => {}
         }
     }
 
