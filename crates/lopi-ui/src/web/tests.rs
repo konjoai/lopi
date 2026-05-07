@@ -307,3 +307,5 @@
             .unwrap();
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
     }
+
+    include!("tests_extended.rs");
