@@ -19,14 +19,21 @@ pub fn estimate_tokens(content: &[ContentBlock]) -> usize {
     let mut total = 4usize; // role + structure overhead
     for block in content {
         total += match block {
-            ContentBlock::Text(s) => {
-                get_bpe().map_or_else(|| s.len() / 4, |bpe| bpe.encode_with_special_tokens(s).len())
-            }
+            ContentBlock::Text(s) => get_bpe().map_or_else(
+                || s.len() / 4,
+                |bpe| bpe.encode_with_special_tokens(s).len(),
+            ),
 
             ContentBlock::ToolUse { id, name, input } => {
                 let json = serde_json::to_string(input).unwrap_or_default();
-                let name_tokens = get_bpe().map_or_else(|| name.len() / 4, |bpe| bpe.encode_with_special_tokens(name).len());
-                let id_tokens = get_bpe().map_or_else(|| id.len() / 4, |bpe| bpe.encode_with_special_tokens(id).len());
+                let name_tokens = get_bpe().map_or_else(
+                    || name.len() / 4,
+                    |bpe| bpe.encode_with_special_tokens(name).len(),
+                );
+                let id_tokens = get_bpe().map_or_else(
+                    || id.len() / 4,
+                    |bpe| bpe.encode_with_special_tokens(id).len(),
+                );
                 name_tokens + id_tokens + json.len() / 4
             }
 
@@ -35,7 +42,10 @@ pub fn estimate_tokens(content: &[ContentBlock]) -> usize {
                 content,
                 ..
             } => {
-                let id_tokens = get_bpe().map_or_else(|| tool_use_id.len() / 4, |bpe| bpe.encode_with_special_tokens(tool_use_id).len());
+                let id_tokens = get_bpe().map_or_else(
+                    || tool_use_id.len() / 4,
+                    |bpe| bpe.encode_with_special_tokens(tool_use_id).len(),
+                );
                 id_tokens + content.len() / 4
             }
         };

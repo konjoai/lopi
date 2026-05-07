@@ -177,7 +177,9 @@ mod wire_format_tests {
         let json = serde_json::to_string(&original).unwrap();
         let decoded: AgentEvent = serde_json::from_str(&json).unwrap();
         match decoded {
-            AgentEvent::TurnMetrics { pressure, activity, .. } => {
+            AgentEvent::TurnMetrics {
+                pressure, activity, ..
+            } => {
                 assert!((pressure - 0.5).abs() < f32::EPSILON);
                 assert!((activity - 0.5).abs() < f32::EPSILON);
             }

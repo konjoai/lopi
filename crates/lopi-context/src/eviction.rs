@@ -364,7 +364,10 @@ mod tests {
         let fake_id = Uuid::new_v4();
         let result = evict_turn(&mut turns, fake_id, false, &mut tokens);
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), ContextError::TurnNotFound { .. }));
+        assert!(matches!(
+            result.unwrap_err(),
+            ContextError::TurnNotFound { .. }
+        ));
     }
 
     #[test]

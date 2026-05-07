@@ -15,7 +15,9 @@ impl AgentRunner {
             TaskStatus::Testing => 0.55_f32,
             TaskStatus::Scoring => 0.30_f32,
             TaskStatus::Retrying { .. } => 0.40_f32,
-            TaskStatus::Success { .. } | TaskStatus::Failed { .. } | TaskStatus::RolledBack => 0.0_f32,
+            TaskStatus::Success { .. } | TaskStatus::Failed { .. } | TaskStatus::RolledBack => {
+                0.0_f32
+            }
             TaskStatus::Queued => 0.10_f32,
         };
         self.emit_turn_metrics(activity);
@@ -36,7 +38,6 @@ impl AgentRunner {
             cost_usd: 0.0,
         });
     }
-
 
     /// Execute the full agent loop: plan → implement → test → retry.
     ///

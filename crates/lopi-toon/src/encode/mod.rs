@@ -284,7 +284,12 @@ impl Encoder<'_> {
                             writeln!(self.buf, "{k0}[0{sym}]:").ok();
                         } else if arr.iter().all(is_primitive) {
                             let vals: Vec<String> = arr.iter().map(|v| encode_cell(v, d)).collect();
-                            writeln!(self.buf, "{k0}[{n}{sym}]: {}", vals.join(&d.ch().to_string())).ok();
+                            writeln!(
+                                self.buf,
+                                "{k0}[{n}{sym}]: {}",
+                                vals.join(&d.ch().to_string())
+                            )
+                            .ok();
                         } else {
                             // Complex array as first field: emit header on `- ` line
                             writeln!(self.buf, "{k0}[{n}{sym}]:").ok();

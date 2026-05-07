@@ -1,4 +1,4 @@
-use super::{AppState, AgentRow, LogLevel, KONJO_DIM, KONJO_PURPLE};
+use super::{AgentRow, AppState, LogLevel, KONJO_DIM, KONJO_PURPLE};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},

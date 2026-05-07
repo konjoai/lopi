@@ -120,6 +120,5 @@ pub(super) struct Header {
     pub(super) inline_rest: Option<String>,
 }
 
-
 mod helpers;
 use helpers::{decode_key, decode_primitive, parse_key_rest, split_on_delim, try_parse_header};

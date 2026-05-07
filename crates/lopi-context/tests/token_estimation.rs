@@ -1,4 +1,9 @@
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unwrap_in_result)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::unwrap_in_result
+)]
 use lopi_context::{estimate_tokens, ContentBlock};
 
 #[test]
@@ -113,7 +118,11 @@ fn estimate_within_10_percent_of_api() {
         .as_u64()
         .expect("response must have input_tokens") as usize;
 
-    #[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    #[allow(
+        clippy::cast_precision_loss,
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss
+    )]
     let tolerance = (api_count as f64 * 0.10) as usize + 1;
     let diff = our_estimate.abs_diff(api_count);
     assert!(

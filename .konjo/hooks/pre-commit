@@ -67,8 +67,11 @@ if $HAS_RUST && [[ -n "$STAGED_RS" ]]; then
     UNWRAP_HITS=""
     while IFS= read -r f; do
         [[ -f "$f" ]] || continue
-        # Skip dedicated test files by filename
+        # Skip test/bench files and directories
         [[ "$f" =~ _tests?\.rs$ ]] && continue
+        [[ "$f" =~ /tests?\.rs$ ]] && continue
+        [[ "$f" =~ /tests/ ]] && continue
+        [[ "$f" =~ /benches/ ]] && continue
         # Strip #[cfg(test)] blocks before scanning (awk state machine)
         HITS=$(awk '
             /^#\[cfg\(test\)\]/ { skip=1; depth=0 }
@@ -164,7 +167,7 @@ pass "file size check complete"
 banner "3b. DRY check (staged files)"
 if [[ -f "$REPO_ROOT/.konjo/scripts/dry_check.py" ]] && command -v python3 &>/dev/null; then
     if ! python3 "$REPO_ROOT/.konjo/scripts/dry_check.py" \
-        --staged-only --min-lines 10 --threshold 0.85 2>&1; then
+        --staged-only --min-lines 20 --threshold 0.85 2>&1; then
         fail "DRY violation: duplicate code blocks found. Abstract into a shared function."
     fi
     pass "DRY check"

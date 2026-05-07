@@ -183,9 +183,7 @@ async fn auth_middleware(
             .and_then(|v| v.to_str().ok())
             .and_then(|v| v.strip_prefix("Bearer "));
 
-        if !provided
-            .is_some_and(|p| constant_time_eq(p, expected.as_ref()))
-        {
+        if !provided.is_some_and(|p| constant_time_eq(p, expected.as_ref())) {
             return (
                 StatusCode::UNAUTHORIZED,
                 Json(json!({"error": "unauthorized"})),
@@ -219,17 +217,14 @@ async fn rate_limit_middleware(
         .unwrap_or_else(|| IpAddr::from([127, 0, 0, 1]));
 
     // Get or create a per-IP bucket: 60-token burst, 1 token/sec refill.
-    let bucket = s
-        .rate_limiter
-        .get(&ip)
-        .map_or_else(
-            || {
-                let new_bucket = TokenBucket::new(60.0, 1.0);
-                s.rate_limiter.insert(ip, new_bucket.clone());
-                new_bucket
-            },
-            |b| b.clone(),
-        );
+    let bucket = s.rate_limiter.get(&ip).map_or_else(
+        || {
+            let new_bucket = TokenBucket::new(60.0, 1.0);
+            s.rate_limiter.insert(ip, new_bucket.clone());
+            new_bucket
+        },
+        |b| b.clone(),
+    );
 
     if !bucket.try_acquire(1.0).await {
         return (
@@ -319,17 +314,33 @@ async fn get_task(Path(id): Path<String>, State(s): State<AppState>) -> impl Int
 async fn cancel_task(Path(id): Path<String>, State(s): State<AppState>) -> impl IntoResponse {
     let rows = s.store.load_history(500).await.unwrap_or_default();
     let Some(t) = rows.into_iter().find(|t| t.id.starts_with(&id)) else {
-        return (StatusCode::NOT_FOUND, Json(json!({"error": "task not found"}))).into_response();
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": "task not found"})),
+        )
+            .into_response();
     };
     let Ok(uuid) = t.id.parse::<uuid::Uuid>() else {
-        return (StatusCode::BAD_REQUEST, Json(json!({"error": "invalid id"}))).into_response();
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "invalid id"})),
+        )
+            .into_response();
     };
     let task_id = TaskId(uuid);
     let cancelled = s.pool.cancel(&task_id).await;
     if cancelled {
-        (StatusCode::OK, Json(json!({ "cancelled": true, "id": t.id }))).into_response()
+        (
+            StatusCode::OK,
+            Json(json!({ "cancelled": true, "id": t.id })),
+        )
+            .into_response()
     } else {
-        (StatusCode::OK, Json(json!({ "cancelled": false, "reason": "task not running or already complete" }))).into_response()
+        (
+            StatusCode::OK,
+            Json(json!({ "cancelled": false, "reason": "task not running or already complete" })),
+        )
+            .into_response()
     }
 }
 

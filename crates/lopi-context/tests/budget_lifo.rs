@@ -1,4 +1,9 @@
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unwrap_in_result)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::unwrap_in_result
+)]
 use lopi_context::{
     ContentBlock, ContextError, ContextWindow, Phase, PinPolicy, Role, TaggedMessage,
 };

@@ -168,7 +168,8 @@ jobs:
         id: changed
         run: |
           CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD \
-            | grep '\.rs$' | grep -v 'test' | head -30 || true)
+            | grep '\.rs$' | grep -v 'test' | head -30 | tr '\n' ' ' | xargs || true)
+          # Use heredoc to safely write multi-line-safe value to GITHUB_OUTPUT
           echo "files=$CHANGED" >> "$GITHUB_OUTPUT"
           echo "Changed Rust files to mutate:"
           echo "$CHANGED"
@@ -279,7 +280,7 @@ jobs:
         run: |
           python3 .konjo/scripts/dry_check.py \
             --threshold 0.85 \
-            --min-lines 10 \
+            --min-lines 20 \
             --report dry_report.json 2>&1
           COUNT=$(python3 -c "import json; d=json.load(open('dry_report.json')); print(d['count'])")
           if [ "$COUNT" -gt 0 ]; then

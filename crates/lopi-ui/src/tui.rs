@@ -5,12 +5,7 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use lopi_core::{AgentEvent, EventBus, LogLevel, TaskId, TaskStatus};
-use ratatui::{
-    backend::CrosstermBackend,
-    style::Color,
-    widgets::TableState,
-    Terminal,
-};
+use ratatui::{backend::CrosstermBackend, style::Color, widgets::TableState, Terminal};
 use std::collections::{HashMap, VecDeque};
 use std::io;
 use std::time::{Duration, Instant};
@@ -294,20 +289,20 @@ fn run_loop<B: ratatui::backend::Backend>(
                     (KeyCode::Down | KeyCode::Char('j'), _) => {
                         let len = state.agents.len();
                         if len > 0 {
-                            let i = state
-                                .table_state
-                                .selected()
-                                .map_or(0, |i| (i + 1) % len);
+                            let i = state.table_state.selected().map_or(0, |i| (i + 1) % len);
                             state.table_state.select(Some(i));
                         }
                     }
                     (KeyCode::Up | KeyCode::Char('k'), _) => {
                         let len = state.agents.len();
                         if len > 0 {
-                            let i = state
-                                .table_state
-                                .selected()
-                                .map_or(0, |i| if i == 0 { len - 1 } else { i - 1 });
+                            let i = state.table_state.selected().map_or(0, |i| {
+                                if i == 0 {
+                                    len - 1
+                                } else {
+                                    i - 1
+                                }
+                            });
                             state.table_state.select(Some(i));
                         }
                     }

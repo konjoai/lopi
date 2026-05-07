@@ -1,4 +1,8 @@
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::needless_raw_string_hashes)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::needless_raw_string_hashes
+)]
 use super::*;
 
 #[test]
@@ -200,10 +204,7 @@ signing_secret = "mysigningsecret"
     let cfg: LopiConfig = toml::from_str(toml).unwrap();
     assert_eq!(cfg.remote.whatsapp.account_sid.unwrap(), "ACtest");
     assert_eq!(cfg.remote.whatsapp.auth_token.unwrap(), "authtoken");
-    assert_eq!(
-        cfg.remote.whatsapp.from.unwrap(),
-        "whatsapp:+15551234567"
-    );
+    assert_eq!(cfg.remote.whatsapp.from.unwrap(), "whatsapp:+15551234567");
     assert_eq!(
         cfg.remote.whatsapp.signing_secret.unwrap(),
         "mysigningsecret"
