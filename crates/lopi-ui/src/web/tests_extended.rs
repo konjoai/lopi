@@ -1,12 +1,3 @@
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
-
-    use super::*;
-    use axum::body::Body;
-    use axum::http::{Request, StatusCode};
-    use tower::ServiceExt;
-
-    use super::tests::test_app;
-
     #[tokio::test]
     async fn index_returns_html() {
         let app = test_app().await;

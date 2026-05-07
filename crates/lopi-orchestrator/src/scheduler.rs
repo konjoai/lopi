@@ -166,4 +166,174 @@ mod tests {
             assert!(t < &(now + one_hour));
         }
     }
+
+    #[tokio::test]
+    async fn boot_with_empty_entries_returns_scheduler() {
+        use crate::pool::AgentPool;
+        use lopi_core::{AgentEvent, EventBus};
+        use std::path::PathBuf;
+
+        let queue = crate::queue::TaskQueue::new();
+        let bus: EventBus<AgentEvent> = EventBus::new(16);
+        let pool = AgentPool::new(1, PathBuf::from("."), queue, bus);
+
+        let result = boot(vec![], pool).await;
+        assert!(result.is_ok(), "boot with empty entries should succeed");
+        let mut sched = result.unwrap();
+        sched.shutdown().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn boot_with_valid_entry_registers_job() {
+        use crate::pool::AgentPool;
+        use lopi_core::{AgentEvent, EventBus, ScheduleEntry};
+        use std::path::PathBuf;
+
+        let queue = crate::queue::TaskQueue::new();
+        let bus: EventBus<AgentEvent> = EventBus::new(16);
+        let pool = AgentPool::new(1, PathBuf::from("."), queue, bus);
+
+        let entry = ScheduleEntry {
+            name: "test-schedule".to_string(),
+            repo: PathBuf::from("/tmp/nonexistent"),
+            goal: "run tests".to_string(),
+            cron: "0 2 * * *".to_string(),
+            priority: "normal".to_string(),
+            allowed_dirs: vec![],
+            forbidden_dirs: vec![],
+        };
+
+        let result = boot(vec![entry], pool).await;
+        assert!(result.is_ok(), "boot with valid entry should succeed");
+        let mut sched = result.unwrap();
+        sched.shutdown().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn boot_skips_invalid_cron_entry() {
+        use crate::pool::AgentPool;
+        use lopi_core::{AgentEvent, EventBus, ScheduleEntry};
+        use std::path::PathBuf;
+
+        let queue = crate::queue::TaskQueue::new();
+        let bus: EventBus<AgentEvent> = EventBus::new(16);
+        let pool = AgentPool::new(1, PathBuf::from("."), queue, bus);
+
+        let bad_entry = ScheduleEntry {
+            name: "bad-cron".to_string(),
+            repo: PathBuf::from("/tmp/nonexistent"),
+            goal: "do something".to_string(),
+            cron: "not a valid cron expression".to_string(),
+            priority: "normal".to_string(),
+            allowed_dirs: vec![],
+            forbidden_dirs: vec![],
+        };
+
+        // Invalid cron entry should be skipped, not cause boot to fail
+        let result = boot(vec![bad_entry], pool).await;
+        assert!(result.is_ok(), "boot should succeed even with invalid cron");
+        let mut sched = result.unwrap();
+        sched.shutdown().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn boot_with_allowed_dirs_entry() {
+        use crate::pool::AgentPool;
+        use lopi_core::{AgentEvent, EventBus, ScheduleEntry};
+        use std::path::PathBuf;
+
+        let queue = crate::queue::TaskQueue::new();
+        let bus: EventBus<AgentEvent> = EventBus::new(16);
+        let pool = AgentPool::new(1, PathBuf::from("."), queue, bus);
+
+        let entry = ScheduleEntry {
+            name: "dir-restricted".to_string(),
+            repo: PathBuf::from("/tmp/nonexistent"),
+            goal: "fix linting".to_string(),
+            cron: "0 3 * * *".to_string(),
+            priority: "high".to_string(),
+            allowed_dirs: vec!["src/".to_string()],
+            forbidden_dirs: vec!["vendor/".to_string()],
+        };
+
+        let result = boot(vec![entry], pool).await;
+        assert!(result.is_ok());
+        let mut sched = result.unwrap();
+        sched.shutdown().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn boot_with_multiple_valid_entries() {
+        use crate::pool::AgentPool;
+        use lopi_core::{AgentEvent, EventBus, ScheduleEntry};
+        use std::path::PathBuf;
+
+        let queue = crate::queue::TaskQueue::new();
+        let bus: EventBus<AgentEvent> = EventBus::new(16);
+        let pool = AgentPool::new(2, PathBuf::from("."), queue, bus);
+
+        let entries = vec![
+            ScheduleEntry {
+                name: "entry-1".to_string(),
+                repo: PathBuf::from("/tmp/nonexistent"),
+                goal: "task one".to_string(),
+                cron: "0 1 * * *".to_string(),
+                priority: "low".to_string(),
+                allowed_dirs: vec![],
+                forbidden_dirs: vec![],
+            },
+            ScheduleEntry {
+                name: "entry-2".to_string(),
+                repo: PathBuf::from("/tmp/nonexistent"),
+                goal: "task two".to_string(),
+                cron: "0 2 * * *".to_string(),
+                priority: "critical".to_string(),
+                allowed_dirs: vec![],
+                forbidden_dirs: vec![],
+            },
+        ];
+
+        let result = boot(entries, pool).await;
+        assert!(result.is_ok());
+        let mut sched = result.unwrap();
+        sched.shutdown().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn boot_with_mixed_valid_invalid_entries() {
+        use crate::pool::AgentPool;
+        use lopi_core::{AgentEvent, EventBus, ScheduleEntry};
+        use std::path::PathBuf;
+
+        let queue = crate::queue::TaskQueue::new();
+        let bus: EventBus<AgentEvent> = EventBus::new(2);
+        let pool = AgentPool::new(2, PathBuf::from("."), queue, bus);
+
+        let entries = vec![
+            ScheduleEntry {
+                name: "valid".to_string(),
+                repo: PathBuf::from("/tmp/nonexistent"),
+                goal: "run valid task".to_string(),
+                cron: "0 4 * * *".to_string(),
+                priority: "normal".to_string(),
+                allowed_dirs: vec![],
+                forbidden_dirs: vec![],
+            },
+            ScheduleEntry {
+                name: "invalid".to_string(),
+                repo: PathBuf::from("/tmp/nonexistent"),
+                goal: "run invalid task".to_string(),
+                cron: "invalid cron".to_string(),
+                priority: "normal".to_string(),
+                allowed_dirs: vec![],
+                forbidden_dirs: vec![],
+            },
+        ];
+
+        // Should succeed — invalid entry is skipped
+        let result = boot(entries, pool).await;
+        assert!(result.is_ok());
+        let mut sched = result.unwrap();
+        sched.shutdown().await.unwrap();
+    }
 }

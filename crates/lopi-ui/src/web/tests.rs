@@ -7,11 +7,11 @@
     use std::path::PathBuf;
     use tower::ServiceExt;
 
-    pub(super) async fn test_app() -> Router {
+    async fn test_app() -> Router {
         test_app_with_auth(None).await
     }
 
-    pub(super) async fn test_app_with_auth(auth_token: Option<&str>) -> Router {
+    async fn test_app_with_auth(auth_token: Option<&str>) -> Router {
         let store = lopi_memory::MemoryStore::open_in_memory().await.unwrap();
         let bus: EventBus<AgentEvent> = EventBus::new(16);
         let queue = TaskQueue::new();
