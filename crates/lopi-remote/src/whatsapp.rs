@@ -12,22 +12,31 @@ use lopi_orchestrator::TaskQueue;
 use serde::Deserialize;
 use std::net::SocketAddr;
 
+/// Shared state for the `WhatsApp` webhook handler.
 #[derive(Clone)]
 pub struct WhatsappState {
+    /// Task queue to submit parsed goals into.
     pub queue: TaskQueue,
-    /// Twilio signing secret for HMAC-SHA1 webhook verification.
+    /// Twilio signing secret for `HMAC-SHA1` webhook verification.
     /// None = verification disabled (dev mode).
     pub signing_secret: Option<String>,
 }
 
+/// Inbound message payload from Twilio's `WhatsApp` webhook.
 #[derive(Debug, Deserialize)]
 pub struct TwilioInbound {
+    /// The message body text.
     #[serde(rename = "Body")]
     pub body: String,
+    /// The sender's phone number (E.164 format).
     #[serde(rename = "From")]
     pub from: Option<String>,
 }
 
+/// Start the `WhatsApp` webhook server on `addr`.
+///
+/// # Errors
+/// Returns an error if the TCP listener cannot be bound or if the server exits unexpectedly.
 pub async fn serve(
     queue: TaskQueue,
     signing_secret: Option<String>,

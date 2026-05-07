@@ -8,17 +8,23 @@ use teloxide::{
     utils::command::BotCommands,
 };
 
+/// Commands accepted by the lopi Telegram bot.
 #[derive(BotCommands, Clone)]
 #[command(rename_rule = "lowercase", description = "lopi commands:")]
 pub enum LopiCmd {
+    /// Display available commands.
     #[command(description = "show this help")]
     Help,
+    /// Queue a new task with the given goal.
     #[command(description = "queue a new task: /task <goal>")]
     Task(String),
+    /// Queue a high-priority task.
     #[command(description = "high-priority task: /urgent <goal>")]
     Urgent(String),
+    /// Show the current queue depth.
     #[command(description = "show queue depth")]
     Status,
+    /// Approve a pending PR by task ID.
     #[command(description = "approve a pending PR by ID: /approve <task-id>")]
     Approve(String),
 }

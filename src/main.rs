@@ -1,3 +1,4 @@
+//! lopi — high-performance Rust orchestrator for concurrent Claude Code agents.
 #![allow(clippy::print_stdout, clippy::print_stderr)]
 mod remote;
 use mimalloc::MiMalloc;

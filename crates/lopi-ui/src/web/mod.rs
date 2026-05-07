@@ -12,7 +12,7 @@ use lopi_core::{AgentEvent, EventBus, Priority, Task, TaskId};
 use lopi_memory::MemoryStore;
 use lopi_orchestrator::{AgentPool, TaskQueue};
 use lopi_ratelimit::TokenBucket;
-use serde::{Deserialize, Serialize};
+
 use serde_json::{json, Value};
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
@@ -47,11 +47,16 @@ impl TtlCache {
     }
 }
 
+/// Shared application state injected into every axum handler.
 #[derive(Clone)]
 pub struct AppState {
+    /// Persistent `SQLite` memory store for tasks and patterns.
     pub store: MemoryStore,
+    /// Event bus for broadcasting `AgentEvent`s to connected clients.
     pub bus: EventBus<AgentEvent>,
+    /// Priority task queue shared with the orchestrator pool.
     pub queue: TaskQueue,
+    /// Handle to the running agent pool for status queries and cancellation.
     pub pool: Arc<AgentPool>,
     /// Pre-serialized broadcast: each `AgentEvent` serialized once, shared across all WS/SSE subscribers.
     serialized_tx: Arc<broadcast::Sender<Arc<str>>>,
@@ -64,6 +69,7 @@ pub struct AppState {
 }
 
 impl AppState {
+    /// Construct a new `AppState`, wiring together the store, event bus, queue, pool, and optional auth token.
     #[must_use]
     pub fn new(
         store: MemoryStore,
@@ -344,31 +350,9 @@ async fn cancel_task(Path(id): Path<String>, State(s): State<AppState>) -> impl 
     }
 }
 
-const MAX_GOAL_LENGTH: usize = 2000;
+use types::{CreateTaskRequest, CreateTaskResponse, MAX_GOAL_LENGTH};
 
-#[derive(Debug, Deserialize)]
-pub struct CreateTaskRequest {
-    pub goal: String,
-    pub repo: Option<String>,
-    #[serde(default)]
-    pub priority: Option<String>,
-    #[serde(default)]
-    pub constraints: Option<Vec<String>>,
-    #[serde(default)]
-    pub allowed_dirs: Option<Vec<String>>,
-    #[serde(default)]
-    pub forbidden_dirs: Option<Vec<String>>,
-    #[serde(default)]
-    pub max_retries: Option<u8>,
-}
-
-#[derive(Debug, Serialize)]
-pub struct CreateTaskResponse {
-    pub id: String,
-    pub goal: String,
-    pub queued: bool,
-    pub duplicate_of: Option<String>,
-}
+mod types;
 
 async fn create_task(
     State(s): State<AppState>,
