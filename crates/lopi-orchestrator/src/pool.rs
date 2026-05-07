@@ -39,7 +39,7 @@ pub struct AgentPool {
     max_agents: usize,
     queue: TaskQueue,
     repo_path: PathBuf,
-    /// All AgentEvents: TaskQueued, TaskStarted, StatusChanged, LogLine, TaskCompleted.
+    /// All `AgentEvent`s: `TaskQueued`, `TaskStarted`, `StatusChanged`, `LogLine`, `TaskCompleted`.
     bus: EventBus<AgentEvent>,
     store: Option<MemoryStore>,
     /// Live handles — entries removed when the task completes or is cancelled.
@@ -51,6 +51,7 @@ pub struct AgentPool {
 }
 
 impl AgentPool {
+    #[must_use]
     pub fn new(
         max_agents: usize,
         repo_path: PathBuf,
@@ -80,15 +81,18 @@ impl AgentPool {
         while js.join_next().await.is_some() {}
     }
 
+    #[must_use]
     pub fn with_store(mut self, store: MemoryStore) -> Self {
         self.store = Some(store);
         self
     }
 
+    #[must_use]
     pub fn queue(&self) -> TaskQueue {
         self.queue.clone()
     }
 
+    #[must_use]
     pub fn bus(&self) -> EventBus<AgentEvent> {
         self.bus.clone()
     }
@@ -99,7 +103,8 @@ impl AgentPool {
             let mut handle = handle_ref.write().await;
             if let Some(tx) = handle.cancel_tx.take() {
                 let _ = tx.send(());
-                self.bus.send(AgentEvent::TaskCancelled { task_id: *task_id });
+                self.bus
+                    .send(AgentEvent::TaskCancelled { task_id: *task_id });
                 return true;
             }
         }
@@ -107,6 +112,7 @@ impl AgentPool {
     }
 
     /// Return a snapshot of current stats.
+    #[must_use]
     pub fn stats(&self) -> PoolStats {
         PoolStats {
             running: self.counters.running.load(Ordering::Relaxed),
@@ -131,18 +137,26 @@ impl AgentPool {
     }
 
     /// Dispatch loop — pops tasks from the queue and spawns bounded workers.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if a semaphore is closed (only happens on shutdown).
     pub async fn run(self) -> Result<()> {
         loop {
             let task = self.queue.pop().await;
 
             // Resolve the repo for this task (task-level override or pool default).
-            let repo = task.repo_path.clone().unwrap_or_else(|| self.repo_path.clone());
+            let repo = task
+                .repo_path
+                .clone()
+                .unwrap_or_else(|| self.repo_path.clone());
 
             // Acquire global concurrency permit.
             let permit = self.permits.clone().acquire_owned().await?;
 
             // Acquire per-repo permit — caps concurrency on any single repo to max_agents.
-            let repo_sem = self.repo_permits
+            let repo_sem = self
+                .repo_permits
                 .entry(repo.clone())
                 .or_insert_with(|| Arc::new(Semaphore::new(self.max_agents)))
                 .clone();
@@ -216,7 +230,14 @@ async fn run_one(
     let task_id = task.id;
     let goal = task.goal.clone();
 
-    let mut runner = AgentRunner::new(task, repo, bus.clone(), store.clone(), cancel_rx, attempt_counter);
+    let mut runner = AgentRunner::new(
+        task,
+        repo,
+        bus.clone(),
+        store.clone(),
+        cancel_rx,
+        attempt_counter,
+    );
     let outcome = runner.run().await?;
 
     let total_attempts = runner.attempts_made();

@@ -7,6 +7,10 @@ use crate::pool::AgentPool;
 
 /// Boot a `JobScheduler` from a list of `ScheduleEntry` values.
 /// Each entry fires as a tokio cron job that submits a `Task` to the pool.
+///
+/// # Errors
+///
+/// Returns an error if the scheduler cannot be created or started.
 pub async fn boot(entries: Vec<ScheduleEntry>, pool: AgentPool) -> Result<JobScheduler> {
     let sched = JobScheduler::new().await?;
 
@@ -26,10 +30,10 @@ pub async fn boot(entries: Vec<ScheduleEntry>, pool: AgentPool) -> Result<JobSch
                 let mut task = Task::new(entry.goal.clone());
                 task.source = TaskSource::Api; // Scheduled tasks come from the scheduler.
                 task.priority = match entry.priority.as_str() {
-                    "low"      => Priority::Low,
-                    "high"     => Priority::High,
+                    "low" => Priority::Low,
+                    "high" => Priority::High,
                     "critical" => Priority::Critical,
-                    _          => Priority::Normal,
+                    _ => Priority::Normal,
                 };
                 if !entry.allowed_dirs.is_empty() {
                     task.allowed_dirs = entry.allowed_dirs.clone();
@@ -62,6 +66,7 @@ pub async fn boot(entries: Vec<ScheduleEntry>, pool: AgentPool) -> Result<JobSch
 
 /// Format the next N fire times for a cron expression (uses chrono + cron crate logic).
 /// Returns empty vec if expression is invalid.
+#[must_use]
 pub fn next_run_times(cron_expr: &str, count: usize) -> Vec<chrono::DateTime<chrono::Utc>> {
     // tokio-cron-scheduler uses the `cron` crate internally.
     // We parse directly here to show next-run times in `lopi schedules list`.

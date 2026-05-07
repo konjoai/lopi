@@ -1,3 +1,4 @@
+#![allow(clippy::missing_errors_doc)]
 use anyhow::Result;
 use lopi_core::{Priority, Task, TaskSource};
 use lopi_orchestrator::TaskQueue;
@@ -54,7 +55,7 @@ pub async fn run(token: String, queue: TaskQueue, allowed_chat_ids: Vec<i64>) ->
                         message_id: msg.id.0,
                     };
                     // Detect "urgent" variant by command name.
-                    if msg.text().map(|t| t.starts_with("/urgent")).unwrap_or(false) {
+                    if msg.text().is_some_and(|t| t.starts_with("/urgent")) {
                         t.priority = Priority::High;
                     }
 

@@ -18,6 +18,9 @@ struct WebhookState {
     secret: Option<String>,
 }
 
+/// # Errors
+///
+/// Returns an error if the TCP listener cannot bind to the address.
 pub async fn serve(queue: TaskQueue, secret: Option<String>, addr: SocketAddr) -> Result<()> {
     let state = WebhookState { queue, secret };
     let app = Router::new()
@@ -73,10 +76,13 @@ async fn handle(
         .and_then(|w| w.get("conclusion"))
         .and_then(|c| c.as_str());
 
-    if matches!(conclusion, Some("failure") | Some("timed_out")) {
+    if matches!(conclusion, Some("failure" | "timed_out")) {
         let mut t = Task::new(format!("Investigate and fix CI failure on {repo}"));
         t.priority = Priority::High;
-        t.source = TaskSource::Webhook { repo: repo.clone(), event: event.clone() };
+        t.source = TaskSource::Webhook {
+            repo: repo.clone(),
+            event: event.clone(),
+        };
         s.queue.push(t).await;
         tracing::info!("queued CI fix task for {repo} (event: {event})");
     }
@@ -85,7 +91,11 @@ async fn handle(
     // review body injected as a constraint so lopi can address the feedback automatically.
     if event == "pull_request_review" {
         let action = payload.get("action").and_then(|v| v.as_str()).unwrap_or("");
-        let state  = payload.get("review").and_then(|r| r.get("state")).and_then(|v| v.as_str()).unwrap_or("");
+        let state = payload
+            .get("review")
+            .and_then(|r| r.get("state"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
         if action == "submitted" && state == "changes_requested" {
             let review_body = payload
                 .get("review")
@@ -103,9 +113,13 @@ async fn handle(
             let goal = format!("Address review feedback on PR '{pr_title}' in {repo}");
             let mut t = Task::new(goal);
             t.priority = Priority::High;
-            t.source = TaskSource::Webhook { repo: repo.clone(), event: event.clone() };
+            t.source = TaskSource::Webhook {
+                repo: repo.clone(),
+                event: event.clone(),
+            };
             if !review_body.is_empty() {
-                t.constraints.push(format!("Review feedback: {review_body}"));
+                t.constraints
+                    .push(format!("Review feedback: {review_body}"));
             }
             s.queue.push(t).await;
             tracing::info!("queued PR review fix task for {repo}: {pr_title}");
@@ -125,9 +139,8 @@ fn verify_signature(secret: &[u8], body: &[u8], sig_header: &str) -> bool {
         return false;
     };
 
-    let mut mac = match Hmac::<Sha256>::new_from_slice(secret) {
-        Ok(m) => m,
-        Err(_) => return false,
+    let Ok(mut mac) = Hmac::<Sha256>::new_from_slice(secret) else {
+        return false;
     };
     mac.update(body);
     let computed = mac.finalize().into_bytes();
@@ -137,6 +150,7 @@ fn verify_signature(secret: &[u8], body: &[u8], sig_header: &str) -> bool {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
 

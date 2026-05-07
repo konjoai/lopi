@@ -84,7 +84,11 @@ pub struct WebConfig {
 
 impl Default for WebConfig {
     fn default() -> Self {
-        Self { port: default_port(), host: default_host(), auth_token: None }
+        Self {
+            port: default_port(),
+            host: default_host(),
+            auth_token: None,
+        }
     }
 }
 
@@ -133,6 +137,7 @@ pub struct RepoProfile {
 
 impl RepoProfile {
     /// Load `.lopi.toml` from the repo root. Returns `Default` if not found.
+    #[must_use]
     pub fn load_from_repo(repo_path: &std::path::Path) -> Self {
         let p = repo_path.join(".lopi.toml");
         if !p.exists() {
@@ -147,10 +152,10 @@ impl RepoProfile {
     /// Apply this profile's overrides onto a `Task`, filling in non-default values.
     pub fn apply(&self, task: &mut crate::task::Task) {
         if !self.allowed_dirs.is_empty() {
-            task.allowed_dirs = self.allowed_dirs.clone();
+            task.allowed_dirs.clone_from(&self.allowed_dirs);
         }
         if !self.forbidden_dirs.is_empty() {
-            task.forbidden_dirs = self.forbidden_dirs.clone();
+            task.forbidden_dirs.clone_from(&self.forbidden_dirs);
         }
         if !self.default_constraints.is_empty() {
             task.constraints.extend(self.default_constraints.clone());
@@ -161,19 +166,45 @@ impl RepoProfile {
     }
 }
 
-fn default_max_agents() -> usize { 4 }
-fn default_log_level() -> String { "info".into() }
-fn default_db_path() -> PathBuf { PathBuf::from("~/.lopi/lopi.db") }
-fn default_claude_cli() -> String { "claude".into() }
-fn default_claude_timeout() -> u64 { 300 }
-fn default_allowed() -> Vec<String> { vec!["src/".into(), "tests/".into()] }
-fn default_forbidden() -> Vec<String> { vec![".github/".into(), "infra/".into(), "Cargo.toml".into()] }
-fn default_true() -> bool { true }
-fn default_port() -> u16 { 3000 }
-fn default_host() -> String { "127.0.0.1".into() }
-fn default_priority_str() -> String { "normal".into() }
+fn default_max_agents() -> usize {
+    4
+}
+fn default_log_level() -> String {
+    "info".into()
+}
+fn default_db_path() -> PathBuf {
+    PathBuf::from("~/.lopi/lopi.db")
+}
+fn default_claude_cli() -> String {
+    "claude".into()
+}
+fn default_claude_timeout() -> u64 {
+    300
+}
+fn default_allowed() -> Vec<String> {
+    vec!["src/".into(), "tests/".into()]
+}
+fn default_forbidden() -> Vec<String> {
+    vec![".github/".into(), "infra/".into(), "Cargo.toml".into()]
+}
+fn default_true() -> bool {
+    true
+}
+fn default_port() -> u16 {
+    3000
+}
+fn default_host() -> String {
+    "127.0.0.1".into()
+}
+fn default_priority_str() -> String {
+    "normal".into()
+}
 
 impl LopiConfig {
+    /// Load and parse a `lopi.toml` config file from `path`.
+    ///
+    /// # Errors
+    /// Returns `Err` if the file cannot be read or if TOML parsing fails.
     pub fn load(path: &std::path::Path) -> anyhow::Result<Self> {
         let text = std::fs::read_to_string(path)?;
         let cfg: Self = toml::from_str(&text)?;
@@ -181,10 +212,13 @@ impl LopiConfig {
     }
 
     /// Try loading from `./lopi.toml` then `~/.lopi/lopi.toml`. Returns `None` if neither exists.
+    #[must_use]
     pub fn find_and_load() -> Option<Self> {
         let candidates = [
             PathBuf::from("lopi.toml"),
-            PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".lopi").join("lopi.toml"),
+            PathBuf::from(std::env::var("HOME").unwrap_or_default())
+                .join(".lopi")
+                .join("lopi.toml"),
         ];
         for p in &candidates {
             if p.exists() {
@@ -196,6 +230,7 @@ impl LopiConfig {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 
@@ -276,7 +311,9 @@ default_forbidden_dirs = []
         profile.apply(&mut task);
         assert_eq!(task.allowed_dirs, vec!["lib/"]);
         assert_eq!(task.max_retries, 5);
-        assert!(task.constraints.contains(&"no new dependencies".to_string()));
+        assert!(task
+            .constraints
+            .contains(&"no new dependencies".to_string()));
     }
 
     #[test]

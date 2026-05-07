@@ -1,3 +1,4 @@
+#![allow(clippy::print_stdout, clippy::print_stderr)]
 use mimalloc::MiMalloc;
 
 #[global_allocator]
@@ -100,32 +101,35 @@ fn db_path() -> PathBuf {
 
 fn fmt_status(s: &str) -> &str {
     match s {
-        "queued"       => "⏳ queued",
-        "planning"     => "📋 planning",
+        "queued" => "⏳ queued",
+        "planning" => "📋 planning",
         "implementing" => "🔨 implementing",
-        "testing"      => "🧪 testing",
-        "scoring"      => "📊 scoring",
-        "success"      => "✅ success",
-        "failed"       => "❌ failed",
-        "rolled_back"  => "⏪ rolled back",
-        _              => s,
+        "testing" => "🧪 testing",
+        "scoring" => "📊 scoring",
+        "success" => "✅ success",
+        "failed" => "❌ failed",
+        "rolled_back" => "⏪ rolled back",
+        _ => s,
     }
 }
 
 fn status_label(s: &TaskStatus) -> String {
     match s {
-        TaskStatus::Queued       => "queued".into(),
-        TaskStatus::Planning     => "planning".into(),
+        TaskStatus::Queued => "queued".into(),
+        TaskStatus::Planning => "planning".into(),
         TaskStatus::Implementing => "implementing".into(),
-        TaskStatus::Testing      => "testing".into(),
-        TaskStatus::Scoring      => "scoring".into(),
+        TaskStatus::Testing => "testing".into(),
+        TaskStatus::Scoring => "scoring".into(),
         TaskStatus::Retrying { attempt } => format!("retrying (attempt {attempt})"),
         TaskStatus::Success { branch, pr_url } => format!(
             "success ✅ branch={branch}{}",
-            pr_url.as_deref().map(|u| format!(", pr={u}")).unwrap_or_default()
+            pr_url
+                .as_deref()
+                .map(|u| format!(", pr={u}"))
+                .unwrap_or_default()
         ),
         TaskStatus::Failed { reason } => format!("failed ❌ {reason}"),
-        TaskStatus::RolledBack   => "rolled back".into(),
+        TaskStatus::RolledBack => "rolled back".into(),
     }
 }
 
@@ -137,6 +141,7 @@ fn load_config(path: Option<&PathBuf>) -> Option<LopiConfig> {
     }
 }
 
+#[allow(clippy::too_many_lines)]
 #[tokio::main]
 async fn main() -> Result<()> {
     // Initialize tracing with optional OpenTelemetry OTLP export.
@@ -152,12 +157,13 @@ async fn main() -> Result<()> {
             .tracing()
             .with_exporter(otlp_exporter)
             .with_trace_config(opentelemetry_sdk::trace::config().with_resource(
-                opentelemetry_sdk::Resource::new(vec![
-                    opentelemetry::KeyValue::new("service.name", "lopi"),
-                ]),
+                opentelemetry_sdk::Resource::new(vec![opentelemetry::KeyValue::new(
+                    "service.name",
+                    "lopi",
+                )]),
             ))
             .install_batch(opentelemetry_sdk::runtime::Tokio)
-            .expect("failed to install OTel tracer");
+            .map_err(|e| anyhow::anyhow!("failed to install OTel tracer: {e}"))?;
         let otel_layer = tracing_opentelemetry::layer().with_tracer(tracer);
         tracing_subscriber::registry()
             .with(env_filter)
@@ -176,7 +182,12 @@ async fn main() -> Result<()> {
 
     match cli.command {
         // ── lopi run ────────────────────────────────────────────
-        Commands::Run { goal, repo, dry_run, speculative } => {
+        Commands::Run {
+            goal,
+            repo,
+            dry_run,
+            speculative,
+        } => {
             println!("🚢 lopi run{}", if dry_run { " (dry-run)" } else { "" });
             println!("   goal: {goal}");
             println!("   repo: {}", repo.display());
@@ -211,18 +222,26 @@ async fn main() -> Result<()> {
             let print_task = tokio::spawn(async move {
                 loop {
                     match rx.recv().await {
-                        Ok(AgentEvent::StatusChanged { status, attempt, .. }) => {
+                        Ok(AgentEvent::StatusChanged {
+                            status, attempt, ..
+                        }) => {
                             println!("  [{attempt}] → {}", status_label(&status));
                         }
                         Ok(AgentEvent::LogLine { line, .. }) => {
                             println!("       {line}");
                         }
-                        Ok(AgentEvent::ScoreUpdated { test_pass_rate, lint_errors, .. }) => {
-                            println!("       score: {:.0}% pass, {} lint errors",
-                                test_pass_rate * 100.0, lint_errors);
+                        Ok(AgentEvent::ScoreUpdated {
+                            test_pass_rate,
+                            lint_errors,
+                            ..
+                        }) => {
+                            println!(
+                                "       score: {:.0}% pass, {} lint errors",
+                                test_pass_rate * 100.0,
+                                lint_errors
+                            );
                         }
-                        Ok(AgentEvent::TaskCompleted { .. }) => break,
-                        Err(_) => break,
+                        Ok(AgentEvent::TaskCompleted { .. }) | Err(_) => break,
                         _ => {}
                     }
                 }
@@ -230,7 +249,10 @@ async fn main() -> Result<()> {
 
             let outcome = runner.run().await?;
             print_task.abort();
-            store.mark_completed(&task_id, &status_label(&outcome)).await.ok();
+            store
+                .mark_completed(&task_id, &status_label(&outcome))
+                .await
+                .ok();
             store.mine_patterns(&task_id, &task.goal).await.ok();
 
             println!();
@@ -256,10 +278,12 @@ async fn main() -> Result<()> {
             if history || task_id.is_some() {
                 let rows = store.load_history(50).await?;
                 println!("⚓ lopi tail — {} task(s) in history", rows.len());
-                for t in rows.iter().filter(|t| {
-                    task_id.as_deref().is_none_or(|id| t.id.starts_with(id))
-                }) {
-                    println!("  [{}] {}… — {}",
+                for t in rows
+                    .iter()
+                    .filter(|t| task_id.as_deref().is_none_or(|id| t.id.starts_with(id)))
+                {
+                    println!(
+                        "  [{}] {}… — {}",
                         fmt_status(&t.status),
                         &t.id[..8.min(t.id.len())],
                         t.goal
@@ -284,20 +308,33 @@ async fn main() -> Result<()> {
             println!("  {:<8}  {:<w$}  Status", "ID", "Goal");
             println!("  {}", "─".repeat(8 + 2 + w + 2 + 20));
             for t in history {
-                let goal = if t.goal.len() > w { format!("{}…", &t.goal[..w-1]) } else { t.goal.clone() };
-                println!("  {:<8}  {:<w$}  {}",
-                    &t.id[..8.min(t.id.len())], goal, fmt_status(&t.status));
+                let goal = if t.goal.len() > w {
+                    format!("{}…", &t.goal[..w - 1])
+                } else {
+                    t.goal.clone()
+                };
+                println!(
+                    "  {:<8}  {:<w$}  {}",
+                    &t.id[..8.min(t.id.len())],
+                    goal,
+                    fmt_status(&t.status)
+                );
             }
         }
 
         // ── lopi sail ───────────────────────────────────────────
-        Commands::Sail { port, host, max_agents, repo } => {
+        Commands::Sail {
+            port,
+            host,
+            max_agents,
+            repo,
+        } => {
             let store = MemoryStore::open(db_path()).await?;
             let bus: EventBus<AgentEvent> = EventBus::new(512);
             let queue = TaskQueue::new();
             let pool = Arc::new(
                 AgentPool::new(max_agents, repo.clone(), queue.clone(), bus.clone())
-                    .with_store(store.clone())
+                    .with_store(store.clone()),
             );
 
             println!("🚢 lopi sail");
@@ -308,7 +345,10 @@ async fn main() -> Result<()> {
             println!("   ws:        ws://{host}:{port}/ws");
 
             // Boot schedules from config.
-            let schedules = cfg.as_ref().map(|c| c.schedules.clone()).unwrap_or_default();
+            let schedules = cfg
+                .as_ref()
+                .map(|c| c.schedules.clone())
+                .unwrap_or_default();
             if !schedules.is_empty() {
                 println!("   schedules: {} configured", schedules.len());
                 let pool_sched = (*pool).clone();
@@ -339,12 +379,11 @@ async fn main() -> Result<()> {
         // ── lopi cancel ─────────────────────────────────────────
         Commands::Cancel { task_id } => {
             let url = format!("http://127.0.0.1:3000/api/tasks/{task_id}");
-            match reqwest_cancel(&url).await {
-                Ok(msg) => println!("{msg}"),
-                Err(_) => {
-                    println!("⚠️  No running lopi sail server on :3000.");
-                    println!("   Start `lopi sail` first or use the web dashboard.");
-                }
+            if let Ok(msg) = reqwest_cancel(&url).await {
+                println!("{msg}");
+            } else {
+                println!("⚠️  No running lopi sail server on :3000.");
+                println!("   Start `lopi sail` first or use the web dashboard.");
             }
         }
 
@@ -357,22 +396,34 @@ async fn main() -> Result<()> {
                 println!("  No patterns yet. Patterns are mined after each completed task.");
                 return Ok(());
             }
-            println!("  {:<40}  {:>10}  {:>10}  Last seen", "Keywords", "Avg Att.", "Success%");
+            println!(
+                "  {:<40}  {:>10}  {:>10}  Last seen",
+                "Keywords", "Avg Att.", "Success%"
+            );
             println!("  {}", "─".repeat(80));
             for p in patterns {
                 let kw = if p.goal_keywords.len() > 40 {
                     format!("{}…", &p.goal_keywords[..39])
-                } else { p.goal_keywords.clone() };
-                let avg = p.avg_attempts.map(|a| format!("{a:.1}")).unwrap_or_else(|| "-".into());
-                let sr  = p.success_rate.map(|s| format!("{:.0}%", s * 100.0)).unwrap_or_else(|| "-".into());
-                let ts  = &p.last_seen[..10.min(p.last_seen.len())];
-                println!("  {:<40}  {:>10}  {:>10}  {}", kw, avg, sr, ts);
+                } else {
+                    p.goal_keywords.clone()
+                };
+                let avg = p
+                    .avg_attempts
+                    .map_or_else(|| "-".to_string(), |a| format!("{a:.1}"));
+                let sr = p
+                    .success_rate
+                    .map_or_else(|| "-".to_string(), |s| format!("{:.0}%", s * 100.0));
+                let ts = &p.last_seen[..10.min(p.last_seen.len())];
+                println!("  {kw:<40}  {avg:>10}  {sr:>10}  {ts}");
             }
         }
 
         // ── lopi schedules ──────────────────────────────────────
         Commands::Schedules(ScheduleCmd::List) => {
-            let schedules = cfg.as_ref().map(|c| c.schedules.clone()).unwrap_or_default();
+            let schedules = cfg
+                .as_ref()
+                .map(|c| c.schedules.clone())
+                .unwrap_or_default();
             if schedules.is_empty() {
                 println!("⏰ lopi schedules — none configured");
                 println!();
@@ -388,15 +439,21 @@ async fn main() -> Result<()> {
 
             println!("⏰ lopi schedules — {} configured\n", schedules.len());
             let w = 30usize;
-            println!("  {:<20}  {:<w$}  {:<14}  Next run (UTC)", "Name", "Goal", "Cron");
+            println!(
+                "  {:<20}  {:<w$}  {:<14}  Next run (UTC)",
+                "Name", "Goal", "Cron"
+            );
             println!("  {}", "─".repeat(20 + 2 + w + 2 + 14 + 2 + 26));
             for s in &schedules {
-                let goal = if s.goal.len() > w { format!("{}…", &s.goal[..w-1]) } else { s.goal.clone() };
+                let goal = if s.goal.len() > w {
+                    format!("{}…", &s.goal[..w - 1])
+                } else {
+                    s.goal.clone()
+                };
                 let next = next_run_times(&s.cron, 1)
                     .into_iter()
                     .next()
-                    .map(|t| t.format("%Y-%m-%d %H:%M UTC").to_string())
-                    .unwrap_or_else(|| "invalid cron".into());
+                    .map_or_else(|| "invalid cron".to_string(), |t| t.format("%Y-%m-%d %H:%M UTC").to_string());
                 println!("  {:<20}  {:<w$}  {:<14}  {}", s.name, goal, s.cron, next);
             }
         }
@@ -407,8 +464,8 @@ async fn main() -> Result<()> {
 
 /// Connect to a running lopi sail WebSocket and drive the TUI from network events.
 async fn watch_remote(ws_url: String) -> Result<()> {
-    use tokio_tungstenite::tungstenite::Message as WsMsg;
     use futures::StreamExt;
+    use tokio_tungstenite::tungstenite::Message as WsMsg;
 
     let bus: EventBus<AgentEvent> = EventBus::new(512);
     let bus_tx = bus.clone();
@@ -439,7 +496,11 @@ async fn watch_remote(ws_url: String) -> Result<()> {
                             if let Some(tasks) = snap.get("tasks").and_then(|v| v.as_array()) {
                                 for t in tasks {
                                     let id_str = t.get("id").and_then(|v| v.as_str()).unwrap_or("");
-                                    let goal   = t.get("goal").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                                    let goal = t
+                                        .get("goal")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("")
+                                        .to_string();
                                     if let Ok(uuid) = id_str.parse::<uuid::Uuid>() {
                                         bus_tx.send(AgentEvent::TaskQueued {
                                             task_id: lopi_core::TaskId(uuid),
@@ -465,12 +526,24 @@ async fn watch_remote(ws_url: String) -> Result<()> {
 
 async fn reqwest_cancel(url: &str) -> Result<String> {
     let client = reqwest::Client::new();
-    let resp = client.delete(url).send().await.context("HTTP DELETE failed")?;
+    let resp = client
+        .delete(url)
+        .send()
+        .await
+        .context("HTTP DELETE failed")?;
     let body = resp.json::<serde_json::Value>().await?;
-    if body.get("cancelled").and_then(|v: &serde_json::Value| v.as_bool()).unwrap_or(false) {
+    if body
+        .get("cancelled")
+        .and_then(|v: &serde_json::Value| v.as_bool())
+        .unwrap_or(false)
+    {
         Ok("⛔ Task cancelled.".into())
     } else {
-        Ok(format!("ℹ️  {}",
-            body.get("reason").and_then(|v: &serde_json::Value| v.as_str()).unwrap_or("unknown")))
+        Ok(format!(
+            "ℹ️  {}",
+            body.get("reason")
+                .and_then(|v: &serde_json::Value| v.as_str())
+                .unwrap_or("unknown")
+        ))
     }
 }

@@ -19,7 +19,11 @@ pub enum ToonError {
     #[error("array count mismatch: declared {declared} but found {found}")]
     CountMismatch { declared: usize, found: usize },
     #[error("tabular row width mismatch: expected {expected} cells, got {found} on line {lineno}")]
-    WidthMismatch { expected: usize, found: usize, lineno: usize },
+    WidthMismatch {
+        expected: usize,
+        found: usize,
+        lineno: usize,
+    },
     #[error("unexpected line {0}")]
     Unexpected(usize),
 }
@@ -33,18 +37,36 @@ pub struct DecoderOptions {
 }
 
 impl Default for DecoderOptions {
-    fn default() -> Self { Self { indent: 2, strict: true } }
+    fn default() -> Self {
+        Self {
+            indent: 2,
+            strict: true,
+        }
+    }
 }
 
 /// Decode TOON text into a `serde_json::Value` using default options.
+///
+/// # Errors
+/// Returns `Err` if the input contains malformed TOON syntax (bad indent, invalid escapes, etc.).
 pub fn decode(input: &str) -> Result<Value, ToonError> {
     decode_with(input, &DecoderOptions::default())
 }
 
+/// Decode TOON text into a `serde_json::Value` using the provided options.
+///
+/// # Errors
+/// Returns `Err` if the input contains malformed TOON syntax (bad indent, invalid escapes, etc.).
 pub fn decode_with(input: &str, opts: &DecoderOptions) -> Result<Value, ToonError> {
     let lines = preprocess(input, opts.indent)?;
-    if lines.is_empty() { return Ok(Value::Object(Map::new())); }
-    let mut p = Parser { lines: &lines, pos: 0, opts };
+    if lines.is_empty() {
+        return Ok(Value::Object(Map::new()));
+    }
+    let mut p = Parser {
+        lines: &lines,
+        pos: 0,
+        opts,
+    };
     p.parse_root()
 }
 
@@ -64,13 +86,22 @@ fn preprocess(input: &str, indent_size: usize) -> Result<Vec<Line>, ToonError> {
         // Count leading spaces.
         let leading = raw.len() - raw.trim_start_matches(' ').len();
         // Skip pure blank lines.
-        if raw.trim().is_empty() { continue; }
+        if raw.trim().is_empty() {
+            continue;
+        }
         if leading % indent_size != 0 {
-            return Err(ToonError::BadIndent { lineno, indent: indent_size });
+            return Err(ToonError::BadIndent {
+                lineno,
+                indent: indent_size,
+            });
         }
         let depth = leading / indent_size;
         let content = raw[leading..].to_string();
-        out.push(Line { lineno, depth, content });
+        out.push(Line {
+            lineno,
+            depth,
+            content,
+        });
     }
     Ok(out)
 }
@@ -79,7 +110,7 @@ fn preprocess(input: &str, indent_size: usize) -> Result<Vec<Line>, ToonError> {
 
 #[derive(Debug, Clone)]
 struct Header {
-    key: Option<String>,     // None for root arrays
+    key: Option<String>, // None for root arrays
     count: usize,
     delim: char,
     fields: Option<Vec<String>>, // Some for tabular
@@ -95,8 +126,10 @@ struct Parser<'a> {
     opts: &'a DecoderOptions,
 }
 
-impl<'a> Parser<'a> {
-    fn peek(&self) -> Option<&Line> { self.lines.get(self.pos) }
+impl Parser<'_> {
+    fn peek(&self) -> Option<&Line> {
+        self.lines.get(self.pos)
+    }
     fn next(&mut self) -> Option<&Line> {
         let l = self.lines.get(self.pos);
         self.pos += 1;
@@ -130,9 +163,13 @@ impl<'a> Parser<'a> {
     fn parse_object_at(&mut self, depth: usize) -> Result<Value, ToonError> {
         let mut map = Map::new();
         while let Some(line) = self.peek() {
-            if line.depth != depth { break; }
+            if line.depth != depth {
+                break;
+            }
             // List items at this depth don't belong to this object.
-            if line.content.starts_with("- ") || line.content == "-" { break; }
+            if line.content.starts_with("- ") || line.content == "-" {
+                break;
+            }
             let lineno = line.lineno;
             let content = line.content.clone();
 
@@ -146,8 +183,7 @@ impl<'a> Parser<'a> {
             }
 
             // Must be key: rest
-            let (key, rest) = parse_key_rest(&content)
-                .ok_or(ToonError::MissingColon(lineno))?;
+            let (key, rest) = parse_key_rest(&content).ok_or(ToonError::MissingColon(lineno))?;
             self.pos += 1;
 
             if rest.is_empty() {
@@ -182,7 +218,11 @@ impl<'a> Parser<'a> {
 
     // Parse the body of an array (the header has already been consumed by caller).
     // `outer_header` is the parsed header, or None for root arrays that need re-parsing.
-    fn parse_array_body(&mut self, depth: usize, outer: Option<&Header>) -> Result<Value, ToonError> {
+    fn parse_array_body(
+        &mut self,
+        depth: usize,
+        outer: Option<&Header>,
+    ) -> Result<Value, ToonError> {
         // Parse the header if we haven't yet (root array case).
         let header = if let Some(h) = outer {
             h.clone()
@@ -195,16 +235,23 @@ impl<'a> Parser<'a> {
         let count = header.count;
 
         // Empty array.
-        if count == 0 { return Ok(Value::Array(vec![])); }
+        if count == 0 {
+            return Ok(Value::Array(vec![]));
+        }
 
         // Inline primitive array: values are already in header.inline_rest
         if let Some(inline) = &header.inline_rest {
             if header.fields.is_none() {
                 let vals = split_on_delim(inline, header.delim);
                 if self.opts.strict && vals.len() != count {
-                    return Err(ToonError::CountMismatch { declared: count, found: vals.len() });
+                    return Err(ToonError::CountMismatch {
+                        declared: count,
+                        found: vals.len(),
+                    });
                 }
-                let arr: Result<Vec<Value>, ToonError> = vals.iter().enumerate()
+                let arr: Result<Vec<Value>, ToonError> = vals
+                    .iter()
+                    .enumerate()
                     .map(|(i, s)| decode_primitive(s.trim(), i + 1))
                     .collect();
                 return Ok(Value::Array(arr?));
@@ -217,14 +264,18 @@ impl<'a> Parser<'a> {
             let delim = header.delim;
             let mut rows: Vec<Value> = Vec::new();
             while let Some(line) = self.peek() {
-                if line.depth != depth { break; }
+                if line.depth != depth {
+                    break;
+                }
                 let lineno = line.lineno;
                 let content = line.content.clone();
                 self.pos += 1;
                 let cells = split_on_delim(&content, delim);
                 if self.opts.strict && cells.len() != fields.len() {
                     return Err(ToonError::WidthMismatch {
-                        expected: fields.len(), found: cells.len(), lineno,
+                        expected: fields.len(),
+                        found: cells.len(),
+                        lineno,
                     });
                 }
                 let mut obj = Map::new();
@@ -236,7 +287,10 @@ impl<'a> Parser<'a> {
                 rows.push(Value::Object(obj));
             }
             if self.opts.strict && rows.len() != count {
-                return Err(ToonError::CountMismatch { declared: count, found: rows.len() });
+                return Err(ToonError::CountMismatch {
+                    declared: count,
+                    found: rows.len(),
+                });
             }
             return Ok(Value::Array(rows));
         }
@@ -245,7 +299,10 @@ impl<'a> Parser<'a> {
         let items = self.parse_list_items_at(depth)?;
         if let Value::Array(ref arr) = items {
             if self.opts.strict && arr.len() != count {
-                return Err(ToonError::CountMismatch { declared: count, found: arr.len() });
+                return Err(ToonError::CountMismatch {
+                    declared: count,
+                    found: arr.len(),
+                });
             }
         }
         Ok(items)
@@ -256,8 +313,12 @@ impl<'a> Parser<'a> {
         let mut items: Vec<Value> = Vec::new();
         while let Some(l) = self.peek() {
             let (line_depth, line_content, lineno) = (l.depth, l.content.clone(), l.lineno);
-            if line_depth != depth { break; }
-            if !line_content.starts_with("- ") && line_content != "-" { break; }
+            if line_depth != depth {
+                break;
+            }
+            if !line_content.starts_with("- ") && line_content != "-" {
+                break;
+            }
 
             let rest_owned: String = if line_content == "-" {
                 String::new()
@@ -283,13 +344,17 @@ impl<'a> Parser<'a> {
                 }
                 // Keyed array as first field of an object item: e.g. `- tags[3]: a,b,c`
                 let mut obj = Map::new();
-                let key = h.key.clone().unwrap();
+                let key = h.key.clone().ok_or(ToonError::MissingColon(lineno))?;
                 let first_arr = self.parse_array_body(depth + 2, Some(&h))?;
                 obj.insert(key, first_arr);
                 // Remaining fields at depth+1
                 while let Some(next) = self.peek() {
-                    if next.depth != depth + 1 { break; }
-                    if next.content.starts_with("- ") || next.content == "-" { break; }
+                    if next.depth != depth + 1 {
+                        break;
+                    }
+                    if next.content.starts_with("- ") || next.content == "-" {
+                        break;
+                    }
                     let nc = next.content.clone();
                     let nl = next.lineno;
                     if let Some(h2) = try_parse_header(&nc) {
@@ -325,8 +390,12 @@ impl<'a> Parser<'a> {
                 obj.insert(k, first_val);
                 // More fields of this object at depth+1
                 while let Some(next) = self.peek() {
-                    if next.depth != depth + 1 { break; }
-                    if next.content.starts_with("- ") || next.content == "-" { break; }
+                    if next.depth != depth + 1 {
+                        break;
+                    }
+                    if next.content.starts_with("- ") || next.content == "-" {
+                        break;
+                    }
                     let nc = next.content.clone();
                     let nl = next.lineno;
                     if let Some(h2) = try_parse_header(&nc) {
@@ -383,7 +452,9 @@ fn try_parse_header(s: &str) -> Option<Header> {
 
     // rest must start with "["
     let rest = rest.trim_start_matches('[');
-    if rest.is_empty() { return None; }
+    if rest.is_empty() {
+        return None;
+    }
 
     // Parse N
     let n_end = rest.find(|c: char| !c.is_ascii_digit())?;
@@ -414,17 +485,27 @@ fn try_parse_header(s: &str) -> Option<Header> {
 
     // Optional inline values after ": "
     let inline = if let Some(r) = rest.strip_prefix(' ') {
-        if r.is_empty() { None } else { Some(r.to_string()) }
+        if r.is_empty() {
+            None
+        } else {
+            Some(r.to_string())
+        }
     } else if rest.is_empty() {
         None
     } else {
         return None; // garbage after ":"
     };
 
-    Some(Header { key, count: n, delim, fields, inline_rest: inline })
+    Some(Header {
+        key,
+        count: n,
+        delim,
+        fields,
+        inline_rest: inline,
+    })
 }
 
-/// Split optional key from "[...]..." → (Option<key>, rest_starting_with_"[")
+/// Split optional key from `"[...]..."` → `(Option<key>, rest_starting_with_"[")`
 fn split_key_bracket(s: &str) -> (Option<String>, &str) {
     if s.starts_with('[') {
         return (None, s);
@@ -439,9 +520,12 @@ fn split_key_bracket(s: &str) -> (Option<String>, &str) {
         return (None, s);
     }
     // Unquoted key: [A-Za-z_][A-Za-z0-9_.]*
-    let end = s.find(|c: char| !c.is_ascii_alphanumeric() && c != '_' && c != '.')
+    let end = s
+        .find(|c: char| !c.is_ascii_alphanumeric() && c != '_' && c != '.')
         .unwrap_or(s.len());
-    if end == 0 { return (None, s); }
+    if end == 0 {
+        return (None, s);
+    }
     let key = &s[..end];
     let rest = &s[end..];
     if rest.starts_with('[') {
@@ -469,14 +553,25 @@ fn parse_quoted_key(s: &str) -> Option<(String, &str)> {
 }
 
 fn unescape_char(c: char) -> Option<char> {
-    Some(match c { '"' => '"', '\\' => '\\', 'n' => '\n', 'r' => '\r', 't' => '\t', _ => return None })
+    Some(match c {
+        '"' => '"',
+        '\\' => '\\',
+        'n' => '\n',
+        'r' => '\r',
+        't' => '\t',
+        _ => return None,
+    })
 }
 
 /// Parse optional delimiter symbol from start of rest (after N digits, before "]").
 fn parse_delim_sym(s: &str) -> (char, &str) {
-    if let Some(rest) = s.strip_prefix('\t') { ('\t', rest) }
-    else if let Some(rest) = s.strip_prefix('|') { ('|', rest) }
-    else { (',', s) }
+    if let Some(rest) = s.strip_prefix('\t') {
+        ('\t', rest)
+    } else if let Some(rest) = s.strip_prefix('|') {
+        ('|', rest)
+    } else {
+        (',', s)
+    }
 }
 
 // ── Key/value line parsing ────────────────────────────────────────────────────
@@ -495,7 +590,9 @@ fn parse_key_rest(s: &str) -> Option<(String, &str)> {
         let colon = s.find(':')?;
         let key_part = &s[..colon];
         // Key must not be empty and must not contain spaces.
-        if key_part.is_empty() || key_part.contains(' ') { return None; }
+        if key_part.is_empty() || key_part.contains(' ') {
+            return None;
+        }
         let rest = &s[colon + 1..];
         let rest = rest.strip_prefix(' ').unwrap_or(rest);
         Some((decode_key(key_part), rest))
@@ -505,7 +602,7 @@ fn parse_key_rest(s: &str) -> Option<(String, &str)> {
 /// Decode a key (strip quotes if needed). Keys from our encoder are already safe identifiers.
 fn decode_key(s: &str) -> String {
     if s.starts_with('"') {
-        parse_quoted_key(s).map(|(k, _)| k).unwrap_or_else(|| s.to_string())
+        parse_quoted_key(s).map_or_else(|| s.to_string(), |(k, _)| k)
     } else {
         s.trim().to_string()
     }
@@ -516,22 +613,28 @@ fn decode_key(s: &str) -> String {
 /// Decode an unquoted or quoted token to a `Value` per §4.
 pub(crate) fn decode_primitive(s: &str, lineno: usize) -> Result<Value, ToonError> {
     let s = s.trim();
-    if s.is_empty() { return Ok(Value::String(String::new())); }
+    if s.is_empty() {
+        return Ok(Value::String(String::new()));
+    }
     // Quoted string.
     if s.starts_with('"') {
         return decode_quoted_string(s, lineno).map(Value::String);
     }
     // Boolean / null keywords (case-sensitive per spec).
     match s {
-        "true"  => return Ok(Value::Bool(true)),
+        "true" => return Ok(Value::Bool(true)),
         "false" => return Ok(Value::Bool(false)),
-        "null"  => return Ok(Value::Null),
+        "null" => return Ok(Value::Null),
         _ => {}
     }
     // Numeric: try integer then float.
     if looks_numeric(s) {
-        if let Ok(i) = s.parse::<i64>() { return Ok(Value::Number(i.into())); }
-        if let Ok(u) = s.parse::<u64>() { return Ok(Value::Number(u.into())); }
+        if let Ok(i) = s.parse::<i64>() {
+            return Ok(Value::Number(i.into()));
+        }
+        if let Ok(u) = s.parse::<u64>() {
+            return Ok(Value::Number(u.into()));
+        }
         if let Ok(f) = s.parse::<f64>() {
             if let Some(n) = serde_json::Number::from_f64(f) {
                 return Ok(Value::Number(n));
@@ -544,7 +647,9 @@ pub(crate) fn decode_primitive(s: &str, lineno: usize) -> Result<Value, ToonErro
 }
 
 fn looks_numeric(s: &str) -> bool {
-    if s.is_empty() { return false; }
+    if s.is_empty() {
+        return false;
+    }
     let s2 = s.strip_prefix('-').unwrap_or(s);
     s2.starts_with(|c: char| c.is_ascii_digit())
 }
@@ -557,13 +662,10 @@ fn decode_quoted_string(s: &str, lineno: usize) -> Result<String, ToonError> {
         match chars.next() {
             None => return Err(ToonError::UnterminatedString(lineno)),
             Some((_, '"')) => break,
-            Some((_, '\\')) => {
-                match chars.next() {
-                    Some((_, c)) => out.push(unescape_char(c)
-                        .ok_or(ToonError::InvalidEscape(lineno))?),
-                    None => return Err(ToonError::InvalidEscape(lineno)),
-                }
-            }
+            Some((_, '\\')) => match chars.next() {
+                Some((_, c)) => out.push(unescape_char(c).ok_or(ToonError::InvalidEscape(lineno))?),
+                None => return Err(ToonError::InvalidEscape(lineno)),
+            },
             Some((_, c)) => out.push(c),
         }
     }

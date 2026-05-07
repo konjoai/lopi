@@ -1,7 +1,7 @@
-use tokio::sync::broadcast;
 use crate::task::{TaskId, TaskStatus};
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use tokio::sync::broadcast;
 
 /// Rich event emitted by agents and consumed by TUI, WebSocket, and log panels.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -192,6 +192,7 @@ pub struct EventBus<T: Clone> {
 }
 
 impl<T: Clone + Send + 'static> EventBus<T> {
+    #[must_use]
     pub fn new(capacity: usize) -> Self {
         let (tx, _) = broadcast::channel(capacity);
         Self { tx }
@@ -201,10 +202,12 @@ impl<T: Clone + Send + 'static> EventBus<T> {
         let _ = self.tx.send(event);
     }
 
+    #[must_use]
     pub fn subscribe(&self) -> broadcast::Receiver<T> {
         self.tx.subscribe()
     }
 
+    #[must_use]
     pub fn sender(&self) -> broadcast::Sender<T> {
         self.tx.clone()
     }

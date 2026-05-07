@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unwrap_in_result)]
 use lopi_context::{ContentBlock, ContextWindow, Phase, PinPolicy, Role, TaggedMessage};
 use uuid::Uuid;
 
@@ -20,9 +21,16 @@ fn msg_at(text: &str, phase: Phase) -> TaggedMessage {
 fn eviction_preserves_insertion_order() {
     let mut window = ContextWindow::new(10_000);
     let phases = [
-        Phase::Boot, Phase::Discovery, Phase::Discovery, Phase::Planning,
-        Phase::Planning, Phase::Implementation, Phase::Implementation,
-        Phase::Testing, Phase::Testing, Phase::Conclusion,
+        Phase::Boot,
+        Phase::Discovery,
+        Phase::Discovery,
+        Phase::Planning,
+        Phase::Planning,
+        Phase::Implementation,
+        Phase::Implementation,
+        Phase::Testing,
+        Phase::Testing,
+        Phase::Conclusion,
     ];
 
     let mut ids = Vec::new();
@@ -48,14 +56,19 @@ fn eviction_preserves_insertion_order() {
         .map(|(_, id)| *id)
         .collect();
 
-    assert_eq!(remaining_ids, expected_ids, "turns must remain in original insertion order");
+    assert_eq!(
+        remaining_ids, expected_ids,
+        "turns must remain in original insertion order"
+    );
 }
 
 #[test]
 fn to_api_messages_returns_all_active_turns() {
     let mut window = ContextWindow::new(10_000);
     for i in 0..5 {
-        window.push(msg_at(&format!("t{i}"), Phase::Implementation)).unwrap();
+        window
+            .push(msg_at(&format!("t{i}"), Phase::Implementation))
+            .unwrap();
     }
     assert_eq!(window.to_api_messages().len(), 5);
 }
@@ -63,7 +76,9 @@ fn to_api_messages_returns_all_active_turns() {
 #[test]
 fn to_api_messages_empty_after_all_evicted() {
     let mut window = ContextWindow::new(10_000);
-    let id = window.push(msg_at("only turn", Phase::Implementation)).unwrap();
+    let id = window
+        .push(msg_at("only turn", Phase::Implementation))
+        .unwrap();
     window.evict_turn(id, true).unwrap();
     assert!(window.to_api_messages().is_empty());
 }

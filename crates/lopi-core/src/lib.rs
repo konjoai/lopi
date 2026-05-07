@@ -1,14 +1,15 @@
-pub mod task;
 pub mod agent;
 pub mod config;
 pub mod event;
+pub mod task;
 
-pub use task::{Task, TaskId, TaskStatus, Priority, TaskSource};
-pub use agent::{AgentRun, Attempt, AgentState, Score, TurnMetrics};
+pub use agent::{AgentRun, AgentState, Attempt, Score, TurnMetrics};
 pub use config::{LopiConfig, RepoProfile, ScheduleEntry};
 pub use event::{AgentEvent, EventBus, LogLevel};
+pub use task::{Priority, Task, TaskId, TaskSource, TaskStatus};
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
     use chrono::Utc;
@@ -82,11 +83,17 @@ mod tests {
 
     #[test]
     fn task_source_serde_round_trip() {
-        let s = TaskSource::Telegram { chat_id: 12345, message_id: 99 };
+        let s = TaskSource::Telegram {
+            chat_id: 12345,
+            message_id: 99,
+        };
         let json = serde_json::to_string(&s).unwrap();
         let back: TaskSource = serde_json::from_str(&json).unwrap();
         match back {
-            TaskSource::Telegram { chat_id, message_id } => {
+            TaskSource::Telegram {
+                chat_id,
+                message_id,
+            } => {
                 assert_eq!(chat_id, 12345);
                 assert_eq!(message_id, 99);
             }

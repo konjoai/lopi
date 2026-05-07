@@ -11,10 +11,15 @@ fn is_budget_evictable(turn: &TaggedMessage) -> bool {
 }
 
 fn partner_index(turns: &[TaggedMessage], turn_id: TurnId, pair_id: uuid::Uuid) -> Option<usize> {
-    turns.iter().position(|t| t.id != turn_id && t.tool_pair_id == Some(pair_id))
+    turns
+        .iter()
+        .position(|t| t.id != turn_id && t.tool_pair_id == Some(pair_id))
 }
 
 /// Evict all non-pinned, non-conclusion turns in `phase`. Tool pairs spanning phases are skipped.
+///
+/// # Errors
+/// Returns `Err` if an internal consistency check fails.
 pub fn evict_phase(
     turns: &mut Vec<TaggedMessage>,
     phase: Phase,
@@ -72,8 +77,11 @@ pub fn evict_phase(
     })
 }
 
-/// Evict oldest BudgetEvictable/Never turns until `current_tokens <= target_tokens`.
-/// Respects PinPolicy::Always and is_conclusion — those are never touched.
+/// Evict oldest `BudgetEvictable`/`Never` turns until `current_tokens <= target_tokens`.
+/// Respects `PinPolicy::Always` and `is_conclusion` — those are never touched.
+///
+/// # Errors
+/// Returns `Err` if an internal consistency check fails.
 pub fn evict_to_budget(
     turns: &mut Vec<TaggedMessage>,
     target_tokens: usize,
@@ -119,21 +127,32 @@ pub fn evict_to_budget(
         *current_tokens = current_tokens.saturating_sub(t_tokens);
     }
 
-    Ok(EvictionStats { turns_evicted, tokens_freed, reason: EvictionReason::BudgetLIFO })
+    Ok(EvictionStats {
+        turns_evicted,
+        tokens_freed,
+        reason: EvictionReason::BudgetLIFO,
+    })
 }
 
 /// Evict a specific turn by ID.
 ///
 /// If the turn is part of a tool pair, `force=false` returns `OrphanedToolPair`.
 /// `force=true` evicts both turns in the pair unconditionally.
-/// Non-evictable pins (Always / is_conclusion) require `force=true` or return `ForcedPinViolation`.
+/// Non-evictable pins (`Always` / `is_conclusion`) require `force=true` or return `ForcedPinViolation`.
+///
+/// # Errors
+/// Returns `Err(ContextError::TurnNotFound)` if the ID does not exist,
+/// `Err(ContextError::ForcedPinViolation)` if the turn is pinned and `force=false`,
+/// or `Err(ContextError::OrphanedToolPair)` if the turn has a tool-pair partner and `force=false`.
 pub fn evict_turn(
     turns: &mut Vec<TaggedMessage>,
     id: TurnId,
     force: bool,
     current_tokens: &mut usize,
 ) -> Result<EvictionStats, ContextError> {
-    let idx = turns.iter().position(|t| t.id == id)
+    let idx = turns
+        .iter()
+        .position(|t| t.id == id)
         .ok_or(ContextError::TurnNotFound { id })?;
 
     if !force && !can_evict(&turns[idx]) {
@@ -145,7 +164,10 @@ pub fn evict_turn(
 
     if let Some(pidx) = pidx {
         if !force {
-            return Err(ContextError::OrphanedToolPair { id, partner_id: turns[pidx].id });
+            return Err(ContextError::OrphanedToolPair {
+                id,
+                partner_id: turns[pidx].id,
+            });
         }
         let t_tokens = turns[idx].tokens;
         let p_tokens = turns[pidx].tokens;
@@ -164,7 +186,11 @@ pub fn evict_turn(
     turns.remove(idx);
     *current_tokens = current_tokens.saturating_sub(tokens);
 
-    Ok(EvictionStats { turns_evicted: 1, tokens_freed: tokens, reason: EvictionReason::Manual })
+    Ok(EvictionStats {
+        turns_evicted: 1,
+        tokens_freed: tokens,
+        reason: EvictionReason::Manual,
+    })
 }
 
 /// Evict any turn whose `evict_after` matches `just_completed`, skipping conclusions.
@@ -190,5 +216,9 @@ pub fn check_expired_tags(
 
     *current_tokens = current_tokens.saturating_sub(tokens_freed);
 
-    EvictionStats { turns_evicted, tokens_freed, reason: EvictionReason::ExplicitTag }
+    EvictionStats {
+        turns_evicted,
+        tokens_freed,
+        reason: EvictionReason::ExplicitTag,
+    }
 }

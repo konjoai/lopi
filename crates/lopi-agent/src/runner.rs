@@ -1,13 +1,13 @@
+use crate::claude::{select_model, ClaudeCode};
+use crate::scorer::Scorer;
 use anyhow::Result;
 use lopi_context::{ContentBlock, ContextWindow, Phase, PinPolicy, Role, TaggedMessage};
 use lopi_core::{AgentEvent, Attempt, EventBus, Task, TaskId, TaskStatus};
 use lopi_git::GitManager;
 use lopi_memory::MemoryStore;
-use crate::claude::{select_model, ClaudeCode};
-use crate::scorer::Scorer;
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
@@ -80,6 +80,7 @@ impl AgentRunner {
     }
 
     /// One-shot constructor — creates a standalone bus for `lopi run`.
+    #[must_use]
     pub fn standalone(task: Task, repo_path: PathBuf) -> (Self, EventBus<AgentEvent>) {
         let bus: EventBus<AgentEvent> = EventBus::new(128);
         let (_cancel_tx, cancel_rx) = oneshot::channel();
@@ -103,15 +104,20 @@ impl AgentRunner {
 
     /// Return a child token derived from this runner's `CancellationToken`.
     /// The pool can cancel this token to abort the runner from a `JoinSet` teardown.
+    #[must_use]
     pub fn cancel_token(&self) -> CancellationToken {
         self.cancel_token.clone()
     }
 
+    /// Return the number of attempts made by this runner.
+    #[must_use]
     pub fn attempts_made(&self) -> u8 {
         self.attempts_made
     }
 
-    fn id(&self) -> TaskId { self.task.id }
+    fn id(&self) -> TaskId {
+        self.task.id
+    }
 
     fn log(&self, msg: impl Into<String>) {
         self.bus.send(AgentEvent::info(self.id(), msg));
@@ -166,7 +172,7 @@ impl AgentRunner {
         // Then check the legacy oneshot cancel channel (web API / CLI path).
         if let Some(mut rx) = self.cancel_rx.take() {
             match rx.try_recv() {
-                Ok(_) | Err(oneshot::error::TryRecvError::Closed) => {
+                Ok(()) | Err(oneshot::error::TryRecvError::Closed) => {
                     self.log("⛔ cancelled by user");
                     return true;
                 }
@@ -195,6 +201,12 @@ impl AgentRunner {
         self.context.push(msg).ok();
     }
 
+    /// Execute the full agent loop: plan → implement → test → retry.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if git operations fail or if a scorer command fails unexpectedly.
+    #[allow(clippy::too_many_lines)]
     #[tracing::instrument(skip(self), fields(task_id = %self.task.id, goal = %self.task.goal))]
     pub async fn run(&mut self) -> Result<TaskStatus> {
         self.boot_context();
@@ -208,13 +220,26 @@ impl AgentRunner {
         let extra_constraints = if let Some(store) = &self.store {
             match store.find_similar_patterns(&self.task.goal).await {
                 Ok(patterns) if !patterns.is_empty() => {
-                    self.log(format!("🧠 seeding from {} similar past patterns", patterns.len()));
+                    self.log(format!(
+                        "🧠 seeding from {} similar past patterns",
+                        patterns.len()
+                    ));
                     // Collect (keywords, constraints) pairs for the TOON tabular encoder.
                     // These are passed to encode_task_context() inside ClaudeCode::plan().
-                    patterns.iter().take(5)
+                    patterns
+                        .iter()
+                        .take(5)
                         .filter_map(|p| {
-                            let c = p.successful_constraints.as_deref().unwrap_or("").to_string();
-                            if c.is_empty() { None } else { Some(c) }
+                            let c = p
+                                .successful_constraints
+                                .as_deref()
+                                .unwrap_or("")
+                                .to_string();
+                            if c.is_empty() {
+                                None
+                            } else {
+                                Some(c)
+                            }
                         })
                         .collect()
                 }
@@ -248,11 +273,14 @@ impl AgentRunner {
             }
 
             if self.check_cancel() {
-                return Ok(TaskStatus::Failed { reason: "Cancelled".into() });
+                return Ok(TaskStatus::Failed {
+                    reason: "Cancelled".into(),
+                });
             }
 
             self.attempts_made = attempt + 1;
-            self.attempt_counter.store(attempt as usize + 1, Ordering::Relaxed);
+            self.attempt_counter
+                .store(attempt as usize + 1, Ordering::Relaxed);
 
             let branch = format!("lopi/{}-attempt-{}", self.task.id.0, attempt + 1);
             self.bus.send(AgentEvent::TaskStarted {
@@ -264,13 +292,21 @@ impl AgentRunner {
 
             if let Err(e) = git.checkout_new_branch(&branch).await {
                 self.warn(format!("checkout failed: {e}"));
-                self.status(TaskStatus::Retrying { attempt: attempt + 1 }, attempt + 1);
+                self.status(
+                    TaskStatus::Retrying {
+                        attempt: attempt + 1,
+                    },
+                    attempt + 1,
+                );
                 continue;
             }
 
             self.status(TaskStatus::Planning, attempt + 1);
             self.context.transition_phase(Phase::Planning);
-            tracing::info!(pressure = self.context.token_pressure(), "context at planning");
+            tracing::info!(
+                pressure = self.context.token_pressure(),
+                "context at planning"
+            );
             self.log("📋 planning…");
 
             if self.speculative {
@@ -278,7 +314,10 @@ impl AgentRunner {
                 let (plan_handle, mut step_rx) = claude.plan_streaming(&self.task);
                 self.status(TaskStatus::Implementing, attempt + 1);
                 self.context.transition_phase(Phase::Implementation);
-                tracing::info!(pressure = self.context.token_pressure(), "context at speculative implementation");
+                tracing::info!(
+                    pressure = self.context.token_pressure(),
+                    "context at speculative implementation"
+                );
                 self.log("⚡ speculative: applying steps as plan streams…");
 
                 while let Some(step) = step_rx.recv().await {
@@ -296,7 +335,12 @@ impl AgentRunner {
                         self.warn(format!("plan stream failed: {e}"));
                         git.hard_rollback().await.ok();
                         git.checkout_default().await.ok();
-                        self.status(TaskStatus::Retrying { attempt: attempt + 1 }, attempt + 1);
+                        self.status(
+                            TaskStatus::Retrying {
+                                attempt: attempt + 1,
+                            },
+                            attempt + 1,
+                        );
                         continue;
                     }
                     Err(e) => {
@@ -304,20 +348,36 @@ impl AgentRunner {
                         self.warn(format!("plan stream failed: {e}"));
                         git.hard_rollback().await.ok();
                         git.checkout_default().await.ok();
-                        self.status(TaskStatus::Retrying { attempt: attempt + 1 }, attempt + 1);
+                        self.status(
+                            TaskStatus::Retrying {
+                                attempt: attempt + 1,
+                            },
+                            attempt + 1,
+                        );
                         continue;
                     }
                 };
-                self.log(format!("✅ speculative plan+implement done ({} chars)", plan.len()));
+                self.log(format!(
+                    "✅ speculative plan+implement done ({} chars)",
+                    plan.len()
+                ));
             } else {
                 // Standard mode: wait for full plan, then implement in one pass.
                 let plan = match claude.plan(&self.task).await {
-                    Ok(p) => { self.log(format!("✅ plan ready ({} chars)", p.len())); p }
+                    Ok(p) => {
+                        self.log(format!("✅ plan ready ({} chars)", p.len()));
+                        p
+                    }
                     Err(e) => {
                         self.warn(format!("plan failed: {e}"));
                         git.hard_rollback().await.ok();
                         git.checkout_default().await.ok();
-                        self.status(TaskStatus::Retrying { attempt: attempt + 1 }, attempt + 1);
+                        self.status(
+                            TaskStatus::Retrying {
+                                attempt: attempt + 1,
+                            },
+                            attempt + 1,
+                        );
                         continue;
                     }
                 };
@@ -329,30 +389,45 @@ impl AgentRunner {
                         self.log(line.to_string());
                     }
                     git.checkout_default().await.ok();
-                    return Ok(TaskStatus::Failed { reason: "dry-run complete".into() });
+                    return Ok(TaskStatus::Failed {
+                        reason: "dry-run complete".into(),
+                    });
                 }
 
                 if self.check_cancel() {
                     git.hard_rollback().await.ok();
                     git.checkout_default().await.ok();
-                    return Ok(TaskStatus::Failed { reason: "Cancelled".into() });
+                    return Ok(TaskStatus::Failed {
+                        reason: "Cancelled".into(),
+                    });
                 }
 
                 self.status(TaskStatus::Implementing, attempt + 1);
                 self.context.transition_phase(Phase::Implementation);
-                tracing::info!(pressure = self.context.token_pressure(), "context at implementation");
+                tracing::info!(
+                    pressure = self.context.token_pressure(),
+                    "context at implementation"
+                );
                 self.log("🔨 implementing…");
 
                 if let Err(e) = claude.implement(&self.task, &plan).await {
                     self.warn(format!("implement failed: {e}"));
                     git.hard_rollback().await.ok();
                     git.checkout_default().await.ok();
-                    self.status(TaskStatus::Retrying { attempt: attempt + 1 }, attempt + 1);
+                    self.status(
+                        TaskStatus::Retrying {
+                            attempt: attempt + 1,
+                        },
+                        attempt + 1,
+                    );
                     continue;
                 }
             }
 
-            if let Err(e) = git.check_diff_scope(&self.task.allowed_dirs, &self.task.forbidden_dirs).await {
+            if let Err(e) = git
+                .check_diff_scope(&self.task.allowed_dirs, &self.task.forbidden_dirs)
+                .await
+            {
                 self.warn(format!("diff scope violation: {e}"));
                 self.status(TaskStatus::RolledBack, attempt + 1);
                 git.hard_rollback().await.ok();
@@ -362,7 +437,10 @@ impl AgentRunner {
 
             self.status(TaskStatus::Testing, attempt + 1);
             self.context.transition_phase(Phase::Testing);
-            tracing::info!(pressure = self.context.token_pressure(), "context at testing");
+            tracing::info!(
+                pressure = self.context.token_pressure(),
+                "context at testing"
+            );
             self.log("🧪 running tests…");
             let score = scorer.score().await?;
 
@@ -372,25 +450,42 @@ impl AgentRunner {
                 lint_errors: score.lint_errors,
                 diff_lines: score.diff_lines,
             });
-            self.log(format!("📊 score: pass={:.0}% lint={} diff={}L",
-                score.test_pass_rate * 100.0, score.lint_errors, score.diff_lines));
+            self.log(format!(
+                "📊 score: pass={:.0}% lint={} diff={}L",
+                score.test_pass_rate * 100.0,
+                score.lint_errors,
+                score.diff_lines
+            ));
 
             // Persist attempt.
             if let Some(store) = &self.store {
                 let mut a = Attempt::new(self.id(), attempt + 1, &branch);
                 a.score = Some(score.clone());
-                a.outcome = if score.passed() { "success".into() } else { "retry".into() };
+                a.outcome = if score.passed() {
+                    "success".into()
+                } else {
+                    "retry".into()
+                };
                 store.save_attempt(&a).await.ok();
             }
 
             if score.passed() {
                 self.log("✅ tests pass — committing…");
                 self.context.pin_conclusion(
-                    format!("Sprint succeeded — pass={:.0}% diff={}L", score.test_pass_rate * 100.0, score.diff_lines),
+                    format!(
+                        "Sprint succeeded — pass={:.0}% diff={}L",
+                        score.test_pass_rate * 100.0,
+                        score.diff_lines
+                    ),
                     Phase::Conclusion,
                 );
-                tracing::info!(pressure = self.context.token_pressure(), "context at conclusion");
-                git.commit_all(&format!("lopi: {}", self.task.goal)).await.ok();
+                tracing::info!(
+                    pressure = self.context.token_pressure(),
+                    "context at conclusion"
+                );
+                git.commit_all(&format!("lopi: {}", self.task.goal))
+                    .await
+                    .ok();
                 let pr_url = git.open_pr(&branch, &self.task.goal).await.ok();
                 if let Some(ref url) = pr_url {
                     self.log(format!("🔗 PR opened: {url}"));
@@ -406,18 +501,24 @@ impl AgentRunner {
                 self.warn(format!("fix failed: {e}"));
             }
 
-            if git.check_diff_scope(&self.task.allowed_dirs, &self.task.forbidden_dirs).await.is_ok() {
+            if git
+                .check_diff_scope(&self.task.allowed_dirs, &self.task.forbidden_dirs)
+                .await
+                .is_ok()
+            {
                 self.status(TaskStatus::Testing, attempt + 1);
-                let score2 = scorer.score().await?;
+                let fixed_score = scorer.score().await?;
                 self.bus.send(AgentEvent::ScoreUpdated {
                     task_id: self.id(),
-                    test_pass_rate: score2.test_pass_rate,
-                    lint_errors: score2.lint_errors,
-                    diff_lines: score2.diff_lines,
+                    test_pass_rate: fixed_score.test_pass_rate,
+                    lint_errors: fixed_score.lint_errors,
+                    diff_lines: fixed_score.diff_lines,
                 });
-                if score2.passed() {
+                if fixed_score.passed() {
                     self.log("✅ fix worked — committing…");
-                    git.commit_all(&format!("lopi: {}", self.task.goal)).await.ok();
+                    git.commit_all(&format!("lopi: {}", self.task.goal))
+                        .await
+                        .ok();
                     let pr_url = git.open_pr(&branch, &self.task.goal).await.ok();
                     let status = TaskStatus::Success { branch, pr_url };
                     self.status(status.clone(), attempt + 1);
@@ -427,15 +528,27 @@ impl AgentRunner {
 
             git.hard_rollback().await.ok();
             git.checkout_default().await.ok();
-            self.status(TaskStatus::Retrying { attempt: attempt + 1 }, attempt + 1);
+            self.status(
+                TaskStatus::Retrying {
+                    attempt: attempt + 1,
+                },
+                attempt + 1,
+            );
             // Full-jitter exponential backoff before the next attempt.
             // Base 500 ms — caps at 30 s. Prevents thundering-herd on transient failures.
             let wait = backoff_secs(attempt, 500);
-            self.log(format!("♻️ retry {}/{} (backoff {}ms)", attempt + 1, self.task.max_retries, wait.as_millis()));
+            self.log(format!(
+                "♻️ retry {}/{} (backoff {}ms)",
+                attempt + 1,
+                self.task.max_retries,
+                wait.as_millis()
+            ));
             tokio::time::sleep(wait).await;
         }
 
-        let status = TaskStatus::Failed { reason: "Max retries exceeded".into() };
+        let status = TaskStatus::Failed {
+            reason: "Max retries exceeded".into(),
+        };
         self.status(status.clone(), self.task.max_retries);
         Ok(status)
     }

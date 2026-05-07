@@ -1,3 +1,4 @@
+#![allow(clippy::missing_errors_doc)]
 use anyhow::Result;
 use axum::{
     extract::State,
@@ -32,7 +33,10 @@ pub async fn serve(
     signing_secret: Option<String>,
     addr: SocketAddr,
 ) -> Result<()> {
-    let state = WhatsappState { queue, signing_secret };
+    let state = WhatsappState {
+        queue,
+        signing_secret,
+    };
     let app = Router::new()
         .route("/webhook/whatsapp", post(handle))
         .with_state(state);
@@ -55,7 +59,10 @@ async fn handle(
             .unwrap_or("");
         if !verify_twilio_signature(secret.as_bytes(), &body, sig) {
             tracing::warn!("whatsapp: rejected request with invalid Twilio signature");
-            return (StatusCode::FORBIDDEN, "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response/>")
+            return (
+                StatusCode::FORBIDDEN,
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response/>",
+            )
                 .into_response();
         }
     }
@@ -64,7 +71,10 @@ async fn handle(
         Ok(p) => p,
         Err(e) => {
             tracing::warn!("whatsapp: failed to parse form body: {e}");
-            return (StatusCode::BAD_REQUEST, "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response/>")
+            return (
+                StatusCode::BAD_REQUEST,
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response/>",
+            )
                 .into_response();
         }
     };
@@ -72,11 +82,18 @@ async fn handle(
     let text = payload.body.trim();
     if let Some(goal) = text.strip_prefix("/task ") {
         let mut t = Task::new(goal);
-        t.source = TaskSource::Webhook { repo: "whatsapp".into(), event: "message".into() };
+        t.source = TaskSource::Webhook {
+            repo: "whatsapp".into(),
+            event: "message".into(),
+        };
         s.queue.push(t).await;
     }
     // Twilio expects 200 with TwiML; an empty 200 is fine.
-    (StatusCode::OK, "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response/>").into_response()
+    (
+        StatusCode::OK,
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response/>",
+    )
+        .into_response()
 }
 
 /// Verify a Twilio webhook signature.
@@ -104,10 +121,14 @@ fn constant_time_eq(a: &str, b: &str) -> bool {
     if a.len() != b.len() {
         return false;
     }
-    a.bytes().zip(b.bytes()).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
+    a.bytes()
+        .zip(b.bytes())
+        .fold(0u8, |acc, (x, y)| acc | (x ^ y))
+        == 0
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
 

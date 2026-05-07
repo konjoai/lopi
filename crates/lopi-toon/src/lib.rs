@@ -4,13 +4,19 @@
 // Encodes/decodes the JSON data model with ~40% fewer tokens than JSON.
 // Key features: tabular arrays, minimal quoting, indentation over braces.
 
-mod encode;
 mod decode;
+mod encode;
 
-pub use encode::{encode, encode_with, encode_task_context, Delimiter, EncoderOptions};
 pub use decode::{decode, decode_with, DecoderOptions, ToonError};
+pub use encode::{encode, encode_task_context, encode_with, Delimiter, EncoderOptions};
 
 #[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::approx_constant,
+    clippy::needless_pass_by_value
+)]
 mod tests {
     use super::*;
     use serde_json::{json, Value};
@@ -22,7 +28,9 @@ mod tests {
     // ── Primitives ──────────────────────────────────────────────────────────
 
     #[test]
-    fn null_roundtrip() { assert_eq!(rt(json!(null)), json!(null)); }
+    fn null_roundtrip() {
+        assert_eq!(rt(json!(null)), json!(null));
+    }
 
     #[test]
     fn bool_roundtrip() {
@@ -31,10 +39,14 @@ mod tests {
     }
 
     #[test]
-    fn integer_roundtrip() { assert_eq!(rt(json!(42)), json!(42)); }
+    fn integer_roundtrip() {
+        assert_eq!(rt(json!(42)), json!(42));
+    }
 
     #[test]
-    fn float_roundtrip() { assert_eq!(rt(json!(3.14)), json!(3.14)); }
+    fn float_roundtrip() {
+        assert_eq!(rt(json!(3.14)), json!(3.14));
+    }
 
     #[test]
     fn string_roundtrip() {
@@ -205,8 +217,10 @@ mod tests {
         });
         let toon_len = encode(&v).len();
         let json_len = serde_json::to_string_pretty(&v).unwrap().len();
-        assert!(toon_len < json_len,
-            "TOON ({toon_len}) should be shorter than JSON ({json_len})");
+        assert!(
+            toon_len < json_len,
+            "TOON ({toon_len}) should be shorter than JSON ({json_len})"
+        );
     }
 
     // ── Encode output format tests ────────────────────────────────────────────
@@ -232,24 +246,41 @@ mod tests {
         let out = encode(&v);
         // Key structural checks.
         assert!(out.contains("context:"), "should have context block");
-        assert!(out.contains("  task: Our favorite hikes together"), "unquoted multiword value");
-        assert!(out.contains("friends[3]: ana,luis,sam"), "inline primitive array");
-        assert!(out.contains("hikes[3]{id,name,distanceKm,elevationGain,companion,wasSunny}:"),
-                "tabular header");
-        assert!(out.contains("  1,Blue Lake Trail,7.5,320,ana,true"), "tabular row");
+        assert!(
+            out.contains("  task: Our favorite hikes together"),
+            "unquoted multiword value"
+        );
+        assert!(
+            out.contains("friends[3]: ana,luis,sam"),
+            "inline primitive array"
+        );
+        assert!(
+            out.contains("hikes[3]{id,name,distanceKm,elevationGain,companion,wasSunny}:"),
+            "tabular header"
+        );
+        assert!(
+            out.contains("  1,Blue Lake Trail,7.5,320,ana,true"),
+            "tabular row"
+        );
     }
 
     #[test]
     fn empty_string_encodes_quoted() {
         let v = json!({"key": ""});
         let out = encode(&v);
-        assert!(out.contains("key: \"\""), "empty string must be quoted: {out:?}");
+        assert!(
+            out.contains("key: \"\""),
+            "empty string must be quoted: {out:?}"
+        );
     }
 
     #[test]
     fn reserved_word_value_encodes_quoted() {
         let out = encode(&json!({"flag": "true"}));
-        assert!(out.contains("\"true\""), "string 'true' must be quoted: {out:?}");
+        assert!(
+            out.contains("\"true\""),
+            "string 'true' must be quoted: {out:?}"
+        );
     }
 
     #[test]
