@@ -222,3 +222,228 @@ pub fn check_expired_tags(
         reason: EvictionReason::ExplicitTag,
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+mod tests {
+    use super::*;
+    use uuid::Uuid;
+
+    fn make_turn(tokens: usize, pin: PinPolicy, phase: Phase) -> TaggedMessage {
+        TaggedMessage {
+            id: Uuid::new_v4(),
+            role: crate::types::Role::User,
+            content: vec![],
+            tokens,
+            pin,
+            phase,
+            evict_after: None,
+            tool_pair_id: None,
+            is_conclusion: false,
+        }
+    }
+
+    fn make_conclusion(tokens: usize, phase: Phase) -> TaggedMessage {
+        let mut t = make_turn(tokens, PinPolicy::Always, phase);
+        t.is_conclusion = true;
+        t
+    }
+
+    #[test]
+    fn evict_phase_removes_evictable_turns() {
+        let mut turns = vec![
+            make_turn(100, PinPolicy::Never, Phase::Planning),
+            make_turn(200, PinPolicy::Never, Phase::Planning),
+        ];
+        let mut tokens = 300;
+        let stats = evict_phase(&mut turns, Phase::Planning, &mut tokens).unwrap();
+        assert_eq!(turns.len(), 0);
+        assert_eq!(stats.turns_evicted, 2);
+        assert_eq!(stats.tokens_freed, 300);
+        assert_eq!(tokens, 0);
+    }
+
+    #[test]
+    fn evict_phase_skips_always_pinned() {
+        let mut turns = vec![
+            make_turn(100, PinPolicy::Always, Phase::Planning),
+            make_turn(200, PinPolicy::Never, Phase::Planning),
+        ];
+        let mut tokens = 300;
+        let stats = evict_phase(&mut turns, Phase::Planning, &mut tokens).unwrap();
+        assert_eq!(turns.len(), 1);
+        assert_eq!(stats.turns_evicted, 1);
+        assert_eq!(stats.tokens_freed, 200);
+    }
+
+    #[test]
+    fn evict_phase_skips_conclusions() {
+        let mut turns = vec![
+            make_conclusion(150, Phase::Planning),
+            make_turn(200, PinPolicy::Never, Phase::Planning),
+        ];
+        let mut tokens = 350;
+        let stats = evict_phase(&mut turns, Phase::Planning, &mut tokens).unwrap();
+        assert_eq!(turns.len(), 1);
+        assert_eq!(stats.turns_evicted, 1);
+        assert_eq!(stats.tokens_freed, 200);
+    }
+
+    #[test]
+    fn evict_phase_skips_different_phase() {
+        let mut turns = vec![
+            make_turn(100, PinPolicy::Never, Phase::Boot),
+            make_turn(200, PinPolicy::Never, Phase::Planning),
+        ];
+        let mut tokens = 300;
+        let stats = evict_phase(&mut turns, Phase::Planning, &mut tokens).unwrap();
+        assert_eq!(turns.len(), 1);
+        assert_eq!(turns[0].phase, Phase::Boot);
+        assert_eq!(stats.turns_evicted, 1);
+        assert_eq!(stats.tokens_freed, 200);
+    }
+
+    #[test]
+    fn evict_to_budget_removes_budget_evictable_turns() {
+        let mut turns = vec![
+            make_turn(100, PinPolicy::BudgetEvictable, Phase::Planning),
+            make_turn(200, PinPolicy::BudgetEvictable, Phase::Planning),
+            make_turn(50, PinPolicy::Always, Phase::Planning),
+        ];
+        let mut tokens = 350;
+        // Target: 100 tokens — should evict first BudgetEvictable turns
+        let stats = evict_to_budget(&mut turns, 100, &mut tokens).unwrap();
+        assert!(tokens <= 350);
+        assert!(stats.turns_evicted > 0);
+    }
+
+    #[test]
+    fn evict_to_budget_respects_target() {
+        let mut turns = vec![
+            make_turn(100, PinPolicy::BudgetEvictable, Phase::Planning),
+            make_turn(100, PinPolicy::BudgetEvictable, Phase::Planning),
+        ];
+        let mut tokens = 200;
+        let _stats = evict_to_budget(&mut turns, 200, &mut tokens).unwrap();
+        // Already at budget, nothing should be evicted
+        assert_eq!(tokens, 200);
+        assert_eq!(turns.len(), 2);
+    }
+
+    #[test]
+    fn evict_to_budget_skips_pinned_always() {
+        let mut turns = vec![
+            make_turn(100, PinPolicy::Always, Phase::Planning),
+            make_turn(100, PinPolicy::BudgetEvictable, Phase::Planning),
+        ];
+        let mut tokens = 200;
+        let stats = evict_to_budget(&mut turns, 50, &mut tokens).unwrap();
+        // Only the BudgetEvictable one can be removed
+        assert_eq!(stats.turns_evicted, 1);
+        assert_eq!(turns.len(), 1);
+        assert_eq!(turns[0].pin, PinPolicy::Always);
+    }
+
+    #[test]
+    fn evict_turn_removes_specific_turn() {
+        let turn = make_turn(100, PinPolicy::Never, Phase::Planning);
+        let turn_id = turn.id;
+        let mut turns = vec![turn, make_turn(200, PinPolicy::Never, Phase::Planning)];
+        let mut tokens = 300;
+        let stats = evict_turn(&mut turns, turn_id, false, &mut tokens).unwrap();
+        assert_eq!(stats.turns_evicted, 1);
+        assert_eq!(stats.tokens_freed, 100);
+        assert_eq!(tokens, 200);
+        assert_eq!(turns.len(), 1);
+    }
+
+    #[test]
+    fn evict_turn_returns_error_for_nonexistent_id() {
+        let mut turns = vec![make_turn(100, PinPolicy::Never, Phase::Planning)];
+        let mut tokens = 100;
+        let fake_id = Uuid::new_v4();
+        let result = evict_turn(&mut turns, fake_id, false, &mut tokens);
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), ContextError::TurnNotFound { .. }));
+    }
+
+    #[test]
+    fn evict_turn_returns_error_for_pinned_always_without_force() {
+        let turn = make_turn(100, PinPolicy::Always, Phase::Planning);
+        let turn_id = turn.id;
+        let mut turns = vec![turn];
+        let mut tokens = 100;
+        let result = evict_turn(&mut turns, turn_id, false, &mut tokens);
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            ContextError::ForcedPinViolation { .. }
+        ));
+    }
+
+    #[test]
+    fn evict_turn_with_force_removes_pinned() {
+        let turn = make_turn(100, PinPolicy::Always, Phase::Planning);
+        let turn_id = turn.id;
+        let mut turns = vec![turn];
+        let mut tokens = 100;
+        let stats = evict_turn(&mut turns, turn_id, true, &mut tokens).unwrap();
+        assert_eq!(stats.turns_evicted, 1);
+        assert!(turns.is_empty());
+        assert_eq!(tokens, 0);
+    }
+
+    #[test]
+    fn check_expired_tags_removes_matching_turns() {
+        let trigger_id = Uuid::new_v4();
+        let mut turn1 = make_turn(100, PinPolicy::Never, Phase::Planning);
+        turn1.evict_after = Some(trigger_id);
+        let turn2 = make_turn(200, PinPolicy::Never, Phase::Planning);
+        let mut turns = vec![turn1, turn2];
+        let mut tokens = 300;
+
+        let stats = check_expired_tags(&mut turns, trigger_id, &mut tokens);
+        assert_eq!(stats.turns_evicted, 1);
+        assert_eq!(stats.tokens_freed, 100);
+        assert_eq!(tokens, 200);
+        assert_eq!(turns.len(), 1);
+    }
+
+    #[test]
+    fn check_expired_tags_skips_conclusions() {
+        let trigger_id = Uuid::new_v4();
+        let mut turn = make_turn(100, PinPolicy::Never, Phase::Planning);
+        turn.evict_after = Some(trigger_id);
+        turn.is_conclusion = true;
+        let mut turns = vec![turn];
+        let mut tokens = 100;
+
+        let stats = check_expired_tags(&mut turns, trigger_id, &mut tokens);
+        assert_eq!(stats.turns_evicted, 0);
+        assert_eq!(turns.len(), 1);
+    }
+
+    #[test]
+    fn check_expired_tags_no_match_does_nothing() {
+        let trigger_id = Uuid::new_v4();
+        let other_id = Uuid::new_v4();
+        let mut turn = make_turn(100, PinPolicy::Never, Phase::Planning);
+        turn.evict_after = Some(other_id);
+        let mut turns = vec![turn];
+        let mut tokens = 100;
+
+        let stats = check_expired_tags(&mut turns, trigger_id, &mut tokens);
+        assert_eq!(stats.turns_evicted, 0);
+        assert_eq!(turns.len(), 1);
+        assert_eq!(tokens, 100);
+    }
+
+    #[test]
+    fn evict_phase_empty_turns_returns_zero_stats() {
+        let mut turns: Vec<TaggedMessage> = vec![];
+        let mut tokens = 0;
+        let stats = evict_phase(&mut turns, Phase::Planning, &mut tokens).unwrap();
+        assert_eq!(stats.turns_evicted, 0);
+        assert_eq!(stats.tokens_freed, 0);
+    }
+}
