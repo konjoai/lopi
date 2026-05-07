@@ -78,6 +78,7 @@ pub fn next_run_times(cron_expr: &str, count: usize) -> Vec<chrono::DateTime<chr
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
 
@@ -96,5 +97,73 @@ mod tests {
     fn next_run_times_invalid_expr() {
         let times = next_run_times("not a cron", 3);
         assert!(times.is_empty());
+    }
+
+    #[test]
+    fn next_run_times_returns_correct_count() {
+        let times = next_run_times("0 2 * * *", 5);
+        assert_eq!(times.len(), 5);
+    }
+
+    #[test]
+    fn next_run_times_count_zero_returns_empty() {
+        let times = next_run_times("0 2 * * *", 0);
+        assert!(times.is_empty());
+    }
+
+    #[test]
+    fn next_run_times_times_are_ordered() {
+        let times = next_run_times("0 2 * * *", 4);
+        assert_eq!(times.len(), 4);
+        for i in 1..times.len() {
+            assert!(
+                times[i] > times[i - 1],
+                "cron times should be strictly increasing"
+            );
+        }
+    }
+
+    #[test]
+    fn next_run_times_weekly_expr() {
+        let times = next_run_times("0 9 * * MON", 2);
+        assert_eq!(times.len(), 2);
+        let now = chrono::Utc::now();
+        for t in &times {
+            assert!(t > &now);
+        }
+    }
+
+    #[test]
+    fn next_run_times_every_minute_expr() {
+        // "* * * * *" = every minute
+        let times = next_run_times("* * * * *", 3);
+        assert_eq!(times.len(), 3);
+    }
+
+    #[test]
+    fn next_run_times_empty_string_returns_empty() {
+        let times = next_run_times("", 3);
+        assert!(times.is_empty());
+    }
+
+    #[test]
+    fn next_run_times_partial_cron_returns_empty() {
+        // Only 3 fields — invalid 5-field cron
+        let times = next_run_times("0 2 *", 3);
+        assert!(times.is_empty());
+    }
+
+    #[test]
+    fn next_run_times_all_fields_wildcard() {
+        // "* * * * *" fires every minute
+        let times = next_run_times("* * * * *", 10);
+        assert_eq!(times.len(), 10);
+        // All times should be within the next hour (every minute)
+        let now = chrono::Utc::now();
+        let one_hour = chrono::Duration::hours(1);
+        for t in &times {
+            assert!(t > &now);
+            assert!(t < &(now + one_hour));
+        }
     }
 }

@@ -128,9 +128,15 @@ fn constant_time_eq(a: &str, b: &str) -> bool {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
+    use axum::{
+        body::Body,
+        http::{Request, StatusCode},
+        routing::post,
+    };
+    use tower::ServiceExt;
 
     fn make_signature(secret: &[u8], body: &[u8]) -> String {
         use base64::Engine as _;
@@ -139,6 +145,17 @@ mod tests {
         let mut mac = Hmac::<Sha1>::new_from_slice(secret).unwrap();
         mac.update(body);
         base64::engine::general_purpose::STANDARD.encode(mac.finalize().into_bytes().as_slice())
+    }
+
+    fn make_test_router(signing_secret: Option<&str>) -> Router {
+        let queue = TaskQueue::new();
+        let state = WhatsappState {
+            queue,
+            signing_secret: signing_secret.map(ToString::to_string),
+        };
+        Router::new()
+            .route("/webhook/whatsapp", post(handle))
+            .with_state(state)
     }
 
     #[test]
@@ -168,5 +185,123 @@ mod tests {
         let secret = b"my_secret";
         let body = b"Body=hello";
         assert!(!verify_twilio_signature(secret, body, ""));
+    }
+
+    #[tokio::test]
+    async fn no_secret_task_message_queues_task() {
+        let app = make_test_router(None);
+        let body = "Body=%2Ftask+fix+the+bug&From=whatsapp%3A%2B15551234567";
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/webhook/whatsapp")
+                    .header("Content-Type", "application/x-www-form-urlencoded")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn no_secret_non_task_message_returns_ok() {
+        let app = make_test_router(None);
+        let body = "Body=hello+world&From=whatsapp%3A%2B15551234567";
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/webhook/whatsapp")
+                    .header("Content-Type", "application/x-www-form-urlencoded")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn invalid_signature_returns_403() {
+        let app = make_test_router(Some("correct_secret"));
+        let body = "Body=hello&From=whatsapp%3A%2B15551234567";
+        let bad_sig = make_signature(b"wrong_secret", body.as_bytes());
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/webhook/whatsapp")
+                    .header("Content-Type", "application/x-www-form-urlencoded")
+                    .header("x-twilio-signature", bad_sig)
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn valid_signature_accepted() {
+        let secret = "my_signing_secret";
+        let app = make_test_router(Some(secret));
+        let body = "Body=hello&From=whatsapp%3A%2B15551234567";
+        let sig = make_signature(secret.as_bytes(), body.as_bytes());
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/webhook/whatsapp")
+                    .header("Content-Type", "application/x-www-form-urlencoded")
+                    .header("x-twilio-signature", sig)
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn invalid_form_body_returns_400() {
+        let app = make_test_router(None);
+        // Send something that's not valid URL-encoded form data (binary garbage)
+        let body = b"\xff\xfe invalid bytes that cannot be parsed as form data \x00\x01\x02";
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/webhook/whatsapp")
+                    .header("Content-Type", "application/x-www-form-urlencoded")
+                    .body(Body::from(body.as_slice()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        // Missing required "Body" field should cause a parse error
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn task_message_with_valid_secret() {
+        let secret = "twilio_secret";
+        let app = make_test_router(Some(secret));
+        let body = "Body=%2Ftask+update+all+dependencies&From=whatsapp%3A%2B15551234567";
+        let sig = make_signature(secret.as_bytes(), body.as_bytes());
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/webhook/whatsapp")
+                    .header("Content-Type", "application/x-www-form-urlencoded")
+                    .header("x-twilio-signature", sig)
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
     }
 }

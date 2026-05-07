@@ -7,11 +7,11 @@
     use std::path::PathBuf;
     use tower::ServiceExt;
 
-    async fn test_app() -> Router {
+    pub(super) async fn test_app() -> Router {
         test_app_with_auth(None).await
     }
 
-    async fn test_app_with_auth(auth_token: Option<&str>) -> Router {
+    pub(super) async fn test_app_with_auth(auth_token: Option<&str>) -> Router {
         let store = lopi_memory::MemoryStore::open_in_memory().await.unwrap();
         let bus: EventBus<AgentEvent> = EventBus::new(16);
         let queue = TaskQueue::new();
@@ -215,4 +215,95 @@
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::CREATED);
+    }
+
+    #[tokio::test]
+    async fn create_task_with_priority_returns_201() {
+        let app = test_app().await;
+        let body = serde_json::to_string(&serde_json::json!({
+            "goal": "high priority task",
+            "priority": "high",
+        }))
+        .unwrap();
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/tasks")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert!(json.get("id").is_some());
+        assert_eq!(json["goal"], "high priority task");
+    }
+
+    #[tokio::test]
+    async fn create_task_with_all_options_returns_201() {
+        let app = test_app().await;
+        let body = serde_json::to_string(&serde_json::json!({
+            "goal": "comprehensive task",
+            "priority": "critical",
+            "constraints": ["no new deps", "keep async"],
+            "allowed_dirs": ["src/"],
+            "forbidden_dirs": ["vendor/"],
+            "max_retries": 5,
+        }))
+        .unwrap();
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/tasks")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+    }
+
+    #[tokio::test]
+    async fn get_task_not_found_returns_404() {
+        let app = test_app().await;
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/tasks/nonexistent-task-id")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert!(json.get("error").is_some());
+    }
+
+    #[tokio::test]
+    async fn cancel_task_not_found_returns_404() {
+        let app = test_app().await;
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/api/tasks/nonexistent-task-id")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
     }

@@ -1931,6 +1931,7 @@ dependencies = [
  "sha1",
  "teloxide",
  "tokio",
+ "tower 0.4.13",
  "tracing",
 ]
 
@@ -1980,6 +1981,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "tokio",
+ "tower 0.4.13",
  "tracing",
 ]
 

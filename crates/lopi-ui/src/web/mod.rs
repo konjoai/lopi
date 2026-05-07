@@ -1,18 +1,13 @@
 use anyhow::Result;
 use axum::{
-    extract::{
-        ws::{Message, WebSocket, WebSocketUpgrade},
-        Path, State,
-    },
+    extract::{Path, State},
     http::StatusCode,
     middleware::{self, Next},
-    response::sse::{Event, KeepAlive, Sse},
     response::{Html, IntoResponse, Json, Response},
     routing::get,
     Router,
 };
 use dashmap::DashMap;
-use futures::StreamExt as _;
 use lopi_core::{AgentEvent, EventBus, Priority, Task, TaskId};
 use lopi_memory::MemoryStore;
 use lopi_orchestrator::{AgentPool, TaskQueue};
@@ -23,7 +18,6 @@ use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{broadcast, Mutex};
-use tokio_stream::wrappers::BroadcastStream;
 use tower_http::cors::CorsLayer;
 
 /// Simple TTL cache — returns the stored value if it was set within `ttl`.
@@ -260,7 +254,7 @@ fn constant_time_eq(a: &str, b: &str) -> bool {
 }
 
 async fn index() -> impl IntoResponse {
-    Html(include_str!("index.html"))
+    Html(include_str!("../index.html"))
 }
 
 async fn health() -> impl IntoResponse {
@@ -472,72 +466,9 @@ async fn metrics(State(s): State<AppState>) -> impl IntoResponse {
     )
 }
 
-/// Server-Sent Events — unidirectional push stream of pre-serialized `AgentEvent`s.
-async fn sse_handler(State(s): State<AppState>) -> impl IntoResponse {
-    let rx = s.serialized_tx.subscribe();
-    let stream = BroadcastStream::new(rx).filter_map(|r: Result<Arc<str>, _>| async move {
-        match r {
-            Ok(json) => Some(Ok::<Event, std::convert::Infallible>(
-                Event::default().data(json.as_ref()),
-            )),
-            Err(_) => None, // lagged — skip dropped events
-        }
-    });
-    Sse::new(stream).keep_alive(KeepAlive::default())
-}
-
-/// WebSocket — on connect, send a state snapshot, then stream pre-serialized `AgentEvent` JSON.
-async fn ws_handler(ws: WebSocketUpgrade, State(s): State<AppState>) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| handle_ws(socket, s))
-}
-
-async fn handle_ws(mut socket: WebSocket, state: AppState) {
-    // Snapshot: send current task list and stats on connect.
-    if let Ok(rows) = state.store.load_history(100).await {
-        let snapshot = json!({
-            "type": "snapshot",
-            "tasks": rows.iter().map(|t| json!({
-                "id": t.id, "goal": t.goal, "status": t.status,
-                "created_at": t.created_at,
-            })).collect::<Vec<_>>(),
-            "stats": {
-                "running": state.pool.stats().running,
-                "queued": state.pool.stats().queued,
-                "succeeded": state.pool.stats().succeeded,
-                "failed": state.pool.stats().failed,
-                "uptime_secs": state.pool.stats().uptime_secs,
-            }
-        });
-        if socket
-            .send(Message::Text(snapshot.to_string()))
-            .await
-            .is_err()
-        {
-            return;
-        }
-    }
-
-    // Stream from pre-serialized channel: one JSON string broadcast to all subscribers, O(1) clone.
-    let mut rx = state.serialized_tx.subscribe();
-    loop {
-        match rx.recv().await {
-            Ok(json) => {
-                if socket
-                    .send(Message::Text(json.as_ref().to_string()))
-                    .await
-                    .is_err()
-                {
-                    return;
-                }
-            }
-            Err(broadcast::error::RecvError::Lagged(n)) => {
-                tracing::warn!("ws subscriber lagged {n} events");
-            }
-            Err(broadcast::error::RecvError::Closed) => return,
-        }
-    }
-}
+mod streaming;
+use streaming::{sse_handler, ws_handler};
 
 #[cfg(test)]
-#[path = "web_tests.rs"]
+#[path = "tests.rs"]
 mod tests;
