@@ -23,13 +23,25 @@ pub enum LopiCmd {
 }
 
 /// Start the Telegram bot. Requires `TELOXIDE_TOKEN` env var or explicit `token`.
-pub async fn run(token: String, queue: TaskQueue) -> Result<()> {
+///
+/// `allowed_chat_ids`: allowlist of chat IDs permitted to issue commands.
+/// Empty list = allow all chats (dev mode).
+pub async fn run(token: String, queue: TaskQueue, allowed_chat_ids: Vec<i64>) -> Result<()> {
     let bot = Bot::new(token);
 
     let queue_cmd = queue.clone();
+    let allowed = std::sync::Arc::new(allowed_chat_ids);
+    let allowed_cmd = allowed.clone();
     LopiCmd::repl(bot.clone(), move |bot: Bot, msg: Message, cmd: LopiCmd| {
         let queue = queue_cmd.clone();
+        let allowed = allowed_cmd.clone();
         async move {
+            // Validate chat_id against allowlist.
+            if !allowed.is_empty() && !allowed.contains(&msg.chat.id.0) {
+                tracing::warn!("telegram: rejected command from unauthorized chat {}", msg.chat.id.0);
+                return respond(());
+            }
+
             match cmd {
                 LopiCmd::Help => {
                     bot.send_message(msg.chat.id, LopiCmd::descriptions().to_string()).await?;

@@ -54,6 +54,10 @@ pub struct RemoteConfig {
 pub struct TelegramConfig {
     pub token: Option<String>,
     pub chat_id: Option<i64>,
+    /// Allowlist of Telegram chat IDs permitted to issue commands.
+    /// Empty = allow all chats (dev mode).
+    #[serde(default)]
+    pub allowed_chat_ids: Vec<i64>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -61,6 +65,9 @@ pub struct WhatsappConfig {
     pub account_sid: Option<String>,
     pub auth_token: Option<String>,
     pub from: Option<String>,
+    /// Twilio signing secret for HMAC-SHA1 webhook signature verification.
+    #[serde(default)]
+    pub signing_secret: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -69,11 +76,15 @@ pub struct WebConfig {
     pub port: u16,
     #[serde(default = "default_host")]
     pub host: String,
+    /// Bearer token required on all /api/* routes.
+    /// None = auth disabled (dev mode).
+    #[serde(default)]
+    pub auth_token: Option<String>,
 }
 
 impl Default for WebConfig {
     fn default() -> Self {
-        Self { port: default_port(), host: default_host() }
+        Self { port: default_port(), host: default_host(), auth_token: None }
     }
 }
 

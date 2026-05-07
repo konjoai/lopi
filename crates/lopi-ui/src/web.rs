@@ -5,18 +5,21 @@ use axum::{
         Path, State,
     },
     http::StatusCode,
-    response::{Html, IntoResponse, Json},
+    middleware::{self, Next},
+    response::{Html, IntoResponse, Json, Response},
     response::sse::{Event, KeepAlive, Sse},
     routing::get,
     Router,
 };
+use dashmap::DashMap;
 use futures::StreamExt as _;
 use lopi_core::{AgentEvent, EventBus, Priority, Task, TaskId};
 use lopi_memory::MemoryStore;
 use lopi_orchestrator::{AgentPool, TaskQueue};
+use lopi_ratelimit::TokenBucket;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{broadcast, Mutex};
@@ -53,6 +56,10 @@ pub struct AppState {
     serialized_tx: Arc<broadcast::Sender<Arc<str>>>,
     tasks_cache: Arc<Mutex<TtlCache>>,
     patterns_cache: Arc<Mutex<TtlCache>>,
+    /// Bearer token required on /api/* routes. None = auth disabled (dev mode).
+    auth_token: Option<Arc<str>>,
+    /// Per-IP token-bucket rate limiter for API endpoints.
+    rate_limiter: Arc<DashMap<IpAddr, TokenBucket>>,
 }
 
 impl AppState {
@@ -61,6 +68,7 @@ impl AppState {
         bus: EventBus<AgentEvent>,
         queue: TaskQueue,
         pool: Arc<AgentPool>,
+        auth_token: Option<String>,
     ) -> Self {
         let (serialized_tx, _) = broadcast::channel::<Arc<str>>(512);
         let serialized_tx = Arc::new(serialized_tx);
@@ -94,19 +102,27 @@ impl AppState {
             serialized_tx,
             tasks_cache: Arc::new(Mutex::new(TtlCache::new(Duration::from_secs(2)))),
             patterns_cache: Arc::new(Mutex::new(TtlCache::new(Duration::from_secs(30)))),
+            auth_token: auth_token.map(|t| Arc::from(t.as_str())),
+            rate_limiter: Arc::new(DashMap::new()),
         }
     }
 }
 
 /// Build the axum router with all routes wired to `state`.
 pub fn build_app(state: AppState) -> Router {
-    Router::new()
-        .route("/", get(index))
+    // /api/* routes — protected by Bearer auth and per-IP rate limiting.
+    let api = Router::new()
         .route("/api/health", get(health))
         .route("/api/tasks", get(list_tasks).post(create_task))
         .route("/api/tasks/:id", get(get_task).delete(cancel_task))
         .route("/api/stats", get(get_stats))
         .route("/api/patterns", get(list_patterns))
+        .route_layer(middleware::from_fn_with_state(state.clone(), rate_limit_middleware))
+        .route_layer(middleware::from_fn_with_state(state.clone(), auth_middleware));
+
+    Router::new()
+        .route("/", get(index))
+        .merge(api)
         .route("/metrics", get(metrics))
         .route("/sse", get(sse_handler))
         .route("/ws", get(ws_handler))
@@ -123,15 +139,90 @@ pub async fn serve(
     pool: Arc<AgentPool>,
     host: &str,
     port: u16,
+    auth_token: Option<String>,
 ) -> Result<()> {
-    let state = AppState::new(store, bus, queue, pool);
+    let state = AppState::new(store, bus, queue, pool, auth_token);
     let app = build_app(state);
 
     let addr: SocketAddr = format!("{host}:{port}").parse()?;
     tracing::info!("🌐 lopi sail: http://{addr}  ws://{addr}/ws  sse://{addr}/sse  metrics://{addr}/metrics");
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    axum::serve(listener, app).await?;
+    // Use connect_info so rate limiter middleware can extract client IPs.
+    axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>()).await?;
     Ok(())
+}
+
+/// Middleware: validate `Authorization: Bearer <token>` on all /api/* routes.
+/// Skipped entirely when `auth_token` is not configured (dev mode).
+async fn auth_middleware(
+    State(s): State<AppState>,
+    request: axum::extract::Request,
+    next: Next,
+) -> Response {
+    if let Some(expected) = &s.auth_token {
+        let provided = request
+            .headers()
+            .get(axum::http::header::AUTHORIZATION)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.strip_prefix("Bearer "));
+
+        if !provided.map(|p| constant_time_eq(p, expected.as_ref())).unwrap_or(false) {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(json!({"error": "unauthorized"})),
+            )
+                .into_response();
+        }
+    }
+    next.run(request).await
+}
+
+/// Middleware: per-IP token-bucket rate limiter (60 req/min burst, 1 req/sec refill).
+/// Falls back to 127.0.0.1 when ConnectInfo is unavailable (e.g., in tests).
+async fn rate_limit_middleware(
+    State(s): State<AppState>,
+    req: axum::extract::Request,
+    next: Next,
+) -> Response {
+    use axum::extract::connect_info::ConnectInfo;
+
+    let ip: IpAddr = req
+        .headers()
+        .get("x-forwarded-for")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.split(',').next())
+        .and_then(|s| s.trim().parse().ok())
+        .or_else(|| {
+            req.extensions()
+                .get::<ConnectInfo<SocketAddr>>()
+                .map(|c| c.0.ip())
+        })
+        .unwrap_or_else(|| IpAddr::from([127, 0, 0, 1]));
+
+    // Get or create a per-IP bucket: 60-token burst, 1 token/sec refill.
+    let bucket = s.rate_limiter.get(&ip).map(|b| b.clone()).unwrap_or_else(|| {
+        let new_bucket = TokenBucket::new(60.0, 1.0);
+        s.rate_limiter.insert(ip, new_bucket.clone());
+        new_bucket
+    });
+
+    if !bucket.try_acquire(1.0).await {
+        return (
+            StatusCode::TOO_MANY_REQUESTS,
+            Json(json!({"error": "rate limit exceeded"})),
+        )
+            .into_response();
+    }
+
+    next.run(req).await
+}
+
+/// Constant-time string comparison to prevent timing-based side-channel attacks.
+fn constant_time_eq(a: &str, b: &str) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    a.bytes().zip(b.bytes()).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 
 async fn index() -> impl IntoResponse {
@@ -205,6 +296,8 @@ async fn cancel_task(Path(id): Path<String>, State(s): State<AppState>) -> impl 
     }
 }
 
+const MAX_GOAL_LENGTH: usize = 2000;
+
 #[derive(Debug, Deserialize)]
 pub struct CreateTaskRequest {
     pub goal: String,
@@ -233,6 +326,14 @@ async fn create_task(
     State(s): State<AppState>,
     Json(req): Json<CreateTaskRequest>,
 ) -> impl IntoResponse {
+    if req.goal.len() > MAX_GOAL_LENGTH {
+        return (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            Json(json!({"error": format!("goal too long (max {MAX_GOAL_LENGTH} chars)")})),
+        )
+            .into_response();
+    }
+
     let mut task = Task::new(req.goal.clone());
     task.priority = match req.priority.as_deref() {
         Some("low") => Priority::Low,
@@ -257,7 +358,7 @@ async fn create_task(
         queued: duplicate_of.is_none(),
         duplicate_of,
     };
-    (StatusCode::CREATED, Json(resp))
+    (StatusCode::CREATED, Json(resp)).into_response()
 }
 
 async fn list_patterns(State(s): State<AppState>) -> Json<Value> {
@@ -329,6 +430,45 @@ async fn ws_handler(ws: WebSocketUpgrade, State(s): State<AppState>) -> impl Int
     ws.on_upgrade(move |socket| handle_ws(socket, s))
 }
 
+async fn handle_ws(mut socket: WebSocket, state: AppState) {
+    // Snapshot: send current task list and stats on connect.
+    if let Ok(rows) = state.store.load_history(100).await {
+        let snapshot = json!({
+            "type": "snapshot",
+            "tasks": rows.iter().map(|t| json!({
+                "id": t.id, "goal": t.goal, "status": t.status,
+                "created_at": t.created_at,
+            })).collect::<Vec<_>>(),
+            "stats": {
+                "running": state.pool.stats().running,
+                "queued": state.pool.stats().queued,
+                "succeeded": state.pool.stats().succeeded,
+                "failed": state.pool.stats().failed,
+                "uptime_secs": state.pool.stats().uptime_secs,
+            }
+        });
+        if socket.send(Message::Text(snapshot.to_string())).await.is_err() {
+            return;
+        }
+    }
+
+    // Stream from pre-serialized channel: one JSON string broadcast to all subscribers, O(1) clone.
+    let mut rx = state.serialized_tx.subscribe();
+    loop {
+        match rx.recv().await {
+            Ok(json) => {
+                if socket.send(Message::Text(json.as_ref().to_string())).await.is_err() {
+                    return;
+                }
+            }
+            Err(broadcast::error::RecvError::Lagged(n)) => {
+                tracing::warn!("ws subscriber lagged {n} events");
+            }
+            Err(broadcast::error::RecvError::Closed) => return,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -339,6 +479,10 @@ mod tests {
     use tower::ServiceExt;
 
     async fn test_app() -> Router {
+        test_app_with_auth(None).await
+    }
+
+    async fn test_app_with_auth(auth_token: Option<&str>) -> Router {
         let store = lopi_memory::MemoryStore::open_in_memory().await.unwrap();
         let bus: EventBus<AgentEvent> = EventBus::new(16);
         let queue = TaskQueue::new();
@@ -348,7 +492,7 @@ mod tests {
             queue.clone(),
             bus.clone(),
         ));
-        let state = AppState::new(store, bus, queue, pool);
+        let state = AppState::new(store, bus, queue, pool, auth_token.map(|s| s.to_string()));
         build_app(state)
     }
 
@@ -419,43 +563,89 @@ mod tests {
         let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         assert!(json.get("patterns").is_some());
     }
-}
 
-async fn handle_ws(mut socket: WebSocket, state: AppState) {
-    // Snapshot: send current task list and stats on connect.
-    if let Ok(rows) = state.store.load_history(100).await {
-        let snapshot = json!({
-            "type": "snapshot",
-            "tasks": rows.iter().map(|t| json!({
-                "id": t.id, "goal": t.goal, "status": t.status,
-                "created_at": t.created_at,
-            })).collect::<Vec<_>>(),
-            "stats": {
-                "running": state.pool.stats().running,
-                "queued": state.pool.stats().queued,
-                "succeeded": state.pool.stats().succeeded,
-                "failed": state.pool.stats().failed,
-                "uptime_secs": state.pool.stats().uptime_secs,
-            }
-        });
-        if socket.send(Message::Text(snapshot.to_string())).await.is_err() {
-            return;
-        }
+    #[tokio::test]
+    async fn auth_rejects_missing_token() {
+        let app = test_app_with_auth(Some("secret-token")).await;
+        let resp = app
+            .oneshot(Request::builder().uri("/api/health").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
     }
 
-    // Stream from pre-serialized channel: one JSON string broadcast to all subscribers, O(1) clone.
-    let mut rx = state.serialized_tx.subscribe();
-    loop {
-        match rx.recv().await {
-            Ok(json) => {
-                if socket.send(Message::Text(json.as_ref().to_string())).await.is_err() {
-                    return;
-                }
-            }
-            Err(broadcast::error::RecvError::Lagged(n)) => {
-                tracing::warn!("ws subscriber lagged {n} events");
-            }
-            Err(broadcast::error::RecvError::Closed) => return,
-        }
+    #[tokio::test]
+    async fn auth_rejects_wrong_token() {
+        let app = test_app_with_auth(Some("correct-token")).await;
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/health")
+                    .header("Authorization", "Bearer wrong-token")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn auth_accepts_correct_token() {
+        let app = test_app_with_auth(Some("correct-token")).await;
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/health")
+                    .header("Authorization", "Bearer correct-token")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn create_task_rejects_oversized_goal() {
+        let app = test_app().await;
+        let long_goal = "x".repeat(MAX_GOAL_LENGTH + 1);
+        let body = serde_json::to_string(&serde_json::json!({
+            "goal": long_goal,
+        }))
+        .unwrap();
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/tasks")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    }
+
+    #[tokio::test]
+    async fn create_task_accepts_valid_goal() {
+        let app = test_app().await;
+        let body = serde_json::to_string(&serde_json::json!({
+            "goal": "fix the flaky test",
+        }))
+        .unwrap();
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/tasks")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
     }
 }

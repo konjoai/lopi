@@ -24,3 +24,5 @@ serde_json.workspace = true
 futures.workspace = true
 tokio-stream.workspace = true
 uuid.workspace = true
+dashmap.workspace = true
+lopi-ratelimit.workspace = true

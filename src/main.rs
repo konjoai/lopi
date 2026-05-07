@@ -332,7 +332,8 @@ async fn main() -> Result<()> {
                 }
             });
 
-            lopi_ui::web::serve(store, bus, queue, pool, &host, port).await?;
+            let auth_token = cfg.as_ref().and_then(|c| c.web.auth_token.clone());
+            lopi_ui::web::serve(store, bus, queue, pool, &host, port, auth_token).await?;
         }
 
         // ── lopi cancel ─────────────────────────────────────────
