@@ -1,7 +1,7 @@
 mod run_loop;
 
 use lopi_context::{ContentBlock, ContextWindow, Phase, PinPolicy, Role, TaggedMessage};
-use lopi_core::{AgentEvent, EventBus, Task, TaskId, TaskStatus};
+use lopi_core::{AgentEvent, EventBus, Task, TaskId};
 use lopi_memory::MemoryStore;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicUsize;

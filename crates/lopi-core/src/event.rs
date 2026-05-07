@@ -98,6 +98,7 @@ impl AgentEvent {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic)]
 mod wire_format_tests {
     //! These tests pin the on-wire JSON shape that the lopi-ui WebSocket client
     //! (web/src/lib/parser.ts) parses. If a Rust-side change here breaks the
