@@ -399,14 +399,14 @@ mod tests {
         let mut turn1 = make_turn(100, PinPolicy::Never, Phase::Planning);
         turn1.evict_after = Some(trigger_id);
         let turn2 = make_turn(200, PinPolicy::Never, Phase::Planning);
-        let mut turns = vec![turn1, turn2];
+        let mut window = vec![turn1, turn2];
         let mut tokens = 300;
 
-        let stats = check_expired_tags(&mut turns, trigger_id, &mut tokens);
+        let stats = check_expired_tags(&mut window, trigger_id, &mut tokens);
         assert_eq!(stats.turns_evicted, 1);
         assert_eq!(stats.tokens_freed, 100);
         assert_eq!(tokens, 200);
-        assert_eq!(turns.len(), 1);
+        assert_eq!(window.len(), 1);
     }
 
     #[test]
