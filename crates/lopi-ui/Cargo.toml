@@ -26,3 +26,11 @@ tokio-stream.workspace = true
 uuid.workspace = true
 dashmap.workspace = true
 lopi-ratelimit.workspace = true
+rust-embed.workspace = true
+mime_guess.workspace = true
+chrono.workspace = true
+
+[dev-dependencies]
+# tower::ServiceExt::oneshot requires the `util` feature for `Router::oneshot`
+# in axum integration tests.
+tower = { version = "0.4", features = ["util"] }
