@@ -28,6 +28,11 @@
     type AgentState
   } from '$lib/stores/agents';
   import type { Priority } from '$lib/types';
+  import {
+    computeConnections,
+    connectionsFor,
+    type Connection
+  } from '$lib/forge/connections';
 
   // ── Tooltip state (rendered outside the canvas as DOM) ────────────────────
   export let onSelect: (id: string) => void = () => {};
@@ -61,6 +66,18 @@
     trailLen: number;
   }
   const bodies = new Map<string, Body>();
+
+  // Per-connection runtime state — one Three.js Line per connected pair
+  interface ConnectionRuntime {
+    spec: Connection;
+    line: THREE.Line;
+    geometry: THREE.BufferGeometry;
+    positions: Float32Array; // length 6 (2 vertices × xyz)
+  }
+  const connections = new Map<string, ConnectionRuntime>();
+
+  // Latest computed connection list — reactive on agents map
+  let connectionList: Connection[] = [];
 
   // Hover state
   let hoveredId: string | null = null;
@@ -252,6 +269,73 @@
     bodies.delete(id);
   }
 
+  // ── Connection management ────────────────────────────────────────────────
+  // Add a new line for a connection between two existing bodies.
+  function addConnection(spec: Connection) {
+    const positions = new Float32Array(6);
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+    // Color: use the dominant phase color of the two endpoints when they
+    // sync, otherwise fall back to a neutral mist that doesn't compete with
+    // the agent body auras.
+    const a = bodies.get(spec.fromId);
+    const b = bodies.get(spec.toId);
+    const phaseColor = spec.phaseSync && a && b
+      ? PHASE_COLORS[($agents.get(spec.fromId)?.phase ?? 'Boot') as keyof typeof PHASE_COLORS]
+      : '#7a8a9a';
+
+    const material = new THREE.LineBasicMaterial({
+      color: new THREE.Color(phaseColor),
+      transparent: true,
+      // Strength → opacity in [0.10, 0.45] — always subtle, never noisy
+      opacity: 0.10 + spec.strength * 0.35
+    });
+
+    const line = new THREE.Line(geometry, material);
+    line.frustumCulled = false; // endpoints are always within view; skip per-frame cull math
+    scene.add(line);
+    connections.set(spec.id, { spec, line, geometry, positions });
+  }
+
+  function updateConnectionMaterial(rt: ConnectionRuntime, spec: Connection) {
+    rt.spec = spec;
+    const a = bodies.get(spec.fromId);
+    const b = bodies.get(spec.toId);
+    const phaseColor = spec.phaseSync && a && b
+      ? PHASE_COLORS[($agents.get(spec.fromId)?.phase ?? 'Boot') as keyof typeof PHASE_COLORS]
+      : '#7a8a9a';
+    const mat = rt.line.material as THREE.LineBasicMaterial;
+    mat.color.set(phaseColor);
+    mat.opacity = 0.10 + spec.strength * 0.35;
+  }
+
+  function removeConnection(id: string) {
+    const rt = connections.get(id);
+    if (!rt) return;
+    scene.remove(rt.line);
+    rt.geometry.dispose();
+    (rt.line.material as THREE.LineBasicMaterial).dispose();
+    connections.delete(id);
+  }
+
+  function syncConnections(specs: Connection[]) {
+    if (!scene) return;
+    const next = new Map(specs.map((s) => [s.id, s]));
+
+    // Add or update
+    for (const [id, spec] of next) {
+      const rt = connections.get(id);
+      if (!rt) addConnection(spec);
+      else updateConnectionMaterial(rt, spec);
+    }
+
+    // Remove stale
+    for (const id of [...connections.keys()]) {
+      if (!next.has(id)) removeConnection(id);
+    }
+  }
+
   // ── Sync the body map with the agent store ───────────────────────────────
   function syncBodies(map: Map<string, AgentState>) {
     if (!scene) return;
@@ -268,6 +352,9 @@
     for (const id of [...bodies.keys()]) {
       if (!map.has(id)) removeBody(id);
     }
+    // Recompute connections after the body set has stabilized
+    connectionList = computeConnections(map);
+    syncConnections(connectionList);
   }
 
   // Re-sync whenever the agent store changes
@@ -417,6 +504,30 @@
       );
     }
 
+    // Update connection lines — tracks moving endpoints + pulses on phase sync
+    for (const rt of connections.values()) {
+      const a = bodies.get(rt.spec.fromId);
+      const b = bodies.get(rt.spec.toId);
+      if (!a || !b) continue;
+      rt.positions[0] = a.mesh.position.x;
+      rt.positions[1] = a.mesh.position.y;
+      rt.positions[2] = a.mesh.position.z;
+      rt.positions[3] = b.mesh.position.x;
+      rt.positions[4] = b.mesh.position.y;
+      rt.positions[5] = b.mesh.position.z;
+      rt.geometry.attributes.position.needsUpdate = true;
+
+      // Phase-sync pulse: shared-phase connections breathe with time.
+      // Non-sync connections hold steady opacity (subtle ambient association).
+      const mat = rt.line.material as THREE.LineBasicMaterial;
+      const baseOpacity = 0.10 + rt.spec.strength * 0.35;
+      if (rt.spec.phaseSync) {
+        mat.opacity = baseOpacity + Math.sin(t * 2.0) * 0.10;
+      } else {
+        mat.opacity = baseOpacity;
+      }
+    }
+
     // Slow camera drift around the system for cinematic feel
     const camRadius = 8.5;
     camera.position.x = Math.cos(t * 0.05) * camRadius;
@@ -474,6 +585,7 @@
   onDestroy(() => {
     if (frameId !== null) cancelAnimationFrame(frameId);
     window.removeEventListener('resize', onResize);
+    for (const id of [...connections.keys()]) removeConnection(id);
     for (const id of [...bodies.keys()]) removeBody(id);
     if (beacon) {
       scene.remove(beacon);
@@ -490,6 +602,12 @@
 
   // ── Hovered agent for tooltip ────────────────────────────────────────────
   $: hoveredAgent = hoveredId ? $agents.get(hoveredId) ?? null : null;
+  $: hoveredConnections = hoveredId ? connectionsFor(connectionList, hoveredId) : [];
+
+  // Resolve the peer id for a connection from the perspective of the hovered agent
+  function peerId(c: Connection, self: string): string {
+    return c.fromId === self ? c.toId : c.fromId;
+  }
 </script>
 
 <div bind:this={container} class="constellation-container relative w-full h-[calc(100vh-3rem)]">
@@ -519,7 +637,39 @@
         ·
         <span class="tabular-nums">{Math.round(hoveredAgent.pressure * 100)}%</span>
       </div>
-      <div class="mt-1 font-mono text-[9px] opacity-30">click to focus</div>
+
+      {#if hoveredConnections.length > 0}
+        <div class="mt-3 pt-3 border-t border-white/5">
+          <div class="font-mono text-[9px] uppercase tracking-widest opacity-40 mb-1.5">
+            connected to {hoveredConnections.length} agent{hoveredConnections.length === 1 ? '' : 's'}
+          </div>
+          <div class="space-y-1">
+            {#each hoveredConnections.slice(0, 3) as c (c.id)}
+              {@const peer = $agents.get(peerId(c, hoveredAgent.id))}
+              {#if peer}
+                <div class="flex items-center gap-2 text-[11px]">
+                  <span
+                    class="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                    class:animate-pulse={c.phaseSync}
+                    style:background={c.phaseSync ? PHASE_COLORS[peer.phase] : '#7a8a9a'}
+                  ></span>
+                  <span class="opacity-80 truncate flex-1">{peer.goal}</span>
+                </div>
+                <div class="font-mono text-[9px] opacity-35 ml-3.5 -mt-0.5">
+                  {c.reasons.join(' · ')}
+                </div>
+              {/if}
+            {/each}
+            {#if hoveredConnections.length > 3}
+              <div class="font-mono text-[9px] opacity-30 ml-3.5">
+                + {hoveredConnections.length - 3} more
+              </div>
+            {/if}
+          </div>
+        </div>
+      {/if}
+
+      <div class="mt-2 font-mono text-[9px] opacity-30">click to focus</div>
     </div>
   {/if}
 
