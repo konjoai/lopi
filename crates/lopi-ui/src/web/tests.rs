@@ -1,6 +1,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use super::*;
+use crate::web::types::MAX_GOAL_LENGTH;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use lopi_orchestrator::AgentPool;
