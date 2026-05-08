@@ -3,8 +3,13 @@
   import { onMount } from 'svelte';
   import { page } from '$app/stores';
   import { init, connectionState, stats } from '$lib/stores/agents';
+  import { installKeyboardShortcuts, helpVisible } from '$lib/stores/keyboard';
+  import HelpOverlay from '$lib/components/HelpOverlay.svelte';
 
-  onMount(() => init());
+  onMount(() => {
+    init();
+    installKeyboardShortcuts();
+  });
 
   function indicatorColor(s: string): string {
     if (s === 'connected') return 'var(--konjo-jade)';
@@ -73,3 +78,17 @@
 <main class="relative pt-12 min-h-screen z-10">
   <slot />
 </main>
+
+<!-- Global help overlay (toggle with ?) -->
+<HelpOverlay />
+
+<!-- Subtle hint at the bottom-right when help is hidden -->
+{#if !$helpVisible}
+  <button
+    type="button"
+    on:click={() => helpVisible.set(true)}
+    class="fixed bottom-4 right-4 z-20 font-mono text-[10px] uppercase tracking-widest opacity-30 hover:opacity-70 transition-opacity bg-konjo-deep/60 backdrop-blur px-2.5 py-1 rounded border border-white/5"
+  >
+    press ? for shortcuts
+  </button>
+{/if}
