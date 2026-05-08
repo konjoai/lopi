@@ -323,9 +323,11 @@ jobs:
           python-version: "3.11"
 
       - name: Install anthropic SDK
+        continue-on-error: true  # soft-fail: network / pypi outage must not block merge
         run: pip install anthropic --quiet
 
       - name: Generate diff
+        continue-on-error: true  # soft-fail: git fetch issues must not block merge
         run: |
           git diff origin/${{ github.base_ref }}...HEAD > pr.diff
           echo "Diff size: $(wc -c < pr.diff) bytes"
@@ -349,6 +351,7 @@ jobs:
 
       - name: Post review comment to PR
         if: always()
+        continue-on-error: true  # soft-fail: token permission issues must not block merge
         uses: actions/github-script@v7
         with:
           script: |
