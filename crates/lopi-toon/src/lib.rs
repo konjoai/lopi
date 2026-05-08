@@ -301,6 +301,7 @@ mod tests {
             &[".github/"],
             &["do not add deps"],
             &[],
+            &[],
         );
         assert!(out.contains("goal: Fix the failing test"));
         assert!(out.contains("allowed[2]: src/,tests/"));

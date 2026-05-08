@@ -6,7 +6,7 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::str::FromStr;
 
-const SCHEMA: &str = include_str!("schema.sql");
+const SCHEMA: &str = include_str!("../schema.sql");
 
 /// Jaccard similarity between two token sets derived from goal fingerprint strings.
 /// Returns a value in [0.0, 1.0] — 1.0 means identical token sets.
@@ -480,6 +480,8 @@ pub struct PatternRow {
     pub derived_from_postmortem: i64,
 }
 
+mod lessons;
+pub use lessons::LessonRow;
+
 #[cfg(test)]
-#[path = "store_tests.rs"]
 mod tests;

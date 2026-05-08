@@ -62,3 +62,14 @@ ALTER TABLE patterns ADD COLUMN embedding TEXT;
 -- (Claude analyzed the error log) from patterns mined from completed-task
 -- statistics. The dashboard surfaces these differently.
 ALTER TABLE patterns ADD COLUMN derived_from_postmortem INTEGER NOT NULL DEFAULT 0;
+
+CREATE TABLE IF NOT EXISTS lessons (
+    id          TEXT PRIMARY KEY,
+    repo_path   TEXT NOT NULL,
+    category    TEXT NOT NULL CHECK(category IN ('strategy','recovery','optimization')),
+    content     TEXT NOT NULL,
+    task_id     TEXT,
+    score       REAL NOT NULL DEFAULT 0.0,
+    created_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_lessons_repo_created ON lessons(repo_path, created_at DESC);
