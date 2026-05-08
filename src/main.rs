@@ -1,9 +1,12 @@
+//! lopi — high-performance Rust orchestrator for concurrent Claude Code agents.
+#![allow(clippy::print_stdout, clippy::print_stderr)]
+mod remote;
 use mimalloc::MiMalloc;
 
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use clap::{Parser, Subcommand};
 use lopi_agent::AgentRunner;
 use lopi_core::{AgentEvent, EventBus, LopiConfig, RepoProfile, Task, TaskStatus};
@@ -77,14 +80,37 @@ enum Commands {
         #[arg()]
         task_id: String,
     },
-    /// Show mined patterns and their success rates
-    Learn {
-        #[arg(short, long, default_value = "20")]
-        limit: i64,
-    },
+    /// Browse the mined pattern library — what worked, what didn't, what
+    /// post-mortems learned. The pattern miner runs after every completed
+    /// task; post-mortems run after every fully-failed task when adaptive
+    /// retry is enabled.
+    #[command(subcommand)]
+    Learn(LearnCmd),
     /// Manage scheduled tasks
     #[command(subcommand)]
     Schedules(ScheduleCmd),
+}
+
+#[derive(Subcommand)]
+enum LearnCmd {
+    /// List patterns sorted by success rate. Mined > post-mortem-derived.
+    List {
+        #[arg(short, long, default_value = "20")]
+        limit: i64,
+        /// Show only post-mortem-derived patterns
+        #[arg(long)]
+        postmortem_only: bool,
+    },
+    /// Show full detail for a single pattern by id prefix.
+    Show {
+        /// Id or id prefix (uuid)
+        id: String,
+    },
+    /// Export all patterns to JSON for analytics. Pipes to stdout.
+    Export {
+        #[arg(short, long, default_value = "100")]
+        limit: i64,
+    },
 }
 
 #[derive(Subcommand)]
@@ -100,32 +126,35 @@ fn db_path() -> PathBuf {
 
 fn fmt_status(s: &str) -> &str {
     match s {
-        "queued"       => "⏳ queued",
-        "planning"     => "📋 planning",
+        "queued" => "⏳ queued",
+        "planning" => "📋 planning",
         "implementing" => "🔨 implementing",
-        "testing"      => "🧪 testing",
-        "scoring"      => "📊 scoring",
-        "success"      => "✅ success",
-        "failed"       => "❌ failed",
-        "rolled_back"  => "⏪ rolled back",
-        _              => s,
+        "testing" => "🧪 testing",
+        "scoring" => "📊 scoring",
+        "success" => "✅ success",
+        "failed" => "❌ failed",
+        "rolled_back" => "⏪ rolled back",
+        _ => s,
     }
 }
 
 fn status_label(s: &TaskStatus) -> String {
     match s {
-        TaskStatus::Queued       => "queued".into(),
-        TaskStatus::Planning     => "planning".into(),
+        TaskStatus::Queued => "queued".into(),
+        TaskStatus::Planning => "planning".into(),
         TaskStatus::Implementing => "implementing".into(),
-        TaskStatus::Testing      => "testing".into(),
-        TaskStatus::Scoring      => "scoring".into(),
+        TaskStatus::Testing => "testing".into(),
+        TaskStatus::Scoring => "scoring".into(),
         TaskStatus::Retrying { attempt } => format!("retrying (attempt {attempt})"),
         TaskStatus::Success { branch, pr_url } => format!(
             "success ✅ branch={branch}{}",
-            pr_url.as_deref().map(|u| format!(", pr={u}")).unwrap_or_default()
+            pr_url
+                .as_deref()
+                .map(|u| format!(", pr={u}"))
+                .unwrap_or_default()
         ),
         TaskStatus::Failed { reason } => format!("failed ❌ {reason}"),
-        TaskStatus::RolledBack   => "rolled back".into(),
+        TaskStatus::RolledBack => "rolled back".into(),
     }
 }
 
@@ -137,6 +166,7 @@ fn load_config(path: Option<&PathBuf>) -> Option<LopiConfig> {
     }
 }
 
+#[allow(clippy::too_many_lines)]
 #[tokio::main]
 async fn main() -> Result<()> {
     // Initialize tracing with optional OpenTelemetry OTLP export.
@@ -152,12 +182,13 @@ async fn main() -> Result<()> {
             .tracing()
             .with_exporter(otlp_exporter)
             .with_trace_config(opentelemetry_sdk::trace::config().with_resource(
-                opentelemetry_sdk::Resource::new(vec![
-                    opentelemetry::KeyValue::new("service.name", "lopi"),
-                ]),
+                opentelemetry_sdk::Resource::new(vec![opentelemetry::KeyValue::new(
+                    "service.name",
+                    "lopi",
+                )]),
             ))
             .install_batch(opentelemetry_sdk::runtime::Tokio)
-            .expect("failed to install OTel tracer");
+            .map_err(|e| anyhow::anyhow!("failed to install OTel tracer: {e}"))?;
         let otel_layer = tracing_opentelemetry::layer().with_tracer(tracer);
         tracing_subscriber::registry()
             .with(env_filter)
@@ -176,7 +207,12 @@ async fn main() -> Result<()> {
 
     match cli.command {
         // ── lopi run ────────────────────────────────────────────
-        Commands::Run { goal, repo, dry_run, speculative } => {
+        Commands::Run {
+            goal,
+            repo,
+            dry_run,
+            speculative,
+        } => {
             println!("🚢 lopi run{}", if dry_run { " (dry-run)" } else { "" });
             println!("   goal: {goal}");
             println!("   repo: {}", repo.display());
@@ -211,18 +247,26 @@ async fn main() -> Result<()> {
             let print_task = tokio::spawn(async move {
                 loop {
                     match rx.recv().await {
-                        Ok(AgentEvent::StatusChanged { status, attempt, .. }) => {
+                        Ok(AgentEvent::StatusChanged {
+                            status, attempt, ..
+                        }) => {
                             println!("  [{attempt}] → {}", status_label(&status));
                         }
                         Ok(AgentEvent::LogLine { line, .. }) => {
                             println!("       {line}");
                         }
-                        Ok(AgentEvent::ScoreUpdated { test_pass_rate, lint_errors, .. }) => {
-                            println!("       score: {:.0}% pass, {} lint errors",
-                                test_pass_rate * 100.0, lint_errors);
+                        Ok(AgentEvent::ScoreUpdated {
+                            test_pass_rate,
+                            lint_errors,
+                            ..
+                        }) => {
+                            println!(
+                                "       score: {:.0}% pass, {} lint errors",
+                                test_pass_rate * 100.0,
+                                lint_errors
+                            );
                         }
-                        Ok(AgentEvent::TaskCompleted { .. }) => break,
-                        Err(_) => break,
+                        Ok(AgentEvent::TaskCompleted { .. }) | Err(_) => break,
                         _ => {}
                     }
                 }
@@ -230,7 +274,10 @@ async fn main() -> Result<()> {
 
             let outcome = runner.run().await?;
             print_task.abort();
-            store.mark_completed(&task_id, &status_label(&outcome)).await.ok();
+            store
+                .mark_completed(&task_id, &status_label(&outcome))
+                .await
+                .ok();
             store.mine_patterns(&task_id, &task.goal).await.ok();
 
             println!();
@@ -246,7 +293,7 @@ async fn main() -> Result<()> {
             } else {
                 let ws_url = remote.unwrap_or_else(|| "ws://127.0.0.1:3000/ws".into());
                 println!("👁  lopi watch — connecting to {ws_url}");
-                watch_remote(ws_url).await?;
+                remote::watch_remote(ws_url).await?;
             }
         }
 
@@ -256,10 +303,12 @@ async fn main() -> Result<()> {
             if history || task_id.is_some() {
                 let rows = store.load_history(50).await?;
                 println!("⚓ lopi tail — {} task(s) in history", rows.len());
-                for t in rows.iter().filter(|t| {
-                    task_id.as_deref().is_none_or(|id| t.id.starts_with(id))
-                }) {
-                    println!("  [{}] {}… — {}",
+                for t in rows
+                    .iter()
+                    .filter(|t| task_id.as_deref().is_none_or(|id| t.id.starts_with(id)))
+                {
+                    println!(
+                        "  [{}] {}… — {}",
                         fmt_status(&t.status),
                         &t.id[..8.min(t.id.len())],
                         t.goal
@@ -284,20 +333,33 @@ async fn main() -> Result<()> {
             println!("  {:<8}  {:<w$}  Status", "ID", "Goal");
             println!("  {}", "─".repeat(8 + 2 + w + 2 + 20));
             for t in history {
-                let goal = if t.goal.len() > w { format!("{}…", &t.goal[..w-1]) } else { t.goal.clone() };
-                println!("  {:<8}  {:<w$}  {}",
-                    &t.id[..8.min(t.id.len())], goal, fmt_status(&t.status));
+                let goal = if t.goal.len() > w {
+                    format!("{}…", &t.goal[..w - 1])
+                } else {
+                    t.goal.clone()
+                };
+                println!(
+                    "  {:<8}  {:<w$}  {}",
+                    &t.id[..8.min(t.id.len())],
+                    goal,
+                    fmt_status(&t.status)
+                );
             }
         }
 
         // ── lopi sail ───────────────────────────────────────────
-        Commands::Sail { port, host, max_agents, repo } => {
+        Commands::Sail {
+            port,
+            host,
+            max_agents,
+            repo,
+        } => {
             let store = MemoryStore::open(db_path()).await?;
             let bus: EventBus<AgentEvent> = EventBus::new(512);
             let queue = TaskQueue::new();
             let pool = Arc::new(
                 AgentPool::new(max_agents, repo.clone(), queue.clone(), bus.clone())
-                    .with_store(store.clone())
+                    .with_store(store.clone()),
             );
 
             println!("🚢 lopi sail");
@@ -308,7 +370,10 @@ async fn main() -> Result<()> {
             println!("   ws:        ws://{host}:{port}/ws");
 
             // Boot schedules from config.
-            let schedules = cfg.as_ref().map(|c| c.schedules.clone()).unwrap_or_default();
+            let schedules = cfg
+                .as_ref()
+                .map(|c| c.schedules.clone())
+                .unwrap_or_default();
             if !schedules.is_empty() {
                 println!("   schedules: {} configured", schedules.len());
                 let pool_sched = (*pool).clone();
@@ -332,46 +397,139 @@ async fn main() -> Result<()> {
                 }
             });
 
-            lopi_ui::web::serve(store, bus, queue, pool, &host, port).await?;
+            let auth_token = cfg.as_ref().and_then(|c| c.web.auth_token.clone());
+            lopi_ui::web::serve(store, bus, queue, pool, &host, port, auth_token).await?;
         }
 
         // ── lopi cancel ─────────────────────────────────────────
         Commands::Cancel { task_id } => {
             let url = format!("http://127.0.0.1:3000/api/tasks/{task_id}");
-            match reqwest_cancel(&url).await {
-                Ok(msg) => println!("{msg}"),
-                Err(_) => {
-                    println!("⚠️  No running lopi sail server on :3000.");
-                    println!("   Start `lopi sail` first or use the web dashboard.");
-                }
+            if let Ok(msg) = remote::reqwest_cancel(&url).await {
+                println!("{msg}");
+            } else {
+                println!("⚠️  No running lopi sail server on :3000.");
+                println!("   Start `lopi sail` first or use the web dashboard.");
             }
         }
 
         // ── lopi learn ──────────────────────────────────────────
-        Commands::Learn { limit } => {
-            let store = MemoryStore::open(db_path()).await?;
-            let patterns = store.load_patterns(limit).await?;
-            println!("🧠 lopi learn — {} pattern(s)\n", patterns.len());
-            if patterns.is_empty() {
-                println!("  No patterns yet. Patterns are mined after each completed task.");
-                return Ok(());
+        Commands::Learn(cmd) => match cmd {
+            LearnCmd::List {
+                limit,
+                postmortem_only,
+            } => {
+                let store = MemoryStore::open(db_path()).await?;
+                let patterns = store.load_patterns(limit).await?;
+                let filtered: Vec<_> = if postmortem_only {
+                    patterns
+                        .into_iter()
+                        .filter(|p| p.derived_from_postmortem == 1)
+                        .collect()
+                } else {
+                    patterns
+                };
+
+                println!("🧠 lopi learn — {} pattern(s)\n", filtered.len());
+                if filtered.is_empty() {
+                    if postmortem_only {
+                        println!("  No post-mortem patterns yet. Enable with `lopi run --adaptive-retry` on a task that fails.");
+                    } else {
+                        println!(
+                            "  No patterns yet. Patterns are mined after each completed task."
+                        );
+                    }
+                    return Ok(());
+                }
+
+                println!(
+                    "  {:<8}  {:<40}  {:>9}  {:>9}  Source",
+                    "Id", "Keywords", "Avg Att.", "Success%"
+                );
+                println!("  {}", "─".repeat(90));
+                for p in filtered {
+                    let id_short = &p.id[..8.min(p.id.len())];
+                    let kw = if p.goal_keywords.len() > 40 {
+                        format!("{}…", &p.goal_keywords[..39])
+                    } else {
+                        p.goal_keywords.clone()
+                    };
+                    let avg = p
+                        .avg_attempts
+                        .map_or_else(|| "-".to_string(), |a| format!("{a:.1}"));
+                    let sr = p
+                        .success_rate
+                        .map_or_else(|| "-".to_string(), |s| format!("{:.0}%", s * 100.0));
+                    let source = if p.derived_from_postmortem == 1 {
+                        "🧠 post-mortem"
+                    } else {
+                        "📊 mined"
+                    };
+                    println!("  {id_short:<8}  {kw:<40}  {avg:>9}  {sr:>9}  {source}");
+                }
             }
-            println!("  {:<40}  {:>10}  {:>10}  Last seen", "Keywords", "Avg Att.", "Success%");
-            println!("  {}", "─".repeat(80));
-            for p in patterns {
-                let kw = if p.goal_keywords.len() > 40 {
-                    format!("{}…", &p.goal_keywords[..39])
-                } else { p.goal_keywords.clone() };
-                let avg = p.avg_attempts.map(|a| format!("{a:.1}")).unwrap_or_else(|| "-".into());
-                let sr  = p.success_rate.map(|s| format!("{:.0}%", s * 100.0)).unwrap_or_else(|| "-".into());
-                let ts  = &p.last_seen[..10.min(p.last_seen.len())];
-                println!("  {:<40}  {:>10}  {:>10}  {}", kw, avg, sr, ts);
+
+            LearnCmd::Show { id } => {
+                let store = MemoryStore::open(db_path()).await?;
+                let Some(p) = store.find_pattern_by_id_prefix(&id).await? else {
+                    eprintln!("❌ no pattern matches id prefix '{id}'");
+                    std::process::exit(1);
+                };
+
+                println!("🧠 Pattern {}\n", p.id);
+                println!("  Keywords:    {}", p.goal_keywords);
+                println!(
+                    "  Source:      {}",
+                    if p.derived_from_postmortem == 1 {
+                        "🧠 post-mortem-derived (Claude reflection over a failed run)"
+                    } else {
+                        "📊 mined from completed-task statistics"
+                    }
+                );
+                println!(
+                    "  Avg attempts: {}",
+                    p.avg_attempts
+                        .map_or_else(|| "-".to_string(), |a| format!("{a:.2}"))
+                );
+                println!(
+                    "  Success:     {}",
+                    p.success_rate
+                        .map_or_else(|| "-".to_string(), |s| format!("{:.0}%", s * 100.0))
+                );
+                println!("  Last seen:   {}", p.last_seen);
+                if let Some(c) = p.successful_constraints.as_deref() {
+                    println!("\n  Constraint:");
+                    println!("    {c}");
+                } else {
+                    println!("\n  Constraint:  (none captured yet)");
+                }
             }
-        }
+
+            LearnCmd::Export { limit } => {
+                let store = MemoryStore::open(db_path()).await?;
+                let patterns = store.load_patterns(limit).await?;
+                let json = serde_json::json!({
+                    "exported_at": chrono::Utc::now().to_rfc3339(),
+                    "count": patterns.len(),
+                    "patterns": patterns.iter().map(|p| serde_json::json!({
+                        "id": p.id,
+                        "goal_keywords": p.goal_keywords,
+                        "successful_constraints": p.successful_constraints,
+                        "avg_attempts": p.avg_attempts,
+                        "success_rate": p.success_rate,
+                        "last_seen": p.last_seen,
+                        "derived_from_postmortem": p.derived_from_postmortem == 1,
+                    })).collect::<Vec<_>>(),
+                });
+                println!("{}", serde_json::to_string_pretty(&json)?);
+            }
+        },
 
         // ── lopi schedules ──────────────────────────────────────
         Commands::Schedules(ScheduleCmd::List) => {
-            let schedules = cfg.as_ref().map(|c| c.schedules.clone()).unwrap_or_default();
+            let schedules = cfg
+                .as_ref()
+                .map(|c| c.schedules.clone())
+                .unwrap_or_default();
             if schedules.is_empty() {
                 println!("⏰ lopi schedules — none configured");
                 println!();
@@ -387,89 +545,25 @@ async fn main() -> Result<()> {
 
             println!("⏰ lopi schedules — {} configured\n", schedules.len());
             let w = 30usize;
-            println!("  {:<20}  {:<w$}  {:<14}  Next run (UTC)", "Name", "Goal", "Cron");
+            println!(
+                "  {:<20}  {:<w$}  {:<14}  Next run (UTC)",
+                "Name", "Goal", "Cron"
+            );
             println!("  {}", "─".repeat(20 + 2 + w + 2 + 14 + 2 + 26));
             for s in &schedules {
-                let goal = if s.goal.len() > w { format!("{}…", &s.goal[..w-1]) } else { s.goal.clone() };
-                let next = next_run_times(&s.cron, 1)
-                    .into_iter()
-                    .next()
-                    .map(|t| t.format("%Y-%m-%d %H:%M UTC").to_string())
-                    .unwrap_or_else(|| "invalid cron".into());
+                let goal = if s.goal.len() > w {
+                    format!("{}…", &s.goal[..w - 1])
+                } else {
+                    s.goal.clone()
+                };
+                let next = next_run_times(&s.cron, 1).into_iter().next().map_or_else(
+                    || "invalid cron".to_string(),
+                    |t| t.format("%Y-%m-%d %H:%M UTC").to_string(),
+                );
                 println!("  {:<20}  {:<w$}  {:<14}  {}", s.name, goal, s.cron, next);
             }
         }
     }
 
     Ok(())
-}
-
-/// Connect to a running lopi sail WebSocket and drive the TUI from network events.
-async fn watch_remote(ws_url: String) -> Result<()> {
-    use tokio_tungstenite::tungstenite::Message as WsMsg;
-    use futures::StreamExt;
-
-    let bus: EventBus<AgentEvent> = EventBus::new(512);
-    let bus_tx = bus.clone();
-
-    // Try to connect; if it fails immediately, fall back to local mode.
-    let (mut ws, _) = match tokio_tungstenite::connect_async(&ws_url).await {
-        Ok(pair) => pair,
-        Err(e) => {
-            println!("⚠️  Could not connect to {ws_url}: {e}");
-            println!("   Falling back to local bus. Run `lopi sail` to get live events.");
-            let local_bus: EventBus<AgentEvent> = EventBus::new(512);
-            return lopi_ui::tui::run(local_bus).await;
-        }
-    };
-
-    println!("   connected — starting TUI (q to quit)");
-
-    // Pump WebSocket messages into the local bus on a background task.
-    let pump = tokio::spawn(async move {
-        while let Some(msg) = ws.next().await {
-            match msg {
-                Ok(WsMsg::Text(text)) => {
-                    if let Ok(ev) = serde_json::from_str::<AgentEvent>(&text) {
-                        bus_tx.send(ev);
-                    } else if let Ok(snap) = serde_json::from_str::<serde_json::Value>(&text) {
-                        // Handle snapshot message: synthesise TaskQueued events for each task.
-                        if snap.get("type").and_then(|v| v.as_str()) == Some("snapshot") {
-                            if let Some(tasks) = snap.get("tasks").and_then(|v| v.as_array()) {
-                                for t in tasks {
-                                    let id_str = t.get("id").and_then(|v| v.as_str()).unwrap_or("");
-                                    let goal   = t.get("goal").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                                    if let Ok(uuid) = id_str.parse::<uuid::Uuid>() {
-                                        bus_tx.send(AgentEvent::TaskQueued {
-                                            task_id: lopi_core::TaskId(uuid),
-                                            goal,
-                                            priority: lopi_core::Priority::Normal,
-                                        });
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                Ok(WsMsg::Close(_)) | Err(_) => break,
-                _ => {}
-            }
-        }
-    });
-
-    lopi_ui::tui::run(bus).await?;
-    pump.abort();
-    Ok(())
-}
-
-async fn reqwest_cancel(url: &str) -> Result<String> {
-    let client = reqwest::Client::new();
-    let resp = client.delete(url).send().await.context("HTTP DELETE failed")?;
-    let body = resp.json::<serde_json::Value>().await?;
-    if body.get("cancelled").and_then(|v: &serde_json::Value| v.as_bool()).unwrap_or(false) {
-        Ok("⛔ Task cancelled.".into())
-    } else {
-        Ok(format!("ℹ️  {}",
-            body.get("reason").and_then(|v: &serde_json::Value| v.as_str()).unwrap_or("unknown")))
-    }
 }

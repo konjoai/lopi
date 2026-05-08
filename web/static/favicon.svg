@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <radialGradient id="forge" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ff9500"/>
+      <stop offset="50%" stop-color="#ff4500"/>
+      <stop offset="100%" stop-color="#00d4ff"/>
+    </radialGradient>
+  </defs>
+  <rect width="32" height="32" rx="6" fill="#0a0a0a"/>
+  <circle cx="16" cy="16" r="10" fill="url(#forge)" opacity="0.95"/>
+  <circle cx="16" cy="16" r="11" fill="none" stroke="#00d4ff" stroke-width="0.5" opacity="0.4"/>
+</svg>

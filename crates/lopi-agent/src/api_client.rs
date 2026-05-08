@@ -5,7 +5,10 @@
 // Implementation calls still go through the `claude` CLI (full tool access).
 // Migration path: plan via API → pass plan text to CLI for implementation.
 
+#![allow(clippy::missing_errors_doc)]
+
 use anyhow::{Context, Result};
+use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Duration;
@@ -31,7 +34,10 @@ fn shared_http() -> Arc<reqwest::Client> {
                 .timeout(Duration::from_secs(300))
                 .tcp_keepalive(Duration::from_secs(30))
                 .build()
-                .expect("reqwest client must build"),
+                .unwrap_or_else(|e| {
+                    tracing::warn!("reqwest client builder failed ({e}); using default client");
+                    reqwest::Client::new()
+                }),
         )
     })
     .clone()
@@ -46,7 +52,9 @@ struct CacheControl {
 }
 
 impl CacheControl {
-    const fn ephemeral() -> Self { Self { kind: "ephemeral" } }
+    const fn ephemeral() -> Self {
+        Self { kind: "ephemeral" }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -60,7 +68,11 @@ struct SystemBlock<'a> {
 
 impl<'a> SystemBlock<'a> {
     fn cached(text: &'a str) -> Self {
-        Self { kind: "text", text, cache_control: Some(CacheControl::ephemeral()) }
+        Self {
+            kind: "text",
+            text,
+            cache_control: Some(CacheControl::ephemeral()),
+        }
     }
 }
 
@@ -70,6 +82,7 @@ struct UserMessage<'a> {
     content: &'a str,
 }
 
+#[allow(clippy::struct_field_names)]
 #[derive(Debug, Deserialize)]
 struct UsageBlock {
     input_tokens: Option<u32>,
@@ -85,19 +98,36 @@ struct UsageBlock {
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum SseEvent {
-    MessageStart    { message: SseMessageStart },
-    ContentBlockStart { index: usize, content_block: SseContentBlock },
-    ContentBlockDelta { index: usize, delta: SseDelta },
-    ContentBlockStop  { index: usize },
-    MessageDelta    { delta: SseMessageDeltaStop, usage: Option<UsageBlock> },
+    MessageStart {
+        message: SseMessageStart,
+    },
+    ContentBlockStart {
+        index: usize,
+        content_block: SseContentBlock,
+    },
+    ContentBlockDelta {
+        index: usize,
+        delta: SseDelta,
+    },
+    ContentBlockStop {
+        index: usize,
+    },
+    MessageDelta {
+        delta: SseMessageDeltaStop,
+        usage: Option<UsageBlock>,
+    },
     MessageStop,
     Ping,
-    Error { error: SseErrorDetail },
+    Error {
+        error: SseErrorDetail,
+    },
 }
 
 #[allow(dead_code)]
 #[derive(Debug, Deserialize)]
-struct SseMessageStart { usage: Option<UsageBlock> }
+struct SseMessageStart {
+    usage: Option<UsageBlock>,
+}
 
 #[allow(dead_code)]
 #[derive(Debug, Deserialize)]
@@ -110,16 +140,35 @@ struct SseContentBlock {
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum SseDelta {
-    TextDelta      { text: String },
+    TextDelta { text: String },
     InputJsonDelta { partial_json: String },
 }
 
 #[allow(dead_code)]
 #[derive(Debug, Deserialize)]
-struct SseMessageDeltaStop { stop_reason: Option<String> }
+struct SseMessageDeltaStop {
+    stop_reason: Option<String>,
+}
 
 #[derive(Debug, Deserialize)]
-struct SseErrorDetail { message: String }
+struct SseErrorDetail {
+    message: String,
+}
+
+// ── complete() response types ─────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+struct CompleteResp {
+    content: Vec<CompleteContentItem>,
+    usage: UsageBlock,
+}
+
+#[derive(Deserialize)]
+struct CompleteContentItem {
+    #[serde(rename = "type")]
+    kind: String,
+    text: Option<String>,
+}
 
 // ── Usage record ──────────────────────────────────────────────────────────────
 
@@ -133,8 +182,10 @@ pub struct ApiUsage {
 
 impl ApiUsage {
     /// Estimated USD cost using Anthropic's 2025-06 pricing for the given model.
+    #[must_use]
     pub fn estimated_cost(&self, model: &str) -> f64 {
-        let (input_rate, output_rate, cache_read_rate, cache_write_rate) = if model.contains("opus") {
+        let (input_rate, output_rate, cache_read_rate, cache_write_rate) = if model.contains("opus")
+        {
             (15.0, 75.0, 1.50, 18.75)
         } else if model.contains("haiku") {
             (0.80, 4.00, 0.08, 1.00)
@@ -143,10 +194,10 @@ impl ApiUsage {
             (3.00, 15.0, 0.30, 3.75)
         };
         let mtok = 1_000_000.0_f64;
-        (self.input_tokens as f64 * input_rate
-            + self.output_tokens as f64 * output_rate
-            + self.cache_read_tokens as f64 * cache_read_rate
-            + self.cache_write_tokens as f64 * cache_write_rate)
+        (f64::from(self.input_tokens) * input_rate
+            + f64::from(self.output_tokens) * output_rate
+            + f64::from(self.cache_read_tokens) * cache_read_rate
+            + f64::from(self.cache_write_tokens) * cache_write_rate)
             / mtok
     }
 }
@@ -161,14 +212,24 @@ pub struct AnthropicClient {
 
 impl AnthropicClient {
     /// Construct from `ANTHROPIC_API_KEY` env var.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `ANTHROPIC_API_KEY` is not set in the environment.
     pub fn from_env() -> Result<Self> {
-        let key = std::env::var("ANTHROPIC_API_KEY")
-            .context("ANTHROPIC_API_KEY not set")?;
-        Ok(Self { http: shared_http(), api_key: key })
+        let key = std::env::var("ANTHROPIC_API_KEY").context("ANTHROPIC_API_KEY not set")?;
+        Ok(Self {
+            http: shared_http(),
+            api_key: key,
+        })
     }
 
+    #[must_use]
     pub fn new(api_key: impl Into<String>) -> Self {
-        Self { http: shared_http(), api_key: api_key.into() }
+        Self {
+            http: shared_http(),
+            api_key: api_key.into(),
+        }
     }
 
     /// Stream a planning prompt. Returns the full accumulated text and usage.
@@ -179,6 +240,10 @@ impl AnthropicClient {
     ///
     /// `on_delta` is called with each text delta as it arrives — enables the
     /// speculative plan step execution path in the agent runner.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the HTTP request fails or the SSE stream contains an error event.
     pub async fn stream_plan<F>(
         &self,
         model: &str,
@@ -217,9 +282,8 @@ impl AnthropicClient {
         let mut text = String::new();
         let mut usage = ApiUsage::default();
         let stream = resp.bytes_stream();
-        use futures::StreamExt;
         let mut lines = BufReader::new(tokio_util::io::StreamReader::new(
-            stream.map(|r| r.map_err(std::io::Error::other)),
+            stream.map(|r: reqwest::Result<bytes::Bytes>| r.map_err(std::io::Error::other)),
         ))
         .lines();
 
@@ -247,7 +311,10 @@ impl AnthropicClient {
                             usage.cache_write_tokens += u.cache_creation_input_tokens.unwrap_or(0);
                         }
                     }
-                    SseEvent::ContentBlockDelta { delta: SseDelta::TextDelta { text: t }, .. } => {
+                    SseEvent::ContentBlockDelta {
+                        delta: SseDelta::TextDelta { text: t },
+                        ..
+                    } => {
                         on_delta(&t);
                         text.push_str(&t);
                     }
@@ -270,6 +337,10 @@ impl AnthropicClient {
     ///
     /// Uses the cached system block so the system prompt KV is warm from
     /// the preceding streaming plan call.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the HTTP request fails or the response cannot be parsed.
     pub async fn complete(
         &self,
         model: &str,
@@ -301,26 +372,13 @@ impl AnthropicClient {
             anyhow::bail!("Anthropic API {status}: {text}");
         }
 
-        #[derive(Deserialize)]
-        struct Resp {
-            content: Vec<ContentItem>,
-            usage: UsageBlock,
-        }
-        #[derive(Deserialize)]
-        struct ContentItem {
-            #[serde(rename = "type")]
-            kind: String,
-            text: Option<String>,
-        }
-
-        let r: Resp = resp.json().await.context("parsing complete response")?;
-        let text = r
+        let r: CompleteResp = resp.json().await.context("parsing complete response")?;
+        let text: String = r
             .content
             .into_iter()
             .filter(|c| c.kind == "text")
             .filter_map(|c| c.text)
-            .collect::<Vec<_>>()
-            .join("");
+            .collect();
 
         let usage = ApiUsage {
             input_tokens: r.usage.input_tokens.unwrap_or(0),
@@ -334,6 +392,10 @@ impl AnthropicClient {
 
     /// Quick availability probe — sends a 5-token request to Haiku.
     /// Used by the circuit breaker's HALF-OPEN canary.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the probe request fails or returns an empty response.
     pub async fn canary_probe(&self) -> Result<()> {
         let (text, _) = self
             .complete(MODEL_HAIKU, "You are a test probe.", "Respond with OK.", 10)
@@ -366,15 +428,27 @@ mod tests {
 
     #[test]
     fn usage_cost_sonnet() {
-        let u = ApiUsage { input_tokens: 1_000_000, ..ApiUsage::default() };
+        let u = ApiUsage {
+            input_tokens: 1_000_000,
+            ..ApiUsage::default()
+        };
         let cost = u.estimated_cost(MODEL_SONNET);
-        assert!((cost - 3.0).abs() < 0.01, "sonnet input rate should be $3/MTok");
+        assert!(
+            (cost - 3.0).abs() < 0.01,
+            "sonnet input rate should be $3/MTok"
+        );
     }
 
     #[test]
     fn usage_cost_cache_hit_cheaper() {
-        let full   = ApiUsage { input_tokens: 100_000, ..ApiUsage::default() };
-        let cached = ApiUsage { cache_read_tokens: 100_000, ..ApiUsage::default() };
+        let full = ApiUsage {
+            input_tokens: 100_000,
+            ..ApiUsage::default()
+        };
+        let cached = ApiUsage {
+            cache_read_tokens: 100_000,
+            ..ApiUsage::default()
+        };
         assert!(
             cached.estimated_cost(MODEL_SONNET) < full.estimated_cost(MODEL_SONNET),
             "cache read must be cheaper than full input"

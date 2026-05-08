@@ -1,5 +1,90 @@
 # Changelog
 
+## [0.10.0] — Sprint H: Self-Improvement Engine 🧠
+
+### Added
+
+**`lopi learn` CLI subcommand tree** (was a single flat command)
+- `lopi learn list [--limit N] [--postmortem-only]` — sorted pattern table with id prefix, keywords, avg attempts, success %, and source emoji (📊 mined / 🧠 post-mortem)
+- `lopi learn show <id-prefix>` — full pattern detail page
+- `lopi learn export [--limit N]` — JSON output to stdout for analytics pipelines
+
+**`runner::postmortem` module** (`crates/lopi-agent/src/runner/postmortem.rs`)
+- `run_postmortem(client, limiter, breaker, model, goal, error_log)` — single-turn Claude reflection over a failed run. Returns one imperative constraint string (≤ 200 chars, must start with `must` / `do not` / `always` / `never`).
+- `extract_constraint(raw)` — defensive validation: strips markdown bullets, takes first non-empty line, rejects fluffy non-imperative responses, truncates over-long lines.
+- `run_postmortem_quiet(...)` — error-swallowing variant for terminal-failure path: never blocks task completion.
+- System prompt is byte-stable for `cache_control: ephemeral` cache hits across post-mortems in a session.
+
+**Adaptive retry** (`AgentRunner::with_adaptive_retry()`)
+- New builder method, chainable on top of `with_api(...)`.
+- Stashes the previous attempt's score (test_pass_rate, lint_errors, diff_lines, errors) as `last_error` after each failed attempt.
+- After all retries exhausted, automatically fires `run_postmortem_if_configured()` — runs the post-mortem if both adaptive retry AND a configured `AnthropicClient` are present.
+- Persists the derived constraint to the patterns table.
+
+**`MemoryStore` additions** (`crates/lopi-memory/src/store.rs`)
+- `insert_postmortem_pattern(goal_keywords, constraint) -> id` — creates a row with `derived_from_postmortem = 1`, seeded `success_rate = 0.0`.
+- `find_pattern_by_id_prefix(prefix) -> Option<PatternRow>` — for `lopi learn show` UX.
+- `load_patterns` ordering changed: `ORDER BY COALESCE(success_rate, 0) DESC, last_seen DESC` — real-data patterns now surface above zero-seeded post-mortem rows.
+
+**Schema migration** (`crates/lopi-memory/src/schema.sql`)
+- `ALTER TABLE patterns ADD COLUMN derived_from_postmortem INTEGER NOT NULL DEFAULT 0`.
+- Fixed `apply_schema()` to correctly strip leading `--` SQL comments before the ALTER TABLE prefix check — comments above ALTER TABLE statements no longer break the duplicate-column-tolerant migration path.
+
+### Tests
+
+- 4 new lopi-memory tests: postmortem-pattern insert + retrieve, prefix-not-found, postmortem flag in load_patterns, ordering correctness.
+- 11 new lopi-agent tests in `runner::postmortem::tests`: extract_constraint validation across 7 input shapes, build_prompt determinism + content + truncation.
+- 2 new lopi-agent integration tests: `runner_default_has_no_direct_api`, `with_api_enables_direct_path` (already shipped in Sprint G).
+- Workspace total: 244 → **261 passing**, 0 failed.
+
+### Architecture note
+
+The post-mortem fires on terminal failure (all retries exhausted) and uses Haiku for cost. A single short turn of <2000 tokens with cached system prompt costs roughly $0.0008. The constraint it derives slots into the existing `extra_constraints` mechanism in the planning prompt — no new prompt-injection plumbing required, the pattern miner already feeds patterns into TOON-encoded prose at planning time.
+
+The `last_error` field is now stashed on the runner but not yet injected into the next attempt's planning prompt — that's a follow-up sprint (H1) since it requires touching the prompt builders in both `claude.rs::plan` and `runner::api_plan::build_user_prompt`.
+
+---
+
+## [0.9.0] — Sprint G: Direct Anthropic SDK planning path
+
+### Added
+
+**Direct API path for the planning step** (`crates/lopi-agent/src/runner/api_plan.rs`)
+- `AgentRunner::plan_via_api(model, attempt) -> Result<String>` — replaces the `claude` CLI subprocess call when the runner has been wired with `AnthropicClient` via the new `AgentRunner::with_api(client, limiter, breaker)` builder.
+- The CLI path remains the load-bearing default. On any direct-API failure (rate limited, breaker open, network error, 4xx/5xx) the run loop falls back to the CLI silently — an API outage cannot stall agent execution.
+
+**Resilience layered on every API request:**
+1. `CircuitBreaker::check()` — refuses if open from prior failures or if the hourly cost cap was hit.
+2. `AnthropicLimiter::acquire_request(4000)` — concurrent TPM + RPM enforcement at default-pro limits (120k TPM / 15 RPM).
+3. `AnthropicClient::stream_plan` — SSE streaming with `cache_control: ephemeral` on the system prompt for ~90% cost reduction on repeat calls.
+4. `CircuitBreaker::record_success` / `record_failure` / `record_cost` — feeds the failure counter and hourly USD spend back into the breaker.
+
+**Real `TurnMetrics` from API responses:**
+- Every successful direct-API plan call captures real `input_tokens`, `output_tokens`, `cache_read_input_tokens`, `cache_write_input_tokens`, `ttft_ms`, `turn_latency_ms`, and `estimated_cost_usd`.
+- `TurnMetrics` event emitted on the `EventBus` so the lopi-ui Forge animates with **real** `cost_usd` and `tokens_per_sec` instead of the phase-derived stubs (UI-2 baseline).
+- Persisted to the SQLite `turn_metrics` table via `MemoryStore::save_turn_metrics`.
+
+**Builder API:**
+- `AgentRunner::with_api(client: Arc<AnthropicClient>, limiter: Arc<AnthropicLimiter>, breaker: Arc<CircuitBreaker>)` — chainable on top of `new()` or `standalone()`. `has_direct_api()` accessor for tests and tracing.
+- New optional fields on `AgentRunner`: `api_client`, `limiter`, `breaker`, `session_id` (used by `TurnMetrics.session_id`).
+
+**Prompt builder:**
+- `build_user_prompt(&Task)` — deterministic markdown rendering of goal/constraints/allowed_dirs/forbidden_dirs. Same task → byte-identical prompt → cache hit on the system+user prefix.
+
+### Changed
+- `lopi-agent` now depends on `lopi-ratelimit` and `chrono` (workspace).
+- `runner/run_loop.rs` planning branch routes through `plan_via_api` first when configured, with transparent CLI fallback.
+
+### Tests
+- 7 new tests in `runner::api_plan::tests`: prompt builder determinism + content + section omission, builder integration (default has no direct API; `with_api` enables it).
+- lopi-agent: 10 → 17 passing.
+- Workspace total: 244 passing, 0 failed.
+
+### Architecture note
+The CLI path is intentionally retained for the **implementation step** because file-edit tool access requires the `claude` CLI's native filesystem hooks. Migrating implementation to direct API would require either Anthropic's tool-use protocol with custom file-edit tools, or a sidecar that bridges API tool calls to filesystem ops — neither in scope for this sprint. Sprint G specifically targets the planning step where pure text generation suffices and prompt caching delivers the largest cost win.
+
+---
+
 ## [0.8.0] — Observability, Correctness, Systems, Resilience
 
 ### Added

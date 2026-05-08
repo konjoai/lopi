@@ -1,5 +1,5 @@
 use dashmap::DashMap;
-use lopi_core::{Task, TaskId, Priority};
+use lopi_core::{Priority, Task, TaskId};
 use std::collections::BinaryHeap;
 use std::sync::Arc;
 use tokio::sync::{Mutex, Notify};
@@ -40,6 +40,7 @@ struct Inner {
 }
 
 impl TaskQueue {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             inner: Arc::new(Inner {
@@ -60,7 +61,11 @@ impl TaskQueue {
         }
         let mut c = self.inner.counter.lock().await;
         *c += 1;
-        let entry = PrioEntry { priority: task.priority, seq: *c, id: task.id };
+        let entry = PrioEntry {
+            priority: task.priority,
+            seq: *c,
+            id: task.id,
+        };
         drop(c);
         self.inner.seen_goals.insert(goal_key, task.id);
         self.inner.tasks.insert(task.id, task);
@@ -88,7 +93,7 @@ impl TaskQueue {
 
                         // Collect IDs of queued tasks with > 50% keyword overlap.
                         let mut to_merge: Vec<TaskId> = vec![];
-                        for item in self.inner.tasks.iter() {
+                        for item in &self.inner.tasks {
                             let overlap = keyword_overlap(&primary_kws, &keyword_set(&item.goal));
                             if overlap > 0.5 {
                                 to_merge.push(*item.key());
@@ -118,28 +123,38 @@ impl TaskQueue {
         }
     }
 
+    #[must_use]
     pub fn len(&self) -> usize {
         self.inner.tasks.len()
     }
 
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.inner.tasks.is_empty()
     }
 }
 
 impl Default for TaskQueue {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 fn keyword_set(goal: &str) -> std::collections::HashSet<String> {
     goal.split_whitespace()
         .filter(|w| w.len() > 3)
-        .map(|w| w.to_lowercase())
+        .map(str::to_lowercase)
         .collect()
 }
 
-fn keyword_overlap(a: &std::collections::HashSet<String>, b: &std::collections::HashSet<String>) -> f64 {
-    if a.is_empty() || b.is_empty() { return 0.0; }
+#[allow(clippy::cast_precision_loss)]
+fn keyword_overlap(
+    a: &std::collections::HashSet<String>,
+    b: &std::collections::HashSet<String>,
+) -> f64 {
+    if a.is_empty() || b.is_empty() {
+        return 0.0;
+    }
     let intersection = a.intersection(b).count();
     intersection as f64 / a.union(b).count() as f64
 }
@@ -205,7 +220,10 @@ mod tests {
         q.push(make_task("goal x", Priority::Normal)).await;
         q.pop().await;
         // After pop the goal should be de-registered so we can push again.
-        assert!(q.push(make_task("goal x", Priority::Normal)).await.is_none());
+        assert!(q
+            .push(make_task("goal x", Priority::Normal))
+            .await
+            .is_none());
     }
 
     #[tokio::test]
@@ -215,9 +233,15 @@ mod tests {
         //   t1 keywords: {refactor, authentication, middleware, logging}
         //   t2 keywords: {refactor, authentication, middleware, database}
         //   overlap = 3/5 = 0.6 > 0.5 → merge triggers
-        let mut t1 = make_task("refactor authentication middleware logging", Priority::Normal);
+        let mut t1 = make_task(
+            "refactor authentication middleware logging",
+            Priority::Normal,
+        );
         t1.constraints = vec!["keep async".into()];
-        let mut t2 = make_task("refactor authentication middleware database", Priority::Normal);
+        let mut t2 = make_task(
+            "refactor authentication middleware database",
+            Priority::Normal,
+        );
         t2.constraints = vec!["preserve tests".into()];
         q.push(t1).await;
         q.push(t2).await;
@@ -257,24 +281,42 @@ mod tests {
     #[tokio::test]
     async fn constraint_merge_deduplicates_shared_constraints() {
         let q = TaskQueue::new();
-        let mut t1 = make_task("refactor authentication middleware service", Priority::Normal);
+        let mut t1 = make_task(
+            "refactor authentication middleware service",
+            Priority::Normal,
+        );
         t1.constraints = vec!["no new deps".into()];
-        let mut t2 = make_task("refactor authentication middleware handler", Priority::Normal);
+        let mut t2 = make_task(
+            "refactor authentication middleware handler",
+            Priority::Normal,
+        );
         t2.constraints = vec!["no new deps".into()]; // same constraint
         q.push(t1).await;
         q.push(t2).await;
 
         let merged = q.pop().await;
         // Duplicate constraint should appear only once
-        let count = merged.constraints.iter().filter(|c| c.as_str() == "no new deps").count();
+        let count = merged
+            .constraints
+            .iter()
+            .filter(|c| c.as_str() == "no new deps")
+            .count();
         assert_eq!(count, 1, "duplicate constraint should be deduplicated");
     }
 
     #[tokio::test]
     async fn merged_task_reduces_queue_len() {
         let q = TaskQueue::new();
-        q.push(make_task("refactor authentication middleware logging", Priority::Normal)).await;
-        q.push(make_task("refactor authentication middleware database", Priority::Normal)).await;
+        q.push(make_task(
+            "refactor authentication middleware logging",
+            Priority::Normal,
+        ))
+        .await;
+        q.push(make_task(
+            "refactor authentication middleware database",
+            Priority::Normal,
+        ))
+        .await;
         assert_eq!(q.len(), 2);
 
         q.pop().await;

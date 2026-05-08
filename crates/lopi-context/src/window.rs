@@ -27,7 +27,7 @@ pub struct ContextWindow {
     turns: Vec<TaggedMessage>,
     token_budget: usize,
     current_tokens: usize,
-    /// Auto-evict BudgetEvictable turns when pressure exceeds this ratio.
+    /// Auto-evict `BudgetEvictable` turns when pressure exceeds this ratio.
     budget_threshold: f32,
     eviction_log: Vec<EvictionRecord>,
     total_evicted: usize,
@@ -35,6 +35,8 @@ pub struct ContextWindow {
 }
 
 impl ContextWindow {
+    /// Create a new window with the given token budget.
+    #[must_use]
     pub fn new(budget: usize) -> Self {
         Self {
             turns: Vec::new(),
@@ -47,6 +49,8 @@ impl ContextWindow {
         }
     }
 
+    /// Override the auto-eviction pressure threshold (default 0.75).
+    #[must_use]
     #[allow(dead_code)]
     pub fn with_threshold(mut self, threshold: f32) -> Self {
         self.budget_threshold = threshold;
@@ -54,7 +58,10 @@ impl ContextWindow {
     }
 
     /// Insert a turn. Estimates tokens if `msg.tokens == 0`.
-    /// Auto-evicts BudgetEvictable turns when pressure exceeds the threshold.
+    ///
+    /// Auto-evicts `BudgetEvictable` turns when pressure exceeds the threshold.
+    ///
+    /// # Errors
     /// Returns `Err(ContextError::Full)` if the turn cannot fit even after eviction.
     pub fn push(&mut self, mut msg: TaggedMessage) -> Result<TurnId, ContextError> {
         if msg.tokens == 0 {
@@ -64,6 +71,12 @@ impl ContextWindow {
         let msg_id = msg.id;
 
         if self.token_pressure() > self.budget_threshold {
+            // usize→f32 precision loss is acceptable: token counts are rough budget estimates.
+            #[allow(
+                clippy::cast_precision_loss,
+                clippy::cast_possible_truncation,
+                clippy::cast_sign_loss
+            )]
             let target = (self.token_budget as f32 * (self.budget_threshold - 0.1)) as usize;
             if let Ok(stats) =
                 eviction::evict_to_budget(&mut self.turns, target, &mut self.current_tokens)
@@ -92,8 +105,12 @@ impl ContextWindow {
         Ok(msg_id)
     }
 
-    /// Insert a tool_use/tool_result pair atomically.
+    /// Insert a `tool_use`/`tool_result` pair atomically.
+    ///
     /// Returns `(call_id, result_id)` on success.
+    ///
+    /// # Errors
+    /// Returns `Err(ContextError::Full)` if the pair cannot fit even after eviction.
     pub fn push_tool_pair(
         &mut self,
         mut call: TaggedMessage,
@@ -115,10 +132,15 @@ impl ContextWindow {
         let combined = call.tokens + result.tokens;
 
         // Auto-evict for combined budget check.
-        if self.token_budget > 0
-            && (self.current_tokens + combined) as f32 / self.token_budget as f32
-                > self.budget_threshold
-        {
+        // usize→f32 precision loss is acceptable: token counts are rough budget estimates.
+        #[allow(clippy::cast_precision_loss)]
+        let pressure = (self.current_tokens + combined) as f32 / self.token_budget as f32;
+        if self.token_budget > 0 && pressure > self.budget_threshold {
+            #[allow(
+                clippy::cast_precision_loss,
+                clippy::cast_possible_truncation,
+                clippy::cast_sign_loss
+            )]
             let target = (self.token_budget as f32 * (self.budget_threshold - 0.1)) as usize;
             if let Ok(stats) =
                 eviction::evict_to_budget(&mut self.turns, target, &mut self.current_tokens)
@@ -139,8 +161,7 @@ impl ContextWindow {
         self.turns.push(call);
         self.turns.push(result);
 
-        let exp1 =
-            eviction::check_expired_tags(&mut self.turns, call_id, &mut self.current_tokens);
+        let exp1 = eviction::check_expired_tags(&mut self.turns, call_id, &mut self.current_tokens);
         if exp1.turns_evicted > 0 {
             self.record(exp1);
         }
@@ -154,7 +175,8 @@ impl ContextWindow {
     }
 
     /// Transition to a new phase.
-    /// Evicts UntilPhase(new_phase) turns and the natural predecessor phase's non-pinned turns.
+    ///
+    /// Evicts `UntilPhase(new_phase)` turns and the natural predecessor phase's non-pinned turns.
     pub fn transition_phase(&mut self, new_phase: Phase) {
         tracing::info!(
             phase = ?new_phase,
@@ -190,7 +212,7 @@ impl ContextWindow {
         }
     }
 
-    /// Insert a conclusion turn pinned Always with is_conclusion=true. Never auto-evicted.
+    /// Insert a conclusion turn pinned `Always` with `is_conclusion=true`. Never auto-evicted.
     pub fn pin_conclusion(&mut self, summary: String, phase: Phase) -> TurnId {
         let id = Uuid::new_v4();
         let content = vec![ContentBlock::Text(summary)];
@@ -210,48 +232,67 @@ impl ContextWindow {
         id
     }
 
+    /// Evict all turns in the given phase.
+    ///
+    /// # Errors
+    /// Returns `Err` if the eviction logic encounters an inconsistency.
     pub fn evict_phase(&mut self, phase: Phase) -> Result<EvictionStats, ContextError> {
-        let stats =
-            eviction::evict_phase(&mut self.turns, phase, &mut self.current_tokens)?;
+        let stats = eviction::evict_phase(&mut self.turns, phase, &mut self.current_tokens)?;
         self.record(stats);
         Ok(stats)
     }
 
+    /// Evict turns until the token count falls below `target`.
+    ///
+    /// # Errors
+    /// Returns `Err` if the eviction logic encounters an inconsistency.
     pub fn evict_to_budget(&mut self, target: usize) -> Result<EvictionStats, ContextError> {
-        let stats =
-            eviction::evict_to_budget(&mut self.turns, target, &mut self.current_tokens)?;
+        let stats = eviction::evict_to_budget(&mut self.turns, target, &mut self.current_tokens)?;
         self.record(stats);
         Ok(stats)
     }
 
+    /// Evict a specific turn by ID. If `force` is true, ignores pin policies.
+    ///
+    /// # Errors
+    /// Returns `Err` if the turn cannot be evicted (e.g., pinned and `force` is false).
     pub fn evict_turn(&mut self, id: TurnId, force: bool) -> Result<EvictionStats, ContextError> {
-        let stats =
-            eviction::evict_turn(&mut self.turns, id, force, &mut self.current_tokens)?;
+        let stats = eviction::evict_turn(&mut self.turns, id, force, &mut self.current_tokens)?;
         self.record(stats);
         Ok(stats)
     }
 
     /// Returns turns in insertion order, excluding evicted turns.
+    #[must_use]
     pub fn to_api_messages(&self) -> Vec<ApiMessage> {
         self.turns
             .iter()
-            .map(|t| ApiMessage { role: t.role, content: t.content.clone() })
+            .map(|t| ApiMessage {
+                role: t.role,
+                content: t.content.clone(),
+            })
             .collect()
     }
 
+    /// Current token pressure as a ratio in [0.0, 1.0+].
+    #[must_use]
     pub fn token_pressure(&self) -> f32 {
         if self.token_budget == 0 {
             return 0.0;
         }
-        self.current_tokens as f32 / self.token_budget as f32
+        // usize→f32 precision loss is acceptable: pressure is a rough ratio.
+        #[allow(clippy::cast_precision_loss)]
+        let pressure = self.current_tokens as f32 / self.token_budget as f32;
+        pressure
     }
 
+    /// Return aggregate statistics for this window.
+    #[must_use]
     pub fn stats(&self) -> ContextStats {
-        let tokens_by_phase =
-            self.turns.iter().fold(HashMap::new(), |mut map, t| {
-                *map.entry(t.phase).or_insert(0) += t.tokens;
-                map
-            });
+        let tokens_by_phase = self.turns.iter().fold(HashMap::new(), |mut map, t| {
+            *map.entry(t.phase).or_insert(0) += t.tokens;
+            map
+        });
         ContextStats {
             total_turns: self.turns.len() + self.total_evicted,
             active_turns: self.turns.len(),
@@ -263,10 +304,14 @@ impl ContextWindow {
         }
     }
 
+    /// Return all active turns in insertion order.
+    #[must_use]
     pub fn turns(&self) -> &[TaggedMessage] {
         &self.turns
     }
 
+    /// Return the eviction log for this window.
+    #[must_use]
     pub fn eviction_log(&self) -> &[EvictionRecord] {
         &self.eviction_log
     }

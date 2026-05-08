@@ -58,3 +58,7 @@ CREATE INDEX IF NOT EXISTS idx_tasks_created_at ON tasks(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_attempts_task_id ON attempts(task_id);
 CREATE INDEX IF NOT EXISTS idx_patterns_keywords ON patterns(goal_keywords);
 ALTER TABLE patterns ADD COLUMN embedding TEXT;
+-- Sprint H: distinguish patterns derived from a failed-run post-mortem
+-- (Claude analyzed the error log) from patterns mined from completed-task
+-- statistics. The dashboard surfaces these differently.
+ALTER TABLE patterns ADD COLUMN derived_from_postmortem INTEGER NOT NULL DEFAULT 0;

@@ -1,0 +1,81 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --konjo-black: #0a0a0a;
+  --konjo-deep: #050505;
+  --konjo-paper: #f5f5f5;
+  --konjo-ice: #00d4ff;
+  --konjo-ice-deep: #0088aa;
+  --konjo-ember: #ff4500;
+  --konjo-flame: #ff9500;
+  --konjo-jade: #00ff9d;
+  --konjo-sun: #ffcc00;
+  --konjo-rose: #ff0066;
+
+  --phase-boot: var(--konjo-paper);
+  --phase-discovery: var(--konjo-ice);
+  --phase-planning: #00ffd4;
+  --phase-implementation: var(--konjo-ember);
+  --phase-testing: var(--konjo-sun);
+  --phase-conclusion: var(--konjo-jade);
+}
+
+html,
+body {
+  height: 100%;
+  background: var(--konjo-black);
+  color: var(--konjo-paper);
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  letter-spacing: -0.011em;
+}
+
+::selection {
+  background: var(--konjo-ice);
+  color: var(--konjo-black);
+}
+
+/* Subtle starfield-style ambient background */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 20% 30%, rgba(0, 212, 255, 0.04) 0%, transparent 40%),
+    radial-gradient(circle at 80% 70%, rgba(255, 69, 0, 0.03) 0%, transparent 40%);
+  z-index: 0;
+}
+
+/* Tiny scrollbar that doesn't break the aesthetic */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+/* Display heading style */
+.display {
+  font-family: 'Inter', sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  font-feature-settings: 'ss01', 'ss02';
+}
+
+/* Utility for phase color CSS variables */
+.phase-boot { color: var(--phase-boot); }
+.phase-discovery { color: var(--phase-discovery); }
+.phase-planning { color: var(--phase-planning); }
+.phase-implementation { color: var(--phase-implementation); }
+.phase-testing { color: var(--phase-testing); }
+.phase-conclusion { color: var(--phase-conclusion); }

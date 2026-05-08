@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use chrono::Utc;
 use lopi_core::{Attempt, Task, TaskId, TurnMetrics};
-use sqlx::sqlite::{SqlitePool, SqlitePoolOptions, SqliteConnectOptions};
+use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
 use std::collections::HashSet;
 use std::path::Path;
 use std::str::FromStr;
@@ -16,9 +16,18 @@ fn jaccard_similarity(a: &str, b: &str) -> f32 {
     if tokens_a.is_empty() && tokens_b.is_empty() {
         return 1.0;
     }
-    let intersection = tokens_a.intersection(&tokens_b).count() as f32;
-    let union = tokens_a.union(&tokens_b).count() as f32;
-    if union == 0.0 { 0.0 } else { intersection / union }
+    // usize→f64 precision loss is acceptable: token-count similarity is a rough heuristic.
+    #[allow(clippy::cast_precision_loss)]
+    let intersection = tokens_a.intersection(&tokens_b).count() as f64;
+    #[allow(clippy::cast_precision_loss)]
+    let union = tokens_a.union(&tokens_b).count() as f64;
+    if union == 0.0 {
+        0.0
+    } else {
+        #[allow(clippy::cast_possible_truncation)]
+        let ratio = (intersection / union) as f32;
+        ratio
+    }
 }
 
 /// Build the keyword fingerprint for a goal string.
@@ -27,18 +36,18 @@ fn keyword_fingerprint(goal: &str) -> String {
     let mut words: Vec<String> = goal
         .split(|c: char| !c.is_alphabetic())
         .filter(|w| w.len() > 3)
-        .map(|w| w.to_lowercase())
+        .map(str::to_lowercase)
         .collect();
     words.sort_unstable();
     words.dedup();
     words.join(" ")
 }
 
-/// SQLite dual-pool store: one serialising write connection, up to 8 read-only connections.
+/// `SQLite` dual-pool store: one serialising write connection, up to 8 read-only connections.
 ///
-/// SQLite supports only one concurrent writer. Using a single-connection write pool
-/// ensures INSERT/UPDATE/DELETE/DDL statements never contend on the write lock.
-/// A separate read-only pool with up to 8 connections allows concurrent SELECT queries
+/// `SQLite` supports only one concurrent writer. Using a single-connection write pool
+/// ensures `INSERT`/`UPDATE`/`DELETE`/`DDL` statements never contend on the write lock.
+/// A separate read-only pool with up to 8 connections allows concurrent `SELECT` queries
 /// without blocking or being blocked by writes (WAL mode makes this safe).
 #[derive(Clone)]
 pub struct MemoryStore {
@@ -49,6 +58,10 @@ pub struct MemoryStore {
 }
 
 impl MemoryStore {
+    /// Open or create a persistent `SQLite` database at `path`.
+    ///
+    /// # Errors
+    /// Returns `Err` if the database cannot be created or the schema cannot be applied.
     pub async fn open(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref();
         if let Some(parent) = path.parent() {
@@ -83,12 +96,19 @@ impl MemoryStore {
             .await
             .context("opening sqlite read pool")?;
 
-        Ok(Self { write_pool, read_pool })
+        Ok(Self {
+            write_pool,
+            read_pool,
+        })
     }
 
-    /// Open an in-memory SQLite database — useful for tests.
+    /// Open an in-memory `SQLite` database — useful for tests.
+    ///
     /// In-memory databases do not support WAL or multiple connections sharing state,
     /// so a single pool services both reads and writes.
+    ///
+    /// # Errors
+    /// Returns `Err` if the in-memory database cannot be opened or the schema cannot be applied.
     pub async fn open_in_memory() -> Result<Self> {
         let opts = SqliteConnectOptions::from_str("sqlite::memory:")
             .context("parsing in-memory sqlite")?;
@@ -99,17 +119,36 @@ impl MemoryStore {
             .context("opening in-memory sqlite pool")?;
         Self::apply_schema(&pool).await?;
         // Use the same pool for both reads and writes — safe for single-connection in-memory DB.
-        Ok(Self { write_pool: pool.clone(), read_pool: pool })
+        Ok(Self {
+            write_pool: pool.clone(),
+            read_pool: pool,
+        })
     }
 
     async fn apply_schema(pool: &SqlitePool) -> Result<()> {
         for stmt in SCHEMA.split(';') {
             let s = stmt.trim();
-            if s.is_empty() { continue; }
-            let result = sqlx::query(s).execute(pool).await;
+            if s.is_empty() {
+                continue;
+            }
+            // Strip leading SQL line comments (`-- foo`) so the prefix check
+            // below correctly identifies ALTER TABLE statements that have
+            // documentation comments above them.
+            let body: String = s
+                .lines()
+                .filter(|l| !l.trim_start().starts_with("--"))
+                .collect::<Vec<_>>()
+                .join("\n")
+                .trim()
+                .to_string();
+            if body.is_empty() {
+                continue;
+            }
+
+            let result = sqlx::query(&body).execute(pool).await;
             // ALTER TABLE ... ADD COLUMN errors on duplicate columns — silently ignore.
             if let Err(e) = result {
-                if !s.to_lowercase().starts_with("alter table") {
+                if !body.to_lowercase().starts_with("alter table") {
                     return Err(e).context("applying schema");
                 }
             }
@@ -117,6 +156,10 @@ impl MemoryStore {
         Ok(())
     }
 
+    /// Save or upsert a task record.
+    ///
+    /// # Errors
+    /// Returns `Err` if serialisation or the database write fails.
     pub async fn save_task(&self, task: &Task, status: &str) -> Result<()> {
         let source = serde_json::to_string(&task.source)?;
         sqlx::query(
@@ -134,24 +177,36 @@ impl MemoryStore {
         Ok(())
     }
 
+    /// Mark a task as completed with the given status string.
+    ///
+    /// # Errors
+    /// Returns `Err` if the database update fails.
     pub async fn mark_completed(&self, id: &TaskId, status: &str) -> Result<()> {
-        sqlx::query(
-            "UPDATE tasks SET status = ?1, completed_at = ?2 WHERE id = ?3",
-        )
-        .bind(status)
-        .bind(Utc::now().to_rfc3339())
-        .bind(id.0.to_string())
-        .execute(&self.write_pool)
-        .await?;
+        sqlx::query("UPDATE tasks SET status = ?1, completed_at = ?2 WHERE id = ?3")
+            .bind(status)
+            .bind(Utc::now().to_rfc3339())
+            .bind(id.0.to_string())
+            .execute(&self.write_pool)
+            .await?;
         Ok(())
     }
 
+    /// Persist an agent attempt record.
+    ///
+    /// # Errors
+    /// Returns `Err` if serialisation of errors or the database insert fails.
     pub async fn save_attempt(&self, attempt: &Attempt) -> Result<()> {
         let (pass, lint, diff) = match &attempt.score {
-            Some(s) => (Some(s.test_pass_rate), Some(s.lint_errors as i64), Some(s.diff_lines as i64)),
+            Some(s) => (
+                Some(s.test_pass_rate),
+                Some(i64::from(s.lint_errors)),
+                Some(i64::from(s.diff_lines)),
+            ),
             None => (None, None, None),
         };
-        let errors = attempt.score.as_ref()
+        let errors = attempt
+            .score
+            .as_ref()
             .map(|s| serde_json::to_string(&s.errors).unwrap_or_default())
             .unwrap_or_default();
         sqlx::query(
@@ -161,7 +216,7 @@ impl MemoryStore {
         )
         .bind(attempt.id.to_string())
         .bind(attempt.task_id.0.to_string())
-        .bind(attempt.attempt_num as i64)
+        .bind(i64::from(attempt.attempt_num))
         .bind(&attempt.branch)
         .bind(pass)
         .bind(lint)
@@ -175,6 +230,9 @@ impl MemoryStore {
     }
 
     /// Recent tasks, newest first.
+    ///
+    /// # Errors
+    /// Returns `Err` if the database query fails.
     pub async fn load_history(&self, limit: i64) -> Result<Vec<TaskRow>> {
         let rows = sqlx::query_as::<_, TaskRow>(
             "SELECT id, goal, status, created_at, completed_at FROM tasks \
@@ -187,7 +245,11 @@ impl MemoryStore {
     }
 
     /// Jaccard similarity search over stored keyword fingerprints.
+    ///
     /// Returns up to 5 patterns most similar to `goal` with Jaccard score > 0.3.
+    ///
+    /// # Errors
+    /// Returns `Err` if the database query fails.
     pub async fn find_similar_patterns(&self, goal: &str) -> Result<Vec<PatternRow>> {
         let query_fp = keyword_fingerprint(goal);
         if query_fp.is_empty() {
@@ -195,7 +257,7 @@ impl MemoryStore {
         }
 
         let all: Vec<PatternRow> = sqlx::query_as::<_, PatternRow>(
-            "SELECT id, goal_keywords, successful_constraints, avg_attempts, success_rate, last_seen \
+            "SELECT id, goal_keywords, successful_constraints, avg_attempts, success_rate, last_seen, derived_from_postmortem \
              FROM patterns",
         )
         .fetch_all(&self.read_pool)
@@ -205,18 +267,25 @@ impl MemoryStore {
             .into_iter()
             .filter_map(|row| {
                 let sim = jaccard_similarity(&query_fp, &row.goal_keywords);
-                if sim > 0.3 { Some((sim, row)) } else { None }
+                if sim > 0.3 {
+                    Some((sim, row))
+                } else {
+                    None
+                }
             })
             .collect();
         scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
         Ok(scored.into_iter().take(5).map(|(_, r)| r).collect())
     }
 
-    /// Load all patterns ordered by success_rate descending.
+    /// Load all patterns ordered by `success_rate` descending.
+    ///
+    /// # Errors
+    /// Returns `Err` if the database query fails.
     pub async fn load_patterns(&self, limit: i64) -> Result<Vec<PatternRow>> {
         let rows = sqlx::query_as::<_, PatternRow>(
-            "SELECT id, goal_keywords, successful_constraints, avg_attempts, success_rate, last_seen \
-             FROM patterns ORDER BY success_rate DESC LIMIT ?1",
+            "SELECT id, goal_keywords, successful_constraints, avg_attempts, success_rate, last_seen, derived_from_postmortem \
+             FROM patterns ORDER BY COALESCE(success_rate, 0) DESC, last_seen DESC LIMIT ?1",
         )
         .bind(limit)
         .fetch_all(&self.read_pool)
@@ -224,7 +293,57 @@ impl MemoryStore {
         Ok(rows)
     }
 
+    /// Sprint H — fetch a single pattern by id prefix (for `lopi learn show`).
+    /// Mirrors the prefix-match UX used by `lopi tasks/cancel`. Returns
+    /// `Ok(None)` if no pattern matches the prefix.
+    ///
+    /// # Errors
+    /// Returns `Err` if the database query fails.
+    pub async fn find_pattern_by_id_prefix(&self, prefix: &str) -> Result<Option<PatternRow>> {
+        let pattern = format!("{prefix}%");
+        let row: Option<PatternRow> = sqlx::query_as::<_, PatternRow>(
+            "SELECT id, goal_keywords, successful_constraints, avg_attempts, success_rate, last_seen, derived_from_postmortem \
+             FROM patterns WHERE id LIKE ?1 LIMIT 1",
+        )
+        .bind(pattern)
+        .fetch_optional(&self.read_pool)
+        .await?;
+        Ok(row)
+    }
+
+    /// Sprint H — persist a new pattern derived from a failed-run post-mortem.
+    /// Stores the Claude-derived constraint string in `successful_constraints`,
+    /// flags `derived_from_postmortem = 1`, and seeds with `success_rate = 0.0`
+    /// (will rise as future tasks consuming this pattern succeed).
+    ///
+    /// # Errors
+    /// Returns `Err` if the database insert fails.
+    pub async fn insert_postmortem_pattern(
+        &self,
+        goal_keywords: &str,
+        constraint: &str,
+    ) -> Result<String> {
+        let id = uuid::Uuid::new_v4().to_string();
+        let now = Utc::now().to_rfc3339();
+        sqlx::query(
+            "INSERT INTO patterns (id, goal_keywords, successful_constraints, avg_attempts, success_rate, last_seen, derived_from_postmortem) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1)",
+        )
+        .bind(&id)
+        .bind(goal_keywords)
+        .bind(constraint)
+        .bind(0.0_f64)
+        .bind(0.0_f64)
+        .bind(now)
+        .execute(&self.write_pool)
+        .await?;
+        Ok(id)
+    }
+
     /// Mine a completed task's attempts into the patterns table.
+    ///
+    /// # Errors
+    /// Returns `Err` if any database query or update fails.
     pub async fn mine_patterns(&self, task_id: &TaskId, goal: &str) -> Result<()> {
         let fingerprint = keyword_fingerprint(goal);
         if fingerprint.is_empty() {
@@ -250,10 +369,14 @@ impl MemoryStore {
         .fetch_optional(&self.read_pool)
         .await?;
 
+        // i64→f64 cast: precision loss is acceptable for attempt count statistics.
+        #[allow(clippy::cast_precision_loss)]
+        let attempt_count_f = attempt_count as f64;
+
         let now = Utc::now().to_rfc3339();
         if let Some((existing_id, prev_avg, prev_sr)) = existing {
-            let new_avg = ((prev_avg.unwrap_or(0.0) + attempt_count as f64) / 2.0).max(1.0);
-            let new_sr = ((prev_sr.unwrap_or(0.0) + success_rate) / 2.0).clamp(0.0, 1.0);
+            let new_avg = f64::midpoint(prev_avg.unwrap_or(0.0), attempt_count_f).max(1.0);
+            let new_sr = f64::midpoint(prev_sr.unwrap_or(0.0), success_rate).clamp(0.0, 1.0);
             sqlx::query(
                 "UPDATE patterns SET avg_attempts = ?1, success_rate = ?2, last_seen = ?3 WHERE id = ?4",
             )
@@ -271,7 +394,7 @@ impl MemoryStore {
             )
             .bind(id)
             .bind(&fingerprint)
-            .bind(attempt_count as f64)
+            .bind(attempt_count_f)
             .bind(success_rate)
             .bind(&now)
             .execute(&self.write_pool)
@@ -280,6 +403,10 @@ impl MemoryStore {
         Ok(())
     }
 
+    /// Return the total number of tasks in the database.
+    ///
+    /// # Errors
+    /// Returns `Err` if the database query fails.
     pub async fn task_count(&self) -> Result<i64> {
         let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM tasks")
             .fetch_one(&self.read_pool)
@@ -288,6 +415,9 @@ impl MemoryStore {
     }
 
     /// Persist a single per-turn observability record.
+    ///
+    /// # Errors
+    /// Returns `Err` if the database insert fails.
     pub async fn save_turn_metrics(&self, m: &TurnMetrics) -> Result<()> {
         sqlx::query(
             "INSERT INTO turn_metrics \
@@ -304,19 +434,20 @@ impl MemoryStore {
         .bind(m.task_id.0.to_string())
         .bind(m.session_id.to_string())
         .bind(&m.model)
-        .bind(m.attempt_number as i64)
-        .bind(m.input_tokens as i64)
-        .bind(m.output_tokens as i64)
-        .bind(m.cache_read_input_tokens as i64)
-        .bind(m.cache_write_input_tokens as i64)
-        .bind(m.ttft_ms as i64)
-        .bind(m.turn_latency_ms as i64)
-        .bind(m.tool_execution_ms as i64)
-        .bind(m.context_tokens as i64)
-        .bind(m.context_pressure as f64)
-        .bind(m.evictions_this_turn as i64)
-        .bind(m.tool_calls as i64)
-        .bind(m.tools_parallel as i64)
+        .bind(i64::from(m.attempt_number))
+        .bind(i64::from(m.input_tokens))
+        .bind(i64::from(m.output_tokens))
+        .bind(i64::from(m.cache_read_input_tokens))
+        .bind(i64::from(m.cache_write_input_tokens))
+        // u64→i64: latency values are bounded well under i64::MAX in practice.
+        .bind(m.ttft_ms.cast_signed())
+        .bind(m.turn_latency_ms.cast_signed())
+        .bind(m.tool_execution_ms.cast_signed())
+        .bind(i64::from(m.context_tokens))
+        .bind(f64::from(m.context_pressure))
+        .bind(i64::from(m.evictions_this_turn))
+        .bind(i64::from(m.tool_calls))
+        .bind(i64::from(m.tools_parallel))
         .bind(m.estimated_cost_usd)
         .bind(m.timestamp.to_rfc3339())
         .execute(&self.write_pool)
@@ -342,235 +473,13 @@ pub struct PatternRow {
     pub avg_attempts: Option<f64>,
     pub success_rate: Option<f64>,
     pub last_seen: String,
+    /// Sprint H: 1 when this row was created by a failed-run post-mortem
+    /// (Claude reflection over an error log), 0 when mined from completed
+    /// task statistics. SQLite has no bool — represented as INTEGER.
+    #[sqlx(default)]
+    pub derived_from_postmortem: i64,
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use lopi_core::{Attempt, Task, TurnMetrics, TaskId};
-    use uuid::Uuid;
-    use chrono::Utc;
-
-    #[test]
-    fn jaccard_sim_identical() {
-        assert_eq!(jaccard_similarity("auth middleware refactor", "auth middleware refactor"), 1.0);
-    }
-
-    #[test]
-    fn jaccard_sim_partial() {
-        let s = jaccard_similarity("auth middleware", "auth database");
-        assert!(s > 0.0 && s < 1.0);
-    }
-
-    #[test]
-    fn jaccard_sim_disjoint() {
-        assert_eq!(jaccard_similarity("alpha beta", "gamma delta"), 0.0);
-    }
-
-    #[test]
-    fn keyword_fingerprint_sorts_and_dedupes() {
-        let fp = keyword_fingerprint("refactor authentication middleware refactor");
-        let words: Vec<&str> = fp.split_whitespace().collect();
-        assert!(words.windows(2).all(|w| w[0] <= w[1]), "should be sorted");
-        assert_eq!(words.len(), words.iter().collect::<std::collections::HashSet<_>>().len(), "should be deduped");
-    }
-
-    #[test]
-    fn keyword_fingerprint_filters_short_words() {
-        let fp = keyword_fingerprint("do it now fix");
-        assert!(fp.is_empty() || !fp.contains("do"));
-    }
-
-    #[tokio::test]
-    async fn save_and_load_task_round_trip() {
-        let store = MemoryStore::open_in_memory().await.unwrap();
-        let task = Task::new("integrate the flux capacitor");
-        store.save_task(&task, "queued").await.unwrap();
-
-        let history = store.load_history(10).await.unwrap();
-        assert_eq!(history.len(), 1);
-        assert_eq!(history[0].goal, "integrate the flux capacitor");
-        assert_eq!(history[0].status, "queued");
-    }
-
-    #[tokio::test]
-    async fn mark_completed_updates_status() {
-        let store = MemoryStore::open_in_memory().await.unwrap();
-        let task = Task::new("refactor the warp core");
-        store.save_task(&task, "queued").await.unwrap();
-        store.mark_completed(&task.id, "success").await.unwrap();
-
-        let history = store.load_history(10).await.unwrap();
-        assert_eq!(history[0].status, "success");
-        assert!(history[0].completed_at.is_some());
-    }
-
-    #[tokio::test]
-    async fn save_task_upserts_status() {
-        let store = MemoryStore::open_in_memory().await.unwrap();
-        let task = Task::new("fix flaky test");
-        store.save_task(&task, "queued").await.unwrap();
-        store.save_task(&task, "implementing").await.unwrap();
-
-        assert_eq!(store.task_count().await.unwrap(), 1);
-        let history = store.load_history(10).await.unwrap();
-        assert_eq!(history[0].status, "implementing");
-    }
-
-    #[tokio::test]
-    async fn save_attempt_persists() {
-        let store = MemoryStore::open_in_memory().await.unwrap();
-        let task = Task::new("add feature X");
-        store.save_task(&task, "queued").await.unwrap();
-
-        let mut attempt = Attempt::new(task.id, 1, "lopi/abc-attempt-1");
-        attempt.outcome = "success".into();
-        store.save_attempt(&attempt).await.unwrap();
-    }
-
-    #[tokio::test]
-    async fn load_history_newest_first() {
-        let store = MemoryStore::open_in_memory().await.unwrap();
-        for i in 0..5u8 {
-            let t = Task::new(format!("task number {i} work"));
-            store.save_task(&t, "queued").await.unwrap();
-        }
-        let history = store.load_history(3).await.unwrap();
-        assert_eq!(history.len(), 3);
-    }
-
-    #[tokio::test]
-    async fn empty_store_returns_empty_history() {
-        let store = MemoryStore::open_in_memory().await.unwrap();
-        let history = store.load_history(10).await.unwrap();
-        assert!(history.is_empty());
-    }
-
-    #[tokio::test]
-    async fn find_similar_patterns_empty_db() {
-        let store = MemoryStore::open_in_memory().await.unwrap();
-        let results = store.find_similar_patterns("optimize the engine").await.unwrap();
-        assert!(results.is_empty());
-    }
-
-    #[tokio::test]
-    async fn find_similar_patterns_returns_matches() {
-        let store = MemoryStore::open_in_memory().await.unwrap();
-        let task = Task::new("refactor authentication middleware");
-        store.save_task(&task, "success").await.unwrap();
-        store.mine_patterns(&task.id, &task.goal).await.unwrap();
-
-        // Similar goal should match above 0.3 Jaccard threshold.
-        let results = store.find_similar_patterns("update authentication middleware logic").await.unwrap();
-        assert!(!results.is_empty(), "should find similar pattern");
-    }
-
-    #[tokio::test]
-    async fn mine_patterns_inserts_new_row() {
-        let store = MemoryStore::open_in_memory().await.unwrap();
-        let task = Task::new("refactor authentication middleware");
-        store.save_task(&task, "queued").await.unwrap();
-        store.mine_patterns(&task.id, &task.goal).await.unwrap();
-
-        let patterns = store.load_patterns(10).await.unwrap();
-        assert_eq!(patterns.len(), 1);
-        let kw = &patterns[0].goal_keywords;
-        assert!(kw.contains("authentication") || kw.contains("middleware") || kw.contains("refactor"));
-    }
-
-    #[tokio::test]
-    async fn mine_patterns_updates_existing_row() {
-        let store = MemoryStore::open_in_memory().await.unwrap();
-        let t1 = Task::new("optimize database queries");
-        let t2 = Task::new("optimize database queries");
-        store.save_task(&t1, "queued").await.unwrap();
-        store.save_task(&t2, "queued").await.unwrap();
-
-        store.mine_patterns(&t1.id, &t1.goal).await.unwrap();
-        store.mine_patterns(&t2.id, &t2.goal).await.unwrap();
-
-        let patterns = store.load_patterns(10).await.unwrap();
-        assert_eq!(patterns.len(), 1);
-    }
-
-    #[tokio::test]
-    async fn mine_patterns_skips_short_words() {
-        let store = MemoryStore::open_in_memory().await.unwrap();
-        let task = Task::new("do it now");
-        store.save_task(&task, "queued").await.unwrap();
-        store.mine_patterns(&task.id, &task.goal).await.unwrap();
-        let patterns = store.load_patterns(10).await.unwrap();
-        assert!(patterns.is_empty());
-    }
-
-    #[tokio::test]
-    async fn load_patterns_ordered_by_success_rate() {
-        let store = MemoryStore::open_in_memory().await.unwrap();
-        let t1 = Task::new("write comprehensive unit tests");
-        let t2 = Task::new("deploy production infrastructure");
-        store.save_task(&t1, "success").await.unwrap();
-        store.save_task(&t2, "failed").await.unwrap();
-        store.mine_patterns(&t1.id, &t1.goal).await.unwrap();
-        store.mine_patterns(&t2.id, &t2.goal).await.unwrap();
-
-        let patterns = store.load_patterns(10).await.unwrap();
-        assert_eq!(patterns.len(), 2);
-    }
-
-    fn make_turn_metrics(task_id: TaskId) -> TurnMetrics {
-        TurnMetrics {
-            turn_id: Uuid::new_v4(),
-            task_id,
-            session_id: Uuid::new_v4(),
-            model: "claude-sonnet-4-6".into(),
-            attempt_number: 1,
-            input_tokens: 500,
-            output_tokens: 200,
-            cache_read_input_tokens: 0,
-            cache_write_input_tokens: 100,
-            ttft_ms: 300,
-            turn_latency_ms: 1200,
-            tool_execution_ms: 50,
-            context_tokens: 4000,
-            context_pressure: 0.25,
-            evictions_this_turn: 0,
-            tool_calls: 2,
-            tools_parallel: false,
-            estimated_cost_usd: 0.003,
-            timestamp: Utc::now(),
-        }
-    }
-
-    #[tokio::test]
-    async fn save_turn_metrics_succeeds() {
-        let store = MemoryStore::open_in_memory().await.unwrap();
-        let task = Task::new("measure tokens");
-        store.save_task(&task, "queued").await.unwrap();
-        let m = make_turn_metrics(task.id);
-        store.save_turn_metrics(&m).await.unwrap();
-    }
-
-    #[tokio::test]
-    async fn save_turn_metrics_dedup_on_same_turn_id() {
-        let store = MemoryStore::open_in_memory().await.unwrap();
-        let task = Task::new("measure tokens deduplicated");
-        store.save_task(&task, "queued").await.unwrap();
-        let mut m = make_turn_metrics(task.id);
-        let fixed_id = Uuid::new_v4();
-        m.turn_id = fixed_id;
-        store.save_turn_metrics(&m).await.unwrap();
-        // Second insert with same turn_id should silently succeed (ON CONFLICT DO NOTHING)
-        store.save_turn_metrics(&m).await.unwrap();
-    }
-
-    #[tokio::test]
-    async fn task_count_increments_per_save() {
-        let store = MemoryStore::open_in_memory().await.unwrap();
-        assert_eq!(store.task_count().await.unwrap(), 0);
-        for i in 0..3u8 {
-            let t = Task::new(format!("task count test {i}"));
-            store.save_task(&t, "queued").await.unwrap();
-        }
-        assert_eq!(store.task_count().await.unwrap(), 3);
-    }
-}
+#[path = "store_tests.rs"]
+mod tests;

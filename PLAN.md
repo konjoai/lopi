@@ -1,168 +1,146 @@
 # PLAN.md — lopi Master Plan
 
+**Updated:** 2026-05-08 · v0.10.0 just shipped.
+
 ## Vision
 
-lopi is the Konjo agent runtime. It runs Claude Code agents concurrently, each in git-isolated branches. It learns from every run, self-improves over time, and is controllable entirely from a phone. The web UI is clean and fast. The mobile experience is better than anything that exists today for agent orchestration.
+lopi is the Konjo agent runtime. It runs Claude Code agents concurrently in
+git-isolated branches, learns from every run, self-improves over time, and
+is controllable from a phone. The web UI (the **Forge** + **Constellation**
+in `web/`) is embedded into the binary via `rust-embed` so a single
+executable ships the whole experience.
 
 ---
 
-## Phase 1 — MVP Core (Wk 1–3) ✅ SHIPPED v0.1.0
+## Shipped (chronological)
 
-- [x] Cargo workspace (8 crates)
-- [x] lopi-core types (`Task`, `Score`, `AgentRun`, `EventBus`)
-- [x] lopi-git: branch isolation, rollback, `DiffChecker`
-- [x] lopi-agent: Plan → Implement → Test → Score → Retry → PR loop
-- [x] lopi-memory: SQLite persistence (`tasks`, `attempts`, `patterns`)
-- [x] lopi-orchestrator: `AgentPool` + `TaskQueue` (priority + dedup)
-- [x] lopi-ui: axum API + ratatui skeleton
-- [x] lopi-remote: Telegram + WhatsApp stubs
-- [x] CLI: `lopi run | watch | tail | dock | sail`
+### v0.1.0–v0.5.0 — Phases 1–4 (foundation)
+Cargo workspace · core types · git isolation · agent loop · SQLite memory ·
+agent pool with semaphore-bounded concurrency · TUI + axum web API · Telegram
++ WhatsApp stubs · webhooks · pattern miner · scheduled tasks · per-repo
+profiles · `lopi watch --remote`.
 
----
+### v0.6.0 — TOON encoder
+`lopi-toon` crate · token-oriented prompt encoding · ~1.9M tokens/month
+saved at 100 tasks/day.
 
-## Phase 2 — N Parallel Agents + Live Dashboard (Wk 4–6) ✅ SHIPPED v0.2.0
+### v0.7.0 — `lopi-context`: KV cache eviction
+`ContextWindow` with three composable eviction policies (PhaseTransition,
+BudgetLIFO, ExplicitTag) · tool_pair atomicity invariant · is_conclusion
+preservation · token estimation via `tiktoken-rs`.
 
-- [x] `AgentPool`: real Semaphore-bounded concurrency (`--max-agents`)
-- [x] `EventBus<TaskStatus>`: real-time status broadcasts via `tokio::broadcast`
-- [x] `AgentRunner` emits events to the shared bus
-- [x] `lopi sail`: boots pool + exposes `/ws/tasks` WebSocket
-- [x] WebSocket handler fans out `TaskStatus` JSON to all connected clients
-- [x] `lopi run` streams live status events to stdout
-- [x] `claude --output-format json` with `ClaudeOutput` struct + fallback
-- [x] 27 tests: lopi-core (12), lopi-git (3), lopi-orchestrator (5), lopi-memory (7)
+### v0.8.0 — Observability + Correctness + Systems + Resilience
+`TurnMetrics` table · benchmark corpus · `mimalloc` global allocator ·
+full-jitter exponential backoff · `nextest` config · `lopi-ratelimit`
+crate (TokenBucket, AnthropicLimiter, CircuitBreaker) · dual-pool
+MemoryStore · worktree lock · CancellationToken · structured shutdown.
 
-**Shipped in Phase 2 full (v0.4.0):**
-- [x] ratatui TUI: live agent table (goal / status / attempt / score / branch / elapsed), log panel, keyboard controls (q/j/k/Enter/l/Esc/?), help overlay
-- [x] Web dashboard: full dark Konjo theme, live agent cards, score bar, elapsed timer, cancel button
-- [x] Stats bar: Running / Queued / Done / Failed with live counts
-- [x] Task submit panel in sidebar: goal textarea, repo, priority, Ctrl+Enter shortcut
-- [x] Log stream panel: color-coded by level, auto-scroll, per-task ID prefix
-- [x] WebSocket reconnect with exponential backoff (1s→2s→4s→30s max), state resync on reconnect
-- [x] Connection indicator pill (🟢 Live / 🟡 Reconnecting / 🔴 Offline)
+### v0.7.x–v0.9.0 — UI sprints (the Forge)
+- **UI-1:** SvelteKit + Three.js + custom GLSL shader · the Forge centerpiece
+  with volumetric noise + fire/ice domains + Fresnel aura
+- **UI-2:** real-data integration · TypeScript types mirror lopi-core ·
+  defensive runtime parser (53 tests) · cross-language wire-format contract
+  tests
+- **UI-3:** `/constellation` · 3D orbital view · click-to-focus · trails ·
+  starfield · center beacon
+- **UI-3.1:** cross-agent insight lines · same-repo + same-phase + goal
+  keyword overlap · phase-sync pulse animation
+- **UI-4:** `rust-embed` integration · `lopi sail` ships the Forge inside
+  the binary · 4-tier asset lookup (direct → .html → SPA fallback → placeholder)
+- **UI-5:** keyboard shortcuts (j/k/⌘K/Esc/?) · Help overlay · Cost
+  analytics panel with sparkline + top-N agents
 
----
+### v0.9.0 — Sprint G: Direct Anthropic SDK planning path
+`AgentRunner::with_api(client, limiter, breaker)` · `plan_via_api` replaces
+the CLI subprocess for planning · prompt caching with `cache_control:
+ephemeral` · real `TurnMetrics` from API responses · transparent CLI
+fallback · 7 new tests.
 
-## Phase 3 — Remote Control + Self-Improvement (Wk 7–10) ✅ SHIPPED v0.3.0
-
-- [x] `POST /api/tasks` — inject tasks into live `AgentPool` queue
-- [x] `GET /api/tasks/:id` — fetch status by ID prefix
-- [x] `GET /api/patterns` — mined pattern feed ordered by success rate
-- [x] Telegram: `/task`, `/urgent`, `/status`, `/approve`, `/dock`
-- [x] Telegram: inline keyboard (priority bump / cancel) on every queued task
-- [x] Telegram: `CallbackQuery` handler for button responses
-- [x] GitHub webhook: HMAC-SHA256 (`X-Hub-Signature-256`), 401 on bad sig, constant-time comparison
-- [x] Pattern miner: keyword fingerprint extraction + running average upsert after each run
-- [x] `AgentPool::with_store()` — mines patterns + marks completed after every agent run
-- [x] 36 tests: lopi-core (12), lopi-git (3), lopi-orchestrator (5), lopi-memory (11), lopi-webhook (5)
-
----
-
-## Phase 4 — Scheduled Tasks + Repo Profiles (Wk 9–10) ✅ SHIPPED v0.5.0
-
-- [x] `[[schedules]]` section in `lopi.toml` — `ScheduleEntry` type, full serde support:
-  ```toml
-  [[schedules]]
-  name = "nightly-lint"
-  repo = "/Users/wesleyscholl/myrepo"
-  goal = "Fix all clippy warnings"
-  cron = "0 2 * * *"
-  priority = "low"
-
-  [[schedules]]
-  name = "weekly-deps"
-  repo = "/Users/wesleyscholl/myrepo"
-  goal = "Update all dependencies to latest compatible versions"
-  cron = "0 9 * * MON"
-  ```
-- [x] `tokio-cron-scheduler` — async cron, fires tasks into `AgentPool` at schedule time
-- [x] `lopi schedules list` — pretty table with next run time per schedule
-- [x] Per-repo `.lopi.toml` profile — `RepoProfile` type: `allowed_dirs`, `forbidden_dirs`, `test_command`, `lint_command`, `default_constraints`, `max_retries`
-- [x] `RepoProfile::apply(&mut task)` — merges profile over task defaults on `lopi run` and scheduled runs
-- [x] `lopi watch --remote <ws://…>` — connects to running sail server WebSocket, drives TUI from network events
-- [x] `lopi watch --local` — isolated local bus (original behaviour)
-- [x] `LopiConfig::find_and_load()` — auto-discovers `./lopi.toml` then `~/.lopi/lopi.toml`
-- [x] `.lopi.toml.example` — per-repo profile template
-- [x] Updated `lopi.toml.example` with commented schedule examples
-- [x] 46 tests: lopi-core (20), lopi-git (3), lopi-orchestrator (7), lopi-memory (11), lopi-webhook (5)
+### v0.10.0 — Sprint H: Self-Improvement Engine 🧠
+- **`lopi learn`** subcommands:
+  - `learn list [--postmortem-only] [--limit N]` — sorted pattern table
+  - `learn show <id-prefix>` — full pattern detail
+  - `learn export [--limit N]` — JSON for analytics
+- **Failure post-mortem** (`runner::postmortem`) — when adaptive retry is
+  enabled and all retries fail, runs a single Haiku reflection session that
+  returns one imperative constraint string. Persisted to the patterns table
+  with `derived_from_postmortem = 1`.
+- **Adaptive retry** (`AgentRunner::with_adaptive_retry()`) — stashes the
+  previous attempt's score errors as `last_error`; available for the next
+  attempt's prompt. Reflexion-style.
+- **Schema migration** — `patterns.derived_from_postmortem INTEGER NOT
+  NULL DEFAULT 0` · idempotent ALTER TABLE handling now correctly strips
+  leading SQL comments.
+- **`MemoryStore::find_pattern_by_id_prefix`** + **`insert_postmortem_pattern`**
+  + **`load_patterns` ordering** by COALESCE(success_rate, 0) DESC, last_seen
+  DESC.
+- 17 new tests (4 lopi-memory + 11 postmortem + 2 builder integration).
+- Workspace total: 244 → 261 passing.
 
 ---
 
-## Phase 5 — Self-Improvement Engine (Wk 11–14)
+## Open backlog (in priority order)
 
-- [x] Pattern learning: before running a new task, query similar past tasks → suggest constraints that worked → pre-load into system prompt
-- [x] `lopi learn` CLI command — show pattern library, success rates, top constraints
-- [ ] Failure post-mortem: when all retries fail, run a "post-mortem" Claude session that analyzes the error log → generates new constraint/approach suggestion → stored as a pattern
-- [ ] Self-modification loop (guarded): lopi can be given tasks targeting its own codebase in `crates/` — ONLY when `allow_self_modify = true` in config; same git isolation and PR workflow applies
-- [ ] Adaptive retry: if attempt N failed with error type X, adjust prompt strategy for attempt N+1 (pass error + suggest different approach)
-- [ ] Scoring evolution: score weights configurable and tunable based on which metrics correlate with user-approved PRs vs rejected ones
-- [ ] `lopi learn` — browse pattern library interactively
+### Phase 5b — Self-improvement, second wave
+- [ ] Wire `with_adaptive_retry()` into `lopi run --adaptive-retry` CLI flag
+- [ ] Use `last_error` in the next attempt's planning prompt (currently
+      stashed but the run loop doesn't yet inject it — Sprint H1)
+- [ ] Pattern annotation: user can mark a post-mortem pattern as
+      "validated" / "rejected" via Telegram inline keyboard
+- [ ] Self-modification loop (guarded): `allow_self_modify = true` in
+      config; same git isolation and PR workflow applies
+- [ ] Scoring evolution: tune Score::weighted() weights based on
+      user-approved vs rejected PRs
 
----
+### Phase 6 — Webhooks fully wired
+- [ ] CI failure → auto-queue fix task at `Priority::High`
+- [ ] Issue labeled `lopi:fix` → auto-queue
+- [ ] PR review comment → feed back to agent for revision
+- [ ] `lopi serve-webhooks --port 3001` — dedicated server command
+- [ ] GitHub App mode for org-wide hooks
+- [ ] HMAC verification for all event types (already in place for CI)
 
-## Phase 6 — GitHub Webhooks + CI Integration (Wk 15–16)
+### Phase 7+ — UI polish (deferred)
+- [ ] Mobile-responsive Forge degradation
+- [ ] Optional ambient sound design tied to agent state
+- [ ] Pattern library browser inside the Forge (read `lopi learn list`
+      data via `/api/patterns`)
+- [ ] Telegram notifications: "post-mortem pattern saved" with the
+      derived constraint
 
-- [ ] `lopi-webhook` fully wired end-to-end:
-  - CI failure → auto-queue fix task at `Priority::High`
-  - Issue labeled `lopi:fix` → auto-queue
-  - PR review comment → feed back to agent for revision
-- [ ] `lopi serve-webhooks --port 3001` — dedicated webhook server command
-- [ ] GitHub App mode: register as a GitHub App for proper auth + org-wide hooks
-- [ ] Configurable rules: which events trigger which task templates
-- [ ] HMAC verification for all event types (already implemented for CI failures in v0.3.0)
+### Phase 8 — Native mobile app
+- [ ] React Native shell · push notifications via FCM/APNs · per-task
+      conversation threads · voice input · Quick Actions widget
 
----
+### Phase 9 — Intelligence + evolution (long-running)
+- [ ] Multi-agent roles: Planner → Implementer → Reviewer
+- [ ] Cross-repo awareness (read-only context from other repos)
+- [ ] Goal decomposition: `lopi plan "..."` breaks into subtasks
+- [ ] Embedding-based memory: store attempt summaries as vectors
+- [ ] Agent-to-agent communication via lopi-memory
 
-## Phase 7 — Production Web UI (Wk 17–20)
-
-- [ ] Proper React (or Svelte) frontend — separate from embedded HTML:
-  - Auth: simple token-based login
-  - Agent dashboard: real-time agent cards with expandable log panels
-  - Task composer: goal editor, repo picker, constraint builder, schedule toggle
-  - Memory explorer: browse pattern library, success rates, annotate
-  - Schedule manager: CRUD for scheduled tasks, next-run countdown
-  - PR queue: agent-opened PRs waiting for approval (link to GitHub)
-  - Settings: global config editor, repo profile manager, bot configuration
-- [ ] Mobile-responsive (works on phone browser)
-- [ ] Dark theme, Konjo aesthetic, fast
-
----
-
-## Phase 8 — Native Mobile App (Wk 21–28)
-
-- [ ] React Native (shares TypeScript + API types with web frontend)
-- [ ] Push notifications via FCM/APNs: task completed, PR opened, CI fixed, task failed
-- [ ] Per-task conversation threads (mirrors Telegram thread model natively)
-- [ ] Voice input: dictate a task goal → transcribe → queue
-- [ ] Quick actions widget (iOS/Android): "New task", "View dock", "Approve PRs"
-- [ ] WebSocket connection with reconnect + offline queue (the "better than Claude Dispatch" goal)
-- [ ] Connection indicator: green/amber/red dot for lopi server reachability
-- [ ] Background sync: notifications arrive even when app is backgrounded
-- [ ] Every agent session tracked, every completion notified, every error surfaced with context
-
----
-
-## Phase 9 — Intelligence + Evolution (Ongoing)
-
-- [ ] Multi-agent roles: Planner agent decomposes complex goals → spawns Implementer agents → Reviewer agent checks diff before PR
-- [ ] Cross-repo awareness: agents can read (not write) other repos for context
-- [ ] Goal decomposition: `lopi plan "Refactor the auth module"` → Claude breaks into subtasks → runs in dependency order
-- [ ] Embedding-based memory: store attempt summaries as vectors → semantic search for similar past work
-- [ ] Agent-to-agent communication: agents leave structured notes for each other via lopi-memory
-- [ ] Leaderboard: track which constraint templates produce the highest pass rates → surface as suggested starting points
-- [ ] Feedback loop: user marks approved PRs as "good" / rejected as "bad" → tune scoring weights accordingly
+### Sprint I — Implementation step on direct API (large scope)
+The plan path uses direct API (Sprint G). Implementation still uses the
+CLI for filesystem tool access. Migrating implementation requires either
+Anthropic's tool-use protocol with custom file-edit tools or a sidecar
+that bridges API tool calls to filesystem ops. **Not in scope for any
+near-term sprint** — the CLI is good enough.
 
 ---
 
 ## Current Health
 
 | Metric | Value |
-|--------|-------|
-| Tests | 57 passing, 0 failing |
-| Build | Clean (0 warnings) |
-| Crates | 11 |
-| CLI commands | `run`, `watch`, `tail`, `dock`, `sail`, `learn`, `cancel`, `schedules` |
-| API endpoints | `GET /api/tasks`, `POST /api/tasks`, `GET /api/tasks/:id`, `GET /api/patterns`, `GET /api/health`, `GET /ws/tasks` |
-| Latest release | v0.6.0 |
+|---|---|
+| Workspace tests | **261 passing**, 0 failing |
+| Build | `cargo build --workspace`: clean |
+| Crates | **11** (lopi-core, lopi-context, lopi-toon, lopi-ratelimit, lopi-git, lopi-agent, lopi-memory, lopi-orchestrator, lopi-ui, lopi-remote, lopi-webhook) |
+| CLI commands | `run`, `watch`, `tail`, `dock`, `sail`, `cancel`, `learn list/show/export`, `schedules list` |
+| API endpoints | `/api/health`, `/api/tasks` (GET+POST), `/api/tasks/:id` (GET+DELETE), `/api/stats`, `/api/patterns`, `/metrics` (Prometheus), `/sse` (SSE), `/ws` (WebSocket) |
+| Embedded UI | SvelteKit Forge + Constellation, ~487 KB JS / 126 KB gzipped, served from `lopi-ui` via `rust-embed` |
+| Direct-API planning | ✅ via `AgentRunner::with_api(client, limiter, breaker)` |
+| Adaptive retry | ✅ via `AgentRunner::with_adaptive_retry()` (post-mortem auto-fires on terminal failure) |
+| Latest release | **v0.10.0** |
 
 ---
 

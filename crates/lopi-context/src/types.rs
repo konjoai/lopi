@@ -54,7 +54,7 @@ pub struct TaggedMessage {
     pub phase: Phase,
     /// Evict this turn after the turn with this ID is inserted.
     pub evict_after: Option<TurnId>,
-    /// Links this turn to its tool_use/tool_result partner for atomic eviction.
+    /// Links this turn to its `tool_use`/`tool_result` partner for atomic eviction.
     pub tool_pair_id: Option<ToolPairId>,
     /// Distilled phase summaries — never evicted by automatic policy.
     pub is_conclusion: bool,

@@ -21,19 +21,20 @@ pub const MODEL_OPUS: &str = "claude-opus-4-7";
 
 /// Route a task to the cheapest model capable of handling its complexity.
 ///
-/// Heuristic: task size = constraints + allowed_dirs count.
+/// Heuristic: task size = constraints + `allowed_dirs` count.
 /// - ≤ 2: Haiku (read-only discovery, simple rewrites) — ~20× cheaper than Opus
 /// - 3–6: Sonnet (default — implementation, test writing)
 /// - > 6 or retry ≥ 2: Opus (complex multi-file changes, repeated failures)
+#[must_use]
 pub fn select_model(task: &Task, attempt: u8) -> &'static str {
     if attempt >= 2 {
-        return MODEL_OPUS;  // escalate on repeated failure
+        return MODEL_OPUS; // escalate on repeated failure
     }
     let size = task.constraints.len() + task.allowed_dirs.len();
     match size {
         0..=2 => MODEL_HAIKU,
         3..=6 => MODEL_SONNET,
-        _     => MODEL_OPUS,
+        _ => MODEL_OPUS,
     }
 }
 
@@ -51,8 +52,14 @@ pub struct ClaudeOutput {
 }
 
 impl ClaudeOutput {
-    pub fn text(&self) -> &str { self.result.as_deref().unwrap_or(&self.raw) }
-    pub fn succeeded(&self) -> bool { !self.is_error.unwrap_or(false) }
+    #[must_use]
+    pub fn text(&self) -> &str {
+        self.result.as_deref().unwrap_or(&self.raw)
+    }
+    #[must_use]
+    pub fn succeeded(&self) -> bool {
+        !self.is_error.unwrap_or(false)
+    }
 }
 
 pub struct ClaudeCode {
@@ -78,26 +85,31 @@ impl ClaudeCode {
         }
     }
 
+    #[must_use]
     pub fn with_model(mut self, model: impl Into<String>) -> Self {
         self.model = Some(model.into());
         self
     }
 
+    #[must_use]
     pub fn with_cli(mut self, cli_path: impl Into<String>) -> Self {
         self.cli_path = cli_path.into();
         self
     }
 
+    #[must_use]
     pub fn with_timeout(mut self, secs: u64) -> Self {
         self.timeout = Duration::from_secs(secs);
         self
     }
 
+    #[must_use]
     pub fn with_json_output(mut self, enabled: bool) -> Self {
         self.json_output = enabled;
         self
     }
 
+    #[must_use]
     pub fn with_extra_constraints(mut self, constraints: Vec<String>) -> Self {
         self.extra_constraints = constraints;
         self
@@ -107,14 +119,20 @@ impl ClaudeCode {
     ///
     /// Site 1 (struct arrays, §9.1) — ~17 tokens/prompt saved.
     /// Site 2 (pattern memory table, §9.3 tabular) — ~158 tokens/attempt saved (grows with memory).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the claude CLI process fails or times out.
     pub async fn plan(&self, task: &Task) -> Result<String> {
-        let all_constraints: Vec<&str> = task.constraints.iter()
+        let all_constraints: Vec<&str> = task
+            .constraints
+            .iter()
             .chain(self.extra_constraints.iter())
-            .map(|s| s.as_str())
+            .map(String::as_str)
             .collect();
 
-        let allowed: Vec<&str> = task.allowed_dirs.iter().map(|s| s.as_str()).collect();
-        let forbidden: Vec<&str> = task.forbidden_dirs.iter().map(|s| s.as_str()).collect();
+        let allowed: Vec<&str> = task.allowed_dirs.iter().map(String::as_str).collect();
+        let forbidden: Vec<&str> = task.forbidden_dirs.iter().map(String::as_str).collect();
 
         let ctx = encode_task_context(
             &task.goal,
@@ -138,9 +156,13 @@ impl ClaudeCode {
     /// Implement the plan. Uses TOON for dir arrays in the constraint block.
     ///
     /// Site 1 (struct arrays) — ~17 tokens/prompt saved.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the claude CLI process fails or times out.
     pub async fn implement(&self, task: &Task, plan: &str) -> Result<String> {
-        let allowed: Vec<&str> = task.allowed_dirs.iter().map(|s| s.as_str()).collect();
-        let forbidden: Vec<&str> = task.forbidden_dirs.iter().map(|s| s.as_str()).collect();
+        let allowed: Vec<&str> = task.allowed_dirs.iter().map(String::as_str).collect();
+        let forbidden: Vec<&str> = task.forbidden_dirs.iter().map(String::as_str).collect();
 
         let scope = encode_task_context(&task.goal, &allowed, &forbidden, &[], &[]);
 
@@ -159,9 +181,13 @@ impl ClaudeCode {
     }
 
     /// Fix the failing tests. Error text is free-form prose — TOON not applied here (no gain).
-    /// Only the allowed_dirs scope is encoded as TOON.
+    /// Only the `allowed_dirs` scope is encoded as TOON.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the claude CLI process fails or times out.
     pub async fn fix(&self, task: &Task, errors: &[String]) -> Result<String> {
-        let allowed: Vec<&str> = task.allowed_dirs.iter().map(|s| s.as_str()).collect();
+        let allowed: Vec<&str> = task.allowed_dirs.iter().map(String::as_str).collect();
         // Inline primitive array: site 1 partial (dirs only).
         let allowed_str = if allowed.is_empty() {
             String::new()
@@ -185,15 +211,21 @@ impl ClaudeCode {
     /// Stream plan steps as they are generated. Returns a channel receiver that emits
     /// numbered plan steps (lines matching `^\d+\.`) and a join handle that resolves to
     /// the full plan text when the claude process exits.
+    #[must_use]
     pub fn plan_streaming(
         &self,
         task: &Task,
-    ) -> (tokio::task::JoinHandle<Result<String>>, tokio::sync::mpsc::Receiver<String>) {
+    ) -> (
+        tokio::task::JoinHandle<Result<String>>,
+        tokio::sync::mpsc::Receiver<String>,
+    ) {
         use tokio::io::{AsyncBufReadExt, BufReader};
 
         let (tx, rx) = tokio::sync::mpsc::channel::<String>(64);
 
-        let all_constraints: Vec<String> = task.constraints.iter()
+        let all_constraints: Vec<String> = task
+            .constraints
+            .iter()
             .chain(self.extra_constraints.iter())
             .cloned()
             .collect();
@@ -207,9 +239,12 @@ impl ClaudeCode {
         let handle = tokio::spawn(async move {
             let ctx = lopi_toon::encode_task_context(
                 &goal,
-                &allowed.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
-                &forbidden.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
-                &all_constraints.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+                &allowed.iter().map(String::as_str).collect::<Vec<_>>(),
+                &forbidden.iter().map(String::as_str).collect::<Vec<_>>(),
+                &all_constraints
+                    .iter()
+                    .map(String::as_str)
+                    .collect::<Vec<_>>(),
                 &[],
             );
             let prompt = format!(
@@ -220,7 +255,8 @@ impl ClaudeCode {
             );
 
             let mut child = tokio::process::Command::new(&cli_path)
-                .arg("-p").arg(&prompt)
+                .arg("-p")
+                .arg(&prompt)
                 .current_dir(&repo_path)
                 .stdout(std::process::Stdio::piped())
                 .stderr(std::process::Stdio::null())
@@ -241,7 +277,7 @@ impl ClaudeCode {
                             Some(l) => {
                                 // Emit numbered plan steps immediately so the implement
                                 // worker can begin applying them speculatively.
-                                if l.trim_start().chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false) {
+                                if l.trim_start().chars().next().is_some_and(|c| c.is_ascii_digit()) {
                                     let _ = tx.send(l.clone()).await;
                                 }
                                 full_text.push_str(&l);
@@ -250,7 +286,7 @@ impl ClaudeCode {
                             None => break,
                         }
                     }
-                    _ = &mut deadline => {
+                    () = &mut deadline => {
                         child.kill().await.ok();
                         anyhow::bail!("claude plan stream timed out");
                     }
@@ -264,8 +300,12 @@ impl ClaudeCode {
     }
 
     /// Apply a single plan step to the repository.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the claude CLI process fails or times out.
     pub async fn implement_step(&self, task: &Task, step: &str) -> Result<()> {
-        let allowed: Vec<&str> = task.allowed_dirs.iter().map(|s| s.as_str()).collect();
+        let allowed: Vec<&str> = task.allowed_dirs.iter().map(String::as_str).collect();
         let scope = lopi_toon::encode_task_context(&task.goal, &allowed, &[], &[], &[]);
         let prompt = format!(
             "Apply this single implementation step to the repository. Make only the changes described.\n\n\
@@ -296,29 +336,68 @@ impl ClaudeCode {
             .context("invoking claude cli")?;
 
         if !raw_out.status.success() {
-            anyhow::bail!("claude cli exited {}: {}",
-                raw_out.status, String::from_utf8_lossy(&raw_out.stderr));
+            anyhow::bail!(
+                "claude cli exited {}: {}",
+                raw_out.status,
+                String::from_utf8_lossy(&raw_out.stderr)
+            );
         }
 
         let stdout = String::from_utf8_lossy(&raw_out.stdout).into_owned();
         if self.json_output {
             match serde_json::from_str::<ClaudeOutput>(&stdout) {
-                Ok(mut o) => { o.raw = stdout; Ok(o) }
+                Ok(mut o) => {
+                    o.raw = stdout;
+                    Ok(o)
+                }
                 Err(_) => Ok(ClaudeOutput {
-                    kind: None, result: Some(stdout.clone()), is_error: None,
-                    cost_usd: None, duration_ms: None, raw: stdout,
+                    kind: None,
+                    result: Some(stdout.clone()),
+                    is_error: None,
+                    cost_usd: None,
+                    duration_ms: None,
+                    raw: stdout,
                 }),
             }
         } else {
             Ok(ClaudeOutput {
-                kind: None, result: Some(stdout.clone()), is_error: None,
-                cost_usd: None, duration_ms: None, raw: stdout,
+                kind: None,
+                result: Some(stdout.clone()),
+                is_error: None,
+                cost_usd: None,
+                duration_ms: None,
+                raw: stdout,
             })
         }
     }
 }
 
+/// Strip Rust backtrace noise and deduplicate repeated error blocks to reduce fix-prompt token count.
+/// Removes lines matching `at src/`, `note: run with RUST_BACKTRACE`, and limits each error to
+/// 30 lines. Identical adjacent blocks are collapsed to one copy.
+fn compress_errors(errors: &[String]) -> String {
+    let mut seen: Vec<String> = Vec::with_capacity(errors.len());
+    for err in errors {
+        let compressed: String = err
+            .lines()
+            .filter(|line| {
+                let t = line.trim();
+                !t.starts_with("note: run with RUST_BACKTRACE")
+                    && !t.starts_with("stack backtrace:")
+                    && !(t.starts_with("at ") && (t.contains("src/") || t.contains(".rs:")))
+            })
+            .take(30)
+            .collect::<Vec<_>>()
+            .join("\n");
+        if !seen.contains(&compressed) {
+            seen.push(compressed);
+        }
+    }
+    seen.join("\n---\n")
+}
+
 #[cfg(test)]
+#[allow(clippy::panic, clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use lopi_core::Task;
@@ -341,7 +420,13 @@ mod tests {
     #[test]
     fn select_model_opus_for_large_task() {
         let mut t = Task::new("big refactor");
-        t.constraints = vec!["c1".into(), "c2".into(), "c3".into(), "c4".into(), "c5".into()];
+        t.constraints = vec![
+            "c1".into(),
+            "c2".into(),
+            "c3".into(),
+            "c4".into(),
+            "c5".into(),
+        ];
         // 5 constraints + 2 dirs = size 7 → Opus
         assert_eq!(select_model(&t, 0), MODEL_OPUS);
     }
@@ -378,28 +463,4 @@ mod tests {
         // Only one copy should survive deduplication
         assert_eq!(out.matches("cannot borrow").count(), 1);
     }
-}
-
-/// Strip Rust backtrace noise and deduplicate repeated error blocks to reduce fix-prompt token count.
-/// Removes lines matching `at src/`, `note: run with RUST_BACKTRACE`, and limits each error to
-/// 30 lines. Identical adjacent blocks are collapsed to one copy.
-fn compress_errors(errors: &[String]) -> String {
-    let mut seen: Vec<String> = Vec::with_capacity(errors.len());
-    for err in errors {
-        let compressed: String = err
-            .lines()
-            .filter(|line| {
-                let t = line.trim();
-                !t.starts_with("note: run with RUST_BACKTRACE")
-                    && !t.starts_with("stack backtrace:")
-                    && !(t.starts_with("at ") && (t.contains("src/") || t.contains(".rs:")))
-            })
-            .take(30)
-            .collect::<Vec<_>>()
-            .join("\n");
-        if !seen.contains(&compressed) {
-            seen.push(compressed);
-        }
-    }
-    seen.join("\n---\n")
 }

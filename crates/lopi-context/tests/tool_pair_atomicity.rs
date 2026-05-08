@@ -1,4 +1,12 @@
-use lopi_context::{ContentBlock, ContextError, ContextWindow, Phase, PinPolicy, Role, TaggedMessage};
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::unwrap_in_result
+)]
+use lopi_context::{
+    ContentBlock, ContextError, ContextWindow, Phase, PinPolicy, Role, TaggedMessage,
+};
 use uuid::Uuid;
 
 fn make_msg(role: Role, text: &str, phase: Phase, pin: PinPolicy, tokens: usize) -> TaggedMessage {
@@ -20,8 +28,20 @@ fn evicting_one_half_of_pair_errors() {
     let mut window = ContextWindow::new(10_000);
     let (call_id, _result_id) = window
         .push_tool_pair(
-            make_msg(Role::User, "tool call", Phase::Implementation, PinPolicy::BudgetEvictable, 20),
-            make_msg(Role::User, "tool result", Phase::Implementation, PinPolicy::BudgetEvictable, 30),
+            make_msg(
+                Role::User,
+                "tool call",
+                Phase::Implementation,
+                PinPolicy::BudgetEvictable,
+                20,
+            ),
+            make_msg(
+                Role::User,
+                "tool result",
+                Phase::Implementation,
+                PinPolicy::BudgetEvictable,
+                30,
+            ),
         )
         .unwrap();
 
@@ -37,8 +57,20 @@ fn force_evict_removes_both_turns() {
     let mut window = ContextWindow::new(10_000);
     let (call_id, _result_id) = window
         .push_tool_pair(
-            make_msg(Role::User, "tool call", Phase::Implementation, PinPolicy::BudgetEvictable, 20),
-            make_msg(Role::User, "tool result", Phase::Implementation, PinPolicy::BudgetEvictable, 30),
+            make_msg(
+                Role::User,
+                "tool call",
+                Phase::Implementation,
+                PinPolicy::BudgetEvictable,
+                20,
+            ),
+            make_msg(
+                Role::User,
+                "tool result",
+                Phase::Implementation,
+                PinPolicy::BudgetEvictable,
+                30,
+            ),
         )
         .unwrap();
 
@@ -53,8 +85,20 @@ fn token_count_updated_after_pair_eviction() {
     let mut window = ContextWindow::new(10_000);
     let (call_id, _) = window
         .push_tool_pair(
-            make_msg(Role::User, "call", Phase::Implementation, PinPolicy::BudgetEvictable, 20),
-            make_msg(Role::User, "result", Phase::Implementation, PinPolicy::BudgetEvictable, 30),
+            make_msg(
+                Role::User,
+                "call",
+                Phase::Implementation,
+                PinPolicy::BudgetEvictable,
+                20,
+            ),
+            make_msg(
+                Role::User,
+                "result",
+                Phase::Implementation,
+                PinPolicy::BudgetEvictable,
+                30,
+            ),
         )
         .unwrap();
 
@@ -68,8 +112,20 @@ fn api_messages_empty_after_pair_eviction() {
     let mut window = ContextWindow::new(10_000);
     let (call_id, _) = window
         .push_tool_pair(
-            make_msg(Role::User, "call", Phase::Implementation, PinPolicy::BudgetEvictable, 20),
-            make_msg(Role::User, "result", Phase::Implementation, PinPolicy::BudgetEvictable, 30),
+            make_msg(
+                Role::User,
+                "call",
+                Phase::Implementation,
+                PinPolicy::BudgetEvictable,
+                20,
+            ),
+            make_msg(
+                Role::User,
+                "result",
+                Phase::Implementation,
+                PinPolicy::BudgetEvictable,
+                30,
+            ),
         )
         .unwrap();
 

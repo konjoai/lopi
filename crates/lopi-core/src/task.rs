@@ -1,17 +1,22 @@
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct TaskId(pub Uuid);
 
 impl TaskId {
-    pub fn new() -> Self { Self(Uuid::new_v4()) }
+    #[must_use]
+    pub fn new() -> Self {
+        Self(Uuid::new_v4())
+    }
 }
 
 impl Default for TaskId {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl std::fmt::Display for TaskId {
@@ -20,22 +25,33 @@ impl std::fmt::Display for TaskId {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum TaskStatus {
     Queued,
     Planning,
     Implementing,
     Testing,
     Scoring,
-    Retrying { attempt: u8 },
-    Success { branch: String, pr_url: Option<String> },
-    Failed { reason: String },
+    Retrying {
+        attempt: u8,
+    },
+    Success {
+        branch: String,
+        pr_url: Option<String>,
+    },
+    Failed {
+        reason: String,
+    },
     RolledBack,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Priority { Low = 0, Normal = 1, High = 2, Critical = 3 }
+pub enum Priority {
+    Low = 0,
+    Normal = 1,
+    High = 2,
+    Critical = 3,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Task {
@@ -62,6 +78,7 @@ pub enum TaskSource {
 }
 
 impl Task {
+    #[must_use]
     pub fn new(goal: impl Into<String>) -> Self {
         Self {
             id: TaskId::new(),

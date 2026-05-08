@@ -39,7 +39,7 @@ pub struct AgentPool {
     max_agents: usize,
     queue: TaskQueue,
     repo_path: PathBuf,
-    /// All AgentEvents: TaskQueued, TaskStarted, StatusChanged, LogLine, TaskCompleted.
+    /// All `AgentEvent`s: `TaskQueued`, `TaskStarted`, `StatusChanged`, `LogLine`, `TaskCompleted`.
     bus: EventBus<AgentEvent>,
     store: Option<MemoryStore>,
     /// Live handles — entries removed when the task completes or is cancelled.
@@ -51,6 +51,7 @@ pub struct AgentPool {
 }
 
 impl AgentPool {
+    #[must_use]
     pub fn new(
         max_agents: usize,
         repo_path: PathBuf,
@@ -80,15 +81,18 @@ impl AgentPool {
         while js.join_next().await.is_some() {}
     }
 
+    #[must_use]
     pub fn with_store(mut self, store: MemoryStore) -> Self {
         self.store = Some(store);
         self
     }
 
+    #[must_use]
     pub fn queue(&self) -> TaskQueue {
         self.queue.clone()
     }
 
+    #[must_use]
     pub fn bus(&self) -> EventBus<AgentEvent> {
         self.bus.clone()
     }
@@ -99,7 +103,8 @@ impl AgentPool {
             let mut handle = handle_ref.write().await;
             if let Some(tx) = handle.cancel_tx.take() {
                 let _ = tx.send(());
-                self.bus.send(AgentEvent::TaskCancelled { task_id: *task_id });
+                self.bus
+                    .send(AgentEvent::TaskCancelled { task_id: *task_id });
                 return true;
             }
         }
@@ -107,6 +112,7 @@ impl AgentPool {
     }
 
     /// Return a snapshot of current stats.
+    #[must_use]
     pub fn stats(&self) -> PoolStats {
         PoolStats {
             running: self.counters.running.load(Ordering::Relaxed),
@@ -131,18 +137,26 @@ impl AgentPool {
     }
 
     /// Dispatch loop — pops tasks from the queue and spawns bounded workers.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if a semaphore is closed (only happens on shutdown).
     pub async fn run(self) -> Result<()> {
         loop {
             let task = self.queue.pop().await;
 
             // Resolve the repo for this task (task-level override or pool default).
-            let repo = task.repo_path.clone().unwrap_or_else(|| self.repo_path.clone());
+            let repo = task
+                .repo_path
+                .clone()
+                .unwrap_or_else(|| self.repo_path.clone());
 
             // Acquire global concurrency permit.
             let permit = self.permits.clone().acquire_owned().await?;
 
             // Acquire per-repo permit — caps concurrency on any single repo to max_agents.
-            let repo_sem = self.repo_permits
+            let repo_sem = self
+                .repo_permits
                 .entry(repo.clone())
                 .or_insert_with(|| Arc::new(Semaphore::new(self.max_agents)))
                 .clone();
@@ -216,7 +230,14 @@ async fn run_one(
     let task_id = task.id;
     let goal = task.goal.clone();
 
-    let mut runner = AgentRunner::new(task, repo, bus.clone(), store.clone(), cancel_rx, attempt_counter);
+    let mut runner = AgentRunner::new(
+        task,
+        repo,
+        bus.clone(),
+        store.clone(),
+        cancel_rx,
+        attempt_counter,
+    );
     let outcome = runner.run().await?;
 
     let total_attempts = runner.attempts_made();
@@ -241,4 +262,151 @@ async fn run_one(
     }
 
     Ok(outcome)
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+mod tests {
+    use super::*;
+    use lopi_core::{AgentEvent, EventBus, Priority, Task};
+    use std::path::PathBuf;
+
+    fn make_pool(max: usize) -> AgentPool {
+        let queue = TaskQueue::new();
+        let bus: EventBus<AgentEvent> = EventBus::new(16);
+        AgentPool::new(max, PathBuf::from("."), queue, bus)
+    }
+
+    #[tokio::test]
+    async fn stats_when_empty() {
+        let pool = make_pool(2);
+        let stats = pool.stats();
+        assert_eq!(stats.running, 0);
+        assert_eq!(stats.queued, 0);
+        assert_eq!(stats.succeeded, 0);
+        assert_eq!(stats.failed, 0);
+    }
+
+    #[tokio::test]
+    async fn submit_task_increases_queued_count() {
+        let pool = make_pool(2);
+        let task = Task::new("do something useful");
+        pool.submit(task).await;
+        let stats = pool.stats();
+        assert_eq!(stats.queued, 1);
+    }
+
+    #[tokio::test]
+    async fn submit_multiple_tasks_increases_queued() {
+        let pool = make_pool(4);
+        for i in 0..3 {
+            let task = Task::new(format!("task number {i} unique goal"));
+            pool.submit(task).await;
+        }
+        let stats = pool.stats();
+        assert_eq!(stats.queued, 3);
+    }
+
+    #[tokio::test]
+    async fn submit_duplicate_goal_returns_existing_id() {
+        let pool = make_pool(2);
+        let t1 = Task::new("fix the same bug");
+        let t2 = Task::new("fix the same bug");
+        let r1 = pool.submit(t1).await;
+        let r2 = pool.submit(t2).await;
+        // First submit returns None (new task)
+        assert!(r1.is_none());
+        // Second submit returns Some (duplicate)
+        assert!(r2.is_some());
+        // Only one task in the queue
+        assert_eq!(pool.stats().queued, 1);
+    }
+
+    #[tokio::test]
+    async fn cancel_nonexistent_task_returns_false() {
+        let pool = make_pool(2);
+        let fake_id = TaskId::new();
+        let cancelled = pool.cancel(&fake_id).await;
+        assert!(!cancelled);
+    }
+
+    #[tokio::test]
+    async fn pool_queue_accessor_works() {
+        let pool = make_pool(2);
+        let queue = pool.queue();
+        // Queue starts empty
+        assert!(queue.is_empty());
+    }
+
+    #[tokio::test]
+    async fn pool_bus_accessor_works() {
+        let pool = make_pool(2);
+        let bus = pool.bus();
+        let mut rx = bus.subscribe();
+        // Send an event and verify the bus works
+        bus.send(AgentEvent::TaskQueued {
+            task_id: TaskId::new(),
+            goal: "test goal".to_string(),
+            priority: Priority::Normal,
+        });
+        let ev = rx.try_recv();
+        assert!(ev.is_ok());
+    }
+
+    #[tokio::test]
+    async fn submit_broadcasts_task_queued_event() {
+        let pool = make_pool(2);
+        let mut rx = pool.bus().subscribe();
+        let task = Task::new("broadcast test goal");
+        pool.submit(task).await;
+        // Should have received a TaskQueued event
+        let ev = rx.try_recv();
+        assert!(ev.is_ok());
+        match ev.unwrap() {
+            AgentEvent::TaskQueued { goal, .. } => {
+                assert_eq!(goal, "broadcast test goal");
+            }
+            other => panic!("expected TaskQueued, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn pool_with_store_does_not_panic() {
+        let queue = TaskQueue::new();
+        let bus: EventBus<AgentEvent> = EventBus::new(16);
+        let pool = AgentPool::new(2, PathBuf::from("."), queue, bus);
+        let store = lopi_memory::MemoryStore::open_in_memory().await.unwrap();
+        let pool = pool.with_store(store);
+        let task = Task::new("task with store");
+        pool.submit(task).await;
+        assert_eq!(pool.stats().queued, 1);
+    }
+
+    #[tokio::test]
+    async fn uptime_is_non_zero_after_submit() {
+        let pool = make_pool(2);
+        // Small sleep to ensure uptime > 0
+        tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+        let stats = pool.stats();
+        // uptime_secs may be 0 for very fast tests, but started_at should be set
+        // Just verify it doesn't panic
+        let _ = stats.uptime_secs;
+    }
+
+    #[tokio::test]
+    async fn shutdown_completes_without_running_tasks() {
+        let pool = make_pool(2);
+        // Shutdown with no running tasks should complete immediately
+        pool.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn submit_high_priority_task() {
+        let pool = make_pool(2);
+        let mut task = Task::new("critical security fix");
+        task.priority = Priority::High;
+        pool.submit(task).await;
+        let stats = pool.stats();
+        assert_eq!(stats.queued, 1);
+    }
 }

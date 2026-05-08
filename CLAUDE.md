@@ -7,12 +7,17 @@ Rust 2021 · tokio · axum · ratatui · sqlx/SQLite · teloxide · git2 · clap
 
 ## Commands
 ```bash
-cargo build                    # build workspace
+cargo build                    # build workspace (also installs git hooks via cargo-husky)
 cargo test                     # run all crate tests
+cargo nextest run              # faster test runner (preferred)
 cargo clippy -- -D warnings    # lint
+cargo llvm-cov nextest         # tests + coverage report
+cargo audit                    # security advisory check
+cargo deny check               # license + advisory + bans
 cargo run -- run --goal "fix foo" --repo .  # run a task
 cargo run -- sail              # web dashboard on :3000
 cargo run -- watch             # TUI dashboard
+bash .konjo/scripts/install-hooks.sh        # install pre-commit hooks
 ```
 
 ## Critical Constraints
@@ -27,6 +32,7 @@ cargo run -- watch             # TUI dashboard
 | Crate | Role |
 |-------|------|
 | `lopi-core` | Shared types: `Task`, `AgentRun`, `Score`, `LopiConfig` |
+| `lopi-context` | KV cache eviction layer — owns all message history + eviction policies |
 | `lopi-git` | `GitManager` (branch/rollback/PR) + `DiffChecker` |
 | `lopi-agent` | Plan → Implement → Test → Score → Retry → PR |
 | `lopi-memory` | SQLite via sqlx |
@@ -35,7 +41,27 @@ cargo run -- watch             # TUI dashboard
 | `lopi-remote` | teloxide Telegram bot + Twilio WhatsApp |
 | `lopi-webhook` | GitHub CI-failure → task injection |
 | `lopi-toon` | TOON (Token-Oriented Object Notation) |
+| `lopi-ratelimit` | Rate limiting primitives |
+
+## Quality Framework
+This repo runs the **Konjo Three-Wall Quality Framework**. See `KONJO_QUALITY_FRAMEWORK.md`.
+
+- **Wall 1** (pre-commit): `bash .konjo/scripts/install-hooks.sh` — installs `.konjo/hooks/pre-commit`
+- **Wall 2** (CI): `.github/workflows/konjo-gate.yml` — coverage ≥ 80%, mutation ≤ 10%, complexity ≤ 15, dead code = 0, zero undocumented public APIs
+- **Wall 3** (adversarial review): `claude-opus-4-6` reviews every PR against 10 mandatory questions
+
+### Additional Hard Rules (enforced by CI — not in global CLAUDE.md)
+- Coverage ≥ 80% (hard block); target ≥ 95%
+- Zero cognitive complexity > 15 per function (`clippy::cognitive_complexity`)
+- Zero dead code (`RUSTFLAGS="-W dead_code" cargo check`)
+- Zero undocumented public APIs (`RUSTDOCFLAGS="-D missing_docs" cargo doc`)
+- Function body ≤ 50 lines (30 target) — split before hitting 40
+- File ≤ 500 lines (300 target) — create a new module before hitting 400
+- No duplicate blocks > 10 lines at > 85% similarity (`dry_check.py`)
+- `cargo audit` zero advisories; `cargo deny check` zero violations
 
 ## Skills
 See `.claude/skills/` — auto-loaded when relevant.
 Run `/konjo` to boot a full session (Brief + Discovery + Plan).
+Run `/konjo-quality` for full gate reference.
+Run `/konjo-retrofit` to apply the framework to another repo.

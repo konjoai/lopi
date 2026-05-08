@@ -1,7 +1,7 @@
-use serde::{Deserialize, Serialize};
-use chrono::{DateTime, Utc};
-use uuid::Uuid;
 use crate::task::TaskId;
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 /// Per-turn observability record emitted after each claude invocation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -52,17 +52,28 @@ pub struct Score {
 }
 
 impl Score {
+    #[must_use]
     pub fn new(test_pass_rate: f32, lint_errors: u32, diff_lines: u32) -> Self {
-        Self { test_pass_rate, lint_errors, diff_lines, errors: vec![] }
+        Self {
+            test_pass_rate,
+            lint_errors,
+            diff_lines,
+            errors: vec![],
+        }
     }
 
+    #[must_use]
     pub fn passed(&self) -> bool {
         self.test_pass_rate >= 1.0 && self.lint_errors == 0
     }
 
+    #[must_use]
     pub fn weighted(&self) -> f32 {
         // Higher is better. Pass rate dominates; lint errors and oversized diffs penalize.
+        // u32→f32 precision loss is intentional: scores are relative metrics, not exact counts.
+        #[allow(clippy::cast_precision_loss)]
         let lint_penalty = (self.lint_errors as f32 * 0.05).min(0.5);
+        #[allow(clippy::cast_precision_loss)]
         let size_penalty = ((self.diff_lines as f32 / 1000.0) * 0.1).min(0.3);
         (self.test_pass_rate - lint_penalty - size_penalty).max(0.0)
     }
@@ -104,6 +115,7 @@ pub struct AgentRun {
 }
 
 impl AgentRun {
+    #[must_use]
     pub fn new(task_id: TaskId) -> Self {
         Self {
             id: Uuid::new_v4(),
@@ -123,7 +135,10 @@ mod tests {
     #[test]
     fn score_weighted_perfect() {
         let s = Score::new(1.0, 0, 0);
-        assert!((s.weighted() - 1.0).abs() < 0.001, "perfect score should be 1.0");
+        assert!(
+            (s.weighted() - 1.0).abs() < 0.001,
+            "perfect score should be 1.0"
+        );
     }
 
     #[test]

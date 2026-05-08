@@ -18,6 +18,9 @@ struct WebhookState {
     secret: Option<String>,
 }
 
+/// # Errors
+///
+/// Returns an error if the TCP listener cannot bind to the address.
 pub async fn serve(queue: TaskQueue, secret: Option<String>, addr: SocketAddr) -> Result<()> {
     let state = WebhookState { queue, secret };
     let app = Router::new()
@@ -73,10 +76,13 @@ async fn handle(
         .and_then(|w| w.get("conclusion"))
         .and_then(|c| c.as_str());
 
-    if matches!(conclusion, Some("failure") | Some("timed_out")) {
+    if matches!(conclusion, Some("failure" | "timed_out")) {
         let mut t = Task::new(format!("Investigate and fix CI failure on {repo}"));
         t.priority = Priority::High;
-        t.source = TaskSource::Webhook { repo: repo.clone(), event: event.clone() };
+        t.source = TaskSource::Webhook {
+            repo: repo.clone(),
+            event: event.clone(),
+        };
         s.queue.push(t).await;
         tracing::info!("queued CI fix task for {repo} (event: {event})");
     }
@@ -85,7 +91,11 @@ async fn handle(
     // review body injected as a constraint so lopi can address the feedback automatically.
     if event == "pull_request_review" {
         let action = payload.get("action").and_then(|v| v.as_str()).unwrap_or("");
-        let state  = payload.get("review").and_then(|r| r.get("state")).and_then(|v| v.as_str()).unwrap_or("");
+        let state = payload
+            .get("review")
+            .and_then(|r| r.get("state"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
         if action == "submitted" && state == "changes_requested" {
             let review_body = payload
                 .get("review")
@@ -103,9 +113,13 @@ async fn handle(
             let goal = format!("Address review feedback on PR '{pr_title}' in {repo}");
             let mut t = Task::new(goal);
             t.priority = Priority::High;
-            t.source = TaskSource::Webhook { repo: repo.clone(), event: event.clone() };
+            t.source = TaskSource::Webhook {
+                repo: repo.clone(),
+                event: event.clone(),
+            };
             if !review_body.is_empty() {
-                t.constraints.push(format!("Review feedback: {review_body}"));
+                t.constraints
+                    .push(format!("Review feedback: {review_body}"));
             }
             s.queue.push(t).await;
             tracing::info!("queued PR review fix task for {repo}: {pr_title}");
@@ -125,9 +139,8 @@ fn verify_signature(secret: &[u8], body: &[u8], sig_header: &str) -> bool {
         return false;
     };
 
-    let mut mac = match Hmac::<Sha256>::new_from_slice(secret) {
-        Ok(m) => m,
-        Err(_) => return false,
+    let Ok(mut mac) = Hmac::<Sha256>::new_from_slice(secret) else {
+        return false;
     };
     mac.update(body);
     let computed = mac.finalize().into_bytes();
@@ -137,8 +150,15 @@ fn verify_signature(secret: &[u8], body: &[u8], sig_header: &str) -> bool {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
+    use axum::{
+        body::Body,
+        http::{Request, StatusCode},
+        routing::post,
+    };
+    use tower::ServiceExt;
 
     fn make_signature(secret: &[u8], body: &[u8]) -> String {
         use hmac::{Hmac, Mac};
@@ -147,6 +167,17 @@ mod tests {
         mac.update(body);
         let result = mac.finalize().into_bytes();
         format!("sha256={}", hex::encode(result))
+    }
+
+    fn make_test_router(secret: Option<&str>) -> Router {
+        let queue = TaskQueue::new();
+        let state = WebhookState {
+            queue,
+            secret: secret.map(ToString::to_string),
+        };
+        Router::new()
+            .route("/webhook/github", post(handle))
+            .with_state(state)
     }
 
     #[test]
@@ -189,5 +220,241 @@ mod tests {
     #[test]
     fn empty_signature_fails() {
         assert!(!verify_signature(b"secret", b"body", ""));
+    }
+
+    #[tokio::test]
+    async fn no_secret_ci_failure_queues_task() {
+        let app = make_test_router(None);
+        let body = serde_json::json!({
+            "repository": { "full_name": "org/repo" },
+            "workflow_run": { "conclusion": "failure" }
+        });
+        let body_bytes = serde_json::to_vec(&body).unwrap();
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/webhook/github")
+                    .header("X-GitHub-Event", "workflow_run")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(body_bytes))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn valid_secret_ci_failure_queues_task() {
+        let secret = "mysecret";
+        let app = make_test_router(Some(secret));
+        let body = serde_json::json!({
+            "repository": { "full_name": "org/repo" },
+            "workflow_run": { "conclusion": "failure" }
+        });
+        let body_bytes = serde_json::to_vec(&body).unwrap();
+        let sig = make_signature(secret.as_bytes(), &body_bytes);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/webhook/github")
+                    .header("X-GitHub-Event", "workflow_run")
+                    .header("Content-Type", "application/json")
+                    .header("X-Hub-Signature-256", sig)
+                    .body(Body::from(body_bytes))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn invalid_secret_returns_401() {
+        let app = make_test_router(Some("correct_secret"));
+        let body = serde_json::json!({
+            "repository": { "full_name": "org/repo" },
+            "workflow_run": { "conclusion": "failure" }
+        });
+        let body_bytes = serde_json::to_vec(&body).unwrap();
+        let bad_sig = make_signature(b"wrong_secret", &body_bytes);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/webhook/github")
+                    .header("X-GitHub-Event", "workflow_run")
+                    .header("Content-Type", "application/json")
+                    .header("X-Hub-Signature-256", bad_sig)
+                    .body(Body::from(body_bytes))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn pr_review_changes_requested_queues_task() {
+        let app = make_test_router(None);
+        let body = serde_json::json!({
+            "repository": { "full_name": "org/repo" },
+            "action": "submitted",
+            "review": { "state": "changes_requested", "body": "Please fix the linting issues." },
+            "pull_request": { "title": "feat: add new feature" }
+        });
+        let body_bytes = serde_json::to_vec(&body).unwrap();
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/webhook/github")
+                    .header("X-GitHub-Event", "pull_request_review")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(body_bytes))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn pr_review_approved_no_task() {
+        let app = make_test_router(None);
+        let body = serde_json::json!({
+            "repository": { "full_name": "org/repo" },
+            "action": "submitted",
+            "review": { "state": "approved", "body": "LGTM!" },
+            "pull_request": { "title": "feat: nice work" }
+        });
+        let body_bytes = serde_json::to_vec(&body).unwrap();
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/webhook/github")
+                    .header("X-GitHub-Event", "pull_request_review")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(body_bytes))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn ci_success_no_task() {
+        let app = make_test_router(None);
+        let body = serde_json::json!({
+            "repository": { "full_name": "org/repo" },
+            "workflow_run": { "conclusion": "success" }
+        });
+        let body_bytes = serde_json::to_vec(&body).unwrap();
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/webhook/github")
+                    .header("X-GitHub-Event", "workflow_run")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(body_bytes))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn invalid_json_returns_400() {
+        let app = make_test_router(None);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/webhook/github")
+                    .header("X-GitHub-Event", "workflow_run")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from("not valid json!!!"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn timed_out_conclusion_queues_task() {
+        let app = make_test_router(None);
+        let body = serde_json::json!({
+            "repository": { "full_name": "org/repo" },
+            "workflow_run": { "conclusion": "timed_out" }
+        });
+        let body_bytes = serde_json::to_vec(&body).unwrap();
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/webhook/github")
+                    .header("X-GitHub-Event", "workflow_run")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(body_bytes))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn check_run_failure_queues_task() {
+        let app = make_test_router(None);
+        let body = serde_json::json!({
+            "repository": { "full_name": "org/repo" },
+            "check_run": { "conclusion": "failure" }
+        });
+        let body_bytes = serde_json::to_vec(&body).unwrap();
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/webhook/github")
+                    .header("X-GitHub-Event", "check_run")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(body_bytes))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn pr_review_empty_body_no_constraint() {
+        let app = make_test_router(None);
+        let body = serde_json::json!({
+            "repository": { "full_name": "org/repo" },
+            "action": "submitted",
+            "review": { "state": "changes_requested", "body": "" },
+            "pull_request": { "title": "feat: something" }
+        });
+        let body_bytes = serde_json::to_vec(&body).unwrap();
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/webhook/github")
+                    .header("X-GitHub-Event", "pull_request_review")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(body_bytes))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
     }
 }

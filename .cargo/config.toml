@@ -1,7 +1,6 @@
 [build]
-# Enable native CPU optimizations for release builds.
-# Comment this out for portable distribution builds.
-rustflags = ["-C", "target-cpu=native"]
+# No global rustflags — target-cpu=native is set in [profile.release] in Cargo.toml
+# so it only applies to release builds and doesn't break debug/test on VMs.
 
 [alias]
 t = "nextest run"

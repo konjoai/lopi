@@ -65,8 +65,7 @@ impl PatternEnricher {
         relevant.sort_by(|a, b| {
             let sr_a = a.success_rate.unwrap_or(0.0);
             let sr_b = b.success_rate.unwrap_or(0.0);
-            sr_b.partial_cmp(&sr_a)
-                .unwrap_or(std::cmp::Ordering::Equal)
+            sr_b.partial_cmp(&sr_a).unwrap_or(std::cmp::Ordering::Equal)
         });
         relevant.truncate(self.max_suggestions);
 
@@ -97,6 +96,7 @@ impl PatternEnricher {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 
@@ -108,6 +108,7 @@ mod tests {
             avg_attempts: Some(1.0),
             success_rate,
             last_seen: "2025-01-01T00:00:00Z".to_string(),
+            derived_from_postmortem: 0,
         }
     }
 
@@ -121,17 +122,24 @@ mod tests {
     #[test]
     fn test_enricher_filters_by_success_rate() {
         let patterns = vec![
-            make_row("auth", Some(0.3)),     // below threshold
+            make_row("auth", Some(0.3)),          // below threshold
             make_row("auth refactor", Some(0.8)), // above threshold
         ];
         let e = PatternEnricher::new(0.5, 5);
         let result = e.enrich("fix the auth module", &patterns);
-        assert!(result.contains("auth refactor"), "high-rate pattern should appear");
+        assert!(
+            result.contains("auth refactor"),
+            "high-rate pattern should appear"
+        );
         let entry_lines: Vec<&str> = result
             .lines()
             .filter(|l| l.trim_start().starts_with("- ["))
             .collect();
-        assert_eq!(entry_lines.len(), 1, "only one pattern should survive the filter");
+        assert_eq!(
+            entry_lines.len(),
+            1,
+            "only one pattern should survive the filter"
+        );
     }
 
     #[test]
@@ -175,7 +183,10 @@ mod tests {
         let result = e.enrich("auth issue", &patterns);
         let pos_high = result.find("90%").expect("90% should be in output");
         let pos_low = result.find("60%").expect("60% should be in output");
-        assert!(pos_high < pos_low, "higher success rate should appear first");
+        assert!(
+            pos_high < pos_low,
+            "higher success rate should appear first"
+        );
     }
 
     #[test]

@@ -9,12 +9,18 @@ pub struct Scorer {
 
 impl Scorer {
     pub fn new(repo_path: impl AsRef<Path>) -> Self {
-        Self { repo_path: repo_path.as_ref().to_path_buf() }
+        Self {
+            repo_path: repo_path.as_ref().to_path_buf(),
+        }
     }
 
     /// Run the project's test + lint commands and produce a Score.
     /// Detection is intentionally simple: prefer `cargo` if Cargo.toml exists,
     /// else fall back to `npm test`. Failures populate `Score.errors`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the test or lint commands fail to spawn.
     #[tracing::instrument(skip(self))]
     pub async fn score(&self) -> Result<Score> {
         let mut score = Score::new(0.0, 0, 0);
@@ -24,7 +30,8 @@ impl Scorer {
             // cargo test — use sccache if available to skip unchanged artifact recompilation
             let out = Command::new("cargo")
                 .env("RUSTC_WRAPPER", "sccache")
-                .arg("test").arg("--quiet")
+                .arg("test")
+                .arg("--quiet")
                 .current_dir(&self.repo_path)
                 .output()
                 .await?;
@@ -38,7 +45,11 @@ impl Scorer {
             // cargo clippy as the lint signal.
             let lint = Command::new("cargo")
                 .env("RUSTC_WRAPPER", "sccache")
-                .arg("clippy").arg("--quiet").arg("--").arg("-D").arg("warnings")
+                .arg("clippy")
+                .arg("--quiet")
+                .arg("--")
+                .arg("-D")
+                .arg("warnings")
                 .current_dir(&self.repo_path)
                 .output()
                 .await;
@@ -52,7 +63,8 @@ impl Scorer {
                 }
             }
         } else if self.repo_path.join("package.json").exists() {
-            let out = Command::new("npm").arg("test")
+            let out = Command::new("npm")
+                .arg("test")
                 .current_dir(&self.repo_path)
                 .output()
                 .await?;
@@ -70,8 +82,12 @@ impl Scorer {
         }
 
         // Diff size estimate via `git diff --stat`.
-        if let Ok(out) = Command::new("git").arg("diff").arg("--shortstat")
-            .current_dir(&self.repo_path).output().await
+        if let Ok(out) = Command::new("git")
+            .arg("diff")
+            .arg("--shortstat")
+            .current_dir(&self.repo_path)
+            .output()
+            .await
         {
             let s = String::from_utf8_lossy(&out.stdout);
             score.diff_lines = parse_diff_lines(&s);
