@@ -19,9 +19,8 @@ impl PatternEnricher {
     /// Create a new enricher.
     ///
     /// # Panics
-    /// Panics in debug builds if `min_success_rate` is outside `[0.0, 1.0]` or
-    /// `max_suggestions` is zero -- these are programming errors, not runtime
-    /// conditions.
+    /// Panics if `min_success_rate` is outside `[0.0, 1.0]` or `max_suggestions`
+    /// is zero — these are programming errors, not runtime conditions.
     pub fn new(min_success_rate: f64, max_suggestions: usize) -> Self {
         assert!(
             (0.0..=1.0).contains(&min_success_rate),
@@ -78,10 +77,17 @@ impl PatternEnricher {
         let mut lines = vec!["Past lessons for similar tasks:".to_string()];
         for p in &relevant {
             let sr = p.success_rate.unwrap_or(0.0);
+            let constraint_suffix = p
+                .successful_constraints
+                .as_deref()
+                .filter(|s| !s.is_empty())
+                .map(|s| format!(", constraints: {s}"))
+                .unwrap_or_default();
             lines.push(format!(
-                "  - [{}] success_rate={:.0}%",
+                "  - [{}] success_rate={:.0}%{}",
                 p.goal_keywords,
-                sr * 100.0
+                sr * 100.0,
+                constraint_suffix
             ));
         }
         // Trailing blank line makes it easy to concatenate with the real prompt.
@@ -116,11 +122,11 @@ mod tests {
     fn test_enricher_filters_by_success_rate() {
         let patterns = vec![
             make_row("auth", Some(0.3)),     // below threshold
-            make_row("auth fix", Some(0.8)), // above threshold
+            make_row("auth refactor", Some(0.8)), // above threshold
         ];
         let e = PatternEnricher::new(0.5, 5);
         let result = e.enrich("fix the auth module", &patterns);
-        assert!(result.contains("auth fix"), "high-rate pattern should appear");
+        assert!(result.contains("auth refactor"), "high-rate pattern should appear");
         let entry_lines: Vec<&str> = result
             .lines()
             .filter(|l| l.trim_start().starts_with("- ["))
@@ -162,7 +168,7 @@ mod tests {
     #[test]
     fn test_enricher_sorted_by_success_rate() {
         let patterns = vec![
-            make_row("auth fix", Some(0.6)),
+            make_row("auth refactor", Some(0.6)),
             make_row("auth security", Some(0.9)),
         ];
         let e = PatternEnricher::new(0.5, 5);
