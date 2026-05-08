@@ -44,6 +44,36 @@ pub enum AgentState {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScoreWeights {
+    #[serde(default = "ScoreWeights::default_lint_penalty_per_error")]
+    pub lint_penalty_per_error: f32,
+    #[serde(default = "ScoreWeights::default_lint_penalty_cap")]
+    pub lint_penalty_cap: f32,
+    #[serde(default = "ScoreWeights::default_diff_penalty_per_kloc")]
+    pub diff_penalty_per_kloc: f32,
+    #[serde(default = "ScoreWeights::default_diff_penalty_cap")]
+    pub diff_penalty_cap: f32,
+}
+
+impl ScoreWeights {
+    fn default_lint_penalty_per_error() -> f32 { 0.05 }
+    fn default_lint_penalty_cap() -> f32 { 0.50 }
+    fn default_diff_penalty_per_kloc() -> f32 { 0.10 }
+    fn default_diff_penalty_cap() -> f32 { 0.30 }
+}
+
+impl Default for ScoreWeights {
+    fn default() -> Self {
+        Self {
+            lint_penalty_per_error: Self::default_lint_penalty_per_error(),
+            lint_penalty_cap: Self::default_lint_penalty_cap(),
+            diff_penalty_per_kloc: Self::default_diff_penalty_per_kloc(),
+            diff_penalty_cap: Self::default_diff_penalty_cap(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Score {
     pub test_pass_rate: f32,
     pub lint_errors: u32,
@@ -68,13 +98,13 @@ impl Score {
     }
 
     #[must_use]
-    pub fn weighted(&self) -> f32 {
+    pub fn weighted(&self, weights: &ScoreWeights) -> f32 {
         // Higher is better. Pass rate dominates; lint errors and oversized diffs penalize.
         // u32→f32 precision loss is intentional: scores are relative metrics, not exact counts.
         #[allow(clippy::cast_precision_loss)]
-        let lint_penalty = (self.lint_errors as f32 * 0.05).min(0.5);
+        let lint_penalty = (self.lint_errors as f32 * weights.lint_penalty_per_error).min(weights.lint_penalty_cap);
         #[allow(clippy::cast_precision_loss)]
-        let size_penalty = ((self.diff_lines as f32 / 1000.0) * 0.1).min(0.3);
+        let size_penalty = ((self.diff_lines as f32 / 1000.0) * weights.diff_penalty_per_kloc).min(weights.diff_penalty_cap);
         (self.test_pass_rate - lint_penalty - size_penalty).max(0.0)
     }
 }
@@ -135,8 +165,9 @@ mod tests {
     #[test]
     fn score_weighted_perfect() {
         let s = Score::new(1.0, 0, 0);
+        let weights = ScoreWeights::default();
         assert!(
-            (s.weighted() - 1.0).abs() < 0.001,
+            (s.weighted(&weights) - 1.0).abs() < 0.001,
             "perfect score should be 1.0"
         );
     }
@@ -145,35 +176,40 @@ mod tests {
     fn score_weighted_lint_penalty() {
         // 4 errors × 0.05 = 0.20 penalty
         let s = Score::new(1.0, 4, 0);
-        assert!((s.weighted() - 0.8).abs() < 0.001);
+        let weights = ScoreWeights::default();
+        assert!((s.weighted(&weights) - 0.8).abs() < 0.001);
     }
 
     #[test]
     fn score_weighted_size_penalty() {
         // 1000 lines → (1000/1000) × 0.1 = 0.10 penalty
         let s = Score::new(1.0, 0, 1000);
-        assert!((s.weighted() - 0.9).abs() < 0.001);
+        let weights = ScoreWeights::default();
+        assert!((s.weighted(&weights) - 0.9).abs() < 0.001);
     }
 
     #[test]
     fn score_weighted_lint_penalty_caps_at_half() {
         // 20 errors × 0.05 = 1.0, capped at 0.5
         let s = Score::new(1.0, 20, 0);
-        assert!((s.weighted() - 0.5).abs() < 0.001);
+        let weights = ScoreWeights::default();
+        assert!((s.weighted(&weights) - 0.5).abs() < 0.001);
     }
 
     #[test]
     fn score_weighted_size_penalty_caps_at_0_3() {
         // 5000 lines → (5.0) × 0.1 = 0.5, capped at 0.3
         let s = Score::new(1.0, 0, 5000);
-        assert!((s.weighted() - 0.7).abs() < 0.001);
+        let weights = ScoreWeights::default();
+        assert!((s.weighted(&weights) - 0.7).abs() < 0.001);
     }
 
     #[test]
     fn score_weighted_combined_penalties() {
         // pass_rate=0.8, lint=2 (penalty 0.10), size=500 (penalty 0.05)
         let s = Score::new(0.8, 2, 500);
+        let weights = ScoreWeights::default();
         let expected = 0.8 - 0.10 - 0.05;
-        assert!((s.weighted() - expected).abs() < 0.001);
+        assert!((s.weighted(&weights) - expected).abs() < 0.001);
     }
 }

@@ -1,3 +1,4 @@
+use crate::agent::ScoreWeights;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -11,6 +12,8 @@ pub struct LopiConfig {
     #[serde(default)]
     pub web: WebConfig,
     #[serde(default)]
+    pub scoring: ScoringConfig,
+    #[serde(default)]
     pub schedules: Vec<ScheduleEntry>,
 }
 
@@ -22,6 +25,8 @@ pub struct CoreConfig {
     pub log_level: String,
     #[serde(default = "default_db_path")]
     pub db_path: PathBuf,
+    #[serde(default)]
+    pub allow_self_modify: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -90,6 +95,12 @@ impl Default for WebConfig {
             auth_token: None,
         }
     }
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ScoringConfig {
+    #[serde(default)]
+    pub weights: ScoreWeights,
 }
 
 /// A single cron-scheduled lopi task entry from `lopi.toml`.

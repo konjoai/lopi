@@ -7,7 +7,7 @@
 
 use super::*;
 use chrono::Utc;
-use lopi_core::{Attempt, Task, TaskId, TurnMetrics};
+use lopi_core::{Attempt, ScoreWeights, Task, TaskId, TurnMetrics};
 use uuid::Uuid;
 
 #[test]
@@ -334,4 +334,64 @@ fn make_high_score_attempt(task_id: TaskId) -> Attempt {
         outcome: "success".into(),
         created_at: Utc::now(),
     }
+}
+
+#[tokio::test]
+async fn load_annotated_patterns_returns_only_annotated() {
+    let store = MemoryStore::open_in_memory().await.unwrap();
+    let task1 = Task::new("fix auth");
+    let task2 = Task::new("refactor api");
+    store.save_task(&task1, "success").await.unwrap();
+    store.save_task(&task2, "success").await.unwrap();
+    store.mine_patterns(&task1.id, &task1.goal).await.unwrap();
+    store.mine_patterns(&task2.id, &task2.goal).await.unwrap();
+
+    let patterns = store.load_patterns(10).await.unwrap();
+    assert_eq!(patterns.len(), 2);
+
+    let pattern_id = &patterns[0].id;
+    store
+        .annotate_pattern(pattern_id, Some("approved"))
+        .await
+        .unwrap();
+
+    let annotated = store.load_annotated_patterns().await.unwrap();
+    assert_eq!(annotated.len(), 1);
+    assert_eq!(annotated[0].user_annotation.as_deref(), Some("approved"));
+}
+
+#[tokio::test]
+async fn compute_adjustments_empty_returns_default() {
+    let store = MemoryStore::open_in_memory().await.unwrap();
+    let weights = store.compute_weight_adjustments().await.unwrap();
+    let defaults = ScoreWeights::default();
+    assert_eq!(weights.lint_penalty_per_error, defaults.lint_penalty_per_error);
+    assert_eq!(weights.lint_penalty_cap, defaults.lint_penalty_cap);
+}
+
+#[tokio::test]
+async fn compute_adjustments_signal_shifts_weights() {
+    let store = MemoryStore::open_in_memory().await.unwrap();
+    let task_approved = Task::new("simple fix");
+    let task_rejected = Task::new("complex refactor");
+    store.save_task(&task_approved, "success").await.unwrap();
+    store.save_task(&task_rejected, "success").await.unwrap();
+    store.mine_patterns(&task_approved.id, &task_approved.goal).await.unwrap();
+    store.mine_patterns(&task_rejected.id, &task_rejected.goal).await.unwrap();
+
+    let patterns = store.load_patterns(10).await.unwrap();
+    assert!(patterns.len() >= 2);
+
+    store
+        .annotate_pattern(&patterns[0].id, Some("approved"))
+        .await
+        .unwrap();
+    store
+        .annotate_pattern(&patterns[1].id, Some("rejected"))
+        .await
+        .unwrap();
+
+    let adjusted = store.compute_weight_adjustments().await.unwrap();
+    let defaults = ScoreWeights::default();
+    assert_eq!(adjusted.lint_penalty_cap, defaults.lint_penalty_cap);
 }

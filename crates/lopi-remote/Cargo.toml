@@ -10,6 +10,7 @@ description = "Telegram + WhatsApp remote control for lopi"
 [dependencies]
 lopi-core.workspace = true
 lopi-orchestrator.workspace = true
+lopi-memory.workspace = true
 tokio.workspace = true
 teloxide.workspace = true
 anyhow.workspace = true

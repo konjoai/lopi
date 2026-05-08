@@ -9,7 +9,7 @@ static GLOBAL: MiMalloc = MiMalloc;
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use lopi_agent::AgentRunner;
-use lopi_core::{AgentEvent, EventBus, LopiConfig, RepoProfile, Task, TaskStatus};
+use lopi_core::{AgentEvent, EventBus, LopiConfig, RepoProfile, Task, TaskSource, TaskStatus};
 use lopi_memory::MemoryStore;
 use lopi_orchestrator::{boot_scheduler, next_run_times, AgentPool, TaskQueue};
 use std::path::PathBuf;
@@ -169,6 +169,17 @@ fn load_config(path: Option<&PathBuf>) -> Option<LopiConfig> {
     }
 }
 
+fn is_self_modify_attempt(repo: &std::path::Path) -> bool {
+    if let Ok(exe) = std::env::current_exe() {
+        if let (Some(parent), Ok(repo_canonical)) = (exe.parent().and_then(|p| p.parent()), repo.canonicalize()) {
+            if let Ok(exe_canonical) = parent.canonicalize() {
+                return repo_canonical.starts_with(&exe_canonical);
+            }
+        }
+    }
+    false
+}
+
 #[allow(clippy::too_many_lines)]
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -234,6 +245,20 @@ async fn main() -> Result<()> {
             let store = MemoryStore::open(db_path()).await?;
             let mut task = Task::new(goal);
             profile.apply(&mut task);
+
+            // Check for self-modification attempt.
+            if is_self_modify_attempt(&repo) {
+                let allow_self_modify = cfg.as_ref().is_some_and(|c| c.lopi.allow_self_modify);
+                if !allow_self_modify {
+                    eprintln!("❌ self-modification blocked: lopi cannot modify itself");
+                    eprintln!("   to enable, set `allow_self_modify = true` in [lopi] section of lopi.toml");
+                    return Err(anyhow::anyhow!("self-modification not allowed"));
+                }
+                task.source = TaskSource::SelfModify { approved_by: "config".into() };
+                task.allowed_dirs = vec!["crates/".into(), "src/".into()];
+                task.forbidden_dirs = vec![".github/".into(), "Cargo.lock".into()];
+            }
+
             let task_id = task.id;
             let id_short = &task_id.0.to_string()[..8];
             store.save_task(&task, "queued").await.ok();
@@ -404,6 +429,28 @@ async fn main() -> Result<()> {
                     tracing::error!("pool error: {e}");
                 }
             });
+
+            // Boot Telegram bot if token is configured.
+            if let Ok(token) = std::env::var("TELOXIDE_TOKEN") {
+                let allowed_chat_ids = cfg
+                    .as_ref()
+                    .map(|c| c.remote.telegram.allowed_chat_ids.clone())
+                    .unwrap_or_default();
+                let store_telegram = store.clone();
+                let queue_telegram = queue.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = lopi_remote::telegram::run(
+                        token,
+                        queue_telegram,
+                        store_telegram,
+                        allowed_chat_ids,
+                    )
+                    .await
+                    {
+                        tracing::error!("telegram bot error: {e}");
+                    }
+                });
+            }
 
             let auth_token = cfg.as_ref().and_then(|c| c.web.auth_token.clone());
             lopi_ui::web::serve(store, bus, queue, pool, &host, port, auth_token).await?;

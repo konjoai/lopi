@@ -103,6 +103,7 @@ lopi-agent.workspace = true
 lopi-memory.workspace = true
 lopi-orchestrator.workspace = true
 lopi-ui.workspace = true
+lopi-remote.workspace = true
 reqwest.workspace = true
 serde_json.workspace = true
 tokio-cron-scheduler.workspace = true

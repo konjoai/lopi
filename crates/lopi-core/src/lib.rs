@@ -3,7 +3,7 @@ pub mod config;
 pub mod event;
 pub mod task;
 
-pub use agent::{AgentRun, AgentState, Attempt, Score, TurnMetrics};
+pub use agent::{AgentRun, AgentState, Attempt, Score, ScoreWeights, TurnMetrics};
 pub use config::{LopiConfig, RepoProfile, ScheduleEntry};
 pub use event::{AgentEvent, EventBus, LogLevel};
 pub use task::{Priority, Task, TaskId, TaskSource, TaskStatus};
@@ -53,7 +53,33 @@ mod tests {
     fn score_weighted_clamps_to_zero() {
         let mut s = Score::new(0.0, 100, 100_000);
         s.errors = vec!["bad".into()];
-        assert!(s.weighted() >= 0.0);
+        let weights = ScoreWeights::default();
+        assert!(s.weighted(&weights) >= 0.0);
+    }
+
+    #[test]
+    fn score_weights_default_matches_legacy() {
+        let w = ScoreWeights::default();
+        assert_eq!(w.lint_penalty_per_error, 0.05);
+        assert_eq!(w.lint_penalty_cap, 0.50);
+        assert_eq!(w.diff_penalty_per_kloc, 0.10);
+        assert_eq!(w.diff_penalty_cap, 0.30);
+    }
+
+    #[test]
+    fn score_weighted_with_custom_weights() {
+        let s = Score::new(0.9, 5, 2000);
+        let default_weights = ScoreWeights::default();
+        let relaxed_weights = ScoreWeights {
+            lint_penalty_per_error: 0.01,
+            lint_penalty_cap: 0.10,
+            diff_penalty_per_kloc: 0.02,
+            diff_penalty_cap: 0.10,
+        };
+
+        let default_score = s.weighted(&default_weights);
+        let relaxed_score = s.weighted(&relaxed_weights);
+        assert!(relaxed_score > default_score, "relaxed weights should produce higher scores");
     }
 
     #[test]
@@ -96,6 +122,19 @@ mod tests {
             } => {
                 assert_eq!(chat_id, 12345);
                 assert_eq!(message_id, 99);
+            }
+            _ => panic!("wrong variant"),
+        }
+    }
+
+    #[test]
+    fn task_source_selfmodify_serde_round_trip() {
+        let s = TaskSource::SelfModify { approved_by: "config".into() };
+        let json = serde_json::to_string(&s).unwrap();
+        let back: TaskSource = serde_json::from_str(&json).unwrap();
+        match back {
+            TaskSource::SelfModify { approved_by } => {
+                assert_eq!(approved_by, "config");
             }
             _ => panic!("wrong variant"),
         }

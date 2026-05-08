@@ -75,6 +75,7 @@ pub enum TaskSource {
     Telegram { chat_id: i64, message_id: i32 },
     Webhook { repo: String, event: String },
     Api,
+    SelfModify { approved_by: String },
 }
 
 impl Task {

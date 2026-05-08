@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use chrono::Utc;
-use lopi_core::{Attempt, Task, TaskId, TurnMetrics};
+use lopi_core::{Attempt, ScoreWeights, Task, TaskId, TurnMetrics};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
 use std::collections::HashSet;
 use std::path::Path;
@@ -466,6 +466,62 @@ impl MemoryStore {
         .execute(&self.write_pool)
         .await?;
         Ok(())
+    }
+
+    pub async fn load_annotated_patterns(&self) -> Result<Vec<PatternRow>> {
+        sqlx::query_as(
+            "SELECT id, goal_keywords, successful_constraints, avg_attempts, success_rate,
+                    last_seen, derived_from_postmortem, user_annotation
+             FROM patterns WHERE user_annotation IS NOT NULL ORDER BY last_seen DESC LIMIT 100"
+        )
+        .fetch_all(&self.read_pool)
+        .await
+        .context("load_annotated_patterns query failed")
+    }
+
+    pub async fn compute_weight_adjustments(&self) -> Result<ScoreWeights> {
+        let annotated = self.load_annotated_patterns().await?;
+        let approved: Vec<_> = annotated
+            .iter()
+            .filter(|p| p.user_annotation.as_deref() == Some("approved"))
+            .collect();
+        let rejected: Vec<_> = annotated
+            .iter()
+            .filter(|p| p.user_annotation.as_deref() == Some("rejected"))
+            .collect();
+
+        if approved.is_empty() && rejected.is_empty() {
+            return Ok(ScoreWeights::default());
+        }
+
+        let approved_avg_attempts = if approved.is_empty() {
+            0.0
+        } else {
+            approved
+                .iter()
+                .filter_map(|p| p.avg_attempts)
+                .sum::<f64>() / approved.len() as f64
+        };
+
+        let rejected_avg_attempts = if rejected.is_empty() {
+            0.0
+        } else {
+            rejected
+                .iter()
+                .filter_map(|p| p.avg_attempts)
+                .sum::<f64>() / rejected.len() as f64
+        };
+
+        let signal = (rejected_avg_attempts - approved_avg_attempts).clamp(-2.0, 2.0);
+        let delta = (signal * 0.005) as f32;
+
+        let base = ScoreWeights::default();
+        Ok(ScoreWeights {
+            lint_penalty_per_error: (base.lint_penalty_per_error - delta).clamp(0.01, 0.20),
+            lint_penalty_cap: base.lint_penalty_cap,
+            diff_penalty_per_kloc: (base.diff_penalty_per_kloc - delta).clamp(0.01, 0.30),
+            diff_penalty_cap: base.diff_penalty_cap,
+        })
     }
 }
 

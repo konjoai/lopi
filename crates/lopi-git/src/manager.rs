@@ -202,6 +202,27 @@ impl GitManager {
         Ok(oid)
     }
 
+    /// Push branch to remote without opening a PR.
+    ///
+    /// # Errors
+    /// Returns `Err` if `git push` fails.
+    pub async fn push_branch(&self, branch: &str) -> Result<()> {
+        let push = tokio::process::Command::new("git")
+            .arg("-C")
+            .arg(&self.repo_path)
+            .arg("push")
+            .arg("-u")
+            .arg("origin")
+            .arg(branch)
+            .output()
+            .await
+            .context("invoking git push")?;
+        if !push.status.success() {
+            anyhow::bail!("git push failed: {}", String::from_utf8_lossy(&push.stderr));
+        }
+        Ok(())
+    }
+
     /// Push branch and open a PR via the `gh` CLI. Returns the PR URL.
     ///
     /// # Errors
