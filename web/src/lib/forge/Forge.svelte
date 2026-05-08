@@ -183,11 +183,11 @@
       return 42.0 * dot(m*m, vec4(dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3)));
     }
 
-    // Konjo palette — must match app.css :root
-    const vec3 ICE  = vec3(0.0, 0.831, 1.0);     // #00d4ff
-    const vec3 ICE2 = vec3(0.0, 0.6, 0.85);
-    const vec3 EMBER= vec3(1.0, 0.27, 0.0);      // #ff4500
-    const vec3 FLAME= vec3(1.0, 0.58, 0.0);      // #ff9500
+    // Konjo palette — blue spectrum (dark → light)
+    const vec3 ICE  = vec3(0.0, 0.831, 1.0);     // #00d4ff (bright cyan, matches pulsing ring)
+    const vec3 ICE2 = vec3(0.0, 0.333, 0.667);   // #0055aa (dark blue core)
+    const vec3 EMBER= vec3(0.0, 0.667, 0.867);   // #00aadd (lighter blue)
+    const vec3 FLAME= vec3(0.0, 0.8, 1.0);       // #00ccff (bright light blue)
 
     void main() {
       // High-frequency texture noise (independent of vNoise from vertex)
