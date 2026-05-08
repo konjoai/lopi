@@ -27,7 +27,6 @@ static HTTP: std::sync::OnceLock<Arc<reqwest::Client>> = std::sync::OnceLock::ne
 
 fn shared_http() -> Arc<reqwest::Client> {
     HTTP.get_or_init(|| {
-        #[allow(clippy::expect_used)]
         Arc::new(
             reqwest::Client::builder()
                 .pool_max_idle_per_host(14)
@@ -35,7 +34,10 @@ fn shared_http() -> Arc<reqwest::Client> {
                 .timeout(Duration::from_secs(300))
                 .tcp_keepalive(Duration::from_secs(30))
                 .build()
-                .expect("reqwest client must build"),
+                .unwrap_or_else(|e| {
+                    tracing::warn!("reqwest client builder failed ({e}); using default client");
+                    reqwest::Client::new()
+                }),
         )
     })
     .clone()
