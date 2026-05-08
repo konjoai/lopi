@@ -311,3 +311,96 @@ async fn daily_token_totals_returns_zero_with_no_metrics() {
     assert_eq!(tokens, 0);
     assert!(cost < f64::EPSILON);
 }
+
+// ── Sprint H: postmortem-derived patterns ────────────────────────────────────
+
+#[tokio::test]
+async fn insert_postmortem_pattern_persists_with_flag() {
+    let store = MemoryStore::open_in_memory().await.unwrap();
+    let id = store
+        .insert_postmortem_pattern(
+            "fix auth middleware",
+            "must add CSRF token validation before session creation",
+        )
+        .await
+        .unwrap();
+
+    // Verify the pattern can be retrieved by id prefix
+    let row = store
+        .find_pattern_by_id_prefix(&id[..8])
+        .await
+        .unwrap()
+        .expect("inserted row must be retrievable");
+    assert_eq!(row.id, id);
+    assert_eq!(row.goal_keywords, "fix auth middleware");
+    assert_eq!(
+        row.successful_constraints.as_deref(),
+        Some("must add CSRF token validation before session creation")
+    );
+    assert_eq!(row.derived_from_postmortem, 1);
+    assert_eq!(row.success_rate, Some(0.0));
+}
+
+#[tokio::test]
+async fn find_pattern_by_id_prefix_returns_none_for_missing() {
+    let store = MemoryStore::open_in_memory().await.unwrap();
+    let row = store
+        .find_pattern_by_id_prefix("nonexistent")
+        .await
+        .unwrap();
+    assert!(row.is_none());
+}
+
+#[tokio::test]
+async fn load_patterns_includes_postmortem_flag() {
+    let store = MemoryStore::open_in_memory().await.unwrap();
+    store
+        .insert_postmortem_pattern("kw", "must do X")
+        .await
+        .unwrap();
+    let rows = store.load_patterns(10).await.unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].derived_from_postmortem, 1);
+}
+
+#[tokio::test]
+async fn load_patterns_orders_postmortem_with_null_success_rate_last() {
+    // Postmortem patterns start with success_rate = 0.0; mined patterns have
+    // real values. ORDER BY COALESCE(success_rate, 0) DESC ensures real-data
+    // patterns surface above zero-seeded postmortem rows.
+    let store = MemoryStore::open_in_memory().await.unwrap();
+
+    // Insert postmortem (rate = 0.0)
+    store
+        .insert_postmortem_pattern("postmortem-kw", "must X")
+        .await
+        .unwrap();
+
+    // Insert a high-success mined pattern by simulating mine_patterns flow
+    let task = Task::new("real success kw");
+    store.save_task(&task, "queued").await.unwrap();
+    let attempt = make_high_score_attempt(task.id);
+    store.save_attempt(&attempt).await.unwrap();
+    store
+        .mine_patterns(&task.id, "real success kw")
+        .await
+        .unwrap();
+
+    let rows = store.load_patterns(10).await.unwrap();
+    assert_eq!(rows.len(), 2);
+    // Higher success_rate first
+    assert!(rows[0].derived_from_postmortem == 0);
+    assert!(rows[1].derived_from_postmortem == 1);
+}
+
+fn make_high_score_attempt(task_id: TaskId) -> Attempt {
+    Attempt {
+        id: Uuid::new_v4(),
+        task_id,
+        attempt_num: 1,
+        branch: "test/h-1".into(),
+        score: Some(lopi_core::Score::new(1.0, 0, 50)),
+        outcome: "success".into(),
+        created_at: Utc::now(),
+    }
+}

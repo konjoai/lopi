@@ -1,5 +1,5 @@
-use super::{backoff_secs, AgentRunner};
-use crate::claude::{select_model, ClaudeCode};
+use super::{backoff_secs, postmortem, AgentRunner};
+use crate::claude::{select_model, ClaudeCode, MODEL_HAIKU};
 use crate::scorer::Scorer;
 use anyhow::Result;
 use lopi_context::Phase;
@@ -37,6 +37,57 @@ impl AgentRunner {
             tokens_per_sec: 0.0,
             cost_usd: 0.0,
         });
+    }
+
+    /// Sprint H — run the failure post-mortem if both adaptive retry and a
+    /// direct-API client are configured. Best-effort; on any error we log
+    /// a warning and continue. The derived constraint is persisted to the
+    /// patterns table with `derived_from_postmortem = 1`.
+    async fn run_postmortem_if_configured(&self) {
+        let Some(client) = self.api_client.as_ref() else {
+            // Adaptive retry without API access — postmortem can't run.
+            // Future: a CLI fallback could pipe the error log to `claude -p`.
+            return;
+        };
+        let Some(error_log) = self.last_error.as_deref() else {
+            return;
+        };
+
+        self.log("🧠 running failure post-mortem…");
+        let outcome = postmortem::run_postmortem_quiet(
+            client,
+            self.limiter.as_ref(),
+            self.breaker.as_ref(),
+            // Haiku is the right cost/quality trade-off for a single-line constraint
+            MODEL_HAIKU,
+            &self.task.goal,
+            error_log,
+        )
+        .await;
+
+        let Some(outcome) = outcome else {
+            return;
+        };
+
+        // Persist the derived constraint as a pattern. Use the goal text as
+        // the keywords so future similar tasks pick it up via Jaccard.
+        if let Some(store) = &self.store {
+            match store
+                .insert_postmortem_pattern(&self.task.goal, &outcome.constraint)
+                .await
+            {
+                Ok(id) => {
+                    self.log(format!("🧠 post-mortem pattern saved [{}]", &id[..8]));
+                    self.log(format!("    constraint: {}", outcome.constraint));
+                }
+                Err(e) => {
+                    self.warn(format!("post-mortem persist failed: {e}"));
+                }
+            }
+        } else {
+            // No store — log the constraint anyway so it's not lost
+            self.log(format!("🧠 post-mortem constraint: {}", outcome.constraint));
+        }
     }
 
     /// Execute the full agent loop: plan → implement → test → retry.
@@ -201,11 +252,37 @@ impl AgentRunner {
                 ));
             } else {
                 // Standard mode: wait for full plan, then implement in one pass.
-                let plan = match claude.plan(&self.task).await {
-                    Ok(p) => {
-                        self.log(format!("✅ plan ready ({} chars)", p.len()));
-                        p
+                //
+                // Sprint G — direct-API planning path:
+                // When the runner has been wired with an AnthropicClient
+                // (via `with_api`), try the direct API first. On any
+                // failure (rate-limited, breaker open, network error,
+                // 4xx/5xx) fall back to the CLI subprocess silently. The
+                // CLI path remains the load-bearing default so an API
+                // outage cannot stall the agent loop.
+                let plan_result = if self.has_direct_api() {
+                    match self.plan_via_api(model, attempt + 1).await {
+                        Ok(p) => {
+                            self.log(format!("✅ plan ready via direct API ({} chars)", p.len()));
+                            Ok(p)
+                        }
+                        Err(api_err) => {
+                            self.warn(format!(
+                                "direct API plan failed ({api_err}); falling back to CLI"
+                            ));
+                            claude.plan(&self.task).await.inspect(|p| {
+                                self.log(format!("✅ plan ready via CLI ({} chars)", p.len()));
+                            })
+                        }
                     }
+                } else {
+                    claude.plan(&self.task).await.inspect(|p| {
+                        self.log(format!("✅ plan ready ({} chars)", p.len()));
+                    })
+                };
+
+                let plan = match plan_result {
+                    Ok(p) => p,
                     Err(e) => {
                         self.warn(format!("plan failed: {e}"));
                         git.hard_rollback().await.ok();
@@ -364,6 +441,20 @@ impl AgentRunner {
                 }
             }
 
+            // Sprint H — adaptive retry: stash the score's error list so the
+            // next attempt's planning prompt can include it. Only stored
+            // when adaptive_retry is enabled to avoid pointless work.
+            if self.adaptive_retry {
+                self.last_error = Some(format!(
+                    "Attempt {} failed:\n  test_pass_rate: {:.0}%\n  lint_errors: {}\n  diff_lines: {}\n  errors: {}",
+                    attempt + 1,
+                    score.test_pass_rate * 100.0,
+                    score.lint_errors,
+                    score.diff_lines,
+                    if score.errors.is_empty() { "(none captured)".into() } else { score.errors.join("\n  - ") }
+                ));
+            }
+
             git.hard_rollback().await.ok();
             git.checkout_default().await.ok();
             self.status(
@@ -382,6 +473,14 @@ impl AgentRunner {
                 wait.as_millis()
             ));
             tokio::time::sleep(wait).await;
+        }
+
+        // Sprint H — post-mortem on terminal failure. Best-effort; never
+        // block task termination. Requires both adaptive_retry AND a
+        // configured AnthropicClient (api_client). Persists the derived
+        // constraint to the patterns table for future similar tasks.
+        if self.adaptive_retry {
+            self.run_postmortem_if_configured().await;
         }
 
         let status = TaskStatus::Failed {

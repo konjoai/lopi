@@ -416,21 +416,39 @@ function startMockData() {
   if (mockTimer) return;
   connectionState.set('mock');
 
+  // Two pairs of seed agents share signals so the Constellation's insight
+  // lines actually appear in preview mode:
+  //   • demo-1 + demo-2 share repo (~/kyro) AND share goal keywords
+  //     ("semantic cache redis")
+  //   • demo-3 + demo-4 share repo (~/vectro) but different goals
+  //   • demo-5 stands alone as a control case with no peers
   const seedAgents: { task_id: string; goal: string; branch: string; repo: string }[] = [
     {
       task_id: 'demo-1-' + crypto.randomUUID().slice(0, 8),
-      goal: 'Add Postgres-backed semantic cache to the RAG pipeline',
+      goal: 'Add Redis-backed semantic cache to the RAG pipeline',
       branch: 'feat/pg-cache',
       repo: '~/kyro'
     },
     {
       task_id: 'demo-2-' + crypto.randomUUID().slice(0, 8),
+      goal: 'Migrate semantic cache invalidation logic to Redis streams',
+      branch: 'feat/redis-cache',
+      repo: '~/kyro'
+    },
+    {
+      task_id: 'demo-3-' + crypto.randomUUID().slice(0, 8),
       goal: 'Refactor the encoder hot path to use NEON 32-wide unroll',
       branch: 'perf/neon-unroll',
       repo: '~/vectro'
     },
     {
-      task_id: 'demo-3-' + crypto.randomUUID().slice(0, 8),
+      task_id: 'demo-4-' + crypto.randomUUID().slice(0, 8),
+      goal: 'Wire AVX-512 VNNI dispatch into encode_fast_into',
+      branch: 'perf/avx512',
+      repo: '~/vectro'
+    },
+    {
+      task_id: 'demo-5-' + crypto.randomUUID().slice(0, 8),
       goal: 'Wire OTel trace export from /generate spans',
       branch: 'feat/otel',
       repo: '~/kairu'

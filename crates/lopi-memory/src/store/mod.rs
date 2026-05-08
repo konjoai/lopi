@@ -131,10 +131,24 @@ impl MemoryStore {
             if s.is_empty() {
                 continue;
             }
-            let result = sqlx::query(s).execute(pool).await;
+            // Strip leading SQL line comments (`-- foo`) so the prefix check
+            // below correctly identifies ALTER TABLE statements that have
+            // documentation comments above them.
+            let body: String = s
+                .lines()
+                .filter(|l| !l.trim_start().starts_with("--"))
+                .collect::<Vec<_>>()
+                .join("\n")
+                .trim()
+                .to_string();
+            if body.is_empty() {
+                continue;
+            }
+
+            let result = sqlx::query(&body).execute(pool).await;
             // ALTER TABLE ... ADD COLUMN errors on duplicate columns — silently ignore.
             if let Err(e) = result {
-                if !s.to_lowercase().starts_with("alter table") {
+                if !body.to_lowercase().starts_with("alter table") {
                     return Err(e).context("applying schema");
                 }
             }
@@ -243,7 +257,7 @@ impl MemoryStore {
         }
 
         let all: Vec<PatternRow> = sqlx::query_as::<_, PatternRow>(
-            "SELECT id, goal_keywords, successful_constraints, avg_attempts, success_rate, last_seen \
+            "SELECT id, goal_keywords, successful_constraints, avg_attempts, success_rate, last_seen, derived_from_postmortem \
              FROM patterns",
         )
         .fetch_all(&self.read_pool)
@@ -270,13 +284,60 @@ impl MemoryStore {
     /// Returns `Err` if the database query fails.
     pub async fn load_patterns(&self, limit: i64) -> Result<Vec<PatternRow>> {
         let rows = sqlx::query_as::<_, PatternRow>(
-            "SELECT id, goal_keywords, successful_constraints, avg_attempts, success_rate, last_seen \
-             FROM patterns ORDER BY success_rate DESC LIMIT ?1",
+            "SELECT id, goal_keywords, successful_constraints, avg_attempts, success_rate, last_seen, derived_from_postmortem \
+             FROM patterns ORDER BY COALESCE(success_rate, 0) DESC, last_seen DESC LIMIT ?1",
         )
         .bind(limit)
         .fetch_all(&self.read_pool)
         .await?;
         Ok(rows)
+    }
+
+    /// Sprint H — fetch a single pattern by id prefix (for `lopi learn show`).
+    /// Mirrors the prefix-match UX used by `lopi tasks/cancel`. Returns
+    /// `Ok(None)` if no pattern matches the prefix.
+    ///
+    /// # Errors
+    /// Returns `Err` if the database query fails.
+    pub async fn find_pattern_by_id_prefix(&self, prefix: &str) -> Result<Option<PatternRow>> {
+        let pattern = format!("{prefix}%");
+        let row: Option<PatternRow> = sqlx::query_as::<_, PatternRow>(
+            "SELECT id, goal_keywords, successful_constraints, avg_attempts, success_rate, last_seen, derived_from_postmortem \
+             FROM patterns WHERE id LIKE ?1 LIMIT 1",
+        )
+        .bind(pattern)
+        .fetch_optional(&self.read_pool)
+        .await?;
+        Ok(row)
+    }
+
+    /// Sprint H — persist a new pattern derived from a failed-run post-mortem.
+    /// Stores the Claude-derived constraint string in `successful_constraints`,
+    /// flags `derived_from_postmortem = 1`, and seeds with `success_rate = 0.0`
+    /// (will rise as future tasks consuming this pattern succeed).
+    ///
+    /// # Errors
+    /// Returns `Err` if the database insert fails.
+    pub async fn insert_postmortem_pattern(
+        &self,
+        goal_keywords: &str,
+        constraint: &str,
+    ) -> Result<String> {
+        let id = uuid::Uuid::new_v4().to_string();
+        let now = Utc::now().to_rfc3339();
+        sqlx::query(
+            "INSERT INTO patterns (id, goal_keywords, successful_constraints, avg_attempts, success_rate, last_seen, derived_from_postmortem) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1)",
+        )
+        .bind(&id)
+        .bind(goal_keywords)
+        .bind(constraint)
+        .bind(0.0_f64)
+        .bind(0.0_f64)
+        .bind(now)
+        .execute(&self.write_pool)
+        .await?;
+        Ok(id)
     }
 
     /// Mine a completed task's attempts into the patterns table.
@@ -412,6 +473,11 @@ pub struct PatternRow {
     pub avg_attempts: Option<f64>,
     pub success_rate: Option<f64>,
     pub last_seen: String,
+    /// Sprint H: 1 when this row was created by a failed-run post-mortem
+    /// (Claude reflection over an error log), 0 when mined from completed
+    /// task statistics. SQLite has no bool — represented as INTEGER.
+    #[sqlx(default)]
+    pub derived_from_postmortem: i64,
 }
 
 mod lessons;

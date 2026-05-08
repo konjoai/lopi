@@ -9,7 +9,7 @@
   import AgentCard from '$lib/components/AgentCard.svelte';
   import ThoughtStream from '$lib/components/ThoughtStream.svelte';
   import LogStream from '$lib/components/LogStream.svelte';
-  import CostCounter from '$lib/components/CostCounter.svelte';
+  import CostAnalytics from '$lib/components/CostAnalytics.svelte';
   import { agents, activeAgent, stats, PHASE_COLORS } from '$lib/stores/agents';
 
   // Reactive — drives the Forge from the active agent
@@ -82,10 +82,10 @@
   </section>
 
   <!-- ── Right rail: gauges + cost ─────────────────────────────────────── -->
-  <aside class="col-span-12 lg:col-span-3 order-3 flex flex-col items-end gap-8 pt-4">
-    <CostCounter cost={$activeAgent?.cost ?? 0} cap={1.0} />
+  <aside class="col-span-12 lg:col-span-3 order-3 flex flex-col gap-8 pt-4">
+    <CostAnalytics />
 
-    <div class="flex items-end gap-6">
+    <div class="flex items-end justify-end gap-6 self-end">
       <div class="flex flex-col items-center gap-2">
         <span class="font-mono text-[10px] uppercase tracking-widest opacity-50">activity</span>
         <div

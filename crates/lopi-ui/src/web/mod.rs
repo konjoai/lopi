@@ -1,9 +1,10 @@
 use anyhow::Result;
 use axum::{
+    body::Body,
     extract::{Path, State},
-    http::StatusCode,
+    http::{header, StatusCode, Uri},
     middleware::{self, Next},
-    response::{Html, IntoResponse, Json, Response},
+    response::{IntoResponse, Json, Response},
     routing::get,
     Router,
 };
@@ -12,6 +13,19 @@ use lopi_core::{AgentEvent, EventBus, Priority, Task, TaskId};
 use lopi_memory::MemoryStore;
 use lopi_orchestrator::{AgentPool, TaskQueue};
 use lopi_ratelimit::TokenBucket;
+use rust_embed::Embed;
+
+/// SvelteKit Forge static build embedded into the lopi binary.
+///
+/// `web/dist/` is created (empty if needed) by the lopi-ui build script so
+/// `cargo build` succeeds even before `npm run build`. When the directory
+/// is empty at compile time, the runtime handler serves the placeholder
+/// page from `placeholder.html` instead.
+#[derive(Embed)]
+#[folder = "$CARGO_MANIFEST_DIR/../../web/dist"]
+struct WebAssets;
+
+const PLACEHOLDER_HTML: &str = include_str!("../placeholder.html");
 
 use serde_json::{json, Value};
 use std::net::{IpAddr, SocketAddr};
@@ -135,13 +149,16 @@ pub fn build_app(state: AppState) -> Router {
         ));
 
     Router::new()
-        .route("/", get(index))
         .merge(api)
         .route("/metrics", get(metrics))
         .route("/sse", get(sse_handler))
         .route("/ws", get(ws_handler))
         // Legacy endpoint — kept for compat.
         .route("/ws/tasks", get(ws_handler))
+        // Static handler catches /, /constellation, /favicon.svg,
+        // /_app/**/*, and any SPA route fallthrough. Explicit routes above
+        // take precedence.
+        .fallback(get(static_handler))
         .layer(CorsLayer::permissive())
         .with_state(state)
 }
@@ -254,8 +271,65 @@ fn constant_time_eq(a: &str, b: &str) -> bool {
         == 0
 }
 
-async fn index() -> impl IntoResponse {
-    Html(include_str!("../index.html"))
+/// Static asset handler — serves the embedded SvelteKit Forge build.
+///
+/// Lookup order:
+///   1. Direct file match (e.g. `/_app/immutable/chunks/x.js`, `/favicon.svg`)
+///   2. Append `.html` for prerendered routes (e.g. `/constellation` →
+///      `constellation.html`)
+///   3. Fall back to `index.html` (SPA client-side routing for unknown paths)
+///   4. Fall back to the bundled placeholder if `web/dist/` is empty
+///      (i.e. `npm run build` hasn't been run yet).
+async fn static_handler(uri: Uri) -> Response {
+    let path = uri.path().trim_start_matches('/').to_string();
+
+    // 1. Direct file
+    if !path.is_empty() {
+        if let Some(file) = WebAssets::get(&path) {
+            return file_response(file, &path);
+        }
+    }
+
+    // 2. .html fallback for prerendered routes
+    if !path.is_empty() && !path.contains('.') {
+        let html_path = format!("{}.html", path);
+        if let Some(file) = WebAssets::get(&html_path) {
+            return file_response(file, &html_path);
+        }
+    }
+
+    // 3. SPA fallback — index.html handles client-side routing
+    if let Some(file) = WebAssets::get("index.html") {
+        return file_response(file, "index.html");
+    }
+
+    // 4. No SvelteKit build present — show placeholder with build instructions.
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
+        .body(Body::from(PLACEHOLDER_HTML))
+        .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
+}
+
+/// Serve an embedded file with appropriate Content-Type and Cache-Control.
+///
+/// Cache strategy:
+///   - SvelteKit's `_app/immutable/*` chunks are content-hashed → cache forever
+///   - Everything else (HTML, top-level assets) → 5-minute browser cache
+fn file_response(file: rust_embed::EmbeddedFile, path: &str) -> Response {
+    let mime = mime_guess::from_path(path).first_or_octet_stream();
+    let cache_control = if path.starts_with("_app/immutable/") {
+        "public, max-age=31536000, immutable"
+    } else {
+        "public, max-age=300"
+    };
+
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, mime.as_ref())
+        .header(header::CACHE_CONTROL, cache_control)
+        .body(Body::from(file.data.into_owned()))
+        .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
 }
 
 async fn health() -> impl IntoResponse {
