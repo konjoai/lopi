@@ -1,3 +1,9 @@
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::unwrap_in_result
+)]
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use lopi_context::{ContentBlock, ContextWindow, Phase, PinPolicy, Role, TaggedMessage};
 use uuid::Uuid;
@@ -49,10 +55,15 @@ fn bench_push_under_pressure(c: &mut Criterion) {
                 window.push(make_msg(100)).ok();
             }
             // This push may trigger auto-eviction.
-            black_box(window.push(make_msg(100)));
+            let _ = black_box(window.push(make_msg(100)));
         });
     });
 }
 
-criterion_group!(benches, bench_evict_to_budget, bench_to_api_messages, bench_push_under_pressure);
+criterion_group!(
+    benches,
+    bench_evict_to_budget,
+    bench_to_api_messages,
+    bench_push_under_pressure
+);
 criterion_main!(benches);

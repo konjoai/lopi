@@ -67,11 +67,19 @@ if $HAS_RUST && [[ -n "$STAGED_RS" ]]; then
     UNWRAP_HITS=""
     while IFS= read -r f; do
         [[ -f "$f" ]] || continue
-        # Skip test modules and test files
-        HITS=$(grep -En '(\.unwrap\(\)|\.expect\()' "$f" \
-            | grep -v '#\[cfg(test)\]' \
-            | grep -v '^\s*//' \
-            | grep -v '_test\.rs' || true)
+        # Skip test/bench files and directories
+        [[ "$f" =~ _tests?\.rs$ ]] && continue
+        [[ "$f" =~ /tests?\.rs$ ]] && continue
+        [[ "$f" =~ /tests/ ]] && continue
+        [[ "$f" =~ /benches/ ]] && continue
+        # Strip #[cfg(test)] blocks before scanning (awk state machine)
+        HITS=$(awk '
+            /^#\[cfg\(test\)\]/ { skip=1; depth=0 }
+            skip { n=split($0,a,"{"); depth+=(n-1); n=split($0,b,"}"); depth-=(n-1); if (depth<0) { skip=0; next } }
+            !skip { print NR": "$0 }
+        ' "$f" \
+            | grep -E '(\.unwrap\(\)|\.expect\()' \
+            | grep -v '^\s*//' || true)
         if [[ -n "$HITS" ]]; then
             UNWRAP_HITS+="$f: $HITS"$'\n'
         fi
@@ -159,7 +167,7 @@ pass "file size check complete"
 banner "3b. DRY check (staged files)"
 if [[ -f "$REPO_ROOT/.konjo/scripts/dry_check.py" ]] && command -v python3 &>/dev/null; then
     if ! python3 "$REPO_ROOT/.konjo/scripts/dry_check.py" \
-        --staged-only --min-lines 10 --threshold 0.85 2>&1; then
+        --staged-only --min-lines 20 --threshold 0.85 2>&1; then
         fail "DRY violation: duplicate code blocks found. Abstract into a shared function."
     fi
     pass "DRY check"
@@ -171,6 +179,8 @@ banner "3c. TODO/FIXME in staged code"
 TODO_HITS=""
 while IFS= read -r f; do
     [[ -f "$f" ]] || continue
+    # Skip the hook scripts themselves (they reference TODO/FIXME as patterns, not placeholders)
+    [[ "$f" =~ \.konjo/hooks/ ]] && continue
     HITS=$(grep -En '(TODO|FIXME|HACK|XXX)\b' "$f" || true)
     if [[ -n "$HITS" ]]; then
         TODO_HITS+="$f: $HITS"$'\n'

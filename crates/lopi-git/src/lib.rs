@@ -1,5 +1,5 @@
-pub mod manager;
 pub mod diff;
+pub mod manager;
 
-pub use manager::GitManager;
 pub use diff::DiffChecker;
+pub use manager::GitManager;

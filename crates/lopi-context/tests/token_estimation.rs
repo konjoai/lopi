@@ -1,10 +1,21 @@
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::unwrap_in_result
+)]
 use lopi_context::{estimate_tokens, ContentBlock};
 
 #[test]
 fn text_block_estimated_nonzero() {
-    let content = vec![ContentBlock::Text("hello world this is a test message for token counting".to_string())];
+    let content = vec![ContentBlock::Text(
+        "hello world this is a test message for token counting".to_string(),
+    )];
     let estimate = estimate_tokens(&content);
-    assert!(estimate > 0, "text block must produce a nonzero token estimate");
+    assert!(
+        estimate > 0,
+        "text block must produce a nonzero token estimate"
+    );
 }
 
 #[test]
@@ -15,7 +26,10 @@ fn tool_use_block_estimated_nonzero() {
         input: serde_json::json!({ "path": "/Users/dev/project/src/main.rs" }),
     }];
     let estimate = estimate_tokens(&content);
-    assert!(estimate > 0, "tool_use block must produce a nonzero token estimate");
+    assert!(
+        estimate > 0,
+        "tool_use block must produce a nonzero token estimate"
+    );
 }
 
 #[test]
@@ -26,7 +40,10 @@ fn tool_result_block_estimated_nonzero() {
         is_error: false,
     }];
     let estimate = estimate_tokens(&content);
-    assert!(estimate > 0, "tool_result block must produce a nonzero token estimate");
+    assert!(
+        estimate > 0,
+        "tool_result block must produce a nonzero token estimate"
+    );
 }
 
 #[test]
@@ -56,8 +73,8 @@ fn mixed_content_estimate_is_additive() {
 }
 
 /// Integration test: verifies our estimate is within 10% of the Anthropic count-tokens API.
-/// Requires ANTHROPIC_API_KEY in environment.
-/// Run with: cargo test --test token_estimation -- --ignored
+/// Requires `ANTHROPIC_API_KEY` in environment.
+/// Run with: `cargo test --test token_estimation -- --ignored`
 #[test]
 #[ignore = "requires ANTHROPIC_API_KEY; run: cargo test --test token_estimation -- --ignored"]
 fn estimate_within_10_percent_of_api() {
@@ -96,8 +113,16 @@ fn estimate_within_10_percent_of_api() {
         .expect("API call must succeed");
 
     let json: serde_json::Value = response.json().expect("API must return JSON");
-    let api_count = json["input_tokens"].as_u64().expect("response must have input_tokens") as usize;
+    #[allow(clippy::cast_possible_truncation)]
+    let api_count = json["input_tokens"]
+        .as_u64()
+        .expect("response must have input_tokens") as usize;
 
+    #[allow(
+        clippy::cast_precision_loss,
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss
+    )]
     let tolerance = (api_count as f64 * 0.10) as usize + 1;
     let diff = our_estimate.abs_diff(api_count);
     assert!(

@@ -9,13 +9,22 @@ pub struct DiffChecker {
 }
 
 impl DiffChecker {
+    #[must_use]
     pub fn new(allowed: Vec<String>, forbidden: Vec<String>) -> Self {
         let allowed_p = allowed.iter().filter_map(|s| compile(s)).collect();
         let forbidden_p = forbidden.iter().filter_map(|s| compile(s)).collect();
-        Self { allowed: allowed_p, forbidden: forbidden_p, raw_allowed: allowed, raw_forbidden: forbidden }
+        Self {
+            allowed: allowed_p,
+            forbidden: forbidden_p,
+            raw_allowed: allowed,
+            raw_forbidden: forbidden,
+        }
     }
 
     /// Returns Ok if every path is inside an allowed dir/glob and not inside any forbidden one.
+    ///
+    /// # Errors
+    /// Returns `Err` if any path touches a forbidden directory or lies outside the allowed scope.
     pub fn validate(&self, paths: &[String]) -> Result<()> {
         for p in paths {
             if self.is_forbidden(p) {
@@ -41,7 +50,10 @@ impl DiffChecker {
 
     fn is_forbidden(&self, p: &str) -> bool {
         self.forbidden.iter().any(|pat| pat.matches(p))
-            || self.raw_forbidden.iter().any(|prefix| p.starts_with(prefix))
+            || self
+                .raw_forbidden
+                .iter()
+                .any(|prefix| p.starts_with(prefix))
     }
 }
 

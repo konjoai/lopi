@@ -24,6 +24,7 @@ struct BucketState {
 }
 
 impl TokenBucket {
+    #[must_use]
     pub fn new(capacity: f64, refill_per_second: f64) -> Self {
         Self {
             inner: Arc::new(Mutex::new(BucketState {
@@ -88,13 +89,15 @@ pub struct AnthropicLimiter {
 
 impl AnthropicLimiter {
     /// Default Anthropic Pro limits: 120 000 TPM, 15 RPM (concurrent connections).
+    #[must_use]
     pub fn default_pro() -> Self {
         Self {
             tpm: TokenBucket::new(120_000.0, 2_000.0), // 120k/min = 2k/sec
-            rpm: TokenBucket::new(15.0, 0.25),          // 15/min = 0.25/sec
+            rpm: TokenBucket::new(15.0, 0.25),         // 15/min = 0.25/sec
         }
     }
 
+    #[must_use]
     pub fn custom(tpm_limit: f64, rpm_limit: f64) -> Self {
         Self {
             tpm: TokenBucket::new(tpm_limit, tpm_limit / 60.0),
@@ -105,10 +108,7 @@ impl AnthropicLimiter {
     /// Acquire capacity for one request that will consume `estimated_tokens` tokens.
     /// Blocks until both TPM and RPM buckets can satisfy the request.
     pub async fn acquire_request(&self, estimated_tokens: f64) {
-        tokio::join!(
-            self.tpm.acquire(estimated_tokens),
-            self.rpm.acquire(1.0)
-        );
+        tokio::join!(self.tpm.acquire(estimated_tokens), self.rpm.acquire(1.0));
     }
 }
 

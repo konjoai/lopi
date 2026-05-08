@@ -28,7 +28,7 @@ pub enum BreakerError {
 /// 1. Consecutive failures ≥ `failure_threshold` → Open for `open_duration`.
 /// 2. Accumulated cost this hour ≥ `cost_per_hour_limit` → Open until hourly reset.
 ///
-/// After `open_duration` elapses, the breaker transitions to HalfOpen and allows
+/// After `open_duration` elapses, the breaker transitions to `HalfOpen` and allows
 /// one probe request through. `record_success()` closes it; `record_failure()` reopens it.
 pub struct CircuitBreaker {
     inner: Arc<Mutex<BreakerInner>>,
@@ -49,8 +49,9 @@ impl CircuitBreaker {
     /// Create a new breaker.
     ///
     /// - `failure_threshold`: consecutive failures before tripping.
-    /// - `open_duration`: how long to stay Open before moving to HalfOpen.
+    /// - `open_duration`: how long to stay Open before moving to `HalfOpen`.
     /// - `cost_per_hour_limit`: USD/hr cap — breaker trips when exceeded.
+    #[must_use]
     pub fn new(failure_threshold: u32, open_duration: Duration, cost_per_hour_limit: f64) -> Self {
         Self {
             inner: Arc::new(Mutex::new(BreakerInner {
@@ -67,6 +68,11 @@ impl CircuitBreaker {
     }
 
     /// Returns `Ok(())` if the request should proceed, or an error explaining why not.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err(BreakerError::Open)` when the breaker is open.
+    /// Returns `Err(BreakerError::CostCapExceeded)` when the hourly cost cap is exceeded.
     pub async fn check(&self) -> Result<(), BreakerError> {
         let mut inner = self.inner.lock().await;
         // Reset hourly cost counter on the hour boundary.
@@ -75,10 +81,11 @@ impl CircuitBreaker {
             inner.hour_start = Instant::now();
         }
         if inner.cost_this_hour >= inner.cost_per_hour_limit {
-            return Err(BreakerError::CostCapExceeded { cap: inner.cost_per_hour_limit });
+            return Err(BreakerError::CostCapExceeded {
+                cap: inner.cost_per_hour_limit,
+            });
         }
         match inner.state {
-            BreakerState::Closed => Ok(()),
             BreakerState::Open => {
                 if let Some(t) = inner.last_failure {
                     if t.elapsed() >= inner.open_duration {
@@ -88,7 +95,7 @@ impl CircuitBreaker {
                 }
                 Err(BreakerError::Open)
             }
-            BreakerState::HalfOpen => Ok(()),
+            BreakerState::Closed | BreakerState::HalfOpen => Ok(()),
         }
     }
 
@@ -136,6 +143,7 @@ impl CircuitBreaker {
 }
 
 #[cfg(test)]
+#[allow(clippy::panic, clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 
@@ -177,7 +185,10 @@ mod tests {
         assert_eq!(cb.state().await, BreakerState::Closed);
         cb.record_cost(2.5).await;
         assert_eq!(cb.state().await, BreakerState::Open);
-        assert!(matches!(cb.check().await, Err(BreakerError::CostCapExceeded { .. })));
+        assert!(matches!(
+            cb.check().await,
+            Err(BreakerError::CostCapExceeded { .. })
+        ));
     }
 
     #[tokio::test]

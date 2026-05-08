@@ -3,7 +3,9 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum ContextError {
-    #[error("context window full: budget {budget}, needed {needed}, after_eviction {after_eviction}")]
+    #[error(
+        "context window full: budget {budget}, needed {needed}, after_eviction {after_eviction}"
+    )]
     Full {
         budget: usize,
         needed: usize,

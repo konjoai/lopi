@@ -1,3 +1,4 @@
+#![allow(clippy::missing_errors_doc)]
 use anyhow::Result;
 use lopi_core::{Priority, Task, TaskSource};
 use lopi_orchestrator::TaskQueue;
@@ -7,29 +8,47 @@ use teloxide::{
     utils::command::BotCommands,
 };
 
+/// Commands accepted by the lopi Telegram bot.
 #[derive(BotCommands, Clone)]
 #[command(rename_rule = "lowercase", description = "lopi commands:")]
 pub enum LopiCmd {
+    /// Display available commands.
     #[command(description = "show this help")]
     Help,
+    /// Queue a new task with the given goal.
     #[command(description = "queue a new task: /task <goal>")]
     Task(String),
+    /// Queue a high-priority task.
     #[command(description = "high-priority task: /urgent <goal>")]
     Urgent(String),
+    /// Show the current queue depth.
     #[command(description = "show queue depth")]
     Status,
+    /// Approve a pending PR by task ID.
     #[command(description = "approve a pending PR by ID: /approve <task-id>")]
     Approve(String),
 }
 
 /// Start the Telegram bot. Requires `TELOXIDE_TOKEN` env var or explicit `token`.
-pub async fn run(token: String, queue: TaskQueue) -> Result<()> {
+///
+/// `allowed_chat_ids`: allowlist of chat IDs permitted to issue commands.
+/// Empty list = allow all chats (dev mode).
+pub async fn run(token: String, queue: TaskQueue, allowed_chat_ids: Vec<i64>) -> Result<()> {
     let bot = Bot::new(token);
 
     let queue_cmd = queue.clone();
+    let allowed = std::sync::Arc::new(allowed_chat_ids);
+    let allowed_cmd = allowed.clone();
     LopiCmd::repl(bot.clone(), move |bot: Bot, msg: Message, cmd: LopiCmd| {
         let queue = queue_cmd.clone();
+        let allowed = allowed_cmd.clone();
         async move {
+            // Validate chat_id against allowlist.
+            if !allowed.is_empty() && !allowed.contains(&msg.chat.id.0) {
+                tracing::warn!("telegram: rejected command from unauthorized chat {}", msg.chat.id.0);
+                return respond(());
+            }
+
             match cmd {
                 LopiCmd::Help => {
                     bot.send_message(msg.chat.id, LopiCmd::descriptions().to_string()).await?;
@@ -42,7 +61,7 @@ pub async fn run(token: String, queue: TaskQueue) -> Result<()> {
                         message_id: msg.id.0,
                     };
                     // Detect "urgent" variant by command name.
-                    if msg.text().map(|t| t.starts_with("/urgent")).unwrap_or(false) {
+                    if msg.text().is_some_and(|t| t.starts_with("/urgent")) {
                         t.priority = Priority::High;
                     }
 

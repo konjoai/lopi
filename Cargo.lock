@@ -1919,13 +1919,19 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "axum 0.7.9",
+ "base64 0.22.1",
+ "hex",
+ "hmac",
  "lopi-core",
  "lopi-orchestrator",
  "reqwest",
  "serde",
  "serde_json",
+ "serde_urlencoded",
+ "sha1",
  "teloxide",
  "tokio",
+ "tower 0.4.13",
  "tracing",
 ]
 
@@ -1944,10 +1950,12 @@ dependencies = [
  "anyhow",
  "axum 0.7.9",
  "crossterm",
+ "dashmap",
  "futures",
  "lopi-core",
  "lopi-memory",
  "lopi-orchestrator",
+ "lopi-ratelimit",
  "ratatui",
  "serde",
  "serde_json",
@@ -1973,6 +1981,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "tokio",
+ "tower 0.4.13",
  "tracing",
 ]
 
