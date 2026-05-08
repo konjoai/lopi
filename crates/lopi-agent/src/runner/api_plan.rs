@@ -113,8 +113,9 @@ impl AgentRunner {
                 // 6. Build TurnMetrics — single source of truth for
                 //    observability. Persisted to SQLite + emitted on bus.
                 let tokens_per_sec = if turn_latency.as_secs_f32() > 0.0 {
-                    f32::from(u16::try_from(usage.output_tokens.min(u32::from(u16::MAX))).unwrap_or(0))
-                        / turn_latency.as_secs_f32()
+                    f32::from(
+                        u16::try_from(usage.output_tokens.min(u32::from(u16::MAX))).unwrap_or(0),
+                    ) / turn_latency.as_secs_f32()
                 } else {
                     0.0
                 };
@@ -190,7 +191,10 @@ fn build_user_prompt(task: &lopi_core::Task) -> String {
     parts.push(format!("# Task\n{}", task.goal));
 
     if !task.constraints.is_empty() {
-        parts.push(format!("\n# Constraints\n- {}", task.constraints.join("\n- ")));
+        parts.push(format!(
+            "\n# Constraints\n- {}",
+            task.constraints.join("\n- ")
+        ));
     }
     if !task.allowed_dirs.is_empty() {
         parts.push(format!(

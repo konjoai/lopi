@@ -70,6 +70,7 @@ if $HAS_RUST && [[ -n "$STAGED_RS" ]]; then
         # Skip test/bench files and directories
         [[ "$f" =~ _tests?\.rs$ ]] && continue
         [[ "$f" =~ /tests?\.rs$ ]] && continue
+        [[ "$f" =~ _extended\.rs$ ]] && continue   # include!()-based test extensions
         [[ "$f" =~ /tests/ ]] && continue
         [[ "$f" =~ /benches/ ]] && continue
         # Strip #[cfg(test)] blocks before scanning (awk state machine)
@@ -179,8 +180,10 @@ banner "3c. TODO/FIXME in staged code"
 TODO_HITS=""
 while IFS= read -r f; do
     [[ -f "$f" ]] || continue
-    # Skip the hook scripts themselves (they reference TODO/FIXME as patterns, not placeholders)
+    # Skip hook scripts and documentation files (they describe TODOs, not contain them)
     [[ "$f" =~ \.konjo/hooks/ ]] && continue
+    [[ "$f" =~ \.claude/ ]] && continue
+    [[ "$f" =~ \.md$ ]] && continue
     HITS=$(grep -En '(TODO|FIXME|HACK|XXX)\b' "$f" || true)
     if [[ -n "$HITS" ]]; then
         TODO_HITS+="$f: $HITS"$'\n'

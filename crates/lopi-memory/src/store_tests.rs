@@ -278,7 +278,10 @@ async fn insert_postmortem_pattern_persists_with_flag() {
 #[tokio::test]
 async fn find_pattern_by_id_prefix_returns_none_for_missing() {
     let store = MemoryStore::open_in_memory().await.unwrap();
-    let row = store.find_pattern_by_id_prefix("nonexistent").await.unwrap();
+    let row = store
+        .find_pattern_by_id_prefix("nonexistent")
+        .await
+        .unwrap();
     assert!(row.is_none());
 }
 

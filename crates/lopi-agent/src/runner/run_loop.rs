@@ -270,16 +270,14 @@ impl AgentRunner {
                             self.warn(format!(
                                 "direct API plan failed ({api_err}); falling back to CLI"
                             ));
-                            claude.plan(&self.task).await.map(|p| {
+                            claude.plan(&self.task).await.inspect(|p| {
                                 self.log(format!("✅ plan ready via CLI ({} chars)", p.len()));
-                                p
                             })
                         }
                     }
                 } else {
-                    claude.plan(&self.task).await.map(|p| {
+                    claude.plan(&self.task).await.inspect(|p| {
                         self.log(format!("✅ plan ready ({} chars)", p.len()));
-                        p
                     })
                 };
 

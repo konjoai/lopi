@@ -434,14 +434,16 @@ async fn main() -> Result<()> {
                     if postmortem_only {
                         println!("  No post-mortem patterns yet. Enable with `lopi run --adaptive-retry` on a task that fails.");
                     } else {
-                        println!("  No patterns yet. Patterns are mined after each completed task.");
+                        println!(
+                            "  No patterns yet. Patterns are mined after each completed task."
+                        );
                     }
                     return Ok(());
                 }
 
                 println!(
-                    "  {:<8}  {:<40}  {:>9}  {:>9}  {}",
-                    "Id", "Keywords", "Avg Att.", "Success%", "Source"
+                    "  {:<8}  {:<40}  {:>9}  {:>9}  Source",
+                    "Id", "Keywords", "Avg Att.", "Success%"
                 );
                 println!("  {}", "─".repeat(90));
                 for p in filtered {
