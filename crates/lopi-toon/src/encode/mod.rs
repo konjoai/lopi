@@ -69,6 +69,9 @@ pub fn encode_with(value: &Value, opts: &EncoderOptions) -> String {
 
 /// Convenience: encode lopi task context as a TOON string for Claude prompts.
 /// Returns a compact structured representation of the planning context.
+///
+/// `lessons` is a slice of `(category, content)` pairs retrieved from the
+/// lessons table and injected before the agent starts planning.
 #[must_use]
 pub fn encode_task_context(
     goal: &str,
@@ -76,6 +79,7 @@ pub fn encode_task_context(
     forbidden: &[&str],
     constraints: &[&str],
     patterns: &[(String, String)], // (keywords, constraints) from memory
+    lessons: &[(&str, &str)],      // (category, content) from lessons table
 ) -> String {
     let allowed_v: Vec<Value> = allowed
         .iter()
@@ -108,6 +112,18 @@ pub fn encode_task_context(
             })
             .collect();
         map.insert("patterns".into(), Value::Array(rows));
+    }
+    if !lessons.is_empty() {
+        let rows: Vec<Value> = lessons
+            .iter()
+            .map(|(cat, content)| {
+                let mut o = serde_json::Map::new();
+                o.insert("category".into(), Value::String(cat.to_string()));
+                o.insert("content".into(), Value::String(content.to_string()));
+                Value::Object(o)
+            })
+            .collect();
+        map.insert("lessons".into(), Value::Array(rows));
     }
 
     encode(&Value::Object(map))

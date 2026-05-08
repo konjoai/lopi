@@ -245,3 +245,69 @@ async fn task_count_increments_per_save() {
     }
     assert_eq!(store.task_count().await.unwrap(), 3);
 }
+
+// ── Lessons ──────────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn save_lesson_below_quality_gate_not_stored() {
+    let store = MemoryStore::open_in_memory().await.unwrap();
+    store
+        .save_lesson("/repo", "strategy", "use small commits", None, 0.5)
+        .await
+        .unwrap();
+    let rows = store.load_lessons("/repo", 10).await.unwrap();
+    assert!(rows.is_empty(), "score below gate must not be stored");
+}
+
+#[tokio::test]
+async fn save_lesson_at_quality_gate_stored() {
+    let store = MemoryStore::open_in_memory().await.unwrap();
+    store
+        .save_lesson("/repo", "strategy", "run tests first", None, 0.6)
+        .await
+        .unwrap();
+    let rows = store.load_lessons("/repo", 10).await.unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].category, "strategy");
+    assert_eq!(rows[0].content, "run tests first");
+}
+
+#[tokio::test]
+async fn load_lessons_filters_by_repo() {
+    let store = MemoryStore::open_in_memory().await.unwrap();
+    store
+        .save_lesson("/repo-a", "recovery", "check error logs", None, 0.8)
+        .await
+        .unwrap();
+    store
+        .save_lesson("/repo-b", "optimization", "cache results", None, 0.9)
+        .await
+        .unwrap();
+    let a = store.load_lessons("/repo-a", 10).await.unwrap();
+    let b = store.load_lessons("/repo-b", 10).await.unwrap();
+    assert_eq!(a.len(), 1);
+    assert_eq!(b.len(), 1);
+    assert_eq!(a[0].repo_path, "/repo-a");
+    assert_eq!(b[0].repo_path, "/repo-b");
+}
+
+#[tokio::test]
+async fn load_lessons_respects_limit() {
+    let store = MemoryStore::open_in_memory().await.unwrap();
+    for i in 0..5u8 {
+        store
+            .save_lesson("/repo", "strategy", &format!("lesson {i}"), None, 0.9)
+            .await
+            .unwrap();
+    }
+    let rows = store.load_lessons("/repo", 3).await.unwrap();
+    assert_eq!(rows.len(), 3);
+}
+
+#[tokio::test]
+async fn daily_token_totals_returns_zero_with_no_metrics() {
+    let store = MemoryStore::open_in_memory().await.unwrap();
+    let (tokens, cost) = store.daily_token_totals().await.unwrap();
+    assert_eq!(tokens, 0);
+    assert!(cost < f64::EPSILON);
+}

@@ -58,3 +58,15 @@ CREATE INDEX IF NOT EXISTS idx_tasks_created_at ON tasks(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_attempts_task_id ON attempts(task_id);
 CREATE INDEX IF NOT EXISTS idx_patterns_keywords ON patterns(goal_keywords);
 ALTER TABLE patterns ADD COLUMN embedding TEXT;
+
+CREATE TABLE IF NOT EXISTS lessons (
+    id          TEXT PRIMARY KEY,
+    repo_path   TEXT NOT NULL,
+    category    TEXT NOT NULL CHECK(category IN ('strategy','recovery','optimization')),
+    content     TEXT NOT NULL,
+    task_id     TEXT,
+    score       REAL NOT NULL DEFAULT 0.0,
+    created_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_lessons_repo    ON lessons(repo_path);
+CREATE INDEX IF NOT EXISTS idx_lessons_created ON lessons(created_at DESC);
