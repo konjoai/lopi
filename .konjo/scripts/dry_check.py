@@ -110,7 +110,7 @@ def _similarity(a: list[str], b: list[str]) -> float:
 # ── Source file discovery ─────────────────────────────────────────────────────
 
 SUPPORTED_EXTENSIONS = {".rs", ".py", ".mojo", ".ts", ".tsx", ".js", ".jsx"}
-SKIP_DIRS = {"target", ".git", "__pycache__", "node_modules", ".venv", "venv", "dist", "build"}
+SKIP_DIRS = {"target", ".git", "__pycache__", "node_modules", ".venv", "venv", "dist", "build", ".svelte-kit"}
 
 
 def _iter_sources(root: Path, extensions: set[str]) -> Iterator[Path]:
