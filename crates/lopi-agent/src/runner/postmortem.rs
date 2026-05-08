@@ -83,7 +83,9 @@ pub async fn run_postmortem(
     error_log: &str,
 ) -> Result<PostmortemOutcome> {
     if let Some(b) = breaker {
-        b.check().await.context("post-mortem skipped: circuit breaker open")?;
+        b.check()
+            .await
+            .context("post-mortem skipped: circuit breaker open")?;
     }
     if let Some(l) = limiter {
         // Post-mortem is a single short turn — 1500 token budget is generous.
@@ -130,7 +132,10 @@ pub(crate) fn build_postmortem_prompt(goal: &str, error_log: &str) -> String {
     // recent 4000 chars are typically where the failure root cause appears.
     let truncated = if error_log.len() > 4000 {
         let start = error_log.len() - 4000;
-        format!("[truncated, showing last 4000 chars]\n{}", &error_log[start..])
+        format!(
+            "[truncated, showing last 4000 chars]\n{}",
+            &error_log[start..]
+        )
     } else {
         error_log.to_string()
     };
@@ -145,10 +150,7 @@ pub(crate) fn build_postmortem_prompt(goal: &str, error_log: &str) -> String {
 /// non-imperative responses.
 pub(crate) fn extract_constraint(raw: &str) -> Option<String> {
     // Take first non-empty line — model sometimes leaks a leading blank.
-    let line = raw
-        .lines()
-        .map(str::trim)
-        .find(|l| !l.is_empty())?;
+    let line = raw.lines().map(str::trim).find(|l| !l.is_empty())?;
 
     // Strip common markdown bullets the model adds despite instructions
     let line = line
@@ -163,7 +165,13 @@ pub(crate) fn extract_constraint(raw: &str) -> Option<String> {
     if line.len() > 200 {
         // Truncate over-long lines to 200 chars rather than rejecting —
         // gives the user something usable.
-        return Some(line.chars().take(200).collect::<String>().trim().to_string());
+        return Some(
+            line.chars()
+                .take(200)
+                .collect::<String>()
+                .trim()
+                .to_string(),
+        );
     }
 
     let lower = line.to_lowercase();
@@ -205,6 +213,7 @@ pub async fn run_postmortem_quiet(
 const _BUILDER_HINT: Duration = Duration::from_secs(0);
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 

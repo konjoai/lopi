@@ -140,6 +140,7 @@ impl ClaudeCode {
             &forbidden,
             &all_constraints,
             &[], // patterns already folded into extra_constraints by runner.rs
+            &[], // lessons injected by runner.rs via plan_with_lessons
         );
 
         let mut prompt = format!(
@@ -170,7 +171,7 @@ impl ClaudeCode {
         let allowed: Vec<&str> = task.allowed_dirs.iter().map(String::as_str).collect();
         let forbidden: Vec<&str> = task.forbidden_dirs.iter().map(String::as_str).collect();
 
-        let scope = encode_task_context(&task.goal, &allowed, &forbidden, &[], &[]);
+        let scope = encode_task_context(&task.goal, &allowed, &forbidden, &[], &[], &[]);
 
         let prompt = format!(
             "Implement the plan below in the current repository.\n\n\
@@ -252,6 +253,7 @@ impl ClaudeCode {
                     .map(String::as_str)
                     .collect::<Vec<_>>(),
                 &[],
+                &[],
             );
             let prompt = format!(
                 "You are running inside lopi. \
@@ -312,7 +314,7 @@ impl ClaudeCode {
     /// Returns an error if the claude CLI process fails or times out.
     pub async fn implement_step(&self, task: &Task, step: &str) -> Result<()> {
         let allowed: Vec<&str> = task.allowed_dirs.iter().map(String::as_str).collect();
-        let scope = lopi_toon::encode_task_context(&task.goal, &allowed, &[], &[], &[]);
+        let scope = lopi_toon::encode_task_context(&task.goal, &allowed, &[], &[], &[], &[]);
         let prompt = format!(
             "Apply this single implementation step to the repository. Make only the changes described.\n\n\
              ## Scope\n{scope}\n\n\
