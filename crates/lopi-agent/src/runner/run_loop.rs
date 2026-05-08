@@ -201,11 +201,39 @@ impl AgentRunner {
                 ));
             } else {
                 // Standard mode: wait for full plan, then implement in one pass.
-                let plan = match claude.plan(&self.task).await {
-                    Ok(p) => {
+                //
+                // Sprint G — direct-API planning path:
+                // When the runner has been wired with an AnthropicClient
+                // (via `with_api`), try the direct API first. On any
+                // failure (rate-limited, breaker open, network error,
+                // 4xx/5xx) fall back to the CLI subprocess silently. The
+                // CLI path remains the load-bearing default so an API
+                // outage cannot stall the agent loop.
+                let plan_result = if self.has_direct_api() {
+                    match self.plan_via_api(model, attempt + 1).await {
+                        Ok(p) => {
+                            self.log(format!("✅ plan ready via direct API ({} chars)", p.len()));
+                            Ok(p)
+                        }
+                        Err(api_err) => {
+                            self.warn(format!(
+                                "direct API plan failed ({api_err}); falling back to CLI"
+                            ));
+                            claude.plan(&self.task).await.map(|p| {
+                                self.log(format!("✅ plan ready via CLI ({} chars)", p.len()));
+                                p
+                            })
+                        }
+                    }
+                } else {
+                    claude.plan(&self.task).await.map(|p| {
                         self.log(format!("✅ plan ready ({} chars)", p.len()));
                         p
-                    }
+                    })
+                };
+
+                let plan = match plan_result {
+                    Ok(p) => p,
                     Err(e) => {
                         self.warn(format!("plan failed: {e}"));
                         git.hard_rollback().await.ok();

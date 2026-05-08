@@ -1,8 +1,11 @@
+mod api_plan;
 mod run_loop;
 
+use crate::api_client::AnthropicClient;
 use lopi_context::{ContentBlock, ContextWindow, Phase, PinPolicy, Role, TaggedMessage};
 use lopi_core::{AgentEvent, EventBus, Task, TaskId};
 use lopi_memory::MemoryStore;
+use lopi_ratelimit::{AnthropicLimiter, CircuitBreaker};
 use std::path::PathBuf;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
@@ -39,6 +42,19 @@ pub struct AgentRunner {
     /// Hard upper bound on total attempt iterations before the runner gives up.
     /// Prevents runaway agents from looping indefinitely when `task.max_retries` is very high.
     pub max_turns: u32,
+    /// Optional direct-API client. When present (and the breaker is closed),
+    /// the planning step uses `AnthropicClient::stream_plan` with prompt
+    /// caching instead of the `claude` CLI subprocess. CLI remains the
+    /// implementation path because it has full filesystem tool access.
+    pub(super) api_client: Option<Arc<AnthropicClient>>,
+    /// Optional rate limiter — concurrent TPM + RPM enforcement. Acquired
+    /// before every API request.
+    pub(super) limiter: Option<Arc<AnthropicLimiter>>,
+    /// Optional circuit breaker — opens on consecutive failures or hourly
+    /// cost cap. Checked before every API request; cost recorded on success.
+    pub(super) breaker: Option<Arc<CircuitBreaker>>,
+    /// Stable session id used by `TurnMetrics.session_id`.
+    pub(super) session_id: Uuid,
     pub(super) cancel_rx: Option<oneshot::Receiver<()>>,
     /// Second cancellation mechanism — compatible with `tokio_util::sync::CancellationToken`
     /// for structured cancellation from the pool `JoinSet`.
@@ -69,6 +85,10 @@ impl AgentRunner {
             speculative: false,
             context: ContextWindow::new(Self::CONTEXT_BUDGET),
             max_turns: 25,
+            api_client: None,
+            limiter: None,
+            breaker: None,
+            session_id: Uuid::new_v4(),
             cancel_rx: Some(cancel_rx),
             cancel_token: CancellationToken::new(),
             attempt_counter,
@@ -91,6 +111,10 @@ impl AgentRunner {
             speculative: false,
             context: ContextWindow::new(Self::CONTEXT_BUDGET),
             max_turns: 25,
+            api_client: None,
+            limiter: None,
+            breaker: None,
+            session_id: Uuid::new_v4(),
             cancel_rx: Some(cancel_rx),
             cancel_token: CancellationToken::new(),
             attempt_counter: Arc::new(AtomicUsize::new(0)),
@@ -98,6 +122,24 @@ impl AgentRunner {
             turn_count: 0,
         };
         (runner, bus)
+    }
+
+    /// Wire the direct-API planning path. When set, `run()` will try
+    /// `AnthropicClient::stream_plan` with prompt caching before falling
+    /// back to the `claude` CLI subprocess on any failure. The limiter
+    /// gates request rate; the breaker opens on consecutive failures or
+    /// the hourly cost cap.
+    #[must_use]
+    pub fn with_api(
+        mut self,
+        client: Arc<AnthropicClient>,
+        limiter: Arc<AnthropicLimiter>,
+        breaker: Arc<CircuitBreaker>,
+    ) -> Self {
+        self.api_client = Some(client);
+        self.limiter = Some(limiter);
+        self.breaker = Some(breaker);
+        self
     }
 
     /// Return a child token derived from this runner's `CancellationToken`.
