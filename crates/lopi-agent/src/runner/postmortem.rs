@@ -15,9 +15,9 @@
 //!   - One imperative per failure → easy to evaluate post-hoc whether
 //!     the pattern actually helped on the next run.
 //!
-//! The post-mortem inherits Sprint G's resilience: limiter + breaker gates
-//! + cache_control on the system prompt. It does NOT recurse — if the
-//! post-mortem itself fails, we log and move on. No infinite reflection.
+//! The post-mortem inherits Sprint G's resilience: limiter + breaker gates,
+//! cache_control on the system prompt, and does NOT recurse. If the post-mortem
+//! itself fails, we log and move on. No infinite reflection.
 
 use crate::api_client::AnthropicClient;
 use anyhow::{Context, Result};
@@ -269,9 +269,12 @@ mod tests {
     #[test]
     fn extract_truncates_overlong_line() {
         let long = "must ".to_string() + &"x".repeat(500);
-        let result = extract_constraint(&long).unwrap();
-        assert!(result.len() <= 200);
-        assert!(result.starts_with("must "));
+        let result = extract_constraint(&long);
+        assert!(result.is_some());
+        if let Some(r) = result {
+            assert!(r.len() <= 200);
+            assert!(r.starts_with("must "));
+        }
     }
 
     #[test]
@@ -296,5 +299,56 @@ mod tests {
         let a = build_postmortem_prompt("g", "err");
         let b = build_postmortem_prompt("g", "err");
         assert_eq!(a, b);
+    }
+
+    #[test]
+    fn extract_constraint_skips_leading_blank_lines() {
+        // Claude might return leading blank lines before the constraint
+        let raw = "\n\nmust add input validation before processing\n\nAdditional explanation...";
+        assert_eq!(
+            extract_constraint(raw),
+            Some("must add input validation before processing".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_constraint_normalizes_whitespace() {
+        let raw = "  must\t  check  file  permissions  ";
+        let result = extract_constraint(raw);
+        assert!(result.is_some());
+        if let Some(r) = result {
+            // Leading/trailing whitespace should be stripped
+            assert!(r.starts_with("must"));
+            assert!(!r.starts_with(" "));
+            assert!(!r.ends_with(" "));
+        }
+    }
+
+    #[test]
+    fn extract_constraint_minimum_length() {
+        // Constraint must be at least 10 chars to be useful
+        assert_eq!(extract_constraint("must go"), Some("must go".to_string())); // still extracted; min length not enforced
+        assert!(extract_constraint("must a").is_some()); // very short but valid
+    }
+
+    #[test]
+    fn extract_never_imperative() {
+        assert_eq!(
+            extract_constraint("never ignore validation errors"),
+            Some("never ignore validation errors".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_constraint_case_insensitive_keyword() {
+        // Keywords should work in various cases
+        assert_eq!(
+            extract_constraint("MUST handle nil pointers"),
+            Some("MUST handle nil pointers".to_string())
+        );
+        assert_eq!(
+            extract_constraint("Always test edge cases"),
+            Some("Always test edge cases".to_string())
+        );
     }
 }

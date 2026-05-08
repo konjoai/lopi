@@ -45,6 +45,9 @@ enum Commands {
         /// Apply plan steps speculatively as they stream (reduces wall-clock time)
         #[arg(long)]
         speculative: bool,
+        /// Enable Reflexion-style adaptive retry: inject previous attempt's error into the next planning prompt
+        #[arg(long)]
+        adaptive_retry: bool,
     },
     /// Watch live agent status (TUI). Use --remote to connect to a running sail server.
     Watch {
@@ -212,6 +215,7 @@ async fn main() -> Result<()> {
             repo,
             dry_run,
             speculative,
+            adaptive_retry,
         } => {
             println!("🚢 lopi run{}", if dry_run { " (dry-run)" } else { "" });
             println!("   goal: {goal}");
@@ -238,10 +242,14 @@ async fn main() -> Result<()> {
             println!("   use `lopi watch` in another terminal for the TUI");
             println!();
 
-            let (mut runner, bus) = AgentRunner::standalone(task.clone(), repo);
+            let mut runner = AgentRunner::standalone(task.clone(), repo).0;
+            if adaptive_retry {
+                runner = runner.with_adaptive_retry();
+            }
             runner.store = Some(store.clone());
             runner.dry_run = dry_run;
             runner.speculative = speculative;
+            let bus = runner.bus.clone();
 
             let mut rx = bus.subscribe();
             let print_task = tokio::spawn(async move {
@@ -439,9 +447,10 @@ async fn main() -> Result<()> {
                     return Ok(());
                 }
 
+                let headers = ("Id", "Keywords", "Avg Att.", "Success%", "Source");
                 println!(
                     "  {:<8}  {:<40}  {:>9}  {:>9}  {}",
-                    "Id", "Keywords", "Avg Att.", "Success%", "Source"
+                    headers.0, headers.1, headers.2, headers.3, headers.4
                 );
                 println!("  {}", "─".repeat(90));
                 for p in filtered {

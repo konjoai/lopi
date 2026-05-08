@@ -62,3 +62,5 @@ ALTER TABLE patterns ADD COLUMN embedding TEXT;
 -- (Claude analyzed the error log) from patterns mined from completed-task
 -- statistics. The dashboard surfaces these differently.
 ALTER TABLE patterns ADD COLUMN derived_from_postmortem INTEGER NOT NULL DEFAULT 0;
+-- Sprint H1: user annotation for pattern validation. Values: 'approved', 'rejected', or NULL (unannotated).
+ALTER TABLE patterns ADD COLUMN user_annotation TEXT;

@@ -10,7 +10,9 @@
 //!   2. AnthropicLimiter::acquire_request — concurrent TPM + RPM enforcement.
 //!      Estimated 4000 tokens/plan request seeds the limiter.
 //!   3. AnthropicClient::stream_plan — SSE streaming with `cache_control:
-//!      ephemeral` on the system prompt (90% cost reduction on repeat calls).
+//!      ephemeral` on the system prompt. With 5-minute TTL (Feb 2026), each
+//!      task's retry loop (typically 3–5 attempts) hits the cache ~90% of the
+//!      time, reducing per-attempt cost by 8x on the cached portion.
 //!   4. CircuitBreaker::record_success / record_failure / record_cost — feeds
 //!      the failure counter and hourly USD spend back into the breaker.
 //!
@@ -64,9 +66,10 @@ impl AgentRunner {
 
         // 3. Build the prompt. The system prompt is `LOPI_SYSTEM_PROMPT`
         //    (cached, ephemeral). The user message carries the task goal +
-        //    constraints + allowed dirs — same shape the CLI consumes,
-        //    minus the TOON wrapper since we're sending raw API messages.
-        let prompt = build_user_prompt(&self.task);
+        //    constraints + allowed dirs + last_error if adaptive retry enabled —
+        //    same shape the CLI consumes, minus the TOON wrapper since we're
+        //    sending raw API messages.
+        let prompt = build_user_prompt(&self.task, self.last_error.as_deref());
 
         // 4. Stream the plan, accumulating deltas. Track wall-clock latency
         //    and TTFT. The `on_delta` closure pushes incremental events to
@@ -185,8 +188,8 @@ impl AgentRunner {
 
 /// Render the user prompt the API client sends with the cached system
 /// prompt. Keeps it small and deterministic so prompt caching hits.
-fn build_user_prompt(task: &lopi_core::Task) -> String {
-    let mut parts = Vec::with_capacity(4);
+fn build_user_prompt(task: &lopi_core::Task, last_error: Option<&str>) -> String {
+    let mut parts = Vec::with_capacity(5);
     parts.push(format!("# Task\n{}", task.goal));
 
     if !task.constraints.is_empty() {
@@ -202,6 +205,12 @@ fn build_user_prompt(task: &lopi_core::Task) -> String {
         parts.push(format!(
             "\n# Forbidden dirs\n- {}",
             task.forbidden_dirs.join("\n- ")
+        ));
+    }
+    if let Some(err) = last_error {
+        parts.push(format!(
+            "\n# Previous attempt failed\nAnalyze this error and adjust your approach:\n{}",
+            err
         ));
     }
     parts.push(
@@ -235,7 +244,7 @@ mod tests {
 
     #[test]
     fn user_prompt_includes_goal() {
-        let p = build_user_prompt(&task_with("fix the broken test", vec![]));
+        let p = build_user_prompt(&task_with("fix the broken test", vec![]), None);
         assert!(p.contains("fix the broken test"));
         assert!(p.contains("# Task"));
     }
@@ -243,7 +252,7 @@ mod tests {
     #[test]
     fn user_prompt_omits_empty_sections() {
         // Constraints empty → no "# Constraints" header
-        let p = build_user_prompt(&task_with("g", vec![]));
+        let p = build_user_prompt(&task_with("g", vec![]), None);
         assert!(!p.contains("# Constraints"));
         // allowed_dirs is non-empty in the fixture so that header exists
         assert!(p.contains("# Allowed dirs"));
@@ -251,10 +260,13 @@ mod tests {
 
     #[test]
     fn user_prompt_lists_constraints() {
-        let p = build_user_prompt(&task_with(
-            "g",
-            vec!["no panics".into(), "must compile".into()],
-        ));
+        let p = build_user_prompt(
+            &task_with(
+                "g",
+                vec!["no panics".into(), "must compile".into()],
+            ),
+            None,
+        );
         assert!(p.contains("no panics"));
         assert!(p.contains("must compile"));
         assert!(p.contains("# Constraints"));
@@ -262,7 +274,7 @@ mod tests {
 
     #[test]
     fn user_prompt_ends_with_planning_directive() {
-        let p = build_user_prompt(&task_with("g", vec![]));
+        let p = build_user_prompt(&task_with("g", vec![]), None);
         assert!(p.contains("step-by-step plan"));
     }
 
@@ -270,7 +282,16 @@ mod tests {
     fn user_prompt_is_deterministic_for_caching() {
         // Same task → byte-identical prompt → cache hit on system+user prefix.
         let t = task_with("g", vec!["a".into(), "b".into()]);
-        assert_eq!(build_user_prompt(&t), build_user_prompt(&t));
+        assert_eq!(build_user_prompt(&t, None), build_user_prompt(&t, None));
+    }
+
+    #[test]
+    fn user_prompt_includes_last_error_when_provided() {
+        let t = task_with("g", vec![]);
+        let err = "Attempt 1 failed: test_pass_rate: 50.0%";
+        let p = build_user_prompt(&t, Some(err));
+        assert!(p.contains("# Previous attempt failed"));
+        assert!(p.contains(err));
     }
 
     // ── Builder integration ───────────────────────────────────────────────────

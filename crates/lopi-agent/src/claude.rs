@@ -123,7 +123,7 @@ impl ClaudeCode {
     /// # Errors
     ///
     /// Returns an error if the claude CLI process fails or times out.
-    pub async fn plan(&self, task: &Task) -> Result<String> {
+    pub async fn plan(&self, task: &Task, last_error: Option<&str>) -> Result<String> {
         let all_constraints: Vec<&str> = task
             .constraints
             .iter()
@@ -142,13 +142,19 @@ impl ClaudeCode {
             &[], // patterns already folded into extra_constraints by runner.rs
         );
 
-        let prompt = format!(
+        let mut prompt = format!(
             "You are running inside lopi. \
              Produce a concise implementation plan. \
              Output a numbered list of steps only.\n\n\
              ## Task context (TOON)\n\
              {ctx}"
         );
+        if let Some(err) = last_error {
+            prompt.push_str(&format!(
+                "\n\n## Previous attempt failed\nAnalyze this error and adjust your approach:\n{}",
+                err
+            ));
+        }
         let out = self.run(&prompt).await?;
         Ok(out.text().to_string())
     }

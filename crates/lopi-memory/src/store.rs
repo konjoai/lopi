@@ -403,6 +403,19 @@ impl MemoryStore {
         Ok(())
     }
 
+    /// Update user annotation for a pattern. Values: 'approved', 'rejected', or None.
+    ///
+    /// # Errors
+    /// Returns `Err` if the database update fails.
+    pub async fn annotate_pattern(&self, pattern_id: &str, annotation: Option<&str>) -> Result<()> {
+        sqlx::query("UPDATE patterns SET user_annotation = ?1 WHERE id = ?2")
+            .bind(annotation)
+            .bind(pattern_id)
+            .execute(&self.write_pool)
+            .await?;
+        Ok(())
+    }
+
     /// Return the total number of tasks in the database.
     ///
     /// # Errors
@@ -478,6 +491,9 @@ pub struct PatternRow {
     /// task statistics. SQLite has no bool — represented as INTEGER.
     #[sqlx(default)]
     pub derived_from_postmortem: i64,
+    /// Sprint H1: user annotation for pattern validation. Values: 'approved', 'rejected', or NULL.
+    #[sqlx(default)]
+    pub user_annotation: Option<String>,
 }
 
 #[cfg(test)]
