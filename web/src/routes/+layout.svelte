@@ -62,7 +62,16 @@
     </a>
   </nav>
 
-  <div class="flex items-center gap-3 font-mono text-[11px]">
+  <div class="flex items-center gap-4 font-mono text-[11px]">
+    <button
+      type="button"
+      on:click={() => window.dispatchEvent(new CustomEvent('lopi:add-pane'))}
+      class="text-konjo-ice hover:bg-konjo-ice/10 px-2 py-1 rounded transition-colors"
+      title="Add pane"
+    >
+      +
+    </button>
+    <span class="opacity-20">·</span>
     <span class="opacity-50 tabular-nums">{$stats.running} live</span>
     <span class="opacity-20">·</span>
     <span
@@ -71,11 +80,20 @@
       class:animate-pulse={$connectionState === 'connecting'}
     ></span>
     <span class="uppercase tracking-widest opacity-70">{indicatorLabel($connectionState)}</span>
+    <span class="opacity-20">·</span>
+    <button
+      type="button"
+      on:click={() => helpVisible.set(!$helpVisible)}
+      class="text-konjo-ice hover:bg-konjo-ice/10 px-2 py-1 rounded transition-colors"
+      title="Help & Shortcuts"
+    >
+      ?
+    </button>
   </div>
 </header>
 
-<!-- Push content below header -->
-<main class="relative pt-12 min-h-screen z-10">
+<!-- Push content below header, fill viewport without scrolling -->
+<main class="relative pt-12 z-10" style="height: calc(100vh - 3rem); overflow: hidden;">
   <slot />
 </main>
 

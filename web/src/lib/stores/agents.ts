@@ -17,6 +17,7 @@ import {
   taskStatusToPhase,
   isTerminalStatus
 } from '$lib/parser';
+import { connect, setMessageHandler, initMock, getConnectionState } from './wsClient';
 import type {
   AgentEvent,
   Phase,
@@ -89,6 +90,7 @@ export const poolStats = writable<PoolStats>({
 export const connectionState = writable<'connecting' | 'connected' | 'offline' | 'mock'>(
   'connecting'
 );
+let connectionStateInterval: ReturnType<typeof setInterval> | null = null;
 
 // ── Derived: active agent (drives the Forge) ─────────────────────────────────
 export const activeAgent: Readable<AgentState | null> = derived(
@@ -124,6 +126,30 @@ export const stats = derived([agents, poolStats], ([$agents, $pool]) => {
     totalCost,
     uptimeSecs: $pool.uptime_secs
   };
+});
+
+// ── Derived: agents waiting for permission (stalled on Claude prompt) ────────
+const PERMISSION_PATTERNS = [
+  /\[y\/n\]/i,
+  /\(yes\/no\)/i,
+  /do you want/i,
+  /allow.*\?$/i,
+  /shall i/i,
+  /waiting for input/i,
+  /permission.*required/i,
+  /awaiting confirmation/i
+];
+
+export const permissionWaiting: Readable<Set<string>> = derived(agents, ($agents) => {
+  const waiting = new Set<string>();
+  for (const [id, agent] of $agents) {
+    if (agent.status !== 'running') continue;
+    const t = agent.thought ?? '';
+    const stalled = agent.activity < 0.02 && agent.elapsedMs > 8000;
+    const hasPattern = PERMISSION_PATTERNS.some((re) => re.test(t));
+    if (stalled || hasPattern) waiting.add(id);
+  }
+  return waiting;
 });
 
 // ── Reducer: AgentEvent → AgentState mutation ────────────────────────────────
@@ -345,220 +371,35 @@ function applyMessage(msg: WireMessage) {
   agents.update((m) => reduce(m, msg));
 }
 
-// ── WebSocket client ──────────────────────────────────────────────────────────
-let ws: WebSocket | null = null;
-let reconnectDelay = 1000;
-let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-let mockTimer: ReturnType<typeof setInterval> | null = null;
-let mockTick = 0;
-
-function connect() {
-  if (!browser) return;
-  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
-
-  connectionState.set('connecting');
-  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  // Server exposes both /ws (canonical, since v0.8.0) and /ws/tasks (legacy).
-  const url = `${proto}://${location.host}/ws`;
-  try {
-    ws = new WebSocket(url);
-  } catch {
-    scheduleReconnect();
-    return;
-  }
-
-  ws.onopen = () => {
-    connectionState.set('connected');
-    reconnectDelay = 1000;
-    if (mockTimer) {
-      clearInterval(mockTimer);
-      mockTimer = null;
-    }
-  };
-
-  ws.onmessage = (e) => {
-    try {
-      const raw = JSON.parse(e.data);
-      const parsed = parseWireMessage(raw);
-      if (parsed) applyMessage(parsed);
-      else {
-        // Don't crash — log once at debug level. Most likely a server protocol mismatch.
-        console.debug('[lopi] dropped malformed wire frame', raw);
-      }
-    } catch {
-      console.debug('[lopi] dropped non-JSON frame');
-    }
-  };
-
-  ws.onclose = () => {
-    ws = null;
-    connectionState.set('offline');
-    scheduleReconnect();
-  };
-
-  ws.onerror = () => {
-    /* onclose fires too — consolidate handling there */
-  };
-}
-
-function scheduleReconnect() {
-  if (reconnectTimer) return;
-  reconnectTimer = setTimeout(() => {
-    reconnectTimer = null;
-    reconnectDelay = Math.min(reconnectDelay * 2, 30000);
-    connect();
-    if (!ws) startMockData();
-  }, reconnectDelay);
-}
-
-// ── Mock data generator (real wire format) ────────────────────────────────────
-function startMockData() {
-  if (mockTimer) return;
-  connectionState.set('mock');
-
-  // Two pairs of seed agents share signals so the Constellation's insight
-  // lines actually appear in preview mode:
-  //   • demo-1 + demo-2 share repo (~/kyro) AND share goal keywords
-  //     ("semantic cache redis")
-  //   • demo-3 + demo-4 share repo (~/vectro) but different goals
-  //   • demo-5 stands alone as a control case with no peers
-  const seedAgents: { task_id: string; goal: string; branch: string; repo: string }[] = [
-    {
-      task_id: 'demo-1-' + crypto.randomUUID().slice(0, 8),
-      goal: 'Add Redis-backed semantic cache to the RAG pipeline',
-      branch: 'feat/pg-cache',
-      repo: '~/kyro'
-    },
-    {
-      task_id: 'demo-2-' + crypto.randomUUID().slice(0, 8),
-      goal: 'Migrate semantic cache invalidation logic to Redis streams',
-      branch: 'feat/redis-cache',
-      repo: '~/kyro'
-    },
-    {
-      task_id: 'demo-3-' + crypto.randomUUID().slice(0, 8),
-      goal: 'Refactor the encoder hot path to use NEON 32-wide unroll',
-      branch: 'perf/neon-unroll',
-      repo: '~/vectro'
-    },
-    {
-      task_id: 'demo-4-' + crypto.randomUUID().slice(0, 8),
-      goal: 'Wire AVX-512 VNNI dispatch into encode_fast_into',
-      branch: 'perf/avx512',
-      repo: '~/vectro'
-    },
-    {
-      task_id: 'demo-5-' + crypto.randomUUID().slice(0, 8),
-      goal: 'Wire OTel trace export from /generate spans',
-      branch: 'feat/otel',
-      repo: '~/kairu'
-    }
-  ];
-
-  // Emit a snapshot first
-  applyMessage({
-    type: 'snapshot',
-    tasks: seedAgents.map((a) => ({
-      id: a.task_id,
-      goal: a.goal,
-      status: 'Planning' as TaskStatus,
-      created_at: new Date(Date.now() - Math.random() * 60000).toISOString()
-    })),
-    stats: { running: seedAgents.length, queued: 0, succeeded: 12, failed: 1, uptime_secs: 1820 }
-  });
-
-  // Hydrate repo + branch fields manually (snapshot doesn't carry these)
-  agents.update((m) => {
-    const next = new Map(m);
-    for (const seed of seedAgents) {
-      const cur = next.get(seed.task_id);
-      if (cur) next.set(seed.task_id, { ...cur, repo: seed.repo, branch: seed.branch });
-    }
-    return next;
-  });
-
-  activeAgentId.set(seedAgents[0].task_id);
-
-  const phaseCycle: TaskStatus[] = ['Planning', 'Implementing', 'Testing', 'Scoring'];
-  const logTemplates: { level: 'info' | 'warn' | 'error' | 'debug'; line: string }[] = [
-    { level: 'info', line: 'Read 14 files, 2.3k lines analyzed' },
-    { level: 'info', line: 'Plan generated: 4 edits across 2 files' },
-    { level: 'debug', line: 'Token pressure: 42% (within budget)' },
-    { level: 'info', line: 'Edit applied to crates/lopi-agent/src/runner.rs' },
-    { level: 'info', line: 'cargo check: clean' },
-    { level: 'warn', line: 'clippy: 1 hint in lib.rs:47 (auto-fixed)' },
-    { level: 'info', line: 'cargo nextest: 39 passed, 0 failed' },
-    { level: 'info', line: 'Eviction fired: 12 turns reclaimed (4.2k tokens)' },
-    { level: 'debug', line: 'Cache hit on system prompt — 1850 tokens saved' }
-  ];
-
-  mockTimer = setInterval(() => {
-    mockTick++;
-    for (const seed of seedAgents) {
-      // Phase progression every 30 ticks
-      if (mockTick % 30 === 5) {
-        const idx = Math.floor(mockTick / 30) % phaseCycle.length;
-        applyMessage({
-          type: 'status_changed',
-          task_id: seed.task_id,
-          status: phaseCycle[idx],
-          attempt: 1
-        });
-      }
-
-      // Turn metrics every 2 ticks (1s) — drives the Forge
-      if (mockTick % 2 === 0) {
-        const tNorm = mockTick * 0.05;
-        const pressure = clamp01(
-          0.45 + Math.sin(tNorm + seed.task_id.length) * 0.18 + (Math.random() - 0.5) * 0.04
-        );
-        const activity = clamp01(
-          0.55 + Math.cos(tNorm * 0.7 + seed.task_id.length) * 0.3 + (Math.random() - 0.5) * 0.06
-        );
-        applyMessage({
-          type: 'turn_metrics',
-          task_id: seed.task_id,
-          pressure,
-          activity,
-          tokens_per_sec: activity * 80,
-          cost_usd: (mockTick * 0.0001 * activity).toFixed(6) as unknown as number
-        });
-      }
-
-      // Log every 4 ticks
-      if (mockTick % 4 === 1) {
-        const tpl = logTemplates[Math.floor(Math.random() * logTemplates.length)];
-        applyMessage({
-          type: 'log_line',
-          task_id: seed.task_id,
-          line: tpl.line,
-          level: tpl.level,
-          ts: new Date().toISOString()
-        });
-      }
-
-      // Score updates every 50 ticks
-      if (mockTick % 50 === 25) {
-        applyMessage({
-          type: 'score_updated',
-          task_id: seed.task_id,
-          test_pass_rate: 0.82 + Math.random() * 0.15,
-          lint_errors: Math.floor(Math.random() * 3),
-          diff_lines: Math.floor(20 + Math.random() * 80)
-        });
-      }
-    }
-  }, 500);
+// ── Connection state management ───────────────────────────────────────────────
+function updateConnectionState() {
+  const state = getConnectionState();
+  connectionState.set(state);
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
 export function init() {
   if (!browser) return;
   startElapsedTicker();
+  setMessageHandler((raw) => {
+    const parsed = parseWireMessage(raw);
+    if (parsed) {
+      applyMessage(parsed);
+    } else {
+      console.debug('[lopi] dropped malformed wire frame', raw);
+    }
+  });
+  updateConnectionState();
   connect();
-  // Fall back to mock if WS hasn't opened in 1.5s — the UI is never empty.
+  if (connectionStateInterval) clearInterval(connectionStateInterval);
+  connectionStateInterval = setInterval(updateConnectionState, 500);
+  // Fall back to mock if not connected in 1.5s
   setTimeout(() => {
-    if (!ws || ws.readyState !== WebSocket.OPEN) startMockData();
+    const state = getConnectionState();
+    if (state === 'offline' || state === 'connecting') {
+      initMock();
+      updateConnectionState();
+    }
   }, 1500);
 }
 
@@ -577,6 +418,18 @@ export function postTask(
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ goal, repo, priority })
   });
+}
+
+export async function cancelTask(id: string): Promise<boolean> {
+  if (!browser) return false;
+  try {
+    const res = await fetch(`/api/tasks/${id}`, { method: 'DELETE' });
+    if (!res.ok) return false;
+    const body = await res.json();
+    return body.cancelled === true;
+  } catch {
+    return false;
+  }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
