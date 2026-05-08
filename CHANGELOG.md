@@ -1,5 +1,50 @@
 # Changelog
 
+## [0.10.0] — Sprint H: Self-Improvement Engine 🧠
+
+### Added
+
+**`lopi learn` CLI subcommand tree** (was a single flat command)
+- `lopi learn list [--limit N] [--postmortem-only]` — sorted pattern table with id prefix, keywords, avg attempts, success %, and source emoji (📊 mined / 🧠 post-mortem)
+- `lopi learn show <id-prefix>` — full pattern detail page
+- `lopi learn export [--limit N]` — JSON output to stdout for analytics pipelines
+
+**`runner::postmortem` module** (`crates/lopi-agent/src/runner/postmortem.rs`)
+- `run_postmortem(client, limiter, breaker, model, goal, error_log)` — single-turn Claude reflection over a failed run. Returns one imperative constraint string (≤ 200 chars, must start with `must` / `do not` / `always` / `never`).
+- `extract_constraint(raw)` — defensive validation: strips markdown bullets, takes first non-empty line, rejects fluffy non-imperative responses, truncates over-long lines.
+- `run_postmortem_quiet(...)` — error-swallowing variant for terminal-failure path: never blocks task completion.
+- System prompt is byte-stable for `cache_control: ephemeral` cache hits across post-mortems in a session.
+
+**Adaptive retry** (`AgentRunner::with_adaptive_retry()`)
+- New builder method, chainable on top of `with_api(...)`.
+- Stashes the previous attempt's score (test_pass_rate, lint_errors, diff_lines, errors) as `last_error` after each failed attempt.
+- After all retries exhausted, automatically fires `run_postmortem_if_configured()` — runs the post-mortem if both adaptive retry AND a configured `AnthropicClient` are present.
+- Persists the derived constraint to the patterns table.
+
+**`MemoryStore` additions** (`crates/lopi-memory/src/store.rs`)
+- `insert_postmortem_pattern(goal_keywords, constraint) -> id` — creates a row with `derived_from_postmortem = 1`, seeded `success_rate = 0.0`.
+- `find_pattern_by_id_prefix(prefix) -> Option<PatternRow>` — for `lopi learn show` UX.
+- `load_patterns` ordering changed: `ORDER BY COALESCE(success_rate, 0) DESC, last_seen DESC` — real-data patterns now surface above zero-seeded post-mortem rows.
+
+**Schema migration** (`crates/lopi-memory/src/schema.sql`)
+- `ALTER TABLE patterns ADD COLUMN derived_from_postmortem INTEGER NOT NULL DEFAULT 0`.
+- Fixed `apply_schema()` to correctly strip leading `--` SQL comments before the ALTER TABLE prefix check — comments above ALTER TABLE statements no longer break the duplicate-column-tolerant migration path.
+
+### Tests
+
+- 4 new lopi-memory tests: postmortem-pattern insert + retrieve, prefix-not-found, postmortem flag in load_patterns, ordering correctness.
+- 11 new lopi-agent tests in `runner::postmortem::tests`: extract_constraint validation across 7 input shapes, build_prompt determinism + content + truncation.
+- 2 new lopi-agent integration tests: `runner_default_has_no_direct_api`, `with_api_enables_direct_path` (already shipped in Sprint G).
+- Workspace total: 244 → **261 passing**, 0 failed.
+
+### Architecture note
+
+The post-mortem fires on terminal failure (all retries exhausted) and uses Haiku for cost. A single short turn of <2000 tokens with cached system prompt costs roughly $0.0008. The constraint it derives slots into the existing `extra_constraints` mechanism in the planning prompt — no new prompt-injection plumbing required, the pattern miner already feeds patterns into TOON-encoded prose at planning time.
+
+The `last_error` field is now stashed on the runner but not yet injected into the next attempt's planning prompt — that's a follow-up sprint (H1) since it requires touching the prompt builders in both `claude.rs::plan` and `runner::api_plan::build_user_prompt`.
+
+---
+
 ## [0.9.0] — Sprint G: Direct Anthropic SDK planning path
 
 ### Added
