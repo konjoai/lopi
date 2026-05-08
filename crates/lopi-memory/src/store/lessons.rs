@@ -82,18 +82,24 @@ impl MemoryStore {
 
     /// Sum token usage and estimated cost for today (UTC) from `turn_metrics`.
     ///
-    /// Returns `(total_tokens, total_cost_usd)`.
+    /// Returns `(total_tokens, total_cost_usd)`. Total tokens includes
+    /// `input_tokens`, `output_tokens`, `cache_read_tokens`, and
+    /// `cache_write_tokens` — the same set used to compute `estimated_cost_usd`.
     ///
     /// # Errors
     /// Returns `Err` if the database query fails.
     pub async fn daily_token_totals(&self) -> Result<(i64, f64)> {
-        let today = Utc::now().format("%Y-%m-%d").to_string();
+        let start_of_day = Utc::now()
+            .date_naive()
+            .and_hms_opt(0, 0, 0)
+            .map(|dt| dt.and_utc().to_rfc3339())
+            .unwrap_or_default();
         let row: (i64, f64) = sqlx::query_as(
-            "SELECT COALESCE(SUM(input_tokens + output_tokens + cache_read_tokens), 0), \
+            "SELECT COALESCE(SUM(input_tokens + output_tokens + cache_read_tokens + cache_write_tokens), 0), \
                     COALESCE(SUM(estimated_cost_usd), 0.0) \
              FROM turn_metrics WHERE timestamp >= ?1",
         )
-        .bind(format!("{today}T00:00:00Z"))
+        .bind(&start_of_day)
         .fetch_one(&self.read_pool)
         .await?;
         Ok(row)

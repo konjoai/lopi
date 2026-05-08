@@ -68,5 +68,4 @@ CREATE TABLE IF NOT EXISTS lessons (
     score       REAL NOT NULL DEFAULT 0.0,
     created_at  TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_lessons_repo    ON lessons(repo_path);
-CREATE INDEX IF NOT EXISTS idx_lessons_created ON lessons(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_lessons_repo_created ON lessons(repo_path, created_at DESC);

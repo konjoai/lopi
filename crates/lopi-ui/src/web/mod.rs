@@ -265,7 +265,10 @@ async fn health() -> impl IntoResponse {
 async fn get_stats(State(s): State<AppState>) -> impl IntoResponse {
     let stats = s.pool.stats();
     let (total_tokens_today, total_cost_usd_today) =
-        s.store.daily_token_totals().await.unwrap_or((0, 0.0));
+        s.store.daily_token_totals().await.unwrap_or_else(|e| {
+            tracing::warn!("daily_token_totals query failed: {e}");
+            (0, 0.0)
+        });
     Json(json!({
         "running": stats.running,
         "queued": stats.queued,
