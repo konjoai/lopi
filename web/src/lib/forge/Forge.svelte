@@ -215,11 +215,11 @@
       float veins = smoothstep(-0.85, -0.45, n3);
       color += ICE * veins * 0.35;
 
-      // Fresnel aura — subtle edge glow tinted by the phase color
+      // Fresnel rim — only bright at grazing angles (steep curve)
       vec3 viewDir = normalize(uCameraPosition - vWorldPosition);
       float fresnel = 1.0 - max(0.0, dot(viewDir, normalize(vNormal)));
-      fresnel = pow(fresnel, 2.0);
-      color += uPhaseColor * fresnel * (0.7 + uActivity * 0.5);
+      fresnel = pow(fresnel, 3.2);  // Steep curve: only edges glow
+      color += uPhaseColor * fresnel * 0.35;  // Very subtle contribution
 
       // Activity pulse — global brightness modulation
       float pulse = 1.0 + sin(uTime * (1.5 + uActivity * 2.5)) * 0.06 * uActivity;
@@ -345,8 +345,6 @@
 
 <style>
   .forge-container {
-    /* Soft blue glow (dark + light blue layers) */
-    filter: drop-shadow(0 0 60px rgba(0, 136, 221, 0.12))
-            drop-shadow(0 0 100px rgba(0, 170, 221, 0.06));
+    /* Clean edges without glow effect */
   }
 </style>
