@@ -55,10 +55,6 @@ impl TtlCache {
     fn set(&mut self, data: Value) {
         self.data = Some((Instant::now(), data));
     }
-
-    fn invalidate(&mut self) {
-        self.data = None;
-    }
 }
 
 /// Shared application state injected into every axum handler.
@@ -74,7 +70,6 @@ pub struct AppState {
     pub pool: Arc<AgentPool>,
     /// Pre-serialized broadcast: each `AgentEvent` serialized once, shared across all WS/SSE subscribers.
     serialized_tx: Arc<broadcast::Sender<Arc<str>>>,
-    tasks_cache: Arc<Mutex<TtlCache>>,
     patterns_cache: Arc<Mutex<TtlCache>>,
     /// Bearer token required on /api/* routes. None = auth disabled (dev mode).
     auth_token: Option<Arc<str>>,
@@ -122,7 +117,6 @@ impl AppState {
             queue,
             pool,
             serialized_tx,
-            tasks_cache: Arc::new(Mutex::new(TtlCache::new(Duration::from_secs(2)))),
             patterns_cache: Arc::new(Mutex::new(TtlCache::new(Duration::from_secs(30)))),
             auth_token: auth_token.map(|t| Arc::from(t.as_str())),
             rate_limiter: Arc::new(DashMap::new()),
@@ -355,12 +349,6 @@ async fn get_stats(State(s): State<AppState>) -> impl IntoResponse {
 }
 
 async fn list_tasks(State(s): State<AppState>) -> Json<Value> {
-    {
-        let cache = s.tasks_cache.lock().await;
-        if let Some(cached) = cache.get() {
-            return Json(cached.clone());
-        }
-    }
     let rows = s.store.load_history(100).await.unwrap_or_default();
     let body: Vec<_> = rows
         .into_iter()
@@ -374,9 +362,7 @@ async fn list_tasks(State(s): State<AppState>) -> Json<Value> {
             })
         })
         .collect();
-    let value = json!({ "tasks": body });
-    s.tasks_cache.lock().await.set(value.clone());
-    Json(value)
+    Json(json!({ "tasks": body }))
 }
 
 async fn get_task(Path(id): Path<String>, State(s): State<AppState>) -> impl IntoResponse {
@@ -469,8 +455,6 @@ async fn create_task(
     if let Some(r) = req.max_retries {
         task.max_retries = r;
     }
-
-    s.tasks_cache.lock().await.invalidate();
 
     let task_id = task.id.0.to_string();
     let duplicate_of = s.pool.submit(task).await.map(|id| id.0.to_string());
