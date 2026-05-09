@@ -1,8 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import AgentPane from '$lib/components/AgentPane.svelte';
-  import { agents } from '$lib/stores/agents';
-  import type { AgentState } from '$lib/types';
+  import { agents, type AgentState } from '$lib/stores/agents';
 
   // Always-4 slots grid by default, expands when user clicks + button
   let paneSlots: (string | null)[] = [null, null, null, null];

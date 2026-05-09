@@ -2,6 +2,7 @@ use anyhow::Result;
 use lopi_core::Score;
 use std::path::{Path, PathBuf};
 use tokio::process::Command;
+use which::which;
 
 pub struct Scorer {
     repo_path: PathBuf,
@@ -28,8 +29,11 @@ impl Scorer {
         let cargo_toml = self.repo_path.join("Cargo.toml");
         if cargo_toml.exists() {
             // cargo test — use sccache if available to skip unchanged artifact recompilation
-            let out = Command::new("cargo")
-                .env("RUSTC_WRAPPER", "sccache")
+            let mut cmd = Command::new("cargo");
+            if which("sccache").is_ok() {
+                cmd.env("RUSTC_WRAPPER", "sccache");
+            }
+            let out = cmd
                 .arg("test")
                 .arg("--quiet")
                 .current_dir(&self.repo_path)
@@ -43,8 +47,11 @@ impl Scorer {
                 ));
             }
             // cargo clippy as the lint signal.
-            let lint = Command::new("cargo")
-                .env("RUSTC_WRAPPER", "sccache")
+            let mut cmd = Command::new("cargo");
+            if which("sccache").is_ok() {
+                cmd.env("RUSTC_WRAPPER", "sccache");
+            }
+            let lint = cmd
                 .arg("clippy")
                 .arg("--quiet")
                 .arg("--")

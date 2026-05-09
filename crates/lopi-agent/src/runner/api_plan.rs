@@ -66,10 +66,10 @@ impl AgentRunner {
 
         // 3. Build the prompt. The system prompt is `LOPI_SYSTEM_PROMPT`
         //    (cached, ephemeral). The user message carries the task goal +
-        //    constraints + allowed dirs + last_error if adaptive retry enabled —
+        //    constraints + allowed dirs + lessons + last_error if adaptive retry enabled —
         //    same shape the CLI consumes, minus the TOON wrapper since we're
         //    sending raw API messages.
-        let prompt = build_user_prompt(&self.task, self.last_error.as_deref());
+        let prompt = build_user_prompt(&self.task, self.last_error.as_deref(), &self.task_lessons);
 
         // 4. Stream the plan, accumulating deltas. Track wall-clock latency
         //    and TTFT. The `on_delta` closure pushes incremental events to
@@ -189,8 +189,8 @@ impl AgentRunner {
 
 /// Render the user prompt the API client sends with the cached system
 /// prompt. Keeps it small and deterministic so prompt caching hits.
-fn build_user_prompt(task: &lopi_core::Task, last_error: Option<&str>) -> String {
-    let mut parts = Vec::with_capacity(5);
+fn build_user_prompt(task: &lopi_core::Task, last_error: Option<&str>, lessons: &[String]) -> String {
+    let mut parts = Vec::with_capacity(6);
     parts.push(format!("# Task\n{}", task.goal));
 
     if !task.constraints.is_empty() {
@@ -209,6 +209,12 @@ fn build_user_prompt(task: &lopi_core::Task, last_error: Option<&str>) -> String
         parts.push(format!(
             "\n# Forbidden dirs\n- {}",
             task.forbidden_dirs.join("\n- ")
+        ));
+    }
+    if !lessons.is_empty() {
+        parts.push(format!(
+            "\n# Lessons from past patterns\n- {}",
+            lessons.join("\n- ")
         ));
     }
     if let Some(err) = last_error {
@@ -248,7 +254,7 @@ mod tests {
 
     #[test]
     fn user_prompt_includes_goal() {
-        let p = build_user_prompt(&task_with("fix the broken test", vec![]), None);
+        let p = build_user_prompt(&task_with("fix the broken test", vec![]), None, &[]);
         assert!(p.contains("fix the broken test"));
         assert!(p.contains("# Task"));
     }
@@ -256,7 +262,7 @@ mod tests {
     #[test]
     fn user_prompt_omits_empty_sections() {
         // Constraints empty → no "# Constraints" header
-        let p = build_user_prompt(&task_with("g", vec![]), None);
+        let p = build_user_prompt(&task_with("g", vec![]), None, &[]);
         assert!(!p.contains("# Constraints"));
         // allowed_dirs is non-empty in the fixture so that header exists
         assert!(p.contains("# Allowed dirs"));
@@ -267,6 +273,7 @@ mod tests {
         let p = build_user_prompt(
             &task_with("g", vec!["no panics".into(), "must compile".into()]),
             None,
+            &[],
         );
         assert!(p.contains("no panics"));
         assert!(p.contains("must compile"));
@@ -275,7 +282,7 @@ mod tests {
 
     #[test]
     fn user_prompt_ends_with_planning_directive() {
-        let p = build_user_prompt(&task_with("g", vec![]), None);
+        let p = build_user_prompt(&task_with("g", vec![]), None, &[]);
         assert!(p.contains("step-by-step plan"));
     }
 
@@ -283,16 +290,29 @@ mod tests {
     fn user_prompt_is_deterministic_for_caching() {
         // Same task → byte-identical prompt → cache hit on system+user prefix.
         let t = task_with("g", vec!["a".into(), "b".into()]);
-        assert_eq!(build_user_prompt(&t, None), build_user_prompt(&t, None));
+        assert_eq!(
+            build_user_prompt(&t, None, &[]),
+            build_user_prompt(&t, None, &[])
+        );
     }
 
     #[test]
     fn user_prompt_includes_last_error_when_provided() {
         let t = task_with("g", vec![]);
         let err = "Attempt 1 failed: test_pass_rate: 50.0%";
-        let p = build_user_prompt(&t, Some(err));
+        let p = build_user_prompt(&t, Some(err), &[]);
         assert!(p.contains("# Previous attempt failed"));
         assert!(p.contains(err));
+    }
+
+    #[test]
+    fn user_prompt_includes_lessons_when_provided() {
+        let t = task_with("g", vec![]);
+        let lessons = vec!["use error handling".to_string(), "add logging".to_string()];
+        let p = build_user_prompt(&t, None, &lessons);
+        assert!(p.contains("# Lessons from past patterns"));
+        assert!(p.contains("use error handling"));
+        assert!(p.contains("add logging"));
     }
 
     // ── Builder integration ───────────────────────────────────────────────────

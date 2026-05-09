@@ -1,7 +1,7 @@
 use anyhow::Result;
 use dashmap::DashMap;
 use lopi_agent::AgentRunner;
-use lopi_core::{AgentEvent, EventBus, Task, TaskId, TaskStatus};
+use lopi_core::{AgentEvent, EventBus, ScoreWeights, Task, TaskId, TaskStatus};
 use lopi_memory::MemoryStore;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -189,20 +189,30 @@ impl AgentPool {
             js.spawn(async move {
                 let _permit = permit;
                 let _repo_permit = repo_permit;
-                let outcome = run_one(task, repo, bus.clone(), store, cancel_rx, attempt).await;
+                let outcome = run_one(task, repo, bus.clone(), store.clone(), cancel_rx, attempt).await;
                 handles.remove(&task_id);
                 counters.running.fetch_sub(1, Ordering::Relaxed);
                 match &outcome {
                     Ok(TaskStatus::Success { .. }) => {
                         counters.succeeded.fetch_add(1, Ordering::Relaxed);
                     }
-                    Ok(TaskStatus::Failed { .. }) | Err(_) => {
+                    Ok(TaskStatus::Failed { .. }) | Ok(TaskStatus::RolledBack) | Err(_) => {
                         counters.failed.fetch_add(1, Ordering::Relaxed);
                     }
                     _ => {}
                 }
-                if let Err(e) = outcome {
+                if let Err(e) = &outcome {
                     error!(task_id = %task_id, "agent run error: {e}");
+                    bus.send(AgentEvent::TaskCompleted {
+                        task_id,
+                        outcome: TaskStatus::Failed {
+                            reason: format!("{e}"),
+                        },
+                        total_attempts: 1,
+                    });
+                    if let Some(store) = store {
+                        let _ = store.mark_completed(&task_id, "failed").await;
+                    }
                 }
             });
         }
@@ -215,6 +225,15 @@ pub struct PoolStats {
     pub succeeded: usize,
     pub failed: usize,
     pub uptime_secs: u64,
+}
+
+/// Phase 5b — Compute dynamically adjusted score weights based on the task goal.
+/// Future: derive weights from user-approved vs rejected patterns in memory.
+/// Currently: returns default weights (placeholder for weight tuning).
+fn compute_weight_adjustments(_goal: &str, _store: Option<&MemoryStore>) -> ScoreWeights {
+    // Phase 5b.1: query successful patterns for this goal's category and extract mean weights.
+    // For now: return defaults. Future: derive weights from user-approved patterns in memory.
+    ScoreWeights::default()
 }
 
 #[tracing::instrument(skip(bus, store, cancel_rx, attempt_counter), fields(task_id = %task.id, goal = %task.goal))]
@@ -230,6 +249,7 @@ async fn run_one(
     let task_id = task.id;
     let goal = task.goal.clone();
 
+    let weights = compute_weight_adjustments(&goal, store.as_ref());
     let mut runner = AgentRunner::new(
         task,
         repo,
@@ -237,7 +257,8 @@ async fn run_one(
         store.clone(),
         cancel_rx,
         attempt_counter,
-    );
+    )
+    .with_score_weights(weights);
     let outcome = runner.run().await?;
 
     let total_attempts = runner.attempts_made();
