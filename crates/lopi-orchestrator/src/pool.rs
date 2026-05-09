@@ -142,6 +142,28 @@ impl AgentPool {
     ///
     /// Returns an error if a semaphore is closed (only happens on shutdown).
     pub async fn run(self) -> Result<()> {
+        let bus_stats = self.bus.clone();
+        let counters_stats = self.counters.clone();
+        let queue_stats = self.queue.clone();
+        let started_at = self.started_at.clone();
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                let running = counters_stats.running.load(Ordering::Relaxed);
+                let queued = queue_stats.len();
+                let succeeded = counters_stats.succeeded.load(Ordering::Relaxed);
+                let failed = counters_stats.failed.load(Ordering::Relaxed);
+                let uptime_secs = started_at.elapsed().as_secs();
+                bus_stats.send(AgentEvent::PoolStats {
+                    running,
+                    queued,
+                    succeeded,
+                    failed,
+                    uptime_secs,
+                });
+            }
+        });
+
         loop {
             let task = self.queue.pop().await;
 
