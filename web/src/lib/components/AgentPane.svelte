@@ -1,13 +1,13 @@
 <script lang="ts">
   import Forge from '$lib/forge/Forge.svelte';
-  import { logs, postTask, cancelTask, permissionWaiting, PHASE_COLORS } from '$lib/stores/agents';
-  import type { AgentState } from '$lib/types';
+  import { logs, postTask, cancelTask, permissionWaiting, PHASE_COLORS, type AgentState } from '$lib/stores/agents';
 
   export let agent: AgentState | null = null;
   export let slotIndex: number = 0;
 
   let commandInput = '';
   let isSubmitting = false;
+  let submitError = '';
 
   $: phaseColor = agent ? PHASE_COLORS[agent.phase] ?? '#00d4ff' : '#00d4ff';
   $: agentLogs = agent ? $logs.filter((l) => l.taskId === agent.id).slice(-3) : [];
@@ -15,11 +15,18 @@
   $: isRunning = agent?.status === 'running' || agent?.status === 'queued';
 
   async function handleSubmitCommand() {
-    if (!commandInput.trim() || !agent) return;
+    if (!commandInput.trim()) return;
+    if (isSubmitting) return;
     isSubmitting = true;
+    submitError = '';
     try {
-      await postTask(commandInput.trim(), agent.repo, 'normal');
+      // Empty pane: use empty repo string; existing agent: use agent.repo
+      const repo = agent?.repo ?? '';
+      await postTask(commandInput.trim(), repo, 'normal');
       commandInput = '';
+    } catch (err) {
+      console.error('[lopi] postTask failed:', err);
+      submitError = err instanceof Error ? err.message : 'failed to submit';
     } finally {
       isSubmitting = false;
     }
@@ -30,9 +37,17 @@
     await cancelTask(agent.id);
   }
 
-  function handleRetry() {
-    if (!agent) return;
-    postTask(agent.goal, agent.repo, 'normal');
+  async function handleRetry() {
+    if (!agent || isSubmitting) return;
+    isSubmitting = true;
+    submitError = '';
+    try {
+      await postTask(agent.goal, agent.repo, 'normal');
+    } catch (err) {
+      submitError = err instanceof Error ? err.message : 'retry failed';
+    } finally {
+      isSubmitting = false;
+    }
   }
 
   function formatElapsed(ms: number): string {

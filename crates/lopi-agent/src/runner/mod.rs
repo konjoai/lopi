@@ -4,7 +4,7 @@ mod run_loop;
 
 use crate::api_client::AnthropicClient;
 use lopi_context::{ContentBlock, ContextWindow, Phase, PinPolicy, Role, TaggedMessage};
-use lopi_core::{AgentEvent, EventBus, Task, TaskId};
+use lopi_core::{AgentEvent, EventBus, ScoreWeights, Task, TaskId};
 use lopi_memory::MemoryStore;
 use lopi_ratelimit::{AnthropicLimiter, CircuitBreaker};
 use std::path::PathBuf;
@@ -70,6 +70,10 @@ pub struct AgentRunner {
     pub(super) attempt_counter: Arc<AtomicUsize>,
     pub(super) attempts_made: u8,
     pub(super) turn_count: u32,
+    /// Phase 5b — score weights for weighted scoring during retry loops.
+    pub(super) score_weights: ScoreWeights,
+    /// Phase 5b — lessons learned from past patterns (injected into planning prompt).
+    pub(super) task_lessons: Vec<String>,
 }
 
 impl AgentRunner {
@@ -104,6 +108,8 @@ impl AgentRunner {
             attempt_counter,
             attempts_made: 0,
             turn_count: 0,
+            score_weights: ScoreWeights::default(),
+            task_lessons: vec![],
         }
     }
 
@@ -132,6 +138,8 @@ impl AgentRunner {
             attempt_counter: Arc::new(AtomicUsize::new(0)),
             attempts_made: 0,
             turn_count: 0,
+            score_weights: ScoreWeights::default(),
+            task_lessons: vec![],
         };
         (runner, bus)
     }
@@ -167,6 +175,15 @@ impl AgentRunner {
     #[must_use]
     pub const fn with_adaptive_retry(mut self) -> Self {
         self.adaptive_retry = true;
+        self
+    }
+
+    /// Phase 5b — wire custom score weights for this task's retry loop.
+    /// Allows the pool to adjust lint/diff penalties based on user-tuned
+    /// preferences or derived from past attempt success patterns.
+    #[must_use]
+    pub fn with_score_weights(mut self, weights: ScoreWeights) -> Self {
+        self.score_weights = weights;
         self
     }
 

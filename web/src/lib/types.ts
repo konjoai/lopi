@@ -35,7 +35,7 @@ export type TaskStatus =
 // ── AgentEvent (#[serde(tag = "type", rename_all = "snake_case")]) ────────────
 export type AgentEvent =
   | { type: 'task_queued'; task_id: string; goal: string; priority: Priority }
-  | { type: 'task_started'; task_id: string; attempt: number; branch: string }
+  | { type: 'task_started'; task_id: string; attempt: number; branch: string; repo?: string }
   | {
       type: 'status_changed';
       task_id: string;

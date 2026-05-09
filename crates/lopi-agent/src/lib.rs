@@ -1,5 +1,6 @@
 pub mod api_client;
 pub mod claude;
+mod claude_stream;
 pub mod pattern_enricher;
 pub mod runner;
 pub mod scorer;

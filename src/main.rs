@@ -114,6 +114,14 @@ enum LearnCmd {
         #[arg(short, long, default_value = "100")]
         limit: i64,
     },
+    /// Annotate a pattern as approved or rejected to tune future scoring.
+    Annotate {
+        /// Pattern id or id prefix (uuid)
+        id: String,
+        /// Annotation: 'approved' or 'rejected'
+        #[arg(value_parser = ["approved", "rejected"])]
+        annotation: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -577,6 +585,30 @@ async fn main() -> Result<()> {
                     })).collect::<Vec<_>>(),
                 });
                 println!("{}", serde_json::to_string_pretty(&json)?);
+            }
+
+            LearnCmd::Annotate { id, annotation } => {
+                let store = MemoryStore::open(db_path()).await?;
+                // Validate annotation value
+                if annotation != "approved" && annotation != "rejected" {
+                    eprintln!("❌ annotation must be 'approved' or 'rejected', got: {}", annotation);
+                    std::process::exit(1);
+                }
+                // Find the pattern by id prefix
+                match store.find_pattern_by_id_prefix(&id).await? {
+                    Some(pattern) => {
+                        store.annotate_pattern(&pattern.id, Some(annotation.as_str())).await?;
+                        println!(
+                            "✅ pattern {} annotated as '{}'",
+                            &pattern.id[..8],
+                            annotation
+                        );
+                    }
+                    None => {
+                        eprintln!("❌ pattern not found for id prefix: {}", id);
+                        std::process::exit(1);
+                    }
+                }
             }
         },
 
