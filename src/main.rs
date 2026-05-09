@@ -438,6 +438,14 @@ async fn main() -> Result<()> {
                 }
             });
 
+            let pool_handle = (*pool).clone();
+            tokio::spawn(async move {
+                let _ = tokio::signal::ctrl_c().await;
+                tracing::info!("shutting down — cancelling all running agents");
+                pool_handle.shutdown().await;
+                std::process::exit(0);
+            });
+
             // Boot Telegram bot if token is configured.
             if let Ok(token) = std::env::var("TELOXIDE_TOKEN") {
                 let allowed_chat_ids = cfg
