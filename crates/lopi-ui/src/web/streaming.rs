@@ -42,29 +42,40 @@ pub(super) async fn ws_handler(
 }
 
 pub(super) async fn handle_ws(mut socket: WebSocket, state: AppState) {
-    // Snapshot: send current task list and stats on connect.
-    if let Ok(rows) = state.store.load_history(100).await {
-        let snapshot = json!({
-            "type": "snapshot",
-            "tasks": rows.iter().map(|t| json!({
-                "id": t.id, "goal": t.goal, "status": t.status,
-                "created_at": t.created_at,
-            })).collect::<Vec<_>>(),
-            "stats": {
-                "running": state.pool.stats().running,
-                "queued": state.pool.stats().queued,
-                "succeeded": state.pool.stats().succeeded,
-                "failed": state.pool.stats().failed,
-                "uptime_secs": state.pool.stats().uptime_secs,
-            }
-        });
-        if socket
-            .send(Message::Text(snapshot.to_string()))
-            .await
-            .is_err()
-        {
-            return;
+    // Snapshot: send current task list, live agents, and stats on connect so
+    // the dashboard renders immediately without waiting for the next event.
+    let history = state.store.load_history(100).await.unwrap_or_default();
+    let agents = state.pool.live_agents().await;
+    let stats = state.pool.stats();
+    let snapshot = json!({
+        "type": "snapshot",
+        "tasks": history.iter().map(|t| json!({
+            "id": t.id,
+            "goal": t.goal,
+            "status": t.status,
+            "created_at": t.created_at,
+            "completed_at": t.completed_at,
+        })).collect::<Vec<_>>(),
+        "agents": agents.iter().map(|a| json!({
+            "task_id": a.task_id.0.to_string(),
+            "goal": a.goal,
+            "attempt": a.attempt,
+            "elapsed_ms": a.elapsed_ms,
+        })).collect::<Vec<_>>(),
+        "stats": {
+            "running": stats.running,
+            "queued": stats.queued,
+            "succeeded": stats.succeeded,
+            "failed": stats.failed,
+            "uptime_secs": stats.uptime_secs,
         }
+    });
+    if socket
+        .send(Message::Text(snapshot.to_string()))
+        .await
+        .is_err()
+    {
+        return;
     }
 
     // Stream from pre-serialized channel: one JSON string broadcast to all subscribers, O(1) clone.

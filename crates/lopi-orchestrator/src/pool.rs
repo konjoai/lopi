@@ -123,6 +123,26 @@ impl AgentPool {
         }
     }
 
+    /// Snapshot of every currently-running agent.
+    ///
+    /// Read lock-free where possible: `attempt` is loaded atomically and
+    /// `started_at` is captured by value. Only `goal` requires a read lock.
+    pub async fn live_agents(&self) -> Vec<LiveAgent> {
+        let mut out = Vec::with_capacity(self.handles.len());
+        for entry in self.handles.iter() {
+            let task_id = *entry.key();
+            let handle = entry.value().read().await;
+            out.push(LiveAgent {
+                task_id,
+                goal: handle.goal.clone(),
+                attempt: handle.attempt.load(Ordering::Relaxed) as u32,
+                elapsed_ms: u64::try_from(handle.started_at.elapsed().as_millis())
+                    .unwrap_or(u64::MAX),
+            });
+        }
+        out
+    }
+
     /// Enqueue a task and broadcast `TaskQueued`.
     pub async fn submit(&self, task: Task) -> Option<TaskId> {
         self.bus.send(AgentEvent::TaskQueued {
@@ -247,6 +267,15 @@ pub struct PoolStats {
     pub succeeded: usize,
     pub failed: usize,
     pub uptime_secs: u64,
+}
+
+/// Snapshot of one running agent — drives the Forge dashboard's live cards.
+#[derive(Debug, Clone)]
+pub struct LiveAgent {
+    pub task_id: TaskId,
+    pub goal: String,
+    pub attempt: u32,
+    pub elapsed_ms: u64,
 }
 
 /// Phase 5b — Compute dynamically adjusted score weights based on the task goal.
@@ -441,6 +470,12 @@ mod tests {
         let pool = make_pool(2);
         // Shutdown with no running tasks should complete immediately
         pool.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn live_agents_empty_when_nothing_running() {
+        let pool = make_pool(2);
+        assert!(pool.live_agents().await.is_empty());
     }
 
     #[tokio::test]

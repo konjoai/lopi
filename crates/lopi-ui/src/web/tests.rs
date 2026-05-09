@@ -82,6 +82,26 @@ async fn tasks_list_returns_200() {
 }
 
 #[tokio::test]
+async fn agents_endpoint_returns_array() {
+    let app = test_app().await;
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/agents")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert!(json.get("agents").and_then(|v| v.as_array()).is_some());
+}
+
+#[tokio::test]
 async fn metrics_returns_prometheus_text() {
     let app = test_app().await;
     let resp = app

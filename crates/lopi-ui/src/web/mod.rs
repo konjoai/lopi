@@ -131,6 +131,7 @@ pub fn build_app(state: AppState) -> Router {
         .route("/api/health", get(health))
         .route("/api/tasks", get(list_tasks).post(create_task))
         .route("/api/tasks/:id", get(get_task).delete(cancel_task))
+        .route("/api/agents", get(list_agents))
         .route("/api/stats", get(get_stats))
         .route("/api/patterns", get(list_patterns))
         .route_layer(middleware::from_fn_with_state(
@@ -346,6 +347,22 @@ async fn get_stats(State(s): State<AppState>) -> impl IntoResponse {
         "total_tokens_today": total_tokens_today,
         "total_cost_usd_today": total_cost_usd_today,
     }))
+}
+
+async fn list_agents(State(s): State<AppState>) -> Json<Value> {
+    let agents = s.pool.live_agents().await;
+    let body: Vec<_> = agents
+        .into_iter()
+        .map(|a| {
+            json!({
+                "task_id": a.task_id.0.to_string(),
+                "goal": a.goal,
+                "attempt": a.attempt,
+                "elapsed_ms": a.elapsed_ms,
+            })
+        })
+        .collect();
+    Json(json!({ "agents": body }))
 }
 
 async fn list_tasks(State(s): State<AppState>) -> Json<Value> {
