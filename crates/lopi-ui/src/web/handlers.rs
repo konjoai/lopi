@@ -49,6 +49,29 @@ pub(super) async fn list_agents(State(s): State<AppState>) -> Json<Value> {
     Json(json!({ "agents": body }))
 }
 
+pub(super) async fn get_constellation(State(s): State<AppState>) -> Json<Value> {
+    let agents = s.pool.live_agents().await;
+    let (nodes, links) = super::constellation::layout(&agents);
+    let nodes_body: Vec<_> = nodes
+        .into_iter()
+        .map(|n| {
+            json!({
+                "task_id": n.task_id,
+                "goal": n.goal,
+                "attempt": n.attempt,
+                "elapsed_ms": n.elapsed_ms,
+                "x": n.x,
+                "y": n.y,
+            })
+        })
+        .collect();
+    let links_body: Vec<_> = links
+        .into_iter()
+        .map(|l| json!({ "a": l.a, "b": l.b, "similarity": l.similarity }))
+        .collect();
+    Json(json!({ "nodes": nodes_body, "links": links_body }))
+}
+
 pub(super) async fn list_tasks(State(s): State<AppState>) -> Json<Value> {
     let rows = s.store.load_history(100).await.unwrap_or_default();
     let body: Vec<_> = rows

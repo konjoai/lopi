@@ -5,7 +5,7 @@ pub mod task;
 
 pub use agent::{AgentRun, AgentState, Attempt, Score, ScoreWeights, TurnMetrics};
 pub use config::{LopiConfig, RepoProfile, ScheduleEntry};
-pub use event::{AgentEvent, EventBus, LogLevel};
+pub use event::{AgentEvent, EventBus, LifecyclePhase, LogLevel};
 pub use task::{Priority, Task, TaskId, TaskSource, TaskStatus};
 
 #[cfg(test)]

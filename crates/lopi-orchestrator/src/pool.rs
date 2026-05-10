@@ -1,7 +1,7 @@
 use anyhow::Result;
 use dashmap::DashMap;
 use lopi_agent::AgentRunner;
-use lopi_core::{AgentEvent, EventBus, ScoreWeights, Task, TaskId, TaskStatus};
+use lopi_core::{AgentEvent, EventBus, LifecyclePhase, ScoreWeights, Task, TaskId, TaskStatus};
 use lopi_memory::MemoryStore;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -225,6 +225,16 @@ impl AgentPool {
             let counters = self.counters.clone();
             let join_set = self.join_set.clone();
 
+            // Lifecycle: Born — boat materializes in the Forge.
+            bus.send(AgentEvent::lifecycle(
+                task_id,
+                LifecyclePhase::Born,
+                &goal,
+            ));
+
+            let born_at = std::time::Instant::now();
+            let goal_for_died = goal.clone();
+
             let mut js = join_set.lock().await;
             // Drain any completed tasks to keep the JoinSet from growing unboundedly.
             while js.try_join_next().is_some() {}
@@ -234,6 +244,22 @@ impl AgentPool {
                 let outcome = run_one(task, repo, bus.clone(), store.clone(), cancel_rx, attempt).await;
                 handles.remove(&task_id);
                 counters.running.fetch_sub(1, Ordering::Relaxed);
+
+                // Lifecycle: Died — boat sails off / shatters depending on outcome.
+                let duration_ms = u64::try_from(born_at.elapsed().as_millis()).unwrap_or(u64::MAX);
+                let score_on_death = match &outcome {
+                    Ok(TaskStatus::Success { .. }) => Some(1.0_f32),
+                    Ok(TaskStatus::Failed { .. }) | Ok(TaskStatus::RolledBack) | Err(_) => Some(0.0_f32),
+                    _ => None,
+                };
+                bus.send(AgentEvent::Lifecycle {
+                    task_id,
+                    phase: LifecyclePhase::Died,
+                    goal_snippet: goal_for_died.chars().take(80).collect(),
+                    branch: None,
+                    score: score_on_death,
+                    duration_ms: Some(duration_ms),
+                });
                 match &outcome {
                     Ok(TaskStatus::Success { .. }) => {
                         counters.succeeded.fetch_add(1, Ordering::Relaxed);

@@ -174,6 +174,10 @@ impl AppState {
             // TurnMetrics drives the web UI's Forge shader. The TUI doesn't
             // visualize per-turn pressure/activity — silently consume.
             AgentEvent::TurnMetrics { .. } => {}
+            // Lifecycle drives the web UI's Forge orb animations. Already
+            // reflected in TaskStarted / StatusChanged / TaskCompleted in the
+            // TUI; no additional state to track here.
+            AgentEvent::Lifecycle { .. } => {}
         }
     }
 

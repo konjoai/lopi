@@ -63,6 +63,42 @@ pub enum AgentEvent {
         /// Accumulated cost in USD for this run.
         cost_usd: f32,
     },
+    /// High-level lifecycle phase transition with rich payload — drives the
+    /// Forge orb's boat animations (born/thinking/acting/scored/died).
+    /// Complements existing variants without duplicating their payload.
+    Lifecycle {
+        /// Task this lifecycle event belongs to.
+        task_id: TaskId,
+        /// Phase being entered.
+        phase: LifecyclePhase,
+        /// First ~80 chars of the goal — for the boat label without resending the full text.
+        goal_snippet: String,
+        /// Branch the agent is sailing on (None for `Born` before checkout).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        branch: Option<String>,
+        /// Score in `[0.0, 1.0]` — set on `Scored`, may be set on `Died`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        score: Option<f32>,
+        /// Wall-clock duration since the agent was born — set on `Died`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        duration_ms: Option<u64>,
+    },
+}
+
+/// Lifecycle phase emitted on `AgentEvent::Lifecycle`.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum LifecyclePhase {
+    /// Agent has just been spawned and is about to start its first attempt.
+    Born,
+    /// Agent has entered the planning phase.
+    Thinking,
+    /// Agent has entered the implementation phase (writing code).
+    Acting,
+    /// Agent has just received a score for its current attempt.
+    Scored,
+    /// Agent has finished — either success, failure, or rollback.
+    Died,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -94,6 +130,18 @@ impl AgentEvent {
 
     pub fn error(task_id: TaskId, line: impl Into<String>) -> Self {
         Self::log(task_id, line, LogLevel::Error)
+    }
+
+    /// Build a `Lifecycle` event, truncating the goal to 80 chars for the snippet.
+    pub fn lifecycle(task_id: TaskId, phase: LifecyclePhase, goal: &str) -> Self {
+        Self::Lifecycle {
+            task_id,
+            phase,
+            goal_snippet: goal.chars().take(80).collect(),
+            branch: None,
+            score: None,
+            duration_ms: None,
+        }
     }
 }
 
@@ -163,6 +211,41 @@ mod wire_format_tests {
         assert_eq!(v["type"], "task_completed");
         assert_eq!(v["outcome"]["Success"]["branch"], "feat/x");
         assert!(v["outcome"]["Success"]["pr_url"].is_null());
+    }
+
+    #[test]
+    fn lifecycle_serializes_with_phase_and_payload() {
+        let id = TaskId::new();
+        let ev = AgentEvent::Lifecycle {
+            task_id: id,
+            phase: LifecyclePhase::Scored,
+            goal_snippet: "fix auth bug".to_string(),
+            branch: Some("lopi/fix-auth".to_string()),
+            score: Some(0.92),
+            duration_ms: None,
+        };
+        let v = serde_json::to_value(&ev).unwrap();
+        assert_eq!(v["type"], "lifecycle");
+        assert_eq!(v["phase"], "scored");
+        assert_eq!(v["goal_snippet"], "fix auth bug");
+        assert_eq!(v["branch"], "lopi/fix-auth");
+        assert!((v["score"].as_f64().unwrap() - 0.92).abs() < 0.001);
+        // duration_ms is None → omitted from the JSON output.
+        assert!(v.get("duration_ms").is_none());
+    }
+
+    #[test]
+    fn lifecycle_phases_use_snake_case() {
+        for (phase, expected) in [
+            (LifecyclePhase::Born, "born"),
+            (LifecyclePhase::Thinking, "thinking"),
+            (LifecyclePhase::Acting, "acting"),
+            (LifecyclePhase::Scored, "scored"),
+            (LifecyclePhase::Died, "died"),
+        ] {
+            let v = serde_json::to_value(phase).unwrap();
+            assert_eq!(v.as_str(), Some(expected));
+        }
     }
 
     #[test]

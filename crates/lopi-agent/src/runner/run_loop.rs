@@ -3,7 +3,7 @@ use crate::claude::{select_model, ClaudeCode, MODEL_HAIKU};
 use crate::scorer::Scorer;
 use anyhow::Result;
 use lopi_context::Phase;
-use lopi_core::{AgentEvent, Attempt, TaskStatus};
+use lopi_core::{AgentEvent, Attempt, LifecyclePhase, TaskStatus};
 use lopi_git::GitManager;
 use std::sync::atomic::Ordering;
 
@@ -36,6 +36,23 @@ impl AgentRunner {
             activity,
             tokens_per_sec: 0.0,
             cost_usd: 0.0,
+        });
+    }
+
+    /// Emit a `Lifecycle` event with the runner's current goal + branch attached.
+    pub(super) fn emit_lifecycle(
+        &self,
+        phase: LifecyclePhase,
+        branch: Option<String>,
+        score: Option<f32>,
+    ) {
+        self.bus.send(AgentEvent::Lifecycle {
+            task_id: self.id(),
+            phase,
+            goal_snippet: self.task.goal.chars().take(80).collect(),
+            branch,
+            score,
+            duration_ms: None,
         });
     }
 
@@ -243,6 +260,7 @@ impl AgentRunner {
                 "context at planning"
             );
             self.log("📋 planning…");
+            self.emit_lifecycle(LifecyclePhase::Thinking, Some(branch.clone()), None);
 
             if self.speculative {
                 // Speculative mode: apply plan steps as they stream from claude.
@@ -254,6 +272,7 @@ impl AgentRunner {
                     "context at speculative implementation"
                 );
                 self.log("⚡ speculative: applying steps as plan streams…");
+                self.emit_lifecycle(LifecyclePhase::Acting, Some(branch.clone()), None);
 
                 while let Some(step) = step_rx.recv().await {
                     self.log(format!("  ↳ {step}"));
@@ -370,6 +389,7 @@ impl AgentRunner {
                     "context at implementation"
                 );
                 self.log("🔨 implementing…");
+                self.emit_lifecycle(LifecyclePhase::Acting, Some(branch.clone()), None);
 
                 if let Err(e) = claude.implement(&self.task, &plan).await {
                     self.warn(format!("implement failed: {e}"));
@@ -412,6 +432,11 @@ impl AgentRunner {
                 diff_lines: score.diff_lines,
             });
             let weighted = score.weighted(&self.score_weights);
+            self.emit_lifecycle(
+                LifecyclePhase::Scored,
+                Some(branch.clone()),
+                Some(weighted),
+            );
             self.log(format!(
                 "📊 score: pass={:.0}% lint={} diff={}L (weighted={:.3})",
                 score.test_pass_rate * 100.0,
@@ -478,6 +503,11 @@ impl AgentRunner {
                     diff_lines: fixed_score.diff_lines,
                 });
                 let weighted = fixed_score.weighted(&self.score_weights);
+                self.emit_lifecycle(
+                    LifecyclePhase::Scored,
+                    Some(branch.clone()),
+                    Some(weighted),
+                );
                 self.log(format!(
                     "📊 fixed score: pass={:.0}% lint={} diff={}L (weighted={:.3})",
                     fixed_score.test_pass_rate * 100.0,

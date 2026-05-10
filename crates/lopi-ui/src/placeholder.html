@@ -3,106 +3,178 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>lopi · Forge</title>
+  <title>lopi · the Forge ᨒᨚᨄᨗ</title>
   <style>
+    /*  ──────────────  the Forge — abyssal palette  ──────────────  */
     :root {
-      --bg-0: #0a0a10;
-      --bg-1: #11111b;
-      --bg-2: #1a1a26;
-      --bg-3: #252535;
-      --line: rgba(255, 255, 255, 0.08);
-      --line-strong: rgba(255, 255, 255, 0.16);
-      --fg: #f5f5f7;
-      --fg-dim: rgba(245, 245, 247, 0.62);
-      --fg-mute: rgba(245, 245, 247, 0.36);
-      --konjo: #7c3aed;
-      --konjo-dim: rgba(124, 58, 237, 0.55);
-      --konjo-soft: rgba(124, 58, 237, 0.16);
-      --ok: #22c55e;
-      --warn: #eab308;
-      --err: #ef4444;
-      --info: #f5f5f7;
-      --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
-      --sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif;
+      --abyss:        #03030a;
+      --abyss-1:      #06061a;
+      --abyss-2:      #0a0a26;
+      --line:         rgba(255,255,255,0.06);
+      --line-strong:  rgba(255,255,255,0.14);
+      --fg:           #e8e8f5;
+      --fg-dim:       rgba(232,232,245,0.62);
+      --fg-mute:      rgba(232,232,245,0.32);
+      --konjo:        #7c3aed;
+      --konjo-2:      #a78bfa;
+      --konjo-soft:   rgba(124,58,237,0.18);
+      --abyss-blue:   #1e3a8a;
+      --abyss-blue-2: #2e5ec0;
+      --aurora-1:     rgba(124,58,237,0.18);
+      --aurora-2:     rgba(46,94,192,0.14);
+      --aurora-3:     rgba(167,139,250,0.10);
+      --sea:          #060a1a;
+      --sea-2:        #08122a;
+      --gold:         #d4a96a;
+      --gold-dim:     rgba(212,169,106,0.45);
+      --brass:        #8c6e3b;
+      --ok:           #5be39b;
+      --warn:         #eab308;
+      --err:          #ef4444;
+      --mono:         ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+      --sans:         -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
     }
 
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-    html, body { height: 100%; }
+    html, body { height: 100%; overflow: hidden; }
 
     body {
-      background:
-        radial-gradient(circle at 18% 20%, rgba(124, 58, 237, 0.10) 0%, transparent 45%),
-        radial-gradient(circle at 82% 80%, rgba(124, 58, 237, 0.06) 0%, transparent 45%),
-        var(--bg-0);
+      background: var(--abyss);
       color: var(--fg);
       font-family: var(--sans);
       letter-spacing: -0.011em;
-      overflow: hidden;
     }
 
-    .app {
+    /*  ──────────────  background layers (z-stack)  ──────────────  */
+    .bg, .aurora, .lontara, .sea, .scene, .chrome {
+      position: fixed; inset: 0;
+      pointer-events: none;
+    }
+    .bg {
+      background:
+        radial-gradient(ellipse at 50% 110%, rgba(46,94,192,0.10) 0%, transparent 55%),
+        radial-gradient(ellipse at 18% 8%, rgba(124,58,237,0.06) 0%, transparent 50%),
+        var(--abyss);
+      z-index: 0;
+    }
+    .aurora {
+      z-index: 1;
+      background:
+        linear-gradient(115deg, transparent 30%, var(--aurora-1) 45%, transparent 65%),
+        linear-gradient(245deg, transparent 30%, var(--aurora-2) 50%, transparent 70%),
+        linear-gradient( 30deg, transparent 40%, var(--aurora-3) 55%, transparent 70%);
+      filter: blur(40px);
+      opacity: 0.85;
+      animation: aurora 28s ease-in-out infinite alternate;
+      mix-blend-mode: screen;
+    }
+    @keyframes aurora {
+      0%   { transform: translate3d( -3vw, -2vh, 0) rotate(0deg)   scale(1.0); }
+      50%  { transform: translate3d(  4vw,  3vh, 0) rotate(2deg)   scale(1.1); }
+      100% { transform: translate3d( -2vw,  2vh, 0) rotate(-1.5deg) scale(1.05); }
+    }
+
+    /* Lontara watermark — ᨒᨚᨄᨗ rotates very slowly */
+    .lontara {
+      z-index: 1;
+      display: grid; place-items: center;
+      font-family: "Noto Sans Lontara", "Lontara", serif;
+      font-size: clamp(16rem, 32vw, 36rem);
+      color: rgba(124,58,237,0.045);
+      letter-spacing: 0.05em;
+      animation: lontara-spin 240s linear infinite;
+      user-select: none;
+      filter: blur(0.6px);
+    }
+    @keyframes lontara-spin {
+      0%   { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    /* Sea — bottom third, almost-invisible wave texture */
+    .sea {
+      top: auto; height: 36vh; bottom: 0;
+      z-index: 2;
+      background:
+        repeating-linear-gradient(
+          to right,
+          transparent 0px, transparent 18px,
+          rgba(46,94,192,0.05) 18px, rgba(46,94,192,0.05) 19px),
+        linear-gradient(to bottom, transparent 0%, var(--sea) 60%, var(--sea-2) 100%);
+      mask-image: linear-gradient(to bottom, transparent 0%, black 30%);
+      -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 30%);
+    }
+    .sea::after {
+      content: "";
+      position: absolute; inset: 0;
+      background: repeating-linear-gradient(
+        to right,
+        transparent 0px, transparent 60px,
+        rgba(167,139,250,0.04) 60px, rgba(167,139,250,0.04) 61px);
+      animation: tide 14s linear infinite;
+    }
+    @keyframes tide {
+      from { transform: translateX(0); }
+      to   { transform: translateX(120px); }
+    }
+
+    /*  ──────────────  layout  ──────────────  */
+    .chrome {
+      z-index: 10;
+      pointer-events: none;
       display: grid;
       grid-template-rows: auto 1fr auto;
-      grid-template-columns: 280px 1fr 360px;
+      grid-template-columns: 280px 1fr 340px;
       grid-template-areas:
         "topbar topbar topbar"
-        "queue  grid   log"
-        "stats  stats  stats";
-      height: 100vh;
-      gap: 1px;
-      background: var(--line);
+        "harbor scene  log"
+        "instr  instr  instr";
+      gap: 0;
     }
+    .chrome > * { pointer-events: auto; }
 
-    /* TOP BAR */
+    /*  ──────────────  topbar — submit + ship's wheel  ──────────────  */
     .topbar {
       grid-area: topbar;
-      background: var(--bg-1);
-      padding: 14px 20px;
-      display: flex;
-      align-items: center;
-      gap: 16px;
+      padding: 14px 22px;
+      display: flex; align-items: center; gap: 18px;
+      background: linear-gradient(180deg, rgba(3,3,10,0.78) 0%, rgba(3,3,10,0.30) 100%);
+      backdrop-filter: blur(8px);
       border-bottom: 1px solid var(--line);
     }
     .brand {
       display: flex; align-items: center; gap: 10px;
-      font-weight: 700; font-size: 1rem; letter-spacing: -0.02em;
+      font-weight: 700; font-size: 1.05rem; letter-spacing: -0.02em;
     }
-    .brand .dot {
-      width: 10px; height: 10px; border-radius: 50%;
-      background: var(--konjo);
-      box-shadow: 0 0 12px rgba(124, 58, 237, 0.7);
-      animation: pulse 2.4s ease-in-out infinite;
+    .brand .glyph {
+      font-family: "Noto Sans Lontara", "Lontara", serif;
+      color: var(--konjo-2); font-size: 1.4rem; line-height: 1;
+      filter: drop-shadow(0 0 8px var(--konjo));
     }
     .brand .tag {
       font-family: var(--mono);
       font-size: 0.62rem;
       text-transform: uppercase;
-      letter-spacing: 0.18em;
+      letter-spacing: 0.20em;
       color: var(--fg-mute);
-      margin-left: 4px;
-    }
-    @keyframes pulse {
-      0%, 100% { transform: scale(1); opacity: 1; }
-      50% { transform: scale(1.25); opacity: 0.75; }
     }
 
     .submit {
-      display: flex; align-items: center; gap: 8px;
+      display: flex; align-items: center; gap: 10px;
       flex: 1;
     }
     .submit textarea {
       flex: 1;
-      background: var(--bg-2);
+      background: rgba(8,8,20,0.55);
       color: var(--fg);
       border: 1px solid var(--line);
       border-radius: 6px;
-      padding: 8px 12px;
+      padding: 9px 14px;
       font-family: var(--sans);
-      font-size: 0.875rem;
+      font-size: 0.88rem;
       resize: none;
-      height: 36px;
-      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+      height: 40px;
+      transition: border-color 0.15s, box-shadow 0.15s;
     }
     .submit textarea:focus {
       outline: none;
@@ -110,42 +182,68 @@
       box-shadow: 0 0 0 3px var(--konjo-soft);
     }
     .submit select {
-      background: var(--bg-2);
+      background: rgba(8,8,20,0.55);
       color: var(--fg);
       border: 1px solid var(--line);
       border-radius: 6px;
-      padding: 8px 10px;
+      padding: 9px 12px;
       font-family: var(--mono);
-      font-size: 0.78rem;
+      font-size: 0.74rem;
       text-transform: uppercase;
-      letter-spacing: 0.08em;
-      height: 36px;
+      letter-spacing: 0.10em;
+      height: 40px;
       cursor: pointer;
     }
-    .submit button {
-      background: var(--konjo);
-      color: white;
+
+    /* Ship's wheel launch button */
+    .wheel {
+      width: 44px; height: 44px;
+      position: relative;
+      border-radius: 50%;
+      border: 2px solid var(--gold-dim);
+      background: radial-gradient(circle at 30% 30%, var(--brass) 0%, #3a2a14 70%);
+      box-shadow: 0 0 16px rgba(212,169,106,0.18), inset 0 0 8px rgba(0,0,0,0.6);
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: transform 0.4s ease;
+    }
+    .wheel::before, .wheel::after {
+      content: "";
+      position: absolute;
+      inset: 5px;
+      border-radius: 50%;
+      border: 1px solid var(--gold-dim);
+    }
+    .wheel::after {
+      inset: 11px;
+      background: radial-gradient(circle, var(--gold) 30%, transparent 70%);
       border: none;
-      border-radius: 6px;
-      padding: 0 18px;
-      height: 36px;
-      font-family: var(--mono);
-      font-size: 0.78rem;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      font-weight: 600;
-      cursor: pointer;
-      transition: background 0.15s ease, transform 0.05s ease;
+      box-shadow: 0 0 6px var(--gold);
     }
-    .submit button:hover { background: #6d28d9; }
-    .submit button:active { transform: translateY(1px); }
-    .submit button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .wheel .spoke {
+      position: absolute;
+      left: 50%; top: 50%;
+      width: 2px; height: 50%;
+      background: var(--gold-dim);
+      transform-origin: top center;
+    }
+    .wheel .s1 { transform: translate(-50%, -50%) rotate(0deg); }
+    .wheel .s2 { transform: translate(-50%, -50%) rotate(45deg); }
+    .wheel .s3 { transform: translate(-50%, -50%) rotate(90deg); }
+    .wheel .s4 { transform: translate(-50%, -50%) rotate(135deg); }
+    .wheel:hover { transform: rotate(15deg); }
+    .wheel.spinning { animation: wheelspin 0.8s ease-out; }
+    @keyframes wheelspin {
+      from { transform: rotate(0deg); }
+      to   { transform: rotate(360deg); }
+    }
+    .wheel:disabled, .wheel[disabled] { opacity: 0.4; cursor: not-allowed; }
 
     .conn {
       font-family: var(--mono);
-      font-size: 0.7rem;
+      font-size: 0.66rem;
       text-transform: uppercase;
-      letter-spacing: 0.12em;
+      letter-spacing: 0.14em;
       display: flex; align-items: center; gap: 6px;
       color: var(--fg-mute);
     }
@@ -153,295 +251,326 @@
       width: 8px; height: 8px; border-radius: 50%;
       background: var(--err);
     }
-    .conn.live .led { background: var(--ok); box-shadow: 0 0 8px rgba(34, 197, 94, 0.7); }
+    .conn.live .led {
+      background: var(--ok);
+      box-shadow: 0 0 8px var(--ok);
+    }
 
-    /* PANEL — generic */
-    .panel {
-      background: var(--bg-1);
-      display: flex;
-      flex-direction: column;
-      min-height: 0;
+    /*  ──────────────  harbor (queued tasks dock)  ──────────────  */
+    .harbor {
+      grid-area: harbor;
+      background: linear-gradient(90deg, rgba(3,3,10,0.78) 0%, rgba(3,3,10,0.10) 100%);
+      backdrop-filter: blur(6px);
+      border-right: 1px solid var(--line);
+      padding: 16px 14px;
+      overflow-y: auto;
     }
     .panel-h {
-      padding: 12px 16px;
       font-family: var(--mono);
-      font-size: 0.68rem;
+      font-size: 0.66rem;
       text-transform: uppercase;
       letter-spacing: 0.18em;
       color: var(--fg-mute);
-      border-bottom: 1px solid var(--line);
+      margin-bottom: 10px;
       display: flex; justify-content: space-between; align-items: center;
     }
     .panel-h .count {
       background: var(--konjo-soft);
-      color: var(--konjo);
+      color: var(--konjo-2);
       border-radius: 999px;
       padding: 2px 8px;
-      font-size: 0.62rem;
-      letter-spacing: 0.1em;
+      font-size: 0.6rem;
+      letter-spacing: 0.08em;
     }
-    .panel-body { flex: 1; overflow-y: auto; padding: 8px; }
-
-    .panel-body::-webkit-scrollbar { width: 8px; }
-    .panel-body::-webkit-scrollbar-track { background: transparent; }
-    .panel-body::-webkit-scrollbar-thumb {
-      background: var(--bg-3); border-radius: 4px;
-    }
-
-    /* QUEUE */
-    .queue { grid-area: queue; }
-    .task-row {
-      padding: 10px 12px;
+    .dock-row {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 10px;
       border-radius: 6px;
       cursor: pointer;
-      margin-bottom: 4px;
-      transition: background 0.1s ease;
+      margin-bottom: 6px;
       border: 1px solid transparent;
+      transition: background 0.1s;
     }
-    .task-row:hover { background: var(--bg-2); }
-    .task-row.selected {
-      background: var(--konjo-soft);
-      border-color: var(--konjo-dim);
+    .dock-row:hover { background: rgba(255,255,255,0.04); }
+    .dock-row.selected { background: var(--konjo-soft); border-color: var(--konjo); }
+    .dock-row .mini-boat {
+      width: 22px; height: 18px; flex-shrink: 0;
+      animation: bob 3.2s ease-in-out infinite;
     }
-    .task-row .goal {
-      font-size: 0.82rem;
-      line-height: 1.35;
+    .dock-row.queued .mini-boat { animation-delay: -1.2s; }
+    @keyframes bob {
+      0%, 100% { transform: translateY(0) rotate(-2deg); }
+      50%      { transform: translateY(-3px) rotate(2deg); }
+    }
+    .dock-row .info { flex: 1; min-width: 0; }
+    .dock-row .goal {
+      font-size: 0.8rem;
+      line-height: 1.3;
       color: var(--fg);
       overflow: hidden;
       display: -webkit-box;
       -webkit-line-clamp: 2;
       -webkit-box-orient: vertical;
     }
-    .task-row .meta {
-      margin-top: 6px;
+    .dock-row .meta {
+      margin-top: 4px;
       font-family: var(--mono);
-      font-size: 0.62rem;
+      font-size: 0.6rem;
       color: var(--fg-mute);
       display: flex; justify-content: space-between;
     }
-
-    /* AGENT GRID */
-    .grid-area {
-      grid-area: grid;
-      background: var(--bg-0);
-      display: flex; flex-direction: column;
-      min-height: 0;
-    }
-    .grid-h {
-      padding: 12px 20px;
+    .pill {
       font-family: var(--mono);
-      font-size: 0.68rem;
+      font-size: 0.56rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      padding: 2px 6px;
+      border-radius: 999px;
+      white-space: nowrap;
+    }
+    .pill.running { background: var(--konjo-soft); color: var(--konjo-2); }
+    .pill.success { background: rgba(91,227,155,0.12); color: var(--ok); }
+    .pill.failed  { background: rgba(239,68,68,0.13); color: var(--err); }
+    .pill.queued  { background: rgba(255,255,255,0.05); color: var(--fg-dim); }
+
+    /*  ──────────────  scene — the orb  ──────────────  */
+    .scene {
+      grid-area: scene;
+      position: relative;
+      overflow: hidden;
+    }
+    .scene svg.orb {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+    }
+    .scene .scene-h {
+      position: absolute; top: 12px; left: 18px;
+      font-family: var(--mono);
+      font-size: 0.66rem;
       text-transform: uppercase;
       letter-spacing: 0.18em;
       color: var(--fg-mute);
-      border-bottom: 1px solid var(--line);
-      display: flex; justify-content: space-between; align-items: center;
+      z-index: 4;
     }
-    .grid-body {
-      flex: 1; overflow-y: auto;
-      padding: 16px;
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-      grid-auto-rows: min-content;
-      gap: 12px;
-      align-content: start;
-    }
-    .grid-empty {
-      grid-column: 1 / -1;
-      text-align: center;
-      color: var(--fg-mute);
-      font-family: var(--mono);
-      font-size: 0.78rem;
-      padding: 80px 0;
-    }
+    .scene .scene-h .live { color: var(--konjo-2); }
 
-    .agent {
-      background: var(--bg-1);
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 14px;
-      position: relative;
-      overflow: hidden;
+    /*  ──────────────  log panel  ──────────────  */
+    .log-panel {
+      grid-area: log;
+      background: linear-gradient(270deg, rgba(3,3,10,0.78) 0%, rgba(3,3,10,0.10) 100%);
+      backdrop-filter: blur(6px);
+      border-left: 1px solid var(--line);
+      display: flex; flex-direction: column;
+      min-height: 0;
     }
-    .agent::before {
-      content: "";
-      position: absolute; inset: 0; pointer-events: none;
-      background: linear-gradient(180deg, var(--konjo-soft) 0%, transparent 30%);
-      opacity: 0.7;
+    .log-panel .panel-h {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+      margin-bottom: 0;
     }
-    .agent-h { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
-    .agent-goal {
-      font-size: 0.85rem;
-      line-height: 1.4;
+    .log-stream {
       flex: 1;
-      overflow: hidden;
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
-      position: relative;
-    }
-    .pill {
-      font-family: var(--mono);
-      font-size: 0.6rem;
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
-      padding: 3px 8px;
-      border-radius: 999px;
-      white-space: nowrap;
-      flex-shrink: 0;
-    }
-    .pill.running { background: var(--konjo-soft); color: var(--konjo); }
-    .pill.success { background: rgba(34, 197, 94, 0.15); color: var(--ok); }
-    .pill.failed { background: rgba(239, 68, 68, 0.15); color: var(--err); }
-    .pill.queued { background: rgba(255, 255, 255, 0.06); color: var(--fg-dim); }
-
-    .agent-meta {
-      margin-top: 10px;
-      font-family: var(--mono);
-      font-size: 0.66rem;
-      color: var(--fg-mute);
-      display: flex; gap: 12px;
-      position: relative;
-    }
-    .score-bar {
-      margin-top: 10px;
-      height: 4px;
-      background: var(--bg-3);
-      border-radius: 2px;
-      overflow: hidden;
-      position: relative;
-    }
-    .score-bar > span {
-      display: block; height: 100%;
-      background: linear-gradient(90deg, var(--konjo) 0%, #a78bfa 100%);
-      width: 0;
-      transition: width 0.4s ease;
-    }
-    .agent-actions {
-      margin-top: 10px;
-      display: flex; gap: 6px;
-      position: relative;
-    }
-    .btn-cancel {
-      background: transparent;
-      color: var(--fg-mute);
-      border: 1px solid var(--line);
-      border-radius: 4px;
-      padding: 4px 10px;
-      font-family: var(--mono);
-      font-size: 0.62rem;
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
-      cursor: pointer;
-    }
-    .btn-cancel:hover { color: var(--err); border-color: var(--err); }
-
-    /* CONSTELLATION */
-    .constellation {
-      height: 140px;
-      border-bottom: 1px solid var(--line);
-      background: radial-gradient(circle at center, rgba(124, 58, 237, 0.06) 0%, transparent 70%);
-      position: relative;
-    }
-    .constellation svg { width: 100%; height: 100%; display: block; }
-    .star {
-      fill: var(--konjo);
-      filter: drop-shadow(0 0 4px var(--konjo));
-    }
-    .star.active {
-      animation: starPulse 1.6s ease-in-out infinite;
-    }
-    @keyframes starPulse {
-      0%, 100% { r: 4; opacity: 1; }
-      50% { r: 6; opacity: 0.7; }
-    }
-    .link {
-      stroke: var(--konjo-dim);
-      stroke-width: 1;
-      fill: none;
-    }
-
-    /* LOG */
-    .log { grid-area: log; }
-    .log-body {
+      overflow-y: auto;
+      padding: 8px 14px;
       font-family: var(--mono);
       font-size: 0.74rem;
-      line-height: 1.5;
-      padding: 8px 12px;
+      line-height: 1.55;
     }
     .log-line {
-      padding: 2px 0;
+      padding: 2px 0 2px 8px;
+      margin-left: -10px;
+      border-left: 2px solid transparent;
       word-break: break-word;
       white-space: pre-wrap;
-      border-left: 2px solid transparent;
-      padding-left: 8px;
-      margin-left: -10px;
     }
-    .log-line.info    { color: var(--info); }
+    .log-line .ts { color: var(--fg-mute); margin-right: 6px; }
+    .log-line.info    { color: var(--fg); }
     .log-line.warn    { color: var(--warn); border-left-color: var(--warn); }
     .log-line.error   { color: var(--err);  border-left-color: var(--err); }
     .log-line.success { color: var(--ok);   border-left-color: var(--ok); }
     .log-line.debug   { color: var(--fg-mute); }
-    .log-line .ts {
-      color: var(--fg-mute);
-      margin-right: 6px;
+
+    /*  ──────────────  instrument panel — ship's brass  ──────────────  */
+    .instr {
+      grid-area: instr;
+      background: linear-gradient(0deg, rgba(8,8,18,0.92) 0%, rgba(8,8,18,0.40) 100%);
+      backdrop-filter: blur(8px);
+      border-top: 1px solid var(--gold-dim);
+      padding: 12px 22px;
+      display: flex; align-items: center; gap: 28px;
+      font-family: var(--mono);
+    }
+    .gauge {
+      display: flex; align-items: center; gap: 10px;
+    }
+    .gauge .face {
+      width: 56px; height: 56px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 30% 25%, #1a1b26 0%, #050610 80%);
+      border: 1px solid var(--gold-dim);
+      box-shadow: inset 0 0 8px rgba(0,0,0,0.7), 0 0 6px rgba(212,169,106,0.10);
+      position: relative;
+    }
+    .gauge .face::before {
+      content: "";
+      position: absolute; inset: 5px;
+      border-radius: 50%;
+      border: 1px dashed rgba(212,169,106,0.25);
+    }
+    .gauge .needle {
+      position: absolute;
+      left: 50%; top: 50%;
+      width: 2px; height: 38%;
+      background: linear-gradient(to top, transparent 0%, var(--gold) 60%);
+      transform-origin: bottom center;
+      transform: translate(-50%, -100%) rotate(-90deg);
+      transition: transform 0.6s ease;
+      filter: drop-shadow(0 0 3px var(--gold));
+    }
+    .gauge .pivot {
+      position: absolute;
+      left: 50%; top: 50%;
+      width: 8px; height: 8px;
+      background: var(--gold);
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      box-shadow: 0 0 4px var(--gold);
+    }
+    .gauge .label-block {
+      display: flex; flex-direction: column;
+      gap: 1px;
+    }
+    .gauge .k {
+      font-size: 0.58rem;
+      text-transform: uppercase;
+      letter-spacing: 0.16em;
+      color: var(--gold-dim);
+    }
+    .gauge .v {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--gold);
     }
 
-    /* STATS */
-    .stats-bar {
-      grid-area: stats;
-      background: var(--bg-1);
-      border-top: 1px solid var(--line);
-      padding: 10px 20px;
-      display: flex; gap: 24px; align-items: center;
-      font-family: var(--mono);
-      font-size: 0.72rem;
+    /* Compass — single needle that rotates by success rate */
+    .compass .face::after {
+      content: "N";
+      position: absolute;
+      top: 4px; left: 50%;
+      transform: translateX(-50%);
+      font-size: 0.55rem;
+      color: var(--gold);
+      letter-spacing: 0.15em;
     }
-    .stat {
-      display: flex; align-items: baseline; gap: 6px;
-    }
-    .stat .k {
-      color: var(--fg-mute);
-      text-transform: uppercase;
-      letter-spacing: 0.12em;
-      font-size: 0.62rem;
-    }
-    .stat .v { color: var(--fg); font-weight: 600; }
-    .stat .v.konjo { color: var(--konjo); }
 
-    /* fallback notice */
-    .fallback-banner {
-      margin-left: auto;
-      font-family: var(--mono);
-      font-size: 0.62rem;
-      text-transform: uppercase;
-      letter-spacing: 0.12em;
-      color: var(--fg-mute);
+    /*  ──────────────  scrollbars  ──────────────  */
+    ::-webkit-scrollbar { width: 8px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(124,58,237,0.18); border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(124,58,237,0.34); }
+
+    /*  ──────────────  orb internals  ──────────────  */
+    .boat-group { transition: transform 0.6s cubic-bezier(.4,.1,.2,1); }
+    .boat-hull  { fill: var(--konjo); filter: drop-shadow(0 0 4px var(--konjo)); }
+    .boat-mast  { stroke: var(--konjo-2); stroke-width: 1.2; }
+    .boat-sail  { fill: rgba(167,139,250,0.55); stroke: var(--konjo-2); stroke-width: 0.8; }
+    .boat-aura  {
+      fill: var(--konjo); opacity: 0.18;
+      filter: blur(6px);
     }
-    .fallback-banner code {
-      background: var(--bg-2);
-      padding: 2px 6px;
-      border-radius: 3px;
-      color: var(--konjo);
+    .boat-group.thinking .boat-aura { animation: aura-pulse 1.6s ease-in-out infinite; }
+    .boat-group.acting   .boat-aura { animation: aura-pulse 0.7s ease-in-out infinite; }
+    .boat-group.died     .boat-hull { fill: rgba(239,68,68,0.65); filter: none; }
+    .boat-group.success  .boat-hull { fill: var(--ok); filter: drop-shadow(0 0 6px var(--ok)); }
+
+    @keyframes aura-pulse {
+      0%, 100% { opacity: 0.10; transform: scale(1.0); }
+      50%      { opacity: 0.55; transform: scale(1.4); }
+    }
+    .wake { stroke: rgba(167,139,250,0.55); stroke-width: 1.2; fill: none; }
+    .fleet-line {
+      stroke: rgba(124,58,237,0.4);
+      stroke-width: 1;
+      fill: none;
+      stroke-dasharray: 4 6;
+      animation: dash 30s linear infinite;
+    }
+    @keyframes dash { to { stroke-dashoffset: -200; } }
+
+    .trail {
+      stroke: rgba(167,139,250,0.4);
+      stroke-width: 1;
+      fill: none;
+    }
+    .score-float {
+      font-family: var(--mono);
+      font-size: 11px;
+      fill: var(--konjo-2);
+      animation: float-up 1.6s ease-out forwards;
+    }
+    @keyframes float-up {
+      from { transform: translateY(0); opacity: 1; }
+      to   { transform: translateY(-30px); opacity: 0; }
+    }
+
+    .empty {
+      position: absolute; inset: 0;
+      display: grid; place-items: center;
+      color: var(--fg-mute);
+      font-family: var(--mono);
+      font-size: 0.74rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      pointer-events: none;
+    }
+    .empty .glyph {
+      font-family: "Noto Sans Lontara", "Lontara", serif;
+      font-size: 5rem;
+      color: var(--konjo-soft);
+      filter: drop-shadow(0 0 12px var(--konjo));
+      letter-spacing: 0.1em;
+      margin-bottom: 8px;
+    }
+
+    /* Birth flash */
+    @keyframes birth {
+      from { opacity: 0; transform: scale(2.5); }
+      to   { opacity: 1; transform: scale(1); }
+    }
+    .boat-group.born { animation: birth 0.8s ease-out; }
+
+    /* Death — sail offscreen */
+    @keyframes sail-off {
+      to { transform: translateX(120vw); opacity: 0; }
     }
   </style>
 </head>
 <body>
-  <div class="app">
+  <div class="bg"></div>
+  <div class="aurora"></div>
+  <div class="lontara">ᨒᨚᨄᨗ</div>
+  <div class="sea"></div>
+
+  <div class="chrome">
     <header class="topbar">
       <div class="brand">
-        <span class="dot"></span> lopi <span class="tag">forge</span>
+        <span class="glyph">ᨒᨚᨄᨗ</span>
+        <span>lopi</span>
+        <span class="tag">forge</span>
       </div>
 
       <form class="submit" id="submit-form" onsubmit="return false;">
-        <textarea id="goal-input" placeholder="describe a goal — e.g. fix flaky test in foo::bar" rows="1"></textarea>
-        <select id="priority-input">
+        <textarea id="goal-input" placeholder="describe a goal — set sail with a mission" rows="1"></textarea>
+        <select id="priority-input" title="priority">
           <option value="low">low</option>
           <option value="normal" selected>normal</option>
           <option value="high">high</option>
           <option value="critical">critical</option>
         </select>
-        <button id="submit-btn" type="submit">submit</button>
+        <button class="wheel" id="submit-btn" type="submit" aria-label="launch">
+          <span class="spoke s1"></span><span class="spoke s2"></span>
+          <span class="spoke s3"></span><span class="spoke s4"></span>
+        </button>
       </form>
 
       <div class="conn" id="conn">
@@ -450,460 +579,586 @@
       </div>
     </header>
 
-    <aside class="panel queue">
-      <div class="panel-h">
-        <span>task queue</span>
-        <span class="count" id="task-count">0</span>
-      </div>
-      <div class="panel-body" id="task-list"></div>
+    <aside class="harbor">
+      <div class="panel-h"><span>harbor</span><span class="count" id="task-count">0</span></div>
+      <div id="dock-list"></div>
     </aside>
 
-    <main class="grid-area">
-      <div class="grid-h">
-        <span>active agents</span>
-        <span id="agent-meta">0 running · constellation</span>
-      </div>
-      <div class="constellation"><svg id="constellation-svg" viewBox="0 0 600 140" preserveAspectRatio="xMidYMid meet"></svg></div>
-      <div class="grid-body" id="agent-grid">
-        <div class="grid-empty">no active agents — submit a goal above to begin</div>
+    <main class="scene">
+      <div class="scene-h"><span class="live" id="live-count">0</span> · sailing the forge</div>
+      <svg class="orb" id="orb" viewBox="0 0 1000 600" preserveAspectRatio="xMidYMid meet"></svg>
+      <div class="empty" id="empty-state">
+        <div class="glyph">ᨒᨚᨄᨗ</div>
+        <div>the harbor sleeps — launch a mission</div>
       </div>
     </main>
 
-    <aside class="panel log">
-      <div class="panel-h">
-        <span>activity log</span>
-        <span class="count" id="log-count">0</span>
-      </div>
-      <div class="panel-body log-body" id="log-stream"></div>
+    <aside class="log-panel">
+      <div class="panel-h"><span>activity</span><span class="count" id="log-count">0</span></div>
+      <div class="log-stream" id="log-stream"></div>
     </aside>
 
-    <footer class="stats-bar">
-      <div class="stat"><span class="k">tasks</span><span class="v" id="stat-total">0</span></div>
-      <div class="stat"><span class="k">running</span><span class="v konjo" id="stat-running">0</span></div>
-      <div class="stat"><span class="k">queued</span><span class="v" id="stat-queued">0</span></div>
-      <div class="stat"><span class="k">success</span><span class="v" id="stat-success">0</span></div>
-      <div class="stat"><span class="k">failed</span><span class="v" id="stat-failed">0</span></div>
-      <div class="stat"><span class="k">success rate</span><span class="v" id="stat-rate">—</span></div>
-      <div class="stat"><span class="k">uptime</span><span class="v" id="stat-uptime">0s</span></div>
-      <div class="fallback-banner">embedded fallback — full Forge: <code>cd web &amp;&amp; npm run build</code></div>
+    <footer class="instr">
+      <div class="gauge compass" title="success rate">
+        <div class="face">
+          <div class="needle" id="needle-compass"></div>
+          <div class="pivot"></div>
+        </div>
+        <div class="label-block"><span class="k">compass</span><span class="v" id="g-rate">—</span></div>
+      </div>
+      <div class="gauge speedometer" title="average score">
+        <div class="face">
+          <div class="needle" id="needle-speed"></div>
+          <div class="pivot"></div>
+        </div>
+        <div class="label-block"><span class="k">avg score</span><span class="v" id="g-score">—</span></div>
+      </div>
+      <div class="gauge depth" title="memory depth (running + queued)">
+        <div class="face">
+          <div class="needle" id="needle-depth"></div>
+          <div class="pivot"></div>
+        </div>
+        <div class="label-block"><span class="k">depth</span><span class="v" id="g-depth">0</span></div>
+      </div>
+      <div class="gauge chrono" title="uptime">
+        <div class="face">
+          <div class="needle" id="needle-chrono"></div>
+          <div class="pivot"></div>
+        </div>
+        <div class="label-block"><span class="k">chronometer</span><span class="v" id="g-uptime">0s</span></div>
+      </div>
+      <div style="margin-left:auto; font-size:0.62rem; color:var(--fg-mute); letter-spacing:0.12em; text-transform:uppercase;">
+        embedded fallback — full Forge: <span style="color:var(--konjo-2)">cd web &amp;&amp; npm run build</span>
+      </div>
     </footer>
   </div>
 
   <script>
-    "use strict";
+  "use strict";
+  /* ========================================================
+     The Forge — agent shipyard runtime
+     -------------------------------------------------------- */
 
-    // -------- State --------
-    const state = {
-      tasks: new Map(),
-      agents: new Map(),
-      logs: [],
-      stats: { running: 0, queued: 0, succeeded: 0, failed: 0, uptime_secs: 0 },
-      selected: null,
-      ws: null,
-      backoff: 1000,
-    };
+  const MAX_LOGS = 500;
+  const $ = (id) => document.getElementById(id);
+  const SVG_NS = "http://www.w3.org/2000/svg";
+  const VB = { w: 1000, h: 600 };
 
-    const MAX_LOGS = 500;
-    const $ = (id) => document.getElementById(id);
+  /* -------- State -------- */
+  const state = {
+    tasks: new Map(),       // id → { id, goal, status, created_at }
+    agents: new Map(),      // task_id → { task_id, goal, attempt, elapsed_ms, score, phase, x, y, branch }
+    layout: new Map(),      // task_id → { x, y } from /api/constellation
+    links: [],              // [{a, b, similarity}]
+    logs: [],
+    stats: { running: 0, queued: 0, succeeded: 0, failed: 0, uptime_secs: 0 },
+    avgScore: 0,
+    memoryTrails: [],       // [{points: [{x,y}], born: ts, opacity}]
+    selected: null,
+    ws: null,
+    backoff: 1000,
+  };
 
-    // -------- Rendering --------
-    function renderTasks() {
-      const list = $("task-list");
-      list.innerHTML = "";
-      const arr = Array.from(state.tasks.values()).sort((a, b) => {
-        const ta = a.created_at || "";
-        const tb = b.created_at || "";
-        return tb.localeCompare(ta);
+  /* -------- WebSocket -------- */
+  function connect() {
+    const proto = location.protocol === "https:" ? "wss:" : "ws:";
+    const ws = new WebSocket(`${proto}//${location.host}/ws`);
+    state.ws = ws;
+    setConn("connecting", false);
+    ws.onopen   = () => { setConn("live", true); state.backoff = 1000; };
+    ws.onclose  = () => { setConn("offline", false); setTimeout(connect, state.backoff);
+                         state.backoff = Math.min(state.backoff * 2, 15000); };
+    ws.onerror  = () => ws.close();
+    ws.onmessage = (e) => { try { handleMessage(JSON.parse(e.data)); } catch (_) {} };
+  }
+
+  function setConn(text, live) {
+    $("conn-text").textContent = text;
+    $("conn").classList.toggle("live", !!live);
+  }
+
+  function handleMessage(msg) {
+    switch (msg.type) {
+      case "snapshot": {
+        state.tasks.clear();
+        (msg.tasks || []).forEach((t) => state.tasks.set(t.id, t));
+        state.agents.clear();
+        (msg.agents || []).forEach((a) => state.agents.set(a.task_id, {
+          ...a, score: 0, phase: "thinking",
+        }));
+        if (msg.stats) state.stats = msg.stats;
+        refreshConstellation(); renderAll();
+        break;
+      }
+      case "task_queued":
+        state.tasks.set(tid(msg), {
+          id: tid(msg), goal: msg.goal, status: "queued",
+          created_at: new Date().toISOString(),
+        });
+        renderHarbor();
+        appendLog("info", `queued: ${msg.goal}`);
+        break;
+      case "task_started": {
+        const id = tid(msg);
+        const goal = state.tasks.get(id)?.goal || "";
+        state.agents.set(id, {
+          task_id: id, goal,
+          attempt: msg.attempt, elapsed_ms: 0, score: 0,
+          phase: "born", branch: msg.branch,
+        });
+        updateTaskStatus(id, "running");
+        appendLog("info", `started attempt ${msg.attempt} on ${msg.branch}`);
+        refreshConstellation(); renderAll();
+        break;
+      }
+      case "lifecycle": {
+        const id = tid(msg);
+        const a = state.agents.get(id);
+        if (!a) break;
+        a.phase = msg.phase;
+        if (msg.score != null) a.score = msg.score;
+        if (msg.branch) a.branch = msg.branch;
+        if (msg.phase === "scored") {
+          floatScore(id, msg.score);
+        } else if (msg.phase === "died") {
+          // boat sails off-screen / shatters; cleanup happens in task_completed
+          a.duration_ms = msg.duration_ms || a.elapsed_ms;
+        } else if (msg.phase === "born") {
+          // birth flash already rendered by re-render
+        }
+        renderAgents();
+        break;
+      }
+      case "status_changed":
+        updateTaskStatus(tid(msg), msg.status);
+        renderHarbor();
+        break;
+      case "log_line":
+        appendLog(msg.level || "info", msg.line, msg.ts);
+        break;
+      case "score_updated": {
+        const a = state.agents.get(tid(msg));
+        if (a) {
+          a.score = clamp(msg.test_pass_rate || 0, 0, 1);
+          renderAgents();
+        }
+        break;
+      }
+      case "turn_metrics": {
+        const a = state.agents.get(tid(msg));
+        if (a) {
+          a.activity = msg.activity || 0;
+          renderAgents();
+        }
+        break;
+      }
+      case "task_completed": {
+        const id = tid(msg);
+        const outcome = (typeof msg.outcome === "object" && msg.outcome)
+          ? Object.keys(msg.outcome)[0]
+          : String(msg.outcome || "done");
+        const success = outcome.toLowerCase().includes("success");
+        const a = state.agents.get(id);
+        if (a) {
+          // record memory trail at this agent's last position
+          const pos = state.layout.get(id);
+          if (pos) {
+            state.memoryTrails.push({
+              points: [pos],
+              born: Date.now(),
+              success,
+            });
+            // cap trails
+            if (state.memoryTrails.length > 40) state.memoryTrails.shift();
+          }
+        }
+        state.agents.delete(id);
+        state.layout.delete(id);
+        updateTaskStatus(id, outcome);
+        appendLog(success ? "success" : "error",
+          `task ${id.slice(0, 8)} ${outcome} after ${msg.total_attempts} attempt(s)`);
+        refreshConstellation();
+        renderAll();
+        break;
+      }
+      case "task_cancelled":
+        state.agents.delete(tid(msg));
+        state.layout.delete(tid(msg));
+        updateTaskStatus(tid(msg), "cancelled");
+        appendLog("warn", `task ${tid(msg).slice(0, 8)} cancelled`);
+        refreshConstellation();
+        renderAll();
+        break;
+      case "pool_stats":
+        state.stats = {
+          running: msg.running, queued: msg.queued,
+          succeeded: msg.succeeded, failed: msg.failed,
+          uptime_secs: msg.uptime_secs,
+        };
+        renderInstruments();
+        break;
+    }
+  }
+
+  /* -------- API actions -------- */
+  async function submitTask() {
+    const goal = $("goal-input").value.trim();
+    const priority = $("priority-input").value;
+    if (!goal) return;
+    const wheel = $("submit-btn");
+    wheel.classList.add("spinning");
+    setTimeout(() => wheel.classList.remove("spinning"), 800);
+    try {
+      const resp = await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ goal, priority }),
       });
-      $("task-count").textContent = arr.length;
-      for (const t of arr) {
-        const row = document.createElement("div");
-        row.className = "task-row" + (state.selected === t.id ? " selected" : "");
-        row.onclick = () => { state.selected = t.id; renderTasks(); };
-        const status = (t.status || "").toString().toLowerCase();
-        const pillClass = status.includes("success") ? "success"
-          : status.includes("fail") ? "failed"
-          : status.includes("run") ? "running"
-          : "queued";
-        row.innerHTML = `
+      if (!resp.ok) {
+        appendLog("error", `submit failed (${resp.status})`);
+      } else {
+        $("goal-input").value = "";
+        appendLog("success", `launched: ${goal}`);
+      }
+    } catch (e) {
+      appendLog("error", `submit error: ${e}`);
+    }
+  }
+
+  async function cancelTask(id) {
+    try {
+      const r = await fetch(`/api/tasks/${encodeURIComponent(id)}`, { method: "DELETE" });
+      if (!r.ok) appendLog("error", `cancel failed (${r.status})`);
+    } catch (e) {
+      appendLog("error", `cancel error: ${e}`);
+    }
+  }
+
+  /* -------- Constellation refresh -------- */
+  let constellationInflight = false;
+  async function refreshConstellation() {
+    if (constellationInflight) return;
+    constellationInflight = true;
+    try {
+      const r = await fetch("/api/constellation");
+      if (!r.ok) return;
+      const d = await r.json();
+      state.layout.clear();
+      (d.nodes || []).forEach((n) => {
+        state.layout.set(n.task_id, {
+          x: n.x * VB.w, y: n.y * VB.h,
+        });
+      });
+      // Resolve link indices into task_ids for stable rendering.
+      state.links = (d.links || []).map((l) => ({
+        a: d.nodes[l.a]?.task_id,
+        b: d.nodes[l.b]?.task_id,
+        similarity: l.similarity,
+      })).filter((l) => l.a && l.b);
+      renderAgents();
+    } catch (_) {
+      // ignore — orb still renders from last known layout
+    } finally {
+      constellationInflight = false;
+    }
+  }
+  // Lightweight periodic refresh while agents are sailing.
+  setInterval(() => { if (state.agents.size > 0) refreshConstellation(); }, 4000);
+
+  /* -------- Renderers -------- */
+  function renderAll() {
+    renderHarbor();
+    renderAgents();
+    renderLogs();
+    renderInstruments();
+  }
+
+  function renderHarbor() {
+    const list = $("dock-list");
+    list.innerHTML = "";
+    const arr = Array.from(state.tasks.values()).sort((a, b) =>
+      (b.created_at || "").localeCompare(a.created_at || ""));
+    $("task-count").textContent = arr.length;
+    for (const t of arr) {
+      const status = (t.status || "").toString().toLowerCase();
+      const cls = status.includes("success") ? "success"
+        : status.includes("fail") ? "failed"
+        : status.includes("run") ? "running" : "queued";
+      const row = document.createElement("div");
+      row.className = "dock-row " + cls + (state.selected === t.id ? " selected" : "");
+      row.onclick = () => { state.selected = t.id; renderHarbor(); };
+      row.innerHTML = `
+        <svg class="mini-boat" viewBox="0 0 22 18">
+          <path class="boat-hull" d="M2,12 L20,12 L17,16 L5,16 Z" />
+          <line class="boat-mast" x1="11" y1="12" x2="11" y2="3" />
+          <path class="boat-sail" d="M11,3 L11,11 L17,11 Z" />
+        </svg>
+        <div class="info">
           <div class="goal"></div>
           <div class="meta">
-            <span class="pill ${pillClass}">${escapeHtml(status || "queued")}</span>
+            <span class="pill ${cls}">${escapeHtml(status || "queued")}</span>
             <span>${escapeHtml((t.id || "").slice(0, 8))}</span>
-          </div>`;
-        row.querySelector(".goal").textContent = t.goal || "(no goal)";
-        list.appendChild(row);
-      }
-    }
-
-    function renderAgents() {
-      const grid = $("agent-grid");
-      grid.innerHTML = "";
-      $("agent-meta").textContent = `${state.agents.size} running · constellation`;
-      if (state.agents.size === 0) {
-        const empty = document.createElement("div");
-        empty.className = "grid-empty";
-        empty.textContent = "no active agents — submit a goal above to begin";
-        grid.appendChild(empty);
-        renderConstellation();
-        return;
-      }
-      for (const a of state.agents.values()) {
-        const card = document.createElement("div");
-        card.className = "agent";
-        const score = clamp(a.score ?? 0, 0, 1);
-        card.innerHTML = `
-          <div class="agent-h">
-            <div class="agent-goal"></div>
-            <span class="pill running">attempt ${a.attempt ?? 0}</span>
           </div>
-          <div class="agent-meta">
-            <span data-elapsed="${a.task_id}">${formatElapsed(a.elapsed_ms || 0)}</span>
-            <span>${escapeHtml((a.task_id || "").slice(0, 8))}</span>
-          </div>
-          <div class="score-bar"><span style="width:${(score * 100).toFixed(1)}%"></span></div>
-          <div class="agent-actions">
-            <button class="btn-cancel" data-cancel="${a.task_id}">cancel</button>
-          </div>`;
-        card.querySelector(".agent-goal").textContent = a.goal || "(no goal)";
-        card.querySelector(".btn-cancel").onclick = () => cancelTask(a.task_id);
-        grid.appendChild(card);
-      }
-      renderConstellation();
+        </div>`;
+      row.querySelector(".goal").textContent = t.goal || "(no goal)";
+      list.appendChild(row);
     }
+  }
 
-    function renderConstellation() {
-      const svg = $("constellation-svg");
-      const w = 600, h = 140;
-      const ids = Array.from(state.agents.keys());
-      const cx = w / 2, cy = h / 2;
-      const r = Math.min(w, h) * 0.35;
-      svg.innerHTML = "";
-      if (ids.length === 0) {
-        const t = svgEl("text", { x: cx, y: cy + 4, "text-anchor": "middle",
-          fill: "rgba(245,245,247,0.32)", "font-family": "ui-monospace, SF Mono, monospace",
-          "font-size": "10", "letter-spacing": "0.18em" });
-        t.textContent = "AWAITING AGENTS";
-        svg.appendChild(t);
-        return;
-      }
-      const positions = ids.map((id, i) => {
-        const angle = (i / ids.length) * Math.PI * 2 - Math.PI / 2;
-        return { id, x: cx + Math.cos(angle) * r, y: cy + Math.sin(angle) * r };
+  function renderAgents() {
+    const orb = $("orb");
+    orb.innerHTML = "";
+    $("live-count").textContent = state.agents.size;
+    $("empty-state").style.display = state.agents.size === 0 ? "grid" : "none";
+
+    // Memory trails (rendered first, behind everything else).
+    const now = Date.now();
+    state.memoryTrails = state.memoryTrails.filter((t) => now - t.born < 60_000);
+    for (const t of state.memoryTrails) {
+      const age = (now - t.born) / 60_000;
+      const opacity = Math.max(0, 0.4 * (1 - age));
+      const p = t.points[0];
+      if (!p) continue;
+      const trail = svgEl("circle", {
+        cx: p.x, cy: p.y, r: 14 + age * 20,
+        fill: "none",
+        stroke: t.success ? "rgba(91,227,155,0.6)" : "rgba(239,68,68,0.4)",
+        "stroke-width": "1",
+        opacity: String(opacity),
       });
-      // Links: connect agents sharing a branch keyword (cheap heuristic on goal prefix).
-      for (let i = 0; i < positions.length; i++) {
-        for (let j = i + 1; j < positions.length; j++) {
-          if (sharesBranch(positions[i].id, positions[j].id)) {
-            svg.appendChild(svgEl("line", {
-              class: "link",
-              x1: positions[i].x, y1: positions[i].y,
-              x2: positions[j].x, y2: positions[j].y,
-            }));
-          }
-        }
-      }
-      for (const p of positions) {
-        const circle = svgEl("circle", {
-          class: "star active", cx: p.x, cy: p.y, r: 4,
+      orb.appendChild(trail);
+    }
+
+    // Fleet links between similar agents.
+    for (const link of state.links) {
+      const pa = state.layout.get(link.a);
+      const pb = state.layout.get(link.b);
+      if (!pa || !pb) continue;
+      orb.appendChild(svgEl("line", {
+        class: "fleet-line",
+        x1: pa.x, y1: pa.y, x2: pb.x, y2: pb.y,
+        opacity: String(0.25 + link.similarity * 0.6),
+      }));
+    }
+
+    // Boats — one per agent.
+    let i = 0;
+    for (const a of state.agents.values()) {
+      const pos = state.layout.get(a.task_id);
+      if (!pos) {
+        // Fallback layout: circle, until /api/constellation responds.
+        const angle = (i / Math.max(state.agents.size, 1)) * Math.PI * 2 - Math.PI / 2;
+        const cx = VB.w / 2, cy = VB.h / 2, r = Math.min(VB.w, VB.h) * 0.32;
+        state.layout.set(a.task_id, {
+          x: cx + Math.cos(angle) * r,
+          y: cy + Math.sin(angle) * r,
         });
-        const title = svgEl("title", {});
-        title.textContent = (state.agents.get(p.id)?.goal || p.id).slice(0, 80);
-        circle.appendChild(title);
-        svg.appendChild(circle);
       }
+      orb.appendChild(makeBoat(a, state.layout.get(a.task_id)));
+      i++;
     }
+  }
 
-    function sharesBranch(idA, idB) {
-      const a = state.agents.get(idA), b = state.agents.get(idB);
-      if (!a || !b) return false;
-      const ka = (a.goal || "").trim().split(/\s+/).slice(0, 2).join(" ").toLowerCase();
-      const kb = (b.goal || "").trim().split(/\s+/).slice(0, 2).join(" ").toLowerCase();
-      return ka.length > 3 && ka === kb;
-    }
-
-    function renderLogs() {
-      const stream = $("log-stream");
-      // Render last MAX_LOGS lines (newest at bottom).
-      const slice = state.logs.slice(-MAX_LOGS);
-      stream.innerHTML = "";
-      for (const l of slice) {
-        const div = document.createElement("div");
-        div.className = "log-line " + (l.level || "info");
-        const ts = l.ts ? new Date(l.ts).toLocaleTimeString() : "";
-        div.innerHTML = `<span class="ts">${escapeHtml(ts)}</span>`;
-        const text = document.createTextNode(l.line);
-        div.appendChild(text);
-        stream.appendChild(div);
-      }
-      $("log-count").textContent = state.logs.length;
-      stream.parentElement.scrollTop = stream.parentElement.scrollHeight;
-    }
-
-    function renderStats() {
-      const s = state.stats;
-      $("stat-total").textContent = s.succeeded + s.failed + s.running + s.queued;
-      $("stat-running").textContent = s.running;
-      $("stat-queued").textContent = s.queued;
-      $("stat-success").textContent = s.succeeded;
-      $("stat-failed").textContent = s.failed;
-      const completed = s.succeeded + s.failed;
-      $("stat-rate").textContent = completed === 0
-        ? "—"
-        : ((s.succeeded / completed) * 100).toFixed(0) + "%";
-      $("stat-uptime").textContent = formatUptime(s.uptime_secs);
-    }
-
-    // -------- Live elapsed timer --------
-    setInterval(() => {
-      for (const a of state.agents.values()) {
-        a.elapsed_ms = (a.elapsed_ms || 0) + 1000;
-        const el = document.querySelector(`[data-elapsed="${a.task_id}"]`);
-        if (el) el.textContent = formatElapsed(a.elapsed_ms);
-      }
-    }, 1000);
-
-    // -------- WebSocket --------
-    function connect() {
-      const proto = location.protocol === "https:" ? "wss:" : "ws:";
-      const url = `${proto}//${location.host}/ws`;
-      const ws = new WebSocket(url);
-      state.ws = ws;
-      setConn("connecting", false);
-
-      ws.onopen = () => {
-        setConn("live", true);
-        state.backoff = 1000;
-      };
-      ws.onclose = () => {
-        setConn("offline", false);
-        setTimeout(connect, state.backoff);
-        state.backoff = Math.min(state.backoff * 2, 15000);
-      };
-      ws.onerror = () => ws.close();
-      ws.onmessage = (e) => {
-        try {
-          const msg = JSON.parse(e.data);
-          handleMessage(msg);
-        } catch (err) {
-          console.warn("ws parse error", err, e.data);
-        }
-      };
-    }
-
-    function setConn(text, live) {
-      $("conn-text").textContent = text;
-      $("conn").classList.toggle("live", !!live);
-    }
-
-    function handleMessage(msg) {
-      switch (msg.type) {
-        case "snapshot": {
-          state.tasks.clear();
-          (msg.tasks || []).forEach((t) => state.tasks.set(t.id, t));
-          state.agents.clear();
-          (msg.agents || []).forEach((a) => state.agents.set(a.task_id, a));
-          if (msg.stats) state.stats = msg.stats;
-          renderTasks(); renderAgents(); renderStats();
-          break;
-        }
-        case "task_queued":
-          state.tasks.set(taskId(msg), {
-            id: taskId(msg), goal: msg.goal,
-            status: "queued", created_at: new Date().toISOString(),
-          });
-          renderTasks();
-          appendLog({ ts: Date.now(), level: "info", line: `queued: ${msg.goal}` });
-          break;
-        case "task_started":
-          state.agents.set(taskId(msg), {
-            task_id: taskId(msg),
-            goal: state.tasks.get(taskId(msg))?.goal || "",
-            attempt: msg.attempt || 1,
-            elapsed_ms: 0, score: 0,
-          });
-          updateTaskStatus(taskId(msg), "running");
-          appendLog({ ts: Date.now(), level: "info",
-            line: `started attempt ${msg.attempt} on ${msg.branch}` });
-          renderAgents(); renderTasks();
-          break;
-        case "status_changed":
-          updateTaskStatus(taskId(msg), msg.status);
-          renderTasks();
-          break;
-        case "log_line":
-          appendLog({ ts: msg.ts, level: msg.level || "info", line: msg.line });
-          break;
-        case "score_updated": {
-          const a = state.agents.get(taskId(msg));
-          if (a) {
-            a.score = clamp(msg.test_pass_rate || 0, 0, 1);
-            renderAgents();
-          }
-          break;
-        }
-        case "task_completed": {
-          const id = taskId(msg);
-          const outcome = (typeof msg.outcome === "object" && msg.outcome)
-            ? Object.keys(msg.outcome)[0]
-            : String(msg.outcome || "done");
-          state.agents.delete(id);
-          updateTaskStatus(id, outcome);
-          const lvl = outcome.toLowerCase().includes("success") ? "success" : "error";
-          appendLog({ ts: Date.now(), level: lvl,
-            line: `task ${id.slice(0, 8)} ${outcome} after ${msg.total_attempts} attempt(s)` });
-          renderAgents(); renderTasks();
-          break;
-        }
-        case "task_cancelled":
-          state.agents.delete(taskId(msg));
-          updateTaskStatus(taskId(msg), "cancelled");
-          appendLog({ ts: Date.now(), level: "warn",
-            line: `task ${taskId(msg).slice(0, 8)} cancelled` });
-          renderAgents(); renderTasks();
-          break;
-        case "pool_stats":
-          state.stats = {
-            running: msg.running, queued: msg.queued,
-            succeeded: msg.succeeded, failed: msg.failed,
-            uptime_secs: msg.uptime_secs,
-          };
-          renderStats();
-          break;
-        case "turn_metrics": {
-          const a = state.agents.get(taskId(msg));
-          if (a) {
-            a.score = clamp(msg.activity || 0, 0, 1);
-            renderAgents();
-          }
-          break;
-        }
-        default: break;
-      }
-    }
-
-    function taskId(msg) {
-      const id = msg.task_id;
-      if (typeof id === "string") return id;
-      if (id && typeof id === "object" && "0" in id) return String(id["0"]);
-      return String(id);
-    }
-
-    function updateTaskStatus(id, status) {
-      const t = state.tasks.get(id);
-      if (t) {
-        t.status = typeof status === "string" ? status : Object.keys(status || {})[0] || "unknown";
-      }
-    }
-
-    function appendLog(line) {
-      state.logs.push(line);
-      if (state.logs.length > MAX_LOGS * 2) {
-        state.logs.splice(0, state.logs.length - MAX_LOGS);
-      }
-      renderLogs();
-    }
-
-    // -------- API actions --------
-    async function submitTask() {
-      const goal = $("goal-input").value.trim();
-      const priority = $("priority-input").value;
-      if (!goal) return;
-      const btn = $("submit-btn");
-      btn.disabled = true;
-      try {
-        const resp = await fetch("/api/tasks", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ goal, priority }),
-        });
-        if (!resp.ok) {
-          const body = await resp.text();
-          appendLog({ ts: Date.now(), level: "error",
-            line: `submit failed (${resp.status}): ${body}` });
-        } else {
-          $("goal-input").value = "";
-          appendLog({ ts: Date.now(), level: "success", line: `submitted: ${goal}` });
-        }
-      } catch (e) {
-        appendLog({ ts: Date.now(), level: "error", line: `submit error: ${e}` });
-      } finally {
-        btn.disabled = false;
-      }
-    }
-
-    async function cancelTask(id) {
-      try {
-        const resp = await fetch(`/api/tasks/${encodeURIComponent(id)}`, { method: "DELETE" });
-        if (!resp.ok) {
-          appendLog({ ts: Date.now(), level: "error",
-            line: `cancel failed (${resp.status}) for ${id.slice(0, 8)}` });
-        }
-      } catch (e) {
-        appendLog({ ts: Date.now(), level: "error", line: `cancel error: ${e}` });
-      }
-    }
-
-    // -------- Helpers --------
-    function escapeHtml(s) {
-      return String(s)
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;");
-    }
-    function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, Number(n) || 0)); }
-    function formatElapsed(ms) {
-      const s = Math.floor(ms / 1000);
-      if (s < 60) return `${s}s`;
-      const m = Math.floor(s / 60);
-      if (m < 60) return `${m}m ${s % 60}s`;
-      return `${Math.floor(m / 60)}h ${m % 60}m`;
-    }
-    function formatUptime(secs) {
-      if (!secs) return "0s";
-      if (secs < 60) return `${secs}s`;
-      const m = Math.floor(secs / 60);
-      if (m < 60) return `${m}m`;
-      const h = Math.floor(m / 60);
-      if (h < 24) return `${h}h ${m % 60}m`;
-      return `${Math.floor(h / 24)}d ${h % 24}h`;
-    }
-    function svgEl(name, attrs) {
-      const el = document.createElementNS("http://www.w3.org/2000/svg", name);
-      for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
-      return el;
-    }
-
-    // -------- Boot --------
-    $("submit-btn").addEventListener("click", submitTask);
-    $("goal-input").addEventListener("keydown", (e) => {
-      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault(); submitTask();
-      }
+  function makeBoat(agent, pos) {
+    const g = svgEl("g", {
+      class: `boat-group ${agent.phase || "thinking"}` +
+             (agent.phase === "died" && (agent.score || 0) > 0.5 ? " success" : ""),
+      transform: `translate(${pos.x}, ${pos.y})`,
     });
 
-    // Initial fetch in case WS is slow.
-    fetch("/api/stats").then(r => r.ok ? r.json() : null).then((s) => {
-      if (s) { state.stats = s; renderStats(); }
-    }).catch(() => {});
+    // Score aura — radius scales with score (high score = bright halo).
+    const auraR = 14 + (agent.score || 0) * 22;
+    g.appendChild(svgEl("circle", {
+      class: "boat-aura", cx: 0, cy: 0, r: auraR,
+    }));
 
+    // Wake — sinusoidal trailing curve when acting.
+    if (agent.phase === "acting" || agent.phase === "thinking") {
+      const wake = svgEl("path", {
+        class: "wake",
+        d: "M-22,8 q-8,-4 -16,2 q-8,4 -16,-2",
+        opacity: agent.phase === "acting" ? "0.9" : "0.4",
+      });
+      g.appendChild(wake);
+    }
+
+    // Boat body — minimal SVG path: hull + mast + sail.
+    const hull = svgEl("path", {
+      class: "boat-hull",
+      d: "M-12,3 L12,3 L8,9 L-8,9 Z",
+    });
+    const mast = svgEl("line", {
+      class: "boat-mast",
+      x1: 0, y1: 3, x2: 0, y2: -10,
+    });
+    const sail = svgEl("path", {
+      class: "boat-sail",
+      d: "M0,-10 L0,2 L8,2 Z",
+    });
+    g.appendChild(hull); g.appendChild(mast); g.appendChild(sail);
+
+    // Goal label, faint.
+    const label = svgEl("text", {
+      x: 14, y: 4,
+      "font-family": "ui-monospace, monospace",
+      "font-size": "9",
+      fill: "rgba(232,232,245,0.5)",
+    });
+    label.textContent = (agent.goal || "").slice(0, 32);
+    g.appendChild(label);
+
+    // Cancel hit-target (invisible circle).
+    const target = svgEl("circle", {
+      cx: 0, cy: 0, r: 18,
+      fill: "rgba(0,0,0,0)",
+      style: "cursor:pointer;",
+    });
+    target.addEventListener("contextmenu", (e) => { e.preventDefault(); cancelTask(agent.task_id); });
+    target.addEventListener("dblclick", () => cancelTask(agent.task_id));
+    const tt = svgEl("title", {});
+    tt.textContent = `${agent.goal}\nattempt ${agent.attempt}\nscore ${(agent.score||0).toFixed(2)}\n(double-click to cancel)`;
+    target.appendChild(tt);
+    g.appendChild(target);
+
+    return g;
+  }
+
+  function floatScore(taskId, score) {
+    const orb = $("orb");
+    const pos = state.layout.get(taskId);
+    if (!pos || score == null) return;
+    const txt = svgEl("text", {
+      class: "score-float",
+      x: pos.x, y: pos.y - 18,
+      "text-anchor": "middle",
+    });
+    txt.textContent = `+${(score * 100).toFixed(0)}`;
+    orb.appendChild(txt);
+    setTimeout(() => txt.remove(), 1700);
+  }
+
+  /* -------- Logs -------- */
+  function appendLog(level, line, ts) {
+    state.logs.push({ ts: ts || Date.now(), level, line });
+    if (state.logs.length > MAX_LOGS * 2) state.logs.splice(0, state.logs.length - MAX_LOGS);
+    renderLogs();
+  }
+  function renderLogs() {
+    const el = $("log-stream");
+    const slice = state.logs.slice(-MAX_LOGS);
+    el.innerHTML = "";
+    for (const l of slice) {
+      const div = document.createElement("div");
+      div.className = "log-line " + (l.level || "info");
+      const ts = new Date(l.ts).toLocaleTimeString();
+      const span = document.createElement("span");
+      span.className = "ts"; span.textContent = ts;
+      div.appendChild(span);
+      div.appendChild(document.createTextNode(l.line));
+      el.appendChild(div);
+    }
+    $("log-count").textContent = state.logs.length;
+    el.scrollTop = el.scrollHeight;
+  }
+
+  /* -------- Instrument panel -------- */
+  function renderInstruments() {
+    const s = state.stats;
+    const completed = s.succeeded + s.failed;
+    const rate = completed === 0 ? 0 : s.succeeded / completed;
+
+    // Compass: 0% → -90°, 100% → +90°
+    setNeedle("needle-compass", -90 + rate * 180);
+    $("g-rate").textContent = completed === 0 ? "—" : `${(rate * 100).toFixed(0)}%`;
+
+    // Speedometer: avg score (0..1) → -90 → +90
+    const scores = Array.from(state.agents.values()).map((a) => a.score || 0);
+    const avg = scores.length === 0 ? state.avgScore
+      : scores.reduce((x, y) => x + y, 0) / scores.length;
+    state.avgScore = avg;
+    setNeedle("needle-speed", -90 + avg * 180);
+    $("g-score").textContent = scores.length === 0 ? "—" : avg.toFixed(2);
+
+    // Depth: log scale of running+queued; cap visual at 16.
+    const depth = s.running + s.queued;
+    const dRot = -90 + Math.min(depth / 16, 1) * 180;
+    setNeedle("needle-depth", dRot);
+    $("g-depth").textContent = String(depth);
+
+    // Chronometer: uptime mod 60 → seconds hand sweep.
+    const secInMin = (s.uptime_secs || 0) % 60;
+    setNeedle("needle-chrono", -90 + (secInMin / 60) * 360);
+    $("g-uptime").textContent = formatUptime(s.uptime_secs);
+  }
+  function setNeedle(id, deg) {
+    const n = $(id);
+    if (!n) return;
+    n.style.transform = `translate(-50%, -100%) rotate(${deg}deg)`;
+  }
+
+  /* -------- Live elapsed timers -------- */
+  setInterval(() => {
+    for (const a of state.agents.values()) {
+      a.elapsed_ms = (a.elapsed_ms || 0) + 1000;
+    }
+  }, 1000);
+
+  /* -------- Helpers -------- */
+  function tid(msg) {
+    const id = msg.task_id;
+    if (typeof id === "string") return id;
+    if (id && typeof id === "object" && "0" in id) return String(id["0"]);
+    return String(id);
+  }
+  function updateTaskStatus(id, status) {
+    const t = state.tasks.get(id);
+    if (t) {
+      t.status = typeof status === "string"
+        ? status
+        : (Object.keys(status || {})[0] || "unknown");
+    }
+  }
+  function escapeHtml(s) {
+    return String(s).replaceAll("&", "&amp;").replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;").replaceAll('"', "&quot;");
+  }
+  function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, Number(n) || 0)); }
+  function formatUptime(s) {
+    if (!s) return "0s";
+    if (s < 60) return `${s}s`;
+    const m = Math.floor(s / 60);
+    if (m < 60) return `${m}m ${s % 60}s`;
+    const h = Math.floor(m / 60);
+    if (h < 24) return `${h}h ${m % 60}m`;
+    return `${Math.floor(h / 24)}d ${h % 24}h`;
+  }
+  function svgEl(name, attrs) {
+    const el = document.createElementNS(SVG_NS, name);
+    for (const [k, v] of Object.entries(attrs || {})) el.setAttribute(k, v);
+    return el;
+  }
+
+  /* -------- Boot -------- */
+  $("submit-btn").addEventListener("click", submitTask);
+  $("goal-input").addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submitTask(); }
+  });
+
+  // Initial REST hydration so the dashboard renders before WS arrives.
+  Promise.allSettled([
+    fetch("/api/stats").then(r => r.ok ? r.json() : null).then((s) => { if (s) state.stats = s; }),
     fetch("/api/tasks").then(r => r.ok ? r.json() : null).then((d) => {
-      if (d && d.tasks) {
-        d.tasks.forEach((t) => state.tasks.set(t.id, t));
-        renderTasks();
-      }
-    }).catch(() => {});
-
+      (d?.tasks || []).forEach((t) => state.tasks.set(t.id, t));
+    }),
     fetch("/api/agents").then(r => r.ok ? r.json() : null).then((d) => {
-      if (d && d.agents) {
-        d.agents.forEach((a) => state.agents.set(a.task_id, a));
-        renderAgents();
-      }
-    }).catch(() => {});
+      (d?.agents || []).forEach((a) => state.agents.set(a.task_id, {
+        ...a, score: 0, phase: "thinking",
+      }));
+    }),
+  ]).then(() => { refreshConstellation().then(() => renderAll()); });
 
-    renderTasks(); renderAgents(); renderStats(); renderLogs();
-    connect();
+  renderAll();
+  connect();
   </script>
 </body>
 </html>

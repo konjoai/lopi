@@ -21,6 +21,7 @@ use std::time::{Duration, Instant};
 use tokio::sync::{broadcast, Mutex};
 use tower_http::cors::CorsLayer;
 
+mod constellation;
 mod handlers;
 mod middleware;
 mod static_assets;
@@ -28,8 +29,8 @@ mod streaming;
 mod types;
 
 use handlers::{
-    cancel_task, create_task, get_stats, get_task, health, list_agents, list_patterns, list_tasks,
-    metrics,
+    cancel_task, create_task, get_constellation, get_stats, get_task, health, list_agents,
+    list_patterns, list_tasks, metrics,
 };
 use middleware::{auth_middleware, rate_limit_middleware};
 use static_assets::static_handler;
@@ -135,6 +136,7 @@ pub fn build_app(state: AppState) -> Router {
         .route("/api/tasks", get(list_tasks).post(create_task))
         .route("/api/tasks/:id", get(get_task).delete(cancel_task))
         .route("/api/agents", get(list_agents))
+        .route("/api/constellation", get(get_constellation))
         .route("/api/stats", get(get_stats))
         .route("/api/patterns", get(list_patterns))
         .route_layer(axum::middleware::from_fn_with_state(
