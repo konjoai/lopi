@@ -5,6 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>lopi · the Forge ᨒᨚᨄᨗ</title>
   <style>
+    /*  ──────────────  @property — animatable CSS variable  ──────────────  */
+    @property --aurora-speed {
+      syntax: '<time>';
+      inherits: true;
+      initial-value: 12s;
+    }
+    @property --aurora-hue {
+      syntax: '<angle>';
+      inherits: true;
+      initial-value: 270deg;
+    }
+
     /*  ──────────────  the Forge — abyssal palette  ──────────────  */
     :root {
       --abyss:        #03030a;
@@ -20,19 +32,21 @@
       --konjo-soft:   rgba(124,58,237,0.18);
       --abyss-blue:   #1e3a8a;
       --abyss-blue-2: #2e5ec0;
-      --aurora-1:     rgba(124,58,237,0.18);
-      --aurora-2:     rgba(46,94,192,0.14);
-      --aurora-3:     rgba(167,139,250,0.10);
-      --sea:          #060a1a;
-      --sea-2:        #08122a;
+      --aurora-1:     hsla(var(--aurora-hue), 80%, 55%, 0.18);
+      --aurora-2:     hsla(calc(var(--aurora-hue) - 60deg), 70%, 55%, 0.14);
+      --aurora-3:     hsla(calc(var(--aurora-hue) + 30deg), 85%, 70%, 0.10);
+      --aurora-speed: 12s;
       --gold:         #d4a96a;
       --gold-dim:     rgba(212,169,106,0.45);
       --brass:        #8c6e3b;
       --ok:           #5be39b;
       --warn:         #eab308;
       --err:          #ef4444;
+      --phosphor:     #00ffaa;
       --mono:         ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
       --sans:         -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+      --ease-out:     cubic-bezier(0.23, 1, 0.32, 1);
+      --ease-spring:  cubic-bezier(0.34, 1.56, 0.64, 1);
     }
 
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -46,13 +60,13 @@
     }
 
     /*  ──────────────  background layers (z-stack)  ──────────────  */
-    .bg, .aurora, .lontara, .sea, .scene, .chrome {
+    .bg, .aurora, .lontara, .clouds, .rain, .scene-stage, .vignette, .chrome {
       position: fixed; inset: 0;
       pointer-events: none;
     }
     .bg {
       background:
-        radial-gradient(ellipse at 50% 110%, rgba(46,94,192,0.10) 0%, transparent 55%),
+        radial-gradient(ellipse at 50% 110%, rgba(46,94,192,0.12) 0%, transparent 55%),
         radial-gradient(ellipse at 18% 8%, rgba(124,58,237,0.06) 0%, transparent 50%),
         var(--abyss);
       z-index: 0;
@@ -65,16 +79,28 @@
         linear-gradient( 30deg, transparent 40%, var(--aurora-3) 55%, transparent 70%);
       filter: blur(40px);
       opacity: 0.85;
-      animation: aurora 28s ease-in-out infinite alternate;
+      animation: aurora var(--aurora-speed) ease-in-out infinite alternate;
       mix-blend-mode: screen;
+      will-change: transform;
+      transition: --aurora-speed 1.4s ease-out, --aurora-hue 2s ease-out;
+    }
+    .aurora.layer-2 {
+      animation: aurora calc(var(--aurora-speed) * 1.4) ease-in-out infinite alternate-reverse;
+      animation-delay: -3s;
+      opacity: 0.55;
+    }
+    .aurora.layer-3 {
+      animation: aurora calc(var(--aurora-speed) * 0.7) ease-in-out infinite alternate;
+      animation-delay: -7s;
+      opacity: 0.35;
+      filter: blur(60px);
     }
     @keyframes aurora {
-      0%   { transform: translate3d( -3vw, -2vh, 0) rotate(0deg)   scale(1.0); }
-      50%  { transform: translate3d(  4vw,  3vh, 0) rotate(2deg)   scale(1.1); }
+      0%   { transform: translate3d( -3vw, -2vh, 0) rotate(0deg)    scale(1.0); }
+      50%  { transform: translate3d(  4vw,  3vh, 0) rotate(2deg)    scale(1.10); }
       100% { transform: translate3d( -2vw,  2vh, 0) rotate(-1.5deg) scale(1.05); }
     }
 
-    /* Lontara watermark — ᨒᨚᨄᨗ rotates very slowly */
     .lontara {
       z-index: 1;
       display: grid; place-items: center;
@@ -85,40 +111,79 @@
       animation: lontara-spin 240s linear infinite;
       user-select: none;
       filter: blur(0.6px);
+      will-change: transform;
     }
     @keyframes lontara-spin {
       0%   { transform: rotate(0deg); }
       100% { transform: rotate(360deg); }
     }
 
-    /* Sea — bottom third, almost-invisible wave texture */
-    .sea {
-      top: auto; height: 36vh; bottom: 0;
+    /*  ──────────────  weather: storm clouds + rain + calm  ──────────────  */
+    .clouds {
       z-index: 2;
-      background:
-        repeating-linear-gradient(
-          to right,
-          transparent 0px, transparent 18px,
-          rgba(46,94,192,0.05) 18px, rgba(46,94,192,0.05) 19px),
-        linear-gradient(to bottom, transparent 0%, var(--sea) 60%, var(--sea-2) 100%);
-      mask-image: linear-gradient(to bottom, transparent 0%, black 30%);
-      -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 30%);
+      opacity: 0;
+      transition: opacity 1.6s ease-out;
     }
-    .sea::after {
-      content: "";
-      position: absolute; inset: 0;
-      background: repeating-linear-gradient(
-        to right,
-        transparent 0px, transparent 60px,
-        rgba(167,139,250,0.04) 60px, rgba(167,139,250,0.04) 61px);
-      animation: tide 14s linear infinite;
+    body.storm .clouds { opacity: 0.8; }
+    .clouds svg {
+      position: absolute;
+      will-change: transform;
     }
-    @keyframes tide {
+    .clouds .cloud-1 { animation: drift 28s linear infinite; top: 4%;  left: -20%; }
+    .clouds .cloud-2 { animation: drift 22s linear infinite; top: 10%; left: -25%; animation-delay: -8s; }
+    .clouds .cloud-3 { animation: drift 35s linear infinite; top: 1%;  left: -30%; animation-delay: -15s; }
+    .clouds .cloud-4 { animation: drift 24s linear infinite; top: 7%;  left: -22%; animation-delay: -3s; opacity: 0.6; }
+    @keyframes drift {
       from { transform: translateX(0); }
-      to   { transform: translateX(120px); }
+      to   { transform: translateX(140vw); }
+    }
+    .cloud-shape { fill: rgba(8,8,18,0.85); filter: drop-shadow(0 0 22px rgba(8,8,18,0.6)); }
+
+    .rain {
+      z-index: 3;
+      opacity: 0;
+      transition: opacity 1.6s ease-out;
+    }
+    body.storm .rain { opacity: 0.7; }
+    .rain .streak {
+      position: absolute;
+      background: linear-gradient(to bottom,
+        rgba(167,196,255,0.0) 0%,
+        rgba(167,196,255,0.55) 50%,
+        rgba(167,196,255,0.0) 100%);
+      animation: fall linear infinite;
+      transform: rotate(-15deg);
+      will-change: transform;
+    }
+    @keyframes fall {
+      from { transform: translate3d(0, -120px, 0) rotate(-15deg); }
+      to   { transform: translate3d(40px, 110vh, 0) rotate(-15deg); }
     }
 
-    /*  ──────────────  layout  ──────────────  */
+    /*  ──────────────  ocean canvas + svg overlay (the stage)  ──────────────  */
+    .scene-stage {
+      z-index: 4;
+      pointer-events: auto;
+      transform-origin: 50% 50%;
+      transition: transform 0.6s var(--ease-out);
+      will-change: transform;
+    }
+    .scene-stage canvas, .scene-stage svg {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+    }
+    .scene-stage svg.overlay { pointer-events: none; }
+
+    .vignette {
+      z-index: 5;
+      background: radial-gradient(ellipse at var(--vx, 50%) var(--vy, 50%),
+        transparent 40%, rgba(0,0,0,0.85) 100%);
+      opacity: 0;
+      transition: opacity 0.6s ease-out;
+    }
+    body.zoomed .vignette { opacity: 1; }
+
+    /*  ──────────────  chrome layout  ──────────────  */
     .chrome {
       z-index: 10;
       pointer-events: none;
@@ -129,11 +194,11 @@
         "topbar topbar topbar"
         "harbor scene  log"
         "instr  instr  instr";
-      gap: 0;
     }
     .chrome > * { pointer-events: auto; }
+    .chrome > .scene-pad { pointer-events: none; grid-area: scene; }
 
-    /*  ──────────────  topbar — submit + ship's wheel  ──────────────  */
+    /*  ──────────────  topbar  ──────────────  */
     .topbar {
       grid-area: topbar;
       padding: 14px 22px;
@@ -195,7 +260,7 @@
       cursor: pointer;
     }
 
-    /* Ship's wheel launch button */
+    /* Ship's wheel — launch button */
     .wheel {
       width: 44px; height: 44px;
       position: relative;
@@ -205,7 +270,8 @@
       box-shadow: 0 0 16px rgba(212,169,106,0.18), inset 0 0 8px rgba(0,0,0,0.6);
       cursor: pointer;
       flex-shrink: 0;
-      transition: transform 0.4s ease;
+      transition: transform 0.4s var(--ease-out);
+      will-change: transform;
     }
     .wheel::before, .wheel::after {
       content: "";
@@ -221,8 +287,7 @@
       box-shadow: 0 0 6px var(--gold);
     }
     .wheel .spoke {
-      position: absolute;
-      left: 50%; top: 50%;
+      position: absolute; left: 50%; top: 50%;
       width: 2px; height: 50%;
       background: var(--gold-dim);
       transform-origin: top center;
@@ -232,12 +297,11 @@
     .wheel .s3 { transform: translate(-50%, -50%) rotate(90deg); }
     .wheel .s4 { transform: translate(-50%, -50%) rotate(135deg); }
     .wheel:hover { transform: rotate(15deg); }
-    .wheel.spinning { animation: wheelspin 0.8s ease-out; }
+    .wheel.spinning { animation: wheelspin 0.8s var(--ease-out); }
     @keyframes wheelspin {
       from { transform: rotate(0deg); }
       to   { transform: rotate(360deg); }
     }
-    .wheel:disabled, .wheel[disabled] { opacity: 0.4; cursor: not-allowed; }
 
     .conn {
       font-family: var(--mono);
@@ -251,10 +315,19 @@
       width: 8px; height: 8px; border-radius: 50%;
       background: var(--err);
     }
-    .conn.live .led {
-      background: var(--ok);
-      box-shadow: 0 0 8px var(--ok);
+    .conn.live .led { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+    .conn .weather {
+      margin-left: 8px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 0.58rem;
+      letter-spacing: 0.18em;
+      background: rgba(255,255,255,0.05);
+      color: var(--fg-dim);
+      transition: background 0.6s, color 0.6s;
     }
+    body.storm .conn .weather { background: rgba(167,196,255,0.12); color: #a7c4ff; }
+    body.calm  .conn .weather { background: rgba(212,169,106,0.18); color: var(--gold); }
 
     /*  ──────────────  harbor (queued tasks dock)  ──────────────  */
     .harbor {
@@ -333,26 +406,17 @@
     .pill.failed  { background: rgba(239,68,68,0.13); color: var(--err); }
     .pill.queued  { background: rgba(255,255,255,0.05); color: var(--fg-dim); }
 
-    /*  ──────────────  scene — the orb  ──────────────  */
-    .scene {
-      grid-area: scene;
-      position: relative;
-      overflow: hidden;
-    }
-    .scene svg.orb {
-      position: absolute; inset: 0;
-      width: 100%; height: 100%;
-    }
-    .scene .scene-h {
+    .scene-h {
       position: absolute; top: 12px; left: 18px;
       font-family: var(--mono);
       font-size: 0.66rem;
       text-transform: uppercase;
       letter-spacing: 0.18em;
       color: var(--fg-mute);
-      z-index: 4;
+      z-index: 11;
+      pointer-events: none;
     }
-    .scene .scene-h .live { color: var(--konjo-2); }
+    .scene-h .live { color: var(--konjo-2); }
 
     /*  ──────────────  log panel  ──────────────  */
     .log-panel {
@@ -390,32 +454,54 @@
     .log-line.success { color: var(--ok);   border-left-color: var(--ok); }
     .log-line.debug   { color: var(--fg-mute); }
 
-    /*  ──────────────  instrument panel — ship's brass  ──────────────  */
+    /*  ──────────────  instrument panel — 3D parallax brass  ──────────────  */
     .instr {
       grid-area: instr;
       background: linear-gradient(0deg, rgba(8,8,18,0.92) 0%, rgba(8,8,18,0.40) 100%);
       backdrop-filter: blur(8px);
       border-top: 1px solid var(--gold-dim);
-      padding: 12px 22px;
+      padding: 14px 22px;
       display: flex; align-items: center; gap: 28px;
       font-family: var(--mono);
+      perspective: 600px;
     }
     .gauge {
       display: flex; align-items: center; gap: 10px;
+      transform-style: preserve-3d;
+      transition: transform 0.4s var(--ease-out);
+      will-change: transform;
     }
     .gauge .face {
-      width: 56px; height: 56px;
+      width: 60px; height: 60px;
       border-radius: 50%;
-      background: radial-gradient(circle at 30% 25%, #1a1b26 0%, #050610 80%);
+      background:
+        radial-gradient(ellipse at 35% 35%, rgba(255,255,255,0.18), transparent 70%),
+        radial-gradient(circle at 30% 25%, #1a1b26 0%, #050610 80%);
       border: 1px solid var(--gold-dim);
-      box-shadow: inset 0 0 8px rgba(0,0,0,0.7), 0 0 6px rgba(212,169,106,0.10);
+      box-shadow:
+        inset 0 0 8px rgba(0,0,0,0.7),
+        0 0 6px rgba(212,169,106,0.10),
+        inset 0 -4px 8px rgba(0,0,0,0.5);
       position: relative;
+      transform: translateZ(8px);
+      transform-style: preserve-3d;
     }
     .gauge .face::before {
       content: "";
       position: absolute; inset: 5px;
       border-radius: 50%;
       border: 1px dashed rgba(212,169,106,0.25);
+    }
+    .gauge .face::after {
+      /* Glass highlight — sits on top of needle for the parallax glint. */
+      content: "";
+      position: absolute; inset: 0;
+      border-radius: 50%;
+      background: radial-gradient(ellipse at 35% 30%,
+        rgba(255,255,255,0.18) 0%,
+        rgba(255,255,255,0.0) 55%);
+      pointer-events: none;
+      transform: translateZ(2px);
     }
     .gauge .needle {
       position: absolute;
@@ -424,8 +510,9 @@
       background: linear-gradient(to top, transparent 0%, var(--gold) 60%);
       transform-origin: bottom center;
       transform: translate(-50%, -100%) rotate(-90deg);
-      transition: transform 0.6s ease;
+      transition: transform 0.9s var(--ease-spring);
       filter: drop-shadow(0 0 3px var(--gold));
+      will-change: transform;
     }
     .gauge .pivot {
       position: absolute;
@@ -433,12 +520,13 @@
       width: 8px; height: 8px;
       background: var(--gold);
       border-radius: 50%;
-      transform: translate(-50%, -50%);
+      transform: translate(-50%, -50%) translateZ(1px);
       box-shadow: 0 0 4px var(--gold);
     }
     .gauge .label-block {
       display: flex; flex-direction: column;
       gap: 1px;
+      transform: translateZ(4px);
     }
     .gauge .k {
       font-size: 0.58rem;
@@ -451,9 +539,7 @@
       font-weight: 600;
       color: var(--gold);
     }
-
-    /* Compass — single needle that rotates by success rate */
-    .compass .face::after {
+    .compass .face::before {
       content: "N";
       position: absolute;
       top: 4px; left: 50%;
@@ -461,6 +547,75 @@
       font-size: 0.55rem;
       color: var(--gold);
       letter-spacing: 0.15em;
+      border: none;
+      inset: auto;
+    }
+
+    /*  ──────────────  detail panel — telescope zoom target  ──────────────  */
+    .detail {
+      position: fixed;
+      left: 50%; bottom: 18%;
+      transform: translateX(-50%) scale(0.8);
+      opacity: 0;
+      pointer-events: none;
+      width: min(420px, 80vw);
+      background: rgba(8,8,18,0.88);
+      backdrop-filter: blur(14px);
+      border: 1px solid var(--konjo);
+      border-radius: 10px;
+      padding: 16px 20px;
+      box-shadow: 0 8px 40px rgba(124,58,237,0.4), 0 0 0 1px rgba(124,58,237,0.2);
+      z-index: 20;
+      transition: transform 0.45s var(--ease-spring), opacity 0.3s ease-out;
+      will-change: transform, opacity;
+    }
+    body.zoomed .detail { transform: translateX(-50%) scale(1); opacity: 1; pointer-events: auto; }
+    .detail h3 {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.18em;
+      color: var(--konjo-2);
+      margin-bottom: 8px;
+      font-family: var(--mono);
+      font-weight: 600;
+    }
+    .detail .goal {
+      font-size: 0.95rem;
+      line-height: 1.4;
+      margin-bottom: 12px;
+    }
+    .detail .meta {
+      font-family: var(--mono);
+      font-size: 0.68rem;
+      color: var(--fg-dim);
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 4px 12px;
+    }
+    .detail .meta .k { color: var(--fg-mute); text-transform: uppercase; letter-spacing: 0.12em; }
+    .detail .actions { margin-top: 14px; display: flex; gap: 8px; }
+    .detail button {
+      background: transparent;
+      color: var(--err);
+      border: 1px solid var(--err);
+      border-radius: 4px;
+      padding: 6px 12px;
+      font-family: var(--mono);
+      font-size: 0.66rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .detail button:hover { background: rgba(239,68,68,0.12); }
+    .detail .close-hint {
+      font-family: var(--mono);
+      font-size: 0.58rem;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--fg-mute);
+      margin-top: 12px;
+      text-align: center;
     }
 
     /*  ──────────────  scrollbars  ──────────────  */
@@ -469,52 +624,9 @@
     ::-webkit-scrollbar-thumb { background: rgba(124,58,237,0.18); border-radius: 4px; }
     ::-webkit-scrollbar-thumb:hover { background: rgba(124,58,237,0.34); }
 
-    /*  ──────────────  orb internals  ──────────────  */
-    .boat-group { transition: transform 0.6s cubic-bezier(.4,.1,.2,1); }
-    .boat-hull  { fill: var(--konjo); filter: drop-shadow(0 0 4px var(--konjo)); }
-    .boat-mast  { stroke: var(--konjo-2); stroke-width: 1.2; }
-    .boat-sail  { fill: rgba(167,139,250,0.55); stroke: var(--konjo-2); stroke-width: 0.8; }
-    .boat-aura  {
-      fill: var(--konjo); opacity: 0.18;
-      filter: blur(6px);
-    }
-    .boat-group.thinking .boat-aura { animation: aura-pulse 1.6s ease-in-out infinite; }
-    .boat-group.acting   .boat-aura { animation: aura-pulse 0.7s ease-in-out infinite; }
-    .boat-group.died     .boat-hull { fill: rgba(239,68,68,0.65); filter: none; }
-    .boat-group.success  .boat-hull { fill: var(--ok); filter: drop-shadow(0 0 6px var(--ok)); }
-
-    @keyframes aura-pulse {
-      0%, 100% { opacity: 0.10; transform: scale(1.0); }
-      50%      { opacity: 0.55; transform: scale(1.4); }
-    }
-    .wake { stroke: rgba(167,139,250,0.55); stroke-width: 1.2; fill: none; }
-    .fleet-line {
-      stroke: rgba(124,58,237,0.4);
-      stroke-width: 1;
-      fill: none;
-      stroke-dasharray: 4 6;
-      animation: dash 30s linear infinite;
-    }
-    @keyframes dash { to { stroke-dashoffset: -200; } }
-
-    .trail {
-      stroke: rgba(167,139,250,0.4);
-      stroke-width: 1;
-      fill: none;
-    }
-    .score-float {
-      font-family: var(--mono);
-      font-size: 11px;
-      fill: var(--konjo-2);
-      animation: float-up 1.6s ease-out forwards;
-    }
-    @keyframes float-up {
-      from { transform: translateY(0); opacity: 1; }
-      to   { transform: translateY(-30px); opacity: 0; }
-    }
-
     .empty {
-      position: absolute; inset: 0;
+      position: fixed;
+      left: 280px; right: 340px; top: 70px; bottom: 100px;
       display: grid; place-items: center;
       color: var(--fg-mute);
       font-family: var(--mono);
@@ -522,6 +634,7 @@
       letter-spacing: 0.12em;
       text-transform: uppercase;
       pointer-events: none;
+      z-index: 6;
     }
     .empty .glyph {
       font-family: "Noto Sans Lontara", "Lontara", serif;
@@ -532,24 +645,79 @@
       margin-bottom: 8px;
     }
 
-    /* Birth flash */
-    @keyframes birth {
-      from { opacity: 0; transform: scale(2.5); }
-      to   { opacity: 1; transform: scale(1); }
+    .fleet-line {
+      stroke: rgba(124,58,237,0.4);
+      stroke-width: 1;
+      fill: none;
+      stroke-dasharray: 4 6;
+      animation: dash 30s linear infinite;
     }
-    .boat-group.born { animation: birth 0.8s ease-out; }
-
-    /* Death — sail offscreen */
-    @keyframes sail-off {
-      to { transform: translateX(120vw); opacity: 0; }
+    @keyframes dash { to { stroke-dashoffset: -200; } }
+    .score-float {
+      font-family: var(--mono);
+      font-size: 12px;
+      fill: var(--phosphor);
+      filter: drop-shadow(0 0 4px var(--phosphor));
+      animation: float-up 1.7s ease-out forwards;
+    }
+    @keyframes float-up {
+      from { transform: translateY(0); opacity: 1; }
+      to   { transform: translateY(-34px); opacity: 0; }
     }
   </style>
 </head>
 <body>
   <div class="bg"></div>
-  <div class="aurora"></div>
+  <div class="aurora layer-1"></div>
+  <div class="aurora layer-2"></div>
+  <div class="aurora layer-3"></div>
   <div class="lontara">ᨒᨚᨄᨗ</div>
-  <div class="sea"></div>
+
+  <div class="clouds">
+    <svg class="cloud-1" width="320" height="120" viewBox="0 0 320 120">
+      <path class="cloud-shape" d="M40,80 q-30,0 -30,-25 q0,-22 26,-22 q4,-22 32,-22 q22,0 30,18 q14,-12 32,-12 q26,0 32,24 q22,2 22,22 q0,22 -28,22 z" />
+    </svg>
+    <svg class="cloud-2" width="380" height="140" viewBox="0 0 380 140">
+      <path class="cloud-shape" d="M50,95 q-36,0 -36,-30 q0,-26 32,-26 q4,-26 38,-26 q26,0 36,22 q16,-14 38,-14 q30,0 38,28 q26,2 26,26 q0,26 -32,26 z" />
+    </svg>
+    <svg class="cloud-3" width="280" height="100" viewBox="0 0 280 100">
+      <path class="cloud-shape" d="M30,70 q-24,0 -24,-20 q0,-18 22,-18 q3,-18 26,-18 q18,0 24,14 q12,-10 26,-10 q22,0 26,20 q18,2 18,18 q0,18 -24,18 z" />
+    </svg>
+    <svg class="cloud-4" width="340" height="120" viewBox="0 0 340 120">
+      <path class="cloud-shape" d="M44,84 q-32,0 -32,-26 q0,-22 28,-22 q4,-22 32,-22 q22,0 30,20 q14,-12 32,-12 q26,0 32,24 q22,2 22,22 q0,22 -28,22 z" />
+    </svg>
+  </div>
+
+  <div class="rain" id="rain"></div>
+
+  <div class="scene-stage" id="stage">
+    <canvas id="ocean"></canvas>
+    <svg class="overlay" id="overlay" viewBox="0 0 1000 600" preserveAspectRatio="xMidYMid meet"></svg>
+  </div>
+
+  <div class="vignette"></div>
+
+  <div class="empty" id="empty-state">
+    <div class="glyph">ᨒᨚᨄᨗ</div>
+    <div>the harbor sleeps — launch a mission</div>
+  </div>
+
+  <aside class="detail" id="detail">
+    <h3>ship's log</h3>
+    <div class="goal" id="d-goal">—</div>
+    <div class="meta">
+      <span class="k">id</span><span id="d-id">—</span>
+      <span class="k">attempt</span><span id="d-attempt">—</span>
+      <span class="k">branch</span><span id="d-branch">—</span>
+      <span class="k">phase</span><span id="d-phase">—</span>
+      <span class="k">score</span><span id="d-score">—</span>
+      <span class="k">elapsed</span><span id="d-elapsed">—</span>
+    </div>
+    <div class="actions">
+      <button id="d-cancel">cancel mission</button>
+    </div>
+    <div class="close-hint">click outside to return to the harbor</div>
+  </aside>
 
   <div class="chrome">
     <header class="topbar">
@@ -576,6 +744,7 @@
       <div class="conn" id="conn">
         <span class="led"></span>
         <span id="conn-text">connecting</span>
+        <span class="weather" id="weather-tag">fair</span>
       </div>
     </header>
 
@@ -584,43 +753,37 @@
       <div id="dock-list"></div>
     </aside>
 
-    <main class="scene">
-      <div class="scene-h"><span class="live" id="live-count">0</span> · sailing the forge</div>
-      <svg class="orb" id="orb" viewBox="0 0 1000 600" preserveAspectRatio="xMidYMid meet"></svg>
-      <div class="empty" id="empty-state">
-        <div class="glyph">ᨒᨚᨄᨗ</div>
-        <div>the harbor sleeps — launch a mission</div>
-      </div>
-    </main>
+    <div class="scene-pad"></div>
+    <div class="scene-h"><span class="live" id="live-count">0</span> · sailing the forge</div>
 
     <aside class="log-panel">
       <div class="panel-h"><span>activity</span><span class="count" id="log-count">0</span></div>
       <div class="log-stream" id="log-stream"></div>
     </aside>
 
-    <footer class="instr">
-      <div class="gauge compass" title="success rate">
+    <footer class="instr" id="instr">
+      <div class="gauge compass" data-gauge="compass" title="success rate">
         <div class="face">
           <div class="needle" id="needle-compass"></div>
           <div class="pivot"></div>
         </div>
         <div class="label-block"><span class="k">compass</span><span class="v" id="g-rate">—</span></div>
       </div>
-      <div class="gauge speedometer" title="average score">
+      <div class="gauge speedometer" data-gauge="speed" title="average score">
         <div class="face">
           <div class="needle" id="needle-speed"></div>
           <div class="pivot"></div>
         </div>
         <div class="label-block"><span class="k">avg score</span><span class="v" id="g-score">—</span></div>
       </div>
-      <div class="gauge depth" title="memory depth (running + queued)">
+      <div class="gauge depth" data-gauge="depth" title="memory depth (running + queued)">
         <div class="face">
           <div class="needle" id="needle-depth"></div>
           <div class="pivot"></div>
         </div>
         <div class="label-block"><span class="k">depth</span><span class="v" id="g-depth">0</span></div>
       </div>
-      <div class="gauge chrono" title="uptime">
+      <div class="gauge chrono" data-gauge="chrono" title="uptime">
         <div class="face">
           <div class="needle" id="needle-chrono"></div>
           <div class="pivot"></div>
@@ -635,31 +798,654 @@
 
   <script>
   "use strict";
-  /* ========================================================
-     The Forge — agent shipyard runtime
-     -------------------------------------------------------- */
+  /* ============================================================
+     The Forge — Konjo agent shipyard runtime
+     ============================================================ */
 
   const MAX_LOGS = 500;
+  const MAX_PARTICLES = 320;
+  const MEMORY_TRAIL_TTL_MS = 60_000;
   const $ = (id) => document.getElementById(id);
   const SVG_NS = "http://www.w3.org/2000/svg";
-  const VB = { w: 1000, h: 600 };
 
-  /* -------- State -------- */
+  /* -------- Global state -------- */
   const state = {
-    tasks: new Map(),       // id → { id, goal, status, created_at }
-    agents: new Map(),      // task_id → { task_id, goal, attempt, elapsed_ms, score, phase, x, y, branch }
-    layout: new Map(),      // task_id → { x, y } from /api/constellation
-    links: [],              // [{a, b, similarity}]
+    tasks: new Map(),
+    agents: new Map(),
+    layout: new Map(),         // task_id → {x, y} world (px on canvas)
+    layoutPrev: new Map(),     // for velocity → wake intensity
+    links: [],                 // [{a, b, similarity}]
     logs: [],
     stats: { running: 0, queued: 0, succeeded: 0, failed: 0, uptime_secs: 0 },
     avgScore: 0,
-    memoryTrails: [],       // [{points: [{x,y}], born: ts, opacity}]
+    memoryTrails: [],          // [{x, y, born, success}]
     selected: null,
+    zoomTarget: null,          // task_id under telescope
+    weather: "fair",           // "storm" | "fair" | "calm"
+    rolling: [],               // [{success: bool, ts}]
     ws: null,
     backoff: 1000,
   };
 
-  /* -------- WebSocket -------- */
+  /* -------- Stable hash (FNV-1a 64-bit) -------- */
+  function fnv1a(str) {
+    let h1 = 0xcbf29ce4 >>> 0, h2 = 0x84222325 >>> 0;
+    for (let i = 0; i < str.length; i++) {
+      const c = str.charCodeAt(i);
+      h2 ^= c & 0xff;
+      // 64-bit multiply against 0x100000001b3, split into low/high 32.
+      const lo = h2 * 0x1b3;
+      const hi = h1 * 0x1b3 + Math.floor(lo / 0x100000000);
+      h2 = lo >>> 0;
+      h1 = (hi + (h2 * 0x100)) >>> 0;
+      // simple mix-back so both halves churn
+      h2 = (h2 ^ (h1 << 13)) >>> 0;
+    }
+    return [h1, h2];
+  }
+  function hashByte(hash, idx) {
+    const [h1, h2] = hash;
+    const word = idx < 4 ? h1 : h2;
+    return (word >>> ((idx % 4) * 8)) & 0xff;
+  }
+  function hash01(hash, idx) { return hashByte(hash, idx) / 255; }
+
+  /* ============================================================
+     Canvas Ocean — 6-layer sine waves, RAF render
+     ============================================================ */
+  const canvas = $("ocean");
+  const ctx = canvas.getContext("2d", { alpha: true });
+  let DPR = Math.min(window.devicePixelRatio || 1, 2);
+  let W = 0, H = 0;
+  const HORIZON = () => H * 0.42;
+
+  /* Wave layers — frequency, amplitude, phase, speed, color stops. */
+  const WAVE_LAYERS = [
+    { freq: 0.0042, amp: 14, phase: 0.0,  speed: 0.018, fillTop: "rgba(0,180,130,0.18)", fillBot: "rgba(0,40,60,0.0)" },
+    { freq: 0.0026, amp: 22, phase: 1.1,  speed: 0.012, fillTop: "rgba(46,94,192,0.20)", fillBot: "rgba(8,12,32,0.0)" },
+    { freq: 0.0070, amp:  9, phase: 2.7,  speed: 0.030, fillTop: "rgba(124,58,237,0.16)",fillBot: "rgba(20,8,32,0.0)" },
+    { freq: 0.0018, amp: 28, phase: 4.2,  speed: 0.008, fillTop: "rgba(8,40,72,0.36)",   fillBot: "rgba(2,6,18,0.0)" },
+    { freq: 0.0050, amp: 12, phase: 5.6,  speed: 0.022, fillTop: "rgba(0,180,130,0.10)", fillBot: "rgba(0,30,40,0.0)" },
+    { freq: 0.0090, amp:  6, phase: 0.6,  speed: 0.040, fillTop: "rgba(167,139,250,0.14)",fillBot: "rgba(20,12,40,0.0)" },
+  ];
+
+  /* Storm/calm amplitude multiplier — re-applied to a base copy. */
+  const WAVE_BASE = WAVE_LAYERS.map((w) => ({ ...w }));
+  function applyWeatherToWaves() {
+    const mul = state.weather === "storm" ? 2.5 : state.weather === "calm" ? 0.3 : 1.0;
+    for (let i = 0; i < WAVE_LAYERS.length; i++) {
+      WAVE_LAYERS[i].amp = WAVE_BASE[i].amp * mul;
+    }
+  }
+
+  function resizeCanvas() {
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width = Math.floor(W * DPR);
+    canvas.height = Math.floor(H * DPR);
+    canvas.style.width = W + "px";
+    canvas.style.height = H + "px";
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  }
+  window.addEventListener("resize", resizeCanvas);
+
+  /* World-space mapping for agent layout. The /api/constellation
+     handler returns positions in [0,1]². We map into the visible
+     ocean band (above-and-on the horizon) so boats sit on water. */
+  function worldX(nx) { return 60 + nx * (W - 120); }
+  function worldY(ny) { return HORIZON() - 80 + ny * 220; }
+
+  /* ============================================================
+     Procedural hulls — deterministic per task_id
+     ============================================================ */
+  function hullParams(taskId) {
+    const h = fnv1a(taskId);
+    const bowAngle  = (hash01(h, 0)) * 30 - 5;       // -5..25°
+    const hullDepth = 12 + hash01(h, 1) * 8;         // 12..20
+    const sternRatio = 0.3 + hash01(h, 2) * 0.4;     // 0.3..0.7
+    const hasJib = hashByte(h, 3) > 128;
+    const sailHeight = 14 + hash01(h, 4) * 8;        // 14..22
+    const sailLean = (hash01(h, 5) - 0.5) * 0.45;
+    const flagHue = Math.floor(hash01(h, 6) * 60) + 250; // konjo neighborhood
+    return { bowAngle, hullDepth, sternRatio, hasJib, sailHeight, sailLean, flagHue };
+  }
+
+  function drawHull(c, agent, x, y, t) {
+    const p = agent._hull || (agent._hull = hullParams(agent.task_id));
+    const phase = agent.phase || "thinking";
+    const score = agent.score || 0;
+
+    // Bob with the wave at this x.
+    const waveBob = sampleSurface(x, t) * 0.6;
+    y += waveBob;
+
+    // Score aura — radius scales with score (0..1 → 14..36px).
+    const auraR = 14 + score * 22;
+    if (phase === "thinking" || phase === "acting") {
+      const pulse = (Math.sin(t * (phase === "acting" ? 6 : 2.4) + p.flagHue) + 1) * 0.5;
+      const a = phase === "acting" ? 0.10 + pulse * 0.45 : 0.10 + pulse * 0.30;
+      c.save();
+      c.fillStyle = `hsla(${p.flagHue}, 80%, 65%, ${a})`;
+      c.filter = "blur(8px)";
+      c.beginPath();
+      c.arc(x, y, auraR * (1 + pulse * 0.2), 0, Math.PI * 2);
+      c.fill();
+      c.restore();
+    } else if (phase === "died" && score > 0.5) {
+      c.save();
+      c.fillStyle = "rgba(91,227,155,0.4)";
+      c.filter = "blur(10px)";
+      c.beginPath();
+      c.arc(x, y, auraR + 8, 0, Math.PI * 2);
+      c.fill();
+      c.restore();
+    }
+
+    // Boat — shaded hull (quadratic curves).
+    const W2 = 14, D = p.hullDepth;
+    const stern = -W2 * p.sternRatio;
+    const bow = W2;
+    const angle = p.bowAngle * Math.PI / 180;
+
+    c.save();
+    c.translate(x, y);
+    c.rotate(angle * 0.06); // gentle tilt
+    // Hull fill — color by phase.
+    let hullColor = "#7c3aed";
+    if (phase === "died") {
+      hullColor = score > 0.5 ? "#5be39b" : "#ef4444";
+    }
+    const grad = c.createLinearGradient(0, -2, 0, D);
+    grad.addColorStop(0, hullColor);
+    grad.addColorStop(1, "#1a0a2a");
+    c.fillStyle = grad;
+    c.shadowColor = hullColor;
+    c.shadowBlur = phase === "died" ? 0 : 8;
+
+    c.beginPath();
+    c.moveTo(stern, 0);
+    c.quadraticCurveTo(stern - 2, D * 0.7, stern + 2, D);
+    c.quadraticCurveTo(0, D + 2, bow - 2, D);
+    c.quadraticCurveTo(bow + 2, D * 0.6, bow + 4, 0);
+    c.quadraticCurveTo(0, -1, stern, 0);
+    c.closePath();
+    c.fill();
+
+    c.shadowBlur = 0;
+
+    // Mast.
+    c.strokeStyle = "rgba(232,232,245,0.65)";
+    c.lineWidth = 1.1;
+    c.beginPath();
+    c.moveTo(0, 0);
+    c.lineTo(p.sailLean * 4, -p.sailHeight);
+    c.stroke();
+
+    // Mainsail.
+    c.fillStyle = `hsla(${p.flagHue}, 70%, 70%, 0.55)`;
+    c.strokeStyle = `hsla(${p.flagHue}, 70%, 80%, 0.85)`;
+    c.lineWidth = 0.8;
+    c.beginPath();
+    c.moveTo(p.sailLean * 4, -p.sailHeight);
+    c.lineTo(p.sailLean * 4, 1);
+    c.quadraticCurveTo(W2 * 0.6, -p.sailHeight * 0.4, W2 * 0.5, -p.sailHeight * 0.85);
+    c.closePath();
+    c.fill();
+    c.stroke();
+
+    // Optional jib.
+    if (p.hasJib) {
+      c.beginPath();
+      c.moveTo(p.sailLean * 4, -p.sailHeight * 0.92);
+      c.lineTo(bow + 2, 0);
+      c.quadraticCurveTo(bow * 0.6, -p.sailHeight * 0.5, p.sailLean * 4, -p.sailHeight * 0.92);
+      c.closePath();
+      c.fill();
+      c.stroke();
+    }
+
+    // Tiny pennant for high-score boats.
+    if (score > 0.7 && phase !== "died") {
+      c.fillStyle = `hsl(${p.flagHue}, 80%, 70%)`;
+      c.beginPath();
+      c.moveTo(p.sailLean * 4 + 0.5, -p.sailHeight - 0.5);
+      c.lineTo(p.sailLean * 4 + 6, -p.sailHeight - 2.5);
+      c.lineTo(p.sailLean * 4 + 0.5, -p.sailHeight - 4.5);
+      c.closePath();
+      c.fill();
+    }
+    c.restore();
+  }
+
+  /* ============================================================
+     Wake particle system
+     ============================================================ */
+  const particles = []; // [{x,y,vx,vy,age,life,r}]
+
+  function spawnWakeParticle(x, y, dx, dy) {
+    if (particles.length >= MAX_PARTICLES) particles.shift();
+    // Spread perpendicular to heading.
+    const heading = Math.atan2(dy, dx) || 0;
+    const perp = heading + Math.PI / 2;
+    const spread = (Math.random() - 0.5) * 6;
+    const sx = Math.cos(perp) * spread;
+    const sy = Math.sin(perp) * spread;
+    particles.push({
+      x: x + sx - dx * 0.6,
+      y: y + sy - dy * 0.6,
+      vx: -dx * 0.12 + (Math.random() - 0.5) * 0.2,
+      vy: -dy * 0.12 + (Math.random() - 0.5) * 0.2,
+      age: 0,
+      life: 1.6 + Math.random() * 0.6, // seconds
+      r: 1.2 + Math.random() * 1.6,
+    });
+  }
+  function updateAndDrawParticles(dt) {
+    ctx.save();
+    ctx.shadowBlur = 15;
+    ctx.shadowColor = "#00ffaa";
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.age += dt;
+      if (p.age >= p.life) { particles.splice(i, 1); continue; }
+      p.x += p.vx;
+      p.y += p.vy;
+      p.vx *= 0.985;
+      p.vy *= 0.985;
+      const a = (1 - p.age / p.life) * 0.6;
+      ctx.fillStyle = `rgba(0,255,170,${0.08 * a + 0.02})`;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r * (1 + p.age * 0.8), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function drawStationaryRipple(x, y, t) {
+    ctx.save();
+    ctx.strokeStyle = "rgba(0,255,170,0.10)";
+    ctx.lineWidth = 0.8;
+    for (let i = 0; i < 3; i++) {
+      const phase = (t * 0.8 + i * 0.7) % 1.5;
+      const r = 6 + phase * 14;
+      const a = (1 - phase / 1.5) * 0.3;
+      ctx.globalAlpha = a;
+      ctx.beginPath();
+      ctx.arc(x, y + 4, r, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  /* ============================================================
+     Wave surface sampler & rendering
+     ============================================================ */
+  function sampleSurface(x, t) {
+    let y = 0;
+    for (const w of WAVE_LAYERS) {
+      y += Math.sin(x * w.freq + w.phase + t * w.speed * 60) * w.amp;
+    }
+    return y;
+  }
+
+  function drawOcean(t) {
+    const horizon = HORIZON();
+    // Sky gradient
+    const sky = ctx.createLinearGradient(0, 0, 0, horizon);
+    sky.addColorStop(0, "rgba(3,3,18,0)");
+    sky.addColorStop(1, "rgba(8,12,32,0.35)");
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, W, horizon);
+
+    // Calm: sun reflection cone (golden) on the horizon.
+    if (state.weather === "calm") {
+      const sunGrad = ctx.createRadialGradient(W * 0.5, horizon, 0, W * 0.5, horizon, 320);
+      sunGrad.addColorStop(0, "rgba(212,169,106,0.18)");
+      sunGrad.addColorStop(0.5, "rgba(255,210,140,0.10)");
+      sunGrad.addColorStop(1, "rgba(255,210,140,0.0)");
+      ctx.fillStyle = sunGrad;
+      ctx.beginPath();
+      ctx.moveTo(W * 0.5, horizon - 60);
+      ctx.lineTo(W * 0.5 - 220, H);
+      ctx.lineTo(W * 0.5 + 220, H);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // Waves — back-to-front so closer layers occlude farther ones.
+    for (let i = 0; i < WAVE_LAYERS.length; i++) {
+      const w = WAVE_LAYERS[i];
+      const layerY = horizon + 6 + i * 8;
+      ctx.beginPath();
+      ctx.moveTo(0, H);
+      ctx.lineTo(0, layerY);
+      const step = 6;
+      for (let x = 0; x <= W; x += step) {
+        const y = layerY + Math.sin(x * w.freq + w.phase + t * w.speed * 60) * w.amp;
+        ctx.lineTo(x, y);
+      }
+      ctx.lineTo(W, H);
+      ctx.closePath();
+      const g = ctx.createLinearGradient(0, layerY, 0, H);
+      g.addColorStop(0, w.fillTop);
+      g.addColorStop(1, w.fillBot);
+      ctx.fillStyle = g;
+      ctx.fill();
+    }
+  }
+
+  function drawReflections(t) {
+    // Each agent rendered again below the horizon, flipped Y, low alpha,
+    // with a sine X distortion per wave phase.
+    const horizon = HORIZON();
+    ctx.save();
+    ctx.globalAlpha = 0.15;
+    for (const a of state.agents.values()) {
+      const pos = state.layout.get(a.task_id);
+      if (!pos) continue;
+      const dy = horizon - pos.y;
+      if (dy <= 0) continue;
+      // Reflect across horizon, distort X by surface sample.
+      const distX = sampleSurface(pos.x, t) * 0.4;
+      const ry = horizon + dy + sampleSurface(pos.x + 1, t) * 0.5;
+      ctx.save();
+      ctx.translate(pos.x + distX, ry);
+      ctx.scale(1, -0.7);
+      ctx.translate(-pos.x - distX, -ry);
+      drawHull(ctx, a, pos.x + distX, ry, t);
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  function drawBoats(t) {
+    for (const a of state.agents.values()) {
+      const pos = state.layout.get(a.task_id);
+      if (!pos) continue;
+      const prev = state.layoutPrev.get(a.task_id);
+      const dx = prev ? pos.x - prev.x : 0;
+      const dy = prev ? pos.y - prev.y : 0;
+      const speed = Math.hypot(dx, dy);
+
+      // Spawn wake particles proportional to speed (or steady for active boats).
+      const intensity = (a.phase === "acting") ? 1.0 : (a.phase === "thinking" ? 0.4 : 0.15);
+      const n = Math.min(3, Math.floor(speed * 0.4 + intensity * 1.4));
+      for (let i = 0; i < n; i++) spawnWakeParticle(pos.x, pos.y + 4, dx, dy);
+
+      if (speed < 0.1 && a.phase !== "died") drawStationaryRipple(pos.x, pos.y, t);
+      drawHull(ctx, a, pos.x, pos.y, t);
+    }
+  }
+
+  function drawMemoryTrails(now) {
+    state.memoryTrails = state.memoryTrails.filter((m) => now - m.born < MEMORY_TRAIL_TTL_MS);
+    for (const m of state.memoryTrails) {
+      const age = (now - m.born) / MEMORY_TRAIL_TTL_MS;
+      const r = 14 + age * 32;
+      const alpha = (1 - age) * 0.35;
+      ctx.save();
+      ctx.strokeStyle = m.success
+        ? `rgba(91,227,155,${alpha})`
+        : `rgba(239,68,68,${alpha * 0.7})`;
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.arc(m.x, m.y, r, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  /* ============================================================
+     Render loop
+     ============================================================ */
+  let last = performance.now();
+  function render(now) {
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    const t = now / 1000;
+
+    // Snapshot current positions for next-frame velocity.
+    state.layoutPrev = new Map(state.layout);
+
+    ctx.clearRect(0, 0, W, H);
+    drawOcean(t);
+    drawMemoryTrails(now);
+    drawReflections(t);
+    updateAndDrawParticles(dt);
+    drawBoats(t);
+
+    requestAnimationFrame(render);
+  }
+
+  /* ============================================================
+     SVG overlay — fleet links + score floats
+     ============================================================ */
+  const overlay = $("overlay");
+  function syncOverlayViewBox() {
+    overlay.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  }
+  window.addEventListener("resize", syncOverlayViewBox);
+
+  function renderFleetLinks() {
+    // Strip and rebuild lines (cheap, links rarely > 30).
+    const existing = overlay.querySelectorAll(".fleet-line");
+    existing.forEach((n) => n.remove());
+    for (const link of state.links) {
+      const pa = state.layout.get(link.a);
+      const pb = state.layout.get(link.b);
+      if (!pa || !pb) continue;
+      const ln = document.createElementNS(SVG_NS, "line");
+      ln.setAttribute("class", "fleet-line");
+      ln.setAttribute("x1", pa.x);
+      ln.setAttribute("y1", pa.y);
+      ln.setAttribute("x2", pb.x);
+      ln.setAttribute("y2", pb.y);
+      ln.setAttribute("opacity", String(0.25 + link.similarity * 0.6));
+      overlay.appendChild(ln);
+    }
+  }
+
+  function floatScore(taskId, score) {
+    const pos = state.layout.get(taskId);
+    if (!pos || score == null) return;
+    const txt = document.createElementNS(SVG_NS, "text");
+    txt.setAttribute("class", "score-float");
+    txt.setAttribute("x", String(pos.x));
+    txt.setAttribute("y", String(pos.y - 22));
+    txt.setAttribute("text-anchor", "middle");
+    txt.textContent = `+${(score * 100).toFixed(0)}`;
+    overlay.appendChild(txt);
+    setTimeout(() => txt.remove(), 1700);
+  }
+
+  /* ============================================================
+     Telescope zoom
+     ============================================================ */
+  const stage = $("stage");
+  function clickStage(e) {
+    if (e.target.closest(".detail")) return;
+    const rect = stage.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    // Hit test agents (largest radius wins).
+    let hit = null, best = Infinity;
+    for (const a of state.agents.values()) {
+      const pos = state.layout.get(a.task_id);
+      if (!pos) continue;
+      const d = Math.hypot(pos.x - x, pos.y - y);
+      if (d < 26 && d < best) { hit = a; best = d; }
+    }
+    if (hit) zoomToAgent(hit);
+    else zoomOut();
+  }
+  function zoomToAgent(agent) {
+    const pos = state.layout.get(agent.task_id);
+    if (!pos) return;
+    state.zoomTarget = agent.task_id;
+    const ox = (W / 2 - pos.x) / 2.5;
+    const oy = (H / 2 - pos.y) / 2.5;
+    stage.style.transform = `scale(2.5) translate(${ox}px, ${oy}px)`;
+    document.body.classList.add("zoomed");
+    document.body.style.setProperty("--vx", `${(pos.x / W) * 100}%`);
+    document.body.style.setProperty("--vy", `${(pos.y / H) * 100}%`);
+    populateDetail(agent);
+  }
+  function zoomOut() {
+    state.zoomTarget = null;
+    stage.style.transform = "scale(1) translate(0, 0)";
+    document.body.classList.remove("zoomed");
+  }
+  function populateDetail(a) {
+    $("d-goal").textContent = a.goal || "—";
+    $("d-id").textContent = (a.task_id || "").slice(0, 12);
+    $("d-attempt").textContent = String(a.attempt || 1);
+    $("d-branch").textContent = a.branch || "—";
+    $("d-phase").textContent = a.phase || "—";
+    $("d-score").textContent = (a.score || 0).toFixed(2);
+    $("d-elapsed").textContent = formatElapsed(a.elapsed_ms || 0);
+    $("d-cancel").onclick = () => {
+      cancelTask(a.task_id);
+      zoomOut();
+    };
+  }
+  stage.addEventListener("click", clickStage);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") zoomOut(); });
+
+  /* ============================================================
+     Aurora intensity → CSS variables
+     ============================================================ */
+  function updateAurora() {
+    const n = state.agents.size;
+    // 0 → 20s, 10+ → 4s. Linear interp clamped.
+    const speed = Math.max(4, 20 - n * 1.6);
+    document.documentElement.style.setProperty("--aurora-speed", `${speed}s`);
+    // High activity → electric violet (270 → 295). Calm → soft (250).
+    const hue = state.weather === "storm" ? 230 : state.weather === "calm" ? 260
+      : 270 + Math.min(n, 10) * 2.5;
+    document.documentElement.style.setProperty("--aurora-hue", `${hue}deg`);
+  }
+
+  /* ============================================================
+     Weather system — storm / calm / fair, driven by rolling pass/fail
+     ============================================================ */
+  function recordOutcome(success) {
+    state.rolling.push({ success, ts: Date.now() });
+    if (state.rolling.length > 20) state.rolling.shift();
+    updateWeather();
+  }
+  function updateWeather() {
+    if (state.rolling.length < 3) {
+      setWeather("fair");
+      return;
+    }
+    const fails = state.rolling.filter((r) => !r.success).length;
+    const passes = state.rolling.length - fails;
+    const failRate = fails / state.rolling.length;
+    const passRate = passes / state.rolling.length;
+    if (failRate > 0.4) setWeather("storm");
+    else if (passRate > 0.8) setWeather("calm");
+    else setWeather("fair");
+  }
+  function setWeather(w) {
+    if (state.weather === w) return;
+    state.weather = w;
+    document.body.classList.toggle("storm", w === "storm");
+    document.body.classList.toggle("calm",  w === "calm");
+    $("weather-tag").textContent = w;
+    applyWeatherToWaves();
+    updateAurora();
+    if (w === "storm") ensureRain();
+  }
+
+  function ensureRain() {
+    const r = $("rain");
+    if (r.children.length > 0) return;
+    for (let i = 0; i < 150; i++) {
+      const s = document.createElement("div");
+      s.className = "streak";
+      const left = Math.random() * 100;
+      const w = 5 + Math.random() * 10;
+      const h = 60 + Math.random() * 60;
+      const dur = 0.6 + Math.random() * 0.9;
+      const delay = -Math.random() * dur;
+      s.style.left = `${left}vw`;
+      s.style.width = `${w}px`;
+      s.style.height = `${h}px`;
+      s.style.animationDuration = `${dur}s`;
+      s.style.animationDelay = `${delay}s`;
+      s.style.willChange = "transform";
+      r.appendChild(s);
+    }
+  }
+
+  /* Calm-mode birds — drift across the sky, RAF-driven. */
+  const birds = [];
+  function ensureBirds() {
+    if (birds.length > 0) return;
+    for (let i = 0; i < 3; i++) birds.push(spawnBird(true));
+  }
+  function spawnBird(initial) {
+    return {
+      x: initial ? Math.random() * W : -40,
+      y: 60 + Math.random() * (HORIZON() - 100),
+      vx: 0.4 + Math.random() * 0.5,
+      flap: Math.random() * Math.PI * 2,
+    };
+  }
+  function drawBirds(t) {
+    if (state.weather !== "calm") return;
+    if (birds.length === 0) ensureBirds();
+    ctx.save();
+    ctx.strokeStyle = "rgba(40,30,20,0.65)";
+    ctx.lineWidth = 1.4;
+    for (let i = 0; i < birds.length; i++) {
+      const b = birds[i];
+      b.x += b.vx;
+      b.flap += 0.08;
+      if (b.x > W + 40) birds[i] = spawnBird(false);
+      const wing = Math.sin(b.flap) * 4;
+      ctx.beginPath();
+      ctx.moveTo(b.x - 6, b.y + wing);
+      ctx.quadraticCurveTo(b.x, b.y - 2, b.x + 6, b.y + wing);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  /* Hook drawBirds into the main render loop without restructuring. */
+  const _drawBoatsOriginal = drawBoats;
+  drawBoats = function (t) {
+    drawBirds(t);
+    _drawBoatsOriginal(t);
+  };
+
+  /* ============================================================
+     3D parallax instrument panel — mousemove → rotateX/Y
+     ============================================================ */
+  const instr = $("instr");
+  instr.addEventListener("mousemove", (e) => {
+    const r = instr.getBoundingClientRect();
+    const px = (e.clientX - r.left) / r.width  - 0.5;
+    const py = (e.clientY - r.top)  / r.height - 0.5;
+    const rotY = px *  16; // deg
+    const rotX = -py * 16;
+    instr.querySelectorAll(".gauge").forEach((g) => {
+      // Slight parallax offset per gauge column.
+      const idx = parseInt(g.dataset.idx || "0", 10);
+      g.style.transform = `rotateX(${rotX}deg) rotateY(${rotY}deg) translateZ(${4 + idx * 1}px)`;
+    });
+  });
+  instr.addEventListener("mouseleave", () => {
+    instr.querySelectorAll(".gauge").forEach((g) => {
+      g.style.transform = "rotateX(0deg) rotateY(0deg) translateZ(0)";
+    });
+  });
+  instr.querySelectorAll(".gauge").forEach((g, i) => g.dataset.idx = i);
+
+  /* ============================================================
+     WebSocket data plumbing
+     ============================================================ */
   function connect() {
     const proto = location.protocol === "https:" ? "wss:" : "ws:";
     const ws = new WebSocket(`${proto}//${location.host}/ws`);
@@ -667,11 +1453,10 @@
     setConn("connecting", false);
     ws.onopen   = () => { setConn("live", true); state.backoff = 1000; };
     ws.onclose  = () => { setConn("offline", false); setTimeout(connect, state.backoff);
-                         state.backoff = Math.min(state.backoff * 2, 15000); };
+                          state.backoff = Math.min(state.backoff * 2, 15000); };
     ws.onerror  = () => ws.close();
     ws.onmessage = (e) => { try { handleMessage(JSON.parse(e.data)); } catch (_) {} };
   }
-
   function setConn(text, live) {
     $("conn-text").textContent = text;
     $("conn").classList.toggle("live", !!live);
@@ -687,7 +1472,8 @@
           ...a, score: 0, phase: "thinking",
         }));
         if (msg.stats) state.stats = msg.stats;
-        refreshConstellation(); renderAll();
+        refreshConstellation();
+        renderAll();
         break;
       }
       case "task_queued":
@@ -708,7 +1494,9 @@
         });
         updateTaskStatus(id, "running");
         appendLog("info", `started attempt ${msg.attempt} on ${msg.branch}`);
-        refreshConstellation(); renderAll();
+        refreshConstellation();
+        renderHarbor();
+        updateAurora();
         break;
       }
       case "lifecycle": {
@@ -718,15 +1506,9 @@
         a.phase = msg.phase;
         if (msg.score != null) a.score = msg.score;
         if (msg.branch) a.branch = msg.branch;
-        if (msg.phase === "scored") {
-          floatScore(id, msg.score);
-        } else if (msg.phase === "died") {
-          // boat sails off-screen / shatters; cleanup happens in task_completed
-          a.duration_ms = msg.duration_ms || a.elapsed_ms;
-        } else if (msg.phase === "born") {
-          // birth flash already rendered by re-render
-        }
-        renderAgents();
+        if (msg.phase === "scored") floatScore(id, msg.score);
+        if (msg.phase === "died") a.duration_ms = msg.duration_ms || a.elapsed_ms;
+        if (state.zoomTarget === id) populateDetail(a);
         break;
       }
       case "status_changed":
@@ -738,18 +1520,13 @@
         break;
       case "score_updated": {
         const a = state.agents.get(tid(msg));
-        if (a) {
-          a.score = clamp(msg.test_pass_rate || 0, 0, 1);
-          renderAgents();
-        }
+        if (a) a.score = clamp(msg.test_pass_rate || 0, 0, 1);
+        if (state.zoomTarget === tid(msg) && a) populateDetail(a);
         break;
       }
       case "turn_metrics": {
         const a = state.agents.get(tid(msg));
-        if (a) {
-          a.activity = msg.activity || 0;
-          renderAgents();
-        }
+        if (a) a.activity = msg.activity || 0;
         break;
       }
       case "task_completed": {
@@ -758,27 +1535,23 @@
           ? Object.keys(msg.outcome)[0]
           : String(msg.outcome || "done");
         const success = outcome.toLowerCase().includes("success");
-        const a = state.agents.get(id);
-        if (a) {
-          // record memory trail at this agent's last position
-          const pos = state.layout.get(id);
-          if (pos) {
-            state.memoryTrails.push({
-              points: [pos],
-              born: Date.now(),
-              success,
-            });
-            // cap trails
-            if (state.memoryTrails.length > 40) state.memoryTrails.shift();
-          }
+        const pos = state.layout.get(id);
+        if (pos) {
+          state.memoryTrails.push({
+            x: pos.x, y: pos.y, born: Date.now(), success,
+          });
+          if (state.memoryTrails.length > 40) state.memoryTrails.shift();
         }
+        recordOutcome(success);
         state.agents.delete(id);
         state.layout.delete(id);
         updateTaskStatus(id, outcome);
         appendLog(success ? "success" : "error",
           `task ${id.slice(0, 8)} ${outcome} after ${msg.total_attempts} attempt(s)`);
+        if (state.zoomTarget === id) zoomOut();
         refreshConstellation();
-        renderAll();
+        renderHarbor();
+        updateAurora();
         break;
       }
       case "task_cancelled":
@@ -786,8 +1559,10 @@
         state.layout.delete(tid(msg));
         updateTaskStatus(tid(msg), "cancelled");
         appendLog("warn", `task ${tid(msg).slice(0, 8)} cancelled`);
+        if (state.zoomTarget === tid(msg)) zoomOut();
         refreshConstellation();
-        renderAll();
+        renderHarbor();
+        updateAurora();
         break;
       case "pool_stats":
         state.stats = {
@@ -800,40 +1575,6 @@
     }
   }
 
-  /* -------- API actions -------- */
-  async function submitTask() {
-    const goal = $("goal-input").value.trim();
-    const priority = $("priority-input").value;
-    if (!goal) return;
-    const wheel = $("submit-btn");
-    wheel.classList.add("spinning");
-    setTimeout(() => wheel.classList.remove("spinning"), 800);
-    try {
-      const resp = await fetch("/api/tasks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ goal, priority }),
-      });
-      if (!resp.ok) {
-        appendLog("error", `submit failed (${resp.status})`);
-      } else {
-        $("goal-input").value = "";
-        appendLog("success", `launched: ${goal}`);
-      }
-    } catch (e) {
-      appendLog("error", `submit error: ${e}`);
-    }
-  }
-
-  async function cancelTask(id) {
-    try {
-      const r = await fetch(`/api/tasks/${encodeURIComponent(id)}`, { method: "DELETE" });
-      if (!r.ok) appendLog("error", `cancel failed (${r.status})`);
-    } catch (e) {
-      appendLog("error", `cancel error: ${e}`);
-    }
-  }
-
   /* -------- Constellation refresh -------- */
   let constellationInflight = false;
   async function refreshConstellation() {
@@ -843,42 +1584,44 @@
       const r = await fetch("/api/constellation");
       if (!r.ok) return;
       const d = await r.json();
-      state.layout.clear();
+      const layout = new Map();
       (d.nodes || []).forEach((n) => {
-        state.layout.set(n.task_id, {
-          x: n.x * VB.w, y: n.y * VB.h,
-        });
+        layout.set(n.task_id, { x: worldX(n.x), y: worldY(n.y) });
       });
-      // Resolve link indices into task_ids for stable rendering.
+      // Ease toward new positions instead of snapping (1-frame interp ramps in render).
+      state.layout = layout;
       state.links = (d.links || []).map((l) => ({
         a: d.nodes[l.a]?.task_id,
         b: d.nodes[l.b]?.task_id,
         similarity: l.similarity,
       })).filter((l) => l.a && l.b);
-      renderAgents();
+      renderFleetLinks();
     } catch (_) {
-      // ignore — orb still renders from last known layout
+      /* swallow — orb keeps last layout */
     } finally {
       constellationInflight = false;
     }
   }
-  // Lightweight periodic refresh while agents are sailing.
   setInterval(() => { if (state.agents.size > 0) refreshConstellation(); }, 4000);
 
-  /* -------- Renderers -------- */
+  /* ============================================================
+     Renderers — chrome (harbor, log, instruments)
+     ============================================================ */
   function renderAll() {
     renderHarbor();
-    renderAgents();
+    renderFleetLinks();
     renderLogs();
     renderInstruments();
+    updateAurora();
   }
-
   function renderHarbor() {
     const list = $("dock-list");
     list.innerHTML = "";
     const arr = Array.from(state.tasks.values()).sort((a, b) =>
       (b.created_at || "").localeCompare(a.created_at || ""));
     $("task-count").textContent = arr.length;
+    $("live-count").textContent = state.agents.size;
+    $("empty-state").style.display = state.agents.size === 0 ? "grid" : "none";
     for (const t of arr) {
       const status = (t.status || "").toString().toLowerCase();
       const cls = status.includes("success") ? "success"
@@ -886,12 +1629,17 @@
         : status.includes("run") ? "running" : "queued";
       const row = document.createElement("div");
       row.className = "dock-row " + cls + (state.selected === t.id ? " selected" : "");
-      row.onclick = () => { state.selected = t.id; renderHarbor(); };
+      row.onclick = () => {
+        state.selected = t.id;
+        renderHarbor();
+        const a = state.agents.get(t.id);
+        if (a) zoomToAgent(a);
+      };
       row.innerHTML = `
         <svg class="mini-boat" viewBox="0 0 22 18">
-          <path class="boat-hull" d="M2,12 L20,12 L17,16 L5,16 Z" />
-          <line class="boat-mast" x1="11" y1="12" x2="11" y2="3" />
-          <path class="boat-sail" d="M11,3 L11,11 L17,11 Z" />
+          <path d="M2,12 L20,12 L17,16 L5,16 Z" fill="#7c3aed" />
+          <line x1="11" y1="12" x2="11" y2="3" stroke="#a78bfa" stroke-width="1.2" />
+          <path d="M11,3 L11,11 L17,11 Z" fill="rgba(167,139,250,0.55)" stroke="#a78bfa" stroke-width="0.8"/>
         </svg>
         <div class="info">
           <div class="goal"></div>
@@ -905,139 +1653,6 @@
     }
   }
 
-  function renderAgents() {
-    const orb = $("orb");
-    orb.innerHTML = "";
-    $("live-count").textContent = state.agents.size;
-    $("empty-state").style.display = state.agents.size === 0 ? "grid" : "none";
-
-    // Memory trails (rendered first, behind everything else).
-    const now = Date.now();
-    state.memoryTrails = state.memoryTrails.filter((t) => now - t.born < 60_000);
-    for (const t of state.memoryTrails) {
-      const age = (now - t.born) / 60_000;
-      const opacity = Math.max(0, 0.4 * (1 - age));
-      const p = t.points[0];
-      if (!p) continue;
-      const trail = svgEl("circle", {
-        cx: p.x, cy: p.y, r: 14 + age * 20,
-        fill: "none",
-        stroke: t.success ? "rgba(91,227,155,0.6)" : "rgba(239,68,68,0.4)",
-        "stroke-width": "1",
-        opacity: String(opacity),
-      });
-      orb.appendChild(trail);
-    }
-
-    // Fleet links between similar agents.
-    for (const link of state.links) {
-      const pa = state.layout.get(link.a);
-      const pb = state.layout.get(link.b);
-      if (!pa || !pb) continue;
-      orb.appendChild(svgEl("line", {
-        class: "fleet-line",
-        x1: pa.x, y1: pa.y, x2: pb.x, y2: pb.y,
-        opacity: String(0.25 + link.similarity * 0.6),
-      }));
-    }
-
-    // Boats — one per agent.
-    let i = 0;
-    for (const a of state.agents.values()) {
-      const pos = state.layout.get(a.task_id);
-      if (!pos) {
-        // Fallback layout: circle, until /api/constellation responds.
-        const angle = (i / Math.max(state.agents.size, 1)) * Math.PI * 2 - Math.PI / 2;
-        const cx = VB.w / 2, cy = VB.h / 2, r = Math.min(VB.w, VB.h) * 0.32;
-        state.layout.set(a.task_id, {
-          x: cx + Math.cos(angle) * r,
-          y: cy + Math.sin(angle) * r,
-        });
-      }
-      orb.appendChild(makeBoat(a, state.layout.get(a.task_id)));
-      i++;
-    }
-  }
-
-  function makeBoat(agent, pos) {
-    const g = svgEl("g", {
-      class: `boat-group ${agent.phase || "thinking"}` +
-             (agent.phase === "died" && (agent.score || 0) > 0.5 ? " success" : ""),
-      transform: `translate(${pos.x}, ${pos.y})`,
-    });
-
-    // Score aura — radius scales with score (high score = bright halo).
-    const auraR = 14 + (agent.score || 0) * 22;
-    g.appendChild(svgEl("circle", {
-      class: "boat-aura", cx: 0, cy: 0, r: auraR,
-    }));
-
-    // Wake — sinusoidal trailing curve when acting.
-    if (agent.phase === "acting" || agent.phase === "thinking") {
-      const wake = svgEl("path", {
-        class: "wake",
-        d: "M-22,8 q-8,-4 -16,2 q-8,4 -16,-2",
-        opacity: agent.phase === "acting" ? "0.9" : "0.4",
-      });
-      g.appendChild(wake);
-    }
-
-    // Boat body — minimal SVG path: hull + mast + sail.
-    const hull = svgEl("path", {
-      class: "boat-hull",
-      d: "M-12,3 L12,3 L8,9 L-8,9 Z",
-    });
-    const mast = svgEl("line", {
-      class: "boat-mast",
-      x1: 0, y1: 3, x2: 0, y2: -10,
-    });
-    const sail = svgEl("path", {
-      class: "boat-sail",
-      d: "M0,-10 L0,2 L8,2 Z",
-    });
-    g.appendChild(hull); g.appendChild(mast); g.appendChild(sail);
-
-    // Goal label, faint.
-    const label = svgEl("text", {
-      x: 14, y: 4,
-      "font-family": "ui-monospace, monospace",
-      "font-size": "9",
-      fill: "rgba(232,232,245,0.5)",
-    });
-    label.textContent = (agent.goal || "").slice(0, 32);
-    g.appendChild(label);
-
-    // Cancel hit-target (invisible circle).
-    const target = svgEl("circle", {
-      cx: 0, cy: 0, r: 18,
-      fill: "rgba(0,0,0,0)",
-      style: "cursor:pointer;",
-    });
-    target.addEventListener("contextmenu", (e) => { e.preventDefault(); cancelTask(agent.task_id); });
-    target.addEventListener("dblclick", () => cancelTask(agent.task_id));
-    const tt = svgEl("title", {});
-    tt.textContent = `${agent.goal}\nattempt ${agent.attempt}\nscore ${(agent.score||0).toFixed(2)}\n(double-click to cancel)`;
-    target.appendChild(tt);
-    g.appendChild(target);
-
-    return g;
-  }
-
-  function floatScore(taskId, score) {
-    const orb = $("orb");
-    const pos = state.layout.get(taskId);
-    if (!pos || score == null) return;
-    const txt = svgEl("text", {
-      class: "score-float",
-      x: pos.x, y: pos.y - 18,
-      "text-anchor": "middle",
-    });
-    txt.textContent = `+${(score * 100).toFixed(0)}`;
-    orb.appendChild(txt);
-    setTimeout(() => txt.remove(), 1700);
-  }
-
-  /* -------- Logs -------- */
   function appendLog(level, line, ts) {
     state.logs.push({ ts: ts || Date.now(), level, line });
     if (state.logs.length > MAX_LOGS * 2) state.logs.splice(0, state.logs.length - MAX_LOGS);
@@ -1050,9 +1665,9 @@
     for (const l of slice) {
       const div = document.createElement("div");
       div.className = "log-line " + (l.level || "info");
-      const ts = new Date(l.ts).toLocaleTimeString();
+      const tsLabel = new Date(l.ts).toLocaleTimeString();
       const span = document.createElement("span");
-      span.className = "ts"; span.textContent = ts;
+      span.className = "ts"; span.textContent = tsLabel;
       div.appendChild(span);
       div.appendChild(document.createTextNode(l.line));
       el.appendChild(div);
@@ -1061,17 +1676,13 @@
     el.scrollTop = el.scrollHeight;
   }
 
-  /* -------- Instrument panel -------- */
   function renderInstruments() {
     const s = state.stats;
     const completed = s.succeeded + s.failed;
     const rate = completed === 0 ? 0 : s.succeeded / completed;
-
-    // Compass: 0% → -90°, 100% → +90°
     setNeedle("needle-compass", -90 + rate * 180);
     $("g-rate").textContent = completed === 0 ? "—" : `${(rate * 100).toFixed(0)}%`;
 
-    // Speedometer: avg score (0..1) → -90 → +90
     const scores = Array.from(state.agents.values()).map((a) => a.score || 0);
     const avg = scores.length === 0 ? state.avgScore
       : scores.reduce((x, y) => x + y, 0) / scores.length;
@@ -1079,31 +1690,74 @@
     setNeedle("needle-speed", -90 + avg * 180);
     $("g-score").textContent = scores.length === 0 ? "—" : avg.toFixed(2);
 
-    // Depth: log scale of running+queued; cap visual at 16.
     const depth = s.running + s.queued;
-    const dRot = -90 + Math.min(depth / 16, 1) * 180;
-    setNeedle("needle-depth", dRot);
+    setNeedle("needle-depth", -90 + Math.min(depth / 16, 1) * 180);
     $("g-depth").textContent = String(depth);
 
-    // Chronometer: uptime mod 60 → seconds hand sweep.
     const secInMin = (s.uptime_secs || 0) % 60;
     setNeedle("needle-chrono", -90 + (secInMin / 60) * 360);
     $("g-uptime").textContent = formatUptime(s.uptime_secs);
   }
-  function setNeedle(id, deg) {
+  function setNeedle(id, target) {
     const n = $(id);
     if (!n) return;
-    n.style.transform = `translate(-50%, -100%) rotate(${deg}deg)`;
+    // Spring overshoot: settle handled by CSS transition (--ease-spring).
+    // Add an explicit overshoot keyframe via brief class-toggle for stronger effect.
+    const overshoot = target + Math.sign(target) * 4;
+    n.style.transform = `translate(-50%, -100%) rotate(${overshoot}deg)`;
+    requestAnimationFrame(() => {
+      n.style.transform = `translate(-50%, -100%) rotate(${target}deg)`;
+    });
   }
 
-  /* -------- Live elapsed timers -------- */
+  /* ============================================================
+     API actions
+     ============================================================ */
+  async function submitTask() {
+    const goal = $("goal-input").value.trim();
+    const priority = $("priority-input").value;
+    if (!goal) return;
+    const wheel = $("submit-btn");
+    wheel.classList.add("spinning");
+    setTimeout(() => wheel.classList.remove("spinning"), 800);
+    try {
+      const resp = await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ goal, priority }),
+      });
+      if (!resp.ok) appendLog("error", `submit failed (${resp.status})`);
+      else {
+        $("goal-input").value = "";
+        appendLog("success", `launched: ${goal}`);
+      }
+    } catch (e) {
+      appendLog("error", `submit error: ${e}`);
+    }
+  }
+  async function cancelTask(id) {
+    try {
+      const r = await fetch(`/api/tasks/${encodeURIComponent(id)}`, { method: "DELETE" });
+      if (!r.ok) appendLog("error", `cancel failed (${r.status})`);
+    } catch (e) {
+      appendLog("error", `cancel error: ${e}`);
+    }
+  }
+
+  /* ============================================================
+     Live elapsed timer (drives detail panel + animations)
+     ============================================================ */
   setInterval(() => {
-    for (const a of state.agents.values()) {
-      a.elapsed_ms = (a.elapsed_ms || 0) + 1000;
+    for (const a of state.agents.values()) a.elapsed_ms = (a.elapsed_ms || 0) + 1000;
+    if (state.zoomTarget) {
+      const a = state.agents.get(state.zoomTarget);
+      if (a) $("d-elapsed").textContent = formatElapsed(a.elapsed_ms);
     }
   }, 1000);
 
-  /* -------- Helpers -------- */
+  /* ============================================================
+     Helpers
+     ============================================================ */
   function tid(msg) {
     const id = msg.task_id;
     if (typeof id === "string") return id;
@@ -1123,6 +1777,13 @@
       .replaceAll(">", "&gt;").replaceAll('"', "&quot;");
   }
   function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, Number(n) || 0)); }
+  function formatElapsed(ms) {
+    const s = Math.floor(ms / 1000);
+    if (s < 60) return `${s}s`;
+    const m = Math.floor(s / 60);
+    if (m < 60) return `${m}m ${s % 60}s`;
+    return `${Math.floor(m / 60)}h ${m % 60}m`;
+  }
   function formatUptime(s) {
     if (!s) return "0s";
     if (s < 60) return `${s}s`;
@@ -1132,19 +1793,17 @@
     if (h < 24) return `${h}h ${m % 60}m`;
     return `${Math.floor(h / 24)}d ${h % 24}h`;
   }
-  function svgEl(name, attrs) {
-    const el = document.createElementNS(SVG_NS, name);
-    for (const [k, v] of Object.entries(attrs || {})) el.setAttribute(k, v);
-    return el;
-  }
 
-  /* -------- Boot -------- */
+  /* ============================================================
+     Boot
+     ============================================================ */
   $("submit-btn").addEventListener("click", submitTask);
   $("goal-input").addEventListener("keydown", (e) => {
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submitTask(); }
   });
 
-  // Initial REST hydration so the dashboard renders before WS arrives.
+  resizeCanvas(); syncOverlayViewBox();
+
   Promise.allSettled([
     fetch("/api/stats").then(r => r.ok ? r.json() : null).then((s) => { if (s) state.stats = s; }),
     fetch("/api/tasks").then(r => r.ok ? r.json() : null).then((d) => {
@@ -1159,6 +1818,7 @@
 
   renderAll();
   connect();
+  requestAnimationFrame(render);
   </script>
 </body>
 </html>
