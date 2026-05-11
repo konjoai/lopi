@@ -10,6 +10,7 @@ use crate::db_path;
 pub async fn run(
     max_agents: usize,
     repo: PathBuf,
+    extra_repos: Vec<PathBuf>,
     host: String,
     port: u16,
     cfg: Option<&LopiConfig>,
@@ -21,7 +22,20 @@ pub async fn run(
         AgentPool::new(max_agents, repo.clone(), queue.clone(), bus.clone()).with_store(store.clone()),
     );
 
-    print_startup_banner(max_agents, &repo, &host, port);
+    print_startup_banner(max_agents, &repo, &extra_repos, &host, port);
+
+    // Spawn additional per-repo dispatch loops for multi-repo mode.
+    // Each extra repo shares the same queue and bus; the pool routes by
+    // task.repo_path, so tasks land on the right worktree.
+    for extra in &extra_repos {
+        let extra_pool = AgentPool::new(max_agents, extra.clone(), queue.clone(), bus.clone())
+            .with_store(store.clone());
+        tokio::spawn(async move {
+            if let Err(e) = extra_pool.run().await {
+                tracing::error!("multi-repo pool error: {e}");
+            }
+        });
+    }
 
     let schedules = cfg.map(|c| c.schedules.clone()).unwrap_or_default();
     if !schedules.is_empty() {
@@ -35,6 +49,7 @@ pub async fn run(
         });
     }
     println!();
+
     let pool_for_dispatch = (*pool).clone();
     tokio::spawn(async move {
         if let Err(e) = pool_for_dispatch.run().await {
@@ -58,10 +73,13 @@ pub async fn run(
     lopi_ui::web::serve_with_repo(store, bus, queue, pool, &host, port, auth_token, repo).await
 }
 
-fn print_startup_banner(max_agents: usize, repo: &Path, host: &str, port: u16) {
+fn print_startup_banner(max_agents: usize, repo: &Path, extra_repos: &[PathBuf], host: &str, port: u16) {
     println!("🚢 lopi sail");
     println!("   agents:    up to {max_agents} concurrent");
     println!("   repo:      {}", repo.display());
+    for r in extra_repos {
+        println!("   + repo:    {}", r.display());
+    }
     println!("   dashboard: http://{host}:{port}");
     println!("   api:       http://{host}:{port}/api/tasks");
     println!("   ws:        ws://{host}:{port}/ws");

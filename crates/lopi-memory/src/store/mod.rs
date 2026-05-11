@@ -547,8 +547,10 @@ pub struct PatternRow {
 }
 
 mod lessons;
+mod quality;
 mod stability;
 pub use lessons::LessonRow;
+pub use quality::{QualityRunRecord, QualityRunRow};
 pub use stability::{StabilityEntry, StabilityRecord};
 
 #[cfg(test)]

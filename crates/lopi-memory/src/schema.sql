@@ -92,3 +92,18 @@ CREATE TABLE IF NOT EXISTS lessons (
     created_at  TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_lessons_repo_created ON lessons(repo_path, created_at DESC);
+
+-- Sprint M: KCQF quality check run ledger.
+-- Each row = one execution of `lopi gap-fill` or `lopi check`.
+-- Drives coverage trend: is the spec getting healthier over time?
+CREATE TABLE IF NOT EXISTS quality_check_runs (
+    id          TEXT PRIMARY KEY,
+    repo_path   TEXT NOT NULL,
+    spec_items  INTEGER NOT NULL DEFAULT 0,
+    passing     INTEGER NOT NULL DEFAULT 0,
+    failing     INTEGER NOT NULL DEFAULT 0,
+    gaps        INTEGER NOT NULL DEFAULT 0,
+    score       REAL NOT NULL DEFAULT 0.0,
+    run_at      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_quality_repo_run ON quality_check_runs(repo_path, run_at DESC);

@@ -71,7 +71,7 @@ enum Commands {
     },
     /// List all tasks and their status from the database
     Dock,
-    /// Start the web dashboard + agent pool
+    /// Start the web dashboard + agent pool (single or multi-repo).
     Sail {
         #[arg(short, long, default_value = "3000")]
         port: u16,
@@ -81,6 +81,11 @@ enum Commands {
         max_agents: usize,
         #[arg(short, long, default_value = ".")]
         repo: PathBuf,
+        /// Additional repo paths to watch concurrently (multi-repo mode).
+        /// Tasks submitted via /api/tasks with a `repo` field are routed to
+        /// the matching pool slot.
+        #[arg(long, value_delimiter = ',')]
+        repos: Vec<PathBuf>,
     },
     /// Cancel a running task by ID prefix
     Cancel {
@@ -100,6 +105,22 @@ enum Commands {
     /// scores recorded before each self-modification attempt.
     #[command(subcommand)]
     Stability(StabilityCmd),
+    /// Continuously run gap-fill on a cadence — the Kitchen Loop daemon.
+    ///
+    /// Runs `gap-fill` every `--interval` minutes. On each iteration:
+    /// persists quality results, logs trend, and queues fix tasks for gaps.
+    WatchGapFill {
+        #[arg(short, long, default_value = ".")]
+        repo: PathBuf,
+        /// Interval in minutes between gap-fill runs (default 60).
+        #[arg(long, default_value = "60")]
+        interval: u64,
+        #[arg(long, default_value = "http://127.0.0.1:3000")]
+        sail_url: String,
+        /// Run once immediately on start (in addition to the loop).
+        #[arg(long)]
+        run_now: bool,
+    },
     /// Run tests, find failing spec items, and queue fix tasks into a running
     /// lopi sail server. Use --dry-run to see gaps without queuing.
     GapFill {
@@ -373,8 +394,8 @@ async fn main() -> Result<()> {
         }
 
         // ── lopi sail ───────────────────────────────────────────
-        Commands::Sail { port, host, max_agents, repo } => {
-            sail_commands::run(max_agents, repo, host, port, cfg.as_ref()).await?;
+        Commands::Sail { port, host, max_agents, repo, repos } => {
+            sail_commands::run(max_agents, repo, repos, host, port, cfg.as_ref()).await?;
         }
 
         // ── lopi cancel ─────────────────────────────────────────
@@ -389,8 +410,12 @@ async fn main() -> Result<()> {
         }
 
         // ── lopi learn ──────────────────────────────────────────
+        Commands::WatchGapFill { repo, interval, sail_url, run_now } => {
+            gap_fill_commands::watch_loop(repo, interval, &sail_url, run_now).await?;
+        }
+
         Commands::GapFill { repo, sail_url, dry_run } => {
-            gap_fill_commands::run(repo, &sail_url, dry_run).await?;
+            gap_fill_commands::run(repo, &sail_url, dry_run, false).await?;
         }
 
         Commands::Spec { repo, export, save } => {

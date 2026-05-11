@@ -1,5 +1,51 @@
 # Changelog
 
+## [0.15.0] — Sprint M: Continuous Loop + Multi-Repo 🔄
+
+### Added
+
+**`crates/lopi-memory/src/store/quality.rs`** — quality check run ledger
+- `quality_check_runs` table: `spec_items`, `passing`, `failing`, `gaps`, `score`, `run_at`
+- `MemoryStore::save_quality_run(QualityRunRecord)` — persist one run with auto-computed score
+- `MemoryStore::load_quality_trend(repo_path, limit)` — fetch runs ordered by `run_at DESC`
+- `MemoryStore::quality_trend_delta(repo_path)` — (latest_score, prev_score) pair for trend arrow
+- `QualityRunRow::improved_vs(&prev)` — boolean trend comparison
+- 5 unit tests
+
+**`lopi gap-fill` — now persists quality data + prints trend**
+- After each run: saves a `QualityRunRow` to SQLite via `save_quality_run()`
+- Loads previous run and prints coverage trend: `coverage: 82% ↑ (was 76%)`
+- Returns `QualitySnapshot` so the daemon loop can log without re-querying
+- New `quiet: bool` param — suppresses output when called from the daemon
+
+**`lopi watch-gap-fill` — Kitchen Loop daemon**
+- `lopi watch-gap-fill [--repo .] [--interval 60] [--sail-url ...] [--run-now]`
+- Runs gap-fill every N minutes (default 60), persisting results and queuing fix tasks
+- `--run-now`: triggers one immediate run before the loop starts
+- Ctrl-C cleanly exits the loop
+
+**`lopi sail --repos` — multi-repo mode**
+- `--repos repo1,repo2,…` — additional repo paths alongside the primary `--repo`
+- Each extra repo gets its own `AgentPool` dispatch loop sharing the shared queue and bus
+- Pool already routes by `task.repo_path` — multi-repo just adds parallel dispatch
+- Banner prints all repos at startup
+
+**`/api/quality/trend`** — quality trend web endpoint
+- `GET /api/quality/trend?repo=<path>&limit=<n>` — returns quality check run history
+- Falls back to `AppState.repo_path` when `repo` query param is absent
+
+### Architecture notes
+
+The `watch-gap-fill` daemon is the mechanical basis of the Kitchen Loop. Each iteration runs the full spec → test → gap detection → queue pipeline. As fix tasks complete and get merged, the next iteration finds fewer gaps — driving the autonomous quality ratchet. The SQLite trend table makes the improvement measurable rather than impressionistic.
+
+Multi-repo dispatch works because `task.repo_path` is already a field on `Task` and the pool already routes on it. Adding `--repos` spawns parallel dispatch goroutines, each bound to one repo path. No new queue needed.
+
+### Tests
+- 5 new quality.rs tests + 2 gap_fill_commands snapshot tests
+- Workspace: 399 → **405 passing**, 0 failing. 0 clippy warnings.
+
+---
+
 ## [0.14.0] — Sprint L: Synthetic User + File Budget Fixes 🔬
 
 ### Added

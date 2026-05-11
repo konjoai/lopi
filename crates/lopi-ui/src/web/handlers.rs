@@ -139,6 +139,34 @@ pub(super) async fn get_spec(State(s): State<AppState>) -> impl IntoResponse {
     })).into_response()
 }
 
+/// `GET /api/quality/trend?repo=<path>&limit=<n>` — quality check run history.
+pub(super) async fn get_quality_trend(
+    axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
+    State(s): State<AppState>,
+) -> impl IntoResponse {
+    let repo_str = params.get("repo").cloned()
+        .unwrap_or_else(|| s.repo_path.to_string_lossy().to_string());
+    let limit: i64 = params.get("limit").and_then(|v| v.parse().ok()).unwrap_or(20);
+    match s.store.load_quality_trend(&repo_str, limit).await {
+        Ok(rows) => Json(json!({
+            "repo": repo_str,
+            "runs": rows.iter().map(|r| json!({
+                "id": r.id,
+                "spec_items": r.spec_items,
+                "passing": r.passing,
+                "failing": r.failing,
+                "gaps": r.gaps,
+                "score": r.score,
+                "run_at": r.run_at,
+            })).collect::<Vec<_>>(),
+        })).into_response(),
+        Err(e) => {
+            tracing::warn!("quality_trend query failed: {e}");
+            (StatusCode::INTERNAL_SERVER_ERROR, "db error").into_response()
+        }
+    }
+}
+
 /// Prometheus text-format metrics.
 pub(super) async fn metrics(State(s): State<AppState>) -> impl IntoResponse {
     let stats = s.pool.stats();

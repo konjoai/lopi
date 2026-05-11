@@ -150,6 +150,7 @@ pub fn build_app(state: AppState) -> Router {
         .route("/api/stats", get(get_stats))
         .route("/api/patterns", get(list_patterns))
         .route("/api/spec", get(get_spec))
+        .route("/api/quality/trend", get(get_quality_trend))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             rate_limit_middleware,
@@ -360,8 +361,8 @@ fn file_response(file: rust_embed::EmbeddedFile, path: &str) -> Response {
 
 mod handlers;
 use handlers::{
-    cancel_task, create_task, get_spec, get_stats, get_task, health, list_patterns, list_tasks,
-    metrics,
+    cancel_task, create_task, get_quality_trend, get_spec, get_stats, get_task, health,
+    list_patterns, list_tasks, metrics,
 };
 pub(crate) mod types;
 mod streaming;

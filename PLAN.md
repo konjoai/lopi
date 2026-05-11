@@ -1,6 +1,6 @@
 # PLAN.md — lopi Master Plan
 
-**Updated:** 2026-05-11 · v0.14.0 just shipped.
+**Updated:** 2026-05-11 · v0.15.0 just shipped.
 
 ## Vision
 
@@ -55,6 +55,11 @@ MemoryStore · worktree lock · CancellationToken · structured shutdown.
 the CLI subprocess for planning · prompt caching with `cache_control:
 ephemeral` · real `TurnMetrics` from API responses · transparent CLI
 fallback · 7 new tests.
+
+### v0.15.0 — Sprint M: Continuous Loop + Multi-Repo 🔄
+`quality_check_runs` table · `save_quality_run` / `load_quality_trend` / `quality_trend_delta` ·
+gap-fill persists + prints trend · `lopi watch-gap-fill` Kitchen Loop daemon ·
+`lopi sail --repos` multi-repo dispatch · `/api/quality/trend` endpoint · 5 new tests (405 total).
 
 ### v0.14.0 — Sprint L: Synthetic User + File Budget Fixes 🔬
 `TestRunResult` parser (Cargo + pytest) · `coverage_gaps()` · `lopi gap-fill` command ·
@@ -137,12 +142,19 @@ lopi learn annotate CLI command. 313 tests.
 - [x] `lopi check --fail-on-violations` — CI-compatible exit code
 - [x] File budget repairs — all three oversize files now under 500 lines
 
-### Sprint M — Continuous Loop + Multi-Repo (next)
-- [ ] `lopi watch --gap-fill` — background daemon that runs gap-fill on a cadence
-- [ ] Gap result storage in SQLite — trend quality scores over time
-- [ ] Multi-repo orchestration — pool routing by task.repo_path already works;
-      needs a `lopi sail --repo-map` config for 10-repo concurrent dispatch
-- [ ] GitHub App OAuth — per-customer isolated pattern store + billing scaffold
+### Sprint M — Continuous Loop + Multi-Repo ✅ (shipped v0.15.0)
+- [x] `quality_check_runs` table + CRUD in lopi-memory
+- [x] `lopi gap-fill` persists quality run + prints trend delta
+- [x] `lopi watch-gap-fill` — Kitchen Loop daemon (configurable interval)
+- [x] `lopi sail --repos` — multi-repo concurrent dispatch
+- [x] `/api/quality/trend` — trend history endpoint
+
+### Sprint N — GitHub App + Customer Onboarding (next)
+- [ ] GitHub App OAuth installation flow — per-customer repo authorization
+- [ ] Per-customer isolated pattern store (separate SQLite per customer_id)
+- [ ] `lopi.konjoai.dev` onboarding — connect any GitHub repo in 5 minutes
+- [ ] Stripe billing integration — $299/$999/$4,999 tier enforcement
+- [ ] Trust calibration — track PR accept/reject ratio; expand auto-merge scope
 
 ### Phase 7+ — UI polish (deferred)
 - [ ] Mobile-responsive Forge degradation
@@ -176,10 +188,10 @@ near-term sprint** — the CLI is good enough.
 
 | Metric | Value |
 |---|---|
-| Workspace tests | **399 passing**, 0 failing |
+| Workspace tests | **405 passing**, 0 failing |
 | Build | `cargo build --workspace`: clean, 0 clippy warnings |
 | Crates | **13** (+ lopi-github, lopi-spec) |
-| CLI commands | `run`, `watch`, `tail`, `dock`, `sail`, `cancel`, `learn list/show/export/annotate`, `schedules list`, `serve-webhooks`, `spec`, `check [--fail-on-violations]`, `gap-fill` |
+| CLI commands | `run`, `watch`, `tail`, `dock`, `sail [--repos]`, `cancel`, `learn list/show/export/annotate`, `schedules list`, `serve-webhooks`, `spec`, `check [--fail-on-violations]`, `gap-fill`, `watch-gap-fill` |
 | API endpoints | `/api/health`, `/api/tasks` (GET+POST), `/api/tasks/:id` (GET+DELETE), `/api/stats`, `/api/patterns`, `/metrics` (Prometheus), `/sse` (SSE), `/ws` (WebSocket) |
 | Embedded UI | SvelteKit Forge + Constellation, ~487 KB JS / 126 KB gzipped |
 | Direct-API planning | ✅ via `AgentRunner::with_api(client, limiter, breaker)` |
