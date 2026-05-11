@@ -1,10 +1,12 @@
 use super::{backoff_secs, postmortem, AgentRunner};
 use crate::claude::{select_model, ClaudeCode, MODEL_HAIKU};
 use crate::scorer::Scorer;
+use crate::stability::StabilityVerdict;
 use anyhow::Result;
 use lopi_context::Phase;
 use lopi_core::{AgentEvent, Attempt, TaskStatus};
 use lopi_git::GitManager;
+use lopi_memory::StabilityRecord;
 use std::sync::atomic::Ordering;
 
 impl AgentRunner {
@@ -90,6 +92,74 @@ impl AgentRunner {
         }
     }
 
+    /// Layer 5 stability pre-flight. Generates N plans, measures variance,
+    /// persists the ledger entry, and returns `Some(TaskStatus::Failed)` if
+    /// the harness blocks this run. Returns `None` when the gate passes
+    /// (Stable or Warning) or when no harness is configured.
+    async fn run_stability_preflight(&self) -> Option<TaskStatus> {
+        let harness = self.stability_harness.as_ref()?;
+
+        self.log(format!(
+            "🔬 stability gate: generating {} plan samples…",
+            harness.config.n_samples
+        ));
+
+        let verdict = match harness.assess(&self.task).await {
+            Ok(v) => v,
+            Err(e) => {
+                self.warn(format!("stability harness failed ({e}); proceeding without gate"));
+                return None;
+            }
+        };
+
+        let verdict_str = verdict.as_str();
+        let variance = verdict.variance_score();
+        let n = match &verdict {
+            StabilityVerdict::Stable { n_samples, .. }
+            | StabilityVerdict::Warning { n_samples, .. }
+            | StabilityVerdict::Unstable { n_samples, .. } => *n_samples,
+        };
+
+        self.log(format!(
+            "🔬 stability: {verdict_str} (variance={variance:.3}, samples={n})"
+        ));
+
+        if matches!(verdict, StabilityVerdict::Warning { .. }) {
+            self.warn(format!(
+                "⚠️  patch stability warning — variance={variance:.3} exceeds stable threshold; \
+                 proceeding but flagging for review"
+            ));
+        }
+
+        // Persist to ledger (best-effort; never block the run on write failure).
+        if let Some(store) = &self.store {
+            let rec = StabilityRecord {
+                task_goal: &self.task.goal,
+                model: &harness.config.model,
+                n_samples: n,
+                variance_score: variance,
+                verdict: verdict_str,
+                semantic_flags: &[],
+                accepted: !matches!(verdict, StabilityVerdict::Unstable { .. }),
+            };
+            if let Err(e) = store.save_stability_entry(rec).await {
+                self.warn(format!("stability ledger write failed: {e}"));
+            }
+        }
+
+        if matches!(verdict, StabilityVerdict::Unstable { .. }) {
+            let reason = format!(
+                "StabilityGateBlocked: variance={variance:.3} (>{:.2}) with {n} samples — \
+                 human review required before proceeding",
+                harness.config.warning_threshold
+            );
+            self.log(format!("🚫 {reason}"));
+            Some(TaskStatus::Failed { reason })
+        } else {
+            None
+        }
+    }
+
     /// Execute the full agent loop: plan → implement → test → retry.
     ///
     /// # Errors
@@ -99,6 +169,14 @@ impl AgentRunner {
     #[tracing::instrument(skip(self), fields(task_id = %self.task.id, goal = %self.task.goal))]
     pub async fn run(&mut self) -> Result<TaskStatus> {
         self.boot_context();
+
+        // Sprint I — Layer 5 stability pre-flight. Runs before git or any
+        // implementation work. On Unstable verdict: return early with a
+        // Failed status containing the variance score for the ledger.
+        if let Some(blocked) = self.run_stability_preflight().await {
+            self.status(blocked.clone(), 0);
+            return Ok(blocked);
+        }
 
         let git = GitManager::new(&self.repo_path)?;
 
