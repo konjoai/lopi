@@ -12,6 +12,7 @@ members = [
     "crates/lopi-toon",
     "crates/lopi-ratelimit",
     "crates/lopi-github",
+    "crates/lopi-spec",
 ]
 resolver = "2"
 
@@ -77,6 +78,7 @@ lopi-webhook = { path = "crates/lopi-webhook" }
 lopi-toon = { path = "crates/lopi-toon" }
 lopi-ratelimit = { path = "crates/lopi-ratelimit" }
 lopi-github = { path = "crates/lopi-github" }
+lopi-spec = { path = "crates/lopi-spec" }
 
 [package]
 name = "lopi"
@@ -109,6 +111,7 @@ lopi-ui.workspace = true
 lopi-remote.workspace = true
 lopi-webhook.workspace = true
 lopi-github.workspace = true
+lopi-spec.workspace = true
 reqwest.workspace = true
 serde_json.workspace = true
 tokio-cron-scheduler.workspace = true

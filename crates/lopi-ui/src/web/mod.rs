@@ -13,6 +13,7 @@ use lopi_core::{AgentEvent, EventBus, Priority, Task, TaskId};
 use lopi_memory::MemoryStore;
 use lopi_orchestrator::{AgentPool, TaskQueue};
 use lopi_ratelimit::TokenBucket;
+use lopi_spec::SpecSurface;
 use rust_embed::Embed;
 
 /// SvelteKit Forge static build embedded into the lopi binary.
@@ -68,6 +69,8 @@ pub struct AppState {
     pub queue: TaskQueue,
     /// Handle to the running agent pool for status queries and cancellation.
     pub pool: Arc<AgentPool>,
+    /// Repo root path — used to extract the spec surface on demand.
+    pub repo_path: std::path::PathBuf,
     /// Pre-serialized broadcast: each `AgentEvent` serialized once, shared across all WS/SSE subscribers.
     serialized_tx: Arc<broadcast::Sender<Arc<str>>>,
     patterns_cache: Arc<Mutex<TtlCache>>,
@@ -86,6 +89,19 @@ impl AppState {
         queue: TaskQueue,
         pool: Arc<AgentPool>,
         auth_token: Option<String>,
+    ) -> Self {
+        Self::new_with_repo(store, bus, queue, pool, auth_token, std::path::PathBuf::from("."))
+    }
+
+    /// Variant that also records the repo path for spec surface serving.
+    #[must_use]
+    pub fn new_with_repo(
+        store: MemoryStore,
+        bus: EventBus<AgentEvent>,
+        queue: TaskQueue,
+        pool: Arc<AgentPool>,
+        auth_token: Option<String>,
+        repo_path: std::path::PathBuf,
     ) -> Self {
         let (serialized_tx, _) = broadcast::channel::<Arc<str>>(512);
         let serialized_tx = Arc::new(serialized_tx);
@@ -116,6 +132,7 @@ impl AppState {
             bus,
             queue,
             pool,
+            repo_path,
             serialized_tx,
             patterns_cache: Arc::new(Mutex::new(TtlCache::new(Duration::from_secs(30)))),
             auth_token: auth_token.map(|t| Arc::from(t.as_str())),
@@ -133,6 +150,7 @@ pub fn build_app(state: AppState) -> Router {
         .route("/api/tasks/:id", get(get_task).delete(cancel_task))
         .route("/api/stats", get(get_stats))
         .route("/api/patterns", get(list_patterns))
+        .route("/api/spec", get(get_spec))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             rate_limit_middleware,
@@ -169,7 +187,22 @@ pub async fn serve(
     port: u16,
     auth_token: Option<String>,
 ) -> Result<()> {
-    let state = AppState::new(store, bus, queue, pool, auth_token);
+    serve_with_repo(store, bus, queue, pool, host, port, auth_token, std::path::PathBuf::from(".")).await
+}
+
+/// Variant that also wires the repo path for `/api/spec` serving.
+#[allow(clippy::too_many_arguments)]
+pub async fn serve_with_repo(
+    store: MemoryStore,
+    bus: EventBus<AgentEvent>,
+    queue: TaskQueue,
+    pool: Arc<AgentPool>,
+    host: &str,
+    port: u16,
+    auth_token: Option<String>,
+    repo_path: std::path::PathBuf,
+) -> Result<()> {
+    let state = AppState::new_with_repo(store, bus, queue, pool, auth_token, repo_path);
     let app = build_app(state);
 
     let addr: SocketAddr = format!("{host}:{port}").parse()?;
@@ -489,6 +522,32 @@ async fn list_patterns(State(s): State<AppState>) -> Json<Value> {
     let value = json!({ "patterns": body });
     s.patterns_cache.lock().await.set(value.clone());
     Json(value)
+}
+
+/// `GET /api/spec` — returns the cached or freshly-extracted spec surface.
+///
+/// Loads `.lopi/spec_surface.json` if it exists; falls back to live
+/// extraction from the repo. Returns 200 with the surface JSON, or 404
+/// if no tests were found.
+async fn get_spec(State(s): State<AppState>) -> impl IntoResponse {
+    let surface = match SpecSurface::load(&s.repo_path) {
+        Ok(Some(cached)) => cached,
+        _ => match SpecSurface::extract(&s.repo_path) {
+            Ok(live) => live,
+            Err(e) => {
+                tracing::warn!("spec extract failed: {e}");
+                return (StatusCode::INTERNAL_SERVER_ERROR, "spec extraction failed").into_response();
+            }
+        },
+    };
+    Json(serde_json::json!({
+        "count": surface.len(),
+        "rust_files_scanned": surface.rust_files_scanned,
+        "python_files_scanned": surface.python_files_scanned,
+        "extracted_at": surface.extracted_at,
+        "items": surface.items,
+    }))
+    .into_response()
 }
 
 /// Prometheus text-format metrics. No external crate required — format is trivial.

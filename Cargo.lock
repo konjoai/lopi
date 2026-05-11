@@ -1813,6 +1813,7 @@ dependencies = [
  "lopi-memory",
  "lopi-orchestrator",
  "lopi-remote",
+ "lopi-spec",
  "lopi-ui",
  "lopi-webhook",
  "mimalloc",
@@ -1845,6 +1846,7 @@ dependencies = [
  "lopi-git",
  "lopi-memory",
  "lopi-ratelimit",
+ "lopi-spec",
  "lopi-toon",
  "rand",
  "reqwest",
@@ -1981,6 +1983,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "lopi-spec"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "glob",
+ "serde",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
 name = "lopi-toon"
 version = "0.1.0"
 dependencies = [
@@ -2002,6 +2016,7 @@ dependencies = [
  "lopi-memory",
  "lopi-orchestrator",
  "lopi-ratelimit",
+ "lopi-spec",
  "mime_guess",
  "ratatui",
  "rust-embed",

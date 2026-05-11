@@ -1,0 +1,16 @@
+[package]
+name = "lopi-spec"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Spec surface extractor — parse test files to understand what a repo claims to do"
+
+[dependencies]
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+chrono.workspace = true
+glob.workspace = true

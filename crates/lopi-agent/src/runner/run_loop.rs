@@ -8,6 +8,7 @@ use lopi_core::{AgentEvent, Attempt, TaskStatus};
 use lopi_git::GitManager;
 use lopi_memory::StabilityRecord;
 use std::sync::atomic::Ordering;
+use lopi_spec::SpecSurface;
 
 impl AgentRunner {
     pub(super) fn status(&self, s: TaskStatus, attempt: u8) {
@@ -47,8 +48,6 @@ impl AgentRunner {
     /// patterns table with `derived_from_postmortem = 1`.
     async fn run_postmortem_if_configured(&self) {
         let Some(client) = self.api_client.as_ref() else {
-            // Adaptive retry without API access — postmortem can't run.
-            // Future: a CLI fallback could pipe the error log to `claude -p`.
             return;
         };
         let Some(error_log) = self.last_error.as_deref() else {
@@ -60,51 +59,45 @@ impl AgentRunner {
             client,
             self.limiter.as_ref(),
             self.breaker.as_ref(),
-            // Haiku is the right cost/quality trade-off for a single-line constraint
-            MODEL_HAIKU,
+            MODEL_HAIKU, // Haiku: right cost/quality for a single-line constraint
             &self.task.goal,
             error_log,
         )
         .await;
 
-        let Some(outcome) = outcome else {
+        if let Some(outcome) = outcome {
+            self.persist_postmortem_outcome(&outcome.constraint).await;
+        }
+    }
+
+    /// Persist a postmortem-derived constraint as a pattern and a lesson.
+    async fn persist_postmortem_outcome(&self, constraint: &str) {
+        let Some(store) = &self.store else {
+            self.log(format!("🧠 post-mortem constraint: {constraint}"));
             return;
         };
-
-        // Persist the derived constraint as a pattern. Use the goal text as
-        // the keywords so future similar tasks pick it up via Jaccard.
-        if let Some(store) = &self.store {
-            match store
-                .insert_postmortem_pattern(&self.task.goal, &outcome.constraint)
-                .await
-            {
-                Ok(id) => {
-                    self.log(format!("🧠 post-mortem pattern saved [{}]", &id[..8]));
-                    self.log(format!("    constraint: {}", outcome.constraint));
-
-                    // Phase 5b — also save as a lesson for future reference.
-                    let repo_str = self.repo_path.to_string_lossy();
-                    let task_id_str = self.task.id.0.to_string();
-                    if let Err(e) = store
-                        .save_lesson(
-                            &repo_str,
-                            "recovery",
-                            &outcome.constraint,
-                            Some(&task_id_str),
-                            1.0,
-                        )
-                        .await
-                    {
-                        self.warn(format!("failed to save post-mortem lesson: {e}"));
-                    }
-                }
-                Err(e) => {
-                    self.warn(format!("post-mortem persist failed: {e}"));
+        match store
+            .insert_postmortem_pattern(&self.task.goal, constraint)
+            .await
+        {
+            Ok(id) => {
+                self.log(format!("🧠 post-mortem pattern saved [{}]", &id[..8]));
+                self.log(format!("    constraint: {constraint}"));
+                let task_id_str = self.task.id.0.to_string();
+                if let Err(e) = store
+                    .save_lesson(
+                        &self.repo_path.to_string_lossy(),
+                        "recovery",
+                        constraint,
+                        Some(&task_id_str),
+                        1.0,
+                    )
+                    .await
+                {
+                    self.warn(format!("failed to save post-mortem lesson: {e}"));
                 }
             }
-        } else {
-            // No store — log the constraint anyway so it's not lost
-            self.log(format!("🧠 post-mortem constraint: {}", outcome.constraint));
+            Err(e) => self.warn(format!("post-mortem persist failed: {e}")),
         }
     }
 
@@ -149,22 +142,7 @@ impl AgentRunner {
             ));
         }
 
-        // Persist to ledger (best-effort; never block the run on write failure).
-        if let Some(store) = &self.store {
-            let rec = StabilityRecord {
-                task_goal: &self.task.goal,
-                model: &harness.config.model,
-                n_samples: n,
-                variance_score: variance,
-                verdict: verdict_str,
-                semantic_flags: &[],
-                accepted: !matches!(verdict, StabilityVerdict::Unstable { .. }),
-            };
-            if let Err(e) = store.save_stability_entry(rec).await {
-                self.warn(format!("stability ledger write failed: {e}"));
-            }
-        }
-
+        self.save_stability_ledger_entry(&harness.config.model, verdict_str, n, variance, &verdict).await;
         if matches!(verdict, StabilityVerdict::Unstable { .. }) {
             let reason = format!(
                 "StabilityGateBlocked: variance={variance:.3} (>{:.2}) with {n} samples — \
@@ -175,6 +153,30 @@ impl AgentRunner {
             Some(TaskStatus::Failed { reason })
         } else {
             None
+        }
+    }
+
+    /// Write a stability assessment to the persistent ledger (best-effort).
+    async fn save_stability_ledger_entry(
+        &self,
+        model: &str,
+        verdict_str: &str,
+        n_samples: usize,
+        variance_score: f32,
+        verdict: &StabilityVerdict,
+    ) {
+        let Some(store) = &self.store else { return };
+        let rec = StabilityRecord {
+            task_goal: &self.task.goal,
+            model,
+            n_samples,
+            variance_score,
+            verdict: verdict_str,
+            semantic_flags: &[],
+            accepted: !matches!(verdict, StabilityVerdict::Unstable { .. }),
+        };
+        if let Err(e) = store.save_stability_entry(rec).await {
+            self.warn(format!("stability ledger write failed: {e}"));
         }
     }
 
@@ -262,14 +264,29 @@ impl AgentRunner {
         // Store lessons for use in the API planning path.
         self.task_lessons = lessons_data.iter().map(|(_, content)| content.clone()).collect();
 
+        // Load spec surface if cached — inject top 10 items as planning constraints.
+        let spec_constraints: Vec<String> = match SpecSurface::load(&self.repo_path) {
+            Ok(Some(surface)) if !surface.is_empty() => {
+                self.log(format!("📋 spec surface: {} items loaded", surface.len()));
+                surface.top_descriptions(10)
+            }
+            _ => vec![],
+        };
+
         let scorer = Scorer::new(&self.repo_path);
 
         for attempt in 0..self.task.max_retries {
             // Model routing (4.5): route to cheapest model capable of this task's complexity.
             // Escalates to Opus after the first retry failure.
             let model = select_model(&self.task, attempt);
+            // Merge pattern constraints + spec constraints for the planning prompt.
+            let all_constraints: Vec<String> = extra_constraints
+                .iter()
+                .chain(spec_constraints.iter())
+                .cloned()
+                .collect();
             let claude = ClaudeCode::new(&self.repo_path)
-                .with_extra_constraints(extra_constraints.clone())
+                .with_extra_constraints(all_constraints)
                 .with_patterns(pattern_pairs.clone())
                 .with_lessons(lessons_data.clone())
                 .with_model(model);

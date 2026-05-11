@@ -2,7 +2,7 @@ use anyhow::Result;
 use lopi_core::{AgentEvent, EventBus, LopiConfig};
 use lopi_memory::MemoryStore;
 use lopi_orchestrator::{boot_scheduler, AgentPool, TaskQueue};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::db_path;
@@ -21,12 +21,7 @@ pub async fn run(
         AgentPool::new(max_agents, repo.clone(), queue.clone(), bus.clone()).with_store(store.clone()),
     );
 
-    println!("🚢 lopi sail");
-    println!("   agents:    up to {max_agents} concurrent");
-    println!("   repo:      {}", repo.display());
-    println!("   dashboard: http://{host}:{port}");
-    println!("   api:       http://{host}:{port}/api/tasks");
-    println!("   ws:        ws://{host}:{port}/ws");
+    print_startup_banner(max_agents, &repo, &host, port);
 
     let schedules = cfg.map(|c| c.schedules.clone()).unwrap_or_default();
     if !schedules.is_empty() {
@@ -40,7 +35,6 @@ pub async fn run(
         });
     }
     println!();
-
     let pool_for_dispatch = (*pool).clone();
     tokio::spawn(async move {
         if let Err(e) = pool_for_dispatch.run().await {
@@ -57,18 +51,29 @@ pub async fn run(
     });
 
     if let Ok(token) = std::env::var("TELOXIDE_TOKEN") {
-        let allowed_chat_ids = cfg
-            .map(|c| c.remote.telegram.allowed_chat_ids.clone())
-            .unwrap_or_default();
-        let store_telegram = store.clone();
-        let queue_telegram = queue.clone();
-        tokio::spawn(async move {
-            if let Err(e) = lopi_remote::telegram::run(token, queue_telegram, store_telegram, allowed_chat_ids).await {
-                tracing::error!("telegram bot error: {e}");
-            }
-        });
+        spawn_telegram(token, queue.clone(), store.clone(), cfg);
     }
 
     let auth_token = cfg.and_then(|c| c.web.auth_token.clone());
-    lopi_ui::web::serve(store, bus, queue, pool, &host, port, auth_token).await
+    lopi_ui::web::serve_with_repo(store, bus, queue, pool, &host, port, auth_token, repo).await
+}
+
+fn print_startup_banner(max_agents: usize, repo: &Path, host: &str, port: u16) {
+    println!("🚢 lopi sail");
+    println!("   agents:    up to {max_agents} concurrent");
+    println!("   repo:      {}", repo.display());
+    println!("   dashboard: http://{host}:{port}");
+    println!("   api:       http://{host}:{port}/api/tasks");
+    println!("   ws:        ws://{host}:{port}/ws");
+}
+
+fn spawn_telegram(token: String, queue: TaskQueue, store: MemoryStore, cfg: Option<&LopiConfig>) {
+    let allowed_chat_ids = cfg
+        .map(|c| c.remote.telegram.allowed_chat_ids.clone())
+        .unwrap_or_default();
+    tokio::spawn(async move {
+        if let Err(e) = lopi_remote::telegram::run(token, queue, store, allowed_chat_ids).await {
+            tracing::error!("telegram bot error: {e}");
+        }
+    });
 }

@@ -1,6 +1,6 @@
 # PLAN.md — lopi Master Plan
 
-**Updated:** 2026-05-11 · v0.12.0 just shipped.
+**Updated:** 2026-05-11 · v0.13.0 just shipped.
 
 ## Vision
 
@@ -55,6 +55,12 @@ MemoryStore · worktree lock · CancellationToken · structured shutdown.
 the CLI subprocess for planning · prompt caching with `cache_control:
 ephemeral` · real `TurnMetrics` from API responses · transparent CLI
 fallback · 7 new tests.
+
+### v0.13.0 — Sprint K: Spec Surface + KCQF 📋
+`lopi-spec` crate (Rust + Python test extractor) · `SpecSurface::extract/save/load/top_descriptions` ·
+`lopi spec` + `lopi check` CLI commands · spec injection into planning prompt (top 10 items) ·
+`/api/spec` web endpoint · `serve_with_repo` · KCQF file-size gate + spec drift detection ·
+28 new tests (390 total).
 
 ### v0.12.0 — Sprint J: GitHub Issue Loop 🪝
 `lopi-github` crate · GitHubClient (post_comment, add_labels) · `issue_triage.rs`
@@ -111,11 +117,18 @@ lopi learn annotate CLI command. 313 tests.
 - [ ] GitHub App mode for org-wide hooks (OAuth installation flow)
 - [ ] HMAC verification for all event types (currently CI + issue + PR only)
 
-### Sprint K — Spec Surface (next)
-- [ ] Parse test files → spec surface JSON: what the repo claims to do
+### Sprint K — Spec Surface ✅ (shipped v0.13.0)
+- [x] Parse test files → spec surface JSON (Rust `#[test]` + Python `def test_*`)
+- [x] `lopi spec` / `lopi check` CLI
+- [x] Spec injected into planning prompt (top 10 descriptions)
+- [x] `/api/spec` web endpoint
+- [x] KCQF file-size gate + spec drift detection in `lopi check`
+
+### Sprint L — Synthetic User + Coverage Gap (next)
 - [ ] Synthetic user agent: "As a User ×1000" against the spec surface
 - [ ] Coverage gap detection → auto-open PRs for missing test coverage
-- [ ] Quality gate: pass/fail per iteration with trend tracking
+- [ ] Per-iteration quality score trend tracking (stored in SQLite)
+- [ ] `lopi check --fail-on-violations` — CI-compatible exit code
 
 ### Phase 7+ — UI polish (deferred)
 - [ ] Mobile-responsive Forge degradation
@@ -149,17 +162,18 @@ near-term sprint** — the CLI is good enough.
 
 | Metric | Value |
 |---|---|
-| Workspace tests | **331 passing**, 0 failing |
+| Workspace tests | **390 passing**, 0 failing |
 | Build | `cargo build --workspace`: clean, 0 clippy warnings |
-| Crates | **12** (+ lopi-github) |
-| CLI commands | `run`, `watch`, `tail`, `dock`, `sail`, `cancel`, `learn list/show/export/annotate`, `schedules list`, `serve-webhooks` |
+| Crates | **13** (+ lopi-github, lopi-spec) |
+| CLI commands | `run`, `watch`, `tail`, `dock`, `sail`, `cancel`, `learn list/show/export/annotate`, `schedules list`, `serve-webhooks`, `spec`, `check` |
 | API endpoints | `/api/health`, `/api/tasks` (GET+POST), `/api/tasks/:id` (GET+DELETE), `/api/stats`, `/api/patterns`, `/metrics` (Prometheus), `/sse` (SSE), `/ws` (WebSocket) |
 | Embedded UI | SvelteKit Forge + Constellation, ~487 KB JS / 126 KB gzipped |
 | Direct-API planning | ✅ via `AgentRunner::with_api(client, limiter, breaker)` |
 | Adaptive retry | ✅ via `AgentRunner::with_adaptive_retry()` (post-mortem fires + lesson saved on terminal failure) |
 | Lesson injection | ✅ patterns + lessons both TOON-encoded into planning prompt |
 | Issue triage | ✅ Haiku classifier → GitHub comment → auto-queue via `lopi serve-webhooks` |
-| Latest release | **v0.12.0** |
+| Spec surface | ✅ `lopi-spec` crate · `lopi spec` · `lopi check` · `/api/spec` · injected into planning |
+| Latest release | **v0.13.0** |
 
 ---
 

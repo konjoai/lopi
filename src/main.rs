@@ -4,6 +4,7 @@ mod learn_commands;
 mod remote;
 mod sail_commands;
 mod schedule_commands;
+mod spec_commands;
 mod webhook_commands;
 use mimalloc::MiMalloc;
 
@@ -98,6 +99,22 @@ enum Commands {
     /// scores recorded before each self-modification attempt.
     #[command(subcommand)]
     Stability(StabilityCmd),
+    /// Extract the spec surface — what this repo claims to do — from test files.
+    Spec {
+        #[arg(short, long, default_value = ".")]
+        repo: PathBuf,
+        /// Print raw JSON instead of the table view.
+        #[arg(long)]
+        export: bool,
+        /// Save the spec surface to .lopi/spec_surface.json for future `lopi check`.
+        #[arg(long)]
+        save: bool,
+    },
+    /// Run KCQF quality analysis: file-size gate + spec surface drift check.
+    Check {
+        #[arg(short, long, default_value = ".")]
+        repo: PathBuf,
+    },
     /// Start a dedicated GitHub webhook server.
     ///
     /// Receives GitHub events, triages issues via Haiku, posts comments,
@@ -450,6 +467,13 @@ async fn main() -> Result<()> {
         }
 
         // ── lopi learn ──────────────────────────────────────────
+        Commands::Spec { repo, export, save } => {
+            spec_commands::run_spec(repo, export, save).await?;
+        }
+        Commands::Check { repo } => {
+            spec_commands::run_check(repo).await?;
+        }
+
         Commands::Learn(cmd) => learn_commands::run(cmd, db_path()).await?,
 
         Commands::ServeWebhooks { port, host, webhook_secret, github_token, anthropic_key } => {

@@ -1,5 +1,47 @@
 # Changelog
 
+## [0.13.0] — Sprint K: Spec Surface + KCQF 📋
+
+### Added
+
+**`crates/lopi-spec`** — new crate: spec surface extractor
+- `SpecSurface::extract(repo_path)` — walks all `.rs` and `.py` files, extracts test function names and doc comments
+- **Rust** (`rust_extractor.rs`): `#[test]`, `#[tokio::test]`, `#[async_std::test]`, `#[rstest]`, `#[proptest]`; captures preceding `///` doc comments as description
+- **Python** (`python_extractor.rs`): `def test_*` and `async def test_*`; captures inline docstring as description
+- `SpecSurface::save(repo)` — writes `.lopi/spec_surface.json` as a cacheable baseline
+- `SpecSurface::load(repo)` — loads cached surface (returns `None` when not yet saved)
+- `SpecSurface::top_descriptions(n)` — returns top N items as TOON-ready strings
+- `SpecItem { name, description, kind, file, line }` · `SpecKind: RustTest | PythonTest`
+- 24 unit tests across `lib.rs`, `rust_extractor.rs`, `python_extractor.rs`
+
+**`src/spec_commands.rs`** — two new CLI commands
+- `lopi spec [--repo .] [--export] [--save]` — extract + display spec surface as a table, optionally cache to `.lopi/spec_surface.json`
+- `lopi check [--repo .]` — KCQF quality analysis:
+  - File-size gate: reports any `.rs` / `.py` file > 500 lines (with path + line count)
+  - Spec drift gate: compares live extraction against the cached baseline; lists newly removed tests as regression risks
+- 4 unit tests in `spec_commands.rs` (size violations, target-skip, clean pass)
+
+**Spec surface injection into planning** (`lopi-agent/src/runner/run_loop.rs`)
+- At each run, loads `.lopi/spec_surface.json` if present; injects top 10 items as additional constraints in the planning prompt alongside patterns and lessons
+- Log line: `📋 spec surface: N items loaded`
+
+**`/api/spec` web endpoint** (`lopi-ui/src/web/mod.rs`)
+- `GET /api/spec` — returns cached spec surface or runs live extraction; JSON with `count`, `rust_files_scanned`, `python_files_scanned`, `extracted_at`, `items`
+- `AppState::new_with_repo(...)` — new variant that records `repo_path` for spec serving
+- `serve_with_repo(...)` — new variant of `serve()` that passes repo_path into AppState; called from `sail_commands::run()` so the spec API reflects the actual sailed repo
+
+### Architecture notes
+
+Spec surface is the ground truth for the self-improvement loop. Injecting the top 10 descriptions into the planning prompt lets Claude know what the repo already claims to do — reducing the risk of agents writing tests that contradict or duplicate existing spec items. The spec drift check in `lopi check` is the first automated regression guard: any test that disappears between runs is surfaced before it becomes a silent regression.
+
+### Tests
+
+- 24 lopi-spec tests
+- 4 spec_commands tests
+- Workspace: 362 → **390 passing**, 0 failing
+
+---
+
 ## [0.12.0] — Sprint J: GitHub Issue Loop 🪝
 
 ### Added
