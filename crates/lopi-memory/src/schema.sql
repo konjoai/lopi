@@ -65,6 +65,23 @@ ALTER TABLE patterns ADD COLUMN derived_from_postmortem INTEGER NOT NULL DEFAULT
 -- Sprint H1: user annotation for pattern validation. Values: 'approved', 'rejected', or NULL (unannotated).
 ALTER TABLE patterns ADD COLUMN user_annotation TEXT;
 
+-- Sprint I: Layer 5 patch stability ledger.
+-- Accumulates empirical data on model-output variance per task class.
+-- Drives the research dataset for which task types are safe to self-ship.
+CREATE TABLE IF NOT EXISTS stability_ledger (
+    id              TEXT PRIMARY KEY,
+    task_goal_pfx   TEXT NOT NULL,
+    model           TEXT NOT NULL,
+    n_samples       INTEGER NOT NULL,
+    variance_score  REAL NOT NULL,
+    verdict         TEXT NOT NULL CHECK(verdict IN ('stable', 'warning', 'unstable')),
+    semantic_flags  TEXT NOT NULL DEFAULT '[]',
+    accepted        INTEGER NOT NULL DEFAULT 0,
+    created_at      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_stability_verdict ON stability_ledger(verdict);
+CREATE INDEX IF NOT EXISTS idx_stability_created ON stability_ledger(created_at DESC);
+
 CREATE TABLE IF NOT EXISTS lessons (
     id          TEXT PRIMARY KEY,
     repo_path   TEXT NOT NULL,
