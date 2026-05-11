@@ -14,7 +14,10 @@ const COVERAGE_GATE: f64 = 80.0;
 ///
 /// # Errors
 /// Returns an error if the subprocess cannot be spawned or the output cannot be parsed.
-pub async fn scan_coverage(repo_path: &Path, diff_files: &[String]) -> Result<Vec<QualityViolation>> {
+pub async fn scan_coverage(
+    repo_path: &Path,
+    diff_files: &[String],
+) -> Result<Vec<QualityViolation>> {
     let output = Command::new("cargo")
         .args(["llvm-cov", "--json", "--summary-only"])
         .current_dir(repo_path)
@@ -50,7 +53,10 @@ pub(crate) fn parse_coverage_json(
     for entry in report.data {
         for file in entry.files {
             // Only report on files that were changed in this diff.
-            if !diff_files.iter().any(|df| file.filename.ends_with(df.as_str())) {
+            if !diff_files
+                .iter()
+                .any(|df| file.filename.ends_with(df.as_str()))
+            {
                 continue;
             }
             let pct = file.summary.lines.percent;

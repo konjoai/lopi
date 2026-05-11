@@ -56,7 +56,11 @@ mod tests {
 
     #[test]
     fn warning_violation_produces_normal_priority_task() {
-        let v = make_violation(ViolationKind::Coverage, Severity::Warning, "Add tests for src/lib.rs");
+        let v = make_violation(
+            ViolationKind::Coverage,
+            Severity::Warning,
+            "Add tests for src/lib.rs",
+        );
         let tasks = violations_to_tasks(&[v]);
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].priority, Priority::Normal);
@@ -65,8 +69,16 @@ mod tests {
     #[test]
     fn multiple_violations_produce_one_task_each() {
         let violations = vec![
-            make_violation(ViolationKind::Complexity, Severity::Warning, "Simplify function"),
-            make_violation(ViolationKind::DeadCode, Severity::Warning, "Remove dead code"),
+            make_violation(
+                ViolationKind::Complexity,
+                Severity::Warning,
+                "Simplify function",
+            ),
+            make_violation(
+                ViolationKind::DeadCode,
+                Severity::Warning,
+                "Remove dead code",
+            ),
             make_violation(ViolationKind::Standards, Severity::Error, "Fix lint error"),
         ];
         let tasks = violations_to_tasks(&violations);
