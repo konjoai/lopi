@@ -1,6 +1,8 @@
 use super::{postmortem, AgentRunner};
 use crate::claude::MODEL_HAIKU;
+use crate::stability::StabilityVerdict;
 use lopi_core::{AgentEvent, ScoreWeights, TaskStatus};
+use lopi_memory::StabilityRecord;
 
 impl AgentRunner {
     /// Load evolved `ScoreWeights` from the memory store's annotation signal.
@@ -94,6 +96,75 @@ impl AgentRunner {
             }
         } else {
             self.log(format!("🧠 post-mortem constraint: {}", outcome.constraint));
+        }
+    }
+
+    /// Layer 5 stability pre-flight. Generates N plans, measures variance,
+    /// persists the ledger entry, and returns `Some(TaskStatus::Failed)` if
+    /// the harness blocks this run. Returns `None` when the gate passes
+    /// (Stable or Warning) or when no harness is configured.
+    pub(super) async fn run_stability_preflight(&self) -> Option<TaskStatus> {
+        let harness = self.stability_harness.as_ref()?;
+
+        self.log(format!(
+            "🔬 stability gate: generating {} plan samples…",
+            harness.config.n_samples
+        ));
+
+        let verdict = match harness.assess(&self.task).await {
+            Ok(v) => v,
+            Err(e) => {
+                self.warn(format!(
+                    "stability harness failed ({e}); proceeding without gate"
+                ));
+                return None;
+            }
+        };
+
+        let verdict_str = verdict.as_str();
+        let variance = verdict.variance_score();
+        let n = match &verdict {
+            StabilityVerdict::Stable { n_samples, .. }
+            | StabilityVerdict::Warning { n_samples, .. }
+            | StabilityVerdict::Unstable { n_samples, .. } => *n_samples,
+        };
+
+        self.log(format!(
+            "🔬 stability: {verdict_str} (variance={variance:.3}, samples={n})"
+        ));
+
+        if matches!(verdict, StabilityVerdict::Warning { .. }) {
+            self.warn(format!(
+                "⚠️  patch stability warning — variance={variance:.3} exceeds stable threshold; \
+                 proceeding but flagging for review"
+            ));
+        }
+
+        if let Some(store) = &self.store {
+            let rec = StabilityRecord {
+                task_goal: &self.task.goal,
+                model: &harness.config.model,
+                n_samples: n,
+                variance_score: variance,
+                verdict: verdict_str,
+                semantic_flags: &[],
+                accepted: !matches!(verdict, StabilityVerdict::Unstable { .. }),
+            };
+            if let Err(e) = store.save_stability_entry(rec).await {
+                self.warn(format!("stability ledger write failed: {e}"));
+            }
+        }
+
+        if matches!(verdict, StabilityVerdict::Unstable { .. }) {
+            let reason = format!(
+                "StabilityGateBlocked: variance={variance:.3} (>{:.2}) with {n} samples — \
+                 human review required before proceeding",
+                harness.config.warning_threshold
+            );
+            self.log(format!("🚫 {reason}"));
+            Some(TaskStatus::Failed { reason })
+        } else {
+            None
         }
     }
 

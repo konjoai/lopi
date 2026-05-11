@@ -4,6 +4,7 @@ pub mod postmortem;
 mod run_loop;
 
 use crate::api_client::AnthropicClient;
+use crate::stability::{StabilityConfig, StabilityHarness};
 use lopi_context::{ContentBlock, ContextWindow, Phase, PinPolicy, Role, TaggedMessage};
 use lopi_core::{AgentEvent, EventBus, ScoreWeights, Task, TaskId};
 use lopi_memory::MemoryStore;
@@ -55,6 +56,10 @@ pub struct AgentRunner {
     /// Optional circuit breaker — opens on consecutive failures or hourly
     /// cost cap. Checked before every API request; cost recorded on success.
     pub(super) breaker: Option<Arc<CircuitBreaker>>,
+    /// Sprint I — optional Layer 5 patch stability gate. When set, `run()`
+    /// generates N plan samples before the first implementation attempt and
+    /// blocks if pairwise variance exceeds the configured threshold.
+    pub(super) stability_harness: Option<StabilityHarness>,
     /// Sprint H — when true, retries inject the previous attempt's error
     /// log into the next planning prompt (Reflexion-style adaptive retry).
     /// Also enables the failure post-mortem when all retries fail.
@@ -101,6 +106,7 @@ impl AgentRunner {
             api_client: None,
             limiter: None,
             breaker: None,
+            stability_harness: None,
             adaptive_retry: false,
             last_error: None,
             session_id: Uuid::new_v4(),
@@ -130,6 +136,7 @@ impl AgentRunner {
             api_client: None,
             limiter: None,
             breaker: None,
+            stability_harness: None,
             adaptive_retry: false,
             last_error: None,
             session_id: Uuid::new_v4(),
@@ -181,6 +188,28 @@ impl AgentRunner {
     #[must_use]
     pub const fn adaptive_retry_enabled(&self) -> bool {
         self.adaptive_retry
+    }
+
+    /// Sprint I — attach the Layer 5 patch stability gate.
+    ///
+    /// When set, `run()` generates `config.n_samples` plan proposals before
+    /// the first implementation attempt and measures their pairwise Jaccard
+    /// variance. High variance blocks the run (`TaskStatus::Failed` with
+    /// a `StabilityGateBlocked` reason) so human review can intervene.
+    ///
+    /// Requires the same `client` / `limiter` / `breaker` used by `with_api`.
+    /// If `with_api` is not set the harness will still work — it only needs
+    /// an API client, which can be independent of the planning path.
+    #[must_use]
+    pub fn with_stability_gate(
+        mut self,
+        client: Arc<AnthropicClient>,
+        limiter: Option<Arc<AnthropicLimiter>>,
+        breaker: Option<Arc<CircuitBreaker>>,
+        config: StabilityConfig,
+    ) -> Self {
+        self.stability_harness = Some(StabilityHarness::new(client, limiter, breaker, config));
+        self
     }
 
     /// Return a child token derived from this runner's `CancellationToken`.

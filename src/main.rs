@@ -92,6 +92,10 @@ enum Commands {
     /// Manage scheduled tasks
     #[command(subcommand)]
     Schedules(ScheduleCmd),
+    /// Browse the Layer 5 patch stability ledger — model-output variance
+    /// scores recorded before each self-modification attempt.
+    #[command(subcommand)]
+    Stability(StabilityCmd),
 }
 
 #[derive(Subcommand)]
@@ -120,6 +124,20 @@ enum LearnCmd {
 enum ScheduleCmd {
     /// List all configured schedules with next run times
     List,
+}
+
+#[derive(Subcommand)]
+enum StabilityCmd {
+    /// List the most recent stability assessments.
+    List {
+        #[arg(short, long, default_value = "20")]
+        limit: i64,
+        /// Show only unstable assessments (variance above warning threshold).
+        #[arg(long)]
+        unstable_only: bool,
+    },
+    /// Show a summary of all-time verdict counts.
+    Summary,
 }
 
 fn db_path() -> PathBuf {
@@ -629,6 +647,76 @@ async fn main() -> Result<()> {
                 println!("  {:<20}  {:<w$}  {:<14}  {}", s.name, goal, s.cron, next);
             }
         }
+
+        // ── lopi stability ──────────────────────────────────────
+        Commands::Stability(cmd) => match cmd {
+            StabilityCmd::List {
+                limit,
+                unstable_only,
+            } => {
+                let store = MemoryStore::open(db_path()).await?;
+                let entries = store.load_stability_entries(limit).await?;
+                let filtered: Vec<_> = if unstable_only {
+                    entries
+                        .into_iter()
+                        .filter(|e| e.verdict == "unstable")
+                        .collect()
+                } else {
+                    entries
+                };
+
+                println!("🔬 lopi stability — {} assessment(s)\n", filtered.len());
+                if filtered.is_empty() {
+                    if unstable_only {
+                        println!("  No unstable assessments in the ledger.");
+                    } else {
+                        println!("  No stability assessments yet.");
+                        println!("  Enable with `AgentRunner::with_stability_gate()` or `lopi run --stability-gate`.");
+                    }
+                    return Ok(());
+                }
+
+                println!(
+                    "  {:<8}  {:<36}  {:<9}  {:>8}  {:>8}  Verdict",
+                    "Id", "Goal prefix", "Model", "Variance", "Samples"
+                );
+                println!("  {}", "─".repeat(90));
+                for e in &filtered {
+                    let id = &e.id[..8.min(e.id.len())];
+                    let goal = if e.task_goal_pfx.len() > 36 {
+                        format!("{}…", &e.task_goal_pfx[..35])
+                    } else {
+                        e.task_goal_pfx.clone()
+                    };
+                    let model_short = e.model.split('-').next_back().unwrap_or(&e.model);
+                    let verdict_icon = match e.verdict.as_str() {
+                        "stable" => "✅ stable",
+                        "warning" => "⚠️  warning",
+                        "unstable" => "🚫 UNSTABLE",
+                        other => other,
+                    };
+                    println!(
+                        "  {id:<8}  {goal:<36}  {model_short:<9}  {:>8.3}  {:>8}  {verdict_icon}",
+                        e.variance_score, e.n_samples
+                    );
+                }
+            }
+
+            StabilityCmd::Summary => {
+                let store = MemoryStore::open(db_path()).await?;
+                let (stable, warning, unstable) = store.stability_verdict_counts().await?;
+                let total = stable + warning + unstable;
+                println!("🔬 lopi stability summary\n");
+                println!("  Total assessments:  {total}");
+                println!("  ✅ Stable:          {stable}");
+                println!("  ⚠️  Warning:         {warning}");
+                println!("  🚫 Unstable:        {unstable}");
+                if total > 0 {
+                    let block_rate = unstable as f64 / total as f64 * 100.0;
+                    println!("  Block rate:         {block_rate:.1}%");
+                }
+            }
+        },
     }
 
     Ok(())

@@ -18,6 +18,14 @@ impl AgentRunner {
     pub async fn run(&mut self) -> Result<TaskStatus> {
         self.boot_context();
 
+        // Sprint I — Layer 5 stability pre-flight. Runs before git or any
+        // implementation work. On Unstable verdict: return early with a
+        // Failed status containing the variance score for the ledger.
+        if let Some(blocked) = self.run_stability_preflight().await {
+            self.status(blocked.clone(), 0);
+            return Ok(blocked);
+        }
+
         let git = GitManager::new(&self.repo_path)?;
 
         // Seed planning prompt with patterns from memory.
