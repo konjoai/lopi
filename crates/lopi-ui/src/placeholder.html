@@ -653,6 +653,117 @@
       animation: dash 30s linear infinite;
     }
     @keyframes dash { to { stroke-dashoffset: -200; } }
+
+    /*  ──────────────  fleet command HUD (press F)  ──────────────  */
+    .fleet-hud {
+      position: fixed;
+      right: 360px; top: 70px;
+      width: 220px; height: 170px;
+      background: rgba(8,8,18,0.55);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--konjo);
+      border-radius: 8px;
+      box-shadow: 0 8px 32px rgba(124,58,237,0.25), 0 0 0 1px rgba(124,58,237,0.15);
+      z-index: 18;
+      padding: 8px 10px;
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(-6px) scale(0.95);
+      transition: opacity 0.25s var(--ease-out), transform 0.3s var(--ease-spring);
+      will-change: transform, opacity;
+      font-family: var(--mono);
+    }
+    body.fleet-open .fleet-hud {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translateY(0) scale(1);
+    }
+    .fleet-hud .hud-h {
+      font-size: 0.58rem;
+      letter-spacing: 0.20em;
+      text-transform: uppercase;
+      color: var(--konjo-2);
+      display: flex; justify-content: space-between;
+      margin-bottom: 4px;
+    }
+    .fleet-hud .hud-h .kbd {
+      color: var(--fg-mute);
+      font-size: 0.55rem;
+      letter-spacing: 0.18em;
+    }
+    .fleet-hud svg {
+      width: 200px; height: 140px;
+      display: block;
+    }
+    .fleet-hud .grid-line { stroke: rgba(124,58,237,0.18); stroke-width: 0.5; }
+    .fleet-hud .fleet-dot {
+      cursor: pointer;
+      transition: r 0.15s ease-out;
+    }
+    .fleet-hud .fleet-dot:hover { r: 5; }
+    .fleet-hud .fleet-arrow {
+      stroke: rgba(232,232,245,0.55);
+      stroke-width: 0.8;
+      fill: none;
+    }
+    .fleet-hint {
+      position: fixed;
+      bottom: 120px; right: 24px;
+      font-family: var(--mono);
+      font-size: 0.56rem;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--fg-mute);
+      z-index: 17;
+      pointer-events: none;
+      opacity: 0.7;
+    }
+    .fleet-hint kbd {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid var(--line);
+      border-bottom-width: 2px;
+      padding: 1px 6px;
+      border-radius: 3px;
+      font-family: var(--mono);
+      color: var(--fg-dim);
+      margin-right: 4px;
+    }
+
+    /*  ──────────────  gauge sparkline overlay  ──────────────  */
+    .gauge .face { cursor: pointer; }
+    .gauge.compass .face { cursor: grab; }
+    .gauge.compass.flicking .face { cursor: grabbing; }
+    .gauge .sparkline {
+      position: absolute;
+      inset: 6px;
+      border-radius: 50%;
+      background: rgba(3,3,18,0.85);
+      backdrop-filter: blur(8px);
+      display: none;
+      align-items: center; justify-content: center;
+      overflow: hidden;
+      pointer-events: none;
+      animation: spark-in 0.2s var(--ease-out);
+    }
+    .gauge.sparkline-mode .sparkline { display: flex; }
+    .gauge.sparkline-mode .needle,
+    .gauge.sparkline-mode .pivot { opacity: 0; }
+    .gauge .sparkline svg { width: 86%; height: 60%; overflow: visible; }
+    .gauge .sparkline path {
+      fill: none;
+      stroke: var(--gold);
+      stroke-width: 1.4;
+      filter: drop-shadow(0 0 3px var(--gold));
+    }
+    .gauge .sparkline .spark-fill {
+      fill: rgba(212,169,106,0.18);
+      stroke: none;
+    }
+    @keyframes spark-in {
+      from { opacity: 0; transform: scale(0.6); }
+      to   { opacity: 1; transform: scale(1); }
+    }
     .score-float {
       font-family: var(--mono);
       font-size: 12px;
@@ -701,6 +812,15 @@
     <div class="glyph">ᨒᨚᨄᨗ</div>
     <div>the harbor sleeps — launch a mission</div>
   </div>
+
+  <aside class="fleet-hud" id="fleet-hud">
+    <div class="hud-h"><span>fleet command</span><span class="kbd">F</span></div>
+    <svg id="fleet-map" viewBox="0 0 200 140" preserveAspectRatio="xMidYMid meet">
+      <line class="grid-line" x1="0"   y1="70" x2="200" y2="70" />
+      <line class="grid-line" x1="100" y1="0"  x2="100" y2="140" />
+    </svg>
+  </aside>
+  <div class="fleet-hint"><kbd>F</kbd> fleet command</div>
 
   <aside class="detail" id="detail">
     <h3>ship's log</h3>
@@ -766,6 +886,7 @@
         <div class="face">
           <div class="needle" id="needle-compass"></div>
           <div class="pivot"></div>
+          <div class="sparkline"><svg viewBox="0 0 100 30"></svg></div>
         </div>
         <div class="label-block"><span class="k">compass</span><span class="v" id="g-rate">—</span></div>
       </div>
@@ -773,6 +894,7 @@
         <div class="face">
           <div class="needle" id="needle-speed"></div>
           <div class="pivot"></div>
+          <div class="sparkline"><svg viewBox="0 0 100 30"></svg></div>
         </div>
         <div class="label-block"><span class="k">avg score</span><span class="v" id="g-score">—</span></div>
       </div>
@@ -780,6 +902,7 @@
         <div class="face">
           <div class="needle" id="needle-depth"></div>
           <div class="pivot"></div>
+          <div class="sparkline"><svg viewBox="0 0 100 30"></svg></div>
         </div>
         <div class="label-block"><span class="k">depth</span><span class="v" id="g-depth">0</span></div>
       </div>
@@ -787,6 +910,7 @@
         <div class="face">
           <div class="needle" id="needle-chrono"></div>
           <div class="pivot"></div>
+          <div class="sparkline"><svg viewBox="0 0 100 30"></svg></div>
         </div>
         <div class="label-block"><span class="k">chronometer</span><span class="v" id="g-uptime">0s</span></div>
       </div>
@@ -804,7 +928,13 @@
 
   const MAX_LOGS = 500;
   const MAX_PARTICLES = 320;
+  const MAX_PULSES = 16;
   const MEMORY_TRAIL_TTL_MS = 60_000;
+  const TIDE_PERIOD_MS = 120_000;       // full ebb→flood cycle
+  const TIDE_AMPLITUDE = 20;            // px the baseline rises/falls
+  const PULSE_DURATION_MS = 800;
+  const SUBMARINE_THRESHOLD = 200;      // hash byte 7 > this → submarine
+  const SCORE_HISTORY_LEN = 8;          // rolling per-agent score window
   const $ = (id) => document.getElementById(id);
   const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -823,6 +953,11 @@
     zoomTarget: null,          // task_id under telescope
     weather: "fair",           // "storm" | "fair" | "calm"
     rolling: [],               // [{success: bool, ts}]
+    pulses: [],                // [{from, to, t0, life, color, kind}]
+    fleetOpen: false,
+    gaugeHistory: { compass: [], speed: [], depth: [], chrono: [] },
+    compassFlick: { active: false, vel: 0, angle: 0, lastX: 0, lastT: 0 },
+    bootedAt: performance.now(),
     ws: null,
     backoff: 1000,
   };
@@ -851,13 +986,71 @@
   function hash01(hash, idx) { return hashByte(hash, idx) / 255; }
 
   /* ============================================================
+     Per-agent derived properties (cached on first access)
+     ============================================================ */
+  function ensureAgentDerived(agent) {
+    if (agent._derived) return agent._derived;
+    const h = fnv1a(agent.task_id || "");
+    const isSubmarine = hashByte(h, 7) > SUBMARINE_THRESHOLD;
+    // Lifespan: 90s..6m, derived from hash byte 8.
+    const maxLifespanMs = 90_000 + hash01(h, 0) * (6 * 60_000 - 90_000);
+    // Wake color slot: weighted by score later, but pre-resolve a "default" hue.
+    agent._derived = {
+      isSubmarine,
+      maxLifespanMs,
+      diveCycleMs: 12_000 + hash01(h, 1) * 18_000, // sub rise/dive period
+      diveOffsetMs: hash01(h, 2) * 12_000,
+    };
+    if (!agent._scoreHistory) agent._scoreHistory = [];
+    return agent._derived;
+  }
+
+  function pushScoreHistory(agent, score) {
+    if (!agent._scoreHistory) agent._scoreHistory = [];
+    agent._scoreHistory.push(clamp(score, 0, 1));
+    if (agent._scoreHistory.length > SCORE_HISTORY_LEN) agent._scoreHistory.shift();
+  }
+  function agentRollingScore(agent) {
+    const h = agent._scoreHistory;
+    if (!h || h.length === 0) return agent.score || 0;
+    let s = 0;
+    for (let i = 0; i < h.length; i++) s += h[i];
+    return s / h.length;
+  }
+  function wakeColorRgba(score, alpha) {
+    // > 0.7 → gold; 0.3..0.7 → cyan; < 0.3 → dim red.
+    if (score > 0.7)       return `rgba(255,215,0,${alpha})`;
+    else if (score >= 0.3) return `rgba(0,255,204,${alpha})`;
+    else                   return `rgba(255,68,68,${alpha * 0.85})`;
+  }
+  function wakeShadowFor(score) {
+    if (score > 0.7) return "#ffd700";
+    if (score >= 0.3) return "#00ffcc";
+    return "#ff4444";
+  }
+
+  /* ============================================================
+     Tide — slow sin cycle modulating horizon + aurora
+     ============================================================ */
+  function tidePhase(now) {
+    return Math.sin(((now - state.bootedAt) / TIDE_PERIOD_MS) * Math.PI * 2);
+  }
+  function tideOffset(now) {
+    // Positive when high tide → horizon moves UP (smaller y).
+    return -tidePhase(now) * TIDE_AMPLITUDE;
+  }
+
+  /* ============================================================
      Canvas Ocean — 6-layer sine waves, RAF render
      ============================================================ */
   const canvas = $("ocean");
   const ctx = canvas.getContext("2d", { alpha: true });
   let DPR = Math.min(window.devicePixelRatio || 1, 2);
   let W = 0, H = 0;
-  const HORIZON = () => H * 0.42;
+  const HORIZON = () => H * 0.42 + tideOffset(performance.now());
+  /* Harbor band: the leftmost ~22% of the ocean canvas is the harbor.
+     Queued tasks visually sit in this fog zone. */
+  const HARBOR_RIGHT = () => W * 0.22;
 
   /* Wave layers — frequency, amplitude, phase, speed, color stops. */
   const WAVE_LAYERS = [
@@ -1023,9 +1216,8 @@
      ============================================================ */
   const particles = []; // [{x,y,vx,vy,age,life,r}]
 
-  function spawnWakeParticle(x, y, dx, dy) {
+  function spawnWakeParticle(x, y, dx, dy, score) {
     if (particles.length >= MAX_PARTICLES) particles.shift();
-    // Spread perpendicular to heading.
     const heading = Math.atan2(dy, dx) || 0;
     const perp = heading + Math.PI / 2;
     const spread = (Math.random() - 0.5) * 6;
@@ -1037,14 +1229,14 @@
       vx: -dx * 0.12 + (Math.random() - 0.5) * 0.2,
       vy: -dy * 0.12 + (Math.random() - 0.5) * 0.2,
       age: 0,
-      life: 1.6 + Math.random() * 0.6, // seconds
+      life: 1.6 + Math.random() * 0.6,
       r: 1.2 + Math.random() * 1.6,
+      score: score == null ? 0.5 : score,
     });
   }
   function updateAndDrawParticles(dt) {
     ctx.save();
-    ctx.shadowBlur = 15;
-    ctx.shadowColor = "#00ffaa";
+    // shadowBlur is set per-particle so each wake glows its own color.
     for (let i = particles.length - 1; i >= 0; i--) {
       const p = particles[i];
       p.age += dt;
@@ -1054,12 +1246,224 @@
       p.vx *= 0.985;
       p.vy *= 0.985;
       const a = (1 - p.age / p.life) * 0.6;
-      ctx.fillStyle = `rgba(0,255,170,${0.08 * a + 0.02})`;
+      ctx.shadowBlur = 15;
+      ctx.shadowColor = wakeShadowFor(p.score);
+      ctx.fillStyle = wakeColorRgba(p.score, 0.08 * a + 0.02);
       ctx.beginPath();
       ctx.arc(p.x, p.y, p.r * (1 + p.age * 0.8), 0, Math.PI * 2);
       ctx.fill();
     }
     ctx.restore();
+  }
+
+  /* ============================================================
+     Harbor fog — multi-octave sin noise blended `multiply`
+     ============================================================ */
+  function drawHarborFog(t) {
+    const right = HARBOR_RIGHT();
+    if (right <= 0) return;
+    const horizon = HORIZON();
+    ctx.save();
+    ctx.globalCompositeOperation = "multiply";
+    // Layered octaves of sin noise — each octave fills the band with a
+    // gradient whose alpha oscillates softly across (x, y, t).
+    const octaves = [
+      { fx: 0.018, fy: 0.013, ft: 0.6, opacity: 0.55, color: "rgba(180,196,220,1)" },
+      { fx: 0.034, fy: 0.027, ft: 1.2, opacity: 0.35, color: "rgba(140,160,190,1)" },
+      { fx: 0.072, fy: 0.061, ft: 2.1, opacity: 0.20, color: "rgba(110,130,170,1)" },
+    ];
+    const top = Math.max(0, horizon - 120);
+    const bot = H;
+    const stripeH = 14;
+    for (const oct of octaves) {
+      for (let y = top; y < bot; y += stripeH) {
+        const a = (
+          Math.sin(y * oct.fy + t * oct.ft) * 0.5 +
+          Math.sin((y + 17) * oct.fy * 1.7 + t * oct.ft * 0.6) * 0.5
+        ) * 0.5 + 0.5;
+        // Horizontal falloff: full at left edge, zero at HARBOR_RIGHT.
+        for (let x = 0; x < right; x += 30) {
+          const localA = a * oct.opacity * (1 - x / right);
+          if (localA < 0.01) continue;
+          const noise = (
+            Math.sin(x * oct.fx + y * oct.fy + t * oct.ft) +
+            Math.sin((x + 11) * oct.fx * 2 + t * oct.ft * 1.3) +
+            Math.sin((x + y) * oct.fx * 0.6 - t * oct.ft * 0.7)
+          ) / 3;
+          const finalA = clamp(localA * (0.6 + noise * 0.7), 0, 0.95);
+          if (finalA < 0.02) continue;
+          ctx.fillStyle = oct.color.replace("1)", `${finalA})`);
+          ctx.fillRect(x, y, 30, stripeH);
+        }
+      }
+    }
+    ctx.restore();
+  }
+
+  /* ============================================================
+     Signal pulses — animated dots traveling between agent ships
+     ============================================================ */
+  function spawnSignalPulse(fromId, toId, kind) {
+    if (state.pulses.length >= MAX_PULSES) state.pulses.shift();
+    const from = state.layout.get(fromId);
+    const to = state.layout.get(toId);
+    if (!from || !to) return;
+    state.pulses.push({
+      from, to,
+      cp: midpointCurve(from, to),
+      t0: performance.now(),
+      life: PULSE_DURATION_MS,
+      kind: kind || "msg",
+      color: kind === "ack" ? "#5be39b" : kind === "warn" ? "#eab308" : "#a78bfa",
+    });
+  }
+  function midpointCurve(from, to) {
+    // Control point: midpoint shifted perpendicular by ~20% of distance.
+    const mx = (from.x + to.x) / 2;
+    const my = (from.y + to.y) / 2;
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const dist = Math.hypot(dx, dy);
+    const px = -dy / (dist || 1);
+    const py =  dx / (dist || 1);
+    const lift = dist * 0.22 * ((mx + my) % 2 === 0 ? 1 : -1);
+    return { x: mx + px * lift, y: my + py * lift };
+  }
+  function drawSignalPulses(now) {
+    if (state.pulses.length === 0) return;
+    ctx.save();
+    for (let i = state.pulses.length - 1; i >= 0; i--) {
+      const p = state.pulses[i];
+      const u = (now - p.t0) / p.life;
+      if (u >= 1) { state.pulses.splice(i, 1); continue; }
+      // Quadratic Bezier evaluation
+      const omu = 1 - u;
+      const x = omu * omu * p.from.x + 2 * omu * u * p.cp.x + u * u * p.to.x;
+      const y = omu * omu * p.from.y + 2 * omu * u * p.cp.y + u * u * p.to.y;
+      ctx.shadowBlur = 12;
+      ctx.shadowColor = p.color;
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(x, y, 3.2 - Math.abs(u - 0.5) * 1.4, 0, Math.PI * 2);
+      ctx.fill();
+      // Faint trail dot one step behind.
+      const u2 = Math.max(0, u - 0.12);
+      const omu2 = 1 - u2;
+      const tx = omu2 * omu2 * p.from.x + 2 * omu2 * u2 * p.cp.x + u2 * u2 * p.to.x;
+      const ty = omu2 * omu2 * p.from.y + 2 * omu2 * u2 * p.cp.y + u2 * u2 * p.to.y;
+      ctx.shadowBlur = 6;
+      ctx.globalAlpha = 0.5;
+      ctx.beginPath();
+      ctx.arc(tx, ty, 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+    ctx.restore();
+  }
+
+  /* Spawn pulses periodically based on proximity + task-hash similarity. */
+  let lastPulseSpawn = 0;
+  function maybeSpawnPulses(now) {
+    if (now - lastPulseSpawn < 1200) return;
+    lastPulseSpawn = now;
+    const agents = Array.from(state.agents.values()).filter((a) => a.phase !== "died");
+    if (agents.length < 2) return;
+    // Pairwise: pick up to 2 random close+similar pairs to send a pulse.
+    const candidates = [];
+    for (let i = 0; i < agents.length; i++) {
+      for (let j = i + 1; j < agents.length; j++) {
+        const a = agents[i], b = agents[j];
+        const pa = state.layout.get(a.task_id);
+        const pb = state.layout.get(b.task_id);
+        if (!pa || !pb) continue;
+        const dist = Math.hypot(pa.x - pb.x, pa.y - pb.y);
+        if (dist > 380) continue;
+        const ha = fnv1a(a.task_id);
+        const hb = fnv1a(b.task_id);
+        // Cheap similarity: count matching bytes 0..6.
+        let same = 0;
+        for (let k = 0; k < 7; k++) {
+          if (Math.abs(hashByte(ha, k) - hashByte(hb, k)) < 60) same++;
+        }
+        if (same >= 2) candidates.push({ a: a.task_id, b: b.task_id });
+      }
+    }
+    if (candidates.length === 0) return;
+    const pick = candidates[Math.floor(Math.random() * candidates.length)];
+    const kind = Math.random() < 0.2 ? "ack" : Math.random() < 0.1 ? "warn" : "msg";
+    spawnSignalPulse(pick.a, pick.b, kind);
+  }
+
+  /* ============================================================
+     Per-agent lifespan arc (circular health bar)
+     ============================================================ */
+  function drawLifespanArc(c, agent, x, y) {
+    const d = ensureAgentDerived(agent);
+    const frac = clamp((agent.elapsed_ms || 0) / d.maxLifespanMs, 0, 1);
+    if (frac < 0.001) return;
+    const r = 22;
+    const start = -Math.PI / 2;
+    const end = start + frac * Math.PI * 2;
+    let color;
+    if (frac < 0.5)      color = `rgba(91,227,155,${0.55 + frac * 0.3})`;
+    else if (frac < 0.85) color = `rgba(234,179,8,${0.65})`;
+    else                  color = `rgba(239,68,68,${0.75})`;
+    c.save();
+    c.strokeStyle = color;
+    c.lineWidth = 1.6;
+    c.shadowBlur = 4;
+    c.shadowColor = color;
+    c.beginPath();
+    c.arc(x, y, r, start, end);
+    c.stroke();
+    c.restore();
+  }
+
+  /* ============================================================
+     Submarine renderer — silhouette under the surface
+     ============================================================ */
+  function submarineDepth(agent, now) {
+    const d = ensureAgentDerived(agent);
+    // Cycle in [0,1). Most of the time submerged; brief surface near peak.
+    const u = (((now - state.bootedAt) + d.diveOffsetMs) % d.diveCycleMs) / d.diveCycleMs;
+    // Peak surface in a 15% window centered at 0.5.
+    let surface = 0;
+    if (u > 0.4 && u < 0.6) {
+      const k = (u - 0.5) * 5; // -0.5..0.5
+      surface = Math.max(0, 1 - Math.abs(k));
+    }
+    // depthPx: positive below horizon. 0 = on surface, up to 50px deep.
+    return 6 + (1 - surface) * 44;
+  }
+
+  function drawSubmarine(c, agent, x, surfaceY, t, now) {
+    const depth = submarineDepth(agent, now);
+    const y = surfaceY + depth;
+    c.save();
+    c.globalAlpha = 0.4;
+    // Bioluminescent glow visible through water.
+    c.shadowBlur = 18;
+    c.shadowColor = wakeShadowFor(agentRollingScore(agent));
+    c.fillStyle = "rgba(8,30,40,0.85)";
+    c.beginPath();
+    c.ellipse(x, y, 18, 5, 0, 0, Math.PI * 2);
+    c.fill();
+    // Faint tower
+    c.fillRect(x - 3, y - 7, 6, 4);
+    c.restore();
+    // Soft glow above
+    c.save();
+    c.globalAlpha = 0.18 * (1 - depth / 60);
+    c.fillStyle = wakeShadowFor(agentRollingScore(agent));
+    c.beginPath();
+    c.arc(x, surfaceY + 2, 18, 0, Math.PI * 2);
+    c.fill();
+    c.restore();
+    // Lifespan arc still drawn (slightly muted)
+    c.save();
+    c.globalAlpha = 0.5;
+    drawLifespanArc(c, agent, x, y);
+    c.restore();
   }
 
   function drawStationaryRipple(x, y, t) {
@@ -1142,11 +1546,12 @@
     ctx.save();
     ctx.globalAlpha = 0.15;
     for (const a of state.agents.values()) {
+      const derived = ensureAgentDerived(a);
+      if (derived.isSubmarine) continue; // subs don't reflect, they ARE the depth
       const pos = state.layout.get(a.task_id);
       if (!pos) continue;
       const dy = horizon - pos.y;
       if (dy <= 0) continue;
-      // Reflect across horizon, distort X by surface sample.
       const distX = sampleSurface(pos.x, t) * 0.4;
       const ry = horizon + dy + sampleSurface(pos.x + 1, t) * 0.5;
       ctx.save();
@@ -1160,21 +1565,45 @@
   }
 
   function drawBoats(t) {
+    const now = performance.now();
+    const harborRight = HARBOR_RIGHT();
     for (const a of state.agents.values()) {
       const pos = state.layout.get(a.task_id);
       if (!pos) continue;
+      const derived = ensureAgentDerived(a);
       const prev = state.layoutPrev.get(a.task_id);
       const dx = prev ? pos.x - prev.x : 0;
       const dy = prev ? pos.y - prev.y : 0;
       const speed = Math.hypot(dx, dy);
+      const rolling = agentRollingScore(a);
 
-      // Spawn wake particles proportional to speed (or steady for active boats).
+      // Submarines render under the surface.
+      if (derived.isSubmarine && a.phase !== "died") {
+        drawSubmarine(ctx, a, pos.x, HORIZON(), t, now);
+        // Sparse bioluminescent particles drifting upward.
+        if (Math.random() < 0.25) {
+          spawnWakeParticle(pos.x + (Math.random() - 0.5) * 18,
+            HORIZON() + 4 + Math.random() * 30, 0, -0.4, rolling);
+        }
+        continue;
+      }
+
+      // Ships in fog are dimmed.
+      const inFog = pos.x < harborRight;
+      const baseAlpha = inFog ? 0.6 : 1.0;
+
+      // Wake particles tied to per-agent rolling score.
       const intensity = (a.phase === "acting") ? 1.0 : (a.phase === "thinking" ? 0.4 : 0.15);
       const n = Math.min(3, Math.floor(speed * 0.4 + intensity * 1.4));
-      for (let i = 0; i < n; i++) spawnWakeParticle(pos.x, pos.y + 4, dx, dy);
+      for (let i = 0; i < n; i++) spawnWakeParticle(pos.x, pos.y + 4, dx, dy, rolling);
 
       if (speed < 0.1 && a.phase !== "died") drawStationaryRipple(pos.x, pos.y, t);
+
+      ctx.save();
+      ctx.globalAlpha = baseAlpha;
       drawHull(ctx, a, pos.x, pos.y, t);
+      drawLifespanArc(ctx, a, pos.x, pos.y);
+      ctx.restore();
     }
   }
 
@@ -1214,6 +1643,19 @@
     drawReflections(t);
     updateAndDrawParticles(dt);
     drawBoats(t);
+    drawHarborFog(t);
+    drawSignalPulses(now);
+    maybeSpawnPulses(now);
+
+    // Compass momentum needs per-frame integration.
+    updateCompassFlick(dt);
+
+    // Cheap once-per-second housekeeping: aurora tide modulation + HUD refresh.
+    if (Math.floor(now / 1000) !== state._lastTideSec) {
+      state._lastTideSec = Math.floor(now / 1000);
+      updateAurora();
+      if (state.fleetOpen) renderFleetHud();
+    }
 
     requestAnimationFrame(render);
   }
@@ -1318,11 +1760,15 @@
   function updateAurora() {
     const n = state.agents.size;
     // 0 → 20s, 10+ → 4s. Linear interp clamped.
-    const speed = Math.max(4, 20 - n * 1.6);
+    let speed = Math.max(4, 20 - n * 1.6);
+    // Tide modulation: high tide accelerates aurora (smaller period), low tide slows.
+    const tide = tidePhase(performance.now()); // [-1, 1]
+    speed = Math.max(3.5, speed - tide * 2);
     document.documentElement.style.setProperty("--aurora-speed", `${speed}s`);
     // High activity → electric violet (270 → 295). Calm → soft (250).
-    const hue = state.weather === "storm" ? 230 : state.weather === "calm" ? 260
+    let hue = state.weather === "storm" ? 230 : state.weather === "calm" ? 260
       : 270 + Math.min(n, 10) * 2.5;
+    hue += tide * 6;
     document.documentElement.style.setProperty("--aurora-hue", `${hue}deg`);
   }
 
@@ -1444,6 +1890,158 @@
   instr.querySelectorAll(".gauge").forEach((g, i) => g.dataset.idx = i);
 
   /* ============================================================
+     Gauge micro-interactions — click for sparkline, compass flick
+     ============================================================ */
+  instr.querySelectorAll(".gauge").forEach((g) => {
+    const key = g.dataset.gauge;
+    g.addEventListener("click", (e) => {
+      // Avoid toggling during a compass flick gesture.
+      if (state.compassFlick.active) return;
+      g.classList.toggle("sparkline-mode");
+      if (g.classList.contains("sparkline-mode")) renderSparkline(g, key);
+      else setTimeout(() => { /* needles reappear via CSS */ }, 200);
+    });
+  });
+
+  function renderSparkline(gauge, key) {
+    const data = state.gaugeHistory[key] || [];
+    if (data.length === 0) return;
+    const svg = gauge.querySelector(".sparkline svg");
+    if (!svg) return;
+    svg.innerHTML = "";
+    const w = 100, h = 30;
+    const min = Math.min(...data, 0);
+    const max = Math.max(...data, 1);
+    const range = (max - min) || 1;
+    const stepX = w / Math.max(1, data.length - 1);
+    let line = "";
+    let fill = `M0,${h} `;
+    data.forEach((v, i) => {
+      const x = i * stepX;
+      const y = h - ((v - min) / range) * (h - 4) - 2;
+      line += (i === 0 ? "M" : "L") + `${x.toFixed(1)},${y.toFixed(1)} `;
+      fill += `L${x.toFixed(1)},${y.toFixed(1)} `;
+    });
+    fill += `L${w},${h} Z`;
+    const fillPath = document.createElementNS(SVG_NS, "path");
+    fillPath.setAttribute("class", "spark-fill");
+    fillPath.setAttribute("d", fill);
+    const linePath = document.createElementNS(SVG_NS, "path");
+    linePath.setAttribute("d", line);
+    svg.appendChild(fillPath);
+    svg.appendChild(linePath);
+  }
+
+  /* Compass flick — grab + drag horizontally, release to spin with momentum. */
+  const compassEl = document.querySelector(".gauge.compass");
+  const compassFace = compassEl?.querySelector(".face");
+  if (compassFace) {
+    compassFace.addEventListener("mousedown", (e) => {
+      // Only flick on the bare face (not the sparkline overlay).
+      if (compassEl.classList.contains("sparkline-mode")) return;
+      e.stopPropagation();
+      state.compassFlick.active = true;
+      state.compassFlick.lastX = e.clientX;
+      state.compassFlick.lastT = performance.now();
+      compassEl.classList.add("flicking");
+    });
+    window.addEventListener("mousemove", (e) => {
+      const f = state.compassFlick;
+      if (!f.active) return;
+      const dx = e.clientX - f.lastX;
+      const now = performance.now();
+      const dt = Math.max(8, now - f.lastT);
+      f.vel = dx / dt * 18; // deg/frame approximate
+      f.lastX = e.clientX;
+      f.lastT = now;
+      f.angle += dx * 1.4;
+      const n = $("needle-compass");
+      if (n) n.style.transform = `translate(-50%, -100%) rotate(${f.angle}deg)`;
+    });
+    window.addEventListener("mouseup", () => {
+      if (state.compassFlick.active) {
+        state.compassFlick.active = false;
+        compassEl.classList.remove("flicking");
+      }
+    });
+  }
+  function updateCompassFlick(/* dt seconds */) {
+    const f = state.compassFlick;
+    if (f.active || Math.abs(f.vel) < 0.05) {
+      // Settle gently back to the true reading.
+      if (!f.active && f.angle !== 0) {
+        f.angle *= 0.92;
+        const n = $("needle-compass");
+        if (n) n.style.transform = `translate(-50%, -100%) rotate(${f.angle}deg)`;
+        if (Math.abs(f.angle) < 0.4) { f.angle = 0; renderInstruments(); }
+      }
+      return;
+    }
+    f.angle += f.vel;
+    f.vel *= 0.95;
+    const n = $("needle-compass");
+    if (n) n.style.transform = `translate(-50%, -100%) rotate(${f.angle}deg)`;
+  }
+
+  /* ============================================================
+     Fleet command HUD — F to toggle
+     ============================================================ */
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "f" || e.key === "F") {
+      // Don't trigger while typing in the goal textarea.
+      if (document.activeElement && document.activeElement.tagName === "TEXTAREA") return;
+      state.fleetOpen = !state.fleetOpen;
+      document.body.classList.toggle("fleet-open", state.fleetOpen);
+      if (state.fleetOpen) renderFleetHud();
+    }
+  });
+
+  function renderFleetHud() {
+    const svg = $("fleet-map");
+    if (!svg) return;
+    // Keep the grid lines, strip everything else.
+    [...svg.querySelectorAll(":not(.grid-line)")].forEach((n) => n.remove());
+    if (state.agents.size === 0) return;
+    // Map ocean canvas space → 200×140 HUD space.
+    const sx = 200 / Math.max(1, W);
+    const sy = 140 / Math.max(1, H);
+    for (const a of state.agents.values()) {
+      const pos = state.layout.get(a.task_id);
+      if (!pos) continue;
+      const x = pos.x * sx;
+      const y = pos.y * sy;
+      const rolling = agentRollingScore(a);
+      const color = wakeShadowFor(rolling);
+      const prev = state.layoutPrev.get(a.task_id);
+      const vx = prev ? (pos.x - prev.x) * sx : 0;
+      const vy = prev ? (pos.y - prev.y) * sy : 0;
+      const vlen = Math.hypot(vx, vy);
+      if (vlen > 0.2) {
+        const ux = vx / vlen, uy = vy / vlen;
+        const arrow = document.createElementNS(SVG_NS, "line");
+        arrow.setAttribute("class", "fleet-arrow");
+        arrow.setAttribute("x1", x);
+        arrow.setAttribute("y1", y);
+        arrow.setAttribute("x2", x + ux * 10);
+        arrow.setAttribute("y2", y + uy * 10);
+        svg.appendChild(arrow);
+      }
+      const dot = document.createElementNS(SVG_NS, "circle");
+      dot.setAttribute("class", "fleet-dot");
+      dot.setAttribute("cx", x);
+      dot.setAttribute("cy", y);
+      dot.setAttribute("r", 3);
+      dot.setAttribute("fill", color);
+      dot.setAttribute("filter", `drop-shadow(0 0 4px ${color})`);
+      const tt = document.createElementNS(SVG_NS, "title");
+      tt.textContent = (a.goal || "").slice(0, 80);
+      dot.appendChild(tt);
+      dot.addEventListener("click", () => zoomToAgent(a));
+      svg.appendChild(dot);
+    }
+  }
+
+  /* ============================================================
      WebSocket data plumbing
      ============================================================ */
   function connect() {
@@ -1504,7 +2102,10 @@
         const a = state.agents.get(id);
         if (!a) break;
         a.phase = msg.phase;
-        if (msg.score != null) a.score = msg.score;
+        if (msg.score != null) {
+          a.score = msg.score;
+          pushScoreHistory(a, msg.score);
+        }
         if (msg.branch) a.branch = msg.branch;
         if (msg.phase === "scored") floatScore(id, msg.score);
         if (msg.phase === "died") a.duration_ms = msg.duration_ms || a.elapsed_ms;
@@ -1520,7 +2121,10 @@
         break;
       case "score_updated": {
         const a = state.agents.get(tid(msg));
-        if (a) a.score = clamp(msg.test_pass_rate || 0, 0, 1);
+        if (a) {
+          a.score = clamp(msg.test_pass_rate || 0, 0, 1);
+          pushScoreHistory(a, a.score);
+        }
         if (state.zoomTarget === tid(msg) && a) populateDetail(a);
         break;
       }
@@ -1681,6 +2285,7 @@
     const completed = s.succeeded + s.failed;
     const rate = completed === 0 ? 0 : s.succeeded / completed;
     setNeedle("needle-compass", -90 + rate * 180);
+    pushGaugeHistory("compass", rate);
     $("g-rate").textContent = completed === 0 ? "—" : `${(rate * 100).toFixed(0)}%`;
 
     const scores = Array.from(state.agents.values()).map((a) => a.score || 0);
@@ -1688,15 +2293,24 @@
       : scores.reduce((x, y) => x + y, 0) / scores.length;
     state.avgScore = avg;
     setNeedle("needle-speed", -90 + avg * 180);
+    pushGaugeHistory("speed", avg);
     $("g-score").textContent = scores.length === 0 ? "—" : avg.toFixed(2);
 
     const depth = s.running + s.queued;
     setNeedle("needle-depth", -90 + Math.min(depth / 16, 1) * 180);
+    pushGaugeHistory("depth", Math.min(depth / 16, 1));
     $("g-depth").textContent = String(depth);
 
     const secInMin = (s.uptime_secs || 0) % 60;
     setNeedle("needle-chrono", -90 + (secInMin / 60) * 360);
+    pushGaugeHistory("chrono", secInMin / 60);
     $("g-uptime").textContent = formatUptime(s.uptime_secs);
+  }
+  function pushGaugeHistory(key, v) {
+    const arr = state.gaugeHistory[key];
+    if (!arr) return;
+    arr.push(v);
+    if (arr.length > 10) arr.shift();
   }
   function setNeedle(id, target) {
     const n = $(id);
