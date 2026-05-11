@@ -17,11 +17,13 @@
 //! `.lopi/spec_surface.json` for caching. The planning prompt injector in
 //! `lopi-agent` reads this file to seed the task context.
 
-mod rust_extractor;
 mod python_extractor;
+mod rust_extractor;
+pub mod test_runner;
 
-pub use rust_extractor::extract_rust;
 pub use python_extractor::extract_python;
+pub use rust_extractor::extract_rust;
+pub use test_runner::{coverage_gaps, run_tests, TestRunResult};
 
 use anyhow::Result;
 use chrono::{DateTime, Utc};

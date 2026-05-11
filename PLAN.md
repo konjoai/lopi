@@ -1,6 +1,6 @@
 # PLAN.md — lopi Master Plan
 
-**Updated:** 2026-05-11 · v0.13.0 just shipped.
+**Updated:** 2026-05-11 · v0.14.0 just shipped.
 
 ## Vision
 
@@ -55,6 +55,12 @@ MemoryStore · worktree lock · CancellationToken · structured shutdown.
 the CLI subprocess for planning · prompt caching with `cache_control:
 ephemeral` · real `TurnMetrics` from API responses · transparent CLI
 fallback · 7 new tests.
+
+### v0.14.0 — Sprint L: Synthetic User + File Budget Fixes 🔬
+`TestRunResult` parser (Cargo + pytest) · `coverage_gaps()` · `lopi gap-fill` command ·
+`lopi check --fail-on-violations` CI exit code · file budget repairs (run_loop.rs 651→480,
+web/mod.rs 593→372, main.rs 560→486) · `stability_runner.rs` + `postmortem_runner.rs` +
+`web/handlers.rs` + `run_command.rs` extracted · 8 new tests (399 total).
 
 ### v0.13.0 — Sprint K: Spec Surface + KCQF 📋
 `lopi-spec` crate (Rust + Python test extractor) · `SpecSurface::extract/save/load/top_descriptions` ·
@@ -124,11 +130,19 @@ lopi learn annotate CLI command. 313 tests.
 - [x] `/api/spec` web endpoint
 - [x] KCQF file-size gate + spec drift detection in `lopi check`
 
-### Sprint L — Synthetic User + Coverage Gap (next)
-- [ ] Synthetic user agent: "As a User ×1000" against the spec surface
-- [ ] Coverage gap detection → auto-open PRs for missing test coverage
-- [ ] Per-iteration quality score trend tracking (stored in SQLite)
-- [ ] `lopi check --fail-on-violations` — CI-compatible exit code
+### Sprint L — Synthetic User + Coverage Gap ✅ (shipped v0.14.0)
+- [x] `TestRunResult` parser — cargo test + pytest output → per-test pass/fail
+- [x] `coverage_gaps()` — cross-reference spec surface with test results
+- [x] `lopi gap-fill` — runs tests, finds gaps, queues fix tasks via sail API
+- [x] `lopi check --fail-on-violations` — CI-compatible exit code
+- [x] File budget repairs — all three oversize files now under 500 lines
+
+### Sprint M — Continuous Loop + Multi-Repo (next)
+- [ ] `lopi watch --gap-fill` — background daemon that runs gap-fill on a cadence
+- [ ] Gap result storage in SQLite — trend quality scores over time
+- [ ] Multi-repo orchestration — pool routing by task.repo_path already works;
+      needs a `lopi sail --repo-map` config for 10-repo concurrent dispatch
+- [ ] GitHub App OAuth — per-customer isolated pattern store + billing scaffold
 
 ### Phase 7+ — UI polish (deferred)
 - [ ] Mobile-responsive Forge degradation
@@ -162,10 +176,10 @@ near-term sprint** — the CLI is good enough.
 
 | Metric | Value |
 |---|---|
-| Workspace tests | **390 passing**, 0 failing |
+| Workspace tests | **399 passing**, 0 failing |
 | Build | `cargo build --workspace`: clean, 0 clippy warnings |
 | Crates | **13** (+ lopi-github, lopi-spec) |
-| CLI commands | `run`, `watch`, `tail`, `dock`, `sail`, `cancel`, `learn list/show/export/annotate`, `schedules list`, `serve-webhooks`, `spec`, `check` |
+| CLI commands | `run`, `watch`, `tail`, `dock`, `sail`, `cancel`, `learn list/show/export/annotate`, `schedules list`, `serve-webhooks`, `spec`, `check [--fail-on-violations]`, `gap-fill` |
 | API endpoints | `/api/health`, `/api/tasks` (GET+POST), `/api/tasks/:id` (GET+DELETE), `/api/stats`, `/api/patterns`, `/metrics` (Prometheus), `/sse` (SSE), `/ws` (WebSocket) |
 | Embedded UI | SvelteKit Forge + Constellation, ~487 KB JS / 126 KB gzipped |
 | Direct-API planning | ✅ via `AgentRunner::with_api(client, limiter, breaker)` |

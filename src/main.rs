@@ -1,7 +1,9 @@
 //! lopi — high-performance Rust orchestrator for concurrent Claude Code agents.
 #![allow(clippy::print_stdout, clippy::print_stderr)]
+mod gap_fill_commands;
 mod learn_commands;
 mod remote;
+mod run_command;
 mod sail_commands;
 mod schedule_commands;
 mod spec_commands;
@@ -13,8 +15,7 @@ static GLOBAL: MiMalloc = MiMalloc;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use lopi_agent::AgentRunner;
-use lopi_core::{AgentEvent, EventBus, LopiConfig, RepoProfile, Task, TaskSource, TaskStatus};
+use lopi_core::{AgentEvent, EventBus, LopiConfig, TaskStatus};
 use lopi_memory::MemoryStore;
 use std::path::PathBuf;
 use tracing_subscriber::prelude::*;
@@ -99,6 +100,18 @@ enum Commands {
     /// scores recorded before each self-modification attempt.
     #[command(subcommand)]
     Stability(StabilityCmd),
+    /// Run tests, find failing spec items, and queue fix tasks into a running
+    /// lopi sail server. Use --dry-run to see gaps without queuing.
+    GapFill {
+        #[arg(short, long, default_value = ".")]
+        repo: PathBuf,
+        /// Base URL of the running lopi sail server.
+        #[arg(long, default_value = "http://127.0.0.1:3000")]
+        sail_url: String,
+        /// Report gaps without queuing fix tasks.
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Extract the spec surface — what this repo claims to do — from test files.
     Spec {
         #[arg(short, long, default_value = ".")]
@@ -114,6 +127,9 @@ enum Commands {
     Check {
         #[arg(short, long, default_value = ".")]
         repo: PathBuf,
+        /// Exit with code 1 if violations are found (for CI pipelines).
+        #[arg(long)]
+        fail_on_violations: bool,
     },
     /// Start a dedicated GitHub webhook server.
     ///
@@ -207,7 +223,7 @@ fn fmt_status(s: &str) -> &str {
     }
 }
 
-fn status_label(s: &TaskStatus) -> String {
+pub(crate) fn status_label(s: &TaskStatus) -> String {
     match s {
         TaskStatus::Queued => "queued".into(),
         TaskStatus::Planning => "planning".into(),
@@ -235,7 +251,7 @@ fn load_config(path: Option<&PathBuf>) -> Option<LopiConfig> {
     }
 }
 
-fn is_self_modify_attempt(repo: &std::path::Path) -> bool {
+pub(crate) fn is_self_modify_attempt(repo: &std::path::Path) -> bool {
     if let Ok(exe) = std::env::current_exe() {
         if let (Some(parent), Ok(repo_canonical)) =
             (exe.parent().and_then(|p| p.parent()), repo.canonicalize())
@@ -289,102 +305,8 @@ async fn main() -> Result<()> {
 
     match cli.command {
         // ── lopi run ────────────────────────────────────────────
-        Commands::Run {
-            goal,
-            repo,
-            dry_run,
-            speculative,
-            adaptive_retry,
-        } => {
-            println!("🚢 lopi run{}", if dry_run { " (dry-run)" } else { "" });
-            println!("   goal: {goal}");
-            println!("   repo: {}", repo.display());
-
-            // Apply per-repo profile.
-            let profile = RepoProfile::load_from_repo(&repo);
-            let has_profile = !profile.allowed_dirs.is_empty()
-                || profile.max_retries.is_some()
-                || !profile.default_constraints.is_empty();
-            if has_profile {
-                println!("   profile: .lopi.toml found — applying overrides");
-            }
-            println!();
-
-            let store = MemoryStore::open(db_path()).await?;
-            let mut task = Task::new(goal);
-            profile.apply(&mut task);
-
-            // Check for self-modification attempt.
-            if is_self_modify_attempt(&repo) {
-                let allow_self_modify = cfg.as_ref().is_some_and(|c| c.lopi.allow_self_modify);
-                if !allow_self_modify {
-                    eprintln!("❌ self-modification blocked: lopi cannot modify itself");
-                    eprintln!("   to enable, set `allow_self_modify = true` in [lopi] section of lopi.toml");
-                    return Err(anyhow::anyhow!("self-modification not allowed"));
-                }
-                task.source = TaskSource::SelfModify {
-                    approved_by: "config".into(),
-                };
-                task.allowed_dirs = vec!["crates/".into(), "src/".into()];
-                task.forbidden_dirs = vec![".github/".into(), "Cargo.lock".into()];
-            }
-
-            let task_id = task.id;
-            let id_short = &task_id.0.to_string()[..8];
-            store.save_task(&task, "queued").await.ok();
-
-            println!("   task id: {id_short}…");
-            println!("   use `lopi watch` in another terminal for the TUI");
-            println!();
-
-            let mut runner = AgentRunner::standalone(task.clone(), repo).0;
-            if adaptive_retry {
-                runner = runner.with_adaptive_retry();
-            }
-            runner.store = Some(store.clone());
-            runner.dry_run = dry_run;
-            runner.speculative = speculative;
-            let bus = runner.bus.clone();
-
-            let mut rx = bus.subscribe();
-            let print_task = tokio::spawn(async move {
-                loop {
-                    match rx.recv().await {
-                        Ok(AgentEvent::StatusChanged {
-                            status, attempt, ..
-                        }) => {
-                            println!("  [{attempt}] → {}", status_label(&status));
-                        }
-                        Ok(AgentEvent::LogLine { line, .. }) => {
-                            println!("       {line}");
-                        }
-                        Ok(AgentEvent::ScoreUpdated {
-                            test_pass_rate,
-                            lint_errors,
-                            ..
-                        }) => {
-                            println!(
-                                "       score: {:.0}% pass, {} lint errors",
-                                test_pass_rate * 100.0,
-                                lint_errors
-                            );
-                        }
-                        Ok(AgentEvent::TaskCompleted { .. }) | Err(_) => break,
-                        _ => {}
-                    }
-                }
-            });
-
-            let outcome = runner.run().await?;
-            print_task.abort();
-            store
-                .mark_completed(&task_id, &status_label(&outcome))
-                .await
-                .ok();
-            store.mine_patterns(&task_id, &task.goal).await.ok();
-
-            println!();
-            println!("⚓ {}", status_label(&outcome));
+        Commands::Run { goal, repo, dry_run, speculative, adaptive_retry } => {
+            run_command::run(goal, repo, dry_run, speculative, adaptive_retry, cfg.as_ref()).await?;
         }
 
         // ── lopi watch ──────────────────────────────────────────
@@ -467,11 +389,15 @@ async fn main() -> Result<()> {
         }
 
         // ── lopi learn ──────────────────────────────────────────
+        Commands::GapFill { repo, sail_url, dry_run } => {
+            gap_fill_commands::run(repo, &sail_url, dry_run).await?;
+        }
+
         Commands::Spec { repo, export, save } => {
             spec_commands::run_spec(repo, export, save).await?;
         }
-        Commands::Check { repo } => {
-            spec_commands::run_check(repo).await?;
+        Commands::Check { repo, fail_on_violations } => {
+            spec_commands::run_check(repo, fail_on_violations).await?;
         }
 
         Commands::Learn(cmd) => learn_commands::run(cmd, db_path()).await?,

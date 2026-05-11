@@ -1,11 +1,13 @@
 mod api_plan;
 pub mod postmortem;
+mod postmortem_runner;
 mod run_loop;
+mod stability_runner;
 
 use crate::api_client::AnthropicClient;
 use crate::stability::{StabilityConfig, StabilityHarness};
 use lopi_context::{ContentBlock, ContextWindow, Phase, PinPolicy, Role, TaggedMessage};
-use lopi_core::{AgentEvent, EventBus, ScoreWeights, Task, TaskId};
+use lopi_core::{AgentEvent, EventBus, ScoreWeights, Task, TaskId, TaskStatus};
 use lopi_memory::MemoryStore;
 use lopi_ratelimit::{AnthropicLimiter, CircuitBreaker};
 use std::path::PathBuf;
@@ -245,6 +247,28 @@ impl AgentRunner {
 
     pub(super) fn warn(&self, msg: impl Into<String>) {
         self.bus.send(AgentEvent::warn(self.id(), msg));
+    }
+
+    /// Broadcast a `StatusChanged` event and a `TurnMetrics` heartbeat.
+    pub(super) fn status(&self, s: TaskStatus, attempt: u8) {
+        let activity = match &s {
+            TaskStatus::Planning => 0.45_f32,
+            TaskStatus::Implementing => 0.85_f32,
+            TaskStatus::Testing => 0.55_f32,
+            TaskStatus::Scoring => 0.30_f32,
+            TaskStatus::Retrying { .. } => 0.40_f32,
+            TaskStatus::Success { .. } | TaskStatus::Failed { .. } | TaskStatus::RolledBack => 0.0_f32,
+            TaskStatus::Queued => 0.10_f32,
+        };
+        self.emit_turn_metrics(activity);
+        self.bus.send(AgentEvent::StatusChanged { task_id: self.id(), status: s, attempt });
+    }
+
+    pub(super) fn emit_turn_metrics(&self, activity: f32) {
+        let pressure = self.context.token_pressure();
+        self.bus.send(AgentEvent::TurnMetrics {
+            task_id: self.id(), pressure, activity, tokens_per_sec: 0.0, cost_usd: 0.0,
+        });
     }
 
     pub(super) fn check_cancel(&mut self) -> bool {

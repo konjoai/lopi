@@ -59,11 +59,12 @@ pub async fn run_spec(repo: PathBuf, export: bool, save: bool) -> Result<()> {
     Ok(())
 }
 
-/// `lopi check [--repo .]`
+/// `lopi check [--repo .] [--fail-on-violations]`
 ///
 /// Runs KCQF quality analysis: file size violations, and spec coverage
 /// (whether a cached spec surface exists and all prior tests still appear).
-pub async fn run_check(repo: PathBuf) -> Result<()> {
+/// With `--fail-on-violations`: exits with code 1 when violations are found.
+pub async fn run_check(repo: PathBuf, fail_on_violations: bool) -> Result<()> {
     println!("🔎 lopi check — {}", repo.display());
     println!();
 
@@ -100,6 +101,9 @@ pub async fn run_check(repo: PathBuf) -> Result<()> {
         println!("✅ lopi check passed");
     } else {
         println!("⚠️  lopi check: {} file-size violation(s)", violations.len());
+        if fail_on_violations {
+            std::process::exit(1);
+        }
     }
     Ok(())
 }

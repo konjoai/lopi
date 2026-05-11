@@ -1,5 +1,48 @@
 # Changelog
 
+## [0.14.0] — Sprint L: Synthetic User + File Budget Fixes 🔬
+
+### Added
+
+**`lopi-spec/src/test_runner.rs`** — test run parser
+- `run_tests(repo_path)` — auto-detects `cargo test` vs `pytest`, runs with `--no-fail-fast`, captures pass/fail per test name
+- `parse_cargo_output(output)` — parses `test name ... ok/FAILED` lines into `Vec<TestRunResult>`
+- `parse_pytest_output(output)` — parses `file::test_name PASSED/FAILED` lines
+- `coverage_gaps(spec_items, results)` — returns spec items with no passing run (failing tests + never-ran tests)
+- `TestRunResult { name, passed, error }` — serialisable result record
+- 8 unit tests (cargo format, pytest format, gap detection)
+
+**`src/gap_fill_commands.rs`** — `lopi gap-fill`
+- Loads spec surface (cached or live) → runs tests → computes coverage gaps → queues fix tasks via `POST /api/tasks` on a running `lopi sail` server
+- `--dry-run`: reports gaps without queuing
+- `--sail-url`: configurable target (default `http://127.0.0.1:3000`)
+
+**`lopi check --fail-on-violations`** — CI-compatible exit code
+- Exits with `std::process::exit(1)` when file-size or spec-drift violations are found
+- Zero means clean; non-zero blocks CI pipeline
+
+### Fixed — File Budget Violations (all three files were > 500 lines)
+
+**`crates/lopi-agent/src/runner/run_loop.rs`**: 651 → 480 lines
+- Extracted `run_stability_preflight` + `save_stability_ledger_entry` → new `stability_runner.rs`
+- Extracted `run_postmortem_if_configured` + `persist_postmortem_outcome` → new `postmortem_runner.rs`
+- Moved `status()` + `emit_turn_metrics()` to `mod.rs` (always-available utilities)
+
+**`crates/lopi-ui/src/web/mod.rs`**: 593 → 372 lines
+- Extracted all 9 route handlers → new `web/handlers.rs`
+- `types` module promoted to `pub(crate)` for cross-file access
+
+**`src/main.rs`**: 560 → 486 lines
+- Extracted `Commands::Run` (97-line agent loop) → new `src/run_command.rs`
+- `is_self_modify_attempt`, `status_label` promoted to `pub(crate)`
+
+### Tests
+- 8 new `lopi-spec::test_runner` tests
+- Workspace: 390 → **399 passing**, 0 failing
+- 0 clippy warnings
+
+---
+
 ## [0.13.0] — Sprint K: Spec Surface + KCQF 📋
 
 ### Added
