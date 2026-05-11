@@ -80,6 +80,13 @@ pub struct AgentRunner {
     /// Loaded once per task run; defaults to `ScoreWeights::default()` when no
     /// annotated patterns are available.
     pub(super) score_weights: ScoreWeights,
+    /// Sprint J-A — when true, run the KCQF quality scanner after each successful
+    /// task. Violations become maintenance tasks accumulated here and drained by
+    /// the pool after `run()` returns.
+    pub(super) kcqf_enabled: bool,
+    /// KCQF maintenance tasks produced during this run. Populated by
+    /// `run_kcqf_scan()` on the success path; drained by the pool caller.
+    pub(super) maintenance_tasks: Vec<lopi_core::Task>,
 }
 
 impl AgentRunner {
@@ -116,6 +123,8 @@ impl AgentRunner {
             attempts_made: 0,
             turn_count: 0,
             score_weights: ScoreWeights::default(),
+            kcqf_enabled: false,
+            maintenance_tasks: Vec::new(),
         }
     }
 
@@ -146,6 +155,8 @@ impl AgentRunner {
             attempts_made: 0,
             turn_count: 0,
             score_weights: ScoreWeights::default(),
+            kcqf_enabled: false,
+            maintenance_tasks: Vec::new(),
         };
         (runner, bus)
     }
@@ -210,6 +221,25 @@ impl AgentRunner {
     ) -> Self {
         self.stability_harness = Some(StabilityHarness::new(client, limiter, breaker, config));
         self
+    }
+
+    /// Sprint J-A — enable the KCQF quality scanner after each successful run.
+    ///
+    /// When enabled, `run()` invokes `lopi_kcqf::scan_diff` on the repo after a
+    /// successful commit + PR. Each detected violation becomes a low-priority
+    /// maintenance task. Drain them after `run()` returns via `take_maintenance_tasks()`.
+    #[must_use]
+    pub fn with_kcqf(mut self) -> Self {
+        self.kcqf_enabled = true;
+        self
+    }
+
+    /// Drain accumulated KCQF maintenance tasks produced during `run()`.
+    ///
+    /// Call this immediately after `run()` returns. Returns an empty `Vec` when
+    /// KCQF is disabled or no violations were found.
+    pub fn take_maintenance_tasks(&mut self) -> Vec<lopi_core::Task> {
+        std::mem::take(&mut self.maintenance_tasks)
     }
 
     /// Return a child token derived from this runner's `CancellationToken`.

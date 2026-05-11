@@ -1835,6 +1835,7 @@ dependencies = [
  "lopi-context",
  "lopi-core",
  "lopi-git",
+ "lopi-kcqf",
  "lopi-memory",
  "lopi-ratelimit",
  "lopi-toon",
@@ -1889,6 +1890,18 @@ dependencies = [
  "lopi-core",
  "once_cell",
  "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "lopi-kcqf"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "lopi-core",
+ "serde",
+ "serde_json",
  "tokio",
  "tracing",
 ]

@@ -1,0 +1,19 @@
+[package]
+name = "lopi-kcqf"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Konjo Code Quality Framework — post-task violation scanner for lopi"
+
+[dependencies]
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+lopi-core.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full"] }

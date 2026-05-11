@@ -363,6 +363,7 @@ impl AgentRunner {
                 }
                 let status = TaskStatus::Success { branch, pr_url };
                 self.status(status.clone(), attempt + 1);
+                self.run_kcqf_scan().await;
                 return Ok(status);
             }
 
@@ -393,6 +394,7 @@ impl AgentRunner {
                     let pr_url = git.open_pr(&branch, &self.task.goal).await.ok();
                     let status = TaskStatus::Success { branch, pr_url };
                     self.status(status.clone(), attempt + 1);
+                    self.run_kcqf_scan().await;
                     return Ok(status);
                 }
             }

@@ -168,6 +168,37 @@ impl AgentRunner {
         }
     }
 
+    /// Sprint J-A — run the KCQF quality scanner after a successful task.
+    ///
+    /// Calls `lopi_kcqf::scan_diff` on the repo root (clippy always; coverage
+    /// skipped when no diff files are specified). Each violation is converted to
+    /// a `TaskSource::Maintenance` task and stored in `self.maintenance_tasks`
+    /// for the pool to drain and re-queue. Best-effort: scan failures are
+    /// logged as warnings and never block the success return.
+    pub(super) async fn run_kcqf_scan(&mut self) {
+        if !self.kcqf_enabled {
+            return;
+        }
+        self.log("🔍 KCQF: scanning for quality violations…");
+        match lopi_kcqf::scan_diff(&self.repo_path, &[]).await {
+            Ok(violations) if violations.is_empty() => {
+                self.log("🔍 KCQF: clean — no violations detected");
+            }
+            Ok(violations) => {
+                let tasks = lopi_kcqf::violations_to_tasks(&violations);
+                self.log(format!(
+                    "🔍 KCQF: {} violation(s) → {} maintenance task(s) queued",
+                    violations.len(),
+                    tasks.len()
+                ));
+                self.maintenance_tasks.extend(tasks);
+            }
+            Err(e) => {
+                self.warn(format!("KCQF scan failed (non-fatal): {e}"));
+            }
+        }
+    }
+
     /// Emit `SelfModifyProposed` if recent post-mortem count crosses the threshold.
     /// Best-effort — any error is logged and ignored.
     async fn maybe_propose_self_modify(&self, store: &lopi_memory::MemoryStore) {
@@ -269,5 +300,26 @@ mod tests {
             .unwrap();
         let lessons = store.load_lessons("/repo-b", 3).await.unwrap();
         assert!(lessons.is_empty());
+    }
+
+    #[test]
+    fn kcqf_disabled_by_default() {
+        let runner = make_runner(None);
+        assert!(!runner.kcqf_enabled);
+        assert!(runner.maintenance_tasks.is_empty());
+    }
+
+    #[test]
+    fn with_kcqf_enables_flag_and_take_drains() {
+        let (runner, _bus) = AgentRunner::standalone(Task::new("test"), PathBuf::from("."));
+        let mut runner = runner.with_kcqf();
+        assert!(runner.kcqf_enabled);
+        // Manually populate maintenance_tasks to test drain.
+        runner.maintenance_tasks.push(Task::new("maint-1"));
+        runner.maintenance_tasks.push(Task::new("maint-2"));
+        let drained = runner.take_maintenance_tasks();
+        assert_eq!(drained.len(), 2);
+        assert_eq!(drained[0].goal, "maint-1");
+        assert!(runner.maintenance_tasks.is_empty());
     }
 }

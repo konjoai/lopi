@@ -11,6 +11,7 @@ members = [
     "crates/lopi-webhook",
     "crates/lopi-toon",
     "crates/lopi-ratelimit",
+    "crates/lopi-kcqf",
 ]
 resolver = "2"
 
@@ -74,6 +75,7 @@ lopi-remote = { path = "crates/lopi-remote" }
 lopi-webhook = { path = "crates/lopi-webhook" }
 lopi-toon = { path = "crates/lopi-toon" }
 lopi-ratelimit = { path = "crates/lopi-ratelimit" }
+lopi-kcqf = { path = "crates/lopi-kcqf" }
 
 [package]
 name = "lopi"
