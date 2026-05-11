@@ -153,7 +153,10 @@ mod tests {
         let before = runner.score_weights.clone();
         runner.load_score_weights().await;
         // With no store, weights stay at default
-        assert_eq!(runner.score_weights.lint_penalty_per_error, before.lint_penalty_per_error);
+        assert_eq!(
+            runner.score_weights.lint_penalty_per_error,
+            before.lint_penalty_per_error
+        );
     }
 
     #[tokio::test]
@@ -172,7 +175,13 @@ mod tests {
     async fn load_lessons_returns_repo_lessons() {
         let store = MemoryStore::open_in_memory().await.unwrap();
         store
-            .save_lesson("/test/repo", "strategy", "always run clippy first", None, 0.9)
+            .save_lesson(
+                "/test/repo",
+                "strategy",
+                "always run clippy first",
+                None,
+                0.9,
+            )
             .await
             .unwrap();
         let lessons = store.load_lessons("/test/repo", 3).await.unwrap();

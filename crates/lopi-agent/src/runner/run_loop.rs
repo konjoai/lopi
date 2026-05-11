@@ -209,15 +209,21 @@ impl AgentRunner {
                             self.warn(format!(
                                 "direct API plan failed ({api_err}); falling back to CLI"
                             ));
-                            claude.plan(&self.task, self.last_error.as_deref()).await.inspect(|p| {
-                                self.log(format!("✅ plan ready via CLI ({} chars)", p.len()));
-                            })
+                            claude
+                                .plan(&self.task, self.last_error.as_deref())
+                                .await
+                                .inspect(|p| {
+                                    self.log(format!("✅ plan ready via CLI ({} chars)", p.len()));
+                                })
                         }
                     }
                 } else {
-                    claude.plan(&self.task, self.last_error.as_deref()).await.inspect(|p| {
-                        self.log(format!("✅ plan ready ({} chars)", p.len()));
-                    })
+                    claude
+                        .plan(&self.task, self.last_error.as_deref())
+                        .await
+                        .inspect(|p| {
+                            self.log(format!("✅ plan ready ({} chars)", p.len()));
+                        })
                 };
 
                 let plan = match plan_result {

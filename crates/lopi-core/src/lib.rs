@@ -79,7 +79,10 @@ mod tests {
 
         let default_score = s.weighted(&default_weights);
         let relaxed_score = s.weighted(&relaxed_weights);
-        assert!(relaxed_score > default_score, "relaxed weights should produce higher scores");
+        assert!(
+            relaxed_score > default_score,
+            "relaxed weights should produce higher scores"
+        );
     }
 
     #[test]
@@ -129,7 +132,9 @@ mod tests {
 
     #[test]
     fn task_source_selfmodify_serde_round_trip() {
-        let s = TaskSource::SelfModify { approved_by: "config".into() };
+        let s = TaskSource::SelfModify {
+            approved_by: "config".into(),
+        };
         let json = serde_json::to_string(&s).unwrap();
         let back: TaskSource = serde_json::from_str(&json).unwrap();
         match back {

@@ -202,9 +202,16 @@ impl AgentPool {
             js.spawn(async move {
                 let _permit = permit;
                 let _repo_permit = repo_permit;
-                let outcome =
-                    run_one(task, repo, bus.clone(), store, cancel_rx, attempt, adaptive_retry)
-                        .await;
+                let outcome = run_one(
+                    task,
+                    repo,
+                    bus.clone(),
+                    store,
+                    cancel_rx,
+                    attempt,
+                    adaptive_retry,
+                )
+                .await;
                 handles.remove(&task_id);
                 counters.running.fetch_sub(1, Ordering::Relaxed);
                 match &outcome {

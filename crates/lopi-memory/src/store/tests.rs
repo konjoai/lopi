@@ -435,7 +435,10 @@ async fn compute_adjustments_empty_returns_default() {
     let store = MemoryStore::open_in_memory().await.unwrap();
     let weights = store.compute_weight_adjustments().await.unwrap();
     let defaults = ScoreWeights::default();
-    assert_eq!(weights.lint_penalty_per_error, defaults.lint_penalty_per_error);
+    assert_eq!(
+        weights.lint_penalty_per_error,
+        defaults.lint_penalty_per_error
+    );
     assert_eq!(weights.lint_penalty_cap, defaults.lint_penalty_cap);
 }
 
@@ -446,8 +449,14 @@ async fn compute_adjustments_signal_shifts_weights() {
     let task_rejected = Task::new("complex refactor");
     store.save_task(&task_approved, "success").await.unwrap();
     store.save_task(&task_rejected, "success").await.unwrap();
-    store.mine_patterns(&task_approved.id, &task_approved.goal).await.unwrap();
-    store.mine_patterns(&task_rejected.id, &task_rejected.goal).await.unwrap();
+    store
+        .mine_patterns(&task_approved.id, &task_approved.goal)
+        .await
+        .unwrap();
+    store
+        .mine_patterns(&task_rejected.id, &task_rejected.goal)
+        .await
+        .unwrap();
 
     let patterns = store.load_patterns(10).await.unwrap();
     assert!(patterns.len() >= 2);

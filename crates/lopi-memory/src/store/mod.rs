@@ -474,7 +474,7 @@ impl MemoryStore {
         sqlx::query_as(
             "SELECT id, goal_keywords, successful_constraints, avg_attempts, success_rate,
                     last_seen, derived_from_postmortem, user_annotation
-             FROM patterns WHERE user_annotation IS NOT NULL ORDER BY last_seen DESC LIMIT 100"
+             FROM patterns WHERE user_annotation IS NOT NULL ORDER BY last_seen DESC LIMIT 100",
         )
         .fetch_all(&self.read_pool)
         .await
@@ -499,19 +499,13 @@ impl MemoryStore {
         let approved_avg_attempts = if approved.is_empty() {
             0.0
         } else {
-            approved
-                .iter()
-                .filter_map(|p| p.avg_attempts)
-                .sum::<f64>() / approved.len() as f64
+            approved.iter().filter_map(|p| p.avg_attempts).sum::<f64>() / approved.len() as f64
         };
 
         let rejected_avg_attempts = if rejected.is_empty() {
             0.0
         } else {
-            rejected
-                .iter()
-                .filter_map(|p| p.avg_attempts)
-                .sum::<f64>() / rejected.len() as f64
+            rejected.iter().filter_map(|p| p.avg_attempts).sum::<f64>() / rejected.len() as f64
         };
 
         let signal = (rejected_avg_attempts - approved_avg_attempts).clamp(-2.0, 2.0);

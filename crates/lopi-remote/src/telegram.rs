@@ -1,18 +1,18 @@
 #![allow(clippy::missing_errors_doc)]
 use crate::self_modify;
+use crate::self_modify::PendingSelfModify;
 use anyhow::Result;
 use lopi_core::{Priority, Task, TaskSource};
 use lopi_memory::MemoryStore;
 use lopi_orchestrator::TaskQueue;
 use std::sync::Arc;
-use tokio::sync::Mutex;
 use teloxide::{
     dispatching::dialogue::InMemStorage,
     prelude::*,
     types::{InlineKeyboardButton, InlineKeyboardMarkup, Update},
     utils::command::BotCommands,
 };
-use crate::self_modify::PendingSelfModify;
+use tokio::sync::Mutex;
 
 /// Commands accepted by the lopi Telegram bot.
 #[derive(BotCommands, Clone)]
@@ -64,14 +64,11 @@ pub async fn run(
         .filter_command::<LopiCmd>()
         .endpoint(message_handler);
 
-    let callback_handler = Update::filter_callback_query()
-        .endpoint(callback_query_handler);
+    let callback_handler = Update::filter_callback_query().endpoint(callback_query_handler);
 
     Dispatcher::builder(
         bot,
-        dptree::entry()
-            .branch(handler)
-            .branch(callback_handler),
+        dptree::entry().branch(handler).branch(callback_handler),
     )
     .dependencies(dptree::deps![
         queue_arc,
@@ -100,7 +97,10 @@ async fn message_handler(
     pending_sm: PendingSelfModify,
 ) -> Result<()> {
     if !allowed.is_empty() && !allowed.contains(&msg.chat.id.0) {
-        tracing::warn!("telegram: rejected command from unauthorized chat {}", msg.chat.id.0);
+        tracing::warn!(
+            "telegram: rejected command from unauthorized chat {}",
+            msg.chat.id.0
+        );
         return Ok(());
     }
 
@@ -160,8 +160,7 @@ async fn message_handler(
         }
 
         LopiCmd::SelfImprove => {
-            handle_self_improve(&bot, msg.chat.id, &store, &queue, &allow_sm, &pending_sm)
-                .await?;
+            handle_self_improve(&bot, msg.chat.id, &store, &queue, &allow_sm, &pending_sm).await?;
         }
     }
     Ok(())
@@ -191,12 +190,16 @@ async fn handle_patterns(bot: &Bot, chat_id: ChatId, store: &MemoryStore) -> Res
                         p.successful_constraints.as_deref().unwrap_or("(none)")
                     );
                     let kb = InlineKeyboardMarkup::new([[
-                        InlineKeyboardButton::callback("✅ Approve", format!("annotate:approved:{}", &p.id)),
-                        InlineKeyboardButton::callback("❌ Reject", format!("annotate:rejected:{}", &p.id)),
+                        InlineKeyboardButton::callback(
+                            "✅ Approve",
+                            format!("annotate:approved:{}", &p.id),
+                        ),
+                        InlineKeyboardButton::callback(
+                            "❌ Reject",
+                            format!("annotate:rejected:{}", &p.id),
+                        ),
                     ]]);
-                    bot.send_message(chat_id, text)
-                        .reply_markup(kb)
-                        .await?;
+                    bot.send_message(chat_id, text).reply_markup(kb).await?;
                 }
             }
         }

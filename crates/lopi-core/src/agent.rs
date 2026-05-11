@@ -56,10 +56,18 @@ pub struct ScoreWeights {
 }
 
 impl ScoreWeights {
-    fn default_lint_penalty_per_error() -> f32 { 0.05 }
-    fn default_lint_penalty_cap() -> f32 { 0.50 }
-    fn default_diff_penalty_per_kloc() -> f32 { 0.10 }
-    fn default_diff_penalty_cap() -> f32 { 0.30 }
+    fn default_lint_penalty_per_error() -> f32 {
+        0.05
+    }
+    fn default_lint_penalty_cap() -> f32 {
+        0.50
+    }
+    fn default_diff_penalty_per_kloc() -> f32 {
+        0.10
+    }
+    fn default_diff_penalty_cap() -> f32 {
+        0.30
+    }
 }
 
 impl Default for ScoreWeights {
@@ -102,9 +110,11 @@ impl Score {
         // Higher is better. Pass rate dominates; lint errors and oversized diffs penalize.
         // u32→f32 precision loss is intentional: scores are relative metrics, not exact counts.
         #[allow(clippy::cast_precision_loss)]
-        let lint_penalty = (self.lint_errors as f32 * weights.lint_penalty_per_error).min(weights.lint_penalty_cap);
+        let lint_penalty = (self.lint_errors as f32 * weights.lint_penalty_per_error)
+            .min(weights.lint_penalty_cap);
         #[allow(clippy::cast_precision_loss)]
-        let size_penalty = ((self.diff_lines as f32 / 1000.0) * weights.diff_penalty_per_kloc).min(weights.diff_penalty_cap);
+        let size_penalty = ((self.diff_lines as f32 / 1000.0) * weights.diff_penalty_per_kloc)
+            .min(weights.diff_penalty_cap);
         (self.test_pass_rate - lint_penalty - size_penalty).max(0.0)
     }
 }

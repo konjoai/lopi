@@ -239,7 +239,10 @@ mod tests {
     #[tokio::test]
     async fn build_self_modify_task_enforces_allowed_dirs() {
         let task = build_self_modify_task("test goal", 12345);
-        assert_eq!(task.allowed_dirs, vec!["crates/".to_string(), "src/".to_string()]);
+        assert_eq!(
+            task.allowed_dirs,
+            vec!["crates/".to_string(), "src/".to_string()]
+        );
         assert!(matches!(task.source, TaskSource::SelfModify { .. }));
     }
 

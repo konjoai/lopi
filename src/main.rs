@@ -171,7 +171,9 @@ fn load_config(path: Option<&PathBuf>) -> Option<LopiConfig> {
 
 fn is_self_modify_attempt(repo: &std::path::Path) -> bool {
     if let Ok(exe) = std::env::current_exe() {
-        if let (Some(parent), Ok(repo_canonical)) = (exe.parent().and_then(|p| p.parent()), repo.canonicalize()) {
+        if let (Some(parent), Ok(repo_canonical)) =
+            (exe.parent().and_then(|p| p.parent()), repo.canonicalize())
+        {
             if let Ok(exe_canonical) = parent.canonicalize() {
                 return repo_canonical.starts_with(&exe_canonical);
             }
@@ -254,7 +256,9 @@ async fn main() -> Result<()> {
                     eprintln!("   to enable, set `allow_self_modify = true` in [lopi] section of lopi.toml");
                     return Err(anyhow::anyhow!("self-modification not allowed"));
                 }
-                task.source = TaskSource::SelfModify { approved_by: "config".into() };
+                task.source = TaskSource::SelfModify {
+                    approved_by: "config".into(),
+                };
                 task.allowed_dirs = vec!["crates/".into(), "src/".into()];
                 task.forbidden_dirs = vec![".github/".into(), "Cargo.lock".into()];
             }
@@ -440,9 +444,7 @@ async fn main() -> Result<()> {
                     .as_ref()
                     .map(|c| c.remote.telegram.allowed_chat_ids.clone())
                     .unwrap_or_default();
-                let allow_self_modify = cfg
-                    .as_ref()
-                    .is_some_and(|c| c.lopi.allow_self_modify);
+                let allow_self_modify = cfg.as_ref().is_some_and(|c| c.lopi.allow_self_modify);
                 let store_telegram = store.clone();
                 let queue_telegram = queue.clone();
                 tokio::spawn(async move {

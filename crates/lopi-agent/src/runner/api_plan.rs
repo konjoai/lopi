@@ -265,10 +265,7 @@ mod tests {
     #[test]
     fn user_prompt_lists_constraints() {
         let p = build_user_prompt(
-            &task_with(
-                "g",
-                vec!["no panics".into(), "must compile".into()],
-            ),
+            &task_with("g", vec!["no panics".into(), "must compile".into()]),
             None,
         );
         assert!(p.contains("no panics"));
