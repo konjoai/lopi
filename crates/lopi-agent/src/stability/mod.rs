@@ -171,7 +171,10 @@ impl StabilityHarness {
         for i in 0..self.config.n_samples {
             if let Some(b) = &self.breaker {
                 if b.check().await.is_err() {
-                    tracing::warn!(sample = i, "stability: circuit breaker open — stopping early");
+                    tracing::warn!(
+                        sample = i,
+                        "stability: circuit breaker open — stopping early"
+                    );
                     break;
                 }
             }
@@ -187,9 +190,14 @@ impl StabilityHarness {
                 Ok((text, usage)) => {
                     if let Some(b) = &self.breaker {
                         b.record_success().await;
-                        b.record_cost(usage.estimated_cost(&self.config.model)).await;
+                        b.record_cost(usage.estimated_cost(&self.config.model))
+                            .await;
                     }
-                    tracing::debug!(sample = i, chars = text.len(), "stability: plan sample collected");
+                    tracing::debug!(
+                        sample = i,
+                        chars = text.len(),
+                        "stability: plan sample collected"
+                    );
                     plans.push(text);
                 }
                 Err(e) => {
@@ -252,13 +260,22 @@ pub(crate) fn build_stability_prompt(task: &Task) -> String {
     parts.push(format!("# Task\n{}", task.goal));
 
     if !task.constraints.is_empty() {
-        parts.push(format!("\n# Constraints\n- {}", task.constraints.join("\n- ")));
+        parts.push(format!(
+            "\n# Constraints\n- {}",
+            task.constraints.join("\n- ")
+        ));
     }
     if !task.allowed_dirs.is_empty() {
-        parts.push(format!("\n# Allowed dirs\n- {}", task.allowed_dirs.join("\n- ")));
+        parts.push(format!(
+            "\n# Allowed dirs\n- {}",
+            task.allowed_dirs.join("\n- ")
+        ));
     }
     if !task.forbidden_dirs.is_empty() {
-        parts.push(format!("\n# Forbidden dirs\n- {}", task.forbidden_dirs.join("\n- ")));
+        parts.push(format!(
+            "\n# Forbidden dirs\n- {}",
+            task.forbidden_dirs.join("\n- ")
+        ));
     }
     parts.push(
         "\nProduce a concise step-by-step plan to complete this task. \

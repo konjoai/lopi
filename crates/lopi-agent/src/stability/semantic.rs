@@ -85,13 +85,20 @@ index 333..444 100644
         let allowed = vec!["src/".to_string()];
         let flags = flag_out_of_scope(SAMPLE_DIFF, &allowed);
         assert!(flags.contains(&"Cargo.toml".to_string()), "{flags:?}");
-        assert!(flags.contains(&".github/workflows/ci.yml".to_string()), "{flags:?}");
+        assert!(
+            flags.contains(&".github/workflows/ci.yml".to_string()),
+            "{flags:?}"
+        );
         assert!(!flags.contains(&"src/lib.rs".to_string()), "{flags:?}");
     }
 
     #[test]
     fn no_flags_when_all_in_allowed() {
-        let allowed = vec!["src/".to_string(), "Cargo.toml".to_string(), ".github/".to_string()];
+        let allowed = vec![
+            "src/".to_string(),
+            "Cargo.toml".to_string(),
+            ".github/".to_string(),
+        ];
         let flags = flag_out_of_scope(SAMPLE_DIFF, &allowed);
         assert!(flags.is_empty(), "expected no flags, got {flags:?}");
     }
@@ -99,7 +106,10 @@ index 333..444 100644
     #[test]
     fn no_flags_when_allowed_empty() {
         let flags = flag_out_of_scope(SAMPLE_DIFF, &[]);
-        assert!(flags.is_empty(), "empty allowed_dirs → no scope declared → no flags");
+        assert!(
+            flags.is_empty(),
+            "empty allowed_dirs → no scope declared → no flags"
+        );
     }
 
     #[test]

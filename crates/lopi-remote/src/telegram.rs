@@ -54,14 +54,11 @@ pub async fn run(
         .filter_command::<LopiCmd>()
         .endpoint(message_handler);
 
-    let callback_handler = Update::filter_callback_query()
-        .endpoint(callback_query_handler);
+    let callback_handler = Update::filter_callback_query().endpoint(callback_query_handler);
 
     Dispatcher::builder(
         bot,
-        dptree::entry()
-            .branch(handler)
-            .branch(callback_handler),
+        dptree::entry().branch(handler).branch(callback_handler),
     )
     .dependencies(dptree::deps![
         queue_arc,
@@ -85,7 +82,10 @@ async fn message_handler(
     allowed: Arc<Vec<i64>>,
 ) -> Result<()> {
     if !allowed.is_empty() && !allowed.contains(&msg.chat.id.0) {
-        tracing::warn!("telegram: rejected command from unauthorized chat {}", msg.chat.id.0);
+        tracing::warn!(
+            "telegram: rejected command from unauthorized chat {}",
+            msg.chat.id.0
+        );
         return Ok(());
     }
 
@@ -140,22 +140,21 @@ async fn message_handler(
             .await?;
         }
 
-        LopiCmd::Patterns => {
-            match store.load_patterns(10).await {
-                Ok(patterns) => {
-                    if patterns.is_empty() {
-                        bot.send_message(msg.chat.id, "📊 No patterns recorded yet.")
-                            .await?;
-                    } else {
-                        for p in patterns {
-                            let id_short = &p.id[..8.min(p.id.len())];
-                            let annotation = match p.user_annotation.as_deref() {
-                                Some("approved") => "✅ Approved",
-                                Some("rejected") => "❌ Rejected",
-                                _ => "⭕ Unannotated",
-                            };
-                            let success = p.success_rate.unwrap_or(0.0) * 100.0;
-                            let text = format!(
+        LopiCmd::Patterns => match store.load_patterns(10).await {
+            Ok(patterns) => {
+                if patterns.is_empty() {
+                    bot.send_message(msg.chat.id, "📊 No patterns recorded yet.")
+                        .await?;
+                } else {
+                    for p in patterns {
+                        let id_short = &p.id[..8.min(p.id.len())];
+                        let annotation = match p.user_annotation.as_deref() {
+                            Some("approved") => "✅ Approved",
+                            Some("rejected") => "❌ Rejected",
+                            _ => "⭕ Unannotated",
+                        };
+                        let success = p.success_rate.unwrap_or(0.0) * 100.0;
+                        let text = format!(
                                 "**Pattern {}**\nKeywords: {}\nSuccess: {:.0}%\nStatus: {}\nConstraint: {}",
                                 id_short,
                                 &p.goal_keywords[..p.goal_keywords.len().min(40)],
@@ -163,31 +162,30 @@ async fn message_handler(
                                 annotation,
                                 p.successful_constraints.as_deref().unwrap_or("(none)")
                             );
-                            let kb = InlineKeyboardMarkup::new([[
-                                InlineKeyboardButton::callback("✅ Approve", format!("annotate:approved:{}", &p.id)),
-                                InlineKeyboardButton::callback("❌ Reject", format!("annotate:rejected:{}", &p.id)),
-                            ]]);
-                            bot.send_message(msg.chat.id, text)
-                                .reply_markup(kb)
-                                .await?;
-                        }
+                        let kb = InlineKeyboardMarkup::new([[
+                            InlineKeyboardButton::callback(
+                                "✅ Approve",
+                                format!("annotate:approved:{}", &p.id),
+                            ),
+                            InlineKeyboardButton::callback(
+                                "❌ Reject",
+                                format!("annotate:rejected:{}", &p.id),
+                            ),
+                        ]]);
+                        bot.send_message(msg.chat.id, text).reply_markup(kb).await?;
                     }
                 }
-                Err(e) => {
-                    bot.send_message(msg.chat.id, format!("❌ Error loading patterns: {e}"))
-                        .await?;
-                }
             }
-        }
+            Err(e) => {
+                bot.send_message(msg.chat.id, format!("❌ Error loading patterns: {e}"))
+                    .await?;
+            }
+        },
     }
     Ok(())
 }
 
-async fn callback_query_handler(
-    bot: Bot,
-    q: CallbackQuery,
-    store: Arc<MemoryStore>,
-) -> Result<()> {
+async fn callback_query_handler(bot: Bot, q: CallbackQuery, store: Arc<MemoryStore>) -> Result<()> {
     let data = q.data.as_deref().unwrap_or("");
     let reply = if data.starts_with("bump:") {
         let goal = data.trim_start_matches("bump:");

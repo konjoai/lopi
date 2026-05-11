@@ -75,8 +75,7 @@ impl MemoryStore {
             .chars()
             .take(64)
             .collect();
-        let flags_json =
-            serde_json::to_string(rec.semantic_flags).unwrap_or_else(|_| "[]".into());
+        let flags_json = serde_json::to_string(rec.semantic_flags).unwrap_or_else(|_| "[]".into());
 
         sqlx::query(
             "INSERT INTO stability_ledger \
@@ -121,21 +120,18 @@ impl MemoryStore {
     /// # Errors
     /// Returns `Err` if the database query fails.
     pub async fn stability_verdict_counts(&self) -> Result<(i64, i64, i64)> {
-        let stable: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM stability_ledger WHERE verdict = 'stable'",
-        )
-        .fetch_one(&self.read_pool)
-        .await?;
-        let warning: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM stability_ledger WHERE verdict = 'warning'",
-        )
-        .fetch_one(&self.read_pool)
-        .await?;
-        let unstable: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM stability_ledger WHERE verdict = 'unstable'",
-        )
-        .fetch_one(&self.read_pool)
-        .await?;
+        let stable: (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM stability_ledger WHERE verdict = 'stable'")
+                .fetch_one(&self.read_pool)
+                .await?;
+        let warning: (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM stability_ledger WHERE verdict = 'warning'")
+                .fetch_one(&self.read_pool)
+                .await?;
+        let unstable: (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM stability_ledger WHERE verdict = 'unstable'")
+                .fetch_one(&self.read_pool)
+                .await?;
         Ok((stable.0, warning.0, unstable.0))
     }
 }
@@ -212,7 +208,10 @@ mod tests {
     #[tokio::test]
     async fn save_entry_with_semantic_flags() {
         let store = MemoryStore::open_in_memory().await.unwrap();
-        let flags = vec![".github/workflows/ci.yml".to_string(), "Cargo.lock".to_string()];
+        let flags = vec![
+            ".github/workflows/ci.yml".to_string(),
+            "Cargo.lock".to_string(),
+        ];
         store
             .save_stability_entry(StabilityRecord {
                 task_goal: "fix the parser",
@@ -226,8 +225,7 @@ mod tests {
             .await
             .unwrap();
         let entries = store.load_stability_entries(1).await.unwrap();
-        let decoded: Vec<String> =
-            serde_json::from_str(&entries[0].semantic_flags).unwrap();
+        let decoded: Vec<String> = serde_json::from_str(&entries[0].semantic_flags).unwrap();
         assert_eq!(decoded, flags);
     }
 

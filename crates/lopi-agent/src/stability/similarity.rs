@@ -102,18 +102,31 @@ mod tests {
 
     #[test]
     fn jaccard_identical() {
-        assert!((jaccard("add error handling to the parser", "add error handling to the parser") - 1.0).abs() < f32::EPSILON);
+        assert!(
+            (jaccard(
+                "add error handling to the parser",
+                "add error handling to the parser"
+            ) - 1.0)
+                .abs()
+                < f32::EPSILON
+        );
     }
 
     #[test]
     fn jaccard_disjoint() {
         // completely different words → 0
-        assert_eq!(jaccard("alpha beta gamma delta", "zeta theta kappa sigma"), 0.0);
+        assert_eq!(
+            jaccard("alpha beta gamma delta", "zeta theta kappa sigma"),
+            0.0
+        );
     }
 
     #[test]
     fn jaccard_partial_overlap() {
-        let s = jaccard("must handle errors gracefully", "must handle timeouts carefully");
+        let s = jaccard(
+            "must handle errors gracefully",
+            "must handle timeouts carefully",
+        );
         assert!(s > 0.0 && s < 1.0, "expected partial overlap, got {s}");
     }
 
@@ -136,7 +149,10 @@ mod tests {
     #[test]
     fn jaccard_filters_short_tokens() {
         // "is", "an", "of" are shorter than 4 chars and filtered
-        let s = jaccard("this is an example of parsing", "this is an example of lexing");
+        let s = jaccard(
+            "this is an example of parsing",
+            "this is an example of lexing",
+        );
         assert!(s < 1.0); // "lexing" vs "parsing" differ
     }
 
@@ -146,7 +162,10 @@ mod tests {
             .map(|_| "step one: write the function step two: add tests".to_string())
             .collect();
         let (variance, _) = variance_and_consensus(&plans);
-        assert!(variance < 0.01, "identical plans → near-zero variance, got {variance}");
+        assert!(
+            variance < 0.01,
+            "identical plans → near-zero variance, got {variance}"
+        );
     }
 
     #[test]
@@ -175,7 +194,10 @@ mod tests {
         ];
         let (_, idx) = variance_and_consensus(&plans);
         // Consensus should be one of plans 0-2, not the outlier (plan 3)
-        assert!(idx < 3, "consensus should not pick the outlier, got idx={idx}");
+        assert!(
+            idx < 3,
+            "consensus should not pick the outlier, got idx={idx}"
+        );
     }
 
     #[test]
@@ -185,6 +207,9 @@ mod tests {
             "completely different unrelated words here always".to_string(),
         ];
         let (variance, _) = variance_and_consensus(&plans);
-        assert!((0.0..=1.0).contains(&variance), "variance {variance} out of [0,1]");
+        assert!(
+            (0.0..=1.0).contains(&variance),
+            "variance {variance} out of [0,1]"
+        );
     }
 }

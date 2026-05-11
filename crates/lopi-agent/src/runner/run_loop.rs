@@ -107,7 +107,9 @@ impl AgentRunner {
         let verdict = match harness.assess(&self.task).await {
             Ok(v) => v,
             Err(e) => {
-                self.warn(format!("stability harness failed ({e}); proceeding without gate"));
+                self.warn(format!(
+                    "stability harness failed ({e}); proceeding without gate"
+                ));
                 return None;
             }
         };
@@ -348,15 +350,21 @@ impl AgentRunner {
                             self.warn(format!(
                                 "direct API plan failed ({api_err}); falling back to CLI"
                             ));
-                            claude.plan(&self.task, self.last_error.as_deref()).await.inspect(|p| {
-                                self.log(format!("✅ plan ready via CLI ({} chars)", p.len()));
-                            })
+                            claude
+                                .plan(&self.task, self.last_error.as_deref())
+                                .await
+                                .inspect(|p| {
+                                    self.log(format!("✅ plan ready via CLI ({} chars)", p.len()));
+                                })
                         }
                     }
                 } else {
-                    claude.plan(&self.task, self.last_error.as_deref()).await.inspect(|p| {
-                        self.log(format!("✅ plan ready ({} chars)", p.len()));
-                    })
+                    claude
+                        .plan(&self.task, self.last_error.as_deref())
+                        .await
+                        .inspect(|p| {
+                            self.log(format!("✅ plan ready ({} chars)", p.len()));
+                        })
                 };
 
                 let plan = match plan_result {

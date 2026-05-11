@@ -189,7 +189,9 @@ fn load_config(path: Option<&PathBuf>) -> Option<LopiConfig> {
 
 fn is_self_modify_attempt(repo: &std::path::Path) -> bool {
     if let Ok(exe) = std::env::current_exe() {
-        if let (Some(parent), Ok(repo_canonical)) = (exe.parent().and_then(|p| p.parent()), repo.canonicalize()) {
+        if let (Some(parent), Ok(repo_canonical)) =
+            (exe.parent().and_then(|p| p.parent()), repo.canonicalize())
+        {
             if let Ok(exe_canonical) = parent.canonicalize() {
                 return repo_canonical.starts_with(&exe_canonical);
             }
@@ -272,7 +274,9 @@ async fn main() -> Result<()> {
                     eprintln!("   to enable, set `allow_self_modify = true` in [lopi] section of lopi.toml");
                     return Err(anyhow::anyhow!("self-modification not allowed"));
                 }
-                task.source = TaskSource::SelfModify { approved_by: "config".into() };
+                task.source = TaskSource::SelfModify {
+                    approved_by: "config".into(),
+                };
                 task.allowed_dirs = vec!["crates/".into(), "src/".into()];
                 task.forbidden_dirs = vec![".github/".into(), "Cargo.lock".into()];
             }
@@ -640,11 +644,17 @@ async fn main() -> Result<()> {
 
         // ── lopi stability ──────────────────────────────────────
         Commands::Stability(cmd) => match cmd {
-            StabilityCmd::List { limit, unstable_only } => {
+            StabilityCmd::List {
+                limit,
+                unstable_only,
+            } => {
                 let store = MemoryStore::open(db_path()).await?;
                 let entries = store.load_stability_entries(limit).await?;
                 let filtered: Vec<_> = if unstable_only {
-                    entries.into_iter().filter(|e| e.verdict == "unstable").collect()
+                    entries
+                        .into_iter()
+                        .filter(|e| e.verdict == "unstable")
+                        .collect()
                 } else {
                     entries
                 };
