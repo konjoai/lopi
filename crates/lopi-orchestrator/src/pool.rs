@@ -48,6 +48,10 @@ pub struct AgentPool {
     started_at: Arc<std::time::Instant>,
     /// Structured task tracker — allows `shutdown()` to abort all running agents.
     join_set: Arc<Mutex<JoinSet<()>>>,
+    /// When true, all agents dispatched from this pool run with adaptive retry
+    /// enabled: previous-attempt error context is injected into the next plan,
+    /// and a post-mortem fires on terminal failure.
+    adaptive_retry: bool,
 }
 
 impl AgentPool {
@@ -70,7 +74,15 @@ impl AgentPool {
             counters: Arc::new(PoolCounters::default()),
             started_at: Arc::new(std::time::Instant::now()),
             join_set: Arc::new(Mutex::new(JoinSet::new())),
+            adaptive_retry: false,
         }
+    }
+
+    /// Enable adaptive retry for all agents dispatched from this pool.
+    #[must_use]
+    pub fn with_adaptive_retry(mut self) -> Self {
+        self.adaptive_retry = true;
+        self
     }
 
     /// Abort all running agent tasks and wait for them to finish.
@@ -182,6 +194,7 @@ impl AgentPool {
             let handles = self.handles.clone();
             let counters = self.counters.clone();
             let join_set = self.join_set.clone();
+            let adaptive_retry = self.adaptive_retry;
 
             let mut js = join_set.lock().await;
             // Drain any completed tasks to keep the JoinSet from growing unboundedly.
@@ -189,7 +202,9 @@ impl AgentPool {
             js.spawn(async move {
                 let _permit = permit;
                 let _repo_permit = repo_permit;
-                let outcome = run_one(task, repo, bus.clone(), store, cancel_rx, attempt).await;
+                let outcome =
+                    run_one(task, repo, bus.clone(), store, cancel_rx, attempt, adaptive_retry)
+                        .await;
                 handles.remove(&task_id);
                 counters.running.fetch_sub(1, Ordering::Relaxed);
                 match &outcome {
@@ -225,6 +240,7 @@ async fn run_one(
     store: Option<MemoryStore>,
     cancel_rx: oneshot::Receiver<()>,
     attempt_counter: Arc<AtomicUsize>,
+    adaptive_retry: bool,
 ) -> Result<TaskStatus> {
     info!(task_id = %task.id, "starting agent");
     let task_id = task.id;
@@ -238,6 +254,9 @@ async fn run_one(
         cancel_rx,
         attempt_counter,
     );
+    if adaptive_retry {
+        runner = runner.with_adaptive_retry();
+    }
     let outcome = runner.run().await?;
 
     let total_attempts = runner.attempts_made();
@@ -408,5 +427,17 @@ mod tests {
         pool.submit(task).await;
         let stats = pool.stats();
         assert_eq!(stats.queued, 1);
+    }
+
+    #[tokio::test]
+    async fn with_adaptive_retry_sets_flag() {
+        let pool = make_pool(2).with_adaptive_retry();
+        assert!(pool.adaptive_retry);
+    }
+
+    #[tokio::test]
+    async fn default_pool_adaptive_retry_is_false() {
+        let pool = make_pool(2);
+        assert!(!pool.adaptive_retry);
     }
 }

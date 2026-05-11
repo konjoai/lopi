@@ -63,6 +63,13 @@ pub enum AgentEvent {
         /// Accumulated cost in USD for this run.
         cost_usd: f32,
     },
+    /// Emitted when the post-mortem loop detects a pattern of repeated failures
+    /// and proposes a self-improvement task. The remote layer (Telegram bot)
+    /// subscribes to this event and sends the operator an approval request.
+    SelfModifyProposed {
+        /// Short human-readable description of the proposed improvement.
+        goal: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

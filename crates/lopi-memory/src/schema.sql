@@ -75,3 +75,6 @@ CREATE TABLE IF NOT EXISTS lessons (
     created_at  TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_lessons_repo_created ON lessons(repo_path, created_at DESC);
+-- Sprint I-B: composite weighted score per attempt (pass_rate minus evolved penalties).
+-- NULL = no annotated patterns were available when the attempt ran.
+ALTER TABLE attempts ADD COLUMN weighted_score REAL;

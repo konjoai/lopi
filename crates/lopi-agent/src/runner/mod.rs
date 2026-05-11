@@ -1,10 +1,11 @@
 mod api_plan;
+mod helpers;
 pub mod postmortem;
 mod run_loop;
 
 use crate::api_client::AnthropicClient;
 use lopi_context::{ContentBlock, ContextWindow, Phase, PinPolicy, Role, TaggedMessage};
-use lopi_core::{AgentEvent, EventBus, Task, TaskId};
+use lopi_core::{AgentEvent, EventBus, ScoreWeights, Task, TaskId};
 use lopi_memory::MemoryStore;
 use lopi_ratelimit::{AnthropicLimiter, CircuitBreaker};
 use std::path::PathBuf;
@@ -70,6 +71,10 @@ pub struct AgentRunner {
     pub(super) attempt_counter: Arc<AtomicUsize>,
     pub(super) attempts_made: u8,
     pub(super) turn_count: u32,
+    /// Evolved score weights loaded from the pattern store's annotation signal.
+    /// Loaded once per task run; defaults to `ScoreWeights::default()` when no
+    /// annotated patterns are available.
+    pub(super) score_weights: ScoreWeights,
 }
 
 impl AgentRunner {
@@ -104,6 +109,7 @@ impl AgentRunner {
             attempt_counter,
             attempts_made: 0,
             turn_count: 0,
+            score_weights: ScoreWeights::default(),
         }
     }
 
@@ -132,6 +138,7 @@ impl AgentRunner {
             attempt_counter: Arc::new(AtomicUsize::new(0)),
             attempts_made: 0,
             turn_count: 0,
+            score_weights: ScoreWeights::default(),
         };
         (runner, bus)
     }

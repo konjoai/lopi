@@ -390,10 +390,14 @@ async fn main() -> Result<()> {
             let store = MemoryStore::open(db_path()).await?;
             let bus: EventBus<AgentEvent> = EventBus::new(512);
             let queue = TaskQueue::new();
-            let pool = Arc::new(
+            let pool_adaptive_retry = cfg.as_ref().is_some_and(|c| c.lopi.adaptive_retry);
+            let mut pool_builder =
                 AgentPool::new(max_agents, repo.clone(), queue.clone(), bus.clone())
-                    .with_store(store.clone()),
-            );
+                    .with_store(store.clone());
+            if pool_adaptive_retry {
+                pool_builder = pool_builder.with_adaptive_retry();
+            }
+            let pool = Arc::new(pool_builder);
 
             println!("🚢 lopi sail");
             println!("   agents:    up to {max_agents} concurrent");
@@ -436,6 +440,9 @@ async fn main() -> Result<()> {
                     .as_ref()
                     .map(|c| c.remote.telegram.allowed_chat_ids.clone())
                     .unwrap_or_default();
+                let allow_self_modify = cfg
+                    .as_ref()
+                    .is_some_and(|c| c.lopi.allow_self_modify);
                 let store_telegram = store.clone();
                 let queue_telegram = queue.clone();
                 tokio::spawn(async move {
@@ -444,6 +451,7 @@ async fn main() -> Result<()> {
                         queue_telegram,
                         store_telegram,
                         allowed_chat_ids,
+                        allow_self_modify,
                     )
                     .await
                     {

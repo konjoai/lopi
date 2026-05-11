@@ -1,5 +1,5 @@
-use super::{backoff_secs, postmortem, AgentRunner};
-use crate::claude::{select_model, ClaudeCode, MODEL_HAIKU};
+use super::{backoff_secs, AgentRunner};
+use crate::claude::{select_model, ClaudeCode};
 use crate::scorer::Scorer;
 use anyhow::Result;
 use lopi_context::Phase;
@@ -8,88 +8,6 @@ use lopi_git::GitManager;
 use std::sync::atomic::Ordering;
 
 impl AgentRunner {
-    pub(super) fn status(&self, s: TaskStatus, attempt: u8) {
-        let activity = match &s {
-            TaskStatus::Planning => 0.45_f32,
-            TaskStatus::Implementing => 0.85_f32,
-            TaskStatus::Testing => 0.55_f32,
-            TaskStatus::Scoring => 0.30_f32,
-            TaskStatus::Retrying { .. } => 0.40_f32,
-            TaskStatus::Success { .. } | TaskStatus::Failed { .. } | TaskStatus::RolledBack => {
-                0.0_f32
-            }
-            TaskStatus::Queued => 0.10_f32,
-        };
-        self.emit_turn_metrics(activity);
-        self.bus.send(AgentEvent::StatusChanged {
-            task_id: self.id(),
-            status: s,
-            attempt,
-        });
-    }
-
-    fn emit_turn_metrics(&self, activity: f32) {
-        let pressure = self.context.token_pressure();
-        self.bus.send(AgentEvent::TurnMetrics {
-            task_id: self.id(),
-            pressure,
-            activity,
-            tokens_per_sec: 0.0,
-            cost_usd: 0.0,
-        });
-    }
-
-    /// Sprint H — run the failure post-mortem if both adaptive retry and a
-    /// direct-API client are configured. Best-effort; on any error we log
-    /// a warning and continue. The derived constraint is persisted to the
-    /// patterns table with `derived_from_postmortem = 1`.
-    async fn run_postmortem_if_configured(&self) {
-        let Some(client) = self.api_client.as_ref() else {
-            // Adaptive retry without API access — postmortem can't run.
-            // Future: a CLI fallback could pipe the error log to `claude -p`.
-            return;
-        };
-        let Some(error_log) = self.last_error.as_deref() else {
-            return;
-        };
-
-        self.log("🧠 running failure post-mortem…");
-        let outcome = postmortem::run_postmortem_quiet(
-            client,
-            self.limiter.as_ref(),
-            self.breaker.as_ref(),
-            // Haiku is the right cost/quality trade-off for a single-line constraint
-            MODEL_HAIKU,
-            &self.task.goal,
-            error_log,
-        )
-        .await;
-
-        let Some(outcome) = outcome else {
-            return;
-        };
-
-        // Persist the derived constraint as a pattern. Use the goal text as
-        // the keywords so future similar tasks pick it up via Jaccard.
-        if let Some(store) = &self.store {
-            match store
-                .insert_postmortem_pattern(&self.task.goal, &outcome.constraint)
-                .await
-            {
-                Ok(id) => {
-                    self.log(format!("🧠 post-mortem pattern saved [{}]", &id[..8]));
-                    self.log(format!("    constraint: {}", outcome.constraint));
-                }
-                Err(e) => {
-                    self.warn(format!("post-mortem persist failed: {e}"));
-                }
-            }
-        } else {
-            // No store — log the constraint anyway so it's not lost
-            self.log(format!("🧠 post-mortem constraint: {}", outcome.constraint));
-        }
-    }
-
     /// Execute the full agent loop: plan → implement → test → retry.
     ///
     /// # Errors
@@ -106,7 +24,7 @@ impl AgentRunner {
         // Site 2 (TOON biggest win): PatternRow[] is a uniform tabular array.
         // encode_task_context() in claude.rs renders it as TOON §9.3 tabular,
         // saving ~158 tokens per attempt vs JSON (grows linearly with pattern count).
-        let extra_constraints = if let Some(store) = &self.store {
+        let mut extra_constraints: Vec<String> = if let Some(store) = &self.store {
             match store.find_similar_patterns(&self.task.goal).await {
                 Ok(patterns) if !patterns.is_empty() => {
                     self.log(format!(
@@ -137,6 +55,27 @@ impl AgentRunner {
         } else {
             vec![]
         };
+
+        // Inject repo-level lessons into planning context. Lessons are general
+        // strategy/recovery/optimization notes from previous runs on this repo.
+        // Appended after task-specific pattern constraints so patterns take priority.
+        if let Some(store) = &self.store {
+            let repo_str = self.repo_path.to_string_lossy();
+            match store.load_lessons(&repo_str, 3).await {
+                Ok(lessons) if !lessons.is_empty() => {
+                    self.log(format!("📚 injecting {} lessons", lessons.len()));
+                    for lesson in &lessons {
+                        extra_constraints.push(format!("[{}] {}", lesson.category, lesson.content));
+                    }
+                }
+                Ok(_) => {}
+                Err(e) => tracing::warn!(error = %e, "lesson fetch failed"),
+            }
+        }
+
+        // Load evolved score weights from annotated patterns. Best-effort —
+        // falls back to ScoreWeights::default() on any error or missing store.
+        self.load_score_weights().await;
 
         let scorer = Scorer::new(&self.repo_path);
 
@@ -365,17 +304,20 @@ impl AgentRunner {
                 lint_errors: score.lint_errors,
                 diff_lines: score.diff_lines,
             });
+            let weighted = score.weighted(&self.score_weights);
             self.log(format!(
-                "📊 score: pass={:.0}% lint={} diff={}L",
+                "📊 score: pass={:.0}% lint={} diff={}L weighted={:.3}",
                 score.test_pass_rate * 100.0,
                 score.lint_errors,
-                score.diff_lines
+                score.diff_lines,
+                weighted
             ));
 
-            // Persist attempt.
+            // Persist attempt with evolved weighted score.
             if let Some(store) = &self.store {
                 let mut a = Attempt::new(self.id(), attempt + 1, &branch);
                 a.score = Some(score.clone());
+                a.weighted_score = Some(weighted);
                 a.outcome = if score.passed() {
                     "success".into()
                 } else {

@@ -211,8 +211,9 @@ impl MemoryStore {
             .unwrap_or_default();
         sqlx::query(
             "INSERT INTO attempts (id, task_id, attempt_num, branch, \
-             score_test_pass_rate, score_lint_errors, score_diff_lines, outcome, errors, created_at) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+             score_test_pass_rate, score_lint_errors, score_diff_lines, outcome, errors, \
+             created_at, weighted_score) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
         )
         .bind(attempt.id.to_string())
         .bind(attempt.task_id.0.to_string())
@@ -224,6 +225,7 @@ impl MemoryStore {
         .bind(&attempt.outcome)
         .bind(errors)
         .bind(attempt.created_at.to_rfc3339())
+        .bind(attempt.weighted_score.map(f64::from))
         .execute(&self.write_pool)
         .await?;
         Ok(())
@@ -522,6 +524,44 @@ impl MemoryStore {
             diff_penalty_per_kloc: (base.diff_penalty_per_kloc - delta).clamp(0.01, 0.30),
             diff_penalty_cap: base.diff_penalty_cap,
         })
+    }
+
+    /// Count post-mortem-derived patterns created in the last `since_hours` hours.
+    ///
+    /// Used by the self-modify automation to detect when repeated failures have
+    /// produced enough accumulated patterns to warrant a self-improvement proposal.
+    ///
+    /// # Errors
+    /// Returns `Err` if the database query fails.
+    pub async fn recent_postmortem_count(&self, since_hours: i64) -> Result<i64> {
+        let cutoff = (Utc::now() - chrono::Duration::hours(since_hours)).to_rfc3339();
+        let row: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM patterns \
+             WHERE derived_from_postmortem = 1 AND last_seen >= ?1",
+        )
+        .bind(&cutoff)
+        .fetch_one(&self.read_pool)
+        .await
+        .context("recent_postmortem_count query failed")?;
+        Ok(row.0)
+    }
+
+    /// Return goals of the `limit` most recent failed tasks, newest first.
+    ///
+    /// Used by the self-modify automation to construct the improvement goal string.
+    ///
+    /// # Errors
+    /// Returns `Err` if the database query fails.
+    pub async fn recent_failures(&self, limit: i64) -> Result<Vec<String>> {
+        let rows: Vec<(String,)> = sqlx::query_as(
+            "SELECT goal FROM tasks WHERE status = 'failed' \
+             ORDER BY completed_at DESC LIMIT ?1",
+        )
+        .bind(limit)
+        .fetch_all(&self.read_pool)
+        .await
+        .context("recent_failures query failed")?;
+        Ok(rows.into_iter().map(|(g,)| g).collect())
     }
 }
 
