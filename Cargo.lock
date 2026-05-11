@@ -1809,10 +1809,12 @@ dependencies = [
  "lopi-agent",
  "lopi-core",
  "lopi-git",
+ "lopi-github",
  "lopi-memory",
  "lopi-orchestrator",
  "lopi-remote",
  "lopi-ui",
+ "lopi-webhook",
  "mimalloc",
  "opentelemetry",
  "opentelemetry-otlp",
@@ -1897,6 +1899,17 @@ dependencies = [
  "once_cell",
  "thiserror 1.0.69",
  "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "lopi-github"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "reqwest",
+ "serde",
+ "serde_json",
  "tracing",
 ]
 
@@ -2010,8 +2023,12 @@ dependencies = [
  "axum 0.7.9",
  "hex",
  "hmac",
+ "lopi-agent",
  "lopi-core",
+ "lopi-github",
  "lopi-orchestrator",
+ "lopi-ratelimit",
+ "reqwest",
  "serde",
  "serde_json",
  "sha2",

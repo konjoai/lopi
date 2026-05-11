@@ -410,6 +410,14 @@ export function selectAgent(id: string) {
   activeAgentId.set(id);
 }
 
+export function removeAgent(id: string) {
+  agents.update((m) => {
+    const next = new Map(m);
+    next.delete(id);
+    return next;
+  });
+}
+
 export function postTask(
   goal: string,
   repo: string,

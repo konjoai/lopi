@@ -1,5 +1,88 @@
 # Changelog
 
+## [0.12.0] — Sprint J: GitHub Issue Loop 🪝
+
+### Added
+
+**`crates/lopi-github`** — new crate: thin GitHub REST API write client
+- `GitHubClient::new(token)` — constructs a reqwest-based client with `User-Agent: lopi/<version>`
+- `GitHubClient::post_comment(owner, repo, issue_number, body)` — posts a comment on any issue or PR
+- `GitHubClient::add_labels(owner, repo, issue_number, labels)` — adds one or more labels
+
+**`crates/lopi-webhook/src/issue_triage.rs`** — Haiku-powered issue classifier
+- `IssueCategory: Bug | Feature | Question | WontFix` — four-way classification
+- `IssueTriage { category, confidence, summary }` — structured triage output
+- `classify_issue(client, limiter, breaker, model, title, body)` — calls Haiku with a byte-stable system prompt (`cache_control: ephemeral`) for cross-issue cache hits; cost ~$0.0003/issue
+- `parse_triage_response(raw)` — defensive three-line parser: category, confidence (clamped 0–1), ≤120-char summary
+- `format_triage_comment(triage, repo)` — formatted Markdown comment including category icon, confidence %, summary, and action description
+- 14 unit tests covering parsing, edge cases, label mapping, comment formatting
+
+**`crates/lopi-webhook/src/issue.rs`** — issue handler
+- `IssuePayload` — parsed issue fields: owner, repo, full_name, number, title, body, labels
+- `IssuePayload::has_lopi_fix_label()` — case-insensitive `lopi:fix` label check
+- `extract_from_json(payload, full_name)` — zero-copy extraction from raw webhook JSON
+- `spawn_triage(...)` — fires a Tokio background task: classify → comment → label → optionally queue fix task
+- Auto-queue threshold: Bug + confidence ≥ 0.7, OR any issue with `lopi:fix` label (overrides classification)
+
+**`crates/lopi-webhook/src/github.rs`** — extended webhook router
+- `TriageConfig { api_client, github, limiter, breaker, model }` — optional triage configuration passed to `serve()`
+- `serve(queue, secret, addr, triage: Option<TriageConfig>)` — updated signature; triage is opt-in, webhook returns 200 immediately while triage runs in background
+- Routes `issues` event `action == "opened"` and `action == "labeled"` to `issue::spawn_triage`
+
+**`src/main.rs`** — new CLI command
+- `lopi serve-webhooks [--port 3001] [--host ...] [--webhook-secret ...] [--github-token ...] [--anthropic-key ...]`
+- All credentials also read from `LOPI_WEBHOOK_SECRET`, `GITHUB_TOKEN`, `ANTHROPIC_API_KEY` env vars
+- Triage enabled only when both `GITHUB_TOKEN` and `ANTHROPIC_API_KEY` are set; gracefully degrades to comment-only webhook server otherwise
+
+### Architecture notes
+
+The webhook server runs independently from `lopi sail` — two separate processes with separate ports (3001 vs 3000). Webhook returns 200 immediately; all AI work (Haiku triage call, GitHub API write) happens in a spawned Tokio task. If either fails, a `tracing::warn!` is emitted and the issue is skipped — webhook liveness is never blocked by external API calls.
+
+Kitchen Loop analogy: this is the inbound side of the loop. Issues arrive from GitHub → lopi triages and queues → agents fix and open PRs → reviewer merges → patterns learned. Combined with Sprint I's lesson injection, the self-improvement cycle is now end-to-end.
+
+### Tests
+- 2 lopi-github tests (client construction)
+- 14 lopi-webhook issue_triage tests
+- 2 lopi-webhook issue.rs tests
+- 18 new tests total. Workspace: 313 → **331 passing**, 0 failing.
+
+---
+
+## [0.11.0] — Sprint I: Phase 5b Self-Improvement Second Wave
+
+### Added
+
+**Score weights wiring** (`crates/lopi-agent/src/runner/mod.rs`)
+- `AgentRunner::score_weights: ScoreWeights` — field; defaults to `ScoreWeights::default()`
+- `AgentRunner::task_lessons: Vec<String>` — lessons for injection into the API planning path
+- `AgentRunner::with_score_weights(weights)` — chainable builder
+- Run loop now logs weighted score alongside raw score: `📊 score: pass=X% lint=Y diff=ZL (weighted=W.WW)`
+- Fixed-score path also logs weighted score after the in-place fix attempt
+
+**`compute_weight_adjustments()` in pool.rs** — free function that computes per-task score weights before handing off to the runner. Placeholder: returns defaults. Phase 5b.1 will query approved patterns for weight tuning.
+
+**Lesson + Pattern injection** (`crates/lopi-agent/src/claude.rs`, `run_loop.rs`)
+- `ClaudeCode::patterns: Vec<(String, String)>` + `ClaudeCode::with_patterns()` — tabular (keywords, constraints) pairs fed to TOON encoder at site 2
+- `ClaudeCode::lessons: Vec<(String, String)>` + `ClaudeCode::with_lessons()` — (category, content) lessons from the lessons table
+- `plan()` now passes both to `encode_task_context()` — TOON renders them as §9.3 tabular rows (saves ~158 tokens/attempt)
+- `run_loop.rs` single memory query now builds **both** string constraints (legacy) **and** tabular pattern pairs; loads lessons via `store.load_lessons(repo_path, 10)` and stores them in `self.task_lessons` for the API path
+- Extracted `plan_streaming()` → new `crates/lopi-agent/src/claude_stream.rs` (claude.rs: 474 → 408 lines)
+
+**Post-mortem lessons** (`crates/lopi-agent/src/runner/run_loop.rs`)
+- After `insert_postmortem_pattern()` succeeds, also calls `store.save_lesson(repo_path, "recovery", constraint, Some(task_id), 1.0)` — makes the constraint discoverable in future lesson injections
+
+**API plan lessons** (`crates/lopi-agent/src/runner/api_plan.rs`)
+- `build_user_prompt(task, last_error, lessons)` — appends `# Lessons from past patterns` section when lessons are non-empty
+- 1 new test: `user_prompt_includes_lessons_when_provided`
+
+**CLI annotate** (`src/main.rs`)
+- `lopi learn annotate <id-prefix> <approved|rejected>` — validates annotation, resolves id prefix via `find_pattern_by_id_prefix`, calls `annotate_pattern()`
+
+### Tests
+- 1 new api_plan test. Workspace: 261 → **313 passing**, 0 failing.
+
+---
+
 ## [0.10.0] — Sprint H: Self-Improvement Engine 🧠
 
 ### Added

@@ -1,6 +1,10 @@
 //! lopi — high-performance Rust orchestrator for concurrent Claude Code agents.
 #![allow(clippy::print_stdout, clippy::print_stderr)]
+mod learn_commands;
 mod remote;
+mod sail_commands;
+mod schedule_commands;
+mod webhook_commands;
 use mimalloc::MiMalloc;
 
 #[global_allocator]
@@ -11,9 +15,7 @@ use clap::{Parser, Subcommand};
 use lopi_agent::AgentRunner;
 use lopi_core::{AgentEvent, EventBus, LopiConfig, RepoProfile, Task, TaskSource, TaskStatus};
 use lopi_memory::MemoryStore;
-use lopi_orchestrator::{boot_scheduler, next_run_times, AgentPool, TaskQueue};
 use std::path::PathBuf;
-use std::sync::Arc;
 use tracing_subscriber::prelude::*;
 
 #[derive(Parser)]
@@ -96,6 +98,27 @@ enum Commands {
     /// scores recorded before each self-modification attempt.
     #[command(subcommand)]
     Stability(StabilityCmd),
+    /// Start a dedicated GitHub webhook server.
+    ///
+    /// Receives GitHub events, triages issues via Haiku, posts comments,
+    /// and auto-queues fix tasks into the lopi agent pool.
+    ServeWebhooks {
+        #[arg(short, long, default_value = "3001")]
+        port: u16,
+        #[arg(long, default_value = "127.0.0.1")]
+        host: String,
+        /// GitHub webhook secret for HMAC verification (optional but recommended).
+        #[arg(long, env = "LOPI_WEBHOOK_SECRET")]
+        webhook_secret: Option<String>,
+        /// GitHub personal access token for posting comments and labels.
+        /// When omitted, issue triage comments are skipped.
+        #[arg(long, env = "GITHUB_TOKEN")]
+        github_token: Option<String>,
+        /// Anthropic API key for issue classification via Haiku.
+        /// When omitted, issue triage is skipped.
+        #[arg(long, env = "ANTHROPIC_API_KEY")]
+        anthropic_key: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -411,87 +434,8 @@ async fn main() -> Result<()> {
         }
 
         // ── lopi sail ───────────────────────────────────────────
-        Commands::Sail {
-            port,
-            host,
-            max_agents,
-            repo,
-        } => {
-            let store = MemoryStore::open(db_path()).await?;
-            let bus: EventBus<AgentEvent> = EventBus::new(512);
-            let queue = TaskQueue::new();
-            let pool = Arc::new(
-                AgentPool::new(max_agents, repo.clone(), queue.clone(), bus.clone())
-                    .with_store(store.clone()),
-            );
-
-            println!("🚢 lopi sail");
-            println!("   agents:    up to {max_agents} concurrent");
-            println!("   repo:      {}", repo.display());
-            println!("   dashboard: http://{host}:{port}");
-            println!("   api:       http://{host}:{port}/api/tasks");
-            println!("   ws:        ws://{host}:{port}/ws");
-
-            // Boot schedules from config.
-            let schedules = cfg
-                .as_ref()
-                .map(|c| c.schedules.clone())
-                .unwrap_or_default();
-            if !schedules.is_empty() {
-                println!("   schedules: {} configured", schedules.len());
-                let pool_sched = (*pool).clone();
-                tokio::spawn(async move {
-                    match boot_scheduler(schedules, pool_sched).await {
-                        Ok(_sched) => {
-                            // Keep the scheduler alive — dropping it stops all jobs.
-                            // Block forever so the task (and scheduler) stays alive.
-                            tokio::signal::ctrl_c().await.ok();
-                        }
-                        Err(e) => tracing::error!("scheduler boot failed: {e}"),
-                    }
-                });
-            }
-            println!();
-
-            let pool_for_dispatch = (*pool).clone();
-            tokio::spawn(async move {
-                if let Err(e) = pool_for_dispatch.run().await {
-                    tracing::error!("pool error: {e}");
-                }
-            });
-
-            let pool_handle = (*pool).clone();
-            tokio::spawn(async move {
-                let _ = tokio::signal::ctrl_c().await;
-                tracing::info!("shutting down — cancelling all running agents");
-                pool_handle.shutdown().await;
-                std::process::exit(0);
-            });
-
-            // Boot Telegram bot if token is configured.
-            if let Ok(token) = std::env::var("TELOXIDE_TOKEN") {
-                let allowed_chat_ids = cfg
-                    .as_ref()
-                    .map(|c| c.remote.telegram.allowed_chat_ids.clone())
-                    .unwrap_or_default();
-                let store_telegram = store.clone();
-                let queue_telegram = queue.clone();
-                tokio::spawn(async move {
-                    if let Err(e) = lopi_remote::telegram::run(
-                        token,
-                        queue_telegram,
-                        store_telegram,
-                        allowed_chat_ids,
-                    )
-                    .await
-                    {
-                        tracing::error!("telegram bot error: {e}");
-                    }
-                });
-            }
-
-            let auth_token = cfg.as_ref().and_then(|c| c.web.auth_token.clone());
-            lopi_ui::web::serve(store, bus, queue, pool, &host, port, auth_token).await?;
+        Commands::Sail { port, host, max_agents, repo } => {
+            sail_commands::run(max_agents, repo, host, port, cfg.as_ref()).await?;
         }
 
         // ── lopi cancel ─────────────────────────────────────────
@@ -506,180 +450,15 @@ async fn main() -> Result<()> {
         }
 
         // ── lopi learn ──────────────────────────────────────────
-        Commands::Learn(cmd) => match cmd {
-            LearnCmd::List {
-                limit,
-                postmortem_only,
-            } => {
-                let store = MemoryStore::open(db_path()).await?;
-                let patterns = store.load_patterns(limit).await?;
-                let filtered: Vec<_> = if postmortem_only {
-                    patterns
-                        .into_iter()
-                        .filter(|p| p.derived_from_postmortem == 1)
-                        .collect()
-                } else {
-                    patterns
-                };
+        Commands::Learn(cmd) => learn_commands::run(cmd, db_path()).await?,
 
-                println!("🧠 lopi learn — {} pattern(s)\n", filtered.len());
-                if filtered.is_empty() {
-                    if postmortem_only {
-                        println!("  No post-mortem patterns yet. Enable with `lopi run --adaptive-retry` on a task that fails.");
-                    } else {
-                        println!(
-                            "  No patterns yet. Patterns are mined after each completed task."
-                        );
-                    }
-                    return Ok(());
-                }
+        Commands::ServeWebhooks { port, host, webhook_secret, github_token, anthropic_key } => {
+            webhook_commands::run(port, host, webhook_secret, github_token, anthropic_key).await?;
+        }
 
-                let headers = ("Id", "Keywords", "Avg Att.", "Success%", "Source");
-                println!(
-                    "  {:<8}  {:<40}  {:>9}  {:>9}  {}",
-                    headers.0, headers.1, headers.2, headers.3, headers.4
-                );
-                println!("  {}", "─".repeat(90));
-                for p in filtered {
-                    let id_short = &p.id[..8.min(p.id.len())];
-                    let kw = if p.goal_keywords.len() > 40 {
-                        format!("{}…", &p.goal_keywords[..39])
-                    } else {
-                        p.goal_keywords.clone()
-                    };
-                    let avg = p
-                        .avg_attempts
-                        .map_or_else(|| "-".to_string(), |a| format!("{a:.1}"));
-                    let sr = p
-                        .success_rate
-                        .map_or_else(|| "-".to_string(), |s| format!("{:.0}%", s * 100.0));
-                    let source = if p.derived_from_postmortem == 1 {
-                        "🧠 post-mortem"
-                    } else {
-                        "📊 mined"
-                    };
-                    println!("  {id_short:<8}  {kw:<40}  {avg:>9}  {sr:>9}  {source}");
-                }
-            }
-
-            LearnCmd::Show { id } => {
-                let store = MemoryStore::open(db_path()).await?;
-                let Some(p) = store.find_pattern_by_id_prefix(&id).await? else {
-                    eprintln!("❌ no pattern matches id prefix '{id}'");
-                    std::process::exit(1);
-                };
-
-                println!("🧠 Pattern {}\n", p.id);
-                println!("  Keywords:    {}", p.goal_keywords);
-                println!(
-                    "  Source:      {}",
-                    if p.derived_from_postmortem == 1 {
-                        "🧠 post-mortem-derived (Claude reflection over a failed run)"
-                    } else {
-                        "📊 mined from completed-task statistics"
-                    }
-                );
-                println!(
-                    "  Avg attempts: {}",
-                    p.avg_attempts
-                        .map_or_else(|| "-".to_string(), |a| format!("{a:.2}"))
-                );
-                println!(
-                    "  Success:     {}",
-                    p.success_rate
-                        .map_or_else(|| "-".to_string(), |s| format!("{:.0}%", s * 100.0))
-                );
-                println!("  Last seen:   {}", p.last_seen);
-                if let Some(c) = p.successful_constraints.as_deref() {
-                    println!("\n  Constraint:");
-                    println!("    {c}");
-                } else {
-                    println!("\n  Constraint:  (none captured yet)");
-                }
-            }
-
-            LearnCmd::Export { limit } => {
-                let store = MemoryStore::open(db_path()).await?;
-                let patterns = store.load_patterns(limit).await?;
-                let json = serde_json::json!({
-                    "exported_at": chrono::Utc::now().to_rfc3339(),
-                    "count": patterns.len(),
-                    "patterns": patterns.iter().map(|p| serde_json::json!({
-                        "id": p.id,
-                        "goal_keywords": p.goal_keywords,
-                        "successful_constraints": p.successful_constraints,
-                        "avg_attempts": p.avg_attempts,
-                        "success_rate": p.success_rate,
-                        "last_seen": p.last_seen,
-                        "derived_from_postmortem": p.derived_from_postmortem == 1,
-                    })).collect::<Vec<_>>(),
-                });
-                println!("{}", serde_json::to_string_pretty(&json)?);
-            }
-
-            LearnCmd::Annotate { id, annotation } => {
-                let store = MemoryStore::open(db_path()).await?;
-                // Validate annotation value
-                if annotation != "approved" && annotation != "rejected" {
-                    eprintln!("❌ annotation must be 'approved' or 'rejected', got: {}", annotation);
-                    std::process::exit(1);
-                }
-                // Find the pattern by id prefix
-                match store.find_pattern_by_id_prefix(&id).await? {
-                    Some(pattern) => {
-                        store.annotate_pattern(&pattern.id, Some(annotation.as_str())).await?;
-                        println!(
-                            "✅ pattern {} annotated as '{}'",
-                            &pattern.id[..8],
-                            annotation
-                        );
-                    }
-                    None => {
-                        eprintln!("❌ pattern not found for id prefix: {}", id);
-                        std::process::exit(1);
-                    }
-                }
-            }
-        },
-
-        // ── lopi schedules ──────────────────────────────────────
         Commands::Schedules(ScheduleCmd::List) => {
-            let schedules = cfg
-                .as_ref()
-                .map(|c| c.schedules.clone())
-                .unwrap_or_default();
-            if schedules.is_empty() {
-                println!("⏰ lopi schedules — none configured");
-                println!();
-                println!("  Add [[schedules]] entries to lopi.toml:");
-                println!();
-                println!("  [[schedules]]");
-                println!("  name = \"nightly-lint\"");
-                println!("  repo = \"/path/to/repo\"");
-                println!("  goal = \"Fix all clippy warnings\"");
-                println!("  cron = \"0 2 * * *\"");
-                return Ok(());
-            }
-
-            println!("⏰ lopi schedules — {} configured\n", schedules.len());
-            let w = 30usize;
-            println!(
-                "  {:<20}  {:<w$}  {:<14}  Next run (UTC)",
-                "Name", "Goal", "Cron"
-            );
-            println!("  {}", "─".repeat(20 + 2 + w + 2 + 14 + 2 + 26));
-            for s in &schedules {
-                let goal = if s.goal.len() > w {
-                    format!("{}…", &s.goal[..w - 1])
-                } else {
-                    s.goal.clone()
-                };
-                let next = next_run_times(&s.cron, 1).into_iter().next().map_or_else(
-                    || "invalid cron".to_string(),
-                    |t| t.format("%Y-%m-%d %H:%M UTC").to_string(),
-                );
-                println!("  {:<20}  {:<w$}  {:<14}  {}", s.name, goal, s.cron, next);
-            }
+            let schedules = cfg.as_ref().map(|c| c.schedules.clone()).unwrap_or_default();
+            schedule_commands::list(schedules).await?;
         }
 
         // ── lopi stability ──────────────────────────────────────

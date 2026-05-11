@@ -1,6 +1,6 @@
 # PLAN.md — lopi Master Plan
 
-**Updated:** 2026-05-08 · v0.10.0 just shipped.
+**Updated:** 2026-05-11 · v0.12.0 just shipped.
 
 ## Vision
 
@@ -56,6 +56,19 @@ the CLI subprocess for planning · prompt caching with `cache_control:
 ephemeral` · real `TurnMetrics` from API responses · transparent CLI
 fallback · 7 new tests.
 
+### v0.12.0 — Sprint J: GitHub Issue Loop 🪝
+`lopi-github` crate · GitHubClient (post_comment, add_labels) · `issue_triage.rs`
+Haiku classifier (Bug/Feature/Question/WontFix + confidence) · `issue.rs` handler with
+background spawn_triage · `lopi serve-webhooks` CLI command · auto-queue on Bug ≥ 0.7
+confidence or `lopi:fix` label · TriageConfig wired into webhook router · clap env feature ·
+18 new tests (331 total).
+
+### v0.11.0 — Sprint I: Phase 5b Second Wave
+Score weights wired through pool → runner → run loop log · lesson + pattern injection into
+TOON encoder (both tabular pairs and string constraints) · extract plan_streaming → claude_stream.rs ·
+post-mortem also calls save_lesson(category="recovery") · api_plan lessons section ·
+lopi learn annotate CLI command. 313 tests.
+
 ### v0.10.0 — Sprint H: Self-Improvement Engine 🧠
 - **`lopi learn`** subcommands:
   - `learn list [--postmortem-only] [--limit N]` — sorted pattern table
@@ -81,24 +94,28 @@ fallback · 7 new tests.
 
 ## Open backlog (in priority order)
 
-### Phase 5b — Self-improvement, second wave
+### Phase 5b — Self-improvement, second wave (residual)
 - [ ] Wire `with_adaptive_retry()` into `lopi run --adaptive-retry` CLI flag
-- [ ] Use `last_error` in the next attempt's planning prompt (currently
-      stashed but the run loop doesn't yet inject it — Sprint H1)
-- [ ] Pattern annotation: user can mark a post-mortem pattern as
-      "validated" / "rejected" via Telegram inline keyboard
 - [ ] Self-modification loop (guarded): `allow_self_modify = true` in
       config; same git isolation and PR workflow applies
 - [ ] Scoring evolution: tune Score::weighted() weights based on
-      user-approved vs rejected PRs
+      user-approved vs rejected PRs — wire compute_weight_adjustments()
+      to query approved patterns
 
-### Phase 6 — Webhooks fully wired
-- [ ] CI failure → auto-queue fix task at `Priority::High`
-- [ ] Issue labeled `lopi:fix` → auto-queue
-- [ ] PR review comment → feed back to agent for revision
-- [ ] `lopi serve-webhooks --port 3001` — dedicated server command
-- [ ] GitHub App mode for org-wide hooks
-- [ ] HMAC verification for all event types (already in place for CI)
+### Phase 6 — Webhooks (partial ✅)
+- [x] CI failure → auto-queue fix task at `Priority::High` (v0.10.0)
+- [x] Issue labeled `lopi:fix` → auto-queue (v0.12.0)
+- [x] Issue triage via Haiku + GitHub comment (v0.12.0)
+- [x] PR review comment → feed back to agent (v0.10.0)
+- [x] `lopi serve-webhooks --port 3001` — dedicated server command (v0.12.0)
+- [ ] GitHub App mode for org-wide hooks (OAuth installation flow)
+- [ ] HMAC verification for all event types (currently CI + issue + PR only)
+
+### Sprint K — Spec Surface (next)
+- [ ] Parse test files → spec surface JSON: what the repo claims to do
+- [ ] Synthetic user agent: "As a User ×1000" against the spec surface
+- [ ] Coverage gap detection → auto-open PRs for missing test coverage
+- [ ] Quality gate: pass/fail per iteration with trend tracking
 
 ### Phase 7+ — UI polish (deferred)
 - [ ] Mobile-responsive Forge degradation
@@ -132,15 +149,17 @@ near-term sprint** — the CLI is good enough.
 
 | Metric | Value |
 |---|---|
-| Workspace tests | **261 passing**, 0 failing |
-| Build | `cargo build --workspace`: clean |
-| Crates | **11** (lopi-core, lopi-context, lopi-toon, lopi-ratelimit, lopi-git, lopi-agent, lopi-memory, lopi-orchestrator, lopi-ui, lopi-remote, lopi-webhook) |
-| CLI commands | `run`, `watch`, `tail`, `dock`, `sail`, `cancel`, `learn list/show/export`, `schedules list` |
+| Workspace tests | **331 passing**, 0 failing |
+| Build | `cargo build --workspace`: clean, 0 clippy warnings |
+| Crates | **12** (+ lopi-github) |
+| CLI commands | `run`, `watch`, `tail`, `dock`, `sail`, `cancel`, `learn list/show/export/annotate`, `schedules list`, `serve-webhooks` |
 | API endpoints | `/api/health`, `/api/tasks` (GET+POST), `/api/tasks/:id` (GET+DELETE), `/api/stats`, `/api/patterns`, `/metrics` (Prometheus), `/sse` (SSE), `/ws` (WebSocket) |
-| Embedded UI | SvelteKit Forge + Constellation, ~487 KB JS / 126 KB gzipped, served from `lopi-ui` via `rust-embed` |
+| Embedded UI | SvelteKit Forge + Constellation, ~487 KB JS / 126 KB gzipped |
 | Direct-API planning | ✅ via `AgentRunner::with_api(client, limiter, breaker)` |
-| Adaptive retry | ✅ via `AgentRunner::with_adaptive_retry()` (post-mortem auto-fires on terminal failure) |
-| Latest release | **v0.10.0** |
+| Adaptive retry | ✅ via `AgentRunner::with_adaptive_retry()` (post-mortem fires + lesson saved on terminal failure) |
+| Lesson injection | ✅ patterns + lessons both TOON-encoded into planning prompt |
+| Issue triage | ✅ Haiku classifier → GitHub comment → auto-queue via `lopi serve-webhooks` |
+| Latest release | **v0.12.0** |
 
 ---
 

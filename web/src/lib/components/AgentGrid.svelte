@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import AgentPane from '$lib/components/AgentPane.svelte';
-  import { agents, type AgentState } from '$lib/stores/agents';
+  import { agents, removeAgent, type AgentState } from '$lib/stores/agents';
 
   // Always-4 slots grid by default, expands when user clicks + button
   let paneSlots: (string | null)[] = [null, null, null, null];
@@ -96,6 +96,8 @@
   }
 
   function handleClearSlot(slotIdx: number) {
+    const agentId = paneSlots[slotIdx];
+    if (agentId) removeAgent(agentId);
     paneSlots[slotIdx] = null;
     paneSlots = paneSlots;
   }
@@ -133,20 +135,9 @@
         >
           <!-- AgentPane or empty slot -->
           <div class="h-full w-full overflow-hidden">
-            <AgentPane {agent} slotIndex={slotIdx} />
+            <AgentPane {agent} slotIndex={slotIdx} onClose={agent ? () => handleClearSlot(slotIdx) : null} />
           </div>
 
-          <!-- Clear button overlay (on hover when agent exists) -->
-          {#if agent}
-            <button
-              type="button"
-              on:click={() => handleClearSlot(slotIdx)}
-              class="absolute top-2 right-2 px-2 py-1 bg-konjo-rose/20 hover:bg-konjo-rose/40 border border-konjo-rose/50 rounded font-mono text-[8px] opacity-0 hover:opacity-100 transition-opacity z-30"
-              title="Remove from grid"
-            >
-              ✕
-            </button>
-          {/if}
         </div>
       </div>
     {/each}
