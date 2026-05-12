@@ -108,7 +108,11 @@ mod tests {
     use std::path::PathBuf;
 
     fn write_temp(content: &str) -> PathBuf {
-        let path = std::env::temp_dir().join(format!("lopi-spec-rust-{}.rs", nonce()));
+        let path = std::env::temp_dir().join(format!(
+            "lopi-spec-rust-{}-{}.rs",
+            std::process::id(),
+            nonce()
+        ));
         fs::write(&path, content).unwrap();
         path
     }
