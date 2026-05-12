@@ -18,7 +18,10 @@ pub async fn list(schedules: Vec<ScheduleEntry>) -> Result<()> {
 
     println!("⏰ lopi schedules — {} configured\n", schedules.len());
     let w = 30usize;
-    println!("  {:<20}  {:<w$}  {:<14}  Next run (UTC)", "Name", "Goal", "Cron");
+    println!(
+        "  {:<20}  {:<w$}  {:<14}  Next run (UTC)",
+        "Name", "Goal", "Cron"
+    );
     println!("  {}", "─".repeat(20 + 2 + w + 2 + 14 + 2 + 26));
     for s in &schedules {
         let goal = if s.goal.len() > w {
@@ -26,10 +29,10 @@ pub async fn list(schedules: Vec<ScheduleEntry>) -> Result<()> {
         } else {
             s.goal.clone()
         };
-        let next = next_run_times(&s.cron, 1)
-            .into_iter()
-            .next()
-            .map_or_else(|| "invalid cron".to_string(), |t| t.format("%Y-%m-%d %H:%M UTC").to_string());
+        let next = next_run_times(&s.cron, 1).into_iter().next().map_or_else(
+            || "invalid cron".to_string(),
+            |t| t.format("%Y-%m-%d %H:%M UTC").to_string(),
+        );
         println!("  {:<20}  {:<w$}  {:<14}  {}", s.name, goal, s.cron, next);
     }
     Ok(())

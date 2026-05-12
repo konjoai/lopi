@@ -1,8 +1,10 @@
 use anyhow::Result;
-use lopi_agent::AgentRunner;
+use lopi_agent::{AgentRunner, AnthropicClient, AnthropicLimiter, CircuitBreaker, StabilityConfig};
 use lopi_core::{AgentEvent, LopiConfig, RepoProfile, Task, TaskSource};
 use lopi_memory::MemoryStore;
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::time::Duration;
 
 use crate::{db_path, is_self_modify_attempt, status_label};
 
@@ -14,6 +16,7 @@ pub async fn run(
     dry_run: bool,
     speculative: bool,
     adaptive_retry: bool,
+    stability_gate: bool,
     cfg: Option<&LopiConfig>,
 ) -> Result<()> {
     println!("🚢 lopi run{}", if dry_run { " (dry-run)" } else { "" });
@@ -37,10 +40,14 @@ pub async fn run(
         let allow_self_modify = cfg.is_some_and(|c| c.lopi.allow_self_modify);
         if !allow_self_modify {
             eprintln!("❌ self-modification blocked: lopi cannot modify itself");
-            eprintln!("   to enable, set `allow_self_modify = true` in [lopi] section of lopi.toml");
+            eprintln!(
+                "   to enable, set `allow_self_modify = true` in [lopi] section of lopi.toml"
+            );
             return Err(anyhow::anyhow!("self-modification not allowed"));
         }
-        task.source = TaskSource::SelfModify { approved_by: "config".into() };
+        task.source = TaskSource::SelfModify {
+            approved_by: "config".into(),
+        };
         task.allowed_dirs = vec!["crates/".into(), "src/".into()];
         task.forbidden_dirs = vec![".github/".into(), "Cargo.lock".into()];
     }
@@ -54,7 +61,28 @@ pub async fn run(
     println!();
 
     let mut runner = AgentRunner::standalone(task.clone(), repo).0;
-    if adaptive_retry { runner = runner.with_adaptive_retry(); }
+    if adaptive_retry {
+        runner = runner.with_adaptive_retry();
+    }
+    if stability_gate {
+        match AnthropicClient::from_env() {
+            Ok(client) => {
+                let limiter = Arc::new(AnthropicLimiter::default_pro());
+                let breaker = Arc::new(CircuitBreaker::new(3, Duration::from_secs(60), 5.0));
+                runner = runner.with_stability_gate(
+                    Arc::new(client),
+                    Some(limiter),
+                    Some(breaker),
+                    StabilityConfig::default(),
+                );
+                println!("   stability gate: enabled (n=5, stable≤0.15, block>0.35)");
+            }
+            Err(e) => {
+                eprintln!("⚠️  --stability-gate ignored: {e}");
+                eprintln!("   set ANTHROPIC_API_KEY to enable the Layer 5 stability gate");
+            }
+        }
+    }
     runner.store = Some(store.clone());
     runner.dry_run = dry_run;
     runner.speculative = speculative;
@@ -64,14 +92,24 @@ pub async fn run(
     let print_task = tokio::spawn(async move {
         loop {
             match rx.recv().await {
-                Ok(AgentEvent::StatusChanged { status, attempt, .. }) => {
+                Ok(AgentEvent::StatusChanged {
+                    status, attempt, ..
+                }) => {
                     println!("  [{attempt}] → {}", status_label(&status));
                 }
                 Ok(AgentEvent::LogLine { line, .. }) => {
                     println!("       {line}");
                 }
-                Ok(AgentEvent::ScoreUpdated { test_pass_rate, lint_errors, .. }) => {
-                    println!("       score: {:.0}% pass, {} lint errors", test_pass_rate * 100.0, lint_errors);
+                Ok(AgentEvent::ScoreUpdated {
+                    test_pass_rate,
+                    lint_errors,
+                    ..
+                }) => {
+                    println!(
+                        "       score: {:.0}% pass, {} lint errors",
+                        test_pass_rate * 100.0,
+                        lint_errors
+                    );
                 }
                 Ok(AgentEvent::TaskCompleted { .. }) | Err(_) => break,
                 _ => {}
@@ -81,7 +119,10 @@ pub async fn run(
 
     let outcome = runner.run().await?;
     print_task.abort();
-    store.mark_completed(&task_id, &status_label(&outcome)).await.ok();
+    store
+        .mark_completed(&task_id, &status_label(&outcome))
+        .await
+        .ok();
     store.mine_patterns(&task_id, &task.goal).await.ok();
 
     println!();

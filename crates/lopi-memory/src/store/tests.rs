@@ -479,7 +479,9 @@ async fn compute_adjustments_signal_shifts_weights() {
 async fn open_for_customer_creates_isolated_db() {
     let base = std::env::temp_dir().join(format!("lopi-customer-test-{}", std::process::id()));
     std::fs::create_dir_all(&base).unwrap();
-    let alice = MemoryStore::open_for_customer(&base, "alice").await.unwrap();
+    let alice = MemoryStore::open_for_customer(&base, "alice")
+        .await
+        .unwrap();
     let bob = MemoryStore::open_for_customer(&base, "bob").await.unwrap();
     // Insert a task for alice only.
     let task = lopi_core::Task::new("alice-only task");

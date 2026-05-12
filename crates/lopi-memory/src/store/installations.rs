@@ -88,10 +88,7 @@ impl MemoryStore {
     /// # Errors
     ///
     /// Returns an error if the database query fails.
-    pub async fn customer_for_installation(
-        &self,
-        installation_id: i64,
-    ) -> Result<Option<String>> {
+    pub async fn customer_for_installation(&self, installation_id: i64) -> Result<Option<String>> {
         let row: Option<(String,)> = sqlx::query_as(
             "SELECT customer_id FROM github_installations \
              WHERE installation_id = ?1 AND status = 'active' LIMIT 1",
@@ -124,7 +121,13 @@ impl MemoryStore {
 fn sanitise_customer_id(login: &str) -> String {
     login
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' { c.to_ascii_lowercase() } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' {
+                c.to_ascii_lowercase()
+            } else {
+                '_'
+            }
+        })
         .collect()
 }
 
@@ -140,7 +143,10 @@ mod tests {
     #[tokio::test]
     async fn upsert_creates_installation() {
         let s = store().await;
-        let customer_id = s.upsert_installation(12345, "acme-corp", "Organization").await.unwrap();
+        let customer_id = s
+            .upsert_installation(12345, "acme-corp", "Organization")
+            .await
+            .unwrap();
         assert_eq!(customer_id, "acme-corp");
         let found = s.customer_for_installation(12345).await.unwrap();
         assert_eq!(found, Some("acme-corp".into()));

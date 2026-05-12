@@ -5,8 +5,8 @@ use anyhow::Result;
 use lopi_context::Phase;
 use lopi_core::{AgentEvent, Attempt, TaskStatus};
 use lopi_git::GitManager;
-use std::sync::atomic::Ordering;
 use lopi_spec::SpecSurface;
+use std::sync::atomic::Ordering;
 
 impl AgentRunner {
     /// Execute the full agent loop: plan → implement → test → retry.
@@ -48,9 +48,13 @@ impl AgentRunner {
                         .iter()
                         .take(5)
                         .filter_map(|p| {
-                            p.successful_constraints
-                                .as_deref()
-                                .and_then(|c| if c.is_empty() { None } else { Some(c.to_string()) })
+                            p.successful_constraints.as_deref().and_then(|c| {
+                                if c.is_empty() {
+                                    None
+                                } else {
+                                    Some(c.to_string())
+                                }
+                            })
                         })
                         .collect();
 
@@ -68,10 +72,10 @@ impl AgentRunner {
                         })
                         .collect();
 
-                    let lessons = match store.load_lessons(
-                        self.repo_path.to_string_lossy().as_ref(),
-                        10,
-                    ).await {
+                    let lessons = match store
+                        .load_lessons(self.repo_path.to_string_lossy().as_ref(), 10)
+                        .await
+                    {
                         Ok(rows) => rows
                             .into_iter()
                             .map(|row| (row.category, row.content))
@@ -91,7 +95,10 @@ impl AgentRunner {
         };
 
         // Store lessons for use in the API planning path.
-        self.task_lessons = lessons_data.iter().map(|(_, content)| content.clone()).collect();
+        self.task_lessons = lessons_data
+            .iter()
+            .map(|(_, content)| content.clone())
+            .collect();
 
         // Load spec surface if cached — inject top 10 items as planning constraints.
         let spec_constraints: Vec<String> = match SpecSurface::load(&self.repo_path) {

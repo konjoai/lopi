@@ -14,10 +14,12 @@ pub async fn show() -> Result<()> {
     let store = MemoryStore::open(db_path()).await?;
     let annotated = store.load_annotated_patterns().await?;
 
-    let approved: Vec<_> = annotated.iter()
+    let approved: Vec<_> = annotated
+        .iter()
         .filter(|p| p.user_annotation.as_deref() == Some("approved"))
         .collect();
-    let rejected: Vec<_> = annotated.iter()
+    let rejected: Vec<_> = annotated
+        .iter()
         .filter(|p| p.user_annotation.as_deref() == Some("rejected"))
         .collect();
 
@@ -34,7 +36,9 @@ pub async fn show() -> Result<()> {
     }
 
     let avg_attempts = |patterns: &[&lopi_memory::PatternRow]| -> f64 {
-        if patterns.is_empty() { return 0.0; }
+        if patterns.is_empty() {
+            return 0.0;
+        }
         patterns.iter().filter_map(|p| p.avg_attempts).sum::<f64>() / patterns.len() as f64
     };
 
@@ -59,10 +63,22 @@ pub async fn show() -> Result<()> {
     let weights = store.compute_weight_adjustments().await?;
     println!();
     println!("  Current score weights (from trust calibration):");
-    println!("    lint_penalty_per_error:  {:.4}", weights.lint_penalty_per_error);
-    println!("    lint_penalty_cap:        {:.4}", weights.lint_penalty_cap);
-    println!("    diff_penalty_per_kloc:   {:.4}", weights.diff_penalty_per_kloc);
-    println!("    diff_penalty_cap:        {:.4}", weights.diff_penalty_cap);
+    println!(
+        "    lint_penalty_per_error:  {:.4}",
+        weights.lint_penalty_per_error
+    );
+    println!(
+        "    lint_penalty_cap:        {:.4}",
+        weights.lint_penalty_cap
+    );
+    println!(
+        "    diff_penalty_per_kloc:   {:.4}",
+        weights.diff_penalty_per_kloc
+    );
+    println!(
+        "    diff_penalty_cap:        {:.4}",
+        weights.diff_penalty_cap
+    );
 
     if weights.lint_penalty_per_error == lopi_core::ScoreWeights::default().lint_penalty_per_error {
         println!();
