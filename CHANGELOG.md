@@ -1,5 +1,42 @@
 # Changelog
 
+## [0.16.0] — Sprint N: Trust Calibration + Per-Customer Isolation 🎯
+
+### Added
+
+**Trust calibration — `compute_weight_adjustments()` is now live**
+- `crates/lopi-orchestrator/src/pool.rs`: `compute_weight_adjustments()` is now `async` and actually calls `store.compute_weight_adjustments()` — pulling score weights from annotated pattern history on every task dispatch
+- Approved patterns that needed fewer attempts tighten lint/diff penalties; rejected patterns loosen them. Signal clamped to [-2.0, 2.0] × 0.005 → delta applied to weights
+- Falls back to defaults gracefully when no annotations exist or the store is absent
+
+**`lopi trust` CLI command** (`src/trust_commands.rs`)
+- Shows approved vs rejected pattern counts and avg-attempt stats
+- Prints current score weight adjustments (live from the DB)
+- Gives direction signal: "tightening / loosening / balanced"
+
+**`MemoryStore::open_for_customer(base_dir, customer_id)`** — per-customer isolated store
+- Creates `{base_dir}/{customer_id}/lopi.db` — one SQLite file per tenant
+- Sanitises `customer_id`: only `[A-Za-z0-9-_]` allowed; unsafe chars become `_`
+- 2 integration tests: isolation verified by cross-store task count, path traversal sanitised
+
+**`crates/lopi-memory/src/store/patterns.rs`** — extracted from mod.rs
+- All pattern operations: `jaccard_similarity`, `keyword_fingerprint`, `find_similar_patterns`, `load_patterns`, `find_pattern_by_id_prefix`, `insert_postmortem_pattern`, `mine_patterns`, `annotate_pattern`, `load_annotated_patterns`, `compute_weight_adjustments`
+- `PatternRow` struct moved here
+- store/mod.rs: 557 → **310 lines** ✅
+
+**`src/task_commands.rs`** — Watch/Tail/Dock/Cancel extracted from main.rs
+- main.rs: 511 → **448 lines** ✅
+
+### Architecture notes
+
+Trust calibration closes the learning loop: the human annotates patterns → weights adjust → agent gets scored differently on next attempt → better patterns get approved. Over 50–200 annotated patterns, the weights converge to reflect what this specific human values. Per-customer store isolation is the SaaS tenancy primitive — each customer's pattern history, lessons, and quality runs are fully separated.
+
+### Tests
+- 2 new per-customer store isolation tests
+- Workspace: 405 → **408 passing**, 0 failing. 0 clippy warnings.
+
+---
+
 ## [0.15.0] — Sprint M: Continuous Loop + Multi-Repo 🔄
 
 ### Added

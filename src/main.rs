@@ -7,6 +7,8 @@ mod run_command;
 mod sail_commands;
 mod schedule_commands;
 mod spec_commands;
+mod task_commands;
+mod trust_commands;
 mod webhook_commands;
 use mimalloc::MiMalloc;
 
@@ -15,7 +17,7 @@ static GLOBAL: MiMalloc = MiMalloc;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use lopi_core::{AgentEvent, EventBus, LopiConfig, TaskStatus};
+use lopi_core::{LopiConfig, TaskStatus};
 use lopi_memory::MemoryStore;
 use std::path::PathBuf;
 use tracing_subscriber::prelude::*;
@@ -121,6 +123,9 @@ enum Commands {
         #[arg(long)]
         run_now: bool,
     },
+    /// Show trust calibration stats — approved vs rejected pattern signals,
+    /// current score weight adjustments, and reliability metrics.
+    Trust,
     /// Run tests, find failing spec items, and queue fix tasks into a running
     /// lopi sail server. Use --dry-run to see gaps without queuing.
     GapFill {
@@ -331,88 +336,20 @@ async fn main() -> Result<()> {
         }
 
         // ── lopi watch ──────────────────────────────────────────
-        Commands::Watch { remote, local } => {
-            if local {
-                let bus: EventBus<AgentEvent> = EventBus::new(512);
-                println!("👁  lopi watch (local bus — no running sail server)");
-                lopi_ui::tui::run(bus).await?;
-            } else {
-                let ws_url = remote.unwrap_or_else(|| "ws://127.0.0.1:3000/ws".into());
-                println!("👁  lopi watch — connecting to {ws_url}");
-                remote::watch_remote(ws_url).await?;
-            }
-        }
-
-        // ── lopi tail ───────────────────────────────────────────
-        Commands::Tail { task_id, history } => {
-            let store = MemoryStore::open(db_path()).await?;
-            if history || task_id.is_some() {
-                let rows = store.load_history(50).await?;
-                println!("⚓ lopi tail — {} task(s) in history", rows.len());
-                for t in rows
-                    .iter()
-                    .filter(|t| task_id.as_deref().is_none_or(|id| t.id.starts_with(id)))
-                {
-                    println!(
-                        "  [{}] {}… — {}",
-                        fmt_status(&t.status),
-                        &t.id[..8.min(t.id.len())],
-                        t.goal
-                    );
-                }
-            } else {
-                println!("📋 lopi tail — use --history or run `lopi sail` for a live server");
-                tokio::signal::ctrl_c().await?;
-            }
-        }
-
-        // ── lopi dock ───────────────────────────────────────────
-        Commands::Dock => {
-            let store = MemoryStore::open(db_path()).await?;
-            let history = store.load_history(50).await?;
-            println!("⚓ lopi dock — {} task(s)\n", history.len());
-            if history.is_empty() {
-                println!("  No tasks yet. Try: lopi run --goal \"write a test\"");
-                return Ok(());
-            }
-            let w = 50usize;
-            println!("  {:<8}  {:<w$}  Status", "ID", "Goal");
-            println!("  {}", "─".repeat(8 + 2 + w + 2 + 20));
-            for t in history {
-                let goal = if t.goal.len() > w {
-                    format!("{}…", &t.goal[..w - 1])
-                } else {
-                    t.goal.clone()
-                };
-                println!(
-                    "  {:<8}  {:<w$}  {}",
-                    &t.id[..8.min(t.id.len())],
-                    goal,
-                    fmt_status(&t.status)
-                );
-            }
-        }
-
-        // ── lopi sail ───────────────────────────────────────────
+        Commands::Watch { remote, local } => task_commands::watch(remote, local).await?,
+        Commands::Tail { task_id, history } => task_commands::tail(task_id, history).await?,
+        Commands::Dock => task_commands::dock().await?,
         Commands::Sail { port, host, max_agents, repo, repos } => {
             sail_commands::run(max_agents, repo, repos, host, port, cfg.as_ref()).await?;
         }
-
-        // ── lopi cancel ─────────────────────────────────────────
-        Commands::Cancel { task_id } => {
-            let url = format!("http://127.0.0.1:3000/api/tasks/{task_id}");
-            if let Ok(msg) = remote::reqwest_cancel(&url).await {
-                println!("{msg}");
-            } else {
-                println!("⚠️  No running lopi sail server on :3000.");
-                println!("   Start `lopi sail` first or use the web dashboard.");
-            }
-        }
+        Commands::Cancel { task_id } => task_commands::cancel(task_id).await?,
 
         // ── lopi learn ──────────────────────────────────────────
         Commands::WatchGapFill { repo, interval, sail_url, run_now } => {
             gap_fill_commands::watch_loop(repo, interval, &sail_url, run_now).await?;
         }
+
+        Commands::Trust => trust_commands::show().await?,
 
         Commands::GapFill { repo, sail_url, dry_run } => {
             gap_fill_commands::run(repo, &sail_url, dry_run, false).await?;

@@ -1,47 +1,12 @@
 use anyhow::{Context, Result};
 use chrono::Utc;
-use lopi_core::{Attempt, ScoreWeights, Task, TaskId, TurnMetrics};
+use lopi_core::{Attempt, Task, TaskId, TurnMetrics};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
-use std::collections::HashSet;
 use std::path::Path;
 use std::str::FromStr;
 
 const SCHEMA: &str = include_str!("../schema.sql");
 
-/// Jaccard similarity between two token sets derived from goal fingerprint strings.
-/// Returns a value in [0.0, 1.0] — 1.0 means identical token sets.
-fn jaccard_similarity(a: &str, b: &str) -> f32 {
-    let tokens_a: HashSet<&str> = a.split_whitespace().collect();
-    let tokens_b: HashSet<&str> = b.split_whitespace().collect();
-    if tokens_a.is_empty() && tokens_b.is_empty() {
-        return 1.0;
-    }
-    // usize→f64 precision loss is acceptable: token-count similarity is a rough heuristic.
-    #[allow(clippy::cast_precision_loss)]
-    let intersection = tokens_a.intersection(&tokens_b).count() as f64;
-    #[allow(clippy::cast_precision_loss)]
-    let union = tokens_a.union(&tokens_b).count() as f64;
-    if union == 0.0 {
-        0.0
-    } else {
-        #[allow(clippy::cast_possible_truncation)]
-        let ratio = (intersection / union) as f32;
-        ratio
-    }
-}
-
-/// Build the keyword fingerprint for a goal string.
-/// Sorted, deduped tokens longer than 3 characters, lowercased.
-fn keyword_fingerprint(goal: &str) -> String {
-    let mut words: Vec<String> = goal
-        .split(|c: char| !c.is_alphabetic())
-        .filter(|w| w.len() > 3)
-        .map(str::to_lowercase)
-        .collect();
-    words.sort_unstable();
-    words.dedup();
-    words.join(" ")
-}
 
 /// `SQLite` dual-pool store: one serialising write connection, up to 8 read-only connections.
 ///
@@ -100,6 +65,27 @@ impl MemoryStore {
             write_pool,
             read_pool,
         })
+    }
+
+    /// Open an isolated per-customer database.
+    ///
+    /// Creates `{base_dir}/{customer_id}/lopi.db` — each customer gets a
+    /// separate SQLite file so pattern stores, lessons, and quality runs
+    /// cannot bleed across tenants.
+    ///
+    /// # Errors
+    /// Returns `Err` if the directory cannot be created or the database cannot be opened.
+    pub async fn open_for_customer(
+        base_dir: impl AsRef<Path>,
+        customer_id: &str,
+    ) -> Result<Self> {
+        // Sanitise: only alphanumeric + hyphen/underscore allowed in customer_id.
+        let safe_id: String = customer_id
+            .chars()
+            .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+            .collect();
+        let db_path = base_dir.as_ref().join(&safe_id).join("lopi.db");
+        Self::open(db_path).await
     }
 
     /// Open an in-memory `SQLite` database — useful for tests.
@@ -244,177 +230,6 @@ impl MemoryStore {
         Ok(rows)
     }
 
-    /// Jaccard similarity search over stored keyword fingerprints.
-    ///
-    /// Returns up to 5 patterns most similar to `goal` with Jaccard score > 0.3.
-    ///
-    /// # Errors
-    /// Returns `Err` if the database query fails.
-    pub async fn find_similar_patterns(&self, goal: &str) -> Result<Vec<PatternRow>> {
-        let query_fp = keyword_fingerprint(goal);
-        if query_fp.is_empty() {
-            return Ok(vec![]);
-        }
-
-        let all: Vec<PatternRow> = sqlx::query_as::<_, PatternRow>(
-            "SELECT id, goal_keywords, successful_constraints, avg_attempts, success_rate, last_seen, derived_from_postmortem \
-             FROM patterns",
-        )
-        .fetch_all(&self.read_pool)
-        .await?;
-
-        let mut scored: Vec<(f32, PatternRow)> = all
-            .into_iter()
-            .filter_map(|row| {
-                let sim = jaccard_similarity(&query_fp, &row.goal_keywords);
-                if sim > 0.3 {
-                    Some((sim, row))
-                } else {
-                    None
-                }
-            })
-            .collect();
-        scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
-        Ok(scored.into_iter().take(5).map(|(_, r)| r).collect())
-    }
-
-    /// Load all patterns ordered by `success_rate` descending.
-    ///
-    /// # Errors
-    /// Returns `Err` if the database query fails.
-    pub async fn load_patterns(&self, limit: i64) -> Result<Vec<PatternRow>> {
-        let rows = sqlx::query_as::<_, PatternRow>(
-            "SELECT id, goal_keywords, successful_constraints, avg_attempts, success_rate, last_seen, derived_from_postmortem \
-             FROM patterns ORDER BY COALESCE(success_rate, 0) DESC, last_seen DESC LIMIT ?1",
-        )
-        .bind(limit)
-        .fetch_all(&self.read_pool)
-        .await?;
-        Ok(rows)
-    }
-
-    /// Sprint H — fetch a single pattern by id prefix (for `lopi learn show`).
-    /// Mirrors the prefix-match UX used by `lopi tasks/cancel`. Returns
-    /// `Ok(None)` if no pattern matches the prefix.
-    ///
-    /// # Errors
-    /// Returns `Err` if the database query fails.
-    pub async fn find_pattern_by_id_prefix(&self, prefix: &str) -> Result<Option<PatternRow>> {
-        let pattern = format!("{prefix}%");
-        let row: Option<PatternRow> = sqlx::query_as::<_, PatternRow>(
-            "SELECT id, goal_keywords, successful_constraints, avg_attempts, success_rate, last_seen, derived_from_postmortem \
-             FROM patterns WHERE id LIKE ?1 LIMIT 1",
-        )
-        .bind(pattern)
-        .fetch_optional(&self.read_pool)
-        .await?;
-        Ok(row)
-    }
-
-    /// Sprint H — persist a new pattern derived from a failed-run post-mortem.
-    /// Stores the Claude-derived constraint string in `successful_constraints`,
-    /// flags `derived_from_postmortem = 1`, and seeds with `success_rate = 0.0`
-    /// (will rise as future tasks consuming this pattern succeed).
-    ///
-    /// # Errors
-    /// Returns `Err` if the database insert fails.
-    pub async fn insert_postmortem_pattern(
-        &self,
-        goal_keywords: &str,
-        constraint: &str,
-    ) -> Result<String> {
-        let id = uuid::Uuid::new_v4().to_string();
-        let now = Utc::now().to_rfc3339();
-        sqlx::query(
-            "INSERT INTO patterns (id, goal_keywords, successful_constraints, avg_attempts, success_rate, last_seen, derived_from_postmortem) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1)",
-        )
-        .bind(&id)
-        .bind(goal_keywords)
-        .bind(constraint)
-        .bind(0.0_f64)
-        .bind(0.0_f64)
-        .bind(now)
-        .execute(&self.write_pool)
-        .await?;
-        Ok(id)
-    }
-
-    /// Mine a completed task's attempts into the patterns table.
-    ///
-    /// # Errors
-    /// Returns `Err` if any database query or update fails.
-    pub async fn mine_patterns(&self, task_id: &TaskId, goal: &str) -> Result<()> {
-        let fingerprint = keyword_fingerprint(goal);
-        if fingerprint.is_empty() {
-            return Ok(());
-        }
-
-        // Reads can go through the read pool.
-        let stats: Option<(f64, i64)> = sqlx::query_as(
-            "SELECT AVG(score_test_pass_rate), COUNT(*) \
-             FROM attempts WHERE task_id = ?1",
-        )
-        .bind(task_id.0.to_string())
-        .fetch_optional(&self.read_pool)
-        .await?;
-
-        let (avg_pass, attempt_count) = stats.unwrap_or((0.0, 0));
-        let success_rate = avg_pass.clamp(0.0, 1.0);
-
-        let existing: Option<(String, Option<f64>, Option<f64>)> = sqlx::query_as(
-            "SELECT id, avg_attempts, success_rate FROM patterns WHERE goal_keywords = ?1",
-        )
-        .bind(&fingerprint)
-        .fetch_optional(&self.read_pool)
-        .await?;
-
-        // i64→f64 cast: precision loss is acceptable for attempt count statistics.
-        #[allow(clippy::cast_precision_loss)]
-        let attempt_count_f = attempt_count as f64;
-
-        let now = Utc::now().to_rfc3339();
-        if let Some((existing_id, prev_avg, prev_sr)) = existing {
-            let new_avg = f64::midpoint(prev_avg.unwrap_or(0.0), attempt_count_f).max(1.0);
-            let new_sr = f64::midpoint(prev_sr.unwrap_or(0.0), success_rate).clamp(0.0, 1.0);
-            sqlx::query(
-                "UPDATE patterns SET avg_attempts = ?1, success_rate = ?2, last_seen = ?3 WHERE id = ?4",
-            )
-            .bind(new_avg)
-            .bind(new_sr)
-            .bind(&now)
-            .bind(existing_id)
-            .execute(&self.write_pool)
-            .await?;
-        } else {
-            let id = uuid::Uuid::new_v4().to_string();
-            sqlx::query(
-                "INSERT INTO patterns (id, goal_keywords, avg_attempts, success_rate, last_seen) \
-                 VALUES (?1, ?2, ?3, ?4, ?5)",
-            )
-            .bind(id)
-            .bind(&fingerprint)
-            .bind(attempt_count_f)
-            .bind(success_rate)
-            .bind(&now)
-            .execute(&self.write_pool)
-            .await?;
-        }
-        Ok(())
-    }
-
-    /// Update user annotation for a pattern. Values: 'approved', 'rejected', or None.
-    ///
-    /// # Errors
-    /// Returns `Err` if the database update fails.
-    pub async fn annotate_pattern(&self, pattern_id: &str, annotation: Option<&str>) -> Result<()> {
-        sqlx::query("UPDATE patterns SET user_annotation = ?1 WHERE id = ?2")
-            .bind(annotation)
-            .bind(pattern_id)
-            .execute(&self.write_pool)
-            .await?;
-        Ok(())
-    }
 
     /// Return the total number of tasks in the database.
     ///
@@ -468,55 +283,6 @@ impl MemoryStore {
         Ok(())
     }
 
-    pub async fn load_annotated_patterns(&self) -> Result<Vec<PatternRow>> {
-        sqlx::query_as(
-            "SELECT id, goal_keywords, successful_constraints, avg_attempts, success_rate,
-                    last_seen, derived_from_postmortem, user_annotation
-             FROM patterns WHERE user_annotation IS NOT NULL ORDER BY last_seen DESC LIMIT 100",
-        )
-        .fetch_all(&self.read_pool)
-        .await
-        .context("load_annotated_patterns query failed")
-    }
-
-    pub async fn compute_weight_adjustments(&self) -> Result<ScoreWeights> {
-        let annotated = self.load_annotated_patterns().await?;
-        let approved: Vec<_> = annotated
-            .iter()
-            .filter(|p| p.user_annotation.as_deref() == Some("approved"))
-            .collect();
-        let rejected: Vec<_> = annotated
-            .iter()
-            .filter(|p| p.user_annotation.as_deref() == Some("rejected"))
-            .collect();
-
-        if approved.is_empty() && rejected.is_empty() {
-            return Ok(ScoreWeights::default());
-        }
-
-        let approved_avg_attempts = if approved.is_empty() {
-            0.0
-        } else {
-            approved.iter().filter_map(|p| p.avg_attempts).sum::<f64>() / approved.len() as f64
-        };
-
-        let rejected_avg_attempts = if rejected.is_empty() {
-            0.0
-        } else {
-            rejected.iter().filter_map(|p| p.avg_attempts).sum::<f64>() / rejected.len() as f64
-        };
-
-        let signal = (rejected_avg_attempts - approved_avg_attempts).clamp(-2.0, 2.0);
-        let delta = (signal * 0.005) as f32;
-
-        let base = ScoreWeights::default();
-        Ok(ScoreWeights {
-            lint_penalty_per_error: (base.lint_penalty_per_error - delta).clamp(0.01, 0.20),
-            lint_penalty_cap: base.lint_penalty_cap,
-            diff_penalty_per_kloc: (base.diff_penalty_per_kloc - delta).clamp(0.01, 0.30),
-            diff_penalty_cap: base.diff_penalty_cap,
-        })
-    }
 }
 
 #[derive(Debug, sqlx::FromRow)]
@@ -528,28 +294,15 @@ pub struct TaskRow {
     pub completed_at: Option<String>,
 }
 
-#[derive(Debug, sqlx::FromRow)]
-pub struct PatternRow {
-    pub id: String,
-    pub goal_keywords: String,
-    pub successful_constraints: Option<String>,
-    pub avg_attempts: Option<f64>,
-    pub success_rate: Option<f64>,
-    pub last_seen: String,
-    /// Sprint H: 1 when this row was created by a failed-run post-mortem
-    /// (Claude reflection over an error log), 0 when mined from completed
-    /// task statistics. SQLite has no bool — represented as INTEGER.
-    #[sqlx(default)]
-    pub derived_from_postmortem: i64,
-    /// Sprint H1: user annotation for pattern validation. Values: 'approved', 'rejected', or NULL.
-    #[sqlx(default)]
-    pub user_annotation: Option<String>,
-}
 
 mod lessons;
+mod patterns;
 mod quality;
 mod stability;
+// Re-export helpers for tests (tests.rs uses `use super::*`).
+pub use patterns::{jaccard_similarity, keyword_fingerprint};
 pub use lessons::LessonRow;
+pub use patterns::PatternRow;
 pub use quality::{QualityRunRecord, QualityRunRow};
 pub use stability::{StabilityEntry, StabilityRecord};
 

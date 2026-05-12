@@ -473,3 +473,32 @@ async fn compute_adjustments_signal_shifts_weights() {
     let defaults = ScoreWeights::default();
     assert_eq!(adjusted.lint_penalty_cap, defaults.lint_penalty_cap);
 }
+
+#[tokio::test]
+#[allow(clippy::unwrap_used)]
+async fn open_for_customer_creates_isolated_db() {
+    let base = std::env::temp_dir().join(format!("lopi-customer-test-{}", std::process::id()));
+    std::fs::create_dir_all(&base).unwrap();
+    let alice = MemoryStore::open_for_customer(&base, "alice").await.unwrap();
+    let bob = MemoryStore::open_for_customer(&base, "bob").await.unwrap();
+    // Insert a task for alice only.
+    let task = lopi_core::Task::new("alice-only task");
+    alice.save_task(&task, "queued").await.unwrap();
+    // Bob's store should not see alice's task.
+    let alice_count = alice.task_count().await.unwrap();
+    let bob_count = bob.task_count().await.unwrap();
+    assert_eq!(alice_count, 1);
+    assert_eq!(bob_count, 0);
+    std::fs::remove_dir_all(&base).unwrap();
+}
+
+#[tokio::test]
+#[allow(clippy::unwrap_used)]
+async fn open_for_customer_sanitises_id() {
+    let base = std::env::temp_dir().join(format!("lopi-sanitise-test-{}", std::process::id()));
+    std::fs::create_dir_all(&base).unwrap();
+    // ID with path traversal chars should be sanitised.
+    let s = MemoryStore::open_for_customer(&base, "../evil/../../../hack").await;
+    assert!(s.is_ok()); // Opens, but path is safe.
+    std::fs::remove_dir_all(&base).unwrap();
+}

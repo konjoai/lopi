@@ -1,6 +1,6 @@
 # PLAN.md — lopi Master Plan
 
-**Updated:** 2026-05-11 · v0.15.0 just shipped.
+**Updated:** 2026-05-12 · v0.16.0 just shipped.
 
 ## Vision
 
@@ -55,6 +55,12 @@ MemoryStore · worktree lock · CancellationToken · structured shutdown.
 the CLI subprocess for planning · prompt caching with `cache_control:
 ephemeral` · real `TurnMetrics` from API responses · transparent CLI
 fallback · 7 new tests.
+
+### v0.16.0 — Sprint N: Trust Calibration + Per-Customer Isolation 🎯
+Trust calibration live: `compute_weight_adjustments()` async, pulls approved/rejected
+pattern signal, adjusts lint+diff weights per task · `lopi trust` CLI · `MemoryStore::
+open_for_customer(base_dir, customer_id)` per-tenant isolation · `store/patterns.rs`
+extracted (mod.rs 557→310) · `task_commands.rs` extracted (main.rs 511→448) · 2 new tests (408 total).
 
 ### v0.15.0 — Sprint M: Continuous Loop + Multi-Repo 🔄
 `quality_check_runs` table · `save_quality_run` / `load_quality_trend` / `quality_trend_delta` ·
@@ -149,12 +155,18 @@ lopi learn annotate CLI command. 313 tests.
 - [x] `lopi sail --repos` — multi-repo concurrent dispatch
 - [x] `/api/quality/trend` — trend history endpoint
 
-### Sprint N — GitHub App + Customer Onboarding (next)
-- [ ] GitHub App OAuth installation flow — per-customer repo authorization
-- [ ] Per-customer isolated pattern store (separate SQLite per customer_id)
-- [ ] `lopi.konjoai.dev` onboarding — connect any GitHub repo in 5 minutes
-- [ ] Stripe billing integration — $299/$999/$4,999 tier enforcement
-- [ ] Trust calibration — track PR accept/reject ratio; expand auto-merge scope
+### Sprint N — Trust Calibration + Per-Customer Isolation ✅ (shipped v0.16.0)
+- [x] Trust calibration: `compute_weight_adjustments()` live from annotated patterns
+- [x] `lopi trust` CLI — shows trust stats and current weight adjustments
+- [x] `MemoryStore::open_for_customer(base_dir, customer_id)` — per-tenant isolation
+- [x] `store/patterns.rs` extracted; `task_commands.rs` extracted (both files in budget)
+
+### Sprint O — GitHub App + Onboarding Scaffold (next)
+- [ ] GitHub App manifest + OAuth installation flow (requires live domain + credentials)
+- [ ] `lopi serve-app --port 3002` — axum server for GitHub App callbacks
+- [ ] Per-customer store provisioned on GitHub App installation event
+- [ ] `lopi.konjoai.dev` landing page (SvelteKit in `web/`) — connect any repo in 5 min
+- [ ] Stripe webhook integration — tier gating on API endpoints
 
 ### Phase 7+ — UI polish (deferred)
 - [ ] Mobile-responsive Forge degradation
@@ -188,10 +200,10 @@ near-term sprint** — the CLI is good enough.
 
 | Metric | Value |
 |---|---|
-| Workspace tests | **405 passing**, 0 failing |
+| Workspace tests | **408 passing**, 0 failing |
 | Build | `cargo build --workspace`: clean, 0 clippy warnings |
 | Crates | **13** (+ lopi-github, lopi-spec) |
-| CLI commands | `run`, `watch`, `tail`, `dock`, `sail [--repos]`, `cancel`, `learn list/show/export/annotate`, `schedules list`, `serve-webhooks`, `spec`, `check [--fail-on-violations]`, `gap-fill`, `watch-gap-fill` |
+| CLI commands | `run`, `watch`, `tail`, `dock`, `sail [--repos]`, `cancel`, `learn list/show/export/annotate`, `schedules list`, `serve-webhooks`, `spec`, `check [--fail-on-violations]`, `gap-fill`, `watch-gap-fill`, `trust` |
 | API endpoints | `/api/health`, `/api/tasks` (GET+POST), `/api/tasks/:id` (GET+DELETE), `/api/stats`, `/api/patterns`, `/metrics` (Prometheus), `/sse` (SSE), `/ws` (WebSocket) |
 | Embedded UI | SvelteKit Forge + Constellation, ~487 KB JS / 126 KB gzipped |
 | Direct-API planning | ✅ via `AgentRunner::with_api(client, limiter, breaker)` |

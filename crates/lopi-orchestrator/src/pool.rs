@@ -249,13 +249,23 @@ pub struct PoolStats {
     pub uptime_secs: u64,
 }
 
-/// Phase 5b — Compute dynamically adjusted score weights based on the task goal.
-/// Future: derive weights from user-approved vs rejected patterns in memory.
-/// Currently: returns default weights (placeholder for weight tuning).
-fn compute_weight_adjustments(_goal: &str, _store: Option<&MemoryStore>) -> ScoreWeights {
-    // Phase 5b.1: query successful patterns for this goal's category and extract mean weights.
-    // For now: return defaults. Future: derive weights from user-approved patterns in memory.
-    ScoreWeights::default()
+/// Phase 5b / Sprint N — Compute score weights from user-annotated pattern history.
+///
+/// Approved patterns (human marked "approved") that required fewer attempts signal
+/// that the current quality bar is right or too loose → tighten penalties slightly.
+/// Rejected patterns that required many attempts → loosen penalties.
+/// Falls back to defaults when no annotations exist or the store is absent.
+async fn compute_weight_adjustments(_goal: &str, store: Option<&MemoryStore>) -> ScoreWeights {
+    let Some(store) = store else {
+        return ScoreWeights::default();
+    };
+    match store.compute_weight_adjustments().await {
+        Ok(weights) => weights,
+        Err(e) => {
+            tracing::warn!("weight calibration query failed ({e}); using defaults");
+            ScoreWeights::default()
+        }
+    }
 }
 
 #[tracing::instrument(skip(bus, store, cancel_rx, attempt_counter), fields(task_id = %task.id, goal = %task.goal))]
@@ -271,7 +281,7 @@ async fn run_one(
     let task_id = task.id;
     let goal = task.goal.clone();
 
-    let weights = compute_weight_adjustments(&goal, store.as_ref());
+    let weights = compute_weight_adjustments(&goal, store.as_ref()).await;
     let mut runner = AgentRunner::new(
         task,
         repo,
