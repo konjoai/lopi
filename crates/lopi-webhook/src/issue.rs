@@ -206,6 +206,57 @@ mod tests {
     }
 
     #[test]
+    fn extract_from_json_valid_payload() {
+        let payload = serde_json::json!({
+            "issue": {
+                "number": 7,
+                "title": "Bug: crash on empty input",
+                "body": "Steps to reproduce…",
+                "labels": [{"name": "bug"}, {"name": "lopi:fix"}]
+            }
+        });
+        let result = extract_from_json(&payload, "myorg/myrepo").unwrap();
+        assert_eq!(result.number, 7);
+        assert_eq!(result.title, "Bug: crash on empty input");
+        assert_eq!(result.owner, "myorg");
+        assert_eq!(result.repo, "myrepo");
+        assert_eq!(result.labels, vec!["bug", "lopi:fix"]);
+    }
+
+    #[test]
+    fn extract_from_json_missing_issue_returns_none() {
+        let payload = serde_json::json!({ "action": "opened" });
+        assert!(extract_from_json(&payload, "org/repo").is_none());
+    }
+
+    #[test]
+    fn extract_from_json_empty_title_returns_none() {
+        let payload = serde_json::json!({
+            "issue": { "number": 1, "title": "", "body": "x", "labels": [] }
+        });
+        assert!(extract_from_json(&payload, "org/repo").is_none());
+    }
+
+    #[test]
+    fn extract_from_json_no_slash_in_full_name_uses_unknown_owner() {
+        let payload = serde_json::json!({
+            "issue": { "number": 1, "title": "T", "body": null, "labels": [] }
+        });
+        let result = extract_from_json(&payload, "noslash").unwrap();
+        assert_eq!(result.owner, "unknown");
+        assert_eq!(result.repo, "noslash");
+    }
+
+    #[test]
+    fn extract_from_json_null_body_becomes_empty_string() {
+        let payload = serde_json::json!({
+            "issue": { "number": 3, "title": "T", "body": null, "labels": [] }
+        });
+        let result = extract_from_json(&payload, "a/b").unwrap();
+        assert_eq!(result.body, "");
+    }
+
+    #[test]
     fn has_lopi_fix_label_case_insensitive() {
         assert!(make_payload(vec!["lopi:fix"]).has_lopi_fix_label());
         assert!(make_payload(vec!["LOPI:FIX"]).has_lopi_fix_label());

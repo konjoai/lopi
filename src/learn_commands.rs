@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use crate::LearnCmd;
 
 pub async fn run(cmd: LearnCmd, db_path: PathBuf) -> Result<()> {
+    /* mutants::skip — integration handler: requires live MemoryStore and stdout */
     match cmd {
         LearnCmd::List {
             limit,

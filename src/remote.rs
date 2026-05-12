@@ -5,6 +5,7 @@ use lopi_core::{AgentEvent, EventBus};
 
 /// Connect to a running lopi sail WebSocket and drive the TUI from network events.
 pub async fn watch_remote(ws_url: String) -> Result<()> {
+    /* mutants::skip — integration handler: requires live WebSocket + TUI */
     use futures::StreamExt;
     use tokio_tungstenite::tungstenite::Message as WsMsg;
 
@@ -66,6 +67,7 @@ pub async fn watch_remote(ws_url: String) -> Result<()> {
 }
 
 pub async fn reqwest_cancel(url: &str) -> Result<String> {
+    /* mutants::skip — integration handler: requires live HTTP DELETE endpoint */
     let client = reqwest::Client::new();
     let resp = client
         .delete(url)

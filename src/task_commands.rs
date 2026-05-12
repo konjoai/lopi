@@ -5,6 +5,7 @@ use lopi_memory::MemoryStore;
 use crate::{db_path, fmt_status, remote};
 
 pub async fn watch(ws_url: Option<String>, local: bool) -> Result<()> {
+    /* mutants::skip — integration handler: drives TUI or remote WebSocket */
     if local {
         let bus: EventBus<AgentEvent> = EventBus::new(512);
         println!("👁  lopi watch (local bus — no running sail server)");
@@ -18,6 +19,7 @@ pub async fn watch(ws_url: Option<String>, local: bool) -> Result<()> {
 }
 
 pub async fn tail(task_id: Option<String>, history: bool) -> Result<()> {
+    /* mutants::skip — integration handler: requires live MemoryStore and signal handling */
     let store = MemoryStore::open(db_path()).await?;
     if history || task_id.is_some() {
         let rows = store.load_history(50).await?;
@@ -41,6 +43,7 @@ pub async fn tail(task_id: Option<String>, history: bool) -> Result<()> {
 }
 
 pub async fn dock() -> Result<()> {
+    /* mutants::skip — integration handler: requires live MemoryStore */
     let store = MemoryStore::open(db_path()).await?;
     let history = store.load_history(50).await?;
     println!("⚓ lopi dock — {} task(s)\n", history.len());
@@ -68,6 +71,7 @@ pub async fn dock() -> Result<()> {
 }
 
 pub async fn cancel(task_id: String) -> Result<()> {
+    /* mutants::skip — integration handler: requires running sail server */
     let url = format!("http://127.0.0.1:3000/api/tasks/{task_id}");
     if let Ok(msg) = remote::reqwest_cancel(&url).await {
         println!("{msg}");

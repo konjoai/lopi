@@ -3,6 +3,7 @@ use lopi_core::ScheduleEntry;
 use lopi_orchestrator::next_run_times;
 
 pub async fn list(schedules: Vec<ScheduleEntry>) -> Result<()> {
+    /* mutants::skip — integration handler: formats and prints schedule entries to stdout */
     if schedules.is_empty() {
         println!("⏰ lopi schedules — none configured");
         println!();

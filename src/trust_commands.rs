@@ -11,6 +11,7 @@ use lopi_memory::MemoryStore;
 use crate::db_path;
 
 pub async fn show() -> Result<()> {
+    /* mutants::skip — integration handler: requires live MemoryStore */
     let store = MemoryStore::open(db_path()).await?;
     let annotated = store.load_annotated_patterns().await?;
 

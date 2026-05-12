@@ -12,6 +12,7 @@ use std::path::{Path, PathBuf};
 /// Walks test files under `repo`, extracts spec items, prints a summary,
 /// and optionally writes `.lopi/spec_surface.json`.
 pub async fn run_spec(repo: PathBuf, export: bool, save: bool) -> Result<()> {
+    /* mutants::skip — integration handler: requires live SpecSurface extraction */
     println!("🔍 lopi spec — scanning {}", repo.display());
     let surface = SpecSurface::extract(&repo)?;
     println!(
@@ -68,6 +69,7 @@ pub async fn run_spec(repo: PathBuf, export: bool, save: bool) -> Result<()> {
 /// (whether a cached spec surface exists and all prior tests still appear).
 /// With `--fail-on-violations`: exits with code 1 when violations are found.
 pub async fn run_check(repo: PathBuf, fail_on_violations: bool) -> Result<()> {
+    /* mutants::skip — integration handler: requires live SpecSurface and file I/O */
     println!("🔎 lopi check — {}", repo.display());
     println!();
 

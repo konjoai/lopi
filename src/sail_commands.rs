@@ -15,6 +15,7 @@ pub async fn run(
     port: u16,
     cfg: Option<&LopiConfig>,
 ) -> Result<()> {
+    /* mutants::skip — integration handler: boots AgentPool, web server, scheduler */
     let store = MemoryStore::open(db_path()).await?;
     let bus: EventBus<AgentEvent> = EventBus::new(512);
     let queue = TaskQueue::new();

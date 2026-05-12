@@ -1,6 +1,6 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use crate::util::{fmt_status, is_self_modify_attempt, status_label};
+use crate::util::{db_path, fmt_status, is_self_modify_attempt, load_config, status_label};
 use lopi_core::TaskStatus;
 
 #[test]
@@ -86,4 +86,29 @@ fn is_self_modify_attempt_true_inside_exe_tree() {
     assert!(!is_self_modify_attempt(std::path::Path::new(
         "/nonexistent"
     )));
+}
+
+#[test]
+fn db_path_has_correct_filename_and_parent() {
+    let p = db_path();
+    assert_eq!(
+        p.file_name(),
+        Some(std::ffi::OsStr::new("lopi.db")),
+        "filename should be lopi.db"
+    );
+    assert_eq!(
+        p.parent().and_then(|d| d.file_name()),
+        Some(std::ffi::OsStr::new(".lopi")),
+        "parent dir should be .lopi"
+    );
+}
+
+#[test]
+fn load_config_nonexistent_path_returns_none() {
+    let p = std::path::PathBuf::from("/nonexistent/__lopi_test__.toml");
+    let result = load_config(Some(&p));
+    assert!(
+        result.is_none(),
+        "nonexistent config path should return None"
+    );
 }
