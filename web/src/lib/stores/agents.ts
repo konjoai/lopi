@@ -182,6 +182,7 @@ function reduce(map: Map<string, AgentState>, ev: AgentEvent): Map<string, Agent
         status: 'running',
         attempt: ev.attempt,
         branch: ev.branch,
+        repo: ev.repo ?? cur?.repo ?? '',
         startedAt: cur?.startedAt ?? Date.now(),
         phase: cur?.phase ?? 'Boot'
       });
@@ -336,7 +337,9 @@ function applyMessage(msg: WireMessage) {
             ? typeof t.status === 'object' && t.status !== null && 'Failed' in t.status
               ? 'failed'
               : 'completed'
-            : 'running',
+            : typeof t.status === 'string' && t.status === 'Queued'
+              ? 'queued'
+              : 'running',
           taskStatus: t.status as TaskStatus | string,
           startedAt: Date.parse(t.created_at) || Date.now()
         });
@@ -405,6 +408,14 @@ export function init() {
 
 export function selectAgent(id: string) {
   activeAgentId.set(id);
+}
+
+export function removeAgent(id: string) {
+  agents.update((m) => {
+    const next = new Map(m);
+    next.delete(id);
+    return next;
+  });
 }
 
 export function postTask(

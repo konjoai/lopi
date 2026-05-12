@@ -10,6 +10,9 @@ description = "GitHub webhook receiver for lopi"
 [dependencies]
 lopi-core.workspace = true
 lopi-orchestrator.workspace = true
+lopi-agent.workspace = true
+lopi-github.workspace = true
+lopi-ratelimit.workspace = true
 tokio.workspace = true
 axum.workspace = true
 serde.workspace = true
@@ -19,6 +22,7 @@ tracing.workspace = true
 hmac.workspace = true
 sha2.workspace = true
 hex.workspace = true
+reqwest.workspace = true
 
 [dev-dependencies]
 tower.workspace = true

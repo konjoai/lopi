@@ -1,3 +1,4 @@
+use crate::issue::spawn_triage;
 use anyhow::Result;
 use axum::{
     body::Bytes,
@@ -7,22 +8,48 @@ use axum::{
     routing::post,
     Router,
 };
+use lopi_agent::AnthropicClient;
 use lopi_core::{Priority, Task, TaskSource};
+use lopi_github::GitHubClient;
 use lopi_orchestrator::TaskQueue;
+use lopi_ratelimit::{AnthropicLimiter, CircuitBreaker};
 use serde_json::Value;
 use std::net::SocketAddr;
+use std::sync::Arc;
+
+/// Optional triage configuration — when present, issue events are
+/// classified by Haiku and a comment is posted on the GitHub issue.
+#[derive(Clone)]
+pub struct TriageConfig {
+    pub api_client: Arc<AnthropicClient>,
+    pub github: Arc<GitHubClient>,
+    pub limiter: Option<Arc<AnthropicLimiter>>,
+    pub breaker: Option<Arc<CircuitBreaker>>,
+    /// Model for triage — Haiku is the right cost/quality trade-off.
+    pub model: String,
+}
 
 #[derive(Clone)]
 struct WebhookState {
     queue: TaskQueue,
     secret: Option<String>,
+    triage: Option<TriageConfig>,
 }
 
 /// # Errors
 ///
 /// Returns an error if the TCP listener cannot bind to the address.
-pub async fn serve(queue: TaskQueue, secret: Option<String>, addr: SocketAddr) -> Result<()> {
-    let state = WebhookState { queue, secret };
+pub async fn serve(
+    queue: TaskQueue,
+    secret: Option<String>,
+    addr: SocketAddr,
+    triage: Option<TriageConfig>,
+) -> Result<()> {
+    let state = WebhookState {
+        queue,
+        secret,
+        triage,
+    };
     let app = Router::new()
         .route("/webhook/github", post(handle))
         .with_state(state);
@@ -126,6 +153,25 @@ async fn handle(
         }
     }
 
+    // Issue triage: classify opened/labeled issues via Haiku; optionally queue a fix task.
+    let action = payload.get("action").and_then(|v| v.as_str()).unwrap_or("");
+    if event == "issues" && (action == "opened" || action == "labeled") {
+        if let (Some(triage), Some(ip)) = (
+            s.triage.clone(),
+            crate::issue::extract_from_json(&payload, &repo),
+        ) {
+            spawn_triage(
+                ip,
+                triage.model,
+                triage.api_client,
+                triage.limiter,
+                triage.breaker,
+                triage.github,
+                s.queue.clone(),
+            );
+        }
+    }
+
     (StatusCode::OK, "ok").into_response()
 }
 
@@ -174,6 +220,7 @@ mod tests {
         let state = WebhookState {
             queue,
             secret: secret.map(ToString::to_string),
+            triage: None,
         };
         Router::new()
             .route("/webhook/github", post(handle))

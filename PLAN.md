@@ -1,6 +1,6 @@
 # PLAN.md — lopi Master Plan
 
-**Updated:** 2026-05-08 · v0.10.0 just shipped.
+**Updated:** 2026-05-12 · v0.17.0 just shipped.
 
 ## Vision
 
@@ -56,6 +56,48 @@ the CLI subprocess for planning · prompt caching with `cache_control:
 ephemeral` · real `TurnMetrics` from API responses · transparent CLI
 fallback · 7 new tests.
 
+### v0.17.0 — Sprint O: GitHub App Server Scaffold 🔐
+`lopi-app` crate (GitHub App OAuth + Stripe webhook, 6 tests) · `github_installations` table ·
+`upsert/delete/list_installation` · per-customer store provisioned on install event ·
+`lopi serve-app` CLI · SvelteKit `/onboard` page with 3-step flow + pricing ·
+`store/tests.rs` split (504→190+322) · 11 new tests (419 total).
+
+### v0.16.0 — Sprint N: Trust Calibration + Per-Customer Isolation 🎯
+Trust calibration live: `compute_weight_adjustments()` async, pulls approved/rejected
+pattern signal, adjusts lint+diff weights per task · `lopi trust` CLI · `MemoryStore::
+open_for_customer(base_dir, customer_id)` per-tenant isolation · `store/patterns.rs`
+extracted (mod.rs 557→310) · `task_commands.rs` extracted (main.rs 511→448) · 2 new tests (408 total).
+
+### v0.15.0 — Sprint M: Continuous Loop + Multi-Repo 🔄
+`quality_check_runs` table · `save_quality_run` / `load_quality_trend` / `quality_trend_delta` ·
+gap-fill persists + prints trend · `lopi watch-gap-fill` Kitchen Loop daemon ·
+`lopi sail --repos` multi-repo dispatch · `/api/quality/trend` endpoint · 5 new tests (405 total).
+
+### v0.14.0 — Sprint L: Synthetic User + File Budget Fixes 🔬
+`TestRunResult` parser (Cargo + pytest) · `coverage_gaps()` · `lopi gap-fill` command ·
+`lopi check --fail-on-violations` CI exit code · file budget repairs (run_loop.rs 651→480,
+web/mod.rs 593→372, main.rs 560→486) · `stability_runner.rs` + `postmortem_runner.rs` +
+`web/handlers.rs` + `run_command.rs` extracted · 8 new tests (399 total).
+
+### v0.13.0 — Sprint K: Spec Surface + KCQF 📋
+`lopi-spec` crate (Rust + Python test extractor) · `SpecSurface::extract/save/load/top_descriptions` ·
+`lopi spec` + `lopi check` CLI commands · spec injection into planning prompt (top 10 items) ·
+`/api/spec` web endpoint · `serve_with_repo` · KCQF file-size gate + spec drift detection ·
+28 new tests (390 total).
+
+### v0.12.0 — Sprint J: GitHub Issue Loop 🪝
+`lopi-github` crate · GitHubClient (post_comment, add_labels) · `issue_triage.rs`
+Haiku classifier (Bug/Feature/Question/WontFix + confidence) · `issue.rs` handler with
+background spawn_triage · `lopi serve-webhooks` CLI command · auto-queue on Bug ≥ 0.7
+confidence or `lopi:fix` label · TriageConfig wired into webhook router · clap env feature ·
+18 new tests (331 total).
+
+### v0.11.0 — Sprint I: Phase 5b Second Wave
+Score weights wired through pool → runner → run loop log · lesson + pattern injection into
+TOON encoder (both tabular pairs and string constraints) · extract plan_streaming → claude_stream.rs ·
+post-mortem also calls save_lesson(category="recovery") · api_plan lessons section ·
+lopi learn annotate CLI command. 313 tests.
+
 ### v0.10.0 — Sprint H: Self-Improvement Engine 🧠
 - **`lopi learn`** subcommands:
   - `learn list [--postmortem-only] [--limit N]` — sorted pattern table
@@ -81,24 +123,63 @@ fallback · 7 new tests.
 
 ## Open backlog (in priority order)
 
-### Phase 5b — Self-improvement, second wave
+### Phase 5b — Self-improvement, second wave (residual)
 - [ ] Wire `with_adaptive_retry()` into `lopi run --adaptive-retry` CLI flag
-- [ ] Use `last_error` in the next attempt's planning prompt (currently
-      stashed but the run loop doesn't yet inject it — Sprint H1)
-- [ ] Pattern annotation: user can mark a post-mortem pattern as
-      "validated" / "rejected" via Telegram inline keyboard
 - [ ] Self-modification loop (guarded): `allow_self_modify = true` in
       config; same git isolation and PR workflow applies
 - [ ] Scoring evolution: tune Score::weighted() weights based on
-      user-approved vs rejected PRs
+      user-approved vs rejected PRs — wire compute_weight_adjustments()
+      to query approved patterns
 
-### Phase 6 — Webhooks fully wired
-- [ ] CI failure → auto-queue fix task at `Priority::High`
-- [ ] Issue labeled `lopi:fix` → auto-queue
-- [ ] PR review comment → feed back to agent for revision
-- [ ] `lopi serve-webhooks --port 3001` — dedicated server command
-- [ ] GitHub App mode for org-wide hooks
-- [ ] HMAC verification for all event types (already in place for CI)
+### Phase 6 — Webhooks (partial ✅)
+- [x] CI failure → auto-queue fix task at `Priority::High` (v0.10.0)
+- [x] Issue labeled `lopi:fix` → auto-queue (v0.12.0)
+- [x] Issue triage via Haiku + GitHub comment (v0.12.0)
+- [x] PR review comment → feed back to agent (v0.10.0)
+- [x] `lopi serve-webhooks --port 3001` — dedicated server command (v0.12.0)
+- [ ] GitHub App mode for org-wide hooks (OAuth installation flow)
+- [ ] HMAC verification for all event types (currently CI + issue + PR only)
+
+### Sprint K — Spec Surface ✅ (shipped v0.13.0)
+- [x] Parse test files → spec surface JSON (Rust `#[test]` + Python `def test_*`)
+- [x] `lopi spec` / `lopi check` CLI
+- [x] Spec injected into planning prompt (top 10 descriptions)
+- [x] `/api/spec` web endpoint
+- [x] KCQF file-size gate + spec drift detection in `lopi check`
+
+### Sprint L — Synthetic User + Coverage Gap ✅ (shipped v0.14.0)
+- [x] `TestRunResult` parser — cargo test + pytest output → per-test pass/fail
+- [x] `coverage_gaps()` — cross-reference spec surface with test results
+- [x] `lopi gap-fill` — runs tests, finds gaps, queues fix tasks via sail API
+- [x] `lopi check --fail-on-violations` — CI-compatible exit code
+- [x] File budget repairs — all three oversize files now under 500 lines
+
+### Sprint M — Continuous Loop + Multi-Repo ✅ (shipped v0.15.0)
+- [x] `quality_check_runs` table + CRUD in lopi-memory
+- [x] `lopi gap-fill` persists quality run + prints trend delta
+- [x] `lopi watch-gap-fill` — Kitchen Loop daemon (configurable interval)
+- [x] `lopi sail --repos` — multi-repo concurrent dispatch
+- [x] `/api/quality/trend` — trend history endpoint
+
+### Sprint N — Trust Calibration + Per-Customer Isolation ✅ (shipped v0.16.0)
+- [x] Trust calibration: `compute_weight_adjustments()` live from annotated patterns
+- [x] `lopi trust` CLI — shows trust stats and current weight adjustments
+- [x] `MemoryStore::open_for_customer(base_dir, customer_id)` — per-tenant isolation
+- [x] `store/patterns.rs` extracted; `task_commands.rs` extracted (both files in budget)
+
+### Sprint O — GitHub App Server Scaffold ✅ (shipped v0.17.0)
+- [x] `lopi-app` crate: GitHub App OAuth routes + Stripe webhook handler
+- [x] `github_installations` table + upsert/delete/list/lookup
+- [x] `lopi serve-app` CLI — starts on port 3002, reads credentials from env
+- [x] Per-customer store provisioned on `installation.created` webhook
+- [x] SvelteKit `/onboard` page with 3-step flow and pricing table
+
+### Sprint P — Production Deployment + Tier Gating (next)
+- [ ] Register GitHub App on github.com (requires live domain)
+- [ ] Add `lopi-app` Dockerfile + fly.io / Railway deploy config
+- [ ] Tier gating middleware in `lopi sail` — read customer tier from DB
+- [ ] `/api/plans` endpoint — return available tiers from Stripe products
+- [ ] End-to-end install flow test with a real GitHub App installation
 
 ### Phase 7+ — UI polish (deferred)
 - [ ] Mobile-responsive Forge degradation
@@ -132,15 +213,18 @@ near-term sprint** — the CLI is good enough.
 
 | Metric | Value |
 |---|---|
-| Workspace tests | **261 passing**, 0 failing |
-| Build | `cargo build --workspace`: clean |
-| Crates | **11** (lopi-core, lopi-context, lopi-toon, lopi-ratelimit, lopi-git, lopi-agent, lopi-memory, lopi-orchestrator, lopi-ui, lopi-remote, lopi-webhook) |
-| CLI commands | `run`, `watch`, `tail`, `dock`, `sail`, `cancel`, `learn list/show/export`, `schedules list` |
+| Workspace tests | **419 passing**, 0 failing |
+| Build | `cargo build --workspace`: clean, 0 clippy warnings |
+| Crates | **15** (+ lopi-app, lopi-github, lopi-spec) |
+| CLI commands | `run`, `watch`, `tail`, `dock`, `sail [--repos]`, `cancel`, `learn list/show/export/annotate`, `schedules list`, `serve-webhooks`, `spec`, `check [--fail-on-violations]`, `gap-fill`, `watch-gap-fill`, `trust`, `serve-app` |
 | API endpoints | `/api/health`, `/api/tasks` (GET+POST), `/api/tasks/:id` (GET+DELETE), `/api/stats`, `/api/patterns`, `/metrics` (Prometheus), `/sse` (SSE), `/ws` (WebSocket) |
-| Embedded UI | SvelteKit Forge + Constellation, ~487 KB JS / 126 KB gzipped, served from `lopi-ui` via `rust-embed` |
+| Embedded UI | SvelteKit Forge + Constellation, ~487 KB JS / 126 KB gzipped |
 | Direct-API planning | ✅ via `AgentRunner::with_api(client, limiter, breaker)` |
-| Adaptive retry | ✅ via `AgentRunner::with_adaptive_retry()` (post-mortem auto-fires on terminal failure) |
-| Latest release | **v0.10.0** |
+| Adaptive retry | ✅ via `AgentRunner::with_adaptive_retry()` (post-mortem fires + lesson saved on terminal failure) |
+| Lesson injection | ✅ patterns + lessons both TOON-encoded into planning prompt |
+| Issue triage | ✅ Haiku classifier → GitHub comment → auto-queue via `lopi serve-webhooks` |
+| Spec surface | ✅ `lopi-spec` crate · `lopi spec` · `lopi check` · `/api/spec` · injected into planning |
+| Latest release | **v0.13.0** |
 
 ---
 

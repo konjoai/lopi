@@ -11,6 +11,9 @@ members = [
     "crates/lopi-webhook",
     "crates/lopi-toon",
     "crates/lopi-ratelimit",
+    "crates/lopi-app",
+    "crates/lopi-github",
+    "crates/lopi-spec",
     "crates/lopi-kcqf",
 ]
 resolver = "2"
@@ -39,7 +42,7 @@ reqwest = { version = "0.11", features = ["json", "stream"] }
 bytes = "1"
 rust-embed = { version = "8", features = ["interpolate-folder-path"] }
 mime_guess = "2"
-clap = { version = "4", features = ["derive"] }
+clap = { version = "4", features = ["derive", "env"] }
 anyhow = "1"
 thiserror = "1"
 uuid = { version = "1", features = ["v4", "serde"] }
@@ -59,6 +62,7 @@ sha1 = "0.10"
 sha2 = "0.10"
 hex = "0.4"
 base64 = "0.22"
+which = "5"
 tokio-cron-scheduler = { version = "0.10", features = ["signal"] }
 tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
 tokio-util = { version = "0.7", features = ["rt"] }
@@ -75,6 +79,9 @@ lopi-remote = { path = "crates/lopi-remote" }
 lopi-webhook = { path = "crates/lopi-webhook" }
 lopi-toon = { path = "crates/lopi-toon" }
 lopi-ratelimit = { path = "crates/lopi-ratelimit" }
+lopi-app = { path = "crates/lopi-app" }
+lopi-github = { path = "crates/lopi-github" }
+lopi-spec = { path = "crates/lopi-spec" }
 lopi-kcqf = { path = "crates/lopi-kcqf" }
 
 [package]
@@ -106,6 +113,10 @@ lopi-memory.workspace = true
 lopi-orchestrator.workspace = true
 lopi-ui.workspace = true
 lopi-remote.workspace = true
+lopi-app.workspace = true
+lopi-webhook.workspace = true
+lopi-github.workspace = true
+lopi-spec.workspace = true
 reqwest.workspace = true
 serde_json.workspace = true
 tokio-cron-scheduler.workspace = true

@@ -1,13 +1,14 @@
 <script lang="ts">
   import Forge from '$lib/forge/Forge.svelte';
-  import { logs, postTask, cancelTask, permissionWaiting, PHASE_COLORS } from '$lib/stores/agents';
-  import type { AgentState } from '$lib/types';
+  import { logs, postTask, cancelTask, permissionWaiting, PHASE_COLORS, type AgentState } from '$lib/stores/agents';
 
   export let agent: AgentState | null = null;
   export let slotIndex: number = 0;
+  export let onClose: (() => void) | null = null;
 
   let commandInput = '';
   let isSubmitting = false;
+  let submitError = '';
 
   $: phaseColor = agent ? PHASE_COLORS[agent.phase] ?? '#00d4ff' : '#00d4ff';
   $: agentLogs = agent ? $logs.filter((l) => l.taskId === agent.id).slice(-3) : [];
@@ -15,11 +16,18 @@
   $: isRunning = agent?.status === 'running' || agent?.status === 'queued';
 
   async function handleSubmitCommand() {
-    if (!commandInput.trim() || !agent) return;
+    if (!commandInput.trim()) return;
+    if (isSubmitting) return;
     isSubmitting = true;
+    submitError = '';
     try {
-      await postTask(commandInput.trim(), agent.repo, 'normal');
+      // Empty pane: use empty repo string; existing agent: use agent.repo
+      const repo = agent?.repo ?? '';
+      await postTask(commandInput.trim(), repo, 'normal');
       commandInput = '';
+    } catch (err) {
+      console.error('[lopi] postTask failed:', err);
+      submitError = err instanceof Error ? err.message : 'failed to submit';
     } finally {
       isSubmitting = false;
     }
@@ -30,9 +38,17 @@
     await cancelTask(agent.id);
   }
 
-  function handleRetry() {
-    if (!agent) return;
-    postTask(agent.goal, agent.repo, 'normal');
+  async function handleRetry() {
+    if (!agent || isSubmitting) return;
+    isSubmitting = true;
+    submitError = '';
+    try {
+      await postTask(agent.goal, agent.repo, 'normal');
+    } catch (err) {
+      submitError = err instanceof Error ? err.message : 'retry failed';
+    } finally {
+      isSubmitting = false;
+    }
   }
 
   function formatElapsed(ms: number): string {
@@ -214,6 +230,18 @@
   <div
     class="w-20 border-l border-white/5 flex flex-col items-center justify-between py-4 px-2 flex-shrink-0 bg-black/30"
   >
+    <!-- Close button (top of sidebar, above phase) ──────────────── -->
+    {#if agent && onClose}
+      <button
+        type="button"
+        on:click={onClose}
+        class="w-5 h-5 flex items-center justify-center bg-white/10 hover:bg-white/25 text-white/60 hover:text-white rounded-full text-[10px] font-bold transition-colors flex-shrink-0"
+        title="Close pane"
+      >
+        ✕
+      </button>
+    {/if}
+
     <!-- Phase display (top) ───────────────────────────────────────── -->
     <div class="flex flex-col items-center gap-2 text-center flex-shrink-0">
       <div

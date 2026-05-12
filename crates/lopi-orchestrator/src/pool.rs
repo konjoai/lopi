@@ -1,7 +1,7 @@
 use anyhow::Result;
 use dashmap::DashMap;
 use lopi_agent::AgentRunner;
-use lopi_core::{AgentEvent, EventBus, Task, TaskId, TaskStatus};
+use lopi_core::{AgentEvent, EventBus, ScoreWeights, Task, TaskId, TaskStatus};
 use lopi_memory::MemoryStore;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -169,6 +169,28 @@ impl AgentPool {
     ///
     /// Returns an error if a semaphore is closed (only happens on shutdown).
     pub async fn run(self) -> Result<()> {
+        let bus_stats = self.bus.clone();
+        let counters_stats = self.counters.clone();
+        let queue_stats = self.queue.clone();
+        let started_at = self.started_at.clone();
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                let running = counters_stats.running.load(Ordering::Relaxed);
+                let queued = queue_stats.len();
+                let succeeded = counters_stats.succeeded.load(Ordering::Relaxed);
+                let failed = counters_stats.failed.load(Ordering::Relaxed);
+                let uptime_secs = started_at.elapsed().as_secs();
+                bus_stats.send(AgentEvent::PoolStats {
+                    running,
+                    queued,
+                    succeeded,
+                    failed,
+                    uptime_secs,
+                });
+            }
+        });
+
         loop {
             let task = self.queue.pop().await;
 
@@ -223,7 +245,7 @@ impl AgentPool {
                     task,
                     repo,
                     bus.clone(),
-                    store,
+                    store.clone(),
                     cancel_rx,
                     attempt,
                     RunConfig {
@@ -239,13 +261,23 @@ impl AgentPool {
                     Ok(TaskStatus::Success { .. }) => {
                         counters.succeeded.fetch_add(1, Ordering::Relaxed);
                     }
-                    Ok(TaskStatus::Failed { .. }) | Err(_) => {
+                    Ok(TaskStatus::Failed { .. }) | Ok(TaskStatus::RolledBack) | Err(_) => {
                         counters.failed.fetch_add(1, Ordering::Relaxed);
                     }
                     _ => {}
                 }
-                if let Err(e) = outcome {
+                if let Err(e) = &outcome {
                     error!(task_id = %task_id, "agent run error: {e}");
+                    bus.send(AgentEvent::TaskCompleted {
+                        task_id,
+                        outcome: TaskStatus::Failed {
+                            reason: format!("{e}"),
+                        },
+                        total_attempts: 1,
+                    });
+                    if let Some(store) = store {
+                        let _ = store.mark_completed(&task_id, "failed").await;
+                    }
                 }
             });
         }
@@ -267,6 +299,25 @@ struct RunConfig {
     queue: TaskQueue,
 }
 
+/// Phase 5b / Sprint N — Compute score weights from user-annotated pattern history.
+///
+/// Approved patterns (human marked "approved") that required fewer attempts signal
+/// that the current quality bar is right or too loose → tighten penalties slightly.
+/// Rejected patterns that required many attempts → loosen penalties.
+/// Falls back to defaults when no annotations exist or the store is absent.
+async fn compute_weight_adjustments(_goal: &str, store: Option<&MemoryStore>) -> ScoreWeights {
+    let Some(store) = store else {
+        return ScoreWeights::default();
+    };
+    match store.compute_weight_adjustments().await {
+        Ok(weights) => weights,
+        Err(e) => {
+            tracing::warn!("weight calibration query failed ({e}); using defaults");
+            ScoreWeights::default()
+        }
+    }
+}
+
 #[tracing::instrument(skip(bus, store, cancel_rx, attempt_counter, cfg), fields(task_id = %task.id, goal = %task.goal))]
 async fn run_one(
     task: Task,
@@ -281,6 +332,7 @@ async fn run_one(
     let task_id = task.id;
     let goal = task.goal.clone();
 
+    let weights = compute_weight_adjustments(&goal, store.as_ref()).await;
     let mut runner = AgentRunner::new(
         task,
         repo,
@@ -288,7 +340,8 @@ async fn run_one(
         store.clone(),
         cancel_rx,
         attempt_counter,
-    );
+    )
+    .with_score_weights(weights);
     if cfg.adaptive_retry {
         runner = runner.with_adaptive_retry();
     }

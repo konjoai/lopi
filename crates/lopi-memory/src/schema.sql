@@ -92,6 +92,40 @@ CREATE TABLE IF NOT EXISTS lessons (
     created_at  TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_lessons_repo_created ON lessons(repo_path, created_at DESC);
+
 -- Sprint I-B: composite weighted score per attempt (pass_rate minus evolved penalties).
 -- NULL = no annotated patterns were available when the attempt ran.
 ALTER TABLE attempts ADD COLUMN weighted_score REAL;
+
+-- Sprint M: KCQF quality check run ledger.
+-- Each row = one execution of `lopi gap-fill` or `lopi check`.
+-- Drives coverage trend: is the spec getting healthier over time?
+CREATE TABLE IF NOT EXISTS quality_check_runs (
+    id          TEXT PRIMARY KEY,
+    repo_path   TEXT NOT NULL,
+    spec_items  INTEGER NOT NULL DEFAULT 0,
+    passing     INTEGER NOT NULL DEFAULT 0,
+    failing     INTEGER NOT NULL DEFAULT 0,
+    gaps        INTEGER NOT NULL DEFAULT 0,
+    score       REAL NOT NULL DEFAULT 0.0,
+    run_at      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_quality_repo_run ON quality_check_runs(repo_path, run_at DESC);
+
+-- Sprint O: GitHub App installation ledger.
+-- One row per customer per GitHub App installation event.
+-- customer_id is derived from the GitHub account/org that installed the App.
+CREATE TABLE IF NOT EXISTS github_installations (
+    id              TEXT PRIMARY KEY,
+    installation_id INTEGER NOT NULL UNIQUE,
+    customer_id     TEXT NOT NULL,
+    account_login   TEXT NOT NULL,
+    account_type    TEXT NOT NULL CHECK(account_type IN ('User', 'Organization')),
+    access_token    TEXT,
+    token_expires   TEXT,
+    status          TEXT NOT NULL CHECK(status IN ('active', 'suspended', 'deleted')) DEFAULT 'active',
+    installed_at    TEXT NOT NULL,
+    updated_at      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_installations_customer ON github_installations(customer_id);
+CREATE INDEX IF NOT EXISTS idx_installations_login ON github_installations(account_login);

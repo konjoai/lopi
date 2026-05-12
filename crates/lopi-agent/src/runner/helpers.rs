@@ -1,8 +1,5 @@
-use super::{postmortem, AgentRunner};
-use crate::claude::MODEL_HAIKU;
-use crate::stability::StabilityVerdict;
+use super::AgentRunner;
 use lopi_core::{AgentEvent, ScoreWeights, TaskStatus};
-use lopi_memory::StabilityRecord;
 
 impl AgentRunner {
     /// Load evolved `ScoreWeights` from the memory store's annotation signal.
@@ -53,121 +50,6 @@ impl AgentRunner {
         });
     }
 
-    /// Sprint H — run the failure post-mortem if both adaptive retry and a
-    /// direct-API client are configured. Best-effort; on any error we log
-    /// a warning and continue. The derived constraint is persisted to the
-    /// patterns table with `derived_from_postmortem = 1`.
-    pub(super) async fn run_postmortem_if_configured(&self) {
-        let Some(client) = self.api_client.as_ref() else {
-            return;
-        };
-        let Some(error_log) = self.last_error.as_deref() else {
-            return;
-        };
-
-        self.log("🧠 running failure post-mortem…");
-        let outcome = postmortem::run_postmortem_quiet(
-            client,
-            self.limiter.as_ref(),
-            self.breaker.as_ref(),
-            MODEL_HAIKU,
-            &self.task.goal,
-            error_log,
-        )
-        .await;
-
-        let Some(outcome) = outcome else {
-            return;
-        };
-
-        if let Some(store) = &self.store {
-            match store
-                .insert_postmortem_pattern(&self.task.goal, &outcome.constraint)
-                .await
-            {
-                Ok(id) => {
-                    self.log(format!("🧠 post-mortem pattern saved [{}]", &id[..8]));
-                    self.log(format!("    constraint: {}", outcome.constraint));
-                    self.maybe_propose_self_modify(store).await;
-                }
-                Err(e) => {
-                    self.warn(format!("post-mortem persist failed: {e}"));
-                }
-            }
-        } else {
-            self.log(format!("🧠 post-mortem constraint: {}", outcome.constraint));
-        }
-    }
-
-    /// Layer 5 stability pre-flight. Generates N plans, measures variance,
-    /// persists the ledger entry, and returns `Some(TaskStatus::Failed)` if
-    /// the harness blocks this run. Returns `None` when the gate passes
-    /// (Stable or Warning) or when no harness is configured.
-    pub(super) async fn run_stability_preflight(&self) -> Option<TaskStatus> {
-        let harness = self.stability_harness.as_ref()?;
-
-        self.log(format!(
-            "🔬 stability gate: generating {} plan samples…",
-            harness.config.n_samples
-        ));
-
-        let verdict = match harness.assess(&self.task).await {
-            Ok(v) => v,
-            Err(e) => {
-                self.warn(format!(
-                    "stability harness failed ({e}); proceeding without gate"
-                ));
-                return None;
-            }
-        };
-
-        let verdict_str = verdict.as_str();
-        let variance = verdict.variance_score();
-        let n = match &verdict {
-            StabilityVerdict::Stable { n_samples, .. }
-            | StabilityVerdict::Warning { n_samples, .. }
-            | StabilityVerdict::Unstable { n_samples, .. } => *n_samples,
-        };
-
-        self.log(format!(
-            "🔬 stability: {verdict_str} (variance={variance:.3}, samples={n})"
-        ));
-
-        if matches!(verdict, StabilityVerdict::Warning { .. }) {
-            self.warn(format!(
-                "⚠️  patch stability warning — variance={variance:.3} exceeds stable threshold; \
-                 proceeding but flagging for review"
-            ));
-        }
-
-        if let Some(store) = &self.store {
-            let rec = StabilityRecord {
-                task_goal: &self.task.goal,
-                model: &harness.config.model,
-                n_samples: n,
-                variance_score: variance,
-                verdict: verdict_str,
-                semantic_flags: &[],
-                accepted: !matches!(verdict, StabilityVerdict::Unstable { .. }),
-            };
-            if let Err(e) = store.save_stability_entry(rec).await {
-                self.warn(format!("stability ledger write failed: {e}"));
-            }
-        }
-
-        if matches!(verdict, StabilityVerdict::Unstable { .. }) {
-            let reason = format!(
-                "StabilityGateBlocked: variance={variance:.3} (>{:.2}) with {n} samples — \
-                 human review required before proceeding",
-                harness.config.warning_threshold
-            );
-            self.log(format!("🚫 {reason}"));
-            Some(TaskStatus::Failed { reason })
-        } else {
-            None
-        }
-    }
-
     /// Sprint J-A — run the KCQF quality scanner after a successful task.
     ///
     /// Calls `lopi_kcqf::scan_diff` on the repo root (clippy always; coverage
@@ -195,28 +77,6 @@ impl AgentRunner {
             }
             Err(e) => {
                 self.warn(format!("KCQF scan failed (non-fatal): {e}"));
-            }
-        }
-    }
-
-    /// Emit `SelfModifyProposed` if recent post-mortem count crosses the threshold.
-    /// Best-effort — any error is logged and ignored.
-    async fn maybe_propose_self_modify(&self, store: &lopi_memory::MemoryStore) {
-        const THRESHOLD: i64 = 3;
-        const WINDOW_HOURS: i64 = 24;
-
-        match store.recent_postmortem_count(WINDOW_HOURS).await {
-            Ok(count) if count >= THRESHOLD => {
-                let goal = format!(
-                    "Self-improve: {count} failure patterns detected in the last {WINDOW_HOURS}h"
-                );
-                self.bus
-                    .send(AgentEvent::SelfModifyProposed { goal: goal.clone() });
-                self.log(format!("🔔 SelfModifyProposed emitted ({count} patterns)"));
-            }
-            Ok(_) => {}
-            Err(e) => {
-                tracing::warn!(error = %e, "recent_postmortem_count failed");
             }
         }
     }

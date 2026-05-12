@@ -1,6 +1,9 @@
-//! GitHub webhook receiver — ingests CI-failure and PR-review events and injects tasks into the lopi queue.
+//! GitHub webhook receiver — ingests CI-failure, PR-review, and issue events,
+//! runs automated triage, and injects tasks into the lopi queue.
 
 /// GitHub webhook axum router and event handlers.
 pub mod github;
-/// Start the GitHub webhook HTTP server on the given address.
-pub use github::serve;
+pub(crate) mod issue;
+pub(crate) mod issue_triage;
+
+pub use github::{serve, TriageConfig};

@@ -21,15 +21,17 @@ Research makes the failure mode measurable:
 
 ---
 
-## The Three Walls
+## The Four Walls
 
 ```
+Wall 0: End-of-Prompt Sweep ← after every code-modifying Claude response
 Wall 1: Pre-Commit Hook     ← local, fast (< 60s), blocks the commit
 Wall 2: CI Gate             ← GitHub Actions, blocks the PR merge
 Wall 3: Konjo Review Agent  ← Claude Opus in a separate session, blocks the merge
 ```
 
-Every commit must pass Wall 1. Every PR must pass Wall 2. Every merge to main must pass Wall 3.
+Every response that touches code must pass Wall 0. Every commit must pass Wall 1.
+Every PR must pass Wall 2. Every merge to main must pass Wall 3.
 No bypass flags. No `--no-verify`. No `skip-review` comments.
 
 ---
@@ -55,6 +57,39 @@ All thresholds are enforced by CI. "Hard Block" = PR cannot merge.
 | Silent error swallowing | 0 | 0 | — | grep / ast |
 | Known CVEs in dependencies | 0 | 0 | cargo-audit | safety / pip-audit |
 | License violations | 0 | 0 | cargo-deny | — |
+
+---
+
+## Wall 0: End-of-Prompt Cleanup Sweep
+
+**File:** `.konjo/scripts/konjo_cleanup.py`
+**Trigger:** After every Claude response that wrote, edited, or deleted source code
+**Rule:** `.claude/rules/cleanup-sweep.md` (loaded automatically for every conversation)
+
+**What it checks — all zero-tolerance:**
+
+| Code | Violation | Fix |
+|------|-----------|-----|
+| `FN-SIZE` | Function body > 50 lines | Extract a helper |
+| `F-SIZE` | File > 500 lines | Split the module |
+| `CC-HIGH` | ~branch count > 12 (cognitive complexity proxy) | Reduce nesting |
+| `DEFERRED` | TODO / FIXME / HACK in comment | Fix or delete |
+| `UNSAFE` | `unwrap()`/`expect()`/`panic!()` in non-test Rust | Use `?` |
+| `PRINT` | `println!`/`dbg!`/`eprintln!` in non-test Rust | Use `tracing::` |
+| `NO-SAFETY` | `unsafe` without `// SAFETY:` comment | Document invariant |
+| `BARE-EXCEPT` | `except:` without logging in Python | Log and re-raise |
+| `MUT-DEFAULT` | Mutable default arg in Python | Use `None` |
+| `DEAD-CODE` | 3+ consecutive commented-out lines | Delete it |
+
+**Usage:**
+```bash
+python3 .konjo/scripts/konjo_cleanup.py --changed   # all modified files
+python3 .konjo/scripts/konjo_cleanup.py --staged    # staged files only
+python3 .konjo/scripts/konjo_cleanup.py src/foo.rs  # explicit files
+```
+
+Wall 0 catches violations the moment they're introduced — before commit, before CI, before review.
+It is the fastest and cheapest gate. It is non-negotiable.
 
 ---
 
@@ -149,6 +184,7 @@ repo/
 │   ├── hooks/
 │   │   └── pre-commit          ← Wall 1: the hook script
 │   ├── scripts/
+│   │   ├── konjo_cleanup.py    ← Wall 0: end-of-prompt sweep (10 checks)
 │   │   ├── konjo_review.py     ← Wall 3: adversarial review (Claude Opus)
 │   │   ├── dry_check.py        ← DRY detector (cross-language, stdlib-only)
 │   │   └── install-hooks.sh    ← Bootstrap installer

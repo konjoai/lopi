@@ -1,7 +1,9 @@
 mod api_plan;
 mod helpers;
 pub mod postmortem;
+mod postmortem_runner;
 mod run_loop;
+mod stability_runner;
 
 use crate::api_client::AnthropicClient;
 use crate::stability::{StabilityConfig, StabilityHarness};
@@ -80,6 +82,8 @@ pub struct AgentRunner {
     /// Loaded once per task run; defaults to `ScoreWeights::default()` when no
     /// annotated patterns are available.
     pub(super) score_weights: ScoreWeights,
+    /// Phase 5b — lessons learned from past patterns (injected into planning prompt).
+    pub(super) task_lessons: Vec<String>,
     /// Sprint J-A — when true, run the KCQF quality scanner after each successful
     /// task. Violations become maintenance tasks accumulated here and drained by
     /// the pool after `run()` returns.
@@ -123,6 +127,7 @@ impl AgentRunner {
             attempts_made: 0,
             turn_count: 0,
             score_weights: ScoreWeights::default(),
+            task_lessons: vec![],
             kcqf_enabled: false,
             maintenance_tasks: Vec::new(),
         }
@@ -155,6 +160,7 @@ impl AgentRunner {
             attempts_made: 0,
             turn_count: 0,
             score_weights: ScoreWeights::default(),
+            task_lessons: vec![],
             kcqf_enabled: false,
             maintenance_tasks: Vec::new(),
         };
@@ -192,6 +198,15 @@ impl AgentRunner {
     #[must_use]
     pub const fn with_adaptive_retry(mut self) -> Self {
         self.adaptive_retry = true;
+        self
+    }
+
+    /// Phase 5b — wire custom score weights for this task's retry loop.
+    /// Allows the pool to adjust lint/diff penalties based on user-tuned
+    /// preferences or derived from past attempt success patterns.
+    #[must_use]
+    pub fn with_score_weights(mut self, weights: ScoreWeights) -> Self {
+        self.score_weights = weights;
         self
     }
 

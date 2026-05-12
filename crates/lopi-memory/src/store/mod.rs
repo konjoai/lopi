@@ -62,6 +62,30 @@ impl MemoryStore {
         })
     }
 
+    /// Open an isolated per-customer database.
+    ///
+    /// Creates `{base_dir}/{customer_id}/lopi.db` — each customer gets a
+    /// separate SQLite file so pattern stores, lessons, and quality runs
+    /// cannot bleed across tenants.
+    ///
+    /// # Errors
+    /// Returns `Err` if the directory cannot be created or the database cannot be opened.
+    pub async fn open_for_customer(base_dir: impl AsRef<Path>, customer_id: &str) -> Result<Self> {
+        // Sanitise: only alphanumeric + hyphen/underscore allowed in customer_id.
+        let safe_id: String = customer_id
+            .chars()
+            .map(|c| {
+                if c.is_alphanumeric() || c == '-' || c == '_' {
+                    c
+                } else {
+                    '_'
+                }
+            })
+            .collect();
+        let db_path = base_dir.as_ref().join(&safe_id).join("lopi.db");
+        Self::open(db_path).await
+    }
+
     /// Open an in-memory `SQLite` database — useful for tests.
     ///
     /// # Errors
@@ -176,36 +200,18 @@ pub struct TaskRow {
     pub completed_at: Option<String>,
 }
 
-/// A row from the `patterns` table.
-#[derive(Debug, sqlx::FromRow)]
-pub struct PatternRow {
-    /// UUID string.
-    pub id: String,
-    /// Space-separated keyword fingerprint of the goal.
-    pub goal_keywords: String,
-    /// The constraint string (imperative, ≤ 200 chars).
-    pub successful_constraints: Option<String>,
-    /// Exponential moving average of attempt count.
-    pub avg_attempts: Option<f64>,
-    /// Success rate in `[0, 1]`.
-    pub success_rate: Option<f64>,
-    /// ISO-8601 timestamp of the last update.
-    pub last_seen: String,
-    /// `1` when derived from a post-mortem reflection; `0` when mined from statistics.
-    #[sqlx(default)]
-    pub derived_from_postmortem: i64,
-    /// User annotation: `'approved'`, `'rejected'`, or `NULL`.
-    #[sqlx(default)]
-    pub user_annotation: Option<String>,
-}
-
+mod installations;
 mod lessons;
 mod patterns;
+mod quality;
 mod stability;
 mod tasks;
 
+// Re-export helpers for tests (tests.rs uses `use super::*`).
+pub use installations::InstallationRow;
 pub use lessons::LessonRow;
-pub use patterns::{jaccard_similarity, keyword_fingerprint};
+pub use patterns::{jaccard_similarity, keyword_fingerprint, PatternRow};
+pub use quality::{QualityRunRecord, QualityRunRow};
 pub use stability::{StabilityEntry, StabilityRecord};
 
 #[cfg(test)]

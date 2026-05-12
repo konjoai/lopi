@@ -119,15 +119,15 @@ function startMockData() {
     });
   }
 
-  // Hydrate repo + branch after snapshot
+  // Emit task_started for each agent so branch/repo are set in the store
   for (const seed of seedAgents) {
     if (messageHandler) {
       messageHandler({
-        type: 'log_line',
+        type: 'task_started',
         task_id: seed.task_id,
-        line: `Branch: ${seed.branch}, Repo: ${seed.repo}`,
-        level: 'debug',
-        ts: new Date().toISOString()
+        attempt: 1,
+        branch: seed.branch,
+        repo: seed.repo
       });
     }
   }
@@ -176,7 +176,7 @@ function startMockData() {
           pressure,
           activity,
           tokens_per_sec: activity * 80,
-          cost_usd: (mockTick * 0.0001 * activity).toFixed(6) as unknown as number
+          cost_usd: mockTick * 0.00015
         });
       }
 

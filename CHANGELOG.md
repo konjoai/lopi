@@ -1,5 +1,296 @@
 # Changelog
 
+## [0.17.0] — Sprint O: GitHub App Server Scaffold 🔐
+
+### Added
+
+**`crates/lopi-app/`** — new crate: GitHub App OAuth + Stripe webhook server
+- `AppConfig::from_env()` — loads `GITHUB_APP_ID`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_REDIRECT_URI`, `GITHUB_WEBHOOK_SECRET`, `STRIPE_WEBHOOK_SECRET` at startup; gracefully degrades when absent
+- `GET /app/install` — redirects to GitHub App installation page
+- `GET /app/callback` — exchanges OAuth code for access token; stub for customer record creation
+- `POST /app/webhook` — HMAC-verified GitHub App installation events; on `created`: upserts installation, provisions per-customer `MemoryStore`; on `deleted`: marks installation inactive
+- `POST /stripe/webhook` — HMAC-SHA256 + timestamp replay protection (300s window); dispatches on `customer.subscription.{created,updated,deleted}`
+- 6 unit tests (HMAC validation for both GitHub and Stripe)
+
+**`crates/lopi-memory/src/store/installations.rs`** — GitHub App installation ledger
+- `github_installations` table: `installation_id`, `customer_id`, `account_login`, `account_type`, `status`, timestamps
+- `upsert_installation(id, login, type)` — idempotent; handles reinstalls
+- `delete_installation(id)` — marks as `'deleted'`
+- `customer_for_installation(id)` — lookup by installation_id (active only)
+- `list_installations()` — all active installations
+- `sanitise_customer_id(login)` — lowercase, alphanumeric + hyphen only
+- 5 unit tests: install/delete/reinstall/list/sanitise
+
+**`lopi serve-app` CLI command** — start the lopi-app server
+- `lopi serve-app [--port 3002] [--host …]`
+- Prints credential status at startup: `✅ configured` or `⚠️ missing` per service
+- Provisions `MemoryStore` from the shared `db_path()`
+
+**`web/src/routes/onboard/+page.svelte`** — customer onboarding page
+- 3-step install flow: install App → `lopi spec --save` → `lopi watch-gap-fill`
+- "Install GitHub App" button → `lopi serve-app` install endpoint
+- Pricing table: Starter $299/mo · Growth $999/mo · Enterprise $4,999/mo
+
+### Fixed — File budget
+**`store/tests.rs`** (504 lines) split into `tests.rs` (190) + `tests_extra.rs` (322)
+
+### Tests
+- 5 installations + 6 lopi-app tests (11 new)
+- Workspace: 408 → **419 passing**, 0 failing. 0 clippy warnings.
+
+---
+
+## [0.16.0] — Sprint N: Trust Calibration + Per-Customer Isolation 🎯
+
+### Added
+
+**Trust calibration — `compute_weight_adjustments()` is now live**
+- `crates/lopi-orchestrator/src/pool.rs`: `compute_weight_adjustments()` is now `async` and actually calls `store.compute_weight_adjustments()` — pulling score weights from annotated pattern history on every task dispatch
+- Approved patterns that needed fewer attempts tighten lint/diff penalties; rejected patterns loosen them. Signal clamped to [-2.0, 2.0] × 0.005 → delta applied to weights
+- Falls back to defaults gracefully when no annotations exist or the store is absent
+
+**`lopi trust` CLI command** (`src/trust_commands.rs`)
+- Shows approved vs rejected pattern counts and avg-attempt stats
+- Prints current score weight adjustments (live from the DB)
+- Gives direction signal: "tightening / loosening / balanced"
+
+**`MemoryStore::open_for_customer(base_dir, customer_id)`** — per-customer isolated store
+- Creates `{base_dir}/{customer_id}/lopi.db` — one SQLite file per tenant
+- Sanitises `customer_id`: only `[A-Za-z0-9-_]` allowed; unsafe chars become `_`
+- 2 integration tests: isolation verified by cross-store task count, path traversal sanitised
+
+**`crates/lopi-memory/src/store/patterns.rs`** — extracted from mod.rs
+- All pattern operations: `jaccard_similarity`, `keyword_fingerprint`, `find_similar_patterns`, `load_patterns`, `find_pattern_by_id_prefix`, `insert_postmortem_pattern`, `mine_patterns`, `annotate_pattern`, `load_annotated_patterns`, `compute_weight_adjustments`
+- `PatternRow` struct moved here
+- store/mod.rs: 557 → **310 lines** ✅
+
+**`src/task_commands.rs`** — Watch/Tail/Dock/Cancel extracted from main.rs
+- main.rs: 511 → **448 lines** ✅
+
+### Architecture notes
+
+Trust calibration closes the learning loop: the human annotates patterns → weights adjust → agent gets scored differently on next attempt → better patterns get approved. Over 50–200 annotated patterns, the weights converge to reflect what this specific human values. Per-customer store isolation is the SaaS tenancy primitive — each customer's pattern history, lessons, and quality runs are fully separated.
+
+### Tests
+- 2 new per-customer store isolation tests
+- Workspace: 405 → **408 passing**, 0 failing. 0 clippy warnings.
+
+---
+
+## [0.15.0] — Sprint M: Continuous Loop + Multi-Repo 🔄
+
+### Added
+
+**`crates/lopi-memory/src/store/quality.rs`** — quality check run ledger
+- `quality_check_runs` table: `spec_items`, `passing`, `failing`, `gaps`, `score`, `run_at`
+- `MemoryStore::save_quality_run(QualityRunRecord)` — persist one run with auto-computed score
+- `MemoryStore::load_quality_trend(repo_path, limit)` — fetch runs ordered by `run_at DESC`
+- `MemoryStore::quality_trend_delta(repo_path)` — (latest_score, prev_score) pair for trend arrow
+- `QualityRunRow::improved_vs(&prev)` — boolean trend comparison
+- 5 unit tests
+
+**`lopi gap-fill` — now persists quality data + prints trend**
+- After each run: saves a `QualityRunRow` to SQLite via `save_quality_run()`
+- Loads previous run and prints coverage trend: `coverage: 82% ↑ (was 76%)`
+- Returns `QualitySnapshot` so the daemon loop can log without re-querying
+- New `quiet: bool` param — suppresses output when called from the daemon
+
+**`lopi watch-gap-fill` — Kitchen Loop daemon**
+- `lopi watch-gap-fill [--repo .] [--interval 60] [--sail-url ...] [--run-now]`
+- Runs gap-fill every N minutes (default 60), persisting results and queuing fix tasks
+- `--run-now`: triggers one immediate run before the loop starts
+- Ctrl-C cleanly exits the loop
+
+**`lopi sail --repos` — multi-repo mode**
+- `--repos repo1,repo2,…` — additional repo paths alongside the primary `--repo`
+- Each extra repo gets its own `AgentPool` dispatch loop sharing the shared queue and bus
+- Pool already routes by `task.repo_path` — multi-repo just adds parallel dispatch
+- Banner prints all repos at startup
+
+**`/api/quality/trend`** — quality trend web endpoint
+- `GET /api/quality/trend?repo=<path>&limit=<n>` — returns quality check run history
+- Falls back to `AppState.repo_path` when `repo` query param is absent
+
+### Architecture notes
+
+The `watch-gap-fill` daemon is the mechanical basis of the Kitchen Loop. Each iteration runs the full spec → test → gap detection → queue pipeline. As fix tasks complete and get merged, the next iteration finds fewer gaps — driving the autonomous quality ratchet. The SQLite trend table makes the improvement measurable rather than impressionistic.
+
+Multi-repo dispatch works because `task.repo_path` is already a field on `Task` and the pool already routes on it. Adding `--repos` spawns parallel dispatch goroutines, each bound to one repo path. No new queue needed.
+
+### Tests
+- 5 new quality.rs tests + 2 gap_fill_commands snapshot tests
+- Workspace: 399 → **405 passing**, 0 failing. 0 clippy warnings.
+
+---
+
+## [0.14.0] — Sprint L: Synthetic User + File Budget Fixes 🔬
+
+### Added
+
+**`lopi-spec/src/test_runner.rs`** — test run parser
+- `run_tests(repo_path)` — auto-detects `cargo test` vs `pytest`, runs with `--no-fail-fast`, captures pass/fail per test name
+- `parse_cargo_output(output)` — parses `test name ... ok/FAILED` lines into `Vec<TestRunResult>`
+- `parse_pytest_output(output)` — parses `file::test_name PASSED/FAILED` lines
+- `coverage_gaps(spec_items, results)` — returns spec items with no passing run (failing tests + never-ran tests)
+- `TestRunResult { name, passed, error }` — serialisable result record
+- 8 unit tests (cargo format, pytest format, gap detection)
+
+**`src/gap_fill_commands.rs`** — `lopi gap-fill`
+- Loads spec surface (cached or live) → runs tests → computes coverage gaps → queues fix tasks via `POST /api/tasks` on a running `lopi sail` server
+- `--dry-run`: reports gaps without queuing
+- `--sail-url`: configurable target (default `http://127.0.0.1:3000`)
+
+**`lopi check --fail-on-violations`** — CI-compatible exit code
+- Exits with `std::process::exit(1)` when file-size or spec-drift violations are found
+- Zero means clean; non-zero blocks CI pipeline
+
+### Fixed — File Budget Violations (all three files were > 500 lines)
+
+**`crates/lopi-agent/src/runner/run_loop.rs`**: 651 → 480 lines
+- Extracted `run_stability_preflight` + `save_stability_ledger_entry` → new `stability_runner.rs`
+- Extracted `run_postmortem_if_configured` + `persist_postmortem_outcome` → new `postmortem_runner.rs`
+- Moved `status()` + `emit_turn_metrics()` to `mod.rs` (always-available utilities)
+
+**`crates/lopi-ui/src/web/mod.rs`**: 593 → 372 lines
+- Extracted all 9 route handlers → new `web/handlers.rs`
+- `types` module promoted to `pub(crate)` for cross-file access
+
+**`src/main.rs`**: 560 → 486 lines
+- Extracted `Commands::Run` (97-line agent loop) → new `src/run_command.rs`
+- `is_self_modify_attempt`, `status_label` promoted to `pub(crate)`
+
+### Tests
+- 8 new `lopi-spec::test_runner` tests
+- Workspace: 390 → **399 passing**, 0 failing
+- 0 clippy warnings
+
+---
+
+## [0.13.0] — Sprint K: Spec Surface + KCQF 📋
+
+### Added
+
+**`crates/lopi-spec`** — new crate: spec surface extractor
+- `SpecSurface::extract(repo_path)` — walks all `.rs` and `.py` files, extracts test function names and doc comments
+- **Rust** (`rust_extractor.rs`): `#[test]`, `#[tokio::test]`, `#[async_std::test]`, `#[rstest]`, `#[proptest]`; captures preceding `///` doc comments as description
+- **Python** (`python_extractor.rs`): `def test_*` and `async def test_*`; captures inline docstring as description
+- `SpecSurface::save(repo)` — writes `.lopi/spec_surface.json` as a cacheable baseline
+- `SpecSurface::load(repo)` — loads cached surface (returns `None` when not yet saved)
+- `SpecSurface::top_descriptions(n)` — returns top N items as TOON-ready strings
+- `SpecItem { name, description, kind, file, line }` · `SpecKind: RustTest | PythonTest`
+- 24 unit tests across `lib.rs`, `rust_extractor.rs`, `python_extractor.rs`
+
+**`src/spec_commands.rs`** — two new CLI commands
+- `lopi spec [--repo .] [--export] [--save]` — extract + display spec surface as a table, optionally cache to `.lopi/spec_surface.json`
+- `lopi check [--repo .]` — KCQF quality analysis:
+  - File-size gate: reports any `.rs` / `.py` file > 500 lines (with path + line count)
+  - Spec drift gate: compares live extraction against the cached baseline; lists newly removed tests as regression risks
+- 4 unit tests in `spec_commands.rs` (size violations, target-skip, clean pass)
+
+**Spec surface injection into planning** (`lopi-agent/src/runner/run_loop.rs`)
+- At each run, loads `.lopi/spec_surface.json` if present; injects top 10 items as additional constraints in the planning prompt alongside patterns and lessons
+- Log line: `📋 spec surface: N items loaded`
+
+**`/api/spec` web endpoint** (`lopi-ui/src/web/mod.rs`)
+- `GET /api/spec` — returns cached spec surface or runs live extraction; JSON with `count`, `rust_files_scanned`, `python_files_scanned`, `extracted_at`, `items`
+- `AppState::new_with_repo(...)` — new variant that records `repo_path` for spec serving
+- `serve_with_repo(...)` — new variant of `serve()` that passes repo_path into AppState; called from `sail_commands::run()` so the spec API reflects the actual sailed repo
+
+### Architecture notes
+
+Spec surface is the ground truth for the self-improvement loop. Injecting the top 10 descriptions into the planning prompt lets Claude know what the repo already claims to do — reducing the risk of agents writing tests that contradict or duplicate existing spec items. The spec drift check in `lopi check` is the first automated regression guard: any test that disappears between runs is surfaced before it becomes a silent regression.
+
+### Tests
+
+- 24 lopi-spec tests
+- 4 spec_commands tests
+- Workspace: 362 → **390 passing**, 0 failing
+
+---
+
+## [0.12.0] — Sprint J: GitHub Issue Loop 🪝
+
+### Added
+
+**`crates/lopi-github`** — new crate: thin GitHub REST API write client
+- `GitHubClient::new(token)` — constructs a reqwest-based client with `User-Agent: lopi/<version>`
+- `GitHubClient::post_comment(owner, repo, issue_number, body)` — posts a comment on any issue or PR
+- `GitHubClient::add_labels(owner, repo, issue_number, labels)` — adds one or more labels
+
+**`crates/lopi-webhook/src/issue_triage.rs`** — Haiku-powered issue classifier
+- `IssueCategory: Bug | Feature | Question | WontFix` — four-way classification
+- `IssueTriage { category, confidence, summary }` — structured triage output
+- `classify_issue(client, limiter, breaker, model, title, body)` — calls Haiku with a byte-stable system prompt (`cache_control: ephemeral`) for cross-issue cache hits; cost ~$0.0003/issue
+- `parse_triage_response(raw)` — defensive three-line parser: category, confidence (clamped 0–1), ≤120-char summary
+- `format_triage_comment(triage, repo)` — formatted Markdown comment including category icon, confidence %, summary, and action description
+- 14 unit tests covering parsing, edge cases, label mapping, comment formatting
+
+**`crates/lopi-webhook/src/issue.rs`** — issue handler
+- `IssuePayload` — parsed issue fields: owner, repo, full_name, number, title, body, labels
+- `IssuePayload::has_lopi_fix_label()` — case-insensitive `lopi:fix` label check
+- `extract_from_json(payload, full_name)` — zero-copy extraction from raw webhook JSON
+- `spawn_triage(...)` — fires a Tokio background task: classify → comment → label → optionally queue fix task
+- Auto-queue threshold: Bug + confidence ≥ 0.7, OR any issue with `lopi:fix` label (overrides classification)
+
+**`crates/lopi-webhook/src/github.rs`** — extended webhook router
+- `TriageConfig { api_client, github, limiter, breaker, model }` — optional triage configuration passed to `serve()`
+- `serve(queue, secret, addr, triage: Option<TriageConfig>)` — updated signature; triage is opt-in, webhook returns 200 immediately while triage runs in background
+- Routes `issues` event `action == "opened"` and `action == "labeled"` to `issue::spawn_triage`
+
+**`src/main.rs`** — new CLI command
+- `lopi serve-webhooks [--port 3001] [--host ...] [--webhook-secret ...] [--github-token ...] [--anthropic-key ...]`
+- All credentials also read from `LOPI_WEBHOOK_SECRET`, `GITHUB_TOKEN`, `ANTHROPIC_API_KEY` env vars
+- Triage enabled only when both `GITHUB_TOKEN` and `ANTHROPIC_API_KEY` are set; gracefully degrades to comment-only webhook server otherwise
+
+### Architecture notes
+
+The webhook server runs independently from `lopi sail` — two separate processes with separate ports (3001 vs 3000). Webhook returns 200 immediately; all AI work (Haiku triage call, GitHub API write) happens in a spawned Tokio task. If either fails, a `tracing::warn!` is emitted and the issue is skipped — webhook liveness is never blocked by external API calls.
+
+Kitchen Loop analogy: this is the inbound side of the loop. Issues arrive from GitHub → lopi triages and queues → agents fix and open PRs → reviewer merges → patterns learned. Combined with Sprint I's lesson injection, the self-improvement cycle is now end-to-end.
+
+### Tests
+- 2 lopi-github tests (client construction)
+- 14 lopi-webhook issue_triage tests
+- 2 lopi-webhook issue.rs tests
+- 18 new tests total. Workspace: 313 → **331 passing**, 0 failing.
+
+---
+
+## [0.11.0] — Sprint I: Phase 5b Self-Improvement Second Wave
+
+### Added
+
+**Score weights wiring** (`crates/lopi-agent/src/runner/mod.rs`)
+- `AgentRunner::score_weights: ScoreWeights` — field; defaults to `ScoreWeights::default()`
+- `AgentRunner::task_lessons: Vec<String>` — lessons for injection into the API planning path
+- `AgentRunner::with_score_weights(weights)` — chainable builder
+- Run loop now logs weighted score alongside raw score: `📊 score: pass=X% lint=Y diff=ZL (weighted=W.WW)`
+- Fixed-score path also logs weighted score after the in-place fix attempt
+
+**`compute_weight_adjustments()` in pool.rs** — free function that computes per-task score weights before handing off to the runner. Placeholder: returns defaults. Phase 5b.1 will query approved patterns for weight tuning.
+
+**Lesson + Pattern injection** (`crates/lopi-agent/src/claude.rs`, `run_loop.rs`)
+- `ClaudeCode::patterns: Vec<(String, String)>` + `ClaudeCode::with_patterns()` — tabular (keywords, constraints) pairs fed to TOON encoder at site 2
+- `ClaudeCode::lessons: Vec<(String, String)>` + `ClaudeCode::with_lessons()` — (category, content) lessons from the lessons table
+- `plan()` now passes both to `encode_task_context()` — TOON renders them as §9.3 tabular rows (saves ~158 tokens/attempt)
+- `run_loop.rs` single memory query now builds **both** string constraints (legacy) **and** tabular pattern pairs; loads lessons via `store.load_lessons(repo_path, 10)` and stores them in `self.task_lessons` for the API path
+- Extracted `plan_streaming()` → new `crates/lopi-agent/src/claude_stream.rs` (claude.rs: 474 → 408 lines)
+
+**Post-mortem lessons** (`crates/lopi-agent/src/runner/run_loop.rs`)
+- After `insert_postmortem_pattern()` succeeds, also calls `store.save_lesson(repo_path, "recovery", constraint, Some(task_id), 1.0)` — makes the constraint discoverable in future lesson injections
+
+**API plan lessons** (`crates/lopi-agent/src/runner/api_plan.rs`)
+- `build_user_prompt(task, last_error, lessons)` — appends `# Lessons from past patterns` section when lessons are non-empty
+- 1 new test: `user_prompt_includes_lessons_when_provided`
+
+**CLI annotate** (`src/main.rs`)
+- `lopi learn annotate <id-prefix> <approved|rejected>` — validates annotation, resolves id prefix via `find_pattern_by_id_prefix`, calls `annotate_pattern()`
+
+### Tests
+- 1 new api_plan test. Workspace: 261 → **313 passing**, 0 failing.
+
+---
+
 ## [0.10.0] — Sprint H: Self-Improvement Engine 🧠
 
 ### Added

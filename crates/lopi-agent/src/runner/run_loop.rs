@@ -5,6 +5,7 @@ use anyhow::Result;
 use lopi_context::Phase;
 use lopi_core::{AgentEvent, Attempt, TaskStatus};
 use lopi_git::GitManager;
+use lopi_spec::SpecSurface;
 use std::sync::atomic::Ordering;
 
 impl AgentRunner {
@@ -28,40 +29,85 @@ impl AgentRunner {
 
         let git = GitManager::new(&self.repo_path)?;
 
-        // Seed planning prompt with patterns from memory.
+        // Seed planning prompt with patterns and lessons from memory.
         // Site 2 (TOON biggest win): PatternRow[] is a uniform tabular array.
         // encode_task_context() in claude.rs renders it as TOON §9.3 tabular,
         // saving ~158 tokens per attempt vs JSON (grows linearly with pattern count).
-        let mut extra_constraints: Vec<String> = if let Some(store) = &self.store {
+        let (mut extra_constraints, pattern_pairs, lessons_data) = if let Some(store) = &self.store
+        {
             match store.find_similar_patterns(&self.task.goal).await {
                 Ok(patterns) if !patterns.is_empty() => {
                     self.log(format!(
                         "🧠 seeding from {} similar past patterns",
                         patterns.len()
                     ));
-                    // Collect (keywords, constraints) pairs for the TOON tabular encoder.
-                    // These are passed to encode_task_context() inside ClaudeCode::plan().
-                    patterns
+                    // Build three outputs:
+                    // 1. extra_constraints: string constraints (legacy flat list)
+                    // 2. pattern_pairs: (keywords, constraints) tuples for TOON
+                    // 3. lessons: (category, content) from lessons table
+                    let constraints: Vec<String> = patterns
                         .iter()
                         .take(5)
                         .filter_map(|p| {
-                            let c = p
-                                .successful_constraints
-                                .as_deref()
-                                .unwrap_or("")
-                                .to_string();
-                            if c.is_empty() {
-                                None
-                            } else {
-                                Some(c)
-                            }
+                            p.successful_constraints.as_deref().and_then(|c| {
+                                if c.is_empty() {
+                                    None
+                                } else {
+                                    Some(c.to_string())
+                                }
+                            })
                         })
-                        .collect()
+                        .collect();
+
+                    let pairs: Vec<(String, String)> = patterns
+                        .iter()
+                        .take(5)
+                        .filter_map(|p| {
+                            p.successful_constraints.as_deref().and_then(|c| {
+                                if c.is_empty() {
+                                    None
+                                } else {
+                                    Some((p.goal_keywords.clone(), c.to_string()))
+                                }
+                            })
+                        })
+                        .collect();
+
+                    let lessons = match store
+                        .load_lessons(self.repo_path.to_string_lossy().as_ref(), 10)
+                        .await
+                    {
+                        Ok(rows) => rows
+                            .into_iter()
+                            .map(|row| (row.category, row.content))
+                            .collect(),
+                        Err(e) => {
+                            self.warn(format!("failed to load lessons: {e}"));
+                            vec![]
+                        }
+                    };
+
+                    (constraints, pairs, lessons)
                 }
-                _ => vec![],
+                _ => (vec![], vec![], vec![]),
             }
         } else {
-            vec![]
+            (vec![], vec![], vec![])
+        };
+
+        // Store lessons for use in the API planning path.
+        self.task_lessons = lessons_data
+            .iter()
+            .map(|(_, content)| content.clone())
+            .collect();
+
+        // Load spec surface if cached — inject top 10 items as planning constraints.
+        let spec_constraints: Vec<String> = match SpecSurface::load(&self.repo_path) {
+            Ok(Some(surface)) if !surface.is_empty() => {
+                self.log(format!("📋 spec surface: {} items loaded", surface.len()));
+                surface.top_descriptions(10)
+            }
+            _ => vec![],
         };
 
         // Inject repo-level lessons into planning context. Lessons are general
@@ -91,8 +137,16 @@ impl AgentRunner {
             // Model routing (4.5): route to cheapest model capable of this task's complexity.
             // Escalates to Opus after the first retry failure.
             let model = select_model(&self.task, attempt);
+            // Merge pattern constraints + spec constraints for the planning prompt.
+            let all_constraints: Vec<String> = extra_constraints
+                .iter()
+                .chain(spec_constraints.iter())
+                .cloned()
+                .collect();
             let claude = ClaudeCode::new(&self.repo_path)
-                .with_extra_constraints(extra_constraints.clone())
+                .with_extra_constraints(all_constraints)
+                .with_patterns(pattern_pairs.clone())
+                .with_lessons(lessons_data.clone())
                 .with_model(model);
             tracing::info!(model, attempt, "model selected for attempt");
             // Hard stop: prevent runaway agents from looping past the turn cap.
@@ -320,7 +374,7 @@ impl AgentRunner {
             });
             let weighted = score.weighted(&self.score_weights);
             self.log(format!(
-                "📊 score: pass={:.0}% lint={} diff={}L weighted={:.3}",
+                "📊 score: pass={:.0}% lint={} diff={}L (weighted={:.3})",
                 score.test_pass_rate * 100.0,
                 score.lint_errors,
                 score.diff_lines,
@@ -386,6 +440,14 @@ impl AgentRunner {
                     lint_errors: fixed_score.lint_errors,
                     diff_lines: fixed_score.diff_lines,
                 });
+                let weighted = fixed_score.weighted(&self.score_weights);
+                self.log(format!(
+                    "📊 fixed score: pass={:.0}% lint={} diff={}L (weighted={:.3})",
+                    fixed_score.test_pass_rate * 100.0,
+                    fixed_score.lint_errors,
+                    fixed_score.diff_lines,
+                    weighted
+                ));
                 if fixed_score.passed() {
                     self.log("✅ fix worked — committing…");
                     git.commit_all(&format!("lopi: {}", self.task.goal))
