@@ -25,9 +25,7 @@ impl AgentRunner {
         let verdict = match harness.assess(&self.task).await {
             Ok(v) => v,
             Err(e) => {
-                self.warn(format!(
-                    "stability harness failed ({e}); proceeding without gate"
-                ));
+                self.warn(format!("stability harness failed ({e}); proceeding without gate"));
                 return None;
             }
         };
@@ -40,9 +38,7 @@ impl AgentRunner {
             | StabilityVerdict::Unstable { n_samples, .. } => *n_samples,
         };
 
-        self.log(format!(
-            "🔬 stability: {verdict_str} (variance={variance:.3}, samples={n})"
-        ));
+        self.log(format!("🔬 stability: {verdict_str} (variance={variance:.3}, samples={n})"));
 
         if matches!(verdict, StabilityVerdict::Warning { .. }) {
             self.warn(format!(

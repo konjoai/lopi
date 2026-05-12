@@ -59,10 +59,7 @@ pub fn coverage_gaps<'a>(
         .filter(|r| r.passed)
         .map(|r| r.name.as_str())
         .collect();
-    spec_items
-        .iter()
-        .filter(|i| !passing.contains(i.name.as_str()))
-        .collect()
+    spec_items.iter().filter(|i| !passing.contains(i.name.as_str())).collect()
 }
 
 async fn run_cargo(root: &Path) -> Result<Vec<TestRunResult>> {
@@ -143,11 +140,7 @@ pub(crate) fn parse_pytest_output(output: &str) -> Vec<TestRunResult> {
                 results.push(TestRunResult {
                     name: name.to_string(),
                     passed,
-                    error: if !passed {
-                        Some(trimmed.to_string())
-                    } else {
-                        None
-                    },
+                    error: if !passed { Some(trimmed.to_string()) } else { None },
                 });
             }
         }
@@ -208,32 +201,12 @@ mod tests {
     fn coverage_gaps_returns_failing_items() {
         use crate::{SpecItem, SpecKind};
         let items = vec![
-            SpecItem {
-                name: "test_a".into(),
-                description: "a".into(),
-                kind: SpecKind::RustTest,
-                file: "x.rs".into(),
-                line: 1,
-            },
-            SpecItem {
-                name: "test_b".into(),
-                description: "b".into(),
-                kind: SpecKind::RustTest,
-                file: "x.rs".into(),
-                line: 2,
-            },
+            SpecItem { name: "test_a".into(), description: "a".into(), kind: SpecKind::RustTest, file: "x.rs".into(), line: 1 },
+            SpecItem { name: "test_b".into(), description: "b".into(), kind: SpecKind::RustTest, file: "x.rs".into(), line: 2 },
         ];
         let results = vec![
-            TestRunResult {
-                name: "test_a".into(),
-                passed: true,
-                error: None,
-            },
-            TestRunResult {
-                name: "test_b".into(),
-                passed: false,
-                error: Some("FAILED".into()),
-            },
+            TestRunResult { name: "test_a".into(), passed: true, error: None },
+            TestRunResult { name: "test_b".into(), passed: false, error: Some("FAILED".into()) },
         ];
         let gaps = coverage_gaps(&items, &results);
         assert_eq!(gaps.len(), 1);
@@ -243,13 +216,9 @@ mod tests {
     #[test]
     fn coverage_gaps_missing_run_is_gap() {
         use crate::{SpecItem, SpecKind};
-        let items = vec![SpecItem {
-            name: "test_c".into(),
-            description: "c".into(),
-            kind: SpecKind::RustTest,
-            file: "x.rs".into(),
-            line: 3,
-        }];
+        let items = vec![
+            SpecItem { name: "test_c".into(), description: "c".into(), kind: SpecKind::RustTest, file: "x.rs".into(), line: 3 },
+        ];
         // No test results at all — test_c was never run → gap
         let gaps = coverage_gaps(&items, &[]);
         assert_eq!(gaps.len(), 1);

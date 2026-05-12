@@ -19,8 +19,7 @@ pub async fn run(
     let bus: EventBus<AgentEvent> = EventBus::new(512);
     let queue = TaskQueue::new();
     let pool = Arc::new(
-        AgentPool::new(max_agents, repo.clone(), queue.clone(), bus.clone())
-            .with_store(store.clone()),
+        AgentPool::new(max_agents, repo.clone(), queue.clone(), bus.clone()).with_store(store.clone()),
     );
 
     print_startup_banner(max_agents, &repo, &extra_repos, &host, port);
@@ -44,9 +43,7 @@ pub async fn run(
         let pool_sched = (*pool).clone();
         tokio::spawn(async move {
             match boot_scheduler(schedules, pool_sched).await {
-                Ok(_sched) => {
-                    tokio::signal::ctrl_c().await.ok();
-                }
+                Ok(_sched) => { tokio::signal::ctrl_c().await.ok(); }
                 Err(e) => tracing::error!("scheduler boot failed: {e}"),
             }
         });
@@ -76,13 +73,7 @@ pub async fn run(
     lopi_ui::web::serve_with_repo(store, bus, queue, pool, &host, port, auth_token, repo).await
 }
 
-fn print_startup_banner(
-    max_agents: usize,
-    repo: &Path,
-    extra_repos: &[PathBuf],
-    host: &str,
-    port: u16,
-) {
+fn print_startup_banner(max_agents: usize, repo: &Path, extra_repos: &[PathBuf], host: &str, port: u16) {
     println!("🚢 lopi sail");
     println!("   agents:    up to {max_agents} concurrent");
     println!("   repo:      {}", repo.display());

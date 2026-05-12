@@ -25,13 +25,7 @@ pub async fn run(
                     .map_err(|e| anyhow::anyhow!("GitHub client error: {e}"))?,
             );
             let api_client = Arc::new(AnthropicClient::new(anth_key));
-            Some(TriageConfig {
-                api_client,
-                github,
-                limiter: None,
-                breaker: None,
-                model: MODEL_HAIKU.to_string(),
-            })
+            Some(TriageConfig { api_client, github, limiter: None, breaker: None, model: MODEL_HAIKU.to_string() })
         }
         _ => {
             tracing::warn!("GITHUB_TOKEN or ANTHROPIC_API_KEY missing — issue triage disabled");

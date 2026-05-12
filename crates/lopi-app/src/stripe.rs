@@ -51,11 +51,7 @@ pub async fn webhook(
 
     match event_type {
         "customer.subscription.created" | "customer.subscription.updated" => {
-            tracing::info!(
-                event_type,
-                customer_id,
-                "Stripe subscription event — tier activation stub"
-            );
+            tracing::info!(event_type, customer_id, "Stripe subscription event — tier activation stub");
         }
         "customer.subscription.deleted" => {
             tracing::info!(customer_id, "Stripe subscription cancelled");

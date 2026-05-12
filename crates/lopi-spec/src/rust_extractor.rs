@@ -84,15 +84,8 @@ fn parse_fn_name(line: &str) -> Option<String> {
         .trim_start_matches("async ")
         .trim_start_matches("fn ")
         .trim();
-    let name: String = after_fn
-        .chars()
-        .take_while(|c| c.is_alphanumeric() || *c == '_')
-        .collect();
-    if name.is_empty() {
-        None
-    } else {
-        Some(name)
-    }
+    let name: String = after_fn.chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
+    if name.is_empty() { None } else { Some(name) }
 }
 
 /// Convert a snake_case test name to a readable description.
@@ -138,13 +131,9 @@ mod tests {
 
     #[test]
     fn captures_doc_comment_as_description() {
-        let f =
-            write_temp("/// Verify that addition works correctly.\n#[test]\nfn addition() {}\n");
+        let f = write_temp("/// Verify that addition works correctly.\n#[test]\nfn addition() {}\n");
         let items = extract_rust(&f).unwrap();
-        assert_eq!(
-            items[0].description,
-            "Verify that addition works correctly."
-        );
+        assert_eq!(items[0].description, "Verify that addition works correctly.");
     }
 
     #[test]

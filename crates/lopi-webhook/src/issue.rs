@@ -61,15 +61,7 @@ pub fn extract_from_json(payload: &serde_json::Value, full_name: &str) -> Option
         .split_once('/')
         .map(|(o, r)| (o.to_string(), r.to_string()))
         .unwrap_or_else(|| ("unknown".into(), full_name.to_string()));
-    Some(IssuePayload {
-        owner,
-        repo,
-        full_name: full_name.to_string(),
-        number,
-        title,
-        body,
-        labels,
-    })
+    Some(IssuePayload { owner, repo, full_name: full_name.to_string(), number, title, body, labels })
 }
 
 impl IssuePayload {
@@ -95,13 +87,7 @@ pub fn spawn_triage(
 ) {
     tokio::spawn(async move {
         let result = run_triage(
-            &payload,
-            &model,
-            &api_client,
-            limiter.as_ref(),
-            breaker.as_ref(),
-            &github,
-            &queue,
+            &payload, &model, &api_client, limiter.as_ref(), breaker.as_ref(), &github, &queue,
         )
         .await;
         if let Err(e) = result {

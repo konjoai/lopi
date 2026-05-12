@@ -53,7 +53,9 @@ impl AppConfig {
             stripe_webhook_secret: std::env::var("STRIPE_WEBHOOK_SECRET").ok(),
             customer_store_base: std::env::var("LOPI_CUSTOMER_STORES")
                 .map(std::path::PathBuf::from)
-                .unwrap_or_else(|_| dirs_home().join(".lopi").join("customers")),
+                .unwrap_or_else(|_| {
+                    dirs_home().join(".lopi").join("customers")
+                }),
         }
     }
 

@@ -91,11 +91,7 @@ impl SpecSurface {
             if should_skip(&entry) {
                 continue;
             }
-            let rel = entry
-                .strip_prefix(root)
-                .unwrap_or(&entry)
-                .to_string_lossy()
-                .to_string();
+            let rel = entry.strip_prefix(root).unwrap_or(&entry).to_string_lossy().to_string();
             let (found, rc, pc) = scan_entry(&entry, &rel);
             items.extend(found);
             rust_count += rc;
@@ -167,33 +163,15 @@ fn scan_entry(entry: &Path, rel: &str) -> (Vec<SpecItem>, u32, u32) {
     match entry.extension().and_then(|e| e.to_str()) {
         Some("rs") => {
             let found = match extract_rust(entry) {
-                Ok(v) => v
-                    .into_iter()
-                    .map(|mut i| {
-                        i.file = rel.to_string();
-                        i
-                    })
-                    .collect(),
-                Err(e) => {
-                    tracing::warn!(file = %rel, "spec extract error: {e}");
-                    vec![]
-                }
+                Ok(v) => v.into_iter().map(|mut i| { i.file = rel.to_string(); i }).collect(),
+                Err(e) => { tracing::warn!(file = %rel, "spec extract error: {e}"); vec![] }
             };
             (found, 1, 0)
         }
         Some("py") => {
             let found = match extract_python(entry) {
-                Ok(v) => v
-                    .into_iter()
-                    .map(|mut i| {
-                        i.file = rel.to_string();
-                        i
-                    })
-                    .collect(),
-                Err(e) => {
-                    tracing::warn!(file = %rel, "spec extract error: {e}");
-                    vec![]
-                }
+                Ok(v) => v.into_iter().map(|mut i| { i.file = rel.to_string(); i }).collect(),
+                Err(e) => { tracing::warn!(file = %rel, "spec extract error: {e}"); vec![] }
             };
             (found, 0, 1)
         }
@@ -210,15 +188,11 @@ fn walkdir(root: &Path) -> Vec<PathBuf> {
 }
 
 fn collect_files(dir: &Path, out: &mut Vec<PathBuf>) {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return;
-    };
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            if should_skip(&path) {
-                continue;
-            }
+            if should_skip(&path) { continue; }
             collect_files(&path, out);
         } else if path.is_file() && !should_skip(&path) {
             out.push(path);
@@ -227,15 +201,10 @@ fn collect_files(dir: &Path, out: &mut Vec<PathBuf>) {
 }
 
 fn should_skip(path: &Path) -> bool {
-    let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
-        return true;
-    };
+    let Some(name) = path.file_name().and_then(|n| n.to_str()) else { return true };
     // Skip hidden, build artifacts, and vendored code.
     name.starts_with('.')
-        || matches!(
-            name,
-            "target" | "node_modules" | "vendor" | "__pycache__" | "dist" | "build"
-        )
+        || matches!(name, "target" | "node_modules" | "vendor" | "__pycache__" | "dist" | "build")
 }
 
 #[cfg(test)]
@@ -260,11 +229,7 @@ mod tests {
     #[test]
     fn extract_rust_test_functions() {
         let dir = tempdir();
-        write_temp(
-            &dir,
-            "lib.rs",
-            "#[test]\nfn it_works() {}\n#[test]\nfn another() {}\n",
-        );
+        write_temp(&dir, "lib.rs", "#[test]\nfn it_works() {}\n#[test]\nfn another() {}\n");
         let surface = SpecSurface::extract(&dir).unwrap();
         assert_eq!(surface.items.len(), 2);
         assert_eq!(surface.rust_files_scanned, 1);
@@ -276,11 +241,7 @@ mod tests {
     #[test]
     fn extract_python_test_functions() {
         let dir = tempdir();
-        write_temp(
-            &dir,
-            "test_foo.py",
-            "def test_hello():\n    pass\n\ndef test_world():\n    pass\n",
-        );
+        write_temp(&dir, "test_foo.py", "def test_hello():\n    pass\n\ndef test_world():\n    pass\n");
         let surface = SpecSurface::extract(&dir).unwrap();
         assert_eq!(surface.items.len(), 2);
         assert_eq!(surface.python_files_scanned, 1);
@@ -317,9 +278,7 @@ mod tests {
     fn top_descriptions_caps_at_n() {
         let dir = tempdir();
         // Write 15 tests
-        let content = (0..15)
-            .map(|i| format!("#[test]\nfn test_{i}() {{}}\n"))
-            .collect::<String>();
+        let content = (0..15).map(|i| format!("#[test]\nfn test_{i}() {{}}\n")).collect::<String>();
         write_temp(&dir, "lib.rs", &content);
         let surface = SpecSurface::extract(&dir).unwrap();
         assert_eq!(surface.top_descriptions(5).len(), 5);
@@ -344,9 +303,7 @@ mod tests {
         let id = COUNTER.fetch_add(1, Ordering::Relaxed);
         let pid = std::process::id();
         let path = std::env::temp_dir().join(format!("lopi-spec-test-{pid}-{id}"));
-        if path.exists() {
-            std::fs::remove_dir_all(&path).unwrap();
-        }
+        if path.exists() { std::fs::remove_dir_all(&path).unwrap(); }
         std::fs::create_dir_all(&path).unwrap();
         path
     }

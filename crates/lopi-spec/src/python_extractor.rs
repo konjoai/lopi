@@ -25,9 +25,7 @@ pub fn extract_python(path: impl AsRef<Path>) -> Result<Vec<SpecItem>> {
             continue;
         }
         let line_num = (idx + 1) as u32;
-        let Some(name) = parse_py_fn_name(trimmed) else {
-            continue;
-        };
+        let Some(name) = parse_py_fn_name(trimmed) else { continue };
 
         // Look for a docstring on the next non-empty line.
         let description = lines
@@ -58,15 +56,8 @@ fn parse_py_fn_name(line: &str) -> Option<String> {
         .trim_start_matches("async ")
         .trim_start_matches("def ")
         .trim();
-    let name: String = after_def
-        .chars()
-        .take_while(|c| c.is_alphanumeric() || *c == '_')
-        .collect();
-    if name.is_empty() {
-        None
-    } else {
-        Some(name)
-    }
+    let name: String = after_def.chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
+    if name.is_empty() { None } else { Some(name) }
 }
 
 fn parse_docstring(line: &str) -> Option<String> {
@@ -123,9 +114,7 @@ mod tests {
 
     #[test]
     fn captures_inline_docstring() {
-        let f = write_temp(
-            "def test_addition():\n    \"\"\"Addition returns the correct sum.\"\"\"\n    pass\n",
-        );
+        let f = write_temp("def test_addition():\n    \"\"\"Addition returns the correct sum.\"\"\"\n    pass\n");
         let items = extract_python(&f).unwrap();
         assert_eq!(items[0].description, "Addition returns the correct sum.");
     }

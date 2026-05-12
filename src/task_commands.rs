@@ -22,16 +22,10 @@ pub async fn tail(task_id: Option<String>, history: bool) -> Result<()> {
     if history || task_id.is_some() {
         let rows = store.load_history(50).await?;
         println!("⚓ lopi tail — {} task(s) in history", rows.len());
-        for t in rows
-            .iter()
-            .filter(|t| task_id.as_deref().is_none_or(|id| t.id.starts_with(id)))
-        {
-            println!(
-                "  [{}] {}… — {}",
-                fmt_status(&t.status),
-                &t.id[..8.min(t.id.len())],
-                t.goal
-            );
+        for t in rows.iter().filter(|t| {
+            task_id.as_deref().is_none_or(|id| t.id.starts_with(id))
+        }) {
+            println!("  [{}] {}… — {}", fmt_status(&t.status), &t.id[..8.min(t.id.len())], t.goal);
         }
     } else {
         println!("📋 lopi tail — use --history or run `lopi sail` for a live server");
@@ -52,17 +46,8 @@ pub async fn dock() -> Result<()> {
     println!("  {:<8}  {:<w$}  Status", "ID", "Goal");
     println!("  {}", "─".repeat(8 + 2 + w + 2 + 20));
     for t in history {
-        let goal = if t.goal.len() > w {
-            format!("{}…", &t.goal[..w - 1])
-        } else {
-            t.goal.clone()
-        };
-        println!(
-            "  {:<8}  {:<w$}  {}",
-            &t.id[..8.min(t.id.len())],
-            goal,
-            fmt_status(&t.status)
-        );
+        let goal = if t.goal.len() > w { format!("{}…", &t.goal[..w - 1]) } else { t.goal.clone() };
+        println!("  {:<8}  {:<w$}  {}", &t.id[..8.min(t.id.len())], goal, fmt_status(&t.status));
     }
     Ok(())
 }

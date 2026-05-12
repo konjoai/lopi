@@ -101,7 +101,10 @@ impl MemoryStore {
     /// # Errors
     ///
     /// Returns an error if the database query fails.
-    pub async fn quality_trend_delta(&self, repo_path: &str) -> Result<Option<(f64, f64)>> {
+    pub async fn quality_trend_delta(
+        &self,
+        repo_path: &str,
+    ) -> Result<Option<(f64, f64)>> {
         let rows = self.load_quality_trend(repo_path, 2).await?;
         match rows.as_slice() {
             [latest, prev] => Ok(Some((latest.score, prev.score))),
@@ -142,13 +145,8 @@ mod tests {
         let s = store().await;
         s.save_quality_run(QualityRunRecord {
             repo_path: "/repo/b".into(),
-            spec_items: 5,
-            passing: 5,
-            failing: 0,
-            gaps: 0,
-        })
-        .await
-        .unwrap();
+            spec_items: 5, passing: 5, failing: 0, gaps: 0,
+        }).await.unwrap();
         let delta = s.quality_trend_delta("/repo/b").await.unwrap();
         assert!(delta.is_none());
     }
@@ -159,13 +157,8 @@ mod tests {
         for (p, f) in [(3, 2), (4, 1)] {
             s.save_quality_run(QualityRunRecord {
                 repo_path: "/repo/c".into(),
-                spec_items: 5,
-                passing: p,
-                failing: f,
-                gaps: f,
-            })
-            .await
-            .unwrap();
+                spec_items: 5, passing: p, failing: f, gaps: f,
+            }).await.unwrap();
         }
         let (latest, prev) = s.quality_trend_delta("/repo/c").await.unwrap().unwrap();
         // Second run (4 passing) should be latest
@@ -177,13 +170,8 @@ mod tests {
         let s = store().await;
         s.save_quality_run(QualityRunRecord {
             repo_path: "/repo/d".into(),
-            spec_items: 0,
-            passing: 0,
-            failing: 0,
-            gaps: 0,
-        })
-        .await
-        .unwrap();
+            spec_items: 0, passing: 0, failing: 0, gaps: 0,
+        }).await.unwrap();
         let rows = s.load_quality_trend("/repo/d", 1).await.unwrap();
         assert!((rows[0].score - 0.0).abs() < 0.001);
     }
@@ -191,24 +179,14 @@ mod tests {
     #[tokio::test]
     async fn improved_vs_comparison() {
         let a = QualityRunRow {
-            id: "a".into(),
-            repo_path: "/r".into(),
-            spec_items: 10,
-            passing: 7,
-            failing: 3,
-            gaps: 3,
-            score: 0.7,
-            run_at: "2026-01-01".into(),
+            id: "a".into(), repo_path: "/r".into(),
+            spec_items: 10, passing: 7, failing: 3, gaps: 3,
+            score: 0.7, run_at: "2026-01-01".into(),
         };
         let b = QualityRunRow {
-            id: "b".into(),
-            repo_path: "/r".into(),
-            spec_items: 10,
-            passing: 9,
-            failing: 1,
-            gaps: 1,
-            score: 0.9,
-            run_at: "2026-01-02".into(),
+            id: "b".into(), repo_path: "/r".into(),
+            spec_items: 10, passing: 9, failing: 1, gaps: 1,
+            score: 0.9, run_at: "2026-01-02".into(),
         };
         assert!(b.improved_vs(&a));
         assert!(!a.improved_vs(&b));

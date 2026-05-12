@@ -12,12 +12,8 @@ impl AgentRunner {
     /// and the agent loop continues normally. On success the derived
     /// constraint is persisted as a pattern + a "recovery" lesson.
     pub(super) async fn run_postmortem_if_configured(&self) {
-        let Some(client) = self.api_client.as_ref() else {
-            return;
-        };
-        let Some(error_log) = self.last_error.as_deref() else {
-            return;
-        };
+        let Some(client) = self.api_client.as_ref() else { return };
+        let Some(error_log) = self.last_error.as_deref() else { return };
 
         self.log("🧠 running failure post-mortem…");
         let outcome = postmortem::run_postmortem_quiet(
@@ -41,10 +37,7 @@ impl AgentRunner {
             self.log(format!("🧠 post-mortem constraint: {constraint}"));
             return;
         };
-        match store
-            .insert_postmortem_pattern(&self.task.goal, constraint)
-            .await
-        {
+        match store.insert_postmortem_pattern(&self.task.goal, constraint).await {
             Ok(id) => {
                 self.log(format!("🧠 post-mortem pattern saved [{}]", &id[..8]));
                 self.log(format!("    constraint: {constraint}"));

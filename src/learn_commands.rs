@@ -6,17 +6,11 @@ use crate::LearnCmd;
 
 pub async fn run(cmd: LearnCmd, db_path: PathBuf) -> Result<()> {
     match cmd {
-        LearnCmd::List {
-            limit,
-            postmortem_only,
-        } => {
+        LearnCmd::List { limit, postmortem_only } => {
             let store = MemoryStore::open(db_path).await?;
             let patterns = store.load_patterns(limit).await?;
             let filtered: Vec<_> = if postmortem_only {
-                patterns
-                    .into_iter()
-                    .filter(|p| p.derived_from_postmortem == 1)
-                    .collect()
+                patterns.into_iter().filter(|p| p.derived_from_postmortem == 1).collect()
             } else {
                 patterns
             };
@@ -24,9 +18,7 @@ pub async fn run(cmd: LearnCmd, db_path: PathBuf) -> Result<()> {
             println!("🧠 lopi learn — {} pattern(s)\n", filtered.len());
             if filtered.is_empty() {
                 if postmortem_only {
-                    println!(
-                        "  No post-mortem patterns yet. Enable with `lopi run --adaptive-retry`."
-                    );
+                    println!("  No post-mortem patterns yet. Enable with `lopi run --adaptive-retry`.");
                 } else {
                     println!("  No patterns yet. Patterns are mined after each completed task.");
                 }
@@ -43,17 +35,9 @@ pub async fn run(cmd: LearnCmd, db_path: PathBuf) -> Result<()> {
                 } else {
                     p.goal_keywords.clone()
                 };
-                let avg = p
-                    .avg_attempts
-                    .map_or_else(|| "-".to_string(), |a| format!("{a:.1}"));
-                let sr = p
-                    .success_rate
-                    .map_or_else(|| "-".to_string(), |s| format!("{:.0}%", s * 100.0));
-                let source = if p.derived_from_postmortem == 1 {
-                    "🧠 post-mortem"
-                } else {
-                    "📊 mined"
-                };
+                let avg = p.avg_attempts.map_or_else(|| "-".to_string(), |a| format!("{a:.1}"));
+                let sr = p.success_rate.map_or_else(|| "-".to_string(), |s| format!("{:.0}%", s * 100.0));
+                let source = if p.derived_from_postmortem == 1 { "🧠 post-mortem" } else { "📊 mined" };
                 println!("  {id_short:<8}  {kw:<40}  {avg:>9}  {sr:>9}  {source}");
             }
         }
@@ -67,30 +51,16 @@ pub async fn run(cmd: LearnCmd, db_path: PathBuf) -> Result<()> {
 
             println!("🧠 Pattern {}\n", p.id);
             println!("  Keywords:    {}", p.goal_keywords);
-            println!(
-                "  Source:      {}",
-                if p.derived_from_postmortem == 1 {
-                    "🧠 post-mortem-derived"
-                } else {
-                    "📊 mined from completed-task statistics"
-                }
-            );
-            println!(
-                "  Avg attempts: {}",
-                p.avg_attempts
-                    .map_or_else(|| "-".to_string(), |a| format!("{a:.2}"))
-            );
-            println!(
-                "  Success:     {}",
-                p.success_rate
-                    .map_or_else(|| "-".to_string(), |s| format!("{:.0}%", s * 100.0))
-            );
+            println!("  Source:      {}", if p.derived_from_postmortem == 1 {
+                "🧠 post-mortem-derived"
+            } else {
+                "📊 mined from completed-task statistics"
+            });
+            println!("  Avg attempts: {}", p.avg_attempts.map_or_else(|| "-".to_string(), |a| format!("{a:.2}")));
+            println!("  Success:     {}", p.success_rate.map_or_else(|| "-".to_string(), |s| format!("{:.0}%", s * 100.0)));
             println!("  Last seen:   {}", p.last_seen);
             match p.successful_constraints.as_deref() {
-                Some(c) => {
-                    println!("\n  Constraint:");
-                    println!("    {c}");
-                }
+                Some(c) => { println!("\n  Constraint:"); println!("    {c}"); }
                 None => println!("\n  Constraint:  (none captured yet)"),
             }
         }
@@ -118,14 +88,8 @@ pub async fn run(cmd: LearnCmd, db_path: PathBuf) -> Result<()> {
             let store = MemoryStore::open(db_path).await?;
             match store.find_pattern_by_id_prefix(&id).await? {
                 Some(pattern) => {
-                    store
-                        .annotate_pattern(&pattern.id, Some(annotation.as_str()))
-                        .await?;
-                    println!(
-                        "✅ pattern {} annotated as '{}'",
-                        &pattern.id[..8],
-                        annotation
-                    );
+                    store.annotate_pattern(&pattern.id, Some(annotation.as_str())).await?;
+                    println!("✅ pattern {} annotated as '{}'", &pattern.id[..8], annotation);
                 }
                 None => {
                     eprintln!("❌ pattern not found for id prefix: {}", id);

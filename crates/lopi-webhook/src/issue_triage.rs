@@ -143,11 +143,7 @@ pub(crate) fn parse_triage_response(raw: &str) -> Option<IssueTriage> {
         return None;
     }
 
-    Some(IssueTriage {
-        category,
-        confidence,
-        summary,
-    })
+    Some(IssueTriage { category, confidence, summary })
 }
 
 /// Format the comment lopi posts on a triaged issue.
