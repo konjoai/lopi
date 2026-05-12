@@ -52,9 +52,11 @@ impl AgentRunner {
 
     /// Sprint J-A — run the KCQF quality scanner after a successful task.
     ///
-    /// Calls `lopi_kcqf::scan_diff` on the repo root (clippy always; coverage
-    /// skipped when no diff files are specified). Each violation is converted to
-    /// a `TaskSource::Maintenance` task and stored in `self.maintenance_tasks`
+    /// Calls `lopi_kcqf::scan_diff` with an empty `diff_files` slice, so only
+    /// the clippy scanner runs workspace-wide; the coverage scanner (which is
+    /// per-file) is intentionally skipped. Passing changed-file paths from git
+    /// is a planned future enhancement. Each violation is converted to a
+    /// `TaskSource::Maintenance` task and stored in `self.maintenance_tasks`
     /// for the pool to drain and re-queue. Best-effort: scan failures are
     /// logged as warnings and never block the success return.
     pub(super) async fn run_kcqf_scan(&mut self) {

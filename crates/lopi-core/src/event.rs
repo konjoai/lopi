@@ -64,9 +64,11 @@ pub enum AgentEvent {
         cost_usd: f32,
     },
     /// Emitted when the post-mortem loop detects a pattern of repeated failures
-    /// and proposes a self-improvement task. Consumers (e.g. the TUI, web UI)
-    /// should surface this to the operator; Telegram approval is triggered
-    /// directly by the `/self-improve` command rather than via this bus.
+    /// and proposes a self-improvement task.
+    ///
+    /// Currently surfaced to the operator via log output and the TUI event feed.
+    /// Telegram approval is handled out-of-band through the `/self-improve`
+    /// command rather than by subscribing to this bus event.
     SelfModifyProposed {
         /// Short human-readable description of the proposed improvement.
         goal: String,
