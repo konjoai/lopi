@@ -3,7 +3,7 @@
 //! Separated from `store/mod.rs` to stay within the 500-line budget.
 
 use anyhow::{Context, Result};
-use chrono::Utc;
+use chrono::{Duration, Utc};
 use lopi_core::ScoreWeights;
 use std::collections::HashSet;
 
@@ -273,19 +273,22 @@ impl MemoryStore {
         let delta = (signal * 0.005) as f32;
         let base = ScoreWeights::default();
         Ok(ScoreWeights {
-            lint_penalty_per_error: (base.lint_penalty_per_error - delta).clamp(0.01, 0.20),
+            lint_penalty_per_error: (base.lint_penalty_per_error + delta).clamp(0.01, 0.20),
             lint_penalty_cap: base.lint_penalty_cap,
-            diff_penalty_per_kloc: (base.diff_penalty_per_kloc - delta).clamp(0.01, 0.30),
+            diff_penalty_per_kloc: (base.diff_penalty_per_kloc + delta).clamp(0.01, 0.30),
             diff_penalty_cap: base.diff_penalty_cap,
         })
     }
 
-    /// Count post-mortem-derived patterns created in the last `since_hours` hours.
+    /// Count post-mortem-derived patterns created within the last `since_hours` hours.
+    ///
+    /// Used by self-modify automation to detect when repeated failures have
+    /// produced enough patterns to warrant a self-improvement proposal.
     ///
     /// # Errors
     /// Returns `Err` if the database query fails.
     pub async fn recent_postmortem_count(&self, since_hours: i64) -> Result<i64> {
-        let cutoff = (Utc::now() - chrono::Duration::hours(since_hours)).to_rfc3339();
+        let cutoff = (Utc::now() - Duration::hours(since_hours)).to_rfc3339();
         let row: (i64,) = sqlx::query_as(
             "SELECT COUNT(*) FROM patterns \
              WHERE derived_from_postmortem = 1 AND last_seen >= ?1",

@@ -105,6 +105,8 @@ pub async fn scan_diff(
     }
 
     // Deduplicate: same file + line + kind.
-    violations.dedup_by(|a, b| a.file == b.file && a.line == b.line && a.kind == b.kind);
+    // dedup_by only removes adjacent duplicates, so use a HashSet to handle non-adjacent ones.
+    let mut seen = std::collections::HashSet::new();
+    violations.retain(|v| seen.insert((v.file.clone(), v.line, format!("{:?}", &v.kind))));
     Ok(violations)
 }

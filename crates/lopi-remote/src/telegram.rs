@@ -253,7 +253,18 @@ async fn callback_query_handler(
     q: CallbackQuery,
     store: Arc<MemoryStore>,
     pending_sm: PendingSelfModify,
+    allowed: Arc<Vec<i64>>,
 ) -> Result<()> {
+    let caller_id = q.from.id.0 as i64;
+    if !allowed.is_empty() && !allowed.contains(&caller_id) {
+        tracing::warn!(
+            "telegram: rejected callback from unauthorized user {}",
+            caller_id
+        );
+        bot.answer_callback_query(q.id).await?;
+        return Ok(());
+    }
+
     let data = q.data.as_deref().unwrap_or("");
 
     let reply = if data.starts_with("bump:") {

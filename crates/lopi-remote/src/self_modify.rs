@@ -81,54 +81,6 @@ pub fn build_self_modify_task(goal: &str, approver_chat_id: i64) -> Task {
     t
 }
 
-/// Sends a Telegram approval request for the proposed goal.
-///
-/// Returns `true` if the operator clicked Yes within the timeout, `false`
-/// for No or timeout. The `pending_tx` oneshot is resolved by the callback
-/// handler in `telegram.rs` via `PendingSelfModify`.
-///
-/// # Errors
-/// Returns an error if the Telegram message cannot be sent.
-pub async fn request_approval(
-    bot: &Bot,
-    chat_id: ChatId,
-    goal: &str,
-    pending_tx: oneshot::Sender<bool>,
-) -> Result<()> {
-    let kb = InlineKeyboardMarkup::new([[
-        InlineKeyboardButton::callback("✅ Yes, self-improve", SELF_MODIFY_APPROVE),
-        InlineKeyboardButton::callback("❌ No / cancel", SELF_MODIFY_REJECT),
-    ]]);
-    bot.send_message(
-        chat_id,
-        format!(
-            "🤖 *Self-Improvement Proposal*\n\n{goal}\n\n\
-             Approve queuing a self-modify task?\n\
-             _Expires in {} s. Allowed dirs: crates/, src/_",
-            APPROVAL_TIMEOUT_SECS
-        ),
-    )
-    .parse_mode(teloxide::types::ParseMode::MarkdownV2)
-    .reply_markup(kb)
-    .await?;
-
-    // Await approval within timeout; treat timeout as rejection.
-    match timeout(Duration::from_secs(APPROVAL_TIMEOUT_SECS), async {
-        // pending_tx is consumed when the callback handler resolves it;
-        // we don't need to await it here — the caller (telegram.rs) handles
-        // the oneshot directly via PendingSelfModify.
-        let _ = pending_tx;
-    })
-    .await
-    {
-        Ok(_) => {}
-        Err(_) => {
-            tracing::warn!("self-improve approval timed out after {APPROVAL_TIMEOUT_SECS}s");
-        }
-    }
-    Ok(())
-}
-
 /// Queue a self-modify task if the operator approves via Telegram.
 ///
 /// This is the high-level entry point called by the `/self-improve` command
