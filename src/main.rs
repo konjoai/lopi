@@ -8,11 +8,11 @@ mod sail_commands;
 mod schedule_commands;
 mod spec_commands;
 mod task_commands;
+#[cfg(test)]
+mod tests;
 mod trust_commands;
 mod util;
 mod webhook_commands;
-#[cfg(test)]
-mod tests;
 use mimalloc::MiMalloc;
 
 #[global_allocator]
@@ -243,7 +243,6 @@ enum StabilityCmd {
     /// Show a summary of all-time verdict counts.
     Summary,
 }
-
 
 #[allow(clippy::too_many_lines)]
 #[tokio::main]
