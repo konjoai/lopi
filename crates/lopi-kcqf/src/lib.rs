@@ -105,8 +105,77 @@ pub async fn scan_diff(
     }
 
     // Deduplicate: same file + line + kind.
-    // dedup_by only removes adjacent duplicates, so use a HashSet to handle non-adjacent ones.
+    Ok(dedup_violations(violations))
+}
+
+/// Remove duplicate violations sharing the same (file, line, kind) triple.
+/// Uses a HashSet to handle non-adjacent duplicates correctly.
+pub(crate) fn dedup_violations(violations: Vec<QualityViolation>) -> Vec<QualityViolation> {
     let mut seen = std::collections::HashSet::new();
-    violations.retain(|v| seen.insert((v.file.clone(), v.line, format!("{:?}", &v.kind))));
-    Ok(violations)
+    let mut out = violations;
+    out.retain(|v| seen.insert((v.file.clone(), v.line, format!("{:?}", &v.kind))));
+    out
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+
+    fn make_violation(file: &str, line: Option<u32>, kind: ViolationKind) -> QualityViolation {
+        QualityViolation {
+            file: file.to_string(),
+            line,
+            kind,
+            severity: Severity::Warning,
+            message: "test".to_string(),
+            fix_hint: "fix it".to_string(),
+            confidence: 1.0,
+        }
+    }
+
+    #[test]
+    fn dedup_removes_adjacent_duplicates() {
+        let v = vec![
+            make_violation("a.rs", Some(1), ViolationKind::Standards),
+            make_violation("a.rs", Some(1), ViolationKind::Standards),
+        ];
+        let result = dedup_violations(v);
+        assert_eq!(result.len(), 1);
+    }
+
+    #[test]
+    fn dedup_removes_non_adjacent_duplicates() {
+        // clippy scan and coverage scan can both emit the same file/line/kind pair.
+        // The violation at a.rs:1:Standards appears at index 0 and 2 (non-adjacent).
+        let v = vec![
+            make_violation("a.rs", Some(1), ViolationKind::Standards),
+            make_violation("b.rs", Some(2), ViolationKind::Coverage),
+            make_violation("a.rs", Some(1), ViolationKind::Standards),
+        ];
+        let result = dedup_violations(v);
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].file, "a.rs");
+        assert_eq!(result[1].file, "b.rs");
+    }
+
+    #[test]
+    fn dedup_keeps_same_file_different_line() {
+        let v = vec![
+            make_violation("a.rs", Some(1), ViolationKind::Standards),
+            make_violation("a.rs", Some(2), ViolationKind::Standards),
+        ];
+        let result = dedup_violations(v);
+        assert_eq!(result.len(), 2);
+    }
+
+    #[test]
+    fn dedup_keeps_same_file_line_different_kind() {
+        let v = vec![
+            make_violation("a.rs", Some(1), ViolationKind::Standards),
+            make_violation("a.rs", Some(1), ViolationKind::Complexity),
+        ];
+        let result = dedup_violations(v);
+        assert_eq!(result.len(), 2);
+    }
 }

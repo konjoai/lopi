@@ -189,6 +189,27 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn self_diagnose_returns_some_when_threshold_met_and_failures_exist() {
+        let store = MemoryStore::open_in_memory().await.unwrap();
+        // Insert POSTMORTEM_THRESHOLD post-mortem patterns.
+        for i in 0..POSTMORTEM_THRESHOLD {
+            store
+                .insert_postmortem_pattern(&format!("keyword goal {i}"), "constraint")
+                .await
+                .unwrap();
+        }
+        // Insert a failed task so recent_failures returns non-empty.
+        let task = lopi_core::Task::new("some failing task unique-abc");
+        store.save_task(&task, "queued").await.unwrap();
+        store.mark_completed(&task.id, "failed").await.unwrap();
+
+        let result = self_diagnose(&store).await.unwrap();
+        assert!(result.is_some(), "expected Some when patterns >= threshold and failures exist");
+        let goal = result.unwrap();
+        assert!(goal.starts_with("Self-improve:"), "goal should start with 'Self-improve:'");
+    }
+
+    #[tokio::test]
     async fn build_self_modify_task_enforces_allowed_dirs() {
         let task = build_self_modify_task("test goal", 12345);
         assert_eq!(
