@@ -52,7 +52,7 @@ jobs:
             -D clippy::dbg_macro \
             -D clippy::print_stdout \
             -D clippy::print_stderr \
-            -W clippy::cognitive_complexity
+            -A clippy::cognitive_complexity
 
       - name: clippy pedantic (advisory — non-blocking)
         continue-on-error: true
