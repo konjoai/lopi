@@ -206,9 +206,15 @@ mod tests {
         store.mark_completed(&task.id, "failed").await.unwrap();
 
         let result = self_diagnose(&store).await.unwrap();
-        assert!(result.is_some(), "expected Some when patterns >= threshold and failures exist");
+        assert!(
+            result.is_some(),
+            "expected Some when patterns >= threshold and failures exist"
+        );
         let goal = result.unwrap();
-        assert!(goal.starts_with("Self-improve:"), "goal should start with 'Self-improve:'");
+        assert!(
+            goal.starts_with("Self-improve:"),
+            "goal should start with 'Self-improve:'"
+        );
     }
 
     #[tokio::test]

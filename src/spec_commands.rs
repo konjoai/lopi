@@ -40,7 +40,10 @@ pub async fn run_spec(repo: PathBuf, export: bool, save: bool) -> Result<()> {
 
     // Print a table.
     let w = 60usize;
-    println!("  {:<8}  {:<12}  {:<w$}  File", "Line", "Kind", "Description");
+    println!(
+        "  {:<8}  {:<12}  {:<w$}  File",
+        "Line", "Kind", "Description"
+    );
     println!("  {}", "─".repeat(8 + 2 + 12 + 2 + w + 2 + 40));
     for item in &surface.items {
         let desc = if item.description.len() > w {
@@ -100,7 +103,10 @@ pub async fn run_check(repo: PathBuf, fail_on_violations: bool) -> Result<()> {
     if violations.is_empty() {
         println!("✅ lopi check passed");
     } else {
-        println!("⚠️  lopi check: {} file-size violation(s)", violations.len());
+        println!(
+            "⚠️  lopi check: {} file-size violation(s)",
+            violations.len()
+        );
         if fail_on_violations {
             std::process::exit(1);
         }
@@ -113,12 +119,19 @@ fn compare_spec_surfaces(cached: &SpecSurface, live: &SpecSurface) {
     let live_names: std::collections::HashSet<_> = live.items.iter().map(|i| &i.name).collect();
     let added: Vec<_> = live_names.difference(&cached_names).collect();
     let removed: Vec<_> = cached_names.difference(&live_names).collect();
-    println!("  📋 spec surface — {} cached · {} live", cached.items.len(), live.items.len());
+    println!(
+        "  📋 spec surface — {} cached · {} live",
+        cached.items.len(),
+        live.items.len()
+    );
     if !added.is_empty() {
         println!("     + {} new test(s)", added.len());
     }
     if !removed.is_empty() {
-        println!("     - {} removed test(s) (spec regression risk)", removed.len());
+        println!(
+            "     - {} removed test(s) (spec regression risk)",
+            removed.len()
+        );
         for name in &removed {
             println!("       - {name}");
         }
@@ -138,12 +151,17 @@ fn check_file_sizes(repo: &Path) -> Vec<(String, usize)> {
 }
 
 fn collect_size_violations(root: &Path, dir: &Path, out: &mut Vec<(String, usize)>) {
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
     for entry in entries.flatten() {
         let path = entry.path();
         let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
         if path.is_dir() {
-            if matches!(name, "target" | "node_modules" | ".git" | "vendor" | ".claude") {
+            if matches!(
+                name,
+                "target" | "node_modules" | ".git" | "vendor" | ".claude"
+            ) {
                 continue;
             }
             collect_size_violations(root, &path, out);
@@ -175,7 +193,9 @@ mod tests {
         let id = C.fetch_add(1, Ordering::Relaxed);
         let pid = std::process::id();
         let p = std::env::temp_dir().join(format!("lopi-check-test-{pid}-{id}"));
-        if p.exists() { fs::remove_dir_all(&p).unwrap(); }
+        if p.exists() {
+            fs::remove_dir_all(&p).unwrap();
+        }
         fs::create_dir_all(&p).unwrap();
         p
     }

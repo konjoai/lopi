@@ -22,9 +22,7 @@ use crate::AppState;
 ///
 /// With credentials configured this hits `github.com/apps/{app_slug}/installations/new`.
 /// Without them it returns a 503.
-pub async fn install_redirect(
-    State(s): State<Arc<AppState>>,
-) -> impl IntoResponse {
+pub async fn install_redirect(State(s): State<Arc<AppState>>) -> impl IntoResponse {
     let Some(app_id) = &s.cfg.github_app_id else {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
@@ -32,10 +30,7 @@ pub async fn install_redirect(
         )
             .into_response();
     };
-    let url = format!(
-        "https://github.com/apps/lopi-{}/installations/new",
-        app_id
-    );
+    let url = format!("https://github.com/apps/lopi-{}/installations/new", app_id);
     Redirect::temporary(&url).into_response()
 }
 
@@ -46,7 +41,11 @@ pub async fn oauth_callback(
     State(s): State<Arc<AppState>>,
 ) -> impl IntoResponse {
     if !s.cfg.github_configured() {
-        return (StatusCode::SERVICE_UNAVAILABLE, "GitHub OAuth not configured").into_response();
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "GitHub OAuth not configured",
+        )
+            .into_response();
     }
 
     let Some(code) = params.get("code") else {
@@ -69,7 +68,11 @@ pub async fn oauth_callback(
     };
 
     tracing::info!(token_type = %token.token_type, "GitHub OAuth callback success");
-    (StatusCode::OK, "Installation successful — you can close this tab.").into_response()
+    (
+        StatusCode::OK,
+        "Installation successful — you can close this tab.",
+    )
+        .into_response()
 }
 
 /// Receive GitHub App installation events (created / deleted / suspended).
@@ -123,7 +126,11 @@ async fn handle_installation_event(
 ) {
     match action {
         "created" => {
-            match s.store.upsert_installation(installation_id, login, account_type).await {
+            match s
+                .store
+                .upsert_installation(installation_id, login, account_type)
+                .await
+            {
                 Ok(customer_id) => {
                     tracing::info!(customer_id, login, "GitHub App installed");
                     match lopi_memory::MemoryStore::open_for_customer(
