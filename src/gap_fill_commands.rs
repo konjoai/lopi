@@ -15,6 +15,7 @@ pub async fn run(
     dry_run: bool,
     quiet: bool,
 ) -> Result<QualitySnapshot> {
+    /* mutants::skip — integration handler: requires live SpecSurface, MemoryStore, and sail API */
     if !quiet {
         println!("🔬 lopi gap-fill — {}", repo.display());
         println!();
@@ -223,6 +224,7 @@ pub async fn watch_loop(
     sail_url: &str,
     run_now: bool,
 ) -> anyhow::Result<()> {
+    /* mutants::skip — integration handler: runs indefinitely with real timer and sail API */
     let interval = tokio::time::Duration::from_secs(interval_minutes * 60);
     println!(
         "🔄 lopi watch-gap-fill — {} every {interval_minutes} min",

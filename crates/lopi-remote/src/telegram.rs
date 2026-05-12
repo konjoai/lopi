@@ -325,3 +325,104 @@ async fn handle_selfmod_callback(
         "⚠️ No pending self-modify proposal for this chat (may have expired).".into()
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use super::*;
+    use lopi_memory::MemoryStore;
+    use std::collections::HashMap;
+    use tokio::sync::{oneshot, Mutex};
+
+    // ── handle_annotate_callback ────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn annotate_callback_valid_format_stores_annotation() {
+        let store = MemoryStore::open_in_memory().await.unwrap();
+        store
+            .insert_postmortem_pattern("test goal", "constraint")
+            .await
+            .unwrap();
+        let patterns = store.load_patterns(10).await.unwrap();
+        let id = &patterns[0].id;
+        let data = format!("annotate:reject:{id}");
+        let reply = handle_annotate_callback(&data, &store).await;
+        assert!(
+            reply.contains("reject"),
+            "reply should mention annotation: {reply}"
+        );
+        assert!(
+            reply.contains(&id[..8.min(id.len())]),
+            "reply should include id prefix: {reply}"
+        );
+    }
+
+    #[tokio::test]
+    async fn annotate_callback_invalid_format_returns_error() {
+        let store = MemoryStore::open_in_memory().await.unwrap();
+        let reply = handle_annotate_callback("bad_data", &store).await;
+        assert_eq!(reply, "Invalid annotate format.");
+    }
+
+    #[tokio::test]
+    async fn annotate_callback_two_part_format_returns_error() {
+        let store = MemoryStore::open_in_memory().await.unwrap();
+        let reply = handle_annotate_callback("annotate:only_two", &store).await;
+        assert_eq!(reply, "Invalid annotate format.");
+    }
+
+    // ── handle_selfmod_callback ─────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn selfmod_callback_no_pending_returns_expired_message() {
+        let pending: PendingSelfModify = Arc::new(Mutex::new(HashMap::new()));
+        let reply = handle_selfmod_callback(self_modify::SELF_MODIFY_APPROVE, 42, pending).await;
+        assert!(
+            reply.contains("No pending"),
+            "expected 'No pending' in: {reply}"
+        );
+    }
+
+    #[tokio::test]
+    async fn selfmod_callback_approve_sends_true_and_returns_approved_message() {
+        let pending: PendingSelfModify = Arc::new(Mutex::new(HashMap::new()));
+        let (tx, rx) = oneshot::channel::<bool>();
+        pending.lock().await.insert(99, ("goal".into(), tx));
+        let reply =
+            handle_selfmod_callback(self_modify::SELF_MODIFY_APPROVE, 99, Arc::clone(&pending))
+                .await;
+        assert!(reply.contains("Approved"), "expected approval in: {reply}");
+        assert!(rx.await.unwrap(), "expected approved=true on channel");
+        // Entry should be removed.
+        assert!(pending.lock().await.get(&99).is_none());
+    }
+
+    #[tokio::test]
+    async fn selfmod_callback_reject_sends_false_and_returns_rejected_message() {
+        let pending: PendingSelfModify = Arc::new(Mutex::new(HashMap::new()));
+        let (tx, rx) = oneshot::channel::<bool>();
+        pending.lock().await.insert(77, ("goal".into(), tx));
+        let reply =
+            handle_selfmod_callback(self_modify::SELF_MODIFY_REJECT, 77, Arc::clone(&pending))
+                .await;
+        assert!(reply.contains("Rejected"), "expected rejection in: {reply}");
+        assert!(!rx.await.unwrap(), "expected approved=false on channel");
+    }
+
+    #[tokio::test]
+    async fn selfmod_callback_wrong_caller_does_not_consume_other_chat_entry() {
+        let pending: PendingSelfModify = Arc::new(Mutex::new(HashMap::new()));
+        let (tx, _rx) = oneshot::channel::<bool>();
+        pending.lock().await.insert(11, ("goal".into(), tx));
+        // Different caller_id — should NOT consume chat 11's entry.
+        let reply =
+            handle_selfmod_callback(self_modify::SELF_MODIFY_APPROVE, 22, Arc::clone(&pending))
+                .await;
+        assert!(
+            reply.contains("No pending"),
+            "wrong caller should get expired msg: {reply}"
+        );
+        // Entry for chat 11 must still be present.
+        assert!(pending.lock().await.get(&11).is_some());
+    }
+}
