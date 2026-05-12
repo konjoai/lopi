@@ -9,7 +9,10 @@ mod schedule_commands;
 mod spec_commands;
 mod task_commands;
 mod trust_commands;
+mod util;
 mod webhook_commands;
+#[cfg(test)]
+mod tests;
 use mimalloc::MiMalloc;
 
 #[global_allocator]
@@ -17,10 +20,10 @@ static GLOBAL: MiMalloc = MiMalloc;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use lopi_core::{LopiConfig, TaskStatus};
 use lopi_memory::MemoryStore;
 use std::path::PathBuf;
 use tracing_subscriber::prelude::*;
+pub(crate) use util::{db_path, fmt_status, is_self_modify_attempt, load_config, status_label};
 
 #[derive(Parser)]
 #[command(
@@ -241,65 +244,6 @@ enum StabilityCmd {
     Summary,
 }
 
-fn db_path() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
-    PathBuf::from(home).join(".lopi").join("lopi.db")
-}
-
-fn fmt_status(s: &str) -> &str {
-    match s {
-        "queued" => "⏳ queued",
-        "planning" => "📋 planning",
-        "implementing" => "🔨 implementing",
-        "testing" => "🧪 testing",
-        "scoring" => "📊 scoring",
-        "success" => "✅ success",
-        "failed" => "❌ failed",
-        "rolled_back" => "⏪ rolled back",
-        _ => s,
-    }
-}
-
-pub(crate) fn status_label(s: &TaskStatus) -> String {
-    match s {
-        TaskStatus::Queued => "queued".into(),
-        TaskStatus::Planning => "planning".into(),
-        TaskStatus::Implementing => "implementing".into(),
-        TaskStatus::Testing => "testing".into(),
-        TaskStatus::Scoring => "scoring".into(),
-        TaskStatus::Retrying { attempt } => format!("retrying (attempt {attempt})"),
-        TaskStatus::Success { branch, pr_url } => format!(
-            "success ✅ branch={branch}{}",
-            pr_url
-                .as_deref()
-                .map(|u| format!(", pr={u}"))
-                .unwrap_or_default()
-        ),
-        TaskStatus::Failed { reason } => format!("failed ❌ {reason}"),
-        TaskStatus::RolledBack => "rolled back".into(),
-    }
-}
-
-fn load_config(path: Option<&PathBuf>) -> Option<LopiConfig> {
-    if let Some(p) = path {
-        LopiConfig::load(p).ok()
-    } else {
-        LopiConfig::find_and_load()
-    }
-}
-
-pub(crate) fn is_self_modify_attempt(repo: &std::path::Path) -> bool {
-    if let Ok(exe) = std::env::current_exe() {
-        if let (Some(parent), Ok(repo_canonical)) =
-            (exe.parent().and_then(|p| p.parent()), repo.canonicalize())
-        {
-            if let Ok(exe_canonical) = parent.canonicalize() {
-                return repo_canonical.starts_with(&exe_canonical);
-            }
-        }
-    }
-    false
-}
 
 #[allow(clippy::too_many_lines)]
 #[tokio::main]
@@ -526,103 +470,4 @@ async fn main() -> Result<()> {
     }
 
     Ok(())
-}
-
-#[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn fmt_status_known_values() {
-        assert_eq!(fmt_status("queued"), "⏳ queued");
-        assert_eq!(fmt_status("planning"), "📋 planning");
-        assert_eq!(fmt_status("implementing"), "🔨 implementing");
-        assert_eq!(fmt_status("testing"), "🧪 testing");
-        assert_eq!(fmt_status("scoring"), "📊 scoring");
-        assert_eq!(fmt_status("success"), "✅ success");
-        assert_eq!(fmt_status("failed"), "❌ failed");
-        assert_eq!(fmt_status("rolled_back"), "⏪ rolled back");
-    }
-
-    #[test]
-    fn fmt_status_unknown_returns_input() {
-        assert_eq!(fmt_status("unknown_state"), "unknown_state");
-        assert_eq!(fmt_status(""), "");
-    }
-
-    #[test]
-    fn status_label_queued_and_planning() {
-        use lopi_core::TaskStatus;
-        assert_eq!(status_label(&TaskStatus::Queued), "queued");
-        assert_eq!(status_label(&TaskStatus::Planning), "planning");
-        assert_eq!(status_label(&TaskStatus::Implementing), "implementing");
-        assert_eq!(status_label(&TaskStatus::Testing), "testing");
-        assert_eq!(status_label(&TaskStatus::Scoring), "scoring");
-        assert_eq!(status_label(&TaskStatus::RolledBack), "rolled back");
-    }
-
-    #[test]
-    fn status_label_retrying_includes_attempt() {
-        use lopi_core::TaskStatus;
-        let s = status_label(&TaskStatus::Retrying { attempt: 2 });
-        assert!(s.contains('2'), "expected attempt number in: {s}");
-    }
-
-    #[test]
-    fn status_label_success_includes_branch() {
-        use lopi_core::TaskStatus;
-        let s = status_label(&TaskStatus::Success {
-            branch: "feat/xyz".into(),
-            pr_url: Some("https://example.com/pr/1".into()),
-        });
-        assert!(s.contains("feat/xyz"));
-        assert!(s.contains("https://example.com/pr/1"));
-    }
-
-    #[test]
-    fn status_label_failed_includes_reason() {
-        use lopi_core::TaskStatus;
-        let s = status_label(&TaskStatus::Failed {
-            reason: "timeout".into(),
-        });
-        assert!(s.contains("timeout"));
-    }
-
-    #[test]
-    fn is_self_modify_attempt_false_for_nonexistent_path() {
-        assert!(!is_self_modify_attempt(std::path::Path::new(
-            "/nonexistent/xyz/path/that/cannot/be/canonicalized"
-        )));
-    }
-
-    #[test]
-    fn is_self_modify_attempt_false_for_unrelated_system_path() {
-        // /usr is highly unlikely to be inside the exe's grandparent (cargo target dir)
-        // This covers the starts_with logic returning false.
-        assert!(!is_self_modify_attempt(std::path::Path::new("/usr")));
-    }
-
-    #[test]
-    fn is_self_modify_attempt_true_inside_exe_tree() {
-        // Create a temp dir inside the exe's grandparent to verify the starts_with logic.
-        if let Ok(exe) = std::env::current_exe() {
-            if let Some(grandparent) = exe.parent().and_then(|p| p.parent()) {
-                let probe = grandparent.join("__self_modify_probe__");
-                if std::fs::create_dir_all(&probe).is_ok() {
-                    let result = is_self_modify_attempt(&probe);
-                    let _ = std::fs::remove_dir_all(&probe);
-                    assert!(
-                        result,
-                        "dir inside exe grandparent should be detected as self-modify"
-                    );
-                    return;
-                }
-            }
-        }
-        // Fallback: at minimum verify false case works when env unavailable.
-        assert!(!is_self_modify_attempt(std::path::Path::new(
-            "/nonexistent"
-        )));
-    }
 }
