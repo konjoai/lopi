@@ -189,11 +189,7 @@ impl AgentRunner {
 
 /// Render the user prompt the API client sends with the cached system
 /// prompt. Keeps it small and deterministic so prompt caching hits.
-fn build_user_prompt(
-    task: &lopi_core::Task,
-    last_error: Option<&str>,
-    lessons: &[String],
-) -> String {
+fn build_user_prompt(task: &lopi_core::Task, last_error: Option<&str>, lessons: &[String]) -> String {
     let mut parts = Vec::with_capacity(6);
     parts.push(format!("# Task\n{}", task.goal));
 

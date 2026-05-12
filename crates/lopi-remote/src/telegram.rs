@@ -58,7 +58,7 @@ pub async fn run(
     let store_arc = Arc::new(store);
     let allowed = Arc::new(allowed_chat_ids);
     let allow_sm = Arc::new(allow_self_modify);
-    let pending_sm: PendingSelfModify = Arc::new(Mutex::new(None));
+    let pending_sm: PendingSelfModify = Arc::new(Mutex::new(std::collections::HashMap::new()));
 
     let handler = Update::filter_message()
         .filter_command::<LopiCmd>()
@@ -276,7 +276,7 @@ async fn callback_query_handler(
     } else if data.starts_with("annotate:") {
         handle_annotate_callback(data, &store).await
     } else if data == self_modify::SELF_MODIFY_APPROVE || data == self_modify::SELF_MODIFY_REJECT {
-        handle_selfmod_callback(data, pending_sm).await
+        handle_selfmod_callback(data, caller_id, pending_sm).await
     } else {
         "Unknown action.".into()
     };
@@ -307,10 +307,14 @@ async fn handle_annotate_callback(data: &str, store: &MemoryStore) -> String {
     }
 }
 
-async fn handle_selfmod_callback(data: &str, pending_sm: PendingSelfModify) -> String {
+async fn handle_selfmod_callback(
+    data: &str,
+    caller_id: i64,
+    pending_sm: PendingSelfModify,
+) -> String {
     let approved = data == self_modify::SELF_MODIFY_APPROVE;
     let mut guard = pending_sm.lock().await;
-    if let Some((_, tx)) = guard.take() {
+    if let Some((_, tx)) = guard.remove(&caller_id) {
         let _ = tx.send(approved);
         if approved {
             "✅ Approved — self-modify task will be queued.".into()
@@ -318,6 +322,6 @@ async fn handle_selfmod_callback(data: &str, pending_sm: PendingSelfModify) -> S
             "❌ Rejected — self-modify proposal cancelled.".into()
         }
     } else {
-        "⚠️ No pending self-modify proposal (may have expired).".into()
+        "⚠️ No pending self-modify proposal for this chat (may have expired).".into()
     }
 }

@@ -89,14 +89,7 @@ impl AppState {
         pool: Arc<AgentPool>,
         auth_token: Option<String>,
     ) -> Self {
-        Self::new_with_repo(
-            store,
-            bus,
-            queue,
-            pool,
-            auth_token,
-            std::path::PathBuf::from("."),
-        )
+        Self::new_with_repo(store, bus, queue, pool, auth_token, std::path::PathBuf::from("."))
     }
 
     /// Variant that also records the repo path for spec surface serving.
@@ -194,17 +187,7 @@ pub async fn serve(
     port: u16,
     auth_token: Option<String>,
 ) -> Result<()> {
-    serve_with_repo(
-        store,
-        bus,
-        queue,
-        pool,
-        host,
-        port,
-        auth_token,
-        std::path::PathBuf::from("."),
-    )
-    .await
+    serve_with_repo(store, bus, queue, pool, host, port, auth_token, std::path::PathBuf::from(".")).await
 }
 
 /// Variant that also wires the repo path for `/api/spec` serving.
@@ -381,8 +364,8 @@ use handlers::{
     cancel_task, create_task, get_quality_trend, get_spec, get_stats, get_task, health,
     list_patterns, list_tasks, metrics,
 };
-mod streaming;
 pub(crate) mod types;
+mod streaming;
 use streaming::{sse_handler, ws_handler};
 
 #[cfg(test)]

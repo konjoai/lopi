@@ -62,6 +62,8 @@ impl AgentRunner {
             return;
         }
         self.log("🔍 KCQF: scanning for quality violations…");
+        // diff_files is empty: coverage scanning (which is per-file) is skipped.
+        // Only clippy runs workspace-wide. Passing changed-file paths is a future enhancement.
         match lopi_kcqf::scan_diff(&self.repo_path, &[]).await {
             Ok(violations) if violations.is_empty() => {
                 self.log("🔍 KCQF: clean — no violations detected");

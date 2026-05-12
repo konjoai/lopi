@@ -7,6 +7,7 @@ use anyhow::Result;
 use lopi_core::{Priority, Task, TaskSource};
 use lopi_memory::MemoryStore;
 use lopi_orchestrator::TaskQueue;
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 use teloxide::{
@@ -17,8 +18,9 @@ use tokio::sync::oneshot;
 use tokio::sync::Mutex;
 use tokio::time::timeout;
 
-/// Shared state for an outstanding self-modify approval: (goal, resolver).
-pub type PendingSelfModify = Arc<Mutex<Option<(String, oneshot::Sender<bool>)>>>;
+/// Pending self-modify approvals keyed by `chat_id` so concurrent proposals
+/// from different chats cannot interfere with each other.
+pub type PendingSelfModify = Arc<Mutex<HashMap<i64, (String, oneshot::Sender<bool>)>>>;
 
 /// Minimum post-mortem pattern count required to trigger a self-improve proposal.
 pub const POSTMORTEM_THRESHOLD: i64 = 3;
@@ -97,10 +99,10 @@ pub async fn propose_and_await(
 ) -> Result<()> {
     let (tx, rx) = oneshot::channel::<bool>();
 
-    // Register pending approval so the callback handler can resolve it.
+    // Register pending approval keyed by chat_id so multi-chat races can't cross-resolve.
     {
         let mut guard = pending.lock().await;
-        *guard = Some((goal.to_string(), tx));
+        guard.insert(chat_id.0, (goal.to_string(), tx));
     }
 
     let kb = InlineKeyboardMarkup::new([[
@@ -132,9 +134,9 @@ pub async fn propose_and_await(
                 .await?;
         }
         Err(_) => {
-            // Timeout — clear pending and inform the user.
+            // Timeout — clear this chat's pending entry and inform the user.
             let mut guard = pending.lock().await;
-            *guard = None;
+            guard.remove(&chat_id.0);
             bot.send_message(
                 chat_id,
                 format!("⏰ Self-modify proposal expired after {APPROVAL_TIMEOUT_SECS}s."),
