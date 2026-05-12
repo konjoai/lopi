@@ -107,3 +107,21 @@ CREATE TABLE IF NOT EXISTS quality_check_runs (
     run_at      TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_quality_repo_run ON quality_check_runs(repo_path, run_at DESC);
+
+-- Sprint O: GitHub App installation ledger.
+-- One row per customer per GitHub App installation event.
+-- customer_id is derived from the GitHub account/org that installed the App.
+CREATE TABLE IF NOT EXISTS github_installations (
+    id              TEXT PRIMARY KEY,
+    installation_id INTEGER NOT NULL UNIQUE,
+    customer_id     TEXT NOT NULL,
+    account_login   TEXT NOT NULL,
+    account_type    TEXT NOT NULL CHECK(account_type IN ('User', 'Organization')),
+    access_token    TEXT,
+    token_expires   TEXT,
+    status          TEXT NOT NULL CHECK(status IN ('active', 'suspended', 'deleted')) DEFAULT 'active',
+    installed_at    TEXT NOT NULL,
+    updated_at      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_installations_customer ON github_installations(customer_id);
+CREATE INDEX IF NOT EXISTS idx_installations_login ON github_installations(account_login);

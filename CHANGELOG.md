@@ -1,5 +1,45 @@
 # Changelog
 
+## [0.17.0] — Sprint O: GitHub App Server Scaffold 🔐
+
+### Added
+
+**`crates/lopi-app/`** — new crate: GitHub App OAuth + Stripe webhook server
+- `AppConfig::from_env()` — loads `GITHUB_APP_ID`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_REDIRECT_URI`, `GITHUB_WEBHOOK_SECRET`, `STRIPE_WEBHOOK_SECRET` at startup; gracefully degrades when absent
+- `GET /app/install` — redirects to GitHub App installation page
+- `GET /app/callback` — exchanges OAuth code for access token; stub for customer record creation
+- `POST /app/webhook` — HMAC-verified GitHub App installation events; on `created`: upserts installation, provisions per-customer `MemoryStore`; on `deleted`: marks installation inactive
+- `POST /stripe/webhook` — HMAC-SHA256 + timestamp replay protection (300s window); dispatches on `customer.subscription.{created,updated,deleted}`
+- 6 unit tests (HMAC validation for both GitHub and Stripe)
+
+**`crates/lopi-memory/src/store/installations.rs`** — GitHub App installation ledger
+- `github_installations` table: `installation_id`, `customer_id`, `account_login`, `account_type`, `status`, timestamps
+- `upsert_installation(id, login, type)` — idempotent; handles reinstalls
+- `delete_installation(id)` — marks as `'deleted'`
+- `customer_for_installation(id)` — lookup by installation_id (active only)
+- `list_installations()` — all active installations
+- `sanitise_customer_id(login)` — lowercase, alphanumeric + hyphen only
+- 5 unit tests: install/delete/reinstall/list/sanitise
+
+**`lopi serve-app` CLI command** — start the lopi-app server
+- `lopi serve-app [--port 3002] [--host …]`
+- Prints credential status at startup: `✅ configured` or `⚠️ missing` per service
+- Provisions `MemoryStore` from the shared `db_path()`
+
+**`web/src/routes/onboard/+page.svelte`** — customer onboarding page
+- 3-step install flow: install App → `lopi spec --save` → `lopi watch-gap-fill`
+- "Install GitHub App" button → `lopi serve-app` install endpoint
+- Pricing table: Starter $299/mo · Growth $999/mo · Enterprise $4,999/mo
+
+### Fixed — File budget
+**`store/tests.rs`** (504 lines) split into `tests.rs` (190) + `tests_extra.rs` (322)
+
+### Tests
+- 5 installations + 6 lopi-app tests (11 new)
+- Workspace: 408 → **419 passing**, 0 failing. 0 clippy warnings.
+
+---
+
 ## [0.16.0] — Sprint N: Trust Calibration + Per-Customer Isolation 🎯
 
 ### Added

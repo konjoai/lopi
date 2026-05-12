@@ -1807,6 +1807,7 @@ dependencies = [
  "clap",
  "futures",
  "lopi-agent",
+ "lopi-app",
  "lopi-core",
  "lopi-git",
  "lopi-github",
@@ -1858,6 +1859,25 @@ dependencies = [
  "tracing",
  "uuid",
  "which",
+]
+
+[[package]]
+name = "lopi-app"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum 0.7.9",
+ "chrono",
+ "hex",
+ "hmac",
+ "lopi-memory",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tokio",
+ "tower 0.4.13",
+ "tracing",
 ]
 
 [[package]]

@@ -295,12 +295,14 @@ pub struct TaskRow {
 }
 
 
+mod installations;
 mod lessons;
 mod patterns;
 mod quality;
 mod stability;
 // Re-export helpers for tests (tests.rs uses `use super::*`).
 pub use patterns::{jaccard_similarity, keyword_fingerprint};
+pub use installations::InstallationRow;
 pub use lessons::LessonRow;
 pub use patterns::PatternRow;
 pub use quality::{QualityRunRecord, QualityRunRow};

@@ -126,6 +126,17 @@ enum Commands {
     /// Show trust calibration stats — approved vs rejected pattern signals,
     /// current score weight adjustments, and reliability metrics.
     Trust,
+    /// Start the GitHub App OAuth + Stripe webhook server.
+    ///
+    /// Reads credentials from environment variables:
+    ///   GITHUB_APP_ID, GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET,
+    ///   GITHUB_WEBHOOK_SECRET, GITHUB_REDIRECT_URI, STRIPE_WEBHOOK_SECRET
+    ServeApp {
+        #[arg(short, long, default_value = "3002")]
+        port: u16,
+        #[arg(long, default_value = "127.0.0.1")]
+        host: String,
+    },
     /// Run tests, find failing spec items, and queue fix tasks into a running
     /// lopi sail server. Use --dry-run to see gaps without queuing.
     GapFill {
@@ -350,6 +361,20 @@ async fn main() -> Result<()> {
         }
 
         Commands::Trust => trust_commands::show().await?,
+
+        Commands::ServeApp { port, host } => {
+            let addr: std::net::SocketAddr = format!("{host}:{port}")
+                .parse()
+                .map_err(|e| anyhow::anyhow!("invalid address: {e}"))?;
+            let cfg = lopi_app::AppConfig::from_env();
+            println!("🔐 lopi serve-app on {addr}");
+            println!("   GitHub OAuth: {}", if cfg.github_configured() { "✅ configured" } else { "⚠️  missing (set GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, GITHUB_REDIRECT_URI)" });
+            println!("   Stripe:       {}", if cfg.stripe_configured() { "✅ configured" } else { "⚠️  missing (set STRIPE_WEBHOOK_SECRET)" });
+            println!();
+            let store = MemoryStore::open(db_path()).await?;
+            let state = lopi_app::AppState { cfg, store };
+            lopi_app::serve(state, addr).await?;
+        }
 
         Commands::GapFill { repo, sail_url, dry_run } => {
             gap_fill_commands::run(repo, &sail_url, dry_run, false).await?;

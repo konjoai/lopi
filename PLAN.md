@@ -1,6 +1,6 @@
 # PLAN.md — lopi Master Plan
 
-**Updated:** 2026-05-12 · v0.16.0 just shipped.
+**Updated:** 2026-05-12 · v0.17.0 just shipped.
 
 ## Vision
 
@@ -55,6 +55,12 @@ MemoryStore · worktree lock · CancellationToken · structured shutdown.
 the CLI subprocess for planning · prompt caching with `cache_control:
 ephemeral` · real `TurnMetrics` from API responses · transparent CLI
 fallback · 7 new tests.
+
+### v0.17.0 — Sprint O: GitHub App Server Scaffold 🔐
+`lopi-app` crate (GitHub App OAuth + Stripe webhook, 6 tests) · `github_installations` table ·
+`upsert/delete/list_installation` · per-customer store provisioned on install event ·
+`lopi serve-app` CLI · SvelteKit `/onboard` page with 3-step flow + pricing ·
+`store/tests.rs` split (504→190+322) · 11 new tests (419 total).
 
 ### v0.16.0 — Sprint N: Trust Calibration + Per-Customer Isolation 🎯
 Trust calibration live: `compute_weight_adjustments()` async, pulls approved/rejected
@@ -161,12 +167,19 @@ lopi learn annotate CLI command. 313 tests.
 - [x] `MemoryStore::open_for_customer(base_dir, customer_id)` — per-tenant isolation
 - [x] `store/patterns.rs` extracted; `task_commands.rs` extracted (both files in budget)
 
-### Sprint O — GitHub App + Onboarding Scaffold (next)
-- [ ] GitHub App manifest + OAuth installation flow (requires live domain + credentials)
-- [ ] `lopi serve-app --port 3002` — axum server for GitHub App callbacks
-- [ ] Per-customer store provisioned on GitHub App installation event
-- [ ] `lopi.konjoai.dev` landing page (SvelteKit in `web/`) — connect any repo in 5 min
-- [ ] Stripe webhook integration — tier gating on API endpoints
+### Sprint O — GitHub App Server Scaffold ✅ (shipped v0.17.0)
+- [x] `lopi-app` crate: GitHub App OAuth routes + Stripe webhook handler
+- [x] `github_installations` table + upsert/delete/list/lookup
+- [x] `lopi serve-app` CLI — starts on port 3002, reads credentials from env
+- [x] Per-customer store provisioned on `installation.created` webhook
+- [x] SvelteKit `/onboard` page with 3-step flow and pricing table
+
+### Sprint P — Production Deployment + Tier Gating (next)
+- [ ] Register GitHub App on github.com (requires live domain)
+- [ ] Add `lopi-app` Dockerfile + fly.io / Railway deploy config
+- [ ] Tier gating middleware in `lopi sail` — read customer tier from DB
+- [ ] `/api/plans` endpoint — return available tiers from Stripe products
+- [ ] End-to-end install flow test with a real GitHub App installation
 
 ### Phase 7+ — UI polish (deferred)
 - [ ] Mobile-responsive Forge degradation
@@ -200,10 +213,10 @@ near-term sprint** — the CLI is good enough.
 
 | Metric | Value |
 |---|---|
-| Workspace tests | **408 passing**, 0 failing |
+| Workspace tests | **419 passing**, 0 failing |
 | Build | `cargo build --workspace`: clean, 0 clippy warnings |
-| Crates | **13** (+ lopi-github, lopi-spec) |
-| CLI commands | `run`, `watch`, `tail`, `dock`, `sail [--repos]`, `cancel`, `learn list/show/export/annotate`, `schedules list`, `serve-webhooks`, `spec`, `check [--fail-on-violations]`, `gap-fill`, `watch-gap-fill`, `trust` |
+| Crates | **15** (+ lopi-app, lopi-github, lopi-spec) |
+| CLI commands | `run`, `watch`, `tail`, `dock`, `sail [--repos]`, `cancel`, `learn list/show/export/annotate`, `schedules list`, `serve-webhooks`, `spec`, `check [--fail-on-violations]`, `gap-fill`, `watch-gap-fill`, `trust`, `serve-app` |
 | API endpoints | `/api/health`, `/api/tasks` (GET+POST), `/api/tasks/:id` (GET+DELETE), `/api/stats`, `/api/patterns`, `/metrics` (Prometheus), `/sse` (SSE), `/ws` (WebSocket) |
 | Embedded UI | SvelteKit Forge + Constellation, ~487 KB JS / 126 KB gzipped |
 | Direct-API planning | ✅ via `AgentRunner::with_api(client, limiter, breaker)` |

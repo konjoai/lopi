@@ -40,12 +40,10 @@ jobs:
       - name: rustfmt
         run: cargo fmt --all -- --check
 
-      - name: clippy — zero warnings, pedantic, all deny flags
-        continue-on-error: true  # soft-fail: re-enable after toolchain pinning stabilises
+      - name: clippy — zero warnings, all deny flags
         run: |
           cargo clippy --workspace --all-targets --all-features -- \
             -D warnings \
-            -D clippy::pedantic \
             -D clippy::unwrap_used \
             -D clippy::expect_used \
             -D clippy::panic \
@@ -55,6 +53,13 @@ jobs:
             -D clippy::print_stdout \
             -D clippy::print_stderr \
             -W clippy::cognitive_complexity
+
+      - name: clippy pedantic (advisory — non-blocking)
+        continue-on-error: true
+        run: |
+          cargo clippy --workspace --all-targets -- -D clippy::pedantic 2>&1 \
+            | grep "^error" | head -20 || true
+          echo "Pedantic lints above are advisory — fix over time."
 
       - name: cargo audit — zero known vulnerabilities
         continue-on-error: true  # soft-fail: advisory DB changes are out of our control
@@ -69,15 +74,13 @@ jobs:
           cargo deny check --config .konjo/deny.toml
 
       - name: dead code — zero tolerance
-        continue-on-error: true  # soft-fail: re-enable after baseline is clean
         run: |
-          COUNT=$(RUSTFLAGS="-W dead_code" cargo check --workspace 2>&1 \
-            | grep -c "warning: dead_code" || true)
+          OUTPUT=$(RUSTFLAGS="-W dead_code" cargo check --workspace 2>&1)
+          COUNT=$(echo "$OUTPUT" | grep -c "warning: dead_code" || true)
           echo "Dead code warnings: $COUNT"
           if [ "$COUNT" -gt 0 ]; then
-            RUSTFLAGS="-W dead_code" cargo check --workspace 2>&1 \
-              | grep "warning: dead_code" || true
-            echo "::error::$COUNT dead code warning(s). Remove before merging."
+            echo "$OUTPUT" | grep "warning: dead_code" | head -20
+            echo "::error::$COUNT dead code warning(s). Remove all dead code before merging."
             exit 1
           fi
 
@@ -104,7 +107,6 @@ jobs:
           cargo install cargo-llvm-cov --locked --quiet 2>/dev/null || true
 
       - name: Run tests with coverage
-        continue-on-error: true  # soft-fail: re-enable after baseline established
         run: |
           cargo llvm-cov nextest \
             --workspace \
@@ -121,7 +123,6 @@ jobs:
           fail_ci_if_error: false  # don't fail CI on Codecov outage
 
       - name: Coverage gate (80% floor, 95% target)
-        continue-on-error: true  # soft-fail: re-enable after baseline is stable
         run: |
           cargo llvm-cov report --json > coverage.json 2>/dev/null || true
           COVERAGE=$(python3 -c "
@@ -237,7 +238,6 @@ jobs:
           python-version: "3.11"
 
       - name: Cognitive complexity gate (clippy)
-        continue-on-error: true  # soft-fail: @stable toolchain version varies across CI runs
         run: |
           # Any function with cognitive complexity > 15 fails the gate
           VIOLATIONS=$(cargo clippy --workspace --all-targets -- \
@@ -266,26 +266,30 @@ jobs:
           fi
           echo "Cognitive complexity: all functions ≤ 15 ✓"
 
-      - name: File size gate
-        continue-on-error: true  # soft-fail: re-enable after environment stabilises
+      - name: File size gate (changed files on PR, all files on push)
         run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            SCAN_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD \
+              | grep -E '\.(rs|py)$' | grep -v target || true)
+          else
+            SCAN_FILES=$(find . \( -name "*.rs" -o -name "*.py" \) | grep -v target)
+          fi
           OVERSIZED=""
-          while IFS= read -r -d '' f; do
+          for f in $SCAN_FILES; do
+            [ -f "$f" ] || continue
             LC=$(wc -l < "$f")
             if [ "$LC" -gt 500 ]; then
               OVERSIZED="${OVERSIZED}${f}: ${LC} lines\n"
             fi
-          done < <(find . -name "*.rs" -o -name "*.py" | grep -v target | tr '\n' '\0')
-
+          done
           if [ -n "$OVERSIZED" ]; then
             printf "Files exceeding 500-line limit:\n%b" "$OVERSIZED"
-            echo "::error::Files exceeding 500-line limit found. Split into smaller modules."
+            echo "::error::File(s) exceeding 500-line limit. Split into smaller modules."
             exit 1
           fi
           echo "File sizes: all within 500-line limit ✓"
 
       - name: DRY check
-        continue-on-error: true  # soft-fail: re-enable after environment stabilises
         run: |
           python3 .konjo/scripts/dry_check.py \
             --threshold 0.85 \
@@ -298,7 +302,7 @@ jobs:
           fi
 
       - name: Documentation gate (rustdoc)
-        continue-on-error: true  # soft-fail: re-enable after all public APIs are documented
+        continue-on-error: true  # re-enable once all public APIs are documented
         run: |
           RUSTDOCFLAGS="-D missing_docs -D rustdoc::broken_intra_doc_links" \
             cargo doc --workspace --no-deps 2>&1 | tee rustdoc_output.txt
