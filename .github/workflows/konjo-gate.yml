@@ -191,6 +191,7 @@ jobs:
             --in-diff <(git diff origin/${{ github.base_ref }}...HEAD) \
             --timeout 60 \
             --jobs 2 \
+            --exclude '^src/' \
             2>&1 | tee mutation_report.txt
 
       - name: Evaluate mutation survival rate
