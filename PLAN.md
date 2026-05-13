@@ -209,6 +209,101 @@ near-term sprint** — the CLI is good enough.
 
 ---
 
+## Researched Feature Roadmap
+
+Discovery sweep across modern agent infrastructure (OpenTelemetry GenAI
+semconv, Anthropic Agent SDK 2024–2025, Microsoft Agent Framework, MCP +
+A2A specs, OpenAI structured outputs). Tiered by urgency; items ordered
+within each tier by impact-per-LoC against lopi's current shape.
+
+### 🔴 P1 — Implement now
+
+Foundational survivability + observability. Without these, fleet
+scale-up exposes lopi to runaway spend and opaque failures.
+
+- **Cost governor + circuit breakers** — `BudgetConfig` hierarchy
+  (fleet → agent → task) with pre-call enforcement in the planner and
+  scorer paths. Each scope has a `CircuitBreaker` (`Closed` →
+  `Open` → `HalfOpen`) tracking consecutive failures and per-window
+  cost burn. Emits `AgentEvent::BudgetExceeded { scope, limit_usd,
+  burned_usd }` the moment a call would breach the cap, so the UI can
+  flag it before the next agent turn fires. Builds on the rate-limit
+  primitives in `lopi-ratelimit`.
+- **OpenTelemetry spans per agent turn** — `tracing` already runs
+  workspace-wide. Add a feature-gated `otel` Cargo feature that wires
+  `tracing-opentelemetry` + `opentelemetry-otlp` and emits four
+  GenAI-semconv-aligned spans per turn: `lopi.agent.think`,
+  `lopi.agent.act`, `lopi.agent.score`, `lopi.agent.task.complete`.
+  Honors `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_SERVICE_NAME` envs.
+  Off by default — zero runtime cost when the feature is disabled.
+- **Durable checkpoint + resume** — Serialize `AgentState` (current
+  attempt, last plan, last score, working directory, accumulated
+  context hash) via `sqlx` to a new `agent_checkpoints` table before
+  every action that can fail (plan, implement, score, PR). Adds
+  `lopi resume --agent-id <uuid>` CLI subcommand and
+  `POST /api/agents/{id}/checkpoint` endpoint to checkpoint on demand.
+  Survives `lopi sail` restarts; pairs with the existing memory store
+  schema migrations.
+- **Structured output schema validation** — Optional
+  `output_schema: Option<JsonSchema>` on `AgentSpec`. After each
+  implement step, validate the generated diff metadata / score JSON
+  against the schema. Counts violations in a Prometheus counter
+  `lopi_schema_violations_total{agent,kind}` and reroutes failures
+  through the existing adaptive-retry path with the violation message
+  appended to the next plan prompt.
+
+### 🟠 P2 — Next
+
+Once P1 lands, lopi has the safety floor needed to enable richer
+collaboration patterns.
+
+- **MCP + A2A protocol support** — `McpClient` (JSON-RPC 2.0 over
+  stdio + SSE transports) for tool-server discovery, and `A2AClient`
+  with the published agent card so external clients can drive lopi
+  via the Agent-to-Agent spec. Reuses the existing token-bucket rate
+  limiter per peer.
+- **Multi-tier agent memory** — Split `lopi-memory` into four address
+  spaces: `working` (in-context, ephemeral), `episodic` (per-task,
+  TTL-bounded), `semantic` (cross-task patterns — current
+  `PatternEnricher`), and `procedural` (learned tool-call sequences).
+  Background consolidation worker runs under `tokio::spawn` on a soft
+  cadence. Optional `kohaku` vector-store backend behind a feature
+  flag for embedding-based recall.
+- **Human-in-the-loop pause points** — `require_approval: Vec<Pattern>`
+  on the agent spec (regex against the proposed plan/diff). When a
+  pattern matches, emit `AgentEvent::AwaitingApproval { task_id,
+  reason, preview }`, suspend the runner, and expose
+  `POST /api/agents/{id}/approve` + `/api/agents/{id}/reject` for
+  resume. Telegram bot grows `/approve <id>` and `/reject <id>`
+  commands. The Forge harbor renders awaiting agents with a distinct
+  amber halo.
+- **Constellation auto-scaling** — `FleetController` watches aggregate
+  tokens/sec and queue depth. Above the high-water mark, spawn a new
+  agent slot (subject to `BudgetConfig`); below the low-water mark,
+  drain idle slots after a cooldown. Emits
+  `FleetEvent::Scaled { from, to, reason }` so the UI can animate the
+  new boat sailing in.
+
+### 🟡 P3 — Later
+
+Power tools — high leverage but require P1+P2 substrate to be useful.
+
+- **Compile-time policy enforcement proc macro** — `#[lopi::policy]`
+  on agent functions reads a TOML manifest and emits compile errors
+  for capability/budget violations before the binary ships. Avoids
+  runtime guard-rail drift.
+- **Hierarchical agent delegation with budget slicing** — Parent agent
+  can `spawn_child(spec, budget_slice)`. Child inherits parent context;
+  parent's budget is debited atomically. Supports recursive
+  decomposition for `lopi plan "..."` (planned in Phase 9).
+- **Fleet replay + time-travel debugging** — Snapshot every
+  `AgentEvent` + checkpoint into an append-only log. CLI: `lopi
+  replay --task <id> --from <ts>` reconstructs the full agent state at
+  any past point. Useful for post-mortem of complex multi-agent
+  failures.
+
+---
+
 ## Current Health
 
 | Metric | Value |
