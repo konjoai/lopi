@@ -7,7 +7,6 @@ use std::str::FromStr;
 
 const SCHEMA: &str = include_str!("../schema.sql");
 
-
 /// `SQLite` dual-pool store: one serialising write connection, up to 8 read-only connections.
 ///
 /// `SQLite` supports only one concurrent writer. Using a single-connection write pool
@@ -75,14 +74,17 @@ impl MemoryStore {
     ///
     /// # Errors
     /// Returns `Err` if the directory cannot be created or the database cannot be opened.
-    pub async fn open_for_customer(
-        base_dir: impl AsRef<Path>,
-        customer_id: &str,
-    ) -> Result<Self> {
+    pub async fn open_for_customer(base_dir: impl AsRef<Path>, customer_id: &str) -> Result<Self> {
         // Sanitise: only alphanumeric + hyphen/underscore allowed in customer_id.
         let safe_id: String = customer_id
             .chars()
-            .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+            .map(|c| {
+                if c.is_alphanumeric() || c == '-' || c == '_' {
+                    c
+                } else {
+                    '_'
+                }
+            })
             .collect();
         let db_path = base_dir.as_ref().join(&safe_id).join("lopi.db");
         Self::open(db_path).await
@@ -230,7 +232,6 @@ impl MemoryStore {
         Ok(rows)
     }
 
-
     /// Return the total number of tasks in the database.
     ///
     /// # Errors
@@ -282,7 +283,6 @@ impl MemoryStore {
         .await?;
         Ok(())
     }
-
 }
 
 #[derive(Debug, sqlx::FromRow)]
@@ -294,17 +294,16 @@ pub struct TaskRow {
     pub completed_at: Option<String>,
 }
 
-
 mod installations;
 mod lessons;
 mod patterns;
 mod quality;
 mod stability;
 // Re-export helpers for tests (tests.rs uses `use super::*`).
-pub use patterns::{jaccard_similarity, keyword_fingerprint};
 pub use installations::InstallationRow;
 pub use lessons::LessonRow;
 pub use patterns::PatternRow;
+pub use patterns::{jaccard_similarity, keyword_fingerprint};
 pub use quality::{QualityRunRecord, QualityRunRow};
 pub use stability::{StabilityEntry, StabilityRecord};
 

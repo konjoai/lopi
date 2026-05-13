@@ -257,17 +257,27 @@ impl AgentRunner {
             TaskStatus::Testing => 0.55_f32,
             TaskStatus::Scoring => 0.30_f32,
             TaskStatus::Retrying { .. } => 0.40_f32,
-            TaskStatus::Success { .. } | TaskStatus::Failed { .. } | TaskStatus::RolledBack => 0.0_f32,
+            TaskStatus::Success { .. } | TaskStatus::Failed { .. } | TaskStatus::RolledBack => {
+                0.0_f32
+            }
             TaskStatus::Queued => 0.10_f32,
         };
         self.emit_turn_metrics(activity);
-        self.bus.send(AgentEvent::StatusChanged { task_id: self.id(), status: s, attempt });
+        self.bus.send(AgentEvent::StatusChanged {
+            task_id: self.id(),
+            status: s,
+            attempt,
+        });
     }
 
     pub(super) fn emit_turn_metrics(&self, activity: f32) {
         let pressure = self.context.token_pressure();
         self.bus.send(AgentEvent::TurnMetrics {
-            task_id: self.id(), pressure, activity, tokens_per_sec: 0.0, cost_usd: 0.0,
+            task_id: self.id(),
+            pressure,
+            activity,
+            tokens_per_sec: 0.0,
+            cost_usd: 0.0,
         });
     }
 

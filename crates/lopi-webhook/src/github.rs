@@ -45,7 +45,11 @@ pub async fn serve(
     addr: SocketAddr,
     triage: Option<TriageConfig>,
 ) -> Result<()> {
-    let state = WebhookState { queue, secret, triage };
+    let state = WebhookState {
+        queue,
+        secret,
+        triage,
+    };
     let app = Router::new()
         .route("/webhook/github", post(handle))
         .with_state(state);
@@ -152,10 +156,19 @@ async fn handle(
     // Issue triage: classify opened/labeled issues via Haiku; optionally queue a fix task.
     let action = payload.get("action").and_then(|v| v.as_str()).unwrap_or("");
     if event == "issues" && (action == "opened" || action == "labeled") {
-        if let (Some(triage), Some(ip)) =
-            (s.triage.clone(), crate::issue::extract_from_json(&payload, &repo))
-        {
-            spawn_triage(ip, triage.model, triage.api_client, triage.limiter, triage.breaker, triage.github, s.queue.clone());
+        if let (Some(triage), Some(ip)) = (
+            s.triage.clone(),
+            crate::issue::extract_from_json(&payload, &repo),
+        ) {
+            spawn_triage(
+                ip,
+                triage.model,
+                triage.api_client,
+                triage.limiter,
+                triage.breaker,
+                triage.github,
+                s.queue.clone(),
+            );
         }
     }
 

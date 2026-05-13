@@ -46,7 +46,9 @@ pub fn jaccard_similarity(a: &str, b: &str) -> f32 {
         return 0.0;
     }
     #[allow(clippy::cast_possible_truncation)]
-    { (intersection / union) as f32 }
+    {
+        (intersection / union) as f32
+    }
 }
 
 /// Build the keyword fingerprint for a goal string.
@@ -187,16 +189,24 @@ impl MemoryStore {
             sqlx::query(
                 "UPDATE patterns SET avg_attempts=?1, success_rate=?2, last_seen=?3 WHERE id=?4",
             )
-            .bind(new_avg).bind(new_sr).bind(&now).bind(existing_id)
-            .execute(&self.write_pool).await?;
+            .bind(new_avg)
+            .bind(new_sr)
+            .bind(&now)
+            .bind(existing_id)
+            .execute(&self.write_pool)
+            .await?;
         } else {
             sqlx::query(
                 "INSERT INTO patterns (id, goal_keywords, avg_attempts, success_rate, last_seen) \
                  VALUES (?1, ?2, ?3, ?4, ?5)",
             )
             .bind(uuid::Uuid::new_v4().to_string())
-            .bind(&fingerprint).bind(attempt_f).bind(success_rate).bind(&now)
-            .execute(&self.write_pool).await?;
+            .bind(&fingerprint)
+            .bind(attempt_f)
+            .bind(success_rate)
+            .bind(&now)
+            .execute(&self.write_pool)
+            .await?;
         }
         Ok(())
     }
@@ -239,10 +249,12 @@ impl MemoryStore {
     /// Returns `Err` if the database query fails.
     pub async fn compute_weight_adjustments(&self) -> Result<ScoreWeights> {
         let annotated = self.load_annotated_patterns().await?;
-        let approved: Vec<_> = annotated.iter()
+        let approved: Vec<_> = annotated
+            .iter()
             .filter(|p| p.user_annotation.as_deref() == Some("approved"))
             .collect();
-        let rejected: Vec<_> = annotated.iter()
+        let rejected: Vec<_> = annotated
+            .iter()
             .filter(|p| p.user_annotation.as_deref() == Some("rejected"))
             .collect();
 
@@ -251,7 +263,9 @@ impl MemoryStore {
         }
 
         let avg = |patterns: &[&PatternRow]| -> f64 {
-            if patterns.is_empty() { return 0.0; }
+            if patterns.is_empty() {
+                return 0.0;
+            }
             patterns.iter().filter_map(|p| p.avg_attempts).sum::<f64>() / patterns.len() as f64
         };
         let signal = (avg(&rejected) - avg(&approved)).clamp(-2.0, 2.0);
