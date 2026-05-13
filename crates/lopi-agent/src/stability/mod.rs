@@ -166,48 +166,7 @@ impl StabilityHarness {
     /// Returns an error when zero plans are collected (all calls failed).
     pub async fn assess(&self, task: &Task) -> Result<StabilityVerdict> {
         let prompt = build_stability_prompt(task);
-        let mut plans: Vec<String> = Vec::with_capacity(self.config.n_samples);
-
-        for i in 0..self.config.n_samples {
-            if let Some(b) = &self.breaker {
-                if b.check().await.is_err() {
-                    tracing::warn!(
-                        sample = i,
-                        "stability: circuit breaker open — stopping early"
-                    );
-                    break;
-                }
-            }
-            if let Some(l) = &self.limiter {
-                l.acquire_request(4000.0).await;
-            }
-
-            match self
-                .client
-                .stream_plan(&self.config.model, LOPI_SYSTEM_PROMPT, &prompt, |_| {})
-                .await
-            {
-                Ok((text, usage)) => {
-                    if let Some(b) = &self.breaker {
-                        b.record_success().await;
-                        b.record_cost(usage.estimated_cost(&self.config.model))
-                            .await;
-                    }
-                    tracing::debug!(
-                        sample = i,
-                        chars = text.len(),
-                        "stability: plan sample collected"
-                    );
-                    plans.push(text);
-                }
-                Err(e) => {
-                    if let Some(b) = &self.breaker {
-                        b.record_failure().await;
-                    }
-                    tracing::warn!(sample = i, error = %e, "stability: plan sample failed");
-                }
-            }
-        }
+        let mut plans = self.collect_samples(&prompt).await;
 
         if plans.is_empty() {
             anyhow::bail!(
@@ -218,6 +177,7 @@ impl StabilityHarness {
 
         // Single sample: trivially stable (no variance to compute).
         if plans.len() == 1 {
+            let mut plans = plans;
             return Ok(StabilityVerdict::Stable {
                 consensus_plan: plans.remove(0),
                 variance_score: 0.0,
@@ -247,6 +207,69 @@ impl StabilityHarness {
                 n_samples,
             }
         })
+    }
+
+    /// Collect up to `config.n_samples` plan texts, stopping early if the
+    /// circuit breaker opens. Returns however many plans were successfully
+    /// fetched (possibly fewer than `n_samples` on partial failure).
+    async fn collect_samples(&self, prompt: &str) -> Vec<String> {
+        let mut plans: Vec<String> = Vec::with_capacity(self.config.n_samples);
+        for i in 0..self.config.n_samples {
+            if self.breaker_is_open(i).await {
+                break;
+            }
+            if let Some(l) = &self.limiter {
+                l.acquire_request(4000.0).await;
+            }
+            match self
+                .client
+                .stream_plan(&self.config.model, LOPI_SYSTEM_PROMPT, prompt, |_| {})
+                .await
+            {
+                Ok((text, usage)) => {
+                    self.record_success(usage.estimated_cost(&self.config.model))
+                        .await;
+                    tracing::debug!(
+                        sample = i,
+                        chars = text.len(),
+                        "stability: plan sample collected"
+                    );
+                    plans.push(text);
+                }
+                Err(e) => {
+                    self.record_failure().await;
+                    tracing::warn!(sample = i, error = %e, "stability: plan sample failed");
+                }
+            }
+        }
+        plans
+    }
+
+    /// Returns `true` if the circuit breaker is configured and currently open.
+    async fn breaker_is_open(&self, sample_idx: usize) -> bool {
+        if let Some(b) = &self.breaker {
+            if b.check().await.is_err() {
+                tracing::warn!(
+                    sample = sample_idx,
+                    "stability: circuit breaker open — stopping early"
+                );
+                return true;
+            }
+        }
+        false
+    }
+
+    async fn record_success(&self, cost: f64) {
+        if let Some(b) = &self.breaker {
+            b.record_success().await;
+            b.record_cost(cost).await;
+        }
+    }
+
+    async fn record_failure(&self) {
+        if let Some(b) = &self.breaker {
+            b.record_failure().await;
+        }
     }
 }
 
