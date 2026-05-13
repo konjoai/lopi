@@ -3,129 +3,1593 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>lopi · build the Forge</title>
+  <title>lopi · forge — agent command center</title>
   <style>
-    *,*::before,*::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:        #06060f;
+      --bg-1:      #0c0c1a;
+      --bg-2:      #14142a;
+      --line:      rgba(255,255,255,0.08);
+      --line-2:    rgba(255,255,255,0.14);
+      --fg:        #e8e8f5;
+      --fg-dim:    rgba(232,232,245,0.62);
+      --fg-mute:   rgba(232,232,245,0.32);
+      --konjo:     #7c3aed;
+      --konjo-2:   #a78bfa;
+      --konjo-3:   rgba(124,58,237,0.20);
+      --ok:        #5be39b;
+      --warn:      #f59e0b;
+      --err:       #ef4444;
+      --mono:      ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+      --sans:      -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+      --ease-out:  cubic-bezier(0.23, 1, 0.32, 1);
+      --ease-back: cubic-bezier(0.34, 1.56, 0.64, 1);
+      --ease-quint: cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { background: var(--bg); color: var(--fg); font-family: var(--sans);
+      letter-spacing: -0.011em; min-height: 100%; }
     body {
-      background: #0a0a0a;
-      color: #f5f5f5;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-      font-feature-settings: 'cv02', 'cv03';
-      letter-spacing: -0.011em;
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 2rem;
       background:
-        radial-gradient(circle at 20% 30%, rgba(0, 212, 255, 0.06) 0%, transparent 40%),
-        radial-gradient(circle at 80% 70%, rgba(255, 69, 0, 0.04) 0%, transparent 40%),
-        #0a0a0a;
+        radial-gradient(ellipse at 18% 12%, rgba(124,58,237,0.08) 0%, transparent 45%),
+        radial-gradient(ellipse at 82% 88%, rgba(124,58,237,0.04) 0%, transparent 50%),
+        var(--bg);
+      padding-bottom: 64px;
     }
-    .container { max-width: 640px; }
-    .pulse {
-      width: 12px; height: 12px; border-radius: 50%;
-      background: linear-gradient(135deg, #00d4ff 0%, #ff4500 100%);
-      box-shadow: 0 0 24px rgba(0, 212, 255, 0.5), 0 0 48px rgba(255, 69, 0, 0.2);
-      animation: pulse 2.4s ease-in-out infinite;
-      display: inline-block;
-      margin-right: 0.6rem;
-      vertical-align: middle;
+
+    /* ───────── scroll-entrance stagger ───────── */
+    .reveal {
+      opacity: 0;
+      transform: translateY(32px);
+      transition: opacity 560ms var(--ease-out), transform 560ms var(--ease-out);
+      will-change: transform, opacity;
     }
-    @keyframes pulse {
-      0%, 100% { transform: scale(1); opacity: 1; }
-      50% { transform: scale(1.15); opacity: 0.7; }
+    .reveal.in { opacity: 1; transform: none; }
+
+    /* ───────── topbar ───────── */
+    .topbar {
+      position: sticky; top: 0; z-index: 50;
+      backdrop-filter: blur(12px);
+      background: rgba(6,6,15,0.74);
+      border-bottom: 1px solid var(--line);
+      padding: 14px 28px;
+      display: flex; align-items: center; gap: 18px;
     }
-    h1 {
-      font-size: 2.4rem;
-      font-weight: 700;
-      letter-spacing: -0.04em;
-      margin-bottom: 0.5rem;
+    .brand {
+      display: flex; align-items: center; gap: 12px;
+      font-weight: 700; font-size: 1.04rem; letter-spacing: -0.02em;
     }
-    .subtitle {
-      font-family: ui-monospace, 'SF Mono', monospace;
-      font-size: 0.7rem;
+    .brand .dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: var(--konjo);
+      box-shadow: 0 0 12px var(--konjo);
+      animation: brand-pulse 2.4s ease-in-out infinite;
+      will-change: transform, opacity;
+    }
+    @keyframes brand-pulse {
+      0%,100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.25); opacity: 0.75; }
+    }
+    .brand .tag {
+      font-family: var(--mono);
+      font-size: 0.62rem;
+      text-transform: uppercase;
+      letter-spacing: 0.20em;
+      color: var(--fg-mute);
+    }
+    .topbar .spacer { flex: 1; }
+    .conn {
+      display: flex; align-items: center; gap: 8px;
+      font-family: var(--mono);
+      font-size: 0.66rem;
       text-transform: uppercase;
       letter-spacing: 0.18em;
-      color: rgba(255,255,255,0.5);
-      margin-bottom: 2rem;
+      color: var(--fg-mute);
     }
-    p { line-height: 1.6; color: rgba(255,255,255,0.8); margin-bottom: 1rem; }
-    pre {
-      background: rgba(255,255,255,0.04);
-      border: 1px solid rgba(255,255,255,0.08);
-      border-radius: 8px;
-      padding: 1rem 1.25rem;
-      margin: 1rem 0 2rem;
-      font-family: ui-monospace, 'SF Mono', monospace;
-      font-size: 0.85rem;
-      color: #00d4ff;
-      overflow-x: auto;
+    .conn .led {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--err);
+      transition: background 0.3s ease, box-shadow 0.3s ease;
     }
-    .links {
-      font-family: ui-monospace, 'SF Mono', monospace;
-      font-size: 0.75rem;
-      color: rgba(255,255,255,0.4);
+    .conn.live .led { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+    .conn.demo .led { background: var(--konjo); box-shadow: 0 0 8px var(--konjo); }
+
+    /* ───────── layout shell ───────── */
+    main {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 36px 28px 0;
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 36px;
     }
-    .links a {
-      color: rgba(255,255,255,0.7);
-      text-decoration: none;
-      border-bottom: 1px dotted rgba(255,255,255,0.3);
+    .section-h {
+      font-family: var(--mono);
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.20em;
+      color: var(--fg-mute);
+      margin-bottom: 12px;
+      display: flex; align-items: center; gap: 10px;
     }
-    .links a:hover { color: #00d4ff; border-bottom-color: #00d4ff; }
-    .endpoints { margin-top: 2.5rem; }
-    .endpoints code {
-      font-family: ui-monospace, 'SF Mono', monospace;
-      font-size: 0.75rem;
-      background: rgba(255,255,255,0.05);
-      padding: 2px 6px;
+    .section-h .rule {
+      flex: 1;
+      height: 1px;
+      background: var(--line);
+    }
+    .panel {
+      background: var(--bg-1);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 20px 22px;
+    }
+
+    /* ───────── agent grid + magnetic cards ───────── */
+    .agent-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 16px;
+    }
+    .agent-card {
+      background: var(--bg-1);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 16px;
+      position: relative;
+      overflow: hidden;
+      transform: translate3d(0, 0, 0) rotateZ(0);
+      transition: transform 0.42s var(--ease-out), border-color 0.2s ease;
+      will-change: transform;
+    }
+    .agent-card:hover { border-color: var(--konjo-3); }
+    .agent-card.magnetic { transition: transform 60ms linear; }
+    .agent-card.returning { transition: transform 0.5s var(--ease-back); }
+    .agent-card .h {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 10px; margin-bottom: 10px;
+    }
+    .agent-card .goal {
+      font-size: 0.92rem; line-height: 1.35;
+      color: var(--fg);
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      flex: 1;
+    }
+    .agent-card .meta {
+      margin-top: 10px;
+      font-family: var(--mono);
+      font-size: 0.66rem;
+      color: var(--fg-mute);
+      display: flex; gap: 14px;
+    }
+    .agent-card .meta span:first-child { color: var(--konjo-2); }
+
+    /* lifecycle status indicator — shared frame */
+    .status {
+      width: 30px; height: 30px;
+      flex-shrink: 0;
+      position: relative;
+      display: grid; place-items: center;
+      will-change: transform;
+    }
+    .status .core {
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      background: var(--konjo);
+      box-shadow: 0 0 8px var(--konjo-3);
+      will-change: transform, opacity;
+    }
+
+    /* IDLE: breathing */
+    .status.idle .core { animation: breathe 3s ease-in-out infinite; }
+    @keyframes breathe {
+      0%,100% { transform: scale(1); }
+      50%     { transform: scale(1.06); }
+    }
+
+    /* THINKING: conic-gradient spinning ring */
+    .status.thinking::before {
+      content: "";
+      position: absolute; inset: 0;
+      border-radius: 50%;
+      background: conic-gradient(from 0deg,
+        transparent 0deg,
+        var(--konjo) 60deg,
+        var(--konjo-2) 220deg,
+        transparent 360deg);
+      mask: radial-gradient(circle, transparent 9px, black 10px, black 14px, transparent 15px);
+      -webkit-mask: radial-gradient(circle, transparent 9px, black 10px, black 14px, transparent 15px);
+      animation: spin 1.2s linear infinite;
+      will-change: transform;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ACTING: rapid double-pulse on the core */
+    .status.acting .core {
+      animation: act-pulse 200ms var(--ease-back);
+    }
+    @keyframes act-pulse {
+      0%   { transform: scale(1); }
+      40%  { transform: scale(1.4); }
+      70%  { transform: scale(1.1); }
+      100% { transform: scale(1.3); }
+    }
+
+    /* COMPLETE: burst then halo settle */
+    .status.complete .core {
+      background: var(--ok);
+      box-shadow: 0 0 8px rgba(91,227,155,0.6);
+    }
+    .status.complete::after {
+      content: "";
+      position: absolute; inset: 0;
+      border-radius: 50%;
+      border: 2px solid var(--ok);
+      animation: halo 700ms var(--ease-out);
+      opacity: 0;
+      will-change: transform, opacity;
+    }
+    @keyframes halo {
+      from { transform: scale(0.6); opacity: 1; }
+      to   { transform: scale(1.8); opacity: 0; }
+    }
+    .status.complete .burst {
+      position: absolute; inset: 0;
+      pointer-events: none;
+    }
+    .status.complete .burst i {
+      position: absolute;
+      top: 50%; left: 50%;
+      width: 4px; height: 4px;
+      border-radius: 50%;
+      background: var(--ok);
+      box-shadow: 0 0 6px var(--ok);
+      animation: burst 700ms cubic-bezier(0.22, 0.68, 0.36, 1) forwards;
+      will-change: transform, opacity;
+    }
+    @keyframes burst {
+      0%   { transform: translate(-50%, -50%) translate(0, 0); opacity: 1; }
+      100% { transform: translate(-50%, -50%) translate(var(--dx), var(--dy)); opacity: 0; }
+    }
+
+    /* FAILED: shake + red flash */
+    .status.failed .core {
+      background: var(--err);
+      box-shadow: 0 0 14px var(--err);
+      animation: failed-flash 180ms ease-out;
+    }
+    .status.failed {
+      animation: shake 180ms ease-in-out 3;
+      will-change: transform;
+    }
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      25%      { transform: translateX(-6px); }
+      75%      { transform: translateX(6px); }
+    }
+    @keyframes failed-flash {
+      0%   { opacity: 1; }
+      50%  { opacity: 0.4; }
+      100% { opacity: 1; }
+    }
+
+    .agent-card .phase-tag {
+      font-family: var(--mono);
+      font-size: 0.58rem;
+      text-transform: uppercase;
+      letter-spacing: 0.16em;
+      color: var(--konjo-2);
+      background: var(--konjo-3);
+      padding: 3px 9px;
+      border-radius: 999px;
+    }
+
+    /* schema validation badge */
+    .schema-badge {
+      position: absolute;
+      top: 14px; right: 14px;
+      width: 22px; height: 22px;
+      border-radius: 50%;
+      display: grid; place-items: center;
+      transform: scale(0);
+      opacity: 0;
+      transition: transform 0.42s var(--ease-back), opacity 0.2s ease;
+      will-change: transform, opacity;
+    }
+    .schema-badge.valid {
+      background: rgba(91,227,155,0.16);
+      color: var(--ok);
+      transform: scale(1);
+      opacity: 1;
+    }
+    .schema-badge.invalid {
+      background: rgba(239,68,68,0.16);
+      color: var(--err);
+      transform: scale(1);
+      opacity: 1;
+      animation: shake 80ms ease-in-out 3;
+    }
+    .schema-badge svg { width: 14px; height: 14px; }
+    .schema-scatter {
+      position: absolute;
+      top: 25px; right: 25px;
+      pointer-events: none;
+    }
+    .schema-scatter i {
+      position: absolute;
+      width: 3px; height: 3px;
+      border-radius: 50%;
+      background: var(--err);
+      box-shadow: 0 0 4px var(--err);
+      animation: scatter 600ms ease-out forwards;
+      will-change: transform, opacity;
+    }
+    @keyframes scatter {
+      0%   { transform: translate(0, 0); opacity: 1; }
+      100% { transform: translate(var(--dx), var(--dy)); opacity: 0; }
+    }
+
+    /* ───────── circuit breaker state machine ───────── */
+    .breakers {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+    }
+    .breaker {
+      background: var(--bg-1);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 18px;
+    }
+    .breaker .scope {
+      font-family: var(--mono);
+      font-size: 0.66rem;
+      text-transform: uppercase;
+      letter-spacing: 0.18em;
+      color: var(--fg-mute);
+      margin-bottom: 6px;
+    }
+    .breaker .budget {
+      font-size: 1.08rem;
+      font-weight: 600;
+      color: var(--konjo-2);
+    }
+    .state-machine {
+      margin-top: 14px;
+      width: 100%; height: 90px;
+    }
+    .sm-node {
+      transition: fill 0.4s ease, filter 0.4s ease;
+      will-change: filter;
+    }
+    .sm-node.active.closed   { fill: var(--ok);    filter: drop-shadow(0 0 6px var(--ok)); }
+    .sm-node.active.open     { fill: var(--err);   filter: drop-shadow(0 0 8px var(--err)); }
+    .sm-node.active.halfopen { fill: var(--warn);  filter: drop-shadow(0 0 6px var(--warn)); }
+    .sm-node:not(.active) { fill: rgba(255,255,255,0.18); }
+    .sm-label {
+      font-family: var(--mono);
+      font-size: 8px;
+      letter-spacing: 0.10em;
+      fill: var(--fg-mute);
+      text-transform: uppercase;
+    }
+    .sm-edge {
+      stroke: rgba(124,58,237,0.34);
+      stroke-width: 1.2;
+      fill: none;
+      stroke-dasharray: 6 4;
+      stroke-dashoffset: 0;
+    }
+    .sm-edge.active {
+      stroke: var(--konjo);
+      stroke-dasharray: 60;
+      stroke-dashoffset: 60;
+      animation: draw-edge 400ms ease-out forwards;
+    }
+    @keyframes draw-edge { to { stroke-dashoffset: 0; } }
+    .ripple {
+      transform-origin: center;
+      animation: ripple 2s ease-out infinite;
+      will-change: transform, opacity;
+    }
+    @keyframes ripple {
+      0%   { transform: scale(0.6); opacity: 0.6; }
+      80%  { transform: scale(2.4); opacity: 0; }
+      100% { transform: scale(2.4); opacity: 0; }
+    }
+
+    /* ───────── budget gauge ───────── */
+    .budget-wrap {
+      display: grid;
+      grid-template-columns: 240px 1fr;
+      gap: 28px;
+      align-items: center;
+    }
+    .gauge {
+      position: relative;
+      width: 240px; height: 240px;
+    }
+    .gauge svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+    .gauge-track { fill: none; stroke: rgba(255,255,255,0.06); stroke-width: 14; }
+    .gauge-arc {
+      fill: none;
+      stroke: var(--konjo);
+      stroke-width: 14;
+      stroke-linecap: round;
+      transition: stroke-dashoffset 0.5s var(--ease-out), stroke 0.4s ease;
+      will-change: stroke-dashoffset;
+    }
+    .gauge-arc.warn { stroke: var(--warn); }
+    .gauge-arc.crit { stroke: var(--err); }
+    .gauge-readout {
+      position: absolute;
+      inset: 0;
+      display: grid; place-items: center;
+      text-align: center;
+      pointer-events: none;
+    }
+    .gauge-readout .v {
+      font-family: var(--mono);
+      font-size: 2.2rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: var(--fg);
+    }
+    .gauge-readout .v.warn { color: var(--warn); }
+    .gauge-readout .v.crit { color: var(--err); }
+    .gauge-readout .k {
+      font-family: var(--mono);
+      font-size: 0.6rem;
+      text-transform: uppercase;
+      letter-spacing: 0.20em;
+      color: var(--fg-mute);
+      margin-top: 4px;
+    }
+    .deriv {
+      display: flex; flex-direction: column;
+      gap: 10px;
+    }
+    .deriv canvas {
+      width: 100%; height: 90px;
+      background: var(--bg-2);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+    }
+    .deriv-h {
+      display: flex; justify-content: space-between;
+      font-family: var(--mono);
+      font-size: 0.66rem;
+      color: var(--fg-mute);
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }
+
+    /* ───────── OTel span waterfall ───────── */
+    .waterfall {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .wf-row {
+      display: grid;
+      grid-template-columns: 200px 1fr 70px;
+      gap: 12px;
+      align-items: center;
+      padding: 6px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      font-family: var(--mono);
+      font-size: 0.72rem;
+    }
+    .wf-name {
+      color: var(--fg-dim);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .wf-name.child { padding-left: 16px; color: var(--fg-mute); }
+    .wf-name.child::before {
+      content: "└─ ";
+      color: var(--fg-mute);
+      margin-right: 2px;
+    }
+    .wf-track {
+      position: relative;
+      height: 14px;
+      background: rgba(255,255,255,0.03);
       border-radius: 3px;
-      color: #00ff9d;
+      overflow: hidden;
     }
-    .endpoints div { margin-bottom: 0.4rem; color: rgba(255,255,255,0.6); font-size: 0.85rem; }
+    .wf-bar {
+      position: absolute;
+      top: 0; bottom: 0;
+      background: linear-gradient(90deg, var(--konjo) 0%, var(--konjo-2) 100%);
+      border-radius: 3px;
+      width: 0;
+      transition: width 300ms var(--ease-quint);
+      cursor: pointer;
+      will-change: width;
+    }
+    .wf-bar:hover { filter: brightness(1.2); }
+    .wf-bar.think { background: linear-gradient(90deg, #6d28d9 0%, var(--konjo) 100%); }
+    .wf-bar.act   { background: linear-gradient(90deg, var(--konjo) 0%, var(--konjo-2) 100%); }
+    .wf-bar.score { background: linear-gradient(90deg, var(--konjo-2) 0%, #c4b5fd 100%); }
+    .wf-bar.complete { background: linear-gradient(90deg, #5be39b 0%, #34d399 100%); }
+    .wf-bar.failed   { background: linear-gradient(90deg, var(--err) 0%, #f87171 100%); }
+    .wf-dur {
+      font-size: 0.66rem;
+      color: var(--fg-mute);
+      text-align: right;
+    }
+    .tooltip {
+      position: fixed;
+      background: var(--bg-2);
+      border: 1px solid var(--konjo-3);
+      border-radius: 6px;
+      padding: 8px 12px;
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      color: var(--fg);
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.15s ease;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+      z-index: 100;
+      max-width: 320px;
+    }
+    .tooltip.show { opacity: 1; }
+    .tooltip .tt-k { color: var(--fg-mute); letter-spacing: 0.10em; text-transform: uppercase; font-size: 0.58rem; }
+
+    /* ───────── checkpoint timeline ───────── */
+    .timeline-wrap { position: relative; padding: 22px 0 18px; }
+    .timeline-track {
+      stroke: var(--line-2);
+      stroke-width: 2;
+      stroke-dasharray: 1200;
+      stroke-dashoffset: 1200;
+      animation: draw-track 1.4s var(--ease-out) forwards;
+    }
+    @keyframes draw-track { to { stroke-dashoffset: 0; } }
+    .timeline-diamond {
+      cursor: pointer;
+      transform-box: fill-box;
+      transform-origin: center;
+      transition: transform 0.2s var(--ease-back);
+      will-change: transform;
+    }
+    .timeline-diamond:hover { transform: scale(1.3) rotate(45deg); }
+    .timeline-diamond.enter {
+      animation: diamond-in 0.5s var(--ease-back) backwards;
+    }
+    @keyframes diamond-in {
+      0%   { transform: scale(0) rotate(45deg); opacity: 0; }
+      100% { transform: scale(1) rotate(45deg); opacity: 1; }
+    }
+    .timeline-label {
+      font-family: var(--mono);
+      font-size: 9px;
+      fill: var(--fg-mute);
+      letter-spacing: 0.10em;
+    }
+    .timeline-empty {
+      font-family: var(--mono);
+      font-size: 0.74rem;
+      color: var(--fg-mute);
+      text-align: center;
+      padding: 18px 0;
+    }
+
+    /* ───────── small bits ───────── */
+    .num-strong { font-family: var(--mono); font-size: 1.6rem; font-weight: 700; color: var(--fg); }
+    .num-sub    { font-family: var(--mono); font-size: 0.66rem; color: var(--fg-mute); letter-spacing: 0.18em; text-transform: uppercase; }
+    .stat-strip {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+    }
+    .stat-cell {
+      background: var(--bg-1);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px 16px;
+    }
+
+    .empty {
+      text-align: center;
+      font-family: var(--mono);
+      font-size: 0.74rem;
+      color: var(--fg-mute);
+      padding: 20px 0;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }
+
+    @media (max-width: 880px) {
+      .budget-wrap { grid-template-columns: 1fr; }
+      .breakers { grid-template-columns: 1fr; }
+      .stat-strip { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.001s !important;
+        transition-duration: 0.001s !important;
+      }
+    }
   </style>
 </head>
+
 <body>
-  <div class="container">
-    <h1><span class="pulse"></span>lopi</h1>
-    <div class="subtitle">forge ui not built</div>
+  <header class="topbar">
+    <div class="brand">
+      <span class="dot"></span>
+      lopi <span class="tag">forge</span>
+    </div>
+    <div class="spacer"></div>
+    <div class="conn" id="conn">
+      <span class="led"></span>
+      <span id="conn-text">connecting</span>
+    </div>
+  </header>
 
-    <p>
-      The lopi server is running. The new SvelteKit-based Forge UI hasn't been
-      built yet — only the API endpoints are available right now.
-    </p>
+  <div class="tooltip" id="tooltip"></div>
 
-    <p>To enable the full visualization (the Forge sphere, the Constellation, the live agent stream):</p>
-
-    <pre>cd web
-npm install
-npm run build
-# then restart lopi sail</pre>
-
-    <p>
-      The build produces static assets in <code style="color:#00d4ff">web/dist/</code> which lopi-ui
-      embeds into the binary via <code style="color:#00d4ff">rust-embed</code>. After rebuilding the
-      Rust binary, the full UI will be served from this URL.
-    </p>
-
-    <div class="endpoints">
-      <div style="font-family: ui-monospace; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.18em; color: rgba(255,255,255,0.4); margin-bottom: 0.8rem;">
-        live api endpoints
+  <main>
+    <!-- ───────── stats strip ───────── -->
+    <section class="reveal" data-reveal>
+      <div class="stat-strip">
+        <div class="stat-cell">
+          <div class="num-strong" id="s-running">0</div>
+          <div class="num-sub">running</div>
+        </div>
+        <div class="stat-cell">
+          <div class="num-strong" id="s-queued">0</div>
+          <div class="num-sub">queued</div>
+        </div>
+        <div class="stat-cell">
+          <div class="num-strong" id="s-success">0</div>
+          <div class="num-sub">succeeded</div>
+        </div>
+        <div class="stat-cell">
+          <div class="num-strong" id="s-failed">0</div>
+          <div class="num-sub">failed</div>
+        </div>
       </div>
-      <div><code>GET /api/health</code> — liveness probe</div>
-      <div><code>GET /api/tasks</code> — task history</div>
-      <div><code>GET /api/stats</code> — agent pool stats</div>
-      <div><code>GET /api/patterns</code> — mined pattern library</div>
-      <div><code>GET /metrics</code> — Prometheus exposition</div>
-      <div><code>WS  /ws</code> — live AgentEvent stream</div>
-      <div><code>SSE /sse</code> — same stream over Server-Sent Events</div>
-    </div>
+    </section>
 
-    <div class="links" style="margin-top: 2.5rem;">
-      <a href="https://github.com/konjoai/lopi">github.com/konjoai/lopi</a>
-      &nbsp;·&nbsp;
-      <a href="/api/health">/api/health</a>
-    </div>
-  </div>
+    <!-- ───────── agent grid ───────── -->
+    <section class="reveal" data-reveal>
+      <div class="section-h"><span>agents</span><span class="rule"></span><span id="agent-count">0</span></div>
+      <div class="agent-grid" id="agent-grid"></div>
+    </section>
+
+    <!-- ───────── circuit breaker state machine ───────── -->
+    <section class="reveal" data-reveal>
+      <div class="section-h"><span>circuit breakers</span><span class="rule"></span><span>fleet → agent → task</span></div>
+      <div class="breakers" id="breakers"></div>
+    </section>
+
+    <!-- ───────── budget gauge ───────── -->
+    <section class="reveal" data-reveal>
+      <div class="section-h"><span>budget</span><span class="rule"></span><span id="budget-label">USD / hour</span></div>
+      <div class="panel">
+        <div class="budget-wrap">
+          <div class="gauge">
+            <svg viewBox="0 0 200 200">
+              <circle class="gauge-track" cx="100" cy="100" r="84" />
+              <circle class="gauge-arc" id="gauge-arc"
+                cx="100" cy="100" r="84"
+                stroke-dasharray="527.79"
+                stroke-dashoffset="527.79" />
+            </svg>
+            <div class="gauge-readout">
+              <div>
+                <div class="v" id="gauge-pct">0%</div>
+                <div class="k">of hourly cap</div>
+                <div class="num-sub" id="gauge-usd" style="margin-top:8px;color:var(--fg-dim);">$0.00 / $25.00</div>
+              </div>
+            </div>
+          </div>
+          <div class="deriv">
+            <div class="deriv-h">
+              <span>rate of burn (USD/min)</span>
+              <span id="deriv-cur">0.00</span>
+            </div>
+            <canvas id="deriv-canvas" width="600" height="180"></canvas>
+            <div class="deriv-h">
+              <span>last 60s</span>
+              <span id="deriv-trend">stable</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ───────── OTel span waterfall ───────── -->
+    <section class="reveal" data-reveal>
+      <div class="section-h"><span>otel span waterfall</span><span class="rule"></span><span>latest turn</span></div>
+      <div class="panel">
+        <div class="waterfall" id="waterfall">
+          <div class="empty">awaiting agent activity</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ───────── checkpoint timeline ───────── -->
+    <section class="reveal" data-reveal>
+      <div class="section-h"><span>checkpoint timeline</span><span class="rule"></span><span id="ckpt-count">0 events</span></div>
+      <div class="panel">
+        <div class="timeline-wrap">
+          <svg id="timeline-svg" viewBox="0 0 1200 80" preserveAspectRatio="xMidYMid meet" style="width:100%;height:80px;">
+            <line class="timeline-track" x1="20" y1="40" x2="1180" y2="40" />
+          </svg>
+          <div class="timeline-empty" id="timeline-empty">no checkpoints yet — POST /api/agents/&lt;id&gt;/checkpoint to log one</div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+  "use strict";
+  /* ============================================================
+     lopi forge — live agent command center
+     - vanilla JS, no deps, single file
+     - state is fed from /api/* + /ws when reachable
+     - falls back to a small in-process demo so the dashboard
+       looks alive on first load
+     ============================================================ */
+
+  const $ = (id) => document.getElementById(id);
+  const SVG_NS = "http://www.w3.org/2000/svg";
+  const PHASES = ["idle", "thinking", "acting", "complete", "failed"];
+
+  const state = {
+    agents: new Map(),         // task_id → AgentCardModel
+    stats:  { running: 0, queued: 0, succeeded: 0, failed: 0, uptime_secs: 0 },
+    breakers: {                // mirrors BudgetGovernor::states()
+      fleet:  { state: "closed", limit: 25.00 },
+      agent:  { state: "closed", limit: 5.00 },
+      task:   { state: "closed", limit: 1.50 },
+    },
+    burnedTotal: 0.0,          // total fleet USD this rolling hour
+    burnedHistory: [],         // [{ts, usd}] for derivative
+    spans: [],                 // last otel turn: [{name, parent, start, end, kind, attrs}]
+    spanT0: 0,
+    spanTmax: 1000,
+    checkpoints: [],           // [{id, task_id, state, attempt, ts}]
+    ws: null,
+    backoff: 1000,
+    demoMode: false,
+  };
+
+  /* ───────── scroll-entrance stagger (IntersectionObserver) ───────── */
+  const revealObs = new IntersectionObserver((entries) => {
+    let staggered = 0;
+    for (const e of entries) {
+      if (!e.isIntersecting) continue;
+      const el = e.target;
+      setTimeout(() => el.classList.add("in"), staggered * 85);
+      staggered++;
+      revealObs.unobserve(el);
+    }
+  }, { threshold: 0.08 });
+  document.querySelectorAll("[data-reveal]").forEach((el) => revealObs.observe(el));
+
+  /* ───────── tooltip ───────── */
+  const tooltip = $("tooltip");
+  function showTooltip(html, evt) {
+    tooltip.innerHTML = html;
+    tooltip.classList.add("show");
+    const pad = 12;
+    let x = evt.clientX + pad;
+    let y = evt.clientY + pad;
+    requestAnimationFrame(() => {
+      const r = tooltip.getBoundingClientRect();
+      if (x + r.width  + 8 > window.innerWidth)  x = evt.clientX - r.width - pad;
+      if (y + r.height + 8 > window.innerHeight) y = evt.clientY - r.height - pad;
+      tooltip.style.left = `${Math.max(8, x)}px`;
+      tooltip.style.top  = `${Math.max(8, y)}px`;
+    });
+  }
+  function hideTooltip() { tooltip.classList.remove("show"); }
+
+  /* ============================================================
+     Agent cards — lifecycle indicators + magnetic + schema badge
+     ============================================================ */
+  function renderAgents() {
+    const grid = $("agent-grid");
+    const arr = Array.from(state.agents.values());
+    $("agent-count").textContent = arr.length;
+    // diff-render: remove cards for agents that no longer exist
+    const existing = new Map();
+    grid.querySelectorAll(".agent-card").forEach((c) => existing.set(c.dataset.taskId, c));
+    for (const [tid, _] of existing) {
+      if (!state.agents.has(tid)) existing.get(tid).remove();
+    }
+    // create or update
+    for (const a of arr) {
+      let card = existing.get(a.task_id);
+      if (!card) {
+        card = document.createElement("div");
+        card.className = "agent-card";
+        card.dataset.taskId = a.task_id;
+        card.innerHTML = `
+          <div class="schema-badge" data-role="schema">
+            <svg viewBox="0 0 16 16"><path d="" data-role="schema-path"/></svg>
+          </div>
+          <div class="h">
+            <div class="goal" data-role="goal"></div>
+            <div class="status idle" data-role="status">
+              <div class="core"></div>
+            </div>
+          </div>
+          <div class="meta">
+            <span class="phase-tag" data-role="phase">idle</span>
+            <span data-role="attempt">attempt —</span>
+            <span data-role="id"></span>
+          </div>`;
+        grid.appendChild(card);
+        wireMagneticCard(card);
+      }
+      card.querySelector('[data-role="goal"]').textContent = a.goal || "(no goal)";
+      card.querySelector('[data-role="phase"]').textContent = a.phase || "idle";
+      card.querySelector('[data-role="attempt"]').textContent = `attempt ${a.attempt ?? 1}`;
+      card.querySelector('[data-role="id"]').textContent = (a.task_id || "").slice(0, 8);
+      applyStatus(card, a.phase || "idle");
+      applySchemaBadge(card, a.schemaState);
+    }
+  }
+
+  function applyStatus(card, phase) {
+    const sf = card.querySelector('[data-role="status"]');
+    if (!sf) return;
+    const prev = (sf.dataset.phase || "").toLowerCase();
+    const next = (phase || "idle").toLowerCase();
+    if (prev === next) return;
+    // drop existing transient affordances (burst nodes)
+    sf.querySelector(".burst")?.remove();
+    sf.className = "status " + next;
+    sf.dataset.phase = next;
+    if (next === "complete") {
+      const burst = document.createElement("div");
+      burst.className = "burst";
+      for (let i = 0; i < 8; i++) {
+        const p = document.createElement("i");
+        const angle = (i / 8) * Math.PI * 2;
+        p.style.setProperty("--dx", `${Math.cos(angle) * 22}px`);
+        p.style.setProperty("--dy", `${Math.sin(angle) * 22}px`);
+        burst.appendChild(p);
+      }
+      sf.appendChild(burst);
+      setTimeout(() => burst.remove(), 800);
+    }
+    if (next === "acting") {
+      // double-pulse via two restarts
+      const core = sf.querySelector(".core");
+      if (core) {
+        core.style.animation = "none";
+        void core.offsetWidth;
+        core.style.animation = "";
+      }
+    }
+  }
+
+  const CHECKMARK_PATH = "M3 8.5l3 3 7-7";
+  const XMARK_PATH = "M3.5 3.5l9 9M12.5 3.5l-9 9";
+  function applySchemaBadge(card, schemaState) {
+    const badge = card.querySelector('[data-role="schema"]');
+    const path = card.querySelector('[data-role="schema-path"]');
+    if (!badge || !path) return;
+    if (!schemaState) {
+      badge.classList.remove("valid", "invalid");
+      return;
+    }
+    if (schemaState === "valid") {
+      badge.classList.add("valid"); badge.classList.remove("invalid");
+      path.setAttribute("d", CHECKMARK_PATH);
+      path.setAttribute("stroke", "currentColor");
+      path.setAttribute("stroke-width", "2");
+      path.setAttribute("fill", "none");
+      path.setAttribute("stroke-linecap", "round");
+      path.setAttribute("stroke-linejoin", "round");
+    } else {
+      const wasInvalid = badge.classList.contains("invalid");
+      badge.classList.add("invalid"); badge.classList.remove("valid");
+      path.setAttribute("d", XMARK_PATH);
+      path.setAttribute("stroke", "currentColor");
+      path.setAttribute("stroke-width", "2");
+      path.setAttribute("stroke-linecap", "round");
+      path.setAttribute("fill", "none");
+      // scatter particles only on the transition into invalid
+      if (!wasInvalid) {
+        const scatter = document.createElement("div");
+        scatter.className = "schema-scatter";
+        for (let i = 0; i < 6; i++) {
+          const p = document.createElement("i");
+          const angle = (i / 6) * Math.PI * 2;
+          p.style.setProperty("--dx", `${Math.cos(angle) * 26}px`);
+          p.style.setProperty("--dy", `${Math.sin(angle) * 26}px`);
+          scatter.appendChild(p);
+        }
+        card.appendChild(scatter);
+        setTimeout(() => scatter.remove(), 700);
+      }
+    }
+  }
+
+  /* ───────── magnetic hover ───────── */
+  function wireMagneticCard(card) {
+    let raf = 0;
+    let target = { x: 0, y: 0, rx: 0, ry: 0 };
+    let current = { x: 0, y: 0, rx: 0, ry: 0 };
+    let inside = false;
+
+    function step() {
+      const lerp = 0.09;
+      current.x  += (target.x  - current.x)  * lerp;
+      current.y  += (target.y  - current.y)  * lerp;
+      current.rx += (target.rx - current.rx) * lerp;
+      current.ry += (target.ry - current.ry) * lerp;
+      card.style.transform = `translate3d(${current.x.toFixed(2)}px, ${current.y.toFixed(2)}px, 0)`
+        + ` rotateX(${current.rx.toFixed(2)}deg) rotateY(${current.ry.toFixed(2)}deg)`;
+      const close = Math.abs(target.x - current.x) < 0.05
+                 && Math.abs(target.y - current.y) < 0.05
+                 && Math.abs(target.rx - current.rx) < 0.05
+                 && Math.abs(target.ry - current.ry) < 0.05;
+      if (!close || inside) raf = requestAnimationFrame(step);
+      else {
+        card.classList.remove("magnetic");
+        raf = 0;
+      }
+    }
+
+    window.addEventListener("mousemove", (e) => {
+      const r = card.getBoundingClientRect();
+      const cx = r.left + r.width / 2;
+      const cy = r.top + r.height / 2;
+      const dx = e.clientX - cx;
+      const dy = e.clientY - cy;
+      const dist = Math.hypot(dx, dy);
+      const radius = 80 + Math.max(r.width, r.height) / 2;
+      if (dist < radius) {
+        inside = true;
+        card.classList.add("magnetic");
+        card.classList.remove("returning");
+        const intensity = 1 - dist / radius;
+        target.x  = Math.max(-12, Math.min(12,  (dx / radius) * 12 * intensity));
+        target.y  = Math.max(-12, Math.min(12,  (dy / radius) * 12 * intensity));
+        target.ry = Math.max(-3,  Math.min(3,   (dx / radius) * 3  * intensity));
+        target.rx = Math.max(-3,  Math.min(3,  -(dy / radius) * 3  * intensity));
+        if (!raf) raf = requestAnimationFrame(step);
+      } else if (inside) {
+        inside = false;
+        card.classList.remove("magnetic");
+        card.classList.add("returning");
+        target = { x: 0, y: 0, rx: 0, ry: 0 };
+        if (!raf) raf = requestAnimationFrame(step);
+      }
+    }, { passive: true });
+  }
+
+  /* ============================================================
+     Circuit breaker state machine — three connected nodes
+     ============================================================ */
+  function renderBreakers() {
+    const wrap = $("breakers");
+    if (wrap.dataset.built !== "1") {
+      wrap.innerHTML = "";
+      for (const scope of ["fleet", "agent", "task"]) {
+        const el = document.createElement("div");
+        el.className = "breaker";
+        el.dataset.scope = scope;
+        el.innerHTML = `
+          <div class="scope">${scope}</div>
+          <div class="budget" data-role="cap">$${state.breakers[scope].limit.toFixed(2)} / hr</div>
+          <svg class="state-machine" viewBox="0 0 300 90" preserveAspectRatio="xMidYMid meet">
+            <line class="sm-edge" data-edge="closed-open"   x1="50"  y1="45" x2="150" y2="45" />
+            <line class="sm-edge" data-edge="open-halfopen" x1="150" y1="45" x2="250" y2="45" />
+            <line class="sm-edge" data-edge="halfopen-closed"
+                  x1="250" y1="45" x2="50"  y2="45" style="display:none;" />
+            <circle class="sm-node closed"  data-node="closed"  cx="50"  cy="45" r="12" />
+            <circle class="sm-node open"    data-node="open"    cx="150" cy="45" r="12" />
+            <circle class="sm-node halfopen" data-node="halfopen" cx="250" cy="45" r="12" />
+            <text class="sm-label" x="50"  y="78" text-anchor="middle">Closed</text>
+            <text class="sm-label" x="150" y="78" text-anchor="middle">Open</text>
+            <text class="sm-label" x="250" y="78" text-anchor="middle">Half-Open</text>
+          </svg>`;
+        wrap.appendChild(el);
+      }
+      wrap.dataset.built = "1";
+    }
+    // update active node + transition arc per scope
+    for (const scope of ["fleet", "agent", "task"]) {
+      const block = wrap.querySelector(`[data-scope="${scope}"]`);
+      const cur = (state.breakers[scope].state || "closed").toLowerCase();
+      const prev = block.dataset.cur || "";
+      block.querySelectorAll(".sm-node").forEach((n) => {
+        n.classList.toggle("active", n.dataset.node === cur);
+      });
+      // ripple on the Open node
+      block.querySelectorAll(".ripple").forEach((r) => r.remove());
+      if (cur === "open") {
+        const r = document.createElementNS(SVG_NS, "circle");
+        r.setAttribute("class", "ripple sm-node open");
+        r.setAttribute("cx", "150");
+        r.setAttribute("cy", "45");
+        r.setAttribute("r", "14");
+        r.setAttribute("fill", "rgba(239,68,68,0.45)");
+        block.querySelector(".state-machine").insertBefore(
+          r, block.querySelector(`[data-node="open"]`));
+      }
+      // animate edge if state changed
+      if (prev && prev !== cur) {
+        const edgeKey = `${prev}-${cur}`;
+        const edge = block.querySelector(`[data-edge="${edgeKey}"]`);
+        if (edge) {
+          edge.style.display = "";
+          edge.classList.remove("active");
+          void edge.offsetWidth;
+          edge.classList.add("active");
+        }
+      }
+      block.dataset.cur = cur;
+    }
+  }
+
+  /* ============================================================
+     Budget gauge — radial arc + derivative sparkline (canvas)
+     ============================================================ */
+  const GAUGE_CIRC = 2 * Math.PI * 84;   // matches r=84 in svg
+  function renderBudget() {
+    const limit = state.breakers.fleet.limit;
+    const used  = state.burnedTotal;
+    const pct   = limit > 0 ? Math.min(used / limit, 1.2) : 0;
+    const arc = $("gauge-arc");
+    arc.setAttribute("stroke-dasharray", GAUGE_CIRC.toFixed(2));
+    arc.setAttribute("stroke-dashoffset", (GAUGE_CIRC * (1 - Math.min(pct, 1))).toFixed(2));
+    arc.classList.toggle("warn", pct >= 0.80 && pct < 0.95);
+    arc.classList.toggle("crit", pct >= 0.95);
+    const v = $("gauge-pct");
+    v.textContent = `${Math.round(pct * 100)}%`;
+    v.classList.toggle("warn", pct >= 0.80 && pct < 0.95);
+    v.classList.toggle("crit", pct >= 0.95);
+    $("gauge-usd").textContent = `$${used.toFixed(2)} / $${limit.toFixed(2)}`;
+  }
+
+  const derivCanvas = $("deriv-canvas");
+  const derivCtx = derivCanvas.getContext("2d");
+  function resizeDeriv() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const rect = derivCanvas.getBoundingClientRect();
+    derivCanvas.width = Math.floor(rect.width * dpr);
+    derivCanvas.height = Math.floor(rect.height * dpr);
+    derivCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  window.addEventListener("resize", resizeDeriv);
+  resizeDeriv();
+
+  function renderDerivative() {
+    const ctx = derivCtx;
+    const rect = derivCanvas.getBoundingClientRect();
+    const W = rect.width, H = rect.height;
+    ctx.clearRect(0, 0, W, H);
+    // grid baseline
+    ctx.strokeStyle = "rgba(255,255,255,0.05)";
+    ctx.lineWidth = 1;
+    for (let i = 1; i < 4; i++) {
+      const y = (H / 4) * i;
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+    }
+    // derive points: rate of burn over the last 60s, sample every 1s
+    const now = Date.now();
+    const samples = [];
+    for (let s = 60; s >= 0; s--) {
+      const t = now - s * 1000;
+      let usd = 0;
+      for (const h of state.burnedHistory) {
+        if (h.ts > t - 60_000 && h.ts <= t) usd += h.usd;
+      }
+      samples.push(usd); // USD in trailing minute = USD/min
+    }
+    const maxRate = Math.max(0.1, ...samples) * 1.15;
+    // fill
+    ctx.beginPath();
+    ctx.moveTo(0, H);
+    samples.forEach((v, i) => {
+      const x = (i / (samples.length - 1)) * W;
+      const y = H - (v / maxRate) * (H - 6) - 2;
+      ctx.lineTo(x, y);
+    });
+    ctx.lineTo(W, H);
+    ctx.closePath();
+    const grad = ctx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, "rgba(124,58,237,0.34)");
+    grad.addColorStop(1, "rgba(124,58,237,0.02)");
+    ctx.fillStyle = grad;
+    ctx.fill();
+    // stroke
+    ctx.beginPath();
+    samples.forEach((v, i) => {
+      const x = (i / (samples.length - 1)) * W;
+      const y = H - (v / maxRate) * (H - 6) - 2;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.strokeStyle = "#a78bfa";
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    const last = samples[samples.length - 1];
+    $("deriv-cur").textContent = last.toFixed(2);
+    const first = samples[Math.max(0, samples.length - 10)];
+    const trendEl = $("deriv-trend");
+    if (last > first * 1.10) { trendEl.textContent = "↗ rising"; trendEl.style.color = "var(--warn)"; }
+    else if (last < first * 0.90) { trendEl.textContent = "↘ falling"; trendEl.style.color = "var(--ok)"; }
+    else { trendEl.textContent = "stable"; trendEl.style.color = "var(--fg-mute)"; }
+  }
+
+  /* ============================================================
+     OTel waterfall — Gantt-style span bars
+     ============================================================ */
+  function renderWaterfall() {
+    const wf = $("waterfall");
+    if (state.spans.length === 0) {
+      wf.innerHTML = '<div class="empty">awaiting agent activity</div>';
+      return;
+    }
+    const t0 = state.spanT0;
+    const total = Math.max(1, state.spanTmax - t0);
+    // sort by start, then by depth (parents first)
+    const ordered = [...state.spans].sort((a, b) => a.start - b.start || (a.parent ? 1 : 0));
+    wf.innerHTML = "";
+    ordered.forEach((s, i) => {
+      const row = document.createElement("div");
+      row.className = "wf-row";
+      const offsetPct = ((s.start - t0) / total) * 100;
+      const widthPct  = ((s.end - s.start) / total) * 100;
+      const kindClass = (s.kind || s.name.split(".").pop() || "act").toLowerCase();
+      row.innerHTML = `
+        <div class="wf-name ${s.parent ? "child" : ""}">${escapeHtml(s.name)}</div>
+        <div class="wf-track">
+          <div class="wf-bar ${kindClass}" data-span-id="${i}"
+            style="left:${offsetPct.toFixed(2)}%; width:0%;"></div>
+        </div>
+        <div class="wf-dur">${formatMs(s.end - s.start)}</div>`;
+      wf.appendChild(row);
+      // staggered slide-in
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          row.querySelector(".wf-bar").style.width = `${widthPct.toFixed(2)}%`;
+        }, i * 32);
+      });
+    });
+    // wire tooltips after the bars settle
+    wf.querySelectorAll(".wf-bar").forEach((bar) => {
+      const id = parseInt(bar.dataset.spanId, 10);
+      const span = ordered[id];
+      bar.addEventListener("mouseenter", (e) => {
+        const attrs = Object.entries(span.attrs || {}).map(([k, v]) =>
+          `<div><span class="tt-k">${escapeHtml(k)}</span>&nbsp; ${escapeHtml(String(v))}</div>`
+        ).join("");
+        showTooltip(`
+          <div><strong>${escapeHtml(span.name)}</strong></div>
+          <div class="tt-k" style="margin-top:4px;">duration</div>
+          <div>${formatMs(span.end - span.start)}</div>
+          ${attrs ? `<div style="margin-top:6px;">${attrs}</div>` : ""}
+        `, e);
+      });
+      bar.addEventListener("mousemove", (e) => showTooltip(tooltip.innerHTML, e));
+      bar.addEventListener("mouseleave", hideTooltip);
+    });
+  }
+
+  /* ============================================================
+     Checkpoint timeline — diamond markers on a horizontal track
+     ============================================================ */
+  function renderTimeline() {
+    const svg = $("timeline-svg");
+    const empty = $("timeline-empty");
+    $("ckpt-count").textContent = `${state.checkpoints.length} event${state.checkpoints.length === 1 ? "" : "s"}`;
+    // clear existing diamonds + labels (preserve the static track line)
+    svg.querySelectorAll('[data-role="ckpt"]').forEach((n) => n.remove());
+    if (state.checkpoints.length === 0) {
+      empty.style.display = "block";
+      return;
+    }
+    empty.style.display = "none";
+    const t0 = state.checkpoints[0].ts;
+    const tMax = state.checkpoints[state.checkpoints.length - 1].ts;
+    const range = Math.max(1, tMax - t0);
+    state.checkpoints.forEach((cp, i) => {
+      const x = 20 + ((cp.ts - t0) / range) * 1160;
+      const rect = document.createElementNS(SVG_NS, "rect");
+      rect.setAttribute("class", `timeline-diamond ${cp.entering ? "enter" : ""}`);
+      rect.setAttribute("data-role", "ckpt");
+      rect.setAttribute("x", (x - 5).toFixed(1));
+      rect.setAttribute("y", "33");
+      rect.setAttribute("width", "10");
+      rect.setAttribute("height", "10");
+      rect.setAttribute("transform", `rotate(45 ${x} 40)`);
+      rect.setAttribute("fill", checkpointFill(cp.state));
+      rect.style.animationDelay = `${i * 80}ms`;
+      rect.addEventListener("mouseenter", (e) => {
+        showTooltip(`
+          <div><strong>checkpoint</strong></div>
+          <div class="tt-k" style="margin-top:4px;">task_id</div>
+          <div>${escapeHtml(cp.task_id.slice(0, 12))}</div>
+          <div class="tt-k" style="margin-top:4px;">state · attempt</div>
+          <div>${escapeHtml(cp.state)} · ${cp.attempt}</div>
+          <div class="tt-k" style="margin-top:4px;">ts</div>
+          <div>${new Date(cp.ts).toLocaleTimeString()}</div>
+        `, e);
+      });
+      rect.addEventListener("mousemove", (e) => showTooltip(tooltip.innerHTML, e));
+      rect.addEventListener("mouseleave", hideTooltip);
+      svg.appendChild(rect);
+
+      if (i === 0 || i === state.checkpoints.length - 1) {
+        const label = document.createElementNS(SVG_NS, "text");
+        label.setAttribute("class", "timeline-label");
+        label.setAttribute("data-role", "ckpt");
+        label.setAttribute("x", x.toFixed(1));
+        label.setAttribute("y", "22");
+        label.setAttribute("text-anchor", "middle");
+        label.textContent = new Date(cp.ts).toLocaleTimeString();
+        svg.appendChild(label);
+      }
+    });
+    // clear the .enter class after the animation lands so future repaints
+    // don't replay it
+    state.checkpoints.forEach((cp) => { cp.entering = false; });
+  }
+  function checkpointFill(s) {
+    switch ((s || "").toLowerCase()) {
+      case "planning":     return "var(--konjo)";
+      case "implementing": return "var(--konjo-2)";
+      case "testing":      return "#c4b5fd";
+      case "scoring":      return "var(--konjo)";
+      case "done":         return "var(--ok)";
+      case "errored":      return "var(--err)";
+      default:             return "var(--konjo)";
+    }
+  }
+
+  /* ============================================================
+     Stats strip
+     ============================================================ */
+  function renderStats() {
+    $("s-running").textContent = state.stats.running;
+    $("s-queued").textContent  = state.stats.queued;
+    $("s-success").textContent = state.stats.succeeded;
+    $("s-failed").textContent  = state.stats.failed;
+  }
+
+  /* ============================================================
+     Event handling — WS first, then fallback demo data
+     ============================================================ */
+  function connect() {
+    const proto = location.protocol === "https:" ? "wss:" : "ws:";
+    const url = `${proto}//${location.host}/ws`;
+    let ws;
+    try { ws = new WebSocket(url); }
+    catch (_) { startDemo(); return; }
+    state.ws = ws;
+    setConn("connecting", "");
+    ws.onopen = () => { state.demoMode = false; setConn("live", "live"); state.backoff = 1000; };
+    ws.onclose = () => {
+      setConn("offline", "");
+      state.backoff = Math.min(state.backoff * 2, 15000);
+      setTimeout(connect, state.backoff);
+      // light up demo data once we know there's no server.
+      if (state.backoff >= 4000 && !state.demoMode) startDemo();
+    };
+    ws.onerror = () => ws.close();
+    ws.onmessage = (e) => {
+      try { handleMessage(JSON.parse(e.data)); }
+      catch (err) { /* malformed payload — ignore */ }
+    };
+  }
+  function setConn(text, cls) {
+    $("conn-text").textContent = text;
+    const c = $("conn");
+    c.classList.remove("live", "demo");
+    if (cls) c.classList.add(cls);
+  }
+
+  function handleMessage(msg) {
+    if (!msg || !msg.type) return;
+    switch (msg.type) {
+      case "snapshot":
+        state.stats = msg.stats || state.stats;
+        (msg.tasks || []).forEach((t) => {
+          if (!state.agents.has(t.id)) {
+            state.agents.set(t.id, {
+              task_id: t.id, goal: t.goal, attempt: 1,
+              phase: statusToPhase(t.status),
+              schemaState: null,
+            });
+          }
+        });
+        renderStats(); renderAgents();
+        break;
+      case "task_queued":
+        state.agents.set(taskId(msg), {
+          task_id: taskId(msg), goal: msg.goal, attempt: 1,
+          phase: "idle", schemaState: null,
+        });
+        renderAgents();
+        break;
+      case "task_started":
+        upsertAgent(taskId(msg), { phase: "thinking", attempt: msg.attempt });
+        renderAgents();
+        break;
+      case "status_changed":
+        upsertAgent(taskId(msg), { phase: statusToPhase(msg.status), attempt: msg.attempt });
+        renderAgents();
+        break;
+      case "task_completed": {
+        const outcome = typeof msg.outcome === "object" && msg.outcome
+          ? Object.keys(msg.outcome)[0] : String(msg.outcome || "done");
+        upsertAgent(taskId(msg), {
+          phase: outcome.toLowerCase().includes("success") ? "complete" : "failed",
+        });
+        renderAgents();
+        break;
+      }
+      case "pool_stats":
+        state.stats = {
+          running: msg.running, queued: msg.queued,
+          succeeded: msg.succeeded, failed: msg.failed,
+          uptime_secs: msg.uptime_secs,
+        };
+        renderStats();
+        break;
+      case "turn_metrics":
+        // record the burn for the gauge derivative
+        if (msg.cost_usd) {
+          state.burnedTotal += msg.cost_usd;
+          state.burnedHistory.push({ ts: Date.now(), usd: msg.cost_usd });
+          // drop entries older than 60min
+          const cutoff = Date.now() - 60 * 60_000;
+          state.burnedHistory = state.burnedHistory.filter((h) => h.ts > cutoff);
+          renderBudget();
+        }
+        break;
+      case "budget_exceeded":
+        if (msg.scope && state.breakers[msg.scope]) {
+          state.breakers[msg.scope].state = "open";
+          state.breakers[msg.scope].limit = msg.limit_usd || state.breakers[msg.scope].limit;
+          renderBreakers();
+        }
+        break;
+    }
+  }
+  function upsertAgent(id, patch) {
+    const a = state.agents.get(id) || { task_id: id, goal: "—", attempt: 1, phase: "idle" };
+    state.agents.set(id, { ...a, ...patch });
+  }
+  function statusToPhase(s) {
+    if (typeof s === "object" && s !== null) s = Object.keys(s)[0] || "";
+    s = String(s || "").toLowerCase();
+    if (s.includes("success")) return "complete";
+    if (s.includes("fail"))    return "failed";
+    if (s.includes("test") || s.includes("score")) return "acting";
+    if (s.includes("plan") || s.includes("queued") || s.includes("retry")) return "thinking";
+    if (s.includes("implement") || s.includes("act")) return "acting";
+    return "idle";
+  }
+  function taskId(msg) {
+    const id = msg.task_id;
+    if (typeof id === "string") return id;
+    if (id && typeof id === "object" && "0" in id) return String(id["0"]);
+    return String(id || "");
+  }
+
+  /* ============================================================
+     Initial loads
+     ============================================================ */
+  async function bootData() {
+    try {
+      const [stats, tasks, metrics] = await Promise.allSettled([
+        fetch("/api/stats").then((r) => r.ok ? r.json() : null),
+        fetch("/api/tasks").then((r) => r.ok ? r.json() : null),
+        fetch("/metrics").then((r) => r.ok ? r.text() : null),
+      ]);
+      if (stats.status === "fulfilled" && stats.value) {
+        state.stats = { ...state.stats, ...stats.value };
+        renderStats();
+      }
+      if (tasks.status === "fulfilled" && tasks.value?.tasks) {
+        tasks.value.tasks.forEach((t) => {
+          if (!state.agents.has(t.id)) {
+            state.agents.set(t.id, {
+              task_id: t.id, goal: t.goal, attempt: 1,
+              phase: statusToPhase(t.status), schemaState: null,
+            });
+          }
+        });
+        renderAgents();
+      }
+      if (metrics.status === "fulfilled" && metrics.value) {
+        parseMetrics(metrics.value);
+      }
+    } catch (_) { /* no server — demo mode will kick in below */ }
+  }
+
+  /* Read a few well-known counters from Prometheus exposition. */
+  function parseMetrics(text) {
+    const lines = text.split("\n");
+    let schemaViolationsAny = false;
+    for (const ln of lines) {
+      if (ln.startsWith("lopi_schema_violations_total")) schemaViolationsAny = true;
+    }
+    if (schemaViolationsAny) {
+      // Tag *all* current agents with their last-known schema state. The
+      // detailed per-agent counter is not in /metrics — but the dashboard
+      // marks every agent that has output_schema with a checkmark when the
+      // backend reports no recent violations, and an X when violations
+      // appear. Demo mode overrides this anyway.
+      for (const a of state.agents.values()) {
+        a.schemaState = a.schemaState || "valid";
+      }
+      renderAgents();
+    }
+  }
+
+  /* ============================================================
+     Demo mode — seeds plausible state so the dashboard never
+     looks dead. Only runs when WS reconnects fail.
+     ============================================================ */
+  function startDemo() {
+    if (state.demoMode) return;
+    state.demoMode = true;
+    setConn("demo", "demo");
+    // seed agents if empty
+    if (state.agents.size === 0) {
+      const seedGoals = [
+        "fix flaky integration test in lopi-context",
+        "tighten unwrap audit in lopi-agent",
+        "add fleet auto-scaling threshold knob",
+        "wire schema violations into adaptive retry prompt",
+      ];
+      seedGoals.forEach((g, i) => {
+        const id = crypto.randomUUID();
+        state.agents.set(id, {
+          task_id: id, goal: g, attempt: 1,
+          phase: PHASES[i % PHASES.length],
+          schemaState: i % 3 === 0 ? "valid" : (i === 2 ? "invalid" : null),
+        });
+      });
+    }
+    if (state.checkpoints.length === 0) {
+      const now = Date.now();
+      const a0 = Array.from(state.agents.values())[0];
+      ["planning", "implementing", "testing", "scoring", "done"].forEach((s, i) => {
+        state.checkpoints.push({
+          id: `demo-${i}`,
+          task_id: a0?.task_id ?? "demo-task",
+          attempt: 1,
+          state: s,
+          ts: now - (4 - i) * 12_000,
+          entering: false,
+        });
+      });
+    }
+    if (state.spans.length === 0) {
+      const t0 = 0;
+      state.spans = [
+        { name: "lopi.agent.task.complete", parent: null, start: 0,    end: 1280, kind: "complete", attrs: { task_id: "demo", attempts: 1 } },
+        { name: "lopi.agent.think",         parent: 0,    start: 12,   end: 340,  kind: "think",    attrs: { model: "claude-sonnet-4-6" } },
+        { name: "lopi.agent.act",           parent: 0,    start: 340,  end: 920,  kind: "act",      attrs: { tool: "claude implement" } },
+        { name: "lopi.agent.score",         parent: 0,    start: 920,  end: 1240, kind: "score",    attrs: { pass_rate: 1.0, lint: 0 } },
+      ];
+      state.spanT0 = t0; state.spanTmax = 1280;
+    }
+    state.stats = { running: 1, queued: 0, succeeded: 12, failed: 1, uptime_secs: 1860 };
+    state.burnedTotal = 14.32;
+    // seed 60 history points so the sparkline isn't flat
+    state.burnedHistory = [];
+    const now = Date.now();
+    for (let i = 0; i < 25; i++) {
+      state.burnedHistory.push({
+        ts: now - (25 - i) * 2_400,
+        usd: 0.20 + Math.sin(i / 4) * 0.10 + Math.random() * 0.06,
+      });
+    }
+    state.breakers.fleet.state = "closed";
+    state.breakers.agent.state = "closed";
+    state.breakers.task.state  = "halfopen"; // show the half-open accent
+    renderStats(); renderAgents(); renderBreakers();
+    renderBudget(); renderDerivative();
+    renderWaterfall(); renderTimeline();
+    // gentle phase cycling + occasional new checkpoints so the canvas stays alive
+    setInterval(() => {
+      const arr = Array.from(state.agents.values());
+      if (arr.length === 0) return;
+      const a = arr[Math.floor(Math.random() * arr.length)];
+      const phases = ["thinking", "acting", "complete", "failed", "idle"];
+      a.phase = phases[Math.floor(Math.random() * phases.length)];
+      renderAgents();
+    }, 2200);
+    setInterval(() => {
+      // simulate a new checkpoint occasionally
+      if (Math.random() > 0.5) return;
+      const a0 = Array.from(state.agents.values())[0];
+      if (!a0) return;
+      state.checkpoints.push({
+        id: crypto.randomUUID(),
+        task_id: a0.task_id,
+        attempt: (state.checkpoints[state.checkpoints.length - 1]?.attempt || 1) + 0,
+        state: ["planning", "implementing", "testing", "scoring"][Math.floor(Math.random() * 4)],
+        ts: Date.now(),
+        entering: true,
+      });
+      if (state.checkpoints.length > 14) state.checkpoints.shift();
+      renderTimeline();
+    }, 4500);
+    setInterval(() => {
+      // simulate burn
+      const drip = 0.08 + Math.random() * 0.18;
+      state.burnedTotal += drip;
+      state.burnedHistory.push({ ts: Date.now(), usd: drip });
+      const cutoff = Date.now() - 60 * 60_000;
+      state.burnedHistory = state.burnedHistory.filter((h) => h.ts > cutoff);
+      // probability of breaker trip when over the cap
+      if (state.burnedTotal > state.breakers.fleet.limit * 0.95) {
+        state.breakers.fleet.state = "open";
+        renderBreakers();
+      }
+      renderBudget();
+    }, 1500);
+  }
+
+  /* ============================================================
+     Animation loop
+     ============================================================ */
+  let rafLast = 0;
+  function tick(now) {
+    // throttle derivative repaint to ~4Hz so the canvas isn't redrawn
+    // on every frame.
+    if (now - rafLast > 240) {
+      renderDerivative();
+      rafLast = now;
+    }
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+
+  /* ============================================================
+     Helpers
+     ============================================================ */
+  function escapeHtml(s) {
+    return String(s)
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;");
+  }
+  function formatMs(ms) {
+    if (ms < 1) return `${ms.toFixed(2)}ms`;
+    if (ms < 1000) return `${Math.round(ms)}ms`;
+    return `${(ms / 1000).toFixed(2)}s`;
+  }
+
+  /* ============================================================
+     Boot
+     ============================================================ */
+  renderStats();
+  renderAgents();
+  renderBreakers();
+  renderBudget();
+  renderWaterfall();
+  renderTimeline();
+  bootData().then(() => {
+    // bring up demo immediately if we have nothing meaningful from /api
+    if (state.agents.size === 0 && state.stats.running === 0) startDemo();
+  });
+  connect();
+  </script>
 </body>
 </html>
