@@ -294,16 +294,17 @@ pub struct TaskRow {
     pub completed_at: Option<String>,
 }
 
+mod checkpoints;
 mod installations;
 mod lessons;
 mod patterns;
 mod quality;
 mod stability;
 // Re-export helpers for tests (tests.rs uses `use super::*`).
+pub use checkpoints::{CheckpointInput, CheckpointRow};
 pub use installations::InstallationRow;
 pub use lessons::LessonRow;
-pub use patterns::PatternRow;
-pub use patterns::{jaccard_similarity, keyword_fingerprint};
+pub use patterns::{jaccard_similarity, keyword_fingerprint, PatternRow};
 pub use quality::{QualityRunRecord, QualityRunRow};
 pub use stability::{StabilityEntry, StabilityRecord};
 

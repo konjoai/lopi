@@ -99,6 +99,14 @@ enum Commands {
         #[arg()]
         task_id: String,
     },
+    /// P1.3 — load the most-recent checkpoint for an agent. Prints the
+    /// stored state (attempt, plan preview, score, repo) so an operator
+    /// can decide whether to re-queue or inspect manually after a crash.
+    Resume {
+        /// UUID of the task whose checkpoint to load.
+        #[arg(long)]
+        agent_id: String,
+    },
     /// Browse the mined pattern library — what worked, what didn't, what
     /// post-mortems learned. The pattern miner runs after every completed
     /// task; post-mortems run after every fully-failed task when adaptive
@@ -392,6 +400,7 @@ async fn main() -> Result<()> {
             sail_commands::run(max_agents, repo, repos, host, port, cfg.as_ref()).await?;
         }
         Commands::Cancel { task_id } => task_commands::cancel(task_id).await?,
+        Commands::Resume { agent_id } => task_commands::resume(agent_id).await?,
 
         // ── lopi learn ──────────────────────────────────────────
         Commands::WatchGapFill {

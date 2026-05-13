@@ -154,6 +154,7 @@ pub fn build_app(state: AppState) -> Router {
         .route("/api/health", get(health))
         .route("/api/tasks", get(list_tasks).post(create_task))
         .route("/api/tasks/:id", get(get_task).delete(cancel_task))
+        .route("/api/agents/:id/checkpoint", axum::routing::post(checkpoint_agent))
         .route("/api/stats", get(get_stats))
         .route("/api/patterns", get(list_patterns))
         .route("/api/spec", get(get_spec))
@@ -378,8 +379,8 @@ fn file_response(file: rust_embed::EmbeddedFile, path: &str) -> Response {
 
 mod handlers;
 use handlers::{
-    cancel_task, create_task, get_quality_trend, get_spec, get_stats, get_task, health,
-    list_patterns, list_tasks, metrics,
+    cancel_task, checkpoint_agent, create_task, get_quality_trend, get_spec, get_stats, get_task,
+    health, list_patterns, list_tasks, metrics,
 };
 mod streaming;
 pub(crate) mod types;

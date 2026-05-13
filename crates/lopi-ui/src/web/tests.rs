@@ -273,6 +273,55 @@ async fn create_task_with_all_options_returns_201() {
 }
 
 #[tokio::test]
+async fn checkpoint_agent_persists_row_returns_201() {
+    let app = test_app().await;
+    let task_uuid = uuid::Uuid::new_v4();
+    let body = serde_json::to_string(&serde_json::json!({
+        "state": "planning",
+        "attempt": 1,
+        "last_plan": "step 1\nstep 2",
+        "repo_path": "/tmp/repo",
+    }))
+    .unwrap();
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/agents/{task_uuid}/checkpoint"))
+                .header("Content-Type", "application/json")
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert!(json.get("checkpoint_id").is_some(), "response carries new id");
+    assert_eq!(json["task_id"], task_uuid.to_string());
+}
+
+#[tokio::test]
+async fn checkpoint_agent_rejects_non_uuid_returns_400() {
+    let app = test_app().await;
+    let body = serde_json::to_string(&serde_json::json!({"state": "planning"})).unwrap();
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/agents/not-a-uuid/checkpoint")
+                .header("Content-Type", "application/json")
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
 async fn get_task_not_found_returns_404() {
     let app = test_app().await;
     let resp = app

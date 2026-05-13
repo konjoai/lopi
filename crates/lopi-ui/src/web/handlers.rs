@@ -11,7 +11,9 @@ use axum::{
     response::{IntoResponse, Json},
 };
 use lopi_core::{Priority, Task, TaskId};
+use lopi_memory::CheckpointInput;
 use lopi_spec::SpecSurface;
+use serde::Deserialize;
 use serde_json::{json, Value};
 
 pub(super) async fn health() -> impl IntoResponse {
@@ -65,6 +67,55 @@ pub(super) async fn get_task(
         None => (
             StatusCode::NOT_FOUND,
             Json(json!({ "error": "task not found" })),
+        )
+            .into_response(),
+    }
+}
+
+/// Body for `POST /api/agents/:id/checkpoint`. All fields optional — only
+/// `state` is required because every checkpoint must carry a phase label.
+#[derive(Debug, Deserialize)]
+pub(super) struct CheckpointBody {
+    /// Required. Lowercase phase: planning / implementing / testing /
+    /// scoring / done / errored.
+    pub state: String,
+    /// Optional attempt number (defaults to 0 — the runner usually sets it).
+    #[serde(default)]
+    pub attempt: u8,
+    pub last_plan: Option<String>,
+    pub last_score: Option<String>,
+    pub repo_path: Option<String>,
+    pub context_hash: Option<String>,
+}
+
+/// P1.3 — durable checkpoint on demand. Persists an `agent_checkpoints`
+/// row keyed by `task_id` so `lopi resume --agent-id` can recover.
+pub(super) async fn checkpoint_agent(
+    Path(id): Path<String>,
+    State(s): State<AppState>,
+    Json(body): Json<CheckpointBody>,
+) -> impl IntoResponse {
+    let Ok(uuid) = id.parse::<uuid::Uuid>() else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "agent id must be a uuid"})),
+        )
+            .into_response();
+    };
+    let mut input = CheckpointInput::new(TaskId(uuid), body.attempt, body.state);
+    input.last_plan = body.last_plan;
+    input.last_score = body.last_score;
+    input.repo_path = body.repo_path;
+    input.context_hash = body.context_hash;
+    match s.store.save_checkpoint(&input).await {
+        Ok(checkpoint_id) => (
+            StatusCode::CREATED,
+            Json(json!({ "checkpoint_id": checkpoint_id, "task_id": id })),
+        )
+            .into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": format!("{e:#}") })),
         )
             .into_response(),
     }

@@ -77,3 +77,39 @@ pub async fn cancel(task_id: String) -> Result<()> {
     }
     Ok(())
 }
+
+/// P1.3 — `lopi resume --agent-id <uuid>`: load the most-recent checkpoint
+/// for a task and print it. The checkpoint carries enough state for an
+/// upstream operator to decide whether to re-queue, abort, or inspect the
+/// `repo_path` directly. Full re-attach is a follow-up sprint.
+pub async fn resume(agent_id: String) -> Result<()> {
+    let store = MemoryStore::open(crate::db_path()).await?;
+    let task_id = match agent_id.parse::<uuid::Uuid>() {
+        Ok(u) => lopi_core::TaskId(u),
+        Err(_) => {
+            anyhow::bail!("agent-id must be a uuid; got `{agent_id}`");
+        }
+    };
+    match store.latest_checkpoint(&task_id).await? {
+        Some(cp) => {
+            println!("⛵ checkpoint for {agent_id}:");
+            println!("   attempt:    {}", cp.attempt);
+            println!("   state:      {}", cp.state);
+            println!("   created_at: {}", cp.created_at);
+            if let Some(p) = cp.repo_path { println!("   repo_path:  {p}"); }
+            if let Some(h) = cp.context_hash { println!("   ctx_hash:   {h}"); }
+            if let Some(plan) = cp.last_plan {
+                let preview: String = plan.chars().take(160).collect();
+                println!("   plan:       {preview}{}",
+                    if plan.chars().count() > 160 { "…" } else { "" });
+            }
+            if let Some(score) = cp.last_score {
+                println!("   score:      {score}");
+            }
+        }
+        None => {
+            println!("no checkpoints recorded for {agent_id}");
+        }
+    }
+    Ok(())
+}

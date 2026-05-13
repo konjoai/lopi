@@ -125,3 +125,23 @@ CREATE TABLE IF NOT EXISTS github_installations (
 );
 CREATE INDEX IF NOT EXISTS idx_installations_customer ON github_installations(customer_id);
 CREATE INDEX IF NOT EXISTS idx_installations_login ON github_installations(account_login);
+
+-- P1.3 — Durable agent checkpoints. A snapshot taken before any action
+-- that can fail (plan, implement, score, PR). The CLI subcommand
+-- `lopi resume --agent-id` reads the most-recent row, and the HTTP
+-- endpoint POST /api/agents/{id}/checkpoint writes on demand.
+-- `state` mirrors lopi_core::AgentState (planning / implementing /
+-- testing / scoring / done / errored).
+CREATE TABLE IF NOT EXISTS agent_checkpoints (
+    id           TEXT PRIMARY KEY,
+    task_id      TEXT NOT NULL,
+    attempt      INTEGER NOT NULL DEFAULT 0,
+    state        TEXT NOT NULL,
+    last_plan    TEXT,
+    last_score   TEXT,
+    repo_path    TEXT,
+    context_hash TEXT,
+    created_at   TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_checkpoints_task_created
+    ON agent_checkpoints(task_id, created_at DESC);
