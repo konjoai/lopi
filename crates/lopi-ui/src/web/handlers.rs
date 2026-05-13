@@ -279,7 +279,7 @@ pub(super) async fn get_quality_trend(
 /// Prometheus text-format metrics.
 pub(super) async fn metrics(State(s): State<AppState>) -> impl IntoResponse {
     let stats = s.pool.stats();
-    let body = format!(
+    let mut body = format!(
         "# HELP lopi_agents_running Currently running agents\n\
          # TYPE lopi_agents_running gauge\n\
          lopi_agents_running {running}\n\
@@ -301,6 +301,25 @@ pub(super) async fn metrics(State(s): State<AppState>) -> impl IntoResponse {
         failed = stats.failed,
         uptime = stats.uptime_secs,
     );
+
+    // P1.4 — Schema-validation violations counter, label-keyed by failure
+    // kind (type / required / enum / property). One HELP/TYPE preamble
+    // followed by one line per label that has fired at least once.
+    let violations = lopi_core::schema_violations_snapshot();
+    if !violations.is_empty() {
+        body.push_str(
+            "# HELP lopi_schema_violations_total Output schema validation failures\n",
+        );
+        body.push_str("# TYPE lopi_schema_violations_total counter\n");
+        for (kind, count) in violations {
+            // `kind` is from a closed enum (Type/Required/EnumMismatch/Property),
+            // so no escaping is necessary, but we still wrap it defensively.
+            body.push_str(&format!(
+                "lopi_schema_violations_total{{kind=\"{kind}\"}} {count}\n"
+            ));
+        }
+    }
+
     (
         StatusCode::OK,
         [(

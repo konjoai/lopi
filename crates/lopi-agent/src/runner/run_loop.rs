@@ -374,6 +374,49 @@ impl AgentRunner {
             );
             let score = scorer.score().instrument(score_span).await?;
 
+            // P1.4 — Optional structured-output schema validation. When the
+            // task carries `output_schema`, validate the scorer's JSON
+            // projection against it. Each failure increments the
+            // process-wide `lopi_schema_violations_total{kind=…}` counter
+            // surfaced via `/metrics`. On any violation the agent stashes
+            // the messages as `last_error` (so the next planning prompt
+            // sees them via adaptive retry) and rolls into the next attempt.
+            if let Some(ref schema) = self.task.output_schema {
+                let score_json = serde_json::json!({
+                    "test_pass_rate": score.test_pass_rate,
+                    "lint_errors": score.lint_errors,
+                    "diff_lines": score.diff_lines,
+                });
+                let violations = lopi_core::validate_schema(&score_json, schema);
+                if !violations.is_empty() {
+                    for v in &violations {
+                        lopi_core::schema_violations_inc(v.kind.clone());
+                    }
+                    let summary = violations
+                        .iter()
+                        .map(|v| format!("- {}@{}: {}", v.kind.as_str(), v.path, v.message))
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    self.warn(format!(
+                        "📐 output_schema validation failed ({} issue(s)):\n{summary}",
+                        violations.len()
+                    ));
+                    if self.adaptive_retry {
+                        self.last_error = Some(format!(
+                            "Attempt {} output failed schema validation:\n{summary}",
+                            attempt + 1
+                        ));
+                    }
+                    git.hard_rollback().await.ok();
+                    git.checkout_default().await.ok();
+                    self.status(
+                        TaskStatus::Retrying { attempt: attempt + 1 },
+                        attempt + 1,
+                    );
+                    continue;
+                }
+            }
+
             self.bus.send(AgentEvent::ScoreUpdated {
                 task_id: self.id(),
                 test_pass_rate: score.test_pass_rate,

@@ -1,5 +1,86 @@
 # Changelog
 
+## [Unreleased] — P1 Agent Survivability Sprint 🚦
+
+### Added
+
+**P1.1 — Cost governor + circuit breakers** (`lopi-core::BudgetScope`,
+`lopi-ratelimit::budget`)
+- Three-tier hierarchical budget enforcement: `Fleet` → `Agent` → `Task`.
+- `BudgetGovernor` wraps three `Arc<CircuitBreaker>`. `check()` walks the
+  breakers innermost-first and returns the tightest enclosing scope that
+  refuses, so the runner can attribute the failure correctly.
+- `record_success(cost)` / `record_failure()` / `record_cost_only(cost)`
+  feed each scope. `states()` returns a snapshot for `/metrics` exposition.
+- `BudgetError::Exceeded { scope, limit_usd }` vs.
+  `BudgetError::BreakerOpen { scope }` — distinguishes "hourly cap reached"
+  from "too many consecutive failures".
+- `BudgetConfig` defaults: $25/hr fleet · $5/hr agent · $1.50/hr task.
+- New `AgentEvent::BudgetExceeded { task_id, scope, limit_usd, burned_usd }`
+  — runner emits this the moment `check()` refuses, so the Forge UI can
+  flag the breach before the next turn fires.
+
+**P1.2 — OpenTelemetry spans behind `otel` Cargo feature** (root crate)
+- Workspace deps `opentelemetry` · `opentelemetry_sdk` ·
+  `opentelemetry-otlp` · `tracing-opentelemetry` are now `optional = true`
+  and gated by `otel = ["dep:…"]`.
+- Four GenAI-semconv-aligned spans wrap each agent turn:
+  `lopi.agent.think` (planning step) · `lopi.agent.act` (`claude.implement`) ·
+  `lopi.agent.score` (`scorer.score`) · `lopi.agent.task.complete` (terminal
+  success return).
+- Wrapped with `.instrument(span)` so the runner's outer future stays
+  `Send` and the pool's `JoinSet::spawn` accepts it.
+- `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_SERVICE_NAME` env vars honoured.
+- Zero OTel runtime cost when the feature is off.
+
+**P1.3 — Durable checkpoint + resume** (`lopi-memory::CheckpointRow` +
+`lopi resume` + `POST /api/agents/:id/checkpoint`)
+- New `agent_checkpoints` table with `idx_checkpoints_task_created` index.
+- `CheckpointInput` builder · `MemoryStore::save_checkpoint` ·
+  `latest_checkpoint` · `list_checkpoints`.
+- `lopi resume --agent-id <uuid>` CLI subcommand loads the most-recent
+  checkpoint and prints a human-readable summary (attempt, state, repo,
+  hash, plan preview, score).
+- `POST /api/agents/:id/checkpoint` accepts a JSON body
+  `{state, attempt?, last_plan?, last_score?, repo_path?, context_hash?}`
+  and persists it. Returns 201 with `{checkpoint_id, task_id}` or 400 for
+  a non-UUID id. Sits behind Bearer auth + per-IP rate limiting.
+
+**P1.4 — Structured output schema validation** (`lopi-core::schema`)
+- Optional `Task::output_schema: Option<serde_json::Value>`. When present,
+  the runner validates the scorer's JSON projection against it after each
+  attempt.
+- Pragmatic JSON Schema subset (`type`, `required`, `properties`, `enum`)
+  — dep-free beyond `serde_json` to keep `lopi-core` at tier 1. Unknown
+  keywords are permissive (ignored, not rejected).
+- Process-wide `lopi_schema_violations_total{kind=…}` counter exposed via
+  `/metrics`. Labels: `type`, `required`, `enum`, `property`.
+- On validation failure: increments counter, warns the bus, stashes the
+  violation summary as `last_error` so the next planning prompt sees it
+  (via adaptive retry), rolls back git, and retries.
+
+### Documentation
+
+- **`PLAN.md`** — new "Researched Feature Roadmap" section: P1/P2/P3
+  tiers covering MCP+A2A, multi-tier memory, human-in-the-loop pause
+  points, constellation auto-scaling, compile-time policy proc macro,
+  hierarchical agent delegation, and fleet replay.
+
+### Tests
+
+- `lopi-core::budget` — 2 unit tests (scope wire-string + JSON round-trip).
+- `lopi-ratelimit::budget` — 6 governor unit tests.
+- `lopi-memory::checkpoints` — 4 store unit tests.
+- `lopi-ui::web::tests` — 2 endpoint integration tests for checkpoint route.
+- `lopi-core::schema` — 10 validator unit tests including realistic score
+  schema and counter increment.
+
+### Architecture
+
+- `.konjo/arch.toml` layer rules honoured: `BudgetScope` (tier 1) lives in
+  `lopi-core`; `BudgetGovernor` and underlying `CircuitBreaker` (tier 2)
+  live in `lopi-ratelimit`. No upward dependency.
+
 ## [0.17.0] — Sprint O: GitHub App Server Scaffold 🔐
 
 ### Added

@@ -253,6 +253,7 @@ mod tests {
             created_at: Utc::now(),
             source: TaskSource::Cli,
             repo_path: None,
+            output_schema: None,
         }
     }
 

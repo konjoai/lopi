@@ -326,6 +326,7 @@ mod tests {
             created_at: chrono::Utc::now(),
             source: TaskSource::Cli,
             repo_path: None,
+            output_schema: None,
         }
     }
 

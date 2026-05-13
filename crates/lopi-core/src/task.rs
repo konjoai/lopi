@@ -67,6 +67,15 @@ pub struct Task {
     /// Override repository path for this task. Pool default is used when None.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub repo_path: Option<PathBuf>,
+    /// P1.4 — Optional JSON Schema the agent's structured output must
+    /// satisfy. Stored as raw `serde_json::Value` so callers can supply
+    /// any schema shape; the validator in `lopi_core::schema` enforces a
+    /// pragmatic subset (`type`, `required`, `properties`, `enum`).
+    /// Validation failures are counted via `schema_violations_inc` and
+    /// trigger an adaptive-retry cycle so the next plan prompt includes
+    /// the violation message.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_schema: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -92,6 +101,7 @@ impl Task {
             created_at: Utc::now(),
             source: TaskSource::Cli,
             repo_path: None,
+            output_schema: None,
         }
     }
 }
