@@ -15,29 +15,12 @@ pub async fn run(
     dry_run: bool,
     quiet: bool,
 ) -> Result<QualitySnapshot> {
-    /* mutants::skip — integration handler: requires live SpecSurface, MemoryStore, and sail API */
     if !quiet {
         println!("🔬 lopi gap-fill — {}", repo.display());
         println!();
     }
 
-    // 1. Load or extract spec surface.
-    let surface = match SpecSurface::load(&repo)? {
-        Some(s) => {
-            if !quiet {
-                println!("  📋 spec surface: {} items (cached)", s.len());
-            }
-            s
-        }
-        None => {
-            let live = SpecSurface::extract(&repo)?;
-            if !quiet {
-                println!("  📋 spec surface: {} items (live)", live.len());
-            }
-            live
-        }
-    };
-
+    let surface = load_surface(&repo, quiet)?;
     if surface.is_empty() {
         if !quiet {
             println!("  No spec items found. Run `lopi spec --save` first.");
@@ -45,7 +28,6 @@ pub async fn run(
         return Ok(QualitySnapshot::empty(repo.to_string_lossy().to_string()));
     }
 
-    // 2. Run tests.
     if !quiet {
         println!("  🧪 running tests…");
     }
@@ -61,11 +43,9 @@ pub async fn run(
         );
     }
 
-    // 3. Compute coverage gaps.
     let gaps = coverage_gaps(&surface.items, &results);
     let gap_count = gaps.len();
 
-    // 4. Persist quality run.
     let store = MemoryStore::open(db_path()).await?;
     let run_id = store
         .save_quality_run(QualityRunRecord {
@@ -77,30 +57,8 @@ pub async fn run(
         })
         .await?;
 
-    // 5. Print trend delta.
     if !quiet {
-        if let Ok(Some((latest, prev))) = store.quality_trend_delta(&repo.to_string_lossy()).await {
-            let arrow = if latest > prev {
-                "↑"
-            } else if latest < prev {
-                "↓"
-            } else {
-                "→"
-            };
-            println!(
-                "  📈 coverage: {:.0}% {arrow} (was {:.0}%)",
-                latest * 100.0,
-                prev * 100.0
-            );
-        } else {
-            let score = if surface.is_empty() {
-                0.0
-            } else {
-                passing as f64 / surface.len() as f64
-            };
-            println!("  📈 coverage: {:.0}%", score * 100.0);
-        }
-        println!();
+        print_trend(&store, &repo.to_string_lossy(), passing, surface.len()).await;
     }
 
     let snapshot = QualitySnapshot {
@@ -118,21 +76,9 @@ pub async fn run(
         }
         return Ok(snapshot);
     }
-
     if !quiet {
-        println!("  ⚠️  {} coverage gap(s):", gap_count);
-        for g in &gaps {
-            println!(
-                "     [{kind}] {desc} ({file}:{line})",
-                kind = g.kind.as_str(),
-                desc = g.description,
-                file = g.file,
-                line = g.line
-            );
-        }
-        println!();
+        print_gaps(&gaps);
     }
-
     if dry_run {
         if !quiet {
             println!("  dry-run: not queuing fix tasks");
@@ -140,14 +86,79 @@ pub async fn run(
         return Ok(snapshot);
     }
 
-    // 6. Queue fix tasks via the sail API.
+    queue_fix_tasks(&gaps, &repo, sail_url, quiet).await;
+    Ok(snapshot)
+}
+
+fn load_surface(repo: &std::path::Path, quiet: bool) -> Result<SpecSurface> {
+    match SpecSurface::load(repo)? {
+        Some(s) => {
+            if !quiet {
+                println!("  📋 spec surface: {} items (cached)", s.len());
+            }
+            Ok(s)
+        }
+        None => {
+            let live = SpecSurface::extract(repo)?;
+            if !quiet {
+                println!("  📋 spec surface: {} items (live)", live.len());
+            }
+            Ok(live)
+        }
+    }
+}
+
+async fn print_trend(store: &MemoryStore, repo: &str, passing: usize, spec_items: usize) {
+    if let Ok(Some((latest, prev))) = store.quality_trend_delta(repo).await {
+        let arrow = if latest > prev {
+            "↑"
+        } else if latest < prev {
+            "↓"
+        } else {
+            "→"
+        };
+        println!(
+            "  📈 coverage: {:.0}% {arrow} (was {:.0}%)",
+            latest * 100.0,
+            prev * 100.0
+        );
+    } else {
+        let score = if spec_items == 0 {
+            0.0
+        } else {
+            passing as f64 / spec_items as f64
+        };
+        println!("  📈 coverage: {:.0}%", score * 100.0);
+    }
+    println!();
+}
+
+fn print_gaps(gaps: &[&lopi_spec::SpecItem]) {
+    println!("  ⚠️  {} coverage gap(s):", gaps.len());
+    for g in gaps {
+        println!(
+            "     [{kind}] {desc} ({file}:{line})",
+            kind = g.kind.as_str(),
+            desc = g.description,
+            file = g.file,
+            line = g.line
+        );
+    }
+    println!();
+}
+
+async fn queue_fix_tasks(
+    gaps: &[&lopi_spec::SpecItem],
+    repo: &std::path::Path,
+    sail_url: &str,
+    quiet: bool,
+) {
     if !quiet {
         println!("  📤 queuing fix tasks on {sail_url}…");
     }
     let client = reqwest::Client::new();
     let mut queued = 0usize;
-
-    for gap in &gaps {
+    for gap in gaps {
         let goal = format!(
             "Fix failing or missing test in {}: {} ({}:{})",
             repo.display(),
@@ -168,7 +179,6 @@ pub async fn run(
             Err(e) => tracing::warn!("queue request failed: {e}"),
         }
     }
-
     if !quiet {
         if queued == 0 {
             println!("  ⚠️  No tasks queued — is `lopi sail` running on {sail_url}?");
@@ -177,8 +187,6 @@ pub async fn run(
             println!("  ✅ {queued} fix task(s) queued — run `lopi watch` to monitor progress");
         }
     }
-
-    Ok(snapshot)
 }
 
 /// Summary of a single gap-fill run — returned so callers (e.g. the daemon)
@@ -224,7 +232,6 @@ pub async fn watch_loop(
     sail_url: &str,
     run_now: bool,
 ) -> anyhow::Result<()> {
-    /* mutants::skip — integration handler: runs indefinitely with real timer and sail API */
     let interval = tokio::time::Duration::from_secs(interval_minutes * 60);
     println!(
         "🔄 lopi watch-gap-fill — {} every {interval_minutes} min",

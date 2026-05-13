@@ -57,6 +57,11 @@ enum Commands {
         /// Enable Reflexion-style adaptive retry: inject previous attempt's error into the next planning prompt
         #[arg(long)]
         adaptive_retry: bool,
+        /// Run the Layer 5 stability gate before implementation: generate N plan samples, measure
+        /// pairwise variance, and block if variance exceeds the unstable threshold. Requires
+        /// ANTHROPIC_API_KEY. Records every assessment to the stability ledger (`lopi stability`).
+        #[arg(long)]
+        stability_gate: bool,
     },
     /// Watch live agent status (TUI). Use --remote to connect to a running sail server.
     Watch {
@@ -292,6 +297,7 @@ async fn main() -> Result<()> {
             dry_run,
             speculative,
             adaptive_retry,
+            stability_gate,
         } => {
             run_command::run(
                 goal,
@@ -299,6 +305,7 @@ async fn main() -> Result<()> {
                 dry_run,
                 speculative,
                 adaptive_retry,
+                stability_gate,
                 cfg.as_ref(),
             )
             .await?;

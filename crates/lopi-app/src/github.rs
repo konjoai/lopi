@@ -125,33 +125,40 @@ async fn handle_installation_event(
     s: &AppState,
 ) {
     match action {
-        "created" => {
-            match s
-                .store
-                .upsert_installation(installation_id, login, account_type)
-                .await
-            {
-                Ok(customer_id) => {
-                    tracing::info!(customer_id, login, "GitHub App installed");
-                    match lopi_memory::MemoryStore::open_for_customer(
-                        &s.cfg.customer_store_base,
-                        &customer_id,
-                    )
-                    .await
-                    {
-                        Ok(_) => tracing::info!(customer_id, "customer store provisioned"),
-                        Err(e) => tracing::warn!(customer_id, "store provision failed: {e}"),
-                    }
-                }
-                Err(e) => tracing::warn!(login, "installation upsert failed: {e}"),
-            }
-        }
+        "created" => handle_installation_created(installation_id, login, account_type, s).await,
         "deleted" => {
             s.store.delete_installation(installation_id).await.ok();
             tracing::info!(installation_id, login, "GitHub App uninstalled");
         }
         "suspended" => tracing::info!(installation_id, login, "GitHub App suspended"),
         _ => {}
+    }
+}
+
+/// Provision a new customer installation: upsert the record and open their store.
+async fn handle_installation_created(
+    installation_id: i64,
+    login: &str,
+    account_type: &str,
+    s: &AppState,
+) {
+    match s
+        .store
+        .upsert_installation(installation_id, login, account_type)
+        .await
+    {
+        Ok(customer_id) => {
+            tracing::info!(customer_id, login, "GitHub App installed");
+            provision_customer_store(&s.cfg.customer_store_base, &customer_id).await;
+        }
+        Err(e) => tracing::warn!(login, "installation upsert failed: {e}"),
+    }
+}
+
+async fn provision_customer_store(base: &std::path::Path, customer_id: &str) {
+    match lopi_memory::MemoryStore::open_for_customer(base, customer_id).await {
+        Ok(_) => tracing::info!(customer_id, "customer store provisioned"),
+        Err(e) => tracing::warn!(customer_id, "store provision failed: {e}"),
     }
 }
 

@@ -44,6 +44,12 @@ pub async fn webhook(
         return (StatusCode::BAD_REQUEST, "invalid JSON").into_response();
     };
 
+    dispatch_stripe_event(&payload);
+    (StatusCode::OK, "ok").into_response()
+}
+
+/// Log or act on a parsed Stripe event payload.
+fn dispatch_stripe_event(payload: &serde_json::Value) {
     let event_type = payload["type"].as_str().unwrap_or("unknown");
     let customer_id = payload["data"]["object"]["customer"]
         .as_str()
@@ -58,14 +64,10 @@ pub async fn webhook(
             );
         }
         "customer.subscription.deleted" => {
-            tracing::info!(customer_id, "Stripe subscription cancelled");
+            tracing::info!(customer_id, "Stripe subscription cancelled")
         }
-        _ => {
-            tracing::debug!(event_type, "unhandled Stripe event");
-        }
+        _ => tracing::debug!(event_type, "unhandled Stripe event"),
     }
-
-    (StatusCode::OK, "ok").into_response()
 }
 
 /// Stripe uses `HMAC-SHA256` + a timestamp to prevent replay attacks.
