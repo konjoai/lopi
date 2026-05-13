@@ -122,10 +122,24 @@ tokio-tungstenite.workspace = true
 chrono.workspace = true
 futures.workspace = true
 uuid.workspace = true
-opentelemetry.workspace = true
-opentelemetry_sdk.workspace = true
-opentelemetry-otlp.workspace = true
-tracing-opentelemetry.workspace = true
+
+# OpenTelemetry — feature-gated. With `--features otel`, the binary
+# initializes an OTLP exporter from OTEL_EXPORTER_OTLP_ENDPOINT and
+# OTEL_SERVICE_NAME. Without the feature, lopi runs with zero OTel
+# runtime cost — the `tracing` spans the agent emits stay local.
+opentelemetry = { workspace = true, optional = true }
+opentelemetry_sdk = { workspace = true, optional = true }
+opentelemetry-otlp = { workspace = true, optional = true }
+tracing-opentelemetry = { workspace = true, optional = true }
+
+[features]
+default = []
+otel = [
+    "dep:opentelemetry",
+    "dep:opentelemetry_sdk",
+    "dep:opentelemetry-otlp",
+    "dep:tracing-opentelemetry",
+]
 
 [dev-dependencies]
 # cargo-husky auto-installs .cargo-husky/hooks/pre-commit into .git/hooks/pre-commit

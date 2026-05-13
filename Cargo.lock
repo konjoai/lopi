@@ -1974,6 +1974,9 @@ dependencies = [
 name = "lopi-ratelimit"
 version = "0.1.0"
 dependencies = [
+ "lopi-core",
+ "serde",
+ "serde_json",
  "thiserror 1.0.69",
  "tokio",
  "tracing",

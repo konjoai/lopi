@@ -309,14 +309,19 @@ pub(crate) fn is_self_modify_attempt(repo: &std::path::Path) -> bool {
 #[allow(clippy::too_many_lines)]
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Initialize tracing with optional OpenTelemetry OTLP export.
-    // Set OTEL_EXPORTER_OTLP_ENDPOINT (e.g. http://localhost:4317) to enable export.
+    // Initialize tracing. With `--features otel`, OTLP export is wired in
+    // when OTEL_EXPORTER_OTLP_ENDPOINT is set. Without the feature, lopi
+    // runs with zero OTel runtime cost — the four GenAI-aligned spans the
+    // agent emits (lopi.agent.think / act / score / task.complete) stay
+    // local for stdout consumption.
     let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn"));
-
     let fmt_layer = tracing_subscriber::fmt::layer();
 
+    #[cfg(feature = "otel")]
     if std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").is_ok() {
+        let service_name =
+            std::env::var("OTEL_SERVICE_NAME").unwrap_or_else(|_| "lopi".to_string());
         let otlp_exporter = opentelemetry_otlp::new_exporter().tonic();
         let tracer = opentelemetry_otlp::new_pipeline()
             .tracing()
@@ -324,7 +329,7 @@ async fn main() -> Result<()> {
             .with_trace_config(opentelemetry_sdk::trace::config().with_resource(
                 opentelemetry_sdk::Resource::new(vec![opentelemetry::KeyValue::new(
                     "service.name",
-                    "lopi",
+                    service_name,
                 )]),
             ))
             .install_batch(opentelemetry_sdk::runtime::Tokio)
@@ -341,6 +346,12 @@ async fn main() -> Result<()> {
             .with(fmt_layer)
             .init();
     }
+
+    #[cfg(not(feature = "otel"))]
+    tracing_subscriber::registry()
+        .with(env_filter)
+        .with(fmt_layer)
+        .init();
 
     let cli = Cli::parse();
     let cfg = load_config(cli.config.as_ref());

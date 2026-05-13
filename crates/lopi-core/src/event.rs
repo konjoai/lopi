@@ -1,3 +1,4 @@
+use crate::budget::BudgetScope;
 use crate::task::{TaskId, TaskStatus};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -62,6 +63,20 @@ pub enum AgentEvent {
         tokens_per_sec: f32,
         /// Accumulated cost in USD for this run.
         cost_usd: f32,
+    },
+    /// Cost governor refused the next billable call because a scope reached
+    /// its hourly cap or a breaker tripped. Emitted by the runner before the
+    /// error propagates so the UI can flag the breach immediately.
+    BudgetExceeded {
+        /// Optional — `None` when the breach is fleet-wide (no specific task
+        /// in flight).
+        task_id: Option<TaskId>,
+        /// Which scope refused (`fleet`, `agent`, or `task`).
+        scope: BudgetScope,
+        /// The scope's hourly cap in USD.
+        limit_usd: f64,
+        /// Amount already burned in the rolling 1-hour window in USD.
+        burned_usd: f64,
     },
 }
 

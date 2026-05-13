@@ -1,5 +1,7 @@
+pub mod budget;
 pub mod circuit_breaker;
 
+pub use budget::{BudgetConfig, BudgetError, BudgetGovernor, BudgetLimit, BudgetStates};
 pub use circuit_breaker::{BreakerError, BreakerState, CircuitBreaker};
 
 use std::sync::Arc;

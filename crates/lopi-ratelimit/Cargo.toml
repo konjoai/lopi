@@ -11,3 +11,8 @@ description = "Token-bucket rate limiter and circuit breaker for lopi's Anthropi
 tokio = { version = "1", features = ["time", "sync", "macros", "rt"] }
 thiserror = "1"
 tracing = "0.1"
+serde = { workspace = true }
+lopi-core = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

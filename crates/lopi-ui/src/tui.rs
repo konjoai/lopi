@@ -174,6 +174,9 @@ impl AppState {
             // TurnMetrics drives the web UI's Forge shader. The TUI doesn't
             // visualize per-turn pressure/activity — silently consume.
             AgentEvent::TurnMetrics { .. } => {}
+            // BudgetExceeded is shown in the web Forge with a flashing pill
+            // and surfaced via /metrics — the TUI is read-only, no action needed.
+            AgentEvent::BudgetExceeded { .. } => {}
         }
     }
 

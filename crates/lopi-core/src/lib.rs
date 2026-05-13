@@ -1,9 +1,11 @@
 pub mod agent;
+pub mod budget;
 pub mod config;
 pub mod event;
 pub mod task;
 
 pub use agent::{AgentRun, AgentState, Attempt, Score, ScoreWeights, TurnMetrics};
+pub use budget::BudgetScope;
 pub use config::{LopiConfig, RepoProfile, ScheduleEntry};
 pub use event::{AgentEvent, EventBus, LogLevel};
 pub use task::{Priority, Task, TaskId, TaskSource, TaskStatus};

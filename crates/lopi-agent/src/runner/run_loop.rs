@@ -7,6 +7,7 @@ use lopi_core::{AgentEvent, Attempt, TaskStatus};
 use lopi_git::GitManager;
 use lopi_spec::SpecSurface;
 use std::sync::atomic::Ordering;
+use tracing::Instrument as _;
 
 impl AgentRunner {
     /// Execute the full agent loop: plan → implement → test → retry.
@@ -239,32 +240,43 @@ impl AgentRunner {
                 // 4xx/5xx) fall back to the CLI subprocess silently. The
                 // CLI path remains the load-bearing default so an API
                 // outage cannot stall the agent loop.
-                let plan_result = if self.has_direct_api() {
-                    match self.plan_via_api(model, attempt + 1).await {
-                        Ok(p) => {
-                            self.log(format!("✅ plan ready via direct API ({} chars)", p.len()));
-                            Ok(p)
+                // OTel GenAI-aligned span: think phase. Wraps both the
+                // direct-API and CLI planning paths.
+                let think_span = tracing::info_span!(
+                    "lopi.agent.think",
+                    task_id = %self.id(),
+                    attempt = attempt + 1,
+                );
+                let plan_result = async {
+                    if self.has_direct_api() {
+                        match self.plan_via_api(model, attempt + 1).await {
+                            Ok(p) => {
+                                self.log(format!("✅ plan ready via direct API ({} chars)", p.len()));
+                                Ok(p)
+                            }
+                            Err(api_err) => {
+                                self.warn(format!(
+                                    "direct API plan failed ({api_err}); falling back to CLI"
+                                ));
+                                claude
+                                    .plan(&self.task, self.last_error.as_deref())
+                                    .await
+                                    .inspect(|p| {
+                                        self.log(format!("✅ plan ready via CLI ({} chars)", p.len()));
+                                    })
+                            }
                         }
-                        Err(api_err) => {
-                            self.warn(format!(
-                                "direct API plan failed ({api_err}); falling back to CLI"
-                            ));
-                            claude
-                                .plan(&self.task, self.last_error.as_deref())
-                                .await
-                                .inspect(|p| {
-                                    self.log(format!("✅ plan ready via CLI ({} chars)", p.len()));
-                                })
-                        }
+                    } else {
+                        claude
+                            .plan(&self.task, self.last_error.as_deref())
+                            .await
+                            .inspect(|p| {
+                                self.log(format!("✅ plan ready ({} chars)", p.len()));
+                            })
                     }
-                } else {
-                    claude
-                        .plan(&self.task, self.last_error.as_deref())
-                        .await
-                        .inspect(|p| {
-                            self.log(format!("✅ plan ready ({} chars)", p.len()));
-                        })
-                };
+                }
+                .instrument(think_span)
+                .await;
 
                 let plan = match plan_result {
                     Ok(p) => p,
@@ -310,7 +322,19 @@ impl AgentRunner {
                 );
                 self.log("🔨 implementing…");
 
-                if let Err(e) = claude.implement(&self.task, &plan).await {
+                // OTel GenAI-aligned span: act phase. Uses `.instrument()`
+                // (not `.entered()`) so the span guard is not held across
+                // .await — the runner's outer future must stay Send.
+                let act_span = tracing::info_span!(
+                    "lopi.agent.act",
+                    task_id = %self.id(),
+                    attempt = attempt + 1,
+                );
+                let act_result = claude
+                    .implement(&self.task, &plan)
+                    .instrument(act_span)
+                    .await;
+                if let Err(e) = act_result {
                     self.warn(format!("implement failed: {e}"));
                     git.hard_rollback().await.ok();
                     git.checkout_default().await.ok();
@@ -342,7 +366,13 @@ impl AgentRunner {
                 "context at testing"
             );
             self.log("🧪 running tests…");
-            let score = scorer.score().await?;
+            // OTel GenAI-aligned span: score phase.
+            let score_span = tracing::info_span!(
+                "lopi.agent.score",
+                task_id = %self.id(),
+                attempt = attempt + 1,
+            );
+            let score = scorer.score().instrument(score_span).await?;
 
             self.bus.send(AgentEvent::ScoreUpdated {
                 task_id: self.id(),
@@ -394,6 +424,15 @@ impl AgentRunner {
                 }
                 let status = TaskStatus::Success { branch, pr_url };
                 self.status(status.clone(), attempt + 1);
+                // OTel GenAI-aligned span: task completion event. The span
+                // body is empty — it exists to mark the task boundary in
+                // any attached trace exporter (OTLP via `otel` feature).
+                let _ = tracing::info_span!(
+                    "lopi.agent.task.complete",
+                    task_id = %self.id(),
+                    outcome = "success",
+                    attempts = attempt + 1,
+                ).entered();
                 return Ok(status);
             }
 
