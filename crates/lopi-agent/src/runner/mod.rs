@@ -1,4 +1,5 @@
 mod api_plan;
+mod helpers;
 pub mod postmortem;
 mod postmortem_runner;
 mod run_loop;
@@ -7,7 +8,7 @@ mod stability_runner;
 use crate::api_client::AnthropicClient;
 use crate::stability::{StabilityConfig, StabilityHarness};
 use lopi_context::{ContentBlock, ContextWindow, Phase, PinPolicy, Role, TaggedMessage};
-use lopi_core::{AgentEvent, EventBus, ScoreWeights, Task, TaskId, TaskStatus};
+use lopi_core::{AgentEvent, EventBus, ScoreWeights, Task, TaskId};
 use lopi_memory::MemoryStore;
 use lopi_ratelimit::{AnthropicLimiter, CircuitBreaker};
 use std::path::PathBuf;
@@ -77,10 +78,19 @@ pub struct AgentRunner {
     pub(super) attempt_counter: Arc<AtomicUsize>,
     pub(super) attempts_made: u8,
     pub(super) turn_count: u32,
-    /// Phase 5b — score weights for weighted scoring during retry loops.
+    /// Evolved score weights loaded from the pattern store's annotation signal.
+    /// Loaded once per task run; defaults to `ScoreWeights::default()` when no
+    /// annotated patterns are available.
     pub(super) score_weights: ScoreWeights,
     /// Phase 5b — lessons learned from past patterns (injected into planning prompt).
     pub(super) task_lessons: Vec<String>,
+    /// Sprint J-A — when true, run the KCQF quality scanner after each successful
+    /// task. Violations become maintenance tasks accumulated here and drained by
+    /// the pool after `run()` returns.
+    pub(super) kcqf_enabled: bool,
+    /// KCQF maintenance tasks produced during this run. Populated by
+    /// `run_kcqf_scan()` on the success path; drained by the pool caller.
+    pub(super) maintenance_tasks: Vec<lopi_core::Task>,
 }
 
 impl AgentRunner {
@@ -118,6 +128,8 @@ impl AgentRunner {
             turn_count: 0,
             score_weights: ScoreWeights::default(),
             task_lessons: vec![],
+            kcqf_enabled: false,
+            maintenance_tasks: Vec::new(),
         }
     }
 
@@ -149,6 +161,8 @@ impl AgentRunner {
             turn_count: 0,
             score_weights: ScoreWeights::default(),
             task_lessons: vec![],
+            kcqf_enabled: false,
+            maintenance_tasks: Vec::new(),
         };
         (runner, bus)
     }
@@ -224,6 +238,25 @@ impl AgentRunner {
         self
     }
 
+    /// Sprint J-A — enable the KCQF quality scanner after each successful run.
+    ///
+    /// When enabled, `run()` invokes `lopi_kcqf::scan_diff` on the repo after a
+    /// successful commit + PR. Each detected violation becomes a low-priority
+    /// maintenance task. Drain them after `run()` returns via `take_maintenance_tasks()`.
+    #[must_use]
+    pub fn with_kcqf(mut self) -> Self {
+        self.kcqf_enabled = true;
+        self
+    }
+
+    /// Drain accumulated KCQF maintenance tasks produced during `run()`.
+    ///
+    /// Call this immediately after `run()` returns. Returns an empty `Vec` when
+    /// KCQF is disabled or no violations were found.
+    pub fn take_maintenance_tasks(&mut self) -> Vec<lopi_core::Task> {
+        std::mem::take(&mut self.maintenance_tasks)
+    }
+
     /// Return a child token derived from this runner's `CancellationToken`.
     /// The pool can cancel this token to abort the runner from a `JoinSet` teardown.
     #[must_use]
@@ -247,38 +280,6 @@ impl AgentRunner {
 
     pub(super) fn warn(&self, msg: impl Into<String>) {
         self.bus.send(AgentEvent::warn(self.id(), msg));
-    }
-
-    /// Broadcast a `StatusChanged` event and a `TurnMetrics` heartbeat.
-    pub(super) fn status(&self, s: TaskStatus, attempt: u8) {
-        let activity = match &s {
-            TaskStatus::Planning => 0.45_f32,
-            TaskStatus::Implementing => 0.85_f32,
-            TaskStatus::Testing => 0.55_f32,
-            TaskStatus::Scoring => 0.30_f32,
-            TaskStatus::Retrying { .. } => 0.40_f32,
-            TaskStatus::Success { .. } | TaskStatus::Failed { .. } | TaskStatus::RolledBack => {
-                0.0_f32
-            }
-            TaskStatus::Queued => 0.10_f32,
-        };
-        self.emit_turn_metrics(activity);
-        self.bus.send(AgentEvent::StatusChanged {
-            task_id: self.id(),
-            status: s,
-            attempt,
-        });
-    }
-
-    pub(super) fn emit_turn_metrics(&self, activity: f32) {
-        let pressure = self.context.token_pressure();
-        self.bus.send(AgentEvent::TurnMetrics {
-            task_id: self.id(),
-            pressure,
-            activity,
-            tokens_per_sec: 0.0,
-            cost_usd: 0.0,
-        });
     }
 
     pub(super) fn check_cancel(&mut self) -> bool {

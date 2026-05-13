@@ -8,7 +8,10 @@ mod sail_commands;
 mod schedule_commands;
 mod spec_commands;
 mod task_commands;
+#[cfg(test)]
+mod tests;
 mod trust_commands;
+mod util;
 mod webhook_commands;
 use mimalloc::MiMalloc;
 
@@ -17,10 +20,10 @@ static GLOBAL: MiMalloc = MiMalloc;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use lopi_core::{LopiConfig, TaskStatus};
 use lopi_memory::MemoryStore;
 use std::path::PathBuf;
 use tracing_subscriber::prelude::*;
+pub(crate) use util::{db_path, fmt_status, is_self_modify_attempt, load_config, status_label};
 
 #[derive(Parser)]
 #[command(
@@ -246,69 +249,10 @@ enum StabilityCmd {
     Summary,
 }
 
-fn db_path() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
-    PathBuf::from(home).join(".lopi").join("lopi.db")
-}
-
-fn fmt_status(s: &str) -> &str {
-    match s {
-        "queued" => "⏳ queued",
-        "planning" => "📋 planning",
-        "implementing" => "🔨 implementing",
-        "testing" => "🧪 testing",
-        "scoring" => "📊 scoring",
-        "success" => "✅ success",
-        "failed" => "❌ failed",
-        "rolled_back" => "⏪ rolled back",
-        _ => s,
-    }
-}
-
-pub(crate) fn status_label(s: &TaskStatus) -> String {
-    match s {
-        TaskStatus::Queued => "queued".into(),
-        TaskStatus::Planning => "planning".into(),
-        TaskStatus::Implementing => "implementing".into(),
-        TaskStatus::Testing => "testing".into(),
-        TaskStatus::Scoring => "scoring".into(),
-        TaskStatus::Retrying { attempt } => format!("retrying (attempt {attempt})"),
-        TaskStatus::Success { branch, pr_url } => format!(
-            "success ✅ branch={branch}{}",
-            pr_url
-                .as_deref()
-                .map(|u| format!(", pr={u}"))
-                .unwrap_or_default()
-        ),
-        TaskStatus::Failed { reason } => format!("failed ❌ {reason}"),
-        TaskStatus::RolledBack => "rolled back".into(),
-    }
-}
-
-fn load_config(path: Option<&PathBuf>) -> Option<LopiConfig> {
-    if let Some(p) = path {
-        LopiConfig::load(p).ok()
-    } else {
-        LopiConfig::find_and_load()
-    }
-}
-
-pub(crate) fn is_self_modify_attempt(repo: &std::path::Path) -> bool {
-    if let Ok(exe) = std::env::current_exe() {
-        if let (Some(parent), Ok(repo_canonical)) =
-            (exe.parent().and_then(|p| p.parent()), repo.canonicalize())
-        {
-            if let Ok(exe_canonical) = parent.canonicalize() {
-                return repo_canonical.starts_with(&exe_canonical);
-            }
-        }
-    }
-    false
-}
-
 #[allow(clippy::too_many_lines)]
 #[tokio::main]
 async fn main() -> Result<()> {
+    /* mutants::skip — binary entry point: all branches require live services */
     // Initialize tracing with optional OpenTelemetry OTLP export.
     // Set OTEL_EXPORTER_OTLP_ENDPOINT (e.g. http://localhost:4317) to enable export.
     let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()

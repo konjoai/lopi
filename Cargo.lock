@@ -1845,6 +1845,7 @@ dependencies = [
  "lopi-context",
  "lopi-core",
  "lopi-git",
+ "lopi-kcqf",
  "lopi-memory",
  "lopi-ratelimit",
  "lopi-spec",
@@ -1932,6 +1933,18 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "tracing",
+]
+
+[[package]]
+name = "lopi-kcqf"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "lopi-core",
+ "serde",
+ "serde_json",
+ "tokio",
  "tracing",
 ]
 

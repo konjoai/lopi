@@ -19,6 +19,7 @@ pub async fn run(
     stability_gate: bool,
     cfg: Option<&LopiConfig>,
 ) -> Result<()> {
+    /* mutants::skip — integration handler: drives live AgentRunner with real git + API */
     println!("🚢 lopi run{}", if dry_run { " (dry-run)" } else { "" });
     println!("   goal: {goal}");
     println!("   repo: {}", repo.display());

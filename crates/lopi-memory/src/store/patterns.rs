@@ -3,7 +3,7 @@
 //! Separated from `store/mod.rs` to stay within the 500-line budget.
 
 use anyhow::{Context, Result};
-use chrono::Utc;
+use chrono::{Duration, Utc};
 use lopi_core::ScoreWeights;
 use std::collections::HashSet;
 
@@ -184,8 +184,8 @@ impl MemoryStore {
         let now = Utc::now().to_rfc3339();
 
         if let Some((existing_id, prev_avg, prev_sr)) = existing {
-            let new_avg = f64::midpoint(prev_avg.unwrap_or(0.0), attempt_f).max(1.0);
-            let new_sr = f64::midpoint(prev_sr.unwrap_or(0.0), success_rate).clamp(0.0, 1.0);
+            let new_avg = ((prev_avg.unwrap_or(0.0) + attempt_f) / 2.0).max(1.0);
+            let new_sr = ((prev_sr.unwrap_or(0.0) + success_rate) / 2.0).clamp(0.0, 1.0);
             sqlx::query(
                 "UPDATE patterns SET avg_attempts=?1, success_rate=?2, last_seen=?3 WHERE id=?4",
             )
@@ -273,10 +273,113 @@ impl MemoryStore {
         let delta = (signal * 0.005) as f32;
         let base = ScoreWeights::default();
         Ok(ScoreWeights {
-            lint_penalty_per_error: (base.lint_penalty_per_error - delta).clamp(0.01, 0.20),
+            lint_penalty_per_error: (base.lint_penalty_per_error + delta).clamp(0.01, 0.20),
             lint_penalty_cap: base.lint_penalty_cap,
-            diff_penalty_per_kloc: (base.diff_penalty_per_kloc - delta).clamp(0.01, 0.30),
+            diff_penalty_per_kloc: (base.diff_penalty_per_kloc + delta).clamp(0.01, 0.30),
             diff_penalty_cap: base.diff_penalty_cap,
         })
+    }
+
+    /// Count post-mortem-derived patterns created within the last `since_hours` hours.
+    ///
+    /// Used by self-modify automation to detect when repeated failures have
+    /// produced enough patterns to warrant a self-improvement proposal.
+    ///
+    /// # Errors
+    /// Returns `Err` if the database query fails.
+    pub async fn recent_postmortem_count(&self, since_hours: i64) -> Result<i64> {
+        let cutoff = (Utc::now() - Duration::hours(since_hours)).to_rfc3339();
+        let row: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM patterns \
+             WHERE derived_from_postmortem = 1 AND last_seen >= ?1",
+        )
+        .bind(&cutoff)
+        .fetch_one(&self.read_pool)
+        .await
+        .context("recent_postmortem_count query failed")?;
+        Ok(row.0)
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use crate::MemoryStore;
+    use lopi_core::{Attempt, ScoreWeights, Task};
+
+    /// Verify that regular (non-postmortem) patterns are NOT counted.
+    /// Catches mutations that remove the `derived_from_postmortem = 1` SQL filter.
+    #[tokio::test]
+    async fn recent_postmortem_count_excludes_non_pm_patterns() {
+        let store = MemoryStore::open_in_memory().await.unwrap();
+        // Insert a regular pattern via mine_patterns (derived_from_postmortem = 0 by default).
+        let task = Task::new("regular task with keywords");
+        store.save_task(&task, "queued").await.unwrap();
+        store.mine_patterns(&task.id, &task.goal).await.unwrap();
+        // Insert one actual postmortem pattern.
+        store
+            .insert_postmortem_pattern("postmortem keywords here", "fix this")
+            .await
+            .unwrap();
+        let count = store.recent_postmortem_count(24).await.unwrap();
+        assert_eq!(count, 1, "only postmortem patterns should be counted");
+    }
+
+    /// Verify that increased rejected-pattern attempts INCREASES penalties.
+    /// Catches sign-reversal mutations in compute_weight_adjustments.
+    #[tokio::test]
+    async fn compute_adjustments_rejected_more_attempts_increases_penalty() {
+        let store = MemoryStore::open_in_memory().await.unwrap();
+
+        // "rejected" task: 4 attempts → high avg_attempts after mine_patterns.
+        let rejected = Task::new("rejected complex refactor unique");
+        store.save_task(&rejected, "queued").await.unwrap();
+        for i in 1u8..=4 {
+            let a = Attempt::new(rejected.id, i, format!("branch-rej-{i}"));
+            store.save_attempt(&a).await.unwrap();
+        }
+        store
+            .mine_patterns(&rejected.id, &rejected.goal)
+            .await
+            .unwrap();
+
+        // "approved" task: 1 attempt → low avg_attempts.
+        let approved = Task::new("approved simple patch unique");
+        store.save_task(&approved, "queued").await.unwrap();
+        let a_ok = Attempt::new(approved.id, 1, "branch-app-1");
+        store.save_attempt(&a_ok).await.unwrap();
+        store
+            .mine_patterns(&approved.id, &approved.goal)
+            .await
+            .unwrap();
+
+        // Annotate: rejected has many more attempts than approved.
+        let patterns = store.load_patterns(10).await.unwrap();
+        let rej_pat = patterns
+            .iter()
+            .find(|p| p.goal_keywords.contains("rejected"))
+            .expect("rejected pattern not found");
+        let app_pat = patterns
+            .iter()
+            .find(|p| p.goal_keywords.contains("approved"))
+            .expect("approved pattern not found");
+        store
+            .annotate_pattern(&rej_pat.id, Some("rejected"))
+            .await
+            .unwrap();
+        store
+            .annotate_pattern(&app_pat.id, Some("approved"))
+            .await
+            .unwrap();
+
+        let weights = store.compute_weight_adjustments().await.unwrap();
+        let defaults = ScoreWeights::default();
+        assert!(
+            weights.lint_penalty_per_error > defaults.lint_penalty_per_error,
+            "penalty should increase when rejected patterns required more attempts \
+             (got {}, default {})",
+            weights.lint_penalty_per_error,
+            defaults.lint_penalty_per_error
+        );
     }
 }

@@ -13,6 +13,7 @@ pub async fn run(
     github_token: Option<String>,
     anthropic_key: Option<String>,
 ) -> Result<()> {
+    /* mutants::skip — integration handler: boots webhook server with live API clients */
     let addr: SocketAddr = format!("{host}:{port}")
         .parse()
         .map_err(|e| anyhow::anyhow!("invalid address: {e}"))?;

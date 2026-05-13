@@ -15,6 +15,7 @@ pub async fn run(
     port: u16,
     cfg: Option<&LopiConfig>,
 ) -> Result<()> {
+    /* mutants::skip — integration handler: boots AgentPool, web server, scheduler */
     let store = MemoryStore::open(db_path()).await?;
     let bus: EventBus<AgentEvent> = EventBus::new(512);
     let queue = TaskQueue::new();
@@ -98,8 +99,12 @@ fn spawn_telegram(token: String, queue: TaskQueue, store: MemoryStore, cfg: Opti
     let allowed_chat_ids = cfg
         .map(|c| c.remote.telegram.allowed_chat_ids.clone())
         .unwrap_or_default();
+    let allow_self_modify = cfg.is_some_and(|c| c.lopi.allow_self_modify);
     tokio::spawn(async move {
-        if let Err(e) = lopi_remote::telegram::run(token, queue, store, allowed_chat_ids).await {
+        if let Err(e) =
+            lopi_remote::telegram::run(token, queue, store, allowed_chat_ids, allow_self_modify)
+                .await
+        {
             tracing::error!("telegram bot error: {e}");
         }
     });

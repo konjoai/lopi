@@ -128,6 +128,10 @@ pub struct Attempt {
     pub score: Option<Score>,
     pub outcome: String,
     pub created_at: DateTime<Utc>,
+    /// Evolved-weight composite score: pass_rate minus lint/size penalties.
+    /// `None` when no annotated patterns are available to compute weights.
+    #[serde(default)]
+    pub weighted_score: Option<f32>,
 }
 
 impl Attempt {
@@ -140,6 +144,7 @@ impl Attempt {
             score: None,
             outcome: "pending".into(),
             created_at: Utc::now(),
+            weighted_score: None,
         }
     }
 }

@@ -402,6 +402,7 @@ fn make_high_score_attempt(task_id: TaskId) -> Attempt {
         score: Some(lopi_core::Score::new(1.0, 0, 50)),
         outcome: "success".into(),
         created_at: Utc::now(),
+        weighted_score: None,
     }
 }
 
@@ -472,6 +473,45 @@ async fn compute_adjustments_signal_shifts_weights() {
     let adjusted = store.compute_weight_adjustments().await.unwrap();
     let defaults = ScoreWeights::default();
     assert_eq!(adjusted.lint_penalty_cap, defaults.lint_penalty_cap);
+}
+
+#[tokio::test]
+async fn recent_postmortem_count_empty() {
+    let store = MemoryStore::open_in_memory().await.unwrap();
+    let count = store.recent_postmortem_count(24).await.unwrap();
+    assert_eq!(count, 0);
+}
+
+#[tokio::test]
+async fn recent_postmortem_count_counts_pm_patterns() {
+    let store = MemoryStore::open_in_memory().await.unwrap();
+    store
+        .insert_postmortem_pattern("fix tests", "always run cargo test before committing")
+        .await
+        .unwrap();
+    let count = store.recent_postmortem_count(24).await.unwrap();
+    assert_eq!(count, 1);
+}
+
+#[tokio::test]
+async fn recent_failures_returns_failed_task_goals() {
+    let store = MemoryStore::open_in_memory().await.unwrap();
+    let task = Task::new("failing task unique-abc");
+    store.save_task(&task, "queued").await.unwrap();
+    store.mark_completed(&task.id, "failed").await.unwrap();
+    let failures = store.recent_failures(5).await.unwrap();
+    assert_eq!(failures.len(), 1);
+    assert_eq!(failures[0], "failing task unique-abc");
+}
+
+#[tokio::test]
+async fn recent_failures_excludes_successful_tasks() {
+    let store = MemoryStore::open_in_memory().await.unwrap();
+    let task = Task::new("successful task abc");
+    store.save_task(&task, "queued").await.unwrap();
+    store.mark_completed(&task.id, "success").await.unwrap();
+    let failures = store.recent_failures(5).await.unwrap();
+    assert!(failures.is_empty());
 }
 
 #[tokio::test]

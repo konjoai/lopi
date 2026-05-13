@@ -93,6 +93,10 @@ CREATE TABLE IF NOT EXISTS lessons (
 );
 CREATE INDEX IF NOT EXISTS idx_lessons_repo_created ON lessons(repo_path, created_at DESC);
 
+-- Sprint I-B: composite weighted score per attempt (pass_rate minus evolved penalties).
+-- NULL = no annotated patterns were available when the attempt ran.
+ALTER TABLE attempts ADD COLUMN weighted_score REAL;
+
 -- Sprint M: KCQF quality check run ledger.
 -- Each row = one execution of `lopi gap-fill` or `lopi check`.
 -- Drives coverage trend: is the spec getting healthier over time?

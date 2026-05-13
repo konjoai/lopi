@@ -27,6 +27,11 @@ pub struct CoreConfig {
     pub db_path: PathBuf,
     #[serde(default)]
     pub allow_self_modify: bool,
+    /// Enable Reflexion-style adaptive retry for all pool-dispatched tasks.
+    /// When true, each failed attempt's error context is injected into the
+    /// next attempt's planning prompt and the post-mortem fires on terminal failure.
+    #[serde(default)]
+    pub adaptive_retry: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

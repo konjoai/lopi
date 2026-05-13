@@ -48,6 +48,13 @@ pub struct AgentPool {
     started_at: Arc<std::time::Instant>,
     /// Structured task tracker — allows `shutdown()` to abort all running agents.
     join_set: Arc<Mutex<JoinSet<()>>>,
+    /// When true, all agents dispatched from this pool run with adaptive retry
+    /// enabled: previous-attempt error context is injected into the next plan,
+    /// and a post-mortem fires on terminal failure.
+    adaptive_retry: bool,
+    /// Sprint J-A — when true, agents run `lopi_kcqf::scan_diff` after success
+    /// and re-queue violations as low-priority maintenance tasks.
+    kcqf_enabled: bool,
 }
 
 impl AgentPool {
@@ -70,7 +77,27 @@ impl AgentPool {
             counters: Arc::new(PoolCounters::default()),
             started_at: Arc::new(std::time::Instant::now()),
             join_set: Arc::new(Mutex::new(JoinSet::new())),
+            adaptive_retry: false,
+            kcqf_enabled: false,
         }
+    }
+
+    /// Enable adaptive retry for all agents dispatched from this pool.
+    #[must_use]
+    pub fn with_adaptive_retry(mut self) -> Self {
+        self.adaptive_retry = true;
+        self
+    }
+
+    /// Sprint J-A — enable KCQF quality scanning after each successful task.
+    ///
+    /// Agents will run `lopi_kcqf::scan_diff` on the repo after a successful
+    /// commit. Violations become low-priority maintenance tasks re-queued
+    /// into this pool's `TaskQueue` for future runs.
+    #[must_use]
+    pub fn with_kcqf(mut self) -> Self {
+        self.kcqf_enabled = true;
+        self
     }
 
     /// Abort all running agent tasks and wait for them to finish.
@@ -204,6 +231,9 @@ impl AgentPool {
             let handles = self.handles.clone();
             let counters = self.counters.clone();
             let join_set = self.join_set.clone();
+            let adaptive_retry = self.adaptive_retry;
+            let kcqf_enabled = self.kcqf_enabled;
+            let queue_clone = self.queue.clone();
 
             let mut js = join_set.lock().await;
             // Drain any completed tasks to keep the JoinSet from growing unboundedly.
@@ -211,8 +241,20 @@ impl AgentPool {
             js.spawn(async move {
                 let _permit = permit;
                 let _repo_permit = repo_permit;
-                let outcome =
-                    run_one(task, repo, bus.clone(), store.clone(), cancel_rx, attempt).await;
+                let outcome = run_one(
+                    task,
+                    repo,
+                    bus.clone(),
+                    store.clone(),
+                    cancel_rx,
+                    attempt,
+                    RunConfig {
+                        adaptive_retry,
+                        kcqf_enabled,
+                        queue: queue_clone,
+                    },
+                )
+                .await;
                 handles.remove(&task_id);
                 counters.running.fetch_sub(1, Ordering::Relaxed);
                 match &outcome {
@@ -250,6 +292,13 @@ pub struct PoolStats {
     pub uptime_secs: u64,
 }
 
+/// Per-task dispatch configuration threaded from the pool into `run_one`.
+struct RunConfig {
+    adaptive_retry: bool,
+    kcqf_enabled: bool,
+    queue: TaskQueue,
+}
+
 /// Phase 5b / Sprint N — Compute score weights from user-annotated pattern history.
 ///
 /// Approved patterns (human marked "approved") that required fewer attempts signal
@@ -269,7 +318,7 @@ async fn compute_weight_adjustments(_goal: &str, store: Option<&MemoryStore>) ->
     }
 }
 
-#[tracing::instrument(skip(bus, store, cancel_rx, attempt_counter), fields(task_id = %task.id, goal = %task.goal))]
+#[tracing::instrument(skip(bus, store, cancel_rx, attempt_counter, cfg), fields(task_id = %task.id, goal = %task.goal))]
 async fn run_one(
     task: Task,
     repo: PathBuf,
@@ -277,6 +326,7 @@ async fn run_one(
     store: Option<MemoryStore>,
     cancel_rx: oneshot::Receiver<()>,
     attempt_counter: Arc<AtomicUsize>,
+    cfg: RunConfig,
 ) -> Result<TaskStatus> {
     info!(task_id = %task.id, "starting agent");
     let task_id = task.id;
@@ -292,7 +342,19 @@ async fn run_one(
         attempt_counter,
     )
     .with_score_weights(weights);
+    if cfg.adaptive_retry {
+        runner = runner.with_adaptive_retry();
+    }
+    if cfg.kcqf_enabled {
+        runner = runner.with_kcqf();
+    }
     let outcome = runner.run().await?;
+
+    // Sprint J-A — drain KCQF maintenance tasks and re-queue at low priority.
+    let maint_tasks = runner.take_maintenance_tasks();
+    for maint_task in maint_tasks {
+        cfg.queue.push(maint_task).await;
+    }
 
     let total_attempts = runner.attempts_made();
 
@@ -462,5 +524,17 @@ mod tests {
         pool.submit(task).await;
         let stats = pool.stats();
         assert_eq!(stats.queued, 1);
+    }
+
+    #[tokio::test]
+    async fn with_adaptive_retry_sets_flag() {
+        let pool = make_pool(2).with_adaptive_retry();
+        assert!(pool.adaptive_retry);
+    }
+
+    #[tokio::test]
+    async fn default_pool_adaptive_retry_is_false() {
+        let pool = make_pool(2);
+        assert!(!pool.adaptive_retry);
     }
 }

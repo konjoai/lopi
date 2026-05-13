@@ -33,7 +33,8 @@ impl AgentRunner {
         // Site 2 (TOON biggest win): PatternRow[] is a uniform tabular array.
         // encode_task_context() in claude.rs renders it as TOON §9.3 tabular,
         // saving ~158 tokens per attempt vs JSON (grows linearly with pattern count).
-        let (extra_constraints, pattern_pairs, lessons_data) = if let Some(store) = &self.store {
+        let (mut extra_constraints, pattern_pairs, lessons_data) = if let Some(store) = &self.store
+        {
             match store.find_similar_patterns(&self.task.goal).await {
                 Ok(patterns) if !patterns.is_empty() => {
                     self.log(format!(
@@ -108,6 +109,27 @@ impl AgentRunner {
             }
             _ => vec![],
         };
+
+        // Inject repo-level lessons into planning context. Lessons are general
+        // strategy/recovery/optimization notes from previous runs on this repo.
+        // Appended after task-specific pattern constraints so patterns take priority.
+        if let Some(store) = &self.store {
+            let repo_str = self.repo_path.to_string_lossy();
+            match store.load_lessons(&repo_str, 3).await {
+                Ok(lessons) if !lessons.is_empty() => {
+                    self.log(format!("📚 injecting {} lessons", lessons.len()));
+                    for lesson in &lessons {
+                        extra_constraints.push(format!("[{}] {}", lesson.category, lesson.content));
+                    }
+                }
+                Ok(_) => {}
+                Err(e) => tracing::warn!(error = %e, "lesson fetch failed"),
+            }
+        }
+
+        // Load evolved score weights from annotated patterns. Best-effort —
+        // falls back to ScoreWeights::default() on any error or missing store.
+        self.load_score_weights().await;
 
         let scorer = Scorer::new(&self.repo_path);
 
@@ -359,10 +381,11 @@ impl AgentRunner {
                 weighted
             ));
 
-            // Persist attempt.
+            // Persist attempt with evolved weighted score.
             if let Some(store) = &self.store {
                 let mut a = Attempt::new(self.id(), attempt + 1, &branch);
                 a.score = Some(score.clone());
+                a.weighted_score = Some(weighted);
                 a.outcome = if score.passed() {
                     "success".into()
                 } else {
@@ -394,6 +417,7 @@ impl AgentRunner {
                 }
                 let status = TaskStatus::Success { branch, pr_url };
                 self.status(status.clone(), attempt + 1);
+                self.run_kcqf_scan().await;
                 return Ok(status);
             }
 
@@ -432,6 +456,7 @@ impl AgentRunner {
                     let pr_url = git.open_pr(&branch, &self.task.goal).await.ok();
                     let status = TaskStatus::Success { branch, pr_url };
                     self.status(status.clone(), attempt + 1);
+                    self.run_kcqf_scan().await;
                     return Ok(status);
                 }
             }

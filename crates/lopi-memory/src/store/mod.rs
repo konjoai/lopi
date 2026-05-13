@@ -1,6 +1,5 @@
 use anyhow::{Context, Result};
-use chrono::Utc;
-use lopi_core::{Attempt, Task, TaskId, TurnMetrics};
+use lopi_core::TurnMetrics;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
 use std::path::Path;
 use std::str::FromStr;
@@ -16,9 +15,9 @@ const SCHEMA: &str = include_str!("../schema.sql");
 #[derive(Clone)]
 pub struct MemoryStore {
     /// Single-connection pool — serialises all mutations.
-    write_pool: SqlitePool,
+    pub(super) write_pool: SqlitePool,
     /// Read-only pool — up to 8 concurrent readers.
-    read_pool: SqlitePool,
+    pub(super) read_pool: SqlitePool,
 }
 
 impl MemoryStore {
@@ -33,7 +32,6 @@ impl MemoryStore {
         }
         let url = format!("sqlite://{}", path.display());
 
-        // Write pool: single connection, full WAL + synchronous=NORMAL pragmas.
         let write_opts = SqliteConnectOptions::from_str(&url)
             .context("parsing sqlite path (write)")?
             .create_if_missing(true)
@@ -46,10 +44,8 @@ impl MemoryStore {
             .await
             .context("opening sqlite write pool")?;
 
-        // Apply schema through the write connection before handing out reads.
         Self::apply_schema(&write_pool).await?;
 
-        // Read pool: up to 8 connections, read-only mode.
         let read_opts = SqliteConnectOptions::from_str(&url)
             .context("parsing sqlite path (read)")?
             .read_only(true)
@@ -92,9 +88,6 @@ impl MemoryStore {
 
     /// Open an in-memory `SQLite` database — useful for tests.
     ///
-    /// In-memory databases do not support WAL or multiple connections sharing state,
-    /// so a single pool services both reads and writes.
-    ///
     /// # Errors
     /// Returns `Err` if the in-memory database cannot be opened or the schema cannot be applied.
     pub async fn open_in_memory() -> Result<Self> {
@@ -106,7 +99,6 @@ impl MemoryStore {
             .await
             .context("opening in-memory sqlite pool")?;
         Self::apply_schema(&pool).await?;
-        // Use the same pool for both reads and writes — safe for single-connection in-memory DB.
         Ok(Self {
             write_pool: pool.clone(),
             read_pool: pool,
@@ -119,9 +111,7 @@ impl MemoryStore {
             if s.is_empty() {
                 continue;
             }
-            // Strip leading SQL line comments (`-- foo`) so the prefix check
-            // below correctly identifies ALTER TABLE statements that have
-            // documentation comments above them.
+            // Strip leading SQL comments so the ALTER TABLE prefix check works correctly.
             let body: String = s
                 .lines()
                 .filter(|l| !l.trim_start().starts_with("--"))
@@ -132,7 +122,6 @@ impl MemoryStore {
             if body.is_empty() {
                 continue;
             }
-
             let result = sqlx::query(&body).execute(pool).await;
             // ALTER TABLE ... ADD COLUMN errors on duplicate columns — silently ignore.
             if let Err(e) = result {
@@ -142,94 +131,6 @@ impl MemoryStore {
             }
         }
         Ok(())
-    }
-
-    /// Save or upsert a task record.
-    ///
-    /// # Errors
-    /// Returns `Err` if serialisation or the database write fails.
-    pub async fn save_task(&self, task: &Task, status: &str) -> Result<()> {
-        let source = serde_json::to_string(&task.source)?;
-        sqlx::query(
-            "INSERT INTO tasks (id, goal, status, created_at, source) \
-             VALUES (?1, ?2, ?3, ?4, ?5) \
-             ON CONFLICT(id) DO UPDATE SET status = excluded.status",
-        )
-        .bind(task.id.0.to_string())
-        .bind(&task.goal)
-        .bind(status)
-        .bind(task.created_at.to_rfc3339())
-        .bind(source)
-        .execute(&self.write_pool)
-        .await?;
-        Ok(())
-    }
-
-    /// Mark a task as completed with the given status string.
-    ///
-    /// # Errors
-    /// Returns `Err` if the database update fails.
-    pub async fn mark_completed(&self, id: &TaskId, status: &str) -> Result<()> {
-        sqlx::query("UPDATE tasks SET status = ?1, completed_at = ?2 WHERE id = ?3")
-            .bind(status)
-            .bind(Utc::now().to_rfc3339())
-            .bind(id.0.to_string())
-            .execute(&self.write_pool)
-            .await?;
-        Ok(())
-    }
-
-    /// Persist an agent attempt record.
-    ///
-    /// # Errors
-    /// Returns `Err` if serialisation of errors or the database insert fails.
-    pub async fn save_attempt(&self, attempt: &Attempt) -> Result<()> {
-        let (pass, lint, diff) = match &attempt.score {
-            Some(s) => (
-                Some(s.test_pass_rate),
-                Some(i64::from(s.lint_errors)),
-                Some(i64::from(s.diff_lines)),
-            ),
-            None => (None, None, None),
-        };
-        let errors = attempt
-            .score
-            .as_ref()
-            .map(|s| serde_json::to_string(&s.errors).unwrap_or_default())
-            .unwrap_or_default();
-        sqlx::query(
-            "INSERT INTO attempts (id, task_id, attempt_num, branch, \
-             score_test_pass_rate, score_lint_errors, score_diff_lines, outcome, errors, created_at) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-        )
-        .bind(attempt.id.to_string())
-        .bind(attempt.task_id.0.to_string())
-        .bind(i64::from(attempt.attempt_num))
-        .bind(&attempt.branch)
-        .bind(pass)
-        .bind(lint)
-        .bind(diff)
-        .bind(&attempt.outcome)
-        .bind(errors)
-        .bind(attempt.created_at.to_rfc3339())
-        .execute(&self.write_pool)
-        .await?;
-        Ok(())
-    }
-
-    /// Recent tasks, newest first.
-    ///
-    /// # Errors
-    /// Returns `Err` if the database query fails.
-    pub async fn load_history(&self, limit: i64) -> Result<Vec<TaskRow>> {
-        let rows = sqlx::query_as::<_, TaskRow>(
-            "SELECT id, goal, status, created_at, completed_at FROM tasks \
-             ORDER BY created_at DESC LIMIT ?1",
-        )
-        .bind(limit)
-        .fetch_all(&self.read_pool)
-        .await?;
-        Ok(rows)
     }
 
     /// Return the total number of tasks in the database.
@@ -268,7 +169,6 @@ impl MemoryStore {
         .bind(i64::from(m.output_tokens))
         .bind(i64::from(m.cache_read_input_tokens))
         .bind(i64::from(m.cache_write_input_tokens))
-        // u64→i64: latency values are bounded well under i64::MAX in practice.
         .bind(m.ttft_ms.cast_signed())
         .bind(m.turn_latency_ms.cast_signed())
         .bind(m.tool_execution_ms.cast_signed())
@@ -285,12 +185,18 @@ impl MemoryStore {
     }
 }
 
+/// A row from the `tasks` table.
 #[derive(Debug, sqlx::FromRow)]
 pub struct TaskRow {
+    /// UUID string.
     pub id: String,
+    /// The original goal text.
     pub goal: String,
+    /// Status string (queued / planning / … / success / failed).
     pub status: String,
+    /// ISO-8601 creation timestamp.
     pub created_at: String,
+    /// ISO-8601 completion timestamp, if finished.
     pub completed_at: Option<String>,
 }
 
@@ -299,11 +205,12 @@ mod lessons;
 mod patterns;
 mod quality;
 mod stability;
+mod tasks;
+
 // Re-export helpers for tests (tests.rs uses `use super::*`).
 pub use installations::InstallationRow;
 pub use lessons::LessonRow;
-pub use patterns::PatternRow;
-pub use patterns::{jaccard_similarity, keyword_fingerprint};
+pub use patterns::{jaccard_similarity, keyword_fingerprint, PatternRow};
 pub use quality::{QualityRunRecord, QualityRunRow};
 pub use stability::{StabilityEntry, StabilityRecord};
 
