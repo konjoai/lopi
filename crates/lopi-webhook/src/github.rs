@@ -64,16 +64,8 @@ async fn handle(
     headers: HeaderMap,
     body: Bytes,
 ) -> impl IntoResponse {
-    // Verify HMAC-SHA256 signature when a secret is configured.
-    if let Some(ref secret) = s.secret {
-        let sig_header = headers
-            .get("X-Hub-Signature-256")
-            .and_then(|h| h.to_str().ok())
-            .unwrap_or("");
-        if !verify_signature(secret.as_bytes(), &body, sig_header) {
-            tracing::warn!("GitHub webhook HMAC verification failed");
-            return (StatusCode::UNAUTHORIZED, "invalid signature").into_response();
-        }
+    if let Some(reject) = hmac_guard(&s.secret, &headers, &body) {
+        return reject;
     }
 
     let payload: Value = match serde_json::from_slice(&body) {
@@ -97,82 +89,115 @@ async fn handle(
         .unwrap_or("unknown")
         .to_string();
 
+    dispatch_event(&s, &payload, &event, &repo).await;
+    (StatusCode::OK, "ok").into_response()
+}
+
+/// Return a rejection response if the HMAC signature is invalid; otherwise `None`.
+fn hmac_guard(
+    secret: &Option<String>,
+    headers: &HeaderMap,
+    body: &[u8],
+) -> Option<axum::response::Response> {
+    let secret = secret.as_deref()?;
+    let sig = headers
+        .get("X-Hub-Signature-256")
+        .and_then(|h| h.to_str().ok())
+        .unwrap_or("");
+    if verify_signature(secret.as_bytes(), body, sig) {
+        None
+    } else {
+        tracing::warn!("GitHub webhook HMAC verification failed");
+        Some((StatusCode::UNAUTHORIZED, "invalid signature").into_response())
+    }
+}
+
+/// Route a verified webhook event to the appropriate handler.
+async fn dispatch_event(s: &WebhookState, payload: &Value, event: &str, repo: &str) {
     let conclusion = payload
         .get("workflow_run")
         .or_else(|| payload.get("check_run"))
         .and_then(|w| w.get("conclusion"))
         .and_then(|c| c.as_str());
-
     if matches!(conclusion, Some("failure" | "timed_out")) {
-        let mut t = Task::new(format!("Investigate and fix CI failure on {repo}"));
-        t.priority = Priority::High;
-        t.source = TaskSource::Webhook {
-            repo: repo.clone(),
-            event: event.clone(),
-        };
-        s.queue.push(t).await;
-        tracing::info!("queued CI fix task for {repo} (event: {event})");
+        queue_ci_fix(repo, event, &s.queue).await;
     }
-
-    // PR review loop: when a reviewer requests changes, re-queue the task with the
-    // review body injected as a constraint so lopi can address the feedback automatically.
     if event == "pull_request_review" {
-        let action = payload.get("action").and_then(|v| v.as_str()).unwrap_or("");
-        let state = payload
-            .get("review")
-            .and_then(|r| r.get("state"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
-        if action == "submitted" && state == "changes_requested" {
-            let review_body = payload
-                .get("review")
-                .and_then(|r| r.get("body"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .trim()
-                .to_string();
-            let pr_title = payload
-                .get("pull_request")
-                .and_then(|pr| pr.get("title"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("unknown PR")
-                .to_string();
-            let goal = format!("Address review feedback on PR '{pr_title}' in {repo}");
-            let mut t = Task::new(goal);
-            t.priority = Priority::High;
-            t.source = TaskSource::Webhook {
-                repo: repo.clone(),
-                event: event.clone(),
-            };
-            if !review_body.is_empty() {
-                t.constraints
-                    .push(format!("Review feedback: {review_body}"));
-            }
-            s.queue.push(t).await;
-            tracing::info!("queued PR review fix task for {repo}: {pr_title}");
-        }
+        handle_pr_review(payload, repo, event, &s.queue).await;
     }
-
-    // Issue triage: classify opened/labeled issues via Haiku; optionally queue a fix task.
     let action = payload.get("action").and_then(|v| v.as_str()).unwrap_or("");
     if event == "issues" && (action == "opened" || action == "labeled") {
-        if let (Some(triage), Some(ip)) = (
-            s.triage.clone(),
-            crate::issue::extract_from_json(&payload, &repo),
-        ) {
-            spawn_triage(
-                ip,
-                triage.model,
-                triage.api_client,
-                triage.limiter,
-                triage.breaker,
-                triage.github,
-                s.queue.clone(),
-            );
-        }
+        handle_issue_triage(payload, repo, s);
     }
+}
 
-    (StatusCode::OK, "ok").into_response()
+/// Queue a high-priority CI fix task.
+async fn queue_ci_fix(repo: &str, event: &str, queue: &TaskQueue) {
+    let mut t = Task::new(format!("Investigate and fix CI failure on {repo}"));
+    t.priority = Priority::High;
+    t.source = TaskSource::Webhook {
+        repo: repo.to_string(),
+        event: event.to_string(),
+    };
+    queue.push(t).await;
+    tracing::info!("queued CI fix task for {repo} (event: {event})");
+}
+
+/// Re-queue a fix task when a reviewer requests changes on a PR.
+async fn handle_pr_review(payload: &Value, repo: &str, event: &str, queue: &TaskQueue) {
+    let action = payload.get("action").and_then(|v| v.as_str()).unwrap_or("");
+    let review_state = payload
+        .get("review")
+        .and_then(|r| r.get("state"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    if action != "submitted" || review_state != "changes_requested" {
+        return;
+    }
+    let review_body = payload
+        .get("review")
+        .and_then(|r| r.get("body"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    let pr_title = payload
+        .get("pull_request")
+        .and_then(|pr| pr.get("title"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown PR")
+        .to_string();
+    let goal = format!("Address review feedback on PR '{pr_title}' in {repo}");
+    let mut t = Task::new(goal);
+    t.priority = Priority::High;
+    t.source = TaskSource::Webhook {
+        repo: repo.to_string(),
+        event: event.to_string(),
+    };
+    if !review_body.is_empty() {
+        t.constraints
+            .push(format!("Review feedback: {review_body}"));
+    }
+    queue.push(t).await;
+    tracing::info!("queued PR review fix task for {repo}: {pr_title}");
+}
+
+/// Classify an opened/labeled issue via Haiku and optionally queue a fix task.
+fn handle_issue_triage(payload: &Value, repo: &str, s: &WebhookState) {
+    if let (Some(triage), Some(ip)) = (
+        s.triage.clone(),
+        crate::issue::extract_from_json(payload, repo),
+    ) {
+        spawn_triage(
+            ip,
+            triage.model,
+            triage.api_client,
+            triage.limiter,
+            triage.breaker,
+            triage.github,
+            s.queue.clone(),
+        );
+    }
 }
 
 /// Verify GitHub's `X-Hub-Signature-256: sha256=<hex>` header against `body`.
