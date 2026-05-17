@@ -72,6 +72,8 @@ pub struct AppState {
     pub repo_path: std::path::PathBuf,
     /// P2 — Durable tool registry. `clone()` is `Arc<RwLock>` under the hood.
     pub tools: lopi_tools::ToolRegistry,
+    /// P2 — Constellation router. Cheap to `clone()` — wraps an `Arc<RwLock>`.
+    pub constellations: lopi_orchestrator::ConstellationRouter,
     /// Pre-serialized broadcast: each `AgentEvent` serialized once, shared across all WS/SSE subscribers.
     serialized_tx: Arc<broadcast::Sender<Arc<str>>>,
     patterns_cache: Arc<Mutex<TtlCache>>,
@@ -139,6 +141,10 @@ impl AppState {
         // Callers that want the on-disk registry pre-loaded should call
         // `state.hydrate_tools()` after construction (e.g. inside `serve`).
         let tools = lopi_tools::ToolRegistry::new(lopi_tools::default_registry_path());
+        // Constellation router — in-memory; registrations re-created on
+        // every `lopi sail` start (intentional — they describe topology,
+        // not durable agent state).
+        let constellations = lopi_orchestrator::ConstellationRouter::new();
 
         Self {
             store,
@@ -147,6 +153,7 @@ impl AppState {
             pool,
             repo_path,
             tools,
+            constellations,
             serialized_tx,
             patterns_cache: Arc::new(Mutex::new(TtlCache::new(Duration::from_secs(30)))),
             auth_token: auth_token.map(|t| Arc::from(t.as_str())),
@@ -193,6 +200,18 @@ pub fn build_app(state: AppState) -> Router {
         .route(
             "/api/cache/agent/:agent",
             axum::routing::delete(invalidate_agent_cache_handler),
+        )
+        .route(
+            "/api/constellations",
+            get(list_constellations_handler).post(register_constellation_handler),
+        )
+        .route(
+            "/api/constellation/:name/dispatch",
+            axum::routing::post(dispatch_constellation_handler),
+        )
+        .route(
+            "/api/constellation/:name/stats",
+            get(constellation_stats_handler),
         )
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
@@ -419,9 +438,14 @@ fn file_response(file: rust_embed::EmbeddedFile, path: &str) -> Response {
 }
 
 mod cache_handlers;
+mod constellation_handlers;
 mod handlers;
 mod tools_handlers;
 use cache_handlers::{cache_stats_handler, clear_cache_handler, invalidate_agent_cache_handler};
+use constellation_handlers::{
+    constellation_stats_handler, dispatch_constellation_handler, list_constellations_handler,
+    register_constellation_handler,
+};
 use handlers::{
     cancel_task, checkpoint_agent, create_task, get_quality_trend, get_spec, get_stats, get_task,
     health, list_patterns, list_tasks, metrics,

@@ -173,6 +173,91 @@ async fn tools_register_then_get_round_trip() {
 }
 
 #[tokio::test]
+async fn constellation_list_empty_by_default() {
+    let app = test_app().await;
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/constellations")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(json["constellations"].as_array().unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn constellation_dispatch_unknown_returns_404() {
+    let app = test_app().await;
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/constellation/never/dispatch")
+                .header("Content-Type", "application/json")
+                .body(Body::from("{}"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn constellation_register_then_dispatch_round_trip() {
+    let app = test_app().await;
+    let create_body = serde_json::to_string(&serde_json::json!({
+        "name": "fleet-alpha",
+        "agents": [
+            {"agent_id": "agent-1", "weight": 1.0, "tags": [], "max_concurrent": 0},
+            {"agent_id": "agent-2", "weight": 1.0, "tags": [], "max_concurrent": 0}
+        ],
+        "routing_strategy": {"kind": "round_robin"},
+        "created_at": chrono::Utc::now(),
+    }))
+    .unwrap();
+    let create = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/constellations")
+                .header("Content-Type", "application/json")
+                .body(Body::from(create_body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(create.status(), StatusCode::CREATED);
+
+    let disp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/constellation/fleet-alpha/dispatch")
+                .header("Content-Type", "application/json")
+                .body(Body::from("{}"))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(disp.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(disp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    let agent = json["agent_id"].as_str().unwrap();
+    assert!(agent == "agent-1" || agent == "agent-2");
+    assert_eq!(json["strategy"], "round_robin");
+}
+
+#[tokio::test]
 async fn cache_stats_returns_zero_for_empty_store() {
     let app = test_app().await;
     let resp = app

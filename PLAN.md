@@ -257,6 +257,23 @@ scale-up exposes lopi to runaway spend and opaque failures.
 Once P1 lands, lopi has the safety floor needed to enable richer
 collaboration patterns.
 
+- **✅ Tool registry** *(shipped)* — `lopi-tools` crate (tier 2) with
+  `ToolSpec` + `ToolRegistry`. Atomic JSON persistence at
+  `$LOPI_HOME/tool_registry.json`. `Task::tools: Vec<String>` allowlist
+  on every task. REST: `GET/POST /api/tools`, `GET/DELETE
+  /api/tools/:name`. 16 tests.
+- **✅ Result caching** *(shipped)* — `result_cache` SQLite table keyed
+  on `SHA-256(agent_id ‖ task_json)`. `MemoryStore::cache_{get,put,
+  invalidate_for_agent,clear,sweep}` + `cache_stats`. Rolling-hour
+  hit/miss ledger. REST: `GET /api/cache/stats`, `DELETE /api/cache`,
+  `DELETE /api/cache/agent/:agent`. 14 tests.
+- **✅ Constellation routing** *(shipped)* — `lopi-orchestrator::
+  ConstellationRouter` with four strategies (`RoundRobin`,
+  `WeightedRandom`, `LeastLoaded`, `TagMatch { required_tags }`),
+  per-member atomic load counters, bounded last-hour decision log, and
+  `max_concurrent` caps. REST: `GET/POST /api/constellations`,
+  `POST /api/constellation/:name/dispatch`, `GET
+  /api/constellation/:name/stats`. 15 tests.
 - **MCP + A2A protocol support** — `McpClient` (JSON-RPC 2.0 over
   stdio + SSE transports) for tool-server discovery, and `A2AClient`
   with the published agent card so external clients can drive lopi
