@@ -299,6 +299,7 @@ mod installations;
 mod lessons;
 mod patterns;
 mod quality;
+mod result_cache;
 mod stability;
 // Re-export helpers for tests (tests.rs uses `use super::*`).
 pub use checkpoints::{CheckpointInput, CheckpointRow};
@@ -306,6 +307,7 @@ pub use installations::InstallationRow;
 pub use lessons::LessonRow;
 pub use patterns::{jaccard_similarity, keyword_fingerprint, PatternRow};
 pub use quality::{QualityRunRecord, QualityRunRow};
+pub use result_cache::{compute_key as compute_cache_key, CacheStats, CachedResult};
 pub use stability::{StabilityEntry, StabilityRecord};
 
 #[cfg(test)]

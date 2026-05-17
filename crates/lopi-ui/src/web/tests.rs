@@ -173,6 +173,72 @@ async fn tools_register_then_get_round_trip() {
 }
 
 #[tokio::test]
+async fn cache_stats_returns_zero_for_empty_store() {
+    let app = test_app().await;
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/cache/stats")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(json["total_entries"], 0);
+    assert_eq!(json["total_size_bytes"], 0);
+    // hit_rate_last_hour is 0.0 when the window is empty
+    assert!(json.get("hit_rate_last_hour").is_some());
+}
+
+#[tokio::test]
+async fn clear_cache_returns_deleted_zero_when_empty() {
+    let app = test_app().await;
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/api/cache")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(json["deleted"], 0);
+}
+
+#[tokio::test]
+async fn invalidate_agent_cache_returns_zero_for_unknown() {
+    let app = test_app().await;
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/api/cache/agent/never-existed")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(json["agent_id"], "never-existed");
+    assert_eq!(json["deleted"], 0);
+}
+
+#[tokio::test]
 async fn tools_get_unknown_returns_404() {
     let app = test_app().await;
     let resp = app

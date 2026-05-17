@@ -188,6 +188,12 @@ pub fn build_app(state: AppState) -> Router {
             "/api/tools/:name",
             get(get_tool_handler).delete(delete_tool_handler),
         )
+        .route("/api/cache/stats", get(cache_stats_handler))
+        .route("/api/cache", axum::routing::delete(clear_cache_handler))
+        .route(
+            "/api/cache/agent/:agent",
+            axum::routing::delete(invalidate_agent_cache_handler),
+        )
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             rate_limit_middleware,
@@ -412,8 +418,10 @@ fn file_response(file: rust_embed::EmbeddedFile, path: &str) -> Response {
         .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
 }
 
+mod cache_handlers;
 mod handlers;
 mod tools_handlers;
+use cache_handlers::{cache_stats_handler, clear_cache_handler, invalidate_agent_cache_handler};
 use handlers::{
     cancel_task, checkpoint_agent, create_task, get_quality_trend, get_spec, get_stats, get_task,
     health, list_patterns, list_tasks, metrics,

@@ -145,3 +145,26 @@ CREATE TABLE IF NOT EXISTS agent_checkpoints (
 );
 CREATE INDEX IF NOT EXISTS idx_checkpoints_task_created
     ON agent_checkpoints(task_id, created_at DESC);
+
+-- P2 — Content-addressed result cache. Skips agent invocation entirely
+-- when a previous run produced a result for the same (agent_id, task)
+-- pair within TTL. `key` is SHA-256 of (agent_id + canonical task JSON).
+-- `created_at` is unix-epoch seconds so TTL math stays integer.
+CREATE TABLE IF NOT EXISTS result_cache (
+    key          TEXT PRIMARY KEY,
+    value        TEXT NOT NULL,
+    agent_id     TEXT NOT NULL,
+    created_at   INTEGER NOT NULL,
+    hit_count    INTEGER NOT NULL DEFAULT 0,
+    size_bytes   INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_result_cache_agent ON result_cache(agent_id);
+CREATE INDEX IF NOT EXISTS idx_result_cache_created ON result_cache(created_at);
+
+-- P2 — Rolling hit/miss log for the last hour. Trimmed on each insert
+-- so the table never grows beyond ~3600 rows even under heavy load.
+CREATE TABLE IF NOT EXISTS result_cache_events (
+    ts       INTEGER NOT NULL,
+    outcome  TEXT NOT NULL CHECK(outcome IN ('hit', 'miss'))
+);
+CREATE INDEX IF NOT EXISTS idx_cache_events_ts ON result_cache_events(ts);
