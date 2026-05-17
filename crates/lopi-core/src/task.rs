@@ -76,6 +76,11 @@ pub struct Task {
     /// the violation message.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output_schema: Option<serde_json::Value>,
+    /// P2 — Allowlist of tool names this task may call. The names are
+    /// looked up in `lopi-tools::ToolRegistry` at dispatch time. An empty
+    /// vec means "no tools" — the agent stays in pure-CLI/API mode.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tools: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -102,6 +107,7 @@ impl Task {
             source: TaskSource::Cli,
             repo_path: None,
             output_schema: None,
+            tools: Vec::new(),
         }
     }
 }

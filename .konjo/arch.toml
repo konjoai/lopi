@@ -1,0 +1,45 @@
+# Konjo Architectural Fitness — lopi workspace layer rules
+#
+# Each crate belongs to a tier. A lower-tier crate must NOT import
+# from a higher-tier crate. Violations indicate architectural erosion.
+#
+# Research basis: AI agents generated 80% architectural violation rate
+# in microservices without enforcement (arXiv 2512.04273).
+#
+# Enforced by: .konjo/scripts/konjo_arch.py
+# Run manually: python3 .konjo/scripts/konjo_arch.py
+# Runs in: Wall 1 pre-commit (advisory) · Wall 2 CI G5 (hard block)
+
+[[layers]]
+tier = 1
+name = "foundation"
+description = "Zero internal dependencies. Core types, pure algorithms."
+crates = ["lopi-core", "lopi-toon", "lopi-spec"]
+
+[[layers]]
+tier = 2
+name = "data"
+description = "Persistence and external system adapters. Depend on tier 1 only."
+crates = ["lopi-memory", "lopi-git", "lopi-ratelimit", "lopi-tools"]
+
+[[layers]]
+tier = 3
+name = "context"
+description = "Session and context management. Depend on tier 1-2."
+crates = ["lopi-context"]
+
+[[layers]]
+tier = 4
+name = "agent"
+description = "Agent execution and orchestration. Depend on tier 1-3."
+crates = ["lopi-agent", "lopi-orchestrator", "lopi-remote"]
+
+[[layers]]
+tier = 5
+name = "interface"
+description = "HTTP/API/UI surfaces. May depend on any tier."
+crates = ["lopi-ui", "lopi-webhook", "lopi-github", "lopi-app"]
+
+[rules]
+no_upward_deps = true   # A crate cannot import from a higher-tier crate
+no_cycles = true        # No circular dependencies anywhere in the graph

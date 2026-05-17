@@ -70,6 +70,8 @@ pub struct AppState {
     pub pool: Arc<AgentPool>,
     /// Repo root path — used to extract the spec surface on demand.
     pub repo_path: std::path::PathBuf,
+    /// P2 — Durable tool registry. `clone()` is `Arc<RwLock>` under the hood.
+    pub tools: lopi_tools::ToolRegistry,
     /// Pre-serialized broadcast: each `AgentEvent` serialized once, shared across all WS/SSE subscribers.
     serialized_tx: Arc<broadcast::Sender<Arc<str>>>,
     patterns_cache: Arc<Mutex<TtlCache>>,
@@ -133,17 +135,36 @@ impl AppState {
             });
         }
 
+        // Tool registry — empty in-memory store wired to the default path.
+        // Callers that want the on-disk registry pre-loaded should call
+        // `state.hydrate_tools()` after construction (e.g. inside `serve`).
+        let tools = lopi_tools::ToolRegistry::new(lopi_tools::default_registry_path());
+
         Self {
             store,
             bus,
             queue,
             pool,
             repo_path,
+            tools,
             serialized_tx,
             patterns_cache: Arc::new(Mutex::new(TtlCache::new(Duration::from_secs(30)))),
             auth_token: auth_token.map(|t| Arc::from(t.as_str())),
             rate_limiter: Arc::new(DashMap::new()),
         }
+    }
+
+    /// Hydrate the tool registry from its on-disk path. Call this from an
+    /// async context (e.g. inside `serve`) before binding the listener so
+    /// the first `/tools` request sees previously registered tools.
+    ///
+    /// # Errors
+    /// Returns `Err` only if the registry file exists but is unreadable or
+    /// malformed JSON. A missing file is treated as "empty registry".
+    pub async fn hydrate_tools(&mut self) -> Result<()> {
+        let path = self.tools.path().to_path_buf();
+        self.tools = lopi_tools::ToolRegistry::load(&path).await?;
+        Ok(())
     }
 }
 
@@ -159,6 +180,14 @@ pub fn build_app(state: AppState) -> Router {
         .route("/api/patterns", get(list_patterns))
         .route("/api/spec", get(get_spec))
         .route("/api/quality/trend", get(get_quality_trend))
+        .route(
+            "/api/tools",
+            get(list_tools_handler).post(register_tool_handler),
+        )
+        .route(
+            "/api/tools/:name",
+            get(get_tool_handler).delete(delete_tool_handler),
+        )
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             rate_limit_middleware,
@@ -220,7 +249,13 @@ pub async fn serve_with_repo(
     auth_token: Option<String>,
     repo_path: std::path::PathBuf,
 ) -> Result<()> {
-    let state = AppState::new_with_repo(store, bus, queue, pool, auth_token, repo_path);
+    let mut state = AppState::new_with_repo(store, bus, queue, pool, auth_token, repo_path);
+    if let Err(e) = state.hydrate_tools().await {
+        // Hydrate failed — keep the empty in-memory registry. Runtime
+        // /tools registrations still persist; we just lose previously
+        // saved entries until someone re-registers them.
+        tracing::warn!(error = %e, "tool registry hydrate failed; starting empty");
+    }
     let app = build_app(state);
 
     let addr: SocketAddr = format!("{host}:{port}").parse()?;
@@ -378,9 +413,13 @@ fn file_response(file: rust_embed::EmbeddedFile, path: &str) -> Response {
 }
 
 mod handlers;
+mod tools_handlers;
 use handlers::{
     cancel_task, checkpoint_agent, create_task, get_quality_trend, get_spec, get_stats, get_task,
     health, list_patterns, list_tasks, metrics,
+};
+use tools_handlers::{
+    delete_tool_handler, get_tool_handler, list_tools_handler, register_tool_handler,
 };
 mod streaming;
 pub(crate) mod types;

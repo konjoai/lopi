@@ -27,6 +27,7 @@ uuid.workspace = true
 dashmap.workspace = true
 lopi-ratelimit.workspace = true
 lopi-spec.workspace = true
+lopi-tools.workspace = true
 rust-embed.workspace = true
 mime_guess.workspace = true
 chrono.workspace = true

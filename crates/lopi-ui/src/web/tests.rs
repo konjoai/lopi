@@ -109,6 +109,85 @@ async fn metrics_returns_prometheus_text() {
 }
 
 #[tokio::test]
+async fn tools_list_returns_empty_by_default() {
+    let app = test_app().await;
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/tools")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(json["tools"].as_array().unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn tools_register_then_get_round_trip() {
+    let app = test_app().await;
+    let body = serde_json::to_string(&serde_json::json!({
+        "name": "test-search",
+        "description": "search the corpus",
+        "parameters": {"type": "object", "properties": {"q": {"type": "string"}}},
+        "timeout_ms": 5_000,
+        "retries": 1,
+        "updated_at": chrono::Utc::now(),
+    }))
+    .unwrap();
+    let post = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/tools")
+                .header("Content-Type", "application/json")
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(post.status(), StatusCode::CREATED);
+
+    let get = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/tools/test-search")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(get.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(get.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(json["name"], "test-search");
+    assert_eq!(json["timeout_ms"], 5_000);
+}
+
+#[tokio::test]
+async fn tools_get_unknown_returns_404() {
+    let app = test_app().await;
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/tools/never-registered")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
 async fn patterns_returns_200() {
     let app = test_app().await;
     let resp = app

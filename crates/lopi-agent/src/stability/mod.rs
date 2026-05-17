@@ -327,6 +327,7 @@ mod tests {
             source: TaskSource::Cli,
             repo_path: None,
             output_schema: None,
+            tools: Vec::new(),
         }
     }
 

@@ -14,6 +14,7 @@ members = [
     "crates/lopi-app",
     "crates/lopi-github",
     "crates/lopi-spec",
+    "crates/lopi-tools",
 ]
 resolver = "2"
 
@@ -81,6 +82,7 @@ lopi-ratelimit = { path = "crates/lopi-ratelimit" }
 lopi-app = { path = "crates/lopi-app" }
 lopi-github = { path = "crates/lopi-github" }
 lopi-spec = { path = "crates/lopi-spec" }
+lopi-tools = { path = "crates/lopi-tools" }
 
 [package]
 name = "lopi"
