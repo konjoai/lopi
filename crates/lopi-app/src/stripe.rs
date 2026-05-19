@@ -54,56 +54,58 @@ pub async fn webhook(
     (StatusCode::OK, "ok").into_response()
 }
 
-/// Dispatch a parsed Stripe event, updating the installation tier in the DB.
-///
-/// Reads `metadata.lopi_installation_id` from the subscription object to
-/// map the Stripe event to a lopi `github_installations` row.
+/// Top-level Stripe event dispatcher — routes to a per-event handler.
 async fn dispatch_stripe_event(payload: &serde_json::Value, s: &AppState) {
     let event_type = payload["type"].as_str().unwrap_or("unknown");
     let obj = &payload["data"]["object"];
-    let stripe_customer = obj["customer"].as_str().unwrap_or("unknown");
-
     match event_type {
         "customer.subscription.created" | "customer.subscription.updated" => {
-            let tier = extract_tier_from_subscription(obj);
-            let installation_id = extract_installation_id(obj);
-            if let Some(id) = installation_id {
-                match s.store.set_installation_tier(id, tier).await {
-                    Ok(()) => tracing::info!(
-                        event_type,
-                        stripe_customer,
-                        installation_id = id,
-                        tier = %tier,
-                        "subscription tier updated"
-                    ),
-                    Err(e) => tracing::warn!(
-                        installation_id = id,
-                        "failed to update tier: {e}"
-                    ),
-                }
-            } else {
-                tracing::warn!(
-                    event_type,
-                    stripe_customer,
-                    "Stripe event missing lopi_installation_id in metadata — tier not updated"
-                );
-            }
+            handle_subscription_active(event_type, obj, s).await;
         }
         "customer.subscription.deleted" => {
-            let installation_id = extract_installation_id(obj);
-            if let Some(id) = installation_id {
-                if let Err(e) = s.store.set_installation_tier(id, CustomerTier::Free).await {
-                    tracing::warn!(installation_id = id, "failed to downgrade tier: {e}");
-                } else {
-                    tracing::info!(
-                        stripe_customer,
-                        installation_id = id,
-                        "subscription cancelled — tier downgraded to Free"
-                    );
-                }
-            }
+            handle_subscription_cancelled(obj, s).await;
         }
         _ => tracing::debug!(event_type, "unhandled Stripe event"),
+    }
+}
+
+/// Handle an active (created or updated) subscription — upgrades the tier.
+async fn handle_subscription_active(event_type: &str, obj: &serde_json::Value, s: &AppState) {
+    let stripe_customer = obj["customer"].as_str().unwrap_or("unknown");
+    let Some(id) = extract_installation_id(obj) else {
+        tracing::warn!(
+            event_type,
+            stripe_customer,
+            "Stripe event missing lopi_installation_id in metadata — tier not updated"
+        );
+        return;
+    };
+    let tier = extract_tier_from_subscription(obj);
+    match s.store.set_installation_tier(id, tier).await {
+        Ok(()) => tracing::info!(
+            event_type,
+            stripe_customer,
+            installation_id = id,
+            tier = %tier,
+            "subscription tier updated"
+        ),
+        Err(e) => tracing::warn!(installation_id = id, "failed to update tier: {e}"),
+    }
+}
+
+/// Handle a deleted subscription — downgrades the installation tier to Free.
+async fn handle_subscription_cancelled(obj: &serde_json::Value, s: &AppState) {
+    let stripe_customer = obj["customer"].as_str().unwrap_or("unknown");
+    let Some(id) = extract_installation_id(obj) else {
+        return;
+    };
+    match s.store.set_installation_tier(id, CustomerTier::Free).await {
+        Ok(()) => tracing::info!(
+            stripe_customer,
+            installation_id = id,
+            "subscription cancelled — tier downgraded to Free"
+        ),
+        Err(e) => tracing::warn!(installation_id = id, "failed to downgrade tier: {e}"),
     }
 }
 

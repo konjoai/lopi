@@ -244,12 +244,16 @@ mod tests {
     #[tokio::test]
     async fn set_and_get_tier() {
         let s = store().await;
-        s.upsert_installation(500, "tier-test", "User").await.unwrap();
+        s.upsert_installation(500, "tier-test", "User")
+            .await
+            .unwrap();
         // Default tier is Free.
         let tier = s.customer_tier("tier-test").await.unwrap();
         assert_eq!(tier, CustomerTier::Free);
         // Upgrade to Starter.
-        s.set_installation_tier(500, CustomerTier::Starter).await.unwrap();
+        s.set_installation_tier(500, CustomerTier::Starter)
+            .await
+            .unwrap();
         let tier = s.customer_tier("tier-test").await.unwrap();
         assert_eq!(tier, CustomerTier::Starter);
     }
@@ -264,10 +268,22 @@ mod tests {
     #[tokio::test]
     async fn tier_upgrade_and_downgrade() {
         let s = store().await;
-        s.upsert_installation(600, "bigcorp", "Organization").await.unwrap();
-        s.set_installation_tier(600, CustomerTier::Enterprise).await.unwrap();
-        assert_eq!(s.customer_tier("bigcorp").await.unwrap(), CustomerTier::Enterprise);
-        s.set_installation_tier(600, CustomerTier::Growth).await.unwrap();
-        assert_eq!(s.customer_tier("bigcorp").await.unwrap(), CustomerTier::Growth);
+        s.upsert_installation(600, "bigcorp", "Organization")
+            .await
+            .unwrap();
+        s.set_installation_tier(600, CustomerTier::Enterprise)
+            .await
+            .unwrap();
+        assert_eq!(
+            s.customer_tier("bigcorp").await.unwrap(),
+            CustomerTier::Enterprise
+        );
+        s.set_installation_tier(600, CustomerTier::Growth)
+            .await
+            .unwrap();
+        assert_eq!(
+            s.customer_tier("bigcorp").await.unwrap(),
+            CustomerTier::Growth
+        );
     }
 }

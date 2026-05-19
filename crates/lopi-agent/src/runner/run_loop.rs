@@ -251,7 +251,10 @@ impl AgentRunner {
                     if self.has_direct_api() {
                         match self.plan_via_api(model, attempt + 1).await {
                             Ok(p) => {
-                                self.log(format!("✅ plan ready via direct API ({} chars)", p.len()));
+                                self.log(format!(
+                                    "✅ plan ready via direct API ({} chars)",
+                                    p.len()
+                                ));
                                 Ok(p)
                             }
                             Err(api_err) => {
@@ -262,7 +265,10 @@ impl AgentRunner {
                                     .plan(&self.task, self.last_error.as_deref())
                                     .await
                                     .inspect(|p| {
-                                        self.log(format!("✅ plan ready via CLI ({} chars)", p.len()));
+                                        self.log(format!(
+                                            "✅ plan ready via CLI ({} chars)",
+                                            p.len()
+                                        ));
                                     })
                             }
                         }
@@ -410,7 +416,9 @@ impl AgentRunner {
                     git.hard_rollback().await.ok();
                     git.checkout_default().await.ok();
                     self.status(
-                        TaskStatus::Retrying { attempt: attempt + 1 },
+                        TaskStatus::Retrying {
+                            attempt: attempt + 1,
+                        },
                         attempt + 1,
                     );
                     continue;
@@ -475,7 +483,8 @@ impl AgentRunner {
                     task_id = %self.id(),
                     outcome = "success",
                     attempts = attempt + 1,
-                ).entered();
+                )
+                .entered();
                 return Ok(status);
             }
 

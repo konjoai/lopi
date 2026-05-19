@@ -168,20 +168,44 @@ mod tests {
 
     #[test]
     fn from_stripe_name_case_insensitive() {
-        assert_eq!(CustomerTier::from_stripe_name("Starter"), CustomerTier::Starter);
-        assert_eq!(CustomerTier::from_stripe_name("GROWTH"), CustomerTier::Growth);
-        assert_eq!(CustomerTier::from_stripe_name("enterprise"), CustomerTier::Enterprise);
-        assert_eq!(CustomerTier::from_stripe_name("unknown"), CustomerTier::Free);
+        assert_eq!(
+            CustomerTier::from_stripe_name("Starter"),
+            CustomerTier::Starter
+        );
+        assert_eq!(
+            CustomerTier::from_stripe_name("GROWTH"),
+            CustomerTier::Growth
+        );
+        assert_eq!(
+            CustomerTier::from_stripe_name("enterprise"),
+            CustomerTier::Enterprise
+        );
+        assert_eq!(
+            CustomerTier::from_stripe_name("unknown"),
+            CustomerTier::Free
+        );
         assert_eq!(CustomerTier::from_stripe_name(""), CustomerTier::Free);
     }
 
     #[test]
     fn from_str_parse() {
-        assert_eq!("starter".parse::<CustomerTier>().unwrap(), CustomerTier::Starter);
-        assert_eq!("growth".parse::<CustomerTier>().unwrap(), CustomerTier::Growth);
-        assert_eq!("enterprise".parse::<CustomerTier>().unwrap(), CustomerTier::Enterprise);
+        assert_eq!(
+            "starter".parse::<CustomerTier>().unwrap(),
+            CustomerTier::Starter
+        );
+        assert_eq!(
+            "growth".parse::<CustomerTier>().unwrap(),
+            CustomerTier::Growth
+        );
+        assert_eq!(
+            "enterprise".parse::<CustomerTier>().unwrap(),
+            CustomerTier::Enterprise
+        );
         assert_eq!("free".parse::<CustomerTier>().unwrap(), CustomerTier::Free);
-        assert_eq!("garbage".parse::<CustomerTier>().unwrap(), CustomerTier::Free);
+        assert_eq!(
+            "garbage".parse::<CustomerTier>().unwrap(),
+            CustomerTier::Free
+        );
     }
 
     #[test]
@@ -198,8 +222,17 @@ mod tests {
 
     #[test]
     fn price_ordering() {
-        assert!(CustomerTier::Starter.price_usd_cents_per_month() > CustomerTier::Free.price_usd_cents_per_month());
-        assert!(CustomerTier::Growth.price_usd_cents_per_month() > CustomerTier::Starter.price_usd_cents_per_month());
-        assert!(CustomerTier::Enterprise.price_usd_cents_per_month() > CustomerTier::Growth.price_usd_cents_per_month());
+        assert!(
+            CustomerTier::Starter.price_usd_cents_per_month()
+                > CustomerTier::Free.price_usd_cents_per_month()
+        );
+        assert!(
+            CustomerTier::Growth.price_usd_cents_per_month()
+                > CustomerTier::Starter.price_usd_cents_per_month()
+        );
+        assert!(
+            CustomerTier::Enterprise.price_usd_cents_per_month()
+                > CustomerTier::Growth.price_usd_cents_per_month()
+        );
     }
 }

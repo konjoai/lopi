@@ -307,9 +307,7 @@ pub(super) async fn metrics(State(s): State<AppState>) -> impl IntoResponse {
     // followed by one line per label that has fired at least once.
     let violations = lopi_core::schema_violations_snapshot();
     if !violations.is_empty() {
-        body.push_str(
-            "# HELP lopi_schema_violations_total Output schema validation failures\n",
-        );
+        body.push_str("# HELP lopi_schema_violations_total Output schema validation failures\n");
         body.push_str("# TYPE lopi_schema_violations_total counter\n");
         for (kind, count) in violations {
             // `kind` is from a closed enum (Type/Required/EnumMismatch/Property),

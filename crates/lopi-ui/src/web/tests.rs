@@ -529,7 +529,10 @@ async fn checkpoint_agent_persists_row_returns_201() {
         .await
         .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-    assert!(json.get("checkpoint_id").is_some(), "response carries new id");
+    assert!(
+        json.get("checkpoint_id").is_some(),
+        "response carries new id"
+    );
     assert_eq!(json["task_id"], task_uuid.to_string());
 }
 

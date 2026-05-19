@@ -25,8 +25,13 @@ pub async fn run(
     let effective_max_agents = tier_capped_max_agents(&store, max_agents).await;
 
     let pool = Arc::new(
-        AgentPool::new(effective_max_agents, repo.clone(), queue.clone(), bus.clone())
-            .with_store(store.clone()),
+        AgentPool::new(
+            effective_max_agents,
+            repo.clone(),
+            queue.clone(),
+            bus.clone(),
+        )
+        .with_store(store.clone()),
     );
 
     print_startup_banner(effective_max_agents, &repo, &extra_repos, &host, port);
@@ -35,8 +40,13 @@ pub async fn run(
     // Each extra repo shares the same queue and bus; the pool routes by
     // task.repo_path, so tasks land on the right worktree.
     for extra in &extra_repos {
-        let extra_pool = AgentPool::new(effective_max_agents, extra.clone(), queue.clone(), bus.clone())
-            .with_store(store.clone());
+        let extra_pool = AgentPool::new(
+            effective_max_agents,
+            extra.clone(),
+            queue.clone(),
+            bus.clone(),
+        )
+        .with_store(store.clone());
         tokio::spawn(async move {
             if let Err(e) = extra_pool.run().await {
                 tracing::error!("multi-repo pool error: {e}");

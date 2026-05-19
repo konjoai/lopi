@@ -182,7 +182,10 @@ pub fn build_app(state: AppState) -> Router {
         .route("/api/health", get(health))
         .route("/api/tasks", get(list_tasks).post(create_task))
         .route("/api/tasks/:id", get(get_task).delete(cancel_task))
-        .route("/api/agents/:id/checkpoint", axum::routing::post(checkpoint_agent))
+        .route(
+            "/api/agents/:id/checkpoint",
+            axum::routing::post(checkpoint_agent),
+        )
         .route("/api/stats", get(get_stats))
         .route("/api/patterns", get(list_patterns))
         .route("/api/plans", get(get_plans))
