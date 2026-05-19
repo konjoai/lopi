@@ -1,6 +1,6 @@
 # PLAN.md — lopi Master Plan
 
-**Updated:** 2026-05-12 · v0.17.0 just shipped.
+**Updated:** 2026-05-19 · Sprint P just shipped.
 
 ## Vision
 
@@ -332,14 +332,17 @@ Power tools — high leverage but require P1+P2 substrate to be useful.
 | Build | `cargo build --workspace`: clean |
 | Crates | **15** (+ lopi-app, lopi-github, lopi-spec) |
 | CLI commands | `run`, `watch`, `tail`, `dock`, `sail [--repos]`, `cancel`, `learn list/show/export/annotate`, `schedules list`, `serve-webhooks`, `spec`, `check [--fail-on-violations]`, `gap-fill`, `watch-gap-fill`, `trust`, `serve-app` |
-| API endpoints | `/api/health`, `/api/tasks` (GET+POST), `/api/tasks/:id` (GET+DELETE), `/api/stats`, `/api/patterns`, `/metrics` (Prometheus), `/sse` (SSE), `/ws` (WebSocket) |
+| API endpoints | `/api/health`, `/api/tasks` (GET+POST), `/api/tasks/:id` (GET+DELETE), `/api/stats`, `/api/patterns`, `/api/plans`, `/metrics` (Prometheus), `/sse` (SSE), `/ws` (WebSocket) |
 | Embedded UI | SvelteKit Forge + Constellation, ~487 KB JS / 126 KB gzipped |
 | Direct-API planning | ✅ via `AgentRunner::with_api(client, limiter, breaker)` |
 | Adaptive retry | ✅ via `AgentRunner::with_adaptive_retry()` (post-mortem fires + lesson saved on terminal failure) |
 | Lesson injection | ✅ patterns + lessons both TOON-encoded into planning prompt |
 | Issue triage | ✅ Haiku classifier → GitHub comment → auto-queue via `lopi serve-webhooks` |
 | Spec surface | ✅ `lopi-spec` crate · `lopi spec` · `lopi check` · `/api/spec` · injected into planning |
-| Latest release | **v0.13.0** |
+| Dockerfile | ✅ multi-stage build, non-root, `EXPOSE 3000 3002` |
+| fly.toml | ✅ two process groups, persistent volume, health checks |
+| Tier gating | ✅ `LOPI_CUSTOMER_ID` → `CustomerTier` → `AgentPool` cap |
+| Latest release | **Sprint P** (PR #13 merged) |
 
 ---
 
