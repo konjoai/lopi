@@ -1,5 +1,49 @@
 # Changelog
 
+## [Unreleased] — Sprint P: Production Deployment + Tier Gating 🚀
+
+### Added
+
+**`CustomerTier` enum** (`lopi-core::tier`)
+- `Free | Starter | Growth | Enterprise` variants with `max_agents()`, `display_name()`, `price_usd_cents_per_month()`, `features()`, `from_stripe_name()`.
+- `Display` + `FromStr` round-trip; full `serde` support for wire serialization.
+- 6 unit tests: serde round-trip, max_agents, from_stripe_name, display, price ordering.
+
+**Tier column in `github_installations`** (`lopi-memory`)
+- Idempotent `ALTER TABLE … ADD COLUMN tier TEXT NOT NULL DEFAULT 'free'` migration.
+- `MemoryStore::set_installation_tier(installation_id, tier)` — updates tier on subscription event.
+- `MemoryStore::customer_tier(customer_id)` — reads active installation tier; defaults to `Free` when absent.
+- 3 new tests: set/get tier, unknown customer defaults to Free, upgrade+downgrade cycle.
+
+**Stripe subscription → tier wiring** (`lopi-app::stripe`)
+- `customer.subscription.created` / `customer.subscription.updated` — extracts tier from `items[0].price.nickname` or `metadata.lopi_plan`; reads `metadata.lopi_installation_id` to update the correct installation row.
+- `customer.subscription.deleted` — downgrades tier to `Free`.
+- `extract_tier_from_subscription()` + `extract_installation_id()` helpers — no stub logic remaining.
+
+**`GET /api/plans`** (`lopi-ui::web`)
+- Returns a static JSON array of all four `CustomerTier` variants with `id`, `name`, `price_usd_per_month`, `max_agents`, `features`.
+- 2 endpoint integration tests: response shape + field presence.
+
+**Tier-aware `max_agents` cap in `lopi sail`** (`src/sail_commands.rs`)
+- `tier_capped_max_agents()` reads `LOPI_CUSTOMER_ID` env var, queries the DB for the customer's tier, and caps the requested `--max-agents` to `tier.max_agents()`.
+- Logs a tracing `info!` event when the cap is applied. Falls back gracefully on DB error or absent env var.
+
+**`Dockerfile`** (repo root)
+- Multi-stage build: `rust:1.87-slim-bookworm` build stage → `debian:bookworm-slim` runtime.
+- Non-root `lopi` user; persistent `VOLUME ["/home/lopi/.lopi"]`; `EXPOSE 3000 3002`.
+- Dependency-layer caching via manifest-only pre-build stub.
+
+**`fly.toml`** (repo root)
+- Two process groups: `app` (`lopi serve-app` on 3002) and `web` (`lopi sail` on 3000).
+- Persistent `lopi_data` volume mounted at `/home/lopi/.lopi`.
+- HTTP health checks on `/` (app) and `/api/health` (web); TLS + HTTP on 443/80.
+
+### Tests
+- 6 `lopi-core::tier` tests + 3 `lopi-memory::installations` tests + 2 `lopi-ui::web` tests = **11 new**.
+- Workspace: 488 → **499 passing**, 0 failing.
+
+---
+
 ## [Unreleased] — P1 Agent Survivability Sprint 🚦
 
 ### Added
