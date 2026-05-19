@@ -178,11 +178,7 @@ mod parking_lot_friendly {
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             let cutoff = chrono::Utc::now() - chrono::Duration::hours(1);
-            q.iter()
-                .rev()
-                .filter(|d| d.at >= cutoff)
-                .cloned()
-                .collect()
+            q.iter().rev().filter(|d| d.at >= cutoff).cloned().collect()
         }
     }
 }
@@ -377,12 +373,13 @@ fn select_with_strategy<'a>(
     }
     let chosen = match strategy {
         RoutingStrategy::RoundRobin => {
-            let idx =
-                state.rr_cursor.fetch_add(1, Ordering::Relaxed) % candidates.len();
+            let idx = state.rr_cursor.fetch_add(1, Ordering::Relaxed) % candidates.len();
             candidates[idx]
         }
         RoutingStrategy::WeightedRandom => weighted_pick(candidates),
-        RoutingStrategy::LeastLoaded | RoutingStrategy::TagMatch { .. } => least_loaded_pick(candidates, state),
+        RoutingStrategy::LeastLoaded | RoutingStrategy::TagMatch { .. } => {
+            least_loaded_pick(candidates, state)
+        }
     };
     Ok(chosen)
 }
@@ -446,7 +443,11 @@ mod tests {
         }
     }
 
-    fn make(name: &str, strat: RoutingStrategy, members: Vec<ConstellationMember>) -> Constellation {
+    fn make(
+        name: &str,
+        strat: RoutingStrategy,
+        members: Vec<ConstellationMember>,
+    ) -> Constellation {
         Constellation {
             name: name.into(),
             agents: members,
@@ -646,12 +647,23 @@ mod tests {
     #[tokio::test]
     async fn re_register_replaces_in_place() {
         let r = ConstellationRouter::new();
-        r.register(make("dup", RoutingStrategy::RoundRobin, vec![member("a", 1.0, &[], 0)]))
-            .await;
+        r.register(make(
+            "dup",
+            RoutingStrategy::RoundRobin,
+            vec![member("a", 1.0, &[], 0)],
+        ))
+        .await;
         let replaced = r
-            .register(make("dup", RoutingStrategy::RoundRobin, vec![member("b", 1.0, &[], 0)]))
+            .register(make(
+                "dup",
+                RoutingStrategy::RoundRobin,
+                vec![member("b", 1.0, &[], 0)],
+            ))
             .await;
-        assert!(replaced, "register should report it replaced an existing entry");
+        assert!(
+            replaced,
+            "register should report it replaced an existing entry"
+        );
         let listed = r.list().await;
         assert_eq!(listed.len(), 1);
         assert_eq!(listed[0].agents[0].agent_id, "b");

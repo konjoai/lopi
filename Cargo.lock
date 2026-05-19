@@ -1870,6 +1870,7 @@ dependencies = [
  "chrono",
  "hex",
  "hmac",
+ "lopi-core",
  "lopi-memory",
  "reqwest",
  "serde",

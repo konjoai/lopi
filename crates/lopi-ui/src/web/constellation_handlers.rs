@@ -25,7 +25,11 @@ pub(super) async fn register_constellation_handler(
     Json(c): Json<Constellation>,
 ) -> impl IntoResponse {
     let replaced = s.constellations.register(c.clone()).await;
-    let status = if replaced { StatusCode::OK } else { StatusCode::CREATED };
+    let status = if replaced {
+        StatusCode::OK
+    } else {
+        StatusCode::CREATED
+    };
     (
         status,
         Json(json!({ "name": c.name, "replaced": replaced })),
@@ -54,11 +58,7 @@ pub(super) async fn dispatch_constellation_handler(
     body: Option<Json<DispatchBody>>,
 ) -> impl IntoResponse {
     let req = body.map(|Json(b)| b).unwrap_or_default();
-    match s
-        .constellations
-        .dispatch(&name, &req.required_tags)
-        .await
-    {
+    match s.constellations.dispatch(&name, &req.required_tags).await {
         Ok(decision) => (StatusCode::OK, Json(json!(decision))).into_response(),
         Err(e) => routing_error_response(e),
     }

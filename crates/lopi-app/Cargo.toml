@@ -8,6 +8,7 @@ repository.workspace = true
 description = "GitHub App OAuth + Stripe webhook server for lopi SaaS"
 
 [dependencies]
+lopi-core.workspace = true
 lopi-memory.workspace = true
 anyhow.workspace = true
 axum.workspace = true

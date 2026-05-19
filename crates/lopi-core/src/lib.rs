@@ -4,6 +4,7 @@ pub mod config;
 pub mod event;
 pub mod schema;
 pub mod task;
+pub mod tier;
 
 pub use agent::{AgentRun, AgentState, Attempt, Score, ScoreWeights, TurnMetrics};
 pub use budget::BudgetScope;
@@ -14,6 +15,7 @@ pub use schema::{
     Violation as SchemaViolation, ViolationKind as SchemaViolationKind,
 };
 pub use task::{Priority, Task, TaskId, TaskSource, TaskStatus};
+pub use tier::CustomerTier;
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]

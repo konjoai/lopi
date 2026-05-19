@@ -174,12 +174,15 @@ lopi learn annotate CLI command. 313 tests.
 - [x] Per-customer store provisioned on `installation.created` webhook
 - [x] SvelteKit `/onboard` page with 3-step flow and pricing table
 
-### Sprint P — Production Deployment + Tier Gating (next)
-- [ ] Register GitHub App on github.com (requires live domain)
-- [ ] Add `lopi-app` Dockerfile + fly.io / Railway deploy config
-- [ ] Tier gating middleware in `lopi sail` — read customer tier from DB
-- [ ] `/api/plans` endpoint — return available tiers from Stripe products
-- [ ] End-to-end install flow test with a real GitHub App installation
+### Sprint P — Production Deployment + Tier Gating ✅ (shipped)
+- [x] `CustomerTier` enum in `lopi-core` — Free/Starter/Growth/Enterprise + `max_agents()`, `features()`, `from_stripe_name()`
+- [x] `tier` column in `github_installations` — idempotent ALTER TABLE migration; `set_installation_tier()` + `customer_tier()` in `lopi-memory`
+- [x] Stripe subscription handler wires `customer.subscription.{created,updated,deleted}` to tier via `lopi_installation_id` metadata
+- [x] `/api/plans` endpoint — static JSON with all tier definitions (id, name, price, max_agents, features)
+- [x] `LOPI_CUSTOMER_ID` tier cap in `lopi sail` — reads tier from DB at startup, caps `AgentPool` concurrency
+- [x] `Dockerfile` — multi-stage build (rust:1.87-slim → debian:bookworm-slim), single binary, non-root user
+- [x] `fly.toml` — fly.io deploy config: two process groups (`app` on 3002, `web` on 3000), persistent volume, health checks
+- [ ] Register GitHub App on github.com (requires live domain — manual step)
 
 ### Phase 7+ — UI polish (deferred)
 - [ ] Mobile-responsive Forge degradation
@@ -325,8 +328,8 @@ Power tools — high leverage but require P1+P2 substrate to be useful.
 
 | Metric | Value |
 |---|---|
-| Workspace tests | **419 passing**, 0 failing |
-| Build | `cargo build --workspace`: clean, 0 clippy warnings |
+| Workspace tests | **499 passing**, 0 failing |
+| Build | `cargo build --workspace`: clean |
 | Crates | **15** (+ lopi-app, lopi-github, lopi-spec) |
 | CLI commands | `run`, `watch`, `tail`, `dock`, `sail [--repos]`, `cancel`, `learn list/show/export/annotate`, `schedules list`, `serve-webhooks`, `spec`, `check [--fail-on-violations]`, `gap-fill`, `watch-gap-fill`, `trust`, `serve-app` |
 | API endpoints | `/api/health`, `/api/tasks` (GET+POST), `/api/tasks/:id` (GET+DELETE), `/api/stats`, `/api/patterns`, `/metrics` (Prometheus), `/sse` (SSE), `/ws` (WebSocket) |

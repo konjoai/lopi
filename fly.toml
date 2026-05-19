@@ -1,0 +1,97 @@
+# fly.toml — lopi deployment on fly.io
+#
+# Deploy: fly deploy
+# Secrets: fly secrets set GITHUB_CLIENT_SECRET=... STRIPE_WEBHOOK_SECRET=...
+#
+# Two processes run in the same app:
+#   app  — lopi serve-app (GitHub App OAuth + Stripe, port 3002)
+#   web  — lopi sail (Forge dashboard + agent API, port 3000)
+#
+# Use `fly scale count app=1 web=1` to run one instance of each.
+
+app = "lopi-app"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+# ─── Process groups ────────────────────────────────────────────────────────────
+
+[processes]
+  app = "lopi serve-app --port 3002 --host 0.0.0.0"
+  web = "lopi sail --port 3000 --host 0.0.0.0"
+
+# ─── HTTP services ─────────────────────────────────────────────────────────────
+
+[[services]]
+  protocol    = "tcp"
+  internal_port = 3002
+  processes   = ["app"]
+
+  [[services.ports]]
+    port     = 443
+    handlers = ["tls", "http"]
+
+  [[services.ports]]
+    port     = 80
+    handlers = ["http"]
+
+  [services.http_checks]
+    interval      = "15s"
+    timeout       = "5s"
+    grace_period  = "10s"
+    method        = "GET"
+    path          = "/"
+    protocol      = "http"
+    tls_skip_verify = false
+
+[[services]]
+  protocol    = "tcp"
+  internal_port = 3000
+  processes   = ["web"]
+
+  [[services.ports]]
+    port     = 443
+    handlers = ["tls", "http"]
+
+  [[services.ports]]
+    port     = 80
+    handlers = ["http"]
+
+  [services.http_checks]
+    interval      = "15s"
+    timeout       = "5s"
+    grace_period  = "10s"
+    method        = "GET"
+    path          = "/api/health"
+    protocol      = "http"
+    tls_skip_verify = false
+
+# ─── Persistent volume ────────────────────────────────────────────────────────
+
+[[mounts]]
+  source      = "lopi_data"
+  destination = "/home/lopi/.lopi"
+  processes   = ["app", "web"]
+
+# ─── Environment ──────────────────────────────────────────────────────────────
+
+[env]
+  RUST_LOG              = "lopi=info,tower_http=warn"
+  LOPI_CUSTOMER_STORES  = "/home/lopi/.lopi/customers"
+
+# Secrets (set via `fly secrets set`):
+#   GITHUB_APP_ID
+#   GITHUB_CLIENT_ID
+#   GITHUB_CLIENT_SECRET
+#   GITHUB_REDIRECT_URI        — https://<app>.fly.dev/app/callback
+#   GITHUB_WEBHOOK_SECRET
+#   STRIPE_WEBHOOK_SECRET
+#   LOPI_WEB_AUTH_TOKEN        — Bearer token protecting /api/* on the Forge
+
+# ─── Compute ───────────────────────────────────────────────────────────────────
+
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1

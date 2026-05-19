@@ -168,3 +168,7 @@ CREATE TABLE IF NOT EXISTS result_cache_events (
     outcome  TEXT NOT NULL CHECK(outcome IN ('hit', 'miss'))
 );
 CREATE INDEX IF NOT EXISTS idx_cache_events_ts ON result_cache_events(ts);
+
+-- Sprint P — Add subscription tier to GitHub App installations.
+-- ALTER TABLE is wrapped in the idempotent migration guard in apply_schema().
+ALTER TABLE github_installations ADD COLUMN tier TEXT NOT NULL DEFAULT 'free';

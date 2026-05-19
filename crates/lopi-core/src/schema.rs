@@ -176,11 +176,13 @@ fn type_matches(value: &Value, ty: &str) -> bool {
         "string" => value.is_string(),
         "number" => value.is_number(),
         // JSON Schema integer: number with no fractional part.
-        "integer" => value.as_i64().is_some()
-            || value.as_u64().is_some()
-            || value
-                .as_f64()
-                .is_some_and(|f| f.is_finite() && f.fract() == 0.0),
+        "integer" => {
+            value.as_i64().is_some()
+                || value.as_u64().is_some()
+                || value
+                    .as_f64()
+                    .is_some_and(|f| f.is_finite() && f.fract() == 0.0)
+        }
         "boolean" => value.is_boolean(),
         "null" => value.is_null(),
         _ => true, // unknown type keyword → permissive
@@ -216,14 +218,18 @@ pub fn schema_violations_inc(kind: ViolationKind) {
     // Fast path: read lock + existing entry. Recover the inner data on
     // poisoning so a panicked writer doesn't drop the counter permanently.
     {
-        let r = map.read().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let r = map
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         if let Some(c) = r.get(&key) {
             c.fetch_add(1, Ordering::Relaxed);
             return;
         }
     }
     // Slow path: insert the missing label.
-    let mut w = map.write().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut w = map
+        .write()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     w.entry(key)
         .or_insert_with(|| AtomicU64::new(0))
         .fetch_add(1, Ordering::Relaxed);
@@ -287,10 +293,7 @@ mod tests {
 
     #[test]
     fn enum_mismatch_is_reported() {
-        let v = validate(
-            &json!("yellow"),
-            &json!({"enum": ["red", "green", "blue"]}),
-        );
+        let v = validate(&json!("yellow"), &json!({"enum": ["red", "green", "blue"]}));
         assert_eq!(v.len(), 1);
         assert_eq!(v[0].kind, ViolationKind::EnumMismatch);
     }
@@ -311,7 +314,9 @@ mod tests {
         });
         let v = validate(&json!({"score": "not a number"}), &schema);
         // One leaf failure (type) plus one Property bubble-up.
-        assert!(v.iter().any(|x| x.kind == ViolationKind::Type && x.path == "score"));
+        assert!(v
+            .iter()
+            .any(|x| x.kind == ViolationKind::Type && x.path == "score"));
         assert!(v.iter().any(|x| x.kind == ViolationKind::Property));
     }
 
@@ -351,7 +356,14 @@ mod tests {
         let bad = json!({"test_pass_rate": "n/a"});
         let v = validate(&bad, &schema);
         // Missing two required + one type failure on the bad field.
-        assert!(v.iter().filter(|x| x.kind == ViolationKind::Required).count() >= 2);
-        assert!(v.iter().any(|x| x.kind == ViolationKind::Type && x.path == "test_pass_rate"));
+        assert!(
+            v.iter()
+                .filter(|x| x.kind == ViolationKind::Required)
+                .count()
+                >= 2
+        );
+        assert!(v
+            .iter()
+            .any(|x| x.kind == ViolationKind::Type && x.path == "test_pass_rate"));
     }
 }

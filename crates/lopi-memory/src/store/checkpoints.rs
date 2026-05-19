@@ -185,7 +185,10 @@ mod tests {
         assert_eq!(loaded.id, id);
         assert_eq!(loaded.attempt, 1);
         assert_eq!(loaded.state, "planning");
-        assert_eq!(loaded.last_plan.as_deref(), Some("# Plan\n- step 1\n- step 2"));
+        assert_eq!(
+            loaded.last_plan.as_deref(),
+            Some("# Plan\n- step 1\n- step 2")
+        );
         assert_eq!(loaded.repo_path.as_deref(), Some("/tmp/repo"));
     }
 

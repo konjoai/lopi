@@ -529,7 +529,10 @@ async fn checkpoint_agent_persists_row_returns_201() {
         .await
         .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-    assert!(json.get("checkpoint_id").is_some(), "response carries new id");
+    assert!(
+        json.get("checkpoint_id").is_some(),
+        "response carries new id"
+    );
     assert_eq!(json["task_id"], task_uuid.to_string());
 }
 
@@ -586,6 +589,56 @@ async fn cancel_task_not_found_returns_404() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn plans_returns_four_tiers() {
+    let app = test_app().await;
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/plans")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    let plans = json["plans"].as_array().expect("plans is an array");
+    assert_eq!(plans.len(), 4);
+    let ids: Vec<&str> = plans.iter().map(|p| p["id"].as_str().unwrap()).collect();
+    assert_eq!(ids, ["free", "starter", "growth", "enterprise"]);
+}
+
+#[tokio::test]
+async fn plans_response_has_required_fields() {
+    let app = test_app().await;
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/plans")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    for plan in json["plans"].as_array().unwrap() {
+        assert!(plan.get("id").is_some(), "plan has id");
+        assert!(plan.get("name").is_some(), "plan has name");
+        assert!(plan.get("price_usd_per_month").is_some(), "plan has price");
+        assert!(plan.get("max_agents").is_some(), "plan has max_agents");
+        assert!(plan.get("features").is_some(), "plan has features");
+        let max = plan["max_agents"].as_u64().unwrap();
+        assert!(max >= 1, "max_agents at least 1");
+    }
 }
 
 include!("tests_extended.rs");

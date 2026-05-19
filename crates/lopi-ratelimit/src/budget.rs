@@ -68,9 +68,18 @@ pub struct BudgetConfig {
 impl Default for BudgetConfig {
     fn default() -> Self {
         Self {
-            fleet: BudgetLimit { usd_per_hour: 25.0, ..BudgetLimit::default() },
-            agent: BudgetLimit { usd_per_hour:  5.0, ..BudgetLimit::default() },
-            task:  BudgetLimit { usd_per_hour:  1.5, ..BudgetLimit::default() },
+            fleet: BudgetLimit {
+                usd_per_hour: 25.0,
+                ..BudgetLimit::default()
+            },
+            agent: BudgetLimit {
+                usd_per_hour: 5.0,
+                ..BudgetLimit::default()
+            },
+            task: BudgetLimit {
+                usd_per_hour: 1.5,
+                ..BudgetLimit::default()
+            },
         }
     }
 }
@@ -81,10 +90,7 @@ pub enum BudgetError {
     /// The scope's hourly cost cap is reached — no further billable calls
     /// allowed in this window.
     #[error("budget exceeded at {scope:?}: ${limit_usd:.4}/hr cap reached")]
-    Exceeded {
-        scope: BudgetScope,
-        limit_usd: f64,
-    },
+    Exceeded { scope: BudgetScope, limit_usd: f64 },
     /// The scope's breaker tripped Open after too many consecutive failures.
     #[error("circuit breaker open at {scope:?}")]
     BreakerOpen { scope: BudgetScope },
@@ -124,7 +130,12 @@ impl BudgetGovernor {
             Duration::from_secs(config.task.open_duration_secs),
             config.task.usd_per_hour,
         ));
-        Self { fleet, agent, task, config }
+        Self {
+            fleet,
+            agent,
+            task,
+            config,
+        }
     }
 
     /// Snapshot of the active config — useful for inclusion in
@@ -143,9 +154,21 @@ impl BudgetGovernor {
     /// consecutive failures.
     pub async fn check(&self) -> Result<(), BudgetError> {
         // Innermost-first so the most specific scope wins.
-        map_check(self.task.check().await,  BudgetScope::Task,  self.config.task.usd_per_hour)?;
-        map_check(self.agent.check().await, BudgetScope::Agent, self.config.agent.usd_per_hour)?;
-        map_check(self.fleet.check().await, BudgetScope::Fleet, self.config.fleet.usd_per_hour)?;
+        map_check(
+            self.task.check().await,
+            BudgetScope::Task,
+            self.config.task.usd_per_hour,
+        )?;
+        map_check(
+            self.agent.check().await,
+            BudgetScope::Agent,
+            self.config.agent.usd_per_hour,
+        )?;
+        map_check(
+            self.fleet.check().await,
+            BudgetScope::Fleet,
+            self.config.fleet.usd_per_hour,
+        )?;
         Ok(())
     }
 
@@ -215,9 +238,21 @@ mod tests {
 
     fn tight_config() -> BudgetConfig {
         BudgetConfig {
-            fleet: BudgetLimit { usd_per_hour: 10.0, max_consecutive_failures: 3, open_duration_secs: 30 },
-            agent: BudgetLimit { usd_per_hour:  5.0, max_consecutive_failures: 3, open_duration_secs: 30 },
-            task:  BudgetLimit { usd_per_hour:  1.0, max_consecutive_failures: 3, open_duration_secs: 30 },
+            fleet: BudgetLimit {
+                usd_per_hour: 10.0,
+                max_consecutive_failures: 3,
+                open_duration_secs: 30,
+            },
+            agent: BudgetLimit {
+                usd_per_hour: 5.0,
+                max_consecutive_failures: 3,
+                open_duration_secs: 30,
+            },
+            task: BudgetLimit {
+                usd_per_hour: 1.0,
+                max_consecutive_failures: 3,
+                open_duration_secs: 30,
+            },
         }
     }
 
@@ -246,8 +281,13 @@ mod tests {
     #[tokio::test]
     async fn failures_trip_breaker_after_threshold() {
         let g = BudgetGovernor::new(tight_config());
-        for _ in 0..3 { g.record_failure().await; }
-        let err = g.check().await.expect_err("breaker should be open after 3 failures");
+        for _ in 0..3 {
+            g.record_failure().await;
+        }
+        let err = g
+            .check()
+            .await
+            .expect_err("breaker should be open after 3 failures");
         match err {
             BudgetError::BreakerOpen { scope } => {
                 assert_eq!(scope, BudgetScope::Task);
@@ -280,9 +320,13 @@ mod tests {
     #[test]
     fn default_config_has_conservative_caps() {
         let c = BudgetConfig::default();
-        assert!(c.fleet.usd_per_hour >= c.agent.usd_per_hour,
-            "fleet must be a superset cap of agent");
-        assert!(c.agent.usd_per_hour >= c.task.usd_per_hour,
-            "agent must be a superset cap of task");
+        assert!(
+            c.fleet.usd_per_hour >= c.agent.usd_per_hour,
+            "fleet must be a superset cap of agent"
+        );
+        assert!(
+            c.agent.usd_per_hour >= c.task.usd_per_hour,
+            "agent must be a superset cap of task"
+        );
     }
 }
