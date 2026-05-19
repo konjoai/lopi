@@ -185,6 +185,7 @@ pub fn build_app(state: AppState) -> Router {
         .route("/api/agents/:id/checkpoint", axum::routing::post(checkpoint_agent))
         .route("/api/stats", get(get_stats))
         .route("/api/patterns", get(list_patterns))
+        .route("/api/plans", get(get_plans))
         .route("/api/spec", get(get_spec))
         .route("/api/quality/trend", get(get_quality_trend))
         .route(
@@ -447,8 +448,8 @@ use constellation_handlers::{
     register_constellation_handler,
 };
 use handlers::{
-    cancel_task, checkpoint_agent, create_task, get_quality_trend, get_spec, get_stats, get_task,
-    health, list_patterns, list_tasks, metrics,
+    cancel_task, checkpoint_agent, create_task, get_plans, get_quality_trend, get_spec, get_stats,
+    get_task, health, list_patterns, list_tasks, metrics,
 };
 use tools_handlers::{
     delete_tool_handler, get_tool_handler, list_tools_handler, register_tool_handler,

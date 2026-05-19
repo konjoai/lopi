@@ -1,11 +1,15 @@
-//! GitHub App installation ledger — Sprint O.
+//! GitHub App installation ledger — Sprint O/P.
 //!
 //! Tracks which GitHub accounts have installed the lopi GitHub App.
 //! Each installation maps to a customer_id which is the tenancy key for
 //! `MemoryStore::open_for_customer()`.
+//!
+//! Sprint P adds a `tier` column so Stripe subscription events can update
+//! the concurrency cap without restarting `lopi sail`.
 
 use anyhow::Result;
 use chrono::Utc;
+use lopi_core::CustomerTier;
 use uuid::Uuid;
 
 use super::MemoryStore;
@@ -114,6 +118,53 @@ impl MemoryStore {
         .await
         .map_err(Into::into)
     }
+
+    /// Set the subscription tier for an installation by `installation_id`.
+    ///
+    /// Called from the Stripe subscription webhook handler when a
+    /// `customer.subscription.created` or `customer.subscription.updated`
+    /// event is received and the plan name maps to a `CustomerTier`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database write fails.
+    pub async fn set_installation_tier(
+        &self,
+        installation_id: i64,
+        tier: CustomerTier,
+    ) -> Result<()> {
+        let now = Utc::now().to_rfc3339();
+        sqlx::query(
+            "UPDATE github_installations SET tier = ?1, updated_at = ?2 \
+             WHERE installation_id = ?3",
+        )
+        .bind(tier.as_str())
+        .bind(&now)
+        .bind(installation_id)
+        .execute(&self.write_pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Get the subscription tier for a given `customer_id`.
+    ///
+    /// Returns `CustomerTier::Free` when no active installation is found or
+    /// when the stored value is unrecognised.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the database query fails.
+    pub async fn customer_tier(&self, customer_id: &str) -> Result<CustomerTier> {
+        let row: Option<(String,)> = sqlx::query_as(
+            "SELECT COALESCE(tier, 'free') FROM github_installations \
+             WHERE customer_id = ?1 AND status = 'active' LIMIT 1",
+        )
+        .bind(customer_id)
+        .fetch_optional(&self.read_pool)
+        .await?;
+        let tier_str = row.map(|(t,)| t).unwrap_or_default();
+        Ok(tier_str.parse().unwrap_or(CustomerTier::Free))
+    }
 }
 
 /// Derive a safe customer_id from a GitHub login.
@@ -188,5 +239,35 @@ mod tests {
         assert_eq!(sanitise_customer_id("Acme Corp!"), "acme_corp_");
         assert_eq!(sanitise_customer_id("my-org"), "my-org");
         assert_eq!(sanitise_customer_id("user123"), "user123");
+    }
+
+    #[tokio::test]
+    async fn set_and_get_tier() {
+        let s = store().await;
+        s.upsert_installation(500, "tier-test", "User").await.unwrap();
+        // Default tier is Free.
+        let tier = s.customer_tier("tier-test").await.unwrap();
+        assert_eq!(tier, CustomerTier::Free);
+        // Upgrade to Starter.
+        s.set_installation_tier(500, CustomerTier::Starter).await.unwrap();
+        let tier = s.customer_tier("tier-test").await.unwrap();
+        assert_eq!(tier, CustomerTier::Starter);
+    }
+
+    #[tokio::test]
+    async fn tier_defaults_to_free_for_unknown_customer() {
+        let s = store().await;
+        let tier = s.customer_tier("nonexistent").await.unwrap();
+        assert_eq!(tier, CustomerTier::Free);
+    }
+
+    #[tokio::test]
+    async fn tier_upgrade_and_downgrade() {
+        let s = store().await;
+        s.upsert_installation(600, "bigcorp", "Organization").await.unwrap();
+        s.set_installation_tier(600, CustomerTier::Enterprise).await.unwrap();
+        assert_eq!(s.customer_tier("bigcorp").await.unwrap(), CustomerTier::Enterprise);
+        s.set_installation_tier(600, CustomerTier::Growth).await.unwrap();
+        assert_eq!(s.customer_tier("bigcorp").await.unwrap(), CustomerTier::Growth);
     }
 }

@@ -18,18 +18,24 @@ pub async fn run(
     let store = MemoryStore::open(db_path()).await?;
     let bus: EventBus<AgentEvent> = EventBus::new(512);
     let queue = TaskQueue::new();
+
+    // Tier gating: if LOPI_CUSTOMER_ID is set, cap max_agents to the tier
+    // stored in the DB. This lets Stripe subscription events take effect on
+    // the next `lopi sail` restart without a code change.
+    let effective_max_agents = tier_capped_max_agents(&store, max_agents).await;
+
     let pool = Arc::new(
-        AgentPool::new(max_agents, repo.clone(), queue.clone(), bus.clone())
+        AgentPool::new(effective_max_agents, repo.clone(), queue.clone(), bus.clone())
             .with_store(store.clone()),
     );
 
-    print_startup_banner(max_agents, &repo, &extra_repos, &host, port);
+    print_startup_banner(effective_max_agents, &repo, &extra_repos, &host, port);
 
     // Spawn additional per-repo dispatch loops for multi-repo mode.
     // Each extra repo shares the same queue and bus; the pool routes by
     // task.repo_path, so tasks land on the right worktree.
     for extra in &extra_repos {
-        let extra_pool = AgentPool::new(max_agents, extra.clone(), queue.clone(), bus.clone())
+        let extra_pool = AgentPool::new(effective_max_agents, extra.clone(), queue.clone(), bus.clone())
             .with_store(store.clone());
         tokio::spawn(async move {
             if let Err(e) = extra_pool.run().await {
@@ -92,6 +98,38 @@ fn print_startup_banner(
     println!("   dashboard: http://{host}:{port}");
     println!("   api:       http://{host}:{port}/api/tasks");
     println!("   ws:        ws://{host}:{port}/ws");
+}
+
+/// Return `max_agents` capped by the `CustomerTier` stored in the DB.
+///
+/// Reads `LOPI_CUSTOMER_ID` from the environment. When the variable is absent,
+/// or the customer has no active installation, the requested value is returned
+/// unchanged (i.e., tier gating is opt-in).
+async fn tier_capped_max_agents(store: &MemoryStore, requested: usize) -> usize {
+    let Some(customer_id) = std::env::var("LOPI_CUSTOMER_ID").ok() else {
+        return requested;
+    };
+    match store.customer_tier(&customer_id).await {
+        Ok(tier) => {
+            let cap = tier.max_agents();
+            if requested > cap {
+                tracing::info!(
+                    customer_id,
+                    requested,
+                    cap,
+                    tier = %tier,
+                    "max_agents capped by subscription tier"
+                );
+                cap
+            } else {
+                requested
+            }
+        }
+        Err(e) => {
+            tracing::warn!(customer_id, "failed to read customer tier: {e}");
+            requested
+        }
+    }
 }
 
 fn spawn_telegram(token: String, queue: TaskQueue, store: MemoryStore, cfg: Option<&LopiConfig>) {

@@ -4,10 +4,15 @@
 //! protection) and dispatches on relevant event types:
 //! - `customer.subscription.created`  → tier activated
 //! - `customer.subscription.updated`  → tier changed
-//! - `customer.subscription.deleted`  → tier cancelled
+//! - `customer.subscription.deleted`  → tier cancelled (downgrade to Free)
 //!
-//! Event handling is currently a stub that logs and returns 200. Wire in
-//! tier-gate logic once the Stripe account and product IDs are configured.
+//! The handler reads `metadata.lopi_installation_id` from the Stripe
+//! subscription object to identify which GitHub App installation to update.
+//! Set this metadata when creating the Stripe checkout session:
+//!
+//! ```json
+//! { "metadata": { "lopi_installation_id": "12345678" } }
+//! ```
 
 use axum::{
     body::Bytes,
@@ -15,6 +20,7 @@ use axum::{
     http::{HeaderMap, StatusCode},
     response::IntoResponse,
 };
+use lopi_core::CustomerTier;
 use std::sync::Arc;
 
 use crate::AppState;
@@ -44,30 +50,85 @@ pub async fn webhook(
         return (StatusCode::BAD_REQUEST, "invalid JSON").into_response();
     };
 
-    dispatch_stripe_event(&payload);
+    dispatch_stripe_event(&payload, &s).await;
     (StatusCode::OK, "ok").into_response()
 }
 
-/// Log or act on a parsed Stripe event payload.
-fn dispatch_stripe_event(payload: &serde_json::Value) {
+/// Dispatch a parsed Stripe event, updating the installation tier in the DB.
+///
+/// Reads `metadata.lopi_installation_id` from the subscription object to
+/// map the Stripe event to a lopi `github_installations` row.
+async fn dispatch_stripe_event(payload: &serde_json::Value, s: &AppState) {
     let event_type = payload["type"].as_str().unwrap_or("unknown");
-    let customer_id = payload["data"]["object"]["customer"]
-        .as_str()
-        .unwrap_or("unknown");
+    let obj = &payload["data"]["object"];
+    let stripe_customer = obj["customer"].as_str().unwrap_or("unknown");
 
     match event_type {
         "customer.subscription.created" | "customer.subscription.updated" => {
-            tracing::info!(
-                event_type,
-                customer_id,
-                "Stripe subscription event — tier activation stub"
-            );
+            let tier = extract_tier_from_subscription(obj);
+            let installation_id = extract_installation_id(obj);
+            if let Some(id) = installation_id {
+                match s.store.set_installation_tier(id, tier).await {
+                    Ok(()) => tracing::info!(
+                        event_type,
+                        stripe_customer,
+                        installation_id = id,
+                        tier = %tier,
+                        "subscription tier updated"
+                    ),
+                    Err(e) => tracing::warn!(
+                        installation_id = id,
+                        "failed to update tier: {e}"
+                    ),
+                }
+            } else {
+                tracing::warn!(
+                    event_type,
+                    stripe_customer,
+                    "Stripe event missing lopi_installation_id in metadata — tier not updated"
+                );
+            }
         }
         "customer.subscription.deleted" => {
-            tracing::info!(customer_id, "Stripe subscription cancelled")
+            let installation_id = extract_installation_id(obj);
+            if let Some(id) = installation_id {
+                if let Err(e) = s.store.set_installation_tier(id, CustomerTier::Free).await {
+                    tracing::warn!(installation_id = id, "failed to downgrade tier: {e}");
+                } else {
+                    tracing::info!(
+                        stripe_customer,
+                        installation_id = id,
+                        "subscription cancelled — tier downgraded to Free"
+                    );
+                }
+            }
         }
         _ => tracing::debug!(event_type, "unhandled Stripe event"),
     }
+}
+
+/// Extract `CustomerTier` from a Stripe subscription object.
+///
+/// Checks `items.data[0].price.nickname` first, then `metadata.lopi_plan`.
+fn extract_tier_from_subscription(obj: &serde_json::Value) -> CustomerTier {
+    // Try price nickname on the first line item.
+    if let Some(nickname) = obj["items"]["data"][0]["price"]["nickname"].as_str() {
+        if !nickname.is_empty() {
+            return CustomerTier::from_stripe_name(nickname);
+        }
+    }
+    // Fallback: explicit metadata field.
+    if let Some(plan) = obj["metadata"]["lopi_plan"].as_str() {
+        return CustomerTier::from_stripe_name(plan);
+    }
+    CustomerTier::Free
+}
+
+/// Extract `lopi_installation_id` from a Stripe subscription's metadata.
+fn extract_installation_id(obj: &serde_json::Value) -> Option<i64> {
+    obj["metadata"]["lopi_installation_id"]
+        .as_str()
+        .and_then(|s| s.parse::<i64>().ok())
 }
 
 /// Stripe uses `HMAC-SHA256` + a timestamp to prevent replay attacks.
