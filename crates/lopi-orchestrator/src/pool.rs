@@ -48,6 +48,11 @@ pub struct AgentPool {
     started_at: Arc<std::time::Instant>,
     /// Structured task tracker — allows `shutdown()` to abort all running agents.
     join_set: Arc<Mutex<JoinSet<()>>>,
+    /// P2 — agent capability registry. `Task::required_capabilities`
+    /// must be a subset of *some* registered agent's capabilities before
+    /// `submit()` accepts the task. Key is a stable agent identifier
+    /// (free-form string; the registrar names them).
+    capabilities: Arc<DashMap<String, Vec<String>>>,
 }
 
 impl AgentPool {
@@ -70,6 +75,7 @@ impl AgentPool {
             counters: Arc::new(PoolCounters::default()),
             started_at: Arc::new(std::time::Instant::now()),
             join_set: Arc::new(Mutex::new(JoinSet::new())),
+            capabilities: Arc::new(DashMap::new()),
         }
     }
 
@@ -121,6 +127,54 @@ impl AgentPool {
             failed: self.counters.failed.load(Ordering::Relaxed),
             uptime_secs: self.started_at.elapsed().as_secs(),
         }
+    }
+
+    /// P2 — advertise the capabilities of an agent slot. Tasks whose
+    /// `required_capabilities` are not satisfied by *any* registered agent
+    /// are rejected by [`Self::can_satisfy`] (and by callers that opt into
+    /// pre-submit validation).
+    ///
+    /// `agent_id` is a free-form stable label — the pool itself doesn't
+    /// care about its shape; it's just a key for de-duplication.
+    pub fn register_capabilities(&self, agent_id: impl Into<String>, caps: Vec<String>) {
+        self.capabilities.insert(agent_id.into(), caps);
+    }
+
+    /// Remove an agent's capability advertisement.
+    /// Returns `true` if a row was removed.
+    pub fn deregister_capabilities(&self, agent_id: &str) -> bool {
+        self.capabilities.remove(agent_id).is_some()
+    }
+
+    /// Snapshot every agent's capabilities — feeds `/metrics`, the Forge
+    /// fleet panel, and the constellation router.
+    #[must_use]
+    pub fn capabilities_snapshot(&self) -> Vec<(String, Vec<String>)> {
+        self.capabilities
+            .iter()
+            .map(|e| (e.key().clone(), e.value().clone()))
+            .collect()
+    }
+
+    /// True when at least one registered agent advertises every capability
+    /// in `task.required_capabilities`. Empty requirements vacuously pass.
+    ///
+    /// When the registry is *empty* (no agent has advertised anything yet)
+    /// a non-empty requirement is treated as **unsatisfiable** — this
+    /// closes the trap-door where a task with `required_capabilities`
+    /// would otherwise silently run on whatever generic worker picks it
+    /// up next.
+    #[must_use]
+    pub fn can_satisfy(&self, task: &Task) -> bool {
+        if task.required_capabilities.is_empty() {
+            return true;
+        }
+        if self.capabilities.is_empty() {
+            return false;
+        }
+        self.capabilities
+            .iter()
+            .any(|e| task.capabilities_satisfied_by(e.value()))
     }
 
     /// Enqueue a task and broadcast `TaskQueued`.
@@ -537,5 +591,49 @@ mod tests {
         pool.submit(task).await;
         let stats = pool.stats();
         assert_eq!(stats.queued, 1);
+    }
+
+    // ─── P2 — required-capability matching ───────────────────────────
+
+    #[tokio::test]
+    async fn can_satisfy_with_empty_requirements_always_passes() {
+        let pool = make_pool(2);
+        let task = Task::new("vanilla task, no requirements");
+        assert!(pool.can_satisfy(&task));
+    }
+
+    #[tokio::test]
+    async fn can_satisfy_returns_false_with_empty_registry() {
+        let pool = make_pool(2);
+        let mut task = Task::new("needs python");
+        task.required_capabilities = vec!["python".into()];
+        // No agents registered → must fail closed.
+        assert!(!pool.can_satisfy(&task));
+    }
+
+    #[tokio::test]
+    async fn can_satisfy_picks_up_any_matching_agent() {
+        let pool = make_pool(2);
+        pool.register_capabilities("alpha", vec!["rust".into(), "git".into()]);
+        pool.register_capabilities("beta", vec!["python".into(), "ml".into()]);
+        let mut task = Task::new("ml inference");
+        task.required_capabilities = vec!["python".into(), "ml".into()];
+        assert!(pool.can_satisfy(&task), "beta covers both required caps");
+        // No single agent has rust+python — must fail.
+        task.required_capabilities = vec!["rust".into(), "python".into()];
+        assert!(!pool.can_satisfy(&task));
+    }
+
+    #[tokio::test]
+    async fn deregister_removes_capability_advertisement() {
+        let pool = make_pool(2);
+        pool.register_capabilities("alpha", vec!["rust".into()]);
+        let mut task = Task::new("rust work");
+        task.required_capabilities = vec!["rust".into()];
+        assert!(pool.can_satisfy(&task));
+        assert!(pool.deregister_capabilities("alpha"));
+        assert!(!pool.can_satisfy(&task));
+        // Second deregister is a no-op.
+        assert!(!pool.deregister_capabilities("alpha"));
     }
 }

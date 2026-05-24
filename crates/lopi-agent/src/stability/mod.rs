@@ -328,6 +328,7 @@ mod tests {
             repo_path: None,
             output_schema: None,
             tools: Vec::new(),
+            required_capabilities: Vec::new(),
         }
     }
 

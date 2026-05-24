@@ -331,6 +331,38 @@
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
     }
 
+    /// P2 — `POST /api/tasks` with required_capabilities and an empty
+    /// agent registry returns 422 with a structured error.
+    #[tokio::test]
+    async fn create_task_with_unsatisfiable_capabilities_returns_422() {
+        let app = test_app().await;
+        let body = serde_json::to_string(&serde_json::json!({
+            "goal": "needs gpu-cuda capability",
+            "required_capabilities": ["gpu-cuda"],
+        }))
+        .unwrap();
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/tasks")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(json["registered_agent_count"], 0);
+        assert!(json["error"]
+            .as_str()
+            .is_some_and(|e| e.contains("capability")));
+    }
+
     /// Push a DLQ row directly via the store, then retry through the
     /// endpoint — the row is consumed and a new TaskId is returned.
     #[tokio::test]
