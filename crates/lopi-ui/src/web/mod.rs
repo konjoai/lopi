@@ -226,6 +226,7 @@ pub fn build_app(state: AppState) -> Router {
             "/api/tasks/dead-letter/:id/retry",
             axum::routing::post(dlq_handlers::retry_dlq),
         )
+        .route("/api/audit", get(audit_handlers::query_audit))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             rate_limit_middleware,
@@ -450,6 +451,7 @@ fn file_response(file: rust_embed::EmbeddedFile, path: &str) -> Response {
         .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
 }
 
+mod audit_handlers;
 mod cache_handlers;
 mod constellation_handlers;
 mod dlq_handlers;

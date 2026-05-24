@@ -277,6 +277,21 @@ collaboration patterns.
   `max_concurrent` caps. REST: `GET/POST /api/constellations`,
   `POST /api/constellation/:name/dispatch`, `GET
   /api/constellation/:name/stats`. 15 tests.
+- **✅ Dead-letter queue + manual retry** *(shipped)* —
+  `dead_letter_queue` SQLite table fed from the pool's terminal
+  failure path. `MemoryStore::{push,get,list,take,delete}_dead_letter`.
+  REST: `GET/DELETE /api/tasks/dead-letter/:id`, `POST
+  /api/tasks/dead-letter/:id/retry`. 9 tests.
+- **✅ Required-capability matching** *(shipped)* —
+  `Task::required_capabilities` field + `AgentPool::register_capabilities`
+  / `can_satisfy(&Task)`. `POST /api/tasks` returns 422 when no
+  registered agent advertises every required capability. Pairs with
+  constellation `TagMatch`. 5 tests.
+- **✅ Append-only audit log** *(shipped)* — `audit_log` SQLite table
+  with `(action, ts)` + `(subject_type, subject_id, ts)` indexes.
+  `MemoryStore::record_audit` / `query_audit` with cursor pagination.
+  Pool hooks fire `task.dispatch` + `task.dead_letter` events. REST:
+  `GET /api/audit?since_id=&action=&subject_type=&subject_id=&n=`. 8 tests.
 - **MCP + A2A protocol support** — `McpClient` (JSON-RPC 2.0 over
   stdio + SSE transports) for tool-server discovery, and `A2AClient`
   with the published agent card so external clients can drive lopi

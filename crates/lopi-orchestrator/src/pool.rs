@@ -2,7 +2,7 @@ use anyhow::Result;
 use dashmap::DashMap;
 use lopi_agent::AgentRunner;
 use lopi_core::{AgentEvent, EventBus, ScoreWeights, Task, TaskId, TaskSource, TaskStatus};
-use lopi_memory::{DeadLetterInput, MemoryStore};
+use lopi_memory::{AuditInput, DeadLetterInput, MemoryStore};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -186,6 +186,31 @@ impl AgentPool {
         });
         if let Some(store) = &self.store {
             store.save_task(&task, "queued").await.ok();
+            // P2 — audit every dispatch so the operator can trace task
+            // flow without recomputing from PoolStats deltas.
+            let actor = task_source_label(&task);
+            // Hand-build the payload — lopi-orchestrator already pulls in
+            // chrono + thiserror via lopi-core, but not serde_json, so
+            // staying string-only keeps the dep graph thin. The shape is
+            // fixed enough that escape risk is bounded.
+            let caps = task
+                .required_capabilities
+                .iter()
+                .map(|c| format!("\"{}\"", c.replace('"', "\\\"")))
+                .collect::<Vec<_>>()
+                .join(",");
+            let payload = format!(
+                "{{\"priority\":\"{:?}\",\"required_capabilities\":[{caps}]}}",
+                task.priority,
+            );
+            let _ = store
+                .record_audit(
+                    &AuditInput::new("task.dispatch")
+                        .subject("task", task.id.0.to_string())
+                        .actor(actor)
+                        .payload_json(payload),
+                )
+                .await;
         }
         self.queue.push(task).await
     }
@@ -368,7 +393,20 @@ async fn push_dlq(
     input.source = source.to_string();
     if let Err(e) = store.push_dead_letter(&input).await {
         warn!(task_id = %task_id, "dead-letter write failed: {e}");
+        return;
     }
+    let payload = format!(
+        "{{\"total_attempts\":{},\"source\":\"{}\"}}",
+        total_attempts, source
+    );
+    let _ = store
+        .record_audit(
+            &AuditInput::new("task.dead_letter")
+                .subject("task", task_id.0.to_string())
+                .actor("pool")
+                .payload_json(payload),
+        )
+        .await;
 }
 
 pub struct PoolStats {

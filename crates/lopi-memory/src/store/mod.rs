@@ -294,6 +294,7 @@ pub struct TaskRow {
     pub completed_at: Option<String>,
 }
 
+mod audit;
 mod checkpoints;
 mod dead_letter;
 mod installations;
@@ -303,6 +304,7 @@ mod quality;
 mod result_cache;
 mod stability;
 // Re-export helpers for tests (tests.rs uses `use super::*`).
+pub use audit::{AuditInput, AuditQuery, AuditRow};
 pub use checkpoints::{CheckpointInput, CheckpointRow};
 pub use dead_letter::{DeadLetterInput, DeadLetterRow};
 pub use installations::InstallationRow;

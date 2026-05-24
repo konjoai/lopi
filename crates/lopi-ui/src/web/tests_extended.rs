@@ -331,6 +331,88 @@
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
     }
 
+    /// P2 — `GET /api/audit` returns an empty events array on a fresh
+    /// store, and a 0 next_cursor.
+    #[tokio::test]
+    async fn audit_empty_returns_empty_events_and_zero_cursor() {
+        let app = test_app().await;
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/audit")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(json["events"].as_array().map(Vec::len), Some(0));
+        assert_eq!(json["next_cursor"], 0);
+    }
+
+    /// P2 — record three rows via the store, then page through them via
+    /// the endpoint to verify the since_id cursor.
+    #[tokio::test]
+    async fn audit_paginates_via_since_id_cursor() {
+        let store = lopi_memory::MemoryStore::open_in_memory().await.unwrap();
+        let bus: EventBus<AgentEvent> = EventBus::new(16);
+        let queue = TaskQueue::new();
+        let pool = Arc::new(AgentPool::new(
+            1,
+            std::path::PathBuf::from("."),
+            queue.clone(),
+            bus.clone(),
+        ));
+        let state = AppState::new(store.clone(), bus, queue, pool, None);
+        let app = build_app(state);
+
+        for i in 0..3 {
+            store
+                .record_audit(&lopi_memory::AuditInput::new(format!("test.{i}")))
+                .await
+                .unwrap();
+        }
+        // First page — 2 rows.
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/audit?n=2")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(json["events"].as_array().unwrap().len(), 2);
+        let cursor = json["next_cursor"].as_i64().unwrap();
+        // Second page — picks up after the cursor (1 row left).
+        let resp2 = app
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/api/audit?since_id={cursor}&n=10"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let bytes2 = axum::body::to_bytes(resp2.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json2: serde_json::Value = serde_json::from_slice(&bytes2).unwrap();
+        assert_eq!(json2["events"].as_array().unwrap().len(), 1);
+        let last = &json2["events"][0];
+        assert!(last["id"].as_i64().unwrap() > cursor);
+    }
+
     /// P2 — `POST /api/tasks` with required_capabilities and an empty
     /// agent registry returns 422 with a structured error.
     #[tokio::test]
