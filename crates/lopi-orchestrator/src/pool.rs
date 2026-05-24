@@ -1,8 +1,8 @@
 use anyhow::Result;
 use dashmap::DashMap;
 use lopi_agent::AgentRunner;
-use lopi_core::{AgentEvent, EventBus, ScoreWeights, Task, TaskId, TaskStatus};
-use lopi_memory::MemoryStore;
+use lopi_core::{AgentEvent, EventBus, ScoreWeights, Task, TaskId, TaskSource, TaskStatus};
+use lopi_memory::{DeadLetterInput, MemoryStore};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -186,6 +186,12 @@ impl AgentPool {
 
             let task_id = task.id;
             let goal = task.goal.clone();
+            // Snapshot the few fields the DLQ writer needs before `task`
+            // moves into the spawned future. The goal/repo/source are
+            // cheap String + Option clones; everything else is by value.
+            let dlq_goal = task.goal.clone();
+            let dlq_repo = task.repo_path.clone();
+            let dlq_source = task_source_label(&task);
 
             let (cancel_tx, cancel_rx) = oneshot::channel::<()>();
             let attempt = Arc::new(AtomicUsize::new(0));
@@ -211,34 +217,103 @@ impl AgentPool {
             js.spawn(async move {
                 let _permit = permit;
                 let _repo_permit = repo_permit;
+                let max_retries = attempt.load(Ordering::Relaxed); // 0 here, updated in runner
                 let outcome =
-                    run_one(task, repo, bus.clone(), store.clone(), cancel_rx, attempt).await;
+                    run_one(task, repo, bus.clone(), store.clone(), cancel_rx, attempt.clone()).await;
                 handles.remove(&task_id);
                 counters.running.fetch_sub(1, Ordering::Relaxed);
-                match &outcome {
+                let _ = max_retries; // hint for future per-task cap reporting
+
+                // Was this a terminal failure (vs. a runner error or a
+                // success)? If so, capture enough state to push to the DLQ.
+                let dlq_payload: Option<(u8, String)> = match &outcome {
                     Ok(TaskStatus::Success { .. }) => {
                         counters.succeeded.fetch_add(1, Ordering::Relaxed);
+                        None
                     }
-                    Ok(TaskStatus::Failed { .. }) | Ok(TaskStatus::RolledBack) | Err(_) => {
+                    Ok(TaskStatus::Failed { reason }) => {
                         counters.failed.fetch_add(1, Ordering::Relaxed);
+                        Some((
+                            u8::try_from(attempt.load(Ordering::Relaxed)).unwrap_or(u8::MAX),
+                            reason.clone(),
+                        ))
                     }
-                    _ => {}
-                }
+                    Ok(TaskStatus::RolledBack) => {
+                        counters.failed.fetch_add(1, Ordering::Relaxed);
+                        Some((
+                            u8::try_from(attempt.load(Ordering::Relaxed)).unwrap_or(u8::MAX),
+                            "rolled back".into(),
+                        ))
+                    }
+                    Err(_) => {
+                        counters.failed.fetch_add(1, Ordering::Relaxed);
+                        None // handled by the explicit error branch below
+                    }
+                    _ => None,
+                };
+
                 if let Err(e) = &outcome {
                     error!(task_id = %task_id, "agent run error: {e}");
+                    let reason = format!("{e}");
                     bus.send(AgentEvent::TaskCompleted {
                         task_id,
                         outcome: TaskStatus::Failed {
-                            reason: format!("{e}"),
+                            reason: reason.clone(),
                         },
                         total_attempts: 1,
                     });
-                    if let Some(store) = store {
+                    if let Some(store) = &store {
                         let _ = store.mark_completed(&task_id, "failed").await;
+                        push_dlq(store, task_id, &dlq_goal, dlq_repo.as_deref(), 1, Some(reason), &dlq_source).await;
                     }
+                } else if let (Some((attempts, reason)), Some(store)) = (dlq_payload, &store) {
+                    push_dlq(
+                        store,
+                        task_id,
+                        &dlq_goal,
+                        dlq_repo.as_deref(),
+                        attempts,
+                        Some(reason),
+                        &dlq_source,
+                    )
+                    .await;
                 }
             });
         }
+    }
+}
+
+/// Stable wire label for `TaskSource` — used in audit log + DLQ `source`
+/// column so dashboards can group by origin without re-parsing.
+fn task_source_label(task: &Task) -> String {
+    match &task.source {
+        TaskSource::Cli => "cli".into(),
+        TaskSource::Api => "api".into(),
+        TaskSource::Telegram { .. } => "telegram".into(),
+        TaskSource::Webhook { .. } => "webhook".into(),
+        TaskSource::SelfModify { .. } => "self-modify".into(),
+    }
+}
+
+/// Best-effort DLQ write — logs but does not propagate failure. The
+/// agent loop is already in its terminal state; failing to record the
+/// DLQ row must not panic the worker.
+async fn push_dlq(
+    store: &MemoryStore,
+    task_id: TaskId,
+    goal: &str,
+    repo_path: Option<&std::path::Path>,
+    total_attempts: u8,
+    last_error: Option<String>,
+    source: &str,
+) {
+    let mut input = DeadLetterInput::new(task_id, goal);
+    input.repo_path = repo_path.map(|p| p.display().to_string());
+    input.total_attempts = total_attempts;
+    input.last_error = last_error;
+    input.source = source.to_string();
+    if let Err(e) = store.push_dead_letter(&input).await {
+        warn!(task_id = %task_id, "dead-letter write failed: {e}");
     }
 }
 

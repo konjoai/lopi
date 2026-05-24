@@ -292,3 +292,90 @@
         // duplicate_of is set when the task already exists
         assert!(json2["duplicate_of"].is_string());
     }
+
+    /// Dead-letter list is empty on a fresh sail server.
+    #[tokio::test]
+    async fn dlq_list_empty_returns_empty_array() {
+        let app = test_app().await;
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/tasks/dead-letter")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(json["dead_letters"].as_array().map(Vec::len), Some(0));
+    }
+
+    /// Retrying a nonexistent DLQ row returns 404 cleanly.
+    #[tokio::test]
+    async fn dlq_retry_unknown_returns_404() {
+        let app = test_app().await;
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/tasks/dead-letter/nope-not-real/retry")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    /// Push a DLQ row directly via the store, then retry through the
+    /// endpoint — the row is consumed and a new TaskId is returned.
+    #[tokio::test]
+    async fn dlq_retry_round_trip_takes_row_and_returns_new_task_id() {
+        let store = lopi_memory::MemoryStore::open_in_memory().await.unwrap();
+        let bus: EventBus<AgentEvent> = EventBus::new(16);
+        let queue = TaskQueue::new();
+        let pool = Arc::new(AgentPool::new(
+            1,
+            std::path::PathBuf::from("."),
+            queue.clone(),
+            bus.clone(),
+        ));
+        let mut state = AppState::new(store.clone(), bus, queue, pool, None);
+        state.hydrate_tools().await.ok();
+        let app = build_app(state);
+
+        // Seed a DLQ row.
+        let mut input = lopi_memory::DeadLetterInput::new(
+            lopi_core::TaskId::new(),
+            "retry-me-via-endpoint",
+        );
+        input.repo_path = Some("/tmp".into());
+        input.total_attempts = 3;
+        input.last_error = Some("3 attempts failed".into());
+        input.source = "cli".into();
+        let dlq_id = store.push_dead_letter(&input).await.unwrap();
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/tasks/dead-letter/{dlq_id}/retry"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::ACCEPTED);
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(json["retried_from"], dlq_id);
+        assert!(json["new_task_id"].is_string());
+        // The DLQ row is consumed by retry — count returns to zero.
+        assert_eq!(store.count_dead_letters().await.unwrap(), 0);
+    }

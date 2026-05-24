@@ -217,6 +217,15 @@ pub fn build_app(state: AppState) -> Router {
             "/api/constellation/:name/stats",
             get(constellation_stats_handler),
         )
+        .route("/api/tasks/dead-letter", get(dlq_handlers::list_dlq))
+        .route(
+            "/api/tasks/dead-letter/:id",
+            get(dlq_handlers::get_dlq).delete(dlq_handlers::delete_dlq),
+        )
+        .route(
+            "/api/tasks/dead-letter/:id/retry",
+            axum::routing::post(dlq_handlers::retry_dlq),
+        )
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             rate_limit_middleware,
@@ -443,6 +452,7 @@ fn file_response(file: rust_embed::EmbeddedFile, path: &str) -> Response {
 
 mod cache_handlers;
 mod constellation_handlers;
+mod dlq_handlers;
 mod handlers;
 mod tools_handlers;
 use cache_handlers::{cache_stats_handler, clear_cache_handler, invalidate_agent_cache_handler};

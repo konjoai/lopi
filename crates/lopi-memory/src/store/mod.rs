@@ -295,6 +295,7 @@ pub struct TaskRow {
 }
 
 mod checkpoints;
+mod dead_letter;
 mod installations;
 mod lessons;
 mod patterns;
@@ -303,6 +304,7 @@ mod result_cache;
 mod stability;
 // Re-export helpers for tests (tests.rs uses `use super::*`).
 pub use checkpoints::{CheckpointInput, CheckpointRow};
+pub use dead_letter::{DeadLetterInput, DeadLetterRow};
 pub use installations::InstallationRow;
 pub use lessons::LessonRow;
 pub use patterns::{jaccard_similarity, keyword_fingerprint, PatternRow};
