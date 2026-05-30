@@ -284,6 +284,12 @@ pub fn build_app(state: AppState) -> Router {
             "/api/tasks/:id/logs",
             get(task_stream_handlers::get_logs),
         )
+        .route(
+            "/api/agents/:id/rate-limit",
+            get(agent_rate_handlers::get_rate_limit)
+                .post(agent_rate_handlers::register_rate_limit)
+                .delete(agent_rate_handlers::delete_rate_limit),
+        )
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             rate_limit_middleware,
@@ -508,6 +514,7 @@ fn file_response(file: rust_embed::EmbeddedFile, path: &str) -> Response {
         .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
 }
 
+mod agent_rate_handlers;
 mod audit_handlers;
 mod cache_handlers;
 mod constellation_handlers;

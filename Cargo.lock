@@ -1966,6 +1966,7 @@ dependencies = [
  "lopi-core",
  "lopi-git",
  "lopi-memory",
+ "lopi-ratelimit",
  "serde",
  "thiserror 1.0.69",
  "tokio",

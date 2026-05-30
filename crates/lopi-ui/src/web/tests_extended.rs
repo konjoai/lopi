@@ -610,6 +610,99 @@
         assert_eq!(logs[2]["line"], "line 2");
     }
 
+    // ─── F3 — per-agent rate limiting ────────────────────────────────
+
+    /// Posting a rate limit with `max_per_minute: 0` returns 422.
+    #[tokio::test]
+    async fn agent_rate_limit_zero_per_minute_returns_422() {
+        let app = test_app().await;
+        let body = serde_json::to_string(&serde_json::json!({
+            "max_per_minute": 0,
+            "max_concurrent": 4,
+        }))
+        .unwrap();
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/agents/alpha/rate-limit")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    }
+
+    /// Register → GET → DELETE → GET round trip for a per-agent limit.
+    #[tokio::test]
+    async fn agent_rate_limit_round_trip_register_get_delete() {
+        let app = test_app().await;
+        // 1. Register.
+        let body = serde_json::to_string(&serde_json::json!({
+            "max_per_minute": 30,
+            "max_concurrent": 2,
+        }))
+        .unwrap();
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/agents/alpha/rate-limit")
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+        // 2. GET.
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/api/agents/alpha/rate-limit")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(json["max_per_minute"], 30);
+        assert_eq!(json["max_concurrent"], 2);
+        assert_eq!(json["in_flight"], 0);
+        // 3. DELETE.
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/api/agents/alpha/rate-limit")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        // 4. GET after delete → 404.
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/agents/alpha/rate-limit")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
     /// /api/agents/health/summary on a fresh server reports all zeros.
     #[tokio::test]
     async fn health_summary_empty_returns_zeros() {

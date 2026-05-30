@@ -53,6 +53,10 @@ pub struct AgentPool {
     /// `submit()` accepts the task. Key is a stable agent identifier
     /// (free-form string; the registrar names them).
     capabilities: Arc<DashMap<String, Vec<String>>>,
+    /// P2 — per-agent rate limits (token bucket + concurrency cap).
+    /// Agents not in the registry are unrestricted — registration is
+    /// opt-in. Callers gate with `try_acquire_agent` / `release_agent`.
+    agent_rate_limits: Arc<DashMap<String, crate::agent_rate_limit::AgentRateState>>,
 }
 
 impl AgentPool {
@@ -76,6 +80,7 @@ impl AgentPool {
             started_at: Arc::new(std::time::Instant::now()),
             join_set: Arc::new(Mutex::new(JoinSet::new())),
             capabilities: Arc::new(DashMap::new()),
+            agent_rate_limits: Arc::new(DashMap::new()),
         }
     }
 
@@ -154,6 +159,89 @@ impl AgentPool {
             .iter()
             .map(|e| (e.key().clone(), e.value().clone()))
             .collect()
+    }
+
+    /// P2 — register (or replace) per-agent rate limits. Returns `false`
+    /// when the supplied limit is invalid (`max_per_minute == 0`); the
+    /// REST layer translates that into 422.
+    pub fn register_agent_rate_limit(
+        &self,
+        agent_id: impl Into<String>,
+        limit: crate::AgentRateLimit,
+    ) -> bool {
+        if !limit.is_valid() {
+            return false;
+        }
+        let state = crate::agent_rate_limit::AgentRateState::new(limit);
+        self.agent_rate_limits.insert(agent_id.into(), state);
+        true
+    }
+
+    /// Remove an agent's rate-limit entry. Returns `true` when a row was
+    /// removed. Active in-flight counters held by the removed entry are
+    /// dropped — completing tasks have no slot to decrement and just
+    /// log a warning via `release_agent`.
+    pub fn deregister_agent_rate_limit(&self, agent_id: &str) -> bool {
+        self.agent_rate_limits.remove(agent_id).is_some()
+    }
+
+    /// Snapshot the registered limit for `agent_id`, or `None` if the
+    /// agent was never registered.
+    #[must_use]
+    pub fn agent_rate_limit(&self, agent_id: &str) -> Option<crate::AgentRateLimitSnapshot> {
+        let entry = self.agent_rate_limits.get(agent_id)?;
+        Some(crate::AgentRateLimitSnapshot {
+            agent_id: agent_id.to_string(),
+            max_per_minute: entry.limit.max_per_minute,
+            max_concurrent: entry.limit.max_concurrent,
+            in_flight: entry.in_flight.load(Ordering::Relaxed),
+        })
+    }
+
+    /// Try to reserve a dispatch slot for `agent_id`. Returns `true` when
+    /// both gates pass (token bucket + concurrency cap), `false` when the
+    /// agent is at its rate or concurrency limit.
+    ///
+    /// Agents that were never registered are **unlimited** and always
+    /// return `true` — registration is opt-in.
+    ///
+    /// On success the caller MUST pair with [`Self::release_agent`] when
+    /// the task completes.
+    pub async fn try_acquire_agent(&self, agent_id: &str) -> bool {
+        let Some(entry) = self.agent_rate_limits.get(agent_id) else {
+            return true;
+        };
+        // Concurrency cap is checked first because it's cheap (atomic load)
+        // and the token bucket lookup acquires an async lock.
+        if entry.limit.max_concurrent > 0
+            && entry.in_flight.load(Ordering::Relaxed) >= entry.limit.max_concurrent
+        {
+            return false;
+        }
+        if !entry.bucket.try_acquire(1.0).await {
+            return false;
+        }
+        entry.in_flight.fetch_add(1, Ordering::Relaxed);
+        true
+    }
+
+    /// Release a previously-acquired slot. Safe to call when the agent has
+    /// no registry entry (e.g. it was deregistered mid-flight) — that's a
+    /// noop. Underflow is impossible because the counter saturates at 0.
+    pub fn release_agent(&self, agent_id: &str) {
+        if let Some(entry) = self.agent_rate_limits.get(agent_id) {
+            // Saturating decrement — if a runaway release call lands after
+            // the slot was already returned, we just stay at 0.
+            let _ = entry
+                .in_flight
+                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |v| {
+                    if v == 0 {
+                        None
+                    } else {
+                        Some(v - 1)
+                    }
+                });
+        }
     }
 
     /// True when at least one registered agent advertises every capability
@@ -673,5 +761,79 @@ mod tests {
         assert!(!pool.can_satisfy(&task));
         // Second deregister is a no-op.
         assert!(!pool.deregister_capabilities("alpha"));
+    }
+
+    // ─── P2 — per-agent rate limiting ────────────────────────────────
+
+    #[tokio::test]
+    async fn unregistered_agent_is_unlimited() {
+        let pool = make_pool(2);
+        // Without registration the gate is wide open — every acquire
+        // returns true and there's no in-flight to release.
+        for _ in 0..100 {
+            assert!(pool.try_acquire_agent("ghost").await);
+        }
+        // release_agent on an unregistered id is a clean noop.
+        pool.release_agent("ghost");
+    }
+
+    #[tokio::test]
+    async fn register_rejects_zero_per_minute() {
+        let pool = make_pool(2);
+        let ok = pool.register_agent_rate_limit(
+            "bad",
+            crate::AgentRateLimit { max_per_minute: 0, max_concurrent: 4 },
+        );
+        assert!(!ok, "0/min should be rejected");
+        // No entry was written.
+        assert!(pool.agent_rate_limit("bad").is_none());
+    }
+
+    #[tokio::test]
+    async fn token_bucket_caps_burst_at_max_per_minute() {
+        let pool = make_pool(2);
+        assert!(pool.register_agent_rate_limit(
+            "alpha",
+            crate::AgentRateLimit { max_per_minute: 3, max_concurrent: 0 },
+        ));
+        // First 3 acquires succeed; the 4th is rate-limited.
+        for _ in 0..3 {
+            assert!(pool.try_acquire_agent("alpha").await);
+        }
+        assert!(!pool.try_acquire_agent("alpha").await);
+        let snap = pool.agent_rate_limit("alpha").unwrap();
+        assert_eq!(snap.in_flight, 3);
+    }
+
+    #[tokio::test]
+    async fn concurrency_cap_short_circuits_before_bucket() {
+        let pool = make_pool(2);
+        assert!(pool.register_agent_rate_limit(
+            "alpha",
+            crate::AgentRateLimit { max_per_minute: 1_000, max_concurrent: 2 },
+        ));
+        // Two acquires use 2 of 1000 tokens but saturate the concurrency cap.
+        assert!(pool.try_acquire_agent("alpha").await);
+        assert!(pool.try_acquire_agent("alpha").await);
+        assert!(!pool.try_acquire_agent("alpha").await,
+            "concurrency cap should block even with tokens to spare");
+        // Release frees a slot.
+        pool.release_agent("alpha");
+        assert!(pool.try_acquire_agent("alpha").await);
+    }
+
+    #[tokio::test]
+    async fn release_saturates_at_zero() {
+        let pool = make_pool(2);
+        assert!(pool.register_agent_rate_limit(
+            "alpha",
+            crate::AgentRateLimit { max_per_minute: 10, max_concurrent: 2 },
+        ));
+        // Three releases against zero in-flight must not underflow.
+        pool.release_agent("alpha");
+        pool.release_agent("alpha");
+        pool.release_agent("alpha");
+        let snap = pool.agent_rate_limit("alpha").unwrap();
+        assert_eq!(snap.in_flight, 0);
     }
 }

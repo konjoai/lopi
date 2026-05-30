@@ -292,6 +292,24 @@ collaboration patterns.
   `MemoryStore::record_audit` / `query_audit` with cursor pagination.
   Pool hooks fire `task.dispatch` + `task.dead_letter` events. REST:
   `GET /api/audit?since_id=&action=&subject_type=&subject_id=&n=`. 8 tests.
+- **✅ Agent health monitoring + heartbeat** *(shipped)* — in-memory
+  `HealthRegistry` on lopi-orchestrator with background sweeper
+  (`Healthy / Degraded / Dead` at 2× / 5× heartbeat interval). Tracks
+  rolling 1-hour error rate, 64-sample latency window, consecutive
+  failures. REST: `POST /api/agents/:id/heartbeat`,
+  `GET /api/agents/:id/health`, `GET /api/agents/health/summary`.
+  10 tests.
+- **✅ Per-task SSE stream + log ring buffer** *(shipped)* — every
+  `AgentEvent::LogLine` mirrored to `task_logs` SQLite table
+  (capped at 1000 rows/task via amortised prune). REST:
+  `GET /api/tasks/:id/stream` (typed-bus filter + inline serialize),
+  `GET /api/tasks/:id/logs?n=N` (oldest-first historical read, clamped
+  to 5000). 8 tests.
+- **✅ Per-agent rate limiting** *(shipped)* — token-bucket
+  (`max_per_minute`) + atomic in-flight counter (`max_concurrent`)
+  per registered agent. Lock-free read path. REST:
+  `POST/GET/DELETE /api/agents/:id/rate-limit`. Opt-in: unregistered
+  agents are unrestricted. 8 tests.
 - **MCP + A2A protocol support** — `McpClient` (JSON-RPC 2.0 over
   stdio + SSE transports) for tool-server discovery, and `A2AClient`
   with the published agent card so external clients can drive lopi
