@@ -297,6 +297,7 @@ pub struct TaskRow {
 mod audit;
 mod checkpoints;
 mod dead_letter;
+mod task_logs;
 mod installations;
 mod lessons;
 mod patterns;
@@ -307,6 +308,7 @@ mod stability;
 pub use audit::{AuditInput, AuditQuery, AuditRow};
 pub use checkpoints::{CheckpointInput, CheckpointRow};
 pub use dead_letter::{DeadLetterInput, DeadLetterRow};
+pub use task_logs::{TaskLogRow, MAX_PER_TASK as TASK_LOG_MAX_PER_TASK};
 pub use installations::InstallationRow;
 pub use lessons::LessonRow;
 pub use patterns::{jaccard_similarity, keyword_fingerprint, PatternRow};

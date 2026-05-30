@@ -208,3 +208,17 @@ CREATE TABLE IF NOT EXISTS audit_log (
 CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_log(ts DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_log(action, ts DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_subject ON audit_log(subject_type, subject_id, ts DESC);
+
+-- P2 — Per-task log ring buffer. Every `AgentEvent::LogLine` is mirrored
+-- here so the SSE stream has a historical tail and the web UI can
+-- show progress retroactively. Capped to the most recent 1000 rows
+-- per task_id via `prune_task_logs`. The `id` column is the autoincrement
+-- cursor for paginated reads.
+CREATE TABLE IF NOT EXISTS task_logs (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id   TEXT NOT NULL,
+    ts        TEXT NOT NULL,
+    level     TEXT NOT NULL,
+    line      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_task_logs_task_id ON task_logs(task_id, id);

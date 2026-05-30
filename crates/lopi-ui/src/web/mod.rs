@@ -119,16 +119,44 @@ impl AppState {
         let (serialized_tx, _) = broadcast::channel::<Arc<str>>(512);
         let serialized_tx = Arc::new(serialized_tx);
 
-        // Bridge: subscribe to raw AgentEvent bus, serialize once, re-broadcast as Arc<str>.
+        // Bridge: subscribe to raw AgentEvent bus, serialize once,
+        // re-broadcast as Arc<str>. Side-effect: mirror every
+        // `AgentEvent::LogLine` to the `task_logs` SQLite table so the
+        // per-task SSE endpoint has a historical tail and the web UI
+        // can render progress retroactively.
         {
             let mut rx = bus.subscribe();
             let tx = serialized_tx.clone();
+            let log_store = store.clone();
             tokio::spawn(async move {
+                let mut log_counter: u64 = 0;
                 loop {
                     match rx.recv().await {
                         Ok(ev) => {
                             if let Ok(json) = serde_json::to_string(&ev) {
                                 let _ = tx.send(Arc::from(json.as_str()));
+                            }
+                            if let lopi_core::AgentEvent::LogLine { task_id, line, level, ts } = &ev {
+                                let tid = task_id.0.to_string();
+                                let lvl = match level {
+                                    lopi_core::LogLevel::Info  => "info",
+                                    lopi_core::LogLevel::Warn  => "warn",
+                                    lopi_core::LogLevel::Error => "error",
+                                    lopi_core::LogLevel::Debug => "debug",
+                                };
+                                if let Err(e) = log_store
+                                    .record_task_log(&tid, *ts, lvl, line)
+                                    .await
+                                {
+                                    tracing::warn!("task_log persist failed: {e}");
+                                }
+                                // Amortise pruning: run every 64 inserts.
+                                log_counter = log_counter.wrapping_add(1);
+                                if log_counter.is_multiple_of(64) {
+                                    if let Err(e) = log_store.prune_task_logs(&tid).await {
+                                        tracing::warn!("task_log prune failed: {e}");
+                                    }
+                                }
                             }
                         }
                         Err(broadcast::error::RecvError::Lagged(n)) => {
@@ -247,6 +275,14 @@ pub fn build_app(state: AppState) -> Router {
         .route(
             "/api/agents/health/summary",
             get(health_handlers::health_summary),
+        )
+        .route(
+            "/api/tasks/:id/stream",
+            get(task_stream_handlers::stream_task),
+        )
+        .route(
+            "/api/tasks/:id/logs",
+            get(task_stream_handlers::get_logs),
         )
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
@@ -478,6 +514,7 @@ mod constellation_handlers;
 mod dlq_handlers;
 mod handlers;
 mod health_handlers;
+mod task_stream_handlers;
 mod tools_handlers;
 use cache_handlers::{cache_stats_handler, clear_cache_handler, invalidate_agent_cache_handler};
 use constellation_handlers::{

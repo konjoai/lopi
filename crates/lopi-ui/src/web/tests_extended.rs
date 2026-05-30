@@ -539,6 +539,77 @@
         assert_eq!(json["consecutive_failures"], 0);
     }
 
+    // ─── F2 — per-task SSE stream + log ring buffer ──────────────────
+
+    /// `GET /api/tasks/:id/logs` on an unknown task returns 200 with an
+    /// empty array — not 404 — since "no logs" is a valid state.
+    #[tokio::test]
+    async fn task_logs_unknown_returns_empty_array() {
+        let app = test_app().await;
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/tasks/never-logged/logs")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(json["task_id"], "never-logged");
+        assert_eq!(json["logs"].as_array().unwrap().len(), 0);
+    }
+
+    /// Seed a couple of log rows via the store, then read them back via
+    /// the endpoint to verify the wire shape.
+    #[tokio::test]
+    async fn task_logs_returns_seeded_rows_oldest_first() {
+        let store = lopi_memory::MemoryStore::open_in_memory().await.unwrap();
+        let bus: EventBus<AgentEvent> = EventBus::new(16);
+        let queue = TaskQueue::new();
+        let pool = Arc::new(AgentPool::new(
+            1,
+            std::path::PathBuf::from("."),
+            queue.clone(),
+            bus.clone(),
+        ));
+        let state = AppState::new(store.clone(), bus, queue, pool, None);
+        let app = build_app(state);
+
+        let tid = "task-with-logs";
+        let now = chrono::Utc::now();
+        for (i, level) in ["info", "warn", "info"].iter().enumerate() {
+            store
+                .record_task_log(tid, now, level, &format!("line {i}"))
+                .await
+                .unwrap();
+        }
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/api/tasks/{tid}/logs?n=10"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let logs = json["logs"].as_array().unwrap();
+        assert_eq!(logs.len(), 3);
+        assert_eq!(logs[0]["line"], "line 0");
+        assert_eq!(logs[1]["level"], "warn");
+        assert_eq!(logs[2]["line"], "line 2");
+    }
+
     /// /api/agents/health/summary on a fresh server reports all zeros.
     #[tokio::test]
     async fn health_summary_empty_returns_zeros() {

@@ -3,5 +3,6 @@ pub mod store;
 pub use store::{
     compute_cache_key, AuditInput, AuditQuery, AuditRow, CacheStats, CachedResult, CheckpointInput,
     CheckpointRow, DeadLetterInput, DeadLetterRow, InstallationRow, LessonRow, MemoryStore,
-    PatternRow, QualityRunRecord, QualityRunRow, StabilityEntry, StabilityRecord, TaskRow,
+    PatternRow, QualityRunRecord, QualityRunRow, StabilityEntry, StabilityRecord, TaskLogRow,
+    TaskRow, TASK_LOG_MAX_PER_TASK,
 };
