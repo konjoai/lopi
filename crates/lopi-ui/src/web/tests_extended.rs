@@ -493,3 +493,72 @@
         // The DLQ row is consumed by retry — count returns to zero.
         assert_eq!(store.count_dead_letters().await.unwrap(), 0);
     }
+
+    // ─── F1 — agent health monitoring + heartbeat ────────────────────
+
+    /// Hitting /api/agents/:id/health for an agent that never sent a
+    /// heartbeat returns 404 with a structured error.
+    #[tokio::test]
+    async fn health_unknown_agent_returns_404() {
+        let app = test_app().await;
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/agents/ghost/health")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    /// POST /api/agents/:id/heartbeat creates the entry and returns the
+    /// snapshot marked Healthy.
+    #[tokio::test]
+    async fn health_heartbeat_marks_healthy_and_returns_snapshot() {
+        let app = test_app().await;
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/agents/alpha/heartbeat")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(json["status"], "healthy");
+        assert_eq!(json["agent_id"], "alpha");
+        assert!(json["last_seen"].is_string());
+        assert_eq!(json["consecutive_failures"], 0);
+    }
+
+    /// /api/agents/health/summary on a fresh server reports all zeros.
+    #[tokio::test]
+    async fn health_summary_empty_returns_zeros() {
+        let app = test_app().await;
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/agents/health/summary")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(json["total"], 0);
+        assert_eq!(json["healthy"], 0);
+        assert_eq!(json["degraded"], 0);
+        assert_eq!(json["dead"], 0);
+    }

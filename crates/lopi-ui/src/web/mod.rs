@@ -74,6 +74,9 @@ pub struct AppState {
     pub tools: lopi_tools::ToolRegistry,
     /// P2 — Constellation router. Cheap to `clone()` — wraps an `Arc<RwLock>`.
     pub constellations: lopi_orchestrator::ConstellationRouter,
+    /// P2 — Agent health registry (heartbeats + classification). The
+    /// background sweeper is `spawn_sweeper`'d from `serve`/`serve_with_repo`.
+    pub health: lopi_orchestrator::HealthRegistry,
     /// Pre-serialized broadcast: each `AgentEvent` serialized once, shared across all WS/SSE subscribers.
     serialized_tx: Arc<broadcast::Sender<Arc<str>>>,
     patterns_cache: Arc<Mutex<TtlCache>>,
@@ -145,6 +148,11 @@ impl AppState {
         // every `lopi sail` start (intentional — they describe topology,
         // not durable agent state).
         let constellations = lopi_orchestrator::ConstellationRouter::new();
+        // Health registry — same lifecycle: heartbeats are ephemeral and
+        // re-derived from incoming agent traffic.
+        let health = lopi_orchestrator::HealthRegistry::new(
+            lopi_orchestrator::HealthConfig::default(),
+        );
 
         Self {
             store,
@@ -154,6 +162,7 @@ impl AppState {
             repo_path,
             tools,
             constellations,
+            health,
             serialized_tx,
             patterns_cache: Arc::new(Mutex::new(TtlCache::new(Duration::from_secs(30)))),
             auth_token: auth_token.map(|t| Arc::from(t.as_str())),
@@ -227,6 +236,18 @@ pub fn build_app(state: AppState) -> Router {
             axum::routing::post(dlq_handlers::retry_dlq),
         )
         .route("/api/audit", get(audit_handlers::query_audit))
+        .route(
+            "/api/agents/:id/heartbeat",
+            axum::routing::post(health_handlers::heartbeat),
+        )
+        .route(
+            "/api/agents/:id/health",
+            get(health_handlers::get_health),
+        )
+        .route(
+            "/api/agents/health/summary",
+            get(health_handlers::health_summary),
+        )
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             rate_limit_middleware,
@@ -456,6 +477,7 @@ mod cache_handlers;
 mod constellation_handlers;
 mod dlq_handlers;
 mod handlers;
+mod health_handlers;
 mod tools_handlers;
 use cache_handlers::{cache_stats_handler, clear_cache_handler, invalidate_agent_cache_handler};
 use constellation_handlers::{
