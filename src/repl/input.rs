@@ -177,9 +177,9 @@ impl InputWidget {
     /// Render the input line into `area`. `prefix` is displayed before the cursor line.
     pub fn render(&self, f: &mut Frame, area: Rect, prefix: &str, active: bool) {
         let cursor_color = if active {
-            Color::Rgb(124, 58, 237)
+            Color::Rgb(6, 214, 255) // KONJO_CYAN — ocean blue cursor
         } else {
-            Color::DarkGray
+            Color::Rgb(80, 80, 100)
         };
 
         let before: String = self.buf[..self.cursor].iter().collect();
