@@ -10,16 +10,16 @@ use ratatui::{
 use super::{LineStyle, ReplMode, ReplState};
 use crate::repl::slash::SLASH_COMMANDS;
 
-/// Brand purple — borders, structural frames.
-const KONJO_PURPLE: Color = Color::Rgb(124, 58, 237);
-/// Ocean cyan — logo top, active cursor, interactive accents.
-const KONJO_CYAN: Color = Color::Rgb(6, 214, 255);
-/// Sea-glass teal — logo base, secondary accents.
-const KONJO_TEAL: Color = Color::Rgb(20, 184, 166);
-/// Sunrise gold — header title, key label highlights.
-const KONJO_GOLD: Color = Color::Rgb(255, 195, 0);
-/// Dim text — hints, separators, footer.  Brighter than before so it reads.
-const KONJO_DIM: Color = Color::Rgb(100, 100, 130);
+/// Brand magenta — borders, frames (ANSI, works on all terminals).
+const KONJO_PURPLE: Color = Color::Magenta;
+/// Bright cyan — logo top rows, active cursor, ⛵ header accent.
+const KONJO_CYAN: Color = Color::LightCyan;
+/// Cyan — logo middle rows, model label.
+const KONJO_TEAL: Color = Color::Cyan;
+/// Yellow — header title, repo name, key highlights.
+const KONJO_GOLD: Color = Color::Yellow;
+/// Dim — separators, footer, cost label.
+const KONJO_DIM: Color = Color::DarkGray;
 
 /// Top-level draw entry point — builds the layout then delegates.
 pub fn draw_repl(f: &mut Frame, state: &mut ReplState) {
@@ -140,10 +140,10 @@ fn draw_output(f: &mut Frame, area: Rect, state: &ReplState) {
                 LineStyle::SplashMid => Style::default()
                     .fg(KONJO_PURPLE)
                     .add_modifier(Modifier::BOLD),
-                LineStyle::SplashBot => {
-                    Style::default().fg(KONJO_TEAL).add_modifier(Modifier::BOLD)
-                }
-                LineStyle::Hint => Style::default().fg(Color::Rgb(160, 160, 200)),
+                LineStyle::SplashBot => Style::default()
+                    .fg(Color::LightBlue)
+                    .add_modifier(Modifier::BOLD),
+                LineStyle::Hint => Style::default().fg(Color::White),
             };
             ListItem::new(Line::from(Span::styled(ol.text.clone(), style)))
         })
