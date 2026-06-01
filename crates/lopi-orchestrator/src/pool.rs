@@ -429,8 +429,15 @@ impl AgentPool {
                 let _permit = permit;
                 let _repo_permit = repo_permit;
                 let max_retries = attempt.load(Ordering::Relaxed); // 0 here, updated in runner
-                let outcome =
-                    run_one(task, repo, bus.clone(), store.clone(), cancel_rx, attempt.clone()).await;
+                let outcome = run_one(
+                    task,
+                    repo,
+                    bus.clone(),
+                    store.clone(),
+                    cancel_rx,
+                    attempt.clone(),
+                )
+                .await;
                 handles.remove(&task_id);
                 counters.running.fetch_sub(1, Ordering::Relaxed);
                 let _ = max_retries; // hint for future per-task cap reporting
@@ -475,7 +482,16 @@ impl AgentPool {
                     });
                     if let Some(store) = &store {
                         let _ = store.mark_completed(&task_id, "failed").await;
-                        push_dlq(store, task_id, &dlq_goal, dlq_repo.as_deref(), 1, Some(reason), &dlq_source).await;
+                        push_dlq(
+                            store,
+                            task_id,
+                            &dlq_goal,
+                            dlq_repo.as_deref(),
+                            1,
+                            Some(reason),
+                            &dlq_source,
+                        )
+                        .await;
                     }
                 } else if let (Some((attempts, reason)), Some(store)) = (dlq_payload, &store) {
                     push_dlq(
@@ -842,7 +858,10 @@ mod tests {
         let pool = make_pool(2);
         let ok = pool.register_agent_rate_limit(
             "bad",
-            crate::AgentRateLimit { max_per_minute: 0, max_concurrent: 4 },
+            crate::AgentRateLimit {
+                max_per_minute: 0,
+                max_concurrent: 4,
+            },
         );
         assert!(!ok, "0/min should be rejected");
         // No entry was written.
@@ -854,7 +873,10 @@ mod tests {
         let pool = make_pool(2);
         assert!(pool.register_agent_rate_limit(
             "alpha",
-            crate::AgentRateLimit { max_per_minute: 3, max_concurrent: 0 },
+            crate::AgentRateLimit {
+                max_per_minute: 3,
+                max_concurrent: 0
+            },
         ));
         // First 3 acquires succeed; the 4th is rate-limited.
         for _ in 0..3 {
@@ -870,13 +892,18 @@ mod tests {
         let pool = make_pool(2);
         assert!(pool.register_agent_rate_limit(
             "alpha",
-            crate::AgentRateLimit { max_per_minute: 1_000, max_concurrent: 2 },
+            crate::AgentRateLimit {
+                max_per_minute: 1_000,
+                max_concurrent: 2
+            },
         ));
         // Two acquires use 2 of 1000 tokens but saturate the concurrency cap.
         assert!(pool.try_acquire_agent("alpha").await);
         assert!(pool.try_acquire_agent("alpha").await);
-        assert!(!pool.try_acquire_agent("alpha").await,
-            "concurrency cap should block even with tokens to spare");
+        assert!(
+            !pool.try_acquire_agent("alpha").await,
+            "concurrency cap should block even with tokens to spare"
+        );
         // Release frees a slot.
         pool.release_agent("alpha");
         assert!(pool.try_acquire_agent("alpha").await);
@@ -887,7 +914,10 @@ mod tests {
         let pool = make_pool(2);
         assert!(pool.register_agent_rate_limit(
             "alpha",
-            crate::AgentRateLimit { max_per_minute: 10, max_concurrent: 2 },
+            crate::AgentRateLimit {
+                max_per_minute: 10,
+                max_concurrent: 2
+            },
         ));
         // Three releases against zero in-flight must not underflow.
         pool.release_agent("alpha");

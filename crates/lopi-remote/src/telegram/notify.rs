@@ -12,11 +12,7 @@ use crate::telegram::format::short_id;
 /// Maintains a local `goal_cache` seeded from `TaskQueued` events so that
 /// completion messages can include the task goal even though `TaskCompleted`
 /// does not carry it.
-pub async fn notify_loop(
-    bot: Bot,
-    mut rx: broadcast::Receiver<AgentEvent>,
-    chat_id: Option<i64>,
-) {
+pub async fn notify_loop(bot: Bot, mut rx: broadcast::Receiver<AgentEvent>, chat_id: Option<i64>) {
     let Some(cid) = chat_id else { return };
     let tg_chat = ChatId(cid);
     let mut goal_cache: HashMap<String, String> = HashMap::new();
@@ -43,7 +39,11 @@ async fn handle_event(
             goal_cache.insert(task_id.to_string(), goal.clone());
         }
 
-        AgentEvent::TaskStarted { task_id, attempt, branch } => {
+        AgentEvent::TaskStarted {
+            task_id,
+            attempt,
+            branch,
+        } => {
             if *attempt == 1 {
                 let id_str = task_id.to_string();
                 let goal = goal_cache.get(&id_str).map_or("(unknown)", String::as_str);
@@ -52,7 +52,11 @@ async fn handle_event(
             }
         }
 
-        AgentEvent::StatusChanged { task_id, status, attempt } => {
+        AgentEvent::StatusChanged {
+            task_id,
+            status,
+            attempt,
+        } => {
             let id_str = task_id.to_string();
             let goal = goal_cache.get(&id_str).map_or("(unknown)", String::as_str);
             match status {

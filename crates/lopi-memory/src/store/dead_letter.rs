@@ -236,7 +236,10 @@ mod tests {
         assert_eq!(row.total_attempts, 3);
         assert_eq!(row.source, "cli");
         assert_eq!(row.repo_path.as_deref(), Some("/tmp/repo"));
-        assert_eq!(row.last_error.as_deref(), Some("tests failed after 3 attempts"));
+        assert_eq!(
+            row.last_error.as_deref(),
+            Some("tests failed after 3 attempts")
+        );
     }
 
     #[tokio::test]
@@ -256,7 +259,10 @@ mod tests {
     async fn list_respects_limit() {
         let store = MemoryStore::open_in_memory().await.unwrap();
         for i in 0..5 {
-            store.push_dead_letter(&input(&format!("g{i}"))).await.unwrap();
+            store
+                .push_dead_letter(&input(&format!("g{i}")))
+                .await
+                .unwrap();
         }
         let rows = store.list_dead_letters(2).await.unwrap();
         assert_eq!(rows.len(), 2);

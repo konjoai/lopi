@@ -72,8 +72,16 @@ mod tests {
 
     #[test]
     fn rate_limit_validates_max_per_minute() {
-        assert!(AgentRateLimit { max_per_minute: 60, max_concurrent: 4 }.is_valid());
-        assert!(!AgentRateLimit { max_per_minute: 0, max_concurrent: 4 }.is_valid());
+        assert!(AgentRateLimit {
+            max_per_minute: 60,
+            max_concurrent: 4
+        }
+        .is_valid());
+        assert!(!AgentRateLimit {
+            max_per_minute: 0,
+            max_concurrent: 4
+        }
+        .is_valid());
     }
 
     #[tokio::test]

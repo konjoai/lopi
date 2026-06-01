@@ -88,7 +88,15 @@ pub async fn run(
     if let Ok(token) = std::env::var("TELOXIDE_TOKEN") {
         let pool_for_tg = (*pool).clone();
         let schedules_for_tg = schedules.clone();
-        spawn_telegram(token, queue.clone(), store.clone(), pool_for_tg, bus.clone(), schedules_for_tg, cfg);
+        spawn_telegram(
+            token,
+            queue.clone(),
+            store.clone(),
+            pool_for_tg,
+            bus.clone(),
+            schedules_for_tg,
+            cfg,
+        );
     }
 
     let auth_token = cfg.and_then(|c| c.web.auth_token.clone());

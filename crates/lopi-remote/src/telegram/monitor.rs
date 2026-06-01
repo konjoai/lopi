@@ -7,8 +7,10 @@ use teloxide::prelude::*;
 use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup};
 use tracing::warn;
 
-use crate::telegram::format::{format_uptime, priority_badge, relative_time, short_id, status_emoji};
 use super::handlers::arg_n;
+use crate::telegram::format::{
+    format_uptime, priority_badge, relative_time, short_id, status_emoji,
+};
 
 /// Send a fleet overview: running agents, queued tasks, stats, and daily cost.
 pub async fn handle_fleet(
@@ -54,13 +56,17 @@ pub async fn handle_fleet(
         "\n📊 TOTALS\n  ✅ succeeded: {}    ❌ failed: {}    ⏱ uptime: {uptime}",
         stats.succeeded, stats.failed
     ));
-    lines.push(format!("\n💰 TODAY\n  tokens: {tokens}    cost: ${cost:.2}"));
+    lines.push(format!(
+        "\n💰 TODAY\n  tokens: {tokens}    cost: ${cost:.2}"
+    ));
 
     let kb = InlineKeyboardMarkup::new([[
         InlineKeyboardButton::callback("🔄 Refresh", "fleet_refresh"),
         InlineKeyboardButton::callback("🚢 Dock", "fleet_dock"),
     ]]);
-    bot.send_message(msg.chat.id, lines.join("\n")).reply_markup(kb).await?;
+    bot.send_message(msg.chat.id, lines.join("\n"))
+        .reply_markup(kb)
+        .await?;
     Ok(())
 }
 
@@ -69,7 +75,8 @@ pub async fn handle_dock(bot: &Bot, msg: &Message, store: &MemoryStore, arg: &st
     let n = arg_n(arg, 8).min(20) as i64;
     match store.load_history(n).await {
         Ok(rows) if rows.is_empty() => {
-            bot.send_message(msg.chat.id, "🚢 no tasks recorded yet.").await?;
+            bot.send_message(msg.chat.id, "🚢 no tasks recorded yet.")
+                .await?;
         }
         Ok(rows) => {
             let mut lines = vec![format!("🚢 recent tasks ({})\n", rows.len())];
@@ -88,7 +95,8 @@ pub async fn handle_dock(bot: &Bot, msg: &Message, store: &MemoryStore, arg: &st
         }
         Err(e) => {
             warn!("dock load_history error: {e}");
-            bot.send_message(msg.chat.id, format!("❌ failed to load history: {e}")).await?;
+            bot.send_message(msg.chat.id, format!("❌ failed to load history: {e}"))
+                .await?;
         }
     }
     Ok(())
@@ -98,14 +106,16 @@ pub async fn handle_dock(bot: &Bot, msg: &Message, store: &MemoryStore, arg: &st
 pub async fn handle_tail(bot: &Bot, msg: &Message, arg: &str, store: &MemoryStore) -> Result<()> {
     let (id_prefix, n) = parse_tail_arg(arg);
     if id_prefix.is_empty() {
-        bot.send_message(msg.chat.id, "Usage: /tail <id-prefix> [N]").await?;
+        bot.send_message(msg.chat.id, "Usage: /tail <id-prefix> [N]")
+            .await?;
         return Ok(());
     }
     let rows = match store.load_history(200).await {
         Ok(r) => r,
         Err(e) => {
             warn!("tail load_history error: {e}");
-            bot.send_message(msg.chat.id, format!("❌ error: {e}")).await?;
+            bot.send_message(msg.chat.id, format!("❌ error: {e}"))
+                .await?;
             return Ok(());
         }
     };
@@ -128,16 +138,24 @@ pub async fn handle_tail(bot: &Bot, msg: &Message, arg: &str, store: &MemoryStor
         Ok(logs) => {
             let id_short = short_id(&row.id);
             let goal_preview = &row.goal[..row.goal.len().min(30)];
-            let mut lines =
-                vec![format!("📜 last {} lines — {goal_preview} ({id_short})\n", logs.len())];
+            let mut lines = vec![format!(
+                "📜 last {} lines — {goal_preview} ({id_short})\n",
+                logs.len()
+            )];
             for log in &logs {
-                lines.push(format!("[{}] {}  {}", &log.ts[..19.min(log.ts.len())], log.level.to_uppercase(), log.line));
+                lines.push(format!(
+                    "[{}] {}  {}",
+                    &log.ts[..19.min(log.ts.len())],
+                    log.level.to_uppercase(),
+                    log.line
+                ));
             }
             bot.send_message(msg.chat.id, lines.join("\n")).await?;
         }
         Err(e) => {
             warn!("tail load_task_logs error: {e}");
-            bot.send_message(msg.chat.id, format!("❌ error loading logs: {e}")).await?;
+            bot.send_message(msg.chat.id, format!("❌ error loading logs: {e}"))
+                .await?;
         }
     }
     Ok(())
@@ -155,21 +173,19 @@ pub async fn handle_cost(bot: &Bot, msg: &Message, store: &MemoryStore) -> Resul
 }
 
 /// List all configured cron schedules with their next-run times.
-pub async fn handle_schedules(
-    bot: &Bot,
-    msg: &Message,
-    schedules: &[ScheduleEntry],
-) -> Result<()> {
+pub async fn handle_schedules(bot: &Bot, msg: &Message, schedules: &[ScheduleEntry]) -> Result<()> {
     if schedules.is_empty() {
-        bot.send_message(msg.chat.id, "🗓 no schedules configured.").await?;
+        bot.send_message(msg.chat.id, "🗓 no schedules configured.")
+            .await?;
         return Ok(());
     }
     let mut lines = vec![format!("🗓 schedules ({})\n", schedules.len())];
     for s in schedules {
         let next = lopi_orchestrator::next_run_times(&s.cron, 1);
-        let next_str = next
-            .first()
-            .map_or_else(|| "unknown".to_string(), |t| format!("{}", t.format("%a %H:%M UTC")));
+        let next_str = next.first().map_or_else(
+            || "unknown".to_string(),
+            |t| format!("{}", t.format("%a %H:%M UTC")),
+        );
         let goal_preview = &s.goal[..s.goal.len().min(50)];
         lines.push(format!(
             "📅 {}\n   goal: {goal_preview}\n   cron: {}\n   next: {next_str}\n   priority: {}\n",
@@ -192,12 +208,16 @@ pub async fn handle_run_schedule(
 ) -> Result<()> {
     let name = name.trim();
     if name.is_empty() {
-        bot.send_message(msg.chat.id, "Usage: /run <schedule-name>").await?;
+        bot.send_message(msg.chat.id, "Usage: /run <schedule-name>")
+            .await?;
         return Ok(());
     }
     if let Some(entry) = schedules.iter().find(|s| s.name == name) {
         let mut t = Task::new(entry.goal.clone());
-        t.source = TaskSource::Telegram { chat_id: msg.chat.id.0, message_id: msg.id.0 };
+        t.source = TaskSource::Telegram {
+            chat_id: msg.chat.id.0,
+            message_id: msg.id.0,
+        };
         t.priority = match entry.priority.as_str() {
             "low" => Priority::Low,
             "high" => Priority::High,
@@ -229,7 +249,11 @@ pub async fn handle_run_schedule(
 pub fn parse_tail_arg(arg: &str) -> (&str, usize) {
     let parts: Vec<&str> = arg.trim().splitn(2, ' ').collect();
     let id_prefix = parts.first().copied().unwrap_or("");
-    let n = parts.get(1).and_then(|s| s.parse().ok()).unwrap_or(10_usize).min(30);
+    let n = parts
+        .get(1)
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(10_usize)
+        .min(30);
     (id_prefix, n)
 }
 

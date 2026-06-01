@@ -7,11 +7,7 @@ use lopi_memory::MemoryStore;
 use lopi_orchestrator::{AgentPool, TaskQueue};
 use std::collections::HashMap;
 use std::sync::Arc;
-use teloxide::{
-    dispatching::UpdateHandler,
-    prelude::*,
-    utils::command::BotCommands,
-};
+use teloxide::{dispatching::UpdateHandler, prelude::*, utils::command::BotCommands};
 use tokio::sync::Mutex;
 
 pub mod callbacks;

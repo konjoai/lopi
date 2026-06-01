@@ -287,7 +287,8 @@ impl HealthRegistry {
         let now = self.now_ms();
         let interval_ms =
             u64::try_from(self.config.heartbeat_interval.as_millis()).unwrap_or(u64::MAX);
-        let degraded_threshold_ms = interval_ms.saturating_mul(u64::from(self.config.degraded_after));
+        let degraded_threshold_ms =
+            interval_ms.saturating_mul(u64::from(self.config.degraded_after));
         let dead_threshold_ms = interval_ms.saturating_mul(u64::from(self.config.dead_after));
         for entry in self.inner.iter() {
             let last = entry.value().last_seen.load(Ordering::Relaxed);
@@ -403,11 +404,17 @@ mod tests {
         r.heartbeat("alpha").await;
         // Just after heartbeat → still Healthy.
         r.sweep_once();
-        assert_eq!(r.snapshot("alpha").await.unwrap().status, AgentHealth::Healthy);
+        assert_eq!(
+            r.snapshot("alpha").await.unwrap().status,
+            AgentHealth::Healthy
+        );
         // After 2× interval (>= 100ms) → Degraded.
         tokio::time::sleep(Duration::from_millis(110)).await;
         r.sweep_once();
-        assert_eq!(r.snapshot("alpha").await.unwrap().status, AgentHealth::Degraded);
+        assert_eq!(
+            r.snapshot("alpha").await.unwrap().status,
+            AgentHealth::Degraded
+        );
         // After 5× interval (>= 250ms total) → Dead.
         tokio::time::sleep(Duration::from_millis(160)).await;
         r.sweep_once();

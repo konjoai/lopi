@@ -12,8 +12,8 @@ use teloxide::{
 use tokio::sync::Mutex;
 use tracing::warn;
 
-use crate::telegram::format::{priority_badge, short_id};
 use super::{monitor, LopiCmd};
+use crate::telegram::format::{priority_badge, short_id};
 
 /// Shared draft state: maps chat_id → accumulated lines.
 pub type DraftMap = Arc<Mutex<HashMap<i64, Vec<String>>>>;
@@ -32,7 +32,10 @@ pub async fn message_handler(
     drafts: DraftMap,
 ) -> Result<()> {
     if !allowed.is_empty() && !allowed.contains(&msg.chat.id.0) {
-        warn!("telegram: rejected command from unauthorized chat {}", msg.chat.id.0);
+        warn!(
+            "telegram: rejected command from unauthorized chat {}",
+            msg.chat.id.0
+        );
         return Ok(());
     }
     match cmd {
@@ -78,10 +81,17 @@ pub async fn text_message_handler(
     if let Some(lines) = map.get_mut(&chat_id) {
         lines.push(text.to_string());
         let n = lines.len();
-        let preview: String = lines.iter().map(|l| format!("> {l}")).collect::<Vec<_>>().join("\n");
+        let preview: String = lines
+            .iter()
+            .map(|l| format!("> {l}"))
+            .collect::<Vec<_>>()
+            .join("\n");
         drop(map);
-        bot.send_message(msg.chat.id, format!("Line {n} added. Draft so far:\n{preview}"))
-            .await?;
+        bot.send_message(
+            msg.chat.id,
+            format!("Line {n} added. Draft so far:\n{preview}"),
+        )
+        .await?;
     }
     Ok(())
 }
@@ -127,14 +137,20 @@ async fn handle_queue(
         return Ok(());
     }
     let mut t = Task::new(goal.clone());
-    t.source = TaskSource::Telegram { chat_id: msg.chat.id.0, message_id: msg.id.0 };
+    t.source = TaskSource::Telegram {
+        chat_id: msg.chat.id.0,
+        message_id: msg.id.0,
+    };
     t.priority = priority;
     let id_short = short_id(&t.id.to_string()).to_string();
     let dup = queue.push(t).await;
     if let Some(existing) = dup {
         bot.send_message(
             msg.chat.id,
-            format!("⚠️ already queued (id: {})", short_id(&existing.0.to_string())),
+            format!(
+                "⚠️ already queued (id: {})",
+                short_id(&existing.0.to_string())
+            ),
         )
         .await?;
         return Ok(());
@@ -170,14 +186,18 @@ fn build_priority_keyboard(priority: Priority, goal: &str) -> InlineKeyboardMark
 
 async fn handle_status(bot: &Bot, msg: &Message, queue: &TaskQueue) -> Result<()> {
     let n = queue.len();
-    bot.send_message(msg.chat.id, format!("📊 queue depth: {n}\nUse /fleet for full details."))
-        .await?;
+    bot.send_message(
+        msg.chat.id,
+        format!("📊 queue depth: {n}\nUse /fleet for full details."),
+    )
+    .await?;
     Ok(())
 }
 
 async fn handle_cancel(bot: &Bot, msg: &Message, id_prefix: &str, pool: &AgentPool) -> Result<()> {
     if id_prefix.trim().is_empty() {
-        bot.send_message(msg.chat.id, "Usage: /cancel <id-prefix>").await?;
+        bot.send_message(msg.chat.id, "Usage: /cancel <id-prefix>")
+            .await?;
         return Ok(());
     }
     let short = short_id(id_prefix).to_string();
@@ -205,7 +225,8 @@ async fn handle_retry(
     queue: &TaskQueue,
 ) -> Result<()> {
     if id_prefix.trim().is_empty() {
-        bot.send_message(msg.chat.id, "Usage: /retry <id-prefix>").await?;
+        bot.send_message(msg.chat.id, "Usage: /retry <id-prefix>")
+            .await?;
         return Ok(());
     }
     match store.load_history(200).await {
@@ -213,12 +234,18 @@ async fn handle_retry(
             if let Some(row) = rows.into_iter().find(|r| r.id.starts_with(id_prefix)) {
                 let mut t = Task::new(row.goal.clone());
                 t.priority = Priority::High;
-                t.source = TaskSource::Telegram { chat_id: msg.chat.id.0, message_id: msg.id.0 };
+                t.source = TaskSource::Telegram {
+                    chat_id: msg.chat.id.0,
+                    message_id: msg.id.0,
+                };
                 let new_id = short_id(&t.id.to_string()).to_string();
                 queue.push(t).await;
                 bot.send_message(
                     msg.chat.id,
-                    format!("🔁 requeued at HIGH priority\n{}\nNew ID: {new_id}", row.goal),
+                    format!(
+                        "🔁 requeued at HIGH priority\n{}\nNew ID: {new_id}",
+                        row.goal
+                    ),
                 )
                 .await?;
             } else {
@@ -231,7 +258,8 @@ async fn handle_retry(
         }
         Err(e) => {
             warn!("retry load_history error: {e}");
-            bot.send_message(msg.chat.id, format!("❌ error loading history: {e}")).await?;
+            bot.send_message(msg.chat.id, format!("❌ error loading history: {e}"))
+                .await?;
         }
     }
     Ok(())
@@ -241,11 +269,15 @@ async fn handle_retry(
 pub async fn handle_learn(bot: &Bot, msg: &Message, store: &MemoryStore, n: usize) -> Result<()> {
     match store.load_patterns(n as i64).await {
         Ok(patterns) if patterns.is_empty() => {
-            bot.send_message(msg.chat.id, "🧠 no patterns recorded yet.").await?;
+            bot.send_message(msg.chat.id, "🧠 no patterns recorded yet.")
+                .await?;
         }
         Ok(patterns) => {
-            bot.send_message(msg.chat.id, format!("🧠 learned patterns ({})", patterns.len()))
-                .await?;
+            bot.send_message(
+                msg.chat.id,
+                format!("🧠 learned patterns ({})", patterns.len()),
+            )
+            .await?;
             for (i, p) in patterns.iter().enumerate() {
                 let id_short = short_id(&p.id);
                 let annotation = match p.user_annotation.as_deref() {
@@ -261,15 +293,22 @@ pub async fn handle_learn(bot: &Bot, msg: &Message, store: &MemoryStore, n: usiz
                     i + 1
                 );
                 let kb = InlineKeyboardMarkup::new([[
-                    InlineKeyboardButton::callback("✅ Approve", format!("annotate:approved:{}", p.id)),
-                    InlineKeyboardButton::callback("❌ Reject", format!("annotate:rejected:{}", p.id)),
+                    InlineKeyboardButton::callback(
+                        "✅ Approve",
+                        format!("annotate:approved:{}", p.id),
+                    ),
+                    InlineKeyboardButton::callback(
+                        "❌ Reject",
+                        format!("annotate:rejected:{}", p.id),
+                    ),
                 ]]);
                 bot.send_message(msg.chat.id, text).reply_markup(kb).await?;
             }
         }
         Err(e) => {
             warn!("learn load_patterns error: {e}");
-            bot.send_message(msg.chat.id, format!("❌ error loading patterns: {e}")).await?;
+            bot.send_message(msg.chat.id, format!("❌ error loading patterns: {e}"))
+                .await?;
         }
     }
     Ok(())
@@ -278,7 +317,9 @@ pub async fn handle_learn(bot: &Bot, msg: &Message, store: &MemoryStore, n: usiz
 async fn handle_approve(bot: &Bot, msg: &Message, id: &str) -> Result<()> {
     bot.send_message(
         msg.chat.id,
-        format!("✅ approval recorded for task {id}\n(PR merge requires manual action via gh/GitHub)"),
+        format!(
+            "✅ approval recorded for task {id}\n(PR merge requires manual action via gh/GitHub)"
+        ),
     )
     .await?;
     Ok(())
@@ -294,21 +335,35 @@ async fn handle_draft(bot: &Bot, msg: &Message, drafts: &DraftMap) -> Result<()>
     Ok(())
 }
 
-async fn handle_submit(bot: &Bot, msg: &Message, queue: &TaskQueue, drafts: &DraftMap) -> Result<()> {
+async fn handle_submit(
+    bot: &Bot,
+    msg: &Message,
+    queue: &TaskQueue,
+    drafts: &DraftMap,
+) -> Result<()> {
     let lines = drafts.lock().await.remove(&msg.chat.id.0);
     let has_content = lines.as_ref().is_some_and(|v| !v.is_empty());
     if !has_content {
-        bot.send_message(msg.chat.id, "📭 no draft to submit. Use /draft to start one.")
-            .await?;
+        bot.send_message(
+            msg.chat.id,
+            "📭 no draft to submit. Use /draft to start one.",
+        )
+        .await?;
         return Ok(());
     }
     let goal = lines.unwrap_or_default().join(" ");
     let mut t = Task::new(goal.clone());
-    t.source = TaskSource::Telegram { chat_id: msg.chat.id.0, message_id: msg.id.0 };
+    t.source = TaskSource::Telegram {
+        chat_id: msg.chat.id.0,
+        message_id: msg.id.0,
+    };
     let id_short = short_id(&t.id.to_string()).to_string();
     queue.push(t).await;
-    bot.send_message(msg.chat.id, format!("✅ Draft submitted as task\n{goal}\nID: {id_short}"))
-        .await?;
+    bot.send_message(
+        msg.chat.id,
+        format!("✅ Draft submitted as task\n{goal}\nID: {id_short}"),
+    )
+    .await?;
     Ok(())
 }
 

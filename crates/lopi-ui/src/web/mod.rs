@@ -136,17 +136,22 @@ impl AppState {
                             if let Ok(json) = serde_json::to_string(&ev) {
                                 let _ = tx.send(Arc::from(json.as_str()));
                             }
-                            if let lopi_core::AgentEvent::LogLine { task_id, line, level, ts } = &ev {
+                            if let lopi_core::AgentEvent::LogLine {
+                                task_id,
+                                line,
+                                level,
+                                ts,
+                            } = &ev
+                            {
                                 let tid = task_id.0.to_string();
                                 let lvl = match level {
-                                    lopi_core::LogLevel::Info  => "info",
-                                    lopi_core::LogLevel::Warn  => "warn",
+                                    lopi_core::LogLevel::Info => "info",
+                                    lopi_core::LogLevel::Warn => "warn",
                                     lopi_core::LogLevel::Error => "error",
                                     lopi_core::LogLevel::Debug => "debug",
                                 };
-                                if let Err(e) = log_store
-                                    .record_task_log(&tid, *ts, lvl, line)
-                                    .await
+                                if let Err(e) =
+                                    log_store.record_task_log(&tid, *ts, lvl, line).await
                                 {
                                     tracing::warn!("task_log persist failed: {e}");
                                 }
@@ -178,9 +183,8 @@ impl AppState {
         let constellations = lopi_orchestrator::ConstellationRouter::new();
         // Health registry — same lifecycle: heartbeats are ephemeral and
         // re-derived from incoming agent traffic.
-        let health = lopi_orchestrator::HealthRegistry::new(
-            lopi_orchestrator::HealthConfig::default(),
-        );
+        let health =
+            lopi_orchestrator::HealthRegistry::new(lopi_orchestrator::HealthConfig::default());
 
         Self {
             store,
@@ -268,10 +272,7 @@ pub fn build_app(state: AppState) -> Router {
             "/api/agents/:id/heartbeat",
             axum::routing::post(health_handlers::heartbeat),
         )
-        .route(
-            "/api/agents/:id/health",
-            get(health_handlers::get_health),
-        )
+        .route("/api/agents/:id/health", get(health_handlers::get_health))
         .route(
             "/api/agents/health/summary",
             get(health_handlers::health_summary),
@@ -280,10 +281,7 @@ pub fn build_app(state: AppState) -> Router {
             "/api/tasks/:id/stream",
             get(task_stream_handlers::stream_task),
         )
-        .route(
-            "/api/tasks/:id/logs",
-            get(task_stream_handlers::get_logs),
-        )
+        .route("/api/tasks/:id/logs", get(task_stream_handlers::get_logs))
         .route(
             "/api/agents/:id/rate-limit",
             get(agent_rate_handlers::get_rate_limit)
