@@ -1,5 +1,6 @@
 use dashmap::DashMap;
 use lopi_core::{Priority, Task, TaskId};
+use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 use std::sync::Arc;
 use tokio::sync::{Mutex, Notify};
@@ -150,7 +151,7 @@ impl TaskQueue {
             .iter()
             .map(|e| (e.value().priority, e.value().goal.clone()))
             .collect();
-        items.sort_by(|a, b| b.0.cmp(&a.0));
+        items.sort_by_key(|&(prio, _)| Reverse(prio));
         items
     }
 }
