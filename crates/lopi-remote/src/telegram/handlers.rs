@@ -38,28 +38,60 @@ pub async fn message_handler(
         );
         return Ok(());
     }
+    dispatch_task_cmd(&bot, &msg, cmd, &queue, &store, &pool, &schedules, &drafts).await
+}
+
+/// Route task-action commands; delegates monitoring commands to `dispatch_monitor_cmd`.
+#[allow(clippy::too_many_arguments)]
+async fn dispatch_task_cmd(
+    bot: &Bot,
+    msg: &Message,
+    cmd: LopiCmd,
+    queue: &Arc<TaskQueue>,
+    store: &Arc<MemoryStore>,
+    pool: &Arc<AgentPool>,
+    schedules: &Arc<Vec<ScheduleEntry>>,
+    drafts: &DraftMap,
+) -> Result<()> {
     match cmd {
-        LopiCmd::Help => handle_help(&bot, &msg).await,
-        LopiCmd::Task(goal) => handle_queue(&bot, &msg, &queue, goal, Priority::Normal).await,
-        LopiCmd::Urgent(goal) => handle_queue(&bot, &msg, &queue, goal, Priority::High).await,
-        LopiCmd::Critical(goal) => handle_queue(&bot, &msg, &queue, goal, Priority::Critical).await,
-        LopiCmd::Status => handle_status(&bot, &msg, &queue).await,
-        LopiCmd::Fleet => monitor::handle_fleet(&bot, &msg, &queue, &pool, &store).await,
-        LopiCmd::Dock(arg) => monitor::handle_dock(&bot, &msg, &store, &arg).await,
-        LopiCmd::Cancel(id) => handle_cancel(&bot, &msg, &id, &pool).await,
-        LopiCmd::Retry(id) => handle_retry(&bot, &msg, &id, &store, &queue).await,
-        LopiCmd::Schedules => monitor::handle_schedules(&bot, &msg, &schedules).await,
+        LopiCmd::Task(goal) => handle_queue(bot, msg, queue, goal, Priority::Normal).await,
+        LopiCmd::Urgent(goal) => handle_queue(bot, msg, queue, goal, Priority::High).await,
+        LopiCmd::Critical(goal) => handle_queue(bot, msg, queue, goal, Priority::Critical).await,
+        LopiCmd::Cancel(id) => handle_cancel(bot, msg, &id, pool).await,
+        LopiCmd::Retry(id) => handle_retry(bot, msg, &id, store, queue).await,
+        LopiCmd::Approve(id) => handle_approve(bot, msg, &id).await,
+        LopiCmd::Draft => handle_draft(bot, msg, drafts).await,
+        LopiCmd::Submit => handle_submit(bot, msg, queue, drafts).await,
+        LopiCmd::CancelDraft => handle_cancel_draft(bot, msg, drafts).await,
+        cmd => dispatch_monitor_cmd(bot, msg, cmd, queue, store, pool, schedules).await,
+    }
+}
+
+/// Route monitoring and informational commands.
+#[allow(clippy::too_many_arguments)]
+async fn dispatch_monitor_cmd(
+    bot: &Bot,
+    msg: &Message,
+    cmd: LopiCmd,
+    queue: &Arc<TaskQueue>,
+    store: &Arc<MemoryStore>,
+    pool: &Arc<AgentPool>,
+    schedules: &Arc<Vec<ScheduleEntry>>,
+) -> Result<()> {
+    match cmd {
+        LopiCmd::Help => handle_help(bot, msg).await,
+        LopiCmd::Status => handle_status(bot, msg, queue).await,
+        LopiCmd::Fleet => monitor::handle_fleet(bot, msg, queue, pool, store).await,
+        LopiCmd::Dock(arg) => monitor::handle_dock(bot, msg, store, &arg).await,
+        LopiCmd::Tail(arg) => monitor::handle_tail(bot, msg, &arg, store).await,
+        LopiCmd::Schedules => monitor::handle_schedules(bot, msg, schedules).await,
         LopiCmd::RunSchedule(name) => {
-            monitor::handle_run_schedule(&bot, &msg, &name, &schedules, &queue).await
+            monitor::handle_run_schedule(bot, msg, &name, schedules, queue).await
         }
-        LopiCmd::Tail(arg) => monitor::handle_tail(&bot, &msg, &arg, &store).await,
-        LopiCmd::Learn(arg) => handle_learn(&bot, &msg, &store, arg_n(&arg, 5).min(20)).await,
-        LopiCmd::Patterns => handle_learn(&bot, &msg, &store, 10).await,
-        LopiCmd::Approve(id) => handle_approve(&bot, &msg, &id).await,
-        LopiCmd::Cost => monitor::handle_cost(&bot, &msg, &store).await,
-        LopiCmd::Draft => handle_draft(&bot, &msg, &drafts).await,
-        LopiCmd::Submit => handle_submit(&bot, &msg, &queue, &drafts).await,
-        LopiCmd::CancelDraft => handle_cancel_draft(&bot, &msg, &drafts).await,
+        LopiCmd::Learn(arg) => handle_learn(bot, msg, store, arg_n(&arg, 5).min(20)).await,
+        LopiCmd::Patterns => handle_learn(bot, msg, store, 10).await,
+        LopiCmd::Cost => monitor::handle_cost(bot, msg, store).await,
+        _ => Ok(()),
     }
 }
 
