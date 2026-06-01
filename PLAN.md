@@ -1,6 +1,6 @@
 # PLAN.md — lopi Master Plan
 
-**Updated:** 2026-05-12 · v0.17.0 just shipped.
+**Updated:** 2026-06-01 · v0.18.0 in progress (Sprint S — Konjo Verifier).
 
 ## Vision
 
@@ -184,6 +184,86 @@ lopi learn annotate CLI command. 313 tests.
 - [x] `fly.toml` — fly.io deploy config: two process groups (`app` on 3002, `web` on 3000), persistent volume, health checks
 - [ ] Register GitHub App on github.com (requires live domain — manual step)
 
+### Sprint R — Telegram Bot Overhaul ✅ (shipped v0.18.0-rc, PR #14 merged 2026-06-01)
+- [x] Telegram module split into submodules: `telegram/mod.rs`, `handlers.rs`, `monitor.rs`, `callbacks.rs`, `notify.rs`, `format.rs`
+- [x] 19 commands: `/task`, `/urgent`, `/critical`, `/status`, `/fleet`, `/dock`, `/cancel`, `/retry`, `/schedules`, `/run`, `/tail`, `/learn`, `/patterns`, `/approve`, `/cost`, `/draft`, `/submit`, `/cancel_draft`, `/help`
+- [x] Completion notifications (TaskStarted, StatusChanged, ScoreUpdated, TaskCompleted, TaskCancelled, BudgetExceeded)
+- [x] Draft mode (`/draft` → multiline buffer → `/submit` as task)
+- [x] Inline keyboard buttons — priority bump, cancel task, pattern approve/reject
+- [x] `AgentPool::running_agents()` lock-free snapshot; `AgentPool::cancel_by_prefix()`
+- [x] `TaskQueue::peek_queued()` priority-sorted snapshot
+- [x] Formatting helpers: `short_id`, `priority_badge`, `status_emoji`, `relative_time`, `format_uptime`
+- [x] 22 new tests; workspace total 571 passing
+
+### Sprint S — Konjo Verifier 🔬 (NEXT — v0.19.0)
+**Thesis:** Today `Score` is binary (tests pass / lint clean). A rubric-guided Opus verifier is the
+single differentiator no competitor ships. VMAO paper (arxiv 2603.11445) shows +35% quality gain;
+Anthropic Outcomes beta validates it. Ships lopi as "the orchestrator that grades its own work."
+
+- [ ] `VerifierAgent` in `crates/lopi-agent/src/verifier.rs` — calls Opus with `{plan, diff, test_output, rubric}`, returns `VerifierVerdict { passed, gaps, fix_hints, confidence }`
+- [ ] Rubric resolution chain: `Task::rubric` → `.lopi/rubrics/*.toml` → workspace default (in `lopi-core`)
+- [ ] Two-pass `Score`: existing heuristic → if heuristic passes, run Verifier; produce `CompoundScore { heuristic, verifier, overall }`
+- [ ] On verifier failure: `fix_hints` appended to `Task::constraints`, task requeued at original priority with incremented `retry_count`
+- [ ] `AgentEvent::VerifierVerdict { task_id, passed, gaps, fix_hints, confidence }` on event bus
+- [ ] SQLite: new `verifier_verdicts` table (task_id, attempt, passed, gaps_json, fix_hints_json, confidence, model_used, cost_usd, ts)
+- [ ] Three canonical rubric files: `refactor_safety.toml`, `feature_completeness.toml`, `security_audit.toml`
+- [ ] `KONJO_VERIFIER.md` — documents the rubric format and the brand position
+- [ ] Verifier verdict surfaced in `/dock` Telegram output and Forge task detail panel
+- [ ] ≥ 12 tests in `lopi-agent/verifier.rs`; mutation kill ≥ 90%
+
+### Sprint T — Topology-Adaptive Routing + Q-Learning Constellation (v0.20.0)
+**Thesis:** AdaptOrch (arxiv 2602.16873) shows topology-aware routing beats any static topology
+by 12–23%. ruflo's 29k stars are partly Q-learning. lopi has the training signal on disk already
+(`agent_runs` table). Ship it in Rust with zero ML framework overhead.
+
+- [ ] `TopologyHint` enum (`Parallel | Sequential | Hierarchical | Hybrid`) on `Task`
+- [ ] Topology classifier in `crates/lopi-orchestrator/src/topology.rs` — keyword heuristic + optional Haiku fallback (confidence < 0.6)
+- [ ] `AgentPool::dispatch()` branches on topology: `Parallel` → N worktree branches; `Sequential` → single branch checkpoint-resume; `Hierarchical` → planner-only agent spawns child tasks
+- [ ] Q-learning router in `crates/lopi-orchestrator/src/q_router.rs`: `Q(task_type, agent_config)` updated from Verifier composite score; epsilon-greedy selection (ε = 0.1)
+- [ ] `routing_q_values` SQLite table; nightly Dreaming job recomputes Q-table from last-7-days runs
+- [ ] `Strategy::QLearned` added to `ConstellationRouter` alongside existing four strategies
+- [ ] `GET /api/routing/q-values` endpoint for inspection
+- [ ] 30-case topology classifier test corpus; benchmark shows Q-routed path beats RoundRobin on T01–T10
+
+### Sprint U — DAG-Structured Retry + Time-Travel Replay (v0.21.0)
+**Thesis:** Scheduler-Theoretic Framework (arxiv 2604.11378) shows partial restart from failed
+nodes beats linear retry. lopi already has `agent_checkpoints`; making them DAG nodes unlocks
+verifiable traces and `lopi replay`.
+
+- [ ] `AgentDag` in `crates/lopi-agent/src/dag.rs` — nodes: `{id, kind: NodeKind, status, depends_on, output_hash}`
+- [ ] `NodeKind = Plan | Implement | Test | Score | Verify | Diff | PR`
+- [ ] Retry restarts from earliest `Failed` node whose inputs are unchanged (hash-keyed memoization on Plan)
+- [ ] SQLite: `agent_dag_nodes`, `agent_dag_edges` tables; each `AgentEvent` carries `node_id`
+- [ ] `lopi replay --task <id> [--from <node>] [--dry-run]`
+- [ ] TUI: "DAG" tab in existing ratatui dashboard with live status colours
+- [ ] `GET /api/agents/:id/dag` returns JSON graph
+
+### Sprint V — Terminal-Bench Score + Konjo Skills Registry (v0.22.0)
+**Thesis:** No orchestrator publishes an objective benchmark score. "lopi achieves X% on
+Terminal-Bench Hard" is an unoccupied claim. Konjo Skills Registry is quality-gated skills vs.
+ruflo's 5,400+ unreviewed submissions — differentiation by provenance.
+
+- [ ] `bench/terminal_bench/` harness — wraps 89 Terminal-Bench tasks as `lopi run` invocations, scores with Verifier
+- [ ] CI job `.github/workflows/konjo-bench.yml` — weekly cron on `main`, posts to `KONJO_OUTCOMES.md`
+- [ ] `lopi-skills` crate: registry + loader for `.claude/skills/*/SKILL.md`; `lopi skill install/list/run/audit` CLI
+- [ ] Three shipping skills: `migrate-sqlx-version`, `harden-axum-route`, `extract-rust-mod` — each with rubric, 10-task corpus, published success-rate
+- [ ] `GET/POST /api/skills`, `POST /api/skills/run` REST endpoints mounted in `lopi-ui`
+- [ ] `KONJO_OUTCOMES.md` — published table: (date, sprint, terminal_bench %, mutation kill %, verifier pass rate)
+- [ ] README badges for Terminal-Bench score, mutation kill %, coverage %
+
+### Sprint W — Council Mode + Learned Context Eviction + Cost Ceilings (v0.23.0)
+**Thesis:** Three medium-impact unlocks that round out the moat — council voting extracts value from
+parallel branches already possible via worktrees; context eviction addresses long-run context
+exhaustion; cost ceilings are an enterprise requirement zero competitors ship.
+
+- [ ] `CouncilDispatcher` in `crates/lopi-orchestrator/src/council.rs` — N parallel branches → score all → synthesis pass extracts non-conflicting hunks from runners-up into winner
+- [ ] `ContextSummaryEntry` in `lopi-memory` — on eviction, write compressed summary to SQLite; prepend on next turn as preamble
+- [ ] `cost_limit_usd: Option<f64>` on `Task` and `LopiConfig`; cost projector uses streaming token counts × `PriceList` in `lopi-core/src/pricing.rs`
+- [ ] Existing `BudgetExceeded` event reused at task scope with `limit_usd` + `burned_usd`
+- [ ] Council mode benchmark: N=3 matches or beats single-branch baseline at < 2× cost on T01–T10
+
+---
+
 ### Phase 7+ — UI polish (deferred)
 - [ ] Mobile-responsive Forge degradation
 - [ ] Optional ambient sound design tied to agent state
@@ -361,18 +441,21 @@ Power tools — high leverage but require P1+P2 substrate to be useful.
 
 | Metric | Value |
 |---|---|
-| Workspace tests | **499 passing**, 0 failing |
-| Build | `cargo build --workspace`: clean |
-| Crates | **15** (+ lopi-app, lopi-github, lopi-spec) |
-| CLI commands | `run`, `watch`, `tail`, `dock`, `sail [--repos]`, `cancel`, `learn list/show/export/annotate`, `schedules list`, `serve-webhooks`, `spec`, `check [--fail-on-violations]`, `gap-fill`, `watch-gap-fill`, `trust`, `serve-app` |
-| API endpoints | `/api/health`, `/api/tasks` (GET+POST), `/api/tasks/:id` (GET+DELETE), `/api/stats`, `/api/patterns`, `/metrics` (Prometheus), `/sse` (SSE), `/ws` (WebSocket) |
+| Workspace tests | **571 passing**, 0 failing |
+| Build | `cargo build --workspace`: clean (Rust 1.96.0 stable) |
+| Crates | **15** |
+| CLI commands | `run`, `watch`, `tail`, `dock`, `sail [--repos]`, `cancel`, `learn list/show/export/annotate`, `schedules list`, `serve-webhooks`, `spec`, `check [--fail-on-violations]`, `gap-fill`, `watch-gap-fill`, `trust`, `serve-app`, `resume` |
+| API endpoints | `/api/health`, `/api/tasks` (GET+POST), `/api/tasks/:id` (GET+DELETE), `/api/stats`, `/api/patterns`, `/metrics` (Prometheus), `/sse`, `/ws`, `/api/constellations`, `/api/tools`, `/api/cache/stats`, `/api/audit`, `/api/agents/health/summary`, `/api/quality/trend`, `/api/plans`, `/api/spec` |
 | Embedded UI | SvelteKit Forge + Constellation, ~487 KB JS / 126 KB gzipped |
-| Direct-API planning | ✅ via `AgentRunner::with_api(client, limiter, breaker)` |
-| Adaptive retry | ✅ via `AgentRunner::with_adaptive_retry()` (post-mortem fires + lesson saved on terminal failure) |
-| Lesson injection | ✅ patterns + lessons both TOON-encoded into planning prompt |
-| Issue triage | ✅ Haiku classifier → GitHub comment → auto-queue via `lopi serve-webhooks` |
-| Spec surface | ✅ `lopi-spec` crate · `lopi spec` · `lopi check` · `/api/spec` · injected into planning |
-| Latest release | **v0.13.0** |
+| Remote control | ✅ Telegram bot (19 commands, 22 tests) + WhatsApp webhook (Twilio) |
+| Direct-API planning | ✅ via `AgentRunner::with_api(client, limiter, breaker)` with prompt caching |
+| Adaptive retry | ✅ Reflexion-style — `last_error` fed to next plan; post-mortem on terminal failure |
+| Verifier | ⏳ Sprint S (next) — rubric-guided Opus second Score wall |
+| Issue triage | ✅ Haiku classifier → GitHub comment → auto-queue |
+| Spec surface | ✅ `lopi-spec` · `lopi spec` · `lopi check` · injected into planning |
+| Benchmarks | ⏳ Sprint V — Terminal-Bench integration + `KONJO_OUTCOMES.md` |
+| Latest release | **v0.18.0** (Sprint R merged) |
+| Next release | **v0.19.0** (Sprint S — Konjo Verifier) |
 
 ---
 

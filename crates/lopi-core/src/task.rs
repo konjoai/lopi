@@ -74,6 +74,29 @@ pub enum Priority {
     Critical = 3,
 }
 
+/// Rubric used by the Konjo Verifier to grade an agent's output.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct Rubric {
+    /// Display name for this rubric (e.g. `"refactor_safety"`).
+    pub name: String,
+    /// Ordered criteria the verifier checks. Each entry is an imperative statement
+    /// such as `"All existing tests still pass"`.
+    pub criteria: Vec<String>,
+}
+
+/// Verdict returned by the Konjo Verifier second-score pass.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VerifierVerdict {
+    /// Whether the agent's output satisfies all rubric criteria.
+    pub passed: bool,
+    /// Criteria not met — one sentence each explaining the gap.
+    pub gaps: Vec<String>,
+    /// Imperative fix hints ready for injection into the next retry's planning prompt.
+    pub fix_hints: Vec<String>,
+    /// Verifier confidence in the verdict, normalised to `[0.0, 1.0]`.
+    pub confidence: f64,
+}
+
 /// A unit of work submitted to the lopi agent pool.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Task {
@@ -119,6 +142,12 @@ pub struct Task {
     /// vec means "no tools" — the agent stays in pure-CLI/API mode.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tools: Vec<String>,
+    /// Sprint S — optional rubric for the Konjo Verifier second-score pass.
+    /// When set, the verifier grades the diff against these criteria after
+    /// the heuristic score passes. Falls back to a workspace default rubric
+    /// when `None` and verifier mode is enabled.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rubric: Option<Rubric>,
 }
 
 /// Where a task originated — used for routing replies and audit logging.
@@ -167,6 +196,7 @@ impl Task {
             output_schema: None,
             tools: Vec::new(),
             required_capabilities: Vec::new(),
+            rubric: None,
         }
     }
 

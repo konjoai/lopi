@@ -256,6 +256,7 @@ mod tests {
             output_schema: None,
             tools: Vec::new(),
             required_capabilities: Vec::new(),
+            rubric: None,
         }
     }
 

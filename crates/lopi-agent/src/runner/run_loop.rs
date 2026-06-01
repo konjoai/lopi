@@ -226,6 +226,7 @@ impl AgentRunner {
                         continue;
                     }
                 };
+                self.last_plan = Some(plan.clone());
                 self.log(format!(
                     "✅ speculative plan+implement done ({} chars)",
                     plan.len()
@@ -299,6 +300,7 @@ impl AgentRunner {
                         continue;
                     }
                 };
+                self.last_plan = Some(plan.clone());
 
                 // Dry-run: print plan and exit without touching git or running tests.
                 if self.dry_run {
@@ -453,6 +455,21 @@ impl AgentRunner {
             }
 
             if score.passed() {
+                // Sprint S — Konjo Verifier: rubric-guided second-score pass.
+                // Runs only when verifier_enabled; best-effort (errors log + continue).
+                if self.verifier_enabled
+                    && !self.run_verifier_pass(attempt + 1, &score.errors).await
+                {
+                    git.hard_rollback().await.ok();
+                    git.checkout_default().await.ok();
+                    self.status(
+                        TaskStatus::Retrying {
+                            attempt: attempt + 1,
+                        },
+                        attempt + 1,
+                    );
+                    continue;
+                }
                 self.log("✅ tests pass — committing…");
                 self.context.pin_conclusion(
                     format!(

@@ -177,6 +177,9 @@ impl AppState {
             // BudgetExceeded is shown in the web Forge with a flashing pill
             // and surfaced via /metrics — the TUI is read-only, no action needed.
             AgentEvent::BudgetExceeded { .. } => {}
+            // VerifierVerdict is surfaced via the task log stream; TUI doesn't
+            // render a separate panel for it.
+            AgentEvent::VerifierVerdict { .. } => {}
         }
     }
 

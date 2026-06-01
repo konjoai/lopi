@@ -26,7 +26,7 @@ pub use schema::{
     schema_violations_inc, schema_violations_snapshot, validate as validate_schema,
     Violation as SchemaViolation, ViolationKind as SchemaViolationKind,
 };
-pub use task::{Priority, Task, TaskId, TaskSource, TaskStatus};
+pub use task::{Priority, Rubric, Task, TaskId, TaskSource, TaskStatus, VerifierVerdict};
 pub use tier::CustomerTier;
 
 #[cfg(test)]

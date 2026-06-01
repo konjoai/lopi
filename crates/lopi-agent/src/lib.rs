@@ -12,6 +12,8 @@ pub mod runner;
 pub mod scorer;
 /// Stability harness for reproducibility testing.
 pub mod stability;
+/// Konjo Verifier — rubric-guided Opus second-score pass (Sprint S).
+pub mod verifier;
 
 pub use api_client::{AnthropicClient, ApiUsage, LOPI_SYSTEM_PROMPT};
 pub use claude::{select_model, ClaudeCode, MODEL_HAIKU, MODEL_OPUS, MODEL_SONNET};
@@ -20,3 +22,4 @@ pub use pattern_enricher::PatternEnricher;
 pub use runner::AgentRunner;
 pub use scorer::Scorer;
 pub use stability::{StabilityConfig, StabilityHarness, StabilityVerdict};
+pub use verifier::{default_rubric, VerifierAgent};
