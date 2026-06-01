@@ -99,6 +99,23 @@ pub enum AgentEvent {
         /// Accumulated cost in USD for this run.
         cost_usd: f32,
     },
+    /// The Konjo Verifier completed its rubric-guided second-score pass (Sprint S).
+    ///
+    /// Emitted after the heuristic score passes, before the final commit.
+    /// When `passed = false`, `fix_hints` have already been appended to the
+    /// task's constraints and the runner will roll back and retry.
+    VerifierVerdict {
+        /// Task that was evaluated.
+        task_id: TaskId,
+        /// Whether the output satisfied all rubric criteria.
+        passed: bool,
+        /// Criteria not met, one sentence each.
+        gaps: Vec<String>,
+        /// Fix hints injected into the next retry's planning prompt.
+        fix_hints: Vec<String>,
+        /// Verifier confidence in the verdict, `[0.0, 1.0]`.
+        confidence: f64,
+    },
     /// Cost governor refused the next billable call because a scope reached
     /// its hourly cap or a breaker tripped. Emitted by the runner before the
     /// error propagates so the UI can flag the breach immediately.

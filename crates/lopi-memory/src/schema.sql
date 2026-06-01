@@ -222,3 +222,20 @@ CREATE TABLE IF NOT EXISTS task_logs (
     line      TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_task_logs_task_id ON task_logs(task_id, id);
+
+-- Sprint S — Konjo Verifier verdict ledger.
+-- One row per verifier call (task_id + attempt). `passed` is 0 or 1.
+-- `gaps_json` / `fix_hints_json` are JSON arrays of strings.
+-- `model_used` records which Opus model graded the output.
+CREATE TABLE IF NOT EXISTS verifier_verdicts (
+    id           TEXT PRIMARY KEY,
+    task_id      TEXT NOT NULL,
+    attempt      INTEGER NOT NULL,
+    passed       INTEGER NOT NULL,
+    gaps_json    TEXT NOT NULL DEFAULT '[]',
+    fix_hints_json TEXT NOT NULL DEFAULT '[]',
+    confidence   REAL NOT NULL DEFAULT 0.0,
+    model_used   TEXT NOT NULL,
+    ts           TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_verifier_verdicts_task ON verifier_verdicts(task_id, attempt);

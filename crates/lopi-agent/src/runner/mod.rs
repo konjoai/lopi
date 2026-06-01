@@ -3,6 +3,7 @@ pub mod postmortem;
 mod postmortem_runner;
 mod run_loop;
 mod stability_runner;
+mod verifier_runner;
 
 use crate::api_client::AnthropicClient;
 use crate::stability::{StabilityConfig, StabilityHarness};
@@ -73,6 +74,12 @@ pub struct AgentRunner {
     /// Sprint H — stash the most recent attempt failure context so the
     /// next attempt's prompt can include it. Cleared on success.
     pub(super) last_error: Option<String>,
+    /// Sprint S — when true, the Konjo Verifier second-score pass runs after
+    /// the heuristic score passes. Requires `api_client` to be set.
+    pub(super) verifier_enabled: bool,
+    /// Sprint S — plan text from the most recent planning step, used by the
+    /// verifier to provide intent context when grading the diff.
+    pub(super) last_plan: Option<String>,
     /// Stable session id used by `TurnMetrics.session_id`.
     pub(super) session_id: Uuid,
     pub(super) cancel_rx: Option<oneshot::Receiver<()>>,
@@ -116,6 +123,8 @@ impl AgentRunner {
             stability_harness: None,
             adaptive_retry: false,
             last_error: None,
+            verifier_enabled: false,
+            last_plan: None,
             session_id: Uuid::new_v4(),
             cancel_rx: Some(cancel_rx),
             cancel_token: CancellationToken::new(),
@@ -147,6 +156,8 @@ impl AgentRunner {
             stability_harness: None,
             adaptive_retry: false,
             last_error: None,
+            verifier_enabled: false,
+            last_plan: None,
             session_id: Uuid::new_v4(),
             cancel_rx: Some(cancel_rx),
             cancel_token: CancellationToken::new(),
@@ -190,6 +201,18 @@ impl AgentRunner {
     #[must_use]
     pub const fn with_adaptive_retry(mut self) -> Self {
         self.adaptive_retry = true;
+        self
+    }
+
+    /// Sprint S — enable the Konjo Verifier second-score pass.
+    ///
+    /// When enabled, the runner calls Opus with a rubric-guided prompt after the
+    /// heuristic score passes. On rejection, fix hints are appended to
+    /// `task.constraints` and the agent retries. Requires `with_api()` — silently
+    /// skipped when no API client is configured.
+    #[must_use]
+    pub const fn with_verifier(mut self) -> Self {
+        self.verifier_enabled = true;
         self
     }
 
