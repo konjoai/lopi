@@ -40,6 +40,10 @@ pub struct CoreConfig {
     /// When `true`, agents may open self-modification PRs on this repo.
     #[serde(default)]
     pub allow_self_modify: bool,
+    /// When `true`, directory access restrictions are disabled for this session.
+    /// Equivalent to `lopi bypass` — use only in trusted environments.
+    #[serde(default)]
+    pub bypass_permissions: bool,
 }
 
 /// Claude CLI invocation settings (`[claude]` table in `lopi.toml`).

@@ -3,13 +3,18 @@
 mod gap_fill_commands;
 mod learn_commands;
 mod remote;
+mod repl;
+mod repo_detect;
 mod run_command;
 mod sail_commands;
 mod schedule_commands;
 mod spec_commands;
+mod stability_commands;
 mod task_commands;
 mod trust_commands;
+mod util;
 mod webhook_commands;
+
 use mimalloc::MiMalloc;
 
 #[global_allocator]
@@ -17,16 +22,15 @@ static GLOBAL: MiMalloc = MiMalloc;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use lopi_core::{LopiConfig, TaskStatus};
-use lopi_memory::MemoryStore;
 use std::path::PathBuf;
 use tracing_subscriber::prelude::*;
+use util::load_config;
 
 #[derive(Parser)]
 #[command(
     name = "lopi",
     version,
-    about = "⛵ Konjo agent orchestrator — lopi run, lopi sail, lopi dock"
+    about = "⛵ Konjo agent orchestrator — beautiful, excellent, provably correct."
 )]
 struct Cli {
     /// Path to config file (default: ./lopi.toml, then ~/.lopi/lopi.toml)
@@ -34,7 +38,7 @@ struct Cli {
     config: Option<PathBuf>,
 
     #[command(subcommand)]
-    command: Commands,
+    command: Option<Commands>,
 }
 
 #[derive(Subcommand)]
@@ -54,11 +58,18 @@ enum Commands {
         /// Enable Reflexion-style adaptive retry: inject previous attempt's error into the next planning prompt
         #[arg(long)]
         adaptive_retry: bool,
-        /// Run the Layer 5 stability gate before implementation: generate N plan samples, measure
-        /// pairwise variance, and block if variance exceeds the unstable threshold. Requires
-        /// ANTHROPIC_API_KEY. Records every assessment to the stability ledger (`lopi stability`).
+        /// Run the Layer 5 stability gate: generate N plan samples and block if variance is too high.
         #[arg(long)]
         stability_gate: bool,
+    },
+    /// Run with directory restrictions disabled — use in trusted environments only.
+    ///
+    /// Equivalent to `claude --dangerously-skip-permissions`.
+    /// All allowed_dirs / forbidden_dirs policies are bypassed for this run.
+    Bypass {
+        /// Goal to execute. Enclose in quotes or pass as separate words.
+        #[arg(num_args = 1.., trailing_var_arg = true)]
+        goal_args: Vec<String>,
     },
     /// Watch live agent status (TUI). Use --remote to connect to a running sail server.
     Watch {
@@ -89,8 +100,6 @@ enum Commands {
         #[arg(short, long, default_value = ".")]
         repo: PathBuf,
         /// Additional repo paths to watch concurrently (multi-repo mode).
-        /// Tasks submitted via /api/tasks with a `repo` field are routed to
-        /// the matching pool slot.
         #[arg(long, value_delimiter = ',')]
         repos: Vec<PathBuf>,
     },
@@ -99,77 +108,55 @@ enum Commands {
         #[arg()]
         task_id: String,
     },
-    /// P1.3 — load the most-recent checkpoint for an agent. Prints the
-    /// stored state (attempt, plan preview, score, repo) so an operator
-    /// can decide whether to re-queue or inspect manually after a crash.
+    /// Load the most-recent checkpoint for an agent and print its stored state.
     Resume {
-        /// UUID of the task whose checkpoint to load.
         #[arg(long)]
         agent_id: String,
     },
-    /// Browse the mined pattern library — what worked, what didn't, what
-    /// post-mortems learned. The pattern miner runs after every completed
-    /// task; post-mortems run after every fully-failed task when adaptive
-    /// retry is enabled.
+    /// Browse the mined pattern library
     #[command(subcommand)]
     Learn(LearnCmd),
     /// Manage scheduled tasks
     #[command(subcommand)]
     Schedules(ScheduleCmd),
-    /// Browse the Layer 5 patch stability ledger — model-output variance
-    /// scores recorded before each self-modification attempt.
+    /// Browse the Layer 5 patch stability ledger
     #[command(subcommand)]
     Stability(StabilityCmd),
     /// Continuously run gap-fill on a cadence — the Kitchen Loop daemon.
-    ///
-    /// Runs `gap-fill` every `--interval` minutes. On each iteration:
-    /// persists quality results, logs trend, and queues fix tasks for gaps.
     WatchGapFill {
         #[arg(short, long, default_value = ".")]
         repo: PathBuf,
-        /// Interval in minutes between gap-fill runs (default 60).
         #[arg(long, default_value = "60")]
         interval: u64,
         #[arg(long, default_value = "http://127.0.0.1:3000")]
         sail_url: String,
-        /// Run once immediately on start (in addition to the loop).
         #[arg(long)]
         run_now: bool,
     },
-    /// Show trust calibration stats — approved vs rejected pattern signals,
-    /// current score weight adjustments, and reliability metrics.
+    /// Show trust calibration stats
     Trust,
     /// Start the GitHub App OAuth + Stripe webhook server.
-    ///
-    /// Reads credentials from environment variables:
-    ///   GITHUB_APP_ID, GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET,
-    ///   GITHUB_WEBHOOK_SECRET, GITHUB_REDIRECT_URI, STRIPE_WEBHOOK_SECRET
     ServeApp {
         #[arg(short, long, default_value = "3002")]
         port: u16,
         #[arg(long, default_value = "127.0.0.1")]
         host: String,
     },
-    /// Run tests, find failing spec items, and queue fix tasks into a running
-    /// lopi sail server. Use --dry-run to see gaps without queuing.
+    /// Run tests, find failing spec items, and queue fix tasks.
     GapFill {
         #[arg(short, long, default_value = ".")]
         repo: PathBuf,
-        /// Base URL of the running lopi sail server.
         #[arg(long, default_value = "http://127.0.0.1:3000")]
         sail_url: String,
-        /// Report gaps without queuing fix tasks.
         #[arg(long)]
         dry_run: bool,
     },
-    /// Extract the spec surface — what this repo claims to do — from test files.
+    /// Extract the spec surface from test files.
     Spec {
         #[arg(short, long, default_value = ".")]
         repo: PathBuf,
-        /// Print raw JSON instead of the table view.
         #[arg(long)]
         export: bool,
-        /// Save the spec surface to .lopi/spec_surface.json for future `lopi check`.
         #[arg(long)]
         save: bool,
     },
@@ -177,28 +164,19 @@ enum Commands {
     Check {
         #[arg(short, long, default_value = ".")]
         repo: PathBuf,
-        /// Exit with code 1 if violations are found (for CI pipelines).
         #[arg(long)]
         fail_on_violations: bool,
     },
     /// Start a dedicated GitHub webhook server.
-    ///
-    /// Receives GitHub events, triages issues via Haiku, posts comments,
-    /// and auto-queues fix tasks into the lopi agent pool.
     ServeWebhooks {
         #[arg(short, long, default_value = "3001")]
         port: u16,
         #[arg(long, default_value = "127.0.0.1")]
         host: String,
-        /// GitHub webhook secret for HMAC verification (optional but recommended).
         #[arg(long, env = "LOPI_WEBHOOK_SECRET")]
         webhook_secret: Option<String>,
-        /// GitHub personal access token for posting comments and labels.
-        /// When omitted, issue triage comments are skipped.
         #[arg(long, env = "GITHUB_TOKEN")]
         github_token: Option<String>,
-        /// Anthropic API key for issue classification via Haiku.
-        /// When omitted, issue triage is skipped.
         #[arg(long, env = "ANTHROPIC_API_KEY")]
         anthropic_key: Option<String>,
     },
@@ -206,29 +184,21 @@ enum Commands {
 
 #[derive(Subcommand)]
 enum LearnCmd {
-    /// List patterns sorted by success rate. Mined > post-mortem-derived.
     List {
         #[arg(short, long, default_value = "20")]
         limit: i64,
-        /// Show only post-mortem-derived patterns
         #[arg(long)]
         postmortem_only: bool,
     },
-    /// Show full detail for a single pattern by id prefix.
     Show {
-        /// Id or id prefix (uuid)
         id: String,
     },
-    /// Export all patterns to JSON for analytics. Pipes to stdout.
     Export {
         #[arg(short, long, default_value = "100")]
         limit: i64,
     },
-    /// Annotate a pattern as approved or rejected to tune future scoring.
     Annotate {
-        /// Pattern id or id prefix (uuid)
         id: String,
-        /// Annotation: 'approved' or 'rejected'
         #[arg(value_parser = ["approved", "rejected"])]
         annotation: String,
     },
@@ -236,92 +206,23 @@ enum LearnCmd {
 
 #[derive(Subcommand)]
 enum ScheduleCmd {
-    /// List all configured schedules with next run times
     List,
 }
 
 #[derive(Subcommand)]
 enum StabilityCmd {
-    /// List the most recent stability assessments.
     List {
         #[arg(short, long, default_value = "20")]
         limit: i64,
-        /// Show only unstable assessments (variance above warning threshold).
         #[arg(long)]
         unstable_only: bool,
     },
-    /// Show a summary of all-time verdict counts.
     Summary,
-}
-
-fn db_path() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
-    PathBuf::from(home).join(".lopi").join("lopi.db")
-}
-
-fn fmt_status(s: &str) -> &str {
-    match s {
-        "queued" => "⏳ queued",
-        "planning" => "📋 planning",
-        "implementing" => "🔨 implementing",
-        "testing" => "🧪 testing",
-        "scoring" => "📊 scoring",
-        "success" => "✅ success",
-        "failed" => "❌ failed",
-        "rolled_back" => "⏪ rolled back",
-        _ => s,
-    }
-}
-
-pub(crate) fn status_label(s: &TaskStatus) -> String {
-    match s {
-        TaskStatus::Queued => "queued".into(),
-        TaskStatus::Planning => "planning".into(),
-        TaskStatus::Implementing => "implementing".into(),
-        TaskStatus::Testing => "testing".into(),
-        TaskStatus::Scoring => "scoring".into(),
-        TaskStatus::Retrying { attempt } => format!("retrying (attempt {attempt})"),
-        TaskStatus::Success { branch, pr_url } => format!(
-            "success ✅ branch={branch}{}",
-            pr_url
-                .as_deref()
-                .map(|u| format!(", pr={u}"))
-                .unwrap_or_default()
-        ),
-        TaskStatus::Failed { reason } => format!("failed ❌ {reason}"),
-        TaskStatus::RolledBack => "rolled back".into(),
-    }
-}
-
-fn load_config(path: Option<&PathBuf>) -> Option<LopiConfig> {
-    if let Some(p) = path {
-        LopiConfig::load(p).ok()
-    } else {
-        LopiConfig::find_and_load()
-    }
-}
-
-pub(crate) fn is_self_modify_attempt(repo: &std::path::Path) -> bool {
-    if let Ok(exe) = std::env::current_exe() {
-        if let (Some(parent), Ok(repo_canonical)) =
-            (exe.parent().and_then(|p| p.parent()), repo.canonicalize())
-        {
-            if let Ok(exe_canonical) = parent.canonicalize() {
-                return repo_canonical.starts_with(&exe_canonical);
-            }
-        }
-    }
-    false
 }
 
 #[allow(clippy::too_many_lines)]
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Initialize tracing. With `--features otel`, OTLP export is wired in
-    // when OTEL_EXPORTER_OTLP_ENDPOINT is set. Without the feature, lopi
-    // runs with zero OTel runtime cost — the four GenAI-aligned spans the
-    // agent emits (lopi.agent.think / act / score / task.complete) stay
-    // local for stdout consumption.
     let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn"));
     let fmt_layer = tracing_subscriber::fmt::layer();
@@ -365,15 +266,32 @@ async fn main() -> Result<()> {
     let cfg = load_config(cli.config.as_ref());
 
     match cli.command {
+        // ── bare `lopi` → interactive REPL ─────────────────────
+        None => {
+            let repo = repo_detect::detect_repo();
+            let model = cfg
+                .as_ref()
+                .map(|c| c.claude.cli_path.clone())
+                .unwrap_or_else(|| "claude".into());
+            repl::run_repl(repo, model, cfg).await?;
+        }
+
+        // ── lopi bypass <goal> ──────────────────────────────────
+        Some(Commands::Bypass { goal_args }) => {
+            let goal = goal_args.join(" ");
+            let repo = repo_detect::detect_repo();
+            repl::run_inline(goal, repo, true, cfg.as_ref()).await?;
+        }
+
         // ── lopi run ────────────────────────────────────────────
-        Commands::Run {
+        Some(Commands::Run {
             goal,
             repo,
             dry_run,
             speculative,
             adaptive_retry,
             stability_gate,
-        } => {
+        }) => {
             run_command::run(
                 goal,
                 repo,
@@ -386,93 +304,96 @@ async fn main() -> Result<()> {
             .await?;
         }
 
-        // ── lopi watch ──────────────────────────────────────────
-        Commands::Watch { remote, local } => task_commands::watch(remote, local).await?,
-        Commands::Tail { task_id, history } => task_commands::tail(task_id, history).await?,
-        Commands::Dock => task_commands::dock().await?,
-        Commands::Sail {
+        // ── lopi watch / tail / dock / sail / cancel / resume ───
+        Some(Commands::Watch { remote, local }) => task_commands::watch(remote, local).await?,
+        Some(Commands::Tail { task_id, history }) => task_commands::tail(task_id, history).await?,
+        Some(Commands::Dock) => task_commands::dock().await?,
+        Some(Commands::Sail {
             port,
             host,
             max_agents,
             repo,
             repos,
-        } => {
+        }) => {
             sail_commands::run(max_agents, repo, repos, host, port, cfg.as_ref()).await?;
         }
-        Commands::Cancel { task_id } => task_commands::cancel(task_id).await?,
-        Commands::Resume { agent_id } => task_commands::resume(agent_id).await?,
+        Some(Commands::Cancel { task_id }) => task_commands::cancel(task_id).await?,
+        Some(Commands::Resume { agent_id }) => task_commands::resume(agent_id).await?,
 
-        // ── lopi learn ──────────────────────────────────────────
-        Commands::WatchGapFill {
+        // ── lopi watch-gap-fill ─────────────────────────────────
+        Some(Commands::WatchGapFill {
             repo,
             interval,
             sail_url,
             run_now,
-        } => {
+        }) => {
             gap_fill_commands::watch_loop(repo, interval, &sail_url, run_now).await?;
         }
 
-        Commands::Trust => trust_commands::show().await?,
+        Some(Commands::Trust) => trust_commands::show().await?,
 
-        Commands::ServeApp { port, host } => {
+        Some(Commands::ServeApp { port, host }) => {
             let addr: std::net::SocketAddr = format!("{host}:{port}")
                 .parse()
                 .map_err(|e| anyhow::anyhow!("invalid address: {e}"))?;
-            let cfg = lopi_app::AppConfig::from_env();
+            let app_cfg = lopi_app::AppConfig::from_env();
             println!("🔐 lopi serve-app on {addr}");
             println!(
                 "   GitHub OAuth: {}",
-                if cfg.github_configured() {
+                if app_cfg.github_configured() {
                     "✅ configured"
                 } else {
-                    "⚠️  missing (set GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, GITHUB_REDIRECT_URI)"
+                    "⚠️  missing (GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, GITHUB_REDIRECT_URI)"
                 }
             );
             println!(
                 "   Stripe:       {}",
-                if cfg.stripe_configured() {
+                if app_cfg.stripe_configured() {
                     "✅ configured"
                 } else {
-                    "⚠️  missing (set STRIPE_WEBHOOK_SECRET)"
+                    "⚠️  missing (STRIPE_WEBHOOK_SECRET)"
                 }
             );
             println!();
-            let store = MemoryStore::open(db_path()).await?;
-            let state = lopi_app::AppState { cfg, store };
+            let store = lopi_memory::MemoryStore::open(util::db_path()).await?;
+            let state = lopi_app::AppState {
+                cfg: app_cfg,
+                store,
+            };
             lopi_app::serve(state, addr).await?;
         }
 
-        Commands::GapFill {
+        Some(Commands::GapFill {
             repo,
             sail_url,
             dry_run,
-        } => {
+        }) => {
             gap_fill_commands::run(repo, &sail_url, dry_run, false).await?;
         }
 
-        Commands::Spec { repo, export, save } => {
+        Some(Commands::Spec { repo, export, save }) => {
             spec_commands::run_spec(repo, export, save).await?;
         }
-        Commands::Check {
+        Some(Commands::Check {
             repo,
             fail_on_violations,
-        } => {
+        }) => {
             spec_commands::run_check(repo, fail_on_violations).await?;
         }
 
-        Commands::Learn(cmd) => learn_commands::run(cmd, db_path()).await?,
+        Some(Commands::Learn(cmd)) => learn_commands::run(cmd, util::db_path()).await?,
 
-        Commands::ServeWebhooks {
+        Some(Commands::ServeWebhooks {
             port,
             host,
             webhook_secret,
             github_token,
             anthropic_key,
-        } => {
+        }) => {
             webhook_commands::run(port, host, webhook_secret, github_token, anthropic_key).await?;
         }
 
-        Commands::Schedules(ScheduleCmd::List) => {
+        Some(Commands::Schedules(ScheduleCmd::List)) => {
             let schedules = cfg
                 .as_ref()
                 .map(|c| c.schedules.clone())
@@ -481,74 +402,12 @@ async fn main() -> Result<()> {
         }
 
         // ── lopi stability ──────────────────────────────────────
-        Commands::Stability(cmd) => match cmd {
-            StabilityCmd::List {
-                limit,
-                unstable_only,
-            } => {
-                let store = MemoryStore::open(db_path()).await?;
-                let entries = store.load_stability_entries(limit).await?;
-                let filtered: Vec<_> = if unstable_only {
-                    entries
-                        .into_iter()
-                        .filter(|e| e.verdict == "unstable")
-                        .collect()
-                } else {
-                    entries
-                };
+        Some(Commands::Stability(StabilityCmd::List {
+            limit,
+            unstable_only,
+        })) => stability_commands::list(limit, unstable_only).await?,
 
-                println!("🔬 lopi stability — {} assessment(s)\n", filtered.len());
-                if filtered.is_empty() {
-                    if unstable_only {
-                        println!("  No unstable assessments in the ledger.");
-                    } else {
-                        println!("  No stability assessments yet.");
-                        println!("  Enable with `AgentRunner::with_stability_gate()` or `lopi run --stability-gate`.");
-                    }
-                    return Ok(());
-                }
-
-                println!(
-                    "  {:<8}  {:<36}  {:<9}  {:>8}  {:>8}  Verdict",
-                    "Id", "Goal prefix", "Model", "Variance", "Samples"
-                );
-                println!("  {}", "─".repeat(90));
-                for e in &filtered {
-                    let id = &e.id[..8.min(e.id.len())];
-                    let goal = if e.task_goal_pfx.len() > 36 {
-                        format!("{}…", &e.task_goal_pfx[..35])
-                    } else {
-                        e.task_goal_pfx.clone()
-                    };
-                    let model_short = e.model.split('-').next_back().unwrap_or(&e.model);
-                    let verdict_icon = match e.verdict.as_str() {
-                        "stable" => "✅ stable",
-                        "warning" => "⚠️  warning",
-                        "unstable" => "🚫 UNSTABLE",
-                        other => other,
-                    };
-                    println!(
-                        "  {id:<8}  {goal:<36}  {model_short:<9}  {:>8.3}  {:>8}  {verdict_icon}",
-                        e.variance_score, e.n_samples
-                    );
-                }
-            }
-
-            StabilityCmd::Summary => {
-                let store = MemoryStore::open(db_path()).await?;
-                let (stable, warning, unstable) = store.stability_verdict_counts().await?;
-                let total = stable + warning + unstable;
-                println!("🔬 lopi stability summary\n");
-                println!("  Total assessments:  {total}");
-                println!("  ✅ Stable:          {stable}");
-                println!("  ⚠️  Warning:         {warning}");
-                println!("  🚫 Unstable:        {unstable}");
-                if total > 0 {
-                    let block_rate = unstable as f64 / total as f64 * 100.0;
-                    println!("  Block rate:         {block_rate:.1}%");
-                }
-            }
-        },
+        Some(Commands::Stability(StabilityCmd::Summary)) => stability_commands::summary().await?,
     }
 
     Ok(())

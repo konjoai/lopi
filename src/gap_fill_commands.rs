@@ -6,7 +6,7 @@ use lopi_memory::{MemoryStore, QualityRunRecord};
 use lopi_spec::{coverage_gaps, run_tests, SpecSurface};
 use std::path::PathBuf;
 
-use crate::db_path;
+use crate::util::db_path;
 
 /// Run tests, persist the quality run, find gaps, and (optionally) queue tasks.
 pub async fn run(

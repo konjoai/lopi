@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::{db_path, is_self_modify_attempt, status_label};
+use crate::util::{db_path, is_self_modify_attempt, status_label};
 
 /// `lopi run` — execute a single agent task on the current terminal.
 #[allow(clippy::too_many_arguments)]
