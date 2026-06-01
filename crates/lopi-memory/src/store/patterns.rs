@@ -14,11 +14,17 @@ use super::MemoryStore;
 /// A pattern row retrieved from the `patterns` table.
 #[derive(Debug, sqlx::FromRow)]
 pub struct PatternRow {
+    /// UUID primary key for this pattern entry.
     pub id: String,
+    /// Normalised keywords extracted from the task goal.
     pub goal_keywords: String,
+    /// JSON array of constraint strings that led to success, if known.
     pub successful_constraints: Option<String>,
+    /// Rolling average number of attempts across matching tasks.
     pub avg_attempts: Option<f64>,
+    /// Fraction of matching tasks that completed successfully (0.0–1.0).
     pub success_rate: Option<f64>,
+    /// ISO-8601 timestamp of the most recent task matching this pattern.
     pub last_seen: String,
     /// 1 when derived from a failure post-mortem; 0 when mined from task stats.
     #[sqlx(default)]

@@ -26,6 +26,7 @@ impl PartialOrd for PrioEntry {
     }
 }
 
+/// Thread-safe priority task queue — push tasks in, pop highest-priority first.
 #[derive(Clone)]
 pub struct TaskQueue {
     inner: Arc<Inner>,
@@ -40,6 +41,7 @@ struct Inner {
 }
 
 impl TaskQueue {
+    /// Create an empty queue.
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -123,11 +125,13 @@ impl TaskQueue {
         }
     }
 
+    /// Number of tasks currently waiting in the queue.
     #[must_use]
     pub fn len(&self) -> usize {
         self.inner.tasks.len()
     }
 
+    /// True if the queue contains no waiting tasks.
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.inner.tasks.is_empty()

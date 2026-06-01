@@ -12,7 +12,7 @@
 //! | `GITHUB_CLIENT_ID`       | OAuth client ID                                |
 //! | `GITHUB_CLIENT_SECRET`   | OAuth client secret                            |
 //! | `GITHUB_WEBHOOK_SECRET`  | HMAC secret for incoming GitHub App webhooks   |
-//! | `GITHUB_REDIRECT_URI`    | Callback URL (e.g. https://lopi.example.com/app/callback) |
+//! | `GITHUB_REDIRECT_URI`    | Callback URL (e.g. <https://lopi.example.com/app/callback>) |
 //! | `STRIPE_WEBHOOK_SECRET`  | Stripe webhook signing secret (`whsec_…`)      |
 //!
 //! When variables are absent the server starts but the relevant routes
@@ -30,11 +30,17 @@ use std::sync::Arc;
 /// Configuration loaded from environment variables.
 #[derive(Clone)]
 pub struct AppConfig {
+    /// GitHub App numeric ID from the App settings page.
     pub github_app_id: Option<String>,
+    /// OAuth client ID for GitHub App user authorization.
     pub github_client_id: Option<String>,
+    /// OAuth client secret for GitHub App user authorization.
     pub github_client_secret: Option<String>,
+    /// HMAC secret used to verify incoming GitHub webhook payloads.
     pub github_webhook_secret: Option<String>,
+    /// OAuth callback URL registered in the GitHub App settings.
     pub github_redirect_uri: Option<String>,
+    /// Stripe webhook signing secret (starts with `whsec_`).
     pub stripe_webhook_secret: Option<String>,
     /// Base directory for per-customer isolated stores.
     pub customer_store_base: std::path::PathBuf,
@@ -81,7 +87,9 @@ fn dirs_home() -> std::path::PathBuf {
 /// Shared application state for the app server.
 #[derive(Clone)]
 pub struct AppState {
+    /// Server configuration loaded from environment variables.
     pub cfg: AppConfig,
+    /// In-process memory store for session and user data.
     pub store: MemoryStore,
 }
 

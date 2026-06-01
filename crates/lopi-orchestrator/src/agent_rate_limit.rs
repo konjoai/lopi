@@ -2,8 +2,7 @@
 //!
 //! Each registered agent gets a token bucket sized by `max_per_minute`
 //! plus an atomic in-flight counter capped by `max_concurrent`. Callers
-//! gate dispatch with [`AgentPool::try_acquire_agent`] (non-blocking)
-//! and [`AgentPool::release_agent`] when the task finishes.
+//! gate dispatch (non-blocking) and release when the task finishes.
 //!
 //! Agents not in the registry are *unlimited* — registration is opt-in.
 //! REST handlers translate "registry hit, acquire fails" into HTTP 429.
@@ -56,9 +55,13 @@ impl AgentRateState {
 /// Public snapshot returned by `GET /api/agents/:id/rate-limit`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentRateLimitSnapshot {
+    /// Stable identifier for the agent this snapshot describes.
     pub agent_id: String,
+    /// Maximum token requests allowed per minute.
     pub max_per_minute: u32,
+    /// Maximum simultaneous requests allowed.
     pub max_concurrent: u32,
+    /// Requests currently in flight.
     pub in_flight: u32,
 }
 

@@ -2,7 +2,7 @@
 //!
 //! Every dispatcher (constellation router, pool worker) calls
 //! [`HealthRegistry::heartbeat`] when an agent reports liveness, and
-//! [`record_success`] / [`record_failure`] (with the call's latency) when
+//! `record_success` / `record_failure` (with the call's latency) when
 //! a request completes. A background sweeper runs every `sweeper_period`
 //! and transitions agents based on time-since-last-beat:
 //!
@@ -90,11 +90,17 @@ struct HealthInner {
 /// Public health snapshot returned by `GET /api/agents/:id/health`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HealthSnapshot {
+    /// Stable agent identifier.
     pub agent_id: String,
+    /// Current health classification.
     pub status: AgentHealth,
+    /// Timestamp of the most recent heartbeat, if any.
     pub last_seen: Option<DateTime<Utc>>,
+    /// Fraction of requests that errored in the last hour.
     pub error_rate_1h: f32,
+    /// Mean request latency in milliseconds over recent samples.
     pub avg_latency_ms: f32,
+    /// How many requests in a row have failed.
     pub consecutive_failures: u32,
     /// Number of latency samples backing `avg_latency_ms`.
     pub samples: u32,
@@ -103,9 +109,13 @@ pub struct HealthSnapshot {
 /// Fleet-wide rollup for `GET /api/agents/health/summary`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HealthSummary {
+    /// Total agents tracked by the registry.
     pub total: u32,
+    /// Agents in the `Healthy` state.
     pub healthy: u32,
+    /// Agents in the `Degraded` state.
     pub degraded: u32,
+    /// Agents classified as `Dead`.
     pub dead: u32,
 }
 
@@ -145,7 +155,7 @@ pub struct HealthRegistry {
 
 impl HealthRegistry {
     /// Build a registry with the given config. No sweeper task is started
-    /// automatically — call [`spawn_sweeper`] when ready.
+    /// automatically — call [`HealthRegistry::spawn_sweeper`] when ready.
     #[must_use]
     pub fn new(config: HealthConfig) -> Self {
         Self {

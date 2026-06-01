@@ -46,12 +46,19 @@ pub struct CheckpointRow {
 /// default to `None`/`0`.
 #[derive(Debug, Clone)]
 pub struct CheckpointInput {
+    /// Identifier of the task this checkpoint belongs to.
     pub task_id: TaskId,
+    /// Attempt number at the time the checkpoint was saved.
     pub attempt: u8,
+    /// Serialised runner state label (e.g. `"planning"`, `"testing"`).
     pub state: String,
+    /// JSON-encoded plan produced on this attempt, if any.
     pub last_plan: Option<String>,
+    /// JSON-encoded score produced on this attempt, if any.
     pub last_score: Option<String>,
+    /// Filesystem path of the repository being worked on.
     pub repo_path: Option<String>,
+    /// Hash of the context window at checkpoint time for cache keying.
     pub context_hash: Option<String>,
 }
 

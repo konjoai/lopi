@@ -3,10 +3,12 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use uuid::Uuid;
 
+/// Unique identifier for a task — a newtype over `Uuid`.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct TaskId(pub Uuid);
 
 impl TaskId {
+    /// Generate a new random task ID.
     #[must_use]
     pub fn new() -> Self {
         Self(Uuid::new_v4())
@@ -25,44 +27,73 @@ impl std::fmt::Display for TaskId {
     }
 }
 
+/// Current lifecycle status of a [`Task`].
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum TaskStatus {
+    /// Task is waiting in the queue for an available agent.
     Queued,
+    /// Agent is generating an implementation plan.
     Planning,
+    /// Agent is applying code changes.
     Implementing,
+    /// Agent is running the test suite.
     Testing,
+    /// Agent is evaluating test and lint results.
     Scoring,
+    /// Task is being retried after a previous failed attempt.
     Retrying {
+        /// Attempt number of the upcoming retry.
         attempt: u8,
     },
+    /// Task completed successfully and a branch (and optionally PR) was created.
     Success {
+        /// Branch containing the successful changes.
         branch: String,
+        /// URL of the opened pull request, if auto-PR is enabled.
         pr_url: Option<String>,
     },
+    /// Task failed after exhausting all retry attempts.
     Failed {
+        /// Human-readable description of why the task failed.
         reason: String,
     },
+    /// Changes were rolled back after a failure.
     RolledBack,
 }
 
+/// Scheduling priority for a [`Task`] in the agent queue.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Priority {
+    /// Lowest priority — processed only when no higher-priority tasks are queued.
     Low = 0,
+    /// Default priority for tasks submitted without an explicit override.
     Normal = 1,
+    /// Elevated priority — processed before `Normal` tasks.
     High = 2,
+    /// Highest priority — pre-empts all other queued tasks.
     Critical = 3,
 }
 
+/// A unit of work submitted to the lopi agent pool.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Task {
+    /// Unique identifier for this task.
     pub id: TaskId,
+    /// Natural-language description of what the agent must achieve.
     pub goal: String,
+    /// Additional hard constraints injected into the planning prompt.
     pub constraints: Vec<String>,
+    /// Directories the agent is allowed to modify.
     pub allowed_dirs: Vec<String>,
+    /// Directories the agent must never touch.
     pub forbidden_dirs: Vec<String>,
+    /// Scheduling priority relative to other queued tasks.
     pub priority: Priority,
+    /// Maximum number of retry attempts before the task is marked failed.
     pub max_retries: u8,
+    /// Timestamp when the task was created.
     pub created_at: DateTime<Utc>,
+    /// Origin that submitted this task.
     pub source: TaskSource,
     /// Override repository path for this task. Pool default is used when None.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -90,16 +121,36 @@ pub struct Task {
     pub tools: Vec<String>,
 }
 
+/// Where a task originated — used for routing replies and audit logging.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TaskSource {
+    /// Submitted via the `lopi run` command-line interface.
     Cli,
-    Telegram { chat_id: i64, message_id: i32 },
-    Webhook { repo: String, event: String },
+    /// Submitted by a Telegram bot message.
+    Telegram {
+        /// Telegram chat that sent the command.
+        chat_id: i64,
+        /// Message ID of the originating Telegram message.
+        message_id: i32,
+    },
+    /// Injected by the GitHub webhook handler in response to a CI event.
+    Webhook {
+        /// Repository full name (e.g. `"org/repo"`).
+        repo: String,
+        /// GitHub event type that triggered the task (e.g. `"check_run"`).
+        event: String,
+    },
+    /// Submitted via the REST API.
     Api,
-    SelfModify { approved_by: String },
+    /// Approved self-modification task targeting lopi's own codebase.
+    SelfModify {
+        /// Identity or mechanism that approved the self-modification.
+        approved_by: String,
+    },
 }
 
 impl Task {
+    /// Create a new `Task` with sensible defaults and `Normal` priority.
     #[must_use]
     pub fn new(goal: impl Into<String>) -> Self {
         Self {

@@ -15,8 +15,11 @@ use tokio::process::Command;
 
 // ── Model identifiers ─────────────────────────────────────────────────────────
 
+/// Claude Haiku model identifier — lowest cost, fast latency.
 pub const MODEL_HAIKU: &str = "claude-haiku-4-5-20251001";
+/// Claude Sonnet model identifier — default balanced model.
 pub const MODEL_SONNET: &str = "claude-sonnet-4-6";
+/// Claude Opus model identifier — highest capability, used for complex or retried tasks.
 pub const MODEL_OPUS: &str = "claude-opus-4-7";
 
 /// Route a task to the cheapest model capable of handling its complexity.
@@ -41,27 +44,36 @@ pub fn select_model(task: &Task, attempt: u8) -> &'static str {
 /// Structured output from `claude --output-format json`.
 #[derive(Debug, Deserialize)]
 pub struct ClaudeOutput {
+    /// JSON `type` field from the CLI response envelope.
     #[serde(rename = "type")]
     pub kind: Option<String>,
+    /// The assistant's text response, if present.
     pub result: Option<String>,
+    /// `true` when the CLI reports an error outcome.
     pub is_error: Option<bool>,
+    /// Estimated cost in USD as reported by the CLI.
     pub cost_usd: Option<f64>,
+    /// Wall-clock duration of the CLI invocation in milliseconds.
     pub duration_ms: Option<u64>,
+    /// Raw stdout from the CLI process — fallback when JSON parsing fails.
     #[serde(skip)]
     pub raw: String,
 }
 
 impl ClaudeOutput {
+    /// Return the response text, falling back to raw stdout when `result` is absent.
     #[must_use]
     pub fn text(&self) -> &str {
         self.result.as_deref().unwrap_or(&self.raw)
     }
+    /// Return `true` when the CLI did not report an error.
     #[must_use]
     pub fn succeeded(&self) -> bool {
         !self.is_error.unwrap_or(false)
     }
 }
 
+/// Wrapper around the `claude` CLI — drives plan, implement, fix, and streaming calls.
 pub struct ClaudeCode {
     repo_path: PathBuf,
     cli_path: String,
@@ -78,6 +90,7 @@ pub struct ClaudeCode {
 }
 
 impl ClaudeCode {
+    /// Create a new `ClaudeCode` wrapper rooted at `repo_path`.
     pub fn new(repo_path: impl AsRef<Path>) -> Self {
         Self {
             repo_path: repo_path.as_ref().to_path_buf(),
@@ -91,42 +104,49 @@ impl ClaudeCode {
         }
     }
 
+    /// Override the Claude model used for CLI invocations.
     #[must_use]
     pub fn with_model(mut self, model: impl Into<String>) -> Self {
         self.model = Some(model.into());
         self
     }
 
+    /// Override the path to the `claude` CLI binary.
     #[must_use]
     pub fn with_cli(mut self, cli_path: impl Into<String>) -> Self {
         self.cli_path = cli_path.into();
         self
     }
 
+    /// Set the per-invocation timeout in seconds.
     #[must_use]
     pub fn with_timeout(mut self, secs: u64) -> Self {
         self.timeout = Duration::from_secs(secs);
         self
     }
 
+    /// Enable or disable `--output-format json` on CLI calls.
     #[must_use]
     pub fn with_json_output(mut self, enabled: bool) -> Self {
         self.json_output = enabled;
         self
     }
 
+    /// Inject additional constraints from pattern memory into the planning prompt.
     #[must_use]
     pub fn with_extra_constraints(mut self, constraints: Vec<String>) -> Self {
         self.extra_constraints = constraints;
         self
     }
 
+    /// Attach TOON-encoded keyword/constraint pattern pairs for the planning prompt.
     #[must_use]
     pub fn with_patterns(mut self, patterns: Vec<(String, String)>) -> Self {
         self.patterns = patterns;
         self
     }
 
+    /// Attach lessons learned from past post-mortems for the planning prompt.
     #[must_use]
     pub fn with_lessons(mut self, lessons: Vec<(String, String)>) -> Self {
         self.lessons = lessons;

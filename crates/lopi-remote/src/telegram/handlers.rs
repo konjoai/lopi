@@ -18,6 +18,7 @@ use super::{monitor, LopiCmd};
 /// Shared draft state: maps chat_id → accumulated lines.
 pub type DraftMap = Arc<Mutex<HashMap<i64, Vec<String>>>>;
 
+/// Dispatch all bot commands — entry point for the teloxide command handler.
 #[allow(clippy::too_many_arguments)]
 pub async fn message_handler(
     bot: Bot,
@@ -59,7 +60,7 @@ pub async fn message_handler(
     }
 }
 
-/// Handle plain-text messages while a draft is active for this chat.
+/// Handle plain-text messages while a draft is active for this chat, appending each line to the buffer.
 pub async fn text_message_handler(
     bot: Bot,
     msg: Message,
@@ -236,6 +237,7 @@ async fn handle_retry(
     Ok(())
 }
 
+/// Show learned patterns with approve/reject inline buttons.
 pub async fn handle_learn(bot: &Bot, msg: &Message, store: &MemoryStore, n: usize) -> Result<()> {
     match store.load_patterns(n as i64).await {
         Ok(patterns) if patterns.is_empty() => {

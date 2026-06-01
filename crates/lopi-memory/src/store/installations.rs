@@ -17,6 +17,7 @@ use super::MemoryStore;
 /// A GitHub App installation record.
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct InstallationRow {
+    /// Internal primary key (UUID string).
     pub id: String,
     /// GitHub installation_id from the webhook payload.
     pub installation_id: i64,
@@ -28,7 +29,9 @@ pub struct InstallationRow {
     pub account_type: String,
     /// `'active'`, `'suspended'`, or `'deleted'`.
     pub status: String,
+    /// ISO-8601 timestamp of when the App was first installed.
     pub installed_at: String,
+    /// ISO-8601 timestamp of the most recent installation status change.
     pub updated_at: String,
 }
 

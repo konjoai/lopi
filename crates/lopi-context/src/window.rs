@@ -23,6 +23,7 @@ fn phase_predecessor(new_phase: Phase) -> Option<Phase> {
     }
 }
 
+/// Sliding token-budget window that holds tagged conversation turns for an agent run.
 pub struct ContextWindow {
     turns: Vec<TaggedMessage>,
     token_budget: usize,
@@ -333,6 +334,8 @@ impl ContextWindow {
 /// Anthropic wire-format message produced by `to_api_messages()`.
 #[derive(Debug, Clone)]
 pub struct ApiMessage {
+    /// The role of the message sender.
     pub role: Role,
+    /// The content blocks making up this message.
     pub content: Vec<ContentBlock>,
 }

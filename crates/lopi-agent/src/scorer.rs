@@ -4,11 +4,13 @@ use std::path::{Path, PathBuf};
 use tokio::process::Command;
 use which::which;
 
+/// Runs tests and linters against a repository and produces a `Score`.
 pub struct Scorer {
     repo_path: PathBuf,
 }
 
 impl Scorer {
+    /// Create a scorer rooted at `repo_path`.
     pub fn new(repo_path: impl AsRef<Path>) -> Self {
         Self {
             repo_path: repo_path.as_ref().to_path_buf(),

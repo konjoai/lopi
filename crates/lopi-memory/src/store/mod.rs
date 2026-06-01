@@ -285,12 +285,18 @@ impl MemoryStore {
     }
 }
 
+/// Flat view of a task record returned by [`MemoryStore::load_history`].
 #[derive(Debug, sqlx::FromRow)]
 pub struct TaskRow {
+    /// Stringified UUID — primary key matching the `tasks` table.
     pub id: String,
+    /// Human-readable goal text submitted with the task.
     pub goal: String,
+    /// Current lifecycle status string (e.g. `"pending"`, `"done"`, `"failed"`).
     pub status: String,
+    /// ISO-8601 timestamp when the task was created.
     pub created_at: String,
+    /// ISO-8601 timestamp when the task reached a terminal state, if any.
     pub completed_at: Option<String>,
 }
 

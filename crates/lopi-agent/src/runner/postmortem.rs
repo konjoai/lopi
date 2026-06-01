@@ -54,9 +54,13 @@ the planning prompt of future similar tasks. Make it actionable.
 /// Output of `run_postmortem`. Wraps the raw constraint plus the API usage
 /// so the caller can feed `TurnMetrics` for observability.
 pub struct PostmortemOutcome {
+    /// Single imperative constraint derived from the failure analysis.
     pub constraint: String,
+    /// Input tokens consumed by the post-mortem API call.
     pub input_tokens: u32,
+    /// Output tokens produced by the post-mortem API call.
     pub output_tokens: u32,
+    /// Tokens served from cache during the post-mortem API call.
     pub cache_read_tokens: u32,
 }
 

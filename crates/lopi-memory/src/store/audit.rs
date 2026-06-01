@@ -42,10 +42,15 @@ pub struct AuditRow {
 /// `id` and `ts`, both of which the store fills in.
 #[derive(Debug, Clone)]
 pub struct AuditInput {
+    /// Short label describing the action taken (e.g. `"task.started"`).
     pub action: String,
+    /// Category of the object the action was performed on.
     pub subject_type: Option<String>,
+    /// Identifier of the specific subject object.
     pub subject_id: Option<String>,
+    /// Label identifying who or what triggered the action.
     pub actor: Option<String>,
+    /// Optional JSON-encoded payload with structured context.
     pub payload: Option<String>,
 }
 
@@ -95,6 +100,7 @@ pub struct AuditQuery {
     pub action: Option<String>,
     /// Only return rows whose `(subject_type, subject_id)` matches.
     pub subject_type: Option<String>,
+    /// Subject ID filter paired with `subject_type`.
     pub subject_id: Option<String>,
     /// Page size — clamped to [1, 1000] by the store. Defaults to 100.
     pub limit: i64,

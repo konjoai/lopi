@@ -60,8 +60,11 @@ impl Default for BudgetLimit {
 /// `lopi sail` instance.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BudgetConfig {
+    /// Fleet-wide (whole `lopi sail`) budget limit.
     pub fleet: BudgetLimit,
+    /// Per-agent budget limit applied to each running runner.
     pub agent: BudgetLimit,
+    /// Per-task budget limit applied across all attempts of a single task.
     pub task: BudgetLimit,
 }
 
@@ -90,10 +93,18 @@ pub enum BudgetError {
     /// The scope's hourly cost cap is reached — no further billable calls
     /// allowed in this window.
     #[error("budget exceeded at {scope:?}: ${limit_usd:.4}/hr cap reached")]
-    Exceeded { scope: BudgetScope, limit_usd: f64 },
+    Exceeded {
+        /// Budget scope that was exceeded.
+        scope: BudgetScope,
+        /// The configured hourly USD cap for that scope.
+        limit_usd: f64,
+    },
     /// The scope's breaker tripped Open after too many consecutive failures.
     #[error("circuit breaker open at {scope:?}")]
-    BreakerOpen { scope: BudgetScope },
+    BreakerOpen {
+        /// Budget scope whose breaker is open.
+        scope: BudgetScope,
+    },
 }
 
 /// Hierarchical governor wrapping three [`CircuitBreaker`]s.
@@ -226,8 +237,11 @@ fn map_check(
 /// Snapshot of every breaker state — driven by [`BudgetGovernor::states`].
 #[derive(Debug, Clone, Copy)]
 pub struct BudgetStates {
+    /// Current state of the fleet-scope breaker.
     pub fleet: BreakerState,
+    /// Current state of the agent-scope breaker.
     pub agent: BreakerState,
+    /// Current state of the task-scope breaker.
     pub task: BreakerState,
 }
 

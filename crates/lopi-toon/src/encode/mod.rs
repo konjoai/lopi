@@ -9,9 +9,12 @@ use serde_json::{Map, Value};
 /// Delimiter used in arrays and tabular rows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Delimiter {
+    /// Comma-separated values — the default and most compact form.
     #[default]
     Comma,
+    /// Tab-separated values — useful when cell content may contain commas.
     Tab,
+    /// Pipe-separated values — an alternative to comma for human readability.
     Pipe,
 }
 
@@ -33,6 +36,7 @@ impl Delimiter {
     }
 }
 
+/// Options controlling how a JSON value is serialised to TOON.
 #[derive(Debug, Clone)]
 pub struct EncoderOptions {
     /// Spaces per indent level (default 2).

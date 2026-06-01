@@ -12,6 +12,7 @@ use tokio::sync::Mutex;
 /// A single process-wide lock is sufficient because lopi agents share one process.
 static WORKTREE_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
+/// Manages git branch creation, checkout, and rollback for isolated agent workspaces.
 pub struct GitManager {
     repo_path: PathBuf,
 }

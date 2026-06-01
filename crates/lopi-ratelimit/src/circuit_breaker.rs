@@ -16,10 +16,15 @@ pub enum BreakerState {
 /// Errors returned by `CircuitBreaker::check()`.
 #[derive(Debug, thiserror::Error)]
 pub enum BreakerError {
+    /// Breaker is in the Open state — the request was rejected without forwarding.
     #[error("circuit breaker is open — service unavailable")]
     Open,
+    /// Hourly cost cap exceeded — no further calls allowed until the window resets.
     #[error("hourly cost cap exceeded: ${cap:.2}/hr")]
-    CostCapExceeded { cap: f64 },
+    CostCapExceeded {
+        /// The configured hourly USD cap that was exceeded.
+        cap: f64,
+    },
 }
 
 /// Adaptive circuit breaker combining failure counting with a per-hour cost cap.

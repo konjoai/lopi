@@ -49,11 +49,17 @@ pub struct DeadLetterRow {
 /// minus the generated columns (`id`, `first_failed_at`, `dead_at`).
 #[derive(Debug, Clone)]
 pub struct DeadLetterInput {
+    /// Identifier of the task that was moved to the dead-letter queue.
     pub task_id: TaskId,
+    /// Original task goal text.
     pub goal: String,
+    /// Repository path the task was targeting, if known.
     pub repo_path: Option<String>,
+    /// Total number of attempts made before the task was declared dead.
     pub total_attempts: u8,
+    /// Last error message recorded before giving up, if any.
     pub last_error: Option<String>,
+    /// Source that originally submitted the task (e.g. `"webhook"`, `"api"`).
     pub source: String,
 }
 

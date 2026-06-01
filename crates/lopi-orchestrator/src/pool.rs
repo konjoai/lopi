@@ -15,21 +15,28 @@ use crate::queue::TaskQueue;
 /// Live state of a single running agent.
 #[derive(Debug)]
 pub struct AgentHandle {
+    /// Task goal text.
     pub goal: String,
+    /// One-shot sender that signals the runner to stop; `None` after cancellation.
     pub cancel_tx: Option<oneshot::Sender<()>>,
     /// Current attempt count — updated atomically by the runner, read lock-free.
     pub attempt: Arc<AtomicUsize>,
+    /// Wall-clock time when this agent handle was created.
     pub started_at: std::time::Instant,
 }
 
 /// Shared counters for `/api/stats`.
 #[derive(Default)]
 pub struct PoolCounters {
+    /// Number of agents currently executing.
     pub running: AtomicUsize,
+    /// Cumulative count of successfully completed tasks.
     pub succeeded: AtomicUsize,
+    /// Cumulative count of tasks that exhausted all retries.
     pub failed: AtomicUsize,
 }
 
+/// Concurrent agent pool — spawns runners, enforces concurrency limits, and emits events.
 #[derive(Clone)]
 pub struct AgentPool {
     /// Global concurrency cap — across all repos.
@@ -60,6 +67,7 @@ pub struct AgentPool {
 }
 
 impl AgentPool {
+    /// Create a new pool bound to `repo_path`, capped at `max_agents` concurrent runners.
     #[must_use]
     pub fn new(
         max_agents: usize,
@@ -92,17 +100,20 @@ impl AgentPool {
         while js.join_next().await.is_some() {}
     }
 
+    /// Attach a memory store; enables pattern persistence and cost tracking.
     #[must_use]
     pub fn with_store(mut self, store: MemoryStore) -> Self {
         self.store = Some(store);
         self
     }
 
+    /// Clone the underlying task queue handle.
     #[must_use]
     pub fn queue(&self) -> TaskQueue {
         self.queue.clone()
     }
 
+    /// Clone the event bus handle for subscribing to agent events.
     #[must_use]
     pub fn bus(&self) -> EventBus<AgentEvent> {
         self.bus.clone()
@@ -530,11 +541,17 @@ async fn push_dlq(
         .await;
 }
 
+/// Point-in-time snapshot of pool counters, returned by `AgentPool::stats()`.
 pub struct PoolStats {
+    /// Number of agents currently executing.
     pub running: usize,
+    /// Number of tasks waiting in the queue.
     pub queued: usize,
+    /// Cumulative successfully completed tasks since pool start.
     pub succeeded: usize,
+    /// Cumulative failed tasks (exhausted retries) since pool start.
     pub failed: usize,
+    /// Wall-clock seconds since the pool was created.
     pub uptime_secs: u64,
 }
 
@@ -542,7 +559,9 @@ pub struct PoolStats {
 pub struct RunningAgentInfo {
     /// Full UUID string — callers can truncate for display.
     pub task_id: String,
+    /// The task goal text.
     pub goal: String,
+    /// Current attempt number (1-based).
     pub attempt: usize,
 }
 

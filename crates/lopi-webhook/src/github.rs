@@ -21,9 +21,13 @@ use std::sync::Arc;
 /// classified by Haiku and a comment is posted on the GitHub issue.
 #[derive(Clone)]
 pub struct TriageConfig {
+    /// Anthropic API client used to call the triage model.
     pub api_client: Arc<AnthropicClient>,
+    /// GitHub client used to post triage comment results on issues.
     pub github: Arc<GitHubClient>,
+    /// Optional token-bucket rate limiter applied to triage API calls.
     pub limiter: Option<Arc<AnthropicLimiter>>,
+    /// Optional circuit breaker to stop triage calls when the API is unhealthy.
     pub breaker: Option<Arc<CircuitBreaker>>,
     /// Model for triage — Haiku is the right cost/quality trade-off.
     pub model: String,

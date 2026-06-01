@@ -56,6 +56,7 @@ pub enum SpecKind {
 }
 
 impl SpecKind {
+    /// Returns the stable string identifier for this spec kind.
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::RustTest => "rust_test",
@@ -67,10 +68,15 @@ impl SpecKind {
 /// The complete spec surface for a repository.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpecSurface {
+    /// Absolute path of the repository root that was scanned.
     pub repo_path: String,
+    /// All spec items discovered during extraction.
     pub items: Vec<SpecItem>,
+    /// Wall-clock time when extraction completed.
     pub extracted_at: DateTime<Utc>,
+    /// Number of Rust source files examined.
     pub rust_files_scanned: u32,
+    /// Number of Python source files examined.
     pub python_files_scanned: u32,
 }
 

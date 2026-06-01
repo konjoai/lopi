@@ -1,9 +1,21 @@
+//! Core shared types for the lopi agent orchestrator.
+//!
+//! Exposes `Task`, `AgentRun`, `Score`, `LopiConfig`, and supporting types
+//! used across all lopi crates.
+
+/// Agent execution state machine and scoring primitives.
 pub mod agent;
+/// Token-budget tracking and scope definitions.
 pub mod budget;
+/// Global and per-repo configuration structures.
 pub mod config;
+/// Broadcast event types for TUI, WebSocket, and log panels.
 pub mod event;
+/// Structured output schema validation (JSON Schema subset).
 pub mod schema;
+/// Task definition, status, priority, and source types.
 pub mod task;
+/// Customer tier classification.
 pub mod tier;
 
 pub use agent::{AgentRun, AgentState, Attempt, Score, ScoreWeights, TurnMetrics};

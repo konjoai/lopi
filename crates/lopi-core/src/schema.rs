@@ -6,7 +6,7 @@
 //!
 //! Two surfaces:
 //!
-//! * [`validate`] — pure validator. Pragmatic subset of JSON Schema:
+//! * [`crate::schema::validate`] — pure validator. Pragmatic subset of JSON Schema:
 //!   - `"type"`: object / string / number / integer / boolean / array / null
 //!   - `"required"`: array of property names (only meaningful on objects)
 //!   - `"properties"`: per-property subschemas (recursive)
@@ -63,9 +63,11 @@ impl ViolationKind {
 /// prompt to learn from.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Violation {
+    /// Category of the violation, used as the Prometheus label.
     pub kind: ViolationKind,
     /// Dotted JSON path: `""` for root, `"foo.bar"` for nested.
     pub path: String,
+    /// Human-readable explanation of the validation failure.
     pub message: String,
 }
 

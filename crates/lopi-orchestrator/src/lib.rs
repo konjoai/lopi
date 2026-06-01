@@ -1,8 +1,13 @@
+//! lopi-orchestrator — concurrent agent pool, priority task queue, and scheduler.
+
 pub mod agent_rate_limit;
 pub mod constellation;
 pub mod health;
+/// Concurrent agent pool that drives task execution from a shared `TaskQueue`.
 pub mod pool;
+/// Priority task queue with deduplication and async blocking pop.
 pub mod queue;
+/// Cron-style task scheduler that injects recurring tasks into the queue.
 pub mod scheduler;
 
 pub use agent_rate_limit::{AgentRateLimit, AgentRateLimitSnapshot};

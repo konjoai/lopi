@@ -10,6 +10,7 @@ use tracing::warn;
 use crate::telegram::format::{format_uptime, priority_badge, relative_time, short_id, status_emoji};
 use super::handlers::arg_n;
 
+/// Send a fleet overview: running agents, queued tasks, stats, and daily cost.
 pub async fn handle_fleet(
     bot: &Bot,
     msg: &Message,
@@ -63,6 +64,7 @@ pub async fn handle_fleet(
     Ok(())
 }
 
+/// Show recent task history; `arg` is an optional count (defaults to 8, max 20).
 pub async fn handle_dock(bot: &Bot, msg: &Message, store: &MemoryStore, arg: &str) -> Result<()> {
     let n = arg_n(arg, 8).min(20) as i64;
     match store.load_history(n).await {
@@ -92,6 +94,7 @@ pub async fn handle_dock(bot: &Bot, msg: &Message, store: &MemoryStore, arg: &st
     Ok(())
 }
 
+/// Show the last N log lines for a task identified by ID prefix.
 pub async fn handle_tail(bot: &Bot, msg: &Message, arg: &str, store: &MemoryStore) -> Result<()> {
     let (id_prefix, n) = parse_tail_arg(arg);
     if id_prefix.is_empty() {
@@ -140,6 +143,7 @@ pub async fn handle_tail(bot: &Bot, msg: &Message, arg: &str, store: &MemoryStor
     Ok(())
 }
 
+/// Send the daily token usage and cost summary.
 pub async fn handle_cost(bot: &Bot, msg: &Message, store: &MemoryStore) -> Result<()> {
     let (tokens, cost) = store.daily_token_totals().await.unwrap_or((0, 0.0));
     let total_tasks = store.task_count().await.unwrap_or(0);
@@ -150,6 +154,7 @@ pub async fn handle_cost(bot: &Bot, msg: &Message, store: &MemoryStore) -> Resul
     Ok(())
 }
 
+/// List all configured cron schedules with their next-run times.
 pub async fn handle_schedules(
     bot: &Bot,
     msg: &Message,
@@ -177,6 +182,7 @@ pub async fn handle_schedules(
     Ok(())
 }
 
+/// Trigger a named schedule immediately, pushing its task onto the queue.
 pub async fn handle_run_schedule(
     bot: &Bot,
     msg: &Message,
