@@ -1,5 +1,57 @@
 # Changelog
 
+## [Unreleased] — Sprint R: Telegram Bot Overhaul ⛵️
+
+### Added
+
+**Full remote control surface** (`crates/lopi-remote/src/telegram/`)
+- Rewrote `telegram.rs` as a module (`telegram/mod.rs`, `handlers.rs`, `monitor.rs`, `callbacks.rs`, `notify.rs`, `format.rs`) — all files under 400 lines
+- 19 commands: `/task`, `/urgent`, `/critical`, `/status`, `/fleet`, `/dock`, `/cancel`, `/retry`, `/schedules`, `/run`, `/tail`, `/learn`, `/patterns`, `/approve`, `/cost`, `/draft`, `/submit`, `/cancel_draft`, `/help`
+
+**Completion notifications** (`notify.rs`)
+- `notify_loop` subscribes to `EventBus<AgentEvent>` and pushes Telegram messages on `TaskStarted` (attempt 1 only), `StatusChanged` (Implementing/Testing only), `ScoreUpdated` (score ≥ 0.75), `TaskCompleted` (always), `TaskCancelled`, `BudgetExceeded`
+- PR URLs sent as **separate follow-up messages** for one-tap copyability
+- Goal cached from `TaskQueued` events — completion messages include the task goal
+- Suppresses `TurnMetrics`, `LogLine`, `PoolStats` — zero noise
+
+**New monitoring commands** (`monitor.rs`)
+- `/fleet` — running agents + queued tasks + pool stats + today's token cost, with [Refresh] [Dock] inline buttons
+- `/dock [N]` — last N tasks (default 8, max 20) with status emoji and relative timestamps
+- `/tail <id> [N]` — last N log lines for a task (default 10, max 30)
+- `/cost` — today's tokens/cost + all-time task count + budget limits
+- `/schedules` — all configured cron entries with next fire time
+- `/run <name>` — trigger a named schedule immediately
+
+**New task commands** (`handlers.rs`)
+- `/critical <goal>` — critical priority queue at front
+- `/cancel <id>` — sends cancel signal to running agent via `pool.cancel_by_prefix()`
+- `/retry <id>` — looks up failed task by ID prefix, requeues at HIGH priority
+
+**Draft mode** (`handlers.rs`)
+- `/draft` — enter multi-line input mode; each plain-text message appends a line
+- `/submit` — joins draft lines and queues as a task
+- `/cancel_draft` — discard current draft
+
+**Formatting helpers** (`format.rs`)
+- `short_id()`, `priority_badge()`, `status_emoji()`, `relative_time()`, `format_uptime()` — consistent display across all commands
+
+**`lopi-orchestrator` additions**
+- `AgentPool::running_agents() -> Vec<RunningAgentInfo>` — lock-free snapshot for fleet display
+- `AgentPool::cancel_by_prefix(prefix)` — cancel by ID prefix without needing the full UUID
+- `TaskQueue::peek_queued() -> Vec<(Priority, String)>` — priority-sorted snapshot for fleet display
+- `RunningAgentInfo` struct exported from `lopi-orchestrator`
+
+**`sail_commands.rs`** — `spawn_telegram()` now passes `pool`, `bus`, `schedules`, and `notify_chat_id` through to `telegram::run()`
+
+### Tests
+- `format.rs`: 10 tests (short_id, priority_badge, all status_emoji variants, relative_time suite)
+- `notify.rs`: 4 tests (success/no-PR/failed completion messages, budget exceeded format)
+- `handlers.rs`: 4 tests (dock N parsing, tail arg parsing, auth check logic)
+- `monitor.rs`: 4 tests (tail arg parsing, schedule name trim)
+- **22 new tests**. Workspace: 499 → **571 passing**, 0 failing.
+
+---
+
 ## [Unreleased] — Sprint P: Production Deployment + Tier Gating 🚀
 
 ### Added

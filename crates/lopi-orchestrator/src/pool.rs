@@ -108,6 +108,19 @@ impl AgentPool {
         self.bus.clone()
     }
 
+    /// Cancel the first running task whose UUID string starts with `id_prefix`.
+    /// Returns `true` if a cancel signal was sent.
+    pub async fn cancel_by_prefix(&self, id_prefix: &str) -> bool {
+        for entry in self.handles.iter() {
+            if entry.key().to_string().starts_with(id_prefix) {
+                let key = *entry.key();
+                drop(entry); // release DashMap read lock before taking write
+                return self.cancel(&key).await;
+            }
+        }
+        false
+    }
+
     /// Cancel a running task. Returns true if the cancel signal was sent.
     pub async fn cancel(&self, task_id: &TaskId) -> bool {
         if let Some(handle_ref) = self.handles.get(task_id) {
@@ -132,6 +145,26 @@ impl AgentPool {
             failed: self.counters.failed.load(Ordering::Relaxed),
             uptime_secs: self.started_at.elapsed().as_secs(),
         }
+    }
+
+    /// Snapshot of all currently running agents — suitable for fleet display.
+    ///
+    /// Uses non-blocking `try_read`; handles that cannot be locked are silently
+    /// skipped (extremely rare in practice — only happens if the runner is in the
+    /// middle of updating the handle at the same instant).
+    #[must_use]
+    pub fn running_agents(&self) -> Vec<RunningAgentInfo> {
+        self.handles
+            .iter()
+            .filter_map(|entry| {
+                let handle = entry.value().try_read().ok()?;
+                Some(RunningAgentInfo {
+                    task_id: entry.key().to_string(),
+                    goal: handle.goal.clone(),
+                    attempt: handle.attempt.load(Ordering::Relaxed),
+                })
+            })
+            .collect()
     }
 
     /// P2 — advertise the capabilities of an agent slot. Tasks whose
@@ -503,6 +536,14 @@ pub struct PoolStats {
     pub succeeded: usize,
     pub failed: usize,
     pub uptime_secs: u64,
+}
+
+/// Snapshot of one running agent for display in fleet views.
+pub struct RunningAgentInfo {
+    /// Full UUID string — callers can truncate for display.
+    pub task_id: String,
+    pub goal: String,
+    pub attempt: usize,
 }
 
 /// Phase 5b / Sprint N — Compute score weights from user-annotated pattern history.

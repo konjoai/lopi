@@ -132,6 +132,23 @@ impl TaskQueue {
     pub fn is_empty(&self) -> bool {
         self.inner.tasks.is_empty()
     }
+
+    /// Non-blocking snapshot of queued tasks, sorted by priority descending.
+    ///
+    /// Intended for display only — the returned order may not exactly match
+    /// dispatch order because the heap's internal sequence numbers are not
+    /// exposed.
+    #[must_use]
+    pub fn peek_queued(&self) -> Vec<(Priority, String)> {
+        let mut items: Vec<(Priority, String)> = self
+            .inner
+            .tasks
+            .iter()
+            .map(|e| (e.value().priority, e.value().goal.clone()))
+            .collect();
+        items.sort_by(|a, b| b.0.cmp(&a.0));
+        items
+    }
 }
 
 impl Default for TaskQueue {

@@ -11,6 +11,6 @@ pub use constellation::{
     MemberLoad, RoutingError, RoutingStrategy,
 };
 pub use health::{AgentHealth, HealthConfig, HealthRegistry, HealthSnapshot, HealthSummary};
-pub use pool::{AgentPool, PoolStats};
+pub use pool::{AgentPool, PoolStats, RunningAgentInfo};
 pub use queue::TaskQueue;
 pub use scheduler::{boot as boot_scheduler, next_run_times};

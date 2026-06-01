@@ -58,8 +58,9 @@ pub async fn run(
     if !schedules.is_empty() {
         println!("   schedules: {} configured", schedules.len());
         let pool_sched = (*pool).clone();
+        let schedules_for_sched = schedules.clone();
         tokio::spawn(async move {
-            match boot_scheduler(schedules, pool_sched).await {
+            match boot_scheduler(schedules_for_sched, pool_sched).await {
                 Ok(_sched) => {
                     tokio::signal::ctrl_c().await.ok();
                 }
@@ -85,7 +86,9 @@ pub async fn run(
     });
 
     if let Ok(token) = std::env::var("TELOXIDE_TOKEN") {
-        spawn_telegram(token, queue.clone(), store.clone(), cfg);
+        let pool_for_tg = (*pool).clone();
+        let schedules_for_tg = schedules.clone();
+        spawn_telegram(token, queue.clone(), store.clone(), pool_for_tg, bus.clone(), schedules_for_tg, cfg);
     }
 
     let auth_token = cfg.and_then(|c| c.web.auth_token.clone());
@@ -142,12 +145,32 @@ async fn tier_capped_max_agents(store: &MemoryStore, requested: usize) -> usize 
     }
 }
 
-fn spawn_telegram(token: String, queue: TaskQueue, store: MemoryStore, cfg: Option<&LopiConfig>) {
+fn spawn_telegram(
+    token: String,
+    queue: TaskQueue,
+    store: MemoryStore,
+    pool: AgentPool,
+    bus: EventBus<AgentEvent>,
+    schedules: Vec<lopi_core::ScheduleEntry>,
+    cfg: Option<&LopiConfig>,
+) {
     let allowed_chat_ids = cfg
         .map(|c| c.remote.telegram.allowed_chat_ids.clone())
         .unwrap_or_default();
+    let notify_chat_id = cfg.and_then(|c| c.remote.telegram.chat_id);
     tokio::spawn(async move {
-        if let Err(e) = lopi_remote::telegram::run(token, queue, store, allowed_chat_ids).await {
+        if let Err(e) = lopi_remote::telegram::run(
+            token,
+            queue,
+            store,
+            pool,
+            bus,
+            schedules,
+            notify_chat_id,
+            allowed_chat_ids,
+        )
+        .await
+        {
             tracing::error!("telegram bot error: {e}");
         }
     });
