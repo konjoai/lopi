@@ -10,8 +10,16 @@ use ratatui::{
 use super::{LineStyle, ReplMode, ReplState};
 use crate::repl::slash::SLASH_COMMANDS;
 
-const KONJO_PURPLE: Color = Color::Rgb(124, 58, 237);
-const KONJO_DIM: Color = Color::Rgb(60, 60, 80);
+/// Brand magenta — borders, frames (ANSI, works on all terminals).
+const KONJO_PURPLE: Color = Color::Magenta;
+/// Bright cyan — logo top rows, active cursor, ⛵ header accent.
+const KONJO_CYAN: Color = Color::LightCyan;
+/// Cyan — logo middle rows, model label.
+const KONJO_TEAL: Color = Color::Cyan;
+/// Yellow — header title, repo name, key highlights.
+const KONJO_GOLD: Color = Color::Yellow;
+/// Dim — separators, footer, cost label.
+const KONJO_DIM: Color = Color::DarkGray;
 
 /// Top-level draw entry point — builds the layout then delegates.
 pub fn draw_repl(f: &mut Frame, state: &mut ReplState) {
@@ -45,19 +53,15 @@ fn draw_header(f: &mut Frame, area: Rect, state: &ReplState) {
     let title_line = Line::from(vec![
         Span::styled(
             "  ⛵ lopi ",
-            Style::default()
-                .fg(KONJO_PURPLE)
-                .add_modifier(Modifier::BOLD),
+            Style::default().fg(KONJO_CYAN).add_modifier(Modifier::BOLD),
         ),
         Span::styled("· ", Style::default().fg(KONJO_DIM)),
         Span::styled(
             &state.repo_name,
-            Style::default()
-                .fg(Color::White)
-                .add_modifier(Modifier::BOLD),
+            Style::default().fg(KONJO_GOLD).add_modifier(Modifier::BOLD),
         ),
         Span::styled("  ·  ", Style::default().fg(KONJO_DIM)),
-        Span::styled(&state.model_short, Style::default().fg(Color::Cyan)),
+        Span::styled(&state.model_short, Style::default().fg(KONJO_TEAL)),
         Span::styled("  ·  ", Style::default().fg(KONJO_DIM)),
         Span::styled(mode_text, Style::default().fg(mode_color)),
         if state.bypass {
@@ -87,9 +91,7 @@ fn draw_header(f: &mut Frame, area: Rect, state: &ReplState) {
         .border_style(Style::default().fg(KONJO_PURPLE))
         .title(Span::styled(
             " Konjo ",
-            Style::default()
-                .fg(KONJO_PURPLE)
-                .add_modifier(Modifier::BOLD),
+            Style::default().fg(KONJO_GOLD).add_modifier(Modifier::BOLD),
         ))
         .title_alignment(Alignment::Left);
 
@@ -132,16 +134,19 @@ fn draw_output(f: &mut Frame, area: Rect, state: &ReplState) {
                 LineStyle::Error => Style::default().fg(Color::Red),
                 LineStyle::Info => Style::default().fg(Color::Cyan),
                 LineStyle::AgentLog => Style::default().fg(Color::DarkGray),
-                LineStyle::Splash => Style::default()
-                    .fg(KONJO_PURPLE)
-                    .add_modifier(Modifier::BOLD),
-                LineStyle::Hint => Style::default().fg(KONJO_DIM),
+                // Splash gradient: bright cyan → cyan → blue, fg=bg so the
+                // block characters show colour on every terminal and theme.
+                LineStyle::SplashTop => Style::default().fg(Color::LightCyan).bg(Color::LightCyan),
+                LineStyle::SplashMid => Style::default().fg(Color::Cyan).bg(Color::Cyan),
+                LineStyle::SplashBot => Style::default().fg(Color::Blue).bg(Color::Blue),
+                LineStyle::Hint => Style::default().fg(Color::White),
             };
             ListItem::new(Line::from(Span::styled(ol.text.clone(), style)))
         })
         .collect();
 
-    let list = List::new(items).style(Style::default().fg(Color::White));
+    // No base fg override — let each span's style render unobstructed.
+    let list = List::new(items);
     f.render_widget(list, inner);
 
     // Scroll indicator if there's content above.
@@ -173,9 +178,7 @@ fn draw_autocomplete(f: &mut Frame, area: Rect, state: &ReplState) {
         if def.name == name_only {
             spans.push(Span::styled(
                 format!("  /{} ", def.name),
-                Style::default()
-                    .fg(KONJO_PURPLE)
-                    .add_modifier(Modifier::BOLD),
+                Style::default().fg(KONJO_CYAN).add_modifier(Modifier::BOLD),
             ));
             spans.push(Span::styled(
                 format!("— {} ", def.description),
@@ -199,7 +202,7 @@ fn draw_autocomplete(f: &mut Frame, area: Rect, state: &ReplState) {
 
 fn draw_input_box(f: &mut Frame, area: Rect, state: &mut ReplState) {
     let active = matches!(state.mode, ReplMode::Idle);
-    let border_color = if active { KONJO_PURPLE } else { KONJO_DIM };
+    let border_color = if active { KONJO_CYAN } else { KONJO_DIM };
 
     let block = Block::default()
         .borders(Borders::ALL)
@@ -241,9 +244,7 @@ pub fn draw_help_overlay(f: &mut Frame) {
         .border_style(Style::default().fg(KONJO_PURPLE))
         .title(Span::styled(
             " /help — Konjo REPL commands ",
-            Style::default()
-                .fg(KONJO_PURPLE)
-                .add_modifier(Modifier::BOLD),
+            Style::default().fg(KONJO_GOLD).add_modifier(Modifier::BOLD),
         ));
 
     let inner = block.inner(area);

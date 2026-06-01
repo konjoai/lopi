@@ -269,10 +269,7 @@ async fn main() -> Result<()> {
         // ── bare `lopi` → interactive REPL ─────────────────────
         None => {
             let repo = repo_detect::detect_repo();
-            let model = cfg
-                .as_ref()
-                .map(|c| c.claude.cli_path.clone())
-                .unwrap_or_else(|| "claude".into());
+            let model = lopi_agent::MODEL_SONNET.to_string();
             repl::run_repl(repo, model, cfg).await?;
         }
 

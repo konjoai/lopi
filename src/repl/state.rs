@@ -21,7 +21,12 @@ pub enum LineStyle {
     Error,
     Info,
     AgentLog,
-    Splash,
+    /// Top two rows of the ASCII logo — rendered in ocean cyan.
+    SplashTop,
+    /// Middle two rows of the ASCII logo — rendered in brand purple.
+    SplashMid,
+    /// Bottom two rows of the ASCII logo — rendered in sea-glass teal.
+    SplashBot,
     Hint,
 }
 
@@ -87,15 +92,15 @@ impl ReplState {
 
     fn splash(&mut self) {
         let art = [
-            r"  ██╗      ██████╗ ██████╗ ██╗",
-            r"  ██║     ██╔═══██╗██╔══██╗██║",
-            r"  ██║     ██║   ██║██████╔╝██║",
-            r"  ██║     ██║   ██║██╔═══╝ ██║",
-            r"  ███████╗╚██████╔╝██║     ██║",
-            r"  ╚══════╝ ╚═════╝ ╚═╝     ╚═╝",
+            (r"  ██╗      ██████╗ ██████╗ ██╗", LineStyle::SplashTop),
+            (r"  ██║     ██╔═══██╗██╔══██╗██║", LineStyle::SplashTop),
+            (r"  ██║     ██║   ██║██████╔╝██║", LineStyle::SplashMid),
+            (r"  ██║     ██║   ██║██╔═══╝ ██║", LineStyle::SplashMid),
+            (r"  ███████╗╚██████╔╝██║     ██║", LineStyle::SplashBot),
+            (r"  ╚══════╝ ╚═════╝ ╚═╝     ╚═╝", LineStyle::SplashBot),
         ];
-        for line in art {
-            self.push(line, LineStyle::Splash);
+        for (line, style) in art {
+            self.push(line, style);
         }
         self.push("", LineStyle::Normal);
         self.push(
