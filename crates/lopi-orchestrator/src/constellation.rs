@@ -58,25 +58,35 @@ pub enum RoutingStrategy {
     LeastLoaded,
     /// Restrict candidates to members whose `tags` contain every name in
     /// `required_tags`, then break ties by least-loaded.
-    TagMatch { required_tags: Vec<String> },
+    TagMatch {
+        /// Tags that every eligible member must have.
+        required_tags: Vec<String>,
+    },
 }
 
 /// A named group with a routing rule.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Constellation {
+    /// Unique name identifying this constellation.
     pub name: String,
+    /// Ordered list of member agents.
     pub agents: Vec<ConstellationMember>,
     #[serde(default)]
+    /// Routing strategy applied when dispatching to this constellation.
     pub routing_strategy: RoutingStrategy,
     #[serde(default = "Utc::now")]
+    /// When this constellation was created.
     pub created_at: DateTime<Utc>,
 }
 
 /// Outcome of a single dispatch call.
 #[derive(Debug, Clone, Serialize)]
 pub struct DispatchDecision {
+    /// ID of the agent selected.
     pub agent_id: String,
+    /// Human-readable name of the strategy that made this decision.
     pub strategy: &'static str,
+    /// When the dispatch occurred.
     pub at: DateTime<Utc>,
     /// `required_tags` from a per-dispatch override (or the strategy's
     /// own list when `TagMatch`).
@@ -87,16 +97,22 @@ pub struct DispatchDecision {
 /// Per-member load snapshot returned by `/stats`.
 #[derive(Debug, Clone, Serialize)]
 pub struct MemberLoad {
+    /// Stable agent identifier.
     pub agent_id: String,
+    /// Requests currently in flight for this member.
     pub in_flight: u64,
+    /// Cumulative dispatches to this member since boot.
     pub dispatched_total: u64,
+    /// Configured concurrency cap (0 = unlimited).
     pub max_concurrent: u8,
 }
 
 /// `/constellation/:name/stats` payload.
 #[derive(Debug, Clone, Serialize)]
 pub struct ConstellationStats {
+    /// Name of the constellation this snapshot covers.
     pub name: String,
+    /// Load snapshot for each member.
     pub members: Vec<MemberLoad>,
     /// Decisions made in the last hour, newest first.
     pub recent_decisions: Vec<DispatchDecision>,
@@ -105,10 +121,13 @@ pub struct ConstellationStats {
 /// What can go wrong on dispatch.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum RoutingError {
+    /// No constellation with the given name is registered.
     #[error("unknown constellation: {0}")]
     UnknownConstellation(String),
+    /// All members are saturated or filtered out by tag/weight constraints.
     #[error("no constellation members eligible to handle this task")]
     NoEligibleMember,
+    /// The constellation exists but has no members configured.
     #[error("constellation `{0}` is empty")]
     Empty(String),
 }

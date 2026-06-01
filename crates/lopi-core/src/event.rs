@@ -8,52 +8,87 @@ use tokio::sync::broadcast;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum AgentEvent {
+    /// A new task has been added to the queue.
     TaskQueued {
+        /// Identifier of the queued task.
         task_id: TaskId,
+        /// Natural-language goal for the task.
         goal: String,
+        /// Scheduling priority of the task.
         priority: crate::task::Priority,
     },
+    /// An agent has begun executing a task attempt.
     TaskStarted {
+        /// Identifier of the task being started.
         task_id: TaskId,
+        /// Attempt number, starting at 1.
         attempt: u8,
+        /// Git branch created for this attempt.
         branch: String,
     },
+    /// The task's lifecycle status has changed.
     StatusChanged {
+        /// Identifier of the task whose status changed.
         task_id: TaskId,
+        /// New status value.
         status: TaskStatus,
+        /// Attempt number associated with this status change.
         attempt: u8,
     },
+    /// A line of agent log output.
     LogLine {
+        /// Task that produced this log line.
         task_id: TaskId,
+        /// The log message text.
         line: String,
+        /// Severity level of the log line.
         level: LogLevel,
+        /// Timestamp when the line was emitted.
         ts: DateTime<Utc>,
     },
+    /// The scoring engine has produced updated metrics for a task attempt.
     ScoreUpdated {
+        /// Task whose score was updated.
         task_id: TaskId,
+        /// Fraction of tests passing in the range `[0.0, 1.0]`.
         test_pass_rate: f32,
+        /// Number of lint errors found.
         lint_errors: u32,
+        /// Lines changed in the diff.
         diff_lines: u32,
     },
+    /// A task has reached a terminal state (success or failure).
     TaskCompleted {
+        /// Identifier of the completed task.
         task_id: TaskId,
+        /// Final outcome status of the task.
         outcome: TaskStatus,
+        /// Total number of attempts made before reaching this outcome.
         total_attempts: u8,
     },
+    /// A task was cancelled before reaching a terminal state.
     TaskCancelled {
+        /// Identifier of the cancelled task.
         task_id: TaskId,
     },
+    /// Periodic snapshot of agent pool utilization statistics.
     PoolStats {
+        /// Number of agents currently executing tasks.
         running: usize,
+        /// Number of tasks waiting in the queue.
         queued: usize,
+        /// Cumulative number of successfully completed tasks.
         succeeded: usize,
+        /// Cumulative number of failed tasks.
         failed: usize,
+        /// Seconds since the pool was started.
         uptime_secs: u64,
     },
     /// Periodic per-agent cognition metrics emitted during a run.
     /// Drives the Forge's live shader uniforms in lopi-ui.
     /// `pressure` and `activity` are normalized to `[0.0, 1.0]`.
     TurnMetrics {
+        /// Identifier of the task emitting these metrics.
         task_id: TaskId,
         /// Context window fill — `ContextWindow::token_pressure()`.
         pressure: f32,
@@ -80,16 +115,22 @@ pub enum AgentEvent {
     },
 }
 
+/// Severity level attached to [`AgentEvent::LogLine`] events.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum LogLevel {
+    /// Informational message.
     Info,
+    /// Warning — non-fatal but noteworthy condition.
     Warn,
+    /// Error — a failure occurred.
     Error,
+    /// Debug — verbose diagnostic output.
     Debug,
 }
 
 impl AgentEvent {
+    /// Construct a `LogLine` event with the given level and the current timestamp.
     pub fn log(task_id: TaskId, line: impl Into<String>, level: LogLevel) -> Self {
         Self::LogLine {
             task_id,
@@ -99,14 +140,17 @@ impl AgentEvent {
         }
     }
 
+    /// Construct an `Info`-level `LogLine` event.
     pub fn info(task_id: TaskId, line: impl Into<String>) -> Self {
         Self::log(task_id, line, LogLevel::Info)
     }
 
+    /// Construct a `Warn`-level `LogLine` event.
     pub fn warn(task_id: TaskId, line: impl Into<String>) -> Self {
         Self::log(task_id, line, LogLevel::Warn)
     }
 
+    /// Construct an `Error`-level `LogLine` event.
     pub fn error(task_id: TaskId, line: impl Into<String>) -> Self {
         Self::log(task_id, line, LogLevel::Error)
     }
@@ -210,21 +254,25 @@ pub struct EventBus<T: Clone> {
 }
 
 impl<T: Clone + Send + 'static> EventBus<T> {
+    /// Create an `EventBus` with a broadcast channel of the given `capacity`.
     #[must_use]
     pub fn new(capacity: usize) -> Self {
         let (tx, _) = broadcast::channel(capacity);
         Self { tx }
     }
 
+    /// Broadcast `event` to all current subscribers; silently drops if no receivers exist.
     pub fn send(&self, event: T) {
         let _ = self.tx.send(event);
     }
 
+    /// Return a new receiver that will receive all future events on this bus.
     #[must_use]
     pub fn subscribe(&self) -> broadcast::Receiver<T> {
         self.tx.subscribe()
     }
 
+    /// Clone the underlying sender for use outside the bus wrapper.
     #[must_use]
     pub fn sender(&self) -> broadcast::Sender<T> {
         self.tx.clone()

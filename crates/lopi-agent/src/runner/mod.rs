@@ -32,10 +32,15 @@ pub(super) fn backoff_secs(attempt: u8, base_ms: u64) -> Duration {
     Duration::from_millis(jitter)
 }
 
+/// Orchestrates the plan → implement → test → score → retry loop for a single task.
 pub struct AgentRunner {
+    /// The task being executed by this runner.
     pub task: Task,
+    /// Filesystem path to the git repository being modified.
     pub repo_path: PathBuf,
+    /// Event bus for broadcasting agent lifecycle and status events.
     pub bus: EventBus<AgentEvent>,
+    /// Optional persistent memory store for patterns and task history.
     pub store: Option<MemoryStore>,
     /// When true: generate and print the plan, then exit without touching git.
     pub dry_run: bool,
@@ -87,6 +92,7 @@ impl AgentRunner {
     /// Token budget for the context window — 75% of Claude claude-sonnet-4-6's 200K context.
     const CONTEXT_BUDGET: usize = 150_000;
 
+    /// Create a new runner wired into the given bus, store, and cancellation channel.
     pub fn new(
         task: Task,
         repo_path: PathBuf,

@@ -2,62 +2,88 @@ use crate::agent::ScoreWeights;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+/// Root configuration loaded from `lopi.toml`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LopiConfig {
+    /// Core orchestrator settings.
     pub lopi: CoreConfig,
+    /// Claude CLI / API settings.
     pub claude: ClaudeConfig,
+    /// Git branch and directory policy settings.
     pub git: GitConfig,
     #[serde(default)]
+    /// Remote control integrations (Telegram, WhatsApp).
     pub remote: RemoteConfig,
     #[serde(default)]
+    /// Web dashboard server settings.
     pub web: WebConfig,
     #[serde(default)]
+    /// Score weighting configuration.
     pub scoring: ScoringConfig,
     #[serde(default)]
+    /// Cron-scheduled task entries.
     pub schedules: Vec<ScheduleEntry>,
 }
 
+/// Core orchestrator settings (`[lopi]` table in `lopi.toml`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CoreConfig {
+    /// Maximum number of agents to run concurrently (default `4`).
     #[serde(default = "default_max_agents")]
     pub max_agents: usize,
+    /// Log verbosity level, e.g. `"info"` or `"debug"` (default `"info"`).
     #[serde(default = "default_log_level")]
     pub log_level: String,
+    /// Path to the SQLite memory database (default `~/.lopi/lopi.db`).
     #[serde(default = "default_db_path")]
     pub db_path: PathBuf,
+    /// When `true`, agents may open self-modification PRs on this repo.
     #[serde(default)]
     pub allow_self_modify: bool,
 }
 
+/// Claude CLI invocation settings (`[claude]` table in `lopi.toml`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClaudeConfig {
+    /// Path or name of the `claude` CLI binary (default `"claude"`).
     #[serde(default = "default_claude_cli")]
     pub cli_path: String,
+    /// Maximum seconds to wait for a single Claude invocation (default `300`).
     #[serde(default = "default_claude_timeout")]
     pub timeout_secs: u64,
 }
 
+/// Git branch and directory policy settings (`[git]` table in `lopi.toml`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GitConfig {
+    /// Directories agents are permitted to modify by default.
     #[serde(default = "default_allowed")]
     pub default_allowed_dirs: Vec<String>,
+    /// Directories agents are never permitted to modify.
     #[serde(default = "default_forbidden")]
     pub default_forbidden_dirs: Vec<String>,
+    /// When `true`, agents automatically open a PR after a successful run.
     #[serde(default = "default_true")]
     pub auto_pr: bool,
 }
 
+/// Remote control integration configuration (`[remote]` table in `lopi.toml`).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct RemoteConfig {
+    /// Telegram bot configuration.
     #[serde(default)]
     pub telegram: TelegramConfig,
+    /// WhatsApp (Twilio) configuration.
     #[serde(default)]
     pub whatsapp: WhatsappConfig,
 }
 
+/// Telegram bot settings (`[remote.telegram]` table in `lopi.toml`).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TelegramConfig {
+    /// Telegram bot API token (set via env or config).
     pub token: Option<String>,
+    /// Default chat ID to send proactive notifications to.
     pub chat_id: Option<i64>,
     /// Allowlist of Telegram chat IDs permitted to issue commands.
     /// Empty = allow all chats (dev mode).
@@ -65,20 +91,27 @@ pub struct TelegramConfig {
     pub allowed_chat_ids: Vec<i64>,
 }
 
+/// WhatsApp (Twilio) settings (`[remote.whatsapp]` table in `lopi.toml`).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct WhatsappConfig {
+    /// Twilio account SID.
     pub account_sid: Option<String>,
+    /// Twilio auth token.
     pub auth_token: Option<String>,
+    /// Twilio `From` WhatsApp number (e.g. `"whatsapp:+14155238886"`).
     pub from: Option<String>,
     /// Twilio signing secret for HMAC-SHA1 webhook signature verification.
     #[serde(default)]
     pub signing_secret: Option<String>,
 }
 
+/// Web dashboard server settings (`[web]` table in `lopi.toml`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WebConfig {
+    /// TCP port the web server binds to (default `3000`).
     #[serde(default = "default_port")]
     pub port: u16,
+    /// Host address the web server listens on (default `"127.0.0.1"`).
     #[serde(default = "default_host")]
     pub host: String,
     /// Bearer token required on all /api/* routes.
@@ -97,8 +130,10 @@ impl Default for WebConfig {
     }
 }
 
+/// Score weighting configuration (`[scoring]` table in `lopi.toml`).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ScoringConfig {
+    /// Penalty weights used when computing composite scores.
     #[serde(default)]
     pub weights: ScoreWeights,
 }

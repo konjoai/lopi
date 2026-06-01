@@ -1,5 +1,6 @@
 use dashmap::DashMap;
 use lopi_core::{Priority, Task, TaskId};
+use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 use std::sync::Arc;
 use tokio::sync::{Mutex, Notify};
@@ -26,6 +27,7 @@ impl PartialOrd for PrioEntry {
     }
 }
 
+/// Thread-safe priority task queue — push tasks in, pop highest-priority first.
 #[derive(Clone)]
 pub struct TaskQueue {
     inner: Arc<Inner>,
@@ -40,6 +42,7 @@ struct Inner {
 }
 
 impl TaskQueue {
+    /// Create an empty queue.
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -123,14 +126,33 @@ impl TaskQueue {
         }
     }
 
+    /// Number of tasks currently waiting in the queue.
     #[must_use]
     pub fn len(&self) -> usize {
         self.inner.tasks.len()
     }
 
+    /// True if the queue contains no waiting tasks.
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.inner.tasks.is_empty()
+    }
+
+    /// Non-blocking snapshot of queued tasks, sorted by priority descending.
+    ///
+    /// Intended for display only — the returned order may not exactly match
+    /// dispatch order because the heap's internal sequence numbers are not
+    /// exposed.
+    #[must_use]
+    pub fn peek_queued(&self) -> Vec<(Priority, String)> {
+        let mut items: Vec<(Priority, String)> = self
+            .inner
+            .tasks
+            .iter()
+            .map(|e| (e.value().priority, e.value().goal.clone()))
+            .collect();
+        items.sort_by_key(|&(prio, _)| Reverse(prio));
+        items
     }
 }
 

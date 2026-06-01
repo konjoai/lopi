@@ -172,11 +172,16 @@ struct CompleteContentItem {
 
 // ── Usage record ──────────────────────────────────────────────────────────────
 
+/// Aggregated token usage counters returned by every API call.
 #[derive(Debug, Default, Clone)]
 pub struct ApiUsage {
+    /// Number of prompt tokens billed at the full input rate.
     pub input_tokens: u32,
+    /// Number of tokens in the model's response.
     pub output_tokens: u32,
+    /// Prompt tokens served from Anthropic's KV cache (billed at ~10% of input rate).
     pub cache_read_tokens: u32,
+    /// Prompt tokens written into Anthropic's KV cache this turn.
     pub cache_write_tokens: u32,
 }
 
@@ -204,6 +209,7 @@ impl ApiUsage {
 
 // ── Client ────────────────────────────────────────────────────────────────────
 
+/// HTTP client for the Anthropic Messages API with prompt caching and SSE streaming.
 #[derive(Clone)]
 pub struct AnthropicClient {
     http: Arc<reqwest::Client>,
@@ -224,6 +230,7 @@ impl AnthropicClient {
         })
     }
 
+    /// Construct from an explicit API key string.
     #[must_use]
     pub fn new(api_key: impl Into<String>) -> Self {
         Self {

@@ -15,21 +15,28 @@ use crate::queue::TaskQueue;
 /// Live state of a single running agent.
 #[derive(Debug)]
 pub struct AgentHandle {
+    /// Task goal text.
     pub goal: String,
+    /// One-shot sender that signals the runner to stop; `None` after cancellation.
     pub cancel_tx: Option<oneshot::Sender<()>>,
     /// Current attempt count — updated atomically by the runner, read lock-free.
     pub attempt: Arc<AtomicUsize>,
+    /// Wall-clock time when this agent handle was created.
     pub started_at: std::time::Instant,
 }
 
 /// Shared counters for `/api/stats`.
 #[derive(Default)]
 pub struct PoolCounters {
+    /// Number of agents currently executing.
     pub running: AtomicUsize,
+    /// Cumulative count of successfully completed tasks.
     pub succeeded: AtomicUsize,
+    /// Cumulative count of tasks that exhausted all retries.
     pub failed: AtomicUsize,
 }
 
+/// Concurrent agent pool — spawns runners, enforces concurrency limits, and emits events.
 #[derive(Clone)]
 pub struct AgentPool {
     /// Global concurrency cap — across all repos.
@@ -60,6 +67,7 @@ pub struct AgentPool {
 }
 
 impl AgentPool {
+    /// Create a new pool bound to `repo_path`, capped at `max_agents` concurrent runners.
     #[must_use]
     pub fn new(
         max_agents: usize,
@@ -92,20 +100,36 @@ impl AgentPool {
         while js.join_next().await.is_some() {}
     }
 
+    /// Attach a memory store; enables pattern persistence and cost tracking.
     #[must_use]
     pub fn with_store(mut self, store: MemoryStore) -> Self {
         self.store = Some(store);
         self
     }
 
+    /// Clone the underlying task queue handle.
     #[must_use]
     pub fn queue(&self) -> TaskQueue {
         self.queue.clone()
     }
 
+    /// Clone the event bus handle for subscribing to agent events.
     #[must_use]
     pub fn bus(&self) -> EventBus<AgentEvent> {
         self.bus.clone()
+    }
+
+    /// Cancel the first running task whose UUID string starts with `id_prefix`.
+    /// Returns `true` if a cancel signal was sent.
+    pub async fn cancel_by_prefix(&self, id_prefix: &str) -> bool {
+        for entry in self.handles.iter() {
+            if entry.key().to_string().starts_with(id_prefix) {
+                let key = *entry.key();
+                drop(entry); // release DashMap read lock before taking write
+                return self.cancel(&key).await;
+            }
+        }
+        false
     }
 
     /// Cancel a running task. Returns true if the cancel signal was sent.
@@ -132,6 +156,26 @@ impl AgentPool {
             failed: self.counters.failed.load(Ordering::Relaxed),
             uptime_secs: self.started_at.elapsed().as_secs(),
         }
+    }
+
+    /// Snapshot of all currently running agents — suitable for fleet display.
+    ///
+    /// Uses non-blocking `try_read`; handles that cannot be locked are silently
+    /// skipped (extremely rare in practice — only happens if the runner is in the
+    /// middle of updating the handle at the same instant).
+    #[must_use]
+    pub fn running_agents(&self) -> Vec<RunningAgentInfo> {
+        self.handles
+            .iter()
+            .filter_map(|entry| {
+                let handle = entry.value().try_read().ok()?;
+                Some(RunningAgentInfo {
+                    task_id: entry.key().to_string(),
+                    goal: handle.goal.clone(),
+                    attempt: handle.attempt.load(Ordering::Relaxed),
+                })
+            })
+            .collect()
     }
 
     /// P2 — advertise the capabilities of an agent slot. Tasks whose
@@ -385,8 +429,15 @@ impl AgentPool {
                 let _permit = permit;
                 let _repo_permit = repo_permit;
                 let max_retries = attempt.load(Ordering::Relaxed); // 0 here, updated in runner
-                let outcome =
-                    run_one(task, repo, bus.clone(), store.clone(), cancel_rx, attempt.clone()).await;
+                let outcome = run_one(
+                    task,
+                    repo,
+                    bus.clone(),
+                    store.clone(),
+                    cancel_rx,
+                    attempt.clone(),
+                )
+                .await;
                 handles.remove(&task_id);
                 counters.running.fetch_sub(1, Ordering::Relaxed);
                 let _ = max_retries; // hint for future per-task cap reporting
@@ -431,7 +482,16 @@ impl AgentPool {
                     });
                     if let Some(store) = &store {
                         let _ = store.mark_completed(&task_id, "failed").await;
-                        push_dlq(store, task_id, &dlq_goal, dlq_repo.as_deref(), 1, Some(reason), &dlq_source).await;
+                        push_dlq(
+                            store,
+                            task_id,
+                            &dlq_goal,
+                            dlq_repo.as_deref(),
+                            1,
+                            Some(reason),
+                            &dlq_source,
+                        )
+                        .await;
                     }
                 } else if let (Some((attempts, reason)), Some(store)) = (dlq_payload, &store) {
                     push_dlq(
@@ -497,12 +557,28 @@ async fn push_dlq(
         .await;
 }
 
+/// Point-in-time snapshot of pool counters, returned by `AgentPool::stats()`.
 pub struct PoolStats {
+    /// Number of agents currently executing.
     pub running: usize,
+    /// Number of tasks waiting in the queue.
     pub queued: usize,
+    /// Cumulative successfully completed tasks since pool start.
     pub succeeded: usize,
+    /// Cumulative failed tasks (exhausted retries) since pool start.
     pub failed: usize,
+    /// Wall-clock seconds since the pool was created.
     pub uptime_secs: u64,
+}
+
+/// Snapshot of one running agent for display in fleet views.
+pub struct RunningAgentInfo {
+    /// Full UUID string — callers can truncate for display.
+    pub task_id: String,
+    /// The task goal text.
+    pub goal: String,
+    /// Current attempt number (1-based).
+    pub attempt: usize,
 }
 
 /// Phase 5b / Sprint N — Compute score weights from user-annotated pattern history.
@@ -782,7 +858,10 @@ mod tests {
         let pool = make_pool(2);
         let ok = pool.register_agent_rate_limit(
             "bad",
-            crate::AgentRateLimit { max_per_minute: 0, max_concurrent: 4 },
+            crate::AgentRateLimit {
+                max_per_minute: 0,
+                max_concurrent: 4,
+            },
         );
         assert!(!ok, "0/min should be rejected");
         // No entry was written.
@@ -794,7 +873,10 @@ mod tests {
         let pool = make_pool(2);
         assert!(pool.register_agent_rate_limit(
             "alpha",
-            crate::AgentRateLimit { max_per_minute: 3, max_concurrent: 0 },
+            crate::AgentRateLimit {
+                max_per_minute: 3,
+                max_concurrent: 0
+            },
         ));
         // First 3 acquires succeed; the 4th is rate-limited.
         for _ in 0..3 {
@@ -810,13 +892,18 @@ mod tests {
         let pool = make_pool(2);
         assert!(pool.register_agent_rate_limit(
             "alpha",
-            crate::AgentRateLimit { max_per_minute: 1_000, max_concurrent: 2 },
+            crate::AgentRateLimit {
+                max_per_minute: 1_000,
+                max_concurrent: 2
+            },
         ));
         // Two acquires use 2 of 1000 tokens but saturate the concurrency cap.
         assert!(pool.try_acquire_agent("alpha").await);
         assert!(pool.try_acquire_agent("alpha").await);
-        assert!(!pool.try_acquire_agent("alpha").await,
-            "concurrency cap should block even with tokens to spare");
+        assert!(
+            !pool.try_acquire_agent("alpha").await,
+            "concurrency cap should block even with tokens to spare"
+        );
         // Release frees a slot.
         pool.release_agent("alpha");
         assert!(pool.try_acquire_agent("alpha").await);
@@ -827,7 +914,10 @@ mod tests {
         let pool = make_pool(2);
         assert!(pool.register_agent_rate_limit(
             "alpha",
-            crate::AgentRateLimit { max_per_minute: 10, max_concurrent: 2 },
+            crate::AgentRateLimit {
+                max_per_minute: 10,
+                max_concurrent: 2
+            },
         ));
         // Three releases against zero in-flight must not underflow.
         pool.release_agent("alpha");

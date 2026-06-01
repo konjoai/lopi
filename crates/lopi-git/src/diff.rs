@@ -1,6 +1,7 @@
 use anyhow::{bail, Result};
 use glob::Pattern;
 
+/// Validates changed file paths against configured allow and deny glob patterns.
 pub struct DiffChecker {
     allowed: Vec<Pattern>,
     forbidden: Vec<Pattern>,
@@ -9,6 +10,7 @@ pub struct DiffChecker {
 }
 
 impl DiffChecker {
+    /// Construct a checker with the given allowed and forbidden glob patterns.
     #[must_use]
     pub fn new(allowed: Vec<String>, forbidden: Vec<String>) -> Self {
         let allowed_p = allowed.iter().filter_map(|s| compile(s)).collect();

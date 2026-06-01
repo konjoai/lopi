@@ -6,30 +6,53 @@ use parser::Parser;
 use serde_json::{Map, Value};
 use thiserror::Error;
 
+/// Parse error returned by the TOON decoder.
 #[derive(Debug, Error)]
 pub enum ToonError {
+    /// A key was not followed by the required colon separator.
     #[error("missing colon after key on line {0}")]
     MissingColon(usize),
+    /// An unrecognised backslash escape sequence was encountered.
     #[error("invalid escape sequence on line {0}")]
     InvalidEscape(usize),
+    /// A quoted string was opened but never closed.
     #[error("unterminated string on line {0}")]
     UnterminatedString(usize),
+    /// The closing delimiter did not match the opening one.
     #[error("delimiter mismatch on line {0}")]
     DelimiterMismatch(usize),
+    /// Indentation depth was not a multiple of the configured step.
     #[error("indentation not a multiple of {indent} on line {lineno}")]
-    BadIndent { lineno: usize, indent: usize },
+    BadIndent {
+        /// Line number (1-based) where the bad indent occurred.
+        lineno: usize,
+        /// The configured indent step size.
+        indent: usize,
+    },
+    /// The array header declared a length that didn't match the element count.
     #[error("array count mismatch: declared {declared} but found {found}")]
-    CountMismatch { declared: usize, found: usize },
+    CountMismatch {
+        /// Count written in the array header.
+        declared: usize,
+        /// Actual number of elements parsed.
+        found: usize,
+    },
+    /// A tabular row had a different number of cells than the header declared.
     #[error("tabular row width mismatch: expected {expected} cells, got {found} on line {lineno}")]
     WidthMismatch {
+        /// Number of columns from the header.
         expected: usize,
+        /// Number of cells found in this row.
         found: usize,
+        /// Line number (1-based) of the offending row.
         lineno: usize,
     },
+    /// A line was encountered that the parser could not classify.
     #[error("unexpected line {0}")]
     Unexpected(usize),
 }
 
+/// Options controlling how TOON input is parsed.
 #[derive(Debug, Clone)]
 pub struct DecoderOptions {
     /// Spaces per indent level (default 2).

@@ -12,14 +12,21 @@ use super::MemoryStore;
 /// A single quality check run retrieved from the ledger.
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct QualityRunRow {
+    /// UUID primary key for this run record.
     pub id: String,
+    /// Filesystem path of the repository that was checked.
     pub repo_path: String,
+    /// Total number of spec items evaluated.
     pub spec_items: i64,
+    /// Number of spec items that passed.
     pub passing: i64,
+    /// Number of spec items that failed.
     pub failing: i64,
+    /// Number of spec items with no corresponding test coverage.
     pub gaps: i64,
     /// Pass rate 0.0–1.0: `passing / spec_items` (0.0 when spec_items == 0).
     pub score: f64,
+    /// ISO-8601 timestamp when this run was recorded.
     pub run_at: String,
 }
 
@@ -33,10 +40,15 @@ impl QualityRunRow {
 
 /// Arguments for a single quality run record.
 pub struct QualityRunRecord {
+    /// Filesystem path of the repository that was checked.
     pub repo_path: String,
+    /// Total number of spec items evaluated.
     pub spec_items: usize,
+    /// Number of spec items that passed.
     pub passing: usize,
+    /// Number of spec items that failed.
     pub failing: usize,
+    /// Number of spec items with no corresponding test coverage.
     pub gaps: usize,
 }
 

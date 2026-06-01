@@ -2,7 +2,7 @@
 //!
 //! Every dispatcher (constellation router, pool worker) calls
 //! [`HealthRegistry::heartbeat`] when an agent reports liveness, and
-//! [`record_success`] / [`record_failure`] (with the call's latency) when
+//! `record_success` / `record_failure` (with the call's latency) when
 //! a request completes. A background sweeper runs every `sweeper_period`
 //! and transitions agents based on time-since-last-beat:
 //!
@@ -90,11 +90,17 @@ struct HealthInner {
 /// Public health snapshot returned by `GET /api/agents/:id/health`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HealthSnapshot {
+    /// Stable agent identifier.
     pub agent_id: String,
+    /// Current health classification.
     pub status: AgentHealth,
+    /// Timestamp of the most recent heartbeat, if any.
     pub last_seen: Option<DateTime<Utc>>,
+    /// Fraction of requests that errored in the last hour.
     pub error_rate_1h: f32,
+    /// Mean request latency in milliseconds over recent samples.
     pub avg_latency_ms: f32,
+    /// How many requests in a row have failed.
     pub consecutive_failures: u32,
     /// Number of latency samples backing `avg_latency_ms`.
     pub samples: u32,
@@ -103,9 +109,13 @@ pub struct HealthSnapshot {
 /// Fleet-wide rollup for `GET /api/agents/health/summary`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HealthSummary {
+    /// Total agents tracked by the registry.
     pub total: u32,
+    /// Agents in the `Healthy` state.
     pub healthy: u32,
+    /// Agents in the `Degraded` state.
     pub degraded: u32,
+    /// Agents classified as `Dead`.
     pub dead: u32,
 }
 
@@ -145,7 +155,7 @@ pub struct HealthRegistry {
 
 impl HealthRegistry {
     /// Build a registry with the given config. No sweeper task is started
-    /// automatically — call [`spawn_sweeper`] when ready.
+    /// automatically — call [`HealthRegistry::spawn_sweeper`] when ready.
     #[must_use]
     pub fn new(config: HealthConfig) -> Self {
         Self {
@@ -277,7 +287,8 @@ impl HealthRegistry {
         let now = self.now_ms();
         let interval_ms =
             u64::try_from(self.config.heartbeat_interval.as_millis()).unwrap_or(u64::MAX);
-        let degraded_threshold_ms = interval_ms.saturating_mul(u64::from(self.config.degraded_after));
+        let degraded_threshold_ms =
+            interval_ms.saturating_mul(u64::from(self.config.degraded_after));
         let dead_threshold_ms = interval_ms.saturating_mul(u64::from(self.config.dead_after));
         for entry in self.inner.iter() {
             let last = entry.value().last_seen.load(Ordering::Relaxed);
@@ -393,11 +404,17 @@ mod tests {
         r.heartbeat("alpha").await;
         // Just after heartbeat → still Healthy.
         r.sweep_once();
-        assert_eq!(r.snapshot("alpha").await.unwrap().status, AgentHealth::Healthy);
+        assert_eq!(
+            r.snapshot("alpha").await.unwrap().status,
+            AgentHealth::Healthy
+        );
         // After 2× interval (>= 100ms) → Degraded.
         tokio::time::sleep(Duration::from_millis(110)).await;
         r.sweep_once();
-        assert_eq!(r.snapshot("alpha").await.unwrap().status, AgentHealth::Degraded);
+        assert_eq!(
+            r.snapshot("alpha").await.unwrap().status,
+            AgentHealth::Degraded
+        );
         // After 5× interval (>= 250ms total) → Dead.
         tokio::time::sleep(Duration::from_millis(160)).await;
         r.sweep_once();

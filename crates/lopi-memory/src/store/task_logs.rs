@@ -47,16 +47,15 @@ impl MemoryStore {
         level: &str,
         line: &str,
     ) -> Result<i64> {
-        let res = sqlx::query(
-            "INSERT INTO task_logs (task_id, ts, level, line) VALUES (?, ?, ?, ?)",
-        )
-        .bind(task_id)
-        .bind(ts.to_rfc3339())
-        .bind(level)
-        .bind(line)
-        .execute(&self.write_pool)
-        .await
-        .context("inserting task_logs row")?;
+        let res =
+            sqlx::query("INSERT INTO task_logs (task_id, ts, level, line) VALUES (?, ?, ?, ?)")
+                .bind(task_id)
+                .bind(ts.to_rfc3339())
+                .bind(level)
+                .bind(line)
+                .execute(&self.write_pool)
+                .await
+                .context("inserting task_logs row")?;
         Ok(res.last_insert_rowid())
     }
 
@@ -153,8 +152,14 @@ mod tests {
         let store = MemoryStore::open_in_memory().await.unwrap();
         let tid = "task-alpha";
         let now = Utc::now();
-        store.record_task_log(tid, now, "info", "hello").await.unwrap();
-        store.record_task_log(tid, now, "warn", "almost done").await.unwrap();
+        store
+            .record_task_log(tid, now, "info", "hello")
+            .await
+            .unwrap();
+        store
+            .record_task_log(tid, now, "warn", "almost done")
+            .await
+            .unwrap();
         let rows = store.load_task_logs(tid, 10).await.unwrap();
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0].line, "hello");

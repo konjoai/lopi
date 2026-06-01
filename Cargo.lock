@@ -1994,6 +1994,7 @@ dependencies = [
  "anyhow",
  "axum 0.7.9",
  "base64 0.22.1",
+ "chrono",
  "hex",
  "hmac",
  "lopi-core",
@@ -2008,6 +2009,7 @@ dependencies = [
  "tokio",
  "tower 0.4.13",
  "tracing",
+ "uuid",
 ]
 
 [[package]]

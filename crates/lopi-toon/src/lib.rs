@@ -1,8 +1,7 @@
-// TOON — Token-Oriented Object Notation (v3.0 spec)
-// https://toonformat.dev/
-//
-// Encodes/decodes the JSON data model with ~40% fewer tokens than JSON.
-// Key features: tabular arrays, minimal quoting, indentation over braces.
+//! TOON — Token-Oriented Object Notation encoder/decoder.
+//!
+//! Encodes/decodes the JSON data model with ~40% fewer tokens than JSON.
+//! Key features: tabular arrays, minimal quoting, indentation over braces.
 
 mod decode;
 mod encode;

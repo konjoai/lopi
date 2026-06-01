@@ -285,36 +285,42 @@ impl MemoryStore {
     }
 }
 
+/// Flat view of a task record returned by [`MemoryStore::load_history`].
 #[derive(Debug, sqlx::FromRow)]
 pub struct TaskRow {
+    /// Stringified UUID — primary key matching the `tasks` table.
     pub id: String,
+    /// Human-readable goal text submitted with the task.
     pub goal: String,
+    /// Current lifecycle status string (e.g. `"pending"`, `"done"`, `"failed"`).
     pub status: String,
+    /// ISO-8601 timestamp when the task was created.
     pub created_at: String,
+    /// ISO-8601 timestamp when the task reached a terminal state, if any.
     pub completed_at: Option<String>,
 }
 
 mod audit;
 mod checkpoints;
 mod dead_letter;
-mod task_logs;
 mod installations;
 mod lessons;
 mod patterns;
 mod quality;
 mod result_cache;
 mod stability;
+mod task_logs;
 // Re-export helpers for tests (tests.rs uses `use super::*`).
 pub use audit::{AuditInput, AuditQuery, AuditRow};
 pub use checkpoints::{CheckpointInput, CheckpointRow};
 pub use dead_letter::{DeadLetterInput, DeadLetterRow};
-pub use task_logs::{TaskLogRow, MAX_PER_TASK as TASK_LOG_MAX_PER_TASK};
 pub use installations::InstallationRow;
 pub use lessons::LessonRow;
 pub use patterns::{jaccard_similarity, keyword_fingerprint, PatternRow};
 pub use quality::{QualityRunRecord, QualityRunRow};
 pub use result_cache::{compute_key as compute_cache_key, CacheStats, CachedResult};
 pub use stability::{StabilityEntry, StabilityRecord};
+pub use task_logs::{TaskLogRow, MAX_PER_TASK as TASK_LOG_MAX_PER_TASK};
 
 #[cfg(test)]
 mod tests;

@@ -59,7 +59,9 @@ pub(super) async fn stream_task(
             Err(_) => None,
         }
     });
-    Sse::new(stream).keep_alive(KeepAlive::default()).into_response()
+    Sse::new(stream)
+        .keep_alive(KeepAlive::default())
+        .into_response()
 }
 
 /// `GET /api/tasks/:id/logs?n=N` — historical tail, oldest first.
@@ -83,11 +85,7 @@ pub(super) async fn get_logs(
                     })
                 })
                 .collect();
-            (
-                StatusCode::OK,
-                Json(json!({ "task_id": id, "logs": body })),
-            )
-                .into_response()
+            (StatusCode::OK, Json(json!({ "task_id": id, "logs": body }))).into_response()
         }
         Err(e) => {
             tracing::warn!("load_task_logs failed: {e}");

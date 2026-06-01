@@ -1,4 +1,7 @@
+//! Token-bucket rate limiting and Anthropic API concurrency controls.
+/// Cost governor, budget enforcement, and hierarchical budget limits.
 pub mod budget;
+/// Adaptive circuit breaker combining failure counting with a per-hour cost cap.
 pub mod circuit_breaker;
 
 pub use budget::{BudgetConfig, BudgetError, BudgetGovernor, BudgetLimit, BudgetStates};
@@ -26,6 +29,7 @@ struct BucketState {
 }
 
 impl TokenBucket {
+    /// Create a bucket with the given `capacity` and `refill_per_second` rate, starting full.
     #[must_use]
     pub fn new(capacity: f64, refill_per_second: f64) -> Self {
         Self {
@@ -99,6 +103,7 @@ impl AnthropicLimiter {
         }
     }
 
+    /// Build a limiter with explicit `tpm_limit` (tokens/min) and `rpm_limit` (requests/min) caps.
     #[must_use]
     pub fn custom(tpm_limit: f64, rpm_limit: f64) -> Self {
         Self {

@@ -6,51 +6,83 @@ use uuid::Uuid;
 /// Per-turn observability record emitted after each claude invocation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TurnMetrics {
+    /// Unique identifier for this individual turn.
     pub turn_id: Uuid,
+    /// Task this turn belongs to.
     pub task_id: TaskId,
+    /// Claude session identifier for the enclosing agent run.
     pub session_id: Uuid,
+    /// Model name used for this turn (e.g. `claude-sonnet-4-6`).
     pub model: String,
+    /// Attempt number within the parent task run.
     pub attempt_number: u8,
     // Token accounting
+    /// Tokens consumed in the input (prompt) portion of this turn.
     pub input_tokens: u32,
+    /// Tokens produced in the output (completion) portion of this turn.
     pub output_tokens: u32,
+    /// Prompt tokens served from the context cache.
     pub cache_read_input_tokens: u32,
+    /// Prompt tokens written into the context cache.
     pub cache_write_input_tokens: u32,
     // Latency
+    /// Time-to-first-token in milliseconds.
     pub ttft_ms: u64,
+    /// Wall-clock duration of the full turn in milliseconds.
     pub turn_latency_ms: u64,
+    /// Combined execution time of all tool calls in this turn, in milliseconds.
     pub tool_execution_ms: u64,
     // Context state
+    /// Total tokens currently in the context window.
     pub context_tokens: u32,
+    /// Fraction of the context window currently in use (`0.0`–`1.0`).
     pub context_pressure: f32,
+    /// Number of messages evicted from context during this turn.
     pub evictions_this_turn: u8,
     // Tool calls
+    /// Number of tool calls made during this turn.
     pub tool_calls: u8,
+    /// Whether any tool calls in this turn were issued in parallel.
     pub tools_parallel: bool,
     // Cost
+    /// Estimated USD cost of this turn based on token counts.
     pub estimated_cost_usd: f64,
+    /// Wall-clock time when this turn was recorded.
     pub timestamp: DateTime<Utc>,
 }
 
+/// Lifecycle state of a single agent run.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum AgentState {
+    /// Agent is waiting for its first task.
     Idle,
+    /// Agent is generating an implementation plan.
     Planning,
+    /// Agent is applying code changes.
     Implementing,
+    /// Agent is running the test suite.
     Testing,
+    /// Agent is evaluating test and lint results.
     Scoring,
+    /// Agent has finished and produced a final result.
     Done,
+    /// Agent encountered a non-recoverable error.
     Errored,
 }
 
+/// Tunable penalties applied by [`Score::weighted`] to derive a composite quality score.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScoreWeights {
+    /// Score penalty subtracted per lint error (default `0.05`).
     #[serde(default = "ScoreWeights::default_lint_penalty_per_error")]
     pub lint_penalty_per_error: f32,
+    /// Maximum total lint penalty that can be applied (default `0.50`).
     #[serde(default = "ScoreWeights::default_lint_penalty_cap")]
     pub lint_penalty_cap: f32,
+    /// Score penalty per 1 000 diff lines added (default `0.10`).
     #[serde(default = "ScoreWeights::default_diff_penalty_per_kloc")]
     pub diff_penalty_per_kloc: f32,
+    /// Maximum total diff-size penalty that can be applied (default `0.30`).
     #[serde(default = "ScoreWeights::default_diff_penalty_cap")]
     pub diff_penalty_cap: f32,
 }
@@ -81,15 +113,21 @@ impl Default for ScoreWeights {
     }
 }
 
+/// Quality score produced after a test-and-lint cycle.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Score {
+    /// Fraction of tests that passed, in the range `[0.0, 1.0]`.
     pub test_pass_rate: f32,
+    /// Number of lint errors reported by the linter.
     pub lint_errors: u32,
+    /// Total lines changed in the diff.
     pub diff_lines: u32,
+    /// Human-readable error messages collected during scoring.
     pub errors: Vec<String>,
 }
 
 impl Score {
+    /// Construct a new `Score` with an empty error list.
     #[must_use]
     pub fn new(test_pass_rate: f32, lint_errors: u32, diff_lines: u32) -> Self {
         Self {
@@ -100,11 +138,13 @@ impl Score {
         }
     }
 
+    /// Returns `true` when all tests pass and there are zero lint errors.
     #[must_use]
     pub fn passed(&self) -> bool {
         self.test_pass_rate >= 1.0 && self.lint_errors == 0
     }
 
+    /// Compute a composite quality score in `[0.0, 1.0]` using the given penalty weights.
     #[must_use]
     pub fn weighted(&self, weights: &ScoreWeights) -> f32 {
         // Higher is better. Pass rate dominates; lint errors and oversized diffs penalize.
@@ -119,18 +159,27 @@ impl Score {
     }
 }
 
+/// One execution attempt within an [`AgentRun`], representing a single branch-and-score cycle.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Attempt {
+    /// Unique identifier for this attempt.
     pub id: Uuid,
+    /// Task this attempt belongs to.
     pub task_id: TaskId,
+    /// Sequential attempt number, starting at 1.
     pub attempt_num: u8,
+    /// Git branch name created for this attempt.
     pub branch: String,
+    /// Score produced at the end of this attempt, if available.
     pub score: Option<Score>,
+    /// Final outcome string (e.g. `"pending"`, `"success"`, `"failed"`).
     pub outcome: String,
+    /// Timestamp when this attempt was created.
     pub created_at: DateTime<Utc>,
 }
 
 impl Attempt {
+    /// Create a new `Attempt` in the `"pending"` state for the given task and branch.
     pub fn new(task_id: TaskId, attempt_num: u8, branch: impl Into<String>) -> Self {
         Self {
             id: Uuid::new_v4(),
@@ -144,17 +193,25 @@ impl Attempt {
     }
 }
 
+/// Full lifecycle record for one agent's execution of a task.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentRun {
+    /// Unique identifier for this agent run.
     pub id: Uuid,
+    /// Task being executed by this run.
     pub task_id: TaskId,
+    /// Current lifecycle state of the agent.
     pub state: AgentState,
+    /// Ordered list of execution attempts made so far.
     pub attempts: Vec<Attempt>,
+    /// Timestamp when this run was created.
     pub started_at: DateTime<Utc>,
+    /// Timestamp when this run reached a terminal state, if complete.
     pub finished_at: Option<DateTime<Utc>>,
 }
 
 impl AgentRun {
+    /// Create a new `AgentRun` in the `Idle` state with no attempts.
     #[must_use]
     pub fn new(task_id: TaskId) -> Self {
         Self {

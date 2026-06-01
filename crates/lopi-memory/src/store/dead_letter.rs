@@ -49,11 +49,17 @@ pub struct DeadLetterRow {
 /// minus the generated columns (`id`, `first_failed_at`, `dead_at`).
 #[derive(Debug, Clone)]
 pub struct DeadLetterInput {
+    /// Identifier of the task that was moved to the dead-letter queue.
     pub task_id: TaskId,
+    /// Original task goal text.
     pub goal: String,
+    /// Repository path the task was targeting, if known.
     pub repo_path: Option<String>,
+    /// Total number of attempts made before the task was declared dead.
     pub total_attempts: u8,
+    /// Last error message recorded before giving up, if any.
     pub last_error: Option<String>,
+    /// Source that originally submitted the task (e.g. `"webhook"`, `"api"`).
     pub source: String,
 }
 
@@ -230,7 +236,10 @@ mod tests {
         assert_eq!(row.total_attempts, 3);
         assert_eq!(row.source, "cli");
         assert_eq!(row.repo_path.as_deref(), Some("/tmp/repo"));
-        assert_eq!(row.last_error.as_deref(), Some("tests failed after 3 attempts"));
+        assert_eq!(
+            row.last_error.as_deref(),
+            Some("tests failed after 3 attempts")
+        );
     }
 
     #[tokio::test]
@@ -250,7 +259,10 @@ mod tests {
     async fn list_respects_limit() {
         let store = MemoryStore::open_in_memory().await.unwrap();
         for i in 0..5 {
-            store.push_dead_letter(&input(&format!("g{i}"))).await.unwrap();
+            store
+                .push_dead_letter(&input(&format!("g{i}")))
+                .await
+                .unwrap();
         }
         let rows = store.list_dead_letters(2).await.unwrap();
         assert_eq!(rows.len(), 2);
