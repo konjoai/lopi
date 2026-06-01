@@ -317,14 +317,20 @@ impl AgentRunner {
             return true;
         }
         // Then check the legacy oneshot cancel channel (web API / CLI path).
+        // A Closed channel means the sender was dropped (standalone/CLI path with no
+        // active canceller) — that is NOT a cancellation, so we discard the receiver
+        // and continue. Only an explicit Ok(()) send is a real cancel.
         if let Some(mut rx) = self.cancel_rx.take() {
             match rx.try_recv() {
-                Ok(()) | Err(oneshot::error::TryRecvError::Closed) => {
+                Ok(()) => {
                     self.log("⛔ cancelled by user");
                     return true;
                 }
                 Err(oneshot::error::TryRecvError::Empty) => {
                     self.cancel_rx = Some(rx);
+                }
+                Err(oneshot::error::TryRecvError::Closed) => {
+                    // Sender dropped (no active canceller) — proceed normally.
                 }
             }
         }
