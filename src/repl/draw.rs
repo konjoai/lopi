@@ -42,10 +42,20 @@ pub fn draw_repl(f: &mut Frame, state: &mut ReplState) {
     draw_footer(f, chunks[4], &state.mode);
 }
 
+/// Morphing-diamond frames (◇ → ◈ → ◆ → ◈ cycle).
+const SPINNER: [&str; 4] = ["◇", "◈", "◆", "◈"];
+
+fn spinner_frame(tick: u8) -> &'static str {
+    SPINNER[tick as usize % SPINNER.len()]
+}
+
 fn draw_header(f: &mut Frame, area: Rect, state: &ReplState) {
-    let (mode_text, mode_color) = match &state.mode {
-        ReplMode::Idle => ("idle", Color::Green),
-        ReplMode::Running => ("running", Color::Yellow),
+    let (mode_text, mode_color): (String, Color) = match &state.mode {
+        ReplMode::Idle => ("idle".into(), Color::Green),
+        ReplMode::Running => (
+            format!("{} running", spinner_frame(state.anim_tick)),
+            Color::Yellow,
+        ),
     };
 
     let title_line = Line::from(vec![
@@ -65,7 +75,7 @@ fn draw_header(f: &mut Frame, area: Rect, state: &ReplState) {
         Span::styled("  ·  ", Style::default().fg(KONJO_DIM)),
         Span::styled(&state.model_short, Style::default().fg(KONJO_RED)),
         Span::styled("  ·  ", Style::default().fg(KONJO_DIM)),
-        Span::styled(mode_text, Style::default().fg(mode_color)),
+        Span::styled(mode_text.clone(), Style::default().fg(mode_color)),
         if state.bypass {
             Span::styled(
                 "  ⚠ bypass",
@@ -157,6 +167,27 @@ fn draw_output(f: &mut Frame, area: Rect, state: &ReplState) {
     // No base fg override — let each span's style render unobstructed.
     let list = List::new(items);
     f.render_widget(list, inner);
+
+    // Animated step indicator at the bottom of the output area when running.
+    if matches!(state.mode, ReplMode::Running) && inner.height >= 2 {
+        let frame = spinner_frame(state.anim_tick);
+        let step_line = Line::from(vec![
+            Span::styled(
+                format!("  {} ", frame),
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("working…", Style::default().fg(Color::DarkGray)),
+        ]);
+        let step_area = Rect {
+            x: inner.x,
+            y: inner.y + inner.height - 1,
+            width: inner.width,
+            height: 1,
+        };
+        f.render_widget(Paragraph::new(step_line), step_area);
+    }
 
     // Scroll indicator if there's content above.
     if state.scroll_offset > 0 {

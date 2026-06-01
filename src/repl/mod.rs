@@ -63,8 +63,13 @@ async fn repl_loop<B: ratatui::backend::Backend>(
     cfg: Option<&LopiConfig>,
 ) -> Result<()> {
     let mut state = ReplState::new(&repo, &model, cfg);
-    let mut last_draw = Instant::now();
     let (ev_tx, mut ev_rx) = mpsc::unbounded_channel::<ReplEvent>();
+
+    // First paint — without this the screen stays blank until the first event.
+    terminal.draw(|f| {
+        draw_repl(f, &mut state);
+    })?;
+    let mut last_draw = Instant::now();
 
     loop {
         // Drain background agent events; note whether anything changed.
@@ -91,11 +96,24 @@ async fn repl_loop<B: ratatui::backend::Backend>(
         // Throttle agent-log redraws to 50 ms; key events trigger an
         // immediate redraw further below so typing feels instant.
         if agent_updated && last_draw.elapsed() >= Duration::from_millis(50) {
+            state.anim_tick = state.anim_tick.wrapping_add(1);
             terminal.draw(|f| {
                 draw_repl(f, &mut state);
                 if state.show_help {
                     draw_help_overlay(f);
                 }
+            })?;
+            last_draw = Instant::now();
+        }
+
+        // Drive the spinner animation when the agent is running even if no
+        // log events are arriving (e.g. long silent LLM call).
+        if matches!(state.mode, ReplMode::Running)
+            && last_draw.elapsed() >= Duration::from_millis(120)
+        {
+            state.anim_tick = state.anim_tick.wrapping_add(1);
+            terminal.draw(|f| {
+                draw_repl(f, &mut state);
             })?;
             last_draw = Instant::now();
         }

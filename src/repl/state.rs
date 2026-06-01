@@ -48,6 +48,8 @@ pub struct ReplState {
     pub bypass: bool,
     pub session_cost_usd: f32,
     pub show_help: bool,
+    /// Frame counter advanced by the animation tick — wraps at 255.
+    pub anim_tick: u8,
 }
 
 impl ReplState {
@@ -75,6 +77,7 @@ impl ReplState {
             bypass,
             session_cost_usd: 0.0,
             show_help: false,
+            anim_tick: 0,
         };
         state.splash();
         state
