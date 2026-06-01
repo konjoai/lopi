@@ -30,8 +30,8 @@ use self::{
     input::InputAction,
     slash::autocomplete,
 };
-pub use state::{LineStyle, ReplEvent, ReplMode, ReplState};
 use crate::run_command;
+pub use state::{LineStyle, ReplEvent, ReplMode, ReplState};
 
 /// Launch the interactive REPL TUI.
 pub async fn run_repl(repo: PathBuf, model: String, cfg: Option<LopiConfig>) -> Result<()> {
