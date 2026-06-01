@@ -146,7 +146,10 @@ mod tests {
                 fix_hints: vec![],
                 confidence: f64::from(attempt) * 0.3,
             };
-            store.save_verifier_verdict(tid, attempt, &v, "claude-opus-4-7").await.unwrap();
+            store
+                .save_verifier_verdict(tid, attempt, &v, "claude-opus-4-7")
+                .await
+                .unwrap();
         }
         let rows = store.load_verifier_verdicts(tid).await.unwrap();
         assert_eq!(rows.len(), 3);

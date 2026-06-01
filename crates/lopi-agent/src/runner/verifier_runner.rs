@@ -17,22 +17,15 @@ impl AgentRunner {
             return true;
         };
         let plan = self.last_plan.clone().unwrap_or_default();
-        let rubric = self
-            .task
-            .rubric
-            .clone()
-            .unwrap_or_else(default_rubric);
+        let rubric = self.task.rubric.clone().unwrap_or_else(default_rubric);
         let diff = get_repo_diff(&self.repo_path).await;
         let test_output = test_errors.join("\n");
 
         self.log("🔬 verifier: grading output against rubric…");
-        let verdict = match VerifierAgent::new(client).verify(
-            &self.task.goal,
-            &plan,
-            &diff,
-            &test_output,
-            &rubric,
-        ).await {
+        let verdict = match VerifierAgent::new(client)
+            .verify(&self.task.goal, &plan, &diff, &test_output, &rubric)
+            .await
+        {
             Ok(v) => v,
             Err(e) => {
                 warn!("verifier error (non-fatal, proceeding): {e}");

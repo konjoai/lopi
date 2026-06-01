@@ -26,7 +26,8 @@ pub fn default_rubric() -> Rubric {
             "No new clippy warnings introduced".into(),
             "Changes are limited to files relevant to the stated goal".into(),
             "New or modified code follows the existing patterns in those files".into(),
-            "No debugging artefacts (dbg!, println!, unresolved task markers) left in the diff".into(),
+            "No debugging artefacts (dbg!, println!, unresolved task markers) left in the diff"
+                .into(),
         ],
     }
 }
@@ -80,8 +81,7 @@ impl VerifierAgent {
 
 fn parse_verdict(text: &str) -> Result<VerifierVerdict> {
     let clean = strip_fences(text);
-    serde_json::from_str(clean)
-        .with_context(|| format!("verifier JSON parse error — raw: {clean}"))
+    serde_json::from_str(clean).with_context(|| format!("verifier JSON parse error — raw: {clean}"))
 }
 
 fn strip_fences(s: &str) -> &str {
@@ -126,10 +126,7 @@ mod tests {
 
     #[test]
     fn strip_fences_passthrough_for_clean_json() {
-        assert_eq!(
-            strip_fences("{\"passed\":false}"),
-            "{\"passed\":false}"
-        );
+        assert_eq!(strip_fences("{\"passed\":false}"), "{\"passed\":false}");
     }
 
     #[test]
