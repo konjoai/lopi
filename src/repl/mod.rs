@@ -67,16 +67,8 @@ async fn repl_loop<B: ratatui::backend::Backend>(
     let (ev_tx, mut ev_rx) = mpsc::unbounded_channel::<ReplEvent>();
 
     loop {
-        if last_draw.elapsed() >= Duration::from_millis(250) {
-            terminal.draw(|f| {
-                draw_repl(f, &mut state);
-                if state.show_help {
-                    draw_help_overlay(f);
-                }
-            })?;
-            last_draw = Instant::now();
-        }
-
+        // Drain background agent events; note whether anything changed.
+        let mut agent_updated = false;
         while let Ok(ev) = ev_rx.try_recv() {
             match ev {
                 ReplEvent::AgentLog { line, style } => state.push(line, style),
@@ -93,9 +85,22 @@ async fn repl_loop<B: ratatui::backend::Backend>(
                 }
                 ReplEvent::CostAccrued(usd) => state.session_cost_usd += usd,
             }
+            agent_updated = true;
         }
 
-        if !event::poll(Duration::from_millis(50))? {
+        // Throttle agent-log redraws to 50 ms; key events trigger an
+        // immediate redraw further below so typing feels instant.
+        if agent_updated && last_draw.elapsed() >= Duration::from_millis(50) {
+            terminal.draw(|f| {
+                draw_repl(f, &mut state);
+                if state.show_help {
+                    draw_help_overlay(f);
+                }
+            })?;
+            last_draw = Instant::now();
+        }
+
+        if !event::poll(Duration::from_millis(16))? {
             continue;
         }
 
@@ -165,9 +170,24 @@ async fn repl_loop<B: ratatui::backend::Backend>(
                         }
                     }
                 }
+                // Redraw immediately so keystrokes appear without any delay.
+                terminal.draw(|f| {
+                    draw_repl(f, &mut state);
+                    if state.show_help {
+                        draw_help_overlay(f);
+                    }
+                })?;
+                last_draw = Instant::now();
             }
             Event::Resize(_, _) => {
-                last_draw = Instant::now() - Duration::from_secs(1);
+                // Redraw immediately on resize.
+                terminal.draw(|f| {
+                    draw_repl(f, &mut state);
+                    if state.show_help {
+                        draw_help_overlay(f);
+                    }
+                })?;
+                last_draw = Instant::now();
             }
             _ => {}
         }
