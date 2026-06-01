@@ -134,22 +134,19 @@ fn draw_output(f: &mut Frame, area: Rect, state: &ReplState) {
                 LineStyle::Error => Style::default().fg(Color::Red),
                 LineStyle::Info => Style::default().fg(Color::Cyan),
                 LineStyle::AgentLog => Style::default().fg(Color::DarkGray),
-                LineStyle::SplashTop => {
-                    Style::default().fg(KONJO_CYAN).add_modifier(Modifier::BOLD)
-                }
-                LineStyle::SplashMid => Style::default()
-                    .fg(KONJO_PURPLE)
-                    .add_modifier(Modifier::BOLD),
-                LineStyle::SplashBot => Style::default()
-                    .fg(Color::LightBlue)
-                    .add_modifier(Modifier::BOLD),
+                // Splash gradient: bright cyan → cyan → blue, fg=bg so the
+                // block characters show colour on every terminal and theme.
+                LineStyle::SplashTop => Style::default().fg(Color::LightCyan).bg(Color::LightCyan),
+                LineStyle::SplashMid => Style::default().fg(Color::Cyan).bg(Color::Cyan),
+                LineStyle::SplashBot => Style::default().fg(Color::Blue).bg(Color::Blue),
                 LineStyle::Hint => Style::default().fg(Color::White),
             };
             ListItem::new(Line::from(Span::styled(ol.text.clone(), style)))
         })
         .collect();
 
-    let list = List::new(items).style(Style::default().fg(Color::White));
+    // No base fg override — let each span's style render unobstructed.
+    let list = List::new(items);
     f.render_widget(list, inner);
 
     // Scroll indicator if there's content above.
