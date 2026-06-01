@@ -8,7 +8,7 @@
 use anyhow::Result;
 use lopi_memory::MemoryStore;
 
-use crate::db_path;
+use crate::util::db_path;
 
 pub async fn show() -> Result<()> {
     let store = MemoryStore::open(db_path()).await?;

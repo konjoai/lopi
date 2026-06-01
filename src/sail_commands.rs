@@ -5,7 +5,7 @@ use lopi_orchestrator::{boot_scheduler, AgentPool, TaskQueue};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use crate::db_path;
+use crate::util::db_path;
 
 pub async fn run(
     max_agents: usize,

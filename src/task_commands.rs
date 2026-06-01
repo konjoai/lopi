@@ -2,7 +2,10 @@ use anyhow::Result;
 use lopi_core::{AgentEvent, EventBus};
 use lopi_memory::MemoryStore;
 
-use crate::{db_path, fmt_status, remote};
+use crate::{
+    remote,
+    util::{db_path, fmt_status},
+};
 
 pub async fn watch(ws_url: Option<String>, local: bool) -> Result<()> {
     if local {
@@ -83,7 +86,7 @@ pub async fn cancel(task_id: String) -> Result<()> {
 /// upstream operator to decide whether to re-queue, abort, or inspect the
 /// `repo_path` directly. Full re-attach is a follow-up sprint.
 pub async fn resume(agent_id: String) -> Result<()> {
-    let store = MemoryStore::open(crate::db_path()).await?;
+    let store = MemoryStore::open(crate::util::db_path()).await?;
     let task_id = match agent_id.parse::<uuid::Uuid>() {
         Ok(u) => lopi_core::TaskId(u),
         Err(_) => {
