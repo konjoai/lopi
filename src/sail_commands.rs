@@ -100,7 +100,122 @@ pub async fn run(
     }
 
     let auth_token = cfg.and_then(|c| c.web.auth_token.clone());
+
+    // Open the dashboard in the user's browser once the server is up.
+    // Honors LOPI_NO_BROWSER=1 for headless / remote deployments.
+    if std::env::var("LOPI_NO_BROWSER").ok().as_deref() != Some("1") {
+        let url = dashboard_url(&host, port);
+        tokio::spawn(async move {
+            // Server bind happens synchronously below `serve_with_repo`; a
+            // short delay covers the listener handshake without polling.
+            tokio::time::sleep(std::time::Duration::from_millis(350)).await;
+            open_dashboard(&url);
+        });
+    }
+
     lopi_ui::web::serve_with_repo(store, bus, queue, pool, &host, port, auth_token, repo).await
+}
+
+/// Build the dashboard URL, mapping wildcard bind addresses to a routable
+/// loopback host so the browser doesn't try to connect to 0.0.0.0.
+fn dashboard_url(host: &str, port: u16) -> String {
+    let host = match host {
+        "0.0.0.0" | "::" => "127.0.0.1",
+        h => h,
+    };
+    format!("http://{host}:{port}")
+}
+
+/// Open the dashboard. On macOS, first try to find an existing tab in a
+/// Chromium-family browser via AppleScript — if found, activate that tab
+/// and reload it instead of opening a new one. Falls back to the OS's
+/// default-browser open command on any failure or non-mac platform.
+fn open_dashboard(url: &str) {
+    #[cfg(target_os = "macos")]
+    {
+        if !focus_existing_tab_macos(url) {
+            let _ = std::process::Command::new("open").arg(url).status();
+        }
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let _ = std::process::Command::new("xdg-open").arg(url).status();
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let _ = std::process::Command::new("cmd")
+            .args(["/c", "start", "", url])
+            .status();
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+    {
+        let _ = url; // unsupported platform — leave the dashboard for the user
+    }
+}
+
+/// Walk Chrome / Brave / Arc / Edge windows looking for a tab whose URL
+/// matches `url`. If found, activate the browser, raise the window, focus
+/// the tab, and reload. Returns true when an existing tab was reused.
+///
+/// Safari and Firefox use different scripting dictionaries, so we let the
+/// `open` fallback handle them — every Chromium-family browser shares the
+/// `windows / tabs / URL / reload` vocabulary used here.
+#[cfg(target_os = "macos")]
+fn focus_existing_tab_macos(url: &str) -> bool {
+    // The AppleScript prints "REUSED" to stdout when a matching tab was
+    // found and refreshed. Otherwise it prints nothing.
+    let script = format!(
+        r#"
+set targetURL to "{url}"
+set browserNames to {{"Google Chrome", "Brave Browser", "Arc", "Microsoft Edge", "Chromium"}}
+repeat with bname in browserNames
+    set isRunning to false
+    try
+        tell application "System Events" to set isRunning to (exists (processes where name is bname))
+    end try
+    if isRunning then
+        try
+            using terms from application "Google Chrome"
+                tell application bname
+                    set winIndex to 0
+                    repeat with w in windows
+                        set winIndex to winIndex + 1
+                        set tabIndex to 0
+                        repeat with t in tabs of w
+                            set tabIndex to tabIndex + 1
+                            if (URL of t) starts with targetURL then
+                                set active tab index of w to tabIndex
+                                set index of w to 1
+                                tell t to reload
+                                activate
+                                log "REUSED"
+                                return "REUSED"
+                            end if
+                        end repeat
+                    end repeat
+                end tell
+            end using terms from
+        end try
+    end if
+end repeat
+return ""
+"#
+    );
+    let out = std::process::Command::new("osascript")
+        .arg("-e")
+        .arg(&script)
+        .output();
+    match out {
+        Ok(o) => {
+            let combined = format!(
+                "{}{}",
+                String::from_utf8_lossy(&o.stdout),
+                String::from_utf8_lossy(&o.stderr)
+            );
+            combined.contains("REUSED")
+        }
+        Err(_) => false,
+    }
 }
 
 fn print_startup_banner(
