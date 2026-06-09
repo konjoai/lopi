@@ -230,13 +230,16 @@
   <div
     class="w-20 border-l border-white/5 flex flex-col items-center justify-between py-4 px-2 flex-shrink-0 bg-black/30"
   >
-    <!-- Close button (top of sidebar, above phase) ──────────────── -->
-    {#if agent && onClose}
+    <!-- Close button — present on every pane (live, idle, and empty) so
+         the user can dismiss any slot. For agents this hits the DELETE
+         endpoint so the session does not resurrect on the next reload. -->
+    {#if onClose}
       <button
         type="button"
         on:click={onClose}
         class="w-5 h-5 flex items-center justify-center bg-white/10 hover:bg-white/25 text-white/60 hover:text-white rounded-full text-[10px] font-bold transition-colors flex-shrink-0"
-        title="Close pane"
+        title={agent ? 'Close & delete session' : 'Close pane'}
+        aria-label={agent ? 'Close and delete session' : 'Close pane'}
       >
         ✕
       </button>

@@ -217,6 +217,48 @@ impl MemoryStore {
         Ok(())
     }
 
+    /// Permanently remove a task and every row that references it (attempts,
+    /// turn metrics, agent checkpoints, dead-letter entries, task logs,
+    /// verifier verdicts). Lessons keep their content but lose the back-
+    /// reference. Returns `true` when the task row existed and was deleted.
+    ///
+    /// Used by the dashboard's per-pane close (`✕`) so a dismissed session
+    /// stays dismissed across reloads instead of repopulating from the
+    /// snapshot on the next WebSocket connect.
+    ///
+    /// # Errors
+    /// Returns `Err` if any of the cascading writes fails.
+    pub async fn delete_task(&self, id: &TaskId) -> Result<bool> {
+        let id_str = id.0.to_string();
+        let mut tx = self.write_pool.begin().await?;
+        for table in [
+            "attempts",
+            "turn_metrics",
+            "agent_checkpoints",
+            "dead_letter_queue",
+            "task_logs",
+            "verifier_verdicts",
+        ] {
+            let sql = format!("DELETE FROM {table} WHERE task_id = ?1");
+            sqlx::query(&sql)
+                .bind(&id_str)
+                .execute(&mut *tx)
+                .await?;
+        }
+        // Preserve lessons (they encode reusable insight) but sever the link
+        // so the deleted task can't be re-derived from them.
+        sqlx::query("UPDATE lessons SET task_id = NULL WHERE task_id = ?1")
+            .bind(&id_str)
+            .execute(&mut *tx)
+            .await?;
+        let result = sqlx::query("DELETE FROM tasks WHERE id = ?1")
+            .bind(&id_str)
+            .execute(&mut *tx)
+            .await?;
+        tx.commit().await?;
+        Ok(result.rows_affected() > 0)
+    }
+
     /// Recent tasks, newest first.
     ///
     /// # Errors

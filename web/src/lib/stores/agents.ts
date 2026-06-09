@@ -411,11 +411,20 @@ export function selectAgent(id: string) {
 }
 
 export function removeAgent(id: string) {
+  // Drop the agent from local state immediately so the pane closes without
+  // waiting for the network round-trip.
   agents.update((m) => {
     const next = new Map(m);
     next.delete(id);
     return next;
   });
+  // Then ask the server to cancel + permanently delete the session so a
+  // future reload doesn't pull it back via the snapshot endpoint. Best-effort:
+  // a network failure should not block the close UX.
+  if (!browser) return;
+  void fetch(`/api/tasks/${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(
+    (err) => console.warn('[lopi] DELETE /api/tasks failed:', err)
+  );
 }
 
 export function postTask(

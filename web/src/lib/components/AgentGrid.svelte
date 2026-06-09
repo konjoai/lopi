@@ -135,7 +135,7 @@
         >
           <!-- AgentPane or empty slot -->
           <div class="h-full w-full overflow-hidden">
-            <AgentPane {agent} slotIndex={slotIdx} onClose={agent ? () => handleClearSlot(slotIdx) : null} />
+            <AgentPane {agent} slotIndex={slotIdx} onClose={() => handleClearSlot(slotIdx)} />
           </div>
 
         </div>

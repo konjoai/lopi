@@ -141,13 +141,26 @@ pub(super) async fn cancel_task(
             .into_response();
     };
     let task_id = TaskId(uuid);
+    // First cancel any running execution, then permanently delete the task
+    // and its dependent rows. Otherwise the snapshot endpoint would resurrect
+    // the closed session on the next dashboard reload.
     let cancelled = s.pool.cancel(&task_id).await;
-    let msg = if cancelled {
-        json!({ "cancelled": true, "id": t.id })
-    } else {
-        json!({ "cancelled": false, "reason": "task not running or already complete" })
+    let deleted = match s.store.delete_task(&task_id).await {
+        Ok(removed) => removed,
+        Err(e) => {
+            tracing::warn!(error = %e, task_id = %t.id, "delete_task failed");
+            false
+        }
     };
-    (StatusCode::OK, Json(msg)).into_response()
+    (
+        StatusCode::OK,
+        Json(json!({
+            "id": t.id,
+            "cancelled": cancelled,
+            "deleted": deleted,
+        })),
+    )
+        .into_response()
 }
 
 pub(super) async fn create_task(
