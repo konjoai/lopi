@@ -22,6 +22,11 @@ pub const MODEL_SONNET: &str = "claude-sonnet-4-6";
 /// Claude Opus model identifier — highest capability, used for complex or retried tasks.
 pub const MODEL_OPUS: &str = "claude-opus-4-7";
 
+/// Sentinel substring used by the run loop to detect a non-retryable billing
+/// failure from the Anthropic API. Matched against the error chain so we don't
+/// burn the retry budget looping on a credit-exhausted account.
+pub const ERR_CREDIT_EXHAUSTED: &str = "anthropic credits exhausted";
+
 /// Route a task to the cheapest model capable of handling its complexity.
 ///
 /// Heuristic: task size = constraints + `allowed_dirs` count.
@@ -316,6 +321,7 @@ impl ClaudeCode {
             cmd.arg("--model").arg(model);
         }
         cmd.current_dir(&self.repo_path);
+        scrub_inherited_anthropic_env(&mut cmd);
 
         let raw_out = tokio::time::timeout(self.timeout, cmd.output())
             .await
@@ -323,10 +329,64 @@ impl ClaudeCode {
             .context("invoking claude cli")?;
 
         if !raw_out.status.success() {
+            let stderr = String::from_utf8_lossy(&raw_out.stderr);
+            let stdout = String::from_utf8_lossy(&raw_out.stdout);
+
+            // Claude CLI writes structured failure payloads to stdout (rate-limit
+            // JSON, auth errors, billing errors) while exiting non-zero. Parse
+            // the JSON envelope when present so we surface the human-readable
+            // `result` field plus the API status code, instead of a wall of
+            // JSON noise. Falls back to raw streams when the envelope is absent
+            // or unparseable.
+            let parsed_msg: Option<(String, Option<u16>)> =
+                serde_json::from_str::<serde_json::Value>(&stdout)
+                    .ok()
+                    .and_then(|v| {
+                        let result = v.get("result")?.as_str()?.to_string();
+                        let status = v
+                            .get("api_error_status")
+                            .and_then(serde_json::Value::as_u64)
+                            .map(|s| s as u16);
+                        Some((result, status))
+                    });
+
+            tracing::error!(
+                cwd = %self.repo_path.display(),
+                model = self.model.as_deref().unwrap_or("<default>"),
+                prompt_bytes = prompt.len(),
+                status = %raw_out.status,
+                stderr = %stderr,
+                stdout = %stdout,
+                "claude cli failed"
+            );
+
+            if let Some((msg, api_status)) = parsed_msg {
+                // Hard stop for billing failure — retrying just stalls the
+                // agent. The run loop matches on ERR_CREDIT_EXHAUSTED to
+                // short-circuit instead of burning the retry budget.
+                if msg.to_lowercase().contains("credit balance") || api_status == Some(402) {
+                    anyhow::bail!(
+                        "{ERR_CREDIT_EXHAUSTED}: {msg}. \
+                         Add credits at https://console.anthropic.com/settings/billing"
+                    );
+                }
+                let api = api_status
+                    .map(|s| format!(" (api_error_status={s})"))
+                    .unwrap_or_default();
+                anyhow::bail!("claude api error{api}: {msg}");
+            }
+
+            let detail = match (stderr.trim().is_empty(), stdout.trim().is_empty()) {
+                (false, false) => format!("stderr={stderr}; stdout={stdout}"),
+                (false, true) => format!("stderr={stderr}"),
+                (true, false) => format!("stdout={stdout}"),
+                (true, true) => "no output on stderr or stdout".to_string(),
+            };
             anyhow::bail!(
-                "claude cli exited {}: {}",
+                "claude cli exited {} (cwd={}, prompt={}B): {detail}",
                 raw_out.status,
-                String::from_utf8_lossy(&raw_out.stderr)
+                self.repo_path.display(),
+                prompt.len(),
             );
         }
 
@@ -356,6 +416,34 @@ impl ClaudeCode {
                 raw: stdout,
             })
         }
+    }
+}
+
+/// Names of environment variables that, when inherited from the parent
+/// process, cause the spawned `claude` CLI to bypass the user's interactive
+/// subscription auth and route through the per-token billed API (or a custom
+/// gateway). lopi must NOT silently bill against the user's API balance —
+/// the design intent is to drive their Claude Code subscription. We strip
+/// these from the child process env so the CLI falls back to its on-disk
+/// credentials at `~/.claude/`.
+const ANTHROPIC_ROUTING_ENV: &[&str] = &[
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_AUTH_TOKEN",
+    "ANTHROPIC_BASE_URL",
+    "ANTHROPIC_MODEL",
+    "ANTHROPIC_SMALL_FAST_MODEL",
+    "ANTHROPIC_BEDROCK_BASE_URL",
+    "ANTHROPIC_VERTEX_PROJECT_ID",
+    "CLAUDE_CODE_USE_BEDROCK",
+    "CLAUDE_CODE_USE_VERTEX",
+];
+
+/// Remove inherited Anthropic routing/auth env vars from a spawned-process
+/// command. Used for both the one-shot `run()` path and the streaming plan
+/// path so neither accidentally bills against a user's API credits.
+pub(crate) fn scrub_inherited_anthropic_env(cmd: &mut Command) {
+    for var in ANTHROPIC_ROUTING_ENV {
+        cmd.env_remove(var);
     }
 }
 

@@ -44,12 +44,17 @@ pub fn plan_streaming(
              ## Task context (TOON)\n{ctx}"
         );
 
-        let mut child = tokio::process::Command::new(&cli_path)
-            .arg("-p")
+        let mut cmd = tokio::process::Command::new(&cli_path);
+        cmd.arg("-p")
             .arg(&prompt)
             .current_dir(&repo_path)
             .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null());
+        // Same auth guard as the one-shot path: never let inherited routing
+        // env (ANTHROPIC_API_KEY, ANTHROPIC_BASE_URL, etc.) silently switch
+        // the CLI from the user's subscription to API-key billing.
+        crate::claude::scrub_inherited_anthropic_env(&mut cmd);
+        let mut child = cmd
             .spawn()
             .context("spawning claude for streaming plan")?;
 

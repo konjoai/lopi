@@ -1,5 +1,5 @@
 use super::{backoff_secs, AgentRunner};
-use crate::claude::{select_model, ClaudeCode};
+use crate::claude::{select_model, ClaudeCode, ERR_CREDIT_EXHAUSTED};
 use crate::scorer::Scorer;
 use anyhow::Result;
 use lopi_context::Phase;
@@ -288,9 +288,20 @@ impl AgentRunner {
                 let plan = match plan_result {
                     Ok(p) => p,
                     Err(e) => {
+                        let err_chain = format!("{e:#}");
                         self.warn(format!("plan failed: {e}"));
                         git.hard_rollback().await.ok();
                         git.checkout_default().await.ok();
+                        // Non-retryable: out of API credits. Retrying just stalls
+                        // the agent and floods the log — fail fast with a clear
+                        // terminal status so the operator sees the billing issue.
+                        if err_chain.contains(ERR_CREDIT_EXHAUSTED) {
+                            let status = TaskStatus::Failed {
+                                reason: format!("CreditExhausted: {e}"),
+                            };
+                            self.status(status.clone(), attempt + 1);
+                            return Ok(status);
+                        }
                         self.status(
                             TaskStatus::Retrying {
                                 attempt: attempt + 1,
