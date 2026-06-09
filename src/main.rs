@@ -262,6 +262,8 @@ async fn main() -> Result<()> {
         .with(fmt_layer)
         .init();
 
+    println!("👋 hello from lopi!");
+
     let cli = Cli::parse();
     let cfg = load_config(cli.config.as_ref());
 
