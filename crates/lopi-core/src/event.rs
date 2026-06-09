@@ -98,6 +98,11 @@ pub enum AgentEvent {
         tokens_per_sec: f32,
         /// Accumulated cost in USD for this run.
         cost_usd: f32,
+        /// Cumulative `input + output` tokens used by this task across every
+        /// `claude` subprocess call so far. Drives the per-pane token meter.
+        /// Defaults to `0` on the wire for forward-compat with old emitters.
+        #[serde(default)]
+        tokens: u64,
     },
     /// The Konjo Verifier completed its rubric-guided second-score pass (Sprint S).
     ///
