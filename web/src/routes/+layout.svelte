@@ -5,6 +5,9 @@
   import { init, connectionState, stats } from '$lib/stores/agents';
   import { installKeyboardShortcuts, helpVisible } from '$lib/stores/keyboard';
   import HelpOverlay from '$lib/components/HelpOverlay.svelte';
+  import SessionSidebar from '$lib/components/SessionSidebar.svelte';
+
+  let sidebarOpen = false;
 
   onMount(() => {
     init();
@@ -32,7 +35,31 @@
 <header
   class="fixed top-0 inset-x-0 z-30 flex items-center justify-between px-6 py-3 bg-konjo-deep/80 backdrop-blur-md border-b border-white/5"
 >
-  <div class="flex items-center gap-4">
+  <div class="flex items-center gap-3">
+    <button
+      type="button"
+      on:click={() => (sidebarOpen = !sidebarOpen)}
+      class="text-konjo-ice hover:bg-konjo-ice/10 w-9 h-9 rounded border border-konjo-ice/30 hover:border-konjo-ice flex items-center justify-center transition-colors"
+      style:background={sidebarOpen ? 'rgba(0, 212, 255, 0.1)' : 'transparent'}
+      title="Sessions"
+      aria-label="Toggle sessions sidebar"
+    >
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 24 24"
+        width="18"
+        height="18"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        aria-hidden="true"
+      >
+        <line x1="4" y1="7" x2="20" y2="7" />
+        <line x1="4" y1="12" x2="20" y2="12" />
+        <line x1="4" y1="17" x2="20" y2="17" />
+      </svg>
+    </button>
     <a href="/" class="font-display text-xl tracking-tight hover:text-konjo-ice transition-colors">
       lopi
     </a>
@@ -66,8 +93,9 @@
     <button
       type="button"
       on:click={() => window.dispatchEvent(new CustomEvent('lopi:add-pane'))}
-      class="text-konjo-ice hover:bg-konjo-ice/10 px-2 py-1 rounded transition-colors"
+      class="text-konjo-ice hover:bg-konjo-ice/10 w-9 h-9 rounded transition-colors flex items-center justify-center text-2xl leading-none font-bold border border-konjo-ice/30 hover:border-konjo-ice"
       title="Add pane"
+      aria-label="Add pane"
     >
       +
     </button>
@@ -92,21 +120,15 @@
   </div>
 </header>
 
-<!-- Push content below header, fill viewport without scrolling -->
-<main class="relative pt-12 z-10" style="height: calc(100vh - 3rem); overflow: hidden;">
-  <slot />
+<!-- Sidebar + slot live side-by-side under the fixed header. The header is
+     position:fixed so it doesn't take layout space; padding-top reserves the
+     header strip and `height: 100vh` lets the row fill edge-to-edge. -->
+<main class="flex relative z-10" style="height: 100vh; padding-top: 4rem; overflow: hidden;">
+  <SessionSidebar bind:open={sidebarOpen} />
+  <div class="flex-1 min-w-0 relative">
+    <slot />
+  </div>
 </main>
 
 <!-- Global help overlay (toggle with ?) -->
 <HelpOverlay />
-
-<!-- Subtle hint at the bottom-right when help is hidden -->
-{#if !$helpVisible}
-  <button
-    type="button"
-    on:click={() => helpVisible.set(true)}
-    class="fixed bottom-4 right-4 z-20 font-mono text-[10px] uppercase tracking-widest opacity-30 hover:opacity-70 transition-opacity bg-konjo-deep/60 backdrop-blur px-2.5 py-1 rounded border border-white/5"
-  >
-    press ? for shortcuts
-  </button>
-{/if}
