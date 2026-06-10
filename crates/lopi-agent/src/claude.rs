@@ -126,6 +126,15 @@ pub struct ClaudeCode {
     /// Lets the runner fire a fresh `TurnMetrics` event the instant a claude
     /// subprocess call finishes, so the per-pane token meter ticks up live.
     usage_cb: Option<std::sync::Arc<dyn Fn(u64, f32) + Send + Sync>>,
+    /// Optional live stdout sink. When attached, the CLI is switched to
+    /// `--output-format stream-json --verbose` and each assistant /
+    /// tool_use event lands here as a human-readable line for the UI log.
+    log_sink: Option<tokio::sync::mpsc::Sender<String>>,
+    /// Optional cancel token. When triggered, `run()` aborts the awaited
+    /// subprocess (`child.start_kill()`) instead of waiting for it to
+    /// finish naturally. Without this, a user-issued stop signal would
+    /// not interrupt the in-flight claude call.
+    cancel_token: Option<tokio_util::sync::CancellationToken>,
 }
 
 impl ClaudeCode {
@@ -141,6 +150,8 @@ impl ClaudeCode {
             patterns: vec![],
             lessons: vec![],
             usage_cb: None,
+            log_sink: None,
+            cancel_token: None,
         }
     }
 
@@ -153,6 +164,25 @@ impl ClaudeCode {
         cb: std::sync::Arc<dyn Fn(u64, f32) + Send + Sync>,
     ) -> Self {
         self.usage_cb = Some(cb);
+        self
+    }
+
+    /// Attach a live stdout sink. Each line of the `claude` subprocess's
+    /// stdout is sent through this channel as it arrives so the runner
+    /// can rebroadcast them as `AgentEvent::LogLine` events.
+    #[must_use]
+    pub fn with_log_sink(mut self, tx: tokio::sync::mpsc::Sender<String>) -> Self {
+        self.log_sink = Some(tx);
+        self
+    }
+
+    /// Attach a cancel token. When triggered (e.g. by the web UI's stop
+    /// button propagating through the runner's `CancellationToken`),
+    /// `run()` kills the in-flight subprocess immediately instead of
+    /// waiting for it to exit naturally.
+    #[must_use]
+    pub fn with_cancel_token(mut self, token: tokio_util::sync::CancellationToken) -> Self {
+        self.cancel_token = Some(token);
         self
     }
 
@@ -366,19 +396,34 @@ impl ClaudeCode {
         // by per-attempt branch isolation, `allowed_dirs` / `forbidden_dirs`
         // diff scope checks, and rollback on score failure.
         cmd.arg("--dangerously-skip-permissions");
-        if self.json_output {
+        // When a log_sink is attached we ask the CLI for *streaming* JSON so
+        // each assistant / tool_use event lands on stdout as it happens —
+        // otherwise claude buffers everything internally until exit and the
+        // UI sees nothing for minutes. `--verbose` unlocks streaming on
+        // newer CLI versions; old versions ignore it.
+        let streaming = self.json_output && self.log_sink.is_some();
+        if streaming {
+            cmd.arg("--output-format")
+                .arg("stream-json")
+                .arg("--verbose");
+        } else if self.json_output {
             cmd.arg("--output-format").arg("json");
         }
         if let Some(model) = &self.model {
             cmd.arg("--model").arg(model);
         }
         cmd.current_dir(&self.repo_path);
+        cmd.stdout(std::process::Stdio::piped());
+        cmd.stderr(std::process::Stdio::piped());
         scrub_inherited_anthropic_env(&mut cmd);
 
-        let raw_out = tokio::time::timeout(self.timeout, cmd.output())
-            .await
-            .context("claude cli timed out")?
-            .context("invoking claude cli")?;
+        let raw_out = tokio::time::timeout(
+            self.timeout,
+            run_streamed(cmd, self.log_sink.clone(), self.cancel_token.clone()),
+        )
+        .await
+        .context("claude cli timed out")?
+        .context("invoking claude cli")?;
 
         if !raw_out.status.success() {
             let stderr = String::from_utf8_lossy(&raw_out.stderr);
@@ -474,6 +519,152 @@ impl ClaudeCode {
             cb(out.total_tokens(), out.cost_usd.unwrap_or(0.0) as f32);
         }
         Ok(out)
+    }
+}
+
+/// Spawn `cmd`, tee stdout line-by-line through `log_sink` (when present),
+/// and race the wait against `cancel_token`. When the token fires the child
+/// is killed immediately — without this the web stop button can't interrupt
+/// an in-flight subprocess and the user has to wait minutes for it to exit.
+async fn run_streamed(
+    mut cmd: Command,
+    log_sink: Option<tokio::sync::mpsc::Sender<String>>,
+    cancel_token: Option<tokio_util::sync::CancellationToken>,
+) -> Result<std::process::Output> {
+    use tokio::io::AsyncBufReadExt;
+
+    let mut child = cmd.spawn().context("spawning claude cli")?;
+    let stdout = child
+        .stdout
+        .take()
+        .context("claude stdout pipe unavailable")?;
+    let stderr = child
+        .stderr
+        .take()
+        .context("claude stderr pipe unavailable")?;
+
+    let stdout_handle = tokio::spawn(async move {
+        let mut reader = tokio::io::BufReader::new(stdout).lines();
+        let mut full: Vec<u8> = Vec::new();
+        while let Ok(Some(line)) = reader.next_line().await {
+            if let Some(tx) = &log_sink {
+                if let Some(display) = extract_streaming_text(&line) {
+                    let _ = tx.send(display).await;
+                }
+            }
+            full.extend_from_slice(line.as_bytes());
+            full.push(b'\n');
+        }
+        full
+    });
+
+    let stderr_handle = tokio::spawn(async move {
+        let mut reader = tokio::io::BufReader::new(stderr).lines();
+        let mut full: Vec<u8> = Vec::new();
+        while let Ok(Some(line)) = reader.next_line().await {
+            full.extend_from_slice(line.as_bytes());
+            full.push(b'\n');
+        }
+        full
+    });
+
+    // Race wait against cancel.
+    let status = match cancel_token {
+        Some(token) => {
+            tokio::select! {
+                s = child.wait() => s.context("waiting for claude cli")?,
+                () = token.cancelled() => {
+                    // User asked to stop — kill the subprocess. `start_kill`
+                    // signals SIGKILL on Unix; we then collect the exit
+                    // status so the readers can drain.
+                    let _ = child.start_kill();
+                    child.wait().await.context("waiting after cancel")?
+                }
+            }
+        }
+        None => child.wait().await.context("waiting for claude cli")?,
+    };
+
+    let stdout = stdout_handle.await.unwrap_or_default();
+    let stderr = stderr_handle.await.unwrap_or_default();
+    Ok(std::process::Output {
+        status,
+        stdout,
+        stderr,
+    })
+}
+
+/// Pluck a human-readable line out of a single `stream-json` event so the UI
+/// can show what the agent is doing without dumping raw JSON. Returns `None`
+/// for events with no useful display content (system init / final result).
+fn extract_streaming_text(line: &str) -> Option<String> {
+    let trimmed = line.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(trimmed) else {
+        // Not JSON — surface as-is so plain-text mode still streams.
+        return Some(line.to_string());
+    };
+    let ty = v.get("type").and_then(serde_json::Value::as_str)?;
+    match ty {
+        "assistant" => {
+            let content = v.get("message")?.get("content")?.as_array()?;
+            let mut out = String::new();
+            for item in content {
+                let item_ty = item.get("type").and_then(serde_json::Value::as_str)?;
+                match item_ty {
+                    "text" => {
+                        if let Some(s) = item.get("text").and_then(serde_json::Value::as_str) {
+                            if !out.is_empty() {
+                                out.push('\n');
+                            }
+                            out.push_str(s);
+                        }
+                    }
+                    "tool_use" => {
+                        let name = item
+                            .get("name")
+                            .and_then(serde_json::Value::as_str)
+                            .unwrap_or("tool");
+                        if !out.is_empty() {
+                            out.push('\n');
+                        }
+                        out.push_str("→ ");
+                        out.push_str(name);
+                    }
+                    _ => {}
+                }
+            }
+            (!out.trim().is_empty()).then_some(out)
+        }
+        "user" => {
+            // Tool results — keep a short preview so the log doesn't drown in shell output.
+            let content = v.get("message")?.get("content")?.as_array()?;
+            for item in content {
+                if item.get("type").and_then(serde_json::Value::as_str) != Some("tool_result") {
+                    continue;
+                }
+                let text = item
+                    .get("content")
+                    .and_then(serde_json::Value::as_str)
+                    .or_else(|| {
+                        item.get("content")?
+                            .as_array()?
+                            .first()?
+                            .get("text")?
+                            .as_str()
+                    })?;
+                let preview: String = text.chars().take(120).collect();
+                if preview.trim().is_empty() {
+                    continue;
+                }
+                return Some(format!("✓ {preview}"));
+            }
+            None
+        }
+        "system" | "result" => None,
+        _ => None,
     }
 }
 

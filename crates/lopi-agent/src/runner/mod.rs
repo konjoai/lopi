@@ -116,6 +116,22 @@ impl AgentRunner {
         cancel_rx: oneshot::Receiver<()>,
         attempt_counter: Arc<AtomicUsize>,
     ) -> Self {
+        // Bridge the oneshot cancel channel into the CancellationToken so
+        // ANY await inside the runner (notably `claude.run()` waiting on the
+        // subprocess) can race against `cancel_token.cancelled()` and bail
+        // immediately, instead of having to wait for `check_cancel` between
+        // attempts. Without this bridge a user-issued stop never interrupts
+        // an in-flight claude call. We tee the original oneshot into a new
+        // one so `check_cancel`'s legacy poll path still works.
+        let cancel_token = CancellationToken::new();
+        let bridge_token = cancel_token.clone();
+        let (bridge_tx, cancel_rx_bridged) = oneshot::channel::<()>();
+        tokio::spawn(async move {
+            if cancel_rx.await.is_ok() {
+                bridge_token.cancel();
+                let _ = bridge_tx.send(());
+            }
+        });
         Self {
             task,
             repo_path,
@@ -134,8 +150,8 @@ impl AgentRunner {
             verifier_enabled: false,
             last_plan: None,
             session_id: Uuid::new_v4(),
-            cancel_rx: Some(cancel_rx),
-            cancel_token: CancellationToken::new(),
+            cancel_rx: Some(cancel_rx_bridged),
+            cancel_token,
             attempt_counter,
             attempts_made: 0,
             turn_count: 0,

@@ -157,12 +157,26 @@ impl AgentRunner {
                 .chain(spec_constraints.iter())
                 .cloned()
                 .collect();
+            // Live stdout from `claude` → AgentEvent::LogLine. The channel
+            // is bounded so the bus broadcast can't fall behind the
+            // subprocess; if the receiver lags, claude.rs simply drops the
+            // line on the sender side.
+            let (log_tx, mut log_rx) = tokio::sync::mpsc::channel::<String>(64);
+            let bus_for_logs = self.bus.clone();
+            let task_id_for_logs = self.id();
+            let _log_pump = tokio::spawn(async move {
+                while let Some(line) = log_rx.recv().await {
+                    bus_for_logs.send(AgentEvent::info(task_id_for_logs, line));
+                }
+            });
             let claude = ClaudeCode::new(&self.repo_path)
                 .with_extra_constraints(all_constraints)
                 .with_patterns(pattern_pairs.clone())
                 .with_lessons(lessons_data.clone())
                 .with_model(model)
-                .with_usage_cb(usage_cb.clone());
+                .with_usage_cb(usage_cb.clone())
+                .with_log_sink(log_tx)
+                .with_cancel_token(self.cancel_token.clone());
             tracing::info!(model, attempt, "model selected for attempt");
             // Hard stop: prevent runaway agents from looping past the turn cap.
             self.turn_count += 1;
