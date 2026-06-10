@@ -33,15 +33,19 @@ enum NavSection: String, CaseIterable, Identifiable {
 }
 
 struct RootView: View {
-    @Environment(AppModel.self) private var model
+    @EnvironmentObject private var model: AppModel
     @State private var selection: NavSection? = .dashboard
 
     var body: some View {
         NavigationSplitView {
             List(NavSection.allCases, selection: $selection) { section in
                 Label(section.rawValue, systemImage: section.icon)
+                    .font(Konjo.sans(13, weight: .medium))
                     .tag(section)
             }
+            .scrollContentBackground(.hidden)
+            .background(Konjo.deep)
+            .tint(Konjo.ice)
             .navigationSplitViewColumnWidth(min: 180, ideal: 200)
             .safeAreaInset(edge: .bottom) {
                 ConnectionLED(state: model.connection)
@@ -50,7 +54,7 @@ struct RootView: View {
             }
         } detail: {
             detail
-                .background(Konjo.bg)
+                .background(KonjoBackground())
                 .toolbar {
                     ToolbarItem(placement: .principal) {
                         ConnectionLED(state: model.connection)

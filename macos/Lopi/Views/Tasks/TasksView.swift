@@ -3,7 +3,7 @@ import SwiftUI
 /// Task list + detail. The detail pane backfills logs from
 /// `/api/tasks/:id/logs`; the New Task composer posts to `/api/tasks`.
 struct TasksView: View {
-    @Environment(AppModel.self) private var model
+    @EnvironmentObject private var model: AppModel
     @State private var selected: TaskSummary?
     @State private var showComposer = false
 
@@ -67,7 +67,7 @@ struct TasksView: View {
 
 /// Detail pane: metadata, actions, and a backfilled log tail.
 struct TaskDetailView: View {
-    @Environment(AppModel.self) private var model
+    @EnvironmentObject private var model: AppModel
     let task: TaskSummary
     @State private var logs: [TaskLog] = []
 

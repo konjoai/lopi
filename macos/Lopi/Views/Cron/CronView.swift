@@ -3,7 +3,7 @@ import SwiftUI
 /// OpenClaw-style cron screen: list of schedules with next/last run, enable
 /// toggle, run-now, edit, delete — backed by `/api/schedules`.
 struct CronView: View {
-    @Environment(AppModel.self) private var model
+    @EnvironmentObject private var model: AppModel
     @State private var editing: Schedule?
     @State private var showCreate = false
 

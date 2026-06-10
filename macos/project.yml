@@ -2,7 +2,7 @@ name: Lopi
 options:
   bundleIdPrefix: ai.konjo.lopi
   deploymentTarget:
-    macOS: "14.0"
+    macOS: "13.0"
   createIntermediateGroups: true
 
 settings:

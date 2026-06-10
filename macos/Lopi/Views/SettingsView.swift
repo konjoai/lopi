@@ -3,7 +3,7 @@ import SwiftUI
 /// Server connection settings. Host/port persist in UserDefaults; the token
 /// goes to the Keychain. Saving reconnects the live stream.
 struct SettingsView: View {
-    @Environment(AppModel.self) private var model
+    @EnvironmentObject private var model: AppModel
 
     @State private var host = ""
     @State private var port = ""

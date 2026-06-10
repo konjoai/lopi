@@ -8,6 +8,9 @@ enum LopiError: LocalizedError {
     case http(status: Int, message: String)
     case decoding(String)
     case transport(String)
+    /// The server returned its SPA HTML instead of JSON — the endpoint isn't
+    /// implemented on this build. Treated as a non-fatal "feature unavailable".
+    case unsupported(path: String)
 
     var errorDescription: String? {
         switch self {
@@ -17,6 +20,7 @@ enum LopiError: LocalizedError {
         case let .http(status, message): return "HTTP \(status): \(message)"
         case let .decoding(detail): return "Decoding error: \(detail)"
         case let .transport(detail): return "Network error: \(detail)"
+        case let .unsupported(path): return "Endpoint \(path) not available on this server"
         }
     }
 }
@@ -97,7 +101,17 @@ struct LopiClient {
 
     private func get<T: Decodable>(_ path: String) async throws -> T {
         let data = try await perform("GET", path, body: Optional<Int>.none)
+        if looksLikeHTML(data) { throw LopiError.unsupported(path: path) }
         return try decode(data)
+    }
+
+    /// True if the first non-whitespace byte is `<` — i.e. the SPA's index.html
+    /// fallback rather than a JSON body.
+    private func looksLikeHTML(_ data: Data) -> Bool {
+        guard let byte = data.first(where: { ![0x20, 0x09, 0x0A, 0x0D].contains($0) }) else {
+            return false
+        }
+        return byte == UInt8(ascii: "<")
     }
 
     @discardableResult

@@ -3,7 +3,7 @@ import SwiftUI
 /// The menu-bar companion popover: live status, recent tasks, a quick-submit
 /// field, and shortcuts to open the dashboard or quit.
 struct MenuBarView: View {
-    @Environment(AppModel.self) private var model
+    @EnvironmentObject private var model: AppModel
     @Environment(\.openWindow) private var openWindow
     @State private var quickGoal = ""
 

@@ -2,12 +2,12 @@ import SwiftUI
 
 @main
 struct LopiApp: App {
-    @State private var model = AppModel()
+    @StateObject private var model = AppModel()
 
     var body: some Scene {
         WindowGroup(id: "main") {
             RootView()
-                .environment(model)
+                .environmentObject(model)
                 .frame(minWidth: 900, minHeight: 600)
                 .preferredColorScheme(.dark)
                 .task { model.start() }
@@ -17,7 +17,7 @@ struct LopiApp: App {
 
         MenuBarExtra {
             MenuBarView()
-                .environment(model)
+                .environmentObject(model)
                 .preferredColorScheme(.dark)
         } label: {
             // Icon reflects live activity: filled bolt while agents run.
@@ -27,7 +27,7 @@ struct LopiApp: App {
 
         Settings {
             SettingsView()
-                .environment(model)
+                .environmentObject(model)
                 .preferredColorScheme(.dark)
         }
     }

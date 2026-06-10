@@ -38,15 +38,7 @@ struct StatusOrb: View {
     let status: String
     @State private var pulse = false
 
-    private var color: Color {
-        switch status.lowercased() {
-        case "success", "done": return Konjo.ok
-        case "failed", "rolledback", "rolled_back": return Konjo.err
-        case "testing", "scoring", "retrying": return Konjo.warn
-        case "queued": return Konjo.fgMute
-        default: return Konjo.konjo // planning / implementing / active
-        }
-    }
+    private var color: Color { Konjo.statusColor(status) }
 
     private var active: Bool {
         !["success", "done", "failed", "queued"].contains(status.lowercased())
@@ -60,7 +52,7 @@ struct StatusOrb: View {
             .opacity(active && pulse ? 0.7 : 1.0)
             .animation(active ? .easeInOut(duration: 1.0).repeatForever(autoreverses: true) : .default, value: pulse)
             .onAppear { pulse = active }
-            .onChange(of: active) { _, newValue in pulse = newValue }
+            .onChange(of: active) { newValue in pulse = newValue }
     }
 }
 

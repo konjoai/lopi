@@ -1,122 +1,81 @@
 import SwiftUI
 
-/// The "Forge" parity screen: live stats strip, agent grid, budget gauge, and a
-/// rolling log tail — all driven by the `/ws` stream via `AppModel`.
+/// The "Forge" view — a parity port of the web dashboard's `AgentGrid`. A grid
+/// of agent panes, each a live Forge orb, over the ambient starfield. A slim
+/// stats strip floats above, mirroring the web top bar's live counters.
 struct DashboardView: View {
-    @Environment(AppModel.self) private var model
+    @EnvironmentObject private var model: AppModel
 
-    private let columns = [GridItem(.adaptive(minimum: 280), spacing: 16)]
+    private let columns = [GridItem(.adaptive(minimum: 240, maximum: 360), spacing: 14)]
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 28) {
-                statsStrip
-                budgetRow
-                agentGrid
-                logPanel
+        ZStack {
+            KonjoBackground()
+            if model.tasks.isEmpty {
+                emptyState
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        statsStrip
+                        grid
+                    }
+                    .padding(18)
+                }
             }
-            .padding(28)
         }
-        .background(Konjo.bg)
         .refreshable { await model.refreshAll() }
     }
 
+    // MARK: Stats strip
+
     private var statsStrip: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 12)], spacing: 12) {
-            StatCard(label: "Running", value: "\(model.stats.running)", accent: Konjo.konjo2)
-            StatCard(label: "Queued", value: "\(model.stats.queued)", accent: Konjo.fg)
-            StatCard(label: "Succeeded", value: "\(model.stats.succeeded)", accent: Konjo.ok)
-            StatCard(label: "Failed", value: "\(model.stats.failed)", accent: Konjo.err)
-            StatCard(label: "Cost today", value: String(format: "$%.2f", model.stats.totalCostUsdToday), accent: Konjo.warn)
+        HStack(spacing: 18) {
+            stat("\(model.stats.running)", "running", Konjo.jade)
+            stat("\(model.stats.queued)", "queued", Konjo.sun)
+            stat("\(model.stats.succeeded)", "done", Konjo.jade.opacity(0.7))
+            stat("\(model.stats.failed)", "failed", Konjo.rose)
+            Spacer(minLength: 0)
+            stat(String(format: "$%.2f", model.stats.totalCostUsdToday), "today", Konjo.flame)
         }
+        .padding(.horizontal, 4)
     }
 
-    private var budgetRow: some View {
-        KonjoPanel {
-            HStack(spacing: 28) {
-                RadialGauge(fraction: budgetFraction, caption: "fleet / hr")
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Budget")
-                        .font(Konjo.sans(16, weight: .semibold))
-                        .foregroundStyle(Konjo.fg)
-                    Text(String(format: "$%.2f spent today", model.stats.totalCostUsdToday))
-                        .font(Konjo.mono(12))
-                        .foregroundStyle(Konjo.fgDim)
-                    Text("\(model.stats.totalTokensToday) tokens today")
-                        .font(Konjo.mono(12))
-                        .foregroundStyle(Konjo.fgMute)
-                }
-                Spacer()
-            }
-        }
-    }
-
-    /// Cost relative to the fleet's $25/hr cap (matches the web breaker scope).
-    private var budgetFraction: Double {
-        min(model.stats.totalCostUsdToday / 25.0, 1.0)
-    }
-
-    private var agentGrid: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("AGENTS")
-                .font(Konjo.mono(11))
+    private func stat(_ value: String, _ label: String, _ accent: Color) -> some View {
+        HStack(spacing: 7) {
+            Text(value)
+                .font(Konjo.sans(18, weight: .semibold))
+                .foregroundStyle(accent)
+                .monospacedDigit()
+            Text(label.uppercased())
+                .font(Konjo.mono(9))
+                .tracking(1.5)
                 .foregroundStyle(Konjo.fgMute)
-            if model.tasks.isEmpty {
-                Text("No tasks yet")
-                    .font(Konjo.sans(13))
-                    .foregroundStyle(Konjo.fgMute)
-            } else {
-                LazyVGrid(columns: columns, spacing: 16) {
-                    ForEach(model.tasks.prefix(12)) { task in
-                        agentCard(task)
-                    }
-                }
+        }
+    }
+
+    // MARK: Grid
+
+    private var grid: some View {
+        LazyVGrid(columns: columns, spacing: 14) {
+            ForEach(model.tasks.prefix(12)) { task in
+                ForgePane(task: task)
+                    .frame(height: 230)
             }
         }
     }
 
-    private func agentCard(_ task: TaskSummary) -> some View {
-        KonjoPanel {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    StatusOrb(status: task.status)
-                    Text(task.status)
-                        .font(Konjo.mono(11))
-                        .foregroundStyle(Konjo.fgDim)
-                    Spacer()
-                    Text(task.id.prefix(8))
-                        .font(Konjo.mono(10))
-                        .foregroundStyle(Konjo.fgMute)
-                }
-                Text(task.goal)
-                    .font(Konjo.sans(13))
-                    .foregroundStyle(Konjo.fg)
-                    .lineLimit(2)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
+    // MARK: Empty
 
-    private var logPanel: some View {
-        KonjoPanel {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("LOG STREAM")
-                    .font(Konjo.mono(11))
-                    .foregroundStyle(Konjo.fgMute)
-                if model.recentLogs.isEmpty {
-                    Text("Waiting for live events…")
-                        .font(Konjo.mono(11))
-                        .foregroundStyle(Konjo.fgMute)
-                } else {
-                    ForEach(Array(model.recentLogs.suffix(12).enumerated()), id: \.offset) { _, line in
-                        Text(line)
-                            .font(Konjo.mono(11))
-                            .foregroundStyle(Konjo.fgDim)
-                            .lineLimit(1)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                }
-            }
+    private var emptyState: some View {
+        VStack(spacing: 8) {
+            ForgeOrb(phaseColor: Konjo.ice, activity: 0.25, pressure: 0.3, size: 120)
+            Text("no agents")
+                .font(Konjo.sans(20, weight: .bold))
+                .foregroundStyle(Konjo.paper.opacity(0.35))
+            Text("submit a goal to start a run")
+                .font(Konjo.mono(10))
+                .tracking(2)
+                .foregroundStyle(Konjo.paper.opacity(0.25))
         }
     }
 }

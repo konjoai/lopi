@@ -1,29 +1,31 @@
 import Foundation
-import Observation
+import Combine
 
 /// Single source of UI state. Owns the REST client and the live event stream,
 /// and exposes everything the views render. Lives on the main actor.
-@Observable
+///
+/// Uses `ObservableObject`/`@Published` (rather than the macOS 14-only
+/// Observation `@Observable`) so the app runs on macOS 13 (Ventura) as well.
 @MainActor
-final class AppModel {
+final class AppModel: ObservableObject {
     // Connection
-    var config: ServerConfig
-    var connection: ConnectionState = .offline
-    var serverVersion: ServerVersion?
+    @Published var config: ServerConfig
+    @Published var connection: ConnectionState = .offline
+    @Published var serverVersion: ServerVersion?
 
     // Live state
-    var stats = PoolStats()
-    var tasks: [TaskSummary] = []
-    var schedules: [Schedule] = []
+    @Published var stats = PoolStats()
+    @Published var tasks: [TaskSummary] = []
+    @Published var schedules: [Schedule] = []
 
     /// Rolling buffer of recent live log lines (most recent last), capped.
-    var recentLogs: [String] = []
+    @Published var recentLogs: [String] = []
 
     /// Non-fatal error banner text (auto-cleared by the UI).
-    var banner: String?
+    @Published var banner: String?
 
-    @ObservationIgnored private var client: LopiClient
-    @ObservationIgnored private let stream = EventStream()
+    private var client: LopiClient
+    private let stream = EventStream()
 
     init(config: ServerConfig = .load()) {
         self.config = config
@@ -72,7 +74,13 @@ final class AppModel {
     }
 
     func refreshSchedules() async {
-        do { schedules = try await client.schedules() } catch { report(error) }
+        do {
+            schedules = try await client.schedules()
+        } catch LopiError.unsupported {
+            schedules = [] // server build lacks the cron API — not an error
+        } catch {
+            report(error)
+        }
     }
 
     // MARK: Mutations
@@ -134,13 +142,13 @@ final class AppModel {
         Task {
             await stream.setHandlers(
                 onState: { [weak self] state in
-                    Task { @MainActor in self?.connection = state }
+                    Task { @MainActor [weak self] in self?.connection = state }
                 },
                 onSnapshot: { [weak self] obj in
-                    Task { @MainActor in self?.applySnapshot(obj) }
+                    Task { @MainActor [weak self] in self?.applySnapshot(obj) }
                 },
                 onEvent: { [weak self] event in
-                    Task { @MainActor in self?.apply(event) }
+                    Task { @MainActor [weak self] in self?.apply(event) }
                 }
             )
             await stream.start(url: url)
