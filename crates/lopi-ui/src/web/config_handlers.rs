@@ -38,13 +38,21 @@ pub(super) async fn get_config() -> impl IntoResponse {
         .unwrap_or(None);
 
     let Some(cfg) = loaded else {
-        return (StatusCode::OK, Json(json!({ "config": null, "source": "none" }))).into_response();
+        return (
+            StatusCode::OK,
+            Json(json!({ "config": null, "source": "none" })),
+        )
+            .into_response();
     };
 
     match serde_json::to_value(&cfg) {
         Ok(mut value) => {
             redact(&mut value);
-            (StatusCode::OK, Json(json!({ "config": value, "source": "file" }))).into_response()
+            (
+                StatusCode::OK,
+                Json(json!({ "config": value, "source": "file" })),
+            )
+                .into_response()
         }
         Err(e) => {
             tracing::warn!("config serialize failed: {e}");

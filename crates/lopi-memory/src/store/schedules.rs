@@ -134,7 +134,10 @@ impl MemoryStore {
     /// # Errors
     /// Returns `Err` if JSON serialisation or the write fails.
     pub async fn upsert_schedule(&self, input: &ScheduleInput) -> Result<ScheduleRow> {
-        let id = input.id.clone().unwrap_or_else(|| Uuid::new_v4().to_string());
+        let id = input
+            .id
+            .clone()
+            .unwrap_or_else(|| Uuid::new_v4().to_string());
         let now = Utc::now().to_rfc3339();
         let allowed = serde_json::to_string(&input.allowed_dirs)?;
         let forbidden = serde_json::to_string(&input.forbidden_dirs)?;
@@ -359,7 +362,11 @@ mod tests {
             .unwrap();
         assert!(store.delete_schedule(&row.id).await.unwrap());
         assert!(store.get_schedule(&row.id).await.unwrap().is_none());
-        assert!(store.list_schedule_runs(&row.id, 10).await.unwrap().is_empty());
+        assert!(store
+            .list_schedule_runs(&row.id, 10)
+            .await
+            .unwrap()
+            .is_empty());
         // Second delete is a clean false.
         assert!(!store.delete_schedule(&row.id).await.unwrap());
     }

@@ -107,7 +107,11 @@ pub(super) async fn get_schedule(
 ) -> impl IntoResponse {
     match s.store.get_schedule(&id).await {
         Ok(Some(row)) => {
-            let runs = s.store.list_schedule_runs(&id, 20).await.unwrap_or_default();
+            let runs = s
+                .store
+                .list_schedule_runs(&id, 20)
+                .await
+                .unwrap_or_default();
             let mut value = schedule_to_json(&s, row).await;
             value["runs"] = json!(runs);
             (StatusCode::OK, Json(value)).into_response()
@@ -162,7 +166,10 @@ pub(super) async fn disable_schedule(
     set_enabled(&s, &id, false).await
 }
 
-pub(super) async fn run_now(Path(id): Path<String>, State(s): State<AppState>) -> impl IntoResponse {
+pub(super) async fn run_now(
+    Path(id): Path<String>,
+    State(s): State<AppState>,
+) -> impl IntoResponse {
     match s.store.get_schedule(&id).await {
         Ok(Some(row)) => match s.schedules.run_now(&row.into()).await {
             Ok(task_id) => (
@@ -199,7 +206,11 @@ async fn set_enabled(s: &AppState, id: &str, enabled: bool) -> axum::response::R
             if let Ok(Some(row)) = s.store.get_schedule(id).await {
                 sync_job(s, &row).await;
             }
-            (StatusCode::OK, Json(json!({ "id": id, "enabled": enabled }))).into_response()
+            (
+                StatusCode::OK,
+                Json(json!({ "id": id, "enabled": enabled })),
+            )
+                .into_response()
         }
         Ok(false) => not_found(),
         Err(e) => server_error(&e),
@@ -251,7 +262,11 @@ fn not_found() -> axum::response::Response {
 }
 
 fn unprocessable(msg: &str) -> axum::response::Response {
-    (StatusCode::UNPROCESSABLE_ENTITY, Json(json!({ "error": msg }))).into_response()
+    (
+        StatusCode::UNPROCESSABLE_ENTITY,
+        Json(json!({ "error": msg })),
+    )
+        .into_response()
 }
 
 fn server_error(e: &anyhow::Error) -> axum::response::Response {

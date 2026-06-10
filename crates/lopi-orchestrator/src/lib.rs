@@ -13,7 +13,6 @@ pub mod schedule_manager;
 pub mod scheduler;
 
 pub use agent_rate_limit::{AgentRateLimit, AgentRateLimitSnapshot};
-pub use schedule_manager::{build_task as build_schedule_task, ScheduleManager, ScheduleSpec};
 pub use constellation::{
     Constellation, ConstellationMember, ConstellationRouter, ConstellationStats, DispatchDecision,
     MemberLoad, RoutingError, RoutingStrategy,
@@ -21,4 +20,5 @@ pub use constellation::{
 pub use health::{AgentHealth, HealthConfig, HealthRegistry, HealthSnapshot, HealthSummary};
 pub use pool::{AgentPool, PoolStats, RunningAgentInfo};
 pub use queue::TaskQueue;
+pub use schedule_manager::{build_task as build_schedule_task, ScheduleManager, ScheduleSpec};
 pub use scheduler::{boot as boot_scheduler, next_run_times};

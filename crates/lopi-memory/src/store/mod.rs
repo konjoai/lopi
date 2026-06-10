@@ -240,10 +240,7 @@ impl MemoryStore {
             "verifier_verdicts",
         ] {
             let sql = format!("DELETE FROM {table} WHERE task_id = ?1");
-            sqlx::query(&sql)
-                .bind(&id_str)
-                .execute(&mut *tx)
-                .await?;
+            sqlx::query(&sql).bind(&id_str).execute(&mut *tx).await?;
         }
         // Preserve lessons (they encode reusable insight) but sever the link
         // so the deleted task can't be re-derived from them.

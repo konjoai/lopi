@@ -388,20 +388,19 @@ pub async fn serve_with_repo(
 }
 
 mod agent_rate_handlers;
+mod api_middleware;
 mod audit_handlers;
 mod cache_handlers;
 mod config_handlers;
 mod constellation_handlers;
 mod dlq_handlers;
 mod handlers;
-mod api_middleware;
 mod health_handlers;
 mod schedule_handlers;
 mod static_assets;
 mod task_stream_handlers;
 mod tools_handlers;
 use api_middleware::{auth_middleware, rate_limit_middleware};
-use static_assets::static_handler;
 use cache_handlers::{cache_stats_handler, clear_cache_handler, invalidate_agent_cache_handler};
 use constellation_handlers::{
     constellation_stats_handler, dispatch_constellation_handler, list_constellations_handler,
@@ -411,6 +410,7 @@ use handlers::{
     cancel_task, checkpoint_agent, create_task, get_plans, get_quality_trend, get_spec, get_stats,
     get_task, health, list_patterns, list_tasks, metrics,
 };
+use static_assets::static_handler;
 use tools_handlers::{
     delete_tool_handler, get_tool_handler, list_tools_handler, register_tool_handler,
 };
