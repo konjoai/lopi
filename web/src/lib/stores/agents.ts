@@ -436,17 +436,94 @@ export function removeAgent(id: string) {
   );
 }
 
+export interface TaskOptions {
+  /** Base branch to check out before lopi creates the per-attempt branch. */
+  base_branch?: string;
+  /** Explicit Claude model id, e.g. `"claude-opus-4-7"`. Omit / `"auto"` for auto. */
+  model?: string;
+  /** Effort hint: `low` / `medium` / `high` / `max`. */
+  effort?: string;
+}
+
 export function postTask(
   goal: string,
   repo: string,
-  priority: 'low' | 'normal' | 'high' = 'normal'
+  priority: 'low' | 'normal' | 'high' = 'normal',
+  opts: TaskOptions = {}
 ) {
   if (!browser) return Promise.reject(new Error('not-browser'));
+  const body: Record<string, unknown> = { goal, repo, priority };
+  if (opts.base_branch && opts.base_branch.trim()) body.base_branch = opts.base_branch.trim();
+  if (opts.model && opts.model.trim() && opts.model !== 'auto') body.model = opts.model.trim();
+  if (opts.effort && opts.effort.trim()) body.effort = opts.effort.trim();
   return fetch('/api/tasks', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ goal, repo, priority })
+    body: JSON.stringify(body)
   });
+}
+
+export interface RepoInfo {
+  path: string;
+  name: string;
+}
+
+let repoCache: Promise<RepoInfo[]> | null = null;
+export function listRepos(force = false): Promise<RepoInfo[]> {
+  if (!browser) return Promise.resolve([]);
+  if (force) repoCache = null;
+  if (!repoCache) {
+    repoCache = fetch('/api/repos')
+      .then((r) => (r.ok ? r.json() : { repos: [] }))
+      .then((j) => (j.repos as RepoInfo[]) ?? [])
+      .catch((err) => {
+        console.warn('[lopi] GET /api/repos failed:', err);
+        repoCache = null;
+        return [];
+      });
+  }
+  return repoCache;
+}
+
+const branchCache = new Map<string, Promise<string[]>>();
+export function listBranches(repoPath: string): Promise<string[]> {
+  if (!browser) return Promise.resolve([]);
+  const key = repoPath.trim();
+  let p = branchCache.get(key);
+  if (!p) {
+    const url = key
+      ? `/api/repos/branches?path=${encodeURIComponent(key)}`
+      : '/api/repos/branches';
+    p = fetch(url)
+      .then((r) => (r.ok ? r.json() : { branches: [] }))
+      .then((j) => (j.branches as string[]) ?? [])
+      .catch((err) => {
+        console.warn('[lopi] GET /api/repos/branches failed:', err);
+        branchCache.delete(key);
+        return [];
+      });
+    branchCache.set(key, p);
+  }
+  return p;
+}
+
+export interface HistoryTask {
+  id: string;
+  goal: string;
+  status: string;
+  created_at?: string;
+  completed_at?: string | null;
+}
+
+export function listHistory(): Promise<HistoryTask[]> {
+  if (!browser) return Promise.resolve([]);
+  return fetch('/api/tasks')
+    .then((r) => (r.ok ? r.json() : { tasks: [] }))
+    .then((j) => (j.tasks as HistoryTask[]) ?? [])
+    .catch((err) => {
+      console.warn('[lopi] GET /api/tasks failed:', err);
+      return [];
+    });
 }
 
 export async function cancelTask(id: string): Promise<boolean> {
