@@ -47,6 +47,9 @@ pub fn plan_streaming(
         let mut cmd = tokio::process::Command::new(&cli_path);
         cmd.arg("-p")
             .arg(&prompt)
+            // Mirror the one-shot path: lopi runs claude non-interactively
+            // so we must skip permission prompts or the subprocess deadlocks.
+            .arg("--dangerously-skip-permissions")
             .current_dir(&repo_path)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::null());

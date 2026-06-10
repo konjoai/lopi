@@ -258,6 +258,9 @@ mod tests {
             tools: Vec::new(),
             required_capabilities: Vec::new(),
             rubric: None,
+            base_branch: None,
+            model: None,
+            effort: None,
         }
     }
 

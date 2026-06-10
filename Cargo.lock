@@ -2060,6 +2060,7 @@ dependencies = [
  "crossterm",
  "dashmap",
  "futures",
+ "git2",
  "lopi-core",
  "lopi-memory",
  "lopi-orchestrator",

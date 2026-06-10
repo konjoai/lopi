@@ -148,6 +148,20 @@ pub struct Task {
     /// when `None` and verifier mode is enabled.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rubric: Option<Rubric>,
+    /// Base branch the runner checks out before creating the per-attempt
+    /// `lopi/{id}-attempt-N` working branch. `None` (default) uses current
+    /// `HEAD`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_branch: Option<String>,
+    /// Explicit Claude model override (full model id, e.g. `"claude-opus-4-7"`).
+    /// When `Some`, the runner uses this instead of the complexity-based
+    /// `select_model` heuristic.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    /// Effort hint: `"low"` / `"medium"` / `"high"` / `"max"`. Drives the
+    /// retry budget when `max_retries` is left at its default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effort: Option<String>,
 }
 
 /// Where a task originated — used for routing replies and audit logging.
@@ -197,6 +211,9 @@ impl Task {
             tools: Vec::new(),
             required_capabilities: Vec::new(),
             rubric: None,
+            base_branch: None,
+            model: None,
+            effort: None,
         }
     }
 

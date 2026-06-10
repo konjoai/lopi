@@ -43,6 +43,7 @@ async fn handle_event(
             task_id,
             attempt,
             branch,
+            repo: _,
         } => {
             if *attempt == 1 {
                 let id_str = task_id.to_string();

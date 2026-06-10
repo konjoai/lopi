@@ -6,7 +6,7 @@
 use super::types::{CreateTaskRequest, CreateTaskResponse, MAX_GOAL_LENGTH};
 use super::AppState;
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::{IntoResponse, Json},
 };
@@ -182,9 +182,15 @@ pub(super) async fn create_task(
         Some("critical") => Priority::Critical,
         _ => Priority::Normal,
     };
-    if let Some(repo) = req.repo {
-        task.repo_path = Some(std::path::PathBuf::from(repo));
-    }
+    // Repo: empty / whitespace / missing → fall back to sail's `--repo`
+    // default (canonicalised in `AppState.repo_path`). Prevents the
+    // orchestrator from trying to open a git repo at `""`.
+    let req_repo = req.repo.as_deref().map(str::trim).filter(|r| !r.is_empty());
+    task.repo_path = Some(
+        req_repo
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| s.repo_path.clone()),
+    );
     if let Some(dirs) = req.allowed_dirs {
         task.allowed_dirs = dirs;
     }
@@ -200,6 +206,37 @@ pub(super) async fn create_task(
     if let Some(caps) = req.required_capabilities {
         task.required_capabilities = caps;
     }
+    task.base_branch = req
+        .base_branch
+        .as_deref()
+        .map(str::trim)
+        .filter(|b| !b.is_empty())
+        .map(str::to_owned);
+    task.model = req
+        .model
+        .as_deref()
+        .map(str::trim)
+        .filter(|m| !m.is_empty() && *m != "auto")
+        .map(str::to_owned);
+    let effort = req
+        .effort
+        .as_deref()
+        .map(str::trim)
+        .filter(|e| !e.is_empty())
+        .map(str::to_ascii_lowercase);
+    if let Some(ref e) = effort {
+        // Only nudge max_retries when the request didn't pin it explicitly.
+        if req.max_retries.is_none() {
+            task.max_retries = match e.as_str() {
+                "low" => 1,
+                "medium" => 3,
+                "high" => 5,
+                "max" => 8,
+                _ => task.max_retries,
+            };
+        }
+    }
+    task.effort = effort;
 
     // P2 — refuse pre-submit if no registered agent can satisfy the
     // task's required capabilities. Returns 422 with the offending list
@@ -383,4 +420,149 @@ pub(super) async fn get_plans() -> Json<Value> {
     })
     .collect();
     Json(json!({ "plans": plans }))
+}
+
+/// `GET /api/repos` — list git repositories the user can target.
+///
+/// Scans the sail working repo and `$HOME` to a bounded depth, returning
+/// every directory that contains a `.git/` child. Used by the pane "repo"
+/// dropdown so the user can switch targets without typing a path.
+pub(super) async fn list_repos(State(s): State<AppState>) -> Json<Value> {
+    let roots = scan_roots(&s.repo_path);
+    let repos = tokio::task::spawn_blocking(move || scan_git_repos(&roots))
+        .await
+        .unwrap_or_default();
+    let body: Vec<_> = repos
+        .into_iter()
+        .map(|p| {
+            let name = p
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_else(|| p.display().to_string());
+            json!({ "path": p.display().to_string(), "name": name })
+        })
+        .collect();
+    Json(json!({ "repos": body }))
+}
+
+/// `GET /api/repos/branches?path=<repo>` — list local branches in a repo.
+///
+/// Used by the pane "base branch" dropdown so the user can pick from the
+/// repo's actual branches once they've selected a repo.
+pub(super) async fn list_branches(
+    State(s): State<AppState>,
+    Query(q): Query<RepoQuery>,
+) -> Json<Value> {
+    let raw = q.path.unwrap_or_default();
+    let trimmed = raw.trim();
+    let repo_path = if trimmed.is_empty() {
+        s.repo_path.clone()
+    } else {
+        std::path::PathBuf::from(trimmed)
+    };
+    let branches = tokio::task::spawn_blocking(move || read_local_branches(&repo_path))
+        .await
+        .unwrap_or_default();
+    Json(json!({ "branches": branches }))
+}
+
+#[derive(Debug, Deserialize)]
+pub(super) struct RepoQuery {
+    pub path: Option<String>,
+}
+
+fn read_local_branches(repo_path: &std::path::Path) -> Vec<String> {
+    let Ok(repo) = git2::Repository::open(repo_path) else {
+        return Vec::new();
+    };
+    let head_name = repo
+        .head()
+        .ok()
+        .and_then(|h| h.shorthand().map(str::to_owned));
+    let Ok(branches) = repo.branches(Some(git2::BranchType::Local)) else {
+        return Vec::new();
+    };
+    let mut names: Vec<String> = branches
+        .filter_map(std::result::Result::ok)
+        .filter_map(|(branch, _)| branch.name().ok().flatten().map(str::to_owned))
+        .collect();
+    names.sort();
+    if let Some(h) = head_name {
+        if let Some(idx) = names.iter().position(|n| n == &h) {
+            let v = names.remove(idx);
+            names.insert(0, v);
+        }
+    }
+    names
+}
+
+fn scan_roots(sail_repo: &std::path::Path) -> Vec<std::path::PathBuf> {
+    let mut roots: Vec<std::path::PathBuf> = Vec::new();
+    if let Ok(abs) = std::fs::canonicalize(sail_repo) {
+        roots.push(abs);
+    }
+    if let Some(home) = std::env::var_os("HOME") {
+        let home = std::path::PathBuf::from(home);
+        if !roots.iter().any(|r| r == &home) {
+            roots.push(home);
+        }
+    }
+    roots
+}
+
+fn scan_git_repos(roots: &[std::path::PathBuf]) -> Vec<std::path::PathBuf> {
+    const MAX_DEPTH: u8 = 4;
+    const SKIP_DIRS: &[&str] = &[
+        "node_modules",
+        "target",
+        ".cargo-target",
+        "dist",
+        "build",
+        ".svelte-kit",
+        "Library",
+        ".Trash",
+        ".cache",
+        ".npm",
+        ".cargo",
+        ".rustup",
+    ];
+    let mut found: Vec<std::path::PathBuf> = Vec::new();
+    let mut seen: std::collections::HashSet<std::path::PathBuf> = std::collections::HashSet::new();
+    for root in roots {
+        walk(root, 0, MAX_DEPTH, SKIP_DIRS, &mut found, &mut seen);
+    }
+    found.sort();
+    found
+}
+
+fn walk(
+    dir: &std::path::Path,
+    depth: u8,
+    max_depth: u8,
+    skip: &[&str],
+    out: &mut Vec<std::path::PathBuf>,
+    seen: &mut std::collections::HashSet<std::path::PathBuf>,
+) {
+    if depth > max_depth || !seen.insert(dir.to_path_buf()) {
+        return;
+    }
+    if dir.join(".git").exists() {
+        out.push(dir.to_path_buf());
+        return; // Don't descend into a repo — nested clones aren't useful here.
+    }
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let Ok(ft) = entry.file_type() else { continue };
+        if !ft.is_dir() {
+            continue;
+        }
+        let name = entry.file_name();
+        let name_s = name.to_string_lossy();
+        if name_s.starts_with('.') || skip.iter().any(|s| *s == name_s) {
+            continue;
+        }
+        walk(&entry.path(), depth + 1, max_depth, skip, out, seen);
+    }
 }

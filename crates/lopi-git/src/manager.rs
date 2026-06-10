@@ -78,6 +78,32 @@ impl GitManager {
         Ok(())
     }
 
+    /// Check out an existing local branch. Fails if the branch does not exist.
+    ///
+    /// Used to position `HEAD` on a user-specified base branch before the
+    /// per-attempt `lopi/{id}-attempt-N` working branch is created on top.
+    ///
+    /// # Errors
+    /// Returns `Err` if the branch does not exist or cannot be checked out.
+    pub async fn checkout_existing_branch(&self, name: &str) -> Result<()> {
+        let name = name.to_string();
+        let repo_path = self.repo_path.clone();
+        let _guard = WORKTREE_LOCK.lock().await;
+        tokio::task::spawn_blocking(move || -> Result<()> {
+            let repo = Repository::open(&repo_path)?;
+            repo.find_branch(&name, BranchType::Local)
+                .with_context(|| format!("base branch '{name}' does not exist"))?;
+            let refname = format!("refs/heads/{name}");
+            let obj = repo.revparse_single(&refname)?;
+            repo.checkout_tree(&obj, None)?;
+            repo.set_head(&refname)?;
+            Ok(())
+        })
+        .await
+        .context("join error in checkout_existing_branch")??;
+        Ok(())
+    }
+
     /// Return env-var overrides to set when spawning agent sub-processes in this worktree.
     ///
     /// Setting `CARGO_TARGET_DIR` to a worktree-local path prevents parallel agents from

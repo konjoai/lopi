@@ -144,9 +144,13 @@ impl AgentRunner {
             });
 
         for attempt in 0..self.task.max_retries {
-            // Model routing (4.5): route to cheapest model capable of this task's complexity.
-            // Escalates to Opus after the first retry failure.
-            let model = select_model(&self.task, attempt);
+            // Model routing (4.5): explicit task override wins; otherwise route
+            // to the cheapest model capable of this task's complexity. Escalates
+            // to Opus after the first retry failure.
+            let model_override = self.task.model.clone();
+            let model: &str = model_override
+                .as_deref()
+                .unwrap_or_else(|| select_model(&self.task, attempt));
             // Merge pattern constraints + spec constraints for the planning prompt.
             let all_constraints: Vec<String> = extra_constraints
                 .iter()
@@ -188,7 +192,21 @@ impl AgentRunner {
                 task_id: self.id(),
                 attempt: attempt + 1,
                 branch: branch.clone(),
+                repo: self.repo_path.to_string_lossy().into_owned(),
             });
+            if let Some(base) = self.task.base_branch.as_deref() {
+                self.log(format!("⏚ base: {base}"));
+                if let Err(e) = git.checkout_existing_branch(base).await {
+                    self.warn(format!("base checkout failed: {e}"));
+                    self.status(
+                        TaskStatus::Retrying {
+                            attempt: attempt + 1,
+                        },
+                        attempt + 1,
+                    );
+                    continue;
+                }
+            }
             self.log(format!("🔀 branch: {branch}"));
 
             if let Err(e) = git.checkout_new_branch(&branch).await {

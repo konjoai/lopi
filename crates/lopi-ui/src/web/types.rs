@@ -29,6 +29,18 @@ pub struct CreateTaskRequest {
     /// means "any agent can run this".
     #[serde(default)]
     pub required_capabilities: Option<Vec<String>>,
+    /// Base branch the runner checks out before creating the per-attempt
+    /// `lopi/{id}-attempt-N` working branch. Empty / missing → current `HEAD`.
+    #[serde(default)]
+    pub base_branch: Option<String>,
+    /// Explicit Claude model override (full model id, e.g. `"claude-opus-4-7"`).
+    /// Empty / missing / `"auto"` → complexity-based auto-select.
+    #[serde(default)]
+    pub model: Option<String>,
+    /// Effort hint: `"low"` / `"medium"` / `"high"` / `"max"`. Used as a
+    /// fallback for `max_retries` when the request leaves it unset.
+    #[serde(default)]
+    pub effort: Option<String>,
 }
 
 /// Response body for `POST /api/tasks`.

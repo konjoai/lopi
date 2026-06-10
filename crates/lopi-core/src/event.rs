@@ -25,6 +25,11 @@ pub enum AgentEvent {
         attempt: u8,
         /// Git branch created for this attempt.
         branch: String,
+        /// Absolute path of the repository the agent is operating in. Lets
+        /// the UI render the resolved repo without waiting for a separate
+        /// snapshot or echo through `POST /api/tasks`.
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        repo: String,
     },
     /// The task's lifecycle status has changed.
     StatusChanged {
@@ -470,6 +475,7 @@ mod tests {
             task_id,
             attempt: 1,
             branch: "feat/lopi-abc123".to_string(),
+            repo: "/tmp/lopi-repo".to_string(),
         };
         let json = serde_json::to_string(&ev).unwrap();
         assert!(json.contains("task_started"));

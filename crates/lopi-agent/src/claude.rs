@@ -361,6 +361,11 @@ impl ClaudeCode {
     async fn run(&self, prompt: &str) -> Result<ClaudeOutput> {
         let mut cmd = Command::new(&self.cli_path);
         cmd.arg("-p").arg(prompt);
+        // lopi drives the CLI non-interactively (`-p`), so any permission
+        // prompt would deadlock the subprocess. Safety is enforced upstream
+        // by per-attempt branch isolation, `allowed_dirs` / `forbidden_dirs`
+        // diff scope checks, and rollback on score failure.
+        cmd.arg("--dangerously-skip-permissions");
         if self.json_output {
             cmd.arg("--output-format").arg("json");
         }

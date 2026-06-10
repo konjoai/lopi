@@ -207,6 +207,8 @@ pub fn build_app(state: AppState) -> Router {
     // /api/* routes — protected by Bearer auth and per-IP rate limiting.
     let api = Router::new()
         .route("/api/health", get(health))
+        .route("/api/repos", get(list_repos))
+        .route("/api/repos/branches", get(list_branches))
         .route("/api/tasks", get(list_tasks).post(create_task))
         .route("/api/tasks/:id", get(get_task).delete(cancel_task))
         .route(
@@ -413,7 +415,7 @@ use constellation_handlers::{
 };
 use handlers::{
     cancel_task, checkpoint_agent, create_task, get_plans, get_quality_trend, get_spec, get_stats,
-    get_task, health, list_patterns, list_tasks, metrics,
+    get_task, health, list_branches, list_patterns, list_repos, list_tasks, metrics,
 };
 use static_assets::static_handler;
 use tools_handlers::{
