@@ -1,14 +1,108 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import Forge from '$lib/forge/Forge.svelte';
-  import { logs, postTask, cancelTask, permissionWaiting, PHASE_COLORS, type AgentState } from '$lib/stores/agents';
+  import {
+    logs,
+    postTask,
+    cancelTask,
+    listRepos,
+    listBranches,
+    permissionWaiting,
+    PHASE_COLORS,
+    type AgentState,
+    type RepoInfo
+  } from '$lib/stores/agents';
 
   export let agent: AgentState | null = null;
   export let slotIndex: number = 0;
   export let onClose: (() => void) | null = null;
+  /** Orb canvas diameter in px — controlled by the parent grid based on slot count. */
+  export let orbSize: number = 200;
 
   let commandInput = '';
   let isSubmitting = false;
   let submitError = '';
+
+  // Per-pane selectors. Defaults match the user's expressed preference:
+  // sonnet 4.6 selected, medium effort. `auto` model is always an option.
+  let repoChoice = '';
+  let baseBranch = '';
+  let modelChoice: string = 'claude-sonnet-4-6';
+  let effortChoice: 'low' | 'medium' | 'high' | 'max' = 'medium';
+
+  const MODEL_OPTIONS: Array<{ id: string; label: string }> = [
+    { id: 'auto', label: 'auto' },
+    { id: 'claude-haiku-4-5-20251001', label: 'haiku 4.5' },
+    { id: 'claude-sonnet-4-5', label: 'sonnet 4.5' },
+    { id: 'claude-sonnet-4-6', label: 'sonnet 4.6' },
+    { id: 'claude-opus-4-6', label: 'opus 4.6' },
+    { id: 'claude-opus-4-7', label: 'opus 4.7' },
+    { id: 'claude-opus-4-8', label: 'opus 4.8' }
+  ];
+  const EFFORT_OPTIONS: Array<{ id: 'low' | 'medium' | 'high' | 'max'; label: string }> = [
+    { id: 'low', label: 'low' },
+    { id: 'medium', label: 'med' },
+    { id: 'high', label: 'high' },
+    { id: 'max', label: 'max' }
+  ];
+
+  let repos: RepoInfo[] = [];
+  let branches: string[] = [];
+  let branchesLoading = false;
+  let logScroller: HTMLDivElement | null = null;
+
+  onMount(() => {
+    void listRepos().then((r) => (repos = r));
+    // Sessions sidebar reopens a past goal by dispatching `lopi:prefill-slot`
+    // targeting a specific slot — we honour it locally.
+    const onPrefill = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ slotIdx: number; goal: string }>).detail;
+      if (detail?.slotIdx !== slotIndex) return;
+      commandInput = detail.goal;
+    };
+    window.addEventListener('lopi:prefill-slot', onPrefill);
+    return () => window.removeEventListener('lopi:prefill-slot', onPrefill);
+  });
+
+  async function refreshBranches(path: string) {
+    if (!path) {
+      branches = [];
+      return;
+    }
+    branchesLoading = true;
+    try {
+      branches = await listBranches(path);
+    } finally {
+      branchesLoading = false;
+    }
+  }
+
+  // Branch list reflects the chosen repo. Disabled state in the dropdown.
+  $: void refreshBranches(repoChoice);
+
+  // Lock the repo dropdown to whatever the live agent is actually running in
+  // once it starts — the backend's `task_started` event echoes the resolved
+  // path so the UI never lies about where the work is happening.
+  $: if (agent && agent.repo && repoChoice !== agent.repo) {
+    repoChoice = agent.repo;
+  }
+
+  function currentRepo(): string {
+    return (repoChoice || agent?.repo || '').trim();
+  }
+
+  // Auto-pin the log rail to the latest line when new entries arrive — but
+  // only if the user hasn't scrolled up to read earlier output (within 80px
+  // of the bottom counts as "still pinned").
+  $: if (logScroller && agent && agentLogs.length) {
+    const el = logScroller;
+    const pinned = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    if (pinned) {
+      queueMicrotask(() => {
+        el.scrollTop = el.scrollHeight;
+      });
+    }
+  }
 
   // While actively running, the orb shifts to a per-phase shade of orange
   // so the pane reads "working" at a glance. Idle / completed / failed
@@ -27,7 +121,9 @@
         ? WORKING_PHASE_COLORS[agent.phase] ?? '#ff7722'
         : PHASE_COLORS[agent.phase] ?? '#00d4ff')
     : '#00d4ff';
-  $: agentLogs = agent ? $logs.filter((l) => l.taskId === agent.id).slice(-3) : [];
+  // Keep the last 200 lines so the user can scroll back through what the
+  // agent has done; the rail is scrollable so older lines aren't lost.
+  $: agentLogs = agent ? $logs.filter((l) => l.taskId === agent.id).slice(-200) : [];
   $: isWaiting = agent ? $permissionWaiting.has(agent.id) : false;
   $: isRunning = agent?.status === 'running' || agent?.status === 'queued';
 
@@ -37,9 +133,11 @@
     isSubmitting = true;
     submitError = '';
     try {
-      // Empty pane: use empty repo string; existing agent: use agent.repo
-      const repo = agent?.repo ?? '';
-      await postTask(commandInput.trim(), repo, 'normal');
+      await postTask(commandInput.trim(), currentRepo(), 'normal', {
+        base_branch: baseBranch,
+        model: modelChoice,
+        effort: effortChoice
+      });
       commandInput = '';
     } catch (err) {
       console.error('[lopi] postTask failed:', err);
@@ -59,7 +157,11 @@
     isSubmitting = true;
     submitError = '';
     try {
-      await postTask(agent.goal, agent.repo, 'normal');
+      await postTask(agent.goal, agent.repo, 'normal', {
+        base_branch: baseBranch,
+        model: modelChoice,
+        effort: effortChoice
+      });
     } catch (err) {
       submitError = err instanceof Error ? err.message : 'retry failed';
     } finally {
@@ -114,46 +216,47 @@
   draggable="true"
   on:dragstart={onDragStart}
 >
-  <!-- ── LEFT COLUMN (main content) ────────────────────────────────────────── -->
-  <div class="h-full flex flex-col flex-1 min-w-0 overflow-hidden">
-    <!-- HEADER (40px) ─────────────────────────────────────────────────── -->
+  <!-- ── LEFT COLUMN (main content — 2/3 of pane width) ─────────────────── -->
+  <div class="h-full flex flex-col flex-[2] min-w-0 overflow-hidden">
+    <!-- HEADER ─────────────────────────────────────────────────────── -->
     <div
       class="px-4 py-3 border-b border-white/5 flex items-center justify-between flex-shrink-0 cursor-grab active:cursor-grabbing hover:bg-white/5 transition-colors"
       style:border-color={agent && isRunning ? phaseColor + '40' : 'rgba(255,255,255,0.05)'}
     >
       <div class="flex items-center gap-2 min-w-0 flex-1">
         {#if agent}
-          <div class={`w-2 h-2 rounded-full flex-shrink-0 ${getStatusColor(agent.status)}`}></div>
+          <div class={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${getStatusColor(agent.status)}`}></div>
           <div class="min-w-0 flex-1">
-            <div class="font-mono text-xs font-medium leading-tight text-konjo-paper truncate">
+            <div class="font-mono text-sm font-medium leading-tight text-konjo-paper truncate">
               {agent.goal}
             </div>
-            <div class="font-mono text-[8px] uppercase tracking-widest opacity-40 mt-0.5">
+            <div class="font-mono text-[10px] uppercase tracking-widest opacity-50 mt-0.5">
               {agent.repo}
             </div>
           </div>
         {:else}
-          <div class="text-konjo-ice opacity-50 font-mono text-xs">— idle —</div>
+          <div class="text-konjo-ice opacity-60 font-mono text-sm">— idle —</div>
         {/if}
       </div>
     </div>
 
     <!-- ORB AREA (flex-1) ───────────────────────────────────────────── -->
     <div class="flex-1 flex flex-col items-center justify-center relative px-2 py-4 min-h-0">
-      <!-- Orb (interactive) -->
       <div class="relative">
         {#if agent}
           <Forge
-            pressure={agent.pressure}
+            pressure={isWorking ? agent.pressure : 0}
             phaseColor={phaseColor}
-            activity={agent.activity}
+            activity={isWorking ? agent.activity : 0}
             health={agent.health}
-            size={140}
+            size={orbSize}
           />
         {:else}
-          <!-- Empty slot placeholder: pulsing ring -->
+          <!-- Empty slot placeholder: pulsing ring sized to match the orb. -->
           <div
-            class="w-24 h-24 rounded-full border-2 border-konjo-ice/20 animate-pulse"
+            class="rounded-full border-2 border-konjo-ice/20 animate-pulse"
+            style:width={`${Math.round(orbSize * 0.7)}px`}
+            style:height={`${Math.round(orbSize * 0.7)}px`}
             style="box-shadow: 0 0 20px rgba(0,212,255,0.1);"
           ></div>
         {/if}
@@ -217,35 +320,59 @@
       </div>
     {/if}
 
-    <!-- LOG (variable, squeeze-friendly) ────────────────────────────── -->
-    {#if agent}
-      <div class="px-3 py-2 border-t border-white/5 bg-black/30 text-[8px] font-mono space-y-0.5 flex-shrink-0 overflow-y-auto max-h-12">
-        {#if agentLogs.length > 0}
-          {#each agentLogs as log (log.ts + log.taskId)}
-            <div class="flex gap-1.5 opacity-70">
-              <span class="opacity-40 flex-shrink-0">{log.taskId.slice(0, 6)}</span>
-              <span
-                class="flex-shrink-0"
-                style:color={log.level === 'error'
-                  ? 'var(--konjo-rose)'
-                  : log.level === 'warn'
-                    ? 'var(--konjo-flame)'
-                    : 'inherit'}
-              >
-                [{log.level[0].toUpperCase()}]
-              </span>
-              <span class="break-words truncate">{log.message}</span>
-            </div>
-          {/each}
-        {:else}
-          <div class="opacity-30 italic">— waiting for output —</div>
+    <!-- SELECTORS (repo / base branch / model / effort) ───────────── -->
+    <div
+      class="px-3 py-2 border-t border-white/5 flex flex-wrap gap-1.5 flex-shrink-0 bg-black/40 text-[11px] font-mono lopi-selectors"
+    >
+      <select
+        bind:value={repoChoice}
+        title="Repository"
+        disabled={isRunning}
+        class="flex-1 min-w-[6rem]"
+      >
+        <option value="">— default repo —</option>
+        {#each repos as r (r.path)}
+          <option value={r.path}>{r.name}</option>
+        {/each}
+        {#if repoChoice && !repos.some((r) => r.path === repoChoice)}
+          <option value={repoChoice}>{repoChoice}</option>
         {/if}
-      </div>
-    {/if}
+      </select>
 
-    <!-- COMMAND INPUT (40px) ────────────────────────────────────────── -->
-    <div class="px-3 py-2 border-t border-white/5 flex gap-2 flex-shrink-0 bg-black/10">
-      <span class="text-konjo-jade opacity-60 flex-shrink-0 font-mono text-xs">></span>
+      <!-- Base branch — auto-detected from repo. Disabled until repo chosen. -->
+      <select
+        bind:value={baseBranch}
+        title={repoChoice ? 'Base branch (HEAD if empty)' : 'Select a repo to load branches'}
+        disabled={isRunning || !repoChoice}
+        class="w-28"
+      >
+        <option value="">{branchesLoading ? '…' : 'HEAD'}</option>
+        {#each branches as b (b)}
+          <option value={b}>{b}</option>
+        {/each}
+      </select>
+
+      <select bind:value={modelChoice} title="Claude model" disabled={isRunning} class="w-28">
+        {#each MODEL_OPTIONS as m (m.id)}
+          <option value={m.id}>{m.label}</option>
+        {/each}
+      </select>
+
+      <select
+        bind:value={effortChoice}
+        title="Effort — drives retry budget"
+        disabled={isRunning}
+        class="w-20"
+      >
+        {#each EFFORT_OPTIONS as e (e.id)}
+          <option value={e.id}>{e.label}</option>
+        {/each}
+      </select>
+    </div>
+
+    <!-- COMMAND INPUT ─────────────────────────────────────────────── -->
+    <div class="px-3 py-3 border-t border-white/5 flex items-center gap-2 flex-shrink-0 bg-black/10">
+      <span class="text-konjo-jade opacity-60 flex-shrink-0 font-mono text-base">></span>
       <input
         type="text"
         bind:value={commandInput}
@@ -254,12 +381,17 @@
         }}
         disabled={isSubmitting}
         placeholder={agent ? 'new goal…' : 'type a goal…'}
-        class="flex-1 bg-transparent border-b border-white/10 focus:border-konjo-ice outline-none text-xs font-mono placeholder:opacity-30 disabled:opacity-50 transition-colors"
+        class="flex-1 bg-transparent border-b border-white/10 focus:border-konjo-ice outline-none text-sm font-mono placeholder:opacity-30 disabled:opacity-50 transition-colors py-1.5 leading-relaxed"
       />
       {#if isSubmitting}
-        <span class="text-konjo-sun opacity-70 flex-shrink-0 font-mono text-xs">⟳</span>
+        <span class="text-konjo-sun opacity-70 flex-shrink-0 font-mono text-sm">⟳</span>
       {/if}
     </div>
+    {#if submitError}
+      <div class="px-3 py-1 text-[10px] font-mono text-konjo-rose opacity-90 flex-shrink-0">
+        {submitError}
+      </div>
+    {/if}
 
     <!-- FOOTER: Phase + Attempt ────────────────────────────────────── -->
     {#if agent}
@@ -272,65 +404,104 @@
     {/if}
   </div>
 
-  <!-- ── RIGHT SIDEBAR (phase + awaiting + controls) ────────────────────── -->
+  <!-- ── RIGHT RAIL (controls + live log — 1/3 of pane width) ──────────── -->
   <div
-    class="w-20 border-l border-white/5 flex flex-col items-center justify-between py-4 px-2 flex-shrink-0 bg-black/30"
+    class="flex-[1] min-w-0 h-full flex flex-col border-l border-white/10 bg-black/40 overflow-hidden"
   >
-    <!-- Close button — present on every pane (live, idle, and empty) so
-         the user can dismiss any slot. For agents this hits the DELETE
-         endpoint so the session does not resurrect on the next reload. -->
-    {#if onClose}
-      <button
-        type="button"
-        on:click={onClose}
-        class="w-5 h-5 flex items-center justify-center bg-white/10 hover:bg-white/25 text-white/60 hover:text-white rounded-full text-[10px] font-bold transition-colors flex-shrink-0"
-        title={agent ? 'Close & delete session' : 'Close pane'}
-        aria-label={agent ? 'Close and delete session' : 'Close pane'}
-      >
-        ✕
-      </button>
-    {/if}
-
-    <!-- Phase display (top) ───────────────────────────────────────── -->
-    <div class="flex flex-col items-center gap-2 text-center flex-shrink-0">
-      <div
-        class="font-display text-sm font-bold leading-tight tracking-tight"
-        style:color={phaseColor}
-      >
-        {agent?.phase ?? '—'}
-      </div>
-
-      <!-- Awaiting badge ───────────────────────────────────────────── -->
-      {#if agent && isWaiting}
+    <!-- Top strip: phase label + close. "Boot" is suppressed because it's
+         a zero-info default — the label only appears once the runner has
+         reported a real phase. -->
+    <div
+      class="px-3 py-2 border-b border-white/10 flex items-center gap-2 flex-shrink-0 bg-black/30"
+    >
+      {#if agent && agent.phase !== 'Boot'}
         <div
-          class="text-[7px] font-mono uppercase tracking-widest px-1 py-0.5 bg-konjo-sun/20 border border-konjo-sun rounded animate-pulse"
-          style:color="var(--konjo-sun)"
+          class="font-display text-xs font-bold leading-tight tracking-tight truncate flex-1 min-w-0"
+          style:color={phaseColor}
+          title={agent.phase}
         >
-          ⚠ wait
+          {agent.phase}
         </div>
+      {:else}
+        <div class="flex-1"></div>
+      {/if}
+      {#if onClose}
+        <button
+          type="button"
+          on:click={onClose}
+          class="w-7 h-7 flex items-center justify-center bg-white/10 hover:bg-white/25 text-white/70 hover:text-white rounded-full text-xs font-bold transition-colors flex-shrink-0"
+          title={agent ? 'Close & delete session' : 'Close pane'}
+          aria-label={agent ? 'Close and delete session' : 'Close pane'}
+        >
+          ✕
+        </button>
       {/if}
     </div>
 
-    <!-- Control buttons (bottom) ──────────────────────────────────── -->
+    <!-- Log rail. Every line wraps anywhere — no truncation. White text
+         body for readability; level letter stays colored so warn/error
+         still pop visually. -->
+    <div
+      bind:this={logScroller}
+      class="flex-1 min-h-0 overflow-y-auto px-4 py-3 text-[12px] font-mono leading-relaxed text-white"
+    >
+      {#if agent && agentLogs.length > 0}
+        <div class="space-y-3">
+          {#each agentLogs as log (log.ts + log.taskId)}
+            <div class="lopi-log-line">
+              <span
+                class="font-bold mr-2"
+                style:color={log.level === 'error'
+                  ? 'var(--konjo-rose)'
+                  : log.level === 'warn'
+                    ? 'var(--konjo-flame)'
+                    : 'var(--konjo-ice)'}
+              >
+                {log.level[0].toUpperCase()}
+              </span><span>{log.message}</span>
+            </div>
+          {/each}
+        </div>
+      {:else if agent}
+        <div class="text-white/40 italic text-xs">— waiting for output —</div>
+      {:else}
+        <div class="text-white/30 italic text-xs">log will appear here when a goal runs</div>
+      {/if}
+    </div>
+
+    <!-- Bottom action strip: wait indicator + retry / stop. Sits under the
+         log so the buttons are reachable but never crowd the latest output.
+         Only rendered when there's an agent — empty panes stay clean. -->
     {#if agent}
-      <div class="flex flex-col gap-2 flex-shrink-0">
-        <!-- Retry button (top) -->
+      <div
+        class="px-3 py-2 border-t border-white/10 flex items-center gap-2 flex-shrink-0 bg-black/30"
+      >
+        {#if isWaiting}
+          <div
+            class="text-[9px] font-mono uppercase tracking-widest px-2 py-1 bg-konjo-sun/20 border border-konjo-sun rounded animate-pulse flex-shrink-0"
+            style:color="var(--konjo-sun)"
+            title="Agent appears stalled — heuristic"
+          >
+            ⚠ wait
+          </div>
+        {/if}
+        <div class="flex-1"></div>
         <button
           type="button"
           on:click={handleRetry}
           title="Retry task"
-          class="w-12 h-12 text-konjo-sun hover:bg-konjo-sun/10 font-mono text-xl rounded border border-white/10 hover:border-konjo-sun/50 transition-colors flex items-center justify-center"
+          class="w-9 h-9 text-konjo-sun hover:bg-konjo-sun/10 font-mono text-lg rounded border border-white/10 hover:border-konjo-sun/50 transition-colors flex items-center justify-center flex-shrink-0"
+          aria-label="Retry"
         >
           ↺
         </button>
-
-        <!-- Stop button (bottom) -->
         <button
           type="button"
           on:click={handleStop}
           disabled={!isRunning}
           title="Stop / Cancel"
-          class="w-12 h-12 text-konjo-rose hover:bg-konjo-rose/10 disabled:opacity-20 font-mono text-xl rounded border border-white/10 hover:border-konjo-rose/50 transition-colors flex items-center justify-center"
+          class="w-9 h-9 text-konjo-rose hover:bg-konjo-rose/10 disabled:opacity-20 font-mono text-lg rounded border border-white/10 hover:border-konjo-rose/50 transition-colors flex items-center justify-center flex-shrink-0"
+          aria-label="Stop"
         >
           ■
         </button>
@@ -365,5 +536,51 @@
   }
   @keyframes lopi-spin {
     to { transform: rotate(360deg); }
+  }
+
+  /* Dark-themed dropdowns: the OS-native popup follows the system theme by
+     default and renders white-on-white in dark mode. Setting bg + color on
+     the element AND its <option> children keeps the popup legible against
+     lopi's konjo-deep canvas. */
+  .lopi-selectors :global(select) {
+    background-color: rgba(8, 11, 18, 0.85);
+    color: var(--konjo-paper, #e6e9f0);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 4px;
+    padding: 3px 18px 3px 6px;
+    font-family: inherit;
+    font-size: inherit;
+    appearance: none;
+    background-image:
+      linear-gradient(45deg, transparent 50%, rgba(255, 255, 255, 0.4) 50%),
+      linear-gradient(135deg, rgba(255, 255, 255, 0.4) 50%, transparent 50%);
+    background-position: calc(100% - 10px) 50%, calc(100% - 6px) 50%;
+    background-size: 4px 4px, 4px 4px;
+    background-repeat: no-repeat;
+    transition: border-color 0.15s ease;
+  }
+  .lopi-selectors :global(select:hover:not(:disabled)) {
+    border-color: rgba(255, 255, 255, 0.3);
+  }
+  .lopi-selectors :global(select:focus:not(:disabled)) {
+    outline: none;
+    border-color: var(--konjo-ice, #00d4ff);
+  }
+  .lopi-selectors :global(select:disabled) {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  .lopi-selectors :global(option) {
+    background-color: #0b1018;
+    color: var(--konjo-paper, #e6e9f0);
+  }
+
+  /* Log rail: every line wraps so output is never cut off. `overflow-wrap:
+     anywhere` covers unbroken tokens (URLs, hashes, file paths) that
+     plain `word-break: break-word` alone leaves overflowing. */
+  .lopi-log-line {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    white-space: pre-wrap;
   }
 </style>
