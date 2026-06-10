@@ -239,3 +239,38 @@ CREATE TABLE IF NOT EXISTS verifier_verdicts (
     ts           TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_verifier_verdicts_task ON verifier_verdicts(task_id, attempt);
+
+-- macOS-UI Phase 0 — Durable cron schedules. The static `[[schedules]]`
+-- list in `lopi.toml` is loaded once at boot and cannot be edited at
+-- runtime. This table backs the OpenClaw-style cron UI: schedules are
+-- created/edited/enabled/deleted through `/api/schedules` and survive
+-- restarts. `allowed_dirs` / `forbidden_dirs` are JSON arrays of strings.
+-- `enabled` is 0 or 1. TOML entries are seeded here on first boot (matched
+-- by `name`) so the UI presents a unified view.
+CREATE TABLE IF NOT EXISTS schedules (
+    id             TEXT PRIMARY KEY,
+    name           TEXT NOT NULL,
+    cron           TEXT NOT NULL,
+    goal           TEXT NOT NULL,
+    repo           TEXT,
+    priority       TEXT NOT NULL DEFAULT 'normal',
+    allowed_dirs   TEXT NOT NULL DEFAULT '[]',
+    forbidden_dirs TEXT NOT NULL DEFAULT '[]',
+    enabled        INTEGER NOT NULL DEFAULT 1,
+    created_at     TEXT NOT NULL,
+    updated_at     TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_schedules_name ON schedules(name);
+
+-- macOS-UI Phase 0 — Per-schedule run history. One row each time a
+-- schedule fires (cron tick or manual run-now). Powers the "last run" /
+-- run-history view. The task_id column links to the queued task and the
+-- outcome column is a short status string such as queued, duplicate, error.
+CREATE TABLE IF NOT EXISTS schedule_runs (
+    id          TEXT PRIMARY KEY,
+    schedule_id TEXT NOT NULL,
+    fired_at    TEXT NOT NULL,
+    task_id     TEXT,
+    outcome     TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_schedule_runs_sched ON schedule_runs(schedule_id, fired_at DESC);

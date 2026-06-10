@@ -77,6 +77,9 @@ pub struct AppState {
     /// P2 — Agent health registry (heartbeats + classification). The
     /// background sweeper is `spawn_sweeper`'d from `serve`/`serve_with_repo`.
     pub health: lopi_orchestrator::HealthRegistry,
+    /// macOS-UI Phase 0 — runtime-mutable cron scheduler. Started (and seeded
+    /// from the `schedules` table) inside `serve_with_repo`.
+    pub schedules: lopi_orchestrator::ScheduleManager,
     /// Pre-serialized broadcast: each `AgentEvent` serialized once, shared across all WS/SSE subscribers.
     serialized_tx: Arc<broadcast::Sender<Arc<str>>>,
     patterns_cache: Arc<Mutex<TtlCache>>,
@@ -185,6 +188,9 @@ impl AppState {
         // re-derived from incoming agent traffic.
         let health =
             lopi_orchestrator::HealthRegistry::new(lopi_orchestrator::HealthConfig::default());
+        // Runtime cron scheduler — constructed un-started here; `serve_with_repo`
+        // calls `start()` to create the JobScheduler and register stored rows.
+        let schedules = lopi_orchestrator::ScheduleManager::new((*pool).clone(), store.clone());
 
         Self {
             store,
@@ -195,6 +201,7 @@ impl AppState {
             tools,
             constellations,
             health,
+            schedules,
             serialized_tx,
             patterns_cache: Arc::new(Mutex::new(TtlCache::new(Duration::from_secs(30)))),
             auth_token: auth_token.map(|t| Arc::from(t.as_str())),
@@ -288,6 +295,30 @@ pub fn build_app(state: AppState) -> Router {
                 .post(agent_rate_handlers::register_rate_limit)
                 .delete(agent_rate_handlers::delete_rate_limit),
         )
+        .route(
+            "/api/schedules",
+            get(schedule_handlers::list_schedules).post(schedule_handlers::create_schedule),
+        )
+        .route(
+            "/api/schedules/:id",
+            get(schedule_handlers::get_schedule)
+                .put(schedule_handlers::update_schedule)
+                .delete(schedule_handlers::delete_schedule),
+        )
+        .route(
+            "/api/schedules/:id/enable",
+            axum::routing::post(schedule_handlers::enable_schedule),
+        )
+        .route(
+            "/api/schedules/:id/disable",
+            axum::routing::post(schedule_handlers::disable_schedule),
+        )
+        .route(
+            "/api/schedules/:id/run-now",
+            axum::routing::post(schedule_handlers::run_now),
+        )
+        .route("/api/config", get(config_handlers::get_config))
+        .route("/api/version", get(config_handlers::get_version))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             rate_limit_middleware,
@@ -355,6 +386,11 @@ pub async fn serve_with_repo(
         // /tools registrations still persist; we just lose previously
         // saved entries until someone re-registers them.
         tracing::warn!(error = %e, "tool registry hydrate failed; starting empty");
+    }
+    if let Err(e) = state.schedules.start().await {
+        // Without a live scheduler, cron rows persist but never fire. Surface
+        // the failure; the rest of the server stays up.
+        tracing::warn!(error = %e, "cron scheduler start failed; schedules will not fire");
     }
     let app = build_app(state);
 
@@ -515,10 +551,12 @@ fn file_response(file: rust_embed::EmbeddedFile, path: &str) -> Response {
 mod agent_rate_handlers;
 mod audit_handlers;
 mod cache_handlers;
+mod config_handlers;
 mod constellation_handlers;
 mod dlq_handlers;
 mod handlers;
 mod health_handlers;
+mod schedule_handlers;
 mod task_stream_handlers;
 mod tools_handlers;
 use cache_handlers::{cache_stats_handler, clear_cache_handler, invalidate_agent_cache_handler};

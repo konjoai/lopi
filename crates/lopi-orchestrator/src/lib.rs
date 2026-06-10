@@ -7,10 +7,13 @@ pub mod health;
 pub mod pool;
 /// Priority task queue with deduplication and async blocking pop.
 pub mod queue;
+/// Runtime-mutable cron scheduler backing the dashboard cron UI.
+pub mod schedule_manager;
 /// Cron-style task scheduler that injects recurring tasks into the queue.
 pub mod scheduler;
 
 pub use agent_rate_limit::{AgentRateLimit, AgentRateLimitSnapshot};
+pub use schedule_manager::{build_task as build_schedule_task, ScheduleManager, ScheduleSpec};
 pub use constellation::{
     Constellation, ConstellationMember, ConstellationRouter, ConstellationStats, DispatchDecision,
     MemberLoad, RoutingError, RoutingStrategy,

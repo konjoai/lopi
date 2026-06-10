@@ -642,3 +642,4 @@ async fn plans_response_has_required_fields() {
 }
 
 include!("tests_extended.rs");
+include!("schedules_tests.rs");

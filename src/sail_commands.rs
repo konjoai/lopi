@@ -1,7 +1,7 @@
 use anyhow::Result;
 use lopi_core::{AgentEvent, EventBus, LopiConfig};
 use lopi_memory::MemoryStore;
-use lopi_orchestrator::{boot_scheduler, AgentPool, TaskQueue};
+use lopi_orchestrator::{AgentPool, TaskQueue};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -56,17 +56,12 @@ pub async fn run(
 
     let schedules = cfg.map(|c| c.schedules.clone()).unwrap_or_default();
     if !schedules.is_empty() {
-        println!("   schedules: {} configured", schedules.len());
-        let pool_sched = (*pool).clone();
-        let schedules_for_sched = schedules.clone();
-        tokio::spawn(async move {
-            match boot_scheduler(schedules_for_sched, pool_sched).await {
-                Ok(_sched) => {
-                    tokio::signal::ctrl_c().await.ok();
-                }
-                Err(e) => tracing::error!("scheduler boot failed: {e}"),
-            }
-        });
+        println!("   schedules: {} seeded from lopi.toml", schedules.len());
+        // Seed TOML schedules into the durable store (idempotent, matched by
+        // name) so they appear in the dashboard cron UI. The web layer's
+        // `ScheduleManager::start()` then registers all enabled rows as live
+        // jobs — replacing the old static `boot_scheduler` path.
+        seed_schedules(&store, &schedules).await;
     }
     println!();
 
@@ -264,6 +259,34 @@ async fn tier_capped_max_agents(store: &MemoryStore, requested: usize) -> usize 
         Err(e) => {
             tracing::warn!(customer_id, "failed to read customer tier: {e}");
             requested
+        }
+    }
+}
+
+/// Insert any `lopi.toml` schedule into the durable `schedules` table that is
+/// not already present (matched by name). Idempotent across restarts so a
+/// checked-in config keeps working while the cron UI manages its own rows.
+async fn seed_schedules(store: &MemoryStore, entries: &[lopi_core::ScheduleEntry]) {
+    for entry in entries {
+        match store.find_schedule_by_name(&entry.name).await {
+            Ok(Some(_)) => {} // already seeded — leave UI edits intact
+            Ok(None) => {
+                let input = lopi_memory::ScheduleInput {
+                    id: None,
+                    name: entry.name.clone(),
+                    cron: entry.cron.clone(),
+                    goal: entry.goal.clone(),
+                    repo: Some(entry.repo.display().to_string()),
+                    priority: entry.priority.clone(),
+                    allowed_dirs: entry.allowed_dirs.clone(),
+                    forbidden_dirs: entry.forbidden_dirs.clone(),
+                    enabled: true,
+                };
+                if let Err(e) = store.upsert_schedule(&input).await {
+                    tracing::warn!(schedule = %entry.name, "seeding schedule failed: {e:#}");
+                }
+            }
+            Err(e) => tracing::warn!(schedule = %entry.name, "schedule lookup failed: {e:#}"),
         }
     }
 }
