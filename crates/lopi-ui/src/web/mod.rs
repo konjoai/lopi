@@ -1,33 +1,12 @@
 use anyhow::Result;
-use axum::{
-    body::Body,
-    extract::State,
-    http::{header, StatusCode, Uri},
-    middleware::{self, Next},
-    response::{IntoResponse, Json, Response},
-    routing::get,
-    Router,
-};
+use axum::{middleware, routing::get, Router};
 use dashmap::DashMap;
 use lopi_core::{AgentEvent, EventBus};
 use lopi_memory::MemoryStore;
 use lopi_orchestrator::{AgentPool, TaskQueue};
 use lopi_ratelimit::TokenBucket;
-use rust_embed::Embed;
 
-/// SvelteKit Forge static build embedded into the lopi binary.
-///
-/// `web/dist/` is created (empty if needed) by the lopi-ui build script so
-/// `cargo build` succeeds even before `npm run build`. When the directory
-/// is empty at compile time, the runtime handler serves the placeholder
-/// page from `placeholder.html` instead.
-#[derive(Embed)]
-#[folder = "$CARGO_MANIFEST_DIR/../../web/dist"]
-struct WebAssets;
-
-const PLACEHOLDER_HTML: &str = include_str!("../placeholder.html");
-
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -408,146 +387,6 @@ pub async fn serve_with_repo(
     Ok(())
 }
 
-/// Middleware: validate `Authorization: Bearer <token>` on all /api/* routes.
-/// Skipped entirely when `auth_token` is not configured (dev mode).
-async fn auth_middleware(
-    State(s): State<AppState>,
-    request: axum::extract::Request,
-    next: Next,
-) -> Response {
-    if let Some(expected) = &s.auth_token {
-        let provided = request
-            .headers()
-            .get(axum::http::header::AUTHORIZATION)
-            .and_then(|v| v.to_str().ok())
-            .and_then(|v| v.strip_prefix("Bearer "));
-
-        if !provided.is_some_and(|p| constant_time_eq(p, expected.as_ref())) {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "unauthorized"})),
-            )
-                .into_response();
-        }
-    }
-    next.run(request).await
-}
-
-/// Middleware: per-IP token-bucket rate limiter (60 req/min burst, 1 req/sec refill).
-/// Falls back to `127.0.0.1` when `ConnectInfo` is unavailable (e.g., in tests).
-async fn rate_limit_middleware(
-    State(s): State<AppState>,
-    req: axum::extract::Request,
-    next: Next,
-) -> Response {
-    use axum::extract::connect_info::ConnectInfo;
-
-    let ip: IpAddr = req
-        .headers()
-        .get("x-forwarded-for")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|s| s.split(',').next())
-        .and_then(|s| s.trim().parse().ok())
-        .or_else(|| {
-            req.extensions()
-                .get::<ConnectInfo<SocketAddr>>()
-                .map(|c| c.0.ip())
-        })
-        .unwrap_or_else(|| IpAddr::from([127, 0, 0, 1]));
-
-    // Get or create a per-IP bucket: 60-token burst, 1 token/sec refill.
-    let bucket = s.rate_limiter.get(&ip).map_or_else(
-        || {
-            let new_bucket = TokenBucket::new(60.0, 1.0);
-            s.rate_limiter.insert(ip, new_bucket.clone());
-            new_bucket
-        },
-        |b| b.clone(),
-    );
-
-    if !bucket.try_acquire(1.0).await {
-        return (
-            StatusCode::TOO_MANY_REQUESTS,
-            Json(json!({"error": "rate limit exceeded"})),
-        )
-            .into_response();
-    }
-
-    next.run(req).await
-}
-
-/// Constant-time string comparison to prevent timing-based side-channel attacks.
-fn constant_time_eq(a: &str, b: &str) -> bool {
-    if a.len() != b.len() {
-        return false;
-    }
-    a.bytes()
-        .zip(b.bytes())
-        .fold(0u8, |acc, (x, y)| acc | (x ^ y))
-        == 0
-}
-
-/// Static asset handler — serves the embedded SvelteKit Forge build.
-///
-/// Lookup order:
-///   1. Direct file match (e.g. `/_app/immutable/chunks/x.js`, `/favicon.svg`)
-///   2. Append `.html` for prerendered routes (e.g. `/constellation` →
-///      `constellation.html`)
-///   3. Fall back to `index.html` (SPA client-side routing for unknown paths)
-///   4. Fall back to the bundled placeholder if `web/dist/` is empty
-///      (i.e. `npm run build` hasn't been run yet).
-async fn static_handler(uri: Uri) -> Response {
-    let path = uri.path().trim_start_matches('/').to_string();
-
-    // 1. Direct file
-    if !path.is_empty() {
-        if let Some(file) = WebAssets::get(&path) {
-            return file_response(file, &path);
-        }
-    }
-
-    // 2. .html fallback for prerendered routes
-    if !path.is_empty() && !path.contains('.') {
-        let html_path = format!("{}.html", path);
-        if let Some(file) = WebAssets::get(&html_path) {
-            return file_response(file, &html_path);
-        }
-    }
-
-    // 3. SPA fallback — index.html handles client-side routing
-    if let Some(file) = WebAssets::get("index.html") {
-        return file_response(file, "index.html");
-    }
-
-    // 4. No SvelteKit build present — show placeholder with build instructions.
-    Response::builder()
-        .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
-        .body(Body::from(PLACEHOLDER_HTML))
-        .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
-}
-
-/// Serve an embedded file with appropriate Content-Type and Cache-Control.
-///
-/// Cache strategy:
-///   - SvelteKit's `_app/immutable/*` chunks are content-hashed → cache forever
-///   - Everything else (HTML, top-level assets) → 5-minute browser cache
-fn file_response(file: rust_embed::EmbeddedFile, path: &str) -> Response {
-    let mime = mime_guess::from_path(path).first_or_octet_stream();
-    let cache_control = if path.starts_with("_app/immutable/") {
-        "public, max-age=31536000, immutable"
-    } else {
-        "public, max-age=300"
-    };
-
-    Response::builder()
-        .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, mime.as_ref())
-        .header(header::CACHE_CONTROL, cache_control)
-        .body(Body::from(file.data.into_owned()))
-        .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
-}
-
 mod agent_rate_handlers;
 mod audit_handlers;
 mod cache_handlers;
@@ -555,10 +394,14 @@ mod config_handlers;
 mod constellation_handlers;
 mod dlq_handlers;
 mod handlers;
+mod api_middleware;
 mod health_handlers;
 mod schedule_handlers;
+mod static_assets;
 mod task_stream_handlers;
 mod tools_handlers;
+use api_middleware::{auth_middleware, rate_limit_middleware};
+use static_assets::static_handler;
 use cache_handlers::{cache_stats_handler, clear_cache_handler, invalidate_agent_cache_handler};
 use constellation_handlers::{
     constellation_stats_handler, dispatch_constellation_handler, list_constellations_handler,
