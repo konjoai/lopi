@@ -347,6 +347,21 @@ pub async fn serve(
     .await
 }
 
+/// Best-effort startup steps that should not abort the server on failure:
+/// hydrate the on-disk tool registry and start the cron scheduler. Each failure
+/// is logged and swallowed so the HTTP server still comes up.
+async fn warm_up_state(state: &mut AppState) {
+    if let Err(e) = state.hydrate_tools().await {
+        // Keep the empty in-memory registry — runtime /tools registrations
+        // still persist; we just lose previously saved entries until re-added.
+        tracing::warn!(error = %e, "tool registry hydrate failed; starting empty");
+    }
+    if let Err(e) = state.schedules.start().await {
+        // Without a live scheduler, cron rows persist but never fire.
+        tracing::warn!(error = %e, "cron scheduler start failed; schedules will not fire");
+    }
+}
+
 /// Variant that also wires the repo path for `/api/spec` serving.
 #[allow(clippy::too_many_arguments)]
 pub async fn serve_with_repo(
@@ -360,17 +375,7 @@ pub async fn serve_with_repo(
     repo_path: std::path::PathBuf,
 ) -> Result<()> {
     let mut state = AppState::new_with_repo(store, bus, queue, pool, auth_token, repo_path);
-    if let Err(e) = state.hydrate_tools().await {
-        // Hydrate failed — keep the empty in-memory registry. Runtime
-        // /tools registrations still persist; we just lose previously
-        // saved entries until someone re-registers them.
-        tracing::warn!(error = %e, "tool registry hydrate failed; starting empty");
-    }
-    if let Err(e) = state.schedules.start().await {
-        // Without a live scheduler, cron rows persist but never fire. Surface
-        // the failure; the rest of the server stays up.
-        tracing::warn!(error = %e, "cron scheduler start failed; schedules will not fire");
-    }
+    warm_up_state(&mut state).await;
     let app = build_app(state);
 
     let addr: SocketAddr = format!("{host}:{port}").parse()?;
