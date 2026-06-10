@@ -112,6 +112,37 @@ impl AgentRunner {
 
         let scorer = Scorer::new(&self.repo_path);
 
+        // Shared running totals across attempts. Each `claude` call deposits
+        // its `(tokens, cost)` here AND fires a fresh `TurnMetrics` event
+        // through the bus, so the per-pane meter ticks live without polling.
+        let usage_totals: std::sync::Arc<std::sync::Mutex<(u64, f32)>> =
+            std::sync::Arc::new(std::sync::Mutex::new((0, 0.0)));
+        let usage_bus = self.bus.clone();
+        let usage_task_id = self.id();
+        let usage_totals_cb = usage_totals.clone();
+        let usage_cb: std::sync::Arc<dyn Fn(u64, f32) + Send + Sync> =
+            std::sync::Arc::new(move |delta_tokens, delta_cost| {
+                let Ok(mut g) = usage_totals_cb.lock() else {
+                    return;
+                };
+                g.0 = g.0.saturating_add(delta_tokens);
+                g.1 += delta_cost;
+                let (tokens, cost) = (g.0, g.1);
+                drop(g);
+                // pressure/activity stay at 0 here — the runner's own
+                // emit_turn_metrics fills in the real values. The frontend
+                // reducer treats 0 as "no new info" and preserves the
+                // previous values for those fields.
+                usage_bus.send(AgentEvent::TurnMetrics {
+                    task_id: usage_task_id,
+                    pressure: 0.0,
+                    activity: 0.0,
+                    tokens_per_sec: 0.0,
+                    cost_usd: cost,
+                    tokens,
+                });
+            });
+
         for attempt in 0..self.task.max_retries {
             // Model routing (4.5): route to cheapest model capable of this task's complexity.
             // Escalates to Opus after the first retry failure.
@@ -126,7 +157,8 @@ impl AgentRunner {
                 .with_extra_constraints(all_constraints)
                 .with_patterns(pattern_pairs.clone())
                 .with_lessons(lessons_data.clone())
-                .with_model(model);
+                .with_model(model)
+                .with_usage_cb(usage_cb.clone());
             tracing::info!(model, attempt, "model selected for attempt");
             // Hard stop: prevent runaway agents from looping past the turn cap.
             self.turn_count += 1;

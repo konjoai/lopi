@@ -206,7 +206,9 @@ export function parseAgentEvent(raw: Record<string, unknown>): AgentEvent | null
         pressure: clamp01(raw.pressure),
         activity: clamp01(raw.activity),
         tokens_per_sec: raw.tokens_per_sec,
-        cost_usd: raw.cost_usd
+        cost_usd: raw.cost_usd,
+        // Older emitters omit `tokens` — default to 0 instead of dropping the frame.
+        tokens: isNumber(raw.tokens) ? raw.tokens : 0
       };
     }
     default:

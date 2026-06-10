@@ -162,6 +162,7 @@ impl AgentRunner {
                     activity: 0.45_f32, // planning baseline; SDK doesn't expose live tokens/sec mid-stream
                     tokens_per_sec,
                     cost_usd: cost_f32,
+                    tokens: (usage.input_tokens as u64).saturating_add(usage.output_tokens as u64),
                 });
 
                 // 8. Persist for offline analytics.

@@ -55,7 +55,8 @@ export interface AgentState {
   diffLines?: number;
   score?: number; // synthetic 0..1 composite
 
-  cost: number; // USD accumulated
+  cost: number; // USD accumulated (kept for aggregate stats; not shown per-pane)
+  tokens: number; // cumulative input+output tokens reported by claude
   thought?: string; // last log line (preview)
 }
 
@@ -171,7 +172,8 @@ function reduce(map: Map<string, AgentState>, ev: AgentEvent): Map<string, Agent
         pressure: 0.05,
         activity: 0.0,
         health: 0.85,
-        cost: 0
+        cost: 0,
+        tokens: 0
       });
       break;
     }
@@ -262,9 +264,15 @@ function reduce(map: Map<string, AgentState>, ev: AgentEvent): Map<string, Agent
       if (!cur) break;
       next.set(ev.task_id, {
         ...cur,
-        pressure: ev.pressure,
-        activity: ev.activity,
-        cost: ev.cost_usd
+        // Token-delta events from `claude.rs` callback come in with
+        // pressure/activity = 0. Treat zero as "no new info" so they
+        // don't blank out the pressure bar between real updates.
+        pressure: ev.pressure > 0 ? ev.pressure : cur.pressure,
+        activity: ev.activity > 0 ? ev.activity : cur.activity,
+        cost: Math.max(cur.cost, ev.cost_usd),
+        // Server emits cumulative tokens — Math.max guards against out-of-order
+        // delivery so the meter never visually regresses.
+        tokens: Math.max(cur.tokens ?? 0, ev.tokens ?? 0)
       });
       break;
     }
@@ -287,7 +295,8 @@ function makeBlank(id: string): AgentState {
     pressure: 0.05,
     activity: 0,
     health: 0.85,
-    cost: 0
+    cost: 0,
+    tokens: 0
   };
 }
 

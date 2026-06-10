@@ -93,6 +93,14 @@ pub struct AgentRunner {
     pub(super) score_weights: ScoreWeights,
     /// Phase 5b — lessons learned from past patterns (injected into planning prompt).
     pub(super) task_lessons: Vec<String>,
+    /// Cumulative `input + output` tokens across every `claude` subprocess
+    /// call for this task. Each call appends; reported on every
+    /// `TurnMetrics` event so the per-pane meter ticks live.
+    pub(super) tokens_used: u64,
+    /// Cumulative cost in USD reported by the `claude` CLI across every
+    /// subprocess call. Tracked here so `TurnMetrics` carries a stable
+    /// running total even when the runner emits between calls.
+    pub(super) tokens_cost_usd: f32,
 }
 
 impl AgentRunner {
@@ -133,6 +141,8 @@ impl AgentRunner {
             turn_count: 0,
             score_weights: ScoreWeights::default(),
             task_lessons: vec![],
+            tokens_used: 0,
+            tokens_cost_usd: 0.0,
         }
     }
 
@@ -166,6 +176,8 @@ impl AgentRunner {
             turn_count: 0,
             score_weights: ScoreWeights::default(),
             task_lessons: vec![],
+            tokens_used: 0,
+            tokens_cost_usd: 0.0,
         };
         (runner, bus)
     }
@@ -306,7 +318,8 @@ impl AgentRunner {
             pressure,
             activity,
             tokens_per_sec: 0.0,
-            cost_usd: 0.0,
+            cost_usd: self.tokens_cost_usd,
+            tokens: self.tokens_used,
         });
     }
 

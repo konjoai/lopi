@@ -10,7 +10,23 @@
   let isSubmitting = false;
   let submitError = '';
 
-  $: phaseColor = agent ? PHASE_COLORS[agent.phase] ?? '#00d4ff' : '#00d4ff';
+  // While actively running, the orb shifts to a per-phase shade of orange
+  // so the pane reads "working" at a glance. Idle / completed / failed
+  // states keep the original PHASE_COLORS palette.
+  const WORKING_PHASE_COLORS: Record<string, string> = {
+    Boot: '#ffb366',
+    Discovery: '#ff9933',
+    Planning: '#ff7722',
+    Implementation: '#ff4500',
+    Testing: '#ff8800',
+    Conclusion: '#ffa64d'
+  };
+  $: isWorking = agent?.status === 'running';
+  $: phaseColor = agent
+    ? (isWorking
+        ? WORKING_PHASE_COLORS[agent.phase] ?? '#ff7722'
+        : PHASE_COLORS[agent.phase] ?? '#00d4ff')
+    : '#00d4ff';
   $: agentLogs = agent ? $logs.filter((l) => l.taskId === agent.id).slice(-3) : [];
   $: isWaiting = agent ? $permissionWaiting.has(agent.id) : false;
   $: isRunning = agent?.status === 'running' || agent?.status === 'queued';
@@ -54,8 +70,16 @@
   function formatElapsed(ms: number): string {
     const s = Math.floor(ms / 1000);
     const m = Math.floor(s / 60);
-    if (m > 0) return `${m}m ${s % 60}s`;
-    return `${s}s`;
+    const sec = (s % 60).toString().padStart(2, '0');
+    if (m > 99) return `${m}m`;
+    return `${m.toString().padStart(2, '0')}:${sec}`;
+  }
+
+  function formatTokens(t: number): string {
+    if (!t) return '0';
+    if (t < 1000) return `${t}`;
+    if (t < 1_000_000) return `${(t / 1000).toFixed(t < 10_000 ? 2 : 1)}k`;
+    return `${(t / 1_000_000).toFixed(2)}M`;
   }
 
   function getStatusColor(status: string): string {
@@ -157,16 +181,38 @@
           <span class="tabular-nums w-6">{Math.round(agent.activity * 100)}</span>
         </div>
 
-        <!-- Elapsed -->
-        <div class="flex items-center gap-1 flex-shrink-0">
-          <span class="opacity-50">⏱:</span>
-          <span class="tabular-nums w-12">{formatElapsed(agent.elapsedMs)}</span>
-        </div>
-
-        <!-- Cost -->
-        <div class="flex items-center gap-1 flex-shrink-0" style:color="var(--konjo-flame)">
-          <span class="opacity-50">$</span>
-          <span class="tabular-nums w-10">{agent.cost.toFixed(4)}</span>
+        <!-- Combined working indicator: spinner + tokens + timer. Replaces
+             the cost display (claude code subscription has no per-call $).
+             Tints orange + spins while status === 'running'; static and
+             muted otherwise. -->
+        <div
+          class="lopi-work-pill flex items-center gap-2 px-2 py-1 rounded-md border tabular-nums flex-shrink-0"
+          class:lopi-work-pill--running={isWorking}
+          title="Tokens used · session time"
+        >
+          {#if isWorking}
+            <svg
+              class="lopi-spinner flex-shrink-0"
+              width="11"
+              height="11"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="3"
+              stroke-linecap="round"
+              aria-label="working"
+            >
+              <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+            </svg>
+          {:else}
+            <span
+              class="w-[11px] h-[11px] rounded-full opacity-40 flex-shrink-0"
+              style:background="currentColor"
+            ></span>
+          {/if}
+          <span class="font-semibold">{formatTokens(agent.tokens)}</span><span class="opacity-60">tok</span>
+          <span class="opacity-40">·</span>
+          <span class="font-semibold">{formatElapsed(agent.elapsedMs)}</span>
         </div>
       </div>
     {/if}
@@ -292,3 +338,32 @@
     {/if}
   </div>
 </div>
+
+<style>
+  /* Combined working-indicator pill: spinner + token meter + session timer.
+     Muted when the agent isn't actively producing; tinted orange + pulsing
+     halo while `status === 'running'` so the pane reads "alive" at a glance. */
+  .lopi-work-pill {
+    color: rgba(255, 255, 255, 0.55);
+    border-color: rgba(255, 255, 255, 0.08);
+    background-color: rgba(255, 255, 255, 0.02);
+    transition: color 0.3s ease, border-color 0.3s ease, background-color 0.3s ease;
+  }
+  .lopi-work-pill--running {
+    color: #ff7722;
+    border-color: rgba(255, 119, 34, 0.5);
+    background-color: rgba(255, 119, 34, 0.08);
+    animation: lopi-pill-pulse 2.4s ease-in-out infinite;
+  }
+  @keyframes lopi-pill-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(255, 119, 34, 0); }
+    50%      { box-shadow: 0 0 0 3px rgba(255, 119, 34, 0.18); }
+  }
+  .lopi-spinner {
+    animation: lopi-spin 1s linear infinite;
+    transform-origin: 50% 50%;
+  }
+  @keyframes lopi-spin {
+    to { transform: rotate(360deg); }
+  }
+</style>

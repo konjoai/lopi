@@ -80,6 +80,7 @@ export type AgentEvent =
       activity: number; // 0..1, normalized tokens/sec
       tokens_per_sec: number;
       cost_usd: number;
+      tokens: number; // cumulative input+output tokens for this task
     };
 
 // ── Snapshot sent on WebSocket connect ────────────────────────────────────────
