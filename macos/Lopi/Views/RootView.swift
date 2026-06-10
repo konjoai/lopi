@@ -34,38 +34,22 @@ enum NavSection: String, CaseIterable, Identifiable {
 
 struct RootView: View {
     @EnvironmentObject private var model: AppModel
-    @State private var selection: NavSection? = .dashboard
+    @State private var selection: NavSection = .dashboard
 
     var body: some View {
         NavigationSplitView {
-            List(NavSection.allCases, selection: $selection) { section in
-                Label(section.rawValue, systemImage: section.icon)
-                    .font(Konjo.sans(13, weight: .medium))
-                    .tag(section)
-            }
-            .scrollContentBackground(.hidden)
-            .background(Konjo.deep)
-            .tint(Konjo.ice)
-            .navigationSplitViewColumnWidth(min: 180, ideal: 200)
-            .safeAreaInset(edge: .bottom) {
-                ConnectionLED(state: model.connection)
-                    .padding(12)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
+            KonjoSidebar(selection: $selection, connection: model.connection)
+                .navigationSplitViewColumnWidth(min: 190, ideal: 210)
         } detail: {
             detail
                 .background(KonjoBackground())
-                .toolbar {
-                    ToolbarItem(placement: .principal) {
-                        ConnectionLED(state: model.connection)
-                    }
-                }
+                .navigationTitle(selection.rawValue)
                 .overlay(alignment: .top) { bannerOverlay }
         }
     }
 
     @ViewBuilder private var detail: some View {
-        switch selection ?? .dashboard {
+        switch selection {
         case .dashboard: DashboardView()
         case .tasks: TasksView()
         case .cron: CronView()

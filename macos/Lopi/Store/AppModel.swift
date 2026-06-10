@@ -21,6 +21,10 @@ final class AppModel: ObservableObject {
     /// Rolling buffer of recent live log lines (most recent last), capped.
     @Published var recentLogs: [String] = []
 
+    /// Per-task live state derived from the event stream (last log line +
+    /// recency), keyed by task id. Drives each pane's log tail and orb pulse.
+    @Published var live: [String: LiveTask] = [:]
+
     /// Non-fatal error banner text (auto-cleared by the UI).
     @Published var banner: String?
 
@@ -172,8 +176,9 @@ final class AppModel: ObservableObject {
             stats.succeeded = s.succeeded
             stats.failed = s.failed
             stats.uptimeSecs = s.uptimeSecs
-        case let .logLine(_, line, level):
+        case let .logLine(taskId, line, level):
             appendLog("[\(level)] \(line)")
+            noteLog(taskId: taskId, line: line, level: level)
         case .taskCompleted, .taskQueued, .statusChanged, .taskCancelled, .taskStarted:
             Task { await refreshTasks() }
         case let .budgetExceeded(scope, limit, burned):
@@ -188,7 +193,33 @@ final class AppModel: ObservableObject {
         if recentLogs.count > 500 { recentLogs.removeFirst(recentLogs.count - 500) }
     }
 
+    /// Record the latest log line for a task, stamping the activity time so the
+    /// pane orb can pulse while output is flowing.
+    private func noteLog(taskId: String, line: String, level: String) {
+        guard !taskId.isEmpty else { return }
+        var lt = live[taskId] ?? LiveTask()
+        lt.lastLine = line
+        lt.lastLevel = level
+        lt.lastActivityAt = Date()
+        live[taskId] = lt
+    }
+
     private func report(_ error: Error) {
         banner = (error as? LopiError)?.errorDescription ?? error.localizedDescription
+    }
+}
+
+/// Live, stream-derived state for one task: the most recent log line and when
+/// it arrived. `activity` decays from 1 → 0 over a few seconds of silence.
+struct LiveTask: Equatable {
+    var lastLine: String = ""
+    var lastLevel: String = "info"
+    var lastActivityAt: Date = .distantPast
+
+    /// Recency-based generation intensity in 0…1 (1 = a log within the last
+    /// moment, fading to 0 after ~8s of quiet).
+    var activity: Double {
+        let dt = Date().timeIntervalSince(lastActivityAt)
+        return max(0, min(1, 1 - dt / 8))
     }
 }

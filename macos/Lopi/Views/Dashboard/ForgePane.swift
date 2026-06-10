@@ -5,6 +5,8 @@ import SwiftUI
 /// (status · elapsed · short id). Driven by a `TaskSummary` from `/api/tasks`.
 struct ForgePane: View {
     let task: TaskSummary
+    /// Stream-derived live state (last log line + activity), if any.
+    var live: LiveTask?
     var orbSize: CGFloat = 116
 
     private var isRunning: Bool { task.status.lowercased() == "running" }
@@ -20,11 +22,18 @@ struct ForgePane: View {
         VStack(spacing: 0) {
             header
             orbArea
+            logTail
             metricsBar
         }
         .background(Konjo.deep.opacity(0.6))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Konjo.line2, lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(borderColor, lineWidth: 1))
         .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+
+    /// Live panes get a faint phase-tinted border, matching the web's
+    /// running-pane treatment.
+    private var borderColor: Color {
+        isRunning ? orbColor.opacity(0.45) : Konjo.line2
     }
 
     // MARK: Header
@@ -59,13 +68,37 @@ struct ForgePane: View {
     private var orbArea: some View {
         ForgeOrb(
             phaseColor: orbColor,
-            activity: isRunning ? 0.7 : 0.18,
+            activity: isRunning ? max(0.3, live?.activity ?? 0.6) : 0.18,
             pressure: isRunning ? 0.5 : 0.25,
             size: orbSize,
             running: isRunning
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(.vertical, 18)
+        .padding(.vertical, 14)
+    }
+
+    // MARK: Log tail
+
+    @ViewBuilder private var logTail: some View {
+        if let line = live?.lastLine, !line.isEmpty {
+            Text(line)
+                .font(Konjo.mono(8.5))
+                .foregroundStyle(logColor)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 5)
+                .background(Color.black.opacity(0.35))
+        }
+    }
+
+    private var logColor: Color {
+        switch (live?.lastLevel ?? "").lowercased() {
+        case "error": return Konjo.rose
+        case "warn": return Konjo.flame
+        default: return Konjo.paper.opacity(0.55)
+        }
     }
 
     // MARK: Metrics
