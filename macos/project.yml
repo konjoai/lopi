@@ -1,0 +1,34 @@
+name: Lopi
+options:
+  bundleIdPrefix: ai.konjo.lopi
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    ENABLE_HARDENED_RUNTIME: YES
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_STYLE: Automatic
+
+targets:
+  Lopi:
+    type: application
+    platform: macOS
+    sources:
+      - path: Lopi
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ai.konjo.lopi
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_LSUIElement: NO
+        INFOPLIST_KEY_NSHumanReadableCopyright: "Konjo AI"
+    entitlements:
+      path: Lopi/Lopi.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.network.client: true
+        com.apple.security.network.server: false

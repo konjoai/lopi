@@ -240,10 +240,7 @@ impl MemoryStore {
             "verifier_verdicts",
         ] {
             let sql = format!("DELETE FROM {table} WHERE task_id = ?1");
-            sqlx::query(&sql)
-                .bind(&id_str)
-                .execute(&mut *tx)
-                .await?;
+            sqlx::query(&sql).bind(&id_str).execute(&mut *tx).await?;
         }
         // Preserve lessons (they encode reusable insight) but sever the link
         // so the deleted task can't be re-derived from them.
@@ -350,6 +347,7 @@ mod lessons;
 mod patterns;
 mod quality;
 mod result_cache;
+mod schedules;
 mod stability;
 mod task_logs;
 mod verifier;
@@ -362,6 +360,7 @@ pub use lessons::LessonRow;
 pub use patterns::{jaccard_similarity, keyword_fingerprint, PatternRow};
 pub use quality::{QualityRunRecord, QualityRunRow};
 pub use result_cache::{compute_key as compute_cache_key, CacheStats, CachedResult};
+pub use schedules::{ScheduleInput, ScheduleRow, ScheduleRunRow};
 pub use stability::{StabilityEntry, StabilityRecord};
 pub use task_logs::{TaskLogRow, MAX_PER_TASK as TASK_LOG_MAX_PER_TASK};
 pub use verifier::VerifierVerdictRow;

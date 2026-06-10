@@ -54,9 +54,7 @@ pub fn plan_streaming(
         // env (ANTHROPIC_API_KEY, ANTHROPIC_BASE_URL, etc.) silently switch
         // the CLI from the user's subscription to API-key billing.
         crate::claude::scrub_inherited_anthropic_env(&mut cmd);
-        let mut child = cmd
-            .spawn()
-            .context("spawning claude for streaming plan")?;
+        let mut child = cmd.spawn().context("spawning claude for streaming plan")?;
 
         let stdout = child.stdout.take().context("claude stdout unavailable")?;
         let mut reader = tokio::io::BufReader::new(stdout).lines();

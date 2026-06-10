@@ -28,6 +28,12 @@ host = "127.0.0.1"
 # ── Scheduled tasks ───────────────────────────────────────────────────────────
 # Each [[schedules]] entry fires a task at a cron interval.
 # Run `lopi schedules list` to see next run times.
+#
+# On `lopi sail`, these entries are seeded (once, matched by name) into a
+# durable store and can then be managed live via the dashboard / REST API at
+# /api/schedules (create, edit, enable/disable, run-now, delete + run history).
+# Editing a seeded schedule in the UI takes precedence — the TOML entry is not
+# re-applied on the next restart.
 
 # [[schedules]]
 # name = "nightly-lint"
