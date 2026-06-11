@@ -133,10 +133,10 @@
             size={140}
           />
         {:else}
-          <!-- Empty slot placeholder: pulsing ring -->
+          <!-- Empty slot placeholder: pulsing ring (follows theme accent) -->
           <div
-            class="w-24 h-24 rounded-full border-2 border-konjo-ice/20 animate-pulse"
-            style="box-shadow: 0 0 20px rgba(0,212,255,0.1);"
+            class="w-24 h-24 rounded-full border-2 border-konjo-accent/20 animate-pulse"
+            style="box-shadow: 0 0 20px rgb(var(--konjo-accent-rgb) / 0.1);"
           ></div>
         {/if}
       </div>

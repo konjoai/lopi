@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy, tick } from 'svelte';
   import {
     listTasks,
     deleteTask,
@@ -25,6 +25,10 @@
   let selected: TaskRow | null = null;
   let selectedLogs: LogRow[] = [];
   let logsLoading = false;
+  let liveTail = false;
+  let logScrollEl: HTMLDivElement | null = null;
+  let eventSource: EventSource | null = null;
+  let liveSeq = 0; // synthetic ids for streamed lines (negative-keyed)
 
   // Quick-launch form
   let goal = '';
@@ -48,6 +52,56 @@
     }
   }
 
+  function closeStream() {
+    if (eventSource) {
+      eventSource.close();
+      eventSource = null;
+    }
+    liveTail = false;
+  }
+
+  /**
+   * Live tail via the per-task SSE stream. Appends `log_line` events to
+   * the drawer as the agent works. Non-UUID ids (mock mode) and transport
+   * errors degrade silently to the static snapshot.
+   */
+  function openStream(taskId: string) {
+    closeStream();
+    if (typeof EventSource === 'undefined') return;
+    try {
+      eventSource = new EventSource(`/api/tasks/${encodeURIComponent(taskId)}/stream`);
+    } catch {
+      return;
+    }
+    eventSource.onopen = () => (liveTail = true);
+    eventSource.onerror = () => closeStream();
+    eventSource.onmessage = (e) => {
+      let ev: unknown;
+      try {
+        ev = JSON.parse(e.data);
+      } catch {
+        return;
+      }
+      if (!ev || typeof ev !== 'object') return;
+      const msg = ev as { type?: string; ts?: string; level?: string; line?: string };
+      if (msg.type !== 'log_line') return;
+      liveSeq += 1;
+      selectedLogs = [
+        ...selectedLogs.slice(-499),
+        {
+          id: -liveSeq, // negative — never collides with SQLite row ids
+          task_id: taskId,
+          ts: msg.ts ?? new Date().toISOString(),
+          level: msg.level ?? 'info',
+          line: msg.line ?? ''
+        }
+      ];
+      tick().then(() => {
+        if (logScrollEl) logScrollEl.scrollTop = logScrollEl.scrollHeight;
+      });
+    };
+  }
+
   async function openDetail(t: TaskRow) {
     selected = t;
     logsLoading = true;
@@ -60,6 +114,13 @@
     } finally {
       logsLoading = false;
     }
+    if (isLive(t)) openStream(t.id);
+    else closeStream();
+  }
+
+  function closeDetail() {
+    selected = null;
+    closeStream();
   }
 
   async function launch() {
@@ -122,6 +183,8 @@
       if (refreshTimer) clearInterval(refreshTimer);
     };
   });
+
+  onDestroy(closeStream);
 </script>
 
 <svelte:head><title>lopi · tasks</title></svelte:head>
@@ -244,9 +307,15 @@
   {#if selected}
     <Panel title={selected.goal} subtitle="task {selected.id.slice(0, 8)} · log tail">
       <svelte:fragment slot="actions">
+        {#if liveTail}
+          <span class="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-widest text-konjo-jade">
+            <span class="w-1.5 h-1.5 rounded-full bg-konjo-jade animate-pulse"></span>
+            streaming
+          </span>
+        {/if}
         <button
           type="button"
-          on:click={() => (selected = null)}
+          on:click={closeDetail}
           class="w-5 h-5 flex items-center justify-center bg-white/10 hover:bg-white/25 text-white/60 hover:text-white rounded-full text-[10px] font-bold transition-colors"
           aria-label="Close detail"
         >
@@ -257,9 +326,15 @@
       {#if logsLoading}
         <EmptyState title="loading logs…" />
       {:else if selectedLogs.length === 0}
-        <EmptyState title="no logs recorded" detail="this task has no persisted output" />
+        <EmptyState
+          title={liveTail ? 'waiting for output…' : 'no logs recorded'}
+          detail={liveTail ? 'streaming live — lines appear as the agent works' : 'this task has no persisted output'}
+        />
       {:else}
-        <div class="bg-black/40 rounded p-3 max-h-80 overflow-y-auto font-mono text-[11px] space-y-0.5">
+        <div
+          bind:this={logScrollEl}
+          class="bg-black/40 rounded p-3 max-h-80 overflow-y-auto font-mono text-[11px] space-y-0.5"
+        >
           {#each selectedLogs as log (log.id)}
             <div class="flex gap-2">
               <span class="opacity-30 flex-shrink-0 tabular-nums">
