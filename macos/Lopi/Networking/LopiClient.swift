@@ -102,24 +102,24 @@ struct LopiClient {
 
     // MARK: Core request machinery
 
-    private func get<T: Decodable>(_ path: String) async throws -> T {
+    func get<T: Decodable>(_ path: String) async throws -> T {
         let data = try await perform("GET", path, body: Optional<Int>.none)
         return try decode(data)
     }
 
     @discardableResult
-    private func send<B: Encodable>(_ method: String, _ path: String, body: B?) async throws -> Data {
+    func send<B: Encodable>(_ method: String, _ path: String, body: B?) async throws -> Data {
         try await perform(method, path, body: body)
     }
 
-    private func sendDecoding<T: Decodable, B: Encodable>(
+    func sendDecoding<T: Decodable, B: Encodable>(
         _ method: String, _ path: String, body: B?
     ) async throws -> T {
         let data = try await perform(method, path, body: body)
         return try decode(data)
     }
 
-    private func perform<B: Encodable>(_ method: String, _ path: String, body: B?) async throws -> Data {
+    func perform<B: Encodable>(_ method: String, _ path: String, body: B?) async throws -> Data {
         guard let base = config.baseURL, let url = URL(string: path, relativeTo: base) else {
             throw LopiError.badURL
         }
@@ -164,7 +164,7 @@ struct LopiClient {
         throw LopiError.rateLimited
     }
 
-    private func decode<T: Decodable>(_ data: Data) throws -> T {
+    func decode<T: Decodable>(_ data: Data) throws -> T {
         do {
             return try decoder.decode(T.self, from: data)
         } catch {
@@ -172,7 +172,7 @@ struct LopiClient {
         }
     }
 
-    private func message(_ data: Data) -> String {
+    func message(_ data: Data) -> String {
         if let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
            let err = obj["error"] as? String {
             return err

@@ -65,13 +65,13 @@ struct RootView: View {
         case .dashboard: DashboardView()
         case .tasks: TasksView()
         case .cron: CronView()
-        case .constellations: PlaceholderView(section: .constellations, endpoint: "/api/constellations")
-        case .deadLetter: PlaceholderView(section: .deadLetter, endpoint: "/api/tasks/dead-letter")
-        case .tools: PlaceholderView(section: .tools, endpoint: "/api/tools")
-        case .health: PlaceholderView(section: .health, endpoint: "/api/agents/health/summary")
-        case .patterns: PlaceholderView(section: .patterns, endpoint: "/api/patterns")
-        case .audit: PlaceholderView(section: .audit, endpoint: "/api/audit")
-        case .config: PlaceholderView(section: .config, endpoint: "/api/config")
+        case .constellations: ConstellationsView()
+        case .deadLetter: DeadLetterView()
+        case .tools: ToolsView()
+        case .health: HealthView()
+        case .patterns: PatternsView()
+        case .audit: AuditView()
+        case .config: ConfigView()
         }
     }
 

@@ -22,7 +22,9 @@ final class AppModel {
     /// Non-fatal error banner text (auto-cleared by the UI).
     var banner: String?
 
-    @ObservationIgnored private var client: LopiClient
+    /// REST client — readable by the admin extension; reassigned only here
+    /// when the server config changes.
+    @ObservationIgnored private(set) var client: LopiClient
     @ObservationIgnored private let stream = EventStream()
 
     init(config: ServerConfig = .load()) {
@@ -180,7 +182,9 @@ final class AppModel {
         if recentLogs.count > 500 { recentLogs.removeFirst(recentLogs.count - 500) }
     }
 
-    private func report(_ error: Error) {
+    /// Surface a non-fatal error in the banner. Internal so the admin
+    /// extension can reuse the same reporting path.
+    func report(_ error: Error) {
         banner = (error as? LopiError)?.errorDescription ?? error.localizedDescription
     }
 }
