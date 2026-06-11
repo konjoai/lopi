@@ -20,6 +20,11 @@ struct TaskSummary: Codable, Identifiable, Hashable {
 }
 
 /// Fleet-wide stats from `GET /api/stats`.
+///
+/// Decoding is lenient: the live `/ws` `pool_stats` event and the snapshot's
+/// `stats` object carry only the five counter fields — the token/cost totals
+/// exist only in the REST response. Missing keys default to 0 so live frames
+/// decode instead of failing wholesale.
 struct PoolStats: Codable, Hashable {
     var running: Int = 0
     var queued: Int = 0
@@ -34,6 +39,19 @@ struct PoolStats: Codable, Hashable {
         case uptimeSecs = "uptime_secs"
         case totalTokensToday = "total_tokens_today"
         case totalCostUsdToday = "total_cost_usd_today"
+    }
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        running = try c.decodeIfPresent(Int.self, forKey: .running) ?? 0
+        queued = try c.decodeIfPresent(Int.self, forKey: .queued) ?? 0
+        succeeded = try c.decodeIfPresent(Int.self, forKey: .succeeded) ?? 0
+        failed = try c.decodeIfPresent(Int.self, forKey: .failed) ?? 0
+        uptimeSecs = try c.decodeIfPresent(Int.self, forKey: .uptimeSecs) ?? 0
+        totalTokensToday = try c.decodeIfPresent(Int.self, forKey: .totalTokensToday) ?? 0
+        totalCostUsdToday = try c.decodeIfPresent(Double.self, forKey: .totalCostUsdToday) ?? 0
     }
 }
 

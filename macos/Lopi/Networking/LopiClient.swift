@@ -29,6 +29,13 @@ struct LopiClient {
     private let decoder: JSONDecoder = JSONDecoder()
     private let encoder: JSONEncoder = JSONEncoder()
 
+    // Explicit init: the synthesized memberwise init inherits `private` from
+    // the private stored properties above, which would make `LopiClient(config:)`
+    // invisible outside this file.
+    init(config: ServerConfig) {
+        self.config = config
+    }
+
     // MARK: Typed endpoints
 
     func version() async throws -> ServerVersion {
