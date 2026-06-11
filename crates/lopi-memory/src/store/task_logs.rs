@@ -267,9 +267,18 @@ mod tests {
     async fn recent_spans_all_tasks_oldest_first() {
         let store = MemoryStore::open_in_memory().await.unwrap();
         let now = Utc::now();
-        store.record_task_log("t-a", now, "info", "a1").await.unwrap();
-        store.record_task_log("t-b", now, "warn", "b1").await.unwrap();
-        store.record_task_log("t-a", now, "info", "a2").await.unwrap();
+        store
+            .record_task_log("t-a", now, "info", "a1")
+            .await
+            .unwrap();
+        store
+            .record_task_log("t-b", now, "warn", "b1")
+            .await
+            .unwrap();
+        store
+            .record_task_log("t-a", now, "info", "a2")
+            .await
+            .unwrap();
         let rows = store.load_recent_task_logs(10).await.unwrap();
         assert_eq!(rows.len(), 3);
         assert_eq!(rows[0].line, "a1");
