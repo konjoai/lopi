@@ -9,7 +9,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
-    "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch"
+    "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+    "test": "tsx src/lib/parser.test.ts && tsx src/lib/forge/connections.test.ts && tsx src/lib/forge/excitement.test.ts && tsx src/lib/api.test.ts && tsx src/lib/components/ui/badges.test.ts"
   },
   "dependencies": {
     "three": "^0.160.0"
@@ -25,6 +26,7 @@
     "svelte-check": "^3.6.0",
     "tailwindcss": "^3.4.0",
     "tslib": "^2.6.0",
+    "tsx": "^4.22.4",
     "typescript": "^5.3.0",
     "vite": "^5.0.0"
   }

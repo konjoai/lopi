@@ -8,6 +8,8 @@
 //!   same loss for global subscribers).
 //! - `GET /api/tasks/:id/logs?n=N`  — historical tail from the
 //!   `task_logs` ring buffer, oldest-first, clamped to N ≤ 5000.
+//! - `GET /api/logs?n=N`            — global tail across all tasks,
+//!   oldest-first, same clamp. Backs the dashboard Logs tab.
 
 use super::AppState;
 use axum::{
@@ -89,6 +91,40 @@ pub(super) async fn get_logs(
         }
         Err(e) => {
             tracing::warn!("load_task_logs failed: {e}");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": format!("{e:#}")})),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// `GET /api/logs?n=N` — global historical tail across all tasks,
+/// oldest first.
+pub(super) async fn get_recent_logs(
+    State(s): State<AppState>,
+    Query(params): Query<LogsParams>,
+) -> impl IntoResponse {
+    let n = params.n.unwrap_or(200);
+    match s.store.load_recent_task_logs(n).await {
+        Ok(rows) => {
+            let body: Vec<Value> = rows
+                .into_iter()
+                .map(|r| {
+                    json!({
+                        "id":      r.id,
+                        "task_id": r.task_id,
+                        "ts":      r.ts,
+                        "level":   r.level,
+                        "line":    r.line,
+                    })
+                })
+                .collect();
+            (StatusCode::OK, Json(json!({ "logs": body }))).into_response()
+        }
+        Err(e) => {
+            tracing::warn!("load_recent_task_logs failed: {e}");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({"error": format!("{e:#}")})),

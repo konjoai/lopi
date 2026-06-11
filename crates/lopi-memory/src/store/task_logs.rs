@@ -87,6 +87,31 @@ impl MemoryStore {
         Ok(out)
     }
 
+    /// Read the most-recent `limit` log lines across *all* tasks, oldest
+    /// first. Powers the global Logs tab in the web dashboard.
+    ///
+    /// Returns at most `limit` rows, clamped internally to `[1, 5000]` so
+    /// a runaway request cannot exhaust the read pool.
+    ///
+    /// # Errors
+    /// Returns `Err` if the SQLite query fails.
+    pub async fn load_recent_task_logs(&self, limit: i64) -> Result<Vec<TaskLogRow>> {
+        let limit = limit.clamp(1, 5_000);
+        let rows = sqlx::query(
+            "SELECT id, task_id, ts, level, line
+             FROM task_logs
+             ORDER BY id DESC
+             LIMIT ?",
+        )
+        .bind(limit)
+        .fetch_all(&self.read_pool)
+        .await
+        .context("loading recent task_logs")?;
+        let mut out: Vec<TaskLogRow> = rows.into_iter().map(row_to_log).collect();
+        out.reverse();
+        Ok(out)
+    }
+
     /// Keep only the most-recent `MAX_PER_TASK` rows for `task_id`.
     /// Idempotent and cheap — called from the broadcast bridge after
     /// every insert for the affected task.
@@ -236,6 +261,43 @@ mod tests {
         assert_eq!(deleted, 0);
         let rows = store.load_task_logs(tid, 10).await.unwrap();
         assert_eq!(rows.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn recent_spans_all_tasks_oldest_first() {
+        let store = MemoryStore::open_in_memory().await.unwrap();
+        let now = Utc::now();
+        store.record_task_log("t-a", now, "info", "a1").await.unwrap();
+        store.record_task_log("t-b", now, "warn", "b1").await.unwrap();
+        store.record_task_log("t-a", now, "info", "a2").await.unwrap();
+        let rows = store.load_recent_task_logs(10).await.unwrap();
+        assert_eq!(rows.len(), 3);
+        assert_eq!(rows[0].line, "a1");
+        assert_eq!(rows[1].task_id, "t-b");
+        assert_eq!(rows[2].line, "a2");
+    }
+
+    #[tokio::test]
+    async fn recent_respects_limit_returning_newest_window() {
+        let store = MemoryStore::open_in_memory().await.unwrap();
+        let now = Utc::now();
+        for i in 0..8 {
+            store
+                .record_task_log("t-x", now, "info", &format!("line {i}"))
+                .await
+                .unwrap();
+        }
+        let rows = store.load_recent_task_logs(3).await.unwrap();
+        assert_eq!(rows.len(), 3);
+        assert_eq!(rows[0].line, "line 5");
+        assert_eq!(rows[2].line, "line 7");
+    }
+
+    #[tokio::test]
+    async fn recent_on_empty_store_returns_empty() {
+        let store = MemoryStore::open_in_memory().await.unwrap();
+        let rows = store.load_recent_task_logs(10).await.unwrap();
+        assert!(rows.is_empty());
     }
 
     #[tokio::test]

@@ -33,6 +33,12 @@
     connectionsFor,
     type Connection
   } from '$lib/forge/connections';
+  import {
+    exciteLevel,
+    smoothstep01,
+    shakeAmplitude,
+    spinMultiplier
+  } from '$lib/forge/excitement';
 
   // ── Tooltip state (rendered outside the canvas as DOM) ────────────────────
   export let onSelect: (id: string) => void = () => {};
@@ -64,6 +70,8 @@
     trail: THREE.Line;
     trailPositions: Float32Array;
     trailLen: number;
+    /** Last stimulus timestamp (ms) — drives the ember flash + spin-up. */
+    stimulus: number;
   }
   const bodies = new Map<string, Body>();
 
@@ -123,6 +131,7 @@
     uniform vec3 uPhaseColor;
     uniform vec3 uCameraPosition;
     uniform float uActive;       // 0 (dim) or 1 (focused)
+    uniform float uExcite;       // 0..1 — incoming-request flash
 
     void main() {
       vec3 viewDir = normalize(uCameraPosition - vWorldPos);
@@ -140,6 +149,11 @@
 
       // Active body brighter
       color *= mix(0.85, 1.6, uActive);
+
+      // Excitement — incoming request flashes the body ember orange.
+      vec3 EXCITE_ORANGE = vec3(1.0, 0.45, 0.05);
+      color = mix(color, EXCITE_ORANGE * (1.2 + fresnel * 1.4), uExcite * 0.7);
+      color *= 1.0 + uExcite * 0.5;
 
       // Soft tone-map
       color = color / (1.0 + color * 0.5);
@@ -195,7 +209,8 @@
         uActivity: { value: agent.activity },
         uPhaseColor: { value: hexToVec3(phaseColor) },
         uCameraPosition: { value: camera.position.clone() },
-        uActive: { value: agent.id === $activeAgentId ? 1.0 : 0.0 }
+        uActive: { value: agent.id === $activeAgentId ? 1.0 : 0.0 },
+        uExcite: { value: 0 }
       }
     });
 
@@ -236,7 +251,8 @@
       orbitTilt,
       trail,
       trailPositions,
-      trailLen: 0
+      trailLen: 0,
+      stimulus: agent.stimulus
     });
   }
 
@@ -244,6 +260,7 @@
   function updateBody(body: Body, agent: AgentState) {
     body.material.uniforms.uPressure.value = agent.pressure;
     body.material.uniforms.uActivity.value = agent.activity;
+    body.stimulus = agent.stimulus;
     const phaseColor = PHASE_COLORS[agent.phase] ?? PHASE_COLORS.Boot;
     body.material.uniforms.uPhaseColor.value = hexToVec3(phaseColor);
     body.material.uniforms.uActive.value = agent.id === $activeAgentId ? 1.0 : 0.0;
@@ -484,8 +501,22 @@
       body.material.uniforms.uTime.value = t;
       body.material.uniforms.uCameraPosition.value = camera.position.clone();
 
-      // Self-rotation
-      body.mesh.rotation.y += 0.01;
+      // Excitement envelope from the stimulus timestamp: 1 at impact,
+      // decaying to 0 over 2.5s. Drives the ember flash, a quick shake,
+      // and a spin-up that settles back to the ambient drift.
+      const excite = exciteLevel(body.stimulus, Date.now());
+      body.material.uniforms.uExcite.value = smoothstep01(excite);
+
+      // Self-rotation — up to ~8× faster while excited
+      body.mesh.rotation.y += 0.01 * spinMultiplier(excite, 7);
+
+      // Shake: front-loaded positional rattle on impact
+      const shake = shakeAmplitude(excite, 0.08);
+      if (shake > 0.001) {
+        body.mesh.position.x += (Math.random() - 0.5) * shake;
+        body.mesh.position.y += (Math.random() - 0.5) * shake;
+        body.mesh.position.z += (Math.random() - 0.5) * shake;
+      }
 
       // Trail update — shift positions left, append current
       const positions = body.trailPositions;

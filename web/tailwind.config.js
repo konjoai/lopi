@@ -16,7 +16,8 @@ export default {
           sun: '#ffcc00',
           rose: '#ff0066',
           mist: 'rgba(255,255,255,0.04)',
-          veil: 'rgba(255,255,255,0.08)'
+          veil: 'rgba(255,255,255,0.08)',
+          accent: 'rgb(var(--konjo-accent-rgb) / <alpha-value>)'
         }
       },
       fontFamily: {
