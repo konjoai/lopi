@@ -14,6 +14,25 @@
   --konjo-sun: #ffcc00;
   --konjo-rose: #ff0066;
 
+  /* Accent — themeable highlight used by navigation + interactive chrome.
+     Defaults to ice; [data-theme] variants below remap it (Konjo theme
+     switcher in the Config tab). RGB triplet feeds Tailwind alpha values. */
+  --konjo-accent: #00d4ff;
+  --konjo-accent-rgb: 0 212 255;
+}
+
+/* Theme variants — accent recolor only; the void stays black. */
+[data-theme='ember'] {
+  --konjo-accent: #ff9500;
+  --konjo-accent-rgb: 255 149 0;
+}
+[data-theme='jade'] {
+  --konjo-accent: #00ff9d;
+  --konjo-accent-rgb: 0 255 157;
+}
+
+:root {
+
   --phase-boot: var(--konjo-paper);
   --phase-discovery: var(--konjo-ice);
   --phase-planning: #00ffd4;

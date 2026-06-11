@@ -610,6 +610,70 @@
         assert_eq!(logs[2]["line"], "line 2");
     }
 
+    /// `GET /api/logs` on a fresh store returns 200 with an empty array.
+    #[tokio::test]
+    async fn global_logs_empty_store_returns_empty_array() {
+        let app = test_app().await;
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/logs")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(json["logs"].as_array().unwrap().len(), 0);
+    }
+
+    /// Seed rows across two tasks, then read the global tail and verify
+    /// it interleaves tasks oldest-first with the wire shape intact.
+    #[tokio::test]
+    async fn global_logs_returns_rows_across_tasks_oldest_first() {
+        let store = lopi_memory::MemoryStore::open_in_memory().await.unwrap();
+        let bus: EventBus<AgentEvent> = EventBus::new(16);
+        let queue = TaskQueue::new();
+        let pool = Arc::new(AgentPool::new(
+            1,
+            std::path::PathBuf::from("."),
+            queue.clone(),
+            bus.clone(),
+        ));
+        let state = AppState::new(store.clone(), bus, queue, pool, None);
+        let app = build_app(state);
+
+        let now = chrono::Utc::now();
+        store.record_task_log("t-a", now, "info", "a1").await.unwrap();
+        store.record_task_log("t-b", now, "error", "b1").await.unwrap();
+        store.record_task_log("t-a", now, "info", "a2").await.unwrap();
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/api/logs?n=2")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        let logs = json["logs"].as_array().unwrap();
+        // n=2 → newest window (b1, a2) in chronological order.
+        assert_eq!(logs.len(), 2);
+        assert_eq!(logs[0]["task_id"], "t-b");
+        assert_eq!(logs[0]["level"], "error");
+        assert_eq!(logs[1]["line"], "a2");
+    }
+
     // ─── F3 — per-agent rate limiting ────────────────────────────────
 
     /// Posting a rate limit with `max_per_minute: 0` returns 422.

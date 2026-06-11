@@ -268,6 +268,7 @@ pub fn build_app(state: AppState) -> Router {
             get(task_stream_handlers::stream_task),
         )
         .route("/api/tasks/:id/logs", get(task_stream_handlers::get_logs))
+        .route("/api/logs", get(task_stream_handlers::get_recent_logs))
         .route(
             "/api/agents/:id/rate-limit",
             get(agent_rate_handlers::get_rate_limit)

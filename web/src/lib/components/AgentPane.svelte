@@ -1,6 +1,6 @@
 <script lang="ts">
   import Forge from '$lib/forge/Forge.svelte';
-  import { logs, postTask, cancelTask, permissionWaiting, PHASE_COLORS, type AgentState } from '$lib/stores/agents';
+  import { logs, postTask, cancelTask, stimulate, permissionWaiting, PHASE_COLORS, type AgentState } from '$lib/stores/agents';
 
   export let agent: AgentState | null = null;
   export let slotIndex: number = 0;
@@ -20,6 +20,9 @@
     if (isSubmitting) return;
     isSubmitting = true;
     submitError = '';
+    // React immediately — the orb shakes + glows orange the moment the
+    // request leaves the pane, not after the server acknowledges it.
+    if (agent) stimulate(agent.id);
     try {
       // Empty pane: use empty repo string; existing agent: use agent.repo
       const repo = agent?.repo ?? '';
@@ -42,6 +45,7 @@
     if (!agent || isSubmitting) return;
     isSubmitting = true;
     submitError = '';
+    stimulate(agent.id);
     try {
       await postTask(agent.goal, agent.repo, 'normal');
     } catch (err) {
@@ -124,6 +128,8 @@
             phaseColor={phaseColor}
             activity={agent.activity}
             health={agent.health}
+            stimulus={agent.stimulus}
+            stimulusKind={agent.stimulusKind}
             size={140}
           />
         {:else}

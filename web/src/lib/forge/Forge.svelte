@@ -17,6 +17,15 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import * as THREE from 'three';
+  import {
+    EXCITE_DURATION_MS,
+    smoothstep01,
+    shakeAmplitude,
+    spinMultiplier,
+    exciteColor,
+    shakes,
+    type StimulusKind
+  } from './excitement';
 
   // ── Public props ────────────────────────────────────────────────────────────
   export let pressure: number = 0.4;          // 0..1 — context fill
@@ -24,6 +33,14 @@
   export let activity: number = 0.5;          // 0..1 — generation intensity
   export let health: number = 0.85;           // 0..1 — recent success rate
   export let size: number = 320;              // px
+  /**
+   * Stimulus timestamp (ms). Bump to a newer value whenever the agent
+   * receives a request — the orb reacts: a quick shake, then faster spin
+   * and an orange ember glow that decays back to calm over ~2.5s.
+   */
+  export let stimulus: number = 0;
+  /** What kind of stimulus — picks the reaction color + whether to shake. */
+  export let stimulusKind: StimulusKind = 'request';
 
   // ── Internal state ──────────────────────────────────────────────────────────
   let container: HTMLDivElement;
@@ -34,6 +51,26 @@
   let material: THREE.ShaderMaterial;
   let frameId: number | null = null;
   let lastTime = 0;
+
+  // Excitement envelope (0..1) — set to 1 on stimulus, decays in animate().
+  let excite = 0;
+  let lastStimulus = 0;
+
+  /** Kick the excitement envelope — also callable directly by parents. */
+  export function excited() {
+    excite = 1;
+  }
+
+  $: if (stimulus > lastStimulus) {
+    lastStimulus = stimulus;
+    excite = 1;
+  }
+
+  // Reaction color follows the stimulus kind.
+  $: if (material && stimulusKind) {
+    const [r, g, b] = exciteColor(stimulusKind);
+    (material.uniforms.uExciteColor.value as THREE.Vector3).set(r, g, b);
+  }
 
   // ── Vertex shader ───────────────────────────────────────────────────────────
   // Displaces sphere vertices outward by a noise field; intensity scales with
@@ -132,6 +169,8 @@
     uniform float uPressure;
     uniform float uActivity;
     uniform float uHealth;
+    uniform float uExcite;
+    uniform vec3 uExciteColor;
     uniform vec3 uPhaseColor;
     uniform vec3 uCameraPosition;
 
@@ -225,6 +264,17 @@
       float pulse = 1.0 + sin(uTime * (1.5 + uActivity * 2.5)) * 0.06 * uActivity;
       color *= pulse;
 
+      // Excitement — the orb runs hot on a stimulus. Blend the surface
+      // toward the reaction color (ember on request, jade on success,
+      // rose on failure) with the noise field driving molten streaks,
+      // plus a bright rim flare in a lightened tint.
+      vec3 flareTint = mix(uExciteColor, vec3(1.0), 0.3);
+      float emberMix = uExcite * (0.45 + 0.25 * smoothstep(0.1, 0.8, n1 + 0.5));
+      color = mix(color, uExciteColor * (1.2 + n2 * 0.4), emberMix);
+      color += flareTint * fresnel * uExcite * 1.6;
+      // Heat-up brightness: excited orbs burn brighter overall.
+      color *= 1.0 + uExcite * 0.45;
+
       // Health → overall warmth multiplier (low health = dimmer)
       color *= mix(0.55, 1.0, uHealth);
 
@@ -271,6 +321,8 @@
         uPressure: { value: pressure },
         uActivity: { value: activity },
         uHealth: { value: health },
+        uExcite: { value: 0 },
+        uExciteColor: { value: new THREE.Vector3(1.0, 0.45, 0.05) },
         uPhaseColor: { value: hexToVec3(phaseColor) },
         uCameraPosition: { value: camera.position.clone() }
       },
@@ -300,9 +352,30 @@
       material.uniforms.uActivity.value += (activity - material.uniforms.uActivity.value) * 0.05;
       material.uniforms.uHealth.value += (health - material.uniforms.uHealth.value) * 0.05;
 
-      // Slow rotation for life
-      mesh.rotation.y += 0.002;
-      mesh.rotation.x += 0.0008;
+      // Excitement envelope — decays back to calm over ~2.5s. The shader
+      // sees a softened copy so the orange glow ramps in/out smoothly.
+      excite = Math.max(0, excite - (dt * 1000) / EXCITE_DURATION_MS);
+      const eased = smoothstep01(excite);
+      material.uniforms.uExcite.value +=
+        (eased - material.uniforms.uExcite.value) * Math.min(1, dt * 10);
+
+      // Rotation: calm drift normally, spinning up hard while excited.
+      const spin = spinMultiplier(excite, 9);
+      mesh.rotation.y += 0.002 * spin;
+      mesh.rotation.x += 0.0008 * spin;
+
+      // Shake: front-loaded jitter (excite^3) — a sharp rattle on impact
+      // that settles before the glow fades. Success blooms without one.
+      const shake = shakes(stimulusKind) ? shakeAmplitude(excite, 0.07) : 0;
+      if (shake > 0.0005) {
+        mesh.position.set(
+          (Math.random() - 0.5) * shake,
+          (Math.random() - 0.5) * shake,
+          (Math.random() - 0.5) * shake
+        );
+      } else if (mesh.position.lengthSq() > 0) {
+        mesh.position.set(0, 0, 0);
+      }
     }
 
     if (renderer && scene && camera) {
@@ -342,9 +415,3 @@
   style="width: {size}px; height: {size}px;"
   aria-label="The Forge — live agent cognition visualization"
 ></div>
-
-<style>
-  .forge-container {
-    /* Clean edges without glow effect */
-  }
-</style>
