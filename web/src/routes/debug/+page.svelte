@@ -7,21 +7,25 @@
     clearCache,
     queryAudit,
     listPatterns,
+    qualityTrend,
     rawGet,
     type PoolStatsResponse,
     type HealthSummary,
     type AuditEvent,
-    type PatternRow
+    type PatternRow,
+    type QualityRun
   } from '$lib/api';
   import Panel from '$lib/components/ui/Panel.svelte';
   import StatCard from '$lib/components/ui/StatCard.svelte';
   import EmptyState from '$lib/components/ui/EmptyState.svelte';
+  import Sparkline from '$lib/components/ui/Sparkline.svelte';
 
   let stats: PoolStatsResponse | null = null;
   let health: HealthSummary | null = null;
   let cache: Record<string, unknown> | null = null;
   let audit: AuditEvent[] = [];
   let patterns: PatternRow[] = [];
+  let quality: QualityRun[] = [];
   let loadError = '';
   let loading = true;
   let cacheFlash = '';
@@ -55,14 +59,16 @@
       healthSummary(),
       cacheStats(),
       queryAudit(50),
-      listPatterns()
+      listPatterns(),
+      qualityTrend(30)
     ]);
-    const [s, h, c, a, p] = results;
+    const [s, h, c, a, p, q] = results;
     if (s.status === 'fulfilled') stats = s.value;
     if (h.status === 'fulfilled') health = h.value;
     if (c.status === 'fulfilled') cache = c.value;
     if (a.status === 'fulfilled') audit = a.value.events.slice().reverse();
     if (p.status === 'fulfilled') patterns = p.value.patterns;
+    if (q.status === 'fulfilled') quality = q.value.runs.slice().reverse();
     loadError =
       results.every((r) => r.status === 'rejected') && results[0].status === 'rejected'
         ? results[0].reason instanceof Error
@@ -184,6 +190,56 @@
         </div>
       {:else}
         <EmptyState title="cache stats unavailable" />
+      {/if}
+    </Panel>
+
+    <!-- Quality trend -->
+    <Panel title="Quality Trend" subtitle="spec-surface check runs · last {quality.length}">
+      {#if quality.length === 0}
+        <EmptyState title="no quality runs yet" detail="run the quality gates to chart the trend" />
+      {:else}
+        {@const latest = quality[quality.length - 1]}
+        <div class="flex flex-wrap items-center gap-8">
+          <Sparkline
+            values={quality.map((r) => r.score)}
+            color={latest.score >= 0.8
+              ? 'var(--konjo-jade)'
+              : latest.score >= 0.5
+                ? 'var(--konjo-sun)'
+                : 'var(--konjo-rose)'}
+          />
+          <div class="flex gap-6 font-mono text-sm">
+            <div>
+              <span class="opacity-40 text-[10px] uppercase tracking-widest block">score</span>
+              <span
+                class="font-display text-xl font-bold tabular-nums"
+                style:color={latest.score >= 0.8
+                  ? 'var(--konjo-jade)'
+                  : latest.score >= 0.5
+                    ? 'var(--konjo-sun)'
+                    : 'var(--konjo-rose)'}
+              >
+                {Math.round(latest.score * 100)}%
+              </span>
+            </div>
+            <div>
+              <span class="opacity-40 text-[10px] uppercase tracking-widest block">passing</span>
+              <span class="tabular-nums" style:color="var(--konjo-jade)">{latest.passing}</span>
+            </div>
+            <div>
+              <span class="opacity-40 text-[10px] uppercase tracking-widest block">failing</span>
+              <span class="tabular-nums" style:color="var(--konjo-rose)">{latest.failing}</span>
+            </div>
+            <div>
+              <span class="opacity-40 text-[10px] uppercase tracking-widest block">gaps</span>
+              <span class="tabular-nums" style:color="var(--konjo-sun)">{latest.gaps}</span>
+            </div>
+            <div>
+              <span class="opacity-40 text-[10px] uppercase tracking-widest block">spec items</span>
+              <span class="tabular-nums">{latest.spec_items}</span>
+            </div>
+          </div>
+        </div>
       {/if}
     </Panel>
 
