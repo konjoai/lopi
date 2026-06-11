@@ -7,7 +7,9 @@ import {
   smoothstep01,
   exciteLevel,
   shakeAmplitude,
-  spinMultiplier
+  spinMultiplier,
+  exciteColor,
+  shakes
 } from './excitement';
 
 let pass = 0;
@@ -64,6 +66,14 @@ eq(spinMultiplier(0, 9), 1, 'calm spin is baseline');
 close(spinMultiplier(1, 9), 10, 'full excitement spins 10×');
 const midSpin = spinMultiplier(0.5, 9);
 eq(midSpin > 1 && midSpin < 10, true, 'mid excitement spins between bounds');
+
+// ── exciteColor + shakes ──────────────────────────────────────────────────────
+eq(exciteColor('request').join(','), '1,0.45,0.05', 'request flashes ember orange');
+eq(exciteColor('success').join(','), '0,1,0.62', 'success blooms jade');
+eq(exciteColor('failure').join(','), '1,0,0.4', 'failure flares rose');
+eq(shakes('request'), true, 'request shakes');
+eq(shakes('failure'), true, 'failure shakes');
+eq(shakes('success'), false, 'success does not shake');
 
 console.log(`\n── Result: ${pass} passed, ${fail} failed ──`);
 if (fail > 0) process.exit(1);

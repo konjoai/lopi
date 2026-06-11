@@ -228,5 +228,23 @@ export interface QualityRun {
 export const qualityTrend = (limit = 20) =>
   request<{ repo: string; runs: QualityRun[] }>(`/api/quality/trend?limit=${limit}`);
 
+// ── Tools (durable tool registry) ─────────────────────────────────────────────
+export interface ToolSpec {
+  name: string;
+  description: string;
+  parameters: unknown;
+  timeout_ms: number;
+  retries: number;
+  updated_at?: string;
+}
+
+export const listTools = () => request<{ tools: ToolSpec[] }>('/api/tools');
+export const registerTool = (spec: Omit<ToolSpec, 'updated_at'>) =>
+  request<{ registered: string }>('/api/tools', json('POST', spec));
+export const deleteTool = (name: string) =>
+  request<{ deregistered: string }>(`/api/tools/${encodeURIComponent(name)}`, {
+    method: 'DELETE'
+  });
+
 /** Free-form GET for the Debug tab's API console. Returns raw parsed JSON. */
 export const rawGet = (path: string) => request<unknown>(path);

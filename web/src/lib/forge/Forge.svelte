@@ -21,7 +21,10 @@
     EXCITE_DURATION_MS,
     smoothstep01,
     shakeAmplitude,
-    spinMultiplier
+    spinMultiplier,
+    exciteColor,
+    shakes,
+    type StimulusKind
   } from './excitement';
 
   // ── Public props ────────────────────────────────────────────────────────────
@@ -36,6 +39,8 @@
    * and an orange ember glow that decays back to calm over ~2.5s.
    */
   export let stimulus: number = 0;
+  /** What kind of stimulus — picks the reaction color + whether to shake. */
+  export let stimulusKind: StimulusKind = 'request';
 
   // ── Internal state ──────────────────────────────────────────────────────────
   let container: HTMLDivElement;
@@ -59,6 +64,12 @@
   $: if (stimulus > lastStimulus) {
     lastStimulus = stimulus;
     excite = 1;
+  }
+
+  // Reaction color follows the stimulus kind.
+  $: if (material && stimulusKind) {
+    const [r, g, b] = exciteColor(stimulusKind);
+    (material.uniforms.uExciteColor.value as THREE.Vector3).set(r, g, b);
   }
 
   // ── Vertex shader ───────────────────────────────────────────────────────────
@@ -159,6 +170,7 @@
     uniform float uActivity;
     uniform float uHealth;
     uniform float uExcite;
+    uniform vec3 uExciteColor;
     uniform vec3 uPhaseColor;
     uniform vec3 uCameraPosition;
 
@@ -252,14 +264,14 @@
       float pulse = 1.0 + sin(uTime * (1.5 + uActivity * 2.5)) * 0.06 * uActivity;
       color *= pulse;
 
-      // Excitement — incoming request: the orb runs hot. Blend the whole
-      // surface toward ember orange, with the noise field driving molten
-      // streaks, plus a bright orange rim flare.
-      vec3 EXCITE_ORANGE = vec3(1.0, 0.45, 0.05);   // ember core
-      vec3 EXCITE_FLARE  = vec3(1.0, 0.62, 0.15);   // rim flare
+      // Excitement — the orb runs hot on a stimulus. Blend the surface
+      // toward the reaction color (ember on request, jade on success,
+      // rose on failure) with the noise field driving molten streaks,
+      // plus a bright rim flare in a lightened tint.
+      vec3 flareTint = mix(uExciteColor, vec3(1.0), 0.3);
       float emberMix = uExcite * (0.45 + 0.25 * smoothstep(0.1, 0.8, n1 + 0.5));
-      color = mix(color, EXCITE_ORANGE * (1.2 + n2 * 0.4), emberMix);
-      color += EXCITE_FLARE * fresnel * uExcite * 1.6;
+      color = mix(color, uExciteColor * (1.2 + n2 * 0.4), emberMix);
+      color += flareTint * fresnel * uExcite * 1.6;
       // Heat-up brightness: excited orbs burn brighter overall.
       color *= 1.0 + uExcite * 0.45;
 
@@ -310,6 +322,7 @@
         uActivity: { value: activity },
         uHealth: { value: health },
         uExcite: { value: 0 },
+        uExciteColor: { value: new THREE.Vector3(1.0, 0.45, 0.05) },
         uPhaseColor: { value: hexToVec3(phaseColor) },
         uCameraPosition: { value: camera.position.clone() }
       },
@@ -352,8 +365,8 @@
       mesh.rotation.x += 0.0008 * spin;
 
       // Shake: front-loaded jitter (excite^3) — a sharp rattle on impact
-      // that settles before the glow fades.
-      const shake = shakeAmplitude(excite, 0.07);
+      // that settles before the glow fades. Success blooms without one.
+      const shake = shakes(stimulusKind) ? shakeAmplitude(excite, 0.07) : 0;
       if (shake > 0.0005) {
         mesh.position.set(
           (Math.random() - 0.5) * shake,

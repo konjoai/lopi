@@ -18,6 +18,7 @@ import {
   isTerminalStatus
 } from '$lib/parser';
 import { connect, setMessageHandler, initMock, getConnectionState } from './wsClient';
+import type { StimulusKind } from '$lib/forge/excitement';
 import type {
   AgentEvent,
   Phase,
@@ -63,6 +64,11 @@ export interface AgentState {
    * drives the Forge orb's react animation (shake → fast spin → orange glow).
    */
   stimulus: number;
+  /**
+   * What excited the orb last: 'request' (ember orange), 'success'
+   * (jade bloom) or 'failure' (rose flare).
+   */
+  stimulusKind: StimulusKind;
 }
 
 export interface LogEntry {
@@ -178,7 +184,8 @@ function reduce(map: Map<string, AgentState>, ev: AgentEvent): Map<string, Agent
         activity: 0.0,
         health: 0.85,
         cost: 0,
-        stimulus: Date.now()
+        stimulus: Date.now(),
+        stimulusKind: 'request'
       });
       break;
     }
@@ -192,7 +199,8 @@ function reduce(map: Map<string, AgentState>, ev: AgentEvent): Map<string, Agent
         repo: ev.repo ?? cur?.repo ?? '',
         startedAt: cur?.startedAt ?? Date.now(),
         phase: cur?.phase ?? 'Boot',
-        stimulus: Date.now()
+        stimulus: Date.now(),
+        stimulusKind: 'request'
       });
       break;
     }
@@ -250,7 +258,10 @@ function reduce(map: Map<string, AgentState>, ev: AgentEvent): Map<string, Agent
         taskStatus: ev.outcome,
         phase: 'Conclusion',
         activity: 0.0,
-        attempt: ev.total_attempts
+        attempt: ev.total_attempts,
+        // Terminal flash: jade bloom on success, rose flare on failure.
+        stimulus: Date.now(),
+        stimulusKind: failed ? 'failure' : 'success'
       });
       break;
     }
@@ -296,7 +307,8 @@ function makeBlank(id: string): AgentState {
     activity: 0,
     health: 0.85,
     cost: 0,
-    stimulus: 0
+    stimulus: 0,
+    stimulusKind: 'request'
   };
 }
 
@@ -424,12 +436,12 @@ export function selectAgent(id: string) {
  * (shake, spin-up, orange glow). Called optimistically on user submission
  * so the orb responds before the server round-trip completes.
  */
-export function stimulate(id: string) {
+export function stimulate(id: string, kind: StimulusKind = 'request') {
   agents.update((m) => {
     const cur = m.get(id);
     if (!cur) return m;
     const next = new Map(m);
-    next.set(id, { ...cur, stimulus: Date.now() });
+    next.set(id, { ...cur, stimulus: Date.now(), stimulusKind: kind });
     return next;
   });
 }

@@ -129,6 +129,7 @@
             activity={agent.activity}
             health={agent.health}
             stimulus={agent.stimulus}
+            stimulusKind={agent.stimulusKind}
             size={140}
           />
         {:else}

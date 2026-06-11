@@ -32,6 +32,7 @@
     { href: '/constellation', label: 'Constellation' },
     { href: '/tasks', label: 'Tasks' },
     { href: '/schedules', label: 'Schedules' },
+    { href: '/tools', label: 'Tools' },
     { href: '/logs', label: 'Logs' },
     { href: '/config', label: 'Config' },
     { href: '/debug', label: 'Debug' }

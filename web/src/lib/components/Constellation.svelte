@@ -37,7 +37,10 @@
     exciteLevel,
     smoothstep01,
     shakeAmplitude,
-    spinMultiplier
+    spinMultiplier,
+    exciteColor,
+    shakes,
+    type StimulusKind
   } from '$lib/forge/excitement';
 
   // ── Tooltip state (rendered outside the canvas as DOM) ────────────────────
@@ -72,6 +75,8 @@
     trailLen: number;
     /** Last stimulus timestamp (ms) — drives the ember flash + spin-up. */
     stimulus: number;
+    /** Last stimulus kind — picks the flash color + whether to shake. */
+    stimulusKind: StimulusKind;
   }
   const bodies = new Map<string, Body>();
 
@@ -131,7 +136,8 @@
     uniform vec3 uPhaseColor;
     uniform vec3 uCameraPosition;
     uniform float uActive;       // 0 (dim) or 1 (focused)
-    uniform float uExcite;       // 0..1 — incoming-request flash
+    uniform float uExcite;       // 0..1 — stimulus flash envelope
+    uniform vec3 uExciteColor;   // reaction color for the flash
 
     void main() {
       vec3 viewDir = normalize(uCameraPosition - vWorldPos);
@@ -150,9 +156,9 @@
       // Active body brighter
       color *= mix(0.85, 1.6, uActive);
 
-      // Excitement — incoming request flashes the body ember orange.
-      vec3 EXCITE_ORANGE = vec3(1.0, 0.45, 0.05);
-      color = mix(color, EXCITE_ORANGE * (1.2 + fresnel * 1.4), uExcite * 0.7);
+      // Excitement — a stimulus flashes the body in its reaction color
+      // (ember on request, jade on success, rose on failure).
+      color = mix(color, uExciteColor * (1.2 + fresnel * 1.4), uExcite * 0.7);
       color *= 1.0 + uExcite * 0.5;
 
       // Soft tone-map
@@ -210,7 +216,8 @@
         uPhaseColor: { value: hexToVec3(phaseColor) },
         uCameraPosition: { value: camera.position.clone() },
         uActive: { value: agent.id === $activeAgentId ? 1.0 : 0.0 },
-        uExcite: { value: 0 }
+        uExcite: { value: 0 },
+        uExciteColor: { value: new THREE.Vector3(1.0, 0.45, 0.05) }
       }
     });
 
@@ -252,7 +259,8 @@
       trail,
       trailPositions,
       trailLen: 0,
-      stimulus: agent.stimulus
+      stimulus: agent.stimulus,
+      stimulusKind: agent.stimulusKind
     });
   }
 
@@ -261,6 +269,9 @@
     body.material.uniforms.uPressure.value = agent.pressure;
     body.material.uniforms.uActivity.value = agent.activity;
     body.stimulus = agent.stimulus;
+    body.stimulusKind = agent.stimulusKind;
+    const [er, eg, eb] = exciteColor(agent.stimulusKind);
+    (body.material.uniforms.uExciteColor.value as THREE.Vector3).set(er, eg, eb);
     const phaseColor = PHASE_COLORS[agent.phase] ?? PHASE_COLORS.Boot;
     body.material.uniforms.uPhaseColor.value = hexToVec3(phaseColor);
     body.material.uniforms.uActive.value = agent.id === $activeAgentId ? 1.0 : 0.0;
@@ -510,8 +521,9 @@
       // Self-rotation — up to ~8× faster while excited
       body.mesh.rotation.y += 0.01 * spinMultiplier(excite, 7);
 
-      // Shake: front-loaded positional rattle on impact
-      const shake = shakeAmplitude(excite, 0.08);
+      // Shake: front-loaded positional rattle on impact (success blooms
+      // smoothly without one)
+      const shake = shakes(body.stimulusKind) ? shakeAmplitude(excite, 0.08) : 0;
       if (shake > 0.001) {
         body.mesh.position.x += (Math.random() - 0.5) * shake;
         body.mesh.position.y += (Math.random() - 0.5) * shake;

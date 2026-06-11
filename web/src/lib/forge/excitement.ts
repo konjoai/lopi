@@ -39,3 +39,29 @@ export function shakeAmplitude(excite: number, scale: number): number {
 export function spinMultiplier(excite: number, boost: number): number {
   return 1 + smoothstep01(excite) * boost;
 }
+
+/** What kind of event excited the orb — picks the reaction color. */
+export type StimulusKind = 'request' | 'success' | 'failure';
+
+/**
+ * Reaction color per stimulus kind as a normalized RGB triple:
+ * request → ember orange, success → jade bloom, failure → rose flare.
+ */
+export function exciteColor(kind: StimulusKind): [number, number, number] {
+  switch (kind) {
+    case 'success':
+      return [0.0, 1.0, 0.62]; // konjo jade
+    case 'failure':
+      return [1.0, 0.0, 0.4]; // konjo rose
+    default:
+      return [1.0, 0.45, 0.05]; // ember orange
+  }
+}
+
+/**
+ * Whether a stimulus kind rattles the mesh. Requests and failures hit with
+ * a physical shake; success blooms smoothly without one.
+ */
+export function shakes(kind: StimulusKind): boolean {
+  return kind !== 'success';
+}

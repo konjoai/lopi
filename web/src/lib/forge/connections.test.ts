@@ -35,6 +35,7 @@ function makeAgent(over: Partial<AgentState>): AgentState {
     health: 0.85,
     cost: 0,
     stimulus: 0,
+    stimulusKind: 'request',
     ...over
   };
 }
