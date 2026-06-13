@@ -1,7 +1,6 @@
 import SwiftUI
 
-/// Sidebar sections. Implemented screens render their views; the rest show a
-/// consistent "coming soon" placeholder mapped to their backing endpoint.
+/// Sidebar sections. Each maps to a live screen backed by the lopi REST/WS API.
 enum NavSection: String, CaseIterable, Identifiable {
     case dashboard = "Dashboard"
     case tasks = "Tasks"
@@ -36,18 +35,31 @@ struct RootView: View {
     @Environment(AppModel.self) private var model
     @State private var selection: NavSection? = .dashboard
 
+    private var runningCount: Int { model.activeAgents.filter { $0.active }.count }
+
     var body: some View {
         NavigationSplitView {
             List(NavSection.allCases, selection: $selection) { section in
-                Label(section.rawValue, systemImage: section.icon)
-                    .tag(section)
+                Label {
+                    HStack {
+                        Text(section.rawValue)
+                        Spacer()
+                        if let badge = badge(for: section) {
+                            Text(badge)
+                                .font(Konjo.mono(9, weight: .semibold))
+                                .foregroundStyle(Konjo.konjo2)
+                                .padding(.horizontal, 6).padding(.vertical, 1)
+                                .background(Konjo.konjo.opacity(0.18))
+                                .clipShape(Capsule())
+                        }
+                    }
+                } icon: {
+                    Image(systemName: section.icon)
+                }
+                .tag(section)
             }
-            .navigationSplitViewColumnWidth(min: 180, ideal: 200)
-            .safeAreaInset(edge: .bottom) {
-                ConnectionLED(state: model.connection)
-                    .padding(12)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
+            .navigationSplitViewColumnWidth(min: 200, ideal: 220)
+            .safeAreaInset(edge: .bottom) { sidebarFooter }
         } detail: {
             detail
                 .background(Konjo.bg)
@@ -58,6 +70,30 @@ struct RootView: View {
                 }
                 .overlay(alignment: .top) { bannerOverlay }
         }
+    }
+
+    /// Live count badges so the whole nav reflects backend state at a glance.
+    private func badge(for section: NavSection) -> String? {
+        switch section {
+        case .dashboard where runningCount > 0: return "\(runningCount)"
+        case .cron where !model.schedules.isEmpty: return "\(model.schedules.count)"
+        default: return nil
+        }
+    }
+
+    private var sidebarFooter: some View {
+        HStack(spacing: 8) {
+            ConnectionLED(state: model.connection)
+            Spacer()
+            if runningCount > 0 {
+                HStack(spacing: 5) {
+                    PulseOrb(color: Konjo.konjo, active: true).frame(width: 14, height: 14)
+                    Text("\(runningCount) live")
+                        .font(Konjo.mono(10)).foregroundStyle(Konjo.fgDim)
+                }
+            }
+        }
+        .padding(12)
     }
 
     @ViewBuilder private var detail: some View {
