@@ -19,6 +19,28 @@ final class AppModel {
     /// Rolling buffer of recent live log lines (most recent last), capped.
     var recentLogs: [String] = []
 
+    // MARK: Live cockpit state (assembled from the event stream)
+
+    /// Per-task live cognition, keyed by task id.
+    var liveAgents: [String: LiveAgent] = [:]
+    /// Newest-first rolling event ticker, capped.
+    var feed: [FeedItem] = []
+    /// Rolling samples of fleet cost (USD) for the dashboard sparkline.
+    var costSeries: [Double] = []
+    /// Rolling samples of aggregate tokens/sec across active agents.
+    var throughputSeries: [Double] = []
+    /// Mean generation activity across active agents, 0...1 — drives the
+    /// intensity of the animated background.
+    var aggregateActivity: Double = 0
+    /// Most recent budget breach, if any (cleared by the UI).
+    var lastBudget: BudgetBreach?
+
+    /// Active agents, most-recently-updated first.
+    var activeAgents: [LiveAgent] {
+        liveAgents.values
+            .sorted { $0.lastUpdate > $1.lastUpdate }
+    }
+
     /// Non-fatal error banner text (auto-cleared by the UI).
     var banner: String?
 
@@ -142,7 +164,7 @@ final class AppModel {
                     Task { @MainActor in self?.applySnapshot(obj) }
                 },
                 onEvent: { [weak self] event in
-                    Task { @MainActor in self?.apply(event) }
+                    Task { @MainActor in self?.ingest(event) }
                 }
             )
             await stream.start(url: url)
@@ -155,31 +177,15 @@ final class AppModel {
            let s = try? JSONDecoder().decode(PoolStats.self, from: data) {
             stats = s
         }
-        Task { await refreshTasks() }
-    }
-
-    private func apply(_ event: AgentEvent) {
-        switch event {
-        case let .poolStats(s):
-            stats.running = s.running
-            stats.queued = s.queued
-            stats.succeeded = s.succeeded
-            stats.failed = s.failed
-            stats.uptimeSecs = s.uptimeSecs
-        case let .logLine(_, line, level):
-            appendLog("[\(level)] \(line)")
-        case .taskCompleted, .taskQueued, .statusChanged, .taskCancelled, .taskStarted:
-            Task { await refreshTasks() }
-        case let .budgetExceeded(scope, limit, burned):
-            banner = String(format: "Budget exceeded (%@): $%.2f / $%.2f", scope, burned, limit)
-        case .other:
-            break
+        // Seed live agents from the snapshot task list so the cockpit isn't
+        // empty between connect and the first live event.
+        if let taskList = obj["tasks"] as? [[String: Any]] {
+            for t in taskList {
+                guard let id = t["id"] as? String else { continue }
+                seedAgent(id: id, goal: t["goal"] as? String ?? "", phase: TaskStatusLabel.from(t["status"]))
+            }
         }
-    }
-
-    private func appendLog(_ line: String) {
-        recentLogs.append(line)
-        if recentLogs.count > 500 { recentLogs.removeFirst(recentLogs.count - 500) }
+        Task { await refreshTasks() }
     }
 
     /// Surface a non-fatal error in the banner. Internal so the admin

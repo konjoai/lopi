@@ -170,15 +170,35 @@ struct CreateTaskBody: Codable {
 /// (`#[serde(tag = "type", rename_all = "snake_case")]`); we decode the cases
 /// the UI reacts to and ignore the rest.
 enum AgentEvent {
-    case taskQueued(taskId: String, goal: String)
-    case taskStarted(taskId: String)
-    case statusChanged(taskId: String, status: String)
+    case taskQueued(taskId: String, goal: String, priority: String)
+    case taskStarted(taskId: String, attempt: Int, branch: String)
+    case statusChanged(taskId: String, status: String, attempt: Int)
     case logLine(taskId: String, line: String, level: String)
-    case taskCompleted(taskId: String, outcome: String)
+    case scoreUpdated(taskId: String, testPassRate: Double, lintErrors: Int, diffLines: Int)
+    case turnMetrics(taskId: String, pressure: Double, activity: Double, tokensPerSec: Double, costUsd: Double)
+    case verifierVerdict(taskId: String, passed: Bool, gaps: [String], confidence: Double)
+    case taskCompleted(taskId: String, outcome: String, totalAttempts: Int)
     case taskCancelled(taskId: String)
     case poolStats(PoolStats)
-    case budgetExceeded(scope: String, limitUsd: Double, burnedUsd: Double)
+    case budgetExceeded(taskId: String?, scope: String, limitUsd: Double, burnedUsd: Double)
     case other(type: String)
+
+    /// The task id this event concerns, if any — used to route events to the
+    /// per-agent live state.
+    var taskId: String? {
+        switch self {
+        case let .taskQueued(id, _, _), let .taskStarted(id, _, _),
+             let .statusChanged(id, _, _), let .logLine(id, _, _),
+             let .scoreUpdated(id, _, _, _), let .turnMetrics(id, _, _, _, _),
+             let .verifierVerdict(id, _, _, _), let .taskCompleted(id, _, _),
+             let .taskCancelled(id):
+            return id
+        case let .budgetExceeded(id, _, _, _):
+            return id
+        case .poolStats, .other:
+            return nil
+        }
+    }
 
     /// Parse one event from raw JSON; returns nil if the payload is malformed.
     static func decode(from data: Data) -> AgentEvent? {
@@ -189,19 +209,57 @@ enum AgentEvent {
 
         switch type {
         case "task_queued":
-            return .taskQueued(taskId: str(obj["task_id"]), goal: obj["goal"] as? String ?? "")
+            return .taskQueued(
+                taskId: str(obj["task_id"]),
+                goal: obj["goal"] as? String ?? "",
+                priority: TaskStatusLabel.from(obj["priority"])
+            )
         case "task_started":
-            return .taskStarted(taskId: str(obj["task_id"]))
+            return .taskStarted(
+                taskId: str(obj["task_id"]),
+                attempt: num(obj["attempt"]),
+                branch: obj["branch"] as? String ?? ""
+            )
         case "status_changed":
-            return .statusChanged(taskId: str(obj["task_id"]), status: TaskStatusLabel.from(obj["status"]))
+            return .statusChanged(
+                taskId: str(obj["task_id"]),
+                status: TaskStatusLabel.from(obj["status"]),
+                attempt: num(obj["attempt"])
+            )
         case "log_line":
             return .logLine(
                 taskId: str(obj["task_id"]),
                 line: obj["line"] as? String ?? "",
                 level: obj["level"] as? String ?? "info"
             )
+        case "score_updated":
+            return .scoreUpdated(
+                taskId: str(obj["task_id"]),
+                testPassRate: dbl(obj["test_pass_rate"]),
+                lintErrors: num(obj["lint_errors"]),
+                diffLines: num(obj["diff_lines"])
+            )
+        case "turn_metrics":
+            return .turnMetrics(
+                taskId: str(obj["task_id"]),
+                pressure: dbl(obj["pressure"]),
+                activity: dbl(obj["activity"]),
+                tokensPerSec: dbl(obj["tokens_per_sec"]),
+                costUsd: dbl(obj["cost_usd"])
+            )
+        case "verifier_verdict":
+            return .verifierVerdict(
+                taskId: str(obj["task_id"]),
+                passed: obj["passed"] as? Bool ?? false,
+                gaps: obj["gaps"] as? [String] ?? [],
+                confidence: dbl(obj["confidence"])
+            )
         case "task_completed":
-            return .taskCompleted(taskId: str(obj["task_id"]), outcome: TaskStatusLabel.from(obj["outcome"]))
+            return .taskCompleted(
+                taskId: str(obj["task_id"]),
+                outcome: TaskStatusLabel.from(obj["outcome"]),
+                totalAttempts: num(obj["total_attempts"])
+            )
         case "task_cancelled":
             return .taskCancelled(taskId: str(obj["task_id"]))
         case "pool_stats":
@@ -212,9 +270,10 @@ enum AgentEvent {
             return .other(type: type)
         case "budget_exceeded":
             return .budgetExceeded(
-                scope: obj["scope"] as? String ?? "fleet",
-                limitUsd: obj["limit_usd"] as? Double ?? 0,
-                burnedUsd: obj["burned_usd"] as? Double ?? 0
+                taskId: obj["task_id"] as? String,
+                scope: TaskStatusLabel.from(obj["scope"]),
+                limitUsd: dbl(obj["limit_usd"]),
+                burnedUsd: dbl(obj["burned_usd"])
             )
         default:
             return .other(type: type)
@@ -222,6 +281,8 @@ enum AgentEvent {
     }
 
     private static func str(_ v: Any?) -> String { v as? String ?? "" }
+    private static func num(_ v: Any?) -> Int { (v as? NSNumber)?.intValue ?? 0 }
+    private static func dbl(_ v: Any?) -> Double { (v as? NSNumber)?.doubleValue ?? 0 }
 }
 
 /// Renders a `TaskStatus` (string or single-key object) into a short label.
