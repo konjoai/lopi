@@ -202,6 +202,29 @@ function startMockData() {
           diff_lines: Math.floor(20 + Math.random() * 80)
         });
       }
+
+      // Verifier verdict shortly after each score — usually passes.
+      if (mockTick % 50 === 32) {
+        const passed = Math.random() > 0.3;
+        messageHandler({
+          type: 'verifier_verdict',
+          task_id: seed.task_id,
+          passed,
+          gaps: passed ? [] : ['error path for empty input is untested', 'public fn missing rustdoc'],
+          fix_hints: passed ? [] : ['add a unit test covering the empty case']
+        });
+      }
+    }
+
+    // Occasional fleet-wide budget breach to exercise the alert toast.
+    if (mockTick % 140 === 70 && messageHandler) {
+      messageHandler({
+        type: 'budget_exceeded',
+        task_id: null,
+        scope: 'fleet',
+        limit_usd: 5.0,
+        burned_usd: 5.0 + Math.random() * 0.8
+      });
     }
   }, 500);
 }

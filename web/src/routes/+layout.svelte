@@ -5,6 +5,7 @@
   import { init, connectionState, stats } from '$lib/stores/agents';
   import { installKeyboardShortcuts, helpVisible } from '$lib/stores/keyboard';
   import { applyTheme } from '$lib/stores/theme';
+  import { budgetAlerts, dismissBudgetAlert } from '$lib/stores/events';
   import HelpOverlay from '$lib/components/HelpOverlay.svelte';
 
   onMount(() => {
@@ -30,7 +31,9 @@
   const tabs = [
     { href: '/', label: 'Forge' },
     { href: '/constellation', label: 'Constellation' },
+    { href: '/pulse', label: 'Pulse' },
     { href: '/tasks', label: 'Tasks' },
+    { href: '/router', label: 'Router' },
     { href: '/schedules', label: 'Schedules' },
     { href: '/tools', label: 'Tools' },
     { href: '/logs', label: 'Logs' },
@@ -121,6 +124,36 @@
   </main>
 {/if}
 
+<!-- Budget breach toasts — live alerts from the event stream -->
+{#if $budgetAlerts.length > 0}
+  <div class="fixed top-16 right-4 z-40 flex flex-col gap-2 w-80 max-w-[calc(100vw-2rem)]">
+    {#each $budgetAlerts as alert (alert.seq)}
+      <div class="budget-toast rounded-lg border border-konjo-rose/40 bg-konjo-deep/95 backdrop-blur-md p-3 shadow-2xl">
+        <div class="flex items-start gap-2">
+          <span class="text-konjo-rose text-lg leading-none mt-0.5">◈</span>
+          <div class="flex-1 min-w-0">
+            <div class="font-display text-sm font-bold text-konjo-rose">
+              Budget exceeded · {alert.scope}
+            </div>
+            <div class="font-mono text-[11px] opacity-70 mt-0.5">
+              ${alert.burnedUsd.toFixed(2)} burned against a ${alert.limitUsd.toFixed(2)}/h cap
+              {#if alert.taskId}· task {alert.taskId.slice(0, 8)}{/if}
+            </div>
+          </div>
+          <button
+            type="button"
+            on:click={() => dismissBudgetAlert(alert.seq)}
+            class="w-4 h-4 flex items-center justify-center text-white/40 hover:text-white text-[10px] flex-shrink-0"
+            aria-label="Dismiss"
+          >
+            ✕
+          </button>
+        </div>
+      </div>
+    {/each}
+  </div>
+{/if}
+
 <!-- Global help overlay (toggle with ?) -->
 <HelpOverlay />
 
@@ -155,6 +188,35 @@
     }
     50% {
       opacity: 1;
+    }
+  }
+
+  /* Budget toast — slide in from the right with a brief shake on entry */
+  .budget-toast {
+    animation:
+      toast-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) both,
+      toast-shake 0.5s ease-in-out 0.4s;
+  }
+  @keyframes toast-in {
+    from {
+      opacity: 0;
+      transform: translateX(24px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+  @keyframes toast-shake {
+    0%,
+    100% {
+      transform: translateX(0);
+    }
+    25% {
+      transform: translateX(-3px);
+    }
+    75% {
+      transform: translateX(3px);
     }
   }
 </style>
