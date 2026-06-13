@@ -8,6 +8,7 @@
  */
 import type {
   AgentEvent,
+  BudgetScope,
   LogLevel,
   Phase,
   Priority,
@@ -31,6 +32,7 @@ function isNumber(x: unknown): x is number {
 
 const PRIORITIES: ReadonlySet<Priority> = new Set(['Low', 'Normal', 'High', 'Critical']);
 const LOG_LEVELS: ReadonlySet<LogLevel> = new Set(['info', 'warn', 'error', 'debug']);
+const BUDGET_SCOPES: ReadonlySet<BudgetScope> = new Set(['fleet', 'agent', 'task']);
 const UNIT_STATUSES: ReadonlySet<string> = new Set([
   'Queued',
   'Planning',
@@ -209,9 +211,37 @@ export function parseAgentEvent(raw: Record<string, unknown>): AgentEvent | null
         cost_usd: raw.cost_usd
       };
     }
+    case 'verifier_verdict': {
+      if (!isString(tid) || typeof raw.passed !== 'boolean') return null;
+      if (!isStringArray(raw.gaps) || !isStringArray(raw.fix_hints)) return null;
+      return {
+        type: 'verifier_verdict',
+        task_id: tid,
+        passed: raw.passed,
+        gaps: raw.gaps,
+        fix_hints: raw.fix_hints
+      };
+    }
+    case 'budget_exceeded': {
+      // task_id is nullable (fleet-wide breach has no task scope).
+      if (tid !== null && tid !== undefined && !isString(tid)) return null;
+      if (!BUDGET_SCOPES.has(raw.scope as BudgetScope)) return null;
+      if (!isNumber(raw.limit_usd) || !isNumber(raw.burned_usd)) return null;
+      return {
+        type: 'budget_exceeded',
+        task_id: isString(tid) ? tid : null,
+        scope: raw.scope as BudgetScope,
+        limit_usd: raw.limit_usd,
+        burned_usd: raw.burned_usd
+      };
+    }
     default:
       return null;
   }
+}
+
+function isStringArray(x: unknown): x is string[] {
+  return Array.isArray(x) && x.every(isString);
 }
 
 // ── Snapshot parser ───────────────────────────────────────────────────────────

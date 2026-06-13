@@ -246,5 +246,62 @@ export const deleteTool = (name: string) =>
     method: 'DELETE'
   });
 
+// ── Constellation router ──────────────────────────────────────────────────────
+// RoutingStrategy is internally tagged: #[serde(tag = "kind", rename_all = "snake_case")]
+export type RoutingStrategy =
+  | { kind: 'round_robin' }
+  | { kind: 'weighted_random' }
+  | { kind: 'least_loaded' }
+  | { kind: 'tag_match'; required_tags: string[] };
+
+export interface ConstellationMember {
+  agent_id: string;
+  weight: number;
+  tags: string[];
+  max_concurrent: number;
+}
+
+export interface Constellation {
+  name: string;
+  agents: ConstellationMember[];
+  routing_strategy: RoutingStrategy;
+  created_at: string;
+}
+
+export interface DispatchDecision {
+  agent_id: string;
+  strategy: string;
+  at: string;
+  required_tags?: string[];
+}
+
+export interface MemberLoad {
+  agent_id: string;
+  in_flight: number;
+  dispatched_total: number;
+  max_concurrent: number;
+}
+
+export interface ConstellationStats {
+  name: string;
+  members: MemberLoad[];
+  recent_decisions: DispatchDecision[];
+}
+
+export const listConstellations = () =>
+  request<{ constellations: Constellation[] }>('/api/constellations');
+export const registerConstellation = (c: {
+  name: string;
+  agents: ConstellationMember[];
+  routing_strategy: RoutingStrategy;
+}) => request<{ name: string; replaced: boolean }>('/api/constellations', json('POST', c));
+export const dispatchConstellation = (name: string, requiredTags: string[] = []) =>
+  request<DispatchDecision>(
+    `/api/constellation/${encodeURIComponent(name)}/dispatch`,
+    json('POST', { required_tags: requiredTags })
+  );
+export const constellationStats = (name: string) =>
+  request<ConstellationStats>(`/api/constellation/${encodeURIComponent(name)}/stats`);
+
 /** Free-form GET for the Debug tab's API console. Returns raw parsed JSON. */
 export const rawGet = (path: string) => request<unknown>(path);

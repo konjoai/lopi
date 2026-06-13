@@ -80,7 +80,26 @@ export type AgentEvent =
       activity: number; // 0..1, normalized tokens/sec
       tokens_per_sec: number;
       cost_usd: number;
+    }
+  // Adversarial verifier outcome — emitted after the scoring phase.
+  | {
+      type: 'verifier_verdict';
+      task_id: string;
+      passed: boolean;
+      gaps: string[];
+      fix_hints: string[];
+    }
+  // Budget guard refused further spend in a rolling 1h window.
+  | {
+      type: 'budget_exceeded';
+      task_id: string | null;
+      scope: BudgetScope;
+      limit_usd: number;
+      burned_usd: number;
     };
+
+/** Which budget scope refused (mirrors lopi-core `BudgetScope`). */
+export type BudgetScope = 'fleet' | 'agent' | 'task';
 
 // ── Snapshot sent on WebSocket connect ────────────────────────────────────────
 export interface SnapshotTask {

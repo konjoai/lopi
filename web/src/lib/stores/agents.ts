@@ -18,6 +18,7 @@ import {
   isTerminalStatus
 } from '$lib/parser';
 import { connect, setMessageHandler, initMock, getConnectionState } from './wsClient';
+import { recordEvent } from './events';
 import type { StimulusKind } from '$lib/forge/excitement';
 import type {
   AgentEvent,
@@ -55,6 +56,11 @@ export interface AgentState {
   lintErrors?: number;
   diffLines?: number;
   score?: number; // synthetic 0..1 composite
+
+  // Adversarial verifier verdict (from verifier_verdict events)
+  verifierPassed?: boolean;
+  verifierGaps?: string[];
+  verifierFixHints?: string[];
 
   cost: number; // USD accumulated
   thought?: string; // last log line (preview)
@@ -287,6 +293,35 @@ function reduce(map: Map<string, AgentState>, ev: AgentEvent): Map<string, Agent
       });
       break;
     }
+    case 'verifier_verdict': {
+      const cur = next.get(ev.task_id);
+      if (!cur) break;
+      next.set(ev.task_id, {
+        ...cur,
+        verifierPassed: ev.passed,
+        verifierGaps: ev.gaps,
+        verifierFixHints: ev.fix_hints,
+        // Pulse the orb in the verdict's color — jade pass, rose fail.
+        stimulus: Date.now(),
+        stimulusKind: ev.passed ? 'success' : 'failure'
+      });
+      break;
+    }
+    case 'budget_exceeded': {
+      // Fleet-wide breach (null task_id) is handled by the events store as
+      // a global alert; a task-scoped breach also flares that agent's orb.
+      if (ev.task_id) {
+        const cur = next.get(ev.task_id);
+        if (cur) {
+          next.set(ev.task_id, {
+            ...cur,
+            stimulus: Date.now(),
+            stimulusKind: 'failure'
+          });
+        }
+      }
+      break;
+    }
   }
   return next;
 }
@@ -391,6 +426,9 @@ function applyMessage(msg: WireMessage) {
       uptime_secs: msg.uptime_secs
     });
   }
+
+  // Record every event into the live Pulse feed (+ budget alert stream).
+  recordEvent(msg);
 
   agents.update((m) => reduce(m, msg));
 }

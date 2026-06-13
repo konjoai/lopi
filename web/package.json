@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
-    "test": "tsx src/lib/parser.test.ts && tsx src/lib/forge/connections.test.ts && tsx src/lib/forge/excitement.test.ts && tsx src/lib/api.test.ts && tsx src/lib/components/ui/badges.test.ts"
+    "test": "tsx src/lib/parser.test.ts && tsx src/lib/forge/connections.test.ts && tsx src/lib/forge/excitement.test.ts && tsx src/lib/api.test.ts && tsx src/lib/components/ui/badges.test.ts && tsx src/lib/stores/events.test.ts"
   },
   "dependencies": {
     "three": "^0.160.0"

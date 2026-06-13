@@ -222,6 +222,58 @@ if (overflow && overflow.type === 'turn_metrics') {
   eq(overflow.activity, 0, 'activity clamped to 0');
 }
 
+console.log('\n── verifier_verdict + budget_exceeded ─────────────────');
+{
+  const v = parseAgentEvent({
+    type: 'verifier_verdict',
+    task_id: 'abc',
+    passed: false,
+    gaps: ['no test for empty input'],
+    fix_hints: ['add a unit test']
+  });
+  eq(v?.type, 'verifier_verdict', 'verifier_verdict parses');
+  if (v && v.type === 'verifier_verdict') {
+    eq(v.passed, false, 'passed preserved');
+    eq(v.gaps.length, 1, 'gaps preserved');
+  }
+  assertNull(
+    parseAgentEvent({ type: 'verifier_verdict', task_id: 'abc', passed: 'no', gaps: [], fix_hints: [] }),
+    'non-boolean passed rejected'
+  );
+  assertNull(
+    parseAgentEvent({ type: 'verifier_verdict', task_id: 'abc', passed: true, gaps: [1], fix_hints: [] }),
+    'non-string gap rejected'
+  );
+
+  const bFleet = parseAgentEvent({
+    type: 'budget_exceeded',
+    task_id: null,
+    scope: 'fleet',
+    limit_usd: 5,
+    burned_usd: 5.4
+  });
+  eq(bFleet?.type, 'budget_exceeded', 'fleet budget_exceeded parses with null task');
+  if (bFleet && bFleet.type === 'budget_exceeded') {
+    eq(bFleet.task_id, null, 'null task_id preserved');
+    eq(bFleet.scope, 'fleet', 'scope preserved');
+  }
+
+  const bTask = parseAgentEvent({
+    type: 'budget_exceeded',
+    task_id: 'abc',
+    scope: 'task',
+    limit_usd: 1,
+    burned_usd: 1.2
+  });
+  if (bTask && bTask.type === 'budget_exceeded') {
+    eq(bTask.task_id, 'abc', 'task-scoped budget keeps id');
+  }
+  assertNull(
+    parseAgentEvent({ type: 'budget_exceeded', task_id: null, scope: 'galaxy', limit_usd: 1, burned_usd: 2 }),
+    'unknown scope rejected'
+  );
+}
+
 console.log('\n── parseSnapshot ──────────────────────────────────────');
 assertNotNull(
   parseSnapshot({
