@@ -4,6 +4,7 @@ mod gap_fill_commands;
 mod learn_commands;
 mod remote;
 mod repl;
+mod replay_commands;
 mod repo_detect;
 mod run_command;
 mod sail_commands;
@@ -135,6 +136,18 @@ enum Commands {
     },
     /// Show trust calibration stats
     Trust,
+    /// Inspect a task's DAG trace and show the partial-restart replay plan.
+    Replay {
+        /// Task ID (full UUID) to replay.
+        #[arg(long)]
+        task: String,
+        /// Restart from this pipeline stage (plan/implement/test/score/verify/diff/pr).
+        #[arg(long)]
+        from: Option<String>,
+        /// Show the plan without re-executing (the current default behaviour).
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Start the GitHub App OAuth + Stripe webhook server.
     ServeApp {
         #[arg(short, long, default_value = "3002")]
@@ -328,6 +341,11 @@ async fn main() -> Result<()> {
         }
 
         Some(Commands::Trust) => trust_commands::show().await?,
+        Some(Commands::Replay {
+            task,
+            from,
+            dry_run,
+        }) => replay_commands::run(task, from, dry_run).await?,
 
         Some(Commands::ServeApp { port, host }) => {
             let addr: std::net::SocketAddr = format!("{host}:{port}")

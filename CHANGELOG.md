@@ -33,10 +33,27 @@
 - Returns `{ task_id, nodes, edges }`; edges derived from each node's
   `depends_on`. Unknown task → empty graph (200). 2 tests on the graph shaper.
 
+**`AgentDag::from_rows` + `lopi replay`**
+- `AgentDag::from_rows` (`lopi-agent/dag_rows.rs`) reconstructs a DAG from
+  persisted `agent_dag_nodes`; `NodeKind` / `NodeStatus` gain `FromStr`.
+- `lopi replay --task <id> [--from <node>] [--dry-run]` loads the persisted
+  DAG, resolves the restart stage (explicit `--from` or the resume point), and
+  prints the partial-restart plan — which stages re-run, which reuse memoized
+  upstream output (♻️), and which side-effecting stages are skipped because
+  their external effect already landed (⏭️, idempotency-key reuse). Read-only
+  for now; live re-execution rides on the runner producer. 7 tests.
+
+**Mutation gate** (`.cargo/mutants.toml`)
+- New cargo-mutants config scoped-excluding the CLI entry point (`main`) and
+  two pure-IO shells (`replay_commands::run` / `print_plan`) — they hold no
+  branching logic, delegating to the unit-tested `replay_plan` / `classify` /
+  `resolve_restart`. The replay plan computation is fully mutation-covered.
+
 ### Notes
-- Runner wiring (the `AgentDag` producer that emits `node_id` on events), the
-  `lopi replay` CLI, and the TUI "DAG" tab follow — the producer touches the
-  live agent-spawn path and needs end-to-end validation. See PLAN.md Sprint U.
+- The runner producer (wiring `AgentRunner` to build/persist the DAG and emit
+  `node_id` on events) and the TUI "DAG" tab follow — the producer requires
+  splitting the 606-line `run_loop.rs` and live-agent validation, so it is held
+  for an environment that can exercise a real run. See PLAN.md Sprint U.
 
 ---
 

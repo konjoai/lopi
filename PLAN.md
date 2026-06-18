@@ -264,8 +264,10 @@ verifiable traces and `lopi replay`.
 - [x] **Idempotency safeguard** (discovery: ACRFence, arXiv 2603.20625) — `NodeKind::is_side_effecting()` (`Pr`), `DagNode.idempotency_key` preserved across `reset_from`, `should_execute()` skips an already-committed side-effecting node so replay never opens a duplicate PR
 - [x] SQLite: `agent_dag_nodes` table (`task_id, kind, status, depends_on_json, output_hash, idempotency_key`) + `upsert_dag_node` / `load_dag_nodes`. Edges derived from `depends_on` (no redundant edges table).
 - [x] `GET /api/agents/:id/dag` returns the JSON graph (`{task_id, nodes, edges}`, edges derived)
-- [ ] Runner wiring — `AgentRunner` builds/persists an `AgentDag` per attempt and emits `node_id` on events *(the DAG producer; needs live-agent validation)*
-- [ ] `lopi replay --task <id> [--from <node>] [--dry-run]` (reuses `reset_from` + idempotency gating)
+- [x] `AgentDag::from_rows()` (`dag_rows.rs`) — reconstruct a DAG from persisted `agent_dag_nodes`; `NodeKind`/`NodeStatus` gain `FromStr`
+- [x] `lopi replay --task <id> [--from <node>] [--dry-run]` — loads the persisted DAG, resolves the restart stage (explicit `--from` or `resume_point`), and prints the partial-restart plan: which stages re-run, which reuse memoized upstream output, and which side-effecting stages are skipped (idempotency-key reuse). *Read-only for now — live re-execution rides on the runner producer below.*
+- [ ] Runner wiring — `AgentRunner` builds/persists an `AgentDag` per attempt and emits `node_id` on events *(the DAG producer; requires splitting the 606-line `run_loop.rs` and live-agent validation)*
+- [ ] `lopi replay` live re-execution (non-dry-run) — depends on the runner producer + checkpoint resume
 - [ ] TUI: "DAG" tab in existing ratatui dashboard with live status colours
 
 ### Sprint V — Terminal-Bench Score + Konjo Skills Registry (v0.22.0)

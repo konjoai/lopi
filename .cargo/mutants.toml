@@ -1,0 +1,13 @@
+# cargo-mutants configuration (Konjo G3 — Mutation Testing).
+#
+# Exclude untestable IO / entry-point shells from mutation testing. These
+# functions carry no branching logic: they delegate to pure, unit-tested
+# helpers (e.g. `replay_plan`, `resolve_restart`, `classify`) and only perform
+# stdout or database IO that mutation testing cannot meaningfully assert. A
+# "replace body with Ok(())" mutant on such a shell can never be killed by a
+# unit test, so it would otherwise be a permanent false-positive survivor.
+exclude_re = [
+    ": replace main -> ",
+    "replay_commands\\.rs.*: replace run -> ",
+    "replay_commands\\.rs.*: replace print_plan ",
+]

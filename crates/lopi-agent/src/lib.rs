@@ -6,6 +6,8 @@ pub mod claude;
 mod claude_stream;
 /// Sprint U — DAG-structured execution trace for partial-restart retry.
 pub mod dag;
+/// Sprint U — reconstruct an `AgentDag` from persisted rows.
+mod dag_rows;
 /// Pattern enrichment from memory history.
 pub mod pattern_enricher;
 /// Agent execution runner — plan, implement, test, score, retry.

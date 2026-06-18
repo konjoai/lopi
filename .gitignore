@@ -11,3 +11,4 @@ Cargo.lock.bak
 .env
 .env.local
 lopi.toml
+mutants.out/
