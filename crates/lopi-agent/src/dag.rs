@@ -91,6 +91,17 @@ impl fmt::Display for NodeKind {
     }
 }
 
+impl std::str::FromStr for NodeKind {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::PIPELINE
+            .into_iter()
+            .find(|k| k.as_str() == s)
+            .ok_or_else(|| format!("unknown node kind: {s}"))
+    }
+}
+
 /// Execution status of a single DAG node.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
@@ -104,6 +115,20 @@ pub enum NodeStatus {
     Done,
     /// Finished with a failure; retry resumes here.
     Failed,
+}
+
+impl std::str::FromStr for NodeStatus {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "pending" => Ok(NodeStatus::Pending),
+            "running" => Ok(NodeStatus::Running),
+            "done" => Ok(NodeStatus::Done),
+            "failed" => Ok(NodeStatus::Failed),
+            other => Err(format!("unknown node status: {other}")),
+        }
+    }
 }
 
 /// One node in the agent execution DAG.
@@ -376,6 +401,18 @@ mod tests {
     fn predecessor_chain_is_correct() {
         assert_eq!(NodeKind::Plan.predecessor(), None);
         assert_eq!(NodeKind::Pr.predecessor(), Some(NodeKind::Diff));
+    }
+
+    #[test]
+    fn node_kind_and_status_from_str_round_trip() {
+        use std::str::FromStr;
+        for kind in NodeKind::PIPELINE {
+            assert_eq!(NodeKind::from_str(kind.as_str()).unwrap(), kind);
+        }
+        assert!(NodeKind::from_str("nope").is_err());
+        assert_eq!(NodeStatus::from_str("done").unwrap(), NodeStatus::Done);
+        assert_eq!(NodeStatus::from_str("failed").unwrap(), NodeStatus::Failed);
+        assert!(NodeStatus::from_str("weird").is_err());
     }
 
     #[test]
