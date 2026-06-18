@@ -178,4 +178,78 @@ mod tests {
         let v = classify("DECOMPOSE the EPIC and DELEGATE subtask work");
         assert_eq!(v.hint, TopologyHint::Hierarchical);
     }
+
+    /// Labelled corpus — one row per goal with its expected topology. Combined
+    /// with the targeted tests above this exercises 30 classifier cases.
+    const CORPUS: &[(&str, TopologyHint)] = &[
+        // Sequential — ordered, dependent steps.
+        (
+            "first write the migration then run it",
+            TopologyHint::Sequential,
+        ),
+        (
+            "upgrade the dependency after the tests pass",
+            TopologyHint::Sequential,
+        ),
+        ("refactor the parser step by step", TopologyHint::Sequential),
+        (
+            "rename the field once the callers are fixed",
+            TopologyHint::Sequential,
+        ),
+        ("apply the patches in order", TopologyHint::Sequential),
+        (
+            "migrate the schema then seed the data",
+            TopologyHint::Sequential,
+        ),
+        // Parallel — independent fan-out work.
+        ("lint every crate independently", TopologyHint::Parallel),
+        (
+            "run the formatter across all packages concurrently",
+            TopologyHint::Parallel,
+        ),
+        ("update multiple files in parallel", TopologyHint::Parallel),
+        ("fan out the work to each worker", TopologyHint::Parallel),
+        ("format for all modules", TopologyHint::Parallel),
+        ("process every shard independently", TopologyHint::Parallel),
+        // Hierarchical — decompose-and-delegate.
+        (
+            "decompose the rollout into subtasks",
+            TopologyHint::Hierarchical,
+        ),
+        (
+            "break down the epic into child tasks",
+            TopologyHint::Hierarchical,
+        ),
+        (
+            "orchestrate the rollout and coordinate teams",
+            TopologyHint::Hierarchical,
+        ),
+        (
+            "delegate the multi-part refactor to sub-agents",
+            TopologyHint::Hierarchical,
+        ),
+        ("plan and decompose the feature", TopologyHint::Hierarchical),
+        ("coordinate the subtask graph", TopologyHint::Hierarchical),
+        // Hybrid — no clear signal, or two categories tie.
+        ("fix the failing test", TopologyHint::Hybrid),
+        ("improve the error messages", TopologyHint::Hybrid),
+        ("add a dark mode toggle", TopologyHint::Hybrid),
+        ("migrate each table", TopologyHint::Hybrid),
+        ("decompose then build", TopologyHint::Hybrid),
+    ];
+
+    #[test]
+    fn corpus_classifies_as_labelled() {
+        for (goal, expected) in CORPUS {
+            let v = classify(goal);
+            assert_eq!(v.hint, *expected, "goal: {goal:?}");
+            // Hybrid is always the low-confidence fallback; the others are
+            // positive signals with a non-zero margin.
+            assert_eq!(
+                v.low_confidence,
+                *expected == TopologyHint::Hybrid,
+                "confidence flag mismatch for {goal:?}"
+            );
+        }
+    }
 }

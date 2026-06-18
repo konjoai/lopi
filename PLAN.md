@@ -246,11 +246,11 @@ parallelism speedup, split correctness, aggregation quality; fold into the Q-rou
 - [x] Topology classifier in `crates/lopi-orchestrator/src/topology.rs` — keyword heuristic with confidence + `low_confidence` flag (threshold 0.6); 7 tests
 - [ ] Haiku fallback when `low_confidence` (classifier returns the flag; the fallback call is not yet wired)
 - [ ] `AgentPool::dispatch()` branches on topology: `Parallel` → N worktree branches; `Sequential` → single branch checkpoint-resume; `Hierarchical` → planner-only agent spawns child tasks
-- [ ] Q-learning router in `crates/lopi-orchestrator/src/q_router.rs`: `Q(task_type, agent_config)` updated from Verifier composite score; epsilon-greedy selection (ε = 0.1)
-- [ ] `routing_q_values` SQLite table; nightly Dreaming job recomputes Q-table from last-7-days runs
-- [ ] `Strategy::QLearned` added to `ConstellationRouter` alongside existing four strategies
-- [ ] `GET /api/routing/q-values` endpoint for inspection
-- [ ] Expand to 30-case topology classifier test corpus; benchmark shows Q-routed path beats RoundRobin on T01–T10
+- [x] Q-learning router in `crates/lopi-orchestrator/src/q_router.rs`: `QRouter` with epsilon-greedy selection (ε = 0.1) + `Q ← Q + α·(reward − Q)` update from a normalised reward; `snapshot`/`hydrate` for persistence
+- [x] `routing_q_values` SQLite table + `upsert_q_value` / `load_q_table` in `lopi-memory` *(nightly Dreaming recompute job: deferred)*
+- [x] `GET /api/routing/q-values` endpoint for inspection
+- [x] 30-case topology classifier test corpus (`topology::tests::CORPUS` + targeted cases)
+- [ ] `Strategy::QLearned` wired into `ConstellationRouter` dispatch path (router is built; constellation integration + benchmark vs RoundRobin on T01–T10 deferred to avoid touching the hot path)
 
 ### Sprint U — DAG-Structured Retry + Time-Travel Replay (v0.21.0)
 **Thesis:** Scheduler-Theoretic Framework (arxiv 2604.11378) shows partial restart from failed

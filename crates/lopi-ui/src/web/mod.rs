@@ -218,6 +218,7 @@ pub fn build_app(state: AppState) -> Router {
         .route("/api/plans", get(get_plans))
         .route("/api/spec", get(get_spec))
         .route("/api/quality/trend", get(get_quality_trend))
+        .route("/api/routing/q-values", get(get_q_values))
         .route(
             "/api/tools",
             get(list_tools_handler).post(register_tool_handler),
@@ -413,8 +414,8 @@ use constellation_handlers::{
     register_constellation_handler,
 };
 use handlers::{
-    cancel_task, checkpoint_agent, create_task, get_plans, get_quality_trend, get_spec, get_stats,
-    get_task, health, list_patterns, list_tasks, metrics,
+    cancel_task, checkpoint_agent, create_task, get_plans, get_q_values, get_quality_trend,
+    get_spec, get_stats, get_task, health, list_patterns, list_tasks, metrics,
 };
 use static_assets::static_handler;
 use tools_handlers::{

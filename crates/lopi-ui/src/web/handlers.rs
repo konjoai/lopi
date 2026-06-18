@@ -307,6 +307,26 @@ pub(super) async fn get_quality_trend(
     }
 }
 
+/// `GET /api/routing/q-values` — the Q-learning router's learned value table.
+pub(super) async fn get_q_values(State(s): State<AppState>) -> impl IntoResponse {
+    match s.store.load_q_table().await {
+        Ok(rows) => Json(json!({
+            "values": rows.iter().map(|r| json!({
+                "state": r.state,
+                "action": r.action,
+                "q": r.q,
+                "update_count": r.update_count,
+                "updated_at": r.updated_at,
+            })).collect::<Vec<_>>(),
+        }))
+        .into_response(),
+        Err(e) => {
+            tracing::warn!("q-values query failed: {e}");
+            (StatusCode::INTERNAL_SERVER_ERROR, "db error").into_response()
+        }
+    }
+}
+
 /// Prometheus text-format metrics.
 pub(super) async fn metrics(State(s): State<AppState>) -> impl IntoResponse {
     let stats = s.pool.stats();
