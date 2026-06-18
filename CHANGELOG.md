@@ -56,6 +56,10 @@
   changes during a gutter drag, so the spring can't fight a live resize. The
   divider gutters ease to their new boundaries on re-flow and snap instantly
   while dragging. 60fps, interruptible, no layout thrash.
+- **macOS parity** (`PaneGridView.swift`): the native grid gets the same
+  behaviour via `.animation(.spring(response:0.42, dampingFraction:0.82),
+  value: count)` plus a scale+opacity pane transition — keyed on `count` so a
+  gutter drag never fights the spring.
 
 ### Fixed
 
