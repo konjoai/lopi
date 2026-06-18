@@ -19,6 +19,7 @@ import {
 } from '$lib/parser';
 import { connect, setMessageHandler, initMock, getConnectionState } from './wsClient';
 import { recordEvent } from './events';
+import { isDeleted, reconcileSessions, tombstoneSession } from './layout';
 import type { StimulusKind } from '$lib/forge/excitement';
 import type {
   AgentEvent,
@@ -378,6 +379,10 @@ function applyMessage(msg: WireMessage) {
       const next = new Map(m);
       for (const t of msg.tasks) {
         if (next.has(t.id)) continue;
+        // Tombstoned sessions were permanently deleted — never re-hydrate them,
+        // even if the server snapshot still carries the row. This is the core
+        // of the "deleted sessions reappear" fix.
+        if (isDeleted(t.id)) continue;
         const phase = taskStatusToPhase(t.status as TaskStatus | string);
         const terminal =
           typeof t.status === 'string'
@@ -402,6 +407,14 @@ function applyMessage(msg: WireMessage) {
       }
       return next;
     });
+    // Auto-place only sessions we've never seen before; previously-closed or
+    // already-known sessions keep the user's persisted pane layout.
+    reconcileSessions(msg.tasks.map((t) => t.id));
+    return;
+  }
+
+  // A late event for a tombstoned session must not resurrect it.
+  if ('task_id' in msg && typeof msg.task_id === 'string' && isDeleted(msg.task_id)) {
     return;
   }
 
@@ -431,6 +444,11 @@ function applyMessage(msg: WireMessage) {
   recordEvent(msg);
 
   agents.update((m) => reduce(m, msg));
+
+  // A freshly-queued/started task pops into a free pane automatically.
+  if (msg.type === 'task_queued' || msg.type === 'task_started') {
+    reconcileSessions([msg.task_id]);
+  }
 }
 
 // ── Connection state management ───────────────────────────────────────────────
@@ -484,33 +502,67 @@ export function stimulate(id: string, kind: StimulusKind = 'request') {
   });
 }
 
-export function removeAgent(id: string) {
-  // Drop the agent from local state immediately so the pane closes without
-  // waiting for the network round-trip.
+/**
+ * Permanently delete a session. Unlike closing a pane (which only parks the
+ * session in the sidebar), this tombstones the id so the snapshot reducer can
+ * never re-hydrate it, drops it from local state, and asks the server to
+ * cancel + delete. The tombstone — not the server round-trip — is what
+ * guarantees the session stays gone across reloads, so a best-effort DELETE is
+ * safe here: even a dropped request can no longer cause a resurrection.
+ */
+export function deleteSession(id: string) {
+  tombstoneSession(id);
   agents.update((m) => {
     const next = new Map(m);
     next.delete(id);
     return next;
   });
-  // Then ask the server to cancel + permanently delete the session so a
-  // future reload doesn't pull it back via the snapshot endpoint. Best-effort:
-  // a network failure should not block the close UX.
   if (!browser) return;
-  void fetch(`/api/tasks/${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(
-    (err) => console.warn('[lopi] DELETE /api/tasks failed:', err)
+  void fetch(`/api/tasks/${encodeURIComponent(id)}`, { method: 'DELETE' }).catch((err) =>
+    console.warn('[lopi] DELETE /api/tasks failed:', err)
   );
 }
 
-export function postTask(
-  goal: string,
-  repo: string,
-  priority: 'low' | 'normal' | 'high' = 'normal'
-) {
+/** @deprecated Use {@link deleteSession}. Retained for the Tasks page. */
+export function removeAgent(id: string) {
+  deleteSession(id);
+}
+
+/** Per-task launch options surfaced by the pane selectors. */
+export interface TaskOptions {
+  priority?: 'low' | 'normal' | 'high' | 'critical';
+  model?: string;
+  effort?: string;
+  branch?: string;
+  constraints?: string[];
+}
+
+/**
+ * Build the `constraints` payload from the selector values. Model, effort and
+ * branch have no dedicated columns on the task yet, so we surface them as
+ * planning constraints (the same channel the backend already appends to the
+ * agent's prompt) rather than inventing fields that go nowhere.
+ */
+export function buildConstraints(opts: TaskOptions): string[] {
+  const out = [...(opts.constraints ?? [])];
+  if (opts.model) out.push(`Preferred model: ${opts.model}`);
+  if (opts.effort) out.push(`Reasoning effort: ${opts.effort}`);
+  if (opts.branch) out.push(`Target branch: ${opts.branch}`);
+  return out;
+}
+
+export function postTask(goal: string, repo: string, opts: TaskOptions = {}) {
   if (!browser) return Promise.reject(new Error('not-browser'));
+  const constraints = buildConstraints(opts);
   return fetch('/api/tasks', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ goal, repo, priority })
+    body: JSON.stringify({
+      goal,
+      repo,
+      priority: opts.priority ?? 'normal',
+      ...(constraints.length > 0 ? { constraints } : {})
+    })
   });
 }
 

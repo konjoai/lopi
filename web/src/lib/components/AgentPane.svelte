@@ -1,10 +1,22 @@
 <script lang="ts">
   import Forge from '$lib/forge/Forge.svelte';
-  import { logs, postTask, cancelTask, stimulate, permissionWaiting, PHASE_COLORS, type AgentState } from '$lib/stores/agents';
+  import LaunchControls from '$lib/components/LaunchControls.svelte';
+  import { logs, postTask, cancelTask, stimulate, permissionWaiting, PHASE_COLORS, type AgentState, type TaskOptions } from '$lib/stores/agents';
+  import { launchControls } from '$lib/stores/controls';
 
   export let agent: AgentState | null = null;
-  export let slotIndex: number = 0;
   export let onClose: (() => void) | null = null;
+
+  /** Snapshot the shared launch controls into a TaskOptions payload. */
+  function options(): TaskOptions {
+    const c = $launchControls;
+    return {
+      priority: c.priority as TaskOptions['priority'],
+      model: c.model,
+      effort: c.effort,
+      branch: c.branch || undefined
+    };
+  }
 
   let commandInput = '';
   let isSubmitting = false;
@@ -24,9 +36,9 @@
     // request leaves the pane, not after the server acknowledges it.
     if (agent) stimulate(agent.id);
     try {
-      // Empty pane: use empty repo string; existing agent: use agent.repo
-      const repo = agent?.repo ?? '';
-      await postTask(commandInput.trim(), repo, 'normal');
+      // Existing agent keeps its repo; an empty pane uses the selector's repo.
+      const repo = agent?.repo || $launchControls.repo || '';
+      await postTask(commandInput.trim(), repo, options());
       commandInput = '';
     } catch (err) {
       console.error('[lopi] postTask failed:', err);
@@ -47,7 +59,7 @@
     submitError = '';
     stimulate(agent.id);
     try {
-      await postTask(agent.goal, agent.repo, 'normal');
+      await postTask(agent.goal, agent.repo, options());
     } catch (err) {
       submitError = err instanceof Error ? err.message : 'retry failed';
     } finally {
@@ -79,20 +91,15 @@
     }
   }
 
-  function onDragStart(e: DragEvent) {
-    e.dataTransfer!.effectAllowed = 'move';
-    e.dataTransfer!.setData('text/plain', String(slotIndex));
-  }
 </script>
 
 <!--
   Agent pane — 2-column layout: left content + right sidebar (phase/controls).
-  Draggable by header. Equal-size panes. Fills 100% of container.
+  Reordering is driven by the grid's drag-handle overlay; resizing by its
+  gutters. The pane fills 100% of its tile.
 -->
 <div
   class="h-full w-full relative border border-white/10 rounded-lg bg-konjo-deep/60 backdrop-blur-sm flex overflow-hidden"
-  draggable="true"
-  on:dragstart={onDragStart}
 >
   <!-- ── LEFT COLUMN (main content) ────────────────────────────────────────── -->
   <div class="h-full flex flex-col flex-1 min-w-0 overflow-hidden">
@@ -140,6 +147,13 @@
           ></div>
         {/if}
       </div>
+
+      <!-- Idle launcher: pick model/effort/repo/branch, then type a goal below -->
+      {#if !agent}
+        <div class="mt-5 w-full max-w-sm px-2">
+          <LaunchControls dense />
+        </div>
+      {/if}
     </div>
 
     <!-- METRICS BAR (40px) ──────────────────────────────────────────── -->
@@ -236,16 +250,17 @@
   <div
     class="w-20 border-l border-white/5 flex flex-col items-center justify-between py-4 px-2 flex-shrink-0 bg-black/30"
   >
-    <!-- Close button — present on every pane (live, idle, and empty) so
-         the user can dismiss any slot. For agents this hits the DELETE
-         endpoint so the session does not resurrect on the next reload. -->
+    <!-- Close button — closes the PANE only. The session stays alive and
+         drops into the sidebar (where it can be reopened or permanently
+         deleted). This is the close/delete split that fixes resurrecting
+         sessions on reload. -->
     {#if onClose}
       <button
         type="button"
         on:click={onClose}
         class="w-5 h-5 flex items-center justify-center bg-white/10 hover:bg-white/25 text-white/60 hover:text-white rounded-full text-[10px] font-bold transition-colors flex-shrink-0"
-        title={agent ? 'Close & delete session' : 'Close pane'}
-        aria-label={agent ? 'Close and delete session' : 'Close pane'}
+        title={agent ? 'Close pane (session stays in sidebar)' : 'Close pane'}
+        aria-label={agent ? 'Close pane; session stays in sidebar' : 'Close pane'}
       >
         ✕
       </button>
