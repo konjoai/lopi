@@ -47,11 +47,8 @@ fn print_plan(task_id: &str, dag: &AgentDag, restart: NodeKind, dry_run: bool) {
     println!("🕸️  replay plan for task {task_id}");
     println!("    restart from: {restart}\n");
 
-    let mut planned = dag.clone();
-    planned.reset_from(restart);
-    for node in &dag.nodes {
-        let (icon, note) = classify(dag, &planned, node.kind, restart);
-        println!("    {icon} {:<10} {note}", node.kind.to_string());
+    for (kind, icon, note) in replay_plan(dag, restart) {
+        println!("    {icon} {:<10} {note}", kind.to_string());
     }
 
     println!();
@@ -61,6 +58,20 @@ fn print_plan(task_id: &str, dag: &AgentDag, restart: NodeKind, dry_run: bool) {
         println!("    note: live re-execution is not yet wired; showing the plan only.");
         println!("    the recorded idempotency keys above will be reused, not re-issued.");
     }
+}
+
+/// Classify every stage for a replay restarting at `restart`. Pure, so the plan
+/// can be asserted without capturing stdout.
+fn replay_plan(dag: &AgentDag, restart: NodeKind) -> Vec<(NodeKind, &'static str, String)> {
+    let mut planned = dag.clone();
+    planned.reset_from(restart);
+    dag.nodes
+        .iter()
+        .map(|node| {
+            let (icon, note) = classify(dag, &planned, node.kind, restart);
+            (node.kind, icon, note)
+        })
+        .collect()
 }
 
 /// Per-stage replay classification: reused upstream, re-run, or skipped because
@@ -128,5 +139,33 @@ mod tests {
         let (icon, note) = classify(&dag, &planned, NodeKind::Pr, NodeKind::Plan);
         assert_eq!(icon, "⏭️");
         assert!(note.contains("pr-url"));
+    }
+
+    #[test]
+    fn replay_plan_classifies_upstream_restart_and_downstream() {
+        let mut dag = AgentDag::canonical();
+        dag.complete_node(NodeKind::Plan, "h"); // Done, strictly upstream of Score
+        let plan = replay_plan(&dag, NodeKind::Score);
+        let icon = |k: NodeKind| plan.iter().find(|(kind, _, _)| *kind == k).unwrap().1;
+        // Upstream + Done → reused (kills `order`→const and `<`→`==` mutants,
+        // and the `Some(Done)` match-arm deletion).
+        assert_eq!(icon(NodeKind::Plan), "♻️");
+        // The restart stage itself must re-run, not be treated as upstream
+        // (kills the `<`→`<=` mutant).
+        assert_eq!(icon(NodeKind::Score), "▶️");
+        // A later non-side-effecting stage re-runs.
+        assert_eq!(icon(NodeKind::Verify), "▶️");
+    }
+
+    #[test]
+    fn replay_plan_marks_undone_upstream_with_dot() {
+        let dag = AgentDag::canonical(); // all pending
+        let plan = replay_plan(&dag, NodeKind::Score);
+        let plan_icon = plan
+            .iter()
+            .find(|(k, _, _)| *k == NodeKind::Plan)
+            .unwrap()
+            .1;
+        assert_eq!(plan_icon, "·");
     }
 }

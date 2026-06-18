@@ -43,6 +43,12 @@
   their external effect already landed (⏭️, idempotency-key reuse). Read-only
   for now; live re-execution rides on the runner producer. 7 tests.
 
+**Mutation gate** (`.cargo/mutants.toml`)
+- New cargo-mutants config scoped-excluding the CLI entry point (`main`) and
+  two pure-IO shells (`replay_commands::run` / `print_plan`) — they hold no
+  branching logic, delegating to the unit-tested `replay_plan` / `classify` /
+  `resolve_restart`. The replay plan computation is fully mutation-covered.
+
 ### Notes
 - The runner producer (wiring `AgentRunner` to build/persist the DAG and emit
   `node_id` on events) and the TUI "DAG" tab follow — the producer requires
