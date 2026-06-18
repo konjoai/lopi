@@ -27,6 +27,17 @@
 
 ### Changed
 
+**Split the 587-line `agents.ts` store** (Konjo ≤ 500-line rule)
+- Extracted the pure model (`agents-model.ts` — `AgentState`/`LogEntry`/
+  `Status`, `PHASE_COLORS`, `makeBlank`, `clamp01`) and the immutable
+  `AgentEvent → AgentState` reducer (`agents-reducer.ts`). `agents.ts` keeps the
+  stores, derived selectors, wire-message dispatch and public API, and
+  re-exports the model so every consumer's import surface is unchanged. Store
+  drops 587 → 344 lines.
+- The reducer was previously untestable (buried in the store); now pure and
+  covered by `agents-reducer.test.ts` (**28 cases**) — queue/start/metrics/
+  status/score-clamp/verdict transitions, unknown-task no-ops, and immutability.
+
 **Springy, interruptible tile motion** (`web/.../TileGrid.svelte`)
 - Adding or removing a pane was instant. Now the surviving tiles **glide** to
   their new tracks (FLIP, 420ms `cubicOut`) while the added/removed tile
