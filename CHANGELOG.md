@@ -1,5 +1,30 @@
 # Changelog
 
+## [Unreleased] — Sprint U: DAG-Structured Retry + Time-Travel Replay 🕸️
+
+### Added
+
+**`AgentDag` execution trace** (`crates/lopi-agent/src/dag.rs`)
+- Models one agent attempt as a directed acyclic graph of pipeline stages —
+  `NodeKind = Plan | Implement | Test | Score | Verify | Diff | Pr`, each a
+  `DagNode { kind, status, depends_on, output_hash }`.
+- `canonical()` builds the linear pipeline; `resume_point()` returns the
+  earliest non-`Done` node (the partial-restart entry point); `reset_from()`
+  rewinds a node + downstream while preserving upstream memoized output;
+  `complete_node()` / `fail_node()` / `set_status()` drive transitions;
+  `edges()` exposes the graph; full serde round-trip.
+- Grounded in the Scheduler-Theoretic Framework (arXiv 2604.11378): partial
+  restart from failed nodes beats linear retry. 11 unit tests.
+
+### Notes
+- Pure data structure this slice. SQLite persistence (`agent_dag_nodes` /
+  `agent_dag_edges`), the runner wiring that emits `node_id` on events, the
+  `lopi replay` CLI, the TUI "DAG" tab, and `GET /api/agents/:id/dag` follow —
+  persistence and the producer land together so the path is exercised
+  end-to-end. See PLAN.md Sprint U.
+
+---
+
 ## [Unreleased] — Sprint T: Topology-Adaptive Routing + Q-Learning 🧭
 
 ### Added

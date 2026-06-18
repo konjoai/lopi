@@ -253,15 +253,15 @@ parallelism speedup, split correctness, aggregation quality; fold into the Q-rou
 - [x] 30-case topology classifier test corpus (`topology::tests::CORPUS` + targeted cases)
 - [x] `Strategy::QLearned` wired into `ConstellationRouter` dispatch path — selection delegates to the shared `QRouter` (state = constellation name, action = agent id); `record_outcome()` feeds the reward back, `q_snapshot()` exposes the table. `constellation.rs` (690 lines) split into `constellation/{mod,types,select,tests}.rs` (all < 300) to clear the file-size gate first. *(Benchmark vs RoundRobin on T01–T10 and task-type-keyed state still pending.)*
 
-### Sprint U — DAG-Structured Retry + Time-Travel Replay (v0.21.0)
+### Sprint U — DAG-Structured Retry + Time-Travel Replay (v0.21.0 — IN PROGRESS)
 **Thesis:** Scheduler-Theoretic Framework (arxiv 2604.11378) shows partial restart from failed
 nodes beats linear retry. lopi already has `agent_checkpoints`; making them DAG nodes unlocks
 verifiable traces and `lopi replay`.
 
-- [ ] `AgentDag` in `crates/lopi-agent/src/dag.rs` — nodes: `{id, kind: NodeKind, status, depends_on, output_hash}`
-- [ ] `NodeKind = Plan | Implement | Test | Score | Verify | Diff | PR`
-- [ ] Retry restarts from earliest `Failed` node whose inputs are unchanged (hash-keyed memoization on Plan)
-- [ ] SQLite: `agent_dag_nodes`, `agent_dag_edges` tables; each `AgentEvent` carries `node_id`
+- [x] `AgentDag` in `crates/lopi-agent/src/dag.rs` — `DagNode { kind, status, depends_on, output_hash }`; `canonical()` linear pipeline, `resume_point()`, `reset_from()`, `complete_node()`/`fail_node()`, `edges()`, full serde. 11 tests.
+- [x] `NodeKind = Plan | Implement | Test | Score | Verify | Diff | Pr` (+ `NodeStatus = Pending | Running | Done | Failed`)
+- [x] Retry restarts from earliest non-`Done` node — upstream `Done` nodes preserved and reused via `output_hash` memoization (`resume_point()` / `reset_from()`)
+- [ ] SQLite: `agent_dag_nodes`, `agent_dag_edges` tables; each `AgentEvent` carries `node_id` *(persistence + runner wiring land together next, so the DAG producer and storage are exercised end-to-end)*
 - [ ] `lopi replay --task <id> [--from <node>] [--dry-run]`
 - [ ] TUI: "DAG" tab in existing ratatui dashboard with live status colours
 - [ ] `GET /api/agents/:id/dag` returns JSON graph
