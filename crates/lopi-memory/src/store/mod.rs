@@ -341,6 +341,7 @@ pub struct TaskRow {
 
 mod audit;
 mod checkpoints;
+mod dag;
 mod dead_letter;
 mod installations;
 mod lessons;
@@ -355,6 +356,7 @@ mod verifier;
 // Re-export helpers for tests (tests.rs uses `use super::*`).
 pub use audit::{AuditInput, AuditQuery, AuditRow};
 pub use checkpoints::{CheckpointInput, CheckpointRow};
+pub use dag::DagNodeRow;
 pub use dead_letter::{DeadLetterInput, DeadLetterRow};
 pub use installations::InstallationRow;
 pub use lessons::LessonRow;

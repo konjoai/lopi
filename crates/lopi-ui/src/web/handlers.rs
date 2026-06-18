@@ -307,6 +307,48 @@ pub(super) async fn get_quality_trend(
     }
 }
 
+/// `GET /api/agents/:id/dag` — the DAG-structured execution trace for a task.
+///
+/// Returns `{ task_id, nodes, edges }`; edges are derived from each node's
+/// `depends_on` list. An unknown task yields an empty graph (200), not 404 —
+/// a task may simply have no recorded DAG yet.
+pub(super) async fn get_agent_dag(
+    Path(id): Path<String>,
+    State(s): State<AppState>,
+) -> impl IntoResponse {
+    match s.store.load_dag_nodes(&id).await {
+        Ok(rows) => Json(dag_graph_json(&id, &rows)).into_response(),
+        Err(e) => {
+            tracing::warn!("agent dag query failed: {e}");
+            (StatusCode::INTERNAL_SERVER_ERROR, "db error").into_response()
+        }
+    }
+}
+
+/// Shape DAG node rows into the `{ task_id, nodes, edges }` JSON graph. Edges
+/// are derived from each node's `depends_on` list (`dep → kind`).
+fn dag_graph_json(task_id: &str, rows: &[lopi_memory::DagNodeRow]) -> Value {
+    let mut edges = Vec::new();
+    let nodes: Vec<Value> = rows
+        .iter()
+        .map(|r| {
+            let deps: Vec<String> = serde_json::from_str(&r.depends_on_json).unwrap_or_default();
+            for dep in &deps {
+                edges.push(json!({ "from": dep, "to": r.kind }));
+            }
+            json!({
+                "kind": r.kind,
+                "status": r.status,
+                "depends_on": deps,
+                "output_hash": r.output_hash,
+                "idempotency_key": r.idempotency_key,
+                "updated_at": r.updated_at,
+            })
+        })
+        .collect();
+    json!({ "task_id": task_id, "nodes": nodes, "edges": edges })
+}
+
 /// `GET /api/routing/q-values` — the Q-learning router's learned value table.
 pub(super) async fn get_q_values(State(s): State<AppState>) -> impl IntoResponse {
     match s.store.load_q_table().await {
@@ -403,4 +445,42 @@ pub(super) async fn get_plans() -> Json<Value> {
     })
     .collect();
     Json(json!({ "plans": plans }))
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::dag_graph_json;
+    use lopi_memory::DagNodeRow;
+
+    fn row(kind: &str, depends_on_json: &str) -> DagNodeRow {
+        DagNodeRow {
+            task_id: "t".into(),
+            kind: kind.into(),
+            status: "pending".into(),
+            depends_on_json: depends_on_json.into(),
+            output_hash: None,
+            idempotency_key: None,
+            updated_at: "now".into(),
+        }
+    }
+
+    #[test]
+    fn dag_graph_derives_edges_from_depends_on() {
+        let rows = vec![row("plan", "[]"), row("implement", "[\"plan\"]")];
+        let g = dag_graph_json("t1", &rows);
+        assert_eq!(g["task_id"], "t1");
+        assert_eq!(g["nodes"].as_array().unwrap().len(), 2);
+        let edges = g["edges"].as_array().unwrap();
+        assert_eq!(edges.len(), 1);
+        assert_eq!(edges[0]["from"], "plan");
+        assert_eq!(edges[0]["to"], "implement");
+    }
+
+    #[test]
+    fn dag_graph_empty_for_no_rows() {
+        let g = dag_graph_json("t1", &[]);
+        assert!(g["nodes"].as_array().unwrap().is_empty());
+        assert!(g["edges"].as_array().unwrap().is_empty());
+    }
 }

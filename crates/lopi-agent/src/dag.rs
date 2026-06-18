@@ -72,6 +72,17 @@ impl NodeKind {
         let idx = self.order();
         (idx > 0).then(|| Self::PIPELINE[idx - 1])
     }
+
+    /// True when running this stage writes state *outside* the agent's
+    /// git-isolated sandbox — currently only `Pr`, which opens a pull request.
+    ///
+    /// Such nodes must be idempotent across replays: re-running them would
+    /// duplicate the external effect (a second PR). See ACRFence
+    /// (arXiv 2603.20625) on semantic rollback hazards in agent retry.
+    #[must_use]
+    pub fn is_side_effecting(&self) -> bool {
+        matches!(self, NodeKind::Pr)
+    }
 }
 
 impl fmt::Display for NodeKind {
@@ -108,6 +119,12 @@ pub struct DagNode {
     /// a retry reuse the result without re-running the stage.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output_hash: Option<String>,
+    /// Idempotency key for a side-effecting node (e.g. the opened PR URL),
+    /// recorded once the external effect lands. Unlike `output_hash` this is
+    /// *preserved* across [`AgentDag::reset_from`] so a replay reuses the
+    /// committed effect instead of duplicating it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub idempotency_key: Option<String>,
 }
 
 /// The execution DAG for one agent run.
@@ -134,6 +151,7 @@ impl AgentDag {
                 status: NodeStatus::Pending,
                 depends_on: kind.predecessor().into_iter().collect(),
                 output_hash: None,
+                idempotency_key: None,
             })
             .collect();
         Self { nodes }
@@ -169,6 +187,28 @@ impl AgentDag {
         self.set_status(kind, NodeStatus::Failed);
     }
 
+    /// Record that a side-effecting node committed its external effect, keyed
+    /// by `key` (e.g. the opened PR URL). The key survives `reset_from`.
+    pub fn record_idempotency_key(&mut self, kind: NodeKind, key: impl Into<String>) {
+        if let Some(node) = self.node_mut(kind) {
+            node.idempotency_key = Some(key.into());
+        }
+    }
+
+    /// The idempotency key of `kind`, if its external effect already landed.
+    #[must_use]
+    pub fn idempotency_key(&self, kind: NodeKind) -> Option<&str> {
+        self.node(kind).and_then(|n| n.idempotency_key.as_deref())
+    }
+
+    /// Whether `kind` may be (re-)executed. A side-effecting node whose effect
+    /// already landed must be skipped to stay idempotent across replays — the
+    /// caller reuses the recorded [`Self::idempotency_key`] instead.
+    #[must_use]
+    pub fn should_execute(&self, kind: NodeKind) -> bool {
+        !(kind.is_side_effecting() && self.idempotency_key(kind).is_some())
+    }
+
     /// The earliest node not yet `Done` — where execution should (re)start.
     /// Returns `None` when the whole pipeline is complete.
     ///
@@ -185,6 +225,10 @@ impl AgentDag {
     /// Reset `from` and every downstream node to `Pending`, clearing their
     /// output hashes. Upstream `Done` nodes are preserved so their memoized
     /// output is reused — this is the `lopi replay --from <node>` primitive.
+    ///
+    /// Idempotency keys are deliberately *not* cleared: a side-effecting node
+    /// re-runs its compute on replay but reuses the already-committed external
+    /// effect rather than duplicating it.
     pub fn reset_from(&mut self, from: NodeKind) {
         let cutoff = from.order();
         for node in &mut self.nodes {
@@ -332,5 +376,53 @@ mod tests {
     fn predecessor_chain_is_correct() {
         assert_eq!(NodeKind::Plan.predecessor(), None);
         assert_eq!(NodeKind::Pr.predecessor(), Some(NodeKind::Diff));
+    }
+
+    #[test]
+    fn only_pr_is_side_effecting() {
+        assert!(NodeKind::Pr.is_side_effecting());
+        for kind in [
+            NodeKind::Plan,
+            NodeKind::Implement,
+            NodeKind::Test,
+            NodeKind::Score,
+            NodeKind::Verify,
+            NodeKind::Diff,
+        ] {
+            assert!(
+                !kind.is_side_effecting(),
+                "{kind} must not be side-effecting"
+            );
+        }
+    }
+
+    #[test]
+    fn committed_side_effect_blocks_re_execution() {
+        let mut dag = AgentDag::canonical();
+        // A non-committed Pr is freely executable.
+        assert!(dag.should_execute(NodeKind::Pr));
+        dag.record_idempotency_key(NodeKind::Pr, "https://github.com/org/repo/pull/7");
+        // Once the PR exists, re-running Pr must be skipped (reuse the key).
+        assert!(!dag.should_execute(NodeKind::Pr));
+        assert_eq!(
+            dag.idempotency_key(NodeKind::Pr),
+            Some("https://github.com/org/repo/pull/7")
+        );
+        // Non-side-effecting nodes are always executable.
+        assert!(dag.should_execute(NodeKind::Test));
+    }
+
+    #[test]
+    fn reset_from_preserves_idempotency_key() {
+        let mut dag = AgentDag::canonical();
+        dag.complete_node(NodeKind::Pr, "hash");
+        dag.record_idempotency_key(NodeKind::Pr, "pr-url");
+        dag.reset_from(NodeKind::Plan);
+        // Compute state is rewound …
+        assert_eq!(dag.node(NodeKind::Pr).unwrap().status, NodeStatus::Pending);
+        assert!(dag.node(NodeKind::Pr).unwrap().output_hash.is_none());
+        // … but the external effect's key survives, so replay won't duplicate it.
+        assert_eq!(dag.idempotency_key(NodeKind::Pr), Some("pr-url"));
+        assert!(!dag.should_execute(NodeKind::Pr));
     }
 }
