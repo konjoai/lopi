@@ -11,6 +11,8 @@ pub mod queue;
 pub mod schedule_manager;
 /// Cron-style task scheduler that injects recurring tasks into the queue.
 pub mod scheduler;
+/// Sprint T — keyword-heuristic topology classifier for task dispatch.
+pub mod topology;
 
 pub use agent_rate_limit::{AgentRateLimit, AgentRateLimitSnapshot};
 pub use constellation::{
@@ -22,3 +24,4 @@ pub use pool::{AgentPool, PoolStats, RunningAgentInfo};
 pub use queue::TaskQueue;
 pub use schedule_manager::{build_task as build_schedule_task, ScheduleManager, ScheduleSpec};
 pub use scheduler::{boot as boot_scheduler, next_run_times};
+pub use topology::{classify as classify_topology, TopologyClassification, CONFIDENCE_THRESHOLD};

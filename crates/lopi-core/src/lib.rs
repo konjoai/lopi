@@ -17,6 +17,8 @@ pub mod schema;
 pub mod task;
 /// Customer tier classification.
 pub mod tier;
+/// Orchestration topology hints (Sprint T).
+pub mod topology;
 
 pub use agent::{AgentRun, AgentState, Attempt, Score, ScoreWeights, TurnMetrics};
 pub use budget::BudgetScope;

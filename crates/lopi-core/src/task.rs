@@ -84,6 +84,22 @@ pub struct Rubric {
     pub criteria: Vec<String>,
 }
 
+impl Rubric {
+    /// Parse a rubric from TOML source — the on-disk format used by
+    /// `.konjo/rubrics/*.toml`.
+    ///
+    /// This is IO-free; callers read the file (e.g. via `tokio::fs`) and pass
+    /// the contents here so the parse stays off any async-blocking path.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` when the TOML is malformed or is missing the `name` /
+    /// `criteria` fields.
+    pub fn from_toml_str(s: &str) -> anyhow::Result<Self> {
+        toml::from_str(s).map_err(Into::into)
+    }
+}
+
 /// Verdict returned by the Konjo Verifier second-score pass.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VerifierVerdict {
@@ -148,6 +164,11 @@ pub struct Task {
     /// when `None` and verifier mode is enabled.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rubric: Option<Rubric>,
+    /// Sprint T — advisory orchestration topology. When `None`, the
+    /// orchestrator's classifier proposes one at dispatch time. See
+    /// [`crate::topology::TopologyHint`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub topology: Option<crate::topology::TopologyHint>,
 }
 
 /// Where a task originated — used for routing replies and audit logging.
@@ -197,6 +218,7 @@ impl Task {
             tools: Vec::new(),
             required_capabilities: Vec::new(),
             rubric: None,
+            topology: None,
         }
     }
 
@@ -210,5 +232,25 @@ impl Task {
         self.required_capabilities
             .iter()
             .all(|req| provided.iter().any(|p| p == req))
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rubric_from_toml_str_parses_name_and_criteria() {
+        let src = "name = \"refactor_safety\"\ncriteria = [\"No public API changes\", \"Tests still pass\"]\n";
+        let rubric = Rubric::from_toml_str(src).expect("valid toml");
+        assert_eq!(rubric.name, "refactor_safety");
+        assert_eq!(rubric.criteria.len(), 2);
+        assert_eq!(rubric.criteria[0], "No public API changes");
+    }
+
+    #[test]
+    fn rubric_from_toml_str_rejects_malformed() {
+        assert!(Rubric::from_toml_str("name = ").is_err());
     }
 }

@@ -1,6 +1,6 @@
 //! Sprint S — Konjo Verifier integration inside the agent runner.
 use super::AgentRunner;
-use crate::verifier::{default_rubric, get_repo_diff, VerifierAgent};
+use crate::verifier::{get_repo_diff, resolve_rubric, VerifierAgent};
 use lopi_core::AgentEvent;
 use tracing::warn;
 
@@ -17,7 +17,7 @@ impl AgentRunner {
             return true;
         };
         let plan = self.last_plan.clone().unwrap_or_default();
-        let rubric = self.task.rubric.clone().unwrap_or_else(default_rubric);
+        let rubric = resolve_rubric(self.task.rubric.clone(), &self.repo_path).await;
         let diff = get_repo_diff(&self.repo_path).await;
         let test_output = test_errors.join("\n");
 
