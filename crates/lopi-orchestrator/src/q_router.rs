@@ -41,6 +41,7 @@ pub struct QValueEntry {
 }
 
 /// Epsilon-greedy Q-learning router over a `(task_type → agent_config)` table.
+#[derive(Debug)]
 pub struct QRouter {
     table: DashMap<(String, String), QStat>,
     epsilon: f64,

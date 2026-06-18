@@ -25,10 +25,21 @@
 - Expanded to a 30-case labelled corpus spanning all four topologies plus the
   hybrid/tie fallback.
 
+**`Strategy::QLearned` in the constellation router** (`lopi-orchestrator::constellation`)
+- New routing strategy: dispatch selects the member with the best learned
+  Q-value for the constellation (state = constellation name, action = agent id),
+  exploring epsilon-greedily via the shared `QRouter`.
+- `ConstellationRouter::record_outcome(constellation, agent_id, reward)` feeds a
+  task's quality reward back into the Q-table; `q_snapshot()` exposes it.
+- `constellation.rs` (690 lines, over the 500 budget) split into
+  `constellation/{mod,types,select,tests}.rs` — each well under 300 — to clear
+  the file-size gate before the feature landed. Behaviour preserved; 4 new tests.
+
 ### Notes
-- Dispatch-path integration (`AgentPool::dispatch` topology branching, the
-  `low_confidence` Haiku fallback, and `Strategy::QLearned` in the
-  constellation router) is intentionally deferred — see PLAN.md Sprint T.
+- Remaining Sprint T work (`AgentPool::dispatch` topology branching, the
+  `low_confidence` Haiku fallback, task-type-keyed Q-state, and the RoundRobin
+  benchmark) is deferred — `pool.rs` is also over the size budget and touches
+  the live agent-spawn loop. See PLAN.md Sprint T.
 
 ---
 
