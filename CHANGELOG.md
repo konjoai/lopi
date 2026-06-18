@@ -14,14 +14,29 @@
   `complete_node()` / `fail_node()` / `set_status()` drive transitions;
   `edges()` exposes the graph; full serde round-trip.
 - Grounded in the Scheduler-Theoretic Framework (arXiv 2604.11378): partial
-  restart from failed nodes beats linear retry. 11 unit tests.
+  restart from failed nodes beats linear retry. 14 unit tests.
+
+**Idempotency safeguard** (`dag.rs`) — *discovery-driven*
+- `NodeKind::is_side_effecting()` (`Pr` opens a PR); `DagNode.idempotency_key`
+  records the committed external effect and is **preserved across
+  `reset_from`** (unlike `output_hash`); `should_execute()` skips an
+  already-committed side-effecting node so a replay reuses the effect instead
+  of opening a duplicate PR. Grounded in ACRFence (arXiv 2603.20625) on
+  semantic-rollback hazards in agent retry.
+
+**`agent_dag_nodes` persistence** (`lopi-memory`)
+- One row per pipeline stage; `upsert_dag_node` (upsert on `(task_id, kind)`)
+  + `load_dag_nodes`. Edges are derived from `depends_on`, so no redundant
+  edges table. 3 tests.
+
+**`GET /api/agents/:id/dag`** (`lopi-ui`)
+- Returns `{ task_id, nodes, edges }`; edges derived from each node's
+  `depends_on`. Unknown task → empty graph (200). 2 tests on the graph shaper.
 
 ### Notes
-- Pure data structure this slice. SQLite persistence (`agent_dag_nodes` /
-  `agent_dag_edges`), the runner wiring that emits `node_id` on events, the
-  `lopi replay` CLI, the TUI "DAG" tab, and `GET /api/agents/:id/dag` follow —
-  persistence and the producer land together so the path is exercised
-  end-to-end. See PLAN.md Sprint U.
+- Runner wiring (the `AgentDag` producer that emits `node_id` on events), the
+  `lopi replay` CLI, and the TUI "DAG" tab follow — the producer touches the
+  live agent-spawn path and needs end-to-end validation. See PLAN.md Sprint U.
 
 ---
 

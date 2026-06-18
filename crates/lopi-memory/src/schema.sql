@@ -287,3 +287,21 @@ CREATE TABLE IF NOT EXISTS schedule_runs (
     outcome     TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_schedule_runs_sched ON schedule_runs(schedule_id, fired_at DESC);
+
+-- Sprint U — DAG-structured execution trace. One row per pipeline stage of a
+-- task attempt. status is pending/running/done/failed. depends_on_json is a
+-- JSON array of upstream stage names. output_hash memoises a done node so
+-- retry can reuse it. idempotency_key records a side-effecting node's external
+-- effect (the opened PR URL) so replay reuses it instead of duplicating it.
+-- The edge list is derived from depends_on_json, so no separate edges table.
+CREATE TABLE IF NOT EXISTS agent_dag_nodes (
+    task_id         TEXT NOT NULL,
+    kind            TEXT NOT NULL,
+    status          TEXT NOT NULL DEFAULT 'pending',
+    depends_on_json TEXT NOT NULL DEFAULT '[]',
+    output_hash     TEXT,
+    idempotency_key TEXT,
+    updated_at      TEXT NOT NULL,
+    PRIMARY KEY (task_id, kind)
+);
+CREATE INDEX IF NOT EXISTS idx_agent_dag_nodes_task ON agent_dag_nodes(task_id);
