@@ -244,8 +244,9 @@ parallelism speedup, split correctness, aggregation quality; fold into the Q-rou
 
 - [x] `TopologyHint` enum (`Parallel | Sequential | Hierarchical | Hybrid`) in `lopi-core::topology`, with serde + `Display`/`FromStr`; `Task::topology: Option<TopologyHint>` field
 - [x] Topology classifier in `crates/lopi-orchestrator/src/topology.rs` — keyword heuristic with confidence + `low_confidence` flag (threshold 0.6); 7 tests
-- [ ] Haiku fallback when `low_confidence` (classifier returns the flag; the fallback call is not yet wired)
-- [ ] `AgentPool::dispatch()` branches on topology: `Parallel` → N worktree branches; `Sequential` → single branch checkpoint-resume; `Hierarchical` → planner-only agent spawns child tasks
+- [x] Topology classifier wired into the live dispatch path — `AgentPool::submit()` fills in `Task::topology` via the heuristic classifier when unset (logged, advisory, never blocks). `pool.rs` (929 lines) split into `pool/{mod,types,registry,run_loop,tests}.rs` (all ≤ 354) to clear the file-size gate first. `effective_topology()` helper exposed + tested.
+- [ ] Haiku fallback when `low_confidence` (classifier returns the flag; the fallback call needs an API client on the pool — not yet wired)
+- [ ] `AgentPool` execution branches on topology: `Parallel` → N worktree branches; `Sequential` → single branch checkpoint-resume; `Hierarchical` → planner-only agent spawns child tasks *(needs live-agent validation — the hint now flows to the runner via `Task::topology`)*
 - [x] Q-learning router in `crates/lopi-orchestrator/src/q_router.rs`: `QRouter` with epsilon-greedy selection (ε = 0.1) + `Q ← Q + α·(reward − Q)` update from a normalised reward; `snapshot`/`hydrate` for persistence
 - [x] `routing_q_values` SQLite table + `upsert_q_value` / `load_q_table` in `lopi-memory` *(nightly Dreaming recompute job: deferred)*
 - [x] `GET /api/routing/q-values` endpoint for inspection
