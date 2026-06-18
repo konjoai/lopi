@@ -5,6 +5,8 @@ pub mod constellation;
 pub mod health;
 /// Concurrent agent pool that drives task execution from a shared `TaskQueue`.
 pub mod pool;
+/// Sprint T — epsilon-greedy Q-learning router over task-type/agent-config.
+pub mod q_router;
 /// Priority task queue with deduplication and async blocking pop.
 pub mod queue;
 /// Runtime-mutable cron scheduler backing the dashboard cron UI.
@@ -21,6 +23,7 @@ pub use constellation::{
 };
 pub use health::{AgentHealth, HealthConfig, HealthRegistry, HealthSnapshot, HealthSummary};
 pub use pool::{AgentPool, PoolStats, RunningAgentInfo};
+pub use q_router::{QRouter, QValueEntry, DEFAULT_ALPHA, DEFAULT_EPSILON};
 pub use queue::TaskQueue;
 pub use schedule_manager::{build_task as build_schedule_task, ScheduleManager, ScheduleSpec};
 pub use scheduler::{boot as boot_scheduler, next_run_times};

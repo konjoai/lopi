@@ -1,5 +1,37 @@
 # Changelog
 
+## [Unreleased] — Sprint T: Topology-Adaptive Routing + Q-Learning 🧭
+
+### Added
+
+**Q-learning router** (`crates/lopi-orchestrator/src/q_router.rs`)
+- `QRouter` — an epsilon-greedy contextual-bandit router over a
+  `(task_type → agent_config)` Q-table. `select` explores with probability ε
+  (default 0.1) and otherwise exploits the highest-valued action; `update`
+  folds a normalised reward in via `Q ← Q + α·(reward − Q)` (default α = 0.5).
+- `snapshot` / `hydrate` round-trip the table for persistence; `q_value`
+  exposes a single cell. All inputs (ε, α, reward) are clamped to `[0, 1]`.
+- 9 unit tests (update math, clamping, greedy + explore selection,
+  snapshot↔hydrate, param clamping).
+
+**`routing_q_values` table** (`lopi-memory`)
+- `MemoryStore::upsert_q_value` (upsert keyed on the `(state, action)` PK) and
+  `load_q_table` (most-recently-updated first). 3 tests.
+
+**`GET /api/routing/q-values`** (`lopi-ui`)
+- Returns the persisted Q-table as JSON for inspection.
+
+**Topology classifier corpus** (`lopi-orchestrator::topology`)
+- Expanded to a 30-case labelled corpus spanning all four topologies plus the
+  hybrid/tie fallback.
+
+### Notes
+- Dispatch-path integration (`AgentPool::dispatch` topology branching, the
+  `low_confidence` Haiku fallback, and `Strategy::QLearned` in the
+  constellation router) is intentionally deferred — see PLAN.md Sprint T.
+
+---
+
 ## [0.19.0] — Sprint S: Konjo Verifier + macOS app + web overhaul 🔬🖥️
 
 ### Added — Konjo Verifier (Sprint S)
