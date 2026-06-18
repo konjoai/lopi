@@ -12,8 +12,16 @@
    *   <TileGrid {count} let:index>…uses index…</TileGrid>
    */
   import { tileDims } from '$lib/stores/layout-core';
+  import { flip } from 'svelte/animate';
+  import { scale } from 'svelte/transition';
+  import { cubicOut, backOut } from 'svelte/easing';
 
   export let count: number;
+
+  // Keyed cell list so add/remove animates the *changed* tile and FLIP glides
+  // the survivors to their new tracks. Resizing a gutter doesn't touch this
+  // list, so the spring never fights a live drag.
+  $: cells = Array.from({ length: count }, (_, i) => i);
 
   let W = 0;
   let H = 0;
@@ -88,13 +96,21 @@
 
 <div
   class="tilegrid"
+  class:dragging={drag !== null}
   bind:clientWidth={W}
   bind:clientHeight={H}
   style:grid-template-columns={colTemplate}
   style:grid-template-rows={rowTemplate}
 >
-  {#each { length: count } as _, index}
-    <div class="cell"><slot {index} /></div>
+  {#each cells as index (index)}
+    <div
+      class="cell"
+      animate:flip={{ duration: 420, easing: cubicOut }}
+      in:scale|local={{ duration: 320, start: 0.86, opacity: 0, easing: backOut }}
+      out:scale|local={{ duration: 200, start: 0.92, opacity: 0, easing: cubicOut }}
+    >
+      <slot {index} />
+    </div>
   {/each}
 
   <!-- Column gutters (vertical) -->
@@ -142,6 +158,13 @@
     border: none;
     background: transparent;
     padding: 0;
+    /* Glide to the new boundary when the grid re-flows; snap while dragging. */
+    transition:
+      background 0.12s,
+      left 0.42s cubic-bezier(0.16, 1, 0.3, 1),
+      top 0.42s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .dragging .gutter {
     transition: background 0.12s;
   }
   .gutter::after {

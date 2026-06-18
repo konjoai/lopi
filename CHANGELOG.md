@@ -25,6 +25,16 @@
   landing screen. (macOS is compile-unverified in this CI environment.)
 - Pure layout algorithms are unit-tested (`layout-core.test.ts`, 32 cases).
 
+### Changed
+
+**Springy, interruptible tile motion** (`web/.../TileGrid.svelte`)
+- Adding or removing a pane was instant. Now the surviving tiles **glide** to
+  their new tracks (FLIP, 420ms `cubicOut`) while the added/removed tile
+  **scales** in/out (`backOut` pop on enter). The cell list is keyed and never
+  changes during a gutter drag, so the spring can't fight a live resize. The
+  divider gutters ease to their new boundaries on re-flow and snap instantly
+  while dragging. 60fps, interruptible, no layout thrash.
+
 ### Fixed
 
 **Forge panes never went live — reactivity bug** (`web/.../AgentGrid.svelte`)
