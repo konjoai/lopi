@@ -4,6 +4,27 @@
 
 ### Added
 
+**Forge multi-agent cockpit — web + macOS** (`web/`, `macos/`)
+- **Sessions sidebar** lists every task whether mounted or not. Closing a pane
+  now *parks* the session in the sidebar instead of deleting it; a dedicated
+  trash action is the only permanent delete.
+- **Deleted-session resurrection bug fixed.** Closing a pane and deleting a
+  session were conflated, and a best-effort server `DELETE` left the snapshot
+  free to re-hydrate "deleted" sessions on reload. A new layout layer
+  (`web/src/lib/stores/layout*.ts`, `macos/.../Store/PaneLayout.swift`)
+  separates close-pane from delete-session and tombstones deletions so the
+  snapshot reducer can never bring them back. A persisted "known" set tells a
+  genuinely-new task apart from a returning one, so fresh tasks still auto-open.
+- **Resizable auto-tiling pane grid** (default 4): 2 = halves, 3 = thirds,
+  4 = quarters, with drag-resizable column/row gutters and drag-to-reorder.
+- **Model / effort / priority / repo / branch selectors** via custom Konjo
+  dropdowns, persisted and wired into task submission as planning constraints.
+- **macOS native Forge**: a `Canvas`-based ever-morphing fire/ice **orb**
+  driven by phase/activity/pressure, the resizable grid, sidebar, and selectors
+  — reaching parity with the web Forge. New `Forge` nav section is now the
+  landing screen. (macOS is compile-unverified in this CI environment.)
+- Pure layout algorithms are unit-tested (`layout-core.test.ts`, 32 cases).
+
 **`AgentDag` execution trace** (`crates/lopi-agent/src/dag.rs`)
 - Models one agent attempt as a directed acyclic graph of pipeline stages —
   `NodeKind = Plan | Implement | Test | Score | Verify | Diff | Pr`, each a

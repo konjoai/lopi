@@ -2,6 +2,7 @@ import SwiftUI
 
 /// Sidebar sections. Each maps to a live screen backed by the lopi REST/WS API.
 enum NavSection: String, CaseIterable, Identifiable {
+    case forge = "Forge"
     case dashboard = "Dashboard"
     case tasks = "Tasks"
     case cron = "Cron"
@@ -17,6 +18,7 @@ enum NavSection: String, CaseIterable, Identifiable {
 
     var icon: String {
         switch self {
+        case .forge: return "circle.grid.2x2.fill"
         case .dashboard: return "gauge.with.dots.needle.67percent"
         case .tasks: return "list.bullet.rectangle"
         case .cron: return "clock.arrow.circlepath"
@@ -33,7 +35,7 @@ enum NavSection: String, CaseIterable, Identifiable {
 
 struct RootView: View {
     @Environment(AppModel.self) private var model
-    @State private var selection: NavSection? = .dashboard
+    @State private var selection: NavSection? = .forge
 
     private var runningCount: Int { model.activeAgents.filter { $0.active }.count }
 
@@ -97,7 +99,8 @@ struct RootView: View {
     }
 
     @ViewBuilder private var detail: some View {
-        switch selection ?? .dashboard {
+        switch selection ?? .forge {
+        case .forge: ForgeView()
         case .dashboard: DashboardView()
         case .tasks: TasksView()
         case .cron: CronView()
