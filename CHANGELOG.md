@@ -35,6 +35,16 @@
   `constellation/{mod,types,select,tests}.rs` — each well under 300 — to clear
   the file-size gate before the feature landed. Behaviour preserved; 4 new tests.
 
+**Topology classifier wired into the dispatch path** (`lopi-orchestrator::pool`)
+- `AgentPool::submit()` now fills in `Task::topology` via the keyword classifier
+  when the task carries no explicit hint — logged, advisory, and never blocks
+  submission. The hint flows through to the runner via `Task::topology`.
+- `effective_topology(&task)` helper (explicit hint, else classify the goal).
+- `pool.rs` (929 lines, well over budget) split into
+  `pool/{mod,types,registry,run_loop,tests}.rs` — each ≤ 354 lines — to clear
+  the file-size gate. Behaviour preserved; public API (`crate::pool::*`)
+  unchanged. 3 new tests.
+
 ### Notes
 - Remaining Sprint T work (`AgentPool::dispatch` topology branching, the
   `low_confidence` Haiku fallback, task-type-keyed Q-state, and the RoundRobin
