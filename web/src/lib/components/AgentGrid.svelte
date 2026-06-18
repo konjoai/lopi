@@ -27,10 +27,15 @@
     };
   });
 
-  function agentFor(index: number): AgentState | null {
-    const id = $paneSlots[index];
-    return id ? ($agents.get(id) ?? null) : null;
-  }
+  // Reactive slot→agent resolution. This MUST be a reactive statement that
+  // names `$paneSlots` and `$agents` directly — a function called in markup
+  // (`agent={agentFor(index)}`) is only re-evaluated when the *identifiers in
+  // the expression* change, and Svelte never looks inside the function body.
+  // With a plain helper the grid renders once at mount (agents still empty,
+  // mock data arrives ~1.5s later) and then freezes on the idle state forever.
+  $: paneAgents = $paneSlots.map((id): AgentState | null =>
+    id ? ($agents.get(id) ?? null) : null
+  );
 
   function onDragStart(e: DragEvent, index: number) {
     dragSource = index;
@@ -59,13 +64,13 @@
       >
         <div
           class="drag-handle"
-          draggable={agentFor(index) !== null}
+          draggable={paneAgents[index] !== null}
           role="button"
           tabindex="-1"
           on:dragstart={(e) => onDragStart(e, index)}
           title="Drag to reorder"
         ></div>
-        <AgentPane agent={agentFor(index)} onClose={() => closePane(index)} />
+        <AgentPane agent={paneAgents[index]} onClose={() => closePane(index)} />
       </div>
     </TileGrid>
   </div>

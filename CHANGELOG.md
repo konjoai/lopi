@@ -25,6 +25,22 @@
   landing screen. (macOS is compile-unverified in this CI environment.)
 - Pure layout algorithms are unit-tested (`layout-core.test.ts`, 32 cases).
 
+### Fixed
+
+**Forge panes never went live — reactivity bug** (`web/.../AgentGrid.svelte`)
+- Panes resolved their agent through a helper called in markup
+  (`agent={agentFor(index)}`). Svelte tracks an expression's dependencies
+  *syntactically* — it sees `agentFor` and `index`, never the `$agents` /
+  `$paneSlots` stores read **inside** the function — so the grid evaluated
+  once at mount (agents still empty; mock/live data arrives ~1.5s later) and
+  then froze on the idle state forever. Every pane showed "— idle —" with an
+  empty ring even though the sessions sidebar (which iterates `$agents`
+  directly) correctly listed every running agent, and the layout had already
+  mounted them into slots. Replaced the helper with a reactive
+  `$: paneAgents = $paneSlots.map(...)` derivation that names both stores, so
+  panes now light up the moment an agent appears. This is what makes the Forge
+  actually *live* — orbs, metrics, logs and phase all render on first paint.
+
 **`AgentDag` execution trace** (`crates/lopi-agent/src/dag.rs`)
 - Models one agent attempt as a directed acyclic graph of pipeline stages —
   `NodeKind = Plan | Implement | Test | Score | Verify | Diff | Pr`, each a
