@@ -1,6 +1,7 @@
 # PLAN.md — lopi Master Plan
 
-**Updated:** 2026-06-01 · v0.18.0 in progress (Sprint S — Konjo Verifier).
+**Updated:** 2026-06-18 · v0.19.0 shipped (Sprint S — Konjo Verifier).
+Next: Sprint T (Topology-Adaptive Routing + Q-Learning Constellation).
 
 ## Vision
 
@@ -13,6 +14,29 @@ executable ships the whole experience.
 ---
 
 ## Shipped (chronological)
+
+### v0.19.x — Native macOS app + web OpenClaw-parity UI 🖥️
+- **macOS (SwiftUI):** native dashboard scaffold (Phases 1–2 + Cron) ·
+  durable cron schedules + config REST API · all admin panels (Phase 5) ·
+  live cockpit with real-time cognition viz + Konjo motion. Lives in `macos/`.
+- **web (the Forge):** OpenClaw-parity tabs (`pulse`, `router`, `logs`,
+  `debug`, `config`) · reactive orb with colored reactions · global logs API ·
+  Tools tab · live SSE log tail in Tasks drawer + quality-trend sparkline ·
+  live Pulse feed + Router tab + verifier/budget event surfacing. `web/mod.rs`
+  split into static + middleware modules to hold the file-size gate.
+
+### v0.19.0 — Sprint S: Konjo Verifier 🔬
+Rubric-guided Opus second-score pass. `VerifierAgent` (`lopi-agent/verifier.rs`)
+grades `{goal, plan, diff, test_output, rubric}` and returns
+`VerifierVerdict { passed, gaps, fix_hints, confidence }`. `run_verifier_pass`
+gates the commit after the heuristic score passes; on rejection, `fix_hints`
+are appended to `Task::constraints` and the task retries. Rubric resolution
+chain: `Task::rubric` → `.konjo/rubrics/feature_completeness.toml` →
+`default_rubric()`. `verifier_verdicts` SQLite table + `save/load_verifier_verdict`.
+`AgentEvent::VerifierVerdict` on the bus; surfaced in the web Pulse feed, the
+macOS cockpit, and the Telegram `/dock` marker. Three canonical rubrics in
+`.konjo/rubrics/`. `KONJO_VERIFIER.md` documents the format + brand position.
+Sprint S1: Konjo CLI/TUI overhaul — REPL, slash commands, bypass mode.
 
 ### v0.1.0–v0.5.0 — Phases 1–4 (foundation)
 Cargo workspace · core types · git isolation · agent loop · SQLite memory ·
@@ -195,35 +219,38 @@ lopi learn annotate CLI command. 313 tests.
 - [x] Formatting helpers: `short_id`, `priority_badge`, `status_emoji`, `relative_time`, `format_uptime`
 - [x] 22 new tests; workspace total 571 passing
 
-### Sprint S — Konjo Verifier 🔬 (NEXT — v0.19.0)
+### Sprint S — Konjo Verifier ✅ (shipped v0.19.0)
 **Thesis:** Today `Score` is binary (tests pass / lint clean). A rubric-guided Opus verifier is the
 single differentiator no competitor ships. VMAO paper (arxiv 2603.11445) shows +35% quality gain;
 Anthropic Outcomes beta validates it. Ships lopi as "the orchestrator that grades its own work."
 
-- [ ] `VerifierAgent` in `crates/lopi-agent/src/verifier.rs` — calls Opus with `{plan, diff, test_output, rubric}`, returns `VerifierVerdict { passed, gaps, fix_hints, confidence }`
-- [ ] Rubric resolution chain: `Task::rubric` → `.lopi/rubrics/*.toml` → workspace default (in `lopi-core`)
-- [ ] Two-pass `Score`: existing heuristic → if heuristic passes, run Verifier; produce `CompoundScore { heuristic, verifier, overall }`
-- [ ] On verifier failure: `fix_hints` appended to `Task::constraints`, task requeued at original priority with incremented `retry_count`
-- [ ] `AgentEvent::VerifierVerdict { task_id, passed, gaps, fix_hints, confidence }` on event bus
-- [ ] SQLite: new `verifier_verdicts` table (task_id, attempt, passed, gaps_json, fix_hints_json, confidence, model_used, cost_usd, ts)
-- [ ] Three canonical rubric files: `refactor_safety.toml`, `feature_completeness.toml`, `security_audit.toml`
-- [ ] `KONJO_VERIFIER.md` — documents the rubric format and the brand position
-- [ ] Verifier verdict surfaced in `/dock` Telegram output and Forge task detail panel
-- [ ] ≥ 12 tests in `lopi-agent/verifier.rs`; mutation kill ≥ 90%
+- [x] `VerifierAgent` in `crates/lopi-agent/src/verifier.rs` — calls Opus with `{plan, diff, test_output, rubric}`, returns `VerifierVerdict { passed, gaps, fix_hints, confidence }`
+- [x] Rubric resolution chain: `Task::rubric` → `.konjo/rubrics/feature_completeness.toml` → `default_rubric()` (`verifier::resolve_rubric`; `Rubric::from_toml_str` in `lopi-core`)
+- [x] Two-pass `Score`: heuristic passes → run Verifier as a commit gate (`run_verifier_pass`). *Note:* shipped as a pass/fail gate, not a `CompoundScore` struct — the typed composite score is deferred.
+- [x] On verifier failure: `fix_hints` appended to `Task::constraints`, task retries with them as hard requirements
+- [x] `AgentEvent::VerifierVerdict { task_id, passed, gaps, fix_hints, confidence }` on event bus
+- [x] SQLite: `verifier_verdicts` table (id, task_id, attempt, passed, gaps_json, fix_hints_json, confidence, model_used, ts)
+- [x] Three canonical rubric files in `.konjo/rubrics/`: `refactor_safety.toml`, `feature_completeness.toml`, `security_audit.toml`
+- [x] `KONJO_VERIFIER.md` — documents the rubric format and the brand position
+- [x] Verifier verdict surfaced in web Pulse feed, macOS cockpit, and Telegram `/dock` marker (🔬✅/🔬❌)
+- [x] ≥ 12 tests across `verifier.rs` + `verifier_runner.rs` + `store/verifier.rs`
 
-### Sprint T — Topology-Adaptive Routing + Q-Learning Constellation (v0.20.0)
+### Sprint T — Topology-Adaptive Routing + Q-Learning Constellation (v0.20.0 — IN PROGRESS)
 **Thesis:** AdaptOrch (arxiv 2602.16873) shows topology-aware routing beats any static topology
 by 12–23%. ruflo's 29k stars are partly Q-learning. lopi has the training signal on disk already
 (`agent_runs` table). Ship it in Rust with zero ML framework overhead.
+New since plan: RL via orchestration traces (arxiv 2605.02801) — orchestration rewards target
+parallelism speedup, split correctness, aggregation quality; fold into the Q-router reward signal.
 
-- [ ] `TopologyHint` enum (`Parallel | Sequential | Hierarchical | Hybrid`) on `Task`
-- [ ] Topology classifier in `crates/lopi-orchestrator/src/topology.rs` — keyword heuristic + optional Haiku fallback (confidence < 0.6)
+- [x] `TopologyHint` enum (`Parallel | Sequential | Hierarchical | Hybrid`) in `lopi-core::topology`, with serde + `Display`/`FromStr`; `Task::topology: Option<TopologyHint>` field
+- [x] Topology classifier in `crates/lopi-orchestrator/src/topology.rs` — keyword heuristic with confidence + `low_confidence` flag (threshold 0.6); 7 tests
+- [ ] Haiku fallback when `low_confidence` (classifier returns the flag; the fallback call is not yet wired)
 - [ ] `AgentPool::dispatch()` branches on topology: `Parallel` → N worktree branches; `Sequential` → single branch checkpoint-resume; `Hierarchical` → planner-only agent spawns child tasks
 - [ ] Q-learning router in `crates/lopi-orchestrator/src/q_router.rs`: `Q(task_type, agent_config)` updated from Verifier composite score; epsilon-greedy selection (ε = 0.1)
 - [ ] `routing_q_values` SQLite table; nightly Dreaming job recomputes Q-table from last-7-days runs
 - [ ] `Strategy::QLearned` added to `ConstellationRouter` alongside existing four strategies
 - [ ] `GET /api/routing/q-values` endpoint for inspection
-- [ ] 30-case topology classifier test corpus; benchmark shows Q-routed path beats RoundRobin on T01–T10
+- [ ] Expand to 30-case topology classifier test corpus; benchmark shows Q-routed path beats RoundRobin on T01–T10
 
 ### Sprint U — DAG-Structured Retry + Time-Travel Replay (v0.21.0)
 **Thesis:** Scheduler-Theoretic Framework (arxiv 2604.11378) shows partial restart from failed
@@ -441,7 +468,7 @@ Power tools — high leverage but require P1+P2 substrate to be useful.
 
 | Metric | Value |
 |---|---|
-| Workspace tests | **571 passing**, 0 failing |
+| Workspace tests | **631 passing**, 0 failing |
 | Build | `cargo build --workspace`: clean (Rust 1.96.0 stable) |
 | Crates | **15** |
 | CLI commands | `run`, `watch`, `tail`, `dock`, `sail [--repos]`, `cancel`, `learn list/show/export/annotate`, `schedules list`, `serve-webhooks`, `spec`, `check [--fail-on-violations]`, `gap-fill`, `watch-gap-fill`, `trust`, `serve-app`, `resume` |
@@ -450,12 +477,14 @@ Power tools — high leverage but require P1+P2 substrate to be useful.
 | Remote control | ✅ Telegram bot (19 commands, 22 tests) + WhatsApp webhook (Twilio) |
 | Direct-API planning | ✅ via `AgentRunner::with_api(client, limiter, breaker)` with prompt caching |
 | Adaptive retry | ✅ Reflexion-style — `last_error` fed to next plan; post-mortem on terminal failure |
-| Verifier | ⏳ Sprint S (next) — rubric-guided Opus second Score wall |
+| Verifier | ✅ Sprint S — rubric-guided Opus second Score wall · `.konjo/rubrics/` resolution chain · verdicts in web + macOS + Telegram |
+| Native macOS app | ✅ SwiftUI dashboard in `macos/` — cockpit, admin panels, cron, live cognition viz |
+| Web UI | ✅ OpenClaw-parity Forge — Pulse/Router/Tools/Logs tabs, reactive orb, SSE log tail |
 | Issue triage | ✅ Haiku classifier → GitHub comment → auto-queue |
 | Spec surface | ✅ `lopi-spec` · `lopi spec` · `lopi check` · injected into planning |
 | Benchmarks | ⏳ Sprint V — Terminal-Bench integration + `KONJO_OUTCOMES.md` |
-| Latest release | **v0.18.0** (Sprint R merged) |
-| Next release | **v0.19.0** (Sprint S — Konjo Verifier) |
+| Latest release | **v0.19.0** (Sprint S — Konjo Verifier · macOS app · web overhaul) |
+| Next release | **v0.20.0** (Sprint T — Topology-Adaptive Routing + Q-Learning) |
 
 ---
 

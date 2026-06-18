@@ -54,13 +54,26 @@ let runner = AgentRunner::new(task, repo_path, bus, store, cancel_rx, counter)
 
 ## Rubrics
 
-Three canonical rubrics ship with lopi at `.lopi/rubrics/`:
+Three canonical rubrics ship with lopi at `.konjo/rubrics/`:
 
 | File | When to use |
 |------|-------------|
 | `feature_completeness.toml` | New feature implementation tasks (default fallback) |
 | `refactor_safety.toml` | Refactoring tasks where no public API should change |
 | `security_audit.toml` | Security hardening tasks and webhook/auth changes |
+
+### Resolution chain
+
+For each verifier pass the rubric is resolved in order — first match wins:
+
+1. **`Task::rubric`** — an inline rubric attached to the task.
+2. **`.konjo/rubrics/feature_completeness.toml`** under the task's repo root —
+   loaded via `verifier::resolve_rubric`. A missing or malformed file is
+   non-fatal (`tracing::warn!` then fall through).
+3. **`verifier::default_rubric()`** — the hardcoded workspace fallback.
+
+Call `verifier::load_rubric_file(repo, "refactor_safety")` to load any named
+rubric from `.konjo/rubrics/` and attach it to a task's `rubric` field.
 
 ### Rubric format
 

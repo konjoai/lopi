@@ -17,6 +17,42 @@ Respond ONLY with a JSON object. No prose, no markdown fences. Schema: \
 `gaps` lists unmet criteria. `fix_hints` are imperative instructions for the \
 next implementation attempt. `confidence` is 0.0–1.0.";
 
+/// Directory, relative to the repo root, where canonical rubric files live.
+const RUBRIC_DIR: &str = ".konjo/rubrics";
+/// Rubric loaded from disk when a task carries no inline rubric.
+const DEFAULT_RUBRIC_FILE: &str = "feature_completeness";
+
+/// Resolve the rubric for a verifier pass.
+///
+/// Resolution chain (first match wins):
+/// 1. `task_rubric` — an inline rubric attached to the task.
+/// 2. `.konjo/rubrics/feature_completeness.toml` under the repo root.
+/// 3. [`default_rubric`] — the hardcoded workspace fallback.
+pub async fn resolve_rubric(task_rubric: Option<Rubric>, repo_path: &std::path::Path) -> Rubric {
+    if let Some(rubric) = task_rubric {
+        return rubric;
+    }
+    load_rubric_file(repo_path, DEFAULT_RUBRIC_FILE)
+        .await
+        .unwrap_or_else(default_rubric)
+}
+
+/// Load a named rubric from `.konjo/rubrics/<name>.toml` under `repo_path`.
+///
+/// Returns `None` when the file is absent or fails to parse — a missing or
+/// malformed rubric file is non-fatal and falls back to the default.
+pub async fn load_rubric_file(repo_path: &std::path::Path, name: &str) -> Option<Rubric> {
+    let path = repo_path.join(RUBRIC_DIR).join(format!("{name}.toml"));
+    let text = tokio::fs::read_to_string(&path).await.ok()?;
+    match Rubric::from_toml_str(&text) {
+        Ok(rubric) => Some(rubric),
+        Err(e) => {
+            tracing::warn!("rubric parse failed for {}: {e}", path.display());
+            None
+        }
+    }
+}
+
 /// Hardcoded workspace fallback used when no rubric is attached to the task.
 pub fn default_rubric() -> Rubric {
     Rubric {
@@ -157,5 +193,44 @@ mod tests {
         let r = default_rubric();
         assert!(!r.criteria.is_empty());
         assert_eq!(r.name, "default");
+    }
+
+    #[tokio::test]
+    async fn resolve_rubric_prefers_inline_task_rubric() {
+        let inline = Rubric {
+            name: "inline".into(),
+            criteria: vec!["only this".into()],
+        };
+        let resolved = resolve_rubric(Some(inline), std::path::Path::new("/nonexistent")).await;
+        assert_eq!(resolved.name, "inline");
+    }
+
+    #[tokio::test]
+    async fn resolve_rubric_loads_file_when_no_inline() {
+        let dir = std::env::temp_dir().join(format!("lopi-rubric-{}", std::process::id()));
+        let rubric_dir = dir.join(RUBRIC_DIR);
+        tokio::fs::create_dir_all(&rubric_dir).await.unwrap();
+        tokio::fs::write(
+            rubric_dir.join("feature_completeness.toml"),
+            "name = \"from_disk\"\ncriteria = [\"loaded from file\"]\n",
+        )
+        .await
+        .unwrap();
+        let resolved = resolve_rubric(None, &dir).await;
+        assert_eq!(resolved.name, "from_disk");
+        tokio::fs::remove_dir_all(&dir).await.ok();
+    }
+
+    #[tokio::test]
+    async fn resolve_rubric_falls_back_to_default_when_file_absent() {
+        let resolved = resolve_rubric(None, std::path::Path::new("/nonexistent")).await;
+        assert_eq!(resolved.name, "default");
+    }
+
+    #[tokio::test]
+    async fn load_rubric_file_returns_none_for_missing() {
+        assert!(load_rubric_file(std::path::Path::new("/nonexistent"), "x")
+            .await
+            .is_none());
     }
 }

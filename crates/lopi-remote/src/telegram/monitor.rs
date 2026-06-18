@@ -89,7 +89,10 @@ pub async fn handle_dock(bot: &Bot, msg: &Message, store: &MemoryStore, arg: &st
                     .map(relative_time)
                     .unwrap_or_else(|_| row.created_at.clone());
                 let id_short = short_id(&row.id);
-                lines.push(format!("{emoji}  {goal_preview:<40}  {when}  {id_short}"));
+                let verdict = verdict_marker(store, &row.id).await;
+                lines.push(format!(
+                    "{emoji}  {goal_preview:<40}  {when}  {id_short}{verdict}"
+                ));
             }
             bot.send_message(msg.chat.id, lines.join("\n")).await?;
         }
@@ -100,6 +103,23 @@ pub async fn handle_dock(bot: &Bot, msg: &Message, store: &MemoryStore, arg: &st
         }
     }
     Ok(())
+}
+
+/// Konjo Verifier marker for a task's latest verdict, for inline display in
+/// `/dock`. Empty when no verdict exists or the lookup fails — the dock listing
+/// must stay resilient to a missing verifier row.
+async fn verdict_marker(store: &MemoryStore, task_id: &str) -> &'static str {
+    match store.load_verifier_verdicts(task_id).await {
+        Ok(rows) => match rows.last() {
+            Some(row) if row.passed != 0 => "  🔬✅",
+            Some(_) => "  🔬❌",
+            None => "",
+        },
+        Err(e) => {
+            warn!("dock verdict lookup error for {task_id}: {e}");
+            ""
+        }
+    }
 }
 
 /// Show the last N log lines for a task identified by ID prefix.

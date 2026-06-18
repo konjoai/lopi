@@ -257,6 +257,7 @@ mod tests {
             tools: Vec::new(),
             required_capabilities: Vec::new(),
             rubric: None,
+            topology: None,
         }
     }
 

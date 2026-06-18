@@ -1,5 +1,58 @@
 # Changelog
 
+## [0.19.0] — Sprint S: Konjo Verifier + macOS app + web overhaul 🔬🖥️
+
+### Added — Konjo Verifier (Sprint S)
+
+**`VerifierAgent`** (`crates/lopi-agent/src/verifier.rs`)
+- Rubric-guided Opus second-score pass. After the heuristic `Score` passes,
+  `run_verifier_pass` sends `{goal, plan, diff, test_output, rubric}` to Opus and
+  parses a `VerifierVerdict { passed, gaps, fix_hints, confidence }`.
+- On rejection, `fix_hints` are appended to `Task::constraints` and the task
+  retries with them as hard requirements. Verifier errors are non-fatal (the
+  runner proceeds, `tracing::warn!`).
+- **Rubric resolution chain:** `Task::rubric` →
+  `.konjo/rubrics/feature_completeness.toml` (via `verifier::resolve_rubric` /
+  `load_rubric_file`) → `default_rubric()`. `Rubric::from_toml_str` in
+  `lopi-core` keeps the parse IO-free; the runner reads the file with `tokio::fs`.
+
+**Persistence + events**
+- `verifier_verdicts` SQLite table + `save_verifier_verdict` / `load_verifier_verdicts`
+  (`lopi-memory/src/store/verifier.rs`).
+- `AgentEvent::VerifierVerdict { task_id, passed, gaps, fix_hints, confidence }`
+  on the event bus.
+
+**Surfacing**
+- Web: Pulse feed + Router tab render verifier (and budget) events.
+- macOS: live cockpit cognition viz includes verdicts.
+- Telegram: `/dock` rows carry a 🔬✅ / 🔬❌ marker for the latest verdict.
+
+**Rubrics + docs**
+- Three canonical rubrics in `.konjo/rubrics/`: `feature_completeness.toml`,
+  `refactor_safety.toml`, `security_audit.toml`.
+- `KONJO_VERIFIER.md` documents the rubric format, the resolution chain, and the
+  brand position ("the only orchestrator that grades its own work before a PR").
+- Sprint S1: Konjo CLI/TUI overhaul — REPL, slash commands, bypass mode.
+
+### Added — Native macOS app
+
+- SwiftUI dashboard in `macos/`: scaffold (Phases 1–2 + Cron), all admin panels
+  (Phase 5), live cockpit with real-time cognition visualisation and Konjo motion.
+- Durable cron schedules + config REST API (macOS Phase 0).
+
+### Added — Web UI (the Forge) OpenClaw-parity overhaul
+
+- New tabs: `pulse`, `router`, `logs`, `debug`, `config`; reactive orb with
+  colored reactions; global logs API; Tools tab.
+- Live SSE log tail in the Tasks drawer + quality-trend sparkline.
+- `web/mod.rs` split into static + middleware modules to hold the file-size gate.
+
+### Tests
+- Verifier resolution chain + parse tests (`lopi-core`, `lopi-agent`).
+- Workspace total: **631 passing**, 0 failing.
+
+---
+
 ## [Unreleased] — Sprint R: Telegram Bot Overhaul ⛵️
 
 ### Added
