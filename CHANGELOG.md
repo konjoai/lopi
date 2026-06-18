@@ -24,6 +24,8 @@
   — reaching parity with the web Forge. New `Forge` nav section is now the
   landing screen. (macOS is compile-unverified in this CI environment.)
 - Pure layout algorithms are unit-tested (`layout-core.test.ts`, 32 cases).
+- The `AgentEvent → AgentState` reducer is split out of `agents.ts` into
+  `stores/agentReducer.ts`, bringing `agents.ts` back under the 500-line gate.
 
 **`AgentDag` execution trace** (`crates/lopi-agent/src/dag.rs`)
 - Models one agent attempt as a directed acyclic graph of pipeline stages —
