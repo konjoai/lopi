@@ -29,16 +29,38 @@ pub struct TopologyClassification {
 /// Keyword signals for each non-default topology. Order matches the categories
 /// scored in [`classify`].
 const SEQUENTIAL_KEYWORDS: &[&str] = &[
-    "then", "after", "step by step", "first", "once", "followed by", "migrate", "upgrade",
+    "then",
+    "after",
+    "step by step",
+    "first",
+    "once",
+    "followed by",
+    "migrate",
+    "upgrade",
     "in order",
 ];
 const PARALLEL_KEYWORDS: &[&str] = &[
-    "each", "every", "all ", "across", "in parallel", "independently", "fan out", "for all",
-    "multiple files", "concurrently",
+    "each",
+    "every",
+    "all ",
+    "across",
+    "in parallel",
+    "independently",
+    "fan out",
+    "for all",
+    "multiple files",
+    "concurrently",
 ];
 const HIERARCHICAL_KEYWORDS: &[&str] = &[
-    "decompose", "break down", "subtask", "coordinate", "orchestrate", "epic", "multi-part",
-    "plan and", "delegate",
+    "decompose",
+    "break down",
+    "subtask",
+    "coordinate",
+    "orchestrate",
+    "epic",
+    "multi-part",
+    "plan and",
+    "delegate",
 ];
 
 /// Count how many keywords appear in `haystack`.
@@ -54,7 +76,10 @@ fn count_hits(haystack: &str, keywords: &[&str]) -> u32 {
 pub fn classify(goal: &str) -> TopologyClassification {
     let g = goal.to_ascii_lowercase();
     let scored = [
-        (TopologyHint::Sequential, count_hits(&g, SEQUENTIAL_KEYWORDS)),
+        (
+            TopologyHint::Sequential,
+            count_hits(&g, SEQUENTIAL_KEYWORDS),
+        ),
         (TopologyHint::Parallel, count_hits(&g, PARALLEL_KEYWORDS)),
         (
             TopologyHint::Hierarchical,
@@ -143,9 +168,7 @@ mod tests {
 
     #[test]
     fn confidence_is_bounded() {
-        let v = classify(
-            "first then after once migrate upgrade in order followed by step by step",
-        );
+        let v = classify("first then after once migrate upgrade in order followed by step by step");
         assert!(v.confidence <= 0.95);
         assert!(v.confidence >= 0.0);
     }
