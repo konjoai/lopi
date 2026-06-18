@@ -250,7 +250,7 @@ parallelism speedup, split correctness, aggregation quality; fold into the Q-rou
 - [x] `routing_q_values` SQLite table + `upsert_q_value` / `load_q_table` in `lopi-memory` *(nightly Dreaming recompute job: deferred)*
 - [x] `GET /api/routing/q-values` endpoint for inspection
 - [x] 30-case topology classifier test corpus (`topology::tests::CORPUS` + targeted cases)
-- [ ] `Strategy::QLearned` wired into `ConstellationRouter` dispatch path (router is built; constellation integration + benchmark vs RoundRobin on T01–T10 deferred to avoid touching the hot path)
+- [x] `Strategy::QLearned` wired into `ConstellationRouter` dispatch path — selection delegates to the shared `QRouter` (state = constellation name, action = agent id); `record_outcome()` feeds the reward back, `q_snapshot()` exposes the table. `constellation.rs` (690 lines) split into `constellation/{mod,types,select,tests}.rs` (all < 300) to clear the file-size gate first. *(Benchmark vs RoundRobin on T01–T10 and task-type-keyed state still pending.)*
 
 ### Sprint U — DAG-Structured Retry + Time-Travel Replay (v0.21.0)
 **Thesis:** Scheduler-Theoretic Framework (arxiv 2604.11378) shows partial restart from failed
