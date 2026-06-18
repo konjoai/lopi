@@ -11,7 +11,7 @@
   import SessionSidebar from '$lib/components/SessionSidebar.svelte';
   import TileGrid from '$lib/components/TileGrid.svelte';
   import { agents, type AgentState } from '$lib/stores/agents';
-  import { paneSlots, closePane, addPane, removePane, swapPanes } from '$lib/stores/layout';
+  import { paneSlots, closePane, addPane, removePane, swapPanes, mountInPane } from '$lib/stores/layout';
 
   let dragSource: number | null = null;
   let dragOver: number | null = null;
@@ -43,7 +43,14 @@
   }
   function onDrop(e: DragEvent, index: number) {
     e.preventDefault();
-    if (dragSource !== null && dragSource !== index) swapPanes(dragSource, index);
+    // A session dragged in from the sidebar mounts into this exact pane;
+    // an internal drag reorders (swaps) two panes.
+    const sessionId = e.dataTransfer?.getData('application/x-lopi-session');
+    if (sessionId) {
+      mountInPane(sessionId, index);
+    } else if (dragSource !== null && dragSource !== index) {
+      swapPanes(dragSource, index);
+    }
     dragSource = null;
     dragOver = null;
   }

@@ -121,6 +121,20 @@ export function openSession(id: string): void {
   paneSlots.update((slots) => placeSession(slots, id));
 }
 
+/** Mount a session into a *specific* pane slot — the drop target of a drag
+ *  from the sessions sidebar. Unparks it, removes it from any slot it already
+ *  occupied (so dragging never duplicates a pane), then drops it into `index`.
+ *  Whatever sat in `index` is displaced back to the sidebar. */
+export function mountInPane(id: string, index: number): void {
+  unpark(id);
+  paneSlots.update((slots) => {
+    if (index < 0 || index >= slots.length) return slots;
+    const next = slots.map((s) => (s === id ? null : s));
+    next[index] = id;
+    return next;
+  });
+}
+
 /** Close the pane at `slot`: empties the slot and parks the session in the
  *  sidebar. The session itself is untouched (no server DELETE). */
 export function closePane(slot: number): void {

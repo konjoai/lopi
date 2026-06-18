@@ -27,6 +27,17 @@
 
 ### Changed
 
+**Sessions sidebar — drag-into-pane, filter, status grouping** (`web/.../SessionSidebar.svelte`)
+- **Drag a session row directly onto a specific pane** to mount it there (real
+  HTML5 DnD via `application/x-lopi-session`); the new `mountInPane` layout
+  action removes it from any slot it already held, so dragging never
+  duplicates a pane. Clicking a row still drops it into the first free pane.
+- **Filter box** — case-insensitive match across goal / repo / branch, with a
+  clear button and a "no matches" empty state.
+- **Status grouping** — sessions split into sticky `active` / `done` / `failed`
+  headers (newest-first within each, empty groups hidden). Pure, testable logic
+  lives in `session-groups.ts` (**16 tests**); the component stays a renderer.
+
 **Split the 587-line `agents.ts` store** (Konjo ≤ 500-line rule)
 - Extracted the pure model (`agents-model.ts` — `AgentState`/`LogEntry`/
   `Status`, `PHASE_COLORS`, `makeBlank`, `clamp01`) and the immutable
