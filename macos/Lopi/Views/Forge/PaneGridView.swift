@@ -35,6 +35,7 @@ struct PaneGridView<Pane: View>: View {
                     pane(idx)
                         .frame(width: colW[col], height: rowH[row])
                         .offset(x: originX(col, colW), y: originY(row, rowH))
+                        .transition(.scale(scale: 0.88).combined(with: .opacity))
                 }
                 ForEach(0..<max(0, cols - 1), id: \.self) { i in
                     divider(vertical: true)
@@ -50,6 +51,11 @@ struct PaneGridView<Pane: View>: View {
                 }
             }
             .padding(pad)
+            // Parity with the web TileGrid: survivors spring to their new
+            // tracks while the added/removed pane scales in/out. Keyed on
+            // `count` so a gutter drag (which leaves count unchanged) never
+            // fights the spring.
+            .animation(.spring(response: 0.42, dampingFraction: 0.82), value: count)
             .onChange(of: count) { _, _ in colFr = []; rowFr = [] }
         }
     }

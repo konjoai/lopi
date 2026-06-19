@@ -11,7 +11,7 @@
   import SessionSidebar from '$lib/components/SessionSidebar.svelte';
   import TileGrid from '$lib/components/TileGrid.svelte';
   import { agents, type AgentState } from '$lib/stores/agents';
-  import { paneSlots, closePane, addPane, removePane, swapPanes } from '$lib/stores/layout';
+  import { paneSlots, closePane, addPane, removePane, swapPanes, mountInPane } from '$lib/stores/layout';
 
   let dragSource: number | null = null;
   let dragOver: number | null = null;
@@ -27,10 +27,15 @@
     };
   });
 
-  function agentFor(index: number): AgentState | null {
-    const id = $paneSlots[index];
-    return id ? ($agents.get(id) ?? null) : null;
-  }
+  // Reactive slot→agent resolution. This MUST be a reactive statement that
+  // names `$paneSlots` and `$agents` directly — a function called in markup
+  // (`agent={agentFor(index)}`) is only re-evaluated when the *identifiers in
+  // the expression* change, and Svelte never looks inside the function body.
+  // With a plain helper the grid renders once at mount (agents still empty,
+  // mock data arrives ~1.5s later) and then freezes on the idle state forever.
+  $: paneAgents = $paneSlots.map((id): AgentState | null =>
+    id ? ($agents.get(id) ?? null) : null
+  );
 
   function onDragStart(e: DragEvent, index: number) {
     dragSource = index;
@@ -38,7 +43,14 @@
   }
   function onDrop(e: DragEvent, index: number) {
     e.preventDefault();
-    if (dragSource !== null && dragSource !== index) swapPanes(dragSource, index);
+    // A session dragged in from the sidebar mounts into this exact pane;
+    // an internal drag reorders (swaps) two panes.
+    const sessionId = e.dataTransfer?.getData('application/x-lopi-session');
+    if (sessionId) {
+      mountInPane(sessionId, index);
+    } else if (dragSource !== null && dragSource !== index) {
+      swapPanes(dragSource, index);
+    }
     dragSource = null;
     dragOver = null;
   }
@@ -59,13 +71,13 @@
       >
         <div
           class="drag-handle"
-          draggable={agentFor(index) !== null}
+          draggable={paneAgents[index] !== null}
           role="button"
           tabindex="-1"
           on:dragstart={(e) => onDragStart(e, index)}
           title="Drag to reorder"
         ></div>
-        <AgentPane agent={agentFor(index)} onClose={() => closePane(index)} />
+        <AgentPane agent={paneAgents[index]} onClose={() => closePane(index)} />
       </div>
     </TileGrid>
   </div>

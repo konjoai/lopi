@@ -27,6 +27,58 @@
 - The `AgentEvent → AgentState` reducer is split out of `agents.ts` into
   `stores/agentReducer.ts`, bringing `agents.ts` back under the 500-line gate.
 
+### Changed
+
+**Sessions sidebar — drag-into-pane, filter, status grouping** (`web/.../SessionSidebar.svelte`)
+- **Drag a session row directly onto a specific pane** to mount it there (real
+  HTML5 DnD via `application/x-lopi-session`); the new `mountInPane` layout
+  action removes it from any slot it already held, so dragging never
+  duplicates a pane. Clicking a row still drops it into the first free pane.
+- **Filter box** — case-insensitive match across goal / repo / branch, with a
+  clear button and a "no matches" empty state.
+- **Status grouping** — sessions split into sticky `active` / `done` / `failed`
+  headers (newest-first within each, empty groups hidden). Pure, testable logic
+  lives in `session-groups.ts` (**16 tests**); the component stays a renderer.
+
+**Split the 587-line `agents.ts` store** (Konjo ≤ 500-line rule)
+- Extracted the pure model (`agents-model.ts` — `AgentState`/`LogEntry`/
+  `Status`, `PHASE_COLORS`, `makeBlank`, `clamp01`) and the immutable
+  `AgentEvent → AgentState` reducer (`agents-reducer.ts`). `agents.ts` keeps the
+  stores, derived selectors, wire-message dispatch and public API, and
+  re-exports the model so every consumer's import surface is unchanged. Store
+  drops 587 → 344 lines.
+- The reducer was previously untestable (buried in the store); now pure and
+  covered by `agents-reducer.test.ts` (**28 cases**) — queue/start/metrics/
+  status/score-clamp/verdict transitions, unknown-task no-ops, and immutability.
+
+**Springy, interruptible tile motion** (`web/.../TileGrid.svelte`)
+- Adding or removing a pane was instant. Now the surviving tiles **glide** to
+  their new tracks (FLIP, 420ms `cubicOut`) while the added/removed tile
+  **scales** in/out (`backOut` pop on enter). The cell list is keyed and never
+  changes during a gutter drag, so the spring can't fight a live resize. The
+  divider gutters ease to their new boundaries on re-flow and snap instantly
+  while dragging. 60fps, interruptible, no layout thrash.
+- **macOS parity** (`PaneGridView.swift`): the native grid gets the same
+  behaviour via `.animation(.spring(response:0.42, dampingFraction:0.82),
+  value: count)` plus a scale+opacity pane transition — keyed on `count` so a
+  gutter drag never fights the spring.
+
+### Fixed
+
+**Forge panes never went live — reactivity bug** (`web/.../AgentGrid.svelte`)
+- Panes resolved their agent through a helper called in markup
+  (`agent={agentFor(index)}`). Svelte tracks an expression's dependencies
+  *syntactically* — it sees `agentFor` and `index`, never the `$agents` /
+  `$paneSlots` stores read **inside** the function — so the grid evaluated
+  once at mount (agents still empty; mock/live data arrives ~1.5s later) and
+  then froze on the idle state forever. Every pane showed "— idle —" with an
+  empty ring even though the sessions sidebar (which iterates `$agents`
+  directly) correctly listed every running agent, and the layout had already
+  mounted them into slots. Replaced the helper with a reactive
+  `$: paneAgents = $paneSlots.map(...)` derivation that names both stores, so
+  panes now light up the moment an agent appears. This is what makes the Forge
+  actually *live* — orbs, metrics, logs and phase all render on first paint.
+
 **`AgentDag` execution trace** (`crates/lopi-agent/src/dag.rs`)
 - Models one agent attempt as a directed acyclic graph of pipeline stages —
   `NodeKind = Plan | Implement | Test | Score | Verify | Diff | Pr`, each a

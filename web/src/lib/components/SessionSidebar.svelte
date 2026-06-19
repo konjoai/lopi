@@ -7,10 +7,16 @@
    */
   import { agents, deleteSession, PHASE_COLORS, type AgentState } from '$lib/stores/agents';
   import { paneSlots, closedSessions, openSession } from '$lib/stores/layout';
+  import { filterSessions, groupSessions } from '$lib/stores/session-groups';
 
   export let collapsed = false;
 
-  $: sessions = [...$agents.values()].sort((a, b) => b.startedAt - a.startedAt);
+  let query = '';
+
+  // Filter then group (active / done / failed, newest-first, empties dropped).
+  $: visible = filterSessions($agents.values(), query);
+  $: groups = groupSessions(visible);
+  $: total = $agents.size;
   $: openIds = new Set($paneSlots.filter((s): s is string => s !== null));
 
   function statusColor(s: AgentState): string {
@@ -19,6 +25,14 @@
     if (s.status === 'failed') return 'var(--konjo-rose)';
     if (s.status === 'cancelled') return 'rgba(255,255,255,0.3)';
     return 'rgba(0,212,255,0.5)';
+  }
+
+  // Drag a session out of the sidebar; the grid's pane-host accepts the drop
+  // and mounts it into that specific pane (see AgentGrid).
+  function onRowDragStart(e: DragEvent, id: string) {
+    e.dataTransfer?.setData('application/x-lopi-session', id);
+    e.dataTransfer?.setData('text/plain', id);
+    if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
   }
 </script>
 
@@ -35,44 +49,74 @@
     </button>
     {#if !collapsed}
       <span class="title">sessions</span>
-      <span class="count">{sessions.length}</span>
+      <span class="count">{total}</span>
     {/if}
   </div>
 
   {#if !collapsed}
+    {#if total > 0}
+      <div class="search">
+        <span class="search-icon">⌕</span>
+        <input
+          type="search"
+          placeholder="filter goal / repo / branch"
+          bind:value={query}
+          spellcheck="false"
+        />
+        {#if query}
+          <button type="button" class="clear" on:click={() => (query = '')} aria-label="Clear filter">✕</button>
+        {/if}
+      </div>
+    {/if}
+
     <div class="list">
-      {#if sessions.length === 0}
+      {#if total === 0}
         <div class="empty">no sessions yet</div>
+      {:else if groups.length === 0}
+        <div class="empty">no matches for “{query}”</div>
       {/if}
-      {#each sessions as s (s.id)}
-        {@const isOpen = openIds.has(s.id)}
-        {@const isClosed = $closedSessions.has(s.id)}
-        <div class="row" class:open={isOpen}>
-          <button
-            type="button"
-            class="open-btn"
-            on:click={() => openSession(s.id)}
-            title={isOpen ? 'In a pane' : 'Open in a pane'}
-          >
-            <span class="dot" style:background={statusColor(s)}></span>
-            <span class="meta">
-              <span class="goal">{s.goal}</span>
-              <span class="sub">
-                <span style:color={PHASE_COLORS[s.phase]}>{s.phase}</span>
-                {#if isClosed && !isOpen}<span class="parked">· parked</span>{/if}
-              </span>
-            </span>
-          </button>
-          <button
-            type="button"
-            class="trash"
-            on:click={() => deleteSession(s.id)}
-            title="Delete session permanently"
-            aria-label="Delete session permanently"
-          >
-            🗑
-          </button>
+      {#each groups as group (group.key)}
+        <div class="group-head">
+          <span class="group-label">{group.label}</span>
+          <span class="group-count">{group.sessions.length}</span>
         </div>
+        {#each group.sessions as s (s.id)}
+          {@const isOpen = openIds.has(s.id)}
+          {@const isClosed = $closedSessions.has(s.id)}
+          <div
+            class="row"
+            class:open={isOpen}
+            draggable="true"
+            role="group"
+            on:dragstart={(e) => onRowDragStart(e, s.id)}
+            title="Drag into a pane"
+          >
+            <button
+              type="button"
+              class="open-btn"
+              on:click={() => openSession(s.id)}
+              title={isOpen ? 'In a pane' : 'Open in first free pane (or drag onto one)'}
+            >
+              <span class="dot" style:background={statusColor(s)}></span>
+              <span class="meta">
+                <span class="goal">{s.goal}</span>
+                <span class="sub">
+                  <span style:color={PHASE_COLORS[s.phase]}>{s.phase}</span>
+                  {#if isClosed && !isOpen}<span class="parked">· parked</span>{/if}
+                </span>
+              </span>
+            </button>
+            <button
+              type="button"
+              class="trash"
+              on:click={() => deleteSession(s.id)}
+              title="Delete session permanently"
+              aria-label="Delete session permanently"
+            >
+              🗑
+            </button>
+          </div>
+        {/each}
       {/each}
     </div>
   {/if}
@@ -129,6 +173,51 @@
     opacity: 0.4;
     font-variant-numeric: tabular-nums;
   }
+  .search {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 8px 8px 2px;
+    padding: 5px 8px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    background: rgba(255, 255, 255, 0.025);
+    flex-shrink: 0;
+  }
+  .search:focus-within {
+    border-color: rgb(var(--konjo-accent-rgb) / 0.45);
+  }
+  .search-icon {
+    font-size: 12px;
+    opacity: 0.4;
+  }
+  .search input {
+    flex: 1;
+    min-width: 0;
+    border: none;
+    background: transparent;
+    outline: none;
+    color: var(--konjo-paper, #f5f5f5);
+    font-family: var(--font-mono, monospace);
+    font-size: 11px;
+  }
+  .search input::placeholder {
+    opacity: 0.3;
+  }
+  .search input::-webkit-search-cancel-button {
+    display: none;
+  }
+  .clear {
+    border: none;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.35);
+    cursor: pointer;
+    font-size: 9px;
+    padding: 0 2px;
+  }
+  .clear:hover {
+    color: var(--konjo-paper, #f5f5f5);
+  }
   .list {
     flex: 1;
     overflow-y: auto;
@@ -136,6 +225,36 @@
     display: flex;
     flex-direction: column;
     gap: 3px;
+  }
+  .group-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 6px 3px;
+    position: sticky;
+    top: 0;
+    background: rgba(5, 5, 6, 0.85);
+    backdrop-filter: blur(6px);
+    z-index: 1;
+  }
+  .group-label {
+    font-family: var(--font-mono, monospace);
+    font-size: 8px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    opacity: 0.45;
+  }
+  .group-count {
+    font-family: var(--font-mono, monospace);
+    font-size: 8px;
+    opacity: 0.3;
+    font-variant-numeric: tabular-nums;
+  }
+  .group-head::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: rgba(255, 255, 255, 0.05);
   }
   .empty {
     opacity: 0.3;
@@ -151,6 +270,10 @@
     border-radius: 8px;
     border: 1px solid transparent;
     transition: background 0.12s;
+    cursor: grab;
+  }
+  .row:active {
+    cursor: grabbing;
   }
   .row:hover {
     background: rgba(255, 255, 255, 0.03);
