@@ -1,17 +1,43 @@
 /**
- * The agent reducer — the single source of truth for `AgentEvent → AgentState`.
+ * Agent reducer — the single source of truth for `AgentEvent → AgentState`
+ * mutation, split out of `agents.ts` to keep that module under the size gate.
  *
- * Pure and immutable: every call returns a new `Map`, every agent a fresh
- * object. No Svelte, no I/O — so it is exhaustively unit-testable in isolation
- * (`agents-reducer.test.ts`). The store (`agents.ts`) just funnels parsed wire
- * events through here.
+ * `reduce` is pure: it returns a new map and never touches the store, so it can
+ * be reasoned about (and tested) in isolation. `makeBlank` seeds a placeholder
+ * agent for events that arrive before their `task_queued`, and is reused by the
+ * snapshot hydration path in `agents.ts`.
  */
 import { taskStatusToPhase, isTerminalStatus } from '$lib/parser';
 import type { AgentEvent } from '$lib/types';
-import { type AgentState, makeBlank, clamp01 } from './agents-model';
+import type { AgentState } from './agents';
 
-/** Fold one `AgentEvent` into the agent map, returning the next map. */
-export function reduce(map: Map<string, AgentState>, ev: AgentEvent): Map<string, AgentState> {
+/** Seed a placeholder agent — used for out-of-order events and snapshot rows. */
+export function makeBlank(id: string): AgentState {
+  return {
+    id,
+    goal: 'unknown',
+    repo: '',
+    branch: '',
+    status: 'queued',
+    taskStatus: 'Queued',
+    phase: 'Boot',
+    attempt: 0,
+    startedAt: Date.now(),
+    elapsedMs: 0,
+    pressure: 0.05,
+    activity: 0,
+    health: 0.85,
+    cost: 0,
+    stimulus: 0,
+    stimulusKind: 'request'
+  };
+}
+
+/** Apply one `AgentEvent` to the agent map, returning a new map. */
+export function reduce(
+  map: Map<string, AgentState>,
+  ev: AgentEvent
+): Map<string, AgentState> {
   const next = new Map(map);
   switch (ev.type) {
     case 'task_queued': {
@@ -80,7 +106,9 @@ export function reduce(map: Map<string, AgentState>, ev: AgentEvent): Map<string
       const cur = next.get(ev.task_id);
       if (!cur) break;
       // Composite 0..1 score: primarily test_pass_rate, penalized by lint errors.
-      const composite = clamp01(ev.test_pass_rate * 0.85 - Math.min(ev.lint_errors / 50, 0.15));
+      const composite = clamp01(
+        ev.test_pass_rate * 0.85 - Math.min(ev.lint_errors / 50, 0.15)
+      );
       next.set(ev.task_id, {
         ...cur,
         testPassRate: ev.test_pass_rate,
@@ -162,4 +190,11 @@ export function reduce(map: Map<string, AgentState>, ev: AgentEvent): Map<string
     }
   }
   return next;
+}
+
+function clamp01(n: number): number {
+  if (!Number.isFinite(n)) return 0;
+  if (n < 0) return 0;
+  if (n > 1) return 1;
+  return n;
 }

@@ -12,30 +12,79 @@
  */
 import { writable, derived, type Readable } from 'svelte/store';
 import { browser } from '$app/environment';
-import {
-  parseWireMessage,
-  taskStatusToPhase,
-  isTerminalStatus
-} from '$lib/parser';
+import { parseWireMessage, taskStatusToPhase } from '$lib/parser';
 import { connect, setMessageHandler, initMock, getConnectionState } from './wsClient';
 import { recordEvent } from './events';
 import { isDeleted, reconcileSessions, tombstoneSession } from './layout';
-import { reduce } from './agents-reducer';
-import {
-  type AgentState,
-  type LogEntry,
-  type Status,
-  PHASE_COLORS,
-  makeBlank,
-  clamp01
-} from './agents-model';
+import { reduce, makeBlank } from './agentReducer';
 import type { StimulusKind } from '$lib/forge/excitement';
-import type { PoolStats, TaskStatus, WireMessage } from '$lib/types';
+import type { Phase, PoolStats, TaskStatus, WireMessage } from '$lib/types';
 
-// ── Re-export the model surface for consumers (stable legacy imports) ─────────
+// ── Re-export types for consumers (legacy import surface) ─────────────────────
 export type { Phase, TaskStatus } from '$lib/types';
-export type { AgentState, LogEntry, Status } from './agents-model';
-export { PHASE_COLORS };
+
+// ── UI-side state shape ───────────────────────────────────────────────────────
+export type Status = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+
+export interface AgentState {
+  id: string;
+  goal: string;
+  repo: string;
+  branch: string;
+  status: Status;
+  taskStatus: TaskStatus | string;
+  phase: Phase;
+  attempt: number;
+  startedAt: number;
+  elapsedMs: number;
+
+  // Forge inputs (0..1 each)
+  pressure: number;
+  activity: number;
+  health: number;
+
+  // Score breakdown (from score_updated events)
+  testPassRate?: number;
+  lintErrors?: number;
+  diffLines?: number;
+  score?: number; // synthetic 0..1 composite
+
+  // Adversarial verifier verdict (from verifier_verdict events)
+  verifierPassed?: boolean;
+  verifierGaps?: string[];
+  verifierFixHints?: string[];
+
+  cost: number; // USD accumulated
+  thought?: string; // last log line (preview)
+
+  /**
+   * Timestamp (ms) of the last incoming request/stimulus for this agent —
+   * drives the Forge orb's react animation (shake → fast spin → orange glow).
+   */
+  stimulus: number;
+  /**
+   * What excited the orb last: 'request' (ember orange), 'success'
+   * (jade bloom) or 'failure' (rose flare).
+   */
+  stimulusKind: StimulusKind;
+}
+
+export interface LogEntry {
+  ts: number;
+  taskId: string;
+  level: 'info' | 'warn' | 'error' | 'debug';
+  message: string;
+}
+
+// ── Phase color map (mirrors :root vars in app.css) ───────────────────────────
+export const PHASE_COLORS: Record<Phase, string> = {
+  Boot: '#f5f5f5',
+  Discovery: '#00d4ff',
+  Planning: '#00ffd4',
+  Implementation: '#ff4500',
+  Testing: '#ffcc00',
+  Conclusion: '#00ff9d'
+};
 
 // ── Stores ────────────────────────────────────────────────────────────────────
 export const agents = writable<Map<string, AgentState>>(new Map());
