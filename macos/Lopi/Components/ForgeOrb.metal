@@ -57,7 +57,7 @@ static float snoise(float3 v) {
 }
 
 // Rotate a direction about the Y then X axes (the orb's calm drift / spin).
-static float3 spin(float3 v, float ry, float rx) {
+static float3 rotate3(float3 v, float ry, float rx) {
     float cy = cos(ry), sy = sin(ry);
     v = float3(cy * v.x + sy * v.z, v.y, -sy * v.x + cy * v.z);
     float cx = cos(rx), sx = sin(rx);
@@ -68,23 +68,24 @@ static float3 spin(float3 v, float ry, float rx) {
 [[ stitchable ]]
 half4 forgeOrb(float2 pos, half4 color, float4 bounds,
                float time, float pressure, float activity,
-               float health, half4 phaseColor) {
+               float health, half4 phaseColor,
+               float spin, float excite, half4 exciteColor) {
     // Centered, normalized coordinates; y points up like the GLSL version.
     float half_ = min(bounds.z, bounds.w) * 0.5;
     float2 uv = (pos - bounds.zw * 0.5) / half_;
     uv.y = -uv.y;
     float rr = length(uv);
 
-    // Continuous rotation — never still.
-    float ry = time * 0.35;
-    float rx = time * 0.14;
+    // Rotation angle is supplied by the host (base drift + stimulus spin-up).
+    float ry = spin;
+    float rx = spin * 0.4;
 
     // ── Silhouette displacement ──────────────────────────────────────────
     // Sample the noise field along the view-plane direction so the *outline*
     // wobbles and morphs, matching the web's vertex displacement. Pressure
     // scales the amplitude (0.05 calm → 0.22 turbulent).
     float3 dir = rr > 0.0001 ? float3(uv.x, uv.y, 0.0) / rr : float3(0.0, 0.0, 1.0);
-    float3 rs = spin(dir, ry, rx);
+    float3 rs = rotate3(dir, ry, rx);
     float td = time * (0.25 + activity * 0.5);
     float dn1 = snoise(rs * 1.8 + float3(td, 0.0, 0.0));
     float dn2 = snoise(rs * 4.5 + float3(0.0, td * 1.3, 0.0));
@@ -99,7 +100,7 @@ half4 forgeOrb(float2 pos, half4 color, float4 bounds,
     // Sphere normal at this pixel, then the rotated surface sample point.
     float z = sqrt(max(0.0, radius * radius - rr * rr));
     float3 n = normalize(float3(uv.x, uv.y, z));
-    float3 sp = spin(n, ry, rx);
+    float3 sp = rotate3(n, ry, rx);
 
     // ── Fragment coloring (port of the web fragment shader) ───────────────
     float3 phase = float3(phaseColor.rgb);
@@ -134,6 +135,18 @@ half4 forgeOrb(float2 pos, half4 color, float4 bounds,
 
     float pulse = 1.0 + sin(time * (1.5 + activity * 2.5)) * 0.06 * activity;
     col *= pulse;
+
+    // Excitement — the orb runs hot on a stimulus: the surface blends toward
+    // the reaction color (ember on request, jade on success, rose on failure)
+    // with the noise driving molten streaks, plus a bright rim flare. 1:1 with
+    // the web fragment shader.
+    float3 exc = float3(exciteColor.rgb);
+    float3 flareTint = mix(exc, float3(1.0), 0.3);
+    float emberMix = excite * (0.45 + 0.25 * smoothstep(0.1, 0.8, fn1 + 0.5));
+    col = mix(col, exc * (1.2 + fn2 * 0.4), emberMix);
+    col += flareTint * fres * excite * 1.6;
+    col *= 1.0 + excite * 0.45;
+
     col *= mix(0.55, 1.0, health);
     col = col / (1.0 + col * 0.5);  // soft tone-map
 

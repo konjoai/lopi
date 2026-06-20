@@ -29,12 +29,21 @@ extension AppModel {
                 $0.attempt = attempt
                 $0.branch = branch.isEmpty ? nil : branch
                 $0.active = true
+                $0.stimulus = .now
+                $0.stimulusKind = "request"
             }
             push(.started, "Agent started", branch.isEmpty ? "attempt \(attempt)" : branch)
             scheduleTaskRefresh()
 
         case let .statusChanged(id, status, attempt):
-            mutateAgent(id) { $0.phase = status; $0.attempt = attempt }
+            mutateAgent(id) {
+                $0.phase = status
+                $0.attempt = attempt
+                if PhaseStyle.isActive(status) {
+                    $0.stimulus = .now
+                    $0.stimulusKind = "request"
+                }
+            }
             push(.status, "Phase: \(status)", shortGoal(id))
             scheduleTaskRefresh()
 
@@ -47,6 +56,10 @@ extension AppModel {
                 liveAgents[id]?.logTail.append(AgentLog(level: level, text: line))
                 let tail = liveAgents[id]?.logTail.count ?? 0
                 if tail > 12 { liveAgents[id]?.logTail.removeFirst(tail - 12) }
+                if level == "error" {
+                    liveAgents[id]?.stimulus = .now
+                    liveAgents[id]?.stimulusKind = "failure"
+                }
             }
             if level == "error" {
                 push(.error, "Error", line)
@@ -59,6 +72,7 @@ extension AppModel {
                 $0.testPassRate = pass
                 $0.lintErrors = lint
                 $0.diffLines = diff
+                if pass >= 0.8 { $0.stimulus = .now; $0.stimulusKind = "success" }
             }
             push(.score, "Score \(Int(pass * 100))%", "\(lint) lint · \(diff) diff lines")
 
@@ -76,6 +90,8 @@ extension AppModel {
             mutateAgent(id) {
                 $0.verdictPassed = passed
                 $0.verdictConfidence = confidence
+                $0.stimulus = .now
+                $0.stimulusKind = passed ? "success" : "failure"
             }
             if passed {
                 push(.verdictPass, "Verifier passed", String(format: "%.0f%% confidence", confidence * 100))
@@ -84,12 +100,15 @@ extension AppModel {
             }
 
         case let .taskCompleted(id, outcome, attempts):
+            let success = outcome.lowercased().contains("success")
             mutateAgent(id) {
                 $0.phase = outcome
                 $0.active = false
                 $0.activity = 0
+                $0.stimulus = .now
+                $0.stimulusKind = success ? "success" : "failure"
             }
-            let kind: FeedItem.Kind = outcome.lowercased().contains("success") ? .completed : .error
+            let kind: FeedItem.Kind = success ? .completed : .error
             push(kind, "Completed: \(outcome)", "\(attempts) attempt\(attempts == 1 ? "" : "s")")
             recomputeAggregates()
             scheduleTaskRefresh()

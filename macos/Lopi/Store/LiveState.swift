@@ -32,6 +32,12 @@ struct LiveAgent: Identifiable, Hashable {
     /// Recent log lines for this task — feeds the pane's log strip (web parity).
     var logTail: [AgentLog] = []
 
+    /// Last stimulus that should make the orb react, and what kind it was
+    /// (request → ember, success → jade, failure → rose). Bump `stimulus` to
+    /// `.now` to fire a reaction.
+    var stimulus: Date = .distantPast
+    var stimulusKind: String = "request"
+
     /// Accent color encoding the current phase — shared by orbs, rings, glows.
     var accent: Color { PhaseStyle.color(phase) }
 }

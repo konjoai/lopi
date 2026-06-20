@@ -72,6 +72,9 @@ struct AgentPaneView: View {
                 phase: agent?.phase ?? "idle",
                 activity: agent?.activity ?? 0,
                 pressure: agent?.pressure ?? 0,
+                health: agent?.testPassRate ?? 0.85,
+                stimulus: agent?.stimulus ?? .distantPast,
+                stimulusKind: agent?.stimulusKind ?? "request",
                 size: 136
             )
             .background(
