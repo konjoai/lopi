@@ -6,15 +6,12 @@ import SwiftUI
 /// model that keeps deleted sessions from resurrecting on reconnect.
 struct ForgeView: View {
     @Environment(AppModel.self) private var model
-    @State private var layout = PaneLayout()
+    /// Shared with the unified sidebar in RootView (sessions ↔ panes).
+    var layout: PaneLayout
     @State private var controls = LaunchControls()
-    @State private var sidebarCollapsed = false
 
     var body: some View {
-        HStack(spacing: 0) {
-            SessionSidebarView(layout: layout, collapsed: $sidebarCollapsed)
-            grid
-        }
+        grid
         .background(Konjo.bg)
         .toolbar {
             ToolbarItemGroup(placement: .automatic) {
