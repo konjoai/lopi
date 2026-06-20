@@ -8,7 +8,7 @@ mod verifier_runner;
 use crate::api_client::AnthropicClient;
 use crate::stability::{StabilityConfig, StabilityHarness};
 use lopi_context::{ContentBlock, ContextWindow, Phase, PinPolicy, Role, TaggedMessage};
-use lopi_core::{AgentEvent, EventBus, ScoreWeights, Task, TaskId, TaskStatus};
+use lopi_core::{AgentEvent, EventBus, PlanDecision, ScoreWeights, Task, TaskId, TaskStatus};
 use lopi_memory::MemoryStore;
 use lopi_ratelimit::{AnthropicLimiter, CircuitBreaker};
 use std::path::PathBuf;
@@ -83,6 +83,10 @@ pub struct AgentRunner {
     /// Stable session id used by `TurnMetrics.session_id`.
     pub(super) session_id: Uuid,
     pub(super) cancel_rx: Option<oneshot::Receiver<()>>,
+    /// Phase 11 — receives the human plan-approval decision when the task is
+    /// gated. `None` for ungated runs (standalone/CLI), in which case the gate
+    /// auto-approves rather than stalling without a UI to decide.
+    pub(super) plan_decision_rx: Option<oneshot::Receiver<PlanDecision>>,
     /// Second cancellation mechanism — compatible with `tokio_util::sync::CancellationToken`
     /// for structured cancellation from the pool `JoinSet`.
     pub(super) cancel_token: CancellationToken,
@@ -127,6 +131,7 @@ impl AgentRunner {
             last_plan: None,
             session_id: Uuid::new_v4(),
             cancel_rx: Some(cancel_rx),
+            plan_decision_rx: None,
             cancel_token: CancellationToken::new(),
             attempt_counter,
             attempts_made: 0,
@@ -160,6 +165,7 @@ impl AgentRunner {
             last_plan: None,
             session_id: Uuid::new_v4(),
             cancel_rx: Some(cancel_rx),
+            plan_decision_rx: None,
             cancel_token: CancellationToken::new(),
             attempt_counter: Arc::new(AtomicUsize::new(0)),
             attempts_made: 0,
@@ -253,6 +259,14 @@ impl AgentRunner {
         self
     }
 
+    /// Phase 11 — wire the plan-approval gate. When set, the runner surfaces
+    /// its first plan and pauses until this channel delivers a decision.
+    #[must_use]
+    pub fn with_plan_gate(mut self, rx: oneshot::Receiver<PlanDecision>) -> Self {
+        self.plan_decision_rx = Some(rx);
+        self
+    }
+
     /// Return a child token derived from this runner's `CancellationToken`.
     /// The pool can cancel this token to abort the runner from a `JoinSet` teardown.
     #[must_use]
@@ -282,6 +296,7 @@ impl AgentRunner {
     pub(super) fn status(&self, s: TaskStatus, attempt: u8) {
         let activity = match &s {
             TaskStatus::Planning => 0.45_f32,
+            TaskStatus::AwaitingPlanApproval { .. } => 0.05_f32,
             TaskStatus::Implementing => 0.85_f32,
             TaskStatus::Testing => 0.55_f32,
             TaskStatus::Scoring => 0.30_f32,

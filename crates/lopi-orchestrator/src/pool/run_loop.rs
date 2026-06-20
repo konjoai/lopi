@@ -133,11 +133,17 @@ impl AgentPool {
             let dlq_source = task_source_label(&task);
 
             let (cancel_tx, cancel_rx) = oneshot::channel::<()>();
+            // Phase 11 — plan-approval decision channel. Always created; the
+            // runner only awaits it when the task is gated, so an ungated run
+            // simply drops the receiver.
+            let (plan_decision_tx, plan_decision_rx) =
+                oneshot::channel::<lopi_core::PlanDecision>();
             let attempt = Arc::new(AtomicUsize::new(0));
 
             let handle = Arc::new(tokio::sync::RwLock::new(AgentHandle {
                 goal: goal.clone(),
                 cancel_tx: Some(cancel_tx),
+                plan_decision_tx: Some(plan_decision_tx),
                 attempt: attempt.clone(),
                 started_at: std::time::Instant::now(),
             }));
@@ -163,6 +169,7 @@ impl AgentPool {
                     bus.clone(),
                     store.clone(),
                     cancel_rx,
+                    plan_decision_rx,
                     attempt.clone(),
                 )
                 .await;
@@ -304,13 +311,14 @@ async fn compute_weight_adjustments(_goal: &str, store: Option<&MemoryStore>) ->
     }
 }
 
-#[tracing::instrument(skip(bus, store, cancel_rx, attempt_counter), fields(task_id = %task.id, goal = %task.goal))]
+#[tracing::instrument(skip(bus, store, cancel_rx, plan_decision_rx, attempt_counter), fields(task_id = %task.id, goal = %task.goal))]
 async fn run_one(
     task: Task,
     repo: PathBuf,
     bus: EventBus<AgentEvent>,
     store: Option<MemoryStore>,
     cancel_rx: oneshot::Receiver<()>,
+    plan_decision_rx: oneshot::Receiver<lopi_core::PlanDecision>,
     attempt_counter: Arc<AtomicUsize>,
 ) -> Result<TaskStatus> {
     info!(task_id = %task.id, "starting agent");
@@ -326,7 +334,8 @@ async fn run_one(
         cancel_rx,
         attempt_counter,
     )
-    .with_score_weights(weights);
+    .with_score_weights(weights)
+    .with_plan_gate(plan_decision_rx);
     let outcome = runner.run().await?;
 
     let total_attempts = runner.attempts_made();

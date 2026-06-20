@@ -28,6 +28,9 @@ pub(crate) fn status_label(s: &TaskStatus) -> String {
     match s {
         TaskStatus::Queued => "queued".into(),
         TaskStatus::Planning => "planning".into(),
+        TaskStatus::AwaitingPlanApproval { attempt } => {
+            format!("awaiting plan approval (attempt {attempt})")
+        }
         TaskStatus::Implementing => "implementing".into(),
         TaskStatus::Testing => "testing".into(),
         TaskStatus::Scoring => "scoring".into(),

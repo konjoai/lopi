@@ -34,6 +34,7 @@ impl AgentRow {
         match &self.status {
             TaskStatus::Queued => ("⏳ Queued", Color::Yellow),
             TaskStatus::Planning => ("📋 Planning", Color::Cyan),
+            TaskStatus::AwaitingPlanApproval { .. } => ("⏸ Awaiting approval", Color::Yellow),
             TaskStatus::Implementing => ("🔨 Implementing", Color::Blue),
             TaskStatus::Testing => ("🧪 Testing", Color::Magenta),
             TaskStatus::Scoring => ("📊 Scoring", Color::Cyan),
@@ -180,6 +181,9 @@ impl AppState {
             // VerifierVerdict is surfaced via the task log stream; TUI doesn't
             // render a separate panel for it.
             AgentEvent::VerifierVerdict { .. } => {}
+            // PlanProposed is reflected by the AwaitingPlanApproval status the
+            // runner emits alongside it; the read-only TUI shows that label.
+            AgentEvent::PlanProposed { .. } => {}
         }
     }
 

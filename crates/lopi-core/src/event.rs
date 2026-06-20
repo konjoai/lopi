@@ -4,6 +4,18 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
 
+/// Human decision on a proposed plan (Phase 11 — plan approval gate). Carried
+/// over a `oneshot` channel from the REST approve/reject endpoint to the paused
+/// runner.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PlanDecision {
+    /// Proceed to implementation.
+    Approve,
+    /// Abandon the task.
+    Reject,
+}
+
 /// Rich event emitted by agents and consumed by TUI, WebSocket, and log panels.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -34,6 +46,18 @@ pub enum AgentEvent {
         status: TaskStatus,
         /// Attempt number associated with this status change.
         attempt: u8,
+    },
+    /// A plan has been generated and is paused awaiting human approval
+    /// (Phase 11 — plan approval gate).
+    PlanProposed {
+        /// Task whose plan is pending approval.
+        task_id: TaskId,
+        /// Attempt number whose plan this is.
+        attempt: u8,
+        /// Best-effort parsed plan steps (may be empty for free-form plans).
+        steps: Vec<String>,
+        /// Full plan text for review.
+        plan: String,
     },
     /// A line of agent log output.
     LogLine {

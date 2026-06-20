@@ -209,6 +209,8 @@ pub fn build_app(state: AppState) -> Router {
         .route("/api/health", get(health))
         .route("/api/tasks", get(list_tasks).post(create_task))
         .route("/api/tasks/:id", get(get_task).delete(cancel_task))
+        .route("/api/tasks/:id/plan/approve", axum::routing::post(approve_plan))
+        .route("/api/tasks/:id/plan/reject", axum::routing::post(reject_plan))
         .route(
             "/api/agents/:id/checkpoint",
             axum::routing::post(checkpoint_agent),
@@ -415,8 +417,9 @@ use constellation_handlers::{
     register_constellation_handler,
 };
 use handlers::{
-    cancel_task, checkpoint_agent, create_task, get_agent_dag, get_plans, get_q_values,
-    get_quality_trend, get_spec, get_stats, get_task, health, list_patterns, list_tasks, metrics,
+    approve_plan, cancel_task, checkpoint_agent, create_task, get_agent_dag, get_plans,
+    get_q_values, get_quality_trend, get_spec, get_stats, get_task, health, list_patterns,
+    list_tasks, metrics, reject_plan,
 };
 use static_assets::static_handler;
 use tools_handlers::{

@@ -146,6 +146,7 @@ fn event_task_id(ev: &AgentEvent) -> Option<lopi_core::TaskId> {
         | AgentEvent::ScoreUpdated { task_id, .. }
         | AgentEvent::TaskCompleted { task_id, .. }
         | AgentEvent::TaskCancelled { task_id }
+        | AgentEvent::PlanProposed { task_id, .. }
         | AgentEvent::TurnMetrics { task_id, .. } => Some(*task_id),
         AgentEvent::PoolStats { .. } => None,
         AgentEvent::BudgetExceeded { task_id, .. } => *task_id,

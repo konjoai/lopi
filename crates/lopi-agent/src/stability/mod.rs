@@ -331,6 +331,7 @@ mod tests {
             required_capabilities: Vec::new(),
             rubric: None,
             topology: None,
+            require_plan_approval: false,
         }
     }
 
