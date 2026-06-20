@@ -84,13 +84,16 @@ struct BudgetBreach: Equatable {
 
 /// Maps a lopi phase/status string to its Konjo accent + whether it's "thinking".
 enum PhaseStyle {
+    /// Maps a phase to its Konjo spectrum hue, 1:1 with the web Forge palette:
+    /// cyan planning → ember implementing → gold testing → jade conclusion.
     static func color(_ phase: String) -> Color {
         switch phase.lowercased() {
-        case "success", "done", "completed": return Konjo.ok
-        case "failed", "rolledback", "rolled_back", "cancelled": return Konjo.err
-        case "testing", "scoring", "retrying", "verifying": return Konjo.warn
+        case "success", "done", "completed", "conclusion": return Konjo.jade
+        case "failed", "rolledback", "rolled_back", "cancelled": return Konjo.rose
+        case "testing", "scoring", "retrying", "verifying": return Konjo.sun
+        case "implementing", "implementation", "coding", "building": return Konjo.ember
         case "queued", "pending": return Konjo.fgMute
-        default: return Konjo.konjo // planning / implementing / active
+        default: return Konjo.ice // planning / discovery / boot / active
         }
     }
 

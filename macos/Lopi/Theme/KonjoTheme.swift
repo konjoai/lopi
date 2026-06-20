@@ -1,25 +1,36 @@
 import SwiftUI
 
-/// The Konjo palette + typography, matching the web "Forge" dashboard exactly
-/// (hex values from `crates/lopi-ui/src/placeholder.html`). The macOS app is
-/// dark-first like the web UI.
+/// The Konjo palette + typography, matching the web "Forge" dashboard's
+/// ice-cyan identity (hex values from `web/src/app.css`). Dark-first, near-black
+/// void with an electric-cyan accent and a warm phase spectrum.
 enum Konjo {
-    // Backgrounds
-    static let bg = Color(hex: 0x06060F)
-    static let bg1 = Color(hex: 0x0C0C1A)
-    static let bg2 = Color(hex: 0x14142A)
+    // Backgrounds — neutral near-black void, matching the web's `--konjo-black`.
+    static let bg = Color(hex: 0x0A0A0A) // --konjo-black
+    static let bg1 = Color(hex: 0x101013) // panel fill
+    static let bg2 = Color(hex: 0x16161B) // raised surface
+    static let deep = Color(hex: 0x050505) // --konjo-deep (modals/wells)
 
-    // Text
-    static let fg = Color(hex: 0xE8E8F5)
-    static let fgDim = Color(hex: 0xE8E8F5).opacity(0.62)
-    static let fgMute = Color(hex: 0xE8E8F5).opacity(0.32)
+    // Text — bright paper on black.
+    static let fg = Color(hex: 0xF5F5F5) // --konjo-paper
+    static let fgDim = Color(hex: 0xF5F5F5).opacity(0.62)
+    static let fgMute = Color(hex: 0xF5F5F5).opacity(0.32)
 
-    // Accents
-    static let konjo = Color(hex: 0x7C3AED) // primary purple
-    static let konjo2 = Color(hex: 0xA78BFA) // lighter purple
-    static let ok = Color(hex: 0x5BE39B) // success green
-    static let warn = Color(hex: 0xF59E0B) // amber
-    static let err = Color(hex: 0xEF4444) // red
+    // ── Konjo spectrum (1:1 with the web palette) ───────────────────────────
+    static let ice = Color(hex: 0x00D4FF) // --konjo-ice (primary accent)
+    static let iceDeep = Color(hex: 0x0088AA)
+    static let ember = Color(hex: 0xFF4500) // --konjo-ember
+    static let flame = Color(hex: 0xFF9500) // --konjo-flame
+    static let jade = Color(hex: 0x00FF9D) // --konjo-jade
+    static let sun = Color(hex: 0xFFCC00) // --konjo-sun
+    static let rose = Color(hex: 0xFF0066) // --konjo-rose
+
+    // Semantic accents — alias onto the spectrum so existing call sites keep
+    // working while reading as one cohesive Konjo identity.
+    static let konjo = ice // primary accent (electric cyan)
+    static let konjo2 = Color(hex: 0x5EE6FF) // lighter cyan (highlights/plasma)
+    static let ok = jade // success
+    static let warn = flame // warning / heat
+    static let err = rose // error
 
     // Hairlines
     static let line = Color.white.opacity(0.08)

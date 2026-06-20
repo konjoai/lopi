@@ -13,6 +13,7 @@ struct AgentPaneView: View {
     @State private var submitting = false
 
     private var accent: Color { agent.map { PhaseStyle.color($0.phase) } ?? Konjo.konjo }
+    private var isLive: Bool { agent.map { PhaseStyle.isActive($0.phase) && $0.active } ?? false }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -23,8 +24,17 @@ struct AgentPaneView: View {
             commandBar
         }
         .background(Konjo.bg1.opacity(0.6))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Konjo.line, lineWidth: 1))
         .clipShape(RoundedRectangle(cornerRadius: 10))
+        // Resting hairline, plus a phase-tinted rim while the agent is working
+        // so a busy grid telegraphs which panes are live at a glance.
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(isLive ? accent.opacity(0.35) : Konjo.line, lineWidth: 1)
+        )
+        // Floating-card elevation; the rim glow intensifies on live panes.
+        .shadow(color: .black.opacity(0.55), radius: 14, y: 6)
+        .shadow(color: isLive ? accent.opacity(0.28) : .clear, radius: 18)
+        .animation(.easeInOut(duration: 0.4), value: isLive)
     }
 
     // MARK: Header
@@ -32,6 +42,7 @@ struct AgentPaneView: View {
     private var header: some View {
         HStack(spacing: 8) {
             Circle().fill(accent).frame(width: 7, height: 7)
+                .shadow(color: isLive ? accent.opacity(0.9) : .clear, radius: 5)
             VStack(alignment: .leading, spacing: 1) {
                 Text(agent?.goal ?? "— idle —")
                     .font(Konjo.mono(11, weight: .medium)).lineLimit(1)
@@ -65,6 +76,13 @@ struct AgentPaneView: View {
                 pressure: agent?.pressure ?? 0,
                 size: 132
             )
+            // Phase-tinted aura pooled behind the orb; breathes while live.
+            .background(
+                Circle()
+                    .fill(accent.opacity(agent == nil ? 0.05 : 0.16))
+                    .frame(width: 168, height: 168)
+                    .blur(radius: 26)
+            )
             if agent == nil {
                 LaunchControlsView(controls: controls, dense: true)
                     .padding(.horizontal, 14)
@@ -80,17 +98,16 @@ struct AgentPaneView: View {
                 submit(goal: agent.goal)
             } label: {
                 Label("Retry", systemImage: "arrow.clockwise")
-                    .font(Konjo.mono(10)).foregroundStyle(Konjo.warn)
             }
-            .buttonStyle(.plain)
+            .konjoButton(Konjo.sun)
             Button {
                 Task { await model.cancelTask(agent.id) }
             } label: {
                 Label("Stop", systemImage: "stop.fill")
-                    .font(Konjo.mono(10)).foregroundStyle(Konjo.err)
             }
-            .buttonStyle(.plain)
+            .konjoButton(Konjo.rose)
             .disabled(!agent.active)
+            .opacity(agent.active ? 1 : 0.4)
         }
     }
 

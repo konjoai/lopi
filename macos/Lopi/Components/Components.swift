@@ -38,19 +38,9 @@ struct StatusOrb: View {
     let status: String
     @State private var pulse = false
 
-    private var color: Color {
-        switch status.lowercased() {
-        case "success", "done": return Konjo.ok
-        case "failed", "rolledback", "rolled_back": return Konjo.err
-        case "testing", "scoring", "retrying": return Konjo.warn
-        case "queued": return Konjo.fgMute
-        default: return Konjo.konjo // planning / implementing / active
-        }
-    }
-
-    private var active: Bool {
-        !["success", "done", "failed", "queued"].contains(status.lowercased())
-    }
+    // Single source of truth for phase → color + liveness (shared with orbs).
+    private var color: Color { PhaseStyle.color(status) }
+    private var active: Bool { PhaseStyle.isActive(status) }
 
     var body: some View {
         Circle()
@@ -118,6 +108,46 @@ struct RadialGauge: View {
             }
         }
         .frame(width: 140, height: 140)
+    }
+}
+
+/// Unified Konjo button — a hairline-bordered pill that tints to its accent on
+/// hover and dips on press (the tactile "press" feel the web UI uses). Drop-in
+/// via `.buttonStyle(KonjoButtonStyle())` or the `.konjoButton()` helper.
+struct KonjoButtonStyle: ButtonStyle {
+    var accent: Color = Konjo.ice
+    var prominent: Bool = false
+    @State private var hovering = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        let pressed = configuration.isPressed
+        return configuration.label
+            .font(Konjo.mono(11, weight: .medium))
+            .foregroundStyle(prominent ? Konjo.bg : (hovering ? accent : Konjo.fgDim))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 7)
+                    .fill(prominent ? accent.opacity(hovering ? 1 : 0.9)
+                                    : accent.opacity(hovering ? 0.14 : 0.04))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 7)
+                    .stroke(prominent ? .clear : accent.opacity(hovering ? 0.5 : 0.18), lineWidth: 1)
+            )
+            .scaleEffect(pressed ? 0.96 : 1.0)
+            .shadow(color: prominent && hovering ? accent.opacity(0.45) : .clear, radius: 10)
+            .animation(.easeOut(duration: 0.14), value: pressed)
+            .animation(.easeOut(duration: 0.18), value: hovering)
+            .onHover { hovering = $0 }
+            .contentShape(Rectangle())
+    }
+}
+
+extension View {
+    /// Apply the standard Konjo button styling.
+    func konjoButton(_ accent: Color = Konjo.ice, prominent: Bool = false) -> some View {
+        buttonStyle(KonjoButtonStyle(accent: accent, prominent: prominent))
     }
 }
 
