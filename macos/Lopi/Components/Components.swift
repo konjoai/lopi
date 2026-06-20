@@ -151,6 +151,40 @@ extension View {
     }
 }
 
+/// Dark, hairline-bordered field chrome to replace the stock `.roundedBorder`
+/// (which renders a jarring light inset on the near-black void). Works for both
+/// `TextField` and `TextEditor`; the border lifts to the accent while focused.
+struct KonjoFieldModifier: ViewModifier {
+    var focused: Bool = false
+    var accent: Color = Konjo.ice
+
+    func body(content: Content) -> some View {
+        content
+            .textFieldStyle(.plain)
+            .font(Konjo.mono(12))
+            .foregroundStyle(Konjo.fg)
+            .tint(accent)
+            .scrollContentBackground(.hidden)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(Konjo.deep.opacity(0.55))
+            .overlay(
+                RoundedRectangle(cornerRadius: 7)
+                    .stroke(focused ? accent.opacity(0.6) : Konjo.line2, lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 7))
+            .animation(.easeOut(duration: 0.16), value: focused)
+    }
+}
+
+extension View {
+    /// Apply Konjo dark-field chrome. Pass a `@FocusState`-driven `focused`
+    /// flag to get the accent focus ring; omit it for static styling.
+    func konjoField(focused: Bool = false, accent: Color = Konjo.ice) -> some View {
+        modifier(KonjoFieldModifier(focused: focused, accent: accent))
+    }
+}
+
 /// A non-fatal error/info banner that the user can dismiss.
 struct BannerView: View {
     let text: String

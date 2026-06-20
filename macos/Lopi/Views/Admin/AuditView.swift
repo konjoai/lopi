@@ -34,10 +34,10 @@ struct AuditView: View {
     private var filterBar: some View {
         HStack {
             TextField("Filter by action (e.g. task.dispatch)", text: $actionFilter)
-                .textFieldStyle(.roundedBorder)
-                .font(Konjo.mono(11))
+                .konjoField()
                 .onSubmit { Task { await reload() } }
             Button("Apply") { Task { await reload() } }
+                .konjoButton()
         }
     }
 

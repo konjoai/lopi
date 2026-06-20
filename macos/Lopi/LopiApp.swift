@@ -10,6 +10,10 @@ struct LopiApp: App {
                 .environment(model)
                 .frame(minWidth: 900, minHeight: 600)
                 .preferredColorScheme(.dark)
+                // Tint every system control (segmented pickers, default
+                // buttons, toggles, focus) with the Konjo accent so nothing
+                // falls back to system blue.
+                .tint(Konjo.ice)
                 .task { model.start() }
         }
         .windowStyle(.titleBar)
@@ -19,6 +23,7 @@ struct LopiApp: App {
             MenuBarView()
                 .environment(model)
                 .preferredColorScheme(.dark)
+                .tint(Konjo.ice)
         } label: {
             // Icon reflects live activity: filled bolt while agents run.
             Image(systemName: model.stats.running > 0 ? "bolt.fill" : "bolt")
@@ -29,6 +34,7 @@ struct LopiApp: App {
             SettingsView()
                 .environment(model)
                 .preferredColorScheme(.dark)
+                .tint(Konjo.ice)
         }
     }
 }

@@ -138,18 +138,17 @@ struct ScheduleEditor: View {
                 .foregroundStyle(Konjo.fg)
 
             TextField("Name", text: $name)
-                .textFieldStyle(.roundedBorder)
+                .konjoField()
             HStack {
                 TextField("Cron (5-field, e.g. 0 2 * * *)", text: $cron)
-                    .textFieldStyle(.roundedBorder)
-                    .font(Konjo.mono(12))
+                    .konjoField()
             }
             previewLine
             TextField("Goal", text: $goal, axis: .vertical)
                 .lineLimit(2...5)
-                .textFieldStyle(.roundedBorder)
+                .konjoField()
             TextField("Repo path (optional)", text: $repo)
-                .textFieldStyle(.roundedBorder)
+                .konjoField()
             Picker("Priority", selection: $priority) {
                 ForEach(priorities, id: \.self) { Text($0.capitalized).tag($0) }
             }

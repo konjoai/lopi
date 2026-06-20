@@ -35,8 +35,7 @@ struct MenuBarView: View {
     private var quickSubmit: some View {
         HStack {
             TextField("Quick goal…", text: $quickGoal)
-                .textFieldStyle(.roundedBorder)
-                .font(Konjo.sans(12))
+                .konjoField()
                 .onSubmit(submit)
             Button(action: submit) {
                 Image(systemName: "paperplane.fill")
