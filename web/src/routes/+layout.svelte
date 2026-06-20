@@ -30,6 +30,7 @@
   // ── Tab definitions — OpenClaw Control UI parity, the Konjo way ────────────
   const tabs = [
     { href: '/', label: 'Forge' },
+    { href: '/fleet', label: 'Fleet' },
     { href: '/constellation', label: 'Constellation' },
     { href: '/pulse', label: 'Pulse' },
     { href: '/tasks', label: 'Tasks' },
@@ -48,7 +49,11 @@
   $: pathname = $page.url.pathname;
   $: activeTab = tabs.find((t) => isActive(t.href, pathname)) ?? tabs[0];
   // Immersive views own the full viewport (no page scroll); data tabs scroll.
-  $: immersive = pathname === '/' || pathname.startsWith('/constellation') || pathname.startsWith('/onboard');
+  $: immersive =
+    pathname === '/' ||
+    pathname.startsWith('/fleet') ||
+    pathname.startsWith('/constellation') ||
+    pathname.startsWith('/onboard');
 </script>
 
 <!-- Top bar — minimal, always visible. Houses navigation between views. -->
