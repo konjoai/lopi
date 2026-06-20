@@ -39,6 +39,8 @@ extension AppModel {
             mutateAgent(id) {
                 $0.phase = status
                 $0.attempt = attempt
+                // Cleared once the agent advances past the approval gate.
+                $0.awaitingApproval = (status == "AwaitingPlanApproval")
                 if PhaseStyle.isActive(status) {
                     $0.stimulus = .now
                     $0.stimulusKind = "request"
@@ -46,6 +48,16 @@ extension AppModel {
             }
             push(.status, "Phase: \(status)", shortGoal(id))
             scheduleTaskRefresh()
+
+        case let .planProposed(id, _, steps, plan):
+            mutateAgent(id) {
+                $0.awaitingApproval = true
+                $0.planSteps = steps
+                $0.planText = plan
+                $0.stimulus = .now
+                $0.stimulusKind = "request"
+            }
+            push(.status, "Plan ready · awaiting approval", shortGoal(id))
 
         case let .logLine(id, line, level):
             recentLogs.append("[\(level)] \(line)")

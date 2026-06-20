@@ -38,6 +38,11 @@ struct LiveAgent: Identifiable, Hashable {
     var stimulus: Date = .distantPast
     var stimulusKind: String = "request"
 
+    /// Phase 11 — set while the agent is paused at the plan approval gate.
+    var awaitingApproval: Bool = false
+    var planSteps: [String] = []
+    var planText: String = ""
+
     /// Accent color encoding the current phase — shared by orbs, rings, glows.
     var accent: Color { PhaseStyle.color(phase) }
 }

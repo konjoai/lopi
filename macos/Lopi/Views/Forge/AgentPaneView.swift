@@ -12,9 +12,16 @@ struct AgentPaneView: View {
 
     @State private var goal = ""
     @State private var submitting = false
+    @State private var deciding = false
 
     private var accent: Color { agent.map { PhaseStyle.color($0.phase) } ?? Konjo.konjo }
     private var isLive: Bool { agent.map { PhaseStyle.isActive($0.phase) && $0.active } ?? false }
+
+    /// Rail phase label — a clean "Review" while gated, else the phase name.
+    private var railPhaseLabel: String {
+        guard let agent else { return "—" }
+        return agent.awaitingApproval ? "Review" : agent.phase.capitalized
+    }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -90,6 +97,71 @@ struct AgentPaneView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.vertical, 16)
+        // Phase 11 — the plan approval gate takes over the orb area while paused.
+        .overlay {
+            if let agent, agent.awaitingApproval { planGate(agent) }
+        }
+    }
+
+    // MARK: Plan approval gate (Phase 11)
+
+    private func planGate(_ agent: LiveAgent) -> some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                Image(systemName: "pause.circle.fill").foregroundStyle(Konjo.sun)
+                Text("Plan ready · review").font(Konjo.sans(12, weight: .bold)).foregroundStyle(Konjo.sun)
+                Spacer()
+                Text("attempt \(agent.attempt)").font(Konjo.mono(8)).foregroundStyle(Konjo.fgMute)
+            }
+            .padding(.horizontal, 12).padding(.vertical, 9)
+            .overlay(Rectangle().fill(Konjo.line).frame(height: 1), alignment: .bottom)
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 6) {
+                    if agent.planSteps.isEmpty {
+                        Text(agent.planText.isEmpty ? "—" : agent.planText)
+                            .font(Konjo.mono(10)).foregroundStyle(Konjo.fgDim)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    } else {
+                        ForEach(Array(agent.planSteps.enumerated()), id: \.offset) { i, step in
+                            HStack(alignment: .top, spacing: 8) {
+                                Text("\(i + 1).").font(Konjo.mono(10)).foregroundStyle(Konjo.sun.opacity(0.7))
+                                Text(step).font(Konjo.mono(10)).foregroundStyle(Konjo.fgDim)
+                                Spacer(minLength: 0)
+                            }
+                        }
+                    }
+                }
+                .padding(12)
+            }
+
+            HStack(spacing: 10) {
+                Button { decide(agent, approve: true) } label: {
+                    Text("✓ Approve").frame(maxWidth: .infinity)
+                }
+                .konjoButton(Konjo.jade)
+                Button { decide(agent, approve: false) } label: {
+                    Text("✕ Reject").frame(maxWidth: .infinity)
+                }
+                .konjoButton(Konjo.rose)
+            }
+            .disabled(deciding)
+            .padding(12)
+            .overlay(Rectangle().fill(Konjo.line).frame(height: 1), alignment: .top)
+        }
+        .background(Konjo.deep.opacity(0.96))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Konjo.sun.opacity(0.4), lineWidth: 1))
+        .padding(10)
+    }
+
+    private func decide(_ agent: LiveAgent, approve: Bool) {
+        guard !deciding else { return }
+        deciding = true
+        Task {
+            await model.decidePlan(agent.id, approve: approve)
+            await MainActor.run { deciding = false }
+        }
     }
 
     // MARK: Metrics strip
@@ -201,9 +273,9 @@ struct AgentPaneView: View {
             Spacer(minLength: 8)
 
             // Phase, vertically centered like the web rail.
-            Text(agent?.phase.capitalized ?? "—")
+            Text(railPhaseLabel)
                 .font(Konjo.sans(13, weight: .bold))
-                .foregroundStyle(agent == nil ? Konjo.fgMute : accent)
+                .foregroundStyle(agent == nil ? Konjo.fgMute : (agent?.awaitingApproval == true ? Konjo.sun : accent))
                 .multilineTextAlignment(.center)
                 .lineLimit(2)
                 .minimumScaleFactor(0.8)

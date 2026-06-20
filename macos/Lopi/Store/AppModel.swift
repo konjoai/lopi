@@ -115,6 +115,15 @@ final class AppModel {
         } catch { report(error) }
     }
 
+    /// Phase 11 — approve (proceed) or reject (abandon) a paused plan.
+    func decidePlan(_ id: String, approve: Bool) async {
+        do {
+            try await client.decidePlan(id: id, approve: approve)
+            // Optimistically clear the local gate; the WS status will confirm.
+            liveAgents[id]?.awaitingApproval = false
+        } catch { report(error) }
+    }
+
     func saveSchedule(id: String?, _ body: ScheduleBody) async {
         do {
             if let id {

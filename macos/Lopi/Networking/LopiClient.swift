@@ -66,6 +66,13 @@ struct LopiClient {
         try await send("DELETE", "/api/tasks/\(id)", body: Optional<Int>.none)
     }
 
+    /// Phase 11 — deliver a plan-approval decision.
+    @discardableResult
+    func decidePlan(id: String, approve: Bool) async throws -> Data {
+        let verb = approve ? "approve" : "reject"
+        return try await send("POST", "/api/tasks/\(id)/plan/\(verb)", body: Optional<Int>.none)
+    }
+
     // Schedules
 
     func schedules() async throws -> [Schedule] {
