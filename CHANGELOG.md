@@ -25,7 +25,9 @@
   landing screen. (macOS is compile-unverified in this CI environment.)
 - Pure layout algorithms are unit-tested (`layout-core.test.ts`, 32 cases).
 - The `AgentEvent → AgentState` reducer is split out of `agents.ts` into
-  `stores/agentReducer.ts`, bringing `agents.ts` back under the 500-line gate.
+  `stores/agentReducer.ts`, bringing `agents.ts` back under the 500-line gate,
+  and is covered by a dedicated unit test (`agentReducer.test.ts`, 31 cases
+  across all event kinds, the score composite, and terminal routing).
 
 **`AgentDag` execution trace** (`crates/lopi-agent/src/dag.rs`)
 - Models one agent attempt as a directed acyclic graph of pipeline stages —
