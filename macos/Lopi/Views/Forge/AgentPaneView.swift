@@ -1,8 +1,9 @@
 import SwiftUI
 
-/// One pane in the Forge grid: the orb, live metrics, and a command line.
-/// An empty pane becomes a launcher (selectors + goal field); a live pane shows
-/// cognition and exposes retry / stop / close-pane controls.
+/// One pane in the Forge grid, laid out to mirror the web UI's AgentPane: a
+/// content column (header · orb · metrics · log strip · command · footer) beside
+/// a narrow right rail (close · phase · retry/stop). An empty pane becomes a
+/// launcher; a live pane shows cognition and exposes its controls on the rail.
 struct AgentPaneView: View {
     @Environment(AppModel.self) private var model
     var agent: LiveAgent?
@@ -16,12 +17,9 @@ struct AgentPaneView: View {
     private var isLive: Bool { agent.map { PhaseStyle.isActive($0.phase) && $0.active } ?? false }
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            Divider().overlay(Konjo.line)
-            ScrollView { centerColumn.padding(.vertical, 14) }
-            if let agent { metrics(agent) }
-            commandBar
+        HStack(spacing: 0) {
+            contentColumn
+            rightRail
         }
         .background(Konjo.bg1.opacity(0.6))
         .clipShape(RoundedRectangle(cornerRadius: 10))
@@ -37,46 +35,45 @@ struct AgentPaneView: View {
         .animation(.easeInOut(duration: 0.4), value: isLive)
     }
 
-    // MARK: Header
+    // MARK: Content column (left)
+
+    private var contentColumn: some View {
+        VStack(spacing: 0) {
+            header
+            Divider().overlay(Konjo.line)
+            orbArea
+            if let agent {
+                metrics(agent)
+                logStrip(agent)
+            }
+            commandBar
+            if let agent { footer(agent) }
+        }
+        .frame(maxWidth: .infinity)
+    }
 
     private var header: some View {
         HStack(spacing: 8) {
             Circle().fill(accent).frame(width: 7, height: 7)
                 .shadow(color: isLive ? accent.opacity(0.9) : .clear, radius: 5)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(agent?.goal ?? "— idle —")
-                    .font(Konjo.mono(11, weight: .medium)).lineLimit(1)
-                    .foregroundStyle(agent == nil ? Konjo.fgMute : Konjo.fg)
-                if let agent {
-                    Text(agent.phase.uppercased())
-                        .font(Konjo.mono(8)).tracking(1.2).foregroundStyle(accent)
-                }
-            }
-            Spacer()
-            Button(action: onClose) {
-                Image(systemName: "xmark").font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(Konjo.fgDim)
-                    .frame(width: 18, height: 18)
-                    .background(Color.white.opacity(0.08))
-                    .clipShape(Circle())
-            }
-            .buttonStyle(.plain)
-            .help(agent == nil ? "Close pane" : "Close pane (session stays in sidebar)")
+            Text(agent?.goal ?? "— idle —")
+                .font(Konjo.mono(11, weight: .medium)).lineLimit(1)
+                .foregroundStyle(agent == nil ? Konjo.fgMute : Konjo.fg)
+            Spacer(minLength: 0)
         }
         .padding(.horizontal, 12).padding(.vertical, 9)
     }
 
-    // MARK: Center
-
-    @ViewBuilder private var centerColumn: some View {
+    /// The flexible middle — orb (+ aura) that pushes the fixed strips to the
+    /// bottom. An empty pane shows the launcher selectors beneath the orb.
+    private var orbArea: some View {
         VStack(spacing: 16) {
             KonjoOrb(
                 phase: agent?.phase ?? "idle",
                 activity: agent?.activity ?? 0,
                 pressure: agent?.pressure ?? 0,
-                size: 132
+                size: 136
             )
-            // Phase-tinted aura pooled behind the orb; breathes while live.
             .background(
                 Circle()
                     .fill(accent.opacity(agent == nil ? 0.05 : 0.16))
@@ -86,39 +83,19 @@ struct AgentPaneView: View {
             if agent == nil {
                 LaunchControlsView(controls: controls, dense: true)
                     .padding(.horizontal, 14)
-            } else if let agent {
-                controlsRow(agent)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.vertical, 16)
     }
 
-    private func controlsRow(_ agent: LiveAgent) -> some View {
-        HStack(spacing: 10) {
-            Button {
-                submit(goal: agent.goal)
-            } label: {
-                Label("Retry", systemImage: "arrow.clockwise")
-            }
-            .konjoButton(Konjo.sun)
-            Button {
-                Task { await model.cancelTask(agent.id) }
-            } label: {
-                Label("Stop", systemImage: "stop.fill")
-            }
-            .konjoButton(Konjo.rose)
-            .disabled(!agent.active)
-            .opacity(agent.active ? 1 : 0.4)
-        }
-    }
-
-    // MARK: Metrics
+    // MARK: Metrics strip
 
     private func metrics(_ agent: LiveAgent) -> some View {
         HStack(spacing: 12) {
             meter("P", value: agent.pressure, warn: agent.pressure > 0.75)
             label("A", "\(Int(agent.activity * 100))")
             label("$", String(format: "%.4f", agent.costUsd))
-            if agent.attempt > 0 { label("#", "\(agent.attempt)") }
         }
         .padding(.horizontal, 12).padding(.vertical, 7)
         .background(Color.black.opacity(0.2))
@@ -130,19 +107,50 @@ struct AgentPaneView: View {
             GeometryReader { g in
                 ZStack(alignment: .leading) {
                     Capsule().fill(Color.black.opacity(0.4))
-                    Capsule().fill(warn ? Konjo.err : Konjo.konjo2)
+                    Capsule().fill(warn ? Konjo.rose : Konjo.konjo2)
                         .frame(width: g.size.width * CGFloat(min(max(value, 0), 1)))
                 }
             }
             .frame(height: 4)
         }
-        .frame(maxWidth: 90)
+        .frame(maxWidth: .infinity)
     }
 
     private func label(_ k: String, _ v: String) -> some View {
         HStack(spacing: 4) {
             Text("\(k):").font(Konjo.mono(9)).foregroundStyle(Konjo.fgMute)
             Text(v).font(Konjo.mono(9)).foregroundStyle(Konjo.fgDim).monospacedDigit()
+        }
+    }
+
+    // MARK: Log strip — last few lines for this agent
+
+    private func logStrip(_ agent: LiveAgent) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            if agent.logTail.isEmpty {
+                Text("— waiting for output —")
+                    .font(Konjo.mono(8)).italic().foregroundStyle(Konjo.fgMute)
+            } else {
+                ForEach(Array(agent.logTail.suffix(3).enumerated()), id: \.offset) { _, log in
+                    HStack(spacing: 6) {
+                        Text("[\(log.level.prefix(1).uppercased())]")
+                            .foregroundStyle(logColor(log.level))
+                        Text(log.text).lineLimit(1).foregroundStyle(Konjo.fgDim)
+                    }
+                    .font(Konjo.mono(8))
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 30, alignment: .leading)
+        .padding(.horizontal, 12).padding(.vertical, 6)
+        .background(Color.black.opacity(0.3))
+    }
+
+    private func logColor(_ level: String) -> Color {
+        switch level {
+        case "error": return Konjo.rose
+        case "warn": return Konjo.flame
+        default: return Konjo.fgMute
         }
     }
 
@@ -155,13 +163,86 @@ struct AgentPaneView: View {
                 .textFieldStyle(.plain)
                 .font(Konjo.mono(11)).foregroundStyle(Konjo.fg)
                 .onSubmit { submit(goal: goal) }
-            if submitting {
-                ProgressView().controlSize(.small)
-            }
+            if submitting { ProgressView().controlSize(.small) }
         }
         .padding(.horizontal, 12).padding(.vertical, 9)
         .background(Color.black.opacity(0.1))
     }
+
+    // MARK: Footer — attempt · branch
+
+    private func footer(_ agent: LiveAgent) -> some View {
+        HStack {
+            Text("attempt \(agent.attempt)")
+            Spacer()
+            if let branch = agent.branch { Text(branch).lineLimit(1) }
+        }
+        .font(Konjo.mono(8)).foregroundStyle(Konjo.fgMute)
+        .padding(.horizontal, 12).padding(.vertical, 5)
+    }
+
+    // MARK: Right rail — close · phase · controls
+
+    private var rightRail: some View {
+        VStack(spacing: 0) {
+            Button(action: onClose) {
+                Image(systemName: "xmark").font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(Konjo.fgDim)
+                    .frame(width: 20, height: 20)
+                    .background(Color.white.opacity(0.08))
+                    .clipShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .help(agent == nil ? "Close pane" : "Close pane (session stays in sidebar)")
+
+            Spacer(minLength: 8)
+
+            // Phase, vertically centered like the web rail.
+            Text(agent?.phase.capitalized ?? "—")
+                .font(Konjo.sans(13, weight: .bold))
+                .foregroundStyle(agent == nil ? Konjo.fgMute : accent)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .minimumScaleFactor(0.8)
+
+            Spacer(minLength: 8)
+
+            if let agent {
+                VStack(spacing: 10) {
+                    railButton("arrow.clockwise", Konjo.sun, help: "Retry task") {
+                        submit(goal: agent.goal)
+                    }
+                    railButton("stop.fill", Konjo.rose, disabled: !agent.active, help: "Stop / cancel") {
+                        Task { await model.cancelTask(agent.id) }
+                    }
+                }
+            }
+        }
+        .frame(width: 76)
+        .padding(.vertical, 12)
+        .padding(.horizontal, 8)
+        .background(Color.black.opacity(0.3))
+        .overlay(Rectangle().fill(Konjo.line).frame(width: 1), alignment: .leading)
+    }
+
+    /// A 44pt square rail control matching the web's retry/stop buttons.
+    private func railButton(_ icon: String, _ color: Color, disabled: Bool = false,
+                            help: String, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.system(size: 15))
+                .foregroundStyle(color)
+                .frame(width: 44, height: 44)
+                .background(RoundedRectangle(cornerRadius: 8).fill(color.opacity(0.06)))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Konjo.line2, lineWidth: 1))
+        }
+        .buttonStyle(KonjoIconButtonStyle())
+        .disabled(disabled)
+        .opacity(disabled ? 0.3 : 1)
+        .help(help)
+    }
+
+    // MARK: Submit
 
     private func submit(goal text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -174,5 +255,14 @@ struct AgentPaneView: View {
                 submitting = false
             }
         }
+    }
+}
+
+/// Plain icon button that just dips on press (no chrome of its own).
+private struct KonjoIconButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.92 : 1)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }

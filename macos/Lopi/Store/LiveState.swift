@@ -29,8 +29,17 @@ struct LiveAgent: Identifiable, Hashable {
     var active: Bool = true
     var lastUpdate: Date = .now
 
+    /// Recent log lines for this task — feeds the pane's log strip (web parity).
+    var logTail: [AgentLog] = []
+
     /// Accent color encoding the current phase — shared by orbs, rings, glows.
     var accent: Color { PhaseStyle.color(phase) }
+}
+
+/// A single log line scoped to one agent (level + message).
+struct AgentLog: Hashable {
+    let level: String
+    let text: String
 }
 
 /// One row in the live event ticker.

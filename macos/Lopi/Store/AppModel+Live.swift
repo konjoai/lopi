@@ -41,12 +41,18 @@ extension AppModel {
         case let .logLine(id, line, level):
             recentLogs.append("[\(level)] \(line)")
             if recentLogs.count > logCap { recentLogs.removeFirst(recentLogs.count - logCap) }
+            // Attach to the originating agent's strip (only if we know it, so a
+            // stray log never spawns a phantom pane).
+            if liveAgents[id] != nil {
+                liveAgents[id]?.logTail.append(AgentLog(level: level, text: line))
+                let tail = liveAgents[id]?.logTail.count ?? 0
+                if tail > 12 { liveAgents[id]?.logTail.removeFirst(tail - 12) }
+            }
             if level == "error" {
                 push(.error, "Error", line)
             } else if level == "warn" {
                 push(.warn, "Warning", line)
             }
-            _ = id
 
         case let .scoreUpdated(id, pass, lint, diff):
             mutateAgent(id) {
