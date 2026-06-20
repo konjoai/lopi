@@ -86,7 +86,7 @@
       <button
         type="button"
         on:click={() => window.dispatchEvent(new CustomEvent('lopi:add-pane'))}
-        class="text-konjo-accent hover:bg-konjo-accent/10 px-2 py-1 rounded transition-colors"
+        class="press text-konjo-accent hover:bg-konjo-accent/10 px-2 py-1 rounded transition-colors"
         title="Add pane"
       >
         +
@@ -105,7 +105,7 @@
     <button
       type="button"
       on:click={() => helpVisible.set(!$helpVisible)}
-      class="text-konjo-accent hover:bg-konjo-accent/10 px-2 py-1 rounded transition-colors"
+      class="press text-konjo-accent hover:bg-konjo-accent/10 px-2 py-1 rounded transition-colors"
       title="Help & Shortcuts"
     >
       ?

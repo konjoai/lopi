@@ -222,13 +222,19 @@
       return 42.0 * dot(m*m, vec4(dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3)));
     }
 
-    // Konjo palette — blue spectrum (dark → light)
-    const vec3 ICE  = vec3(0.0, 0.831, 1.0);     // #00d4ff (bright cyan, matches pulsing ring)
-    const vec3 ICE2 = vec3(0.0, 0.333, 0.667);   // #0055aa (dark blue core)
-    const vec3 EMBER= vec3(0.0, 0.667, 0.867);   // #00aadd (lighter blue)
-    const vec3 FLAME= vec3(0.0, 0.8, 1.0);       // #00ccff (bright light blue)
-
     void main() {
+      // Tonal spread derived from the live phase color: a deep molten core,
+      // the phase mid-tone, and a near-white hot tip. Every phase gets its
+      // own living hue (cyan planning, ember implementation, gold testing…)
+      // while keeping the internal fire/ice contrast that gives the orb depth.
+      vec3 CORE  = uPhaseColor * 0.26;                 // shadowed core
+      vec3 MID   = uPhaseColor;                        // the phase itself
+      vec3 HOT   = mix(uPhaseColor, vec3(1.0), 0.58);  // incandescent tip
+      vec3 ICE   = MID;
+      vec3 ICE2  = CORE;
+      vec3 EMBER = mix(CORE, MID, 0.6);
+      vec3 FLAME = HOT;
+
       // High-frequency texture noise (independent of vNoise from vertex)
       float t = uTime * 0.4;
       float n1 = snoise(vPosition * 3.5 + vec3(t * 0.7, 0.0, 0.0));
@@ -258,7 +264,7 @@
       vec3 viewDir = normalize(uCameraPosition - vWorldPosition);
       float fresnel = 1.0 - max(0.0, dot(viewDir, normalize(vNormal)));
       fresnel = pow(fresnel, 3.2);  // Steep curve: only edges glow
-      color += uPhaseColor * fresnel * 0.35;  // Very subtle contribution
+      color += HOT * fresnel * 0.5;   // Bright phase-tinted rim halo
 
       // Activity pulse — global brightness modulation
       float pulse = 1.0 + sin(uTime * (1.5 + uActivity * 2.5)) * 0.06 * uActivity;
