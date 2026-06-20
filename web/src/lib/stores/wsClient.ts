@@ -132,6 +132,31 @@ function startMockData() {
     }
   }
 
+  // Phase 11 demo — the first agent pauses at the plan approval gate. With no
+  // backend to click in preview mode it auto-resumes after ~17s (see the
+  // `gatedId` guard below) so the board keeps moving.
+  const gatedId = seedAgents[0].task_id;
+  if (messageHandler) {
+    messageHandler({
+      type: 'plan_proposed',
+      task_id: gatedId,
+      attempt: 1,
+      steps: [
+        'Add a RedisCache struct wrapping the connection pool',
+        'Wire it into the RAG retrieval path behind a feature flag',
+        'Add an eviction policy with a configurable TTL',
+        'Cover the cache hit / miss paths with unit tests'
+      ],
+      plan: 'Add a Redis-backed semantic cache to the RAG pipeline.'
+    });
+    messageHandler({
+      type: 'status_changed',
+      task_id: gatedId,
+      status: { AwaitingPlanApproval: { attempt: 1 } } as unknown as TaskStatus,
+      attempt: 1
+    });
+  }
+
   const phaseCycle: TaskStatus[] = ['Planning', 'Implementing', 'Testing', 'Scoring'];
   const logTemplates: { level: 'info' | 'warn' | 'error' | 'debug'; line: string }[] = [
     { level: 'info', line: 'Read 14 files, 2.3k lines analyzed' },
@@ -150,8 +175,9 @@ function startMockData() {
     for (const seed of seedAgents) {
       if (!messageHandler) continue;
 
-      // Phase progression every 30 ticks
-      if (mockTick % 30 === 5) {
+      // Phase progression every 30 ticks. The gated agent is held at the
+      // approval gate until tick 30, then rejoins the normal cycle.
+      if (mockTick % 30 === 5 && !(seed.task_id === gatedId && mockTick < 30)) {
         const idx = Math.floor(mockTick / 30) % phaseCycle.length;
         messageHandler({
           type: 'status_changed',

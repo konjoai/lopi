@@ -3,7 +3,7 @@
  * stores — just `AgentState[] → buckets`, so it is unit-tested directly
  * (`session-groups.test.ts`) and the component stays a thin renderer.
  */
-import type { AgentState, Status } from './agents-model';
+import type { AgentState, Status } from './agents';
 
 /** Lifecycle bucket a session belongs to in the sidebar. */
 export type GroupKey = 'active' | 'done' | 'failed';

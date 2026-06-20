@@ -26,6 +26,7 @@
     if (a.status === 'completed') return 'done';
     if (a.status === 'failed' || a.status === 'cancelled') return 'failed';
     if (a.status === 'queued') return 'queued';
+    if (a.awaitingApproval) return 'review';
     switch (a.phase) {
       case 'Implementation':
         return 'implementing';

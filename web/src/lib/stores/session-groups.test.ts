@@ -2,7 +2,8 @@
  * Pure session-groups tests — `npx tsx src/lib/stores/session-groups.test.ts`.
  */
 import { groupKeyFor, filterSessions, groupSessions } from './session-groups';
-import { makeBlank, type AgentState } from './agents-model';
+import { makeBlank } from './agentReducer';
+import type { AgentState } from './agents';
 
 let pass = 0;
 let fail = 0;

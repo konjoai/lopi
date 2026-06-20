@@ -3,6 +3,20 @@
   import LaunchControls from '$lib/components/LaunchControls.svelte';
   import { logs, postTask, cancelTask, stimulate, permissionWaiting, PHASE_COLORS, type AgentState, type TaskOptions } from '$lib/stores/agents';
   import { launchControls } from '$lib/stores/controls';
+  import { approvePlan, rejectPlan } from '$lib/api';
+
+  let deciding = false;
+  async function decidePlan(approve: boolean) {
+    if (!agent || deciding) return;
+    deciding = true;
+    try {
+      await (approve ? approvePlan(agent.id) : rejectPlan(agent.id));
+    } catch (err) {
+      console.error('[lopi] plan decision failed:', err);
+    } finally {
+      deciding = false;
+    }
+  }
 
   export let agent: AgentState | null = null;
   export let onClose: (() => void) | null = null;
@@ -132,6 +146,47 @@
 
     <!-- ORB AREA (flex-1) ───────────────────────────────────────────── -->
     <div class="flex-1 flex flex-col items-center justify-center relative px-2 py-4 min-h-0">
+      <!-- ── Plan approval gate (Phase 11) ──────────────────────────────
+           When the agent pauses for review, the plan takes over the orb area
+           with an Approve / Reject decision. -->
+      {#if agent && agent.awaitingApproval}
+        <div class="plan-gate absolute inset-2 flex flex-col rounded-lg border border-konjo-sun/40 bg-konjo-deep/95 backdrop-blur-md overflow-hidden z-20">
+          <div class="px-3 py-2 border-b border-white/10 flex items-center gap-2 flex-shrink-0">
+            <span class="text-konjo-sun text-sm leading-none">⏸</span>
+            <span class="font-display text-xs font-bold text-konjo-sun">Plan ready · review</span>
+            <span class="ml-auto font-mono text-[8px] uppercase tracking-widest opacity-40">attempt {agent.attempt}</span>
+          </div>
+          <div class="flex-1 overflow-y-auto px-3 py-2 min-h-0">
+            {#if agent.planSteps && agent.planSteps.length > 0}
+              <ol class="space-y-1.5">
+                {#each agent.planSteps as step, i}
+                  <li class="flex gap-2 font-mono text-[10px] leading-snug">
+                    <span class="text-konjo-sun/70 flex-shrink-0 tabular-nums">{i + 1}.</span>
+                    <span class="opacity-80">{step}</span>
+                  </li>
+                {/each}
+              </ol>
+            {:else}
+              <pre class="font-mono text-[10px] leading-snug whitespace-pre-wrap opacity-80">{agent.planText ?? '—'}</pre>
+            {/if}
+          </div>
+          <div class="flex gap-2 px-3 py-2 border-t border-white/10 flex-shrink-0">
+            <button
+              type="button"
+              on:click={() => decidePlan(true)}
+              disabled={deciding}
+              class="press flex-1 py-1.5 rounded-md bg-konjo-jade/15 border border-konjo-jade/50 text-konjo-jade font-mono text-[11px] uppercase tracking-widest hover:bg-konjo-jade/25 disabled:opacity-40 transition-colors"
+            >✓ approve</button>
+            <button
+              type="button"
+              on:click={() => decidePlan(false)}
+              disabled={deciding}
+              class="press flex-1 py-1.5 rounded-md bg-konjo-rose/15 border border-konjo-rose/50 text-konjo-rose font-mono text-[11px] uppercase tracking-widest hover:bg-konjo-rose/25 disabled:opacity-40 transition-colors"
+            >✕ reject</button>
+          </div>
+        </div>
+      {/if}
+
       <!-- Phase-tinted aura pooled behind the orb; intensifies while live. -->
       {#if agent}
         <div

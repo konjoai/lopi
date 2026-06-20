@@ -1,10 +1,10 @@
 /**
- * Pure agent-reducer tests — run with `npx tsx src/lib/stores/agents-reducer.test.ts`.
+ * Pure agent-reducer tests — run with `npx tsx src/lib/stores/agentReducer.test.ts`.
  * No browser, no Svelte: just `AgentEvent → AgentState` folds. The reducer was
  * extracted from the store precisely so it could be tested in isolation.
  */
-import { reduce } from './agents-reducer';
-import { makeBlank, type AgentState } from './agents-model';
+import { reduce, makeBlank } from './agentReducer';
+import type { AgentState } from './agents';
 import type { AgentEvent } from '$lib/types';
 
 let pass = 0;
@@ -126,5 +126,5 @@ const ID = 'task-1';
   approx(before.pressure, 0.05, 'original agent object not mutated');
 }
 
-console.log(`\nagents-reducer: ${pass} passed, ${fail} failed`);
+console.log(`\nagentReducer: ${pass} passed, ${fail} failed`);
 if (fail > 0) process.exit(1);

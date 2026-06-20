@@ -57,6 +57,12 @@ export interface AgentState {
   cost: number; // USD accumulated
   thought?: string; // last log line (preview)
 
+  // Phase 11 — plan approval gate. Set while the agent is paused awaiting a
+  // human decision; cleared once it proceeds (approved) or terminates.
+  awaitingApproval?: boolean;
+  planSteps?: string[];
+  planText?: string;
+
   /**
    * Timestamp (ms) of the last incoming request/stimulus for this agent —
    * drives the Forge orb's react animation (shake → fast spin → orange glow).

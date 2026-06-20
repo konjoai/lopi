@@ -65,6 +65,18 @@ export const deleteTask = (id: string) =>
 export const createTask = (goal: string, repo: string, priority = 'normal') =>
   request<{ id?: string }>('/api/tasks', json('POST', { goal, repo, priority }));
 
+// Phase 11 — plan approval gate.
+export const approvePlan = (id: string) =>
+  request<{ decision?: string }>(
+    `/api/tasks/${encodeURIComponent(id)}/plan/approve`,
+    { method: 'POST' }
+  );
+export const rejectPlan = (id: string) =>
+  request<{ decision?: string }>(
+    `/api/tasks/${encodeURIComponent(id)}/plan/reject`,
+    { method: 'POST' }
+  );
+
 // ── Logs ──────────────────────────────────────────────────────────────────────
 export interface LogRow {
   id: number;
