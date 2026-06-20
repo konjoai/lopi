@@ -33,6 +33,7 @@
     { href: '/fleet', label: 'Fleet' },
     { href: '/constellation', label: 'Constellation' },
     { href: '/pulse', label: 'Pulse' },
+    { href: '/budget', label: 'Budget' },
     { href: '/tasks', label: 'Tasks' },
     { href: '/router', label: 'Router' },
     { href: '/schedules', label: 'Schedules' },

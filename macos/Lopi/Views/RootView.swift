@@ -4,6 +4,7 @@ import SwiftUI
 enum NavSection: String, CaseIterable, Identifiable {
     case forge = "Forge"
     case dashboard = "Dashboard"
+    case budget = "Budget"
     case tasks = "Tasks"
     case cron = "Cron"
     case constellations = "Constellations"
@@ -20,6 +21,7 @@ enum NavSection: String, CaseIterable, Identifiable {
         switch self {
         case .forge: return "circle.grid.2x2.fill"
         case .dashboard: return "gauge.with.dots.needle.67percent"
+        case .budget: return "dollarsign.circle"
         case .tasks: return "list.bullet.rectangle"
         case .cron: return "clock.arrow.circlepath"
         case .constellations: return "circle.hexagongrid"
@@ -211,6 +213,7 @@ struct RootView: View {
         switch selection ?? .forge {
         case .forge: ForgeView(layout: layout)
         case .dashboard: DashboardView()
+        case .budget: BudgetView()
         case .tasks: TasksView()
         case .cron: CronView()
         case .constellations: ConstellationsView()
