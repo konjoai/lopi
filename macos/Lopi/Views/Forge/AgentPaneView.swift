@@ -86,7 +86,14 @@ struct AgentPaneView: View {
             Text(agent?.goal ?? "— idle —")
                 .font(paneMono(11, weight: .medium)).lineLimit(1)
                 .foregroundStyle(agent == nil ? Konjo.fgMute : Konjo.fg)
-            Spacer(minLength: 0)
+            Spacer(minLength: 8)
+            // Phase reads right-aligned on the title line.
+            if agent != nil {
+                Text(railPhaseLabel)
+                    .font(paneSans(11, weight: .bold))
+                    .foregroundStyle(agent?.awaitingApproval == true ? Konjo.sun : accent)
+                    .lineLimit(1).fixedSize()
+            }
         }
         .padding(.horizontal, 12).padding(.vertical, 9)
     }
@@ -278,7 +285,8 @@ struct AgentPaneView: View {
         .padding(.horizontal, 12).padding(.vertical, 5)
     }
 
-    // MARK: Right rail — close · phase · controls
+    // MARK: Right rail — a slim control strip (close · retry/stop). The phase
+    // now reads on the title line.
 
     private var rightRail: some View {
         VStack(spacing: 0) {
@@ -294,17 +302,6 @@ struct AgentPaneView: View {
 
             Spacer(minLength: 8)
 
-            // Phase, vertically centered like the web rail.
-            Text(railPhaseLabel)
-                .font(paneSans(13, weight: .bold))
-                .foregroundStyle(agent == nil ? Konjo.fgMute : (agent?.awaitingApproval == true ? Konjo.sun : accent))
-                .multilineTextAlignment(.center)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Spacer(minLength: 8)
-
             if let agent {
                 VStack(spacing: 10) {
                     railButton("arrow.clockwise", Konjo.sun, help: "Retry task") {
@@ -316,9 +313,9 @@ struct AgentPaneView: View {
                 }
             }
         }
-        .frame(width: 116)
+        .frame(width: 56)
         .padding(.vertical, 12)
-        .padding(.horizontal, 8)
+        .padding(.horizontal, 6)
         .background(Color.black.opacity(0.3))
         .overlay(Rectangle().fill(Konjo.line).frame(width: 1), alignment: .leading)
     }
