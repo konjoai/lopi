@@ -209,8 +209,14 @@ pub fn build_app(state: AppState) -> Router {
         .route("/api/health", get(health))
         .route("/api/tasks", get(list_tasks).post(create_task))
         .route("/api/tasks/:id", get(get_task).delete(cancel_task))
-        .route("/api/tasks/:id/plan/approve", axum::routing::post(approve_plan))
-        .route("/api/tasks/:id/plan/reject", axum::routing::post(reject_plan))
+        .route(
+            "/api/tasks/:id/plan/approve",
+            axum::routing::post(approve_plan),
+        )
+        .route(
+            "/api/tasks/:id/plan/reject",
+            axum::routing::post(reject_plan),
+        )
         .route("/api/repos", get(repos_handlers::list_repos))
         .route("/api/branches", get(repos_handlers::list_branches))
         .route(

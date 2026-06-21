@@ -187,7 +187,11 @@ async fn decide_plan(
     decision: lopi_core::PlanDecision,
 ) -> axum::response::Response {
     let Some(task_id) = resolve_task_id(s, id).await else {
-        return (StatusCode::NOT_FOUND, Json(json!({"error": "task not found"}))).into_response();
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": "task not found"})),
+        )
+            .into_response();
     };
     if s.pool.decide_plan(&task_id, decision).await {
         (

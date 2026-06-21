@@ -28,10 +28,19 @@ fn autonomy_capability_gates() {
 
 #[test]
 fn autonomy_parse_accepts_names_and_tags() {
-    assert_eq!(AutonomyLevel::parse("report_only"), Some(AutonomyLevel::ReportOnly));
+    assert_eq!(
+        AutonomyLevel::parse("report_only"),
+        Some(AutonomyLevel::ReportOnly)
+    );
     assert_eq!(AutonomyLevel::parse("L2"), Some(AutonomyLevel::DraftPr));
-    assert_eq!(AutonomyLevel::parse("  verified_pr "), Some(AutonomyLevel::VerifiedPr));
-    assert_eq!(AutonomyLevel::parse("AutoMerge"), Some(AutonomyLevel::AutoMerge));
+    assert_eq!(
+        AutonomyLevel::parse("  verified_pr "),
+        Some(AutonomyLevel::VerifiedPr)
+    );
+    assert_eq!(
+        AutonomyLevel::parse("AutoMerge"),
+        Some(AutonomyLevel::AutoMerge)
+    );
     assert_eq!(AutonomyLevel::parse("nonsense"), None);
 }
 

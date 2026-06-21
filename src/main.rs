@@ -435,10 +435,19 @@ async fn main() -> Result<()> {
         }
 
         Some(Commands::Loop(LoopCmd::Validate { repo })) => {
-            loop_commands::validate(&repo)?;
+            let issues = loop_commands::check(&repo)?;
+            if issues.is_empty() {
+                println!("✓ loop config valid ({})", lopi_core::LoopConfig::REL_PATH);
+            } else {
+                eprintln!("✗ loop config has {} issue(s):", issues.len());
+                for issue in &issues {
+                    eprintln!("  • {issue}");
+                }
+                std::process::exit(1);
+            }
         }
         Some(Commands::Loop(LoopCmd::Show { repo })) => {
-            loop_commands::show(&repo)?;
+            print!("{}", loop_commands::render(&repo)?);
         }
 
         // ── lopi stability ──────────────────────────────────────

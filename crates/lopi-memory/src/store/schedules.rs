@@ -205,15 +205,14 @@ impl MemoryStore {
     /// Returns `Err` if the write fails.
     pub async fn set_schedule_autonomy(&self, id: &str, level: &str) -> Result<bool> {
         let normalized = normalize_autonomy(level);
-        let res = sqlx::query(
-            "UPDATE schedules SET autonomy_level = ?, updated_at = ? WHERE id = ?",
-        )
-        .bind(&normalized)
-        .bind(Utc::now().to_rfc3339())
-        .bind(id)
-        .execute(&self.write_pool)
-        .await
-        .context("setting schedule autonomy")?;
+        let res =
+            sqlx::query("UPDATE schedules SET autonomy_level = ?, updated_at = ? WHERE id = ?")
+                .bind(&normalized)
+                .bind(Utc::now().to_rfc3339())
+                .bind(id)
+                .execute(&self.write_pool)
+                .await
+                .context("setting schedule autonomy")?;
         Ok(res.rows_affected() > 0)
     }
 

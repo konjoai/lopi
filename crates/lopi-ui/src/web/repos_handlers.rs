@@ -103,7 +103,12 @@ fn git_branches(repo: &str) -> (Vec<String>, String) {
         .filter(|o| o.status.success())
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
         .filter(|s| !s.is_empty())
-        .or_else(|| branches.iter().find(|b| *b == "main" || *b == "master").cloned())
+        .or_else(|| {
+            branches
+                .iter()
+                .find(|b| *b == "main" || *b == "master")
+                .cloned()
+        })
         .or_else(|| branches.first().cloned())
         .unwrap_or_default();
 

@@ -23,10 +23,15 @@ use std::path::Path;
 pub(super) async fn get_loop(State(s): State<AppState>) -> impl IntoResponse {
     let repo = s.repo_path.clone();
     // Filesystem + TOML reads run off the async reactor.
-    let (config_json, skills, rules) =
-        tokio::task::spawn_blocking(move || scan_repo(&repo))
-            .await
-            .unwrap_or_else(|_| (loop_config_json(&LoopConfig::default(), &[]), vec![], vec![]));
+    let (config_json, skills, rules) = tokio::task::spawn_blocking(move || scan_repo(&repo))
+        .await
+        .unwrap_or_else(|_| {
+            (
+                loop_config_json(&LoopConfig::default(), &[]),
+                vec![],
+                vec![],
+            )
+        });
 
     let schedules = s
         .store
