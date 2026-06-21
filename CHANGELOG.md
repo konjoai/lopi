@@ -4,6 +4,36 @@
 
 ### Added
 
+**Loop Engineering — Phase 16.2 sidebar screen** (`lopi-ui`, `web/`, `macos/`)
+- **`GET /api/loop-engineering`** aggregation endpoint composes one read-only
+  snapshot for the primary repo: effective `.lopi/loop.toml` (with validation),
+  the L1–L4 autonomy ladder, discovered skills (`.claude/skills/*/SKILL.md`) +
+  rules (`.claude/rules/*.md`), live schedules with their trust level, and the
+  Konjo quality-gate catalog.
+- **New Loop screen on both surfaces** (web `/loop`, macOS `Loop` nav) rendering
+  that snapshot in Konjo identity: Effective Config card, the colored autonomy
+  ladder, scheduled loops each with a **Trust-Level dropdown** (the one writable
+  control → `POST /api/schedules/:id/autonomy`), skills, rule chips, and the
+  three quality-gate walls. Built in lockstep — the web and macOS screens share
+  the same payload and layout.
+
+**Loop Engineering — Phase 16.1 backend** (`lopi-core`, `lopi-memory`, `lopi-ui`, CLI)
+- **`LoopConfig` + `AutonomyLevel`** (`crates/lopi-core/src/loop_config.rs`): the
+  "loop as code" schema loaded from `<repo>/.lopi/loop.toml` (autonomy level,
+  intent anchor, enabled skills/rules, permission policy, no-progress + iteration
+  caps, per-run budget) and the L1–L4 phased-autonomy ladder (report-only →
+  draft-PR → verified-PR → auto-merge) with capability gates and `validate()`.
+- **Per-schedule trust level** persisted: new `autonomy_level` column on the
+  `schedules` table (idempotent migration), plumbed through `ScheduleRow` /
+  `ScheduleInput` / `ScheduleSpec` → `Task`, with a `set_schedule_autonomy`
+  store method and a `POST /api/schedules/:id/autonomy` endpoint for the
+  forthcoming Loop Engineering Trust-Level dropdown.
+- **`lopi loop validate` / `lopi loop show`** CLI: validate a repo's loop config
+  in CI (non-zero exit on issues) and inspect the effective values.
+- Full design + the five feature options (A–E) and the build sequence are
+  written up in [`docs/LOOP_ENGINEERING.md`](docs/LOOP_ENGINEERING.md) and
+  catalogued as Phase 16 in [`docs/COMPETITIVE_ROADMAP.md`](docs/COMPETITIVE_ROADMAP.md).
+
 **Forge multi-agent cockpit — web + macOS** (`web/`, `macos/`)
 - **Sessions sidebar** lists every task whether mounted or not. Closing a pane
   now *parks* the session in the sidebar instead of deleting it; a dedicated
@@ -40,16 +70,12 @@
   headers (newest-first within each, empty groups hidden). Pure, testable logic
   lives in `session-groups.ts` (**16 tests**); the component stays a renderer.
 
-**Split the 587-line `agents.ts` store** (Konjo ≤ 500-line rule)
-- Extracted the pure model (`agents-model.ts` — `AgentState`/`LogEntry`/
-  `Status`, `PHASE_COLORS`, `makeBlank`, `clamp01`) and the immutable
-  `AgentEvent → AgentState` reducer (`agents-reducer.ts`). `agents.ts` keeps the
-  stores, derived selectors, wire-message dispatch and public API, and
-  re-exports the model so every consumer's import surface is unchanged. Store
-  drops 587 → 344 lines.
-- The reducer was previously untestable (buried in the store); now pure and
-  covered by `agents-reducer.test.ts` (**28 cases**) — queue/start/metrics/
-  status/score-clamp/verdict transitions, unknown-task no-ops, and immutability.
+**Reducer test coverage** (`web/.../agentReducer.test.ts`)
+- The `AgentEvent → AgentState` reducer (split into `agentReducer.ts`) shipped
+  without tests. Added **28 cases** covering every variant —
+  queue/start/turn-metrics/status/score-clamp/completed/verdict transitions,
+  events for unknown tasks (no-op), and immutability (input map + agent never
+  mutated). The extraction is what made this testable in isolation.
 
 **Springy, interruptible tile motion** (`web/.../TileGrid.svelte`)
 - Adding or removing a pane was instant. Now the surviving tiles **glide** to

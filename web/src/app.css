@@ -19,6 +19,24 @@
      switcher in the Config tab). RGB triplet feeds Tailwind alpha values. */
   --konjo-accent: #00d4ff;
   --konjo-accent-rgb: 0 212 255;
+  --konjo-accent-2: #ff4500;     /* ambient counter-tone for the void glow */
+  --konjo-accent-2-rgb: 255 69 0;
+
+  /* ── Motion system ──────────────────────────────────────────────────────
+     Shared easing + duration tokens so every surface moves with one voice.
+     `out-expo` is the Apple-style momentum curve (sharp in, soft settle). */
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-out-back: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-in-out-soft: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-fast: 0.14s;
+  --dur-base: 0.24s;
+  --dur-slow: 0.4s;
+
+  /* ── Elevation / glow ───────────────────────────────────────────────────
+     Reusable shadow ladder. Glows are accent-aware via the RGB triplet. */
+  --glow-sm: 0 0 12px rgb(var(--konjo-accent-rgb) / 0.25);
+  --glow-md: 0 0 24px rgb(var(--konjo-accent-rgb) / 0.3);
+  --shadow-pane: 0 8px 28px -8px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.04);
 }
 
 /* Theme variants — accent recolor only; the void stays black. */
@@ -51,36 +69,143 @@ body {
 }
 
 ::selection {
-  background: var(--konjo-ice);
+  background: rgb(var(--konjo-accent-rgb) / 0.85);
   color: var(--konjo-black);
 }
 
-/* Subtle starfield-style ambient background */
+/* ── Ambient void ──────────────────────────────────────────────────────────
+   Two slow-drifting accent auroras over a fixed vignette. Theme-aware: the
+   primary blob tracks the accent, the counter-tone keeps the void from
+   reading flat. Kept GPU-cheap (transform/opacity only) and motion-safe. */
 body::before {
+  content: '';
+  position: fixed;
+  inset: -25%;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(38% 42% at 22% 28%, rgb(var(--konjo-accent-rgb) / 0.06) 0%, transparent 70%),
+    radial-gradient(34% 38% at 80% 72%, rgb(var(--konjo-accent-2-rgb) / 0.05) 0%, transparent 70%);
+  animation: void-drift 38s var(--ease-in-out-soft) infinite;
+  will-change: transform;
+}
+/* Fine vignette so panels sit in a pool of dark rather than a hard edge. */
+body::after {
   content: '';
   position: fixed;
   inset: 0;
   pointer-events: none;
-  background:
-    radial-gradient(circle at 20% 30%, rgba(0, 212, 255, 0.04) 0%, transparent 40%),
-    radial-gradient(circle at 80% 70%, rgba(255, 69, 0, 0.03) 0%, transparent 40%);
   z-index: 0;
+  background: radial-gradient(120% 90% at 50% 0%, transparent 55%, rgba(0, 0, 0, 0.5) 100%);
+}
+@keyframes void-drift {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  33% {
+    transform: translate3d(2%, -1.5%, 0) scale(1.06);
+  }
+  66% {
+    transform: translate3d(-1.5%, 2%, 0) scale(1.03);
+  }
 }
 
-/* Tiny scrollbar that doesn't break the aesthetic */
+/* Refined scrollbar — slim, accent-tinted on interaction. */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.08);
-  border-radius: 3px;
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  transition: background-color 0.2s;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.16);
+  background: rgb(var(--konjo-accent-rgb) / 0.4);
+  background-clip: padding-box;
+}
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
+}
+
+/* ── Focus visibility ──────────────────────────────────────────────────────
+   Keyboard users get a crisp accent ring everywhere; pointer clicks don't
+   (focus-visible only). One rule covers the whole app. */
+:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--konjo-black),
+    0 0 0 3.5px rgb(var(--konjo-accent-rgb) / 0.7);
+  border-radius: 4px;
+}
+
+/* ── Shared motion utilities ───────────────────────────────────────────────
+   Drop these classes on any element for consistent, on-brand motion. */
+.lift {
+  transition:
+    transform var(--dur-base) var(--ease-out-expo),
+    box-shadow var(--dur-base) var(--ease-out-expo),
+    border-color var(--dur-base) var(--ease-out-expo);
+}
+.lift:hover {
+  transform: translateY(-1px);
+}
+.press {
+  transition: transform var(--dur-fast) var(--ease-out-expo);
+}
+.press:active {
+  transform: scale(0.96);
+}
+
+/* Skeleton shimmer for loading rows. */
+.shimmer {
+  background: linear-gradient(
+    100deg,
+    rgba(255, 255, 255, 0.03) 30%,
+    rgba(255, 255, 255, 0.08) 50%,
+    rgba(255, 255, 255, 0.03) 70%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+@keyframes shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+/* Number flips for live counters (paired with a Svelte keyed block). */
+@keyframes count-roll {
+  from {
+    opacity: 0;
+    transform: translateY(0.4em);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Respect the OS reduce-motion preference across the whole app. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* Display heading style */

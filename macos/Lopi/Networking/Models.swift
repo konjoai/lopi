@@ -173,6 +173,7 @@ enum AgentEvent {
     case taskQueued(taskId: String, goal: String, priority: String)
     case taskStarted(taskId: String, attempt: Int, branch: String)
     case statusChanged(taskId: String, status: String, attempt: Int)
+    case planProposed(taskId: String, attempt: Int, steps: [String], plan: String)
     case logLine(taskId: String, line: String, level: String)
     case scoreUpdated(taskId: String, testPassRate: Double, lintErrors: Int, diffLines: Int)
     case turnMetrics(taskId: String, pressure: Double, activity: Double, tokensPerSec: Double, costUsd: Double)
@@ -188,7 +189,8 @@ enum AgentEvent {
     var taskId: String? {
         switch self {
         case let .taskQueued(id, _, _), let .taskStarted(id, _, _),
-             let .statusChanged(id, _, _), let .logLine(id, _, _),
+             let .statusChanged(id, _, _), let .planProposed(id, _, _, _),
+             let .logLine(id, _, _),
              let .scoreUpdated(id, _, _, _), let .turnMetrics(id, _, _, _, _),
              let .verifierVerdict(id, _, _, _), let .taskCompleted(id, _, _),
              let .taskCancelled(id):
@@ -225,6 +227,13 @@ enum AgentEvent {
                 taskId: str(obj["task_id"]),
                 status: TaskStatusLabel.from(obj["status"]),
                 attempt: num(obj["attempt"])
+            )
+        case "plan_proposed":
+            return .planProposed(
+                taskId: str(obj["task_id"]),
+                attempt: num(obj["attempt"]),
+                steps: (obj["steps"] as? [Any])?.compactMap { $0 as? String } ?? [],
+                plan: obj["plan"] as? String ?? ""
             )
         case "log_line":
             return .logLine(

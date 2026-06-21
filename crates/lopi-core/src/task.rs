@@ -34,6 +34,13 @@ pub enum TaskStatus {
     Queued,
     /// Agent is generating an implementation plan.
     Planning,
+    /// Plan generated; paused awaiting human approval before implementation
+    /// (Phase 11 — plan approval gate). The proposed plan rides on the
+    /// accompanying [`crate::AgentEvent::PlanProposed`] event.
+    AwaitingPlanApproval {
+        /// Attempt whose plan is pending approval.
+        attempt: u8,
+    },
     /// Agent is applying code changes.
     Implementing,
     /// Agent is running the test suite.
@@ -169,6 +176,16 @@ pub struct Task {
     /// [`crate::topology::TopologyHint`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub topology: Option<crate::topology::TopologyHint>,
+    /// Phase 11 — when true, the agent surfaces its plan and pauses for human
+    /// approval before implementation begins. Approve/reject arrives via
+    /// `POST /api/tasks/:id/plan/{approve,reject}`.
+    #[serde(default)]
+    pub require_plan_approval: bool,
+    /// Phase 16 (Loop Engineering) — trust level governing how far the loop may
+    /// act without a human: L1 report-only … L4 auto-merge. Defaults to L2
+    /// (draft PR), the conservative level inherited from a schedule or config.
+    #[serde(default)]
+    pub autonomy_level: crate::loop_config::AutonomyLevel,
 }
 
 /// Where a task originated — used for routing replies and audit logging.
@@ -219,6 +236,8 @@ impl Task {
             required_capabilities: Vec::new(),
             rubric: None,
             topology: None,
+            require_plan_approval: false,
+            autonomy_level: crate::loop_config::AutonomyLevel::default(),
         }
     }
 

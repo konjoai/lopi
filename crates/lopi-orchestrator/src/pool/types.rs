@@ -1,6 +1,7 @@
 //! Plain data types for the agent pool: live handles, counters, and the
 //! snapshot structs returned to the dashboard.
 
+use lopi_core::PlanDecision;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 use tokio::sync::oneshot;
@@ -12,6 +13,9 @@ pub struct AgentHandle {
     pub goal: String,
     /// One-shot sender that signals the runner to stop; `None` after cancellation.
     pub cancel_tx: Option<oneshot::Sender<()>>,
+    /// Phase 11 — delivers the operator's plan-approval decision to a paused
+    /// runner; `None` once consumed (or for ungated runs).
+    pub plan_decision_tx: Option<oneshot::Sender<PlanDecision>>,
     /// Current attempt count — updated atomically by the runner, read lock-free.
     pub attempt: Arc<AtomicUsize>,
     /// Wall-clock time when this agent handle was created.

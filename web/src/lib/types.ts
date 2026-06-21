@@ -63,6 +63,14 @@ export type AgentEvent =
       total_attempts: number;
     }
   | { type: 'task_cancelled'; task_id: string }
+  // Phase 11 — plan generated, paused awaiting human approval.
+  | {
+      type: 'plan_proposed';
+      task_id: string;
+      attempt: number;
+      steps: string[];
+      plan: string;
+    }
   | {
       type: 'pool_stats';
       running: number;

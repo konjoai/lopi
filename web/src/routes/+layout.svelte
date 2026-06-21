@@ -30,11 +30,14 @@
   // ── Tab definitions — OpenClaw Control UI parity, the Konjo way ────────────
   const tabs = [
     { href: '/', label: 'Forge' },
+    { href: '/fleet', label: 'Fleet' },
     { href: '/constellation', label: 'Constellation' },
     { href: '/pulse', label: 'Pulse' },
+    { href: '/budget', label: 'Budget' },
     { href: '/tasks', label: 'Tasks' },
     { href: '/router', label: 'Router' },
     { href: '/schedules', label: 'Schedules' },
+    { href: '/loop', label: 'Loop' },
     { href: '/tools', label: 'Tools' },
     { href: '/logs', label: 'Logs' },
     { href: '/config', label: 'Config' },
@@ -48,7 +51,11 @@
   $: pathname = $page.url.pathname;
   $: activeTab = tabs.find((t) => isActive(t.href, pathname)) ?? tabs[0];
   // Immersive views own the full viewport (no page scroll); data tabs scroll.
-  $: immersive = pathname === '/' || pathname.startsWith('/constellation') || pathname.startsWith('/onboard');
+  $: immersive =
+    pathname === '/' ||
+    pathname.startsWith('/fleet') ||
+    pathname.startsWith('/constellation') ||
+    pathname.startsWith('/onboard');
 </script>
 
 <!-- Top bar — minimal, always visible. Houses navigation between views. -->
@@ -86,7 +93,7 @@
       <button
         type="button"
         on:click={() => window.dispatchEvent(new CustomEvent('lopi:add-pane'))}
-        class="text-konjo-accent hover:bg-konjo-accent/10 px-2 py-1 rounded transition-colors"
+        class="press text-konjo-accent hover:bg-konjo-accent/10 px-2 py-1 rounded transition-colors"
         title="Add pane"
       >
         +
@@ -105,7 +112,7 @@
     <button
       type="button"
       on:click={() => helpVisible.set(!$helpVisible)}
-      class="text-konjo-accent hover:bg-konjo-accent/10 px-2 py-1 rounded transition-colors"
+      class="press text-konjo-accent hover:bg-konjo-accent/10 px-2 py-1 rounded transition-colors"
       title="Help & Shortcuts"
     >
       ?

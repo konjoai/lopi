@@ -88,6 +88,7 @@ export function taskStatusToPhase(status: TaskStatus | string | null | undefined
     }
   }
   if (typeof status === 'object') {
+    if ('AwaitingPlanApproval' in status) return 'Planning';
     if ('Retrying' in status) return 'Discovery';
     if ('Success' in status) return 'Conclusion';
     if ('Failed' in status) return 'Conclusion';
@@ -172,6 +173,11 @@ export function parseAgentEvent(raw: Record<string, unknown>): AgentEvent | null
     case 'task_cancelled': {
       if (!isString(tid)) return null;
       return { type: 'task_cancelled', task_id: tid };
+    }
+    case 'plan_proposed': {
+      if (!isString(tid) || !isNumber(raw.attempt) || !isString(raw.plan)) return null;
+      const steps = Array.isArray(raw.steps) ? raw.steps.filter(isString) : [];
+      return { type: 'plan_proposed', task_id: tid, attempt: raw.attempt, steps, plan: raw.plan };
     }
     case 'pool_stats': {
       if (

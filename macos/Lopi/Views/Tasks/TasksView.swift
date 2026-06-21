@@ -168,10 +168,10 @@ struct NewTaskSheet: View {
 
             TextField("Goal", text: $goal, axis: .vertical)
                 .lineLimit(3...6)
-                .textFieldStyle(.roundedBorder)
+                .konjoField()
 
             TextField("Repo path (optional)", text: $repo)
-                .textFieldStyle(.roundedBorder)
+                .konjoField()
 
             Picker("Priority", selection: $priority) {
                 ForEach(priorities, id: \.self) { Text($0.capitalized).tag($0) }

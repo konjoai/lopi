@@ -134,6 +134,18 @@ impl AgentPool {
         false
     }
 
+    /// Phase 11 — deliver a plan-approval decision to a paused runner. Returns
+    /// true if the task was awaiting approval and the decision was delivered.
+    pub async fn decide_plan(&self, task_id: &TaskId, decision: lopi_core::PlanDecision) -> bool {
+        if let Some(handle_ref) = self.handles.get(task_id) {
+            let mut handle = handle_ref.write().await;
+            if let Some(tx) = handle.plan_decision_tx.take() {
+                return tx.send(decision).is_ok();
+            }
+        }
+        false
+    }
+
     /// Return a snapshot of current stats.
     #[must_use]
     pub fn stats(&self) -> PoolStats {

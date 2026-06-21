@@ -8,10 +8,12 @@ struct AuroraBackground: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private let blobs: [Blob] = [
-        Blob(color: Konjo.konjo, phase: 0.0, scale: 0.95, speed: 0.06),
+        Blob(color: Konjo.ice, phase: 0.0, scale: 0.95, speed: 0.06),
         Blob(color: Konjo.konjo2, phase: 1.7, scale: 0.75, speed: 0.09),
-        Blob(color: Konjo.ok, phase: 3.3, scale: 0.55, speed: 0.05),
-        Blob(color: Color(hex: 0x3B2A6B), phase: 5.0, scale: 1.1, speed: 0.04),
+        Blob(color: Konjo.jade, phase: 3.3, scale: 0.55, speed: 0.05),
+        // Warm counter-tone keeps the cyan void from reading cold/flat —
+        // the same ember pool the web ambient background uses.
+        Blob(color: Color(hex: 0x3B1605), phase: 5.0, scale: 1.1, speed: 0.04),
     ]
 
     var body: some View {

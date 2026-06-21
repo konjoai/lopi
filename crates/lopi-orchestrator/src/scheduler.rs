@@ -201,6 +201,7 @@ mod tests {
             priority: "normal".to_string(),
             allowed_dirs: vec![],
             forbidden_dirs: vec![],
+            autonomy_level: Default::default(),
         };
 
         let result = boot(vec![entry], pool).await;
@@ -227,6 +228,7 @@ mod tests {
             priority: "normal".to_string(),
             allowed_dirs: vec![],
             forbidden_dirs: vec![],
+            autonomy_level: Default::default(),
         };
 
         // Invalid cron entry should be skipped, not cause boot to fail
@@ -254,6 +256,7 @@ mod tests {
             priority: "high".to_string(),
             allowed_dirs: vec!["src/".to_string()],
             forbidden_dirs: vec!["vendor/".to_string()],
+            autonomy_level: Default::default(),
         };
 
         let result = boot(vec![entry], pool).await;
@@ -281,6 +284,7 @@ mod tests {
                 priority: "low".to_string(),
                 allowed_dirs: vec![],
                 forbidden_dirs: vec![],
+                autonomy_level: Default::default(),
             },
             ScheduleEntry {
                 name: "entry-2".to_string(),
@@ -290,6 +294,7 @@ mod tests {
                 priority: "critical".to_string(),
                 allowed_dirs: vec![],
                 forbidden_dirs: vec![],
+                autonomy_level: Default::default(),
             },
         ];
 
@@ -318,6 +323,7 @@ mod tests {
                 priority: "normal".to_string(),
                 allowed_dirs: vec![],
                 forbidden_dirs: vec![],
+                autonomy_level: Default::default(),
             },
             ScheduleEntry {
                 name: "invalid".to_string(),
@@ -327,6 +333,7 @@ mod tests {
                 priority: "normal".to_string(),
                 allowed_dirs: vec![],
                 forbidden_dirs: vec![],
+                autonomy_level: Default::default(),
             },
         ];
 

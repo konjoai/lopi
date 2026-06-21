@@ -15,6 +15,13 @@ final class AppModel {
     var stats = PoolStats()
     var tasks: [TaskSummary] = []
     var schedules: [Schedule] = []
+    /// Loop Engineering snapshot for the Loop screen (nil until first fetch).
+    var loopSnapshot: LoopSnapshot?
+    /// Launch-control dropdown sources, fetched from the server (sandbox-safe).
+    var repos: [String] = []
+    var branches: [String] = []
+    /// The selected repo's default (current HEAD) branch.
+    var defaultBranch: String = ""
 
     /// Rolling buffer of recent live log lines (most recent last), capped.
     var recentLogs: [String] = []
@@ -99,6 +106,35 @@ final class AppModel {
         do { schedules = try await client.schedules() } catch { report(error) }
     }
 
+    /// Fetch the Loop Engineering snapshot for the Loop screen.
+    func refreshLoop() async {
+        do { loopSnapshot = try await client.loopEngineering() } catch { report(error) }
+    }
+
+    /// Set a scheduled loop's trust (autonomy) level, then re-pull the snapshot.
+    func setScheduleAutonomy(_ id: String, level: String) async {
+        do {
+            try await client.setScheduleAutonomy(id: id, level: level)
+            await refreshLoop()
+        } catch { report(error) }
+    }
+
+    /// Best-effort dropdown population — silent on failure (the field just
+    /// stays empty / falls back to free entry).
+    func refreshRepos() async {
+        if let r = try? await client.repos() { repos = r }
+    }
+
+    func refreshBranches(_ repo: String) async {
+        if let r = try? await client.branches(repo: repo) {
+            branches = r.branches
+            defaultBranch = r.defaultBranch
+        } else {
+            branches = []
+            defaultBranch = ""
+        }
+    }
+
     // MARK: Mutations
 
     func submitTask(_ body: CreateTaskBody) async {
@@ -112,6 +148,15 @@ final class AppModel {
         do {
             try await client.cancelTask(id: id)
             await refreshTasks()
+        } catch { report(error) }
+    }
+
+    /// Phase 11 — approve (proceed) or reject (abandon) a paused plan.
+    func decidePlan(_ id: String, approve: Bool) async {
+        do {
+            try await client.decidePlan(id: id, approve: approve)
+            // Optimistically clear the local gate; the WS status will confirm.
+            liveAgents[id]?.awaitingApproval = false
         } catch { report(error) }
     }
 

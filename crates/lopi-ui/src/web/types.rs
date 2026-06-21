@@ -29,6 +29,9 @@ pub struct CreateTaskRequest {
     /// means "any agent can run this".
     #[serde(default)]
     pub required_capabilities: Option<Vec<String>>,
+    /// Phase 11 — require human approval of the plan before implementation.
+    #[serde(default)]
+    pub require_plan_approval: Option<bool>,
 }
 
 /// Response body for `POST /api/tasks`.

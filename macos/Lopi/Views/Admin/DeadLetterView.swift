@@ -89,16 +89,40 @@ struct DeadLetterView: View {
 struct EmptyHint: View {
     let icon: String
     let text: String
+    var accent: Color = Konjo.ice
+
+    @State private var breathe = false
 
     var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: icon)
-                .foregroundStyle(Konjo.fgMute)
+        VStack(spacing: 16) {
+            // Accent-tinted icon badge with a soft breathing halo.
+            ZStack {
+                Circle()
+                    .fill(accent.opacity(0.10))
+                    .frame(width: 72, height: 72)
+                    .scaleEffect(breathe ? 1.06 : 0.94)
+                    .opacity(breathe ? 1 : 0.7)
+                Circle()
+                    .stroke(accent.opacity(0.25), lineWidth: 1)
+                    .frame(width: 72, height: 72)
+                Image(systemName: icon)
+                    .font(.system(size: 26, weight: .light))
+                    .foregroundStyle(accent.opacity(0.8))
+            }
+            .shadow(color: accent.opacity(0.25), radius: 18)
             Text(text)
                 .font(Konjo.sans(13))
-                .foregroundStyle(Konjo.fgMute)
+                .foregroundStyle(Konjo.fgDim)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 360)
+                .lineSpacing(2)
         }
-        .padding(.top, 30)
+        .padding(.vertical, 56)
         .frame(maxWidth: .infinity)
+        .onAppear {
+            withAnimation(.easeInOut(duration: 2.4).repeatForever(autoreverses: true)) {
+                breathe = true
+            }
+        }
     }
 }

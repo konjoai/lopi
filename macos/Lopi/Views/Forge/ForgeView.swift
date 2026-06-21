@@ -6,32 +6,45 @@ import SwiftUI
 /// model that keeps deleted sessions from resurrecting on reconnect.
 struct ForgeView: View {
     @Environment(AppModel.self) private var model
-    @State private var layout = PaneLayout()
+    /// Shared with the unified sidebar in RootView (sessions ↔ panes).
+    var layout: PaneLayout
     @State private var controls = LaunchControls()
-    @State private var sidebarCollapsed = false
 
     var body: some View {
-        HStack(spacing: 0) {
-            SessionSidebarView(layout: layout, collapsed: $sidebarCollapsed)
-            grid
-        }
+        grid
         .background(Konjo.bg)
-        .toolbar {
-            ToolbarItemGroup(placement: .automatic) {
-                Button { layout.removePane() } label: { Image(systemName: "rectangle.split.2x1") }
-                    .help("Remove pane")
-                    .disabled(layout.slots.count <= PaneLayout.minPanes)
-                Text("\(layout.slots.count)")
-                    .font(Konjo.mono(11)).foregroundStyle(Konjo.fgDim).monospacedDigit()
-                Button { layout.addPane() } label: { Image(systemName: "plus.rectangle") }
-                    .help("Add pane")
-                    .disabled(layout.slots.count >= PaneLayout.maxPanes)
-            }
-        }
+        // Custom black bar instead of system toolbar items, which carry an
+        // unwanted grey "glass" well behind their content.
+        .safeAreaInset(edge: .top, spacing: 0) { topBar }
         .onAppear { layout.reconcile(model.liveAgents.keys) }
         .onChange(of: model.liveAgents.keys.sorted()) { _, keys in
             layout.reconcile(keys)
         }
+    }
+
+    private var topBar: some View {
+        HStack(spacing: 12) {
+            Text("lopi").font(Konjo.sans(15, weight: .bold)).foregroundStyle(Konjo.fg)
+            ConnectionLED(state: model.connection)
+            Spacer()
+            Button { layout.removePane() } label: {
+                Image(systemName: "minus")
+                    .font(.system(size: 17, weight: .semibold)).foregroundStyle(Konjo.fgDim)
+            }
+            .buttonStyle(.plain).focusEffectDisabled()
+            .help("Remove pane").disabled(layout.slots.count <= PaneLayout.minPanes)
+            Text("\(layout.slots.count)")
+                .font(Konjo.mono(11)).foregroundStyle(Konjo.fgDim).monospacedDigit()
+            Button { layout.addPane() } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 20, weight: .semibold)).foregroundStyle(Konjo.ice)
+            }
+            .buttonStyle(.plain).focusEffectDisabled()
+            .help("Add pane").disabled(layout.slots.count >= PaneLayout.maxPanes)
+        }
+        .padding(.horizontal, 16).padding(.vertical, 8)
+        .background(Konjo.bg)
+        .overlay(Rectangle().fill(Konjo.line).frame(height: 1), alignment: .bottom)
     }
 
     private var grid: some View {
@@ -39,6 +52,7 @@ struct ForgeView: View {
             AgentPaneView(
                 agent: agent(at: idx),
                 controls: controls,
+                paneCount: layout.slots.count,
                 onClose: { layout.closePane(idx) }
             )
         }

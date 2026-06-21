@@ -81,11 +81,15 @@ export function reduce(
       if (!cur) break;
       const phase = taskStatusToPhase(ev.status);
       const isCompleted = isTerminalStatus(ev.status);
+      const isAwaiting =
+        typeof ev.status === 'object' && 'AwaitingPlanApproval' in ev.status;
       next.set(ev.task_id, {
         ...cur,
         taskStatus: ev.status,
         phase,
         attempt: ev.attempt,
+        // Cleared once the agent advances past the gate (approved → implement).
+        awaitingApproval: isAwaiting ? cur.awaitingApproval : false,
         status: isCompleted
           ? typeof ev.status === 'object' && 'Failed' in ev.status
             ? 'failed'
@@ -140,8 +144,22 @@ export function reduce(
     case 'task_cancelled': {
       const cur = next.get(ev.task_id);
       if (cur) {
-        next.set(ev.task_id, { ...cur, status: 'cancelled', activity: 0 });
+        next.set(ev.task_id, { ...cur, status: 'cancelled', activity: 0, awaitingApproval: false });
       }
+      break;
+    }
+    case 'plan_proposed': {
+      const cur = next.get(ev.task_id);
+      if (!cur) break;
+      next.set(ev.task_id, {
+        ...cur,
+        awaitingApproval: true,
+        planSteps: ev.steps,
+        planText: ev.plan,
+        // A gentle ember pulse marks the pause-for-review moment.
+        stimulus: Date.now(),
+        stimulusKind: 'request'
+      });
       break;
     }
     case 'pool_stats': {

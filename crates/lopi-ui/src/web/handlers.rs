@@ -163,6 +163,61 @@ pub(super) async fn cancel_task(
         .into_response()
 }
 
+/// Phase 11 — approve a paused plan; the agent proceeds to implementation.
+pub(super) async fn approve_plan(
+    Path(id): Path<String>,
+    State(s): State<AppState>,
+) -> impl IntoResponse {
+    decide_plan(&s, &id, lopi_core::PlanDecision::Approve).await
+}
+
+/// Phase 11 — reject a paused plan; the agent abandons the task.
+pub(super) async fn reject_plan(
+    Path(id): Path<String>,
+    State(s): State<AppState>,
+) -> impl IntoResponse {
+    decide_plan(&s, &id, lopi_core::PlanDecision::Reject).await
+}
+
+/// Deliver a plan decision to a paused runner, resolving `id` (full UUID or a
+/// prefix) to a task and signalling the pool.
+async fn decide_plan(
+    s: &AppState,
+    id: &str,
+    decision: lopi_core::PlanDecision,
+) -> axum::response::Response {
+    let Some(task_id) = resolve_task_id(s, id).await else {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": "task not found"})),
+        )
+            .into_response();
+    };
+    if s.pool.decide_plan(&task_id, decision).await {
+        (
+            StatusCode::OK,
+            Json(json!({"task_id": task_id.0.to_string(), "decision": decision})),
+        )
+            .into_response()
+    } else {
+        (
+            StatusCode::CONFLICT,
+            Json(json!({"error": "task is not awaiting plan approval"})),
+        )
+            .into_response()
+    }
+}
+
+/// Resolve a task id from a full UUID or a unique prefix (history fallback).
+async fn resolve_task_id(s: &AppState, id: &str) -> Option<TaskId> {
+    if let Ok(uuid) = id.parse::<uuid::Uuid>() {
+        return Some(TaskId(uuid));
+    }
+    let rows = s.store.load_history(500).await.unwrap_or_default();
+    let t = rows.into_iter().find(|t| t.id.starts_with(id))?;
+    t.id.parse::<uuid::Uuid>().ok().map(TaskId)
+}
+
 pub(super) async fn create_task(
     State(s): State<AppState>,
     Json(req): Json<CreateTaskRequest>,
@@ -200,6 +255,7 @@ pub(super) async fn create_task(
     if let Some(caps) = req.required_capabilities {
         task.required_capabilities = caps;
     }
+    task.require_plan_approval = req.require_plan_approval.unwrap_or(false);
 
     // P2 — refuse pre-submit if no registered agent can satisfy the
     // task's required capabilities. Returns 422 with the offending list

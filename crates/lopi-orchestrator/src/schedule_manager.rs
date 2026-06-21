@@ -15,7 +15,7 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use dashmap::DashMap;
-use lopi_core::{Priority, RepoProfile, Task, TaskSource};
+use lopi_core::{AutonomyLevel, Priority, RepoProfile, Task, TaskSource};
 use lopi_memory::{MemoryStore, ScheduleRow};
 use tokio::sync::Mutex;
 use tokio_cron_scheduler::{Job, JobScheduler};
@@ -42,6 +42,8 @@ pub struct ScheduleSpec {
     pub allowed_dirs: Vec<String>,
     /// Forbidden directories override.
     pub forbidden_dirs: Vec<String>,
+    /// Trust level governing how far this loop may act without a human.
+    pub autonomy_level: AutonomyLevel,
 }
 
 impl From<ScheduleRow> for ScheduleSpec {
@@ -54,6 +56,7 @@ impl From<ScheduleRow> for ScheduleSpec {
             priority: r.priority,
             allowed_dirs: r.allowed_dirs,
             forbidden_dirs: r.forbidden_dirs,
+            autonomy_level: AutonomyLevel::parse(&r.autonomy_level).unwrap_or_default(),
         }
     }
 }
@@ -81,6 +84,7 @@ pub fn build_task(spec: &ScheduleSpec) -> Task {
         task.repo_path = Some(repo.clone());
         RepoProfile::load_from_repo(repo).apply(&mut task);
     }
+    task.autonomy_level = spec.autonomy_level;
     task
 }
 
@@ -247,6 +251,7 @@ mod tests {
             priority: "high".into(),
             allowed_dirs: vec!["src/".into()],
             forbidden_dirs: vec![],
+            autonomy_level: AutonomyLevel::VerifiedPr,
         }
     }
 
@@ -285,6 +290,7 @@ mod tests {
             allowed_dirs: vec!["a/".into()],
             forbidden_dirs: vec!["b/".into()],
             enabled: true,
+            autonomy_level: "auto_merge".into(),
             created_at: "t".into(),
             updated_at: "t".into(),
         };
@@ -292,6 +298,7 @@ mod tests {
         assert_eq!(s.id, "r1");
         assert_eq!(s.repo, Some(PathBuf::from("/tmp/x")));
         assert_eq!(s.forbidden_dirs, vec!["b/".to_string()]);
+        assert_eq!(s.autonomy_level, AutonomyLevel::AutoMerge);
     }
 
     #[tokio::test]
@@ -340,6 +347,7 @@ mod tests {
                 allowed_dirs: vec![],
                 forbidden_dirs: vec![],
                 enabled: true,
+                autonomy_level: "draft_pr".into(),
             })
             .await
             .unwrap();

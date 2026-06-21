@@ -3,7 +3,7 @@ use crate::claude::{select_model, ClaudeCode, ERR_CREDIT_EXHAUSTED};
 use crate::scorer::Scorer;
 use anyhow::Result;
 use lopi_context::Phase;
-use lopi_core::{AgentEvent, Attempt, TaskStatus};
+use lopi_core::{AgentEvent, Attempt, PlanDecision, TaskStatus};
 use lopi_git::GitManager;
 use lopi_spec::SpecSurface;
 use std::sync::atomic::Ordering;
@@ -333,6 +333,32 @@ impl AgentRunner {
                     });
                 }
 
+                // Phase 11 — plan approval gate. On the first attempt of a
+                // gated task, surface the plan and pause until the operator
+                // approves (→ implement) or rejects (→ abandon). Retries refine
+                // an already-approved plan, so they are not re-gated.
+                if attempt == 0 && self.task.require_plan_approval {
+                    match self.await_plan_approval(&plan, attempt + 1).await {
+                        PlanGate::Approved => {}
+                        PlanGate::Rejected => {
+                            git.hard_rollback().await.ok();
+                            git.checkout_default().await.ok();
+                            let status = TaskStatus::Failed {
+                                reason: "Plan rejected by operator".into(),
+                            };
+                            self.status(status.clone(), attempt + 1);
+                            return Ok(status);
+                        }
+                        PlanGate::Cancelled => {
+                            git.hard_rollback().await.ok();
+                            git.checkout_default().await.ok();
+                            return Ok(TaskStatus::Failed {
+                                reason: "Cancelled".into(),
+                            });
+                        }
+                    }
+                }
+
                 self.status(TaskStatus::Implementing, attempt + 1);
                 self.context.transition_phase(Phase::Implementation);
                 tracing::info!(
@@ -602,5 +628,136 @@ impl AgentRunner {
         };
         self.status(status.clone(), self.task.max_retries);
         Ok(status)
+    }
+
+    /// Phase 11 — emit the proposed plan, mark the task awaiting approval, and
+    /// block until a decision arrives (or the wait times out). Ungated runs
+    /// with no decision channel auto-approve so a CLI run never stalls.
+    async fn await_plan_approval(&mut self, plan: &str, attempt: u8) -> PlanGate {
+        self.bus.send(AgentEvent::PlanProposed {
+            task_id: self.id(),
+            attempt,
+            steps: parse_plan_steps(plan),
+            plan: plan.to_string(),
+        });
+        self.status(TaskStatus::AwaitingPlanApproval { attempt }, attempt);
+        self.log("⏸ awaiting plan approval…");
+
+        let Some(rx) = self.plan_decision_rx.take() else {
+            self.log("no approval channel — auto-approving plan");
+            return PlanGate::Approved;
+        };
+
+        // Cap the wait so a forgotten approval cannot pin an agent slot forever.
+        let decided = async {
+            tokio::select! {
+                d = rx => match d {
+                    Ok(PlanDecision::Approve) => PlanGate::Approved,
+                    Ok(PlanDecision::Reject) => PlanGate::Rejected,
+                    Err(_) => PlanGate::Approved, // sender dropped — fail open
+                },
+                () = self.cancel_token.cancelled() => PlanGate::Cancelled,
+            }
+        };
+        match tokio::time::timeout(std::time::Duration::from_secs(3600), decided).await {
+            Ok(gate) => {
+                match gate {
+                    PlanGate::Approved => self.log("✅ plan approved — implementing"),
+                    PlanGate::Rejected => self.log("❌ plan rejected"),
+                    PlanGate::Cancelled => self.log("⛔ cancelled while awaiting approval"),
+                }
+                gate
+            }
+            Err(_) => {
+                self.warn("plan approval timed out (1h) — rejecting");
+                PlanGate::Rejected
+            }
+        }
+    }
+}
+
+/// Outcome of the Phase 11 plan approval gate.
+enum PlanGate {
+    Approved,
+    Rejected,
+    Cancelled,
+}
+
+/// Best-effort extraction of discrete plan steps from free-form plan text.
+/// Recognises markdown bullets (`-`, `*`, `•`) and numbered lines (`1.`, `2)`),
+/// trimming the marker. Empty when nothing looks step-like — the UI then falls
+/// back to the full plan text.
+fn parse_plan_steps(plan: &str) -> Vec<String> {
+    let mut steps = Vec::new();
+    for raw in plan.lines() {
+        let line = raw.trim();
+        let stripped = line
+            .strip_prefix("- ")
+            .or_else(|| line.strip_prefix("* "))
+            .or_else(|| line.strip_prefix("• "))
+            .or_else(|| strip_numbered(line));
+        if let Some(s) = stripped {
+            let s = s.trim();
+            if !s.is_empty() {
+                steps.push(s.to_string());
+            }
+        }
+        if steps.len() >= 20 {
+            break;
+        }
+    }
+    steps
+}
+
+/// Strip a leading `N.` / `N)` ordered-list marker, returning the remainder.
+fn strip_numbered(line: &str) -> Option<&str> {
+    let mut saw_digit = false;
+    for (i, c) in line.char_indices() {
+        if c.is_ascii_digit() {
+            saw_digit = true;
+            continue;
+        }
+        if saw_digit && (c == '.' || c == ')') {
+            return Some(line[i + 1..].trim_start());
+        }
+        break;
+    }
+    None
+}
+
+#[cfg(test)]
+mod plan_gate_tests {
+    use super::parse_plan_steps;
+
+    #[test]
+    fn parses_markdown_bullets() {
+        let plan = "Here is the plan:\n- Add the cache layer\n* Wire it in\n• Add tests";
+        assert_eq!(
+            parse_plan_steps(plan),
+            vec!["Add the cache layer", "Wire it in", "Add tests"]
+        );
+    }
+
+    #[test]
+    fn parses_numbered_lists() {
+        let plan = "1. First step\n2) Second step\n   3. Indented third";
+        assert_eq!(
+            parse_plan_steps(plan),
+            vec!["First step", "Second step", "Indented third"]
+        );
+    }
+
+    #[test]
+    fn ignores_prose_and_blank_markers() {
+        // No bullets/numbers → empty, so the UI falls back to the full text.
+        assert!(parse_plan_steps("Just a paragraph of prose.\n\nAnother line.").is_empty());
+        // A bare marker with no content is skipped.
+        assert!(parse_plan_steps("- \n*  ").is_empty());
+    }
+
+    #[test]
+    fn caps_at_twenty_steps() {
+        let plan: String = (0..50).map(|i| format!("- step {i}\n")).collect();
+        assert_eq!(parse_plan_steps(&plan).len(), 20);
     }
 }

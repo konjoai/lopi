@@ -75,12 +75,18 @@ final class PaneLayout {
         persist()
     }
 
-    /// Close a pane: empties the slot and parks the session in the sidebar.
-    /// The session itself is untouched (no server DELETE).
+    /// Close a pane: removes the tile so the grid re-flows to equal sizes, and
+    /// parks any session it held in the sidebar (the session itself is
+    /// untouched — no server DELETE). The last remaining pane is emptied rather
+    /// than removed so the cockpit never goes completely blank.
     func closePane(_ index: Int) {
         guard slots.indices.contains(index) else { return }
         if let id = slots[index] { closed.insert(id) }
-        slots[index] = nil
+        if slots.count > Self.minPanes {
+            slots.remove(at: index)
+        } else {
+            slots[index] = nil
+        }
         persist()
     }
 
@@ -118,8 +124,20 @@ final class PaneLayout {
     /// Returns the ids that were auto-placed.
     @discardableResult
     func reconcile(_ ids: some Sequence<String>) -> [String] {
+        let live = Set(ids)
+        // Free slots whose session no longer exists on the server (e.g. ids
+        // changed across a reconnect, or a session was cleared). Otherwise the
+        // grid sticks on idle panes that can never be reused, and a freshly
+        // submitted task has nowhere to land.
+        var freed = false
+        for i in slots.indices {
+            if let id = slots[i], known.contains(id), !live.contains(id) {
+                slots[i] = nil
+                freed = true
+            }
+        }
         let fresh = ids.filter { !known.contains($0) && !deleted.contains($0) }
-        guard !fresh.isEmpty else { return [] }
+        guard !fresh.isEmpty || freed else { return [] }
         var placed: [String] = []
         for id in fresh {
             known.insert(id)

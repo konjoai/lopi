@@ -3,6 +3,20 @@
   import LaunchControls from '$lib/components/LaunchControls.svelte';
   import { logs, postTask, cancelTask, stimulate, permissionWaiting, PHASE_COLORS, type AgentState, type TaskOptions } from '$lib/stores/agents';
   import { launchControls } from '$lib/stores/controls';
+  import { approvePlan, rejectPlan } from '$lib/api';
+
+  let deciding = false;
+  async function decidePlan(approve: boolean) {
+    if (!agent || deciding) return;
+    deciding = true;
+    try {
+      await (approve ? approvePlan(agent.id) : rejectPlan(agent.id));
+    } catch (err) {
+      console.error('[lopi] plan decision failed:', err);
+    } finally {
+      deciding = false;
+    }
+  }
 
   export let agent: AgentState | null = null;
   export let onClose: (() => void) | null = null;
@@ -99,7 +113,9 @@
   gutters. The pane fills 100% of its tile.
 -->
 <div
-  class="h-full w-full relative border border-white/10 rounded-lg bg-konjo-deep/60 backdrop-blur-sm flex overflow-hidden"
+  class="agent-pane group h-full w-full relative border border-white/10 rounded-lg bg-konjo-deep/60 backdrop-blur-sm flex overflow-hidden"
+  class:pane-live={agent && isRunning}
+  style:--pane-phase={phaseColor}
 >
   <!-- ── LEFT COLUMN (main content) ────────────────────────────────────────── -->
   <div class="h-full flex flex-col flex-1 min-w-0 overflow-hidden">
@@ -110,7 +126,10 @@
     >
       <div class="flex items-center gap-2 min-w-0 flex-1">
         {#if agent}
-          <div class={`w-2 h-2 rounded-full flex-shrink-0 ${getStatusColor(agent.status)}`}></div>
+          <div
+            class={`status-dot w-2 h-2 rounded-full flex-shrink-0 ${getStatusColor(agent.status)}`}
+            style:--dot-glow={isRunning ? phaseColor : 'transparent'}
+          ></div>
           <div class="min-w-0 flex-1">
             <div class="font-mono text-xs font-medium leading-tight text-konjo-paper truncate">
               {agent.goal}
@@ -127,6 +146,55 @@
 
     <!-- ORB AREA (flex-1) ───────────────────────────────────────────── -->
     <div class="flex-1 flex flex-col items-center justify-center relative px-2 py-4 min-h-0">
+      <!-- ── Plan approval gate (Phase 11) ──────────────────────────────
+           When the agent pauses for review, the plan takes over the orb area
+           with an Approve / Reject decision. -->
+      {#if agent && agent.awaitingApproval}
+        <div class="plan-gate absolute inset-2 flex flex-col rounded-lg border border-konjo-sun/40 bg-konjo-deep/95 backdrop-blur-md overflow-hidden z-20">
+          <div class="px-3 py-2 border-b border-white/10 flex items-center gap-2 flex-shrink-0">
+            <span class="text-konjo-sun text-sm leading-none">⏸</span>
+            <span class="font-display text-xs font-bold text-konjo-sun">Plan ready · review</span>
+            <span class="ml-auto font-mono text-[8px] uppercase tracking-widest opacity-40">attempt {agent.attempt}</span>
+          </div>
+          <div class="flex-1 overflow-y-auto px-3 py-2 min-h-0">
+            {#if agent.planSteps && agent.planSteps.length > 0}
+              <ol class="space-y-1.5">
+                {#each agent.planSteps as step, i}
+                  <li class="flex gap-2 font-mono text-[10px] leading-snug">
+                    <span class="text-konjo-sun/70 flex-shrink-0 tabular-nums">{i + 1}.</span>
+                    <span class="opacity-80">{step}</span>
+                  </li>
+                {/each}
+              </ol>
+            {:else}
+              <pre class="font-mono text-[10px] leading-snug whitespace-pre-wrap opacity-80">{agent.planText ?? '—'}</pre>
+            {/if}
+          </div>
+          <div class="flex gap-2 px-3 py-2 border-t border-white/10 flex-shrink-0">
+            <button
+              type="button"
+              on:click={() => decidePlan(true)}
+              disabled={deciding}
+              class="press flex-1 py-1.5 rounded-md bg-konjo-jade/15 border border-konjo-jade/50 text-konjo-jade font-mono text-[11px] uppercase tracking-widest hover:bg-konjo-jade/25 disabled:opacity-40 transition-colors"
+            >✓ approve</button>
+            <button
+              type="button"
+              on:click={() => decidePlan(false)}
+              disabled={deciding}
+              class="press flex-1 py-1.5 rounded-md bg-konjo-rose/15 border border-konjo-rose/50 text-konjo-rose font-mono text-[11px] uppercase tracking-widest hover:bg-konjo-rose/25 disabled:opacity-40 transition-colors"
+            >✕ reject</button>
+          </div>
+        </div>
+      {/if}
+
+      <!-- Phase-tinted aura pooled behind the orb; intensifies while live. -->
+      {#if agent}
+        <div
+          class="orb-aura"
+          class:orb-aura-live={isRunning}
+          style:background={`radial-gradient(circle, ${phaseColor}22 0%, transparent 65%)`}
+        ></div>
+      {/if}
       <!-- Orb (interactive) -->
       <div class="relative">
         {#if agent}
@@ -140,11 +208,14 @@
             size={140}
           />
         {:else}
-          <!-- Empty slot placeholder: pulsing ring (follows theme accent) -->
-          <div
-            class="w-24 h-24 rounded-full border-2 border-konjo-accent/20 animate-pulse"
-            style="box-shadow: 0 0 20px rgb(var(--konjo-accent-rgb) / 0.1);"
-          ></div>
+          <!-- Empty slot placeholder: a calm idle beacon — concentric breathing
+               rings + a slowly orbiting spark, all following the theme accent. -->
+          <div class="idle-beacon">
+            <div class="idle-ring idle-ring-1"></div>
+            <div class="idle-ring idle-ring-2"></div>
+            <div class="idle-core"></div>
+            <div class="idle-orbit"><span class="idle-spark"></span></div>
+          </div>
         {/if}
       </div>
 
@@ -294,7 +365,7 @@
           type="button"
           on:click={handleRetry}
           title="Retry task"
-          class="w-12 h-12 text-konjo-sun hover:bg-konjo-sun/10 font-mono text-xl rounded border border-white/10 hover:border-konjo-sun/50 transition-colors flex items-center justify-center"
+          class="press w-12 h-12 text-konjo-sun hover:bg-konjo-sun/10 font-mono text-xl rounded border border-white/10 hover:border-konjo-sun/50 transition-colors flex items-center justify-center"
         >
           ↺
         </button>
@@ -305,7 +376,7 @@
           on:click={handleStop}
           disabled={!isRunning}
           title="Stop / Cancel"
-          class="w-12 h-12 text-konjo-rose hover:bg-konjo-rose/10 disabled:opacity-20 font-mono text-xl rounded border border-white/10 hover:border-konjo-rose/50 transition-colors flex items-center justify-center"
+          class="press w-12 h-12 text-konjo-rose hover:bg-konjo-rose/10 disabled:opacity-20 disabled:active:scale-100 font-mono text-xl rounded border border-white/10 hover:border-konjo-rose/50 transition-colors flex items-center justify-center"
         >
           ■
         </button>
@@ -313,3 +384,136 @@
     {/if}
   </div>
 </div>
+
+<style>
+  /* Resting elevation + a hairline accent lift on hover. The pane reads as a
+     physical card floating in the void rather than a flat rectangle. */
+  .agent-pane {
+    box-shadow: var(--shadow-pane);
+    transition:
+      box-shadow var(--dur-base) var(--ease-out-expo),
+      border-color var(--dur-base) var(--ease-out-expo),
+      transform var(--dur-base) var(--ease-out-expo);
+  }
+  .agent-pane:hover {
+    border-color: rgba(255, 255, 255, 0.16);
+  }
+  /* A live pane breathes a faint phase-tinted rim so a busy grid telegraphs
+     which agents are actually working at a glance. */
+  .pane-live {
+    box-shadow:
+      var(--shadow-pane),
+      inset 0 0 0 1px color-mix(in srgb, var(--pane-phase) 18%, transparent),
+      0 0 28px -10px color-mix(in srgb, var(--pane-phase) 50%, transparent);
+  }
+
+  /* Aura pooled behind the orb. Soft, slow, never distracting. */
+  .orb-aura {
+    position: absolute;
+    width: 220px;
+    height: 220px;
+    border-radius: 50%;
+    filter: blur(8px);
+    opacity: 0.5;
+    pointer-events: none;
+    transition: opacity var(--dur-slow) var(--ease-out-expo);
+  }
+  .orb-aura-live {
+    opacity: 0.9;
+    animation: aura-breathe 4.5s var(--ease-in-out-soft) infinite;
+  }
+  @keyframes aura-breathe {
+    0%,
+    100% {
+      transform: scale(0.92);
+      opacity: 0.7;
+    }
+    50% {
+      transform: scale(1.08);
+      opacity: 1;
+    }
+  }
+
+  /* Status dot gets a soft halo while the agent is live. */
+  .status-dot {
+    box-shadow: 0 0 0 0 var(--dot-glow);
+    transition: box-shadow var(--dur-base) var(--ease-out-expo);
+  }
+  .pane-live .status-dot {
+    box-shadow: 0 0 8px 1px var(--dot-glow);
+  }
+
+  /* ── Idle beacon ──────────────────────────────────────────────────────────
+     An empty slot still feels alive: two breathing rings, a soft core, and a
+     spark that orbits once every few seconds. Accent-aware, motion-safe. */
+  .idle-beacon {
+    position: relative;
+    width: 96px;
+    height: 96px;
+    display: grid;
+    place-items: center;
+  }
+  .idle-ring {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    border: 1px solid rgb(var(--konjo-accent-rgb) / 0.22);
+  }
+  .idle-ring-1 {
+    animation: idle-pulse 3.2s var(--ease-in-out-soft) infinite;
+  }
+  .idle-ring-2 {
+    inset: 16px;
+    border-color: rgb(var(--konjo-accent-rgb) / 0.14);
+    animation: idle-pulse 3.2s var(--ease-in-out-soft) infinite 1.6s;
+  }
+  .idle-core {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: rgb(var(--konjo-accent-rgb) / 0.7);
+    box-shadow: 0 0 14px 2px rgb(var(--konjo-accent-rgb) / 0.4);
+    animation: idle-core 3.2s var(--ease-in-out-soft) infinite;
+  }
+  .idle-orbit {
+    position: absolute;
+    inset: 0;
+    animation: idle-spin 6s linear infinite;
+  }
+  .idle-spark {
+    position: absolute;
+    top: -2px;
+    left: 50%;
+    width: 4px;
+    height: 4px;
+    margin-left: -2px;
+    border-radius: 50%;
+    background: rgb(var(--konjo-accent-rgb) / 0.9);
+    box-shadow: 0 0 8px 1px rgb(var(--konjo-accent-rgb) / 0.6);
+  }
+  @keyframes idle-pulse {
+    0%,
+    100% {
+      transform: scale(0.94);
+      opacity: 0.5;
+    }
+    50% {
+      transform: scale(1.04);
+      opacity: 1;
+    }
+  }
+  @keyframes idle-core {
+    0%,
+    100% {
+      opacity: 0.6;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+  @keyframes idle-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+</style>

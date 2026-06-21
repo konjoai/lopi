@@ -270,10 +270,15 @@ CREATE TABLE IF NOT EXISTS schedules (
     allowed_dirs   TEXT NOT NULL DEFAULT '[]',
     forbidden_dirs TEXT NOT NULL DEFAULT '[]',
     enabled        INTEGER NOT NULL DEFAULT 1,
+    autonomy_level TEXT NOT NULL DEFAULT 'draft_pr',
     created_at     TEXT NOT NULL,
     updated_at     TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_schedules_name ON schedules(name);
+-- Phase 16 (Loop Engineering) — trust level governing how far a scheduled loop
+-- may act without a human: report_only / draft_pr / verified_pr / auto_merge.
+-- ALTER is a no-op once the column exists (handled by apply_schema).
+ALTER TABLE schedules ADD COLUMN autonomy_level TEXT NOT NULL DEFAULT 'draft_pr';
 
 -- macOS-UI Phase 0 — Per-schedule run history. One row each time a
 -- schedule fires (cron tick or manual run-now). Powers the "last run" /

@@ -210,6 +210,16 @@ pub fn build_app(state: AppState) -> Router {
         .route("/api/tasks", get(list_tasks).post(create_task))
         .route("/api/tasks/:id", get(get_task).delete(cancel_task))
         .route(
+            "/api/tasks/:id/plan/approve",
+            axum::routing::post(approve_plan),
+        )
+        .route(
+            "/api/tasks/:id/plan/reject",
+            axum::routing::post(reject_plan),
+        )
+        .route("/api/repos", get(repos_handlers::list_repos))
+        .route("/api/branches", get(repos_handlers::list_branches))
+        .route(
             "/api/agents/:id/checkpoint",
             axum::routing::post(checkpoint_agent),
         )
@@ -299,6 +309,11 @@ pub fn build_app(state: AppState) -> Router {
             "/api/schedules/:id/run-now",
             axum::routing::post(schedule_handlers::run_now),
         )
+        .route(
+            "/api/schedules/:id/autonomy",
+            axum::routing::post(schedule_handlers::set_autonomy),
+        )
+        .route("/api/loop-engineering", get(loop_handlers::get_loop))
         .route("/api/config", get(config_handlers::get_config))
         .route("/api/version", get(config_handlers::get_version))
         .route_layer(middleware::from_fn_with_state(
@@ -404,6 +419,8 @@ mod constellation_handlers;
 mod dlq_handlers;
 mod handlers;
 mod health_handlers;
+mod loop_handlers;
+mod repos_handlers;
 mod schedule_handlers;
 mod static_assets;
 mod task_stream_handlers;
@@ -415,8 +432,9 @@ use constellation_handlers::{
     register_constellation_handler,
 };
 use handlers::{
-    cancel_task, checkpoint_agent, create_task, get_agent_dag, get_plans, get_q_values,
-    get_quality_trend, get_spec, get_stats, get_task, health, list_patterns, list_tasks, metrics,
+    approve_plan, cancel_task, checkpoint_agent, create_task, get_agent_dag, get_plans,
+    get_q_values, get_quality_trend, get_spec, get_stats, get_task, health, list_patterns,
+    list_tasks, metrics, reject_plan,
 };
 use static_assets::static_handler;
 use tools_handlers::{

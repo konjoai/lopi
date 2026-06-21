@@ -11,6 +11,8 @@ pub mod budget;
 pub mod config;
 /// Broadcast event types for TUI, WebSocket, and log panels.
 pub mod event;
+/// Loop-engineering configuration: autonomy levels + the `LoopConfig` schema.
+pub mod loop_config;
 /// Structured output schema validation (JSON Schema subset).
 pub mod schema;
 /// Task definition, status, priority, and source types.
@@ -23,7 +25,8 @@ pub mod topology;
 pub use agent::{AgentRun, AgentState, Attempt, Score, ScoreWeights, TurnMetrics};
 pub use budget::BudgetScope;
 pub use config::{LopiConfig, RepoProfile, ScheduleEntry};
-pub use event::{AgentEvent, EventBus, LogLevel};
+pub use event::{AgentEvent, EventBus, LogLevel, PlanDecision};
+pub use loop_config::{AutonomyLevel, LoopConfig};
 pub use schema::{
     schema_violations_inc, schema_violations_snapshot, validate as validate_schema,
     Violation as SchemaViolation, ViolationKind as SchemaViolationKind,

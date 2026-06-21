@@ -281,6 +281,7 @@ async fn seed_schedules(store: &MemoryStore, entries: &[lopi_core::ScheduleEntry
                     allowed_dirs: entry.allowed_dirs.clone(),
                     forbidden_dirs: entry.forbidden_dirs.clone(),
                     enabled: true,
+                    autonomy_level: entry.autonomy_level.tag_snake().to_string(),
                 };
                 if let Err(e) = store.upsert_schedule(&input).await {
                     tracing::warn!(schedule = %entry.name, "seeding schedule failed: {e:#}");
@@ -320,4 +321,46 @@ fn spawn_telegram(
             tracing::error!("telegram bot error: {e}");
         }
     });
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use super::*;
+    use lopi_core::{AutonomyLevel, ScheduleEntry};
+
+    fn entry(name: &str) -> ScheduleEntry {
+        ScheduleEntry {
+            name: name.into(),
+            repo: PathBuf::from("/tmp/repo"),
+            goal: "run nightly checks".into(),
+            cron: "0 2 * * *".into(),
+            priority: "high".into(),
+            allowed_dirs: vec!["src/".into()],
+            forbidden_dirs: vec!["infra/".into()],
+            autonomy_level: AutonomyLevel::VerifiedPr,
+        }
+    }
+
+    #[tokio::test]
+    async fn seed_schedules_persists_new_entries_with_autonomy() {
+        let store = MemoryStore::open_in_memory().await.unwrap();
+        seed_schedules(&store, &[entry("nightly")]).await;
+        let row = store
+            .find_schedule_by_name("nightly")
+            .await
+            .unwrap()
+            .expect("seeded row present");
+        assert_eq!(row.goal, "run nightly checks");
+        assert_eq!(row.autonomy_level, "verified_pr");
+        assert!(row.enabled);
+    }
+
+    #[tokio::test]
+    async fn seed_schedules_is_idempotent_by_name() {
+        let store = MemoryStore::open_in_memory().await.unwrap();
+        seed_schedules(&store, &[entry("dup")]).await;
+        seed_schedules(&store, &[entry("dup")]).await;
+        assert_eq!(store.list_schedules().await.unwrap().len(), 1);
+    }
 }

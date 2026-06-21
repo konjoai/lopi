@@ -29,30 +29,62 @@ extension AppModel {
                 $0.attempt = attempt
                 $0.branch = branch.isEmpty ? nil : branch
                 $0.active = true
+                $0.stimulus = .now
+                $0.stimulusKind = "request"
             }
             push(.started, "Agent started", branch.isEmpty ? "attempt \(attempt)" : branch)
             scheduleTaskRefresh()
 
         case let .statusChanged(id, status, attempt):
-            mutateAgent(id) { $0.phase = status; $0.attempt = attempt }
+            mutateAgent(id) {
+                $0.phase = status
+                $0.attempt = attempt
+                // Cleared once the agent advances past the approval gate.
+                $0.awaitingApproval = (status == "AwaitingPlanApproval")
+                if PhaseStyle.isActive(status) {
+                    $0.stimulus = .now
+                    $0.stimulusKind = "request"
+                }
+            }
             push(.status, "Phase: \(status)", shortGoal(id))
             scheduleTaskRefresh()
+
+        case let .planProposed(id, _, steps, plan):
+            mutateAgent(id) {
+                $0.awaitingApproval = true
+                $0.planSteps = steps
+                $0.planText = plan
+                $0.stimulus = .now
+                $0.stimulusKind = "request"
+            }
+            push(.status, "Plan ready · awaiting approval", shortGoal(id))
 
         case let .logLine(id, line, level):
             recentLogs.append("[\(level)] \(line)")
             if recentLogs.count > logCap { recentLogs.removeFirst(recentLogs.count - logCap) }
+            // Attach to the originating agent's strip (only if we know it, so a
+            // stray log never spawns a phantom pane).
+            if liveAgents[id] != nil {
+                liveAgents[id]?.logTail.append(AgentLog(level: level, text: line))
+                let tail = liveAgents[id]?.logTail.count ?? 0
+                if tail > 12 { liveAgents[id]?.logTail.removeFirst(tail - 12) }
+                if level == "error" {
+                    liveAgents[id]?.stimulus = .now
+                    liveAgents[id]?.stimulusKind = "failure"
+                }
+            }
             if level == "error" {
                 push(.error, "Error", line)
             } else if level == "warn" {
                 push(.warn, "Warning", line)
             }
-            _ = id
 
         case let .scoreUpdated(id, pass, lint, diff):
             mutateAgent(id) {
                 $0.testPassRate = pass
                 $0.lintErrors = lint
                 $0.diffLines = diff
+                if pass >= 0.8 { $0.stimulus = .now; $0.stimulusKind = "success" }
             }
             push(.score, "Score \(Int(pass * 100))%", "\(lint) lint · \(diff) diff lines")
 
@@ -70,6 +102,8 @@ extension AppModel {
             mutateAgent(id) {
                 $0.verdictPassed = passed
                 $0.verdictConfidence = confidence
+                $0.stimulus = .now
+                $0.stimulusKind = passed ? "success" : "failure"
             }
             if passed {
                 push(.verdictPass, "Verifier passed", String(format: "%.0f%% confidence", confidence * 100))
@@ -78,12 +112,15 @@ extension AppModel {
             }
 
         case let .taskCompleted(id, outcome, attempts):
+            let success = outcome.lowercased().contains("success")
             mutateAgent(id) {
                 $0.phase = outcome
                 $0.active = false
                 $0.activity = 0
+                $0.stimulus = .now
+                $0.stimulusKind = success ? "success" : "failure"
             }
-            let kind: FeedItem.Kind = outcome.lowercased().contains("success") ? .completed : .error
+            let kind: FeedItem.Kind = success ? .completed : .error
             push(kind, "Completed: \(outcome)", "\(attempts) attempt\(attempts == 1 ? "" : "s")")
             recomputeAggregates()
             scheduleTaskRefresh()

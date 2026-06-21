@@ -29,8 +29,28 @@ struct LiveAgent: Identifiable, Hashable {
     var active: Bool = true
     var lastUpdate: Date = .now
 
+    /// Recent log lines for this task — feeds the pane's log strip (web parity).
+    var logTail: [AgentLog] = []
+
+    /// Last stimulus that should make the orb react, and what kind it was
+    /// (request → ember, success → jade, failure → rose). Bump `stimulus` to
+    /// `.now` to fire a reaction.
+    var stimulus: Date = .distantPast
+    var stimulusKind: String = "request"
+
+    /// Phase 11 — set while the agent is paused at the plan approval gate.
+    var awaitingApproval: Bool = false
+    var planSteps: [String] = []
+    var planText: String = ""
+
     /// Accent color encoding the current phase — shared by orbs, rings, glows.
     var accent: Color { PhaseStyle.color(phase) }
+}
+
+/// A single log line scoped to one agent (level + message).
+struct AgentLog: Hashable {
+    let level: String
+    let text: String
 }
 
 /// One row in the live event ticker.
@@ -84,13 +104,16 @@ struct BudgetBreach: Equatable {
 
 /// Maps a lopi phase/status string to its Konjo accent + whether it's "thinking".
 enum PhaseStyle {
+    /// Maps a phase to its Konjo spectrum hue, 1:1 with the web Forge palette:
+    /// cyan planning → ember implementing → gold testing → jade conclusion.
     static func color(_ phase: String) -> Color {
         switch phase.lowercased() {
-        case "success", "done", "completed": return Konjo.ok
-        case "failed", "rolledback", "rolled_back", "cancelled": return Konjo.err
-        case "testing", "scoring", "retrying", "verifying": return Konjo.warn
+        case "success", "done", "completed", "conclusion": return Konjo.jade
+        case "failed", "rolledback", "rolled_back", "cancelled": return Konjo.rose
+        case "testing", "scoring", "retrying", "verifying": return Konjo.sun
+        case "implementing", "implementation", "coding", "building": return Konjo.ember
         case "queued", "pending": return Konjo.fgMute
-        default: return Konjo.konjo // planning / implementing / active
+        default: return Konjo.ice // planning / discovery / boot / active
         }
     }
 

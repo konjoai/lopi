@@ -28,6 +28,9 @@ pub(crate) fn status_label(s: &TaskStatus) -> String {
     match s {
         TaskStatus::Queued => "queued".into(),
         TaskStatus::Planning => "planning".into(),
+        TaskStatus::AwaitingPlanApproval { attempt } => {
+            format!("awaiting plan approval (attempt {attempt})")
+        }
         TaskStatus::Implementing => "implementing".into(),
         TaskStatus::Testing => "testing".into(),
         TaskStatus::Scoring => "scoring".into(),
@@ -65,4 +68,59 @@ pub(crate) fn is_self_modify_attempt(repo: &Path) -> bool {
         }
     }
     false
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn status_label_maps_simple_states() {
+        assert_eq!(status_label(&TaskStatus::Queued), "queued");
+        assert_eq!(status_label(&TaskStatus::Planning), "planning");
+        assert_eq!(status_label(&TaskStatus::Implementing), "implementing");
+        assert_eq!(status_label(&TaskStatus::Testing), "testing");
+        assert_eq!(status_label(&TaskStatus::Scoring), "scoring");
+        assert_eq!(status_label(&TaskStatus::RolledBack), "rolled back");
+    }
+
+    #[test]
+    fn status_label_includes_attempt_and_reason_detail() {
+        assert_eq!(
+            status_label(&TaskStatus::AwaitingPlanApproval { attempt: 2 }),
+            "awaiting plan approval (attempt 2)"
+        );
+        assert_eq!(
+            status_label(&TaskStatus::Retrying { attempt: 3 }),
+            "retrying (attempt 3)"
+        );
+        assert_eq!(
+            status_label(&TaskStatus::Failed {
+                reason: "boom".into()
+            }),
+            "failed ❌ boom"
+        );
+    }
+
+    #[test]
+    fn status_label_success_carries_branch_and_pr() {
+        let with_pr = status_label(&TaskStatus::Success {
+            branch: "lopi/x".into(),
+            pr_url: Some("https://example/pr/1".into()),
+        });
+        assert_eq!(with_pr, "success ✅ branch=lopi/x, pr=https://example/pr/1");
+        let no_pr = status_label(&TaskStatus::Success {
+            branch: "lopi/y".into(),
+            pr_url: None,
+        });
+        assert_eq!(no_pr, "success ✅ branch=lopi/y");
+    }
+
+    #[test]
+    fn fmt_status_decorates_known_states_and_passes_through() {
+        assert_eq!(fmt_status("failed"), "❌ failed");
+        assert_eq!(fmt_status("rolled_back"), "⏪ rolled back");
+        assert_eq!(fmt_status("anything-else"), "anything-else");
+    }
 }

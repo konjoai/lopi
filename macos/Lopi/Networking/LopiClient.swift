@@ -66,6 +66,36 @@ struct LopiClient {
         try await send("DELETE", "/api/tasks/\(id)", body: Optional<Int>.none)
     }
 
+    /// Phase 11 — deliver a plan-approval decision.
+    @discardableResult
+    func decidePlan(id: String, approve: Bool) async throws -> Data {
+        let verb = approve ? "approve" : "reject"
+        return try await send("POST", "/api/tasks/\(id)/plan/\(verb)", body: Optional<Int>.none)
+    }
+
+    /// Git repos the server can target (primary + siblings).
+    func repos() async throws -> [String] {
+        struct Wrapper: Decodable { let repos: [String] }
+        let w: Wrapper = try await get("/api/repos")
+        return w.repos
+    }
+
+    /// Local branches of `repo` (empty → server's primary repo) plus the repo's
+    /// default (current HEAD) branch.
+    func branches(repo: String) async throws -> (branches: [String], defaultBranch: String) {
+        struct Wrapper: Decodable {
+            let branches: [String]
+            let defaultBranch: String
+            enum CodingKeys: String, CodingKey {
+                case branches
+                case defaultBranch = "default"
+            }
+        }
+        let q = repo.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        let w: Wrapper = try await get("/api/branches?repo=\(q)")
+        return (w.branches, w.defaultBranch)
+    }
+
     // Schedules
 
     func schedules() async throws -> [Schedule] {
@@ -98,6 +128,16 @@ struct LopiClient {
 
     func deleteSchedule(id: String) async throws {
         _ = try await send("DELETE", "/api/schedules/\(id)", body: Optional<Int>.none)
+    }
+
+    // Loop Engineering
+
+    func loopEngineering() async throws -> LoopSnapshot {
+        try await get("/api/loop-engineering")
+    }
+
+    func setScheduleAutonomy(id: String, level: String) async throws {
+        _ = try await send("POST", "/api/schedules/\(id)/autonomy", body: ["level": level])
     }
 
     // MARK: Core request machinery
