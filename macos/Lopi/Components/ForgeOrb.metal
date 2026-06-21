@@ -86,7 +86,7 @@ half4 forgeOrb(float2 pos, half4 color, float4 bounds,
     // scales the amplitude (0.05 calm → 0.22 turbulent).
     float3 dir = rr > 0.0001 ? float3(uv.x, uv.y, 0.0) / rr : float3(0.0, 0.0, 1.0);
     float3 rs = rotate3(dir, ry, rx);
-    float td = time * (0.25 + activity * 0.5);
+    float td = time * (0.12 + activity * 0.22);
     float dn1 = snoise(rs * 1.8 + float3(td, 0.0, 0.0));
     float dn2 = snoise(rs * 4.5 + float3(0.0, td * 1.3, 0.0));
     // Gentle silhouette morph — 10% of the original amplitude so the orb
@@ -114,13 +114,13 @@ half4 forgeOrb(float2 pos, half4 color, float4 bounds,
     float3 EMBER = mix(CORE, MID, 0.6);
     float3 FLAME = HOT;
 
-    float t = time * 0.4;
+    float t = time * 0.2;
     float fn1 = snoise(sp * 3.5 + float3(t * 0.7, 0.0, 0.0));
     float fn2 = snoise(sp * 9.0 + float3(0.0, t * 1.1, 0.0));
     float fn3 = snoise(sp * 18.0 + float3(t * 0.3, 0.0, t * 0.5));
     float texture_ = fn1 * 0.55 + fn2 * 0.30 + fn3 * 0.15;
 
-    float boundary = sin(sp.y * 2.5 + time * 0.4 + texture_ * 1.8);
+    float boundary = sin(sp.y * 2.5 + time * 0.2 + texture_ * 1.8);
     float fireMix = smoothstep(-0.35, 0.35, boundary);
     float3 fireBase = mix(EMBER, FLAME, smoothstep(0.0, 1.0, fn2 + 0.5));
     float3 iceBase  = mix(ICE2, ICE, smoothstep(0.0, 1.0, fn2 + 0.5));
@@ -135,7 +135,7 @@ half4 forgeOrb(float2 pos, half4 color, float4 bounds,
     float fres = pow(1.0 - max(0.0, n.z), 3.2);
     col += HOT * fres * 0.5;
 
-    float pulse = 1.0 + sin(time * (1.5 + activity * 2.5)) * 0.06 * activity;
+    float pulse = 1.0 + sin(time * (1.0 + activity * 1.5)) * 0.03 * activity;
     col *= pulse;
 
     // Excitement — the orb runs hot on a stimulus: the surface blends toward

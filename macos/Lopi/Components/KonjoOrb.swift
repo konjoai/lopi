@@ -68,19 +68,21 @@ struct KonjoOrb: View {
         let since = date.timeIntervalSince(stimulus)
         let excite = (!reduceMotion && since >= 0) ? max(0, 1 - since / exciteDuration) : 0
 
-        // Rotation: base drift + an analytic spin-up that accrues while a
-        // stimulus burns (integral of the smoothstepped boost), then holds.
-        let baseRate = 0.35
+        // Rotation: gentle base drift plus a small analytic spin-up that
+        // accrues while a stimulus burns (integral of the smoothstepped boost),
+        // then holds. Kept subtle so frequent stimuli don't whip the orb.
+        let baseRate = 0.22
         var spin = t * baseRate
         if !reduceMotion && since >= 0 {
             let a = min(max(since / exciteDuration, 0), 1)
             let inv = 1 - a
             let area = 0.5 - (inv * inv * inv - 0.5 * inv * inv * inv * inv)
-            spin += baseRate * 9.0 * exciteDuration * area
+            spin += baseRate * 1.8 * exciteDuration * area
         }
 
-        // Shake: front-loaded rattle (excite³) for requests/failures only.
-        let shakeAmp = shakes ? excite * excite * excite * Double(size) * 0.05 : 0
+        // Shake: a faint front-loaded nudge (excite³) for requests/failures —
+        // a reaction, not a rattle.
+        let shakeAmp = shakes ? excite * excite * excite * Double(size) * 0.008 : 0
         return Frame(
             time: Float(t.truncatingRemainder(dividingBy: 3600)),
             spin: Float(spin.truncatingRemainder(dividingBy: 2 * .pi)),

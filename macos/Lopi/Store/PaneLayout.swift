@@ -124,8 +124,20 @@ final class PaneLayout {
     /// Returns the ids that were auto-placed.
     @discardableResult
     func reconcile(_ ids: some Sequence<String>) -> [String] {
+        let live = Set(ids)
+        // Free slots whose session no longer exists on the server (e.g. ids
+        // changed across a reconnect, or a session was cleared). Otherwise the
+        // grid sticks on idle panes that can never be reused, and a freshly
+        // submitted task has nowhere to land.
+        var freed = false
+        for i in slots.indices {
+            if let id = slots[i], known.contains(id), !live.contains(id) {
+                slots[i] = nil
+                freed = true
+            }
+        }
         let fresh = ids.filter { !known.contains($0) && !deleted.contains($0) }
-        guard !fresh.isEmpty else { return [] }
+        guard !fresh.isEmpty || freed else { return [] }
         var placed: [String] = []
         for id in fresh {
             known.insert(id)

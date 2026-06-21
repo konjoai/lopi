@@ -15,7 +15,7 @@ struct PaneGridView<Pane: View>: View {
     @State private var dragBase: [Double]?
 
     private let gap: CGFloat = 10
-    private let pad: CGFloat = 10
+    private let pad: CGFloat = 14
     private let minFrac = 0.18
 
     var body: some View {
@@ -50,7 +50,11 @@ struct PaneGridView<Pane: View>: View {
                         .gesture(resize(fr: rFr, index: i, extent: usableH, isCol: false))
                 }
             }
-            .padding(pad)
+            // Fill the detail area exactly. The outer margin comes from `pad`
+            // baked into originX/originY (and usableW/H), so the panes sit a
+            // uniform `pad` in from every edge — previously `.padding(pad)`
+            // double-applied it, pushing the right/bottom panes off-screen.
+            .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
             // Parity with the web TileGrid: survivors spring to their new
             // tracks while the added/removed pane scales in/out. Keyed on
             // `count` so a gutter drag (which leaves count unchanged) never
