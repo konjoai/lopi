@@ -70,14 +70,10 @@ struct LaunchControlsView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: dense ? 6 : 10) {
-            HStack(spacing: 8) {
-                KonjoMenu(title: "model", options: LaunchControls.models, value: $controls.model, dense: dense)
-                KonjoMenu(title: "effort", options: LaunchControls.efforts, value: $controls.effort, dense: dense)
-            }
-            HStack(spacing: 8) {
-                KonjoMenu(title: "priority", options: LaunchControls.priorities, value: $controls.priority, dense: dense)
-            }
+        HStack(spacing: 8) {
+            KonjoMenu(title: "model", options: LaunchControls.models, value: $controls.model, dense: dense)
+            KonjoMenu(title: "effort", options: LaunchControls.efforts, value: $controls.effort, dense: dense)
+            KonjoMenu(title: "priority", options: LaunchControls.priorities, value: $controls.priority, dense: dense)
             KonjoMenu(title: "repo", options: repoOptions, value: $controls.repo, dense: dense)
             KonjoMenu(title: "branch", options: branchOptions, value: $controls.branch, dense: dense)
         }

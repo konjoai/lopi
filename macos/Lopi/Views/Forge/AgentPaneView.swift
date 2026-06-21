@@ -299,8 +299,9 @@ struct AgentPaneView: View {
                 .font(paneSans(13, weight: .bold))
                 .foregroundStyle(agent == nil ? Konjo.fgMute : (agent?.awaitingApproval == true ? Konjo.sun : accent))
                 .multilineTextAlignment(.center)
-                .lineLimit(2)
+                .lineLimit(1)
                 .minimumScaleFactor(0.8)
+                .fixedSize(horizontal: false, vertical: true)
 
             Spacer(minLength: 8)
 
@@ -315,7 +316,7 @@ struct AgentPaneView: View {
                 }
             }
         }
-        .frame(width: 76)
+        .frame(width: 116)
         .padding(.vertical, 12)
         .padding(.horizontal, 8)
         .background(Color.black.opacity(0.3))

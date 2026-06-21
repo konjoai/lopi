@@ -86,12 +86,13 @@ half4 forgeOrb(float2 pos, half4 color, float4 bounds,
     // scales the amplitude (0.05 calm → 0.22 turbulent).
     float3 dir = rr > 0.0001 ? float3(uv.x, uv.y, 0.0) / rr : float3(0.0, 0.0, 1.0);
     float3 rs = rotate3(dir, ry, rx);
-    float td = time * (0.12 + activity * 0.22);
+    float td = time * (0.18 + activity * 0.32);
     float dn1 = snoise(rs * 1.8 + float3(td, 0.0, 0.0));
     float dn2 = snoise(rs * 4.5 + float3(0.0, td * 1.3, 0.0));
-    // Gentle silhouette morph — 10% of the original amplitude so the orb
-    // breathes rather than thrashing.
-    float disp = (dn1 * 0.7 + dn2 * 0.3) * (0.05 + pressure * 0.17) * 0.1;
+    // Fluid, ever-changing silhouette. The earlier "violence" was the shake +
+    // fast spin + surface churn (all still damped); this is the shape morph the
+    // operator actually wants — kept rich at ~55% of the original amplitude.
+    float disp = (dn1 * 0.7 + dn2 * 0.3) * (0.05 + pressure * 0.17) * 0.55;
 
     float baseR = 0.82;
     float radius = baseR + disp;
