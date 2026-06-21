@@ -34,6 +34,15 @@ struct AgentPaneView: View {
         return min(462, max(159, (40 + 220 * frac) * 1.65))
     }
 
+    /// Pane text runs 25% larger than the base Konjo type scale for legibility.
+    private static let textScale: CGFloat = 1.25
+    private func paneMono(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
+        Konjo.mono(size * Self.textScale, weight: weight)
+    }
+    private func paneSans(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
+        Konjo.sans(size * Self.textScale, weight: weight)
+    }
+
     var body: some View {
         HStack(spacing: 0) {
             contentColumn
@@ -75,7 +84,7 @@ struct AgentPaneView: View {
             Circle().fill(accent).frame(width: 7, height: 7)
                 .shadow(color: isLive ? accent.opacity(0.9) : .clear, radius: 5)
             Text(agent?.goal ?? "— idle —")
-                .font(Konjo.mono(11, weight: .medium)).lineLimit(1)
+                .font(paneMono(11, weight: .medium)).lineLimit(1)
                 .foregroundStyle(agent == nil ? Konjo.fgMute : Konjo.fg)
             Spacer(minLength: 0)
         }
@@ -122,9 +131,9 @@ struct AgentPaneView: View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
                 Image(systemName: "pause.circle.fill").foregroundStyle(Konjo.sun)
-                Text("Plan ready · review").font(Konjo.sans(12, weight: .bold)).foregroundStyle(Konjo.sun)
+                Text("Plan ready · review").font(paneSans(12, weight: .bold)).foregroundStyle(Konjo.sun)
                 Spacer()
-                Text("attempt \(agent.attempt)").font(Konjo.mono(8)).foregroundStyle(Konjo.fgMute)
+                Text("attempt \(agent.attempt)").font(paneMono(8)).foregroundStyle(Konjo.fgMute)
             }
             .padding(.horizontal, 12).padding(.vertical, 9)
             .overlay(Rectangle().fill(Konjo.line).frame(height: 1), alignment: .bottom)
@@ -133,13 +142,13 @@ struct AgentPaneView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     if agent.planSteps.isEmpty {
                         Text(agent.planText.isEmpty ? "—" : agent.planText)
-                            .font(Konjo.mono(10)).foregroundStyle(Konjo.fgDim)
+                            .font(paneMono(10)).foregroundStyle(Konjo.fgDim)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     } else {
                         ForEach(Array(agent.planSteps.enumerated()), id: \.offset) { i, step in
                             HStack(alignment: .top, spacing: 8) {
-                                Text("\(i + 1).").font(Konjo.mono(10)).foregroundStyle(Konjo.sun.opacity(0.7))
-                                Text(step).font(Konjo.mono(10)).foregroundStyle(Konjo.fgDim)
+                                Text("\(i + 1).").font(paneMono(10)).foregroundStyle(Konjo.sun.opacity(0.7))
+                                Text(step).font(paneMono(10)).foregroundStyle(Konjo.fgDim)
                                 Spacer(minLength: 0)
                             }
                         }
@@ -191,7 +200,7 @@ struct AgentPaneView: View {
 
     private func meter(_ k: String, value: Double, warn: Bool) -> some View {
         HStack(spacing: 5) {
-            Text("\(k):").font(Konjo.mono(9)).foregroundStyle(Konjo.fgMute)
+            Text("\(k):").font(paneMono(9)).foregroundStyle(Konjo.fgMute)
             GeometryReader { g in
                 ZStack(alignment: .leading) {
                     Capsule().fill(Color.black.opacity(0.4))
@@ -206,8 +215,8 @@ struct AgentPaneView: View {
 
     private func label(_ k: String, _ v: String) -> some View {
         HStack(spacing: 4) {
-            Text("\(k):").font(Konjo.mono(9)).foregroundStyle(Konjo.fgMute)
-            Text(v).font(Konjo.mono(9)).foregroundStyle(Konjo.fgDim).monospacedDigit()
+            Text("\(k):").font(paneMono(9)).foregroundStyle(Konjo.fgMute)
+            Text(v).font(paneMono(9)).foregroundStyle(Konjo.fgDim).monospacedDigit()
         }
     }
 
@@ -217,7 +226,7 @@ struct AgentPaneView: View {
         VStack(alignment: .leading, spacing: 2) {
             if agent.logTail.isEmpty {
                 Text("— waiting for output —")
-                    .font(Konjo.mono(8)).italic().foregroundStyle(Konjo.fgMute)
+                    .font(paneMono(8)).italic().foregroundStyle(Konjo.fgMute)
             } else {
                 ForEach(Array(agent.logTail.suffix(3).enumerated()), id: \.offset) { _, log in
                     HStack(spacing: 6) {
@@ -225,7 +234,7 @@ struct AgentPaneView: View {
                             .foregroundStyle(logColor(log.level))
                         Text(log.text).lineLimit(1).foregroundStyle(Konjo.fgDim)
                     }
-                    .font(Konjo.mono(8))
+                    .font(paneMono(8))
                 }
             }
         }
@@ -246,10 +255,10 @@ struct AgentPaneView: View {
 
     private var commandBar: some View {
         HStack(spacing: 8) {
-            Text(">").font(Konjo.mono(11)).foregroundStyle(Konjo.ok)
+            Text(">").font(paneMono(11)).foregroundStyle(Konjo.ok)
             TextField(agent == nil ? "type a goal…" : "new goal…", text: $goal)
                 .textFieldStyle(.plain)
-                .font(Konjo.mono(11)).foregroundStyle(Konjo.fg)
+                .font(paneMono(11)).foregroundStyle(Konjo.fg)
                 .onSubmit { submit(goal: goal) }
             if submitting { ProgressView().controlSize(.small) }
         }
@@ -265,7 +274,7 @@ struct AgentPaneView: View {
             Spacer()
             if let branch = agent.branch { Text(branch).lineLimit(1) }
         }
-        .font(Konjo.mono(8)).foregroundStyle(Konjo.fgMute)
+        .font(paneMono(8)).foregroundStyle(Konjo.fgMute)
         .padding(.horizontal, 12).padding(.vertical, 5)
     }
 
@@ -287,7 +296,7 @@ struct AgentPaneView: View {
 
             // Phase, vertically centered like the web rail.
             Text(railPhaseLabel)
-                .font(Konjo.sans(13, weight: .bold))
+                .font(paneSans(13, weight: .bold))
                 .foregroundStyle(agent == nil ? Konjo.fgMute : (agent?.awaitingApproval == true ? Konjo.sun : accent))
                 .multilineTextAlignment(.center)
                 .lineLimit(2)
