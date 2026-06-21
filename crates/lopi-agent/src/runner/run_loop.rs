@@ -1,11 +1,11 @@
+use super::speculative::SpecFlow;
 use super::{backoff_secs, AgentRunner};
 use crate::claude::{select_model, ClaudeCode, ERR_CREDIT_EXHAUSTED};
 use crate::scorer::Scorer;
 use anyhow::Result;
 use lopi_context::Phase;
-use lopi_core::{AgentEvent, Attempt, PlanDecision, TaskStatus};
+use lopi_core::{AgentEvent, Attempt, TaskStatus};
 use lopi_git::GitManager;
-use lopi_spec::SpecSurface;
 use std::sync::atomic::Ordering;
 use tracing::Instrument as _;
 
@@ -30,85 +30,13 @@ impl AgentRunner {
 
         let git = GitManager::new(&self.repo_path)?;
 
-        // Seed planning prompt with patterns and lessons from memory.
-        // Site 2 (TOON biggest win): PatternRow[] is a uniform tabular array.
-        // encode_task_context() in claude.rs renders it as TOON §9.3 tabular,
-        // saving ~158 tokens per attempt vs JSON (grows linearly with pattern count).
-        let (extra_constraints, pattern_pairs, lessons_data) = if let Some(store) = &self.store {
-            match store.find_similar_patterns(&self.task.goal).await {
-                Ok(patterns) if !patterns.is_empty() => {
-                    self.log(format!(
-                        "🧠 seeding from {} similar past patterns",
-                        patterns.len()
-                    ));
-                    // Build three outputs:
-                    // 1. extra_constraints: string constraints (legacy flat list)
-                    // 2. pattern_pairs: (keywords, constraints) tuples for TOON
-                    // 3. lessons: (category, content) from lessons table
-                    let constraints: Vec<String> = patterns
-                        .iter()
-                        .take(5)
-                        .filter_map(|p| {
-                            p.successful_constraints.as_deref().and_then(|c| {
-                                if c.is_empty() {
-                                    None
-                                } else {
-                                    Some(c.to_string())
-                                }
-                            })
-                        })
-                        .collect();
-
-                    let pairs: Vec<(String, String)> = patterns
-                        .iter()
-                        .take(5)
-                        .filter_map(|p| {
-                            p.successful_constraints.as_deref().and_then(|c| {
-                                if c.is_empty() {
-                                    None
-                                } else {
-                                    Some((p.goal_keywords.clone(), c.to_string()))
-                                }
-                            })
-                        })
-                        .collect();
-
-                    let lessons = match store
-                        .load_lessons(self.repo_path.to_string_lossy().as_ref(), 10)
-                        .await
-                    {
-                        Ok(rows) => rows
-                            .into_iter()
-                            .map(|row| (row.category, row.content))
-                            .collect(),
-                        Err(e) => {
-                            self.warn(format!("failed to load lessons: {e}"));
-                            vec![]
-                        }
-                    };
-
-                    (constraints, pairs, lessons)
-                }
-                _ => (vec![], vec![], vec![]),
-            }
-        } else {
-            (vec![], vec![], vec![])
-        };
-
-        // Store lessons for use in the API planning path.
-        self.task_lessons = lessons_data
-            .iter()
-            .map(|(_, content)| content.clone())
-            .collect();
-
-        // Load spec surface if cached — inject top 10 items as planning constraints.
-        let spec_constraints: Vec<String> = match SpecSurface::load(&self.repo_path) {
-            Ok(Some(surface)) if !surface.is_empty() => {
-                self.log(format!("📋 spec surface: {} items loaded", surface.len()));
-                surface.top_descriptions(10)
-            }
-            _ => vec![],
-        };
+        // Seed the planning prompt with patterns, lessons, and the spec
+        // surface from memory (see `seed.rs`).
+        let seed = self.gather_seed().await;
+        let extra_constraints = seed.extra_constraints;
+        let pattern_pairs = seed.pattern_pairs;
+        let lessons_data = seed.lessons_data;
+        let spec_constraints = seed.spec_constraints;
 
         let scorer = Scorer::new(&self.repo_path);
 
@@ -179,58 +107,13 @@ impl AgentRunner {
             self.log("📋 planning…");
 
             if self.speculative {
-                // Speculative mode: apply plan steps as they stream from claude.
-                let (plan_handle, mut step_rx) = claude.plan_streaming(&self.task);
-                self.status(TaskStatus::Implementing, attempt + 1);
-                self.context.transition_phase(Phase::Implementation);
-                tracing::info!(
-                    pressure = self.context.token_pressure(),
-                    "context at speculative implementation"
-                );
-                self.log("⚡ speculative: applying steps as plan streams…");
-
-                while let Some(step) = step_rx.recv().await {
-                    self.log(format!("  ↳ {step}"));
-                    if let Err(e) = claude.implement_step(&self.task, &step).await {
-                        self.warn(format!("speculative step failed: {e}"));
-                    }
+                // Speculative mode: apply plan steps as they stream (see
+                // `speculative.rs`). On a plan-stream failure the branch is
+                // already rolled back — just retry.
+                match self.implement_speculative(&claude, &git, attempt).await {
+                    SpecFlow::Proceed => {}
+                    SpecFlow::Retry => continue,
                 }
-
-                // Wait for plan to finish; use the accumulated text for dry-run logging.
-                let plan = match plan_handle.await {
-                    Ok(Ok(p)) => p,
-                    Ok(Err(e)) => {
-                        let e = anyhow::anyhow!("{e}");
-                        self.warn(format!("plan stream failed: {e}"));
-                        git.hard_rollback().await.ok();
-                        git.checkout_default().await.ok();
-                        self.status(
-                            TaskStatus::Retrying {
-                                attempt: attempt + 1,
-                            },
-                            attempt + 1,
-                        );
-                        continue;
-                    }
-                    Err(e) => {
-                        let e = anyhow::anyhow!("{e}");
-                        self.warn(format!("plan stream failed: {e}"));
-                        git.hard_rollback().await.ok();
-                        git.checkout_default().await.ok();
-                        self.status(
-                            TaskStatus::Retrying {
-                                attempt: attempt + 1,
-                            },
-                            attempt + 1,
-                        );
-                        continue;
-                    }
-                };
-                self.last_plan = Some(plan.clone());
-                self.log(format!(
-                    "✅ speculative plan+implement done ({} chars)",
-                    plan.len()
-                ));
             } else {
                 // Standard mode: wait for full plan, then implement in one pass.
                 //
@@ -333,30 +216,10 @@ impl AgentRunner {
                     });
                 }
 
-                // Phase 11 — plan approval gate. On the first attempt of a
-                // gated task, surface the plan and pause until the operator
-                // approves (→ implement) or rejects (→ abandon). Retries refine
-                // an already-approved plan, so they are not re-gated.
-                if attempt == 0 && self.task.require_plan_approval {
-                    match self.await_plan_approval(&plan, attempt + 1).await {
-                        PlanGate::Approved => {}
-                        PlanGate::Rejected => {
-                            git.hard_rollback().await.ok();
-                            git.checkout_default().await.ok();
-                            let status = TaskStatus::Failed {
-                                reason: "Plan rejected by operator".into(),
-                            };
-                            self.status(status.clone(), attempt + 1);
-                            return Ok(status);
-                        }
-                        PlanGate::Cancelled => {
-                            git.hard_rollback().await.ok();
-                            git.checkout_default().await.ok();
-                            return Ok(TaskStatus::Failed {
-                                reason: "Cancelled".into(),
-                            });
-                        }
-                    }
+                // Phase 11 — plan approval gate (see `plan_gate.rs`). Returns a
+                // terminal status when the operator rejects or cancels.
+                if let Some(status) = self.gate_plan(&plan, attempt, &git).await {
+                    return Ok(status);
                 }
 
                 self.status(TaskStatus::Implementing, attempt + 1);
@@ -492,54 +355,37 @@ impl AgentRunner {
             }
 
             if score.passed() {
-                // Sprint S — Konjo Verifier: rubric-guided second-score pass.
-                // Runs only when verifier_enabled; best-effort (errors log + continue).
-                if self.verifier_enabled
-                    && !self.run_verifier_pass(attempt + 1, &score.errors).await
-                {
-                    git.hard_rollback().await.ok();
-                    git.checkout_default().await.ok();
-                    self.status(
-                        TaskStatus::Retrying {
-                            attempt: attempt + 1,
-                        },
-                        attempt + 1,
+                // Phase 16.3 — finalize per the L1–L4 autonomy ladder. `finalize`
+                // forces the verifier on for L3/L4, commits, then opens (or skips)
+                // the PR and auto-merges for L4. `None` ⇒ verifier rejected: it has
+                // already rolled back and marked the task Retrying.
+                if let Some(status) = self.finalize(&branch, &git, &score, attempt + 1).await {
+                    self.context.pin_conclusion(
+                        format!(
+                            "Sprint succeeded — pass={:.0}% diff={}L",
+                            score.test_pass_rate * 100.0,
+                            score.diff_lines
+                        ),
+                        Phase::Conclusion,
                     );
-                    continue;
+                    tracing::info!(
+                        pressure = self.context.token_pressure(),
+                        "context at conclusion"
+                    );
+                    self.status(status.clone(), attempt + 1);
+                    // OTel GenAI-aligned span: task completion event. The span
+                    // body is empty — it exists to mark the task boundary in
+                    // any attached trace exporter (OTLP via `otel` feature).
+                    let _ = tracing::info_span!(
+                        "lopi.agent.task.complete",
+                        task_id = %self.id(),
+                        outcome = "success",
+                        attempts = attempt + 1,
+                    )
+                    .entered();
+                    return Ok(status);
                 }
-                self.log("✅ tests pass — committing…");
-                self.context.pin_conclusion(
-                    format!(
-                        "Sprint succeeded — pass={:.0}% diff={}L",
-                        score.test_pass_rate * 100.0,
-                        score.diff_lines
-                    ),
-                    Phase::Conclusion,
-                );
-                tracing::info!(
-                    pressure = self.context.token_pressure(),
-                    "context at conclusion"
-                );
-                git.commit_all(&format!("lopi: {}", self.task.goal))
-                    .await
-                    .ok();
-                let pr_url = git.open_pr(&branch, &self.task.goal).await.ok();
-                if let Some(ref url) = pr_url {
-                    self.log(format!("🔗 PR opened: {url}"));
-                }
-                let status = TaskStatus::Success { branch, pr_url };
-                self.status(status.clone(), attempt + 1);
-                // OTel GenAI-aligned span: task completion event. The span
-                // body is empty — it exists to mark the task boundary in
-                // any attached trace exporter (OTLP via `otel` feature).
-                let _ = tracing::info_span!(
-                    "lopi.agent.task.complete",
-                    task_id = %self.id(),
-                    outcome = "success",
-                    attempts = attempt + 1,
-                )
-                .entered();
-                return Ok(status);
+                continue;
             }
 
             // In-place fix attempt.
@@ -570,14 +416,16 @@ impl AgentRunner {
                     weighted
                 ));
                 if fixed_score.passed() {
-                    self.log("✅ fix worked — committing…");
-                    git.commit_all(&format!("lopi: {}", self.task.goal))
+                    self.log("✅ fix worked — finalizing…");
+                    // Same L1–L4 finalize path as the primary success branch.
+                    if let Some(status) = self
+                        .finalize(&branch, &git, &fixed_score, attempt + 1)
                         .await
-                        .ok();
-                    let pr_url = git.open_pr(&branch, &self.task.goal).await.ok();
-                    let status = TaskStatus::Success { branch, pr_url };
-                    self.status(status.clone(), attempt + 1);
-                    return Ok(status);
+                    {
+                        self.status(status.clone(), attempt + 1);
+                        return Ok(status);
+                    }
+                    continue;
                 }
             }
 
@@ -628,136 +476,5 @@ impl AgentRunner {
         };
         self.status(status.clone(), self.task.max_retries);
         Ok(status)
-    }
-
-    /// Phase 11 — emit the proposed plan, mark the task awaiting approval, and
-    /// block until a decision arrives (or the wait times out). Ungated runs
-    /// with no decision channel auto-approve so a CLI run never stalls.
-    async fn await_plan_approval(&mut self, plan: &str, attempt: u8) -> PlanGate {
-        self.bus.send(AgentEvent::PlanProposed {
-            task_id: self.id(),
-            attempt,
-            steps: parse_plan_steps(plan),
-            plan: plan.to_string(),
-        });
-        self.status(TaskStatus::AwaitingPlanApproval { attempt }, attempt);
-        self.log("⏸ awaiting plan approval…");
-
-        let Some(rx) = self.plan_decision_rx.take() else {
-            self.log("no approval channel — auto-approving plan");
-            return PlanGate::Approved;
-        };
-
-        // Cap the wait so a forgotten approval cannot pin an agent slot forever.
-        let decided = async {
-            tokio::select! {
-                d = rx => match d {
-                    Ok(PlanDecision::Approve) => PlanGate::Approved,
-                    Ok(PlanDecision::Reject) => PlanGate::Rejected,
-                    Err(_) => PlanGate::Approved, // sender dropped — fail open
-                },
-                () = self.cancel_token.cancelled() => PlanGate::Cancelled,
-            }
-        };
-        match tokio::time::timeout(std::time::Duration::from_secs(3600), decided).await {
-            Ok(gate) => {
-                match gate {
-                    PlanGate::Approved => self.log("✅ plan approved — implementing"),
-                    PlanGate::Rejected => self.log("❌ plan rejected"),
-                    PlanGate::Cancelled => self.log("⛔ cancelled while awaiting approval"),
-                }
-                gate
-            }
-            Err(_) => {
-                self.warn("plan approval timed out (1h) — rejecting");
-                PlanGate::Rejected
-            }
-        }
-    }
-}
-
-/// Outcome of the Phase 11 plan approval gate.
-enum PlanGate {
-    Approved,
-    Rejected,
-    Cancelled,
-}
-
-/// Best-effort extraction of discrete plan steps from free-form plan text.
-/// Recognises markdown bullets (`-`, `*`, `•`) and numbered lines (`1.`, `2)`),
-/// trimming the marker. Empty when nothing looks step-like — the UI then falls
-/// back to the full plan text.
-fn parse_plan_steps(plan: &str) -> Vec<String> {
-    let mut steps = Vec::new();
-    for raw in plan.lines() {
-        let line = raw.trim();
-        let stripped = line
-            .strip_prefix("- ")
-            .or_else(|| line.strip_prefix("* "))
-            .or_else(|| line.strip_prefix("• "))
-            .or_else(|| strip_numbered(line));
-        if let Some(s) = stripped {
-            let s = s.trim();
-            if !s.is_empty() {
-                steps.push(s.to_string());
-            }
-        }
-        if steps.len() >= 20 {
-            break;
-        }
-    }
-    steps
-}
-
-/// Strip a leading `N.` / `N)` ordered-list marker, returning the remainder.
-fn strip_numbered(line: &str) -> Option<&str> {
-    let mut saw_digit = false;
-    for (i, c) in line.char_indices() {
-        if c.is_ascii_digit() {
-            saw_digit = true;
-            continue;
-        }
-        if saw_digit && (c == '.' || c == ')') {
-            return Some(line[i + 1..].trim_start());
-        }
-        break;
-    }
-    None
-}
-
-#[cfg(test)]
-mod plan_gate_tests {
-    use super::parse_plan_steps;
-
-    #[test]
-    fn parses_markdown_bullets() {
-        let plan = "Here is the plan:\n- Add the cache layer\n* Wire it in\n• Add tests";
-        assert_eq!(
-            parse_plan_steps(plan),
-            vec!["Add the cache layer", "Wire it in", "Add tests"]
-        );
-    }
-
-    #[test]
-    fn parses_numbered_lists() {
-        let plan = "1. First step\n2) Second step\n   3. Indented third";
-        assert_eq!(
-            parse_plan_steps(plan),
-            vec!["First step", "Second step", "Indented third"]
-        );
-    }
-
-    #[test]
-    fn ignores_prose_and_blank_markers() {
-        // No bullets/numbers → empty, so the UI falls back to the full text.
-        assert!(parse_plan_steps("Just a paragraph of prose.\n\nAnother line.").is_empty());
-        // A bare marker with no content is skipped.
-        assert!(parse_plan_steps("- \n*  ").is_empty());
-    }
-
-    #[test]
-    fn caps_at_twenty_steps() {
-        let plan: String = (0..50).map(|i| format!("- step {i}\n")).collect();
-        assert_eq!(parse_plan_steps(&plan).len(), 20);
     }
 }

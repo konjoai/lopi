@@ -4,6 +4,26 @@
 
 ### Added
 
+**Loop Engineering — Phase 16.2b runner enforcement** (`lopi-agent`, `lopi-git`)
+- The **L1–L4 autonomy ladder now changes end-of-loop behavior** — previously
+  `autonomy_level` was configurable and observable but ignored by the runner.
+  A new shared `AgentRunner::finalize` (`crates/lopi-agent/src/runner/finalize.rs`)
+  replaces both `open_pr` call sites in `run_loop.rs` (main success + post-fix
+  success) and branches on `task.autonomy_level`:
+  - **L1 `report_only`** — commit to the branch, log a diff/score report, return
+    `Success` with `pr_url: None`. No PR is opened.
+  - **L2 `draft_pr`** (default) — open a **draft** PR (the GitHub review is the
+    human gate).
+  - **L3 `verified_pr`** — force the Konjo verifier on (regardless of
+    `verifier_enabled`) **before** opening a normal PR.
+  - **L4 `auto_merge`** — verifier must pass and the score must clear the gate,
+    then open a PR and **auto-merge** (`gh pr merge --auto --squash`).
+- **`GitManager`** (`crates/lopi-git/src/manager.rs`) gains `open_draft_pr` and
+  `auto_merge`; PR/merge argument building is factored into pure, unit-tested
+  helpers. The verifier now also runs on the post-fix success path for L3/L4.
+- `run_loop.rs` was split into focused modules (`finalize`, `plan_gate`,
+  `plan_steps`, `seed`, `speculative`) to stay under the 500-line file gate.
+
 **Loop Engineering — Phase 16.2 sidebar screen** (`lopi-ui`, `web/`, `macos/`)
 - **`GET /api/loop-engineering`** aggregation endpoint composes one read-only
   snapshot for the primary repo: effective `.lopi/loop.toml` (with validation),
