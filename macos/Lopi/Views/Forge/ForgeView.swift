@@ -24,6 +24,7 @@ struct ForgeView: View {
 
     private var topBar: some View {
         HStack(spacing: 12) {
+            Text("lopi").font(Konjo.sans(15, weight: .bold)).foregroundStyle(Konjo.fg)
             ConnectionLED(state: model.connection)
             Spacer()
             Button { layout.removePane() } label: {

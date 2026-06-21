@@ -16,8 +16,9 @@ struct LopiApp: App {
                 .tint(Konjo.ice)
                 .task { model.start() }
         }
-        .windowStyle(.titleBar)
-        .windowToolbarStyle(.unified)
+        // Hidden title bar so the app's own black top bar (lopi · live · panes)
+        // is the single top row — no separate system title band, no grey wells.
+        .windowStyle(.hiddenTitleBar)
 
         MenuBarExtra {
             MenuBarView()

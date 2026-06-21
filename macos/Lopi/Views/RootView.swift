@@ -56,11 +56,8 @@ struct RootView: View {
         } detail: {
             detail
                 .background(Konjo.bg)
-                // Connection state lives in the sidebar footer + the Forge top
-                // bar; keeping it out of the system toolbar avoids the grey
-                // item well.
-                .toolbarBackground(Konjo.bg, for: .windowToolbar)
-                .toolbarBackground(.visible, for: .windowToolbar)
+                // No system toolbar — the app draws its own black top bar, so
+                // there's no reserved toolbar band leaving a gap above it.
                 .overlay(alignment: .top) { bannerOverlay }
         }
     }
