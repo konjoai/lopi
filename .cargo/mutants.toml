@@ -10,4 +10,32 @@ exclude_re = [
     ": replace main -> ",
     "replay_commands\\.rs.*: replace run -> ",
     "replay_commands\\.rs.*: replace print_plan ",
+    # Phase 16.2b — autonomy enforcement. The branching *decisions* live in pure,
+    # unit-tested helpers (`pr_decision`, `requires_verifier`, `should_auto_merge`,
+    # `plan_gate_applies`, `non_empty_constraint`, `pr_create_args`,
+    # `pr_merge_args`, `parse_plan_steps`/`strip_numbered`). The functions below
+    # are IO shells: they delegate to those helpers and only run git/gh
+    # subprocesses, stream from the model, touch the DB, or emit log lines — none
+    # of which a unit test can assert against. The patterns are function-scoped
+    # (no trailing `->`/`in`) so inner operator/guard mutants — `attempt + 1`
+    # arithmetic, guards on IO results — are excluded along with the body.
+    "manager\\.rs.*GitManager::create_pr\\b",
+    "manager\\.rs.*GitManager::open_pr\\b",
+    "manager\\.rs.*GitManager::open_draft_pr\\b",
+    "manager\\.rs.*GitManager::auto_merge\\b",
+    "finalize\\.rs.*AgentRunner::finalize\\b",
+    "finalize\\.rs.*AgentRunner::apply_pr_decision\\b",
+    "finalize\\.rs.*AgentRunner::emit_report\\b",
+    "seed\\.rs.*AgentRunner::gather_seed\\b",
+    "seed\\.rs.*AgentRunner::seed_from_patterns\\b",
+    "speculative\\.rs.*AgentRunner::implement_speculative\\b",
+    "speculative\\.rs.*AgentRunner::speculative_plan_failed\\b",
+    "plan_gate\\.rs.*AgentRunner::gate_plan\\b",
+    "plan_gate\\.rs.*AgentRunner::await_plan_approval\\b",
+    # The top-level plan→implement→test→score→retry orchestration loop. Like the
+    # excluded `main` / `replay_commands::run` entry points, it only sequences
+    # the tested units above (gather_seed, gate_plan, finalize, …) and git IO;
+    # its body and the `attempt + 1` index arithmetic can't be pinned without a
+    # full live-agent integration harness.
+    "run_loop\\.rs.*AgentRunner::run\\b",
 ]

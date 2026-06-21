@@ -229,31 +229,28 @@ impl GitManager {
     /// # Errors
     /// Returns `Err` if `git push` or `gh pr create` fails.
     pub async fn open_pr(&self, branch: &str, title: &str) -> Result<String> {
-        // Push the branch.
-        let push = tokio::process::Command::new("git")
-            .arg("-C")
-            .arg(&self.repo_path)
-            .arg("push")
-            .arg("-u")
-            .arg("origin")
-            .arg(branch)
-            .output()
-            .await
-            .context("invoking git push")?;
-        if !push.status.success() {
-            anyhow::bail!("git push failed: {}", String::from_utf8_lossy(&push.stderr));
-        }
+        self.create_pr(branch, title, false).await
+    }
 
+    /// Push branch and open a **draft** PR via the `gh` CLI. Returns the PR URL.
+    ///
+    /// Used by the L2 (`draft_pr`) autonomy level: the GitHub review on the
+    /// draft is itself the human gate before merge.
+    ///
+    /// # Errors
+    /// Returns `Err` if `git push` or `gh pr create` fails.
+    pub async fn open_draft_pr(&self, branch: &str, title: &str) -> Result<String> {
+        self.create_pr(branch, title, true).await
+    }
+
+    /// Push the branch and create a PR. When `draft` is set the PR is opened
+    /// as a draft (`gh pr create --draft`).
+    async fn create_pr(&self, branch: &str, title: &str, draft: bool) -> Result<String> {
+        self.push_branch(branch).await?;
         let body = format!("Automated PR opened by lopi.\n\nBranch: `{branch}`\n");
+        let args = pr_create_args(title, &body, branch, draft);
         let out = tokio::process::Command::new("gh")
-            .arg("pr")
-            .arg("create")
-            .arg("--title")
-            .arg(title)
-            .arg("--body")
-            .arg(&body)
-            .arg("--head")
-            .arg(branch)
+            .args(&args)
             .current_dir(&self.repo_path)
             .output()
             .await
@@ -266,5 +263,106 @@ impl GitManager {
         }
         let url = String::from_utf8_lossy(&out.stdout).trim().to_string();
         Ok(url)
+    }
+
+    /// Enable auto-merge (squash) on the PR for `branch` via the `gh` CLI.
+    ///
+    /// Used by the L4 (`auto_merge`) autonomy level once the verifier has
+    /// passed and the score clears the gate. GitHub merges the PR
+    /// automatically once its required checks succeed.
+    ///
+    /// # Errors
+    /// Returns `Err` if `gh pr merge` fails.
+    pub async fn auto_merge(&self, branch: &str) -> Result<()> {
+        let args = pr_merge_args(branch);
+        let out = tokio::process::Command::new("gh")
+            .args(&args)
+            .current_dir(&self.repo_path)
+            .output()
+            .await
+            .context("invoking gh pr merge")?;
+        if !out.status.success() {
+            anyhow::bail!(
+                "gh pr merge failed: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+        }
+        Ok(())
+    }
+}
+
+/// Build the `gh pr create` argument vector. Appends `--draft` when `draft`
+/// is set. Kept pure (returns the args rather than running them) so the
+/// flag logic is unit-testable.
+fn pr_create_args(title: &str, body: &str, branch: &str, draft: bool) -> Vec<String> {
+    let mut args = vec![
+        "pr".to_string(),
+        "create".to_string(),
+        "--title".to_string(),
+        title.to_string(),
+        "--body".to_string(),
+        body.to_string(),
+        "--head".to_string(),
+        branch.to_string(),
+    ];
+    if draft {
+        args.push("--draft".to_string());
+    }
+    args
+}
+
+/// Build the `gh pr merge --auto --squash` argument vector for `branch`.
+/// Kept pure so the flag set is unit-testable.
+fn pr_merge_args(branch: &str) -> Vec<String> {
+    vec![
+        "pr".to_string(),
+        "merge".to_string(),
+        branch.to_string(),
+        "--auto".to_string(),
+        "--squash".to_string(),
+    ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{pr_create_args, pr_merge_args};
+
+    #[test]
+    fn pr_create_args_normal_omits_draft_flag() {
+        let args = pr_create_args("My Title", "body text", "feat/x", false);
+        assert_eq!(
+            args,
+            vec![
+                "pr",
+                "create",
+                "--title",
+                "My Title",
+                "--body",
+                "body text",
+                "--head",
+                "feat/x",
+            ]
+        );
+        assert!(!args.iter().any(|a| a == "--draft"));
+    }
+
+    #[test]
+    fn pr_create_args_draft_appends_draft_flag() {
+        let args = pr_create_args("T", "b", "feat/y", true);
+        // The draft flag is appended last and the core fields are preserved.
+        assert_eq!(args.last().map(String::as_str), Some("--draft"));
+        assert!(args.iter().any(|a| a == "--title"));
+        assert!(args.iter().any(|a| a == "feat/y"));
+        // Exactly one extra arg vs the non-draft form.
+        assert_eq!(
+            args.len(),
+            pr_create_args("T", "b", "feat/y", false).len() + 1
+        );
+    }
+
+    #[test]
+    fn pr_merge_args_uses_auto_squash() {
+        let args = pr_merge_args("feat/z");
+        assert_eq!(args, vec!["pr", "merge", "feat/z", "--auto", "--squash"]);
     }
 }

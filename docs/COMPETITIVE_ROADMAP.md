@@ -119,12 +119,14 @@ token economics.
 
 **Build sequence (Option E → B → C), both surfaces in lockstep:**
 - **16.1** — `LoopConfig` schema in `lopi-core`; `AutonomyLevel` enum on
-  `ScheduleEntry`; `lopi loop validate` CLI; runner enforces levels
-  (L1 report-only · L2 draft PR + human approve · L3 verifier-before-PR ·
-  L4 auto-merge if verifier passes & score > threshold).
+  `ScheduleEntry`; `lopi loop validate` CLI. ✅
 - **16.2** — `GET /api/loop-engineering` aggregation; `LoopHealthStore` in
   lopi-memory; **Loop** sidebar screen (read-only accordions) + Trust-Level
-  dropdown per schedule. *(web + macOS in lockstep)*
+  dropdown per schedule. *(web + macOS in lockstep)* ✅
+- **16.2b — runner enforcement** ✅ — `run_loop.rs` now finalizes per level via
+  `finalize.rs`: L1 report-only (commit, log diff/score, no PR) · L2 draft PR ·
+  L3 verifier forced on before a normal PR · L4 verifier + score gate → PR then
+  `gh pr merge --auto --squash`. `GitManager` gains `open_draft_pr` + `auto_merge`.
 - **16.3** — Loop-Health tab: 7-day sparklines (lessons, verifier pass rate,
   score trend); config-validity badge; per-schedule budget estimate;
   no-progress stall detection (`AgentEvent::ProgressStall`).

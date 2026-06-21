@@ -1,7 +1,12 @@
 mod api_plan;
+mod finalize;
+mod plan_gate;
+mod plan_steps;
 pub mod postmortem;
 mod postmortem_runner;
 mod run_loop;
+mod seed;
+mod speculative;
 mod stability_runner;
 mod verifier_runner;
 
