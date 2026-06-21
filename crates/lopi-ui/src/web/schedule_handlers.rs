@@ -43,6 +43,9 @@ pub(super) struct ScheduleBody {
     pub forbidden_dirs: Option<Vec<String>>,
     #[serde(default)]
     pub enabled: Option<bool>,
+    /// Trust level: `report_only` / `draft_pr` / `verified_pr` / `auto_merge`.
+    #[serde(default)]
+    pub autonomy_level: Option<String>,
 }
 
 impl ScheduleBody {
@@ -74,6 +77,7 @@ impl ScheduleBody {
             allowed_dirs: self.allowed_dirs.unwrap_or_default(),
             forbidden_dirs: self.forbidden_dirs.unwrap_or_default(),
             enabled: self.enabled.unwrap_or(true),
+            autonomy_level: self.autonomy_level.unwrap_or_default(),
         }
     }
 }
@@ -184,6 +188,36 @@ pub(super) async fn run_now(
     }
 }
 
+/// Body for `POST /api/schedules/:id/autonomy` — the Loop Engineering
+/// Trust-Level dropdown writes here.
+#[derive(Debug, Deserialize)]
+pub(super) struct AutonomyBody {
+    /// Trust level tag: `report_only` / `draft_pr` / `verified_pr` / `auto_merge`.
+    pub level: String,
+}
+
+/// Set a schedule's trust (autonomy) level. The store normalizes unrecognized
+/// values to the conservative `draft_pr`.
+pub(super) async fn set_autonomy(
+    Path(id): Path<String>,
+    State(s): State<AppState>,
+    Json(body): Json<AutonomyBody>,
+) -> impl IntoResponse {
+    match s.store.set_schedule_autonomy(&id, &body.level).await {
+        Ok(true) => match s.store.get_schedule(&id).await {
+            Ok(Some(row)) => (
+                StatusCode::OK,
+                Json(json!({ "id": id, "autonomy_level": row.autonomy_level })),
+            )
+                .into_response(),
+            Ok(None) => not_found(),
+            Err(e) => server_error(&e),
+        },
+        Ok(false) => not_found(),
+        Err(e) => server_error(&e),
+    }
+}
+
 /// Upsert a schedule then (un)register its live job to match `enabled`.
 async fn persist_and_register(
     s: &AppState,
@@ -248,7 +282,8 @@ async fn schedule_to_json(s: &AppState, row: ScheduleRow) -> Value {
         "id": row.id, "name": row.name, "cron": row.cron, "goal": row.goal,
         "repo": row.repo, "priority": row.priority,
         "allowed_dirs": row.allowed_dirs, "forbidden_dirs": row.forbidden_dirs,
-        "enabled": row.enabled, "created_at": row.created_at,
+        "enabled": row.enabled, "autonomy_level": row.autonomy_level,
+        "created_at": row.created_at,
         "updated_at": row.updated_at, "next_runs": next_runs, "last_run": last_run,
     })
 }

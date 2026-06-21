@@ -162,6 +162,10 @@ pub struct ScheduleEntry {
     /// Forbidden dirs override.
     #[serde(default)]
     pub forbidden_dirs: Vec<String>,
+    /// Trust level governing how far this scheduled loop may act without a
+    /// human (L1 report-only … L4 auto-merge). Defaults to L2 (draft PR).
+    #[serde(default)]
+    pub autonomy_level: crate::loop_config::AutonomyLevel,
 }
 
 /// Per-repo profile loaded from `<repo>/.lopi.toml`.

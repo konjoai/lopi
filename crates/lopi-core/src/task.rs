@@ -181,6 +181,11 @@ pub struct Task {
     /// `POST /api/tasks/:id/plan/{approve,reject}`.
     #[serde(default)]
     pub require_plan_approval: bool,
+    /// Phase 16 (Loop Engineering) — trust level governing how far the loop may
+    /// act without a human: L1 report-only … L4 auto-merge. Defaults to L2
+    /// (draft PR), the conservative level inherited from a schedule or config.
+    #[serde(default)]
+    pub autonomy_level: crate::loop_config::AutonomyLevel,
 }
 
 /// Where a task originated — used for routing replies and audit logging.
@@ -232,6 +237,7 @@ impl Task {
             rubric: None,
             topology: None,
             require_plan_approval: false,
+            autonomy_level: crate::loop_config::AutonomyLevel::default(),
         }
     }
 

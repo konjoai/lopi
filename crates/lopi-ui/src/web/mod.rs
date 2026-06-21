@@ -303,6 +303,10 @@ pub fn build_app(state: AppState) -> Router {
             "/api/schedules/:id/run-now",
             axum::routing::post(schedule_handlers::run_now),
         )
+        .route(
+            "/api/schedules/:id/autonomy",
+            axum::routing::post(schedule_handlers::set_autonomy),
+        )
         .route("/api/config", get(config_handlers::get_config))
         .route("/api/version", get(config_handlers::get_version))
         .route_layer(middleware::from_fn_with_state(

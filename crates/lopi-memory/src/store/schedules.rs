@@ -41,6 +41,9 @@ pub struct ScheduleRow {
     pub forbidden_dirs: Vec<String>,
     /// When `false` the schedule is persisted but not registered as a live job.
     pub enabled: bool,
+    /// Trust level (L1–L4) governing how far this loop may act without a human.
+    /// Serialized as `report_only` / `draft_pr` / `verified_pr` / `auto_merge`.
+    pub autonomy_level: String,
     /// ISO-8601 creation timestamp.
     pub created_at: String,
     /// ISO-8601 timestamp of the last edit.
@@ -69,6 +72,8 @@ pub struct ScheduleInput {
     pub forbidden_dirs: Vec<String>,
     /// Whether the schedule should be live.
     pub enabled: bool,
+    /// Trust level tag (`report_only` … `auto_merge`). Empty falls back to `draft_pr`.
+    pub autonomy_level: String,
 }
 
 /// One row from a schedule's run history.
@@ -141,17 +146,20 @@ impl MemoryStore {
         let now = Utc::now().to_rfc3339();
         let allowed = serde_json::to_string(&input.allowed_dirs)?;
         let forbidden = serde_json::to_string(&input.forbidden_dirs)?;
+        let autonomy = normalize_autonomy(&input.autonomy_level);
         sqlx::query(
             "INSERT INTO schedules
                (id, name, cron, goal, repo, priority, allowed_dirs,
-                forbidden_dirs, enabled, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                forbidden_dirs, enabled, autonomy_level, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(id) DO UPDATE SET
                name = excluded.name, cron = excluded.cron, goal = excluded.goal,
                repo = excluded.repo, priority = excluded.priority,
                allowed_dirs = excluded.allowed_dirs,
                forbidden_dirs = excluded.forbidden_dirs,
-               enabled = excluded.enabled, updated_at = excluded.updated_at",
+               enabled = excluded.enabled,
+               autonomy_level = excluded.autonomy_level,
+               updated_at = excluded.updated_at",
         )
         .bind(&id)
         .bind(&input.name)
@@ -162,6 +170,7 @@ impl MemoryStore {
         .bind(&allowed)
         .bind(&forbidden)
         .bind(i64::from(input.enabled))
+        .bind(&autonomy)
         .bind(&now)
         .bind(&now)
         .execute(&self.write_pool)
@@ -185,6 +194,26 @@ impl MemoryStore {
             .execute(&self.write_pool)
             .await
             .context("setting schedule enabled")?;
+        Ok(res.rows_affected() > 0)
+    }
+
+    /// Set a schedule's autonomy (trust) level. The value is normalized to a
+    /// valid tag; anything unrecognized falls back to `draft_pr`.
+    /// Returns `true` when a row matched.
+    ///
+    /// # Errors
+    /// Returns `Err` if the write fails.
+    pub async fn set_schedule_autonomy(&self, id: &str, level: &str) -> Result<bool> {
+        let normalized = normalize_autonomy(level);
+        let res = sqlx::query(
+            "UPDATE schedules SET autonomy_level = ?, updated_at = ? WHERE id = ?",
+        )
+        .bind(&normalized)
+        .bind(Utc::now().to_rfc3339())
+        .bind(id)
+        .execute(&self.write_pool)
+        .await
+        .context("setting schedule autonomy")?;
         Ok(res.rows_affected() > 0)
     }
 
@@ -258,7 +287,7 @@ impl MemoryStore {
 }
 
 const SELECT_COLS: &str = "SELECT id, name, cron, goal, repo, priority, allowed_dirs, \
-     forbidden_dirs, enabled, created_at, updated_at FROM schedules";
+     forbidden_dirs, enabled, autonomy_level, created_at, updated_at FROM schedules";
 
 fn schedule_from_row(row: sqlx::sqlite::SqliteRow) -> ScheduleRow {
     ScheduleRow {
@@ -271,9 +300,19 @@ fn schedule_from_row(row: sqlx::sqlite::SqliteRow) -> ScheduleRow {
         allowed_dirs: parse_json_array(&row.get::<String, _>("allowed_dirs")),
         forbidden_dirs: parse_json_array(&row.get::<String, _>("forbidden_dirs")),
         enabled: row.get::<i64, _>("enabled") != 0,
+        autonomy_level: row.get("autonomy_level"),
         created_at: row.get("created_at"),
         updated_at: row.get("updated_at"),
     }
+}
+
+/// Normalize an autonomy tag to a canonical value, defaulting to `draft_pr`
+/// (the conservative L2 level) for empty or unrecognized input.
+fn normalize_autonomy(level: &str) -> String {
+    lopi_core::AutonomyLevel::parse(level)
+        .unwrap_or_default()
+        .tag_snake()
+        .to_string()
 }
 
 fn run_from_row(row: sqlx::sqlite::SqliteRow) -> ScheduleRunRow {
@@ -308,6 +347,7 @@ mod tests {
             allowed_dirs: vec!["src/".into()],
             forbidden_dirs: vec!["infra/".into()],
             enabled: true,
+            autonomy_level: "verified_pr".into(),
         }
     }
 
@@ -323,6 +363,23 @@ mod tests {
         assert_eq!(fetched.forbidden_dirs, vec!["infra/".to_string()]);
         assert!(fetched.enabled);
         assert_eq!(fetched.repo.as_deref(), Some("/tmp/repo"));
+        assert_eq!(fetched.autonomy_level, "verified_pr");
+    }
+
+    #[tokio::test]
+    async fn autonomy_level_normalizes_and_updates() {
+        let store = MemoryStore::open_in_memory().await.unwrap();
+        // Unrecognized input falls back to the conservative default.
+        let mut bad = input("auto-test");
+        bad.autonomy_level = "garbage".into();
+        let row = store.upsert_schedule(&bad).await.unwrap();
+        assert_eq!(row.autonomy_level, "draft_pr");
+        // Promote to L4 via the dedicated setter.
+        assert!(store.set_schedule_autonomy(&row.id, "L4").await.unwrap());
+        let updated = store.get_schedule(&row.id).await.unwrap().unwrap();
+        assert_eq!(updated.autonomy_level, "auto_merge");
+        // Unknown id reports no row matched.
+        assert!(!store.set_schedule_autonomy("nope", "l1").await.unwrap());
     }
 
     #[tokio::test]

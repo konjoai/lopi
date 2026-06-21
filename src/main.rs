@@ -2,6 +2,7 @@
 #![allow(clippy::print_stdout, clippy::print_stderr)]
 mod gap_fill_commands;
 mod learn_commands;
+mod loop_commands;
 mod remote;
 mod repl;
 mod replay_commands;
@@ -120,6 +121,9 @@ enum Commands {
     /// Manage scheduled tasks
     #[command(subcommand)]
     Schedules(ScheduleCmd),
+    /// Loop engineering — inspect and validate a repo's `.lopi/loop.toml`.
+    #[command(subcommand)]
+    Loop(LoopCmd),
     /// Browse the Layer 5 patch stability ledger
     #[command(subcommand)]
     Stability(StabilityCmd),
@@ -220,6 +224,20 @@ enum LearnCmd {
 #[derive(Subcommand)]
 enum ScheduleCmd {
     List,
+}
+
+#[derive(Subcommand)]
+enum LoopCmd {
+    /// Validate `<repo>/.lopi/loop.toml` against the repo on disk.
+    Validate {
+        #[arg(short, long, default_value = ".")]
+        repo: PathBuf,
+    },
+    /// Print the effective loop config for a repo (defaults shown when absent).
+    Show {
+        #[arg(short, long, default_value = ".")]
+        repo: PathBuf,
+    },
 }
 
 #[derive(Subcommand)]
@@ -414,6 +432,13 @@ async fn main() -> Result<()> {
                 .map(|c| c.schedules.clone())
                 .unwrap_or_default();
             schedule_commands::list(schedules).await?;
+        }
+
+        Some(Commands::Loop(LoopCmd::Validate { repo })) => {
+            loop_commands::validate(&repo)?;
+        }
+        Some(Commands::Loop(LoopCmd::Show { repo })) => {
+            loop_commands::show(&repo)?;
         }
 
         // ── lopi stability ──────────────────────────────────────

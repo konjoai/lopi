@@ -281,6 +281,7 @@ async fn seed_schedules(store: &MemoryStore, entries: &[lopi_core::ScheduleEntry
                     allowed_dirs: entry.allowed_dirs.clone(),
                     forbidden_dirs: entry.forbidden_dirs.clone(),
                     enabled: true,
+                    autonomy_level: entry.autonomy_level.tag_snake().to_string(),
                 };
                 if let Err(e) = store.upsert_schedule(&input).await {
                     tracing::warn!(schedule = %entry.name, "seeding schedule failed: {e:#}");
