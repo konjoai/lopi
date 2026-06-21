@@ -17,6 +17,7 @@ final class AppModel {
     var schedules: [Schedule] = []
     /// Loop Engineering snapshot for the Loop screen (nil until first fetch).
     var loopSnapshot: LoopSnapshot?
+    var loopHealth: LoopHealth?
     /// Launch-control dropdown sources, fetched from the server (sandbox-safe).
     var repos: [String] = []
     var branches: [String] = []
@@ -106,9 +107,15 @@ final class AppModel {
         do { schedules = try await client.schedules() } catch { report(error) }
     }
 
-    /// Fetch the Loop Engineering snapshot for the Loop screen.
+    /// Fetch the Loop Engineering snapshot + health for the Loop screen.
+    /// Config and health are independent reads — fetch them concurrently.
     func refreshLoop() async {
-        do { loopSnapshot = try await client.loopEngineering() } catch { report(error) }
+        do {
+            async let snap = client.loopEngineering()
+            async let health = client.loopHealth()
+            loopSnapshot = try await snap
+            loopHealth = try await health
+        } catch { report(error) }
     }
 
     /// Set a scheduled loop's trust (autonomy) level, then re-pull the snapshot.

@@ -136,6 +136,10 @@ struct LopiClient {
         try await get("/api/loop-engineering")
     }
 
+    func loopHealth() async throws -> LoopHealth {
+        try await get("/api/loop-engineering/health")
+    }
+
     func setScheduleAutonomy(id: String, level: String) async throws {
         _ = try await send("POST", "/api/schedules/\(id)/autonomy", body: ["level": level])
     }

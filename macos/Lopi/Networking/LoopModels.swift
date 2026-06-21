@@ -104,3 +104,75 @@ struct LoopGate: Codable, Equatable, Identifiable {
     var checks: String
     var id: String { wall }
 }
+
+// MARK: - Loop Health
+
+/// Loop-health snapshot from `GET /api/loop-engineering/health` — the
+/// observability surface over data the loop already persists (attempts,
+/// turn metrics, verifier verdicts). The macOS mirror of the web payload.
+struct LoopHealth: Codable, Equatable {
+    var stats: LoopHealthStats
+    var attempts: [LoopHealthAttempt]
+    var outcomes: [LoopOutcome]
+    var burn: [LoopBurn]
+}
+
+/// Headline KPI tiles for the Loop Health view.
+struct LoopHealthStats: Codable, Equatable {
+    var runs: Int
+    var attempts: Int
+    var successRate: Double
+    var verifierPassRate: Double
+    var verifierTotal: Int
+    var spendUsd: Double
+    var tokens: Int
+
+    enum CodingKeys: String, CodingKey {
+        case runs, attempts, tokens
+        case successRate = "success_rate"
+        case verifierPassRate = "verifier_pass_rate"
+        case verifierTotal = "verifier_total"
+        case spendUsd = "spend_usd"
+    }
+}
+
+/// One attempt in the score/diff timeline (oldest → newest).
+struct LoopHealthAttempt: Codable, Equatable {
+    var taskId: String
+    var attempt: Int
+    var testPassRate: Double
+    var lintErrors: Int
+    var diffLines: Int
+    var outcome: String
+    var createdAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case attempt, outcome
+        case taskId = "task_id"
+        case testPassRate = "test_pass_rate"
+        case lintErrors = "lint_errors"
+        case diffLines = "diff_lines"
+        case createdAt = "created_at"
+    }
+}
+
+/// One slice of the attempt-outcome distribution.
+struct LoopOutcome: Codable, Equatable, Identifiable {
+    var label: String
+    var count: Int
+    var id: String { label }
+}
+
+/// One sample in the token/cost burn series (oldest → newest).
+struct LoopBurn: Codable, Equatable {
+    var costUsd: Double
+    var tokens: Int
+    var contextPressure: Double
+    var timestamp: String
+
+    enum CodingKeys: String, CodingKey {
+        case tokens, timestamp
+        case costUsd = "cost_usd"
+        case contextPressure = "context_pressure"
+    }
+}

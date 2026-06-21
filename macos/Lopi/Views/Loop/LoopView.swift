@@ -14,6 +14,7 @@ struct LoopView: View {
             VStack(alignment: .leading, spacing: 16) {
                 header
                 if let snap = model.loopSnapshot {
+                    if let health = model.loopHealth { healthPanel(health) }
                     configPanel(snap.config)
                     ladderPanel(snap.autonomyLevels)
                     schedulesPanel(snap)
@@ -52,6 +53,99 @@ struct LoopView: View {
                 VStack(alignment: .trailing, spacing: 2) {
                     Text("REPO").font(Konjo.mono(9)).tracking(1.4).foregroundStyle(Konjo.fgMute)
                     Text(repo).font(Konjo.mono(11)).foregroundStyle(Konjo.ice).lineLimit(1)
+                }
+            }
+        }
+    }
+
+    // MARK: Loop Health (observability)
+
+    private func healthPanel(_ h: LoopHealth) -> some View {
+        KonjoPanel {
+            VStack(alignment: .leading, spacing: 14) {
+                panelHead("Loop Health", "observe · evaluate · improve") {
+                    Text("\(h.stats.attempts) attempts · \(h.stats.runs) runs")
+                        .font(Konjo.mono(10)).foregroundStyle(Konjo.fgMute)
+                }
+                let cols = Array(repeating: GridItem(.flexible(), alignment: .topLeading), count: 5)
+                LazyVGrid(columns: cols, spacing: 10) {
+                    statTile("Success", pct(h.stats.successRate), tint: rateColor(h.stats.successRate))
+                    statTile("Verifier",
+                             h.stats.verifierTotal == 0 ? "—" : pct(h.stats.verifierPassRate),
+                             tint: Konjo.ice)
+                    statTile("Runs", "\(h.stats.runs)")
+                    statTile("Spend", String(format: "$%.2f", h.stats.spendUsd), tint: Konjo.sun)
+                    statTile("Tokens", tokenLabel(h.stats.tokens))
+                }
+                if h.attempts.count >= 2 || h.burn.count >= 2 {
+                    healthCharts(h)
+                    outcomeBar(h.outcomes)
+                } else {
+                    Text("No loop telemetry yet — run a loop to populate metrics.")
+                        .font(Konjo.mono(11)).foregroundStyle(Konjo.fgMute)
+                }
+            }
+        }
+    }
+
+    private func healthCharts(_ h: LoopHealth) -> some View {
+        let score = h.attempts.map(\.testPassRate)
+        let pressure = h.burn.map(\.contextPressure)
+        let diff = h.attempts.map { Double($0.diffLines) }
+        let cost = h.burn.map(\.costUsd)
+        let cols = [GridItem(.flexible(), spacing: 14), GridItem(.flexible(), spacing: 14)]
+        return LazyVGrid(columns: cols, spacing: 14) {
+            chartTile("Score / attempt", score.last.map { pct($0) } ?? "—", score, Konjo.jade)
+            chartTile("Context pressure", pressure.last.map { pct($0) } ?? "—", pressure, Konjo.ice)
+            chartTile("Diff size", diff.last.map { "\(Int($0))L" } ?? "—", diff, Konjo.ice)
+            chartTile("Cost burn", String(format: "$%.2f", h.stats.spendUsd), cost, Konjo.sun)
+        }
+    }
+
+    private func statTile(_ label: String, _ value: String, tint: Color = Konjo.fg) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(label.uppercased()).font(Konjo.mono(9)).tracking(1.2).foregroundStyle(Konjo.fgMute)
+            Text(value).font(Konjo.sans(20, weight: .bold)).foregroundStyle(tint)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(Konjo.bg2)
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Konjo.line, lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func chartTile(_ title: String, _ value: String,
+                           _ samples: [Double], _ color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(title.uppercased()).font(Konjo.mono(9)).tracking(1.2).foregroundStyle(Konjo.fgMute)
+                Spacer()
+                Text(value).font(Konjo.mono(10, weight: .medium)).foregroundStyle(color)
+            }
+            Sparkline(samples: samples, color: color).frame(height: 40)
+        }
+    }
+
+    private func outcomeBar(_ outcomes: [LoopOutcome]) -> some View {
+        let total = max(outcomes.reduce(0) { $0 + $1.count }, 1)
+        return VStack(alignment: .leading, spacing: 8) {
+            Text("OUTCOME DISTRIBUTION").font(Konjo.mono(9)).tracking(1.2).foregroundStyle(Konjo.fgMute)
+            GeometryReader { geo in
+                HStack(spacing: 0) {
+                    ForEach(outcomes) { o in
+                        Rectangle().fill(outcomeColor(o.label))
+                            .frame(width: geo.size.width * CGFloat(o.count) / CGFloat(total))
+                    }
+                }
+            }
+            .frame(height: 10)
+            .clipShape(Capsule())
+            HStack(spacing: 14) {
+                ForEach(outcomes) { o in
+                    HStack(spacing: 5) {
+                        Circle().fill(outcomeColor(o.label)).frame(width: 7, height: 7)
+                        Text("\(o.label) · \(o.count)").font(Konjo.mono(10)).foregroundStyle(Konjo.fgDim)
+                    }
                 }
             }
         }
@@ -253,6 +347,28 @@ struct LoopView: View {
         case "L3": return Konjo.sun
         case "L4": return Konjo.ember
         default: return Konjo.ice
+        }
+    }
+
+    /// Format a 0…1 ratio as a whole-number percentage.
+    private func pct(_ x: Double) -> String { "\(Int((x * 100).rounded()))%" }
+
+    /// Compact token count: `1.2k` past a thousand, else the raw integer.
+    private func tokenLabel(_ t: Int) -> String {
+        t >= 1000 ? String(format: "%.1fk", Double(t) / 1000) : "\(t)"
+    }
+
+    /// Heat a success rate: calm jade when healthy, warming toward rose as it drops.
+    private func rateColor(_ x: Double) -> Color {
+        x >= 0.8 ? Konjo.jade : (x >= 0.5 ? Konjo.sun : Konjo.rose)
+    }
+
+    /// Outcome → accent. success is calm jade; stuck/failed runs heat up.
+    private func outcomeColor(_ label: String) -> Color {
+        switch label {
+        case "success": return Konjo.jade
+        case "retry": return Konjo.sun
+        default: return Konjo.rose
         }
     }
 }
