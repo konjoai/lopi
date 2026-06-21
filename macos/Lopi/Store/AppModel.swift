@@ -15,6 +15,9 @@ final class AppModel {
     var stats = PoolStats()
     var tasks: [TaskSummary] = []
     var schedules: [Schedule] = []
+    /// Launch-control dropdown sources, fetched from the server (sandbox-safe).
+    var repos: [String] = []
+    var branches: [String] = []
 
     /// Rolling buffer of recent live log lines (most recent last), capped.
     var recentLogs: [String] = []
@@ -97,6 +100,16 @@ final class AppModel {
 
     func refreshSchedules() async {
         do { schedules = try await client.schedules() } catch { report(error) }
+    }
+
+    /// Best-effort dropdown population — silent on failure (the field just
+    /// stays empty / falls back to free entry).
+    func refreshRepos() async {
+        if let r = try? await client.repos() { repos = r }
+    }
+
+    func refreshBranches(_ repo: String) async {
+        branches = (try? await client.branches(repo: repo)) ?? []
     }
 
     // MARK: Mutations

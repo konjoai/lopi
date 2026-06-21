@@ -49,35 +49,25 @@ struct KonjoMenu: View {
     }
 }
 
-/// A Konjo-styled single-line text field for repo / branch overrides.
-private struct KonjoField: View {
-    var title: String
-    var placeholder: String
-    @Binding var value: String
-    var dense = false
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            if !dense { Text(title).font(Konjo.mono(10, weight: .semibold)).tracking(1.4).foregroundStyle(Konjo.fgMute) }
-            TextField(placeholder, text: $value)
-                .textFieldStyle(.plain)
-                .font(Konjo.mono(dense ? 12.5 : 13.75))
-                .foregroundStyle(Konjo.fg)
-                .padding(.horizontal, dense ? 6 : 8)
-                .padding(.vertical, dense ? 3 : 5)
-                .background(Color.white.opacity(0.025))
-                .overlay(RoundedRectangle(cornerRadius: 7).stroke(Konjo.line, lineWidth: 1))
-                .clipShape(RoundedRectangle(cornerRadius: 7))
-                .frame(maxWidth: dense ? 130 : 170)
-        }
-    }
-}
-
 /// The selector cluster — model / effort / priority / repo / branch — bound to
 /// the shared, persisted `LaunchControls`.
 struct LaunchControlsView: View {
+    @Environment(AppModel.self) private var model
     @Bindable var controls: LaunchControls
     var dense = false
+
+    /// Repo dropdown options — server-discovered git repos (shown by basename),
+    /// with a leading "no override" entry.
+    private var repoOptions: [LaunchOption] {
+        [LaunchOption(value: "", label: "— repo —")]
+            + model.repos.map { LaunchOption(value: $0, label: ($0 as NSString).lastPathComponent) }
+    }
+
+    /// Branch dropdown options — branches of the selected repo, "auto" leading.
+    private var branchOptions: [LaunchOption] {
+        [LaunchOption(value: "", label: "auto")]
+            + model.branches.map { LaunchOption(value: $0, label: $0) }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: dense ? 6 : 10) {
@@ -88,8 +78,16 @@ struct LaunchControlsView: View {
             HStack(spacing: 8) {
                 KonjoMenu(title: "priority", options: LaunchControls.priorities, value: $controls.priority, dense: dense)
             }
-            KonjoField(title: "repo", placeholder: "./path or owner/repo", value: $controls.repo, dense: dense)
-            KonjoField(title: "branch", placeholder: "auto", value: $controls.branch, dense: dense)
+            KonjoMenu(title: "repo", options: repoOptions, value: $controls.repo, dense: dense)
+            KonjoMenu(title: "branch", options: branchOptions, value: $controls.branch, dense: dense)
+        }
+        .task {
+            await model.refreshRepos()
+            await model.refreshBranches(controls.repo)
+        }
+        .onChange(of: controls.repo) { _, newRepo in
+            controls.branch = ""
+            Task { await model.refreshBranches(newRepo) }
         }
     }
 }

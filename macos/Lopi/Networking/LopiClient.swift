@@ -73,6 +73,21 @@ struct LopiClient {
         return try await send("POST", "/api/tasks/\(id)/plan/\(verb)", body: Optional<Int>.none)
     }
 
+    /// Git repos the server can target (primary + siblings).
+    func repos() async throws -> [String] {
+        struct Wrapper: Decodable { let repos: [String] }
+        let w: Wrapper = try await get("/api/repos")
+        return w.repos
+    }
+
+    /// Local branches of `repo` (empty → server's primary repo).
+    func branches(repo: String) async throws -> [String] {
+        struct Wrapper: Decodable { let branches: [String] }
+        let q = repo.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        let w: Wrapper = try await get("/api/branches?repo=\(q)")
+        return w.branches
+    }
+
     // Schedules
 
     func schedules() async throws -> [Schedule] {

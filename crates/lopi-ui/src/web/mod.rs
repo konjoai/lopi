@@ -211,6 +211,8 @@ pub fn build_app(state: AppState) -> Router {
         .route("/api/tasks/:id", get(get_task).delete(cancel_task))
         .route("/api/tasks/:id/plan/approve", axum::routing::post(approve_plan))
         .route("/api/tasks/:id/plan/reject", axum::routing::post(reject_plan))
+        .route("/api/repos", get(repos_handlers::list_repos))
+        .route("/api/branches", get(repos_handlers::list_branches))
         .route(
             "/api/agents/:id/checkpoint",
             axum::routing::post(checkpoint_agent),
@@ -406,6 +408,7 @@ mod constellation_handlers;
 mod dlq_handlers;
 mod handlers;
 mod health_handlers;
+mod repos_handlers;
 mod schedule_handlers;
 mod static_assets;
 mod task_stream_handlers;
