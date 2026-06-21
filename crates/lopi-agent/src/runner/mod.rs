@@ -1,4 +1,5 @@
 mod api_plan;
+mod finalize;
 pub mod postmortem;
 mod postmortem_runner;
 mod run_loop;

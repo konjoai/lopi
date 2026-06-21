@@ -229,31 +229,40 @@ impl GitManager {
     /// # Errors
     /// Returns `Err` if `git push` or `gh pr create` fails.
     pub async fn open_pr(&self, branch: &str, title: &str) -> Result<String> {
-        // Push the branch.
-        let push = tokio::process::Command::new("git")
-            .arg("-C")
-            .arg(&self.repo_path)
-            .arg("push")
-            .arg("-u")
-            .arg("origin")
-            .arg(branch)
-            .output()
-            .await
-            .context("invoking git push")?;
-        if !push.status.success() {
-            anyhow::bail!("git push failed: {}", String::from_utf8_lossy(&push.stderr));
-        }
+        self.create_pr(branch, title, false).await
+    }
 
+    /// Push branch and open a **draft** PR via the `gh` CLI. Returns the PR URL.
+    ///
+    /// Draft PRs are the L2 (`DraftPr`) autonomy artifact: the change is
+    /// proposed but explicitly not ready to merge until a human marks it ready.
+    ///
+    /// # Errors
+    /// Returns `Err` if `git push` or `gh pr create` fails.
+    pub async fn open_pr_draft(&self, branch: &str, title: &str) -> Result<String> {
+        self.create_pr(branch, title, true).await
+    }
+
+    /// Shared implementation of [`open_pr`](Self::open_pr) and
+    /// [`open_pr_draft`](Self::open_pr_draft): push the branch (via
+    /// [`push_branch`](Self::push_branch)), then create a PR that is optionally
+    /// a draft.
+    async fn create_pr(&self, branch: &str, title: &str, draft: bool) -> Result<String> {
+        self.push_branch(branch).await?;
         let body = format!("Automated PR opened by lopi.\n\nBranch: `{branch}`\n");
-        let out = tokio::process::Command::new("gh")
-            .arg("pr")
+        let mut cmd = tokio::process::Command::new("gh");
+        cmd.arg("pr")
             .arg("create")
             .arg("--title")
             .arg(title)
             .arg("--body")
             .arg(&body)
             .arg("--head")
-            .arg(branch)
+            .arg(branch);
+        if draft {
+            cmd.arg("--draft");
+        }
+        let out = cmd
             .current_dir(&self.repo_path)
             .output()
             .await
@@ -264,7 +273,36 @@ impl GitManager {
                 String::from_utf8_lossy(&out.stderr)
             );
         }
-        let url = String::from_utf8_lossy(&out.stdout).trim().to_string();
-        Ok(url)
+        Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+    }
+
+    /// Enable GitHub native auto-merge on the open PR for `branch` (the L4
+    /// `AutoMerge` action).
+    ///
+    /// Uses `gh pr merge --auto --squash`, which tells GitHub to merge the PR
+    /// automatically once required status checks pass. The loop never
+    /// force-merges past a red check — CI remains the truth oracle that gates
+    /// the merge.
+    ///
+    /// # Errors
+    /// Returns `Err` if the `gh pr merge` invocation fails.
+    pub async fn enable_auto_merge(&self, branch: &str) -> Result<()> {
+        let out = tokio::process::Command::new("gh")
+            .arg("pr")
+            .arg("merge")
+            .arg(branch)
+            .arg("--auto")
+            .arg("--squash")
+            .current_dir(&self.repo_path)
+            .output()
+            .await
+            .context("invoking gh pr merge --auto")?;
+        if !out.status.success() {
+            anyhow::bail!(
+                "gh pr merge --auto failed: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+        }
+        Ok(())
     }
 }

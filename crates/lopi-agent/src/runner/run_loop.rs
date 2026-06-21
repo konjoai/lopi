@@ -1,9 +1,10 @@
+use super::finalize::{update_no_progress_streak, Finalize};
 use super::{backoff_secs, AgentRunner};
 use crate::claude::{select_model, ClaudeCode, ERR_CREDIT_EXHAUSTED};
 use crate::scorer::Scorer;
 use anyhow::Result;
 use lopi_context::Phase;
-use lopi_core::{AgentEvent, Attempt, PlanDecision, TaskStatus};
+use lopi_core::{AgentEvent, Attempt, LoopConfig, PlanDecision, TaskStatus};
 use lopi_git::GitManager;
 use lopi_spec::SpecSurface;
 use std::sync::atomic::Ordering;
@@ -111,6 +112,13 @@ impl AgentRunner {
         };
 
         let scorer = Scorer::new(&self.repo_path);
+
+        // Loop-engineering stall guard — load the repo's no-progress limit so
+        // the loop halts early when retries stop lifting the weighted score
+        // (Steinberger's "cap it so it halts"). `0` disables the guard.
+        let no_progress_limit = self.no_progress_limit().await;
+        let mut best_weighted: Option<f32> = None;
+        let mut np_streak: u8 = 0;
 
         for attempt in 0..self.task.max_retries {
             // Model routing (4.5): route to cheapest model capable of this task's complexity.
@@ -478,6 +486,9 @@ impl AgentRunner {
                 score.diff_lines,
                 weighted
             ));
+            // Best weighted score seen this attempt — updated if an in-place
+            // fix lifts it. Drives the no-progress stall guard below.
+            let mut attempt_weighted = weighted;
 
             // Persist attempt.
             if let Some(store) = &self.store {
@@ -492,54 +503,34 @@ impl AgentRunner {
             }
 
             if score.passed() {
-                // Sprint S — Konjo Verifier: rubric-guided second-score pass.
-                // Runs only when verifier_enabled; best-effort (errors log + continue).
-                if self.verifier_enabled
-                    && !self.run_verifier_pass(attempt + 1, &score.errors).await
-                {
-                    git.hard_rollback().await.ok();
-                    git.checkout_default().await.ok();
-                    self.status(
-                        TaskStatus::Retrying {
-                            attempt: attempt + 1,
-                        },
-                        attempt + 1,
-                    );
-                    continue;
+                // Loop engineering — finalise per the task's L1–L4 autonomy
+                // level (report-only / draft PR / verified PR / auto-merge).
+                // L3+ force the maker/checker verifier before any PR.
+                match self.finalize_success(&git, &branch, &score, attempt + 1).await {
+                    Finalize::Done(status) => {
+                        self.status(status.clone(), attempt + 1);
+                        // OTel GenAI-aligned span: task completion boundary.
+                        let _ = tracing::info_span!(
+                            "lopi.agent.task.complete",
+                            task_id = %self.id(),
+                            outcome = "success",
+                            attempts = attempt + 1,
+                        )
+                        .entered();
+                        return Ok(status);
+                    }
+                    Finalize::Rejected => {
+                        git.hard_rollback().await.ok();
+                        git.checkout_default().await.ok();
+                        self.status(
+                            TaskStatus::Retrying {
+                                attempt: attempt + 1,
+                            },
+                            attempt + 1,
+                        );
+                        continue;
+                    }
                 }
-                self.log("✅ tests pass — committing…");
-                self.context.pin_conclusion(
-                    format!(
-                        "Sprint succeeded — pass={:.0}% diff={}L",
-                        score.test_pass_rate * 100.0,
-                        score.diff_lines
-                    ),
-                    Phase::Conclusion,
-                );
-                tracing::info!(
-                    pressure = self.context.token_pressure(),
-                    "context at conclusion"
-                );
-                git.commit_all(&format!("lopi: {}", self.task.goal))
-                    .await
-                    .ok();
-                let pr_url = git.open_pr(&branch, &self.task.goal).await.ok();
-                if let Some(ref url) = pr_url {
-                    self.log(format!("🔗 PR opened: {url}"));
-                }
-                let status = TaskStatus::Success { branch, pr_url };
-                self.status(status.clone(), attempt + 1);
-                // OTel GenAI-aligned span: task completion event. The span
-                // body is empty — it exists to mark the task boundary in
-                // any attached trace exporter (OTLP via `otel` feature).
-                let _ = tracing::info_span!(
-                    "lopi.agent.task.complete",
-                    task_id = %self.id(),
-                    outcome = "success",
-                    attempts = attempt + 1,
-                )
-                .entered();
-                return Ok(status);
             }
 
             // In-place fix attempt.
@@ -569,15 +560,18 @@ impl AgentRunner {
                     fixed_score.diff_lines,
                     weighted
                 ));
+                // The fix lifted (or lowered) the score — track the better of
+                // the two for the stall guard.
+                attempt_weighted = attempt_weighted.max(weighted);
                 if fixed_score.passed() {
-                    self.log("✅ fix worked — committing…");
-                    git.commit_all(&format!("lopi: {}", self.task.goal))
-                        .await
-                        .ok();
-                    let pr_url = git.open_pr(&branch, &self.task.goal).await.ok();
-                    let status = TaskStatus::Success { branch, pr_url };
-                    self.status(status.clone(), attempt + 1);
-                    return Ok(status);
+                    // Route the fixed result through the same autonomy gate so
+                    // L1–L4 is honoured on the in-place-fix path too.
+                    if let Finalize::Done(status) =
+                        self.finalize_success(&git, &branch, &fixed_score, attempt + 1).await
+                    {
+                        self.status(status.clone(), attempt + 1);
+                        return Ok(status);
+                    }
                 }
             }
 
@@ -593,6 +587,28 @@ impl AgentRunner {
                     score.diff_lines,
                     if score.errors.is_empty() { "(none captured)".into() } else { score.errors.join("\n  - ") }
                 ));
+            }
+
+            // Loop-engineering stall guard — if the weighted score has not
+            // improved for `no_progress_limit` consecutive attempts, halt
+            // early rather than burning the rest of the retry budget on a
+            // loop that is provably stuck.
+            if no_progress_limit > 0 {
+                np_streak = update_no_progress_streak(&mut best_weighted, np_streak, attempt_weighted);
+                if np_streak >= no_progress_limit {
+                    self.warn(format!(
+                        "🛑 no-progress stall: {np_streak} attempt(s) without score improvement (limit {no_progress_limit}) — halting"
+                    ));
+                    git.hard_rollback().await.ok();
+                    git.checkout_default().await.ok();
+                    let status = TaskStatus::Failed {
+                        reason: format!(
+                            "NoProgressStall {{ streak: {np_streak}, limit: {no_progress_limit} }}"
+                        ),
+                    };
+                    self.status(status.clone(), attempt + 1);
+                    return Ok(status);
+                }
             }
 
             git.hard_rollback().await.ok();
@@ -628,6 +644,20 @@ impl AgentRunner {
         };
         self.status(status.clone(), self.task.max_retries);
         Ok(status)
+    }
+
+    /// Load the repo's `no_progress_limit` from `.lopi/loop.toml`, off the
+    /// async reactor. Returns `0` (guard disabled) on any read/parse error so a
+    /// malformed loop config can never wedge the retry loop.
+    async fn no_progress_limit(&self) -> u8 {
+        let repo = self.repo_path.clone();
+        tokio::task::spawn_blocking(move || {
+            LoopConfig::load_from_repo(&repo)
+                .map(|c| c.no_progress_limit)
+                .unwrap_or(0)
+        })
+        .await
+        .unwrap_or(0)
     }
 
     /// Phase 11 — emit the proposed plan, mark the task awaiting approval, and
