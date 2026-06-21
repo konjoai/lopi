@@ -44,10 +44,7 @@ struct AgentPaneView: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
-            contentColumn
-            rightRail
-        }
+        contentColumn
         .background(Konjo.bg1.opacity(0.6))
         .clipShape(RoundedRectangle(cornerRadius: 10))
         // Resting hairline, plus a phase-tinted rim while the agent is working
@@ -73,8 +70,10 @@ struct AgentPaneView: View {
                 metrics(agent)
                 logStrip(agent)
             }
+            // Subtle separator above the prompt, matching the top bar.
+            Divider().overlay(Konjo.line)
             commandBar
-            if let agent { footer(agent) }
+            if let agent { bottomBar(agent) }
         }
         .frame(maxWidth: .infinity)
     }
@@ -94,6 +93,16 @@ struct AgentPaneView: View {
                     .foregroundStyle(agent?.awaitingApproval == true ? Konjo.sun : accent)
                     .lineLimit(1).fixedSize()
             }
+            // Close lives on the title bar now (the right rail is gone).
+            Button(action: onClose) {
+                Image(systemName: "xmark").font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(Konjo.fgDim)
+                    .frame(width: 20, height: 20)
+                    .background(Color.white.opacity(0.06))
+                    .clipShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .help(agent == nil ? "Close pane" : "Close pane (session stays in sidebar)")
         }
         .padding(.horizontal, 12).padding(.vertical, 9)
     }
@@ -273,63 +282,35 @@ struct AgentPaneView: View {
         .background(Color.black.opacity(0.1))
     }
 
-    // MARK: Footer — attempt · branch
+    // MARK: Bottom bar — attempt · branch on the left, retry/stop on the right
 
-    private func footer(_ agent: LiveAgent) -> some View {
-        HStack {
-            Text("attempt \(agent.attempt)")
-            Spacer()
-            if let branch = agent.branch { Text(branch).lineLimit(1) }
-        }
-        .font(paneMono(8)).foregroundStyle(Konjo.fgMute)
-        .padding(.horizontal, 12).padding(.vertical, 5)
-    }
-
-    // MARK: Right rail — a slim control strip (close · retry/stop). The phase
-    // now reads on the title line.
-
-    private var rightRail: some View {
-        VStack(spacing: 0) {
-            Button(action: onClose) {
-                Image(systemName: "xmark").font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(Konjo.fgDim)
-                    .frame(width: 20, height: 20)
-                    .background(Color.white.opacity(0.08))
-                    .clipShape(Circle())
+    private func bottomBar(_ agent: LiveAgent) -> some View {
+        HStack(spacing: 8) {
+            Text("attempt \(agent.attempt)").font(paneMono(8)).foregroundStyle(Konjo.fgMute)
+            if let branch = agent.branch {
+                Text("· \(branch)").font(paneMono(8)).foregroundStyle(Konjo.fgMute).lineLimit(1)
             }
-            .buttonStyle(.plain)
-            .help(agent == nil ? "Close pane" : "Close pane (session stays in sidebar)")
-
             Spacer(minLength: 8)
-
-            if let agent {
-                VStack(spacing: 10) {
-                    railButton("arrow.clockwise", Konjo.sun, help: "Retry task") {
-                        submit(goal: agent.goal)
-                    }
-                    railButton("stop.fill", Konjo.rose, disabled: !agent.active, help: "Stop / cancel") {
-                        Task { await model.cancelTask(agent.id) }
-                    }
-                }
+            barButton("arrow.clockwise", Konjo.sun, help: "Retry task") {
+                submit(goal: agent.goal)
+            }
+            barButton("stop.fill", Konjo.rose, disabled: !agent.active, help: "Stop / cancel") {
+                Task { await model.cancelTask(agent.id) }
             }
         }
-        .frame(width: 56)
-        .padding(.vertical, 12)
-        .padding(.horizontal, 6)
-        .background(Color.black.opacity(0.3))
-        .overlay(Rectangle().fill(Konjo.line).frame(width: 1), alignment: .leading)
+        .padding(.horizontal, 12).padding(.vertical, 7)
     }
 
-    /// A 44pt square rail control matching the web's retry/stop buttons.
-    private func railButton(_ icon: String, _ color: Color, disabled: Bool = false,
-                            help: String, _ action: @escaping () -> Void) -> some View {
+    /// Compact control for the bottom bar.
+    private func barButton(_ icon: String, _ color: Color, disabled: Bool = false,
+                           help: String, _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: icon)
-                .font(.system(size: 15))
+                .font(.system(size: 12))
                 .foregroundStyle(color)
-                .frame(width: 44, height: 44)
-                .background(RoundedRectangle(cornerRadius: 8).fill(color.opacity(0.06)))
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Konjo.line2, lineWidth: 1))
+                .frame(width: 30, height: 24)
+                .background(RoundedRectangle(cornerRadius: 7).fill(color.opacity(0.06)))
+                .overlay(RoundedRectangle(cornerRadius: 7).stroke(Konjo.line2, lineWidth: 1))
         }
         .buttonStyle(KonjoIconButtonStyle())
         .disabled(disabled)
