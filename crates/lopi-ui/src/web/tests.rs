@@ -26,6 +26,17 @@ async fn test_app_with_auth(auth_token: Option<&str>) -> Router {
     build_app(state)
 }
 
+/// Build an app rooted at a caller-supplied repo path so write-side handlers
+/// (e.g. the loop strategy persister) touch a temp dir, not the real repo.
+async fn test_app_with_repo(repo: PathBuf) -> Router {
+    let store = lopi_memory::MemoryStore::open_in_memory().await.unwrap();
+    let bus: EventBus<AgentEvent> = EventBus::new(16);
+    let queue = TaskQueue::new();
+    let pool = Arc::new(AgentPool::new(1, repo.clone(), queue.clone(), bus.clone()));
+    let state = AppState::new_with_repo(store, bus, queue, pool, None, repo);
+    build_app(state)
+}
+
 #[tokio::test]
 async fn health_returns_200() {
     let app = test_app().await;
@@ -643,3 +654,4 @@ async fn plans_response_has_required_fields() {
 
 include!("tests_extended.rs");
 include!("schedules_tests.rs");
+include!("loop_tests.rs");

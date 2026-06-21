@@ -135,7 +135,69 @@ to the whole loop.
 - `web/src/routes/loop/` — new route beside `budget/`, `schedules/`, `config/`.
 - macOS: new `Loop` `NavSection` + `LoopView` mirroring the web screen.
 
+## 6. Self-Prompting Strategy Engine (Phase 16.4 — shipped)
+
+The single highest-leverage lever in any retry loop is the **self-prompt**: the
+text the agent feeds back into its *own* next planning step after a failed
+attempt. A raw error dump is one strategy among many; reframing the failure into
+a structured self-reflection lifts retry success substantially on coding tasks
+(Reflexion, +17 pp on HumanEval). lopi makes this a first-class, pickable,
+loop-as-code lever.
+
+### The S1–S4 ladder
+
+`SelfPromptStrategy` (`crates/lopi-core/src/self_prompt.rs`) is a pure transform
+`frame(base_failure, attempt) -> String`. Ordered by how much cognitive
+scaffolding each adds before the agent re-plans:
+
+| Tag | Strategy | What it injects into the next prompt | Provenance |
+|-----|----------|--------------------------------------|------------|
+| **S1** | Direct | The raw failure, verbatim (legacy default — byte-identical). | baseline |
+| **S2** | Reflexion | "Name the single root cause, then try a *different* approach." | Shinn et al. 2023 ([2303.11366](https://arxiv.org/abs/2303.11366)) |
+| **S3** | Self-Refine | "Critique against correctness/coverage/minimality, then revise each bullet." | Madaan et al. 2023 ([2303.17651](https://arxiv.org/abs/2303.17651)) |
+| **S4** | Plan-Then-Act | "Produce a numbered, dependency-ordered plan before editing a single line." | Wang et al. 2023 (Plan-and-Solve) |
+
+`Direct` reproduces the legacy raw-failure injection exactly, so the default is a
+no-op change; richer strategies prepend a self-prompting preamble + concrete
+instruction.
+
+### Full-stack wiring
+
+- **Core** — `LoopConfig.self_prompt` field (loop-as-code); `LoopConfig::save_to_repo`
+  writes `.lopi/loop.toml` so the UI can persist the choice.
+- **Runner** — `AgentRunner::with_self_prompt(strategy)`; the adaptive-retry path
+  routes the failure block through `strategy.frame(..)` before injecting it into
+  the next planning prompt. Wired live from `.lopi/loop.toml` in both the
+  `lopi run` CLI path and the orchestrator pool.
+- **API** — `GET /api/loop-engineering` carries a `self_prompt_strategies` catalog
+  (each with a live self-prompt **preview**); `POST /api/loop-engineering/strategy`
+  validates + persists the choice (`422` on unknown tags).
+- **Web + macOS** — a "Self-Prompting Strategy" panel: picker, strategy cards, and
+  a live preview of the exact self-prompt the agent will generate.
+
+### Next two (research-ranked, not yet built)
+
+The [discovery sweep](#sources) ranked these as the highest-value follow-ons:
+
+2. **Adaptive Strategy Escalation** (S) — auto-escalate S1→S4 by attempt number
+   instead of pinning one strategy for the whole run (a pure function of attempt
+   rank). Backed by RefineCoder ([2502.09183](https://arxiv.org/abs/2502.09183)).
+3. **Earned-Trust Auto-Promotion** (M) — promote a schedule's `AutonomyLevel`
+   after N consecutive clean verified runs; demote instantly on a post-merge
+   revert. CSA Agentic Trust Framework (2026).
+
+Critical safety adjacency: wire `LoopConfig.budget_tokens` to the Claude API
+`task_budget` parameter (beta `task-budgets-2026-03-13`) so the model
+self-regulates instead of hard-cutting.
+
 ## Sources
+Reflexion ([2303.11366](https://arxiv.org/abs/2303.11366)) · Self-Refine
+([2303.17651](https://arxiv.org/abs/2303.17651)) · SELF-DISCOVER
+([2402.03620](https://arxiv.org/abs/2402.03620)) · LATS
+([2310.04406](https://arxiv.org/abs/2310.04406)) · RefineCoder
+([2502.09183](https://arxiv.org/abs/2502.09183)) · Iterative Self-Repair
+([2604.10508](https://arxiv.org/abs/2604.10508)) · Coding-Agent Scaffold Taxonomy
+([2604.03515](https://arxiv.org/abs/2604.03515)) ·
 howborisusesclaudecode.com · theneuron.ai (Cherny/Wu) · cobusgreyling
 substack/medium · addyosmani.com (loop + harness engineering) · tosea.ai ·
 steipete.me (just-talk-to-it, optimal-ai-dev-workflow) · anthropic.com

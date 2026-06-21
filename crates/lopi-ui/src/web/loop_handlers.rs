@@ -15,9 +15,16 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Json},
 };
-use lopi_core::{AutonomyLevel, LoopConfig};
+use lopi_core::{AutonomyLevel, LoopConfig, SelfPromptStrategy};
+use serde::Deserialize;
 use serde_json::{json, Value};
-use std::path::Path;
+use std::path::{Path, PathBuf};
+
+/// A representative failure block used to render each strategy's self-prompt
+/// preview in the UI, so an engineer can see exactly what the agent would tell
+/// itself before choosing a strategy.
+const SAMPLE_FAILURE: &str = "Attempt 1 failed:\n  test_pass_rate: 60%\n  lint_errors: 2\n  \
+     diff_lines: 48\n  errors:\n  - tests::auth::expired_token panicked";
 
 /// `GET /api/loop-engineering` — the aggregated loop snapshot for the primary repo.
 pub(super) async fn get_loop(State(s): State<AppState>) -> impl IntoResponse {
@@ -48,6 +55,7 @@ pub(super) async fn get_loop(State(s): State<AppState>) -> impl IntoResponse {
             "repo": s.repo_path.display().to_string(),
             "config": config_json,
             "autonomy_levels": autonomy_catalog(),
+            "self_prompt_strategies": self_prompt_catalog(),
             "skills": skills,
             "rules": rules,
             "schedules": schedules,
@@ -74,6 +82,8 @@ fn loop_config_json(cfg: &LoopConfig, issues: &[String]) -> Value {
     value["issues"] = json!(issues);
     value["autonomy_label"] = json!(cfg.autonomy_level.label());
     value["autonomy_tag"] = json!(cfg.autonomy_level.tag());
+    value["self_prompt_tag"] = json!(cfg.self_prompt.tag());
+    value["self_prompt_label"] = json!(cfg.self_prompt.label());
     value
 }
 
@@ -168,6 +178,87 @@ fn autonomy_catalog() -> Vec<Value> {
         .collect()
 }
 
+/// The S1–S4 self-prompting strategies as pickable options for the
+/// Self-Prompting dropdown, each carrying a live preview of the self-prompt it
+/// would generate from [`SAMPLE_FAILURE`].
+fn self_prompt_catalog() -> Vec<Value> {
+    SelfPromptStrategy::all()
+        .into_iter()
+        .map(|st| {
+            json!({
+                "value": st.tag_snake(),
+                "tag": st.tag(),
+                "label": st.label(),
+                "description": st.description(),
+                "preview": st.frame(SAMPLE_FAILURE, 1),
+            })
+        })
+        .collect()
+}
+
+/// Body for `POST /api/loop-engineering/strategy` — the Self-Prompting picker
+/// on the Loop screen writes here.
+#[derive(Debug, Deserialize)]
+pub(super) struct StrategyBody {
+    /// Strategy tag: `direct` / `reflexion` / `self_refine` / `plan_then_act`.
+    pub strategy: String,
+}
+
+/// `POST /api/loop-engineering/strategy` — set the repo's self-prompting
+/// strategy and persist it to `.lopi/loop.toml` (loop-as-code, written back).
+///
+/// Unknown strategy tags are rejected with `422` rather than silently coerced,
+/// so a typo in a client never quietly downgrades the loop.
+pub(super) async fn set_strategy(
+    State(s): State<AppState>,
+    Json(body): Json<StrategyBody>,
+) -> impl IntoResponse {
+    let Some(strategy) = SelfPromptStrategy::parse(&body.strategy) else {
+        return (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            Json(json!({ "error": format!("unknown strategy: {}", body.strategy) })),
+        )
+            .into_response();
+    };
+    let repo: PathBuf = s.repo_path.clone();
+    // Load → mutate → persist runs off the async reactor (filesystem + TOML).
+    let result = tokio::task::spawn_blocking(move || {
+        let mut cfg = LoopConfig::load_from_repo(&repo)?;
+        cfg.self_prompt = strategy;
+        cfg.save_to_repo(&repo)?;
+        anyhow::Ok(())
+    })
+    .await;
+
+    match result {
+        Ok(Ok(())) => (
+            StatusCode::OK,
+            Json(json!({
+                "self_prompt": strategy.tag_snake(),
+                "self_prompt_tag": strategy.tag(),
+                "self_prompt_label": strategy.label(),
+            })),
+        )
+            .into_response(),
+        Ok(Err(e)) => {
+            tracing::warn!("set loop strategy failed: {e:#}");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": format!("{e:#}") })),
+            )
+                .into_response()
+        }
+        Err(e) => {
+            tracing::warn!("set loop strategy task panicked: {e:#}");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "internal error" })),
+            )
+                .into_response()
+        }
+    }
+}
+
 /// The Konjo quality walls surfaced as the loop's guardrail gates.
 fn gate_catalog() -> Vec<Value> {
     vec![
@@ -193,6 +284,30 @@ mod tests {
     #[test]
     fn gate_catalog_lists_three_walls() {
         assert_eq!(gate_catalog().len(), 3);
+    }
+
+    #[test]
+    fn self_prompt_catalog_has_four_strategies_with_previews() {
+        let cat = self_prompt_catalog();
+        assert_eq!(cat.len(), 4);
+        assert_eq!(cat[0]["value"], "direct");
+        assert_eq!(cat[1]["value"], "reflexion");
+        // Direct's preview is the raw failure; richer strategies embed it.
+        assert_eq!(cat[0]["preview"], SAMPLE_FAILURE);
+        for entry in &cat {
+            let preview = entry["preview"].as_str().unwrap_or_default();
+            assert!(preview.contains("test_pass_rate"), "preview shows failure");
+            assert!(!entry["description"].as_str().unwrap_or_default().is_empty());
+        }
+    }
+
+    #[test]
+    fn loop_config_json_carries_self_prompt_tags() {
+        let cfg = LoopConfig::default();
+        let v = loop_config_json(&cfg, &[]);
+        assert_eq!(v["self_prompt"], "direct");
+        assert_eq!(v["self_prompt_tag"], "S1");
+        assert_eq!(v["self_prompt_label"], "Direct");
     }
 
     #[test]

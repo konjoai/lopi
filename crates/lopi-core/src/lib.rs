@@ -15,6 +15,8 @@ pub mod event;
 pub mod loop_config;
 /// Structured output schema validation (JSON Schema subset).
 pub mod schema;
+/// Self-prompting loop strategies — how an agent re-prompts itself on retry.
+pub mod self_prompt;
 /// Task definition, status, priority, and source types.
 pub mod task;
 /// Customer tier classification.
@@ -27,6 +29,7 @@ pub use budget::BudgetScope;
 pub use config::{LopiConfig, RepoProfile, ScheduleEntry};
 pub use event::{AgentEvent, EventBus, LogLevel, PlanDecision};
 pub use loop_config::{AutonomyLevel, LoopConfig};
+pub use self_prompt::SelfPromptStrategy;
 pub use schema::{
     schema_violations_inc, schema_violations_snapshot, validate as validate_schema,
     Violation as SchemaViolation, ViolationKind as SchemaViolationKind,

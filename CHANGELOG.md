@@ -4,6 +4,35 @@
 
 ### Added
 
+**Loop Engineering — Phase 16.4 Self-Prompting Strategy Engine** (`lopi-core`, `lopi-agent`, `lopi-orchestrator`, `lopi-ui`, web, macOS)
+- **Direct agents to prompt *themselves*.** A new `SelfPromptStrategy` (S1–S4) is
+  the highest-leverage loop lever: the text the agent feeds back into its own
+  next planning step after a failed attempt. `crates/lopi-core/src/self_prompt.rs`
+  implements four research-backed strategies as pure `frame(base, attempt)`
+  transforms:
+  - **S1 Direct** — raw failure, verbatim (legacy default; byte-identical).
+  - **S2 Reflexion** — name the root cause, then try a *different* approach
+    (Shinn et al. 2023).
+  - **S3 Self-Refine** — critique against correctness/coverage/minimality, then
+    revise (Madaan et al. 2023).
+  - **S4 Plan-Then-Act** — write a numbered plan before editing (Plan-and-Solve).
+- **Loop-as-code, editable from the UI.** `LoopConfig` gains a `self_prompt`
+  field and a `save_to_repo` writer; the new `POST /api/loop-engineering/strategy`
+  validates a tag and persists it to `.lopi/loop.toml` (422 on unknown tags).
+  `GET /api/loop-engineering` now carries a `self_prompt_strategies` catalog,
+  each entry with a **live preview** of the self-prompt it generates.
+- **Wired live into the runner.** `AgentRunner::with_self_prompt` routes the
+  adaptive-retry failure block through the chosen strategy before injecting it
+  into the next planning prompt — honored by both the `lopi run` CLI path and the
+  orchestrator pool, loaded from `.lopi/loop.toml`.
+- **Web + macOS.** A new "Self-Prompting Strategy" panel on the Loop screen:
+  a picker, strategy cards (active state), and a live self-prompt preview.
+- **Tests.** Pure-function strategy tests + `save_to_repo` round-trips in
+  `lopi-core`; catalog/handler tests in `lopi-ui`; three HTTP-level e2e tests
+  (`web/loop_tests.rs`) covering snapshot read, persisted round-trip, and the
+  422 reject path; an `api.test.ts` case for the web client. Verified against a
+  live `lopi sail` server end-to-end.
+
 **Loop Engineering — Phase 16.2b runner enforcement** (`lopi-agent`, `lopi-git`)
 - The **L1–L4 autonomy ladder now changes end-of-loop behavior** — previously
   `autonomy_level` was configurable and observable but ignored by the runner.

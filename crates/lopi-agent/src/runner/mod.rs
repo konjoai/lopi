@@ -13,7 +13,9 @@ mod verifier_runner;
 use crate::api_client::AnthropicClient;
 use crate::stability::{StabilityConfig, StabilityHarness};
 use lopi_context::{ContentBlock, ContextWindow, Phase, PinPolicy, Role, TaggedMessage};
-use lopi_core::{AgentEvent, EventBus, PlanDecision, ScoreWeights, Task, TaskId, TaskStatus};
+use lopi_core::{
+    AgentEvent, EventBus, PlanDecision, ScoreWeights, SelfPromptStrategy, Task, TaskId, TaskStatus,
+};
 use lopi_memory::MemoryStore;
 use lopi_ratelimit::{AnthropicLimiter, CircuitBreaker};
 use std::path::PathBuf;
@@ -79,6 +81,12 @@ pub struct AgentRunner {
     /// Sprint H — stash the most recent attempt failure context so the
     /// next attempt's prompt can include it. Cleared on success.
     pub(super) last_error: Option<String>,
+    /// Phase 16.4 — self-prompting strategy: how a failed attempt is reframed
+    /// into the next attempt's self-prompt. [`Direct`](SelfPromptStrategy::Direct)
+    /// reproduces the legacy raw-failure injection; richer strategies add a
+    /// Reflexion / Self-Refine / Plan-Then-Act preamble. Only consulted when
+    /// `adaptive_retry` is enabled.
+    pub(super) self_prompt: SelfPromptStrategy,
     /// Sprint S — when true, the Konjo Verifier second-score pass runs after
     /// the heuristic score passes. Requires `api_client` to be set.
     pub(super) verifier_enabled: bool,
@@ -132,6 +140,7 @@ impl AgentRunner {
             stability_harness: None,
             adaptive_retry: false,
             last_error: None,
+            self_prompt: SelfPromptStrategy::default(),
             verifier_enabled: false,
             last_plan: None,
             session_id: Uuid::new_v4(),
@@ -166,6 +175,7 @@ impl AgentRunner {
             stability_harness: None,
             adaptive_retry: false,
             last_error: None,
+            self_prompt: SelfPromptStrategy::default(),
             verifier_enabled: false,
             last_plan: None,
             session_id: Uuid::new_v4(),
@@ -240,6 +250,21 @@ impl AgentRunner {
     #[must_use]
     pub const fn adaptive_retry_enabled(&self) -> bool {
         self.adaptive_retry
+    }
+
+    /// Phase 16.4 — set the self-prompting strategy used to reframe a failed
+    /// attempt into the next attempt's planning prompt. Only takes effect when
+    /// adaptive retry is enabled (the strategy reframes the injected failure).
+    #[must_use]
+    pub const fn with_self_prompt(mut self, strategy: SelfPromptStrategy) -> Self {
+        self.self_prompt = strategy;
+        self
+    }
+
+    /// The currently configured self-prompting strategy.
+    #[must_use]
+    pub const fn self_prompt_strategy(&self) -> SelfPromptStrategy {
+        self.self_prompt
     }
 
     /// Sprint I — attach the Layer 5 patch stability gate.
