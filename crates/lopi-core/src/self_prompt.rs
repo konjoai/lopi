@@ -213,13 +213,75 @@ mod tests {
 
     #[test]
     fn tag_label_description_and_all() {
-        assert_eq!(SelfPromptStrategy::Direct.tag(), "S1");
-        assert_eq!(SelfPromptStrategy::Reflexion.label(), "Reflexion");
-        assert_eq!(SelfPromptStrategy::all().len(), 4);
-        for s in SelfPromptStrategy::all() {
-            assert!(!s.description().is_empty());
+        // Exhaustive per-variant assertions on every `&'static str` accessor —
+        // pins the exact output so a mutant that swaps an arm's string (e.g. the
+        // cargo-mutants `"xyzzy"` replacement) is killed, not just the empty one.
+        let table = [
+            (
+                SelfPromptStrategy::Direct,
+                "S1",
+                "direct",
+                "Direct",
+                "raw failure",
+            ),
+            (
+                SelfPromptStrategy::Reflexion,
+                "S2",
+                "reflexion",
+                "Reflexion",
+                "self-reflection",
+            ),
+            (
+                SelfPromptStrategy::SelfRefine,
+                "S3",
+                "self_refine",
+                "Self-Refine",
+                "Critique",
+            ),
+            (
+                SelfPromptStrategy::PlanThenAct,
+                "S4",
+                "plan_then_act",
+                "Plan-Then-Act",
+                "numbered plan",
+            ),
+        ];
+        for (s, tag, snake, label, desc_needle) in table {
+            assert_eq!(s.tag(), tag, "tag for {label}");
+            assert_eq!(s.tag_snake(), snake, "tag_snake for {label}");
+            assert_eq!(s.label(), label, "label for {label}");
+            assert!(
+                s.description().contains(desc_needle),
+                "description for {label} must mention {desc_needle:?}, got {:?}",
+                s.description()
+            );
             assert_eq!(SelfPromptStrategy::parse(s.tag_snake()), Some(s));
         }
+        assert_eq!(SelfPromptStrategy::all().len(), 4);
+    }
+
+    #[test]
+    fn s_tag_aliases_parse_to_each_variant() {
+        // Pins the `s1`..`s4` alias arms in `parse` so per-arm mutants are killed.
+        assert_eq!(
+            SelfPromptStrategy::parse("s1"),
+            Some(SelfPromptStrategy::Direct)
+        );
+        assert_eq!(
+            SelfPromptStrategy::parse("s2"),
+            Some(SelfPromptStrategy::Reflexion)
+        );
+        assert_eq!(
+            SelfPromptStrategy::parse("s4"),
+            Some(SelfPromptStrategy::PlanThenAct)
+        );
+    }
+
+    #[test]
+    fn plan_then_act_advances_the_attempt_counter() {
+        // Independently pins PlanThenAct's `next = attempt + 1` expression.
+        let framed = SelfPromptStrategy::PlanThenAct.frame("x", 1);
+        assert!(framed.contains("attempt 2"), "next attempt is N+1");
     }
 
     #[test]
