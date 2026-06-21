@@ -72,7 +72,7 @@ struct RootView: View {
     private var sidebar: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 2) {
-                sectionLabel("NAVIGATE")
+                Color.clear.frame(height: 6)
                 ForEach(NavSection.allCases) { navRow($0) }
 
                 HStack(spacing: 6) {

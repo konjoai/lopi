@@ -255,14 +255,14 @@ struct AgentPaneView: View {
 
     private var commandBar: some View {
         HStack(spacing: 8) {
-            Text(">").font(paneMono(11)).foregroundStyle(Konjo.ok)
+            Text(">").font(paneMono(16, weight: .medium)).foregroundStyle(Konjo.ok)
             TextField(agent == nil ? "type a goal…" : "new goal…", text: $goal)
                 .textFieldStyle(.plain)
-                .font(paneMono(11)).foregroundStyle(Konjo.fg)
+                .font(paneMono(16)).foregroundStyle(Konjo.fg)
                 .onSubmit { submit(goal: goal) }
             if submitting { ProgressView().controlSize(.small) }
         }
-        .padding(.horizontal, 12).padding(.vertical, 9)
+        .padding(.horizontal, 14).padding(.top, 12).padding(.bottom, 18)
         .background(Color.black.opacity(0.1))
     }
 

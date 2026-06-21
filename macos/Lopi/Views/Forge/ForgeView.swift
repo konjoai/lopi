@@ -20,9 +20,13 @@ struct ForgeView: View {
                     .disabled(layout.slots.count <= PaneLayout.minPanes)
                 Text("\(layout.slots.count)")
                     .font(Konjo.mono(11)).foregroundStyle(Konjo.fgDim).monospacedDigit()
-                Button { layout.addPane() } label: { Image(systemName: "plus.rectangle") }
-                    .help("Add pane")
-                    .disabled(layout.slots.count >= PaneLayout.maxPanes)
+                Button { layout.addPane() } label: {
+                    Image(systemName: "plus.rectangle")
+                        .font(.system(size: 26, weight: .medium))
+                        .foregroundStyle(Konjo.ice)
+                }
+                .help("Add pane")
+                .disabled(layout.slots.count >= PaneLayout.maxPanes)
             }
         }
         .onAppear { layout.reconcile(model.liveAgents.keys) }

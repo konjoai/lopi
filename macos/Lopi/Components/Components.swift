@@ -25,7 +25,6 @@ struct ConnectionLED: View {
             Circle()
                 .fill(color)
                 .frame(width: 8, height: 8)
-                .shadow(color: color.opacity(0.8), radius: 4)
             Text(label)
                 .font(Konjo.mono(11))
                 .foregroundStyle(Konjo.fgDim)
