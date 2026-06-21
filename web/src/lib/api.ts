@@ -201,6 +201,8 @@ export interface LoopConfig {
   self_prompt: string;
   self_prompt_tag: string;
   self_prompt_label: string;
+  escalate_strategy: boolean;
+  escalation_ladder: { attempt: number; tag: string; label: string }[];
   vision_path: string | null;
   skills_enabled: string[];
   rules_enabled: string[];
@@ -256,6 +258,13 @@ export const setLoopStrategy = (strategy: string) =>
   request<{ self_prompt: string; self_prompt_tag: string; self_prompt_label: string }>(
     '/api/loop-engineering/strategy',
     json('POST', { strategy })
+  );
+
+/** Toggle adaptive strategy escalation; persists to `.lopi/loop.toml`. */
+export const setLoopEscalation = (enabled: boolean) =>
+  request<{ escalate_strategy: boolean }>(
+    '/api/loop-engineering/escalation',
+    json('POST', { enabled })
   );
 
 // ── Config + version ──────────────────────────────────────────────────────────

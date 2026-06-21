@@ -65,11 +65,17 @@ pub async fn run(
     let loop_cfg = lopi_core::LoopConfig::load_from_repo(&repo).unwrap_or_default();
     let mut runner = AgentRunner::standalone(task.clone(), repo)
         .0
-        .with_self_prompt(loop_cfg.self_prompt);
+        .with_self_prompt(loop_cfg.self_prompt)
+        .with_strategy_escalation(loop_cfg.escalate_strategy);
     if adaptive_retry {
         runner = runner.with_adaptive_retry();
+        let mode = if loop_cfg.escalate_strategy {
+            "escalating S1→S4"
+        } else {
+            "pinned"
+        };
         println!(
-            "   self-prompt: {} ({})",
+            "   self-prompt: {} ({}) · {mode}",
             loop_cfg.self_prompt.tag(),
             loop_cfg.self_prompt.label()
         );

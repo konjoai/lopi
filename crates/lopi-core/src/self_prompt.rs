@@ -130,6 +130,32 @@ impl SelfPromptStrategy {
         ]
     }
 
+    /// The strategy at a given ladder `rank`, saturating: `0/1 → S1`, `2 → S2`,
+    /// `3 → S3`, `≥4 → S4`. Inverse of [`rank`](Self::rank), clamped.
+    #[must_use]
+    fn from_rank(rank: u8) -> Self {
+        match rank {
+            0 | 1 => Self::Direct,
+            2 => Self::Reflexion,
+            3 => Self::SelfRefine,
+            _ => Self::PlanThenAct,
+        }
+    }
+
+    /// The effective strategy for a 1-based `attempt` when **adaptive escalation**
+    /// is enabled: attempt 1 stays at `base`, and each subsequent attempt climbs
+    /// one rung up the S1→S4 ladder, capped at S4.
+    ///
+    /// This implements the research-backed pattern of applying progressively more
+    /// cognitive scaffolding the longer a task resists a fix (RefineCoder, 2025):
+    /// cheap direct retries first, heavier Reflexion / Self-Refine / Plan-Then-Act
+    /// framing only once the easy path has failed.
+    #[must_use]
+    pub fn escalated(base: Self, attempt: u8) -> Self {
+        let steps = attempt.saturating_sub(1);
+        Self::from_rank(base.rank().saturating_add(steps))
+    }
+
     /// Reframe a failure summary into the next attempt's self-prompt.
     ///
     /// `base_failure` is the raw failure block (test pass-rate, lint, diff,
@@ -213,13 +239,125 @@ mod tests {
 
     #[test]
     fn tag_label_description_and_all() {
-        assert_eq!(SelfPromptStrategy::Direct.tag(), "S1");
-        assert_eq!(SelfPromptStrategy::Reflexion.label(), "Reflexion");
-        assert_eq!(SelfPromptStrategy::all().len(), 4);
-        for s in SelfPromptStrategy::all() {
-            assert!(!s.description().is_empty());
+        // Exhaustive per-variant assertions on every `&'static str` accessor —
+        // pins the exact output so a mutant that swaps an arm's string (e.g. the
+        // cargo-mutants `"xyzzy"` replacement) is killed, not just the empty one.
+        let table = [
+            (
+                SelfPromptStrategy::Direct,
+                "S1",
+                "direct",
+                "Direct",
+                "raw failure",
+            ),
+            (
+                SelfPromptStrategy::Reflexion,
+                "S2",
+                "reflexion",
+                "Reflexion",
+                "self-reflection",
+            ),
+            (
+                SelfPromptStrategy::SelfRefine,
+                "S3",
+                "self_refine",
+                "Self-Refine",
+                "Critique",
+            ),
+            (
+                SelfPromptStrategy::PlanThenAct,
+                "S4",
+                "plan_then_act",
+                "Plan-Then-Act",
+                "numbered plan",
+            ),
+        ];
+        for (s, tag, snake, label, desc_needle) in table {
+            assert_eq!(s.tag(), tag, "tag for {label}");
+            assert_eq!(s.tag_snake(), snake, "tag_snake for {label}");
+            assert_eq!(s.label(), label, "label for {label}");
+            assert!(
+                s.description().contains(desc_needle),
+                "description for {label} must mention {desc_needle:?}, got {:?}",
+                s.description()
+            );
             assert_eq!(SelfPromptStrategy::parse(s.tag_snake()), Some(s));
         }
+        assert_eq!(SelfPromptStrategy::all().len(), 4);
+    }
+
+    #[test]
+    fn s_tag_aliases_parse_to_each_variant() {
+        // Pins the `s1`..`s4` alias arms in `parse` so per-arm mutants are killed.
+        assert_eq!(
+            SelfPromptStrategy::parse("s1"),
+            Some(SelfPromptStrategy::Direct)
+        );
+        assert_eq!(
+            SelfPromptStrategy::parse("s2"),
+            Some(SelfPromptStrategy::Reflexion)
+        );
+        assert_eq!(
+            SelfPromptStrategy::parse("s4"),
+            Some(SelfPromptStrategy::PlanThenAct)
+        );
+    }
+
+    #[test]
+    fn from_rank_saturates_at_both_ends() {
+        assert_eq!(SelfPromptStrategy::from_rank(0), SelfPromptStrategy::Direct);
+        assert_eq!(SelfPromptStrategy::from_rank(1), SelfPromptStrategy::Direct);
+        assert_eq!(
+            SelfPromptStrategy::from_rank(2),
+            SelfPromptStrategy::Reflexion
+        );
+        assert_eq!(
+            SelfPromptStrategy::from_rank(3),
+            SelfPromptStrategy::SelfRefine
+        );
+        assert_eq!(
+            SelfPromptStrategy::from_rank(4),
+            SelfPromptStrategy::PlanThenAct
+        );
+        assert_eq!(
+            SelfPromptStrategy::from_rank(99),
+            SelfPromptStrategy::PlanThenAct
+        );
+        // round-trips with rank() for every variant
+        for s in SelfPromptStrategy::all() {
+            assert_eq!(SelfPromptStrategy::from_rank(s.rank()), s);
+        }
+    }
+
+    #[test]
+    fn escalation_climbs_one_rung_per_attempt_from_direct() {
+        use SelfPromptStrategy::{Direct, PlanThenAct, Reflexion, SelfRefine};
+        assert_eq!(SelfPromptStrategy::escalated(Direct, 1), Direct);
+        assert_eq!(SelfPromptStrategy::escalated(Direct, 2), Reflexion);
+        assert_eq!(SelfPromptStrategy::escalated(Direct, 3), SelfRefine);
+        assert_eq!(SelfPromptStrategy::escalated(Direct, 4), PlanThenAct);
+        // caps at S4 and never panics on large attempt counts
+        assert_eq!(SelfPromptStrategy::escalated(Direct, 9), PlanThenAct);
+        assert_eq!(SelfPromptStrategy::escalated(Direct, u8::MAX), PlanThenAct);
+    }
+
+    #[test]
+    fn escalation_starts_from_the_configured_base() {
+        use SelfPromptStrategy::{PlanThenAct, Reflexion, SelfRefine};
+        // A base of S2 means attempt 1 is already Reflexion, then it climbs.
+        assert_eq!(SelfPromptStrategy::escalated(Reflexion, 1), Reflexion);
+        assert_eq!(SelfPromptStrategy::escalated(Reflexion, 2), SelfRefine);
+        assert_eq!(SelfPromptStrategy::escalated(Reflexion, 3), PlanThenAct);
+        // A base already at the top stays at the top.
+        assert_eq!(SelfPromptStrategy::escalated(PlanThenAct, 1), PlanThenAct);
+        assert_eq!(SelfPromptStrategy::escalated(PlanThenAct, 5), PlanThenAct);
+    }
+
+    #[test]
+    fn plan_then_act_advances_the_attempt_counter() {
+        // Independently pins PlanThenAct's `next = attempt + 1` expression.
+        let framed = SelfPromptStrategy::PlanThenAct.frame("x", 1);
+        assert!(framed.contains("attempt 2"), "next attempt is N+1");
     }
 
     #[test]

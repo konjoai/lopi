@@ -14,6 +14,7 @@
     getLoopEngineering,
     setScheduleAutonomy,
     setLoopStrategy,
+    setLoopEscalation,
     type LoopSnapshot,
     type AutonomyOption,
     type SelfPromptOption
@@ -109,6 +110,17 @@
     if (value === snap?.config.self_prompt) return 'border-konjo-accent';
     if (value === activeStrategy) return 'border-white/30';
     return 'border-white/5';
+  }
+
+  async function toggleEscalation(enabled: boolean) {
+    try {
+      await setLoopEscalation(enabled);
+      flash = enabled ? 'escalation on — S1→S4 per attempt' : 'escalation off — strategy pinned';
+      setTimeout(() => (flash = ''), 2200);
+      await refresh();
+    } catch (e) {
+      loadError = e instanceof Error ? e.message : 'update failed';
+    }
   }
 
   function fmtBudget(t: number): string {
@@ -250,6 +262,49 @@
             class="font-mono text-[11px] leading-relaxed whitespace-pre-wrap rounded-lg border border-white/5 bg-konjo-black/60 p-3 opacity-80 max-h-72 overflow-auto">{previewStrategy.preview}</pre>
         </div>
       {/if}
+
+      <!-- Adaptive escalation: climb S1→S4 as attempts keep failing -->
+      <div class="mt-4 rounded-lg border border-white/5 bg-konjo-black/40 p-3">
+        <div class="flex items-center justify-between gap-3">
+          <div class="min-w-0">
+            <div class="font-display text-[13px]">Adaptive escalation</div>
+            <div class="font-mono text-[10px] opacity-50 mt-0.5 leading-relaxed">
+              Climb one rung up the ladder each failed attempt — cheap retries first, heavier
+              framing only when a task resists a fix.
+            </div>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={snap.config.escalate_strategy}
+            class="relative flex-shrink-0 w-11 h-6 rounded-full transition-colors"
+            class:bg-konjo-jade={snap.config.escalate_strategy}
+            class:bg-white={!snap.config.escalate_strategy}
+            class:bg-opacity-10={!snap.config.escalate_strategy}
+            on:click={() => snap && toggleEscalation(!snap.config.escalate_strategy)}
+          >
+            <span
+              class="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform"
+              class:translate-x-5={snap.config.escalate_strategy}
+            ></span>
+          </button>
+        </div>
+        {#if snap.config.escalate_strategy}
+          <div class="mt-3 flex items-center gap-1.5 flex-wrap">
+            {#each snap.config.escalation_ladder as rung, i}
+              <div class="flex items-center gap-1.5">
+                {#if i > 0}<span class="opacity-30 font-mono text-[10px]">→</span>{/if}
+                <div
+                  class="rounded-md border border-white/10 bg-konjo-black/50 px-2 py-1 font-mono text-[10px]"
+                >
+                  <span class="opacity-40">#{rung.attempt}</span>
+                  <span class={strategyColor(rung.tag)}>{rung.tag}</span>
+                </div>
+              </div>
+            {/each}
+          </div>
+        {/if}
+      </div>
     </Panel>
 
     <!-- Schedules with the trust-level dropdown (the one writable control) -->

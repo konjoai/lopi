@@ -28,6 +28,8 @@ struct LoopConfigDTO: Codable, Equatable {
     var selfPrompt: String
     var selfPromptTag: String
     var selfPromptLabel: String
+    var escalateStrategy: Bool
+    var escalationLadder: [LoopEscalationRung]
     var visionPath: String?
     var skillsEnabled: [String]
     var rulesEnabled: [String]
@@ -45,6 +47,8 @@ struct LoopConfigDTO: Codable, Equatable {
         case selfPrompt = "self_prompt"
         case selfPromptTag = "self_prompt_tag"
         case selfPromptLabel = "self_prompt_label"
+        case escalateStrategy = "escalate_strategy"
+        case escalationLadder = "escalation_ladder"
         case visionPath = "vision_path"
         case skillsEnabled = "skills_enabled"
         case rulesEnabled = "rules_enabled"
@@ -52,6 +56,15 @@ struct LoopConfigDTO: Codable, Equatable {
         case maxIterations = "max_iterations"
         case budgetTokens = "budget_tokens"
     }
+}
+
+/// One rung of the adaptive-escalation ladder: which strategy attempt N uses.
+struct LoopEscalationRung: Codable, Equatable, Identifiable {
+    var attempt: Int
+    var tag: String
+    var label: String
+
+    var id: Int { attempt }
 }
 
 /// One pickable self-prompting strategy (S1–S4) with a live self-prompt preview.

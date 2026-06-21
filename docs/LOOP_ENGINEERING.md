@@ -179,9 +179,14 @@ instruction.
 
 The [discovery sweep](#sources) ranked these as the highest-value follow-ons:
 
-2. **Adaptive Strategy Escalation** (S) — auto-escalate S1→S4 by attempt number
-   instead of pinning one strategy for the whole run (a pure function of attempt
-   rank). Backed by RefineCoder ([2502.09183](https://arxiv.org/abs/2502.09183)).
+2. ~~**Adaptive Strategy Escalation**~~ — ✅ **shipped (Phase 16.5)**: auto-climb
+   S1→S4 by attempt number instead of pinning one strategy. `LoopConfig.escalate_strategy`
+   + `SelfPromptStrategy::escalated(base, attempt)` (climb one rung per failed
+   attempt, capped at S4, starting from the base). Wired into the runner
+   (`AgentRunner::effective_strategy`), surfaced as an escalation-ladder preview
+   and a toggle in the web + macOS Loop screens, persisted via
+   `POST /api/loop-engineering/escalation`. Backed by RefineCoder
+   ([2502.09183](https://arxiv.org/abs/2502.09183)).
 3. **Earned-Trust Auto-Promotion** (M) — promote a schedule's `AutonomyLevel`
    after N consecutive clean verified runs; demote instantly on a post-merge
    revert. CSA Agentic Trust Framework (2026).

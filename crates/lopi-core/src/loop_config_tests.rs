@@ -113,6 +113,27 @@ fn save_to_repo_round_trips_defaults_including_self_prompt() {
 }
 
 #[test]
+fn loop_config_default_does_not_escalate() {
+    assert!(!LoopConfig::default().escalate_strategy);
+}
+
+#[test]
+fn save_to_repo_persists_escalation_flag() {
+    let dir = std::env::temp_dir().join("lopi_loop_cfg_save_escalate");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let cfg = LoopConfig {
+        self_prompt: crate::SelfPromptStrategy::Reflexion,
+        escalate_strategy: true,
+        ..LoopConfig::default()
+    };
+    cfg.save_to_repo(&dir).unwrap();
+    let back = LoopConfig::load_from_repo(&dir).unwrap();
+    assert!(back.escalate_strategy);
+    assert_eq!(back.self_prompt, crate::SelfPromptStrategy::Reflexion);
+}
+
+#[test]
 fn save_to_repo_persists_a_changed_strategy() {
     let dir = std::env::temp_dir().join("lopi_loop_cfg_save_strategy");
     let _ = std::fs::remove_dir_all(&dir);
