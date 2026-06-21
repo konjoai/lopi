@@ -51,6 +51,8 @@ struct RootView: View {
         NavigationSplitView {
             sidebar
                 .navigationSplitViewColumnWidth(min: 232, ideal: 252)
+                .toolbarBackground(Konjo.bg, for: .windowToolbar)
+                .toolbarBackground(.visible, for: .windowToolbar)
         } detail: {
             detail
                 .background(Konjo.bg)
@@ -59,6 +61,8 @@ struct RootView: View {
                         ConnectionLED(state: model.connection)
                     }
                 }
+                .toolbarBackground(Konjo.bg, for: .windowToolbar)
+                .toolbarBackground(.visible, for: .windowToolbar)
                 .overlay(alignment: .top) { bannerOverlay }
         }
     }

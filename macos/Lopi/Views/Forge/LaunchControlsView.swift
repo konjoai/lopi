@@ -12,7 +12,7 @@ struct KonjoMenu: View {
         VStack(alignment: .leading, spacing: 2) {
             if !dense && !title.isEmpty {
                 Text(title)
-                    .font(Konjo.mono(8, weight: .semibold))
+                    .font(Konjo.mono(10, weight: .semibold))
                     .tracking(1.4)
                     .foregroundStyle(Konjo.fgMute)
             }
@@ -31,9 +31,9 @@ struct KonjoMenu: View {
             } label: {
                 HStack(spacing: 6) {
                     Text(LaunchControls.label(options, value))
-                        .font(Konjo.mono(dense ? 10 : 11))
+                        .font(Konjo.mono(dense ? 12.5 : 13.75))
                         .lineLimit(1)
-                    Image(systemName: "chevron.down").font(.system(size: 7, weight: .bold))
+                    Image(systemName: "chevron.down").font(.system(size: 9, weight: .bold))
                 }
                 .foregroundStyle(Konjo.fg)
                 .padding(.horizontal, dense ? 6 : 8)
@@ -58,10 +58,10 @@ private struct KonjoField: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            if !dense { Text(title).font(Konjo.mono(8, weight: .semibold)).tracking(1.4).foregroundStyle(Konjo.fgMute) }
+            if !dense { Text(title).font(Konjo.mono(10, weight: .semibold)).tracking(1.4).foregroundStyle(Konjo.fgMute) }
             TextField(placeholder, text: $value)
                 .textFieldStyle(.plain)
-                .font(Konjo.mono(dense ? 10 : 11))
+                .font(Konjo.mono(dense ? 12.5 : 13.75))
                 .foregroundStyle(Konjo.fg)
                 .padding(.horizontal, dense ? 6 : 8)
                 .padding(.vertical, dense ? 3 : 5)
