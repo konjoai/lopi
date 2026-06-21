@@ -80,12 +80,20 @@ struct LopiClient {
         return w.repos
     }
 
-    /// Local branches of `repo` (empty → server's primary repo).
-    func branches(repo: String) async throws -> [String] {
-        struct Wrapper: Decodable { let branches: [String] }
+    /// Local branches of `repo` (empty → server's primary repo) plus the repo's
+    /// default (current HEAD) branch.
+    func branches(repo: String) async throws -> (branches: [String], defaultBranch: String) {
+        struct Wrapper: Decodable {
+            let branches: [String]
+            let defaultBranch: String
+            enum CodingKeys: String, CodingKey {
+                case branches
+                case defaultBranch = "default"
+            }
+        }
         let q = repo.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         let w: Wrapper = try await get("/api/branches?repo=\(q)")
-        return w.branches
+        return (w.branches, w.defaultBranch)
     }
 
     // Schedules

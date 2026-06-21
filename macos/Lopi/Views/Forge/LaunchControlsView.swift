@@ -63,10 +63,19 @@ struct LaunchControlsView: View {
             + model.repos.map { LaunchOption(value: $0, label: ($0 as NSString).lastPathComponent) }
     }
 
-    /// Branch dropdown options — branches of the selected repo, "auto" leading.
+    /// Branch dropdown options — the selected repo's branches (defaults to the
+    /// repo's default branch, no confusing "auto").
     private var branchOptions: [LaunchOption] {
-        [LaunchOption(value: "", label: "auto")]
-            + model.branches.map { LaunchOption(value: $0, label: $0) }
+        model.branches.map { LaunchOption(value: $0, label: $0) }
+    }
+
+    /// Preselect the repo's default branch when nothing valid is chosen yet.
+    private func applyDefaultBranch() {
+        if controls.branch.isEmpty || !model.branches.contains(controls.branch) {
+            controls.branch = model.defaultBranch.isEmpty
+                ? (model.branches.first ?? "")
+                : model.defaultBranch
+        }
     }
 
     var body: some View {
@@ -80,10 +89,13 @@ struct LaunchControlsView: View {
         .task {
             await model.refreshRepos()
             await model.refreshBranches(controls.repo)
+            applyDefaultBranch()
         }
         .onChange(of: controls.repo) { _, newRepo in
-            controls.branch = ""
-            Task { await model.refreshBranches(newRepo) }
+            Task {
+                await model.refreshBranches(newRepo)
+                applyDefaultBranch()
+            }
         }
     }
 }

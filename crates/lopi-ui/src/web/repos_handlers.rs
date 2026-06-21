@@ -33,7 +33,8 @@ pub(super) struct BranchQuery {
     repo: String,
 }
 
-/// `GET /api/branches?repo=<path>` — local branch names of `repo`.
+/// `GET /api/branches?repo=<path>` — local branch names of `repo`, plus the
+/// repo's default (current HEAD) branch so the UI can preselect it.
 pub(super) async fn list_branches(
     State(s): State<AppState>,
     Query(q): Query<BranchQuery>,
@@ -43,10 +44,14 @@ pub(super) async fn list_branches(
     } else {
         q.repo
     };
-    let branches = tokio::task::spawn_blocking(move || git_branches(&repo))
+    let (branches, default) = tokio::task::spawn_blocking(move || git_branches(&repo))
         .await
         .unwrap_or_default();
-    (StatusCode::OK, Json(json!({ "branches": branches }))).into_response()
+    (
+        StatusCode::OK,
+        Json(json!({ "branches": branches, "default": default })),
+    )
+        .into_response()
 }
 
 /// Collect git repos: the primary repo, then sibling directories that contain a
@@ -75,12 +80,13 @@ fn scan_repos(primary: &Path) -> Vec<String> {
 }
 
 /// List local branch short-names via the git CLI (already a hard dependency of
-/// the agent runtime). Returns empty on any error.
-fn git_branches(repo: &str) -> Vec<String> {
-    let output = std::process::Command::new("git")
+/// the agent runtime), plus the default (current HEAD) branch — falling back to
+/// main/master, then the first branch. Returns empty on any error.
+fn git_branches(repo: &str) -> (Vec<String>, String) {
+    let branches: Vec<String> = match std::process::Command::new("git")
         .args(["-C", repo, "branch", "--format=%(refname:short)"])
-        .output();
-    match output {
+        .output()
+    {
         Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout)
             .lines()
             .map(|l| l.trim().to_string())
@@ -88,5 +94,18 @@ fn git_branches(repo: &str) -> Vec<String> {
             .take(100)
             .collect(),
         _ => Vec::new(),
-    }
+    };
+
+    let default = std::process::Command::new("git")
+        .args(["-C", repo, "branch", "--show-current"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .filter(|s| !s.is_empty())
+        .or_else(|| branches.iter().find(|b| *b == "main" || *b == "master").cloned())
+        .or_else(|| branches.first().cloned())
+        .unwrap_or_default();
+
+    (branches, default)
 }

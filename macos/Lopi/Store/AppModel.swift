@@ -18,6 +18,8 @@ final class AppModel {
     /// Launch-control dropdown sources, fetched from the server (sandbox-safe).
     var repos: [String] = []
     var branches: [String] = []
+    /// The selected repo's default (current HEAD) branch.
+    var defaultBranch: String = ""
 
     /// Rolling buffer of recent live log lines (most recent last), capped.
     var recentLogs: [String] = []
@@ -109,7 +111,13 @@ final class AppModel {
     }
 
     func refreshBranches(_ repo: String) async {
-        branches = (try? await client.branches(repo: repo)) ?? []
+        if let r = try? await client.branches(repo: repo) {
+            branches = r.branches
+            defaultBranch = r.defaultBranch
+        } else {
+            branches = []
+            defaultBranch = ""
+        }
     }
 
     // MARK: Mutations
