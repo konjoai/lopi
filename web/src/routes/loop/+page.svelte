@@ -12,23 +12,29 @@
   import { onMount } from 'svelte';
   import {
     getLoopEngineering,
+    getLoopHealth,
     setScheduleAutonomy,
     type LoopSnapshot,
+    type LoopHealth,
     type AutonomyOption
   } from '$lib/api';
   import Panel from '$lib/components/ui/Panel.svelte';
   import EmptyState from '$lib/components/ui/EmptyState.svelte';
   import Dropdown from '$lib/components/ui/Dropdown.svelte';
+  import StatCard from '$lib/components/ui/StatCard.svelte';
+  import Sparkline from '$lib/components/ui/Sparkline.svelte';
   import type { Option } from '$lib/stores/controls';
 
   let snap: LoopSnapshot | null = null;
+  let health: LoopHealth | null = null;
   let loading = true;
   let loadError = '';
   let flash = '';
 
   async function refresh() {
     try {
-      snap = await getLoopEngineering();
+      // Config and health are independent reads — fetch concurrently.
+      [snap, health] = await Promise.all([getLoopEngineering(), getLoopHealth()]);
       loadError = '';
     } catch (e) {
       loadError = e instanceof Error ? e.message : 'failed to load';
@@ -38,6 +44,24 @@
   }
 
   onMount(refresh);
+
+  // ── Loop Health derived series ───────────────────────────────────────────────
+  $: scoreSeries = (health?.attempts ?? []).map((a) => a.test_pass_rate);
+  $: diffSeries = (health?.attempts ?? []).map((a) => a.diff_lines);
+  $: costSeries = (health?.burn ?? []).map((b) => b.cost_usd);
+  $: pressureSeries = (health?.burn ?? []).map((b) => b.context_pressure);
+  $: outcomeTotal = (health?.outcomes ?? []).reduce((n, o) => n + o.count, 0);
+
+  function pct(x: number): string {
+    return `${Math.round(x * 100)}%`;
+  }
+
+  // Outcome → accent. success is calm jade; stuck/failed runs heat up.
+  function outcomeColor(label: string): string {
+    if (label === 'success') return 'var(--konjo-jade)';
+    if (label === 'retry') return 'var(--konjo-sun)';
+    return 'var(--konjo-rose)';
+  }
 
   // The autonomy ladder, as Dropdown options.
   $: autonomyOptions = (snap?.autonomy_levels ?? []).map(
@@ -102,6 +126,120 @@
   {:else if loadError}
     <EmptyState title="Couldn't load loop engineering" detail={loadError} />
   {:else if snap}
+    <!-- Loop Health — the visibility pillar: is the loop actually working? -->
+    {#if health}
+      <Panel title="Loop Health" subtitle="observe · evaluate · improve">
+        <div slot="actions">
+          <span class="font-mono text-[10px] opacity-40 uppercase tracking-widest">
+            {health.stats.attempts} attempts · {health.stats.runs} runs
+          </span>
+        </div>
+
+        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+          <StatCard
+            label="Success rate"
+            value={pct(health.stats.success_rate)}
+            color={health.stats.success_rate >= 0.8
+              ? 'var(--konjo-jade)'
+              : health.stats.success_rate >= 0.5
+                ? 'var(--konjo-sun)'
+                : 'var(--konjo-rose)'}
+          />
+          <StatCard
+            label="Verifier pass"
+            value={health.stats.verifier_total === 0 ? '—' : pct(health.stats.verifier_pass_rate)}
+            color="var(--konjo-ice)"
+          />
+          <StatCard label="Runs" value={health.stats.runs} />
+          <StatCard label="Spend" value={`$${health.stats.spend_usd.toFixed(2)}`} color="var(--konjo-sun)" />
+          <StatCard
+            label="Tokens"
+            value={health.stats.tokens >= 1000
+              ? `${(health.stats.tokens / 1000).toFixed(1)}k`
+              : health.stats.tokens}
+          />
+        </div>
+
+        {#if scoreSeries.length > 0}
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-5 mt-5">
+            <div>
+              <div class="flex items-center justify-between mb-1.5">
+                <span class="font-mono text-[10px] uppercase tracking-widest opacity-40"
+                  >Score / attempt</span
+                >
+                <span class="font-mono text-[10px] text-konjo-jade"
+                  >{pct(scoreSeries[scoreSeries.length - 1])}</span
+                >
+              </div>
+              <Sparkline values={scoreSeries} color="var(--konjo-jade)" min={0} max={1} />
+            </div>
+            <div>
+              <div class="flex items-center justify-between mb-1.5">
+                <span class="font-mono text-[10px] uppercase tracking-widest opacity-40"
+                  >Context pressure</span
+                >
+                <span class="font-mono text-[10px] text-konjo-ice"
+                  >{pressureSeries.length ? pct(pressureSeries[pressureSeries.length - 1]) : '—'}</span
+                >
+              </div>
+              <Sparkline values={pressureSeries} color="var(--konjo-ice)" min={0} max={1} />
+            </div>
+            <div>
+              <div class="flex items-center justify-between mb-1.5">
+                <span class="font-mono text-[10px] uppercase tracking-widest opacity-40"
+                  >Diff size / attempt</span
+                >
+                <span class="font-mono text-[10px] opacity-60"
+                  >{diffSeries[diffSeries.length - 1]}L</span
+                >
+              </div>
+              <Sparkline values={diffSeries} color="var(--konjo-accent)" min={null} max={null} />
+            </div>
+            <div>
+              <div class="flex items-center justify-between mb-1.5">
+                <span class="font-mono text-[10px] uppercase tracking-widest opacity-40"
+                  >Cost burn / turn</span
+                >
+                <span class="font-mono text-[10px] text-konjo-sun"
+                  >${health.stats.spend_usd.toFixed(2)}</span
+                >
+              </div>
+              <Sparkline values={costSeries} color="var(--konjo-sun)" min={null} max={null} />
+            </div>
+          </div>
+
+          <!-- Outcome distribution -->
+          {#if outcomeTotal > 0}
+            <div class="mt-5">
+              <div class="font-mono text-[10px] uppercase tracking-widest opacity-40 mb-2">
+                Outcome distribution
+              </div>
+              <div class="flex h-2.5 rounded-full overflow-hidden bg-konjo-black/40">
+                {#each health.outcomes as o}
+                  <div
+                    style="width: {(o.count / outcomeTotal) * 100}%; background: {outcomeColor(o.label)}"
+                    title="{o.label}: {o.count}"
+                  ></div>
+                {/each}
+              </div>
+              <div class="flex flex-wrap gap-x-4 gap-y-1 mt-2">
+                {#each health.outcomes as o}
+                  <span class="font-mono text-[10px] opacity-60 flex items-center gap-1.5">
+                    <span class="w-2 h-2 rounded-full" style="background: {outcomeColor(o.label)}"></span>
+                    {o.label} · {o.count}
+                  </span>
+                {/each}
+              </div>
+            </div>
+          {/if}
+        {:else}
+          <div class="mt-4">
+            <EmptyState title="No loop telemetry yet" detail="Run a loop to populate health metrics." />
+          </div>
+        {/if}
+      </Panel>
+    {/if}
+
     <!-- Effective loop config -->
     <Panel title="Effective Config" subtitle=".lopi/loop.toml">
       <div slot="actions">

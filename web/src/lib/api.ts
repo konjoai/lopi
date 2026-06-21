@@ -231,7 +231,46 @@ export interface LoopSnapshot {
   gates: LoopGate[];
 }
 
+/** Headline KPI tiles for the Loop Health view. */
+export interface LoopHealthStats {
+  runs: number;
+  attempts: number;
+  success_rate: number;
+  verifier_pass_rate: number;
+  verifier_total: number;
+  spend_usd: number;
+  tokens: number;
+}
+
+/** One attempt in the score/diff timeline (oldest → newest). */
+export interface LoopHealthAttempt {
+  task_id: string;
+  attempt: number;
+  test_pass_rate: number;
+  lint_errors: number;
+  diff_lines: number;
+  outcome: string;
+  created_at: string;
+}
+
+/** One sample in the token/cost burn series (oldest → newest). */
+export interface LoopHealthBurn {
+  cost_usd: number;
+  tokens: number;
+  context_pressure: number;
+  timestamp: string;
+}
+
+/** The loop-health snapshot from `GET /api/loop-engineering/health`. */
+export interface LoopHealth {
+  stats: LoopHealthStats;
+  attempts: LoopHealthAttempt[];
+  outcomes: { label: string; count: number }[];
+  burn: LoopHealthBurn[];
+}
+
 export const getLoopEngineering = () => request<LoopSnapshot>('/api/loop-engineering');
+export const getLoopHealth = () => request<LoopHealth>('/api/loop-engineering/health');
 export const setScheduleAutonomy = (id: string, level: string) =>
   request<{ id: string; autonomy_level: string }>(
     `/api/schedules/${encodeURIComponent(id)}/autonomy`,
