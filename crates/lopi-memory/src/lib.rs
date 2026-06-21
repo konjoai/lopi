@@ -5,7 +5,8 @@ pub mod store;
 pub use store::{
     compute_cache_key, AuditInput, AuditQuery, AuditRow, CacheStats, CachedResult, CheckpointInput,
     CheckpointRow, DagNodeRow, DeadLetterInput, DeadLetterRow, InstallationRow, LessonRow,
-    MemoryStore, PatternRow, QualityRunRecord, QualityRunRow, ScheduleInput, ScheduleRow,
+    LoopAttemptRow, LoopTurnRow, MemoryStore, PatternRow, QualityRunRecord, QualityRunRow,
+    ScheduleInput, ScheduleRow,
     ScheduleRunRow, StabilityEntry, StabilityRecord, TaskLogRow, TaskRow, VerifierVerdictRow,
     TASK_LOG_MAX_PER_TASK,
 };

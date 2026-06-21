@@ -314,6 +314,10 @@ pub fn build_app(state: AppState) -> Router {
             axum::routing::post(schedule_handlers::set_autonomy),
         )
         .route("/api/loop-engineering", get(loop_handlers::get_loop))
+        .route(
+            "/api/loop-engineering/health",
+            get(loop_health_handlers::get_loop_health),
+        )
         .route("/api/config", get(config_handlers::get_config))
         .route("/api/version", get(config_handlers::get_version))
         .route_layer(middleware::from_fn_with_state(
@@ -420,6 +424,7 @@ mod dlq_handlers;
 mod handlers;
 mod health_handlers;
 mod loop_handlers;
+mod loop_health_handlers;
 mod repos_handlers;
 mod schedule_handlers;
 mod static_assets;
