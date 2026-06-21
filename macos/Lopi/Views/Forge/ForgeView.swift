@@ -15,16 +15,24 @@ struct ForgeView: View {
         .background(Konjo.bg)
         .toolbar {
             ToolbarItemGroup(placement: .automatic) {
-                Button { layout.removePane() } label: { Image(systemName: "rectangle.split.2x1") }
-                    .help("Remove pane")
-                    .disabled(layout.slots.count <= PaneLayout.minPanes)
+                Button { layout.removePane() } label: {
+                    Image(systemName: "minus")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(Konjo.fgDim)
+                }
+                .buttonStyle(.plain)
+                .focusEffectDisabled()
+                .help("Remove pane")
+                .disabled(layout.slots.count <= PaneLayout.minPanes)
                 Text("\(layout.slots.count)")
                     .font(Konjo.mono(11)).foregroundStyle(Konjo.fgDim).monospacedDigit()
                 Button { layout.addPane() } label: {
-                    Image(systemName: "plus.rectangle")
-                        .font(.system(size: 26, weight: .medium))
+                    Image(systemName: "plus")
+                        .font(.system(size: 22, weight: .semibold))
                         .foregroundStyle(Konjo.ice)
                 }
+                .buttonStyle(.plain)
+                .focusEffectDisabled()
                 .help("Add pane")
                 .disabled(layout.slots.count >= PaneLayout.maxPanes)
             }
