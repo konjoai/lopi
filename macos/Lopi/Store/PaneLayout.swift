@@ -75,12 +75,18 @@ final class PaneLayout {
         persist()
     }
 
-    /// Close a pane: empties the slot and parks the session in the sidebar.
-    /// The session itself is untouched (no server DELETE).
+    /// Close a pane: removes the tile so the grid re-flows to equal sizes, and
+    /// parks any session it held in the sidebar (the session itself is
+    /// untouched — no server DELETE). The last remaining pane is emptied rather
+    /// than removed so the cockpit never goes completely blank.
     func closePane(_ index: Int) {
         guard slots.indices.contains(index) else { return }
         if let id = slots[index] { closed.insert(id) }
-        slots[index] = nil
+        if slots.count > Self.minPanes {
+            slots.remove(at: index)
+        } else {
+            slots[index] = nil
+        }
         persist()
     }
 
