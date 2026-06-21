@@ -259,7 +259,7 @@ mod tests {
             rubric: None,
             topology: None,
             require_plan_approval: false,
-        }
+            autonomy_level: Default::default(),        }
     }
 
     #[test]

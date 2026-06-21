@@ -130,6 +130,16 @@ struct LopiClient {
         _ = try await send("DELETE", "/api/schedules/\(id)", body: Optional<Int>.none)
     }
 
+    // Loop Engineering
+
+    func loopEngineering() async throws -> LoopSnapshot {
+        try await get("/api/loop-engineering")
+    }
+
+    func setScheduleAutonomy(id: String, level: String) async throws {
+        _ = try await send("POST", "/api/schedules/\(id)/autonomy", body: ["level": level])
+    }
+
     // MARK: Core request machinery
 
     func get<T: Decodable>(_ path: String) async throws -> T {

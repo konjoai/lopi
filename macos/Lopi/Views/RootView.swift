@@ -7,6 +7,7 @@ enum NavSection: String, CaseIterable, Identifiable {
     case budget = "Budget"
     case tasks = "Tasks"
     case cron = "Cron"
+    case loop = "Loop"
     case constellations = "Constellations"
     case deadLetter = "Dead-Letter"
     case tools = "Tools"
@@ -24,6 +25,7 @@ enum NavSection: String, CaseIterable, Identifiable {
         case .budget: return "dollarsign.circle"
         case .tasks: return "list.bullet.rectangle"
         case .cron: return "clock.arrow.circlepath"
+        case .loop: return "arrow.triangle.2.circlepath"
         case .constellations: return "circle.hexagongrid"
         case .deadLetter: return "tray.full"
         case .tools: return "wrench.and.screwdriver"
@@ -215,6 +217,7 @@ struct RootView: View {
         case .budget: BudgetView()
         case .tasks: TasksView()
         case .cron: CronView()
+        case .loop: LoopView()
         case .constellations: ConstellationsView()
         case .deadLetter: DeadLetterView()
         case .tools: ToolsView()

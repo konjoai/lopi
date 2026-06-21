@@ -4,6 +4,19 @@
 
 ### Added
 
+**Loop Engineering — Phase 16.2 sidebar screen** (`lopi-ui`, `web/`, `macos/`)
+- **`GET /api/loop-engineering`** aggregation endpoint composes one read-only
+  snapshot for the primary repo: effective `.lopi/loop.toml` (with validation),
+  the L1–L4 autonomy ladder, discovered skills (`.claude/skills/*/SKILL.md`) +
+  rules (`.claude/rules/*.md`), live schedules with their trust level, and the
+  Konjo quality-gate catalog.
+- **New Loop screen on both surfaces** (web `/loop`, macOS `Loop` nav) rendering
+  that snapshot in Konjo identity: Effective Config card, the colored autonomy
+  ladder, scheduled loops each with a **Trust-Level dropdown** (the one writable
+  control → `POST /api/schedules/:id/autonomy`), skills, rule chips, and the
+  three quality-gate walls. Built in lockstep — the web and macOS screens share
+  the same payload and layout.
+
 **Loop Engineering — Phase 16.1 backend** (`lopi-core`, `lopi-memory`, `lopi-ui`, CLI)
 - **`LoopConfig` + `AutonomyLevel`** (`crates/lopi-core/src/loop_config.rs`): the
   "loop as code" schema loaded from `<repo>/.lopi/loop.toml` (autonomy level,

@@ -173,6 +173,71 @@ export const runScheduleNow = (id: string) =>
     { method: 'POST' }
   );
 
+// ── Loop Engineering ──────────────────────────────────────────────────────────
+/** One pickable trust level on the L1–L4 autonomy ladder. */
+export interface AutonomyOption {
+  value: string;
+  tag: string;
+  label: string;
+  opens_pr: boolean;
+  requires_verifier: boolean;
+  allows_auto_merge: boolean;
+}
+
+/** Effective `.lopi/loop.toml` plus validation envelope. */
+export interface LoopConfig {
+  autonomy_level: string;
+  autonomy_tag: string;
+  autonomy_label: string;
+  vision_path: string | null;
+  skills_enabled: string[];
+  rules_enabled: string[];
+  permission_allow: string[];
+  permission_deny: string[];
+  no_progress_limit: number;
+  max_iterations: number;
+  budget_tokens: number;
+  valid: boolean;
+  issues: string[];
+}
+
+/** A schedule projected for the Loop screen, carrying its trust level. */
+export interface LoopSchedule {
+  id: string;
+  name: string;
+  goal: string;
+  cron: string;
+  enabled: boolean;
+  autonomy_level: string;
+  autonomy_tag: string;
+  autonomy_label: string;
+}
+
+/** A Konjo quality wall surfaced as a loop guardrail gate. */
+export interface LoopGate {
+  wall: string;
+  name: string;
+  checks: string;
+}
+
+/** The full Loop Engineering snapshot from `GET /api/loop-engineering`. */
+export interface LoopSnapshot {
+  repo: string;
+  config: LoopConfig;
+  autonomy_levels: AutonomyOption[];
+  skills: { name: string; description: string }[];
+  rules: { name: string }[];
+  schedules: LoopSchedule[];
+  gates: LoopGate[];
+}
+
+export const getLoopEngineering = () => request<LoopSnapshot>('/api/loop-engineering');
+export const setScheduleAutonomy = (id: string, level: string) =>
+  request<{ id: string; autonomy_level: string }>(
+    `/api/schedules/${encodeURIComponent(id)}/autonomy`,
+    json('POST', { level })
+  );
+
 // ── Config + version ──────────────────────────────────────────────────────────
 export const getConfig = () =>
   request<{ config: Record<string, unknown> | null; source: string }>('/api/config');

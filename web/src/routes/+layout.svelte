@@ -37,6 +37,7 @@
     { href: '/tasks', label: 'Tasks' },
     { href: '/router', label: 'Router' },
     { href: '/schedules', label: 'Schedules' },
+    { href: '/loop', label: 'Loop' },
     { href: '/tools', label: 'Tools' },
     { href: '/logs', label: 'Logs' },
     { href: '/config', label: 'Config' },
