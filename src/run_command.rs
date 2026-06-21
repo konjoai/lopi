@@ -60,9 +60,19 @@ pub async fn run(
     println!("   use `lopi watch` in another terminal for the TUI");
     println!();
 
-    let mut runner = AgentRunner::standalone(task.clone(), repo).0;
+    // Loop-as-code: honor the repo's `.lopi/loop.toml` self-prompting strategy.
+    // A malformed file falls back to the conservative default rather than aborting the run.
+    let loop_cfg = lopi_core::LoopConfig::load_from_repo(&repo).unwrap_or_default();
+    let mut runner = AgentRunner::standalone(task.clone(), repo)
+        .0
+        .with_self_prompt(loop_cfg.self_prompt);
     if adaptive_retry {
         runner = runner.with_adaptive_retry();
+        println!(
+            "   self-prompt: {} ({})",
+            loop_cfg.self_prompt.tag(),
+            loop_cfg.self_prompt.label()
+        );
     }
     if stability_gate {
         match AnthropicClient::from_env() {

@@ -314,6 +314,10 @@ pub fn build_app(state: AppState) -> Router {
             axum::routing::post(schedule_handlers::set_autonomy),
         )
         .route("/api/loop-engineering", get(loop_handlers::get_loop))
+        .route(
+            "/api/loop-engineering/strategy",
+            axum::routing::post(loop_handlers::set_strategy),
+        )
         .route("/api/config", get(config_handlers::get_config))
         .route("/api/version", get(config_handlers::get_version))
         .route_layer(middleware::from_fn_with_state(

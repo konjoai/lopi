@@ -433,14 +433,19 @@ impl AgentRunner {
             // next attempt's planning prompt can include it. Only stored
             // when adaptive_retry is enabled to avoid pointless work.
             if self.adaptive_retry {
-                self.last_error = Some(format!(
+                let base_failure = format!(
                     "Attempt {} failed:\n  test_pass_rate: {:.0}%\n  lint_errors: {}\n  diff_lines: {}\n  errors: {}",
                     attempt + 1,
                     score.test_pass_rate * 100.0,
                     score.lint_errors,
                     score.diff_lines,
                     if score.errors.is_empty() { "(none captured)".into() } else { score.errors.join("\n  - ") }
-                ));
+                );
+                // Phase 16.4 — reframe the raw failure per the self-prompting
+                // strategy. `Direct` returns it unchanged (legacy behaviour);
+                // richer strategies prepend a Reflexion / Self-Refine /
+                // Plan-Then-Act preamble that the next planning prompt sees.
+                self.last_error = Some(self.self_prompt.frame(&base_failure, attempt + 1));
             }
 
             git.hard_rollback().await.ok();

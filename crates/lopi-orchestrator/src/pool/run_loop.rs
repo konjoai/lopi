@@ -326,6 +326,18 @@ async fn run_one(
     let goal = task.goal.clone();
 
     let weights = compute_weight_adjustments(&goal, store.as_ref()).await;
+    // Loop-as-code: read the repo's self-prompting strategy off the reactor.
+    // A missing/malformed `.lopi/loop.toml` yields the conservative default.
+    let self_prompt = {
+        let repo = repo.clone();
+        tokio::task::spawn_blocking(move || {
+            lopi_core::LoopConfig::load_from_repo(&repo)
+                .unwrap_or_default()
+                .self_prompt
+        })
+        .await
+        .unwrap_or_default()
+    };
     let mut runner = AgentRunner::new(
         task,
         repo,
@@ -335,6 +347,7 @@ async fn run_one(
         attempt_counter,
     )
     .with_score_weights(weights)
+    .with_self_prompt(self_prompt)
     .with_plan_gate(plan_decision_rx);
     let outcome = runner.run().await?;
 

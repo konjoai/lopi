@@ -13,8 +13,10 @@
   import {
     getLoopEngineering,
     setScheduleAutonomy,
+    setLoopStrategy,
     type LoopSnapshot,
-    type AutonomyOption
+    type AutonomyOption,
+    type SelfPromptOption
   } from '$lib/api';
   import Panel from '$lib/components/ui/Panel.svelte';
   import EmptyState from '$lib/components/ui/EmptyState.svelte';
@@ -69,6 +71,44 @@
     } catch (e) {
       loadError = e instanceof Error ? e.message : 'update failed';
     }
+  }
+
+  // The strategy whose self-prompt preview is currently shown. Defaults to the
+  // repo's effective strategy; clicking a card focuses it.
+  let focusedStrategy = '';
+  $: strategyOptions = (snap?.self_prompt_strategies ?? []).map(
+    (st: SelfPromptOption): Option => ({ value: st.value, label: `${st.tag} · ${st.label}` })
+  );
+  $: activeStrategy = focusedStrategy || snap?.config.self_prompt || 'direct';
+  $: previewStrategy =
+    (snap?.self_prompt_strategies ?? []).find((st) => st.value === activeStrategy) ?? null;
+
+  async function changeStrategy(strategy: string) {
+    try {
+      await setLoopStrategy(strategy);
+      focusedStrategy = strategy;
+      flash = 'self-prompting strategy saved to .lopi/loop.toml';
+      setTimeout(() => (flash = ''), 2200);
+      await refresh();
+    } catch (e) {
+      loadError = e instanceof Error ? e.message : 'update failed';
+    }
+  }
+
+  // Accent per strategy: more scaffolding = warmer.
+  function strategyColor(tag: string): string {
+    return (
+      { S1: 'text-konjo-ice', S2: 'text-konjo-jade', S3: 'text-konjo-sun', S4: 'text-konjo-ember' }[
+        tag
+      ] ?? 'text-konjo-accent'
+    );
+  }
+
+  // Border accent for a strategy card: active (saved) > focused (previewing) > idle.
+  function strategyBorder(value: string): string {
+    if (value === snap?.config.self_prompt) return 'border-konjo-accent';
+    if (value === activeStrategy) return 'border-white/30';
+    return 'border-white/5';
   }
 
   function fmtBudget(t: number): string {
@@ -163,6 +203,53 @@
           </div>
         {/each}
       </div>
+    </Panel>
+
+    <!-- Self-prompting strategy: how the agent re-prompts itself on retry -->
+    <Panel title="Self-Prompting Strategy" subtitle="how the loop re-prompts itself after a failed attempt">
+      <div slot="actions" class="w-52">
+        <Dropdown
+          value={snap.config.self_prompt}
+          options={strategyOptions}
+          on:change={(e) => changeStrategy(e.detail)}
+        />
+      </div>
+      <p class="font-mono text-[11px] opacity-50 mb-3 leading-relaxed">
+        The single highest-leverage loop lever — the text the agent feeds back into its own next
+        plan. Picking one writes <span class="text-konjo-accent">.lopi/loop.toml</span> (loop-as-code)
+        and the runner honors it live on the next adaptive retry.
+      </p>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        {#each snap.self_prompt_strategies as st}
+          <button
+            type="button"
+            class="text-left rounded-lg border bg-konjo-black/40 p-3 transition-colors {strategyBorder(
+              st.value
+            )}"
+            on:click={() => (focusedStrategy = st.value)}
+          >
+            <div class="flex items-center gap-2">
+              <span class="font-mono text-sm font-bold {strategyColor(st.tag)}">{st.tag}</span>
+              <span class="font-display text-[13px]">{st.label}</span>
+              {#if st.value === snap.config.self_prompt}
+                <span class="ml-auto font-mono text-[9px] uppercase tracking-widest text-konjo-jade"
+                  >active</span
+                >
+              {/if}
+            </div>
+            <div class="font-mono text-[10px] opacity-50 mt-1.5 leading-relaxed">{st.description}</div>
+          </button>
+        {/each}
+      </div>
+      {#if previewStrategy}
+        <div class="mt-4">
+          <div class="font-mono text-[10px] uppercase tracking-widest opacity-40 mb-1.5">
+            Self-prompt preview — {previewStrategy.tag} · {previewStrategy.label}
+          </div>
+          <pre
+            class="font-mono text-[11px] leading-relaxed whitespace-pre-wrap rounded-lg border border-white/5 bg-konjo-black/60 p-3 opacity-80 max-h-72 overflow-auto">{previewStrategy.preview}</pre>
+        </div>
+      {/if}
     </Panel>
 
     <!-- Schedules with the trust-level dropdown (the one writable control) -->
