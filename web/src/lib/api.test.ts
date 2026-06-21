@@ -11,7 +11,8 @@ import {
   deleteDlq,
   getConfig,
   getLoopEngineering,
-  setLoopStrategy
+  setLoopStrategy,
+  setLoopEscalation
 } from './api';
 
 let pass = 0;
@@ -106,6 +107,13 @@ async function main() {
   eq(captured[0].init?.method, 'POST', 'setLoopStrategy POSTs');
   eq(JSON.parse(String(captured[0].init?.body)).strategy, 'reflexion', 'sends strategy tag');
   eq(saved.self_prompt_tag, 'S2', 'returns saved strategy');
+
+  // Loop Engineering: escalation toggle POSTs the enabled flag.
+  mockFetch(200, { escalate_strategy: true });
+  const esc = await setLoopEscalation(true);
+  eq(captured[0].path, '/api/loop-engineering/escalation', 'setLoopEscalation hits endpoint');
+  eq(JSON.parse(String(captured[0].init?.body)).enabled, true, 'sends enabled flag');
+  eq(esc.escalate_strategy, true, 'returns escalation state');
 
   // Error body message surfaces in ApiError.
   mockFetch(404, { error: 'schedule not found' });

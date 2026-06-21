@@ -164,8 +164,50 @@ struct LoopView: View {
                             .textSelection(.enabled)
                     }
                 }
+                escalationRow(snap.config)
             }
         }
+    }
+
+    /// Adaptive-escalation toggle + the per-attempt ladder it produces.
+    private func escalationRow(_ c: LoopConfigDTO) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Toggle(isOn: Binding(
+                get: { c.escalateStrategy },
+                set: { newValue in Task { await model.setLoopEscalation(newValue) } }
+            )) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Adaptive escalation").font(Konjo.sans(13)).foregroundStyle(Konjo.fg)
+                    Text("Climb one rung up the ladder each failed attempt.")
+                        .font(Konjo.mono(10)).foregroundStyle(Konjo.fgMute)
+                }
+            }
+            .toggleStyle(.switch)
+            .tint(Konjo.jade)
+            if c.escalateStrategy {
+                HStack(spacing: 6) {
+                    ForEach(Array(c.escalationLadder.enumerated()), id: \.element.id) { idx, rung in
+                        if idx > 0 {
+                            Text("→").font(Konjo.mono(10)).foregroundStyle(Konjo.fgMute)
+                        }
+                        HStack(spacing: 4) {
+                            Text("#\(rung.attempt)").font(Konjo.mono(10)).foregroundStyle(Konjo.fgMute)
+                            Text(rung.tag).font(Konjo.mono(10, weight: .bold))
+                                .foregroundStyle(strategyColor(rung.tag))
+                        }
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(Konjo.bg2)
+                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Konjo.line2, lineWidth: 1))
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                    }
+                }
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Konjo.bg2)
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Konjo.line, lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
     private func strategyCard(_ st: LoopSelfPromptOption, active: Bool) -> some View {

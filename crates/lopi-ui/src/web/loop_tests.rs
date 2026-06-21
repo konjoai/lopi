@@ -98,6 +98,42 @@ async fn set_strategy_persists_loop_as_code_and_round_trips() {
 }
 
 #[tokio::test]
+async fn snapshot_carries_escalation_ladder_and_flag() {
+    let repo = loop_temp_repo("escalation_snapshot");
+    let app = test_app_with_repo(repo).await;
+
+    let (status, json) = get_json(&app, "/api/loop-engineering").await;
+    assert_eq!(status, StatusCode::OK);
+    // Default: escalation off, ladder present and climbing from S1.
+    assert_eq!(json["config"]["escalate_strategy"], false);
+    let ladder = json["config"]["escalation_ladder"].as_array().unwrap();
+    assert_eq!(ladder.len(), 4);
+    assert_eq!(ladder[0]["tag"], "S1");
+    assert_eq!(ladder[3]["tag"], "S4");
+}
+
+#[tokio::test]
+async fn set_escalation_persists_and_round_trips() {
+    let repo = loop_temp_repo("set_escalation");
+    let app = test_app_with_repo(repo.clone()).await;
+
+    let (status, json) = post_json(
+        &app,
+        "/api/loop-engineering/escalation",
+        serde_json::json!({ "enabled": true }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["escalate_strategy"], true);
+
+    let written = std::fs::read_to_string(repo.join(".lopi/loop.toml")).unwrap();
+    assert!(written.contains("escalate_strategy = true"));
+
+    let (_, snap) = get_json(&app, "/api/loop-engineering").await;
+    assert_eq!(snap["config"]["escalate_strategy"], true);
+}
+
+#[tokio::test]
 async fn set_strategy_rejects_unknown_tag() {
     let repo = loop_temp_repo("bad_strategy");
     let app = test_app_with_repo(repo.clone()).await;

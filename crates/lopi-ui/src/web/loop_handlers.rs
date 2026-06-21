@@ -84,7 +84,20 @@ fn loop_config_json(cfg: &LoopConfig, issues: &[String]) -> Value {
     value["autonomy_tag"] = json!(cfg.autonomy_level.tag());
     value["self_prompt_tag"] = json!(cfg.self_prompt.tag());
     value["self_prompt_label"] = json!(cfg.self_prompt.label());
+    value["escalation_ladder"] = json!(escalation_ladder(cfg.self_prompt));
     value
+}
+
+/// The per-attempt strategy ladder for a base strategy when escalation is on:
+/// attempts 1..=4, each climbing one S-rung (capped at S4). Powers the UI's
+/// "what each attempt would use" visualization regardless of the current toggle.
+fn escalation_ladder(base: SelfPromptStrategy) -> Vec<Value> {
+    (1u8..=4)
+        .map(|attempt| {
+            let st = SelfPromptStrategy::escalated(base, attempt);
+            json!({ "attempt": attempt, "tag": st.tag(), "label": st.label() })
+        })
+        .collect()
 }
 
 /// Each `.claude/skills/<name>/SKILL.md` → `{name, description}`.
@@ -204,6 +217,14 @@ pub(super) struct StrategyBody {
     pub strategy: String,
 }
 
+/// Body for `POST /api/loop-engineering/escalation` — the adaptive-escalation
+/// toggle on the Loop screen writes here.
+#[derive(Debug, Deserialize)]
+pub(super) struct EscalationBody {
+    /// Whether the self-prompt strategy escalates one rung per failed attempt.
+    pub enabled: bool,
+}
+
 /// `POST /api/loop-engineering/strategy` — set the repo's self-prompting
 /// strategy and persist it to `.lopi/loop.toml` (loop-as-code, written back).
 ///
@@ -220,28 +241,56 @@ pub(super) async fn set_strategy(
         )
             .into_response();
     };
-    let repo: PathBuf = s.repo_path.clone();
-    // Load → mutate → persist runs off the async reactor (filesystem + TOML).
+    persist_loop_update(
+        s.repo_path.clone(),
+        move |cfg| cfg.self_prompt = strategy,
+        json!({
+            "self_prompt": strategy.tag_snake(),
+            "self_prompt_tag": strategy.tag(),
+            "self_prompt_label": strategy.label(),
+        }),
+    )
+    .await
+}
+
+/// `POST /api/loop-engineering/escalation` — toggle adaptive strategy escalation
+/// and persist it to `.lopi/loop.toml`.
+pub(super) async fn set_escalation(
+    State(s): State<AppState>,
+    Json(body): Json<EscalationBody>,
+) -> impl IntoResponse {
+    let enabled = body.enabled;
+    persist_loop_update(
+        s.repo_path.clone(),
+        move |cfg| cfg.escalate_strategy = enabled,
+        json!({ "escalate_strategy": enabled }),
+    )
+    .await
+}
+
+/// Load → mutate → persist a [`LoopConfig`] for `repo` off the async reactor,
+/// returning `ok_body` on success. Shared by every loop-as-code write so the
+/// filesystem/TOML round-trip and error mapping live in exactly one place.
+async fn persist_loop_update<F>(
+    repo: PathBuf,
+    mutate: F,
+    ok_body: Value,
+) -> axum::response::Response
+where
+    F: FnOnce(&mut LoopConfig) + Send + 'static,
+{
     let result = tokio::task::spawn_blocking(move || {
         let mut cfg = LoopConfig::load_from_repo(&repo)?;
-        cfg.self_prompt = strategy;
+        mutate(&mut cfg);
         cfg.save_to_repo(&repo)?;
         anyhow::Ok(())
     })
     .await;
 
     match result {
-        Ok(Ok(())) => (
-            StatusCode::OK,
-            Json(json!({
-                "self_prompt": strategy.tag_snake(),
-                "self_prompt_tag": strategy.tag(),
-                "self_prompt_label": strategy.label(),
-            })),
-        )
-            .into_response(),
+        Ok(Ok(())) => (StatusCode::OK, Json(ok_body)).into_response(),
         Ok(Err(e)) => {
-            tracing::warn!("set loop strategy failed: {e:#}");
+            tracing::warn!("loop config update failed: {e:#}");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({ "error": format!("{e:#}") })),
@@ -249,7 +298,7 @@ pub(super) async fn set_strategy(
                 .into_response()
         }
         Err(e) => {
-            tracing::warn!("set loop strategy task panicked: {e:#}");
+            tracing::warn!("loop config update task panicked: {e:#}");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({ "error": "internal error" })),
@@ -308,6 +357,22 @@ mod tests {
         assert_eq!(v["self_prompt"], "direct");
         assert_eq!(v["self_prompt_tag"], "S1");
         assert_eq!(v["self_prompt_label"], "Direct");
+        assert_eq!(v["escalate_strategy"], false);
+    }
+
+    #[test]
+    fn escalation_ladder_climbs_from_the_base_strategy() {
+        // From Direct: S1, S2, S3, S4 across attempts 1–4.
+        let ladder = escalation_ladder(SelfPromptStrategy::Direct);
+        assert_eq!(ladder.len(), 4);
+        assert_eq!(ladder[0]["attempt"], 1);
+        assert_eq!(ladder[0]["tag"], "S1");
+        assert_eq!(ladder[3]["tag"], "S4");
+        // From a higher base it caps at S4 early.
+        let from_s3 = escalation_ladder(SelfPromptStrategy::SelfRefine);
+        assert_eq!(from_s3[0]["tag"], "S3");
+        assert_eq!(from_s3[1]["tag"], "S4");
+        assert_eq!(from_s3[3]["tag"], "S4");
     }
 
     #[test]

@@ -87,6 +87,10 @@ pub struct AgentRunner {
     /// Reflexion / Self-Refine / Plan-Then-Act preamble. Only consulted when
     /// `adaptive_retry` is enabled.
     pub(super) self_prompt: SelfPromptStrategy,
+    /// Phase 16.5 — when `true`, the self-prompt strategy escalates one rung up
+    /// the S1→S4 ladder on each failed attempt (from `self_prompt`) instead of
+    /// staying pinned. Only consulted when `adaptive_retry` is enabled.
+    pub(super) escalate_strategy: bool,
     /// Sprint S — when true, the Konjo Verifier second-score pass runs after
     /// the heuristic score passes. Requires `api_client` to be set.
     pub(super) verifier_enabled: bool,
@@ -141,6 +145,7 @@ impl AgentRunner {
             adaptive_retry: false,
             last_error: None,
             self_prompt: SelfPromptStrategy::default(),
+            escalate_strategy: false,
             verifier_enabled: false,
             last_plan: None,
             session_id: Uuid::new_v4(),
@@ -176,6 +181,7 @@ impl AgentRunner {
             adaptive_retry: false,
             last_error: None,
             self_prompt: SelfPromptStrategy::default(),
+            escalate_strategy: false,
             verifier_enabled: false,
             last_plan: None,
             session_id: Uuid::new_v4(),
@@ -265,6 +271,26 @@ impl AgentRunner {
     #[must_use]
     pub const fn self_prompt_strategy(&self) -> SelfPromptStrategy {
         self.self_prompt
+    }
+
+    /// Phase 16.5 — enable adaptive strategy escalation: each failed attempt
+    /// climbs one rung up the S1→S4 ladder (from the configured base strategy)
+    /// instead of staying pinned. Only takes effect with adaptive retry enabled.
+    #[must_use]
+    pub const fn with_strategy_escalation(mut self, escalate: bool) -> Self {
+        self.escalate_strategy = escalate;
+        self
+    }
+
+    /// The effective self-prompt strategy for a 1-based `attempt`, accounting for
+    /// escalation. With escalation off this is always the pinned base strategy.
+    #[must_use]
+    pub fn effective_strategy(&self, attempt: u8) -> SelfPromptStrategy {
+        if self.escalate_strategy {
+            SelfPromptStrategy::escalated(self.self_prompt, attempt)
+        } else {
+            self.self_prompt
+        }
     }
 
     /// Sprint I — attach the Layer 5 patch stability gate.

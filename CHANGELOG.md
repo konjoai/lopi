@@ -4,6 +4,28 @@
 
 ### Added
 
+**Loop Engineering — Phase 16.5 Adaptive Strategy Escalation** (`lopi-core`, `lopi-agent`, `lopi-orchestrator`, `lopi-ui`, web, macOS)
+- **The loop now climbs its own ladder.** Instead of pinning one self-prompt
+  strategy for a whole run, `escalate_strategy` makes the agent apply
+  progressively more cognitive scaffolding the longer a task resists a fix:
+  cheap `Direct` retries first, then Reflexion → Self-Refine → Plan-Then-Act.
+  `SelfPromptStrategy::escalated(base, attempt)` climbs one S-rung per failed
+  attempt (capped at S4, starting from the configured base) — a pure, saturating
+  function. Backed by RefineCoder (arXiv:2502.09183).
+- **Runner** — `AgentRunner::with_strategy_escalation` + `effective_strategy(attempt)`;
+  the adaptive-retry path now frames the failure with the *effective* strategy
+  for that attempt. Loaded from `.lopi/loop.toml` in the `lopi run` CLI and the
+  orchestrator pool.
+- **API** — `GET /api/loop-engineering` config now carries `escalate_strategy`
+  and an `escalation_ladder` (attempt → strategy preview); new
+  `POST /api/loop-engineering/escalation` toggles it (persisted to `.lopi/loop.toml`).
+  All loop-as-code writes now share one `persist_loop_update` helper.
+- **Web + macOS** — an "Adaptive escalation" switch on the Loop screen plus a live
+  per-attempt ladder (`#1 S2 → #2 S3 → #3 S4 …`).
+- **Tests** — pure escalation math (`from_rank`/`escalated`, saturation +
+  base-relative), runner `effective_strategy` unit tests, handler ladder test,
+  two HTTP e2e tests, an `api.test.ts` case; verified live against `lopi sail`.
+
 **Loop Engineering — Phase 16.4 Self-Prompting Strategy Engine** (`lopi-core`, `lopi-agent`, `lopi-orchestrator`, `lopi-ui`, web, macOS)
 - **Direct agents to prompt *themselves*.** A new `SelfPromptStrategy` (S1–S4) is
   the highest-leverage loop lever: the text the agent feeds back into its own

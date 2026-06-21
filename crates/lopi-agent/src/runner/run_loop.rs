@@ -441,11 +441,13 @@ impl AgentRunner {
                     score.diff_lines,
                     if score.errors.is_empty() { "(none captured)".into() } else { score.errors.join("\n  - ") }
                 );
-                // Phase 16.4 — reframe the raw failure per the self-prompting
+                // Phase 16.4/16.5 — reframe the raw failure per the self-prompting
                 // strategy. `Direct` returns it unchanged (legacy behaviour);
                 // richer strategies prepend a Reflexion / Self-Refine /
-                // Plan-Then-Act preamble that the next planning prompt sees.
-                self.last_error = Some(self.self_prompt.frame(&base_failure, attempt + 1));
+                // Plan-Then-Act preamble. With escalation enabled the strategy
+                // climbs one S-rung per failed attempt (see `effective_strategy`).
+                let strategy = self.effective_strategy(attempt + 1);
+                self.last_error = Some(strategy.frame(&base_failure, attempt + 1));
             }
 
             git.hard_rollback().await.ok();

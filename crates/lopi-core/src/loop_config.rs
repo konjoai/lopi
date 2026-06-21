@@ -139,6 +139,11 @@ pub struct LoopConfig {
     /// [`Direct`](SelfPromptStrategy::Direct) — the legacy raw-failure injection.
     #[serde(default)]
     pub self_prompt: SelfPromptStrategy,
+    /// When `true`, the self-prompt strategy **escalates** one rung up the S1→S4
+    /// ladder on each failed attempt (starting from `self_prompt`), instead of
+    /// staying pinned. See [`SelfPromptStrategy::escalated`]. Defaults to `false`.
+    #[serde(default)]
+    pub escalate_strategy: bool,
     /// Path to the intent-anchor doc (VISION.md / AGENTS.md), relative to repo root.
     #[serde(default)]
     pub vision_path: Option<PathBuf>,
@@ -170,6 +175,7 @@ impl Default for LoopConfig {
         Self {
             autonomy_level: AutonomyLevel::default(),
             self_prompt: SelfPromptStrategy::default(),
+            escalate_strategy: false,
             vision_path: None,
             skills_enabled: Vec::new(),
             rules_enabled: Vec::new(),

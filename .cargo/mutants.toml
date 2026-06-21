@@ -10,6 +10,14 @@ exclude_re = [
     ": replace main -> ",
     "replay_commands\\.rs.*: replace run -> ",
     "replay_commands\\.rs.*: replace print_plan ",
+    # `lopi run` CLI entry point — an async IO shell on a par with `main` and
+    # `replay_commands::run`. It opens the store, builds the task, constructs the
+    # runner (delegating to unit-tested `LoopConfig::load_from_repo`,
+    # `AgentRunner::with_self_prompt` / `with_strategy_escalation` /
+    # `with_adaptive_retry`), and awaits `.run().await`. No unit-testable branching
+    # of its own; a "replace body with Ok(())" mutant can only be killed by a full
+    # live-agent harness.
+    "run_command\\.rs.*: replace run -> ",
     # Phase 16.2b — autonomy enforcement. The branching *decisions* live in pure,
     # unit-tested helpers (`pr_decision`, `requires_verifier`, `should_auto_merge`,
     # `plan_gate_applies`, `non_empty_constraint`, `pr_create_args`,
