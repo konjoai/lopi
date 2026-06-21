@@ -13,34 +13,37 @@ struct ForgeView: View {
     var body: some View {
         grid
         .background(Konjo.bg)
-        .toolbar {
-            ToolbarItemGroup(placement: .automatic) {
-                Button { layout.removePane() } label: {
-                    Image(systemName: "minus")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(Konjo.fgDim)
-                }
-                .buttonStyle(.plain)
-                .focusEffectDisabled()
-                .help("Remove pane")
-                .disabled(layout.slots.count <= PaneLayout.minPanes)
-                Text("\(layout.slots.count)")
-                    .font(Konjo.mono(11)).foregroundStyle(Konjo.fgDim).monospacedDigit()
-                Button { layout.addPane() } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: 22, weight: .semibold))
-                        .foregroundStyle(Konjo.ice)
-                }
-                .buttonStyle(.plain)
-                .focusEffectDisabled()
-                .help("Add pane")
-                .disabled(layout.slots.count >= PaneLayout.maxPanes)
-            }
-        }
+        // Custom black bar instead of system toolbar items, which carry an
+        // unwanted grey "glass" well behind their content.
+        .safeAreaInset(edge: .top, spacing: 0) { topBar }
         .onAppear { layout.reconcile(model.liveAgents.keys) }
         .onChange(of: model.liveAgents.keys.sorted()) { _, keys in
             layout.reconcile(keys)
         }
+    }
+
+    private var topBar: some View {
+        HStack(spacing: 12) {
+            ConnectionLED(state: model.connection)
+            Spacer()
+            Button { layout.removePane() } label: {
+                Image(systemName: "minus")
+                    .font(.system(size: 17, weight: .semibold)).foregroundStyle(Konjo.fgDim)
+            }
+            .buttonStyle(.plain).focusEffectDisabled()
+            .help("Remove pane").disabled(layout.slots.count <= PaneLayout.minPanes)
+            Text("\(layout.slots.count)")
+                .font(Konjo.mono(11)).foregroundStyle(Konjo.fgDim).monospacedDigit()
+            Button { layout.addPane() } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 20, weight: .semibold)).foregroundStyle(Konjo.ice)
+            }
+            .buttonStyle(.plain).focusEffectDisabled()
+            .help("Add pane").disabled(layout.slots.count >= PaneLayout.maxPanes)
+        }
+        .padding(.horizontal, 16).padding(.vertical, 8)
+        .background(Konjo.bg)
+        .overlay(Rectangle().fill(Konjo.line).frame(height: 1), alignment: .bottom)
     }
 
     private var grid: some View {

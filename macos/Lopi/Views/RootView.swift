@@ -56,11 +56,9 @@ struct RootView: View {
         } detail: {
             detail
                 .background(Konjo.bg)
-                .toolbar {
-                    ToolbarItem(placement: .principal) {
-                        ConnectionLED(state: model.connection)
-                    }
-                }
+                // Connection state lives in the sidebar footer + the Forge top
+                // bar; keeping it out of the system toolbar avoids the grey
+                // item well.
                 .toolbarBackground(Konjo.bg, for: .windowToolbar)
                 .toolbarBackground(.visible, for: .windowToolbar)
                 .overlay(alignment: .top) { bannerOverlay }
