@@ -89,7 +89,9 @@ half4 forgeOrb(float2 pos, half4 color, float4 bounds,
     float td = time * (0.25 + activity * 0.5);
     float dn1 = snoise(rs * 1.8 + float3(td, 0.0, 0.0));
     float dn2 = snoise(rs * 4.5 + float3(0.0, td * 1.3, 0.0));
-    float disp = (dn1 * 0.7 + dn2 * 0.3) * (0.05 + pressure * 0.17);
+    // Gentle silhouette morph — 10% of the original amplitude so the orb
+    // breathes rather than thrashing.
+    float disp = (dn1 * 0.7 + dn2 * 0.3) * (0.05 + pressure * 0.17) * 0.1;
 
     float baseR = 0.82;
     float radius = baseR + disp;
