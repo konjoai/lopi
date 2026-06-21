@@ -4,6 +4,27 @@
 
 ### Added
 
+**Loop Engineering — Phase 16.3: autonomy enforcement + Loop Health** (`lopi-agent`, `lopi-git`, `lopi-orchestrator`, `lopi-memory`, `lopi-ui`, `web/`, `macos/`)
+- **L1–L4 autonomy now enforced in the runner** (`runner/finalize.rs`). The
+  scheduler copies a schedule's `autonomy_level` onto the fired task (previously
+  stored but never read), and a passing score is finalised per level: **L1**
+  report-only (commit to branch, no PR), **L2** draft PR, **L3** verifier-gated
+  PR, **L4** verify + GitHub native auto-merge. L3+ force the maker/checker
+  verifier regardless of the builder flag. New `GitManager::open_pr_draft` /
+  `enable_auto_merge`.
+- **No-progress stall guard** — the loop halts early when the weighted score
+  stops improving for `LoopConfig.no_progress_limit` consecutive attempts
+  (design-doc gap #7), instead of burning the whole retry budget on a stuck loop.
+- **`GET /api/loop-engineering/health`** projects data the loop already persists
+  (`attempts`, `turn_metrics`, `verifier_verdicts`) into one observability
+  snapshot: headline KPIs (runs, attempts, success rate, verifier pass rate,
+  spend, tokens), per-attempt score series, outcome distribution, token/cost burn.
+- **Loop Health view on both surfaces** — KPI tiles, sparklines (score/attempt,
+  context pressure, diff size, cost burn), and an outcome-distribution bar, led
+  in front of the existing config panels. Web composes `StatCard`+`Sparkline`;
+  macOS composes `Charts.Sparkline`. 26 new unit tests; web `svelte-check` and
+  macOS `xcodebuild` both clean.
+
 **Loop Engineering — Phase 16.2 sidebar screen** (`lopi-ui`, `web/`, `macos/`)
 - **`GET /api/loop-engineering`** aggregation endpoint composes one read-only
   snapshot for the primary repo: effective `.lopi/loop.toml` (with validation),

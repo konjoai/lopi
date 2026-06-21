@@ -135,6 +135,77 @@ to the whole loop.
 - `web/src/routes/loop/` — new route beside `budget/`, `schedules/`, `config/`.
 - macOS: new `Loop` `NavSection` + `LoopView` mirroring the web screen.
 
+## 6. Feature status by app (Phase 16.3)
+
+Status legend: ✅ done · 🟡 partial · ⛔ not started.
+
+### 6a. Web dashboard (SvelteKit · `web/src/routes/loop/`)
+
+| Feature | Status | Notes |
+|---------|:------:|-------|
+| Effective config panel (read) | ✅ | `.lopi/loop.toml` + validation badge |
+| Autonomy ladder display | ✅ | L1–L4 cards, color-coded by trust |
+| Per-schedule trust dropdown (write) | ✅ | `POST /api/schedules/:id/autonomy` |
+| **Autonomy actually enforced in runner** | ✅ | 16.3 — dropdown now changes behaviour |
+| **Loop Health: KPIs + sparklines + outcomes** | ✅ | 16.3 — score/pressure/diff/cost + distribution |
+| Skills list (read) | ✅ | discovered from `.claude/skills` |
+| Rules chips (read) | ✅ | discovered from `.claude/rules` |
+| Quality-gate panel | 🟡 | hardcoded wall strings, not live KCQF thresholds |
+| Per-run drill-down (iteration trace) | ⛔ | aggregate health only; no single-run timeline |
+| Loop config editing (write `loop.toml`) | ⛔ | loop-as-code is repo-edited; no PATCH endpoint |
+| Skill / rule enable-disable toggles | ⛔ | read-only discovery today |
+| VISION.md intent-anchor editor | ⛔ | field exists in schema, no UI |
+| Live SSE health refresh | ⛔ | fetch on mount + after writes only |
+
+### 6b. macOS app (SwiftUI · `macos/Lopi/Views/Loop/`)
+
+Mirrors the web screen one-for-one; same status row-by-row.
+
+| Feature | Status | Notes |
+|---------|:------:|-------|
+| Effective config panel (read) | ✅ | `LoopView.configPanel` |
+| Autonomy ladder display | ✅ | `ladderPanel` |
+| Per-schedule trust dropdown (write) | ✅ | `KonjoMenu` → `setScheduleAutonomy` |
+| **Loop Health: KPIs + sparklines + outcomes** | ✅ | 16.3 — `healthPanel` via `Charts.Sparkline` |
+| Skills / rules panels (read) | ✅ | `skillsPanel` / `rulesPanel` |
+| Quality-gate panel | 🟡 | same hardcoded strings as web |
+| Per-run drill-down (iteration trace) | ⛔ | — |
+| Loop config editing | ⛔ | — |
+| Skill / rule toggles | ⛔ | — |
+| VISION.md editor | ⛔ | — |
+| Live push health refresh | ⛔ | `.task` + `.refreshable` only |
+
+### 6c. Shared backend
+
+| Capability | Status | Location |
+|------------|:------:|----------|
+| `LoopConfig` schema + validate | ✅ | `lopi-core/src/loop_config.rs` |
+| Autonomy enforcement (L1–L4) | ✅ | `lopi-agent/src/runner/finalize.rs` |
+| No-progress stall guard | ✅ | `run_loop.rs` + `finalize.rs` (`update_no_progress_streak`) |
+| Draft PR / auto-merge git ops | ✅ | `lopi-git` `open_pr_draft` / `enable_auto_merge` |
+| Loop Health projections + endpoint | ✅ | `lopi-memory/store/loop_health.rs` · `lopi-ui/.../loop_health_handlers.rs` |
+| `loop.toml` mutation endpoint | ⛔ | gap — needed for config-editing UI |
+| Typed `RunOutcome` enum | ⛔ | `AgentRun.outcome` is still a free string |
+| `AgentEvent::ProgressStall` event | ⛔ | stall surfaces via status + log today |
+| Hill-climbing meta-loop (`lopi-optimize`) | ⛔ | traces collected, never consumed to self-tune |
+
+## 7. Roadmap — next most impactful loop features
+
+Ranked by impact-to-effort for subsequent prompts. (1) is the natural next flagship.
+
+| # | Feature | Impact | Effort | Sketch |
+|---|---------|:------:|:------:|--------|
+| 1 | **Per-run drill-down trace** | High | Med | Click a run → iteration timeline (plan→implement→test→score per attempt), diff-per-iteration, verifier verdicts. `GET /api/runs/:id/trace` over `attempts`+`turn_metrics`+`verifier_verdicts`. The single-run counterpart to the aggregate health view. |
+| 2 | **LoopConfig write path** | High | Med | `PATCH /api/loop-engineering` writes back `.lopi/loop.toml`; config-editor UI in both apps. Makes loop-as-code editable from the cockpit, not just the repo. |
+| 3 | **Structured GoalContract** | High | Med | Replace the raw `goal: String` with `{end_state, evidence[], constraints[], turn_cap, usd_cap}`; verifier evaluates the evidence predicates. Turns "stop when tests pass" into a real, inspectable contract. |
+| 4 | **Intra-turn stall detection** | Med-High | Med | `PreToolUse`/`PostToolUse` hooks fingerprint `(tool, args, result)` in a sliding window; abort tight tool loops inside one turn (the coarse outer guard shipped in 16.3 only fires between attempts). |
+| 5 | **Hill-climbing meta-loop** (`lopi-optimize`) | High | High | Periodic job: read trace DB → analysis agent finds elevated tool-error rates / chronically-failing goals → surfaces recommended `loop.toml` / rubric changes for operator approval (AWS AgentCore pattern). |
+| 6 | **Live SSE Loop Health** | Med | Low | Stream attempt/turn events to the dashboard so health updates without a manual refresh. |
+| 7 | **Typed `RunOutcome` + stall event** | Med | Low | `Success / MaxTurns / MaxBudget / VerifierFailed / StallDetected` enum + `AgentEvent::ProgressStall`; enables outcome-filtered health and SQLite indexing. |
+| 8 | **Skill/rule management UI** | Med | Med | Enable/disable toggles; lesson→named-skill promotion (Cherny's "write it down" compounding). |
+| 9 | **Live quality-gate status** | Med | Low | Drive the gate panel from `quality_check_runs` instead of hardcoded strings. |
+| 10 | **Per-loop token economics** | Med | Med | cost/tick, cumulative spend, burn projection, per-schedule budget attribution. |
+
 ## Sources
 howborisusesclaudecode.com · theneuron.ai (Cherny/Wu) · cobusgreyling
 substack/medium · addyosmani.com (loop + harness engineering) · tosea.ai ·
