@@ -31,7 +31,7 @@ struct AgentPaneView: View {
     private var orbSize: CGFloat {
         let (cols, rows) = PaneLayout.dims(max(paneCount, 1))
         let frac = (1.0 / Double(cols * rows)).squareRoot()
-        return min(308, max(106, (40 + 220 * frac) * 1.1))
+        return min(462, max(159, (40 + 220 * frac) * 1.65))
     }
 
     var body: some View {
