@@ -8,6 +8,8 @@ struct AgentPaneView: View {
     @Environment(AppModel.self) private var model
     var agent: LiveAgent?
     var controls: LaunchControls
+    /// Total panes in the grid — the orb scales down as more are added.
+    var paneCount: Int = 1
     var onClose: () -> Void
 
     @State private var goal = ""
@@ -21,6 +23,15 @@ struct AgentPaneView: View {
     private var railPhaseLabel: String {
         guard let agent else { return "—" }
         return agent.awaitingApproval ? "Review" : agent.phase.capitalized
+    }
+
+    /// Orb diameter scaled to the pane's share of the screen: large in a
+    /// single pane, shrinking smoothly (∝ √areaFraction) as panes are added so
+    /// it always sits comfortably within its tile.
+    private var orbSize: CGFloat {
+        let (cols, rows) = PaneLayout.dims(max(paneCount, 1))
+        let frac = (1.0 / Double(cols * rows)).squareRoot()
+        return min(280, max(96, 40 + 220 * frac))
     }
 
     var body: some View {
@@ -82,14 +93,16 @@ struct AgentPaneView: View {
                 health: agent?.testPassRate ?? 0.85,
                 stimulus: agent?.stimulus ?? .distantPast,
                 stimulusKind: agent?.stimulusKind ?? "request",
-                size: 136
+                size: orbSize
             )
             .background(
                 Circle()
                     .fill(accent.opacity(agent == nil ? 0.05 : 0.16))
-                    .frame(width: 168, height: 168)
+                    .frame(width: orbSize * 1.24, height: orbSize * 1.24)
                     .blur(radius: 26)
             )
+            // Grow/shrink in step with the grid's add/remove spring.
+            .animation(.spring(response: 0.42, dampingFraction: 0.82), value: paneCount)
             if agent == nil {
                 LaunchControlsView(controls: controls, dense: true)
                     .padding(.horizontal, 14)

@@ -36,6 +36,7 @@ struct ForgeView: View {
             AgentPaneView(
                 agent: agent(at: idx),
                 controls: controls,
+                paneCount: layout.slots.count,
                 onClose: { layout.closePane(idx) }
             )
         }
