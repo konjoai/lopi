@@ -29,11 +29,11 @@ pub use budget::BudgetScope;
 pub use config::{LopiConfig, RepoProfile, ScheduleEntry};
 pub use event::{AgentEvent, EventBus, LogLevel, PlanDecision};
 pub use loop_config::{AutonomyLevel, LoopConfig};
-pub use self_prompt::SelfPromptStrategy;
 pub use schema::{
     schema_violations_inc, schema_violations_snapshot, validate as validate_schema,
     Violation as SchemaViolation, ViolationKind as SchemaViolationKind,
 };
+pub use self_prompt::SelfPromptStrategy;
 pub use task::{Priority, Rubric, Task, TaskId, TaskSource, TaskStatus, VerifierVerdict};
 pub use tier::CustomerTier;
 

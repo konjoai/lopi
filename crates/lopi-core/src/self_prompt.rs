@@ -96,9 +96,13 @@ impl SelfPromptStrategy {
     pub fn description(self) -> &'static str {
         match self {
             Self::Direct => "Inject the raw failure context; let the model re-plan unaided.",
-            Self::Reflexion => "Write a verbal self-reflection on the root cause, then try a different approach.",
+            Self::Reflexion => {
+                "Write a verbal self-reflection on the root cause, then try a different approach."
+            }
             Self::SelfRefine => "Critique the attempt against a rubric, then revise each weakness.",
-            Self::PlanThenAct => "Decompose the remaining work into a numbered plan before editing.",
+            Self::PlanThenAct => {
+                "Decompose the remaining work into a numbered plan before editing."
+            }
         }
     }
 
