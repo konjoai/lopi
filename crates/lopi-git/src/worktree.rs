@@ -67,12 +67,7 @@ impl WorktreeManager {
     pub async fn add(&self, task_id: &str, attempt: u32, branch: &str) -> Result<Worktree> {
         let slug = worktree_slug(task_id, attempt);
         let path = self.root().join(&slug);
-        // `git worktree add` requires the parent dir to exist but the leaf not to.
-        if let Some(parent) = path.parent() {
-            tokio::fs::create_dir_all(parent)
-                .await
-                .with_context(|| format!("creating worktree root {}", parent.display()))?;
-        }
+        self.ensure_parent(&path).await?;
         let args = add_args(&path, branch);
         {
             let _guard = WT_META_LOCK.lock().await;
@@ -85,6 +80,41 @@ impl WorktreeManager {
             path,
             branch.to_string(),
         ))
+    }
+
+    /// Add a **detached** worktree for `task_id` at the repo's current `HEAD`.
+    ///
+    /// Unlike [`add`](WorktreeManager::add) this checks out no named branch: the
+    /// caller (the agent runner) creates its own per-attempt branches *inside*
+    /// the worktree. This is the per-task isolation used at the pool layer — one
+    /// physical checkout per running task. The returned [`Worktree`] has an empty
+    /// [`branch`](Worktree::branch) and is removed on drop.
+    ///
+    /// # Errors
+    /// Returns `Err` if `git worktree add --detach` fails (e.g. the path is
+    /// occupied by a stale checkout).
+    pub async fn add_detached(&self, task_id: &str) -> Result<Worktree> {
+        let path = self.root().join(sanitize(task_id));
+        self.ensure_parent(&path).await?;
+        let args = add_detached_args(&path);
+        {
+            let _guard = WT_META_LOCK.lock().await;
+            run_git(&self.repo_path, &args)
+                .await
+                .with_context(|| format!("git worktree add --detach for {task_id}"))?;
+        }
+        Ok(Worktree::new(self.repo_path.clone(), path, String::new()))
+    }
+
+    /// Create the worktree's parent directory if needed (`git worktree add`
+    /// requires the parent to exist but the leaf not to).
+    async fn ensure_parent(&self, path: &Path) -> Result<()> {
+        if let Some(parent) = path.parent() {
+            tokio::fs::create_dir_all(parent)
+                .await
+                .with_context(|| format!("creating worktree root {}", parent.display()))?;
+        }
+        Ok(())
     }
 
     /// Prune administrative entries for worktrees whose directories are gone.
@@ -142,7 +172,8 @@ impl Worktree {
         &self.path
     }
 
-    /// The branch checked out in this worktree.
+    /// The branch checked out in this worktree, or empty for a detached
+    /// worktree created via [`WorktreeManager::add_detached`].
     #[must_use]
     pub fn branch(&self) -> &str {
         &self.branch
@@ -214,14 +245,17 @@ impl Drop for Worktree {
     }
 }
 
-/// Filesystem-safe leaf name for a worktree: `<task_id>-<attempt>`, with any
-/// path separators in the task id flattened to `-`.
-fn worktree_slug(task_id: &str, attempt: u32) -> String {
-    let safe: String = task_id
+/// Flatten path separators in a task id so it is safe as a single dir name.
+fn sanitize(task_id: &str) -> String {
+    task_id
         .chars()
         .map(|c| if c == '/' || c == '\\' { '-' } else { c })
-        .collect();
-    format!("{safe}-{attempt}")
+        .collect()
+}
+
+/// Filesystem-safe leaf name for a per-attempt worktree: `<task_id>-<attempt>`.
+fn worktree_slug(task_id: &str, attempt: u32) -> String {
+    format!("{}-{attempt}", sanitize(task_id))
 }
 
 /// Build the `git worktree add <path> -b <branch>` argument vector. Kept pure
@@ -233,6 +267,17 @@ fn add_args(path: &Path, branch: &str) -> Vec<String> {
         path.to_string_lossy().into_owned(),
         "-b".to_string(),
         branch.to_string(),
+    ]
+}
+
+/// Build the `git worktree add --detach <path>` argument vector — a worktree at
+/// `HEAD` with no named branch. Kept pure so the flag set is unit-testable.
+fn add_detached_args(path: &Path) -> Vec<String> {
+    vec![
+        "worktree".to_string(),
+        "add".to_string(),
+        "--detach".to_string(),
+        path.to_string_lossy().into_owned(),
     ]
 }
 

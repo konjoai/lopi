@@ -1971,6 +1971,7 @@ dependencies = [
  "lopi-memory",
  "lopi-ratelimit",
  "serde",
+ "tempfile",
  "thiserror 1.0.69",
  "tokio",
  "tokio-cron-scheduler",

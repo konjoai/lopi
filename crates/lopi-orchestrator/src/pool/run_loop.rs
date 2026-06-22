@@ -2,6 +2,7 @@
 //! helpers that drive a single agent attempt to completion.
 
 use super::types::AgentHandle;
+use super::worktree::{cleanup_worktree, setup_worktree};
 use super::AgentPool;
 use anyhow::Result;
 use lopi_agent::AgentRunner;
@@ -326,20 +327,34 @@ async fn run_one(
     let goal = task.goal.clone();
 
     let weights = compute_weight_adjustments(&goal, store.as_ref()).await;
-    // Loop-as-code: read the repo's self-prompting levers off the reactor.
-    // A missing/malformed `.lopi/loop.toml` yields the conservative default.
-    let (self_prompt, escalate) = {
+    // Loop-as-code: read the repo's self-prompting + isolation levers off the
+    // reactor. A missing/malformed `.lopi/loop.toml` yields the conservative
+    // default (Direct self-prompt, shared-checkout Branch isolation).
+    let (self_prompt, escalate, isolation) = {
         let repo = repo.clone();
         tokio::task::spawn_blocking(move || {
             let cfg = lopi_core::LoopConfig::load_from_repo(&repo).unwrap_or_default();
-            (cfg.self_prompt, cfg.escalate_strategy)
+            (cfg.self_prompt, cfg.escalate_strategy, cfg.isolation)
         })
         .await
         .unwrap_or_default()
     };
+
+    // Worktree isolation (Pentad M1.2): when enabled, give this task its own
+    // physical checkout so its build/test/branch ops cannot collide with peers
+    // on the same repo. The runner then operates entirely inside the worktree —
+    // its own `target/` follows the cwd, so parallel cargo runs never contend.
+    // On any setup failure we log and fall back to the shared repo (a missing
+    // worktree must never stall a task). The handle's RAII drop reaps the
+    // checkout even if the runner panics; we also clean up explicitly below.
+    let worktree = setup_worktree(&repo, isolation.is_worktree(), &task_id).await;
+    let work_repo = worktree
+        .as_ref()
+        .map_or_else(|| repo.clone(), |w| w.path().to_path_buf());
+
     let mut runner = AgentRunner::new(
         task,
-        repo,
+        work_repo,
         bus.clone(),
         store.clone(),
         cancel_rx,
@@ -350,6 +365,9 @@ async fn run_one(
     .with_strategy_escalation(escalate)
     .with_plan_gate(plan_decision_rx);
     let outcome = runner.run().await?;
+    // Reap the throwaway worktree now the run is done. The RAII drop is the
+    // panic / early-return safety net; this is the clean, observable path.
+    cleanup_worktree(worktree).await;
 
     let total_attempts = runner.attempts_made();
 

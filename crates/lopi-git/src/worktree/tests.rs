@@ -23,6 +23,13 @@ fn add_args_use_new_branch_flag() {
 }
 
 #[test]
+fn add_detached_args_use_detach_flag_and_no_branch() {
+    let args = add_detached_args(Path::new("/wt/task-abc"));
+    assert_eq!(args, vec!["worktree", "add", "--detach", "/wt/task-abc"]);
+    assert!(!args.iter().any(|a| a == "-b"));
+}
+
+#[test]
 fn remove_args_force_to_discard_throwaway_changes() {
     let args = remove_args(Path::new("/wt/x-1"));
     assert_eq!(args, vec!["worktree", "remove", "--force", "/wt/x-1"]);
@@ -100,6 +107,27 @@ async fn add_creates_checkout_and_cleanup_removes_it() {
 
     let after = mgr.list().await.unwrap();
     assert!(!after.iter().any(|p| p == wt.path()));
+}
+
+#[tokio::test]
+async fn add_detached_checks_out_head_with_empty_branch() {
+    let (_dir, repo) = init_repo();
+    let mgr = WorktreeManager::new(&repo).unwrap();
+
+    let wt = mgr.add_detached("task-xyz").await.unwrap();
+    assert!(wt.path().is_dir(), "detached checkout exists");
+    assert!(wt.path().join("README.md").is_file(), "HEAD checked out");
+    assert_eq!(wt.branch(), "", "detached worktree has no named branch");
+    assert!(wt.path().ends_with("task-xyz"));
+
+    // The runner can create a branch inside the detached worktree without
+    // colliding with the main checkout (proves it is a usable workspace).
+    git(wt.path(), &["checkout", "-b", "lopi/task-xyz-attempt-1"]);
+
+    let listed = mgr.list().await.unwrap();
+    assert!(listed.iter().any(|p| p == wt.path()));
+    wt.cleanup().await.unwrap();
+    assert!(!wt.path().exists());
 }
 
 #[tokio::test]
