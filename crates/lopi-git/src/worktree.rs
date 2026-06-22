@@ -44,8 +44,8 @@ impl WorktreeManager {
     /// Returns `Err` if the path is not a valid git repository.
     pub fn new(repo_path: impl AsRef<Path>) -> Result<Self> {
         let p = repo_path.as_ref().to_path_buf();
-        let _ = Repository::open(&p)
-            .with_context(|| format!("opening git repo at {}", p.display()))?;
+        let _ =
+            Repository::open(&p).with_context(|| format!("opening git repo at {}", p.display()))?;
         Ok(Self { repo_path: p })
     }
 
@@ -80,7 +80,11 @@ impl WorktreeManager {
                 .await
                 .with_context(|| format!("git worktree add for branch {branch}"))?;
         }
-        Ok(Worktree::new(self.repo_path.clone(), path, branch.to_string()))
+        Ok(Worktree::new(
+            self.repo_path.clone(),
+            path,
+            branch.to_string(),
+        ))
     }
 
     /// Prune administrative entries for worktrees whose directories are gone.
@@ -263,7 +267,11 @@ async fn run_git(repo: &Path, args: &[String]) -> Result<()> {
         .await
         .context("invoking git")?;
     if !out.status.success() {
-        anyhow::bail!("git {:?} failed: {}", args, String::from_utf8_lossy(&out.stderr));
+        anyhow::bail!(
+            "git {:?} failed: {}",
+            args,
+            String::from_utf8_lossy(&out.stderr)
+        );
     }
     Ok(())
 }
@@ -278,7 +286,11 @@ async fn run_git_stdout(repo: &Path, args: &[String]) -> Result<String> {
         .await
         .context("invoking git")?;
     if !out.status.success() {
-        anyhow::bail!("git {:?} failed: {}", args, String::from_utf8_lossy(&out.stderr));
+        anyhow::bail!(
+            "git {:?} failed: {}",
+            args,
+            String::from_utf8_lossy(&out.stderr)
+        );
     }
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }

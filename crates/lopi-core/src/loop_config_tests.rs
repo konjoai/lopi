@@ -20,7 +20,10 @@ fn isolation_default_is_branch_and_serializes_snake_case() {
 
 #[test]
 fn isolation_from_tag_is_case_insensitive_and_total() {
-    assert_eq!(IsolationMode::from_tag("Branch"), Some(IsolationMode::Branch));
+    assert_eq!(
+        IsolationMode::from_tag("Branch"),
+        Some(IsolationMode::Branch)
+    );
     assert_eq!(
         IsolationMode::from_tag(" WORKTREE "),
         Some(IsolationMode::Worktree)

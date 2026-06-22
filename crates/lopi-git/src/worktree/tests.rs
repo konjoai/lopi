@@ -172,7 +172,11 @@ async fn concurrent_add_remove_cycles_leave_no_leaks() {
 
     // Only the main working tree should remain tracked.
     let listed = mgr.list().await.unwrap();
-    assert_eq!(listed.len(), 1, "only the main worktree remains: {listed:?}");
+    assert_eq!(
+        listed.len(),
+        1,
+        "only the main worktree remains: {listed:?}"
+    );
 
     // The worktree root holds no orphan checkout directories.
     let root = mgr.root();
