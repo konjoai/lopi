@@ -328,11 +328,11 @@ async fn run_one(
     let weights = compute_weight_adjustments(&goal, store.as_ref()).await;
     // Loop-as-code: read the repo's self-prompting levers off the reactor.
     // A missing/malformed `.lopi/loop.toml` yields the conservative default.
-    let (self_prompt, escalate) = {
+    let (self_prompt, escalate, budget_tokens) = {
         let repo = repo.clone();
         tokio::task::spawn_blocking(move || {
             let cfg = lopi_core::LoopConfig::load_from_repo(&repo).unwrap_or_default();
-            (cfg.self_prompt, cfg.escalate_strategy)
+            (cfg.self_prompt, cfg.escalate_strategy, cfg.budget_tokens)
         })
         .await
         .unwrap_or_default()
@@ -348,6 +348,7 @@ async fn run_one(
     .with_score_weights(weights)
     .with_self_prompt(self_prompt)
     .with_strategy_escalation(escalate)
+    .with_task_budget(budget_tokens)
     .with_plan_gate(plan_decision_rx);
     let outcome = runner.run().await?;
 

@@ -91,6 +91,11 @@ pub struct AgentRunner {
     /// the S1→S4 ladder on each failed attempt (from `self_prompt`) instead of
     /// staying pinned. Only consulted when `adaptive_retry` is enabled.
     pub(super) escalate_strategy: bool,
+    /// Phase 16.6 — per-run token budget forwarded to the Anthropic `task_budget`
+    /// parameter on the direct-API planning path. `None` (the default) sends no
+    /// budget; `Some(n)` lets the model self-pace within `n` tokens on supported
+    /// models. Wired from [`LoopConfig::budget_tokens`](lopi_core::LoopConfig).
+    pub(super) task_budget: Option<u64>,
     /// Sprint S — when true, the Konjo Verifier second-score pass runs after
     /// the heuristic score passes. Requires `api_client` to be set.
     pub(super) verifier_enabled: bool,
@@ -146,6 +151,7 @@ impl AgentRunner {
             last_error: None,
             self_prompt: SelfPromptStrategy::default(),
             escalate_strategy: false,
+            task_budget: None,
             verifier_enabled: false,
             last_plan: None,
             session_id: Uuid::new_v4(),
@@ -182,6 +188,7 @@ impl AgentRunner {
             last_error: None,
             self_prompt: SelfPromptStrategy::default(),
             escalate_strategy: false,
+            task_budget: None,
             verifier_enabled: false,
             last_plan: None,
             session_id: Uuid::new_v4(),
@@ -291,6 +298,28 @@ impl AgentRunner {
         } else {
             self.self_prompt
         }
+    }
+
+    /// Phase 16.6 — wire the per-run token budget from `.lopi/loop.toml`.
+    ///
+    /// `0` disables the budget (inherits the global cap); any positive value is
+    /// forwarded to the Anthropic `task_budget` parameter on the direct-API
+    /// planning path so the model self-paces instead of being hard-cut. The
+    /// value is model-gated and clamped to the API minimum at request time.
+    #[must_use]
+    pub const fn with_task_budget(mut self, budget_tokens: u64) -> Self {
+        self.task_budget = if budget_tokens == 0 {
+            None
+        } else {
+            Some(budget_tokens)
+        };
+        self
+    }
+
+    /// The configured per-run token budget, if any.
+    #[must_use]
+    pub const fn task_budget(&self) -> Option<u64> {
+        self.task_budget
     }
 
     /// Sprint I — attach the Layer 5 patch stability gate.
