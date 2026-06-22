@@ -28,7 +28,7 @@ pub use agent::{AgentRun, AgentState, Attempt, Score, ScoreWeights, TurnMetrics}
 pub use budget::BudgetScope;
 pub use config::{LopiConfig, RepoProfile, ScheduleEntry};
 pub use event::{AgentEvent, EventBus, LogLevel, PlanDecision};
-pub use loop_config::{AutonomyLevel, LoopConfig};
+pub use loop_config::{AutonomyLevel, IsolationMode, LoopConfig};
 pub use schema::{
     schema_violations_inc, schema_violations_snapshot, validate as validate_schema,
     Violation as SchemaViolation, ViolationKind as SchemaViolationKind,

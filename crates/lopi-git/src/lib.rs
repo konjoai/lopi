@@ -4,6 +4,9 @@
 pub mod diff;
 /// Manages git branches, worktrees, and rollbacks for isolated agent runs.
 pub mod manager;
+/// True `git worktree` isolation: a dedicated checkout per parallel agent run.
+pub mod worktree;
 
 pub use diff::DiffChecker;
 pub use manager::GitManager;
+pub use worktree::{Worktree, WorktreeManager};
