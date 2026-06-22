@@ -184,11 +184,25 @@ export interface AutonomyOption {
   allows_auto_merge: boolean;
 }
 
+/** One pickable self-prompting strategy (S1–S4) with a live self-prompt preview. */
+export interface SelfPromptOption {
+  value: string;
+  tag: string;
+  label: string;
+  description: string;
+  preview: string;
+}
+
 /** Effective `.lopi/loop.toml` plus validation envelope. */
 export interface LoopConfig {
   autonomy_level: string;
   autonomy_tag: string;
   autonomy_label: string;
+  self_prompt: string;
+  self_prompt_tag: string;
+  self_prompt_label: string;
+  escalate_strategy: boolean;
+  escalation_ladder: { attempt: number; tag: string; label: string }[];
   vision_path: string | null;
   skills_enabled: string[];
   rules_enabled: string[];
@@ -225,6 +239,7 @@ export interface LoopSnapshot {
   repo: string;
   config: LoopConfig;
   autonomy_levels: AutonomyOption[];
+  self_prompt_strategies: SelfPromptOption[];
   skills: { name: string; description: string }[];
   rules: { name: string }[];
   schedules: LoopSchedule[];
@@ -319,6 +334,20 @@ export const setScheduleAutonomy = (id: string, level: string) =>
   request<{ id: string; autonomy_level: string }>(
     `/api/schedules/${encodeURIComponent(id)}/autonomy`,
     json('POST', { level })
+  );
+
+/** Set the repo's self-prompting strategy; persists to `.lopi/loop.toml`. */
+export const setLoopStrategy = (strategy: string) =>
+  request<{ self_prompt: string; self_prompt_tag: string; self_prompt_label: string }>(
+    '/api/loop-engineering/strategy',
+    json('POST', { strategy })
+  );
+
+/** Toggle adaptive strategy escalation; persists to `.lopi/loop.toml`. */
+export const setLoopEscalation = (enabled: boolean) =>
+  request<{ escalate_strategy: boolean }>(
+    '/api/loop-engineering/escalation',
+    json('POST', { enabled })
   );
 
 // ── Config + version ──────────────────────────────────────────────────────────

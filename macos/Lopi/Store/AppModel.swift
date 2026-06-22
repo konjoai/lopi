@@ -146,6 +146,24 @@ final class AppModel {
         } catch { report(error) }
     }
 
+    /// Set the repo's self-prompting strategy (persisted to `.lopi/loop.toml`),
+    /// then re-pull the snapshot so the UI reflects the saved value.
+    func setLoopStrategy(_ strategy: String) async {
+        do {
+            try await client.setLoopStrategy(strategy: strategy)
+            await refreshLoop()
+        } catch { report(error) }
+    }
+
+    /// Toggle adaptive strategy escalation (persisted to `.lopi/loop.toml`),
+    /// then re-pull the snapshot.
+    func setLoopEscalation(_ enabled: Bool) async {
+        do {
+            try await client.setLoopEscalation(enabled: enabled)
+            await refreshLoop()
+        } catch { report(error) }
+    }
+
     /// Best-effort dropdown population — silent on failure (the field just
     /// stays empty / falls back to free entry).
     func refreshRepos() async {

@@ -16,11 +16,14 @@
     getLoopRuns,
     getLoopRunTrace,
     setScheduleAutonomy,
+    setLoopStrategy,
+    setLoopEscalation,
     type LoopSnapshot,
     type LoopHealth,
     type LoopRun,
     type LoopRunTrace,
-    type AutonomyOption
+    type AutonomyOption,
+    type SelfPromptOption
   } from '$lib/api';
   import Panel from '$lib/components/ui/Panel.svelte';
   import EmptyState from '$lib/components/ui/EmptyState.svelte';
@@ -139,6 +142,55 @@
       await setScheduleAutonomy(id, level);
       flash = 'trust level updated';
       setTimeout(() => (flash = ''), 1800);
+      await refresh();
+    } catch (e) {
+      loadError = e instanceof Error ? e.message : 'update failed';
+    }
+  }
+
+  // The strategy whose self-prompt preview is currently shown. Defaults to the
+  // repo's effective strategy; clicking a card focuses it.
+  let focusedStrategy = '';
+  $: strategyOptions = (snap?.self_prompt_strategies ?? []).map(
+    (st: SelfPromptOption): Option => ({ value: st.value, label: `${st.tag} · ${st.label}` })
+  );
+  $: activeStrategy = focusedStrategy || snap?.config.self_prompt || 'direct';
+  $: previewStrategy =
+    (snap?.self_prompt_strategies ?? []).find((st) => st.value === activeStrategy) ?? null;
+
+  async function changeStrategy(strategy: string) {
+    try {
+      await setLoopStrategy(strategy);
+      focusedStrategy = strategy;
+      flash = 'self-prompting strategy saved to .lopi/loop.toml';
+      setTimeout(() => (flash = ''), 2200);
+      await refresh();
+    } catch (e) {
+      loadError = e instanceof Error ? e.message : 'update failed';
+    }
+  }
+
+  // Accent per strategy: more scaffolding = warmer.
+  function strategyColor(tag: string): string {
+    return (
+      { S1: 'text-konjo-ice', S2: 'text-konjo-jade', S3: 'text-konjo-sun', S4: 'text-konjo-ember' }[
+        tag
+      ] ?? 'text-konjo-accent'
+    );
+  }
+
+  // Border accent for a strategy card: active (saved) > focused (previewing) > idle.
+  function strategyBorder(value: string): string {
+    if (value === snap?.config.self_prompt) return 'border-konjo-accent';
+    if (value === activeStrategy) return 'border-white/30';
+    return 'border-white/5';
+  }
+
+  async function toggleEscalation(enabled: boolean) {
+    try {
+      await setLoopEscalation(enabled);
+      flash = enabled ? 'escalation on — S1→S4 per attempt' : 'escalation off — strategy pinned';
+      setTimeout(() => (flash = ''), 2200);
       await refresh();
     } catch (e) {
       loadError = e instanceof Error ? e.message : 'update failed';
@@ -450,6 +502,96 @@
             <div class="font-mono text-[10px] opacity-50 mt-1.5 leading-relaxed">{ladderHint(l)}</div>
           </div>
         {/each}
+      </div>
+    </Panel>
+
+    <!-- Self-prompting strategy: how the agent re-prompts itself on retry -->
+    <Panel title="Self-Prompting Strategy" subtitle="how the loop re-prompts itself after a failed attempt">
+      <div slot="actions" class="w-52">
+        <Dropdown
+          value={snap.config.self_prompt}
+          options={strategyOptions}
+          on:change={(e) => changeStrategy(e.detail)}
+        />
+      </div>
+      <p class="font-mono text-[11px] opacity-50 mb-3 leading-relaxed">
+        The single highest-leverage loop lever — the text the agent feeds back into its own next
+        plan. Picking one writes <span class="text-konjo-accent">.lopi/loop.toml</span> (loop-as-code)
+        and the runner honors it live on the next adaptive retry.
+      </p>
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        {#each snap.self_prompt_strategies as st}
+          <button
+            type="button"
+            class="text-left rounded-lg border bg-konjo-black/40 p-3 transition-colors {strategyBorder(
+              st.value
+            )}"
+            on:click={() => (focusedStrategy = st.value)}
+          >
+            <div class="flex items-center gap-2">
+              <span class="font-mono text-sm font-bold {strategyColor(st.tag)}">{st.tag}</span>
+              <span class="font-display text-[13px]">{st.label}</span>
+              {#if st.value === snap.config.self_prompt}
+                <span class="ml-auto font-mono text-[9px] uppercase tracking-widest text-konjo-jade"
+                  >active</span
+                >
+              {/if}
+            </div>
+            <div class="font-mono text-[10px] opacity-50 mt-1.5 leading-relaxed">{st.description}</div>
+          </button>
+        {/each}
+      </div>
+      {#if previewStrategy}
+        <div class="mt-4">
+          <div class="font-mono text-[10px] uppercase tracking-widest opacity-40 mb-1.5">
+            Self-prompt preview — {previewStrategy.tag} · {previewStrategy.label}
+          </div>
+          <pre
+            class="font-mono text-[11px] leading-relaxed whitespace-pre-wrap rounded-lg border border-white/5 bg-konjo-black/60 p-3 opacity-80 max-h-72 overflow-auto">{previewStrategy.preview}</pre>
+        </div>
+      {/if}
+
+      <!-- Adaptive escalation: climb S1→S4 as attempts keep failing -->
+      <div class="mt-4 rounded-lg border border-white/5 bg-konjo-black/40 p-3">
+        <div class="flex items-center justify-between gap-3">
+          <div class="min-w-0">
+            <div class="font-display text-[13px]">Adaptive escalation</div>
+            <div class="font-mono text-[10px] opacity-50 mt-0.5 leading-relaxed">
+              Climb one rung up the ladder each failed attempt — cheap retries first, heavier
+              framing only when a task resists a fix.
+            </div>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={snap.config.escalate_strategy}
+            class="relative flex-shrink-0 w-11 h-6 rounded-full transition-colors"
+            class:bg-konjo-jade={snap.config.escalate_strategy}
+            class:bg-white={!snap.config.escalate_strategy}
+            class:bg-opacity-10={!snap.config.escalate_strategy}
+            on:click={() => snap && toggleEscalation(!snap.config.escalate_strategy)}
+          >
+            <span
+              class="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform"
+              class:translate-x-5={snap.config.escalate_strategy}
+            ></span>
+          </button>
+        </div>
+        {#if snap.config.escalate_strategy}
+          <div class="mt-3 flex items-center gap-1.5 flex-wrap">
+            {#each snap.config.escalation_ladder as rung, i}
+              <div class="flex items-center gap-1.5">
+                {#if i > 0}<span class="opacity-30 font-mono text-[10px]">→</span>{/if}
+                <div
+                  class="rounded-md border border-white/10 bg-konjo-black/50 px-2 py-1 font-mono text-[10px]"
+                >
+                  <span class="opacity-40">#{rung.attempt}</span>
+                  <span class={strategyColor(rung.tag)}>{rung.tag}</span>
+                </div>
+              </div>
+            {/each}
+          </div>
+        {/if}
       </div>
     </Panel>
 

@@ -7,6 +7,7 @@ struct LoopSnapshot: Codable, Equatable {
     var repo: String
     var config: LoopConfigDTO
     var autonomyLevels: [LoopAutonomyOption]
+    var selfPromptStrategies: [LoopSelfPromptOption]
     var skills: [LoopSkill]
     var rules: [LoopRule]
     var schedules: [LoopSchedule]
@@ -15,6 +16,7 @@ struct LoopSnapshot: Codable, Equatable {
     enum CodingKeys: String, CodingKey {
         case repo, config, skills, rules, schedules, gates
         case autonomyLevels = "autonomy_levels"
+        case selfPromptStrategies = "self_prompt_strategies"
     }
 }
 
@@ -23,6 +25,11 @@ struct LoopConfigDTO: Codable, Equatable {
     var autonomyLevel: String
     var autonomyTag: String
     var autonomyLabel: String
+    var selfPrompt: String
+    var selfPromptTag: String
+    var selfPromptLabel: String
+    var escalateStrategy: Bool
+    var escalationLadder: [LoopEscalationRung]
     var visionPath: String?
     var skillsEnabled: [String]
     var rulesEnabled: [String]
@@ -37,6 +44,11 @@ struct LoopConfigDTO: Codable, Equatable {
         case autonomyLevel = "autonomy_level"
         case autonomyTag = "autonomy_tag"
         case autonomyLabel = "autonomy_label"
+        case selfPrompt = "self_prompt"
+        case selfPromptTag = "self_prompt_tag"
+        case selfPromptLabel = "self_prompt_label"
+        case escalateStrategy = "escalate_strategy"
+        case escalationLadder = "escalation_ladder"
         case visionPath = "vision_path"
         case skillsEnabled = "skills_enabled"
         case rulesEnabled = "rules_enabled"
@@ -44,6 +56,26 @@ struct LoopConfigDTO: Codable, Equatable {
         case maxIterations = "max_iterations"
         case budgetTokens = "budget_tokens"
     }
+}
+
+/// One rung of the adaptive-escalation ladder: which strategy attempt N uses.
+struct LoopEscalationRung: Codable, Equatable, Identifiable {
+    var attempt: Int
+    var tag: String
+    var label: String
+
+    var id: Int { attempt }
+}
+
+/// One pickable self-prompting strategy (S1–S4) with a live self-prompt preview.
+struct LoopSelfPromptOption: Codable, Equatable, Identifiable {
+    var value: String
+    var tag: String
+    var label: String
+    var description: String
+    var preview: String
+
+    var id: String { value }
 }
 
 /// One pickable rung on the L1–L4 autonomy ladder.

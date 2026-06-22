@@ -9,7 +9,10 @@ import {
   createSchedule,
   enableSchedule,
   deleteDlq,
-  getConfig
+  getConfig,
+  getLoopEngineering,
+  setLoopStrategy,
+  setLoopEscalation
 } from './api';
 
 let pass = 0;
@@ -86,6 +89,31 @@ async function main() {
   mockFetch(200, { deleted: 'd1' });
   await deleteDlq('d1');
   eq(captured[0].init?.method, 'DELETE', 'deleteDlq DELETEs');
+
+  // Loop Engineering: snapshot read carries the self-prompt catalog.
+  mockFetch(200, {
+    repo: '/r',
+    config: { self_prompt: 'direct', self_prompt_tag: 'S1' },
+    self_prompt_strategies: [{ value: 'reflexion', tag: 'S2', label: 'Reflexion', preview: 'p' }]
+  });
+  const loop = await getLoopEngineering();
+  eq(captured[0].path, '/api/loop-engineering', 'getLoopEngineering hits endpoint');
+  eq(loop.self_prompt_strategies[0].value, 'reflexion', 'snapshot carries strategies');
+
+  // Loop Engineering: strategy write POSTs the chosen tag.
+  mockFetch(200, { self_prompt: 'reflexion', self_prompt_tag: 'S2', self_prompt_label: 'Reflexion' });
+  const saved = await setLoopStrategy('reflexion');
+  eq(captured[0].path, '/api/loop-engineering/strategy', 'setLoopStrategy hits endpoint');
+  eq(captured[0].init?.method, 'POST', 'setLoopStrategy POSTs');
+  eq(JSON.parse(String(captured[0].init?.body)).strategy, 'reflexion', 'sends strategy tag');
+  eq(saved.self_prompt_tag, 'S2', 'returns saved strategy');
+
+  // Loop Engineering: escalation toggle POSTs the enabled flag.
+  mockFetch(200, { escalate_strategy: true });
+  const esc = await setLoopEscalation(true);
+  eq(captured[0].path, '/api/loop-engineering/escalation', 'setLoopEscalation hits endpoint');
+  eq(JSON.parse(String(captured[0].init?.body)).enabled, true, 'sends enabled flag');
+  eq(esc.escalate_strategy, true, 'returns escalation state');
 
   // Error body message surfaces in ApiError.
   mockFetch(404, { error: 'schedule not found' });

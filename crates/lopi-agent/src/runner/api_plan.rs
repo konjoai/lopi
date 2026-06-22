@@ -358,4 +358,31 @@ mod tests {
         let runner = runner.with_api(client, limiter, breaker);
         assert!(runner.has_direct_api());
     }
+
+    #[test]
+    fn effective_strategy_pins_without_escalation() {
+        use lopi_core::SelfPromptStrategy;
+        let task = task_with("g", vec![]);
+        let (runner, _bus) = AgentRunner::standalone(task, PathBuf::from("."));
+        let runner = runner.with_self_prompt(SelfPromptStrategy::Reflexion);
+        // Escalation off (default): every attempt sees the pinned base strategy.
+        assert_eq!(runner.effective_strategy(1), SelfPromptStrategy::Reflexion);
+        assert_eq!(runner.effective_strategy(5), SelfPromptStrategy::Reflexion);
+    }
+
+    #[test]
+    fn effective_strategy_climbs_with_escalation() {
+        use lopi_core::SelfPromptStrategy;
+        let task = task_with("g", vec![]);
+        let (runner, _bus) = AgentRunner::standalone(task, PathBuf::from("."));
+        let runner = runner
+            .with_self_prompt(SelfPromptStrategy::Direct)
+            .with_strategy_escalation(true);
+        assert_eq!(runner.effective_strategy(1), SelfPromptStrategy::Direct);
+        assert_eq!(runner.effective_strategy(2), SelfPromptStrategy::Reflexion);
+        assert_eq!(
+            runner.effective_strategy(4),
+            SelfPromptStrategy::PlanThenAct
+        );
+    }
 }

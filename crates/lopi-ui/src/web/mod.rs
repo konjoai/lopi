@@ -326,6 +326,14 @@ pub fn build_app(state: AppState) -> Router {
             "/api/loop-engineering/runs/:id",
             get(loop_runs_handlers::get_run_trace),
         )
+        .route(
+            "/api/loop-engineering/strategy",
+            axum::routing::post(loop_handlers::set_strategy),
+        )
+        .route(
+            "/api/loop-engineering/escalation",
+            axum::routing::post(loop_handlers::set_escalation),
+        )
         .route("/api/config", get(config_handlers::get_config))
         .route("/api/version", get(config_handlers::get_version))
         .route_layer(middleware::from_fn_with_state(

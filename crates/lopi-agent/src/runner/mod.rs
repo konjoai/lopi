@@ -1,15 +1,21 @@
 mod api_plan;
 mod finalize;
+mod plan_gate;
+mod plan_steps;
 pub mod postmortem;
 mod postmortem_runner;
 mod run_loop;
+mod seed;
+mod speculative;
 mod stability_runner;
 mod verifier_runner;
 
 use crate::api_client::AnthropicClient;
 use crate::stability::{StabilityConfig, StabilityHarness};
 use lopi_context::{ContentBlock, ContextWindow, Phase, PinPolicy, Role, TaggedMessage};
-use lopi_core::{AgentEvent, EventBus, PlanDecision, ScoreWeights, Task, TaskId, TaskStatus};
+use lopi_core::{
+    AgentEvent, EventBus, PlanDecision, ScoreWeights, SelfPromptStrategy, Task, TaskId, TaskStatus,
+};
 use lopi_memory::MemoryStore;
 use lopi_ratelimit::{AnthropicLimiter, CircuitBreaker};
 use std::path::PathBuf;
@@ -75,6 +81,16 @@ pub struct AgentRunner {
     /// Sprint H — stash the most recent attempt failure context so the
     /// next attempt's prompt can include it. Cleared on success.
     pub(super) last_error: Option<String>,
+    /// Phase 16.4 — self-prompting strategy: how a failed attempt is reframed
+    /// into the next attempt's self-prompt. [`Direct`](SelfPromptStrategy::Direct)
+    /// reproduces the legacy raw-failure injection; richer strategies add a
+    /// Reflexion / Self-Refine / Plan-Then-Act preamble. Only consulted when
+    /// `adaptive_retry` is enabled.
+    pub(super) self_prompt: SelfPromptStrategy,
+    /// Phase 16.5 — when `true`, the self-prompt strategy escalates one rung up
+    /// the S1→S4 ladder on each failed attempt (from `self_prompt`) instead of
+    /// staying pinned. Only consulted when `adaptive_retry` is enabled.
+    pub(super) escalate_strategy: bool,
     /// Sprint S — when true, the Konjo Verifier second-score pass runs after
     /// the heuristic score passes. Requires `api_client` to be set.
     pub(super) verifier_enabled: bool,
@@ -128,6 +144,8 @@ impl AgentRunner {
             stability_harness: None,
             adaptive_retry: false,
             last_error: None,
+            self_prompt: SelfPromptStrategy::default(),
+            escalate_strategy: false,
             verifier_enabled: false,
             last_plan: None,
             session_id: Uuid::new_v4(),
@@ -162,6 +180,8 @@ impl AgentRunner {
             stability_harness: None,
             adaptive_retry: false,
             last_error: None,
+            self_prompt: SelfPromptStrategy::default(),
+            escalate_strategy: false,
             verifier_enabled: false,
             last_plan: None,
             session_id: Uuid::new_v4(),
@@ -236,6 +256,41 @@ impl AgentRunner {
     #[must_use]
     pub const fn adaptive_retry_enabled(&self) -> bool {
         self.adaptive_retry
+    }
+
+    /// Phase 16.4 — set the self-prompting strategy used to reframe a failed
+    /// attempt into the next attempt's planning prompt. Only takes effect when
+    /// adaptive retry is enabled (the strategy reframes the injected failure).
+    #[must_use]
+    pub const fn with_self_prompt(mut self, strategy: SelfPromptStrategy) -> Self {
+        self.self_prompt = strategy;
+        self
+    }
+
+    /// The currently configured self-prompting strategy.
+    #[must_use]
+    pub const fn self_prompt_strategy(&self) -> SelfPromptStrategy {
+        self.self_prompt
+    }
+
+    /// Phase 16.5 — enable adaptive strategy escalation: each failed attempt
+    /// climbs one rung up the S1→S4 ladder (from the configured base strategy)
+    /// instead of staying pinned. Only takes effect with adaptive retry enabled.
+    #[must_use]
+    pub const fn with_strategy_escalation(mut self, escalate: bool) -> Self {
+        self.escalate_strategy = escalate;
+        self
+    }
+
+    /// The effective self-prompt strategy for a 1-based `attempt`, accounting for
+    /// escalation. With escalation off this is always the pinned base strategy.
+    #[must_use]
+    pub fn effective_strategy(&self, attempt: u8) -> SelfPromptStrategy {
+        if self.escalate_strategy {
+            SelfPromptStrategy::escalated(self.self_prompt, attempt)
+        } else {
+            self.self_prompt
+        }
     }
 
     /// Sprint I — attach the Layer 5 patch stability gate.

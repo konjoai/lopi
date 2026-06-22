@@ -1,63 +1,156 @@
-//! Loop-engineering finalisation: autonomy-aware handling of a passing score.
+//! Phase 16.3 — L1–L4 autonomy-level enforcement at the end of a passing loop.
 //!
-//! When an attempt's heuristic score passes, the action taken depends on the
-//! task's [`AutonomyLevel`] — the L1–L4 trust ladder from loop-engineering
-//! practice (trust is earned incrementally, never assumed):
+//! The success path of [`AgentRunner::run`](super::AgentRunner) hands off to
+//! [`AgentRunner::finalize`] once a score (or post-fix score) passes. The
+//! autonomy ladder ([`AutonomyLevel`]) then dictates the outcome:
 //!
-//! - **L1 `ReportOnly`** — commit the work to the attempt branch as an
-//!   inspectable artifact; never push or open a PR.
-//! - **L2 `DraftPr`** — open a *draft* PR for a human to review and mark ready.
-//! - **L3 `VerifiedPr`** — run the maker/checker verifier first, then open a PR.
-//! - **L4 `AutoMerge`** — verify, open a PR, and enable GitHub native
-//!   auto-merge so the change lands once required checks pass.
+//! | Level | Behaviour |
+//! |-------|-----------|
+//! | L1 `ReportOnly` | commit + emit a report; **no PR**, `pr_url: None` |
+//! | L2 `DraftPr`    | commit + open a **draft** PR (the review is the gate) |
+//! | L3 `VerifiedPr` | force the verifier on, then open a normal PR |
+//! | L4 `AutoMerge`  | verifier + score gate, open a PR, then **auto-merge** |
 //!
-//! L3+ force the verifier regardless of the `with_verifier` builder flag, so
-//! raising a schedule's trust level also raises its proof obligation.
+//! The pure decision functions ([`pr_decision`], [`requires_verifier`]) carry
+//! the branching logic so it can be value-pinned in tests, keeping the
+//! IO-bearing methods thin.
 
 use super::AgentRunner;
-use lopi_context::Phase;
-use lopi_core::{AutonomyLevel, Score, TaskStatus};
+use lopi_core::loop_config::AutonomyLevel;
+use lopi_core::{Score, TaskStatus};
 use lopi_git::GitManager;
 
-/// Outcome of [`AgentRunner::finalize_success`].
-pub(super) enum Finalize {
-    /// The loop reached a terminal state — return this status to the caller.
-    Done(TaskStatus),
-    /// The verifier rejected the output — the caller should roll back and retry.
-    Rejected,
+/// What the runner should do with a passing attempt's branch.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum PrDecision {
+    /// L1 — emit a report only; never open a PR.
+    ReportOnly,
+    /// L2 — open a draft PR.
+    Draft,
+    /// L3 — open a normal PR (the verifier is enforced upstream).
+    Normal,
+    /// L4 — open a normal PR, then enable auto-merge.
+    AutoMerge,
 }
 
-/// The PR action implied by an autonomy level. Kept as a pure value so it can be
-/// unit-tested without touching git or the network.
-#[derive(Debug, PartialEq, Eq)]
-struct PrPlan {
-    /// Whether to push the branch and open a pull request at all (L2+).
-    open: bool,
-    /// Whether the PR is opened as a draft (L2 only).
-    draft: bool,
-    /// Whether to enable GitHub auto-merge after opening (L4 only).
-    auto_merge: bool,
-}
-
-/// Map an autonomy level to its concrete PR action.
-fn pr_plan(level: AutonomyLevel) -> PrPlan {
-    PrPlan {
-        open: level.opens_pr(),
-        draft: matches!(level, AutonomyLevel::DraftPr),
-        auto_merge: level.allows_auto_merge(),
+/// Map an [`AutonomyLevel`] to the end-of-loop [`PrDecision`].
+pub(super) fn pr_decision(level: AutonomyLevel) -> PrDecision {
+    match level {
+        AutonomyLevel::ReportOnly => PrDecision::ReportOnly,
+        AutonomyLevel::DraftPr => PrDecision::Draft,
+        AutonomyLevel::VerifiedPr => PrDecision::Normal,
+        AutonomyLevel::AutoMerge => PrDecision::AutoMerge,
     }
 }
 
-/// Update the consecutive no-progress streak given this attempt's weighted
-/// score.
+/// Whether the verifier must run before the PR for this attempt: either the
+/// runner was explicitly built `with_verifier()`, or the autonomy level
+/// (L3/L4) forces it on regardless.
+pub(super) fn requires_verifier(verifier_enabled: bool, level: AutonomyLevel) -> bool {
+    verifier_enabled || level.requires_verifier()
+}
+
+/// Whether to enable auto-merge: only for L4, and only when a PR was actually
+/// opened (`pr_opened`) — never auto-merge a branch with no PR.
+pub(super) fn should_auto_merge(decision: PrDecision, pr_opened: bool) -> bool {
+    decision == PrDecision::AutoMerge && pr_opened
+}
+
+impl AgentRunner {
+    /// Finalize a passing attempt according to the task's autonomy level.
+    ///
+    /// Runs the verifier first when [`requires_verifier`] holds; on verifier
+    /// rejection it rolls back, marks the task `Retrying`, and returns `None`
+    /// so the caller continues to the next attempt. Otherwise it commits the
+    /// work and applies the level's [`PrDecision`], returning the terminal
+    /// [`TaskStatus::Success`] (with `pr_url: None` for L1).
+    pub(super) async fn finalize(
+        &mut self,
+        branch: &str,
+        git: &GitManager,
+        score: &Score,
+        attempt: u8,
+    ) -> Option<TaskStatus> {
+        let level = self.task.autonomy_level;
+        if requires_verifier(self.verifier_enabled, level)
+            && !self.run_verifier_pass(attempt, &score.errors).await
+        {
+            git.hard_rollback().await.ok();
+            git.checkout_default().await.ok();
+            self.status(TaskStatus::Retrying { attempt }, attempt);
+            return None;
+        }
+
+        self.log(format!("✅ finalizing ({}) — committing…", level.tag()));
+        git.commit_all(&format!("lopi: {}", self.task.goal))
+            .await
+            .ok();
+        let pr_url = self
+            .apply_pr_decision(pr_decision(level), branch, git, score)
+            .await;
+        Some(TaskStatus::Success {
+            branch: branch.to_string(),
+            pr_url,
+        })
+    }
+
+    /// Carry out the [`PrDecision`] for a committed branch, returning the PR
+    /// URL (or `None` for L1 report-only / a failed `gh` invocation).
+    async fn apply_pr_decision(
+        &self,
+        decision: PrDecision,
+        branch: &str,
+        git: &GitManager,
+        score: &Score,
+    ) -> Option<String> {
+        match decision {
+            PrDecision::ReportOnly => {
+                self.emit_report(branch, score);
+                None
+            }
+            PrDecision::Draft => {
+                let url = git.open_draft_pr(branch, &self.task.goal).await.ok();
+                if let Some(ref u) = url {
+                    self.log(format!("🔗 draft PR opened: {u}"));
+                }
+                url
+            }
+            PrDecision::Normal | PrDecision::AutoMerge => {
+                let url = git.open_pr(branch, &self.task.goal).await.ok();
+                if let Some(ref u) = url {
+                    self.log(format!("🔗 PR opened: {u}"));
+                }
+                if should_auto_merge(decision, url.is_some()) {
+                    match git.auto_merge(branch).await {
+                        Ok(()) => self.log("🚀 auto-merge enabled (squash)"),
+                        Err(e) => self.warn(format!("auto-merge failed: {e}")),
+                    }
+                }
+                url
+            }
+        }
+    }
+
+    /// L1 — log a diff/score report in lieu of opening a PR.
+    fn emit_report(&self, branch: &str, score: &Score) {
+        self.log(format!(
+            "📄 report-only (L1): branch={branch} pass={:.0}% lint={} diff={}L — no PR opened",
+            score.test_pass_rate * 100.0,
+            score.lint_errors,
+            score.diff_lines,
+        ));
+    }
+}
+
+/// Update the consecutive no-progress streak given this attempt's weighted score.
 ///
-/// The streak increments when the score fails to improve on the best seen so
-/// far (within `EPSILON`) and resets to zero on any real improvement. The first
+/// The streak increments when the score fails to improve on the best seen so far
+/// (within `EPSILON`) and resets to zero on any real improvement. The first
 /// observation seeds the baseline and counts as zero. Returns the new streak.
 ///
-/// This is the semantic stall detector behind `LoopConfig::no_progress_limit`:
-/// a loop that keeps retrying without lifting its score is stuck, and burning
-/// the rest of the retry budget on it just wastes tokens.
+/// This is the semantic stall detector behind `LoopConfig::no_progress_limit`: a
+/// loop that keeps retrying without lifting its score is stuck, and burning the
+/// rest of the retry budget on it just wastes tokens.
 pub(super) fn update_no_progress_streak(best: &mut Option<f32>, streak: u8, weighted: f32) -> u8 {
     const EPSILON: f32 = 1e-4;
     match *best {
@@ -73,125 +166,12 @@ pub(super) fn update_no_progress_streak(best: &mut Option<f32>, streak: u8, weig
     }
 }
 
-impl AgentRunner {
-    /// Handle a passing score under the task's autonomy level.
-    ///
-    /// Returns [`Finalize::Done`] with the terminal success status, or
-    /// [`Finalize::Rejected`] when the verifier vetoed the output.
-    pub(super) async fn finalize_success(
-        &mut self,
-        git: &GitManager,
-        branch: &str,
-        score: &Score,
-        attempt: u8,
-    ) -> Finalize {
-        let level = self.task.autonomy_level;
-        // L3+ require the maker/checker verifier to pass before any PR. The
-        // builder flag (`with_verifier`) can also enable it at lower levels.
-        if (self.verifier_enabled || level.requires_verifier())
-            && !self.run_verifier_pass(attempt, &score.errors).await
-        {
-            return Finalize::Rejected;
-        }
-
-        self.pin_success(score);
-        git.commit_all(&format!("lopi: {}", self.task.goal))
-            .await
-            .ok();
-
-        let pr_url = self.open_for_level(git, branch, level).await;
-        Finalize::Done(TaskStatus::Success {
-            branch: branch.to_string(),
-            pr_url,
-        })
-    }
-
-    /// Pin the success conclusion into the context window so it survives evictions.
-    fn pin_success(&mut self, score: &Score) {
-        self.context.pin_conclusion(
-            format!(
-                "Sprint succeeded — pass={:.0}% diff={}L",
-                score.test_pass_rate * 100.0,
-                score.diff_lines
-            ),
-            Phase::Conclusion,
-        );
-        self.log("✅ tests pass — committing…");
-    }
-
-    /// Open (or intentionally skip) a PR according to the autonomy level,
-    /// returning the PR URL when one was opened.
-    async fn open_for_level(
-        &self,
-        git: &GitManager,
-        branch: &str,
-        level: AutonomyLevel,
-    ) -> Option<String> {
-        let plan = pr_plan(level);
-        if !plan.open {
-            self.log("📄 L1 report-only — change committed to branch, no PR opened");
-            return None;
-        }
-        let opened = if plan.draft {
-            git.open_pr_draft(branch, &self.task.goal).await
-        } else {
-            git.open_pr(branch, &self.task.goal).await
-        };
-        let url = match opened {
-            Ok(u) => u,
-            Err(e) => {
-                self.warn(format!("PR open failed: {e}"));
-                return None;
-            }
-        };
-        self.log(format!(
-            "🔗 {} PR opened: {url}",
-            if plan.draft { "draft" } else { "verified" }
-        ));
-        if plan.auto_merge {
-            match git.enable_auto_merge(branch).await {
-                Ok(()) => self.log("🤝 L4 auto-merge enabled — lands when checks pass"),
-                Err(e) => self.warn(format!("auto-merge enable failed: {e}")),
-            }
-        }
-        Some(url)
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::*;
-
-    #[test]
-    fn pr_plan_l1_report_only_opens_nothing() {
-        let p = pr_plan(AutonomyLevel::ReportOnly);
-        assert_eq!(
-            p,
-            PrPlan {
-                open: false,
-                draft: false,
-                auto_merge: false
-            }
-        );
-    }
-
-    #[test]
-    fn pr_plan_l2_is_a_draft() {
-        let p = pr_plan(AutonomyLevel::DraftPr);
-        assert!(p.open && p.draft && !p.auto_merge);
-    }
-
-    #[test]
-    fn pr_plan_l3_is_a_ready_pr() {
-        let p = pr_plan(AutonomyLevel::VerifiedPr);
-        assert!(p.open && !p.draft && !p.auto_merge);
-    }
-
-    #[test]
-    fn pr_plan_l4_enables_auto_merge() {
-        let p = pr_plan(AutonomyLevel::AutoMerge);
-        assert!(p.open && !p.draft && p.auto_merge);
-    }
+    use super::{
+        pr_decision, requires_verifier, should_auto_merge, update_no_progress_streak, PrDecision,
+    };
+    use lopi_core::loop_config::AutonomyLevel;
 
     #[test]
     fn no_progress_seeds_baseline_then_counts_stalls() {
@@ -216,7 +196,74 @@ mod tests {
     #[test]
     fn no_progress_ignores_sub_epsilon_noise() {
         let mut best = Some(0.5);
-        // A negligible bump is not real progress.
         assert_eq!(update_no_progress_streak(&mut best, 0, 0.500_01), 1);
+    }
+
+    #[test]
+    fn each_level_maps_to_its_decision() {
+        assert_eq!(
+            pr_decision(AutonomyLevel::ReportOnly),
+            PrDecision::ReportOnly
+        );
+        assert_eq!(pr_decision(AutonomyLevel::DraftPr), PrDecision::Draft);
+        assert_eq!(pr_decision(AutonomyLevel::VerifiedPr), PrDecision::Normal);
+        assert_eq!(pr_decision(AutonomyLevel::AutoMerge), PrDecision::AutoMerge);
+    }
+
+    #[test]
+    fn only_l1_skips_the_pr() {
+        let no_pr: Vec<_> = AutonomyLevel::all()
+            .into_iter()
+            .filter(|l| pr_decision(*l) == PrDecision::ReportOnly)
+            .collect();
+        assert_eq!(no_pr, vec![AutonomyLevel::ReportOnly]);
+    }
+
+    #[test]
+    fn only_l4_auto_merges() {
+        let merges: Vec<_> = AutonomyLevel::all()
+            .into_iter()
+            .filter(|l| pr_decision(*l) == PrDecision::AutoMerge)
+            .collect();
+        assert_eq!(merges, vec![AutonomyLevel::AutoMerge]);
+    }
+
+    #[test]
+    fn only_l2_opens_a_draft() {
+        let drafts: Vec<_> = AutonomyLevel::all()
+            .into_iter()
+            .filter(|l| pr_decision(*l) == PrDecision::Draft)
+            .collect();
+        assert_eq!(drafts, vec![AutonomyLevel::DraftPr]);
+    }
+
+    #[test]
+    fn l3_and_l4_force_the_verifier_even_when_disabled() {
+        assert!(requires_verifier(false, AutonomyLevel::VerifiedPr));
+        assert!(requires_verifier(false, AutonomyLevel::AutoMerge));
+    }
+
+    #[test]
+    fn l1_and_l2_only_verify_when_explicitly_enabled() {
+        assert!(!requires_verifier(false, AutonomyLevel::ReportOnly));
+        assert!(!requires_verifier(false, AutonomyLevel::DraftPr));
+        assert!(requires_verifier(true, AutonomyLevel::ReportOnly));
+        assert!(requires_verifier(true, AutonomyLevel::DraftPr));
+    }
+
+    #[test]
+    fn auto_merge_only_when_l4_and_pr_opened() {
+        // L4 + PR opened → merge.
+        assert!(should_auto_merge(PrDecision::AutoMerge, true));
+        // L4 but the PR failed to open → never merge a branch with no PR.
+        assert!(!should_auto_merge(PrDecision::AutoMerge, false));
+        // Lower levels never auto-merge, even with a PR open.
+        for d in [
+            PrDecision::ReportOnly,
+            PrDecision::Draft,
+            PrDecision::Normal,
+        ] {
+            assert!(!should_auto_merge(d, true));
+        }
     }
 }

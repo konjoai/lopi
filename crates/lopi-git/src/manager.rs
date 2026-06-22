@@ -234,35 +234,23 @@ impl GitManager {
 
     /// Push branch and open a **draft** PR via the `gh` CLI. Returns the PR URL.
     ///
-    /// Draft PRs are the L2 (`DraftPr`) autonomy artifact: the change is
-    /// proposed but explicitly not ready to merge until a human marks it ready.
+    /// Used by the L2 (`draft_pr`) autonomy level: the GitHub review on the
+    /// draft is itself the human gate before merge.
     ///
     /// # Errors
     /// Returns `Err` if `git push` or `gh pr create` fails.
-    pub async fn open_pr_draft(&self, branch: &str, title: &str) -> Result<String> {
+    pub async fn open_draft_pr(&self, branch: &str, title: &str) -> Result<String> {
         self.create_pr(branch, title, true).await
     }
 
-    /// Shared implementation of [`open_pr`](Self::open_pr) and
-    /// [`open_pr_draft`](Self::open_pr_draft): push the branch (via
-    /// [`push_branch`](Self::push_branch)), then create a PR that is optionally
-    /// a draft.
+    /// Push the branch and create a PR. When `draft` is set the PR is opened
+    /// as a draft (`gh pr create --draft`).
     async fn create_pr(&self, branch: &str, title: &str, draft: bool) -> Result<String> {
         self.push_branch(branch).await?;
         let body = format!("Automated PR opened by lopi.\n\nBranch: `{branch}`\n");
-        let mut cmd = tokio::process::Command::new("gh");
-        cmd.arg("pr")
-            .arg("create")
-            .arg("--title")
-            .arg(title)
-            .arg("--body")
-            .arg(&body)
-            .arg("--head")
-            .arg(branch);
-        if draft {
-            cmd.arg("--draft");
-        }
-        let out = cmd
+        let args = pr_create_args(title, &body, branch, draft);
+        let out = tokio::process::Command::new("gh")
+            .args(&args)
             .current_dir(&self.repo_path)
             .output()
             .await
@@ -273,36 +261,108 @@ impl GitManager {
                 String::from_utf8_lossy(&out.stderr)
             );
         }
-        Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+        let url = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        Ok(url)
     }
 
-    /// Enable GitHub native auto-merge on the open PR for `branch` (the L4
-    /// `AutoMerge` action).
+    /// Enable auto-merge (squash) on the PR for `branch` via the `gh` CLI.
     ///
-    /// Uses `gh pr merge --auto --squash`, which tells GitHub to merge the PR
-    /// automatically once required status checks pass. The loop never
-    /// force-merges past a red check — CI remains the truth oracle that gates
-    /// the merge.
+    /// Used by the L4 (`auto_merge`) autonomy level once the verifier has
+    /// passed and the score clears the gate. GitHub merges the PR
+    /// automatically once its required checks succeed.
     ///
     /// # Errors
-    /// Returns `Err` if the `gh pr merge` invocation fails.
-    pub async fn enable_auto_merge(&self, branch: &str) -> Result<()> {
+    /// Returns `Err` if `gh pr merge` fails.
+    pub async fn auto_merge(&self, branch: &str) -> Result<()> {
+        let args = pr_merge_args(branch);
         let out = tokio::process::Command::new("gh")
-            .arg("pr")
-            .arg("merge")
-            .arg(branch)
-            .arg("--auto")
-            .arg("--squash")
+            .args(&args)
             .current_dir(&self.repo_path)
             .output()
             .await
-            .context("invoking gh pr merge --auto")?;
+            .context("invoking gh pr merge")?;
         if !out.status.success() {
             anyhow::bail!(
-                "gh pr merge --auto failed: {}",
+                "gh pr merge failed: {}",
                 String::from_utf8_lossy(&out.stderr)
             );
         }
         Ok(())
+    }
+}
+
+/// Build the `gh pr create` argument vector. Appends `--draft` when `draft`
+/// is set. Kept pure (returns the args rather than running them) so the
+/// flag logic is unit-testable.
+fn pr_create_args(title: &str, body: &str, branch: &str, draft: bool) -> Vec<String> {
+    let mut args = vec![
+        "pr".to_string(),
+        "create".to_string(),
+        "--title".to_string(),
+        title.to_string(),
+        "--body".to_string(),
+        body.to_string(),
+        "--head".to_string(),
+        branch.to_string(),
+    ];
+    if draft {
+        args.push("--draft".to_string());
+    }
+    args
+}
+
+/// Build the `gh pr merge --auto --squash` argument vector for `branch`.
+/// Kept pure so the flag set is unit-testable.
+fn pr_merge_args(branch: &str) -> Vec<String> {
+    vec![
+        "pr".to_string(),
+        "merge".to_string(),
+        branch.to_string(),
+        "--auto".to_string(),
+        "--squash".to_string(),
+    ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{pr_create_args, pr_merge_args};
+
+    #[test]
+    fn pr_create_args_normal_omits_draft_flag() {
+        let args = pr_create_args("My Title", "body text", "feat/x", false);
+        assert_eq!(
+            args,
+            vec![
+                "pr",
+                "create",
+                "--title",
+                "My Title",
+                "--body",
+                "body text",
+                "--head",
+                "feat/x",
+            ]
+        );
+        assert!(!args.iter().any(|a| a == "--draft"));
+    }
+
+    #[test]
+    fn pr_create_args_draft_appends_draft_flag() {
+        let args = pr_create_args("T", "b", "feat/y", true);
+        // The draft flag is appended last and the core fields are preserved.
+        assert_eq!(args.last().map(String::as_str), Some("--draft"));
+        assert!(args.iter().any(|a| a == "--title"));
+        assert!(args.iter().any(|a| a == "feat/y"));
+        // Exactly one extra arg vs the non-draft form.
+        assert_eq!(
+            args.len(),
+            pr_create_args("T", "b", "feat/y", false).len() + 1
+        );
+    }
+
+    #[test]
+    fn pr_merge_args_uses_auto_squash() {
+        let args = pr_merge_args("feat/z");
+        assert_eq!(args, vec!["pr", "merge", "feat/z", "--auto", "--squash"]);
     }
 }

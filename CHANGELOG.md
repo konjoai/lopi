@@ -4,26 +4,100 @@
 
 ### Added
 
-**Loop Engineering — Phase 16.3: autonomy enforcement + Loop Health** (`lopi-agent`, `lopi-git`, `lopi-orchestrator`, `lopi-memory`, `lopi-ui`, `web/`, `macos/`)
-- **L1–L4 autonomy now enforced in the runner** (`runner/finalize.rs`). The
-  scheduler copies a schedule's `autonomy_level` onto the fired task (previously
-  stored but never read), and a passing score is finalised per level: **L1**
-  report-only (commit to branch, no PR), **L2** draft PR, **L3** verifier-gated
-  PR, **L4** verify + GitHub native auto-merge. L3+ force the maker/checker
-  verifier regardless of the builder flag. New `GitManager::open_pr_draft` /
-  `enable_auto_merge`.
+**Loop Engineering — Phase 16.6 Per-run drill-down trace** (`lopi-memory`, `lopi-ui`, web, macOS)
+- A **Recent Runs** panel on the Loop screen: each run expands an
+  attempt-by-attempt trace — lifecycle stages (plan→implement→test→score),
+  per-attempt pass%/lint/diff/tokens/cost, the verifier verdict (passed/
+  confidence + gaps), and captured errors. Backed by
+  `GET /api/loop-engineering/runs` + `/runs/:id`, projecting `attempts` +
+  `turn_metrics` + `verifier_verdicts` (`lopi-memory/store/run_trace.rs`). The
+  single-run counterpart to the aggregate Loop Health view.
+
+**Loop Engineering — Phase 16.3 Loop Health observability + stall guard** (`lopi-agent`, `lopi-memory`, `lopi-ui`, web, macOS)
 - **No-progress stall guard** — the loop halts early when the weighted score
   stops improving for `LoopConfig.no_progress_limit` consecutive attempts
-  (design-doc gap #7), instead of burning the whole retry budget on a stuck loop.
+  (design-doc gap #7), instead of burning the whole retry budget on a stuck
+  loop (`update_no_progress_streak`, wired into `run_loop.rs`).
 - **`GET /api/loop-engineering/health`** projects data the loop already persists
   (`attempts`, `turn_metrics`, `verifier_verdicts`) into one observability
   snapshot: headline KPIs (runs, attempts, success rate, verifier pass rate,
-  spend, tokens), per-attempt score series, outcome distribution, token/cost burn.
+  spend, tokens), per-attempt score series, outcome distribution, token/cost
+  burn (`lopi-memory/store/loop_health.rs`).
 - **Loop Health view on both surfaces** — KPI tiles, sparklines (score/attempt,
-  context pressure, diff size, cost burn), and an outcome-distribution bar, led
-  in front of the existing config panels. Web composes `StatCard`+`Sparkline`;
-  macOS composes `Charts.Sparkline`. 26 new unit tests; web `svelte-check` and
-  macOS `xcodebuild` both clean.
+  context pressure, diff size, cost burn), and an outcome-distribution bar,
+  leading the Loop screen. Web composes `StatCard`+`Sparkline`; macOS composes
+  `Charts.Sparkline`.
+
+**Loop Engineering — Phase 16.5 Adaptive Strategy Escalation** (`lopi-core`, `lopi-agent`, `lopi-orchestrator`, `lopi-ui`, web, macOS)
+- **The loop now climbs its own ladder.** Instead of pinning one self-prompt
+  strategy for a whole run, `escalate_strategy` makes the agent apply
+  progressively more cognitive scaffolding the longer a task resists a fix:
+  cheap `Direct` retries first, then Reflexion → Self-Refine → Plan-Then-Act.
+  `SelfPromptStrategy::escalated(base, attempt)` climbs one S-rung per failed
+  attempt (capped at S4, starting from the configured base) — a pure, saturating
+  function. Backed by RefineCoder (arXiv:2502.09183).
+- **Runner** — `AgentRunner::with_strategy_escalation` + `effective_strategy(attempt)`;
+  the adaptive-retry path now frames the failure with the *effective* strategy
+  for that attempt. Loaded from `.lopi/loop.toml` in the `lopi run` CLI and the
+  orchestrator pool.
+- **API** — `GET /api/loop-engineering` config now carries `escalate_strategy`
+  and an `escalation_ladder` (attempt → strategy preview); new
+  `POST /api/loop-engineering/escalation` toggles it (persisted to `.lopi/loop.toml`).
+  All loop-as-code writes now share one `persist_loop_update` helper.
+- **Web + macOS** — an "Adaptive escalation" switch on the Loop screen plus a live
+  per-attempt ladder (`#1 S2 → #2 S3 → #3 S4 …`).
+- **Tests** — pure escalation math (`from_rank`/`escalated`, saturation +
+  base-relative), runner `effective_strategy` unit tests, handler ladder test,
+  two HTTP e2e tests, an `api.test.ts` case; verified live against `lopi sail`.
+
+**Loop Engineering — Phase 16.4 Self-Prompting Strategy Engine** (`lopi-core`, `lopi-agent`, `lopi-orchestrator`, `lopi-ui`, web, macOS)
+- **Direct agents to prompt *themselves*.** A new `SelfPromptStrategy` (S1–S4) is
+  the highest-leverage loop lever: the text the agent feeds back into its own
+  next planning step after a failed attempt. `crates/lopi-core/src/self_prompt.rs`
+  implements four research-backed strategies as pure `frame(base, attempt)`
+  transforms:
+  - **S1 Direct** — raw failure, verbatim (legacy default; byte-identical).
+  - **S2 Reflexion** — name the root cause, then try a *different* approach
+    (Shinn et al. 2023).
+  - **S3 Self-Refine** — critique against correctness/coverage/minimality, then
+    revise (Madaan et al. 2023).
+  - **S4 Plan-Then-Act** — write a numbered plan before editing (Plan-and-Solve).
+- **Loop-as-code, editable from the UI.** `LoopConfig` gains a `self_prompt`
+  field and a `save_to_repo` writer; the new `POST /api/loop-engineering/strategy`
+  validates a tag and persists it to `.lopi/loop.toml` (422 on unknown tags).
+  `GET /api/loop-engineering` now carries a `self_prompt_strategies` catalog,
+  each entry with a **live preview** of the self-prompt it generates.
+- **Wired live into the runner.** `AgentRunner::with_self_prompt` routes the
+  adaptive-retry failure block through the chosen strategy before injecting it
+  into the next planning prompt — honored by both the `lopi run` CLI path and the
+  orchestrator pool, loaded from `.lopi/loop.toml`.
+- **Web + macOS.** A new "Self-Prompting Strategy" panel on the Loop screen:
+  a picker, strategy cards (active state), and a live self-prompt preview.
+- **Tests.** Pure-function strategy tests + `save_to_repo` round-trips in
+  `lopi-core`; catalog/handler tests in `lopi-ui`; three HTTP-level e2e tests
+  (`web/loop_tests.rs`) covering snapshot read, persisted round-trip, and the
+  422 reject path; an `api.test.ts` case for the web client. Verified against a
+  live `lopi sail` server end-to-end.
+
+**Loop Engineering — Phase 16.2b runner enforcement** (`lopi-agent`, `lopi-git`)
+- The **L1–L4 autonomy ladder now changes end-of-loop behavior** — previously
+  `autonomy_level` was configurable and observable but ignored by the runner.
+  A new shared `AgentRunner::finalize` (`crates/lopi-agent/src/runner/finalize.rs`)
+  replaces both `open_pr` call sites in `run_loop.rs` (main success + post-fix
+  success) and branches on `task.autonomy_level`:
+  - **L1 `report_only`** — commit to the branch, log a diff/score report, return
+    `Success` with `pr_url: None`. No PR is opened.
+  - **L2 `draft_pr`** (default) — open a **draft** PR (the GitHub review is the
+    human gate).
+  - **L3 `verified_pr`** — force the Konjo verifier on (regardless of
+    `verifier_enabled`) **before** opening a normal PR.
+  - **L4 `auto_merge`** — verifier must pass and the score must clear the gate,
+    then open a PR and **auto-merge** (`gh pr merge --auto --squash`).
+- **`GitManager`** (`crates/lopi-git/src/manager.rs`) gains `open_draft_pr` and
+  `auto_merge`; PR/merge argument building is factored into pure, unit-tested
+  helpers. The verifier now also runs on the post-fix success path for L3/L4.
+- `run_loop.rs` was split into focused modules (`finalize`, `plan_gate`,
+  `plan_steps`, `seed`, `speculative`) to stay under the 500-line file gate.
 
 **Loop Engineering — Phase 16.2 sidebar screen** (`lopi-ui`, `web/`, `macos/`)
 - **`GET /api/loop-engineering`** aggregation endpoint composes one read-only

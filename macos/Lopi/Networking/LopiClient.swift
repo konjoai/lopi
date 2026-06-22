@@ -153,6 +153,17 @@ struct LopiClient {
         _ = try await send("POST", "/api/schedules/\(id)/autonomy", body: ["level": level])
     }
 
+    /// Set the repo's self-prompting strategy; the server persists it to
+    /// `.lopi/loop.toml` (loop-as-code).
+    func setLoopStrategy(strategy: String) async throws {
+        _ = try await send("POST", "/api/loop-engineering/strategy", body: ["strategy": strategy])
+    }
+
+    /// Toggle adaptive strategy escalation; persisted to `.lopi/loop.toml`.
+    func setLoopEscalation(enabled: Bool) async throws {
+        _ = try await send("POST", "/api/loop-engineering/escalation", body: ["enabled": enabled])
+    }
+
     // MARK: Core request machinery
 
     func get<T: Decodable>(_ path: String) async throws -> T {

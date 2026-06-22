@@ -7,6 +7,7 @@
 //!
 //! See `docs/LOOP_ENGINEERING.md` for the design rationale.
 
+use crate::self_prompt::SelfPromptStrategy;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
@@ -134,6 +135,15 @@ pub struct LoopConfig {
     /// Default trust level for loops in this repo.
     #[serde(default)]
     pub autonomy_level: AutonomyLevel,
+    /// How the loop re-prompts *itself* after a failed attempt. Defaults to
+    /// [`Direct`](SelfPromptStrategy::Direct) — the legacy raw-failure injection.
+    #[serde(default)]
+    pub self_prompt: SelfPromptStrategy,
+    /// When `true`, the self-prompt strategy **escalates** one rung up the S1→S4
+    /// ladder on each failed attempt (starting from `self_prompt`), instead of
+    /// staying pinned. See [`SelfPromptStrategy::escalated`]. Defaults to `false`.
+    #[serde(default)]
+    pub escalate_strategy: bool,
     /// Path to the intent-anchor doc (VISION.md / AGENTS.md), relative to repo root.
     #[serde(default)]
     pub vision_path: Option<PathBuf>,
@@ -164,6 +174,8 @@ impl Default for LoopConfig {
     fn default() -> Self {
         Self {
             autonomy_level: AutonomyLevel::default(),
+            self_prompt: SelfPromptStrategy::default(),
+            escalate_strategy: false,
             vision_path: None,
             skills_enabled: Vec::new(),
             rules_enabled: Vec::new(),
@@ -201,6 +213,22 @@ impl LoopConfig {
         let text = std::fs::read_to_string(&p)?;
         let cfg: Self = toml::from_str(&text)?;
         Ok(cfg)
+    }
+
+    /// Serialize and write this config to `<repo>/.lopi/loop.toml`, creating the
+    /// `.lopi/` directory if needed. This is the write side of loop-as-code: the
+    /// UI edits a lever, the server persists the artifact, and it round-trips
+    /// through [`load_from_repo`](Self::load_from_repo).
+    ///
+    /// # Errors
+    /// Returns `Err` if the directory cannot be created, the config cannot be
+    /// serialized to TOML, or the file cannot be written.
+    pub fn save_to_repo(&self, repo_path: &Path) -> anyhow::Result<()> {
+        let dir = repo_path.join(".lopi");
+        std::fs::create_dir_all(&dir)?;
+        let text = toml::to_string_pretty(self)?;
+        std::fs::write(dir.join("loop.toml"), text)?;
+        Ok(())
     }
 
     /// Validate the config against a repo on disk, returning a list of

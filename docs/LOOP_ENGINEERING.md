@@ -135,78 +135,128 @@ to the whole loop.
 - `web/src/routes/loop/` — new route beside `budget/`, `schedules/`, `config/`.
 - macOS: new `Loop` `NavSection` + `LoopView` mirroring the web screen.
 
-## 6. Feature status by app (Phase 16.3)
+## 6. Self-Prompting Strategy Engine (Phase 16.4 — shipped)
+
+The single highest-leverage lever in any retry loop is the **self-prompt**: the
+text the agent feeds back into its *own* next planning step after a failed
+attempt. A raw error dump is one strategy among many; reframing the failure into
+a structured self-reflection lifts retry success substantially on coding tasks
+(Reflexion, +17 pp on HumanEval). lopi makes this a first-class, pickable,
+loop-as-code lever.
+
+### The S1–S4 ladder
+
+`SelfPromptStrategy` (`crates/lopi-core/src/self_prompt.rs`) is a pure transform
+`frame(base_failure, attempt) -> String`. Ordered by how much cognitive
+scaffolding each adds before the agent re-plans:
+
+| Tag | Strategy | What it injects into the next prompt | Provenance |
+|-----|----------|--------------------------------------|------------|
+| **S1** | Direct | The raw failure, verbatim (legacy default — byte-identical). | baseline |
+| **S2** | Reflexion | "Name the single root cause, then try a *different* approach." | Shinn et al. 2023 ([2303.11366](https://arxiv.org/abs/2303.11366)) |
+| **S3** | Self-Refine | "Critique against correctness/coverage/minimality, then revise each bullet." | Madaan et al. 2023 ([2303.17651](https://arxiv.org/abs/2303.17651)) |
+| **S4** | Plan-Then-Act | "Produce a numbered, dependency-ordered plan before editing a single line." | Wang et al. 2023 (Plan-and-Solve) |
+
+`Direct` reproduces the legacy raw-failure injection exactly, so the default is a
+no-op change; richer strategies prepend a self-prompting preamble + concrete
+instruction.
+
+### Full-stack wiring
+
+- **Core** — `LoopConfig.self_prompt` field (loop-as-code); `LoopConfig::save_to_repo`
+  writes `.lopi/loop.toml` so the UI can persist the choice.
+- **Runner** — `AgentRunner::with_self_prompt(strategy)`; the adaptive-retry path
+  routes the failure block through `strategy.frame(..)` before injecting it into
+  the next planning prompt. Wired live from `.lopi/loop.toml` in both the
+  `lopi run` CLI path and the orchestrator pool.
+- **API** — `GET /api/loop-engineering` carries a `self_prompt_strategies` catalog
+  (each with a live self-prompt **preview**); `POST /api/loop-engineering/strategy`
+  validates + persists the choice (`422` on unknown tags).
+- **Web + macOS** — a "Self-Prompting Strategy" panel: picker, strategy cards, and
+  a live preview of the exact self-prompt the agent will generate.
+
+### Next two (research-ranked, not yet built)
+
+The [discovery sweep](#sources) ranked these as the highest-value follow-ons:
+
+2. ~~**Adaptive Strategy Escalation**~~ — ✅ **shipped (Phase 16.5)**: auto-climb
+   S1→S4 by attempt number instead of pinning one strategy. `LoopConfig.escalate_strategy`
+   + `SelfPromptStrategy::escalated(base, attempt)` (climb one rung per failed
+   attempt, capped at S4, starting from the base). Wired into the runner
+   (`AgentRunner::effective_strategy`), surfaced as an escalation-ladder preview
+   and a toggle in the web + macOS Loop screens, persisted via
+   `POST /api/loop-engineering/escalation`. Backed by RefineCoder
+   ([2502.09183](https://arxiv.org/abs/2502.09183)).
+3. **Earned-Trust Auto-Promotion** (M) — promote a schedule's `AutonomyLevel`
+   after N consecutive clean verified runs; demote instantly on a post-merge
+   revert. CSA Agentic Trust Framework (2026).
+
+Critical safety adjacency: wire `LoopConfig.budget_tokens` to the Claude API
+`task_budget` parameter (beta `task-budgets-2026-03-13`) so the model
+self-regulates instead of hard-cutting.
+
+## 7. Feature status by app
 
 Status legend: ✅ done · 🟡 partial · ⛔ not started.
 
-### 6a. Web dashboard (SvelteKit · `web/src/routes/loop/`)
+### 7a. Web + macOS Loop screen (mirror each other 1:1)
 
 | Feature | Status | Notes |
 |---------|:------:|-------|
 | Effective config panel (read) | ✅ | `.lopi/loop.toml` + validation badge |
-| Autonomy ladder display | ✅ | L1–L4 cards, color-coded by trust |
-| Per-schedule trust dropdown (write) | ✅ | `POST /api/schedules/:id/autonomy` |
-| **Autonomy actually enforced in runner** | ✅ | 16.3 — dropdown now changes behaviour |
+| Autonomy ladder display + trust dropdown | ✅ | `POST /api/schedules/:id/autonomy` |
+| Self-Prompting Strategy picker + preview | ✅ | 16.4 — S1–S4, live self-prompt preview |
+| Adaptive escalation toggle + ladder | ✅ | 16.5 — `#1 S2 → #2 S3 → …` |
 | **Loop Health: KPIs + sparklines + outcomes** | ✅ | 16.3 — score/pressure/diff/cost + distribution |
-| Skills list (read) | ✅ | discovered from `.claude/skills` |
-| Rules chips (read) | ✅ | discovered from `.claude/rules` |
+| **Per-run drill-down trace** | ✅ | 16.6 — Recent Runs → attempt-by-attempt timeline |
+| Skills list + rule chips (read) | ✅ | discovered from `.claude/{skills,rules}` |
 | Quality-gate panel | 🟡 | hardcoded wall strings, not live KCQF thresholds |
-| Per-run drill-down (iteration trace) | ⛔ | aggregate health only; no single-run timeline |
-| Loop config editing (write `loop.toml`) | ⛔ | loop-as-code is repo-edited; no PATCH endpoint |
+| Loop config editing (write `loop.toml`) | 🟡 | strategy/escalation persist; no general editor |
 | Skill / rule enable-disable toggles | ⛔ | read-only discovery today |
 | VISION.md intent-anchor editor | ⛔ | field exists in schema, no UI |
-| Live SSE health refresh | ⛔ | fetch on mount + after writes only |
+| Live SSE health/run refresh | ⛔ | fetch on mount + after writes only |
 
-### 6b. macOS app (SwiftUI · `macos/Lopi/Views/Loop/`)
-
-Mirrors the web screen one-for-one; same status row-by-row.
-
-| Feature | Status | Notes |
-|---------|:------:|-------|
-| Effective config panel (read) | ✅ | `LoopView.configPanel` |
-| Autonomy ladder display | ✅ | `ladderPanel` |
-| Per-schedule trust dropdown (write) | ✅ | `KonjoMenu` → `setScheduleAutonomy` |
-| **Loop Health: KPIs + sparklines + outcomes** | ✅ | 16.3 — `healthPanel` via `Charts.Sparkline` |
-| Skills / rules panels (read) | ✅ | `skillsPanel` / `rulesPanel` |
-| Quality-gate panel | 🟡 | same hardcoded strings as web |
-| Per-run drill-down (iteration trace) | ⛔ | — |
-| Loop config editing | ⛔ | — |
-| Skill / rule toggles | ⛔ | — |
-| VISION.md editor | ⛔ | — |
-| Live push health refresh | ⛔ | `.task` + `.refreshable` only |
-
-### 6c. Shared backend
+### 7b. Shared backend
 
 | Capability | Status | Location |
 |------------|:------:|----------|
-| `LoopConfig` schema + validate | ✅ | `lopi-core/src/loop_config.rs` |
+| `LoopConfig` schema + validate + `save_to_repo` | ✅ | `lopi-core/src/loop_config.rs` |
 | Autonomy enforcement (L1–L4) | ✅ | `lopi-agent/src/runner/finalize.rs` |
+| Self-prompt strategy + adaptive escalation | ✅ | `lopi-core/src/self_prompt.rs` |
 | No-progress stall guard | ✅ | `run_loop.rs` + `finalize.rs` (`update_no_progress_streak`) |
-| Draft PR / auto-merge git ops | ✅ | `lopi-git` `open_pr_draft` / `enable_auto_merge` |
+| Draft PR / auto-merge git ops | ✅ | `lopi-git` `open_draft_pr` / `auto_merge` |
 | Loop Health projections + endpoint | ✅ | `lopi-memory/store/loop_health.rs` · `lopi-ui/.../loop_health_handlers.rs` |
-| `loop.toml` mutation endpoint | ⛔ | gap — needed for config-editing UI |
+| Per-run trace projections + endpoints | ✅ | `lopi-memory/store/run_trace.rs` · `lopi-ui/.../loop_runs_handlers.rs` |
+| General `loop.toml` mutation endpoint | ⛔ | only strategy/escalation today; no full editor |
 | Typed `RunOutcome` enum | ⛔ | `AgentRun.outcome` is still a free string |
 | `AgentEvent::ProgressStall` event | ⛔ | stall surfaces via status + log today |
 | Hill-climbing meta-loop (`lopi-optimize`) | ⛔ | traces collected, never consumed to self-tune |
 
-## 7. Roadmap — next most impactful loop features
+## 8. Roadmap — next most impactful loop features
 
-Ranked by impact-to-effort for subsequent prompts. (1) is the natural next flagship.
+Ranked by impact-to-effort. (Per-run drill-down — formerly #1 — shipped in 16.6.)
 
 | # | Feature | Impact | Effort | Sketch |
 |---|---------|:------:|:------:|--------|
-| 1 | **Per-run drill-down trace** | High | Med | Click a run → iteration timeline (plan→implement→test→score per attempt), diff-per-iteration, verifier verdicts. `GET /api/runs/:id/trace` over `attempts`+`turn_metrics`+`verifier_verdicts`. The single-run counterpart to the aggregate health view. |
-| 2 | **LoopConfig write path** | High | Med | `PATCH /api/loop-engineering` writes back `.lopi/loop.toml`; config-editor UI in both apps. Makes loop-as-code editable from the cockpit, not just the repo. |
-| 3 | **Structured GoalContract** | High | Med | Replace the raw `goal: String` with `{end_state, evidence[], constraints[], turn_cap, usd_cap}`; verifier evaluates the evidence predicates. Turns "stop when tests pass" into a real, inspectable contract. |
-| 4 | **Intra-turn stall detection** | Med-High | Med | `PreToolUse`/`PostToolUse` hooks fingerprint `(tool, args, result)` in a sliding window; abort tight tool loops inside one turn (the coarse outer guard shipped in 16.3 only fires between attempts). |
+| 1 | **LoopConfig write path / editor** | High | Med | Generalise the strategy/escalation writers into `PATCH /api/loop-engineering` + a config-editor UI in both apps. Makes loop-as-code fully editable from the cockpit. |
+| 2 | **Structured GoalContract** | High | Med | Replace the raw `goal: String` with `{end_state, evidence[], constraints[], turn_cap, usd_cap}`; verifier evaluates the evidence predicates. |
+| 3 | **Earned-trust auto-promotion** | High | Med | Promote a schedule's `AutonomyLevel` after N consecutive clean verified runs; demote instantly on a post-merge revert (CSA Agentic Trust Framework). |
+| 4 | **Intra-turn stall detection** | Med-High | Med | `PreToolUse`/`PostToolUse` hooks fingerprint `(tool, args, result)` in a sliding window; abort tight tool loops inside one turn (the 16.3 guard only fires between attempts). |
 | 5 | **Hill-climbing meta-loop** (`lopi-optimize`) | High | High | Periodic job: read trace DB → analysis agent finds elevated tool-error rates / chronically-failing goals → surfaces recommended `loop.toml` / rubric changes for operator approval (AWS AgentCore pattern). |
-| 6 | **Live SSE Loop Health** | Med | Low | Stream attempt/turn events to the dashboard so health updates without a manual refresh. |
+| 6 | **Live SSE Loop Health / runs** | Med | Low | Stream attempt/turn events to the dashboard so health + run traces update without a manual refresh. |
 | 7 | **Typed `RunOutcome` + stall event** | Med | Low | `Success / MaxTurns / MaxBudget / VerifierFailed / StallDetected` enum + `AgentEvent::ProgressStall`; enables outcome-filtered health and SQLite indexing. |
 | 8 | **Skill/rule management UI** | Med | Med | Enable/disable toggles; lesson→named-skill promotion (Cherny's "write it down" compounding). |
 | 9 | **Live quality-gate status** | Med | Low | Drive the gate panel from `quality_check_runs` instead of hardcoded strings. |
-| 10 | **Per-loop token economics** | Med | Med | cost/tick, cumulative spend, burn projection, per-schedule budget attribution. |
+| 10 | **Per-loop token economics** | Med | Med | cost/tick, cumulative spend, burn projection, per-schedule budget attribution; wire `budget_tokens` to the Claude `task_budget` beta. |
 
 ## Sources
+Reflexion ([2303.11366](https://arxiv.org/abs/2303.11366)) · Self-Refine
+([2303.17651](https://arxiv.org/abs/2303.17651)) · SELF-DISCOVER
+([2402.03620](https://arxiv.org/abs/2402.03620)) · LATS
+([2310.04406](https://arxiv.org/abs/2310.04406)) · RefineCoder
+([2502.09183](https://arxiv.org/abs/2502.09183)) · Iterative Self-Repair
+([2604.10508](https://arxiv.org/abs/2604.10508)) · Coding-Agent Scaffold Taxonomy
+([2604.03515](https://arxiv.org/abs/2604.03515)) ·
 howborisusesclaudecode.com · theneuron.ai (Cherny/Wu) · cobusgreyling
 substack/medium · addyosmani.com (loop + harness engineering) · tosea.ai ·
 steipete.me (just-talk-to-it, optimal-ai-dev-workflow) · anthropic.com

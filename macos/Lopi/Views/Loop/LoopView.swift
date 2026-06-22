@@ -9,6 +9,9 @@ import SwiftUI
 struct LoopView: View {
     @Environment(AppModel.self) private var model
 
+    /// The strategy whose self-prompt preview is shown; empty = the active one.
+    @State private var focusedStrategy: String = ""
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
@@ -18,6 +21,7 @@ struct LoopView: View {
                     runsPanel()
                     configPanel(snap.config)
                     ladderPanel(snap.autonomyLevels)
+                    selfPromptPanel(snap)
                     schedulesPanel(snap)
                     HStack(alignment: .top, spacing: 16) {
                         skillsPanel(snap.skills)
@@ -313,6 +317,141 @@ struct LoopView: View {
                     }
                 }
             }
+        }
+    }
+
+    // MARK: Self-prompting strategy (writable, loop-as-code)
+
+    private func selfPromptPanel(_ snap: LoopSnapshot) -> some View {
+        KonjoPanel {
+            VStack(alignment: .leading, spacing: 12) {
+                panelHead("Self-Prompting Strategy",
+                          "how the loop re-prompts itself after a failed attempt") {
+                    KonjoMenu(
+                        title: "",
+                        options: snap.selfPromptStrategies.map {
+                            LaunchOption(value: $0.value, label: "\($0.tag) · \($0.label)")
+                        },
+                        value: Binding(
+                            get: { snap.config.selfPrompt },
+                            set: { newValue in
+                                focusedStrategy = newValue
+                                Task { await model.setLoopStrategy(newValue) }
+                            }
+                        ),
+                        dense: true
+                    )
+                }
+                Text("The single highest-leverage loop lever — the text the agent feeds back into "
+                     + "its own next plan. Picking one writes .lopi/loop.toml; the runner honors it "
+                     + "live on the next adaptive retry.")
+                    .font(Konjo.mono(11)).foregroundStyle(Konjo.fgMute)
+                let cols = Array(repeating: GridItem(.flexible(), alignment: .topLeading), count: 2)
+                LazyVGrid(columns: cols, spacing: 10) {
+                    ForEach(snap.selfPromptStrategies) { st in
+                        strategyCard(st, active: st.value == snap.config.selfPrompt)
+                    }
+                }
+                if let preview = previewStrategy(snap) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("SELF-PROMPT PREVIEW · \(preview.tag) · \(preview.label)")
+                            .font(Konjo.mono(9)).tracking(1.2).foregroundStyle(Konjo.fgMute)
+                        Text(preview.preview)
+                            .font(Konjo.mono(11)).foregroundStyle(Konjo.fgDim)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(10)
+                            .background(Konjo.bg2)
+                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Konjo.line, lineWidth: 1))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .textSelection(.enabled)
+                    }
+                }
+                escalationRow(snap.config)
+            }
+        }
+    }
+
+    /// Adaptive-escalation toggle + the per-attempt ladder it produces.
+    private func escalationRow(_ c: LoopConfigDTO) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Toggle(isOn: Binding(
+                get: { c.escalateStrategy },
+                set: { newValue in Task { await model.setLoopEscalation(newValue) } }
+            )) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Adaptive escalation").font(Konjo.sans(13)).foregroundStyle(Konjo.fg)
+                    Text("Climb one rung up the ladder each failed attempt.")
+                        .font(Konjo.mono(10)).foregroundStyle(Konjo.fgMute)
+                }
+            }
+            .toggleStyle(.switch)
+            .tint(Konjo.jade)
+            if c.escalateStrategy {
+                HStack(spacing: 6) {
+                    ForEach(Array(c.escalationLadder.enumerated()), id: \.element.id) { idx, rung in
+                        if idx > 0 {
+                            Text("→").font(Konjo.mono(10)).foregroundStyle(Konjo.fgMute)
+                        }
+                        HStack(spacing: 4) {
+                            Text("#\(rung.attempt)").font(Konjo.mono(10)).foregroundStyle(Konjo.fgMute)
+                            Text(rung.tag).font(Konjo.mono(10, weight: .bold))
+                                .foregroundStyle(strategyColor(rung.tag))
+                        }
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(Konjo.bg2)
+                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Konjo.line2, lineWidth: 1))
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                    }
+                }
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Konjo.bg2)
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Konjo.line, lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func strategyCard(_ st: LoopSelfPromptOption, active: Bool) -> some View {
+        Button {
+            focusedStrategy = st.value
+        } label: {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 8) {
+                    Text(st.tag).font(Konjo.mono(13, weight: .bold)).foregroundStyle(strategyColor(st.tag))
+                    Text(st.label).font(Konjo.sans(13)).foregroundStyle(Konjo.fg)
+                    if active {
+                        Spacer(minLength: 4)
+                        Text("ACTIVE").font(Konjo.mono(8)).tracking(1.2).foregroundStyle(Konjo.jade)
+                    }
+                }
+                Text(st.description).font(Konjo.mono(10)).foregroundStyle(Konjo.fgMute)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Konjo.bg2)
+            .overlay(RoundedRectangle(cornerRadius: 8)
+                .stroke(active ? Konjo.ice : Konjo.line, lineWidth: active ? 1.5 : 1))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// The strategy to preview: the focused one, else the repo's active strategy.
+    private func previewStrategy(_ snap: LoopSnapshot) -> LoopSelfPromptOption? {
+        let target = focusedStrategy.isEmpty ? snap.config.selfPrompt : focusedStrategy
+        return snap.selfPromptStrategies.first { $0.value == target }
+            ?? snap.selfPromptStrategies.first
+    }
+
+    private func strategyColor(_ tag: String) -> Color {
+        switch tag {
+        case "S1": return Konjo.ice
+        case "S2": return Konjo.jade
+        case "S3": return Konjo.sun
+        case "S4": return Konjo.ember
+        default: return Konjo.ice
         }
     }
 
