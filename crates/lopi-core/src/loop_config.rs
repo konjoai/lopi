@@ -123,6 +123,32 @@ impl AutonomyLevel {
             Self::AutoMerge,
         ]
     }
+
+    /// The level at ladder `rank`, clamped to the valid `1..=4` band.
+    /// Inverse of [`rank`](Self::rank): `0/1 → L1`, `2 → L2`, `3 → L3`, `≥4 → L4`.
+    #[must_use]
+    pub fn from_rank(rank: u8) -> Self {
+        match rank {
+            0 | 1 => Self::ReportOnly,
+            2 => Self::DraftPr,
+            3 => Self::VerifiedPr,
+            _ => Self::AutoMerge,
+        }
+    }
+
+    /// One rung **up** the trust ladder, saturating at [`AutoMerge`](Self::AutoMerge).
+    /// The earned-trust promotion step (Phase 16.7).
+    #[must_use]
+    pub fn promoted(self) -> Self {
+        Self::from_rank(self.rank().saturating_add(1))
+    }
+
+    /// One rung **down** the trust ladder, saturating at [`ReportOnly`](Self::ReportOnly).
+    /// The earned-trust demotion step applied on a regression.
+    #[must_use]
+    pub fn demoted(self) -> Self {
+        Self::from_rank(self.rank().saturating_sub(1))
+    }
 }
 
 /// Declarative loop-engineering configuration for a repo.
@@ -168,6 +194,17 @@ pub struct LoopConfig {
     /// Per-run token budget ceiling (`0` = inherit the global budget).
     #[serde(default)]
     pub budget_tokens: u64,
+    /// Phase 16.7 — earned-trust auto-promotion: promote the loop's autonomy one
+    /// rung after this many **consecutive clean, verifier-passed** runs. `0` (the
+    /// default) disables auto-promotion — trust stays pinned at `autonomy_level`.
+    #[serde(default)]
+    pub promote_after: u32,
+    /// The highest autonomy level earned trust may auto-promote to. Caps the
+    /// ladder so unattended auto-merge (L4) stays opt-in even on a long clean
+    /// streak. Defaults to [`DraftPr`](AutonomyLevel::DraftPr) — i.e. no headroom
+    /// above the conservative default until a human raises the ceiling.
+    #[serde(default)]
+    pub trust_ceiling: AutonomyLevel,
 }
 
 impl Default for LoopConfig {
@@ -184,6 +221,8 @@ impl Default for LoopConfig {
             no_progress_limit: default_no_progress_limit(),
             max_iterations: default_max_iterations(),
             budget_tokens: 0,
+            promote_after: 0,
+            trust_ceiling: AutonomyLevel::default(),
         }
     }
 }
@@ -251,6 +290,13 @@ impl LoopConfig {
             issues.push(format!(
                 "no_progress_limit ({}) exceeds max_iterations ({}) — it can never trigger",
                 self.no_progress_limit, self.max_iterations
+            ));
+        }
+        if self.promote_after > 0 && self.trust_ceiling.rank() <= self.autonomy_level.rank() {
+            issues.push(format!(
+                "trust_ceiling ({}) is not above autonomy_level ({}) — earned-trust promotion can never fire",
+                self.trust_ceiling.tag(),
+                self.autonomy_level.tag(),
             ));
         }
         issues

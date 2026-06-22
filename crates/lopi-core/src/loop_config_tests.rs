@@ -27,6 +27,96 @@ fn autonomy_capability_gates() {
 }
 
 #[test]
+fn autonomy_from_rank_clamps_to_band() {
+    assert_eq!(AutonomyLevel::from_rank(0), AutonomyLevel::ReportOnly);
+    assert_eq!(AutonomyLevel::from_rank(1), AutonomyLevel::ReportOnly);
+    assert_eq!(AutonomyLevel::from_rank(2), AutonomyLevel::DraftPr);
+    assert_eq!(AutonomyLevel::from_rank(3), AutonomyLevel::VerifiedPr);
+    assert_eq!(AutonomyLevel::from_rank(4), AutonomyLevel::AutoMerge);
+    assert_eq!(AutonomyLevel::from_rank(99), AutonomyLevel::AutoMerge);
+}
+
+#[test]
+fn autonomy_promoted_steps_up_and_saturates() {
+    assert_eq!(AutonomyLevel::ReportOnly.promoted(), AutonomyLevel::DraftPr);
+    assert_eq!(AutonomyLevel::DraftPr.promoted(), AutonomyLevel::VerifiedPr);
+    assert_eq!(
+        AutonomyLevel::VerifiedPr.promoted(),
+        AutonomyLevel::AutoMerge
+    );
+    assert_eq!(
+        AutonomyLevel::AutoMerge.promoted(),
+        AutonomyLevel::AutoMerge
+    );
+}
+
+#[test]
+fn autonomy_demoted_steps_down_and_saturates() {
+    assert_eq!(
+        AutonomyLevel::AutoMerge.demoted(),
+        AutonomyLevel::VerifiedPr
+    );
+    assert_eq!(AutonomyLevel::VerifiedPr.demoted(), AutonomyLevel::DraftPr);
+    assert_eq!(AutonomyLevel::DraftPr.demoted(), AutonomyLevel::ReportOnly);
+    assert_eq!(
+        AutonomyLevel::ReportOnly.demoted(),
+        AutonomyLevel::ReportOnly
+    );
+}
+
+#[test]
+fn loop_config_trust_levers_default_off() {
+    let cfg = LoopConfig::default();
+    assert_eq!(cfg.promote_after, 0, "auto-promotion disabled by default");
+    assert_eq!(cfg.trust_ceiling, AutonomyLevel::DraftPr);
+}
+
+#[test]
+fn validate_flags_unreachable_trust_ceiling() {
+    let dir = std::env::temp_dir();
+    // promote_after set, but ceiling not above the current level → can never fire.
+    let cfg = LoopConfig {
+        promote_after: 3,
+        autonomy_level: AutonomyLevel::DraftPr,
+        trust_ceiling: AutonomyLevel::DraftPr,
+        ..LoopConfig::default()
+    };
+    let issues = cfg.validate(&dir);
+    assert!(
+        issues.iter().any(|i| i.contains("trust_ceiling")),
+        "expected a trust_ceiling issue, got: {issues:?}"
+    );
+}
+
+#[test]
+fn validate_passes_with_headroom() {
+    let dir = std::env::temp_dir();
+    let cfg = LoopConfig {
+        promote_after: 3,
+        autonomy_level: AutonomyLevel::DraftPr,
+        trust_ceiling: AutonomyLevel::VerifiedPr,
+        ..LoopConfig::default()
+    };
+    assert!(cfg
+        .validate(&dir)
+        .iter()
+        .all(|i| !i.contains("trust_ceiling")));
+}
+
+#[test]
+fn loop_config_trust_levers_round_trip_through_toml() {
+    let cfg = LoopConfig {
+        promote_after: 5,
+        trust_ceiling: AutonomyLevel::VerifiedPr,
+        ..LoopConfig::default()
+    };
+    let toml = toml::to_string_pretty(&cfg).unwrap();
+    let back: LoopConfig = toml::from_str(&toml).unwrap();
+    assert_eq!(back.promote_after, 5);
+    assert_eq!(back.trust_ceiling, AutonomyLevel::VerifiedPr);
+}
+
+#[test]
 fn autonomy_parse_accepts_names_and_tags() {
     assert_eq!(
         AutonomyLevel::parse("report_only"),
