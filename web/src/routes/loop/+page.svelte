@@ -13,9 +13,13 @@
   import {
     getLoopEngineering,
     getLoopHealth,
+    getLoopRuns,
+    getLoopRunTrace,
     setScheduleAutonomy,
     type LoopSnapshot,
     type LoopHealth,
+    type LoopRun,
+    type LoopRunTrace,
     type AutonomyOption
   } from '$lib/api';
   import Panel from '$lib/components/ui/Panel.svelte';
@@ -27,14 +31,23 @@
 
   let snap: LoopSnapshot | null = null;
   let health: LoopHealth | null = null;
+  let runs: LoopRun[] = [];
   let loading = true;
   let loadError = '';
   let flash = '';
 
+  // Per-run drill-down state.
+  let selectedRun: string | null = null;
+  let trace: LoopRunTrace | null = null;
+  let traceLoading = false;
+
   async function refresh() {
     try {
-      // Config and health are independent reads — fetch concurrently.
-      [snap, health] = await Promise.all([getLoopEngineering(), getLoopHealth()]);
+      // Config, health and the run list are independent reads — fetch concurrently.
+      const [s, h, r] = await Promise.all([getLoopEngineering(), getLoopHealth(), getLoopRuns()]);
+      snap = s;
+      health = h;
+      runs = r.runs ?? [];
       loadError = '';
     } catch (e) {
       loadError = e instanceof Error ? e.message : 'failed to load';
@@ -44,6 +57,43 @@
   }
 
   onMount(refresh);
+
+  async function selectRun(id: string) {
+    if (selectedRun === id) {
+      // Toggle the drill-down closed.
+      selectedRun = null;
+      trace = null;
+      return;
+    }
+    selectedRun = id;
+    trace = null;
+    traceLoading = true;
+    try {
+      trace = await getLoopRunTrace(id);
+    } catch (e) {
+      loadError = e instanceof Error ? e.message : 'failed to load run trace';
+    } finally {
+      traceLoading = false;
+    }
+  }
+
+  // The four loop lifecycle stages, shown per attempt for structure.
+  const STAGES = ['plan', 'implement', 'test', 'score'];
+
+  function outcomeBadge(o: string): string {
+    return (
+      { success: 'text-konjo-jade', retry: 'text-konjo-sun', stalled: 'text-konjo-rose' }[o] ??
+      'text-konjo-ice'
+    );
+  }
+
+  function fmtCost(c: number): string {
+    return c >= 0.01 ? `$${c.toFixed(2)}` : `$${c.toFixed(4)}`;
+  }
+
+  function fmtTokens(t: number): string {
+    return t >= 1000 ? `${(t / 1000).toFixed(1)}k` : `${t}`;
+  }
 
   // ── Loop Health derived series ───────────────────────────────────────────────
   $: scoreSeries = (health?.attempts ?? []).map((a) => a.test_pass_rate);
@@ -239,6 +289,106 @@
         {/if}
       </Panel>
     {/if}
+
+    <!-- Recent runs + per-run drill-down trace -->
+    <Panel title="Recent Runs" subtitle="click a run for its attempt-by-attempt trace">
+      {#if runs.length === 0}
+        <EmptyState title="No runs yet" detail="Loop runs appear here once a task executes." />
+      {:else}
+        <div class="space-y-1.5">
+          {#each runs as r (r.task_id)}
+            <button
+              type="button"
+              on:click={() => selectRun(r.task_id)}
+              class="w-full text-left flex items-center gap-3 rounded-lg border px-3 py-2.5 transition-colors"
+              class:border-konjo-accent={selectedRun === r.task_id}
+              class:border-white={selectedRun !== r.task_id}
+              class:border-opacity-5={selectedRun !== r.task_id}
+              class:bg-konjo-black={true}
+              class:bg-opacity-40={true}
+            >
+              <span class="font-mono text-[10px] opacity-30 w-3 flex-shrink-0"
+                >{selectedRun === r.task_id ? '▾' : '▸'}</span
+              >
+              <div class="min-w-0 flex-1">
+                <div class="font-mono text-[12px] truncate">{r.goal}</div>
+                <div class="font-mono text-[10px] opacity-40">
+                  {r.attempts} attempt{r.attempts === 1 ? '' : 's'} · best {Math.round(
+                    r.best_score * 100
+                  )}%
+                </div>
+              </div>
+              <span class="font-mono text-[10px] uppercase tracking-widest {outcomeBadge(r.final_outcome)}"
+                >{r.final_outcome}</span
+              >
+            </button>
+
+            {#if selectedRun === r.task_id}
+              <div class="ml-3 pl-3 border-l border-white/10 py-2 space-y-2">
+                {#if traceLoading}
+                  <div class="font-mono text-[11px] opacity-40">loading trace…</div>
+                {:else if trace}
+                  {#each trace.attempts as a (a.attempt)}
+                    <div class="rounded-lg border border-white/5 bg-konjo-deep/50 px-3 py-2.5">
+                      <div class="flex items-center justify-between gap-3">
+                        <span class="font-display text-[13px]">Attempt {a.attempt}</span>
+                        <span
+                          class="font-mono text-[10px] uppercase tracking-widest {outcomeBadge(a.outcome)}"
+                          >{a.outcome}</span
+                        >
+                      </div>
+                      <!-- lifecycle stages -->
+                      <div class="flex items-center gap-1.5 mt-2">
+                        {#each STAGES as st, i}
+                          <span class="font-mono text-[9px] uppercase tracking-widest opacity-50"
+                            >{st}</span
+                          >
+                          {#if i < STAGES.length - 1}
+                            <span class="opacity-20 text-[9px]">→</span>
+                          {/if}
+                        {/each}
+                      </div>
+                      <!-- metrics -->
+                      <div class="flex flex-wrap gap-x-4 gap-y-1 mt-2 font-mono text-[11px]">
+                        <span class="opacity-70">pass <span class="text-konjo-jade">{Math.round(a.test_pass_rate * 100)}%</span></span>
+                        <span class="opacity-70">lint <span class:text-konjo-rose={a.lint_errors > 0}>{a.lint_errors}</span></span>
+                        <span class="opacity-70">diff {a.diff_lines}L</span>
+                        <span class="opacity-70">{fmtTokens(a.tokens)} tok</span>
+                        <span class="opacity-70 text-konjo-sun">{fmtCost(a.cost_usd)}</span>
+                      </div>
+                      <!-- verifier verdict -->
+                      {#if a.verifier}
+                        <div class="mt-2 font-mono text-[10px]">
+                          <span class={a.verifier.passed ? 'text-konjo-jade' : 'text-konjo-rose'}>
+                            {a.verifier.passed ? '✓ verifier passed' : '✗ verifier rejected'} ·
+                            {Math.round(a.verifier.confidence * 100)}%
+                          </span>
+                          {#if a.verifier.gaps.length}
+                            <ul class="mt-1 space-y-0.5 opacity-60">
+                              {#each a.verifier.gaps as g}
+                                <li>• {g}</li>
+                              {/each}
+                            </ul>
+                          {/if}
+                        </div>
+                      {/if}
+                      <!-- errors -->
+                      {#if a.errors.length}
+                        <ul class="mt-2 space-y-0.5 font-mono text-[10px] text-konjo-rose/70">
+                          {#each a.errors.slice(0, 4) as err}
+                            <li class="truncate">• {err}</li>
+                          {/each}
+                        </ul>
+                      {/if}
+                    </div>
+                  {/each}
+                {/if}
+              </div>
+            {/if}
+          {/each}
+        </div>
+      {/if}
+    </Panel>
 
     <!-- Effective loop config -->
     <Panel title="Effective Config" subtitle=".lopi/loop.toml">

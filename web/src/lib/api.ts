@@ -269,8 +269,52 @@ export interface LoopHealth {
   burn: LoopHealthBurn[];
 }
 
+/** One run (task) summarised for the run picker. */
+export interface LoopRun {
+  task_id: string;
+  goal: string;
+  status: string;
+  attempts: number;
+  best_score: number;
+  final_outcome: string;
+  last_at: string;
+}
+
+/** The verifier verdict grafted onto an attempt in a run trace. */
+export interface LoopRunVerifier {
+  passed: boolean;
+  confidence: number;
+  gaps: string[];
+  fix_hints: string[];
+}
+
+/** One attempt in a run's drill-down trace. */
+export interface LoopRunAttempt {
+  attempt: number;
+  test_pass_rate: number;
+  lint_errors: number;
+  diff_lines: number;
+  outcome: string;
+  errors: string[];
+  verifier: LoopRunVerifier | null;
+  tokens: number;
+  cost_usd: number;
+  created_at: string;
+}
+
+/** A single run's attempt-by-attempt trace. */
+export interface LoopRunTrace {
+  task_id: string;
+  goal: string;
+  status: string;
+  attempts: LoopRunAttempt[];
+}
+
 export const getLoopEngineering = () => request<LoopSnapshot>('/api/loop-engineering');
 export const getLoopHealth = () => request<LoopHealth>('/api/loop-engineering/health');
+export const getLoopRuns = () => request<{ runs: LoopRun[] }>('/api/loop-engineering/runs');
+export const getLoopRunTrace = (id: string) =>
+  request<LoopRunTrace>(`/api/loop-engineering/runs/${encodeURIComponent(id)}`);
 export const setScheduleAutonomy = (id: string, level: string) =>
   request<{ id: string; autonomy_level: string }>(
     `/api/schedules/${encodeURIComponent(id)}/autonomy`,
