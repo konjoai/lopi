@@ -150,6 +150,7 @@ otel = [
 # on every `cargo build` or `cargo test` — zero manual hook setup required.
 # user-hooks feature: reads from .cargo-husky/hooks/ instead of generating a default hook.
 cargo-husky = { version = "1", default-features = false, features = ["user-hooks"] }
+tempfile = "3"
 
 [profile.release]
 lto = "fat"

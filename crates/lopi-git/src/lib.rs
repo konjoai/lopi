@@ -9,4 +9,4 @@ pub mod worktree;
 
 pub use diff::DiffChecker;
 pub use manager::GitManager;
-pub use worktree::{Worktree, WorktreeManager};
+pub use worktree::{GcReport, Worktree, WorktreeManager};

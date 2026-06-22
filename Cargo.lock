@@ -1826,6 +1826,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "tempfile",
  "tokio",
  "tokio-cron-scheduler",
  "tokio-tungstenite",

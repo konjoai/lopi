@@ -139,6 +139,90 @@ impl WorktreeManager {
         .await?;
         Ok(parse_worktree_paths(&out))
     }
+
+    /// Reclaim throwaway worktrees and branches left behind by finished tasks.
+    ///
+    /// Prunes git's worktree admin entries, removes any orphan checkout dir
+    /// under the root that git no longer tracks (a cleanup that died mid-flight),
+    /// and deletes local branches matching `branch_prefix` that are not checked
+    /// out in any live worktree — lopi's per-attempt branches are ephemeral, the
+    /// pushed PR is the durable artifact, so an idle one is garbage. Backs
+    /// `lopi worktree gc`.
+    ///
+    /// Individual stuck entries are logged and skipped, never failing the whole
+    /// sweep; the returned [`GcReport`] counts what was reclaimed.
+    ///
+    /// # Errors
+    /// Returns `Err` only if the initial `git worktree prune`/`list` fails.
+    pub async fn gc(&self, branch_prefix: &str) -> Result<GcReport> {
+        let _guard = WT_META_LOCK.lock().await;
+        run_git(&self.repo_path, &["worktree".into(), "prune".into()]).await?;
+        let porcelain = run_git_stdout(
+            &self.repo_path,
+            &["worktree".into(), "list".into(), "--porcelain".into()],
+        )
+        .await?;
+        let live_paths = parse_worktree_paths(&porcelain);
+        let live_branches = parse_worktree_branches(&porcelain);
+        let worktrees_removed = self.remove_orphan_dirs(&live_paths).await;
+        let branches_removed = self
+            .delete_stale_branches(branch_prefix, &live_branches)
+            .await?;
+        Ok(GcReport {
+            worktrees_removed,
+            branches_removed,
+        })
+    }
+
+    /// Remove dirs under the worktree root that git no longer tracks. Matches by
+    /// leaf name (git reports absolute paths; ours may be relative). Returns the
+    /// count removed; a dir that won't delete is logged and left for next time.
+    async fn remove_orphan_dirs(&self, live: &[PathBuf]) -> usize {
+        use std::collections::HashSet;
+        let live_names: HashSet<_> = live.iter().filter_map(|p| p.file_name()).collect();
+        let Ok(mut entries) = tokio::fs::read_dir(self.root()).await else {
+            return 0; // no root yet → nothing to reclaim
+        };
+        let mut removed = 0;
+        while let Ok(Some(entry)) = entries.next_entry().await {
+            if live_names.contains(entry.file_name().as_os_str()) {
+                continue;
+            }
+            if let Err(e) = tokio::fs::remove_dir_all(entry.path()).await {
+                tracing::warn!(path = %entry.path().display(), "orphan worktree remove failed: {e}");
+            } else {
+                removed += 1;
+            }
+        }
+        removed
+    }
+
+    /// Delete local branches matching `prefix` that are not checked out in any
+    /// live worktree. Returns the count deleted.
+    async fn delete_stale_branches(&self, prefix: &str, live: &[String]) -> Result<usize> {
+        let listed = run_git_stdout(&self.repo_path, &for_each_ref_args()).await?;
+        let mut removed = 0;
+        for name in listed
+            .lines()
+            .map(str::trim)
+            .filter(|n| n.starts_with(prefix) && !live.iter().any(|b| b == n))
+        {
+            match run_git(&self.repo_path, &branch_delete_args(name)).await {
+                Ok(()) => removed += 1,
+                Err(e) => tracing::warn!(branch = name, "branch gc delete failed: {e}"),
+            }
+        }
+        Ok(removed)
+    }
+}
+
+/// What a [`WorktreeManager::gc`] sweep reclaimed.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct GcReport {
+    /// Orphaned worktree directories removed from under the root.
+    pub worktrees_removed: usize,
+    /// Stale `lopi/*` branches deleted from the local ref store.
+    pub branches_removed: usize,
 }
 
 /// An RAII handle to a live `git worktree` checkout.
@@ -300,6 +384,31 @@ fn parse_worktree_paths(porcelain: &str) -> Vec<PathBuf> {
         .filter_map(|l| l.strip_prefix("worktree "))
         .map(PathBuf::from)
         .collect()
+}
+
+/// Parse the short branch names currently checked out across worktrees from
+/// `git worktree list --porcelain` (records carry `branch refs/heads/<name>`).
+fn parse_worktree_branches(porcelain: &str) -> Vec<String> {
+    porcelain
+        .lines()
+        .filter_map(|l| l.strip_prefix("branch refs/heads/"))
+        .map(str::to_string)
+        .collect()
+}
+
+/// Build `git for-each-ref --format=%(refname:short) refs/heads/` — lists local
+/// branch short names, one per line. Kept pure for unit-testability.
+fn for_each_ref_args() -> Vec<String> {
+    vec![
+        "for-each-ref".to_string(),
+        "--format=%(refname:short)".to_string(),
+        "refs/heads/".to_string(),
+    ]
+}
+
+/// Build the `git branch -D <name>` (force-delete) argument vector. Kept pure.
+fn branch_delete_args(name: &str) -> Vec<String> {
+    vec!["branch".to_string(), "-D".to_string(), name.to_string()]
 }
 
 /// Run `git -C <repo> <args>`, returning `Err` with stderr on a non-zero exit.

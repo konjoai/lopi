@@ -36,6 +36,32 @@ fn remove_args_force_to_discard_throwaway_changes() {
 }
 
 #[test]
+fn for_each_ref_and_branch_delete_args_are_stable() {
+    assert_eq!(
+        for_each_ref_args(),
+        vec!["for-each-ref", "--format=%(refname:short)", "refs/heads/"]
+    );
+    assert_eq!(branch_delete_args("lopi/x"), vec!["branch", "-D", "lopi/x"]);
+}
+
+#[test]
+fn parse_worktree_branches_reads_checked_out_refs() {
+    let porcelain = "\
+worktree /repo
+HEAD abc
+branch refs/heads/main
+
+worktree /repo/.lopi/worktrees/t-1
+HEAD def
+branch refs/heads/lopi/t-attempt-1
+";
+    assert_eq!(
+        parse_worktree_branches(porcelain),
+        vec!["main".to_string(), "lopi/t-attempt-1".to_string()]
+    );
+}
+
+#[test]
 fn parse_worktree_paths_reads_porcelain_records() {
     let porcelain = "\
 worktree /repo
@@ -170,6 +196,48 @@ async fn add_rejects_duplicate_branch() {
     let err = mgr.add("dup", 2, "lopi/dup").await;
     assert!(err.is_err(), "duplicate branch should be rejected");
     wt.cleanup().await.unwrap();
+}
+
+/// Sprint 1.3 DoD: a gc sweep reclaims stale `lopi/*` branches and orphan
+/// worktree dirs, but never touches a live worktree or its branch.
+#[tokio::test]
+async fn gc_reclaims_stale_but_keeps_live() {
+    let (_dir, repo) = init_repo();
+    let mgr = WorktreeManager::new(&repo).unwrap();
+
+    // A live worktree on a lopi branch — must survive.
+    let live = mgr.add("live", 1, "lopi/live-attempt-1").await.unwrap();
+    // A stale lopi branch with no worktree — must be deleted.
+    git(&repo, &["branch", "lopi/stale-attempt-1"]);
+    // An orphan dir under the root that git no longer tracks — must be removed.
+    let orphan = mgr.root().join("orphan-123");
+    std::fs::create_dir_all(&orphan).unwrap();
+    std::fs::write(orphan.join("junk.txt"), "x").unwrap();
+
+    let report = mgr.gc("lopi/").await.unwrap();
+    assert_eq!(report.branches_removed, 1, "only the stale branch");
+    assert_eq!(report.worktrees_removed, 1, "only the orphan dir");
+
+    assert!(live.path().is_dir(), "live worktree survives");
+    assert!(!orphan.exists(), "orphan dir reclaimed");
+    let branches = String::from_utf8(
+        Command::new("git")
+            .arg("-C")
+            .arg(&repo)
+            .args(["branch", "--format=%(refname:short)"])
+            .output()
+            .unwrap()
+            .stdout,
+    )
+    .unwrap();
+    assert!(branches.contains("lopi/live-attempt-1"), "live branch kept");
+    assert!(
+        !branches.contains("lopi/stale-attempt-1"),
+        "stale branch gone"
+    );
+    assert!(branches.contains("main"), "non-lopi branch untouched");
+
+    live.cleanup().await.unwrap();
 }
 
 /// The Sprint 1.1 DoD property: N concurrent add/remove cycles leave zero
