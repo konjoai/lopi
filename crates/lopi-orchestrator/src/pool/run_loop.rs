@@ -199,6 +199,16 @@ impl AgentPool {
                             "rolled back".into(),
                         ))
                     }
+                    // A rebase conflict isn't a code failure — main simply moved
+                    // under the task. Count it and DLQ it so it can be retried
+                    // fresh on the new base.
+                    Ok(TaskStatus::Conflict { paths }) => {
+                        counters.failed.fetch_add(1, Ordering::Relaxed);
+                        Some((
+                            u8::try_from(attempt.load(Ordering::Relaxed)).unwrap_or(u8::MAX),
+                            format!("rebase conflict: {}", paths.join(", ")),
+                        ))
+                    }
                     Err(_) => {
                         counters.failed.fetch_add(1, Ordering::Relaxed);
                         None // handled by the explicit error branch below
@@ -382,6 +392,7 @@ async fn run_one(
             TaskStatus::Success { .. } => "success",
             TaskStatus::Failed { .. } => "failed",
             TaskStatus::RolledBack => "rolled_back",
+            TaskStatus::Conflict { .. } => "conflict",
             _ => "unknown",
         };
         store.mark_completed(&task_id, status_str).await.ok();

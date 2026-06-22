@@ -14,7 +14,8 @@ use crate::api_client::AnthropicClient;
 use crate::stability::{StabilityConfig, StabilityHarness};
 use lopi_context::{ContentBlock, ContextWindow, Phase, PinPolicy, Role, TaggedMessage};
 use lopi_core::{
-    AgentEvent, EventBus, PlanDecision, ScoreWeights, SelfPromptStrategy, Task, TaskId, TaskStatus,
+    AgentEvent, EventBus, PlanDecision, Score, ScoreWeights, SelfPromptStrategy, Task, TaskId,
+    TaskStatus,
 };
 use lopi_memory::MemoryStore;
 use lopi_ratelimit::{AnthropicLimiter, CircuitBreaker};
@@ -357,9 +358,10 @@ impl AgentRunner {
             TaskStatus::Testing => 0.55_f32,
             TaskStatus::Scoring => 0.30_f32,
             TaskStatus::Retrying { .. } => 0.40_f32,
-            TaskStatus::Success { .. } | TaskStatus::Failed { .. } | TaskStatus::RolledBack => {
-                0.0_f32
-            }
+            TaskStatus::Success { .. }
+            | TaskStatus::Failed { .. }
+            | TaskStatus::RolledBack
+            | TaskStatus::Conflict { .. } => 0.0_f32,
             TaskStatus::Queued => 0.10_f32,
         };
         self.emit_turn_metrics(activity);
@@ -368,6 +370,43 @@ impl AgentRunner {
             status: s,
             attempt,
         });
+    }
+
+    /// Emit terminal bookkeeping for a finalized attempt and return its status.
+    ///
+    /// A genuine success pins the conclusion and marks an OTel `complete` span;
+    /// a [`TaskStatus::Conflict`] (rebase collision) skips that — it is not a
+    /// success — but both broadcast the status so the dashboards reflect reality.
+    pub(super) fn conclude_finalized(
+        &mut self,
+        status: TaskStatus,
+        score: &Score,
+        attempt: u8,
+    ) -> TaskStatus {
+        if !matches!(status, TaskStatus::Conflict { .. }) {
+            self.context.pin_conclusion(
+                format!(
+                    "Sprint succeeded — pass={:.0}% diff={}L",
+                    score.test_pass_rate * 100.0,
+                    score.diff_lines
+                ),
+                Phase::Conclusion,
+            );
+            tracing::info!(
+                pressure = self.context.token_pressure(),
+                "context at conclusion"
+            );
+            // OTel GenAI-aligned task-completion boundary span.
+            let _ = tracing::info_span!(
+                "lopi.agent.task.complete",
+                task_id = %self.id(),
+                outcome = "success",
+                attempts = attempt,
+            )
+            .entered();
+        }
+        self.status(status.clone(), attempt);
+        status
     }
 
     pub(super) fn emit_turn_metrics(&self, activity: f32) {
