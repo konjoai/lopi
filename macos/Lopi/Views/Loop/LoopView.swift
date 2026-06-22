@@ -15,6 +15,7 @@ struct LoopView: View {
                 header
                 if let snap = model.loopSnapshot {
                     if let health = model.loopHealth { healthPanel(health) }
+                    runsPanel()
                     configPanel(snap.config)
                     ladderPanel(snap.autonomyLevels)
                     schedulesPanel(snap)
@@ -148,6 +149,113 @@ struct LoopView: View {
                     }
                 }
             }
+        }
+    }
+
+    // MARK: Recent runs + per-run drill-down
+
+    /// The four loop lifecycle stages shown per attempt for structure.
+    private let stages = ["plan", "implement", "test", "score"]
+
+    private func runsPanel() -> some View {
+        KonjoPanel {
+            VStack(alignment: .leading, spacing: 12) {
+                panelHead("Recent Runs", "click a run for its attempt-by-attempt trace") { EmptyView() }
+                if model.loopRuns.isEmpty {
+                    Text("No runs yet — loop runs appear here once a task executes.")
+                        .font(Konjo.mono(12)).foregroundStyle(Konjo.fgMute)
+                } else {
+                    ForEach(model.loopRuns) { runRow($0) }
+                }
+            }
+        }
+    }
+
+    private func runRow(_ r: LoopRun) -> some View {
+        let isOpen = model.selectedRun == r.taskId
+        return VStack(alignment: .leading, spacing: 8) {
+            Button { Task { await model.selectRun(r.taskId) } } label: {
+                HStack(spacing: 10) {
+                    Text(isOpen ? "▾" : "▸").font(Konjo.mono(10)).foregroundStyle(Konjo.fgMute)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(r.goal).font(Konjo.mono(12)).foregroundStyle(Konjo.fg).lineLimit(1)
+                        Text("\(r.attempts) attempt\(r.attempts == 1 ? "" : "s") · best \(pct(r.bestScore))")
+                            .font(Konjo.mono(10)).foregroundStyle(Konjo.fgMute)
+                    }
+                    Spacer(minLength: 8)
+                    Text(r.finalOutcome.uppercased()).font(Konjo.mono(10)).tracking(1.2)
+                        .foregroundStyle(outcomeColor(r.finalOutcome))
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Konjo.bg2)
+                .overlay(RoundedRectangle(cornerRadius: 8)
+                    .stroke(isOpen ? Konjo.ice.opacity(0.5) : Konjo.line, lineWidth: 1))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+            .buttonStyle(.plain)
+            if isOpen { runTraceDetail() }
+        }
+    }
+
+    @ViewBuilder
+    private func runTraceDetail() -> some View {
+        if model.traceLoading {
+            Text("loading trace…").font(Konjo.mono(11)).foregroundStyle(Konjo.fgMute)
+                .padding(.leading, 12)
+        } else if let t = model.loopTrace {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(t.attempts) { attemptCard($0) }
+            }
+            .padding(.leading, 12)
+        }
+    }
+
+    private func attemptCard(_ a: LoopRunAttempt) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Attempt \(a.attempt)").font(Konjo.sans(13)).foregroundStyle(Konjo.fg)
+                Spacer()
+                Text(a.outcome.uppercased()).font(Konjo.mono(10)).tracking(1.2)
+                    .foregroundStyle(outcomeColor(a.outcome))
+            }
+            HStack(spacing: 6) {
+                ForEach(Array(stages.enumerated()), id: \.offset) { i, st in
+                    Text(st.uppercased()).font(Konjo.mono(8)).tracking(1).foregroundStyle(Konjo.fgMute)
+                    if i < stages.count - 1 {
+                        Text("→").font(Konjo.mono(8)).foregroundStyle(Konjo.fgMute.opacity(0.5))
+                    }
+                }
+            }
+            HStack(spacing: 14) {
+                metric("pass", pct(a.testPassRate), Konjo.jade)
+                metric("lint", "\(a.lintErrors)", a.lintErrors > 0 ? Konjo.rose : Konjo.fgDim)
+                metric("diff", "\(a.diffLines)L", Konjo.fgDim)
+                metric("tok", tokenLabel(a.tokens), Konjo.fgDim)
+                metric("cost", String(format: "$%.2f", a.costUsd), Konjo.sun)
+            }
+            if let v = a.verifier {
+                Text("\(v.passed ? "✓ verifier passed" : "✗ verifier rejected") · \(pct(v.confidence))")
+                    .font(Konjo.mono(10)).foregroundStyle(v.passed ? Konjo.jade : Konjo.rose)
+                ForEach(v.gaps, id: \.self) { g in
+                    Text("• \(g)").font(Konjo.mono(10)).foregroundStyle(Konjo.fgMute)
+                }
+            }
+            ForEach(Array(a.errors.prefix(4)), id: \.self) { e in
+                Text("• \(e)").font(Konjo.mono(10)).foregroundStyle(Konjo.rose.opacity(0.7)).lineLimit(1)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Konjo.deep)
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Konjo.line, lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func metric(_ label: String, _ value: String, _ tint: Color) -> some View {
+        HStack(spacing: 3) {
+            Text(label).font(Konjo.mono(9)).foregroundStyle(Konjo.fgMute)
+            Text(value).font(Konjo.mono(10, weight: .medium)).foregroundStyle(tint)
         }
     }
 

@@ -176,3 +176,80 @@ struct LoopBurn: Codable, Equatable {
         case contextPressure = "context_pressure"
     }
 }
+
+// MARK: - Per-run drill-down
+
+/// One run (task) summarised for the run picker.
+struct LoopRun: Codable, Equatable, Identifiable {
+    var taskId: String
+    var goal: String
+    var status: String
+    var attempts: Int
+    var bestScore: Double
+    var finalOutcome: String
+    var lastAt: String
+    var id: String { taskId }
+
+    enum CodingKeys: String, CodingKey {
+        case goal, status, attempts
+        case taskId = "task_id"
+        case bestScore = "best_score"
+        case finalOutcome = "final_outcome"
+        case lastAt = "last_at"
+    }
+}
+
+/// The run-list envelope (`{ "runs": [...] }`).
+struct LoopRunList: Codable, Equatable {
+    var runs: [LoopRun]
+}
+
+/// The verifier verdict grafted onto an attempt in a run trace.
+struct LoopRunVerifier: Codable, Equatable {
+    var passed: Bool
+    var confidence: Double
+    var gaps: [String]
+    var fixHints: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case passed, confidence, gaps
+        case fixHints = "fix_hints"
+    }
+}
+
+/// One attempt in a run's drill-down trace.
+struct LoopRunAttempt: Codable, Equatable, Identifiable {
+    var attempt: Int
+    var testPassRate: Double
+    var lintErrors: Int
+    var diffLines: Int
+    var outcome: String
+    var errors: [String]
+    var verifier: LoopRunVerifier?
+    var tokens: Int
+    var costUsd: Double
+    var createdAt: String
+    var id: Int { attempt }
+
+    enum CodingKeys: String, CodingKey {
+        case attempt, outcome, errors, verifier, tokens
+        case testPassRate = "test_pass_rate"
+        case lintErrors = "lint_errors"
+        case diffLines = "diff_lines"
+        case costUsd = "cost_usd"
+        case createdAt = "created_at"
+    }
+}
+
+/// A single run's attempt-by-attempt trace.
+struct LoopRunTrace: Codable, Equatable {
+    var taskId: String
+    var goal: String
+    var status: String
+    var attempts: [LoopRunAttempt]
+
+    enum CodingKeys: String, CodingKey {
+        case goal, status, attempts
+        case taskId = "task_id"
+    }
+}

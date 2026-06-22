@@ -18,6 +18,10 @@ final class AppModel {
     /// Loop Engineering snapshot for the Loop screen (nil until first fetch).
     var loopSnapshot: LoopSnapshot?
     var loopHealth: LoopHealth?
+    var loopRuns: [LoopRun] = []
+    var selectedRun: String?
+    var loopTrace: LoopRunTrace?
+    var traceLoading = false
     /// Launch-control dropdown sources, fetched from the server (sandbox-safe).
     var repos: [String] = []
     var branches: [String] = []
@@ -107,15 +111,31 @@ final class AppModel {
         do { schedules = try await client.schedules() } catch { report(error) }
     }
 
-    /// Fetch the Loop Engineering snapshot + health for the Loop screen.
-    /// Config and health are independent reads — fetch them concurrently.
+    /// Fetch the Loop Engineering snapshot + health + run list for the Loop
+    /// screen. All three are independent reads — fetch them concurrently.
     func refreshLoop() async {
         do {
             async let snap = client.loopEngineering()
             async let health = client.loopHealth()
+            async let runs = client.loopRuns()
             loopSnapshot = try await snap
             loopHealth = try await health
+            loopRuns = try await runs
         } catch { report(error) }
+    }
+
+    /// Toggle a run's drill-down trace: select + fetch, or collapse if re-tapped.
+    func selectRun(_ id: String) async {
+        if selectedRun == id {
+            selectedRun = nil
+            loopTrace = nil
+            return
+        }
+        selectedRun = id
+        loopTrace = nil
+        traceLoading = true
+        do { loopTrace = try await client.loopRunTrace(id: id) } catch { report(error) }
+        traceLoading = false
     }
 
     /// Set a scheduled loop's trust (autonomy) level, then re-pull the snapshot.
