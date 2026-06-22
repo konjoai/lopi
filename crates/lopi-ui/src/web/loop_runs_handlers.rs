@@ -46,11 +46,19 @@ pub(super) async fn get_run_trace(
 ) -> impl IntoResponse {
     let meta = s.store.run_task_meta(&id).await.ok().flatten();
     let Some((goal, status)) = meta else {
-        return (StatusCode::NOT_FOUND, Json(json!({ "error": "run not found" }))).into_response();
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "run not found" })),
+        )
+            .into_response();
     };
 
     let attempts = s.store.run_attempts(&id).await.unwrap_or_default();
-    let verdicts = s.store.load_verifier_verdicts(&id).await.unwrap_or_default();
+    let verdicts = s
+        .store
+        .load_verifier_verdicts(&id)
+        .await
+        .unwrap_or_default();
     let aggs = s.store.run_turn_aggregates(&id).await.unwrap_or_default();
 
     let timeline: Vec<Value> = attempts
@@ -152,7 +160,11 @@ mod tests {
             tokens: 1500,
             cost_usd: 0.05,
         }];
-        let v = attempt_json(&row(1, "success", Some(r#"["boom"]"#)), &[verdict(1, 1)], &aggs);
+        let v = attempt_json(
+            &row(1, "success", Some(r#"["boom"]"#)),
+            &[verdict(1, 1)],
+            &aggs,
+        );
         assert_eq!(v["attempt"], 1);
         assert_eq!(v["tokens"], 1500);
         assert_eq!(v["verifier"]["passed"], true);

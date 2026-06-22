@@ -120,12 +120,11 @@ impl MemoryStore {
     /// # Errors
     /// Returns an error if the query fails.
     pub async fn run_task_meta(&self, task_id: &str) -> Result<Option<(String, String)>> {
-        let row = sqlx::query_as::<_, (String, String)>(
-            "SELECT goal, status FROM tasks WHERE id = ?1",
-        )
-        .bind(task_id)
-        .fetch_optional(&self.read_pool)
-        .await?;
+        let row =
+            sqlx::query_as::<_, (String, String)>("SELECT goal, status FROM tasks WHERE id = ?1")
+                .bind(task_id)
+                .fetch_optional(&self.read_pool)
+                .await?;
         Ok(row)
     }
 }
@@ -189,8 +188,12 @@ mod tests {
     async fn recent_runs_summarise_attempts() {
         let s = store().await;
         let task = seed_task(&s, "tighten retry backoff").await;
-        s.save_attempt(&attempt(task, 1, 0.4, "retry")).await.unwrap();
-        s.save_attempt(&attempt(task, 2, 0.9, "success")).await.unwrap();
+        s.save_attempt(&attempt(task, 1, 0.4, "retry"))
+            .await
+            .unwrap();
+        s.save_attempt(&attempt(task, 2, 0.9, "success"))
+            .await
+            .unwrap();
 
         let runs = s.recent_runs(10).await.unwrap();
         assert_eq!(runs.len(), 1);
@@ -208,8 +211,12 @@ mod tests {
     async fn run_attempts_are_ordered_and_carry_errors() {
         let s = store().await;
         let task = seed_task(&s, "fix flaky scorer").await;
-        s.save_attempt(&attempt(task, 2, 0.6, "retry")).await.unwrap();
-        s.save_attempt(&attempt(task, 1, 0.3, "retry")).await.unwrap();
+        s.save_attempt(&attempt(task, 2, 0.6, "retry"))
+            .await
+            .unwrap();
+        s.save_attempt(&attempt(task, 1, 0.3, "retry"))
+            .await
+            .unwrap();
 
         let rows = s.run_attempts(&task.to_string()).await.unwrap();
         assert_eq!(rows.len(), 2);
