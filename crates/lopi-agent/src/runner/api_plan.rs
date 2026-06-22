@@ -82,18 +82,24 @@ impl AgentRunner {
         let started = Instant::now();
 
         let result = client
-            .stream_plan(model, LOPI_SYSTEM_PROMPT, &prompt, self.task_budget, |_text| {
-                if first_byte.is_none() {
-                    first_byte = Some(Instant::now());
-                }
-                delta_count += 1;
-                // Periodic activity heartbeat — keeps the Forge alive while
-                // the model is generating. Sample every 16 deltas to avoid
-                // bus contention on long completions.
-                if delta_count.is_multiple_of(16) {
-                    bus.send(AgentEvent::info(task_id, format!("· {delta_count} deltas")));
-                }
-            })
+            .stream_plan(
+                model,
+                LOPI_SYSTEM_PROMPT,
+                &prompt,
+                self.task_budget,
+                |_text| {
+                    if first_byte.is_none() {
+                        first_byte = Some(Instant::now());
+                    }
+                    delta_count += 1;
+                    // Periodic activity heartbeat — keeps the Forge alive while
+                    // the model is generating. Sample every 16 deltas to avoid
+                    // bus contention on long completions.
+                    if delta_count.is_multiple_of(16) {
+                        bus.send(AgentEvent::info(task_id, format!("· {delta_count} deltas")));
+                    }
+                },
+            )
             .await;
 
         let turn_latency = started.elapsed();

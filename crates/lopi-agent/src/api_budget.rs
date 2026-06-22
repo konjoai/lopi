@@ -77,8 +77,14 @@ mod tests {
     #[test]
     fn effective_budget_is_none_on_unsupported_model() {
         // A configured budget is dropped — not clamped — for an unsupported model.
-        assert_eq!(effective_task_budget("claude-haiku-4-5", Some(50_000)), None);
-        assert_eq!(effective_task_budget("claude-sonnet-4-6", Some(50_000)), None);
+        assert_eq!(
+            effective_task_budget("claude-haiku-4-5", Some(50_000)),
+            None
+        );
+        assert_eq!(
+            effective_task_budget("claude-sonnet-4-6", Some(50_000)),
+            None
+        );
     }
 
     #[test]
