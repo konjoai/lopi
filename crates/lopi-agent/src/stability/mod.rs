@@ -223,7 +223,7 @@ impl StabilityHarness {
             }
             match self
                 .client
-                .stream_plan(&self.config.model, LOPI_SYSTEM_PROMPT, prompt, |_| {})
+                .stream_plan(&self.config.model, LOPI_SYSTEM_PROMPT, prompt, None, |_| {})
                 .await
             {
                 Ok((text, usage)) => {

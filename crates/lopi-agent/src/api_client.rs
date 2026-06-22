@@ -256,12 +256,13 @@ impl AnthropicClient {
         model: &str,
         system: &str,
         prompt: &str,
+        task_budget: Option<u64>,
         mut on_delta: F,
     ) -> Result<(String, ApiUsage)>
     where
         F: FnMut(&str),
     {
-        let body = serde_json::json!({
+        let mut body = serde_json::json!({
             "model": model,
             "max_tokens": 8192,
             "stream": true,
@@ -269,12 +270,25 @@ impl AnthropicClient {
             "messages": [UserMessage { role: "user", content: prompt }],
         });
 
-        let resp = self
+        // Phase 16.6 — attach the per-run task budget so the model paces itself
+        // instead of being hard-cut. Resolved (model-gated, clamped) by
+        // `api_budget`; dropped silently on models that reject the parameter.
+        let budget = crate::api_budget::effective_task_budget(model, task_budget);
+        if let Some(total) = budget {
+            body["output_config"] = crate::api_budget::task_budget_output_config(total);
+        }
+
+        let mut req = self
             .http
             .post("https://api.anthropic.com/v1/messages")
             .header("x-api-key", &self.api_key)
             .header("anthropic-version", "2023-06-01")
-            .header("content-type", "application/json")
+            .header("content-type", "application/json");
+        if budget.is_some() {
+            req = req.header("anthropic-beta", crate::api_budget::TASK_BUDGETS_BETA);
+        }
+
+        let resp = req
             .json(&body)
             .send()
             .await

@@ -102,7 +102,7 @@ pub async fn run_postmortem(
     // validate it before returning. Use complete() if it exists; for now
     // we'll consume the stream and assemble.
     let result = client
-        .stream_plan(model, POSTMORTEM_SYSTEM_PROMPT, &prompt, |_| {})
+        .stream_plan(model, POSTMORTEM_SYSTEM_PROMPT, &prompt, None, |_| {})
         .await;
 
     match result {

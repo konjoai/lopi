@@ -191,9 +191,18 @@ The [discovery sweep](#sources) ranked these as the highest-value follow-ons:
    after N consecutive clean verified runs; demote instantly on a post-merge
    revert. CSA Agentic Trust Framework (2026).
 
-Critical safety adjacency: wire `LoopConfig.budget_tokens` to the Claude API
-`task_budget` parameter (beta `task-budgets-2026-03-13`) so the model
-self-regulates instead of hard-cutting.
+Critical safety adjacency: ~~wire `LoopConfig.budget_tokens` to the Claude API
+`task_budget` parameter~~ — ✅ **shipped (Phase 16.6)**: `LoopConfig.budget_tokens`
+is forwarded to the Anthropic `task_budget` output config (beta
+`task-budgets-2026-03-13`) on the direct-API planning path so the model
+self-regulates instead of being hard-cut by `max_tokens`. The decision logic
+lives in pure helpers (`api_budget::{supports_task_budget, effective_task_budget,
+task_budget_output_config}`): the budget is **model-gated** (only Opus 4.7/4.8 and
+Fable 5 accept the parameter — it is silently dropped on the Haiku/Sonnet tiers
+lopi uses for cheap early attempts) and **clamped** up to the API's 20,000-token
+minimum so an under-minimum config never 400s. Wired through
+`AgentRunner::with_task_budget` from `.lopi/loop.toml` in both the `lopi run` CLI
+path and the orchestrator pool.
 
 ## Sources
 Reflexion ([2303.11366](https://arxiv.org/abs/2303.11366)) · Self-Refine

@@ -82,7 +82,7 @@ impl AgentRunner {
         let started = Instant::now();
 
         let result = client
-            .stream_plan(model, LOPI_SYSTEM_PROMPT, &prompt, |_text| {
+            .stream_plan(model, LOPI_SYSTEM_PROMPT, &prompt, self.task_budget, |_text| {
                 if first_byte.is_none() {
                     first_byte = Some(Instant::now());
                 }
@@ -368,6 +368,30 @@ mod tests {
         // Escalation off (default): every attempt sees the pinned base strategy.
         assert_eq!(runner.effective_strategy(1), SelfPromptStrategy::Reflexion);
         assert_eq!(runner.effective_strategy(5), SelfPromptStrategy::Reflexion);
+    }
+
+    #[test]
+    fn task_budget_defaults_to_none() {
+        let task = task_with("g", vec![]);
+        let (runner, _bus) = AgentRunner::standalone(task, PathBuf::from("."));
+        assert_eq!(runner.task_budget(), None);
+    }
+
+    #[test]
+    fn with_task_budget_zero_disables() {
+        let task = task_with("g", vec![]);
+        let (runner, _bus) = AgentRunner::standalone(task, PathBuf::from("."));
+        // 0 = "inherit the global budget" → no per-run task budget attached.
+        let runner = runner.with_task_budget(0);
+        assert_eq!(runner.task_budget(), None);
+    }
+
+    #[test]
+    fn with_task_budget_positive_sets_budget() {
+        let task = task_with("g", vec![]);
+        let (runner, _bus) = AgentRunner::standalone(task, PathBuf::from("."));
+        let runner = runner.with_task_budget(64_000);
+        assert_eq!(runner.task_budget(), Some(64_000));
     }
 
     #[test]

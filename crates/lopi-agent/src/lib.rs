@@ -1,4 +1,6 @@
 //! lopi-agent — Claude Code subprocess wrapper, API client, retry runner, and scoring.
+/// Phase 16.6 — per-run token-budget enforcement (Anthropic `task_budget` beta).
+pub mod api_budget;
 /// Anthropic API communication layer.
 pub mod api_client;
 /// Claude Code subprocess management and model selection.

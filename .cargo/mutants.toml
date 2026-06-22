@@ -46,4 +46,13 @@ exclude_re = [
     # its body and the `attempt + 1` index arithmetic can't be pinned without a
     # full live-agent integration harness.
     "run_loop\\.rs.*AgentRunner::run\\b",
+    # Phase 16.6 — task-budget enforcement. The decision logic (whether a model
+    # accepts a budget, clamping below the API minimum, the wire-shape value)
+    # lives in pure, unit-tested helpers in `api_budget.rs`
+    # (`supports_task_budget`, `effective_task_budget`, `task_budget_output_config`)
+    # and the `AgentRunner::with_task_budget` builder. `stream_plan` is the
+    # streaming-IO shell that only forwards those results onto an HTTP request and
+    # consumes the SSE response — no unit-testable branching a mutant could pin
+    # without a live API harness.
+    "api_client\\.rs.*AnthropicClient::stream_plan\\b",
 ]

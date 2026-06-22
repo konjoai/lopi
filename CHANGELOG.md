@@ -4,6 +4,27 @@
 
 ### Added
 
+**Loop Engineering — Phase 16.6 Token-Budget Enforcement** (`lopi-agent`, `lopi-orchestrator`)
+- **The model now self-paces instead of being hard-cut.** `LoopConfig.budget_tokens`
+  (already a loop-as-code lever) is wired to the Anthropic **task budget** beta
+  (`output_config.task_budget`, header `task-budgets-2026-03-13`) on the direct-API
+  planning path: the model sees a running countdown and finishes gracefully within
+  the budget rather than being truncated mid-thought by `max_tokens`. This is the
+  "critical safety adjacency" called out in `docs/LOOP_ENGINEERING.md` §6.
+- **`api_budget`** — a new module holding the pure, unit-tested decision logic:
+  `supports_task_budget` (the beta is **model-gated** to Opus 4.7/4.8 + Fable 5 —
+  silently dropped on the Haiku/Sonnet tiers used for cheap early attempts, which
+  would otherwise 400), `effective_task_budget` (resolves + **clamps** up to the
+  API's 20,000-token minimum so an under-minimum config never errors), and
+  `task_budget_output_config` (wire shape). `stream_plan` only forwards the result.
+- **Runner** — `AgentRunner::with_task_budget(budget_tokens)` (`0` = inherit the
+  global cap → no budget). Wired from `.lopi/loop.toml` in both the `lopi run` CLI
+  path and the orchestrator pool, alongside the existing self-prompt levers.
+- **Tests** — model-gating, none-without-request, below-minimum clamping,
+  pass-through, and wire-shape unit tests for `api_budget`; runner builder tests
+  for the `0 → None` / positive-`→ Some` mapping. The `stream_plan` streaming-IO
+  shell is excluded from mutation testing (logic lives in the tested helpers).
+
 **Loop Engineering — Phase 16.5 Adaptive Strategy Escalation** (`lopi-core`, `lopi-agent`, `lopi-orchestrator`, `lopi-ui`, web, macOS)
 - **The loop now climbs its own ladder.** Instead of pinning one self-prompt
   strategy for a whole run, `escalate_strategy` makes the agent apply
