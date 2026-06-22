@@ -318,6 +318,14 @@ pub fn build_app(state: AppState) -> Router {
             "/api/loop-engineering/health",
             get(loop_health_handlers::get_loop_health),
         )
+        .route(
+            "/api/loop-engineering/runs",
+            get(loop_runs_handlers::list_runs),
+        )
+        .route(
+            "/api/loop-engineering/runs/:id",
+            get(loop_runs_handlers::get_run_trace),
+        )
         .route("/api/config", get(config_handlers::get_config))
         .route("/api/version", get(config_handlers::get_version))
         .route_layer(middleware::from_fn_with_state(
@@ -425,6 +433,7 @@ mod handlers;
 mod health_handlers;
 mod loop_handlers;
 mod loop_health_handlers;
+mod loop_runs_handlers;
 mod repos_handlers;
 mod schedule_handlers;
 mod static_assets;
