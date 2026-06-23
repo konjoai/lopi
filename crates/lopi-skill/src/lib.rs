@@ -11,6 +11,8 @@
 //! pulling in a YAML dependency. Malformed input fails loudly — with the file
 //! and line — never silently.
 
+/// Lesson → skill promotion detection — the self-evolving Ratchet's detector.
+pub mod promote;
 /// The [`SkillRegistry`](registry::SkillRegistry): discovery + validation.
 pub mod registry;
 
@@ -18,6 +20,7 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
+pub use promote::{draft_skill_md, promotion_candidates, PromotionCandidate};
 pub use registry::SkillRegistry;
 
 /// Default version when a skill omits the `version` field.
