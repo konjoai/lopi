@@ -13,6 +13,8 @@
 
 /// Lesson → skill promotion detection — the self-evolving Ratchet's detector.
 pub mod promote;
+/// Writing promotion drafts to a pending-review directory.
+pub mod promoter;
 /// The [`SkillRegistry`](registry::SkillRegistry): discovery + validation.
 pub mod registry;
 
@@ -21,6 +23,7 @@ use std::path::{Path, PathBuf};
 use thiserror::Error;
 
 pub use promote::{draft_skill_md, promotion_candidates, PromotionCandidate};
+pub use promoter::{promote_lessons, PromotionReport, PENDING_SKILLS_DIR};
 pub use registry::SkillRegistry;
 
 /// Default version when a skill omits the `version` field.

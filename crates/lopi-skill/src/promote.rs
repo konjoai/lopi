@@ -157,7 +157,7 @@ pub fn draft_skill_md(candidate: &PromotionCandidate) -> String {
 }
 
 /// A skill name slug for a candidate: `learned-<first three fingerprint words>`.
-fn draft_skill_name(fingerprint: &str) -> String {
+pub(crate) fn draft_skill_name(fingerprint: &str) -> String {
     let slug = fingerprint
         .split_whitespace()
         .take(3)
