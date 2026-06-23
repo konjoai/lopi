@@ -1815,6 +1815,7 @@ dependencies = [
  "lopi-memory",
  "lopi-orchestrator",
  "lopi-remote",
+ "lopi-skill",
  "lopi-spec",
  "lopi-ui",
  "lopi-webhook",
