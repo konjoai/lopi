@@ -85,13 +85,41 @@ impl AgentRunner {
         git.commit_all(&format!("lopi: {}", self.task.goal))
             .await
             .ok();
-        let pr_url = self
-            .apply_pr_decision(pr_decision(level), branch, git, score)
-            .await;
+        let decision = pr_decision(level);
+        // Land on the advanced default before pushing. L1 opens no PR, so skip.
+        if decision != PrDecision::ReportOnly {
+            if let Some(conflict) = self.rebase_before_pr(git).await {
+                return Some(conflict);
+            }
+        }
+        let pr_url = self.apply_pr_decision(decision, branch, git, score).await;
         Some(TaskStatus::Success {
             branch: branch.to_string(),
             pr_url,
         })
+    }
+
+    /// Rebase the committed branch onto the advanced default before a PR.
+    ///
+    /// Returns `Some(TaskStatus::Conflict)` (after restoring a clean default
+    /// checkout) when the rebase conflicts, so the loop stops with the colliding
+    /// paths rather than opening a doomed PR. A non-conflict rebase error is
+    /// logged and treated as "proceed" — pushing the un-rebased branch is safer
+    /// than dropping the work — and a clean/no-op rebase returns `None`.
+    async fn rebase_before_pr(&self, git: &GitManager) -> Option<TaskStatus> {
+        match git.rebase_onto_default().await {
+            Ok(conflicts) if !conflicts.is_empty() => {
+                self.warn(format!("rebase conflict on: {}", conflicts.join(", ")));
+                git.hard_rollback().await.ok();
+                git.checkout_default().await.ok();
+                Some(TaskStatus::Conflict { paths: conflicts })
+            }
+            Ok(_) => None,
+            Err(e) => {
+                self.warn(format!("rebase skipped (non-conflict error): {e}"));
+                None
+            }
+        }
     }
 
     /// Carry out the [`PrDecision`] for a committed branch, returning the PR

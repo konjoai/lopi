@@ -356,34 +356,12 @@ impl AgentRunner {
 
             if score.passed() {
                 // Phase 16.3 — finalize per the L1–L4 autonomy ladder. `finalize`
-                // forces the verifier on for L3/L4, commits, then opens (or skips)
-                // the PR and auto-merges for L4. `None` ⇒ verifier rejected: it has
-                // already rolled back and marked the task Retrying.
+                // forces the verifier on for L3/L4, commits, rebases onto the
+                // advanced default, then opens (or skips) the PR. `None` ⇒
+                // verifier rejected (already rolled back, marked Retrying); a
+                // `Conflict` ⇒ the rebase collided and the loop stops here.
                 if let Some(status) = self.finalize(&branch, &git, &score, attempt + 1).await {
-                    self.context.pin_conclusion(
-                        format!(
-                            "Sprint succeeded — pass={:.0}% diff={}L",
-                            score.test_pass_rate * 100.0,
-                            score.diff_lines
-                        ),
-                        Phase::Conclusion,
-                    );
-                    tracing::info!(
-                        pressure = self.context.token_pressure(),
-                        "context at conclusion"
-                    );
-                    self.status(status.clone(), attempt + 1);
-                    // OTel GenAI-aligned span: task completion event. The span
-                    // body is empty — it exists to mark the task boundary in
-                    // any attached trace exporter (OTLP via `otel` feature).
-                    let _ = tracing::info_span!(
-                        "lopi.agent.task.complete",
-                        task_id = %self.id(),
-                        outcome = "success",
-                        attempts = attempt + 1,
-                    )
-                    .entered();
-                    return Ok(status);
+                    return Ok(self.conclude_finalized(status, &score, attempt + 1));
                 }
                 continue;
             }

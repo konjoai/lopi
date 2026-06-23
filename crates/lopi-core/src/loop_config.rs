@@ -151,6 +151,51 @@ impl AutonomyLevel {
     }
 }
 
+/// How an agent's working copy is isolated from its peers.
+///
+/// The two points on the loop-engineering isolation ladder. `Branch` (the
+/// legacy default) checks out a fresh branch in the *shared* working directory,
+/// so concurrent runs must be serialized to avoid index corruption. `Worktree`
+/// gives each run its own physical checkout via `git worktree`, so — in Osmani's
+/// words — "one agent's edits literally can not touch the other one's."
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum IsolationMode {
+    /// Branch-per-attempt in the shared working directory (default; serialized).
+    #[default]
+    Branch,
+    /// A dedicated `git worktree` per run — true parallel isolation.
+    Worktree,
+}
+
+impl IsolationMode {
+    /// Whether this mode uses a dedicated `git worktree`.
+    #[must_use]
+    pub fn is_worktree(self) -> bool {
+        matches!(self, Self::Worktree)
+    }
+
+    /// The canonical snake_case tag (`"branch"` / `"worktree"`), matching serde.
+    /// Used for DB columns and JSON payloads.
+    #[must_use]
+    pub fn tag(self) -> &'static str {
+        match self {
+            Self::Branch => "branch",
+            Self::Worktree => "worktree",
+        }
+    }
+
+    /// Parse a mode from a case-insensitive tag, tolerating UI/CLI spellings.
+    #[must_use]
+    pub fn from_tag(s: &str) -> Option<Self> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "branch" => Some(Self::Branch),
+            "worktree" | "work_tree" => Some(Self::Worktree),
+            _ => None,
+        }
+    }
+}
+
 /// Declarative loop-engineering configuration for a repo.
 ///
 /// Loaded from `<repo>/.lopi/loop.toml`. Every field has a safe default, so an
@@ -194,6 +239,10 @@ pub struct LoopConfig {
     /// Per-run token budget ceiling (`0` = inherit the global budget).
     #[serde(default)]
     pub budget_tokens: u64,
+    /// How each run's working copy is isolated. Defaults to
+    /// [`Branch`](IsolationMode::Branch) — the legacy shared-checkout behavior.
+    #[serde(default)]
+    pub isolation: IsolationMode,
     /// Phase 16.7 — earned-trust auto-promotion: promote the loop's autonomy one
     /// rung after this many **consecutive clean, verifier-passed** runs. `0` (the
     /// default) disables auto-promotion — trust stays pinned at `autonomy_level`.
@@ -221,6 +270,7 @@ impl Default for LoopConfig {
             no_progress_limit: default_no_progress_limit(),
             max_iterations: default_max_iterations(),
             budget_tokens: 0,
+            isolation: IsolationMode::default(),
             promote_after: 0,
             trust_ceiling: AutonomyLevel::default(),
         }

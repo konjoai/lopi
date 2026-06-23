@@ -8,6 +8,39 @@ fn autonomy_default_is_draft_pr() {
 }
 
 #[test]
+fn isolation_default_is_branch_and_serializes_snake_case() {
+    assert_eq!(IsolationMode::default(), IsolationMode::Branch);
+    assert!(!IsolationMode::Branch.is_worktree());
+    assert!(IsolationMode::Worktree.is_worktree());
+    assert_eq!(IsolationMode::Worktree.tag(), "worktree");
+    // serde uses the same snake_case tag as `tag()`.
+    let json = serde_json::to_string(&IsolationMode::Worktree).unwrap();
+    assert_eq!(json, "\"worktree\"");
+}
+
+#[test]
+fn isolation_from_tag_is_case_insensitive_and_total() {
+    assert_eq!(
+        IsolationMode::from_tag("Branch"),
+        Some(IsolationMode::Branch)
+    );
+    assert_eq!(
+        IsolationMode::from_tag(" WORKTREE "),
+        Some(IsolationMode::Worktree)
+    );
+    assert_eq!(
+        IsolationMode::from_tag("work_tree"),
+        Some(IsolationMode::Worktree)
+    );
+    assert_eq!(IsolationMode::from_tag("nonsense"), None);
+}
+
+#[test]
+fn loop_config_default_isolation_is_branch() {
+    assert_eq!(LoopConfig::default().isolation, IsolationMode::Branch);
+}
+
+#[test]
 fn autonomy_ranks_are_monotonic() {
     assert_eq!(AutonomyLevel::ReportOnly.rank(), 1);
     assert_eq!(AutonomyLevel::DraftPr.rank(), 2);

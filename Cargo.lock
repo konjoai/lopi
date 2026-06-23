@@ -1826,6 +1826,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "tempfile",
  "tokio",
  "tokio-cron-scheduler",
  "tokio-tungstenite",
@@ -1849,6 +1850,7 @@ dependencies = [
  "lopi-git",
  "lopi-memory",
  "lopi-ratelimit",
+ "lopi-skill",
  "lopi-spec",
  "lopi-toon",
  "rand",
@@ -1922,6 +1924,7 @@ dependencies = [
  "glob",
  "lopi-core",
  "once_cell",
+ "tempfile",
  "thiserror 1.0.69",
  "tokio",
  "tracing",
@@ -1969,7 +1972,9 @@ dependencies = [
  "lopi-git",
  "lopi-memory",
  "lopi-ratelimit",
+ "lopi-skill",
  "serde",
+ "tempfile",
  "thiserror 1.0.69",
  "tokio",
  "tokio-cron-scheduler",
@@ -2013,6 +2018,17 @@ dependencies = [
  "tower 0.4.13",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "lopi-skill"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tracing",
 ]
 
 [[package]]

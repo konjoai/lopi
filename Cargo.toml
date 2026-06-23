@@ -15,6 +15,7 @@ members = [
     "crates/lopi-github",
     "crates/lopi-spec",
     "crates/lopi-tools",
+    "crates/lopi-skill",
 ]
 resolver = "2"
 
@@ -83,6 +84,7 @@ lopi-app = { path = "crates/lopi-app" }
 lopi-github = { path = "crates/lopi-github" }
 lopi-spec = { path = "crates/lopi-spec" }
 lopi-tools = { path = "crates/lopi-tools" }
+lopi-skill = { path = "crates/lopi-skill" }
 
 [package]
 name = "lopi"
@@ -150,6 +152,7 @@ otel = [
 # on every `cargo build` or `cargo test` — zero manual hook setup required.
 # user-hooks feature: reads from .cargo-husky/hooks/ instead of generating a default hook.
 cargo-husky = { version = "1", default-features = false, features = ["user-hooks"] }
+tempfile = "3"
 
 [profile.release]
 lto = "fat"

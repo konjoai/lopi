@@ -13,6 +13,7 @@ lopi-context.workspace = true
 lopi-git.workspace = true
 lopi-ratelimit.workspace = true
 lopi-spec.workspace = true
+lopi-skill.workspace = true
 chrono.workspace = true
 uuid.workspace = true
 lopi-memory.workspace = true
