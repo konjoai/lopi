@@ -6,6 +6,7 @@ pub mod api_client;
 /// Claude Code subprocess management and model selection.
 pub mod claude;
 mod claude_stream;
+mod claude_stream_parse;
 /// Sprint U — DAG-structured execution trace for partial-restart retry.
 pub mod dag;
 /// Sprint U — reconstruct an `AgentDag` from persisted rows.
