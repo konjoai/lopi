@@ -1812,6 +1812,7 @@ dependencies = [
  "lopi-core",
  "lopi-git",
  "lopi-github",
+ "lopi-mcp",
  "lopi-memory",
  "lopi-orchestrator",
  "lopi-remote",

@@ -3,6 +3,7 @@
 mod gap_fill_commands;
 mod learn_commands;
 mod loop_commands;
+mod mcp_commands;
 mod remote;
 mod repl;
 mod replay_commands;
@@ -25,6 +26,7 @@ static GLOBAL: MiMalloc = MiMalloc;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use mcp_commands::McpCmd;
 use std::path::PathBuf;
 use tracing_subscriber::prelude::*;
 use util::load_config;
@@ -125,6 +127,9 @@ enum Commands {
     /// Loop engineering — inspect and validate a repo's `.lopi/loop.toml`.
     #[command(subcommand)]
     Loop(LoopCmd),
+    /// Inspect a repo's configured MCP servers.
+    #[command(subcommand)]
+    Mcp(McpCmd),
     /// Manage per-task git worktrees — list live ones, gc the leftovers.
     #[command(subcommand)]
     Worktree(WorktreeCmd),
@@ -466,6 +471,9 @@ async fn main() -> Result<()> {
         }
         Some(Commands::Loop(LoopCmd::Show { repo })) => {
             print!("{}", loop_commands::render(&repo)?);
+        }
+        Some(Commands::Mcp(McpCmd::Servers { repo })) => {
+            print!("{}", mcp_commands::servers(&repo)?);
         }
 
         Some(Commands::Worktree(WorktreeCmd::List { repo })) => {
