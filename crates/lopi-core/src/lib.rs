@@ -9,6 +9,8 @@ pub mod agent;
 pub mod budget;
 /// Global and per-repo configuration structures.
 pub mod config;
+/// Earned-trust auto-promotion state machine (Phase 16.7).
+pub mod earned_trust;
 /// Broadcast event types for TUI, WebSocket, and log panels.
 pub mod event;
 /// Loop-engineering configuration: autonomy levels + the `LoopConfig` schema.
@@ -27,6 +29,7 @@ pub mod topology;
 pub use agent::{AgentRun, AgentState, Attempt, Score, ScoreWeights, TurnMetrics};
 pub use budget::BudgetScope;
 pub use config::{LopiConfig, RepoProfile, ScheduleEntry};
+pub use earned_trust::EarnedTrust;
 pub use event::{AgentEvent, EventBus, LogLevel, PlanDecision};
 pub use loop_config::{AutonomyLevel, IsolationMode, LoopConfig};
 pub use schema::{

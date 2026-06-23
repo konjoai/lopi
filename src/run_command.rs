@@ -66,7 +66,8 @@ pub async fn run(
     let mut runner = AgentRunner::standalone(task.clone(), repo)
         .0
         .with_self_prompt(loop_cfg.self_prompt)
-        .with_strategy_escalation(loop_cfg.escalate_strategy);
+        .with_strategy_escalation(loop_cfg.escalate_strategy)
+        .with_task_budget(loop_cfg.budget_tokens);
     if adaptive_retry {
         runner = runner.with_adaptive_retry();
         let mode = if loop_cfg.escalate_strategy {

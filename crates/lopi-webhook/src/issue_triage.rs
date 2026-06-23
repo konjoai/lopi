@@ -103,7 +103,7 @@ pub async fn classify_issue(
 
     let prompt = build_triage_prompt(title, body);
     let (text, _usage) = client
-        .stream_plan(model, TRIAGE_SYSTEM_PROMPT, &prompt, |_| {})
+        .stream_plan(model, TRIAGE_SYSTEM_PROMPT, &prompt, None, |_| {})
         .await
         .context("triage API call failed")?;
 
