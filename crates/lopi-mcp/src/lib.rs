@@ -16,7 +16,10 @@
 pub mod jsonrpc;
 /// MCP message construction and result parsing.
 pub mod protocol;
+/// The stdio transport + session client that drives a live MCP server.
+pub mod client;
 
+pub use client::McpClient;
 pub use jsonrpc::{encode_line, IdGen, Notification, Request, Response, RpcError};
 pub use protocol::{
     call_tool_request, initialize_request, initialized_notification, list_tools_request,
