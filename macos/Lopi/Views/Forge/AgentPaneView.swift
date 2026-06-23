@@ -370,31 +370,13 @@ struct AgentPaneView: View {
                 .foregroundStyle(logLevelColor(log.level))
                 .frame(width: 10, alignment: .leading)
                 .padding(.top, 1)
-            logTextView(log)
+            MarkdownLogView(text: log.text, textColor: logTextColor(log.level))
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .textSelection(.enabled)
-                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.vertical, 2)
         .padding(.horizontal, 4)
         .background(index % 2 == 0 ? Color.clear : Color.white.opacity(0.02))
         .clipShape(RoundedRectangle(cornerRadius: 3))
-    }
-
-    /// Renders inline markdown (`**bold**`, `*italic*`, `` `code` ``) when parseable;
-    /// falls back to plain text otherwise.
-    @ViewBuilder
-    private func logTextView(_ log: AgentLog) -> some View {
-        let baseFont = Font.system(size: 9, design: .monospaced)
-        let color = logTextColor(log.level)
-        if let attributed = try? AttributedString(
-            markdown: log.text,
-            options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-        ) {
-            Text(attributed).font(baseFont).foregroundStyle(color)
-        } else {
-            Text(log.text).font(baseFont).foregroundStyle(color)
-        }
     }
 
     private func logLevelColor(_ level: String) -> Color {
