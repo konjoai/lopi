@@ -22,6 +22,8 @@ pub mod config;
 pub mod jsonrpc;
 /// MCP message construction and result parsing.
 pub mod protocol;
+/// Expose lopi as an MCP server — answer `initialize`/`tools/list`/`tools/call`.
+pub mod server;
 
 pub use bridge::{discover_and_register, register_server_tools, register_tools, tool_spec};
 pub use client::{McpClient, StdioClient};
@@ -31,3 +33,4 @@ pub use protocol::{
     call_tool_request, initialize_request, initialized_notification, list_tools_request,
     parse_tool_text, parse_tools, McpTool, MCP_PROTOCOL_VERSION,
 };
+pub use server::{serve, ToolHandler};
