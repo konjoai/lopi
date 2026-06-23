@@ -1,0 +1,22 @@
+[package]
+name = "lopi-mcp"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Model Context Protocol (MCP) client — connects lopi agents to external tool servers"
+
+[dependencies]
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+lopi-tools.workspace = true
+tokio = { version = "1", features = ["process", "io-util"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "io-util", "time"] }
+tempfile = "3"

@@ -1942,6 +1942,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "lopi-mcp"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "lopi-tools",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "toml",
+ "tracing",
+]
+
+[[package]]
 name = "lopi-memory"
 version = "0.1.0"
 dependencies = [
