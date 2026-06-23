@@ -352,6 +352,7 @@ mod result_cache;
 mod schedules;
 mod stability;
 mod task_logs;
+mod trust_ledger;
 mod verifier;
 // Re-export helpers for tests (tests.rs uses `use super::*`).
 pub use audit::{AuditInput, AuditQuery, AuditRow};
@@ -367,6 +368,7 @@ pub use result_cache::{compute_key as compute_cache_key, CacheStats, CachedResul
 pub use schedules::{ScheduleInput, ScheduleRow, ScheduleRunRow};
 pub use stability::{StabilityEntry, StabilityRecord};
 pub use task_logs::{TaskLogRow, MAX_PER_TASK as TASK_LOG_MAX_PER_TASK};
+pub use trust_ledger::TrustLedgerRow;
 pub use verifier::VerifierVerdictRow;
 
 #[cfg(test)]

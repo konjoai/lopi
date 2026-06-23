@@ -293,6 +293,19 @@ CREATE TABLE IF NOT EXISTS schedule_runs (
 );
 CREATE INDEX IF NOT EXISTS idx_schedule_runs_sched ON schedule_runs(schedule_id, fired_at DESC);
 
+-- Phase 16.7 — Earned-trust ledger. One row per scope (a schedule id or repo
+-- path). The level column is the auto-promoted autonomy tag (report_only,
+-- draft_pr, verified_pr, or auto_merge). The clean_streak column counts
+-- consecutive clean, verifier-passed runs since the last promotion or reset.
+-- Trust is earned on a streak and lost on a post-merge revert (the policy lives
+-- in lopi-core earned_trust).
+CREATE TABLE IF NOT EXISTS trust_ledger (
+    scope        TEXT PRIMARY KEY,
+    level        TEXT NOT NULL DEFAULT 'draft_pr',
+    clean_streak INTEGER NOT NULL DEFAULT 0,
+    updated_at   TEXT NOT NULL
+);
+
 -- Sprint U — DAG-structured execution trace. One row per pipeline stage of a
 -- task attempt. status is pending/running/done/failed. depends_on_json is a
 -- JSON array of upstream stage names. output_hash memoises a done node so

@@ -4,6 +4,38 @@
 
 ### Added
 
+**Loop Engineering — Phase 16.7 Earned-Trust Auto-Promotion** (`lopi-core`, `lopi-memory`)
+- **The loop now *earns* its autonomy instead of having it assigned.** A repo or
+  schedule that strings together N consecutive clean, verifier-passed runs is
+  promoted one rung up the L1→L4 trust ladder; a post-merge revert revokes that
+  standing. This is the phased-rollout "confidence control" from the
+  loop-engineering design (CSA Agentic Trust Framework, 2026), and the last
+  research-ranked follow-on in `docs/LOOP_ENGINEERING.md` §6.
+- **`earned_trust`** — a new pure state machine in `lopi-core`: `EarnedTrust`
+  (`level` + `clean_streak`) advanced by three total, saturating transitions —
+  `on_clean_run(promote_after, ceiling)` (streak++ → promote one rung at the
+  threshold, capped at `ceiling`), `on_failed_run` (breaks the streak but never
+  demotes — a failure simply doesn't *earn* promotion), and `on_revert(floor)`
+  (the decisive "trust was misplaced" signal — demote one rung toward `floor`).
+- **`AutonomyLevel`** gains `from_rank` / `promoted` / `demoted` saturating
+  ladder helpers (mirroring `SelfPromptStrategy`'s rank arithmetic).
+- **`LoopConfig`** gains two loop-as-code levers: `promote_after` (`0` = the
+  default → auto-promotion disabled) and `trust_ceiling` (caps the climb so
+  unattended auto-merge stays opt-in; defaults to `DraftPr` → no headroom until
+  raised). `validate()` flags a `trust_ceiling` that sits at/below
+  `autonomy_level` while `promote_after > 0` — a config where promotion can
+  never fire.
+- **`lopi-memory`** — a `trust_ledger` table (`scope`, `level`, `clean_streak`)
+  with `load_trust` + `record_clean_run` / `record_failed_run` / `record_revert`
+  that apply the pure transitions and persist; each returns the resulting level
+  for the caller to seed the next run.
+- **Tests** — 8 state-machine cases (streak/promote/cap/disable, failure-holds,
+  revert-demotes-toward-floor), ladder-helper saturation, `LoopConfig` lever
+  defaults + TOML round-trip + the unreachable-ceiling validation, and 4
+  in-memory ledger persistence round-trips. Live recording wiring (schedule-id
+  plumbing → `set_schedule_autonomy`), GitHub revert detection, and the web/macOS
+  Loop-screen surface are the immediate follow-on.
+
 **Loop Engineering — Phase 16.6 Token-Budget Enforcement** (`lopi-agent`, `lopi-orchestrator`)
 - **The model now self-paces instead of being hard-cut.** `LoopConfig.budget_tokens`
   (already a loop-as-code lever) is wired to the Anthropic **task budget** beta

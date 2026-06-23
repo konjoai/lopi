@@ -187,9 +187,15 @@ The [discovery sweep](#sources) ranked these as the highest-value follow-ons:
    and a toggle in the web + macOS Loop screens, persisted via
    `POST /api/loop-engineering/escalation`. Backed by RefineCoder
    ([2502.09183](https://arxiv.org/abs/2502.09183)).
-3. **Earned-Trust Auto-Promotion** (M) — promote a schedule's `AutonomyLevel`
-   after N consecutive clean verified runs; demote instantly on a post-merge
-   revert. CSA Agentic Trust Framework (2026).
+3. ~~**Earned-Trust Auto-Promotion**~~ — ✅ **shipped (Phase 16.7)**: a repo or
+   schedule earns one rung up the L1→L4 ladder after N consecutive clean,
+   verifier-passed runs and is demoted on a post-merge revert. Pure
+   `EarnedTrust` state machine (`on_clean_run` / `on_failed_run` / `on_revert`)
+   + `AutonomyLevel::{promoted,demoted}` + `LoopConfig.{promote_after,trust_ceiling}`
+   loop-as-code levers, persisted in a `trust_ledger` table
+   (`record_clean_run` / `record_failed_run` / `record_revert`). Backed by the
+   CSA Agentic Trust Framework (2026). Live recording wiring, GitHub revert
+   detection, and the Loop-screen surface are the follow-on.
 
 Critical safety adjacency: ~~wire `LoopConfig.budget_tokens` to the Claude API
 `task_budget` parameter~~ — ✅ **shipped (Phase 16.6)**: `LoopConfig.budget_tokens`
