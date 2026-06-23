@@ -8,7 +8,11 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, DuplexStream};
 /// A canned MCP server over duplex pipes: for each request line (one carrying an
 /// `id`) it replies with the next queued response body — its `jsonrpc`/`id`
 /// filled in — while notifications (no `id`) get no reply.
-async fn mock_server(reader: DuplexStream, mut writer: DuplexStream, mut responses: VecDeque<Value>) {
+async fn mock_server(
+    reader: DuplexStream,
+    mut writer: DuplexStream,
+    mut responses: VecDeque<Value>,
+) {
     let mut lines = BufReader::new(reader).lines();
     while let Ok(Some(line)) = lines.next_line().await {
         let Ok(v) = serde_json::from_str::<Value>(&line) else {
@@ -17,7 +21,9 @@ async fn mock_server(reader: DuplexStream, mut writer: DuplexStream, mut respons
         let Some(id) = v.get("id").and_then(Value::as_i64) else {
             continue; // notification — no response
         };
-        let mut resp = responses.pop_front().expect("a queued response for each request");
+        let mut resp = responses
+            .pop_front()
+            .expect("a queued response for each request");
         resp["jsonrpc"] = json!("2.0");
         resp["id"] = json!(id);
         let mut s = serde_json::to_string(&resp).unwrap();
@@ -51,19 +57,25 @@ async fn full_session_handshake_list_and_call() {
     assert_eq!(tools.len(), 1);
     assert_eq!(tools[0].name, "echo");
 
-    let out = client.call_tool("echo", json!({ "msg": "hi" })).await.unwrap();
+    let out = client
+        .call_tool("echo", json!({ "msg": "hi" }))
+        .await
+        .unwrap();
     assert_eq!(out, "hello");
 }
 
 #[tokio::test]
 async fn tool_error_propagates() {
     let mut client = connect(vec![
-        json!({ "result": {} }), // initialize
+        json!({ "result": {} }),                                   // initialize
         json!({ "error": { "code": -32000, "message": "boom" } }), // tools/call
     ]);
     client.initialize("lopi", "0.1.0").await.unwrap();
     let err = client.call_tool("x", json!({})).await.unwrap_err();
-    assert!(err.to_string().contains("boom"), "server error surfaced: {err}");
+    assert!(
+        err.to_string().contains("boom"),
+        "server error surfaced: {err}"
+    );
 }
 
 #[tokio::test]

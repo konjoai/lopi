@@ -12,12 +12,12 @@
 //! The stdio transport and the session client that drives a live server are
 //! layered on top of these in later sprints.
 
+/// The stdio transport + session client that drives a live MCP server.
+pub mod client;
 /// JSON-RPC 2.0 envelope types and the MCP newline framing.
 pub mod jsonrpc;
 /// MCP message construction and result parsing.
 pub mod protocol;
-/// The stdio transport + session client that drives a live MCP server.
-pub mod client;
 
 pub use client::McpClient;
 pub use jsonrpc::{encode_line, IdGen, Notification, Request, Response, RpcError};
