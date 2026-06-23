@@ -340,11 +340,17 @@ async fn run_one(
     // Loop-as-code: read the repo's self-prompting + isolation levers off the
     // reactor. A missing/malformed `.lopi/loop.toml` yields the conservative
     // default (Direct self-prompt, shared-checkout Branch isolation).
-    let (self_prompt, escalate, isolation) = {
+    let (self_prompt, escalate, isolation, skills) = {
         let repo = repo.clone();
         tokio::task::spawn_blocking(move || {
             let cfg = lopi_core::LoopConfig::load_from_repo(&repo).unwrap_or_default();
-            (cfg.self_prompt, cfg.escalate_strategy, cfg.isolation)
+            let skills = super::skills::load_skills(&repo);
+            (
+                cfg.self_prompt,
+                cfg.escalate_strategy,
+                cfg.isolation,
+                skills,
+            )
         })
         .await
         .unwrap_or_default()
@@ -373,6 +379,7 @@ async fn run_one(
     .with_score_weights(weights)
     .with_self_prompt(self_prompt)
     .with_strategy_escalation(escalate)
+    .with_skills(skills)
     .with_plan_gate(plan_decision_rx);
     let outcome = runner.run().await?;
     // Reap the throwaway worktree now the run is done. The RAII drop is the

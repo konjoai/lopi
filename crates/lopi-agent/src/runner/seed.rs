@@ -26,7 +26,11 @@ impl AgentRunner {
         // Site 2 (TOON biggest win): PatternRow[] is a uniform tabular array.
         // encode_task_context() in claude.rs renders it as TOON §9.3 tabular,
         // saving ~158 tokens per attempt vs JSON (grows with pattern count).
-        let (extra_constraints, pattern_pairs, lessons_data) = self.seed_from_patterns().await;
+        let (mut extra_constraints, pattern_pairs, lessons_data) = self.seed_from_patterns().await;
+
+        // Pentad M2.2 — inject skills whose triggers match the goal (and record
+        // each activation in the audit trail). Appends nothing when none match.
+        extra_constraints.extend(self.seed_skills().await);
 
         // Store lessons for use in the API planning path.
         self.task_lessons = lessons_data
@@ -100,6 +104,63 @@ impl AgentRunner {
     }
 }
 
+impl AgentRunner {
+    /// Match skills relevant to the goal, record each activation in the audit
+    /// trail, and return their bodies as planning-prompt constraints.
+    ///
+    /// Only skills whose triggers fire are returned, so a goal that matches
+    /// nothing injects nothing — no context bloat. The audit row (`skill.activated`)
+    /// is what satisfies "the skill shows up in the task's trail".
+    pub(super) async fn seed_skills(&self) -> Vec<String> {
+        let relevant = self.skills.relevant_to(&self.task.goal);
+        if relevant.is_empty() {
+            return vec![];
+        }
+        let names: Vec<&str> = relevant.iter().map(|s| s.name.as_str()).collect();
+        self.log(format!(
+            "📚 injecting {} skill(s): {}",
+            relevant.len(),
+            names.join(", ")
+        ));
+        for skill in &relevant {
+            self.record_skill_activation(skill).await;
+        }
+        skill_constraint_blocks(&relevant)
+    }
+
+    /// Record a single skill activation in the audit trail (best-effort).
+    async fn record_skill_activation(&self, skill: &lopi_skill::Skill) {
+        let Some(store) = &self.store else {
+            return;
+        };
+        let payload = format!(
+            "{{\"skill\":\"{}\",\"version\":\"{}\"}}",
+            skill.name, skill.version
+        );
+        let input = lopi_memory::AuditInput::new("skill.activated")
+            .subject("task", self.task.id.0.to_string())
+            .actor("agent")
+            .payload_json(payload);
+        if let Err(e) = store.record_audit(&input).await {
+            tracing::warn!(skill = %skill.name, "skill activation audit failed: {e}");
+        }
+    }
+}
+
+/// Render matched skills as labeled planning-prompt constraint blocks. Pure, so
+/// the formatting is unit-testable without a runner or store.
+fn skill_constraint_blocks(skills: &[&lopi_skill::Skill]) -> Vec<String> {
+    skills
+        .iter()
+        .map(|s| {
+            format!(
+                "Skill «{}» (v{}) — {}\n{}",
+                s.name, s.version, s.description, s.body
+            )
+        })
+        .collect()
+}
+
 /// Return an owned copy of `c` when it is present and non-empty.
 fn non_empty_constraint(c: Option<&str>) -> Option<String> {
     c.and_then(|c| (!c.is_empty()).then(|| c.to_string()))
@@ -107,12 +168,38 @@ fn non_empty_constraint(c: Option<&str>) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::non_empty_constraint;
+    use super::{non_empty_constraint, skill_constraint_blocks};
+    use lopi_skill::Skill;
+    use std::path::PathBuf;
 
     #[test]
     fn keeps_non_empty_drops_empty_and_none() {
         assert_eq!(non_empty_constraint(Some("x")), Some("x".to_string()));
         assert_eq!(non_empty_constraint(Some("")), None);
         assert_eq!(non_empty_constraint(None), None);
+    }
+
+    #[test]
+    fn skill_blocks_label_name_version_description_and_body() {
+        let skill = Skill {
+            name: "refactor".into(),
+            description: "safe refactors".into(),
+            user_invocable: false,
+            version: "1.0.0".into(),
+            triggers: vec!["refactor".into()],
+            body: "Always run tests after.".into(),
+            source: PathBuf::from("x/SKILL.md"),
+        };
+        let blocks = skill_constraint_blocks(&[&skill]);
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(
+            blocks[0],
+            "Skill «refactor» (v1.0.0) — safe refactors\nAlways run tests after."
+        );
+    }
+
+    #[test]
+    fn skill_blocks_empty_for_no_matches() {
+        assert!(skill_constraint_blocks(&[]).is_empty());
     }
 }

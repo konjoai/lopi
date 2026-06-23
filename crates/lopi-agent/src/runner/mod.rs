@@ -115,6 +115,10 @@ pub struct AgentRunner {
     pub(super) score_weights: ScoreWeights,
     /// Phase 5b — lessons learned from past patterns (injected into planning prompt).
     pub(super) task_lessons: Vec<String>,
+    /// Pentad M2.2 — skills available to inject into the planning prompt. Those
+    /// whose triggers match the task goal are added as context (and recorded in
+    /// the audit trail) during seeding. Empty by default — no skills, no change.
+    pub(super) skills: lopi_skill::SkillRegistry,
 }
 
 impl AgentRunner {
@@ -158,6 +162,7 @@ impl AgentRunner {
             turn_count: 0,
             score_weights: ScoreWeights::default(),
             task_lessons: vec![],
+            skills: lopi_skill::SkillRegistry::default(),
         }
     }
 
@@ -194,6 +199,7 @@ impl AgentRunner {
             turn_count: 0,
             score_weights: ScoreWeights::default(),
             task_lessons: vec![],
+            skills: lopi_skill::SkillRegistry::default(),
         };
         (runner, bus)
     }
@@ -250,6 +256,14 @@ impl AgentRunner {
     #[must_use]
     pub fn with_score_weights(mut self, weights: ScoreWeights) -> Self {
         self.score_weights = weights;
+        self
+    }
+
+    /// Attach the skill registry whose matching entries are injected into the
+    /// planning prompt (Pentad M2.2).
+    #[must_use]
+    pub fn with_skills(mut self, skills: lopi_skill::SkillRegistry) -> Self {
+        self.skills = skills;
         self
     }
 

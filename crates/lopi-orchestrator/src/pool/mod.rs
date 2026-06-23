@@ -9,6 +9,7 @@
 
 mod registry;
 mod run_loop;
+mod skills;
 mod types;
 mod worktree;
 
