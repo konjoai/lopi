@@ -71,12 +71,30 @@ pub fn default_rubric() -> Rubric {
 /// Calls Opus to grade an agent's diff against a rubric.
 pub struct VerifierAgent {
     client: Arc<AnthropicClient>,
+    /// Maker/checker isolation: when `true` (the default), the verifier never
+    /// sees the maker's plan/chain-of-thought — it grades the artifact (diff)
+    /// against the goal and rubric on its own merits, so the checker is not
+    /// anchored to the maker's reasoning.
+    isolated: bool,
 }
 
 impl VerifierAgent {
-    /// Wrap a shared `AnthropicClient`.
+    /// Wrap a shared `AnthropicClient`. Defaults to **isolated** grading — the
+    /// maker's plan is excluded from the verifier's context (true maker/checker).
     pub fn new(client: Arc<AnthropicClient>) -> Self {
-        Self { client }
+        Self {
+            client,
+            isolated: true,
+        }
+    }
+
+    /// Opt out of isolation: include the maker's plan as intent context (the
+    /// legacy behavior). Weakens the maker/checker split — use only when the
+    /// checker genuinely needs the maker's reasoning.
+    #[must_use]
+    pub fn with_plan_context(mut self) -> Self {
+        self.isolated = false;
+        self
     }
 
     /// Grade `diff` against `rubric`.
@@ -95,17 +113,7 @@ impl VerifierAgent {
         test_output: &str,
         rubric: &Rubric,
     ) -> Result<VerifierVerdict> {
-        let criteria = rubric.criteria.join("\n- ");
-        let plan_excerpt = &plan[..plan.len().min(1_500)];
-        let diff_excerpt = &diff[..diff.len().min(6_000)];
-        let test_excerpt = &test_output[..test_output.len().min(1_000)];
-        let prompt = format!(
-            "GOAL:\n{goal}\n\nPLAN (excerpt):\n{plan_excerpt}\n\n\
-             DIFF (excerpt):\n{diff_excerpt}\n\n\
-             TEST OUTPUT:\n{test_excerpt}\n\n\
-             RUBRIC ({}):\n- {criteria}",
-            rubric.name,
-        );
+        let prompt = build_prompt(goal, plan, diff, test_output, rubric, !self.isolated);
         let (text, _) = self
             .client
             .complete(MODEL_OPUS, VERIFIER_SYSTEM, &prompt, 1_024)
@@ -113,6 +121,37 @@ impl VerifierAgent {
             .context("verifier API call")?;
         parse_verdict(&text)
     }
+}
+
+/// Build the verifier prompt from the gradeable evidence.
+///
+/// When `include_plan` is `false` (maker/checker isolation) the maker's plan is
+/// omitted entirely — the checker grades the diff against the goal and rubric
+/// without ever seeing the maker's reasoning. Excerpt bounds match the original
+/// inline construction. Pure, so the isolation guarantee is unit-testable.
+fn build_prompt(
+    goal: &str,
+    plan: &str,
+    diff: &str,
+    test_output: &str,
+    rubric: &Rubric,
+    include_plan: bool,
+) -> String {
+    let criteria = rubric.criteria.join("\n- ");
+    let diff_excerpt = &diff[..diff.len().min(6_000)];
+    let test_excerpt = &test_output[..test_output.len().min(1_000)];
+    let plan_section = if include_plan {
+        format!("PLAN (excerpt):\n{}\n\n", &plan[..plan.len().min(1_500)])
+    } else {
+        String::new()
+    };
+    format!(
+        "GOAL:\n{goal}\n\n{plan_section}\
+         DIFF (excerpt):\n{diff_excerpt}\n\n\
+         TEST OUTPUT:\n{test_excerpt}\n\n\
+         RUBRIC ({}):\n- {criteria}",
+        rubric.name,
+    )
 }
 
 fn parse_verdict(text: &str) -> Result<VerifierVerdict> {
@@ -186,6 +225,61 @@ mod tests {
     #[test]
     fn parse_verdict_invalid_json_returns_err() {
         assert!(parse_verdict("not json").is_err());
+    }
+
+    fn sample_rubric() -> Rubric {
+        Rubric {
+            name: "safety".into(),
+            criteria: vec!["tests pass".into(), "no scope creep".into()],
+        }
+    }
+
+    /// Maker/checker isolation (Pentad M4.1): the isolated prompt must NOT
+    /// contain the maker's plan, so the checker cannot be anchored to it.
+    #[test]
+    fn isolated_prompt_excludes_the_maker_plan() {
+        let plan = "MAKER SECRET REASONING: I hacked the test to pass";
+        let prompt = build_prompt(
+            "fix the bug",
+            plan,
+            "diff --git a b",
+            "ok",
+            &sample_rubric(),
+            false, // isolated
+        );
+        assert!(!prompt.contains("MAKER SECRET REASONING"), "plan excluded");
+        assert!(!prompt.contains("PLAN (excerpt)"), "no plan section header");
+        // The artifact + intent + rubric are still present.
+        assert!(prompt.contains("GOAL:\nfix the bug"));
+        assert!(prompt.contains("DIFF (excerpt):\ndiff --git a b"));
+        assert!(prompt.contains("RUBRIC (safety):"));
+        assert!(prompt.contains("- no scope creep"));
+    }
+
+    #[test]
+    fn plan_context_mode_includes_the_plan() {
+        let prompt = build_prompt(
+            "fix the bug",
+            "MAKER REASONING here",
+            "diff",
+            "ok",
+            &sample_rubric(),
+            true, // include plan (legacy)
+        );
+        assert!(prompt.contains("PLAN (excerpt):\nMAKER REASONING here"));
+    }
+
+    #[test]
+    fn new_verifier_is_isolated_by_default_and_builder_opts_out() {
+        let client = std::sync::Arc::new(crate::api_client::AnthropicClient::new("test-key"));
+        assert!(
+            VerifierAgent::new(client.clone()).isolated,
+            "isolated by default"
+        );
+        assert!(
+            !VerifierAgent::new(client).with_plan_context().isolated,
+            "builder opts back into plan context"
+        );
     }
 
     #[test]
