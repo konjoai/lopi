@@ -12,6 +12,8 @@
 //! The stdio transport and the session client that drives a live server are
 //! layered on top of these in later sprints.
 
+/// Bridge discovered MCP tools into lopi's `ToolRegistry`.
+pub mod bridge;
 /// The stdio transport + session client that drives a live MCP server.
 pub mod client;
 /// MCP server configuration parsed from `.lopi/loop.toml`.
@@ -21,6 +23,7 @@ pub mod jsonrpc;
 /// MCP message construction and result parsing.
 pub mod protocol;
 
+pub use bridge::{discover_and_register, register_server_tools, register_tools, tool_spec};
 pub use client::{McpClient, StdioClient};
 pub use config::{load_servers, parse_servers, McpServerSpec};
 pub use jsonrpc::{encode_line, IdGen, Notification, Request, Response, RpcError};
