@@ -10,7 +10,9 @@ use lopi_core::Task;
 use lopi_toon::encode_task_context;
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
+use std::process::Stdio;
 use std::time::Duration;
+use tokio::io::{AsyncBufReadExt, BufReader as AsyncBufReader};
 use tokio::process::Command;
 
 // ── Model identifiers ─────────────────────────────────────────────────────────
@@ -167,23 +169,30 @@ impl ClaudeCode {
     ///
     /// Returns an error if the claude CLI process fails or times out.
     pub async fn plan(&self, task: &Task, last_error: Option<&str>) -> Result<String> {
+        let prompt = self.build_plan_prompt(task, last_error);
+        let out = self.run(&prompt).await?;
+        Ok(out.text().to_string())
+    }
+
+    /// Build the planning prompt: a TOON-encoded task context (goal, dirs,
+    /// constraints, pattern memory, lessons) plus the optional previous-failure
+    /// addendum. Shared by the one-shot [`plan`](Self::plan) and streaming
+    /// [`plan_streamed`](Self::plan_streamed) paths so the prompt stays identical.
+    fn build_plan_prompt(&self, task: &Task, last_error: Option<&str>) -> String {
         let all_constraints: Vec<&str> = task
             .constraints
             .iter()
             .chain(self.extra_constraints.iter())
             .map(String::as_str)
             .collect();
-
         let allowed: Vec<&str> = task.allowed_dirs.iter().map(String::as_str).collect();
         let forbidden: Vec<&str> = task.forbidden_dirs.iter().map(String::as_str).collect();
-
-        // Convert lessons from Vec<(String, String)> to Vec<(&str, &str)> for TOON
+        // Convert lessons from Vec<(String, String)> to Vec<(&str, &str)> for TOON.
         let lesson_refs: Vec<(&str, &str)> = self
             .lessons
             .iter()
             .map(|(cat, content)| (cat.as_str(), content.as_str()))
             .collect();
-
         let ctx = encode_task_context(
             &task.goal,
             &allowed,
@@ -192,7 +201,6 @@ impl ClaudeCode {
             &self.patterns,
             &lesson_refs,
         );
-
         let mut prompt = format!(
             "You are running inside lopi. \
              Produce a concise implementation plan. \
@@ -202,12 +210,132 @@ impl ClaudeCode {
         );
         if let Some(err) = last_error {
             prompt.push_str(&format!(
-                "\n\n## Previous attempt failed\nAnalyze this error and adjust your approach:\n{}",
-                err
+                "\n\n## Previous attempt failed\nAnalyze this error and adjust your approach:\n{err}"
             ));
         }
-        let out = self.run(&prompt).await?;
-        Ok(out.text().to_string())
+        prompt
+    }
+
+    /// Build the implementation prompt: a TOON-encoded scope plus the plan.
+    /// Shared by [`implement`](Self::implement) and
+    /// [`implement_streamed`](Self::implement_streamed).
+    fn build_implement_prompt(&self, task: &Task, plan: &str) -> String {
+        let allowed: Vec<&str> = task.allowed_dirs.iter().map(String::as_str).collect();
+        let forbidden: Vec<&str> = task.forbidden_dirs.iter().map(String::as_str).collect();
+        let scope = encode_task_context(&task.goal, &allowed, &forbidden, &[], &[], &[]);
+        format!(
+            "Implement the plan below in the current repository.\n\n\
+             ## Scope (TOON)\n\
+             {scope}\n\
+             ## Plan\n\
+             {plan}"
+        )
+    }
+
+    /// Stream the CLI output to `on_line` as Claude generates it, surfacing the
+    /// *real* status of the response rather than any hardcoded phase label.
+    ///
+    /// Uses `--output-format stream-json --verbose`, which emits one NDJSON
+    /// event per line: assistant text/thinking blocks, `tool_use` calls (the
+    /// actual tool Claude is running), and `post_turn_summary` status lines.
+    /// Each is parsed into a human-readable line (see [`parse_stream_event`])
+    /// and handed to `on_line` the moment it arrives. Returns the canonical
+    /// final response text from the `result` event.
+    async fn run_streamed<F>(&self, prompt: &str, on_line: F) -> Result<String>
+    where
+        F: Fn(String) + Send,
+    {
+        let mut cmd = Command::new(&self.cli_path);
+        cmd.arg("-p")
+            .arg(prompt)
+            .arg("--output-format")
+            .arg("stream-json")
+            .arg("--verbose");
+        if let Some(model) = &self.model {
+            cmd.arg("--model").arg(model);
+        }
+        cmd.stdout(Stdio::piped());
+        cmd.stderr(Stdio::null());
+        cmd.current_dir(&self.repo_path);
+        scrub_inherited_anthropic_env(&mut cmd);
+
+        let mut child = cmd.spawn().context("spawning claude cli for streaming")?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| anyhow::anyhow!("claude cli: no stdout handle"))?;
+        let mut lines = AsyncBufReader::new(stdout).lines();
+        let mut final_text = String::new();
+        let mut fallback = String::new();
+
+        let deadline = tokio::time::Instant::now() + self.timeout;
+        loop {
+            match tokio::time::timeout_at(deadline, lines.next_line()).await {
+                Ok(Ok(Some(line))) => {
+                    for item in parse_stream_event(&line) {
+                        match item {
+                            StreamItem::Log(l) => {
+                                fallback.push_str(&l);
+                                fallback.push('\n');
+                                on_line(l);
+                            }
+                            StreamItem::Final(t) => final_text = t,
+                            // Cost is surfaced via emit_turn_metrics, not the log.
+                            StreamItem::Cost(_) => {}
+                        }
+                    }
+                }
+                Ok(Ok(None)) => break,
+                Ok(Err(e)) => anyhow::bail!("reading claude stdout: {e}"),
+                Err(_) => {
+                    child.kill().await.ok();
+                    anyhow::bail!("claude cli timed out after {:?}", self.timeout);
+                }
+            }
+        }
+
+        let status = child.wait().await.context("waiting for claude cli")?;
+        let text = if final_text.trim().is_empty() {
+            fallback
+        } else {
+            final_text
+        };
+        if !status.success() && text.trim().is_empty() {
+            anyhow::bail!("claude cli exited {status} with no output");
+        }
+        Ok(text)
+    }
+
+    /// Plan the task with live streaming — each line of Claude's response (text,
+    /// thinking, tool calls, status) is passed to `on_line` as it arrives.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the claude CLI process fails or times out.
+    pub async fn plan_streamed<F>(
+        &self,
+        task: &Task,
+        last_error: Option<&str>,
+        on_line: F,
+    ) -> Result<String>
+    where
+        F: Fn(String) + Send,
+    {
+        let prompt = self.build_plan_prompt(task, last_error);
+        self.run_streamed(&prompt, on_line).await
+    }
+
+    /// Implement the plan with live streaming output (real status, not a label).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the claude CLI process fails or times out.
+    pub async fn implement_streamed<F>(&self, task: &Task, plan: &str, on_line: F) -> Result<String>
+    where
+        F: Fn(String) + Send,
+    {
+        let prompt = self.build_implement_prompt(task, plan);
+        self.run_streamed(&prompt, on_line).await
     }
 
     /// Implement the plan. Uses TOON for dir arrays in the constraint block.
@@ -218,18 +346,7 @@ impl ClaudeCode {
     ///
     /// Returns an error if the claude CLI process fails or times out.
     pub async fn implement(&self, task: &Task, plan: &str) -> Result<String> {
-        let allowed: Vec<&str> = task.allowed_dirs.iter().map(String::as_str).collect();
-        let forbidden: Vec<&str> = task.forbidden_dirs.iter().map(String::as_str).collect();
-
-        let scope = encode_task_context(&task.goal, &allowed, &forbidden, &[], &[], &[]);
-
-        let prompt = format!(
-            "Implement the plan below in the current repository.\n\n\
-             ## Scope (TOON)\n\
-             {scope}\n\
-             ## Plan\n\
-             {plan}"
-        );
+        let prompt = self.build_implement_prompt(task, plan);
         let out = self.run(&prompt).await?;
         if !out.succeeded() {
             anyhow::bail!("claude implement failed: {}", out.text());
@@ -419,6 +536,133 @@ impl ClaudeCode {
     }
 }
 
+/// One UI-relevant item extracted from a single `stream-json` NDJSON line.
+#[derive(Debug, Clone, PartialEq)]
+enum StreamItem {
+    /// A human-readable status/text line to surface live in the log panel.
+    Log(String),
+    /// The canonical final response text from the terminal `result` event.
+    Final(String),
+    /// Total cost in USD from the `result` event.
+    Cost(f64),
+}
+
+/// Parse one `--output-format stream-json` line into zero or more UI items.
+///
+/// This is the single source of the live status text — it replaces every
+/// hardcoded phase label by mapping Claude's own events to readable lines:
+///   - `assistant` text blocks   → the response text, verbatim
+///   - `assistant` thinking       → `💭 <thinking>`
+///   - `assistant` tool_use       → `🔧 <Tool>(<arg>)` — what Claude is doing now
+///   - `system/post_turn_summary` → `● <status_detail>` — Claude's own summary
+///   - `result`                   → final text + total cost
+///
+/// Blank lines and non-JSON noise yield nothing.
+fn parse_stream_event(line: &str) -> Vec<StreamItem> {
+    let trimmed = line.trim();
+    if trimmed.is_empty() {
+        return vec![];
+    }
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(trimmed) else {
+        return vec![];
+    };
+    match v.get("type").and_then(serde_json::Value::as_str) {
+        Some("assistant") => parse_assistant_content(&v),
+        Some("system") => parse_system_summary(&v),
+        Some("result") => parse_result(&v),
+        _ => vec![],
+    }
+}
+
+/// Extract log lines from an `assistant` event's content blocks.
+fn parse_assistant_content(v: &serde_json::Value) -> Vec<StreamItem> {
+    let Some(content) = v.pointer("/message/content").and_then(|c| c.as_array()) else {
+        return vec![];
+    };
+    let mut out = vec![];
+    for block in content {
+        match block.get("type").and_then(serde_json::Value::as_str) {
+            Some("text") => push_trimmed(&mut out, block.get("text"), ToString::to_string),
+            Some("thinking") => {
+                push_trimmed(&mut out, block.get("thinking"), |t| format!("💭 {t}"));
+            }
+            Some("tool_use") => {
+                let name = block
+                    .get("name")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("tool");
+                out.push(StreamItem::Log(format!(
+                    "🔧 {}",
+                    summarize_tool_input(name, block.get("input"))
+                )));
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
+/// Push a `Log` item from an optional string field, trimmed and formatted, when non-empty.
+fn push_trimmed(
+    out: &mut Vec<StreamItem>,
+    field: Option<&serde_json::Value>,
+    fmt: impl Fn(&str) -> String,
+) {
+    if let Some(t) = field.and_then(serde_json::Value::as_str) {
+        let t = t.trim();
+        if !t.is_empty() {
+            out.push(StreamItem::Log(fmt(t)));
+        }
+    }
+}
+
+/// Extract the human-readable `status_detail` from a `post_turn_summary` event.
+fn parse_system_summary(v: &serde_json::Value) -> Vec<StreamItem> {
+    if v.get("subtype").and_then(serde_json::Value::as_str) != Some("post_turn_summary") {
+        return vec![];
+    }
+    let mut out = vec![];
+    push_trimmed(&mut out, v.get("status_detail"), |d| format!("● {d}"));
+    out
+}
+
+/// Extract the final text and cost from a terminal `result` event.
+fn parse_result(v: &serde_json::Value) -> Vec<StreamItem> {
+    let mut out = vec![];
+    if let Some(t) = v.get("result").and_then(serde_json::Value::as_str) {
+        out.push(StreamItem::Final(t.to_string()));
+    }
+    if let Some(c) = v.get("total_cost_usd").and_then(serde_json::Value::as_f64) {
+        out.push(StreamItem::Cost(c));
+    }
+    out
+}
+
+/// Summarize a tool_use block as `Tool(arg)` using the most salient input field,
+/// truncated so a long command or path doesn't flood the log.
+fn summarize_tool_input(name: &str, input: Option<&serde_json::Value>) -> String {
+    let Some(input) = input else {
+        return name.to_string();
+    };
+    let field = match name {
+        "Read" | "Edit" | "Write" | "NotebookEdit" => "file_path",
+        "Bash" => "command",
+        "Grep" | "Glob" => "pattern",
+        "Task" | "Agent" => "description",
+        "WebFetch" => "url",
+        "WebSearch" => "query",
+        _ => "",
+    };
+    if !field.is_empty() {
+        if let Some(val) = input.get(field).and_then(serde_json::Value::as_str) {
+            let short: String = val.chars().take(80).collect();
+            let ellipsis = if val.chars().count() > 80 { "…" } else { "" };
+            return format!("{name}({short}{ellipsis})");
+        }
+    }
+    name.to_string()
+}
+
 /// Names of environment variables that, when inherited from the parent
 /// process, cause the spawned `claude` CLI to bypass the user's interactive
 /// subscription auth and route through the per-token billed API (or a custom
@@ -537,5 +781,136 @@ mod tests {
         let out = compress_errors(&errors);
         // Only one copy should survive deduplication
         assert_eq!(out.matches("cannot borrow").count(), 1);
+    }
+
+    // ── stream-json parsing ───────────────────────────────────────────────
+
+    #[test]
+    fn parse_stream_event_ignores_blank_and_non_json() {
+        assert!(parse_stream_event("").is_empty());
+        assert!(parse_stream_event("   ").is_empty());
+        assert!(parse_stream_event("not json at all").is_empty());
+    }
+
+    #[test]
+    fn parse_stream_event_ignores_unknown_and_init_events() {
+        assert!(parse_stream_event(r#"{"type":"system","subtype":"init"}"#).is_empty());
+        assert!(parse_stream_event(r#"{"type":"rate_limit_event"}"#).is_empty());
+        assert!(parse_stream_event(r#"{"type":"mystery"}"#).is_empty());
+        assert!(parse_stream_event(r#"{"no_type":true}"#).is_empty());
+    }
+
+    #[test]
+    fn parse_stream_event_extracts_assistant_text() {
+        let line =
+            r#"{"type":"assistant","message":{"content":[{"type":"text","text":"  Hello world  "}]}}"#;
+        assert_eq!(
+            parse_stream_event(line),
+            vec![StreamItem::Log("Hello world".to_string())]
+        );
+    }
+
+    #[test]
+    fn parse_stream_event_skips_empty_text_block() {
+        let line = r#"{"type":"assistant","message":{"content":[{"type":"text","text":"   "}]}}"#;
+        assert!(parse_stream_event(line).is_empty());
+    }
+
+    #[test]
+    fn parse_stream_event_assistant_without_content_is_empty() {
+        assert!(parse_stream_event(r#"{"type":"assistant","message":{}}"#).is_empty());
+    }
+
+    #[test]
+    fn parse_stream_event_formats_thinking() {
+        let line = r#"{"type":"assistant","message":{"content":[{"type":"thinking","thinking":"let me check"}]}}"#;
+        assert_eq!(
+            parse_stream_event(line),
+            vec![StreamItem::Log("💭 let me check".to_string())]
+        );
+    }
+
+    #[test]
+    fn parse_stream_event_summarizes_tool_use_with_known_field() {
+        let line = r#"{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"src/main.rs"}}]}}"#;
+        assert_eq!(
+            parse_stream_event(line),
+            vec![StreamItem::Log("🔧 Read(src/main.rs)".to_string())]
+        );
+    }
+
+    #[test]
+    fn parse_stream_event_truncates_long_tool_arg() {
+        let cmd = "x".repeat(120);
+        let line = format!(
+            r#"{{"type":"assistant","message":{{"content":[{{"type":"tool_use","name":"Bash","input":{{"command":"{cmd}"}}}}]}}}}"#
+        );
+        let items = parse_stream_event(&line);
+        match &items[0] {
+            StreamItem::Log(s) => {
+                assert!(s.ends_with("…)"));
+                assert!(s.starts_with("🔧 Bash(xxx"));
+                assert_eq!(s.matches('x').count(), 80);
+            }
+            other => panic!("unexpected item: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_stream_event_tool_use_unknown_tool_falls_back_to_name() {
+        let line = r#"{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Frobnicate","input":{"x":1}}]}}"#;
+        assert_eq!(
+            parse_stream_event(line),
+            vec![StreamItem::Log("🔧 Frobnicate".to_string())]
+        );
+    }
+
+    #[test]
+    fn parse_stream_event_tool_use_no_input_falls_back_to_name() {
+        let line = r#"{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read"}]}}"#;
+        assert_eq!(
+            parse_stream_event(line),
+            vec![StreamItem::Log("🔧 Read".to_string())]
+        );
+    }
+
+    #[test]
+    fn parse_stream_event_post_turn_summary() {
+        let line = r#"{"type":"system","subtype":"post_turn_summary","status_detail":"responded with greeting"}"#;
+        assert_eq!(
+            parse_stream_event(line),
+            vec![StreamItem::Log("● responded with greeting".to_string())]
+        );
+    }
+
+    #[test]
+    fn parse_stream_event_other_system_subtype_ignored() {
+        let line = r#"{"type":"system","subtype":"something_else","status_detail":"x"}"#;
+        assert!(parse_stream_event(line).is_empty());
+    }
+
+    #[test]
+    fn parse_stream_event_result_yields_final_and_cost() {
+        let line =
+            r#"{"type":"result","subtype":"success","result":"the plan","total_cost_usd":0.042}"#;
+        assert_eq!(
+            parse_stream_event(line),
+            vec![
+                StreamItem::Final("the plan".to_string()),
+                StreamItem::Cost(0.042),
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_stream_event_multiple_blocks_in_order() {
+        let line = r#"{"type":"assistant","message":{"content":[{"type":"text","text":"step 1"},{"type":"tool_use","name":"Edit","input":{"file_path":"a.rs"}}]}}"#;
+        assert_eq!(
+            parse_stream_event(line),
+            vec![
+                StreamItem::Log("step 1".to_string()),
+                StreamItem::Log("🔧 Edit(a.rs)".to_string()),
+            ]
+        );
     }
 }

@@ -91,7 +91,7 @@ struct KonjoOrb: View {
 
         // Shake: a faint front-loaded nudge (excite³) for requests/failures —
         // a reaction, not a rattle.
-        let shakeAmp = shakes ? excite * excite * excite * Double(size) * 0.008 : 0
+        let shakeAmp = shakes ? excite * excite * excite * Double(size) * 0.002 : 0
         return Frame(
             time: Float(t),
             // Wrap at 10π — the smallest angle where both spin axes (ry = spin

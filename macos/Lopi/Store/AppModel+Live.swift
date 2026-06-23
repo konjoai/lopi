@@ -67,7 +67,7 @@ extension AppModel {
             if liveAgents[id] != nil {
                 liveAgents[id]?.logTail.append(AgentLog(level: level, text: line))
                 let tail = liveAgents[id]?.logTail.count ?? 0
-                if tail > 12 { liveAgents[id]?.logTail.removeFirst(tail - 12) }
+                if tail > 200 { liveAgents[id]?.logTail.removeFirst(tail - 200) }
                 if level == "error" {
                     liveAgents[id]?.stimulus = .now
                     liveAgents[id]?.stimulusKind = "failure"

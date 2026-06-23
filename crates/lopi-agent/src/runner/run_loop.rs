@@ -104,7 +104,9 @@ impl AgentRunner {
                 pressure = self.context.token_pressure(),
                 "context at planning"
             );
-            self.log("📋 planning…");
+            // No hardcoded phase label — the real status (thinking, tool calls,
+            // text) streams in live from Claude below. The UI shows a "waiting
+            // for Claude" animation until the first event arrives.
 
             if self.speculative {
                 // Speculative mode: apply plan steps as they stream (see
@@ -135,34 +137,25 @@ impl AgentRunner {
                     if self.has_direct_api() {
                         match self.plan_via_api(model, attempt + 1).await {
                             Ok(p) => {
-                                self.log(format!(
-                                    "✅ plan ready via direct API ({} chars)",
-                                    p.len()
-                                ));
+                                // Direct-API response arrives whole — surface it
+                                // line-by-line so the log reads like the stream.
+                                for line in p.lines() {
+                                    let t = line.trim();
+                                    if !t.is_empty() {
+                                        self.log(t.to_string());
+                                    }
+                                }
                                 Ok(p)
                             }
                             Err(api_err) => {
                                 self.warn(format!(
                                     "direct API plan failed ({api_err}); falling back to CLI"
                                 ));
-                                claude
-                                    .plan(&self.task, self.last_error.as_deref())
-                                    .await
-                                    .inspect(|p| {
-                                        self.log(format!(
-                                            "✅ plan ready via CLI ({} chars)",
-                                            p.len()
-                                        ));
-                                    })
+                                self.stream_plan(&claude).await
                             }
                         }
                     } else {
-                        claude
-                            .plan(&self.task, self.last_error.as_deref())
-                            .await
-                            .inspect(|p| {
-                                self.log(format!("✅ plan ready ({} chars)", p.len()));
-                            })
+                        self.stream_plan(&claude).await
                     }
                 }
                 .instrument(think_span)
@@ -228,7 +221,8 @@ impl AgentRunner {
                     pressure = self.context.token_pressure(),
                     "context at implementation"
                 );
-                self.log("🔨 implementing…");
+                // No hardcoded label — Claude's real actions (tool calls, text,
+                // status) stream into the log live as it works.
 
                 // OTel GenAI-aligned span: act phase. Uses `.instrument()`
                 // (not `.entered()`) so the span guard is not held across
@@ -238,8 +232,8 @@ impl AgentRunner {
                     task_id = %self.id(),
                     attempt = attempt + 1,
                 );
-                let act_result = claude
-                    .implement(&self.task, &plan)
+                let act_result = self
+                    .stream_implement(&claude, &plan)
                     .instrument(act_span)
                     .await;
                 if let Err(e) = act_result {
@@ -461,5 +455,35 @@ impl AgentRunner {
         };
         self.status(status.clone(), self.task.max_retries);
         Ok(status)
+    }
+
+    /// Stream a plan from the CLI, forwarding each line of Claude's live output
+    /// (thinking, tool calls, text, status) to the event bus as it arrives.
+    async fn stream_plan(&self, claude: &ClaudeCode) -> Result<String> {
+        let bus = self.bus.clone();
+        let tid = self.id();
+        claude
+            .plan_streamed(&self.task, self.last_error.as_deref(), move |line| {
+                let t = line.trim().to_string();
+                if !t.is_empty() {
+                    bus.send(AgentEvent::info(tid, t));
+                }
+            })
+            .await
+    }
+
+    /// Stream the implementation from the CLI, forwarding each line of Claude's
+    /// live output to the event bus as it arrives.
+    async fn stream_implement(&self, claude: &ClaudeCode, plan: &str) -> Result<String> {
+        let bus = self.bus.clone();
+        let tid = self.id();
+        claude
+            .implement_streamed(&self.task, plan, move |line| {
+                let t = line.trim().to_string();
+                if !t.is_empty() {
+                    bus.send(AgentEvent::info(tid, t));
+                }
+            })
+            .await
     }
 }
