@@ -21,6 +21,10 @@ use std::process::Stdio;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{ChildStdin, ChildStdout, Command};
 
+/// A client connected to a spawned server over its piped stdio — the concrete
+/// type returned by [`McpClient::spawn`].
+pub type StdioClient = McpClient<ChildStdin, BufReader<ChildStdout>>;
+
 /// A connected MCP client over an async writer (server stdin) and buffered
 /// reader (server stdout).
 pub struct McpClient<W, R> {

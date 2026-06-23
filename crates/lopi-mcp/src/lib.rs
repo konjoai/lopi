@@ -14,12 +14,15 @@
 
 /// The stdio transport + session client that drives a live MCP server.
 pub mod client;
+/// MCP server configuration parsed from `.lopi/loop.toml`.
+pub mod config;
 /// JSON-RPC 2.0 envelope types and the MCP newline framing.
 pub mod jsonrpc;
 /// MCP message construction and result parsing.
 pub mod protocol;
 
-pub use client::McpClient;
+pub use client::{McpClient, StdioClient};
+pub use config::{load_servers, parse_servers, McpServerSpec};
 pub use jsonrpc::{encode_line, IdGen, Notification, Request, Response, RpcError};
 pub use protocol::{
     call_tool_request, initialize_request, initialized_notification, list_tools_request,
