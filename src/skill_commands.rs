@@ -106,9 +106,48 @@ pub fn format_report(
 
 #[cfg(test)]
 mod tests {
-    use super::format_report;
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
+    use super::{format_report, promote};
+    use lopi_memory::MemoryStore;
     use lopi_skill::PromotionReport;
     use std::path::Path;
+    use tempfile::TempDir;
+
+    /// Exercises the full `promote` path: seed recurring lessons in a real
+    /// store, then assert it loads, detects, drafts to the pending dir, and
+    /// reports — which also kills the "replace body with a constant" mutant.
+    #[tokio::test]
+    async fn promote_drafts_recurring_lessons_from_the_store() {
+        let dir = TempDir::new().unwrap();
+        let repo = dir.path();
+        let db = repo.join("lopi.db");
+        // `promote` keys lessons by the canonical repo path — seed under the same.
+        let key = repo.canonicalize().unwrap().display().to_string();
+
+        let store = MemoryStore::open(&db).await.unwrap();
+        for content in [
+            "Run the tests after refactor",
+            "after refactor run tests",
+            "TESTS, after refactor, run!",
+        ] {
+            store
+                .save_lesson(&key, "recovery", content, None, 1.0)
+                .await
+                .unwrap();
+        }
+        drop(store); // release the write pool before `promote` reopens the db
+
+        let out = promote(repo, db, 3, 200).await.unwrap();
+        assert!(out.contains("⟲ lopi skill promote"));
+        assert!(out.contains("scanned: 3"));
+        assert!(out.contains("drafted: 1"));
+        assert!(out.contains("learned-after-refactor-tests"));
+        assert!(
+            repo.join(".lopi/skills-pending/learned-after-refactor-tests/SKILL.md")
+                .is_file(),
+            "draft written to the pending dir"
+        );
+    }
 
     #[test]
     fn report_lists_drafted_and_skipped() {
