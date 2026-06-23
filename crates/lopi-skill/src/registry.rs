@@ -52,6 +52,22 @@ impl SkillRegistry {
         self.skills.iter().find(|s| s.name == name)
     }
 
+    /// Skills whose triggers fire for `goal`, in registry order.
+    ///
+    /// Matching is keyword-based today — a case-insensitive substring of any
+    /// trigger in the goal — but isolated in [`skill_matches`] so a semantic /
+    /// embedding matcher can replace it without touching callers. A skill with
+    /// no triggers never auto-injects (it must be requested explicitly), so a
+    /// task that matches nothing pulls in nothing: no context bloat.
+    #[must_use]
+    pub fn relevant_to(&self, goal: &str) -> Vec<&Skill> {
+        let goal_lower = goal.to_lowercase();
+        self.skills
+            .iter()
+            .filter(|s| skill_matches(s, &goal_lower))
+            .collect()
+    }
+
     /// The names of all loaded skills, in registry order.
     #[must_use]
     pub fn names(&self) -> Vec<&str> {
@@ -74,6 +90,16 @@ impl SkillRegistry {
     pub fn is_empty(&self) -> bool {
         self.skills.is_empty()
     }
+}
+
+/// Whether any of `skill`'s triggers appears in the already-lowercased `goal`.
+/// The single matching predicate — swap this for an embedding score to make
+/// relevance semantic without changing [`SkillRegistry::relevant_to`]'s shape.
+fn skill_matches(skill: &Skill, goal_lower: &str) -> bool {
+    skill.triggers.iter().any(|t| {
+        let t = t.to_lowercase();
+        !t.is_empty() && goal_lower.contains(&t)
+    })
 }
 
 /// List `<dir>/<name>/SKILL.md` paths under `dir`, sorted for determinism. A

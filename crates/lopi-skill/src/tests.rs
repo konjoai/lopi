@@ -134,6 +134,42 @@ fn registry_propagates_malformed_skill() {
     assert!(matches!(err, SkillError::MissingFrontmatter { .. }));
 }
 
+#[test]
+fn relevant_to_matches_triggers_case_insensitively() {
+    let dir = TempDir::new().unwrap();
+    let root = dir.path().to_path_buf();
+    write_skill(
+        &root,
+        "refactor",
+        "---\nname: refactor\ndescription: d\ntriggers: refactor, cleanup\n---\nb\n",
+    );
+    write_skill(
+        &root,
+        "deploy",
+        "---\nname: deploy\ndescription: d\ntriggers: deploy, release\n---\nb\n",
+    );
+    // No triggers → never auto-injected.
+    write_skill(
+        &root,
+        "manual",
+        "---\nname: manual\ndescription: d\n---\nb\n",
+    );
+    let reg = SkillRegistry::load_from_dirs(&[root]).unwrap();
+
+    let hits = reg.relevant_to("Please REFACTOR the parser module");
+    assert_eq!(
+        hits.iter().map(|s| s.name.as_str()).collect::<Vec<_>>(),
+        vec!["refactor"]
+    );
+    // A goal matching nothing pulls in nothing.
+    assert!(reg.relevant_to("write some docs").is_empty());
+    // The trigger-less skill never fires.
+    assert!(reg
+        .relevant_to("manual deploy cleanup")
+        .iter()
+        .all(|s| s.name != "manual"));
+}
+
 /// Sprint 2.1 DoD: every bundled `.claude/skills/*/SKILL.md` parses cleanly.
 #[test]
 fn loads_the_repos_bundled_skills() {
