@@ -55,7 +55,7 @@ impl SkillRegistry {
     /// Skills whose triggers fire for `goal`, in registry order.
     ///
     /// Matching is keyword-based today — a case-insensitive substring of any
-    /// trigger in the goal — but isolated in [`skill_matches`] so a semantic /
+    /// trigger in the goal — but isolated in `skill_matches` so a semantic /
     /// embedding matcher can replace it without touching callers. A skill with
     /// no triggers never auto-injects (it must be requested explicitly), so a
     /// task that matches nothing pulls in nothing: no context bloat.

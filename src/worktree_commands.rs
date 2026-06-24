@@ -9,8 +9,26 @@
 //! only prints; the behavior here is unit-testable without capturing stdout.
 
 use anyhow::Result;
+use clap::Subcommand;
 use lopi_git::WorktreeManager;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+
+/// `lopi worktree` subcommands.
+#[derive(Subcommand)]
+pub enum WorktreeCmd {
+    /// List the git worktrees currently tracked for a repo.
+    List {
+        /// Repository whose worktrees to list.
+        #[arg(short, long, default_value = ".")]
+        repo: PathBuf,
+    },
+    /// Reclaim orphaned worktrees and stale `lopi/*` branches.
+    Gc {
+        /// Repository to garbage-collect.
+        #[arg(short, long, default_value = ".")]
+        repo: PathBuf,
+    },
+}
 
 /// Prefix for lopi's ephemeral per-attempt branches.
 const LOPI_BRANCH_PREFIX: &str = "lopi/";
