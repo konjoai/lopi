@@ -46,6 +46,12 @@ pub async fn boot(entries: Vec<ScheduleEntry>, pool: AgentPool) -> Result<JobSch
                 let profile = RepoProfile::load_from_repo(&entry.repo);
                 profile.apply(&mut task);
 
+                // Loop engineering — carry the schedule's L1–L4 trust level onto
+                // the task so the runner enforces it (report-only / draft PR /
+                // verified PR / auto-merge). Without this the trust dropdown
+                // would be cosmetic.
+                task.autonomy_level = entry.autonomy_level;
+
                 pool.submit(task).await;
             })
         }) {

@@ -246,7 +246,90 @@ export interface LoopSnapshot {
   gates: LoopGate[];
 }
 
+/** Headline KPI tiles for the Loop Health view. */
+export interface LoopHealthStats {
+  runs: number;
+  attempts: number;
+  success_rate: number;
+  verifier_pass_rate: number;
+  verifier_total: number;
+  spend_usd: number;
+  tokens: number;
+}
+
+/** One attempt in the score/diff timeline (oldest → newest). */
+export interface LoopHealthAttempt {
+  task_id: string;
+  attempt: number;
+  test_pass_rate: number;
+  lint_errors: number;
+  diff_lines: number;
+  outcome: string;
+  created_at: string;
+}
+
+/** One sample in the token/cost burn series (oldest → newest). */
+export interface LoopHealthBurn {
+  cost_usd: number;
+  tokens: number;
+  context_pressure: number;
+  timestamp: string;
+}
+
+/** The loop-health snapshot from `GET /api/loop-engineering/health`. */
+export interface LoopHealth {
+  stats: LoopHealthStats;
+  attempts: LoopHealthAttempt[];
+  outcomes: { label: string; count: number }[];
+  burn: LoopHealthBurn[];
+}
+
+/** One run (task) summarised for the run picker. */
+export interface LoopRun {
+  task_id: string;
+  goal: string;
+  status: string;
+  attempts: number;
+  best_score: number;
+  final_outcome: string;
+  last_at: string;
+}
+
+/** The verifier verdict grafted onto an attempt in a run trace. */
+export interface LoopRunVerifier {
+  passed: boolean;
+  confidence: number;
+  gaps: string[];
+  fix_hints: string[];
+}
+
+/** One attempt in a run's drill-down trace. */
+export interface LoopRunAttempt {
+  attempt: number;
+  test_pass_rate: number;
+  lint_errors: number;
+  diff_lines: number;
+  outcome: string;
+  errors: string[];
+  verifier: LoopRunVerifier | null;
+  tokens: number;
+  cost_usd: number;
+  created_at: string;
+}
+
+/** A single run's attempt-by-attempt trace. */
+export interface LoopRunTrace {
+  task_id: string;
+  goal: string;
+  status: string;
+  attempts: LoopRunAttempt[];
+}
+
 export const getLoopEngineering = () => request<LoopSnapshot>('/api/loop-engineering');
+export const getLoopHealth = () => request<LoopHealth>('/api/loop-engineering/health');
+export const getLoopRuns = () => request<{ runs: LoopRun[] }>('/api/loop-engineering/runs');
+export const getLoopRunTrace = (id: string) =>
+  request<LoopRunTrace>(`/api/loop-engineering/runs/${encodeURIComponent(id)}`);
 export const setScheduleAutonomy = (id: string, level: string) =>
   request<{ id: string; autonomy_level: string }>(
     `/api/schedules/${encodeURIComponent(id)}/autonomy`,
