@@ -187,13 +187,28 @@ The [discovery sweep](#sources) ranked these as the highest-value follow-ons:
    and a toggle in the web + macOS Loop screens, persisted via
    `POST /api/loop-engineering/escalation`. Backed by RefineCoder
    ([2502.09183](https://arxiv.org/abs/2502.09183)).
-3. **Earned-Trust Auto-Promotion** (M) — promote a schedule's `AutonomyLevel`
-   after N consecutive clean verified runs; demote instantly on a post-merge
-   revert. CSA Agentic Trust Framework (2026).
+3. ~~**Earned-Trust Auto-Promotion**~~ — ✅ **shipped (Phase 16.7)**: a repo or
+   schedule earns one rung up the L1→L4 ladder after N consecutive clean,
+   verifier-passed runs and is demoted on a post-merge revert. Pure
+   `EarnedTrust` state machine (`on_clean_run` / `on_failed_run` / `on_revert`)
+   + `AutonomyLevel::{promoted,demoted}` + `LoopConfig.{promote_after,trust_ceiling}`
+   loop-as-code levers, persisted in a `trust_ledger` table
+   (`record_clean_run` / `record_failed_run` / `record_revert`). Backed by the
+   CSA Agentic Trust Framework (2026). Live recording wiring, GitHub revert
+   detection, and the Loop-screen surface are the follow-on.
 
-Critical safety adjacency: wire `LoopConfig.budget_tokens` to the Claude API
-`task_budget` parameter (beta `task-budgets-2026-03-13`) so the model
-self-regulates instead of hard-cutting.
+Critical safety adjacency: ~~wire `LoopConfig.budget_tokens` to the Claude API
+`task_budget` parameter~~ — ✅ **shipped (Phase 16.6)**: `LoopConfig.budget_tokens`
+is forwarded to the Anthropic `task_budget` output config (beta
+`task-budgets-2026-03-13`) on the direct-API planning path so the model
+self-regulates instead of being hard-cut by `max_tokens`. The decision logic
+lives in pure helpers (`api_budget::{supports_task_budget, effective_task_budget,
+task_budget_output_config}`): the budget is **model-gated** (only Opus 4.7/4.8 and
+Fable 5 accept the parameter — it is silently dropped on the Haiku/Sonnet tiers
+lopi uses for cheap early attempts) and **clamped** up to the API's 20,000-token
+minimum so an under-minimum config never 400s. Wired through
+`AgentRunner::with_task_budget` from `.lopi/loop.toml` in both the `lopi run` CLI
+path and the orchestrator pool.
 
 ## 7. Feature status by app
 

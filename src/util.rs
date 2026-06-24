@@ -44,6 +44,7 @@ pub(crate) fn status_label(s: &TaskStatus) -> String {
         ),
         TaskStatus::Failed { reason } => format!("failed ❌ {reason}"),
         TaskStatus::RolledBack => "rolled back".into(),
+        TaskStatus::Conflict { paths } => format!("conflict ⚠ {}", paths.join(", ")),
     }
 }
 
