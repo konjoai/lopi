@@ -75,6 +75,9 @@ pub enum StreamEvent {
     Result {
         /// CLI session UUID.
         session_id: String,
+        /// Result subtype, e.g. `success` or an error/cap subtype. A value
+        /// other than `success` means the CLI halted early (turn/budget cap).
+        subtype: String,
         /// Canonical final response text.
         final_text: String,
         /// Cumulative cost in USD.
@@ -254,6 +257,7 @@ fn parse_rate_limit(v: &Value) -> StreamEvent {
 fn parse_result(v: &Value) -> StreamEvent {
     StreamEvent::Result {
         session_id: str_at(v, "session_id"),
+        subtype: str_at(v, "subtype"),
         final_text: str_at(v, "result"),
         total_cost_usd: v
             .get("total_cost_usd")
@@ -288,6 +292,13 @@ impl StreamEvent {
             StreamEvent::ToolUse { tool, arg } => Some(format!("🔧 {tool}({arg})")),
             StreamEvent::TurnSummary { detail, .. } if !detail.is_empty() => {
                 Some(format!("● {detail}"))
+            }
+            // A non-success terminal means the CLI halted early — surface the
+            // reason (e.g. a turn or budget cap) instead of failing silently.
+            StreamEvent::Result {
+                subtype, num_turns, ..
+            } if subtype != "success" => {
+                Some(format!("⛔ halted ({subtype}) after {num_turns} turns"))
             }
             _ => None,
         }
@@ -555,6 +566,35 @@ mod tests {
             }
             other => panic!("expected ApiRetry, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn non_success_result_reports_the_halt_reason() {
+        // A turn/budget cap halt is surfaced as a log line, not swallowed.
+        let ev = one(
+            r#"{"type":"result","subtype":"error_max_turns","result":"","total_cost_usd":0.01,"num_turns":1,"session_id":"s"}"#,
+        );
+        let log = ev
+            .log_line()
+            .expect("non-success result must produce a log line");
+        assert!(log.contains("halted"), "log: {log}");
+        assert!(log.contains("error_max_turns"), "log: {log}");
+        // It still maps to a Cost event so the UI sees the spend.
+        assert!(matches!(
+            ev.structured_events(TaskId::new())[0],
+            AgentEvent::Cost { .. }
+        ));
+    }
+
+    #[test]
+    fn success_result_has_no_halt_log() {
+        let ev = one(
+            r#"{"type":"result","subtype":"success","result":"done","total_cost_usd":0.01,"num_turns":1,"session_id":"s"}"#,
+        );
+        assert!(
+            ev.log_line().is_none(),
+            "clean success should not log a halt"
+        );
     }
 
     #[test]

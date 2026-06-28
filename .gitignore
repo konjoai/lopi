@@ -12,3 +12,6 @@ Cargo.lock.bak
 .env.local
 lopi.toml
 mutants.out/
+
+# E2E screenshots are delivered separately, not committed (binary blobs)
+artifacts/screenshots/

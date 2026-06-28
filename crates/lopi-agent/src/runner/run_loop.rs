@@ -50,11 +50,17 @@ impl AgentRunner {
                 .chain(spec_constraints.iter())
                 .cloned()
                 .collect();
-            let claude = ClaudeCode::new(&self.repo_path)
+            let mut claude = ClaudeCode::new(&self.repo_path)
                 .with_extra_constraints(all_constraints)
                 .with_patterns(pattern_pairs.clone())
                 .with_lessons(lessons_data.clone())
-                .with_model(model);
+                .with_model(model)
+                // Cost ceiling: the CLI session must not out-run the runner's own
+                // turn cap. Halts cleanly at the cap and reports why.
+                .with_max_turns(self.max_turns);
+            if let Some(usd) = self.cli_budget_usd {
+                claude = claude.with_max_budget_usd(usd);
+            }
             tracing::info!(model, attempt, "model selected for attempt");
             // Hard stop: prevent runaway agents from looping past the turn cap.
             self.turn_count += 1;

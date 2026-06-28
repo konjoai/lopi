@@ -95,6 +95,10 @@ pub struct ClaudeCode {
     patterns: Vec<(String, String)>,
     /// Phase 5b — lessons learned from past patterns or post-mortems (category, content).
     lessons: Vec<(String, String)>,
+    /// Per-session `--max-turns` cap passed to `claude -p`. None = CLI default.
+    max_turns: Option<u32>,
+    /// Per-session `--max-budget-usd` cap passed to `claude -p`. None = no cap.
+    max_budget_usd: Option<f64>,
 }
 
 impl ClaudeCode {
@@ -109,6 +113,8 @@ impl ClaudeCode {
             model: None,
             patterns: vec![],
             lessons: vec![],
+            max_turns: None,
+            max_budget_usd: None,
         }
     }
 
@@ -116,6 +122,22 @@ impl ClaudeCode {
     #[must_use]
     pub fn with_model(mut self, model: impl Into<String>) -> Self {
         self.model = Some(model.into());
+        self
+    }
+
+    /// Set the per-session `--max-turns` cap. The CLI halts cleanly at the cap
+    /// and emits a terminal `result`, rather than running on.
+    #[must_use]
+    pub fn with_max_turns(mut self, turns: u32) -> Self {
+        self.max_turns = Some(turns);
+        self
+    }
+
+    /// Set the per-session `--max-budget-usd` cap. The CLI halts cleanly once
+    /// cumulative cost reaches the cap.
+    #[must_use]
+    pub fn with_max_budget_usd(mut self, usd: f64) -> Self {
+        self.max_budget_usd = Some(usd);
         self
     }
 
@@ -256,6 +278,12 @@ impl ClaudeCode {
             .arg("--include-partial-messages");
         if let Some(model) = &self.model {
             cmd.arg("--model").arg(model);
+        }
+        if let Some(turns) = self.max_turns {
+            cmd.arg("--max-turns").arg(turns.to_string());
+        }
+        if let Some(usd) = self.max_budget_usd {
+            cmd.arg("--max-budget-usd").arg(format!("{usd}"));
         }
         cmd.stdout(Stdio::piped());
         cmd.stderr(Stdio::null());
