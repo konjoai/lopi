@@ -57,6 +57,18 @@ export interface AgentState {
   cost: number; // USD accumulated
   thought?: string; // last log line (preview)
 
+  // ── stream-json pane inputs (Phase 1 event spine) ──────────────────────────
+  outputTokens?: number; // cumulative output tokens this run (token_delta)
+  inputTokens?: number; // input tokens for the current turn (token_delta)
+  cacheReadTokens?: number; // cache-read tokens for the current turn (token_delta)
+  numTurns?: number; // turns reported by the terminal result (cost)
+  sessionId?: string; // CLI session UUID for --resume (cost)
+  claudePhase?: string; // Claude's own phase label, e.g. "requesting" (phase)
+  lastTool?: string; // most recent tool name (tool_call)
+  toolCalls?: number; // count of tool calls this run (tool_call)
+  throttled?: boolean; // a rate_limit_event was seen (api_retry)
+  utilization?: number; // 0..1 window utilization from the last api_retry
+
   // Phase 11 — plan approval gate. Set while the agent is paused awaiting a
   // human decision; cleared once it proceeds (approved) or terminates.
   awaitingApproval?: boolean;
