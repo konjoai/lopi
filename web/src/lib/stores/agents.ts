@@ -305,14 +305,23 @@ export function init() {
   connect();
   if (connectionStateInterval) clearInterval(connectionStateInterval);
   connectionStateInterval = setInterval(updateConnectionState, 500);
-  // Fall back to mock if not connected in 1.5s
-  setTimeout(() => {
-    const state = getConnectionState();
-    if (state === 'offline' || state === 'connecting') {
-      initMock();
-      updateConnectionState();
-    }
-  }, 1500);
+  // Demo data is opt-in only and never masks a dead backend: it runs solely
+  // when the page is loaded with ?demo=1. Without the flag, an unreachable
+  // backend reports an honest offline/empty state.
+  if (isDemoRequested()) {
+    initMock();
+    updateConnectionState();
+  }
+}
+
+/** True only when the page URL carries an explicit `?demo=1` opt-in flag. */
+function isDemoRequested(): boolean {
+  if (!browser) return false;
+  try {
+    return new URLSearchParams(window.location.search).get('demo') === '1';
+  } catch {
+    return false;
+  }
 }
 
 export function selectAgent(id: string) {
