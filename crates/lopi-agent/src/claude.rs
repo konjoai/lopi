@@ -331,7 +331,12 @@ impl ClaudeCode {
     /// # Errors
     ///
     /// Returns an error if the claude CLI process fails or times out.
-    pub async fn implement_streamed<F>(&self, task: &Task, plan: &str, on_event: F) -> Result<String>
+    pub async fn implement_streamed<F>(
+        &self,
+        task: &Task,
+        plan: &str,
+        on_event: F,
+    ) -> Result<String>
     where
         F: Fn(&StreamEvent) + Send,
     {

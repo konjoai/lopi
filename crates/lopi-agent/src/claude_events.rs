@@ -112,7 +112,10 @@ pub fn parse_line(line: &str) -> Vec<StreamEvent> {
 }
 
 fn str_at(v: &Value, key: &str) -> String {
-    v.get(key).and_then(Value::as_str).unwrap_or_default().to_string()
+    v.get(key)
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string()
 }
 
 fn parse_system(v: &Value) -> StreamEvent {
@@ -221,7 +224,12 @@ fn parse_usage(usage: Option<&Value>) -> StreamEvent {
     let Some(u) = usage else {
         return StreamEvent::Other;
     };
-    let get = |k: &str| u.get(k).and_then(Value::as_u64).unwrap_or(0).min(u32::MAX as u64) as u32;
+    let get = |k: &str| {
+        u.get(k)
+            .and_then(Value::as_u64)
+            .unwrap_or(0)
+            .min(u32::MAX as u64) as u32
+    };
     StreamEvent::TokenUsage {
         output_tokens: get("output_tokens"),
         input_tokens: get("input_tokens"),
@@ -247,7 +255,10 @@ fn parse_result(v: &Value) -> StreamEvent {
     StreamEvent::Result {
         session_id: str_at(v, "session_id"),
         final_text: str_at(v, "result"),
-        total_cost_usd: v.get("total_cost_usd").and_then(Value::as_f64).unwrap_or(0.0),
+        total_cost_usd: v
+            .get("total_cost_usd")
+            .and_then(Value::as_f64)
+            .unwrap_or(0.0),
         num_turns: v.get("num_turns").and_then(Value::as_u64).unwrap_or(0) as u32,
     }
 }
@@ -381,7 +392,10 @@ mod tests {
         assert_eq!(parse_line("not json at all"), vec![StreamEvent::Other]);
         assert_eq!(parse_line(r#"{"truncated":"#), vec![StreamEvent::Other]);
         assert_eq!(parse_line(r#"{"no_type":true}"#), vec![StreamEvent::Other]);
-        assert_eq!(parse_line(r#"{"type":"mystery"}"#), vec![StreamEvent::Other]);
+        assert_eq!(
+            parse_line(r#"{"type":"mystery"}"#),
+            vec![StreamEvent::Other]
+        );
     }
 
     #[test]
@@ -416,7 +430,8 @@ mod tests {
 
     #[test]
     fn assistant_text_and_thinking_format_for_log_only() {
-        let text = one(r#"{"type":"assistant","message":{"content":[{"type":"text","text":"  hi  "}]}}"#);
+        let text =
+            one(r#"{"type":"assistant","message":{"content":[{"type":"text","text":"  hi  "}]}}"#);
         assert_eq!(text.log_line().as_deref(), Some("hi"));
         assert!(text.structured_events(TaskId::new()).is_empty());
 
@@ -447,7 +462,9 @@ mod tests {
             r#"{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Frobnicate","input":{"x":1}}]}}"#,
         );
         assert_eq!(ev.log_line().as_deref(), Some("🔧 Frobnicate"));
-        let bare = one(r#"{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read"}]}}"#);
+        let bare = one(
+            r#"{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read"}]}}"#,
+        );
         assert_eq!(bare.log_line().as_deref(), Some("🔧 Read"));
     }
 
@@ -477,7 +494,9 @@ mod tests {
     fn user_tool_result_flags_error_on_stderr() {
         let ok = one(r#"{"type":"user","tool_use_result":{"stdout":"all good"}}"#);
         match &ok.structured_events(TaskId::new())[0] {
-            AgentEvent::ToolResult { is_error, preview, .. } => {
+            AgentEvent::ToolResult {
+                is_error, preview, ..
+            } => {
                 assert!(!is_error);
                 assert_eq!(preview, "all good");
             }
@@ -496,7 +515,11 @@ mod tests {
             r#"{"type":"stream_event","event":{"type":"message_delta","usage":{"output_tokens":118,"input_tokens":3,"cache_read_input_tokens":16312}}}"#,
         );
         match &ev.structured_events(TaskId::new())[0] {
-            AgentEvent::TokenDelta { output_tokens, cache_read_tokens, .. } => {
+            AgentEvent::TokenDelta {
+                output_tokens,
+                cache_read_tokens,
+                ..
+            } => {
                 assert_eq!(*output_tokens, 118);
                 assert_eq!(*cache_read_tokens, 16312);
             }
@@ -520,7 +543,12 @@ mod tests {
             r#"{"type":"rate_limit_event","rate_limit_info":{"status":"allowed_warning","rateLimitType":"seven_day","utilization":1.4}}"#,
         );
         match &ev.structured_events(TaskId::new())[0] {
-            AgentEvent::ApiRetry { status, limit_type, utilization, .. } => {
+            AgentEvent::ApiRetry {
+                status,
+                limit_type,
+                utilization,
+                ..
+            } => {
                 assert_eq!(status, "allowed_warning");
                 assert_eq!(limit_type, "seven_day");
                 assert!((*utilization - 1.0).abs() < f32::EPSILON, "clamped to 1.0");
@@ -537,7 +565,12 @@ mod tests {
         assert_eq!(ev.final_text(), Some("done"));
         assert_eq!(ev.session_id(), Some("sess-1"));
         match &ev.structured_events(TaskId::new())[0] {
-            AgentEvent::Cost { cost_usd, num_turns, session_id, .. } => {
+            AgentEvent::Cost {
+                cost_usd,
+                num_turns,
+                session_id,
+                ..
+            } => {
                 assert!((*cost_usd - 0.048).abs() < 1e-9);
                 assert_eq!(*num_turns, 3);
                 assert_eq!(session_id, "sess-1");
