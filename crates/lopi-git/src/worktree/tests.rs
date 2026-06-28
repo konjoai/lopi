@@ -4,6 +4,17 @@ use super::*;
 use std::process::Command;
 use tempfile::TempDir;
 
+/// True if `listed` contains `target`, comparing canonicalized paths.
+///
+/// `git worktree list` reports canonical paths (`/private/var/...` on macOS)
+/// while a `TempDir` checkout path keeps the `/var` symlink, so a raw `==`
+/// would miss a worktree that is genuinely listed.
+fn listed_contains(listed: &[PathBuf], target: &Path) -> bool {
+    let canon = |p: &Path| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+    let want = canon(target);
+    listed.iter().any(|p| canon(p) == want)
+}
+
 // ── Pure helpers ────────────────────────────────────────────────────────────
 
 #[test]
@@ -124,7 +135,7 @@ async fn add_creates_checkout_and_cleanup_removes_it() {
 
     // git tracks both the main worktree and the new one.
     let listed = mgr.list().await.unwrap();
-    assert!(listed.iter().any(|p| p == wt.path()));
+    assert!(listed_contains(&listed, wt.path()));
 
     wt.cleanup().await.unwrap();
     assert!(!wt.path().exists(), "checkout removed");
@@ -132,7 +143,7 @@ async fn add_creates_checkout_and_cleanup_removes_it() {
     wt.cleanup().await.unwrap();
 
     let after = mgr.list().await.unwrap();
-    assert!(!after.iter().any(|p| p == wt.path()));
+    assert!(!listed_contains(&after, wt.path()));
 }
 
 #[tokio::test]
@@ -151,7 +162,7 @@ async fn add_detached_checks_out_head_with_empty_branch() {
     git(wt.path(), &["checkout", "-b", "lopi/task-xyz-attempt-1"]);
 
     let listed = mgr.list().await.unwrap();
-    assert!(listed.iter().any(|p| p == wt.path()));
+    assert!(listed_contains(&listed, wt.path()));
     wt.cleanup().await.unwrap();
     assert!(!wt.path().exists());
 }

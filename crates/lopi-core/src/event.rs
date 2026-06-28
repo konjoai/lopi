@@ -140,6 +140,74 @@ pub enum AgentEvent {
         /// Verifier confidence in the verdict, `[0.0, 1.0]`.
         confidence: f64,
     },
+    /// The agent invoked a tool (decoded from an assistant `tool_use` block in
+    /// the `claude -p --output-format stream-json` output). Drives the
+    /// `ThoughtStream` pane's interleaved tool timeline.
+    ToolCall {
+        /// Session/task that issued the call.
+        task_id: TaskId,
+        /// Tool name as reported by the CLI, e.g. `Bash`, `Read`, `Edit`.
+        tool: String,
+        /// Short human summary of the tool input (command, file path, etc.).
+        summary: String,
+    },
+    /// Result of a tool invocation (decoded from a `user` `tool_result` line).
+    ToolResult {
+        /// Session/task the result belongs to.
+        task_id: TaskId,
+        /// Tool that produced this result.
+        tool: String,
+        /// Whether the tool call reported an error.
+        is_error: bool,
+        /// Truncated preview of the result text.
+        preview: String,
+    },
+    /// Incremental token usage during a turn (decoded from a `stream_event`
+    /// `message_delta.usage`). Drives the `TokenGauge` pane.
+    TokenDelta {
+        /// Session/task emitting tokens.
+        task_id: TaskId,
+        /// Output tokens reported so far this turn.
+        output_tokens: u32,
+        /// Input tokens for this turn.
+        input_tokens: u32,
+        /// Tokens served from cache for this turn.
+        cache_read_tokens: u32,
+    },
+    /// Rate-limit / throttle signal from the CLI (decoded from a
+    /// `rate_limit_event` line). Lets the pool back off instead of hammering.
+    ApiRetry {
+        /// Session/task that observed the limit.
+        task_id: TaskId,
+        /// Status string, e.g. `allowed_warning`, `rejected`.
+        status: String,
+        /// Window type, e.g. `seven_day`, `five_hour`.
+        limit_type: String,
+        /// Fraction of the window consumed, clamped to `[0.0, 1.0]`.
+        utilization: f32,
+    },
+    /// Cumulative session cost reported by the CLI (decoded from the `result`
+    /// envelope's `total_cost_usd`). Drives the `CostAnalytics` pane.
+    Cost {
+        /// Session/task the cost belongs to.
+        task_id: TaskId,
+        /// Cumulative USD cost reported by the CLI for this session.
+        cost_usd: f64,
+        /// Number of turns completed so far.
+        num_turns: u32,
+        /// The CLI `session_id` (UUID), empty if not yet known. Lets a thread
+        /// be resumed later with `--resume <session_id>`.
+        session_id: String,
+    },
+    /// Coarse phase label for a session (decoded from `system` `status` /
+    /// `post_turn_summary`). Drives the `PhaseWheel` and tile status without a
+    /// hardcoded cycle.
+    Phase {
+        /// Session/task whose phase changed.
+        task_id: TaskId,
+        /// Phase label, e.g. `requesting`, `review_ready`, `completed`.
+        phase: String,
+    },
     /// Cost governor refused the next billable call because a scope reached
     /// its hourly cap or a breaker tripped. Emitted by the runner before the
     /// error propagates so the UI can flag the breach immediately.

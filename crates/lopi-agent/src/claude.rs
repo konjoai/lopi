@@ -5,7 +5,7 @@
 //
 // Token savings: ~17/prompt for dir/constraint arrays; ~158/attempt for pattern table.
 
-use crate::claude_stream_parse::{parse_stream_event, StreamItem};
+use crate::claude_events::{parse_line, StreamEvent};
 use anyhow::{Context, Result};
 use lopi_core::Task;
 use lopi_toon::encode_task_context;
@@ -236,22 +236,24 @@ impl ClaudeCode {
     /// Stream the CLI output to `on_line` as Claude generates it, surfacing the
     /// *real* status of the response rather than any hardcoded phase label.
     ///
-    /// Uses `--output-format stream-json --verbose`, which emits one NDJSON
-    /// event per line: assistant text/thinking blocks, `tool_use` calls (the
-    /// actual tool Claude is running), and `post_turn_summary` status lines.
-    /// Each is parsed into a human-readable line (see [`parse_stream_event`])
-    /// and handed to `on_line` the moment it arrives. Returns the canonical
-    /// final response text from the `result` event.
-    async fn run_streamed<F>(&self, prompt: &str, on_line: F) -> Result<String>
+    /// Uses `--output-format stream-json --verbose --include-partial-messages`,
+    /// which emits one NDJSON event per line: assistant text/thinking blocks,
+    /// `tool_use` calls, tool results, partial-message token usage,
+    /// `rate_limit_event`s, and the terminal `result`. Each line is decoded by
+    /// [`parse_line`] and every [`StreamEvent`] is handed to `on_event` the
+    /// moment it arrives, so the caller can derive both the log line and the
+    /// structured pane events. Returns the canonical final response text.
+    async fn run_streamed<F>(&self, prompt: &str, on_event: F) -> Result<String>
     where
-        F: Fn(String) + Send,
+        F: Fn(&StreamEvent) + Send,
     {
         let mut cmd = Command::new(&self.cli_path);
         cmd.arg("-p")
             .arg(prompt)
             .arg("--output-format")
             .arg("stream-json")
-            .arg("--verbose");
+            .arg("--verbose")
+            .arg("--include-partial-messages");
         if let Some(model) = &self.model {
             cmd.arg("--model").arg(model);
         }
@@ -273,17 +275,14 @@ impl ClaudeCode {
         loop {
             match tokio::time::timeout_at(deadline, lines.next_line()).await {
                 Ok(Ok(Some(line))) => {
-                    for item in parse_stream_event(&line) {
-                        match item {
-                            StreamItem::Log(l) => {
-                                fallback.push_str(&l);
-                                fallback.push('\n');
-                                on_line(l);
-                            }
-                            StreamItem::Final(t) => final_text = t,
-                            // Cost is surfaced via emit_turn_metrics, not the log.
-                            StreamItem::Cost(_) => {}
+                    for ev in parse_line(&line) {
+                        if let Some(t) = ev.final_text() {
+                            final_text = t.to_string();
+                        } else if let Some(l) = ev.log_line() {
+                            fallback.push_str(&l);
+                            fallback.push('\n');
                         }
+                        on_event(&ev);
                     }
                 }
                 Ok(Ok(None)) => break,
@@ -307,8 +306,9 @@ impl ClaudeCode {
         Ok(text)
     }
 
-    /// Plan the task with live streaming — each line of Claude's response (text,
-    /// thinking, tool calls, status) is passed to `on_line` as it arrives.
+    /// Plan the task with live streaming — each decoded [`StreamEvent`] (text,
+    /// thinking, tool calls, token usage, status) is passed to `on_event` as it
+    /// arrives, so the caller can emit both log lines and structured events.
     ///
     /// # Errors
     ///
@@ -317,13 +317,13 @@ impl ClaudeCode {
         &self,
         task: &Task,
         last_error: Option<&str>,
-        on_line: F,
+        on_event: F,
     ) -> Result<String>
     where
-        F: Fn(String) + Send,
+        F: Fn(&StreamEvent) + Send,
     {
         let prompt = self.build_plan_prompt(task, last_error);
-        self.run_streamed(&prompt, on_line).await
+        self.run_streamed(&prompt, on_event).await
     }
 
     /// Implement the plan with live streaming output (real status, not a label).
@@ -331,12 +331,12 @@ impl ClaudeCode {
     /// # Errors
     ///
     /// Returns an error if the claude CLI process fails or times out.
-    pub async fn implement_streamed<F>(&self, task: &Task, plan: &str, on_line: F) -> Result<String>
+    pub async fn implement_streamed<F>(&self, task: &Task, plan: &str, on_event: F) -> Result<String>
     where
-        F: Fn(String) + Send,
+        F: Fn(&StreamEvent) + Send,
     {
         let prompt = self.build_implement_prompt(task, plan);
-        self.run_streamed(&prompt, on_line).await
+        self.run_streamed(&prompt, on_event).await
     }
 
     /// Implement the plan. Uses TOON for dir arrays in the constraint block.

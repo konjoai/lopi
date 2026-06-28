@@ -1,0 +1,41 @@
+[
+  {
+    "type": "tool_call",
+    "task_id": "11111111-1111-4111-8111-111111111111",
+    "tool": "Bash",
+    "summary": "ls -la"
+  },
+  {
+    "type": "tool_result",
+    "task_id": "11111111-1111-4111-8111-111111111111",
+    "tool": "Bash",
+    "is_error": false,
+    "preview": "README.md\nnotes.txt"
+  },
+  {
+    "type": "token_delta",
+    "task_id": "11111111-1111-4111-8111-111111111111",
+    "output_tokens": 118,
+    "input_tokens": 3,
+    "cache_read_tokens": 16312
+  },
+  {
+    "type": "api_retry",
+    "task_id": "11111111-1111-4111-8111-111111111111",
+    "status": "allowed_warning",
+    "limit_type": "seven_day",
+    "utilization": 0.92
+  },
+  {
+    "type": "cost",
+    "task_id": "11111111-1111-4111-8111-111111111111",
+    "cost_usd": 0.0479,
+    "num_turns": 3,
+    "session_id": "4fa68a55-05cf-4878-aa2f-d0edaec6b8a6"
+  },
+  {
+    "type": "phase",
+    "task_id": "11111111-1111-4111-8111-111111111111",
+    "phase": "review_ready"
+  }
+]
