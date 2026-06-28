@@ -58,10 +58,10 @@ Nested `stream_event.event.type` histogram (31): `content_block_delta` ×14, `co
 
 | ID | Result | Evidence |
 |----|--------|----------|
-| G1 Konjo walls | pending | |
-| G2 Parser robustness | pending | |
-| G3 Contract parity | pending | |
-| G4 Web E2E | pending | |
-| G5 macOS E2E | pending | |
-| G6 Compliance | pending | |
-| G7 Cost guard | pending | |
+| G1 Konjo walls | PARTIAL | `cargo fmt --check` clean. `cargo clippy --workspace --all-targets -- -D warnings` clean. `cargo test --workspace` green (18 binaries). Dead code 0 (`RUSTFLAGS="-W dead_code"`). Undocumented public APIs 0 (`RUSTDOCFLAGS="-D missing_docs"` on lopi-core). **Not measured on this host:** coverage (cargo-llvm-cov not on PATH), mutation, cognitive-complexity, audit, deny — these run in CI Wall 2. New code carries 15 parser unit tests + a 3-test robustness suite + golden tests in 3 languages; not claiming a coverage % I did not measure. |
+| G2 Parser robustness | PASS | `crates/lopi-agent/tests/parser_robustness.rs`: feeds all 44 real capture lines + 18 adversarial (truncated/non-JSON/unknown-type/missing-field) lines through `parse_line` and `structured_events`/`log_line`. Zero panics, unknown types → `StreamEvent::Other`. 3/3 tests pass. |
+| G3 Contract parity | PASS | The same `crates/lopi-core/tests/fixtures/agent_event_golden.json` (6 events) decodes with identical field values in Rust (`agent_event_golden.rs`), TypeScript (`parser.test.ts`), and Swift (`AgentEventGoldenTests` via `xcodebuild test`, 1/1). |
+| G4 Web E2E | DEFERRED (quota) | Pipeline built and unit-proven (mock deleted, real events wired). The live "four concurrent sessions + screenshot" run is held pending a quota decision — the account is at 92% of its 7-day limit (see K5). Awaiting user direction on how heavy to make the live run. |
+| G5 macOS E2E | PARTIAL | `xcodegen generate` + `xcodebuild build` clean; `xcodebuild test` green (1/1). Live launch against a running `lopi sail` is part of the deferred G4/quota decision. |
+| G6 Compliance | PASS | env-scrub present on all 3 spawn paths (`claude.rs:263`, `claude.rs:442`, `claude_stream.rs:56`). Diff grep: no new `ANTHROPIC_API_KEY`/api_key reads, no auto-merge, no token forwarding. `allow_self_modify` is `bool` with `#[serde(default)]` → false. |
+| G7 Cost guard | NOT STARTED | Requires threading `--max-turns`/`--max-budget-usd` into the streaming spawn and a live over-budget run. Pending the same quota decision. |
