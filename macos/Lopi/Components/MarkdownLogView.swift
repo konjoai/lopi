@@ -78,17 +78,50 @@ private struct CodeBlockView: View {
                     .padding(.horizontal, 8).padding(.top, 5)
             }
             ScrollView(.horizontal, showsIndicators: false) {
-                Text(code)
-                    .font(.system(size: baseSize, design: .monospaced))
-                    .foregroundStyle(Konjo.ok)
-                    .textSelection(.enabled)
-                    .padding(8)
+                if lang?.lowercased() == "diff" {
+                    diffBody
+                } else {
+                    Text(code)
+                        .font(.system(size: baseSize, design: .monospaced))
+                        .foregroundStyle(Konjo.ok)
+                        .textSelection(.enabled)
+                        .padding(8)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.black.opacity(0.4))
         .clipShape(RoundedRectangle(cornerRadius: 5))
         .overlay(RoundedRectangle(cornerRadius: 5).stroke(Konjo.line2, lineWidth: 1))
+    }
+
+    /// Green/red gutter coloring for a `diff` fence (added/removed/hunk lines).
+    private var diffBody: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(code.components(separatedBy: "\n").enumerated()), id: \.offset) { _, line in
+                Text(line.isEmpty ? " " : line)
+                    .font(.system(size: baseSize, design: .monospaced))
+                    .foregroundStyle(diffColor(line))
+                    .padding(.horizontal, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(diffBackground(line))
+            }
+        }
+        .padding(.vertical, 6)
+        .textSelection(.enabled)
+    }
+
+    private func diffColor(_ line: String) -> Color {
+        if line.hasPrefix("+"), !line.hasPrefix("+++") { return Color(.sRGB, red: 0.25, green: 0.73, blue: 0.31) }
+        if line.hasPrefix("-"), !line.hasPrefix("---") { return Color(.sRGB, red: 0.97, green: 0.32, blue: 0.29) }
+        if line.hasPrefix("@@") { return Konjo.ice }
+        return Konjo.fgDim
+    }
+
+    private func diffBackground(_ line: String) -> Color {
+        if line.hasPrefix("+"), !line.hasPrefix("+++") { return Color(.sRGB, red: 0.18, green: 0.63, blue: 0.26).opacity(0.15) }
+        if line.hasPrefix("-"), !line.hasPrefix("---") { return Color(.sRGB, red: 0.97, green: 0.32, blue: 0.29).opacity(0.15) }
+        return .clear
     }
 }
 
