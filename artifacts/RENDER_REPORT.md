@@ -8,6 +8,11 @@ the work is stacked on the integration branch that does, per the K0 requirement.
 
 ## Environment caveat (read first)
 
+> Screenshots referenced below (`after-grid.png`, `after-orb-states.png`,
+> `after-pane-render.png`, `after-idle-launcher.png`) are **delivered separately**
+> per the repo convention (`.gitignore`: `artifacts/screenshots/` is not
+> committed — binary blobs). They are attached to the session/PR thread.
+
 This was authored in a **Linux** cloud container, not the M3 Mac the prompt
 targets. Consequences, stated honestly:
 
