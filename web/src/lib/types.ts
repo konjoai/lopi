@@ -104,7 +104,33 @@ export type AgentEvent =
       scope: BudgetScope;
       limit_usd: number;
       burned_usd: number;
-    };
+    }
+  // ── stream-json pane events (Phase 1, lopi-core) ────────────────────────────
+  // Decoded from the real `claude -p --output-format stream-json` output.
+  | { type: 'tool_call'; task_id: string; tool: string; summary: string }
+  | { type: 'tool_result'; task_id: string; tool: string; is_error: boolean; preview: string }
+  | {
+      type: 'token_delta';
+      task_id: string;
+      output_tokens: number;
+      input_tokens: number;
+      cache_read_tokens: number;
+    }
+  | {
+      type: 'api_retry';
+      task_id: string;
+      status: string;
+      limit_type: string;
+      utilization: number; // 0..1
+    }
+  | {
+      type: 'cost';
+      task_id: string;
+      cost_usd: number;
+      num_turns: number;
+      session_id: string;
+    }
+  | { type: 'phase'; task_id: string; phase: string };
 
 /** Which budget scope refused (mirrors lopi-core `BudgetScope`). */
 export type BudgetScope = 'fleet' | 'agent' | 'task';

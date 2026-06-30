@@ -19,6 +19,9 @@ import {
   isTerminalStatus
 } from './parser';
 import type { Phase } from './types';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
 
 let pass = 0;
 let fail = 0;
@@ -305,6 +308,36 @@ const snap = parseWireMessage({
   stats: { running: 0, queued: 0, succeeded: 0, failed: 0, uptime_secs: 0 }
 });
 eq((snap as any)?.type, 'snapshot', 'dispatch routes snapshot');
+
+// ── Golden fixture (G3 — contract parity) ──────────────────────────────────
+// The SAME file is decoded by the Rust test (crates/lopi-core/tests/
+// agent_event_golden.rs) and the Swift test. All three must agree on fields.
+console.log('\n── golden AgentEvent fixture ──────────────────────────');
+const here = dirname(fileURLToPath(import.meta.url));
+const goldenPath = resolve(here, '../../../crates/lopi-core/tests/fixtures/agent_event_golden.json');
+const golden = JSON.parse(readFileSync(goldenPath, 'utf8')) as Record<string, unknown>[];
+eq(golden.length, 6, 'golden fixture has six events');
+
+const decoded = golden.map((g) => parseAgentEvent(g));
+decoded.forEach((d, i) => assertNotNull(d, `golden[${i}] decodes`));
+
+const TID = '11111111-1111-4111-8111-111111111111';
+eq(decoded[0], { type: 'tool_call', task_id: TID, tool: 'Bash', summary: 'ls -la' }, 'golden tool_call');
+eq(
+  decoded[1],
+  { type: 'tool_result', task_id: TID, tool: 'Bash', is_error: false, preview: 'README.md\nnotes.txt' },
+  'golden tool_result'
+);
+eq(
+  decoded[2],
+  { type: 'token_delta', task_id: TID, output_tokens: 118, input_tokens: 3, cache_read_tokens: 16312 },
+  'golden token_delta'
+);
+eq((decoded[3] as any)?.type, 'api_retry', 'golden api_retry type');
+eq((decoded[3] as any)?.utilization, 0.92, 'golden api_retry utilization');
+eq((decoded[4] as any)?.session_id, '4fa68a55-05cf-4878-aa2f-d0edaec6b8a6', 'golden cost session_id');
+eq((decoded[4] as any)?.num_turns, 3, 'golden cost num_turns');
+eq(decoded[5], { type: 'phase', task_id: TID, phase: 'review_ready' }, 'golden phase');
 
 console.log(`\n── Result: ${pass} passed, ${fail} failed ──`);
 if (fail > 0) process.exit(1);

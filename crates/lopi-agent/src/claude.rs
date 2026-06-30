@@ -5,12 +5,15 @@
 //
 // Token savings: ~17/prompt for dir/constraint arrays; ~158/attempt for pattern table.
 
+use crate::claude_events::{parse_line, StreamEvent};
 use anyhow::{Context, Result};
 use lopi_core::Task;
 use lopi_toon::encode_task_context;
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
+use std::process::Stdio;
 use std::time::Duration;
+use tokio::io::{AsyncBufReadExt, BufReader as AsyncBufReader};
 use tokio::process::Command;
 
 // ── Model identifiers ─────────────────────────────────────────────────────────
@@ -92,6 +95,10 @@ pub struct ClaudeCode {
     patterns: Vec<(String, String)>,
     /// Phase 5b — lessons learned from past patterns or post-mortems (category, content).
     lessons: Vec<(String, String)>,
+    /// Per-session `--max-turns` cap passed to `claude -p`. None = CLI default.
+    max_turns: Option<u32>,
+    /// Per-session `--max-budget-usd` cap passed to `claude -p`. None = no cap.
+    max_budget_usd: Option<f64>,
 }
 
 impl ClaudeCode {
@@ -106,6 +113,8 @@ impl ClaudeCode {
             model: None,
             patterns: vec![],
             lessons: vec![],
+            max_turns: None,
+            max_budget_usd: None,
         }
     }
 
@@ -113,6 +122,22 @@ impl ClaudeCode {
     #[must_use]
     pub fn with_model(mut self, model: impl Into<String>) -> Self {
         self.model = Some(model.into());
+        self
+    }
+
+    /// Set the per-session `--max-turns` cap. The CLI halts cleanly at the cap
+    /// and emits a terminal `result`, rather than running on.
+    #[must_use]
+    pub fn with_max_turns(mut self, turns: u32) -> Self {
+        self.max_turns = Some(turns);
+        self
+    }
+
+    /// Set the per-session `--max-budget-usd` cap. The CLI halts cleanly once
+    /// cumulative cost reaches the cap.
+    #[must_use]
+    pub fn with_max_budget_usd(mut self, usd: f64) -> Self {
+        self.max_budget_usd = Some(usd);
         self
     }
 
@@ -167,23 +192,30 @@ impl ClaudeCode {
     ///
     /// Returns an error if the claude CLI process fails or times out.
     pub async fn plan(&self, task: &Task, last_error: Option<&str>) -> Result<String> {
+        let prompt = self.build_plan_prompt(task, last_error);
+        let out = self.run(&prompt).await?;
+        Ok(out.text().to_string())
+    }
+
+    /// Build the planning prompt: a TOON-encoded task context (goal, dirs,
+    /// constraints, pattern memory, lessons) plus the optional previous-failure
+    /// addendum. Shared by the one-shot [`plan`](Self::plan) and streaming
+    /// [`plan_streamed`](Self::plan_streamed) paths so the prompt stays identical.
+    fn build_plan_prompt(&self, task: &Task, last_error: Option<&str>) -> String {
         let all_constraints: Vec<&str> = task
             .constraints
             .iter()
             .chain(self.extra_constraints.iter())
             .map(String::as_str)
             .collect();
-
         let allowed: Vec<&str> = task.allowed_dirs.iter().map(String::as_str).collect();
         let forbidden: Vec<&str> = task.forbidden_dirs.iter().map(String::as_str).collect();
-
-        // Convert lessons from Vec<(String, String)> to Vec<(&str, &str)> for TOON
+        // Convert lessons from Vec<(String, String)> to Vec<(&str, &str)> for TOON.
         let lesson_refs: Vec<(&str, &str)> = self
             .lessons
             .iter()
             .map(|(cat, content)| (cat.as_str(), content.as_str()))
             .collect();
-
         let ctx = encode_task_context(
             &task.goal,
             &allowed,
@@ -192,7 +224,6 @@ impl ClaudeCode {
             &self.patterns,
             &lesson_refs,
         );
-
         let mut prompt = format!(
             "You are running inside lopi. \
              Produce a concise implementation plan. \
@@ -202,12 +233,143 @@ impl ClaudeCode {
         );
         if let Some(err) = last_error {
             prompt.push_str(&format!(
-                "\n\n## Previous attempt failed\nAnalyze this error and adjust your approach:\n{}",
-                err
+                "\n\n## Previous attempt failed\nAnalyze this error and adjust your approach:\n{err}"
             ));
         }
-        let out = self.run(&prompt).await?;
-        Ok(out.text().to_string())
+        prompt
+    }
+
+    /// Build the implementation prompt: a TOON-encoded scope plus the plan.
+    /// Shared by [`implement`](Self::implement) and
+    /// [`implement_streamed`](Self::implement_streamed).
+    fn build_implement_prompt(&self, task: &Task, plan: &str) -> String {
+        let allowed: Vec<&str> = task.allowed_dirs.iter().map(String::as_str).collect();
+        let forbidden: Vec<&str> = task.forbidden_dirs.iter().map(String::as_str).collect();
+        let scope = encode_task_context(&task.goal, &allowed, &forbidden, &[], &[], &[]);
+        format!(
+            "Implement the plan below in the current repository.\n\n\
+             ## Scope (TOON)\n\
+             {scope}\n\
+             ## Plan\n\
+             {plan}"
+        )
+    }
+
+    /// Stream the CLI output to `on_line` as Claude generates it, surfacing the
+    /// *real* status of the response rather than any hardcoded phase label.
+    ///
+    /// Uses `--output-format stream-json --verbose --include-partial-messages`,
+    /// which emits one NDJSON event per line: assistant text/thinking blocks,
+    /// `tool_use` calls, tool results, partial-message token usage,
+    /// `rate_limit_event`s, and the terminal `result`. Each line is decoded by
+    /// [`parse_line`] and every [`StreamEvent`] is handed to `on_event` the
+    /// moment it arrives, so the caller can derive both the log line and the
+    /// structured pane events. Returns the canonical final response text.
+    async fn run_streamed<F>(&self, prompt: &str, on_event: F) -> Result<String>
+    where
+        F: Fn(&StreamEvent) + Send,
+    {
+        let mut cmd = Command::new(&self.cli_path);
+        cmd.arg("-p")
+            .arg(prompt)
+            .arg("--output-format")
+            .arg("stream-json")
+            .arg("--verbose")
+            .arg("--include-partial-messages");
+        if let Some(model) = &self.model {
+            cmd.arg("--model").arg(model);
+        }
+        if let Some(turns) = self.max_turns {
+            cmd.arg("--max-turns").arg(turns.to_string());
+        }
+        if let Some(usd) = self.max_budget_usd {
+            cmd.arg("--max-budget-usd").arg(format!("{usd}"));
+        }
+        cmd.stdout(Stdio::piped());
+        cmd.stderr(Stdio::null());
+        cmd.current_dir(&self.repo_path);
+        scrub_inherited_anthropic_env(&mut cmd);
+
+        let mut child = cmd.spawn().context("spawning claude cli for streaming")?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| anyhow::anyhow!("claude cli: no stdout handle"))?;
+        let mut lines = AsyncBufReader::new(stdout).lines();
+        let mut final_text = String::new();
+        let mut fallback = String::new();
+
+        let deadline = tokio::time::Instant::now() + self.timeout;
+        loop {
+            match tokio::time::timeout_at(deadline, lines.next_line()).await {
+                Ok(Ok(Some(line))) => {
+                    for ev in parse_line(&line) {
+                        if let Some(t) = ev.final_text() {
+                            final_text = t.to_string();
+                        } else if let Some(l) = ev.log_line() {
+                            fallback.push_str(&l);
+                            fallback.push('\n');
+                        }
+                        on_event(&ev);
+                    }
+                }
+                Ok(Ok(None)) => break,
+                Ok(Err(e)) => anyhow::bail!("reading claude stdout: {e}"),
+                Err(_) => {
+                    child.kill().await.ok();
+                    anyhow::bail!("claude cli timed out after {:?}", self.timeout);
+                }
+            }
+        }
+
+        let status = child.wait().await.context("waiting for claude cli")?;
+        let text = if final_text.trim().is_empty() {
+            fallback
+        } else {
+            final_text
+        };
+        if !status.success() && text.trim().is_empty() {
+            anyhow::bail!("claude cli exited {status} with no output");
+        }
+        Ok(text)
+    }
+
+    /// Plan the task with live streaming — each decoded [`StreamEvent`] (text,
+    /// thinking, tool calls, token usage, status) is passed to `on_event` as it
+    /// arrives, so the caller can emit both log lines and structured events.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the claude CLI process fails or times out.
+    pub async fn plan_streamed<F>(
+        &self,
+        task: &Task,
+        last_error: Option<&str>,
+        on_event: F,
+    ) -> Result<String>
+    where
+        F: Fn(&StreamEvent) + Send,
+    {
+        let prompt = self.build_plan_prompt(task, last_error);
+        self.run_streamed(&prompt, on_event).await
+    }
+
+    /// Implement the plan with live streaming output (real status, not a label).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the claude CLI process fails or times out.
+    pub async fn implement_streamed<F>(
+        &self,
+        task: &Task,
+        plan: &str,
+        on_event: F,
+    ) -> Result<String>
+    where
+        F: Fn(&StreamEvent) + Send,
+    {
+        let prompt = self.build_implement_prompt(task, plan);
+        self.run_streamed(&prompt, on_event).await
     }
 
     /// Implement the plan. Uses TOON for dir arrays in the constraint block.
@@ -218,18 +380,7 @@ impl ClaudeCode {
     ///
     /// Returns an error if the claude CLI process fails or times out.
     pub async fn implement(&self, task: &Task, plan: &str) -> Result<String> {
-        let allowed: Vec<&str> = task.allowed_dirs.iter().map(String::as_str).collect();
-        let forbidden: Vec<&str> = task.forbidden_dirs.iter().map(String::as_str).collect();
-
-        let scope = encode_task_context(&task.goal, &allowed, &forbidden, &[], &[], &[]);
-
-        let prompt = format!(
-            "Implement the plan below in the current repository.\n\n\
-             ## Scope (TOON)\n\
-             {scope}\n\
-             ## Plan\n\
-             {plan}"
-        );
+        let prompt = self.build_implement_prompt(task, plan);
         let out = self.run(&prompt).await?;
         if !out.succeeded() {
             anyhow::bail!("claude implement failed: {}", out.text());

@@ -1,5 +1,11 @@
 /**
- * WebSocket client and mock data generator.
+ * WebSocket client and opt-in demo data generator.
+ *
+ * The demo generator (initMock) NEVER auto-triggers. It exists only so the
+ * Forge can be shown without a backend, and is invoked solely when the page is
+ * loaded with `?demo=1`. A dead/unreachable backend shows an honest
+ * offline/empty state, not fabricated `demo-*` agents.
+ *
  * Separated from agents.ts to keep store module size under 500 lines.
  */
 import { browser } from '$app/environment';
@@ -65,7 +71,8 @@ function scheduleReconnect() {
     reconnectTimer = null;
     reconnectDelay = Math.min(reconnectDelay * 2, 30000);
     connect();
-    if (!ws) startMockData();
+    // No mock fallback: a dead backend shows an honest offline/empty state.
+    // Demo data is opt-in only, via initMock() behind the ?demo=1 flag.
   }, reconnectDelay);
 }
 

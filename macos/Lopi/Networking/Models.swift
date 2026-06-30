@@ -182,6 +182,13 @@ enum AgentEvent {
     case taskCancelled(taskId: String)
     case poolStats(PoolStats)
     case budgetExceeded(taskId: String?, scope: String, limitUsd: Double, burnedUsd: Double)
+    // stream-json pane events (Phase 1 event spine) — mirror lopi-core.
+    case toolCall(taskId: String, tool: String, summary: String)
+    case toolResult(taskId: String, tool: String, isError: Bool, preview: String)
+    case tokenDelta(taskId: String, outputTokens: Int, inputTokens: Int, cacheReadTokens: Int)
+    case apiRetry(taskId: String, status: String, limitType: String, utilization: Double)
+    case cost(taskId: String, costUsd: Double, numTurns: Int, sessionId: String)
+    case phase(taskId: String, phase: String)
     case other(type: String)
 
     /// The task id this event concerns, if any — used to route events to the
@@ -193,7 +200,10 @@ enum AgentEvent {
              let .logLine(id, _, _),
              let .scoreUpdated(id, _, _, _), let .turnMetrics(id, _, _, _, _),
              let .verifierVerdict(id, _, _, _), let .taskCompleted(id, _, _),
-             let .taskCancelled(id):
+             let .taskCancelled(id),
+             let .toolCall(id, _, _), let .toolResult(id, _, _, _),
+             let .tokenDelta(id, _, _, _), let .apiRetry(id, _, _, _),
+             let .cost(id, _, _, _), let .phase(id, _):
             return id
         case let .budgetExceeded(id, _, _, _):
             return id
@@ -283,6 +293,45 @@ enum AgentEvent {
                 scope: TaskStatusLabel.from(obj["scope"]),
                 limitUsd: dbl(obj["limit_usd"]),
                 burnedUsd: dbl(obj["burned_usd"])
+            )
+        case "tool_call":
+            return .toolCall(
+                taskId: str(obj["task_id"]),
+                tool: str(obj["tool"]),
+                summary: str(obj["summary"])
+            )
+        case "tool_result":
+            return .toolResult(
+                taskId: str(obj["task_id"]),
+                tool: str(obj["tool"]),
+                isError: obj["is_error"] as? Bool ?? false,
+                preview: str(obj["preview"])
+            )
+        case "token_delta":
+            return .tokenDelta(
+                taskId: str(obj["task_id"]),
+                outputTokens: num(obj["output_tokens"]),
+                inputTokens: num(obj["input_tokens"]),
+                cacheReadTokens: num(obj["cache_read_tokens"])
+            )
+        case "api_retry":
+            return .apiRetry(
+                taskId: str(obj["task_id"]),
+                status: str(obj["status"]),
+                limitType: str(obj["limit_type"]),
+                utilization: dbl(obj["utilization"])
+            )
+        case "cost":
+            return .cost(
+                taskId: str(obj["task_id"]),
+                costUsd: dbl(obj["cost_usd"]),
+                numTurns: num(obj["num_turns"]),
+                sessionId: str(obj["session_id"])
+            )
+        case "phase":
+            return .phase(
+                taskId: str(obj["task_id"]),
+                phase: str(obj["phase"])
             )
         default:
             return .other(type: type)

@@ -23,6 +23,12 @@ struct KonjoOrb: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    /// The moment this orb appeared. Animation time is measured from here so the
+    /// value stays small — large absolute timestamps lose `Float` precision and
+    /// have to be wrapped, which made the surface visibly restart. Mirrors the
+    /// web orb, which accumulates time from zero.
+    @State private var epoch = Date()
+
     /// How long a single stimulus burns (matches the web's EXCITE_DURATION_MS).
     private let exciteDuration: Double = 2.5
     private var accent: Color { PhaseStyle.color(phase) }
@@ -62,7 +68,10 @@ struct KonjoOrb: View {
 
     private func frame(at date: Date) -> Frame {
         let nowRef = date.timeIntervalSinceReferenceDate
-        let t = reduceMotion ? 0 : nowRef
+        // Seconds since the orb appeared — small and monotonic, so the noise
+        // field flows smoothly for the whole session instead of jumping when an
+        // absolute-time counter wraps.
+        let t = reduceMotion ? 0 : date.timeIntervalSince(epoch)
 
         // Excitement envelope — linear decay from the stimulus timestamp.
         let since = date.timeIntervalSince(stimulus)
@@ -82,10 +91,14 @@ struct KonjoOrb: View {
 
         // Shake: a faint front-loaded nudge (excite³) for requests/failures —
         // a reaction, not a rattle.
-        let shakeAmp = shakes ? excite * excite * excite * Double(size) * 0.008 : 0
+        let shakeAmp = shakes ? excite * excite * excite * Double(size) * 0.002 : 0
         return Frame(
-            time: Float(t.truncatingRemainder(dividingBy: 3600)),
-            spin: Float(spin.truncatingRemainder(dividingBy: 2 * .pi)),
+            time: Float(t),
+            // Wrap at 10π — the smallest angle where both spin axes (ry = spin
+            // and rx = spin · 0.4) complete whole turns (5 and 2), so the reset
+            // is invisible. Wrapping at 2π reset the X tilt mid-turn (0.8π → 0),
+            // which made the orb skip every ~29s.
+            spin: Float(spin.truncatingRemainder(dividingBy: 10 * .pi)),
             excite: Float(smoothstep01(excite)),
             ox: CGFloat(sin(nowRef * 53.0) * shakeAmp),
             oy: CGFloat(cos(nowRef * 61.0) * shakeAmp)

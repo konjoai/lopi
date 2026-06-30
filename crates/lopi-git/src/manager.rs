@@ -38,6 +38,12 @@ impl GitManager {
         Repository::open(&self.repo_path).context("opening git repo")
     }
 
+    /// Path to the repository this manager operates on. Used by sibling modules
+    /// (e.g. `rebase`) that extend `GitManager` with more git operations.
+    pub(crate) fn repo_path(&self) -> &Path {
+        &self.repo_path
+    }
+
     /// Snapshot the current HEAD so we can roll back later.
     ///
     /// # Errors

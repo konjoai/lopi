@@ -14,7 +14,8 @@ use crate::api_client::AnthropicClient;
 use crate::stability::{StabilityConfig, StabilityHarness};
 use lopi_context::{ContentBlock, ContextWindow, Phase, PinPolicy, Role, TaggedMessage};
 use lopi_core::{
-    AgentEvent, EventBus, PlanDecision, ScoreWeights, SelfPromptStrategy, Task, TaskId, TaskStatus,
+    AgentEvent, EventBus, PlanDecision, Score, ScoreWeights, SelfPromptStrategy, Task, TaskId,
+    TaskStatus,
 };
 use lopi_memory::MemoryStore;
 use lopi_ratelimit::{AnthropicLimiter, CircuitBreaker};
@@ -91,6 +92,14 @@ pub struct AgentRunner {
     /// the S1→S4 ladder on each failed attempt (from `self_prompt`) instead of
     /// staying pinned. Only consulted when `adaptive_retry` is enabled.
     pub(super) escalate_strategy: bool,
+    /// Phase 16.6 — per-run token budget forwarded to the Anthropic `task_budget`
+    /// parameter on the direct-API planning path. `None` (the default) sends no
+    /// budget; `Some(n)` lets the model self-pace within `n` tokens on supported
+    /// models. Wired from [`LoopConfig::budget_tokens`](lopi_core::LoopConfig).
+    pub(super) task_budget: Option<u64>,
+    /// Per-session USD cost ceiling passed to `claude -p` as `--max-budget-usd`
+    /// on the streaming path. `None` (the default) sets no CLI budget cap.
+    pub(super) cli_budget_usd: Option<f64>,
     /// Sprint S — when true, the Konjo Verifier second-score pass runs after
     /// the heuristic score passes. Requires `api_client` to be set.
     pub(super) verifier_enabled: bool,
@@ -114,6 +123,10 @@ pub struct AgentRunner {
     pub(super) score_weights: ScoreWeights,
     /// Phase 5b — lessons learned from past patterns (injected into planning prompt).
     pub(super) task_lessons: Vec<String>,
+    /// Pentad M2.2 — skills available to inject into the planning prompt. Those
+    /// whose triggers match the task goal are added as context (and recorded in
+    /// the audit trail) during seeding. Empty by default — no skills, no change.
+    pub(super) skills: lopi_skill::SkillRegistry,
 }
 
 impl AgentRunner {
@@ -146,6 +159,8 @@ impl AgentRunner {
             last_error: None,
             self_prompt: SelfPromptStrategy::default(),
             escalate_strategy: false,
+            task_budget: None,
+            cli_budget_usd: None,
             verifier_enabled: false,
             last_plan: None,
             session_id: Uuid::new_v4(),
@@ -157,43 +172,27 @@ impl AgentRunner {
             turn_count: 0,
             score_weights: ScoreWeights::default(),
             task_lessons: vec![],
+            skills: lopi_skill::SkillRegistry::default(),
         }
     }
 
     /// One-shot constructor — creates a standalone bus for `lopi run`.
+    ///
+    /// Delegates to [`new`](Self::new) for all field defaults so the two
+    /// constructors cannot drift; it only supplies a fresh bus, a dropped
+    /// cancel channel, and a zeroed attempt counter.
     #[must_use]
     pub fn standalone(task: Task, repo_path: PathBuf) -> (Self, EventBus<AgentEvent>) {
         let bus: EventBus<AgentEvent> = EventBus::new(128);
         let (_cancel_tx, cancel_rx) = oneshot::channel();
-        let runner = Self {
-            bus: bus.clone(),
+        let runner = Self::new(
             task,
             repo_path,
-            store: None,
-            dry_run: false,
-            speculative: false,
-            context: ContextWindow::new(Self::CONTEXT_BUDGET),
-            max_turns: 25,
-            api_client: None,
-            limiter: None,
-            breaker: None,
-            stability_harness: None,
-            adaptive_retry: false,
-            last_error: None,
-            self_prompt: SelfPromptStrategy::default(),
-            escalate_strategy: false,
-            verifier_enabled: false,
-            last_plan: None,
-            session_id: Uuid::new_v4(),
-            cancel_rx: Some(cancel_rx),
-            plan_decision_rx: None,
-            cancel_token: CancellationToken::new(),
-            attempt_counter: Arc::new(AtomicUsize::new(0)),
-            attempts_made: 0,
-            turn_count: 0,
-            score_weights: ScoreWeights::default(),
-            task_lessons: vec![],
-        };
+            bus.clone(),
+            None,
+            cancel_rx,
+            Arc::new(AtomicUsize::new(0)),
+        );
         (runner, bus)
     }
 
@@ -252,6 +251,14 @@ impl AgentRunner {
         self
     }
 
+    /// Attach the skill registry whose matching entries are injected into the
+    /// planning prompt (Pentad M2.2).
+    #[must_use]
+    pub fn with_skills(mut self, skills: lopi_skill::SkillRegistry) -> Self {
+        self.skills = skills;
+        self
+    }
+
     /// Returns true when adaptive retry is enabled.
     #[must_use]
     pub const fn adaptive_retry_enabled(&self) -> bool {
@@ -291,6 +298,28 @@ impl AgentRunner {
         } else {
             self.self_prompt
         }
+    }
+
+    /// Phase 16.6 — wire the per-run token budget from `.lopi/loop.toml`.
+    ///
+    /// `0` disables the budget (inherits the global cap); any positive value is
+    /// forwarded to the Anthropic `task_budget` parameter on the direct-API
+    /// planning path so the model self-paces instead of being hard-cut. The
+    /// value is model-gated and clamped to the API minimum at request time.
+    #[must_use]
+    pub const fn with_task_budget(mut self, budget_tokens: u64) -> Self {
+        self.task_budget = if budget_tokens == 0 {
+            None
+        } else {
+            Some(budget_tokens)
+        };
+        self
+    }
+
+    /// The configured per-run token budget, if any.
+    #[must_use]
+    pub const fn task_budget(&self) -> Option<u64> {
+        self.task_budget
     }
 
     /// Sprint I — attach the Layer 5 patch stability gate.
@@ -357,9 +386,10 @@ impl AgentRunner {
             TaskStatus::Testing => 0.55_f32,
             TaskStatus::Scoring => 0.30_f32,
             TaskStatus::Retrying { .. } => 0.40_f32,
-            TaskStatus::Success { .. } | TaskStatus::Failed { .. } | TaskStatus::RolledBack => {
-                0.0_f32
-            }
+            TaskStatus::Success { .. }
+            | TaskStatus::Failed { .. }
+            | TaskStatus::RolledBack
+            | TaskStatus::Conflict { .. } => 0.0_f32,
             TaskStatus::Queued => 0.10_f32,
         };
         self.emit_turn_metrics(activity);
@@ -368,6 +398,43 @@ impl AgentRunner {
             status: s,
             attempt,
         });
+    }
+
+    /// Emit terminal bookkeeping for a finalized attempt and return its status.
+    ///
+    /// A genuine success pins the conclusion and marks an OTel `complete` span;
+    /// a [`TaskStatus::Conflict`] (rebase collision) skips that — it is not a
+    /// success — but both broadcast the status so the dashboards reflect reality.
+    pub(super) fn conclude_finalized(
+        &mut self,
+        status: TaskStatus,
+        score: &Score,
+        attempt: u8,
+    ) -> TaskStatus {
+        if !matches!(status, TaskStatus::Conflict { .. }) {
+            self.context.pin_conclusion(
+                format!(
+                    "Sprint succeeded — pass={:.0}% diff={}L",
+                    score.test_pass_rate * 100.0,
+                    score.diff_lines
+                ),
+                Phase::Conclusion,
+            );
+            tracing::info!(
+                pressure = self.context.token_pressure(),
+                "context at conclusion"
+            );
+            // OTel GenAI-aligned task-completion boundary span.
+            let _ = tracing::info_span!(
+                "lopi.agent.task.complete",
+                task_id = %self.id(),
+                outcome = "success",
+                attempts = attempt,
+            )
+            .entered();
+        }
+        self.status(status.clone(), attempt);
+        status
     }
 
     pub(super) fn emit_turn_metrics(&self, activity: f32) {

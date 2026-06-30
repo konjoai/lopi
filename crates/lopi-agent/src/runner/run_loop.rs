@@ -50,11 +50,17 @@ impl AgentRunner {
                 .chain(spec_constraints.iter())
                 .cloned()
                 .collect();
-            let claude = ClaudeCode::new(&self.repo_path)
+            let mut claude = ClaudeCode::new(&self.repo_path)
                 .with_extra_constraints(all_constraints)
                 .with_patterns(pattern_pairs.clone())
                 .with_lessons(lessons_data.clone())
-                .with_model(model);
+                .with_model(model)
+                // Cost ceiling: the CLI session must not out-run the runner's own
+                // turn cap. Halts cleanly at the cap and reports why.
+                .with_max_turns(self.max_turns);
+            if let Some(usd) = self.cli_budget_usd {
+                claude = claude.with_max_budget_usd(usd);
+            }
             tracing::info!(model, attempt, "model selected for attempt");
             // Hard stop: prevent runaway agents from looping past the turn cap.
             self.turn_count += 1;
@@ -104,7 +110,9 @@ impl AgentRunner {
                 pressure = self.context.token_pressure(),
                 "context at planning"
             );
-            self.log("📋 planning…");
+            // No hardcoded phase label — the real status (thinking, tool calls,
+            // text) streams in live from Claude below. The UI shows a "waiting
+            // for Claude" animation until the first event arrives.
 
             if self.speculative {
                 // Speculative mode: apply plan steps as they stream (see
@@ -135,34 +143,25 @@ impl AgentRunner {
                     if self.has_direct_api() {
                         match self.plan_via_api(model, attempt + 1).await {
                             Ok(p) => {
-                                self.log(format!(
-                                    "✅ plan ready via direct API ({} chars)",
-                                    p.len()
-                                ));
+                                // Direct-API response arrives whole — surface it
+                                // line-by-line so the log reads like the stream.
+                                for line in p.lines() {
+                                    let t = line.trim();
+                                    if !t.is_empty() {
+                                        self.log(t.to_string());
+                                    }
+                                }
                                 Ok(p)
                             }
                             Err(api_err) => {
                                 self.warn(format!(
                                     "direct API plan failed ({api_err}); falling back to CLI"
                                 ));
-                                claude
-                                    .plan(&self.task, self.last_error.as_deref())
-                                    .await
-                                    .inspect(|p| {
-                                        self.log(format!(
-                                            "✅ plan ready via CLI ({} chars)",
-                                            p.len()
-                                        ));
-                                    })
+                                self.stream_plan(&claude).await
                             }
                         }
                     } else {
-                        claude
-                            .plan(&self.task, self.last_error.as_deref())
-                            .await
-                            .inspect(|p| {
-                                self.log(format!("✅ plan ready ({} chars)", p.len()));
-                            })
+                        self.stream_plan(&claude).await
                     }
                 }
                 .instrument(think_span)
@@ -228,7 +227,8 @@ impl AgentRunner {
                     pressure = self.context.token_pressure(),
                     "context at implementation"
                 );
-                self.log("🔨 implementing…");
+                // No hardcoded label — Claude's real actions (tool calls, text,
+                // status) stream into the log live as it works.
 
                 // OTel GenAI-aligned span: act phase. Uses `.instrument()`
                 // (not `.entered()`) so the span guard is not held across
@@ -238,8 +238,8 @@ impl AgentRunner {
                     task_id = %self.id(),
                     attempt = attempt + 1,
                 );
-                let act_result = claude
-                    .implement(&self.task, &plan)
+                let act_result = self
+                    .stream_implement(&claude, &plan)
                     .instrument(act_span)
                     .await;
                 if let Err(e) = act_result {
@@ -356,34 +356,12 @@ impl AgentRunner {
 
             if score.passed() {
                 // Phase 16.3 — finalize per the L1–L4 autonomy ladder. `finalize`
-                // forces the verifier on for L3/L4, commits, then opens (or skips)
-                // the PR and auto-merges for L4. `None` ⇒ verifier rejected: it has
-                // already rolled back and marked the task Retrying.
+                // forces the verifier on for L3/L4, commits, rebases onto the
+                // advanced default, then opens (or skips) the PR. `None` ⇒
+                // verifier rejected (already rolled back, marked Retrying); a
+                // `Conflict` ⇒ the rebase collided and the loop stops here.
                 if let Some(status) = self.finalize(&branch, &git, &score, attempt + 1).await {
-                    self.context.pin_conclusion(
-                        format!(
-                            "Sprint succeeded — pass={:.0}% diff={}L",
-                            score.test_pass_rate * 100.0,
-                            score.diff_lines
-                        ),
-                        Phase::Conclusion,
-                    );
-                    tracing::info!(
-                        pressure = self.context.token_pressure(),
-                        "context at conclusion"
-                    );
-                    self.status(status.clone(), attempt + 1);
-                    // OTel GenAI-aligned span: task completion event. The span
-                    // body is empty — it exists to mark the task boundary in
-                    // any attached trace exporter (OTLP via `otel` feature).
-                    let _ = tracing::info_span!(
-                        "lopi.agent.task.complete",
-                        task_id = %self.id(),
-                        outcome = "success",
-                        attempts = attempt + 1,
-                    )
-                    .entered();
-                    return Ok(status);
+                    return Ok(self.conclude_finalized(status, &score, attempt + 1));
                 }
                 continue;
             }
@@ -483,5 +461,49 @@ impl AgentRunner {
         };
         self.status(status.clone(), self.task.max_retries);
         Ok(status)
+    }
+
+    /// Stream a plan from the CLI, forwarding both the human log line and the
+    /// structured pane events (tool calls, token usage, cost, phase, rate
+    /// limits) to the event bus as each `StreamEvent` arrives.
+    async fn stream_plan(&self, claude: &ClaudeCode) -> Result<String> {
+        let bus = self.bus.clone();
+        let tid = self.id();
+        claude
+            .plan_streamed(&self.task, self.last_error.as_deref(), move |ev| {
+                forward_stream_event(&bus, tid, ev);
+            })
+            .await
+    }
+
+    /// Stream the implementation from the CLI, forwarding each `StreamEvent`'s
+    /// log line and structured pane events to the event bus.
+    async fn stream_implement(&self, claude: &ClaudeCode, plan: &str) -> Result<String> {
+        let bus = self.bus.clone();
+        let tid = self.id();
+        claude
+            .implement_streamed(&self.task, plan, move |ev| {
+                forward_stream_event(&bus, tid, ev);
+            })
+            .await
+    }
+}
+
+/// Fan a single decoded `StreamEvent` onto the bus: the formatted log line as a
+/// `LogLine` (for the log panel and thought stream) and every structured event
+/// (for the token, cost, phase, and tool panes).
+fn forward_stream_event(
+    bus: &lopi_core::EventBus<AgentEvent>,
+    tid: lopi_core::TaskId,
+    ev: &crate::claude_events::StreamEvent,
+) {
+    if let Some(line) = ev.log_line() {
+        let t = line.trim().to_string();
+        if !t.is_empty() {
+            bus.send(AgentEvent::info(tid, t));
+        }
+    }
+    for structured in ev.structured_events(tid) {
+        bus.send(structured);
     }
 }

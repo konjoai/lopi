@@ -1,8 +1,13 @@
 //! lopi-agent — Claude Code subprocess wrapper, API client, retry runner, and scoring.
+/// Phase 16.6 — per-run token-budget enforcement (Anthropic `task_budget` beta).
+pub mod api_budget;
 /// Anthropic API communication layer.
 pub mod api_client;
 /// Claude Code subprocess management and model selection.
 pub mod claude;
+/// Single decoder for `claude -p --output-format stream-json` NDJSON: derives
+/// both the log-panel status line and the structured `AgentEvent`s the panes consume.
+pub mod claude_events;
 mod claude_stream;
 /// Sprint U — DAG-structured execution trace for partial-restart retry.
 pub mod dag;

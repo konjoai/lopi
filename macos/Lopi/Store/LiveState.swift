@@ -17,6 +17,18 @@ struct LiveAgent: Identifiable, Hashable {
     var tokensPerSec: Double = 0
     var costUsd: Double = 0
 
+    // stream-json pane inputs (Phase 1 event spine).
+    var outputTokens: Int = 0 // cumulative output tokens this run (token_delta)
+    var inputTokens: Int = 0 // input tokens for the current turn (token_delta)
+    var cacheReadTokens: Int = 0 // cache-read tokens for the current turn (token_delta)
+    var numTurns: Int = 0 // turns from the terminal result (cost)
+    var sessionId: String? // CLI session UUID for --resume (cost)
+    var claudePhase: String? // Claude's own phase label, e.g. "requesting" (phase)
+    var lastTool: String? // most recent tool name (tool_call)
+    var toolCalls: Int = 0 // count of tool calls this run (tool_call)
+    var throttled: Bool = false // a rate_limit_event was seen (api_retry)
+    var utilization: Double = 0 // 0...1 window utilization from the last api_retry
+
     // Latest score_updated.
     var testPassRate: Double?
     var lintErrors: Int?

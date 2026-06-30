@@ -16,6 +16,7 @@ mod task_commands;
 mod trust_commands;
 mod util;
 mod webhook_commands;
+mod worktree_commands;
 
 use mimalloc::MiMalloc;
 
@@ -124,6 +125,9 @@ enum Commands {
     /// Loop engineering — inspect and validate a repo's `.lopi/loop.toml`.
     #[command(subcommand)]
     Loop(LoopCmd),
+    /// Manage per-task git worktrees — list live ones, gc the leftovers.
+    #[command(subcommand)]
+    Worktree(WorktreeCmd),
     /// Browse the Layer 5 patch stability ledger
     #[command(subcommand)]
     Stability(StabilityCmd),
@@ -235,6 +239,20 @@ enum LoopCmd {
     },
     /// Print the effective loop config for a repo (defaults shown when absent).
     Show {
+        #[arg(short, long, default_value = ".")]
+        repo: PathBuf,
+    },
+}
+
+#[derive(Subcommand)]
+enum WorktreeCmd {
+    /// List the git worktrees currently tracked for a repo.
+    List {
+        #[arg(short, long, default_value = ".")]
+        repo: PathBuf,
+    },
+    /// Reclaim orphaned worktrees and stale `lopi/*` branches.
+    Gc {
         #[arg(short, long, default_value = ".")]
         repo: PathBuf,
     },
@@ -448,6 +466,13 @@ async fn main() -> Result<()> {
         }
         Some(Commands::Loop(LoopCmd::Show { repo })) => {
             print!("{}", loop_commands::render(&repo)?);
+        }
+
+        Some(Commands::Worktree(WorktreeCmd::List { repo })) => {
+            print!("{}", worktree_commands::list(&repo).await?);
+        }
+        Some(Commands::Worktree(WorktreeCmd::Gc { repo })) => {
+            print!("{}", worktree_commands::gc(&repo).await?);
         }
 
         // ── lopi stability ──────────────────────────────────────

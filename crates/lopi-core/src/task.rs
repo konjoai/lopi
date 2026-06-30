@@ -66,6 +66,13 @@ pub enum TaskStatus {
     },
     /// Changes were rolled back after a failure.
     RolledBack,
+    /// A pre-PR rebase onto the advanced default branch hit conflicts, so the
+    /// task stopped rather than force an unsafe merge. Carries the conflicting
+    /// paths so an operator — or a follow-up task — knows exactly what collided.
+    Conflict {
+        /// Repository-relative paths that conflicted during the rebase.
+        paths: Vec<String>,
+    },
 }
 
 /// Scheduling priority for a [`Task`] in the agent queue.

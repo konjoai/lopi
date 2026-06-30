@@ -10,8 +10,15 @@
   import AgentPane from '$lib/components/AgentPane.svelte';
   import SessionSidebar from '$lib/components/SessionSidebar.svelte';
   import TileGrid from '$lib/components/TileGrid.svelte';
-  import { agents, type AgentState } from '$lib/stores/agents';
+  import EmptyState from '$lib/components/ui/EmptyState.svelte';
+  import { agents, connectionState, type AgentState } from '$lib/stores/agents';
   import { paneSlots, closePane, addPane, removePane, swapPanes, mountInPane } from '$lib/stores/layout';
+
+  // Honest connection truth — no fabricated agents ever fill the grid. When the
+  // backend is unreachable we say so; when it is reachable but idle we show an
+  // empty state rather than placeholder panes pretending to be live.
+  $: offline = $connectionState === 'offline' || $connectionState === 'connecting';
+  $: idle = $connectionState === 'connected' && $agents.size === 0;
 
   let dragSource: number | null = null;
   let dragOver: number | null = null;
@@ -32,7 +39,7 @@
   // (`agent={agentFor(index)}`) is only re-evaluated when the *identifiers in
   // the expression* change, and Svelte never looks inside the function body.
   // With a plain helper the grid renders once at mount (agents still empty,
-  // mock data arrives ~1.5s later) and then freezes on the idle state forever.
+  // live events arrive later) and then freezes on the idle state forever.
   $: paneAgents = $paneSlots.map((id): AgentState | null =>
     id ? ($agents.get(id) ?? null) : null
   );
@@ -60,6 +67,19 @@
   <SessionSidebar />
 
   <div class="grid-wrap">
+    {#if offline}
+      <div class="forge-banner">
+        <EmptyState
+          title="backend offline"
+          detail={$connectionState === 'connecting' ? 'connecting to lopi sail…' : 'start `lopi sail` to see live agents'}
+          error
+        />
+      </div>
+    {:else if idle}
+      <div class="forge-banner">
+        <EmptyState title="no live sessions" detail="launch a run with `lopi run` to populate the forge" />
+      </div>
+    {/if}
     <TileGrid count={$paneSlots.length} let:index>
       <div
         class="pane-host"
@@ -95,6 +115,19 @@
     flex: 1;
     min-width: 0;
     position: relative;
+  }
+  .forge-banner {
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 20;
+    pointer-events: none;
+    background: color-mix(in srgb, var(--konjo-black, #0a0a0a) 82%, transparent);
+    border: 1px solid color-mix(in srgb, var(--konjo-accent, #888) 30%, transparent);
+    border-radius: 10px;
+    padding: 0 18px;
+    backdrop-filter: blur(4px);
   }
   .pane-host {
     position: relative;

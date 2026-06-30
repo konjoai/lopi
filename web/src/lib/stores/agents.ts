@@ -57,6 +57,18 @@ export interface AgentState {
   cost: number; // USD accumulated
   thought?: string; // last log line (preview)
 
+  // ── stream-json pane inputs (Phase 1 event spine) ──────────────────────────
+  outputTokens?: number; // cumulative output tokens this run (token_delta)
+  inputTokens?: number; // input tokens for the current turn (token_delta)
+  cacheReadTokens?: number; // cache-read tokens for the current turn (token_delta)
+  numTurns?: number; // turns reported by the terminal result (cost)
+  sessionId?: string; // CLI session UUID for --resume (cost)
+  claudePhase?: string; // Claude's own phase label, e.g. "requesting" (phase)
+  lastTool?: string; // most recent tool name (tool_call)
+  toolCalls?: number; // count of tool calls this run (tool_call)
+  throttled?: boolean; // a rate_limit_event was seen (api_retry)
+  utilization?: number; // 0..1 window utilization from the last api_retry
+
   // Phase 11 — plan approval gate. Set while the agent is paused awaiting a
   // human decision; cleared once it proceeds (approved) or terminates.
   awaitingApproval?: boolean;
@@ -293,14 +305,23 @@ export function init() {
   connect();
   if (connectionStateInterval) clearInterval(connectionStateInterval);
   connectionStateInterval = setInterval(updateConnectionState, 500);
-  // Fall back to mock if not connected in 1.5s
-  setTimeout(() => {
-    const state = getConnectionState();
-    if (state === 'offline' || state === 'connecting') {
-      initMock();
-      updateConnectionState();
-    }
-  }, 1500);
+  // Demo data is opt-in only and never masks a dead backend: it runs solely
+  // when the page is loaded with ?demo=1. Without the flag, an unreachable
+  // backend reports an honest offline/empty state.
+  if (isDemoRequested()) {
+    initMock();
+    updateConnectionState();
+  }
+}
+
+/** True only when the page URL carries an explicit `?demo=1` opt-in flag. */
+function isDemoRequested(): boolean {
+  if (!browser) return false;
+  try {
+    return new URLSearchParams(window.location.search).get('demo') === '1';
+  } catch {
+    return false;
+  }
 }
 
 export function selectAgent(id: string) {

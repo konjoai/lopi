@@ -57,6 +57,39 @@ struct ForgeView: View {
             )
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .overlay(alignment: .top) { forgeBanner }
+    }
+
+    /// Honest connection truth over the grid: no synthetic agents are ever
+    /// seeded, so an unreachable backend says so and an idle one shows empty.
+    @ViewBuilder private var forgeBanner: some View {
+        if model.connection != .live {
+            banner(
+                title: "backend offline",
+                detail: model.connection == .connecting
+                    ? "connecting to lopi sail…" : "start `lopi sail` to see live agents",
+                tint: Konjo.rose
+            )
+        } else if model.liveAgents.isEmpty {
+            banner(
+                title: "no live sessions",
+                detail: "launch a run with `lopi run` to populate the forge",
+                tint: Konjo.fgMute
+            )
+        }
+    }
+
+    private func banner(title: String, detail: String, tint: Color) -> some View {
+        VStack(spacing: 3) {
+            Text(title).font(Konjo.sans(13, weight: .semibold)).foregroundStyle(tint)
+            Text(detail).font(Konjo.mono(10)).foregroundStyle(Konjo.fgMute)
+        }
+        .padding(.horizontal, 18).padding(.vertical, 10)
+        .background(Konjo.bg.opacity(0.82))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Konjo.line2))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .padding(.top, 8)
+        .allowsHitTesting(false)
     }
 
     private func agent(at idx: Int) -> LiveAgent? {

@@ -67,7 +67,7 @@ extension AppModel {
             if liveAgents[id] != nil {
                 liveAgents[id]?.logTail.append(AgentLog(level: level, text: line))
                 let tail = liveAgents[id]?.logTail.count ?? 0
-                if tail > 12 { liveAgents[id]?.logTail.removeFirst(tail - 12) }
+                if tail > 200 { liveAgents[id]?.logTail.removeFirst(tail - 200) }
                 if level == "error" {
                     liveAgents[id]?.stimulus = .now
                     liveAgents[id]?.stimulusKind = "failure"
@@ -134,6 +134,51 @@ extension AppModel {
         case let .budgetExceeded(_, scope, limit, burned):
             lastBudget = BudgetBreach(scope: scope, limitUsd: limit, burnedUsd: burned, at: .now)
             push(.budget, "Budget exceeded (\(scope))", String(format: "$%.2f / $%.2f", burned, limit))
+
+        case let .toolCall(id, tool, summary):
+            let label = summary.isEmpty ? "🔧 \(tool)" : "🔧 \(tool)(\(summary))"
+            mutateAgent(id) {
+                $0.lastTool = tool
+                $0.toolCalls += 1
+                $0.activity = max($0.activity, 0.6)
+                $0.logTail.append(AgentLog(level: "info", text: label))
+                if $0.logTail.count > 200 { $0.logTail.removeFirst($0.logTail.count - 200) }
+                $0.stimulus = .now
+                $0.stimulusKind = "request"
+            }
+
+        case let .toolResult(id, _, isError, _):
+            if isError {
+                mutateAgent(id) { $0.stimulus = .now; $0.stimulusKind = "failure" }
+            }
+
+        case let .tokenDelta(id, output, input, cacheRead):
+            mutateAgent(id) {
+                $0.outputTokens += output
+                $0.inputTokens = input
+                $0.cacheReadTokens = cacheRead
+                $0.activity = min(Double(output) / 200.0, 1.0)
+            }
+
+        case let .apiRetry(id, status, limitType, util):
+            mutateAgent(id) {
+                $0.throttled = (status != "allowed")
+                $0.utilization = min(max(util, 0), 1)
+                $0.stimulus = .now
+                $0.stimulusKind = "request"
+            }
+            push(.warn, "Rate limit: \(limitType)", String(format: "%.0f%% used", util * 100))
+
+        case let .cost(id, costUsd, turns, sessionId):
+            mutateAgent(id) {
+                $0.costUsd = costUsd
+                $0.numTurns = turns
+                if !sessionId.isEmpty { $0.sessionId = sessionId }
+            }
+            recomputeAggregates()
+
+        case let .phase(id, phase):
+            mutateAgent(id) { $0.claudePhase = phase }
 
         case .other:
             break

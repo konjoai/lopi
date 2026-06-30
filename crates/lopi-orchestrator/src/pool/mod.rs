@@ -5,10 +5,13 @@
 //! - [`types`] — the plain handle/counter/snapshot structs.
 //! - `registry` — capability advertisement + per-agent rate limiting.
 //! - `run_loop` — `submit`, the dispatch `run` loop, and single-task execution.
+//! - `worktree` — per-task `git worktree` isolation setup/teardown.
 
 mod registry;
 mod run_loop;
+mod skills;
 mod types;
+mod worktree;
 
 use dashmap::DashMap;
 use lopi_core::{AgentEvent, EventBus, TaskId};

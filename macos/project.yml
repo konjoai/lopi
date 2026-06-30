@@ -32,3 +32,24 @@ targets:
         com.apple.security.app-sandbox: true
         com.apple.security.network.client: true
         com.apple.security.network.server: false
+
+  LopiTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: LopiTests
+    dependencies:
+      - target: Lopi
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: ai.konjo.lopi.tests
+
+schemes:
+  Lopi:
+    build:
+      targets:
+        Lopi: all
+    test:
+      targets:
+        - LopiTests

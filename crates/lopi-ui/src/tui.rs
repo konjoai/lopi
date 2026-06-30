@@ -42,6 +42,7 @@ impl AgentRow {
             TaskStatus::Success { .. } => ("✅ Done", Color::Green),
             TaskStatus::Failed { .. } => ("❌ Failed", Color::Red),
             TaskStatus::RolledBack => ("⏪ Rolled back", Color::Red),
+            TaskStatus::Conflict { .. } => ("⚠ Conflict", Color::Red),
         }
     }
 
@@ -184,6 +185,15 @@ impl AppState {
             // PlanProposed is reflected by the AwaitingPlanApproval status the
             // runner emits alongside it; the read-only TUI shows that label.
             AgentEvent::PlanProposed { .. } => {}
+            // The stream-json pane events (tool calls, token/cost/phase/rate
+            // limit) drive the web Forge's gauges. The read-only TUI surfaces
+            // the same activity through the LogLine stream, so consume silently.
+            AgentEvent::ToolCall { .. }
+            | AgentEvent::ToolResult { .. }
+            | AgentEvent::TokenDelta { .. }
+            | AgentEvent::ApiRetry { .. }
+            | AgentEvent::Cost { .. }
+            | AgentEvent::Phase { .. } => {}
         }
     }
 
