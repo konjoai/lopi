@@ -121,8 +121,14 @@ enum PhaseStyle {
     static func color(_ phase: String) -> Color {
         switch phase.lowercased() {
         case "success", "done", "completed", "conclusion": return Konjo.jade
-        case "failed", "rolledback", "rolled_back", "cancelled": return Konjo.rose
-        case "testing", "scoring", "retrying", "verifying": return Konjo.sun
+        case "failed", "rolledback", "rolled_back": return Konjo.rose
+        case "cancelled": return Konjo.roseMuted
+        // K-collision: Testing is violet, not yellow (sun is reserved for the
+        // awaiting-user state); Scoring/verifying steps up to bright violet.
+        case "testing": return Konjo.violet
+        case "scoring", "verifying": return Konjo.violetBright
+        case "retrying": return Konjo.flame // rate-limited / retry
+        case "openingpr", "opening_pr", "pr": return Konjo.mint
         case "implementing", "implementation", "coding", "building": return Konjo.ember
         case "queued", "pending": return Konjo.fgMute
         default: return Konjo.ice // planning / discovery / boot / active

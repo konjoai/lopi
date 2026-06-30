@@ -24,6 +24,15 @@ enum Konjo {
     static let sun = Color(hex: 0xFFCC00) // --konjo-sun
     static let rose = Color(hex: 0xFF0066) // --konjo-rose
 
+    // Orb-state palette (living-orb status map). Mirrors web app.css; yellow/
+    // orange is reserved for awaiting and green for success, so Testing is
+    // violet and Scoring bright-violet (K-collision).
+    static let plasma = Color(hex: 0x5EE6FF) // Implementing — plasma cyan
+    static let violet = Color(hex: 0x7C3AED) // Testing — violet
+    static let violetBright = Color(hex: 0x9D5CFF) // Scoring / verifying
+    static let mint = Color(hex: 0x3BE6C8) // Opening PR — pre-success mint
+    static let roseMuted = Color(hex: 0xB04A6A) // Cancelled — muted rose
+
     // Semantic accents — alias onto the spectrum so existing call sites keep
     // working while reading as one cohesive Konjo identity.
     static let konjo = ice // primary accent (electric cyan)
