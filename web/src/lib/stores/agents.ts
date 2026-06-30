@@ -15,6 +15,7 @@ import { browser } from '$app/environment';
 import { parseWireMessage, taskStatusToPhase } from '$lib/parser';
 import { connect, setMessageHandler, initMock, getConnectionState } from './wsClient';
 import { recordEvent } from './events';
+import { recordTranscript, clearTranscript } from './transcript';
 import { isDeleted, reconcileSessions, tombstoneSession } from './layout';
 import { reduce, makeBlank } from './agentReducer';
 import type { StimulusKind } from '$lib/forge/excitement';
@@ -95,14 +96,9 @@ export interface LogEntry {
 }
 
 // ── Phase color map (mirrors :root vars in app.css) ───────────────────────────
-export const PHASE_COLORS: Record<Phase, string> = {
-  Boot: '#f5f5f5',
-  Discovery: '#00d4ff',
-  Planning: '#00ffd4',
-  Implementation: '#ff4500',
-  Testing: '#ffcc00',
-  Conclusion: '#00ff9d'
-};
+// Defined in a leaf module (no `$app` imports) so the pure orb-state mapping and
+// its unit tests can share this exact source of truth.
+export { PHASE_COLORS } from './phase-colors';
 
 // ── Stores ────────────────────────────────────────────────────────────────────
 export const agents = writable<Map<string, AgentState>>(new Map());
@@ -272,8 +268,10 @@ function applyMessage(msg: WireMessage) {
     });
   }
 
-  // Record every event into the live Pulse feed (+ budget alert stream).
+  // Record every event into the live Pulse feed (+ budget alert stream) and the
+  // per-session transcript (the ordered chat narrative the agent pane renders).
   recordEvent(msg);
+  recordTranscript(msg);
 
   agents.update((m) => reduce(m, msg));
 
@@ -353,6 +351,7 @@ export function stimulate(id: string, kind: StimulusKind = 'request') {
  */
 export function deleteSession(id: string) {
   tombstoneSession(id);
+  clearTranscript(id);
   agents.update((m) => {
     const next = new Map(m);
     next.delete(id);
