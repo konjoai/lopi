@@ -12,7 +12,10 @@ use lopi_core::Score;
 /// increments `lopi_schema_violations_total` for each unmet criterion and
 /// returns `Some((count, detail))` — `detail` is one `- kind@path: message`
 /// line per violation, ready to append to a warn/retry message.
-pub(super) fn violation_summary(schema: &serde_json::Value, score: &Score) -> Option<(usize, String)> {
+pub(super) fn violation_summary(
+    schema: &serde_json::Value,
+    score: &Score,
+) -> Option<(usize, String)> {
     let score_json = serde_json::json!({
         "test_pass_rate": score.test_pass_rate,
         "lint_errors": score.lint_errors,

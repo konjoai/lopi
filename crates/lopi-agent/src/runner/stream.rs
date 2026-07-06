@@ -25,11 +25,7 @@ impl AgentRunner {
 
     /// Stream the implementation from the CLI, forwarding each `StreamEvent`'s
     /// log line and structured pane events to the event bus.
-    pub(super) async fn stream_implement(
-        &self,
-        claude: &ClaudeCode,
-        plan: &str,
-    ) -> Result<String> {
+    pub(super) async fn stream_implement(&self, claude: &ClaudeCode, plan: &str) -> Result<String> {
         let bus = self.bus.clone();
         let tid = self.id();
         claude
