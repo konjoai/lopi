@@ -1,56 +1,46 @@
-# Next — Skill Arguments (Capability 4)
+# Next — Report on Finish (Capability 3)
 
-Per `PROMPTS_PLAN.md`'s sprint order, Capability 4 (Skill Arguments) comes
-next and must **reuse** this sprint's substitution primitive rather than
-writing a second one (same DRY constraint the Konjo quality gate enforces at
->10 lines / >85% similarity).
+Sprint 2 (Skill Arguments) shipped: `Skill::render_body` +
+`lopi_skill::parse_invocation`, wired at the CLI's `lopi run --goal`
+boundary. See `LEDGER.md`'s Sprint 2 entry for the empty-arg and reuse
+decisions, and `crates/lopi-skill/src/{lib.rs,invocation.rs}` for the code.
 
-## What Sprint 1 built, for the next sprint to build on
+Per `PROMPTS_PLAN.md`'s sprint order, **Capability 3 (Report on Finish) is
+next — isolate it as its own sprint.** Unlike Sprints 1 and 2 (additive,
+single-crate), this one:
 
-```rust
-// crates/lopi-core/src/template.rs
-pub fn resolve(
-    template: &str,
-    vars: &std::collections::BTreeMap<String, String>,
-) -> Result<String, TemplateError>;
+- Adds a real config-schema field: **`report: Option<String>` on
+  `ScheduleEntry`** (`crates/lopi-core/src/config.rs:147`), accepting
+  `"telegram"` (WhatsApp has no outbound-send path yet — see
+  `PROMPTS_PLAN.md` capability 3 — so it isn't a valid value this sprint).
+  Thread it onto **`Task`** the same way `autonomy_level` is already threaded
+  from `ScheduleEntry` in `crates/lopi-orchestrator/src/scheduler.rs`
+  (`task.autonomy_level = entry.autonomy_level;` — mirror that line for
+  `report`).
+- Crosses a crate + event-bus boundary that Sprints 1/2 never touched:
+  `lopi-agent`'s `emit_report()` (`crates/lopi-agent/src/runner/finalize.rs`,
+  L1 `ReportOnly` autonomy's report hook — currently only calls `self.log(...)`,
+  a local tracing line) needs to reach `lopi-remote`'s already-built Telegram
+  `bot.send_message` path (`crates/lopi-remote/src/telegram/notify.rs`),
+  independent of the single global `chat_id` gate `notify_loop` currently
+  hard-codes.
 
-pub enum TemplateError {
-    UnresolvedVariable { name: String, template: String },
-}
+## Why this is riskier than Sprints 1/2
 
-// crates/lopi-core/src/task.rs
-impl Task {
-    pub fn from_template(
-        template: &str,
-        vars: &std::collections::BTreeMap<String, String>,
-    ) -> Result<Self, crate::template::TemplateError>;
-}
-```
-
-Also re-exported at the crate root as `lopi_core::{resolve_template, TemplateError}`
-(renamed on export, mirroring the existing `schema::validate` → `validate_schema`
-convention, to keep a generic name off the crate root).
-
-## How Capability 4 should use it
-
-`PROMPTS_PLAN.md`'s plan for skill arguments was:
-
-- `Skill::render_body(&self, args: &str) -> String` — replace the literal
-  `$ARGUMENTS` placeholder in `Skill::body` with `args`. **Implement this by
-  calling `template::resolve`**, not a second `.replace()` — the cleanest way
-  is to treat `$ARGUMENTS` as a single well-known hole. Two options to weigh
-  in that sprint:
-  1. Translate `$ARGUMENTS` to `{arguments}` before calling `resolve`, with a
-     one-entry vars map `{"arguments": args}` — zero changes to `template.rs`.
-  2. Extend `resolve` to also recognize a `$NAME`-style hole — only justified
-     if skill bodies need more than one substitutable value.
-  Start with (1); it's strictly smaller and doesn't touch `template.rs` at all.
-- A minimal `:<skill-name> <rest>` prefix parser at the goal-ingestion
-  boundary (Telegram `handlers.rs`, CLI) that looks up the skill by name and
-  passes `rest` as `args`.
+Sprints 1 and 2 never touched a serialized config schema (`template.rs` and
+`Skill::render_body` are pure additions). This one does — `ScheduleEntry` is
+TOML-serialized (`lopi.toml`) with existing round-trip expectations, so the
+new field must be `#[serde(default)]` and validated the way
+`LoopConfig::validate` already models other cross-field config invariants.
 
 ## Constraint carried forward
 
-No frontmatter/schema change for Capability 4 — `$ARGUMENTS` lives in the
-skill body markdown (already a `String`), so `Skill` needs no new field. See
-`LEDGER.md`'s Sprint 1 entry before touching template escaping semantics.
+No new dependency should be needed — `lopi-agent` already depends on neither
+`lopi-remote` nor vice versa today (check before assuming; if `lopi-agent`
+would need to depend on `lopi-remote` to call `bot.send_message` directly,
+that's the same kind of cross-crate-dependency decision Sprint 2 hit with
+`lopi-skill` → `lopi-core`, and is worth flagging up front rather than
+discovering mid-implementation — an event-bus-mediated design, where
+`lopi-agent` only ever emits an `AgentEvent` and `lopi-remote`'s existing
+subscriber loop reacts, likely avoids the new dependency entirely and fits
+the existing `EventBus<AgentEvent>` architecture better than a direct call.

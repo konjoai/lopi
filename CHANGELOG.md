@@ -1,5 +1,19 @@
 # Changelog
 
+## [Unreleased] — Sprint 2: Skill Arguments 🎯
+
+### Added
+
+**Skill Arguments** (`lopi-skill`)
+- **`Skill::render_body(&self, args: &str)`** — substitutes `$ARGUMENTS` by
+  routing through Sprint 1's `lopi_core::resolve_template` (one `{arguments}`
+  hole, one-entry vars map) — no second substitution layer.
+- **`lopi_skill::parse_invocation(":name args")`** — pure prefix parser;
+  wired at the CLI's `lopi run --goal` boundary (`resolve_skill_invocation`)
+  so `:kcqf vectro` resolves to the named skill's rendered body before
+  `Task::new` ever sees it. Unknown skill names fail loudly, never pass
+  through as a literal goal. Telegram ingestion untouched this sprint.
+
 ## [Unreleased] — Sprint 1: Prompt Templates 🧩
 
 ### Added
