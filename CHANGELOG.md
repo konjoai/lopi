@@ -1,5 +1,17 @@
 # Changelog
 
+## [Unreleased] — Sprint 1: Prompt Templates 🧩
+
+### Added
+
+**Prompt Templates** (`lopi-core`)
+- **`lopi_core::template::resolve(template, vars)`** — pure `{name}`-hole
+  substitution resolved at enqueue time, so Claude only ever sees the final
+  literal string; `{{`/`}}` escape to literal braces, an unfilled hole is a
+  loud `TemplateError::UnresolvedVariable`, never a silent passthrough.
+- **`Task::from_template(template, vars)`** — the one call site wiring
+  templates into task creation; `Task::new` is untouched and stays the default.
+
 ## [Unreleased] — Sprint U: DAG-Structured Retry + Time-Travel Replay 🕸️
 
 ### Added
