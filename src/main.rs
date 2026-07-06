@@ -10,6 +10,7 @@ mod repo_detect;
 mod run_command;
 mod sail_commands;
 mod schedule_commands;
+mod skill_commands;
 mod spec_commands;
 mod stability_commands;
 mod task_commands;
@@ -25,9 +26,11 @@ static GLOBAL: MiMalloc = MiMalloc;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use skill_commands::SkillCmd;
 use std::path::PathBuf;
 use tracing_subscriber::prelude::*;
 use util::load_config;
+use worktree_commands::WorktreeCmd;
 
 #[derive(Parser)]
 #[command(
@@ -128,6 +131,9 @@ enum Commands {
     /// Manage per-task git worktrees — list live ones, gc the leftovers.
     #[command(subcommand)]
     Worktree(WorktreeCmd),
+    /// Skills — promote recurring lessons into reviewable skill drafts.
+    #[command(subcommand)]
+    Skill(SkillCmd),
     /// Browse the Layer 5 patch stability ledger
     #[command(subcommand)]
     Stability(StabilityCmd),
@@ -239,20 +245,6 @@ enum LoopCmd {
     },
     /// Print the effective loop config for a repo (defaults shown when absent).
     Show {
-        #[arg(short, long, default_value = ".")]
-        repo: PathBuf,
-    },
-}
-
-#[derive(Subcommand)]
-enum WorktreeCmd {
-    /// List the git worktrees currently tracked for a repo.
-    List {
-        #[arg(short, long, default_value = ".")]
-        repo: PathBuf,
-    },
-    /// Reclaim orphaned worktrees and stale `lopi/*` branches.
-    Gc {
         #[arg(short, long, default_value = ".")]
         repo: PathBuf,
     },
@@ -473,6 +465,12 @@ async fn main() -> Result<()> {
         }
         Some(Commands::Worktree(WorktreeCmd::Gc { repo })) => {
             print!("{}", worktree_commands::gc(&repo).await?);
+        }
+        Some(Commands::Skill(SkillCmd::Promote { repo, min, limit })) => {
+            print!(
+                "{}",
+                skill_commands::promote(&repo, util::db_path(), min, limit).await?
+            );
         }
 
         // ── lopi stability ──────────────────────────────────────

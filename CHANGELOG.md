@@ -16,6 +16,29 @@
 
 ### Added
 
+**Loop Engineering — Phase 16.6 Per-run drill-down trace** (`lopi-memory`, `lopi-ui`, web, macOS)
+- A **Recent Runs** panel on the Loop screen: each run expands an
+  attempt-by-attempt trace — lifecycle stages (plan→implement→test→score),
+  per-attempt pass%/lint/diff/tokens/cost, the verifier verdict (passed/
+  confidence + gaps), and captured errors. Backed by
+  `GET /api/loop-engineering/runs` + `/runs/:id`, projecting `attempts` +
+  `turn_metrics` + `verifier_verdicts` (`lopi-memory/store/run_trace.rs`). The
+  single-run counterpart to the aggregate Loop Health view.
+
+**Loop Engineering — Phase 16.3 Loop Health observability + stall guard** (`lopi-agent`, `lopi-memory`, `lopi-ui`, web, macOS)
+- **No-progress stall guard** — the loop halts early when the weighted score
+  stops improving for `LoopConfig.no_progress_limit` consecutive attempts
+  (design-doc gap #7), instead of burning the whole retry budget on a stuck
+  loop (`update_no_progress_streak`, wired into `run_loop.rs`).
+- **`GET /api/loop-engineering/health`** projects data the loop already persists
+  (`attempts`, `turn_metrics`, `verifier_verdicts`) into one observability
+  snapshot: headline KPIs (runs, attempts, success rate, verifier pass rate,
+  spend, tokens), per-attempt score series, outcome distribution, token/cost
+  burn (`lopi-memory/store/loop_health.rs`).
+- **Loop Health view on both surfaces** — KPI tiles, sparklines (score/attempt,
+  context pressure, diff size, cost burn), and an outcome-distribution bar,
+  leading the Loop screen. Web composes `StatCard`+`Sparkline`; macOS composes
+  `Charts.Sparkline`.
 **Loop Engineering — Phase 16.7 Earned-Trust Auto-Promotion** (`lopi-core`, `lopi-memory`)
 - **The loop now *earns* its autonomy instead of having it assigned.** A repo or
   schedule that strings together N consecutive clean, verifier-passed runs is

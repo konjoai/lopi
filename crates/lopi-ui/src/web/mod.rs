@@ -315,6 +315,18 @@ pub fn build_app(state: AppState) -> Router {
         )
         .route("/api/loop-engineering", get(loop_handlers::get_loop))
         .route(
+            "/api/loop-engineering/health",
+            get(loop_health_handlers::get_loop_health),
+        )
+        .route(
+            "/api/loop-engineering/runs",
+            get(loop_runs_handlers::list_runs),
+        )
+        .route(
+            "/api/loop-engineering/runs/:id",
+            get(loop_runs_handlers::get_run_trace),
+        )
+        .route(
             "/api/loop-engineering/strategy",
             axum::routing::post(loop_handlers::set_strategy),
         )
@@ -428,6 +440,8 @@ mod dlq_handlers;
 mod handlers;
 mod health_handlers;
 mod loop_handlers;
+mod loop_health_handlers;
+mod loop_runs_handlers;
 mod repos_handlers;
 mod schedule_handlers;
 mod static_assets;

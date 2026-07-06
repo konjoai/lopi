@@ -170,10 +170,62 @@ impl AgentRunner {
     }
 }
 
+/// Update the consecutive no-progress streak given this attempt's weighted score.
+///
+/// The streak increments when the score fails to improve on the best seen so far
+/// (within `EPSILON`) and resets to zero on any real improvement. The first
+/// observation seeds the baseline and counts as zero. Returns the new streak.
+///
+/// This is the semantic stall detector behind `LoopConfig::no_progress_limit`: a
+/// loop that keeps retrying without lifting its score is stuck, and burning the
+/// rest of the retry budget on it just wastes tokens.
+pub(super) fn update_no_progress_streak(best: &mut Option<f32>, streak: u8, weighted: f32) -> u8 {
+    const EPSILON: f32 = 1e-4;
+    match *best {
+        Some(prev) if weighted > prev + EPSILON => {
+            *best = Some(weighted);
+            0
+        }
+        Some(_) => streak.saturating_add(1),
+        None => {
+            *best = Some(weighted);
+            0
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{pr_decision, requires_verifier, should_auto_merge, PrDecision};
+    use super::{
+        pr_decision, requires_verifier, should_auto_merge, update_no_progress_streak, PrDecision,
+    };
     use lopi_core::loop_config::AutonomyLevel;
+
+    #[test]
+    fn no_progress_seeds_baseline_then_counts_stalls() {
+        let mut best = None;
+        // First observation seeds the baseline — not a stall.
+        assert_eq!(update_no_progress_streak(&mut best, 0, 0.5), 0);
+        assert_eq!(best, Some(0.5));
+        // No improvement → streak climbs.
+        assert_eq!(update_no_progress_streak(&mut best, 0, 0.5), 1);
+        assert_eq!(update_no_progress_streak(&mut best, 1, 0.5), 2);
+    }
+
+    #[test]
+    fn no_progress_resets_on_improvement() {
+        let mut best = Some(0.4);
+        assert_eq!(update_no_progress_streak(&mut best, 3, 0.9), 0);
+        assert_eq!(best, Some(0.9));
+        // A lower score after the improvement still counts as no progress.
+        assert_eq!(update_no_progress_streak(&mut best, 0, 0.6), 1);
+    }
+
+    #[test]
+    fn no_progress_ignores_sub_epsilon_noise() {
+        let mut best = Some(0.5);
+        assert_eq!(update_no_progress_streak(&mut best, 0, 0.500_01), 1);
+    }
 
     #[test]
     fn each_level_maps_to_its_decision() {

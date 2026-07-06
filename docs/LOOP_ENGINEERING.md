@@ -210,6 +210,60 @@ minimum so an under-minimum config never 400s. Wired through
 `AgentRunner::with_task_budget` from `.lopi/loop.toml` in both the `lopi run` CLI
 path and the orchestrator pool.
 
+## 7. Feature status by app
+
+Status legend: ✅ done · 🟡 partial · ⛔ not started.
+
+### 7a. Web + macOS Loop screen (mirror each other 1:1)
+
+| Feature | Status | Notes |
+|---------|:------:|-------|
+| Effective config panel (read) | ✅ | `.lopi/loop.toml` + validation badge |
+| Autonomy ladder display + trust dropdown | ✅ | `POST /api/schedules/:id/autonomy` |
+| Self-Prompting Strategy picker + preview | ✅ | 16.4 — S1–S4, live self-prompt preview |
+| Adaptive escalation toggle + ladder | ✅ | 16.5 — `#1 S2 → #2 S3 → …` |
+| **Loop Health: KPIs + sparklines + outcomes** | ✅ | 16.3 — score/pressure/diff/cost + distribution |
+| **Per-run drill-down trace** | ✅ | 16.6 — Recent Runs → attempt-by-attempt timeline |
+| Skills list + rule chips (read) | ✅ | discovered from `.claude/{skills,rules}` |
+| Quality-gate panel | 🟡 | hardcoded wall strings, not live KCQF thresholds |
+| Loop config editing (write `loop.toml`) | 🟡 | strategy/escalation persist; no general editor |
+| Skill / rule enable-disable toggles | ⛔ | read-only discovery today |
+| VISION.md intent-anchor editor | ⛔ | field exists in schema, no UI |
+| Live SSE health/run refresh | ⛔ | fetch on mount + after writes only |
+
+### 7b. Shared backend
+
+| Capability | Status | Location |
+|------------|:------:|----------|
+| `LoopConfig` schema + validate + `save_to_repo` | ✅ | `lopi-core/src/loop_config.rs` |
+| Autonomy enforcement (L1–L4) | ✅ | `lopi-agent/src/runner/finalize.rs` |
+| Self-prompt strategy + adaptive escalation | ✅ | `lopi-core/src/self_prompt.rs` |
+| No-progress stall guard | ✅ | `run_loop.rs` + `finalize.rs` (`update_no_progress_streak`) |
+| Draft PR / auto-merge git ops | ✅ | `lopi-git` `open_draft_pr` / `auto_merge` |
+| Loop Health projections + endpoint | ✅ | `lopi-memory/store/loop_health.rs` · `lopi-ui/.../loop_health_handlers.rs` |
+| Per-run trace projections + endpoints | ✅ | `lopi-memory/store/run_trace.rs` · `lopi-ui/.../loop_runs_handlers.rs` |
+| General `loop.toml` mutation endpoint | ⛔ | only strategy/escalation today; no full editor |
+| Typed `RunOutcome` enum | ⛔ | `AgentRun.outcome` is still a free string |
+| `AgentEvent::ProgressStall` event | ⛔ | stall surfaces via status + log today |
+| Hill-climbing meta-loop (`lopi-optimize`) | ⛔ | traces collected, never consumed to self-tune |
+
+## 8. Roadmap — next most impactful loop features
+
+Ranked by impact-to-effort. (Per-run drill-down — formerly #1 — shipped in 16.6.)
+
+| # | Feature | Impact | Effort | Sketch |
+|---|---------|:------:|:------:|--------|
+| 1 | **LoopConfig write path / editor** | High | Med | Generalise the strategy/escalation writers into `PATCH /api/loop-engineering` + a config-editor UI in both apps. Makes loop-as-code fully editable from the cockpit. |
+| 2 | **Structured GoalContract** | High | Med | Replace the raw `goal: String` with `{end_state, evidence[], constraints[], turn_cap, usd_cap}`; verifier evaluates the evidence predicates. |
+| 3 | **Earned-trust auto-promotion** | High | Med | Promote a schedule's `AutonomyLevel` after N consecutive clean verified runs; demote instantly on a post-merge revert (CSA Agentic Trust Framework). |
+| 4 | **Intra-turn stall detection** | Med-High | Med | `PreToolUse`/`PostToolUse` hooks fingerprint `(tool, args, result)` in a sliding window; abort tight tool loops inside one turn (the 16.3 guard only fires between attempts). |
+| 5 | **Hill-climbing meta-loop** (`lopi-optimize`) | High | High | Periodic job: read trace DB → analysis agent finds elevated tool-error rates / chronically-failing goals → surfaces recommended `loop.toml` / rubric changes for operator approval (AWS AgentCore pattern). |
+| 6 | **Live SSE Loop Health / runs** | Med | Low | Stream attempt/turn events to the dashboard so health + run traces update without a manual refresh. |
+| 7 | **Typed `RunOutcome` + stall event** | Med | Low | `Success / MaxTurns / MaxBudget / VerifierFailed / StallDetected` enum + `AgentEvent::ProgressStall`; enables outcome-filtered health and SQLite indexing. |
+| 8 | **Skill/rule management UI** | Med | Med | Enable/disable toggles; lesson→named-skill promotion (Cherny's "write it down" compounding). |
+| 9 | **Live quality-gate status** | Med | Low | Drive the gate panel from `quality_check_runs` instead of hardcoded strings. |
+| 10 | **Per-loop token economics** | Med | Med | cost/tick, cumulative spend, burn projection, per-schedule budget attribution; wire `budget_tokens` to the Claude `task_budget` beta. |
+
 ## Sources
 Reflexion ([2303.11366](https://arxiv.org/abs/2303.11366)) · Self-Refine
 ([2303.17651](https://arxiv.org/abs/2303.17651)) · SELF-DISCOVER
