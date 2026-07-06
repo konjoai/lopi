@@ -2041,6 +2041,7 @@ name = "lopi-skill"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "lopi-core",
  "serde",
  "tempfile",
  "thiserror 1.0.69",

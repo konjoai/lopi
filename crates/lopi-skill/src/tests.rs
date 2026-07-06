@@ -170,6 +170,45 @@ fn relevant_to_matches_triggers_case_insensitively() {
         .all(|s| s.name != "manual"));
 }
 
+// ── render_body (Skill Arguments, Sprint 2) ─────────────────────────────────
+
+fn skill_with_body(body: &str) -> Skill {
+    let text = format!("---\nname: x\ndescription: d\n---\n{body}\n");
+    Skill::parse(&text, Path::new("x/SKILL.md")).unwrap()
+}
+
+#[test]
+fn render_body_substitutes_arguments() {
+    let skill = skill_with_body("test $ARGUMENTS until done");
+    assert_eq!(
+        skill.render_body("vectro").unwrap(),
+        "test vectro until done"
+    );
+}
+
+#[test]
+fn render_body_with_no_arguments_placeholder_is_unchanged() {
+    let skill = skill_with_body("just run the tests");
+    assert_eq!(skill.render_body("vectro").unwrap(), "just run the tests");
+}
+
+#[test]
+fn render_body_empty_args_fills_arguments_with_empty_string() {
+    let skill = skill_with_body("scope: $ARGUMENTS.");
+    assert_eq!(skill.render_body("").unwrap(), "scope: .");
+}
+
+/// Proves reuse, not a second scanner: a literal brace in the body is only
+/// legal through `template::resolve`'s own `{{ }}` escape rule.
+#[test]
+fn render_body_reuses_resolve_escaping_rules() {
+    let skill = skill_with_body("literal {{brace}} then $ARGUMENTS");
+    assert_eq!(
+        skill.render_body("vectro").unwrap(),
+        "literal {brace} then vectro"
+    );
+}
+
 /// Sprint 2.1 DoD: every bundled `.claude/skills/*/SKILL.md` parses cleanly.
 #[test]
 fn loads_the_repos_bundled_skills() {
