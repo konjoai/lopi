@@ -17,7 +17,7 @@
 
 use super::AgentRunner;
 use lopi_core::loop_config::AutonomyLevel;
-use lopi_core::{Score, TaskStatus};
+use lopi_core::{LoopConfig, Score, TaskStatus};
 use lopi_git::GitManager;
 
 /// What the runner should do with a passing attempt's branch.
@@ -167,6 +167,20 @@ impl AgentRunner {
             score.lint_errors,
             score.diff_lines,
         ));
+    }
+
+    /// Load the repo's `no_progress_limit` from `.lopi/loop.toml`, off the
+    /// async reactor. Returns `0` (guard disabled) on any read/parse error so a
+    /// malformed loop config can never wedge the retry loop.
+    pub(super) async fn no_progress_limit(&self) -> u8 {
+        let repo = self.repo_path.clone();
+        tokio::task::spawn_blocking(move || {
+            LoopConfig::load_from_repo(&repo)
+                .map(|c| c.no_progress_limit)
+                .unwrap_or(0)
+        })
+        .await
+        .unwrap_or(0)
     }
 }
 

@@ -1,11 +1,11 @@
 use super::finalize::update_no_progress_streak;
 use super::speculative::SpecFlow;
-use super::{backoff_secs, AgentRunner};
+use super::{backoff_secs, schema_gate, AgentRunner};
 use crate::claude::{select_model, ClaudeCode, ERR_CREDIT_EXHAUSTED};
 use crate::scorer::Scorer;
 use anyhow::Result;
 use lopi_context::Phase;
-use lopi_core::{AgentEvent, Attempt, LoopConfig, TaskStatus};
+use lopi_core::{AgentEvent, Attempt, TaskStatus};
 use lopi_git::GitManager;
 use std::sync::atomic::Ordering;
 use tracing::Instrument as _;
@@ -290,32 +290,14 @@ impl AgentRunner {
             );
             let score = scorer.score().instrument(score_span).await?;
 
-            // P1.4 — Optional structured-output schema validation. When the
-            // task carries `output_schema`, validate the scorer's JSON
-            // projection against it. Each failure increments the
-            // process-wide `lopi_schema_violations_total{kind=…}` counter
-            // surfaced via `/metrics`. On any violation the agent stashes
-            // the messages as `last_error` (so the next planning prompt
-            // sees them via adaptive retry) and rolls into the next attempt.
+            // P1.4 — Optional structured-output schema validation (see
+            // `schema_gate.rs`). On any violation the agent stashes the
+            // messages as `last_error` (so the next planning prompt sees them
+            // via adaptive retry) and rolls into the next attempt.
             if let Some(ref schema) = self.task.output_schema {
-                let score_json = serde_json::json!({
-                    "test_pass_rate": score.test_pass_rate,
-                    "lint_errors": score.lint_errors,
-                    "diff_lines": score.diff_lines,
-                });
-                let violations = lopi_core::validate_schema(&score_json, schema);
-                if !violations.is_empty() {
-                    for v in &violations {
-                        lopi_core::schema_violations_inc(v.kind.clone());
-                    }
-                    let summary = violations
-                        .iter()
-                        .map(|v| format!("- {}@{}: {}", v.kind.as_str(), v.path, v.message))
-                        .collect::<Vec<_>>()
-                        .join("\n");
+                if let Some((count, summary)) = schema_gate::violation_summary(schema, &score) {
                     self.warn(format!(
-                        "📐 output_schema validation failed ({} issue(s)):\n{summary}",
-                        violations.len()
+                        "📐 output_schema validation failed ({count} issue(s)):\n{summary}"
                     ));
                     if self.adaptive_retry {
                         self.last_error = Some(format!(
@@ -498,63 +480,5 @@ impl AgentRunner {
         };
         self.status(status.clone(), self.task.max_retries);
         Ok(status)
-    }
-
-    /// Stream a plan from the CLI, forwarding both the human log line and the
-    /// structured pane events (tool calls, token usage, cost, phase, rate
-    /// limits) to the event bus as each `StreamEvent` arrives.
-    async fn stream_plan(&self, claude: &ClaudeCode) -> Result<String> {
-        let bus = self.bus.clone();
-        let tid = self.id();
-        claude
-            .plan_streamed(&self.task, self.last_error.as_deref(), move |ev| {
-                forward_stream_event(&bus, tid, ev);
-            })
-            .await
-    }
-
-    /// Stream the implementation from the CLI, forwarding each `StreamEvent`'s
-    /// log line and structured pane events to the event bus.
-    async fn stream_implement(&self, claude: &ClaudeCode, plan: &str) -> Result<String> {
-        let bus = self.bus.clone();
-        let tid = self.id();
-        claude
-            .implement_streamed(&self.task, plan, move |ev| {
-                forward_stream_event(&bus, tid, ev);
-            })
-            .await
-    }
-
-    /// Load the repo's `no_progress_limit` from `.lopi/loop.toml`, off the
-    /// async reactor. Returns `0` (guard disabled) on any read/parse error so a
-    /// malformed loop config can never wedge the retry loop.
-    async fn no_progress_limit(&self) -> u8 {
-        let repo = self.repo_path.clone();
-        tokio::task::spawn_blocking(move || {
-            LoopConfig::load_from_repo(&repo)
-                .map(|c| c.no_progress_limit)
-                .unwrap_or(0)
-        })
-        .await
-        .unwrap_or(0)
-    }
-}
-
-/// Fan a single decoded `StreamEvent` onto the bus: the formatted log line as a
-/// `LogLine` (for the log panel and thought stream) and every structured event
-/// (for the token, cost, phase, and tool panes).
-fn forward_stream_event(
-    bus: &lopi_core::EventBus<AgentEvent>,
-    tid: lopi_core::TaskId,
-    ev: &crate::claude_events::StreamEvent,
-) {
-    if let Some(line) = ev.log_line() {
-        let t = line.trim().to_string();
-        if !t.is_empty() {
-            bus.send(AgentEvent::info(tid, t));
-        }
-    }
-    for structured in ev.structured_events(tid) {
-        bus.send(structured);
     }
 }

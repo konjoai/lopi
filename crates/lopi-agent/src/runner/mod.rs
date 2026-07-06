@@ -5,9 +5,11 @@ mod plan_steps;
 pub mod postmortem;
 mod postmortem_runner;
 mod run_loop;
+mod schema_gate;
 mod seed;
 mod speculative;
 mod stability_runner;
+mod stream;
 mod verifier_runner;
 
 use crate::api_client::AnthropicClient;
