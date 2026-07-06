@@ -15,6 +15,7 @@ import { browser } from '$app/environment';
 import { parseWireMessage, taskStatusToPhase } from '$lib/parser';
 import { connect, setMessageHandler, initMock, getConnectionState } from './wsClient';
 import { recordEvent } from './events';
+import { recordTranscript, clearTranscript } from './transcript';
 import { isDeleted, reconcileSessions, tombstoneSession } from './layout';
 import { reduce, makeBlank } from './agentReducer';
 import type { StimulusKind } from '$lib/forge/excitement';
@@ -57,6 +58,18 @@ export interface AgentState {
   cost: number; // USD accumulated
   thought?: string; // last log line (preview)
 
+  // ── stream-json pane inputs (Phase 1 event spine) ──────────────────────────
+  outputTokens?: number; // cumulative output tokens this run (token_delta)
+  inputTokens?: number; // input tokens for the current turn (token_delta)
+  cacheReadTokens?: number; // cache-read tokens for the current turn (token_delta)
+  numTurns?: number; // turns reported by the terminal result (cost)
+  sessionId?: string; // CLI session UUID for --resume (cost)
+  claudePhase?: string; // Claude's own phase label, e.g. "requesting" (phase)
+  lastTool?: string; // most recent tool name (tool_call)
+  toolCalls?: number; // count of tool calls this run (tool_call)
+  throttled?: boolean; // a rate_limit_event was seen (api_retry)
+  utilization?: number; // 0..1 window utilization from the last api_retry
+
   // Phase 11 — plan approval gate. Set while the agent is paused awaiting a
   // human decision; cleared once it proceeds (approved) or terminates.
   awaitingApproval?: boolean;
@@ -83,14 +96,9 @@ export interface LogEntry {
 }
 
 // ── Phase color map (mirrors :root vars in app.css) ───────────────────────────
-export const PHASE_COLORS: Record<Phase, string> = {
-  Boot: '#f5f5f5',
-  Discovery: '#00d4ff',
-  Planning: '#00ffd4',
-  Implementation: '#ff4500',
-  Testing: '#ffcc00',
-  Conclusion: '#00ff9d'
-};
+// Defined in a leaf module (no `$app` imports) so the pure orb-state mapping and
+// its unit tests can share this exact source of truth.
+export { PHASE_COLORS } from './phase-colors';
 
 // ── Stores ────────────────────────────────────────────────────────────────────
 export const agents = writable<Map<string, AgentState>>(new Map());
@@ -260,8 +268,10 @@ function applyMessage(msg: WireMessage) {
     });
   }
 
-  // Record every event into the live Pulse feed (+ budget alert stream).
+  // Record every event into the live Pulse feed (+ budget alert stream) and the
+  // per-session transcript (the ordered chat narrative the agent pane renders).
   recordEvent(msg);
+  recordTranscript(msg);
 
   agents.update((m) => reduce(m, msg));
 
@@ -293,14 +303,23 @@ export function init() {
   connect();
   if (connectionStateInterval) clearInterval(connectionStateInterval);
   connectionStateInterval = setInterval(updateConnectionState, 500);
-  // Fall back to mock if not connected in 1.5s
-  setTimeout(() => {
-    const state = getConnectionState();
-    if (state === 'offline' || state === 'connecting') {
-      initMock();
-      updateConnectionState();
-    }
-  }, 1500);
+  // Demo data is opt-in only and never masks a dead backend: it runs solely
+  // when the page is loaded with ?demo=1. Without the flag, an unreachable
+  // backend reports an honest offline/empty state.
+  if (isDemoRequested()) {
+    initMock();
+    updateConnectionState();
+  }
+}
+
+/** True only when the page URL carries an explicit `?demo=1` opt-in flag. */
+function isDemoRequested(): boolean {
+  if (!browser) return false;
+  try {
+    return new URLSearchParams(window.location.search).get('demo') === '1';
+  } catch {
+    return false;
+  }
 }
 
 export function selectAgent(id: string) {
@@ -332,6 +351,7 @@ export function stimulate(id: string, kind: StimulusKind = 'request') {
  */
 export function deleteSession(id: string) {
   tombstoneSession(id);
+  clearTranscript(id);
   agents.update((m) => {
     const next = new Map(m);
     next.delete(id);

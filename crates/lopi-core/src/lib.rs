@@ -21,6 +21,9 @@ pub mod schema;
 pub mod self_prompt;
 /// Task definition, status, priority, and source types.
 pub mod task;
+/// Literal-string prompt templates with named `{hole}` markers, resolved
+/// against a variable map at enqueue time (Prompt Templates, Sprint 1).
+pub mod template;
 /// Customer tier classification.
 pub mod tier;
 /// Orchestration topology hints (Sprint T).
@@ -38,6 +41,7 @@ pub use schema::{
 };
 pub use self_prompt::SelfPromptStrategy;
 pub use task::{Priority, Rubric, Task, TaskId, TaskSource, TaskStatus, VerifierVerdict};
+pub use template::{resolve as resolve_template, TemplateError};
 pub use tier::CustomerTier;
 
 #[cfg(test)]

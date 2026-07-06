@@ -1,11 +1,11 @@
 use super::finalize::update_no_progress_streak;
 use super::speculative::SpecFlow;
-use super::{backoff_secs, AgentRunner};
+use super::{backoff_secs, schema_gate, AgentRunner};
 use crate::claude::{select_model, ClaudeCode, ERR_CREDIT_EXHAUSTED};
 use crate::scorer::Scorer;
 use anyhow::Result;
 use lopi_context::Phase;
-use lopi_core::{AgentEvent, Attempt, LoopConfig, TaskStatus};
+use lopi_core::{AgentEvent, Attempt, TaskStatus};
 use lopi_git::GitManager;
 use std::sync::atomic::Ordering;
 use tracing::Instrument as _;
@@ -58,11 +58,17 @@ impl AgentRunner {
                 .chain(spec_constraints.iter())
                 .cloned()
                 .collect();
-            let claude = ClaudeCode::new(&self.repo_path)
+            let mut claude = ClaudeCode::new(&self.repo_path)
                 .with_extra_constraints(all_constraints)
                 .with_patterns(pattern_pairs.clone())
                 .with_lessons(lessons_data.clone())
-                .with_model(model);
+                .with_model(model)
+                // Cost ceiling: the CLI session must not out-run the runner's own
+                // turn cap. Halts cleanly at the cap and reports why.
+                .with_max_turns(self.max_turns);
+            if let Some(usd) = self.cli_budget_usd {
+                claude = claude.with_max_budget_usd(usd);
+            }
             tracing::info!(model, attempt, "model selected for attempt");
             // Hard stop: prevent runaway agents from looping past the turn cap.
             self.turn_count += 1;
@@ -112,7 +118,9 @@ impl AgentRunner {
                 pressure = self.context.token_pressure(),
                 "context at planning"
             );
-            self.log("📋 planning…");
+            // No hardcoded phase label — the real status (thinking, tool calls,
+            // text) streams in live from Claude below. The UI shows a "waiting
+            // for Claude" animation until the first event arrives.
 
             if self.speculative {
                 // Speculative mode: apply plan steps as they stream (see
@@ -143,34 +151,25 @@ impl AgentRunner {
                     if self.has_direct_api() {
                         match self.plan_via_api(model, attempt + 1).await {
                             Ok(p) => {
-                                self.log(format!(
-                                    "✅ plan ready via direct API ({} chars)",
-                                    p.len()
-                                ));
+                                // Direct-API response arrives whole — surface it
+                                // line-by-line so the log reads like the stream.
+                                for line in p.lines() {
+                                    let t = line.trim();
+                                    if !t.is_empty() {
+                                        self.log(t.to_string());
+                                    }
+                                }
                                 Ok(p)
                             }
                             Err(api_err) => {
                                 self.warn(format!(
                                     "direct API plan failed ({api_err}); falling back to CLI"
                                 ));
-                                claude
-                                    .plan(&self.task, self.last_error.as_deref())
-                                    .await
-                                    .inspect(|p| {
-                                        self.log(format!(
-                                            "✅ plan ready via CLI ({} chars)",
-                                            p.len()
-                                        ));
-                                    })
+                                self.stream_plan(&claude).await
                             }
                         }
                     } else {
-                        claude
-                            .plan(&self.task, self.last_error.as_deref())
-                            .await
-                            .inspect(|p| {
-                                self.log(format!("✅ plan ready ({} chars)", p.len()));
-                            })
+                        self.stream_plan(&claude).await
                     }
                 }
                 .instrument(think_span)
@@ -236,7 +235,8 @@ impl AgentRunner {
                     pressure = self.context.token_pressure(),
                     "context at implementation"
                 );
-                self.log("🔨 implementing…");
+                // No hardcoded label — Claude's real actions (tool calls, text,
+                // status) stream into the log live as it works.
 
                 // OTel GenAI-aligned span: act phase. Uses `.instrument()`
                 // (not `.entered()`) so the span guard is not held across
@@ -246,8 +246,8 @@ impl AgentRunner {
                     task_id = %self.id(),
                     attempt = attempt + 1,
                 );
-                let act_result = claude
-                    .implement(&self.task, &plan)
+                let act_result = self
+                    .stream_implement(&claude, &plan)
                     .instrument(act_span)
                     .await;
                 if let Err(e) = act_result {
@@ -290,32 +290,14 @@ impl AgentRunner {
             );
             let score = scorer.score().instrument(score_span).await?;
 
-            // P1.4 — Optional structured-output schema validation. When the
-            // task carries `output_schema`, validate the scorer's JSON
-            // projection against it. Each failure increments the
-            // process-wide `lopi_schema_violations_total{kind=…}` counter
-            // surfaced via `/metrics`. On any violation the agent stashes
-            // the messages as `last_error` (so the next planning prompt
-            // sees them via adaptive retry) and rolls into the next attempt.
+            // P1.4 — Optional structured-output schema validation (see
+            // `schema_gate.rs`). On any violation the agent stashes the
+            // messages as `last_error` (so the next planning prompt sees them
+            // via adaptive retry) and rolls into the next attempt.
             if let Some(ref schema) = self.task.output_schema {
-                let score_json = serde_json::json!({
-                    "test_pass_rate": score.test_pass_rate,
-                    "lint_errors": score.lint_errors,
-                    "diff_lines": score.diff_lines,
-                });
-                let violations = lopi_core::validate_schema(&score_json, schema);
-                if !violations.is_empty() {
-                    for v in &violations {
-                        lopi_core::schema_violations_inc(v.kind.clone());
-                    }
-                    let summary = violations
-                        .iter()
-                        .map(|v| format!("- {}@{}: {}", v.kind.as_str(), v.path, v.message))
-                        .collect::<Vec<_>>()
-                        .join("\n");
+                if let Some((count, summary)) = schema_gate::violation_summary(schema, &score) {
                     self.warn(format!(
-                        "📐 output_schema validation failed ({} issue(s)):\n{summary}",
-                        violations.len()
+                        "📐 output_schema validation failed ({count} issue(s)):\n{summary}"
                     ));
                     if self.adaptive_retry {
                         self.last_error = Some(format!(
@@ -498,19 +480,5 @@ impl AgentRunner {
         };
         self.status(status.clone(), self.task.max_retries);
         Ok(status)
-    }
-
-    /// Load the repo's `no_progress_limit` from `.lopi/loop.toml`, off the
-    /// async reactor. Returns `0` (guard disabled) on any read/parse error so a
-    /// malformed loop config can never wedge the retry loop.
-    async fn no_progress_limit(&self) -> u8 {
-        let repo = self.repo_path.clone();
-        tokio::task::spawn_blocking(move || {
-            LoopConfig::load_from_repo(&repo)
-                .map(|c| c.no_progress_limit)
-                .unwrap_or(0)
-        })
-        .await
-        .unwrap_or(0)
     }
 }

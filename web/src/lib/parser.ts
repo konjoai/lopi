@@ -241,6 +241,70 @@ export function parseAgentEvent(raw: Record<string, unknown>): AgentEvent | null
         burned_usd: raw.burned_usd
       };
     }
+    case 'tool_call': {
+      if (!isString(tid) || !isString(raw.tool) || !isString(raw.summary)) return null;
+      return { type: 'tool_call', task_id: tid, tool: raw.tool, summary: raw.summary };
+    }
+    case 'tool_result': {
+      if (!isString(tid) || !isString(raw.tool) || !isString(raw.preview)) return null;
+      if (typeof raw.is_error !== 'boolean') return null;
+      return {
+        type: 'tool_result',
+        task_id: tid,
+        tool: raw.tool,
+        is_error: raw.is_error,
+        preview: raw.preview
+      };
+    }
+    case 'token_delta': {
+      if (
+        !isString(tid) ||
+        !isNumber(raw.output_tokens) ||
+        !isNumber(raw.input_tokens) ||
+        !isNumber(raw.cache_read_tokens)
+      ) {
+        return null;
+      }
+      return {
+        type: 'token_delta',
+        task_id: tid,
+        output_tokens: raw.output_tokens,
+        input_tokens: raw.input_tokens,
+        cache_read_tokens: raw.cache_read_tokens
+      };
+    }
+    case 'api_retry': {
+      if (!isString(tid) || !isString(raw.status) || !isString(raw.limit_type)) return null;
+      if (!isNumber(raw.utilization)) return null;
+      return {
+        type: 'api_retry',
+        task_id: tid,
+        status: raw.status,
+        limit_type: raw.limit_type,
+        utilization: clamp01(raw.utilization)
+      };
+    }
+    case 'cost': {
+      if (
+        !isString(tid) ||
+        !isNumber(raw.cost_usd) ||
+        !isNumber(raw.num_turns) ||
+        !isString(raw.session_id)
+      ) {
+        return null;
+      }
+      return {
+        type: 'cost',
+        task_id: tid,
+        cost_usd: raw.cost_usd,
+        num_turns: raw.num_turns,
+        session_id: raw.session_id
+      };
+    }
+    case 'phase': {
+      if (!isString(tid) || !isString(raw.phase)) return null;
+      return { type: 'phase', task_id: tid, phase: raw.phase };
+    }
     default:
       return null;
   }

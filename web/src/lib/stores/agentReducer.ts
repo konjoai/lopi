@@ -206,6 +206,77 @@ export function reduce(
       }
       break;
     }
+    case 'tool_call': {
+      const cur = next.get(ev.task_id) ?? makeBlank(ev.task_id);
+      const label = ev.summary ? `🔧 ${ev.tool}(${ev.summary})` : `🔧 ${ev.tool}`;
+      next.set(ev.task_id, {
+        ...cur,
+        lastTool: ev.tool,
+        toolCalls: (cur.toolCalls ?? 0) + 1,
+        thought: label,
+        // A tool call is real activity — keep the orb lively.
+        activity: clamp01(Math.max(cur.activity, 0.6)),
+        stimulus: Date.now(),
+        stimulusKind: 'request'
+      });
+      break;
+    }
+    case 'tool_result': {
+      const cur = next.get(ev.task_id);
+      if (!cur) break;
+      next.set(ev.task_id, {
+        ...cur,
+        // An errored tool result nudges health down; a clean one is neutral.
+        health: ev.is_error ? clamp01(cur.health * 0.9) : cur.health,
+        stimulusKind: ev.is_error ? 'failure' : cur.stimulusKind
+      });
+      break;
+    }
+    case 'token_delta': {
+      const cur = next.get(ev.task_id);
+      if (!cur) break;
+      // Output tokens accumulate across turns; input/cache are per-turn.
+      const outputTokens = (cur.outputTokens ?? 0) + ev.output_tokens;
+      next.set(ev.task_id, {
+        ...cur,
+        outputTokens,
+        inputTokens: ev.input_tokens,
+        cacheReadTokens: ev.cache_read_tokens,
+        // Token flow is generation intensity — normalize against a soft cap.
+        activity: clamp01(ev.output_tokens / 200)
+      });
+      break;
+    }
+    case 'api_retry': {
+      const cur = next.get(ev.task_id);
+      if (!cur) break;
+      next.set(ev.task_id, {
+        ...cur,
+        throttled: ev.status !== 'allowed',
+        utilization: clamp01(ev.utilization),
+        thought: `⏳ rate limit ${ev.limit_type} ${Math.round(ev.utilization * 100)}%`,
+        stimulus: Date.now(),
+        stimulusKind: 'request'
+      });
+      break;
+    }
+    case 'cost': {
+      const cur = next.get(ev.task_id);
+      if (!cur) break;
+      next.set(ev.task_id, {
+        ...cur,
+        cost: ev.cost_usd,
+        numTurns: ev.num_turns,
+        sessionId: ev.session_id || cur.sessionId
+      });
+      break;
+    }
+    case 'phase': {
+      const cur = next.get(ev.task_id);
+      if (!cur) break;
+      next.set(ev.task_id, { ...cur, claudePhase: ev.phase });
+      break;
+    }
   }
   return next;
 }

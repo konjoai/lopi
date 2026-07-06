@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use uuid::Uuid;
 
@@ -248,6 +249,22 @@ impl Task {
         }
     }
 
+    /// Create a `Task` whose goal is resolved from a template string against
+    /// `vars` at enqueue time (Prompt Templates, Sprint 1) — lopi fills the
+    /// holes and Claude only ever sees the resolved literal; this is not a
+    /// skill. The plain [`Task::new`] path is untouched and stays the default
+    /// for callers with no template semantics.
+    ///
+    /// # Errors
+    /// Returns [`crate::template::TemplateError`] when `template` has a
+    /// `{name}` hole with no matching entry in `vars`.
+    pub fn from_template(
+        template: &str,
+        vars: &BTreeMap<String, String>,
+    ) -> Result<Self, crate::template::TemplateError> {
+        crate::template::resolve(template, vars).map(Self::new)
+    }
+
     /// True when every entry in `required_capabilities` appears in
     /// `provided`. Empty requirements vacuously satisfy.
     ///
@@ -265,6 +282,22 @@ impl Task {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn from_template_resolves_holes_before_task_construction() {
+        let vars = BTreeMap::from([
+            ("repo".to_string(), "vectro".to_string()),
+            ("cmd".to_string(), "cargo test".to_string()),
+        ]);
+        let t = Task::from_template("test {repo} until {cmd}", &vars).unwrap();
+        assert_eq!(t.goal, "test vectro until cargo test");
+    }
+
+    #[test]
+    fn from_template_errors_on_missing_var_without_creating_a_task() {
+        let vars = BTreeMap::new();
+        assert!(Task::from_template("test {missing}", &vars).is_err());
+    }
 
     #[test]
     fn rubric_from_toml_str_parses_name_and_criteria() {

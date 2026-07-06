@@ -21,6 +21,22 @@ struct KonjoOrb: View {
     var stimulusKind: String = "request"
     var size: CGFloat = 120
 
+    // ── Living-orb motion params (ORB STATE MAP, see ForgeOrbState). All have
+    // defaults so existing call sites keep working; the pane passes a computed
+    // state in. ──
+    /// State hue; overrides the phase color when set so the orb takes the status color.
+    var glowColor: Color? = nil
+    /// Spin rate, baseline 1; 0 stops (only under `.hardStop`).
+    var spinSpeed: Double = 1
+    /// Pulse-frequency multiplier, baseline 1.
+    var pulseRate: Double = 1
+    /// Aura / rim brightness, ~0.2 (idle) … ~1.4 (success bloom).
+    var glowIntensity: Double = 0.85
+    /// Surface displacement intensity, 0…1, layered onto pressure.
+    var turbulence: Double = 0.3
+    /// A named motion flourish.
+    var special: ForgeOrbState.Special = .none
+
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// The moment this orb appeared. Animation time is measured from here so the
@@ -31,7 +47,8 @@ struct KonjoOrb: View {
 
     /// How long a single stimulus burns (matches the web's EXCITE_DURATION_MS).
     private let exciteDuration: Double = 2.5
-    private var accent: Color { PhaseStyle.color(phase) }
+    /// The orb hue: the live state color when supplied, else the phase color.
+    private var accent: Color { glowColor ?? PhaseStyle.color(phase) }
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: reduceMotion)) { timeline in
@@ -48,7 +65,12 @@ struct KonjoOrb: View {
                         .color(accent),
                         .float(f.spin),
                         .float(f.excite),
-                        .color(exciteColor)
+                        .color(exciteColor),
+                        // Living-orb motion uniforms.
+                        .float(Float(max(pulseRate, 0))),
+                        .float(Float(min(max(glowIntensity, 0), 2))),
+                        .float(Float(min(max(turbulence, 0), 1))),
+                        .float(f.krypto)
                     )
                 )
                 .offset(x: f.ox, y: f.oy)
@@ -62,6 +84,7 @@ struct KonjoOrb: View {
         var time: Float
         var spin: Float
         var excite: Float
+        var krypto: Float
         var ox: CGFloat
         var oy: CGFloat
     }
@@ -77,10 +100,12 @@ struct KonjoOrb: View {
         let since = date.timeIntervalSince(stimulus)
         let excite = (!reduceMotion && since >= 0) ? max(0, 1 - since / exciteDuration) : 0
 
-        // Rotation: gentle base drift plus a small analytic spin-up that
-        // accrues while a stimulus burns (integral of the smoothstepped boost),
-        // then holds. Kept subtle so frequent stimuli don't whip the orb.
-        let baseRate = 0.22
+        // Rotation: a state-scaled base drift plus the stimulus spin-up. The ORB
+        // STATE MAP's spinSpeed scales the rate; `.hardStop` freezes it,
+        // `.reverseSpin` runs it backwards, `.stutter` jitters it. Only hardStop
+        // ever fully stops.
+        let rateScale = motionRateScale(nowRef)
+        let baseRate = 0.22 * rateScale
         var spin = t * baseRate
         if !reduceMotion && since >= 0 {
             let a = min(max(since / exciteDuration, 0), 1)
@@ -89,20 +114,42 @@ struct KonjoOrb: View {
             spin += baseRate * 1.8 * exciteDuration * area
         }
 
+        // Kryptonite — a bright jade halo that pulses ~2–3× on arrival (success)
+        // then settles to a low steady glow as the orb drifts down.
+        let krypto = kryptoLevel(nowRef)
+
         // Shake: a faint front-loaded nudge (excite³) for requests/failures —
         // a reaction, not a rattle.
-        let shakeAmp = shakes ? excite * excite * excite * Double(size) * 0.008 : 0
+        let shakeAmp = shakes ? excite * excite * excite * Double(size) * 0.002 : 0
         return Frame(
             time: Float(t),
-            // Wrap at 10π — the smallest angle where both spin axes (ry = spin
-            // and rx = spin · 0.4) complete whole turns (5 and 2), so the reset
-            // is invisible. Wrapping at 2π reset the X tilt mid-turn (0.8π → 0),
-            // which made the orb skip every ~29s.
             spin: Float(spin.truncatingRemainder(dividingBy: 10 * .pi)),
             excite: Float(smoothstep01(excite)),
+            krypto: Float(krypto),
             ox: CGFloat(sin(nowRef * 53.0) * shakeAmp),
             oy: CGFloat(cos(nowRef * 61.0) * shakeAmp)
         )
+    }
+
+    /// Spin-rate multiplier from `spinSpeed` + `special`. hardStop → 0, reverse →
+    /// negative, stutter → jittered. reduce-motion already pauses the timeline.
+    private func motionRateScale(_ nowRef: Double) -> Double {
+        switch special {
+        case .hardStop: return 0
+        case .reverseSpin: return -abs(spinSpeed)
+        case .stutter: return spinSpeed * (0.6 + 0.9 * ((sin(nowRef * 7.3) + 1) / 2))
+        default: return spinSpeed
+        }
+    }
+
+    /// Kryptonite envelope, 0…~1: a pulsing jade level while `special` is
+    /// kryptonite, settling toward a low floor; 0 otherwise.
+    private func kryptoLevel(_ nowRef: Double) -> Double {
+        guard special == .kryptonite else { return 0 }
+        if reduceMotion { return 0.4 }
+        let since = max(0, nowRef.truncatingRemainder(dividingBy: 3600) - 0) // continuous clock
+        let pulse = 0.6 + 0.4 * sin(since * 6.0)
+        return max(0.25, pulse) * min(1, glowIntensity)
     }
 
     /// Whether the current stimulus kind rattles the orb (success does not).

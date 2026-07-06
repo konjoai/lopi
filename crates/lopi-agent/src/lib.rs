@@ -5,6 +5,9 @@ pub mod api_budget;
 pub mod api_client;
 /// Claude Code subprocess management and model selection.
 pub mod claude;
+/// Single decoder for `claude -p --output-format stream-json` NDJSON: derives
+/// both the log-panel status line and the structured `AgentEvent`s the panes consume.
+pub mod claude_events;
 mod claude_stream;
 /// Sprint U — DAG-structured execution trace for partial-restart retry.
 pub mod dag;

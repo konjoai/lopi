@@ -17,6 +17,18 @@ struct LiveAgent: Identifiable, Hashable {
     var tokensPerSec: Double = 0
     var costUsd: Double = 0
 
+    // stream-json pane inputs (Phase 1 event spine).
+    var outputTokens: Int = 0 // cumulative output tokens this run (token_delta)
+    var inputTokens: Int = 0 // input tokens for the current turn (token_delta)
+    var cacheReadTokens: Int = 0 // cache-read tokens for the current turn (token_delta)
+    var numTurns: Int = 0 // turns from the terminal result (cost)
+    var sessionId: String? // CLI session UUID for --resume (cost)
+    var claudePhase: String? // Claude's own phase label, e.g. "requesting" (phase)
+    var lastTool: String? // most recent tool name (tool_call)
+    var toolCalls: Int = 0 // count of tool calls this run (tool_call)
+    var throttled: Bool = false // a rate_limit_event was seen (api_retry)
+    var utilization: Double = 0 // 0...1 window utilization from the last api_retry
+
     // Latest score_updated.
     var testPassRate: Double?
     var lintErrors: Int?
@@ -109,8 +121,14 @@ enum PhaseStyle {
     static func color(_ phase: String) -> Color {
         switch phase.lowercased() {
         case "success", "done", "completed", "conclusion": return Konjo.jade
-        case "failed", "rolledback", "rolled_back", "cancelled": return Konjo.rose
-        case "testing", "scoring", "retrying", "verifying": return Konjo.sun
+        case "failed", "rolledback", "rolled_back": return Konjo.rose
+        case "cancelled": return Konjo.roseMuted
+        // K-collision: Testing is violet, not yellow (sun is reserved for the
+        // awaiting-user state); Scoring/verifying steps up to bright violet.
+        case "testing": return Konjo.violet
+        case "scoring", "verifying": return Konjo.violetBright
+        case "retrying": return Konjo.flame // rate-limited / retry
+        case "openingpr", "opening_pr", "pr": return Konjo.mint
         case "implementing", "implementation", "coding", "building": return Konjo.ember
         case "queued", "pending": return Konjo.fgMute
         default: return Konjo.ice // planning / discovery / boot / active

@@ -126,5 +126,52 @@ const ID = 'task-1';
   approx(before.pressure, 0.05, 'original agent object not mutated');
 }
 
+// ── stream-json pane events (Phase 1 event spine) ────────────────────────────
+{
+  // tool_call seeds an agent if absent and counts/labels the tool.
+  const m = reduce(empty(), ev({ type: 'tool_call', task_id: ID, tool: 'Bash', summary: 'ls -la' }));
+  const a = m.get(ID)!;
+  eq(a.lastTool, 'Bash', 'tool_call sets lastTool');
+  eq(a.toolCalls, 1, 'tool_call increments toolCalls');
+  eq(a.thought, '🔧 Bash(ls -la)', 'tool_call sets thought label');
+}
+{
+  // token_delta accumulates output tokens and tracks the current turn.
+  const seed = new Map([[ID, makeBlank(ID)]]);
+  let m = reduce(seed, ev({ type: 'token_delta', task_id: ID, output_tokens: 50, input_tokens: 3, cache_read_tokens: 100 }));
+  m = reduce(m, ev({ type: 'token_delta', task_id: ID, output_tokens: 70, input_tokens: 4, cache_read_tokens: 120 }));
+  const a = m.get(ID)!;
+  eq(a.outputTokens, 120, 'token_delta accumulates output tokens');
+  eq(a.cacheReadTokens, 120, 'token_delta tracks latest cache reads');
+}
+{
+  // api_retry records throttle + utilization.
+  const seed = new Map([[ID, makeBlank(ID)]]);
+  const m = reduce(seed, ev({ type: 'api_retry', task_id: ID, status: 'allowed_warning', limit_type: 'seven_day', utilization: 0.92 }));
+  const a = m.get(ID)!;
+  ok(a.throttled === true, 'api_retry sets throttled');
+  approx(a.utilization!, 0.92, 'api_retry records utilization');
+}
+{
+  // cost sets accumulated cost, turns, and the resumable session id.
+  const seed = new Map([[ID, makeBlank(ID)]]);
+  const m = reduce(seed, ev({ type: 'cost', task_id: ID, cost_usd: 0.048, num_turns: 3, session_id: 'sess-1' }));
+  const a = m.get(ID)!;
+  approx(a.cost, 0.048, 'cost sets accumulated cost');
+  eq(a.numTurns, 3, 'cost sets num_turns');
+  eq(a.sessionId, 'sess-1', 'cost threads session_id');
+}
+{
+  // phase records Claude's own phase label.
+  const seed = new Map([[ID, makeBlank(ID)]]);
+  const m = reduce(seed, ev({ type: 'phase', task_id: ID, phase: 'review_ready' }));
+  eq(m.get(ID)!.claudePhase, 'review_ready', 'phase sets claudePhase');
+}
+{
+  // events for an unknown task are a no-op (except tool_call, which seeds).
+  eq(reduce(empty(), ev({ type: 'cost', task_id: 'ghost', cost_usd: 1, num_turns: 1, session_id: 's' })).size, 0, 'cost for unknown task → no-op');
+  eq(reduce(empty(), ev({ type: 'phase', task_id: 'ghost', phase: 'x' })).size, 0, 'phase for unknown task → no-op');
+}
+
 console.log(`\nagentReducer: ${pass} passed, ${fail} failed`);
 if (fail > 0) process.exit(1);

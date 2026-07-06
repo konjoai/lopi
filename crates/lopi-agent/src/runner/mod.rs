@@ -5,9 +5,11 @@ mod plan_steps;
 pub mod postmortem;
 mod postmortem_runner;
 mod run_loop;
+mod schema_gate;
 mod seed;
 mod speculative;
 mod stability_runner;
+mod stream;
 mod verifier_runner;
 
 use crate::api_client::AnthropicClient;
@@ -97,6 +99,9 @@ pub struct AgentRunner {
     /// budget; `Some(n)` lets the model self-pace within `n` tokens on supported
     /// models. Wired from [`LoopConfig::budget_tokens`](lopi_core::LoopConfig).
     pub(super) task_budget: Option<u64>,
+    /// Per-session USD cost ceiling passed to `claude -p` as `--max-budget-usd`
+    /// on the streaming path. `None` (the default) sets no CLI budget cap.
+    pub(super) cli_budget_usd: Option<f64>,
     /// Sprint S — when true, the Konjo Verifier second-score pass runs after
     /// the heuristic score passes. Requires `api_client` to be set.
     pub(super) verifier_enabled: bool,
@@ -157,6 +162,7 @@ impl AgentRunner {
             self_prompt: SelfPromptStrategy::default(),
             escalate_strategy: false,
             task_budget: None,
+            cli_budget_usd: None,
             verifier_enabled: false,
             last_plan: None,
             session_id: Uuid::new_v4(),
@@ -173,41 +179,22 @@ impl AgentRunner {
     }
 
     /// One-shot constructor — creates a standalone bus for `lopi run`.
+    ///
+    /// Delegates to [`new`](Self::new) for all field defaults so the two
+    /// constructors cannot drift; it only supplies a fresh bus, a dropped
+    /// cancel channel, and a zeroed attempt counter.
     #[must_use]
     pub fn standalone(task: Task, repo_path: PathBuf) -> (Self, EventBus<AgentEvent>) {
         let bus: EventBus<AgentEvent> = EventBus::new(128);
         let (_cancel_tx, cancel_rx) = oneshot::channel();
-        let runner = Self {
-            bus: bus.clone(),
+        let runner = Self::new(
             task,
             repo_path,
-            store: None,
-            dry_run: false,
-            speculative: false,
-            context: ContextWindow::new(Self::CONTEXT_BUDGET),
-            max_turns: 25,
-            api_client: None,
-            limiter: None,
-            breaker: None,
-            stability_harness: None,
-            adaptive_retry: false,
-            last_error: None,
-            self_prompt: SelfPromptStrategy::default(),
-            escalate_strategy: false,
-            task_budget: None,
-            verifier_enabled: false,
-            last_plan: None,
-            session_id: Uuid::new_v4(),
-            cancel_rx: Some(cancel_rx),
-            plan_decision_rx: None,
-            cancel_token: CancellationToken::new(),
-            attempt_counter: Arc::new(AtomicUsize::new(0)),
-            attempts_made: 0,
-            turn_count: 0,
-            score_weights: ScoreWeights::default(),
-            task_lessons: vec![],
-            skills: lopi_skill::SkillRegistry::default(),
-        };
+            bus.clone(),
+            None,
+            cancel_rx,
+            Arc::new(AtomicUsize::new(0)),
+        );
         (runner, bus)
     }
 

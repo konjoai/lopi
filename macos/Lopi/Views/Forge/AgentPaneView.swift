@@ -1,40 +1,41 @@
 import SwiftUI
 
-/// One pane in the Forge grid, laid out to mirror the web UI's AgentPane: a
-/// content column (header · orb · metrics · log strip · command · footer) beside
-/// a narrow right rail (close · phase · retry/stop). An empty pane becomes a
-/// launcher; a live pane shows cognition and exposes its controls on the rail.
+/// One pane in the Forge grid — a full-pane chat: a header, a transcript that
+/// fills the body, and a composer pinned at the bottom. The living orb is
+/// absorbed into the bottom-right corner of the transcript (large + centered as
+/// the launcher when idle; it travels + shrinks into the corner via
+/// `matchedGeometryEffect` the moment a session goes live, then keeps animating
+/// per the ORB STATE MAP). The mirror of the web AgentPane.
+///
+/// NOTE: written to mirror the verified web implementation; this macOS target was
+/// not compiled in the authoring environment (Linux) — build on the M3.
 struct AgentPaneView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var agent: LiveAgent?
     var controls: LaunchControls
-    /// Total panes in the grid — the orb scales down as more are added.
+    /// Total panes in the grid (kept for API compatibility; orb now self-sizes).
     var paneCount: Int = 1
     var onClose: () -> Void
 
     @State private var goal = ""
     @State private var submitting = false
     @State private var deciding = false
+    @Namespace private var orbNS
 
-    private var accent: Color { agent.map { PhaseStyle.color($0.phase) } ?? Konjo.konjo }
-    private var isLive: Bool { agent.map { PhaseStyle.isActive($0.phase) && $0.active } ?? false }
+    // MARK: Derived state
 
-    /// Rail phase label — a clean "Review" while gated, else the phase name.
-    private var railPhaseLabel: String {
+    private var orb: ForgeOrbState { OrbStateMap.compute(agent, awaiting: agent?.awaitingApproval ?? false) }
+    /// Drive the pane chrome from the orb's live state color (one voice).
+    private var accent: Color { agent == nil ? Konjo.konjo : orb.glowColor }
+    private var isLive: Bool { agent?.active ?? false }
+    private var blocks: [TranscriptBlock] { agent.map { TranscriptBuilder.build(from: $0) } ?? [] }
+
+    private var phaseLabel: String {
         guard let agent else { return "—" }
         return agent.awaitingApproval ? "Review" : agent.phase.capitalized
     }
 
-    /// Orb diameter scaled to the pane's share of the screen: large in a
-    /// single pane, shrinking smoothly (∝ √areaFraction) as panes are added so
-    /// it always sits comfortably within its tile.
-    private var orbSize: CGFloat {
-        let (cols, rows) = PaneLayout.dims(max(paneCount, 1))
-        let frac = (1.0 / Double(cols * rows)).squareRoot()
-        return min(462, max(159, (40 + 220 * frac) * 1.65))
-    }
-
-    /// Pane text runs 25% larger than the base Konjo type scale for legibility.
     private static let textScale: CGFloat = 1.25
     private func paneMono(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
         Konjo.mono(size * Self.textScale, weight: weight)
@@ -44,39 +45,27 @@ struct AgentPaneView: View {
     }
 
     var body: some View {
-        contentColumn
+        VStack(spacing: 0) {
+            header
+            Divider().overlay(Konjo.line)
+            bodyArea
+            Divider().overlay(Konjo.line)
+            if let agent { metrics(agent) }
+            composer
+            if let agent { bottomBar(agent) }
+        }
         .background(Konjo.bg1.opacity(0.6))
         .clipShape(RoundedRectangle(cornerRadius: 10))
-        // Resting hairline, plus a phase-tinted rim while the agent is working
-        // so a busy grid telegraphs which panes are live at a glance.
         .overlay(
             RoundedRectangle(cornerRadius: 10)
                 .stroke(isLive ? accent.opacity(0.35) : Konjo.line, lineWidth: 1)
         )
-        // Floating-card elevation; the rim glow intensifies on live panes.
         .shadow(color: .black.opacity(0.55), radius: 14, y: 6)
         .shadow(color: isLive ? accent.opacity(0.28) : .clear, radius: 18)
         .animation(.easeInOut(duration: 0.4), value: isLive)
     }
 
-    // MARK: Content column (left)
-
-    private var contentColumn: some View {
-        VStack(spacing: 0) {
-            header
-            Divider().overlay(Konjo.line)
-            orbArea
-            if let agent {
-                metrics(agent)
-                logStrip(agent)
-            }
-            // Subtle separator above the prompt, matching the top bar.
-            Divider().overlay(Konjo.line)
-            commandBar
-            if let agent { bottomBar(agent) }
-        }
-        .frame(maxWidth: .infinity)
-    }
+    // MARK: Header
 
     private var header: some View {
         HStack(spacing: 8) {
@@ -86,14 +75,12 @@ struct AgentPaneView: View {
                 .font(paneMono(11, weight: .medium)).lineLimit(1)
                 .foregroundStyle(agent == nil ? Konjo.fgMute : Konjo.fg)
             Spacer(minLength: 8)
-            // Phase reads right-aligned on the title line.
             if agent != nil {
-                Text(railPhaseLabel)
+                Text(phaseLabel)
                     .font(paneSans(11, weight: .bold))
                     .foregroundStyle(agent?.awaitingApproval == true ? Konjo.sun : accent)
                     .lineLimit(1).fixedSize()
             }
-            // Close lives on the title bar now (the right rail is gone).
             Button(action: onClose) {
                 Image(systemName: "xmark").font(.system(size: 10, weight: .bold))
                     .foregroundStyle(Konjo.fgDim)
@@ -107,38 +94,61 @@ struct AgentPaneView: View {
         .padding(.horizontal, 12).padding(.vertical, 9)
     }
 
-    /// The flexible middle — orb (+ aura) that pushes the fixed strips to the
-    /// bottom. An empty pane shows the launcher selectors beneath the orb.
-    private var orbArea: some View {
-        VStack(spacing: 16) {
-            KonjoOrb(
-                phase: agent?.phase ?? "idle",
-                activity: agent?.activity ?? 0,
-                pressure: agent?.pressure ?? 0,
-                health: agent?.testPassRate ?? 0.85,
-                stimulus: agent?.stimulus ?? .distantPast,
-                stimulusKind: agent?.stimulusKind ?? "request",
-                size: orbSize
-            )
-            .background(
-                Circle()
-                    .fill(accent.opacity(agent == nil ? 0.05 : 0.16))
-                    .frame(width: orbSize * 1.24, height: orbSize * 1.24)
-                    .blur(radius: 26)
-            )
-            // Grow/shrink in step with the grid's add/remove spring.
-            .animation(.spring(response: 0.42, dampingFraction: 0.82), value: paneCount)
-            if agent == nil {
-                LaunchControlsView(controls: controls, dense: true)
-                    .padding(.horizontal, 14)
+    // MARK: Body — transcript fills the pane; orb absorbed into the corner
+
+    private var bodyArea: some View {
+        GeometryReader { geo in
+            let cornerSize = min(300, max(120, min(geo.size.width, geo.size.height) * 0.42))
+            let idleSize = min(320, max(150, min(geo.size.width, geo.size.height) * 0.5))
+            ZStack(alignment: .bottomTrailing) {
+                if let agent {
+                    TranscriptView(blocks: blocks, streaming: agent.active, orbInset: cornerSize + 16)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    // Corner orb overlay (non-interactive).
+                    orbView(size: cornerSize)
+                        .matchedGeometryEffect(id: "orb", in: orbNS)
+                        .padding(10)
+                        .allowsHitTesting(false)
+                } else {
+                    // Idle launcher: orb large + centered, controls beneath.
+                    VStack(spacing: 16) {
+                        orbView(size: idleSize)
+                            .matchedGeometryEffect(id: "orb", in: orbNS)
+                        LaunchControlsView(controls: controls, dense: true)
+                            .padding(.horizontal, 14)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
             }
+            .overlay {
+                if let agent, agent.awaitingApproval { planGate(agent) }
+            }
+            .animation(reduceMotion ? nil : .spring(response: 0.4, dampingFraction: 0.85), value: agent != nil)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(.vertical, 16)
-        // Phase 11 — the plan approval gate takes over the orb area while paused.
-        .overlay {
-            if let agent, agent.awaitingApproval { planGate(agent) }
-        }
+    }
+
+    private func orbView(size: CGFloat) -> some View {
+        KonjoOrb(
+            phase: agent?.phase ?? "idle",
+            activity: agent?.activity ?? 0,
+            pressure: agent?.pressure ?? 0,
+            health: agent?.testPassRate ?? 0.85,
+            stimulus: agent?.stimulus ?? .distantPast,
+            stimulusKind: agent?.stimulusKind ?? "request",
+            size: size,
+            glowColor: orb.glowColor,
+            spinSpeed: orb.spinSpeed,
+            pulseRate: orb.pulseRate,
+            glowIntensity: orb.glowIntensity,
+            turbulence: orb.turbulence,
+            special: orb.special
+        )
+        .background(
+            Circle()
+                .fill(orb.glowColor.opacity(agent == nil ? 0.05 : 0.16))
+                .frame(width: size * 1.24, height: size * 1.24)
+                .blur(radius: 26)
+        )
     }
 
     // MARK: Plan approval gate (Phase 11)
@@ -202,84 +212,75 @@ struct AgentPaneView: View {
         }
     }
 
-    // MARK: Metrics strip
+    // MARK: Metrics — Context (window pressure) · Activity · Cost
 
     private func metrics(_ agent: LiveAgent) -> some View {
-        HStack(spacing: 12) {
-            meter("P", value: agent.pressure, warn: agent.pressure > 0.75)
-            label("A", "\(Int(agent.activity * 100))")
-            label("$", String(format: "%.4f", agent.costUsd))
+        HStack(spacing: 14) {
+            pressureBar(agent.pressure)
+            metricLabel("Activity", "\(Int(agent.activity * 100))%")
+            metricLabel("Cost", String(format: "$%.4f", agent.costUsd))
         }
         .padding(.horizontal, 12).padding(.vertical, 7)
         .background(Color.black.opacity(0.2))
     }
 
-    private func meter(_ k: String, value: Double, warn: Bool) -> some View {
-        HStack(spacing: 5) {
-            Text("\(k):").font(paneMono(9)).foregroundStyle(Konjo.fgMute)
+    private func pressureBar(_ value: Double) -> some View {
+        let warn = value > 0.75
+        return HStack(spacing: 6) {
+            Text("Context").font(paneMono(8)).foregroundStyle(Konjo.fgMute)
             GeometryReader { g in
                 ZStack(alignment: .leading) {
                     Capsule().fill(Color.black.opacity(0.4))
-                    Capsule().fill(warn ? Konjo.rose : Konjo.konjo2)
+                    Capsule()
+                        .fill(warn ? Konjo.rose : Konjo.konjo2)
                         .frame(width: g.size.width * CGFloat(min(max(value, 0), 1)))
+                        .animation(.easeOut(duration: 0.3), value: value)
                 }
             }
             .frame(height: 4)
+            Text("\(Int(value * 100))%")
+                .font(paneMono(8))
+                .foregroundStyle(warn ? Konjo.rose : Konjo.fgMute)
+                .monospacedDigit()
         }
         .frame(maxWidth: .infinity)
     }
 
-    private func label(_ k: String, _ v: String) -> some View {
+    private func metricLabel(_ key: String, _ value: String) -> some View {
         HStack(spacing: 4) {
-            Text("\(k):").font(paneMono(9)).foregroundStyle(Konjo.fgMute)
-            Text(v).font(paneMono(9)).foregroundStyle(Konjo.fgDim).monospacedDigit()
+            Text(key).font(paneMono(8)).foregroundStyle(Konjo.fgMute)
+            Text(value).font(paneMono(8)).foregroundStyle(Konjo.fgDim).monospacedDigit()
         }
     }
 
-    // MARK: Log strip — last few lines for this agent
+    // MARK: Composer — prompt input + send (Enter sends)
 
-    private func logStrip(_ agent: LiveAgent) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            if agent.logTail.isEmpty {
-                Text("— waiting for output —")
-                    .font(paneMono(8)).italic().foregroundStyle(Konjo.fgMute)
-            } else {
-                ForEach(Array(agent.logTail.suffix(3).enumerated()), id: \.offset) { _, log in
-                    HStack(spacing: 6) {
-                        Text("[\(log.level.prefix(1).uppercased())]")
-                            .foregroundStyle(logColor(log.level))
-                        Text(log.text).lineLimit(1).foregroundStyle(Konjo.fgDim)
-                    }
-                    .font(paneMono(8))
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, minHeight: 30, alignment: .leading)
-        .padding(.horizontal, 12).padding(.vertical, 6)
-        .background(Color.black.opacity(0.3))
-    }
-
-    private func logColor(_ level: String) -> Color {
-        switch level {
-        case "error": return Konjo.rose
-        case "warn": return Konjo.flame
-        default: return Konjo.fgMute
-        }
-    }
-
-    // MARK: Command bar
-
-    private var commandBar: some View {
+    private var composer: some View {
         HStack(spacing: 8) {
             Text(">").font(paneMono(16, weight: .medium)).foregroundStyle(Konjo.ok)
-            TextField(agent == nil ? "type a goal…" : "new goal…", text: $goal)
+            TextField(agent == nil ? "type a goal…" : "message this agent…", text: $goal, axis: .vertical)
                 .textFieldStyle(.plain)
-                .font(paneMono(16)).foregroundStyle(Konjo.fg)
+                .lineLimit(1...5)
+                .font(paneMono(15)).foregroundStyle(Konjo.fg)
                 .onSubmit { submit(goal: goal) }
-            if submitting { ProgressView().controlSize(.small) }
+            if submitting {
+                ProgressView().controlSize(.small)
+            } else {
+                Button { submit(goal: goal) } label: {
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(Konjo.bg)
+                        .frame(width: 26, height: 26)
+                        .background(Konjo.ice)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+                .buttonStyle(.plain)
+                .disabled(goal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .help("Send")
+            }
         }
-        .padding(.horizontal, 14).padding(.top, 12).padding(.bottom, 18)
-        .background(Color.black.opacity(0.1))
+        .padding(.horizontal, 12).padding(.vertical, 9)
+        .background(Color.black.opacity(0.18))
     }
 
     // MARK: Bottom bar — attempt · branch on the left, retry/stop on the right
@@ -301,7 +302,6 @@ struct AgentPaneView: View {
         .padding(.horizontal, 12).padding(.vertical, 7)
     }
 
-    /// Compact control for the bottom bar.
     private func barButton(_ icon: String, _ color: Color, disabled: Bool = false,
                            help: String, _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
