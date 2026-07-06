@@ -26,6 +26,7 @@
     shakes,
     type StimulusKind
   } from './excitement';
+  import type { OrbSpecial } from './orbState';
 
   // ── Public props ────────────────────────────────────────────────────────────
   export let pressure: number = 0.4;          // 0..1 — context fill
@@ -41,6 +42,36 @@
   export let stimulus: number = 0;
   /** What kind of stimulus — picks the reaction color + whether to shake. */
   export let stimulusKind: StimulusKind = 'request';
+
+  // ── Living-orb motion params (ORB STATE MAP, see orbState.ts) ────────────────
+  /** State hue; overrides phaseColor when set so the orb takes the status color. */
+  export let glowColor: string = '';
+  /** Spin rate, baseline 1; 0 stops (only honored under `special: hardStop`). */
+  export let spinSpeed: number = 1;
+  /** Pulse-frequency multiplier, baseline 1. */
+  export let pulseRate: number = 1;
+  /** Aura / rim brightness, ~0.2 (idle) … ~1.4 (success bloom). */
+  export let glowIntensity: number = 0.85;
+  /** Surface displacement intensity, 0..1, layered onto pressure. */
+  export let turbulence: number = 0.3;
+  /** A named motion flourish: kryptonite, hardStop, reverseSpin, stutter, … */
+  export let special: OrbSpecial = 'none';
+
+  /** Resolved orb hue — the state color when provided, else the phase color. */
+  $: hue = glowColor || phaseColor;
+
+  const reduceMotion =
+    typeof window !== 'undefined' && window.matchMedia
+      ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      : false;
+
+  // Kryptonite envelope: bright jade halo pulses on arrival then settles.
+  let krypto = 0;
+  let lastSpecial: OrbSpecial = 'none';
+  $: if (special === 'kryptonite' && lastSpecial !== 'kryptonite') {
+    krypto = 1;
+  }
+  $: lastSpecial = special;
 
   // ── Internal state ──────────────────────────────────────────────────────────
   let container: HTMLDivElement;
@@ -84,6 +115,7 @@
     uniform float uTime;
     uniform float uPressure;
     uniform float uActivity;
+    uniform float uTurbulence;
 
     // Ashima 3D simplex noise
     vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
@@ -146,8 +178,9 @@
       float n2 = snoise(position * 4.5 + vec3(0.0, t * 1.3, 0.0));
       float noise = n1 * 0.7 + n2 * 0.3;
 
-      // Pressure scales displacement amplitude (0.05 calm → 0.22 turbulent)
-      float amplitude = 0.05 + uPressure * 0.17;
+      // Pressure + state turbulence scale displacement amplitude
+      // (0.05 calm → ~0.38 at full pressure + turbulence).
+      float amplitude = 0.05 + uPressure * 0.17 + uTurbulence * 0.16;
       vec3 displaced = position + normal * noise * amplitude;
 
       vNoise = noise;
@@ -173,6 +206,9 @@
     uniform vec3 uExciteColor;
     uniform vec3 uPhaseColor;
     uniform vec3 uCameraPosition;
+    uniform float uPulseRate;
+    uniform float uGlow;
+    uniform float uKrypto;
 
     // Same noise as vertex shader (DRY for portability)
     vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
@@ -260,15 +296,23 @@
       float veins = smoothstep(-0.85, -0.45, n3);
       color += ICE * veins * 0.35;
 
-      // Fresnel rim — only bright at grazing angles (steep curve)
+      // Fresnel rim — only bright at grazing angles (steep curve). State glow
+      // intensity scales the rim halo (idle dim → success bloom bright).
       vec3 viewDir = normalize(uCameraPosition - vWorldPosition);
       float fresnel = 1.0 - max(0.0, dot(viewDir, normalize(vNormal)));
       fresnel = pow(fresnel, 3.2);  // Steep curve: only edges glow
-      color += HOT * fresnel * 0.5;   // Bright phase-tinted rim halo
+      color += HOT * fresnel * (0.25 + uGlow * 0.7);  // phase-tinted rim halo
 
-      // Activity pulse — global brightness modulation
-      float pulse = 1.0 + sin(uTime * (1.5 + uActivity * 2.5)) * 0.06 * uActivity;
+      // Activity + state pulse — global brightness modulation, frequency driven
+      // by the state's pulseRate so "slows down" reads as a calmer breath.
+      float pulse = 1.0 + sin(uTime * (1.0 + uActivity * 2.0) * uPulseRate) * (0.05 + 0.05 * uActivity);
       color *= pulse;
+
+      // Kryptonite — a bright jade halo that pulses then settles (success).
+      vec3 JADE = vec3(0.0, 1.0, 0.62);
+      float kpulse = uKrypto * (0.6 + 0.4 * sin(uTime * 6.0));
+      color += JADE * fresnel * kpulse * 1.8;
+      color += JADE * kpulse * 0.25;
 
       // Excitement — the orb runs hot on a stimulus. Blend the surface
       // toward the reaction color (ember on request, jade on success,
@@ -329,8 +373,13 @@
         uHealth: { value: health },
         uExcite: { value: 0 },
         uExciteColor: { value: new THREE.Vector3(1.0, 0.45, 0.05) },
-        uPhaseColor: { value: hexToVec3(phaseColor) },
-        uCameraPosition: { value: camera.position.clone() }
+        uPhaseColor: { value: hexToVec3(hue) },
+        uCameraPosition: { value: camera.position.clone() },
+        // Living-orb motion uniforms.
+        uPulseRate: { value: pulseRate },
+        uGlow: { value: glowIntensity },
+        uTurbulence: { value: turbulence },
+        uKrypto: { value: 0 }
       },
       transparent: false
     });
@@ -358,6 +407,22 @@
       material.uniforms.uActivity.value += (activity - material.uniforms.uActivity.value) * 0.05;
       material.uniforms.uHealth.value += (health - material.uniforms.uHealth.value) * 0.05;
 
+      // Smoothly chase the living-orb motion params so state changes animate
+      // (no hard cut), unless reduce-motion is set (then snap).
+      const k = reduceMotion ? 1 : 0.06;
+      material.uniforms.uPulseRate.value += (pulseRate - material.uniforms.uPulseRate.value) * k;
+      material.uniforms.uGlow.value += (glowIntensity - material.uniforms.uGlow.value) * k;
+      material.uniforms.uTurbulence.value += (turbulence - material.uniforms.uTurbulence.value) * k;
+
+      // Kryptonite pulses 2–3× then settles: decay the envelope toward a low
+      // steady glow over ~1.4s once triggered.
+      if (special === 'kryptonite') {
+        krypto = Math.max(0.18, krypto - dt / 1.4);
+      } else {
+        krypto = Math.max(0, krypto - dt * 2);
+      }
+      material.uniforms.uKrypto.value += (krypto - material.uniforms.uKrypto.value) * Math.min(1, dt * 8);
+
       // Excitement envelope — decays back to calm over ~2.5s. The shader
       // sees a softened copy so the orange glow ramps in/out smoothly.
       excite = Math.max(0, excite - (dt * 1000) / EXCITE_DURATION_MS);
@@ -365,10 +430,17 @@
       material.uniforms.uExcite.value +=
         (eased - material.uniforms.uExcite.value) * Math.min(1, dt * 10);
 
-      // Rotation: calm drift normally, spinning up hard while excited.
-      const spin = spinMultiplier(excite, 9);
-      mesh.rotation.y += 0.002 * spin;
-      mesh.rotation.x += 0.0008 * spin;
+      // Rotation: the state's spinSpeed sets the base rate; excitement spins it
+      // up further. `hardStop` freezes it; `reverseSpin` runs it backwards;
+      // `stutter` jitters the rate intermittently. reduce-motion calms it all.
+      const excSpin = spinMultiplier(excite, 9);
+      let base = special === 'hardStop' ? 0 : spinSpeed;
+      if (special === 'reverseSpin') base = -Math.abs(spinSpeed);
+      if (special === 'stutter') base *= 0.6 + Math.random() * 0.9;
+      const rm = reduceMotion ? 0.35 : 1;
+      const spin = base * excSpin * rm;
+      mesh.rotation.y += 0.0038 * spin;
+      mesh.rotation.x += 0.0015 * spin;
 
       // Shake: front-loaded jitter (excite^3) — a sharp rattle on impact
       // that settles before the glow fades. Success blooms without one.
@@ -391,8 +463,8 @@
   }
 
   // ── Reactive uniform updates ────────────────────────────────────────────────
-  $: if (material) {
-    material.uniforms.uPhaseColor.value = hexToVec3(phaseColor);
+  $: if (material && hue) {
+    material.uniforms.uPhaseColor.value = hexToVec3(hue);
   }
   $: if (renderer && size) {
     renderer.setSize(size, size);

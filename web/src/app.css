@@ -14,6 +14,16 @@
   --konjo-sun: #ffcc00;
   --konjo-rose: #ff0066;
 
+  /* ── Orb-state palette (living-orb status map) ──────────────────────────
+     The few new hues the orb state map names, layered on the Konjo base.
+     Yellow/orange is reserved for the awaiting state, green for success, so
+     Testing is recolored violet and Planning realigned to ice (K-collision). */
+  --konjo-plasma: #5ee6ff;       /* Implementing — plasma cyan */
+  --konjo-violet: #7c3aed;       /* Testing — violet (was sun yellow) */
+  --konjo-violet-bright: #9d5cff;/* Scoring / verifying */
+  --konjo-mint: #3be6c8;         /* Opening PR — pre-success mint */
+  --konjo-rose-muted: #b04a6a;   /* Cancelled — muted rose */
+
   /* Accent — themeable highlight used by navigation + interactive chrome.
      Defaults to ice; [data-theme] variants below remap it (Konjo theme
      switcher in the Config tab). RGB triplet feeds Tailwind alpha values. */
@@ -53,9 +63,9 @@
 
   --phase-boot: var(--konjo-paper);
   --phase-discovery: var(--konjo-ice);
-  --phase-planning: #00ffd4;
+  --phase-planning: var(--konjo-ice); /* K-collision: realigned to ice */
   --phase-implementation: var(--konjo-ember);
-  --phase-testing: var(--konjo-sun);
+  --phase-testing: var(--konjo-violet); /* K-collision: recolored violet */
   --phase-conclusion: var(--konjo-jade);
 }
 

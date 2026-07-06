@@ -20,6 +20,76 @@ let mockTimer: ReturnType<typeof setInterval> | null = null;
 let mockTick = 0;
 let messageHandler: MessageHandler | null = null;
 
+/** Demo agents that have reached a terminal/override state — skipped in the cycle. */
+const frozen = new Set<string>();
+
+/** A markdown intro with a fenced code block — exercises the prose+code renderer. */
+const DEMO_INTRO = [
+  "I'll add a Redis-backed semantic cache to the retrieval path. Here's the plan:",
+  '',
+  '1. A `RedisCache` struct wrapping the connection pool',
+  '2. Wire it into `retrieve()` behind a feature flag',
+  '3. A TTL-based eviction policy',
+  '',
+  'Starting with the cache struct:',
+  '',
+  '```rust',
+  'pub struct RedisCache {',
+  '    pool: deadpool_redis::Pool,',
+  '    ttl: Duration,',
+  '}',
+  '```'
+].join('\n');
+
+/** A unified-diff fenced block — exercises the green/red diff gutter. */
+const DEMO_DIFF = [
+  'Applied the wiring:',
+  '',
+  '```diff',
+  '@@ retrieve(query) @@',
+  '-    let hits = self.index.search(query, k);',
+  '+    if let Some(hit) = self.cache.get(query).await {',
+  '+        return Ok(hit);',
+  '+    }',
+  '+    let hits = self.index.search(query, k);',
+  '```'
+].join('\n');
+
+/** Seed one pane with a representative transcript (text, tools, diff, tokens). */
+function seedTranscript(taskId: string) {
+  const h = messageHandler;
+  if (!h) return;
+  h({ type: 'phase', task_id: taskId, phase: 'planning' });
+  h({ type: 'log_line', task_id: taskId, line: DEMO_INTRO, level: 'info', ts: new Date().toISOString() });
+  h({ type: 'tool_call', task_id: taskId, tool: 'Bash', summary: 'cargo add deadpool-redis' });
+  h({ type: 'tool_result', task_id: taskId, tool: 'Bash', is_error: false, preview: '    Updating crates.io index\n      Adding deadpool-redis v0.14 to dependencies' });
+  h({ type: 'tool_call', task_id: taskId, tool: 'Edit', summary: 'crates/lopi-agent/src/retrieve.rs' });
+  h({ type: 'tool_result', task_id: taskId, tool: 'Edit', is_error: false, preview: 'applied 1 edit (+5 −1)' });
+  h({ type: 'log_line', task_id: taskId, line: DEMO_DIFF, level: 'info', ts: new Date().toISOString() });
+  h({ type: 'token_delta', task_id: taskId, output_tokens: 142, input_tokens: 8, cache_read_tokens: 16320 });
+}
+
+/** Drive a demo agent to a terminal outcome (jade success or rose failure). */
+function freezeFinal(taskId: string, failed: boolean) {
+  const h = messageHandler;
+  if (!h) return;
+  frozen.add(taskId);
+  const outcome = (failed ? { Failed: { reason: 'tests still red after 3 attempts' } } : { Success: { branch: 'feat/redis-cache', pr_url: 'https://github.com/konjoai/lopi/pull/99' } }) as unknown as TaskStatus;
+  if (!failed) h({ type: 'tool_call', task_id: taskId, tool: 'Bash', summary: 'cargo nextest run' });
+  if (!failed) h({ type: 'tool_result', task_id: taskId, tool: 'Bash', is_error: false, preview: '   Summary 41 tests run: 41 passed, 0 failed' });
+  h({ type: 'cost', task_id: taskId, cost_usd: failed ? 0.74 : 0.41, num_turns: failed ? 9 : 5, session_id: 'demo' });
+  h({ type: 'task_completed', task_id: taskId, outcome, total_attempts: failed ? 3 : 1 });
+}
+
+/** Drive a demo agent into the rate-limited (flame stutter) override state. */
+function throttle(taskId: string) {
+  const h = messageHandler;
+  if (!h) return;
+  frozen.add(taskId);
+  h({ type: 'status_changed', task_id: taskId, status: 'Implementing' as TaskStatus, attempt: 1 });
+  h({ type: 'api_retry', task_id: taskId, status: 'throttled', limit_type: 'tokens', utilization: 0.97 });
+}
+
 export function setMessageHandler(handler: MessageHandler) {
   messageHandler = handler;
 }
@@ -139,6 +209,16 @@ function startMockData() {
     }
   }
 
+  // Seed each pane with a rich transcript so the chat renderer (markdown, code,
+  // diffs, tool-call accordions) is exercised without a live backend. Then drive
+  // a few agents into terminal / override states so every orb color is visible.
+  for (const seed of seedAgents) seedTranscript(seed.task_id);
+  // demo-3 completes (jade kryptonite), demo-4 fails (rose hardStop), demo-5 is
+  // rate-limited (flame stutter). These are frozen out of the phase cycle below.
+  freezeFinal(seedAgents[2].task_id, false);
+  freezeFinal(seedAgents[3].task_id, true);
+  throttle(seedAgents[4].task_id);
+
   // Phase 11 demo — the first agent pauses at the plan approval gate. With no
   // backend to click in preview mode it auto-resumes after ~17s (see the
   // `gatedId` guard below) so the board keeps moving.
@@ -181,6 +261,8 @@ function startMockData() {
     mockTick++;
     for (const seed of seedAgents) {
       if (!messageHandler) continue;
+      // Terminal / override demo agents hold their state — no further churn.
+      if (frozen.has(seed.task_id)) continue;
 
       // Phase progression every 30 ticks. The gated agent is held at the
       // approval gate until tick 30, then rejoins the normal cycle.

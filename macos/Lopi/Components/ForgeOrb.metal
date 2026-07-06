@@ -69,7 +69,9 @@ static float3 rotate3(float3 v, float ry, float rx) {
 half4 forgeOrb(float2 pos, half4 color, float4 bounds,
                float time, float pressure, float activity,
                float health, half4 phaseColor,
-               float spin, float excite, half4 exciteColor) {
+               float spin, float excite, half4 exciteColor,
+               // Living-orb motion uniforms (ORB STATE MAP).
+               float pulseRate, float glow, float turbulence, float krypto) {
     // Centered, normalized coordinates; y points up like the GLSL version.
     float half_ = min(bounds.z, bounds.w) * 0.5;
     float2 uv = (pos - bounds.zw * 0.5) / half_;
@@ -92,7 +94,8 @@ half4 forgeOrb(float2 pos, half4 color, float4 bounds,
     // Fluid, ever-changing silhouette. The earlier "violence" was the shake +
     // fast spin + surface churn (all still damped); this is the shape morph the
     // operator actually wants — kept rich at ~55% of the original amplitude.
-    float disp = (dn1 * 0.7 + dn2 * 0.3) * (0.05 + pressure * 0.17) * 0.55;
+    // State turbulence layers extra displacement (calm idle → busy implementing).
+    float disp = (dn1 * 0.7 + dn2 * 0.3) * (0.05 + pressure * 0.17 + turbulence * 0.16) * 0.55;
 
     float baseR = 0.82;
     float radius = baseR + disp;
@@ -132,12 +135,20 @@ half4 forgeOrb(float2 pos, half4 color, float4 bounds,
     float veins = smoothstep(-0.85, -0.45, fn3);
     col += ICE * veins * 0.35;
 
-    // Fresnel rim — view direction is +z in screen space.
+    // Fresnel rim — view direction is +z in screen space. The state glow
+    // intensity scales the rim halo (idle dim → success bloom bright).
     float fres = pow(1.0 - max(0.0, n.z), 3.2);
-    col += HOT * fres * 0.5;
+    col += HOT * fres * (0.25 + glow * 0.7);
 
-    float pulse = 1.0 + sin(time * (1.0 + activity * 1.5)) * 0.03 * activity;
+    // Activity + state pulse — the state's pulseRate sets the breath frequency,
+    // so "slows down" reads as a calmer pulse.
+    float pulse = 1.0 + sin(time * (1.0 + activity * 1.5) * max(pulseRate, 0.01)) * 0.03 * activity;
     col *= pulse;
+
+    // Kryptonite — a bright jade halo that pulses then settles (success state).
+    float3 jade = float3(0.0, 1.0, 0.62);
+    col += jade * fres * krypto * 1.8;
+    col += jade * krypto * 0.25;
 
     // Excitement — the orb runs hot on a stimulus: the surface blends toward
     // the reaction color (ember on request, jade on success, rose on failure)
