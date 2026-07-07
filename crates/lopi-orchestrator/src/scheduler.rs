@@ -52,6 +52,11 @@ pub async fn boot(entries: Vec<ScheduleEntry>, pool: AgentPool) -> Result<JobSch
                 // would be cosmetic.
                 task.autonomy_level = entry.autonomy_level;
 
+                // Report on Finish — carry the schedule's declared channel
+                // onto the task so the L1 report-only hook (or, once
+                // implemented, other levels) can route a summary there.
+                task.report = entry.report.clone();
+
                 pool.submit(task).await;
             })
         }) {
@@ -208,6 +213,7 @@ mod tests {
             allowed_dirs: vec![],
             forbidden_dirs: vec![],
             autonomy_level: Default::default(),
+            report: None,
         };
 
         let result = boot(vec![entry], pool).await;
@@ -235,6 +241,7 @@ mod tests {
             allowed_dirs: vec![],
             forbidden_dirs: vec![],
             autonomy_level: Default::default(),
+            report: None,
         };
 
         // Invalid cron entry should be skipped, not cause boot to fail
@@ -263,6 +270,7 @@ mod tests {
             allowed_dirs: vec!["src/".to_string()],
             forbidden_dirs: vec!["vendor/".to_string()],
             autonomy_level: Default::default(),
+            report: None,
         };
 
         let result = boot(vec![entry], pool).await;
@@ -291,6 +299,7 @@ mod tests {
                 allowed_dirs: vec![],
                 forbidden_dirs: vec![],
                 autonomy_level: Default::default(),
+                report: None,
             },
             ScheduleEntry {
                 name: "entry-2".to_string(),
@@ -301,6 +310,7 @@ mod tests {
                 allowed_dirs: vec![],
                 forbidden_dirs: vec![],
                 autonomy_level: Default::default(),
+                report: None,
             },
         ];
 
@@ -330,6 +340,7 @@ mod tests {
                 allowed_dirs: vec![],
                 forbidden_dirs: vec![],
                 autonomy_level: Default::default(),
+                report: None,
             },
             ScheduleEntry {
                 name: "invalid".to_string(),
@@ -340,6 +351,7 @@ mod tests {
                 allowed_dirs: vec![],
                 forbidden_dirs: vec![],
                 autonomy_level: Default::default(),
+                report: None,
             },
         ];
 

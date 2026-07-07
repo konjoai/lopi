@@ -322,6 +322,97 @@ priority = "low"
     assert_eq!(cfg.schedules[1].priority, "low");
 }
 
+// ── Report on Finish (Sprint 3) ─────────────────────────────────────────────
+
+fn entry_with_report(report_line: &str) -> ScheduleEntry {
+    let toml =
+        format!("name = \"n\"\nrepo = \"/r\"\ngoal = \"g\"\ncron = \"0 2 * * *\"\n{report_line}\n");
+    toml::from_str(&toml).unwrap()
+}
+
+#[test]
+fn report_defaults_to_none_and_validates() {
+    let entry = entry_with_report("");
+    assert!(entry.report.is_none());
+    assert!(entry.validate_report().is_ok());
+}
+
+#[test]
+fn report_telegram_validates() {
+    let entry = entry_with_report(r#"report = "telegram""#);
+    assert_eq!(entry.report.as_deref(), Some("telegram"));
+    assert!(entry.validate_report().is_ok());
+}
+
+#[test]
+fn report_whatsapp_errors_naming_the_channel_and_reason() {
+    let entry = entry_with_report(r#"report = "whatsapp""#);
+    let err = entry.validate_report().unwrap_err();
+    let msg = err.to_string();
+    assert!(msg.contains("whatsapp"));
+    assert!(msg.contains("inbound-only"));
+}
+
+#[test]
+fn report_unknown_channel_errors() {
+    let entry = entry_with_report(r#"report = "carrier-pigeon""#);
+    let err = entry.validate_report().unwrap_err();
+    assert!(err.to_string().contains("carrier-pigeon"));
+}
+
+#[test]
+fn load_rejects_a_config_with_an_invalid_report_channel() {
+    let path = std::env::temp_dir().join(format!("lopi-test-{}.toml", uuid::Uuid::new_v4()));
+    std::fs::write(
+        &path,
+        r#"
+[lopi]
+
+[claude]
+
+[git]
+
+[[schedules]]
+name = "nightly"
+repo = "/repo"
+goal = "run tests"
+cron = "0 2 * * *"
+report = "whatsapp"
+"#,
+    )
+    .unwrap();
+    let err = LopiConfig::load(&path).unwrap_err();
+    assert!(err.to_string().contains("nightly"));
+    assert!(err.to_string().contains("whatsapp"));
+    std::fs::remove_file(&path).ok();
+}
+
+#[test]
+fn load_accepts_a_config_with_a_telegram_report_channel() {
+    let path = std::env::temp_dir().join(format!("lopi-test-{}.toml", uuid::Uuid::new_v4()));
+    std::fs::write(
+        &path,
+        r#"
+[lopi]
+
+[claude]
+
+[git]
+
+[[schedules]]
+name = "nightly"
+repo = "/repo"
+goal = "run tests"
+cron = "0 2 * * *"
+report = "telegram"
+"#,
+    )
+    .unwrap();
+    let cfg = LopiConfig::load(&path).unwrap();
+    assert_eq!(cfg.schedules[0].report.as_deref(), Some("telegram"));
+    std::fs::remove_file(&path).ok();
+}
+
 #[test]
 fn web_config_default_impl() {
     let web = WebConfig::default();

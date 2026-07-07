@@ -339,6 +339,7 @@ mod tests {
             allowed_dirs: vec!["src/".into()],
             forbidden_dirs: vec!["infra/".into()],
             autonomy_level: AutonomyLevel::VerifiedPr,
+            report: None,
         }
     }
 

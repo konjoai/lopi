@@ -17,7 +17,7 @@
 
 use super::AgentRunner;
 use lopi_core::loop_config::AutonomyLevel;
-use lopi_core::{LoopConfig, Score, TaskStatus};
+use lopi_core::{AgentEvent, LoopConfig, Score, TaskStatus};
 use lopi_git::GitManager;
 
 /// What the runner should do with a passing attempt's branch.
@@ -92,7 +92,9 @@ impl AgentRunner {
                 return Some(conflict);
             }
         }
-        let pr_url = self.apply_pr_decision(decision, branch, git, score).await;
+        let pr_url = self
+            .apply_pr_decision(decision, branch, git, score, attempt)
+            .await;
         Some(TaskStatus::Success {
             branch: branch.to_string(),
             pr_url,
@@ -130,10 +132,11 @@ impl AgentRunner {
         branch: &str,
         git: &GitManager,
         score: &Score,
+        attempt: u8,
     ) -> Option<String> {
         match decision {
             PrDecision::ReportOnly => {
-                self.emit_report(branch, score);
+                self.emit_report(branch, score, attempt);
                 None
             }
             PrDecision::Draft => {
@@ -159,14 +162,38 @@ impl AgentRunner {
         }
     }
 
-    /// L1 — log a diff/score report in lieu of opening a PR.
-    fn emit_report(&self, branch: &str, score: &Score) {
+    /// L1 — log a diff/score report in lieu of opening a PR, and — when the
+    /// task declares a [`Task::report`](lopi_core::Task::report) channel —
+    /// broadcast an [`AgentEvent::ReportReady`] so a subscriber (e.g.
+    /// `lopi-remote`'s Telegram notifier) can deliver it.
+    ///
+    /// Report on Finish (Loop Engineering primitive 6). Reuses the existing
+    /// `EventBus<AgentEvent>` instead of a direct `lopi-agent` → `lopi-remote`
+    /// call, which would create a dependency cycle (`lopi-remote` already
+    /// depends on `lopi-orchestrator`, which depends on `lopi-agent`) — see
+    /// `LEDGER.md`'s Sprint 3 entry. An unset or unrecognized channel is
+    /// never a silent no-op: `None` simply skips the broadcast, and an
+    /// unparseable channel name warns loudly instead of being sent.
+    fn emit_report(&self, branch: &str, score: &Score, attempt: u8) {
         self.log(format!(
             "📄 report-only (L1): branch={branch} pass={:.0}% lint={} diff={}L — no PR opened",
             score.test_pass_rate * 100.0,
             score.lint_errors,
             score.diff_lines,
         ));
+        let Some(channel) = self.task.report.clone() else {
+            return;
+        };
+        if let Err(e) = lopi_core::ReportChannel::parse(&channel) {
+            self.warn(format!("report-on-finish: not sending — {e}"));
+            return;
+        }
+        let summary = build_report_summary(&self.task.goal, branch, score, attempt);
+        self.bus.send(AgentEvent::ReportReady {
+            task_id: self.id(),
+            channel,
+            summary,
+        });
     }
 
     /// Load the repo's `no_progress_limit` from `.lopi/loop.toml`, off the
@@ -182,6 +209,21 @@ impl AgentRunner {
         .await
         .unwrap_or(0)
     }
+}
+
+/// Render the plain-text summary broadcast by [`AgentRunner::emit_report`].
+/// Pure and IO-free so its wording is covered by unit tests independent of
+/// the event bus. `emit_report` only ever calls this on a passing attempt
+/// (see its own doc comment), so the verdict is always "pass" today; the
+/// wording is still spelled out explicitly rather than assumed, so a future
+/// failure-path caller has an honest word to change.
+pub(super) fn build_report_summary(goal: &str, branch: &str, score: &Score, attempt: u8) -> String {
+    format!(
+        "📄 report — verdict: pass\n{goal}\nattempt {attempt} · pass {:.0}% · lint {} · diff {}L\nbranch: {branch}",
+        score.test_pass_rate * 100.0,
+        score.lint_errors,
+        score.diff_lines,
+    )
 }
 
 /// Update the consecutive no-progress streak given this attempt's weighted score.
@@ -209,11 +251,15 @@ pub(super) fn update_no_progress_streak(best: &mut Option<f32>, streak: u8, weig
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used)]
 mod tests {
     use super::{
-        pr_decision, requires_verifier, should_auto_merge, update_no_progress_streak, PrDecision,
+        build_report_summary, pr_decision, requires_verifier, should_auto_merge,
+        update_no_progress_streak, AgentRunner, PrDecision,
     };
     use lopi_core::loop_config::AutonomyLevel;
+    use lopi_core::{AgentEvent, Score, Task};
+    use std::path::PathBuf;
 
     #[test]
     fn no_progress_seeds_baseline_then_counts_stalls() {
@@ -307,5 +353,79 @@ mod tests {
         ] {
             assert!(!should_auto_merge(d, true));
         }
+    }
+
+    // ── Report on Finish (Sprint 3) ─────────────────────────────────────────
+
+    fn drain_report_ready(
+        rx: &mut tokio::sync::broadcast::Receiver<AgentEvent>,
+    ) -> Option<(String, String)> {
+        let mut found = None;
+        while let Ok(ev) = rx.try_recv() {
+            if let AgentEvent::ReportReady {
+                channel, summary, ..
+            } = ev
+            {
+                found = Some((channel, summary));
+            }
+        }
+        found
+    }
+
+    #[test]
+    fn emit_report_routes_to_the_declared_channel() {
+        let mut task = Task::new("ship the report");
+        task.report = Some("telegram".to_string());
+        let (runner, bus) = AgentRunner::standalone(task, PathBuf::from("."));
+        let mut rx = bus.subscribe();
+        let score = Score::new(1.0, 0, 10);
+
+        runner.emit_report("lopi/feature/x", &score, 2);
+
+        let (channel, summary) =
+            drain_report_ready(&mut rx).expect("a ReportReady event should have been sent");
+        assert_eq!(channel, "telegram");
+        assert!(summary.contains("ship the report"));
+        assert!(summary.contains("pass"));
+    }
+
+    #[test]
+    fn emit_report_with_no_channel_sends_nothing() {
+        let task = Task::new("quiet run"); // report defaults to None
+        let (runner, bus) = AgentRunner::standalone(task, PathBuf::from("."));
+        let mut rx = bus.subscribe();
+        let score = Score::new(1.0, 0, 10);
+
+        runner.emit_report("lopi/feature/x", &score, 1);
+
+        assert!(
+            drain_report_ready(&mut rx).is_none(),
+            "no channel declared → no report broadcast"
+        );
+    }
+
+    #[test]
+    fn emit_report_warns_and_sends_nothing_for_an_unrecognized_channel() {
+        let mut task = Task::new("misconfigured run");
+        task.report = Some("carrier-pigeon".to_string());
+        let (runner, bus) = AgentRunner::standalone(task, PathBuf::from("."));
+        let mut rx = bus.subscribe();
+        let score = Score::new(1.0, 0, 10);
+
+        runner.emit_report("lopi/feature/x", &score, 1);
+
+        assert!(
+            drain_report_ready(&mut rx).is_none(),
+            "an unparseable channel must warn, not silently send"
+        );
+    }
+
+    #[test]
+    fn build_report_summary_contains_goal_and_pass_verdict() {
+        let score = Score::new(0.9, 1, 42);
+        let summary = build_report_summary("fix the bug", "lopi/feature/y", &score, 3);
+        assert!(summary.contains("fix the bug"));
+        assert!(summary.contains("pass"));
+        assert!(summary.contains("lopi/feature/y"));
     }
 }

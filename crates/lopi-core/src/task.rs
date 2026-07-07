@@ -194,6 +194,15 @@ pub struct Task {
     /// (draft PR), the conservative level inherited from a schedule or config.
     #[serde(default)]
     pub autonomy_level: crate::loop_config::AutonomyLevel,
+    /// Report on Finish (Loop Engineering primitive 6) — channel name a
+    /// completed run's summary is routed to (e.g. `"telegram"`), threaded
+    /// from [`crate::config::ScheduleEntry::report`] the same way
+    /// `autonomy_level` is. `None` (the default) changes nothing: the L1
+    /// report-only hook only logs locally, as it always has. Validated via
+    /// [`crate::report::ReportChannel::parse`] before use, never trusted
+    /// as a raw literal.
+    #[serde(default)]
+    pub report: Option<String>,
 }
 
 /// Where a task originated — used for routing replies and audit logging.
@@ -246,6 +255,7 @@ impl Task {
             topology: None,
             require_plan_approval: false,
             autonomy_level: crate::loop_config::AutonomyLevel::default(),
+            report: None,
         }
     }
 

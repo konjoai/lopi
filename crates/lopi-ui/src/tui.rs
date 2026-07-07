@@ -194,6 +194,9 @@ impl AppState {
             | AgentEvent::ApiRetry { .. }
             | AgentEvent::Cost { .. }
             | AgentEvent::Phase { .. } => {}
+            // Report on Finish is delivered by lopi-remote's Telegram
+            // notifier; the read-only TUI has no channel to route it to.
+            AgentEvent::ReportReady { .. } => {}
         }
     }
 
