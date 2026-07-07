@@ -681,7 +681,13 @@ mod tests {
     #[test]
     fn select_model_honors_explicit_override_over_heuristic_and_escalation() {
         let mut t = Task::new("big refactor");
-        t.constraints = vec!["c1".into(), "c2".into(), "c3".into(), "c4".into(), "c5".into()];
+        t.constraints = vec![
+            "c1".into(),
+            "c2".into(),
+            "c3".into(),
+            "c4".into(),
+            "c5".into(),
+        ];
         t.model = Some(MODEL_HAIKU.to_string());
         // Would heuristically resolve to Opus (size 7) and escalate at attempt
         // 2 — the explicit override wins over both, mirroring verifier_model.

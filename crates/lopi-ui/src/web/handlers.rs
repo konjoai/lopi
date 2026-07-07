@@ -271,7 +271,10 @@ pub(super) async fn create_task(
 
     let mut task = Task::new(req.goal.clone());
     if let Err(e) = apply_loop_fields(&mut task, &req) {
-        return (StatusCode::UNPROCESSABLE_ENTITY, Json(json!({"error": e.to_string()})))
+        return (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            Json(json!({"error": e.to_string()})),
+        )
             .into_response();
     }
     task.priority = match req.priority.as_deref() {

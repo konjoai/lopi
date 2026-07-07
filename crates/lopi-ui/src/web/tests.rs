@@ -579,10 +579,14 @@ async fn create_task_rejects_unreachable_report_channel() {
 fn apply_loop_fields_leaves_task_unchanged_when_all_fields_are_absent() {
     let mut task = Task::new("plain task");
     let baseline = format!("{task:?}");
-    let req: CreateTaskRequest = serde_json::from_value(serde_json::json!({"goal": "plain task"}))
-        .unwrap();
+    let req: CreateTaskRequest =
+        serde_json::from_value(serde_json::json!({"goal": "plain task"})).unwrap();
     apply_loop_fields(&mut task, &req).unwrap();
-    assert_eq!(format!("{task:?}"), baseline, "no new field may change defaults when omitted");
+    assert_eq!(
+        format!("{task:?}"),
+        baseline,
+        "no new field may change defaults when omitted"
+    );
 }
 
 #[test]
@@ -614,7 +618,10 @@ fn apply_loop_fields_accepts_telegram_and_rejects_whatsapp() {
         serde_json::from_value(serde_json::json!({"goal": "w", "report": "whatsapp"})).unwrap();
     let err = apply_loop_fields(&mut whatsapp_task, &whatsapp_req).unwrap_err();
     assert_eq!(err, lopi_core::ReportChannelError::WhatsappUnsupported);
-    assert_eq!(whatsapp_task.report, None, "task must not be mutated on a rejected report channel");
+    assert_eq!(
+        whatsapp_task.report, None,
+        "task must not be mutated on a rejected report channel"
+    );
 }
 
 #[test]
