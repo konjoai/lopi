@@ -1,5 +1,19 @@
 # Changelog
 
+## [Unreleased] — Sprint 3: Report on Finish 📣
+
+### Added
+
+**Report on Finish** (`lopi-core`, `lopi-agent`, `lopi-remote`)
+- **`ScheduleEntry::report` / `Task::report`** (`Option<String>`) — declare a
+  channel (only `"telegram"` reachable today) a completed run's summary is
+  routed to; validated loudly via `ReportChannel::parse` (`lopi-core`) at
+  config-load time, never a silent no-op.
+- **`AgentEvent::ReportReady`** — the L1 `emit_report` hook now broadcasts this
+  over the existing `EventBus<AgentEvent>` when a channel is declared;
+  `lopi-remote`'s Telegram notifier delivers it via the existing `send_msg`.
+  Zero new crate dependencies — both sides already depended on `lopi-core`.
+
 ## [Unreleased] — Sprint 2: Skill Arguments 🎯
 
 ### Added

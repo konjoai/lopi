@@ -151,6 +151,19 @@ async fn handle_event(
             send_msg(bot, chat_id, &text).await;
         }
 
+        // Report on Finish (Loop Engineering primitive 6) — the summary text
+        // is fully rendered by `emit_report`; this just delivers it. Reuses
+        // `send_msg`, not a second sender. Known limitation: this always
+        // targets the one global `chat_id` this loop was booted with, not a
+        // per-task destination — see `LEDGER.md`'s Sprint 3 entry.
+        AgentEvent::ReportReady { channel, summary, .. } => {
+            if channel == "telegram" {
+                send_msg(bot, chat_id, summary).await;
+            } else {
+                warn!("report-on-finish: dropping report for unsupported channel `{channel}`");
+            }
+        }
+
         // TurnMetrics, LogLine, PoolStats intentionally suppressed — too noisy.
         _ => {}
     }

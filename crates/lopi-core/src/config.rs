@@ -166,6 +166,30 @@ pub struct ScheduleEntry {
     /// human (L1 report-only … L4 auto-merge). Defaults to L2 (draft PR).
     #[serde(default)]
     pub autonomy_level: crate::loop_config::AutonomyLevel,
+    /// Report on Finish (Loop Engineering primitive 6) — channel a completed
+    /// run's summary is sent to, e.g. `"telegram"`. `None` (the default)
+    /// leaves the run's L1 report-only hook logging locally only, as before
+    /// this field existed. Validated by [`Self::validate_report`] at
+    /// config-load time — an unknown or currently-unreachable channel name
+    /// (e.g. `"whatsapp"`, which has no outbound-send path) is a loud load
+    /// error, never a silent no-op.
+    #[serde(default)]
+    pub report: Option<String>,
+}
+
+impl ScheduleEntry {
+    /// Validate the `report` channel name, if set. `None` is always valid —
+    /// report-on-finish is opt-in.
+    ///
+    /// # Errors
+    /// Returns [`crate::report::ReportChannelError`] when `report` is set to
+    /// a channel lopi doesn't recognize, or recognizes but can't reach yet
+    /// (`"whatsapp"` — inbound-only, no send path).
+    pub fn validate_report(&self) -> Result<(), crate::report::ReportChannelError> {
+        self.report.as_deref().map_or(Ok(()), |name| {
+            crate::report::ReportChannel::parse(name).map(|_| ())
+        })
+    }
 }
 
 /// Per-repo profile loaded from `<repo>/.lopi.toml`.
@@ -258,10 +282,19 @@ impl LopiConfig {
     /// Load and parse a `lopi.toml` config file from `path`.
     ///
     /// # Errors
-    /// Returns `Err` if the file cannot be read or if TOML parsing fails.
+    /// Returns `Err` if the file cannot be read, if TOML parsing fails, or if
+    /// any `[[schedules]]` entry's `report` channel fails
+    /// [`ScheduleEntry::validate_report`] — a typo'd or unreachable channel
+    /// (e.g. `"whatsapp"`) fails the load loudly rather than silently never
+    /// sending a report.
     pub fn load(path: &std::path::Path) -> anyhow::Result<Self> {
         let text = std::fs::read_to_string(path)?;
         let cfg: Self = toml::from_str(&text)?;
+        for entry in &cfg.schedules {
+            entry
+                .validate_report()
+                .map_err(|e| anyhow::anyhow!("schedule `{}`: {e}", entry.name))?;
+        }
         Ok(cfg)
     }
 

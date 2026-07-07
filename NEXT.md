@@ -1,46 +1,69 @@
-# Next — Report on Finish (Capability 3)
+# Next — Verifier as Explicit Gate (Capability 2)
 
-Sprint 2 (Skill Arguments) shipped: `Skill::render_body` +
-`lopi_skill::parse_invocation`, wired at the CLI's `lopi run --goal`
-boundary. See `LEDGER.md`'s Sprint 2 entry for the empty-arg and reuse
-decisions, and `crates/lopi-skill/src/{lib.rs,invocation.rs}` for the code.
+Sprint 3 (Report on Finish) shipped: `ScheduleEntry::report` / `Task::report`,
+`lopi_core::ReportChannel`, and `AgentEvent::ReportReady` wired from
+`lopi-agent`'s `emit_report` to `lopi-remote`'s Telegram notifier over the
+existing `EventBus<AgentEvent>` — zero new dependency edges. See `LEDGER.md`'s
+Sprint 3 entry for the edge decision, the chat_id limitation, and why
+`crates/lopi-core/src/event.rs` got split into `event.rs` /  `event_tests.rs`
+/ `event_wire_format_tests.rs` along the way.
 
-Per `PROMPTS_PLAN.md`'s sprint order, **Capability 3 (Report on Finish) is
-next — isolate it as its own sprint.** Unlike Sprints 1 and 2 (additive,
-single-crate), this one:
+Per `PROMPTS_PLAN.md`'s sprint order, **Capability 2 (Verifier as Explicit
+Gate) is next — and it is the LAST of the four capabilities in this recon.**
+Land it only after this sprint's lessons are banked; it has the highest blast
+radius of the four because it activates a wiring path that has never run in
+production.
 
-- Adds a real config-schema field: **`report: Option<String>` on
-  `ScheduleEntry`** (`crates/lopi-core/src/config.rs:147`), accepting
-  `"telegram"` (WhatsApp has no outbound-send path yet — see
-  `PROMPTS_PLAN.md` capability 3 — so it isn't a valid value this sprint).
-  Thread it onto **`Task`** the same way `autonomy_level` is already threaded
-  from `ScheduleEntry` in `crates/lopi-orchestrator/src/scheduler.rs`
-  (`task.autonomy_level = entry.autonomy_level;` — mirror that line for
-  `report`).
-- Crosses a crate + event-bus boundary that Sprints 1/2 never touched:
-  `lopi-agent`'s `emit_report()` (`crates/lopi-agent/src/runner/finalize.rs`,
-  L1 `ReportOnly` autonomy's report hook — currently only calls `self.log(...)`,
-  a local tracing line) needs to reach `lopi-remote`'s already-built Telegram
-  `bot.send_message` path (`crates/lopi-remote/src/telegram/notify.rs`),
-  independent of the single global `chat_id` gate `notify_loop` currently
-  hard-codes.
+## What's already built (`lopi-agent/src/verifier.rs`, `lopi-memory/src/store/verifier.rs`)
 
-## Why this is riskier than Sprints 1/2
+`VerifierVerdict`, the `verifier_verdicts` table, and `VerifierAgent::verify`
+(maker/checker isolation, rubric resolution, JSON verdict parsing) are solid
+— reuse as-is. What's missing is everything that would make the gate
+*explicit and configurable* instead of implicit and hardcoded:
 
-Sprints 1 and 2 never touched a serialized config schema (`template.rs` and
-`Skill::render_body` are pure additions). This one does — `ScheduleEntry` is
-TOML-serialized (`lopi.toml`) with existing round-trip expectations, so the
-new field must be `#[serde(default)]` and validated the way
-`LoopConfig::validate` already models other cross-field config invariants.
+- `VerifierAgent::verify` (`crates/lopi-agent/src/verifier.rs:108`) hardcodes
+  the model: `self.client.complete(MODEL_OPUS, ...)` (line 119) — no per-call
+  model or effort parameter.
+- `AgentRunner::with_verifier()` (`crates/lopi-agent/src/runner/mod.rs:242`)
+  sets a bool flag, but **has zero call sites anywhere in the workspace**
+  (confirmed again this sprint: `grep -rn '\.with_verifier()' crates/` is
+  empty). Today the *only* way to force the verifier is
+  `autonomy_level >= VerifiedPr` (L3/L4, `requires_verifier` in
+  `crates/lopi-agent/src/runner/finalize.rs:49`) — a repo-wide trust level,
+  not a per-loop "require verifier" toggle independent of autonomy.
+
+## What this sprint adds — name these fields so the work is unambiguous
+
+- **`LoopConfig::verifier_model: Option<String>`** and
+  **`LoopConfig::verifier_effort: Option<String>`** (`crates/lopi-core/src/loop_config.rs`,
+  next to `autonomy_level` at line 208 — `#[serde(default)]`, following the
+  same round-trip-safe pattern `report` used this sprint on `ScheduleEntry`).
+  Mirror both onto **`Task`** the same way `autonomy_level` is mirrored
+  (`crates/lopi-core/src/task.rs:196`) and `report` now is (`task.rs:205`).
+- **`LoopConfig::verifier_required: bool`** (or equivalent — the PROMPTS_PLAN
+  kill-test names it `verifier_required`) — a per-loop "require verifier pass"
+  gate independent of `autonomy_level`, mirrored onto `Task` the same way.
+- Parameterize `VerifierAgent::verify(..., model: &str, effort: Option<&str>)`
+  instead of the hardcoded `MODEL_OPUS` constant.
+- Wire pool construction (`crates/lopi-orchestrator/src/pool/`) to call
+  `.with_verifier()` when `verifier_required` (or `verifier_model.is_some()`)
+  is set — **the first real call site this path will ever have.**
+
+## Why this is riskier than Sprints 1–3
+
+Sprints 1–3 were additive (`template.rs`, `Skill::render_body`,
+`AgentEvent::ReportReady`) or added one opt-in `#[serde(default)]` field.
+This sprint activates a code path (`.with_verifier()` → the verifier
+maker/checker flow) that has **never executed in production** — the first
+real exercise of that flow happens the moment pool construction calls it, not
+in a controlled test. Budget time for a careful kill-test proving
+`verifier_enabled == true` end-to-end before wiring the pool, exactly as
+PROMPTS_PLAN's capability-2 kill-test describes.
 
 ## Constraint carried forward
 
-No new dependency should be needed — `lopi-agent` already depends on neither
-`lopi-remote` nor vice versa today (check before assuming; if `lopi-agent`
-would need to depend on `lopi-remote` to call `bot.send_message` directly,
-that's the same kind of cross-crate-dependency decision Sprint 2 hit with
-`lopi-skill` → `lopi-core`, and is worth flagging up front rather than
-discovering mid-implementation — an event-bus-mediated design, where
-`lopi-agent` only ever emits an `AgentEvent` and `lopi-remote`'s existing
-subscriber loop reacts, likely avoids the new dependency entirely and fits
-the existing `EventBus<AgentEvent>` architecture better than a direct call.
+Both `LoopConfig` and `Task` have existing round-trip serde tests — new
+fields must be `#[serde(default)]` and not break `loop_config_tests.rs` /
+`lib.rs`'s `task_new_defaults`. No new dependency should be needed;
+`VerifierAgent` already lives in `lopi-agent`, which already owns
+`AgentRunner::with_verifier()`.

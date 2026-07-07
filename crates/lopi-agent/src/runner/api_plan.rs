@@ -266,6 +266,7 @@ mod tests {
             topology: None,
             require_plan_approval: false,
             autonomy_level: Default::default(),
+            report: None,
         }
     }
 

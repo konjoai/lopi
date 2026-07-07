@@ -15,6 +15,9 @@ pub mod earned_trust;
 pub mod event;
 /// Loop-engineering configuration: autonomy levels + the `LoopConfig` schema.
 pub mod loop_config;
+/// Report on Finish (Loop Engineering primitive 6) — the `report` channel
+/// name a completed run's summary can be routed to.
+pub mod report;
 /// Structured output schema validation (JSON Schema subset).
 pub mod schema;
 /// Self-prompting loop strategies — how an agent re-prompts itself on retry.
@@ -35,6 +38,7 @@ pub use config::{LopiConfig, RepoProfile, ScheduleEntry};
 pub use earned_trust::EarnedTrust;
 pub use event::{AgentEvent, EventBus, LogLevel, PlanDecision};
 pub use loop_config::{AutonomyLevel, IsolationMode, LoopConfig};
+pub use report::{ReportChannel, ReportChannelError};
 pub use schema::{
     schema_violations_inc, schema_violations_snapshot, validate as validate_schema,
     Violation as SchemaViolation, ViolationKind as SchemaViolationKind,
@@ -67,6 +71,7 @@ mod tests {
         assert!(t.forbidden_dirs.contains(&".github/".to_string()));
         assert!(matches!(t.source, TaskSource::Cli));
         assert!(t.required_capabilities.is_empty(), "default = no caps");
+        assert!(t.report.is_none(), "no report channel by default");
     }
 
     #[test]
