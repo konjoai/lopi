@@ -9,6 +9,7 @@ description = "Skill registry — loads SKILL.md project knowledge the agent inj
 
 [dependencies]
 anyhow.workspace = true
+lopi-core.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 tracing.workspace = true

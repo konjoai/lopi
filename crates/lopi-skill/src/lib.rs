@@ -11,6 +11,8 @@
 //! pulling in a YAML dependency. Malformed input fails loudly — with the file
 //! and line — never silently.
 
+/// Skill-invocation prefix parsing (`:name args`) — Skill Arguments, Sprint 2.
+pub mod invocation;
 /// Lesson → skill promotion detection — the self-evolving Ratchet's detector.
 pub mod promote;
 /// Writing promotion drafts to a pending-review directory.
@@ -22,6 +24,7 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
+pub use invocation::parse_invocation;
 pub use promote::{draft_skill_md, promotion_candidates, PromotionCandidate};
 pub use promoter::{promote_lessons, PromotionReport, PENDING_SKILLS_DIR};
 pub use registry::SkillRegistry;
@@ -115,6 +118,33 @@ impl Skill {
             body: fm.body,
             source: source.to_path_buf(),
         })
+    }
+
+    /// Render this skill's body for direct invocation (`:name args` — Skill
+    /// Arguments, Sprint 2), substituting the well-known `$ARGUMENTS` token
+    /// with `args`.
+    ///
+    /// Reuses [`lopi_core::resolve_template`] rather than a second
+    /// substitution layer: `$ARGUMENTS` is mapped to a single `{arguments}`
+    /// hole with a one-entry vars map (`NEXT.md` / `LEDGER.md`, Sprint 1). A
+    /// body with no `$ARGUMENTS` is returned unchanged — `args` simply goes
+    /// unused, not an error. Empty `args` is not an error either:
+    /// `$ARGUMENTS` becomes an empty string, since invoking a skill with no
+    /// argument (e.g. `:kcqf` alone) is a valid, deliberate use.
+    ///
+    /// Because this delegates straight to `resolve_template`, a body
+    /// containing a *stray* unescaped `{` (not part of `$ARGUMENTS`) is held
+    /// to the same rule as any hand-written template: escape it as `{{`/`}}`
+    /// or rendering errors — there is no separate, more lenient scanner here.
+    ///
+    /// # Errors
+    /// Returns [`lopi_core::TemplateError`] if the body (after the
+    /// `$ARGUMENTS` → `{arguments}` substitution) contains any other
+    /// unresolved `{name}` hole.
+    pub fn render_body(&self, args: &str) -> Result<String, lopi_core::TemplateError> {
+        let templated = self.body.replace("$ARGUMENTS", "{arguments}");
+        let vars = std::collections::BTreeMap::from([("arguments".to_string(), args.to_string())]);
+        lopi_core::resolve_template(&templated, &vars)
     }
 }
 

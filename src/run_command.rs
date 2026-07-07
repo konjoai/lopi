@@ -2,7 +2,7 @@ use anyhow::Result;
 use lopi_agent::{AgentRunner, AnthropicClient, AnthropicLimiter, CircuitBreaker, StabilityConfig};
 use lopi_core::{AgentEvent, LopiConfig, RepoProfile, Task, TaskSource};
 use lopi_memory::MemoryStore;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -19,6 +19,11 @@ pub async fn run(
     stability_gate: bool,
     cfg: Option<&LopiConfig>,
 ) -> Result<()> {
+    // Skill Arguments (Sprint 2) — a `:name args` goal resolves to the named
+    // skill's rendered body *before* anything else sees `goal`; Claude only
+    // ever sees the resolved literal, exactly like a Sprint 1 template.
+    let goal = resolve_skill_invocation(goal, &repo)?;
+
     println!("🚢 lopi run{}", if dry_run { " (dry-run)" } else { "" });
     println!("   goal: {goal}");
     println!("   repo: {}", repo.display());
@@ -145,4 +150,31 @@ pub async fn run(
     println!();
     println!("⚓ {}", status_label(&outcome));
     Ok(())
+}
+
+/// If `goal` is a `:<skill-name> <args>` invocation (Skill Arguments, Sprint
+/// 2), resolve it to the named skill's rendered body; otherwise return
+/// `goal` unchanged. Looks the skill up in `repo`'s conventional
+/// `.claude/skills`/`.lopi/skills` directories.
+///
+/// A skill name with no match is never silently passed through as a literal
+/// goal — it fails loudly (a warn log plus an `Err`) so a typo doesn't
+/// quietly turn into "fix the bug: kcqf vectro" being sent to Claude.
+///
+/// # Errors
+/// Returns `Err` if the skill directories fail to load, no skill by that
+/// name exists, or the body fails to render (an unresolved template hole).
+fn resolve_skill_invocation(goal: String, repo: &Path) -> Result<String> {
+    let Some((name, args)) = lopi_skill::parse_invocation(&goal) else {
+        return Ok(goal);
+    };
+    let registry = lopi_skill::SkillRegistry::load_from_dirs(&[
+        repo.join(".claude/skills"),
+        repo.join(".lopi/skills"),
+    ])?;
+    let Some(skill) = registry.get(name) else {
+        tracing::warn!(skill = name, repo = %repo.display(), "skill invocation: no such skill");
+        anyhow::bail!("no skill named `{name}` in {}", repo.display());
+    };
+    Ok(skill.render_body(args)?)
 }
