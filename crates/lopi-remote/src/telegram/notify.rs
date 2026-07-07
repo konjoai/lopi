@@ -156,7 +156,9 @@ async fn handle_event(
         // `send_msg`, not a second sender. Known limitation: this always
         // targets the one global `chat_id` this loop was booted with, not a
         // per-task destination — see `LEDGER.md`'s Sprint 3 entry.
-        AgentEvent::ReportReady { channel, summary, .. } => {
+        AgentEvent::ReportReady {
+            channel, summary, ..
+        } => {
             if channel == "telegram" {
                 send_msg(bot, chat_id, summary).await;
             } else {

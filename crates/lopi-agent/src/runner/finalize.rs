@@ -357,10 +357,15 @@ mod tests {
 
     // ── Report on Finish (Sprint 3) ─────────────────────────────────────────
 
-    fn drain_report_ready(rx: &mut tokio::sync::broadcast::Receiver<AgentEvent>) -> Option<(String, String)> {
+    fn drain_report_ready(
+        rx: &mut tokio::sync::broadcast::Receiver<AgentEvent>,
+    ) -> Option<(String, String)> {
         let mut found = None;
         while let Ok(ev) = rx.try_recv() {
-            if let AgentEvent::ReportReady { channel, summary, .. } = ev {
+            if let AgentEvent::ReportReady {
+                channel, summary, ..
+            } = ev
+            {
                 found = Some((channel, summary));
             }
         }
