@@ -1,8 +1,11 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 use super::*;
+use lopi_core::loop_config::AutonomyLevel;
 use lopi_core::topology::TopologyHint;
-use lopi_core::{AgentEvent, EventBus, Priority, Task};
+use lopi_core::{AgentEvent, EventBus, Priority, ScoreWeights, SelfPromptStrategy, Task};
 use std::path::PathBuf;
+use std::sync::atomic::AtomicUsize;
+use std::sync::Arc;
 
 fn make_pool(max: usize) -> AgentPool {
     let queue = TaskQueue::new();
@@ -298,4 +301,64 @@ async fn release_saturates_at_zero() {
     pool.release_agent("alpha");
     let snap = pool.agent_rate_limit("alpha").unwrap();
     assert_eq!(snap.in_flight, 0);
+}
+
+// ─── Verifier as Explicit Gate (Capability 2) ────────────────────────────
+//
+// `build_runner` is the pool-construction seam: it assembles the same
+// builder chain `run_one` uses, without performing any I/O or running the
+// loop, so the never-before-exercised `.with_verifier()` call site can be
+// proven live here.
+
+#[allow(clippy::too_many_arguments)]
+fn runner_for(task: Task) -> lopi_agent::AgentRunner {
+    let bus: EventBus<AgentEvent> = EventBus::new(16);
+    let (_cancel_tx, cancel_rx) = tokio::sync::oneshot::channel();
+    let (_plan_tx, plan_decision_rx) = tokio::sync::oneshot::channel();
+    run_loop::build_runner(
+        task,
+        PathBuf::from("."),
+        bus,
+        None,
+        cancel_rx,
+        Arc::new(AtomicUsize::new(0)),
+        ScoreWeights::default(),
+        SelfPromptStrategy::default(),
+        false,
+        lopi_skill::SkillRegistry::default(),
+        0,
+        plan_decision_rx,
+    )
+}
+
+#[test]
+fn verifier_required_enables_the_gate_end_to_end() {
+    let mut task = Task::new("ship a verified change");
+    task.autonomy_level = AutonomyLevel::DraftPr; // L2 — would not force it alone
+    task.verifier_required = true;
+    let runner = runner_for(task);
+    assert!(
+        runner.verifier_enabled(),
+        "verifier_required must wire .with_verifier() at pool construction"
+    );
+}
+
+#[test]
+fn an_explicit_verifier_model_also_enables_the_gate() {
+    let mut task = Task::new("grade me with sonnet");
+    task.autonomy_level = AutonomyLevel::DraftPr;
+    task.verifier_model = Some("claude-sonnet-4-6".into());
+    let runner = runner_for(task);
+    assert!(runner.verifier_enabled());
+}
+
+#[test]
+fn without_the_flag_or_model_the_gate_stays_off_below_l3() {
+    let mut task = Task::new("plain draft-pr loop");
+    task.autonomy_level = AutonomyLevel::DraftPr;
+    let runner = runner_for(task);
+    assert!(
+        !runner.verifier_enabled(),
+        "no accidental always-on: L1/L2 with no explicit gate must stay disabled"
+    );
 }

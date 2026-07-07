@@ -4,7 +4,7 @@
 //! Opus to grade the diff against a developer-supplied rubric. The structured
 //! verdict drives constraint injection into the next retry's planning prompt.
 use crate::api_client::AnthropicClient;
-use crate::claude::MODEL_OPUS;
+use crate::claude::{MODEL_OPUS, MODEL_SONNET};
 use anyhow::{Context, Result};
 use lopi_core::{Rubric, VerifierVerdict};
 use std::sync::Arc;
@@ -16,6 +16,45 @@ Respond ONLY with a JSON object. No prose, no markdown fences. Schema: \
 {\"passed\":bool,\"gaps\":[string],\"fix_hints\":[string],\"confidence\":float}. \
 `gaps` lists unmet criteria. `fix_hints` are imperative instructions for the \
 next implementation attempt. `confidence` is 0.0–1.0.";
+
+/// Resolve the effective verifier model + reasoning-effort hint for a grading
+/// pass (Verifier as Explicit Gate).
+///
+/// "Never grade your own homework": when `verifier_model` is unset, the
+/// resolved model is chosen to differ from `worker_model` — [`MODEL_OPUS`]
+/// by default, falling back to [`MODEL_SONNET`] on the one case where the
+/// worker itself is already Opus (an escalated retry), so the checker is
+/// never the same model as the maker. An explicitly configured
+/// `verifier_model` is always honored as-is, even if it happens to match
+/// the worker — that is a deliberate operator override, not a default.
+///
+/// `verifier_effort` passes through unchanged; it carries no "must differ"
+/// requirement.
+#[must_use]
+pub fn resolve_verifier(
+    worker_model: &str,
+    verifier_model: Option<&str>,
+    verifier_effort: Option<&str>,
+) -> (String, Option<String>) {
+    let model = verifier_model.map(str::to_string).unwrap_or_else(|| {
+        if worker_model == MODEL_OPUS {
+            MODEL_SONNET.to_string()
+        } else {
+            MODEL_OPUS.to_string()
+        }
+    });
+    (model, verifier_effort.map(str::to_string))
+}
+
+/// Build the verifier's system prompt, folding in an optional reasoning-effort
+/// hint the same way worker-side launch controls fold "effort" into planning
+/// constraints — a textual instruction, not a wire-level API parameter.
+fn build_system_prompt(effort: Option<&str>) -> String {
+    match effort {
+        Some(e) => format!("{VERIFIER_SYSTEM}\n\nReasoning effort: {e}"),
+        None => VERIFIER_SYSTEM.to_string(),
+    }
+}
 
 /// Directory, relative to the repo root, where canonical rubric files live.
 const RUBRIC_DIR: &str = ".konjo/rubrics";
@@ -101,10 +140,15 @@ impl VerifierAgent {
     ///
     /// `plan` provides intent context; `test_output` gives the heuristic scorer
     /// evidence. Both are truncated to keep the prompt within a reasonable bound.
+    /// `model` is the resolved verifier model (see [`resolve_verifier`]) —
+    /// callers must not grade with the same model that produced the diff.
+    /// `effort` is an optional reasoning-effort hint folded into the system
+    /// prompt.
     ///
     /// # Errors
     ///
     /// Returns `Err` if the API call fails or the response cannot be parsed.
+    #[allow(clippy::too_many_arguments)]
     pub async fn verify(
         &self,
         goal: &str,
@@ -112,11 +156,14 @@ impl VerifierAgent {
         diff: &str,
         test_output: &str,
         rubric: &Rubric,
+        model: &str,
+        effort: Option<&str>,
     ) -> Result<VerifierVerdict> {
         let prompt = build_prompt(goal, plan, diff, test_output, rubric, !self.isolated);
+        let system = build_system_prompt(effort);
         let (text, _) = self
             .client
-            .complete(MODEL_OPUS, VERIFIER_SYSTEM, &prompt, 1_024)
+            .complete(model, &system, &prompt, 1_024)
             .await
             .context("verifier API call")?;
         parse_verdict(&text)
@@ -287,6 +334,49 @@ mod tests {
         let r = default_rubric();
         assert!(!r.criteria.is_empty());
         assert_eq!(r.name, "default");
+    }
+
+    // ── Verifier as Explicit Gate — model/effort resolver ───────────────────
+
+    #[test]
+    fn resolve_verifier_defaults_to_opus_for_a_non_opus_worker() {
+        let (model, effort) = resolve_verifier(MODEL_SONNET, None, None);
+        assert_eq!(model, MODEL_OPUS);
+        assert!(effort.is_none());
+    }
+
+    #[test]
+    fn resolve_verifier_never_grades_its_own_homework() {
+        // The one case where the default (Opus) would equal the worker: an
+        // escalated retry already running on Opus. The resolver must pick a
+        // different model instead of silently grading itself.
+        let (model, _) = resolve_verifier(MODEL_OPUS, None, None);
+        assert_ne!(model, MODEL_OPUS);
+        assert_eq!(model, MODEL_SONNET);
+    }
+
+    #[test]
+    fn resolve_verifier_honors_an_explicit_override() {
+        let (model, _) = resolve_verifier(MODEL_SONNET, Some(crate::claude::MODEL_HAIKU), None);
+        assert_eq!(model, crate::claude::MODEL_HAIKU);
+    }
+
+    #[test]
+    fn resolve_verifier_passes_effort_through_unchanged() {
+        let (_, effort) = resolve_verifier(MODEL_SONNET, None, Some("high"));
+        assert_eq!(effort.as_deref(), Some("high"));
+    }
+
+    #[test]
+    fn build_system_prompt_appends_effort_hint_when_set() {
+        let prompt = build_system_prompt(Some("high"));
+        assert!(prompt.starts_with(VERIFIER_SYSTEM));
+        assert!(prompt.contains("Reasoning effort: high"));
+    }
+
+    #[test]
+    fn build_system_prompt_is_unchanged_when_effort_absent() {
+        assert_eq!(build_system_prompt(None), VERIFIER_SYSTEM);
     }
 
     #[tokio::test]

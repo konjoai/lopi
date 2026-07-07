@@ -334,6 +334,9 @@ mod tests {
             require_plan_approval: false,
             autonomy_level: Default::default(),
             report: None,
+            verifier_required: false,
+            verifier_model: None,
+            verifier_effort: None,
         }
     }
 

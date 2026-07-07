@@ -244,6 +244,14 @@ impl AgentRunner {
         self
     }
 
+    /// Verifier as Explicit Gate — whether the Konjo Verifier second-score
+    /// pass is enabled for this runner, either via [`with_verifier`](Self::with_verifier)
+    /// or (independently, at finalize time) a forcing `autonomy_level`.
+    #[must_use]
+    pub const fn verifier_enabled(&self) -> bool {
+        self.verifier_enabled
+    }
+
     /// Phase 5b — wire custom score weights for this task's retry loop.
     /// Allows the pool to adjust lint/diff penalties based on user-tuned
     /// preferences or derived from past attempt success patterns.

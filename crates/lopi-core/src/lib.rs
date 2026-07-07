@@ -72,6 +72,26 @@ mod tests {
         assert!(matches!(t.source, TaskSource::Cli));
         assert!(t.required_capabilities.is_empty(), "default = no caps");
         assert!(t.report.is_none(), "no report channel by default");
+        assert!(!t.verifier_required, "verifier not required by default");
+        assert!(t.verifier_model.is_none(), "no verifier model override by default");
+        assert!(t.verifier_effort.is_none(), "no verifier effort hint by default");
+    }
+
+    /// Verifier as Explicit Gate — a `Task` JSON payload predating these
+    /// three fields must still deserialize, with the same conservative
+    /// defaults `Task::new` produces.
+    #[test]
+    fn task_deserializes_when_verifier_fields_are_absent() {
+        let t = Task::new("legacy payload");
+        let mut json = serde_json::to_value(&t).unwrap();
+        let obj = json.as_object_mut().unwrap();
+        obj.remove("verifier_required");
+        obj.remove("verifier_model");
+        obj.remove("verifier_effort");
+        let back: Task = serde_json::from_value(json).unwrap();
+        assert!(!back.verifier_required);
+        assert!(back.verifier_model.is_none());
+        assert!(back.verifier_effort.is_none());
     }
 
     #[test]

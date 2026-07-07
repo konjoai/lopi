@@ -203,6 +203,26 @@ pub struct Task {
     /// as a raw literal.
     #[serde(default)]
     pub report: Option<String>,
+    /// Verifier as Explicit Gate — force the Konjo Verifier second-score pass
+    /// for this task, independent of `autonomy_level`. Mirrors
+    /// [`crate::loop_config::LoopConfig::verifier_required`]. `false` (the
+    /// default) leaves the only forcing mechanism as
+    /// `autonomy_level >= VerifiedPr`, unchanged from before this field
+    /// existed.
+    #[serde(default)]
+    pub verifier_required: bool,
+    /// Model used for the verifier's grading pass. Mirrors
+    /// [`crate::loop_config::LoopConfig::verifier_model`]. `None` (the
+    /// default) resolves to a model that differs from the worker's — see
+    /// `lopi_agent::verifier::resolve_verifier` — so the checker is never the
+    /// same model as the maker.
+    #[serde(default)]
+    pub verifier_model: Option<String>,
+    /// Reasoning-effort hint for the verifier's grading pass. Mirrors
+    /// [`crate::loop_config::LoopConfig::verifier_effort`]. `None` (the
+    /// default) omits the hint entirely.
+    #[serde(default)]
+    pub verifier_effort: Option<String>,
 }
 
 /// Where a task originated — used for routing replies and audit logging.
@@ -256,6 +276,9 @@ impl Task {
             require_plan_approval: false,
             autonomy_level: crate::loop_config::AutonomyLevel::default(),
             report: None,
+            verifier_required: false,
+            verifier_model: None,
+            verifier_effort: None,
         }
     }
 

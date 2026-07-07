@@ -192,6 +192,37 @@ fn loop_config_default_is_conservative() {
 }
 
 #[test]
+fn loop_config_verifier_gate_defaults_off() {
+    let c = LoopConfig::default();
+    assert!(!c.verifier_required, "verifier not required by default");
+    assert!(c.verifier_model.is_none());
+    assert!(c.verifier_effort.is_none());
+}
+
+#[test]
+fn loop_config_verifier_gate_round_trips_through_toml() {
+    let c = LoopConfig {
+        verifier_required: true,
+        verifier_model: Some("claude-sonnet-4-6".into()),
+        verifier_effort: Some("high".into()),
+        ..LoopConfig::default()
+    };
+    let toml_str = toml::to_string(&c).unwrap();
+    let back: LoopConfig = toml::from_str(&toml_str).unwrap();
+    assert_eq!(c, back);
+}
+
+/// Verifier as Explicit Gate — a config predating these three fields must
+/// still parse, landing on the conservative (off) defaults.
+#[test]
+fn loop_config_parses_toml_missing_verifier_fields() {
+    let c: LoopConfig = toml::from_str("autonomy_level = \"draft_pr\"\n").unwrap();
+    assert!(!c.verifier_required);
+    assert!(c.verifier_model.is_none());
+    assert!(c.verifier_effort.is_none());
+}
+
+#[test]
 fn loop_config_load_missing_file_yields_default() {
     let dir = std::env::temp_dir().join("lopi_loop_cfg_missing");
     let _ = std::fs::create_dir_all(&dir);
