@@ -206,6 +206,25 @@ pub struct LoopConfig {
     /// Default trust level for loops in this repo.
     #[serde(default)]
     pub autonomy_level: AutonomyLevel,
+    /// Verifier as Explicit Gate — force the Konjo Verifier second-score pass
+    /// for this loop, independent of `autonomy_level`. `false` (the default)
+    /// leaves the only forcing mechanism as `autonomy_level >= VerifiedPr`
+    /// ([`AutonomyLevel::requires_verifier`]), unchanged from before this
+    /// field existed.
+    #[serde(default)]
+    pub verifier_required: bool,
+    /// Model used for the verifier's grading pass (e.g. `"claude-opus-4-7"`).
+    /// `None` (the default) resolves to a model that differs from the
+    /// worker's, so the checker is never the same model as the maker
+    /// ("never grade your own homework").
+    #[serde(default)]
+    pub verifier_model: Option<String>,
+    /// Reasoning-effort hint folded into the verifier's system prompt (e.g.
+    /// `"low"`, `"medium"`, `"high"`, `"max"`) — the same free-form presets
+    /// used by worker-side launch controls. `None` (the default) omits the
+    /// hint entirely.
+    #[serde(default)]
+    pub verifier_effort: Option<String>,
     /// How the loop re-prompts *itself* after a failed attempt. Defaults to
     /// [`Direct`](SelfPromptStrategy::Direct) — the legacy raw-failure injection.
     #[serde(default)]
@@ -260,6 +279,9 @@ impl Default for LoopConfig {
     fn default() -> Self {
         Self {
             autonomy_level: AutonomyLevel::default(),
+            verifier_required: false,
+            verifier_model: None,
+            verifier_effort: None,
             self_prompt: SelfPromptStrategy::default(),
             escalate_strategy: false,
             vision_path: None,

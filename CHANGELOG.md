@@ -1,5 +1,20 @@
 # Changelog
 
+## [Unreleased] — Sprint 4: Verifier as Explicit Gate 🔬
+
+### Added
+
+**Verifier as Explicit Gate** (`lopi-core`, `lopi-agent`, `lopi-orchestrator`)
+- **`LoopConfig`/`Task` gain `verifier_required: bool`, `verifier_model: Option<String>`,
+  `verifier_effort: Option<String>`** — a per-loop "require the Konjo Verifier"
+  toggle independent of `autonomy_level`, `#[serde(default)]` and round-trip-safe.
+- **`VerifierAgent::verify` is parameterized** (`model: &str, effort: Option<&str>`)
+  instead of hardcoding `MODEL_OPUS`; a new pure `resolve_verifier` picks a
+  model that differs from the worker's when `verifier_model` is unset
+  ("never grade your own homework").
+- **Pool construction now calls `.with_verifier()`** — its first real call site
+  ever — when `verifier_required` or `verifier_model` is set on the task.
+
 ## [Unreleased] — Sprint 3: Report on Finish 📣
 
 ### Added

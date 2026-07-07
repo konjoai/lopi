@@ -1,5 +1,6 @@
 mod api_plan;
 mod finalize;
+mod lifecycle;
 mod plan_gate;
 mod plan_steps;
 pub mod postmortem;
@@ -14,11 +15,8 @@ mod verifier_runner;
 
 use crate::api_client::AnthropicClient;
 use crate::stability::{StabilityConfig, StabilityHarness};
-use lopi_context::{ContentBlock, ContextWindow, Phase, PinPolicy, Role, TaggedMessage};
-use lopi_core::{
-    AgentEvent, EventBus, PlanDecision, Score, ScoreWeights, SelfPromptStrategy, Task, TaskId,
-    TaskStatus,
-};
+use lopi_context::ContextWindow;
+use lopi_core::{AgentEvent, EventBus, PlanDecision, ScoreWeights, SelfPromptStrategy, Task};
 use lopi_memory::MemoryStore;
 use lopi_ratelimit::{AnthropicLimiter, CircuitBreaker};
 use std::path::PathBuf;
@@ -244,6 +242,14 @@ impl AgentRunner {
         self
     }
 
+    /// Verifier as Explicit Gate — whether the Konjo Verifier second-score
+    /// pass is enabled for this runner, either via [`with_verifier`](Self::with_verifier)
+    /// or (independently, at finalize time) a forcing `autonomy_level`.
+    #[must_use]
+    pub const fn verifier_enabled(&self) -> bool {
+        self.verifier_enabled
+    }
+
     /// Phase 5b — wire custom score weights for this task's retry loop.
     /// Allows the pool to adjust lint/diff penalties based on user-tuned
     /// preferences or derived from past attempt success patterns.
@@ -365,132 +371,5 @@ impl AgentRunner {
     #[must_use]
     pub fn attempts_made(&self) -> u8 {
         self.attempts_made
-    }
-
-    pub(super) fn id(&self) -> TaskId {
-        self.task.id
-    }
-
-    pub(super) fn log(&self, msg: impl Into<String>) {
-        self.bus.send(AgentEvent::info(self.id(), msg));
-    }
-
-    pub(super) fn warn(&self, msg: impl Into<String>) {
-        self.bus.send(AgentEvent::warn(self.id(), msg));
-    }
-
-    /// Broadcast a `StatusChanged` event and a `TurnMetrics` heartbeat.
-    pub(super) fn status(&self, s: TaskStatus, attempt: u8) {
-        let activity = match &s {
-            TaskStatus::Planning => 0.45_f32,
-            TaskStatus::AwaitingPlanApproval { .. } => 0.05_f32,
-            TaskStatus::Implementing => 0.85_f32,
-            TaskStatus::Testing => 0.55_f32,
-            TaskStatus::Scoring => 0.30_f32,
-            TaskStatus::Retrying { .. } => 0.40_f32,
-            TaskStatus::Success { .. }
-            | TaskStatus::Failed { .. }
-            | TaskStatus::RolledBack
-            | TaskStatus::Conflict { .. } => 0.0_f32,
-            TaskStatus::Queued => 0.10_f32,
-        };
-        self.emit_turn_metrics(activity);
-        self.bus.send(AgentEvent::StatusChanged {
-            task_id: self.id(),
-            status: s,
-            attempt,
-        });
-    }
-
-    /// Emit terminal bookkeeping for a finalized attempt and return its status.
-    ///
-    /// A genuine success pins the conclusion and marks an OTel `complete` span;
-    /// a [`TaskStatus::Conflict`] (rebase collision) skips that — it is not a
-    /// success — but both broadcast the status so the dashboards reflect reality.
-    pub(super) fn conclude_finalized(
-        &mut self,
-        status: TaskStatus,
-        score: &Score,
-        attempt: u8,
-    ) -> TaskStatus {
-        if !matches!(status, TaskStatus::Conflict { .. }) {
-            self.context.pin_conclusion(
-                format!(
-                    "Sprint succeeded — pass={:.0}% diff={}L",
-                    score.test_pass_rate * 100.0,
-                    score.diff_lines
-                ),
-                Phase::Conclusion,
-            );
-            tracing::info!(
-                pressure = self.context.token_pressure(),
-                "context at conclusion"
-            );
-            // OTel GenAI-aligned task-completion boundary span.
-            let _ = tracing::info_span!(
-                "lopi.agent.task.complete",
-                task_id = %self.id(),
-                outcome = "success",
-                attempts = attempt,
-            )
-            .entered();
-        }
-        self.status(status.clone(), attempt);
-        status
-    }
-
-    pub(super) fn emit_turn_metrics(&self, activity: f32) {
-        let pressure = self.context.token_pressure();
-        self.bus.send(AgentEvent::TurnMetrics {
-            task_id: self.id(),
-            pressure,
-            activity,
-            tokens_per_sec: 0.0,
-            cost_usd: 0.0,
-        });
-    }
-
-    pub(super) fn check_cancel(&mut self) -> bool {
-        // Check the structured CancellationToken first (pool JoinSet teardown path).
-        if self.cancel_token.is_cancelled() {
-            self.log("⛔ cancelled via token");
-            return true;
-        }
-        // Then check the legacy oneshot cancel channel (web API / CLI path).
-        // A Closed channel means the sender was dropped (standalone/CLI path with no
-        // active canceller) — that is NOT a cancellation, so we discard the receiver
-        // and continue. Only an explicit Ok(()) send is a real cancel.
-        if let Some(mut rx) = self.cancel_rx.take() {
-            match rx.try_recv() {
-                Ok(()) => {
-                    self.log("⛔ cancelled by user");
-                    return true;
-                }
-                Err(oneshot::error::TryRecvError::Empty) => {
-                    self.cancel_rx = Some(rx);
-                }
-                Err(oneshot::error::TryRecvError::Closed) => {
-                    // Sender dropped (no active canceller) — proceed normally.
-                }
-            }
-        }
-        false
-    }
-
-    /// Pin the task goal as a Boot-phase turn so it's always visible across evictions.
-    pub(super) fn boot_context(&mut self) {
-        let content = vec![ContentBlock::Text(format!("Task goal: {}", self.task.goal))];
-        let msg = TaggedMessage {
-            id: Uuid::new_v4(),
-            role: Role::User,
-            content,
-            tokens: 0,
-            pin: PinPolicy::Always,
-            phase: Phase::Boot,
-            evict_after: None,
-            tool_pair_id: None,
-            is_conclusion: false,
-        };
-        self.context.push(msg).ok();
     }
 }

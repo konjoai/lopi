@@ -322,6 +322,43 @@ async fn compute_weight_adjustments(_goal: &str, store: Option<&MemoryStore>) ->
     }
 }
 
+/// Build the configured [`AgentRunner`] for one task's attempt-loop.
+///
+/// Pure assembly of an already-resolved builder chain — no I/O happens here,
+/// so the Verifier-as-Explicit-Gate wiring can be proven at this seam without
+/// exercising a real agent run: `.with_verifier()` is called when the task
+/// carries `verifier_required` or an explicit `verifier_model`, the first
+/// real call site this path has ever had.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn build_runner(
+    task: Task,
+    work_repo: PathBuf,
+    bus: EventBus<AgentEvent>,
+    store: Option<MemoryStore>,
+    cancel_rx: oneshot::Receiver<()>,
+    attempt_counter: Arc<AtomicUsize>,
+    weights: ScoreWeights,
+    self_prompt: lopi_core::SelfPromptStrategy,
+    escalate: bool,
+    skills: lopi_skill::SkillRegistry,
+    budget_tokens: u64,
+    plan_decision_rx: oneshot::Receiver<lopi_core::PlanDecision>,
+) -> AgentRunner {
+    let verifier_needed = task.verifier_required || task.verifier_model.is_some();
+    let runner = AgentRunner::new(task, work_repo, bus, store, cancel_rx, attempt_counter)
+        .with_score_weights(weights)
+        .with_self_prompt(self_prompt)
+        .with_strategy_escalation(escalate)
+        .with_skills(skills)
+        .with_task_budget(budget_tokens)
+        .with_plan_gate(plan_decision_rx);
+    if verifier_needed {
+        runner.with_verifier()
+    } else {
+        runner
+    }
+}
+
 #[tracing::instrument(skip(bus, store, cancel_rx, plan_decision_rx, attempt_counter), fields(task_id = %task.id, goal = %task.goal))]
 async fn run_one(
     task: Task,
@@ -370,20 +407,20 @@ async fn run_one(
         .as_ref()
         .map_or_else(|| repo.clone(), |w| w.path().to_path_buf());
 
-    let mut runner = AgentRunner::new(
+    let mut runner = build_runner(
         task,
         work_repo,
         bus.clone(),
         store.clone(),
         cancel_rx,
         attempt_counter,
-    )
-    .with_score_weights(weights)
-    .with_self_prompt(self_prompt)
-    .with_strategy_escalation(escalate)
-    .with_skills(skills)
-    .with_task_budget(budget_tokens)
-    .with_plan_gate(plan_decision_rx);
+        weights,
+        self_prompt,
+        escalate,
+        skills,
+        budget_tokens,
+        plan_decision_rx,
+    );
     let outcome = runner.run().await?;
     // Reap the throwaway worktree now the run is done. The RAII drop is the
     // panic / early-return safety net; this is the clean, observable path.

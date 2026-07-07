@@ -1,6 +1,11 @@
 //! Sprint S — Konjo Verifier integration inside the agent runner.
+//! Verifier as Explicit Gate — the model/effort actually used to grade is
+//! resolved from the task's `verifier_model` / `verifier_effort` (falling
+//! back to a model that differs from the worker's) instead of the old
+//! hardcoded Opus constant.
 use super::AgentRunner;
-use crate::verifier::{get_repo_diff, resolve_rubric, VerifierAgent};
+use crate::claude::select_model;
+use crate::verifier::{get_repo_diff, resolve_rubric, resolve_verifier, VerifierAgent};
 use lopi_core::AgentEvent;
 use tracing::warn;
 
@@ -21,9 +26,28 @@ impl AgentRunner {
         let diff = get_repo_diff(&self.repo_path).await;
         let test_output = test_errors.join("\n");
 
-        self.log("🔬 verifier: grading output against rubric…");
+        // `attempt` here is the 1-based finalize attempt; `select_model` wants
+        // the 0-based attempt whose model this grading pass must not repeat.
+        let worker_model = select_model(&self.task, attempt.saturating_sub(1));
+        let (model, effort) = resolve_verifier(
+            worker_model,
+            self.task.verifier_model.as_deref(),
+            self.task.verifier_effort.as_deref(),
+        );
+
+        self.log(format!(
+            "🔬 verifier: grading output against rubric ({model})…"
+        ));
         let verdict = match VerifierAgent::new(client)
-            .verify(&self.task.goal, &plan, &diff, &test_output, &rubric)
+            .verify(
+                &self.task.goal,
+                &plan,
+                &diff,
+                &test_output,
+                &rubric,
+                &model,
+                effort.as_deref(),
+            )
             .await
         {
             Ok(v) => v,
@@ -40,7 +64,7 @@ impl AgentRunner {
             verdict.gaps.len()
         ));
 
-        persist_and_emit(self, attempt, &verdict).await;
+        persist_and_emit(self, attempt, &verdict, &model).await;
 
         if verdict.passed {
             return true;
@@ -59,15 +83,15 @@ impl AgentRunner {
     }
 }
 
-async fn persist_and_emit(runner: &AgentRunner, attempt: u8, verdict: &lopi_core::VerifierVerdict) {
+async fn persist_and_emit(
+    runner: &AgentRunner,
+    attempt: u8,
+    verdict: &lopi_core::VerifierVerdict,
+    model: &str,
+) {
     if let Some(store) = &runner.store {
         if let Err(e) = store
-            .save_verifier_verdict(
-                &runner.task.id.to_string(),
-                attempt,
-                verdict,
-                crate::claude::MODEL_OPUS,
-            )
+            .save_verifier_verdict(&runner.task.id.to_string(), attempt, verdict, model)
             .await
         {
             warn!("verifier verdict persist failed: {e}");
