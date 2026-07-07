@@ -372,5 +372,4 @@ impl AgentRunner {
     pub fn attempts_made(&self) -> u8 {
         self.attempts_made
     }
-
 }

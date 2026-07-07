@@ -35,7 +35,9 @@ impl AgentRunner {
             self.task.verifier_effort.as_deref(),
         );
 
-        self.log(format!("🔬 verifier: grading output against rubric ({model})…"));
+        self.log(format!(
+            "🔬 verifier: grading output against rubric ({model})…"
+        ));
         let verdict = match VerifierAgent::new(client)
             .verify(
                 &self.task.goal,

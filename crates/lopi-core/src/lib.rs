@@ -73,8 +73,14 @@ mod tests {
         assert!(t.required_capabilities.is_empty(), "default = no caps");
         assert!(t.report.is_none(), "no report channel by default");
         assert!(!t.verifier_required, "verifier not required by default");
-        assert!(t.verifier_model.is_none(), "no verifier model override by default");
-        assert!(t.verifier_effort.is_none(), "no verifier effort hint by default");
+        assert!(
+            t.verifier_model.is_none(),
+            "no verifier model override by default"
+        );
+        assert!(
+            t.verifier_effort.is_none(),
+            "no verifier effort hint by default"
+        );
     }
 
     /// Verifier as Explicit Gate — a `Task` JSON payload predating these
