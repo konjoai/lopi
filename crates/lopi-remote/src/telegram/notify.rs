@@ -152,22 +152,28 @@ async fn handle_event(
         }
 
         // Report on Finish (Loop Engineering primitive 6) — the summary text
-        // is fully rendered by `emit_report`; this just delivers it. Reuses
-        // `send_msg`, not a second sender. Known limitation: this always
-        // targets the one global `chat_id` this loop was booted with, not a
-        // per-task destination — see `LEDGER.md`'s Sprint 3 entry.
+        // is fully rendered by `emit_report`; this just delivers it.
         AgentEvent::ReportReady {
             channel, summary, ..
         } => {
-            if channel == "telegram" {
-                send_msg(bot, chat_id, summary).await;
-            } else {
-                warn!("report-on-finish: dropping report for unsupported channel `{channel}`");
-            }
+            route_report_ready(bot, chat_id, channel, summary).await;
         }
 
         // TurnMetrics, LogLine, PoolStats intentionally suppressed — too noisy.
         _ => {}
+    }
+}
+
+/// Deliver a [`AgentEvent::ReportReady`] summary. Reuses `send_msg`, not a
+/// second sender. Known limitation: this always targets the one global
+/// `chat_id` this loop was booted with, not a per-task destination — see
+/// `LEDGER.md`'s Sprint 3 entry. An unsupported channel is dropped loudly
+/// (`warn!`), never silently sent.
+async fn route_report_ready(bot: &Bot, chat_id: ChatId, channel: &str, summary: &str) {
+    if channel == "telegram" {
+        send_msg(bot, chat_id, summary).await;
+    } else {
+        warn!("report-on-finish: dropping report for unsupported channel `{channel}`");
     }
 }
 
