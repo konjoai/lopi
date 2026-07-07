@@ -1,5 +1,15 @@
 # Changelog
 
+## [Unreleased] — Sprint 5: Expose Loop Fields on `CreateTaskRequest` 🌉
+
+### Added
+- `POST /api/tasks` now accepts `verifier_required`/`verifier_model`/`verifier_effort`,
+  `report` (validated via the existing `ReportChannel::parse`), `max_iterations`
+  (`0` = infinite, a new sentinel), and new `Task.model`/`Task.effort` overrides
+  — all optional, `#[serde(default)]`, no change when omitted.
+- `select_model` and pool `build_runner` now honor `Task.model`/`max_iterations`
+  as explicit overrides over the heuristic/repo `LoopConfig` default.
+
 ## [Unreleased] — Sprint 4: Verifier as Explicit Gate 🔬
 
 ### Added

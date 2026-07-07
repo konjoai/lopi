@@ -270,6 +270,9 @@ mod tests {
             verifier_required: false,
             verifier_model: None,
             verifier_effort: None,
+            model: None,
+            effort: None,
+            max_iterations: None,
         }
     }
 

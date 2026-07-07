@@ -62,17 +62,25 @@ impl AgentRunner {
                 .with_extra_constraints(all_constraints)
                 .with_patterns(pattern_pairs.clone())
                 .with_lessons(lessons_data.clone())
-                .with_model(model)
-                // Cost ceiling: the CLI session must not out-run the runner's own
-                // turn cap. Halts cleanly at the cap and reports why.
-                .with_max_turns(self.max_turns);
+                .with_model(model.clone());
+            // Cost ceiling: the CLI session must not out-run the runner's own
+            // turn cap. `max_turns == 0` is the infinite-loop sentinel — omit
+            // `--max-turns` entirely rather than pass a literal 0, which would
+            // cap the subprocess at zero turns instead of leaving it unbounded.
+            if self.max_turns > 0 {
+                claude = claude.with_max_turns(self.max_turns);
+            }
             if let Some(usd) = self.cli_budget_usd {
                 claude = claude.with_max_budget_usd(usd);
             }
             tracing::info!(model, attempt, "model selected for attempt");
             // Hard stop: prevent runaway agents from looping past the turn cap.
+            // `max_turns == 0` is the infinite-loop sentinel (Task::max_iterations,
+            // `Some(0)`) — the same "0 = disabled/unbounded" convention already
+            // used by `no_progress_limit` and `budget_tokens`, so the cap is
+            // skipped entirely rather than firing on the very first turn.
             self.turn_count += 1;
-            if self.turn_count > self.max_turns {
+            if self.max_turns > 0 && self.turn_count > self.max_turns {
                 let status = TaskStatus::Failed {
                     reason: format!(
                         "TurnLimitExceeded {{ limit: {}, task_id: {} }}",
@@ -149,7 +157,7 @@ impl AgentRunner {
                 );
                 let plan_result = async {
                     if self.has_direct_api() {
-                        match self.plan_via_api(model, attempt + 1).await {
+                        match self.plan_via_api(&model, attempt + 1).await {
                             Ok(p) => {
                                 // Direct-API response arrives whole — surface it
                                 // line-by-line so the log reads like the stream.

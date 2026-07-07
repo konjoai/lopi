@@ -1,9 +1,11 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use super::*;
-use crate::web::types::MAX_GOAL_LENGTH;
+use crate::web::handlers::apply_loop_fields;
+use crate::web::types::{CreateTaskRequest, MAX_GOAL_LENGTH};
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
+use lopi_core::Task;
 use lopi_orchestrator::AgentPool;
 use std::path::PathBuf;
 use tower::ServiceExt;
@@ -511,6 +513,143 @@ async fn create_task_with_all_options_returns_201() {
         .await
         .unwrap();
     assert_eq!(resp.status(), StatusCode::CREATED);
+}
+
+// ─── Loop/verifier/report/override field exposure (web task-create surface) ──
+
+#[tokio::test]
+async fn create_task_with_loop_fields_returns_201() {
+    let app = test_app().await;
+    let body = serde_json::to_string(&serde_json::json!({
+        "goal": "verified capped loop",
+        "verifier_required": true,
+        "verifier_model": "claude-opus-4-7",
+        "verifier_effort": "high",
+        "report": "telegram",
+        "max_iterations": 5,
+        "model": "claude-haiku-4-5-20251001",
+        "effort": "low",
+    }))
+    .unwrap();
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/tasks")
+                .header("Content-Type", "application/json")
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+}
+
+#[tokio::test]
+async fn create_task_rejects_unreachable_report_channel() {
+    let app = test_app().await;
+    let body = serde_json::to_string(&serde_json::json!({
+        "goal": "report to whatsapp",
+        "report": "whatsapp",
+    }))
+    .unwrap();
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/tasks")
+                .header("Content-Type", "application/json")
+                .body(Body::from(body))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert!(
+        json["error"].as_str().unwrap().contains("inbound-only"),
+        "must surface the existing typed ReportChannelError, not a generic message"
+    );
+}
+
+#[test]
+fn apply_loop_fields_leaves_task_unchanged_when_all_fields_are_absent() {
+    let mut task = Task::new("plain task");
+    let baseline = format!("{task:?}");
+    let req: CreateTaskRequest =
+        serde_json::from_value(serde_json::json!({"goal": "plain task"})).unwrap();
+    apply_loop_fields(&mut task, &req).unwrap();
+    assert_eq!(
+        format!("{task:?}"),
+        baseline,
+        "no new field may change defaults when omitted"
+    );
+}
+
+#[test]
+fn apply_loop_fields_threads_verifier_overrides_through_exactly() {
+    let mut task = Task::new("verified task");
+    let req: CreateTaskRequest = serde_json::from_value(serde_json::json!({
+        "goal": "verified task",
+        "verifier_required": true,
+        "verifier_model": "opus",
+        "verifier_effort": "high",
+    }))
+    .unwrap();
+    apply_loop_fields(&mut task, &req).unwrap();
+    assert!(task.verifier_required);
+    assert_eq!(task.verifier_model.as_deref(), Some("opus"));
+    assert_eq!(task.verifier_effort.as_deref(), Some("high"));
+}
+
+#[test]
+fn apply_loop_fields_accepts_telegram_and_rejects_whatsapp() {
+    let mut telegram_task = Task::new("t");
+    let telegram_req: CreateTaskRequest =
+        serde_json::from_value(serde_json::json!({"goal": "t", "report": "telegram"})).unwrap();
+    assert!(apply_loop_fields(&mut telegram_task, &telegram_req).is_ok());
+    assert_eq!(telegram_task.report.as_deref(), Some("telegram"));
+
+    let mut whatsapp_task = Task::new("w");
+    let whatsapp_req: CreateTaskRequest =
+        serde_json::from_value(serde_json::json!({"goal": "w", "report": "whatsapp"})).unwrap();
+    let err = apply_loop_fields(&mut whatsapp_task, &whatsapp_req).unwrap_err();
+    assert_eq!(err, lopi_core::ReportChannelError::WhatsappUnsupported);
+    assert_eq!(
+        whatsapp_task.report, None,
+        "task must not be mutated on a rejected report channel"
+    );
+}
+
+#[test]
+fn apply_loop_fields_accepts_zero_max_iterations_as_the_infinite_sentinel() {
+    let mut task = Task::new("infinite task");
+    let req: CreateTaskRequest =
+        serde_json::from_value(serde_json::json!({"goal": "infinite task", "max_iterations": 0}))
+            .unwrap();
+    apply_loop_fields(&mut task, &req).unwrap();
+    assert_eq!(
+        task.max_iterations,
+        Some(0),
+        "0 must flow through as the infinite sentinel, not be rejected or coerced"
+    );
+}
+
+#[test]
+fn apply_loop_fields_threads_model_and_effort_overrides() {
+    let mut task = Task::new("overridden task");
+    let req: CreateTaskRequest = serde_json::from_value(serde_json::json!({
+        "goal": "overridden task",
+        "model": "claude-opus-4-7",
+        "effort": "max",
+    }))
+    .unwrap();
+    apply_loop_fields(&mut task, &req).unwrap();
+    assert_eq!(task.model.as_deref(), Some("claude-opus-4-7"));
+    assert_eq!(task.effort.as_deref(), Some("max"));
 }
 
 #[tokio::test]

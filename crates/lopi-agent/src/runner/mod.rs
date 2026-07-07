@@ -59,6 +59,10 @@ pub struct AgentRunner {
     pub context: ContextWindow,
     /// Hard upper bound on total attempt iterations before the runner gives up.
     /// Prevents runaway agents from looping indefinitely when `task.max_retries` is very high.
+    /// `0` is the infinite-loop sentinel (set from `Task::max_iterations`'s
+    /// `Some(0)`, or the repo's `.lopi/loop.toml` when unset) — the cap is
+    /// skipped entirely rather than firing on the very first turn, matching
+    /// the "0 = disabled" convention already used by `no_progress_limit`.
     pub max_turns: u32,
     /// Optional direct-API client. When present (and the breaker is closed),
     /// the planning step uses `AnthropicClient::stream_plan` with prompt
