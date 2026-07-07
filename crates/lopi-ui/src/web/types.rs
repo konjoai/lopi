@@ -32,6 +32,38 @@ pub struct CreateTaskRequest {
     /// Phase 11 — require human approval of the plan before implementation.
     #[serde(default)]
     pub require_plan_approval: Option<bool>,
+    /// Verifier as Explicit Gate — force the Konjo Verifier second-score pass
+    /// for this task, independent of `autonomy_level`. Mirrors
+    /// [`lopi_core::Task::verifier_required`].
+    #[serde(default)]
+    pub verifier_required: Option<bool>,
+    /// Explicit verifier model override, e.g. `"claude-opus-4-7"`. Mirrors
+    /// [`lopi_core::Task::verifier_model`].
+    #[serde(default)]
+    pub verifier_model: Option<String>,
+    /// Reasoning-effort hint for the verifier's grading pass. Mirrors
+    /// [`lopi_core::Task::verifier_effort`].
+    #[serde(default)]
+    pub verifier_effort: Option<String>,
+    /// Report on Finish channel name (e.g. `"telegram"`). Validated via
+    /// [`lopi_core::ReportChannel::parse`] at request time — an unknown or
+    /// currently-unreachable channel (`"whatsapp"`) is rejected with a 422,
+    /// never silently dropped. Mirrors [`lopi_core::Task::report`].
+    #[serde(default)]
+    pub report: Option<String>,
+    /// Per-task override of the hard iteration ceiling, taking precedence
+    /// over the repo's `.lopi/loop.toml`. `0` is the infinite-loop sentinel.
+    /// Mirrors [`lopi_core::Task::max_iterations`].
+    #[serde(default)]
+    pub max_iterations: Option<u8>,
+    /// Explicit worker-model override. Mirrors [`lopi_core::Task::model`].
+    #[serde(default)]
+    pub model: Option<String>,
+    /// Reasoning-effort hint for the worker's planning pass. Stored for
+    /// round-trip only — not yet folded into any planning prompt. Mirrors
+    /// [`lopi_core::Task::effort`].
+    #[serde(default)]
+    pub effort: Option<String>,
 }
 
 /// Response body for `POST /api/tasks`.

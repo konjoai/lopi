@@ -223,6 +223,30 @@ pub struct Task {
     /// default) omits the hint entirely.
     #[serde(default)]
     pub verifier_effort: Option<String>,
+    /// Explicit worker-model override (e.g. `"claude-opus-4-7"`). `None` (the
+    /// default) leaves model selection to `claude::select_model`'s
+    /// complexity/retry heuristic, unchanged from before this field existed.
+    /// An explicit value is always honored verbatim, mirroring
+    /// `verifier_model`'s "explicit wins over the heuristic" precedent.
+    #[serde(default)]
+    pub model: Option<String>,
+    /// Reasoning-effort hint for the worker's planning pass (e.g. `"low"`,
+    /// `"medium"`, `"high"`, `"max"`). Stored so the API/UI can round-trip
+    /// it; not yet folded into any planning prompt — the direct-API path's
+    /// system prompt (`LOPI_SYSTEM_PROMPT`) is `cache_control: ephemeral`
+    /// and must stay byte-identical across requests to keep its cache-hit
+    /// rate, so per-task injection needs a deliberate design pass rather
+    /// than a default added here. `None` changes nothing.
+    #[serde(default)]
+    pub effort: Option<String>,
+    /// Per-task override of the hard iteration ceiling, taking precedence
+    /// over the repo's `.lopi/loop.toml` [`crate::loop_config::LoopConfig::max_iterations`]
+    /// when set. `0` is the infinite-loop sentinel (by design decision, not
+    /// an `Option`-based ∞). `None` (the default) leaves the repo config —
+    /// or its own default — as the sole ceiling, unchanged from before this
+    /// field existed.
+    #[serde(default)]
+    pub max_iterations: Option<u8>,
 }
 
 /// Where a task originated — used for routing replies and audit logging.
@@ -279,6 +303,9 @@ impl Task {
             verifier_required: false,
             verifier_model: None,
             verifier_effort: None,
+            model: None,
+            effort: None,
+            max_iterations: None,
         }
     }
 

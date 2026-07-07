@@ -30,7 +30,7 @@ impl AgentRunner {
         // the 0-based attempt whose model this grading pass must not repeat.
         let worker_model = select_model(&self.task, attempt.saturating_sub(1));
         let (model, effort) = resolve_verifier(
-            worker_model,
+            &worker_model,
             self.task.verifier_model.as_deref(),
             self.task.verifier_effort.as_deref(),
         );

@@ -342,16 +342,24 @@ pub(super) fn build_runner(
     escalate: bool,
     skills: lopi_skill::SkillRegistry,
     budget_tokens: u64,
+    repo_max_iterations: u8,
     plan_decision_rx: oneshot::Receiver<lopi_core::PlanDecision>,
 ) -> AgentRunner {
     let verifier_needed = task.verifier_required || task.verifier_model.is_some();
-    let runner = AgentRunner::new(task, work_repo, bus, store, cancel_rx, attempt_counter)
+    // Loop-as-code: a task-level override always wins over the repo's
+    // `.lopi/loop.toml` ceiling when set — mirrors verifier_model's "explicit
+    // wins over default" precedent. Falls back to the repo config, which was
+    // previously loaded here but never applied to `max_turns` — this closes
+    // that gap rather than adding a second, parallel one.
+    let max_turns = u32::from(task.max_iterations.unwrap_or(repo_max_iterations));
+    let mut runner = AgentRunner::new(task, work_repo, bus, store, cancel_rx, attempt_counter)
         .with_score_weights(weights)
         .with_self_prompt(self_prompt)
         .with_strategy_escalation(escalate)
         .with_skills(skills)
         .with_task_budget(budget_tokens)
         .with_plan_gate(plan_decision_rx);
+    runner.max_turns = max_turns;
     if verifier_needed {
         runner.with_verifier()
     } else {
@@ -374,11 +382,12 @@ async fn run_one(
     let goal = task.goal.clone();
 
     let weights = compute_weight_adjustments(&goal, store.as_ref()).await;
-    // Loop-as-code: read the repo's self-prompting, isolation, skills, and
-    // budget levers off the reactor in one blocking load. A missing/malformed
-    // `.lopi/loop.toml` yields the conservative default (Direct self-prompt,
-    // shared-checkout Branch isolation, no skills, inherited budget).
-    let (self_prompt, escalate, isolation, skills, budget_tokens) = {
+    // Loop-as-code: read the repo's self-prompting, isolation, skills, budget,
+    // and max-iterations levers off the reactor in one blocking load. A
+    // missing/malformed `.lopi/loop.toml` yields the conservative default
+    // (Direct self-prompt, shared-checkout Branch isolation, no skills,
+    // inherited budget, the default iteration ceiling).
+    let (self_prompt, escalate, isolation, skills, budget_tokens, repo_max_iterations) = {
         let repo = repo.clone();
         tokio::task::spawn_blocking(move || {
             let cfg = lopi_core::LoopConfig::load_from_repo(&repo).unwrap_or_default();
@@ -389,10 +398,28 @@ async fn run_one(
                 cfg.isolation,
                 skills,
                 cfg.budget_tokens,
+                cfg.max_iterations,
             )
         })
         .await
-        .unwrap_or_default()
+        .unwrap_or_else(|e| {
+            // The blocking task itself panicked/was cancelled — not a config
+            // parse failure (that's already handled by `unwrap_or_default()`
+            // above). Fall back to `LoopConfig::default()` explicitly rather
+            // than the tuple's own `Default`, so `max_iterations` lands on
+            // its safe default (25) instead of `u8::default()` (0), which
+            // this sprint made the infinite-loop sentinel.
+            tracing::warn!(task_id = %task_id, "loop-config blocking load task failed: {e}; using LoopConfig defaults");
+            let cfg = lopi_core::LoopConfig::default();
+            (
+                cfg.self_prompt,
+                cfg.escalate_strategy,
+                cfg.isolation,
+                lopi_skill::SkillRegistry::default(),
+                cfg.budget_tokens,
+                cfg.max_iterations,
+            )
+        })
     };
 
     // Worktree isolation (Pentad M1.2): when enabled, give this task its own
@@ -419,6 +446,7 @@ async fn run_one(
         escalate,
         skills,
         budget_tokens,
+        repo_max_iterations,
         plan_decision_rx,
     );
     let outcome = runner.run().await?;

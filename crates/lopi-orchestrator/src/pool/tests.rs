@@ -327,6 +327,7 @@ fn runner_for(task: Task) -> lopi_agent::AgentRunner {
         false,
         lopi_skill::SkillRegistry::default(),
         0,
+        lopi_core::LoopConfig::default().max_iterations,
         plan_decision_rx,
     )
 }
@@ -360,5 +361,40 @@ fn without_the_flag_or_model_the_gate_stays_off_below_l3() {
     assert!(
         !runner.verifier_enabled(),
         "no accidental always-on: L1/L2 with no explicit gate must stay disabled"
+    );
+}
+
+// ─── Task.max_iterations override (web task-create surface exposure) ────
+
+#[test]
+fn task_max_iterations_override_beats_the_repo_config() {
+    let mut task = Task::new("bounded loop");
+    task.max_iterations = Some(5);
+    let runner = runner_for(task);
+    assert_eq!(
+        runner.max_turns, 5,
+        "an explicit per-task override must win over the repo's LoopConfig default"
+    );
+}
+
+#[test]
+fn task_max_iterations_zero_is_the_infinite_sentinel_not_rejected() {
+    let mut task = Task::new("unbounded loop");
+    task.max_iterations = Some(0);
+    let runner = runner_for(task);
+    assert_eq!(
+        runner.max_turns, 0,
+        "Some(0) must flow through as the infinite sentinel, not be coerced to the repo default"
+    );
+}
+
+#[test]
+fn task_max_iterations_unset_falls_back_to_the_repo_config() {
+    let task = Task::new("default-capped loop");
+    let runner = runner_for(task);
+    assert_eq!(
+        runner.max_turns,
+        u32::from(lopi_core::LoopConfig::default().max_iterations),
+        "no override set — the repo's LoopConfig ceiling applies unchanged"
     );
 }

@@ -32,14 +32,22 @@ pub const ERR_CREDIT_EXHAUSTED: &str = "anthropic credits exhausted";
 
 /// Route a task to the cheapest model capable of handling its complexity.
 ///
+/// `task.model`, when set, is always honored verbatim — an explicit override
+/// wins over both the complexity heuristic and the retry escalation, the
+/// same "explicit wins over default" precedent already established by
+/// `verifier_model`. Otherwise:
+///
 /// Heuristic: task size = constraints + `allowed_dirs` count.
 /// - ≤ 2: Haiku (read-only discovery, simple rewrites) — ~20× cheaper than Opus
 /// - 3–6: Sonnet (default — implementation, test writing)
 /// - > 6 or retry ≥ 2: Opus (complex multi-file changes, repeated failures)
 #[must_use]
-pub fn select_model(task: &Task, attempt: u8) -> &'static str {
+pub fn select_model(task: &Task, attempt: u8) -> String {
+    if let Some(m) = &task.model {
+        return m.clone();
+    }
     if attempt >= 2 {
-        return MODEL_OPUS; // escalate on repeated failure
+        return MODEL_OPUS.to_string(); // escalate on repeated failure
     }
     let size = task.constraints.len() + task.allowed_dirs.len();
     match size {
@@ -47,6 +55,7 @@ pub fn select_model(task: &Task, attempt: u8) -> &'static str {
         3..=6 => MODEL_SONNET,
         _ => MODEL_OPUS,
     }
+    .to_string()
 }
 
 /// Structured output from `claude --output-format json`.
@@ -667,6 +676,16 @@ mod tests {
     fn select_model_escalates_to_opus_at_attempt_3() {
         let t = Task::new("simple task");
         assert_eq!(select_model(&t, 3), MODEL_OPUS);
+    }
+
+    #[test]
+    fn select_model_honors_explicit_override_over_heuristic_and_escalation() {
+        let mut t = Task::new("big refactor");
+        t.constraints = vec!["c1".into(), "c2".into(), "c3".into(), "c4".into(), "c5".into()];
+        t.model = Some(MODEL_HAIKU.to_string());
+        // Would heuristically resolve to Opus (size 7) and escalate at attempt
+        // 2 — the explicit override wins over both, mirroring verifier_model.
+        assert_eq!(select_model(&t, 2), MODEL_HAIKU);
     }
 
     #[test]

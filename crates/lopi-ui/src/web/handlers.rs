@@ -10,7 +10,7 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Json},
 };
-use lopi_core::{CustomerTier, Priority, Task, TaskId};
+use lopi_core::{CustomerTier, Priority, ReportChannel, ReportChannelError, Task, TaskId};
 use lopi_memory::CheckpointInput;
 use lopi_spec::SpecSurface;
 use serde::Deserialize;
@@ -218,6 +218,45 @@ async fn resolve_task_id(s: &AppState, id: &str) -> Option<TaskId> {
     t.id.parse::<uuid::Uuid>().ok().map(TaskId)
 }
 
+/// Apply the loop/verifier/report/override fields exposed on
+/// [`CreateTaskRequest`] onto a freshly constructed `Task`. Kept separate
+/// from [`create_task`] so the field-mapping contract is unit-testable
+/// without an HTTP round-trip.
+///
+/// # Errors
+/// Returns [`ReportChannelError`] when `req.report` names an unknown or
+/// currently-unreachable channel (e.g. `"whatsapp"`) — reuses
+/// [`ReportChannel::parse`], the same validator `Task`/`ScheduleEntry`
+/// already use, rather than a second report-channel parser.
+pub(super) fn apply_loop_fields(
+    task: &mut Task,
+    req: &CreateTaskRequest,
+) -> Result<(), ReportChannelError> {
+    if let Some(report) = &req.report {
+        ReportChannel::parse(report)?;
+        task.report = Some(report.clone());
+    }
+    if let Some(v) = req.verifier_required {
+        task.verifier_required = v;
+    }
+    if let Some(m) = &req.verifier_model {
+        task.verifier_model = Some(m.clone());
+    }
+    if let Some(e) = &req.verifier_effort {
+        task.verifier_effort = Some(e.clone());
+    }
+    if let Some(n) = req.max_iterations {
+        task.max_iterations = Some(n);
+    }
+    if let Some(m) = &req.model {
+        task.model = Some(m.clone());
+    }
+    if let Some(e) = &req.effort {
+        task.effort = Some(e.clone());
+    }
+    Ok(())
+}
+
 pub(super) async fn create_task(
     State(s): State<AppState>,
     Json(req): Json<CreateTaskRequest>,
@@ -231,6 +270,10 @@ pub(super) async fn create_task(
     }
 
     let mut task = Task::new(req.goal.clone());
+    if let Err(e) = apply_loop_fields(&mut task, &req) {
+        return (StatusCode::UNPROCESSABLE_ENTITY, Json(json!({"error": e.to_string()})))
+            .into_response();
+    }
     task.priority = match req.priority.as_deref() {
         Some("low") => Priority::Low,
         Some("high") => Priority::High,

@@ -62,8 +62,28 @@ export const listTasks = () => request<{ tasks: TaskRow[] }>('/api/tasks');
 export const getTask = (id: string) => request<TaskRow>(`/api/tasks/${encodeURIComponent(id)}`);
 export const deleteTask = (id: string) =>
   request<{ cancelled?: boolean }>(`/api/tasks/${encodeURIComponent(id)}`, { method: 'DELETE' });
-export const createTask = (goal: string, repo: string, priority = 'normal') =>
-  request<{ id?: string }>('/api/tasks', json('POST', { goal, repo, priority }));
+
+/**
+ * Optional fields mirroring `crates/lopi-ui/src/web/types.rs::CreateTaskRequest`.
+ * Types only — no UI binds to these yet. `max_iterations: 0` is the
+ * infinite-loop sentinel (matches the Rust-side decision), not "no loop."
+ */
+export interface CreateTaskOptions {
+  verifier_required?: boolean;
+  verifier_model?: string;
+  verifier_effort?: string;
+  report?: string;
+  max_iterations?: number;
+  model?: string;
+  effort?: string;
+}
+
+export const createTask = (
+  goal: string,
+  repo: string,
+  priority = 'normal',
+  opts: CreateTaskOptions = {}
+) => request<{ id?: string }>('/api/tasks', json('POST', { goal, repo, priority, ...opts }));
 
 // Phase 11 — plan approval gate.
 export const approvePlan = (id: string) =>
