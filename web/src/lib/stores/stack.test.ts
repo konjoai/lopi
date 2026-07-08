@@ -22,6 +22,10 @@ import {
   cronHuman,
   computeNextRuns,
   cardToTaskPayload,
+  cardToTaskPayloadForRunOnce,
+  executionOrder,
+  dryRunStack,
+  bumpInOrder,
   applyToPaneCards,
   insertIntoPane,
   parseComposerInput,
@@ -350,7 +354,82 @@ eq(computeNextRuns('not a cron', new Date(), 3), [], 'a malformed cron expressio
   const fullyGuarded = buildCard('x');
   fullyGuarded.guardrails = { gate: true, gateCmd: 'g', until: true, untilCmd: 'u', onFail: 'stop', budget: 'auto' };
   const keys = Object.keys(cardToTaskPayload(fullyGuarded, defaults).options).sort();
-  eq(keys, ['effort', 'gate', 'max_iterations', 'model', 'on_fail', 'until'], 'options carries exactly the expected WIRED key names — no silent rename/drop');
+  eq(
+    keys,
+    ['client_ref', 'effort', 'gate', 'max_iterations', 'model', 'on_fail', 'until'],
+    'options carries exactly the expected WIRED key names — no silent rename/drop'
+  );
+  eqIs(
+    cardToTaskPayload(fullyGuarded, defaults).options.client_ref,
+    fullyGuarded.id,
+    'client_ref always carries the card\'s own id, so the response traces back to this card even under dedup'
+  );
+}
+
+// ── Backend-1: "Run once" forces max_iterations=1 without mutating the card ──
+{
+  const defaults = { model: 'sonnet', effort: 'medium', repo: 'konjoai/lopi' };
+  const c = buildCard(':optimize "x" x7');
+  eqIs(c.maxIterations, 7, 'sanity: the card itself carries the xN value');
+  const runOncePayload = cardToTaskPayloadForRunOnce(c, defaults);
+  eqIs(runOncePayload.options.max_iterations, 1, 'Run once overrides max_iterations to 1 in the outgoing payload');
+  eqIs(c.maxIterations, 7, 'Run once never mutates the card\'s own stored maxIterations');
+  const infinite = buildCard('x');
+  infinite.maxIterations = 0;
+  eqIs(
+    cardToTaskPayloadForRunOnce(infinite, defaults).options.max_iterations,
+    1,
+    'Run once overrides even the ∞ sentinel to a single pass'
+  );
+}
+
+// ── Backend-1: execution order is bottom-of-stack (oldest) first ─────────────
+{
+  const cards = [card('newest'), card('middle'), card('oldest')];
+  eq(
+    executionOrder(cards).map((c) => c.id),
+    ['oldest', 'middle', 'newest'],
+    'execution order reverses the array — the composer prepends, so the last element is the oldest/next-to-run'
+  );
+  eq(executionOrder([]), [], 'execution order of an empty stack is empty, not an error');
+  ok(executionOrder(cards) !== cards, 'execution order never mutates or aliases the input array');
+}
+
+// ── Backend-1: dry run validates without ever calling createTask ─────────────
+{
+  const defaults = { model: 'sonnet', effort: 'medium', repo: 'konjoai/lopi' };
+  const clean = [card('a', 'do a'), card('b', 'do b')];
+  const result = dryRunStack(clean, defaults);
+  ok(result.valid, 'a stack of well-formed cards dry-runs clean');
+  eq(result.issues, [], 'no issues on a clean stack');
+  eq(
+    result.plan.map((p) => p.goal),
+    ['do b', 'do a'],
+    'the plan is listed in execution order (bottom/oldest first), not array order'
+  );
+}
+{
+  const defaults = { model: 'sonnet', effort: 'medium', repo: 'konjoai/lopi' };
+  const empty = buildCard('');
+  const badGate = buildCard('has a goal');
+  badGate.guardrails = { ...badGate.guardrails, gate: true, gateCmd: '   ' };
+  const badUntil = buildCard('also has a goal');
+  badUntil.guardrails = { ...badUntil.guardrails, until: true, untilCmd: '' };
+  const result = dryRunStack([empty, badGate, badUntil], defaults);
+  ok(!result.valid, 'a stack with any bad card is invalid overall');
+  eq(result.issues.length, 3, 'each bad card contributes exactly one issue');
+  ok(
+    result.issues.some((i) => i.cardId === empty.id && i.message.includes('empty')),
+    'the empty-goal card is flagged by id'
+  );
+  ok(
+    result.issues.some((i) => i.cardId === badGate.id && i.message.includes('gate')),
+    'the empty-gate-command card is flagged by id'
+  );
+  ok(
+    result.issues.some((i) => i.cardId === badUntil.id && i.message.includes('until')),
+    'the empty-until-command card is flagged by id'
+  );
 }
 
 // ── V&V: schedule cron never "snaps" a custom expression to a preset (§C) ────
@@ -406,6 +485,60 @@ eqIs(
   eq(dragged[1].cards.map((c) => c.id), ['z', 'x', 'y'], 'drag-relative reorder via applyToPaneCards affects only the named pane');
   eq(dragged[0].cards.map((c) => c.id), ['a', 'b'], 'drag-relative reorder on s2 leaves s1 completely untouched');
   ok(dragged[0] === state[0], 's1 keeps its object identity across an s2-only drag reorder');
+}
+
+// ── bumpInOrder: reordering a queued (not-yet-started) card mid-run ─────────
+{
+  const order = ['a', 'b', 'c', 'd'];
+  const up = bumpInOrder(order, 0, 'c', 'up');
+  ok(up.ok, 'bumping a queued card up succeeds');
+  if (up.ok) eq(up.order, ['a', 'c', 'b', 'd'], 'bump up swaps the card with its immediate predecessor');
+
+  const down = bumpInOrder(order, 0, 'b', 'down');
+  ok(down.ok, 'bumping a queued card down succeeds');
+  if (down.ok) eq(down.order, ['a', 'c', 'b', 'd'], 'bump down swaps the card with its immediate successor');
+
+  ok(order[0] === 'a' && order[1] === 'b', 'bumpInOrder never mutates the input order array');
+}
+{
+  const order = ['a', 'b', 'c', 'd'];
+  const missing = bumpInOrder(order, 0, 'z', 'up');
+  ok(!missing.ok, 'bumping a card id absent from the order is rejected');
+  if (!missing.ok) eq(missing.error, 'card is not part of this run’s plan', 'the not-found error names the actual problem');
+}
+{
+  const order = ['a', 'b', 'c', 'd'];
+  const runningCard = bumpInOrder(order, 1, 'a', 'down');
+  ok(!runningCard.ok, 'bumping the already-running (at-cursor) card is rejected');
+  if (!runningCard.ok) {
+    eq(
+      runningCard.error,
+      'card is already running or finished — only queued cards can be bumped',
+      'the at-cursor rejection explains why'
+    );
+  }
+  const finishedCard = bumpInOrder(order, 1, 'a', 'down');
+  ok(!finishedCard.ok, 'bumping a finished (before-cursor) card is rejected');
+}
+{
+  const order = ['a', 'b', 'c', 'd'];
+  const aboveRunning = bumpInOrder(order, 1, 'c', 'up');
+  ok(!aboveRunning.ok, 'bumping a queued card to land at-or-before the cursor is rejected');
+  if (!aboveRunning.ok) {
+    eq(
+      aboveRunning.error,
+      'cannot bump above the currently running card',
+      'the above-cursor rejection explains why'
+    );
+  }
+}
+{
+  const order = ['a', 'b', 'c', 'd'];
+  const pastEnd = bumpInOrder(order, 0, 'd', 'down');
+  ok(!pastEnd.ok, 'bumping the last queued card further down is rejected');
+  if (!pastEnd.ok) {
+    eq(pastEnd.error, 'cannot bump past the end of the queue', 'the past-the-end rejection explains why');
+  }
 }
 
 namedSummary('stack');

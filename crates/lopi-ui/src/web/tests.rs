@@ -720,4 +720,5 @@ async fn plans_response_has_required_fields() {
 
 include!("tests_extended.rs");
 include!("schedules_tests.rs");
+include!("task_stream_tests.rs");
 include!("loop_tests.rs");
