@@ -19,7 +19,7 @@ body{background:var(--bg);color:var(--ink);font-family:var(--mono);font-size:13.
 .wrap{max-width:1120px;margin:0 auto;padding:50px 26px 110px}
 .eyebrow{font-size:11px;letter-spacing:.28em;text-transform:uppercase;color:var(--ice)}
 h1{font-family:var(--disp);font-weight:600;font-size:42px;line-height:1.05;margin:14px 0 10px}
-.sub{color:var(--dim);max-width:720px}
+.sub{color:var(--dim);max-width:760px}
 .sub b{color:var(--ink)}
 .rule{height:1px;background:var(--line);margin:34px 0}
 h2{font-family:var(--disp);font-weight:600;font-size:26px;margin:38px 0 4px}
@@ -27,6 +27,7 @@ h2 .n{font-family:var(--mono);font-size:12px;color:var(--ember);margin-right:10p
 .lead{color:var(--dim);margin-bottom:16px;max-width:800px}
 .lead b{color:var(--ink)}
 h3{font-family:var(--disp);font-weight:600;font-size:18px;margin:26px 0 8px;color:var(--ink)}
+h3 .sub3{font-family:var(--mono);font-size:11px;color:var(--dim2);font-weight:400;margin-left:8px;text-transform:none;letter-spacing:0}
 .tbl{width:100%;border-collapse:collapse;margin:12px 0;font-size:12px}
 .tbl th{text-align:left;font-weight:500;font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim2);padding:0 10px 8px;border-bottom:1px solid var(--line);vertical-align:bottom}
 .tbl td{padding:10px;border-bottom:1px solid var(--line2);vertical-align:top}
@@ -48,19 +49,44 @@ ul{margin:8px 0 8px 18px}li{margin:4px 0;color:var(--dim)}li b{color:var(--ink)}
 .combo{font-family:var(--mono);font-size:11px;color:var(--dim)}
 .combo b{color:var(--jade)}
 .foot{margin-top:44px;border-top:1px solid var(--line);padding-top:18px;font-size:11.5px;color:var(--dim2)}
+.tierpill{font-family:var(--mono);font-size:9.5px;font-weight:600;padding:1px 8px;border-radius:11px;border:1px solid;white-space:nowrap}
+.t-base{color:var(--jade);border-color:rgba(55,217,154,.4)}
+.t-test{color:var(--ice);border-color:rgba(57,198,230,.4)}
+.t-judge{color:var(--violet);border-color:rgba(183,155,255,.4)}
+.t-suite{color:var(--sun);border-color:rgba(255,207,74,.4)}
+.axisrow{display:flex;gap:22px;flex-wrap:wrap;margin:14px 0}
+.axis{flex:1;min-width:280px;border:1px solid var(--line);border-radius:8px;padding:13px 15px}
+.axis.g{border-left:3px solid var(--sun)}
+.axis.e{border-left:3px solid var(--jade)}
+.axis h4{font-family:var(--disp);font-size:15px;font-weight:600;margin-bottom:4px}
+.axis.g h4{color:var(--sun)}.axis.e h4{color:var(--jade)}
+.axis p{color:var(--dim);font-size:12px}
+.flag{border:1px solid rgba(255,93,134,.4);border-left:3px solid var(--rose);background:rgba(255,93,134,.05);border-radius:0 6px 6px 0;padding:15px 17px;margin:18px 0;font-size:12.5px;color:var(--dim)}
+.flag b{color:var(--ink)}
+.flag .tag{display:inline-block;font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--rose);border:1px solid rgba(255,93,134,.4);border-radius:11px;padding:2px 9px;margin-bottom:8px}
+.changerow{display:flex;gap:10px;margin:6px 0;font-size:12px;color:var(--dim)}
+.changerow b{color:var(--ink);flex:0 0 auto}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <div class="eyebrow">lopi · rasen loop stack</div>
+  <div class="eyebrow">lopi · loop stack</div>
   <h1>Full scope &amp; end-to-end test plan</h1>
-  <p class="sub">Everything the loop-stack UI is specified to do, the backend still owed to it, the UI build sequence, and a tiered test plan that exercises each component, each setting, and the combinations that matter. Scoped against the current main (Sprints 1–3 landed, Sprint 4 verifier gate in flight) and the design mockups.</p>
+  <p class="sub">Everything the loop-stack UI is specified to do, the backend still owed to it, the UI build sequence, and a tiered test plan that exercises each component, each setting, and the combinations that matter. Scoped against current main plus <code>UI_PLAN.md</code> (UI-0 recon) and the settled mockups: two-axis <b>guardrails/evals</b>, the two-button popover model, the fused creation flow, the per-loop autonomy selector, and the research-driven loop types (<code>:ratchet</code>, <code>budget:time</code>, <code>:escalate</code>). This is the spec UI-1 builds against.</p>
+
+  <div class="callout" style="border-left-color:var(--rose)"><b>Naming — <code>rasen</code> retired.</b> Earlier docs called the ordered container a "rasen loop stack." That codename is dropped from all user-facing surfaces. The unit of work is a <b>loop</b> (one prompt card, its guardrails, its evals); the ordered container is a <b>stack</b>. <code>rasen</code> survives at most as an internal/historical codename — do not surface it in UI copy, CLI help text, or new docs.</div>
 
   <div class="legend">
     <span><span class="st done">backend done</span> shipped in Rust</span>
     <span><span class="st partial">partial</span> exists, needs wiring/expose</span>
     <span><span class="st todo">backend todo</span> new field/endpoint</span>
     <span><span class="st ui">ui only</span> no backend work, pure frontend</span>
+  </div>
+  <div class="legend">
+    <span><span class="tierpill t-base">baseline</span> execution-ok, on by default</span>
+    <span><span class="tierpill t-test">test</span> shell exit code</span>
+    <span><span class="tierpill t-judge">judge</span> separate model grades</span>
+    <span><span class="tierpill t-suite">suite</span> named reusable bundle</span>
   </div>
 
   <div class="rule"></div>
@@ -73,19 +99,118 @@ ul{margin:8px 0 8px 18px}li{margin:4px 0;color:var(--dim)}li b{color:var(--ink)}
   <table class="tbl">
     <thead><tr><th style="width:16%">Feature</th><th style="width:34%">Behavior</th><th style="width:24%">Backend field / call</th><th style="width:12%">Backend</th><th style="width:14%">UI</th></tr></thead>
     <tbody>
-      <tr><td class="k">Prompt spec</td><td class="mut">Alias (<code>:optimize</code>), literal, or template with holes</td><td class="mut">Task goal; <code>resolve_template</code>; <code>parse_invocation</code></td><td><span class="st done">done</span></td><td><span class="st ui">ui only</span></td></tr>
-      <tr><td class="k">Loop ×N</td><td class="mut">Toggle + steppers; ≥2 or ∞; sets iteration count</td><td class="mut"><code>LoopConfig.max_iterations</code> / ∞ path</td><td><span class="st done">done</span></td><td><span class="st ui">ui only</span></td></tr>
-      <tr><td class="k">Schedule (cron)</td><td class="mut">Popover, freq pills ⇄ raw cron two-way</td><td class="mut"><code>ScheduleEntry</code> cron, <code>next_run_times</code></td><td><span class="st done">done</span></td><td><span class="st ui">ui only</span></td></tr>
-      <tr><td class="k">Limits · gate</td><td class="mut">Shell cmd must pass (exit 0) before start</td><td class="mut"><code>LoopConfig</code> gate cmd</td><td><span class="st partial">partial</span></td><td><span class="st ui">ui only</span></td></tr>
-      <tr><td class="k">Limits · until</td><td class="mut">Loop until shell cmd exits 0</td><td class="mut"><code>LoopConfig</code> until cmd</td><td><span class="st partial">partial</span></td><td><span class="st ui">ui only</span></td></tr>
-      <tr><td class="k">Limits · on-fail</td><td class="mut">stop / continue / backoff</td><td class="mut"><code>LoopConfig.on_fail</code></td><td><span class="st partial">partial</span></td><td><span class="st ui">ui only</span></td></tr>
-      <tr><td class="k">Limits · budget</td><td class="mut">auto / 200k / none</td><td class="mut"><code>LoopConfig.budget_tokens</code>, budget.rs</td><td><span class="st done">done</span></td><td><span class="st ui">ui only</span></td></tr>
-      <tr><td class="k">Verifier gate</td><td class="mut">Check toggle → slide-out verifier model+effort; always separate model</td><td class="mut"><code>verifier_required / verifier_model / verifier_effort</code></td><td><span class="st todo">Sprint 4</span></td><td><span class="st ui">ui only</span></td></tr>
-      <tr><td class="k">Per-card model/effort override</td><td class="mut">Shown only when differing from stack default</td><td class="mut"><code>Task</code> model/effort override</td><td><span class="st partial">partial</span></td><td><span class="st ui">ui only</span></td></tr>
+      <tr><td class="k">Prompt spec</td><td class="mut">Alias (<code>:optimize</code>), literal, or template with holes</td><td class="mut">Task goal; <code>resolve_template</code>; <code>parse_invocation</code></td><td><span class="st done">done</span> (CLI-only)</td><td><span class="st ui">ui only</span></td></tr>
+      <tr><td class="k">Loop ×N</td><td class="mut">Toggle + steppers; ≥2 or ∞; sets iteration count</td><td class="mut"><code>LoopConfig.max_iterations: u8</code></td><td><span class="st partial">partial</span> — finite only, no ∞ sentinel</td><td><span class="st ui">ui only</span></td></tr>
+      <tr><td class="k">Schedule (cron)</td><td class="mut">Popover, freq pills ⇄ raw cron two-way</td><td class="mut"><code>ScheduleEntry.cron</code>, <code>next_run_times</code></td><td><span class="st done">done</span> — full CRUD wired</td><td><span class="st ui">ui only</span></td></tr>
+      <tr><td class="k">Per-card model/effort override</td><td class="mut">Shown only when differing from stack default</td><td class="mut">Task model/effort exist; not on <code>CreateTaskRequest</code></td><td><span class="st partial">partial</span></td><td><span class="st ui">ui only</span></td></tr>
       <tr><td class="k">Duplicate</td><td class="mut">Clone card in place</td><td class="mut">client-side; re-persist stack</td><td><span class="st done">n/a</span></td><td><span class="st ui">ui only</span></td></tr>
-      <tr><td class="k">Drag reorder</td><td class="mut">Grip or card drag; reorders queue</td><td class="mut">stack order persist</td><td><span class="st partial">partial</span></td><td><span class="st ui">ui only</span></td></tr>
+      <tr><td class="k">Drag reorder</td><td class="mut">Grip or card drag; reorders queue</td><td class="mut">no server-side stack concept exists</td><td><span class="st todo">todo</span> (client-only until persisted)</td><td><span class="st ui">ui only</span></td></tr>
       <tr><td class="k">Delete</td><td class="mut">Remove card from stack</td><td class="mut">stack persist</td><td><span class="st done">n/a</span></td><td><span class="st ui">ui only</span></td></tr>
       <tr><td class="k">Insert between</td><td class="mut">Hover square, 50% width, full gap height</td><td class="mut">stack insert index</td><td><span class="st done">n/a</span></td><td><span class="st ui">ui only</span></td></tr>
+    </tbody>
+  </table>
+  <p class="mut">Verifier gate and gate/until have moved off this table — see <b>Evals</b> below. What used to be "Limits" is now split across <b>Guardrails</b> (should it keep running?) and <b>Evals</b> (is the work good?), a settled two-axis model, not a relabeling.</p>
+
+  <h3>Guardrails vs Evals <span class="sub3">the settled two-axis model</span></h3>
+  <p class="lead">Two questions, two axes, two buttons. <b>Guardrails</b> answer "should this loop keep running?" — the run envelope: budget, max-iterations, the no-progress window, on-fail policy, schedule. <b>Evals</b> answer "is the work actually good?" — the acceptance checks that decide whether an iteration counts as done. This is not a cosmetic rename: <code>gate</code>/<code>until</code>, previously grouped under "Limits" as pre/post-run shell commands, are reframed as the <b>test</b> tier of the eval ladder — a shell exit code is a verdict on <i>quality</i>, not a precondition on whether to run. See the flagged reconciliation below.</p>
+  <div class="axisrow">
+    <div class="axis g"><h4>Guardrails</h4><p>budget (auto/200k/none) · max-iterations (×N/∞) · window (no-progress halt) · on-fail (stop/continue/backoff) · schedule (cron, <code>budget:time</code>). Edited via the <b>shield button</b> → click-popover. Card shows one <b>guardrails summary line</b> at rest.</p></div>
+    <div class="axis e"><h4>Evals</h4><p>baseline → test → judge → suite, the eval ladder. Edited via the <b>check button</b> → click-popover, <b>flat checklist</b> layout (not grouped/suite-first — those were explored and rejected for this surface). Card shows one <b>evals summary line</b> at rest.</p></div>
+  </div>
+  <div class="callout" style="border-left-color:var(--violet)"><b>Two-button popover model (settled).</b> Both guardrails and evals edit via a floating popover anchored to a card-bar button — shield for guardrails, check for evals — exactly like the existing schedule popover. The card itself never grows past its two summary lines regardless of how many evals are enabled; the popover floats above the stack so a dense multi-pane view never reflows. This superseded an earlier inline-slide-down exploration, which caused reflow in a multi-card stack, and an earlier suite-first/grouped-by-tier popover layout, which added a click before you could see or toggle an individual check — the flat checklist won because most edits are "flip one box," not "pick a bundle."</div>
+  <table class="tbl">
+    <thead><tr><th style="width:16%">Feature</th><th style="width:34%">Behavior</th><th style="width:24%">Backend field / call</th><th style="width:12%">Backend</th><th style="width:14%">UI</th></tr></thead>
+    <tbody>
+      <tr><td class="k">Guardrails · budget</td><td class="mut">auto / 200k / none</td><td class="mut"><code>LoopConfig.budget_tokens: u64</code> (0=inherit)</td><td><span class="st partial">partial</span> — scalar exists, 3-preset vocabulary doesn't</td><td><span class="st ui">ui only</span></td></tr>
+      <tr><td class="k">Guardrails · max-iterations</td><td class="mut">×N stepper or ∞</td><td class="mut"><code>LoopConfig.max_iterations: u8</code></td><td><span class="st partial">partial</span> — no ∞ sentinel</td><td><span class="st ui">ui only</span></td></tr>
+      <tr><td class="k">Guardrails · window</td><td class="mut">Halt after N consecutive no-progress iterations</td><td class="mut"><code>LoopConfig.no_progress_limit: u8</code> (default 3)</td><td><span class="st done">done</span></td><td><span class="st ui">ui only</span></td></tr>
+      <tr><td class="k">Guardrails · on-fail</td><td class="mut">stop / continue / backoff</td><td class="mut">no configurable enum; backoff is a fixed internal retry constant today</td><td><span class="st todo">todo</span></td><td><span class="st ui">ui only</span></td></tr>
+      <tr><td class="k">Guardrails · schedule</td><td class="mut">Cron popover, freq pills ⇄ raw sync</td><td class="mut"><code>ScheduleEntry.cron</code></td><td><span class="st done">done</span></td><td><span class="st ui">ui only</span></td></tr>
+      <tr><td class="k">Guardrails · <code>budget:time</code></td><td class="mut">Fixed wall-clock or count budget ("loop for 20 min", "×N overnight"), not just a token ceiling — from the Karpathy fixed-budget research</td><td class="mut">no field — new</td><td><span class="st todo">todo</span></td><td><span class="st ui">ui only</span></td></tr>
+      <tr><td class="k">Guardrails popover</td><td class="mut">Shield button → click-popover; toggles + steppers + segmented on-fail/budget controls; card height fixed</td><td class="mut">writes to <code>LoopConfig</code> fields above</td><td><span class="st done">n/a</span></td><td><span class="st ui">ui only</span></td></tr>
+      <tr><td class="k">Guardrails summary line</td><td class="mut">One line at rest: <code>budget:auto · max 25 · on-fail: stop</code></td><td class="mut">derived from the fields above</td><td><span class="st done">n/a</span></td><td><span class="st ui">ui only</span></td></tr>
+    </tbody>
+  </table>
+
+  <h3>Evals — the eval ladder <span class="sub3">four tiers, baseline always on</span></h3>
+  <table class="tbl">
+    <thead><tr><th style="width:12%">Tier</th><th style="width:48%">Contract</th><th style="width:24%">Example</th><th style="width:16%">Default</th></tr></thead>
+    <tbody>
+      <tr><td><span class="tierpill t-base">baseline</span></td><td class="mut">The agent's own actions didn't error. Applies to non-code loops too — "execution succeeded," not "a test passed."</td><td class="mut">non-zero exit anywhere in the run = fail</td><td class="mut"><b>on by default</b>, every loop, zero config</td></tr>
+      <tr><td><span class="tierpill t-test">test</span></td><td class="mut">A shell command's exit code is the verdict. This <b>is</b> the old gate/until, reframed as an eval, not a precondition.</td><td class="mut"><code>cargo test</code>, <code>pytest -q</code>, <code>./kill_test.sh</code></td><td class="mut">opt-in, one field</td></tr>
+      <tr><td><span class="tierpill t-judge">judge</span></td><td class="mut">A separate model grades the output against goal/rubric. Verifier ≠ worker, enforced.</td><td class="mut">code review, beats-best comparison, grounding check</td><td class="mut">opt-in; reuses the verifier</td></tr>
+      <tr><td><span class="tierpill t-suite">suite</span></td><td class="mut">A named, reusable bundle of the above. KCQF is the canonical built-in suite.</td><td class="mut">KCQF = unit + integration + code review + vuln scan + adversarial</td><td class="mut">attached by presets</td></tr>
+    </tbody>
+  </table>
+  <table class="tbl">
+    <thead><tr><th style="width:16%">Feature</th><th style="width:34%">Behavior</th><th style="width:24%">Backend field / call</th><th style="width:12%">Backend</th><th style="width:14%">UI</th></tr></thead>
+    <tbody>
+      <tr><td class="k">Eval · baseline</td><td class="mut">Execution-ok, on every loop, no config, no eval-count badge for it alone</td><td class="mut">generic run-succeeded/errored signal — not currently derived independent of task-level pass/fail</td><td><span class="st todo">todo</span></td><td><span class="st ui">ui only</span></td></tr>
+      <tr><td class="k">Eval · test</td><td class="mut">Shell cmd, exit 0 = pass (the old gate/until)</td><td class="mut">no <code>EvalDef</code> concept exists; do not reuse the old <code>gate_cmd</code>/<code>until_cmd</code> naming — see flag below</td><td><span class="st todo">todo</span></td><td><span class="st ui">ui only</span></td></tr>
+      <tr><td class="k">Eval · judge</td><td class="mut">Separate model grades; verifier ≠ worker enforced</td><td class="mut"><code>verifier_required/verifier_model/verifier_effort</code> — this <b>is</b> the judge tier's mechanism</td><td><span class="st done">done</span>, <span class="st partial">partial</span> web-exposure</td><td><span class="st ui">ui only</span></td></tr>
+      <tr><td class="k">Eval · suite (incl. KCQF)</td><td class="mut">Named reusable bundle; presets attach a suite; custom suites too</td><td class="mut">no <code>EvalSuite</code> concept — new, end to end</td><td><span class="st todo">todo</span></td><td><span class="st ui">ui only</span></td></tr>
+      <tr><td class="k">Evals popover</td><td class="mut">Check button → click-popover, flat checklist (all tiers listed together, not grouped); "add a suite" row at the bottom</td><td class="mut">writes eval selections for the card</td><td><span class="st done">n/a</span></td><td><span class="st ui">ui only</span></td></tr>
+      <tr><td class="k">Evals summary line</td><td class="mut">One line at rest: enabled count + pass/fail/running rollup once run; card height fixed regardless of count</td><td class="mut">derived from eval run results</td><td><span class="st done">n/a</span></td><td><span class="st ui">ui only</span></td></tr>
+      <tr><td class="k">Live-output eval pill</td><td class="mut">Rollup eval status (<code>N✓·N✗·N running</code>) shown in the output attachment header, colored by worst state — detail lives on the card's evals line, this is the live glance</td><td class="mut">per-eval run/pass/fail events, doesn't exist on <code>AgentEvent</code></td><td><span class="st todo">todo</span></td><td><span class="st ui">ui only</span></td></tr>
+      <tr><td class="k">Fix-hints on failing evals</td><td class="mut">A failed eval's gap + suggested fix surfaced inline (<code>✕ unchecked unwrap in error path → fix: add ? at handlers.rs:88</code>) — the comprehension-debt wedge, phase 1</td><td class="mut">verifier verdict is prose today; needs a structured gap/fix field</td><td><span class="st partial">partial</span></td><td><span class="st ui">ui only</span></td></tr>
+      <tr><td class="k">Periodic "what changed and why" summary</td><td class="mut">A forced, human-readable summary of what the loop changed and why, on a cadence — the comprehension-debt wedge, phase 2. Every source in the landscape research names "comprehension debt" / "cognitive surrender" as the real risk of good loops.</td><td class="mut">no mechanism; a future surface, not this build</td><td><span class="st todo">later</span></td><td><span class="st ui">later</span></td></tr>
+    </tbody>
+  </table>
+
+  <div class="flag">
+    <span class="tag">flagged, not resolved</span>
+    <b>Guardrails/evals split needs new field names, not a reuse of gate/until.</b> An earlier popover exploration (<code>lopi-twoline-popover.html</code>) still wrote gate/until into the <i>guardrails</i> popover, because it predates the evals-research reframing. The settled model (this doc, matching <code>lopi-evals-research.html</code>) moves gate/until into the eval ladder's <b>test</b> tier. Practically: don't build a backend <code>LoopConfig.gate_cmd</code>/<code>until_cmd</code> pair and then relabel it — model it as an <code>EvalDef</code> (name, tier, command) from the start, since evals are the thing that needs a list (0..N), a per-eval status, and a suite grouping, none of which a scalar gate/until pair supports.
+  </div>
+
+  <h3>Presets carry evals</h3>
+  <p class="lead">Choosing a preset attaches its default eval suite — the prompt, the guardrail defaults, and the evals all come from one choice. Every preset row below inherits <span class="tierpill t-base">baseline</span> automatically; only the additions are listed.</p>
+  <table class="tbl">
+    <thead><tr><th style="width:14%">Preset</th><th style="width:40%">Default evals</th><th style="width:46%">Notes</th></tr></thead>
+    <tbody>
+      <tr><td class="k"><code>:research</code></td><td class="mut">baseline + <span class="tierpill t-judge">judge</span> (grounded / non-hallucinated)</td><td class="mut">no test suite — nothing compiles</td></tr>
+      <tr><td class="k"><code>:implement</code></td><td class="mut">baseline + unit + integration + e2e <span class="tierpill t-test">test</span> + code review <span class="tierpill t-judge">judge</span> + vuln scan + adversarial <span class="tierpill t-suite">suite</span></td><td class="mut">the full KCQF suite</td></tr>
+      <tr><td class="k"><code>:optimize</code></td><td class="mut">baseline + beats-best <span class="tierpill t-judge">judge</span> + 30-run statistical gate <span class="tierpill t-test">test</span> + adversarial (anti-gaming) <span class="tierpill t-suite">suite</span></td><td class="mut">statistical rigor + anti-gaming, per the Konjo stats machinery</td></tr>
+      <tr><td class="k"><code>:ratchet</code></td><td class="mut">baseline + beats-best <span class="tierpill t-judge">judge</span> + adversarial <span class="tierpill t-suite">suite</span></td><td class="mut">see Research-driven loop types below — the self-improvement contract</td></tr>
+      <tr><td class="k"><code>:benchmark</code></td><td class="mut">baseline + benchmark gate + CoV/variance gate <span class="tierpill t-test">test</span></td><td class="mut">measurement harness, variance-aware</td></tr>
+    </tbody>
+  </table>
+  <p class="mut">KCQF is the canonical built-in suite — the repo's own CI Three-Wall gate, generalized into a user-facing eval primitive. Backend: <b><span class="st todo">todo</span></b> — no <code>EvalSuite</code> concept exists to attach; this is the same gap flagged in the Evals table above, not a second one.</p>
+
+  <h3>Autonomy — per-loop selector</h3>
+  <p class="lead">First-class setting in the selector row, alongside model/effort/repo. An L1–L4 ladder controlling how much a loop may act without a human.</p>
+  <div class="flag">
+    <span class="tag">flagged, not resolved</span>
+    <b>The mockup's L1–L4 labels don't match the backend enum they're meant to bind to.</b> <code>lopi-creation-flow.html</code>'s autonomy ladder uses a general "leash" framing — <code>L1 writer · asks before acting</code>, <code>L2 director · acts, checks in</code>, <code>L3 advisor · runs, reports</code>, <code>L4 autonomous · only escalates</code>. The real backend type, <code>crates/lopi-core/src/loop_config.rs::AutonomyLevel</code>, is narrower and PR-flow-specific: <code>L1 ReportOnly</code> (produce a report/diff artifact only, never open a PR), <code>L2 DraftPr</code> (open a draft PR, human approves — the default), <code>L3 VerifiedPr</code> (run the verifier before opening a PR), <code>L4 AutoMerge</code> (auto-merge when the verifier passes and the score clears the gate). These are not the same ladder — the mockup's L3 ("advisor, runs and reports") doesn't obviously map to the real L3 ("verified PR"), and the real ladder has no "asks before acting" step at all. <b>Do not build the selector against the mockup's copy verbatim.</b> Before UI-2 binds this control, either (a) relabel the UI to the real PR-flow semantics, or (b) treat this as a genuine product decision: extend/rename the backend enum to match the broader "how much leash" concept the mockup implies. Flagging per this doc's backend-binding-honesty rule rather than picking silently.
+  </div>
+  <table class="tbl">
+    <thead><tr><th style="width:16%">Feature</th><th style="width:34%">Behavior</th><th style="width:24%">Backend field / call</th><th style="width:12%">Backend</th><th style="width:14%">UI</th></tr></thead>
+    <tbody>
+      <tr><td class="k">Autonomy selector</td><td class="mut">Icon-only, violet; sits in the selector row with model/effort/repo; click reveals the L1–L4 rung detail</td><td class="mut"><code>AutonomyLevel</code> on <code>Task</code>/<code>LoopConfig</code>; not on <code>CreateTaskRequest</code></td><td><span class="st partial">partial</span> — label mismatch above must resolve first</td><td><span class="st ui">ui only</span></td></tr>
+      <tr><td class="k">Autonomy ladder detail</td><td class="mut">Expandable rung row under the selector, one rung highlighted</td><td class="mut">same field</td><td><span class="st partial">partial</span></td><td><span class="st ui">ui only</span></td></tr>
+    </tbody>
+  </table>
+
+  <h3>Research-driven loop types</h3>
+  <p class="lead">Three loop-type/guardrail primitives pulled from the loop-orchestration landscape research (Karpathy's AutoResearch, Yegge's Gas Town). All are high-priority per that research but net-new end to end.</p>
+  <table class="tbl">
+    <thead><tr><th style="width:14%">Type</th><th style="width:44%">Contract</th><th style="width:20%">Classification</th><th style="width:22%">Backend</th></tr></thead>
+    <tbody>
+      <tr><td class="k"><code>:ratchet</code></td><td class="mut">Run an experiment, keep the change <b>only if it beats the recorded best</b> on a measured signal; else revert. The self-improvement loop, from Karpathy's AutoResearch.</td><td class="mut">loop type / preset, uses a <span class="tierpill t-judge">judge</span>-tier beats-best eval</td><td><span class="st todo">todo</span> — no keep/revert-on-comparison logic exists</td></tr>
+      <tr><td class="k"><code>budget:time</code></td><td class="mut">"Loop for 20 minutes" / "×N overnight" — a wall-clock or iteration-count budget, not just tokens. Pairs with <code>:ratchet</code>.</td><td class="mut">guardrail (schedule/budget family)</td><td><span class="st todo">todo</span></td></tr>
+      <tr><td class="k"><code>:escalate</code></td><td class="mut">On stuck/fail, route to needs-you with a <b>severity</b> (crit/high/med) instead of silently stopping — from Gas Town's <code>gt escalate</code>.</td><td class="mut">guardrail on-fail option; feeds the overview's needs-you derivation</td><td><span class="st todo">todo</span> — extends the needs-you derivation already flagged in Part 2</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Creation flow — fused composer <span class="sub3">the settled flow</span></h3>
+  <p class="lead">One composer, three entry doors, not three separate screens. Three flow variants were explored (preset-first grid, type-first with inline chips, command-bar grammar); the settled flow fuses them: <b>type-first is the default door</b> (lowest ceremony — typing is never blocked by a picker), a <b>suggested preset chip</b> appears highlighted-but-not-auto-attached based on what you typed, the full <b>preset grid</b> is one click away when the composer is empty (and collapses to chips once you start typing), and the <code>:alias</code>/<code>@repo</code>/<code>xN</code> command grammar parses inline the whole time — the same string works in the composer, the CLI, and Telegram.</p>
+  <table class="tbl">
+    <thead><tr><th style="width:16%">Feature</th><th style="width:34%">Behavior</th><th style="width:24%">Backend field / call</th><th style="width:12%">Backend</th><th style="width:14%">UI</th></tr></thead>
+    <tbody>
+      <tr><td class="k">Composer (type-first door)</td><td class="mut">Type a goal or alias; no picker blocks the first keystroke</td><td class="mut">enqueue Task; template/alias resolve</td><td><span class="st done">done</span> (CLI-only, needs web call site)</td><td><span class="st ui">ui only</span></td></tr>
+      <tr><td class="k">Suggested preset chip</td><td class="mut">One preset chip shown highlighted (dashed, ember) based on typed text; never auto-attaches — the user still clicks it</td><td class="mut">client-side keyword match against preset catalog</td><td><span class="st done">n/a</span></td><td><span class="st ui">ui only</span></td></tr>
+      <tr><td class="k">Browse-presets grid</td><td class="mut">Full preset grid, one click away; shown by default on an empty composer, collapses to a chip row once typing starts</td><td class="mut">static preset catalog</td><td><span class="st done">n/a</span></td><td><span class="st ui">ui only</span></td></tr>
+      <tr><td class="k"><code>:alias</code>/<code>@repo</code>/<code>xN</code> grammar</td><td class="mut">Parsed inline in the same input, live, as chips confirming what was understood</td><td class="mut"><code>parse_invocation</code>, <code>resolve_template</code> (reuse)</td><td><span class="st done">done</span> (CLI-only, needs web call site)</td><td><span class="st ui">ui only</span></td></tr>
+      <tr><td class="k">Preset carries evals through every door</td><td class="mut">Whichever door you use (type-first chip, grid card, or grammar alias), picking a preset attaches the same default eval suite</td><td class="mut"><code>EvalSuite</code> — same gap as Presets carry evals above</td><td><span class="st todo">todo</span></td><td><span class="st ui">ui only</span></td></tr>
     </tbody>
   </table>
 
@@ -93,19 +218,20 @@ ul{margin:8px 0 8px 18px}li{margin:4px 0;color:var(--dim)}li b{color:var(--ink)}
   <table class="tbl">
     <thead><tr><th style="width:16%">Feature</th><th style="width:34%">Behavior</th><th style="width:24%">Backend field / call</th><th style="width:12%">Backend</th><th style="width:14%">UI</th></tr></thead>
     <tbody>
-      <tr><td class="k">Composer (top)</td><td class="mut">Type goal/alias → adds prompt to top of stack</td><td class="mut">enqueue Task; template resolve</td><td><span class="st done">done</span></td><td><span class="st ui">ui only</span></td></tr>
-      <tr><td class="k">Model selector</td><td class="mut">Icon-only, cyan; Opus/Sonnet/Haiku/Fable</td><td class="mut">stack default model</td><td><span class="st partial">partial</span></td><td><span class="st ui">ui only</span></td></tr>
+      <tr><td class="k">Composer (top)</td><td class="mut">Type goal/alias → adds prompt to top of stack; see Creation flow above for the full fused door set</td><td class="mut">enqueue Task; template resolve</td><td><span class="st done">done</span> (CLI-only)</td><td><span class="st ui">ui only</span></td></tr>
+      <tr><td class="k">Model selector</td><td class="mut">Icon-only, cyan; Opus/Sonnet/Haiku/Fable</td><td class="mut">stack default model — <code>LaunchControls.svelte</code> reuse</td><td><span class="st partial">partial</span></td><td><span class="st ui">ui only</span></td></tr>
       <tr><td class="k">Effort selector</td><td class="mut">Icon-only, ember; Low/Med/High</td><td class="mut">stack default effort → thinking budget</td><td><span class="st todo">todo</span></td><td><span class="st ui">ui only</span></td></tr>
-      <tr><td class="k">Repo selector</td><td class="mut">Icon-only, sun; path or konjoai repo</td><td class="mut">stack cwd / worktree root</td><td><span class="st partial">partial</span></td><td><span class="st ui">ui only</span></td></tr>
+      <tr><td class="k">Repo selector</td><td class="mut">Icon-only, sun; path or konjoai repo</td><td class="mut"><code>GET /api/repos</code> exists; not yet consumed by a dropdown</td><td><span class="st partial">partial</span></td><td><span class="st ui">ui only</span></td></tr>
+      <tr><td class="k">Autonomy selector</td><td class="mut">Icon-only, violet; L1–L4 — see the flagged label mismatch above</td><td class="mut"><code>AutonomyLevel</code></td><td><span class="st partial">partial</span></td><td><span class="st ui">ui only</span></td></tr>
       <tr><td class="k">Run stack (split)</td><td class="mut">Run now / once / schedule / dry run</td><td class="mut">start run; dry-run resolver</td><td><span class="st partial">partial</span></td><td><span class="st ui">ui only</span></td></tr>
-      <tr><td class="k">Add pane (hover edge)</td><td class="mut">Slide-out tab L/R → new pane</td><td class="mut">new agent session</td><td><span class="st partial">partial</span></td><td><span class="st ui">ui only</span></td></tr>
-      <tr><td class="k">Chain <code>&gt;</code></td><td class="mut">Output of one feeds next (inline today)</td><td class="mut">chain exec order</td><td><span class="st partial">partial</span></td><td><span class="st ui">ui only</span></td></tr>
+      <tr><td class="k">Add pane (hover edge)</td><td class="mut">Slide-out tab L/R → new pane</td><td class="mut"><code>layout.ts</code> addPane() exists; hover-reveal UI doesn't</td><td><span class="st partial">partial</span></td><td><span class="st ui">ui only</span></td></tr>
+      <tr><td class="k">Chain <code>&gt;</code></td><td class="mut">Output of one feeds next (inline today)</td><td class="mut">no backend chain concept; smallest version is a client-side stack sequencing, no new field needed</td><td><span class="st todo">todo</span></td><td><span class="st ui">ui only</span></td></tr>
       <tr><td class="k">:output / :input</td><td class="mut">Named-variable handoff (deferred)</td><td class="mut">variable store between steps</td><td><span class="st todo">todo</span></td><td><span class="st ui">ui only</span></td></tr>
-      <tr><td class="k">report:&lt;channel&gt;</td><td class="mut">Post summary to Telegram on finish</td><td class="mut"><code>ScheduleEntry.report</code>, ReportChannel</td><td><span class="st done">Sprint 3</span></td><td><span class="st ui">ui only</span></td></tr>
+      <tr><td class="k">report:&lt;channel&gt;</td><td class="mut">Post summary to Telegram on finish</td><td class="mut"><code>ScheduleEntry.report</code>, <code>ReportChannel</code></td><td><span class="st done">done</span>, <span class="st partial">partial</span> web-exposure</td><td><span class="st ui">ui only</span></td></tr>
     </tbody>
   </table>
 
-  <h3>Live run — controls &amp; output <span class="st ui" style="vertical-align:middle">new surface</span></h3>
+  <h3>Live run — controls &amp; output</h3>
   <table class="tbl">
     <thead><tr><th style="width:16%">Feature</th><th style="width:34%">Behavior</th><th style="width:24%">Backend field / call</th><th style="width:12%">Backend</th><th style="width:14%">UI</th></tr></thead>
     <tbody>
@@ -113,20 +239,20 @@ ul{margin:8px 0 8px 18px}li{margin:4px 0;color:var(--dim)}li b{color:var(--ink)}
       <tr><td class="k">Pause</td><td class="mut">Hold new iterations</td><td class="mut">pause signal to runner</td><td><span class="st todo">todo</span></td><td><span class="st ui">ui only</span></td></tr>
       <tr><td class="k">Drain</td><td class="mut">Finish in-flight iteration, then stop</td><td class="mut">drain signal</td><td><span class="st todo">todo</span></td><td><span class="st ui">ui only</span></td></tr>
       <tr><td class="k">Bump</td><td class="mut">+1 iteration to running loop</td><td class="mut">mutate max_iterations live</td><td><span class="st todo">todo</span></td><td><span class="st ui">ui only</span></td></tr>
-      <tr><td class="k">Kill</td><td class="mut">Abort now</td><td class="mut">cancel/abort signal</td><td><span class="st partial">partial</span></td><td><span class="st ui">ui only</span></td></tr>
-      <tr><td class="k"><b>Output attachment</b></td><td class="mut">Container fused under running card. <b>Collapsed by default</b> to a 2-line current-activity strip (kind + latest line); click to expand into thinking / actions / tools / output accordions + filter chips. Container grows to fit; only the thinking section is height-capped with its own scroll.</td><td class="mut"><code>AgentEvent</code> stream (exists) → per-card sink</td><td><span class="st partial">partial</span></td><td><span class="st ui">ui only</span></td></tr>
+      <tr><td class="k">Kill</td><td class="mut">Abort now</td><td class="mut"><code>AgentPool::cancel</code>/<code>cancel_by_prefix</code></td><td><span class="st done">done</span></td><td><span class="st ui">ui only</span></td></tr>
+      <tr><td class="k"><b>Output attachment</b></td><td class="mut">Container fused under running card. <b>Collapsed by default</b> to a 2-line current-activity strip (kind + latest line, plus the live eval pill — see Evals above); click to expand into thinking / actions / tools / output accordions + filter chips. Container grows to fit; only the thinking section is height-capped with its own scroll.</td><td class="mut"><code>AgentEvent</code> stream (exists) → per-card sink</td><td><span class="st partial">partial</span></td><td><span class="st ui">ui only</span></td></tr>
     </tbody>
   </table>
 
-  <h3>Overview — the zoom-out above the panes <span class="st ui" style="vertical-align:middle">new surface</span></h3>
+  <h3>Overview — the zoom-out above the panes</h3>
   <p class="mut" style="margin-bottom:10px">A portfolio/mission-control layer that aggregates every stack across every project into one view. The pane is zoom-in (one agent, deep detail); the overview is zoom-out (all work, shallow). Clicking any item drills into its pane. Same card renderer + data model as the panes, just aggregated.</p>
   <table class="tbl">
     <thead><tr><th style="width:16%">Feature</th><th style="width:34%">Behavior</th><th style="width:24%">Backend field / call</th><th style="width:12%">Backend</th><th style="width:14%">UI</th></tr></thead>
     <tbody>
-      <tr><td class="k">Group toggle</td><td class="mut">One toggle: <b>by state</b> (mission-control board, columns = needs-you / running / scheduled·held / done) and <b>by project</b> (portfolio, grouped by repo). Same stacks, two organizing axes. Remembers last used. Two-axis group+filter deferred.</td><td class="mut">aggregate of existing stack state</td><td><span class="st done">n/a</span></td><td><span class="st ui">ui only</span></td></tr>
+      <tr><td class="k">Group toggle</td><td class="mut">One toggle: <b>by state</b> (mission-control board, columns = needs-you / running / scheduled·held / done) and <b>by project</b> (portfolio, grouped by repo). Remembers last used.</td><td class="mut">aggregate of existing stack state</td><td><span class="st done">n/a</span></td><td><span class="st ui">ui only</span></td></tr>
       <tr><td class="k">Global stat bar</td><td class="mut">running / scheduled / held / <b>need-you</b> counts + total live token burn, across all projects</td><td class="mut">aggregate of run state + budget</td><td><span class="st partial">partial</span></td><td><span class="st ui">ui only</span></td></tr>
       <tr><td class="k">Stack summary card</td><td class="mut">Per stack: repo, workflow label, current prompt, state chip, iter progress or next-fire or reason, model/effort, live token burn, a 1-line live-activity glimpse for running ones</td><td class="mut"><code>AgentEvent</code> aggregate (exists)</td><td><span class="st partial">partial</span></td><td><span class="st ui">ui only</span></td></tr>
-      <tr><td class="k"><b>Needs-you state</b></td><td class="mut">Derived state pulling verifier-failed / gate-blocked / escalation work into one triage column, across every project. The single most valuable thing the overview adds.</td><td class="mut">derive from verifier verdict + gate exit + escalation</td><td><span class="st todo">todo</span></td><td><span class="st ui">ui only</span></td></tr>
+      <tr><td class="k"><b>Needs-you state</b></td><td class="mut">Derived state pulling verifier-failed / gate-blocked / <code>:escalate</code>-severity work into one triage column, across every project. The single most valuable thing the overview adds — independently validated by Gas Town's <code>gt feed --problems</code>.</td><td class="mut">derive from verifier verdict + failing test-tier eval + escalation severity</td><td><span class="st todo">todo</span></td><td><span class="st ui">ui only</span></td></tr>
       <tr><td class="k">Needs-you filter</td><td class="mut">Chip to show only work waiting on you, across projects (works in both groupings)</td><td class="mut">filter on derived state</td><td><span class="st done">n/a</span></td><td><span class="st ui">ui only</span></td></tr>
       <tr><td class="k">Drill-in</td><td class="mut">Click a card → open/focus that stack's pane</td><td class="mut">route to pane by stack id</td><td><span class="st done">n/a</span></td><td><span class="st ui">ui only</span></td></tr>
       <tr><td class="k">Workflow label</td><td class="mut">Optional subtitle grouping related stacks (e.g. <code>squish · launch benchmark</code>). Informal label for now, not a first-class entity.</td><td class="mut">optional field on stack</td><td><span class="st todo">later</span></td><td><span class="st ui">ui only</span></td></tr>
@@ -137,44 +263,54 @@ ul{margin:8px 0 8px 18px}li{margin:4px 0;color:var(--dim)}li b{color:var(--ink)}
 
   <!-- PART 2 -->
   <h2><span class="n">PART 2</span> Backend still owed to the UI</h2>
-  <p class="lead">The UI can't bind to fields that don't exist. Grouped by what has to land before the matching UI slice. Most is small; the big ones are the live-control signals and the effort→thinking-budget mapping.</p>
+  <p class="lead">The UI can't bind to fields that don't exist. Grouped by what has to land before the matching UI slice. Corrected against <code>UI_PLAN.md</code>'s direct-source recon — some things this doc previously called "in flight" are already done; some things it never mentioned (the eval ladder, ratchet, escalation severity, the autonomy label mismatch) are the real remaining gaps.</p>
 
   <table class="tbl">
     <thead><tr><th style="width:22%">Backend work</th><th style="width:40%">What's needed</th><th style="width:20%">Blocks which UI</th><th style="width:9%">Size</th><th style="width:9%">When</th></tr></thead>
     <tbody>
-      <tr><td class="k">Verifier gate fields</td><td class="mut"><code>verifier_required/model/effort</code> on LoopConfig+Task; activate <code>.with_verifier()</code></td><td class="mut">Verifier check button</td><td class="mut">M</td><td><span class="pri">Sprint 4 (now)</span></td></tr>
+      <tr><td class="k">Verifier gate web exposure</td><td class="mut"><code>verifier_required/model/effort</code> is fully implemented and correct on the backend already (<code>resolve_verifier</code>, "never grade your own homework"). Only <code>CreateTaskRequest</code> (web API) doesn't expose it yet.</td><td class="mut">Judge-tier eval, verifier button</td><td class="mut">S</td><td><span class="pri">pre-UI</span></td></tr>
       <tr><td class="k">Effort → thinking budget</td><td class="mut">Map Low/Med/High to a thinking-token budget the runner honors</td><td class="mut">Effort selector</td><td class="mut">S</td><td><span class="pri">pre-UI</span></td></tr>
-      <tr><td class="k">Live-control signals</td><td class="mut">pause / drain / bump as messages the running loop obeys at iteration boundary</td><td class="mut">Pause/drain/bump buttons</td><td class="mut">L</td><td><span class="pri">UI phase</span></td></tr>
-      <tr><td class="k">Per-card override plumbing</td><td class="mut">Task-level model/effort overrides actually applied over stack default</td><td class="mut">Card override row</td><td class="mut">S</td><td><span class="pri">pre-UI</span></td></tr>
-      <tr><td class="k">Stack persistence</td><td class="mut">Read/write a whole ordered stack (loops.toml) incl. reorder, insert, dup</td><td class="mut">Composer, drag, insert, dup</td><td class="mut">M</td><td><span class="pri">pre-UI</span></td></tr>
-      <tr><td class="k">Dry-run resolver</td><td class="mut">Expand aliases + templates + vars, return resolved plan + cost estimate, run nothing</td><td class="mut">Run split · dry run</td><td class="mut">M</td><td><span class="pri">UI phase</span></td></tr>
-      <tr><td class="k">Per-card event routing</td><td class="mut">Tag <code>AgentEvent</code>s (thinking/action/tool/output) with the card id so the UI attaches them to the right running card. The collapsed strip also needs a cheap "current activity" derivation (most recent streaming event) for its one-line readout.</td><td class="mut">Output attachment</td><td class="mut">M</td><td><span class="pri">UI phase</span></td></tr>
+      <tr><td class="k"><code>EvalDef</code> (test-tier evals)</td><td class="mut">A named eval with a shell command and exit-code verdict — the old gate/until, modeled as a list item, not a scalar pair. See the flagged reconciliation in Part 1.</td><td class="mut">Evals popover, test tier</td><td class="mut">M</td><td><span class="pri">pre-UI</span></td></tr>
+      <tr><td class="k">Baseline eval derivation</td><td class="mut">A generic "did the run's actions error" signal, independent of any test-tier command, so non-code loops get a baseline too</td><td class="mut">Evals popover, live eval pill</td><td class="mut">S</td><td><span class="pri">pre-UI</span></td></tr>
+      <tr><td class="k"><code>EvalSuite</code> (suite-tier + presets)</td><td class="mut">A named, reusable bundle of evals; KCQF as the canonical built-in; presets attach one on creation</td><td class="mut">Evals popover suite row, preset attachment, Creation flow</td><td class="mut">M</td><td><span class="pri">UI phase</span></td></tr>
+      <tr><td class="k">Eval run/pass/fail events</td><td class="mut">Per-eval status as the loop runs, streamed alongside <code>AgentEvent</code></td><td class="mut">Evals summary line (running state), live-output eval pill</td><td class="mut">M</td><td><span class="pri">UI phase</span></td></tr>
+      <tr><td class="k">Structured fix-hint field</td><td class="mut">Verifier/judge verdict gains a structured gap + fix field, not just prose — the comprehension-debt wedge</td><td class="mut">Fix-hints on failing evals</td><td class="mut">S</td><td><span class="pri">UI phase</span></td></tr>
+      <tr><td class="k">On-fail policy</td><td class="mut">stop/continue/backoff as a user-selectable enum on <code>LoopConfig</code> (backoff exists only as a fixed internal timing constant today)</td><td class="mut">Guardrails popover</td><td class="mut">S</td><td><span class="pri">pre-UI</span></td></tr>
+      <tr><td class="k"><code>budget:time</code> guardrail</td><td class="mut">Wall-clock or iteration-count budget, separate from the token budget</td><td class="mut">Guardrails popover</td><td class="mut">M</td><td><span class="pri">UI phase</span></td></tr>
+      <tr><td class="k">Ratchet / beats-best logic</td><td class="mut">Compare a run's measured signal against the recorded best; keep only if it wins, else revert</td><td class="mut"><code>:ratchet</code> loop type</td><td class="mut">M</td><td><span class="pri">UI phase</span></td></tr>
+      <tr><td class="k">Escalation + severity</td><td class="mut"><code>:escalate</code> routes stuck/failed work to needs-you tagged crit/high/med, instead of silently stopping</td><td class="mut">Needs-you derivation, overview triage column</td><td class="mut">M</td><td><span class="pri">Overview phase</span></td></tr>
+      <tr><td class="k">Autonomy label reconciliation</td><td class="mut">Product decision: relabel the UI to the real <code>AutonomyLevel</code> (ReportOnly/DraftPr/VerifiedPr/AutoMerge) PR-flow semantics, or extend the backend enum to match the mockup's broader "leash" framing — see the flag in Part 1. Not just code; needs a call before UI-2.</td><td class="mut">Autonomy selector</td><td class="mut">S + decision</td><td><span class="pri">pre-UI</span></td></tr>
+      <tr><td class="k">Autonomy web exposure</td><td class="mut"><code>AutonomyLevel</code> exists on <code>Task</code>/<code>LoopConfig</code>; not on <code>CreateTaskRequest</code></td><td class="mut">Autonomy selector</td><td class="mut">S</td><td><span class="pri">pre-UI</span></td></tr>
+      <tr><td class="k">Live-control signals</td><td class="mut">pause / drain / bump as messages the running loop obeys at iteration boundary. Confirmed by targeted source search: no signal exists in any form. The largest single backend gap.</td><td class="mut">Pause/drain/bump buttons</td><td class="mut">L</td><td><span class="pri">UI phase</span></td></tr>
+      <tr><td class="k">Per-card override plumbing</td><td class="mut"><code>CreateTaskRequest</code> extended with model/effort/repo override fields; <code>Task</code>-level fields already exist</td><td class="mut">Card override row</td><td class="mut">S</td><td><span class="pri">pre-UI</span></td></tr>
+      <tr><td class="k">Stack persistence</td><td class="mut">Read/write a whole ordered stack incl. reorder, insert, dup. No server-side stack concept exists at all today — recommend starting client-only.</td><td class="mut">Composer, drag, insert, dup</td><td class="mut">M</td><td><span class="pri">pre-UI</span></td></tr>
+      <tr><td class="k">Dry-run resolver</td><td class="mut">Per-task dry-run exists (<code>AgentRunner.dry_run</code>). Stack-wide expansion (resolve all aliases+templates+cost estimate across N cards, run nothing) doesn't.</td><td class="mut">Run split · dry run</td><td class="mut">M</td><td><span class="pri">UI phase</span></td></tr>
+      <tr><td class="k">Per-card event routing</td><td class="mut">Tag <code>AgentEvent</code>s with the card id so multi-card-per-pane output attaches correctly. <b>Unblocked fallback exists</b>: a pane running one card at a time can route by <code>task_id</code> alone.</td><td class="mut">Output attachment</td><td class="mut">M (or free, with the fallback)</td><td><span class="pri">UI phase</span></td></tr>
       <tr><td class="k">WS/SSE stream to web</td><td class="mut">Push the AgentEvent stream to the browser (the TUI consumes it today)</td><td class="mut">All live surfaces</td><td class="mut">M</td><td><span class="pri">UI phase</span></td></tr>
-      <tr><td class="k">Limits exposure</td><td class="mut">Confirm gate/until/on-fail are settable per-loop via the config the web writes (not only TUI)</td><td class="mut">Limits popover</td><td class="mut">S</td><td><span class="pri">pre-UI</span></td></tr>
-      <tr><td class="k">Needs-you derivation</td><td class="mut">A derived "this loop is waiting on a human" state, computed from verifier-fail + gate-exit-nonzero + escalation. The runner does not emit this today; it emits the underlying facts. This is the escalation/triage primitive from the feature research.</td><td class="mut">Overview needs-you column + filter</td><td class="mut">M</td><td><span class="pri">Overview phase</span></td></tr>
+      <tr><td class="k">Run-once (vs recurring schedule)</td><td class="mut"><code>ScheduleEntry</code> is recurring-cron only; a single future/immediate fire has no analog</td><td class="mut">Run split · run once</td><td class="mut">S + decision</td><td><span class="pri">UI phase</span></td></tr>
     </tbody>
   </table>
 
-  <div class="callout"><b>The one that's easy to miss:</b> per-card event routing. The <code>AgentEvent</code> bus already exists and streams fine to the TUI, but the output attachment needs each event tagged with <i>which card</i> produced it, so the right container fills. Without that tag, a multi-card stack can't show per-prompt output. Small change, but it gates the whole live-output surface, so land it early in the UI phase.</div>
+  <div class="callout"><b>The one that's easy to miss:</b> per-card event routing. The <code>AgentEvent</code> bus already exists and streams fine to the TUI, but true multi-card-per-pane output needs each event tagged with <i>which card</i> produced it. The unblocked fallback — one active card per pane, route by <code>task_id</code> — matches the mockups' actual behavior (only the "next" card ever runs), so this doesn't have to gate UI-4's start.</div>
 
-  <div class="callout" style="border-left-color:var(--violet)"><b>Output-attachment behavior (settled):</b> collapsed by default to a 2-line strip so a running pane stays quiet; expand per-card to see detail; the container grows to fit and only <i>thinking</i> is height-capped with its own scroll, since it's the one stream that runs long. <b>Two open knobs:</b> (1) the strip shows the single most-recent activity line today — alternative is two fixed lines (current action + current tool) always both visible; (2) on expand, thinking defaults open — alternative is defaulting the most-recent <i>completed</i> section open. Both are one-line changes, decide during UI-4.</div>
+  <div class="callout" style="border-left-color:var(--violet)"><b>Output-attachment behavior (settled):</b> collapsed by default to a 2-line strip so a running pane stays quiet; expand per-card to see detail; the container grows to fit and only <i>thinking</i> is height-capped with its own scroll, since it's the one stream that runs long. The live eval pill sits in the collapsed strip's header, giving the pass/fail/running rollup without expanding.</div>
 
-  <div class="callout" style="border-left-color:var(--jade)"><b>Overview is mostly free, except one column.</b> The zoom-out surface is aggregation over the same <code>AgentEvent</code> stream and stack state the panes already use, so grouping (by state / by project), the stat bar, and drill-in are pure UI. The exception is the <b>needs-you</b> column: "waiting on a human" is not a signal the runner emits, it's <i>derived</i> from a verifier fail, a non-zero gate exit, or an escalation that doesn't exist yet. That derivation is the only real backend work the overview introduces, and it's the same escalation/triage primitive flagged in the feature research. The grouping is free; the most valuable column has a prerequisite.</div>
+  <div class="callout" style="border-left-color:var(--jade)"><b>Overview is mostly free, except one column.</b> The zoom-out surface is aggregation over the same <code>AgentEvent</code> stream and stack state the panes already use, so grouping (by state / by project), the stat bar, and drill-in are pure UI. The exception is the <b>needs-you</b> column: "waiting on a human" is derived from a verifier fail, a failing test-tier eval, or an <code>:escalate</code> severity, none of which the runner emits as a single signal today. That derivation, now including escalation severity, is the only real backend work the overview introduces.</div>
 
   <div class="rule"></div>
 
   <!-- PART 3 -->
   <h2><span class="n">PART 3</span> UI build sequence</h2>
-  <p class="lead">The current <code>web/</code> is a conventional dashboard (<code>AgentGrid</code>, <code>AgentPane</code>, <code>AgentCard</code>). The loop-stack is a full replacement of that surface. Sliced kill-test-gated, same discipline as the backend sprints, each slice shippable.</p>
+  <p class="lead">The current <code>web/</code> is a conventional dashboard (<code>AgentGrid</code>, <code>AgentPane</code>, <code>AgentCard</code>). The loop-stack is a full replacement of that surface, built at a new route (<code>UI_PLAN.md</code>'s verdict: stand up new, don't overwrite the existing <code>/loop</code> cockpit page in place). Sliced kill-test-gated, same discipline as the backend sprints, each slice shippable. Sequence refined against <code>UI_PLAN.md</code>'s reuse map — UI-1/UI-2 are more unblocked than originally scoped (most is client-side state), UI-3's live-controls row is a harder, more isolated blocker (inventing a signal, not wiring one).</p>
   <ul>
-    <li><b>UI-0 · Recon.</b> Read the real <code>web/src/lib/components/*</code> and routes; map what to keep (auth, layout shell, WS client) vs replace. Output UI_PLAN.md. No code.</li>
-    <li><b>UI-1 · Static stack.</b> Prompt card, connector, next tag, the composer-at-top + model/effort/repo selector row. Renders from a real stack config, no interactivity yet.</li>
-    <li><b>UI-2 · Card controls.</b> Loop pill + steppers, cron popover (two-way sync), Limits popover, verifier check button, duplicate/drag/delete/insert. Writes back to config.</li>
-    <li><b>UI-3 · Run + live controls.</b> Run split (all four modes), the pause/drain/bump/kill row, running-outline state driven by the real event stream.</li>
-    <li><b>UI-4 · Output attachment.</b> The container under the running card: collapsed 2-line activity strip by default, expandable to accordions + filter chips, thinking-only height cap, per-card event routing consumed from the WS stream.</li>
-    <li><b>UI-5 · Multi-pane.</b> Side-by-side panes, hover-add-pane, per-pane run state, pane close.</li>
+    <li><b>UI-0 · Recon.</b> Done — see <code>UI_PLAN.md</code>. Reuse map, gap map, backend bindings, and the keep/replace verdict on <code>/loop</code> are all written.</li>
+    <li><b>UI-1 · Static stack + creation flow.</b> Prompt card, connector, next tag, the fused composer (type-first + suggested chip + preset grid + inline grammar), model/effort/repo/autonomy selector row. Renders from a real stack config, no interactivity yet. Reuses <code>LaunchControls.svelte</code>, <code>Dropdown.svelte</code>, <code>ui/Panel.svelte</code>; new client-only <code>stores/stack.ts</code>. <b>Not blocked</b>, except the autonomy selector needs its label reconciliation first (Part 2).</li>
+    <li><b>UI-2 · Card controls.</b> Loop pill + steppers, cron popover (two-way sync), the two-button guardrails/evals popovers (flat checklist for evals), verifier-as-judge-tier wiring, duplicate/drag/delete/insert. Writes back to config. Guardrails popover ships against local-only state until on-fail/budget:time land; evals popover ships against local-only state until <code>EvalDef</code>/<code>EvalSuite</code> land — build the UI now, wire the write-through when the fields exist.</li>
+    <li><b>UI-3 · Run + live controls.</b> Run split ("run now"/"schedule" not blocked; "run once" needs a design decision; "dry run" partially blocked on stack-wide expansion), the pause/drain/bump/kill row (kill only is a valid partial slice — pause/drain/bump are the sequence's single biggest backend dependency), running-outline state driven by the real event stream.</li>
+    <li><b>UI-4 · Output attachment.</b> The container under the running card: collapsed 2-line activity strip + live eval pill by default, expandable to accordions + filter chips, thinking-only height cap, event routing consumed from the WS stream (single-active-card-per-pane fallback unblocks this without waiting on card-id tagging).</li>
+    <li><b>UI-5 · Multi-pane.</b> Side-by-side panes, hover-add-pane, per-pane run state, pane close. Not blocked — <code>layout.ts</code>/<code>TileGrid.svelte</code> already implement pane slots, drag-swap, add/remove; only the hover-reveal edge-tab affordance is new.</li>
     <li><b>UI-6 · Polish.</b> Dark scrollbars, reduced-motion, empty states, keyboard, the orb-as-status.</li>
-    <li><b>UI-7 · Overview.</b> The zoom-out: by-state board + by-project portfolio behind one toggle, global stat bar, needs-you filter, drill-in to pane. Pure aggregation over existing state, <b>except</b> the needs-you column, which needs the derivation backend first. Ships after the panes exist to drill into.</li>
+    <li><b>UI-7 · Overview.</b> The zoom-out: by-state board + by-project portfolio behind one toggle, global stat bar, needs-you filter (now folding in escalation severity), drill-in to pane. Pure aggregation over existing state, <b>except</b> the needs-you column, which needs the derivation backend first. Ships after the panes exist to drill into.</li>
   </ul>
 
   <div class="rule"></div>
@@ -184,34 +320,37 @@ ul{margin:8px 0 8px 18px}li{margin:4px 0;color:var(--dim)}li b{color:var(--ink)}
   <p class="lead">Three tiers: every component in isolation, every setting's states, then the combinations. Full combinatorial coverage is thousands of cases and not worth it; the plan tests each dimension fully once, then the <b>common and dangerous</b> combinations exhaustively.</p>
 
   <h3>Tier A · Component tests (each control, in isolation)</h3>
-  <p class="mut" style="margin-bottom:10px">One test file per component. Assert render, each interaction, and the config write. Playwright for the DOM, plus Vitest for pure logic (cron parser, template resolver).</p>
+  <p class="mut" style="margin-bottom:10px">One test file per component. Assert render, each interaction, and the config write. Per <code>UI_PLAN.md</code>'s tooling recon, the existing repo has zero component-test tooling (all current frontend tests are hand-rolled <code>tsx</code> assertion scripts) — the lightest consistent extension is Vitest + <code>@testing-library/svelte</code> + happy-dom, with Playwright reserved for drag interactions happy-dom can't simulate. Flag for approval before adding either dependency.</p>
   <table class="tbl">
     <thead><tr><th style="width:22%">Component</th><th style="width:52%">Cases</th><th style="width:12%">Type</th><th style="width:14%">Priority</th></tr></thead>
     <tbody>
       <tr><td class="k">Loop pill</td><td class="mut">off→on, on→off, steppers +/−, floor at 2→∞, ∞→2, config write of max_iterations</td><td class="mut">Playwright</td><td><span class="pri">P1</span></td></tr>
       <tr><td class="k">Cron popover</td><td class="mut">each freq pill, detail inputs, raw→pickers sync, pickers→raw sync, disable, 5+ cron patterns round-trip (Vitest on the parser)</td><td class="mut">both</td><td><span class="pri">P1</span></td></tr>
-      <tr><td class="k">Limits popover</td><td class="mut">gate on/off+cmd, until on/off+cmd, on-fail 3 states, budget 3 states, persist + reopen shows saved</td><td class="mut">Playwright</td><td><span class="pri">P1</span></td></tr>
-      <tr><td class="k">Verifier button</td><td class="mut">toggle, slide-out model+effort, enforce model≠worker, writes verifier_required/model/effort</td><td class="mut">Playwright</td><td><span class="pri">P1</span></td></tr>
-      <tr><td class="k">Model/Effort/Repo selectors</td><td class="mut">open, select each option, value updates, config write, dropdown closes on outside click</td><td class="mut">Playwright</td><td><span class="pri">P1</span></td></tr>
+      <tr><td class="k">Guardrails popover</td><td class="mut">shield button opens/closes at anchor position; budget/on-fail/max-iter/window/schedule fields toggle+persist+reopen shows saved; card height never changes while open; <code>budget:time</code> segmented control</td><td class="mut">Playwright</td><td><span class="pri">P1</span></td></tr>
+      <tr><td class="k">Evals popover</td><td class="mut">check button opens/closes at anchor position; <b>flat checklist</b> layout (not grouped, not suite-first); toggle each tier; baseline row is locked-on and cannot be unchecked; "add a suite" attaches its full check set; card height never changes with 1 vs 8 evals enabled</td><td class="mut">Playwright</td><td><span class="pri">P1</span></td></tr>
+      <tr><td class="k">Verifier / judge-tier button</td><td class="mut">toggle, slide-out model+effort, enforce model≠worker, writes verifier_required/model/effort</td><td class="mut">Playwright</td><td><span class="pri">P1</span></td></tr>
+      <tr><td class="k">Model/Effort/Repo/Autonomy selectors</td><td class="mut">open, select each option, value updates, config write, dropdown closes on outside click; autonomy ladder detail expands and highlights the active rung</td><td class="mut">Playwright</td><td><span class="pri">P1</span></td></tr>
       <tr><td class="k">Run split</td><td class="mut">main click=run now, dropdown opens, each of 4 modes fires correct action, closes on outside click</td><td class="mut">Playwright</td><td><span class="pri">P1</span></td></tr>
       <tr><td class="k">Live controls</td><td class="mut">pause/drain/bump/kill each emit the right signal; bump increments; kill+drain return to idle</td><td class="mut">Playwright</td><td><span class="pri">P1</span></td></tr>
       <tr><td class="k">Card ops</td><td class="mut">duplicate clones, delete removes, drag reorders (incl. across positions), insert adds at index</td><td class="mut">Playwright</td><td><span class="pri">P1</span></td></tr>
+      <tr><td class="k">Creation-flow doors</td><td class="mut">typing shows a suggested-but-unattached chip; empty composer shows the preset grid; grid collapses to chips once typing starts; grammar (<code>:alias</code>/<code>@repo</code>/<code>xN</code>) parses live into confirm chips; picking a preset via any door attaches the same eval suite as any other door</td><td class="mut">Playwright</td><td><span class="pri">P1</span></td></tr>
       <tr><td class="k">Composer</td><td class="mut">alias→card, literal→quoted card, template with holes prompts for vars, Enter + button both add, adds to top</td><td class="mut">Playwright</td><td><span class="pri">P1</span></td></tr>
-      <tr><td class="k">Output attachment</td><td class="mut">collapsed strip shows current kind + latest line; click expands; collapse returns to strip; accordion open/close; filter chips narrow; thinking caps + scrolls while container grows to fit others; streams into thinking; detaches on advance</td><td class="mut">Playwright</td><td><span class="pri">P2</span></td></tr>
+      <tr><td class="k">Output attachment</td><td class="mut">collapsed strip shows current kind + latest line + live eval pill; click expands; collapse returns to strip; accordion open/close; filter chips narrow; thinking caps + scrolls while container grows to fit others; streams into thinking; detaches on advance</td><td class="mut">Playwright</td><td><span class="pri">P2</span></td></tr>
       <tr><td class="k">Add-pane</td><td class="mut">hover L/R reveals tab, click adds pane on that side, close removes, min 1 pane enforced</td><td class="mut">Playwright</td><td><span class="pri">P2</span></td></tr>
-      <tr><td class="k">Overview</td><td class="mut">toggle swaps by-state ↔ by-project over same data; stat-bar counts match card counts; needs-you filter narrows in both groupings; needs-you column/group collects only derived-attention items; drill-in routes to the right stack; last-used grouping remembered</td><td class="mut">Playwright</td><td><span class="pri">P2</span></td></tr>
+      <tr><td class="k">Overview</td><td class="mut">toggle swaps by-state ↔ by-project over same data; stat-bar counts match card counts; needs-you filter narrows in both groupings; needs-you column/group collects only derived-attention items (verifier fail, test-eval fail, escalation); drill-in routes to the right stack; last-used grouping remembered</td><td class="mut">Playwright</td><td><span class="pri">P2</span></td></tr>
     </tbody>
   </table>
 
   <h3>Tier B · Shorthand / grammar tests (the <code>:action</code> layer)</h3>
   <p class="mut" style="margin-bottom:10px">The same spec string must parse identically in composer, CLI, and Telegram. Pure-function tests, cheap, run them exhaustively.</p>
   <ul>
-    <li><b>Aliases:</b> each of <code>:research :plan :scope :goal :progress :implement :optimize :benchmark :kill-test :tidy :handoff :kiban-sprint</code> resolves to its expansion.</li>
-    <li><b>Modifiers:</b> <code>xN</code>, <code>x∞</code>, <code>at:"cron"</code>, <code>every:15m</code>, <code>gate:"cmd"</code>, <code>until:"cmd"</code>, <code>max:N</code>, <code>budget:auto</code>, <code>@repo</code> each parse to the right field.</li>
+    <li><b>Aliases:</b> each of <code>:research :plan :scope :goal :progress :implement :optimize :ratchet :benchmark :kill-test :tidy :handoff :kiban-sprint</code> resolves to its expansion, including its default eval suite.</li>
+    <li><b>Modifiers:</b> <code>xN</code>, <code>x∞</code>, <code>at:"cron"</code>, <code>every:15m</code>, <code>budget:auto</code>, <code>budget:200k</code>, <code>budget:time</code> (wall-clock/count), <code>max:N</code>, <code>@repo</code> each parse to the right field.</li>
+    <li><b>Eval shorthand:</b> a test-tier command modifier (successor to <code>gate:"cmd"</code>/<code>until:"cmd"</code>) attaches an <code>EvalDef</code>, not a precondition — the parsed result must land under evals, not guardrails.</li>
     <li><b>Templates:</b> <code>test {repo} until {cmd}</code> fills; unfilled hole errors by name; <code>{{ }}</code> escapes.</li>
     <li><b>Skill args:</b> <code>:kcqf vectro</code> → skill + arg; <code>:kcqf</code> → empty arg; bad name fails loud.</li>
     <li><b>Chains:</b> <code>:benchmark @vectro &gt; :report @konjo.ai</code> parses to two ordered steps.</li>
-    <li><b>Guard is a shell exit code, not a DSL:</b> <code>gate:"exit 1"</code> blocks, <code>gate:"true"</code> passes.</li>
+    <li><b>Escalation:</b> <code>:escalate</code> and an on-fail:escalate guardrail option each parse to a severity-tagged needs-you route.</li>
   </ul>
 
   <h3>Tier C · Combination tests (the ones that matter)</h3>
@@ -219,16 +358,18 @@ ul{margin:8px 0 8px 18px}li{margin:4px 0;color:var(--dim)}li b{color:var(--ink)}
   <table class="tbl">
     <thead><tr><th style="width:34%">Scenario</th><th style="width:44%">Exercises</th><th style="width:10%">Freq</th><th style="width:12%">Priority</th></tr></thead>
     <tbody>
-      <tr><td class="combo"><b>Optimize with gate + until + verifier</b><br/><span class="mut">:optimize gate:"./kill_test.sh" until:"cargo test" +verify(Opus)</span></td><td class="mut">gate blocks/passes, loop until exit 0, verifier runs on separate model, on-fail=stop</td><td class="mut">common</td><td><span class="pri">P1</span></td></tr>
-      <tr><td class="combo"><b>Scheduled kill-test, ∞ with budget</b><br/><span class="mut">:kill-test at:"0 14 * * *" x∞ budget:auto</span></td><td class="mut">cron fires, ∞ loop, budget:auto defers on low balance, no-progress halts</td><td class="mut">common</td><td><span class="pri">P1</span></td></tr>
+      <tr><td class="combo"><b>Optimize with test-tier eval + judge</b><br/><span class="mut">:optimize eval:"./kill_test.sh" +verify(Opus)</span></td><td class="mut">test-tier command blocks/passes as an eval (not a precondition), judge runs on separate model, on-fail=stop</td><td class="mut">common</td><td><span class="pri">P1</span></td></tr>
+      <tr><td class="combo"><b>Preset attaches correct eval suite</b><br/><span class="mut">pick :implement from each of the 3 creation-flow doors</span></td><td class="mut">grid card, suggested chip, and grammar alias all attach the identical KCQF suite; card evals line shows the same count regardless of door used</td><td class="mut">common</td><td><span class="pri">P1</span></td></tr>
+      <tr><td class="combo"><b>Eval fails → needs-you</b><br/><span class="mut">:implement, adversarial suite check fails</span></td><td class="mut">card evals line shows the fail + fix-hint; overview needs-you column/filter picks it up across projects; drill-in opens the failing card with its gap surfaced</td><td class="mut">edge</td><td><span class="pri">P1</span></td></tr>
+      <tr><td class="combo"><b>Ratchet keeps only if beats-best</b><br/><span class="mut">:ratchet budget:time(20m)</span></td><td class="mut">beats-best judge compares against recorded best; loop keeps the change only on a win, reverts otherwise; wall-clock budget halts the loop at 20 minutes regardless of iteration count</td><td class="mut">edge</td><td><span class="pri">P1</span></td></tr>
+      <tr><td class="combo"><b>Scheduled kill-test, ∞ with budget</b><br/><span class="mut">:kill-test at:"0 14 * * *" x∞ budget:auto</span></td><td class="mut">cron fires, ∞ loop, budget:auto defers on low balance, no-progress window halts</td><td class="mut">common</td><td><span class="pri">P1</span></td></tr>
       <tr><td class="combo"><b>Chain with report on finish</b><br/><span class="mut">:benchmark @vectro &gt; :report → report:telegram</span></td><td class="mut">chain order, cross-repo @repo, Telegram summary on completion, whatsapp errors loud</td><td class="mut">common</td><td><span class="pri">P1</span></td></tr>
       <tr><td class="combo"><b>Template + skill arg + per-card model</b><br/><span class="mut">test {repo} until {cmd} · :kcqf {repo} · override→Opus</span></td><td class="mut">template resolve at enqueue, skill arg pass, per-card override shows + applies over stack default</td><td class="mut">common</td><td><span class="pri">P1</span></td></tr>
-      <tr><td class="combo"><b>Progress loop, live controls</b><br/><span class="mut">:progress x∞ pace:even → pause → bump → drain</span></td><td class="mut">running outline, pause holds, bump +1 mid-run, drain finishes then stops, output attaches/detaches</td><td class="mut">common</td><td><span class="pri">P1</span></td></tr>
-      <tr><td class="combo"><b>on-fail=backoff under a failing gate</b><br/><span class="mut">:implement gate:"flaky.sh" on-fail:backoff x5</span></td><td class="mut">gate fails, backoff delays + retries, max iterations caps, verdict logged as negative not hidden</td><td class="mut">edge</td><td><span class="pri">P2</span></td></tr>
-      <tr><td class="combo"><b>Two panes parallel, different repos</b><br/><span class="mut">pane A @squish running · pane B @drex running</span></td><td class="mut">two concurrent runs, independent model/effort/repo, per-pane live output, one kill doesn't touch the other</td><td class="mut">common</td><td><span class="pri">P2</span></td></tr>
-      <tr><td class="combo"><b>Overview reflects live state across projects</b><br/><span class="mut">verifier fails in vectro, gate blocks in kiban, 3 running elsewhere</span></td><td class="mut">both failures land in needs-you (board col + filter); stat bar counts match; by-project groups them under their repos; drill-in opens the failing stack's pane</td><td class="mut">common</td><td><span class="pri">P2</span></td></tr>
+      <tr><td class="combo"><b>Progress loop, live controls</b><br/><span class="mut">:progress x∞ pace:even → pause → bump → drain</span></td><td class="mut">running outline, pause holds, bump +1 mid-run, drain finishes then stops, output attaches/detaches, live eval pill updates each iteration</td><td class="mut">common</td><td><span class="pri">P1</span></td></tr>
+      <tr><td class="combo"><b>on-fail=escalate under a failing test-tier eval</b><br/><span class="mut">:implement eval:"flaky.sh" on-fail:escalate x5</span></td><td class="mut">eval fails, escalate routes to needs-you with severity instead of stopping silently, max iterations still caps, verdict logged as negative not hidden</td><td class="mut">edge</td><td><span class="pri">P2</span></td></tr>
+      <tr><td class="combo"><b>Two panes parallel, different repos</b><br/><span class="mut">pane A @squish running · pane B @drex running</span></td><td class="mut">two concurrent runs, independent model/effort/repo/autonomy, per-pane live output, one kill doesn't touch the other</td><td class="mut">common</td><td><span class="pri">P2</span></td></tr>
+      <tr><td class="combo"><b>Overview reflects live state across projects</b><br/><span class="mut">verifier fails in vectro, eval blocks in kiban, 3 running elsewhere</span></td><td class="mut">both failures land in needs-you (board col + filter); stat bar counts match; by-project groups them under their repos; drill-in opens the failing stack's pane</td><td class="mut">common</td><td><span class="pri">P2</span></td></tr>
       <tr><td class="combo"><b>Dry run of a full stack</b><br/><span class="mut">run split · dry run on a 5-card stack</span></td><td class="mut">every alias+template resolved, cost estimate shown, nothing executes, schedule not armed</td><td class="mut">common</td><td><span class="pri">P2</span></td></tr>
-      <tr><td class="combo"><b>Verifier fails the gate</b><br/><span class="mut">:optimize +verify → verdict FAIL</span></td><td class="mut">worker "done", verifier (separate model) returns fail w/ gaps, loop does NOT mark done, on-fail path taken</td><td class="mut">edge</td><td><span class="pri">P1</span></td></tr>
       <tr><td class="combo"><b>Reorder / insert / delete mid-edit then run</b></td><td class="mut">drag reorder persists, insert at index, delete, then run executes the edited order bottom-up</td><td class="mut">common</td><td><span class="pri">P2</span></td></tr>
     </tbody>
   </table>
@@ -236,14 +377,14 @@ ul{margin:8px 0 8px 18px}li{margin:4px 0;color:var(--dim)}li b{color:var(--ink)}
   <h3>Coverage strategy</h3>
   <ul>
     <li><b>Full once per dimension:</b> every alias, every modifier, every selector option, every control button gets one isolated test (Tiers A + B). That's linear, cheap, and catches the "this one option is broken" class of bug.</li>
-    <li><b>Combinations by risk, not by cross-product:</b> Tier C tests the ~10 stacks people actually build plus the dangerous ones (verifier fail, gate fail + backoff, ∞ + budget). Full combinatorial is ~thousands of cases; this is ~10 that cover the real interaction surface.</li>
+    <li><b>Combinations by risk, not by cross-product:</b> Tier C tests the ~12 stacks people actually build plus the dangerous ones (verifier fail, eval fail + escalate, ratchet revert, ∞ + budget). Full combinatorial is ~thousands of cases; this is ~12 that cover the real interaction surface.</li>
     <li><b>Stubbed runner for determinism:</b> Tier C runs against a fake runner returning scripted verdicts/tokens/exit codes, so tests are fast and deterministic. One thin "smoke" suite hits a real Claude call to prove the wiring, gated out of CI by default (cost).</li>
     <li><b>The parsers get property tests:</b> cron round-trip and template resolve are pure and total; fuzz them (arbitrary cron strings, arbitrary <code>{holes}</code>) since they're the load-bearing correctness surface and cheap to hammer.</li>
-    <li><b>Konjo gate:</b> statistical rigor doesn't apply to UI tests, but the honesty rule does — a flaky test is quarantined and fixed, never retried-until-green. Negative-path tests (gate fails, verifier fails, budget defers) are first-class, not afterthoughts.</li>
+    <li><b>Konjo gate:</b> statistical rigor doesn't apply to UI tests, but the honesty rule does — a flaky test is quarantined and fixed, never retried-until-green. Negative-path tests (eval fails, verifier fails, budget defers, ratchet reverts) are first-class, not afterthoughts.</li>
   </ul>
 
   <div class="foot">
-    Scoped against konjoai/lopi main @ a6d54bc (Sprints 1–3 merged, Sprint 4 verifier gate in flight) and the loop-stack mockups in /mnt/user-data/outputs. "Backend done/partial/todo" reflects the recon in PROMPTS_PLAN.md plus direct source reads; verify each "partial" against the live tree before building its UI slice, per the Konjo docs-match-code rule.
+    Scoped against konjoai/lopi main plus <code>UI_PLAN.md</code> (UI-0 recon, direct source reads against <code>origin/main</code>) and the settled mockups: <code>lopi-loop-stacks-4-evals.html</code>, <code>lopi-twoline-popover.html</code>, <code>lopi-creation-flow.html</code>, <code>lopi-overview.html</code>, <code>lopi-guardrails-evals.html</code>, <code>lopi-evals-research.html</code>, <code>lopi-landscape-research.html</code>, <code>lopi-feature-map.html</code>. Two open questions are flagged rather than silently resolved: the guardrails/evals field-naming split (gate/until → <code>EvalDef</code>, not a reused scalar pair) and the autonomy-selector label mismatch against the real <code>AutonomyLevel</code> enum. "Backend done/partial/todo" reflects this recon; verify each "partial" against the live tree before building its UI slice, per the Konjo docs-match-code rule.
   </div>
 </div>
 </body>
