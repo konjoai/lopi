@@ -54,37 +54,69 @@ kill-test-#1 constraint, not a design preference — `Stop`/`Backoff` are
 currently behaviorally identical as a result), and the `sh -c` shell-exec
 choice.
 
-**UI-2 is card controls**, wiring the buttons UI-1 shipped disabled:
-- **Loop pill + steppers** — toggle/adjust `StackCard.loopN` (×N / ∞), backed
-  by the already-tested `reorderCard`/array-position logic; the field itself
-  (`loopN`) already exists on `StackCard`.
-- **Cron popover** — reuses `ScheduleEntry.cron` + the existing `api.ts`
-  Schedule CRUD (`createSchedule`/`updateSchedule`, already round-trips) and
-  the freq-pill ⇄ raw-cron two-way sync pattern from
-  `docs/ui/lopi-loop-stacks-4-evals.html`'s `openSched`/`cronToHuman`/
-  `recompute`. Not blocked.
-- **Duplicate / drag reorder / delete / insert** — wire the card-bar buttons
-  to `duplicateInStack`/`reorderInStack`/`removeFromStack`/`insertIntoStack`,
-  already implemented and unit-tested in `stores/stack.ts`. Drag itself
-  (HTML5 `dragstart`/`drop`) is new UI work; the array ops it calls are not.
-- **Guardrails popover** (shield button) — budget/max-iterations/on-fail/
-  gate/until/schedule editor. **Not blocked anymore**: `gate`/`until`/
-  `on_fail` are real fields on `CreateTaskRequest` now (`StackCard` needs
-  matching `gate?`/`until?`/`onFail?` fields added — a small `stores/stack.ts`
-  extension, not a backend one). `budget`'s 3-preset vocabulary (auto/200k/
-  none) still doesn't exist at either layer — that one field can ship as a
-  client-side enum → `budget_tokens` number mapping, cheapest fix, no
-  backend change needed.
-- **Evals popover** (check button) — flat-checklist editor over
-  `StackCard.evals`. **Still client-only until eval execution exists**: no
-  `EvalDef`/`EvalSuite` backend concept exists, so toggling a check can only
-  ever mutate the card's static list this slice — there is no run to attach
-  a pass/fail/running state to. Build the popover UI now (toggle tiers,
-  "add a suite" row, baseline locked-on) against `StackCard.evals` directly;
-  wire real eval-run status when the backend eval ladder lands. Unlike
-  guardrails, this one is *not* unblocked by this sprint — evals and
-  guardrails are genuinely separate backend surfaces, per the scope doc's
-  two-axis model.
+**UI-2 (card controls, popovers, config drawer, live output, pane chrome)
+shipped.** `/stacks` now renders two independent panes side by side, each
+with its own composer (prompts prepend to the top, flowing down to the
+executing loop at the bottom), a run-stack footer, and per-card:
+- **Iteration pill + guardrails max-iter stepper**, sharing one
+  `StackCard.maxIterations` field (`0` = ∞, floor 2 below which the stepper
+  wraps to infinite). `stores/stack.ts` gained the pane-keyed store
+  (`panes`/`insertIntoPane`/`applyToPaneCards` — the pre-flight gate's
+  `stack.insert(stackKey, index, loop)`) on top of the existing pure
+  single-array ops, which are unchanged.
+- **Schedule popover** — `cron.raw` is WIRED to the same shape as
+  `ScheduleEntry.cron`; presets (every-minute/hourly/daily/weekly/custom)
+  two-way-sync with it, and a real (bounded, minute-simulated)
+  `computeNextRuns` drives the next-runs footer — no fabricated dates.
+- **Guardrails popover** — `gate`/`until`/`onFail` are WIRED to
+  `CreateTaskOptions`; `budget` stays client-only (no backend field exists
+  anywhere, not even the scalar `budget_tokens` — see `LEDGER.md`).
+- **Evals popover** — client-only checklist over the full `EVAL_CATALOG`
+  plus suite shortcuts (KCQF/security/research), baseline locked-on. No
+  pass/fail state rendered anywhere, per the brief's honesty rule.
+- **Config drawer** (not a popover) — five `Dropdown.svelte` selectors
+  (model/effort/repo/branch/autonomy) overriding pane defaults; model/
+  effort/repo are WIRED, branch/autonomy are client-only.
+- **`StackConnector`** — dotted + cyan cadence badge when the card above is
+  scheduled, sun budget badge otherwise (if budget ≠ auto), hover-reveal
+  insert-between block calling `insertCardIntoPane`.
+- **`StackOutput`** — genuinely wired to `stores/transcript.ts`'s existing
+  per-`task_id` block feed (thinking/tools/status/assistant_text → the
+  mockup's thinking/actions/tools/output categories), collapsed by default,
+  5s orange flash on the combined running card + output block
+  (`prefers-reduced-motion` disables it). Renders only when a card has both
+  `status === 'running'` and a real `taskId` — which no card gets this
+  slice, since run-stack execution is still `RunMenu`'s stub (see below).
+- The `cardToTaskPayload` pure function proves the WIRED fields' round-trip
+  into the real `createTask(goal, repo, priority, options)` shape by unit
+  test, independent of whether anything calls it yet.
+
+See `LEDGER.md`'s new UI-2 entry for the `max_iterations`/iteration-pill
+sharing decision, why the config drawer is five live selectors (not
+read-only chips + a secondary menu, unlike the mockup), and the
+`stores/transcript.ts` reuse discovery for `StackOutput`.
+
+## What's next: the two backend signals that unblock UI-3/UI-4
+
+Both were already flagged in UI-2's pre-flight and remain exactly as
+described — nothing this sprint changed their status:
+
+- **Pause/drain/bump signals** (blocks `RunMenu`'s four actions — Run now /
+  Run once / Schedule stack / Dry run — and the `.runmain` "run stack"
+  button, all still no-op stubs with a `// TODO(backend)`). Only `kill`
+  (cancel) exists anywhere in the runner or web layer. This is the natural
+  next backend sprint: invent the signal mechanism, then wire `RunMenu` for
+  real (it already opens/closes correctly and just needs its four handlers
+  to stop being stubs).
+- **Per-card `AgentEvent` routing** (which card produced this event) — no
+  card/stack-id tag exists on any event variant; every variant still keys
+  on `task_id` alone. `StackOutput` is already built against
+  `stores/transcript.ts`'s real per-`task_id` feed, so the moment a card is
+  submitted as a task and carries a real `taskId`, its live output lights up
+  with zero further UI work — the only missing piece is the execution path
+  that would assign that `taskId` in the first place (folds into the
+  pause/drain/bump work above, since "run this card" is the same signal
+  that needs inventing).
 
 **Remaining backend gaps, for UI-3/UI-4/overview — unaffected by this
 sprint, flagging so they aren't assumed solved:**

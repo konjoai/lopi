@@ -1,5 +1,60 @@
 # Changelog
 
+## [Unreleased] — UI-2: Loop Stack card controls, popovers, config drawer, live output 🃏
+
+### Added
+- `/stacks` now renders two independent panes side by side (`stores/stack.ts`'s
+  new pane-keyed layer — `panes`, `insertIntoPane`/`applyToPaneCards`, the
+  pre-flight gate's `stack.insert(stackKey, index, loop)`), each with its own
+  composer (new prompts prepend to the top), card stack, and run-stack footer.
+- New shared `Popover.svelte` primitive: floats near its trigger with a tail,
+  flips above when the viewport is too short, clamps horizontally, closes on
+  outside-click/Escape/scroll, collapses to a bottom sheet under 520px, and
+  keeps only one popover open at a time app-wide.
+- `StackCard.svelte` rewritten: runtag (idle/queued/running/done), alias chip,
+  iteration bar, hide-inactive summary lines (schedule/guards/evals), cardbar
+  with an inline hover-expand iteration stepper, and drag-to-reorder within a
+  pane (`reorderInPaneRelative`/`moveCardBeforeOrAfter`).
+- `SchedulePopover.svelte` (WIRED — `cron.raw` mirrors `ScheduleEntry.cron`):
+  enable toggle, frequency presets ⇄ raw-cron two-way sync, a new `Combo.svelte`
+  type-or-pick numeric input for hour/minute, and a real bounded cron simulator
+  (`computeNextRuns`) driving the next-runs footer.
+- `GuardrailsPopover.svelte` (WIRED — `gate`/`until`/`onFail` map onto
+  `CreateTaskOptions`): gate/until toggles + shell inputs, on-fail segmented
+  control, budget segmented control (client-only), and the max-iterations
+  stepper shared with the cardbar's iteration pill.
+- `EvalsPopover.svelte` (client-only, per the brief's honesty rule — no eval
+  execution exists server-side): flat checklist over the full `EVAL_CATALOG`
+  with tier badges, baseline locked-on, and KCQF/security/research suite
+  shortcuts.
+- `ConfigDrawer.svelte`: five `Dropdown.svelte`-based selectors
+  (model/effort/repo/branch/autonomy) overriding pane defaults; model/effort/
+  repo are WIRED, branch/autonomy stay client-only.
+- `StackConnector.svelte`: dotted cyan cadence badge when the card above is
+  scheduled, sun budget badge otherwise, hover-reveal insert-between block.
+- `StackOutput.svelte`: live output attachment for the single running card,
+  genuinely wired to `stores/transcript.ts`'s existing per-`task_id` block
+  feed (thinking/tools/status/assistant_text → thinking/tools/actions/output),
+  collapsed by default, 5s orange flash on the combined running card + output
+  block (respects `prefers-reduced-motion`).
+- `RunMenu.svelte` (stub — Run now/Run once/Schedule stack/Dry run all
+  no-op, `// TODO(backend)`): opens/closes off the pane footer's chevron.
+- `stores/stack.ts::cardToTaskPayload` — a pure, unit-tested mapping from a
+  card's guardrails/config onto the real `createTask(goal, repo, priority,
+  options)` shape, proving the WIRED fields round-trip correctly even though
+  no run-stack action calls `createTask` yet.
+
+### Changed
+- `stores/stackDefaults.ts` gained a `branch` field + `BRANCH_OPTIONS` (the
+  config drawer's fifth selector).
+- `StackCard.loopN` renamed to `maxIterations` throughout, matching the
+  backend's `max_iterations` field name; every fresh card now starts from
+  the backend default (`25`) instead of "unset."
+
+### Removed
+- `StackComposer.svelte` — superseded by each `StackPane`'s own inline
+  composer (the mockup's per-pane composer, not a single shared one).
+
 ## [Unreleased] — Guardrails: Gate / Until / On-Fail 🚧
 
 ### Added

@@ -5,6 +5,92 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## UI-2 — Card controls, popovers, config drawer, live output, pane chrome
+
+**Config lives in an inline drawer of five live `Dropdown.svelte` selectors,
+not read-only chips that open a secondary menu.** The settled mockup shows
+`.cfgchip` elements — static text that opens a `dmenu` on click — but the
+UI-2 brief's own settled spec (§4) explicitly names the drawer as "five
+selectors... built on `Dropdown.svelte`." Per this repo's standing rule that
+the brief wins on data/wiring while the mockup wins on appearance, the
+drawer renders actual interactive selects (`dense` mode, chip-sized via
+flex-wrap) rather than reproducing the mockup's click-to-open-secondary-menu
+interaction. Consequence: the drawer's chips are always "live," never
+requiring an extra click to discover they're editable — a strict UX
+improvement over the mockup, not a regression, but a deliberate
+appearance/behavior split worth flagging so a future pixel-diff pass doesn't
+"fix" it back to static chips.
+
+**The iteration pill and the guardrails max-iter stepper edit the literal
+same `StackCard.maxIterations` field — there is no separate "loop count" vs.
+"max iterations" concept.** UI-1's `StackCard.loopN` (set by the composer's
+`xN` grammar) was renamed/folded into `maxIterations`, matching the backend
+field name (`LoopConfig.max_iterations`) exactly rather than keeping a
+UI-only synonym. `stepMaxIterations` floors at 2 and wraps to the infinite
+sentinel (`0`) below that, and un-wraps back to the floor (never `1`) when
+incrementing from infinite — this is a deliberate cleanup of the settled
+mockup's own stepper math, which (traced through literally) can decrement
+from 2 to 1 and clamp back to 2, never actually reaching `0` via `-1` steps
+in practice. The brief's prose ("floor 2; below floor ⇒ ∞") describes the
+*intended* behavior more clearly than the mockup's JS achieves it, so the
+prose was implemented, not the literal mockup logic.
+
+**`stores/stack.ts` grew a pane-keyed layer on top of the existing pure
+single-array ops, rather than rewriting those ops to take a pane key
+directly.** UI-1 built `addCard`/`removeCard`/`duplicateCard`/`reorderCard`/
+`insertCardAt` as pure `StackCard[] → StackCard[]` functions with their own
+unit tests; UI-2 needed two independent panes (`stack.insert(stackKey,
+index, loop)` from the pre-flight gate). Rather than threading a `stackKey`
+parameter through every existing op (which would have meant re-testing
+already-correct logic), `applyToPaneCards(state, key, fn)` is the one new
+primitive — it dispatches any pure card-list transform to the named pane
+and leaves every other pane's array reference untouched (verified by
+identity-equality in the test, not just value-equality, since Svelte's
+`{#each}` keying benefits from the other pane's reference staying stable).
+`insertIntoPane`/`reorderInPaneRelative`/etc. are thin wrappers composing
+`applyToPaneCards` with the pre-existing ops.
+
+**`StackOutput` reuses `stores/transcript.ts`'s existing per-`task_id`
+block feed verbatim, rather than inventing a new live-output data model.**
+The UI-2 brief flagged per-card `AgentEvent` routing as unbuilt (`AgentEvent`
+keys on `task_id`, no card/stack id exists). Investigating the actual
+frontend surface (not just the backend event shape) found that
+`stores/transcript.ts` — built for the Forge's transcript pane — already
+folds the flat `AgentEvent` stream into per-`task_id` `TranscriptBlock[]`
+(`thinking`/`tool_call`/`status`/`assistant_text`). Since a stack card *is*
+a task the moment it runs (one `task_id`, no fan-out), this store already
+answers "what happened for this specific run" with zero new plumbing —
+`StackOutput` maps those four block kinds onto the mockup's
+thinking/tools/actions/output categories (`status` → `actions`, the one
+non-obvious mapping) and takes a `taskId` prop rather than owning any event
+subscription itself. The real gap the brief identified is narrower than it
+first reads: it's not "no per-task output feed exists," it's "no card is
+ever assigned a real `taskId`" — which is squarely the pause/drain/bump
+execution-signal gap, not a data-modeling gap. `StackOutput` needs no
+changes when that gap closes.
+
+**`budget` (auto/200k/none) is treated as client-only, same as
+`branch`/`autonomy` — despite the brief's own WIRED/CLIENT-ONLY table not
+mentioning it either way.** Grepping `CreateTaskRequest`/`Task`/`LoopConfig`
+turned up no budget field of any shape (not even the scalar
+`budget_tokens: u64` UI_PLAN.md's Backend Bindings table describes as
+"partial" — that field exists on `LoopConfig`, repo-level, but nothing
+threads a per-task budget preset onto `CreateTaskRequest`). Per the brief's
+"if you find a field is actually wired, prefer wiring it" instruction (which
+implies the reverse for a field found *not* wired), `budget` gets the same
+`// TODO(backend)` treatment as the two fields the brief already named.
+
+**The `/stacks` composer keeps a "pane defaults" panel above the two panes,
+which the settled mockup doesn't show at all.** The mockup hardcodes a
+single global `DEF` object (`{model, effort, repo, branch, autonomy}`) with
+no editor UI — there was never a control to change it in the interactive
+prototype. Since the config drawer's entire "override" concept needs
+something concrete to override *away from*, and UI-1 had already built a
+working defaults panel (`Panel` + five `Dropdown`s bound to
+`stores/stackDefaults.ts`), UI-2 kept and extended it (added the missing
+`branch` field) rather than deleting working, tested chrome to match a
+mockup that simply never modeled where defaults come from.
+
 ## Guardrails — gate / until / on_fail
 
 **`gate` = precondition, `until` = exit-condition — not the same shape,

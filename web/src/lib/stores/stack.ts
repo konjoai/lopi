@@ -1,20 +1,25 @@
 /**
- * Loop-stack store — an ordered, client-only, in-memory list of pending
- * prompt cards ("loops"). Pure array ops (add/remove/duplicate/reorder/
- * insert) are exported standalone for unit testing, then wrapped by a
- * Svelte `writable` below, mirroring the layout-core.ts / layout.ts split.
+ * Loop-stack store — two independent, client-only, in-memory panes, each an
+ * ordered list of pending prompt cards ("loops"). Pure ops (add/remove/
+ * duplicate/reorder/insert, plus the keyed pane dispatch) are exported
+ * standalone for unit testing, then wrapped by a Svelte `writable` below,
+ * mirroring the layout-core.ts / layout.ts split.
  *
- * UI-1 scope: nothing here persists or talks to the backend. A stack is a
- * queue of cards the operator is composing; running it is a later slice.
+ * UI-2 scope: nothing here talks to the backend. `cardToTaskPayload` is the
+ * one honesty-preserving bridge — a pure mapping from a card's guardrails/
+ * config onto the real `createTask()` shape (see `$lib/api`), proving the
+ * WIRED fields round-trip correctly, even though nothing calls `createTask`
+ * yet (run-stack execution is still a stub — see `RunMenu.svelte`).
  */
 import { writable } from 'svelte/store';
+import type { CreateTaskOptions } from '$lib/api';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 /** One rung of the eval ladder a card carries. */
 export type EvalTier = 'base' | 'test' | 'judge' | 'suite';
 
-/** A single named eval attached to a card (static this slice — no run state). */
+/** A single named eval, either the full catalog or a card's on-set. */
 export interface EvalRef {
   name: string;
   tier: EvalTier;
@@ -33,6 +38,84 @@ export interface PresetDef {
   evals: EvalRef[];
 }
 
+/** Policy applied when a card's loop iteration fails. Mirrors `OnFail`
+ *  (`crates/lopi-core/src/loop_config.rs`) — WIRED via `on_fail`. */
+export type OnFail = 'stop' | 'continue' | 'backoff';
+
+/** Per-run token-budget preset. TODO(backend): no `CreateTaskRequest` field
+ *  backs this yet — client-only intent, same as `branch`/`autonomy`. */
+export type Budget = 'auto' | '200k' | 'none';
+
+/** A card's run-limit guardrails. `gate`/`until`/`onFail` are WIRED to the
+ *  real `CreateTaskOptions.gate` / `.until` / `.on_fail` fields
+ *  (`crates/lopi-core/src/loop_config.rs`, landed PR #62). */
+export interface Guardrails {
+  gate: boolean;
+  gateCmd: string;
+  until: boolean;
+  untilCmd: string;
+  onFail: OnFail;
+  /** TODO(backend): no budget field exists on `CreateTaskRequest` yet. */
+  budget: Budget;
+}
+
+/** Freshly-initialized guardrails — every card gets its own object (never a
+ *  shared reference) so editing one card can't leak into another. */
+export function defaultGuardrails(): Guardrails {
+  return { gate: false, gateCmd: '', until: false, untilCmd: '', onFail: 'stop', budget: 'auto' };
+}
+
+/** The five preset schedule cadences a card can pick, plus a raw-cron escape
+ *  hatch. Matches the settled mockup's frequency chip row. */
+export type CronFreq = 'every minute' | 'hourly' | 'daily' | 'weekly' | 'custom';
+
+/** Three-letter weekday tags, matching cron's day-of-week vocabulary. */
+export type Dow = 'Sun' | 'Mon' | 'Tue' | 'Wed' | 'Thu' | 'Fri' | 'Sat';
+
+/** A card's schedule. `raw` is the standard 5-field cron string — WIRED,
+ *  mirrors `ScheduleEntry.cron` (`crates/lopi-core/src/config.rs`). The
+ *  preset fields (`freq`/`hour12`/`min`/`ampm`/`dow`) are the two-way-synced
+ *  UI state `raw` derives from; editing `raw` directly flips `freq` to
+ *  `'custom'`. */
+export interface CronConfig {
+  freq: CronFreq;
+  hour12: number;
+  min: number;
+  ampm: 'AM' | 'PM';
+  dow: Dow;
+  raw: string;
+}
+
+/** Freshly-initialized cron config — every card gets its own object. */
+export function defaultCron(): CronConfig {
+  return { freq: 'daily', hour12: 2, min: 0, ampm: 'AM', dow: 'Mon', raw: '0 2 * * *' };
+}
+
+/** Per-loop overrides of the pane defaults (model/effort/repo/branch/
+ *  autonomy). `undefined` on any field means "inherit the pane default".
+ *  `model`/`effort`/`repo` are WIRED (real `CreateTaskRequest` fields);
+ *  `branch`/`autonomy` are client-only — TODO(backend). */
+export interface CardConfig {
+  model?: string;
+  effort?: string;
+  repo?: string;
+  branch?: string;
+  autonomy?: string;
+}
+
+/** A card's lifecycle state. Client-only this slice — nothing transitions a
+ *  card out of `'idle'` yet, since run-stack actions are stubbed (no
+ *  pause/drain/bump signals exist server-side). */
+export type CardStatus = 'idle' | 'queued' | 'running' | 'done';
+
+/** The backend default iteration ceiling (`default_max_iterations()` in
+ *  `crates/lopi-core/src/loop_config.rs`) — the value a fresh card starts
+ *  from before anyone touches the iteration pill or guardrails stepper. */
+export const DEFAULT_MAX_ITERATIONS = 25;
+
+/** Floor a stepper will not go below without wrapping to infinite. */
+export const MAX_ITERATIONS_FLOOR = 2;
+
 /** One card in the stack — a loop-to-be. */
 export interface StackCard {
   id: string;
@@ -44,18 +127,51 @@ export interface StackCard {
   alias?: string;
   /** True when `goal` is a plain literal prompt, not an alias/preset spec. */
   literal: boolean;
-  /** `@repo` override, without the `@`. */
-  repo?: string;
-  /** `xN` loop count; undefined means "no loop" (single run). */
-  loopN?: number;
   /** The eval suite this card carries — baseline always present. */
   evals: EvalRef[];
+  status: CardStatus;
+  /** Hard iteration ceiling. `0` = infinite (mirrors backend `max_iterations`
+   *  sentinel). The cardbar iteration pill and the guardrails max-iter
+   *  stepper both read/write this same field. */
+  maxIterations: number;
+  /** Live progress while `status === 'running'` — `undefined` otherwise. */
+  iteration?: { current: number; total: number };
+  scheduled: boolean;
+  cron: CronConfig;
+  guardrails: Guardrails;
+  config: CardConfig;
+  /** Set once the card is actually submitted as a task. Never set this
+   *  slice — see `cardToTaskPayload`'s doc comment. */
+  taskId?: string;
 }
 
 // ── Preset catalog (client-side static config this slice) ───────────────────
 
 /** Baseline eval — always present, on every card, rendered dashed/dimmed. */
 export const BASELINE_EVAL: EvalRef = { name: 'execution ok', tier: 'base' };
+
+/** The full pickable eval catalog for the evals popover checklist. Baseline
+ *  is first and locked-on; everything else toggles freely. */
+export const EVAL_CATALOG: EvalRef[] = [
+  BASELINE_EVAL,
+  { name: 'tests pass', tier: 'test' },
+  { name: 'unit', tier: 'test' },
+  { name: 'integration', tier: 'test' },
+  { name: 'benchmark gate', tier: 'test' },
+  { name: '30-run gate', tier: 'test' },
+  { name: 'code review', tier: 'judge' },
+  { name: 'beats-best', tier: 'judge' },
+  { name: 'vuln scan', tier: 'suite' },
+  { name: 'adversarial', tier: 'suite' }
+];
+
+/** Suite shortcuts — clicking one turns on every named eval (baseline stays
+ *  implicit). Matches the settled mockup's KCQF/security/research buttons. */
+export const EVAL_SUITES: Record<string, string[]> = {
+  kcqf: ['tests pass', 'code review', 'vuln scan', 'adversarial'],
+  security: ['vuln scan', 'adversarial'],
+  research: ['code review']
+};
 
 export const PRESET_CATALOG: Record<PresetKey, PresetDef> = {
   research: {
@@ -196,9 +312,13 @@ export function buildCard(raw: string, explicitPreset?: PresetKey): StackCard {
     goal: parsed.goal,
     alias: parsed.alias ?? preset?.key,
     literal: !parsed.alias && !presetKey,
-    repo: parsed.repo ?? undefined,
-    loopN: parsed.loopN ?? undefined,
-    evals: preset ? preset.evals : [BASELINE_EVAL]
+    evals: preset ? preset.evals : [BASELINE_EVAL],
+    status: 'idle',
+    maxIterations: parsed.loopN ?? DEFAULT_MAX_ITERATIONS,
+    scheduled: false,
+    cron: defaultCron(),
+    guardrails: defaultGuardrails(),
+    config: parsed.repo ? { repo: parsed.repo } : {}
   };
 }
 
@@ -214,24 +334,49 @@ export function removeCard(cards: StackCard[], id: string): StackCard[] {
   return cards.filter((c) => c.id !== id);
 }
 
-/** Clone a card in place, immediately after the original. No-op if the id
- *  isn't present. */
+/** Clone a card in place, immediately after the original. Resets run state
+ *  (`status`/`iteration`/`taskId`) on the clone — a duplicate is a fresh,
+ *  never-run loop. No-op if the id isn't present. */
 export function duplicateCard(cards: StackCard[], id: string): StackCard[] {
   const idx = cards.findIndex((c) => c.id === id);
   if (idx === -1) return cards;
-  const clone: StackCard = { ...cards[idx], id: makeId() };
+  const clone: StackCard = {
+    ...cards[idx],
+    id: makeId(),
+    status: 'idle',
+    iteration: undefined,
+    taskId: undefined
+  };
   const next = [...cards];
   next.splice(idx + 1, 0, clone);
   return next;
 }
 
-/** Move the card at `from` to index `to`. Out-of-range indices are a no-op. */
+/** Move the card at `from` to index `to`. Out-of-range indices are a no-op.
+ *  `to` is interpreted in the *post-removal* array — see
+ *  `moveCardBeforeOrAfter` for the drag-and-drop-friendly variant that
+ *  works in terms of "before/after this other card" instead. */
 export function reorderCard(cards: StackCard[], from: number, to: number): StackCard[] {
   if (from < 0 || from >= cards.length || to < 0 || to >= cards.length) return cards;
   const next = [...cards];
   const [moved] = next.splice(from, 1);
   next.splice(to, 0, moved);
   return next;
+}
+
+/** Drag-and-drop-friendly reorder: move the card at `fromIndex` to just
+ *  before/after the card currently at `targetIndex` (both indices from the
+ *  *original* array, as read off the drag/drop DOM elements). A no-op when
+ *  dropping a card onto itself. */
+export function moveCardBeforeOrAfter(
+  cards: StackCard[],
+  fromIndex: number,
+  targetIndex: number,
+  before: boolean
+): StackCard[] {
+  if (fromIndex === targetIndex) return cards;
+  const to = fromIndex < targetIndex ? (before ? targetIndex - 1 : targetIndex) : before ? targetIndex : targetIndex + 1;
+  return reorderCard(cards, fromIndex, to);
 }
 
 /** Insert a card at a specific index, clamped into range. */
@@ -242,41 +387,289 @@ export function insertCardAt(cards: StackCard[], index: number, card: StackCard)
   return next;
 }
 
-// ── Read-only summary lines (static text this slice) ─────────────────────────
-
-/** The guardrails line shown at rest. Guardrail fields (budget, on-fail,
- *  schedule) aren't backed by any state yet — UI-2 owns editing them — so
- *  this renders the same static defaults every card would start from. */
-export function guardrailsSummary(card: StackCard): string {
-  const max = card.loopN != null ? String(card.loopN) : '∞';
-  return `budget:auto · max ${max}`;
+/** Patch a single card by id with a shallow merge. No-op if the id isn't
+ *  present. Callers pass fully-formed nested objects (e.g. a whole new
+ *  `guardrails`) rather than deep-merging here, so popovers stay in control
+ *  of exactly what changed. */
+export function patchCard(cards: StackCard[], id: string, patch: Partial<StackCard>): StackCard[] {
+  const idx = cards.findIndex((c) => c.id === id);
+  if (idx === -1) return cards;
+  const next = [...cards];
+  next[idx] = { ...next[idx], ...patch };
+  return next;
 }
 
-/** The evals line shown at rest: a count plus "baseline + N more", matching
- *  the settled mockup's at-rest phrasing. */
+// ── Eval-set ops (pure, tested) ────────────────────────────────────────────────
+
+/** Toggle one named eval in a card's on-set. The baseline never toggles off. */
+export function toggleEval(evals: EvalRef[], name: string): EvalRef[] {
+  if (name === BASELINE_EVAL.name) return evals;
+  if (evals.some((e) => e.name === name)) return evals.filter((e) => e.name !== name);
+  const found = EVAL_CATALOG.find((e) => e.name === name);
+  return found ? [...evals, found] : evals;
+}
+
+/** Turn on every eval named in a suite shortcut; already-on evals are left
+ *  alone (never duplicated). */
+export function applySuite(evals: EvalRef[], suiteNames: string[]): EvalRef[] {
+  const missing = suiteNames
+    .filter((n) => !evals.some((e) => e.name === n))
+    .map((n) => EVAL_CATALOG.find((e) => e.name === n))
+    .filter((e): e is EvalRef => !!e);
+  return missing.length ? [...evals, ...missing] : evals;
+}
+
+// ── Iteration stepper (pure, tested) ──────────────────────────────────────────
+
+/** Step a card's `maxIterations` by `delta` (±1 from the pill/guardrails
+ *  stepper). Floors at `MAX_ITERATIONS_FLOOR`; stepping below it wraps to
+ *  the infinite sentinel (`0`). Stepping up from infinite skips straight to
+ *  the floor rather than landing on `1`. */
+export function stepMaxIterations(current: number, delta: number): number {
+  if (current === 0) return delta > 0 ? MAX_ITERATIONS_FLOOR : 0;
+  const next = current + delta;
+  return next < MAX_ITERATIONS_FLOOR ? 0 : next;
+}
+
+/** Display text for a card's iteration ceiling (`∞` for the sentinel). */
+export function maxIterationsLabel(maxIterations: number): string {
+  return maxIterations === 0 ? '∞' : String(maxIterations);
+}
+
+// ── Active-state predicates (pure, drive cardbar highlighting) ────────────────
+
+export function guardActive(g: Guardrails): boolean {
+  return g.gate || g.until;
+}
+
+export function evalActive(card: StackCard): boolean {
+  return card.evals.length > 1;
+}
+
+export function configActive(card: StackCard, defaults: { model: string; effort: string; repo: string; branch: string; autonomy: string }): boolean {
+  const c = card.config;
+  return (
+    (c.model ?? defaults.model) !== defaults.model ||
+    (c.effort ?? defaults.effort) !== defaults.effort ||
+    (c.repo ?? defaults.repo) !== defaults.repo ||
+    (c.branch ?? defaults.branch) !== defaults.branch ||
+    (c.autonomy ?? defaults.autonomy) !== defaults.autonomy
+  );
+}
+
+// ── Cron helpers (pure, tested) ────────────────────────────────────────────────
+
+const DOW_TO_NUM: Record<Dow, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+
+function to24Hour(hour12: number, ampm: 'AM' | 'PM'): number {
+  const h = hour12 % 12;
+  return ampm === 'PM' ? h + 12 : h;
+}
+
+/** Derive the standard 5-field cron string from a preset cadence. Returns
+ *  `c.raw` verbatim when `freq === 'custom'` — the raw field is the source
+ *  of truth once the operator has typed one directly. */
+export function buildCronString(c: CronConfig): string {
+  switch (c.freq) {
+    case 'every minute':
+      return '* * * * *';
+    case 'hourly':
+      return `${c.min} * * * *`;
+    case 'daily':
+      return `${c.min} ${to24Hour(c.hour12, c.ampm)} * * *`;
+    case 'weekly':
+      return `${c.min} ${to24Hour(c.hour12, c.ampm)} * * ${DOW_TO_NUM[c.dow]}`;
+    case 'custom':
+      return c.raw;
+  }
+}
+
+function matchesCronField(field: string, value: number): boolean {
+  if (field === '*') return true;
+  return field.split(',').some((part) => {
+    const step = part.match(/^\*\/(\d+)$/);
+    if (step) return value % parseInt(step[1], 10) === 0;
+    return parseInt(part, 10) === value;
+  });
+}
+
+/** Search forward minute-by-minute from `from` for the next `count` times a
+ *  standard 5-field cron expression fires. Bounded to ~40 days of search so
+ *  an unsatisfiable expression (e.g. Feb 30) can't spin forever — returns
+ *  fewer than `count` results in that case rather than blocking. Supports
+ *  wildcards, exact numbers, comma lists, and step values (every Nth unit)
+ *  per field; unknown syntax (or a non-5-field string) yields no results
+ *  rather than throwing. */
+export function computeNextRuns(cronExpr: string, from: Date, count = 3): Date[] {
+  const fields = cronExpr.trim().split(/\s+/);
+  if (fields.length !== 5) return [];
+  const [minF, hourF, domF, monF, dowF] = fields;
+  const results: Date[] = [];
+  const cursor = new Date(from.getTime());
+  cursor.setSeconds(0, 0);
+  cursor.setMinutes(cursor.getMinutes() + 1);
+  const limitMinutes = 60 * 24 * 40;
+  for (let i = 0; i < limitMinutes && results.length < count; i++) {
+    if (
+      matchesCronField(minF, cursor.getMinutes()) &&
+      matchesCronField(hourF, cursor.getHours()) &&
+      matchesCronField(domF, cursor.getDate()) &&
+      matchesCronField(monF, cursor.getMonth() + 1) &&
+      matchesCronField(dowF, cursor.getDay())
+    ) {
+      results.push(new Date(cursor.getTime()));
+    }
+    cursor.setMinutes(cursor.getMinutes() + 1);
+  }
+  return results;
+}
+
+/** Human-readable echo of a cron config's cadence. */
+export function cronHuman(c: CronConfig): string {
+  const mm = String(c.min).padStart(2, '0');
+  switch (c.freq) {
+    case 'every minute':
+      return 'every minute';
+    case 'hourly':
+      return `every hour at :${mm}`;
+    case 'daily':
+      return `every day at ${c.hour12}:${mm} ${c.ampm}`;
+    case 'weekly':
+      return `every ${c.dow} at ${c.hour12}:${mm} ${c.ampm}`;
+    case 'custom':
+      return 'custom cron';
+  }
+}
+
+// ── Read-only summary lines (hide-inactive text, matches the settled mockup) ──
+
+/** The schedule line shown when `card.scheduled`. */
+export function scheduleSummary(card: StackCard): string {
+  return cronHuman(card.cron);
+}
+
+/** The guardrails line shown when `gate || until`. */
+export function guardSummary(card: StackCard): string {
+  const g = card.guardrails;
+  const parts: string[] = [];
+  if (g.gate) parts.push('gate');
+  if (g.until) parts.push('until');
+  parts.push(`budget:${g.budget}`);
+  parts.push(`max ${maxIterationsLabel(card.maxIterations)}`);
+  return parts.join(' · ');
+}
+
+/** The evals line shown when more than the baseline is on: a count plus
+ *  "baseline + N more", matching the settled mockup's at-rest phrasing. */
 export function evalsSummary(card: StackCard): string {
   const n = card.evals.length;
   if (n <= 1) return '1 check · baseline only';
   return `${n} checks · baseline + ${n - 1} more`;
 }
 
-// ── Store wrapper ─────────────────────────────────────────────────────────────
+// ── Backend round-trip (WIRED fields → real CreateTaskOptions shape) ──────────
 
-/** The active stack — client-only, in-memory, no persistence this slice. */
-export const stack = writable<StackCard[]>([]);
+/** Pane-level defaults a card's `config` overrides fall back to. */
+export interface PaneDefaults {
+  model: string;
+  effort: string;
+  repo: string;
+}
 
-export function addToStack(card: StackCard): void {
-  stack.update((cards) => addCard(cards, card));
+/** The `createTask(goal, repo, priority, options)` payload a card would
+ *  submit as, resolving `config` overrides against pane defaults. Pure and
+ *  total — this is the "round-trips through `api.ts`" contract for the
+ *  WIRED guardrail/config fields (`§3` of the UI-2 brief), proven by unit
+ *  test even though no run-stack action calls `createTask` yet (that needs
+ *  the pause/drain/bump signals called out in `NEXT.md`). */
+export function cardToTaskPayload(
+  card: StackCard,
+  defaults: PaneDefaults
+): { goal: string; repo: string; priority: string; options: CreateTaskOptions } {
+  const options: CreateTaskOptions = {
+    model: card.config.model ?? defaults.model,
+    effort: card.config.effort ?? defaults.effort,
+    max_iterations: card.maxIterations,
+    on_fail: card.guardrails.onFail
+  };
+  if (card.guardrails.gate) options.gate = card.guardrails.gateCmd;
+  if (card.guardrails.until) options.until = card.guardrails.untilCmd;
+  return {
+    goal: card.goal,
+    repo: card.config.repo ?? defaults.repo,
+    priority: 'normal',
+    options
+  };
 }
-export function removeFromStack(id: string): void {
-  stack.update((cards) => removeCard(cards, id));
+
+// ── Pane store (keyed dispatch over the pure array ops) ───────────────────────
+
+/** One independent stack pane — `key` is its stable identity for keyed ops. */
+export interface StackPaneState {
+  key: string;
+  title: string;
+  cards: StackCard[];
 }
-export function duplicateInStack(id: string): void {
-  stack.update((cards) => duplicateCard(cards, id));
+
+function makeDefaultPanes(): StackPaneState[] {
+  return [
+    { key: 's1', title: 'stack one', cards: [] },
+    { key: 's2', title: 'stack two', cards: [] }
+  ];
 }
-export function reorderInStack(from: number, to: number): void {
-  stack.update((cards) => reorderCard(cards, from, to));
+
+/** Apply a pure card-list transform to one pane by key, leaving every other
+ *  pane's array reference untouched. No-op (same reference) for an unknown
+ *  key. This is the keyed-dispatch primitive every pane op below composes
+ *  with — the pre-flight's `stack.insert(stackKey, index, loop)` shape. */
+export function applyToPaneCards(
+  state: StackPaneState[],
+  key: string,
+  fn: (cards: StackCard[]) => StackCard[]
+): StackPaneState[] {
+  const idx = state.findIndex((p) => p.key === key);
+  if (idx === -1) return state;
+  const next = [...state];
+  next[idx] = { ...next[idx], cards: fn(next[idx].cards) };
+  return next;
 }
-export function insertIntoStack(index: number, card: StackCard): void {
-  stack.update((cards) => insertCardAt(cards, index, card));
+
+/** Insert a card into a specific pane at `index`. This is `stack.insert`
+ *  from the pre-flight gate — the one op UI-1 didn't need and UI-2's
+ *  `StackConnector` "add between" block depends on. */
+export function insertIntoPane(
+  state: StackPaneState[],
+  key: string,
+  index: number,
+  card: StackCard
+): StackPaneState[] {
+  return applyToPaneCards(state, key, (cards) => insertCardAt(cards, index, card));
+}
+
+/** The two active stack panes — client-only, in-memory, no persistence this
+ *  slice. */
+export const panes = writable<StackPaneState[]>(makeDefaultPanes());
+
+export function addToPane(key: string, card: StackCard): void {
+  panes.update((state) => applyToPaneCards(state, key, (cards) => addCard(cards, card)));
+}
+export function removeFromPane(key: string, id: string): void {
+  panes.update((state) => applyToPaneCards(state, key, (cards) => removeCard(cards, id)));
+}
+export function duplicateInPane(key: string, id: string): void {
+  panes.update((state) => applyToPaneCards(state, key, (cards) => duplicateCard(cards, id)));
+}
+export function reorderInPane(key: string, from: number, to: number): void {
+  panes.update((state) => applyToPaneCards(state, key, (cards) => reorderCard(cards, from, to)));
+}
+export function reorderInPaneRelative(key: string, fromIndex: number, targetIndex: number, before: boolean): void {
+  panes.update((state) =>
+    applyToPaneCards(state, key, (cards) => moveCardBeforeOrAfter(cards, fromIndex, targetIndex, before))
+  );
+}
+export function insertCardIntoPane(key: string, index: number, card: StackCard): void {
+  panes.update((state) => insertIntoPane(state, key, index, card));
+}
+export function updateCardInPane(key: string, id: string, patch: Partial<StackCard>): void {
+  panes.update((state) => applyToPaneCards(state, key, (cards) => patchCard(cards, id, patch)));
 }
