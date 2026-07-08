@@ -5,6 +5,109 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## Backend-1 — task identity, execution, control signals, event routing
+
+**There is no server-side "stack"/"plan" concept, so run-stack execution
+*and* pause/drain/bump are a purely client-side TS state machine
+(`stores/stackRun.ts`), not a new Rust orchestration layer.** The pre-flight
+gate's own go/no-go question was whether the pool can interrupt a running
+task; it can only cooperatively cancel at two checkpoints in the attempt
+loop (`crates/lopi-agent/src/runner/run_loop.rs:111,242`), never mid-
+subprocess. Rather than building (or faking) deeper interruption, the
+sequencer submits one card's task at a time via the real `createTask`,
+waits for it to reach a terminal `AgentState.status` through the app's
+already-live `agents` store, and only checks pause/drain state *between*
+cards. That gives exactly the brief's own definitions — "pause: halt after
+current iteration completes," "drain: let current loop finish, then
+stop" — for free, with zero pool/runner changes. `bumpCard` similarly never
+touches the pool; it's a pure array swap (`bumpInOrder`) gated on a client-
+held `cursor`, reflected into both the run's own plan and the pane's
+rendered card order.
+
+**`stores/stackRun.ts` does not import `./agents` directly — every function
+that needs to observe task completion takes a `statusSource` parameter
+instead.** `stores/agents.ts` pulls in `$app/environment` (a SvelteKit
+virtual module unresolvable outside a Vite build), which would have made
+the sequencer's own logic untestable under this repo's `tsx`-script test
+convention (no Vitest/Playwright/Jest is a committed dependency — see the
+UI-2 V&V audit's G5). Taking the live status store as an injected
+`Readable<Map<string, {status?: string}>>` instead means `runStack`/
+`resumeStack`'s call sites (Svelte components) pass in the real `agents`
+store, while `stackRun.test.ts` substitutes a plain `writable(new Map())` —
+same shape, zero new test-runner dependency. 26 new integration-style tests
+(ordering, halt-on-failure, pause/resume, drain, bump + its illegal-
+transition rejections, schedule) run this way, mocking only `fetch`.
+
+**Execution order is bottom-of-stack (oldest) first, derived by reversing
+the pane's own card array — not a separately-tracked order field.** The
+composer prepends new cards to index `0` (`addCard`), so a pane's array is
+newest-first; the settled mockup's own chrome ("new prompts prepend to the
+top; the stack flows down to the currently-executing loop at the bottom")
+confirms this is the intended reading, not an accident of the data
+structure. `executionOrder(cards)` is `[...cards].reverse()` — a run's
+`order`/`cursor` snapshot this once at launch (`runStack`) rather than
+re-deriving it live, so a composer edit mid-run can't reshuffle a plan
+already in flight.
+
+**Run-menu intent semantics, decided once here rather than re-litigated
+per caller:** *Run once* forces `max_iterations: 1` on the outgoing
+`CreateTaskOptions` only — it never mutates the card's own stored
+`maxIterations` (including the `0`/∞ sentinel case), so toggling back to
+"Run now" later still uses whatever the card actually has configured.
+*Dry run* is `dryRunStack` — pure, total, never calls `createTask`; it
+resolves every card's config against pane defaults (the same resolution
+`cardToTaskPayload` does) and flags an empty goal or a guardrail toggled on
+with an empty command. *Schedule stack* is deliberately minimal, and the UI
+says so: `ScheduleBody.goal` is a single `String` with no multi-goal
+pipeline concept server-side (confirmed by reading the type, not assumed),
+so `scheduleStack` attaches the given cron to only the bottom-of-stack
+(first-to-run) card via the real `createSchedule`, and reports every other
+card back as `skippedCardIds` rather than silently dropping them or faking
+a multi-card schedule. Wiring the rest would need a real backend change
+(`ScheduleSpec.goal: String` → `Vec<String>`) that's out of scope here.
+
+**Per-card event isolation reuses the pre-existing `GET
+/api/tasks/:id/stream` SSE endpoint and the frontend's pre-existing
+`transcripts`/`agents` stores verbatim — no new transport.** `stream_task`
+(`crates/lopi-ui/src/web/task_stream_handlers.rs`) already filters the
+shared broadcast bus by `event_task_id(&ev) == target_id` for every
+`AgentEvent` variant that carries one; it had no test proving isolation
+under concurrency, only that it existed. Added
+`task_stream_tests.rs::task_stream_isolates_concurrent_tasks_with_zero_cross_talk`:
+two concurrent SSE subscriptions on the same bus, ten interleaved events
+per task id, and an explicit assertion that the cross-talk count is `0` in
+both directions — proof, not a log line. The frontend side needed zero new
+plumbing: `StackOutput.svelte` already read `stores/transcript.ts` keyed by
+`taskId`, built in UI-2 before any card ever had a real one.
+
+**Fixed a pre-existing empty-repo bug in `api.ts::createTask`, found by
+actually running a stack against a live backend, not just by unit tests.**
+`CreateTaskRequest.repo` is `Option<String>` and falls back to the server's
+own configured repo path when the key is *absent* — but `createTask` always
+sent `repo` in the JSON body, so a blank default (`""`, this repo's own
+"auto" sentinel, and the Tasks page's blank-by-default field) deserialized
+to `Some("")`, which the runner then tried to `git2::Repository::open("")`
+and failed outright, 100% of the time, for every stack until a user
+manually picked a non-default repo. Fixed by omitting the `repo` key
+entirely when it's falsy (`...(repo ? { repo } : {})`); this is shared code
+so it also fixes the same latent bug on the pre-existing Tasks page for
+free. Caught only because Phase 5's manual verification pointed a real
+`lopi sail` at a disposable scratch repo and clicked "Run now" for real —
+the unit/integration test suites, which mock `createTask`'s transport
+layer, could not have surfaced this.
+
+**Phase 0 (CI gate integrity) landed inside this same sprint rather than as
+a separate PR, since the brief made it blocking-but-not-necessarily-
+separate.** Of the original 11 `continue-on-error: true` steps in
+`konjo-gate.yml`, 2 were removed outright (the Wall-3 "fail if BLOCKER"
+step, and the `konjo-gate` summary job's `needs:` list, which silently
+excluded `mutation`/`review` from the merge-blocking check entirely); the
+remaining 9 each got a one-line comment naming exactly why they're still
+soft and a `TODO` for when to flip them, rather than a silent blanket
+policy. `StackConnector`'s budget badge (visually reads as enforced;
+nothing enforces it) was hidden per the V&V audit's own escalation, not
+restyled — restyling would still imply *some* real state.
+
 ## UI-2 — Card controls, popovers, config drawer, live output, pane chrome
 
 **Config lives in an inline drawer of five live `Dropdown.svelte` selectors,
