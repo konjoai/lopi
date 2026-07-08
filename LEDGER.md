@@ -5,6 +5,72 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## Guardrails — gate / until / on_fail
+
+**`gate` = precondition, `until` = exit-condition — not the same shape,
+modeled as two separate `Option<String>` fields, not one.** `gate` blocks
+the loop from ever starting; `until` is checked after every iteration and
+can end the loop early as a success. Conflating them into one field (as
+earlier "Limits" exploration docs did) would have made "runs once before"
+and "runs every iteration, can end the loop" indistinguishable without a
+second flag anyway — two named fields is the simpler contract.
+
+**`OnFail::Stop` had to become a no-op, not a "halt after one failure."**
+The brief's own wording ("Stop → halt the loop") reads like Stop should cut
+the retry loop short on the first failure. That's incompatible with the
+hard kill-test-#1 requirement — every config written before this sprint has
+no `on_fail` field, `#[serde(default)]` fills `OnFail::Stop`, and those
+configs must behave *exactly* as they did before, i.e. keep retrying with
+backoff until `max_retries`/`max_iterations` is exhausted. Since `OnFail` is
+a plain enum (not `Option<OnFail>`) on `LoopConfig`, there is no way to
+distinguish "user explicitly chose Stop" from "field was absent" — so
+`Stop`'s runtime effect **must** be the pre-existing behavior verbatim.
+Consequence: `Stop` and `Backoff` are currently behaviorally identical
+(both call `backoff_secs(attempt, 500)`); `Backoff` exists as an explicit,
+named choice for the same wait. `Continue` is the one real behavioral
+difference this sprint adds — it skips the pause and retries immediately.
+Flagging this rather than silently resolving it: if a future sprint wants
+`Stop` to mean "halt after one failure," `Task.on_fail` needs to become
+`Option<OnFail>` (mirroring `gate`/`until`/`max_iterations`) so "unset"
+and "explicitly Stop" are distinguishable again.
+
+**`until` is checked once per iteration, at the same point `score.passed()`
+already was — not re-checked after the in-place fix retry.** `run_loop.rs`'s
+existing flow computes a `score`, and on failure attempts one in-place fix
+with its own re-score. Extending `until` to both checkpoints would double
+the shell-exec cost per iteration for a condition that, by construction,
+either passed already (loop already exited) or didn't (nothing changed
+about the *first* score's shell check by fixing lint/test errors in a
+second pass). Kept to one checkpoint per the brief's "keep it minimal"
+instruction; the effective condition becomes
+`score.passed() || until_satisfied`, changing nothing when `until` is
+`None` (the existing shell call is skipped entirely — `check_until`
+short-circuits on `None` before spawning anything).
+
+**Shell execution: `sh -c`, not a fixed-binary invocation.** Every existing
+shell-out in this codebase (`scorer.rs`, `worktree.rs`, `repos_handlers.rs`,
+`manager.rs`) runs one fixed, known binary (`git`, `cargo`, `npm`, `gh`)
+with explicit argv — none of them interpret a free-form command *string*.
+`gate`/`until` are user-supplied strings (`"cargo test"`, `"./kill_test.sh"`,
+`"exit 1"`), so they need shell interpretation to support that grammar at
+all. `run_guard_command` (`lopi_core::loop_config`) wraps `sh -c <cmd>` —
+the minimal necessary deviation — while keeping the *rest* of the
+invocation (`tokio::process::Command`, `.current_dir(repo)`, `.status()`,
+check `.success()`) identical to the codebase's existing pattern. Lives in
+`lopi-core` (not `lopi-agent`) since it's a pure, dependency-light
+primitive any future consumer (a stack-wide dry-run preview, say) can reuse
+without pulling in the whole agent runner.
+
+**`Backoff`'s reuse is proven by a property test, not exact equality.**
+`backoff_secs` includes `rand::random()` jitter, so two calls with
+identical arguments never produce identical `Duration`s — asserting
+`on_fail_wait(Backoff, n) == backoff_secs(n, 500)` directly is not
+possible. Instead, `guardrails.rs`'s test samples many calls and asserts
+every wait falls inside `backoff_secs`'s own `[0, ceiling]` band for that
+attempt, and that at least one sample is nonzero — a hardcoded *second*
+delay constant would either never vary or exceed the ceiling, so the
+property still catches drift without needing determinism.
+
 ## UI-1 — Static loop-stack + selector row
 
 **`/stacks` stood up as a new route, `/loop` untouched.** Per `UI_PLAN.md`

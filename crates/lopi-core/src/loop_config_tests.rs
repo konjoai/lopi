@@ -332,3 +332,95 @@ fn validate_clean_config_has_no_issues() {
     let c = LoopConfig::default();
     assert!(c.validate(&dir).is_empty());
 }
+
+// ── Guardrails: gate / until / on_fail ───────────────────────────────────────
+
+#[test]
+fn on_fail_default_is_stop() {
+    assert_eq!(OnFail::default(), OnFail::Stop);
+}
+
+#[test]
+fn on_fail_serializes_lowercase() {
+    assert_eq!(serde_json::to_string(&OnFail::Stop).unwrap(), "\"stop\"");
+    assert_eq!(
+        serde_json::to_string(&OnFail::Continue).unwrap(),
+        "\"continue\""
+    );
+    assert_eq!(
+        serde_json::to_string(&OnFail::Backoff).unwrap(),
+        "\"backoff\""
+    );
+}
+
+/// Pre-flight kill test #1: a config with none of the 3 new guardrail
+/// fields (i.e. every config written before this sprint) deserializes to
+/// exactly the same defaults `LoopConfig::default()` already produces —
+/// the serde-default contract existing configs rely on.
+#[test]
+fn legacy_config_without_guardrail_fields_deserializes_to_defaults() {
+    let cfg: LoopConfig = toml::from_str("").unwrap();
+    assert_eq!(cfg, LoopConfig::default());
+    assert_eq!(cfg.gate, None);
+    assert_eq!(cfg.until, None);
+    assert_eq!(cfg.on_fail, OnFail::Stop);
+}
+
+#[test]
+fn loop_config_default_has_no_gate_or_until() {
+    let c = LoopConfig::default();
+    assert_eq!(c.gate, None);
+    assert_eq!(c.until, None);
+}
+
+#[test]
+fn validate_flags_empty_gate_and_until() {
+    let dir = std::env::temp_dir();
+    let c = LoopConfig {
+        gate: Some("   ".to_string()),
+        until: Some(String::new()),
+        ..LoopConfig::default()
+    };
+    let issues = c.validate(&dir);
+    assert!(issues.iter().any(|i| i.contains("gate")));
+    assert!(issues.iter().any(|i| i.contains("until")));
+}
+
+#[test]
+fn validate_accepts_a_real_gate_and_until_command() {
+    let dir = std::env::temp_dir();
+    let c = LoopConfig {
+        gate: Some("true".to_string()),
+        until: Some("cargo test".to_string()),
+        ..LoopConfig::default()
+    };
+    assert!(c.validate(&dir).is_empty());
+}
+
+#[tokio::test]
+async fn run_guard_command_true_and_false() {
+    let dir = std::env::temp_dir();
+    assert!(run_guard_command("true", &dir).await.unwrap());
+    assert!(!run_guard_command("false", &dir).await.unwrap());
+}
+
+#[tokio::test]
+async fn run_guard_command_reflects_exit_code() {
+    let dir = std::env::temp_dir();
+    assert!(run_guard_command("exit 0", &dir).await.unwrap());
+    assert!(!run_guard_command("exit 1", &dir).await.unwrap());
+}
+
+#[tokio::test]
+async fn run_guard_command_runs_in_the_given_cwd() {
+    // A command that depends on cwd — proves `current_dir` is actually wired,
+    // not just a fixed invocation.
+    let dir = std::env::temp_dir();
+    let marker = dir.join("lopi_guard_cwd_marker");
+    let _ = std::fs::remove_file(&marker);
+    std::fs::write(&marker, "x").unwrap();
+    assert!(run_guard_command("test -f lopi_guard_cwd_marker", &dir)
+        .await
+        .unwrap());
+    let _ = std::fs::remove_file(&marker);
+}

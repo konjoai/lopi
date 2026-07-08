@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased] — Guardrails: Gate / Until / On-Fail 🚧
+
+### Added
+- `LoopConfig`/`Task` gain `gate: Option<String>` (precondition, must exit 0 before the loop starts), `until: Option<String>` (exit-condition, checked after each iteration — exit 0 ends the loop early as a success), and `on_fail: OnFail` (`Stop`/`Continue`/`Backoff`, default `Stop`) — all `#[serde(default)]`, no change to existing configs.
+- New `lopi_core::loop_config::run_guard_command` shell-exec helper (`sh -c`, exit-status only) shared by `gate`/`until`; `Stop`/`Backoff` reuse the existing full-jitter `backoff_secs` rather than a second delay constant.
+- `POST /api/tasks` now accepts `gate`/`until`/`on_fail` (mirrored in `web/src/lib/api.ts`'s `CreateTaskOptions`, types only).
+
 ## [Unreleased] — UI-1: Static Loop-Stack + Selector Row 🥞
 
 ### Added

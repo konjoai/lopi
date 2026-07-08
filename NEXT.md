@@ -33,7 +33,7 @@ been fixed. See `LEDGER.md` for both.
   Fix is to drive the sweeper's clock via `tokio::time::pause`/`advance`
   instead of a real sleep, but that's out of scope here.
 
-## What's next: UI-2 (card controls + guardrails/evals popovers)
+## What's next: UI-2 (card controls + guardrails/evals popovers) — now UNBLOCKED end-to-end
 
 UI-1 shipped: the `/stacks` route, `stores/stack.ts` (pure ops + composer
 grammar parser, unit-tested), static prompt-card rendering (preset pill,
@@ -42,6 +42,17 @@ flow (type-first + suggested chip + preset grid + inline grammar), and the
 model/effort/repo/autonomy selector row. See `LEDGER.md`'s UI-1 entry for
 the `/stacks`-vs-`/loop` route decision, the stack store shape, and why
 eval suites are client-side static config this slice.
+
+Since then, the **Guardrails: Gate / Until / On-Fail** sprint landed the one
+backend gap that blocked the guardrails popover: `LoopConfig`/`Task` now
+carry `gate: Option<String>` (precondition), `until: Option<String>`
+(exit-condition), and `on_fail: OnFail` (`Stop`/`Continue`/`Backoff`), all
+exposed on `POST /api/tasks` and mirrored (types only) in `api.ts`'s
+`CreateTaskOptions`. See `LEDGER.md`'s new entry for the `gate`-vs-`until`
+shape decision, why `OnFail::Stop` had to become a no-op (a hard
+kill-test-#1 constraint, not a design preference — `Stop`/`Backoff` are
+currently behaviorally identical as a result), and the `sh -c` shell-exec
+choice.
 
 **UI-2 is card controls**, wiring the buttons UI-1 shipped disabled:
 - **Loop pill + steppers** — toggle/adjust `StackCard.loopN` (×N / ∞), backed
@@ -57,37 +68,40 @@ eval suites are client-side static config this slice.
   already implemented and unit-tested in `stores/stack.ts`. Drag itself
   (HTML5 `dragstart`/`drop`) is new UI work; the array ops it calls are not.
 - **Guardrails popover** (shield button) — budget/max-iterations/on-fail/
-  schedule editor. **Needs backend first**: `gate`/`until`/`on-fail` have
-  *zero* backend representation anywhere (confirmed by `UI_PLAN.md`'s direct
-  source search — not on `Task`, not on `LoopConfig`). Per the scope doc's
-  flagged reconciliation, model these as an `EvalDef` (test-tier), not a
-  revived `gate_cmd`/`until_cmd` scalar pair — `on-fail` and `budget` presets
-  are the only guardrail fields that could bind to something real today
-  (`LoopConfig.budget_tokens`, though the 3-preset vocabulary doesn't exist
-  yet either). Ship the popover against local-only card state (or hide the
-  fields with no backend) until these land.
+  gate/until/schedule editor. **Not blocked anymore**: `gate`/`until`/
+  `on_fail` are real fields on `CreateTaskRequest` now (`StackCard` needs
+  matching `gate?`/`until?`/`onFail?` fields added — a small `stores/stack.ts`
+  extension, not a backend one). `budget`'s 3-preset vocabulary (auto/200k/
+  none) still doesn't exist at either layer — that one field can ship as a
+  client-side enum → `budget_tokens` number mapping, cheapest fix, no
+  backend change needed.
 - **Evals popover** (check button) — flat-checklist editor over
-  `StackCard.evals`. **Client-only until eval execution exists**: no
+  `StackCard.evals`. **Still client-only until eval execution exists**: no
   `EvalDef`/`EvalSuite` backend concept exists, so toggling a check can only
   ever mutate the card's static list this slice — there is no run to attach
   a pass/fail/running state to. Build the popover UI now (toggle tiers,
   "add a suite" row, baseline locked-on) against `StackCard.evals` directly;
-  wire real eval-run status when the backend eval ladder lands.
+  wire real eval-run status when the backend eval ladder lands. Unlike
+  guardrails, this one is *not* unblocked by this sprint — evals and
+  guardrails are genuinely separate backend surfaces, per the scope doc's
+  two-axis model.
 
-**Two backend gaps carried over from before UI-1, still blocking specific
-UI-2/UI-3 controls — flagging so they aren't assumed solved by this
-sprint's field exposure:**
-- **Gate / until / on-fail** (the Limits popover's shell-command precondition,
-  loop-until-exit-0, and stop/continue/backoff policy) — confirmed to have
-  *zero* backend representation anywhere (not on `Task`, not on `LoopConfig`).
-  Needs its own design + sprint before the Limits popover can bind to
-  anything real; ship it against local-only client state (or hide it) until
-  then.
+**Remaining backend gaps, for UI-3/UI-4/overview — unaffected by this
+sprint, flagging so they aren't assumed solved:**
 - **Live-control signals** (pause/drain/bump) — confirmed only `kill`
   (cancel) exists anywhere in the runner or web layer. Pause/drain/bump need
   a signal mechanism invented from scratch (there is no partial version to
   extend), which blocks the live-controls row in UI-3 entirely except for
   its kill button.
+- **Per-card event routing** (which card produced this `AgentEvent`) — no
+  card/stack-id tag exists on any event variant. Blocks true
+  multi-card-per-pane output attachment in UI-4; the documented fallback
+  (one active card per pane, route by `task_id` alone) unblocks a
+  single-active-card version without this.
+- **Needs-you derivation** (verifier-fail / failing test-tier eval /
+  `:escalate` severity → one triage signal) — nothing today derives this as
+  a single state; the overview's one piece of real backend work (everything
+  else there is aggregation over existing state).
 
 Sprint 4 (Verifier as Explicit Gate) shipped: `LoopConfig`/`Task` gained
 `verifier_required` / `verifier_model` / `verifier_effort`

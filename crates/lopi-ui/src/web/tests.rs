@@ -523,6 +523,36 @@ fn apply_loop_fields_threads_model_and_effort_overrides() {
     assert_eq!(task.effort.as_deref(), Some("max"));
 }
 
+#[test]
+fn apply_loop_fields_threads_gate_until_and_on_fail() {
+    let mut task = Task::new("guarded task");
+    let req: CreateTaskRequest = serde_json::from_value(serde_json::json!({
+        "goal": "guarded task",
+        "gate": "./preflight.sh",
+        "until": "cargo test",
+        "on_fail": "continue",
+    }))
+    .unwrap();
+    apply_loop_fields(&mut task, &req).unwrap();
+    assert_eq!(task.gate.as_deref(), Some("./preflight.sh"));
+    assert_eq!(task.until.as_deref(), Some("cargo test"));
+    assert_eq!(task.on_fail, Some(lopi_core::loop_config::OnFail::Continue));
+}
+
+#[tokio::test]
+async fn create_task_with_guardrail_fields_returns_201() {
+    let app = test_app().await;
+    let body = serde_json::to_string(&serde_json::json!({
+        "goal": "gated loop",
+        "gate": "true",
+        "until": "false",
+        "on_fail": "backoff",
+    }))
+    .unwrap();
+    let resp = send_req(app, "POST", "/api/tasks", Some(body)).await;
+    assert_eq!(resp.status(), StatusCode::CREATED);
+}
+
 #[tokio::test]
 async fn checkpoint_agent_persists_row_returns_201() {
     let app = test_app().await;

@@ -343,6 +343,7 @@ pub(super) fn build_runner(
     skills: lopi_skill::SkillRegistry,
     budget_tokens: u64,
     repo_max_iterations: u8,
+    repo_guardrails: RepoGuardrails,
     plan_decision_rx: oneshot::Receiver<lopi_core::PlanDecision>,
 ) -> AgentRunner {
     let verifier_needed = task.verifier_required || task.verifier_model.is_some();
@@ -352,6 +353,11 @@ pub(super) fn build_runner(
     // previously loaded here but never applied to `max_turns` — this closes
     // that gap rather than adding a second, parallel one.
     let max_turns = u32::from(task.max_iterations.unwrap_or(repo_max_iterations));
+    // Guardrails — same "explicit task override wins over repo default"
+    // precedent as `max_turns` above.
+    let gate = task.gate.clone().or(repo_guardrails.gate);
+    let until = task.until.clone().or(repo_guardrails.until);
+    let on_fail = task.on_fail.unwrap_or(repo_guardrails.on_fail);
     let mut runner = AgentRunner::new(task, work_repo, bus, store, cancel_rx, attempt_counter)
         .with_score_weights(weights)
         .with_self_prompt(self_prompt)
@@ -360,11 +366,25 @@ pub(super) fn build_runner(
         .with_task_budget(budget_tokens)
         .with_plan_gate(plan_decision_rx);
     runner.max_turns = max_turns;
+    runner.gate = gate;
+    runner.until = until;
+    runner.on_fail = on_fail;
     if verifier_needed {
         runner.with_verifier()
     } else {
         runner
     }
+}
+
+/// The repo-level (`.lopi/loop.toml`) guardrail defaults a task's own
+/// `gate`/`until`/`on_fail` may override. Bundled into one struct — rather
+/// than three more positional args on [`build_runner`] — since they're
+/// always loaded and passed together.
+#[derive(Debug, Clone, Default)]
+pub(super) struct RepoGuardrails {
+    pub(super) gate: Option<String>,
+    pub(super) until: Option<String>,
+    pub(super) on_fail: lopi_core::loop_config::OnFail,
 }
 
 #[tracing::instrument(skip(bus, store, cancel_rx, plan_decision_rx, attempt_counter), fields(task_id = %task.id, goal = %task.goal))]
@@ -382,44 +402,39 @@ async fn run_one(
     let goal = task.goal.clone();
 
     let weights = compute_weight_adjustments(&goal, store.as_ref()).await;
-    // Loop-as-code: read the repo's self-prompting, isolation, skills, budget,
-    // and max-iterations levers off the reactor in one blocking load. A
-    // missing/malformed `.lopi/loop.toml` yields the conservative default
-    // (Direct self-prompt, shared-checkout Branch isolation, no skills,
-    // inherited budget, the default iteration ceiling).
-    let (self_prompt, escalate, isolation, skills, budget_tokens, repo_max_iterations) = {
+    // Loop-as-code: read the repo's whole `.lopi/loop.toml` (self-prompting,
+    // isolation, skills, budget, max-iterations, guardrails) off the reactor
+    // in one blocking load. A missing/malformed config yields the
+    // conservative `LoopConfig::default()` (Direct self-prompt,
+    // shared-checkout Branch isolation, no skills, inherited budget, the
+    // default iteration ceiling, no gate/until, `on_fail: Stop`).
+    let (cfg, skills) = {
         let repo = repo.clone();
         tokio::task::spawn_blocking(move || {
             let cfg = lopi_core::LoopConfig::load_from_repo(&repo).unwrap_or_default();
             let skills = super::skills::load_skills(&repo);
-            (
-                cfg.self_prompt,
-                cfg.escalate_strategy,
-                cfg.isolation,
-                skills,
-                cfg.budget_tokens,
-                cfg.max_iterations,
-            )
+            (cfg, skills)
         })
         .await
         .unwrap_or_else(|e| {
             // The blocking task itself panicked/was cancelled — not a config
             // parse failure (that's already handled by `unwrap_or_default()`
             // above). Fall back to `LoopConfig::default()` explicitly rather
-            // than the tuple's own `Default`, so `max_iterations` lands on
-            // its safe default (25) instead of `u8::default()` (0), which
-            // this sprint made the infinite-loop sentinel.
+            // than assuming any particular field's zero value, since `0` is
+            // the infinite-loop sentinel for `max_iterations` but not a safe
+            // default on its own.
             tracing::warn!(task_id = %task_id, "loop-config blocking load task failed: {e}; using LoopConfig defaults");
-            let cfg = lopi_core::LoopConfig::default();
             (
-                cfg.self_prompt,
-                cfg.escalate_strategy,
-                cfg.isolation,
+                lopi_core::LoopConfig::default(),
                 lopi_skill::SkillRegistry::default(),
-                cfg.budget_tokens,
-                cfg.max_iterations,
             )
         })
+    };
+    let isolation = cfg.isolation;
+    let repo_guardrails = RepoGuardrails {
+        gate: cfg.gate.clone(),
+        until: cfg.until.clone(),
+        on_fail: cfg.on_fail,
     };
 
     // Worktree isolation (Pentad M1.2): when enabled, give this task its own
@@ -442,11 +457,12 @@ async fn run_one(
         cancel_rx,
         attempt_counter,
         weights,
-        self_prompt,
-        escalate,
+        cfg.self_prompt,
+        cfg.escalate_strategy,
         skills,
-        budget_tokens,
-        repo_max_iterations,
+        cfg.budget_tokens,
+        cfg.max_iterations,
+        repo_guardrails,
         plan_decision_rx,
     );
     let outcome = runner.run().await?;

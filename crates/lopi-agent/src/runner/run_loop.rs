@@ -1,6 +1,6 @@
 use super::finalize::update_no_progress_streak;
 use super::speculative::SpecFlow;
-use super::{backoff_secs, schema_gate, AgentRunner};
+use super::{schema_gate, AgentRunner};
 use crate::claude::{select_model, ClaudeCode, ERR_CREDIT_EXHAUSTED};
 use crate::scorer::Scorer;
 use anyhow::Result;
@@ -34,6 +34,14 @@ impl AgentRunner {
         // implementation work. On Unstable verdict: return early with a
         // Failed status containing the variance score for the ledger.
         if let Some(blocked) = self.run_stability_preflight().await {
+            self.status(blocked.clone(), 0);
+            return Ok(blocked);
+        }
+
+        // Guardrails — `gate`: a precondition that must pass before the
+        // very first iteration. Runs once; a failing (or unspawnable) gate
+        // blocks the loop entirely rather than burning a retry attempt.
+        if let Some(blocked) = self.run_gate_preflight().await {
             self.status(blocked.clone(), 0);
             return Ok(blocked);
         }
@@ -347,7 +355,16 @@ impl AgentRunner {
                 store.save_attempt(&a).await.ok();
             }
 
-            if score.passed() {
+            // Guardrails — `until`: an independent exit-condition checked
+            // every iteration. A pass ends the loop early as a success
+            // regardless of the iteration's own test score; `None`
+            // configured leaves `score.passed()` as the sole condition,
+            // unchanged from before this field existed.
+            let until_satisfied = self.check_until().await;
+            if score.passed() || until_satisfied {
+                if until_satisfied && !score.passed() {
+                    self.log("🏁 until condition met — concluding the loop early");
+                }
                 // Phase 16.3 — finalize per the L1–L4 autonomy ladder. `finalize`
                 // forces the verifier on for L3/L4, commits, rebases onto the
                 // advanced default, then opens (or skips) the PR. `None` ⇒
@@ -447,16 +464,7 @@ impl AgentRunner {
             }
 
             self.abort_and_mark_retrying(&git, attempt).await;
-            // Full-jitter exponential backoff before the next attempt.
-            // Base 500 ms — caps at 30 s. Prevents thundering-herd on transient failures.
-            let wait = backoff_secs(attempt, 500);
-            self.log(format!(
-                "♻️ retry {}/{} (backoff {}ms)",
-                attempt + 1,
-                self.task.max_retries,
-                wait.as_millis()
-            ));
-            tokio::time::sleep(wait).await;
+            self.apply_on_fail_delay(attempt).await;
         }
 
         // Sprint H — post-mortem on terminal failure. Best-effort; never

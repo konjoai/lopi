@@ -64,6 +64,19 @@ pub struct CreateTaskRequest {
     /// [`lopi_core::Task::effort`].
     #[serde(default)]
     pub effort: Option<String>,
+    /// Guardrail precondition — a shell command that must exit `0` before
+    /// the loop's first iteration. Mirrors [`lopi_core::Task::gate`].
+    #[serde(default)]
+    pub gate: Option<String>,
+    /// Guardrail exit-condition — a shell command checked after each
+    /// iteration; exiting `0` ends the loop early as a success. Mirrors
+    /// [`lopi_core::Task::until`].
+    #[serde(default)]
+    pub until: Option<String>,
+    /// On-fail policy override (`"stop"` / `"continue"` / `"backoff"`).
+    /// Mirrors [`lopi_core::Task::on_fail`].
+    #[serde(default)]
+    pub on_fail: Option<lopi_core::loop_config::OnFail>,
 }
 
 /// Response body for `POST /api/tasks`.

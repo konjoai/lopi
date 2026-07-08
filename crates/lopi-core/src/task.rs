@@ -247,6 +247,25 @@ pub struct Task {
     /// field existed.
     #[serde(default)]
     pub max_iterations: Option<u8>,
+    /// Per-task guardrail precondition, taking precedence over the repo's
+    /// [`crate::loop_config::LoopConfig::gate`] when set. Mirrors
+    /// `max_iterations`'s "explicit wins over the repo default" precedent.
+    /// `None` (the default) leaves the repo's own `gate` (if any) as the
+    /// sole precondition.
+    #[serde(default)]
+    pub gate: Option<String>,
+    /// Per-task guardrail exit-condition, taking precedence over the repo's
+    /// [`crate::loop_config::LoopConfig::until`] when set. `None` (the
+    /// default) leaves the repo's own `until` (if any) — or scoring/
+    /// `max_iterations` alone — as the sole stop condition.
+    #[serde(default)]
+    pub until: Option<String>,
+    /// Per-task on-fail policy override, taking precedence over the repo's
+    /// [`crate::loop_config::LoopConfig::on_fail`] when set. `None` (the
+    /// default) defers to the repo's own `on_fail` (itself defaulting to
+    /// [`crate::loop_config::OnFail::Stop`]).
+    #[serde(default)]
+    pub on_fail: Option<crate::loop_config::OnFail>,
 }
 
 /// Where a task originated — used for routing replies and audit logging.
@@ -306,6 +325,9 @@ impl Task {
             model: None,
             effort: None,
             max_iterations: None,
+            gate: None,
+            until: None,
+            on_fail: None,
         }
     }
 
