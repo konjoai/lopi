@@ -1,22 +1,22 @@
 <!--
-  /stacks — the loop-stack composer (UI-1: static rendering + in-memory
-  editing only). Stood up as a new route per UI_PLAN.md §6: the existing
-  /loop cockpit (health, autonomy ladder, self-prompt strategy) is a
-  different surface and is left untouched.
+  /stacks — the loop-stack composer. Two independent panes, each an ordered
+  queue of loop cards with schedule/guardrails/evals popovers, a config
+  drawer, connectors, and (for the single running task, once one exists) a
+  live output attachment. The existing /loop cockpit is a different surface
+  and is left untouched.
 
-  Nothing here runs, persists, or writes to the backend. The stack is a
-  client-only ordered list (`stores/stack.ts`); guardrails/evals popovers,
-  live controls, and output attachment are later slices (UI-2/UI-3/UI-4).
+  Guardrails/schedule/model/effort/repo round-trip through the real
+  `CreateTaskOptions` shape (see `stores/stack.ts::cardToTaskPayload`), but
+  nothing actually calls `createTask` yet — run-stack execution stays a
+  stub until the pause/drain/bump signals in NEXT.md land.
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
   import Panel from '$lib/components/ui/Panel.svelte';
-  import EmptyState from '$lib/components/ui/EmptyState.svelte';
   import Dropdown from '$lib/components/ui/Dropdown.svelte';
-  import StackComposer from '$lib/components/stacks/StackComposer.svelte';
-  import StackCard from '$lib/components/stacks/StackCard.svelte';
-  import { stack } from '$lib/stores/stack';
-  import { stackDefaults, AUTONOMY_OPTIONS } from '$lib/stores/stackDefaults';
+  import StackPane from '$lib/components/stacks/StackPane.svelte';
+  import { panes } from '$lib/stores/stack';
+  import { stackDefaults, AUTONOMY_OPTIONS, BRANCH_OPTIONS } from '$lib/stores/stackDefaults';
   import { MODEL_OPTIONS, EFFORT_OPTIONS, type Option } from '$lib/stores/controls';
   import { listRepos } from '$lib/api';
 
@@ -26,10 +26,7 @@
     try {
       const { repos } = await listRepos();
       if (repos.length) {
-        repoOptions = [
-          { value: '', label: 'auto' },
-          ...repos.map((r) => ({ value: r, label: r }))
-        ];
+        repoOptions = [{ value: '', label: 'auto' }, ...repos.map((r) => ({ value: r, label: r }))];
       }
     } catch {
       // Repo listing is best-effort chrome — the composer works with the
@@ -38,43 +35,30 @@
   });
 </script>
 
-<div class="max-w-2xl mx-auto px-6 py-8 space-y-6">
+<div class="max-w-[1400px] mx-auto px-4 py-8 space-y-6">
   <div>
     <h1 class="font-display text-2xl">Loop Stack</h1>
     <p class="font-mono text-[11px] uppercase tracking-widest opacity-50 mt-1">
-      compose a stack · static preview this slice · nothing runs yet
+      compose two independent stacks · guardrails/schedule are wired · run-stack execution is still a stub
     </p>
   </div>
 
-  <Panel title="Stack defaults" subtitle="model · effort · repo · autonomy for every card added below">
+  <Panel title="Pane defaults" subtitle="model · effort · repo · branch · autonomy every card below starts from">
     <div class="selrow">
       <Dropdown dense label="model" bind:value={$stackDefaults.model} options={MODEL_OPTIONS} />
       <Dropdown dense label="effort" bind:value={$stackDefaults.effort} options={EFFORT_OPTIONS} />
       <Dropdown dense label="repo" bind:value={$stackDefaults.repo} options={repoOptions} />
+      <Dropdown dense label="branch" bind:value={$stackDefaults.branch} options={BRANCH_OPTIONS} />
       <div class="autonomy">
-        <Dropdown
-          dense
-          label="autonomy"
-          bind:value={$stackDefaults.autonomy}
-          options={AUTONOMY_OPTIONS}
-        />
+        <Dropdown dense label="autonomy" bind:value={$stackDefaults.autonomy} options={AUTONOMY_OPTIONS} />
       </div>
     </div>
   </Panel>
 
-  <StackComposer />
-
-  <div class="stackline">
-    {#if $stack.length === 0}
-      <EmptyState title="Stack is empty" detail="Add a prompt above — it lands at the top." />
-    {:else}
-      {#each $stack as card, i (card.id)}
-        <StackCard {card} isNext={i === $stack.length - 1} />
-        {#if i < $stack.length - 1}
-          <div class="gap"><div class="line"></div></div>
-        {/if}
-      {/each}
-    {/if}
+  <div class="panes">
+    {#each $panes as pane (pane.key)}
+      <StackPane {pane} paneDefaults={$stackDefaults} {repoOptions} />
+    {/each}
   </div>
 </div>
 
@@ -89,19 +73,11 @@
   .autonomy {
     --konjo-accent-rgb: 183 155 255;
   }
-  .stackline {
+  .panes {
     display: flex;
-    flex-direction: column;
-  }
-  .gap {
-    height: 22px;
-    display: flex;
-    align-items: center;
+    gap: 22px;
+    align-items: flex-start;
     justify-content: center;
-  }
-  .gap .line {
-    width: 1px;
-    height: 100%;
-    background: rgba(255, 255, 255, 0.11);
+    flex-wrap: wrap;
   }
 </style>

@@ -1,5 +1,12 @@
 # UI_PLAN.md — loop-stack UI recon (UI-0)
 
+**Status:** this is the original UI-0 recon snapshot — kept as-is below for
+history. **UI-1** (static `/stacks` composer) and **UI-2** (card controls,
+popovers, config drawer, live output, pane chrome) have since shipped — see
+`CHANGELOG.md`'s UI-1/UI-2 entries and `LEDGER.md` for the decisions this
+recon's Gap Map fed into. `NEXT.md` has the current pointer: the two backend
+signals (pause/drain/bump; per-card `AgentEvent` routing) that unblock UI-3.
+
 **Scope:** reconnaissance only, no code. Written after discovering and fixing a
 repo-sync problem — see "Preflight" below before reading anything else.
 

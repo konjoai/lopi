@@ -8,16 +8,39 @@ import {
   removeCard,
   duplicateCard,
   reorderCard,
+  moveCardBeforeOrAfter,
   insertCardAt,
+  patchCard,
+  toggleEval,
+  applySuite,
+  stepMaxIterations,
+  maxIterationsLabel,
+  guardActive,
+  evalActive,
+  configActive,
+  buildCronString,
+  cronHuman,
+  computeNextRuns,
+  cardToTaskPayload,
+  applyToPaneCards,
+  insertIntoPane,
   parseComposerInput,
   suggestPreset,
   buildCard,
-  type StackCard
+  defaultCron,
+  defaultGuardrails,
+  BASELINE_EVAL,
+  type StackCard,
+  type StackPaneState
 } from './stack';
 import { eq, eqIs, ok, namedSummary } from '$lib/test-harness';
 
 function card(id: string, goal = id): StackCard {
-  return { id, goal, literal: true, evals: [] };
+  return { ...buildCard(`"${goal}"`), id };
+}
+
+function pane(key: string, cards: StackCard[] = []): StackPaneState {
+  return { key, title: key, cards };
 }
 
 // ── add — prepends ────────────────────────────────────────────────────────────
@@ -37,13 +60,17 @@ eq(
 );
 eq(removeCard([card('a')], 'a'), [], 'remove down to empty stack');
 
-// ── duplicate — clones in place ───────────────────────────────────────────────
+// ── duplicate — clones in place, resets run state ─────────────────────────────
 {
-  const dup = duplicateCard([card('a'), card('b')], 'a');
+  const running: StackCard = { ...card('a'), status: 'running', iteration: { current: 1, total: 3 }, taskId: 't1' };
+  const dup = duplicateCard([running, card('b')], 'a');
   eq(dup.length, 3, 'duplicate grows the stack by one');
   eq(dup[0].id, 'a', 'duplicate keeps the original at its position');
   eq(dup[1].goal, 'a', 'duplicate clones the original goal');
   ok(dup[1].id !== 'a', 'duplicate gets a fresh id');
+  eqIs(dup[1].status, 'idle', 'duplicate resets status to idle');
+  eqIs(dup[1].iteration, undefined, 'duplicate clears iteration progress');
+  eqIs(dup[1].taskId, undefined, 'duplicate clears taskId');
   eq(dup[2].id, 'b', 'duplicate does not disturb later cards');
 }
 eq(duplicateCard([card('a')], 'missing').length, 1, 'duplicate is a no-op for an unknown id');
@@ -65,6 +92,32 @@ eq(
   'reorder out-of-range `from` is a no-op'
 );
 
+// ── drag-and-drop relative reorder ────────────────────────────────────────────
+{
+  const cards = [card('a'), card('b'), card('c'), card('d')];
+  eq(
+    moveCardBeforeOrAfter(cards, 0, 2, true).map((c) => c.id),
+    ['b', 'a', 'c', 'd'],
+    'dragging a earlier card to just before a later target lands right before it'
+  );
+  eq(
+    moveCardBeforeOrAfter(cards, 0, 2, false).map((c) => c.id),
+    ['b', 'c', 'a', 'd'],
+    'dragging a earlier card to just after a later target lands right after it'
+  );
+  eq(
+    moveCardBeforeOrAfter(cards, 3, 1, true).map((c) => c.id),
+    ['a', 'd', 'b', 'c'],
+    'dragging a later card to just before an earlier target lands right before it'
+  );
+  eq(
+    moveCardBeforeOrAfter(cards, 3, 1, false).map((c) => c.id),
+    ['a', 'b', 'd', 'c'],
+    'dragging a later card to just after an earlier target lands right after it'
+  );
+  eq(moveCardBeforeOrAfter(cards, 1, 1, true), cards, 'dropping a card onto itself is a no-op');
+}
+
 // ── insert — at index ─────────────────────────────────────────────────────────
 eq(
   insertCardAt([card('a'), card('c')], 1, card('b')).map((c) => c.id),
@@ -76,6 +129,14 @@ eq(
   ['a'],
   'insert clamps an out-of-range index into an empty stack'
 );
+
+// ── patch — shallow merge by id ────────────────────────────────────────────────
+{
+  const patched = patchCard([card('a'), card('b')], 'a', { goal: 'renamed' });
+  eqIs(patched[0].goal, 'renamed', 'patch merges the given fields');
+  eqIs(patched[1].goal, 'b', 'patch leaves other cards untouched');
+}
+eq(patchCard([card('a')], 'missing', { goal: 'x' })[0].goal, 'a', 'patch is a no-op for an unknown id');
 
 // ── empty stack ⇒ callers render EmptyState (nothing to assert on the store
 // itself beyond "an empty array is a valid, terminal state") ─────────────────
@@ -125,6 +186,143 @@ eqIs(suggestPreset('draft a changelog entry'), null, 'no keyword match suggests 
   eqIs(literal.preset, undefined, 'no alias, no explicit preset ⇒ no preset attached');
   ok(literal.literal, 'plain text builds a literal card');
   eq(literal.evals, [{ name: 'execution ok', tier: 'base' }], 'literal card carries only the baseline eval');
+}
+{
+  const withLoop = buildCard(':optimize "x" @squish x3');
+  eqIs(withLoop.maxIterations, 3, 'xN grammar seeds maxIterations');
+  eqIs(withLoop.config.repo, 'squish', '@repo grammar seeds config.repo');
+}
+{
+  const plain = buildCard('a plain goal');
+  eqIs(plain.maxIterations, 25, 'no xN ⇒ maxIterations defaults to the backend default (25)');
+  eqIs(plain.scheduled, false, 'fresh card is not scheduled');
+  eqIs(plain.status, 'idle', 'fresh card starts idle');
+}
+{
+  const a = buildCard('a');
+  const b = buildCard('b');
+  ok(a.cron !== b.cron, 'each card gets its own cron object, not a shared reference');
+  ok(a.guardrails !== b.guardrails, 'each card gets its own guardrails object, not a shared reference');
+}
+
+// ── eval-set ops ───────────────────────────────────────────────────────────────
+{
+  const toggled = toggleEval([BASELINE_EVAL], 'unit');
+  eq(toggled.map((e) => e.name), ['execution ok', 'unit'], 'toggleEval turns an eval on');
+  const toggledOff = toggleEval(toggled, 'unit');
+  eq(toggledOff.map((e) => e.name), ['execution ok'], 'toggleEval turns it back off');
+  eq(toggleEval([BASELINE_EVAL], 'execution ok'), [BASELINE_EVAL], 'toggleEval never turns off the baseline');
+  eq(toggleEval([BASELINE_EVAL], 'not-a-real-eval'), [BASELINE_EVAL], 'toggleEval ignores unknown names');
+}
+{
+  const suited = applySuite([BASELINE_EVAL], ['vuln scan', 'adversarial']);
+  eq(suited.map((e) => e.name), ['execution ok', 'vuln scan', 'adversarial'], 'applySuite adds every named eval');
+  const again = applySuite(suited, ['vuln scan']);
+  eq(again.map((e) => e.name), ['execution ok', 'vuln scan', 'adversarial'], 'applySuite never duplicates an already-on eval');
+}
+
+// ── iteration stepper — floor 2, wraps to infinite (0) ────────────────────────
+eqIs(stepMaxIterations(25, 1), 26, 'stepping up increments normally');
+eqIs(stepMaxIterations(25, -1), 24, 'stepping down decrements normally');
+eqIs(stepMaxIterations(2, -1), 0, 'stepping below the floor wraps to infinite');
+eqIs(stepMaxIterations(3, -2), 0, 'a multi-step decrement below the floor also wraps to infinite');
+eqIs(stepMaxIterations(0, 1), 2, 'stepping up from infinite lands on the floor, not 1');
+eqIs(stepMaxIterations(0, -1), 0, 'stepping down from infinite stays infinite');
+eqIs(maxIterationsLabel(0), '∞', 'label renders the infinite sentinel as ∞');
+eqIs(maxIterationsLabel(5), '5', 'label renders a finite ceiling as its number');
+
+// ── active-state predicates ────────────────────────────────────────────────────
+eqIs(guardActive(defaultGuardrails()), false, 'fresh guardrails are inactive');
+eqIs(guardActive({ ...defaultGuardrails(), gate: true }), true, 'gate alone activates guardrails');
+eqIs(guardActive({ ...defaultGuardrails(), until: true }), true, 'until alone activates guardrails');
+eqIs(evalActive(buildCard('x')), false, 'baseline-only card has inactive evals');
+eqIs(evalActive(buildCard(':implement "x"')), true, 'preset-attached card has active evals');
+{
+  const defaults = { model: 'm', effort: 'e', repo: 'r', branch: 'b', autonomy: 'a' };
+  const plain = buildCard('x');
+  eqIs(configActive(plain, defaults), false, 'no overrides ⇒ config inactive');
+  const overridden = { ...plain, config: { model: 'other' } };
+  eqIs(configActive(overridden, defaults), true, 'a single overridden field activates config');
+}
+
+// ── cron helpers ───────────────────────────────────────────────────────────────
+eqIs(buildCronString(defaultCron()), '0 2 * * *', 'default cron (daily 2am) builds the expected 5-field string');
+eqIs(buildCronString({ ...defaultCron(), freq: 'every minute' }), '* * * * *', 'every-minute cron');
+eqIs(buildCronString({ ...defaultCron(), freq: 'hourly', min: 15 }), '15 * * * *', 'hourly cron uses the minute field');
+eqIs(
+  buildCronString({ ...defaultCron(), freq: 'weekly', dow: 'Fri', hour12: 6, ampm: 'PM', min: 30 }),
+  '30 18 * * 5',
+  'weekly cron resolves 12h PM time and weekday number'
+);
+eqIs(buildCronString({ ...defaultCron(), freq: 'custom', raw: '*/5 * * * *' }), '*/5 * * * *', 'custom cron passes raw through');
+eqIs(cronHuman(defaultCron()), 'every day at 2:00 AM', 'human echo for the default cron');
+eqIs(cronHuman({ ...defaultCron(), freq: 'hourly', min: 5 }), 'every hour at :05', 'human echo pads minutes');
+
+// ── computeNextRuns — cron field matcher ──────────────────────────────────────
+{
+  const from = new Date('2026-07-08T10:00:00');
+  const runs = computeNextRuns('0 2 * * *', from, 3);
+  eq(runs.length, 3, 'daily cron finds 3 upcoming runs within the search window');
+  eqIs(runs[0].getHours(), 2, 'each run lands on the specified hour');
+  eqIs(runs[0].getMinutes(), 0, 'each run lands on the specified minute');
+  eqIs(runs[0].getDate(), 9, 'the first run after 10am is the next calendar day at 2am');
+  eqIs(runs[1].getDate(), 10, 'runs are one day apart for a daily cadence');
+}
+{
+  const from = new Date('2026-07-08T10:00:00');
+  const runs = computeNextRuns('* * * * *', from, 2);
+  eq(runs.length, 2, 'every-minute cron finds runs immediately');
+  eqIs(runs[1].getTime() - runs[0].getTime(), 60_000, 'every-minute runs are exactly 60s apart');
+}
+eq(computeNextRuns('not a cron', new Date(), 3), [], 'a malformed cron expression yields no results rather than throwing');
+{
+  const from = new Date('2026-07-08T10:00:00'); // a Wednesday
+  const runs = computeNextRuns('0 6 * * 5', from, 1); // Friday 6am
+  eq(runs.length, 1, 'weekly cron with a day-of-week field finds the next matching weekday');
+  eqIs(runs[0].getDay(), 5, 'the matched run falls on the requested weekday');
+}
+
+// ── backend round-trip (WIRED fields → CreateTaskOptions shape) ───────────────
+{
+  const defaults = { model: 'sonnet', effort: 'medium', repo: 'konjoai/lopi' };
+  const plain = buildCard('do the thing');
+  const payload = cardToTaskPayload(plain, defaults);
+  eqIs(payload.goal, 'do the thing', 'payload carries the goal verbatim');
+  eqIs(payload.repo, 'konjoai/lopi', 'no repo override ⇒ payload falls back to the pane default');
+  eqIs(payload.options.model, 'sonnet', 'no model override ⇒ payload falls back to the pane default');
+  eqIs(payload.options.max_iterations, 25, 'payload carries maxIterations as max_iterations');
+  eqIs(payload.options.on_fail, 'stop', 'payload carries the default on_fail policy');
+  eqIs(payload.options.gate, undefined, 'gate omitted when the guardrail toggle is off');
+}
+{
+  const defaults = { model: 'sonnet', effort: 'medium', repo: 'konjoai/lopi' };
+  const guarded = buildCard('do the thing');
+  guarded.config.repo = 'squish';
+  guarded.guardrails = { gate: true, gateCmd: './kill_test.sh', until: true, untilCmd: 'cargo test', onFail: 'backoff', budget: '200k' };
+  const payload = cardToTaskPayload(guarded, defaults);
+  eqIs(payload.repo, 'squish', 'a config.repo override wins over the pane default');
+  eqIs(payload.options.gate, './kill_test.sh', 'enabled gate carries its command');
+  eqIs(payload.options.until, 'cargo test', 'enabled until carries its command');
+  eqIs(payload.options.on_fail, 'backoff', 'payload carries the chosen on_fail policy');
+}
+
+// ── pane-keyed dispatch (the pre-flight's stack.insert(stackKey, index, loop)) ─
+{
+  const state = [pane('s1', [card('a')]), pane('s2', [card('x')])];
+  const inserted = insertIntoPane(state, 's1', 1, card('b'));
+  eq(inserted[0].cards.map((c) => c.id), ['a', 'b'], 'insertIntoPane inserts into the named pane at the given index');
+  eq(inserted[1].cards.map((c) => c.id), ['x'], 'insertIntoPane leaves the other pane untouched');
+  ok(inserted[1] === state[1], 'the untouched pane keeps its object identity (no wasted re-render)');
+}
+{
+  const state = [pane('s1', [card('a')])];
+  const untouched = insertIntoPane(state, 'missing', 0, card('b'));
+  ok(untouched === state, 'insertIntoPane into an unknown key is a total no-op');
+}
+{
+  const state = [pane('s1', [card('a'), card('b')])];
+  const removed = applyToPaneCards(state, 's1', (cards) => cards.filter((c) => c.id !== 'a'));
+  eq(removed[0].cards.map((c) => c.id), ['b'], 'applyToPaneCards composes with any pure card-list op');
 }
 
 namedSummary('stack');
