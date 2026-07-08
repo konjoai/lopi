@@ -5,6 +5,97 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## Git hygiene — fixed the committed DRY violations (`dry_check.py`: 794 → 12)
+
+**Starting state confirmed, then a delta reported before fixing:** the last
+"Gate verification" note named four offenders (the `api_plan.rs`/
+`stability/mod.rs` Task-builder pair, the `lopi-git` worktree/rebase test
+overlap, `dlq_handlers.rs`, `task_stream_handlers.rs`). Running `dry_check.py`
+fresh found **46 file pairs / 794 raw window-matches** — the four named
+offenders were all still present, but so were ~40 more pairs never
+individually named (same-file internal repetition in several crates, and a
+large `lopi-ui` test-boilerplate cluster). Fixed in priority order below;
+final state is **12 raw matches across 4 file pairs (3 distinct justified
+reasons — `dag.rs` accounts for two of the four pairs under the same sqlx-
+boilerplate reasoning)**, each a documented residual — not silently accepted,
+each has a concrete structural reason `dry_check.py` cannot see.
+
+**De-duplicated (real fixes, one source of truth each):**
+- `api_plan.rs`/`stability/mod.rs` test-builder pair → `lopi-agent::test_support::make_test_task`, itself simplified to delegate to `Task::new` instead of re-listing all 20 fields.
+- `api_plan.rs::build_user_prompt` / `stability::build_stability_prompt` (a *second*, previously-unnamed duplicate between the same two files — real production prompt-building logic, not test code) → shared `lopi-agent::prompt::build_user_prompt`; `build_stability_prompt` is now a one-line delegate. The original author's comment ("kept standalone to avoid coupling to the private `api_plan` module") is resolved by the new module living at the crate root, not inside `api_plan`.
+- `dlq_handlers.rs`, `task_stream_handlers.rs` (self-duplicate 404/500 response bodies, and a repeated log-row→JSON mapping) → `dlq_not_found`/`dlq_internal_error`, `log_rows_to_json`/`logs_internal_error`.
+- `crates/lopi-agent/src/runner/run_loop.rs` (self-duplicate rollback+checkout, 7×, and rollback+status(Retrying), 3×) → `abort_attempt` free fn + `AgentRunner::abort_and_mark_retrying` method.
+- `crates/lopi-context/src/window.rs` (self-duplicate auto-evict-toward-threshold block in `push`/`push_tool_pair`) → `ContextWindow::evict_toward_threshold`.
+- `crates/lopi-core/src/config_tests.rs` (self-duplicate temp-TOML-file test setup) → `write_temp_lopi_toml` + `temp_config_with_report_channel`.
+- `crates/lopi-git/src/worktree.rs` (`run_git`/`run_git_stdout` self-duplicate) → `run_git` now delegates to `run_git_stdout`.
+- `crates/lopi-orchestrator/src/scheduler.rs` (self-duplicate `ScheduleEntry` test fixtures, 3 pairs) → `make_entry` helper.
+- `crates/lopi-remote/src/whatsapp.rs` ↔ `crates/lopi-ui/src/web/api_middleware.rs` (byte-identical `constant_time_eq` — security-relevant, genuinely dangerous to drift) → `lopi_core::security::constant_time_eq`, one implementation for both crates.
+- `crates/lopi-remote/src/whatsapp.rs`, `crates/lopi-webhook/src/github.rs` (self-duplicate axum test-request boilerplate) → `post_webhook` helper in each crate's own test module (kept separate — see residual note below on why these two crates can't share one).
+- `crates/lopi-spec/src/lib.rs` (self-duplicate extractor-dispatch-and-tag-error-handling for `.rs`/`.py` branches) → `scan_with` helper.
+- `crates/lopi-spec/src/{rust_extractor.rs,python_extractor.rs}` (byte-identical `name_to_description`) → moved to the crate root, both modules import it.
+- `crates/lopi-toon/src/lib.rs` (byte-identical "spec example" JSON fixture in two tests) → `spec_example()` helper.
+- `crates/lopi-toon/src/encode/helpers.rs` (`encode_scalar_value`/`encode_cell` identical but for one bool) → shared `encode_scalar_common(v, delim, in_cell)`.
+- `crates/lopi-toon/src/decode/parser.rs` (self-duplicate "parse remaining object fields at depth+1" loop in two `parse_array_body` branches) → `Parser::parse_remaining_object_fields`.
+- `crates/lopi-ui/src/web/{tests.rs,tests_extended.rs}` — by far the largest cluster (**593 of the original 794 raw matches**): both files are `include!()`-ed into one module, so a single `get_req`/`send_req`/`test_app_with_store` helper trio (added to `tests.rs`) resolved the entire cross-file and self-file axum test-request boilerplate at once. Two Python scripts did the mechanical call-site rewrite (regex-matched the exact `Request::builder()...oneshot()...unwrap()` shape); every rewritten test was individually re-run green before and after.
+- `crates/lopi-context/tests/tool_pair_atomicity.rs` (self-duplicate `push_tool_pair(make_msg(...), make_msg(...))` fixture, 4×) → `push_pair` helper.
+- `crates/lopi-context/tests/{phase_eviction.rs,conclusion_preservation.rs,budget_lifo.rs,tool_pair_atomicity.rs}` (four different-arity `TaggedMessage` builders, all re-listing the same 9-field literal) → `tests/common/mod.rs` (the standard Rust idiom for code shared across integration-test binaries), each file's own narrower helper now delegates to `common::make_msg` with its fixed defaults.
+- `web/src/lib/*.test.ts` (9 files: `api`, `badges`, `excitement`, `events`, `markdown`, `agentReducer`, `transcript`, `layout-core`, `session-groups`) all hand-rolled the same pass/fail-counter + `eq`/`ok` assertion harness (two variants: `Object.is` and `JSON.stringify` comparison) → `web/src/lib/test-harness.ts`, exporting a `record` primitive plus `eq`/`eqIs`/`ok`/`summary`/`namedSummary` built on it. Files needing the `Object.is` variant import `eqIs as eq` (aliased, so call sites didn't need touching); files with a custom approx-comparator (`excitement.test.ts`'s `close()`) call the new `record` primitive directly instead of mutating raw counters (which import bindings can't do). Every one of the 9 files was individually re-run via `npx tsx` before and after, plus a full `npm run check` — all pass, 0 TS errors.
+
+**Left as documented residuals (4 file pairs, 12 raw matches, 3 distinct reasons) — not fixed, with why:**
+- **`crates/lopi-git/src/worktree/tests.rs` ↔ `crates/lopi-git/tests/rebase.rs`** (identical `fn git(repo, args)` test helper). Structural, not fixable without a worse trade: `worktree/tests.rs` is a `#[cfg(test)] mod` compiled *inside* the library crate (`use super::*` gives it access to private items like `worktree_slug`/`add_args`), while `tests/rebase.rs` is a separate integration-test binary with only the crate's public API. Rust has no shared-code mechanism between those two contexts short of making the helper `pub` (pollutes the public API for a test-only convenience) or adding a new dev-only shared crate (out of scope — "no new dependency").
+- **`crates/lopi-memory/src/store/{dag.rs,q_routing.rs,verifier.rs}`** (identical `.fetch_all(&self.read_pool).await?; Ok(rows) }` tail + adjacent `#[cfg(test)] mod tests` preamble). Each function queries a different table into a different row type (`DagNodeRow`, `RoutingQValueRow`, `VerifierVerdictRow`); the only thing matching is how any `sqlx` `fetch_all` call necessarily ends. No real abstraction exists here without genericizing over the query and row type, which sqlx itself already is the abstraction for.
+- **`crates/lopi-remote/src/whatsapp.rs` ↔ `crates/lopi-webhook/src/github.rs`** (the `#[cfg(test)] #[allow(...)] mod tests { use super::*; use axum::{ ... }` preamble). Pure boilerplate common to any axum-handler test module in this codebase — not meaningfully shared logic, and coupling two unrelated crates' test preambles together to satisfy a textual match would be exactly the "contort real code" the brief warned against.
+
+`dry_check.py` was NOT run with any scoped ignore/allowlist (the tool has none — checked its full source: no per-pair suppression mechanism exists, only `--staged-only`/`--changed-only`/`--warn-only` mode flags). The residual above is accepted at the repo level, documented here per the brief's fallback option.
+
+**Decision:** dropped the local worktree-isolation stash created before this
+session's sync with `origin/main`. `origin/main`'s own `WorktreeManager`
+(RAII `Worktree`, slug-based naming, `WT_META_LOCK`, `gc`/`list`/`prune`,
+`pool/mod.rs` + `pool/worktree.rs` split) is the kept implementation —
+confirmed, not assumed, more capable than the stashed version, which had no
+equivalent for `gc`/orphan-detection and split its capability across a
+single-file `pool.rs`.
+
+**Redundancy proof (21 of 25 stash files):** every stash file mapped to an
+`origin/main` file/mechanism implementing the same capability — see the
+full file-by-file table produced during this pass. Two design-surface
+differences noted but not blocking: (1) main's `LoopConfig.isolation:
+IsolationMode` is a simpler enum toggle vs. the stash's `WorktreeConfig`
+(configurable root/base-ref/cleanup-age) — same core capability, less
+configurable; (2) `add_detached` branches from local `HEAD` unconditionally,
+where the stash had a `BaseRefPolicy::RemoteHead` default — a real behavioral
+difference, judged non-blocking since the overall architecture choice
+(main's `WorktreeManager`) was already decided, not something this pass
+re-opened.
+
+**What was NOT superseded (2 files, different severity):**
+- `crates/lopi-ui/src/web/worktree_handlers.rs` (`GET /api/worktrees`) — no
+  web-exposed worktree listing exists anywhere on `main` today; CLI parity
+  exists (`src/worktree_commands.rs::{list,gc}`). Minor, accepted as a gap
+  rather than salvaged, since the underlying capability is reachable via CLI.
+- **`docs/ui/{lopi-loop-stacks-3-output,lopi-scope-and-test-plan,lopi-selectors-panes}.html`**
+  — the actual design mockup source material `UI_PLAN.md` (already merged)
+  was written against. Unrelated to worktree isolation; only present in this
+  stash because the original `git stash push` swept up everything uncommitted
+  at the time. **Extracted before the drop** (`git checkout stash@{0} --
+  docs/ui/`) and left staged, uncommitted, for separate review — not lost.
+
+**Honest DRY-gate outcome — do not overstate:** the stash was never applied
+to the working tree, so it could not have been contributing to
+`dry_check.py`'s failures in the first place. Proven directly: ran the check
+before the drop (stash present but unapplied) and after (stash gone) — the
+failing-file set is byte-identical both times (`diff` exit 0). **Dropping
+the stash changed nothing about the DRY gate.** The gate still fails on
+committed code — the same pre-existing set recorded in the prior "Gate
+verification" entry (`api_plan.rs`/`stability/mod.rs` test-builder pair,
+`lopi-git` worktree/rebase test overlap, `dlq_handlers.rs`,
+`task_stream_handlers.rs`, and others) — which remains its own, separate
+cleanup, not addressed by this pass. `cargo test --workspace` (704
+passed/1 failed, the same pre-existing unseeded `qlearned_favours_highest_
+reward_member` flake) and `cargo clippy --workspace -- -D warnings` (clean)
+confirm dropping the stash broke nothing, as expected since it was never
+applied.
+
 ## Sprint 5 — Expose Loop Fields on `CreateTaskRequest` (`crates/lopi-core/src/task.rs`, `crates/lopi-ui/src/web/{types.rs,handlers.rs}`, `crates/lopi-agent/src/claude.rs`, `crates/lopi-orchestrator/src/pool/run_loop.rs`)
 
 **Gate verification (evidence, not assertion) — merge-prep pass:**
