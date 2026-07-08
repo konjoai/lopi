@@ -1,6 +1,6 @@
 //! Orchestration topology hints (Sprint T).
 //!
-//! A [`TopologyHint`] describes how a task's work should be decomposed across
+//! A [`crate::topology::TopologyHint`] describes how a task's work should be decomposed across
 //! agents. It is an *advisory* signal attached to a [`crate::Task`]: the
 //! orchestrator's classifier proposes one, and the dispatcher may branch on it.
 //! Inspired by AdaptOrch (arXiv 2602.16873), which shows topology-aware routing
