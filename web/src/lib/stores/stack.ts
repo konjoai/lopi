@@ -42,7 +42,7 @@ export interface PresetDef {
  *  (`crates/lopi-core/src/loop_config.rs`) — WIRED via `on_fail`. */
 export type OnFail = 'stop' | 'continue' | 'backoff';
 
-/** Per-run token-budget preset. TODO(backend): no `CreateTaskRequest` field
+/** Per-run token-budget preset. Backend gap: no `CreateTaskRequest` field
  *  backs this yet — client-only intent, same as `branch`/`autonomy`. */
 export type Budget = 'auto' | '200k' | 'none';
 
@@ -55,7 +55,7 @@ export interface Guardrails {
   until: boolean;
   untilCmd: string;
   onFail: OnFail;
-  /** TODO(backend): no budget field exists on `CreateTaskRequest` yet. */
+  /** Backend gap: no budget field exists on `CreateTaskRequest` yet. */
   budget: Budget;
 }
 
@@ -94,7 +94,7 @@ export function defaultCron(): CronConfig {
 /** Per-loop overrides of the pane defaults (model/effort/repo/branch/
  *  autonomy). `undefined` on any field means "inherit the pane default".
  *  `model`/`effort`/`repo` are WIRED (real `CreateTaskRequest` fields);
- *  `branch`/`autonomy` are client-only — TODO(backend). */
+ *  `branch`/`autonomy` are client-only — backend gap, not yet exposed. */
 export interface CardConfig {
   model?: string;
   effort?: string;
@@ -590,7 +590,11 @@ export function cardToTaskPayload(
     model: card.config.model ?? defaults.model,
     effort: card.config.effort ?? defaults.effort,
     max_iterations: card.maxIterations,
-    on_fail: card.guardrails.onFail
+    on_fail: card.guardrails.onFail,
+    // Backend-1 — lets the response's `duplicate_of ?? id` (see
+    // `api.ts::effectiveTaskId`) be traced straight back to this card
+    // regardless of any server-side dedup.
+    client_ref: card.id
   };
   if (card.guardrails.gate) options.gate = card.guardrails.gateCmd;
   if (card.guardrails.until) options.until = card.guardrails.untilCmd;
@@ -600,6 +604,113 @@ export function cardToTaskPayload(
     priority: 'normal',
     options
   };
+}
+
+/** The `cardToTaskPayload` a card would submit under the "Run once" run-menu
+ *  intent: identical resolution, but `max_iterations` is forced to `1`
+ *  regardless of the card's own setting (including the `0` = ∞ sentinel) —
+ *  a plan-level override applied only to the outgoing payload, never
+ *  mutating the card's own stored `maxIterations`. */
+export function cardToTaskPayloadForRunOnce(
+  card: StackCard,
+  defaults: PaneDefaults
+): { goal: string; repo: string; priority: string; options: CreateTaskOptions } {
+  const payload = cardToTaskPayload(card, defaults);
+  return { ...payload, options: { ...payload.options, max_iterations: 1 } };
+}
+
+// ── Run-stack execution order + dry run (pure, tested) ────────────────────────
+
+/** The order a pane's cards actually run in: bottom-of-stack (oldest,
+ *  closest to executing) first, top (newest) last. The composer prepends
+ *  new cards to index 0 (`addCard`), so a pane's array order is newest
+ *  first — the reverse of execution order — matching the settled mockup's
+ *  "new prompts prepend to the top; the stack flows down to the
+ *  currently-executing loop at the bottom" pane chrome. */
+export function executionOrder(cards: StackCard[]): StackCard[] {
+  return [...cards].reverse();
+}
+
+/** One problem `dryRunStack` found with a specific card's configuration. */
+export interface DryRunIssue {
+  cardId: string;
+  message: string;
+}
+
+/** One card's resolved plan entry, exactly as `dryRunStack` would submit
+ *  it — never actually submitted. */
+export interface DryRunPlanEntry {
+  cardId: string;
+  goal: string;
+  repo: string;
+  maxIterations: number;
+}
+
+/** The plan-validation result `dryRunStack` returns. */
+export interface DryRunResult {
+  valid: boolean;
+  issues: DryRunIssue[];
+  plan: DryRunPlanEntry[];
+}
+
+/** Validate a pane's execution plan without running anything: resolves
+ *  every card's config against the pane defaults (the same resolution
+ *  `cardToTaskPayload` does) in execution order, and flags configs that
+ *  would fail at launch — an empty goal, or a guardrail toggled on with an
+ *  empty command. Pure and total; never calls `createTask`. This is the
+ *  run-menu's "Dry run" intent in full — there is no backend call to make,
+ *  since validating a plan needs nothing the client doesn't already have. */
+export function dryRunStack(cards: StackCard[], defaults: PaneDefaults): DryRunResult {
+  const issues: DryRunIssue[] = [];
+  const plan: DryRunPlanEntry[] = executionOrder(cards).map((card) => {
+    const payload = cardToTaskPayload(card, defaults);
+    if (!payload.goal.trim()) {
+      issues.push({ cardId: card.id, message: 'goal is empty' });
+    }
+    if (card.guardrails.gate && !card.guardrails.gateCmd.trim()) {
+      issues.push({ cardId: card.id, message: 'gate is enabled with an empty command' });
+    }
+    if (card.guardrails.until && !card.guardrails.untilCmd.trim()) {
+      issues.push({ cardId: card.id, message: 'until is enabled with an empty command' });
+    }
+    return {
+      cardId: card.id,
+      goal: payload.goal,
+      repo: payload.repo,
+      maxIterations: payload.options.max_iterations ?? DEFAULT_MAX_ITERATIONS
+    };
+  });
+  return { valid: issues.length === 0, issues, plan };
+}
+
+/** Attempt to bump (swap with its immediate neighbor) a not-yet-started
+ *  card within an active stack run's remaining execution order. `cursor`
+ *  is the index of the card currently running or about to run — it and
+ *  everything at or before it are off-limits, matching the brief's "reject
+ *  illegal transitions... with a clear error, not a silent no-op." Pure —
+ *  the caller (`stores/stackRun.ts`) is responsible for reflecting the
+ *  result back onto the pane's own card array. */
+export function bumpInOrder(
+  order: string[],
+  cursor: number,
+  cardId: string,
+  direction: 'up' | 'down'
+): { ok: true; order: string[] } | { ok: false; error: string } {
+  const idx = order.indexOf(cardId);
+  if (idx === -1) return { ok: false, error: 'card is not part of this run’s plan' };
+  if (idx <= cursor) {
+    return { ok: false, error: 'card is already running or finished — only queued cards can be bumped' };
+  }
+  const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
+  if (targetIdx <= cursor) {
+    return { ok: false, error: 'cannot bump above the currently running card' };
+  }
+  if (targetIdx >= order.length) {
+    return { ok: false, error: 'cannot bump past the end of the queue' };
+  }
+  const next = [...order];
+  [next[idx], next[targetIdx]] = [next[targetIdx], next[idx]];
+  return { ok: true, order: next };
 }
 
 // ── Pane store (keyed dispatch over the pure array ops) ───────────────────────

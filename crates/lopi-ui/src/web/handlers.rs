@@ -44,6 +44,7 @@ pub(super) async fn list_tasks(State(s): State<AppState>) -> Json<Value> {
             json!({
                 "id": t.id, "goal": t.goal, "status": t.status,
                 "created_at": t.created_at, "completed_at": t.completed_at,
+                "client_ref": t.client_ref,
             })
         })
         .collect();
@@ -61,6 +62,7 @@ pub(super) async fn get_task(
             Json(json!({
                 "id": t.id, "goal": t.goal, "status": t.status,
                 "created_at": t.created_at, "completed_at": t.completed_at,
+                "client_ref": t.client_ref,
             })),
         )
             .into_response(),
@@ -311,6 +313,7 @@ pub(super) async fn create_task(
         task.required_capabilities = caps;
     }
     task.require_plan_approval = req.require_plan_approval.unwrap_or(false);
+    task.client_ref = req.client_ref.clone();
 
     // P2 — refuse pre-submit if no registered agent can satisfy the
     // task's required capabilities. Returns 422 with the offending list
@@ -328,12 +331,14 @@ pub(super) async fn create_task(
     }
 
     let task_id = task.id.0.to_string();
+    let client_ref = task.client_ref.clone();
     let duplicate_of = s.pool.submit(task).await.map(|id| id.0.to_string());
     let resp = CreateTaskResponse {
         id: task_id,
         goal: req.goal,
         queued: duplicate_of.is_none(),
         duplicate_of,
+        client_ref,
     };
     (StatusCode::CREATED, Json(resp)).into_response()
 }

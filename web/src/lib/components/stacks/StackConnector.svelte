@@ -1,22 +1,28 @@
 <!--
   StackConnector — the vertical gap between two cards in a pane. Dotted with
-  a cyan cadence badge when the card above is scheduled; a sun budget badge
-  when it isn't scheduled but carries a non-default budget. Hovering the gap
+  a cyan cadence badge when the card above is scheduled. Hovering the gap
   reveals a dashed "add between" block that inserts a fresh card right here
   via `stack.insert` (the pre-flight gate's `insertCardIntoPane`).
+
+  V&V FINDING (docs/ui/UI-2-VV-report.md §4.1): this used to also render a
+  `budget N` badge, styled identically to the (real, WIRED) schedule badge,
+  whenever a card's guardrails.budget !== 'auto'. Nothing server-side reads
+  that field — see `stores/stack.ts::cardToTaskPayload`'s key-completeness
+  test — so the badge read as an enforced limit when nothing enforced it.
+  Hidden per Phase 0 of the backend-1 sprint until budget enforcement is
+  real; do not re-add it as a no-op decoration.
 -->
 <script lang="ts">
   import { type StackCard as StackCardT, cronHuman, buildCard, insertCardIntoPane } from '$lib/stores/stack';
   import { ICONS } from './icons';
 
-  /** The card above this gap — its schedule/budget drives the badge. */
+  /** The card above this gap — its schedule drives the cadence badge. */
   export let card: StackCardT;
   export let paneKey: string;
   /** This card's index in the pane; the new card lands right after it. */
   export let index: number;
 
   $: sched = card.scheduled;
-  $: budgeted = !sched && card.guardrails.budget !== 'auto';
 
   function insertHere() {
     insertCardIntoPane(paneKey, index + 1, buildCard('new prompt'));
@@ -27,8 +33,6 @@
   <span class="cline-full"></span>
   {#if sched}
     <span class="connbadge sched">{@html ICONS.cron}{cronHuman(card.cron)}</span>
-  {:else if budgeted}
-    <span class="connbadge budget">{@html ICONS.pause}budget {card.guardrails.budget}</span>
   {/if}
   <button type="button" class="cinsert" on:click={insertHere} title="add a prompt here">
     {@html ICONS.plus}
@@ -81,10 +85,6 @@
   .connbadge.sched {
     color: var(--konjo-ice);
     border-color: rgba(0, 212, 255, 0.45);
-  }
-  .connbadge.budget {
-    color: var(--konjo-sun);
-    border-color: rgba(255, 204, 0, 0.45);
   }
   .cinsert {
     position: absolute;

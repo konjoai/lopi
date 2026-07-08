@@ -65,6 +65,11 @@ ALTER TABLE patterns ADD COLUMN derived_from_postmortem INTEGER NOT NULL DEFAULT
 -- Sprint H1: user annotation for pattern validation. Values: 'approved', 'rejected', or NULL (unannotated).
 ALTER TABLE patterns ADD COLUMN user_annotation TEXT;
 
+-- Backend-1: opaque caller-supplied identity (e.g. a loop-stack card id) so a
+-- client can durably map its own concept of "what requested this" onto the
+-- TaskId the pool assigns, without lopi needing to understand that concept.
+ALTER TABLE tasks ADD COLUMN client_ref TEXT;
+
 -- Sprint I: Layer 5 patch stability ledger.
 -- Accumulates empirical data on model-output variance per task class.
 -- Drives the research dataset for which task types are safe to self-ship.

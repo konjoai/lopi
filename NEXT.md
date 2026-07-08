@@ -2,46 +2,63 @@
 
 ## NEXT_SESSION_PROMPT (read this first)
 
-UI-2 (PR #64) has been **audited and verified** — see `docs/ui/UI-2-VV-report.md`
-for the full go/no-go and evidence. Verdict: **GO for the backend phase.**
-Nothing in the shipped UI needed fixing; the audit closed three test-coverage
-gaps (`stack.test.ts` 103→121) and found two things worth deciding before or
-during the backend sprint, neither of which blocks starting it:
+Backend-1 has shipped: the `/stacks` UI now actually executes. Task
+identity (`client_ref` round-tripping through the store), run-stack
+execution (`stores/stackRun.ts`), pause/drain/bump control signals, and
+per-card `AgentEvent` isolation (proven by a new concurrent-cross-talk
+test) are all real, tested, and manually verified against a live `lopi
+sail` instance — including catching and fixing a 100%-reproducible
+empty-repo bug that only a real run (not a mocked test) could have
+surfaced. See `LEDGER.md`'s Backend-1 entry for the load-bearing decisions
+and `CHANGELOG.md`'s `[0.2.0]` entry for the full diff.
 
-1. **Budget badge honesty** — `StackConnector.svelte` renders a
-   `⏸ budget 200k`-style badge that visually reads as an enforced limit;
-   nothing enforces it (confirmed absent from `cardToTaskPayload`'s output).
-   Decide: hide it until a real budget field exists, or restyle it to read
-   as unenforced intent (dashed border + explicit "(not enforced)", matching
-   how the evals popover already avoids implying pass/fail).
-2. **CI's Wall-2/Wall-3 gates are mostly soft-fail** (`continue-on-error`
-   on cargo audit/deny/coverage/rustdoc, and even Wall-3's own "fail if
-   BLOCKER" step) — pre-existing, repo-wide, unrelated to UI-2. Worth a
-   deliberate decision on when to flip these to hard-fail, independent of
-   this UI work.
+**What's still a gap, in priority order:**
 
-The actual backend blockers UI-2 was built against (unchanged by the audit):
+1. **`bumpCard` has no UI affordance.** The store-level mechanism
+   (`stores/stackRun.ts::bumpCard`, built on `stores/stack.ts::bumpInOrder`)
+   is fully implemented and tested (illegal-transition rejections included),
+   but no button/drag-handle in `StackCard.svelte` calls it yet — the
+   settled mockup has no per-card "bump" affordance either, so this needs a
+   small design pass (icon? keyboard shortcut? repurpose the existing drag
+   handle for queued-but-not-running cards?) before it's wired, not just a
+   mechanical hookup.
+2. **"Schedule stack" only schedules the bottom card.** Deliberate and
+   honest (`scheduleStack` reports the rest back as `skippedCardIds`,
+   surfaced nowhere in the UI yet — worth at least a toast/banner saying so
+   the first time someone tries it on a multi-card stack), but the real fix
+   is a backend change: `ScheduleBody.goal: String` → some multi-goal
+   pipeline concept. Out of scope until someone actually needs a scheduled
+   multi-card stack.
+3. **Coverage gate is still soft** (68.34%, floor is 80%) — pre-existing,
+   not this sprint's introduction, but now has a precise number and a
+   `TODO` instead of a silently-wrong `report --json` computation. Needs a
+   per-crate triage pass to find where to add tests.
+4. **`cargo audit`/`cargo deny` still soft** — 6 known RUSTSEC advisories
+   (ids in the workflow comment) and a cargo-deny 0.19.9 config-schema break
+   in `.konjo/deny.toml`, neither decided yet (upgrade path vs. explicit
+   accept-risk entries).
 
-- **Pause/drain/bump signals** — unblocks `RunMenu`'s four actions (Run
-  now/Run once/Schedule stack/Dry run) and the `.runmain` "run stack"
-  button, all still stubs. Only `kill` (cancel) exists anywhere today.
-- **Per-card `taskId` assignment** — the moment a card is actually submitted
-  as a task (folds into the pause/drain/bump work above, since "run this
-  card" is that same signal), `StackOutput` lights up for real with zero
-  further UI work — it's already wired to the genuine per-`task_id`
-  `stores/transcript.ts` feed, confirmed structurally unreachable today only
-  because no card ever gets a real `taskId` (verified by grep: nothing
-  outside `duplicateCard`'s explicit reset ever touches `card.taskId`).
-- **Per-card `AgentEvent` routing** — same underlying gap as above, restated
-  from the UI-2 brief's own §3: no card/stack-id tag exists on any event
-  variant, every variant still keys on `task_id` alone.
-- If "Schedule stack" gets wired as part of this sprint, it needs a
-  `cardToTaskPayload`-equivalent mapping into the real `ScheduleBody` shape
-  (`{name, cron, goal, repo, priority, enabled}`) — `StackCard` has no
-  `name` field yet, so that's a small design decision to make first (see
-  escalation §4.3 in the V&V report).
+**Unchanged from before Backend-1 (still out of scope):** eval
+execution/enforcement, budget enforcement, multi-pane/overview, `needs-you`
+derivation, effort→thinking-budget mapping, ratchet/beats-best, severity,
+and a real multi-card-per-pane output surface (the routing is proven now;
+the UI still shows one `StackOutput` per running card, which is correct
+for the current single-card-running-at-a-time run model but will need
+revisiting if concurrent-cards-per-pane ever ships).
 
 ## Prior sprint history
+
+UI-2 (PR #64) and its V&V audit (PR #65) shipped and merged: two
+independent `/stacks` panes with per-card popovers (schedule/guardrails/
+evals), an inline config drawer, drag-to-reorder, connector insert-between,
+and a live-output attachment wired to the real per-`task_id` transcript
+feed — verified against the settled mockup via Playwright screenshots (one
+real popover-positioning bug found and fixed), then independently audited
+(GO for the backend phase, 2 escalations, 3 real test-coverage gaps
+closed). See `LEDGER.md`'s UI-2 entry and `docs/ui/UI-2-VV-report.md` for
+the full detail — both escalations (budget badge honesty, CI soft-fail
+policy) were resolved as part of Backend-1's own Phase 0, not carried
+forward again here.
 
 Sprint 5 (Expose Loop Fields on `CreateTaskRequest`) shipped: `POST /api/tasks`
 now accepts `verifier_required`/`verifier_model`/`verifier_effort`, `report`,

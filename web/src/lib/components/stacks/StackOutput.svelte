@@ -4,9 +4,10 @@
   same store the Forge transcript uses), filtered into the mockup's four
   categories. Renders nothing when the task has no blocks yet — per §3 of
   the UI-2 brief, a stream with nothing real to show must stay empty, never
-  fabricate a ticker. No card carries a real `taskId` yet this slice (run-
-  stack execution is stubbed), so this lights up for real the moment one
-  does, with no further wiring needed.
+  fabricate a ticker. Backend-1 wired real `taskId`s onto running cards
+  (`stores/stackRun.ts`), so this component needed no changes at all to
+  start lighting up for real — it was already reading the right store,
+  keyed the right way, waiting for a real id to show up.
 -->
 <script lang="ts">
   import { transcripts, type TranscriptBlock } from '$lib/stores/transcript';

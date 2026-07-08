@@ -44,16 +44,19 @@ async fn test_app_with_repo(repo: PathBuf) -> Router {
 /// `hydrate_tools` is a harmless no-op on a fresh in-memory store (a missing
 /// registry file is treated as empty), so it's always called here rather
 /// than only by the one caller that originally needed it.
+///
+/// Unlike `test_app`/`test_app_with_repo`, the pool here is wired with
+/// `.with_store(store.clone())` so a task created over HTTP actually
+/// persists (`AgentPool::submit` skips its `save_task` call entirely when
+/// the pool has no store) — otherwise a caller reading `t.id`/`store` back
+/// out would see nothing, no matter what the HTTP response claimed.
 async fn test_app_with_store() -> (Router, lopi_memory::MemoryStore) {
     let store = lopi_memory::MemoryStore::open_in_memory().await.unwrap();
     let bus: EventBus<AgentEvent> = EventBus::new(16);
     let queue = TaskQueue::new();
-    let pool = Arc::new(AgentPool::new(
-        1,
-        PathBuf::from("."),
-        queue.clone(),
-        bus.clone(),
-    ));
+    let pool = Arc::new(
+        AgentPool::new(1, PathBuf::from("."), queue.clone(), bus.clone()).with_store(store.clone()),
+    );
     let mut state = AppState::new(store.clone(), bus, queue, pool, None);
     state.hydrate_tools().await.ok();
     (build_app(state), store)
@@ -406,6 +409,77 @@ async fn create_task_with_all_options_returns_201() {
     assert_eq!(resp.status(), StatusCode::CREATED);
 }
 
+// ─── Backend-1: client_ref — stable task identity for a stack card ───────────
+
+#[tokio::test]
+async fn create_task_client_ref_survives_round_trip_through_the_store() {
+    let (app, _store) = test_app_with_store().await;
+    let body = serde_json::to_string(&serde_json::json!({
+        "goal": "stack card round-trip",
+        "client_ref": "card-abc123",
+    }))
+    .unwrap();
+    let resp = send_req(app.clone(), "POST", "/api/tasks", Some(body)).await;
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(
+        json["client_ref"], "card-abc123",
+        "the create response echoes client_ref back verbatim"
+    );
+    let id = json["id"].as_str().unwrap().to_string();
+    assert!(
+        !id.is_empty(),
+        "a stable task id must be assigned synchronously at create time"
+    );
+
+    // Round-trip: fetch the task back and confirm both the id and the
+    // client_ref survived the write to SQLite, not just the in-memory path.
+    let get_resp = get_req(app, &format!("/api/tasks/{id}")).await;
+    assert_eq!(get_resp.status(), StatusCode::OK);
+    let get_bytes = axum::body::to_bytes(get_resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let get_json: serde_json::Value = serde_json::from_slice(&get_bytes).unwrap();
+    assert_eq!(
+        get_json["id"], id,
+        "the same stable id round-trips through the store"
+    );
+    assert_eq!(
+        get_json["client_ref"], "card-abc123",
+        "client_ref round-trips through the store, not just the create response"
+    );
+}
+
+#[tokio::test]
+async fn create_task_without_client_ref_omits_it_on_round_trip() {
+    let (app, _store) = test_app_with_store().await;
+    let body = serde_json::to_string(&serde_json::json!({"goal": "no client ref here"})).unwrap();
+    let resp = send_req(app.clone(), "POST", "/api/tasks", Some(body)).await;
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert!(
+        json["client_ref"].is_null(),
+        "omitted client_ref must not be fabricated"
+    );
+    let id = json["id"].as_str().unwrap().to_string();
+
+    let get_resp = get_req(app, &format!("/api/tasks/{id}")).await;
+    let get_bytes = axum::body::to_bytes(get_resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let get_json: serde_json::Value = serde_json::from_slice(&get_bytes).unwrap();
+    assert!(
+        get_json["client_ref"].is_null(),
+        "a task created without client_ref stays NULL through the store, not e.g. an empty string"
+    );
+}
+
 // ─── Loop/verifier/report/override field exposure (web task-create surface) ──
 
 #[tokio::test]
@@ -646,4 +720,5 @@ async fn plans_response_has_required_fields() {
 
 include!("tests_extended.rs");
 include!("schedules_tests.rs");
+include!("task_stream_tests.rs");
 include!("loop_tests.rs");

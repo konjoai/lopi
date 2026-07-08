@@ -6,6 +6,7 @@ import {
   ApiError,
   listTasks,
   recentLogs,
+  createTask,
   createSchedule,
   enableSchedule,
   deleteDlq,
@@ -64,6 +65,19 @@ async function main() {
     'n',
     'createSchedule serializes body'
   );
+
+  // Backend-1: an empty repo is omitted from the body entirely, not sent
+  // as `""` — the server's `Option<String>` falls back to its own
+  // configured repo only when the key is absent; a present empty string
+  // deserializes to `Some("")`, which fails outright trying to open a git
+  // repo at an empty path.
+  mockFetch(200, { id: 't', goal: 'g', queued: true, duplicate_of: null, client_ref: null });
+  await createTask('g', '', 'normal');
+  eq('repo' in JSON.parse(String(captured[0].init?.body)), false, 'createTask omits repo when blank');
+
+  mockFetch(200, { id: 't', goal: 'g', queued: true, duplicate_of: null, client_ref: null });
+  await createTask('g', '/some/repo', 'normal');
+  eq(JSON.parse(String(captured[0].init?.body)).repo, '/some/repo', 'createTask sends repo when set');
 
   // Path segments are URI-encoded.
   mockFetch(200, { id: 'x', enabled: true });

@@ -1799,7 +1799,7 @@ checksum = "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
 
 [[package]]
 name = "lopi"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "cargo-husky",
@@ -1840,7 +1840,7 @@ dependencies = [
 
 [[package]]
 name = "lopi-agent"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "bytes",
@@ -1868,7 +1868,7 @@ dependencies = [
 
 [[package]]
 name = "lopi-app"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "axum 0.7.9",
@@ -1904,7 +1904,7 @@ dependencies = [
 
 [[package]]
 name = "lopi-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1918,7 +1918,7 @@ dependencies = [
 
 [[package]]
 name = "lopi-git"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "git2",
@@ -1933,7 +1933,7 @@ dependencies = [
 
 [[package]]
 name = "lopi-github"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "reqwest",
@@ -1944,7 +1944,7 @@ dependencies = [
 
 [[package]]
 name = "lopi-mcp"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "lopi-tools",
@@ -1959,7 +1959,7 @@ dependencies = [
 
 [[package]]
 name = "lopi-memory"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1977,7 +1977,7 @@ dependencies = [
 
 [[package]]
 name = "lopi-orchestrator"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2001,7 +2001,7 @@ dependencies = [
 
 [[package]]
 name = "lopi-ratelimit"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "lopi-core",
  "serde",
@@ -2013,7 +2013,7 @@ dependencies = [
 
 [[package]]
 name = "lopi-remote"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "axum 0.7.9",
@@ -2038,7 +2038,7 @@ dependencies = [
 
 [[package]]
 name = "lopi-skill"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "lopi-core",
@@ -2050,7 +2050,7 @@ dependencies = [
 
 [[package]]
 name = "lopi-spec"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2063,7 +2063,7 @@ dependencies = [
 
 [[package]]
 name = "lopi-tools"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2077,7 +2077,7 @@ dependencies = [
 
 [[package]]
 name = "lopi-toon"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "serde_json",
  "thiserror 1.0.69",
@@ -2085,7 +2085,7 @@ dependencies = [
 
 [[package]]
 name = "lopi-ui"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "axum 0.7.9",
@@ -2114,7 +2114,7 @@ dependencies = [
 
 [[package]]
 name = "lopi-webhook"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "axum 0.7.9",

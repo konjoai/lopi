@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.2.0] — Backend-1: stack execution, control signals, event routing 🔌
+
+### Added
+- `stores/stackRun.ts` — the client-side stack-run sequencer. `runStack(paneKey, intent, defaults, statusSource)` launches a pane's cards bottom-to-top via the real `createTask`, waiting on each one's terminal `AgentState.status` through the app's existing `agents` store before launching the next. `pauseStack`/`resumeStack`/`drainStack`/`bumpCard` are a pure client-side control-signal layer — no pool/runner changes, since there's no server-side "stack" concept to interrupt. `scheduleStack` wires "Schedule stack" honestly-minimally: one cron on the bottom-of-stack card only, reporting every other card back as `skippedCardIds` rather than faking a multi-goal schedule.
+- `RunMenu.svelte` is now genuinely wired: Run now/Run once/Schedule stack/Dry run when idle, Pause/Resume + Drain once a run is active. `StackPane.svelte`'s run-stack button doubles as a pause/resume toggle and shows a dismissible error/dry-run-result banner.
+- `crates/lopi-ui/src/web/task_stream_tests.rs` — a new integration test (`task_stream_isolates_concurrent_tasks_with_zero_cross_talk`) proving `GET /api/tasks/:id/stream`'s per-task filtering under concurrency: two simultaneous SSE subscriptions, ten interleaved events per task, cross-talk count asserted at `0` in both directions.
+- `Task`/`CreateTaskRequest`/`CreateTaskResponse` gained `client_ref: Option<String>` — an opaque caller-supplied id (a stack card's own id) echoed back verbatim and persisted alongside the task, so a client can durably associate its own concept of "what asked for this" with the `TaskId` the pool assigns, independent of any server-side dedup. `api.ts::effectiveTaskId(resp)` resolves `duplicate_of ?? id`, the id a caller should actually track.
+- `web/src/lib/stores/stackRun.test.ts` — 26 tests covering execution ordering, halt-on-failure, pause/resume, drain (non-resumable), bump (+ its illegal-transition rejections), and schedule-stack, all against a mocked `fetch` and a fake status store (no new test-runner dependency).
+
+### Fixed
+- `api.ts::createTask` no longer sends an empty `repo` as `""` — it's omitted from the request body entirely so the server's `Option<String>` falls back to its own configured repo, instead of failing outright trying to open a git repo at an empty path. This was a 100%-reproducible failure for every stack run (and the pre-existing Tasks page) until a user manually picked a non-default repo; caught only by manually running a stack against a live `lopi sail` instance, not by any mocked test.
+- CI (`konjo-gate.yml`): the Wall-3 "fail if BLOCKER verdict" step now actually hard-fails (was `continue-on-error: true` with an `!= '0'` condition that never matched a real blocker exit code); the `konjo-gate` summary job's `needs:` list now includes `mutation`/`review`, which it previously omitted — both gates could fail outright without blocking merge. The remaining 9 soft-fail steps each got a one-line justification + `TODO` instead of being silently left as-is; none were reintroduced or newly softened.
+- `StackConnector.svelte`'s budget badge is hidden (not restyled) until budget enforcement is real, per the UI-2 V&V audit's escalation.
+- `test_app_with_store()` (a pre-existing, previously-uncalled test helper) never actually wired `.with_store()` into the pool, so no HTTP-created task in any test using it ever persisted; fixed as part of adding the `client_ref` round-trip tests that first exercised it.
+
+### Notes
+- Coverage gate: real workspace line coverage is 68.34% (23,355 lines found, 15,960 hit — computed by parsing `lcov.info`'s `LF:`/`LH:` directly, since `cargo llvm-cov report --json` doesn't support `--workspace` and was silently scoping to the root binary crate alone). Below the 80% floor; the gate stays soft with a `TODO` rather than blocking merge on a pre-existing gap this sprint didn't introduce.
+- Out of scope this sprint (unchanged): eval execution/enforcement, budget enforcement, multi-pane/overview, effort→thinking-budget, ratchet/beats-best, severity, and a real multi-card-per-pane output surface (routing is proven; the UI is still one `StackOutput` per running card).
+
 ## [Unreleased] — UI-2 V&V: audit + coverage-gap closure 🔍
 
 ### Added

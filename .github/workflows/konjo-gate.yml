@@ -55,6 +55,12 @@ jobs:
             -W clippy::cognitive_complexity
 
       - name: clippy pedantic (advisory — non-blocking)
+        # ADVISORY BY DESIGN, not deferred debt: clippy::pedantic is a large,
+        # opinionated style/naming lint tier, not a correctness or security
+        # signal — the standard clippy tier above already hard-fails on
+        # actual bugs. Kept permanently soft. Next step, if ever: revisit
+        # only if pedantic violations start correlating with real bugs
+        # slipping through.
         continue-on-error: true
         run: |
           cargo clippy --workspace --all-targets -- -D clippy::pedantic 2>&1 \
@@ -62,13 +68,31 @@ jobs:
           echo "Pedantic lints above are advisory — fix over time."
 
       - name: cargo audit — zero known vulnerabilities
-        continue-on-error: true  # soft-fail: advisory DB changes are out of our control
+        # KNOWN DEBT, verified 2026-07 (backend-1 Phase 0), not a silent
+        # soft-fail: `cargo audit` currently finds 6 real vulnerabilities in
+        # transitive deps — RUSTSEC-2026-0204 (crossbeam-epoch), 2023-0071
+        # (rsa, Marvin timing attack), 2026-0098/-0099/-0104 (rustls-webpki),
+        # 2024-0363 (sqlx binary-protocol cast issue) — none introduced by
+        # this PR, none yet triaged. Next step: for each, decide upgrade
+        # path vs. an explicit `[[advisories.ignore]]` accept-risk entry
+        # with a reason, then remove this line.
+        continue-on-error: true
         run: |
           cargo install cargo-audit --locked --quiet 2>/dev/null || true
           cargo audit
 
       - name: cargo deny — license + advisory + bans
-        continue-on-error: true  # soft-fail: re-enable after deny.toml is fully tuned
+        # KNOWN DEBT, verified 2026-07 (backend-1 Phase 0), not a silent
+        # soft-fail: `.konjo/deny.toml` does not even PARSE against the
+        # installed cargo-deny 0.19.9 — `[advisories].unmaintained = "warn"`
+        # is a pre-0.19 severity value; 0.19 repurposed that key as a scope
+        # selector (`"all"`/`"workspace"`/`"transitive"`/`"none"`). This is a
+        # config-schema break, not a real license/advisory finding — this
+        # step cannot produce a trustworthy verdict at all right now. Next
+        # step: migrate deny.toml's [advisories] block to the 0.19 schema
+        # (see https://embarkstudios.github.io/cargo-deny/checks/advisories/cfg.html),
+        # confirm it parses and reflects real policy, then remove this line.
+        continue-on-error: true
         run: |
           cargo install cargo-deny --locked --quiet 2>/dev/null || true
           cargo deny check --config .konjo/deny.toml
@@ -107,7 +131,12 @@ jobs:
           cargo install cargo-llvm-cov --locked --quiet 2>/dev/null || true
 
       - name: Run tests with coverage
-        continue-on-error: true  # soft-fail: re-enable hard-fail after coverage baseline ≥ 80%
+        # KNOWN DEBT, verified 2026-07 (backend-1 Phase 0): `--fail-under-lines
+        # 80` makes this step itself exit nonzero below the 80% floor. Real
+        # measured coverage is 68.34% — see "Coverage gate" below for the
+        # number, method, and next step. Kept soft here too so this step's
+        # own exit code doesn't duplicate that gate's verdict.
+        continue-on-error: true
         run: |
           cargo llvm-cov nextest \
             --workspace \
@@ -124,16 +153,35 @@ jobs:
           fail_ci_if_error: false  # don't fail CI on Codecov outage
 
       - name: Coverage gate (80% floor, 95% target)
-        continue-on-error: true  # soft-fail: re-enable hard-fail after coverage baseline ≥ 80%
+        # KNOWN DEBT, verified 2026-07 (backend-1 Phase 0): real workspace
+        # line coverage, measured correctly (see the LF/LH fix below), is
+        # 68.34% (23355 lines found, 15960 hit) — below the 80% floor, but
+        # not by a catastrophic margin. Not yet triaged into which crates
+        # need tests. Next step: identify the lowest-coverage crates from
+        # lcov.info, add tests until ≥80%, then remove this line.
+        #
+        # Also fixed this sprint, independent of the soft/hard question:
+        # `cargo llvm-cov report --json` does NOT support `--workspace` (it
+        # errors outright if you pass it) and silently defaults to the root
+        # binary crate's own package scope — 24 files, ~26%, nowhere near
+        # the real number. The previous version of this step was reading
+        # that undercounted report and would have graded coverage on ~1/7th
+        # of the workspace even after being flipped to hard-fail. Parsing
+        # the `--workspace`-scoped lcov.info the prior step already wrote
+        # (summing LF/LH directly) is the correct source of truth.
+        continue-on-error: true
         run: |
-          cargo llvm-cov report --json > coverage.json 2>/dev/null || true
           COVERAGE=$(python3 -c "
-          import json, sys
+          lf = lh = 0
           try:
-              data = json.load(open('coverage.json'))
-              pct = data['data'][0]['totals']['lines']['percent']
-              print(f'{pct:.1f}')
-          except Exception as e:
+              with open('lcov.info') as f:
+                  for line in f:
+                      if line.startswith('LF:'):
+                          lf += int(line.strip().split(':')[1])
+                      elif line.startswith('LH:'):
+                          lh += int(line.strip().split(':')[1])
+              print(f'{100*lh/lf:.2f}' if lf else '0.0')
+          except Exception:
               print('0.0')  # conservative: fail if we can't parse
           ")
           echo "Line coverage: ${COVERAGE}%"
@@ -304,7 +352,22 @@ jobs:
           fi
 
       - name: Documentation gate (rustdoc)
-        continue-on-error: true  # re-enable once all public APIs are documented
+        # KNOWN DEBT, verified 2026-07 (backend-1 Phase 0), not a silent
+        # soft-fail: with both -D missing_docs and
+        # -D rustdoc::broken_intra_doc_links, `lopi-core` now builds clean
+        # (fixed its one broken link, topology.rs, this sprint) but
+        # `lopi-agent` (StreamEvent x4) and `lopi-orchestrator` (types,
+        # JobScheduler, TopologyHint) still have broken intra-doc links —
+        # a systemic pattern of bare `[Type]` links inside module-level
+        # (//!) doc comments not resolving, pre-existing and unrelated to
+        # this PR. Hard-failing now would abort the doc build on links, not
+        # missing docs, before missing_docs coverage is even checked
+        # workspace-wide. Next step: grep for `//!` comments with bare
+        # `[Type]` links across lopi-agent/lopi-orchestrator (and any other
+        # crate), qualify each with its full path per lopi-core's fix,
+        # confirm -D missing_docs also passes clean workspace-wide, then
+        # remove this line.
+        continue-on-error: true
         run: |
           RUSTDOCFLAGS="-D missing_docs -D rustdoc::broken_intra_doc_links" \
             cargo doc --workspace --no-deps 2>&1 | tee rustdoc_output.txt
@@ -332,35 +395,62 @@ jobs:
           python-version: "3.11"
 
       - name: Install anthropic SDK
-        continue-on-error: true  # soft-fail: network / pypi outage must not block merge
+        # Legitimately safe to soft-fail (not a gate, a prerequisite): if
+        # this fails, `_load_anthropic()` inside konjo_review.py raises
+        # ImportError, which main() already catches and treats as a soft
+        # WARNING (returns 0) rather than crashing — see the review step's
+        # own comment below. There is no scenario where this step failing
+        # silently produces a false "approved."
+        continue-on-error: true
         run: pip install anthropic --quiet
 
       - name: Generate diff
-        continue-on-error: true  # soft-fail: git fetch issues must not block merge
+        # Legitimately safe to soft-fail: the next step defensively checks
+        # for a missing/empty pr.diff and treats that as "nothing to
+        # review," not a blocker — see below. Without that guard this would
+        # have been a real gap (a git/fetch hiccup here could otherwise
+        # crash the review script with an uncaught exception, which Python
+        # exits as code 1 — indistinguishable from a genuine BLOCKER).
+        continue-on-error: true
         run: |
           git diff origin/${{ github.base_ref }}...HEAD > pr.diff
           echo "Diff size: $(wc -c < pr.diff) bytes"
 
       - name: Run Konjo Adversarial Review
         id: review
-        continue-on-error: true  # soft-fail: missing API key or script error must not block merge
+        # Legitimately safe to soft-fail: this step's own run: block never
+        # aborts (the `&& / ||` pattern below always captures REVIEW_EXIT
+        # and the empty-diff guard means a missing pr.diff can't reach the
+        # script at all), so continue-on-error here is a defensive no-op,
+        # not a gate. The actual gate is REVIEW_EXIT's value, hard-enforced
+        # by "Fail if BLOCKER verdict" below.
+        continue-on-error: true
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
-          # --json writes JSON to stdout; --output writes the human report separately.
-          # Run twice so we get both formats: once for the human report, once for JSON.
-          python3 .konjo/scripts/konjo_review.py \
-            --diff-file pr.diff \
-            --output review_report.md \
-            2>/dev/null \
-            && echo "REVIEW_EXIT=0" >> "$GITHUB_ENV" \
-            || echo "REVIEW_EXIT=$?" >> "$GITHUB_ENV"
+          # A diff-generation hiccup (see the step above) must read as
+          # "nothing to review," never as a script crash that Python would
+          # exit 1 for — which "Fail if BLOCKER verdict" cannot distinguish
+          # from a genuine blocker verdict.
+          if [ ! -s pr.diff ]; then
+            echo "REVIEW_EXIT=0" >> "$GITHUB_ENV"
+            echo "[konjo-review] pr.diff missing or empty — skipping review, not treating as a blocker." >&2
+          else
+            # --json writes JSON to stdout; --output writes the human report separately.
+            # Run twice so we get both formats: once for the human report, once for JSON.
+            python3 .konjo/scripts/konjo_review.py \
+              --diff-file pr.diff \
+              --output review_report.md \
+              2>/dev/null \
+              && echo "REVIEW_EXIT=0" >> "$GITHUB_ENV" \
+              || echo "REVIEW_EXIT=$?" >> "$GITHUB_ENV"
+          fi
 
           cat review_report.md 2>/dev/null || echo "(no review report generated — API key may be missing)"
 
       - name: Post review comment to PR
         if: always()
-        continue-on-error: true  # soft-fail: token permission issues must not block merge
+        continue-on-error: true  # cosmetic UX only — a comment-post failure must never affect the verdict already captured in REVIEW_EXIT
         uses: actions/github-script@v7
         with:
           script: |
@@ -386,8 +476,16 @@ jobs:
             });
 
       - name: Fail if BLOCKER verdict
-        if: env.REVIEW_EXIT != '0'
-        continue-on-error: true  # soft-fail: ANTHROPIC_API_KEY must be set in repo secrets to enable
+        # Non-negotiable per backend-1 Phase 0: a genuine BLOCKER must hard
+        # block. Distinguishes REVIEW_EXIT == 1 (the script ran to
+        # completion and found a real blocker — see konjo_review.py's
+        # main(), which is the actual source of truth, not its stale exit
+        # code docstring) from any other nonzero (API/config/script
+        # failure), which the script already treats as a soft
+        # "WARNING — could not reach API" and returns 0 for. That means
+        # this step firing at all now only happens on a genuine blocker, so
+        # it must not itself be soft.
+        if: env.REVIEW_EXIT == '1'
         run: |
           echo "::error::Konjo Adversarial Review found BLOCKER(s). Fix them before merging."
           exit 1
@@ -399,23 +497,38 @@ jobs:
     name: "Konjo Gate — All Walls Clear"
     runs-on: ubuntu-latest
     if: always()
-    needs: [static, coverage, complexity]
+    # backend-1 Phase 0 fix: this used to omit `mutation` and `review`
+    # entirely, so G3 (mutation testing) and G5 (Wall 3 adversarial review —
+    # including the BLOCKER hard-fail above) could fail outright without
+    # blocking merge. Both are added below; both are also legitimately
+    # `skipped` on a push-to-main run (they're PR-only jobs), which must not
+    # itself count as a failure.
+    needs: [static, coverage, complexity, mutation, review]
     steps:
       - name: Evaluate all required gates
         run: |
-          # Map job results to pass/fail
+          # Map job results to pass/fail. `skipped` is only acceptable for
+          # mutation/review, and only because they're gated on
+          # `github.event_name == 'pull_request'` — a push-to-main run is
+          # expected to skip them, not fail them.
           STATIC="${{ needs.static.result }}"
           COVERAGE="${{ needs.coverage.result }}"
           COMPLEXITY="${{ needs.complexity.result }}"
+          MUTATION="${{ needs.mutation.result }}"
+          REVIEW="${{ needs.review.result }}"
 
           echo "static:     $STATIC"
           echo "coverage:   $COVERAGE"
           echo "complexity: $COMPLEXITY"
+          echo "mutation:   $MUTATION"
+          echo "review:     $REVIEW"
 
           FAILED=""
           [ "$STATIC"     != "success" ] && FAILED="$FAILED static"
           [ "$COVERAGE"   != "success" ] && FAILED="$FAILED coverage"
           [ "$COMPLEXITY" != "success" ] && FAILED="$FAILED complexity"
+          [ "$MUTATION"   != "success" ] && [ "$MUTATION" != "skipped" ] && FAILED="$FAILED mutation"
+          [ "$REVIEW"     != "success" ] && [ "$REVIEW" != "skipped" ] && FAILED="$FAILED review"
 
           if [ -n "$FAILED" ]; then
             echo "::error::Gate(s) failed:$FAILED — merge blocked."

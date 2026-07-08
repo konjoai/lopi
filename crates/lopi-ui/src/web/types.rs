@@ -77,17 +77,30 @@ pub struct CreateTaskRequest {
     /// Mirrors [`lopi_core::Task::on_fail`].
     #[serde(default)]
     pub on_fail: Option<lopi_core::loop_config::OnFail>,
+    /// Backend-1 — opaque caller-supplied identity (e.g. a loop-stack card
+    /// id), persisted and echoed back verbatim. Mirrors
+    /// [`lopi_core::Task::client_ref`].
+    #[serde(default)]
+    pub client_ref: Option<String>,
 }
 
 /// Response body for `POST /api/tasks`.
 #[derive(Debug, Serialize)]
 pub struct CreateTaskResponse {
-    /// UUID of the created (or existing) task.
+    /// UUID of the created (or existing) task. When `duplicate_of` is set,
+    /// this is the id generated for *this* request, which was never
+    /// actually queued — the task genuinely running is `duplicate_of`.
     pub id: String,
     /// The goal string as stored.
     pub goal: String,
     /// `true` if the task was newly queued; `false` if it was a duplicate.
     pub queued: bool,
-    /// If this was a duplicate, the ID of the existing task.
+    /// If this was a duplicate, the ID of the existing task actually
+    /// running — callers that need "the real task id" must prefer this
+    /// over `id` when it's set.
     pub duplicate_of: Option<String>,
+    /// Echoes `CreateTaskRequest::client_ref` verbatim, so a caller that
+    /// fired several requests concurrently can still line up which
+    /// response belongs to which request without relying on ordering.
+    pub client_ref: Option<String>,
 }

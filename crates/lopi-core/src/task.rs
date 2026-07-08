@@ -266,6 +266,14 @@ pub struct Task {
     /// [`crate::loop_config::OnFail::Stop`]).
     #[serde(default)]
     pub on_fail: Option<crate::loop_config::OnFail>,
+    /// Backend-1 — opaque caller-supplied identity for this task, echoed
+    /// back verbatim and persisted alongside it. Lets a client durably
+    /// associate its own concept of "the thing that requested this task"
+    /// (e.g. a loop-stack card id) with the [`TaskId`] the pool actually
+    /// assigns, without lopi needing to understand what that concept is.
+    /// `None` (the default) changes nothing for every existing caller.
+    #[serde(default)]
+    pub client_ref: Option<String>,
 }
 
 /// Where a task originated — used for routing replies and audit logging.
@@ -328,6 +336,7 @@ impl Task {
             gate: None,
             until: None,
             on_fail: None,
+            client_ref: None,
         }
     }
 
