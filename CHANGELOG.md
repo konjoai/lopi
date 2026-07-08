@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased] — UI-1: Static Loop-Stack + Selector Row 🥞
+
+### Added
+- New `/stacks` route (existing `/loop` cockpit left untouched) — a static, in-memory loop-stack composer: fused type-first/preset-grid/inline-grammar creation flow, read-only prompt cards (preset pill, spec line, guardrails/evals summary lines, static UI-2 placeholder buttons), and a stack-defaults selector row (model/effort/repo/autonomy) reusing `Dropdown.svelte` + `controls.ts`.
+- `stores/stack.ts` — pure, unit-tested ordered-array ops (add/remove/duplicate/reorder/insert) plus the `:alias "goal" @repo xN` composer grammar parser and the 5-preset client-side eval-suite catalog.
+- `api.ts` gains `listRepos()` (`GET /api/repos`), now consumed by the stack composer's repo dropdown.
+
 ## [Unreleased] — Git hygiene: fix committed DRY violations 🧹
 
 ### Fixed
