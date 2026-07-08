@@ -1,23 +1,103 @@
 <!--
-  RunMenu — the run-stack chevron's dropdown. Every item is a stub: no
-  pause/drain/bump signals exist server-side yet (see NEXT.md), so this
-  wires open/close and nothing else. Closes on outside-click or Escape.
+  RunMenu — the run-stack chevron's dropdown. Genuinely wired to
+  `stores/stackRun.ts`: Run now / Run once / Schedule stack / Dry run when
+  no run is active for this pane, or Pause/Resume + Drain once one is.
+  Closes on outside-click or Escape.
 -->
 <script lang="ts">
+  import { get } from 'svelte/store';
+  import {
+    runStack,
+    pauseStack,
+    resumeStack,
+    drainStack,
+    scheduleStack,
+    type RunPhase
+  } from '$lib/stores/stackRun';
+  import { agents } from '$lib/stores/agents';
+  import { panes, executionOrder, dryRunStack, buildCronString, type DryRunResult, type PaneDefaults } from '$lib/stores/stack';
   import { ICONS } from './icons';
 
+  export let paneKey: string;
+  export let defaults: PaneDefaults;
+  export let phase: RunPhase | undefined;
   export let onClose: () => void;
+  /** Bubbles a "Dry run" result up so the pane can show it — dry-running
+   *  never executes anything, so there's nothing else to react to. */
+  export let onDryRun: (result: DryRunResult) => void = () => {};
 
-  const items = [
-    { icon: ICONS.play, name: 'Run now', sub: 'start now' },
-    { icon: ICONS.check, name: 'Run once', sub: 'one pass each' },
-    { icon: ICONS.cron, name: 'Schedule stack', sub: 'one cron' },
-    { icon: ICONS.flask, name: 'Dry run', sub: 'validate only' }
+  interface MenuItem {
+    icon: string;
+    name: string;
+    sub: string;
+    action: () => void;
+  }
+
+  function paneCards() {
+    return get(panes).find((p) => p.key === paneKey)?.cards ?? [];
+  }
+
+  const idleItems: MenuItem[] = [
+    {
+      icon: ICONS.play,
+      name: 'Run now',
+      sub: 'start now',
+      action: () => runStack(paneKey, 'run', defaults, agents)
+    },
+    {
+      icon: ICONS.check,
+      name: 'Run once',
+      sub: 'one pass each',
+      action: () => runStack(paneKey, 'run-once', defaults, agents)
+    },
+    {
+      icon: ICONS.cron,
+      name: 'Schedule stack',
+      sub: 'one cron, bottom card',
+      action: () => {
+        const cards = executionOrder(paneCards());
+        if (cards.length === 0) return;
+        const cronExpr = buildCronString(cards[0].cron);
+        void scheduleStack(paneKey, cronExpr, defaults);
+      }
+    },
+    {
+      icon: ICONS.flask,
+      name: 'Dry run',
+      sub: 'validate only',
+      action: () => onDryRun(dryRunStack(paneCards(), defaults))
+    }
   ];
 
-  // TODO(backend): run-stack execution needs pause/drain/bump signals that
-  // don't exist yet — every item is a no-op stub this slice.
-  function pick() {
+  /** Once a run is active, the menu swaps to control signals instead of
+   *  launch intents — Dry run stays available since it never touches
+   *  execution either way. */
+  $: activeItems =
+    phase === 'running'
+      ? [
+          { icon: ICONS.pause, name: 'Pause', sub: 'halt after this card', action: () => pauseStack(paneKey) },
+          { icon: ICONS.x, name: 'Drain', sub: 'finish then stop', action: () => drainStack(paneKey) }
+        ]
+      : phase === 'paused'
+        ? [
+            {
+              icon: ICONS.play,
+              name: 'Resume',
+              sub: 'continue run',
+              action: () => resumeStack(paneKey, defaults, agents)
+            },
+            { icon: ICONS.x, name: 'Drain', sub: 'stop for good', action: () => drainStack(paneKey) }
+          ]
+        : [];
+
+  let items: MenuItem[] = idleItems;
+  $: items = [
+    ...activeItems,
+    ...(phase === 'running' || phase === 'paused' ? idleItems.filter((it) => it.name === 'Dry run') : idleItems)
+  ];
+
+  function pick(item: MenuItem) {
+    item.action();
     onClose();
   }
 
@@ -36,7 +116,7 @@
 
 <div class="runmenu">
   {#each items as it (it.name)}
-    <button type="button" class="rm" on:click={pick}>
+    <button type="button" class="rm" on:click={() => pick(it)}>
       {@html it.icon}<span class="rmn">{it.name}</span><span class="rms">{it.sub}</span>
     </button>
   {/each}

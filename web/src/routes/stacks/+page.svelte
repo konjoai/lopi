@@ -6,9 +6,11 @@
   and is left untouched.
 
   Guardrails/schedule/model/effort/repo round-trip through the real
-  `CreateTaskOptions` shape (see `stores/stack.ts::cardToTaskPayload`), but
-  nothing actually calls `createTask` yet — run-stack execution stays a
-  stub until the pause/drain/bump signals in NEXT.md land.
+  `CreateTaskOptions` shape (see `stores/stack.ts::cardToTaskPayload`).
+  Backend-1 wired "run stack" for real: each pane's own `stores/stackRun.ts`
+  sequencer launches its cards bottom-to-top via `createTask`, and
+  pause/resume/drain/bump are a client-side state machine (there's no
+  server-side "stack"/"plan" concept — see the sprint's ledger entry).
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
@@ -39,7 +41,7 @@
   <div>
     <h1 class="font-display text-2xl">Loop Stack</h1>
     <p class="font-mono text-[11px] uppercase tracking-widest opacity-50 mt-1">
-      compose two independent stacks · guardrails/schedule are wired · run-stack execution is still a stub
+      compose two independent stacks · guardrails/schedule are wired · run stack launches for real
     </p>
   </div>
 

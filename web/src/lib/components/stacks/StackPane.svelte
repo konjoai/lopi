@@ -6,7 +6,9 @@
   fully independent — no cross-pane drag this slice.
 -->
 <script lang="ts">
-  import { type StackPaneState, addToPane, buildCard } from '$lib/stores/stack';
+  import { type StackPaneState, addToPane, buildCard, type DryRunResult } from '$lib/stores/stack';
+  import { runs, runStack, pauseStack, resumeStack, type RunPhase } from '$lib/stores/stackRun';
+  import { agents } from '$lib/stores/agents';
   import type { StackDefaults } from '$lib/stores/stackDefaults';
   import type { Option } from '$lib/stores/controls';
   import EmptyState from '$lib/components/ui/EmptyState.svelte';
@@ -36,12 +38,44 @@
   }
 
   let runMenuOpen = false;
+  let dryRunResult: DryRunResult | null = null;
 
-  // TODO(backend): "run stack" has no execution to trigger yet — no
-  // pause/drain/bump signals exist server-side (see NEXT.md). The button
-  // opens/closes RunMenu; every menu item is itself a stub.
-  function runNow() {
+  $: phase = $runs.get(pane.key)?.phase as RunPhase | undefined;
+  $: runError = $runs.get(pane.key)?.error;
+  $: runLabel =
+    phase === 'running'
+      ? 'pause'
+      : phase === 'paused'
+        ? 'resume'
+        : phase === 'draining'
+          ? 'draining…'
+          : 'run stack';
+  $: runIcon = phase === 'running' ? ICONS.pause : ICONS.play;
+
+  // The split button's main half doubles as the pause/resume toggle once a
+  // run is active — the dropdown (RunMenu) carries the full intent set
+  // (Run now/Run once/Schedule stack/Dry run) plus Drain while running.
+  function runMain() {
+    if (phase === 'running') {
+      pauseStack(pane.key);
+    } else if (phase === 'paused') {
+      resumeStack(pane.key, paneDefaults, agents);
+    } else {
+      dryRunResult = null;
+      runStack(pane.key, 'run', paneDefaults, agents);
+    }
     runMenuOpen = false;
+  }
+
+  /** Dismiss a finished run's error banner — clears its `runs` entry
+   *  entirely, so the split button falls back to its idle "run stack"
+   *  state rather than getting stuck showing a stale phase. */
+  function dismissRunError() {
+    runs.update((m) => {
+      const next = new Map(m);
+      next.delete(pane.key);
+      return next;
+    });
   }
 </script>
 
@@ -90,9 +124,33 @@
   </div>
 
   <div class="panefoot">
+    {#if runError}
+      <div class="runbanner err">
+        <span>{runError}</span>
+        <button type="button" on:click={dismissRunError}>{@html ICONS.x}</button>
+      </div>
+    {:else if dryRunResult}
+      <div class="runbanner" class:err={!dryRunResult.valid}>
+        <span>
+          {#if dryRunResult.valid}
+            dry run: {dryRunResult.plan.length} loop{dryRunResult.plan.length === 1 ? '' : 's'} would run, in order
+          {:else}
+            dry run found {dryRunResult.issues.length} issue{dryRunResult.issues.length === 1 ? '' : 's'}: {dryRunResult
+              .issues[0].message}
+          {/if}
+        </span>
+        <button type="button" on:click={() => (dryRunResult = null)}>{@html ICONS.x}</button>
+      </div>
+    {/if}
     <div class="runsplit">
-      <button class="runmain" type="button" on:click={runNow} title="run this stack (not wired this slice)">
-        {@html ICONS.play} run stack
+      <button
+        class="runmain"
+        type="button"
+        on:click={runMain}
+        disabled={phase === 'draining'}
+        title="run this stack"
+      >
+        {@html runIcon} {runLabel}
       </button>
       <button
         class="runchev"
@@ -104,7 +162,13 @@
       </button>
     </div>
     {#if runMenuOpen}
-      <RunMenu onClose={() => (runMenuOpen = false)} />
+      <RunMenu
+        paneKey={pane.key}
+        defaults={paneDefaults}
+        {phase}
+        onDryRun={(r) => (dryRunResult = r)}
+        onClose={() => (runMenuOpen = false)}
+      />
     {/if}
   </div>
 </div>
@@ -238,9 +302,49 @@
   }
   .panefoot {
     display: flex;
-    justify-content: center;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
     padding: 14px 18px 20px;
     position: relative;
+  }
+  .runbanner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 8px 12px;
+    border-radius: 8px;
+    background: rgba(0, 212, 255, 0.06);
+    border: 1px solid rgba(0, 212, 255, 0.25);
+    color: rgba(245, 245, 245, 0.72);
+    font-family: var(--font-mono, monospace);
+    font-size: 11px;
+  }
+  .runbanner span {
+    flex: 1;
+    min-width: 0;
+  }
+  .runbanner button {
+    flex: 0 0 auto;
+    background: none;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    display: inline-flex;
+  }
+  .runbanner button :global(svg) {
+    width: 12px;
+    height: 12px;
+  }
+  .runbanner.err {
+    background: rgba(255, 90, 90, 0.08);
+    border-color: rgba(255, 90, 90, 0.35);
+    color: rgba(255, 170, 170, 0.9);
+  }
+  .runmain:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
   }
   .runsplit {
     display: inline-flex;
