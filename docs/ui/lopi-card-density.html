@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>lopi · guardrails/evals density options</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet"/>
+<style>
+:root{
+  --black:#0b0e10;--panel:#0a0d0f;--card:#0e1214;--paper:#f5f5f5;
+  --ice:#00d4ff;--ember:#ff4500;--flame:#ff9500;--jade:#00ff9d;--sun:#ffcc00;
+  --rose:#ff2d78;--teal:#00ffd4;--violet:#b79bff;
+  --mist:rgba(255,255,255,.05);--veil:rgba(255,255,255,.11);
+  --dim:rgba(245,245,245,.46);--dim2:rgba(245,245,245,.28);
+  --mono:'JetBrains Mono',ui-monospace,monospace;--sans:'Space Grotesk',system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#060809;color:var(--paper);font-family:var(--sans);-webkit-font-smoothing:antialiased;min-height:100vh}
+.top{padding:15px 20px;border-bottom:1px solid var(--mist);position:sticky;top:0;background:#060809;z-index:10}
+.brand{font-family:var(--mono);font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);margin-bottom:12px}
+.brand b{color:var(--paper)}
+.toggle{display:inline-flex;border:1px solid var(--veil);border-radius:6px;overflow:hidden;font-family:var(--mono);font-size:10.5px;flex-wrap:wrap}
+.toggle span{padding:8px 13px;color:var(--dim);cursor:pointer;border-right:1px solid var(--veil)}
+.toggle span:last-child{border-right:none}
+.toggle span.on{background:rgba(0,212,255,.12);color:var(--ice)}
+.stage{max-width:500px;margin:0 auto;padding:26px 18px 80px}
+.vt{font-family:var(--sans);font-size:15px;font-weight:600;margin-bottom:3px}
+.vd{font-family:var(--mono);font-size:11px;color:var(--dim);line-height:1.6;margin-bottom:18px}
+.vd b{color:var(--paper)}
+
+/* card */
+.pc{position:relative;background:var(--card);border:1px solid rgba(255,150,70,.55);border-radius:9px;padding:13px 14px}
+.runtag{position:absolute;top:-10px;left:14px;font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--flame);background:var(--black);border:1px solid rgba(255,149,0,.5);border-radius:3px;padding:2px 8px;display:inline-flex;align-items:center;gap:5px}
+.runtag::before{content:"";width:5px;height:5px;border-radius:50%;background:var(--flame);box-shadow:0 0 5px var(--ember)}
+.preset{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:8.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--flame);border:1px solid rgba(255,149,0,.4);border-radius:12px;padding:2px 8px;margin-bottom:9px}
+.preset svg{width:10px;height:10px}
+.spec{font-family:var(--mono);font-size:14px;line-height:1.5;margin-bottom:10px}
+.spec .al{color:var(--teal)} .spec .md{color:var(--dim)}
+.prog{display:flex;gap:4px;margin-bottom:11px}.prog i{width:20px;height:3px;border-radius:2px;background:var(--veil)}
+.prog i.done{background:var(--jade)}.prog i.cur{background:var(--flame);box-shadow:0 0 5px var(--ember)}
+.cardbar{display:flex;align-items:center;gap:6px;padding-top:10px;border-top:1px solid var(--mist)}
+.ib{height:29px;min-width:29px;padding:0 7px;border-radius:6px;border:1px solid var(--veil);background:transparent;color:var(--dim2);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:5px;font-family:var(--mono);font-size:11px;transition:.14s}
+.ib svg{width:14px;height:14px}
+.ib.iter{border-color:rgba(255,149,0,.5);background:rgba(255,69,0,.09);color:var(--flame);font-weight:700}
+.ib.guard.act{color:var(--sun);border-color:rgba(255,204,0,.5);background:rgba(255,204,0,.08)}
+.ib.eval.act{color:var(--jade);border-color:rgba(0,255,157,.5);background:rgba(0,255,157,.08)}
+.ib .cnt{font-size:9px;font-weight:700}
+.ib.eval .cnt.fail{color:var(--rose)}
+.sp{flex:1}
+.ib:hover{color:var(--paper)}
+.ib.guard:hover{color:var(--sun);border-color:rgba(255,204,0,.45)}
+.ib.eval:hover{color:var(--jade);border-color:rgba(0,255,157,.45)}
+
+/* full chip rows (option A) */
+.crow{display:flex;align-items:flex-start;gap:7px;margin-top:9px;font-family:var(--mono);font-size:10px}
+.crow .rl{display:inline-flex;align-items:center;gap:4px;letter-spacing:.08em;text-transform:uppercase;font-size:8px;flex:0 0 auto;width:56px;padding-top:3px}
+.crow .rl svg{width:11px;height:11px}
+.crow.guard .rl{color:var(--sun)} .crow.eval .rl{color:var(--jade)}
+.cchips{display:flex;gap:4px;flex-wrap:wrap;flex:1}
+.cc{display:inline-flex;align-items:center;gap:4px;border-radius:11px;padding:2px 8px;border:1px solid;font-size:9.5px;white-space:nowrap}
+.cc.g{color:var(--sun);border-color:rgba(255,204,0,.32);background:rgba(255,204,0,.05)}
+.cc.e{color:var(--jade);border-color:rgba(0,255,157,.26);background:rgba(0,255,157,.05)}
+.cc .d{width:5px;height:5px;border-radius:50%}
+.cc.pass .d{background:var(--jade);box-shadow:0 0 4px var(--jade)}
+.cc.fail{color:var(--rose);border-color:rgba(255,45,120,.4);background:rgba(255,45,120,.07)}
+.cc.fail .d{background:var(--rose)}
+.cc.run .d{background:var(--flame);box-shadow:0 0 4px var(--ember);animation:pulse 1.5s infinite}
+.cc.idle{opacity:.5}.cc.idle .d{background:var(--dim2)}
+.cc.base{border-style:dashed;opacity:.85}
+
+/* one-line summary (option B) */
+.sumline{display:flex;align-items:center;gap:8px;margin-top:9px;font-family:var(--mono);font-size:10px}
+.sumline .rl{display:inline-flex;align-items:center;gap:4px;letter-spacing:.08em;text-transform:uppercase;font-size:8px;flex:0 0 auto;width:56px}
+.sumline .rl svg{width:11px;height:11px}
+.sumline.guard .rl{color:var(--sun)} .sumline.eval .rl{color:var(--jade)}
+.sumline .txt{color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sumline.guard .txt b{color:var(--sun)} .sumline.eval .txt .p{color:var(--jade)} .sumline.eval .txt .f{color:var(--rose)} .sumline.eval .txt .r{color:var(--flame)}
+.sumline .more{color:var(--dim2)}
+
+/* expandable-behind-button reveal (option C) */
+.reveal{margin-top:9px;border:1px solid var(--veil);border-radius:7px;overflow:hidden}
+.reveal .rh{display:flex;align-items:center;gap:7px;padding:7px 10px;cursor:pointer;font-family:var(--mono);font-size:9px;letter-spacing:.08em;text-transform:uppercase}
+.reveal .rh svg{width:11px;height:11px}
+.reveal.guard .rh{color:var(--sun)} .reveal.eval .rh{color:var(--jade)}
+.reveal .rh .n{margin-left:auto;color:var(--dim2)}
+.reveal .rh .chev{width:11px;height:11px;transition:transform .18s;color:var(--dim2)}
+.reveal.open .rh .chev{transform:rotate(90deg)}
+.reveal .rb{max-height:0;overflow:hidden;transition:max-height .22s ease}
+.reveal.open .rb{max-height:300px}
+.reveal .rb .inner{padding:2px 10px 10px;display:flex;gap:4px;flex-wrap:wrap}
+
+.note{max-width:500px;margin:22px auto 0;padding:13px 15px;border:1px solid var(--mist);border-left:2px solid var(--ice);border-radius:0 6px 6px 0;background:var(--panel);font-family:var(--mono);font-size:10.5px;color:var(--dim);line-height:1.7}
+.note b{color:var(--paper)}
+.h{font-family:var(--mono);font-size:10px;color:var(--dim2);margin:20px 0 6px;letter-spacing:.1em;text-transform:uppercase}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+</style>
+</head>
+<body>
+<div class="top">
+  <div class="brand">lopi · <b>card density options</b></div>
+  <div class="toggle" id="toggle">
+    <span data-v="a">A · full chips</span>
+    <span class="on" data-v="b">B · one line each</span>
+    <span data-v="c">C · behind buttons</span>
+    <span data-v="d">D · live-only</span>
+  </div>
+</div>
+<div class="stage" id="stage"></div>
+
+<script>
+"use strict";
+const I={
+ loop:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>',
+ clock:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+ shield:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z"/></svg>',
+ checkbox:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>',
+ build:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.2L3 17.8 6.2 21l6.3-6.3a4 4 0 0 0 5.2-5.4l-2.6 2.6-2.1-2.1z"/></svg>',
+ dup:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>',
+ drag:'<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>',
+ trash:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>',
+ chev:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>',
+};
+const CARD={
+  preset:'progress',
+  guards:[{l:'budget:auto'},{l:'max 3'}],
+  evals:[
+    {n:'execution ok',t:'base',s:'pass'},
+    {n:'tests pass',t:'test',s:'pass'},
+    {n:'benchmark gate',t:'test',s:'run'},
+    {n:'30-run gate',t:'test',s:'idle'},
+    {n:'code review',t:'judge',s:'idle'},
+    {n:'beats-best',t:'judge',s:'idle'},
+    {n:'vuln scan',t:'suite',s:'idle'},
+    {n:'adversarial',t:'suite',s:'idle'},
+  ],
+};
+let view='b';let cOpen={guard:false,eval:false};
+
+function head(){
+  return `<span class="runtag">running · iter 1/3</span>
+    <span class="preset">${I.build}${CARD.preset}</span>
+    <div class="spec"><span class="al">:progress</span> <span class="md">×3 gate:"./kill_test.sh"</span></div>
+    <div class="prog"><i class="done"></i><i class="cur"></i><i></i></div>`;
+}
+function bar(activeGuard,activeEval){
+  return `<div class="cardbar">
+    <button class="ib iter">${I.loop}×3</button>
+    <button class="ib">${I.clock}</button>
+    <button class="ib guard ${activeGuard?'act':''}" id="gbtn">${I.shield}${activeGuard?`<span class="cnt">${CARD.guards.length}</span>`:''}</button>
+    <button class="ib eval ${activeEval?'act':''}" id="ebtn">${I.checkbox}${activeEval?evalBtnCount():''}</button>
+    <span class="sp"></span>
+    <button class="ib">${I.dup}</button>
+    <button class="ib">${I.drag}</button>
+    <button class="ib">${I.trash}</button>
+  </div>`;
+}
+function evalBtnCount(){
+  const on=CARD.evals.length;const fail=CARD.evals.filter(e=>e.s==='fail').length;
+  return `<span class="cnt ${fail?'fail':''}">${on}</span>`;
+}
+function guardChips(){return CARD.guards.map(g=>`<span class="cc g"><span class="d"></span>${g.l}</span>`).join('');}
+function evalChips(){return CARD.evals.map(e=>{const cls=e.s==='pass'?'pass':(e.s==='fail'?'fail':(e.s==='run'?'run':'idle'));const base=e.t==='base'?' base':'';return `<span class="cc e ${cls}${base}"><span class="d"></span>${e.n}</span>`;}).join('');}
+
+function renderA(){
+  return card(`
+    <div class="crow guard"><span class="rl">${I.shield}guards</span><span class="cchips">${guardChips()}</span></div>
+    <div class="crow eval"><span class="rl">${I.checkbox}evals</span><span class="cchips">${evalChips()}</span></div>
+  `, false,false,
+  'A · full chips','Every guardrail and eval as a full chip, always visible. Maximum information, but this is the version that doubled the card height. Eight evals wrap to four lines. Too much standing weight for something set once.');
+}
+function renderB(){
+  const pass=CARD.evals.filter(e=>e.s==='pass').length,fail=CARD.evals.filter(e=>e.s==='fail').length,run=CARD.evals.filter(e=>e.s==='run').length,total=CARD.evals.length;
+  const gtxt=CARD.guards.map(g=>g.l).join(' · ');
+  const etxt=`<span class="p">${pass}✓</span>${run?` · <span class="r">${run} running</span>`:''}${fail?` · <span class="f">${fail}✗</span>`:''} · ${total} evals`;
+  return card(`
+    <div class="sumline guard"><span class="rl">${I.shield}guards</span><span class="txt">${gtxt}</span></div>
+    <div class="sumline eval"><span class="rl">${I.checkbox}evals</span><span class="txt">${etxt}</span></div>
+  `, false,false,
+  'B · one line each','Guardrails and evals each collapse to a single summary line. Guards list their names inline; evals show the live count (pass / running / fail / total). One line each instead of six. You still see both concepts exist and their live state, without the chip wall. Tap the shield/check to edit.');
+}
+function renderC(){
+  const g=cOpen.guard,e=cOpen.eval;
+  return card(`
+    <div class="reveal guard ${g?'open':''}" id="rguard"><div class="rh"><span>${I.shield}guardrails</span><span class="n">${CARD.guards.length}</span><span class="chev">${I.chev}</span></div><div class="rb"><div class="inner">${guardChips()}</div></div></div>
+    <div class="reveal eval ${e?'open':''}" id="reval"><div class="rh"><span>${I.checkbox}evals</span><span class="n">${CARD.evals.filter(x=>x.s==='pass').length}✓ · ${CARD.evals.length}</span><span class="chev">${I.chev}</span></div><div class="rb"><div class="inner">${evalChips()}</div></div></div>
+  `, true,true,
+  'C · behind buttons','Nothing shows by default except two thin collapsible headers (or tap the shield/check in the bar). Click a header to reveal its chips. Card stays compact at rest; full detail is one tap away. The header still shows a count so you know something is configured. Click the guards/evals headers below to expand.');
+}
+function renderD(){
+  // live-only: at rest, nothing. running, only non-passing evals show + a passed count
+  const notPass=CARD.evals.filter(e=>e.s!=='pass'&&e.s!=='idle');
+  const passN=CARD.evals.filter(e=>e.s==='pass').length;
+  const idleN=CARD.evals.filter(e=>e.s==='idle').length;
+  const chips=notPass.map(e=>{const cls=e.s==='fail'?'fail':(e.s==='run'?'run':'');return `<span class="cc e ${cls}"><span class="d"></span>${e.n}</span>`;}).join('');
+  return card(`
+    <div class="sumline eval"><span class="rl">${I.checkbox}evals</span><span class="txt"><span class="p">${passN}✓ passing</span>${idleN?` · ${idleN} queued`:''}</span></div>
+    ${notPass.length?`<div class="crow eval" style="margin-top:6px"><span class="rl"></span><span class="cchips">${chips}</span></div>`:''}
+  `, true,true,
+  'D · live-only','The minimalist take: at rest the card shows nothing (guards/evals live entirely behind the two buttons). While running, only what needs your eyes surfaces — a "N passing" count plus any eval that is running or failing as a chip. Passing evals stay silent. Guards never show inline (they are set-once). Closest to your "hide them behind the buttons" idea, with a live exception for problems.');
+}
+
+function card(inner,ag,ae,title,desc){
+  return `<div class="vt">${title}</div><div class="vd">${desc}</div>
+    <div class="pc">${head()}${bar(ag,ae)}${inner}</div>
+    ${extraNote()}`;
+}
+function extraNote(){
+  if(view==='b')return `<div class="note"><b>Recommended.</b> Keeps both concepts visible and shows live eval state (the thing you want to see while running) in one line, but costs only two lines total instead of six. The shield/check buttons still open the full add-card for editing.</div>`;
+  if(view==='c')return `<div class="note"><b>Cleanest at rest.</b> Best when you rarely need to see the configured checks and mostly care about the prompt. Tradeoff: live eval state is hidden until you expand, so a failing eval while running isn't visible without a tap (the live-output eval pill still catches that).</div>`;
+  if(view==='d')return `<div class="note"><b>Most minimal.</b> Card is smallest at rest. Live runs surface only problems + a passing count, so a green run adds almost nothing and a failure is impossible to miss. Editing is entirely via the buttons. Risk: at rest you can't tell a well-guarded loop from a bare one without tapping.</div>`;
+  return `<div class="note">This is the current build — the one that felt too tall.</div>`;
+}
+
+function render(){
+  const s=document.getElementById('stage');
+  s.innerHTML=(view==='a')?renderA():(view==='b')?renderB():(view==='c')?renderC():renderD();
+  if(view==='c'){
+    const rg=document.getElementById('rguard'),re=document.getElementById('reval');
+    if(rg)rg.querySelector('.rh').onclick=()=>{cOpen.guard=!cOpen.guard;render();};
+    if(re)re.querySelector('.rh').onclick=()=>{cOpen.eval=!cOpen.eval;render();};
+    const gb=document.getElementById('gbtn'),eb=document.getElementById('ebtn');
+    if(gb)gb.onclick=()=>{cOpen.guard=!cOpen.guard;render();};
+    if(eb)eb.onclick=()=>{cOpen.eval=!cOpen.eval;render();};
+  }
+}
+document.querySelectorAll('#toggle span').forEach(sp=>sp.onclick=()=>{view=sp.dataset.v;document.querySelectorAll('#toggle span').forEach(x=>x.classList.toggle('on',x.dataset.v===view));render();});
+render();
+</script>
+</body>
+</html>

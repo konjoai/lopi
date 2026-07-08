@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>lopi · stack controls v2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet"/>
+<style>
+:root{
+  --black:#0b0e10;--panel:#0a0d0f;--card:#0e1214;--paper:#f5f5f5;
+  --ice:#00d4ff;--ice-deep:#0a8aa8;--ember:#ff4500;--flame:#ff9500;
+  --jade:#00ff9d;--sun:#ffcc00;--rose:#ff2d78;--teal:#00ffd4;--violet:#a98bff;
+  --mist:rgba(255,255,255,.05);--veil:rgba(255,255,255,.11);
+  --dim:rgba(245,245,245,.46);--dim2:rgba(245,245,245,.27);
+  --mono:'JetBrains Mono',ui-monospace,monospace;--sans:'Space Grotesk',system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--black);color:var(--paper);font-family:var(--sans);-webkit-font-smoothing:antialiased;padding:0 0 80px}
+.wrap{max-width:840px;margin:0 auto;padding:0 20px}
+.top{position:sticky;top:0;z-index:10;background:rgba(11,14,16,.94);backdrop-filter:blur(8px);border-bottom:1px solid var(--mist);padding:16px 20px;margin-bottom:8px}
+.brand{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);display:flex;align-items:center;gap:8px}
+.brand b{color:var(--paper)} .dot{width:6px;height:6px;border-radius:50%;background:var(--ember);box-shadow:0 0 8px var(--ember)}
+section{border-bottom:1px solid var(--mist);padding:30px 0}
+.eyebrow{font-family:var(--mono);font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--dim2);margin-bottom:4px}
+h2{font-size:18px;font-weight:500;margin-bottom:4px}
+.sdesc{color:var(--dim);font-size:12.5px;margin-bottom:20px;max-width:640px}
+.opts{display:flex;flex-direction:column;gap:14px}
+.orow{display:grid;grid-template-columns:92px 1fr;gap:16px;align-items:center;padding:16px;background:var(--panel);border:1px solid var(--mist);border-radius:6px}
+.olabel{font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim2);line-height:1.5}
+.olabel b{display:block;color:var(--flame);font-size:11px;margin-bottom:3px}
+.odemo{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.note{font-family:var(--mono);font-size:10.5px;color:var(--dim2);margin-top:16px;line-height:1.7;border-top:1px dashed var(--mist);padding-top:12px}
+.note b{color:var(--dim)}
+.mono{font-family:var(--mono)}
+
+/* card sim */
+.card-sim{background:var(--card);border:1px solid var(--veil);border-radius:5px;padding:10px 11px;min-width:230px}
+.card-sim .spec{font-family:var(--mono);font-size:11.5px}
+.card-sim .spec .al{color:var(--teal)} .card-sim .spec .md{color:var(--dim)} .card-sim .spec .rp{color:var(--sun)} .card-sim .spec .op{color:var(--flame)}
+
+/* generic chip/solid/icon */
+.c-chip{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10.5px;border:1px solid var(--veil);border-radius:4px;padding:6px 10px;color:var(--dim);cursor:pointer;transition:.15s;background:transparent;user-select:none}
+.c-chip:hover{color:var(--paper);border-color:var(--dim)} .c-chip svg{width:12px;height:12px}
+.c-chip.loop.on{color:var(--flame);border-color:rgba(255,149,0,.5);background:rgba(255,69,0,.09)}
+.c-chip.cron.on{color:var(--ice);border-color:rgba(0,212,255,.5);background:rgba(0,212,255,.08)}
+.c-solid{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10.5px;letter-spacing:.05em;border:none;border-radius:4px;padding:8px 14px;cursor:pointer;transition:.15s;font-weight:500}
+.c-solid svg{width:12px;height:12px}
+.c-solid.run{background:var(--flame);color:#160500}.c-solid.run:hover{background:#ffab33}
+.c-solid.ice{background:var(--ice-deep);color:#02171d}
+.c-solid.ghost{background:rgba(255,255,255,.06);color:var(--dim)}.c-solid.ghost:hover{background:rgba(255,255,255,.1);color:var(--paper)}
+.c-icon{width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--veil);border-radius:5px;color:var(--dim);cursor:pointer;transition:.15s;background:transparent}
+.c-icon:hover{color:var(--paper);border-color:var(--dim);background:rgba(255,255,255,.03)} .c-icon svg{width:14px;height:14px}
+.c-icon.warm:hover{color:var(--flame);border-color:rgba(255,149,0,.5)}
+.c-icon.cool:hover{color:var(--ice);border-color:rgba(0,212,255,.5)}
+.c-icon.danger:hover{color:var(--rose);border-color:rgba(255,45,120,.5)}
+
+/* ============ 1 · hover insert ============ */
+.stackdemo{width:300px}
+.sd-card{background:var(--card);border:1px solid var(--veil);border-radius:5px;padding:9px 11px;font-family:var(--mono);font-size:11px}
+.sd-card .al{color:var(--teal)}
+.sd-gap{position:relative;height:22px;display:flex;align-items:center;justify-content:center}
+.sd-gap .line{width:1px;height:100%;background:var(--veil)}
+.sd-gap .ins{position:absolute;width:18px;height:18px;border-radius:50%;border:1px solid var(--ice-deep);background:var(--black);color:var(--ice);font-size:12px;line-height:16px;text-align:center;cursor:pointer;opacity:0;transform:scale(.6);transition:.16s}
+.sd-gap:hover .ins{opacity:1;transform:scale(1)}
+.sd-gap:hover .line{background:linear-gradient(180deg,var(--veil),rgba(0,212,255,.5))}
+.sd-gap .barins{position:absolute;left:0;right:0;height:0;border-radius:3px;background:rgba(0,212,255,.1);border:1px dashed rgba(0,212,255,.4);color:var(--ice);font-size:9.5px;display:flex;align-items:center;justify-content:center;overflow:hidden;opacity:0;transition:.18s}
+.sd-gap.bar:hover .barins{opacity:1;height:20px}
+.sd-gap.bar:hover .line{opacity:0}
+
+/* ============ 2 · iteration: + extends to stepper ============ */
+.iter{display:inline-flex;align-items:center;height:28px;border:1px solid var(--veil);border-radius:5px;overflow:hidden;font-family:var(--mono);font-size:11px;transition:.2s}
+.iter.on{border-color:rgba(255,149,0,.55);background:rgba(255,69,0,.06)}
+.iter .head{display:flex;align-items:center;gap:5px;padding:0 9px;height:100%;color:var(--dim);cursor:pointer;transition:.15s}
+.iter.on .head{color:var(--flame)}
+.iter .head svg{width:12px;height:12px}
+.iter .exp{display:flex;align-items:center;max-width:0;opacity:0;overflow:hidden;transition:max-width .28s cubic-bezier(.5,0,.2,1),opacity .2s}
+.iter.on .exp{max-width:140px;opacity:1}
+.iter .sb{width:24px;height:28px;background:transparent;border:none;border-left:1px solid rgba(255,149,0,.25);color:var(--flame);font-size:14px;cursor:pointer}
+.iter .sb:hover{background:rgba(255,149,0,.16)}
+.iter .val{min-width:30px;text-align:center;color:var(--flame);font-weight:700;padding:0 2px}
+/* variant B: floating +/- on hover over enabled pill */
+.iterF{position:relative;display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 11px;border:1px solid rgba(255,149,0,.55);border-radius:5px;background:rgba(255,69,0,.06);font-family:var(--mono);font-size:11px;color:var(--flame);cursor:pointer}
+.iterF svg{width:12px;height:12px} .iterF .v{font-weight:700}
+.iterF .float{position:absolute;top:-34px;left:50%;transform:translateX(-50%) scale(.8);display:flex;gap:5px;opacity:0;pointer-events:none;transition:.16s}
+.iterF:hover .float{opacity:1;transform:translateX(-50%) scale(1);pointer-events:auto}
+.iterF .float button{width:26px;height:26px;border-radius:5px;border:1px solid rgba(255,149,0,.5);background:var(--black);color:var(--flame);font-size:14px;cursor:pointer}
+.iterF .float button:hover{background:rgba(255,149,0,.16)}
+/* variant C: plain + that reveals count (matches screenshot) */
+.iterP{display:inline-flex;align-items:center;gap:0;height:28px;border:1px solid var(--veil);border-radius:5px;overflow:hidden;font-family:var(--mono);font-size:11px}
+.iterP.on{border-color:rgba(255,149,0,.55)}
+.iterP .tog{width:30px;height:28px;display:flex;align-items:center;justify-content:center;color:var(--dim);cursor:pointer;transition:.15s}
+.iterP.on .tog{color:var(--flame);background:rgba(255,69,0,.08)}
+.iterP .tog svg{width:12px;height:12px}
+.iterP .plus{width:26px;height:28px;border:none;border-left:1px solid var(--veil);background:transparent;color:var(--dim2);font-size:15px;cursor:pointer;transition:.15s}
+.iterP.on .plus{color:var(--flame);border-color:rgba(255,149,0,.3)}
+.iterP .plus:hover{background:rgba(255,149,0,.14)}
+.iterP .count{max-width:0;overflow:hidden;transition:max-width .25s ease;display:flex;align-items:center}
+.iterP.on .count{max-width:70px}
+.iterP .count .mn{width:22px;height:28px;border:none;border-left:1px solid rgba(255,149,0,.3);background:transparent;color:var(--flame);cursor:pointer;font-size:13px}
+.iterP .count .n{min-width:26px;text-align:center;color:var(--flame);font-weight:700}
+
+/* ============ 3 · schedule synced picker ============ */
+.schedbox{width:340px;border:1px solid rgba(0,212,255,.4);border-radius:6px;background:var(--panel);overflow:hidden}
+.schedbox .sh{display:flex;align-items:center;gap:7px;padding:9px 12px;border-bottom:1px solid var(--mist);color:var(--ice);font-family:var(--mono);font-size:11px}
+.schedbox .sh svg{width:12px;height:12px}
+.schedbox .sh .human{margin-left:auto;color:var(--paper)}
+.freqrow{display:flex;gap:5px;padding:11px 12px 4px;flex-wrap:wrap}
+.freq{font-family:var(--mono);font-size:10px;border:1px solid var(--veil);border-radius:16px;padding:5px 11px;color:var(--dim);cursor:pointer;transition:.12s}
+.freq.on{color:var(--ice);border-color:rgba(0,212,255,.5);background:rgba(0,212,255,.09)}
+.detail{padding:6px 12px 12px;display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;color:var(--dim);min-height:30px}
+.detail input[type=time],.detail select{background:#0c1113;border:1px solid var(--veil);border-radius:3px;color:var(--ice);font-family:var(--mono);font-size:11px;padding:5px 7px}
+.detail .lbl{color:var(--dim2)}
+.rawrow{display:flex;align-items:center;gap:8px;padding:9px 12px;border-top:1px solid var(--mist);background:#080b0d}
+.rawrow .lb{font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim2)}
+.rawrow input{flex:1;background:transparent;border:none;outline:none;color:var(--ice);font-family:var(--mono);font-size:12px;letter-spacing:.06em}
+.rawrow .sync{font-size:9px;color:var(--jade);font-family:var(--mono)}
+
+/* ============ 4 · guards options ============ */
+.gopt{display:flex;flex-direction:column;gap:6px}
+.gline{display:flex;align-items:center;gap:10px;font-family:var(--mono);font-size:11px}
+.toggle{width:34px;height:19px;border-radius:11px;background:#1c1c1e;border:1px solid var(--veil);position:relative;cursor:pointer;transition:.15s;flex:0 0 34px}
+.toggle::after{content:"";position:absolute;width:13px;height:13px;border-radius:50%;background:var(--dim);top:2px;left:2px;transition:.18s}
+.toggle.on{background:rgba(255,45,120,.25);border-color:var(--rose)}.toggle.on::after{left:17px;background:var(--rose)}
+.toggle.jade.on{background:rgba(0,255,157,.22);border-color:var(--jade)}.toggle.jade.on::after{background:var(--jade)}
+.gline .gname{width:64px;color:var(--dim)} .gline.on .gname{color:var(--paper)}
+.gfield{background:#0c1113;border:1px solid var(--veil);border-radius:3px;color:var(--paper);font-family:var(--mono);font-size:11px;padding:5px 8px;flex:1}
+.gline.rose .gfield{color:var(--rose)} .gline.jadec .gfield{color:var(--jade)}
+.segdrop{display:inline-flex;border:1px solid var(--veil);border-radius:4px;overflow:hidden;font-family:var(--mono);font-size:10px}
+.segdrop span{padding:6px 10px;color:var(--dim);cursor:pointer;border-right:1px solid var(--veil)}
+.segdrop span:last-child{border-right:none}
+.segdrop span.on{background:rgba(255,45,120,.14);color:var(--rose)}
+.budgetpick{display:inline-flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;color:var(--dim)}
+.budgetpick .seg{display:inline-flex;border:1px solid var(--veil);border-radius:4px;overflow:hidden}
+.budgetpick .seg span{padding:6px 11px;cursor:pointer;color:var(--dim);border-right:1px solid var(--veil)}
+.budgetpick .seg span:last-child{border-right:none}
+.budgetpick .seg span.on{background:rgba(0,212,255,.12);color:var(--ice)}
+
+/* ============ 5 · per-card icon bar ============ */
+.cardbar{display:flex;align-items:center;gap:6px;margin-top:10px;padding-top:9px;border-top:1px solid var(--mist)}
+.cardbar .ib{height:26px;min-width:26px;padding:0 6px;border-radius:4px;border:1px solid var(--veil);background:transparent;color:var(--dim2);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:5px;transition:.14s;font-family:var(--mono);font-size:10.5px}
+.cardbar .ib svg{width:13px;height:13px}
+.cardbar .ib:hover{color:var(--paper);border-color:var(--dim)}
+.cardbar .ib.loop.on{color:var(--flame);border-color:rgba(255,149,0,.5);background:rgba(255,69,0,.1)}
+.cardbar .ib.cron.on{color:var(--ice);border-color:rgba(0,212,255,.5);background:rgba(0,212,255,.08)}
+.cardbar .ib.danger:hover{color:var(--rose);border-color:rgba(255,45,120,.5)}
+.cardbar .sp{flex:1}
+.cardbar .ib .cnt{max-width:0;overflow:hidden;transition:max-width .25s;display:inline-flex;align-items:center}
+.cardbar .ib.loop.on .cnt{max-width:60px}
+.cardbar .ib .cnt .mn,.cardbar .ib .cnt .pl{color:var(--flame);cursor:pointer;padding:0 3px;font-size:13px}
+.cardbar .ib .cnt .n{color:var(--flame);font-weight:700;padding:0 1px}
+
+/* ============ 6 · mode toggles ============ */
+.m-seg{display:inline-flex;border:1px solid var(--veil);border-radius:5px;overflow:hidden;font-family:var(--mono);font-size:10.5px}
+.m-seg span{padding:7px 13px;color:var(--dim);cursor:pointer;display:flex;align-items:center;gap:5px;border-right:1px solid var(--veil)}
+.m-seg span:last-child{border-right:none}
+.m-seg span svg{width:12px;height:12px}
+.m-seg span.on.b{background:rgba(0,212,255,.15);color:var(--ice)}
+.m-seg span.on.f{background:rgba(255,69,0,.15);color:var(--flame)}
+.m-slide{position:relative;display:inline-flex;border:1px solid var(--veil);border-radius:20px;padding:3px;font-family:var(--mono);font-size:10.5px;background:#0c1113}
+.m-slide .knob{position:absolute;top:3px;bottom:3px;width:calc(50% - 3px);border-radius:16px;transition:.22s cubic-bezier(.5,0,.2,1)}
+.m-slide.build .knob{left:3px;background:rgba(0,212,255,.2)}
+.m-slide.flow .knob{left:calc(50%);background:rgba(255,69,0,.22)}
+.m-slide span{position:relative;z-index:1;padding:6px 16px;color:var(--dim);cursor:pointer;display:flex;align-items:center;gap:5px}
+.m-slide.build span.b{color:var(--ice)}.m-slide.flow span.f{color:var(--flame)}
+.m-slide span svg{width:12px;height:12px}
+.m-icon{display:inline-flex;gap:6px}
+.m-icon button{width:34px;height:30px;border:1px solid var(--veil);border-radius:5px;background:transparent;color:var(--dim);cursor:pointer;display:flex;align-items:center;justify-content:center}
+.m-icon button svg{width:14px;height:14px}
+.m-icon button.on.b{color:var(--ice);border-color:rgba(0,212,255,.5);background:rgba(0,212,255,.1)}
+.m-icon button.on.f{color:var(--flame);border-color:rgba(255,149,0,.5);background:rgba(255,69,0,.1)}
+.m-text{display:inline-flex;align-items:center;gap:12px;font-family:var(--mono);font-size:11px}
+.m-text span{color:var(--dim2);cursor:pointer;padding-bottom:3px;border-bottom:2px solid transparent}
+.m-text span.on.b{color:var(--ice);border-color:var(--ice)}
+.m-text span.on.f{color:var(--flame);border-color:var(--flame)}
+
+/* ============ 7 · run buttons ============ */
+.r-1{background:var(--flame);color:#160500;border:none;border-radius:5px;padding:10px 20px;font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.06em;cursor:pointer;display:inline-flex;align-items:center;gap:8px}
+.r-1 svg{width:13px;height:13px}
+.r-2{background:transparent;border:1px solid rgba(255,149,0,.6);color:var(--flame);border-radius:5px;padding:10px 20px;font-family:var(--mono);font-size:11px;letter-spacing:.06em;cursor:pointer;display:inline-flex;align-items:center;gap:8px;transition:.15s}
+.r-2:hover{background:rgba(255,69,0,.12)}
+.r-3{background:linear-gradient(90deg,var(--ember),var(--flame));color:#160500;border:none;border-radius:5px;padding:11px 24px;font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;cursor:pointer;box-shadow:0 4px 20px rgba(255,69,0,.25);display:inline-flex;align-items:center;gap:8px}
+.r-3 svg{width:13px;height:13px}
+.r-wide{width:280px;justify-content:center;background:rgba(255,69,0,.1);border:1px solid rgba(255,149,0,.5);color:var(--flame);border-radius:5px;padding:11px;font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;cursor:pointer;display:inline-flex;align-items:center;gap:8px;transition:.15s}
+.r-wide:hover{background:rgba(255,69,0,.18)}
+.r-split{display:inline-flex;border-radius:5px;overflow:hidden}
+.r-split .main{background:var(--flame);color:#160500;border:none;padding:10px 18px;font-family:var(--mono);font-size:11px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:7px}
+.r-split .main svg{width:13px;height:13px}
+.r-split .drop{background:#d97a00;color:#160500;border:none;border-left:1px solid rgba(0,0,0,.25);padding:0 9px;cursor:pointer;font-size:11px}
+.r-fab{width:44px;height:44px;border-radius:50%;background:var(--flame);color:#160500;border:none;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;box-shadow:0 4px 18px rgba(255,69,0,.3)}
+.r-fab svg{width:18px;height:18px}
+
+.runrow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.livecap{font-family:var(--mono);font-size:9.5px;color:var(--dim2)}
+</style>
+</head>
+<body>
+<div class="top">
+  <div class="brand"><span class="dot"></span>lopi <b>· stack controls</b> · v2</div>
+</div>
+<div class="wrap" id="wrap"></div>
+
+<script>
+"use strict";
+const I={
+ loop:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>',
+ cron:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+ plus:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+ play:'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 4l14 8-14 8z"/></svg>',
+ pause:'<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>',
+ stop:'<svg viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>',
+ edit:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>',
+ trash:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>',
+ drag:'<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>',
+ dup:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
+ // NEW drain: funnel narrowing down
+ drain:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h18l-7 8v6l-4 2v-8z"/></svg>',
+ // NEW bump: loop glyph with a small + (rendered as loop + superscript in markup)
+ gate:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>',
+ flow:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h6l2-4 4 8 2-4h2"/></svg>',
+ rocket:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13c-1.5 1.5-2 5-2 5s3.5-.5 5-2M12 15l-3-3a12 12 0 0 1 8-9c2 0 3 1 3 3a12 12 0 0 1-9 8z"/><circle cx="15" cy="9" r="1.2"/></svg>',
+};
+const BUMP=`<span style="position:relative;display:inline-flex">${I.loop}<span style="position:absolute;right:-5px;top:-5px;font-size:10px;font-weight:700;line-height:1">+</span></span>`;
+const W=document.getElementById('wrap');
+function sect(eyebrow,title,desc,rows,note){
+  let h=`<section><div class="eyebrow">${eyebrow}</div><h2>${title}</h2><div class="sdesc">${desc}</div><div class="opts">`;
+  rows.forEach(r=>h+=`<div class="orow"><div class="olabel"><b>${r[0]}</b>${r[1]}</div><div class="odemo">${r[2]}</div></div>`);
+  h+='</div>'+(note?`<div class="note">${note}</div>`:'')+'</section>';
+  W.insertAdjacentHTML('beforeend',h);
+}
+
+/* 1 · hover insert */
+sect('01','Insert between prompts · on hover only',
+ 'Hidden by default, revealed when you hover the gap between two cards. Two reveal styles.',[
+ ['dot','＋ node', `<div class="stackdemo">
+   <div class="sd-card"><span class="al">:progress</span> x3</div>
+   <div class="sd-gap"><div class="line"></div><div class="ins">+</div></div>
+   <div class="sd-card"><span class="al">:tidy</span></div>
+   <div class="sd-gap"><div class="line"></div><div class="ins">+</div></div>
+   <div class="sd-card"><span class="al">:benchmark</span></div></div>`],
+ ['bar','expanding row', `<div class="stackdemo">
+   <div class="sd-card"><span class="al">:progress</span> x3</div>
+   <div class="sd-gap bar"><div class="line"></div><div class="barins">+ insert prompt</div></div>
+   <div class="sd-card"><span class="al">:tidy</span></div></div>`],
+]);
+
+/* 2 · iterations */
+sect('02','Iterations · + reveals the count',
+ 'Enable loop, and a count control slides out. Three takes on the reveal.',[
+ ['extend','＋ slides open (matches your screenshot)', `<span class="iterP" data-iterp><span class="tog">${I.loop}</span><button class="plus" data-open>+</button><span class="count"><button class="mn" data-d="-1">−</button><span class="n" data-v>3</span></span></span> <span class="mono" style="font-size:9.5px;color:var(--dim2)">off → tap + → ×N with −</span>`],
+ ['toggle+stepper','head toggles, body extends', `<span class="iter on" data-iter><span class="head">${I.loop}</span><span class="exp"><button class="sb" data-d="-1">−</button><span class="val" data-v>3</span><button class="sb" data-d="1">+</button></span></span>`],
+ ['floating','+/- floats above on hover', `<span class="iterF" data-iterf>${I.loop}<span class="v">×<span data-v>3</span></span><span class="float"><button data-d="-1">−</button><button data-d="1">+</button></span></span> <span class="mono" style="font-size:9.5px;color:var(--dim2)">hover the pill</span>`],
+], 'All three keep the ×N always visible once enabled, as in your screenshot. The extend variant matches it most closely: a bare + that reveals the count and a − to lower it.');
+
+/* 3 · schedule synced */
+sect('03','Schedule · presets synced with raw cron',
+ 'Pick a frequency, refine the detail, and the raw cron field stays in lock-step (edit either side).',[
+ ['picker','frequency + detail + cron', `<div class="schedbox" data-sched>
+   <div class="sh">${I.cron} schedule <span class="human" data-human>every day at 14:00</span></div>
+   <div class="freqrow">
+     <span class="freq" data-f="min">every N min</span>
+     <span class="freq" data-f="hour">hourly</span>
+     <span class="freq on" data-f="day">daily</span>
+     <span class="freq" data-f="week">weekly</span>
+     <span class="freq" data-f="custom">custom</span></div>
+   <div class="detail" data-detail></div>
+   <div class="rawrow"><span class="lb">cron</span><input data-raw value="0 14 * * *"/><span class="sync">⇄ synced</span></div>
+ </div>`],
+]);
+
+/* 4 · guards options */
+sect('04','Guards · gate, until, budget, on-fail',
+ 'More than chips: toggles with fields, a segmented on-fail policy, and a budget mode picker. Mix what you need.',[
+ ['toggles','gate + until rows', `<div class="gopt">
+   <div class="gline on rose"><div class="toggle on" data-t></div><span class="gname">gate</span><input class="gfield" value="./kill_test.sh"/></div>
+   <div class="gline on jadec"><div class="toggle jade on" data-t></div><span class="gname">until</span><input class="gfield" value="cargo test"/></div></div>`],
+ ['on-fail','policy segmented', `<span class="mono" style="font-size:10px;color:var(--dim2);margin-right:4px">on fail</span><span class="segdrop"><span class="on" data-seg>stop</span><span data-seg>continue</span><span data-seg>backoff</span></span>`],
+ ['budget','auto / cap / off', `<span class="budgetpick">budget <span class="seg"><span class="on" data-seg>auto</span><span data-seg>200k</span><span data-seg>none</span></span></span>`],
+ ['chips','compact combined', `<button class="c-chip" style="color:var(--rose);border-color:rgba(255,45,120,.5)">${I.gate} gate</button><button class="c-chip" style="color:var(--jade);border-color:rgba(0,255,157,.45)">✓ until</button><button class="c-chip" style="color:var(--sun);border-color:rgba(255,204,0,.5)">◷ max</button>`],
+], 'Open question you flagged: whether gate and until deserve full rows or stay as chips that expand on click. Rows are clearer when both are set; chips stay denser. Could also gate these behind an "advanced" disclosure so simple stacks never see them.');
+
+/* 5 · per-card icon bar */
+sect('05','Per-card controls · icon bar (chosen)',
+ 'The clean one. Loop toggle expands inline to a stepper; cron toggles; duplicate and delete on the right.',[
+ ['icon bar','loop expands inline', `<div class="card-sim"><div class="spec"><span class="al">:optimize</span> <span class="md">gate:"…" until:"cargo test"</span></div>
+   <div class="cardbar">
+     <button class="ib loop on" data-cardloop>${I.loop}<span class="cnt"><span class="mn" data-d="-1">−</span><span class="n" data-v>3</span><span class="pl" data-d="1">+</span></span></button>
+     <button class="ib cron" data-t2>${I.cron}</button>
+     <span class="sp"></span>
+     <button class="ib" title="duplicate">${I.dup}</button>
+     <button class="ib" title="reorder">${I.drag}</button>
+     <button class="ib danger" title="delete">${I.trash}</button>
+   </div></div>`],
+]);
+
+/* 6 · mode toggles */
+sect('06','Build / flow toggle · options',
+ 'Same two states, five treatments.',[
+ ['segmented','current style', `<span class="m-seg" data-mseg><span class="b on" data-m="b">${I.edit} build</span><span class="f" data-m="f">${I.play} flow</span></span>`],
+ ['sliding','knob slides', `<span class="m-slide build" data-mslide><span class="knob"></span><span class="b" data-m="b">${I.edit} build</span><span class="f" data-m="f">${I.flow} flow</span></span>`],
+ ['icon only','compact pair', `<span class="m-icon" data-micon><button class="b on" data-m="b" title="build">${I.edit}</button><button class="f" data-m="f" title="flow">${I.flow}</button></span>`],
+ ['underline','text tabs', `<span class="m-text" data-mtext><span class="b on" data-m="b">build</span><span class="f" data-m="f">flow</span></span>`],
+ ['verbs','edit / run words', `<span class="m-slide build" data-mslide style="border-radius:5px"><span class="knob" style="border-radius:3px"></span><span class="b" data-m="b">${I.edit} edit</span><span class="f" data-m="f">${I.play} live</span></span> <span class="mono" style="font-size:9px;color:var(--dim2)">edit/live naming</span>`],
+], 'Reminder from the naming talk: "flow" describes motion, not a state. "edit / live" (last row) is the more honest pair if you want the toggle to read as one axis. Sliding-knob is the most tactile of the treatments.');
+
+/* 7 · run buttons */
+sect('07','Run stack · button options',
+ 'The launch action. Pick presence level: subtle outline up to a loud gradient.',[
+ ['outline','quiet', `<button class="r-2">${I.play} run stack</button>`],
+ ['solid','standard', `<button class="r-1">${I.play} run stack</button>`],
+ ['wide','full-width footer', `<button class="r-wide">${I.play} run stack · flow</button>`],
+ ['gradient','loud launch', `<button class="r-3">${I.rocket} launch</button>`],
+ ['split','run + options', `<span class="r-split"><button class="main">${I.play} run</button><button class="drop">⌄</button></span> <span class="mono" style="font-size:9px;color:var(--dim2)">dropdown: run once / schedule / dry-run</span>`],
+ ['fab','floating orb-side', `<button class="r-fab" title="run">${I.play}</button>`],
+]);
+
+/* 8 · live controls (fixed icons) */
+sect('08','Live controls · pause · drain · bump · kill',
+ 'What replaces run once a stack is live. drain = finish in-flight iterations then stop cleanly. bump = add iterations to the running loop. New icons so neither reads as "send".',[
+ ['icon row','chosen style', `<div class="runrow">
+   <button class="c-icon warm" title="pause — hold new iterations">${I.pause}</button>
+   <button class="c-icon cool" title="drain — finish current, then stop">${I.drain}</button>
+   <button class="c-icon warm" title="bump — +1 iteration to the running loop">${BUMP}</button>
+   <button class="c-icon danger" title="kill — abort now">${I.stop}</button>
+   <span class="livecap">pause · drain · bump · kill</span></div>`],
+ ['with labels','on hover tooltip', `<div class="runrow">
+   <button class="c-chip">${I.pause} pause</button>
+   <button class="c-chip">${I.drain} drain</button>
+   <button class="c-chip">${BUMP} bump +1</button>
+   <button class="c-chip" style="color:var(--rose);border-color:rgba(255,45,120,.4)">${I.stop} kill</button></div>`],
+], '<b>drain</b> lets running iterations finish then stops the stack without dequeuing abruptly — the graceful stop. <b>bump</b> adds passes to a loop that\'s running or about to end (＋1 more). New icons: drain is a funnel, bump is the loop glyph with a +. Keep these exact four verbs to match the framework spec.');
+
+/* interactivity */
+let n=3;
+function setN(v){n=Math.max(1,v);document.querySelectorAll('[data-v]').forEach(el=>{
+  const raw=el.textContent.trim().startsWith('×');el.textContent=n;});}
+document.addEventListener('click',e=>{
+  const d=e.target.closest('[data-d]');if(d){setN(n+ +d.dataset.d);}
+  // iterP open
+  const op=e.target.closest('[data-open]');if(op){op.closest('[data-iterp]').classList.toggle('on');}
+  const tog=e.target.closest('.iterP .tog');if(tog){tog.closest('[data-iterp]').classList.toggle('on');}
+  const it=e.target.closest('[data-iter] .head');if(it){it.closest('[data-iter]').classList.toggle('on');}
+  const cl=e.target.closest('[data-cardloop]');if(cl&&!e.target.closest('.cnt'))cl.classList.toggle('on');
+  const t2=e.target.closest('[data-t2]');if(t2)t2.classList.toggle('on');
+  const tg=e.target.closest('[data-t]');if(tg)tg.classList.toggle('on');
+  // segmented groups
+  const seg=e.target.closest('[data-seg]');if(seg){seg.parentElement.querySelectorAll('[data-seg]').forEach(x=>x.classList.remove('on'));seg.classList.add('on');}
+  // mode toggles
+  ['[data-mseg]','[data-micon]','[data-mtext]'].forEach(sel=>{});
+  const mm=e.target.closest('[data-m]');
+  if(mm){const grp=mm.parentElement;grp.querySelectorAll('[data-m]').forEach(x=>x.classList.remove('on'));mm.classList.add('on');
+    const sl=mm.closest('[data-mslide]');if(sl){sl.classList.toggle('build',mm.dataset.m==='b');sl.classList.toggle('flow',mm.dataset.m==='f');}}
+  // schedule
+  const f=e.target.closest('[data-f]');if(f){f.parentElement.querySelectorAll('[data-f]').forEach(x=>x.classList.remove('on'));f.classList.add('on');updateSched(f.closest('[data-sched]'),f.dataset.f);}
+});
+document.addEventListener('input',e=>{
+  if(e.target.matches('[data-raw]')){const box=e.target.closest('[data-sched]');
+    box.querySelector('[data-human]').textContent='cron · '+e.target.value;}
+});
+function updateSched(box,f){
+  const detail=box.querySelector('[data-detail]');const raw=box.querySelector('[data-raw]');const human=box.querySelector('[data-human]');
+  if(f==='min'){detail.innerHTML=`<span class="lbl">every</span> <select><option>5</option><option>15</option><option>30</option></select> <span class="lbl">minutes</span>`;raw.value='*/15 * * * *';human.textContent='every 15 minutes';}
+  else if(f==='hour'){detail.innerHTML=`<span class="lbl">at minute</span> <select><option>00</option><option>30</option></select>`;raw.value='0 * * * *';human.textContent='every hour';}
+  else if(f==='day'){detail.innerHTML=`<span class="lbl">at</span> <input type="time" value="14:00"/>`;raw.value='0 14 * * *';human.textContent='every day at 14:00';}
+  else if(f==='week'){detail.innerHTML=`<span class="lbl">on</span> <select><option>Mon</option><option>Tue</option><option>Wed</option></select> <span class="lbl">at</span> <input type="time" value="09:00"/>`;raw.value='0 9 * * 1';human.textContent='every Monday at 09:00';}
+  else{detail.innerHTML=`<span class="lbl">edit the cron field directly →</span>`;human.textContent='custom cron';}
+}
+updateSched(document.querySelector('[data-sched]'),'day');
+</script>
+</body>
+</html>

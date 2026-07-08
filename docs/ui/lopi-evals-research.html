@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>lopi · why evals are hard, and how to make them easy</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+<style>
+:root{
+  --bg:#0a0d10;--panel:#0e1317;--line:rgba(255,255,255,.09);--line2:rgba(255,255,255,.045);
+  --ink:#eef2f3;--dim:rgba(238,242,243,.58);--dim2:rgba(238,242,243,.32);
+  --ice:#39c6e6;--ember:#ff5a1f;--flame:#ff9a3d;--jade:#37d99a;--sun:#ffcf4a;--rose:#ff5d86;--violet:#b79bff;
+  --mono:'IBM Plex Mono',ui-monospace,monospace;--disp:'Fraunces',Georgia,serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--mono);font-size:13.5px;line-height:1.62;
+  background-image:linear-gradient(var(--line2) 1px,transparent 1px),linear-gradient(90deg,var(--line2) 1px,transparent 1px);background-size:36px 36px}
+.wrap{max-width:1000px;margin:0 auto;padding:52px 26px 120px}
+.eyebrow{font-size:11px;letter-spacing:.28em;text-transform:uppercase;color:var(--ice)}
+h1{font-family:var(--disp);font-weight:600;font-size:40px;line-height:1.05;margin:14px 0 12px}
+.sub{color:var(--dim);max-width:740px}.sub b{color:var(--ink)}
+.rule{height:1px;background:var(--line);margin:36px 0}
+h2{font-family:var(--disp);font-weight:600;font-size:26px;margin:40px 0 6px}
+h2 .n{font-family:var(--mono);font-size:12px;color:var(--ember);margin-right:10px;letter-spacing:.1em}
+h3{font-family:var(--disp);font-weight:600;font-size:18px;margin:24px 0 8px;color:var(--ink)}
+.lead{color:var(--dim);margin-bottom:14px;max-width:810px}.lead b{color:var(--ink)}
+p{margin:10px 0;max-width:820px}
+.tbl{width:100%;border-collapse:collapse;margin:14px 0;font-size:12px}
+.tbl th{text-align:left;font-weight:500;font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim2);padding:0 10px 8px;border-bottom:1px solid var(--line);vertical-align:bottom}
+.tbl td{padding:11px 10px;border-bottom:1px solid var(--line2);vertical-align:top}
+.tbl tr:hover td{background:rgba(255,255,255,.014)}
+.k{color:var(--ink);font-weight:500}.term{color:var(--violet);font-weight:500}
+code{color:var(--flame);font-size:12px}
+ul{margin:8px 0 8px 18px}li{margin:5px 0;color:var(--dim)}li b{color:var(--ink)}
+.callout{border:1px solid var(--line);border-left:2px solid var(--ice);background:var(--panel);border-radius:0 6px 6px 0;padding:15px 17px;margin:20px 0;font-size:12.5px;color:var(--dim)}
+.callout b{color:var(--ink)} .callout.warn{border-left-color:var(--rose)} .callout.win{border-left-color:var(--jade)}
+.hard{border:1px solid var(--line);border-radius:8px;padding:16px 18px;margin:14px 0;background:rgba(255,93,134,.03)}
+.hard .h{font-family:var(--disp);font-size:17px;color:var(--rose);font-weight:600;margin-bottom:2px}
+.hard .lopi{margin-top:9px;padding-top:9px;border-top:1px solid var(--line2);color:var(--jade)}
+.hard .lopi b{color:var(--jade)}
+.tier{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-bottom:1px solid var(--line2)}
+.tier .lv{font-family:var(--mono);font-size:10px;font-weight:600;padding:3px 9px;border-radius:20px;white-space:nowrap;border:1px solid}
+.tier .lv.b{color:var(--jade);border-color:rgba(55,217,154,.4)} .tier .lv.t{color:var(--ice);border-color:rgba(57,198,230,.4)}
+.tier .lv.j{color:var(--violet);border-color:rgba(183,155,255,.4)} .tier .lv.s{color:var(--sun);border-color:rgba(255,207,74,.4)}
+.tier .body b{color:var(--ink)}
+.pill{display:inline-block;font-size:10px;letter-spacing:.06em;text-transform:uppercase;border:1px solid;border-radius:20px;padding:1px 9px;margin-left:4px}
+.pill.in{color:var(--jade);border-color:rgba(55,217,154,.4)} .pill.later{color:var(--sun);border-color:rgba(255,207,74,.4)} .pill.no{color:var(--dim2);border-color:var(--line)}
+.foot{margin-top:44px;border-top:1px solid var(--line);padding-top:18px;font-size:11.5px;color:var(--dim2)}
+strong{color:var(--ink)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="eyebrow">lopi · evals research</div>
+  <h1>Why evals are hard, and how lopi makes them easy</h1>
+  <p class="sub">The reasons evals are painful are well-documented and specific. The good news: <b>most of them apply to a problem lopi doesn't have.</b> The eval problem the whole industry struggles with is grading <i>open-ended, subjective, non-deterministic</i> output against <i>ground truth that doesn't exist</i>. lopi's loops mostly produce <b>code and artifacts that have real, cheap, deterministic checks</b>, tests, compilers, scanners, diffs. That difference is the entire opening. This maps each hard problem to whether it's lopi's problem, and derives the design that stays on the easy side of the line.</p>
+
+  <div class="rule"></div>
+
+  <!-- WHY HARD -->
+  <h2><span class="n">01</span> Why evals are structurally hard</h2>
+  <p class="lead">Six reasons recur across every serious source (LangChain, the Pragmatic Engineer / Hamel Husain, DeepEval, the "hardest unsolved problem" essays). They fall into two buckets: <b>theory-hard</b> (intrinsic to grading LLM output) and <b>tooling-hard</b> (the setup friction that kills eval programs before they start). The second bucket is the one lopi can win outright.</p>
+
+  <h3>Theory-hard (intrinsic to judging LLM output)</h3>
+
+  <div class="hard">
+    <div class="h">1. No ground truth</div>
+    <div>For most LLM tasks there's no single correct answer to compare against. "A response can be factually accurate but have the wrong tone, or sound persuasive while being completely wrong." Classical testing assumes a known-correct output; open-ended generation has none.</div>
+    <div class="lopi"><b>Mostly not lopi's problem.</b> A coding loop's output is checked by <code>cargo test</code>, a compiler, a benchmark number, a scanner exit code, ground truth exists and is cheap. lopi only hits this wall for the subjective slice (is this prose good? is this design sound?), which is exactly where the judge-tier eval and human review come in. Design consequence: <b>lean hard on deterministic evals; reserve the model-judge for the genuinely subjective.</b></div>
+  </div>
+
+  <div class="hard">
+    <div class="h">2. Non-determinism (even at temperature 0)</div>
+    <div>The same prompt yields different outputs across runs. A single pass isn't representative; you have to think statistically (run N times, look at pass rate), which most tooling doesn't do by default.</div>
+    <div class="lopi"><b>lopi already solved this for itself.</b> The Konjo standard is 30-run paired Wilcoxon, p&lt;0.05, CoV gates. That statistical-rigor muscle is exactly what eval-under-non-determinism requires, and almost no eval tool bakes it in. Design consequence: <b>an eval can specify "run N times, require pass-rate ≥ X," and the stats machinery already exists.</b> This is a differentiator, not a gap.</div>
+  </div>
+
+  <div class="hard">
+    <div class="h">3. The judge needs judging (LLM-as-judge reliability)</div>
+    <div>Using a model to grade output is the standard move (80–90% agreement with humans at ~500x lower cost), but the judge itself is unreliable: it must be validated against human judgment (TPR/TNR), it can be inconsistent, and it can't reliably grade nuanced quality. "We could verify the counts automatically but couldn't get reliable LLM evaluations of the quality."</div>
+    <div class="lopi"><b>Partly lopi's problem, and partly already handled.</b> The "never grade your own homework" rule (verifier ≠ worker model) is the first reliability guard, most tools don't enforce it. What lopi should NOT pretend to solve: turning the model-judge into a rigorous, human-aligned scorer. Design consequence: <b>present the judge as one signal among several, never the sole gate; always pair it with a deterministic eval where one exists; surface the judge's reasoning so the human can overrule.</b></div>
+  </div>
+
+  <h3>Tooling-hard (the friction that actually kills eval programs)</h3>
+
+  <div class="hard">
+    <div class="h">4. Golden-dataset friction</div>
+    <div>The dominant eval paradigm requires a "golden dataset", a curated, versioned set of input/expected-output cases. It's "the single most important asset," it takes real work to build, and <b>it rots</b>: cases go stale, need weekly curation, and suffer data leakage that silently inflates scores. This is the #1 reason eval programs stall, most people never build the dataset.</div>
+    <div class="lopi"><b>This is the big one, and lopi sidesteps it.</b> A golden dataset exists to grade a <i>product's responses to user inputs</i>. lopi isn't grading a chatbot against 500 curated questions; it's grading <i>did this loop's change pass the repo's own tests / build / scan</i>. The "dataset" is the repo's existing test suite, which already exists, is already versioned in git, and is maintained as a side effect of normal development. Design consequence: <b>lopi's default evals need NO dataset. The test suite IS the eval set.</b> That removes the single biggest source of friction for the coding-loop use case.</div>
+  </div>
+
+  <div class="hard">
+    <div class="h">5. Two-tool sprawl + integration glue</div>
+    <div>"You almost certainly need two tools", a CI-gating framework (DeepEval/Promptfoo) plus an annotation/monitoring platform (LangSmith/Braintrust). They don't connect: "results aren't surfaced inline with traces," "traces and regression testing remain separate workflows," you manually wire failures back into tests. Setup means SDKs, env vars, YAML with cryptic <code>__expected1/__expected2</code> columns, and self-host deployment headaches. <b>"Workflow friction kills eval programs faster than any technical limitation."</b></div>
+    <div class="lopi"><b>This is the wedge, stated plainly.</b> Every tool is a bolt-on: you instrument, you wire, you glue trace→eval→regression by hand. lopi's advantage is that <b>the loop, the trace, the eval, and the gate are the same object.</b> The eval isn't a separate platform you integrate; it's a property of the loop that already has the trace (the live output) and already controls the gate (continue/stop). Design consequence: <b>evals are inline by construction, no second tool, no glue.</b> The thing everyone lists as the killer is the thing lopi gets for free by owning the loop.</div>
+  </div>
+
+  <div class="hard">
+    <div class="h">6. Evals saturate / get gamed</div>
+    <div>A fixed gate gets optimized against: "prompt-engineering-to-the-test", you tweak until this eval passes. Static benchmarks saturate (MMLU at 88%+). "When experiments run 100x faster than a human can manage, the eval pipeline becomes the constraint." Evals must evolve alongside the work.</div>
+    <div class="lopi"><b>Real risk, especially with :ratchet loops.</b> An infinite optimize-loop WILL game a weak eval, that's the "framework becomes the project" trap in a new guise. Design consequence: <b>the adversarial-reviewer eval is not optional garnish; it's the anti-gaming layer.</b> And the honest-negative-results ethos (record what the eval missed) is the human-side defense. lopi should make it easy to add a case when an eval is found lacking, closing the loop the way Braintrust's "production failure → one-click regression test" does, but for your repo's own suite.</div>
+  </div>
+
+  <div class="callout win"><b>The one-sentence version:</b> the industry's eval pain is 80% "grading subjective output with no ground truth, via bolt-on tools that need a hand-built dataset." lopi's loops mostly produce <b>verifiable artifacts checked by tools that already exist in the repo</b>, and lopi <b>owns the loop</b>, so the trace-eval-gate glue is free. lopi isn't solving the hardest version of the eval problem; it's serving the version where the answer is clean, and that version is huge and underserved.</div>
+
+  <div class="rule"></div>
+
+  <!-- THE DESIGN -->
+  <h2><span class="n">02</span> The design this dictates</h2>
+  <p class="lead">The research points at one architecture. Two separate axes, an eval ladder that's easy by default, and evals attached to presets so users never start from a blank slate.</p>
+
+  <h3>Guardrails vs Evals, the two axes</h3>
+  <table class="tbl">
+    <thead><tr><th style="width:16%">Concept</th><th style="width:30%">Question it answers</th><th style="width:34%">Contains</th><th style="width:20%">Old name</th></tr></thead>
+    <tbody>
+      <tr><td class="term">Guardrails</td><td>"Should this loop keep running?"</td><td>budget, max-iterations, window, on-fail, schedule — the run envelope</td><td>guards / limits</td></tr>
+      <tr><td class="term">Evals</td><td>"Is the work actually good?"</td><td>the acceptance checks: exit-code, tests, judge, suites — the quality bar</td><td>gate / until (partial)</td></tr>
+    </tbody>
+  </table>
+  <p>Guardrails govern <b>lifecycle</b>; evals govern <b>output</b>. They compose (a failing eval triggers a guardrail's on-fail), but they're different categories, which is why "evals under guards" always felt wrong. Rename guards→<b>Guardrails</b>, promote <b>Evals</b> to a first-class peer.</p>
+
+  <h3>The eval ladder, easy by default, powerful on demand</h3>
+  <div class="tier"><span class="lv b">baseline</span><div class="body"><b>Execution succeeded.</b> The agent's own actions didn't error (non-zero exit = fail). <b>On by default, every loop, zero config.</b> No dataset, no setup. This alone beats "spit code and hope." For a no-code research loop, baseline = "the loop's actions completed without error," not "a test passed."</div></div>
+  <div class="tier"><span class="lv t">test</span><div class="body"><b>A shell command's exit code is the verdict.</b> <code>cargo test</code>, <code>pytest</code>, <code>./kill_test.sh</code>. This is the existing gate/until, correctly reframed as an eval. Deterministic, cheap, no dataset, the repo's own suite is the eval set.</div></div>
+  <div class="tier"><span class="lv j">judge</span><div class="body"><b>A separate model grades the output</b> against the goal/rubric. Enforces verifier ≠ worker. For the subjective slice where no deterministic check exists. Always paired with a deterministic eval where one is available; never the sole gate.</div></div>
+  <div class="tier"><span class="lv s">suite</span><div class="body"><b>A named, reusable bundle of evals.</b> e.g. unit + integration + e2e tests + code review + vuln scan + adversarial reviewer. Presets attach these. <b>KCQF is the canonical built-in suite</b> — your CI Three-Wall gate, generalized into a user-facing primitive.</div></div>
+
+  <div class="callout"><b>The "baked in everywhere" principle:</b> every loop has the baseline eval whether or not the user configures anything. Adding a test eval is one field. Presets pre-attach suites. The result: a user never faces a blank eval config, and never ships a loop with <i>zero</i> acceptance checking. That default-on posture is what no other tool does, they all make evals opt-in, which is why 52% of teams skip them.</div>
+
+  <h3>Presets carry evals (the color-coded stack types you wanted)</h3>
+  <p>Choosing a preset sets the prompt <i>and attaches its default eval suite</i>, because different work needs different validation:</p>
+  <ul>
+    <li><b>:research</b> → baseline + judge (is the synthesis grounded / non-hallucinated?). No test suite; nothing compiles.</li>
+    <li><b>:implement</b> → baseline + unit + integration + e2e tests + code review (judge) + vuln scan + adversarial reviewer. The full KCQF.</li>
+    <li><b>:optimize / :ratchet</b> → baseline + benchmark-beats-best + the statistical gate (30-run, p&lt;0.05) + adversarial reviewer (anti-gaming).</li>
+    <li><b>:benchmark</b> → baseline + the measurement harness + CoV/variance gate.</li>
+    <li><b>:tidy</b> → baseline + tests-still-pass + no-new-lint.</li>
+  </ul>
+  <p>These are the "different types of prompt stack you choose from", and they're where color/glyph coding earns its place: not coloring by type on the board (state wins there), but a labeled, glyphed preset picker so the user reaches for "implement" and gets the right evals without thinking about it.</p>
+
+  <div class="rule"></div>
+
+  <!-- ENTERPRISE -->
+  <h2><span class="n">03</span> The enterprise extension <span class="pill later">further goal</span></h2>
+  <p class="lead">Your instinct, plug evals into existing pipelines and third-party validators, is exactly where the market is moving, and it's a clean extension of the same model. Flagged as a later/enterprise goal, not near-term, but the architecture should not preclude it.</p>
+  <ul>
+    <li><b>KCQF expands by language.</b> The suite generalizes beyond Rust/Python to Java, C#, PHP, Ruby, each language's suite is just a different set of test/scan commands behind the same eval interface. The interface doesn't change; the commands do.</li>
+    <li><b>Third-party evals as first-class eval types.</b> SonarQube, OWASP Dependency-Check, Trivy, Snyk, these are just evals whose "exit code" comes from an external service. They slot into the same ladder as the <code>suite</code> tier. The eval abstraction (a check that returns pass/fail + detail) already fits them.</li>
+    <li><b>Set-up-once, available-to-all.</b> The admin-panel model: an org configures a SonarQube connection once; that eval type becomes selectable for every user's loops. This is the enterprise version of "presets carry evals", org-level eval suites. It's the LangSmith/Braintrust enterprise story, but eval-first and loop-native instead of a separate observability platform.</li>
+    <li><b>Why this is a real market:</b> Gartner projects LLM-observability spend hitting 50% of GenAI deployments by 2028. Every competitor is an observability tool that bolted on evals; the field's own reviewers say the gap is <b>"evals-first, built for whole teams, that block bad releases,"</b> not another tracing dashboard. An eval-native loop cockpit that gates on your existing validators is a differentiated enterprise wedge.</li>
+  </ul>
+
+  <div class="callout warn"><b>Scope discipline (Konjo rule):</b> the enterprise vision is compelling and should shape the <i>abstraction</i> (an eval is "a check returning pass/fail + detail," source-agnostic) so third-party integrations slot in later without a rewrite. But building the SonarQube/Trivy connectors, admin panel, and org-eval-sharing now would be the framework becoming the project. Ship the local eval ladder first (baseline→test→judge→suite over the repo's own tools), prove it's clean and easy, then extend to external validators when there's a user asking for it. The architecture allows it; the roadmap defers it.</div>
+
+  <div class="rule"></div>
+
+  <h2><span class="n">04</span> What goes into the plan</h2>
+  <ul>
+    <li><b>Rename</b> guards → <b>Guardrails</b> (run envelope) across the plan; <b>Evals</b> becomes a new first-class concept, peer to Guardrails. <span class="pill in">now</span></li>
+    <li><b>Eval ladder</b>: baseline (on by default) → test → judge → suite, with the baseline defined as "execution succeeded" so it applies to code and non-code loops. <span class="pill in">now</span></li>
+    <li><b>Presets carry eval suites</b>; KCQF is the canonical suite; presets are the glyphed stack-types the user picks. <span class="pill in">now</span></li>
+    <li><b>Evals as a UI surface</b>: an evals row on the card, pass/fail per eval when running, the judge's gaps/fix-hints surfaced (the comprehension-debt fix). <span class="pill in">now</span></li>
+    <li><b>Statistical evals</b>: an eval can specify run-N-times / pass-rate / the existing 30-run gate, reusing the Konjo stats machinery. <span class="pill in">now</span></li>
+    <li><b>Eval abstraction is source-agnostic</b> (pass/fail + detail), so external validators fit later without rework. <span class="pill later">design-for, build-later</span></li>
+    <li><b>Enterprise</b>: KCQF multi-language, SonarQube/Trivy/Dependency-Check as eval types, admin-panel set-up-once. <span class="pill later">enterprise goal</span></li>
+  </ul>
+
+  <div class="foot">
+    Sources, Dec 2025–Jul 2026: LangChain eval concepts + State of Agent Engineering; Pragmatic Engineer / Hamel Husain "pragmatic guide to evals"; DeepEval / Confident AI; Braintrust and Langfuse vs LangSmith comparisons; "Evaluation is the hardest unsolved problem" (Bommena); golden-dataset guide (qaskills); Inference.net eval-tooling comparison; GoGloby / Zylos benchmarking surveys. Every Konjo mapping (30-run gate, KCQF, verifier≠worker, honest negatives) is from your existing framework.
+  </div>
+</div>
+</body>
+</html>

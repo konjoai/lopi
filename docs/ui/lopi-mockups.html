@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>lopi · unified loops + scheduling — mockups</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --konjo-black:#0a0a0a; --konjo-deep:#050505; --konjo-paper:#f5f5f5;
+    --konjo-ice:#00d4ff; --konjo-ice-deep:#0088aa;
+    --konjo-ember:#ff4500; --konjo-flame:#ff9500;
+    --konjo-jade:#00ff9d; --konjo-sun:#ffcc00; --konjo-rose:#ff0066;
+    --konjo-mist:rgba(255,255,255,0.05); --konjo-veil:rgba(255,255,255,0.09);
+    --dim:rgba(245,245,245,0.42); --dim2:rgba(245,245,245,0.28);
+    --mono:'JetBrains Mono',ui-monospace,monospace;
+    --sans:'Space Grotesk',system-ui,sans-serif;
+    --p-boot:#f5f5f5; --p-discovery:#00d4ff; --p-planning:#00ffd4;
+    --p-implementation:#ff4500; --p-testing:#ffcc00; --p-conclusion:#00ff9d;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:var(--konjo-black); color:var(--konjo-paper);
+    font-family:var(--sans); overflow:hidden;
+    -webkit-font-smoothing:antialiased;
+  }
+  #app{display:flex;flex-direction:column;height:100vh}
+
+  /* ---- top bar ---- */
+  .lp-top{
+    display:flex;align-items:center;gap:24px;
+    padding:14px 22px;border-bottom:1px solid var(--konjo-mist);
+    background:var(--konjo-deep);flex:0 0 auto;
+  }
+  .lp-brand{font-family:var(--mono);font-size:13px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--dim);display:flex;align-items:center;gap:9px}
+  .lp-brand b{color:var(--konjo-paper);font-weight:500}
+  .lp-dot{width:7px;height:7px;border-radius:50%;background:var(--konjo-ember);
+    box-shadow:0 0 10px var(--konjo-ember);animation:corepulse 2.6s ease-in-out infinite}
+  .lp-switch{display:flex;margin-left:auto;border:1px solid var(--konjo-veil);border-radius:2px;overflow:hidden}
+  .lp-switch button{
+    font-family:var(--mono);font-size:11.5px;letter-spacing:.1em;text-transform:uppercase;
+    background:transparent;color:var(--dim);border:none;padding:9px 16px;cursor:pointer;
+    transition:.18s;position:relative;
+  }
+  .lp-switch button:hover{color:var(--konjo-paper)}
+  .lp-switch button.on{color:var(--konjo-black);background:var(--konjo-ice)}
+  .lp-switch button:focus-visible{outline:2px solid var(--konjo-ice);outline-offset:-2px}
+  .lp-sub{font-family:var(--mono);font-size:11px;color:var(--dim2);letter-spacing:.04em}
+
+  .lp-stage{flex:1 1 auto;position:relative;min-height:0}
+  .view{position:absolute;inset:0;opacity:0;pointer-events:none;transition:opacity .35s}
+  .view.on{opacity:1;pointer-events:auto}
+
+  /* ================= VIEW A : constellation ================= */
+  #viewA{overflow:hidden}
+  #ringCanvas{display:block;width:100%;height:100%}
+  .lp-legend{position:absolute;left:22px;bottom:20px;font-family:var(--mono);
+    font-size:11px;line-height:1.9;color:var(--dim2);pointer-events:none;max-width:340px}
+  .lp-legend .k{color:var(--dim)}
+  .lp-legend b.ice{color:var(--konjo-ice)} .lp-legend b.ember{color:var(--konjo-flame)}
+  .lp-hint{position:absolute;right:22px;top:18px;font-family:var(--mono);font-size:11px;
+    color:var(--dim2);letter-spacing:.05em;pointer-events:none}
+
+  .lp-tip{position:absolute;pointer-events:none;z-index:5;transform:translate(-50%,-118%);
+    background:rgba(5,5,5,.92);border:1px solid var(--konjo-veil);border-radius:3px;
+    padding:9px 11px;font-family:var(--mono);font-size:11px;line-height:1.55;white-space:nowrap;
+    opacity:0;transition:opacity .12s;backdrop-filter:blur(4px)}
+  .lp-tip.on{opacity:1}
+  .lp-tip .g{font-family:var(--sans);font-size:12.5px;font-weight:500;color:var(--konjo-paper)}
+  .lp-tip .r{color:var(--dim)} .lp-tip .m{color:var(--konjo-ice)}
+
+  /* control puck */
+  .lp-puck{position:absolute;z-index:6;transform:translate(-50%,0);
+    background:rgba(8,8,8,.96);border:1px solid var(--konjo-veil);border-radius:4px;
+    padding:12px;min-width:216px;opacity:0;pointer-events:none;transition:opacity .15s;
+    box-shadow:0 12px 40px rgba(0,0,0,.6)}
+  .lp-puck.on{opacity:1;pointer-events:auto}
+  .lp-puck .ph{font-family:var(--sans);font-size:13px;font-weight:500;margin-bottom:2px}
+  .lp-puck .pr{font-family:var(--mono);font-size:10.5px;color:var(--dim);margin-bottom:10px}
+  .lp-puck .meta{font-family:var(--mono);font-size:10.5px;color:var(--dim);
+    display:flex;justify-content:space-between;margin-bottom:10px;gap:10px}
+  .lp-puck .meta b{color:var(--konjo-paper);font-weight:500}
+  .lp-btns{display:flex;gap:6px}
+  .lp-btns button{flex:1;font-family:var(--mono);font-size:10.5px;letter-spacing:.05em;
+    text-transform:uppercase;background:var(--konjo-mist);border:1px solid var(--konjo-veil);
+    color:var(--konjo-paper);padding:7px 4px;border-radius:2px;cursor:pointer;transition:.15s}
+  .lp-btns button:hover{background:var(--konjo-veil);border-color:var(--konjo-ice)}
+  .lp-btns button.warn:hover{border-color:var(--konjo-sun);color:var(--konjo-sun)}
+  .lp-btns button.hot:hover{border-color:var(--konjo-flame);color:var(--konjo-flame)}
+
+  /* ================= VIEW B : rail + timeline ================= */
+  #viewB{display:flex;height:100%}
+  .lp-rail{flex:0 0 340px;border-right:1px solid var(--konjo-mist);
+    background:var(--konjo-deep);display:flex;flex-direction:column;min-height:0}
+  .lp-railhead{height:132px;flex:0 0 132px;border-bottom:1px solid var(--konjo-mist);
+    padding:20px 18px;display:flex;flex-direction:column;justify-content:space-between}
+  .lp-railhead .t{font-family:var(--mono);font-size:12px;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--dim)}
+  .lp-railhead .n{font-size:26px;font-weight:500;letter-spacing:-.01em}
+  .lp-railhead .n small{font-size:12px;color:var(--dim);font-weight:400;font-family:var(--mono);margin-left:6px}
+  .lp-new{align-self:flex-start;font-family:var(--mono);font-size:11px;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--konjo-ice);background:transparent;
+    border:1px solid var(--konjo-ice-deep);border-radius:2px;padding:6px 12px;cursor:pointer;transition:.15s}
+  .lp-new:hover{background:rgba(0,212,255,.1)}
+  .lp-rows{overflow-y:auto;flex:1 1 auto}
+  .lp-row{height:76px;flex:0 0 76px;border-bottom:1px solid var(--konjo-mist);
+    padding:0 16px;display:flex;align-items:center;gap:12px;cursor:pointer;
+    border-left:2px solid transparent;transition:background .15s}
+  .lp-row:hover{background:rgba(255,255,255,.02)}
+  .lp-row.sel{background:var(--konjo-mist);border-left-color:var(--konjo-ice)}
+  .lp-gly{flex:0 0 22px;font-size:16px;text-align:center;color:var(--dim)}
+  .lp-row.loop .lp-gly{color:var(--konjo-flame)}
+  .lp-row.sched .lp-gly{color:var(--konjo-ice)}
+  .lp-rmid{flex:1 1 auto;min-width:0}
+  .lp-rmid .g{font-size:13.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .lp-rmid .r{font-family:var(--mono);font-size:10.5px;color:var(--dim);margin-top:3px;
+    display:flex;align-items:center;gap:7px}
+  .lp-phase{width:6px;height:6px;border-radius:50%;flex:0 0 6px}
+  .lp-rctl{flex:0 0 auto;display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+  .lp-toggle{font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;
+    border:1px solid var(--konjo-veil);border-radius:2px;padding:4px 9px;cursor:pointer;
+    background:transparent;color:var(--dim);transition:.15s;min-width:74px;text-align:center}
+  .lp-toggle.run{color:var(--konjo-flame);border-color:rgba(255,149,0,.4);background:rgba(255,69,0,.08)}
+  .lp-toggle.on{color:var(--konjo-ice);border-color:rgba(0,212,255,.4);background:rgba(0,212,255,.07)}
+  .lp-toggle.paused,.lp-toggle.off{color:var(--dim2)}
+  .lp-toggle:hover{filter:brightness(1.3)}
+  .lp-sub2{font-family:var(--mono);font-size:10px;color:var(--dim);text-align:right;line-height:1.5}
+  .lp-sub2 b{color:var(--konjo-paper);font-weight:500}
+  .lp-sub2 .cd{color:var(--konjo-sun)}
+  .lp-sub2 .cron{color:var(--dim2)}
+
+  .lp-main{flex:1 1 auto;display:flex;flex-direction:column;min-width:0;min-height:0}
+  .lp-forge{height:132px;flex:0 0 132px;border-bottom:1px solid var(--konjo-mist);
+    display:flex;align-items:center;gap:22px;padding:0 26px;position:relative;overflow:hidden}
+  #forgeCanvas{width:104px;height:104px;flex:0 0 104px}
+  .lp-finfo .fp{font-family:var(--mono);font-size:11px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--dim);margin-bottom:6px}
+  .lp-finfo .fg{font-size:19px;font-weight:500;letter-spacing:-.01em}
+  .lp-finfo .fm{font-family:var(--mono);font-size:11.5px;color:var(--dim);margin-top:7px;display:flex;gap:18px}
+  .lp-finfo .fm b{font-weight:500}
+  .lp-finfo .fm .warm{color:var(--konjo-flame)} .lp-finfo .fm .cool{color:var(--konjo-ice)}
+
+  .lp-tl{flex:1 1 auto;position:relative;overflow:hidden;min-height:0}
+  .lp-lane{height:76px;border-bottom:1px solid var(--konjo-mist);position:relative;display:flex;align-items:center}
+  .lp-lane .lbl{position:absolute;left:14px;font-family:var(--mono);font-size:10px;
+    color:var(--dim2);z-index:2;pointer-events:none;letter-spacing:.03em}
+  .lp-track{position:absolute;inset:0}
+  /* now line */
+  .lp-now{position:absolute;top:0;bottom:0;width:0;border-left:1px solid var(--konjo-ice);
+    box-shadow:0 0 14px rgba(0,212,255,.6);z-index:3}
+  .lp-nowcap{position:absolute;top:6px;transform:translateX(-50%);font-family:var(--mono);
+    font-size:9.5px;letter-spacing:.14em;color:var(--konjo-ice);z-index:4;text-transform:uppercase}
+  /* run bars */
+  .lp-run{position:absolute;height:12px;top:50%;transform:translateY(-50%);border-radius:1px;opacity:.85}
+  .lp-run.ok{background:linear-gradient(90deg,rgba(0,255,157,.15),rgba(0,255,157,.55))}
+  .lp-run.retry{background:linear-gradient(90deg,rgba(255,204,0,.12),rgba(255,204,0,.5))}
+  .lp-run.fail{background:linear-gradient(90deg,rgba(255,0,102,.12),rgba(255,0,102,.5))}
+  /* live loop bar sitting on now */
+  .lp-live{position:absolute;height:16px;top:50%;transform:translateY(-50%);border-radius:2px;
+    background:linear-gradient(90deg,rgba(255,69,0,.15),var(--konjo-ember));
+    box-shadow:0 0 16px rgba(255,69,0,.4);animation:breathe 2.4s ease-in-out infinite}
+  .lp-live.paused{animation:none;opacity:.3;background:rgba(255,255,255,.12);box-shadow:none}
+  /* scheduled ticks (future) */
+  .lp-tick{position:absolute;top:50%;transform:translate(-50%,-50%);z-index:2;
+    display:flex;flex-direction:column;align-items:center;gap:5px}
+  .lp-tick i{width:1px;height:26px;background:var(--konjo-ice-deep);display:block}
+  .lp-tick.next i{background:var(--konjo-ice);box-shadow:0 0 10px var(--konjo-ice);animation:tickglow 2s ease-in-out infinite}
+  .lp-tick.off i{background:var(--dim2);box-shadow:none;animation:none}
+  .lp-tick span{font-family:var(--mono);font-size:9.5px;color:var(--dim);white-space:nowrap}
+  .lp-tick.next span{color:var(--konjo-ice)}
+  .lp-tick.off span{color:var(--dim2)}
+  /* axis */
+  .lp-axis{position:absolute;bottom:0;left:0;right:0;height:22px;border-top:1px solid var(--konjo-mist);
+    display:flex;align-items:center;background:var(--konjo-deep);z-index:5}
+  .lp-axis span{position:absolute;transform:translateX(-50%);font-family:var(--mono);
+    font-size:9.5px;color:var(--dim2);letter-spacing:.05em}
+  /* ignite flash on timeline */
+  .lp-flash{position:absolute;top:50%;transform:translate(-50%,-50%);width:22px;height:22px;
+    border-radius:50%;background:var(--konjo-flame);box-shadow:0 0 24px var(--konjo-flame);
+    z-index:4;animation:flash .8s ease-out forwards;pointer-events:none}
+
+  @keyframes corepulse{0%,100%{opacity:1}50%{opacity:.45}}
+  @keyframes breathe{0%,100%{opacity:.65;filter:brightness(.9)}50%{opacity:1;filter:brightness(1.25)}}
+  @keyframes tickglow{0%,100%{opacity:.6}50%{opacity:1}}
+  @keyframes flash{0%{transform:translate(-50%,-50%) scale(.2);opacity:1}
+    100%{transform:translate(-50%,-50%) scale(2.6);opacity:0}}
+
+  @media (max-width:820px){
+    #viewB{flex-direction:column}
+    .lp-rail{flex-basis:auto;border-right:none;border-bottom:1px solid var(--konjo-mist);max-height:46%}
+    .lp-railhead{height:auto;flex-basis:auto}
+  }
+  @media (prefers-reduced-motion:reduce){
+    *{animation:none !important;transition:none !important}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="lp-top">
+    <div class="lp-brand"><span class="lp-dot"></span>lopi&nbsp;<b>⛵ forge</b></div>
+    <span class="lp-sub">one surface · loops + schedules</span>
+    <div class="lp-switch" role="tablist" aria-label="View">
+      <button id="tabA" class="on" role="tab" aria-selected="true">Constellation · A</button>
+      <button id="tabB" role="tab" aria-selected="false">Timeline · B</button>
+    </div>
+  </div>
+
+  <div class="lp-stage">
+    <!-- ============ VIEW A ============ -->
+    <section id="viewA" class="view on" role="tabpanel" aria-label="Option A">
+      <canvas id="ringCanvas"></canvas>
+      <div class="lp-hint">hover a body · click to control</div>
+      <div class="lp-legend">
+        <div class="k">distance to core = time until fire</div>
+        <div><b class="ember">inner band</b> = live loops &nbsp;·&nbsp; <b class="ice">outer field</b> = scheduled</div>
+        <div class="k">a schedule spirals in, then flares into a loop</div>
+      </div>
+      <div id="tipA" class="lp-tip"></div>
+      <div id="puckA" class="lp-puck"></div>
+    </section>
+
+    <!-- ============ VIEW B ============ -->
+    <section id="viewB" class="view" role="tabpanel" aria-label="Option B">
+      <aside class="lp-rail">
+        <div class="lp-railhead">
+          <span class="t">Directives</span>
+          <div class="n" id="rowCount">6 <small>active</small></div>
+          <button class="lp-new">＋ new directive</button>
+        </div>
+        <div class="lp-rows" id="railRows"></div>
+      </aside>
+      <div class="lp-main">
+        <div class="lp-forge">
+          <canvas id="forgeCanvas"></canvas>
+          <div class="lp-finfo">
+            <div class="fp" id="fPhase">implementation</div>
+            <div class="fg" id="fGoal">—</div>
+            <div class="fm" id="fMeta"></div>
+          </div>
+        </div>
+        <div class="lp-tl" id="timeline"></div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+"use strict";
+const REDUCED = window.matchMedia('(prefers-reduced-motion:reduce)').matches;
+const PHASE = {boot:'#f5f5f5',discovery:'#00d4ff',planning:'#00ffd4',
+  implementation:'#ff4500',testing:'#ffcc00',conclusion:'#00ff9d'};
+
+// ---- shared directive model: loops + schedules are two trigger types on one object ----
+function mk(id,goal,repo,trigger,o){return Object.assign(
+  {id,goal,repo,trigger,phase:'implementation',running:true,enabled:true,
+   iter:1,conc:1,cron:'',fireIn:0,interval:0,activity:.5,pressure:.5,ang:0},o);}
+
+const D = [
+  mk('kv','Refactor KV-cache eviction','konjoai/squish','loop',
+     {phase:'implementation',iter:3,conc:2,activity:.82,pressure:.71,ang:0.4}),
+  mk('bench','Stats gates on bench harness','konjoai/vectro','loop',
+     {phase:'testing',iter:7,conc:1,activity:.55,pressure:.4,ang:2.3}),
+  mk('ci','Watch CI · retry on fail','konjoai/squish','loop',
+     {phase:'discovery',running:false,iter:0,conc:1,activity:.15,pressure:.2,ang:4.1}),
+  mk('metrics','Refresh launch metrics','konjoai/konjo.ai','schedule',
+     {phase:'conclusion',cron:'*/15 * * * *',fireIn:11,interval:11,ang:-Math.PI/2+0.15}),
+  mk('audit','Nightly dependency audit','konjoai/kiban','schedule',
+     {phase:'boot',cron:'0 2 * * *',fireIn:34,interval:60,ang:1.15}),
+  mk('digest','Weekly changelog digest','konjoai/lopi','schedule',
+     {phase:'planning',cron:'0 9 * * 1',fireIn:52,interval:80,ang:3.5}),
+];
+const HORIZON = 60; // sec mapped to full outer radius
+
+function fmtCd(s){s=Math.max(0,Math.round(s));
+  if(s<60)return s+'s';const m=Math.floor(s/60);return m+'m '+(s%60)+'s';}
+function humanFire(d){ // pretend schedule labels
+  const map={metrics:'in <1m',audit:'in 4h 51m',digest:'in 2d 6h'};
+  return map[d.id]||('in '+fmtCd(d.fireIn));}
+
+/* ================= view switching ================= */
+const tabA=document.getElementById('tabA'), tabB=document.getElementById('tabB');
+const viewA=document.getElementById('viewA'), viewB=document.getElementById('viewB');
+let active='A';
+function setView(v){active=v;
+  tabA.classList.toggle('on',v==='A');tabB.classList.toggle('on',v==='B');
+  tabA.setAttribute('aria-selected',v==='A');tabB.setAttribute('aria-selected',v==='B');
+  viewA.classList.toggle('on',v==='A');viewB.classList.toggle('on',v==='B');
+  hidePuck(); if(v==='B') buildRail();
+  fitRing(); fitForge();
+}
+tabA.onclick=()=>setView('A'); tabB.onclick=()=>setView('B');
+
+/* ================= sphere painter (shared, cheap fire/ice) ================= */
+function paintSphere(ctx,cx,cy,r,phaseHex,warm,t){
+  // warm in [0..1] = fire vs ice mix; phaseHex tints the fresnel aura
+  ctx.save();
+  // aura
+  const aura=ctx.createRadialGradient(cx,cy,r*.7,cx,cy,r*1.5);
+  aura.addColorStop(0,phaseHex+'00');aura.addColorStop(.6,phaseHex+'22');aura.addColorStop(1,phaseHex+'00');
+  ctx.fillStyle=aura;ctx.beginPath();ctx.arc(cx,cy,r*1.5,0,7);ctx.fill();
+  // body base (ice)
+  const g=ctx.createRadialGradient(cx-r*.3,cy-r*.3,r*.1,cx,cy,r);
+  g.addColorStop(0,'#0088aa');g.addColorStop(.7,'#04212b');g.addColorStop(1,'#020a0d');
+  ctx.fillStyle=g;ctx.beginPath();ctx.arc(cx,cy,r,0,7);ctx.fill();
+  // fire domain (offset, pulsing by warm)
+  const wob=Math.sin(t*1.7)*r*.12;
+  const f=ctx.createRadialGradient(cx+r*.2+wob,cy+r*.25,r*.05,cx+r*.1,cy+r*.2,r*1.05);
+  const a=(0.25+0.6*warm).toFixed(2);
+  f.addColorStop(0,`rgba(255,149,0,${a})`);f.addColorStop(.45,`rgba(255,69,0,${(warm*.5).toFixed(2)})`);
+  f.addColorStop(1,'rgba(255,69,0,0)');
+  ctx.globalCompositeOperation='screen';ctx.fillStyle=f;
+  ctx.beginPath();ctx.arc(cx,cy,r,0,7);ctx.fill();
+  // ice veins
+  const ic=ctx.createRadialGradient(cx-r*.25,cy-r*.3,r*.05,cx-r*.2,cy-r*.25,r);
+  ic.addColorStop(0,`rgba(0,212,255,${(0.35*(1-warm)+0.1).toFixed(2)})`);ic.addColorStop(.6,'rgba(0,212,255,0)');
+  ctx.fillStyle=ic;ctx.beginPath();ctx.arc(cx,cy,r,0,7);ctx.fill();
+  ctx.globalCompositeOperation='source-over';
+  // fresnel rim
+  ctx.lineWidth=Math.max(1,r*.05);ctx.strokeStyle=phaseHex+'cc';
+  ctx.beginPath();ctx.arc(cx,cy,r*.98,0,7);ctx.stroke();
+  ctx.restore();
+}
+
+/* ================= VIEW A : constellation canvas ================= */
+const rc=document.getElementById('ringCanvas'), rctx=rc.getContext('2d');
+let RW=0,RH=0,cx=0,cy=0,Rcore=26,Rign=150,Router=0;
+const loops=[], flares=[];
+D.filter(d=>d.trigger==='loop').forEach(d=>loops.push({d,ang:d.ang,rad:0,life:1}));
+
+function fitRing(){
+  const dpr=Math.min(window.devicePixelRatio||1,2);
+  const r=rc.getBoundingClientRect(); if(!r.width)return;
+  RW=r.width;RH=r.height;rc.width=RW*dpr;rc.height=RH*dpr;
+  rctx.setTransform(dpr,0,0,dpr,0,0);
+  cx=RW/2;cy=RH/2; Router=Math.min(RW,RH)/2-70; Rign=Rcore+ (Router-Rcore)*0.34;
+}
+window.addEventListener('resize',()=>{fitRing();fitForge();});
+
+// map schedule fireIn -> radius (0 => Rign, HORIZON => Router)
+function schedRad(fireIn){return Rign + (Router-Rign)*Math.min(1,fireIn/HORIZON);}
+
+const tipA=document.getElementById('tipA');
+let hoverBody=null, mouse={x:-1,y:-1};
+rc.addEventListener('mousemove',e=>{const r=rc.getBoundingClientRect();mouse.x=e.clientX-r.left;mouse.y=e.clientY-r.top;});
+rc.addEventListener('mouseleave',()=>{mouse.x=-1;mouse.y=-1;});
+rc.addEventListener('click',e=>{const r=rc.getBoundingClientRect();
+  const mx=e.clientX-r.left,my=e.clientY-r.top; const b=pick(mx,my);
+  if(b) showPuck(b,e.clientX-r.left,e.clientY-r.top); else hidePuck();});
+
+function bodyPos(item){
+  if(item.type==='loop') return {x:cx+Math.cos(item.ang)*item.rad, y:cy+Math.sin(item.ang)*item.rad, r:8+item.d.pressure*8};
+  return {x:cx+Math.cos(item.d.ang)*schedRad(item.d.fireIn), y:cy+Math.sin(item.d.ang)*schedRad(item.d.fireIn), r:6+item.d.pressure*4};
+}
+let scene=[];
+function pick(mx,my){let best=null,bd=1e9;
+  scene.forEach(it=>{const p=it._p;const dx=mx-p.x,dy=my-p.y;const dd=dx*dx+dy*dy;
+    if(dd<Math.max(220,(p.r+10)*(p.r+10))&&dd<bd){bd=dd;best=it;}});return best;}
+
+let tPrev=performance.now();
+function drawRing(now){
+  const dt=Math.min(0.05,(now-tPrev)/1000);tPrev=now;const t=now/1000;
+  rctx.clearRect(0,0,RW,RH);
+  // guide rings
+  rctx.strokeStyle='rgba(255,255,255,0.05)';rctx.lineWidth=1;
+  rctx.beginPath();rctx.arc(cx,cy,Rign,0,7);rctx.stroke();
+  rctx.setLineDash([2,8]);rctx.beginPath();rctx.arc(cx,cy,Router,0,7);rctx.stroke();rctx.setLineDash([]);
+  // ignition gate label ring glow
+  rctx.strokeStyle='rgba(255,149,0,0.18)';rctx.lineWidth=2;
+  rctx.beginPath();rctx.arc(cx,cy,Rign,0,7);rctx.stroke();
+
+  scene=[];
+  // schedules (advance countdown, spiral in)
+  D.filter(d=>d.trigger==='schedule'&&d.enabled).forEach(d=>{
+    if(!REDUCED){d.fireIn-=dt; if(d.fireIn<=0){ ignite(d); d.fireIn=d.interval; }}
+    scene.push({type:'sched',d});
+  });
+  // loops (orbit)
+  loops.forEach(L=>{ if(!REDUCED && L.d.running){ L.ang += dt*(0.12+L.d.activity*0.35); }
+    // settle radius into active band
+    const target=Rcore+ (Rign-Rcore)*(0.35+0.5*(1-L.d.pressure));
+    L.rad += (target-L.rad)*Math.min(1,dt*3);
+    scene.push({type:'loop',d:L.d,ang:L.ang,rad:L.rad,ref:L});
+  });
+
+  // draw connective threads (core -> loops)
+  scene.forEach(it=>{const p=bodyPos(it);it._p=p;
+    if(it.type==='loop'){rctx.strokeStyle='rgba(255,69,0,0.10)';rctx.lineWidth=1;
+      rctx.beginPath();rctx.moveTo(cx,cy);rctx.lineTo(p.x,p.y);rctx.stroke();}
+  });
+
+  // draw bodies
+  scene.forEach(it=>{const p=it._p;const ph=PHASE[it.d.phase];
+    if(it.type==='sched'){
+      // cold marker + halo, imminence brightens
+      const near=1-Math.min(1,it.d.fireIn/HORIZON);
+      rctx.save();
+      const halo=rctx.createRadialGradient(p.x,p.y,1,p.x,p.y,p.r*3.4);
+      halo.addColorStop(0,`rgba(0,212,255,${0.20+0.5*near})`);halo.addColorStop(1,'rgba(0,212,255,0)');
+      rctx.fillStyle=halo;rctx.beginPath();rctx.arc(p.x,p.y,p.r*3.4,0,7);rctx.fill();
+      rctx.fillStyle=near>.7?'#7fe9ff':'#2b6b7d';
+      rctx.beginPath();rctx.arc(p.x,p.y,p.r,0,7);rctx.fill();
+      rctx.strokeStyle='rgba(0,212,255,0.7)';rctx.lineWidth=1;
+      rctx.beginPath();rctx.arc(p.x,p.y,p.r+2,0,7);rctx.stroke();
+      rctx.restore();
+    } else {
+      const warm=it.d.running?(0.35+it.d.activity*0.6):0.05;
+      paintSphere(rctx,p.x,p.y,p.r,ph,warm,t+it.ang);
+      if(!it.d.running){rctx.fillStyle='rgba(5,5,5,0.5)';rctx.beginPath();rctx.arc(p.x,p.y,p.r,0,7);rctx.fill();}
+    }
+    if(hoverBody===it||(pickEq(hoverBody,it))){rctx.strokeStyle=ph;rctx.lineWidth=1.5;
+      rctx.beginPath();rctx.arc(p.x,p.y,p.r+6,0,7);rctx.stroke();}
+  });
+
+  // flares (ignition moments)
+  for(let i=flares.length-1;i>=0;i--){const f=flares[i];f.life-=dt*1.4;
+    if(f.life<=0){flares.splice(i,1);continue;}
+    const rr=(1-f.life)*54;rctx.strokeStyle=`rgba(255,149,0,${f.life})`;rctx.lineWidth=2.5*f.life+0.5;
+    rctx.beginPath();rctx.arc(f.x,f.y,rr,0,7);rctx.stroke();
+    const gg=rctx.createRadialGradient(f.x,f.y,1,f.x,f.y,rr);
+    gg.addColorStop(0,`rgba(255,149,0,${f.life*0.5})`);gg.addColorStop(1,'rgba(255,149,0,0)');
+    rctx.fillStyle=gg;rctx.beginPath();rctx.arc(f.x,f.y,rr,0,7);rctx.fill();
+  }
+
+  // core
+  paintSphere(rctx,cx,cy,Rcore,'#00d4ff',0.5+0.3*Math.sin(t*1.5),t);
+  rctx.fillStyle='rgba(245,245,245,0.5)';rctx.font='10px "JetBrains Mono",monospace';
+  rctx.textAlign='center';rctx.fillText('lopi',cx,cy+Rcore+16);
+
+  // hover tooltip
+  const hb=pick(mouse.x,mouse.y);
+  if(hb){hoverBody=hb;const p=hb._p;const d=hb.d;
+    tipA.classList.add('on');tipA.style.left=p.x+'px';tipA.style.top=p.y+'px';
+    tipA.innerHTML = hb.type==='loop'
+      ? `<div class="g">${d.goal}</div><div class="r">${d.repo}</div><div class="m">↻ loop · ${d.phase} · iter ${d.iter} · ×${d.conc}</div>`
+      : `<div class="g">${d.goal}</div><div class="r">${d.repo}</div><div class="m">◷ schedule · ${d.cron} · fires ${fmtCd(d.fireIn)}</div>`;
+    rc.style.cursor='pointer';
+  } else {hoverBody=null;tipA.classList.remove('on');rc.style.cursor='default';}
+
+  if(!REDUCED) requestAnimationFrame(drawRing);
+}
+function pickEq(a,b){return a&&b&&a.d===b.d;}
+function ignite(d){
+  const p={x:cx+Math.cos(d.ang)*Rign,y:cy+Math.sin(d.ang)*Rign};
+  flares.push({x:p.x,y:p.y,life:1});
+  // spawn a transient loop body for this schedule's run
+  const L={d:Object.assign({},d,{trigger:'loop',running:true,iter:1}),ang:d.ang,rad:Rign,life:1,transient:true};
+  loops.push(L);
+  setTimeout(()=>{const i=loops.indexOf(L);if(i>=0)loops.splice(i,1);}, 5200);
+}
+
+/* control puck (view A) */
+const puckA=document.getElementById('puckA');
+function showPuck(it,x,y){const d=it.d;
+  puckA.style.left=Math.min(RW-120,Math.max(120,x))+'px';
+  puckA.style.top=Math.min(RH-140,y+18)+'px';
+  const meta = it.type==='loop'
+    ? `<span>iter <b>${d.iter}</b></span><span>conc <b>×${d.conc}</b></span><span>phase <b>${d.phase}</b></span>`
+    : `<span>next <b>${fmtCd(d.fireIn)}</b></span><span>cron <b>${d.cron}</b></span>`;
+  const btns = it.type==='loop'
+    ? `<button data-a="pause" class="warn">${d.running?'Pause':'Resume'}</button><button data-a="focus">Focus</button><button data-a="edit">Edit</button>`
+    : `<button data-a="runnow" class="hot">Run now</button><button data-a="disable" class="warn">Disable</button><button data-a="edit">Edit cron</button>`;
+  puckA.innerHTML=`<div class="ph">${d.goal}</div><div class="pr">${d.repo}</div>
+    <div class="meta">${meta}</div><div class="lp-btns">${btns}</div>`;
+  puckA.classList.add('on');
+  puckA.querySelectorAll('button').forEach(b=>b.onclick=(ev)=>{ev.stopPropagation();
+    const a=b.dataset.a;
+    if(a==='pause'){d.running=!d.running;}
+    if(a==='runnow'){ignite(d);d.fireIn=d.interval;}
+    if(a==='disable'){d.enabled=!d.enabled;}
+    hidePuck();
+  });
+}
+function hidePuck(){puckA.classList.remove('on');}
+
+/* ================= VIEW B : rail + timeline ================= */
+const railRows=document.getElementById('railRows');
+const timeline=document.getElementById('timeline');
+const fCanvas=document.getElementById('forgeCanvas'),fctx=fCanvas.getContext('2d');
+let sel=D[0];
+
+function buildRail(){
+  railRows.innerHTML='';
+  D.forEach(d=>{
+    const row=document.createElement('div');
+    row.className='lp-row '+(d.trigger==='loop'?'loop':'sched')+(d===sel?' sel':'');
+    row.tabIndex=0;
+    const gly=d.trigger==='loop'?'↻':'◷';
+    let ctl;
+    if(d.trigger==='loop'){
+      ctl=`<button class="lp-toggle ${d.running?'run':'paused'}" data-t="run">${d.running?'● running':'❙❙ paused'}</button>
+           <div class="lp-sub2"><b>iter ${d.iter}</b> · ×${d.conc}</div>`;
+    } else {
+      ctl=`<button class="lp-toggle ${d.enabled?'on':'off'}" data-t="en">${d.enabled?'enabled':'disabled'}</button>
+           <div class="lp-sub2"><span class="cd">${humanFire(d)}</span><br><span class="cron">${d.cron}</span></div>`;
+    }
+    row.innerHTML=`<div class="lp-gly">${gly}</div>
+      <div class="lp-rmid"><div class="g">${d.goal}</div>
+        <div class="r"><span class="lp-phase" style="background:${PHASE[d.phase]}"></span>${d.repo}</div></div>
+      <div class="lp-rctl">${ctl}</div>`;
+    row.onclick=()=>{sel=d;buildRail();paintForge(performance.now());};
+    row.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();sel=d;buildRail();}};
+    const tog=row.querySelector('[data-t]');
+    if(tog)tog.onclick=e=>{e.stopPropagation();
+      if(d.trigger==='loop')d.running=!d.running; else d.enabled=!d.enabled;
+      buildRail();buildTimeline();};
+    railRows.appendChild(row);
+  });
+  buildTimeline();
+}
+
+function buildTimeline(){
+  timeline.innerHTML='';
+  const nowX=0.62; // fraction of width where "now" sits
+  // lanes
+  D.forEach(d=>{
+    const lane=document.createElement('div');lane.className='lp-lane';
+    const track=document.createElement('div');track.className='lp-track';
+    // past runs (left of now)
+    const runs = d.trigger==='loop'
+      ? [{o:'ok',s:.06,w:.10},{o:'retry',s:.20,w:.07},{o:'ok',s:.30,w:.13},{o:'ok',s:.46,w:.10}]
+      : [{o:'ok',s:.12,w:.05},{o:'fail',s:.30,w:.05},{o:'ok',s:.48,w:.05}];
+    runs.forEach(rn=>{const b=document.createElement('div');b.className='lp-run '+rn.o;
+      b.style.left=(rn.s*nowX*100)+'%';b.style.width=(rn.w*nowX*100)+'%';track.appendChild(b);});
+    // at-now live loop bar
+    if(d.trigger==='loop'){const lv=document.createElement('div');
+      lv.className='lp-live'+(d.running?'':' paused');
+      lv.style.left=(nowX*100-3)+'%';lv.style.width='6%';track.appendChild(lv);}
+    // future scheduled ticks (right of now)
+    if(d.trigger==='schedule'){
+      const positions=[0.10,0.45,0.80]; const labels=[humanFire(d),'+1','+2'];
+      positions.forEach((pp,idx)=>{const tk=document.createElement('div');
+        tk.className='lp-tick'+(idx===0&&d.enabled?' next':'')+(d.enabled?'':' off');
+        tk.style.left=((nowX+(1-nowX)*pp)*100)+'%';
+        tk.innerHTML=`<i></i><span>${idx===0?labels[0]:''}</span>`;
+        tk.dataset.id=d.id; track.appendChild(tk);});
+    }
+    const lbl=document.createElement('div');lbl.className='lbl';
+    lbl.textContent=d.repo.split('/')[1];
+    lane.appendChild(lbl);lane.appendChild(track);timeline.appendChild(lane);
+  });
+  // now line
+  const now=document.createElement('div');now.className='lp-now';now.style.left=(nowX*100)+'%';
+  const cap=document.createElement('div');cap.className='lp-nowcap';cap.style.left=(nowX*100)+'%';cap.textContent='now';
+  timeline.appendChild(now);timeline.appendChild(cap);
+  // axis
+  const axis=document.createElement('div');axis.className='lp-axis';
+  [['−1h',0.10],['−30m',0.36],['now',nowX],['+30m',0.80],['+1h',0.94]].forEach(([t,x])=>{
+    const s=document.createElement('span');s.style.left=(x*100)+'%';s.textContent=t;axis.appendChild(s);});
+  timeline.appendChild(axis);
+}
+
+// fire a schedule on the timeline when its countdown elapses
+function timelineFire(d){
+  const nowX=0.62;
+  const lanes=[...timeline.querySelectorAll('.lp-lane')];
+  const idx=D.indexOf(d); const lane=lanes[idx]; if(!lane)return;
+  const track=lane.querySelector('.lp-track');
+  const fl=document.createElement('div');fl.className='lp-flash';fl.style.left=(nowX*100)+'%';
+  track.appendChild(fl);setTimeout(()=>fl.remove(),800);
+  const b=document.createElement('div');b.className='lp-run ok';
+  b.style.left=(nowX*100-2)+'%';b.style.width='2%';b.style.opacity='0';
+  track.appendChild(b);requestAnimationFrame(()=>{b.style.transition='opacity .6s';b.style.opacity='.85';});
+}
+
+function fitForge(){const dpr=Math.min(window.devicePixelRatio||1,2);
+  fCanvas.width=104*dpr;fCanvas.height=104*dpr;fctx.setTransform(dpr,0,0,dpr,0,0);}
+function paintForge(now){const t=now/1000;fctx.clearRect(0,0,104,104);
+  const warm=sel.running===false?0.05:(0.3+sel.activity*0.6);
+  paintSphere(fctx,52,52,30,PHASE[sel.phase],warm,t);
+  document.getElementById('fPhase').textContent=sel.phase;
+  document.getElementById('fPhase').style.color=PHASE[sel.phase];
+  document.getElementById('fGoal').textContent=sel.goal;
+  const meta = sel.trigger==='loop'
+    ? `<span>↻ <b>loop</b></span><span class="warm">${Math.round(sel.activity*90)} tok/s</span><span class="cool">${Math.round(sel.pressure*100)}% ctx</span>`
+    : `<span>◷ <b>schedule</b></span><span>${sel.cron}</span><span class="cool">${humanFire(sel)}</span>`;
+  document.getElementById('fMeta').innerHTML=meta;
+}
+
+/* ================= shared clock ================= */
+let last=performance.now();
+setInterval(()=>{
+  // tick schedule countdowns (drives both views' labels + fires)
+  D.forEach(d=>{if(d.trigger==='schedule'&&d.enabled&&!REDUCED){
+    if(d.id==='metrics'){ d.fireIn-=1; if(d.fireIn<=0){ if(active==='B')timelineFire(d); d.fireIn=d.interval; } }
+  }});
+  if(active==='B') buildTimeline();
+},1000);
+
+function loopForge(now){ if(active==='B') paintForge(now);
+  if(!REDUCED) requestAnimationFrame(loopForge); }
+
+/* ================= boot ================= */
+function boot(){
+  fitRing();fitForge();
+  // seed loop radii
+  loops.forEach(L=>{L.rad=Rcore+(Rign-Rcore)*0.6;});
+  buildRail();paintForge(performance.now());
+  if(REDUCED){drawRing(performance.now());paintForge(performance.now());}
+  else{requestAnimationFrame(drawRing);requestAnimationFrame(loopForge);}
+}
+window.addEventListener('load',boot);
+setTimeout(()=>{if(!RW)boot();},60);
+</script>
+</body>
+</html>
