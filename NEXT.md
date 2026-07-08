@@ -1,5 +1,48 @@
 # Next — Loop-Stack UI (net-new frontend work)
 
+## NEXT_SESSION_PROMPT (read this first)
+
+UI-2 (PR #64) has been **audited and verified** — see `docs/ui/UI-2-VV-report.md`
+for the full go/no-go and evidence. Verdict: **GO for the backend phase.**
+Nothing in the shipped UI needed fixing; the audit closed three test-coverage
+gaps (`stack.test.ts` 103→121) and found two things worth deciding before or
+during the backend sprint, neither of which blocks starting it:
+
+1. **Budget badge honesty** — `StackConnector.svelte` renders a
+   `⏸ budget 200k`-style badge that visually reads as an enforced limit;
+   nothing enforces it (confirmed absent from `cardToTaskPayload`'s output).
+   Decide: hide it until a real budget field exists, or restyle it to read
+   as unenforced intent (dashed border + explicit "(not enforced)", matching
+   how the evals popover already avoids implying pass/fail).
+2. **CI's Wall-2/Wall-3 gates are mostly soft-fail** (`continue-on-error`
+   on cargo audit/deny/coverage/rustdoc, and even Wall-3's own "fail if
+   BLOCKER" step) — pre-existing, repo-wide, unrelated to UI-2. Worth a
+   deliberate decision on when to flip these to hard-fail, independent of
+   this UI work.
+
+The actual backend blockers UI-2 was built against (unchanged by the audit):
+
+- **Pause/drain/bump signals** — unblocks `RunMenu`'s four actions (Run
+  now/Run once/Schedule stack/Dry run) and the `.runmain` "run stack"
+  button, all still stubs. Only `kill` (cancel) exists anywhere today.
+- **Per-card `taskId` assignment** — the moment a card is actually submitted
+  as a task (folds into the pause/drain/bump work above, since "run this
+  card" is that same signal), `StackOutput` lights up for real with zero
+  further UI work — it's already wired to the genuine per-`task_id`
+  `stores/transcript.ts` feed, confirmed structurally unreachable today only
+  because no card ever gets a real `taskId` (verified by grep: nothing
+  outside `duplicateCard`'s explicit reset ever touches `card.taskId`).
+- **Per-card `AgentEvent` routing** — same underlying gap as above, restated
+  from the UI-2 brief's own §3: no card/stack-id tag exists on any event
+  variant, every variant still keys on `task_id` alone.
+- If "Schedule stack" gets wired as part of this sprint, it needs a
+  `cardToTaskPayload`-equivalent mapping into the real `ScheduleBody` shape
+  (`{name, cron, goal, repo, priority, enabled}`) — `StackCard` has no
+  `name` field yet, so that's a small design decision to make first (see
+  escalation §4.3 in the V&V report).
+
+## Prior sprint history
+
 Sprint 5 (Expose Loop Fields on `CreateTaskRequest`) shipped: `POST /api/tasks`
 now accepts `verifier_required`/`verifier_model`/`verifier_effort`, `report`,
 `max_iterations` (`0` = infinite), and new `Task.model`/`Task.effort`

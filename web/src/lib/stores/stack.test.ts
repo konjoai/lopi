@@ -305,6 +305,66 @@ eq(computeNextRuns('not a cron', new Date(), 3), [], 'a malformed cron expressio
   eqIs(payload.options.until, 'cargo test', 'enabled until carries its command');
   eqIs(payload.options.on_fail, 'backoff', 'payload carries the chosen on_fail policy');
 }
+{
+  // `until` off is never exercised above (that test only checks `gate`'s
+  // off-state) — a regression that swapped the two guardrail fields would
+  // slip past it.
+  const defaults = { model: 'sonnet', effort: 'medium', repo: 'konjoai/lopi' };
+  const untilOff = buildCard('x');
+  eqIs(cardToTaskPayload(untilOff, defaults).options.until, undefined, 'until is omitted when its guardrail toggle is off');
+}
+
+// ── V&V: table-driven WIRED round-trip (§C) — one non-default value per WIRED
+// field, asserting it lands correctly in CreateTaskOptions and that no WIRED
+// field is silently dropped or renamed. `maxIterations: 0` (the ∞ sentinel)
+// gets its own row since it's the one value JS falsy-coercion bugs love to
+// eat (`0 ?? default` is fine; `0 || default` would silently swap it out —
+// this table would catch that class of regression).
+{
+  const defaults = { model: 'sonnet', effort: 'medium', repo: 'konjoai/lopi' };
+  type Row = { name: string; apply: (c: StackCard) => void; field: string; expected: unknown };
+  const rows: Row[] = [
+    { name: 'model override', apply: (c) => (c.config.model = 'claude-opus-4-8'), field: 'model', expected: 'claude-opus-4-8' },
+    { name: 'effort override', apply: (c) => (c.config.effort = 'high'), field: 'effort', expected: 'high' },
+    { name: 'repo override', apply: (c) => (c.config.repo = 'konjoai/squish'), field: 'repo', expected: 'konjoai/squish' },
+    { name: 'gate on', apply: (c) => (c.guardrails = { ...c.guardrails, gate: true, gateCmd: './gate.sh' }), field: 'gate', expected: './gate.sh' },
+    { name: 'until on', apply: (c) => (c.guardrails = { ...c.guardrails, until: true, untilCmd: 'exit 0' }), field: 'until', expected: 'exit 0' },
+    { name: 'on_fail continue', apply: (c) => (c.guardrails = { ...c.guardrails, onFail: 'continue' }), field: 'on_fail', expected: 'continue' },
+    { name: 'on_fail backoff', apply: (c) => (c.guardrails = { ...c.guardrails, onFail: 'backoff' }), field: 'on_fail', expected: 'backoff' },
+    { name: 'maxIterations finite override (7)', apply: (c) => (c.maxIterations = 7), field: 'max_iterations', expected: 7 },
+    { name: 'maxIterations infinite sentinel (0)', apply: (c) => (c.maxIterations = 0), field: 'max_iterations', expected: 0 }
+  ];
+  for (const row of rows) {
+    const c = buildCard('table-driven row');
+    row.apply(c);
+    const payload = cardToTaskPayload(c, defaults);
+    const actual =
+      row.field === 'repo'
+        ? payload.repo
+        : (payload.options as unknown as Record<string, unknown>)[row.field];
+    eqIs(actual, row.expected, `WIRED round-trip: ${row.name} → options.${row.field}`);
+  }
+  // Key-name completeness: a field silently renamed (e.g. `onFail` leaking
+  // through unconverted instead of `on_fail`) would pass every value-level
+  // assertion above yet still be wrong — assert the actual key set.
+  const fullyGuarded = buildCard('x');
+  fullyGuarded.guardrails = { gate: true, gateCmd: 'g', until: true, untilCmd: 'u', onFail: 'stop', budget: 'auto' };
+  const keys = Object.keys(cardToTaskPayload(fullyGuarded, defaults).options).sort();
+  eq(keys, ['effort', 'gate', 'max_iterations', 'model', 'on_fail', 'until'], 'options carries exactly the expected WIRED key names — no silent rename/drop');
+}
+
+// ── V&V: schedule cron never "snaps" a custom expression to a preset (§C) ────
+// `freq` is explicit UI state set by the popover (never inferred from
+// `raw`), so a raw cron that happens to numerically match a preset's shape
+// must still read as "custom cron" — there is no reverse-detection logic to
+// regress. `buildCronString`'s existing "custom cron passes raw through"
+// test covers the forward (preset→string) direction; this covers the
+// human-echo side of "stays custom, never snaps."
+eqIs(
+  cronHuman({ ...defaultCron(), freq: 'custom', raw: '0 2 * * *' }),
+  'custom cron',
+  'a custom-flagged cron that happens to match the daily preset\'s shape still echoes as "custom cron", never snaps to "every day at..."'
+);
 
 // ── pane-keyed dispatch (the pre-flight's stack.insert(stackKey, index, loop)) ─
 {
@@ -323,6 +383,29 @@ eq(computeNextRuns('not a cron', new Date(), 3), [], 'a malformed cron expressio
   const state = [pane('s1', [card('a'), card('b')])];
   const removed = applyToPaneCards(state, 's1', (cards) => cards.filter((c) => c.id !== 'a'));
   eq(removed[0].cards.map((c) => c.id), ['b'], 'applyToPaneCards composes with any pure card-list op');
+}
+
+// ── V&V: reorder is provably within-pane only (StackConnector §B) ────────────
+// `reorderInPaneRelative`/`reorderInPane` (the writable-store wrappers) both
+// compose `applyToPaneCards(state, key, ...)` with a single `key` — there is
+// no exported op that even accepts two different pane keys, so a cross-pane
+// reorder is not just untested, it's inexpressible through this API. These
+// tests exercise that same composition (`applyToPaneCards` + `reorderCard`/
+// `moveCardBeforeOrAfter`, exactly what the store wrappers call) end to end,
+// closing the "pane keys stable across ops" gap the V&V audit flagged.
+{
+  const state = [pane('s1', [card('a'), card('b'), card('c')]), pane('s2', [card('x'), card('y')])];
+  const reordered = applyToPaneCards(state, 's1', (cards) => reorderCard(cards, 0, 2));
+  eq(reordered[0].cards.map((c) => c.id), ['b', 'c', 'a'], 'reorder via applyToPaneCards affects only the named pane');
+  eq(reordered[1].cards.map((c) => c.id), ['x', 'y'], 'reorder on s1 leaves s2 completely untouched');
+  ok(reordered[1] === state[1], 's2 keeps its object identity across an s1-only reorder');
+}
+{
+  const state = [pane('s1', [card('a'), card('b')]), pane('s2', [card('x'), card('y'), card('z')])];
+  const dragged = applyToPaneCards(state, 's2', (cards) => moveCardBeforeOrAfter(cards, 2, 0, true));
+  eq(dragged[1].cards.map((c) => c.id), ['z', 'x', 'y'], 'drag-relative reorder via applyToPaneCards affects only the named pane');
+  eq(dragged[0].cards.map((c) => c.id), ['a', 'b'], 'drag-relative reorder on s2 leaves s1 completely untouched');
+  ok(dragged[0] === state[0], 's1 keeps its object identity across an s2-only drag reorder');
 }
 
 namedSummary('stack');
