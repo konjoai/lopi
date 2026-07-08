@@ -26,6 +26,7 @@
 
 use super::AgentRunner;
 use crate::api_client::LOPI_SYSTEM_PROMPT;
+use crate::prompt::build_user_prompt;
 use anyhow::{Context, Result};
 use chrono::Utc;
 use lopi_core::{AgentEvent, TurnMetrics};
@@ -193,88 +194,10 @@ impl AgentRunner {
     }
 }
 
-/// Render the user prompt the API client sends with the cached system
-/// prompt. Keeps it small and deterministic so prompt caching hits.
-fn build_user_prompt(
-    task: &lopi_core::Task,
-    last_error: Option<&str>,
-    lessons: &[String],
-) -> String {
-    let mut parts = Vec::with_capacity(6);
-    parts.push(format!("# Task\n{}", task.goal));
-
-    if !task.constraints.is_empty() {
-        parts.push(format!(
-            "\n# Constraints\n- {}",
-            task.constraints.join("\n- ")
-        ));
-    }
-    if !task.allowed_dirs.is_empty() {
-        parts.push(format!(
-            "\n# Allowed dirs\n- {}",
-            task.allowed_dirs.join("\n- ")
-        ));
-    }
-    if !task.forbidden_dirs.is_empty() {
-        parts.push(format!(
-            "\n# Forbidden dirs\n- {}",
-            task.forbidden_dirs.join("\n- ")
-        ));
-    }
-    if !lessons.is_empty() {
-        parts.push(format!(
-            "\n# Lessons from past patterns\n- {}",
-            lessons.join("\n- ")
-        ));
-    }
-    if let Some(err) = last_error {
-        parts.push(format!(
-            "\n# Previous attempt failed\nAnalyze this error and adjust your approach:\n{}",
-            err
-        ));
-    }
-    parts.push(
-        "\nProduce a concise step-by-step plan to complete this task. \
-         Each step should be a single edit or shell command."
-            .to_string(),
-    );
-
-    parts.join("\n")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lopi_core::{Priority, Task, TaskSource};
-
-    fn task_with(goal: &str, constraints: Vec<String>) -> Task {
-        Task {
-            id: lopi_core::TaskId::new(),
-            goal: goal.into(),
-            constraints,
-            allowed_dirs: vec!["src/".into()],
-            forbidden_dirs: vec![".github/".into()],
-            priority: Priority::Normal,
-            max_retries: 3,
-            created_at: Utc::now(),
-            source: TaskSource::Cli,
-            repo_path: None,
-            output_schema: None,
-            tools: Vec::new(),
-            required_capabilities: Vec::new(),
-            rubric: None,
-            topology: None,
-            require_plan_approval: false,
-            autonomy_level: Default::default(),
-            report: None,
-            verifier_required: false,
-            verifier_model: None,
-            verifier_effort: None,
-            model: None,
-            effort: None,
-            max_iterations: None,
-        }
-    }
+    use crate::test_support::make_test_task as task_with;
 
     #[test]
     fn user_prompt_includes_goal() {

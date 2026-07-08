@@ -244,6 +244,29 @@ mod tests {
         format!("sha256={}", hex::encode(result))
     }
 
+    /// POST `body` to `/webhook/github` as the given event type (and,
+    /// optionally, a precomputed `X-Hub-Signature-256` header) and return the
+    /// response. Shared by every handler test so the request-construction
+    /// boilerplate is written once.
+    async fn post_webhook(
+        app: Router,
+        event: &str,
+        body: impl Into<Vec<u8>>,
+        sig: Option<&str>,
+    ) -> axum::response::Response {
+        let mut req = Request::builder()
+            .method("POST")
+            .uri("/webhook/github")
+            .header("X-GitHub-Event", event)
+            .header("Content-Type", "application/json");
+        if let Some(s) = sig {
+            req = req.header("X-Hub-Signature-256", s);
+        }
+        app.oneshot(req.body(Body::from(body.into())).unwrap())
+            .await
+            .unwrap()
+    }
+
     fn make_test_router(secret: Option<&str>) -> Router {
         let queue = TaskQueue::new();
         let state = WebhookState {
@@ -306,18 +329,7 @@ mod tests {
             "workflow_run": { "conclusion": "failure" }
         });
         let body_bytes = serde_json::to_vec(&body).unwrap();
-        let resp = app
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/webhook/github")
-                    .header("X-GitHub-Event", "workflow_run")
-                    .header("Content-Type", "application/json")
-                    .body(Body::from(body_bytes))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let resp = post_webhook(app, "workflow_run", body_bytes, None).await;
         assert_eq!(resp.status(), StatusCode::OK);
     }
 
@@ -331,19 +343,7 @@ mod tests {
         });
         let body_bytes = serde_json::to_vec(&body).unwrap();
         let sig = make_signature(secret.as_bytes(), &body_bytes);
-        let resp = app
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/webhook/github")
-                    .header("X-GitHub-Event", "workflow_run")
-                    .header("Content-Type", "application/json")
-                    .header("X-Hub-Signature-256", sig)
-                    .body(Body::from(body_bytes))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let resp = post_webhook(app, "workflow_run", body_bytes, Some(&sig)).await;
         assert_eq!(resp.status(), StatusCode::OK);
     }
 
@@ -356,19 +356,7 @@ mod tests {
         });
         let body_bytes = serde_json::to_vec(&body).unwrap();
         let bad_sig = make_signature(b"wrong_secret", &body_bytes);
-        let resp = app
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/webhook/github")
-                    .header("X-GitHub-Event", "workflow_run")
-                    .header("Content-Type", "application/json")
-                    .header("X-Hub-Signature-256", bad_sig)
-                    .body(Body::from(body_bytes))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let resp = post_webhook(app, "workflow_run", body_bytes, Some(&bad_sig)).await;
         assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
     }
 
@@ -382,18 +370,7 @@ mod tests {
             "pull_request": { "title": "feat: add new feature" }
         });
         let body_bytes = serde_json::to_vec(&body).unwrap();
-        let resp = app
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/webhook/github")
-                    .header("X-GitHub-Event", "pull_request_review")
-                    .header("Content-Type", "application/json")
-                    .body(Body::from(body_bytes))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let resp = post_webhook(app, "pull_request_review", body_bytes, None).await;
         assert_eq!(resp.status(), StatusCode::OK);
     }
 
@@ -407,18 +384,7 @@ mod tests {
             "pull_request": { "title": "feat: nice work" }
         });
         let body_bytes = serde_json::to_vec(&body).unwrap();
-        let resp = app
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/webhook/github")
-                    .header("X-GitHub-Event", "pull_request_review")
-                    .header("Content-Type", "application/json")
-                    .body(Body::from(body_bytes))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let resp = post_webhook(app, "pull_request_review", body_bytes, None).await;
         assert_eq!(resp.status(), StatusCode::OK);
     }
 
@@ -430,36 +396,14 @@ mod tests {
             "workflow_run": { "conclusion": "success" }
         });
         let body_bytes = serde_json::to_vec(&body).unwrap();
-        let resp = app
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/webhook/github")
-                    .header("X-GitHub-Event", "workflow_run")
-                    .header("Content-Type", "application/json")
-                    .body(Body::from(body_bytes))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let resp = post_webhook(app, "workflow_run", body_bytes, None).await;
         assert_eq!(resp.status(), StatusCode::OK);
     }
 
     #[tokio::test]
     async fn invalid_json_returns_400() {
         let app = make_test_router(None);
-        let resp = app
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/webhook/github")
-                    .header("X-GitHub-Event", "workflow_run")
-                    .header("Content-Type", "application/json")
-                    .body(Body::from("not valid json!!!"))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let resp = post_webhook(app, "workflow_run", "not valid json!!!", None).await;
         assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     }
 
@@ -471,18 +415,7 @@ mod tests {
             "workflow_run": { "conclusion": "timed_out" }
         });
         let body_bytes = serde_json::to_vec(&body).unwrap();
-        let resp = app
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/webhook/github")
-                    .header("X-GitHub-Event", "workflow_run")
-                    .header("Content-Type", "application/json")
-                    .body(Body::from(body_bytes))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let resp = post_webhook(app, "workflow_run", body_bytes, None).await;
         assert_eq!(resp.status(), StatusCode::OK);
     }
 
@@ -494,18 +427,7 @@ mod tests {
             "check_run": { "conclusion": "failure" }
         });
         let body_bytes = serde_json::to_vec(&body).unwrap();
-        let resp = app
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/webhook/github")
-                    .header("X-GitHub-Event", "check_run")
-                    .header("Content-Type", "application/json")
-                    .body(Body::from(body_bytes))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let resp = post_webhook(app, "check_run", body_bytes, None).await;
         assert_eq!(resp.status(), StatusCode::OK);
     }
 
@@ -519,18 +441,7 @@ mod tests {
             "pull_request": { "title": "feat: something" }
         });
         let body_bytes = serde_json::to_vec(&body).unwrap();
-        let resp = app
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/webhook/github")
-                    .header("X-GitHub-Event", "pull_request_review")
-                    .header("Content-Type", "application/json")
-                    .body(Body::from(body_bytes))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let resp = post_webhook(app, "pull_request_review", body_bytes, None).await;
         assert_eq!(resp.status(), StatusCode::OK);
     }
 }

@@ -39,33 +39,70 @@ async fn test_app_with_repo(repo: PathBuf) -> Router {
     build_app(state)
 }
 
+/// Build an app *and* return its `MemoryStore` handle, for tests that seed
+/// or assert on rows directly rather than only through the HTTP surface.
+/// `hydrate_tools` is a harmless no-op on a fresh in-memory store (a missing
+/// registry file is treated as empty), so it's always called here rather
+/// than only by the one caller that originally needed it.
+async fn test_app_with_store() -> (Router, lopi_memory::MemoryStore) {
+    let store = lopi_memory::MemoryStore::open_in_memory().await.unwrap();
+    let bus: EventBus<AgentEvent> = EventBus::new(16);
+    let queue = TaskQueue::new();
+    let pool = Arc::new(AgentPool::new(
+        1,
+        PathBuf::from("."),
+        queue.clone(),
+        bus.clone(),
+    ));
+    let mut state = AppState::new(store.clone(), bus, queue, pool, None);
+    state.hydrate_tools().await.ok();
+    (build_app(state), store)
+}
+
+/// GET `uri` against `app` and return the response. Shared by every
+/// read-only endpoint test in this module (and `tests_extended.rs`,
+/// `include!`-ed into this same module). Named `get_req`, not `get`, since
+/// several tests already bind a local `let get = ...`.
+async fn get_req(app: Router, uri: &str) -> axum::response::Response {
+    app.oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap())
+        .await
+        .unwrap()
+}
+
+/// Send `method` to `uri` against `app` with an optional pre-serialized JSON
+/// `body` (`Content-Type: application/json` is set automatically when a
+/// body is given), and return the response. Shared by every mutating
+/// endpoint test. Takes an already-serialized `String` rather than a
+/// `Value` so call sites that build their payload via
+/// `serde_json::to_string(&json!({..}))` can pass it straight through.
+async fn send_req(
+    app: Router,
+    method: &str,
+    uri: &str,
+    body: Option<String>,
+) -> axum::response::Response {
+    let builder = Request::builder().method(method).uri(uri);
+    let (builder, payload) = match body {
+        Some(s) => (
+            builder.header("Content-Type", "application/json"),
+            Body::from(s),
+        ),
+        None => (builder, Body::empty()),
+    };
+    app.oneshot(builder.body(payload).unwrap()).await.unwrap()
+}
+
 #[tokio::test]
 async fn health_returns_200() {
     let app = test_app().await;
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .uri("/api/health")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+    let resp = get_req(app, "/api/health").await;
     assert_eq!(resp.status(), StatusCode::OK);
 }
 
 #[tokio::test]
 async fn stats_returns_200_with_required_fields() {
     let app = test_app().await;
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .uri("/api/stats")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+    let resp = get_req(app, "/api/stats").await;
     assert_eq!(resp.status(), StatusCode::OK);
     let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
         .await
@@ -78,15 +115,7 @@ async fn stats_returns_200_with_required_fields() {
 #[tokio::test]
 async fn tasks_list_returns_200() {
     let app = test_app().await;
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .uri("/api/tasks")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+    let resp = get_req(app, "/api/tasks").await;
     assert_eq!(resp.status(), StatusCode::OK);
     let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
         .await
@@ -98,15 +127,7 @@ async fn tasks_list_returns_200() {
 #[tokio::test]
 async fn metrics_returns_prometheus_text() {
     let app = test_app().await;
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .uri("/metrics")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+    let resp = get_req(app, "/metrics").await;
     assert_eq!(resp.status(), StatusCode::OK);
     let ct = resp
         .headers()
@@ -124,15 +145,7 @@ async fn metrics_returns_prometheus_text() {
 #[tokio::test]
 async fn tools_list_returns_empty_by_default() {
     let app = test_app().await;
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .uri("/api/tools")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+    let resp = get_req(app, "/api/tools").await;
     assert_eq!(resp.status(), StatusCode::OK);
     let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
         .await
@@ -153,29 +166,10 @@ async fn tools_register_then_get_round_trip() {
         "updated_at": chrono::Utc::now(),
     }))
     .unwrap();
-    let post = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/tools")
-                .header("Content-Type", "application/json")
-                .body(Body::from(body))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+    let post = send_req(app.clone(), "POST", "/api/tools", Some(body)).await;
     assert_eq!(post.status(), StatusCode::CREATED);
 
-    let get = app
-        .oneshot(
-            Request::builder()
-                .uri("/api/tools/test-search")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+    let get = get_req(app, "/api/tools/test-search").await;
     assert_eq!(get.status(), StatusCode::OK);
     let bytes = axum::body::to_bytes(get.into_body(), usize::MAX)
         .await
@@ -188,15 +182,7 @@ async fn tools_register_then_get_round_trip() {
 #[tokio::test]
 async fn constellation_list_empty_by_default() {
     let app = test_app().await;
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .uri("/api/constellations")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+    let resp = get_req(app, "/api/constellations").await;
     assert_eq!(resp.status(), StatusCode::OK);
     let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
         .await
@@ -235,18 +221,7 @@ async fn constellation_register_then_dispatch_round_trip() {
         "created_at": chrono::Utc::now(),
     }))
     .unwrap();
-    let create = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/constellations")
-                .header("Content-Type", "application/json")
-                .body(Body::from(create_body))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+    let create = send_req(app.clone(), "POST", "/api/constellations", Some(create_body)).await;
     assert_eq!(create.status(), StatusCode::CREATED);
 
     let disp = app
@@ -273,15 +248,7 @@ async fn constellation_register_then_dispatch_round_trip() {
 #[tokio::test]
 async fn cache_stats_returns_zero_for_empty_store() {
     let app = test_app().await;
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .uri("/api/cache/stats")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+    let resp = get_req(app, "/api/cache/stats").await;
     assert_eq!(resp.status(), StatusCode::OK);
     let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
         .await
@@ -296,16 +263,7 @@ async fn cache_stats_returns_zero_for_empty_store() {
 #[tokio::test]
 async fn clear_cache_returns_deleted_zero_when_empty() {
     let app = test_app().await;
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .method("DELETE")
-                .uri("/api/cache")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+    let resp = send_req(app, "DELETE", "/api/cache", None).await;
     assert_eq!(resp.status(), StatusCode::OK);
     let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
         .await
@@ -317,16 +275,7 @@ async fn clear_cache_returns_deleted_zero_when_empty() {
 #[tokio::test]
 async fn invalidate_agent_cache_returns_zero_for_unknown() {
     let app = test_app().await;
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .method("DELETE")
-                .uri("/api/cache/agent/never-existed")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+    let resp = send_req(app, "DELETE", "/api/cache/agent/never-existed", None).await;
     assert_eq!(resp.status(), StatusCode::OK);
     let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
         .await
@@ -339,30 +288,14 @@ async fn invalidate_agent_cache_returns_zero_for_unknown() {
 #[tokio::test]
 async fn tools_get_unknown_returns_404() {
     let app = test_app().await;
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .uri("/api/tools/never-registered")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+    let resp = get_req(app, "/api/tools/never-registered").await;
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
 async fn patterns_returns_200() {
     let app = test_app().await;
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .uri("/api/patterns")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+    let resp = get_req(app, "/api/patterns").await;
     assert_eq!(resp.status(), StatusCode::OK);
     let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
         .await
@@ -374,15 +307,7 @@ async fn patterns_returns_200() {
 #[tokio::test]
 async fn auth_rejects_missing_token() {
     let app = test_app_with_auth(Some("secret-token")).await;
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .uri("/api/health")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+    let resp = get_req(app, "/api/health").await;
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 }
 
@@ -426,17 +351,7 @@ async fn create_task_rejects_oversized_goal() {
         "goal": long_goal,
     }))
     .unwrap();
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/tasks")
-                .header("Content-Type", "application/json")
-                .body(Body::from(body))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+    let resp = send_req(app, "POST", "/api/tasks", Some(body)).await;
     assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
 }
 
@@ -447,17 +362,7 @@ async fn create_task_accepts_valid_goal() {
         "goal": "fix the flaky test",
     }))
     .unwrap();
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/tasks")
-                .header("Content-Type", "application/json")
-                .body(Body::from(body))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+    let resp = send_req(app, "POST", "/api/tasks", Some(body)).await;
     assert_eq!(resp.status(), StatusCode::CREATED);
 }
 
@@ -469,17 +374,7 @@ async fn create_task_with_priority_returns_201() {
         "priority": "high",
     }))
     .unwrap();
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/tasks")
-                .header("Content-Type", "application/json")
-                .body(Body::from(body))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+    let resp = send_req(app, "POST", "/api/tasks", Some(body)).await;
     assert_eq!(resp.status(), StatusCode::CREATED);
     let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
         .await
@@ -501,17 +396,7 @@ async fn create_task_with_all_options_returns_201() {
         "max_retries": 5,
     }))
     .unwrap();
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/tasks")
-                .header("Content-Type", "application/json")
-                .body(Body::from(body))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+    let resp = send_req(app, "POST", "/api/tasks", Some(body)).await;
     assert_eq!(resp.status(), StatusCode::CREATED);
 }
 
@@ -531,17 +416,7 @@ async fn create_task_with_loop_fields_returns_201() {
         "effort": "low",
     }))
     .unwrap();
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/tasks")
-                .header("Content-Type", "application/json")
-                .body(Body::from(body))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+    let resp = send_req(app, "POST", "/api/tasks", Some(body)).await;
     assert_eq!(resp.status(), StatusCode::CREATED);
 }
 
@@ -553,17 +428,7 @@ async fn create_task_rejects_unreachable_report_channel() {
         "report": "whatsapp",
     }))
     .unwrap();
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/tasks")
-                .header("Content-Type", "application/json")
-                .body(Body::from(body))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+    let resp = send_req(app, "POST", "/api/tasks", Some(body)).await;
     assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
     let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
         .await
@@ -663,17 +528,7 @@ async fn checkpoint_agent_persists_row_returns_201() {
         "repo_path": "/tmp/repo",
     }))
     .unwrap();
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri(format!("/api/agents/{task_uuid}/checkpoint"))
-                .header("Content-Type", "application/json")
-                .body(Body::from(body))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+    let resp = send_req(app, "POST", &format!("/api/agents/{task_uuid}/checkpoint"), Some(body)).await;
     assert_eq!(resp.status(), StatusCode::CREATED);
     let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
         .await
@@ -690,33 +545,14 @@ async fn checkpoint_agent_persists_row_returns_201() {
 async fn checkpoint_agent_rejects_non_uuid_returns_400() {
     let app = test_app().await;
     let body = serde_json::to_string(&serde_json::json!({"state": "planning"})).unwrap();
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/agents/not-a-uuid/checkpoint")
-                .header("Content-Type", "application/json")
-                .body(Body::from(body))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+    let resp = send_req(app, "POST", "/api/agents/not-a-uuid/checkpoint", Some(body)).await;
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]
 async fn get_task_not_found_returns_404() {
     let app = test_app().await;
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .method("GET")
-                .uri("/api/tasks/nonexistent-task-id")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+    let resp = get_req(app, "/api/tasks/nonexistent-task-id").await;
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
     let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
         .await
@@ -728,31 +564,14 @@ async fn get_task_not_found_returns_404() {
 #[tokio::test]
 async fn cancel_task_not_found_returns_404() {
     let app = test_app().await;
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .method("DELETE")
-                .uri("/api/tasks/nonexistent-task-id")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+    let resp = send_req(app, "DELETE", "/api/tasks/nonexistent-task-id", None).await;
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
 async fn plans_returns_four_tiers() {
     let app = test_app().await;
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .uri("/api/plans")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+    let resp = get_req(app, "/api/plans").await;
     assert_eq!(resp.status(), StatusCode::OK);
     let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
         .await
@@ -767,15 +586,7 @@ async fn plans_returns_four_tiers() {
 #[tokio::test]
 async fn plans_response_has_required_fields() {
     let app = test_app().await;
-    let resp = app
-        .oneshot(
-            Request::builder()
-                .uri("/api/plans")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+    let resp = get_req(app, "/api/plans").await;
     let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
         .await
         .unwrap();

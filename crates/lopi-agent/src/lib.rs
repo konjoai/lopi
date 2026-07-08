@@ -15,12 +15,15 @@ pub mod dag;
 mod dag_rows;
 /// Pattern enrichment from memory history.
 pub mod pattern_enricher;
+mod prompt;
 /// Agent execution runner — plan, implement, test, score, retry.
 pub mod runner;
 /// Task scoring — test pass rate, lint, diff lines.
 pub mod scorer;
 /// Stability harness for reproducibility testing.
 pub mod stability;
+#[cfg(test)]
+mod test_support;
 /// Konjo Verifier — rubric-guided Opus second-score pass (Sprint S).
 pub mod verifier;
 

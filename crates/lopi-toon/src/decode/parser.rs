@@ -232,32 +232,7 @@ impl Parser<'_> {
                 let first_arr = self.parse_array_body(depth + 2, Some(&h))?;
                 obj.insert(key, first_arr);
                 // Remaining fields at depth+1
-                while let Some(next) = self.peek() {
-                    if next.depth != depth + 1 {
-                        break;
-                    }
-                    if next.content.starts_with("- ") || next.content == "-" {
-                        break;
-                    }
-                    let nc = next.content.clone();
-                    let nl = next.lineno;
-                    if let Some(h2) = try_parse_header(&nc) {
-                        let k2 = h2.key.clone().ok_or(ToonError::MissingColon(nl))?;
-                        self.pos += 1;
-                        let av = self.parse_array_body(depth + 2, Some(&h2))?;
-                        obj.insert(k2, av);
-                    } else if let Some((k, r)) = parse_key_rest(&nc) {
-                        self.pos += 1;
-                        if r.is_empty() {
-                            let v = self.parse_value_at(depth + 2, nl)?;
-                            obj.insert(k, v);
-                        } else {
-                            obj.insert(k, decode_primitive(r.trim(), nl)?);
-                        }
-                    } else {
-                        break;
-                    }
-                }
+                self.parse_remaining_object_fields(&mut obj, depth + 1)?;
                 items.push(Value::Object(obj));
                 continue;
             }
@@ -273,32 +248,7 @@ impl Parser<'_> {
                 };
                 obj.insert(k, first_val);
                 // More fields of this object at depth+1
-                while let Some(next) = self.peek() {
-                    if next.depth != depth + 1 {
-                        break;
-                    }
-                    if next.content.starts_with("- ") || next.content == "-" {
-                        break;
-                    }
-                    let nc = next.content.clone();
-                    let nl = next.lineno;
-                    if let Some(h2) = try_parse_header(&nc) {
-                        let k2 = h2.key.clone().ok_or(ToonError::MissingColon(nl))?;
-                        self.pos += 1;
-                        let av = self.parse_array_body(depth + 2, Some(&h2))?;
-                        obj.insert(k2, av);
-                    } else if let Some((k2, r2)) = parse_key_rest(&nc) {
-                        self.pos += 1;
-                        let v = if r2.is_empty() {
-                            self.parse_value_at(depth + 2, nl)?
-                        } else {
-                            decode_primitive(r2.trim(), nl)?
-                        };
-                        obj.insert(k2, v);
-                    } else {
-                        break;
-                    }
-                }
+                self.parse_remaining_object_fields(&mut obj, depth + 1)?;
                 items.push(Value::Object(obj));
                 continue;
             }
@@ -307,6 +257,45 @@ impl Parser<'_> {
             items.push(decode_primitive(rest, lineno)?);
         }
         Ok(Value::Array(items))
+    }
+
+    /// Continue populating `obj` with sibling `key: value` fields at
+    /// `field_depth`, stopping at the first line that isn't part of this
+    /// object (wrong depth, or a new `-` array item). Shared by both
+    /// object-item branches of `parse_array_body` above, which differ only
+    /// in how the object's first field was parsed.
+    fn parse_remaining_object_fields(
+        &mut self,
+        obj: &mut Map<String, Value>,
+        field_depth: usize,
+    ) -> Result<(), ToonError> {
+        while let Some(next) = self.peek() {
+            if next.depth != field_depth {
+                break;
+            }
+            if next.content.starts_with("- ") || next.content == "-" {
+                break;
+            }
+            let nc = next.content.clone();
+            let nl = next.lineno;
+            if let Some(h2) = try_parse_header(&nc) {
+                let k2 = h2.key.clone().ok_or(ToonError::MissingColon(nl))?;
+                self.pos += 1;
+                let av = self.parse_array_body(field_depth + 1, Some(&h2))?;
+                obj.insert(k2, av);
+            } else if let Some((k2, r2)) = parse_key_rest(&nc) {
+                self.pos += 1;
+                let v = if r2.is_empty() {
+                    self.parse_value_at(field_depth + 1, nl)?
+                } else {
+                    decode_primitive(r2.trim(), nl)?
+                };
+                obj.insert(k2, v);
+            } else {
+                break;
+            }
+        }
+        Ok(())
     }
 
     // Parse a value at the given depth (used when `key:` has no inline value).

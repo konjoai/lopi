@@ -7,26 +7,7 @@
  */
 import { describe } from './events';
 import type { AgentEvent } from '$lib/types';
-
-let pass = 0;
-let fail = 0;
-
-function eq(actual: unknown, expected: unknown, name: string) {
-  if (Object.is(actual, expected)) {
-    pass++;
-  } else {
-    fail++;
-    console.error(`✗ ${name}: expected ${expected}, got ${actual}`);
-  }
-}
-
-function truthy(v: unknown, name: string) {
-  if (v) pass++;
-  else {
-    fail++;
-    console.error(`✗ ${name}`);
-  }
-}
+import { eqIs as eq, ok as truthy, summary } from '$lib/test-harness';
 
 // ── tier mapping ──────────────────────────────────────────────────────────────
 eq(describe({ type: 'task_queued', task_id: 't', goal: 'g', priority: 'Normal' }).tier, 'info', 'queued is info');
@@ -95,5 +76,4 @@ truthy(
   'verifier summary surfaces the first gap'
 );
 
-console.log(`\n── Result: ${pass} passed, ${fail} failed ──`);
-if (fail > 0) process.exit(1);
+summary();

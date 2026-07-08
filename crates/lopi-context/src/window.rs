@@ -72,18 +72,7 @@ impl ContextWindow {
         let msg_id = msg.id;
 
         if self.token_pressure() > self.budget_threshold {
-            // usize→f32 precision loss is acceptable: token counts are rough budget estimates.
-            #[allow(
-                clippy::cast_precision_loss,
-                clippy::cast_possible_truncation,
-                clippy::cast_sign_loss
-            )]
-            let target = (self.token_budget as f32 * (self.budget_threshold - 0.1)) as usize;
-            if let Ok(stats) =
-                eviction::evict_to_budget(&mut self.turns, target, &mut self.current_tokens)
-            {
-                self.record(stats);
-            }
+            self.evict_toward_threshold();
         }
 
         if self.token_budget > 0 && self.current_tokens + msg_tokens > self.token_budget {
@@ -137,17 +126,7 @@ impl ContextWindow {
         #[allow(clippy::cast_precision_loss)]
         let pressure = (self.current_tokens + combined) as f32 / self.token_budget as f32;
         if self.token_budget > 0 && pressure > self.budget_threshold {
-            #[allow(
-                clippy::cast_precision_loss,
-                clippy::cast_possible_truncation,
-                clippy::cast_sign_loss
-            )]
-            let target = (self.token_budget as f32 * (self.budget_threshold - 0.1)) as usize;
-            if let Ok(stats) =
-                eviction::evict_to_budget(&mut self.turns, target, &mut self.current_tokens)
-            {
-                self.record(stats);
-            }
+            self.evict_toward_threshold();
         }
 
         if self.token_budget > 0 && self.current_tokens + combined > self.token_budget {
@@ -315,6 +294,23 @@ impl ContextWindow {
     #[must_use]
     pub fn eviction_log(&self) -> &[EvictionRecord] {
         &self.eviction_log
+    }
+
+    /// Evict turns until usage drops back to `budget_threshold - 0.1` — the
+    /// shared auto-evict-on-pressure step for both `push` and
+    /// `push_tool_pair`.
+    fn evict_toward_threshold(&mut self) {
+        // usize→f32 precision loss is acceptable: token counts are rough budget estimates.
+        #[allow(
+            clippy::cast_precision_loss,
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss
+        )]
+        let target = (self.token_budget as f32 * (self.budget_threshold - 0.1)) as usize;
+        if let Ok(stats) = eviction::evict_to_budget(&mut self.turns, target, &mut self.current_tokens)
+        {
+            self.record(stats);
+        }
     }
 
     fn record(&mut self, stats: EvictionStats) {

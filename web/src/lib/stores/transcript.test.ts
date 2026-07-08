@@ -6,26 +6,7 @@
  */
 import { appendEvent, MAX_BLOCKS, type TranscriptBlock } from './transcript';
 import type { AgentEvent } from '$lib/types';
-
-let pass = 0;
-let fail = 0;
-
-function eq(actual: unknown, expected: unknown, name: string) {
-  const a = JSON.stringify(actual);
-  const e = JSON.stringify(expected);
-  if (a === e) pass++;
-  else {
-    fail++;
-    console.error(`✗ ${name}: expected ${e}, got ${a}`);
-  }
-}
-function ok(cond: boolean, name: string) {
-  if (cond) pass++;
-  else {
-    fail++;
-    console.error(`✗ ${name}`);
-  }
-}
+import { eq, ok, namedSummary } from '$lib/test-harness';
 
 const ev = (e: Record<string, unknown>) => e as unknown as AgentEvent;
 const ID = 'task-1';
@@ -121,5 +102,4 @@ const fold = (blocks: TranscriptBlock[], e: AgentEvent) => appendEvent(blocks, e
   ok((b[b.length - 1] as { label: string }).label.includes(`p${MAX_BLOCKS + 49}`), 'newest block kept');
 }
 
-console.log(`\ntranscript: ${pass} passed, ${fail} failed`);
-if (fail > 0) process.exit(1);
+namedSummary('transcript');

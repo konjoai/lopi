@@ -13,19 +13,7 @@ import {
   MIN_PANES,
   MAX_PANES
 } from './layout-core';
-
-let pass = 0;
-let fail = 0;
-
-function eq(actual: unknown, expected: unknown, name: string) {
-  const a = JSON.stringify(actual);
-  const e = JSON.stringify(expected);
-  if (a === e) pass++;
-  else {
-    fail++;
-    console.error(`✗ ${name}: expected ${e}, got ${a}`);
-  }
-}
+import { eq, namedSummary } from '$lib/test-harness';
 
 // ── tileDims — the halves/thirds/quarters contract ───────────────────────────
 eq(tileDims(1), [1, 1], 'tileDims 1 → full');
@@ -98,5 +86,4 @@ const empty: ReadonlySet<string> = new Set();
   eq(r.newlyKnown, ['c'], 'overflow session still becomes known');
 }
 
-console.log(`\nlayout-core: ${pass} passed, ${fail} failed`);
-if (fail > 0) process.exit(1);
+namedSummary('layout-core');

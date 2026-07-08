@@ -20,6 +20,8 @@ pub mod loop_config;
 pub mod report;
 /// Structured output schema validation (JSON Schema subset).
 pub mod schema;
+/// Constant-time comparison for secrets (bearer tokens, webhook signatures).
+pub mod security;
 /// Self-prompting loop strategies — how an agent re-prompts itself on retry.
 pub mod self_prompt;
 /// Task definition, status, priority, and source types.
@@ -43,6 +45,7 @@ pub use schema::{
     schema_violations_inc, schema_violations_snapshot, validate as validate_schema,
     Violation as SchemaViolation, ViolationKind as SchemaViolationKind,
 };
+pub use security::constant_time_eq;
 pub use self_prompt::SelfPromptStrategy;
 pub use task::{Priority, Rubric, Task, TaskId, TaskSource, TaskStatus, VerifierVerdict};
 pub use template::{resolve as resolve_template, TemplateError};

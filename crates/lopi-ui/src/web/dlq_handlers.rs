@@ -43,11 +43,7 @@ pub(super) async fn list_dlq(
         }
         Err(e) => {
             tracing::warn!("list_dead_letters failed: {e}");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": format!("{e:#}")})),
-            )
-                .into_response()
+            dlq_internal_error(e)
         }
     }
 }
@@ -58,16 +54,8 @@ pub(super) async fn get_dlq(
 ) -> impl IntoResponse {
     match s.store.get_dead_letter(&id).await {
         Ok(Some(row)) => (StatusCode::OK, Json(dlq_to_json(row))).into_response(),
-        Ok(None) => (
-            StatusCode::NOT_FOUND,
-            Json(json!({"error": "dead-letter row not found"})),
-        )
-            .into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": format!("{e:#}")})),
-        )
-            .into_response(),
+        Ok(None) => dlq_not_found(),
+        Err(e) => dlq_internal_error(e),
     }
 }
 
@@ -80,20 +68,8 @@ pub(super) async fn retry_dlq(
 ) -> impl IntoResponse {
     let row = match s.store.take_dead_letter(&id).await {
         Ok(Some(r)) => r,
-        Ok(None) => {
-            return (
-                StatusCode::NOT_FOUND,
-                Json(json!({"error": "dead-letter row not found"})),
-            )
-                .into_response();
-        }
-        Err(e) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": format!("{e:#}")})),
-            )
-                .into_response();
-        }
+        Ok(None) => return dlq_not_found(),
+        Err(e) => return dlq_internal_error(e),
     };
 
     let mut task = Task::new(row.goal.clone());
@@ -122,17 +98,28 @@ pub(super) async fn delete_dlq(
 ) -> impl IntoResponse {
     match s.store.delete_dead_letter(&id).await {
         Ok(true) => (StatusCode::OK, Json(json!({"deleted": id}))).into_response(),
-        Ok(false) => (
-            StatusCode::NOT_FOUND,
-            Json(json!({"error": "dead-letter row not found"})),
-        )
-            .into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": format!("{e:#}")})),
-        )
-            .into_response(),
+        Ok(false) => dlq_not_found(),
+        Err(e) => dlq_internal_error(e),
     }
+}
+
+/// Shared 404 body for every dead-letter-queue handler keyed by row id.
+fn dlq_not_found() -> axum::response::Response {
+    (
+        StatusCode::NOT_FOUND,
+        Json(json!({"error": "dead-letter row not found"})),
+    )
+        .into_response()
+}
+
+/// Shared 500 body for a store-layer failure, formatted with the error's
+/// full context chain (`{:#}`).
+fn dlq_internal_error(e: impl std::fmt::Display) -> axum::response::Response {
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(json!({"error": format!("{e:#}")})),
+    )
+        .into_response()
 }
 
 fn dlq_to_json(row: lopi_memory::DeadLetterRow) -> Value {

@@ -178,6 +178,27 @@ mod tests {
         }
     }
 
+    /// Build a `ScheduleEntry` with a fixed nonexistent repo and no dir
+    /// overrides — shared by every `boot()` test in this module.
+    fn make_entry(
+        name: &str,
+        goal: &str,
+        cron: &str,
+        priority: &str,
+    ) -> lopi_core::ScheduleEntry {
+        lopi_core::ScheduleEntry {
+            name: name.to_string(),
+            repo: std::path::PathBuf::from("/tmp/nonexistent"),
+            goal: goal.to_string(),
+            cron: cron.to_string(),
+            priority: priority.to_string(),
+            allowed_dirs: vec![],
+            forbidden_dirs: vec![],
+            autonomy_level: Default::default(),
+            report: None,
+        }
+    }
+
     #[tokio::test]
     async fn boot_with_empty_entries_returns_scheduler() {
         use crate::pool::AgentPool;
@@ -197,24 +218,14 @@ mod tests {
     #[tokio::test]
     async fn boot_with_valid_entry_registers_job() {
         use crate::pool::AgentPool;
-        use lopi_core::{AgentEvent, EventBus, ScheduleEntry};
+        use lopi_core::{AgentEvent, EventBus};
         use std::path::PathBuf;
 
         let queue = crate::queue::TaskQueue::new();
         let bus: EventBus<AgentEvent> = EventBus::new(16);
         let pool = AgentPool::new(1, PathBuf::from("."), queue, bus);
 
-        let entry = ScheduleEntry {
-            name: "test-schedule".to_string(),
-            repo: PathBuf::from("/tmp/nonexistent"),
-            goal: "run tests".to_string(),
-            cron: "0 2 * * *".to_string(),
-            priority: "normal".to_string(),
-            allowed_dirs: vec![],
-            forbidden_dirs: vec![],
-            autonomy_level: Default::default(),
-            report: None,
-        };
+        let entry = make_entry("test-schedule", "run tests", "0 2 * * *", "normal");
 
         let result = boot(vec![entry], pool).await;
         assert!(result.is_ok(), "boot with valid entry should succeed");
@@ -225,24 +236,19 @@ mod tests {
     #[tokio::test]
     async fn boot_skips_invalid_cron_entry() {
         use crate::pool::AgentPool;
-        use lopi_core::{AgentEvent, EventBus, ScheduleEntry};
+        use lopi_core::{AgentEvent, EventBus};
         use std::path::PathBuf;
 
         let queue = crate::queue::TaskQueue::new();
         let bus: EventBus<AgentEvent> = EventBus::new(16);
         let pool = AgentPool::new(1, PathBuf::from("."), queue, bus);
 
-        let bad_entry = ScheduleEntry {
-            name: "bad-cron".to_string(),
-            repo: PathBuf::from("/tmp/nonexistent"),
-            goal: "do something".to_string(),
-            cron: "not a valid cron expression".to_string(),
-            priority: "normal".to_string(),
-            allowed_dirs: vec![],
-            forbidden_dirs: vec![],
-            autonomy_level: Default::default(),
-            report: None,
-        };
+        let bad_entry = make_entry(
+            "bad-cron",
+            "do something",
+            "not a valid cron expression",
+            "normal",
+        );
 
         // Invalid cron entry should be skipped, not cause boot to fail
         let result = boot(vec![bad_entry], pool).await;
@@ -282,7 +288,7 @@ mod tests {
     #[tokio::test]
     async fn boot_with_multiple_valid_entries() {
         use crate::pool::AgentPool;
-        use lopi_core::{AgentEvent, EventBus, ScheduleEntry};
+        use lopi_core::{AgentEvent, EventBus};
         use std::path::PathBuf;
 
         let queue = crate::queue::TaskQueue::new();
@@ -290,28 +296,8 @@ mod tests {
         let pool = AgentPool::new(2, PathBuf::from("."), queue, bus);
 
         let entries = vec![
-            ScheduleEntry {
-                name: "entry-1".to_string(),
-                repo: PathBuf::from("/tmp/nonexistent"),
-                goal: "task one".to_string(),
-                cron: "0 1 * * *".to_string(),
-                priority: "low".to_string(),
-                allowed_dirs: vec![],
-                forbidden_dirs: vec![],
-                autonomy_level: Default::default(),
-                report: None,
-            },
-            ScheduleEntry {
-                name: "entry-2".to_string(),
-                repo: PathBuf::from("/tmp/nonexistent"),
-                goal: "task two".to_string(),
-                cron: "0 2 * * *".to_string(),
-                priority: "critical".to_string(),
-                allowed_dirs: vec![],
-                forbidden_dirs: vec![],
-                autonomy_level: Default::default(),
-                report: None,
-            },
+            make_entry("entry-1", "task one", "0 1 * * *", "low"),
+            make_entry("entry-2", "task two", "0 2 * * *", "critical"),
         ];
 
         let result = boot(entries, pool).await;
@@ -323,7 +309,7 @@ mod tests {
     #[tokio::test]
     async fn boot_with_mixed_valid_invalid_entries() {
         use crate::pool::AgentPool;
-        use lopi_core::{AgentEvent, EventBus, ScheduleEntry};
+        use lopi_core::{AgentEvent, EventBus};
         use std::path::PathBuf;
 
         let queue = crate::queue::TaskQueue::new();
@@ -331,28 +317,8 @@ mod tests {
         let pool = AgentPool::new(2, PathBuf::from("."), queue, bus);
 
         let entries = vec![
-            ScheduleEntry {
-                name: "valid".to_string(),
-                repo: PathBuf::from("/tmp/nonexistent"),
-                goal: "run valid task".to_string(),
-                cron: "0 4 * * *".to_string(),
-                priority: "normal".to_string(),
-                allowed_dirs: vec![],
-                forbidden_dirs: vec![],
-                autonomy_level: Default::default(),
-                report: None,
-            },
-            ScheduleEntry {
-                name: "invalid".to_string(),
-                repo: PathBuf::from("/tmp/nonexistent"),
-                goal: "run invalid task".to_string(),
-                cron: "invalid cron".to_string(),
-                priority: "normal".to_string(),
-                allowed_dirs: vec![],
-                forbidden_dirs: vec![],
-                autonomy_level: Default::default(),
-                report: None,
-            },
+            make_entry("valid", "run valid task", "0 4 * * *", "normal"),
+            make_entry("invalid", "run invalid task", "invalid cron", "normal"),
         ];
 
         // Should succeed — invalid entry is skipped

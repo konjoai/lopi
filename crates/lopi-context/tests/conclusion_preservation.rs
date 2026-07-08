@@ -4,23 +4,12 @@
     clippy::panic,
     clippy::unwrap_in_result
 )]
-use lopi_context::{
-    ContentBlock, ContextError, ContextWindow, Phase, PinPolicy, Role, TaggedMessage,
-};
-use uuid::Uuid;
+mod common;
+
+use lopi_context::{ContextError, ContextWindow, Phase, PinPolicy, Role, TaggedMessage};
 
 fn msg(text: &str, phase: Phase, pin: PinPolicy) -> TaggedMessage {
-    TaggedMessage {
-        id: Uuid::new_v4(),
-        role: Role::User,
-        content: vec![ContentBlock::Text(text.to_string())],
-        tokens: 10,
-        pin,
-        phase,
-        evict_after: None,
-        tool_pair_id: None,
-        is_conclusion: false,
-    }
+    common::make_msg(Role::User, text, phase, pin, 10)
 }
 
 #[test]
@@ -113,17 +102,13 @@ fn non_conclusion_always_pinned_also_requires_force() {
     let mut window = ContextWindow::new(10_000);
 
     let id = window
-        .push(TaggedMessage {
-            id: Uuid::new_v4(),
-            role: Role::User,
-            content: vec![ContentBlock::Text("system prompt".to_string())],
-            tokens: 20,
-            pin: PinPolicy::Always,
-            phase: Phase::Boot,
-            evict_after: None,
-            tool_pair_id: None,
-            is_conclusion: false,
-        })
+        .push(common::make_msg(
+            Role::User,
+            "system prompt",
+            Phase::Boot,
+            PinPolicy::Always,
+            20,
+        ))
         .unwrap();
 
     let err = window.evict_turn(id, false).unwrap_err();

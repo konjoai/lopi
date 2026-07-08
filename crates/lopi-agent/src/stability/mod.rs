@@ -275,72 +275,21 @@ impl StabilityHarness {
 
 /// Build the planning prompt for the stability harness.
 ///
-/// Uses the same format as `runner::api_plan::build_user_prompt` so the
-/// variance measurement is against the real planning prompt the agent would use.
-/// Kept as a standalone function to avoid coupling to the private api_plan module.
+/// Delegates to `crate::prompt::build_user_prompt` (shared with the direct-API
+/// planning path) with no error/lessons context, so the variance measurement
+/// is against the exact same prompt format the agent would use to plan.
 pub(crate) fn build_stability_prompt(task: &Task) -> String {
-    let mut parts: Vec<String> = Vec::with_capacity(4);
-    parts.push(format!("# Task\n{}", task.goal));
-
-    if !task.constraints.is_empty() {
-        parts.push(format!(
-            "\n# Constraints\n- {}",
-            task.constraints.join("\n- ")
-        ));
-    }
-    if !task.allowed_dirs.is_empty() {
-        parts.push(format!(
-            "\n# Allowed dirs\n- {}",
-            task.allowed_dirs.join("\n- ")
-        ));
-    }
-    if !task.forbidden_dirs.is_empty() {
-        parts.push(format!(
-            "\n# Forbidden dirs\n- {}",
-            task.forbidden_dirs.join("\n- ")
-        ));
-    }
-    parts.push(
-        "\nProduce a concise step-by-step plan to complete this task. \
-         Each step should be a single edit or shell command."
-            .to_string(),
-    );
-    parts.join("\n")
+    crate::prompt::build_user_prompt(task, None, &[])
 }
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
-    use lopi_core::{Priority, Task, TaskId, TaskSource};
+    use crate::test_support::make_test_task;
 
     fn make_task(goal: &str) -> Task {
-        Task {
-            id: TaskId::new(),
-            goal: goal.into(),
-            constraints: vec!["must compile".into()],
-            allowed_dirs: vec!["src/".into()],
-            forbidden_dirs: vec![".github/".into()],
-            priority: Priority::Normal,
-            max_retries: 3,
-            created_at: chrono::Utc::now(),
-            source: TaskSource::Cli,
-            repo_path: None,
-            output_schema: None,
-            tools: Vec::new(),
-            required_capabilities: Vec::new(),
-            rubric: None,
-            topology: None,
-            require_plan_approval: false,
-            autonomy_level: Default::default(),
-            report: None,
-            verifier_required: false,
-            verifier_model: None,
-            verifier_effort: None,
-            model: None,
-            effort: None,
-            max_iterations: None,
-        }
+        make_test_task(goal, vec!["must compile".into()])
     }
 
     #[test]

@@ -27,7 +27,7 @@ pub(super) async fn auth_middleware(
             .and_then(|v| v.to_str().ok())
             .and_then(|v| v.strip_prefix("Bearer "));
 
-        if !provided.is_some_and(|p| constant_time_eq(p, expected.as_ref())) {
+        if !provided.is_some_and(|p| lopi_core::constant_time_eq(p, expected.as_ref())) {
             return (
                 StatusCode::UNAUTHORIZED,
                 Json(json!({"error": "unauthorized"})),
@@ -79,36 +79,4 @@ pub(super) async fn rate_limit_middleware(
     }
 
     next.run(req).await
-}
-
-/// Constant-time string comparison to prevent timing-based side-channel attacks.
-fn constant_time_eq(a: &str, b: &str) -> bool {
-    if a.len() != b.len() {
-        return false;
-    }
-    a.bytes()
-        .zip(b.bytes())
-        .fold(0u8, |acc, (x, y)| acc | (x ^ y))
-        == 0
-}
-
-#[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
-mod tests {
-    use super::constant_time_eq;
-
-    #[test]
-    fn equal_strings_match() {
-        assert!(constant_time_eq("token", "token"));
-    }
-
-    #[test]
-    fn different_strings_do_not_match() {
-        assert!(!constant_time_eq("token", "taken"));
-    }
-
-    #[test]
-    fn different_lengths_do_not_match() {
-        assert!(!constant_time_eq("short", "longer-token"));
-    }
 }

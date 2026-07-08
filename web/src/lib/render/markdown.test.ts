@@ -4,18 +4,7 @@
  * browser DOM and is covered by the live render gates instead.
  */
 import { splitMarkdown } from './markdown';
-
-let pass = 0;
-let fail = 0;
-function eq(actual: unknown, expected: unknown, name: string) {
-  const a = JSON.stringify(actual);
-  const e = JSON.stringify(expected);
-  if (a === e) pass++;
-  else {
-    fail++;
-    console.error(`✗ ${name}: expected ${e}, got ${a}`);
-  }
-}
+import { eq, namedSummary } from '$lib/test-harness';
 
 // ── prose only ────────────────────────────────────────────────────────────────
 eq(splitMarkdown('hello **world**'), [{ kind: 'prose', md: 'hello **world**' }], 'prose only');
@@ -56,5 +45,4 @@ eq(
   'diff fence preserved'
 );
 
-console.log(`\nmarkdown: ${pass} passed, ${fail} failed`);
-if (fail > 0) process.exit(1);
+namedSummary('markdown');

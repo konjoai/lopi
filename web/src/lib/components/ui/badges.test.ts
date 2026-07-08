@@ -3,18 +3,7 @@
  * Usage: `npx tsx src/lib/components/ui/badges.test.ts` from web/
  */
 import { statusColor, levelColor, statusLabel } from './badges';
-
-let pass = 0;
-let fail = 0;
-
-function eq(actual: unknown, expected: unknown, name: string) {
-  if (Object.is(actual, expected)) {
-    pass++;
-  } else {
-    fail++;
-    console.error(`✗ ${name}: expected ${expected}, got ${actual}`);
-  }
-}
+import { eqIs as eq, summary } from '$lib/test-harness';
 
 // ── statusLabel ───────────────────────────────────────────────────────────────
 eq(statusLabel('Queued'), 'Queued', 'unit variant passes through');
@@ -44,5 +33,4 @@ eq(levelColor('warn'), 'var(--konjo-flame)', 'warn is flame');
 eq(levelColor('info'), 'var(--konjo-ice)', 'info is ice');
 eq(levelColor('debug'), 'rgba(245,245,245,0.4)', 'debug is dim paper');
 
-console.log(`\n── Result: ${pass} passed, ${fail} failed ──`);
-if (fail > 0) process.exit(1);
+summary();

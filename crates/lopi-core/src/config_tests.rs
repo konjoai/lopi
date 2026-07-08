@@ -360,11 +360,18 @@ fn report_unknown_channel_errors() {
     assert!(err.to_string().contains("carrier-pigeon"));
 }
 
-#[test]
-fn load_rejects_a_config_with_an_invalid_report_channel() {
+/// Write `contents` to a uniquely-named temp `.toml` file and return its path.
+/// Shared by every `LopiConfig::load` round-trip test in this module.
+fn write_temp_lopi_toml(contents: &str) -> std::path::PathBuf {
     let path = std::env::temp_dir().join(format!("lopi-test-{}.toml", uuid::Uuid::new_v4()));
-    std::fs::write(
-        &path,
+    std::fs::write(&path, contents).unwrap();
+    path
+}
+
+/// Write a minimal valid config with one `nightly` schedule reporting to
+/// `channel` — shared by every report-channel `LopiConfig::load` test.
+fn temp_config_with_report_channel(channel: &str) -> std::path::PathBuf {
+    write_temp_lopi_toml(&format!(
         r#"
 [lopi]
 
@@ -377,10 +384,14 @@ name = "nightly"
 repo = "/repo"
 goal = "run tests"
 cron = "0 2 * * *"
-report = "whatsapp"
-"#,
-    )
-    .unwrap();
+report = "{channel}"
+"#
+    ))
+}
+
+#[test]
+fn load_rejects_a_config_with_an_invalid_report_channel() {
+    let path = temp_config_with_report_channel("whatsapp");
     let err = LopiConfig::load(&path).unwrap_err();
     assert!(err.to_string().contains("nightly"));
     assert!(err.to_string().contains("whatsapp"));
@@ -389,25 +400,7 @@ report = "whatsapp"
 
 #[test]
 fn load_accepts_a_config_with_a_telegram_report_channel() {
-    let path = std::env::temp_dir().join(format!("lopi-test-{}.toml", uuid::Uuid::new_v4()));
-    std::fs::write(
-        &path,
-        r#"
-[lopi]
-
-[claude]
-
-[git]
-
-[[schedules]]
-name = "nightly"
-repo = "/repo"
-goal = "run tests"
-cron = "0 2 * * *"
-report = "telegram"
-"#,
-    )
-    .unwrap();
+    let path = temp_config_with_report_channel("telegram");
     let cfg = LopiConfig::load(&path).unwrap();
     assert_eq!(cfg.schedules[0].report.as_deref(), Some("telegram"));
     std::fs::remove_file(&path).ok();

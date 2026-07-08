@@ -122,18 +122,7 @@ fn verify_twilio_signature(secret: &[u8], body: &[u8], sig_header: &str) -> bool
     let result = mac.finalize().into_bytes();
     let expected = base64::engine::general_purpose::STANDARD.encode(result.as_slice());
 
-    constant_time_eq(sig_header, &expected)
-}
-
-/// Constant-time string comparison to prevent timing-based side-channel attacks.
-fn constant_time_eq(a: &str, b: &str) -> bool {
-    if a.len() != b.len() {
-        return false;
-    }
-    a.bytes()
-        .zip(b.bytes())
-        .fold(0u8, |acc, (x, y)| acc | (x ^ y))
-        == 0
+    lopi_core::constant_time_eq(sig_header, &expected)
 }
 
 #[cfg(test)]
@@ -165,6 +154,26 @@ mod tests {
         Router::new()
             .route("/webhook/whatsapp", post(handle))
             .with_state(state)
+    }
+
+    /// POST `body` to `/webhook/whatsapp` (with an optional precomputed
+    /// `x-twilio-signature` header) and return the response. Shared by every
+    /// handler test so the request-construction boilerplate is written once.
+    async fn post_webhook(
+        app: Router,
+        body: impl Into<Vec<u8>>,
+        sig: Option<&str>,
+    ) -> axum::response::Response {
+        let mut req = Request::builder()
+            .method("POST")
+            .uri("/webhook/whatsapp")
+            .header("Content-Type", "application/x-www-form-urlencoded");
+        if let Some(s) = sig {
+            req = req.header("x-twilio-signature", s);
+        }
+        app.oneshot(req.body(Body::from(body.into())).unwrap())
+            .await
+            .unwrap()
     }
 
     #[test]
@@ -200,17 +209,7 @@ mod tests {
     async fn no_secret_task_message_queues_task() {
         let app = make_test_router(None);
         let body = "Body=%2Ftask+fix+the+bug&From=whatsapp%3A%2B15551234567";
-        let resp = app
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/webhook/whatsapp")
-                    .header("Content-Type", "application/x-www-form-urlencoded")
-                    .body(Body::from(body))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let resp = post_webhook(app, body, None).await;
         assert_eq!(resp.status(), StatusCode::OK);
     }
 
@@ -218,17 +217,7 @@ mod tests {
     async fn no_secret_non_task_message_returns_ok() {
         let app = make_test_router(None);
         let body = "Body=hello+world&From=whatsapp%3A%2B15551234567";
-        let resp = app
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/webhook/whatsapp")
-                    .header("Content-Type", "application/x-www-form-urlencoded")
-                    .body(Body::from(body))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let resp = post_webhook(app, body, None).await;
         assert_eq!(resp.status(), StatusCode::OK);
     }
 
@@ -237,18 +226,7 @@ mod tests {
         let app = make_test_router(Some("correct_secret"));
         let body = "Body=hello&From=whatsapp%3A%2B15551234567";
         let bad_sig = make_signature(b"wrong_secret", body.as_bytes());
-        let resp = app
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/webhook/whatsapp")
-                    .header("Content-Type", "application/x-www-form-urlencoded")
-                    .header("x-twilio-signature", bad_sig)
-                    .body(Body::from(body))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let resp = post_webhook(app, body, Some(&bad_sig)).await;
         assert_eq!(resp.status(), StatusCode::FORBIDDEN);
     }
 
@@ -258,18 +236,7 @@ mod tests {
         let app = make_test_router(Some(secret));
         let body = "Body=hello&From=whatsapp%3A%2B15551234567";
         let sig = make_signature(secret.as_bytes(), body.as_bytes());
-        let resp = app
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/webhook/whatsapp")
-                    .header("Content-Type", "application/x-www-form-urlencoded")
-                    .header("x-twilio-signature", sig)
-                    .body(Body::from(body))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let resp = post_webhook(app, body, Some(&sig)).await;
         assert_eq!(resp.status(), StatusCode::OK);
     }
 
@@ -277,18 +244,8 @@ mod tests {
     async fn invalid_form_body_returns_400() {
         let app = make_test_router(None);
         // Send something that's not valid URL-encoded form data (binary garbage)
-        let body = b"\xff\xfe invalid bytes that cannot be parsed as form data \x00\x01\x02";
-        let resp = app
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/webhook/whatsapp")
-                    .header("Content-Type", "application/x-www-form-urlencoded")
-                    .body(Body::from(body.as_slice()))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let body: &[u8] = b"\xff\xfe invalid bytes that cannot be parsed as form data \x00\x01\x02";
+        let resp = post_webhook(app, body, None).await;
         // Missing required "Body" field should cause a parse error
         assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     }
@@ -299,18 +256,7 @@ mod tests {
         let app = make_test_router(Some(secret));
         let body = "Body=%2Ftask+update+all+dependencies&From=whatsapp%3A%2B15551234567";
         let sig = make_signature(secret.as_bytes(), body.as_bytes());
-        let resp = app
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/webhook/whatsapp")
-                    .header("Content-Type", "application/x-www-form-urlencoded")
-                    .header("x-twilio-signature", sig)
-                    .body(Body::from(body))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let resp = post_webhook(app, body, Some(&sig)).await;
         assert_eq!(resp.status(), StatusCode::OK);
     }
 }

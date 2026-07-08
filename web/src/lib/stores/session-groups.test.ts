@@ -4,18 +4,7 @@
 import { groupKeyFor, filterSessions, groupSessions } from './session-groups';
 import { makeBlank } from './agentReducer';
 import type { AgentState } from './agents';
-
-let pass = 0;
-let fail = 0;
-function eq(actual: unknown, expected: unknown, name: string) {
-  const a = JSON.stringify(actual);
-  const e = JSON.stringify(expected);
-  if (a === e) pass++;
-  else {
-    fail++;
-    console.error(`✗ ${name}: expected ${e}, got ${a}`);
-  }
-}
+import { eq, namedSummary } from '$lib/test-harness';
 
 function mk(id: string, over: Partial<AgentState>): AgentState {
   return { ...makeBlank(id), ...over };
@@ -80,5 +69,4 @@ eq(filterSessions(fixtures, 'nomatch').length, 0, 'no match → empty');
   eq(groupSessions([] as AgentState[]).length, 0, 'no sessions → no groups');
 }
 
-console.log(`\nsession-groups: ${pass} passed, ${fail} failed`);
-if (fail > 0) process.exit(1);
+namedSummary('session-groups');

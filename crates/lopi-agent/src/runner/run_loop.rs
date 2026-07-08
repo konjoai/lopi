@@ -10,6 +10,15 @@ use lopi_git::GitManager;
 use std::sync::atomic::Ordering;
 use tracing::Instrument as _;
 
+/// Roll back uncommitted changes and return to the default branch — the
+/// standard cleanup before recording a retry, cancellation, or terminal
+/// failure. Both operations are best-effort: a rollback/checkout failure
+/// must not block the status transition that follows.
+async fn abort_attempt(git: &GitManager) {
+    git.hard_rollback().await.ok();
+    git.checkout_default().await.ok();
+}
+
 impl AgentRunner {
     /// Execute the full agent loop: plan → implement → test → retry.
     ///
@@ -188,8 +197,7 @@ impl AgentRunner {
                     Err(e) => {
                         let err_chain = format!("{e:#}");
                         self.warn(format!("plan failed: {e}"));
-                        git.hard_rollback().await.ok();
-                        git.checkout_default().await.ok();
+                        abort_attempt(&git).await;
                         // Non-retryable: out of API credits. Retrying just stalls
                         // the agent and floods the log — fail fast with a clear
                         // terminal status so the operator sees the billing issue.
@@ -224,8 +232,7 @@ impl AgentRunner {
                 }
 
                 if self.check_cancel() {
-                    git.hard_rollback().await.ok();
-                    git.checkout_default().await.ok();
+                    abort_attempt(&git).await;
                     return Ok(TaskStatus::Failed {
                         reason: "Cancelled".into(),
                     });
@@ -260,14 +267,7 @@ impl AgentRunner {
                     .await;
                 if let Err(e) = act_result {
                     self.warn(format!("implement failed: {e}"));
-                    git.hard_rollback().await.ok();
-                    git.checkout_default().await.ok();
-                    self.status(
-                        TaskStatus::Retrying {
-                            attempt: attempt + 1,
-                        },
-                        attempt + 1,
-                    );
+                    self.abort_and_mark_retrying(&git, attempt).await;
                     continue;
                 }
             }
@@ -278,8 +278,7 @@ impl AgentRunner {
             {
                 self.warn(format!("diff scope violation: {e}"));
                 self.status(TaskStatus::RolledBack, attempt + 1);
-                git.hard_rollback().await.ok();
-                git.checkout_default().await.ok();
+                abort_attempt(&git).await;
                 continue;
             }
 
@@ -313,14 +312,7 @@ impl AgentRunner {
                             attempt + 1
                         ));
                     }
-                    git.hard_rollback().await.ok();
-                    git.checkout_default().await.ok();
-                    self.status(
-                        TaskStatus::Retrying {
-                            attempt: attempt + 1,
-                        },
-                        attempt + 1,
-                    );
+                    self.abort_and_mark_retrying(&git, attempt).await;
                     continue;
                 }
             }
@@ -443,8 +435,7 @@ impl AgentRunner {
                     self.warn(format!(
                         "🛑 no-progress stall: {np_streak} attempt(s) without score improvement (limit {no_progress_limit}) — halting"
                     ));
-                    git.hard_rollback().await.ok();
-                    git.checkout_default().await.ok();
+                    abort_attempt(&git).await;
                     let status = TaskStatus::Failed {
                         reason: format!(
                             "NoProgressStall {{ streak: {np_streak}, limit: {no_progress_limit} }}"
@@ -455,14 +446,7 @@ impl AgentRunner {
                 }
             }
 
-            git.hard_rollback().await.ok();
-            git.checkout_default().await.ok();
-            self.status(
-                TaskStatus::Retrying {
-                    attempt: attempt + 1,
-                },
-                attempt + 1,
-            );
+            self.abort_and_mark_retrying(&git, attempt).await;
             // Full-jitter exponential backoff before the next attempt.
             // Base 500 ms — caps at 30 s. Prevents thundering-herd on transient failures.
             let wait = backoff_secs(attempt, 500);
@@ -488,5 +472,19 @@ impl AgentRunner {
         };
         self.status(status.clone(), self.task.max_retries);
         Ok(status)
+    }
+
+    /// Abort the current attempt (rollback + checkout) and mark it
+    /// `Retrying` — the shared cleanup before every `continue` back to the
+    /// top of the retry loop. Callers still issue their own `continue`
+    /// after this returns.
+    async fn abort_and_mark_retrying(&mut self, git: &GitManager, attempt: u8) {
+        abort_attempt(git).await;
+        self.status(
+            TaskStatus::Retrying {
+                attempt: attempt + 1,
+            },
+            attempt + 1,
+        );
     }
 }
