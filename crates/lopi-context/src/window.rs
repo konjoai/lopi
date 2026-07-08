@@ -307,7 +307,8 @@ impl ContextWindow {
             clippy::cast_sign_loss
         )]
         let target = (self.token_budget as f32 * (self.budget_threshold - 0.1)) as usize;
-        if let Ok(stats) = eviction::evict_to_budget(&mut self.turns, target, &mut self.current_tokens)
+        if let Ok(stats) =
+            eviction::evict_to_budget(&mut self.turns, target, &mut self.current_tokens)
         {
             self.record(stats);
         }

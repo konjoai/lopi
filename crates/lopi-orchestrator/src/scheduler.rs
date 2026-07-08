@@ -180,12 +180,7 @@ mod tests {
 
     /// Build a `ScheduleEntry` with a fixed nonexistent repo and no dir
     /// overrides — shared by every `boot()` test in this module.
-    fn make_entry(
-        name: &str,
-        goal: &str,
-        cron: &str,
-        priority: &str,
-    ) -> lopi_core::ScheduleEntry {
+    fn make_entry(name: &str, goal: &str, cron: &str, priority: &str) -> lopi_core::ScheduleEntry {
         lopi_core::ScheduleEntry {
             name: name.to_string(),
             repo: std::path::PathBuf::from("/tmp/nonexistent"),

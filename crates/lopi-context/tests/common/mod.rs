@@ -12,7 +12,13 @@ use lopi_context::{ContentBlock, Phase, PinPolicy, Role, TaggedMessage};
 use uuid::Uuid;
 
 /// Build a `TaggedMessage` with every field explicit.
-pub fn make_msg(role: Role, text: &str, phase: Phase, pin: PinPolicy, tokens: usize) -> TaggedMessage {
+pub fn make_msg(
+    role: Role,
+    text: &str,
+    phase: Phase,
+    pin: PinPolicy,
+    tokens: usize,
+) -> TaggedMessage {
     TaggedMessage {
         id: Uuid::new_v4(),
         role,

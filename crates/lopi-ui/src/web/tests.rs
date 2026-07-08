@@ -221,7 +221,13 @@ async fn constellation_register_then_dispatch_round_trip() {
         "created_at": chrono::Utc::now(),
     }))
     .unwrap();
-    let create = send_req(app.clone(), "POST", "/api/constellations", Some(create_body)).await;
+    let create = send_req(
+        app.clone(),
+        "POST",
+        "/api/constellations",
+        Some(create_body),
+    )
+    .await;
     assert_eq!(create.status(), StatusCode::CREATED);
 
     let disp = app
@@ -528,7 +534,13 @@ async fn checkpoint_agent_persists_row_returns_201() {
         "repo_path": "/tmp/repo",
     }))
     .unwrap();
-    let resp = send_req(app, "POST", &format!("/api/agents/{task_uuid}/checkpoint"), Some(body)).await;
+    let resp = send_req(
+        app,
+        "POST",
+        &format!("/api/agents/{task_uuid}/checkpoint"),
+        Some(body),
+    )
+    .await;
     assert_eq!(resp.status(), StatusCode::CREATED);
     let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
         .await
