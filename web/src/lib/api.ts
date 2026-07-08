@@ -370,6 +370,9 @@ export const setLoopEscalation = (enabled: boolean) =>
     json('POST', { enabled })
   );
 
+// ── Repos (launch-control repo dropdown) ──────────────────────────────────────
+export const listRepos = () => request<{ repos: string[] }>('/api/repos');
+
 // ── Config + version ──────────────────────────────────────────────────────────
 export const getConfig = () =>
   request<{ config: Record<string, unknown> | null; source: string }>('/api/config');

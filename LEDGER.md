@@ -5,6 +5,65 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## UI-1 — Static loop-stack + selector row
+
+**`/stacks` stood up as a new route, `/loop` untouched.** Per `UI_PLAN.md`
+§6: the existing `/loop` page is a read-mostly *loop-as-code cockpit*
+(health telemetry, effective `.lopi/loop.toml`, the autonomy ladder,
+self-prompt strategy, schedules) — a genuinely different surface from an
+interactive stack-of-prompts composer. Building the new UI in place would
+have destroyed that content as a side effect. Two routes coexist; folding
+one into the other (as a tab, or renaming `/loop` → `/loop/config`) is left
+for later, once the new UI has parity on what people actually use from the
+cockpit.
+
+**Stack store shape: pure ops + a thin `writable` wrapper, no persistence.**
+`stores/stack.ts` mirrors the `layout-core.ts`/`layout.ts` split — `addCard`/
+`removeCard`/`duplicateCard`/`reorderCard`/`insertCardAt` are plain
+`StackCard[] → StackCard[]` functions (directly unit-testable, no Svelte),
+wrapped by a `writable<StackCard[]>` for the UI. No `localStorage`: unlike
+`launchControls`/`layout.ts`, a stack is a to-be-run queue the operator is
+actively composing, and no server-side stack concept exists yet to reconcile
+against on reload (per `UI_PLAN.md`'s Gap Map) — silently caching a stale
+queue across reloads would be worse than starting empty. Revisit once stack
+persistence (client or server) is actually built.
+
+**Eval suites are client-side static config this slice, by design, not by
+accident.** `PRESET_CATALOG` in `stores/stack.ts` hardcodes each preset's eval
+list verbatim from the task brief. No `EvalDef`/`EvalSuite` backend concept
+exists (`UI_PLAN.md`'s Gap Map) — evals shown on a card are decorative counts
+and names only; nothing here executes, scores, or persists an eval. UI-2's
+evals popover will need real backend fields before "toggle an eval" means
+anything; this slice deliberately stops at "look right."
+
+**Autonomy selector uses the real `AutonomyLevel` semantics, not the
+mockup's mismatched copy.** `UI_PLAN.md` flagged that `lopi-creation-flow.html`'s
+L1–L4 "leash" labels (writer/director/advisor/autonomous) don't map to the
+actual backend enum (`ReportOnly`/`DraftPr`/`VerifiedPr`/`AutoMerge`).
+Rather than ship UI that reads correctly but lies about what the levels
+actually do, `stores/stackDefaults.ts`'s `AUTONOMY_OPTIONS` reuses
+`loop/+page.svelte`'s existing `ladderHint()` wording for each tag — the two
+autonomy surfaces in the app now agree. It is still an in-memory default,
+unbound to any backend field (`CreateTaskRequest` doesn't expose autonomy
+yet); it just isn't wearing a costume that misdescribes L3/L4.
+
+**Repo dropdown is new frontend work, not a relabel.** `GET /api/repos`
+existed and worked, but no frontend consumer did (`UI_PLAN.md`'s Reuse Map).
+Added `listRepos()` to `api.ts` and wired it into the stacks selector row
+with a graceful fallback to a single "auto" option if the fetch fails (e.g.
+a static preview with no backend) — matches the composer's overall
+"nothing here is a hard backend dependency" posture.
+
+**Card-bar buttons (loop pill, cron, shield, evals, duplicate, drag,
+delete) render disabled this slice, on purpose.** The brief's pre-flight
+kill-test requires the pure array ops (`duplicateCard`/`reorderCard`/
+`insertCardAt`) to exist and be tested now, but wiring them to on-card
+buttons is explicitly UI-2 scope (`NEXT.md`) — those buttons would need
+live drag interaction, the guardrails/evals popovers, and cron popover
+plumbing this slice doesn't build. Shipping them as visible-but-disabled
+(rather than hidden) keeps the card's final layout stable across UI-1→UI-2,
+so UI-2 wires behavior into existing chrome instead of reflowing the card.
+
 ## Git hygiene — fixed the committed DRY violations (`dry_check.py`: 794 → 12)
 
 **Starting state confirmed, then a delta reported before fixing:** the last

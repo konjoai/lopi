@@ -33,17 +33,50 @@ been fixed. See `LEDGER.md` for both.
   Fix is to drive the sweeper's clock via `tokio::time::pause`/`advance`
   instead of a real sleep, but that's out of scope here.
 
-## What's next: UI-1 (static stack + selector row) — client-side, unblocked
+## What's next: UI-2 (card controls + guardrails/evals popovers)
 
-Per `UI_PLAN.md`'s refined build-slice sequence, UI-1 (prompt-card rendering,
-composer-at-top, model/effort/repo selector row) needs **no further backend
-work** — it's a new client-side `stores/stack.ts` (an ordered array, no
-server round-trip yet) plus restyled reuse of `LaunchControls.svelte` and
-`ui/Dropdown.svelte`. Start there next, not with another backend sprint.
+UI-1 shipped: the `/stacks` route, `stores/stack.ts` (pure ops + composer
+grammar parser, unit-tested), static prompt-card rendering (preset pill,
+spec line, read-only guardrails/evals summary lines), the fused creation
+flow (type-first + suggested chip + preset grid + inline grammar), and the
+model/effort/repo/autonomy selector row. See `LEDGER.md`'s UI-1 entry for
+the `/stacks`-vs-`/loop` route decision, the stack store shape, and why
+eval suites are client-side static config this slice.
 
-**Two backend gaps remain out of this sprint's scope, each blocking a
-specific later UI-2/UI-3 control — flagging so they aren't assumed solved by
-this sprint's field exposure:**
+**UI-2 is card controls**, wiring the buttons UI-1 shipped disabled:
+- **Loop pill + steppers** — toggle/adjust `StackCard.loopN` (×N / ∞), backed
+  by the already-tested `reorderCard`/array-position logic; the field itself
+  (`loopN`) already exists on `StackCard`.
+- **Cron popover** — reuses `ScheduleEntry.cron` + the existing `api.ts`
+  Schedule CRUD (`createSchedule`/`updateSchedule`, already round-trips) and
+  the freq-pill ⇄ raw-cron two-way sync pattern from
+  `docs/ui/lopi-loop-stacks-4-evals.html`'s `openSched`/`cronToHuman`/
+  `recompute`. Not blocked.
+- **Duplicate / drag reorder / delete / insert** — wire the card-bar buttons
+  to `duplicateInStack`/`reorderInStack`/`removeFromStack`/`insertIntoStack`,
+  already implemented and unit-tested in `stores/stack.ts`. Drag itself
+  (HTML5 `dragstart`/`drop`) is new UI work; the array ops it calls are not.
+- **Guardrails popover** (shield button) — budget/max-iterations/on-fail/
+  schedule editor. **Needs backend first**: `gate`/`until`/`on-fail` have
+  *zero* backend representation anywhere (confirmed by `UI_PLAN.md`'s direct
+  source search — not on `Task`, not on `LoopConfig`). Per the scope doc's
+  flagged reconciliation, model these as an `EvalDef` (test-tier), not a
+  revived `gate_cmd`/`until_cmd` scalar pair — `on-fail` and `budget` presets
+  are the only guardrail fields that could bind to something real today
+  (`LoopConfig.budget_tokens`, though the 3-preset vocabulary doesn't exist
+  yet either). Ship the popover against local-only card state (or hide the
+  fields with no backend) until these land.
+- **Evals popover** (check button) — flat-checklist editor over
+  `StackCard.evals`. **Client-only until eval execution exists**: no
+  `EvalDef`/`EvalSuite` backend concept exists, so toggling a check can only
+  ever mutate the card's static list this slice — there is no run to attach
+  a pass/fail/running state to. Build the popover UI now (toggle tiers,
+  "add a suite" row, baseline locked-on) against `StackCard.evals` directly;
+  wire real eval-run status when the backend eval ladder lands.
+
+**Two backend gaps carried over from before UI-1, still blocking specific
+UI-2/UI-3 controls — flagging so they aren't assumed solved by this
+sprint's field exposure:**
 - **Gate / until / on-fail** (the Limits popover's shell-command precondition,
   loop-until-exit-0, and stop/continue/backoff policy) — confirmed to have
   *zero* backend representation anywhere (not on `Task`, not on `LoopConfig`).
