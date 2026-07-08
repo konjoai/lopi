@@ -196,6 +196,58 @@ impl IsolationMode {
     }
 }
 
+/// Policy applied after a loop iteration fails.
+///
+/// `Stop` is the default and the only variant whose runtime effect must
+/// reproduce today's behavior exactly — every config written before this
+/// enum existed deserializes to `Stop` via `#[serde(default)]`, and the
+/// pre-existing retry loop already runs its bounded `max_retries` course
+/// with a backoff pause between attempts. See `LEDGER.md` for why `Stop`
+/// and `Backoff` currently share that same wait rather than `Stop` cutting
+/// the loop short after one failure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum OnFail {
+    /// Preserve the existing bounded-retry envelope: back off, then retry,
+    /// until `max_retries`/`max_iterations` is exhausted (unchanged default).
+    #[default]
+    Stop,
+    /// Proceed to the next attempt immediately, skipping the backoff pause.
+    Continue,
+    /// Explicitly pace retries with the existing full-jitter backoff
+    /// ([`backoff_secs`](crate) equivalent in `lopi-agent`) — the same wait
+    /// `Stop` already applies, offered as a named, user-selectable choice.
+    Backoff,
+}
+
+/// Run a shell command in `cwd` and report whether it exited `0`.
+///
+/// Shared by the `gate` and `until` guardrails — the only two places a
+/// user-supplied shell string is executed. Invoked via `sh -c` (unlike the
+/// codebase's other shell-outs, which always run a fixed known binary with
+/// explicit args) since these are free-form command strings, not an argv
+/// array. Only the exit status is inspected — stdout/stderr are discarded,
+/// since the pass/fail decision this guards needs nothing else.
+///
+/// SECURITY: `cmd` is user-supplied config, run in the repo's own working
+/// directory — the same trust model as the existing git/gh shell-outs
+/// (a local dev tool operating on the user's own repo), not a
+/// network-exposed execution surface.
+///
+/// # Errors
+/// Returns `Err` only if the shell itself could not be spawned (e.g. `sh`
+/// missing from `PATH`). A command that runs and exits non-zero is a normal
+/// `Ok(false)`, not an error.
+pub async fn run_guard_command(cmd: &str, cwd: &Path) -> std::io::Result<bool> {
+    let status = tokio::process::Command::new("sh")
+        .arg("-c")
+        .arg(cmd)
+        .current_dir(cwd)
+        .status()
+        .await?;
+    Ok(status.success())
+}
+
 /// Declarative loop-engineering configuration for a repo.
 ///
 /// Loaded from `<repo>/.lopi/loop.toml`. Every field has a safe default, so an
@@ -273,6 +325,26 @@ pub struct LoopConfig {
     /// above the conservative default until a human raises the ceiling.
     #[serde(default)]
     pub trust_ceiling: AutonomyLevel,
+    /// Guardrail precondition — a shell command that must exit `0` before a
+    /// loop's very first iteration starts. `None` (the default) means no
+    /// precondition, unchanged from before this field existed. A non-empty
+    /// command that exits non-zero (or fails to spawn) blocks the loop
+    /// entirely with a `GateBlocked` failure rather than burning a retry
+    /// attempt on it.
+    #[serde(default)]
+    pub gate: Option<String>,
+    /// Guardrail exit-condition — a shell command checked after each
+    /// iteration; exiting `0` ends the loop early as a success, independent
+    /// of that iteration's own test score. `None` (the default) relies on
+    /// scoring and `max_iterations` alone, unchanged from before this field
+    /// existed.
+    #[serde(default)]
+    pub until: Option<String>,
+    /// Policy applied when a loop iteration fails. Defaults to
+    /// [`OnFail::Stop`], which reproduces the pre-existing backoff-then-retry
+    /// behavior exactly.
+    #[serde(default)]
+    pub on_fail: OnFail,
 }
 
 impl Default for LoopConfig {
@@ -295,6 +367,9 @@ impl Default for LoopConfig {
             isolation: IsolationMode::default(),
             promote_after: 0,
             trust_ceiling: AutonomyLevel::default(),
+            gate: None,
+            until: None,
+            on_fail: OnFail::default(),
         }
     }
 }
@@ -345,8 +420,9 @@ impl LoopConfig {
     /// Validate the config against a repo on disk, returning a list of
     /// human-readable issues. An empty vec means the config is valid.
     ///
-    /// Checks: vision-anchor existence, iteration-cap sanity, and that a
-    /// no-progress limit does not exceed the hard iteration cap.
+    /// Checks: vision-anchor existence, iteration-cap sanity, that a
+    /// no-progress limit does not exceed the hard iteration cap, and that
+    /// `gate`/`until` are not set to an empty (whitespace-only) command.
     #[must_use]
     pub fn validate(&self, repo_path: &Path) -> Vec<String> {
         let mut issues = Vec::new();
@@ -370,6 +446,12 @@ impl LoopConfig {
                 self.trust_ceiling.tag(),
                 self.autonomy_level.tag(),
             ));
+        }
+        if matches!(&self.gate, Some(c) if c.trim().is_empty()) {
+            issues.push("gate is set but empty — remove it or give it a real command".into());
+        }
+        if matches!(&self.until, Some(c) if c.trim().is_empty()) {
+            issues.push("until is set but empty — remove it or give it a real command".into());
         }
         issues
     }

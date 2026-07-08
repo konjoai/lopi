@@ -254,6 +254,15 @@ pub(super) fn apply_loop_fields(
     if let Some(e) = &req.effort {
         task.effort = Some(e.clone());
     }
+    if let Some(g) = &req.gate {
+        task.gate = Some(g.clone());
+    }
+    if let Some(u) = &req.until {
+        task.until = Some(u.clone());
+    }
+    if let Some(f) = req.on_fail {
+        task.on_fail = Some(f);
+    }
     Ok(())
 }
 

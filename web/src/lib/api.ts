@@ -76,6 +76,12 @@ export interface CreateTaskOptions {
   max_iterations?: number;
   model?: string;
   effort?: string;
+  /** Guardrail precondition — a shell command that must exit 0 before the loop starts. */
+  gate?: string;
+  /** Guardrail exit-condition — a shell command; exit 0 ends the loop early as a success. */
+  until?: string;
+  /** On-fail policy: 'stop' (default, unchanged retry behavior), 'continue' (skip the backoff pause), or 'backoff' (explicit pacing). */
+  on_fail?: 'stop' | 'continue' | 'backoff';
 }
 
 export const createTask = (

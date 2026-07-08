@@ -1,5 +1,6 @@
 mod api_plan;
 mod finalize;
+mod guardrails;
 mod lifecycle;
 mod plan_gate;
 mod plan_steps;
@@ -16,6 +17,7 @@ mod verifier_runner;
 use crate::api_client::AnthropicClient;
 use crate::stability::{StabilityConfig, StabilityHarness};
 use lopi_context::ContextWindow;
+use lopi_core::loop_config::OnFail;
 use lopi_core::{AgentEvent, EventBus, PlanDecision, ScoreWeights, SelfPromptStrategy, Task};
 use lopi_memory::MemoryStore;
 use lopi_ratelimit::{AnthropicLimiter, CircuitBreaker};
@@ -131,6 +133,18 @@ pub struct AgentRunner {
     /// whose triggers match the task goal are added as context (and recorded in
     /// the audit trail) during seeding. Empty by default — no skills, no change.
     pub(super) skills: lopi_skill::SkillRegistry,
+    /// Guardrail precondition — the task's or repo's effective `gate`
+    /// command (task overrides repo; see `lopi_orchestrator::pool::run_loop::build_runner`).
+    /// `None` (the default) means no precondition. Set by the pool the same
+    /// way `max_turns` is — hence `pub`, not `pub(super)`.
+    pub gate: Option<String>,
+    /// Guardrail exit-condition — the effective `until` command. `None`
+    /// (the default) means scoring/`max_iterations` remain the sole stop
+    /// conditions, unchanged from before this field existed.
+    pub until: Option<String>,
+    /// Effective on-fail policy for a failed iteration. Defaults to
+    /// [`OnFail::Stop`].
+    pub on_fail: OnFail,
 }
 
 impl AgentRunner {
@@ -177,6 +191,9 @@ impl AgentRunner {
             score_weights: ScoreWeights::default(),
             task_lessons: vec![],
             skills: lopi_skill::SkillRegistry::default(),
+            gate: None,
+            until: None,
+            on_fail: OnFail::default(),
         }
     }
 
