@@ -1,5 +1,14 @@
 # Changelog
 
+## [Unreleased] — UI-2 V&V: audit + coverage-gap closure 🔍
+
+### Added
+- `docs/ui/UI-2-VV-report.md` — a read-only verification pass over merged PR #64: all five hard gates evaluated with cited evidence (test names, `file:line`, computed-style checks), a **GO** for the backend phase, and two escalations (a budget badge that visually reads as enforced when nothing enforces it; pre-existing repo-wide CI soft-fail policy in `konjo-gate.yml`, unrelated to #64).
+- `stack.test.ts` gained 18 tests closing three real coverage gaps the audit found: cross-pane reorder isolation (proving `applyToPaneCards`-dispatched reorder never touches another pane), a 9-row table-driven WIRED round-trip test for `cardToTaskPayload` (plus a key-completeness assertion and a standalone `until`-off test), and a "custom cron never snaps to a matching preset" test. 103 → 121 assertions; repo-wide total 426 → 444.
+
+### Notes
+- No shipped-code defects found — nothing in PR #64 needed fixing. This audit found gaps in test *coverage*, not correctness.
+
 ## [Unreleased] — UI-2: Loop Stack card controls, popovers, config drawer, live output 🃏
 
 ### Added
