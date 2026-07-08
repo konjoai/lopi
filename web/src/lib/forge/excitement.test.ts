@@ -11,26 +11,10 @@ import {
   exciteColor,
   shakes
 } from './excitement';
-
-let pass = 0;
-let fail = 0;
-
-function eq(actual: unknown, expected: unknown, name: string) {
-  if (Object.is(actual, expected)) {
-    pass++;
-  } else {
-    fail++;
-    console.error(`✗ ${name}: expected ${expected}, got ${actual}`);
-  }
-}
+import { eqIs as eq, record, summary } from '$lib/test-harness';
 
 function close(actual: number, expected: number, name: string, eps = 1e-9) {
-  if (Math.abs(actual - expected) <= eps) {
-    pass++;
-  } else {
-    fail++;
-    console.error(`✗ ${name}: expected ≈${expected}, got ${actual}`);
-  }
+  record(Math.abs(actual - expected) <= eps, `${name}: expected ≈${expected}, got ${actual}`);
 }
 
 // ── smoothstep01 ──────────────────────────────────────────────────────────────
@@ -75,5 +59,4 @@ eq(shakes('request'), true, 'request shakes');
 eq(shakes('failure'), true, 'failure shakes');
 eq(shakes('success'), false, 'success does not shake');
 
-console.log(`\n── Result: ${pass} passed, ${fail} failed ──`);
-if (fail > 0) process.exit(1);
+summary();

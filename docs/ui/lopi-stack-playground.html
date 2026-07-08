@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>lopi · stack builder playground</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet"/>
+<style>
+:root{
+  --black:#0b0e10;--panel:#0a0d0f;--card:#0e1214;--paper:#f5f5f5;
+  --ice:#00d4ff;--ice-deep:#0a8aa8;--ember:#ff4500;--flame:#ff9500;
+  --jade:#00ff9d;--sun:#ffcc00;--rose:#ff2d78;--teal:#00ffd4;
+  --mist:rgba(255,255,255,.05);--veil:rgba(255,255,255,.11);
+  --dim:rgba(245,245,245,.46);--dim2:rgba(245,245,245,.27);
+  --mono:'JetBrains Mono',ui-monospace,monospace;--sans:'Space Grotesk',system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--black);color:var(--paper);font-family:var(--sans);-webkit-font-smoothing:antialiased;min-height:100vh}
+.top{position:sticky;top:0;z-index:30;background:rgba(11,14,16,.94);backdrop-filter:blur(8px);border-bottom:1px solid var(--mist);padding:13px 20px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.brand{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);display:flex;align-items:center;gap:8px}
+.brand b{color:var(--paper)} .dot{width:6px;height:6px;border-radius:50%;background:var(--ember);box-shadow:0 0 8px var(--ember)}
+.opt-tweaks{margin-left:auto;display:flex;gap:14px;align-items:center;font-family:var(--mono);font-size:10px;color:var(--dim2)}
+.opt-tweaks label{display:flex;align-items:center;gap:6px;cursor:pointer}
+.opt-tweaks .pick{display:inline-flex;border:1px solid var(--veil);border-radius:4px;overflow:hidden}
+.opt-tweaks .pick span{padding:4px 8px;color:var(--dim);cursor:pointer}
+.opt-tweaks .pick span.on{background:rgba(0,212,255,.14);color:var(--ice)}
+
+.stagewrap{max-width:560px;margin:0 auto;padding:26px 18px 80px}
+.shead{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.shead .t{font-family:var(--mono);font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--dim2)}
+.shead .mode{margin-left:auto}
+.subhint{font-family:var(--mono);font-size:10px;color:var(--dim2);margin-bottom:18px}
+
+/* ---------- build mode toggle ---------- */
+.m-seg{display:inline-flex;border:1px solid var(--veil);border-radius:5px;overflow:hidden;font-family:var(--mono);font-size:10.5px}
+.m-seg span{padding:7px 12px;color:var(--dim);cursor:pointer;display:flex;align-items:center;gap:6px;border-right:1px solid var(--veil)}
+.m-seg span:last-child{border-right:none}
+.m-seg span svg{width:13px;height:13px}
+.m-seg span.on.b{background:rgba(0,212,255,.15);color:var(--ice)}
+.m-seg span.on.f{background:rgba(255,69,0,.15);color:var(--flame)}
+
+/* ---------- stack ---------- */
+.stack{position:relative}
+.pc{position:relative;background:var(--card);border:1px solid var(--veil);border-radius:6px;padding:12px 13px;isolation:isolate;transition:box-shadow .15s,border-color .15s,opacity .15s}
+.pc.next{border-color:rgba(255,149,0,.5)}
+.pc.dragging{opacity:.4}
+.pc.dragover{border-color:var(--ice);box-shadow:0 0 0 1px var(--ice)}
+.pc .spec{font-family:var(--mono);font-size:12px;line-height:1.5;word-break:break-word;padding-right:8px}
+.pc .spec .al{color:var(--teal)} .pc .spec .md{color:var(--dim)} .pc .spec .rp{color:var(--sun)} .pc .spec .op{color:var(--flame);font-weight:700} .pc .spec .str{color:var(--paper)}
+.pc.running{animation:runpulse 3.2s ease-in-out infinite}
+@keyframes runpulse{0%,100%{border-color:rgba(255,120,40,.28);box-shadow:0 0 8px rgba(255,69,0,.06)}50%{border-color:rgba(255,150,70,.85);box-shadow:0 0 16px rgba(255,69,0,.2)}}
+.runtag{position:absolute;top:-8px;right:10px;font-family:var(--mono);font-size:8.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--flame);background:var(--black);border:1px solid rgba(255,149,0,.5);padding:1px 6px;border-radius:2px;font-weight:700;display:flex;align-items:center;gap:4px}
+.runtag::before{content:"";width:5px;height:5px;border-radius:50%;background:var(--flame);box-shadow:0 0 6px var(--ember);animation:pulse 1.6s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.nexttag{position:absolute;top:-8px;right:10px;font-family:var(--mono);font-size:8.5px;letter-spacing:.14em;text-transform:uppercase;color:#160500;background:var(--ember);padding:1px 6px;border-radius:2px;font-weight:700}
+
+/* active badges (flow view) */
+.abadges{margin-top:8px;display:flex;gap:5px;flex-wrap:wrap}
+.abg{display:inline-flex;align-items:center;gap:4px;font-family:var(--mono);font-size:9px;border:1px solid;border-radius:3px;padding:1.5px 6px}
+.abg svg{width:9px;height:9px}
+.abg.loop{color:var(--flame);border-color:rgba(255,149,0,.5)}
+.abg.cron{color:var(--ice);border-color:rgba(0,212,255,.5)}
+.abg.until{color:var(--jade);border-color:rgba(0,255,157,.45)}
+.abg.gate{color:var(--rose);border-color:rgba(255,45,120,.45)}
+.abg.guard{color:var(--dim2);border-color:var(--veil);border-style:dashed}
+.iterdots{display:flex;gap:3px;margin-top:7px}
+.iterdots i{width:12px;height:3px;border-radius:2px;background:var(--veil)}
+.iterdots i.done{background:var(--jade)} .iterdots i.cur{background:var(--flame);box-shadow:0 0 5px var(--ember);animation:pulse 1.8s infinite}
+
+/* ---------- card control bar (build) ---------- */
+.cardbar{display:flex;align-items:center;gap:6px;margin-top:10px;padding-top:9px;border-top:1px solid var(--mist)}
+.ib{height:27px;min-width:27px;padding:0 6px;border-radius:5px;border:1px solid var(--veil);background:transparent;color:var(--dim2);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:5px;transition:.14s;font-family:var(--mono);font-size:10.5px}
+.ib svg{width:13px;height:13px}
+.ib:hover{color:var(--paper);border-color:var(--dim)}
+.ib.danger:hover{color:var(--rose);border-color:rgba(255,45,120,.5)}
+.ib.grip{cursor:grab;color:var(--dim2)} .ib.grip:active{cursor:grabbing}
+.cardbar .sp{flex:1}
+
+/* iteration pill: enabled shows ×N, hover slides out +/- to the RIGHT */
+.iterpill{display:inline-flex;align-items:center;height:27px;border:1px solid var(--veil);border-radius:5px;overflow:hidden;font-family:var(--mono);font-size:10.5px;color:var(--dim2);cursor:pointer;transition:.14s}
+.iterpill .lb{display:flex;align-items:center;gap:5px;padding:0 8px;height:100%}
+.iterpill .lb svg{width:12px;height:12px}
+.iterpill.on{border-color:rgba(255,149,0,.5);background:rgba(255,69,0,.09);color:var(--flame)}
+.iterpill .val{font-weight:700;padding-right:8px}
+.iterpill.on .val{padding-right:8px}
+.iterpill .steppers{display:flex;align-items:center;max-width:0;overflow:hidden;transition:max-width .26s cubic-bezier(.5,0,.2,1)}
+.iterpill.on:hover .steppers,.iterpill.on.pinned .steppers{max-width:64px}
+.iterpill .sb{width:26px;height:27px;border:none;border-left:1px solid rgba(255,149,0,.3);background:transparent;color:var(--flame);font-size:14px;cursor:pointer}
+.iterpill .sb:hover{background:rgba(255,149,0,.18)}
+
+/* cron toggle chip */
+.ib.cron.on{color:var(--ice);border-color:rgba(0,212,255,.5);background:rgba(0,212,255,.08)}
+.ib.loopbtn.on{color:var(--flame);border-color:rgba(255,149,0,.5);background:rgba(255,69,0,.09)}
+
+/* ---------- hover insert (dotted square) ---------- */
+.gap{position:relative;height:26px;display:flex;align-items:center;justify-content:center}
+.gap .line{width:1px;height:100%;background:var(--veil)}
+.stack.flow .gap .line{width:2px}
+.gap.flowing .line{background:linear-gradient(180deg,rgba(255,149,0,.35),rgba(255,149,0,.95));box-shadow:0 0 6px rgba(255,149,0,.4)}
+.gap.timed .line{background:none;border-left:1px dashed rgba(0,212,255,.55)}
+.gap.blocked .line{background:none;border-left:1px dashed rgba(255,204,0,.5)}
+.conchip{position:absolute;z-index:2;font-family:var(--mono);font-size:9px;border:1px solid;border-radius:9px;padding:2px 8px;background:var(--black);display:flex;align-items:center;gap:4px}
+.conchip.timed{color:var(--ice);border-color:rgba(0,212,255,.5)} .conchip svg{width:9px;height:9px}
+.conchip.blocked{color:var(--sun);border-color:rgba(255,204,0,.5)}
+/* the insert square */
+.ins{position:absolute;width:18px;height:18px;border:1px dashed var(--ice-deep);border-radius:3px;background:var(--black);color:var(--ice);display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:0;transform:scale(.7);transition:.15s}
+.ins svg{width:11px;height:11px}
+.stack.build .gap:hover .ins{opacity:1;transform:scale(1)}
+.stack.build .gap:hover .line{background:linear-gradient(180deg,var(--veil),rgba(0,212,255,.4))}
+
+/* stage top insert (always available in build) */
+.addtop{width:100%;font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;background:transparent;border:1px dashed var(--veil);color:var(--dim2);border-radius:6px;padding:10px;cursor:pointer;transition:.15s;margin-bottom:14px;display:flex;align-items:center;justify-content:center;gap:7px}
+.addtop:hover{color:var(--ice);border-color:rgba(0,212,255,.4)}
+.addtop svg{width:12px;height:12px}
+
+/* ---------- popovers (schedule / advanced) ---------- */
+.pop{position:absolute;z-index:40;background:var(--panel);border:1px solid var(--veil);border-radius:7px;box-shadow:0 16px 44px rgba(0,0,0,.6);width:320px;overflow:hidden}
+.pop .ph{display:flex;align-items:center;gap:7px;padding:10px 12px;border-bottom:1px solid var(--mist);font-family:var(--mono);font-size:11px}
+.pop .ph .human{margin-left:auto;color:var(--paper)}
+.pop.sched .ph{color:var(--ice)} .pop.sched .ph svg{width:12px;height:12px}
+.freqrow{display:flex;gap:5px;padding:11px 12px 5px;flex-wrap:wrap}
+.freq{font-family:var(--mono);font-size:10px;border:1px solid var(--veil);border-radius:16px;padding:5px 10px;color:var(--dim);cursor:pointer;transition:.12s}
+.freq.on{color:var(--ice);border-color:rgba(0,212,255,.5);background:rgba(0,212,255,.09)}
+.detail{padding:6px 12px 12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-family:var(--mono);font-size:11px;color:var(--dim);min-height:30px}
+.detail input[type=time],.detail select{background:#0c1113;border:1px solid var(--veil);border-radius:3px;color:var(--ice);font-family:var(--mono);font-size:11px;padding:5px 7px}
+.detail .lbl{color:var(--dim2)}
+.detail input[type=number]{width:52px;background:#0c1113;border:1px solid var(--veil);border-radius:3px;color:var(--ice);font-family:var(--mono);font-size:11px;padding:5px 7px}
+.rawrow{display:flex;align-items:center;gap:8px;padding:9px 12px;border-top:1px solid var(--mist);background:#080b0d}
+.rawrow .lb{font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim2)}
+.rawrow input{flex:1;background:transparent;border:none;outline:none;color:var(--ice);font-family:var(--mono);font-size:12px;letter-spacing:.06em}
+.rawrow .sync{font-size:9px;color:var(--jade);font-family:var(--mono)}
+.popfoot{display:flex;gap:8px;padding:10px 12px;border-top:1px solid var(--mist)}
+.popfoot button{flex:1;font-family:var(--mono);font-size:10px;border-radius:4px;padding:7px;cursor:pointer;border:1px solid var(--veil);background:transparent;color:var(--dim)}
+.popfoot button.apply{background:var(--ice-deep);color:#02171d;border:none;font-weight:700}
+.popfoot button.clear:hover{color:var(--rose);border-color:rgba(255,45,120,.4)}
+
+/* advanced (guards) popover */
+.pop.adv .ph{color:var(--dim)}
+.gchip-row{display:flex;flex-direction:column;gap:8px;padding:12px}
+.gchip{border:1px solid var(--veil);border-radius:5px;overflow:hidden}
+.gchip .gh{display:flex;align-items:center;gap:8px;padding:8px 11px;cursor:pointer;font-family:var(--mono);font-size:11px;color:var(--dim)}
+.gchip .gh svg{width:12px;height:12px}
+.gchip .gh .tog{margin-left:auto;width:32px;height:18px;border-radius:10px;background:#1c1c1e;border:1px solid var(--veil);position:relative;transition:.15s}
+.gchip .gh .tog::after{content:"";position:absolute;width:12px;height:12px;border-radius:50%;background:var(--dim);top:2px;left:2px;transition:.16s}
+.gchip.on .gh .tog::after{left:16px}
+.gchip.on.gate .gh{color:var(--rose)} .gchip.on.gate .gh .tog{background:rgba(255,45,120,.25);border-color:var(--rose)} .gchip.on.gate .gh .tog::after{background:var(--rose)}
+.gchip.on.until .gh{color:var(--jade)} .gchip.on.until .gh .tog{background:rgba(0,255,157,.22);border-color:var(--jade)} .gchip.on.until .gh .tog::after{background:var(--jade)}
+.gchip .gbody{max-height:0;overflow:hidden;transition:max-height .24s ease}
+.gchip.on .gbody{max-height:80px}
+.gchip .gbody .in{margin:0 11px 11px;display:flex;gap:8px;align-items:center}
+.gchip .gbody input{flex:1;background:#0c1113;border:1px solid var(--veil);border-radius:3px;color:var(--paper);font-family:var(--mono);font-size:11px;padding:6px 8px}
+.gchip.gate .gbody input{color:var(--rose)} .gchip.until .gbody input{color:var(--jade)}
+.gseg-row{display:flex;align-items:center;gap:10px;padding:2px 11px 11px;font-family:var(--mono);font-size:10px;color:var(--dim2)}
+.gseg{display:inline-flex;border:1px solid var(--veil);border-radius:4px;overflow:hidden}
+.gseg span{padding:5px 9px;color:var(--dim);cursor:pointer;border-right:1px solid var(--veil)}
+.gseg span:last-child{border-right:none}
+.gseg span.on{background:rgba(0,212,255,.12);color:var(--ice)}
+
+/* guard chip row on the card (build) */
+.guardchips{display:flex;gap:5px;flex-wrap:wrap;margin-top:9px}
+.gc{display:inline-flex;align-items:center;gap:4px;font-family:var(--mono);font-size:9.5px;border:1px solid;border-radius:12px;padding:3px 9px;cursor:pointer}
+.gc.gate{color:var(--rose);border-color:rgba(255,45,120,.45)}
+.gc.until{color:var(--jade);border-color:rgba(0,255,157,.45)}
+.gc.adv{color:var(--dim2);border-color:var(--veil)}
+.gc svg{width:10px;height:10px}
+
+/* ---------- run bar ---------- */
+.runbar{margin-top:20px;display:flex;justify-content:center}
+.r-split{display:inline-flex;border-radius:6px;overflow:hidden;position:relative}
+.r-split .main{background:var(--flame);color:#160500;border:none;padding:11px 22px;font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.06em;cursor:pointer;display:flex;align-items:center;gap:8px}
+.r-split .main svg{width:13px;height:13px}
+.r-split .drop{background:#d97a00;color:#160500;border:none;border-left:1px solid rgba(0,0,0,.28);padding:0 11px;cursor:pointer;font-size:12px}
+.r-menu{position:absolute;bottom:calc(100% + 8px);right:0;background:var(--panel);border:1px solid var(--veil);border-radius:6px;box-shadow:0 14px 40px rgba(0,0,0,.6);min-width:220px;overflow:hidden;display:none;z-index:20}
+.r-menu.open{display:block}
+.r-menu button{display:flex;width:100%;align-items:flex-start;gap:9px;padding:11px 13px;background:transparent;border:none;border-bottom:1px solid var(--mist);color:var(--paper);cursor:pointer;text-align:left;font-family:var(--sans);font-size:12.5px}
+.r-menu button:last-child{border-bottom:none}
+.r-menu button:hover{background:rgba(255,255,255,.04)}
+.r-menu button svg{width:14px;height:14px;margin-top:1px;color:var(--flame);flex:0 0 14px}
+.r-menu button .d{font-family:var(--mono);font-size:9.5px;color:var(--dim2);margin-top:2px}
+
+/* ---------- live controls ---------- */
+.livebar{margin-top:20px;display:flex;align-items:center;justify-content:center;gap:8px}
+.lc{width:34px;height:34px;border:1px solid var(--veil);border-radius:6px;background:transparent;color:var(--dim);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:.14s}
+.lc svg{width:15px;height:15px}
+.lc.warm:hover{color:var(--flame);border-color:rgba(255,149,0,.5)}
+.lc.cool:hover{color:var(--ice);border-color:rgba(0,212,255,.5)}
+.lc.danger:hover{color:var(--rose);border-color:rgba(255,45,120,.5)}
+.livecap{font-family:var(--mono);font-size:9.5px;color:var(--dim2);margin-left:6px}
+.bumpwrap{position:relative;display:inline-flex}
+.bumpwrap sup{position:absolute;right:-3px;top:-3px;font-size:10px;font-weight:700}
+
+/* toast */
+.toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--panel);border:1px solid var(--veil);border-radius:6px;padding:10px 16px;font-family:var(--mono);font-size:11px;color:var(--paper);opacity:0;transition:.25s;z-index:50;pointer-events:none}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.toast b{color:var(--flame)}
+
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+</style>
+</head>
+<body>
+<div class="top">
+  <div class="brand"><span class="dot"></span>lopi <b>· stack builder</b> · playground</div>
+  <div class="opt-tweaks">
+    <label>build icon:
+      <span class="pick" id="bipick"><span data-bi="stack" class="on">stack</span><span data-bi="hammer">hammer</span><span data-bi="pencil">pencil</span><span data-bi="blocks">blocks</span><span data-bi="wrench">wrench</span></span>
+    </label>
+  </div>
+</div>
+
+<div class="stagewrap">
+  <div class="shead">
+    <span class="t">rasen stack · squish</span>
+    <span class="mode m-seg" id="modeseg">
+      <span class="b on" data-m="build"></span>
+      <span class="f" data-m="flow"></span>
+    </span>
+  </div>
+  <div class="subhint" id="subhint"></div>
+  <div class="stack build" id="stack"></div>
+  <div id="runzone"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+const REDUCED=window.matchMedia('(prefers-reduced-motion:reduce)').matches;
+const I={
+ loop:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>',
+ cron:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+ plus:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+ play:'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 4l14 8-14 8z"/></svg>',
+ pause:'<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>',
+ stop:'<svg viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>',
+ trash:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>',
+ drag:'<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>',
+ dup:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
+ drain:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h18l-7 8v6l-4 2v-8z"/></svg>',
+ gate:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>',
+ gear:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 0 1-4 0v-.1A1.6 1.6 0 0 0 6.6 19.4l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.6 1.6 0 0 0 4.9 14H4.8a2 2 0 0 1 0-4h.1a1.6 1.6 0 0 0 1.1-2.7l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.6 1.6 0 0 0 12 3.6V3.5a2 2 0 0 1 4 0v.1a1.6 1.6 0 0 0 2.7 1.1l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0 .1 2.6"/></svg>',
+ check:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>',
+ clock:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+ beaker:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 2 3h10a2 2 0 0 0 2-3l-5-9V3"/></svg>',
+ flowicon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h5l2-5 4 10 2-5h3"/></svg>',
+};
+// build icon set
+const BUILD_ICONS={
+ stack:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="4" rx="1"/><rect x="4" y="10" width="16" height="4" rx="1"/><rect x="4" y="16" width="16" height="4" rx="1"/></svg>',
+ hammer:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 5.5 18 2l4 4-3.5 3.5"/><path d="m16 7-9.5 9.5"/><path d="m3 21 3.5-3.5"/><path d="M5.5 14.5 9 18"/></svg>',
+ pencil:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>',
+ blocks:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="8" rx="1"/><rect x="8" y="13" width="8" height="8" rx="1"/></svg>',
+ wrench:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.2L3 17.8 6.2 21l6.3-6.3a4 4 0 0 0 5.2-5.4l-2.6 2.6-2.1-2.1z"/></svg>',
+};
+let buildIcon='stack';
+const BUMP=`<span class="bumpwrap">${I.loop}<sup>+</sup></span>`;
+
+/* ---------- model ---------- */
+function u(){return 'p'+Math.random().toString(36).slice(2,7);}
+let STACK=[
+ // index 0 = next / bottom
+ {id:u(),spec:':optimize',repo:null,loop:false,loopN:3,cron:false,cronStr:'',cronHuman:'',gate:true,gateCmd:'./kill_test.sh',until:true,untilCmd:'cargo test',onfail:'stop',budget:'auto',running:true},
+ {id:u(),spec:':benchmark',repo:'@vectro',chain:':report',chainRepo:'@konjo.ai',loop:false,loopN:2,cron:false,gate:false,until:false},
+ {id:u(),spec:':kill-test',repo:null,loop:true,loopN:2,cron:true,cronStr:'0 14 * * *',cronHuman:'every day at 14:00',gate:false,until:false},
+ {id:u(),spec:':progress',repo:null,loop:true,loopN:null,cron:false,gate:false,until:false,pace:true,hold:true},
+ {id:u(),spec:'"draft HN launch post revision"',lit:true,loop:false,cron:false,gate:false,until:false},
+];
+let mode='build';
+
+/* ---------- cron <-> human two-way ---------- */
+function cronToHuman(c){
+  const p=c.trim().split(/\s+/);if(p.length!==5)return {human:'custom cron',freq:'custom'};
+  const [mi,ho,dom,mon,dow]=p;
+  if(mi.startsWith('*/'))return {human:`every ${mi.slice(2)} minutes`,freq:'min',n:+mi.slice(2)};
+  if(mi==='0'&&ho==='*')return {human:'every hour',freq:'hour'};
+  if(/^\d+$/.test(mi)&&ho==='*')return {human:`hourly at :${mi.padStart(2,'0')}`,freq:'hour',min:+mi};
+  if(dow!=='*'&&/^\d+$/.test(ho))return {human:`every ${['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][+dow]||dow} at ${ho.padStart(2,'0')}:${mi.padStart(2,'0')}`,freq:'week',dow:+dow,ho:+ho,mi:+mi};
+  if(dom==='*'&&mon==='*'&&/^\d+$/.test(ho))return {human:`every day at ${ho.padStart(2,'0')}:${mi.padStart(2,'0')}`,freq:'day',ho:+ho,mi:+mi};
+  return {human:'custom cron',freq:'custom'};
+}
+
+/* ---------- render ---------- */
+const stackEl=document.getElementById('stack');
+const runzone=document.getElementById('runzone');
+function specHTML(it){
+  let h=`<span class="al">${it.spec.replace(/</g,'&lt;')}</span>`;
+  if(it.lit)h=`<span class="str">${it.spec.replace(/"/g,'&quot;').replace(/</g,'&lt;')}</span>`;
+  else if(it.spec.startsWith(':'))h=`<span class="al">${it.spec}</span>`;
+  if(it.repo)h+=` <span class="rp">${it.repo}</span>`;
+  if(it.chain)h+=` <span class="op">&gt;</span> <span class="al">${it.chain}</span>`+(it.chainRepo?` <span class="rp">${it.chainRepo}</span>`:'');
+  // trailing modifiers as mono text
+  let mods=[];
+  if(it.loop)mods.push(it.loopN==null?'x∞':'x'+it.loopN);
+  if(it.pace)mods.push('pace:even');
+  if(it.cron&&it.cronStr)mods.push(`at:"${it.cronStr}"`);
+  if(it.gate)mods.push(`gate:"${it.gateCmd}"`);
+  if(it.until)mods.push(`until:"${it.untilCmd}"`);
+  if(mods.length)h+=` <span class="md">${mods.join(' ').replace(/</g,'&lt;')}</span>`;
+  return `<div class="spec">${h}</div>`;
+}
+function iterDots(it){if(!it.loop||it.loopN==null)return '';
+  let s='<div class="iterdots">';const done=it.running?1:0;
+  for(let i=0;i<it.loopN;i++)s+=`<i class="${i<done?'done':(i===done?'cur':'')}"></i>`;return s+'</div>';}
+function activeBadges(it){
+  let b='';
+  if(it.loop)b+=`<span class="abg loop">${I.loop}${it.loopN==null?'∞':'×'+it.loopN}</span>`;
+  if(it.cron)b+=`<span class="abg cron">${I.cron}${it.cronHuman||it.cronStr}</span>`;
+  if(it.until)b+=`<span class="abg until">${I.check}until</span>`;
+  if(it.gate)b+=`<span class="abg gate">${I.gate}gate</span>`;
+  if(it.loop&&it.loopN==null)b+=`<span class="abg guard">max:25</span><span class="abg guard">budget:auto</span>`;
+  return b?`<div class="abadges">${b}</div>`:'';
+}
+
+function render(){
+  stackEl.className='stack '+mode;
+  document.getElementById('subhint').textContent = mode==='build'
+    ? 'drag ⠿ to reorder · hover between cards to insert · toggle loop for the ×N stepper · gear for guards'
+    : 'running — the next card traces its outline · schedule + hold state shown on the connectors';
+  const rev=[...STACK].reverse();
+  let h='';
+  if(mode==='build')h+=`<button class="addtop" data-addtop>${I.plus} stage a prompt</button>`;
+  rev.forEach((it,i)=>{
+    const isNext=it===STACK[0];
+    const running=it.running&&mode==='flow';
+    const tag = running?'<span class="runtag">running</span>' : (isNext?`<span class="nexttag">${mode==='flow'?'next':'next ↓'}</span>`:'');
+    h+=`<div class="pc ${isNext?'next':''} ${running?'running':''}" draggable="${mode==='build'}" data-id="${it.id}">
+      ${tag}${specHTML(it)}`;
+    if(mode==='flow'){h+=activeBadges(it)+iterDots(it);}
+    else{
+      // build controls
+      h+=`<div class="cardbar">
+        <span class="iterpill ${it.loop?'on':''}" data-loop="${it.id}">
+          <span class="lb">${I.loop}<span class="val">${it.loop?(it.loopN==null?'×∞':'×'+it.loopN):'loop'}</span></span>
+          <span class="steppers"><button class="sb" data-dec="${it.id}">−</button><button class="sb" data-inc="${it.id}">+</button></span>
+        </span>
+        <button class="ib cron ${it.cron?'on':''}" data-cron="${it.id}">${I.cron}</button>
+        <button class="ib" data-gear="${it.id}" title="guards">${I.gear}</button>
+        <span class="sp"></span>
+        <button class="ib" data-dup="${it.id}" title="duplicate">${I.dup}</button>
+        <button class="ib grip" data-grip="${it.id}" title="drag to reorder">${I.drag}</button>
+        <button class="ib danger" data-del="${it.id}" title="delete">${I.trash}</button>
+      </div>`;
+      // guard chips summary if any set
+      if(it.gate||it.until){
+        h+='<div class="guardchips">';
+        if(it.gate)h+=`<span class="gc gate" data-gear="${it.id}">${I.gate}gate:"${it.gateCmd}"</span>`;
+        if(it.until)h+=`<span class="gc until" data-gear="${it.id}">${I.check}until:"${it.untilCmd}"</span>`;
+        h+='</div>';
+      }
+    }
+    h+=`</div>`;
+    if(i<rev.length-1){
+      // connector
+      let cls='',chip='';
+      if(mode==='flow'){
+        if(it.cron){cls='timed';chip=`<span class="conchip timed">${I.cron}${it.cronHuman||it.cronStr}</span>`;}
+        else if(it.hold){cls='blocked';chip=`<span class="conchip blocked">⏸ budget</span>`;}
+        else cls='flowing';
+      }
+      h+=`<div class="gap ${cls}" data-gap="${i}"><div class="line"></div>${chip}
+        ${mode==='build'?`<div class="ins" data-ins="${i}">${I.plus}</div>`:''}</div>`;
+    }
+  });
+  stackEl.innerHTML=h;
+  renderRun();
+  wire();
+}
+function renderRun(){
+  if(mode==='build'){
+    runzone.innerHTML=`<div class="runbar"><span class="r-split">
+      <button class="main" data-run>${I.play} run stack</button>
+      <button class="drop" data-rundrop>⌄</button>
+      <div class="r-menu" id="rmenu">
+        <button data-runopt="flow">${I.play}<span>Run now · flow<span class="d">execute top-to-bottom immediately</span></span></button>
+        <button data-runopt="once">${I.check}<span>Run once<span class="d">ignore loops + schedules, single pass each</span></span></button>
+        <button data-runopt="sched">${I.clock}<span>Schedule whole stack<span class="d">set one cron for the entire stack</span></span></button>
+        <button data-runopt="dry">${I.beaker}<span>Dry run<span class="d">resolve + validate, execute nothing</span></span></button>
+      </div>
+    </span></div>`;
+  } else {
+    runzone.innerHTML=`<div class="livebar">
+      <button class="lc warm" data-live="pause" title="pause — hold new iterations">${I.pause}</button>
+      <button class="lc cool" data-live="drain" title="drain — finish current, then stop">${I.drain}</button>
+      <button class="lc warm" data-live="bump" title="bump — +1 iteration to the running loop">${BUMP}</button>
+      <button class="lc danger" data-live="kill" title="kill — abort now">${I.stop}</button>
+      <span class="livecap">pause · drain · bump · kill</span>
+    </div>`;
+  }
+}
+
+/* ---------- popovers ---------- */
+let pop=null;
+function closePop(){if(pop){pop.remove();pop=null;}}
+document.addEventListener('click',e=>{
+  if(pop&&!e.target.closest('.pop')&&!e.target.closest('[data-cron]')&&!e.target.closest('[data-gear]'))closePop();
+  if(!e.target.closest('.r-split')){const m=document.getElementById('rmenu');if(m)m.classList.remove('open');}
+});
+
+function openSched(it,anchor){
+  closePop();
+  const info=it.cronStr?cronToHuman(it.cronStr):{human:'every day at 14:00',freq:'day',ho:14,mi:0};
+  if(!it.cronStr){it.cronStr='0 14 * * *';it.cronHuman=info.human;}
+  pop=document.createElement('div');pop.className='pop sched';
+  pop.innerHTML=`<div class="ph">${I.cron} schedule <span class="human" data-human>${it.cronHuman||info.human}</span></div>
+    <div class="freqrow">
+      <span class="freq" data-f="min">every N min</span>
+      <span class="freq" data-f="hour">hourly</span>
+      <span class="freq" data-f="day">daily</span>
+      <span class="freq" data-f="week">weekly</span>
+      <span class="freq" data-f="custom">custom</span></div>
+    <div class="detail" data-detail></div>
+    <div class="rawrow"><span class="lb">cron</span><input data-raw value="${it.cronStr}"/><span class="sync">⇄ synced</span></div>
+    <div class="popfoot"><button class="clear" data-schedclear>disable</button><button class="apply" data-schedapply>done</button></div>`;
+  positionPop(pop,anchor);
+  const setFreq=(f)=>{pop.querySelectorAll('.freq').forEach(x=>x.classList.toggle('on',x.dataset.f===f));drawDetail(f);};
+  function drawDetail(f){
+    const detail=pop.querySelector('[data-detail]');
+    if(f==='min')detail.innerHTML=`<span class="lbl">every</span> <input type="number" data-min value="15" min="1"/> <span class="lbl">minutes</span>`;
+    else if(f==='hour')detail.innerHTML=`<span class="lbl">at minute</span> <input type="number" data-hm value="0" min="0" max="59"/>`;
+    else if(f==='day')detail.innerHTML=`<span class="lbl">at</span> <input type="time" data-time value="14:00"/>`;
+    else if(f==='week')detail.innerHTML=`<span class="lbl">on</span> <select data-dow><option>Mon</option><option>Tue</option><option>Wed</option><option>Thu</option><option>Fri</option><option>Sat</option><option>Sun</option></select> <span class="lbl">at</span> <input type="time" data-time value="09:00"/>`;
+    else detail.innerHTML=`<span class="lbl">edit the cron field below directly</span>`;
+    detail.querySelectorAll('input,select').forEach(inp=>inp.addEventListener('input',()=>recompute(f)));
+  }
+  function recompute(f){
+    const raw=pop.querySelector('[data-raw]');let c='';
+    const DOW={Mon:1,Tue:2,Wed:3,Thu:4,Fri:5,Sat:6,Sun:0};
+    if(f==='min'){c=`*/${pop.querySelector('[data-min]').value||15} * * * *`;}
+    else if(f==='hour'){c=`${pop.querySelector('[data-hm]').value||0} * * * *`;}
+    else if(f==='day'){const [H,M]=(pop.querySelector('[data-time]').value||'14:00').split(':');c=`${+M} ${+H} * * *`;}
+    else if(f==='week'){const [H,M]=(pop.querySelector('[data-time]').value||'09:00').split(':');c=`${+M} ${+H} * * ${DOW[pop.querySelector('[data-dow]').value]}`;}
+    if(c){raw.value=c;syncFromRaw(c,false);}
+  }
+  function syncFromRaw(c,fromInput){
+    const info=cronToHuman(c);
+    pop.querySelector('[data-human]').textContent=info.human;
+    it.cronStr=c;it.cronHuman=info.human;
+    if(fromInput){ // raw edited: push back to pickers
+      pop.querySelectorAll('.freq').forEach(x=>x.classList.toggle('on',x.dataset.f===info.freq));
+      drawDetail(info.freq);
+      // prefill detail from parsed info
+      if(info.freq==='min'&&pop.querySelector('[data-min]'))pop.querySelector('[data-min]').value=info.n;
+      if(info.freq==='day'&&pop.querySelector('[data-time]'))pop.querySelector('[data-time]').value=`${String(info.ho).padStart(2,'0')}:${String(info.mi).padStart(2,'0')}`;
+      if(info.freq==='week'){if(pop.querySelector('[data-time]'))pop.querySelector('[data-time]').value=`${String(info.ho).padStart(2,'0')}:${String(info.mi).padStart(2,'0')}`;
+        if(pop.querySelector('[data-dow]'))pop.querySelector('[data-dow]').value=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][info.dow];}
+    }
+  }
+  pop.querySelectorAll('.freq').forEach(fx=>fx.onclick=()=>{setFreq(fx.dataset.f);recompute(fx.dataset.f);});
+  pop.querySelector('[data-raw]').addEventListener('input',e=>syncFromRaw(e.target.value,true));
+  pop.querySelector('[data-schedapply]').onclick=()=>{it.cron=true;closePop();render();toast(`scheduled · <b>${it.cronHuman}</b>`);};
+  pop.querySelector('[data-schedclear]').onclick=()=>{it.cron=false;closePop();render();};
+  setFreq(info.freq);drawDetail(info.freq);
+  // prefill
+  if(info.freq==='day'&&pop.querySelector('[data-time]'))pop.querySelector('[data-time]').value=`${String(info.ho||14).padStart(2,'0')}:${String(info.mi||0).padStart(2,'0')}`;
+}
+
+function openGuards(it,anchor){
+  closePop();
+  pop=document.createElement('div');pop.className='pop adv';
+  pop.innerHTML=`<div class="ph">${I.gear} guards</div>
+    <div class="gchip-row">
+      <div class="gchip gate ${it.gate?'on':''}" data-g="gate">
+        <div class="gh">${I.gate} gate <span style="color:var(--dim2)">· must pass before start</span><span class="tog"></span></div>
+        <div class="gbody"><div class="in"><input data-gatecmd value="${it.gateCmd||'./kill_test.sh'}" placeholder="shell command"/></div></div>
+      </div>
+      <div class="gchip until ${it.until?'on':''}" data-g="until">
+        <div class="gh">${I.check} until <span style="color:var(--dim2)">· loop until exit 0</span><span class="tog"></span></div>
+        <div class="gbody"><div class="in"><input data-untilcmd value="${it.untilCmd||'cargo test'}" placeholder="shell command"/></div></div>
+      </div>
+    </div>
+    <div class="gseg-row">on&nbsp;fail <span class="gseg" data-onfail>
+      <span data-of="stop" class="${(it.onfail||'stop')==='stop'?'on':''}">stop</span>
+      <span data-of="continue" class="${it.onfail==='continue'?'on':''}">continue</span>
+      <span data-of="backoff" class="${it.onfail==='backoff'?'on':''}">backoff</span></span></div>
+    <div class="gseg-row">budget <span class="gseg" data-budget>
+      <span data-bud="auto" class="${(it.budget||'auto')==='auto'?'on':''}">auto</span>
+      <span data-bud="200k" class="${it.budget==='200k'?'on':''}">200k</span>
+      <span data-bud="none" class="${it.budget==='none'?'on':''}">none</span></span></div>
+    <div class="popfoot"><button class="apply" data-gapply>done</button></div>`;
+  positionPop(pop,anchor);
+  pop.querySelectorAll('.gchip .gh').forEach(gh=>gh.onclick=()=>{const chip=gh.closest('.gchip');chip.classList.toggle('on');});
+  pop.querySelectorAll('[data-onfail] span').forEach(sp=>sp.onclick=()=>{pop.querySelectorAll('[data-onfail] span').forEach(x=>x.classList.remove('on'));sp.classList.add('on');it.onfail=sp.dataset.of;});
+  pop.querySelectorAll('[data-budget] span').forEach(sp=>sp.onclick=()=>{pop.querySelectorAll('[data-budget] span').forEach(x=>x.classList.remove('on'));sp.classList.add('on');it.budget=sp.dataset.bud;});
+  pop.querySelector('[data-gapply]').onclick=()=>{
+    it.gate=pop.querySelector('.gchip.gate').classList.contains('on');
+    it.until=pop.querySelector('.gchip.until').classList.contains('on');
+    it.gateCmd=pop.querySelector('[data-gatecmd]').value;
+    it.untilCmd=pop.querySelector('[data-untilcmd]').value;
+    closePop();render();toast('guards updated');
+  };
+}
+function positionPop(el,anchor){
+  document.body.appendChild(el);
+  const r=anchor.getBoundingClientRect();
+  let top=r.bottom+8+window.scrollY, left=r.left+window.scrollX;
+  const w=320;if(left+w>window.innerWidth-10)left=window.innerWidth-w-10;
+  if(top+el.offsetHeight>window.scrollY+window.innerHeight-10)top=r.top+window.scrollY-el.offsetHeight-8;
+  el.style.top=top+'px';el.style.left=left+'px';
+}
+
+/* ---------- toast ---------- */
+let toastT;
+function toast(msg){const t=document.getElementById('toast');t.innerHTML=msg;t.classList.add('show');
+  clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),2200);}
+
+/* ---------- wiring ---------- */
+function find(id){return STACK.find(x=>x.id===id);}
+function wire(){
+  // mode
+  document.querySelectorAll('#modeseg span').forEach(sp=>sp.onclick=()=>{mode=sp.dataset.m;render();});
+  // loop pill toggle + steppers
+  stackEl.querySelectorAll('[data-loop]').forEach(pill=>{
+    pill.querySelector('.lb').onclick=()=>{const it=find(pill.dataset.loop);it.loop=!it.loop;if(it.loop&&it.loopN===undefined)it.loopN=3;render();};
+  });
+  stackEl.querySelectorAll('[data-inc]').forEach(b=>b.onclick=e=>{e.stopPropagation();const it=find(b.dataset.inc);it.loop=true;it.loopN=it.loopN==null?2:it.loopN+1;render();});
+  stackEl.querySelectorAll('[data-dec]').forEach(b=>b.onclick=e=>{e.stopPropagation();const it=find(b.dataset.dec);if(it.loopN==null)return;it.loopN=it.loopN<=2?null:it.loopN-1;render();});
+  stackEl.querySelectorAll('[data-cron]').forEach(b=>b.onclick=()=>{const it=find(b.dataset.cron);if(it.cron){it.cron=false;render();}else openSched(it,b);});
+  stackEl.querySelectorAll('[data-gear]').forEach(b=>b.onclick=()=>openGuards(find(b.dataset.gear),b));
+  stackEl.querySelectorAll('[data-dup]').forEach(b=>b.onclick=()=>{const it=find(b.dataset.dup);const i=STACK.indexOf(it);STACK.splice(i,0,{...it,id:u(),running:false});render();toast('duplicated');});
+  stackEl.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{const it=find(b.dataset.del);STACK=STACK.filter(x=>x!==it);render();});
+  // insert
+  stackEl.querySelectorAll('[data-ins]').forEach(b=>b.onclick=()=>{const gi=+b.dataset.ins;
+    // gap i is between rev[i] and rev[i+1]; convert to STACK index
+    const stackIdx=STACK.length-1-gi;
+    STACK.splice(stackIdx,0,{id:u(),spec:':progress',loop:false,cron:false,gate:false,until:false});render();toast('prompt inserted');});
+  const at=stackEl.querySelector('[data-addtop]');if(at)at.onclick=()=>{STACK.push({id:u(),spec:':progress',loop:false,cron:false,gate:false,until:false});render();toast('prompt staged');};
+  // run
+  const run=runzone.querySelector('[data-run]');if(run)run.onclick=()=>{mode='flow';render();toast('stack running · <b>flow</b>');};
+  const rd=runzone.querySelector('[data-rundrop]');if(rd)rd.onclick=e=>{e.stopPropagation();document.getElementById('rmenu').classList.toggle('open');};
+  runzone.querySelectorAll('[data-runopt]').forEach(b=>b.onclick=()=>{const o=b.dataset.runopt;
+    document.getElementById('rmenu').classList.remove('open');
+    if(o==='flow'){mode='flow';render();toast('stack running · <b>flow</b>');}
+    else toast('run mode · <b>'+o+'</b> (demo)');});
+  // live
+  runzone.querySelectorAll('[data-live]').forEach(b=>b.onclick=()=>{const a=b.dataset.live;
+    if(a==='kill'||a==='drain'){mode='build';render();toast(a==='drain'?'draining · finishing current iteration':'killed · back to build');}
+    else toast(a==='bump'?'bumped · <b>+1 iteration</b>':'paused');});
+  // drag reorder
+  wireDrag();
+}
+let dragId=null;
+function wireDrag(){
+  stackEl.querySelectorAll('.pc[draggable=true]').forEach(pc=>{
+    pc.addEventListener('dragstart',e=>{dragId=pc.dataset.id;pc.classList.add('dragging');e.dataTransfer.effectAllowed='move';});
+    pc.addEventListener('dragend',()=>{dragId=null;pc.classList.remove('dragging');stackEl.querySelectorAll('.dragover').forEach(x=>x.classList.remove('dragover'));});
+    pc.addEventListener('dragover',e=>{e.preventDefault();pc.classList.add('dragover');});
+    pc.addEventListener('dragleave',()=>pc.classList.remove('dragover'));
+    pc.addEventListener('drop',e=>{e.preventDefault();pc.classList.remove('dragover');
+      if(!dragId||dragId===pc.dataset.id)return;
+      const from=STACK.findIndex(x=>x.id===dragId), to=STACK.findIndex(x=>x.id===pc.dataset.id);
+      const [m]=STACK.splice(from,1);STACK.splice(to,0,m);render();});
+  });
+}
+
+/* build icon picker */
+document.querySelectorAll('#bipick span').forEach(sp=>sp.onclick=()=>{
+  document.querySelectorAll('#bipick span').forEach(x=>x.classList.remove('on'));sp.classList.add('on');
+  buildIcon=sp.dataset.bi;paintModeIcons();});
+function paintModeIcons(){
+  document.querySelector('#modeseg .b').innerHTML=BUILD_ICONS[buildIcon]+' build';
+  document.querySelector('#modeseg .f').innerHTML=I.flowicon+' flow';
+}
+paintModeIcons();
+render();
+</script>
+</body>
+</html>

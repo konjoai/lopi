@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>lopi · loop-engineering landscape</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+<style>
+:root{
+  --bg:#0a0d10;--panel:#0e1317;--line:rgba(255,255,255,.09);--line2:rgba(255,255,255,.045);
+  --ink:#eef2f3;--dim:rgba(238,242,243,.58);--dim2:rgba(238,242,243,.32);
+  --ice:#39c6e6;--ember:#ff5a1f;--flame:#ff9a3d;--jade:#37d99a;--sun:#ffcf4a;--rose:#ff5d86;--violet:#b79bff;
+  --mono:'IBM Plex Mono',ui-monospace,monospace;--disp:'Fraunces',Georgia,serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--mono);font-size:13.5px;line-height:1.62;
+  background-image:linear-gradient(var(--line2) 1px,transparent 1px),linear-gradient(90deg,var(--line2) 1px,transparent 1px);background-size:36px 36px}
+.wrap{max-width:1000px;margin:0 auto;padding:52px 26px 120px}
+.eyebrow{font-size:11px;letter-spacing:.28em;text-transform:uppercase;color:var(--ice)}
+h1{font-family:var(--disp);font-weight:600;font-size:43px;line-height:1.04;margin:14px 0 12px}
+.sub{color:var(--dim);max-width:730px}
+.sub b{color:var(--ink)}
+.rule{height:1px;background:var(--line);margin:36px 0}
+h2{font-family:var(--disp);font-weight:600;font-size:27px;margin:40px 0 6px}
+h2 .n{font-family:var(--mono);font-size:12px;color:var(--ember);margin-right:10px;letter-spacing:.1em}
+h3{font-family:var(--disp);font-weight:600;font-size:19px;margin:26px 0 8px;color:var(--ink)}
+.lead{color:var(--dim);margin-bottom:14px;max-width:800px}
+.lead b{color:var(--ink)}
+p{margin:10px 0;max-width:820px}
+.person{border-left:2px solid var(--violet);padding:3px 0 3px 16px;margin:18px 0}
+.person .who{font-family:var(--disp);font-size:17px;color:var(--ink);font-weight:600}
+.person .tag{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--violet);margin-bottom:6px}
+.tbl{width:100%;border-collapse:collapse;margin:14px 0;font-size:12px}
+.tbl th{text-align:left;font-weight:500;font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim2);padding:0 10px 8px;border-bottom:1px solid var(--line);vertical-align:bottom}
+.tbl td{padding:11px 10px;border-bottom:1px solid var(--line2);vertical-align:top}
+.tbl tr:hover td{background:rgba(255,255,255,.014)}
+.k{color:var(--ink);font-weight:500}
+.term{color:var(--violet);font-weight:500}
+code{color:var(--flame);font-size:12px}
+ul{margin:8px 0 8px 18px}li{margin:5px 0;color:var(--dim)}li b{color:var(--ink)}
+.callout{border:1px solid var(--line);border-left:2px solid var(--ice);background:var(--panel);border-radius:0 6px 6px 0;padding:15px 17px;margin:20px 0;font-size:12.5px;color:var(--dim)}
+.callout b{color:var(--ink)} .callout.warn{border-left-color:var(--rose)} .callout.win{border-left-color:var(--jade)}
+.pill{display:inline-block;font-size:10px;letter-spacing:.08em;text-transform:uppercase;border:1px solid;border-radius:20px;padding:2px 10px;margin-left:6px;vertical-align:middle}
+.pill.do{color:var(--jade);border-color:rgba(55,217,154,.4)} .pill.dont{color:var(--rose);border-color:rgba(255,93,134,.4)}
+.foot{margin-top:44px;border-top:1px solid var(--line);padding-top:18px;font-size:11.5px;color:var(--dim2)}
+.foot a{color:var(--ice);text-decoration:none}
+strong{color:var(--ink)}
+.q{color:var(--dim);font-style:italic;border-left:1px solid var(--veil);padding-left:12px;margin:10px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="eyebrow">lopi · research synthesis</div>
+  <h1>The loop-engineering landscape, mapped onto Konjo</h1>
+  <p class="sub">A deep read of what the leaders are actually building and naming, and what it means for the loop framework. The short version: <b>the field has converged on the exact primitives you already have</b>, the disagreements are about scale and interface, and there are a handful of building blocks and one naming decision worth stealing. This is not "start over"; it's "you're on the right line, here's how to sharpen it."</p>
+
+  <div class="rule"></div>
+
+  <!-- ===== SECTION 1: THE PEOPLE ===== -->
+  <h2><span class="n">01</span> What the leaders are building</h2>
+
+  <div class="person">
+    <div class="tag">Andrej Karpathy · AutoResearch · "the loopy era"</div>
+    <div class="who">The loop is a ratchet: propose → run → evaluate → keep only if it beats best.</div>
+  </div>
+  <p><b>AutoResearch</b> (Mar 2026, 21k stars in days) is the purest statement of the loop. Three files: an <b>immutable evaluator</b>, an <b>agent-modifiable implementation</b>, and a <b>human-authored direction</b> (a markdown "program.md", which he calls "a super lightweight skill"). The agent loops propose-train-evaluate on a <b>fixed time budget</b> (5 min/experiment, ~100 experiments overnight), keeping only changes that beat the current best. It ran 700 experiments in 2 days and found 20 real optimizations.</p>
+  <p>What matters for you: Karpathy's loop is <b>your rasen contract, exactly</b>. Immutable evaluator = your gate/verifier. Agent-modifiable file = the working tree. Human direction = the prompt/alias. "Keep only if it beats best" = a merge gate on a measured signal. His framing of the human role, <b>"from writer to director to research advisor"</b>, is the autonomy ladder your backend already has (L1–L4). And his stated constraints for a good agent loop, quoted by Fortune, are literally your primitives: <span class="q">"clear instructions, constraints, what not to change, and a stopping criteria."</span> Prompt · guards · non-goals · stop. You built the thing he described.</p>
+  <p>Two ideas worth stealing outright: the <b>fixed-budget experiment</b> (not "loop N times" but "loop for T minutes / until the ratchet stalls"), and the <b>ratchet</b> itself as a first-class loop type, a loop whose contract is "only commit if the new result beats the recorded best." That's a specific, nameable Konjo alias.</p>
+
+  <div class="person">
+    <div class="tag">Steve Yegge · Gas Town + Beads · the maximalist</div>
+    <div class="who">Work is durable, atomic, and git-backed; agents are ephemeral. Decouple the two.</div>
+  </div>
+  <p><b>Gas Town</b> (20–30 parallel agents, Mad-Max roles) and <b>Beads</b> (a git-backed issue tracker agents actually use) are the most developed multi-agent system in the wild, and a <b>goldmine of naming and structure</b>, most of which you should admire and NOT copy wholesale. The durable insight underneath the theatrics:</p>
+  <ul>
+    <li><b>The "50 First Dates" problem</b> — agents have no memory between sessions and produce "conflicting swamps of markdown files." Beads solves it by storing work as JSONL in git, cached in SQLite, with hash IDs (<code>bd-a1b2</code>) designed to not merge-conflict. <b>This is your MemoryStore / Ledger.</b> You already have the answer he built Beads for.</li>
+    <li><b>Ephemeral workers, durable work.</b> "Polecats" spawn, do one task, and disappear; the work definition survives. This is exactly your <b>pane = ephemeral agent, stack/loops.toml = durable definition</b> split. He proves the split is right.</li>
+    <li><b>"Molecules"</b> — chains of sequenced atomic tasks, checked off, persistent across crashes because git-backed. That is your <b>chain</b> operator plus checkpoint recovery. He calls the decomposition <b>MEOW (Molecular Expression of Work)</b>: work specifies outcomes, not exact steps ("nondeterministic idempotence"). Your contract already says "record the outcome," not "record the keystrokes."</li>
+    <li><b>Severity-routed escalation</b> — a stuck agent calls <code>gt escalate</code>, creating a tracked item routed through human roles at CRITICAL/HIGH/MEDIUM. <b>This is your needs-you column</b>, and it validates making escalation a first-class, severity-tagged state.</li>
+    <li><b>The <code>gt feed --problems</code> view</b> — "at 20–50 agents, spotting stuck agents becomes difficult; the problems view surfaces agents needing human intervention." <b>This is your overview's needs-you filter</b>, arrived at independently. Strong signal you're building the right view.</li>
+    <li><b>"Land the plane"</b> — agents clean up state at session end and generate a ready-to-paste prompt for the next session. That is your <code>:handoff</code> alias and NEXT_SESSION_PROMPT, named.</li>
+  </ul>
+  <p>What NOT to take: the 7-role hierarchy (Mayor/Polecat/Refinery/Deacon/Witness/Dogs), the $100/hr burn, the "riding a wild stallion" instability. Gas Town is explicitly for <b>Stage 6–8</b> operators running fleets; Yegge himself says "if you have any doubt whatsoever, you can't use it." Your product is for the Stage 4–6 solo operator who wants control and legibility, not a 30-agent factory. That's a <b>positioning gift</b>: be the tool people use before (or instead of) needing Gas Town.</p>
+
+  <div class="person">
+    <div class="tag">Peter Steinberger · OpenClaw · parallel agents + reusable text</div>
+    <div class="who">Run 5–6 agents at once; if you do something twice, make it a skill.</div>
+  </div>
+  <p>Steinberger's contribution is the <b>parallel-agent workflow</b> ("5–6 agents at once", now widely cited) and the <b>Software 3.0 install-as-text</b> idea (OpenClaw ships as a chunk of text you paste into your agent, not a bash script). For you: the parallel workflow is your <b>multi-pane</b> model, and it confirms your decision that <b>the pane is the unit of parallelism</b>. The "make it a skill" reflex is your <b>alias/template</b> system. Nothing here to rebuild, everything here to feel validated by.</p>
+
+  <div class="person">
+    <div class="tag">The framework field · LangGraph / Temporal / n8n</div>
+    <div class="who">Three camps: code-first, durability-first, visual-first. You are a fourth thing.</div>
+  </div>
+  <p>The orchestration tools sort into three camps, and understanding them tells you what lopi is <b>not</b>:</p>
+  <ul>
+    <li><b>Code-first (LangGraph, OpenAI Agents SDK):</b> agents as explicit node/edge state graphs, maximum control, "steep learning curve, no visual builder for non-developers." This is the DAG editor you correctly refused to become.</li>
+    <li><b>Durability-first (Temporal):</b> guarantees the loop survives a deploy/crash. The field's consensus by mid-2026: <b>"most production agent stacks run a framework inside a workflow engine, the framework defines what the agent does, the engine defines how it survives."</b> Your git-worktree + Ledger + checkpoint story is your lightweight durability layer.</li>
+    <li><b>Visual-first (n8n):</b> the thing you flirted with. The field is <b>unanimous</b> on its ceiling: <span class="q">"fast to ship, hard to test, brittle once agent logic gets nested more than three nodes deep,"</span> and <span class="q">"diffing large JSON files is a nightmare."</span> n8n is for connecting SaaS apps with an LLM as one step, not for agent orchestration and administration.</li>
+  </ul>
+
+  <div class="callout win"><b>Why you are not n8n, and shouldn't be.</b> n8n is a <i>workflow</i> builder: a canvas of boolean-branching nodes wiring apps together. Your focus, agent loops + orchestration + administration, is a different axis. n8n's own failure mode ("brittle past 3 nested nodes", "JSON diffs are a nightmare") is exactly what the <b>loop stack</b> avoids: a stack is a linear, text-diffable, git-friendly column, not a sprawling graph. You correctly identified that "n8n but for agents" is the wrong target. The right target is <b>the stack as a legible, ordered, version-controllable unit of agent work</b>, closer to a Karpathy program.md or a Gas Town molecule than to an n8n canvas. Keep the stack linear. That linearity IS the product.</div>
+
+  <div class="rule"></div>
+
+  <!-- ===== SECTION 2: SHARED VOCABULARY ===== -->
+  <h2><span class="n">02</span> The shared building blocks (everyone converged here)</h2>
+  <p class="lead">Across every source, the same anatomy recurs under different names. This is the settled vocabulary of the field. You have all of it; the table shows your name vs theirs, which is useful both for validation and for choosing terms users will already recognize.</p>
+  <table class="tbl">
+    <thead><tr><th style="width:20%">Building block</th><th style="width:34%">What it is</th><th style="width:26%">Named in the field as…</th><th style="width:20%">Your term</th></tr></thead>
+    <tbody>
+      <tr><td class="term">The loop</td><td>propose → act → evaluate → keep/stop, repeated</td><td>Karpathy Loop, ratchet loop, agent loop, generator-evaluator</td><td>loop / rasen</td></tr>
+      <tr><td class="term">Durable work unit</td><td>the task definition that survives the agent</td><td>Bead / molecule / issue (Yegge); program.md (Karpathy)</td><td>prompt card / stack</td></tr>
+      <tr><td class="term">Ephemeral worker</td><td>the agent instance that does one unit and dies</td><td>Polecat (Yegge); subagent; instance</td><td>pane / agent</td></tr>
+      <tr><td class="term">The evaluator</td><td>the separate check that grades "done"</td><td>immutable evaluator (Karpathy); verifier; LLM-as-judge; the Refinery (merge gate)</td><td>verifier / gate</td></tr>
+      <tr><td class="term">The direction</td><td>human-authored intent + constraints + non-goals</td><td>program.md / spec (Karpathy); the prompt</td><td>prompt / alias / template</td></tr>
+      <tr><td class="term">Stop criteria</td><td>when to halt looping</td><td>stopping criteria, budget, no-progress</td><td>guards / limits</td></tr>
+      <tr><td class="term">Handoff</td><td>clean state + next-session prompt at session end</td><td>"land the plane" (Yegge); /handoff</td><td>:handoff / NEXT.md</td></tr>
+      <tr><td class="term">Escalation</td><td>stuck work routed to a human by severity</td><td>gt escalate, problems view (Yegge); triage inbox (Codex)</td><td>needs-you</td></tr>
+      <tr><td class="term">Memory / state</td><td>durable, git-backed cross-session record</td><td>Beads (Yegge); state file</td><td>MemoryStore / Ledger</td></tr>
+      <tr><td class="term">The activity feed</td><td>real-time stream of what agents are doing</td><td>gt feed (Yegge)</td><td>overview / live output</td></tr>
+    </tbody>
+  </table>
+  <div class="callout"><b>You have the whole anatomy.</b> Every row has a Konjo term already. That is the headline of this research: the field converged on your framework independently. The remaining work is not inventing primitives, it's <b>sharpening a few loop TYPES, one or two views, and the naming</b>.</div>
+
+  <div class="rule"></div>
+
+  <!-- ===== SECTION 3: WHAT TO STEAL ===== -->
+  <h2><span class="n">03</span> What to steal (concrete additions)</h2>
+
+  <h3>New loop types (aliases) worth adding</h3>
+  <table class="tbl">
+    <thead><tr><th style="width:18%">Loop type</th><th style="width:46%">Contract</th><th style="width:20%">From</th><th style="width:16%">Priority</th></tr></thead>
+    <tbody>
+      <tr><td class="term">:ratchet</td><td>run an experiment, keep the change ONLY if it beats the recorded best on a measured signal; else revert. The self-improvement loop.</td><td>Karpathy AutoResearch</td><td><span class="pill do">high</span></td></tr>
+      <tr><td class="term">budget:time</td><td>"loop for 20 minutes" / "100 iterations overnight" — a wall-clock or count budget, not just token budget. Pairs with :ratchet.</td><td>Karpathy fixed budget</td><td><span class="pill do">high</span></td></tr>
+      <tr><td class="term">:escalate</td><td>on stuck/fail, route to needs-you with a severity (crit/high/med) instead of silently stopping</td><td>Gas Town escalate</td><td><span class="pill do">high</span></td></tr>
+      <tr><td class="term">:land</td><td>explicit "land the plane": clean state, write NEXT.md, generate the next-session prompt. You have :handoff; make the plane-landing discipline its default.</td><td>Yegge land-the-plane</td><td>med</td></tr>
+      <tr><td class="term">:review</td><td>a loop whose job is to read a diff and grade architecture/quality (not run tests). Complements the verifier.</td><td>Karpathy diff-review</td><td>med</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Interaction &amp; UI ideas</h3>
+  <ul>
+    <li><b>The autonomy ladder as a visible control</b> <span class="pill do">high</span> — Karpathy's writer→director→advisor and your L1–L4 are the same axis. Yegge's 8-stage chart is the same idea. Make the autonomy level a <b>first-class, per-stack selector</b> (like model/effort/repo), because "how much leash" is the single most important setting and right now it's buried in config. An icon + level, cyan-family, in the selector row.</li>
+    <li><b>The problems/needs-you view is validated</b> <span class="pill do">high</span> — Yegge independently built <code>gt feed --problems</code> for exactly the reason you built needs-you. Ship it as the default landing view of the overview. It's the single highest-value screen.</li>
+    <li><b>Fixed-budget as a schedule option</b> — alongside "run once / every N / cron", add "run for T" and "run N times overnight". The clock icon already means scheduling; add a duration/count mode.</li>
+    <li><b>Cost/burn always visible</b> <span class="pill do">high</span> — every source that runs loops at scale hits the token-burn wall ($100/hr for Gas Town; Karpathy and Steinberger operate where budget is free, you don't). Your live token meter isn't a nice-to-have, it's the guardrail that makes ∞ and :ratchet safe on a personal budget. Keep it prominent.</li>
+    <li><b>Icon legibility, your instinct is right</b> — clock = schedule, sliders = limits, loop-glyph = iterate, check = verify. The field has no standard icon language, so a clean, guessable one is a genuine differentiator. Keep each control's meaning obvious from its glyph alone.</li>
+  </ul>
+
+  <h3>Color-coding: by state, yes; by loop-type, mostly no</h3>
+  <p>You asked whether to color-code by loop/prompt type as well as by status. The research points one way: <b>color should encode state (urgency), not type (category).</b> Reasoning: your status colors (running/scheduled/held/needs-you/done) map to <i>attention</i>, that's what color is good at, drawing the eye to what matters. If you also color by loop type (research vs implement vs benchmark), the two color systems fight, and the eye can't tell "this is urgent" from "this is a benchmark." Gas Town's feed colors by <b>event/urgency</b>, not task type, for exactly this reason. <b>Recommendation:</b> keep the status color system you already love; distinguish loop <i>type</i> by the alias name + a small monochrome glyph, not by a second color axis. One exception worth testing: a single accent for the <code>:ratchet</code>/self-improvement type, since it's the one that runs unattended longest and benefits from being spottable.</p>
+
+  <div class="rule"></div>
+
+  <!-- ===== SECTION 4: ANTI-PATTERNS ===== -->
+  <h2><span class="n">04</span> How NOT to build it (the field's scar tissue)</h2>
+  <table class="tbl">
+    <thead><tr><th style="width:26%">Anti-pattern</th><th style="width:52%">Why it fails</th><th style="width:22%">Source</th></tr></thead>
+    <tbody>
+      <tr><td class="k">The sprawling graph</td><td>visual node-graphs get "brittle past 3 nested nodes"; the JSON is undiffable. Branching on unpredictable runtime data makes the canvas unwieldy.</td><td>n8n consensus</td></tr>
+      <tr><td class="k">Orchestration before single-agent mastery</td><td>"orchestration won't fix a broken single-agent workflow, it amplifies the dysfunction." Don't push users to many-agent before one-agent is solid.</td><td>Aviator / Yegge Stage-gate</td></tr>
+      <tr><td class="k">The evaluator grading itself</td><td>the worker can't grade its own homework; the evaluator must be separate and, ideally, a different model. You already enforce this.</td><td>Karpathy / your verifier</td></tr>
+      <tr><td class="k">Static evals that saturate</td><td>"when experiments run 100x faster than a human can manage, the eval pipeline becomes the constraint." A fixed gate gets gamed; evals must evolve.</td><td>Karpathy AutoResearch limits</td></tr>
+      <tr><td class="k">Comprehension debt</td><td>the 89%-observability / 52%-evals gap: teams can see output without knowing if it's good. Cognitive surrender is the real risk of good loops.</td><td>LangChain State of Agent Eng 2026</td></tr>
+      <tr><td class="k">The markdown swamp</td><td>agents without a real memory system produce "conflicting swamps of markdown files." A structured, git-backed store beats scattered .md.</td><td>Yegge "50 First Dates"</td></tr>
+      <tr><td class="k">Config-first for complex logic</td><td>role/goal config (CrewAI-style) is great for prototypes, "less so as a runtime." Real loops need explicit, testable control, not just personas.</td><td>framework field</td></tr>
+    </tbody>
+  </table>
+  <div class="callout warn"><b>The one you're most at risk of:</b> comprehension debt. Your whole ethos (kill-tests, honest negative results, evidence-first) is the antidote, and it's a real differentiator, so make it a <i>product feature</i>, not just a personal discipline. A periodic "here's what the loop changed and why" summary, and the verifier's gaps/fix-hints surfaced in the UI, keep the human the engineer rather than the babysitter. This is the thing Yegge (self-described "AI Babysitter") and the LangChain report both flag as unsolved. Solving it in-product is a genuine wedge.</div>
+
+  <div class="rule"></div>
+
+  <!-- ===== SECTION 5: NAMING ===== -->
+  <h2><span class="n">05</span> Naming the framework</h2>
+  <p class="lead">You don't love "loop stack" or "rasen." Here's the honest analysis, informed by what names actually stuck in this field.</p>
+  <p>What stuck for others: <b>Beads</b>, <b>Gas Town</b>, <b>molecule</b>, <b>Polecat</b>, the <b>Karpathy Loop</b>. The pattern: either a <b>plain, concrete noun</b> (beads, loop) or a <b>vivid, ownable metaphor</b> (Gas Town). What didn't stick: abstract or borrowed-foreign terms that need explaining. <b>rasen</b> is in that last bucket, it's elegant but it needs a footnote every time, and a term that needs explaining loses to one that doesn't. Your own instinct to drop it is right.</p>
+  <p><b>On "loop stack":</b> "stack" is doing real work (it's the ordered, LIFO-ish column, genuinely a stack), but the two-word compound is a little clinical. Options, in order of my recommendation:</p>
+  <ul>
+    <li><b>Just "loop."</b> <span class="pill do">strong</span> The field already calls the unit a loop (Karpathy Loop, agent loop, the loopy era). A stack is then "a stack of loops" or just "a loop" colloquially. Plain, concrete, already in the vocabulary, zero explanation. "I'm running three loops." "Open the loop." Clean. The product is <b>lopi</b>; the unit is a <b>loop</b>. That's all you need.</li>
+    <li><b>"Stack"</b> as the noun for the ordered column, "loop" for a single card that repeats. So: a <b>stack</b> contains <b>loops</b> and <b>prompts</b>. This is honest to the structure and both words are plain. "Loop stack" becomes just "stack" once you're inside the product.</li>
+    <li><b>A Konjo metaphor</b>, only if you want ownable flavor like Gas Town has. Given the Squish/block mascot and the 基盤/kiban foundation language, something structural-and-physical (blocks stacking, a kiln, a forge, a lattice) could work. But metaphors are a commitment and a risk; "loop" is safe and correct. I'd ship "loop/stack" and earn the right to a metaphor later.</li>
+  </ul>
+  <div class="callout win"><b>Recommendation:</b> call the unit a <b>loop</b> and the ordered column a <b>stack</b>. Drop "rasen" entirely (keep it as an internal codename at most). "The Konjo loop" is a phrase that needs no explanation, aligns with the entire field's vocabulary, and lets you say "lopi runs loops" — which is exactly what it does. Save a vivid metaphor for when the product has earned its own identity; don't front-load one.</div>
+
+  <div class="rule"></div>
+
+  <!-- ===== SECTION 6: POSITIONING ===== -->
+  <h2><span class="n">06</span> Where lopi sits (the wedge)</h2>
+  <p>Triangulating all of it, lopi's position is specific and defensible:</p>
+  <ul>
+    <li><b>Not n8n</b> — not a SaaS-wiring canvas; agent loops, not app plumbing. Linear stacks, not sprawling graphs.</li>
+    <li><b>Not LangGraph</b> — not a code-first graph SDK for engineers who want to write orchestration. A legible interface over loops.</li>
+    <li><b>Not Gas Town</b> — not a 30-agent, $100/hr, Stage-8 factory. The tool for the <b>solo-to-small operator at Stage 4–6</b> who wants control, legibility, and honest evals, before they need a fleet.</li>
+    <li><b>Closest kin:</b> Karpathy's AutoResearch (the loop-as-ratchet, the immutable evaluator, the fixed budget) with a real interface and multi-project administration on top. lopi is <b>"AutoResearch for your whole portfolio, with a face."</b></li>
+  </ul>
+  <p>The wedge, in one line: <b>the legible, honest, single-operator loop cockpit</b>, guessable icons, linear stacks, a separate verifier by default, live cost, a needs-you triage view, and comprehension-debt tooling that keeps you the engineer. That's a real gap between "raw CLI + markdown swamp" and "Gas Town fleet", and it's exactly where your ethos is the product.</p>
+
+  <div class="foot">
+    Sources, Mar–Jul 2026: Karpathy (AutoResearch repo + Fortune/DataCamp/NextBigFuture coverage, Sequoia AI Ascent 2026); Yegge (Gas Town + Beads repos, Medium posts, SE Daily, Aviator, Codex KB); Steinberger (OpenClaw, parallel-agent workflow); framework comparisons (FutureAGI, ZenML, Speakeasy, LangChain, n1n, Inkeep, Taskade). Specific quotes paraphrased; treat named figures' phrasings as reported rather than verbatim. Every Konjo mapping is from your existing framework, not invented here.
+  </div>
+</div>
+</body>
+</html>

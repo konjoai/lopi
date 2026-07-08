@@ -413,21 +413,7 @@ fn branch_delete_args(name: &str) -> Vec<String> {
 
 /// Run `git -C <repo> <args>`, returning `Err` with stderr on a non-zero exit.
 async fn run_git(repo: &Path, args: &[String]) -> Result<()> {
-    let out = tokio::process::Command::new("git")
-        .arg("-C")
-        .arg(repo)
-        .args(args)
-        .output()
-        .await
-        .context("invoking git")?;
-    if !out.status.success() {
-        anyhow::bail!(
-            "git {:?} failed: {}",
-            args,
-            String::from_utf8_lossy(&out.stderr)
-        );
-    }
-    Ok(())
+    run_git_stdout(repo, args).await.map(|_| ())
 }
 
 /// Run `git -C <repo> <args>` and return its stdout as a `String`.

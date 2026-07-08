@@ -28,6 +28,12 @@ pub use test_runner::{coverage_gaps, run_tests, TestRunResult};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+
+/// Convert a snake_case test name to a readable description. Shared by both
+/// the Rust and Python extractors.
+pub(crate) fn name_to_description(name: &str) -> String {
+    name.trim_start_matches("test_").replace('_', " ")
+}
 use std::path::{Path, PathBuf};
 
 /// A single verifiable claim extracted from the test suite.
@@ -166,43 +172,36 @@ impl SpecSurface {
     }
 }
 
+/// Run `extract` over `entry`, tagging every resulting item with `rel` and
+/// logging (not failing) on extraction errors. Shared by every
+/// language branch in `scan_entry`.
+fn scan_with(
+    extract: fn(&Path) -> Result<Vec<SpecItem>>,
+    entry: &Path,
+    rel: &str,
+) -> Vec<SpecItem> {
+    match extract(entry) {
+        Ok(v) => v
+            .into_iter()
+            .map(|mut i| {
+                i.file = rel.to_string();
+                i
+            })
+            .collect(),
+        Err(e) => {
+            tracing::warn!(file = %rel, "spec extract error: {e}");
+            vec![]
+        }
+    }
+}
+
 /// Dispatch a single file to the correct extractor.
 ///
 /// Returns (items, rust_increment, python_increment).
 fn scan_entry(entry: &Path, rel: &str) -> (Vec<SpecItem>, u32, u32) {
     match entry.extension().and_then(|e| e.to_str()) {
-        Some("rs") => {
-            let found = match extract_rust(entry) {
-                Ok(v) => v
-                    .into_iter()
-                    .map(|mut i| {
-                        i.file = rel.to_string();
-                        i
-                    })
-                    .collect(),
-                Err(e) => {
-                    tracing::warn!(file = %rel, "spec extract error: {e}");
-                    vec![]
-                }
-            };
-            (found, 1, 0)
-        }
-        Some("py") => {
-            let found = match extract_python(entry) {
-                Ok(v) => v
-                    .into_iter()
-                    .map(|mut i| {
-                        i.file = rel.to_string();
-                        i
-                    })
-                    .collect(),
-                Err(e) => {
-                    tracing::warn!(file = %rel, "spec extract error: {e}");
-                    vec![]
-                }
-            };
-            (found, 0, 1)
-        }
+        Some("rs") => (scan_with(|p: &Path| extract_rust(p), entry, rel), 1, 0),
+        Some("py") => (scan_with(|p: &Path| extract_python(p), entry, rel), 0, 1),
         _ => (vec![], 0, 0),
     }
 }

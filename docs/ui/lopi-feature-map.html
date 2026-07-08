@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>lopi · feature value map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+<style>
+:root{
+  --bg:#0a0d10;--panel:#0e1317;--line:rgba(255,255,255,.09);--line2:rgba(255,255,255,.045);
+  --ink:#eef2f3;--dim:rgba(238,242,243,.56);--dim2:rgba(238,242,243,.34);
+  --ice:#39c6e6;--ember:#ff5a1f;--flame:#ff9a3d;--jade:#37d99a;--sun:#ffcf4a;--rose:#ff5d86;--violet:#b79bff;
+  --mono:'IBM Plex Mono',ui-monospace,monospace;--disp:'Fraunces',Georgia,serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--mono);font-size:14px;line-height:1.6;
+  background-image:linear-gradient(var(--line2) 1px,transparent 1px),linear-gradient(90deg,var(--line2) 1px,transparent 1px);
+  background-size:34px 34px}
+.wrap{max-width:1080px;margin:0 auto;padding:54px 26px 100px}
+
+.eyebrow{font-size:11px;letter-spacing:.28em;text-transform:uppercase;color:var(--ice)}
+h1{font-family:var(--disp);font-weight:600;font-size:44px;line-height:1.05;margin:14px 0 10px;letter-spacing:-.01em}
+.sub{color:var(--dim);max-width:680px;font-size:14px}
+.sub b{color:var(--ink)}
+.rule{height:1px;background:var(--line);margin:30px 0}
+
+h2{font-family:var(--disp);font-weight:600;font-size:25px;margin:34px 0 6px;letter-spacing:-.01em}
+h2 .n{font-family:var(--mono);font-size:12px;color:var(--ember);vertical-align:middle;margin-right:10px;letter-spacing:.1em}
+.lead{color:var(--dim);margin-bottom:18px;max-width:760px}
+.lead b{color:var(--ink)}
+
+.callout{border:1px solid var(--line);border-left:2px solid var(--ice);background:var(--panel);border-radius:0 6px 6px 0;padding:16px 18px;margin:20px 0;font-size:13px;color:var(--dim)}
+.callout b{color:var(--ink)} .callout .q{color:var(--ice)}
+
+/* table */
+.tbl{width:100%;border-collapse:collapse;margin:14px 0 8px;font-size:12.5px}
+.tbl th{text-align:left;font-weight:500;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim2);padding:0 12px 9px;border-bottom:1px solid var(--line);vertical-align:bottom}
+.tbl td{padding:13px 12px;border-bottom:1px solid var(--line2);vertical-align:top}
+.tbl tr:hover td{background:rgba(255,255,255,.015)}
+.feat{color:var(--ink);font-weight:500;font-size:13px}
+.feat .tag{display:block;font-size:10px;letter-spacing:.04em;color:var(--violet);margin-top:3px}
+.desc{color:var(--dim);font-size:12px;max-width:340px}
+.who{color:var(--dim2);font-size:11px}
+.who b{color:var(--dim)}
+.pri{font-family:var(--mono);font-weight:600;font-size:11px;letter-spacing:.06em;white-space:nowrap;padding:2px 8px;border-radius:3px;border:1px solid}
+.p1{color:var(--jade);border-color:rgba(55,217,154,.4);background:rgba(55,217,154,.06)}
+.p2{color:var(--sun);border-color:rgba(255,207,74,.4);background:rgba(255,207,74,.06)}
+.p3{color:var(--dim2);border-color:var(--line)}
+.fit{font-size:11px;color:var(--dim)}
+.fit.core{color:var(--jade)} .fit.ext{color:var(--sun)} .fit.new{color:var(--rose)}
+.eff{font-family:var(--mono);font-size:11px;color:var(--dim)}
+
+.legend{display:flex;gap:22px;flex-wrap:wrap;font-size:11px;color:var(--dim2);margin:8px 0 0}
+.legend b{color:var(--dim)}
+.section-note{font-size:11.5px;color:var(--dim2);margin-top:6px;font-style:italic}
+
+.foot{margin-top:44px;border-top:1px solid var(--line);padding-top:20px;font-size:12px;color:var(--dim2)}
+.foot a{color:var(--ice);text-decoration:none}
+.pill{display:inline-block;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--jade);border:1px solid rgba(55,217,154,.4);border-radius:20px;padding:2px 10px;margin-left:8px;vertical-align:middle}
+strong{color:var(--ink)}
+.mono-i{color:var(--flame)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="eyebrow">lopi · rasen loop stack</div>
+  <h1>What to build after the core ships</h1>
+  <p class="sub">The interface and the five primitives are settled. This is a prioritized map of <b>additional</b> features, each checked against what practitioners in loop engineering are actually doing and against the rasen contract. Nothing here changes the core: a stack stays a sequential column, a pane stays the unit of parallelism.</p>
+
+  <div class="callout">
+    <b>The field agrees with your design.</b> The loop-engineering discipline named by <span class="q">Steinberger</span> ("design the loops that prompt your agents"), <span class="q">Cherny</span> ("my job is to write loops"), and <span class="q">Osmani</span> converged on the same anatomy you already have: <b>trigger, scope, action, budget, stop, report</b>, plus a state file as the spine. Your primitives (prompt, contract, trigger, guards/limits) and your alias pack are that anatomy. So this list is not about filling gaps in the core. It is about the layer above it: reuse, verification, and reporting, which is where the field says the real leverage and the real danger both live.
+  </div>
+
+  <div class="rule"></div>
+
+  <!-- TIER 1 -->
+  <h2><span class="n">TIER 1</span> Highest value, closest fit</h2>
+  <p class="lead">Each of these is something loop-engineering practice treats as essential, and each extends a primitive you already have rather than adding a new axis.</p>
+
+  <table class="tbl">
+    <thead><tr><th style="width:20%">Feature</th><th style="width:30%">What it does</th><th style="width:20%">Why it earns value</th><th style="width:11%">Fit</th><th style="width:9%">Effort</th><th style="width:10%">Priority</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="feat">Prompt templates<span class="tag">your saved-prompt idea</span></td>
+        <td class="desc">An alias with named holes: <span class="mono-i">:bench {repo} until:"{cmd}"</span>. Picking it prompts for the blanks, or you fill them inline. A saved chain is just a bigger alias.</td>
+        <td class="who">Steinberger's durable half: <b>"if you do something more than once, turn it into a skill."</b> Claude Code skills already take <b>$ARGUMENTS</b> / placeholders. This is the single most-cited reuse pattern.</td>
+        <td class="fit core">extends aliases</td>
+        <td class="eff">M</td>
+        <td><span class="pri p1">P1 · now</span></td>
+      </tr>
+      <tr>
+        <td class="feat">Verifier / checker step<span class="tag">maker-checker split</span></td>
+        <td class="desc">A loop can mark a step as <span class="mono-i">verify:</span> run by a second model that grades "done" against the goal, separate from the worker. Fails the gate if the check fails.</td>
+        <td class="who">Named the <b>single most consequential design choice</b> in a loop by every source. <b>/goal</b> uses a separate grader so the worker "does not grade its own homework." You have gate/until; this makes the grader a first-class, model-backed check.</td>
+        <td class="fit core">extends limits</td>
+        <td class="eff">M</td>
+        <td><span class="pri p1">P1 · now</span></td>
+      </tr>
+      <tr>
+        <td class="feat">Report / notify on finish<span class="tag">REPORT primitive</span></td>
+        <td class="desc">A stack can end by posting a summary somewhere: Telegram (you already have the gateway), Slack, a PR comment, a file. <span class="mono-i">report:telegram</span> as a stack-level setting.</td>
+        <td class="who">The sixth primitive in the practitioner anatomy: <b>"let the findings come to you instead of going around checking."</b> A loop without a report is a loop you have to babysit, which defeats the point.</td>
+        <td class="fit core">new primitive</td>
+        <td class="eff">S</td>
+        <td><span class="pri p1">P1 · now</span></td>
+      </tr>
+      <tr>
+        <td class="feat">No-progress detection<span class="tag">auto-stop</span></td>
+        <td class="desc">Halt when the loop stops moving: same error N times, empty diff, identical output twice. A built-in implicit guard, on by default.</td>
+        <td class="who">Huntley/ralph practice: <b>"stop when the same error appears N times in a row."</b> Your ∞ default is only safe with this. It is the difference between a loop that halts and one that burns tokens in a wall.</td>
+        <td class="fit core">extends guards</td>
+        <td class="eff">M</td>
+        <td><span class="pri p1">P1 · now</span></td>
+      </tr>
+      <tr>
+        <td class="feat">Live cost / token meter<span class="tag">budget made visible</span></td>
+        <td class="desc">Per-stack running tally of tokens and spend this run, next to the budget limit. The orb or footer shows burn rate; budget:auto already meters it, so surface it.</td>
+        <td class="who">Every source flags the same trap: <b>token cost compounds ~10x faster than expected</b>, and both Cherny and Steinberger work where budget is not a constraint. For a solo M3 builder it is the constraint. Seeing burn is how you trust ∞.</td>
+        <td class="fit core">surfaces budget:auto</td>
+        <td class="eff">M</td>
+        <td><span class="pri p1">P1 · now</span></td>
+      </tr>
+    </tbody>
+  </table>
+  <p class="section-note">If you build only this tier, lopi covers the full practitioner loop anatomy with the reuse and safety pieces that the field says separate a real loop from "a task, repeated."</p>
+
+  <div class="rule"></div>
+
+  <!-- TIER 2 -->
+  <h2><span class="n">TIER 2</span> Strong value, slightly larger scope</h2>
+  <p class="lead">Worth building once Tier 1 lands. Each maps to a real practice but costs more, or serves the power user more than the first stack.</p>
+
+  <table class="tbl">
+    <thead><tr><th style="width:20%">Feature</th><th style="width:30%">What it does</th><th style="width:20%">Why it earns value</th><th style="width:11%">Fit</th><th style="width:9%">Effort</th><th style="width:10%">Priority</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="feat">Event triggers<span class="tag">on:"…" (deferred v1.1)</span></td>
+        <td class="desc">Start a stack on a real-world event: PR opened, CI failed, file changed, review comment. You already scoped this to v1.1.</td>
+        <td class="who">One of the three canonical trigger types (event / schedule / manual). The viral <b>"/loop babysit all my PRs"</b> example is event-driven. Your <span class="mono-i">now / at: / every:</span> covers two of three.</td>
+        <td class="fit ext">planned v1.1</td>
+        <td class="eff">L</td>
+        <td><span class="pri p2">P2</span></td>
+      </tr>
+      <tr>
+        <td class="feat">Stack library / marketplace<span class="tag">shareable rasen files</span></td>
+        <td class="desc">Save a whole stack to <span class="mono-i">loops.toml</span>, share it, import someone else's. A stack is already a text spec, so this is packaging, not new mechanics.</td>
+        <td class="who">Skills are an <b>open, portable standard</b> people share and rank. "The vendor that makes loop definitions portable takes pole position." Your grammar is already portable text; lean into it.</td>
+        <td class="fit ext">packages aliases</td>
+        <td class="eff">M</td>
+        <td><span class="pri p2">P2</span></td>
+      </tr>
+      <tr>
+        <td class="feat">Dry-run preview / plan<span class="tag">resolve before spend</span></td>
+        <td class="desc">The dropdown option you already drew, made real: expand every alias, resolve every variable, show the exact prompts and the cost estimate, execute nothing.</td>
+        <td class="who">Directly answers the <b>"the evaluator reads the transcript, not your files"</b> failure mode. Seeing the resolved plan before spending is the cheapest way to catch a broken loop.</td>
+        <td class="fit core">already stubbed</td>
+        <td class="eff">M</td>
+        <td><span class="pri p2">P2</span></td>
+      </tr>
+      <tr>
+        <td class="feat">Run history / replay<span class="tag">the Ledger, surfaced</span></td>
+        <td class="desc">Every run recorded: what ran, what passed, tokens, diffs, verdicts. Reopen a past run, diff two runs, replay a stack from its recorded state.</td>
+        <td class="who">The <b>state file is "the spine of the whole thing."</b> Auditability is called <b>"non-negotiable"</b> as loops take longer, more consequential actions. This is your event-sourced Ledger with a face.</td>
+        <td class="fit core">surfaces the Ledger</td>
+        <td class="eff">L</td>
+        <td><span class="pri p2">P2</span></td>
+      </tr>
+      <tr>
+        <td class="feat">Escalation to human<span class="tag">triage inbox</span></td>
+        <td class="desc">On failure or low confidence, a step can hand off instead of stopping: park it in an inbox, ping you, wait for a yes/no before continuing.</td>
+        <td class="who">Codex's <b>Triage inbox</b> and Osmani's loop both do this: "anything the loop can not handle lands in the inbox for me." Keeps you the engineer without keeping you in the loop.</td>
+        <td class="fit ext">extends on-fail</td>
+        <td class="eff">M</td>
+        <td><span class="pri p2">P2</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="rule"></div>
+
+  <!-- TIER 3 -->
+  <h2><span class="n">TIER 3</span> Real, but later or optional</h2>
+  <p class="lead">Genuinely useful, but either niche, heavy, or better delayed until the core has real usage to justify them.</p>
+
+  <table class="tbl">
+    <thead><tr><th style="width:20%">Feature</th><th style="width:30%">What it does</th><th style="width:20%">Why / caution</th><th style="width:11%">Fit</th><th style="width:9%">Effort</th><th style="width:10%">Priority</th></tr></thead>
+    <tbody>
+      <tr>
+        <td class="feat">Named-variable handoffs<span class="tag">:output / :input</span></td>
+        <td class="desc">The explicit handoff you already prototyped: a later prompt pulls any earlier output by name, stronger than plain <span class="mono-i">&gt;</span>.</td>
+        <td class="who">Powerful, but decide if the common case needs more than the chain operator. Ship the simple <span class="mono-i">&gt;</span> first; add named vars when a real stack needs to reach back past the previous step.</td>
+        <td class="fit ext">extends chain</td>
+        <td class="eff">M</td>
+        <td><span class="pri p3">P3</span></td>
+      </tr>
+      <tr>
+        <td class="feat">Conditional branching<span class="tag">if pass → X else → Y</span></td>
+        <td class="desc">A step routes to different next prompts based on an exit code or verifier verdict.</td>
+        <td class="who"><b>Caution:</b> this is the DAG-editor temptation again. It breaks the single-column read you fought to keep. Most branching is served by <span class="mono-i">on-fail</span> + escalation. Add only if a concrete case demands it.</td>
+        <td class="fit new">risks the column</td>
+        <td class="eff">L</td>
+        <td><span class="pri p3">P3</span></td>
+      </tr>
+      <tr>
+        <td class="feat">Batch / fan-out<span class="tag">same prompt × N repos</span></td>
+        <td class="desc">Run one prompt across a list (five repos, five files) in isolated worktrees, collect results. Claude Code's <span class="mono-i">/batch</span> pattern.</td>
+        <td class="who">Real practitioner need, but it is <b>parallelism</b>, which you decided lives at the pane level. Serve it by spawning panes or a cross-repo chain before adding a batch primitive.</td>
+        <td class="fit new">pane-level already</td>
+        <td class="eff">L</td>
+        <td><span class="pri p3">P3</span></td>
+      </tr>
+      <tr>
+        <td class="feat">Stack versioning / snapshots<span class="tag">git for stacks</span></td>
+        <td class="desc">Snapshot a stack's config, diff versions, roll back a stack you edited into a worse shape.</td>
+        <td class="who">Nice for heavy users; premature for a first release. <span class="mono-i">loops.toml</span> in real git already covers 80% of it for free.</td>
+        <td class="fit ext">git covers most</td>
+        <td class="eff">M</td>
+        <td><span class="pri p3">P3</span></td>
+      </tr>
+      <tr>
+        <td class="feat">Comprehension guard<span class="tag">anti-surrender</span></td>
+        <td class="desc">Periodically force a human-readable summary of what the loop changed and why, so you stay the engineer, not just the person who pressed go.</td>
+        <td class="who">Every source names <b>"comprehension debt"</b> and <b>"cognitive surrender"</b> as the real risk of good loops. A differentiator that fits Konjo's honesty ethos, but it is a v2 idea, not a launch feature.</td>
+        <td class="fit new">Konjo-flavored</td>
+        <td class="eff">M</td>
+        <td><span class="pri p3">P3</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="rule"></div>
+
+  <div class="legend">
+    <span><b>Fit</b> — <span style="color:var(--jade)">core</span>: extends a primitive you have · <span style="color:var(--sun)">ext</span>: natural extension · <span style="color:var(--rose)">new</span>: new axis, weigh carefully</span>
+    <span><b>Effort</b> — S / M / L</span>
+    <span><b>Priority</b> — <span style="color:var(--jade)">P1 now</span> · <span style="color:var(--sun)">P2 next</span> · <span style="color:var(--dim)">P3 later</span></span>
+  </div>
+
+  <h2 style="margin-top:38px">If I had to pick <span class="pill">the short list</span></h2>
+  <p class="lead">Three that would move lopi from "a clean loop UI" to "the loop tool people reach for," in order:</p>
+  <p class="sub" style="max-width:820px">
+    <b>1. Prompt templates.</b> It is your own instinct and it is the most-cited reuse pattern in the field. It also costs you almost nothing because an alias with holes is a tiny grammar extension, and it makes every other feature more reusable.<br/><br/>
+    <b>2. A verifier step.</b> The field is unanimous that the maker-checker split is what makes an unattended loop trustworthy. You already concede TTFT and cherry-picked variance honestly; a built-in "don't grade your own homework" check is the same value in the product, and it is exactly the kind of correctness story that reads well to the labs you are applying to.<br/><br/>
+    <b>3. Report-on-finish over Telegram.</b> You already have the gateway. Closing the loop with "the findings come to you" is what turns a stack from a thing you watch into a thing you leave running, which is the entire premise Steinberger and Cherny are pointing at.
+  </p>
+
+  <div class="foot">
+    Grounded in loop-engineering coverage, June 2026: Steinberger (<a href="https://addyosmani.com/blog/loop-engineering/">via Osmani</a>), Cherny (Claude Code), and the trigger/scope/action/budget/stop/report anatomy now shipping in Claude Code <span class="mono-i">/goal</span> and Codex Automations. Cross-checked against Claude Code Skills docs for the templates-with-arguments pattern. Every claim about the core (aliases, guards, budget:auto, the Ledger, cross-repo chains) is from your existing rasen spec, not invented here.
+  </div>
+</div>
+</body>
+</html>

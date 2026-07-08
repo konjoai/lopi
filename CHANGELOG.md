@@ -1,5 +1,16 @@
 # Changelog
 
+## [Unreleased] — Git hygiene: fix committed DRY violations 🧹
+
+### Fixed
+- `dry_check.py`: 794 → 12 raw window-matches (46 → 4 file pairs, 3 documented reasons). Extracted
+  shared helpers across `lopi-agent`, `lopi-context`, `lopi-core`, `lopi-git`,
+  `lopi-orchestrator`, `lopi-remote`/`lopi-ui` (a real security-relevant
+  `constant_time_eq` unification), `lopi-spec`, `lopi-toon`, `lopi-ui`'s test
+  suite, and 9 web `*.test.ts` files. 3 remaining pairs are documented,
+  justified residuals (structural unit/integration-test split, generic sqlx
+  boilerplate, axum test-module preamble) — see `LEDGER.md`.
+
 ## [Unreleased] — Sprint 5: Expose Loop Fields on `CreateTaskRequest` 🌉
 
 ### Added

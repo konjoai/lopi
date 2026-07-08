@@ -29,8 +29,10 @@ pub(super) fn is_primitive(v: &Value) -> bool {
     !matches!(v, Value::Object(_) | Value::Array(_))
 }
 
-/// Encode a scalar value for use after `key: `.
-pub(super) fn encode_scalar_value(v: &Value, delim: Delimiter) -> String {
+/// Shared scalar encoder for both contexts below. `in_cell` controls whether
+/// a string must also be quoted when it contains the active delimiter
+/// (inline arrays/tabular rows), vs. only when it needs quoting after `key: `.
+fn encode_scalar_common(v: &Value, delim: Delimiter, in_cell: bool) -> String {
     match v {
         Value::Null => "null".into(),
         Value::Bool(b) => {
@@ -41,27 +43,20 @@ pub(super) fn encode_scalar_value(v: &Value, delim: Delimiter) -> String {
             }
         }
         Value::Number(n) => normalize_number(n),
-        Value::String(s) => quote_if_needed(s, delim, false),
-        _ => unreachable!("encode_scalar_value called on non-scalar"),
+        Value::String(s) => quote_if_needed(s, delim, in_cell),
+        _ => unreachable!("encode_scalar_common called on non-scalar"),
     }
+}
+
+/// Encode a scalar value for use after `key: `.
+pub(super) fn encode_scalar_value(v: &Value, delim: Delimiter) -> String {
+    encode_scalar_common(v, delim, false)
 }
 
 /// Encode a cell for inline arrays and tabular rows (comma-/tab-/pipe-delimited context).
 /// In this context, the value must also be quoted if it contains the active delimiter.
 pub(super) fn encode_cell(v: &Value, delim: Delimiter) -> String {
-    match v {
-        Value::Null => "null".into(),
-        Value::Bool(b) => {
-            if *b {
-                "true".into()
-            } else {
-                "false".into()
-            }
-        }
-        Value::Number(n) => normalize_number(n),
-        Value::String(s) => quote_if_needed(s, delim, true),
-        _ => unreachable!("encode_cell called on non-scalar"),
-    }
+    encode_scalar_common(v, delim, true)
 }
 
 /// Encode a key per §7.3 — unquoted if it matches `^[A-Za-z_][A-Za-z0-9_.]*$`.

@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>lopi · the loop framework</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet"/>
+<style>
+:root{
+  --black:#0a0a0a;--deep:#050505;--paper:#f5f5f5;
+  --ice:#00d4ff;--ice-deep:#0088aa;--ember:#ff4500;--flame:#ff9500;
+  --jade:#00ff9d;--sun:#ffcc00;--rose:#ff0066;--teal:#00ffd4;
+  --mist:rgba(255,255,255,.05);--veil:rgba(255,255,255,.10);
+  --dim:rgba(245,245,245,.46);--dim2:rgba(245,245,245,.28);
+  --mono:'JetBrains Mono',ui-monospace,monospace;--sans:'Space Grotesk',system-ui,sans-serif;
+  --card:#0c0c0d;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--black);color:var(--paper);font-family:var(--sans);-webkit-font-smoothing:antialiased;line-height:1.5}
+.wrap{max-width:1060px;margin:0 auto;padding:0 28px}
+section{padding:64px 0;border-bottom:1px solid var(--mist)}
+.eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--dim);margin-bottom:14px}
+h2{font-size:26px;font-weight:500;letter-spacing:-.01em;margin-bottom:10px}
+.lede{color:var(--dim);font-size:15px;max-width:640px;margin-bottom:34px}
+.lede b{color:var(--paper);font-weight:500}
+code,.k{font-family:var(--mono)}
+
+/* hero */
+.hero{padding:84px 0 70px;border-bottom:1px solid var(--mist);display:flex;gap:56px;align-items:center;flex-wrap:wrap}
+.hero-l{flex:1 1 420px;min-width:320px}
+.hero-l .brand{font-family:var(--mono);font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:var(--dim);display:flex;align-items:center;gap:9px;margin-bottom:26px}
+.hdot{width:7px;height:7px;border-radius:50%;background:var(--ember);box-shadow:0 0 10px var(--ember);animation:pulse 2.6s ease-in-out infinite}
+h1{font-size:44px;font-weight:500;letter-spacing:-.02em;line-height:1.08;margin-bottom:22px}
+h1 em{font-style:normal;color:var(--flame)}
+.thesis{font-size:17px;color:var(--dim);max-width:480px}
+.thesis b{color:var(--paper);font-weight:500}
+.thesis .f{color:var(--flame)} .thesis .i{color:var(--ice)} .thesis .j{color:var(--jade)} .thesis .t{color:var(--teal)}
+.hero-r{flex:0 1 380px;min-width:300px;position:relative}
+#anat{width:100%;display:block}
+.anat-cap{position:absolute;font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;cursor:default;transition:.15s;white-space:nowrap}
+.anat-cap:hover{filter:brightness(1.5)}
+.anat-note{margin-top:6px;font-family:var(--mono);font-size:11px;color:var(--dim2);text-align:center;min-height:32px;transition:.2s}
+
+/* primitives grid */
+.grid4{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}
+.prim{background:var(--card);border:1px solid var(--veil);border-radius:5px;padding:20px 18px;position:relative;overflow:hidden}
+.prim::before{content:"";position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--pc)}
+.prim .pt{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--pc);margin-bottom:9px;display:flex;align-items:center;gap:8px}
+.prim .pq{font-size:15px;font-weight:500;margin-bottom:9px}
+.prim .px{font-family:var(--mono);font-size:11px;color:var(--dim);line-height:1.8}
+.prim .px b{color:var(--paper);font-weight:500}
+
+/* contract cycle */
+.cycle{display:flex;align-items:center;justify-content:center;gap:0;flex-wrap:wrap;margin:12px 0 26px}
+.cbox{background:var(--card);border:1px solid var(--veil);border-radius:5px;padding:16px 18px;min-width:200px}
+.cbox .ct{font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;margin-bottom:9px}
+.cbox.read .ct{color:var(--ice)} .cbox.run .ct{color:var(--flame)} .cbox.write .ct{color:var(--jade)}
+.cbox ul{list-style:none;font-family:var(--mono);font-size:11.5px;color:var(--dim);line-height:2}
+.cbox ul b{color:var(--paper);font-weight:500}
+.carrow{font-family:var(--mono);color:var(--dim2);padding:0 16px;font-size:18px}
+.cloop{font-family:var(--mono);font-size:11px;color:var(--flame);text-align:center;margin-top:4px}
+.rule{background:rgba(255,69,0,.06);border:1px solid rgba(255,149,0,.3);border-radius:4px;padding:13px 16px;font-size:13.5px;max-width:640px}
+.rule b{color:var(--flame);font-weight:500}
+.rule.iceb{background:rgba(0,212,255,.05);border-color:rgba(0,212,255,.3)}
+.rule.iceb b{color:var(--ice)}
+
+/* guards table */
+.gtable{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:22px}
+.gtable th{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);text-align:left;padding:10px 12px;border-bottom:1px solid var(--veil)}
+.gtable td{padding:10px 12px;border-bottom:1px solid var(--mist);vertical-align:top}
+.gtable td:first-child{font-family:var(--mono);color:var(--sun);white-space:nowrap}
+.gtable td:last-child{font-family:var(--mono);font-size:11.5px;color:var(--dim)}
+
+/* composition */
+.comp{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+.cpanel{background:var(--card);border:1px solid var(--veil);border-radius:5px;padding:20px}
+.cpanel .ch{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;margin-bottom:4px}
+.cpanel .cd2{font-size:13px;color:var(--dim);margin-bottom:16px}
+.cpanel svg{width:100%;height:auto;display:block}
+.cpanel .cgram{font-family:var(--mono);font-size:12px;color:var(--paper);background:#111;border:1px solid var(--veil);border-radius:3px;padding:8px 11px;margin-top:14px}
+.cpanel .cgram .op{color:var(--flame);font-weight:700}
+
+/* ladder */
+.ladder{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:22px}
+.lv{font-family:var(--mono);font-size:11.5px;letter-spacing:.06em;border:1px solid var(--veil);border-radius:3px;background:transparent;color:var(--dim);padding:8px 14px;cursor:pointer;transition:.15s}
+.lv:hover{color:var(--paper)}
+.lv.on{color:var(--black);background:var(--ice);border-color:var(--ice);font-weight:700}
+.lstage{background:var(--card);border:1px solid var(--veil);border-radius:5px;padding:24px;min-height:190px}
+.lstage .ln{font-family:var(--mono);font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--ice);margin-bottom:6px}
+.lstage .lt{font-size:17px;font-weight:500;margin-bottom:6px}
+.lstage .ld{font-size:13.5px;color:var(--dim);max-width:560px;margin-bottom:16px}
+.lspec{font-family:var(--mono);font-size:13.5px;background:#111;border:1px solid var(--veil);border-left:2px solid var(--flame);border-radius:3px;padding:11px 14px;margin-bottom:8px;overflow-x:auto;white-space:nowrap}
+
+/* playground */
+.play{background:linear-gradient(180deg,#0b0d0e,#080809);border:1px solid rgba(0,212,255,.25);border-radius:6px;padding:26px;box-shadow:0 0 60px rgba(0,212,255,.05)}
+.play .pt2{font-family:var(--mono);font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--ice);margin-bottom:12px}
+.playrow{display:flex;gap:10px;margin-bottom:8px}
+.playrow input{flex:1;background:#0e0e10;border:1px solid var(--veil);border-radius:3px;color:var(--paper);font-family:var(--mono);font-size:14px;padding:12px 14px;outline:none;transition:.15s}
+.playrow input:focus{border-color:var(--ice)}
+.chipsug{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:20px}
+.sug{font-family:var(--mono);font-size:10.5px;border:1px solid var(--veil);border-radius:2px;padding:4px 9px;color:var(--dim);cursor:pointer;transition:.15s}
+.sug:hover{color:var(--ice);border-color:var(--ice-deep)}
+.playout{display:flex;gap:22px;flex-wrap:wrap;align-items:flex-start}
+.pcard-col{flex:1 1 300px;min-width:280px}
+.plabel{font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim2);margin-bottom:10px}
+/* rendered card (matches pane mockup style) */
+.qcard{position:relative;background:var(--card);border:1px solid rgba(255,149,0,.45);border-radius:4px;padding:14px;box-shadow:0 0 0 1px rgba(255,69,0,.1),0 6px 22px rgba(255,69,0,.07);margin-bottom:10px}
+.qcard .nexttag{position:absolute;top:-9px;left:12px;font-family:var(--mono);font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:#160500;background:var(--ember);padding:2px 7px;border-radius:2px;font-weight:700}
+.qcard .qtxt{font-size:13.5px;font-weight:500;line-height:1.35}
+.qcard .qchain{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-family:var(--mono);font-size:11px;margin-top:2px}
+.qcard .qstep{border:1px solid var(--veil);border-radius:3px;padding:3px 8px;color:var(--paper);background:#111}
+.qcard .qstep.alias{color:var(--teal)}
+.qcard .qop{color:var(--flame);font-weight:700}
+.qcard .badges{display:flex;gap:6px;flex-wrap:wrap;margin-top:11px}
+.bdg{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:10px;border:1px solid;border-radius:3px;padding:3px 8px}
+.bdg svg{width:11px;height:11px}
+.bdg.loop{color:var(--flame);border-color:rgba(255,149,0,.5)}
+.bdg.cron{color:var(--ice);border-color:rgba(0,212,255,.5)}
+.bdg.until{color:var(--jade);border-color:rgba(0,255,157,.45)}
+.bdg.gate{color:var(--rose);border-color:rgba(255,0,102,.45)}
+.bdg.guard{color:var(--dim);border-color:var(--veil)}
+.bdg.guard.implicit{color:var(--dim2);border-style:dashed}
+.qplain{font-family:var(--mono);font-size:11px;color:var(--dim);border-top:1px dashed var(--mist);margin-top:12px;padding-top:10px;line-height:1.7}
+.qplain b.f{color:var(--flame)} .qplain b.i{color:var(--ice)} .qplain b.j{color:var(--jade)} .qplain b.r{color:var(--rose)}
+.perr{font-family:var(--mono);font-size:11.5px;color:var(--sun);padding:10px 0}
+/* surfaces strip */
+.surf{flex:1 1 300px;min-width:260px}
+.surfbox{background:#0e0e10;border:1px solid var(--veil);border-radius:4px;padding:12px 14px;margin-bottom:10px;font-family:var(--mono);font-size:11.5px;color:var(--dim);line-height:1.8;overflow-x:auto}
+.surfbox .st{font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim2);display:block;margin-bottom:5px}
+.surfbox .cmd{color:var(--paper);white-space:nowrap}
+.surfbox .cmd .hl{color:var(--ice)}
+
+footer{padding:44px 0 70px;font-family:var(--mono);font-size:11px;color:var(--dim2)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<div class="wrap hero">
+  <div class="hero-l">
+    <div class="brand"><span class="hdot"></span>lopi · loop framework</div>
+    <h1>A loop is a prompt<br/>that <em>runs again.</em></h1>
+    <p class="thesis">With a <b class="i">contract</b> for what it reads and writes, a <b class="t">trigger</b> for when, and <b class="j">guards</b> for when to stop. Four primitives, two operators. Nothing else.</p>
+  </div>
+  <div class="hero-r">
+    <canvas id="anat" width="380" height="380"></canvas>
+    <div class="anat-note" id="anatNote">hover a ring</div>
+  </div>
+</div>
+
+<section><div class="wrap">
+  <div class="eyebrow">01 · primitives</div>
+  <h2>Four questions, four primitives</h2>
+  <p class="lede">Every feature of the framework answers one of these. If a proposal doesn't fit a slot, it doesn't ship.</p>
+  <div class="grid4">
+    <div class="prim" style="--pc:var(--flame)">
+      <div class="pt">Prompt</div><div class="pq">What runs?</div>
+      <div class="px"><b>general</b> · :progress, picks up from the contract<br/><b>specific</b> · "add INT3 dequant path"<br/><b>alias</b> · :kiban-sprint, from loops.toml</div>
+    </div>
+    <div class="prim" style="--pc:var(--ice)">
+      <div class="pt">Contract</div><div class="pq">What does each iteration read + write?</div>
+      <div class="px">reads <b>PLAN.md · PROGRESS.md · NEXT.md · logs</b><br/>writes <b>PROGRESS.md · NEXT.md · ledger</b></div>
+    </div>
+    <div class="prim" style="--pc:var(--teal)">
+      <div class="pt">Trigger</div><div class="pq">When do iterations start?</div>
+      <div class="px"><b>now</b> · default<br/><b>at:"0 14 * * *"</b> · cron<br/><b>every:15m</b> · interval<br/><b>on:"ci-fail"</b> · event</div>
+    </div>
+    <div class="prim" style="--pc:var(--jade)">
+      <div class="pt">Guards</div><div class="pq">When do they stop?</div>
+      <div class="px"><b>x3</b> count · <b>until:"cargo test"</b> condition<br/><b>gate:</b> pre-flight · <b>budget:auto</b> 5h-window aware · <b>max / window</b> ceilings</div>
+    </div>
+  </div>
+</div></section>
+
+<section><div class="wrap">
+  <div class="eyebrow">02 · the contract</div>
+  <h2>Why ":progress" isn't vibes</h2>
+  <p class="lede">General prompts work because every iteration runs inside the same read → run → write cycle. The write half is enforced: <b>an iteration that records nothing is a failed iteration.</b></p>
+  <div class="cycle">
+    <div class="cbox read"><div class="ct">read · before</div>
+      <ul><li><b>PLAN.md</b> intended work</li><li><b>PROGRESS.md</b> what's done</li><li><b>NEXT.md</b> last handoff</li><li><b>logs + git</b> live state</li></ul></div>
+    <div class="carrow">→</div>
+    <div class="cbox run"><div class="ct">run · the prompt</div>
+      <ul><li>one iteration</li><li>one Task in the queue</li><li>git-isolated branch</li><li>kiban discipline applies</li></ul></div>
+    <div class="carrow">→</div>
+    <div class="cbox write"><div class="ct">write · after</div>
+      <ul><li><b>PROGRESS.md</b> append entry</li><li><b>NEXT.md</b> rewrite handoff</li><li><b>ledger</b> outcome + cost</li></ul></div>
+  </div>
+  <div class="cloop">⟲ next iteration reads what this one wrote</div>
+  <div style="height:18px"></div>
+  <div class="rule">Negative results are written the same as wins. Tomorrow's <b>:progress</b> knows the speculative path was tried and reverted, instead of rediscovering it.</div>
+</div></section>
+
+<section><div class="wrap">
+  <div class="eyebrow">03 · guards</div>
+  <h2>No unguarded infinity</h2>
+  <p class="lede"><b>x∞</b> is legal and useful, but <b>max</b>, <b>budget</b>, and <b>window</b> still apply unless you explicitly lift them. Implicit guards render dim on every card, so nothing invisible governs execution.</p>
+  <table class="gtable">
+    <tr><th>guard</th><th>meaning</th><th>default</th></tr>
+    <tr><td>xN / x∞</td><td>iteration count</td><td>x1</td></tr>
+    <tr><td>until:"cmd"</td><td>stop when the command exits 0, checked after each iteration</td><td>—</td></tr>
+    <tr><td>gate:"cmd"</td><td>pre-flight: must exit 0 before iteration 1, else the loop refuses to start</td><td>—</td></tr>
+    <tr><td>max:N</td><td>hard ceiling regardless of until</td><td>25</td></tr>
+    <tr><td>budget:</td><td>token guard: <b>auto</b> self-meters the Claude 5h window and weekly cap from the ledger, keeps a reserve for interactive use, and parks loops in waiting·budget instead of failing · explicit N ceilings stack with auto · none opts out</td><td>auto</td></tr>
+    <tr><td>pace:even</td><td>spread iterations across the window instead of back-to-back</td><td>—</td></tr>
+    <tr><td>window:T</td><td>wall-clock ceiling</td><td>8h</td></tr>
+    <tr><td>on-fail:</td><td>stop · continue · backoff</td><td>stop</td></tr>
+  </table>
+  <div class="rule iceb">Conditions are <b>shell exit codes</b>. <span class="k">until:"cargo test"</span> loops until that command passes. No condition DSL to learn: anything you can script, you can gate on.</div>
+</div></section>
+
+<section><div class="wrap">
+  <div class="eyebrow">04 · composition</div>
+  <h2>Two operators. Wrapping does the rest.</h2>
+  <p class="lede">A loop can wrap a single prompt or a whole chain. That one rule produces sprints, nightly pipelines, and scheduled batches without any new object to learn.</p>
+  <div class="comp">
+    <div class="cpanel">
+      <div class="ch" style="color:var(--dim)">Stack · independent, in queue order</div>
+      <div class="cd2">The queue you already have. Bottom card runs next.</div>
+      <svg viewBox="0 0 300 120">
+        <line x1="24" y1="12" x2="24" y2="108" stroke="rgba(255,255,255,.12)" stroke-width="1"/>
+        <g font-family="JetBrains Mono" font-size="10">
+        <rect x="40" y="10" width="200" height="26" rx="3" fill="#111" stroke="rgba(255,255,255,.12)"/><circle cx="24" cy="23" r="4" fill="#1a1a1c" stroke="rgba(255,255,255,.2)"/><text x="52" y="27" fill="rgba(245,245,245,.6)">"draft HN post"</text>
+        <rect x="40" y="46" width="200" height="26" rx="3" fill="#111" stroke="rgba(255,255,255,.12)"/><circle cx="24" cy="59" r="4" fill="#1a1a1c" stroke="rgba(255,255,255,.2)"/><text x="52" y="63" fill="rgba(245,245,245,.6)">:tidy</text>
+        <rect x="40" y="82" width="200" height="26" rx="3" fill="#111" stroke="#ff9500"/><circle cx="24" cy="95" r="4" fill="#ff4500"/><text x="52" y="99" fill="#f5f5f5">:progress x3</text>
+        <text x="250" y="99" fill="#ff9500" font-size="9">← next</text>
+        </g>
+      </svg>
+      <div class="cgram">:progress x3 <span style="color:var(--dim2)">, then</span> :tidy <span style="color:var(--dim2)">, then</span> "draft HN post"</div>
+    </div>
+    <div class="cpanel">
+      <div class="ch" style="color:var(--flame)">Chain · output feeds the next step</div>
+      <div class="cd2">Each step's writes + handoff become the next step's reads. One unit of scheduling.</div>
+      <svg viewBox="0 0 300 120">
+        <g font-family="JetBrains Mono" font-size="10">
+        <rect x="10" y="46" width="72" height="28" rx="3" fill="#111" stroke="#00ffd4"/><text x="22" y="64" fill="#00ffd4">:plan</text>
+        <path d="M84 60 h18" stroke="#ff9500" stroke-width="1.5" marker-end="url(#ar)"/>
+        <rect x="106" y="46" width="96" height="28" rx="3" fill="#111" stroke="#00ffd4"/><text x="116" y="64" fill="#00ffd4">:implement</text>
+        <path d="M204 60 h18" stroke="#ff9500" stroke-width="1.5" marker-end="url(#ar)"/>
+        <rect x="226" y="46" width="66" height="28" rx="3" fill="#111" stroke="#00ffd4"/><text x="238" y="64" fill="#00ffd4">:test</text>
+        <path d="M290 40 C 290 14, 20 14, 12 42" stroke="rgba(255,69,0,.6)" stroke-width="1.2" fill="none" stroke-dasharray="3 4" marker-end="url(#ar2)"/>
+        <text x="118" y="20" fill="rgba(255,149,0,.8)" font-size="9">x2 · loop wraps the chain</text>
+        </g>
+        <defs>
+        <marker id="ar" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0 0 L7 3.5 L0 7 z" fill="#ff9500"/></marker>
+        <marker id="ar2" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0 0 L7 3.5 L0 7 z" fill="rgba(255,69,0,.6)"/></marker>
+        </defs>
+      </svg>
+      <div class="cgram">(:plan <span class="op">&gt;</span> :implement <span class="op">&gt;</span> :test) <span class="op">x2</span></div>
+    </div>
+  </div>
+  <div style="height:18px"></div>
+  <div class="rule">Aliases go all the way down: a saved chain or configured loop is just a bigger alias. <b>:nightly</b> can name <span class="k">:tidy &gt; :kill-test at:"0 2 * * *"</span>. One concept, every scale.</div>
+</div></section>
+
+<section><div class="wrap">
+  <div class="eyebrow">05 · escalation ladder</div>
+  <h2>Each level adds exactly one concept</h2>
+  <p class="lede">Stop at L1 and you have a complete tool. Reach L5 and you've composed gated pipelines without learning a second syntax.</p>
+  <div class="ladder" id="ladder"></div>
+  <div class="lstage" id="lstage"></div>
+</div></section>
+
+<section><div class="wrap">
+  <div class="eyebrow">06 · one grammar, three surfaces</div>
+  <h2>Try it</h2>
+  <p class="lede">Type a loop spec. The card is what the web pane renders; the strips below are the identical spec on CLI and Telegram. The card <b>is</b> the grammar, drawn.</p>
+  <div class="play">
+    <div class="pt2">grammar playground</div>
+    <div class="playrow"><input id="specin" spellcheck="false" value=':kill-test at:"0 14 * * *" x2'/></div>
+    <div class="chipsug" id="sugs"></div>
+    <div class="playout">
+      <div class="pcard-col">
+        <div class="plabel">↳ web pane card</div>
+        <div id="cardout"></div>
+      </div>
+      <div class="surf">
+        <div class="plabel">↳ same spec, other surfaces</div>
+        <div class="surfbox"><span class="st">cli</span><span class="cmd" id="clicmd"></span></div>
+        <div class="surfbox"><span class="st">telegram</span><span class="cmd" id="tgcmd"></span></div>
+        <div class="surfbox"><span class="st">loops.toml · save as alias</span><span class="cmd" id="tomlcmd"></span></div>
+      </div>
+    </div>
+  </div>
+</div></section>
+
+<footer><div class="wrap">lopi loop framework · proposal · konjoai — companion to LOOP_FRAMEWORK.md</div></footer>
+
+<script>
+"use strict";
+const REDUCED=window.matchMedia('(prefers-reduced-motion:reduce)').matches;
+
+/* ---------- hero anatomy: orbital rings ---------- */
+const AC=document.getElementById('anat'),actx=AC.getContext('2d');
+const RINGS=[
+ {r:58, c:'#ff9500', label:'PROMPT', note:'what runs · :progress, literal text, or an alias'},
+ {r:98, c:'#00d4ff', label:'CONTRACT', note:'reads PLAN/PROGRESS/NEXT + logs · writes them back'},
+ {r:134,c:'#00ffd4', label:'TRIGGER', note:'now · at:"cron" · every:15m · on:"ci-fail"'},
+ {r:168,c:'#00ff9d', label:'GUARDS', note:'xN · until · gate · max · budget · window'},
+];
+let hoverRing=-1;
+function drawAnat(now){
+  const t=now/1000;const dpr=Math.min(window.devicePixelRatio||1,2);
+  if(AC.width!==380*dpr){AC.width=380*dpr;AC.height=380*dpr;actx.setTransform(dpr,0,0,dpr,0,0);}
+  actx.clearRect(0,0,380,380);const cx=190,cy=190;
+  // core orb (fire/ice)
+  const g=actx.createRadialGradient(cx-10,cy-12,4,cx,cy,40);
+  g.addColorStop(0,'#0a94b8');g.addColorStop(.65,'#052730');g.addColorStop(1,'#020b0e');
+  actx.fillStyle=g;actx.beginPath();actx.arc(cx,cy,40,0,7);actx.fill();
+  actx.globalCompositeOperation='screen';
+  const wob=Math.sin(t*1.4)*6;
+  const f=actx.createRadialGradient(cx+8+wob,cy+10,2,cx+6,cy+8,38);
+  f.addColorStop(0,'rgba(255,149,0,.8)');f.addColorStop(.5,'rgba(255,69,0,.35)');f.addColorStop(1,'rgba(255,69,0,0)');
+  actx.fillStyle=f;actx.beginPath();actx.arc(cx,cy,40,0,7);actx.fill();
+  actx.globalCompositeOperation='source-over';
+  actx.strokeStyle='rgba(255,149,0,.9)';actx.lineWidth=1.6;
+  actx.beginPath();actx.arc(cx,cy,39,0,7);actx.stroke();
+  // rings
+  RINGS.forEach((R,i)=>{if(i===0)return; // prompt = core itself
+    const hot=hoverRing===i;
+    actx.strokeStyle=hot?R.c:R.c+'55';actx.lineWidth=hot?2:1.1;
+    actx.setLineDash(i===3?[3,6]:[]);
+    actx.beginPath();actx.arc(cx,cy,R.r,0,7);actx.stroke();actx.setLineDash([]);
+    // orbiting satellite
+    const a=t*(0.25+i*0.11)+i*2.0;
+    const sx=cx+Math.cos(a)*R.r, sy=cy+Math.sin(a)*R.r;
+    actx.fillStyle=R.c;actx.beginPath();actx.arc(sx,sy,hot?4.5:3,0,7);actx.fill();
+    if(hot){actx.shadowColor=R.c;actx.shadowBlur=12;actx.beginPath();actx.arc(sx,sy,4.5,0,7);actx.fill();actx.shadowBlur=0;}
+  });
+  // labels
+  actx.font='10px "JetBrains Mono",monospace';actx.textAlign='center';
+  actx.fillStyle=hoverRing===0?'#ff9500':'rgba(255,149,0,.85)';
+  actx.fillText('PROMPT',cx,cy+3);
+  const labAng=[-0.5,-0.9,-1.25,-1.55];
+  RINGS.forEach((R,i)=>{if(i===0)return;
+    const lx=cx+Math.cos(labAng[i])*R.r, ly=cy+Math.sin(labAng[i])*R.r;
+    actx.fillStyle=hoverRing===i?R.c:R.c+'99';
+    actx.save();actx.translate(lx,ly);
+    actx.fillRect?0:0;
+    actx.fillStyle='#0a0a0a';const w=actx.measureText(R.label).width+10;
+    actx.fillRect(-w/2,-8,w,14);
+    actx.fillStyle=hoverRing===i?R.c:R.c+'aa';
+    actx.fillText(R.label,0,3);actx.restore();
+  });
+  if(!REDUCED)requestAnimationFrame(drawAnat);
+}
+AC.addEventListener('mousemove',e=>{
+  const r=AC.getBoundingClientRect();const sx=380/r.width;
+  const mx=(e.clientX-r.left)*sx,my=(e.clientY-r.top)*sx;
+  const d=Math.hypot(mx-190,my-190);hoverRing=-1;
+  if(d<48)hoverRing=0;
+  else RINGS.forEach((R,i)=>{if(i&&Math.abs(d-R.r)<13)hoverRing=i;});
+  document.getElementById('anatNote').textContent=hoverRing>=0?RINGS[hoverRing].note:'hover a ring';
+  document.getElementById('anatNote').style.color=hoverRing>=0?RINGS[hoverRing].c:'';
+});
+AC.addEventListener('mouseleave',()=>{hoverRing=-1;document.getElementById('anatNote').textContent='hover a ring';document.getElementById('anatNote').style.color='';});
+requestAnimationFrame(drawAnat);
+if(REDUCED)drawAnat(0);
+
+/* ---------- ladder ---------- */
+const LADDER=[
+ {n:'L0',t:'Send a prompt',d:'No framework knowledge needed. A bare prompt runs once when it reaches the front of the queue.',s:['"fix the flaky websocket test"']},
+ {n:'L1',t:'Add xN',d:'The loop chip. Run the same prompt N times back-to-back, each iteration reading what the last one wrote.',s:[':progress x3']},
+ {n:'L2',t:'Add until:',d:'Loop until a shell command exits 0. Default guards (max:25, window:8h) keep every open-ended loop bounded.',s:[':progress until:"cargo test" max:5']},
+ {n:'L3',t:'Add a trigger',d:'The cron chip. The trigger starts the series, the count caps it. This is "tomorrow 2pm, loop twice."',s:[':kill-test at:"0 14 * * *" x2']},
+ {n:'L4',t:'Chain with >',d:'Each step feeds the next. Wrap the chain in a loop and you have a sprint.',s:['(:plan > :implement > :test) x2']},
+ {n:'L5',t:'Name it',d:'Save any spec as an alias in loops.toml. Now the whole pipeline is one word on any surface.',s:['[alias.nightly]','spec = \':tidy > :kill-test at:"0 2 * * *"\'','# later, anywhere:  :nightly']},
+];
+const lad=document.getElementById('ladder'),lst=document.getElementById('lstage');
+LADDER.forEach((L,i)=>{const b=document.createElement('button');b.className='lv'+(i===3?' on':'');
+  b.textContent=L.n+' · '+L.t;b.onclick=()=>{[...lad.children].forEach(x=>x.classList.remove('on'));b.classList.add('on');showL(i);};
+  lad.appendChild(b);});
+function showL(i){const L=LADDER[i];
+  lst.innerHTML=`<div class="ln">${L.n}</div><div class="lt">${L.t}</div><div class="ld">${L.d}</div>`+
+    L.s.map(s=>`<div class="lspec">${s.replace(/</g,'&lt;')}</div>`).join('');}
+showL(3);
+
+/* ---------- playground parser ---------- */
+const ICON_LOOP='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>';
+const ICON_CRON='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
+
+function tokenize(src){
+  const toks=[];let i=0;
+  while(i<src.length){
+    const c=src[i];
+    if(/\s/.test(c)){i++;continue;}
+    if(c==='"'){let j=i+1,s='';while(j<src.length&&src[j]!=='"'){s+=src[j++];}
+      if(j>=src.length)throw 'unclosed quote';toks.push({t:'str',v:s});i=j+1;continue;}
+    if(c==='>'){toks.push({t:'chain'});i++;continue;}
+    if(c==='('){toks.push({t:'lp'});i++;continue;}
+    if(c===')'){toks.push({t:'rp'});i++;continue;}
+    let j=i,w='';while(j<src.length&&!/[\s>()"]/.test(src[j])){w+=src[j++];}
+    toks.push({t:'word',v:w});i=j;
+  }
+  return toks;
+}
+function parseSpec(src){
+  const toks=tokenize(src);
+  const spec={steps:[],count:null,inf:false,until:null,gate:null,cron:null,every:null,event:null,
+              max:null,budget:null,window:null,onfail:null,pace:null};
+  let depth=0,pendingKey=null,argOpen=false;
+  const setKey=(key,val)=>{
+    if(key==='until')spec.until=val; else if(key==='gate')spec.gate=val;
+    else if(key==='at')spec.cron=val; else if(key==='every')spec.every=val;
+    else if(key==='on')spec.event=val;
+    else if(key==='max')spec.max=val==='none'?'none':+val;
+    else if(key==='budget')spec.budget=val; else if(key==='window')spec.window=val;
+    else if(key==='pace')spec.pace=val;
+    else spec.onfail=val;};
+  for(const tk of toks){
+    if(tk.t==='lp'){depth++;continue;}
+    if(tk.t==='rp'){depth--;argOpen=false;continue;}
+    if(tk.t==='chain'){argOpen=false;continue;}
+    if(tk.t==='str'){ // quoted: pending key value > alias argument > literal prompt
+      if(pendingKey){setKey(pendingKey,tk.v);pendingKey=null;}
+      else if(argOpen){spec.steps[spec.steps.length-1].arg=tk.v;argOpen=false;}
+      else spec.steps.push({kind:'lit',v:tk.v});
+      continue;}
+    const w=tk.v;
+    if(w.startsWith('@')){const last=spec.steps[spec.steps.length-1];
+      if(!last)throw '@repo must follow a step';
+      last.repo=w.slice(1);argOpen=false;continue;}
+    let km;
+    if(km=w.match(/^(until|gate|at|on|every|max|budget|window|on-fail|pace):$/)){pendingKey=km[1];argOpen=false;continue;}
+    if(w.startsWith(':')){spec.steps.push({kind:'alias',v:w});argOpen=true;continue;}
+    let m;
+    if(m=w.match(/^x(∞|inf|\d+)$/i)){ if(m[1]==='∞'||/inf/i.test(m[1]))spec.inf=true; else spec.count=+m[1]; continue;}
+    if(m=w.match(/^(until|gate|at|on|every|max|budget|window|on-fail|pace):(.+)$/)){
+      let val=m[2];
+      if(val.startsWith('"')){val=val.slice(1); if(val.endsWith('"'))val=val.slice(0,-1);}
+      setKey(m[1],val);
+      continue;}
+    // bare word: treat as part of an unquoted literal prompt
+    const last=spec.steps[spec.steps.length-1];
+    if(last&&last.kind==='lit'&&last.bare){last.v+=' '+w;}
+    else spec.steps.push({kind:'lit',v:w,bare:true});
+  }
+  if(depth!==0)throw 'unbalanced parentheses';
+  if(!spec.steps.length)throw 'no prompt: start with :alias or "quoted text"';
+  return spec;
+}
+function loopN(spec){return spec.inf?'∞':(spec.count&&spec.count>1?'×'+spec.count:null);}
+function stepChip(s){
+  let inner=esc(s.v);
+  if(s.arg)inner+=` <span style="color:var(--paper)">"${esc(s.arg)}"</span>`;
+  if(s.repo)inner+=` <span style="color:var(--sun)">@${esc(s.repo)}</span>`;
+  return `<span class="qstep ${s.kind==='alias'?'alias':''}">${inner}</span>`;
+}
+function renderCard(spec){
+  const chain=spec.steps.map(stepChip).join('<span class="qop">›</span>');
+  const single=spec.steps.length===1;
+  const badges=[];
+  const ln=loopN(spec);
+  if(ln)badges.push(`<span class="bdg loop">${ICON_LOOP}${ln}</span>`);
+  if(spec.cron)badges.push(`<span class="bdg cron">${ICON_CRON}${esc(spec.cron)}</span>`);
+  if(spec.every)badges.push(`<span class="bdg cron">${ICON_CRON}every ${esc(spec.every)}</span>`);
+  if(spec.event)badges.push(`<span class="bdg cron">⚡ on:${esc(spec.event)}</span>`);
+  if(spec.until)badges.push(`<span class="bdg until">until:"${esc(spec.until)}"</span>`);
+  if(spec.gate)badges.push(`<span class="bdg gate">gate:"${esc(spec.gate)}"</span>`);
+  // explicit ceilings
+  if(spec.max!=null)badges.push(`<span class="bdg guard">max:${spec.max}</span>`);
+  if(spec.budget)badges.push(`<span class="bdg ${spec.budget==='auto'?'cron':'guard'}">budget:${esc(spec.budget)}</span>`);
+  if(spec.pace)badges.push(`<span class="bdg guard">pace:${esc(spec.pace)}</span>`);
+  if(spec.window)badges.push(`<span class="bdg guard">window:${esc(spec.window)}</span>`);
+  if(spec.onfail)badges.push(`<span class="bdg guard">on-fail:${esc(spec.onfail)}</span>`);
+  // implicit guards when open-ended
+  const openEnded=spec.inf||spec.until;
+  if(openEnded){
+    if(spec.max==null)badges.push(`<span class="bdg guard implicit">max:25</span>`);
+    if(!spec.window)badges.push(`<span class="bdg guard implicit">window:8h</span>`);
+  }
+  if(!spec.budget)badges.push(`<span class="bdg guard implicit">budget:auto</span>`);
+  // plain-language line
+  let plain=[];
+  if(spec.gate)plain.push(`refuses to start unless <b class="r">${esc(spec.gate)}</b> passes`);
+  if(spec.cron)plain.push(`fires on <b class="i">${esc(spec.cron)}</b>`);
+  if(spec.every)plain.push(`fires <b class="i">every ${esc(spec.every)}</b>`);
+  if(spec.event)plain.push(`fires on <b class="i">${esc(spec.event)}</b>`);
+  if(ln)plain.push(`${single?'loops':'loops the chain'} <b class="f">${ln}</b>`);
+  if(spec.until)plain.push(`until <b class="j">${esc(spec.until)}</b> exits 0`);
+  const repos=[...new Set(spec.steps.filter(x=>x.repo).map(x=>x.repo))];
+  if(repos.length)plain.push(`crosses into <b class="i">@${repos.join(', @')}</b> with per-step worktrees`);
+  if(spec.budget==='auto'||!spec.budget)plain.push(`defers to <b class="j">waiting · budget</b> if the 5h window is thin`);
+  if(spec.budget==='none')plain.push(`opted out of <b class="r">budget:auto</b>`);
+  if(!plain.length)plain.push('runs once at the front of the queue');
+  return `<div class="qcard"><span class="nexttag">next</span>
+    ${single?`<div class="qchain">${stepChip(spec.steps[0])}</div>`:`<div class="qchain">${chain}</div>`}
+    <div class="badges">${badges.join('')}</div>
+    <div class="qplain">${plain.join(', ')}.</div></div>`;
+}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');}
+function surfaces(src){
+  document.getElementById('clicmd').innerHTML=`lopi run <span class="hl">'${esc(src)}'</span>`;
+  document.getElementById('tgcmd').innerHTML=`/run <span class="hl">${esc(src)}</span>`;
+  document.getElementById('tomlcmd').innerHTML=`[alias.myloop]<br/>spec = <span class="hl">'${esc(src)}'</span>`;
+}
+const specin=document.getElementById('specin'),cardout=document.getElementById('cardout');
+function refresh(){
+  const src=specin.value.trim();
+  if(!src){cardout.innerHTML='<div class="perr">type a spec</div>';return;}
+  try{const spec=parseSpec(src);cardout.innerHTML=renderCard(spec);surfaces(src);}
+  catch(e){cardout.innerHTML=`<div class="perr">⚠ ${esc(e)}</div>`;}
+}
+specin.addEventListener('input',refresh);
+const SUGS=[':progress x3',':progress until:"cargo test" max:5',':kill-test at:"0 14 * * *" x2',
+ ':research "paged attention" > :scope > :implement > :benchmark',
+ ':benchmark @vectro > :report @konjo.ai',
+ ':optimize gate:"./kill_test.sh" until:"cargo test"',
+ ':goal "cold-start under 200ms on 16 GB"',
+ ':progress x∞ pace:even','"fix the flaky websocket test"',
+ ':kiban-sprint gate:"./kill_test.sh" until:"cargo test" max:5 budget:300k'];
+const sugbox=document.getElementById('sugs');
+SUGS.forEach(s=>{const b=document.createElement('span');b.className='sug';b.textContent=s;
+  b.onclick=()=>{specin.value=s;refresh();};sugbox.appendChild(b);});
+refresh();
+</script>
+</body>
+</html>

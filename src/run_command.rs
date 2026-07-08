@@ -1,12 +1,65 @@
 use anyhow::Result;
 use lopi_agent::{AgentRunner, AnthropicClient, AnthropicLimiter, CircuitBreaker, StabilityConfig};
-use lopi_core::{AgentEvent, LopiConfig, RepoProfile, Task, TaskSource};
+use lopi_core::{AgentEvent, LopiConfig, RepoProfile, Task, TaskId, TaskSource, TaskStatus};
 use lopi_memory::MemoryStore;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
 use crate::util::{db_path, is_self_modify_attempt, status_label};
+
+/// Run `runner` to completion while bridging its `AgentEvent` bus to stdout
+/// (status transitions, log lines, and — when `print_score` is set — score
+/// updates), then persist the outcome. Shared by the plain CLI run path and
+/// the REPL's bypass path, which differ only in whether score lines print.
+pub(crate) async fn run_with_live_print(
+    mut runner: AgentRunner,
+    store: &MemoryStore,
+    task_id: TaskId,
+    goal: &str,
+    print_score: bool,
+) -> Result<TaskStatus> {
+    let bus = runner.bus.clone();
+    let mut rx = bus.subscribe();
+    let print_task = tokio::spawn(async move {
+        loop {
+            match rx.recv().await {
+                Ok(AgentEvent::StatusChanged {
+                    status, attempt, ..
+                }) => {
+                    println!("  [{attempt}] → {}", status_label(&status));
+                }
+                Ok(AgentEvent::LogLine { line, .. }) => {
+                    println!("       {line}");
+                }
+                Ok(AgentEvent::ScoreUpdated {
+                    test_pass_rate,
+                    lint_errors,
+                    ..
+                }) if print_score => {
+                    println!(
+                        "       score: {:.0}% pass, {} lint errors",
+                        test_pass_rate * 100.0,
+                        lint_errors
+                    );
+                }
+                Ok(AgentEvent::TaskCompleted { .. }) | Err(_) => break,
+                _ => {}
+            }
+        }
+    });
+
+    let outcome = runner.run().await?;
+    print_task.abort();
+    store
+        .mark_completed(&task_id, &status_label(&outcome))
+        .await
+        .ok();
+    store.mine_patterns(&task_id, goal).await.ok();
+    println!();
+    println!("⚓ {}", status_label(&outcome));
+    Ok(outcome)
+}
 
 /// `lopi run` — execute a single agent task on the current terminal.
 #[allow(clippy::too_many_arguments)]
@@ -108,47 +161,8 @@ pub async fn run(
     runner.store = Some(store.clone());
     runner.dry_run = dry_run;
     runner.speculative = speculative;
-    let bus = runner.bus.clone();
 
-    let mut rx = bus.subscribe();
-    let print_task = tokio::spawn(async move {
-        loop {
-            match rx.recv().await {
-                Ok(AgentEvent::StatusChanged {
-                    status, attempt, ..
-                }) => {
-                    println!("  [{attempt}] → {}", status_label(&status));
-                }
-                Ok(AgentEvent::LogLine { line, .. }) => {
-                    println!("       {line}");
-                }
-                Ok(AgentEvent::ScoreUpdated {
-                    test_pass_rate,
-                    lint_errors,
-                    ..
-                }) => {
-                    println!(
-                        "       score: {:.0}% pass, {} lint errors",
-                        test_pass_rate * 100.0,
-                        lint_errors
-                    );
-                }
-                Ok(AgentEvent::TaskCompleted { .. }) | Err(_) => break,
-                _ => {}
-            }
-        }
-    });
-
-    let outcome = runner.run().await?;
-    print_task.abort();
-    store
-        .mark_completed(&task_id, &status_label(&outcome))
-        .await
-        .ok();
-    store.mine_patterns(&task_id, &task.goal).await.ok();
-
-    println!();
-    println!("⚓ {}", status_label(&outcome));
+    run_with_live_print(runner, &store, task_id, &task.goal, true).await?;
     Ok(())
 }
 

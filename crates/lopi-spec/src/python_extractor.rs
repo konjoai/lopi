@@ -7,7 +7,7 @@
 use anyhow::Result;
 use std::path::Path;
 
-use crate::{SpecItem, SpecKind};
+use crate::{name_to_description, SpecItem, SpecKind};
 
 /// Extract all test functions from a Python source file.
 ///
@@ -79,10 +79,6 @@ fn parse_docstring(line: &str) -> Option<String> {
         }
     }
     None
-}
-
-fn name_to_description(name: &str) -> String {
-    name.trim_start_matches("test_").replace('_', " ")
 }
 
 #[cfg(test)]

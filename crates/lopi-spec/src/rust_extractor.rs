@@ -7,7 +7,7 @@
 use anyhow::Result;
 use std::path::Path;
 
-use crate::{SpecItem, SpecKind};
+use crate::{name_to_description, SpecItem, SpecKind};
 
 const TEST_ATTRS: &[&str] = &[
     "#[test]",
@@ -93,11 +93,6 @@ fn parse_fn_name(line: &str) -> Option<String> {
     } else {
         Some(name)
     }
-}
-
-/// Convert a snake_case test name to a readable description.
-fn name_to_description(name: &str) -> String {
-    name.trim_start_matches("test_").replace('_', " ")
 }
 
 #[cfg(test)]

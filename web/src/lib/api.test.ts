@@ -14,18 +14,7 @@ import {
   setLoopStrategy,
   setLoopEscalation
 } from './api';
-
-let pass = 0;
-let fail = 0;
-
-function eq(actual: unknown, expected: unknown, name: string) {
-  if (Object.is(actual, expected)) {
-    pass++;
-  } else {
-    fail++;
-    console.error(`✗ ${name}: expected ${expected}, got ${actual}`);
-  }
-}
+import { eqIs as eq, summary } from '$lib/test-harness';
 
 interface Captured {
   path: string;
@@ -145,8 +134,7 @@ async function main() {
     eq((e as ApiError).message, 'backend unreachable', 'network failure message');
   }
 
-  console.log(`\n── Result: ${pass} passed, ${fail} failed ──`);
-  if (fail > 0) process.exit(1);
+  summary();
 }
 
 main();

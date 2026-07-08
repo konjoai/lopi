@@ -6,26 +6,8 @@
 import { reduce, makeBlank } from './agentReducer';
 import type { AgentState } from './agents';
 import type { AgentEvent } from '$lib/types';
+import { eq, ok, namedSummary } from '$lib/test-harness';
 
-let pass = 0;
-let fail = 0;
-
-function eq(actual: unknown, expected: unknown, name: string) {
-  const a = JSON.stringify(actual);
-  const e = JSON.stringify(expected);
-  if (a === e) pass++;
-  else {
-    fail++;
-    console.error(`✗ ${name}: expected ${e}, got ${a}`);
-  }
-}
-function ok(cond: boolean, name: string) {
-  if (cond) pass++;
-  else {
-    fail++;
-    console.error(`✗ ${name}`);
-  }
-}
 function approx(actual: number, expected: number, name: string, eps = 1e-9) {
   ok(Math.abs(actual - expected) < eps, `${name} (got ${actual}, want ${expected})`);
 }
@@ -173,5 +155,4 @@ const ID = 'task-1';
   eq(reduce(empty(), ev({ type: 'phase', task_id: 'ghost', phase: 'x' })).size, 0, 'phase for unknown task → no-op');
 }
 
-console.log(`\nagentReducer: ${pass} passed, ${fail} failed`);
-if (fail > 0) process.exit(1);
+namedSummary('agentReducer');

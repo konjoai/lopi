@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>lopi · output → input connections</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet"/>
+<style>
+:root{
+  --black:#0b0e10;--card:#0e1214;--paper:#f5f5f5;
+  --ice:#00d4ff;--ice-deep:#0a8aa8;--ember:#ff4500;--flame:#ff9500;
+  --jade:#00ff9d;--sun:#ffcc00;--teal:#00ffd4;--violet:#b79bff;
+  --mist:rgba(255,255,255,.05);--veil:rgba(255,255,255,.11);
+  --dim:rgba(245,245,245,.46);--dim2:rgba(245,245,245,.27);
+  --mono:'JetBrains Mono',ui-monospace,monospace;--sans:'Space Grotesk',system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#060809;color:var(--paper);font-family:var(--sans);-webkit-font-smoothing:antialiased;padding:0 0 70px}
+.top{padding:20px 22px;border-bottom:1px solid var(--mist)}
+.brand{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);display:flex;align-items:center;gap:8px}
+.brand b{color:var(--paper)} .dot{width:6px;height:6px;border-radius:50%;background:var(--violet);box-shadow:0 0 8px var(--violet)}
+.lede{color:var(--dim);font-size:13px;margin-top:9px;max-width:680px}
+.lede b{color:var(--paper)}
+
+.grid{display:flex;gap:20px;padding:30px 22px;flex-wrap:wrap;align-items:flex-start}
+.opt{flex:1 1 300px;min-width:280px;max-width:360px;background:#080b0d;border:1px solid var(--mist);border-radius:8px;padding:18px}
+.opt h3{font-size:14px;font-weight:500;margin-bottom:3px}
+.opt .tag{font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--violet);margin-bottom:10px}
+.opt .desc{font-family:var(--mono);font-size:10.5px;color:var(--dim2);line-height:1.7;margin-top:14px;border-top:1px dashed var(--mist);padding-top:11px}
+.opt .desc b{color:var(--dim)}
+
+/* card */
+.demo{position:relative;padding:6px 0}
+.pc{position:relative;background:var(--card);border:1px solid var(--veil);border-radius:6px;padding:11px 12px;z-index:2}
+.pc .spec{font-family:var(--mono);font-size:11.5px}
+.pc .spec .al{color:var(--teal)} .pc .spec .rp{color:var(--sun)} .pc .spec .md{color:var(--dim)}
+.gap{height:34px}
+
+/* the flow svg overlay */
+.flowsvg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:1;overflow:visible}
+
+/* option D inline pill */
+.feedpill{position:relative;z-index:3;margin:-6px auto 0;width:max-content;display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:9px;color:var(--violet);background:var(--black);border:1px solid rgba(183,155,255,.4);border-radius:10px;padding:3px 10px;transform:translateY(-16px)}
+.feedpill svg{width:11px;height:11px}
+
+/* option E: side dock ports */
+.port{position:absolute;width:9px;height:9px;border-radius:50%;background:var(--black);border:1.5px solid var(--violet);z-index:3}
+.port.out{right:-4px;bottom:12px}
+.port.in{right:-4px;top:12px}
+
+.legend{font-family:var(--mono);font-size:10px;color:var(--dim2);padding:0 22px;line-height:1.8}
+.legend b{color:var(--violet)}
+</style>
+</head>
+<body>
+<div class="top">
+  <div class="brand"><span class="dot"></span>lopi <b>· output → input</b> · chained prompts</div>
+  <div class="lede">When a prompt's result should feed the next one (the <b>&gt;</b> chain), the stack needs to show data flowing between separate cards, not just execution order. Here are ways the connection could read. All use a curved arrow on the side; the question is where it lives and how loud it is.</div>
+</div>
+
+<div class="grid" id="grid"></div>
+
+<div class="legend">
+  All examples show <b>:research "paged attention" &gt; :scope &gt; :implement</b> as three separate cards whose outputs feed forward.
+  The plain (non-chained) connector stays the straight center line; the curved side arrow is reserved for a real handoff, so the two are never confused.
+</div>
+
+<script>
+"use strict";
+const AL=(s)=>`<span class="al">${s}</span>`;
+const CARDS=[
+ `${AL(':research')} <span class="md">"paged attention"</span>`,
+ `${AL(':scope')}`,
+ `${AL(':implement')} <span class="md">x3</span>`,
+];
+const grid=document.getElementById('grid');
+
+function cardHTML(spec,extra=''){return `<div class="pc">${extra}<div class="spec">${spec}</div></div>`;}
+
+/* A · right-side C curve */
+function rightCurve(){
+  // three cards with curved arrows exiting bottom-right of a card, curving out right, back into top-right of next
+  return demo('A','right-side handoff','Output exits the bottom-right, bows out to the right, and re-enters the next card at the top-right. An arrowhead marks direction. The bow is small so the stack stays narrow.',
+   drawSide('right','#b79bff'));
+}
+/* B · left-side */
+function leftCurve(){
+  return demo('B','left-side handoff','Same idea mirrored to the left. Useful if the right side of cards is busy with controls; the handoff lives on the quieter edge.',
+   drawSide('left','#00ffd4'));
+}
+/* C · alternating sides (ribbon) */
+function altCurve(){
+  return demo('C','alternating ribbon','Handoffs alternate right then left down the chain, so a long pipeline reads as a woven ribbon. Each turn is a step; the alternation makes depth countable at a glance.',
+   drawAlt());
+}
+/* D · inline feed pill on the center line */
+function inlinePill(){
+  let h='<div class="demo">';
+  CARDS.forEach((c,i)=>{h+=cardHTML(c);if(i<CARDS.length-1)h+=`<div class="gap" style="height:30px;position:relative"><div class="feedpill">${ICON.arrow} feeds output</div></div>`;});
+  h+='</div>';
+  return demoWrap('D','inline handoff node','The center connector stays, but a small "feeds output" pill sits on it where a chain hands off. No side space needed; reads top-to-bottom like the rest of the stack. Quietest option, but the flow is implied rather than drawn.',h);
+}
+/* E · side ports + dock rail */
+function ports(){
+  return demo('E','ports + side rail','Each chained card grows an out-port (bottom-right) and the next an in-port (top-right), joined by a rail that clips outward. Feels like patching modules together; strongest "data flow" read, most visual weight.',
+   drawPorts());
+}
+
+const ICON={
+ arrow:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>',
+};
+
+/* helpers that build a 3-card demo with an absolutely-positioned svg overlay */
+function demoWrap(letter,tag,desc,inner){
+  const el=document.createElement('div');el.className='opt';
+  el.innerHTML=`<div class="tag">option ${letter}</div><h3>${tag}</h3>${inner}<div class="desc">${desc}</div>`;
+  return el;
+}
+function baseDemo(){
+  // returns {html, positions} — three cards stacked with gaps
+  let h='<div class="demo" style="position:relative">';
+  CARDS.forEach((c,i)=>{h+=cardHTML(c);if(i<CARDS.length-1)h+='<div class="gap"></div>';});
+  h+='<svg class="flowsvg" data-flow></svg></div>';
+  return h;
+}
+function demo(letter,tag,desc,drawFn){
+  const el=demoWrap(letter,tag,desc,baseDemo());
+  requestAnimationFrame(()=>drawFn(el.querySelector('[data-flow]')));
+  // also redraw after layout settles
+  setTimeout(()=>drawFn(el.querySelector('[data-flow]')),60);
+  return el;
+}
+
+function cardRects(svg){
+  const demo=svg.closest('.demo');const cards=[...demo.querySelectorAll('.pc')];
+  const box=demo.getBoundingClientRect();
+  svg.setAttribute('viewBox',`0 0 ${box.width} ${box.height}`);
+  return cards.map(c=>{const r=c.getBoundingClientRect();return {x:r.left-box.left,y:r.top-box.top,w:r.width,h:r.height};});
+}
+function defsArrow(color,id){return `<defs><marker id="${id}" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 z" fill="${color}"/></marker></defs>`;}
+
+function drawSide(side,color){return (svg)=>{
+  const R=cardRects(svg);let s=defsArrow(color,side+'ar');
+  for(let i=0;i<R.length-1;i++){const a=R[i],b=R[i+1];
+    const bow=22;
+    let x0,x1,cx;
+    if(side==='right'){x0=a.x+a.w-6;x1=b.x+b.w-6;cx=a.x+a.w+bow;}
+    else{x0=a.x+6;x1=b.x+6;cx=a.x-bow;}
+    const y0=a.y+a.h-8,y1=b.y+8;
+    s+=`<path d="M ${x0} ${y0} C ${cx} ${y0+6}, ${cx} ${y1-6}, ${x1} ${y1}" fill="none" stroke="${color}" stroke-width="1.5" marker-end="url(#${side}ar)" opacity=".85"/>`;
+    s+=`<circle cx="${x0}" cy="${y0}" r="2.4" fill="${color}"/>`;
+  }
+  svg.innerHTML=s;
+};}
+function drawAlt(){return (svg)=>{
+  const R=cardRects(svg);let s=defsArrow('#b79bff','altar');
+  for(let i=0;i<R.length-1;i++){const a=R[i],b=R[i+1];const side=i%2===0?'right':'left';const bow=22;
+    let x0,x1,cx;
+    if(side==='right'){x0=a.x+a.w-6;x1=b.x+b.w-6;cx=a.x+a.w+bow;}
+    else{x0=a.x+6;x1=b.x+6;cx=a.x-bow;}
+    const y0=a.y+a.h-8,y1=b.y+8;
+    s+=`<path d="M ${x0} ${y0} C ${cx} ${y0+6}, ${cx} ${y1-6}, ${x1} ${y1}" fill="none" stroke="#b79bff" stroke-width="1.5" marker-end="url(#altar)" opacity=".85"/>`;
+    s+=`<circle cx="${x0}" cy="${y0}" r="2.4" fill="#b79bff"/>`;}
+  svg.innerHTML=s;
+};}
+function drawPorts(){return (svg)=>{
+  const R=cardRects(svg);let s=defsArrow('#b79bff','portar');
+  for(let i=0;i<R.length-1;i++){const a=R[i],b=R[i+1];
+    const px=a.x+a.w-4, y0=a.y+a.h-12, y1=b.y+12; const out=px+16;
+    s+=`<circle cx="${px}" cy="${y0}" r="4" fill="#0b0e10" stroke="#b79bff" stroke-width="1.5"/>`;
+    s+=`<circle cx="${px}" cy="${y1}" r="4" fill="#0b0e10" stroke="#b79bff" stroke-width="1.5"/>`;
+    s+=`<path d="M ${px+4} ${y0} H ${out} V ${y1} H ${px+4}" fill="none" stroke="#b79bff" stroke-width="1.5" marker-end="url(#portar)" opacity=".85"/>`;}
+  svg.innerHTML=s;
+};}
+
+grid.appendChild(rightCurve());
+grid.appendChild(leftCurve());
+grid.appendChild(altCurve());
+grid.appendChild(inlinePill());
+grid.appendChild(ports());
+window.addEventListener('resize',()=>document.querySelectorAll('[data-flow]').forEach(svg=>{
+  // re-trigger by dispatching; simplest: reload positions using stored draw isn't kept, so just re-run all
+}));
+</script>
+</body>
+</html>

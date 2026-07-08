@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>lopi · hover-reveal guardrails + evals</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet"/>
+<style>
+:root{
+  --black:#0b0e10;--panel:#0a0d0f;--card:#0e1214;--paper:#f5f5f5;
+  --ice:#00d4ff;--ember:#ff4500;--flame:#ff9500;--jade:#00ff9d;--sun:#ffcc00;
+  --rose:#ff2d78;--teal:#00ffd4;--violet:#b79bff;
+  --mist:rgba(255,255,255,.05);--veil:rgba(255,255,255,.11);
+  --dim:rgba(245,245,245,.46);--dim2:rgba(245,245,245,.28);
+  --mono:'JetBrains Mono',ui-monospace,monospace;--sans:'Space Grotesk',system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#060809;color:var(--paper);font-family:var(--sans);-webkit-font-smoothing:antialiased;min-height:100vh}
+.top{padding:15px 20px;border-bottom:1px solid var(--mist)}
+.brand{font-family:var(--mono);font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim)}
+.brand b{color:var(--paper)}
+.hint-top{font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:8px}
+.hint-top b{color:var(--jade)}
+.stage{max-width:500px;margin:0 auto;padding:34px 18px 90px}
+
+.pc{position:relative;background:var(--card);border:1px solid rgba(255,150,70,.55);border-radius:9px;padding:13px 14px}
+.pc.plain{border-color:var(--veil)}
+.runtag{position:absolute;top:-10px;left:14px;font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--flame);background:var(--black);border:1px solid rgba(255,149,0,.5);border-radius:3px;padding:2px 8px;display:inline-flex;align-items:center;gap:5px;z-index:2}
+.runtag::before{content:"";width:5px;height:5px;border-radius:50%;background:var(--flame);box-shadow:0 0 5px var(--ember)}
+.preset{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:8.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--flame);border:1px solid rgba(255,149,0,.4);border-radius:12px;padding:2px 8px;margin-bottom:9px}
+.preset svg{width:10px;height:10px}
+.spec{font-family:var(--mono);font-size:14px;line-height:1.5;margin-bottom:10px}
+.spec .al{color:var(--teal)} .spec .md{color:var(--dim)}
+.prog{display:flex;gap:4px;margin-bottom:11px}.prog i{width:20px;height:3px;border-radius:2px;background:var(--veil)}
+.prog i.done{background:var(--jade)}.prog i.cur{background:var(--flame);box-shadow:0 0 5px var(--ember)}
+
+.cardbar{display:flex;align-items:center;gap:6px;padding-top:10px;border-top:1px solid var(--mist)}
+.ib{height:29px;min-width:29px;padding:0 7px;border-radius:6px;border:1px solid var(--veil);background:transparent;color:var(--dim2);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:5px;font-family:var(--mono);font-size:11px;transition:.14s}
+.ib svg{width:14px;height:14px}
+.ib.iter{border-color:rgba(255,149,0,.5);background:rgba(255,69,0,.09);color:var(--flame);font-weight:700}
+.ib .cnt{font-size:9px;font-weight:700}
+.ib.guard:hover,.ib.guard.act{color:var(--sun);border-color:rgba(255,204,0,.5);background:rgba(255,204,0,.08)}
+.ib.eval:hover,.ib.eval.act{color:var(--jade);border-color:rgba(0,255,157,.5);background:rgba(0,255,157,.08)}
+.ib.pinned::after{content:"";position:absolute;margin-top:-20px;margin-left:20px;width:5px;height:5px;border-radius:50%;background:currentColor}
+.sp{flex:1}
+
+/* the slide-down reveal */
+.reveal{max-height:0;overflow:hidden;transition:max-height .28s cubic-bezier(.4,0,.2,1)}
+.reveal.open{max-height:420px}
+.revinner{padding:12px 2px 4px}
+.revh{font-family:var(--mono);font-size:8.5px;letter-spacing:.12em;text-transform:uppercase;margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.revh svg{width:12px;height:12px}
+.reveal.guard .revh{color:var(--sun)} .reveal.eval .revh{color:var(--jade)}
+.revh .pinhint{margin-left:auto;font-size:8px;color:var(--dim2);text-transform:none;letter-spacing:0}
+
+/* guard controls */
+.gline{display:flex;align-items:center;gap:9px;margin-bottom:9px;font-family:var(--mono);font-size:11px;color:var(--dim)}
+.gtog{width:30px;height:17px;border-radius:10px;background:rgba(255,255,255,.1);position:relative;cursor:pointer;transition:.16s;flex:0 0 30px}
+.gtog .knob{position:absolute;top:2px;left:2px;width:13px;height:13px;border-radius:50%;background:var(--dim);transition:.16s}
+.gtog.on{background:rgba(255,204,0,.28)} .gtog.on .knob{left:15px;background:var(--sun)}
+.gline .lbl{color:var(--paper);flex:0 0 auto;width:42px}
+.gline input{flex:1;background:rgba(255,255,255,.03);border:1px solid var(--veil);border-radius:5px;padding:4px 8px;color:var(--paper);font-family:var(--mono);font-size:10.5px;min-width:0}
+.gline input:focus{outline:none;border-color:rgba(255,204,0,.4)}
+.gline input:disabled{opacity:.35}
+.gline .hint{color:var(--dim2);font-size:9px;flex:0 0 auto}
+.gseg-row{display:flex;align-items:center;gap:10px;margin-bottom:9px;font-family:var(--mono);font-size:10px;color:var(--dim)}
+.gseg-row .lbl{width:52px;flex:0 0 auto;text-transform:uppercase;font-size:8.5px;letter-spacing:.06em;color:var(--dim2)}
+.seg{display:inline-flex;border:1px solid var(--veil);border-radius:6px;overflow:hidden}
+.seg span{padding:4px 11px;font-size:10px;color:var(--dim2);cursor:pointer;border-right:1px solid var(--veil);transition:.12s}
+.seg span:last-child{border-right:none}
+.seg span:hover{color:var(--dim)}
+.seg.g span.on{background:rgba(255,204,0,.16);color:var(--sun)}
+.stepper{display:inline-flex;align-items:center;border:1px solid var(--veil);border-radius:6px;overflow:hidden}
+.stepper button{width:26px;height:26px;border:none;background:transparent;color:var(--sun);font-size:15px;cursor:pointer}
+.stepper button:hover{background:rgba(255,204,0,.12)}
+.stepper .v{width:34px;text-align:center;font-family:var(--mono);font-size:11px;color:var(--paper);border-left:1px solid var(--veil);border-right:1px solid var(--veil);line-height:26px}
+
+/* eval controls */
+.echk{display:flex;align-items:center;gap:9px;padding:6px 8px;border-radius:6px;cursor:pointer;border:1px solid transparent;transition:.12s}
+.echk:hover{background:rgba(255,255,255,.02)}
+.echk .box{width:16px;height:16px;border-radius:4px;border:1.5px solid var(--veil);display:flex;align-items:center;justify-content:center;flex:0 0 16px;transition:.12s}
+.echk.on .box{background:var(--jade);border-color:var(--jade)}
+.echk .box svg{width:11px;height:11px;color:#04120c;opacity:0;transition:.12s}
+.echk.on .box svg{opacity:1}
+.echk .en{flex:1;font-family:var(--mono);font-size:11.5px;color:var(--dim)}
+.echk.on .en{color:var(--paper)}
+.echk .tier{font-family:var(--mono);font-size:8px;letter-spacing:.06em;text-transform:uppercase;border:1px solid;border-radius:10px;padding:1px 7px;flex:0 0 auto}
+.tier-base{color:var(--jade);border-color:rgba(0,255,157,.3)}
+.tier-test{color:var(--ice);border-color:rgba(0,212,255,.3)}
+.tier-judge{color:var(--violet);border-color:rgba(183,155,255,.3)}
+.tier-suite{color:var(--sun);border-color:rgba(255,204,0,.3)}
+.echk.locked{opacity:.6;cursor:default}
+.suiterow{display:flex;align-items:center;gap:7px;margin-top:9px;padding-top:9px;border-top:1px solid var(--mist);font-family:var(--mono);font-size:9.5px;color:var(--dim2)}
+.suiterow .sbtn{border:1px dashed var(--veil);border-radius:11px;padding:3px 10px;color:var(--dim2);cursor:pointer;transition:.12s}
+.suiterow .sbtn:hover{color:var(--jade);border-color:rgba(0,255,157,.4)}
+.suiterow .sbtn.kcqf:hover{color:var(--sun);border-color:rgba(255,204,0,.45)}
+
+/* resting summary lines */
+.sumln{display:flex;align-items:center;gap:7px;margin-top:8px;font-family:var(--mono);font-size:9.5px;min-width:0}
+.sumln .rl{display:inline-flex;align-items:center;gap:4px;letter-spacing:.08em;text-transform:uppercase;font-size:8px;flex:0 0 auto;width:52px}
+.sumln .rl svg{width:11px;height:11px}
+.sumln.guard .rl{color:var(--sun)} .sumln.eval .rl{color:var(--jade)}
+.sumln .txt{color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
+.sumln.guard .txt b{color:var(--sun);font-weight:500}
+.sumln.eval .txt .p{color:var(--jade)} .sumln.eval .txt .r{color:var(--flame)}
+.sumln.dimmed{opacity:.3;transition:opacity .2s}
+
+.conn{height:24px;display:flex;align-items:center;justify-content:center}.conn .l{width:2px;height:100%;background:linear-gradient(180deg,rgba(255,149,0,.5),var(--veil))}
+.note{margin-top:24px;padding:13px 15px;border:1px solid var(--mist);border-left:2px solid var(--ice);border-radius:0 6px 6px 0;background:var(--panel);font-family:var(--mono);font-size:10.5px;color:var(--dim);line-height:1.7}
+.note b{color:var(--paper)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+@media (prefers-reduced-motion:reduce){.reveal{transition:none}}
+</style>
+</head>
+<body>
+<div class="top">
+  <div class="brand">lopi · <b>hover-reveal guardrails + evals</b></div>
+  <div class="hint-top">Hover the <b style="color:var(--sun)">shield</b> or <b style="color:var(--jade)">check</b> button → the controls slide down inside the card and push the next card down. Click a button to pin it open.</div>
+</div>
+<div class="stage">
+  <div class="pc" id="card">
+    <span class="runtag">running · iter 1/3</span>
+    <span class="preset"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.2L3 17.8 6.2 21l6.3-6.3a4 4 0 0 0 5.2-5.4l-2.6 2.6-2.1-2.1z"/></svg>progress</span>
+    <div class="spec"><span class="al">:progress</span> <span class="md">×3 gate:"./kill_test.sh"</span></div>
+    <div class="prog"><i class="done"></i><i class="cur"></i><i></i></div>
+
+    <div id="zone">
+      <div class="cardbar" id="cardbar"></div>
+      <div class="reveal guard" id="revGuard"><div class="revinner" id="guardInner"></div></div>
+      <div class="reveal eval" id="revEval"><div class="revinner" id="evalInner"></div></div>
+    </div>
+
+    <div class="sumln guard" id="sumGuard"></div>
+    <div class="sumln eval" id="sumEval"></div>
+  </div>
+
+  <div class="conn"><div class="l"></div></div>
+  <div class="pc plain">
+    <div class="spec"><span class="md">"draft HN launch post revision"</span></div>
+    <div style="font-family:var(--mono);font-size:9px;color:var(--dim2);margin-top:6px">next in stack — watch it push down when a panel opens</div>
+  </div>
+
+  <div class="note"><b>How it works:</b> the reveal is inline (a slide-down inside the card), not a floating popover — so editing happens in place and the stack reflows around it. Hover opens transiently; <b>click pins</b> so you can type in the shell inputs without the panel collapsing. The resting summary lines dim while their editor is open (the panel replaces them). Only one panel opens at a time.</div>
+</div>
+
+<script>
+"use strict";
+const I={
+ loop:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>',
+ clock:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+ shield:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z"/></svg>',
+ checkbox:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>',
+ check:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>',
+ dup:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>',
+ drag:'<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>',
+ trash:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>',
+};
+const G={gate:true,gateCmd:'./kill_test.sh',until:true,untilCmd:'cargo test',onfail:'stop',budget:'auto',max:3};
+const EVALS=[
+ {n:'execution ok',t:'base',on:true,locked:true,s:'pass'},
+ {n:'tests pass',t:'test',on:true,s:'pass'},
+ {n:'benchmark gate',t:'test',on:true,s:'run'},
+ {n:'30-run gate',t:'test',on:false},
+ {n:'code review',t:'judge',on:false},
+ {n:'beats-best',t:'judge',on:false},
+ {n:'vuln scan',t:'suite',on:false},
+ {n:'adversarial',t:'suite',on:false},
+];
+let open=null, pinned=false, leaveT=null;
+
+function renderBar(){
+  const onEvals=EVALS.filter(e=>e.on).length;
+  document.getElementById('cardbar').innerHTML=`
+    <button class="ib iter">${I.loop}×3</button>
+    <button class="ib" title="schedule">${I.clock}</button>
+    <button class="ib guard ${open==='guard'?'act':''} ${pinned&&open==='guard'?'pinned':''}" id="gbtn" title="guardrails">${I.shield}<span class="cnt">${guardCount()}</span></button>
+    <button class="ib eval ${open==='eval'?'act':''} ${pinned&&open==='eval'?'pinned':''}" id="ebtn" title="evals">${I.checkbox}<span class="cnt">${onEvals}</span></button>
+    <span class="sp"></span>
+    <button class="ib">${I.dup}</button><button class="ib">${I.drag}</button><button class="ib">${I.trash}</button>`;
+  wireBar();
+}
+function guardCount(){return (G.gate?1:0)+(G.until?1:0)+2;} // +budget +on-fail always
+function renderGuardPanel(){
+  document.getElementById('guardInner').innerHTML=`
+    <div class="revh">${I.shield}guardrails · the run envelope<span class="pinhint">${pinned&&open==='guard'?'pinned — click shield to unpin':'click shield to pin'}</span></div>
+    <div class="gline"><span class="gtog ${G.gate?'on':''}" data-tog="gate"><span class="knob"></span></span><span class="lbl">gate</span><input data-in="gateCmd" value="${G.gateCmd}" ${G.gate?'':'disabled'} placeholder="shell command"/><span class="hint">must pass first</span></div>
+    <div class="gline"><span class="gtog ${G.until?'on':''}" data-tog="until"><span class="knob"></span></span><span class="lbl">until</span><input data-in="untilCmd" value="${G.untilCmd}" ${G.until?'':'disabled'} placeholder="shell command"/><span class="hint">loop until exit 0</span></div>
+    <div class="gseg-row"><span class="lbl">on fail</span><span class="seg g" data-seg="onfail"><span data-v="stop" class="${G.onfail==='stop'?'on':''}">stop</span><span data-v="continue" class="${G.onfail==='continue'?'on':''}">continue</span><span data-v="backoff" class="${G.onfail==='backoff'?'on':''}">backoff</span></span></div>
+    <div class="gseg-row"><span class="lbl">budget</span><span class="seg g" data-seg="budget"><span data-v="auto" class="${G.budget==='auto'?'on':''}">auto</span><span data-v="200k" class="${G.budget==='200k'?'on':''}">200k</span><span data-v="none" class="${G.budget==='none'?'on':''}">none</span></span></div>
+    <div class="gseg-row"><span class="lbl">max iter</span><span class="stepper"><button data-step="-1">−</button><span class="v">${G.max}</span><button data-step="1">+</button></span></div>`;
+  wireGuard();
+}
+function renderEvalPanel(){
+  const rows=EVALS.map((e,i)=>`
+    <div class="echk ${e.on?'on':''} ${e.locked?'locked':''}" data-echk="${i}">
+      <span class="box">${I.check}</span>
+      <span class="en">${e.n}</span>
+      <span class="tier tier-${e.t}">${e.t}</span>
+    </div>`).join('');
+  document.getElementById('evalInner').innerHTML=`
+    <div class="revh">${I.checkbox}evals · what makes this loop "done"<span class="pinhint">${pinned&&open==='eval'?'pinned — click check to unpin':'click check to pin'}</span></div>
+    ${rows}
+    <div class="suiterow">add a suite: <span class="sbtn kcqf" data-suite="kcqf">KCQF</span><span class="sbtn" data-suite="security">security</span><span class="sbtn" data-suite="research">research</span></div>`;
+  wireEval();
+}
+function renderSummaries(){
+  const gtxt=[G.gate?'gate':null,G.until?'until':null,'budget:'+G.budget,'max '+G.max].filter(Boolean).map(x=>`<b>${x}</b>`).join(' · ');
+  document.getElementById('sumGuard').innerHTML=`<span class="rl">${I.shield}guards</span><span class="txt">${gtxt}</span>`;
+  const pass=EVALS.filter(e=>e.on&&e.s==='pass').length, run=EVALS.filter(e=>e.on&&e.s==='run').length, on=EVALS.filter(e=>e.on).length;
+  document.getElementById('sumEval').innerHTML=`<span class="rl">${I.checkbox}evals</span><span class="txt"><span class="p">${pass}✓</span>${run?` · <span class="r">${run} running</span>`:''} · ${on} evals</span>`;
+  document.getElementById('sumGuard').classList.toggle('dimmed',open==='guard');
+  document.getElementById('sumEval').classList.toggle('dimmed',open==='eval');
+}
+function applyOpen(){
+  document.getElementById('revGuard').classList.toggle('open',open==='guard');
+  document.getElementById('revEval').classList.toggle('open',open==='eval');
+  renderBar();renderSummaries();
+}
+
+function wireBar(){
+  const gb=document.getElementById('gbtn'),eb=document.getElementById('ebtn');
+  gb.onmouseenter=()=>{clearTimeout(leaveT);if(!pinned){open='guard';applyOpen();}};
+  eb.onmouseenter=()=>{clearTimeout(leaveT);if(!pinned){open='eval';applyOpen();}};
+  gb.onclick=()=>{if(open==='guard'&&pinned){pinned=false;open=null;}else{open='guard';pinned=true;}applyOpen();};
+  eb.onclick=()=>{if(open==='eval'&&pinned){pinned=false;open=null;}else{open='eval';pinned=true;}applyOpen();};
+}
+function wireGuard(){
+  const inner=document.getElementById('guardInner');
+  inner.querySelectorAll('[data-tog]').forEach(t=>t.onclick=()=>{const k=t.dataset.tog;G[k]=!G[k];renderGuardPanel();renderSummaries();renderBar();});
+  inner.querySelectorAll('[data-seg] span').forEach(s=>s.onclick=()=>{const seg=s.closest('[data-seg]').dataset.seg;G[seg]=s.dataset.v;renderGuardPanel();renderSummaries();});
+  inner.querySelectorAll('[data-step]').forEach(b=>b.onclick=()=>{G.max=Math.max(1,G.max+(+b.dataset.step));renderGuardPanel();renderSummaries();});
+  inner.querySelectorAll('[data-in]').forEach(i=>i.oninput=()=>{G[i.dataset.in]=i.value;});
+}
+function wireEval(){
+  const inner=document.getElementById('evalInner');
+  inner.querySelectorAll('[data-echk]').forEach(r=>r.onclick=()=>{const e=EVALS[+r.dataset.echk];if(e.locked)return;e.on=!e.on;if(e.on&&!e.s)e.s='idle';renderEvalPanel();renderSummaries();renderBar();});
+  const SUITES={kcqf:['tests pass','code review','vuln scan','adversarial'],security:['vuln scan','adversarial'],research:['code review']};
+  inner.querySelectorAll('[data-suite]').forEach(b=>b.onclick=()=>{(SUITES[b.dataset.suite]||[]).forEach(n=>{const e=EVALS.find(x=>x.n===n);if(e){e.on=true;if(!e.s)e.s='idle';}});renderEvalPanel();renderSummaries();renderBar();});
+}
+// zone leave closes (unless pinned)
+const zone=document.getElementById('zone');
+zone.onmouseleave=()=>{if(!pinned){leaveT=setTimeout(()=>{open=null;applyOpen();},170);}};
+zone.onmouseenter=()=>clearTimeout(leaveT);
+
+renderBar();renderGuardPanel();renderEvalPanel();renderSummaries();
+</script>
+</body>
+</html>

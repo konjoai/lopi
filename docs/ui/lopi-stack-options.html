@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>lopi · the stack — 5 options</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet"/>
+<style>
+:root{
+  --black:#0a0a0a;--deep:#050505;--paper:#f5f5f5;
+  --ice:#00d4ff;--ice-deep:#0088aa;--ember:#ff4500;--flame:#ff9500;
+  --jade:#00ff9d;--sun:#ffcc00;--rose:#ff0066;--teal:#00ffd4;
+  --mist:rgba(255,255,255,.05);--veil:rgba(255,255,255,.11);
+  --dim:rgba(245,245,245,.46);--dim2:rgba(245,245,245,.27);
+  --mono:'JetBrains Mono',ui-monospace,monospace;--sans:'Space Grotesk',system-ui,sans-serif;
+  --card:#0c0c0d;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--black);color:var(--paper);font-family:var(--sans);-webkit-font-smoothing:antialiased;min-height:100vh}
+.wrap{max-width:560px;margin:0 auto;padding:0 14px 60px}
+
+/* top */
+.top{position:sticky;top:0;z-index:20;background:rgba(10,10,10,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--mist);padding:12px 14px}
+.brand{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.brand b{color:var(--paper);font-weight:500}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--ember);box-shadow:0 0 8px var(--ember);animation:pulse 2.6s ease-in-out infinite}
+.tabs{display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tabs button{flex:0 0 auto;font-family:var(--mono);font-size:11px;letter-spacing:.07em;text-transform:uppercase;background:transparent;color:var(--dim);border:1px solid var(--veil);border-radius:3px;padding:8px 12px;cursor:pointer;transition:.15s;white-space:nowrap}
+.tabs button.on{color:var(--black);background:var(--ice);border-color:var(--ice);font-weight:700}
+
+/* shared header: docked orb chip */
+.dock{display:flex;align-items:center;gap:12px;padding:16px 2px 14px}
+.dock canvas{width:52px;height:52px;flex:0 0 52px}
+.dock .di .p{font-family:var(--mono);font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--flame)}
+.dock .di .g{font-size:14px;font-weight:500;margin-top:2px}
+.dock .di .m{font-family:var(--mono);font-size:10.5px;color:var(--dim);margin-top:3px}
+
+.opt{display:none}
+.opt.on{display:block}
+.optnote{font-family:var(--mono);font-size:11px;color:var(--dim2);line-height:1.7;border-top:1px dashed var(--mist);margin-top:26px;padding-top:14px}
+.optnote b{color:var(--dim);font-weight:500}
+.qtitle{font-family:var(--mono);font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--dim2);margin:6px 2px 14px;display:flex;justify-content:space-between}
+.qtitle .later{color:var(--dim2)} .qtitle .nextl{color:var(--flame)}
+
+/* badges shared */
+.bdg{display:inline-flex;align-items:center;gap:4px;font-family:var(--mono);font-size:9.5px;border:1px solid;border-radius:3px;padding:2px 7px;margin:2px 4px 0 0}
+.bdg svg{width:10px;height:10px}
+.bdg.loop{color:var(--flame);border-color:rgba(255,149,0,.5)}
+.bdg.cron{color:var(--ice);border-color:rgba(0,212,255,.5)}
+.bdg.until{color:var(--jade);border-color:rgba(0,255,157,.45)}
+.bdg.gate{color:var(--rose);border-color:rgba(255,0,102,.45)}
+.bdg.hold{color:var(--sun);border-color:rgba(255,204,0,.5)}
+.bdg.guard{color:var(--dim2);border-color:var(--veil);border-style:dashed}
+.spec{font-family:var(--mono);font-size:12.5px;line-height:1.5;word-break:break-word}
+.spec .al{color:var(--teal)} .spec .op{color:var(--flame);font-weight:700}
+.spec .rp{color:var(--sun)} .spec .str{color:var(--paper)}
+.iterdots{display:flex;gap:4px;margin-top:8px}
+.iterdots i{width:14px;height:3px;border-radius:2px;background:var(--veil)}
+.iterdots i.done{background:var(--jade)}
+.iterdots i.cur{background:var(--flame);box-shadow:0 0 6px var(--ember);animation:pulse 1.8s infinite}
+
+/* ---------- A · ledger ---------- */
+.A .rowwrap{position:relative;padding-left:26px}
+.A .spine{position:absolute;left:9px;top:14px;bottom:14px;width:1px;background:linear-gradient(180deg,var(--veil),rgba(255,69,0,.55))}
+.A .pc{position:relative;background:var(--card);border:1px solid var(--veil);border-radius:5px;padding:12px 13px;margin-bottom:12px}
+.A .pc .nd{position:absolute;left:-22px;top:16px;width:9px;height:9px;border-radius:50%;background:#161618;border:1px solid var(--veil);transform:translateX(-50%)}
+.A .pc.next{border-color:rgba(255,149,0,.5);box-shadow:0 0 0 1px rgba(255,69,0,.14),0 8px 26px rgba(255,69,0,.08)}
+.A .pc.next .nd{background:var(--ember);border-color:var(--flame);box-shadow:0 0 10px var(--ember)}
+.A .pc.hold{opacity:.75;border-style:dashed}
+.A .nexttag{position:absolute;top:-9px;right:10px;font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:#160500;background:var(--ember);padding:2px 7px;border-radius:2px;font-weight:700}
+
+/* ---------- B · rasen helix ---------- */
+.B .rowwrap{position:relative;padding-left:40px}
+.B svg.helix{position:absolute;left:0;top:0;height:100%;width:40px;overflow:visible;pointer-events:none}
+.B .pc{position:relative;background:var(--card);border:1px solid var(--veil);border-radius:5px;padding:12px 13px;margin-bottom:20px}
+.B .pc.next{border-color:rgba(255,149,0,.5);box-shadow:0 0 22px rgba(255,69,0,.12)}
+.B .pc.hold{opacity:.7;border-style:dashed}
+.B .turn{font-family:var(--mono);font-size:9px;color:var(--dim2);letter-spacing:.14em;text-transform:uppercase;margin-bottom:6px}
+.B .turn b{color:var(--flame);font-weight:700}
+.B .risenote{font-family:var(--mono);font-size:9.5px;color:var(--dim2);margin-top:8px;border-top:1px dashed var(--mist);padding-top:7px}
+.B .risenote b{color:var(--jade);font-weight:500}
+
+/* ---------- C · kaiten belt ---------- */
+.C .belt{position:relative;padding:0 0 0 34px}
+.C .rail{position:absolute;left:12px;top:0;bottom:64px;width:8px;border-radius:4px;background:
+  repeating-linear-gradient(180deg,rgba(255,255,255,.14) 0 3px,rgba(255,255,255,.03) 3px 14px);
+  animation:beltmove 1.6s linear infinite;border:1px solid var(--mist)}
+.C .pc{position:relative;background:var(--card);border:1px solid var(--veil);border-radius:5px;padding:12px 13px;margin-bottom:14px;transition:transform .6s cubic-bezier(.7,0,.2,1),opacity .6s}
+.C .pc .lug{position:absolute;left:-26px;top:18px;width:14px;height:6px;border-radius:2px;background:#1c1c1e;border:1px solid var(--veil)}
+.C .pc.next{border-color:rgba(255,149,0,.5)}
+.C .pc.next .lug{background:var(--ember);border-color:var(--flame)}
+.C .pc.hold{opacity:.7;border-style:dashed}
+.C .pc.recirc{animation:dropin .7s ease-out}
+.C .pc.consume{transform:translateY(46px) scale(.92);opacity:0}
+.C .gate{position:relative;margin-left:-34px;margin-top:6px;border:1px dashed rgba(255,149,0,.4);border-radius:6px;padding:12px 14px;display:flex;align-items:center;gap:12px;background:rgba(255,69,0,.04)}
+.C .gate canvas{width:40px;height:40px;flex:0 0 40px}
+.C .gate .gt{font-family:var(--mono);font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--flame)}
+.C .gate .gg{font-size:12.5px;color:var(--dim);margin-top:2px}
+.C .rectag{position:absolute;top:-9px;right:10px;font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--flame);background:#160500;border:1px solid rgba(255,149,0,.5);padding:2px 7px;border-radius:2px}
+
+/* ---------- D · manifest ---------- */
+.D .board{background:#070708;border:1px solid var(--veil);border-radius:6px;overflow:hidden}
+.D .bh{display:grid;grid-template-columns:86px 1fr 84px;gap:8px;padding:10px 12px;border-bottom:1px solid var(--veil);font-family:var(--mono);font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:var(--dim2)}
+.D .br{display:grid;grid-template-columns:86px 1fr 84px;gap:8px;padding:13px 12px;border-bottom:1px solid var(--mist);align-items:start;font-family:var(--mono)}
+.D .br:last-child{border-bottom:none}
+.D .st{font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;padding-top:2px}
+.D .st.next{color:var(--flame);animation:pulse 1.8s infinite}
+.D .st.q{color:var(--dim2)} .D .st.sched{color:var(--ice)} .D .st.hold{color:var(--sun)}
+.D .eta{font-size:10.5px;color:var(--dim);text-align:right}
+.D .eta b{color:var(--ice);font-weight:500}
+.D .eta .hb{color:var(--sun)}
+.D .gu{font-size:9px;color:var(--dim2);margin-top:5px;letter-spacing:.03em}
+.D .gu em{font-style:normal;color:var(--rose)} .D .gu u{text-decoration:none;color:var(--jade)}
+.D .br.next-row{background:rgba(255,69,0,.05);border-left:2px solid var(--ember)}
+
+/* ---------- E · depth bands ---------- */
+.E .band{margin-bottom:22px}
+.E .bandlab{font-family:var(--mono);font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.E .bandlab::after{content:"";flex:1;height:1px;background:var(--mist)}
+.E .band.hold .bandlab{color:var(--sun)} .E .band.sched .bandlab{color:var(--ice)} .E .band.now .bandlab{color:var(--flame)}
+.E .stackp{position:relative;margin-bottom:16px}
+.E .sheet{position:absolute;inset:0;background:var(--card);border:1px solid var(--veil);border-radius:5px}
+.E .s1{transform:translate(5px,5px);opacity:.5} .E .s2{transform:translate(10px,10px);opacity:.28}
+.E .pc{position:relative;background:var(--card);border:1px solid var(--veil);border-radius:5px;padding:12px 13px}
+.E .band.now .pc.next{border-color:rgba(255,149,0,.55);box-shadow:0 0 26px rgba(255,69,0,.12)}
+.E .band.hold .pc{border-style:dashed;border-color:rgba(255,204,0,.35)}
+.E .band.sched .pc{border-color:rgba(0,212,255,.3)}
+.E .cornern{position:absolute;top:-9px;right:10px;font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:#160500;background:var(--ember);padding:2px 7px;border-radius:2px;font-weight:700}
+
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+@keyframes beltmove{from{background-position:0 0}to{background-position:0 17px}}
+@keyframes dropin{from{opacity:0;transform:translateY(-18px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="top">
+  <div class="brand"><span class="dot"></span>lopi <b>· the stack</b> · 5 options</div>
+  <div class="tabs" id="tabs"></div>
+</div>
+<div class="wrap">
+  <div class="dock">
+    <canvas id="dorb" width="52" height="52"></canvas>
+    <div class="di">
+      <div class="p">executing · implementation</div>
+      <div class="g">Profile Metal fused-dequant kernel</div>
+      <div class="m">↻ iter 2 · 86 tok/s · 61% ctx</div>
+    </div>
+  </div>
+  <div id="opts"></div>
+</div>
+
+<script>
+"use strict";
+const REDUCED=window.matchMedia('(prefers-reduced-motion:reduce)').matches;
+const ICON_LOOP='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>';
+const ICON_CRON='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
+
+/* queue: index 0 = NEXT (bottom of stack) */
+const ITEMS=[
+ {id:'prog', spec:[[':progress','al']], mods:' x3', loop:{n:3,done:1}, note:'loops ×3 · iteration 2 of 3 next'},
+ {id:'opt',  spec:[[':optimize','al']], mods:' gate:"./kill_test.sh" until:"cargo test"', gate:'./kill_test.sh', until:'cargo test'},
+ {id:'bench',spec:[[':benchmark','al'],['@vectro','rp'],['>','op'],[':report','al'],['@konjo.ai','rp']], cross:true},
+ {id:'kt',   spec:[[':kill-test','al']], mods:' at:"0 14 * * *" x2', cron:'0 14 * * *', cd:13500, loop:{n:2,done:0}},
+ {id:'inf',  spec:[[':progress','al']], mods:' x∞ pace:even', inf:true, hold:'budget', resume:'~14:20'},
+ {id:'hn',   spec:[['"draft HN post"','str']], lit:true},
+];
+function fmtCd(s){s=Math.max(0,s|0);const h=(s/3600)|0,m=((s%3600)/60)|0;return h?h+'h '+String(m).padStart(2,'0')+'m':m+'m '+String(s%60).padStart(2,'0')+'s';}
+function specHTML(it){return '<span class="spec">'+it.spec.map(([t,c])=>`<span class="${c}">${t}</span>`).join(' ')+
+  (it.mods?`<span style="color:var(--dim)">${it.mods.replace(/</g,'&lt;')}</span>`:'')+'</span>';}
+function badges(it,withImplicit){
+  let b='';
+  if(it.loop)b+=`<span class="bdg loop">${ICON_LOOP}×${it.loop.n}</span>`;
+  if(it.inf)b+=`<span class="bdg loop">${ICON_LOOP}∞</span>`;
+  if(it.cron)b+=`<span class="bdg cron">${ICON_CRON}<span class="cdv" data-id="${it.id}">${fmtCd(it.cd)}</span></span>`;
+  if(it.until)b+=`<span class="bdg until">until:"${it.until}"</span>`;
+  if(it.gate)b+=`<span class="bdg gate">gate</span>`;
+  if(it.hold)b+=`<span class="bdg hold">waiting · ${it.hold} · resumes ${it.resume}</span>`;
+  if(withImplicit&&(it.inf||it.until))b+=`<span class="bdg guard">max:25</span><span class="bdg guard">budget:auto</span>`;
+  return b?`<div style="margin-top:8px">${b}</div>`:'';
+}
+function iterDots(it){if(!it.loop||!it.loop.n)return '';
+  let s='<div class="iterdots">';
+  for(let i=0;i<it.loop.n;i++)s+=`<i class="${i<it.loop.done?'done':(i===it.loop.done?'cur':'')}"></i>`;
+  return s+'</div>';}
+
+/* tiny orb painter */
+function orb(cv,warm){const c=cv.getContext('2d');const dpr=Math.min(devicePixelRatio||1,2);
+  const S=+cv.getAttribute('width');cv.width=S*dpr;cv.height=S*dpr;c.setTransform(dpr,0,0,dpr,0,0);
+  const r=S/2-3,cx=S/2,cy=S/2;
+  const g=c.createRadialGradient(cx-r*.3,cy-r*.3,1,cx,cy,r);
+  g.addColorStop(0,'#0a94b8');g.addColorStop(.7,'#04212b');g.addColorStop(1,'#01080b');
+  c.fillStyle=g;c.beginPath();c.arc(cx,cy,r,0,7);c.fill();
+  c.globalCompositeOperation='screen';
+  const f=c.createRadialGradient(cx+r*.2,cy+r*.25,1,cx+r*.1,cy+r*.2,r);
+  f.addColorStop(0,`rgba(255,149,0,${.5+.4*warm})`);f.addColorStop(.5,'rgba(255,69,0,.3)');f.addColorStop(1,'rgba(255,69,0,0)');
+  c.fillStyle=f;c.beginPath();c.arc(cx,cy,r,0,7);c.fill();
+  c.globalCompositeOperation='source-over';
+  c.strokeStyle='rgba(255,69,0,.9)';c.lineWidth=1.4;c.beginPath();c.arc(cx,cy,r-.5,0,7);c.stroke();}
+orb(document.getElementById('dorb'),.6);
+
+/* ================= options ================= */
+const OPTS=[
+ {k:'A',t:'A · Ledger'},{k:'B',t:'B · Rasen'},{k:'C',t:'C · Kaiten'},{k:'D',t:'D · Manifest'},{k:'E',t:'E · Bands'}
+];
+const optsEl=document.getElementById('opts'),tabsEl=document.getElementById('tabs');
+const panes={};
+OPTS.forEach((o,i)=>{
+  const b=document.createElement('button');b.textContent=o.t;b.className=i===0?'on':'';
+  b.onclick=()=>{[...tabsEl.children].forEach(x=>x.classList.remove('on'));b.classList.add('on');
+    Object.values(panes).forEach(p=>p.classList.remove('on'));panes[o.k].classList.add('on');};
+  tabsEl.appendChild(b);
+  const d=document.createElement('div');d.className='opt '+o.k+(i===0?' on':'');optsEl.appendChild(d);panes[o.k]=d;
+});
+
+/* ---- A · Ledger (refined baseline) ---- */
+function renderA(){
+  const p=panes.A;
+  let rows='';
+  [...ITEMS].reverse().forEach(it=>{
+    const next=it===ITEMS[0];
+    rows+=`<div class="pc ${next?'next':''} ${it.hold?'hold':''}">
+      <span class="nd"></span>${next?'<span class="nexttag">next</span>':''}
+      ${specHTML(it)}${badges(it,true)}${iterDots(it)}</div>`;
+  });
+  p.innerHTML=`<div class="qtitle"><span class="later">↑ later</span><span class="nextl">next ↓</span></div>
+    <div class="rowwrap"><div class="spine"></div>${rows}</div>
+    <div class="optnote"><b>A · Ledger.</b> The one you liked, refined: iteration progress ticks under looped cards (jade done, ember current), implicit guards dashed and dim, held cards dashed at reduced opacity. Zero learning curve; the densest information per pixel of the five.</div>`;
+}
+
+/* ---- B · Rasen helix ---- */
+function renderB(){
+  const p=panes.B;
+  let rows='';
+  const rev=[...ITEMS].reverse();
+  rev.forEach((it,i)=>{
+    const next=it===ITEMS[0];
+    const turn=ITEMS.length-i; // turn number: next = turn 1
+    rows+=`<div class="pc ${next?'next':''} ${it.hold?'hold':''}" data-i="${i}">
+      <div class="turn">turn <b>${String(turn).padStart(2,'0')}</b>${it.loop?` · winds ×${it.loop.n}`:''}${it.inf?' · winds ∞':''}</div>
+      ${specHTML(it)}${badges(it,false)}
+      ${next?'<div class="risenote">the spiral, not the circle: each turn <b>reads what the last wrote</b></div>':''}</div>`;
+  });
+  p.innerHTML=`<div class="qtitle"><span class="later">↑ higher turns</span><span class="nextl">turn 01 ↓</span></div>
+    <div class="rowwrap" id="brw"><svg class="helix" id="bhelix"></svg>${rows}</div>
+    <div class="optnote"><b>B · Rasen (螺旋).</b> The framework name made literal: the spine is a double-strand helix and every card is a turn of the spiral. Looped cards "wind" extra turns (coils at their junction). Strongest identity of the five and it teaches the contract idea by shape alone; costs vertical space and the metaphor must stay subtle or it gets precious.</div>`;
+  requestAnimationFrame(drawHelix);
+}
+function drawHelix(){
+  const rw=document.getElementById('brw'),svg=document.getElementById('bhelix');
+  if(!rw||!svg)return;
+  const H=rw.offsetHeight;svg.setAttribute('viewBox',`0 0 40 ${H}`);svg.style.height=H+'px';
+  const cards=[...rw.querySelectorAll('.pc')];
+  const pts=cards.map(c=>c.offsetTop+22);
+  const amp=9,cxm=16;
+  function strand(phase,color,op,wd){
+    let d='';const steps=Math.max(2,H/6|0);
+    for(let s=0;s<=steps;s++){const y=s*(H/steps);
+      const x=cxm+Math.sin(y/56+phase)*amp;
+      d+=(s?'L':'M')+x.toFixed(1)+' '+y.toFixed(1)+' ';}
+    return `<path d="${d}" fill="none" stroke="${color}" stroke-opacity="${op}" stroke-width="${wd}"/>`;
+  }
+  let inner=strand(0,'#ff4500',.5,1.4)+strand(Math.PI,'#00d4ff',.3,1);
+  // junction nodes + coils for looped cards
+  const rev=[...ITEMS].reverse();
+  pts.forEach((y,i)=>{const it=rev[i];const x=cxm+Math.sin(y/56)*amp;
+    const next=it===ITEMS[0];
+    inner+=`<circle cx="${x}" cy="${y}" r="${next?5:3.5}" fill="${next?'#ff4500':'#161618'}" stroke="${next?'#ff9500':'rgba(255,255,255,.25)'}" stroke-width="1"/>`;
+    const winds=it.loop?Math.min(it.loop.n,3):(it.inf?3:0);
+    for(let w=0;w<winds;w++)
+      inner+=`<circle cx="${x}" cy="${y}" r="${7+w*4}" fill="none" stroke="rgba(255,149,0,${.55-w*.15})" stroke-width="1" stroke-dasharray="2 3"/>`;
+  });
+  svg.innerHTML=inner;
+}
+
+/* ---- C · Kaiten belt ---- */
+let beltQ=null,beltTimer=null;
+function renderC(fresh){
+  const p=panes.C;
+  if(!beltQ)beltQ=ITEMS.map(it=>({...it,loop:it.loop?{...it.loop}:null}));
+  let rows='';
+  [...beltQ].reverse().forEach(it=>{
+    const next=it===beltQ[0];
+    rows+=`<div class="pc ${next?'next':''} ${it.hold?'hold':''} ${it._re?'recirc':''}" data-bid="${it.id}">
+      <span class="lug"></span>${it._re?'<span class="rectag">↺ recirculated</span>':''}
+      ${specHTML(it)}${badges(it,false)}${iterDots(it)}</div>`;
+    it._re=false;
+  });
+  p.innerHTML=`<div class="qtitle"><span class="later">↑ belt feeds down</span><span class="nextl">gate ↓</span></div>
+    <div class="belt"><div class="rail"></div>${rows}
+      <div class="gate"><canvas id="gorb" width="40" height="40"></canvas>
+        <div><div class="gt">intake gate</div><div class="gg">bottom card drops in ~ every 6s · loops recirculate to the top with one turn spent</div></div></div>
+    </div>
+    <div class="optnote"><b>C · Kaiten (回転).</b> The queue as a conveyor: the rail visibly crawls, the bottom card drops into the intake gate beside the orb, and a looped card with turns remaining recirculates to the top of the belt with its counter decremented. The only option where loop semantics are shown as motion instead of a badge. Delightful, but motion must be earnable: it should idle to stillness when nothing is close to executing.</div>`;
+  orb(document.getElementById('gorb'),.7);
+  if(beltTimer)clearInterval(beltTimer);
+  if(!REDUCED)beltTimer=setInterval(beltStep,6000);
+}
+function beltStep(){
+  if(!panes.C.classList.contains('on'))return;
+  const it=beltQ[0];
+  const el=panes.C.querySelector(`[data-bid="${it.id}"]`);
+  if(el)el.classList.add('consume');
+  setTimeout(()=>{
+    beltQ.shift();
+    if(it.loop&&it.loop.n-((it.loop.done||0)+1)>0){
+      const re={...it,loop:{n:it.loop.n,done:(it.loop.done||0)+1},_re:true};
+      beltQ.push(re);
+    } else if(it.inf){beltQ.push({...it,_re:true});}
+    if(!beltQ.length)beltQ=ITEMS.map(x=>({...x,loop:x.loop?{...x.loop}:null}));
+    renderC();
+  },620);
+}
+
+/* ---- D · Manifest ---- */
+function renderD(){
+  const p=panes.D;
+  let rows='';
+  [...ITEMS].reverse().forEach(it=>{
+    const next=it===ITEMS[0];
+    const st=next?['next','next']:(it.hold?['hold','hold·bdgt']:(it.cron?['sched','sched']:['q','queued']));
+    const eta=next?'<b>now</b>':(it.hold?`<span class="hb">${it.resume}</span>`:(it.cron?`<b class="cdv" data-id="${it.id}">${fmtCd(it.cd)}</b>`:'—'));
+    let gu=[];
+    if(it.loop)gu.push('×'+it.loop.n+(it.loop.done?` (${it.loop.done} done)`:''));
+    if(it.inf)gu.push('∞ · pace:even');
+    if(it.gate)gu.push('<em>gate</em>');
+    if(it.until)gu.push('<u>until:"'+it.until+'"</u>');
+    if(it.inf||it.until)gu.push('max:25 · budget:auto');
+    rows+=`<div class="br ${next?'next-row':''}">
+      <span class="st ${st[0]}">${st[1]}</span>
+      <div>${specHTML(it)}${gu.length?`<div class="gu">${gu.join(' · ')}</div>`:''}</div>
+      <span class="eta">${eta}</span></div>`;
+  });
+  p.innerHTML=`<div class="qtitle"><span class="later">departures</span><span class="nextl">t-minus</span></div>
+    <div class="board"><div class="bh"><span>status</span><span>spec</span><span style="text-align:right">t-minus</span></div>${rows}</div>
+    <div class="optnote"><b>D · Manifest.</b> The stack as a departure board: status, the raw grammar string, live t-minus. No cards, no chrome, pure mono. The grammar IS the row, which quietly teaches the one-liner syntax every time you look at it. Best at a glance and at scale (30 rows still read); weakest for touch editing, so it pairs with a drawer for controls.</div>`;
+}
+
+/* ---- E · Depth bands ---- */
+function renderE(){
+  const p=panes.E;
+  function card(it,extra=''){
+    const next=it===ITEMS[0];
+    const sheets=it.loop&&it.loop.n>=2?`<div class="sheet s1"></div>${it.loop.n>=3?'<div class="sheet s2"></div>':''}`:(it.inf?'<div class="sheet s1"></div><div class="sheet s2"></div>':'');
+    return `<div class="stackp">${sheets}<div class="pc ${next?'next':''}">${next?'<span class="cornern">next</span>':''}
+      ${specHTML(it)}${badges(it,false)}${iterDots(it)}</div></div>`;
+  }
+  const hold=ITEMS.filter(i=>i.hold), sched=ITEMS.filter(i=>i.cron&&!i.hold),
+        now=ITEMS.filter(i=>!i.hold&&!i.cron);
+  p.innerHTML=`
+    <div class="band hold"><div class="bandlab">waiting · budget</div>${hold.map(i=>card(i)).join('')}</div>
+    <div class="band sched"><div class="bandlab">scheduled</div>${sched.map(i=>card(i)).join('')}</div>
+    <div class="band now"><div class="bandlab">queue · next at bottom</div>${[...now].reverse().map(i=>card(i)).join('')}</div>
+    <div class="optnote"><b>E · Bands.</b> The stack sorted by state, not just order: budget-held loops parked at top in dashed sun, scheduled in cyan, the live queue at the bottom where your thumb is. Loop count is physical: ×2 and ×3 render as literal stacked sheets behind the card (capped at 3 ghosts, the badge carries exact N). You always know why something isn't running by which band it sits in.</div>`;
+}
+
+/* countdown tick (all views share) */
+setInterval(()=>{
+  ITEMS.forEach(it=>{if(it.cd!=null&&!REDUCED)it.cd--;});
+  if(beltQ)beltQ.forEach(it=>{if(it.cd!=null&&!REDUCED)it.cd--;});
+  document.querySelectorAll('.cdv').forEach(el=>{
+    const it=ITEMS.find(x=>x.id===el.dataset.id)||{};
+    if(it.cd!=null)el.textContent=fmtCd(it.cd);
+  });
+},1000);
+
+renderA();renderB();renderC();renderD();renderE();
+window.addEventListener('resize',()=>drawHelix());
+</script>
+</body>
+</html>

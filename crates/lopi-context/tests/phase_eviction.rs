@@ -4,21 +4,12 @@
     clippy::panic,
     clippy::unwrap_in_result
 )]
-use lopi_context::{ContentBlock, ContextWindow, Phase, PinPolicy, Role, TaggedMessage};
-use uuid::Uuid;
+mod common;
+
+use lopi_context::{ContextWindow, Phase, PinPolicy, Role, TaggedMessage};
 
 fn msg(role: Role, text: &str, phase: Phase, pin: PinPolicy) -> TaggedMessage {
-    TaggedMessage {
-        id: Uuid::new_v4(),
-        role,
-        content: vec![ContentBlock::Text(text.to_string())],
-        tokens: 10,
-        pin,
-        phase,
-        evict_after: None,
-        tool_pair_id: None,
-        is_conclusion: false,
-    }
+    common::make_msg(role, text, phase, pin, 10)
 }
 
 #[test]

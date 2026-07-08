@@ -1,15 +1,7 @@
     #[tokio::test]
     async fn index_returns_html() {
         let app = test_app().await;
-        let resp = app
-            .oneshot(
-                Request::builder()
-                    .uri("/")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let resp = get_req(app, "/").await;
         assert_eq!(resp.status(), StatusCode::OK);
         let ct = resp
             .headers()
@@ -44,15 +36,7 @@
     #[tokio::test]
     async fn stats_has_all_fields() {
         let app = test_app().await;
-        let resp = app
-            .oneshot(
-                Request::builder()
-                    .uri("/api/stats")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let resp = get_req(app, "/api/stats").await;
         assert_eq!(resp.status(), StatusCode::OK);
         let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
             .await
@@ -73,17 +57,7 @@
             "priority": "low",
         }))
         .unwrap();
-        let resp = app
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/api/tasks")
-                    .header("Content-Type", "application/json")
-                    .body(Body::from(body))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let resp = send_req(app, "POST", "/api/tasks", Some(body)).await;
         assert_eq!(resp.status(), StatusCode::CREATED);
     }
 
@@ -95,32 +69,14 @@
             "priority": "normal",
         }))
         .unwrap();
-        let resp = app
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/api/tasks")
-                    .header("Content-Type", "application/json")
-                    .body(Body::from(body))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let resp = send_req(app, "POST", "/api/tasks", Some(body)).await;
         assert_eq!(resp.status(), StatusCode::CREATED);
     }
 
     #[tokio::test]
     async fn tasks_list_response_has_tasks_array() {
         let app = test_app().await;
-        let resp = app
-            .oneshot(
-                Request::builder()
-                    .uri("/api/tasks")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let resp = get_req(app, "/api/tasks").await;
         assert_eq!(resp.status(), StatusCode::OK);
         let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
             .await
@@ -132,15 +88,7 @@
     #[tokio::test]
     async fn metrics_has_all_metric_names() {
         let app = test_app().await;
-        let resp = app
-            .oneshot(
-                Request::builder()
-                    .uri("/metrics")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let resp = get_req(app, "/metrics").await;
         assert_eq!(resp.status(), StatusCode::OK);
         let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
             .await
@@ -156,15 +104,7 @@
     #[tokio::test]
     async fn patterns_response_has_patterns_array() {
         let app = test_app().await;
-        let resp = app
-            .oneshot(
-                Request::builder()
-                    .uri("/api/patterns")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let resp = get_req(app, "/api/patterns").await;
         assert_eq!(resp.status(), StatusCode::OK);
         let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
             .await
@@ -176,15 +116,7 @@
     #[tokio::test]
     async fn health_response_has_service_field() {
         let app = test_app().await;
-        let resp = app
-            .oneshot(
-                Request::builder()
-                    .uri("/api/health")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let resp = get_req(app, "/api/health").await;
         assert_eq!(resp.status(), StatusCode::OK);
         let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
             .await
@@ -201,17 +133,7 @@
             "goal": "check queued field",
         }))
         .unwrap();
-        let resp = app
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/api/tasks")
-                    .header("Content-Type", "application/json")
-                    .body(Body::from(body))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let resp = send_req(app, "POST", "/api/tasks", Some(body)).await;
         assert_eq!(resp.status(), StatusCode::CREATED);
         let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
             .await
@@ -230,17 +152,7 @@
             "repo": "/tmp/myrepo",
         }))
         .unwrap();
-        let resp = app
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/api/tasks")
-                    .header("Content-Type", "application/json")
-                    .body(Body::from(body))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let resp = send_req(app, "POST", "/api/tasks", Some(body)).await;
         assert_eq!(resp.status(), StatusCode::CREATED);
     }
 
@@ -273,17 +185,7 @@
         assert_eq!(json1["queued"], true);
 
         // Submit same goal again — should be deduplicated
-        let resp2 = app
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/api/tasks")
-                    .header("Content-Type", "application/json")
-                    .body(Body::from(body))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let resp2 = send_req(app, "POST", "/api/tasks", Some(body)).await;
         assert_eq!(resp2.status(), StatusCode::CREATED);
         let bytes2 = axum::body::to_bytes(resp2.into_body(), usize::MAX)
             .await
@@ -297,15 +199,7 @@
     #[tokio::test]
     async fn dlq_list_empty_returns_empty_array() {
         let app = test_app().await;
-        let resp = app
-            .oneshot(
-                Request::builder()
-                    .uri("/api/tasks/dead-letter")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let resp = get_req(app, "/api/tasks/dead-letter").await;
         assert_eq!(resp.status(), StatusCode::OK);
         let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
             .await
@@ -318,16 +212,7 @@
     #[tokio::test]
     async fn dlq_retry_unknown_returns_404() {
         let app = test_app().await;
-        let resp = app
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/api/tasks/dead-letter/nope-not-real/retry")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let resp = send_req(app, "POST", "/api/tasks/dead-letter/nope-not-real/retry", None).await;
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
     }
 
@@ -336,15 +221,7 @@
     #[tokio::test]
     async fn audit_empty_returns_empty_events_and_zero_cursor() {
         let app = test_app().await;
-        let resp = app
-            .oneshot(
-                Request::builder()
-                    .uri("/api/audit")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let resp = get_req(app, "/api/audit").await;
         assert_eq!(resp.status(), StatusCode::OK);
         let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
             .await
@@ -358,17 +235,7 @@
     /// the endpoint to verify the since_id cursor.
     #[tokio::test]
     async fn audit_paginates_via_since_id_cursor() {
-        let store = lopi_memory::MemoryStore::open_in_memory().await.unwrap();
-        let bus: EventBus<AgentEvent> = EventBus::new(16);
-        let queue = TaskQueue::new();
-        let pool = Arc::new(AgentPool::new(
-            1,
-            std::path::PathBuf::from("."),
-            queue.clone(),
-            bus.clone(),
-        ));
-        let state = AppState::new(store.clone(), bus, queue, pool, None);
-        let app = build_app(state);
+        let (app, store) = test_app_with_store().await;
 
         for i in 0..3 {
             store
@@ -377,16 +244,7 @@
                 .unwrap();
         }
         // First page — 2 rows.
-        let resp = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .uri("/api/audit?n=2")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let resp = get_req(app.clone(), "/api/audit?n=2").await;
         assert_eq!(resp.status(), StatusCode::OK);
         let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
             .await
@@ -395,15 +253,7 @@
         assert_eq!(json["events"].as_array().unwrap().len(), 2);
         let cursor = json["next_cursor"].as_i64().unwrap();
         // Second page — picks up after the cursor (1 row left).
-        let resp2 = app
-            .oneshot(
-                Request::builder()
-                    .uri(format!("/api/audit?since_id={cursor}&n=10"))
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let resp2 = get_req(app, &format!("/api/audit?since_id={cursor}&n=10")).await;
         let bytes2 = axum::body::to_bytes(resp2.into_body(), usize::MAX)
             .await
             .unwrap();
@@ -423,17 +273,7 @@
             "required_capabilities": ["gpu-cuda"],
         }))
         .unwrap();
-        let resp = app
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/api/tasks")
-                    .header("Content-Type", "application/json")
-                    .body(Body::from(body))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let resp = send_req(app, "POST", "/api/tasks", Some(body)).await;
         assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
         let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
             .await
@@ -449,18 +289,7 @@
     /// endpoint — the row is consumed and a new TaskId is returned.
     #[tokio::test]
     async fn dlq_retry_round_trip_takes_row_and_returns_new_task_id() {
-        let store = lopi_memory::MemoryStore::open_in_memory().await.unwrap();
-        let bus: EventBus<AgentEvent> = EventBus::new(16);
-        let queue = TaskQueue::new();
-        let pool = Arc::new(AgentPool::new(
-            1,
-            std::path::PathBuf::from("."),
-            queue.clone(),
-            bus.clone(),
-        ));
-        let mut state = AppState::new(store.clone(), bus, queue, pool, None);
-        state.hydrate_tools().await.ok();
-        let app = build_app(state);
+        let (app, store) = test_app_with_store().await;
 
         // Seed a DLQ row.
         let mut input = lopi_memory::DeadLetterInput::new(
@@ -473,16 +302,7 @@
         input.source = "cli".into();
         let dlq_id = store.push_dead_letter(&input).await.unwrap();
 
-        let resp = app
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri(format!("/api/tasks/dead-letter/{dlq_id}/retry"))
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let resp = send_req(app, "POST", &format!("/api/tasks/dead-letter/{dlq_id}/retry"), None).await;
         assert_eq!(resp.status(), StatusCode::ACCEPTED);
         let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
             .await
@@ -501,15 +321,7 @@
     #[tokio::test]
     async fn health_unknown_agent_returns_404() {
         let app = test_app().await;
-        let resp = app
-            .oneshot(
-                Request::builder()
-                    .uri("/api/agents/ghost/health")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let resp = get_req(app, "/api/agents/ghost/health").await;
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
     }
 
@@ -518,16 +330,7 @@
     #[tokio::test]
     async fn health_heartbeat_marks_healthy_and_returns_snapshot() {
         let app = test_app().await;
-        let resp = app
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/api/agents/alpha/heartbeat")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let resp = send_req(app, "POST", "/api/agents/alpha/heartbeat", None).await;
         assert_eq!(resp.status(), StatusCode::OK);
         let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
             .await
@@ -546,15 +349,7 @@
     #[tokio::test]
     async fn task_logs_unknown_returns_empty_array() {
         let app = test_app().await;
-        let resp = app
-            .oneshot(
-                Request::builder()
-                    .uri("/api/tasks/never-logged/logs")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let resp = get_req(app, "/api/tasks/never-logged/logs").await;
         assert_eq!(resp.status(), StatusCode::OK);
         let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
             .await
@@ -568,17 +363,7 @@
     /// the endpoint to verify the wire shape.
     #[tokio::test]
     async fn task_logs_returns_seeded_rows_oldest_first() {
-        let store = lopi_memory::MemoryStore::open_in_memory().await.unwrap();
-        let bus: EventBus<AgentEvent> = EventBus::new(16);
-        let queue = TaskQueue::new();
-        let pool = Arc::new(AgentPool::new(
-            1,
-            std::path::PathBuf::from("."),
-            queue.clone(),
-            bus.clone(),
-        ));
-        let state = AppState::new(store.clone(), bus, queue, pool, None);
-        let app = build_app(state);
+        let (app, store) = test_app_with_store().await;
 
         let tid = "task-with-logs";
         let now = chrono::Utc::now();
@@ -589,15 +374,7 @@
                 .unwrap();
         }
 
-        let resp = app
-            .oneshot(
-                Request::builder()
-                    .uri(format!("/api/tasks/{tid}/logs?n=10"))
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let resp = get_req(app, &format!("/api/tasks/{tid}/logs?n=10")).await;
         assert_eq!(resp.status(), StatusCode::OK);
         let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
             .await
@@ -614,15 +391,7 @@
     #[tokio::test]
     async fn global_logs_empty_store_returns_empty_array() {
         let app = test_app().await;
-        let resp = app
-            .oneshot(
-                Request::builder()
-                    .uri("/api/logs")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let resp = get_req(app, "/api/logs").await;
         assert_eq!(resp.status(), StatusCode::OK);
         let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
             .await
@@ -635,32 +404,14 @@
     /// it interleaves tasks oldest-first with the wire shape intact.
     #[tokio::test]
     async fn global_logs_returns_rows_across_tasks_oldest_first() {
-        let store = lopi_memory::MemoryStore::open_in_memory().await.unwrap();
-        let bus: EventBus<AgentEvent> = EventBus::new(16);
-        let queue = TaskQueue::new();
-        let pool = Arc::new(AgentPool::new(
-            1,
-            std::path::PathBuf::from("."),
-            queue.clone(),
-            bus.clone(),
-        ));
-        let state = AppState::new(store.clone(), bus, queue, pool, None);
-        let app = build_app(state);
+        let (app, store) = test_app_with_store().await;
 
         let now = chrono::Utc::now();
         store.record_task_log("t-a", now, "info", "a1").await.unwrap();
         store.record_task_log("t-b", now, "error", "b1").await.unwrap();
         store.record_task_log("t-a", now, "info", "a2").await.unwrap();
 
-        let resp = app
-            .oneshot(
-                Request::builder()
-                    .uri("/api/logs?n=2")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let resp = get_req(app, "/api/logs?n=2").await;
         assert_eq!(resp.status(), StatusCode::OK);
         let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
             .await
@@ -685,17 +436,7 @@
             "max_concurrent": 4,
         }))
         .unwrap();
-        let resp = app
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/api/agents/alpha/rate-limit")
-                    .header("Content-Type", "application/json")
-                    .body(Body::from(body))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let resp = send_req(app, "POST", "/api/agents/alpha/rate-limit", Some(body)).await;
         assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
     }
 
@@ -709,30 +450,10 @@
             "max_concurrent": 2,
         }))
         .unwrap();
-        let resp = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("POST")
-                    .uri("/api/agents/alpha/rate-limit")
-                    .header("Content-Type", "application/json")
-                    .body(Body::from(body))
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let resp = send_req(app.clone(), "POST", "/api/agents/alpha/rate-limit", Some(body)).await;
         assert_eq!(resp.status(), StatusCode::CREATED);
         // 2. GET.
-        let resp = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .uri("/api/agents/alpha/rate-limit")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let resp = get_req(app.clone(), "/api/agents/alpha/rate-limit").await;
         assert_eq!(resp.status(), StatusCode::OK);
         let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
             .await
@@ -742,28 +463,10 @@
         assert_eq!(json["max_concurrent"], 2);
         assert_eq!(json["in_flight"], 0);
         // 3. DELETE.
-        let resp = app
-            .clone()
-            .oneshot(
-                Request::builder()
-                    .method("DELETE")
-                    .uri("/api/agents/alpha/rate-limit")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let resp = send_req(app.clone(), "DELETE", "/api/agents/alpha/rate-limit", None).await;
         assert_eq!(resp.status(), StatusCode::OK);
         // 4. GET after delete → 404.
-        let resp = app
-            .oneshot(
-                Request::builder()
-                    .uri("/api/agents/alpha/rate-limit")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let resp = get_req(app, "/api/agents/alpha/rate-limit").await;
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
     }
 
@@ -771,15 +474,7 @@
     #[tokio::test]
     async fn health_summary_empty_returns_zeros() {
         let app = test_app().await;
-        let resp = app
-            .oneshot(
-                Request::builder()
-                    .uri("/api/agents/health/summary")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let resp = get_req(app, "/api/agents/health/summary").await;
         assert_eq!(resp.status(), StatusCode::OK);
         let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
             .await

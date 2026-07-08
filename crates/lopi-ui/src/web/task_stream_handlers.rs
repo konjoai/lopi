@@ -75,27 +75,12 @@ pub(super) async fn get_logs(
     let n = params.n.unwrap_or(200);
     match s.store.load_task_logs(&id, n).await {
         Ok(rows) => {
-            let body: Vec<Value> = rows
-                .into_iter()
-                .map(|r| {
-                    json!({
-                        "id":      r.id,
-                        "task_id": r.task_id,
-                        "ts":      r.ts,
-                        "level":   r.level,
-                        "line":    r.line,
-                    })
-                })
-                .collect();
+            let body = log_rows_to_json(rows);
             (StatusCode::OK, Json(json!({ "task_id": id, "logs": body }))).into_response()
         }
         Err(e) => {
             tracing::warn!("load_task_logs failed: {e}");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": format!("{e:#}")})),
-            )
-                .into_response()
+            logs_internal_error(e)
         }
     }
 }
@@ -109,29 +94,39 @@ pub(super) async fn get_recent_logs(
     let n = params.n.unwrap_or(200);
     match s.store.load_recent_task_logs(n).await {
         Ok(rows) => {
-            let body: Vec<Value> = rows
-                .into_iter()
-                .map(|r| {
-                    json!({
-                        "id":      r.id,
-                        "task_id": r.task_id,
-                        "ts":      r.ts,
-                        "level":   r.level,
-                        "line":    r.line,
-                    })
-                })
-                .collect();
+            let body = log_rows_to_json(rows);
             (StatusCode::OK, Json(json!({ "logs": body }))).into_response()
         }
         Err(e) => {
             tracing::warn!("load_recent_task_logs failed: {e}");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": format!("{e:#}")})),
-            )
-                .into_response()
+            logs_internal_error(e)
         }
     }
+}
+
+/// Shared row→JSON mapping for both the per-task and global log-tail routes.
+fn log_rows_to_json(rows: Vec<lopi_memory::TaskLogRow>) -> Vec<Value> {
+    rows.into_iter()
+        .map(|r| {
+            json!({
+                "id":      r.id,
+                "task_id": r.task_id,
+                "ts":      r.ts,
+                "level":   r.level,
+                "line":    r.line,
+            })
+        })
+        .collect()
+}
+
+/// Shared 500 body for a store-layer failure, formatted with the error's
+/// full context chain (`{:#}`).
+fn logs_internal_error(e: impl std::fmt::Display) -> axum::response::Response {
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(json!({"error": format!("{e:#}")})),
+    )
+        .into_response()
 }
 
 /// Extract a `TaskId` from any `AgentEvent` variant that carries one.

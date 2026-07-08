@@ -13,12 +13,25 @@ direct-API path), and the two Task-field additions this sprint required
 beyond pure exposure. `web/src/lib/api.ts`'s `CreateTaskOptions` mirrors the
 new fields — types only, no UI binds to them yet.
 
-**Unrelated loose end, not resolved here:** the worktree stash at
-`stash@{0}` (diverged, conflicting worktree-isolation work from before this
-branch existed) is currently polluting the `dry_check.py` gate's baseline
-noise floor; it needs its own cleanup decision (keep `origin/main`'s
-`WorktreeManager` and drop the stash, vs. reconcile the two implementations)
-and must not be bundled into any UI sprint.
+**Resolved since the above was written:** the worktree stash at `stash@{0}`
+has been dropped (proven redundant against `origin/main`'s own
+`WorktreeManager` file-by-file before the drop; the 3 unique `docs/ui/*.html`
+mockups it held were extracted first). The committed-code DRY violations
+`dry_check.py` was flagging (794 → 12 raw matches, 46 → 4 pairs) have also
+been fixed. See `LEDGER.md` for both.
+
+**Known flaky tests (not fixed here — each is its own separate task):**
+- `constellation::tests::qlearned_favours_highest_reward_member`
+  (`lopi-orchestrator`) — RNG-seed-dependent, ~20% flake rate observed across
+  repeated `cargo test --workspace` runs.
+- `health::tests::sweeper_runs_periodically`
+  (`crates/lopi-orchestrator/src/health.rs:479`) — races a background sweeper
+  tick against a hardcoded 350ms real-clock `sleep` with no margin; asserts
+  `Degraded` when it expected `Dead` under scheduler contention. Confirmed
+  orthogonal to any work in this file this session (`git log` shows its last
+  touch was the original health-monitoring feature commit, 3 commits back).
+  Fix is to drive the sweeper's clock via `tokio::time::pause`/`advance`
+  instead of a real sleep, but that's out of scope here.
 
 ## What's next: UI-1 (static stack + selector row) — client-side, unblocked
 

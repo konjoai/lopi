@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>lopi · running output attachment</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet"/>
+<style>
+:root{
+  --black:#0b0e10;--panel:#0a0d0f;--card:#0e1214;--paper:#f5f5f5;
+  --ice:#00d4ff;--ice-deep:#0a8aa8;--ember:#ff4500;--flame:#ff9500;
+  --jade:#00ff9d;--sun:#ffcc00;--rose:#ff2d78;--teal:#00ffd4;--violet:#b79bff;
+  --mist:rgba(255,255,255,.05);--veil:rgba(255,255,255,.11);
+  --dim:rgba(245,245,245,.46);--dim2:rgba(245,245,245,.27);
+  --mono:'JetBrains Mono',ui-monospace,monospace;--sans:'Space Grotesk',system-ui,sans-serif;
+  --sbar:#161a1c;
+  /* output panel is a distinct, slightly warmer/darker surface */
+  --out-bg:#0c1417;--out-border:rgba(0,212,255,.22);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{background:#060809;color:var(--paper);font-family:var(--sans);-webkit-font-smoothing:antialiased;height:100vh;overflow:hidden}
+.stagewrap{max-width:560px;margin:0 auto;height:100vh;display:flex;flex-direction:column;border-left:1px solid var(--mist);border-right:1px solid var(--mist)}
+
+.phead{display:flex;align-items:center;gap:9px;padding:12px 15px;border-bottom:1px solid var(--mist);flex:0 0 auto}
+.phead .glyph{color:var(--flame);display:flex}.phead .glyph svg{width:15px;height:15px}
+.phead .nm{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+.phead .state{margin-left:auto;display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10px;color:var(--flame)}
+.phead .state i{width:6px;height:6px;border-radius:50%;background:var(--flame);box-shadow:0 0 8px var(--ember);animation:pulse 2s infinite}
+
+.pbody{flex:1;overflow-y:auto;padding:16px 14px 24px;min-height:0}
+.pbody::-webkit-scrollbar{width:8px}.pbody::-webkit-scrollbar-track{background:transparent}
+.pbody::-webkit-scrollbar-thumb{background:var(--sbar);border-radius:4px}
+.pbody{scrollbar-width:thin;scrollbar-color:var(--sbar) transparent}
+
+.pc{position:relative;background:var(--card);border:1px solid var(--veil);border-radius:6px;padding:11px 12px}
+.pc .spec{font-family:var(--mono);font-size:12px;line-height:1.5}
+.pc .spec .al{color:var(--teal)} .pc .spec .md{color:var(--dim)} .pc .spec .rp{color:var(--sun)}
+.nexttag{position:absolute;top:-8px;right:10px;font-family:var(--mono);font-size:8.5px;letter-spacing:.14em;text-transform:uppercase;color:#160500;background:var(--ember);padding:1px 6px;border-radius:2px;font-weight:700}
+.gap{height:30px;display:flex;align-items:center;justify-content:center}.gap .line{width:2px;height:100%;background:linear-gradient(180deg,rgba(255,149,0,.35),rgba(255,149,0,.95))}
+
+/* ---------- running card + attached output ---------- */
+.runwrap{position:relative}
+.pc.running{border-color:rgba(255,150,70,.7);border-bottom-left-radius:0;border-bottom-right-radius:0;animation:runpulse 3.2s ease-in-out infinite}
+@keyframes runpulse{0%,100%{border-color:rgba(255,120,40,.4);box-shadow:0 0 8px rgba(255,69,0,.05)}50%{border-color:rgba(255,150,70,.85);box-shadow:0 0 16px rgba(255,69,0,.16)}}
+.runtag{position:absolute;top:-8px;right:10px;font-family:var(--mono);font-size:8.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--flame);background:var(--black);border:1px solid rgba(255,149,0,.5);padding:1px 6px;border-radius:2px;font-weight:700;display:flex;align-items:center;gap:4px;z-index:3}
+.runtag::before{content:"";width:5px;height:5px;border-radius:50%;background:var(--flame);box-shadow:0 0 6px var(--ember);animation:pulse 1.6s infinite}
+.iterdots{display:flex;gap:3px;margin-top:8px}
+.iterdots i{width:14px;height:3px;border-radius:2px;background:var(--veil)}
+.iterdots i.done{background:var(--jade)}.iterdots i.cur{background:var(--flame);box-shadow:0 0 5px var(--ember);animation:pulse 1.8s infinite}
+
+/* the attached output container: distinct bg, connects to the card above (no top radius, shared edge) */
+.output{background:var(--out-bg);border:1px solid var(--out-border);border-top:none;border-radius:0 0 7px 7px;overflow:hidden}
+.output .obar{display:flex;align-items:center;gap:8px;padding:7px 11px;border-bottom:1px solid rgba(0,212,255,.1);font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim2)}
+.output .obar .live{display:flex;align-items:center;gap:5px;color:var(--ice)}
+.output .obar .live i{width:5px;height:5px;border-radius:50%;background:var(--ice);box-shadow:0 0 6px var(--ice);animation:pulse 1.4s infinite}
+.output .obar .toggles{margin-left:auto;display:flex;gap:2px}
+.output .obar .tg{padding:2px 7px;border-radius:3px;color:var(--dim2);cursor:pointer;border:1px solid transparent}
+.output .obar .tg.on{color:var(--ice);border-color:rgba(0,212,255,.3);background:rgba(0,212,255,.06)}
+.output .obar .exp{color:var(--dim2);cursor:pointer;padding-left:4px}
+
+/* scroll region holding the streamed sections */
+.ostream{max-height:300px;overflow-y:auto;padding:6px 0}
+.ostream::-webkit-scrollbar{width:7px}.ostream::-webkit-scrollbar-track{background:transparent}
+.ostream::-webkit-scrollbar-thumb{background:#12303a;border-radius:4px}
+.ostream{scrollbar-width:thin;scrollbar-color:#12303a transparent}
+
+/* nested accordion section */
+.sec{border-bottom:1px solid rgba(255,255,255,.03)}
+.sec:last-child{border-bottom:none}
+.sec .sh{display:flex;align-items:center;gap:8px;padding:7px 12px;cursor:pointer;font-family:var(--mono);font-size:10.5px;color:var(--dim);user-select:none}
+.sec .sh:hover{background:rgba(255,255,255,.015)}
+.sec .sh .chev{width:10px;height:10px;transition:transform .18s;color:var(--dim2)}
+.sec.open .sh .chev{transform:rotate(90deg)}
+.sec .sh .ico{width:12px;height:12px;flex:0 0 12px}
+.sec .sh .kind{letter-spacing:.02em}
+.sec .sh .meta{margin-left:auto;font-size:9px;color:var(--dim2)}
+.sec.thinking .sh .ico{color:var(--violet)} .sec.thinking .sh .kind{color:var(--violet)}
+.sec.action .sh .ico{color:var(--sun)} .sec.action .sh .kind{color:var(--sun)}
+.sec.tool .sh .ico{color:var(--ice)} .sec.tool .sh .kind{color:var(--ice)}
+.sec.out .sh .ico{color:var(--jade)} .sec.out .sh .kind{color:var(--jade)}
+.sec .sbody{max-height:0;overflow:hidden;transition:max-height .22s ease}
+.sec.open .sbody{max-height:600px;overflow-y:auto}
+.sec .sbody .inner{padding:2px 12px 11px 30px;font-family:var(--mono);font-size:11px;line-height:1.65;color:var(--dim);white-space:pre-wrap}
+.sec.thinking .sbody .inner{color:rgba(183,155,255,.72);font-style:italic}
+.sec .sbody .inner .cmd{color:var(--paper);background:rgba(255,255,255,.05);border-radius:3px;padding:1px 6px}
+.sec .sbody .inner .ok{color:var(--jade)} .sec .sbody .inner .warn{color:var(--sun)} .sec .sbody .inner .path{color:var(--ice)}
+.cursor{display:inline-block;width:7px;height:13px;background:var(--ice);vertical-align:text-bottom;animation:blink 1s steps(1) infinite;margin-left:2px}
+@keyframes blink{50%{opacity:0}}
+
+/* compact (collapsed) one-line tail preview when a section is closed but streaming */
+.tailpeek{padding:1px 12px 8px 30px;font-family:var(--mono);font-size:10px;color:var(--dim2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+.pfoot{flex:0 0 auto;border-top:1px solid var(--mist);padding:12px;display:flex;align-items:center;justify-content:center;gap:10px;background:rgba(255,255,255,.012)}
+.lc{width:36px;height:36px;border:1px solid var(--veil);border-radius:7px;background:transparent;color:var(--dim);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:.14s}
+.lc svg{width:16px;height:16px}
+.lc.warm:hover{color:var(--flame);border-color:rgba(255,149,0,.5)}
+.lc.cool:hover{color:var(--ice);border-color:rgba(0,212,255,.5)}
+.lc.danger:hover{color:var(--rose);border-color:rgba(255,45,120,.5)}
+.bumpwrap{position:relative;display:inline-flex}.bumpwrap sup{position:absolute;right:-3px;top:-4px;font-size:11px;font-weight:700}
+
+.note{max-width:560px;margin:0 auto;padding:10px 16px;font-family:var(--mono);font-size:10px;color:var(--dim2);border-top:1px solid var(--mist);line-height:1.7}
+.note b{color:var(--ice)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+</style>
+</head>
+<body>
+<div class="stagewrap">
+  <div class="phead"><span class="glyph" id="glyph"></span><span class="nm">loop stack</span><span class="state"><i></i>running</span></div>
+  <div class="pbody">
+    <!-- a queued card above -->
+    <div class="pc"><div class="spec"><span class="al">:benchmark</span> <span class="rp">@vectro</span> <span class="md">x2</span></div></div>
+    <div class="gap"><div class="line"></div></div>
+
+    <!-- the running card WITH attached output -->
+    <div class="runwrap">
+      <div class="pc running"><span class="runtag">running · iter 2/3</span>
+        <div class="spec"><span class="al">:optimize</span> <span class="md">gate:"./kill_test.sh" until:"cargo test"</span></div>
+        <div class="iterdots"><i class="done"></i><i class="cur"></i><i></i></div>
+      </div>
+      <div class="output" id="output">
+        <div class="obar">
+          <span class="live"><i></i>live output</span>
+          <span class="toggles">
+            <span class="tg on" data-f="all">all</span>
+            <span class="tg" data-f="thinking">thinking</span>
+            <span class="tg" data-f="action">actions</span>
+            <span class="tg" data-f="tool">tools</span>
+            <span class="tg" data-f="out">output</span>
+          </span>
+          <span class="exp" id="expall" title="collapse all">⤢</span>
+        </div>
+        <div class="ostream" id="ostream"></div>
+      </div>
+    </div>
+  </div>
+  <div class="pfoot">
+    <button class="lc warm" title="pause"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg></button>
+    <button class="lc cool" title="drain"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4h18l-7 8v6l-4 2v-8z"/></svg></button>
+    <button class="lc warm" title="bump"><span class="bumpwrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg><sup>+</sup></span></button>
+    <button class="lc danger" title="kill"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2"/></svg></button>
+  </div>
+  <div class="note">The output container <b>attaches to the running card</b>: shared top edge, no gap, a distinct cyan-tinted surface so it reads as "what this prompt is doing right now." Sections are <b>nested accordions</b> (thinking · actions · tools · output) so everything is captured but collapsed; the stream scrolls inside a fixed height. Filter chips narrow to one kind. When the loop advances to the next card, this detaches and collapses to a summary line, and the new running card grows its own.</div>
+</div>
+
+<script>
+"use strict";
+const REDUCED=window.matchMedia('(prefers-reduced-motion:reduce)').matches;
+const ICO={
+ thinking:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a7 7 0 0 0-4 12.7V18a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2.3A7 7 0 0 0 12 3z"/><path d="M9 22h6"/></svg>',
+ action:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h7l-1 8 10-12h-7z"/></svg>',
+ tool:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.2L3 17.8 6.2 21l6.3-6.3a4 4 0 0 0 5.2-5.4l-2.6 2.6-2.1-2.1z"/></svg>',
+ out:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16M4 12h10M4 19h7"/></svg>',
+ chev:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>',
+};
+// simulated stream content
+const SECTIONS=[
+ {kind:'thinking',label:'thinking',open:true,meta:'streaming',lines:[
+   "The gate ./kill_test.sh passed, so I can proceed with the optimization pass.",
+   "Current bottleneck is the per-token dequant in the INT3 path. Group size 32",
+   "means 32 weights share a scale; the scalar loop reloads the scale each step.",
+   "Plan: hoist the scale load, vectorize the 32-wide inner loop with NEON.",
+ ]},
+ {kind:'action',label:'actions',open:false,meta:'3 steps',lines:[
+   "edit  <span class='path'>src/quant/int3.rs</span>  — hoist scale load out of inner loop",
+   "edit  <span class='path'>src/quant/neon.rs</span>  — add vld1q_f32 8-wide accumulate",
+   "run   <span class='cmd'>cargo build --release</span>",
+ ]},
+ {kind:'tool',label:'tools',open:false,meta:'2 calls',lines:[
+   "<span class='cmd'>cargo build --release</span>  →  <span class='ok'>Finished in 41.2s</span>",
+   "<span class='cmd'>cargo test dequant_int3</span>  →  <span class='ok'>ok. 12 passed</span>",
+ ]},
+ {kind:'out',label:'output',open:false,meta:'',lines:[
+   "Optimization applied. Re-running until:\"cargo test\" to confirm the gate.",
+ ]},
+];
+
+const stream=document.getElementById('ostream');
+function build(){
+  stream.innerHTML=SECTIONS.map((s,i)=>`
+    <div class="sec ${s.kind} ${s.open?'open':''}" data-i="${i}">
+      <div class="sh"><span class="chev">${ICO.chev}</span><span class="ico">${ICO[s.kind]}</span><span class="kind">${s.label}</span><span class="meta">${s.meta}</span></div>
+      <div class="sbody"><div class="inner">${s.rendered||''}</div></div>
+      ${!s.open&&s.tail?`<div class="tailpeek">${s.tail}</div>`:''}
+    </div>`).join('');
+  stream.querySelectorAll('.sec .sh').forEach(sh=>sh.onclick=()=>{const sec=sh.closest('.sec');const i=+sec.dataset.i;SECTIONS[i].open=!SECTIONS[i].open;build();});
+}
+// filter chips
+document.querySelectorAll('.tg').forEach(tg=>tg.onclick=()=>{
+  document.querySelectorAll('.tg').forEach(x=>x.classList.remove('on'));tg.classList.add('on');
+  const f=tg.dataset.f;stream.querySelectorAll('.sec').forEach(sec=>{sec.style.display=(f==='all'||sec.classList.contains(f))?'':'none';});
+});
+document.getElementById('expall').onclick=()=>{const anyOpen=SECTIONS.some(s=>s.open);SECTIONS.forEach(s=>s.open=!anyOpen);build();};
+document.getElementById('glyph').innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="8" y="3" width="8" height="8" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/><rect x="13" y="13" width="8" height="8" rx="1"/></svg>';
+
+/* simulate streaming into the thinking section, then move on */
+let li=0, done=false;
+function tick(){
+  const s=SECTIONS[0];
+  const full=s.lines.slice(0,li+1).join('\n');
+  s.rendered=full+(li<s.lines.length-1?'':'<span class="cursor"></span>');
+  // build others' rendered fully
+  for(let k=1;k<SECTIONS.length;k++)SECTIONS[k].rendered=SECTIONS[k].lines.join('\n');
+  SECTIONS.forEach(s2=>{s2.tail=s2.lines[s2.lines.length-1].replace(/<[^>]+>/g,'');});
+  build();
+  if(li<s.lines.length-1){li++;setTimeout(tick, REDUCED?0:900);}
+}
+tick();
+</script>
+</body>
+</html>

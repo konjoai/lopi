@@ -4,23 +4,12 @@
     clippy::panic,
     clippy::unwrap_in_result
 )]
-use lopi_context::{
-    ContentBlock, ContextError, ContextWindow, Phase, PinPolicy, Role, TaggedMessage,
-};
-use uuid::Uuid;
+mod common;
+
+use lopi_context::{ContextError, ContextWindow, Phase, PinPolicy, Role, TaggedMessage};
 
 fn msg_tokens(text: &str, tokens: usize, pin: PinPolicy) -> TaggedMessage {
-    TaggedMessage {
-        id: Uuid::new_v4(),
-        role: Role::User,
-        content: vec![ContentBlock::Text(text.to_string())],
-        tokens,
-        pin,
-        phase: Phase::Implementation,
-        evict_after: None,
-        tool_pair_id: None,
-        is_conclusion: false,
-    }
+    common::make_msg(Role::User, text, Phase::Implementation, pin, tokens)
 }
 
 /// With budget=200 and threshold=0.75, auto-eviction fires when pressure > 75%.

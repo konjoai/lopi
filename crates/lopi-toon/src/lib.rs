@@ -182,9 +182,10 @@ mod tests {
 
     // ── Full spec example ─────────────────────────────────────────────────────
 
-    #[test]
-    fn spec_example_roundtrip() {
-        let v = json!({
+    /// The TOON spec's canonical worked example — shared by the round-trip
+    /// test and the exact-output-format test so the fixture has one source.
+    fn spec_example() -> serde_json::Value {
+        json!({
             "context": {
                 "task": "Our favorite hikes together",
                 "location": "Boulder",
@@ -199,7 +200,12 @@ mod tests {
                 {"id": 3, "name": "Wildflower Loop", "distanceKm": 5.1,
                  "elevationGain": 180, "companion": "sam", "wasSunny": true}
             ]
-        });
+        })
+    }
+
+    #[test]
+    fn spec_example_roundtrip() {
+        let v = spec_example();
         assert_eq!(rt(v.clone()), v);
     }
 
@@ -226,22 +232,7 @@ mod tests {
 
     #[test]
     fn spec_example_encodes_correctly() {
-        let v = json!({
-            "context": {
-                "task": "Our favorite hikes together",
-                "location": "Boulder",
-                "season": "spring_2025"
-            },
-            "friends": ["ana", "luis", "sam"],
-            "hikes": [
-                {"id": 1, "name": "Blue Lake Trail", "distanceKm": 7.5,
-                 "elevationGain": 320, "companion": "ana", "wasSunny": true},
-                {"id": 2, "name": "Ridge Overlook", "distanceKm": 9.2,
-                 "elevationGain": 540, "companion": "luis", "wasSunny": false},
-                {"id": 3, "name": "Wildflower Loop", "distanceKm": 5.1,
-                 "elevationGain": 180, "companion": "sam", "wasSunny": true}
-            ]
-        });
+        let v = spec_example();
         let out = encode(&v);
         // Key structural checks.
         assert!(out.contains("context:"), "should have context block");

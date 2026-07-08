@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>lopi · orb pane + prompt queue — 3 mockups</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --black:#0a0a0a; --deep:#050505; --paper:#f5f5f5;
+    --ice:#00d4ff; --ice-deep:#0088aa; --ember:#ff4500; --flame:#ff9500;
+    --jade:#00ff9d; --sun:#ffcc00; --rose:#ff0066;
+    --mist:rgba(255,255,255,.05); --veil:rgba(255,255,255,.10);
+    --dim:rgba(245,245,245,.44); --dim2:rgba(245,245,245,.26);
+    --mono:'JetBrains Mono',ui-monospace,monospace; --sans:'Space Grotesk',system-ui,sans-serif;
+    --card:#0c0c0d;
+    --p-boot:#f5f5f5;--p-discovery:#00d4ff;--p-planning:#00ffd4;
+    --p-implementation:#ff4500;--p-testing:#ffcc00;--p-conclusion:#00ff9d;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{background:var(--black);color:var(--paper);font-family:var(--sans);overflow:hidden;-webkit-font-smoothing:antialiased}
+  #app{display:flex;flex-direction:column;height:100vh}
+  .top{display:flex;align-items:center;gap:20px;padding:13px 22px;border-bottom:1px solid var(--mist);background:var(--deep);flex:0 0 auto}
+  .brand{font-family:var(--mono);font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);display:flex;align-items:center;gap:9px}
+  .brand b{color:var(--paper);font-weight:500}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--ember);box-shadow:0 0 10px var(--ember);animation:corepulse 2.6s ease-in-out infinite}
+  .sub{font-family:var(--mono);font-size:11px;color:var(--dim2)}
+  .switch{display:flex;margin-left:auto;border:1px solid var(--veil);border-radius:2px;overflow:hidden}
+  .switch button{font-family:var(--mono);font-size:11.5px;letter-spacing:.09em;text-transform:uppercase;background:transparent;color:var(--dim);border:none;padding:9px 15px;cursor:pointer;transition:.18s}
+  .switch button:hover{color:var(--paper)}
+  .switch button.on{color:var(--black);background:var(--ice)}
+  .switch button:focus-visible{outline:2px solid var(--ice);outline-offset:-2px}
+
+  .stage{flex:1 1 auto;position:relative;min-height:0}
+  .pane{position:absolute;inset:0;display:flex;opacity:0;pointer-events:none;transition:opacity .3s}
+  .pane.on{opacity:1;pointer-events:auto}
+
+  /* ---- orb zone (shared, left 2/3) ---- */
+  .orbzone{flex:1 1 auto;position:relative;overflow:hidden;border-right:1px solid var(--mist)}
+  .orb{position:absolute;width:200px;height:200px;left:20px;top:20px;
+    transition:left .85s cubic-bezier(.7,0,.2,1),top .85s cubic-bezier(.7,0,.2,1),transform .85s cubic-bezier(.7,0,.2,1);
+    transform-origin:center center;z-index:3}
+  .orb.intro{transform:scale(1.62)}
+  .orb canvas{width:200px;height:200px;display:block}
+  .orbcap{position:absolute;left:50%;bottom:6px;transform:translateX(-50%);font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);pointer-events:none}
+
+  .composer{position:absolute;top:24px;left:50%;transform:translateX(-50%);width:min(78%,520px);z-index:4;
+    display:flex;gap:8px;background:rgba(8,8,8,.7);border:1px solid var(--veil);border-radius:4px;padding:6px;backdrop-filter:blur(6px)}
+  .composer input{flex:1;background:transparent;border:none;color:var(--paper);font-family:var(--sans);font-size:13.5px;padding:8px 10px;outline:none}
+  .composer input::placeholder{color:var(--dim2)}
+  .composer button{font-family:var(--mono);font-size:11px;letter-spacing:.09em;text-transform:uppercase;background:var(--ember);color:#160500;border:none;border-radius:2px;padding:0 16px;cursor:pointer;font-weight:700;transition:.15s}
+  .composer button:hover{background:var(--flame)}
+  .replay{position:absolute;left:20px;top:20px;z-index:5;font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);background:rgba(8,8,8,.6);border:1px solid var(--veil);border-radius:2px;padding:6px 10px;cursor:pointer;transition:.15s}
+  .replay:hover{color:var(--paper);border-color:var(--ice)}
+
+  /* now-executing chip beside docked orb */
+  .nowchip{position:absolute;left:238px;bottom:34px;z-index:3;max-width:min(46%,360px);
+    background:rgba(8,8,8,.6);border:1px solid var(--veil);border-left:2px solid var(--ember);border-radius:3px;padding:10px 12px;
+    opacity:0;transform:translateY(6px);transition:.4s}
+  .nowchip.show{opacity:1;transform:none}
+  .nowchip .t{font-family:var(--mono);font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--flame);margin-bottom:5px}
+  .nowchip .g{font-size:13.5px;font-weight:500;line-height:1.3}
+  .nowchip .m{font-family:var(--mono);font-size:10.5px;color:var(--dim);margin-top:6px}
+
+  /* ---- right third (queue) ---- */
+  .queue{flex:0 0 33%;max-width:33%;background:var(--deep);display:flex;flex-direction:column;min-height:0}
+  .qhead{padding:16px 18px 12px;border-bottom:1px solid var(--mist);display:flex;align-items:baseline;gap:9px;flex:0 0 auto}
+  .qhead .t{font-family:var(--mono);font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim)}
+  .qhead .n{font-size:15px;font-weight:500;margin-left:auto;color:var(--dim)}
+  .qhead .n b{color:var(--paper)}
+  .qbody{flex:1 1 auto;overflow-y:auto;position:relative;padding:16px 16px 22px}
+
+  /* card (shared base) */
+  .pc{position:relative;background:var(--card);border:1px solid var(--veil);border-radius:4px;padding:12px 13px;margin-left:22px;transition:.2s}
+  .pc .idx{position:absolute;left:-22px;top:16px;width:9px;height:9px;border-radius:50%;background:#1a1a1c;border:1px solid var(--veil);transform:translateX(-50%);z-index:2}
+  .pc .txt{font-size:13px;font-weight:500;line-height:1.34}
+  .pc .repo{font-family:var(--mono);font-size:10px;color:var(--dim);margin-top:5px;display:flex;align-items:center;gap:6px}
+  .pc .ph{width:6px;height:6px;border-radius:50%}
+  .pc.next{border-color:rgba(255,149,0,.45);box-shadow:0 0 0 1px rgba(255,69,0,.12),0 6px 22px rgba(255,69,0,.08)}
+  .pc.next .idx{background:var(--ember);border-color:var(--flame);box-shadow:0 0 10px var(--ember)}
+  .nexttag{position:absolute;top:-9px;left:12px;font-family:var(--mono);font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:#160500;background:var(--ember);padding:2px 7px;border-radius:2px;font-weight:700}
+  /* spine */
+  .spine{position:absolute;left:16px;top:26px;bottom:26px;width:1px;background:linear-gradient(180deg,var(--veil),rgba(255,69,0,.5));z-index:0}
+
+  /* control chips (ledger + drawer) */
+  .ctl{display:flex;gap:7px;margin-top:11px;flex-wrap:wrap}
+  .chip{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:10.5px;
+    border:1px solid var(--veil);border-radius:3px;padding:4px 8px;color:var(--dim);cursor:pointer;transition:.15s;user-select:none;background:transparent}
+  .chip:hover{color:var(--paper)}
+  .chip svg{width:13px;height:13px;flex:0 0 13px}
+  .chip.loop.on{color:var(--flame);border-color:rgba(255,149,0,.5);background:rgba(255,69,0,.08)}
+  .chip.cron.on{color:var(--ice);border-color:rgba(0,212,255,.5);background:rgba(0,212,255,.07)}
+  .chip .step{display:flex;align-items:center;gap:2px;margin-left:2px}
+  .chip .sb{width:16px;height:16px;line-height:14px;text-align:center;border:1px solid var(--veil);border-radius:2px;color:inherit;cursor:pointer;font-size:12px}
+  .chip .sb:hover{background:var(--veil)}
+  .chip .cnt{min-width:20px;text-align:center;font-weight:700}
+  .combo{margin-top:9px;font-family:var(--mono);font-size:10px;color:var(--dim);border-top:1px dashed var(--mist);padding-top:8px}
+  .combo b.f{color:var(--flame)} .combo b.i{color:var(--ice)}
+
+  /* mockup 1 spacing */
+  .m1 .pc{margin-bottom:14px}
+
+  /* mockup 2 : minimal cards + drawer */
+  .m2 .pc{margin-bottom:12px;cursor:pointer}
+  .m2 .pc.sel{border-color:var(--ice);background:#0b1418}
+  .m2 .mods{display:flex;gap:8px;margin-top:9px;font-family:var(--mono);font-size:10.5px;color:var(--dim2)}
+  .m2 .mods .a{display:flex;align-items:center;gap:4px}
+  .m2 .mods .a.loop{color:var(--flame)} .m2 .mods .a.cron{color:var(--ice)}
+  .m2 .mods svg{width:12px;height:12px}
+  .drawer{position:absolute;top:0;right:33%;width:300px;height:100%;background:rgba(9,9,10,.97);
+    border-left:1px solid var(--veil);box-shadow:-16px 0 40px rgba(0,0,0,.5);z-index:6;
+    transform:translateX(20px);opacity:0;pointer-events:none;transition:.25s;padding:20px 18px;overflow-y:auto}
+  .drawer.open{transform:none;opacity:1;pointer-events:auto}
+  .drawer .dt{font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);margin-bottom:6px}
+  .drawer .dg{font-size:15px;font-weight:500;line-height:1.35;margin-bottom:18px}
+  .dsec{border-top:1px solid var(--mist);padding:16px 0}
+  .dsec .sh{display:flex;align-items:center;gap:9px;margin-bottom:12px}
+  .dsec .sh svg{width:15px;height:15px}
+  .dsec .sh .lab{font-size:13px;font-weight:500}
+  .dsec.loop .sh{color:var(--flame)} .dsec.cron .sh{color:var(--ice)}
+  .toggle{margin-left:auto;width:38px;height:20px;border-radius:11px;background:#1c1c1e;border:1px solid var(--veil);position:relative;cursor:pointer;transition:.15s}
+  .toggle::after{content:"";position:absolute;width:14px;height:14px;border-radius:50%;background:var(--dim);top:2px;left:2px;transition:.18s}
+  .toggle.on{background:rgba(255,69,0,.25);border-color:var(--flame)}
+  .toggle.on::after{left:19px;background:var(--flame)}
+  .dsec.cron .toggle.on{background:rgba(0,212,255,.22);border-color:var(--ice)}
+  .dsec.cron .toggle.on::after{background:var(--ice)}
+  .dctl{opacity:.35;pointer-events:none;transition:.2s}
+  .dctl.en{opacity:1;pointer-events:auto}
+  .stepper{display:flex;align-items:center;gap:10px;font-family:var(--mono)}
+  .stepper .sb{width:30px;height:30px;border:1px solid var(--veil);border-radius:3px;background:transparent;color:var(--paper);font-size:16px;cursor:pointer}
+  .stepper .sb:hover{background:var(--veil)}
+  .stepper .val{font-size:22px;font-weight:700;min-width:44px;text-align:center}
+  .stepper .unit{font-family:var(--mono);font-size:10.5px;color:var(--dim)}
+  .cronin{width:100%;background:#111;border:1px solid var(--veil);border-radius:3px;color:var(--ice);
+    font-family:var(--mono);font-size:13px;padding:9px 10px;margin-bottom:9px;letter-spacing:.05em}
+  .presets{display:flex;gap:6px;flex-wrap:wrap}
+  .preset{font-family:var(--mono);font-size:10px;border:1px solid var(--veil);border-radius:2px;padding:4px 8px;color:var(--dim);cursor:pointer}
+  .preset:hover{color:var(--ice);border-color:var(--ice-deep)}
+  .cronprev{font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:10px}
+  .cronprev b{color:var(--ice)}
+  .dcombo{margin-top:20px;border-top:1px solid var(--mist);padding-top:14px;font-family:var(--mono);font-size:11px;color:var(--dim);line-height:1.7}
+  .dcombo b.f{color:var(--flame)} .dcombo b.i{color:var(--ice)}
+
+  /* mockup 3 : time rail */
+  .m3 .qbody{padding-left:24px}
+  .railspine{position:absolute;left:20px;top:16px;bottom:22px;width:2px;
+    background:linear-gradient(180deg,var(--ice) 0%,var(--ice-deep) 34%,rgba(255,255,255,.08) 60%,rgba(255,69,0,.55) 100%);z-index:0;border-radius:2px}
+  .railseg{position:relative;z-index:1}
+  .railseg .tlab{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ice);
+    margin:0 0 8px -8px;display:flex;align-items:center;gap:7px}
+  .railseg .tlab.nowlab{color:var(--flame)}
+  .railseg .tlab::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor;box-shadow:0 0 8px currentColor;margin-left:-9px}
+  .m3 .pc{margin-left:18px}
+  .m3 .pc .idx{display:none}
+  /* stacked-sheet loop rendering */
+  .sheets{position:relative}
+  .sheets .sheet{position:absolute;left:0;right:0;top:0;bottom:0;background:var(--card);border:1px solid var(--veil);border-radius:4px;z-index:-1}
+  .sheets .s1{transform:translate(5px,5px);opacity:.55}
+  .sheets .s2{transform:translate(10px,10px);opacity:.3}
+  .loopbadge{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:10px;color:var(--flame);
+    border:1px solid rgba(255,149,0,.5);border-radius:3px;padding:2px 7px;margin-top:10px;margin-right:6px}
+  .loopbadge svg{width:12px;height:12px}
+  .cronbadge{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:10px;color:var(--ice);
+    border:1px solid rgba(0,212,255,.5);border-radius:3px;padding:2px 7px;margin-top:10px}
+  .cronbadge svg{width:12px;height:12px}
+  .m3 .ctl{margin-top:8px}
+  .railseg{margin-bottom:26px}
+
+  @keyframes corepulse{0%,100%{opacity:1}50%{opacity:.45}}
+  @keyframes slidein{from{opacity:0;transform:translateY(-14px)}to{opacity:1;transform:none}}
+  .fresh{animation:slidein .45s ease-out}
+  @media (max-width:900px){.queue{flex-basis:44%;max-width:44%}.drawer{right:44%;width:240px}}
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="top">
+    <div class="brand"><span class="dot"></span>lopi&nbsp;<b>⛵ agent pane</b></div>
+    <span class="sub">orb + prompt queue · loop + cron per prompt</span>
+    <div class="switch" role="tablist">
+      <button class="on" data-v="1">1 · Ledger</button>
+      <button data-v="2">2 · Drawer</button>
+      <button data-v="3">3 · Time-rail</button>
+    </div>
+  </div>
+  <div class="stage" id="stage"></div>
+</div>
+
+<script>
+"use strict";
+const REDUCED=window.matchMedia('(prefers-reduced-motion:reduce)').matches;
+const PHASE={boot:'#f5f5f5',discovery:'#00d4ff',planning:'#00ffd4',implementation:'#ff4500',testing:'#ffcc00',conclusion:'#00ff9d'};
+
+// icons
+const ICON_LOOP='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>';
+const ICON_CRON='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
+
+// shared prompt queue: index 0 = bottom = NEXT to execute
+const Q=[
+ {id:'int3', text:'Add INT3 fused dequant path for Qwen2.5-7B', repo:'konjoai/squish', phase:'implementation', active:true,  loop:false, loopN:null, cron:false, cronStr:'', cronLabel:''},
+ {id:'cold', text:'Re-run cold-start benchmark vs Ollama Q4_K_M', repo:'konjoai/squish', phase:'testing',        loop:true,  loopN:3,    cron:false, cronStr:'', cronLabel:''},
+ {id:'prefix', text:'Regenerate prefix-reuse curve table',        repo:'konjoai/squish', phase:'testing',        loop:true,  loopN:2,    cron:true,  cronStr:'0 14 * * *', cronLabel:'tomorrow 14:00'},
+ {id:'hn',   text:'Draft HN launch post revision',                repo:'konjoai/konjo.ai', phase:'planning',      loop:false, loopN:null, cron:false, cronStr:'', cronLabel:''},
+ {id:'audit',text:'Audit guarded imports for missing modules',    repo:'konjoai/squish', phase:'discovery',      loop:false, loopN:null, cron:true,  cronStr:'0 2 * * *',  cronLabel:'daily 02:00'},
+];
+const CRON_PRESETS=[['0 14 * * *','tomorrow 14:00'],['0 2 * * *','daily 02:00'],['*/15 * * * *','every 15 min'],['0 9 * * 1','Mon 09:00']];
+
+function loopLabel(p){return p.loopN==null?'∞':'×'+p.loopN;}
+
+/* ---------- sphere painter (fire/ice, phase aura) ---------- */
+function sphere(ctx,cx,cy,r,ph,warm,t){
+  ctx.save();
+  const aura=ctx.createRadialGradient(cx,cy,r*.72,cx,cy,r*1.55);
+  aura.addColorStop(0,ph+'00');aura.addColorStop(.55,ph+'26');aura.addColorStop(1,ph+'00');
+  ctx.fillStyle=aura;ctx.beginPath();ctx.arc(cx,cy,r*1.55,0,7);ctx.fill();
+  const g=ctx.createRadialGradient(cx-r*.32,cy-r*.32,r*.1,cx,cy,r);
+  g.addColorStop(0,'#0a94b8');g.addColorStop(.7,'#04212b');g.addColorStop(1,'#01080b');
+  ctx.fillStyle=g;ctx.beginPath();ctx.arc(cx,cy,r,0,7);ctx.fill();
+  ctx.globalCompositeOperation='screen';
+  // drifting fire blobs
+  for(let i=0;i<2;i++){const a=t*(0.7+i*0.5)+i*2.1;
+    const bx=cx+Math.cos(a)*r*.3, by=cy+Math.sin(a*1.3)*r*.28;
+    const f=ctx.createRadialGradient(bx,by,1,bx,by,r*.9);
+    const al=(0.22+0.55*warm)*(1-i*0.35);
+    f.addColorStop(0,`rgba(255,149,0,${al.toFixed(2)})`);f.addColorStop(.5,`rgba(255,69,0,${(al*.5).toFixed(2)})`);f.addColorStop(1,'rgba(255,69,0,0)');
+    ctx.fillStyle=f;ctx.beginPath();ctx.arc(cx,cy,r,0,7);ctx.fill();}
+  const ic=ctx.createRadialGradient(cx-r*.25,cy-r*.3,r*.05,cx-r*.2,cy-r*.25,r);
+  ic.addColorStop(0,`rgba(0,212,255,${(0.4*(1-warm)+0.1).toFixed(2)})`);ic.addColorStop(.6,'rgba(0,212,255,0)');
+  ctx.fillStyle=ic;ctx.beginPath();ctx.arc(cx,cy,r,0,7);ctx.fill();
+  ctx.globalCompositeOperation='source-over';
+  ctx.lineWidth=Math.max(1,r*.045);ctx.strokeStyle=ph+'cc';
+  ctx.beginPath();ctx.arc(cx,cy,r*.97,0,7);ctx.stroke();
+  ctx.restore();
+}
+
+/* ---------- build a pane ---------- */
+const stage=document.getElementById('stage');
+const views={};
+function buildPane(v){
+  const pane=document.createElement('div');pane.className='pane'+(v==1?' on':'');pane.dataset.v=v;
+  pane.innerHTML=`
+    <div class="orbzone">
+      <button class="replay">↺ replay send</button>
+      <div class="composer"><input placeholder="Send a prompt to the agent…" value="Profile Metal fused-dequant kernel"/><button>Send</button></div>
+      <div class="nowchip"><div class="t">now executing</div><div class="g"></div><div class="m"></div></div>
+      <div class="orb"><canvas width="200" height="200"></canvas><div class="orbcap"></div></div>
+    </div>
+    <div class="queue m${v}">
+      <div class="qhead"><span class="t">Prompt queue</span><span class="n"><b>${Q.length}</b> queued · ↑ later</span></div>
+      <div class="qbody"></div>
+    </div>`;
+  stage.appendChild(pane);
+  const o={pane,v,docked:true,sel:Q[2],
+    orb:pane.querySelector('.orb'),canvas:pane.querySelector('canvas'),cap:pane.querySelector('.orbcap'),
+    body:pane.querySelector('.qbody'),now:pane.querySelector('.nowchip')};
+  o.ctx=o.canvas.getContext('2d');
+  const dpr=Math.min(window.devicePixelRatio||1,2);
+  o.canvas.width=200*dpr;o.canvas.height=200*dpr;o.ctx.setTransform(dpr,0,0,dpr,0,0);
+  // composer send
+  pane.querySelector('.composer button').onclick=()=>{
+    const inp=pane.querySelector('.composer input');const val=inp.value.trim();if(!val)return;
+    Q.push({id:'u'+Date.now(),text:val,repo:'konjoai/squish',phase:'discovery',loop:false,loopN:null,cron:false,cronStr:'',cronLabel:''});
+    inp.value='';if(!o.docked)dock(o,true);pulse=1.2;render(o,true);
+  };
+  pane.querySelector('.composer input').addEventListener('keydown',e=>{if(e.key==='Enter')pane.querySelector('.composer button').click();});
+  pane.querySelector('.replay').onclick=()=>replay(o);
+  positionOrb(o);
+  return o;
+}
+function positionOrb(o){
+  const z=o.pane.querySelector('.orbzone').getBoundingClientRect();
+  if(o.docked){o.orb.classList.remove('intro');o.orb.style.left='20px';o.orb.style.top=(z.height-220)+'px';o.now.classList.add('show');}
+  else{o.orb.classList.add('intro');o.orb.style.left=(z.width/2-100)+'px';o.orb.style.top=(z.height/2-110)+'px';o.now.classList.remove('show');}
+}
+function dock(o,animate){o.docked=true;positionOrb(o);}
+function replay(o){o.docked=false;positionOrb(o);
+  setTimeout(()=>{o.docked=true;positionOrb(o);pulse=1.3;},950);}
+
+/* ---------- renderers ---------- */
+function phDot(p){return `<span class="ph" style="background:${PHASE[p.phase]}"></span>`;}
+
+function cardChips(p){ // ledger inline chips
+  const loopChip=`<button class="chip loop ${p.loop?'on':''}" data-a="loop" data-id="${p.id}">${ICON_LOOP}
+    ${p.loop?`<span class="cnt">${loopLabel(p)}</span><span class="step"><span class="sb" data-a="ldec" data-id="${p.id}">−</span><span class="sb" data-a="linc" data-id="${p.id}">+</span></span>`:'loop'}</button>`;
+  const cronChip=`<button class="chip cron ${p.cron?'on':''}" data-a="cron" data-id="${p.id}">${ICON_CRON}
+    ${p.cron?`<span>${p.cronLabel}</span>`:'schedule'}</button>`;
+  let combo='';
+  if(p.loop&&p.cron)combo=`<div class="combo">runs <b class="i">${p.cronLabel}</b>, then loops <b class="f">${loopLabel(p)}</b></div>`;
+  else if(p.loop&&p.loopN!=null)combo=`<div class="combo">loops <b class="f">${p.loopN}×</b> back-to-back</div>`;
+  else if(p.cron)combo=`<div class="combo">fires <b class="i">${p.cronLabel}</b></div>`;
+  return `<div class="ctl">${loopChip}${cronChip}</div>${combo}`;
+}
+function renderLedger(o){
+  o.body.innerHTML='<div class="spine"></div>';
+  [...Q].reverse().forEach((p,i)=>{
+    const next=(p===Q[0]);
+    const el=document.createElement('div');el.className='pc'+(next?' next':'');el.dataset.id=p.id;
+    el.innerHTML=`<span class="idx"></span>${next?'<span class="nexttag">next</span>':''}
+      <div class="txt">${p.text}</div>
+      <div class="repo">${phDot(p)}${p.repo}</div>${cardChips(p)}`;
+    o.body.appendChild(el);
+  });
+  wireChips(o);
+}
+function renderDrawer(o){
+  o.body.innerHTML='<div class="spine"></div>';
+  [...Q].reverse().forEach(p=>{
+    const next=(p===Q[0]);
+    const el=document.createElement('div');el.className='pc'+(next?' next':'')+(p===o.sel?' sel':'');el.dataset.id=p.id;
+    let mods='';
+    if(p.loop)mods+=`<span class="a loop">${ICON_LOOP}${loopLabel(p)}</span>`;
+    if(p.cron)mods+=`<span class="a cron">${ICON_CRON}${p.cronLabel}</span>`;
+    if(!mods)mods='<span style="color:var(--dim2)">once</span>';
+    el.innerHTML=`<span class="idx"></span>${next?'<span class="nexttag">next</span>':''}
+      <div class="txt">${p.text}</div><div class="repo">${phDot(p)}${p.repo}</div><div class="mods">${mods}</div>`;
+    el.onclick=()=>{o.sel=p;render(o);openDrawer(o);};
+    o.body.appendChild(el);
+  });
+  ensureDrawer(o);
+}
+function renderRail(o){
+  o.body.innerHTML='<div class="railspine"></div>';
+  const scheduled=Q.filter(p=>p.cron), immediate=Q.filter(p=>!p.cron);
+  // future (scheduled) at top, ordered by label; now-queue at bottom
+  const segT=document.createElement('div');segT.className='railseg';
+  segT.innerHTML=`<div class="tlab">later · scheduled</div>`;
+  scheduled.slice().reverse().forEach(p=>segT.appendChild(railCard(p)));
+  const segN=document.createElement('div');segN.className='railseg';
+  segN.innerHTML=`<div class="tlab nowlab">now · up next</div>`;
+  immediate.slice().reverse().forEach(p=>segN.appendChild(railCard(p,p===Q[0])));
+  o.body.appendChild(segT);o.body.appendChild(segN);
+  wireChips(o);
+}
+function railCard(p,next){
+  const el=document.createElement('div');el.className='pc'+(next?' next':'');el.dataset.id=p.id;
+  const sheets=(p.loop&&(p.loopN==null||p.loopN>=2))?`<div class="sheets"><div class="sheet s1"></div>${(p.loopN==null||p.loopN>=3)?'<div class="sheet s2"></div>':''}</div>`:'';
+  let badges='';
+  if(p.cron)badges+=`<span class="cronbadge">${ICON_CRON}${p.cronLabel}</span>`;
+  if(p.loop)badges+=`<span class="loopbadge">${ICON_LOOP}${loopLabel(p)}</span>`;
+  el.innerHTML=`${next?'<span class="nexttag">next</span>':''}${sheets}
+    <div class="txt">${p.text}</div><div class="repo">${phDot(p)}${p.repo}</div>
+    <div>${badges}</div>
+    <div class="ctl">
+      <button class="chip loop ${p.loop?'on':''}" data-a="loop" data-id="${p.id}">${ICON_LOOP}${p.loop?`<span class="cnt">${loopLabel(p)}</span><span class="step"><span class="sb" data-a="ldec" data-id="${p.id}">−</span><span class="sb" data-a="linc" data-id="${p.id}">+</span></span>`:'loop'}</button>
+      <button class="chip cron ${p.cron?'on':''}" data-a="cron" data-id="${p.id}">${ICON_CRON}${p.cron?'edit':'schedule'}</button>
+    </div>`;
+  return el;
+}
+
+/* drawer (mockup 2) */
+function ensureDrawer(o){
+  let d=o.pane.querySelector('.drawer');
+  if(!d){d=document.createElement('div');d.className='drawer';o.pane.querySelector('.orbzone').appendChild(d);o.drawer=d;}
+  fillDrawer(o);
+}
+function openDrawer(o){o.pane.querySelector('.drawer').classList.add('open');fillDrawer(o);}
+function fillDrawer(o){
+  const d=o.pane.querySelector('.drawer');if(!d)return;const p=o.sel;
+  let combo='';
+  if(p.loop&&p.cron)combo=`Fires <b class="i">${p.cronLabel}</b>, then loops <b class="f">${loopLabel(p)}</b> before moving on.`;
+  else if(p.loop)combo=`Loops <b class="f">${loopLabel(p)}</b> back-to-back, then dequeues.`;
+  else if(p.cron)combo=`Fires once <b class="i">${p.cronLabel}</b>.`;
+  else combo='Runs once when it reaches the front.';
+  d.innerHTML=`<div class="dt">editing prompt</div><div class="dg">${p.text}</div>
+    <div class="dsec loop"><div class="sh">${ICON_LOOP}<span class="lab">Loop</span><div class="toggle ${p.loop?'on':''}" data-a="loop" data-id="${p.id}"></div></div>
+      <div class="dctl ${p.loop?'en':''}">
+        <div class="stepper"><button class="sb" data-a="ldec" data-id="${p.id}">−</button><span class="val">${loopLabel(p)}</span><button class="sb" data-a="linc" data-id="${p.id}">+</button><span class="unit">${p.loopN==null?'infinite — set a count to cap':'runs'}</span></div>
+      </div></div>
+    <div class="dsec cron"><div class="sh">${ICON_CRON}<span class="lab">Schedule</span><div class="toggle ${p.cron?'on':''}" data-a="cron" data-id="${p.id}"></div></div>
+      <div class="dctl ${p.cron?'en':''}">
+        <input class="cronin" value="${p.cronStr||'0 14 * * *'}" data-a="croninput" data-id="${p.id}"/>
+        <div class="presets">${CRON_PRESETS.map(c=>`<span class="preset" data-a="preset" data-id="${p.id}" data-c="${c[0]}" data-l="${c[1]}">${c[1]}</span>`).join('')}</div>
+        <div class="cronprev">next fire · <b>${p.cronLabel||'tomorrow 14:00'}</b></div>
+      </div></div>
+    <div class="dcombo">${combo}</div>`;
+  wireDrawer(o);
+}
+
+/* ---------- control wiring ---------- */
+function bump(p,dir){ // loop counter: ∞ -> 2 -> 3 ... ; down to 2 -> ∞
+  if(dir>0){p.loopN = (p.loopN==null)?2:p.loopN+1;}
+  else{ if(p.loopN==null)return; p.loopN = p.loopN<=2?null:p.loopN-1; }
+}
+function wireChips(o){
+  o.body.querySelectorAll('[data-a]').forEach(b=>{
+    b.onclick=e=>{e.stopPropagation();const p=Q.find(x=>x.id===b.dataset.id);if(!p)return;
+      const a=b.dataset.a;
+      if(a==='loop'&&!(e.target.closest('.step'))){p.loop=!p.loop;if(p.loop&&p.loopN===undefined)p.loopN=null;}
+      if(a==='linc')bump(p,1); if(a==='ldec')bump(p,-1);
+      if(a==='cron'){if(!p.cron){p.cron=true;p.cronStr='0 14 * * *';p.cronLabel='tomorrow 14:00';}else{p.cron=false;}}
+      render(o);
+    };
+  });
+}
+function wireDrawer(o){
+  const d=o.pane.querySelector('.drawer');
+  d.querySelectorAll('[data-a]').forEach(el=>{
+    const p=Q.find(x=>x.id===el.dataset.id);if(!p)return;const a=el.dataset.a;
+    if(a==='loop')el.onclick=()=>{p.loop=!p.loop;render(o);fillDrawer(o);};
+    if(a==='cron')el.onclick=()=>{if(!p.cron){p.cron=true;p.cronStr='0 14 * * *';p.cronLabel='tomorrow 14:00';}else p.cron=false;render(o);fillDrawer(o);};
+    if(a==='linc')el.onclick=()=>{bump(p,1);render(o);fillDrawer(o);};
+    if(a==='ldec')el.onclick=()=>{bump(p,-1);render(o);fillDrawer(o);};
+    if(a==='preset')el.onclick=()=>{p.cronStr=el.dataset.c;p.cronLabel=el.dataset.l;render(o);fillDrawer(o);};
+    if(a==='croninput')el.onchange=()=>{p.cronStr=el.value;render(o);};
+  });
+}
+
+function render(o,fresh){
+  if(o.v==1)renderLedger(o);
+  else if(o.v==2)renderDrawer(o);
+  else renderRail(o);
+  if(fresh){const first=o.body.querySelector('.pc');if(first)first.classList.add('fresh');}
+  // now-chip = the executing prompt (Q[0])
+  const p=Q[0];o.now.querySelector('.g').textContent=p.text;
+  o.now.querySelector('.m').innerHTML=`${p.phase} · <span style="color:var(--flame)">loop ${p.loop?loopLabel(p):'off'}</span>`;
+}
+
+/* ---------- orb animation ---------- */
+let pulse=0;
+function frame(now){const t=now/1000;
+  const o=views[cur];
+  if(o){const p=Q[0];const warm=Math.min(1,0.42+0.4*Math.sin(t*1.3)*0.4+pulse);
+    o.ctx.clearRect(0,0,200,200);
+    sphere(o.ctx,100,100,64,PHASE[p.phase],warm,t);
+    o.cap.textContent=p.phase;o.cap.style.color=PHASE[p.phase];
+    if(pulse>0)pulse=Math.max(0,pulse-0.02);}
+  if(!REDUCED)requestAnimationFrame(frame);
+}
+
+/* ---------- boot + switching ---------- */
+let cur='1';
+[1,2,3].forEach(v=>{views[v]=buildPane(v);render(views[v]);});
+function setView(v){cur=String(v);
+  document.querySelectorAll('.switch button').forEach(b=>b.classList.toggle('on',b.dataset.v==v));
+  document.querySelectorAll('.pane').forEach(pn=>pn.classList.toggle('on',pn.dataset.v==v));
+  positionOrb(views[v]);render(views[v]);
+  if(REDUCED){const o=views[v];o.ctx.clearRect(0,0,200,200);sphere(o.ctx,100,100,64,PHASE[Q[0].phase],.6,0);}
+}
+document.querySelectorAll('.switch button').forEach(b=>b.onclick=()=>setView(b.dataset.v));
+window.addEventListener('resize',()=>Object.values(views).forEach(positionOrb));
+setTimeout(()=>Object.values(views).forEach(positionOrb),120);
+if(REDUCED){[1,2,3].forEach(v=>{const o=views[v];o.ctx.clearRect(0,0,200,200);sphere(o.ctx,100,100,64,PHASE[Q[0].phase],.6,0);});}
+else requestAnimationFrame(frame);
+</script>
+</body>
+</html>

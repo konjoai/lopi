@@ -217,33 +217,8 @@ pub(super) async fn run_bypass(
 
     let mut runner = AgentRunner::standalone(task.clone(), repo).0;
     runner.store = Some(store.clone());
-    let bus = runner.bus.clone();
 
-    let mut rx = bus.subscribe();
-    let print_task = tokio::spawn(async move {
-        loop {
-            match rx.recv().await {
-                Ok(AgentEvent::StatusChanged {
-                    status, attempt, ..
-                }) => {
-                    println!("  [{attempt}] → {}", status_label(&status));
-                }
-                Ok(AgentEvent::LogLine { line, .. }) => println!("       {line}"),
-                Ok(AgentEvent::TaskCompleted { .. }) | Err(_) => break,
-                _ => {}
-            }
-        }
-    });
-
-    let outcome = runner.run().await?;
-    print_task.abort();
-    store
-        .mark_completed(&task_id, &status_label(&outcome))
-        .await
-        .ok();
-    store.mine_patterns(&task_id, &task.goal).await.ok();
-    println!();
-    println!("⚓ {}", status_label(&outcome));
+    crate::run_command::run_with_live_print(runner, &store, task_id, &task.goal, false).await?;
     Ok(())
 }
 
