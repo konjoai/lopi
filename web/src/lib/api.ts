@@ -56,6 +56,8 @@ export interface TaskRow {
   status: string;
   created_at: string;
   completed_at: string | null;
+  /** Backend-1 — the caller-supplied identity echoed back by `createTask`, if any. */
+  client_ref: string | null;
 }
 
 export const listTasks = () => request<{ tasks: TaskRow[] }>('/api/tasks');
@@ -65,8 +67,8 @@ export const deleteTask = (id: string) =>
 
 /**
  * Optional fields mirroring `crates/lopi-ui/src/web/types.rs::CreateTaskRequest`.
- * Types only — no UI binds to these yet. `max_iterations: 0` is the
- * infinite-loop sentinel (matches the Rust-side decision), not "no loop."
+ * `max_iterations: 0` is the infinite-loop sentinel (matches the Rust-side
+ * decision), not "no loop."
  */
 export interface CreateTaskOptions {
   verifier_required?: boolean;
@@ -82,6 +84,30 @@ export interface CreateTaskOptions {
   until?: string;
   /** On-fail policy: 'stop' (default, unchanged retry behavior), 'continue' (skip the backoff pause), or 'backoff' (explicit pacing). */
   on_fail?: 'stop' | 'continue' | 'backoff';
+  /**
+   * Backend-1 — opaque caller identity (e.g. a loop-stack card id), echoed
+   * back verbatim and persisted alongside the task. lopi never interprets
+   * this string; it exists purely so a caller can durably associate its
+   * own concept of "what asked for this" with the `TaskId` the pool
+   * assigns.
+   */
+  client_ref?: string;
+}
+
+/** Mirrors `crates/lopi-ui/src/web/types.rs::CreateTaskResponse` exactly. */
+export interface CreateTaskResponse {
+  /**
+   * Id generated for *this* request. When `duplicate_of` is set, this id
+   * was never actually queued — see `duplicate_of`.
+   */
+  id: string;
+  goal: string;
+  /** `true` if newly queued; `false` if this request deduped against an already-queued identical goal. */
+  queued: boolean;
+  /** Set when `queued` is false — the id of the task actually running. Callers needing "the real task id" must prefer this over `id` when present. */
+  duplicate_of: string | null;
+  /** Echoes `CreateTaskOptions.client_ref` verbatim. */
+  client_ref: string | null;
 }
 
 export const createTask = (
@@ -89,7 +115,29 @@ export const createTask = (
   repo: string,
   priority = 'normal',
   opts: CreateTaskOptions = {}
-) => request<{ id?: string }>('/api/tasks', json('POST', { goal, repo, priority, ...opts }));
+) =>
+  request<CreateTaskResponse>(
+    '/api/tasks',
+    // Backend-1: an empty `repo` must be omitted, not sent as `""`. The
+    // server's `CreateTaskRequest.repo` is `Option<String>` and falls back
+    // to its own configured repo path when the key is absent — but a
+    // present empty string deserializes to `Some("")`, which the runner
+    // then tries to `git2::Repository::open("")` and fails outright. Every
+    // caller here (Tasks page's blank-by-default repo field, and every
+    // stack card that hasn't overridden the pane's own blank default) hits
+    // this the moment nothing has actually set a repo yet.
+    json('POST', { goal, priority, ...(repo ? { repo } : {}), ...opts })
+  );
+
+/**
+ * The task id a caller should actually track: `duplicate_of` when the
+ * create request deduped against an already-queued identical goal (`id` in
+ * that case was never queued at all), otherwise `id`. Pure — see
+ * `stores/stack.test.ts` for the dedup-collision case this guards against.
+ */
+export function effectiveTaskId(resp: CreateTaskResponse): string {
+  return resp.duplicate_of ?? resp.id;
+}
 
 // Phase 11 — plan approval gate.
 export const approvePlan = (id: string) =>

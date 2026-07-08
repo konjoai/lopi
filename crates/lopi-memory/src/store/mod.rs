@@ -151,8 +151,8 @@ impl MemoryStore {
     pub async fn save_task(&self, task: &Task, status: &str) -> Result<()> {
         let source = serde_json::to_string(&task.source)?;
         sqlx::query(
-            "INSERT INTO tasks (id, goal, status, created_at, source) \
-             VALUES (?1, ?2, ?3, ?4, ?5) \
+            "INSERT INTO tasks (id, goal, status, created_at, source, client_ref) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6) \
              ON CONFLICT(id) DO UPDATE SET status = excluded.status",
         )
         .bind(task.id.0.to_string())
@@ -160,6 +160,7 @@ impl MemoryStore {
         .bind(status)
         .bind(task.created_at.to_rfc3339())
         .bind(source)
+        .bind(&task.client_ref)
         .execute(&self.write_pool)
         .await?;
         Ok(())
@@ -262,7 +263,7 @@ impl MemoryStore {
     /// Returns `Err` if the database query fails.
     pub async fn load_history(&self, limit: i64) -> Result<Vec<TaskRow>> {
         let rows = sqlx::query_as::<_, TaskRow>(
-            "SELECT id, goal, status, created_at, completed_at FROM tasks \
+            "SELECT id, goal, status, created_at, completed_at, client_ref FROM tasks \
              ORDER BY created_at DESC LIMIT ?1",
         )
         .bind(limit)
@@ -337,6 +338,8 @@ pub struct TaskRow {
     pub created_at: String,
     /// ISO-8601 timestamp when the task reached a terminal state, if any.
     pub completed_at: Option<String>,
+    /// Backend-1 — the caller-supplied [`lopi_core::Task::client_ref`], if any.
+    pub client_ref: Option<String>,
 }
 
 mod audit;
