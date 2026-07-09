@@ -68,7 +68,9 @@ impl ProgressGate {
     /// any. Budget outranks no-progress ([`StopReason`] precedence), so a loop
     /// that both stalled *and* blew its budget stops as `Budget`.
     pub(super) fn tripped_reason(&self, tokens_used: u64) -> Option<StopReason> {
-        let budget = self.budget_exceeded(tokens_used).then_some(StopReason::Budget);
+        let budget = self
+            .budget_exceeded(tokens_used)
+            .then_some(StopReason::Budget);
         let stall = self.no_progress_tripped().then_some(StopReason::NoProgress);
         match (budget, stall) {
             (Some(a), Some(b)) => Some(a.precede(b)),
@@ -151,7 +153,10 @@ impl AgentRunner {
             }
             _ => format!("streak: {}, limit: {}", gate.streak(), gate.limit()),
         };
-        Some(self.record_progress_stop(reason, &detail, git, attempt).await)
+        Some(
+            self.record_progress_stop(reason, &detail, git, attempt)
+                .await,
+        )
     }
 
     /// Abort the current attempt (rollback + checkout) and mark it `Retrying` —
@@ -179,7 +184,10 @@ impl AgentRunner {
         git: &GitManager,
         attempt: u8,
     ) -> TaskStatus {
-        self.warn(format!("🛑 stopping — reason={} · {detail}", reason.as_str()));
+        self.warn(format!(
+            "🛑 stopping — reason={} · {detail}",
+            reason.as_str()
+        ));
         abort_attempt(git).await;
         let status = TaskStatus::Failed {
             reason: format!("StopReason::{} {{ {detail} }}", reason.as_str()),
@@ -211,7 +219,10 @@ mod tests {
             gate.observe(GainSample::objective_only(0.5)); // no gain
             assert_eq!(gate.streak(), expected);
         }
-        assert!(gate.no_progress_tripped(), "K=3 consecutive stalls must trip");
+        assert!(
+            gate.no_progress_tripped(),
+            "K=3 consecutive stalls must trip"
+        );
     }
 
     #[test]

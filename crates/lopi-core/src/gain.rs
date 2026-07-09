@@ -162,7 +162,12 @@ impl GainRule {
 
     /// Objective-primary branch: classify the objective delta, then let the
     /// judge veto (but never create) a gain.
-    fn decide_objective(&self, delta: f32, candidate: &GainSample, best: &GainSample) -> GainDecision {
+    fn decide_objective(
+        &self,
+        delta: f32,
+        candidate: &GainSample,
+        best: &GainSample,
+    ) -> GainDecision {
         if delta < -self.margin {
             return GainDecision::Regression;
         }
@@ -249,10 +254,7 @@ mod tests {
         let rule = GainRule::default();
         // A plateau at ~0.80 with sub-margin jitter (±0.5 %). The baseline locks
         // once; nothing after it may lock.
-        let decisions = run_objective_sequence(
-            &rule,
-            &[0.800, 0.805, 0.798, 0.803, 0.799, 0.802],
-        );
+        let decisions = run_objective_sequence(&rule, &[0.800, 0.805, 0.798, 0.803, 0.799, 0.802]);
         assert_eq!(decisions[0], GainDecision::Gain, "baseline seeds best");
         assert!(
             decisions[1..].iter().all(|d| !d.is_gain()),
@@ -405,11 +407,8 @@ mod tests {
     #[test]
     fn from_outcome_zero_weight_check_contributes_no_score() {
         // A zero-weight objective check yields no objective magnitude.
-        let outcome = EvalOutcome::aggregate(vec![CheckResult::pass(
-            EvalTier::ExecutionOk,
-            0.0,
-            false,
-        )]);
+        let outcome =
+            EvalOutcome::aggregate(vec![CheckResult::pass(EvalTier::ExecutionOk, 0.0, false)]);
         let sample = GainSample::from_outcome(&outcome);
         assert_eq!(sample.objective, None);
         assert_eq!(sample.judge, None);
