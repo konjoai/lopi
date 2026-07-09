@@ -319,12 +319,14 @@ pub fn reflection_fixtures() -> Vec<FixtureTask> {
         (20, 6, 3, true),
     ];
     SPEC.iter()
-        .map(|&(id, n_candidates, root_cause, learning_relevant)| FixtureTask {
-            id,
-            n_candidates,
-            root_cause,
-            learning_relevant,
-        })
+        .map(
+            |&(id, n_candidates, root_cause, learning_relevant)| FixtureTask {
+                id,
+                n_candidates,
+                root_cause,
+                learning_relevant,
+            },
+        )
         .collect()
 }
 
@@ -403,13 +405,15 @@ mod tests {
     #[test]
     fn precision_sweep_is_monotone_enough_to_show_the_threshold() {
         let fx = reflection_fixtures();
-        let sweep = precision_sweep(
-            &fx,
-            HarnessParams::default(),
-            &[0.0, 0.25, 0.5, 0.75, 1.0],
-        );
-        let low = sweep.first().map(|(_, r)| r.cross_vs_blind_pp()).unwrap_or(0.0);
-        let high = sweep.last().map(|(_, r)| r.cross_vs_blind_pp()).unwrap_or(0.0);
+        let sweep = precision_sweep(&fx, HarnessParams::default(), &[0.0, 0.25, 0.5, 0.75, 1.0]);
+        let low = sweep
+            .first()
+            .map(|(_, r)| r.cross_vs_blind_pp())
+            .unwrap_or(0.0);
+        let high = sweep
+            .last()
+            .map(|(_, r)| r.cross_vs_blind_pp())
+            .unwrap_or(0.0);
         assert!(high > low, "higher precision must widen cross-run's lead");
     }
 

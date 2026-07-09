@@ -246,7 +246,11 @@ mod tests {
     #[test]
     fn zero_cap_returns_nothing() {
         let fp = keyword_fingerprint("anything");
-        let cands = vec![row("x", &keyword_fingerprint("anything"), "2026-01-01T00:00:00Z")];
+        let cands = vec![row(
+            "x",
+            &keyword_fingerprint("anything"),
+            "2026-01-01T00:00:00Z",
+        )];
         assert!(rank_relevant(cands, &fp, MemoryStore::LEARNING_RELEVANCE_GATE, 0).is_empty());
     }
 }

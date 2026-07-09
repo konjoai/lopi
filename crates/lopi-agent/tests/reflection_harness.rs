@@ -93,8 +93,14 @@ fn precision_sweep_shows_the_threshold() {
     // within-run rises with retrieval precision — reflection earns its context
     // cost only when retrieval is precise, which is why A2 ships it bounded,
     // relevance-filtered, and flagged off pending the live run.
-    let lowest = sweep.first().map(|(_, r)| r.cross_vs_within_pp()).unwrap_or(0.0);
-    let highest = sweep.last().map(|(_, r)| r.cross_vs_within_pp()).unwrap_or(0.0);
+    let lowest = sweep
+        .first()
+        .map(|(_, r)| r.cross_vs_within_pp())
+        .unwrap_or(0.0);
+    let highest = sweep
+        .last()
+        .map(|(_, r)| r.cross_vs_within_pp())
+        .unwrap_or(0.0);
     assert!(
         highest > lowest,
         "marginal value must increase with retrieval precision"

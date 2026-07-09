@@ -24,7 +24,11 @@ async fn save_learning_persists_regardless_of_score() {
         .await
         .unwrap();
     let rows = store.load_learnings("/repo", 10).await.unwrap();
-    assert_eq!(rows.len(), 1, "a failure learning must persist unconditionally");
+    assert_eq!(
+        rows.len(),
+        1,
+        "a failure learning must persist unconditionally"
+    );
     assert_eq!(rows[0].critique, "token TTL was set to 0");
     assert_eq!(rows[0].outcome, "eval_rejected");
 }
@@ -36,7 +40,14 @@ async fn learning_survives_a_simulated_rollback() {
     // path (no store mutation), and reading it back intact.
     let store = MemoryStore::open_in_memory().await.unwrap();
     store
-        .save_learning("/repo", "add caching", "cache key collided", "", "non_gaining", None)
+        .save_learning(
+            "/repo",
+            "add caching",
+            "cache key collided",
+            "",
+            "non_gaining",
+            None,
+        )
         .await
         .unwrap();
     // ... attempt is rolled back here (git-only; the store is untouched) ...
@@ -49,12 +60,23 @@ async fn save_learning_dedups_identical_critique() {
     let store = MemoryStore::open_in_memory().await.unwrap();
     for _ in 0..3 {
         store
-            .save_learning("/repo", "same goal", "same critique", "", "non_gaining", None)
+            .save_learning(
+                "/repo",
+                "same goal",
+                "same critique",
+                "",
+                "non_gaining",
+                None,
+            )
             .await
             .unwrap();
     }
     let rows = store.load_learnings("/repo", 10).await.unwrap();
-    assert_eq!(rows.len(), 1, "repeated identical critiques collapse to one row");
+    assert_eq!(
+        rows.len(),
+        1,
+        "repeated identical critiques collapse to one row"
+    );
 }
 
 #[tokio::test]
@@ -105,7 +127,8 @@ async fn find_relevant_learnings_matches_topic_and_skips_unrelated() {
         .await
         .unwrap();
     assert!(
-        miss.iter().all(|r| r.critique != "auth token expired too early"),
+        miss.iter()
+            .all(|r| r.critique != "auth token expired too early"),
         "an unrelated goal must not surface the auth learning"
     );
 }

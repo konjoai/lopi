@@ -112,7 +112,10 @@ mod tests {
         let store = MemoryStore::open_in_memory().await.unwrap();
         let runner = runner_with_store(store.clone(), true);
         runner
-            .capture_learning(&["auth token TTL was set to zero".to_string()], "eval_rejected")
+            .capture_learning(
+                &["auth token TTL was set to zero".to_string()],
+                "eval_rejected",
+            )
             .await;
         // ... the attempt is rolled back here (git-only) ...
         let hits = store
@@ -171,13 +174,18 @@ mod tests {
         let runner = runner_with_store(store, true);
         let injected = runner.seed_reflection_learnings().await;
         assert!(injected.len() <= 3, "the injection cap is honoured");
-        assert!(!injected.is_empty(), "a matching goal retrieves its learnings");
+        assert!(
+            !injected.is_empty(),
+            "a matching goal retrieves its learnings"
+        );
         assert!(
             injected.iter().all(|c| c.starts_with("Past learning")),
             "each learning is labeled as a prior failure"
         );
         assert!(
-            injected.iter().all(|c| !c.contains("image cache too small")),
+            injected
+                .iter()
+                .all(|c| !c.contains("image cache too small")),
             "the unrelated rendering learning must not be injected"
         );
     }
@@ -186,7 +194,14 @@ mod tests {
     async fn injection_is_empty_when_reflection_is_off() {
         let store = MemoryStore::open_in_memory().await.unwrap();
         store
-            .save_learning("/repo", "fix the flaky auth timeout test", "x", "", "eval_rejected", None)
+            .save_learning(
+                "/repo",
+                "fix the flaky auth timeout test",
+                "x",
+                "",
+                "eval_rejected",
+                None,
+            )
             .await
             .unwrap();
         let runner = runner_with_store(store, false);
@@ -201,14 +216,19 @@ mod tests {
         let store = MemoryStore::open_in_memory().await.unwrap();
         let runner = runner_with_store(store.clone(), true);
         runner.capture_learning(&[], "eval_rejected").await;
-        runner.capture_learning(&["   ".to_string()], "eval_rejected").await;
+        runner
+            .capture_learning(&["   ".to_string()], "eval_rejected")
+            .await;
         assert!(store.load_learnings("/repo", 10).await.unwrap().is_empty());
     }
 
     #[test]
     fn summary_takes_first_non_empty_line() {
         let plan = "\n\n  Refactor the auth module  \nthen add tests\n";
-        assert_eq!(summarize_attempt(Some(plan), 280), "Refactor the auth module");
+        assert_eq!(
+            summarize_attempt(Some(plan), 280),
+            "Refactor the auth module"
+        );
     }
 
     #[test]

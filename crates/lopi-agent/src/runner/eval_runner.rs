@@ -75,7 +75,8 @@ impl AgentRunner {
         // caller (`finalize`) rolls the attempt back. A rejected attempt still
         // yields its lesson: you learned what does not work. No-op unless
         // cross-run reflection is enabled.
-        self.capture_learning(&outcome.critique, "eval_rejected").await;
+        self.capture_learning(&outcome.critique, "eval_rejected")
+            .await;
         false
     }
 
