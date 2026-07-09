@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>lopi · stack control area — options</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet"/>
+<style>
+:root{--black:#0b0e10;--bg:#060809;--panel:#0a0d0f;--card:#0e1214;--paper:#f5f5f5;
+ --ice:#00d4ff;--ember:#ff4500;--flame:#ff9500;--jade:#00ff9d;--sun:#ffcc00;--rose:#ff2d78;--teal:#00ffd4;--violet:#b79bff;
+ --mist:rgba(255,255,255,.05);--veil:rgba(255,255,255,.11);--dim:rgba(245,245,245,.46);--dim2:rgba(245,245,245,.28);--lbl:rgba(245,245,245,.66);
+ --mono:'JetBrains Mono',monospace;--sans:'Space Grotesk',sans-serif}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--paper);font-family:var(--sans);-webkit-font-smoothing:antialiased;min-height:100vh}
+.top{padding:15px 20px;border-bottom:1px solid var(--mist);position:sticky;top:0;background:var(--bg);z-index:30}
+.brand{font-family:var(--mono);font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);margin-bottom:11px}
+.brand b{color:var(--paper)}
+.toggle{display:flex;flex-wrap:wrap;gap:5px}
+.toggle span{padding:7px 12px;color:var(--dim);cursor:pointer;border:1px solid var(--veil);border-radius:6px;font-family:var(--mono);font-size:10.5px;transition:.14s}
+.toggle span.on{background:rgba(183,155,255,.12);color:var(--violet);border-color:rgba(183,155,255,.4)}
+.stage{max-width:560px;margin:0 auto;padding:24px 18px 100px}
+.vt{font-family:var(--sans);font-size:16px;font-weight:600;margin-bottom:4px}
+.vd{font-family:var(--mono);font-size:11px;color:var(--dim);line-height:1.65;margin-bottom:18px;max-width:520px}
+.vd b{color:var(--paper)}
+
+.pane{border:1px solid var(--veil);border-radius:14px;background:var(--panel);height:600px;display:flex;flex-direction:column;overflow:hidden;position:relative}
+.ph{display:flex;align-items:center;gap:11px;padding:13px 16px;border-bottom:1px solid var(--mist);flex:0 0 auto}
+.ph .lg{color:var(--flame);display:inline-flex}.ph .lg svg{width:17px;height:17px}
+.ph .tt{font-family:var(--mono);font-size:11.5px;letter-spacing:.14em;text-transform:uppercase}
+.ph .sp{flex:1}.ph .cnt{font-family:var(--mono);font-size:10px;color:var(--dim2)}
+.cmp{display:flex;align-items:center;gap:11px;padding:12px 16px;border-bottom:1px solid var(--mist);flex:0 0 auto}
+.cmp .ar{color:var(--flame);font-family:var(--mono)}.cmp .ip{flex:1;color:var(--dim2);font-family:var(--mono);font-size:13px}
+.cmp .pl{width:31px;height:31px;border:1px solid var(--veil);border-radius:7px;color:var(--dim2);display:flex;align-items:center;justify-content:center}.cmp .pl svg{width:15px;height:15px}
+.scroll{flex:1;overflow-y:auto;padding:16px}
+.scroll::-webkit-scrollbar{width:8px}.scroll::-webkit-scrollbar-thumb{background:#1c2230;border-radius:4px}
+
+.pc{position:relative;background:var(--card);border:1px solid var(--veil);border-radius:9px;padding:11px 13px}
+.pc.run{border-color:rgba(255,150,70,.5);animation:fl 5s ease-in-out infinite}
+@keyframes fl{0%,100%{border-color:rgba(255,150,70,.5);box-shadow:0 0 0 0 rgba(255,149,0,0)}50%{border-color:rgba(255,195,110,.95);box-shadow:0 0 15px rgba(255,149,0,.18)}}
+.rt{position:absolute;top:-9px;right:12px;font-family:var(--mono);font-size:8px;letter-spacing:.1em;text-transform:uppercase;background:var(--black);border:1px solid;border-radius:3px;padding:2px 7px}
+.rt.run{color:var(--flame);border-color:rgba(255,149,0,.5)}.rt.idle{color:var(--dim);border-color:var(--veil)}.rt.q{color:var(--ice);border-color:rgba(0,212,255,.45)}
+.sp2{font-family:var(--mono);font-size:13px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}.sp2 .md{color:var(--dim)}
+.chip{font-family:var(--mono);font-size:11.5px;color:var(--teal);border:1px solid rgba(0,255,212,.4);border-radius:6px;padding:2px 8px;background:rgba(0,255,212,.07)}
+.conn{height:12px;display:flex;justify-content:center}.conn i{width:2px;height:100%;background:var(--flame);opacity:.4}
+
+/* ===== the purple stack control AREA ===== */
+.sctrl{flex:0 0 auto;background:linear-gradient(180deg,rgba(150,120,230,.22),rgba(120,92,205,.14));border-top:1.5px solid rgba(183,155,255,.55);box-shadow:0 -10px 30px rgba(120,90,200,.14);padding:14px 16px 16px}
+.sctrl.inflow{border:1.5px solid rgba(183,155,255,.5);border-radius:11px;margin-top:14px;box-shadow:0 6px 26px rgba(120,90,200,.18)}
+.sctop{display:flex;align-items:center;gap:10px;margin-bottom:2px}
+.stag{font-family:var(--mono);font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:#1a1030;background:var(--violet);border-radius:4px;padding:3px 10px;font-weight:700}
+.sctop .sp{flex:1}
+.sctop .peekrun{display:none}
+.sumln{display:flex;align-items:center;gap:7px;margin-top:8px;font-family:var(--mono);font-size:9.5px}
+.sumln:first-of-type{margin-top:10px}
+.sumln .rl{display:inline-flex;align-items:center;gap:4px;text-transform:uppercase;font-size:8px;letter-spacing:.06em;width:64px;flex:0 0 auto}
+.sumln .rl svg{width:11px;height:11px}
+.sumln.sched .rl{color:var(--ice)}.sumln.guard .rl{color:var(--sun)}.sumln.eval .rl{color:var(--jade)}.sumln.cfg .rl{color:#e6ddff}
+.sumln .tx{color:var(--lbl)}.sumln .tx b{color:var(--paper)}
+.sumln.sched .tx b{color:var(--ice)}.sumln.guard .tx b{color:var(--sun)}.sumln.eval .tx .p{color:var(--jade)}
+
+.cardbar{display:flex;align-items:center;gap:6px;margin-top:13px}
+.ib{position:relative;height:29px;min-width:29px;padding:0 7px;border-radius:6px;border:1px solid rgba(255,255,255,.16);background:rgba(0,0,0,.18);color:var(--lbl);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:5px;font-family:var(--mono);font-size:11px;transition:.12s}
+.ib svg{width:14px;height:14px}.ib:hover{color:var(--paper);border-color:rgba(255,255,255,.32)}
+.ib .cnt{font-size:9px;font-weight:700}
+.ib.sched.act{color:var(--ice);border-color:rgba(0,212,255,.6);background:rgba(0,212,255,.14)}
+.ib.guard.act{color:var(--sun);border-color:rgba(255,204,0,.6);background:rgba(255,204,0,.14)}
+.ib.eval.act{color:var(--jade);border-color:rgba(0,255,157,.6);background:rgba(0,255,157,.14)}
+.ib.config.act{color:#efe9ff;border-color:rgba(255,255,255,.5);background:rgba(255,255,255,.14)}
+.ib.drag{cursor:grab}
+.iterpill{display:inline-flex;align-items:center;height:29px;border:1px solid rgba(255,149,0,.6);background:rgba(255,120,0,.16);border-radius:6px;overflow:hidden;font-family:var(--mono);font-size:11px;color:var(--flame);font-weight:700;cursor:pointer}
+.iterpill .lb{display:inline-flex;align-items:center;gap:5px;padding:0 9px;height:100%}.iterpill .lb svg{width:14px;height:14px}
+.iterpill .steppers{display:inline-flex;align-items:center;max-width:0;overflow:hidden;transition:max-width .24s cubic-bezier(.5,0,.2,1)}
+.iterpill:hover .steppers{max-width:64px}
+.iterpill .sb{width:28px;height:29px;border:none;border-left:1px solid rgba(255,149,0,.4);background:transparent;color:var(--flame);font-size:15px;cursor:pointer}
+.iterpill .sb:hover{background:rgba(255,149,0,.24)}
+.spacer{flex:1}
+.runwide{display:flex;align-items:center;justify-content:center;gap:9px;width:100%;margin-top:13px;background:linear-gradient(180deg,#ffb648,#ff9500);color:#231000;border:none;border-radius:8px;padding:12px;font-family:var(--mono);font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 4px 16px rgba(255,149,0,.3)}
+.runwide svg{width:15px;height:15px}
+.runwide .sfx{opacity:.85}
+
+/* ===== V3 collapsible dock ===== */
+.sctrl.dock{padding-top:0}
+.dockhead{display:flex;align-items:center;gap:11px;padding:13px 0 2px}
+.dockhead .stag{flex:0 0 auto}
+.dockhead .dsum{font-family:var(--mono);font-size:10px;color:var(--lbl);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dockhead .dsum b{color:var(--paper)}
+.sctrl.dock.open .dockhead .dsum{display:none}
+.dockhead .exp{width:34px;height:34px;border:1px solid rgba(255,255,255,.2);border-radius:7px;background:rgba(0,0,0,.2);color:var(--violet);display:flex;align-items:center;justify-content:center;cursor:pointer;flex:0 0 auto;margin-left:auto}
+.dockhead .exp svg{width:16px;height:16px;transition:transform .2s}
+.sctrl.dock.open .dockhead .exp svg{transform:rotate(180deg)}
+.dockbody{max-height:0;overflow:hidden;transition:max-height .26s ease}
+.sctrl.dock.open .dockbody{max-height:300px}
+.dockbody .inner{padding-top:2px}
+.dockrun{padding-top:13px}
+.dockrun .runwide{margin-top:0}
+
+.hintrow{font-family:var(--mono);font-size:9px;color:var(--dim2);padding:6px 16px 0;text-align:center}
+.note{max-width:520px;margin:18px auto 0;padding:13px 15px;border:1px solid var(--mist);border-left:2px solid var(--violet);border-radius:0 6px 6px 0;background:var(--panel);font-family:var(--mono);font-size:10.5px;color:var(--dim);line-height:1.7}
+.note b{color:var(--paper)}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="top">
+  <div class="brand">lopi · <b>stack control area — options</b></div>
+  <div class="toggle" id="toggle">
+    <span data-m="bottom">1 · sticky to pane bottom</span>
+    <span data-m="undercard">2 · under the executing card</span>
+    <span data-m="dock" class="on">3 · collapsible dock</span>
+  </div>
+</div>
+<div class="stage" id="stage"></div>
+<script>
+"use strict";
+const I={
+ grid:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>',
+ plus:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+ build:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.2L3 17.8 6.2 21l6.3-6.3a4 4 0 0 0 5.2-5.4l-2.6 2.6-2.1-2.1z"/></svg>',
+ play:'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 4l14 8-14 8z"/></svg>',
+ chevup:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M18 15l-6-6-6 6"/></svg>',
+ loop:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>',
+ clock:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+ shield:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z"/></svg>',
+ checkbox:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>',
+ sliders:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h8M16 18h4"/><circle cx="15" cy="6" r="2"/><circle cx="7" cy="12" r="2"/><circle cx="13" cy="18" r="2"/></svg>',
+ dup:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>',
+ drag:'<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>',
+ trash:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>',
+};
+let mode='dock', dockOpen=false;
+const LOOPS=[
+  {alias:'research',goal:'survey VQ2 papers',st:'idle'},
+  {alias:'plan',goal:'design OPQ compression path',st:'idle'},
+  {alias:'implement',goal:'add OPQ path @vectro',st:'queued'},
+  {alias:'kill-test',goal:'validate against baseline',st:'queued'},
+  {alias:'benchmark',goal:'10M recall sweep ×5',st:'run'},
+];
+let S={loopN:3,inf:false,sched:true,guard:true,evalN:3,evalOn:true,config:true,model:'Opus 4.8'};
+const loopVal=()=>S.inf?'∞':'×'+S.loopN;
+const runSfx=()=>S.sched?'nightly 2:00':(S.loopN>1||S.inf?loopVal():'');
+
+function loopsHTML(){
+  return LOOPS.map((l,i)=>`<div class="pc ${l.st==='run'?'run':''}"><span class="rt ${l.st==='run'?'run':l.st==='queued'?'q':'idle'}">${l.st==='run'?'running':l.st}</span><div class="sp2"><span class="chip">${I.build} :${l.alias}</span><span class="md">"${l.goal}"</span></div></div>`+(i<LOOPS.length-1?`<div class="conn"><i></i></div>`:'')).join('');
+}
+function summaryLines(){
+  const L=[];
+  if(S.sched)L.push(`<div class="sumln sched"><span class="rl">${I.clock}schedule</span><span class="tx"><b>daily 2:00 AM</b></span></div>`);
+  if(S.guard)L.push(`<div class="sumln guard"><span class="rl">${I.shield}guards</span><span class="tx"><b>gate</b> · <b>budget:500k</b> · <b>stop</b></span></div>`);
+  if(S.evalOn)L.push(`<div class="sumln eval"><span class="rl">${I.checkbox}evals</span><span class="tx"><span class="p">${S.evalN} checks</span> · chain acceptance</span></div>`);
+  if(S.config)L.push(`<div class="sumln cfg"><span class="rl">${I.sliders}default</span><span class="tx">model <b>${S.model}</b> · every loop inherits</span></div>`);
+  return L.join('');
+}
+function bar(){
+  return `<div class="cardbar">
+    <span class="iterpill" title="loop the whole stack"><span class="lb">${I.loop}<span class="val">${loopVal()}</span></span><span class="steppers"><button class="sb" data-step="-1">−</button><button class="sb" data-step="1">+</button></span></span>
+    <button class="ib sched ${S.sched?'act':''}" data-f="sched" title="schedule the stack">${I.clock}</button>
+    <button class="ib guard ${S.guard?'act':''}" data-f="guard" title="stack guardrails">${I.shield}</button>
+    <button class="ib eval ${S.evalOn?'act':''}" data-f="evalOn" title="stack evals">${I.checkbox}<span class="cnt">${S.evalN}</span></button>
+    <button class="ib config ${S.config?'act':''}" data-f="config" title="stack default model">${I.sliders}</button>
+    <span class="spacer"></span>
+    <button class="ib" title="duplicate stack">${I.dup}</button>
+    <button class="ib drag" title="reorder stacks">${I.drag}</button>
+    <button class="ib" title="delete stack">${I.trash}</button>
+  </div>`;
+}
+function runWide(){return `<button class="runwide">${I.play} run stack</button>`;}
+
+function fullArea(inflow){
+  return `<div class="sctrl ${inflow?'inflow':''}">
+    <div class="sctop"><span class="stag">stack</span><span class="sp"></span></div>
+    ${summaryLines()}
+    ${bar()}
+    ${runWide()}
+  </div>`;
+}
+function dockArea(){
+  return `<div class="sctrl dock ${dockOpen?'open':''}">
+    <div class="dockhead">
+      <span class="stag">stack</span>
+      <span class="dsum">${S.sched?'<b>nightly 2:00</b> · ':''}loop <b>${loopVal()}</b> · ${S.model}</span>
+      <button class="exp" data-dock title="stack controls">${I.chevup}</button>
+    </div>
+    <div class="dockbody"><div class="inner">
+      ${summaryLines()}
+      ${bar()}
+    </div></div>
+    <div class="dockrun">${runWide()}</div>
+  </div>`;
+}
+
+function view(){
+  const header=`<div class="ph"><span class="lg">${I.grid}</span><span class="tt">squish · optimize</span><span class="sp"></span><span class="cnt">${LOOPS.length} loops</span></div>
+    <div class="cmp"><span class="ar">></span><span class="ip">add a prompt or goal…</span><span class="pl">${I.plus}</span></div>`;
+  if(mode==='bottom'){
+    return `<div class="pane">${header}<div class="scroll">${loopsHTML()}</div>${fullArea(false)}</div>`;
+  }
+  if(mode==='undercard'){
+    return `<div class="pane">${header}<div class="scroll">${loopsHTML()}${fullArea(true)}</div></div>`;
+  }
+  return `<div class="pane">${header}<div class="scroll">${loopsHTML()}</div>${dockArea()}</div>`;
+}
+function headTxt(){
+  const H={
+   bottom:['1 · sticky to the pane bottom','The purple control area is pinned to the base of the pane and stays put while the loops scroll behind it. Always reachable — run and stack controls never leave the screen no matter how long the chain is. Scroll the loops to see it hold.'],
+   undercard:['2 · under the executing card','The control area sits in the flow directly beneath the running loop (the execution point). It reads as "the active loop, then the controls for the whole run," and scrolls with the content. Scroll down to reach it.'],
+   dock:['3 · collapsible dock','A compromise: a slim purple dock is always stuck to the bottom showing the stack summary + run, and it expands upward to the full controls when you need them. Always-visible run, minimal footprint, full controls one tap away.'],
+  };
+  return `<div class="vt">${H[mode][0]}</div><div class="vd">${H[mode][1]}</div>`;
+}
+function noteTxt(){
+  return `<div class="note">The area is <b>purple-filled and full-width</b>, clearly not a prompt card. It reuses the loop controls exactly — iteration pill (hover for −/+), schedule / guards / evals / config, and copy / drag / delete (acting on the whole stack) — with the full-width run button built in. Top chip reads <b>STACK</b> only. Toggle the buttons; summary lines hide when a facet is off.</div>`;
+}
+function render(){
+  document.getElementById('stage').innerHTML=`${headTxt()}${view()}${noteTxt()}`;
+  wire();
+}
+function wire(){
+  const st=document.getElementById('stage');
+  st.querySelectorAll('[data-f]').forEach(b=>b.onclick=()=>{S[b.dataset.f]=!S[b.dataset.f];render();});
+  st.querySelectorAll('[data-step]').forEach(b=>b.onclick=e=>{e.stopPropagation();const d=+b.dataset.step;if(S.inf&&d>0)return;if(S.inf&&d<0){S.inf=false;S.loopN=8;render();return;}let v=S.loopN+d;if(v<2)S.inf=true;else S.loopN=v;render();});
+  const dk=st.querySelector('[data-dock]');if(dk)dk.onclick=()=>{dockOpen=!dockOpen;render();};
+}
+document.querySelectorAll('#toggle span').forEach(s=>s.onclick=()=>{mode=s.dataset.m;dockOpen=false;document.querySelectorAll('#toggle span').forEach(x=>x.classList.toggle('on',x.dataset.m===mode));render();});
+render();
+</script>
+</body>
+</html>
