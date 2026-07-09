@@ -5,6 +5,66 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## Shell-1 — Loop Stacks as default view, fully-hidden left sidebar
+
+**Default-route change is a redirect (`+page.ts` `load()` throwing
+`redirect(307, '/stacks')`), not moving Stacks' page into the root route —
+and Forge, not Stacks, is what physically moved.** The brief framed this
+as "redirect vs. move," but either choice requires *some* page to vacate
+`/`, since a route can't simultaneously render a component and
+unconditionally redirect away from itself. Forge's `+page.svelte` was a
+5-line wrapper around `AgentGrid.svelte` — relocating it to `/forge` is a
+zero-risk mechanical move (confirmed byte-identical via diff). Moving
+Stacks' considerably larger implementation into the root route instead
+would have been the higher-blast-radius option for no benefit: `/stacks`
+as a URL keeps working either way, and this way `/stacks`'s own route
+folder is never touched at all. Reversible: deleting the new root
+`+page.ts` restores Forge as the default with a one-line change.
+
+**Pause/drain/bump's client-side precedent from Backend-1 extends
+naturally here: the sidebar's open/closed state is a single shared
+`writable` (`stores/nav.ts::sidebarOpen`), not local component state
+duplicated between the hamburger and the panel.** The hamburger button
+lives in `+layout.svelte`'s topbar (existing chrome, existing spacing);
+the panel/scrim/focus-trap lives in a new `AppSidebar.svelte`. Splitting
+the toggle *control* from the toggle *target* into two components only
+works cleanly with a shared store — passing a callback prop back and
+forth for a single boolean would be more coupling for no benefit.
+
+**The closed sidebar is `inert`, not just visually off-screen.** A
+`transform: translateX(-100%)` alone still leaves the panel's links in
+the tab order — a keyboard user tabbing through the page would land on
+invisible, off-screen anchors before ever reaching the page's own content.
+The `inert` HTML attribute (gated on `!$sidebarOpen`) removes the whole
+panel from both tab order and pointer interaction without touching the
+CSS transform, so the slide animation is untouched. Moving focus *into*
+the panel on open has to `await tick()` first — `inert` is still present
+in the DOM for one tick after `sidebarOpen` flips true, and focusing an
+inert element is a silent no-op; without the `tick()`, keyboard users
+would open the sidebar and land nowhere.
+
+**`SIDEBAR_MODE: 'hidden' | 'rail'` lives in `stores/nav.ts`, and the rail
+CSS ships in `AppSidebar.svelte` today even though nothing sets the
+constant to `'rail'`.** The brief asked for this to be a one-line flip
+later, not a rebuild — so the rail-mode styles (narrower width, icon-only,
+centered) are written and gated behind `class:rail={SIDEBAR_MODE ===
+'rail'}` now, verified to compile and typecheck clean, just never
+exercised by the shipped default. This is deliberate dead-but-correct code
+for a named, planned migration path, not speculative scope creep — it's
+the one thing the brief explicitly asked to pre-build.
+
+**`$lib/components/icons.ts` is a new module, not an extension of
+`stacks/icons.ts`.** The brief said "extend icons.ts," but the only
+`icons.ts` in the repo lives under `components/stacks/` — a
+feature-scoped catalog for the loop-stack cards, never imported from
+outside that folder. Importing sidebar/shell glyphs from a feature folder
+(or vice versa) would be a backwards dependency for global chrome that
+outlives any one feature. A handful of the new icons echo existing
+`stacks/icons.ts` glyphs in shape (loop, cron, wrench, sliders) since
+those already read correctly for their nav destinations — duplicated as
+tiny SVG strings rather than imported, matching this codebase's existing
+convention of no single universal icon registry.
+
 ## Backend-1 — task identity, execution, control signals, event routing
 
 **There is no server-side "stack"/"plan" concept, so run-stack execution
