@@ -19,6 +19,8 @@ pub mod eval;
 /// Pattern enrichment from memory history.
 pub mod pattern_enricher;
 mod prompt;
+/// A2 §2 — the deterministic reflect-vs-blind measurement harness.
+pub mod reflection_harness;
 /// Agent execution runner — plan, implement, test, score, retry.
 pub mod runner;
 /// Task scoring — test pass rate, lint, diff lines.
@@ -39,6 +41,10 @@ pub use eval::{
 };
 pub use lopi_ratelimit::{AnthropicLimiter, CircuitBreaker};
 pub use pattern_enricher::PatternEnricher;
+pub use reflection_harness::{
+    precision_sweep, reflection_fixtures, run_three_arm, Arm, ArmStats, FixtureTask, HarnessParams,
+    ThreeArmReport,
+};
 pub use runner::AgentRunner;
 pub use scorer::Scorer;
 pub use stability::{StabilityConfig, StabilityHarness, StabilityVerdict};

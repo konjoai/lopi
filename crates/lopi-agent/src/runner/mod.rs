@@ -8,6 +8,7 @@ mod plan_steps;
 pub mod postmortem;
 mod postmortem_runner;
 mod progress;
+mod reflection;
 mod run_loop;
 mod schema_gate;
 mod seed;
@@ -153,6 +154,14 @@ pub struct AgentRunner {
     /// one point tokens are actually observed. Read by the budget gate to stop
     /// the loop with [`StopReason::Budget`](lopi_core::StopReason) on exceed.
     pub(super) tokens_used: Arc<AtomicU64>,
+    /// A2 (reflection) — when `true`, the runner **captures** a durable learning
+    /// from every rejected/rolled-back attempt (before A3's rollback discards it)
+    /// and **retrieves** relevance-filtered, bounded learnings from memory into
+    /// the next planning prompt. `false` (the default) is behavior-identical to
+    /// before A2: no capture, no injection. Off-by-default is the §2 discipline —
+    /// cross-run reflection stays flagged until a live three-arm run clears the
+    /// pre-registered margin against blind retry.
+    pub(super) reflect_cross_run: bool,
 }
 
 impl AgentRunner {
@@ -203,6 +212,7 @@ impl AgentRunner {
             until: None,
             on_fail: OnFail::default(),
             tokens_used: Arc::new(AtomicU64::new(0)),
+            reflect_cross_run: false,
         }
     }
 
@@ -301,6 +311,22 @@ impl AgentRunner {
     #[must_use]
     pub const fn adaptive_retry_enabled(&self) -> bool {
         self.adaptive_retry
+    }
+
+    /// A2 (reflection) — enable durable cross-run learning: capture a learning
+    /// from every rejected attempt (rollback-safe) and inject relevance-filtered,
+    /// bounded learnings into the next planning prompt. Off by default (§2
+    /// discipline — flagged until a live comparison beats blind retry).
+    #[must_use]
+    pub const fn with_cross_run_reflection(mut self, on: bool) -> Self {
+        self.reflect_cross_run = on;
+        self
+    }
+
+    /// Whether durable cross-run reflection (capture + retrieval) is enabled.
+    #[must_use]
+    pub const fn cross_run_reflection_enabled(&self) -> bool {
+        self.reflect_cross_run
     }
 
     /// Phase 16.4 — set the self-prompting strategy used to reframe a failed

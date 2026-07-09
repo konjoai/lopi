@@ -2,19 +2,33 @@
 
 ## NEXT_SESSION_PROMPT (read this first)
 
-**A3 (Progress-Gating) has shipped** — see `CHANGELOG.md` `[0.2.4]` and
-`LEDGER.md`'s A3 entry. A loop can now **gain** (accept an iteration only when
-it's a genuine, objective-primary gain over best — the judge only confirms,
-never manufactures), **stop on no-progress** after K rounds, and **enforce a
-real token budget**, each with a specific `StopReason` (`goal_met > budget >
-no_progress > max_iterations`). The `:ratchet` preset was renamed `:gain`
-(legacy alias preserved). This builds on A1 (`EvalOutcome`, `score_trajectory`,
-finalize rollback) — reused, not rebuilt.
+**Track A is complete: A1 + A2 + A3 have all shipped.** A2 (Reflection) is the
+newest — see `CHANGELOG.md` `[0.2.5]` and `LEDGER.md`'s A2 entry. A loop now
+**captures durable, rollback-safe learnings** from every rejected attempt
+(SQLite `learnings` table, no score gate — a rolled-back attempt still yields its
+lesson) and can **retrieve relevance-filtered, bounded learnings** (Jaccard ≥
+0.3, deduped, hard cap 3) into the next planning prompt. It's gated behind
+`LoopConfig::reflect_cross_run` (**default off**) because the §2 measured
+reflect-vs-blind comparison could not be run live here, and even the deterministic
+mechanism harness (`lopi-agent::reflection_harness`) shows cross-run's *marginal*
+lift over the within-run reflection lopi already had is ~0 pp at realistic
+retrieval precision (its real win is speed, not pass-rate). **The honest verdict
+is recorded, not papered over.** A2 extended A1/A3's existing critique routing —
+reused, not rebuilt — and does **not** fight the gain gate (it informs the
+prompt; A3 still decides what counts as a gain).
+
+**If you pick up A2 again:** the one thing needed to justify flipping
+`reflect_cross_run` on by default is the *live* three-arm run (blind / within-run
+/ cross-run) on real tasks scored by A1's executor, clearing the pre-registered
+15 pp margin against blind retry. The harness is the regression guard that makes
+re-running it cheap; run it live in an API-enabled environment before changing
+the default. Do not flip it on faith — a simulated lift is not a live one.
 
 **B1 is the next layer: a *stack* runs until its goal-evals pass or termination
-fires.** Now that a single loop can gain, terminate on no-progress, and check a
-goal (A1), the stack sequencer can keep looping/advancing the chain until the
-stack's own `Acceptance` is satisfied or a `StopReason` fires. B1 is two things:
+fires.** Now that a single loop can gain, terminate on no-progress, check a goal
+(A1), and reflect (A2), the stack sequencer can keep looping/advancing the chain
+until the stack's own `Acceptance` is satisfied or a `StopReason` fires. B1 is
+two things:
 
 1. **The sequencer change.** Attach a stack-level `Acceptance` (reuse A1's
    schema verbatim at stack scope — this was designed for it) and make "run
@@ -26,14 +40,16 @@ stack's own `Acceptance` is satisfied or a `StopReason` fires. B1 is two things:
    one more facet — the *goal* — next to loop/schedule/limits. That's where a
    stack's `Acceptance` is authored (the same eval-checklist UI, at stack scope).
 
-**A2 (Reflection) is still the other high-value follow-up.** It wasn't done
-before A3, so the loop still retries somewhat blind. A2 = "extend the critique
-routing that already exists" (the verifier + A1's `EvalOutcome.critique` already
-route `fix_hints` → next attempt's constraints): durable cross-run learnings
-(**`kohaku`/a vector store does not exist** — Research-1 §5; note
-`lessons.rs:36-64` silently drops writes below score 0.6, violating CLAUDE.md
-"no silent failures") plus a measured reflect-vs-blind-retry A/B. More
-reflection means the loop has more to *gain* from — so A2 compounds A3.
+**A2 (Reflection) shipped** (`[0.2.5]`) — it extended the critique routing that
+already existed (the verifier + A1's `EvalOutcome.critique` → next attempt's
+constraints) into durable cross-run learnings on `MemoryStore` (**`kohaku`/a
+vector store still does not exist**; the `learnings` table is the substrate, and
+its no-score-gate design deliberately fixes the silent-0.6-drop hole
+`lessons.rs` had, per CLAUDE.md "no silent failures"). The reflect-vs-blind A/B
+is built as a repeatable harness but the *live* run is still owed (see above) —
+so reflection is on-tap behind a flag, off by default. More reflection means the
+loop has more to *gain* from, so A2 compounds A3 once the live measurement earns
+the default-on flip.
 
 **Carry this honest limit forward (a permanent design constraint):** the judge
 catches only gaming *visible in its inputs*. A1 passes the full diff into

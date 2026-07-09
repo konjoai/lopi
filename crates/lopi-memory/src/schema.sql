@@ -98,6 +98,28 @@ CREATE TABLE IF NOT EXISTS lessons (
 );
 CREATE INDEX IF NOT EXISTS idx_lessons_repo_created ON lessons(repo_path, created_at DESC);
 
+-- A2 (reflection): durable, rollback-safe learnings distilled from a failed or
+-- rolled-back attempt. Unlike lessons there is NO score gate, because a rejected
+-- attempt's lesson is exactly the low-score case that must survive (you learned
+-- what does NOT work). goal_keywords holds keyword_fingerprint(goal) for
+-- relevance-filtered retrieval (Jaccard vs a new task's goal). critique is why it
+-- failed (the evaluator's flattened gaps/fix-hints), attempted a short summary of
+-- the approach, outcome the reject reason. Retrieval dedups on (repo_path,
+-- critique) and caps injection: bounded and relevant is the whole point, since
+-- unbounded or irrelevant context is the failure mode the A2 section 2 test
+-- punishes.
+CREATE TABLE IF NOT EXISTS learnings (
+    id            TEXT PRIMARY KEY,
+    repo_path     TEXT NOT NULL,
+    goal_keywords TEXT NOT NULL DEFAULT '',
+    critique      TEXT NOT NULL,
+    attempted     TEXT NOT NULL DEFAULT '',
+    outcome       TEXT NOT NULL DEFAULT '',
+    task_id       TEXT,
+    created_at    TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_learnings_repo_created ON learnings(repo_path, created_at DESC);
+
 -- Sprint M: KCQF quality check run ledger.
 -- Each row = one execution of `lopi gap-fill` or `lopi check`.
 -- Drives coverage trend: is the spec getting healthier over time?
