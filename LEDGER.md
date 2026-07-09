@@ -5,6 +5,50 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## Progress-Gating (A3) — the gain gate that refuses to lock noise
+
+**The load-bearing decision: the gain rule is objective-primary, and the judge
+can only confirm, never create, a gain.** A3's analog of A1's fail-open hole is
+a gate that *locks noise* — a single run that edges above "best" on a noisy
+signal is not a gain, and ratcheting on it is exactly the rigor failure lopi
+exists to avoid. So the rule (`lopi-core::gain::GainRule`) decides on the
+**objective** sub-score (the deterministic execution-ok / shell / suite tiers,
+via `GainSample::from_outcome`), and treats the **judge** score as confirmatory:
+it can veto an objective gain the judge flatly contradicts (`judge_veto_band`
+0.20) but a judge-only "improvement" within judge noise never locks. Margins are
+pre-registered and written down: objective `margin` 0.01, `judge_margin` 0.10
+(wider, judge is noisier). The §2 kill-test feeds four score *sequences*
+(monotonic climb, within-noise wiggle, real regression, judge-noise-on-flat) and
+proves only the genuine climb locks. This ran *first*, before any wiring.
+
+**Reuse over rebuild (the A1 seams paid off).** A3 reads A1's `EvalOutcome`
+score and the finalize rollback verbatim — a non-gaining iteration is rejected
+by the *existing* per-attempt rollback path, not a new one. The prior
+epsilon-improvement stall detector (`update_no_progress_streak`) is *replaced*
+by `ProgressGate` observing a `GainSample` per iteration, so there is exactly
+one no-progress mechanism, not two.
+
+**Stop reasons are specific, with a settled precedence.** `StopReason` is
+`goal_met` / `budget` / `no_progress` / `max_iterations` — never a generic
+"stopped" — and precedence is `goal_met > budget > no_progress > max_iterations`
+(a met goal is success however much budget was spent; a hard resource cap
+outranks the softer stall heuristic; the iteration cap is the last-resort
+backstop). Reasons persist via the structured-string-in-`reason` convention
+`TurnLimitExceeded`/`NoProgressStall` already established.
+
+**Budget is real before it's shown.** Token usage is metered at the one point
+tokens are observed — the streamed `TokenUsage` events (`runner::stream`) — into
+`AgentRunner::tokens_used`, and the loop hard-stops on exceed. Only *after* that
+enforcement existed was the UI `budget N` badge un-hidden, and it renders only
+for a preset that maps to a real cap (`budgetToTokens('200k') → 200_000`), never
+for the inherit/unlimited presets — the exact honesty rule the badge was pulled
+for in backend-1. Per-task `Task.budget_tokens` overrides the repo default,
+mirroring `max_iterations`.
+
+**The rename:** `:ratchet` → `:gain` (mechanism and preset share the word). The
+legacy `:ratchet` alias still resolves to `gain` (`resolvePresetAlias`), so no
+saved card or composer string breaks.
+
 ## Eval-Execution-1 (A1) — the judge becomes a tiered eval executor
 
 **The keystone decision: A1 was promote + harden, not greenfield.** Research-1

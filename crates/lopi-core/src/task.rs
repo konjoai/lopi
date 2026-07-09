@@ -288,6 +288,14 @@ pub struct Task {
     /// a low-trust loop where the operator accepts the risk.
     #[serde(default)]
     pub verifier_fail_open: bool,
+    /// Progress-Gating (A3) — per-task token budget ceiling, taking precedence
+    /// over the repo's [`crate::loop_config::LoopConfig::budget_tokens`] when
+    /// non-zero (same "explicit wins over repo default" precedent as
+    /// `max_iterations`). `0` (the default) inherits the repo/global budget.
+    /// When it resolves to a positive value the loop meters cumulative token
+    /// usage against it and stops with [`crate::StopReason::Budget`] on exceed.
+    #[serde(default)]
+    pub budget_tokens: u64,
 }
 
 /// Where a task originated — used for routing replies and audit logging.
@@ -353,6 +361,7 @@ impl Task {
             client_ref: None,
             acceptance: None,
             verifier_fail_open: false,
+            budget_tokens: 0,
         }
     }
 

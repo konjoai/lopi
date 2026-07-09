@@ -119,6 +119,11 @@ export interface CreateTaskOptions {
   until?: string;
   /** On-fail policy: 'stop' (default, unchanged retry behavior), 'continue' (skip the backoff pause), or 'backoff' (explicit pacing). */
   on_fail?: 'stop' | 'continue' | 'backoff';
+  /** A3 — per-loop token budget the runner meters against, stopping with
+   *  `StopReason::Budget` on exceed. Compiled from the card's budget preset
+   *  (see `stack.ts::budgetToTokens`); omitted for the inherit/unlimited
+   *  presets. Mirrors `crates/lopi-ui/src/web/types.rs::budget_tokens`. */
+  budget_tokens?: number;
   /**
    * Backend-1 — opaque caller identity (e.g. a loop-stack card id), echoed
    * back verbatim and persisted alongside the task. lopi never interprets

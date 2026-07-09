@@ -1,37 +1,47 @@
-# Next — A2 · Reflection / feedback routing
+# Next — B1 · Goal-directed stacks
 
 ## NEXT_SESSION_PROMPT (read this first)
 
-**A1 (Eval-Execution-1) has shipped** — see `CHANGELOG.md` `[0.2.3]` and
-`LEDGER.md`'s A1 entry. The Konjo Verifier is now a **tiered eval executor**:
-one `Acceptance` goal schema (loop + stack scope), one `TierEvaluator`
-interface (execution-ok / shell / judge / suite, judge reused verbatim), one
-fail-closed `EvalOutcome` result (verdict + score + per_check + critique), and
-score-history in SQLite (`eval_outcomes` + `score_trajectory`). The fail-open
-hole is closed (fail-closed default; `verifier_fail_open` opt-out). The client
-eval UI finally executes — a card's `evals` compile into a real `Acceptance`.
-The 24-fixture probe set is a committed, CI-hard-gated regression suite.
+**A3 (Progress-Gating) has shipped** — see `CHANGELOG.md` `[0.2.4]` and
+`LEDGER.md`'s A3 entry. A loop can now **gain** (accept an iteration only when
+it's a genuine, objective-primary gain over best — the judge only confirms,
+never manufactures), **stop on no-progress** after K rounds, and **enforce a
+real token budget**, each with a specific `StopReason` (`goal_met > budget >
+no_progress > max_iterations`). The `:ratchet` preset was renamed `:gain`
+(legacy alias preserved). This builds on A1 (`EvalOutcome`, `score_trajectory`,
+finalize rollback) — reused, not rebuilt.
 
-**A2 is "extend the critique routing that already exists," not a from-scratch
-build.** The verifier *already* routes `fix_hints` → next attempt's constraints
-(`verifier_runner.rs`), and A1's `EvalOutcome.critique` now does the same. So
-A2 is two things:
+**B1 is the next layer: a *stack* runs until its goal-evals pass or termination
+fires.** Now that a single loop can gain, terminate on no-progress, and check a
+goal (A1), the stack sequencer can keep looping/advancing the chain until the
+stack's own `Acceptance` is satisfied or a `StopReason` fires. B1 is two things:
 
-1. **Durable cross-run learnings (kohaku).** Today critique dies with the run.
-   A2 turns it into persisted learnings that seed *future* similar tasks. Ride
-   the existing `lessons`/`patterns` tables — **`kohaku`/a vector store does
-   not exist** (Research-1 §5); either build it deliberately or stop citing it,
-   and note `lessons.rs:36-64` silently drops writes below score 0.6, which
-   violates CLAUDE.md "no silent failures" (log or re-gate it as part of A2).
-2. **The measured reflect-vs-blind-retry comparison.** Prove reflection beats
-   blind retry with a real A/B on a fixed fixture set, the way A1 pre-registered
-   its kill-test — don't ship reflection on faith.
+1. **The sequencer change.** Attach a stack-level `Acceptance` (reuse A1's
+   schema verbatim at stack scope — this was designed for it) and make "run
+   stack" mean "pursue this outcome": loop/advance until the stack's evals pass
+   or the no-progress/budget guards (A3, already built) stop it, recording the
+   stop reason. Don't turn A3's per-loop gain gate into the stack controller —
+   B1 owns stack-level control; A3 stays the per-loop mechanism it reads.
+2. **The stack goal surface in the dock.** The purple stack-control dock needs
+   one more facet — the *goal* — next to loop/schedule/limits. That's where a
+   stack's `Acceptance` is authored (the same eval-checklist UI, at stack scope).
 
-**Carry this honest limit forward (now a permanent design constraint):** the
-judge catches only gaming *visible in its inputs*. A1 passes the full diff into
+**A2 (Reflection) is still the other high-value follow-up.** It wasn't done
+before A3, so the loop still retries somewhat blind. A2 = "extend the critique
+routing that already exists" (the verifier + A1's `EvalOutcome.critique` already
+route `fix_hints` → next attempt's constraints): durable cross-run learnings
+(**`kohaku`/a vector store does not exist** — Research-1 §5; note
+`lessons.rs:36-64` silently drops writes below score 0.6, violating CLAUDE.md
+"no silent failures") plus a measured reflect-vs-blind-retry A/B. More
+reflection means the loop has more to *gain* from — so A2 compounds A3.
+
+**Carry this honest limit forward (a permanent design constraint):** the judge
+catches only gaming *visible in its inputs*. A1 passes the full diff into
 `EvalContext` and fails missing metric readings closed, but input-completeness
 is the standing rule for anyone adding an eval — put the signal in the inputs,
 or make the criterion objective (route it to a deterministic tier / `MetricGate`).
+The A3 corollary: **gain-gate on objective metrics; a judge-only "improvement"
+within judge noise must never lock** — the same discipline, applied to progress.
 
 ---
 

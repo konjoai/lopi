@@ -19,6 +19,9 @@ pub mod earned_trust;
 pub mod eval_outcome;
 /// Broadcast event types for TUI, WebSocket, and log panels.
 pub mod event;
+/// Progress-Gating (A3) — the gain gate: accept an iteration only when it is a
+/// genuine gain over best, objective-primary so judge noise cannot lock.
+pub mod gain;
 /// Loop-engineering configuration: autonomy levels + the `LoopConfig` schema.
 pub mod loop_config;
 /// Report on Finish (Loop Engineering primitive 6) — the `report` channel
@@ -30,6 +33,9 @@ pub mod schema;
 pub mod security;
 /// Self-prompting loop strategies — how an agent re-prompts itself on retry.
 pub mod self_prompt;
+/// Progress-Gating (A3) — the specific reason a loop terminated and the
+/// precedence among reasons when several trip at once.
+pub mod stop_reason;
 /// Task definition, status, priority, and source types.
 pub mod task;
 /// Literal-string prompt templates with named `{hole}` markers, resolved
@@ -47,6 +53,7 @@ pub use config::{LopiConfig, RepoProfile, ScheduleEntry};
 pub use earned_trust::EarnedTrust;
 pub use eval_outcome::{CheckResult, EvalOutcome, Verdict};
 pub use event::{AgentEvent, EventBus, LogLevel, PlanDecision};
+pub use gain::{GainDecision, GainRule, GainSample};
 pub use loop_config::{AutonomyLevel, IsolationMode, LoopConfig};
 pub use report::{ReportChannel, ReportChannelError};
 pub use schema::{
@@ -55,6 +62,7 @@ pub use schema::{
 };
 pub use security::constant_time_eq;
 pub use self_prompt::SelfPromptStrategy;
+pub use stop_reason::StopReason;
 pub use task::{Priority, Rubric, Task, TaskId, TaskSource, TaskStatus, VerifierVerdict};
 pub use template::{resolve as resolve_template, TemplateError};
 pub use tier::CustomerTier;

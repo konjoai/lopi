@@ -358,6 +358,9 @@ pub(super) fn build_runner(
     let gate = task.gate.clone().or(repo_guardrails.gate);
     let until = task.until.clone().or(repo_guardrails.until);
     let on_fail = task.on_fail.unwrap_or(repo_guardrails.on_fail);
+    // Progress-Gating (A3) — the repo budget seeds `task_budget`; a positive
+    // per-task `budget_tokens` overrides it as the loop's hard cap in the runner
+    // (`AgentRunner::effective_budget_tokens`), so no extra folding is needed.
     let mut runner = AgentRunner::new(task, work_repo, bus, store, cancel_rx, attempt_counter)
         .with_score_weights(weights)
         .with_self_prompt(self_prompt)

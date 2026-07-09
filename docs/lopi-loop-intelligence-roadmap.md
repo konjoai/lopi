@@ -50,6 +50,7 @@ Everything above the line is blocked until **A1** ships. A1 is the item that's b
 **Depends on:** A1 (need a score to beat), ideally A2.
 **Kill-test / proof:** a run that plateaus is halted by the no-progress detector rather than burning all iterations; a regression is rejected by the ratchet; a run that exceeds budget is stopped.
 **Reuses:** the 30-run paired Wilcoxon + CoV rigor — that machinery *is* "did it actually beat best," now applied live instead of only in benchmarks.
+**DONE** — see `CHANGELOG.md` `[0.2.4]` and the ledger's A3 entry. The **gain gate** (`lopi-core::gain`) is **objective-primary** (judge is confirmatory), and its pre-registered noise kill-test proves it locks genuine gains but not within-noise wiggles, regressions, or judge-only noise. No-progress halts after K rounds and budget is metered + capped, each with a specific `StopReason` (`goal_met > budget > no_progress > max_iterations`). The `:ratchet` preset was renamed `:gain` (legacy alias preserved).
 
 **End of Track A, lopi can:** act → observe → evaluate (independently) → reflect → self-correct → iterate until a goal is met or progress stalls, unattended. That is the full definition of a self-directing loop.
 

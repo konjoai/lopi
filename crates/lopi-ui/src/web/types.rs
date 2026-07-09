@@ -92,6 +92,11 @@ pub struct CreateTaskRequest {
     /// Mirrors [`lopi_core::Task::verifier_fail_open`].
     #[serde(default)]
     pub verifier_fail_open: Option<bool>,
+    /// Progress-Gating (A3) — per-task token budget ceiling the loop meters
+    /// against, stopping with `StopReason::Budget` on exceed. `0`/omitted
+    /// inherits the repo/global budget. Mirrors [`lopi_core::Task::budget_tokens`].
+    #[serde(default)]
+    pub budget_tokens: Option<u64>,
 }
 
 /// Response body for `POST /api/tasks`.

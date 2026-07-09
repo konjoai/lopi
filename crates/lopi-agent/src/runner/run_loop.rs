@@ -1,11 +1,11 @@
-use super::finalize::update_no_progress_streak;
+use super::progress::ProgressGate;
 use super::speculative::SpecFlow;
 use super::{schema_gate, AgentRunner};
 use crate::claude::{select_model, ClaudeCode, ERR_CREDIT_EXHAUSTED};
 use crate::scorer::Scorer;
 use anyhow::Result;
 use lopi_context::Phase;
-use lopi_core::{AgentEvent, Attempt, TaskStatus};
+use lopi_core::{AgentEvent, Attempt, StopReason, TaskStatus};
 use lopi_git::GitManager;
 use std::sync::atomic::Ordering;
 use tracing::Instrument as _;
@@ -14,7 +14,7 @@ use tracing::Instrument as _;
 /// standard cleanup before recording a retry, cancellation, or terminal
 /// failure. Both operations are best-effort: a rollback/checkout failure
 /// must not block the status transition that follows.
-async fn abort_attempt(git: &GitManager) {
+pub(super) async fn abort_attempt(git: &GitManager) {
     git.hard_rollback().await.ok();
     git.checkout_default().await.ok();
 }
@@ -58,12 +58,13 @@ impl AgentRunner {
 
         let scorer = Scorer::new(&self.repo_path);
 
-        // Loop-engineering stall guard — load the repo's no-progress limit so
-        // the loop halts early when retries stop lifting the weighted score
-        // (Steinberger's "cap it so it halts"). `0` disables the guard.
+        // Progress-Gating (A3) — the live gain gate + termination controls.
+        // Keeps an iteration only when it is a genuine gain over best, halts
+        // after K non-gaining rounds (no-progress), and caps the loop's token
+        // budget. `0` disables either guard. Reuses A1's score (via the gain
+        // gate) rather than rebuilding scoring.
         let no_progress_limit = self.no_progress_limit().await;
-        let mut best_weighted: Option<f32> = None;
-        let mut np_streak: u8 = 0;
+        let mut gate = ProgressGate::new(no_progress_limit, self.effective_budget_tokens());
 
         for attempt in 0..self.task.max_retries {
             // Model routing (4.5): route to cheapest model capable of this task's complexity.
@@ -112,6 +113,12 @@ impl AgentRunner {
                 return Ok(TaskStatus::Failed {
                     reason: "Cancelled".into(),
                 });
+            }
+
+            // Budget gate (A3) — stop before spending more when a prior
+            // attempt's streamed tokens have already exhausted the cap.
+            if let Some(status) = self.budget_preflight(&gate, &git, attempt).await {
+                return Ok(status);
             }
 
             self.attempts_made = attempt + 1;
@@ -371,6 +378,9 @@ impl AgentRunner {
                 // verifier rejected (already rolled back, marked Retrying); a
                 // `Conflict` ⇒ the rebase collided and the loop stops here.
                 if let Some(status) = self.finalize(&branch, &git, &score, attempt + 1).await {
+                    // Goal-met (A3) — the highest-precedence terminal: the loop
+                    // satisfied its acceptance/until goal and finalized.
+                    self.log(format!("🎯 stop reason: {}", StopReason::GoalMet.as_str()));
                     return Ok(self.conclude_finalized(status, &score, attempt + 1));
                 }
                 continue;
@@ -441,26 +451,17 @@ impl AgentRunner {
                 self.last_error = Some(strategy.frame(&base_failure, attempt + 1));
             }
 
-            // Loop-engineering stall guard — if the weighted score has not
-            // improved for `no_progress_limit` consecutive attempts, halt
-            // early rather than burning the rest of the retry budget on a
-            // loop that is provably stuck.
-            if no_progress_limit > 0 {
-                np_streak =
-                    update_no_progress_streak(&mut best_weighted, np_streak, attempt_weighted);
-                if np_streak >= no_progress_limit {
-                    self.warn(format!(
-                        "🛑 no-progress stall: {np_streak} attempt(s) without score improvement (limit {no_progress_limit}) — halting"
-                    ));
-                    abort_attempt(&git).await;
-                    let status = TaskStatus::Failed {
-                        reason: format!(
-                            "NoProgressStall {{ streak: {np_streak}, limit: {no_progress_limit} }}"
-                        ),
-                    };
-                    self.status(status.clone(), attempt + 1);
-                    return Ok(status);
-                }
+            // Gain gate + termination (A3) — feed this attempt's best objective
+            // score to the gate (a gain locks best + resets the streak; a
+            // non-gain keeps the prior best and grows it) and stop with a
+            // specific `StopReason` when budget or no-progress trips. The
+            // rejected (non-gaining) iteration's work is discarded by
+            // `abort_and_mark_retrying` below — A1's rollback path, unchanged.
+            if let Some(status) = self
+                .observe_and_check_stop(&mut gate, attempt_weighted, &git, attempt + 1)
+                .await
+            {
+                return Ok(status);
             }
 
             self.abort_and_mark_retrying(&git, attempt).await;
@@ -475,24 +476,16 @@ impl AgentRunner {
             self.run_postmortem_if_configured().await;
         }
 
+        // Max-iteration backstop (A3) — the lowest-precedence stop reason: the
+        // loop exhausted its retry budget without meeting the goal or tripping
+        // an earlier guard.
         let status = TaskStatus::Failed {
-            reason: "Max retries exceeded".into(),
+            reason: format!(
+                "StopReason::{} {{ Max retries exceeded }}",
+                StopReason::MaxIterations.as_str()
+            ),
         };
         self.status(status.clone(), self.task.max_retries);
         Ok(status)
-    }
-
-    /// Abort the current attempt (rollback + checkout) and mark it
-    /// `Retrying` — the shared cleanup before every `continue` back to the
-    /// top of the retry loop. Callers still issue their own `continue`
-    /// after this returns.
-    async fn abort_and_mark_retrying(&mut self, git: &GitManager, attempt: u8) {
-        abort_attempt(git).await;
-        self.status(
-            TaskStatus::Retrying {
-                attempt: attempt + 1,
-            },
-            attempt + 1,
-        );
     }
 }

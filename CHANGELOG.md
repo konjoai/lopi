@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.2.4] — Progress-Gating (A3): the gain gate, no-progress stop, real budget ⛰️
+
+Makes a loop move *toward* a goal and stop cleanly instead of running out the
+clock or running away. Builds on A1 (PR #70) — reuses its `EvalOutcome` score,
+`score_trajectory`, and finalize rollback rather than rebuilding any of them.
+The keystone is the **gain gate**, which is disciplined to **never lock noise**.
+
+### Added
+- **The gain gate** (`lopi-core::gain` — the A3 centerpiece): `GainRule::decide(candidate, best)` returns a `GainDecision` (`Gain` / `WithinNoise` / `Regression` / `JudgeUnconfirmed`). The rule is **objective-primary** — the decision is driven by the objective, deterministic sub-score (`GainSample.objective`, from the execution-ok/shell-test/suite tiers) and the **judge score is confirmatory only**: it can veto an objective gain the judge flatly contradicts (`judge_veto_band`, default 0.20) but can never *manufacture* one. A candidate must clear `best` by a `margin` (default 0.01) to count as a gain; a judge-only signal must clear a wider `judge_margin` (default 0.10). `GainSample::from_outcome` splits an A1 `EvalOutcome` into its objective/judge magnitudes by tier.
+- **The §2 noise kill-test** (`gain::tests`, pre-registered and run first): four score *sequences* — a genuine monotonic climb, a within-noise wiggle around a plateau, a real regression, and a judge-noisy sequence on a flat objective. Asserts genuine gains lock and wiggles / regressions / judge-only noise do **not**. This is A3's analog of A1's fail-open hole: a gate that locks noise ratchets the loop on noise, exactly the rigor failure lopi exists to avoid.
+- **No-progress detection with specific stop reasons** (`lopi-core::stop_reason` + `runner::progress::ProgressGate`): the loop tracks consecutive non-gaining rounds and halts after **K** (`LoopConfig::no_progress_limit`, default 3; `0` disables) with reason `no_progress`. `StopReason` is one of `goal_met` / `budget` / `no_progress` / `max_iterations` — distinct, not a generic stop — and carries an explicit **precedence** (`goal_met > budget > no_progress > max_iterations`) so the right reason wins when several trip together.
+- **Real budget enforcement** (`runner::stream` metering + `ProgressGate` cap): cumulative token usage (input + output) is metered at the one point tokens are observed — the streamed `TokenUsage` events — into `AgentRunner::tokens_used`, and the loop stops with reason `budget` on exceed. Per-task `Task.budget_tokens` overrides the repo's `LoopConfig::budget_tokens` (the "explicit task override wins" precedent); `0` inherits. Wired end-to-end through `CreateTaskRequest.budget_tokens` → `Task` → runner.
+- **The budget control is un-hidden** (`web` `StackConnector.svelte` + `stack.ts::budgetToTokens`): the `budget N` badge — pulled in backend-1 because nothing enforced it — is back, now that the preset compiles into the metered `budget_tokens` and the loop actually caps against it. The badge renders only for a preset that sets a real cap (`'200k'` → 200 000), never for the inherit/unlimited presets, so it never claims a limit the loop won't enforce.
+
+### Changed
+- **`:ratchet` preset → `:gain`** (`web` `stack.ts` + `icons.ts`): the gain gate and the preset now share the word. The legacy `:ratchet` alias still resolves to `gain` (`resolvePresetAlias`), so old composer strings and saved cards keep working.
+- **The no-progress stall guard is now the gain gate.** The prior epsilon-improvement stall detector (`update_no_progress_streak`) is replaced by `ProgressGate` observing a `GainSample` each iteration — a gain locks best and resets the streak; a non-gain (within-noise / regression) keeps the prior best, grows the streak, and its work is discarded via A1's rollback path. Terminal stop reasons are now tagged into the run's `reason` string (the structured-string convention `TurnLimitExceeded`/`NoProgressStall` already used) so they persist on the run.
+
+### Notes — the settled A3 policy (the ledger)
+- **Gain rule:** objective-primary, margin `0.01`; judge is confirmatory (veto band `0.20`, judge-only margin `0.10`). A judge-only "improvement" within judge noise does not lock. Written down here because "pick the margin/confirmation policy and write it down" is a §2 pre-registration requirement.
+- **No-progress K:** `LoopConfig::no_progress_limit` (default 3, `0` disables) — reused as-is, not a new field.
+- **Stop-reason precedence:** `goal_met > budget > no_progress > max_iterations`.
+- **Budget is real before it's shown:** enforcement (metering + hard stop) landed before the UI badge was un-hidden — the honesty rule the badge was pulled for.
+
 ## [0.2.3] — Eval-Execution-1 (A1): the Konjo Verifier becomes a tiered eval executor 🎯
 
 Promotes the working, probe-validated Konjo Verifier from a finalize-gate
