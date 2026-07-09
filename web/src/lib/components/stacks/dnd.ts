@@ -14,3 +14,15 @@ export interface DragState {
 }
 
 export const dragging = writable<DragState | null>(null);
+
+/** Stack-1: the pane-level twin of `dragging` — whole-stack reordering via
+ *  the purple control dock's drag handle. The draggable element is the
+ *  pane's own root container (`StackPane.svelte`), one component up from
+ *  the dock the handle lives in, so this is module-scope state rather than
+ *  a prop threaded back up through a callback. */
+export interface PaneDragState {
+  paneKey: string;
+  index: number;
+}
+
+export const draggingPane = writable<PaneDragState | null>(null);

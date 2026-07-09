@@ -1,72 +1,74 @@
 <!--
   GuardrailsPopover — content rendered inside `Popover` for the cardbar's
-  sun guardrails button. Every field here is WIRED: `gate`/`until`/`onFail`
-  map onto the real `CreateTaskOptions.gate` / `.until` / `.on_fail` fields
-  (landed PR #62), and the max-iter stepper edits the same `maxIterations`
-  the cardbar's iteration pill does. `budget` is the one client-only field
-  in this popover — TODO(backend).
+  sun guardrails button. At loop scope every field is WIRED: `gate`/`until`/
+  `onFail` map onto the real `CreateTaskOptions.gate` / `.until` /
+  `.on_fail` fields (landed PR #62), and the max-iter stepper edits the same
+  `maxIterations` the cardbar's iteration pill does. `budget` is the one
+  client-only field — TODO(backend).
+
+  Generalized (Stack-1) to value + callback props instead of `card`/
+  `paneKey`, and a `scope` prop that hides the gate/until rows at stack
+  scope — there is no server-side "whole chain" for a shell precondition/
+  exit-condition to run against (see `stores/stack.ts::StackGuardrails`'s
+  doc comment), so showing those two fields there would be exactly the
+  "inert control that looks enforced" the brief rules out. `onFail` stays
+  wired at both scopes; scoped to the stack it drives the chain sequencer's
+  on-fail policy (`stores/stackRun.ts`) instead of one task's retry pacing.
 -->
 <script lang="ts">
-  import {
-    type StackCard as StackCardT,
-    type Guardrails,
-    type OnFail,
-    type Budget,
-    stepMaxIterations,
-    maxIterationsLabel,
-    updateCardInPane
-  } from '$lib/stores/stack';
+  import { type OnFail, type Budget, maxIterationsLabel } from '$lib/stores/stack';
   import { closePopover } from './Popover.svelte';
   import Toggle from './Toggle.svelte';
   import { ICONS } from './icons';
 
-  export let card: StackCardT;
-  export let paneKey: string;
+  export let scope: 'loop' | 'stack' = 'loop';
+  export let gate = false;
+  export let gateCmd = '';
+  export let until = false;
+  export let untilCmd = '';
+  export let onFail: OnFail;
+  export let budget: Budget;
+  export let onChangeGate: (patch: { gate?: boolean; gateCmd?: string }) => void = () => {};
+  export let onChangeUntil: (patch: { until?: boolean; untilCmd?: string }) => void = () => {};
+  export let onChangeOnFail: (value: OnFail) => void;
+  export let onChangeBudget: (value: Budget) => void;
+  /** Max-iter stepper — the same field the cardbar's iteration pill edits at
+   *  loop scope, or the chain loop-count at stack scope. `label` lets the
+   *  stack scope call it "loop stack" instead of "max iter". */
+  export let maxIterations: number;
+  export let onStep: (delta: number) => void;
+  export let iterLabel = 'max iter';
 
   const ON_FAIL: OnFail[] = ['stop', 'continue', 'backoff'];
   const BUDGETS: Budget[] = ['auto', '200k', 'none'];
 
-  function patchGuardrails(patch: Partial<Guardrails>) {
-    updateCardInPane(paneKey, card.id, { guardrails: { ...card.guardrails, ...patch } });
-  }
-  function step(delta: number) {
-    updateCardInPane(paneKey, card.id, { maxIterations: stepMaxIterations(card.maxIterations, delta) });
-  }
   function onGateInput(e: Event) {
-    patchGuardrails({ gateCmd: (e.target as HTMLInputElement).value });
+    onChangeGate({ gateCmd: (e.target as HTMLInputElement).value });
   }
   function onUntilInput(e: Event) {
-    patchGuardrails({ untilCmd: (e.target as HTMLInputElement).value });
+    onChangeUntil({ untilCmd: (e.target as HTMLInputElement).value });
   }
 </script>
 
-<div class="ph">{@html ICONS.shield}guardrails · run limits</div>
+<div class="ph">{@html ICONS.shield}guardrails · {scope === 'stack' ? 'chain limits' : 'run limits'}</div>
 <div class="pbody">
-  <div class="gline">
-    <Toggle on={card.guardrails.gate} onToggle={() => patchGuardrails({ gate: !card.guardrails.gate })} accent="sun" />
-    <span class="lbl">gate</span>
-    <input
-      value={card.guardrails.gateCmd}
-      disabled={!card.guardrails.gate}
-      placeholder="shell cmd, must pass first"
-      on:input={onGateInput}
-    />
-  </div>
-  <div class="gline">
-    <Toggle on={card.guardrails.until} onToggle={() => patchGuardrails({ until: !card.guardrails.until })} accent="sun" />
-    <span class="lbl">until</span>
-    <input
-      value={card.guardrails.untilCmd}
-      disabled={!card.guardrails.until}
-      placeholder="loop until exit 0"
-      on:input={onUntilInput}
-    />
-  </div>
+  {#if scope === 'loop'}
+    <div class="gline">
+      <Toggle on={gate} onToggle={() => onChangeGate({ gate: !gate })} accent="sun" />
+      <span class="lbl">gate</span>
+      <input value={gateCmd} disabled={!gate} placeholder="shell cmd, must pass first" on:input={onGateInput} />
+    </div>
+    <div class="gline">
+      <Toggle on={until} onToggle={() => onChangeUntil({ until: !until })} accent="sun" />
+      <span class="lbl">until</span>
+      <input value={untilCmd} disabled={!until} placeholder="loop until exit 0" on:input={onUntilInput} />
+    </div>
+  {/if}
   <div class="gseg-row">
     <span class="lbl">on fail</span>
     <span class="seg">
       {#each ON_FAIL as f (f)}
-        <button type="button" class:on={card.guardrails.onFail === f} on:click={() => patchGuardrails({ onFail: f })}>
+        <button type="button" class:on={onFail === f} on:click={() => onChangeOnFail(f)}>
           {f}
         </button>
       {/each}
@@ -76,7 +78,7 @@
     <span class="lbl">budget</span>
     <span class="seg">
       {#each BUDGETS as b (b)}
-        <button type="button" class:on={card.guardrails.budget === b} on:click={() => patchGuardrails({ budget: b })}>
+        <button type="button" class:on={budget === b} on:click={() => onChangeBudget(b)}>
           {b}
         </button>
       {/each}
@@ -85,11 +87,11 @@
 </div>
 <div class="gfoot">
   <div class="maxiter">
-    <span class="lbl">max iter</span>
+    <span class="lbl">{iterLabel}</span>
     <span class="stepper">
-      <button type="button" on:click={() => step(-1)} title="fewer iterations">−</button>
-      <span class="v">{maxIterationsLabel(card.maxIterations)}</span>
-      <button type="button" on:click={() => step(1)} title="more iterations">+</button>
+      <button type="button" on:click={() => onStep(-1)} title="fewer iterations">−</button>
+      <span class="v">{maxIterationsLabel(maxIterations)}</span>
+      <button type="button" on:click={() => onStep(1)} title="more iterations">+</button>
     </span>
   </div>
   <button class="apply" on:click={closePopover}>done</button>

@@ -1,27 +1,25 @@
 <!--
   SchedulePopover — content rendered inside `Popover` for the cardbar's
-  cyan schedule button. `cron.raw` is WIRED — it mirrors `ScheduleEntry.cron`
-  (`crates/lopi-core/src/config.rs`); the preset fields two-way-sync with it.
+  cyan schedule button. `cron.raw` is WIRED at the loop scope — it mirrors
+  `ScheduleEntry.cron` (`crates/lopi-core/src/config.rs`); the preset fields
+  two-way-sync with it. Generalized (Stack-1) to a `scheduled`/`cron` value
+  pair + `onToggle`/`onChange` callbacks instead of a `card`/`paneKey` pair,
+  so the exact same component mounts scoped to one loop (`StackCard.svelte`)
+  or to the whole stack (the purple control dock's chain-wide cron — that
+  one is STUBBED, never actually fired server-side, see `stackRun.ts`).
 -->
 <script lang="ts">
-  import {
-    type StackCard as StackCardT,
-    type CronConfig,
-    type CronFreq,
-    type Dow,
-    buildCronString,
-    cronHuman,
-    computeNextRuns,
-    updateCardInPane
-  } from '$lib/stores/stack';
+  import { type CronConfig, type CronFreq, type Dow, buildCronString, cronHuman, computeNextRuns } from '$lib/stores/stack';
   import { closePopover } from './Popover.svelte';
   import Dropdown from '$lib/components/ui/Dropdown.svelte';
   import Combo from './Combo.svelte';
   import Toggle from './Toggle.svelte';
   import { ICONS } from './icons';
 
-  export let card: StackCardT;
-  export let paneKey: string;
+  export let scheduled: boolean;
+  export let cron: CronConfig;
+  export let onToggle: () => void;
+  export let onChange: (next: CronConfig) => void;
 
   const FREQS: CronFreq[] = ['every minute', 'hourly', 'daily', 'weekly', 'custom'];
   const DOWS: Dow[] = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -30,28 +28,24 @@
   const MINUTES = [0, 15, 30, 45];
 
   function patchCron(patch: Partial<CronConfig>) {
-    const next: CronConfig = { ...card.cron, ...patch };
+    const next: CronConfig = { ...cron, ...patch };
     if (next.freq !== 'custom') next.raw = buildCronString(next);
-    updateCardInPane(paneKey, card.id, { cron: next });
-  }
-
-  function toggleScheduled() {
-    updateCardInPane(paneKey, card.id, { scheduled: !card.scheduled });
+    onChange(next);
   }
 
   function onRawInput(e: Event) {
     const raw = (e.target as HTMLInputElement).value;
-    updateCardInPane(paneKey, card.id, { cron: { ...card.cron, freq: 'custom', raw } });
+    onChange({ ...cron, freq: 'custom', raw });
   }
 
   function onDowChange(e: CustomEvent<string>) {
     patchCron({ dow: e.detail as Dow });
   }
 
-  $: cronExpr = buildCronString(card.cron);
-  $: human = cronHuman(card.cron);
+  $: cronExpr = buildCronString(cron);
+  $: human = cronHuman(cron);
   $: rawSize = Math.min(Math.max(cronExpr.length, 9), 34);
-  $: runs = card.scheduled ? computeNextRuns(cronExpr, new Date(), 3) : [];
+  $: runs = scheduled ? computeNextRuns(cronExpr, new Date(), 3) : [];
 
   function formatRun(d: Date): string {
     return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
@@ -61,47 +55,47 @@
 <div class="ph">{@html ICONS.cron}schedule</div>
 <div class="pbody">
   <div class="enrow">
-    <Toggle on={card.scheduled} onToggle={toggleScheduled} accent="ice" />
+    <Toggle on={scheduled} onToggle={onToggle} accent="ice" />
     <span>run on a schedule</span>
   </div>
 
-  {#if card.scheduled}
+  {#if scheduled}
     <div class="freqrow">
       {#each FREQS as f (f)}
-        <button type="button" class="freq" class:on={card.cron.freq === f} on:click={() => patchCron({ freq: f })}>
+        <button type="button" class="freq" class:on={cron.freq === f} on:click={() => patchCron({ freq: f })}>
           {f}
         </button>
       {/each}
     </div>
 
-    {#if card.cron.freq === 'weekly'}
+    {#if cron.freq === 'weekly'}
       <div class="detrow">
         <span>on</span>
-        <Dropdown dense value={card.cron.dow} options={DOW_OPTIONS} on:change={onDowChange} />
+        <Dropdown dense value={cron.dow} options={DOW_OPTIONS} on:change={onDowChange} />
         <span>at</span>
-        <Combo value={card.cron.hour12} options={HOURS} min={1} max={12} onChange={(n) => patchCron({ hour12: n })} />
+        <Combo value={cron.hour12} options={HOURS} min={1} max={12} onChange={(n) => patchCron({ hour12: n })} />
         <span class="colon">:</span>
-        <Combo value={card.cron.min} options={MINUTES} min={0} max={59} onChange={(n) => patchCron({ min: n })} />
-        <span class="ampm" class:pm={card.cron.ampm === 'PM'}>
-          <button type="button" class="ap" class:on={card.cron.ampm === 'AM'} on:click={() => patchCron({ ampm: 'AM' })}>AM</button>
-          <button type="button" class="ap" class:on={card.cron.ampm === 'PM'} on:click={() => patchCron({ ampm: 'PM' })}>PM</button>
+        <Combo value={cron.min} options={MINUTES} min={0} max={59} onChange={(n) => patchCron({ min: n })} />
+        <span class="ampm" class:pm={cron.ampm === 'PM'}>
+          <button type="button" class="ap" class:on={cron.ampm === 'AM'} on:click={() => patchCron({ ampm: 'AM' })}>AM</button>
+          <button type="button" class="ap" class:on={cron.ampm === 'PM'} on:click={() => patchCron({ ampm: 'PM' })}>PM</button>
         </span>
       </div>
-    {:else if card.cron.freq === 'daily'}
+    {:else if cron.freq === 'daily'}
       <div class="detrow">
         <span>at</span>
-        <Combo value={card.cron.hour12} options={HOURS} min={1} max={12} onChange={(n) => patchCron({ hour12: n })} />
+        <Combo value={cron.hour12} options={HOURS} min={1} max={12} onChange={(n) => patchCron({ hour12: n })} />
         <span class="colon">:</span>
-        <Combo value={card.cron.min} options={MINUTES} min={0} max={59} onChange={(n) => patchCron({ min: n })} />
-        <span class="ampm" class:pm={card.cron.ampm === 'PM'}>
-          <button type="button" class="ap" class:on={card.cron.ampm === 'AM'} on:click={() => patchCron({ ampm: 'AM' })}>AM</button>
-          <button type="button" class="ap" class:on={card.cron.ampm === 'PM'} on:click={() => patchCron({ ampm: 'PM' })}>PM</button>
+        <Combo value={cron.min} options={MINUTES} min={0} max={59} onChange={(n) => patchCron({ min: n })} />
+        <span class="ampm" class:pm={cron.ampm === 'PM'}>
+          <button type="button" class="ap" class:on={cron.ampm === 'AM'} on:click={() => patchCron({ ampm: 'AM' })}>AM</button>
+          <button type="button" class="ap" class:on={cron.ampm === 'PM'} on:click={() => patchCron({ ampm: 'PM' })}>PM</button>
         </span>
       </div>
-    {:else if card.cron.freq === 'hourly'}
+    {:else if cron.freq === 'hourly'}
       <div class="detrow">
         <span>at minute</span>
-        <Combo value={card.cron.min} options={MINUTES} min={0} max={59} onChange={(n) => patchCron({ min: n })} />
+        <Combo value={cron.min} options={MINUTES} min={0} max={59} onChange={(n) => patchCron({ min: n })} />
       </div>
     {/if}
 
@@ -113,7 +107,7 @@
   {/if}
 </div>
 
-{#if card.scheduled}
+{#if scheduled}
   <div class="schedfoot">
     <div class="nextruns">
       <span class="nrl">next runs:</span>

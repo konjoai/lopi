@@ -21,8 +21,12 @@
   export let paneKey: string;
   /** This card's index in the pane; the new card lands right after it. */
   export let index: number;
+  /** Stack-1: suppress the cadence badge when the stack's own schedule/
+   *  loop-count governs cadence instead (`perLoopScheduleGoverned`) — the
+   *  card above isn't actually firing on its own cron in that state. */
+  export let scheduleGoverned = false;
 
-  $: sched = card.scheduled;
+  $: sched = card.scheduled && !scheduleGoverned;
 
   function insertHere() {
     insertCardIntoPane(paneKey, index + 1, buildCard('new prompt'));

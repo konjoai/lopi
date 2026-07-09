@@ -5,6 +5,129 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## Stack-1 — stack-level controls + the purple stack control area
+
+**The precedence rule, decided once here rather than re-litigated per
+caller: `loop.field ?? stack.default.field ?? DEF.field`.** Reading the
+actual code before building anything showed this rule was *already*
+structurally true — `cardToTaskPayload`'s `card.config.model ?? defaults.model`
+(UI-2) is exactly the `loop ?? stack.default` half of it, and has been since
+UI-2 landed. What Stack-1 actually changed is *where the fallback source
+lives*: `stores/stackDefaults.ts` was a single app-wide `writable`
+(`stackDefaults`) shared by both panes — every pane's cards fell back to the
+*same* defaults, which made "each stack carries its own default config"
+(the brief's whole premise) impossible even though the resolution function
+itself was already correct. Moving `StackDefaults` from a global store into
+each `StackPaneState.config.defaults` was the one real change; the
+resolution logic in `cardToTaskPayload` didn't need to change at all — a
+table-driven test (`stack.test.ts`) proves the three-rung chain explicitly
+now, using an actual `DEFAULT_STACK_DEFAULTS` baseline rather than an
+arbitrary literal, so a future change to the app-wide default can't
+silently invalidate what the test claims to prove.
+
+**The second precedence rule — stack schedule/loop-count GOVERN the chain,
+per-loop schedules go inert — is a pure *rendering* rule
+(`perLoopScheduleGoverned`), never a mutation.** A card's own `scheduled`/
+`cron` fields are untouched when the stack governs it; `StackCard.svelte`
+and `StackConnector.svelte` just stop presenting that state as active
+("governed by stack — won't fire on its own" instead of the cron's actual
+next-run time). This was the only honest option available: mutating or
+clearing a card's schedule the moment the stack starts governing would lose
+the operator's prior configuration the instant they toggled the stack's own
+loop-count back to `×1` — the rendering-only approach makes that reversible
+for free, with zero extra state to reconcile.
+
+**Chain guardrails (`StackGuardrails`) are `{ onFail, budget }` — no
+`gate`/`until`, deliberately not a reuse of the per-loop `Guardrails` type.**
+`gate`/`until` are shell commands executed *server-side*, inside one
+task's own retry loop (`crates/lopi-core/src/loop_config.rs`); there is no
+server-side "whole client-side stack" for a chain-wide version of either to
+run against. Two options existed: (a) reuse `Guardrails` verbatim and hide
+the gate/until rows in the popover at stack scope, or (b) give the stack its
+own narrower type. Took (b) — a type that can't even express `gate`/`until`
+at chain scope is a stronger guarantee than a type that can but is told not
+to by a UI-layer conditional, and it costs nothing: `GuardrailsPopover.svelte`
+already needed a `scope` prop either way (its footer stepper edits
+`maxIterations` at loop scope or the chain `loopCount` at stack scope), so
+the type split rides along the same seam for free. `onFail` is the one
+field WIRED at chain scope too, into `stores/stackRun.ts`'s new chain-level
+on-fail (see below) — a real, observable client behavior, just re-scoped
+from "how one task retries" to "what the chain does when a card fails".
+`budget` stays exactly as unenforced/hidden as the per-loop decision
+(Backend-1's Phase 0 escalation) already established — no new honesty gap
+introduced, none closed either.
+
+**Chain loop (`loopCount` ×N/∞) and chain on-fail extend `stackRun.ts`'s
+existing `advance()` loop rather than wrapping it in an outer retry.** The
+alternative — call `runStack`'s inner logic N times from a new outer
+function — would have duplicated the pause/drain-checking-every-iteration
+property that already makes an *infinite* per-card wait safe (Backend-1's
+own reasoning for why the sequencer never needs a numeric bound on
+`max_iterations: 0`). Instead, `state.cursor >= state.order.length` now
+branches on "start repetition N+1" vs "finish for good" inside the same
+`for (;;)` loop that already re-reads `runs`/`panes` fresh every iteration —
+an infinite chain (`loopTarget: 0`) is exactly as pause/drain-safe as an
+infinite single loop already was, for free, because it's the same loop.
+`onFail`'s three values needed a real interpretation at chain scope since
+their per-loop meaning (retry-pacing within one task) doesn't transfer
+directly: `stop` keeps the pre-Stack-1 hardcoded "halt everything"
+behavior as the explicit default (a one-way compatibility door — nothing
+that depended on that hardcoded behavior breaks); `continue` skips the
+failed card and presses on within the same pass; `backoff` ends the
+current pass early (skips its remaining cards) but still attempts the next
+repetition — a failed pass doesn't necessarily kill the whole ×N chain,
+only itself. All three still leave `hadFailure: true` on the run state, so
+a chain that "pressed on" past a failure still reports `phase: 'error'`
+overall rather than a misleadingly clean `'done'`.
+
+**Whole-chain scheduling is STUBBED, not wired, confirmed by reading
+`scheduleStack` before deciding.** Backend-1's own `scheduleStack` can only
+ever attach one cron to one card server-side — `ScheduleBody.goal: String`
+has no multi-goal-pipeline concept, a gap Backend-1's own ledger entry
+already flagged as needing a real backend change
+(`ScheduleSpec.goal: String` → `Vec<String>`) to close. Building a
+chain-wide schedule toggle that silently degraded to "schedule the bottom
+card only" (reusing `scheduleStack` under the hood) would have been exactly
+the "inert control that looks enforced" the brief rules out — worse, it
+would have looked *more* enforced than the honest per-loop "Schedule stack"
+run-menu item, which at least reports its `skippedCardIds` back. So the
+dock's schedule popover stores `config.scheduled`/`config.cron` and renders
+an explicit "not yet enforced — no whole-chain cron exists server-side yet"
+hint whenever the toggle is on, and nothing in this sprint calls
+`scheduleStack`/`createSchedule` from it.
+
+**`options.ts` is a new module, not a refactor avoided.** Adding
+`stores/stackDefaults.ts` as a real (not type-only) import into
+`stores/stack.ts` — needed for `defaultStackConfig()`'s factory call, not
+just the `StackDefaults` type — surfaced a transitive dependency nobody had
+hit before: `stackDefaults.ts` imported `MODEL_OPTIONS` from `controls.ts`,
+which imports `$app/environment` for its `launchControls` localStorage
+persistence. That import is invisible in the browser (Vite resolves the
+virtual module fine) but fatal under this repo's plain-`tsx` test
+convention the moment anything in the `stack.ts`/`stack.test.ts` chain
+needs it — exactly the failure mode `stackRun.ts`'s own doc comment already
+named and designed around (`statusSource` as a parameter instead of an
+`./agents` import) for a different edge of the same problem. Splitting the
+pure option catalogs (`Option`/`MODEL_OPTIONS`/`EFFORT_OPTIONS`/
+`PRIORITY_OPTIONS`/`labelFor`) out of `controls.ts` into `options.ts`, with
+`controls.ts` re-exporting them verbatim, fixes it at zero cost to any
+existing call site — nothing outside `stores/` even knows the split
+happened.
+
+**How to apply:** any future module that `stores/stack.ts` (or anything
+`stack.test.ts` transitively imports) needs a *runtime* dependency on —
+not just a type — must be checked for its own transitive imports first;
+`import type` alone doesn't save you the moment a real value/factory
+function is needed. Any future "stack-level facet mirroring a per-loop
+one" should default to generalizing the existing popover's props (value +
+callback, plus a `scope` prop if the fields genuinely differ) before
+reaching for a forked component — `SchedulePopover`/`GuardrailsPopover`/
+`EvalsPopover` all took this path this sprint; only `ConfigDrawer.svelte`
+didn't, because its whole job (per-loop *override* of something) doesn't
+exist at the stack level (the stack *is* the something), so a new
+`StackConfigPopover.svelte` reusing `Dropdown.svelte` directly is the
+correct amount of reuse, not a gap.
+
 ## Shell-1 — Loop Stacks as default view, fully-hidden left sidebar
 
 **Default-route change is a redirect (`+page.ts` `load()` throwing

@@ -13,6 +13,7 @@
  */
 import { writable } from 'svelte/store';
 import type { CreateTaskOptions } from '$lib/api';
+import { type StackDefaults, DEFAULT_STACK_DEFAULTS, defaultStackDefaults } from '$lib/stores/stackDefaults';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -713,6 +714,149 @@ export function bumpInOrder(
   return { ok: true, order: next };
 }
 
+// ── Stack-level config (Stack-1: loop-count, schedule, guardrails, evals,
+//    config-defaults — the purple stack control area's data) ─────────────────
+
+/** The chain-level analogue of a loop's `Guardrails`. Deliberately narrower —
+ *  no `gate`/`until`: those are shell preconditions/exit-conditions around a
+ *  *single* task's own retry loop (`crates/lopi-core/src/loop_config.rs`),
+ *  executed server-side inside one agent run. There is no server-side
+ *  concept of "the whole client-side stack," so a chain-wide gate/until
+ *  command has nowhere to actually run — inventing one here would be
+ *  exactly the "inert control that looks enforced" the brief rules out.
+ *  `onFail` is WIRED into the chain sequencer (`stores/stackRun.ts`'s
+ *  `advance`) — a real, observable client behavior, just re-scoped from
+ *  "how one task retries" to "what the chain does when a card fails."
+ *  `budget` stays client-only/unenforced, same honesty rule as the per-loop
+ *  budget (hidden from view — see `StackConnector.svelte`'s doc comment). */
+export interface StackGuardrails {
+  onFail: OnFail;
+  budget: Budget;
+}
+
+/** Freshly-initialized chain guardrails — every stack gets its own object. */
+export function defaultStackGuardrails(): StackGuardrails {
+  return { onFail: 'stop', budget: 'auto' };
+}
+
+/** The stack control area's placement. `'dock'` is a collapsible strip
+ *  pinned to the pane's base — a slim always-visible summary + run button
+ *  that expands upward to the full controls (the shipped default, matching
+ *  `docs/ui/lopi-stack-control-area.html`'s settled "V3" option).
+ *  `'sticky'` is the always-fully-expanded, permanently-pinned variant from
+ *  the same mockup ("option 1") — its CSS ships in `StackControlDock.svelte`
+ *  today even though nothing sets this to `'sticky'`, exactly the
+ *  `SIDEBAR_MODE`/`stores/nav.ts` precedent: flipping this one constant
+ *  later is the entire migration, no rebuild. Not exposed as a user-facing
+ *  toggle (out of scope this sprint). */
+export const STACK_CONTROL_MODE: 'dock' | 'sticky' = 'dock';
+
+/** A chain run's default iteration count — `1` (run once through), not the
+ *  per-loop `DEFAULT_MAX_ITERATIONS` — a fresh stack shouldn't implicitly
+ *  repeat itself. Reuses the same `0` = infinite sentinel and the same
+ *  `stepMaxIterations`/`maxIterationsLabel` helpers as the per-loop
+ *  iteration pill (the brief's "reuse the exact loop controls, just scoped
+ *  to the stack"). */
+export const DEFAULT_STACK_LOOP_COUNT = 1;
+
+/** Stack-level config — the purple control area's full state. `scheduled`/
+ *  `cron` are STUBBED (rendered, editable, never actually fired — see
+ *  `stores/stackRun.ts`'s doc comment on why whole-chain cron needs backend
+ *  work this sprint doesn't have). `evals` is CLIENT-ONLY (chain-acceptance
+ *  intent only; eval execution doesn't exist anywhere yet). `defaults` is
+ *  WIRED — resolved into every loop's real `CreateTaskOptions` at the
+ *  payload step (`cardToTaskPayload`'s existing `card.config.field ??
+ *  defaults.field` already *is* the `loop ?? stack.default ?? DEF`
+ *  precedence rule, since a stack's own `defaults` object is always a
+ *  concrete `StackDefaults` seeded from `DEFAULT_STACK_DEFAULTS` — there is
+ *  no "unset" stack-default state to fall further through). */
+export interface StackConfig {
+  loopCount: number;
+  scheduled: boolean;
+  cron: CronConfig;
+  guardrails: StackGuardrails;
+  evals: EvalRef[];
+  defaults: StackDefaults;
+}
+
+/** Freshly-initialized stack config — every pane gets its own objects
+ *  throughout (never a shared reference), matching `buildCard`'s per-card
+ *  convention. */
+export function defaultStackConfig(): StackConfig {
+  return {
+    loopCount: DEFAULT_STACK_LOOP_COUNT,
+    scheduled: false,
+    cron: defaultCron(),
+    guardrails: defaultStackGuardrails(),
+    evals: [BASELINE_EVAL],
+    defaults: defaultStackDefaults()
+  };
+}
+
+// ── Stack-level active-state predicates + summaries (hide-inactive, mirrors
+//    the per-loop `guardActive`/`evalActive`/`configActive` family) ──────────
+
+/** A chain guardrails facet reads "active" once it's been set away from the
+ *  do-nothing default (`onFail: 'stop'` is indistinguishable from "never
+ *  touched" — there's no separate enabled toggle at the chain level the way
+ *  gate/until have one per-loop). */
+export function stackGuardActive(g: StackGuardrails): boolean {
+  return g.onFail !== 'stop';
+}
+
+export function stackEvalActive(config: StackConfig): boolean {
+  return config.evals.length > 1;
+}
+
+/** The stack's own defaults read "active" once any field has moved off the
+ *  app-wide baseline — parallels `configActive`'s per-card comparison,
+ *  just against `DEFAULT_STACK_DEFAULTS` instead of a passed-in pane
+ *  default. */
+export function stackDefaultsActive(defaults: StackDefaults): boolean {
+  return (
+    defaults.model !== DEFAULT_STACK_DEFAULTS.model ||
+    defaults.effort !== DEFAULT_STACK_DEFAULTS.effort ||
+    defaults.repo !== DEFAULT_STACK_DEFAULTS.repo ||
+    defaults.branch !== DEFAULT_STACK_DEFAULTS.branch ||
+    defaults.autonomy !== DEFAULT_STACK_DEFAULTS.autonomy
+  );
+}
+
+/** The chain guardrails summary line: on-fail policy + budget preset,
+ *  mirroring `guardSummary`'s "`part · part`" shape. */
+export function stackGuardSummary(g: StackGuardrails): string {
+  return `${g.onFail} · budget:${g.budget}`;
+}
+
+/** The chain evals summary line, mirroring `evalsSummary`'s phrasing but
+ *  naming this "chain acceptance" (the mockup's own wording) rather than
+ *  "loop validation" — these are checks against the whole stack's outcome,
+ *  not one card's. */
+export function stackEvalsSummary(config: StackConfig): string {
+  const n = config.evals.length;
+  if (n <= 1) return '1 check · baseline only';
+  return `${n} checks · chain acceptance`;
+}
+
+/** The stack defaults summary line: which model every loop inherits, per
+ *  the mockup's "default model X · every loop inherits" copy. */
+export function stackDefaultsSummary(defaults: StackDefaults): string {
+  return `model ${defaults.model} · every loop inherits`;
+}
+
+/** §1's second precedence rule, load-bearing and pure: while the stack
+ *  drives cadence (either it's on its own schedule, or it's set to loop the
+ *  whole chain more than once), a card's own `scheduled` flag must not be
+ *  presented as independently active — its cron never fires on its own
+ *  inside a governed stack. This never mutates a card's stored `scheduled`/
+ *  `cron` (so toggling stack governance off instantly restores the card's
+ *  prior schedule display) — it's purely a *rendering* rule, exactly what
+ *  the brief means by "don't render a per-loop schedule as active when the
+ *  stack governs it." */
+export function perLoopScheduleGoverned(config: StackConfig): boolean {
+  return config.scheduled || config.loopCount !== 1;
+}
+
 // ── Pane store (keyed dispatch over the pure array ops) ───────────────────────
 
 /** One independent stack pane — `key` is its stable identity for keyed ops. */
@@ -720,12 +864,13 @@ export interface StackPaneState {
   key: string;
   title: string;
   cards: StackCard[];
+  config: StackConfig;
 }
 
 function makeDefaultPanes(): StackPaneState[] {
   return [
-    { key: 's1', title: 'stack one', cards: [] },
-    { key: 's2', title: 'stack two', cards: [] }
+    { key: 's1', title: 'stack one', cards: [], config: defaultStackConfig() },
+    { key: 's2', title: 'stack two', cards: [], config: defaultStackConfig() }
   ];
 }
 
@@ -757,6 +902,74 @@ export function insertIntoPane(
   return applyToPaneCards(state, key, (cards) => insertCardAt(cards, index, card));
 }
 
+// ── Stack-level ops (Stack-1 §2 pre-flight: none of these existed before —
+//    UI-2/Backend-1/Shell-1 only ever operated on a fixed two-pane array).
+//    Pure, tested, and isolated per pane exactly like the card ops above. ──
+
+/** Clone a whole stack — pane title, config, and every card — in place,
+ *  immediately after the original. Mirrors `duplicateCard`'s reset: every
+ *  cloned card gets a fresh id and its run state wiped (`status: 'idle'`,
+ *  no `iteration`/`taskId`), and the clone gets a fresh pane key + its own
+ *  `config` object (never a shared reference with the original, so editing
+ *  one stack's defaults/guardrails/schedule can't leak into the other's).
+ *  No-op if the key isn't present. */
+export function duplicateStack(state: StackPaneState[], key: string): StackPaneState[] {
+  const idx = state.findIndex((p) => p.key === key);
+  if (idx === -1) return state;
+  const original = state[idx];
+  const clone: StackPaneState = {
+    key: makeId(),
+    title: `${original.title} copy`,
+    cards: original.cards.map((c) => ({ ...c, id: makeId(), status: 'idle', iteration: undefined, taskId: undefined })),
+    config: {
+      ...original.config,
+      cron: { ...original.config.cron },
+      guardrails: { ...original.config.guardrails },
+      evals: [...original.config.evals],
+      defaults: { ...original.config.defaults }
+    }
+  };
+  const next = [...state];
+  next.splice(idx + 1, 0, clone);
+  return next;
+}
+
+/** Move the stack at `from` to index `to`. Out-of-range indices are a
+ *  no-op — the exact same shape as `reorderCard`, just one level up (panes
+ *  instead of cards within a pane). */
+export function reorderStacks(state: StackPaneState[], from: number, to: number): StackPaneState[] {
+  if (from < 0 || from >= state.length || to < 0 || to >= state.length) return state;
+  const next = [...state];
+  const [moved] = next.splice(from, 1);
+  next.splice(to, 0, moved);
+  return next;
+}
+
+/** Drag-and-drop-friendly stack reorder: move the pane at `fromIndex` to
+ *  just before/after the pane currently at `targetIndex` — the pane-level
+ *  twin of `moveCardBeforeOrAfter`, used by the stack control dock's drag
+ *  handle. */
+export function moveStackBeforeOrAfter(
+  state: StackPaneState[],
+  fromIndex: number,
+  targetIndex: number,
+  before: boolean
+): StackPaneState[] {
+  if (fromIndex === targetIndex) return state;
+  const to = fromIndex < targetIndex ? (before ? targetIndex - 1 : targetIndex) : before ? targetIndex : targetIndex + 1;
+  return reorderStacks(state, fromIndex, to);
+}
+
+/** Drop a stack by key. Refuses to delete the last remaining pane — there
+ *  is no "add a new stack" affordance anywhere in the app yet (panes are
+ *  only ever created via `duplicateStack`), so emptying the array would
+ *  strand the user with no way back short of a full page reload. A
+ *  deliberate floor, not an oversight; revisit once pane creation exists. */
+export function deleteStack(state: StackPaneState[], key: string): StackPaneState[] {
+  if (state.length <= 1) return state;
+  return state.filter((p) => p.key !== key);
+}
+
 /** The two active stack panes — client-only, in-memory, no persistence this
  *  slice. */
 export const panes = writable<StackPaneState[]>(makeDefaultPanes());
@@ -783,4 +996,27 @@ export function insertCardIntoPane(key: string, index: number, card: StackCard):
 }
 export function updateCardInPane(key: string, id: string, patch: Partial<StackCard>): void {
   panes.update((state) => applyToPaneCards(state, key, (cards) => patchCard(cards, id, patch)));
+}
+
+/** Patch a pane's stack-level config with a shallow merge — the config
+ *  drawer/popovers' write path, mirroring `updateCardInPane`'s contract
+ *  (callers pass fully-formed nested objects; this never deep-merges). */
+export function updateStackConfig(key: string, patch: Partial<StackConfig>): void {
+  panes.update((state) => {
+    const idx = state.findIndex((p) => p.key === key);
+    if (idx === -1) return state;
+    const next = [...state];
+    next[idx] = { ...next[idx], config: { ...next[idx].config, ...patch } };
+    return next;
+  });
+}
+
+export function duplicateStackInPanes(key: string): void {
+  panes.update((state) => duplicateStack(state, key));
+}
+export function reorderStacksInPanes(fromIndex: number, targetIndex: number, before: boolean): void {
+  panes.update((state) => moveStackBeforeOrAfter(state, fromIndex, targetIndex, before));
+}
+export function deleteStackFromPanes(key: string): void {
+  panes.update((state) => deleteStack(state, key));
 }

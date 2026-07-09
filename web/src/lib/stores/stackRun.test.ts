@@ -30,7 +30,7 @@ import {
   runs,
   type AgentStatusSource
 } from './stackRun';
-import { panes, buildCard, type StackCard, type PaneDefaults } from './stack';
+import { panes, buildCard, defaultStackConfig, type StackCard, type PaneDefaults, type StackConfig } from './stack';
 import { eq, eqIs, ok, namedSummary } from '$lib/test-harness';
 
 function card(id: string, goal = id): StackCard {
@@ -98,10 +98,18 @@ function seedPane(key: string, cards: StackCard[]): void {
   panes.update((state) => state.map((p) => (p.key === key ? { ...p, cards } : p)));
 }
 
+/** Patch a pane's stack-level config (loop count / chain on-fail) for the
+ *  chain-loop tests — a thin test-local helper, not exported by
+ *  `stores/stack.ts` since production code always goes through
+ *  `updateStackConfig`. */
+function seedStackConfig(key: string, patch: Partial<StackConfig>): void {
+  panes.update((state) => state.map((p) => (p.key === key ? { ...p, config: { ...p.config, ...patch } } : p)));
+}
+
 function resetPanes(): void {
   panes.set([
-    { key: 's1', title: 'stack one', cards: [] },
-    { key: 's2', title: 'stack two', cards: [] }
+    { key: 's1', title: 'stack one', cards: [], config: defaultStackConfig() },
+    { key: 's2', title: 'stack two', cards: [], config: defaultStackConfig() }
   ]);
   runs.set(new Map());
 }
@@ -281,6 +289,83 @@ async function main() {
     eq(result.skippedCardIds, ['b', 'c'], 'every other card is reported back as skipped, not silently dropped');
     eqIs(captured.length, 1, 'exactly one POST /api/schedules is made, not one per card');
     eqIs(captured[0]?.path, '/api/schedules', 'scheduleStack hits the real schedules endpoint');
+  }
+
+  // ── chain loop: a 3-card stack looped ×2 runs 6 launches in order ───────
+  {
+    resetPanes();
+    seedPane('s1', [card('c'), card('b'), card('a')]);
+    seedStackConfig('s1', { loopCount: 2 });
+    const statusSource: StatusStore = writable(new Map());
+    const captured = mockBackend(statusSource, { a: 'completed', b: 'completed', c: 'completed' });
+
+    runStack('s1', 'run', defaults, statusSource as AgentStatusSource);
+    await flush(60);
+
+    eq(
+      captured.map((c) => c.body.client_ref),
+      ['a', 'b', 'c', 'a', 'b', 'c'],
+      'a 3-loop chain looped ×2 launches every card twice, in the same order each pass'
+    );
+    eqIs(runState('s1')?.phase, 'done', 'a fully-successful ×2 chain ends in phase "done"');
+    eqIs(runState('s1')?.repetition, 1, 'the run settles on the second (index 1) repetition');
+  }
+
+  // ── chain on-fail: 'stop' (default) halts the whole chain, even mid-plan ─
+  {
+    resetPanes();
+    seedPane('s1', [card('c'), card('b'), card('a')]);
+    seedStackConfig('s1', { loopCount: 3 });
+    const statusSource: StatusStore = writable(new Map());
+    const captured = mockBackend(statusSource, { a: 'completed', b: 'failed' });
+
+    runStack('s1', 'run', defaults, statusSource as AgentStatusSource);
+    await flush();
+
+    eq(
+      captured.map((c) => c.body.client_ref),
+      ['a', 'b'],
+      "on-fail 'stop' halts immediately — card 'c' and every later repetition never launch"
+    );
+    eqIs(runState('s1')?.phase, 'error', "a halted chain ends in phase 'error'");
+  }
+
+  // ── chain on-fail: 'continue' skips the failed card, keeps looping ──────
+  {
+    resetPanes();
+    seedPane('s1', [card('c'), card('b'), card('a')]);
+    seedStackConfig('s1', { loopCount: 2, guardrails: { onFail: 'continue', budget: 'auto' } });
+    const statusSource: StatusStore = writable(new Map());
+    const captured = mockBackend(statusSource, { a: 'completed', b: 'failed', c: 'completed' });
+
+    runStack('s1', 'run', defaults, statusSource as AgentStatusSource);
+    await flush(60);
+
+    eq(
+      captured.map((c) => c.body.client_ref),
+      ['a', 'b', 'c', 'a', 'b', 'c'],
+      "on-fail 'continue' presses past the failed card within each pass and still repeats the chain"
+    );
+    eqIs(runState('s1')?.phase, 'error', "the run still reports 'error' overall — a failure happened, it just didn't stop the chain");
+  }
+
+  // ── chain on-fail: 'backoff' ends the pass early, still tries next rep ──
+  {
+    resetPanes();
+    seedPane('s1', [card('c'), card('b'), card('a')]);
+    seedStackConfig('s1', { loopCount: 2, guardrails: { onFail: 'backoff', budget: 'auto' } });
+    const statusSource: StatusStore = writable(new Map());
+    const captured = mockBackend(statusSource, { a: 'completed', b: 'failed', c: 'completed' });
+
+    runStack('s1', 'run', defaults, statusSource as AgentStatusSource);
+    await flush();
+
+    eq(
+      captured.map((c) => c.body.client_ref),
+      ['a', 'b', 'a', 'b'],
+      "on-fail 'backoff' skips the rest of a failed pass ('c' never launches that pass) but still attempts the next repetition"
+    );
+    eqIs(runState('s1')?.phase, 'error', "a chain that never once completed a full clean pass still reports 'error'");
   }
 
   namedSummary('stackRun');

@@ -32,7 +32,8 @@ import {
   cardToTaskPayloadForRunOnce,
   bumpInOrder,
   type StackCard,
-  type PaneDefaults
+  type PaneDefaults,
+  type OnFail
 } from './stack';
 
 /** Which run-menu action started this run — governs the payload each card
@@ -48,13 +49,27 @@ export type RunPhase = 'idle' | 'running' | 'paused' | 'draining' | 'done' | 'er
  *  snapshot of execution order taken at launch time — mutating a pane's
  *  cards mid-run (e.g. `bumpCard`) updates `order` but never re-derives it
  *  from the pane, so a run's plan stays stable even if the composer adds
- *  more cards while it's mid-flight. */
+ *  more cards while it's mid-flight.
+ *
+ *  `loopTarget`/`onFail` are likewise snapshotted from `pane.config` at
+ *  launch, same reasoning: tweaking the dock's loop-count or on-fail policy
+ *  mid-run shouldn't reshuffle a run already in flight. `repetition` counts
+ *  completed passes through `order` (`0` during the first pass);
+ *  `loopTarget === 0` is the same infinite sentinel `maxIterations` uses
+ *  elsewhere in this codebase. `hadFailure` tracks whether any card in any
+ *  repetition ended non-`completed`, so a chain that pressed on past a
+ *  failure (`onFail: 'continue'`/`'backoff'`) still finishes as `'error'`
+ *  overall rather than quietly reporting `'done'`. */
 export interface StackRunState {
   paneKey: string;
   phase: RunPhase;
   intent: RunIntent;
   order: string[];
   cursor: number;
+  repetition: number;
+  loopTarget: number;
+  onFail: OnFail;
+  hadFailure: boolean;
   error?: string;
 }
 
@@ -104,9 +119,15 @@ function waitForTerminal(
 }
 
 /** The driver: launches queued cards one at a time until the run pauses,
- *  drains, errors, or runs out of cards. Safe to call again after a pause
- *  is lifted (`resumeStack`) — it always re-reads `runs`/`panes` fresh at
- *  the top of each iteration rather than closing over a stale snapshot. */
+ *  drains, errors, or runs out of cards — then, per Stack-1's chain-loop
+ *  extension, either starts the next repetition of the same `order` or
+ *  finishes for good. Safe to call again after a pause is lifted
+ *  (`resumeStack`) — it always re-reads `runs`/`panes` fresh at the top of
+ *  each iteration rather than closing over a stale snapshot, which is also
+ *  what makes an infinite (`loopTarget === 0`) chain safe: every pass
+ *  re-checks pause/drain before doing anything, so it can never spin past a
+ *  user's pause/drain request even though it never numerically bounds
+ *  itself. */
 async function advance(
   paneKey: string,
   defaults: PaneDefaults,
@@ -117,12 +138,25 @@ async function advance(
     if (!state) return;
     if (state.phase === 'paused') return;
     if (state.phase === 'draining') {
-      setRun(paneKey, { phase: 'done' });
+      setRun(paneKey, {
+        phase: state.hadFailure ? 'error' : 'done',
+        error: state.hadFailure ? (state.error ?? 'drained after at least one failed loop') : undefined
+      });
       return;
     }
     if (state.phase !== 'running') return;
+
     if (state.cursor >= state.order.length) {
-      setRun(paneKey, { phase: 'done' });
+      const nextRepetition = state.repetition + 1;
+      const moreRepetitions = state.loopTarget === 0 || nextRepetition < state.loopTarget;
+      if (moreRepetitions) {
+        setRun(paneKey, { cursor: 0, repetition: nextRepetition });
+        continue;
+      }
+      setRun(paneKey, {
+        phase: state.hadFailure ? 'error' : 'done',
+        error: state.hadFailure ? (state.error ?? 'chain completed with at least one failed loop') : undefined
+      });
       return;
     }
 
@@ -149,6 +183,7 @@ async function advance(
       updateCardInPane(paneKey, cardId, { status: 'idle' });
       setRun(paneKey, {
         phase: 'error',
+        hadFailure: true,
         error: `"${card.goal}" failed to launch: ${err instanceof Error ? err.message : String(err)}`
       });
       return;
@@ -161,11 +196,26 @@ async function advance(
     updateCardInPane(paneKey, cardId, { status: 'done' });
 
     if (terminal !== 'completed') {
-      // Stop the whole run rather than silently continuing past a failed
-      // card — matches the brief's on_fail semantics being per-loop, not
-      // "ignore and move on" at the stack level.
-      setRun(paneKey, { phase: 'error', error: `"${card.goal}" ended ${terminal}` });
-      return;
+      const error = `"${card.goal}" ended ${terminal}`;
+      // Chain-level on-fail (Stack-1), reusing the per-loop `OnFail`
+      // vocabulary at chain scope: `stop` halts the whole chain immediately
+      // (the pre-Stack-1 hardcoded behavior); `continue` skips past this
+      // card to the next one in the same pass; `backoff` ends this pass
+      // early (skips its remaining cards) but still attempts the next
+      // repetition if one is queued — a failed pass doesn't necessarily
+      // kill the whole ×N chain, only itself. All three still leave the
+      // run's final phase `'error'` if any card ever failed (`hadFailure`),
+      // even when the chain pressed on and technically finished.
+      if (state.onFail === 'stop') {
+        setRun(paneKey, { phase: 'error', hadFailure: true, error });
+        return;
+      }
+      if (state.onFail === 'continue') {
+        setRun(paneKey, { cursor: state.cursor + 1, hadFailure: true, error });
+        continue;
+      }
+      setRun(paneKey, { cursor: state.order.length, hadFailure: true, error });
+      continue;
     }
 
     setRun(paneKey, { cursor: state.cursor + 1 });
@@ -173,7 +223,10 @@ async function advance(
 }
 
 /** Run-menu "Run now" / "Run once": launch a fresh run for this pane's
- *  cards in execution order. Replaces any prior run state for the pane. */
+ *  cards in execution order. Replaces any prior run state for the pane.
+ *  `loopTarget`/`onFail` snapshot the pane's stack config at launch, same
+ *  as `order` does for the card sequence — see `StackRunState`'s doc
+ *  comment. */
 export function runStack(
   paneKey: string,
   intent: RunIntent,
@@ -185,7 +238,17 @@ export function runStack(
   const order = executionOrder(pane.cards).map((c) => c.id);
   runs.update((m) => {
     const next = new Map(m);
-    next.set(paneKey, { paneKey, phase: 'running', intent, order, cursor: 0 });
+    next.set(paneKey, {
+      paneKey,
+      phase: 'running',
+      intent,
+      order,
+      cursor: 0,
+      repetition: 0,
+      loopTarget: pane.config.loopCount,
+      onFail: pane.config.guardrails.onFail,
+      hadFailure: false
+    });
     return next;
   });
   void advance(paneKey, defaults, statusSource);
@@ -218,7 +281,10 @@ export function drainStack(paneKey: string): void {
   const state = get(runs).get(paneKey);
   if (!state) return;
   if (state.phase === 'paused') {
-    setRun(paneKey, { phase: 'done' });
+    setRun(paneKey, {
+      phase: state.hadFailure ? 'error' : 'done',
+      error: state.hadFailure ? (state.error ?? 'drained after at least one failed loop') : undefined
+    });
     return;
   }
   if (state.phase === 'running') {

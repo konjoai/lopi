@@ -2,44 +2,73 @@
 
 ## NEXT_SESSION_PROMPT (read this first)
 
-Shell-1 has shipped: Loop Stacks (`/stacks`) is now the app's default
-view, and every nav destination moved from a horizontal top-tab bar into
-a left sidebar that's closed (off-canvas) by default — opened by a
-hamburger, closing on scrim-click/Esc/tab-select. Forge (the old `/`)
-moved to `/forge`; no page's internal behavior changed (verified by an
-empty `git diff --stat` outside the four touched route files). See
-`LEDGER.md`'s Shell-1 entry for the load-bearing decisions and
-`CHANGELOG.md`'s `[0.2.1]` entry for the full diff.
+Stack-1 has shipped: every pane in `/stacks` now carries a purple **stack
+control area** at its base (`StackControlDock.svelte`, collapsible-dock
+mode by default) with its own loop-count/schedule/guardrails/evals/default
+config, plus stack-level ops (duplicate/reorder/delete a whole pane, none
+of which existed before). The precedence rule (`loop ?? stack.default ??
+DEF`, and "stack schedule/loop-count govern the chain, per-loop schedules
+go inert while governed") is implemented and table-tested. See
+`LEDGER.md`'s Stack-1 entry for the load-bearing decisions and
+`CHANGELOG.md`'s `[0.2.2]` entry for the full diff.
+
+**The biggest gap, unchanged and now doubly relevant: eval execution.**
+Both the per-loop `EvalsPopover` (UI-2) and the new stack-level "chain
+acceptance" evals (Stack-1) are still 100% intent-only checklists — nothing
+anywhere executes a single eval, per-loop or chain-wide. Every other
+CLIENT-ONLY/STUBBED gap in this codebase eventually resolves into "wire it
+to something real"; this one has no backend counterpart to wire to yet at
+all. Whoever picks this up next should treat it as its own sprint, not a
+follow-on — it likely needs a real execution model (what runs an eval,
+against what artifact, reporting how) before either popover's checkboxes
+can mean anything.
 
 **What's still open, in priority order:**
 
-1. **Icon-rail is a one-line flip away, not yet asked for.**
-   `stores/nav.ts::SIDEBAR_MODE` is `'hidden'`; flipping it to `'rail'`
-   makes the closed sidebar a persistent icon-only strip instead of fully
-   off-canvas — the CSS already ships in `AppSidebar.svelte`, unused. No
-   code changes needed if/when this is wanted, just the constant.
-2. **No open-state persistence.** The sidebar is closed on every fresh
-   load, per the brief ("closed by default... do not persist open state").
-   If that's ever wrong for a returning user, it's a small addition
-   (`localStorage`, read once on mount) — deliberately not built here.
-3. **Per-route sidebar highlighting is exact-or-sub-route only.**
-   `isActiveRoute` matches `pathname === href || pathname.startsWith(href
-   + '/')` — fine for today's flat route structure (no nested dynamic
-   segments exist under any of the 14 destinations), but would need
-   revisiting if a destination ever grows sub-pages that shouldn't all
-   highlight the same parent nav item.
+1. **Whole-chain scheduling has no backend to wire to.** The dock's
+   schedule toggle stores `config.scheduled`/`config.cron` and shows an
+   honest "not yet enforced" hint — closing this needs
+   `ScheduleSpec.goal: String` → `Vec<String>` (or an equivalent
+   multi-goal cron concept) server-side, the same gap Backend-1's own
+   `scheduleStack` ledger entry already flagged for the per-card case.
+   Until then, don't let a future sprint quietly wire the dock's toggle
+   to the existing single-card `scheduleStack` — that would silently
+   downgrade "schedule the whole chain" to "schedule the bottom card",
+   which is worse than leaving it stubbed.
+2. **Stack (and per-loop) budget enforcement.** Both stay unenforced by
+   design (Backend-1's Phase 0 escalation); no scalar `budget_tokens`
+   field exists anywhere server-side yet.
+3. **Pane creation has no UI affordance.** `duplicateStack` is currently
+   the only way to get a third+ pane; there's no "+ new empty stack"
+   button. `deleteStack` deliberately refuses to empty the last pane
+   because of this — worth revisiting together if pane creation ever
+   gets built.
 4. **`bumpCard` still has no UI affordance** (carried over from
-   Backend-1, unrelated to this sprint, not touched here).
-5. **"Schedule stack" still only schedules the bottom card**; coverage/
-   audit/deny gates still soft (all carried over from Backend-1 — see its
-   own `LEDGER.md` entry for why).
+   Backend-1, unrelated to Stack-1, not touched here).
+5. **Chain on-fail's `'backoff'` policy re-attempts the *next repetition*
+   immediately** (no actual backoff/delay — there's no client-side timer
+   primitive worth inventing for this yet). If a real pacing need shows
+   up, revisit alongside whatever brings real budget/rate-limiting to the
+   client sequencer generally, rather than bolting a one-off `setTimeout`
+   onto just this path.
 
-**Unchanged (still out of scope):** eval execution/enforcement, budget
-enforcement, multi-pane/overview, `needs-you` derivation, effort→
-thinking-budget mapping, ratchet/beats-best, severity, and a real
-multi-card-per-pane output surface.
+**Unchanged (still out of scope):** eval execution/enforcement (see
+above — now the standing top gap), budget enforcement, multi-card live
+output, cross-pane card drag, `needs-you` derivation, effort→
+thinking-budget mapping, ratchet/beats-best, severity.
 
 ## Prior sprint history
+
+Shell-1 shipped: Loop Stacks (`/stacks`) became the app's default view, and
+every nav destination moved from a horizontal top-tab bar into a left
+sidebar that's closed (off-canvas) by default — opened by a hamburger,
+closing on scrim-click/Esc/tab-select. Forge (the old `/`) moved to
+`/forge`; no page's internal behavior changed (verified by an empty `git
+diff --stat` outside the four touched route files). See `LEDGER.md`'s
+Shell-1 entry for the load-bearing decisions and `CHANGELOG.md`'s `[0.2.1]`
+entry for the full diff. Its own open items (`SIDEBAR_MODE` rail-flip, no
+open-state persistence, exact-or-sub-route highlighting) are all still
+exactly as it left them — untouched by Stack-1.
 
 Backend-1 shipped: the `/stacks` UI actually executes. Task identity
 (`client_ref` round-tripping through the store), run-stack execution

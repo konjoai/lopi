@@ -1,41 +1,37 @@
 <!--
   EvalsPopover — content rendered inside `Popover` for the cardbar's jade
-  evals button. Client-only intent this slice (§3 of the UI-2 brief) — eval
-  execution doesn't exist server-side yet, so this is purely an editor of
-  which checks *would* run, never a pass/fail state. Baseline is
-  locked-on.
+  evals button. Client-only intent (§3 of the UI-2 brief, unchanged by
+  Stack-1) — eval execution doesn't exist server-side yet at either scope,
+  so this is purely an editor of which checks *would* run, never a
+  pass/fail state. Baseline is locked-on. Generalized (Stack-1) to an
+  `evals`/`onChange` value pair instead of `card`/`paneKey`, so the same
+  component mounts scoped to one loop or to the whole stack ("chain
+  acceptance" checks in the purple control dock).
 -->
 <script lang="ts">
-  import {
-    type StackCard as StackCardT,
-    EVAL_CATALOG,
-    EVAL_SUITES,
-    BASELINE_EVAL,
-    toggleEval,
-    applySuite,
-    updateCardInPane
-  } from '$lib/stores/stack';
+  import { type EvalRef, EVAL_CATALOG, EVAL_SUITES, BASELINE_EVAL, toggleEval, applySuite } from '$lib/stores/stack';
   import { closePopover } from './Popover.svelte';
   import { ICONS } from './icons';
 
-  export let card: StackCardT;
-  export let paneKey: string;
+  export let evals: EvalRef[];
+  export let onChange: (evals: EvalRef[]) => void;
+  export let heading = 'loop validation';
 
   const SUITE_KEYS = Object.keys(EVAL_SUITES);
 
   function isOn(name: string): boolean {
-    return card.evals.some((e) => e.name === name);
+    return evals.some((e) => e.name === name);
   }
   function toggle(name: string) {
     if (name === BASELINE_EVAL.name) return;
-    updateCardInPane(paneKey, card.id, { evals: toggleEval(card.evals, name) });
+    onChange(toggleEval(evals, name));
   }
   function suite(key: string) {
-    updateCardInPane(paneKey, card.id, { evals: applySuite(card.evals, EVAL_SUITES[key]) });
+    onChange(applySuite(evals, EVAL_SUITES[key]));
   }
 </script>
 
-<div class="ph">{@html ICONS.checkbox}evals · loop validation</div>
+<div class="ph">{@html ICONS.checkbox}evals · {heading}</div>
 <div class="pbody">
   {#each EVAL_CATALOG as e (e.name)}
     {@const locked = e.name === BASELINE_EVAL.name}

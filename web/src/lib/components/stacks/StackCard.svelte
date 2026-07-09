@@ -37,6 +37,12 @@
   export let index: number;
   export let paneDefaults: StackDefaults;
   export let repoOptions: Option[] = [];
+  /** True when the stack's own schedule or loop-count governs this pane's
+   *  cadence (`perLoopScheduleGoverned` — Stack-1's §1 precedence rule) —
+   *  this card's own `scheduled` cron never fires independently while it's
+   *  true, so its active-looking chrome must say so rather than pretend to
+   *  run on its own. */
+  export let scheduleGoverned = false;
 
   $: accent = card.preset ? PRESET_ACCENT[card.preset] : 'var(--konjo-dim2, rgba(245,245,245,.28))';
 
@@ -52,6 +58,7 @@
   $: guardsOn = guardActive(card.guardrails);
   $: evalsOn = evalActive(card);
   $: configOn = configActive(card, paneDefaults);
+  $: scheduleActive = card.scheduled && !scheduleGoverned;
   $: showSep = card.scheduled || guardsOn || evalsOn;
 
   $: statusLabel =
@@ -149,9 +156,15 @@
   {#if showSep}
     <hr class="sep" />
     {#if card.scheduled}
-      <div class="sumln sched">
+      <div class="sumln sched" class:governed={scheduleGoverned}>
         <span class="rl">{@html ICONS.cron}schedule</span>
-        <span class="txt"><b>{scheduleSummary(card)}</b></span>
+        <span class="txt">
+          {#if scheduleGoverned}
+            governed by stack — won't fire on its own
+          {:else}
+            <b>{scheduleSummary(card)}</b>
+          {/if}
+        </span>
       </div>
     {/if}
     {#if guardsOn}
@@ -178,10 +191,10 @@
     </span>
     <button
       class="ib sched"
-      class:act={card.scheduled}
+      class:act={scheduleActive}
       bind:this={schedBtn}
       on:click={() => togglePopover(schedId)}
-      title="schedule"
+      title={scheduleGoverned ? 'schedule (governed by the stack)' : 'schedule'}
     >
       {@html ICONS.cron}
     </button>
@@ -225,13 +238,32 @@
 </div>
 
 <Popover id={schedId} anchor={schedBtn ?? null} kind="sched">
-  <SchedulePopover {card} {paneKey} />
+  <SchedulePopover
+    scheduled={card.scheduled}
+    cron={card.cron}
+    onToggle={() => updateCardInPane(paneKey, card.id, { scheduled: !card.scheduled })}
+    onChange={(next) => updateCardInPane(paneKey, card.id, { cron: next })}
+  />
 </Popover>
 <Popover id={guardId} anchor={guardBtn ?? null} kind="guard">
-  <GuardrailsPopover {card} {paneKey} />
+  <GuardrailsPopover
+    scope="loop"
+    gate={card.guardrails.gate}
+    gateCmd={card.guardrails.gateCmd}
+    until={card.guardrails.until}
+    untilCmd={card.guardrails.untilCmd}
+    onFail={card.guardrails.onFail}
+    budget={card.guardrails.budget}
+    onChangeGate={(patch) => updateCardInPane(paneKey, card.id, { guardrails: { ...card.guardrails, ...patch } })}
+    onChangeUntil={(patch) => updateCardInPane(paneKey, card.id, { guardrails: { ...card.guardrails, ...patch } })}
+    onChangeOnFail={(onFail) => updateCardInPane(paneKey, card.id, { guardrails: { ...card.guardrails, onFail } })}
+    onChangeBudget={(budget) => updateCardInPane(paneKey, card.id, { guardrails: { ...card.guardrails, budget } })}
+    maxIterations={card.maxIterations}
+    onStep={step}
+  />
 </Popover>
 <Popover id={evalId} anchor={evalBtn ?? null} kind="eval">
-  <EvalsPopover {card} {paneKey} />
+  <EvalsPopover evals={card.evals} onChange={(evals) => updateCardInPane(paneKey, card.id, { evals })} />
 </Popover>
 
 <style>
@@ -418,6 +450,9 @@
   }
   .sumln.sched .txt b {
     color: var(--konjo-ice);
+  }
+  .sumln.sched.governed .rl {
+    color: rgba(245, 245, 245, 0.28);
   }
   .cardbar {
     display: flex;
