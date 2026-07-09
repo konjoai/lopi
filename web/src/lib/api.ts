@@ -70,10 +70,45 @@ export const deleteTask = (id: string) =>
  * `max_iterations: 0` is the infinite-loop sentinel (matches the Rust-side
  * decision), not "no loop."
  */
+/** One tier-tagged, machine-checkable criterion. Mirrors
+ *  `crates/lopi-core/src/acceptance.rs::CheckSpec` (serde-tagged on `kind`,
+ *  snake_case). The tiered eval executor decides at the cheapest tier that can
+ *  decide — objective criteria route to `execution_ok`/`shell`, the judge is
+ *  reserved for genuine judgment. */
+export type CheckSpec =
+  | { kind: 'execution_ok' }
+  | { kind: 'shell'; cmd: string }
+  | { kind: 'judge'; rubric: { name: string; criteria: string[] } }
+  | { kind: 'suite'; name: string };
+
+/** One acceptance check. Mirrors `acceptance.rs::AcceptanceCheck`. `tier` is the
+ *  UI `EvalTier` union and always matches `spec.kind`. */
+export interface AcceptanceCheck {
+  tier: 'base' | 'test' | 'judge' | 'suite';
+  spec: CheckSpec;
+  weight: number;
+  required: boolean;
+}
+
+/** The machine-checkable success condition the executor scores a loop against.
+ *  Mirrors `acceptance.rs::Acceptance` — the same schema at loop and stack
+ *  scope. This is what finally makes the eval UI execute instead of being an
+ *  inert checklist. */
+export interface Acceptance {
+  checks: AcceptanceCheck[];
+}
+
 export interface CreateTaskOptions {
   verifier_required?: boolean;
   verifier_model?: string;
   verifier_effort?: string;
+  /** A1 — operator opt-out of the fail-closed verifier. Omit (or `false`) to
+   *  keep the safe default: a verifier/judge error blocks finalize, never a
+   *  silent pass. */
+  verifier_fail_open?: boolean;
+  /** A1 — the machine-checkable goal the tiered eval executor scores against.
+   *  Compiled from the card's `evals` (see `stack.ts::evalsToAcceptance`). */
+  acceptance?: Acceptance;
   report?: string;
   max_iterations?: number;
   model?: string;

@@ -35,7 +35,7 @@ Everything above the line is blocked until **A1** ships. A1 is the item that's b
 **Depends on:** nothing new — it's the floor.
 **Kill-test / proof:** a loop with a failing test is scored FAIL and a passing one PASS, by an evaluator that is *not the author model*; the judge tier's verdicts are stable across reruns.
 **Reuses:** the existing "never grade own homework" verifier design (separate model), the eval-ladder + KCQF definitions, worktrees for isolated check runs.
-**Why it's first:** the research's single loudest warning is that evaluator-optimizer loops go circular when the evaluator can't tell good from bad — and lopi currently has *no evaluator running at all*. Independent verification is also the named fix for the structural "agents praise their own output" problem. This phase is both.
+**Why it's first:** the research's single loudest warning is that evaluator-optimizer loops go circular when the evaluator can't tell good from bad. The Konjo Verifier *is* built and probe-validated (24/24, 100% adversarial catch), so A1 **promoted** it into a tiered eval executor scoring an explicit goal/acceptance object — and closed its fail-open hole — rather than building an evaluator from scratch. Independent verification is also the named fix for the structural "agents praise their own output" problem. This phase is both. **DONE** — see `CHANGELOG.md` `[0.2.3]` and the ledger's A1 entry.
 
 ### A2 · Reflection / feedback routing
 **Goal:** an until-loop becomes *reflect-and-retry*, not blind retry.

@@ -245,6 +245,26 @@ CREATE TABLE IF NOT EXISTS verifier_verdicts (
 );
 CREATE INDEX IF NOT EXISTS idx_verifier_verdicts_task ON verifier_verdicts(task_id, attempt);
 
+-- Eval-Execution-1 (A1) — the tiered eval executor's outcome ledger + score
+-- history (cross-cutting seam #4). One row per (task_id + attempt) eval run.
+-- `verdict` is `pass`/`fail`/`error` (fail-closed: `error` is not-passing).
+-- `score` is the weighted scalar in 0..1 A3's ratchet reads. `per_check_json`
+-- and `critique_json` are JSON: the per-tier results and the flattened
+-- gaps+fix_hints A2's reflection reads. The score trajectory over attempts is
+-- the single source of truth for "is this loop improving" (A3 no-progress, B1
+-- stack termination).
+CREATE TABLE IF NOT EXISTS eval_outcomes (
+    id             TEXT PRIMARY KEY,
+    task_id        TEXT NOT NULL,
+    attempt        INTEGER NOT NULL,
+    verdict        TEXT NOT NULL,
+    score          REAL NOT NULL DEFAULT 0.0,
+    per_check_json TEXT NOT NULL DEFAULT '[]',
+    critique_json  TEXT NOT NULL DEFAULT '[]',
+    ts             TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_eval_outcomes_task ON eval_outcomes(task_id, attempt);
+
 -- Sprint T — Q-learning router value table. One row per (task_type, agent
 -- config) pair. The q column is the running value estimate in 0..1 and
 -- update_count is how many rewards were folded in. The (state, action) pair

@@ -5,6 +5,57 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## Eval-Execution-1 (A1) — the judge becomes a tiered eval executor
+
+**The keystone decision: A1 was promote + harden, not greenfield.** Research-1
+proved the Konjo Verifier already works (24/24 kill-test, 100% adversarial
+catch). So A1 did *not* build an evaluator — it reused `VerifierAgent` verbatim
+as one tier behind a new interface, and spent its real surface area on the four
+cross-cutting seams every later phase depends on. Getting these wrong is how
+"evaluator-optimizer loops go circular" — not because the judge can't judge,
+but because three subsystems disagree about what the evaluation *was*. So they
+are settled once, here:
+
+1. **One `Acceptance` schema** (`lopi-core::acceptance`) at loop *and* stack
+   scope. `EvalTier` serializes to the UI's exact `base`/`test`/`judge`/`suite`
+   union, so the previously-inert `EvalRef` tags are the authoring surface, not
+   a second schema. B1 reuses this at stack scope with zero new code paths.
+2. **One `TierEvaluator` interface** (`lopi-agent::eval`) with the judge behind
+   a further-pluggable `Judge` trait. That second seam is load-bearing: it is
+   what makes the fail-closed test and the 24-fixture regression suite run
+   offline (inject an erroring / fixture judge) without a live API call, and it
+   is where A3's stochastic re-sampling will wrap any tier uniformly.
+3. **One `EvalOutcome` result** (`lopi-core::eval_outcome`) carrying `verdict` +
+   scalar `score` + `per_check` + `critique` — designed for all three consumers
+   now (A2 reads critique, A3 reads score, A3/B1 read verdict + trajectory) even
+   though only PASS/FAIL is acted on this sprint. This is the anti-rework call.
+4. **Score-history in SQLite** (`eval_outcomes` + `score_trajectory`). The raw
+   score rows already existed but no query surfaced the trajectory; A3's
+   ratchet/no-progress and B1's stack termination need a durable, queryable one.
+
+**The fail-closed decision, made explicit and defaulted safe.** A gate that
+passes when it errors is the one thing an evaluator can't do. `Verdict::Error`
+is a first-class not-passing state, aggregation gives `Error` precedence over
+`Fail`, and the verifier's old `Err(e) => return true` (proceed-on-error) is
+now `return self.handle_verifier_error(...)` which records an ERROR verdict and
+blocks. Fail-closed is the default; `Task.verifier_fail_open` is the deliberate
+operator override, not a silent fallback. The decision function
+(`verifier_error_proceeds`) is a pure, unit-pinned seam so the guarantee can't
+regress unnoticed.
+
+**The objective-to-deterministic routing rule.** The `TieredEvaluator` runs
+checks cheapest-tier-first and short-circuits on the first *required* failure —
+so anything the execution-ok/shell floor can settle never spends a judge call
+(the regression suite asserts `judge_call_count == 0` for every objectively-
+visible failure). Objective criteria route to a deterministic tier / `MetricGate`
+because they're cheaper *and* un-gameable; the judge is reserved for genuine
+judgment. This is also the mitigation for the one thing A1 structurally can't
+fix: **input-completeness**. The judge catches only gaming visible in its
+inputs. A1 passes the full diff into `EvalContext` (the executor is no longer
+the truncation point) and fails a metric gate closed when its reading is
+missing, but the honest ceiling remains — so the standing rule for anyone adding
+a judge eval is: put the signal in the inputs, or make the criterion objective.
+
 ## Stack-1 — stack-level controls + the purple stack control area
 
 **The precedence rule, decided once here rather than re-litigated per

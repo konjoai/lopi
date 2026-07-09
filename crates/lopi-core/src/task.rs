@@ -90,7 +90,7 @@ pub enum Priority {
 }
 
 /// Rubric used by the Konjo Verifier to grade an agent's output.
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct Rubric {
     /// Display name for this rubric (e.g. `"refactor_safety"`).
     pub name: String,
@@ -274,6 +274,20 @@ pub struct Task {
     /// `None` (the default) changes nothing for every existing caller.
     #[serde(default)]
     pub client_ref: Option<String>,
+    /// Eval-Execution-1 (A1) — the machine-checkable success condition the
+    /// tiered eval executor scores this loop against
+    /// ([`crate::acceptance::Acceptance`]). `None` (the default) means no
+    /// explicit goal is set, so the loop falls back to the legacy
+    /// `score.passed()` gate — behavior is unchanged for every existing task.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub acceptance: Option<crate::acceptance::Acceptance>,
+    /// Eval-Execution-1 (A1) — operator opt-out of the fail-closed verifier.
+    /// `false` (the default) is **fail-closed**: a verifier/judge error yields
+    /// a not-passing verdict, never a silent pass. Set `true` only to
+    /// deliberately restore the old fail-open behavior (proceed on error) for
+    /// a low-trust loop where the operator accepts the risk.
+    #[serde(default)]
+    pub verifier_fail_open: bool,
 }
 
 /// Where a task originated — used for routing replies and audit logging.
@@ -337,6 +351,8 @@ impl Task {
             until: None,
             on_fail: None,
             client_ref: None,
+            acceptance: None,
+            verifier_fail_open: false,
         }
     }
 

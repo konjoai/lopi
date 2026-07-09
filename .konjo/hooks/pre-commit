@@ -184,6 +184,10 @@ while IFS= read -r f; do
     [[ "$f" =~ \.konjo/hooks/ ]] && continue
     [[ "$f" =~ \.claude/ ]] && continue
     [[ "$f" =~ \.md$ ]] && continue
+    # Skip committed test fixtures: the eval-regression corpus intentionally
+    # embeds gaming patterns as DATA (a literal `TODO`/`assert!(true)` is the
+    # adversarial tell the judge must catch), not as placeholder code.
+    [[ "$f" =~ tests/fixtures/ ]] && continue
     HITS=$(grep -En '(TODO|FIXME|HACK|XXX)\b' "$f" || true)
     if [[ -n "$HITS" ]]; then
         TODO_HITS+="$f: $HITS"$'\n'

@@ -82,6 +82,16 @@ pub struct CreateTaskRequest {
     /// [`lopi_core::Task::client_ref`].
     #[serde(default)]
     pub client_ref: Option<String>,
+    /// Eval-Execution-1 (A1) — the machine-checkable success condition the
+    /// tiered eval executor scores this loop against. Compiled UI-side from a
+    /// card's `evals` checklist. Mirrors [`lopi_core::Task::acceptance`].
+    #[serde(default)]
+    pub acceptance: Option<lopi_core::acceptance::Acceptance>,
+    /// Eval-Execution-1 (A1) — operator opt-out of the fail-closed verifier.
+    /// `false` / omitted keeps the safe default (an error blocks finalize).
+    /// Mirrors [`lopi_core::Task::verifier_fail_open`].
+    #[serde(default)]
+    pub verifier_fail_open: Option<bool>,
 }
 
 /// Response body for `POST /api/tasks`.

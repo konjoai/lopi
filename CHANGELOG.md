@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.2.3] — Eval-Execution-1 (A1): the Konjo Verifier becomes a tiered eval executor 🎯
+
+Promotes the working, probe-validated Konjo Verifier from a finalize-gate
+double-check into a **tiered eval executor** that scores a loop against an
+explicit, machine-checkable goal — and closes the verifier's fail-open hole.
+Builds on Research-1 (PR #69). This is *promote + harden*, not greenfield: the
+judge is reused verbatim.
+
+### Added
+- **The goal/acceptance object** (`lopi-core::acceptance` — cross-cutting seam #1): one `Acceptance { checks: Vec<AcceptanceCheck> }` schema usable at loop *and* stack scope. Each `AcceptanceCheck` is `{ tier, spec, weight, required }`; `EvalTier` (`ExecutionOk`/`ShellTest`/`Judge`/`Suite`) serializes to the UI's exact `base`/`test`/`judge`/`suite` union so the inert `EvalRef` tags become the authoring surface. `CheckSpec` carries the tier payload (`ExecutionOk` | `Shell{cmd}` | `Judge{rubric, metric}` | `Suite{name}`), with an objective `MetricGate{name, op, threshold}` for gates like `coverage >= 0.8`. Added `Task.acceptance: Option<Acceptance>` (`None` ⇒ legacy `score.passed()` gate, unchanged for every existing task).
+- **The one eval-result object** (`lopi-core::eval_outcome` — seam #3): `EvalOutcome { verdict, score, per_check, critique }`, designed now for its three future consumers — A2 reflection reads `critique`, A3 ratchet reads the weighted scalar `score`, A3/B1 termination reads `verdict` + the persisted trajectory. `Verdict` is `Pass`/`Fail`/`Error` where **`Error` is an explicit not-passing state** (fail-closed). Aggregation is fail-closed: any required `Error` ⇒ `Error`; else any required `Fail` ⇒ `Fail`; non-required checks feed only score + critique.
+- **The pluggable evaluator interface + tiered executor** (`lopi-agent::eval` — seam #2): one `TierEvaluator` trait with four impls behind a `TieredEvaluator` that runs checks cheapest-tier-first and **short-circuits on the first required failure before paying for the judge** (the objective-to-deterministic routing rule). `JudgeEval` delegates to a pluggable `Judge` whose production impl `VerifierJudge` wraps the existing `VerifierAgent` verbatim; `ExecutionOkEval`/`ShellTestEval` are the deterministic floor; `SuiteEval` is a thin KCQF wrapper. Every tier is fail-closed.
+- **Score-history persistence** (`lopi-memory` `eval_outcomes` table + `store::eval_outcomes` — seam #4): `save_eval_outcome`, `load_eval_outcomes`, and a new `score_trajectory(task_id)` query (the progress signal A3's ratchet/no-progress and B1's stack termination read — previously the raw rows existed but no query surfaced the trajectory).
+- **The committed 24-fixture regression suite** (`crates/lopi-agent/tests/eval_regression.rs` + `tests/fixtures/eval_regression.json`): the Research-1 probe's throwaway fixtures (real pass/fail + the 7 gaming patterns) are now a durable, **CI-hard-gated** safety net (`konjo-gate.yml` G2, no `continue-on-error`). Proves the executor scores all 24 correctly, routes objective failures away from the judge (0 judge calls when the deterministic floor can decide), and catches every gaming pattern.
+- **A1 wiring for the client eval UI** (`web/src/lib/stores/stack.ts::evalsToAcceptance` + `api.ts` `Acceptance` types): a card's `evals` checklist now compiles into a real `Acceptance` on the outgoing `CreateTaskOptions` — `base`/`test` collapse into one deterministic `execution_ok` check, `judge` evals fold into one judge rubric, each `suite` eval becomes a suite check. Evals stop being intent-only. Backend `CreateTaskRequest` gained `acceptance` + `verifier_fail_open`.
+
+### Changed
+- **The fail-open hole is closed (Phase 0, BLOCKING).** A verifier API/parse error no longer returns `true` ("proceed to commit") — it records a not-passing ERROR verdict and **blocks finalize** (`verifier_runner::verifier_error_proceeds`, fail-closed by default). The tiered executor is wired into `finalize` *before* the autonomy verifier gate: a non-passing `EvalOutcome` rolls back, routes its critique into the next attempt's constraints (exactly like the verifier's fix-hints), and retries. Additive — a task with no acceptance is untouched and the existing verifier critique-routing still fires.
+- Operators can opt a low-trust loop back into fail-open with the new `Task.verifier_fail_open` (default `false` = fail-closed).
+
+### Notes — the four settled seams + the honest boundary
+- **Seams settled once for A1→A2→A3→B1:** (1) one `Acceptance` schema, (2) one `TierEvaluator` interface, (3) one `EvalOutcome` result, (4) score-history in SQLite. A2/A3/B1 consume these without re-litigating them.
+- **Objective-to-deterministic routing rule:** a criterion that can be made machine-checkable routes to a deterministic tier / `MetricGate`, never the judge — cheaper and un-gameable. Asserted by the regression suite.
+- **Input-completeness is a permanent design constraint, stated honestly:** the judge catches only gaming *visible in the inputs it is handed*. A1 passes the **full** diff into `EvalContext` (the executor is no longer the truncation point) and a missing metric reading fails closed, but the verifier's own documented internal bound remains the judgment ceiling. Anyone adding a judge eval must ensure the signal to catch the gaming is in the inputs — or make the criterion objective.
+
 ## [0.2.2] — Stack-1: stack-level controls + the purple stack control dock 🟣
 
 ### Added

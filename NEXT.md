@@ -1,27 +1,44 @@
-# Next — Loop-Stack UI (net-new frontend work)
+# Next — A2 · Reflection / feedback routing
 
 ## NEXT_SESSION_PROMPT (read this first)
 
-Stack-1 has shipped: every pane in `/stacks` now carries a purple **stack
-control area** at its base (`StackControlDock.svelte`, collapsible-dock
-mode by default) with its own loop-count/schedule/guardrails/evals/default
-config, plus stack-level ops (duplicate/reorder/delete a whole pane, none
-of which existed before). The precedence rule (`loop ?? stack.default ??
-DEF`, and "stack schedule/loop-count govern the chain, per-loop schedules
-go inert while governed") is implemented and table-tested. See
-`LEDGER.md`'s Stack-1 entry for the load-bearing decisions and
-`CHANGELOG.md`'s `[0.2.2]` entry for the full diff.
+**A1 (Eval-Execution-1) has shipped** — see `CHANGELOG.md` `[0.2.3]` and
+`LEDGER.md`'s A1 entry. The Konjo Verifier is now a **tiered eval executor**:
+one `Acceptance` goal schema (loop + stack scope), one `TierEvaluator`
+interface (execution-ok / shell / judge / suite, judge reused verbatim), one
+fail-closed `EvalOutcome` result (verdict + score + per_check + critique), and
+score-history in SQLite (`eval_outcomes` + `score_trajectory`). The fail-open
+hole is closed (fail-closed default; `verifier_fail_open` opt-out). The client
+eval UI finally executes — a card's `evals` compile into a real `Acceptance`.
+The 24-fixture probe set is a committed, CI-hard-gated regression suite.
 
-**The biggest gap, unchanged and now doubly relevant: eval execution.**
-Both the per-loop `EvalsPopover` (UI-2) and the new stack-level "chain
-acceptance" evals (Stack-1) are still 100% intent-only checklists — nothing
-anywhere executes a single eval, per-loop or chain-wide. Every other
-CLIENT-ONLY/STUBBED gap in this codebase eventually resolves into "wire it
-to something real"; this one has no backend counterpart to wire to yet at
-all. Whoever picks this up next should treat it as its own sprint, not a
-follow-on — it likely needs a real execution model (what runs an eval,
-against what artifact, reporting how) before either popover's checkboxes
-can mean anything.
+**A2 is "extend the critique routing that already exists," not a from-scratch
+build.** The verifier *already* routes `fix_hints` → next attempt's constraints
+(`verifier_runner.rs`), and A1's `EvalOutcome.critique` now does the same. So
+A2 is two things:
+
+1. **Durable cross-run learnings (kohaku).** Today critique dies with the run.
+   A2 turns it into persisted learnings that seed *future* similar tasks. Ride
+   the existing `lessons`/`patterns` tables — **`kohaku`/a vector store does
+   not exist** (Research-1 §5); either build it deliberately or stop citing it,
+   and note `lessons.rs:36-64` silently drops writes below score 0.6, which
+   violates CLAUDE.md "no silent failures" (log or re-gate it as part of A2).
+2. **The measured reflect-vs-blind-retry comparison.** Prove reflection beats
+   blind retry with a real A/B on a fixed fixture set, the way A1 pre-registered
+   its kill-test — don't ship reflection on faith.
+
+**Carry this honest limit forward (now a permanent design constraint):** the
+judge catches only gaming *visible in its inputs*. A1 passes the full diff into
+`EvalContext` and fails missing metric readings closed, but input-completeness
+is the standing rule for anyone adding an eval — put the signal in the inputs,
+or make the criterion objective (route it to a deterministic tier / `MetricGate`).
+
+---
+
+## Deferred UI gaps (from Stack-1, still open)
+
+**Eval execution is now DONE** (A1) — a card's evals compile into a real
+`Acceptance` and the backend scores against it. The remaining Stack-1 gaps:
 
 **What's still open, in priority order:**
 
