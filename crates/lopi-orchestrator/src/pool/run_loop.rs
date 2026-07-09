@@ -350,9 +350,7 @@ pub(super) fn build_runner(
     let verifier_needed = task.verifier_required || task.verifier_model.is_some();
     // Loop-as-code: a task-level override always wins over the repo's
     // `.lopi/loop.toml` ceiling when set — mirrors verifier_model's "explicit
-    // wins over default" precedent. Falls back to the repo config, which was
-    // previously loaded here but never applied to `max_turns` — this closes
-    // that gap rather than adding a second, parallel one.
+    // wins over default" precedent, falling back to the repo config.
     let max_turns = u32::from(task.max_iterations.unwrap_or(repo_max_iterations));
     // Guardrails — same "explicit task override wins over repo default"
     // precedent as `max_turns` above.
