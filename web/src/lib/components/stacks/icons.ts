@@ -60,7 +60,7 @@ export const PRESET_ICON: Record<string, string> = {
   research: ICONS.search,
   implement: ICONS.wrench,
   optimize: ICONS.gauge,
-  ratchet: ICONS.zap,
+  gain: ICONS.zap,
   benchmark: ICONS.chart
 };
 
@@ -68,6 +68,6 @@ export const PRESET_ACCENT: Record<string, string> = {
   research: 'var(--konjo-ice)',
   implement: 'var(--konjo-flame)',
   optimize: 'var(--konjo-sun)',
-  ratchet: 'var(--konjo-violet)',
+  gain: 'var(--konjo-violet)',
   benchmark: 'var(--konjo-jade)'
 };

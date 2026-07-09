@@ -358,12 +358,15 @@ pub(super) fn build_runner(
     let gate = task.gate.clone().or(repo_guardrails.gate);
     let until = task.until.clone().or(repo_guardrails.until);
     let on_fail = task.on_fail.unwrap_or(repo_guardrails.on_fail);
+    // Progress-Gating (A3) — a positive per-task `budget_tokens` overrides the
+    // repo budget (explicit task override wins); it is the loop's hard cap.
+    let budget = if task.budget_tokens > 0 { task.budget_tokens } else { budget_tokens };
     let mut runner = AgentRunner::new(task, work_repo, bus, store, cancel_rx, attempt_counter)
         .with_score_weights(weights)
         .with_self_prompt(self_prompt)
         .with_strategy_escalation(escalate)
         .with_skills(skills)
-        .with_task_budget(budget_tokens)
+        .with_task_budget(budget)
         .with_plan_gate(plan_decision_rx);
     runner.max_turns = max_turns;
     runner.gate = gate;

@@ -271,6 +271,9 @@ pub(super) fn apply_loop_fields(
     if let Some(fo) = req.verifier_fail_open {
         task.verifier_fail_open = fo;
     }
+    if let Some(b) = req.budget_tokens {
+        task.budget_tokens = b;
+    }
     Ok(())
 }
 

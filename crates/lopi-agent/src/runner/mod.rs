@@ -7,6 +7,7 @@ mod plan_gate;
 mod plan_steps;
 pub mod postmortem;
 mod postmortem_runner;
+mod progress;
 mod run_loop;
 mod schema_gate;
 mod seed;
@@ -23,7 +24,7 @@ use lopi_core::{AgentEvent, EventBus, PlanDecision, ScoreWeights, SelfPromptStra
 use lopi_memory::MemoryStore;
 use lopi_ratelimit::{AnthropicLimiter, CircuitBreaker};
 use std::path::PathBuf;
-use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::oneshot;
@@ -146,6 +147,12 @@ pub struct AgentRunner {
     /// Effective on-fail policy for a failed iteration. Defaults to
     /// [`OnFail::Stop`].
     pub on_fail: OnFail,
+    /// Progress-Gating (A3) — cumulative token usage metered across the whole
+    /// run, summed from every streamed `TokenUsage` event (input + output).
+    /// Shared with the stream-forwarding closures so metering happens at the
+    /// one point tokens are actually observed. Read by the budget gate to stop
+    /// the loop with [`StopReason::Budget`](lopi_core::StopReason) on exceed.
+    pub(super) tokens_used: Arc<AtomicU64>,
 }
 
 impl AgentRunner {
@@ -195,6 +202,7 @@ impl AgentRunner {
             gate: None,
             until: None,
             on_fail: OnFail::default(),
+            tokens_used: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -393,5 +401,13 @@ impl AgentRunner {
     #[must_use]
     pub fn attempts_made(&self) -> u8 {
         self.attempts_made
+    }
+
+    /// Cumulative tokens metered across the run so far (input + output),
+    /// summed from every streamed `TokenUsage` event. The budget gate compares
+    /// this against the effective per-loop [`task_budget`](Self::task_budget).
+    #[must_use]
+    pub fn tokens_used(&self) -> u64 {
+        self.tokens_used.load(Ordering::Relaxed)
     }
 }

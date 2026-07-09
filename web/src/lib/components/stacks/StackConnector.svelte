@@ -4,16 +4,16 @@
   reveals a dashed "add between" block that inserts a fresh card right here
   via `stack.insert` (the pre-flight gate's `insertCardIntoPane`).
 
-  V&V FINDING (docs/ui/UI-2-VV-report.md §4.1): this used to also render a
-  `budget N` badge, styled identically to the (real, WIRED) schedule badge,
-  whenever a card's guardrails.budget !== 'auto'. Nothing server-side reads
-  that field — see `stores/stack.ts::cardToTaskPayload`'s key-completeness
-  test — so the badge read as an enforced limit when nothing enforced it.
-  Hidden per Phase 0 of the backend-1 sprint until budget enforcement is
-  real; do not re-add it as a no-op decoration.
+  V&V FINDING (docs/ui/UI-2-VV-report.md §4.1): this `budget N` badge was
+  hidden per Phase 0 of the backend-1 sprint because nothing server-side read
+  the field, so it read as an enforced limit when nothing enforced it. A3 made
+  the budget real — `cardToTaskPayload` now compiles the preset into the
+  metered `budget_tokens`, and the loop stops with `StopReason::Budget` on
+  exceed — so the badge is back, gated on `budgetToTokens` returning a real cap
+  (never for the inherit/unlimited presets, which enforce nothing).
 -->
 <script lang="ts">
-  import { type StackCard as StackCardT, cronHuman, buildCard, insertCardIntoPane } from '$lib/stores/stack';
+  import { type StackCard as StackCardT, cronHuman, buildCard, insertCardIntoPane, budgetToTokens } from '$lib/stores/stack';
   import { ICONS } from './icons';
 
   /** The card above this gap — its schedule drives the cadence badge. */
@@ -27,6 +27,9 @@
   export let scheduleGoverned = false;
 
   $: sched = card.scheduled && !scheduleGoverned;
+  /** A3 — the enforced token cap for the card above, or undefined when its
+   *  budget preset sets no real cap. Drives the (now honest) budget badge. */
+  $: budgetCap = budgetToTokens(card.guardrails.budget);
 
   function insertHere() {
     insertCardIntoPane(paneKey, index + 1, buildCard('new prompt'));
@@ -37,6 +40,8 @@
   <span class="cline-full"></span>
   {#if sched}
     <span class="connbadge sched">{@html ICONS.cron}{cronHuman(card.cron)}</span>
+  {:else if budgetCap !== undefined}
+    <span class="connbadge budget">{@html ICONS.gauge}budget {card.guardrails.budget}</span>
   {/if}
   <button type="button" class="cinsert" on:click={insertHere} title="add a prompt here">
     {@html ICONS.plus}
@@ -89,6 +94,10 @@
   .connbadge.sched {
     color: var(--konjo-ice);
     border-color: rgba(0, 212, 255, 0.45);
+  }
+  .connbadge.budget {
+    color: var(--konjo-violet, #b388ff);
+    border-color: rgba(179, 136, 255, 0.45);
   }
   .cinsert {
     position: absolute;

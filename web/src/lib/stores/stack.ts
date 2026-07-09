@@ -27,7 +27,7 @@ export interface EvalRef {
 }
 
 /** The five built-in presets a card can be created from. */
-export type PresetKey = 'research' | 'implement' | 'optimize' | 'ratchet' | 'benchmark';
+export type PresetKey = 'research' | 'implement' | 'optimize' | 'gain' | 'benchmark';
 
 /** A preset's fixed shape: its alias, keyword-suggestion triggers, and the
  *  eval suite it carries (baseline always first). */
@@ -43,9 +43,20 @@ export interface PresetDef {
  *  (`crates/lopi-core/src/loop_config.rs`) — WIRED via `on_fail`. */
 export type OnFail = 'stop' | 'continue' | 'backoff';
 
-/** Per-run token-budget preset. Backend gap: no `CreateTaskRequest` field
- *  backs this yet — client-only intent, same as `branch`/`autonomy`. */
+/** Per-run token-budget preset. A3 — wired to the real `CreateTaskOptions.
+ *  budget_tokens` field via `budgetToTokens`, which the runner meters against
+ *  (stops with `StopReason::Budget` on exceed). */
 export type Budget = 'auto' | '200k' | 'none';
+
+/** Resolve a budget preset to the enforced per-loop token cap, or `undefined`
+ *  when the preset sets no hard cap. `'200k'` → 200 000 tokens; `'auto'`
+ *  inherits the repo/global budget and `'none'` is explicitly uncapped — both
+ *  omit the field so the payload never claims a limit the loop won't enforce
+ *  (the honesty rule the hidden budget badge was pulled for; see
+ *  `StackConnector.svelte`). */
+export function budgetToTokens(budget: Budget): number | undefined {
+  return budget === '200k' ? 200_000 : undefined;
+}
 
 /** A card's run-limit guardrails. `gate`/`until`/`onFail` are WIRED to the
  *  real `CreateTaskOptions.gate` / `.until` / `.on_fail` fields
@@ -208,11 +219,13 @@ export const PRESET_CATALOG: Record<PresetKey, PresetDef> = {
       { name: 'adversarial', tier: 'suite' }
     ]
   },
-  ratchet: {
-    key: 'ratchet',
-    label: 'ratchet',
-    alias: ':ratchet',
-    keywords: ['ratchet', 'self-improve', 'self improve', 'beats-best'],
+  // A3 — the gain gate and this preset share the word (renamed from
+  // `:ratchet`; the legacy alias still resolves here, see `LEGACY_ALIASES`).
+  gain: {
+    key: 'gain',
+    label: 'gain',
+    alias: ':gain',
+    keywords: ['gain', 'ratchet', 'self-improve', 'self improve', 'beats-best'],
     evals: [
       BASELINE_EVAL,
       { name: 'beats-best', tier: 'judge' },
@@ -233,6 +246,17 @@ export const PRESET_CATALOG: Record<PresetKey, PresetDef> = {
 };
 
 export const PRESET_KEYS = Object.keys(PRESET_CATALOG) as PresetKey[];
+
+/** Legacy `:alias` tokens that map onto a renamed preset key, so old composer
+ *  strings / saved cards keep working. A3 renamed `:ratchet` → `:gain`. */
+const LEGACY_ALIASES: Record<string, PresetKey> = { ratchet: 'gain' };
+
+/** Resolve a raw alias token (without the leading `:`) to a preset key, applying
+ *  legacy renames. Returns `null` when it names no known preset. */
+export function resolvePresetAlias(alias: string): PresetKey | null {
+  if (isPresetKey(alias)) return alias;
+  return LEGACY_ALIASES[alias] ?? null;
+}
 
 function isPresetKey(s: string): s is PresetKey {
   return (PRESET_KEYS as string[]).includes(s);
@@ -303,7 +327,7 @@ function makeId(): string {
  *  string works from any of the three creation-flow doors. */
 export function buildCard(raw: string, explicitPreset?: PresetKey): StackCard {
   const parsed = parseComposerInput(raw);
-  const aliasPreset = parsed.alias && isPresetKey(parsed.alias) ? parsed.alias : undefined;
+  const aliasPreset = parsed.alias ? resolvePresetAlias(parsed.alias) ?? undefined : undefined;
   const presetKey = explicitPreset ?? aliasPreset;
   const preset = presetKey ? PRESET_CATALOG[presetKey] : undefined;
 
@@ -635,6 +659,10 @@ export function cardToTaskPayload(
   };
   if (card.guardrails.gate) options.gate = card.guardrails.gateCmd;
   if (card.guardrails.until) options.until = card.guardrails.untilCmd;
+  // A3 — a budget preset that sets a real cap flows to the metered
+  // `budget_tokens`; inherit/unlimited presets omit it (no inert claim).
+  const budgetTokens = budgetToTokens(card.guardrails.budget);
+  if (budgetTokens !== undefined) options.budget_tokens = budgetTokens;
   // A1 — compile the card's evals into a real acceptance goal so eval
   // execution finally happens; omitted when the card carries no checks.
   const acceptance = evalsToAcceptance(card.evals);

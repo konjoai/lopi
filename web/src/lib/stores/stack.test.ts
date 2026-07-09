@@ -23,6 +23,8 @@ import {
   computeNextRuns,
   cardToTaskPayload,
   cardToTaskPayloadForRunOnce,
+  budgetToTokens,
+  resolvePresetAlias,
   evalsToAcceptance,
   executionOrder,
   dryRunStack,
@@ -316,6 +318,9 @@ eq(computeNextRuns('not a cron', new Date(), 3), [], 'a malformed cron expressio
   guarded.config.repo = 'squish';
   guarded.guardrails = { gate: true, gateCmd: './kill_test.sh', until: true, untilCmd: 'cargo test', onFail: 'backoff', budget: '200k' };
   const payload = cardToTaskPayload(guarded, defaults);
+
+  // A3 — the '200k' budget preset compiles to the metered budget_tokens.
+  eqIs(payload.options.budget_tokens, 200_000, "budget '200k' → budget_tokens 200000");
   eqIs(payload.repo, 'squish', 'a config.repo override wins over the pane default');
   eqIs(payload.options.gate, './kill_test.sh', 'enabled gate carries its command');
   eqIs(payload.options.until, 'cargo test', 'enabled until carries its command');
@@ -329,6 +334,24 @@ eq(computeNextRuns('not a cron', new Date(), 3), [], 'a malformed cron expressio
   const untilOff = buildCard('x');
   eqIs(cardToTaskPayload(untilOff, defaults).options.until, undefined, 'until is omitted when its guardrail toggle is off');
 }
+// ── A3 — budget preset → metered budget_tokens (only real caps flow) ──────────
+eqIs(budgetToTokens('200k'), 200_000, "budget '200k' resolves to a 200000-token cap");
+eqIs(budgetToTokens('auto'), undefined, "budget 'auto' inherits — no hard cap in the payload");
+eqIs(budgetToTokens('none'), undefined, "budget 'none' is uncapped — no hard cap in the payload");
+{
+  const defaults = { model: 'sonnet', effort: 'medium', repo: 'konjoai/lopi' };
+  const inheritCard = buildCard('x'); // defaultGuardrails ⇒ budget: 'auto'
+  eqIs(
+    cardToTaskPayload(inheritCard, defaults).options.budget_tokens,
+    undefined,
+    'the inherit budget preset omits budget_tokens (no inert enforced-limit claim)'
+  );
+}
+// ── A3 — the `:ratchet` → `:gain` rename keeps the legacy alias resolving ─────
+eqIs(resolvePresetAlias('gain'), 'gain', "the `:gain` alias resolves to the gain preset");
+eqIs(resolvePresetAlias('ratchet'), 'gain', "the legacy `:ratchet` alias still resolves to `gain`");
+eqIs(resolvePresetAlias('nonsense'), null, 'an unknown alias resolves to null');
+eqIs(buildCard(':ratchet "self improve"').preset, 'gain', 'a `:ratchet` composer string builds a gain-preset card');
 
 // ── V&V: table-driven WIRED round-trip (§C) — one non-default value per WIRED
 // field, asserting it lands correctly in CreateTaskOptions and that no WIRED
