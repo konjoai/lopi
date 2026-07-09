@@ -1,6 +1,61 @@
-# Next — B1 · Goal-directed stacks
+# Next — Track A + B are built; Track C is the horizon
 
 ## NEXT_SESSION_PROMPT (read this first)
+
+**Track A *and* B1 have shipped: A1 + A2 + A3 + B1 are all built.** B1
+(goal-directed stacks) is the newest — see `CHANGELOG.md` `[0.2.6]` and
+`LEDGER.md`'s B1 entry. A stack now **runs the chain until its acceptance
+passes, or a stack-level stop reason fires** (`goal_met > budget > no_progress >
+max_chain_loops`, mirroring A3 at chain scope). It's **frontend-only, additive,
+off by default**: the dock's new goal toggle drives it; a stack with no goal
+behaves exactly as before.
+
+**The two decisions B1 settled (don't re-litigate; carry the reasons):**
+1. **Binary run-until-goal shipped; stack-level gain-gating was deferred** —
+   there is **no clean whole-chain rollback** (each card's task rolls back its
+   *own* loop, commits/PRs independently; nothing snapshots/restores the
+   aggregate repo state). Gain-gating needs that rollback, so it's the top B1
+   follow-up **only if** a real whole-chain snapshot/restore lands first. Don't
+   fake it.
+2. **The stack-scope eval seam is a dedicated eval task**, because stacks are
+   100% client-only (no server "stack"). The sequencer launches a task carrying
+   the compiled stack `Acceptance` and reads its terminal status as the verdict.
+   The honest refinement is a **pure `POST /api/evaluate` endpoint** that runs
+   A1's `TieredEvaluator` against a repo with *no agent work* — the same
+   `EvalContext` A1 builds at finalize, exposed statelessly. That removes the
+   "the eval task runs an agent" caveat and lets the client read a real
+   `EvalOutcome` (score + critique), not just pass/fail — build it if B1's eval
+   path needs to be tighter.
+
+**Open items carried forward:**
+- **The live A2 measurement is still owed.** Cross-run reflection stays gated off
+  (`reflect_cross_run`, default off) pending a *live* three-arm run (blind /
+  within-run / cross-run) clearing the pre-registered 15 pp margin. See the A2
+  note below. If it comes back marginal, **better retrieval (semantic vs
+  Jaccard)** is the lever before re-measuring.
+- **Stack-level gain-gating** — deferred here (see decision 1); needs whole-chain
+  rollback first.
+- **Whole-chain scheduling remains stubbed** (since Stack-1) — the dock's stack
+  schedule toggle shows an honest "not yet enforced" hint; closing it needs
+  `ScheduleSpec.goal: String` → `Vec<String>` server-side. Don't downgrade it to
+  the single-card `scheduleStack`.
+- **`budget` at stack scope is unenforced** — B1 keeps it in the stop-reason
+  precedence but never trips it client-side (no observable token meter), the same
+  honesty stance as Stack-1's stack budget.
+
+**Track C (autonomous decomposition / project autonomy) is the horizon — still
+held.** A stack can now pursue a goal (B1), which is C's precondition: a *proposed*
+stack is only useful once stacks pursue goals. But don't start C until the team
+decides the goal-directed single-stack experience isn't already the product —
+the roadmap explicitly reserves the right to stop at B1. C needs a *proven* A3
+(runaway-loop safety) and the governance controls (audit, permissions,
+reversibility) before it touches anything real.
+
+---
+
+## Superseded — B1's original prompt (kept for provenance)
+
+_B1 is now shipped (`[0.2.6]`); the section below was the prompt that drove it._
 
 **Track A is complete: A1 + A2 + A3 have all shipped.** A2 (Reflection) is the
 newest — see `CHANGELOG.md` `[0.2.5]` and `LEDGER.md`'s A2 entry. A loop now

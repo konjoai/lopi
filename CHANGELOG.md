@@ -1,5 +1,83 @@
 # Changelog
 
+## [0.2.6] — Goal-directed stacks (B1): run the chain until the goal is met 🎯
+
+Turns a stack from "run the chain ×N" into "**run the chain until its acceptance
+passes, or a stack-level stop reason fires**" — the roadmap's payoff,
+self-directing at the *chain* level by reusing A1's tiered eval executor and
+A3's stop-reason precedence at *stack* scope. Builds on A1 (PR #70, the
+`Acceptance` schema + tiered executor + terminal-status-⟺-verdict), A3 (PR #71,
+`StopReason` + precedence), and Stack-1 (PR #68, the client-only stack
+sequencer + stack acceptance/evals). **Frontend-only, additive, and
+backward-compatible**: a stack with no goal behaves exactly as before.
+
+### The §0 design decision (settled in pre-flight, recorded here)
+Two models were on the table: **binary run-until-goal** (re-run the chain until
+the stack acceptance passes or a stop reason fires — no chain rollback needed)
+and **stack-level gain-gating** (keep a chain re-run only if it *gained*, rolling
+back worse chain-runs). Pre-flight §3 found **no clean whole-chain rollback
+exists**: each card's task does its *own* per-loop rollback (A1/A3), commits/PRs
+independently, and there is no backend snapshot/restore of the aggregate repo
+state the client could revert. Per the brief's rule ("don't fake a rollback that
+doesn't exist"), **the binary model ships; stack-level gain-gating is deferred to
+NEXT** with that reason recorded — the binary model is the whole payoff.
+
+### The stack-scope eval seam (B1's main unknown, resolved)
+Stacks are **100% client-only** — there is no server-side "stack" concept
+(confirmed in pre-flight against `crates/lopi-ui/src/web/`). So the stack
+acceptance runs through A1's executor the only way the client has: after each
+chain-run, the sequencer **launches a dedicated evaluation task carrying the
+compiled stack `Acceptance`** (`evalsToAcceptance(config.evals)`), and its
+terminal status *is* the stack-level `EvalOutcome` verdict — A1 already makes a
+task complete iff its acceptance passed (`runner/eval_runner.rs`). The eval runs
+as a single verification attempt (`max_iterations: 1`); the iterative progress
+comes from re-running the *chain*, not from the eval doing the work. Zero backend
+changes — the executor, gain gate, and reflection are reused untouched.
+
+### Added
+- **`stores/stackGoal.ts`** — the pure run-until-goal decision core (no store,
+  no fetch, no timer). `StackStopReason` (`goal_met`/`budget`/`no_progress`/
+  `max_chain_loops`) mirrors `lopi_core::StopReason` at chain scope, with the
+  loop-scope `max_iterations` re-cast as the chain-scope `max_chain_loops`.
+  `precede`/`isSuccessStop` mirror the backend's precedence
+  (`goal_met > budget > no_progress > max_chain_loops`); `decideAfterMiss`
+  reports the *specific* higher-precedence reason when caps trip together;
+  `foldGain` reuses A3's `GainRule` margin idea to detect no-progress from the
+  stack-eval's observed score across chain-runs.
+- **The stack `goal` facet** (`stores/stack.ts` `StackGoal` + `StackConfig.goal`):
+  `pursue` (run-until-goal on/off, **off by default**) + `noProgressLimit`.
+  `stackGoalActive`/`stackPursuesGoal` (the latter requires acceptance beyond the
+  baseline — a goal with nothing to check is inert) + `stackGoalSummary`.
+- **Run-until-goal in the sequencer** (`stores/stackRun.ts`): after a chain-run
+  completes, `pursueGoal` evaluates the stack acceptance and either stops
+  `goal_met`, stops with the specific stack stop reason, or re-runs the whole
+  chain — bounded by the stack's `loopCount` (now read as `max_chain_loops` when
+  pursuing) and the no-progress detector. The recorded `stopReason` lands on the
+  run.
+- **Dock goal controls** (`StackControlDock.svelte`): a goal toggle next to the
+  loop/schedule/evals controls (no new popover set), a "pursue chain acceptance ·
+  ≤N chain-runs" summary line, a "pursuing goal" run-button label, and a
+  stop-reason banner that renders the specific verdict when a goal run halts
+  (`goal met` in jade vs `no progress`/`ceiling` in amber).
+- Tests: `stores/stackGoal.test.ts` (23), plus new goal-pursuit cases in
+  `stores/stackRun.test.ts` (goal_met across re-runs, `max_chain_loops`,
+  score-driven `no_progress`, "Run once" never pursues, inert-goal fallback) and
+  `stores/stack.test.ts` (facet predicates, summary, `duplicateStack` clone).
+
+### Honesty notes
+- **`budget` never trips client-side.** There is no observable stack-level token
+  meter on the client (the same stance as Stack-1's unenforced stack budget), so
+  `budget` stays in the precedence for when a real meter lands but never fires
+  today — it is not rendered as an enforced control.
+- **The stack eval is a real (single-attempt) task, not a side-effect-free
+  eval.** lopi has no standalone eval primitive; a pure `POST /api/evaluate`
+  endpoint that runs the executor without an agent is recorded in NEXT as the
+  future refinement.
+- **A goal stack must set its chain-loop ceiling to pursue.** `loopCount` is the
+  `max_chain_loops` cap; the default `1` evaluates once then stops
+  `max_chain_loops` — raise it (or ∞) to actually re-run. The dock's loop pill
+  is that control.
+
 ## [0.2.5] — Reflection (A2): durable learnings + a measured reflect-vs-blind gate 🪞
 
 Turns a loop that already *reflects within a run* (A1's `EvalOutcome.critique`

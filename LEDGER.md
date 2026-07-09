@@ -5,6 +5,70 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## Goal-directed stacks (B1) — binary run-until-goal, because there's no whole-chain rollback to gain-gate against
+
+**The load-bearing decision: ship the binary "re-run the chain until the stack
+acceptance passes or a stop reason fires" model, and defer stack-level
+gain-gating — because the rollback it would require does not exist.** The §0 fork
+was binary run-until-goal vs. gain-gated chain re-runs (keep a re-run only if it
+*gained* on the stack metric, rolling back worse chain-runs). Gain-gating at
+stack scope needs **whole-chain rollback**: a snapshot of the aggregate repo
+state before a chain-run, restored if the run regresses. Pre-flight found none —
+each card is its own task doing its *own* per-loop rollback (A1/A3), committing/
+PR-ing independently; there is no backend that snapshots or restores "the whole
+client-side stack." Per the brief's rule ("don't fake a rollback that doesn't
+exist"), gain-gating is deferred to NEXT with that reason, and the binary model —
+which is the entire roadmap payoff — ships. If a real whole-chain snapshot/restore
+ever lands, gain-gating becomes a clean follow-up reusing A3's `GainRule`.
+
+**The stack-scope eval seam (B1's main unknown): a dedicated eval task, because
+stacks are 100% client-only.** There is no server-side "stack" concept — confirmed
+against `crates/lopi-ui/src/web/` (the only acceptance surface is task-creation
+ingest; `grep stack` in the handlers is empty). Of the three candidate seams the
+brief listed — launch a dedicated eval, read the final loop's `EvalOutcome`, or
+have the backend expose a stack outcome — **launch a dedicated eval** is the only
+one that fits a client-only stack with zero backend change. After each chain-run
+the sequencer submits one task carrying the compiled stack `Acceptance`
+(`evalsToAcceptance(config.evals)`); A1 already makes a task's terminal status
+*iff*-equal to its acceptance verdict (`runner/eval_runner.rs`), so `completed` =
+`goal_met` and non-completion = a miss. Reading the final loop's outcome was
+rejected: the final *card* carries its own card-evals, not the stack's, and the
+client can't read a task's persisted `EvalOutcome` anyway (it observes `status` +
+`score` off the event stream, nothing more). A backend stack-outcome endpoint was
+deferred as the *honest refinement* (below), not the minimum.
+
+**The honest caveat, recorded not hidden: the stack eval is a real single-attempt
+task, not a side-effect-free eval.** lopi has no standalone eval primitive — a
+task always runs an agent. So the stack-acceptance "check" is a `max_iterations:
+1` task: it makes at most one verification attempt, and the *iterative* progress
+comes from re-running the chain across chain-runs, not from the eval doing the
+work. The clean fix is a pure `POST /api/evaluate` endpoint that runs A1's
+`TieredEvaluator` against a repo with the same `EvalContext` A1 builds at finalize
+but **no agent work** — recorded in NEXT. It was not built here because it is
+backend scope (Rust + the full Konjo gate battery) for a refinement, where the
+client-only path proves the whole run-until-goal loop today with zero backend risk.
+
+**Stack `StopReason` precedence mirrors A3 verbatim, one scope up.**
+`stackGoal.ts`'s `StackStopReason` is `lopi_core::StopReason` with the loop-scope
+`max_iterations` re-cast as chain-scope `max_chain_loops`, same wire strings, same
+rank (`goal_met` 3 > `budget` 2 > `no_progress` 1 > `max_chain_loops` 0), same
+`precede`. Two deliberate honesty choices in the client mapping: (1) **`budget`
+never trips client-side** — there's no observable stack-level token meter (same
+stance as Stack-1's unenforced stack budget), so it stays in the precedence for a
+future meter but never fires, and is never rendered as enforced; (2) **`no_progress`
+is real, not a second ceiling** — it reads the stack-eval task's observed `score`
+across chain-runs and stops when the best hasn't gained by A3's margin for N runs
+(`foldGain`), so it's genuinely "stopped improving," not "ran N times." An
+unobservable score advances neither best nor streak — don't fake a signal.
+
+**Reuse, not rebuild.** The executor, gain gate, and reflection are untouched;
+`evalsToAcceptance` (Stack-1) compiles the stack's evals to the same `Acceptance`
+schema A1 scores; the dock's existing loop/schedule/evals controls gained one
+toggle, no new popover set. The goal facet is off by default and inert without
+acceptance beyond the baseline (`stackPursuesGoal`), so a no-goal stack is
+byte-for-byte the old behavior — the additive/backward-compatible rule the rest of
+Stack-1 follows.
+
 ## Reflection (A2) — durable learnings, and reflection that must *earn* its context
 
 **The load-bearing decision: reflection ships off-by-default, because the

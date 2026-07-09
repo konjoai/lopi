@@ -22,7 +22,14 @@
  * real WebSocket-fed store.
  */
 import { get, writable, type Readable } from 'svelte/store';
-import { createTask, createSchedule, effectiveTaskId, type ScheduleBody } from '$lib/api';
+import {
+  createTask,
+  createSchedule,
+  effectiveTaskId,
+  type ScheduleBody,
+  type CreateTaskOptions,
+  type Acceptance
+} from '$lib/api';
 import {
   panes,
   updateCardInPane,
@@ -30,11 +37,14 @@ import {
   executionOrder,
   cardToTaskPayload,
   cardToTaskPayloadForRunOnce,
+  evalsToAcceptance,
+  stackPursuesGoal,
   bumpInOrder,
   type StackCard,
   type PaneDefaults,
   type OnFail
 } from './stack';
+import { decideAfterMiss, foldGain, stackStopLabel, type StackStopReason } from './stackGoal';
 
 /** Which run-menu action started this run — governs the payload each card
  *  submits (`cardToTaskPayload` vs. the max-iterations-forced-to-1 variant). */
@@ -71,6 +81,24 @@ export interface StackRunState {
   onFail: OnFail;
   hadFailure: boolean;
   error?: string;
+  /** B1 — the compiled stack acceptance the chain is pursuing. `undefined`
+   *  means "not pursuing a goal": the run keeps the legacy fixed-`loopTarget`
+   *  repetition behavior, unchanged and backward-compatible. When set,
+   *  `advance` evaluates it after every chain-run and re-runs the whole chain
+   *  until it passes (`goal_met`) or a stack stop reason fires. */
+  acceptance?: Acceptance;
+  /** B1 — consecutive non-gaining chain-runs tolerated before a `no_progress`
+   *  stop (`0` disables the detector). Snapshotted from the stack goal facet at
+   *  launch, same as `loopTarget`/`onFail`. */
+  noProgressLimit: number;
+  /** B1 — live no-gain streak across chain-runs (reset on progress). */
+  noGainStreak: number;
+  /** B1 — best stack-eval score observed so far; `undefined` until the first
+   *  chain-run yields an observable scalar. */
+  goalBest?: number;
+  /** B1 — the specific reason a goal run halted, recorded on the run so the
+   *  dock tells `goal_met` apart from `no_progress`/`max_chain_loops`. */
+  stopReason?: StackStopReason;
 }
 
 /** Active runs, keyed by pane key. Client-only, in-memory — a page reload
@@ -80,7 +108,7 @@ export const runs = writable<Map<string, StackRunState>>(new Map());
 /** The minimal shape `waitForTerminal` needs from a live agent-state store —
  *  satisfied by the real `agents` store (`stores/agents.ts`) and, in tests,
  *  by a plain `writable(new Map())`. */
-export type AgentStatusSource = Readable<Map<string, { status?: string }>>;
+export type AgentStatusSource = Readable<Map<string, { status?: string; score?: number }>>;
 
 function setRun(paneKey: string, patch: Partial<StackRunState>): void {
   runs.update((m) => {
@@ -147,6 +175,14 @@ async function advance(
     if (state.phase !== 'running') return;
 
     if (state.cursor >= state.order.length) {
+      // A full pass over the chain (one chain-run) just completed.
+      if (state.acceptance) {
+        // B1 run-until-goal: evaluate the stack acceptance and either re-run
+        // the whole chain or stop with a specific stack-level reason.
+        if ((await pursueGoal(paneKey, state, defaults, statusSource)) === 'stop') return;
+        continue;
+      }
+      // Legacy (no goal): fixed-`loopTarget` chain repetition, unchanged.
       const nextRepetition = state.repetition + 1;
       const moreRepetitions = state.loopTarget === 0 || nextRepetition < state.loopTarget;
       if (moreRepetitions) {
@@ -222,11 +258,106 @@ async function advance(
   }
 }
 
+/** B1 — one run-until-goal step, taken after a chain-run completes. Evaluates
+ *  the stack acceptance and, from its verdict, either stops `goal_met`, stops
+ *  with a specific stack stop reason, or re-runs the whole chain. Returns
+ *  `'stop'` once the run has reached a terminal phase, `'rerun'` when it reset
+ *  the cursor for another chain-run. Reuses A3's precedence + gain idea at
+ *  chain scope via `stackGoal.ts` — no new termination logic here. */
+async function pursueGoal(
+  paneKey: string,
+  state: StackRunState,
+  defaults: PaneDefaults,
+  statusSource: AgentStatusSource
+): Promise<'stop' | 'rerun'> {
+  const verdict = await evaluateStackAcceptance(paneKey, state, defaults, statusSource);
+  if (verdict === null) return 'stop'; // eval couldn't launch — phase already errored
+  const chainRun = state.repetition + 1;
+  if (verdict.passed) {
+    setRun(paneKey, { phase: 'done', stopReason: 'goal_met', error: undefined });
+    return 'stop';
+  }
+  const gain = foldGain({ best: state.goalBest, streak: state.noGainStreak }, verdict.score);
+  const decision = decideAfterMiss({
+    chainRun,
+    maxChainLoops: state.loopTarget,
+    noGainStreak: gain.streak,
+    noProgressLimit: state.noProgressLimit
+  });
+  if (decision.kind === 'rerun') {
+    setRun(paneKey, { cursor: 0, repetition: chainRun, goalBest: gain.best, noGainStreak: gain.streak });
+    return 'rerun';
+  }
+  setRun(paneKey, {
+    phase: 'error',
+    stopReason: decision.reason,
+    goalBest: gain.best,
+    noGainStreak: gain.streak,
+    error: stackStopLabel(decision.reason)
+  });
+  return 'stop';
+}
+
+/** The stack-scope eval seam (B1 pre-flight §2). There is no server-side
+ *  "stack", so the stack acceptance runs through A1's tiered executor the only
+ *  way the client has: a dedicated task carrying the compiled `acceptance`.
+ *  Its terminal status *is* the stack-level `EvalOutcome` verdict — A1 makes a
+ *  task complete iff its acceptance passed (`crates/lopi-agent/src/runner/
+ *  eval_runner.rs`) — and the live score store surfaces the scalar the
+ *  no-progress detector reads. `max_iterations: 1` keeps it a single
+ *  verification attempt; the iterative progress comes from re-running the
+ *  chain, not from this eval doing the work. Returns `null` (and marks the run
+ *  errored) only if the eval task can't even launch. */
+async function evaluateStackAcceptance(
+  paneKey: string,
+  state: StackRunState,
+  defaults: PaneDefaults,
+  statusSource: AgentStatusSource
+): Promise<{ passed: boolean; score?: number } | null> {
+  const acceptance = state.acceptance;
+  if (!acceptance) return { passed: true };
+  const evalRef = `${paneKey}::stack-eval::${state.repetition}`;
+  const options: CreateTaskOptions = {
+    model: defaults.model,
+    effort: defaults.effort,
+    max_iterations: 1,
+    acceptance,
+    client_ref: evalRef
+  };
+  let resp;
+  try {
+    resp = await createTask(stackGoalPrompt(paneKey), defaults.repo, 'normal', options);
+  } catch (err) {
+    setRun(paneKey, {
+      phase: 'error',
+      hadFailure: true,
+      error: `stack acceptance eval failed to launch: ${err instanceof Error ? err.message : String(err)}`
+    });
+    return null;
+  }
+  const taskId = effectiveTaskId(resp);
+  const terminal = await waitForTerminal(taskId, statusSource);
+  const score = get(statusSource).get(taskId)?.score;
+  return { passed: terminal === 'completed', score };
+}
+
+/** The natural-language goal the stack-acceptance eval task runs under, derived
+ *  from the pane — a stack has no free-text goal field of its own (its goal
+ *  *is* its acceptance evals), so the eval reads as "verify <stack>
+ *  acceptance". */
+function stackGoalPrompt(paneKey: string): string {
+  const title = get(panes).find((p) => p.key === paneKey)?.title ?? paneKey;
+  return `verify stack acceptance for "${title}"`;
+}
+
 /** Run-menu "Run now" / "Run once": launch a fresh run for this pane's
  *  cards in execution order. Replaces any prior run state for the pane.
  *  `loopTarget`/`onFail` snapshot the pane's stack config at launch, same
  *  as `order` does for the card sequence — see `StackRunState`'s doc
- *  comment. */
+ *  comment. B1 — when the stack is pursuing a goal (`stackPursuesGoal`) under
+ *  a plain "Run", the compiled `acceptance` is snapshotted too, flipping the
+ *  chain from fixed-count to run-until-goal. "Run once" never pursues (it is an
+ *  explicit single pass), so it always keeps the legacy behavior. */
 export function runStack(
   paneKey: string,
   intent: RunIntent,
@@ -236,6 +367,8 @@ export function runStack(
   const pane = get(panes).find((p) => p.key === paneKey);
   if (!pane || pane.cards.length === 0) return;
   const order = executionOrder(pane.cards).map((c) => c.id);
+  const pursuing = intent === 'run' && stackPursuesGoal(pane.config);
+  const acceptance = pursuing ? evalsToAcceptance(pane.config.evals) : undefined;
   runs.update((m) => {
     const next = new Map(m);
     next.set(paneKey, {
@@ -247,7 +380,10 @@ export function runStack(
       repetition: 0,
       loopTarget: pane.config.loopCount,
       onFail: pane.config.guardrails.onFail,
-      hadFailure: false
+      hadFailure: false,
+      acceptance,
+      noProgressLimit: pane.config.goal.noProgressLimit,
+      noGainStreak: 0
     });
     return next;
   });

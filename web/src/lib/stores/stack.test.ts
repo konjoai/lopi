@@ -44,6 +44,10 @@ import {
   stackGuardActive,
   stackEvalActive,
   stackDefaultsActive,
+  stackGoalActive,
+  stackPursuesGoal,
+  stackGoalSummary,
+  defaultStackGoal,
   perLoopScheduleGoverned,
   BASELINE_EVAL,
   type StackCard,
@@ -644,6 +648,50 @@ eqIs(
     stackDefaultsActive({ ...DEFAULT_STACK_DEFAULTS, model: 'claude-sonnet-4-6' }),
     'a defaults field moved off the app-wide baseline reads as active'
   );
+}
+
+// ── B1: the stack goal facet — active-state, pursuit gate, summary, default ─
+{
+  const config = defaultStackConfig();
+  ok(!config.goal.pursue, 'a fresh stack does not pursue a goal (additive default off)');
+  eqIs(defaultStackGoal().noProgressLimit, 3, 'the default no-progress tolerance is 3 chain-runs');
+  ok(!stackGoalActive(config), "a fresh stack's goal facet reads inactive");
+  ok(stackGoalActive({ ...config, goal: { pursue: true, noProgressLimit: 3 } }), 'pursue on reads as active');
+  // pursue on but baseline-only acceptance is inert — nothing to pursue.
+  ok(
+    !stackPursuesGoal({ ...config, goal: { pursue: true, noProgressLimit: 3 } }),
+    'pursue with baseline-only acceptance is inert — not a real goal'
+  );
+  ok(
+    stackPursuesGoal({
+      ...config,
+      evals: [BASELINE_EVAL, { name: 'tests pass', tier: 'test' }],
+      goal: { pursue: true, noProgressLimit: 3 }
+    }),
+    'pursue on + acceptance beyond baseline is a real goal the sequencer will pursue'
+  );
+  ok(
+    !stackPursuesGoal({ ...config, evals: [BASELINE_EVAL, { name: 'tests pass', tier: 'test' }] }),
+    'acceptance without pursue is not pursued — the toggle is required'
+  );
+  ok(stackGoalSummary({ ...config, loopCount: 5 }).includes('≤5'), 'a finite ceiling shows the chain-run cap');
+  ok(stackGoalSummary({ ...config, loopCount: 0 }).includes('until met'), 'an infinite ceiling reads "until met"');
+}
+
+// ── B1: duplicateStack clones the goal facet (own object, not shared) ───────
+{
+  const state: StackPaneState[] = [
+    {
+      key: 's1',
+      title: 'one',
+      cards: [],
+      config: { ...defaultStackConfig(), goal: { pursue: true, noProgressLimit: 4 } }
+    }
+  ];
+  const dup = duplicateStack(state, 's1');
+  eqIs(dup[1].config.goal.pursue, true, 'the clone carries the original goal facet');
+  eqIs(dup[1].config.goal.noProgressLimit, 4, 'the clone carries the goal fields verbatim');
+  ok(dup[1].config.goal !== dup[0].config.goal, 'the cloned goal is its own object, not a shared reference');
 }
 
 // ── Stack-1 §1: the second precedence rule — stack schedule/loop-count GOVERN

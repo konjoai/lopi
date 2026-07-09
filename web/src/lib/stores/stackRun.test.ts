@@ -30,7 +30,15 @@ import {
   runs,
   type AgentStatusSource
 } from './stackRun';
-import { panes, buildCard, defaultStackConfig, type StackCard, type PaneDefaults, type StackConfig } from './stack';
+import {
+  panes,
+  buildCard,
+  defaultStackConfig,
+  BASELINE_EVAL,
+  type StackCard,
+  type PaneDefaults,
+  type StackConfig
+} from './stack';
 import { eq, eqIs, ok, namedSummary } from '$lib/test-harness';
 
 function card(id: string, goal = id): StackCard {
@@ -44,7 +52,7 @@ interface Captured {
   body: Record<string, unknown>;
 }
 
-type StatusStore = ReturnType<typeof writable<Map<string, { status?: string }>>>;
+type StatusStore = ReturnType<typeof writable<Map<string, { status?: string; score?: number }>>>;
 
 /** Arms a fetch mock where each card id's terminal outcome is pre-decided.
  * A card whose id is missing from `outcomes` never resolves (simulating
@@ -52,7 +60,8 @@ type StatusStore = ReturnType<typeof writable<Map<string, { status?: string }>>>
 function mockBackend(
   statusSource: StatusStore,
   outcomes: Record<string, 'completed' | 'failed' | 'cancelled'>,
-  onTaskCreate?: (cardId: string) => void
+  onTaskCreate?: (cardId: string) => void,
+  scores?: Record<string, number>
 ): Captured[] {
   const captured: Captured[] = [];
   (globalThis as { fetch: unknown }).fetch = (path: string, init?: RequestInit) => {
@@ -65,7 +74,7 @@ function mockBackend(
       if (outcome) {
         statusSource.update((m) => {
           const next = new Map(m);
-          next.set(cardId, { status: outcome });
+          next.set(cardId, { status: outcome, ...(scores && cardId in scores ? { score: scores[cardId] } : {}) });
           return next;
         });
       }
@@ -366,6 +375,165 @@ async function main() {
       "on-fail 'backoff' skips the rest of a failed pass ('c' never launches that pass) but still attempts the next repetition"
     );
     eqIs(runState('s1')?.phase, 'error', "a chain that never once completed a full clean pass still reports 'error'");
+  }
+
+  // ── B1 run-until-goal: re-runs the chain until the stack acceptance passes ─
+  {
+    resetPanes();
+    seedPane('s1', [card('b'), card('a')]);
+    // Infinite chain-loop ceiling (0) so only the goal decides when to stop;
+    // acceptance beyond baseline + pursue on → goal pursuit engaged.
+    seedStackConfig('s1', {
+      loopCount: 0,
+      evals: [BASELINE_EVAL, { name: 'tests pass', tier: 'test' }],
+      goal: { pursue: true, noProgressLimit: 3 }
+    });
+    const statusSource: StatusStore = writable(new Map());
+    // Cards always complete; the first chain-run's stack eval fails, the
+    // second passes → goal met on the second chain-run.
+    const captured = mockBackend(statusSource, {
+      a: 'completed',
+      b: 'completed',
+      's1::stack-eval::0': 'failed',
+      's1::stack-eval::1': 'completed'
+    });
+
+    runStack('s1', 'run', defaults, statusSource as AgentStatusSource);
+    await flush(80);
+
+    eq(
+      captured.map((c) => c.body.client_ref),
+      ['a', 'b', 's1::stack-eval::0', 'a', 'b', 's1::stack-eval::1'],
+      'the chain re-runs, evaluating the stack acceptance after each chain-run, until the goal passes'
+    );
+    eqIs(runState('s1')?.phase, 'done', 'meeting the goal ends the run in phase "done"');
+    eqIs(runState('s1')?.stopReason, 'goal_met', 'the specific stop reason recorded is goal_met');
+  }
+
+  // ── B1: the stack-eval task carries the compiled acceptance + a single attempt
+  {
+    resetPanes();
+    seedPane('s1', [card('a')]);
+    seedStackConfig('s1', {
+      loopCount: 1,
+      evals: [BASELINE_EVAL, { name: 'tests pass', tier: 'test' }],
+      goal: { pursue: true, noProgressLimit: 3 }
+    });
+    const statusSource: StatusStore = writable(new Map());
+    const captured = mockBackend(statusSource, { a: 'completed', 's1::stack-eval::0': 'completed' });
+
+    runStack('s1', 'run', defaults, statusSource as AgentStatusSource);
+    await flush(80);
+
+    const evalPost = captured.find((c) => c.body.client_ref === 's1::stack-eval::0');
+    ok(!!evalPost, 'a dedicated stack-acceptance eval task is launched after the chain');
+    ok(!!evalPost?.body.acceptance, 'the eval task carries the compiled stack acceptance (A1 executor at stack scope)');
+    eqIs(evalPost?.body.max_iterations, 1, 'the stack eval is a single verification attempt, not more work');
+    eqIs(runState('s1')?.stopReason, 'goal_met', 'a passing single-run stack meets its goal');
+  }
+
+  // ── B1: halts on the chain-loop ceiling with the specific reason ─────────
+  {
+    resetPanes();
+    seedPane('s1', [card('a')]);
+    seedStackConfig('s1', {
+      loopCount: 2,
+      evals: [BASELINE_EVAL, { name: 'tests pass', tier: 'test' }],
+      goal: { pursue: true, noProgressLimit: 5 }
+    });
+    const statusSource: StatusStore = writable(new Map());
+    // Goal never met — every stack eval fails, no observable score.
+    const captured = mockBackend(statusSource, {
+      a: 'completed',
+      's1::stack-eval::0': 'failed',
+      's1::stack-eval::1': 'failed'
+    });
+
+    runStack('s1', 'run', defaults, statusSource as AgentStatusSource);
+    await flush(80);
+
+    eq(
+      captured.map((c) => c.body.client_ref),
+      ['a', 's1::stack-eval::0', 'a', 's1::stack-eval::1'],
+      'the chain re-runs up to the loopCount ceiling, evaluating each time'
+    );
+    eqIs(runState('s1')?.phase, 'error', 'giving up without meeting the goal ends in phase "error"');
+    eqIs(runState('s1')?.stopReason, 'max_chain_loops', 'the recorded reason is the specific max_chain_loops, not a generic stop');
+  }
+
+  // ── B1: halts on no-progress when the stack-eval score stops gaining ─────
+  {
+    resetPanes();
+    seedPane('s1', [card('a')]);
+    seedStackConfig('s1', {
+      loopCount: 0, // infinite ceiling — only no-progress can stop it here
+      evals: [BASELINE_EVAL, { name: 'tests pass', tier: 'test' }],
+      goal: { pursue: true, noProgressLimit: 2 }
+    });
+    const statusSource: StatusStore = writable(new Map());
+    // Every stack eval fails with the *same* score → no gain across re-runs.
+    const captured = mockBackend(
+      statusSource,
+      {
+        a: 'completed',
+        's1::stack-eval::0': 'failed',
+        's1::stack-eval::1': 'failed',
+        's1::stack-eval::2': 'failed'
+      },
+      undefined,
+      { 's1::stack-eval::0': 0.5, 's1::stack-eval::1': 0.5, 's1::stack-eval::2': 0.5 }
+    );
+
+    runStack('s1', 'run', defaults, statusSource as AgentStatusSource);
+    await flush(120);
+
+    eqIs(runState('s1')?.stopReason, 'no_progress', 'a stack whose eval score stops gaining halts with no_progress, not an endless loop');
+    eqIs(runState('s1')?.phase, 'error', 'a no-progress halt is not a success');
+  }
+
+  // ── B1: "Run once" never pursues a goal — one pass, no stack eval ────────
+  {
+    resetPanes();
+    seedPane('s1', [card('a')]);
+    seedStackConfig('s1', {
+      loopCount: 1,
+      evals: [BASELINE_EVAL, { name: 'tests pass', tier: 'test' }],
+      goal: { pursue: true, noProgressLimit: 3 }
+    });
+    const statusSource: StatusStore = writable(new Map());
+    const captured = mockBackend(statusSource, { a: 'completed' });
+
+    runStack('s1', 'run-once', defaults, statusSource as AgentStatusSource);
+    await flush(60);
+
+    eq(
+      captured.map((c) => c.body.client_ref),
+      ['a'],
+      '"Run once" runs the chain a single pass and launches no stack-acceptance eval, even with a goal set'
+    );
+    eqIs(runState('s1')?.phase, 'done', 'a clean run-once ends done with no goal pursuit');
+    eqIs(runState('s1')?.stopReason, undefined, 'no stop reason is recorded when no goal was pursued');
+  }
+
+  // ── B1: pursue on but only baseline acceptance → not a real goal, legacy ─
+  {
+    resetPanes();
+    seedPane('s1', [card('a')]);
+    // pursue is on, but evals are baseline-only (nothing to check) → inert;
+    // the run must fall back to the legacy fixed-loopCount behavior.
+    seedStackConfig('s1', { loopCount: 1, goal: { pursue: true, noProgressLimit: 3 } });
+    const statusSource: StatusStore = writable(new Map());
+    const captured = mockBackend(statusSource, { a: 'completed' });
+
+    runStack('s1', 'run', defaults, statusSource as AgentStatusSource);
+    await flush(60);
+
+    eq(
+      captured.map((c) => c.body.client_ref),
+      ['a'],
+      'pursue with baseline-only acceptance launches no eval — an inert goal falls back to legacy behavior'
+    );
+    eqIs(runState('s1')?.stopReason, undefined, 'no goal pursued → no stop reason recorded (backward-compatible)');
   }
 
   namedSummary('stackRun');

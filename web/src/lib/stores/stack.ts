@@ -824,8 +824,36 @@ export const STACK_CONTROL_MODE: 'dock' | 'sticky' = 'dock';
  *  repeat itself. Reuses the same `0` = infinite sentinel and the same
  *  `stepMaxIterations`/`maxIterationsLabel` helpers as the per-loop
  *  iteration pill (the brief's "reuse the exact loop controls, just scoped
- *  to the stack"). */
+ *  to the stack"). When a stack is *pursuing a goal* (B1), this same
+ *  `loopCount` is re-read as the `max_chain_loops` ceiling — how many times
+ *  the whole chain may re-run before giving up (`0` = until the goal or a
+ *  softer stop reason fires). */
 export const DEFAULT_STACK_LOOP_COUNT = 1;
+
+/** B1 — the default no-progress tolerance for a goal-pursuing stack: stop with
+ *  `no_progress` after this many consecutive chain-runs that don't gain on the
+ *  stack metric. Mirrors the spirit of the per-loop `no_progress_limit`
+ *  (`crates/lopi-core`), one scope up. */
+export const DEFAULT_NO_PROGRESS_LIMIT = 3;
+
+/** B1 — the stack's run-until-goal facet. When `pursue` is on and the stack
+ *  carries acceptance beyond the baseline (`stackEvalActive`), `runStack`
+ *  re-runs the whole chain until the stack acceptance passes (`goal_met`) or a
+ *  chain-scope stop reason fires (see `stores/stackGoal.ts`). Off by default,
+ *  so a stack with no goal behaves exactly as before — additive and
+ *  backward-compatible, the same honesty rule the rest of Stack-1 follows. */
+export interface StackGoal {
+  /** Run-until-goal on/off. */
+  pursue: boolean;
+  /** Consecutive non-gaining chain-runs tolerated before a `no_progress` stop;
+   *  `0` disables the no-progress detector. */
+  noProgressLimit: number;
+}
+
+/** Freshly-initialized goal facet — every stack gets its own object. */
+export function defaultStackGoal(): StackGoal {
+  return { pursue: false, noProgressLimit: DEFAULT_NO_PROGRESS_LIMIT };
+}
 
 /** Stack-level config — the purple control area's full state. `scheduled`/
  *  `cron` are STUBBED (rendered, editable, never actually fired — see
@@ -845,6 +873,12 @@ export interface StackConfig {
   guardrails: StackGuardrails;
   evals: EvalRef[];
   defaults: StackDefaults;
+  /** B1 — run-until-goal. WIRED into the chain sequencer
+   *  (`stores/stackRun.ts`): with `pursue` on and acceptance beyond baseline,
+   *  the chain re-runs until the stack acceptance passes or a stack stop
+   *  reason fires. Additive — default `pursue: false` reproduces today's
+   *  fixed-`loopCount` behavior exactly. */
+  goal: StackGoal;
 }
 
 /** Freshly-initialized stack config — every pane gets its own objects
@@ -857,7 +891,8 @@ export function defaultStackConfig(): StackConfig {
     cron: defaultCron(),
     guardrails: defaultStackGuardrails(),
     evals: [BASELINE_EVAL],
-    defaults: defaultStackDefaults()
+    defaults: defaultStackDefaults(),
+    goal: defaultStackGoal()
   };
 }
 
@@ -874,6 +909,30 @@ export function stackGuardActive(g: StackGuardrails): boolean {
 
 export function stackEvalActive(config: StackConfig): boolean {
   return config.evals.length > 1;
+}
+
+/** B1 — the goal facet reads "active" once run-until-goal is switched on. The
+ *  facet only *does* anything when the stack also carries acceptance beyond the
+ *  baseline (`stackEvalActive`) — `pursue` with nothing to check is inert, so
+ *  the sequencer requires both (see `runStack`). */
+export function stackGoalActive(config: StackConfig): boolean {
+  return config.goal.pursue;
+}
+
+/** True only when run-until-goal is on *and* there is a real acceptance to
+ *  pursue — the exact condition `runStack` gates chain re-running on, surfaced
+ *  as a pure predicate so the dock can render "pursuing goal" honestly (never
+ *  when the toggle is on but there's nothing to check). */
+export function stackPursuesGoal(config: StackConfig): boolean {
+  return config.goal.pursue && stackEvalActive(config);
+}
+
+/** The goal summary line for the dock: the target (chain acceptance) plus the
+ *  chain-loop ceiling it pursues within, mirroring the other `stack*Summary`
+ *  helpers' terse "part · part" shape. */
+export function stackGoalSummary(config: StackConfig): string {
+  const ceiling = config.loopCount === 0 ? 'until met' : `≤${config.loopCount} chain-runs`;
+  return `pursue chain acceptance · ${ceiling}`;
 }
 
 /** The stack's own defaults read "active" once any field has moved off the
@@ -994,7 +1053,8 @@ export function duplicateStack(state: StackPaneState[], key: string): StackPaneS
       cron: { ...original.config.cron },
       guardrails: { ...original.config.guardrails },
       evals: [...original.config.evals],
-      defaults: { ...original.config.defaults }
+      defaults: { ...original.config.defaults },
+      goal: { ...original.config.goal }
     }
   };
   const next = [...state];
