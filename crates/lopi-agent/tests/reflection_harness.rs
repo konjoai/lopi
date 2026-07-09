@@ -11,6 +11,11 @@
 //! `cargo test -p lopi-agent --test reflection_harness -- --nocapture` to see the
 //! three-arm table and the precision sweep.
 
+// This harness is meant to be *run and observed* (`--nocapture`) — printing the
+// three-arm table and precision sweep is its point (§2: "report the real
+// numbers"). CI denies `print_stdout`, so allow it for this reporting test only.
+#![allow(clippy::print_stdout)]
+
 use lopi_agent::reflection_harness::{precision_sweep, reflection_fixtures, run_three_arm};
 use lopi_agent::HarnessParams;
 
