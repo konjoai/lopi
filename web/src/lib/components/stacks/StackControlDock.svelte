@@ -23,8 +23,11 @@
     stackGuardActive,
     stackEvalActive,
     stackDefaultsActive,
+    stackGoalActive,
+    stackPursuesGoal,
     stackGuardSummary,
     stackEvalsSummary,
+    stackGoalSummary,
     maxIterationsLabel,
     stepMaxIterations,
     cronHuman,
@@ -35,6 +38,7 @@
     type DryRunResult
   } from '$lib/stores/stack';
   import { runs, runStack, pauseStack, resumeStack, type RunPhase } from '$lib/stores/stackRun';
+  import { stackStopLabel } from '$lib/stores/stackGoal';
   import { agents } from '$lib/stores/agents';
   import { MODEL_OPTIONS, labelFor, type Option } from '$lib/stores/controls';
   import { draggingPane } from './dnd';
@@ -69,7 +73,15 @@
   $: guardsOn = stackGuardActive(config.guardrails);
   $: evalsOn = stackEvalActive(config);
   $: configOn = stackDefaultsActive(config.defaults);
-  $: showSummary = scheduledOn || guardsOn || evalsOn || configOn;
+  // B1 — the goal facet. `goalOn` is the raw toggle; `pursues` is whether it
+  // will actually drive run-until-goal (toggle on *and* real acceptance).
+  $: goalOn = stackGoalActive(config);
+  $: pursues = stackPursuesGoal(config);
+  $: showSummary = scheduledOn || guardsOn || evalsOn || configOn || goalOn;
+
+  function toggleGoal() {
+    updateStackConfig(pane.key, { goal: { ...config.goal, pursue: !config.goal.pursue } });
+  }
 
   $: modelLabel = labelFor(MODEL_OPTIONS, config.defaults.model);
   $: dockSummary = `${scheduledOn ? cronHuman(config.cron) + ' · ' : ''}loop ×${maxIterationsLabel(config.loopCount)} · ${modelLabel}`;
@@ -84,6 +96,10 @@
 
   $: phase = $runs.get(pane.key)?.phase as RunPhase | undefined;
   $: runError = $runs.get(pane.key)?.error;
+  // B1 — the specific reason a goal run halted (goal_met vs no_progress vs
+  // max_chain_loops). When present it drives its own banner and supersedes the
+  // generic error banner, so the outcome reads as a specific verdict.
+  $: stopReason = $runs.get(pane.key)?.stopReason;
   $: runLabel =
     phase === 'running'
       ? 'pause'
@@ -91,7 +107,9 @@
         ? 'resume'
         : phase === 'draining'
           ? 'draining…'
-          : 'run stack';
+          : pursues
+            ? 'pursue goal'
+            : 'run stack';
   $: runIcon = phase === 'running' ? ICONS.pause : ICONS.play;
 
   function runMain() {
@@ -215,6 +233,15 @@
             <span class="txt">{stackEvalsSummary(config)}</span>
           </div>
         {/if}
+        {#if goalOn}
+          <div class="sumln goal">
+            <span class="rl">{@html ICONS.gauge}goal</span>
+            <span class="txt">{stackGoalSummary(config)}</span>
+          </div>
+          {#if !pursues}
+            <div class="hintrow">add chain-acceptance evals for the goal to pursue — a goal with nothing to check is inert</div>
+          {/if}
+        {/if}
         {#if configOn}
           <div class="sumln cfg">
             <span class="rl">{@html ICONS.sliders}default</span>
@@ -240,6 +267,16 @@
         <button class="ib eval" class:act={evalsOn} bind:this={evalBtn} on:click={() => togglePopover(evalId)} title="stack evals">
           {@html ICONS.checkbox}<span class="cnt">{config.evals.length}</span>
         </button>
+        <button
+          class="ib goal"
+          class:act={goalOn}
+          type="button"
+          on:click={toggleGoal}
+          aria-pressed={goalOn}
+          title="run until the stack acceptance passes (goal-directed)"
+        >
+          {@html ICONS.gauge}
+        </button>
         <button class="ib config" class:act={configOn} bind:this={cfgBtn} on:click={() => togglePopover(cfgId)} title="stack default config">
           {@html ICONS.sliders}
         </button>
@@ -261,7 +298,12 @@
   </div>
 
   <div class="dockrun">
-    {#if runError}
+    {#if stopReason}
+      <div class="runbanner" class:err={stopReason !== 'goal_met'} class:ok={stopReason === 'goal_met'}>
+        <span>{stackStopLabel(stopReason)}</span>
+        <button type="button" on:click={dismissRunError}>{@html ICONS.x}</button>
+      </div>
+    {:else if runError}
       <div class="runbanner err">
         <span>{runError}</span>
         <button type="button" on:click={dismissRunError}>{@html ICONS.x}</button>
@@ -463,6 +505,9 @@
   .sumln.eval .rl {
     color: var(--konjo-jade);
   }
+  .sumln.goal .rl {
+    color: var(--konjo-flame, #ff9500);
+  }
   .sumln.cfg .rl {
     color: #e6ddff;
   }
@@ -532,6 +577,11 @@
     color: #efe9ff;
     border-color: rgba(255, 255, 255, 0.5);
     background: rgba(255, 255, 255, 0.14);
+  }
+  .ib.goal.act {
+    color: var(--konjo-flame, #ff9500);
+    border-color: rgba(255, 149, 0, 0.6);
+    background: rgba(255, 149, 0, 0.14);
   }
   .ib.danger:hover {
     color: var(--konjo-rose, #ff0066);
@@ -627,6 +677,11 @@
     background: rgba(255, 90, 90, 0.1);
     border-color: rgba(255, 90, 90, 0.4);
     color: rgba(255, 170, 170, 0.95);
+  }
+  .runbanner.ok {
+    background: rgba(0, 255, 157, 0.1);
+    border-color: rgba(0, 255, 157, 0.4);
+    color: rgba(150, 255, 210, 0.95);
   }
   .runsplit {
     display: flex;
