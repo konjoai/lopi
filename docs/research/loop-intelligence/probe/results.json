@@ -1,0 +1,20 @@
+{
+  "_note": "Raw verdicts from 3 independent judge runs (separate model instances, Sonnet class, fresh context each, judge prompt mirrors verifier.rs:13 VERIFIER_SYSTEM). passed=true means judge scored the work GOOD. Compare against fixtures.json ground_truth.",
+  "ground_truth": {
+    "MC-01":"good","MC-02":"bad","MC-03":"bad","MC-04":"good","MC-05":"bad","MC-06":"bad",
+    "MC-07":"good","MC-08":"bad","MC-09":"good","MC-10":"bad","MC-11":"good","MC-12":"bad",
+    "JG-01":"bad","JG-02":"bad","JG-03":"good","JG-04":"bad","JG-05":"good","JG-06":"bad",
+    "JG-07":"bad","JG-08":"good","JG-09":"bad","JG-10":"good","JG-11":"bad","JG-12":"good"
+  },
+  "adversarial_ids": ["MC-03","MC-05","MC-08","MC-10","JG-06","JG-07","JG-11"],
+  "run1_passed": {"MC-01":true,"MC-02":false,"MC-03":false,"MC-04":true,"MC-05":false,"MC-06":false,"MC-07":true,"MC-08":false,"MC-09":true,"MC-10":false,"MC-11":true,"MC-12":false,"JG-01":false,"JG-02":false,"JG-03":true,"JG-04":false,"JG-05":true,"JG-06":false,"JG-07":false,"JG-08":true,"JG-09":false,"JG-10":true,"JG-11":false,"JG-12":true},
+  "run2_passed": {"MC-01":true,"MC-02":false,"MC-03":false,"MC-04":true,"MC-05":false,"MC-06":false,"MC-07":true,"MC-08":false,"MC-09":true,"MC-10":false,"MC-11":true,"MC-12":false,"JG-01":false,"JG-02":false,"JG-03":true,"JG-04":false,"JG-05":true,"JG-06":false,"JG-07":false,"JG-08":true,"JG-09":false,"JG-10":true,"JG-11":false,"JG-12":true},
+  "run3_passed": {"MC-01":true,"MC-02":false,"MC-03":false,"MC-04":true,"MC-05":false,"MC-06":false,"MC-07":true,"MC-08":false,"MC-09":true,"MC-10":false,"MC-11":true,"MC-12":false,"JG-01":false,"JG-02":false,"JG-03":true,"JG-04":false,"JG-05":true,"JG-06":false,"JG-07":false,"JG-08":true,"JG-09":false,"JG-10":true,"JG-11":false,"JG-12":true},
+  "scorecard": {
+    "machine_checkable_agreement": {"correct": 12, "total": 12, "pct": 100.0, "threshold": 90.0, "verdict": "PASS"},
+    "judgment_agreement": {"correct": 12, "total": 12, "pct": 100.0, "threshold": 75.0, "verdict": "PASS"},
+    "verdict_stability_3_runs": {"identical": 24, "total": 24, "pct": 100.0, "flip_rate_pct": 0.0, "threshold_pct": 90.0, "verdict": "PASS"},
+    "adversarial_catch_rate": {"caught": 7, "total": 7, "pct": 100.0, "threshold": 80.0, "verdict": "PASS"},
+    "overall": "PASS (all four pre-registered thresholds met, on this fixture set)"
+  }
+}
