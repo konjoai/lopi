@@ -33,9 +33,11 @@
   export let id: string;
   /** The trigger element to float near and flip/clamp against. */
   export let anchor: HTMLElement | null;
-  /** Drives the header/footer/tail accent color. Config is an inline drawer,
-   *  not a popover, so it isn't one of these kinds. */
-  export let kind: 'sched' | 'guard' | 'eval' = 'sched';
+  /** Drives the header/footer/tail accent color. At loop scope config is an
+   *  inline drawer, not a popover — `'config'` exists for the stack control
+   *  dock's default-config popover (Stack-1), which has no inline-drawer
+   *  equivalent since there's no card to expand underneath. */
+  export let kind: 'sched' | 'guard' | 'eval' | 'config' = 'sched';
 
   $: open = $activePopoverId === id;
 
@@ -220,6 +222,9 @@
   .pop.eval :global(.ph) {
     color: var(--konjo-jade);
   }
+  .pop.config :global(.ph) {
+    color: var(--stack-violet, #b79bff);
+  }
   .pop :global(.pbody) {
     padding: 11px 13px;
     max-height: 56vh;
@@ -260,6 +265,11 @@
     background: rgba(0, 255, 157, 0.15);
     color: var(--konjo-jade);
     border-color: rgba(0, 255, 157, 0.5);
+  }
+  .pop.config :global(.apply) {
+    background: rgba(183, 155, 255, 0.15);
+    color: var(--stack-violet, #b79bff);
+    border-color: rgba(183, 155, 255, 0.5);
   }
   @media (prefers-reduced-motion: reduce) {
     .pop {

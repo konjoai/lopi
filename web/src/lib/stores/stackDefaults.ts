@@ -1,13 +1,14 @@
 /**
- * Stack-level defaults for the /stacks composer's selector row and every
- * card's config-drawer baseline — model, effort, repo, branch, autonomy.
- * Distinct from `launchControls` (which drives single-task launches
- * elsewhere): these are in-memory only this slice. `model`/`effort`/`repo`
- * are real `CreateTaskRequest` fields; `branch`/`autonomy` are client-only —
- * see UI_PLAN.md's Backend Bindings table.
+ * Stack-level defaults — per-stack (per-pane) baseline for every card's
+ * config-drawer override: model, effort, repo, branch, autonomy. Owned by
+ * each `StackPaneState.config.defaults` (`stores/stack.ts`), not a single
+ * global store — Stack-1 made this per-pane so two panes can carry two
+ * different default configs (was a single app-wide `writable` through
+ * UI-2/Backend-1). `model`/`effort`/`repo` are real `CreateTaskRequest`
+ * fields; `branch`/`autonomy` are client-only — see UI_PLAN.md's Backend
+ * Bindings table.
  */
-import { writable } from 'svelte/store';
-import { MODEL_OPTIONS, type Option } from '$lib/stores/controls';
+import { MODEL_OPTIONS, type Option } from '$lib/stores/options';
 
 export interface StackDefaults {
   model: string;
@@ -36,7 +37,10 @@ export const BRANCH_OPTIONS: Option[] = [
   { value: 'dev', label: 'dev' }
 ];
 
-const DEFAULTS: StackDefaults = {
+/** The app-wide `DEF` a stack's own defaults start from and are compared
+ *  against (`stackDefaultsActive`) to decide whether the dock's "default"
+ *  summary line has anything non-baseline to report. */
+export const DEFAULT_STACK_DEFAULTS: StackDefaults = {
   model: MODEL_OPTIONS[0].value,
   effort: 'medium',
   repo: '',
@@ -44,4 +48,9 @@ const DEFAULTS: StackDefaults = {
   autonomy: 'L2'
 };
 
-export const stackDefaults = writable<StackDefaults>({ ...DEFAULTS });
+/** Fresh defaults for a newly-created stack — every pane gets its own
+ *  object (never a shared reference), matching `defaultGuardrails()`'s
+ *  per-card convention in `stores/stack.ts`. */
+export function defaultStackDefaults(): StackDefaults {
+  return { ...DEFAULT_STACK_DEFAULTS };
+}

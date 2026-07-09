@@ -33,18 +33,29 @@ import {
   buildCard,
   defaultCron,
   defaultGuardrails,
+  defaultStackConfig,
+  duplicateStack,
+  reorderStacks,
+  moveStackBeforeOrAfter,
+  deleteStack,
+  stackGuardActive,
+  stackEvalActive,
+  stackDefaultsActive,
+  perLoopScheduleGoverned,
   BASELINE_EVAL,
   type StackCard,
-  type StackPaneState
+  type StackPaneState,
+  type StackConfig
 } from './stack';
+import { DEFAULT_STACK_DEFAULTS } from './stackDefaults';
 import { eq, eqIs, ok, namedSummary } from '$lib/test-harness';
 
 function card(id: string, goal = id): StackCard {
   return { ...buildCard(`"${goal}"`), id };
 }
 
-function pane(key: string, cards: StackCard[] = []): StackPaneState {
-  return { key, title: key, cards };
+function pane(key: string, cards: StackCard[] = [], config: Partial<StackConfig> = {}): StackPaneState {
+  return { key, title: key, cards, config: { ...defaultStackConfig(), ...config } };
 }
 
 // ── add — prepends ────────────────────────────────────────────────────────────
@@ -539,6 +550,135 @@ eqIs(
   if (!pastEnd.ok) {
     eq(pastEnd.error, 'cannot bump past the end of the queue', 'the past-the-end rejection explains why');
   }
+}
+
+// ── Stack-1: stack-level ops — duplicate / reorder / delete a whole pane ──────
+{
+  const state = [pane('s1', [card('a'), card('b')]), pane('s2', [card('x')])];
+  const dup = duplicateStack(state, 's1');
+  eq(dup.map((p) => p.key), [state[0].key, dup[1].key, state[1].key], 'duplicateStack inserts the clone immediately after the original');
+  eqIs(dup[1].title, 's1 copy', 'the clone gets a distinguishing title');
+  eq(dup[1].cards.map((c) => c.goal), ['a', 'b'], 'the clone carries every card the original had');
+  ok(
+    dup[1].cards.every((c, i) => c.id !== dup[0].cards[i].id),
+    'every cloned card gets a fresh id, not a shared reference to the original'
+  );
+  ok(dup[1].config !== dup[0].config, 'the clone gets its own config object, not a shared reference');
+  ok(dup[1].config.cron !== dup[0].config.cron, 'nested config objects (cron) are cloned too, not shared');
+}
+{
+  const running = card('a');
+  running.status = 'running';
+  running.iteration = { current: 2, total: 5 };
+  running.taskId = 'task-123';
+  const state = [pane('s1', [running])];
+  const dup = duplicateStack(state, 's1');
+  eqIs(dup[1].cards[0].status, 'idle', 'a cloned card resets its run status to idle');
+  eqIs(dup[1].cards[0].taskId, undefined, 'a cloned card drops any taskId from the original run');
+  eqIs(dup[1].cards[0].iteration, undefined, 'a cloned card drops live iteration progress');
+}
+{
+  const state = [pane('s1'), pane('s2')];
+  const untouched = duplicateStack(state, 'missing');
+  ok(untouched === state, 'duplicateStack on an unknown key is a total no-op');
+}
+{
+  const state = [pane('a'), pane('b'), pane('c')];
+  const moved = reorderStacks(state, 0, 2);
+  eq(moved.map((p) => p.key), ['b', 'c', 'a'], 'reorderStacks moves the pane at "from" to index "to"');
+  const outOfRange = reorderStacks(state, 0, 9);
+  ok(outOfRange === state, 'reorderStacks with an out-of-range index is a no-op');
+}
+{
+  const state = [pane('a'), pane('b'), pane('c')];
+  const before = moveStackBeforeOrAfter(state, 2, 0, true);
+  eq(before.map((p) => p.key), ['c', 'a', 'b'], 'moveStackBeforeOrAfter(before) drops the dragged pane just before the target');
+  const after = moveStackBeforeOrAfter(state, 0, 2, false);
+  eq(after.map((p) => p.key), ['b', 'c', 'a'], 'moveStackBeforeOrAfter(after) drops the dragged pane just after the target');
+  ok(moveStackBeforeOrAfter(state, 1, 1, true) === state, 'dropping a pane onto itself is a no-op');
+}
+{
+  const state = [pane('s1'), pane('s2')];
+  const deleted = deleteStack(state, 's1');
+  eq(deleted.map((p) => p.key), ['s2'], 'deleteStack drops the named pane');
+}
+{
+  const state = [pane('only')];
+  const guarded = deleteStack(state, 'only');
+  ok(guarded === state, 'deleteStack refuses to empty the last remaining pane (no pane-creation affordance exists to recover)');
+}
+
+// ── Stack-1: stack-level active-state predicates (hide-inactive summaries) ───
+{
+  const config = defaultStackConfig();
+  ok(!stackGuardActive(config.guardrails), 'a fresh stack\'s guardrails read inactive (onFail is still the default "stop")');
+  ok(stackGuardActive({ ...config.guardrails, onFail: 'continue' }), 'onFail moved off "stop" reads as active');
+  ok(!stackEvalActive(config), 'a fresh stack\'s evals read inactive (baseline only)');
+  ok(stackEvalActive({ ...config, evals: [BASELINE_EVAL, { name: 'tests pass', tier: 'test' }] }), 'more than baseline reads as active');
+  ok(!stackDefaultsActive(config.defaults), 'a fresh stack\'s defaults read inactive (still the app-wide baseline)');
+  ok(
+    stackDefaultsActive({ ...DEFAULT_STACK_DEFAULTS, model: 'claude-sonnet-4-6' }),
+    'a defaults field moved off the app-wide baseline reads as active'
+  );
+}
+
+// ── Stack-1 §1: the second precedence rule — stack schedule/loop-count GOVERN
+// a per-loop card's own schedule display, pure and load-bearing ─────────────
+{
+  const config = defaultStackConfig();
+  ok(!perLoopScheduleGoverned(config), 'an un-scheduled, un-looped (×1) stack does not govern per-loop schedules');
+  ok(perLoopScheduleGoverned({ ...config, scheduled: true }), 'a scheduled stack governs per-loop schedules');
+  ok(perLoopScheduleGoverned({ ...config, loopCount: 3 }), 'a looped (×3) stack governs per-loop schedules');
+  ok(perLoopScheduleGoverned({ ...config, loopCount: 0 }), 'an infinitely-looped (×∞) stack governs per-loop schedules');
+  ok(!perLoopScheduleGoverned({ ...config, loopCount: 1, scheduled: false }), 'explicitly ×1 and unscheduled does not govern');
+}
+
+// ── Stack-1 §1/§4 Phase 2: default resolution — `loop ?? stack.default ?? DEF`
+// table-driven, proving a loop override beats its stack's default and an
+// unset loop inherits it. `cardToTaskPayload`'s `defaults` param structurally
+// accepts a full `StackDefaults` (a superset of the 3 WIRED fields) — this is
+// the exact object shape `pane.config.defaults` is in production. ──────────
+{
+  const stackDefault = { ...DEFAULT_STACK_DEFAULTS, model: 'claude-sonnet-4-6', effort: 'high', repo: 'konjoai/stack-repo' };
+  type Row = { name: string; apply: (c: StackCard) => void; field: 'model' | 'effort' | 'repo'; expected: string };
+  const rows: Row[] = [
+    { name: 'model: unset loop inherits the stack default', apply: () => {}, field: 'model', expected: 'claude-sonnet-4-6' },
+    {
+      name: 'model: a loop override beats the stack default',
+      apply: (c) => (c.config.model = 'claude-opus-4-8'),
+      field: 'model',
+      expected: 'claude-opus-4-8'
+    },
+    { name: 'effort: unset loop inherits the stack default', apply: () => {}, field: 'effort', expected: 'high' },
+    {
+      name: 'effort: a loop override beats the stack default',
+      apply: (c) => (c.config.effort = 'low'),
+      field: 'effort',
+      expected: 'low'
+    },
+    { name: 'repo: unset loop inherits the stack default', apply: () => {}, field: 'repo', expected: 'konjoai/stack-repo' },
+    {
+      name: 'repo: a loop override beats the stack default',
+      apply: (c) => (c.config.repo = 'konjoai/other'),
+      field: 'repo',
+      expected: 'konjoai/other'
+    }
+  ];
+  for (const row of rows) {
+    const c = buildCard('precedence row');
+    row.apply(c);
+    const payload = cardToTaskPayload(c, stackDefault);
+    const actual = row.field === 'repo' ? payload.repo : (payload.options as unknown as Record<string, unknown>)[row.field];
+    eqIs(actual, row.expected, row.name);
+  }
+  // And the third rung: a stack itself never overrides — it only supplies a
+  // fallback — so a stack default that happens to equal the app-wide DEF is
+  // indistinguishable from "nothing was ever configured," which is exactly
+  // the intended behavior (no separate "unset stack default" state exists).
+  const untouchedStack = { ...DEFAULT_STACK_DEFAULTS };
+  const plain = buildCard('no overrides anywhere');
+  const payload = cardToTaskPayload(plain, untouchedStack);
+  eqIs(payload.options.model, DEFAULT_STACK_DEFAULTS.model, 'with no loop override and an untouched stack default, DEF wins through both rungs');
 }
 
 namedSummary('stack');
