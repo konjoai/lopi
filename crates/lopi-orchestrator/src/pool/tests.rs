@@ -329,6 +329,7 @@ fn runner_for(task: Task) -> lopi_agent::AgentRunner {
         0,
         lopi_core::LoopConfig::default().max_iterations,
         run_loop::RepoGuardrails::default(),
+        false,
         plan_decision_rx,
     )
 }

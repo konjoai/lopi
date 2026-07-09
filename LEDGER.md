@@ -5,6 +5,66 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## Reflection (A2) — durable learnings, and reflection that must *earn* its context
+
+**The load-bearing decision: reflection ships off-by-default, because the
+measurement that would justify turning it on could not be run — and even the
+mechanism simulation says its marginal value is conditional.** A2's analog of
+A1's fail-open and A3's noise-lock is *reflection that doesn't move the needle*:
+irrelevant or unbounded injected learnings add tokens and no lift, and can anchor
+the worker on a wrong fix. So the whole feature is gated behind
+`LoopConfig::reflect_cross_run` (default `false`), and the §2 pre-registration
+(`docs/research/loop-intelligence/A2-preregistration.md`, written before any
+code) fixed a **15 pp** ship margin against blind retry. The three-arm harness
+(`lopi-agent::reflection_harness`) is a **deterministic mechanism simulation**,
+not a live LLM benchmark — and it says so in its own doc comment. Its honest
+numbers at the baseline (retrieval precision 0.8): blind 45%, within-run 80%,
+cross-run 80% pass-rate. Cross-run beats blind by +35 pp — but only because
+within-run already does; its **marginal** value over the within-run reflection
+lopi already had is **+0 pp** at baseline, **−5 pp** below it, **+10 pp** only at
+perfect retrieval. The real baseline win is *speed* (1.44 vs 2.38 iters-to-pass),
+not pass-rate. A simulated lift proves the *mechanism* can help when retrieval is
+precise; it is **not** proof the live feature beats blind retry. That live
+three-arm run needs an API-enabled environment and was not executed here, so the
+disciplined default is **off**. This is a first-class documented outcome, not a
+failure — the DREX ethos: a measured (here, an honestly *un*measured-live) result
+is a real result.
+
+**Extend, don't rebuild — the within-run routing already existed.** A1's
+`EvalOutcome.critique` already routes into the next attempt's `constraints`
+(`eval_runner.rs`), the verifier already routes `fix_hints`, and adaptive-retry
+already frames `last_error` via `SelfPromptStrategy`. A2 *reuses* those seams:
+the same critique that routes within a run is distilled into a durable learning
+across runs. No new reflection loop was built.
+
+**Capture is rollback-safe by construction.** The learning is written **before**
+A3's rollback discards the attempt — at both reject sites (`eval_runner.rs`
+before `finalize.rs`'s `hard_rollback`; `run_loop.rs` before
+`abort_and_mark_retrying`). It lands in SQLite, which git rollback never touches,
+so a gain-gate-rejected attempt still yields its lesson (you learned what does
+*not* work). The `learnings` table has **no score gate** — deliberately, because
+the silent-0.6 gate on `lessons` (flagged in `A2.md`) would drop exactly the
+failure lessons A2 needs to keep, and dropping them silently violates CLAUDE.md's
+"no silent failures".
+
+**Retrieval is bounded and relevant, because §2 punishes the alternative.**
+`find_relevant_learnings` filters on goal-keyword Jaccard ≥ 0.3 (reusing pattern
+mining's fingerprint so "similar" means one thing repo-wide), dedups on critique,
+and the runner injects a **hard cap of 3**. Unbounded/irrelevant injection is the
+exact failure mode the precision sweep shows turning cross-run's marginal value
+negative — so the cap and the relevance filter are load-bearing, not decoration.
+
+**Reflection informs; it does not override the gate.** Capture and injection
+touch only the planning prompt and memory — never scoring, never
+`lopi-core::gain`. A reflected-but-worse attempt is still rejected by A3, and
+every A3 gain-gate test still passes. A2 gives the loop more to *gain* from; it
+does not change what counts as a gain.
+
+**How to apply:** turning `reflect_cross_run` on by default is a one-way trust
+decision that requires the *live* three-arm numbers to clear the 15 pp margin —
+not the simulation's. The harness is the regression guard that makes re-running
+that comparison cheap; run it live before flipping the default.
+
 ## Progress-Gating (A3) — the gain gate that refuses to lock noise
 
 **The load-bearing decision: the gain rule is objective-primary, and the judge

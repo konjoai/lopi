@@ -464,6 +464,11 @@ impl AgentRunner {
                 return Ok(status);
             }
 
+            // A2 (reflection) — capture the durable learning from this
+            // non-gaining attempt *before* `abort_and_mark_retrying` rolls it
+            // back. The heuristic score's errors are the critique. No-op unless
+            // cross-run reflection is enabled.
+            self.capture_learning(&score.errors, "non_gaining").await;
             self.abort_and_mark_retrying(&git, attempt).await;
             self.apply_on_fail_delay(attempt).await;
         }

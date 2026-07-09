@@ -1,5 +1,81 @@
 # Changelog
 
+## [0.2.5] — Reflection (A2): durable learnings + a measured reflect-vs-blind gate 🪞
+
+Turns a loop that already *reflects within a run* (A1's `EvalOutcome.critique`
+routed into the next attempt; verifier fix-hints; adaptive-retry framing) into
+one that can **compound learnings across runs** — and gates the whole feature on
+a measured comparison against blind retry. Builds on A1 (PR #70) and A3 (PR #71);
+it **extends** the existing within-run critique routing rather than rebuilding it.
+Headline discipline: reflection ships **off-by-default behind a flag**, because a
+live three-arm comparison could not be run in this environment and the mechanism
+simulation shows its *marginal* value over the reflection lopi already has is
+conditional on retrieval precision — an honest "less than we hoped" result.
+
+### Added
+- **Durable, rollback-safe learnings** (`lopi-memory` `learnings` table +
+  `store::learnings`): `save_learning(repo, goal, critique, attempted, outcome,
+  task_id)`, `load_learnings`, and relevance-filtered `find_relevant_learnings`.
+  Unlike `lessons`, there is **no score gate** — a rejected/rolled-back attempt's
+  lesson is exactly the low-score case that must survive (you learned what does
+  *not* work), which is the silent-0.6-gate hole `A2.md` flagged. Writes are
+  idempotent on `(repo_path, critique)`. `goal_keywords` reuses
+  `keyword_fingerprint` so retrieval means the same "similar goal" as pattern
+  mining.
+- **Rollback-safe capture** (`lopi-agent` `runner::reflection::capture_learning`):
+  a learning is distilled and persisted **before** A3's rollback discards the
+  attempt — wired at both reject sites: the acceptance/verifier finalize reject
+  (`eval_runner.rs`, before `finalize.rs`'s `hard_rollback`) and the non-gaining
+  iteration (`run_loop.rs`, before `abort_and_mark_retrying`). The write lands in
+  SQLite, which git rollback never touches, so the lesson outlives the discarded
+  working tree. Best-effort — a capture failure warns (never silently) and never
+  blocks the retry.
+- **Relevance-filtered, bounded injection** (`runner::seed::seed_reflection_learnings`):
+  a new task retrieves its most relevant past learnings (Jaccard ≥ 0.3, deduped,
+  recency-tie-broken) and injects them into the planning prompt at the existing
+  seed point — **hard-capped at 3** (`REFLECTION_INJECTION_CAP`). Irrelevant or
+  unbounded injection is the failure mode §2 punishes, so a non-matching goal
+  retrieves (near-)nothing.
+- **The §2 measured harness** (`lopi-agent::reflection_harness` +
+  `tests/reflection_harness.rs` — the A2 centerpiece, pre-registered in
+  `docs/research/loop-intelligence/A2-preregistration.md` before coding): a
+  deterministic three-arm comparison — **blind** / **within-run** / **cross-run**
+  — over a fixed 20-task set, with a retrieval-precision sweep. Reproducible
+  (splitmix64, no wall-clock seed), in the fixture-driven tradition of A1's
+  24-fixture suite and A3's four score sequences. It is a **mechanism
+  simulation**, not a live LLM benchmark, and it says so.
+- **The reflection flag** (`lopi-core::LoopConfig::reflect_cross_run`, default
+  `false`; `AgentRunner::with_cross_run_reflection`; wired through the pool's
+  `build_runner`): gates both capture and injection. Off is behavior-identical to
+  before A2.
+
+### Notes — the settled A2 policy (the ledger)
+- **Learning schema (minimal):** `learnings { id, repo_path, goal_keywords,
+  critique, attempted, outcome, task_id, created_at }`. No score gate; idempotent
+  on `(repo_path, critique)`.
+- **Retrieval/injection policy + cap:** relevance = goal-keyword Jaccard ≥ 0.3;
+  deduped on critique; recency-tie-broken; **hard cap 3** learnings into context.
+  Bounded + relevant is the discipline — the §2 test punishes the alternative.
+- **The measured reflect-vs-blind result (the headline, honestly):** on the fixed
+  20-task **mechanism simulation** at the pre-registered baseline (retrieval
+  precision `0.8`, bloat `0.5`, 4 attempts): **blind 45%**, **within-run 80%**,
+  **cross-run 80%** pass-rate. Cross-run beats blind by **+35 pp** — but that lead
+  is almost entirely because *within-run already does* (+35 pp). Cross-run's
+  **marginal** value over the within-run reflection lopi already has is **+0 pp**
+  at baseline precision, **−5 pp** below it, and only **+10 pp** at perfect
+  retrieval. Cross-run's real baseline win is **speed** (mean iters-to-pass
+  **1.44 vs 2.38**), not pass-rate. **Verdict:** the pre-registered live three-arm
+  run on real tasks was **not executed in this environment**, and even the sim
+  says the pass-rate gain *over today's reflection* does not clear a 15 pp margin
+  at realistic precision. Per §2 discipline, cross-run reflection ships
+  **off-by-default behind `reflect_cross_run`**. A simulated lift is evidence the
+  mechanism can help *when retrieval is precise* — it is **not** evidence the live
+  feature beats blind retry. Flipping the default on requires the live numbers.
+- **Reflection does not fight the gain gate:** capture + injection only inform the
+  planning prompt and memory; they touch neither scoring nor `lopi-core::gain`.
+  A reflected-but-worse attempt is still rejected by A3's gate, unchanged — every
+  A3 gain-gate test still passes.
+
 ## [0.2.4] — Progress-Gating (A3): the gain gate, no-progress stop, real budget ⛰️
 
 Makes a loop move *toward* a goal and stop cleanly instead of running out the

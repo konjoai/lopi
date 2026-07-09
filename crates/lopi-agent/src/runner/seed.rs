@@ -32,6 +32,12 @@ impl AgentRunner {
         // each activation in the audit trail). Appends nothing when none match.
         extra_constraints.extend(self.seed_skills().await);
 
+        // A2 (reflection) — inject relevance-filtered, bounded durable learnings
+        // from prior rejected attempts. No-op unless cross-run reflection is
+        // enabled; hard-capped so irrelevant/unbounded context (the §2 failure
+        // mode) can't bloat the prompt.
+        extra_constraints.extend(self.seed_reflection_learnings().await);
+
         // Store lessons for use in the API planning path.
         self.task_lessons = lessons_data
             .iter()
@@ -104,7 +110,54 @@ impl AgentRunner {
     }
 }
 
+/// Hard cap on how many durable learnings enter the planning prompt. Bounded +
+/// relevant is the whole A2 discipline: the §2 kill-test punishes unbounded or
+/// irrelevant injection, so prefer the few most relevant over "just in case".
+const REFLECTION_INJECTION_CAP: usize = 3;
+
 impl AgentRunner {
+    /// A2 (reflection) — pull the most relevant durable learnings for this task's
+    /// goal and render them as bounded planning-prompt constraints.
+    ///
+    /// Empty unless cross-run reflection is enabled and a store is wired.
+    /// Retrieval is relevance-filtered + deduped + capped in
+    /// [`find_relevant_learnings`](lopi_memory::MemoryStore::find_relevant_learnings);
+    /// a non-matching goal returns (near-)nothing rather than dumping recent
+    /// history into context.
+    pub(super) async fn seed_reflection_learnings(&self) -> Vec<String> {
+        if !self.reflect_cross_run {
+            return vec![];
+        }
+        let Some(store) = &self.store else {
+            return vec![];
+        };
+        let learnings = match store
+            .find_relevant_learnings(
+                self.repo_path.to_string_lossy().as_ref(),
+                &self.task.goal,
+                REFLECTION_INJECTION_CAP,
+            )
+            .await
+        {
+            Ok(rows) => rows,
+            Err(e) => {
+                self.warn(format!("reflection: failed to retrieve learnings: {e}"));
+                return vec![];
+            }
+        };
+        if learnings.is_empty() {
+            return vec![];
+        }
+        self.log(format!(
+            "🪞 injecting {} relevant past learning(s)",
+            learnings.len()
+        ));
+        learnings
+            .iter()
+            .map(|l| reflection_constraint(&l.critique))
+            .collect()
+    }
+
     /// Match skills relevant to the goal, record each activation in the audit
     /// trail, and return their bodies as planning-prompt constraints.
     ///
@@ -161,6 +214,13 @@ fn skill_constraint_blocks(skills: &[&lopi_skill::Skill]) -> Vec<String> {
         .collect()
 }
 
+/// Frame a retrieved learning's critique as a planning-prompt constraint. Pure,
+/// so the wording is unit-testable without a store. Labeled so the worker reads
+/// it as a prior failure to avoid, not a fresh instruction.
+fn reflection_constraint(critique: &str) -> String {
+    format!("Past learning — a prior attempt failed because: {critique}")
+}
+
 /// Return an owned copy of `c` when it is present and non-empty.
 fn non_empty_constraint(c: Option<&str>) -> Option<String> {
     c.and_then(|c| (!c.is_empty()).then(|| c.to_string()))
@@ -168,9 +228,27 @@ fn non_empty_constraint(c: Option<&str>) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{non_empty_constraint, skill_constraint_blocks};
+    use super::{
+        non_empty_constraint, reflection_constraint, skill_constraint_blocks,
+        REFLECTION_INJECTION_CAP,
+    };
     use lopi_skill::Skill;
     use std::path::PathBuf;
+
+    #[test]
+    fn reflection_constraint_labels_the_prior_failure() {
+        let c = reflection_constraint("the mutex was held across an await");
+        assert!(c.starts_with("Past learning"));
+        assert!(c.contains("the mutex was held across an await"));
+    }
+
+    #[test]
+    fn injection_cap_is_small_and_bounded() {
+        assert!(
+            (1..=5).contains(&REFLECTION_INJECTION_CAP),
+            "the cap must stay small — bounded injection is the §2 discipline"
+        );
+    }
 
     #[test]
     fn keeps_non_empty_drops_empty_and_none() {

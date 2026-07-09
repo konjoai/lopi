@@ -345,6 +345,14 @@ pub struct LoopConfig {
     /// behavior exactly.
     #[serde(default)]
     pub on_fail: OnFail,
+    /// A2 (reflection) — durable cross-run learning: capture a learning from
+    /// every rejected attempt (rollback-safe) and inject relevance-filtered,
+    /// bounded learnings into the next planning prompt. `false` (the default)
+    /// keeps behavior identical to before A2. Off-by-default is deliberate — the
+    /// §2 discipline flags cross-run reflection until a live three-arm run beats
+    /// blind retry by the pre-registered margin.
+    #[serde(default)]
+    pub reflect_cross_run: bool,
 }
 
 impl Default for LoopConfig {
@@ -370,6 +378,7 @@ impl Default for LoopConfig {
             gate: None,
             until: None,
             on_fail: OnFail::default(),
+            reflect_cross_run: false,
         }
     }
 }
