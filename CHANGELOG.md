@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.2.1] — Shell-1: Loop Stacks as default view, off-canvas sidebar 🍔
+
+### Added
+- `docs/ui/lopi-app-shell.html` — the settled visual target, fully-hidden variant (also sketches the icon-rail variant as a toggle, documenting the shape without shipping it).
+- `AppSidebar.svelte` — an off-canvas left sidebar (`translateX(-100%)` when closed) with a scrim, replacing the old horizontal top-tab bar. Closes on scrim-click, `Escape`, or selecting a nav item; traps focus within the panel while open (`Tab`/`Shift+Tab` wrap); returns focus to the hamburger button on close; `inert` when closed so a keyboard user tabbing through the page can't land on off-screen links; `prefers-reduced-motion` disables the slide transition via CSS only.
+- `stores/nav.ts` — `NAV_ITEMS` (the same 14 destinations the old tab bar had, mirrored in order), `isActiveRoute`/`activeNavItem`/`isImmersiveRoute` (pure, unit-tested — 19 assertions in `nav.test.ts`), a shared `sidebarOpen` store, and the `SIDEBAR_MODE: 'hidden' | 'rail'` constant that gates the closed style — flipping it to `'rail'` is the entire migration to a persistent icon strip, no rebuild, since the rail CSS already ships (just unused while `'hidden'`).
+- `$lib/components/icons.ts` — the sidebar's own icon set (hamburger, close, and one glyph per destination). Deliberately separate from `stacks/icons.ts`, which is a feature-scoped catalog, not shared chrome.
+
+### Changed
+- **Loop Stacks (`/stacks`) is now the app's default view.** `/` redirects there via a `+page.ts` `load()` (reversible — delete the file to restore the old default). Forge (the old `/`) moved to `/forge`, a purely mechanical relocation of its 5-line wrapper page — zero content changes, confirmed by diff (no route's internal page file changed except the move itself).
+- `+layout.svelte`'s topbar lost its horizontal tab bar and gained a hamburger button (`aria-label="Toggle navigation"`, `aria-expanded`) that toggles `stores/nav.ts::sidebarOpen`. The "Add pane" button's `pathname === '/'` check became `pathname.startsWith('/forge')` to keep firing on the same page, just at its new address.
+- `app.html`'s static `<title>`/description no longer hardcode "Forge" — they were never route-aware to begin with (this is a client-rendered SPA shell, not per-page SSR metadata), so a Forge-specific title stopped being accurate the moment Forge stopped being the default page.
+
+### Notes
+- No page's internal behavior changed — verified by `git diff --stat` scoped to `web/src/routes/` excluding exactly the four touched files (`+layout.svelte`, the root `+page.svelte`/`+page.ts`, and Forge's moved `+page.svelte`): empty diff.
+- Manually verified against a built `vite preview`: `/` lands on `/stacks`; the sidebar's bounding box is off-screen (`x: -250`) on load; hamburger/scrim/Esc/nav-item-click all open or close it correctly; clicking "Loop" both navigates and closes the sidebar; `prefers-reduced-motion` collapses the transition duration to effectively `0`.
+
 ## [0.2.0] — Backend-1: stack execution, control signals, event routing 🔌
 
 ### Added

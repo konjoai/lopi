@@ -2,51 +2,53 @@
 
 ## NEXT_SESSION_PROMPT (read this first)
 
-Backend-1 has shipped: the `/stacks` UI now actually executes. Task
-identity (`client_ref` round-tripping through the store), run-stack
-execution (`stores/stackRun.ts`), pause/drain/bump control signals, and
-per-card `AgentEvent` isolation (proven by a new concurrent-cross-talk
-test) are all real, tested, and manually verified against a live `lopi
-sail` instance — including catching and fixing a 100%-reproducible
-empty-repo bug that only a real run (not a mocked test) could have
-surfaced. See `LEDGER.md`'s Backend-1 entry for the load-bearing decisions
-and `CHANGELOG.md`'s `[0.2.0]` entry for the full diff.
+Shell-1 has shipped: Loop Stacks (`/stacks`) is now the app's default
+view, and every nav destination moved from a horizontal top-tab bar into
+a left sidebar that's closed (off-canvas) by default — opened by a
+hamburger, closing on scrim-click/Esc/tab-select. Forge (the old `/`)
+moved to `/forge`; no page's internal behavior changed (verified by an
+empty `git diff --stat` outside the four touched route files). See
+`LEDGER.md`'s Shell-1 entry for the load-bearing decisions and
+`CHANGELOG.md`'s `[0.2.1]` entry for the full diff.
 
-**What's still a gap, in priority order:**
+**What's still open, in priority order:**
 
-1. **`bumpCard` has no UI affordance.** The store-level mechanism
-   (`stores/stackRun.ts::bumpCard`, built on `stores/stack.ts::bumpInOrder`)
-   is fully implemented and tested (illegal-transition rejections included),
-   but no button/drag-handle in `StackCard.svelte` calls it yet — the
-   settled mockup has no per-card "bump" affordance either, so this needs a
-   small design pass (icon? keyboard shortcut? repurpose the existing drag
-   handle for queued-but-not-running cards?) before it's wired, not just a
-   mechanical hookup.
-2. **"Schedule stack" only schedules the bottom card.** Deliberate and
-   honest (`scheduleStack` reports the rest back as `skippedCardIds`,
-   surfaced nowhere in the UI yet — worth at least a toast/banner saying so
-   the first time someone tries it on a multi-card stack), but the real fix
-   is a backend change: `ScheduleBody.goal: String` → some multi-goal
-   pipeline concept. Out of scope until someone actually needs a scheduled
-   multi-card stack.
-3. **Coverage gate is still soft** (68.34%, floor is 80%) — pre-existing,
-   not this sprint's introduction, but now has a precise number and a
-   `TODO` instead of a silently-wrong `report --json` computation. Needs a
-   per-crate triage pass to find where to add tests.
-4. **`cargo audit`/`cargo deny` still soft** — 6 known RUSTSEC advisories
-   (ids in the workflow comment) and a cargo-deny 0.19.9 config-schema break
-   in `.konjo/deny.toml`, neither decided yet (upgrade path vs. explicit
-   accept-risk entries).
+1. **Icon-rail is a one-line flip away, not yet asked for.**
+   `stores/nav.ts::SIDEBAR_MODE` is `'hidden'`; flipping it to `'rail'`
+   makes the closed sidebar a persistent icon-only strip instead of fully
+   off-canvas — the CSS already ships in `AppSidebar.svelte`, unused. No
+   code changes needed if/when this is wanted, just the constant.
+2. **No open-state persistence.** The sidebar is closed on every fresh
+   load, per the brief ("closed by default... do not persist open state").
+   If that's ever wrong for a returning user, it's a small addition
+   (`localStorage`, read once on mount) — deliberately not built here.
+3. **Per-route sidebar highlighting is exact-or-sub-route only.**
+   `isActiveRoute` matches `pathname === href || pathname.startsWith(href
+   + '/')` — fine for today's flat route structure (no nested dynamic
+   segments exist under any of the 14 destinations), but would need
+   revisiting if a destination ever grows sub-pages that shouldn't all
+   highlight the same parent nav item.
+4. **`bumpCard` still has no UI affordance** (carried over from
+   Backend-1, unrelated to this sprint, not touched here).
+5. **"Schedule stack" still only schedules the bottom card**; coverage/
+   audit/deny gates still soft (all carried over from Backend-1 — see its
+   own `LEDGER.md` entry for why).
 
-**Unchanged from before Backend-1 (still out of scope):** eval
-execution/enforcement, budget enforcement, multi-pane/overview, `needs-you`
-derivation, effort→thinking-budget mapping, ratchet/beats-best, severity,
-and a real multi-card-per-pane output surface (the routing is proven now;
-the UI still shows one `StackOutput` per running card, which is correct
-for the current single-card-running-at-a-time run model but will need
-revisiting if concurrent-cards-per-pane ever ships).
+**Unchanged (still out of scope):** eval execution/enforcement, budget
+enforcement, multi-pane/overview, `needs-you` derivation, effort→
+thinking-budget mapping, ratchet/beats-best, severity, and a real
+multi-card-per-pane output surface.
 
 ## Prior sprint history
+
+Backend-1 shipped: the `/stacks` UI actually executes. Task identity
+(`client_ref` round-tripping through the store), run-stack execution
+(`stores/stackRun.ts`), pause/drain/bump control signals, and per-card
+`AgentEvent` isolation (proven by a concurrent-cross-talk test) are all
+real, tested, and manually verified against a live `lopi sail` instance —
+including catching and fixing a 100%-reproducible empty-repo bug that
+only a real run could have surfaced. See `LEDGER.md`'s Backend-1 entry and
+`CHANGELOG.md`'s `[0.2.0]` entry for the full detail.
 
 UI-2 (PR #64) and its V&V audit (PR #65) shipped and merged: two
 independent `/stacks` panes with per-card popovers (schedule/guardrails/
