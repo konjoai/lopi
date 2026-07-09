@@ -442,6 +442,7 @@ mod health_handlers;
 mod loop_handlers;
 mod loop_health_handlers;
 mod loop_runs_handlers;
+mod metrics_handlers;
 mod repos_handlers;
 mod schedule_handlers;
 mod static_assets;
@@ -454,10 +455,10 @@ use constellation_handlers::{
     register_constellation_handler,
 };
 use handlers::{
-    approve_plan, cancel_task, checkpoint_agent, create_task, get_agent_dag, get_plans,
-    get_q_values, get_quality_trend, get_spec, get_stats, get_task, health, list_patterns,
-    list_tasks, metrics, reject_plan,
+    approve_plan, cancel_task, checkpoint_agent, create_task, get_spec, get_stats, get_task,
+    health, list_patterns, list_tasks, reject_plan,
 };
+use metrics_handlers::{get_agent_dag, get_plans, get_q_values, get_quality_trend, metrics};
 use static_assets::static_handler;
 use tools_handlers::{
     delete_tool_handler, get_tool_handler, list_tools_handler, register_tool_handler,

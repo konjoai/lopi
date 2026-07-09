@@ -72,8 +72,13 @@ impl AgentRunner {
         attempt: u8,
     ) -> Option<TaskStatus> {
         let level = self.task.autonomy_level;
-        if requires_verifier(self.verifier_enabled, level)
-            && !self.run_verifier_pass(attempt, &score.errors).await
+        // A1 — score the run against its explicit acceptance goal (if any)
+        // *before* the autonomy-level verifier gate. Fail-closed: a non-passing
+        // outcome rejects the finalize. Additive — a task with no acceptance is
+        // untouched, and the verifier's own critique-routing below still fires.
+        if !self.evaluate_acceptance_gate(score, attempt).await
+            || (requires_verifier(self.verifier_enabled, level)
+                && !self.run_verifier_pass(attempt, &score.errors).await)
         {
             git.hard_rollback().await.ok();
             git.checkout_default().await.ok();

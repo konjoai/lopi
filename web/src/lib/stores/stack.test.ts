@@ -23,6 +23,7 @@ import {
   computeNextRuns,
   cardToTaskPayload,
   cardToTaskPayloadForRunOnce,
+  evalsToAcceptance,
   executionOrder,
   dryRunStack,
   bumpInOrder,
@@ -367,7 +368,7 @@ eq(computeNextRuns('not a cron', new Date(), 3), [], 'a malformed cron expressio
   const keys = Object.keys(cardToTaskPayload(fullyGuarded, defaults).options).sort();
   eq(
     keys,
-    ['client_ref', 'effort', 'gate', 'max_iterations', 'model', 'on_fail', 'until'],
+    ['acceptance', 'client_ref', 'effort', 'gate', 'max_iterations', 'model', 'on_fail', 'until'],
     'options carries exactly the expected WIRED key names — no silent rename/drop'
   );
   eqIs(
@@ -679,6 +680,65 @@ eqIs(
   const plain = buildCard('no overrides anywhere');
   const payload = cardToTaskPayload(plain, untouchedStack);
   eqIs(payload.options.model, DEFAULT_STACK_DEFAULTS.model, 'with no loop override and an untouched stack default, DEF wins through both rungs');
+}
+
+// ── A1: evals → acceptance (the eval UI finally executes) ─────────────────────
+{
+  // The baseline alone compiles into a single deterministic execution_ok check
+  // — objective criteria route to the deterministic tier, never the judge.
+  const acc = evalsToAcceptance([BASELINE_EVAL]);
+  ok(acc !== undefined, 'baseline compiles into a real acceptance');
+  eqIs(acc!.checks.length, 1, 'baseline alone ⇒ one check');
+  eqIs(acc!.checks[0].spec.kind, 'execution_ok', 'baseline ⇒ deterministic execution_ok tier');
+  eqIs(acc!.checks[0].required, true, 'the baseline check is a hard gate');
+}
+{
+  // base + test tiers collapse into ONE deterministic check (both objective).
+  const acc = evalsToAcceptance([BASELINE_EVAL, { name: 'tests pass', tier: 'test' }, { name: 'unit', tier: 'test' }]);
+  const kinds = acc!.checks.map((c) => c.spec.kind);
+  eq(kinds, ['execution_ok'], 'base + multiple test evals ⇒ a single deterministic check, none sent to the judge');
+}
+{
+  // Multiple judge evals fold into ONE judge check whose rubric criteria are
+  // their names — one model call, reserved for genuine judgment.
+  const acc = evalsToAcceptance([
+    BASELINE_EVAL,
+    { name: 'code review', tier: 'judge' },
+    { name: 'beats-best', tier: 'judge' }
+  ]);
+  const judge = acc!.checks.find((c) => c.spec.kind === 'judge');
+  ok(judge !== undefined, 'judge evals compile into a judge check');
+  eq(
+    (judge!.spec as { kind: 'judge'; rubric: { criteria: string[] } }).rubric.criteria,
+    ['code review', 'beats-best'],
+    'judge check rubric carries every selected judge eval name'
+  );
+  eqIs(acc!.checks.filter((c) => c.spec.kind === 'judge').length, 1, 'all judge evals fold into a single judge check');
+}
+{
+  // Each suite eval becomes its own suite check, carrying its name.
+  const acc = evalsToAcceptance([BASELINE_EVAL, { name: 'vuln scan', tier: 'suite' }, { name: 'adversarial', tier: 'suite' }]);
+  const suites = acc!.checks.filter((c) => c.spec.kind === 'suite');
+  eqIs(suites.length, 2, 'two suite evals ⇒ two suite checks');
+  eq(
+    suites.map((s) => (s.spec as { kind: 'suite'; name: string }).name).sort(),
+    ['adversarial', 'vuln scan'],
+    'suite checks carry their eval names'
+  );
+}
+{
+  // Nothing to check ⇒ undefined, so the loop falls back to the legacy gate.
+  eqIs(evalsToAcceptance([]), undefined, 'no evals ⇒ no acceptance (legacy score.passed() gate)');
+}
+{
+  // The card payload actually carries the compiled acceptance now — the eval
+  // UI is no longer inert intent.
+  const defaults = { model: 'sonnet', effort: 'medium', repo: 'konjoai/lopi' };
+  const c = buildCard('ship it');
+  c.evals = [BASELINE_EVAL, { name: 'code review', tier: 'judge' }];
+  const payload = cardToTaskPayload(c, defaults);
+  ok(payload.options.acceptance !== undefined, 'cardToTaskPayload now emits a real acceptance');
+  eqIs(payload.options.acceptance!.checks.length, 2, 'base + judge ⇒ two checks in the payload');
 }
 
 namedSummary('stack');

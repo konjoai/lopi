@@ -130,6 +130,16 @@ jobs:
           cargo install cargo-nextest --locked --quiet 2>/dev/null || true
           cargo install cargo-llvm-cov --locked --quiet 2>/dev/null || true
 
+      - name: Eval-executor regression suite (A1 — HARD GATE, 24 fixtures)
+        # The Research-1 reliability probe's 24 labelled fixtures (real
+        # pass/fail + the 7 gaming patterns) are a committed regression suite
+        # for the tiered eval executor. Every eval change must keep scoring all
+        # 24 correctly, decide objective failures without a judge call, and
+        # catch every gaming pattern. Deliberately NOT continue-on-error: a
+        # gate that could pass when it errors is the one thing an evaluator
+        # can't do, so this blocks the merge, unlike the soft coverage step.
+        run: cargo test -p lopi-agent --test eval_regression --locked
+
       - name: Run tests with coverage
         # KNOWN DEBT, verified 2026-07 (backend-1 Phase 0): `--fail-under-lines
         # 80` makes this step itself exit nonzero below the 80% floor. Real

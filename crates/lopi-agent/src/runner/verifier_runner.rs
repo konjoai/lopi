@@ -51,10 +51,11 @@ impl AgentRunner {
             .await
         {
             Ok(v) => v,
-            Err(e) => {
-                warn!("verifier error (non-fatal, proceeding): {e}");
-                return true;
-            }
+            // Phase 0 (A1) — fail-closed. A gate that could not be evaluated is
+            // NOT a pass: a verifier API/parse error blocks finalize (returns
+            // `false` ⇒ roll back + retry) unless the operator has explicitly
+            // opted this loop into the legacy fail-open behavior.
+            Err(e) => return self.handle_verifier_error(attempt, &model, &e).await,
         };
 
         self.log(format!(
@@ -81,6 +82,50 @@ impl AgentRunner {
         }
         false
     }
+
+    /// Fail-closed handling of a verifier API/parse error (Phase 0, A1).
+    ///
+    /// Records a not-passing ERROR verdict (so the trace and score history show
+    /// the gate could not be evaluated, never a silent pass) and returns
+    /// whether the runner may still proceed — `true` only when the operator has
+    /// opted this loop into fail-open via `task.verifier_fail_open`.
+    async fn handle_verifier_error(
+        &mut self,
+        attempt: u8,
+        model: &str,
+        err: &anyhow::Error,
+    ) -> bool {
+        let proceed = verifier_error_proceeds(self.task.verifier_fail_open);
+        let verdict = lopi_core::VerifierVerdict {
+            passed: false,
+            gaps: vec![format!("verifier could not evaluate the output: {err}")],
+            fix_hints: vec![
+                "the verifier errored; re-run so the output can be graded before finalize".into(),
+            ],
+            confidence: 0.0,
+        };
+        persist_and_emit(self, attempt, &verdict, model).await;
+        if proceed {
+            warn!("verifier error (fail-open opt-in, proceeding): {err}");
+            return true;
+        }
+        warn!("verifier error (fail-closed, blocking finalize): {err}");
+        self.log(
+            "🔬 verifier errored — fail-closed: blocking finalize and retrying (set verifier_fail_open to override)".to_string(),
+        );
+        false
+    }
+}
+
+/// Whether a verifier error should let the loop proceed to commit.
+///
+/// The fail-closed default (`fail_open == false`) returns `false`: a gate that
+/// could not be evaluated is treated as not-passing, so an unverifiable change
+/// never lands. Only an explicit operator opt-in (`fail_open == true`) restores
+/// the legacy "proceed on error" behavior.
+#[must_use]
+pub fn verifier_error_proceeds(fail_open: bool) -> bool {
+    fail_open
 }
 
 async fn persist_and_emit(
@@ -104,4 +149,26 @@ async fn persist_and_emit(
         fix_hints: verdict.fix_hints.clone(),
         confidence: verdict.confidence,
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::verifier_error_proceeds;
+
+    #[test]
+    fn verifier_error_is_fail_closed_by_default() {
+        // The one thing an evaluator can't do: pass when it errors.
+        assert!(
+            !verifier_error_proceeds(false),
+            "a verifier error must NOT proceed to commit by default"
+        );
+    }
+
+    #[test]
+    fn verifier_error_proceeds_only_on_explicit_opt_in() {
+        assert!(
+            verifier_error_proceeds(true),
+            "fail-open is available only as a deliberate operator override"
+        );
+    }
 }

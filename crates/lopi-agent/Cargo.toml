@@ -21,6 +21,7 @@ lopi-toon.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 anyhow.workspace = true
+async-trait.workspace = true
 rand = "0.8"
 reqwest.workspace = true
 futures.workspace = true

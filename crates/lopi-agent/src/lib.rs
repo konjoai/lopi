@@ -13,6 +13,9 @@ mod claude_stream;
 pub mod dag;
 /// Sprint U — reconstruct an `AgentDag` from persisted rows.
 mod dag_rows;
+/// Eval-Execution-1 (A1) — the tiered eval executor: goal/acceptance scoring
+/// across execution-ok, shell-test, judge, and suite tiers, fail-closed.
+pub mod eval;
 /// Pattern enrichment from memory history.
 pub mod pattern_enricher;
 mod prompt;
@@ -30,6 +33,10 @@ pub mod verifier;
 pub use api_client::{AnthropicClient, ApiUsage, LOPI_SYSTEM_PROMPT};
 pub use claude::{select_model, ClaudeCode, MODEL_HAIKU, MODEL_OPUS, MODEL_SONNET};
 pub use dag::{AgentDag, DagNode, NodeKind, NodeStatus};
+pub use eval::{
+    EvalContext, ExecutionOkEval, Judge, JudgeEval, ShellTestEval, SuiteEval, TierEvaluator,
+    TieredEvaluator, VerifierJudge,
+};
 pub use lopi_ratelimit::{AnthropicLimiter, CircuitBreaker};
 pub use pattern_enricher::PatternEnricher;
 pub use runner::AgentRunner;

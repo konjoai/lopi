@@ -12,7 +12,7 @@
  * yet (run-stack execution is still a stub — see `RunMenu.svelte`).
  */
 import { writable } from 'svelte/store';
-import type { CreateTaskOptions } from '$lib/api';
+import type { Acceptance, AcceptanceCheck, CreateTaskOptions } from '$lib/api';
 import { type StackDefaults, DEFAULT_STACK_DEFAULTS, defaultStackDefaults } from '$lib/stores/stackDefaults';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -577,6 +577,42 @@ export interface PaneDefaults {
   repo: string;
 }
 
+/** Compile a card's `evals` checklist into a real
+ *  [`Acceptance`](../api.ts) the backend's tiered eval executor scores
+ *  against (A1) — the bridge that finally makes the eval UI execute instead
+ *  of being inert intent. The tier→spec mapping enforces the
+ *  objective-to-deterministic routing rule:
+ *
+ *  - `base`/`test` (objective) → a single deterministic `execution_ok` check —
+ *    tests + lint are machine-checkable, so they never reach the judge.
+ *  - `judge` → one judge check whose rubric criteria are the selected judge
+ *    evals' names (genuine judgment, one model call, not per-eval).
+ *  - `suite` → one `suite` check per selected suite eval.
+ *
+ *  Returns `undefined` when there is nothing to check, so the loop falls back
+ *  to the legacy `score.passed()` gate — behavior is unchanged for a card that
+ *  somehow carries no evals. */
+export function evalsToAcceptance(evals: EvalRef[]): Acceptance | undefined {
+  const checks: AcceptanceCheck[] = [];
+  const hasDeterministic = evals.some((e) => e.tier === 'base' || e.tier === 'test');
+  if (hasDeterministic) {
+    checks.push({ tier: 'base', spec: { kind: 'execution_ok' }, weight: 1, required: true });
+  }
+  const judgeNames = evals.filter((e) => e.tier === 'judge').map((e) => e.name);
+  if (judgeNames.length > 0) {
+    checks.push({
+      tier: 'judge',
+      spec: { kind: 'judge', rubric: { name: 'ui-evals', criteria: judgeNames } },
+      weight: 1,
+      required: true
+    });
+  }
+  for (const suite of evals.filter((e) => e.tier === 'suite')) {
+    checks.push({ tier: 'suite', spec: { kind: 'suite', name: suite.name }, weight: 1, required: true });
+  }
+  return checks.length > 0 ? { checks } : undefined;
+}
+
 /** The `createTask(goal, repo, priority, options)` payload a card would
  *  submit as, resolving `config` overrides against pane defaults. Pure and
  *  total — this is the "round-trips through `api.ts`" contract for the
@@ -599,6 +635,10 @@ export function cardToTaskPayload(
   };
   if (card.guardrails.gate) options.gate = card.guardrails.gateCmd;
   if (card.guardrails.until) options.until = card.guardrails.untilCmd;
+  // A1 — compile the card's evals into a real acceptance goal so eval
+  // execution finally happens; omitted when the card carries no checks.
+  const acceptance = evalsToAcceptance(card.evals);
+  if (acceptance) options.acceptance = acceptance;
   return {
     goal: card.goal,
     repo: card.config.repo ?? defaults.repo,

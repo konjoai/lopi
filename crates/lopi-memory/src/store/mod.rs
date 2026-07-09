@@ -239,6 +239,7 @@ impl MemoryStore {
             "dead_letter_queue",
             "task_logs",
             "verifier_verdicts",
+            "eval_outcomes",
         ] {
             let sql = format!("DELETE FROM {table} WHERE task_id = ?1");
             sqlx::query(&sql).bind(&id_str).execute(&mut *tx).await?;
@@ -346,6 +347,7 @@ mod audit;
 mod checkpoints;
 mod dag;
 mod dead_letter;
+mod eval_outcomes;
 mod installations;
 mod lessons;
 mod loop_health;
@@ -364,6 +366,7 @@ pub use audit::{AuditInput, AuditQuery, AuditRow};
 pub use checkpoints::{CheckpointInput, CheckpointRow};
 pub use dag::DagNodeRow;
 pub use dead_letter::{DeadLetterInput, DeadLetterRow};
+pub use eval_outcomes::{EvalOutcomeRow, ScorePoint};
 pub use installations::InstallationRow;
 pub use lessons::LessonRow;
 pub use loop_health::{LoopAttemptRow, LoopTurnRow};

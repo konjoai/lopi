@@ -22,7 +22,10 @@ Plan → Implement → Test → [Score: heuristic pass?] → [Verifier: rubric p
                                                          Retry
 ```
 
-The verifier calls Opus with:
+The verifier calls a model **resolved to differ from the worker** — Opus by
+default, Sonnet on the one case where the worker itself is already Opus (see
+`verifier::resolve_verifier`), so the checker is never the same model as the
+maker ("never grade your own homework"). It is handed:
 
 - **Goal** — the original task description
 - **Plan excerpt** — first 1500 characters of the agent's plan
@@ -111,6 +114,16 @@ id, task_id, attempt, passed, gaps_json, fix_hints_json, confidence, model_used,
 ```
 
 Queryable via `MemoryStore::load_verifier_verdicts(task_id)`.
+
+## Fail-closed on error (A1)
+
+A gate that passes when it errors is the one thing an evaluator can't do. When
+the verifier's API call or JSON parse fails, the pass is **blocked**, not
+silently granted: the runner records a not-passing ERROR verdict and rolls the
+attempt into a retry (`verifier_runner::verifier_error_proceeds`). This is the
+default. An operator who deliberately accepts the risk for a low-trust loop can
+restore the legacy proceed-on-error behavior by setting `verifier_fail_open =
+true` on the task — the only way an unverifiable change lands.
 
 ## Cost
 

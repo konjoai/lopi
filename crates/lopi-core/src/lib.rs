@@ -3,6 +3,9 @@
 //! Exposes `Task`, `AgentRun`, `Score`, `LopiConfig`, and supporting types
 //! used across all lopi crates.
 
+/// Eval-Execution-1 (A1) — the goal/acceptance object (cross-cutting seam #1):
+/// a tier-tagged, machine-checkable success condition for a loop or a stack.
+pub mod acceptance;
 /// Agent execution state machine and scoring primitives.
 pub mod agent;
 /// Token-budget tracking and scope definitions.
@@ -11,6 +14,9 @@ pub mod budget;
 pub mod config;
 /// Earned-trust auto-promotion state machine (Phase 16.7).
 pub mod earned_trust;
+/// Eval-Execution-1 (A1) — the one eval-result object (cross-cutting seam #3),
+/// shaped for its three consumers (A2 reflection, A3 ratchet, A3/B1 stop).
+pub mod eval_outcome;
 /// Broadcast event types for TUI, WebSocket, and log panels.
 pub mod event;
 /// Loop-engineering configuration: autonomy levels + the `LoopConfig` schema.
@@ -34,10 +40,12 @@ pub mod tier;
 /// Orchestration topology hints (Sprint T).
 pub mod topology;
 
+pub use acceptance::{Acceptance, AcceptanceCheck, CheckSpec, EvalTier, MetricGate, Op};
 pub use agent::{AgentRun, AgentState, Attempt, Score, ScoreWeights, TurnMetrics};
 pub use budget::BudgetScope;
 pub use config::{LopiConfig, RepoProfile, ScheduleEntry};
 pub use earned_trust::EarnedTrust;
+pub use eval_outcome::{CheckResult, EvalOutcome, Verdict};
 pub use event::{AgentEvent, EventBus, LogLevel, PlanDecision};
 pub use loop_config::{AutonomyLevel, IsolationMode, LoopConfig};
 pub use report::{ReportChannel, ReportChannelError};
