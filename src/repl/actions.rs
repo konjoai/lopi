@@ -164,13 +164,12 @@ pub(super) async fn dispatch_goal(
     let tx2 = ev_tx;
     tokio::spawn(async move {
         let outcome = runner.run().await;
+        // Persist the canonical status token, not the emoji display label.
+        let final_status = outcome.unwrap_or(TaskStatus::Failed {
+            reason: "runner error".into(),
+        });
         let _ = store
-            .mark_completed(
-                &task_id,
-                &status_label(&outcome.unwrap_or(TaskStatus::Failed {
-                    reason: "runner error".into(),
-                })),
-            )
+            .mark_completed(&task_id, final_status.db_status())
             .await;
         let _ = store.mine_patterns(&task_id, &task.goal).await;
         let _ = tx2.send(ReplEvent::TaskDone {

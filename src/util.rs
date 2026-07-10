@@ -8,6 +8,20 @@ pub(crate) fn db_path() -> PathBuf {
     PathBuf::from(home).join(".lopi").join("lopi.db")
 }
 
+/// Expand a leading `~` (or `~/…`) to `$HOME`, leaving other paths untouched.
+///
+/// `LopiConfig`'s default `db_path` is the literal `~/.lopi/lopi.db`, so a
+/// config honored verbatim would otherwise create a directory literally named
+/// `~`. This resolves both that default sentinel and any user-written `~/…`
+/// path to the same location `db_path()` uses.
+pub(crate) fn expand_home(path: PathBuf) -> PathBuf {
+    if let Ok(rest) = path.strip_prefix("~") {
+        let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
+        return PathBuf::from(home).join(rest);
+    }
+    path
+}
+
 /// Map a raw status string to its emoji-prefixed display form.
 pub(crate) fn fmt_status(s: &str) -> &str {
     match s {
@@ -75,6 +89,30 @@ pub(crate) fn is_self_modify_attempt(repo: &Path) -> bool {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn expand_home_resolves_tilde_and_leaves_other_paths() {
+        std::env::set_var("HOME", "/home/tester");
+        assert_eq!(
+            expand_home(PathBuf::from("~/.lopi/lopi.db")),
+            PathBuf::from("/home/tester/.lopi/lopi.db"),
+            "the default config sentinel resolves under $HOME"
+        );
+        assert_eq!(
+            expand_home(PathBuf::from("~/custom.db")),
+            PathBuf::from("/home/tester/custom.db"),
+            "a user-written ~/… path resolves too"
+        );
+        // Absolute and relative paths without a leading ~ are untouched.
+        assert_eq!(
+            expand_home(PathBuf::from("/tmp/scratch.db")),
+            PathBuf::from("/tmp/scratch.db")
+        );
+        assert_eq!(
+            expand_home(PathBuf::from("relative/lopi.db")),
+            PathBuf::from("relative/lopi.db")
+        );
+    }
 
     #[test]
     fn status_label_maps_simple_states() {

@@ -16,6 +16,7 @@ import type {
   TaskStatus,
   WireMessage
 } from './types';
+import type { Status } from './stores/agents';
 
 // ── Type guards ───────────────────────────────────────────────────────────────
 function isObject(x: unknown): x is Record<string, unknown> {
@@ -67,21 +68,90 @@ export function parseTaskStatus(raw: unknown): TaskStatus | null {
   return null;
 }
 
+// ── DB canonical status → UI lifecycle status ─────────────────────────────────
+/**
+ * Map a task's status onto the five-state UI lifecycle the Overview buckets and
+ * the orb colors by. Accepts both the canonical lowercase token the backend
+ * persists to `tasks.status` (`TaskStatus::db_status` — `"queued"`, `"running"`,
+ * `"success"`, `"failed"`, …) and the serde `TaskStatus` enum shapes that live
+ * `task_completed` events still carry (`"RolledBack"`, `{Success}`, `{Failed}`),
+ * so a snapshot row and a live event resolve to the same bucket.
+ *
+ * This is the fix for Ops-2 bug #1: the previous snapshot logic only matched the
+ * capitalized enum spellings, so every lowercase DB string — the actual wire
+ * form — fell through to `running`, mis-bucketing every terminal task on a fresh
+ * page load (which has only the snapshot to read).
+ */
+export function dbStatusToUiStatus(status: TaskStatus | string | null | undefined): Status {
+  if (status && typeof status === 'object') {
+    if ('Success' in status) return 'completed';
+    if ('Failed' in status) return 'failed';
+    // Retrying / AwaitingPlanApproval — still in flight.
+    return 'running';
+  }
+  switch (status) {
+    case 'queued':
+    case 'Queued':
+      return 'queued';
+    case 'success':
+    case 'Success':
+      return 'completed';
+    case 'cancelled':
+      return 'cancelled';
+    case 'failed':
+    case 'Failed':
+    case 'rolled_back':
+    case 'RolledBack':
+    case 'conflict':
+    case 'unknown':
+      return 'failed';
+    case 'running':
+    case 'planning':
+    case 'Planning':
+    case 'implementing':
+    case 'Implementing':
+    case 'testing':
+    case 'Testing':
+    case 'scoring':
+    case 'Scoring':
+    case 'retrying':
+    case 'awaiting_plan_approval':
+      return 'running';
+    default:
+      // Unknown/absent status: treat as in flight rather than silently
+      // terminal — a genuinely new phase token should still read as active.
+      return 'running';
+  }
+}
+
 // ── TaskStatus → Phase mapping ────────────────────────────────────────────────
 export function taskStatusToPhase(status: TaskStatus | string | null | undefined): Phase {
   if (!status) return 'Boot';
   if (typeof status === 'string') {
     switch (status) {
       case 'Queued':
+      case 'queued':
         return 'Boot';
       case 'Planning':
+      case 'planning':
         return 'Planning';
       case 'Implementing':
+      case 'implementing':
+      case 'running':
         return 'Implementation';
       case 'Testing':
+      case 'testing':
         return 'Testing';
+      case 'retrying':
+        return 'Discovery';
       case 'Scoring':
+      case 'scoring':
       case 'RolledBack':
+      case 'rolled_back':
+      case 'success':
+      case 'failed':
+      case 'conflict':
+      case 'cancelled':
         return 'Conclusion';
       default:
         return 'Boot';

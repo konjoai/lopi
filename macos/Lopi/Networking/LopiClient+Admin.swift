@@ -1,7 +1,7 @@
 import Foundation
 
 // Admin-surface endpoints: dead-letter queue, audit log, patterns, tools,
-// health, constellations, config, and the result cache.
+// health, config, and the result cache.
 extension LopiClient {
     // MARK: Dead-letter queue
 
@@ -61,13 +61,6 @@ extension LopiClient {
         try await get("/api/agents/health/summary")
     }
 
-    // MARK: Constellations
-
-    func constellations() async throws -> [ConstellationModel] {
-        let wrapper: ConstellationsWrapper = try await get("/api/constellations")
-        return wrapper.constellations
-    }
-
     // MARK: Config + cache
 
     /// The effective server config as an arbitrary JSON tree (secrets are
@@ -103,7 +96,6 @@ private struct AuditWrapper: Decodable {
 
 private struct PatternsWrapper: Decodable { let patterns: [PatternModel] }
 private struct ToolsWrapper: Decodable { let tools: [ToolModel] }
-private struct ConstellationsWrapper: Decodable { let constellations: [ConstellationModel] }
 
 private struct ConfigWrapper: Decodable {
     let config: JSONValue?

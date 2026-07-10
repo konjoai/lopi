@@ -404,6 +404,17 @@ async fn run_one(
     let task_id = task.id;
     let goal = task.goal.clone();
 
+    // Transition the durable row out of "queued" the moment execution begins,
+    // so `GET /api/tasks/:id` and the WebSocket snapshot reflect the running
+    // state promptly rather than lagging at "queued" until the terminal write
+    // (Ops-2 bug #4). Fine-grained phases still ride the live event stream;
+    // this is the single persisted "in flight" marker a fresh page load reads.
+    if let Some(store) = &store {
+        if let Err(e) = store.mark_running(&task_id).await {
+            warn!(task_id = %task_id, "mark_running failed: {e}");
+        }
+    }
+
     let weights = compute_weight_adjustments(&goal, store.as_ref()).await;
     // Loop-as-code: read the repo's whole `.lopi/loop.toml` (self-prompting,
     // isolation, skills, budget, max-iterations, guardrails) off the reactor
@@ -483,14 +494,10 @@ async fn run_one(
     });
 
     if let Some(store) = store {
-        let status_str = match &outcome {
-            TaskStatus::Success { .. } => "success",
-            TaskStatus::Failed { .. } => "failed",
-            TaskStatus::RolledBack => "rolled_back",
-            TaskStatus::Conflict { .. } => "conflict",
-            _ => "unknown",
-        };
-        store.mark_completed(&task_id, status_str).await.ok();
+        // Canonical status token — one vocabulary shared with the API and the
+        // web snapshot bucketing. `db_status` covers every variant, so there's
+        // no `"unknown"` fallthrough to mis-bucket.
+        store.mark_completed(&task_id, outcome.db_status()).await.ok();
         if let Err(e) = store.mine_patterns(&task_id, &goal).await {
             warn!("pattern mining failed: {e}");
         }

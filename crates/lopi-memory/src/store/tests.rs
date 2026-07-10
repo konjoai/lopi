@@ -72,6 +72,25 @@ async fn mark_completed_updates_status() {
 }
 
 #[tokio::test]
+async fn mark_running_moves_out_of_queued_without_completing() {
+    let store = MemoryStore::open_in_memory().await.unwrap();
+    let task = Task::new("compile the dilithium matrix");
+    store.save_task(&task, "queued").await.unwrap();
+
+    store.mark_running(&task.id).await.unwrap();
+    let history = store.load_history(10).await.unwrap();
+    assert_eq!(history[0].status, "running");
+    // Still in flight — no completion timestamp yet.
+    assert!(history[0].completed_at.is_none());
+
+    // A subsequent terminal write flips it and stamps completion.
+    store.mark_completed(&task.id, "success").await.unwrap();
+    let history = store.load_history(10).await.unwrap();
+    assert_eq!(history[0].status, "success");
+    assert!(history[0].completed_at.is_some());
+}
+
+#[tokio::test]
 async fn save_task_upserts_status() {
     let store = MemoryStore::open_in_memory().await.unwrap();
     let task = Task::new("fix flaky test");

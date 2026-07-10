@@ -1,6 +1,6 @@
 {
   "name": "lopi-forge",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "type": "module",
   "description": "lopi-ui — The Forge: live visualization of agent cognition",

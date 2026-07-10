@@ -18,14 +18,19 @@ export interface NavItem {
   icon: string;
 }
 
-/** The four-item nav — the whole of Unify-2 §5's collapse. Every earlier tab
- *  either merged into one of these (Fleet/Pulse/Dashboard/Tasks → Overview) or
- *  was cut outright (Constellation, Logs, Tools, Debug's sub-panels, Patterns,
- *  Router). `/onboard` was never a visible tab and stays that way; `/` still
- *  redirects to `/stacks` (Loop Stack, the default working surface).
+/** The six-item nav. Unify-2 §5 collapsed the old fifteen-tab nav — Fleet,
+ *  Pulse, Dashboard and Tasks merged into Overview; Constellation, Logs, Tools,
+ *  Debug's sub-panels, Patterns and Router were cut outright. `/loop` and
+ *  `/budget` were fully-wired working surfaces that fell out of the nav by
+ *  omission (a planning gap in Unify-1/2 — they were never listed in either the
+ *  keep table or the cut list), so they were reachable only by typing the URL.
+ *  Ops-2 confirmed both work end-to-end, so they are restored here. `/onboard`
+ *  was never a visible tab and stays that way; `/` still redirects to `/stacks`.
  *
  *  - Loop Stack (`/stacks`): the single primary surface — StackPanes in the
  *    auto-tiling grid; a one-card pane reads like the old Forge box.
+ *  - Loop (`/loop`): loop-engineering — run traces, strategy, escalation switch.
+ *  - Budget (`/budget`): spend caps and the fleet cost surface.
  *  - Scheduling (`/schedules`): cron/scheduling.
  *  - Overview (`/overview`): the read-only app-wide rollup that replaced
  *    Fleet + Dashboard + Pulse's information (Tasks' dead-letter is a filter
@@ -33,6 +38,8 @@ export interface NavItem {
  *  - Configuration (`/config`): app settings. */
 export const NAV_ITEMS: NavItem[] = [
   { href: '/stacks', label: 'Loop Stack', icon: 'layers' },
+  { href: '/loop', label: 'Loop', icon: 'loop' },
+  { href: '/budget', label: 'Budget', icon: 'gauge' },
   { href: '/schedules', label: 'Scheduling', icon: 'cron' },
   { href: '/overview', label: 'Overview', icon: 'list' },
   { href: '/config', label: 'Configuration', icon: 'sliders' }

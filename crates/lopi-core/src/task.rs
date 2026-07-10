@@ -76,6 +76,36 @@ pub enum TaskStatus {
     },
 }
 
+impl TaskStatus {
+    /// Canonical, machine-readable status string for durable persistence and
+    /// the JSON API / WebSocket snapshot.
+    ///
+    /// This is the single lifecycle vocabulary that the store, the REST API,
+    /// and the web client's status bucketing all agree on. Unlike a
+    /// human-facing display label, it never embeds a reason, emoji, attempt
+    /// count, or branch — persisting one of those (as the CLI/REPL paths once
+    /// did via a display formatter) produced compound values like
+    /// `"failed ❌ Cancelled"` that no consumer could bucket. Every write to
+    /// the `tasks.status` column must go through this so a fresh page load,
+    /// which only has the snapshot to read, buckets terminal tasks correctly.
+    #[must_use]
+    pub fn db_status(&self) -> &'static str {
+        match self {
+            TaskStatus::Queued => "queued",
+            TaskStatus::Planning => "planning",
+            TaskStatus::AwaitingPlanApproval { .. } => "awaiting_plan_approval",
+            TaskStatus::Implementing => "implementing",
+            TaskStatus::Testing => "testing",
+            TaskStatus::Scoring => "scoring",
+            TaskStatus::Retrying { .. } => "retrying",
+            TaskStatus::Success { .. } => "success",
+            TaskStatus::Failed { .. } => "failed",
+            TaskStatus::RolledBack => "rolled_back",
+            TaskStatus::Conflict { .. } => "conflict",
+        }
+    }
+}
+
 /// Scheduling priority for a [`Task`] in the agent queue.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Priority {
@@ -427,5 +457,42 @@ mod tests {
     #[test]
     fn rubric_from_toml_str_rejects_malformed() {
         assert!(Rubric::from_toml_str("name = ").is_err());
+    }
+
+    #[test]
+    fn db_status_is_canonical_and_never_compound() {
+        // Terminal states carry a reason/branch/paths payload, but the
+        // canonical string must stay a single bare token — this is exactly
+        // the invariant the old `status_label` persistence broke.
+        assert_eq!(TaskStatus::Queued.db_status(), "queued");
+        assert_eq!(TaskStatus::Planning.db_status(), "planning");
+        assert_eq!(
+            TaskStatus::AwaitingPlanApproval { attempt: 1 }.db_status(),
+            "awaiting_plan_approval"
+        );
+        assert_eq!(TaskStatus::Implementing.db_status(), "implementing");
+        assert_eq!(TaskStatus::Testing.db_status(), "testing");
+        assert_eq!(TaskStatus::Scoring.db_status(), "scoring");
+        assert_eq!(TaskStatus::Retrying { attempt: 2 }.db_status(), "retrying");
+        assert_eq!(
+            TaskStatus::Success {
+                branch: "b".into(),
+                pr_url: None
+            }
+            .db_status(),
+            "success"
+        );
+        // A reason with an emoji must never leak — the invariant `status_label` broke.
+        let failed = TaskStatus::Failed { reason: "boom 💥 Cancelled".into() };
+        assert_eq!(failed.db_status(), "failed");
+        assert!(!failed.db_status().contains(' ') && failed.db_status().is_ascii());
+        assert_eq!(TaskStatus::RolledBack.db_status(), "rolled_back");
+        assert_eq!(
+            TaskStatus::Conflict {
+                paths: vec!["a.rs".into()]
+            }
+            .db_status(),
+            "conflict"
+        );
     }
 }

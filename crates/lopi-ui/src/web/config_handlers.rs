@@ -16,7 +16,6 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Json},
 };
-use lopi_core::LopiConfig;
 use serde_json::{json, Value};
 
 /// JSON pointers to secret fields blanked before the config leaves the server.
@@ -29,15 +28,15 @@ const SECRET_POINTERS: &[&str] = &[
 ];
 
 /// `GET /api/config` — the effective `lopi.toml` with secrets redacted.
-/// Returns `{config: null, source: "none"}` when no config file is found.
-pub(super) async fn get_config() -> impl IntoResponse {
-    // `LopiConfig::find_and_load` does synchronous file I/O — keep it off the
-    // async reactor.
-    let loaded = tokio::task::spawn_blocking(LopiConfig::find_and_load)
-        .await
-        .unwrap_or(None);
-
-    let Some(cfg) = loaded else {
+/// Returns `{config: null, source: "none"}` when the server was started without
+/// a config file.
+///
+/// Reflects the config the server actually loaded at startup (from `--config`
+/// or the standard search), not an independent re-discovery — the latter
+/// returned `null` whenever `--config` pointed outside the standard search path,
+/// disagreeing with the running server (Ops-2 bug #6).
+pub(super) async fn get_config(State(s): State<AppState>) -> impl IntoResponse {
+    let Some(cfg) = s.config.as_ref() else {
         return (
             StatusCode::OK,
             Json(json!({ "config": null, "source": "none" })),
@@ -45,7 +44,7 @@ pub(super) async fn get_config() -> impl IntoResponse {
             .into_response();
     };
 
-    match serde_json::to_value(&cfg) {
+    match serde_json::to_value(cfg.as_ref()) {
         Ok(mut value) => {
             redact(&mut value);
             (

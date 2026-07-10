@@ -1,11 +1,11 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use super::*;
-use crate::web::handlers::apply_loop_fields;
+use crate::web::handlers::{apply_loop_fields, validate_goal};
 use crate::web::types::{CreateTaskRequest, MAX_GOAL_LENGTH};
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
-use lopi_core::Task;
+use lopi_core::{LopiConfig, Task};
 use lopi_orchestrator::AgentPool;
 use std::path::PathBuf;
 use tower::ServiceExt;
@@ -26,6 +26,38 @@ async fn test_app_with_auth(auth_token: Option<&str>) -> Router {
     ));
     let state = AppState::new(store, bus, queue, pool, auth_token.map(ToString::to_string));
     build_app(state)
+}
+
+async fn test_app_with_config(config: LopiConfig) -> Router {
+    let store = lopi_memory::MemoryStore::open_in_memory().await.unwrap();
+    let bus: EventBus<AgentEvent> = EventBus::new(16);
+    let queue = TaskQueue::new();
+    let pool = Arc::new(AgentPool::new(
+        1,
+        PathBuf::from("."),
+        queue.clone(),
+        bus.clone(),
+    ));
+    let state = AppState::new(store, bus, queue, pool, None).with_config(Some(config));
+    build_app(state)
+}
+
+/// A `LopiConfig` with a custom `db_path`. Field-level serde defaults fill in
+/// everything else, so the test only states what it cares about.
+fn config_with_db_path(db_path: &str) -> LopiConfig {
+    serde_json::from_value(serde_json::json!({
+        "lopi": { "db_path": db_path },
+        "claude": {},
+        "git": {},
+    }))
+    .expect("minimal config deserializes")
+}
+
+async fn json_body(resp: axum::response::Response) -> serde_json::Value {
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    serde_json::from_slice(&bytes).unwrap()
 }
 
 /// Build an app rooted at a caller-supplied repo path so write-side handlers
@@ -301,6 +333,81 @@ async fn create_task_accepts_valid_goal() {
     .unwrap();
     let resp = send_req(app, "POST", "/api/tasks", Some(body)).await;
     assert_eq!(resp.status(), StatusCode::CREATED);
+}
+
+#[test]
+fn validate_goal_table() {
+    // (goal, expect_ok, label)
+    let over = "x".repeat(MAX_GOAL_LENGTH + 1);
+    let at_limit = "y".repeat(MAX_GOAL_LENGTH);
+    let cases: &[(&str, bool, &str)] = &[
+        ("", false, "empty"),
+        ("   ", false, "spaces only"),
+        ("\t\n  \r", false, "whitespace only"),
+        (over.as_str(), false, "over length"),
+        ("fix the flaky test", true, "normal goal"),
+        (at_limit.as_str(), true, "exactly at the limit"),
+        ("multi\nline\tgoal", true, "ordinary whitespace allowed"),
+        ("ship 🚀 the feature", true, "emoji/unicode allowed"),
+        ("bad\u{0000}goal", false, "NUL control char"),
+        ("bad\u{001B}[31mgoal", false, "ANSI escape control char"),
+    ];
+    for (goal, expect_ok, label) in cases {
+        assert_eq!(
+            validate_goal(goal).is_ok(),
+            *expect_ok,
+            "validate_goal mismatch for case: {label}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn task_stream_rejects_malformed_id_with_400() {
+    // Ops-2 finding #8: a malformed id returned its error body with an implicit
+    // 200. An error body must carry a 4xx.
+    let app = test_app().await;
+    let resp = get_req(app, "/api/tasks/not-a-uuid/stream").await;
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn config_endpoint_reflects_loaded_config() {
+    // Ops-2 bug #6: the endpoint used to re-discover a file independently and
+    // return null when `--config` pointed outside the standard search. It must
+    // now mirror the config the server was actually started with.
+    let app = test_app_with_config(config_with_db_path("/tmp/lopi-cfg-surfacing-test.db")).await;
+    let resp = get_req(app, "/api/config").await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = json_body(resp).await;
+    assert_eq!(json["source"], "file");
+    assert_eq!(json["config"]["lopi"]["db_path"], "/tmp/lopi-cfg-surfacing-test.db");
+}
+
+#[tokio::test]
+async fn config_endpoint_reports_none_without_config() {
+    let app = test_app().await;
+    let resp = get_req(app, "/api/config").await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = json_body(resp).await;
+    assert_eq!(json["source"], "none");
+    assert!(json["config"].is_null());
+}
+
+#[tokio::test]
+async fn create_task_rejects_empty_goal() {
+    let app = test_app().await;
+    let body = serde_json::to_string(&serde_json::json!({ "goal": "" })).unwrap();
+    let resp = send_req(app, "POST", "/api/tasks", Some(body)).await;
+    // Ops-2 bug #5: an empty goal used to return 201 and spawn a real agent.
+    assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[tokio::test]
+async fn create_task_rejects_whitespace_only_goal() {
+    let app = test_app().await;
+    let body = serde_json::to_string(&serde_json::json!({ "goal": "   \t\n " })).unwrap();
+    let resp = send_req(app, "POST", "/api/tasks", Some(body)).await;
+    assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
 }
 
 #[tokio::test]

@@ -51,8 +51,12 @@ pub(crate) async fn run_with_live_print(
 
     let outcome = runner.run().await?;
     print_task.abort();
+    // Persist the canonical status token — not the human/emoji display label.
+    // `status_label` stays for the printed line below; writing it to the DB is
+    // what once produced compound values like "failed ❌ Cancelled" that the
+    // dashboard could not bucket.
     store
-        .mark_completed(&task_id, &status_label(&outcome))
+        .mark_completed(&task_id, outcome.db_status())
         .await
         .ok();
     store.mine_patterns(&task_id, goal).await.ok();

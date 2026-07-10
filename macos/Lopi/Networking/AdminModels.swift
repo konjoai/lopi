@@ -2,7 +2,7 @@ import Foundation
 
 // Typed mirrors of the admin-surface JSON shapes. Sources of truth:
 // dlq_handlers.rs, audit_handlers.rs, handlers.rs (patterns), tools registry,
-// health_handlers.rs, constellation.rs, result_cache.rs.
+// health_handlers.rs, result_cache.rs.
 
 /// One dead-letter row from `GET /api/tasks/dead-letter`.
 struct DeadLetter: Codable, Identifiable, Hashable {
@@ -98,40 +98,6 @@ struct HealthSummary: Codable, Hashable {
     let healthy: Int
     let degraded: Int
     let dead: Int
-}
-
-/// One agent group from `GET /api/constellations`.
-struct ConstellationModel: Codable, Identifiable, Hashable {
-    var id: String { name }
-    let name: String
-    let agents: [ConstellationMemberModel]
-    let routingStrategy: RoutingStrategyModel
-    let createdAt: String
-
-    enum CodingKeys: String, CodingKey {
-        case name, agents
-        case routingStrategy = "routing_strategy"
-        case createdAt = "created_at"
-    }
-}
-
-/// One member of a constellation.
-struct ConstellationMemberModel: Codable, Hashable {
-    let agentId: String
-    let weight: Double
-    let tags: [String]
-    let maxConcurrent: Int
-
-    enum CodingKeys: String, CodingKey {
-        case weight, tags
-        case agentId = "agent_id"
-        case maxConcurrent = "max_concurrent"
-    }
-}
-
-/// Internally-tagged routing strategy: `{"kind": "round_robin", …}`.
-struct RoutingStrategyModel: Codable, Hashable {
-    let kind: String
 }
 
 /// Result-cache stats from `GET /api/cache/stats`.

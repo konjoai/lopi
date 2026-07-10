@@ -39,9 +39,15 @@ pub(super) async fn stream_task(
     State(s): State<AppState>,
 ) -> impl IntoResponse {
     // Validate the task id up front so a malformed request can't burn
-    // a broadcast subscriber slot for nothing.
+    // a broadcast subscriber slot for nothing. A malformed id is a client
+    // error, so it must carry a 4xx status — returning the error body with an
+    // implicit 200 was the status/body mismatch Ops-2 finding #8 flagged.
     let Ok(uuid) = id.parse::<uuid::Uuid>() else {
-        return Json(json!({"error": "task id must be a uuid"})).into_response();
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "task id must be a uuid"})),
+        )
+            .into_response();
     };
     let target_id = lopi_core::TaskId(uuid);
     let rx = s.bus.subscribe();

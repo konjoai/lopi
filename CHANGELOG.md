@@ -1,5 +1,102 @@
 # Changelog
 
+## [0.3.1] — Fix-1: close the Ops-2 findings 🔧
+
+Fixes the concrete bugs the Ops-2 audit recorded (`docs/ops/FEATURE_STATE.md` +
+`docs/ops/LIVE_UI_STATUS.md`), in severity order. No new features, no redesign.
+Also bumps the workspace/API version out of its stale `0.2.0` (the CHANGELOG had
+already reached `0.3.0` at Unify-2, but `Cargo.toml`/`GET /api/version` lagged).
+
+### Task status pipeline — root cause (bug #4, and the true root of bug #1) [High]
+The audit hypothesised "malformed status strings" behind `/overview` bucketing
+every task as RUNNING. Tracing the write and read paths with equal rigor found
+**two independent, real mechanisms**, not the one guessed:
+
+1. **A second write path persisted a display label.** The sail/orchestrator path
+   already wrote clean status tokens, but the CLI `run` path
+   (`src/run_command.rs`) and the REPL (`src/repl/actions.rs`) persisted status
+   via `status_label(&outcome)` — a human/emoji formatter. For a cancelled run
+   that yields `format!("failed ❌ {reason}")` = **`"failed ❌ Cancelled"`**,
+   the exact compound-with-emoji value Ops-2 observed. Fixed by introducing a
+   single canonical `TaskStatus::db_status()` (lopi-core) and routing every
+   `tasks.status` write through it; `status_label` stays for logs/TUI display
+   only.
+2. **The row never left `queued` during a run.** The DB was written `queued` at
+   submit and only re-written at the terminal `mark_completed`, so
+   `GET /api/tasks/:id` reported `queued` for the whole run (bug #4). Added
+   `MemoryStore::mark_running` and a call at the start of `run_one`, so the row
+   reflects `running` promptly. Verified live: a seeded task now reports
+   `running` immediately (was stuck `queued`), as a clean token, with
+   `completed_at` still null while in flight.
+
+### Overview bucketing (bug #1) [High]
+The web snapshot parser expected serde-`TaskStatus` enum spellings (`"Queued"`,
+`"RolledBack"`, `{Success}`, `{Failed}`) but the WebSocket snapshot carries the
+DB's canonical **lowercase** tokens — so every real row fell through to
+`running`, which is why a fresh page load showed `ALL=RUNNING`. Added
+`dbStatusToUiStatus` (parser.ts) mapping the canonical tokens (and the enum
+shapes live events still send) onto the five UI lifecycle states, and routed the
+snapshot reducer through it. `/overview` now buckets `success`/`failed`/
+`queued`/`cancelled` correctly off the snapshot alone.
+
+### Loop + Budget restored to nav [planning-gap correction]
+`/loop` and `/budget` were fully-wired working surfaces that fell out of
+`NAV_ITEMS` **by omission** — a planning gap in Unify-1/Unify-2 (they were never
+listed in either the keep table or the cut list), leaving them reachable only by
+typing the URL. Restored to a **six-item** nav: Loop Stack, Loop, Budget,
+Scheduling, Overview, Configuration. macOS already had both sections wired — no
+native change needed.
+
+### Dead Constellation integration removed [High]
+The four `api.ts` constellation calls hit routes the backend never registered
+(they fell through to the SPA fallback → HTML → JSON decode failure). Deleted the
+web router block (zero callers) and the macOS `ConstellationsView` + its
+`NavSection` case and admin client/model code — 13 native sections → **12**.
+Pulled forward from macOS-Parity-1 because Ops-2 found it a **live, sticky**
+failure: the native "Decoding error" toast persisted across every section.
+Removal deletes the trigger; the sidebar now also clears any stale banner on
+navigation, hardening the general sticky-toast case rather than relying on
+removal alone.
+
+### Task-creation input validation (bug #5) [Med]
+`POST /api/tasks {"goal":""}` returned `201` and spawned an agent. Added
+`validate_goal` at the boundary per `.claude/rules/security.md`: empty/
+whitespace-only → `422`, over-length → `422`, control characters (NUL, ANSI
+escapes) → `422`; ordinary whitespace and Unicode still accepted. Verified live:
+empty and whitespace goals now `422`, a valid goal `201`.
+
+### Config surfacing (bug #6) [Med]
+`sail` opened `db_path()` unconditionally, silently ignoring a `--config`
+`db_path` (the configured DB stayed 0 bytes while `~/.lopi/lopi.db` was used).
+Now honors `cfg.lopi.db_path` (with `~` expansion). Separately, `GET /api/config`
+re-discovered a file independently and returned `null` when `--config` pointed
+outside the standard search; it now reflects the config the server actually
+loaded (threaded through `AppState`). Verified live: `source:"file"`, the
+configured `db_path` echoed, and the scratch DB created at the configured path.
+
+### Low-severity cleanup
+- **Model label mismatch (#7):** the macOS pane folded the picked model into a
+  free-text *constraint* the runner ignored, so `select_model` fell back to the
+  heuristic (Haiku) while the pane showed the selection. Added real `model`/
+  `effort` fields to `CreateTaskBody` and send them, so the running model matches
+  the label. (The web run dock was already data-driven and correct.)
+- **Status codes (#8):** `GET /api/tasks/:id/stream` returned its error body with
+  an implicit `200` on a malformed id — now `400`. `/logs` and `/dag` are left as
+  documented `200`-empty: their rows are keyed independently of the `tasks` table
+  (a task_id can have logs with no `tasks` row — an existing test proves it), so
+  there is no sound "unknown id" signal to `404` on without breaking real usage.
+- **"Resize columns" (#9):** not a stub — it's a real pointer-drag resize gutter
+  (`startDrag` on `pointerdown`); Ops-2's *click* couldn't trigger a *drag*. No
+  code change; recorded here so it isn't re-flagged.
+- **Tooling:** `CLAUDE.md` no longer claims `cargo nextest` is the standard
+  runner (it isn't installed); `cargo test --workspace` is documented as the
+  baseline CI/hooks use, with nextest noted as an optional install.
+
+Out of scope (flagged in `docs/ops/NEXT_SESSION_PROMPT.md`): the orb-parity
+divergence (web `OrbDot` vs macOS Metal orb) — a design decision, deliberately
+not resolved here — and Launch-1 seamless-start. Cost/token accounting ($0, bug
+#3) is not in this sprint's finding set and remains open.
+
 ## [Unreleased] — Ops-2: full-state audit (docs-only, no behavior change) 🔎
 
 Empirical full-state audit of every surface on macOS with real subscription auth —

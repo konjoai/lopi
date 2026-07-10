@@ -5,20 +5,23 @@
 import { NAV_ITEMS, isActiveRoute, activeNavItem, isImmersiveRoute, SIDEBAR_MODE } from './nav';
 import { eq, eqIs, ok, namedSummary } from '$lib/test-harness';
 
-// ── NAV_ITEMS is the four-item post-Unify-2 nav, in order ──────────────────
+// ── NAV_ITEMS is the six-item nav, in order (Loop + Budget restored) ────────
 {
   eq(
     NAV_ITEMS.map((i) => i.href),
-    ['/stacks', '/schedules', '/overview', '/config'],
-    'the nav collapsed to exactly four: Loop Stack, Scheduling, Overview, Configuration'
+    ['/stacks', '/loop', '/budget', '/schedules', '/overview', '/config'],
+    'the nav is six: Loop Stack, Loop, Budget, Scheduling, Overview, Configuration'
   );
   eq(
     NAV_ITEMS.map((i) => i.label),
-    ['Loop Stack', 'Scheduling', 'Overview', 'Configuration'],
-    'the four labels, in order'
+    ['Loop Stack', 'Loop', 'Budget', 'Scheduling', 'Overview', 'Configuration'],
+    'the six labels, in order'
   );
-  eqIs(NAV_ITEMS.length, 4, 'exactly four nav entries');
-  // None of the ten cut destinations survives in the nav.
+  eqIs(NAV_ITEMS.length, 6, 'exactly six nav entries');
+  // The orphaned-but-working surfaces are back in the nav, reachable by click.
+  ok(NAV_ITEMS.some((i) => i.href === '/loop'), '/loop is in the nav (restored from URL-only orphan)');
+  ok(NAV_ITEMS.some((i) => i.href === '/budget'), '/budget is in the nav (restored from URL-only orphan)');
+  // None of the cut destinations survives in the nav.
   const cut = ['/forge', '/fleet', '/constellation', '/pulse', '/tasks', '/router', '/logs', '/tools', '/debug'];
   ok(
     cut.every((href) => !NAV_ITEMS.some((i) => i.href === href)),
