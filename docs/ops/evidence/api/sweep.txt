@@ -1,0 +1,77 @@
+### Seeding scratch objects ###
+schedule create resp: {"allowed_dirs":[],"autonomy_level":"draft_pr","created_at":"2026-07-10T02:22:45.176983+00:00","cron":"0 0 * * *","enabled":false,"forbidden_dirs":[],"goal":"noop audit probe","id":"509bfe0f-642e-4e09-b772-4231ccb70b16","last_run":null,"name":"ops2-scratch","next_runs":["2026-07-11T00:00:00+00:00","2026-07-12T00:00:00+00:00","2026-07-13T00:00:00+00:00"],"priority":"normal","repo":"/tmp","updated_at":"2026-07-10T02:22:45.176983+00:00"}
+schedule id = 509bfe0f-642e-4e09-b772-4231ccb70b16
+Failed to deserialize the JSON body into the target type: missing field `parameters` at line 1 column 85
+
+### GET routes ###
+GET    /api/health                              -> 200 | {"service":"lopi","status":"ok"}
+GET    /api/tasks                               -> 200 | {"tasks":[{"client_ref":null,"completed_at":"2026-06-28T17:50:51.438540+00:00","created_at":"2026-06-28T17:49:43.631416+00:00","goal":"List files, read mod4.rs,
+GET    /api/repos                               -> 200 | {"repos":["/private/tmp/claude-502/-Users-wscholl-lopi/ebea2a6b-995c-4ff3-8527-f6a70bb74e99/scratchpad/ops2-repos/scratch1"]}
+GET    /api/branches                            -> 200 | {"branches":["main"],"default":"main"}
+GET    /api/stats                               -> 200 | {"failed":0,"queued":0,"running":0,"succeeded":0,"total_cost_usd_today":0.0,"total_tokens_today":0,"uptime_secs":89}
+GET    /api/patterns                            -> 200 | {"patterns":[{"avg_attempts":1.0,"goal_keywords":"explain files helper list read sentence","id":"1ae4155a-2d67-4309-8a7d-481de503594c","last_seen":"2026-06-28T1
+GET    /api/plans                               -> 200 | {"plans":[{"features":["1 concurrent agent","SQLite memory + pattern learning","TUI dashboard","Git-isolated branches"],"id":"free","max_agents":1,"name":"Free"
+GET    /api/spec                                -> 200 | {"count":0,"extracted_at":"2026-07-10T02:22:45.570584Z","items":[],"python_files_scanned":0,"rust_files_scanned":1}
+GET    /api/quality/trend                       -> 200 | {"repo":"/private/tmp/claude-502/-Users-wscholl-lopi/ebea2a6b-995c-4ff3-8527-f6a70bb74e99/scratchpad/ops2-repos/scratch1","runs":[]}
+GET    /api/routing/q-values                    -> 200 | {"values":[]}
+GET    /api/tools                               -> 200 | {"tools":[{"description":"search the corpus","name":"test-search","parameters":{"properties":{"q":{"type":"string"}},"type":"object"},"retries":1,"timeout_ms":5
+GET    /api/tools/ops2-tool                     -> 404 | {"error":"unknown tool: ops2-tool"}
+GET    /api/cache/stats                         -> 200 | {"hit_rate_last_hour":0.0,"oldest_entry":null,"total_entries":0,"total_size_bytes":0}
+GET    /api/tasks/dead-letter                   -> 200 | {"dead_letters":[{"dead_at":"2026-06-23T19:58:04.477829+00:00","first_failed_at":"2026-06-23T19:58:04.477829+00:00","goal":"test","id":"704c48b3-b2ab-46b8-9a1a-
+GET    /api/audit                               -> 200 | {"events":[{"action":"task.dispatch","actor":"cli","id":1,"payload":"{\"priority\":\"Normal\",\"required_capabilities\":[]}","subject_id":"a013300c-39b8-4e25-86
+GET    /api/agents/health/summary               -> 200 | {"dead":0,"degraded":0,"healthy":0,"total":0}
+GET    /api/logs                                -> 200 | {"logs":[{"id":58,"level":"info","line":"📊 fixed score: pass=0% lint=0 diff=0L (weighted=0.000)","task_id":"a6dcb710-85d0-497c-ba40-375564c8dfe2","ts":"2026-
+GET    /api/schedules                           -> 200 | {"schedules":[{"allowed_dirs":[],"autonomy_level":"draft_pr","created_at":"2026-07-10T02:22:45.176983+00:00","cron":"0 0 * * *","enabled":false,"forbidden_dirs"
+GET    /api/schedules/509bfe0f-642e-4e09-b772-4231ccb70b16 -> 200 | {"allowed_dirs":[],"autonomy_level":"draft_pr","created_at":"2026-07-10T02:22:45.176983+00:00","cron":"0 0 * * *","enabled":false,"forbidden_dirs":[],"goal":"no
+GET    /api/loop-engineering                    -> 200 | {"autonomy_levels":[{"allows_auto_merge":false,"label":"Report only","opens_pr":false,"requires_verifier":false,"tag":"L1","value":"report_only"},{"allows_auto_
+GET    /api/loop-engineering/health             -> 200 | {"attempts":[{"attempt":1,"created_at":"2026-06-28T17:36:37.454029+00:00","diff_lines":0,"lint_errors":0,"outcome":"success","task_id":"71dbb6b4-34f0-4baa-b3f4-
+GET    /api/loop-engineering/runs               -> 200 | {"runs":[{"attempts":1,"best_score":1.0,"final_outcome":"success","goal":"List files, read mod4.rs, and explain helper4 in one sentence","last_at":"2026-06-28T1
+GET    /api/config                              -> 200 | {"config":null,"source":"none"}
+GET    /api/version                             -> 200 | {"service":"lopi","uptime_secs":103,"version":"0.2.0"}
+GET    /api/version                             -> 200 | {"service":"lopi","uptime_secs":116,"version":"0.2.0"}
+### GET-by-id with bogus ids (expect 404/4xx = wired) ###
+GET    /api/tasks/00000000-0000-0000-0000-000000000000 -> 404 | {"error":"task not found"}
+GET    /api/agents/00000000-0000-0000-0000-000000000000/dag -> 200 | {"edges":[],"nodes":[],"task_id":"00000000-0000-0000-0000-000000000000"}
+GET    /api/agents/00000000-0000-0000-0000-000000000000/health -> 404 | {"error":"no heartbeat recorded for this agent"}
+GET    /api/agents/00000000-0000-0000-0000-000000000000/rate-limit -> 404 | {"error":"no rate limit registered for this agent"}
+GET    /api/tasks/00000000-0000-0000-0000-000000000000/logs -> 200 | {"logs":[],"task_id":"00000000-0000-0000-0000-000000000000"}
+GET    /api/tasks/dead-letter/00000000-0000-0000-0000-000000000000 -> 404 | {"error":"dead-letter row not found"}
+GET    /api/loop-engineering/runs/00000000-0000-0000-0000-000000000000 -> 404 | {"error":"run not found"}
+GET    /api/tasks/00000000-0000-0000-0000-000000000000/stream -> 200 | {"error":"run not found"}
+### Constellation endpoints (called by api.ts — verify existence) ###
+GET    /api/constellations                      -> 200 | <!DOCTYPE html> <html lang="en">   <head>     <meta charset="utf-8" />     <link rel="icon" href="/favicon.svg" />     <meta name="viewport" content="width=devi
+POST   /api/constellation/foo/dispatch          -> 405 | 
+GET    /api/constellation/foo/stats             -> 200 | <!DOCTYPE html> <html lang="en">   <head>     <meta charset="utf-8" />     <link rel="icon" href="/favicon.svg" />     <meta name="viewport" content="width=devi
+### Mutating: schedules lifecycle (DB-only, safe) ###
+POST   /api/schedules/509bfe0f-642e-4e09-b772-4231ccb70b16/disable -> 200 | {"enabled":false,"id":"509bfe0f-642e-4e09-b772-4231ccb70b16"}
+POST   /api/schedules/509bfe0f-642e-4e09-b772-4231ccb70b16/enable -> 200 | {"enabled":true,"id":"509bfe0f-642e-4e09-b772-4231ccb70b16"}
+POST   /api/schedules/509bfe0f-642e-4e09-b772-4231ccb70b16/autonomy -> 200 | {"autonomy_level":"draft_pr","id":"509bfe0f-642e-4e09-b772-4231ccb70b16"}
+PUT    /api/schedules/509bfe0f-642e-4e09-b772-4231ccb70b16 -> 200 | {"allowed_dirs":[],"autonomy_level":"draft_pr","created_at":"2026-07-10T02:22:45.176983+00:00","cron":"0 1 * * *","enabled":false,"forbidden_dirs":[],"goal":"no
+### Mutating: loop strategy/escalation (state-set, safe) ###
+POST   /api/loop-engineering/strategy           -> 422 | {"error":"unknown strategy: balanced"}
+POST   /api/loop-engineering/escalation         -> 200 | {"escalate_strategy":true}
+### Mutating: cache (safe) ###
+DELETE /api/cache/agent/00000000-0000-0000-0000-000000000000 -> 200 | {"agent_id":"00000000-0000-0000-0000-000000000000","deleted":0}
+DELETE /api/cache                               -> 200 | {"deleted":0}
+### Mutating with bogus ids (expect 404/4xx = wired, no side effect) ###
+POST   /api/tasks/00000000-0000-0000-0000-000000000000/plan/approve -> 409 | {"error":"task is not awaiting plan approval"}
+POST   /api/tasks/00000000-0000-0000-0000-000000000000/plan/reject -> 409 | {"error":"task is not awaiting plan approval"}
+POST   /api/agents/00000000-0000-0000-0000-000000000000/checkpoint -> 422 | Failed to deserialize the JSON body into the target type: missing field `state` at line 1 column 2
+POST   /api/agents/00000000-0000-0000-0000-000000000000/heartbeat -> 200 | {"agent_id":"00000000-0000-0000-0000-000000000000","avg_latency_ms":0.0,"consecutive_failures":0,"error_rate_1h":0.0,"last_seen":"2026-07-10T02:23:31.598181Z","
+POST   /api/agents/00000000-0000-0000-0000-000000000000/rate-limit -> 422 | Failed to deserialize the JSON body into the target type: missing field `max_per_minute` at line 1 column 26
+DELETE /api/agents/00000000-0000-0000-0000-000000000000/rate-limit -> 404 | {"error":"no rate limit registered for this agent"}
+DELETE /api/tasks/dead-letter/00000000-0000-0000-0000-000000000000 -> 404 | {"error":"dead-letter row not found"}
+POST   /api/tasks/dead-letter/00000000-0000-0000-0000-000000000000/retry -> 404 | {"error":"dead-letter row not found"}
+DELETE /api/tasks/00000000-0000-0000-0000-000000000000 -> 404 | {"error":"task not found"}
+### POST /api/tasks — validation probe (bad payload, expect 4xx, no spawn) ###
+POST   /api/tasks                               -> 422 | Failed to deserialize the JSON body into the target type: missing field `goal` at line 1 column 2
+POST   /api/tasks                               -> 201 | {"id":"a0ef18c5-3e26-4b28-abcc-7631f7321efd","goal":"","queued":true,"duplicate_of":null,"client_ref":null}
+### Non-/api infra routes ###
+GET    /metrics                                 -> 200 | # HELP lopi_agents_running Currently running agents # TYPE lopi_agents_running gauge lopi_agents_running 1 # HELP lopi_agents_queued Tasks waiting in queue # TY
+GET    /sse                                     -> 200 | data: {"type":"task_started","task_id":"a0ef18c5-3e26-4b28-abcc-7631f7321efd","attempt":1,"branch":"lopi/a0ef18c5-3e26-4b28-abcc-7631f7321efd-attempt-1"}  data:
+GET    /ws                                      -> 400 | Connection header did not include 'upgrade'
+GET    /ws/tasks                                -> 400 | Connection header did not include 'upgrade'
+### Cleanup: tool + schedule ###
+DELETE /api/tools/ops2-tool                     -> 404 | {"error":"unknown tool: ops2-tool"}
+DELETE /api/schedules/509bfe0f-642e-4e09-b772-4231ccb70b16 -> 200 | {"deleted":"509bfe0f-642e-4e09-b772-4231ccb70b16"}
+sweep complete, 61 requests
