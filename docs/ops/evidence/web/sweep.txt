@@ -1,0 +1,185 @@
+
+=== /stacks  (Loop Stack) ===
+HTTP 200 | landed /stacks | 17 interactive els
+console: clean
+initial API calls: GET /api/repos
+  [Client-only] <button> "Toggle navigation"  :: DOM changed, no network
+  [Wired(link)] <a> "lopi" href=/stacks :: -> /stacks [HTTP 200, bodyLen 192]
+  [Client-only] <button> "+"  :: DOM changed, no network
+  [Client-only] <button> "?"  :: DOM changed, no network
+  [Stubbed] <button> "Close navigation"  :: click failed: elementHandle.click: Timeout 3000ms exce
+  [Wired(link)] <a> "Loop Stack" href=/stacks :: -> /stacks [HTTP 200, bodyLen 192]
+  [Wired(link)] <a> "Scheduling" href=/schedules :: -> /schedules [HTTP 200, bodyLen 175]
+  [Wired(link)] <a> "Overview" href=/overview :: -> /overview [HTTP 200, bodyLen 304]
+  [Wired(link)] <a> "Configuration" href=/config :: -> /config [HTTP 200, bodyLen 275]
+  [Client-only] <button> ""  :: DOM changed, no network
+  [not-clicked] <input> "add a prompt or goal…"  :: mutating/destructive — classify via code read
+  [skipped] <button> ""  :: disabled
+  [Client-only] <button> ""  :: DOM changed, no network
+  [not-clicked] <input> "add a prompt or goal…"  :: mutating/destructive — classify via code read
+  [skipped] <button> ""  :: disabled
+  [Stubbed] <button> "Resize columns"  :: no network, no DOM change
+  [Client-only] <button> "PRESS ? FOR SHORTCUTS"  :: DOM changed, no network
+
+=== /schedules  (Scheduling) ===
+HTTP 200 | landed /schedules | 10 interactive els
+console: clean
+initial API calls: GET /api/schedules
+  [Client-only] <button> "Toggle navigation"  :: DOM changed, no network
+  [Wired(link)] <a> "lopi" href=/stacks :: -> /stacks [HTTP 200, bodyLen 193]
+  [Client-only] <button> "?"  :: DOM changed, no network
+  [Stubbed] <button> "Close navigation"  :: click failed: elementHandle.click: Timeout 3000ms exce
+  [Wired(link)] <a> "Loop Stack" href=/stacks :: -> /stacks [HTTP 200, bodyLen 192]
+  [Wired(link)] <a> "Scheduling" href=/schedules :: -> /schedules [HTTP 200, bodyLen 175]
+  [Wired(link)] <a> "Overview" href=/overview :: -> /overview [HTTP 200, bodyLen 301]
+  [Wired(link)] <a> "Configuration" href=/config :: -> /config [HTTP 200, bodyLen 375]
+  [not-clicked] <button> "+ NEW"  :: mutating/destructive — classify via code read
+  [Client-only] <button> "PRESS ? FOR SHORTCUTS"  :: DOM changed, no network
+
+=== /overview  (Overview) ===
+HTTP 200 | landed /overview | 34 interactive els
+console: clean
+initial API calls: none
+  [Client-only] <button> "Toggle navigation"  :: DOM changed, no network
+  [Wired(link)] <a> "lopi" href=/stacks :: -> /stacks [HTTP 200, bodyLen 192]
+  [Client-only] <button> "?"  :: DOM changed, no network
+  [Client-only] <button> "Close navigation"  :: DOM changed, no network
+  [Wired(link)] <a> "Loop Stack" href=/stacks :: -> /stacks [HTTP 200, bodyLen 192]
+  [Wired(link)] <a> "Scheduling" href=/schedules :: -> /schedules [HTTP 200, bodyLen 218]
+  [Wired(link)] <a> "Overview" href=/overview :: -> /overview [HTTP 200, bodyLen 301]
+  [Wired(link)] <a> "Configuration" href=/config :: -> /config [HTTP 200, bodyLen 275]
+  [Client-only] <button> "ALL
+20"  :: DOM changed, no network
+  [Client-only] <button> "RUNNING
+20"  :: DOM changed, no network
+  [Client-only] <button> "QUEUED
+0"  :: DOM changed, no network
+  [Client-only] <button> "DONE
+0"  :: DOM changed, no network
+  [Client-only] <button> "DEAD-LETTER
+0"  :: DOM changed, no network
+  [not-clicked] <tr role=button> "create a next steps plan for the konjoai"  :: mutating/destructive — classify via code read
+  [not-clicked] <tr role=button> "create a next steps plan for the konjoai"  :: mutating/destructive — classify via code read
+  [not-clicked] <tr role=button> "create a next steps plan for the konjoai"  :: mutating/destructive — classify via code read
+  [not-clicked] <tr role=button> "create a next steps plan for the konjoai"  :: mutating/destructive — classify via code read
+  [not-clicked] <tr role=button> "create a next steps plan for the konjoai"  :: mutating/destructive — classify via code read
+  [not-clicked] <tr role=button> "Create a next steps plan for the konjoai"  :: mutating/destructive — classify via code read
+  [Wired] <tr role=button> "test	—	Boot	44623m 21s	$0.0000	—"  :: network: GET /api/repos, GET /api/repos
+  [Wired] <tr role=button> "make a next steps plan for the konjoai r"  :: network: GET /api/repos, GET /api/repos
+  [not-clicked] <tr role=button> "create next steps for the konjoai repos	"  :: mutating/destructive — classify via code read
+  [Wired] <tr role=button> "test	—	Boot	44615m 45s	$0.0000	—"  :: network: GET /api/repos, GET /api/repos
+  [Wired] <tr role=button> "test	—	Boot	44613m 37s	$0.0000	—"  :: network: GET /api/repos, GET /api/repos
+  [Wired] <tr role=button> "List the files in this repo and read mai"  :: network: GET /api/repos, GET /api/repos
+  [Wired] <tr role=button> "List the files and read main.rs, then ex"  :: network: GET /api/repos, GET /api/repos
+  [Wired] <tr role=button> "List files and read lib.rs, then describ"  :: network: GET /api/repos, GET /api/repos
+  [Wired] <tr role=button> "List files and read lib.rs, then describ"  :: network: GET /api/repos, GET /api/repos
+  [Wired] <tr role=button> "List files and read lib.rs, then describ"  :: network: GET /api/repos, GET /api/repos
+  [Wired] <tr role=button> "List files, read mod1.rs, and explain he"  :: network: GET /api/repos, GET /api/repos
+  [Wired] <tr role=button> "List files, read mod2.rs, and explain he"  :: network: GET /api/repos, GET /api/repos
+  [Wired] <tr role=button> "List files, read mod3.rs, and explain he"  :: network: GET /api/repos, GET /api/repos
+  [Wired] <tr role=button> "List files, read mod4.rs, and explain he"  :: network: GET /api/repos, GET /api/repos
+  [Client-only] <button> "PRESS ? FOR SHORTCUTS"  :: DOM changed, no network
+
+=== /config  (Configuration) ===
+HTTP 200 | landed /config | 14 interactive els
+console: clean
+initial API calls: GET /api/config, GET /api/version
+  [Client-only] <button> "Toggle navigation"  :: DOM changed, no network
+  [Wired(link)] <a> "lopi" href=/stacks :: -> /stacks [HTTP 200, bodyLen 192]
+  [Client-only] <button> "?"  :: DOM changed, no network
+  [Stubbed] <button> "Close navigation"  :: click failed: elementHandle.click: Timeout 3000ms exce
+  [Wired(link)] <a> "Loop Stack" href=/stacks :: -> /stacks [HTTP 200, bodyLen 192]
+  [Wired(link)] <a> "Scheduling" href=/schedules :: -> /schedules [HTTP 200, bodyLen 175]
+  [Wired(link)] <a> "Overview" href=/overview :: -> /overview [HTTP 200, bodyLen 304]
+  [Wired(link)] <a> "Configuration" href=/config :: -> /config [HTTP 200, bodyLen 275]
+  [Stubbed] <button> "ICE"  :: no network, no DOM change
+  [Client-only] <button> "EMBER"  :: DOM changed, no network
+  [Client-only] <button> "JADE"  :: DOM changed, no network
+  [Stubbed] <button> "tree"  :: no network, no DOM change
+  [Client-only] <button> "raw"  :: DOM changed, no network
+  [Client-only] <button> "PRESS ? FOR SHORTCUTS"  :: DOM changed, no network
+
+=== /budget  (Budget (orphan route, not in nav)) ===
+HTTP 200 | landed /budget | 16 interactive els
+console: clean
+initial API calls: none
+  [Client-only] <button> "Toggle navigation"  :: DOM changed, no network
+  [Wired(link)] <a> "lopi" href=/stacks :: -> /stacks [HTTP 200, bodyLen 192]
+  [Client-only] <button> "?"  :: DOM changed, no network
+  [Stubbed] <button> "Close navigation"  :: click failed: elementHandle.click: Timeout 3000ms exce
+  [Wired(link)] <a> "Loop Stack" href=/stacks :: -> /stacks [HTTP 200, bodyLen 192]
+  [Wired(link)] <a> "Scheduling" href=/schedules :: -> /schedules [HTTP 200, bodyLen 175]
+  [Wired(link)] <a> "Overview" href=/overview :: -> /overview [HTTP 200, bodyLen 301]
+  [Wired(link)] <a> "Configuration" href=/config :: -> /config [HTTP 200, bodyLen 275]
+  [not-clicked] <button> "◼ STOP ALL RUNNING (20)"  :: mutating/destructive — classify via code read
+  [Stubbed] <input> "5"  :: no network, no DOM change
+  [Client-only] <button> "$1"  :: DOM changed, no network
+  [Client-only] <button> "$5"  :: DOM changed, no network
+  [Client-only] <button> "$10"  :: DOM changed, no network
+  [Client-only] <button> "$25"  :: DOM changed, no network
+  [Client-only] <button> "$50"  :: DOM changed, no network
+  [Client-only] <button> "PRESS ? FOR SHORTCUTS"  :: DOM changed, no network
+
+=== /loop  (Loop (orphan route, not in nav)) ===
+HTTP 200 | landed /loop | 24 interactive els
+console: clean
+initial API calls: GET /api/loop-engineering, GET /api/loop-engineering/health, GET /api/loop-engineering/runs
+  [Client-only] <button> "Toggle navigation"  :: DOM changed, no network
+  [Wired(link)] <a> "lopi" href=/stacks :: -> /stacks [HTTP 200, bodyLen 192]
+  [Client-only] <button> "?"  :: DOM changed, no network
+  [Stubbed] <button> "Close navigation"  :: click failed: elementHandle.click: Timeout 3000ms exce
+  [Wired(link)] <a> "Loop Stack" href=/stacks :: -> /stacks [HTTP 200, bodyLen 192]
+  [Wired(link)] <a> "Scheduling" href=/schedules :: -> /schedules [HTTP 200, bodyLen 218]
+  [Wired(link)] <a> "Overview" href=/overview :: -> /overview [HTTP 200, bodyLen 304]
+  [Wired(link)] <a> "Configuration" href=/config :: -> /config [HTTP 200, bodyLen 375]
+  [Wired] <button> "▸
+List files, read mod4.rs, and explain "  :: network: GET /api/loop-engineering/runs/edf4c379-12e1-4b81-a7a4-6989fd215abf
+  [Wired] <button> "▸
+List files, read mod2.rs, and explain "  :: network: GET /api/loop-engineering/runs/f5a7b8b1-7192-468f-8a44-97a143fe2568
+  [Wired] <button> "▸
+List files, read mod3.rs, and explain "  :: network: GET /api/loop-engineering/runs/73ca93ed-f868-4756-9f6f-f957c279489e
+  [Wired] <button> "▸
+List files, read mod1.rs, and explain "  :: network: GET /api/loop-engineering/runs/0a34d61c-ef9e-4dbe-9bc3-796796516eb7
+  [Wired] <button> "▸
+List files and read lib.rs, then descr"  :: network: GET /api/loop-engineering/runs/23dbcb4d-709f-46c3-98f4-23c59dc0b1cf
+  [Wired] <button> "▸
+List files and read lib.rs, then descr"  :: network: GET /api/loop-engineering/runs/cf8527a8-310d-4696-af05-7761fbdd7b42
+  [Wired] <button> "▸
+List files and read lib.rs, then descr"  :: network: GET /api/loop-engineering/runs/5fa241d5-5443-45da-9ba4-c30cca728755
+  [Wired] <button> "▸
+List the files and read main.rs, then "  :: network: GET /api/loop-engineering/runs/8aa8867e-b060-4708-bac5-c9521c25c6cb
+  [Wired] <button> "▸
+List the files in this repo and read m"  :: network: GET /api/loop-engineering/runs/71dbb6b4-34f0-4baa-b3f4-1344f7bd10a1
+  [Client-only] <button> "S1 · Direct
+⌄"  :: DOM changed, no network
+  [Stubbed] <button> "S1
+Direct
+ACTIVE
+Inject the raw failure "  :: no network, no DOM change
+  [Client-only] <button> "S2
+Reflexion
+Write a verbal self-reflect"  :: DOM changed, no network
+  [Client-only] <button> "S3
+Self-Refine
+Critique the attempt agai"  :: DOM changed, no network
+  [Client-only] <button> "S4
+Plan-Then-Act
+Decompose the remaining"  :: DOM changed, no network
+  [Wired] <button role=switch> ""  :: network: POST /api/loop-engineering/escalation, GET /api/loop-engineering, GET /api/loop-engineering/health, GET /api/loop-engine
+  [Client-only] <button> "PRESS ? FOR SHORTCUTS"  :: DOM changed, no network
+
+=== /onboard  (Onboard (hidden)) ===
+HTTP 200 | landed /onboard | 11 interactive els
+console: clean
+initial API calls: none
+  [Client-only] <button> "Toggle navigation"  :: DOM changed, no network
+  [Wired(link)] <a> "lopi" href=/stacks :: -> /stacks [HTTP 200, bodyLen 192]
+  [Client-only] <button> "?"  :: DOM changed, no network
+  [Stubbed] <button> "Close navigation"  :: click failed: elementHandle.click: Timeout 3000ms exce
+  [Wired(link)] <a> "Loop Stack" href=/stacks :: -> /stacks [HTTP 200, bodyLen 193]
+  [Wired(link)] <a> "Scheduling" href=/schedules :: -> /schedules [HTTP 200, bodyLen 218]
+  [Wired(link)] <a> "Overview" href=/overview :: -> /overview [HTTP 200, bodyLen 301]
+  [Wired(link)] <a> "Configuration" href=/config :: -> /config [HTTP 200, bodyLen 275]
+  [Wired(nav)] <button> "🔗 Install GitHub App"  :: navigated -> chrome-error://chromewebdata/
+  [Broken(link)] <a> "Forge dashboard" href=/ :: -> / [HTTP 200, bodyLen 0]
+  [Client-only] <button> "PRESS ? FOR SHORTCUTS"  :: DOM changed, no network

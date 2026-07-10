@@ -1,0 +1,1360 @@
+
+running 42 tests
+test gap_fill_commands::tests::snapshot_score_correct ... ok
+test gap_fill_commands::tests::snapshot_score_zero_when_empty ... ok
+test repl::input::tests::backspace_removes_last_char ... ok
+test repl::input::tests::ctrl_u_clears ... ok
+test repl::input::tests::empty_enter_is_noop ... ok
+test loop_commands::tests::fmt_list_renders_all_or_joined ... ok
+test repl::slash::tests::autocomplete_empty_returns_all ... ok
+test repl::input::tests::type_and_submit ... ok
+test repl::slash::tests::autocomplete_partial_match ... ok
+test repl::slash::tests::parse_quit_aliases ... ok
+test repl::slash::tests::parse_run_with_goal ... ok
+test repl::slash::tests::parse_run_no_goal_is_err ... ok
+test replay_commands::tests::committed_pr_is_classified_as_skip ... ok
+test replay_commands::tests::replay_plan_classifies_upstream_restart_and_downstream ... ok
+test replay_commands::tests::replay_plan_marks_undone_upstream_with_dot ... ok
+test replay_commands::tests::resolve_restart_parses_explicit_from ... ok
+test replay_commands::tests::resolve_restart_errors_when_complete ... ok
+test replay_commands::tests::resolve_restart_uses_resume_point ... ok
+test repo_detect::tests::repo_display_name_extracts_last_segment ... ok
+test loop_commands::tests::render_contains_all_fields_with_defaults ... ok
+test loop_commands::tests::check_is_empty_for_default_config ... ok
+test skill_commands::tests::report_lists_drafted_and_skipped ... ok
+test skill_commands::tests::report_says_nothing_when_empty ... ok
+test repo_detect::tests::returns_start_when_no_git_root ... ok
+test spec_commands::tests::no_violations_on_empty_dir ... ok
+test spec_commands::tests::skips_target_dir ... ok
+test repo_detect::tests::finds_git_root_in_parent ... ok
+test trust_commands::tests::module_compiles ... ok
+test util::tests::fmt_status_decorates_known_states_and_passes_through ... ok
+test util::tests::status_label_includes_attempt_and_reason_detail ... ok
+test util::tests::status_label_maps_simple_states ... ok
+test util::tests::status_label_success_carries_branch_and_pr ... ok
+test sail_commands::tests::seed_schedules_persists_new_entries_with_autonomy ... ok
+test sail_commands::tests::seed_schedules_is_idempotent_by_name ... ok
+test worktree_commands::tests::commands_error_on_non_repo ... ok
+test spec_commands::tests::detects_oversized_rs_file ... ok
+test spec_commands::tests::small_file_no_violation ... ok
+test loop_commands::tests::render_reflects_a_present_config ... ok
+test loop_commands::tests::check_reports_issues_for_bad_config ... ok
+test skill_commands::tests::promote_drafts_recurring_lessons_from_the_store ... ok
+Initialized empty Git repository in /private/var/folders/j0/3_bbch6524dbn0cprjcxbqw40000gp/T/.tmpAfkJpE/.git/
+Initialized empty Git repository in /private/var/folders/j0/3_bbch6524dbn0cprjcxbqw40000gp/T/.tmpknj2lO/.git/
+[main (root-commit) 04fe3a3] init
+ 1 file changed, 1 insertion(+)
+ create mode 100644 README.md
+[main (root-commit) 04fe3a3] init
+ 1 file changed, 1 insertion(+)
+ create mode 100644 README.md
+test worktree_commands::tests::list_shows_main_worktree ... ok
+test worktree_commands::tests::gc_on_clean_repo_reclaims_nothing ... ok
+
+test result: ok. 42 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.38s
+
+
+running 219 tests
+test api_budget::tests::effective_budget_is_none_on_unsupported_model ... ok
+test api_budget::tests::effective_budget_clamps_below_minimum_up ... ok
+test api_budget::tests::sonnet_and_haiku_do_not_support_budgets ... ok
+test api_budget::tests::effective_budget_is_none_without_a_request ... ok
+test api_budget::tests::effective_budget_passes_through_above_minimum ... ok
+test api_budget::tests::opus_47_and_48_and_fable_support_budgets ... ok
+test api_client::tests::usage_cost_sonnet ... ok
+test api_client::tests::usage_cost_cache_hit_cheaper ... ok
+test api_budget::tests::output_config_has_wire_shape ... ok
+test claude::tests::select_model_haiku_for_minimal_task ... ok
+test claude::tests::select_model_escalates_to_opus_at_attempt_2 ... ok
+test claude::tests::select_model_escalates_to_opus_at_attempt_3 ... ok
+test claude::tests::compress_errors_removes_backtrace_noise ... ok
+test claude::tests::select_model_honors_explicit_override_over_heuristic_and_escalation ... ok
+test claude::tests::compress_errors_deduplicates_identical_blocks ... ok
+test claude::tests::select_model_opus_for_large_task ... ok
+test claude::tests::select_model_sonnet_for_medium_task ... ok
+test claude_events::tests::assistant_text_and_thinking_format_for_log_only ... ok
+test claude_events::tests::assistant_tool_use_logs_and_maps_to_tool_call ... ok
+test claude_events::tests::init_carries_session_id_but_no_log_or_structured ... ok
+test claude_events::tests::blank_and_malformed_lines_never_panic ... ok
+test claude_events::tests::content_block_delta_is_not_pane_facing ... ok
+test claude_events::tests::multiple_assistant_blocks_decode_in_order ... ok
+test claude_events::tests::message_delta_usage_maps_to_token_delta ... ok
+test claude_events::tests::long_tool_arg_truncates_at_cap ... ok
+test claude_events::tests::post_turn_summary_logs_detail_and_phases_category ... ok
+test claude_events::tests::non_success_result_reports_the_halt_reason ... ok
+test claude_events::tests::rate_limit_clamps_utilization_and_maps_to_api_retry ... ok
+test claude_events::tests::result_yields_final_text_cost_and_session ... ok
+test claude_events::tests::success_result_has_no_halt_log ... ok
+test claude_events::tests::status_maps_to_phase ... ok
+test claude_events::tests::tool_use_unknown_tool_or_no_input_has_bare_log ... ok
+test claude_events::tests::user_tool_result_flags_error_on_stderr ... ok
+test dag::tests::canonical_dependencies_are_linear ... ok
+test dag::tests::canonical_has_seven_nodes_in_pipeline_order ... ok
+test dag::tests::committed_side_effect_blocks_re_execution ... ok
+test dag::tests::edges_form_six_link_chain ... ok
+test dag::tests::node_kind_serialises_snake_case ... ok
+test dag::tests::node_kind_and_status_from_str_round_trip ... ok
+test dag::tests::only_pr_is_side_effecting ... ok
+test dag::tests::predecessor_chain_is_correct ... ok
+test dag::tests::reset_from_preserves_idempotency_key ... ok
+test dag::tests::reset_from_preserves_upstream_clears_downstream ... ok
+test dag::tests::resume_point_is_plan_when_all_pending ... ok
+test dag::tests::resume_point_none_when_complete ... ok
+test dag::tests::dag_round_trips_through_json ... ok
+test dag::tests::resume_point_returns_failed_node ... ok
+test dag::tests::resume_point_skips_done_prefix ... ok
+test dag_rows::tests::from_empty_rows_is_canonical ... ok
+test dag_rows::tests::from_rows_overlays_status_hash_and_key ... ok
+test dag_rows::tests::from_rows_skips_unknown_kind ... ok
+test eval::judge::tests::metric_gate_passing_reading_lets_judge_decide ... ok
+test eval::judge::tests::judge_fail_carries_gaps_and_hints ... ok
+test eval::judge::tests::judge_error_is_fail_closed ... ok
+test eval::tests::empty_acceptance_is_a_vacuous_pass ... ok
+test eval::judge::tests::metric_gate_failing_reading_fails_before_judge ... ok
+test eval::judge::tests::judge_pass_maps_to_pass ... ok
+test eval::judge::tests::metric_gate_missing_reading_is_fail_closed ... ok
+test eval::tests::non_required_failure_does_not_short_circuit ... ok
+test eval::tests::passing_cheap_tier_still_reaches_the_judge ... ok
+test eval::tests::verdict_allows_finalize_only_on_pass ... ok
+test eval::tests::required_cheap_failure_short_circuits_before_the_judge ... ok
+test eval::tiers::tests::failure_markers_detected ... ok
+test eval::tiers::tests::execution_ok_uses_precomputed_signal_first ... ok
+test eval::tiers::tests::shell_tier_errors_when_offline ... ok
+test eval::tiers::tests::execution_ok_derives_from_output_when_no_signal ... ok
+test eval::tiers::tests::wrong_spec_is_fail_closed ... ok
+test pattern_enricher::tests::test_enricher_empty_patterns ... ok
+test eval::tiers::tests::suite_tier_errors_when_offline ... ok
+test pattern_enricher::tests::test_enricher_filters_by_keyword_relevance ... ok
+test pattern_enricher::tests::test_enricher_filters_by_success_rate ... ok
+test pattern_enricher::tests::test_enricher_no_match_returns_empty ... ok
+test pattern_enricher::tests::test_enricher_none_success_rate_excluded ... ok
+test pattern_enricher::tests::test_enricher_prefix_format ... ok
+test pattern_enricher::tests::test_enricher_max_suggestions ... ok
+test pattern_enricher::tests::test_enricher_sorted_by_success_rate ... ok
+test pattern_enricher::tests::test_enricher_trailing_newline ... ok
+test pattern_enricher::tests::test_enricher_zero_min_success_rate ... ok
+test reflection_harness::tests::fixture_set_is_the_pre_registered_size_and_all_retryable ... ok
+test reflection_harness::tests::imprecise_injection_costs_marginal_value_over_within_run ... ok
+test reflection_harness::tests::harness_is_reproducible ... ok
+test reflection_harness::tests::perfect_precision_makes_cross_run_beat_blind ... ok
+test reflection_harness::tests::precise_injection_earns_marginal_value_over_within_run ... ok
+test reflection_harness::tests::within_run_never_worse_than_blind_on_pass_rate ... ok
+test runner::api_plan::tests::effective_strategy_climbs_with_escalation ... ok
+test runner::api_plan::tests::effective_strategy_pins_without_escalation ... ok
+test reflection_harness::tests::precision_sweep_is_monotone_enough_to_show_the_threshold ... ok
+test runner::api_plan::tests::task_budget_defaults_to_none ... ok
+test runner::api_plan::tests::runner_default_has_no_direct_api ... ok
+test runner::api_plan::tests::user_prompt_includes_goal ... ok
+test runner::api_plan::tests::user_prompt_ends_with_planning_directive ... ok
+test runner::api_plan::tests::user_prompt_includes_last_error_when_provided ... ok
+test runner::api_plan::tests::user_prompt_is_deterministic_for_caching ... ok
+test runner::api_plan::tests::user_prompt_includes_lessons_when_provided ... ok
+test runner::api_plan::tests::user_prompt_lists_constraints ... ok
+test runner::api_plan::tests::user_prompt_omits_empty_sections ... ok
+test runner::api_plan::tests::with_task_budget_positive_sets_budget ... ok
+test runner::api_plan::tests::with_task_budget_zero_disables ... ok
+test runner::finalize::tests::auto_merge_only_when_l4_and_pr_opened ... ok
+test runner::eval_runner::tests::empty_acceptance_proceeds ... ok
+test runner::eval_runner::tests::no_acceptance_proceeds_unchanged ... ok
+test runner::finalize::tests::build_report_summary_contains_goal_and_pass_verdict ... ok
+test runner::finalize::tests::each_level_maps_to_its_decision ... ok
+test runner::finalize::tests::emit_report_routes_to_the_declared_channel ... ok
+test runner::finalize::tests::emit_report_warns_and_sends_nothing_for_an_unrecognized_channel ... ok
+test runner::finalize::tests::emit_report_with_no_channel_sends_nothing ... ok
+test runner::finalize::tests::l1_and_l2_only_verify_when_explicitly_enabled ... ok
+test runner::finalize::tests::l3_and_l4_force_the_verifier_even_when_disabled ... ok
+test runner::finalize::tests::only_l1_skips_the_pr ... ok
+test runner::finalize::tests::only_l2_opens_a_draft ... ok
+test runner::finalize::tests::only_l4_auto_merges ... ok
+test runner::guardrails::tests::continue_never_waits ... ok
+test runner::guardrails::tests::gate_unset_never_blocks ... ok
+test runner::guardrails::tests::stop_and_backoff_share_the_backoff_secs_distribution ... ok
+test runner::guardrails::tests::gate_passing_command_lets_the_loop_start ... ok
+test runner::guardrails::tests::until_false_never_reports_done ... ok
+test runner::guardrails::tests::until_unset_never_reports_done ... ok
+test runner::plan_gate::tests::gates_only_first_attempt_of_an_opted_in_task ... ok
+test runner::plan_steps::plan_gate_tests::caps_at_twenty_steps ... ok
+test runner::plan_steps::plan_gate_tests::ignores_prose_and_blank_markers ... ok
+test runner::plan_steps::plan_gate_tests::leading_punctuation_without_a_digit_is_not_a_step ... ok
+test runner::plan_steps::plan_gate_tests::parses_markdown_bullets ... ok
+test runner::plan_steps::plan_gate_tests::parses_numbered_lists ... ok
+test runner::postmortem::tests::build_prompt_includes_goal_and_log ... ok
+test runner::postmortem::tests::build_prompt_is_deterministic ... ok
+test runner::postmortem::tests::build_prompt_truncates_long_error_log ... ok
+test runner::postmortem::tests::extract_always_imperative ... ok
+test runner::postmortem::tests::extract_constraint_case_insensitive_keyword ... ok
+test runner::postmortem::tests::extract_constraint_minimum_length ... ok
+test runner::postmortem::tests::extract_constraint_normalizes_whitespace ... ok
+test runner::postmortem::tests::extract_constraint_skips_leading_blank_lines ... ok
+test runner::postmortem::tests::extract_do_not_imperative ... ok
+test runner::postmortem::tests::extract_must_imperative ... ok
+test runner::postmortem::tests::extract_never_imperative ... ok
+test runner::postmortem::tests::extract_rejects_empty ... ok
+test runner::postmortem::tests::extract_rejects_non_imperative ... ok
+test runner::guardrails::tests::gate_failing_command_blocks_with_a_clear_outcome ... ok
+test runner::postmortem::tests::extract_strips_markdown_bullet ... ok
+test runner::postmortem::tests::extract_takes_first_nonempty_line ... ok
+test runner::postmortem::tests::extract_truncates_overlong_line ... ok
+test runner::progress::tests::a_real_gain_resets_the_streak ... ok
+test runner::progress::tests::a_still_climbing_sequence_never_trips ... ok
+test runner::progress::tests::budget_outranks_no_progress_when_both_trip ... ok
+test runner::progress::tests::budget_trips_only_when_set_and_reached ... ok
+test runner::progress::tests::first_sample_locks_baseline_and_resets_streak ... ok
+test runner::progress::tests::no_progress_limit_zero_disables_the_stall_guard ... ok
+test runner::progress::tests::plateau_grows_streak_and_trips_no_progress_at_k ... ok
+test runner::progress::tests::tripped_reason_is_none_when_nothing_fires ... ok
+test runner::progress::tests::tripped_reason_reports_no_progress_alone ... ok
+test eval::tiers::tests::shell_tier_passes_and_fails_live ... ok
+test runner::eval_runner::tests::passing_execution_ok_acceptance_proceeds ... ok
+test runner::eval_runner::tests::judge_acceptance_without_api_fails_closed_and_routes_critique ... ok
+test runner::guardrails::tests::until_true_reports_done_immediately ... ok
+test runner::reflection::tests::summary_empty_for_no_plan ... ok
+test runner::reflection::tests::summary_takes_first_non_empty_line ... ok
+test runner::reflection::tests::summary_truncates_to_cap ... ok
+test runner::schema_gate::tests::schema_satisfied_returns_none ... ok
+test runner::schema_gate::tests::schema_violation_reports_count_and_detail ... ok
+test runner::seed::tests::injection_cap_is_small_and_bounded ... ok
+test runner::seed::tests::keeps_non_empty_drops_empty_and_none ... ok
+test runner::seed::tests::reflection_constraint_labels_the_prior_failure ... ok
+test runner::seed::tests::skill_blocks_empty_for_no_matches ... ok
+test runner::seed::tests::skill_blocks_label_name_version_description_and_body ... ok
+test runner::stream::tests::non_usage_events_contribute_no_tokens ... ok
+test runner::stream::tests::token_usage_event_sums_input_and_output ... ok
+test runner::verifier_runner::tests::verifier_error_is_fail_closed_by_default ... ok
+test runner::verifier_runner::tests::verifier_error_proceeds_only_on_explicit_opt_in ... ok
+test stability::semantic::tests::empty_diff_produces_no_flags ... ok
+test stability::semantic::tests::exact_path_match_is_covered ... ok
+test stability::semantic::tests::flags_file_outside_allowed ... ok
+test stability::semantic::tests::nested_path_covered_by_dir_prefix ... ok
+test stability::semantic::tests::no_flags_when_all_in_allowed ... ok
+test stability::semantic::tests::no_flags_when_allowed_empty ... ok
+test stability::semantic::tests::partial_prefix_does_not_match ... ok
+test stability::similarity::tests::consensus_picks_most_central_plan ... ok
+test stability::similarity::tests::jaccard_both_empty ... ok
+test stability::similarity::tests::jaccard_case_insensitive ... ok
+test stability::similarity::tests::jaccard_disjoint ... ok
+test stability::similarity::tests::jaccard_filters_short_tokens ... ok
+test stability::similarity::tests::jaccard_identical ... ok
+test stability::similarity::tests::jaccard_one_empty ... ok
+test stability::similarity::tests::jaccard_partial_overlap ... ok
+test stability::similarity::tests::variance_empty_slice ... ok
+test stability::similarity::tests::variance_identical_plans ... ok
+test stability::similarity::tests::variance_score_in_unit_interval ... ok
+test stability::similarity::tests::variance_single_plan ... ok
+test stability::tests::build_stability_prompt_contains_goal ... ok
+test stability::tests::build_stability_prompt_is_deterministic ... ok
+test stability::tests::build_stability_prompt_omits_empty_sections ... ok
+test stability::tests::config_default_thresholds ... ok
+test stability::tests::stability_verdict_str ... ok
+test stability::tests::unstable_verdict_has_no_plan ... ok
+test stability::tests::warning_verdict_str ... ok
+test verifier::tests::build_system_prompt_appends_effort_hint_when_set ... ok
+test verifier::tests::build_system_prompt_is_unchanged_when_effort_absent ... ok
+test verifier::tests::default_rubric_has_criteria ... ok
+test verifier::tests::isolated_prompt_excludes_the_maker_plan ... ok
+test verifier::tests::load_rubric_file_returns_none_for_missing ... ok
+test runner::reflection::tests::capture_is_a_noop_when_reflection_is_off ... ok
+test verifier::tests::parse_verdict_failed_with_hints ... ok
+test verifier::tests::parse_verdict_invalid_json_returns_err ... ok
+test verifier::tests::parse_verdict_valid_json ... ok
+test verifier::tests::plan_context_mode_includes_the_plan ... ok
+test verifier::tests::resolve_rubric_falls_back_to_default_when_file_absent ... ok
+test runner::reflection::tests::capture_persists_a_learning_that_outlives_rollback ... ok
+test verifier::tests::resolve_rubric_prefers_inline_task_rubric ... ok
+test verifier::tests::resolve_verifier_defaults_to_opus_for_a_non_opus_worker ... ok
+test verifier::tests::resolve_verifier_honors_an_explicit_override ... ok
+test verifier::tests::resolve_verifier_never_grades_its_own_homework ... ok
+test verifier::tests::resolve_verifier_passes_effort_through_unchanged ... ok
+test verifier::tests::strip_fences_passthrough_for_clean_json ... ok
+test verifier::tests::strip_fences_removes_markdown_wrapper ... ok
+test runner::reflection::tests::capture_skips_an_empty_critique ... ok
+test runner::reflection::tests::injection_is_empty_when_reflection_is_off ... ok
+test runner::reflection::tests::injection_is_relevant_bounded_and_labeled ... ok
+test verifier::tests::resolve_rubric_loads_file_when_no_inline ... ok
+test verifier::tests::new_verifier_is_isolated_by_default_and_builder_opts_out ... ok
+test api_client::tests::shared_http_returns_same_instance ... ok
+test runner::api_plan::tests::with_api_enables_direct_path ... ok
+
+test result: ok. 219 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.02s
+
+
+running 3 tests
+test every_adversarial_case_is_caught ... ok
+test executor_scores_all_24_fixtures_correctly ... ok
+test objective_failures_route_to_the_deterministic_tier_not_the_judge ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+test unknown_type_decodes_to_other ... ok
+test adversarial_lines_never_panic ... ok
+test real_capture_parses_without_panic_and_maps_cleanly ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 2 tests
+test three_arm_comparison_reproduces_and_is_reported ... ok
+test precision_sweep_shows_the_threshold ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+
+running 6 tests
+test github::tests::verify_hmac_invalid ... ok
+test stripe::tests::missing_components_fail ... ok
+test github::tests::verify_hmac_valid ... ok
+test stripe::tests::wrong_secret_fails ... ok
+test stripe::tests::valid_stripe_sig ... ok
+test stripe::tests::tampered_body_fails ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 15 tests
+test eviction::tests::check_expired_tags_no_match_does_nothing ... ok
+test eviction::tests::evict_phase_removes_evictable_turns ... ok
+test eviction::tests::evict_phase_skips_always_pinned ... ok
+test eviction::tests::evict_phase_skips_conclusions ... ok
+test eviction::tests::evict_phase_skips_different_phase ... ok
+test eviction::tests::evict_to_budget_respects_target ... ok
+test eviction::tests::evict_phase_empty_turns_returns_zero_stats ... ok
+test eviction::tests::check_expired_tags_skips_conclusions ... ok
+test eviction::tests::check_expired_tags_removes_matching_turns ... ok
+test eviction::tests::evict_to_budget_skips_pinned_always ... ok
+test eviction::tests::evict_to_budget_removes_budget_evictable_turns ... ok
+test eviction::tests::evict_turn_removes_specific_turn ... ok
+test eviction::tests::evict_turn_returns_error_for_nonexistent_id ... ok
+test eviction::tests::evict_turn_returns_error_for_pinned_always_without_force ... ok
+test eviction::tests::evict_turn_with_force_removes_pinned ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 3 tests
+test to_api_messages_returns_all_active_turns ... ok
+test to_api_messages_empty_after_all_evicted ... ok
+test eviction_preserves_insertion_order ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 4 tests
+test budget_full_returns_error_when_nothing_evictable ... ok
+test explicit_evict_to_budget_frees_oldest_first ... ok
+test always_pinned_turns_never_evicted_by_budget ... ok
+test oldest_turns_evicted_first_under_budget_pressure ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 5 tests
+test non_conclusion_always_pinned_also_requires_force ... ok
+test force_evict_can_remove_conclusion ... ok
+test conclusion_survives_phase_transition_of_its_own_phase ... ok
+test evict_phase_does_not_remove_conclusion ... ok
+test evict_to_budget_zero_does_not_remove_conclusion ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.28s
+
+
+running 4 tests
+test boot_always_pinned_turns_survive_any_transition ... ok
+test transition_to_planning_evicts_discovery_turns ... ok
+test until_phase_turns_evicted_on_matching_transition ... ok
+test discovery_conclusion_survives_phase_transition ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.28s
+
+
+running 5 tests
+test estimate_within_10_percent_of_api ... ignored, requires ANTHROPIC_API_KEY; run: cargo test --test token_estimation -- --ignored
+test mixed_content_estimate_is_additive ... ok
+test tool_result_block_estimated_nonzero ... ok
+test tool_use_block_estimated_nonzero ... ok
+test text_block_estimated_nonzero ... ok
+
+test result: ok. 4 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.28s
+
+
+running 4 tests
+test evicting_one_half_of_pair_errors ... ok
+test api_messages_empty_after_pair_eviction ... ok
+test force_evict_removes_both_turns ... ok
+test token_count_updated_after_pair_eviction ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 213 tests
+test acceptance::tests::check_builders_set_weight_and_soft ... ok
+test acceptance::tests::new_check_derives_tier_and_defaults_required_unit_weight ... ok
+test acceptance::tests::only_deterministic_tiers_report_deterministic ... ok
+test acceptance::tests::op_holds_covers_all_operators ... ok
+test acceptance::tests::ordered_sorts_by_tier_regardless_of_input_order ... ok
+test acceptance::tests::check_spec_tier_matches_variant ... ok
+test acceptance::tests::tier_ordering_is_cheapest_first ... ok
+test acceptance::tests::empty_acceptance_is_empty ... ok
+test acceptance::tests::tier_serde_uses_the_ui_union ... ok
+test acceptance::tests::tier_ui_string_round_trips ... ok
+test acceptance::tests::metric_gate_satisfied_by_reading ... ok
+test acceptance::tests::acceptance_round_trips_through_json ... ok
+test agent::tests::score_weighted_combined_penalties ... ok
+test agent::tests::score_weighted_lint_penalty ... ok
+test agent::tests::score_weighted_lint_penalty_caps_at_half ... ok
+test agent::tests::score_weighted_perfect ... ok
+test agent::tests::score_weighted_size_penalty ... ok
+test agent::tests::score_weighted_size_penalty_caps_at_0_3 ... ok
+test budget::tests::scope_as_str_is_stable ... ok
+test budget::tests::scope_round_trips_through_json ... ok
+test config::tests::lopi_config_remote_defaults ... ok
+test config::tests::lopi_config_default_values_are_set ... ok
+test config::tests::config_empty_schedules_is_default ... ok
+test config::tests::git_config_allowed_and_forbidden_defaults ... ok
+test config::tests::config_with_schedules_deserializes ... ok
+test config::tests::lopi_config_multiple_schedules ... ok
+test config::tests::lopi_config_web_defaults ... ok
+test config::tests::lopi_config_telegram_settings ... ok
+test config::tests::lopi_config_web_with_auth_token ... ok
+test config::tests::repo_profile_apply_does_not_override_when_empty ... ok
+test config::tests::repo_profile_apply_overrides_task ... ok
+test config::tests::lopi_config_whatsapp_settings ... ok
+test config::tests::repo_profile_apply_sets_max_retries ... ok
+test config::tests::repo_profile_apply_skips_empty_overrides ... ok
+test config::tests::repo_profile_default_is_empty ... ok
+test config::tests::repo_profile_load_from_nonexistent_path_returns_default ... ok
+test config::tests::report_defaults_to_none_and_validates ... ok
+test config::tests::report_unknown_channel_errors ... ok
+test config::tests::report_whatsapp_errors_naming_the_channel_and_reason ... ok
+test config::tests::report_telegram_validates ... ok
+test config::tests::schedule_entry_default_priority_is_normal ... ok
+test config::tests::schedule_entry_deserializes ... ok
+test config::tests::web_config_default_impl ... ok
+test earned_trust::tests::clean_run_advances_streak_without_promoting_early ... ok
+test config::tests::schedule_entry_with_dirs ... ok
+test earned_trust::tests::failed_run_resets_streak_but_holds_level ... ok
+test earned_trust::tests::new_pins_base_with_zero_streak ... ok
+test earned_trust::tests::promote_after_zero_disables_promotion ... ok
+test earned_trust::tests::promotes_one_rung_and_resets_streak_at_threshold ... ok
+test earned_trust::tests::promotion_is_capped_at_ceiling ... ok
+test earned_trust::tests::revert_demotes_one_rung_and_resets_streak ... ok
+test earned_trust::tests::revert_never_drops_below_floor ... ok
+test eval_outcome::tests::a_required_error_beats_a_fail_and_is_not_passing ... ok
+test eval_outcome::tests::a_required_fail_fails_the_outcome ... ok
+test eval_outcome::tests::all_required_pass_aggregates_to_pass ... ok
+test eval_outcome::tests::no_required_checks_aggregates_to_pass ... ok
+test eval_outcome::tests::non_required_failures_never_block ... ok
+test eval_outcome::tests::only_pass_is_passing ... ok
+test eval_outcome::tests::vacuous_pass_is_passing_and_empty ... ok
+test eval_outcome::tests::outcome_round_trips_through_json ... ok
+test eval_outcome::tests::verdict_as_str_is_stable ... ok
+test eval_outcome::tests::weighted_score_mixes_by_weight ... ok
+test eval_outcome::tests::zero_total_weight_falls_back_to_verdict ... ok
+test event::tests::agent_event_error_helper ... ok
+test event::tests::agent_event_info_helper ... ok
+test event::tests::agent_event_log_sets_timestamp ... ok
+test event::tests::agent_event_serializes_to_json ... ok
+test event::tests::agent_event_warn_helper ... ok
+test event::tests::report_ready_event_serializes ... ok
+test event::tests::pool_stats_event_serializes ... ok
+test event::tests::event_bus_subscribe_and_publish ... ok
+test event::tests::event_bus_multiple_subscribers ... ok
+test event::tests::event_bus_send_no_subscribers_does_not_panic ... ok
+test event::tests::score_updated_event_serializes ... ok
+test event::tests::event_bus_sender_clones_correctly ... ok
+test event::tests::status_changed_event_fields ... ok
+test event::tests::task_completed_event_fields ... ok
+test event::tests::task_started_event_fields ... ok
+test event::wire_format_tests::log_line_uses_lowercase_level ... ok
+test event::wire_format_tests::pool_stats_wire_shape ... ok
+test event::wire_format_tests::turn_metrics_round_trip ... ok
+test event::wire_format_tests::turn_metrics_serializes_with_snake_case_tag ... ok
+test gain::tests::first_observation_always_locks_the_baseline ... ok
+test gain::tests::from_outcome_judge_only_has_no_objective ... ok
+test event::wire_format_tests::task_completed_with_struct_outcome_serializes ... ok
+test gain::tests::from_outcome_splits_objective_and_judge_by_tier ... ok
+test gain::tests::from_outcome_zero_weight_check_contributes_no_score ... ok
+test gain::tests::gain_decision_strings_are_stable ... ok
+test gain::tests::judge_only_climb_must_clear_the_wider_band ... ok
+test gain::tests::kill_test_judge_noise_cannot_lock_when_objective_is_flat ... ok
+test gain::tests::kill_test_monotonic_climb_locks_every_step ... ok
+test gain::tests::kill_test_real_regression_is_rejected ... ok
+test gain::tests::kill_test_within_noise_wiggle_never_locks ... ok
+test gain::tests::no_comparable_signal_is_never_a_gain ... ok
+test gain::tests::objective_gain_with_large_judge_contradiction_is_unconfirmed ... ok
+test gain::tests::rule_round_trips_through_json ... ok
+test gain::tests::small_judge_dip_does_not_veto_a_real_objective_gain ... ok
+test loop_config::tests::autonomy_capability_gates ... ok
+test loop_config::tests::autonomy_default_is_draft_pr ... ok
+test loop_config::tests::autonomy_demoted_steps_down_and_saturates ... ok
+test loop_config::tests::autonomy_from_rank_clamps_to_band ... ok
+test loop_config::tests::autonomy_parse_accepts_names_and_tags ... ok
+test loop_config::tests::autonomy_promoted_steps_up_and_saturates ... ok
+test loop_config::tests::autonomy_ranks_are_monotonic ... ok
+test loop_config::tests::autonomy_serde_is_snake_case ... ok
+test loop_config::tests::autonomy_tag_and_label ... ok
+test loop_config::tests::isolation_default_is_branch_and_serializes_snake_case ... ok
+test loop_config::tests::isolation_from_tag_is_case_insensitive_and_total ... ok
+test loop_config::tests::legacy_config_without_guardrail_fields_deserializes_to_defaults ... ok
+test loop_config::tests::loop_config_default_does_not_escalate ... ok
+test loop_config::tests::loop_config_default_has_no_gate_or_until ... ok
+test loop_config::tests::loop_config_default_is_conservative ... ok
+test loop_config::tests::loop_config_default_isolation_is_branch ... ok
+test loop_config::tests::loop_config_default_self_prompt_is_direct ... ok
+test loop_config::tests::loop_config_load_missing_file_yields_default ... ok
+test loop_config::tests::loop_config_parses_toml_missing_verifier_fields ... ok
+test loop_config::tests::loop_config_trust_levers_default_off ... ok
+test loop_config::tests::loop_config_verifier_gate_defaults_off ... ok
+test loop_config::tests::on_fail_default_is_stop ... ok
+test loop_config::tests::on_fail_serializes_lowercase ... ok
+test loop_config::tests::loop_config_trust_levers_round_trip_through_toml ... ok
+test loop_config::tests::loop_config_round_trips_through_toml ... ok
+test loop_config::tests::loop_config_verifier_gate_round_trips_through_toml ... ok
+test config::tests::load_rejects_a_config_with_an_invalid_report_channel ... ok
+test loop_config::tests::validate_accepts_a_real_gate_and_until_command ... ok
+test loop_config::tests::validate_clean_config_has_no_issues ... ok
+test loop_config::tests::validate_flags_empty_gate_and_until ... ok
+test loop_config::tests::validate_flags_missing_vision ... ok
+test loop_config::tests::validate_flags_unreachable_trust_ceiling ... ok
+test loop_config::tests::validate_flags_zero_iterations_and_bad_no_progress ... ok
+test loop_config::tests::validate_passes_with_headroom ... ok
+test report::tests::parses_telegram ... ok
+test report::tests::round_trips_as_str ... ok
+test report::tests::unknown_channel_names_itself_in_the_error ... ok
+test report::tests::whatsapp_names_the_inbound_only_reason ... ok
+test schema::tests::empty_schema_accepts_anything ... ok
+test schema::tests::enum_match_passes ... ok
+test schema::tests::enum_mismatch_is_reported ... ok
+test schema::tests::integer_accepts_whole_floats ... ok
+test schema::tests::integer_rejects_fractional ... ok
+test schema::tests::nested_property_failure_cascades_with_path ... ok
+test schema::tests::realistic_score_schema_validates ... ok
+test schema::tests::required_property_missing_is_reported ... ok
+test schema::tests::schema_violations_counter_increments ... ok
+test schema::tests::type_mismatch_is_reported ... ok
+test security::tests::different_lengths_do_not_match ... ok
+test config::tests::load_accepts_a_config_with_a_telegram_report_channel ... ok
+test security::tests::different_strings_do_not_match ... ok
+test security::tests::equal_strings_match ... ok
+test security::tests::empty_strings_match ... ok
+test self_prompt::tests::default_is_direct ... ok
+test self_prompt::tests::direct_frame_is_byte_identical_to_input ... ok
+test self_prompt::tests::escalation_climbs_one_rung_per_attempt_from_direct ... ok
+test self_prompt::tests::escalation_starts_from_the_configured_base ... ok
+test self_prompt::tests::from_rank_saturates_at_both_ends ... ok
+test self_prompt::tests::parse_accepts_names_and_tags ... ok
+test self_prompt::tests::plan_then_act_advances_the_attempt_counter ... ok
+test self_prompt::tests::ranks_are_monotonic ... ok
+test self_prompt::tests::reflective_strategies_embed_the_base_failure_and_an_instruction ... ok
+test self_prompt::tests::reflexion_advances_the_attempt_counter ... ok
+test self_prompt::tests::s_tag_aliases_parse_to_each_variant ... ok
+test self_prompt::tests::serde_is_snake_case ... ok
+test self_prompt::tests::tag_label_description_and_all ... ok
+test stop_reason::tests::only_goal_met_is_success ... ok
+test stop_reason::tests::precede_picks_the_higher_precedence_reason ... ok
+test stop_reason::tests::precedence_is_goal_budget_noprogress_maxiter ... ok
+test stop_reason::tests::round_trips_through_json ... ok
+test stop_reason::tests::strings_are_stable ... ok
+test task::tests::from_template_errors_on_missing_var_without_creating_a_task ... ok
+test task::tests::from_template_resolves_holes_before_task_construction ... ok
+test task::tests::rubric_from_toml_str_rejects_malformed ... ok
+test task::tests::rubric_from_toml_str_parses_name_and_criteria ... ok
+test template::tests::escaped_braces_produce_literal_braces ... ok
+test template::tests::no_holes_returns_input_unchanged ... ok
+test template::tests::resolve_is_pure ... ok
+test template::tests::resolves_named_holes ... ok
+test template::tests::unfilled_hole_errors_naming_the_missing_variable ... ok
+test template::tests::unused_extra_var_is_not_an_error ... ok
+test tests::agent_event_log_helpers ... ok
+test tests::agent_run_starts_idle ... ok
+test tests::agent_event_serde_round_trip ... ok
+test tests::attempt_new_has_pending_outcome ... ok
+test tests::capabilities_satisfied_by_handles_subset_match ... ok
+test tests::created_at_is_recent ... ok
+test tests::event_bus_broadcast_and_receive ... ok
+test tests::priority_ordering ... ok
+test tests::score_passed_requires_full_pass_rate_and_no_lint ... ok
+test tests::score_weighted_clamps_to_zero ... ok
+test tests::score_weighted_with_custom_weights ... ok
+test tests::score_weights_default_matches_legacy ... ok
+test tests::task_id_display ... ok
+test tests::task_deserializes_when_verifier_fields_are_absent ... ok
+test tests::task_id_is_unique ... ok
+test tests::task_new_defaults ... ok
+test tests::task_source_selfmodify_serde_round_trip ... ok
+test tests::task_source_serde_round_trip ... ok
+test tier::tests::display_matches_as_str ... ok
+test tests::task_status_serde_round_trip ... ok
+test tier::tests::from_str_parse ... ok
+test tier::tests::from_stripe_name_case_insensitive ... ok
+test tier::tests::max_agents_per_tier ... ok
+test tier::tests::price_ordering ... ok
+test tier::tests::serde_round_trip ... ok
+test topology::tests::display_and_from_str_round_trip ... ok
+test topology::tests::from_str_accepts_aliases_and_case ... ok
+test topology::tests::from_str_rejects_unknown ... ok
+test topology::tests::serde_uses_snake_case ... ok
+test loop_config::tests::save_to_repo_persists_escalation_flag ... ok
+test loop_config::tests::save_to_repo_persists_a_changed_strategy ... ok
+test loop_config::tests::save_to_repo_round_trips_defaults_including_self_prompt ... ok
+test loop_config::tests::run_guard_command_runs_in_the_given_cwd ... ok
+test loop_config::tests::run_guard_command_reflects_exit_code ... ok
+test loop_config::tests::run_guard_command_true_and_false ... ok
+
+test result: ok. 213 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+
+running 1 test
+test golden_agent_events_decode_with_expected_fields ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 26 tests
+test diff::tests::empty_allowed_and_forbidden_permits_anything ... ok
+test diff::tests::allows_src_paths ... ok
+test diff::tests::glob_matches_nested_paths ... ok
+test diff::tests::empty_path_list_always_passes ... ok
+test diff::tests::multiple_paths_one_outside_fails_entire_batch ... ok
+test diff::tests::forbidden_overrides_allowed_for_same_prefix ... ok
+test diff::tests::rejects_forbidden ... ok
+test diff::tests::rejects_outside_scope ... ok
+test manager::tests::pr_create_args_draft_appends_draft_flag ... ok
+test manager::tests::pr_create_args_normal_omits_draft_flag ... ok
+test manager::tests::pr_merge_args_uses_auto_squash ... ok
+test rebase::tests::rebase_args_targets_base ... ok
+test worktree::tests::add_args_use_new_branch_flag ... ok
+test worktree::tests::add_detached_args_use_detach_flag_and_no_branch ... ok
+test worktree::tests::for_each_ref_and_branch_delete_args_are_stable ... ok
+test worktree::tests::parse_worktree_branches_reads_checked_out_refs ... ok
+test worktree::tests::parse_worktree_paths_reads_porcelain_records ... ok
+test worktree::tests::remove_args_force_to_discard_throwaway_changes ... ok
+test worktree::tests::slug_flattens_path_separators ... ok
+test worktree::tests::add_creates_checkout_and_cleanup_removes_it ... ok
+test worktree::tests::add_detached_checks_out_head_with_empty_branch ... ok
+test worktree::tests::env_sets_worktree_local_cargo_target ... ok
+test worktree::tests::drop_without_cleanup_removes_checkout ... ok
+test worktree::tests::gc_reclaims_stale_but_keeps_live ... ok
+test worktree::tests::add_rejects_duplicate_branch ... ok
+test worktree::tests::concurrent_add_remove_cycles_leave_no_leaks ... ok
+
+test result: ok. 26 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.31s
+
+
+running 4 tests
+test rebase_onto_missing_base_errors ... ok
+test clean_rebase_returns_no_conflicts ... ok
+test conflicting_rebase_reports_paths_and_aborts ... ok
+test rebase_onto_default_resolves_local_main ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.00s
+
+
+running 2 tests
+test tests::client_constructs_with_token ... ok
+test tests::client_constructs_with_empty_token ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.26s
+
+
+running 34 tests
+test bridge::tests::tool_spec_coerces_non_object_schema_to_empty_object ... ok
+test bridge::tests::tool_spec_namespaces_and_keeps_object_schema ... ok
+test client::tests::errors_when_server_closes_without_responding ... ok
+test client::tests::skips_noise_before_the_matching_response ... ok
+test client::tests::tool_error_propagates ... ok
+test client::tests::full_session_handshake_list_and_call ... ok
+test config::tests::malformed_toml_errors ... ok
+test config::tests::no_mcp_section_yields_empty ... ok
+test config::tests::missing_required_field_errors ... ok
+test jsonrpc::tests::encode_line_is_newline_terminated_and_parsable ... ok
+test config::tests::parses_servers_and_ignores_other_loop_fields ... ok
+test jsonrpc::tests::idgen_is_monotonic_from_one ... ok
+test jsonrpc::tests::missing_result_and_error_collapses_to_null ... ok
+test jsonrpc::tests::notification_has_no_id_field ... ok
+test jsonrpc::tests::request_round_trips_with_params ... ok
+test protocol::tests::call_tool_request_wraps_name_and_arguments ... ok
+test jsonrpc::tests::response_into_result_maps_ok_and_err ... ok
+test jsonrpc::tests::request_serializes_with_envelope_and_omits_absent_params ... ok
+test protocol::tests::initialize_request_carries_protocol_and_client_info ... ok
+test protocol::tests::initialized_notification_shape ... ok
+test protocol::tests::list_tools_request_has_no_params ... ok
+test protocol::tests::parse_tool_text_concatenates_text_blocks ... ok
+test protocol::tests::parse_tool_text_empty_when_no_content ... ok
+test protocol::tests::parse_tools_empty_when_absent ... ok
+test protocol::tests::parse_tools_reads_entries_and_skips_malformed ... ok
+test server::tests::initialize_advertises_lopi_server_info ... ok
+test server::tests::tools_call_without_a_name_is_invalid_params ... ok
+test server::tests::unknown_method_is_method_not_found ... ok
+test server::tests::client_drives_served_handler_end_to_end ... ok
+test config::tests::connect_spawns_a_live_process ... ok
+test config::tests::load_servers_missing_file_is_empty ... ok
+test bridge::tests::register_tools_writes_namespaced_specs ... ok
+test bridge::tests::discover_and_register_over_pipes ... ok
+test config::tests::load_servers_reads_the_repo_config ... ok
+
+test result: ok. 34 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+
+running 125 tests
+test store::audit::tests::payload_round_trips_as_json_text ... ok
+test store::checkpoints::tests::latest_returns_none_for_unknown_task ... ok
+test store::audit::tests::record_assigns_monotonic_ids ... ok
+test store::audit::tests::query_filters_by_subject ... ok
+test store::audit::tests::query_paginates_with_since_id ... ok
+test store::audit::tests::query_respects_limit_clamp ... ok
+test store::audit::tests::query_filters_by_action ... ok
+test store::checkpoints::tests::latest_returns_newest_when_multiple_exist ... ok
+test store::dead_letter::tests::delete_returns_true_only_on_hit ... ok
+test store::dead_letter::tests::count_is_zero_on_a_fresh_store ... ok
+test store::dag::tests::load_unknown_task_is_empty ... ok
+test store::dag::tests::upsert_updates_in_place ... ok
+test store::dag::tests::upsert_then_load_round_trips ... ok
+test store::checkpoints::tests::save_and_load_round_trip ... ok
+test store::dead_letter::tests::list_respects_limit ... ok
+test store::checkpoints::tests::list_returns_all_newest_first ... ok
+test store::dead_letter::tests::push_round_trips_through_get ... ok
+test store::installations::tests::sanitise_strips_unsafe_chars ... ok
+test store::eval_outcomes::tests::save_and_load_round_trips_the_whole_outcome ... ok
+test store::eval_outcomes::tests::empty_task_has_no_trajectory ... ok
+test store::dead_letter::tests::take_removes_the_row_and_returns_it ... ok
+test store::installations::tests::delete_installation_hides_from_lookup ... ok
+test store::eval_outcomes::tests::score_trajectory_is_ordered_by_attempt ... ok
+test store::learnings::tests::dedups_identical_critiques ... ok
+test store::learnings::tests::relevant_kept_irrelevant_dropped ... ok
+test store::learnings::tests::respects_the_injection_cap ... ok
+test store::learnings::tests::zero_cap_returns_nothing ... ok
+test store::dead_letter::tests::list_returns_newest_first ... ok
+test store::installations::tests::list_installations_active_only ... ok
+test store::installations::tests::upsert_creates_installation ... ok
+test store::installations::tests::tier_defaults_to_free_for_unknown_customer ... ok
+test store::installations::tests::set_and_get_tier ... ok
+test store::installations::tests::tier_upgrade_and_downgrade ... ok
+test store::installations::tests::upsert_idempotent_on_reinstall ... ok
+test store::quality::tests::improved_vs_comparison ... ok
+test store::loop_health::tests::outcome_counts_group_and_order ... ok
+test store::loop_health::tests::turn_metrics_empty_is_ok ... ok
+test store::loop_health::tests::recent_attempts_are_newest_first_and_limited ... ok
+test store::loop_health::tests::verifier_pass_rate_handles_empty ... ok
+test store::q_routing::tests::empty_table_loads_empty ... ok
+test store::result_cache::tests::compute_key_differs_per_agent ... ok
+test store::result_cache::tests::compute_key_differs_per_task ... ok
+test store::result_cache::tests::compute_key_is_deterministic ... ok
+test store::q_routing::tests::load_returns_all_distinct_pairs ... ok
+test store::q_routing::tests::upsert_inserts_then_updates_in_place ... ok
+test store::quality::tests::save_and_load_quality_run ... ok
+test store::quality::tests::score_zero_when_no_spec_items ... ok
+test store::quality::tests::trend_delta_returns_none_for_single_run ... ok
+test store::quality::tests::trend_delta_returns_pair ... ok
+test store::result_cache::tests::get_unknown_key_returns_none ... ok
+test store::result_cache::tests::clear_drops_everything ... ok
+test store::result_cache::tests::put_overwrites_existing_key ... ok
+test store::result_cache::tests::invalidate_for_agent_removes_only_their_entries ... ok
+test store::result_cache::tests::put_then_get_returns_stored_value ... ok
+test store::result_cache::tests::stale_entries_are_evicted_on_get ... ok
+test store::result_cache::tests::stats_track_hit_rate_in_last_hour ... ok
+test store::result_cache::tests::sweep_removes_only_stale ... ok
+test store::run_trace::tests::run_attempts_are_ordered_and_carry_errors ... ok
+test store::run_trace::tests::recent_runs_summarise_attempts ... ok
+test store::run_trace::tests::task_meta_returns_goal_and_status ... ok
+test store::run_trace::tests::turn_aggregates_sum_tokens_and_cost_per_attempt ... ok
+test store::schedules::tests::delete_removes_schedule_and_runs ... ok
+test store::schedules::tests::list_is_empty_on_fresh_store ... ok
+test store::schedules::tests::autonomy_level_normalizes_and_updates ... ok
+test store::schedules::tests::find_by_name_matches ... ok
+test store::schedules::tests::set_enabled_toggles_flag ... ok
+test store::schedules::tests::upsert_then_get_round_trips ... ok
+test store::schedules::tests::upsert_with_id_updates_in_place ... ok
+test store::stability::tests::save_and_load_stability_entry ... ok
+test store::schedules::tests::run_history_is_newest_first_and_limited ... ok
+test store::stability::tests::load_entries_newest_first ... ok
+test store::stability::tests::save_entry_truncates_goal_prefix ... ok
+test store::stability::tests::save_entry_with_semantic_flags ... ok
+test store::stability::tests::verdict_counts_correct ... ok
+test store::task_logs::tests::load_for_unknown_task_returns_empty ... ok
+test store::task_logs::tests::load_respects_limit_returning_newest_window ... ok
+test store::task_logs::tests::prune_below_max_is_noop ... ok
+test store::task_logs::tests::load_returns_oldest_first ... ok
+test store::task_logs::tests::recent_on_empty_store_returns_empty ... ok
+test store::task_logs::tests::recent_respects_limit_returning_newest_window ... ok
+test store::task_logs::tests::record_and_load_round_trip ... ok
+test store::task_logs::tests::recent_spans_all_tasks_oldest_first ... ok
+test store::tests::compute_adjustments_empty_returns_default ... ok
+test store::tests::daily_token_totals_returns_zero_with_no_metrics ... ok
+test store::tests::jaccard_sim_disjoint ... ok
+test store::tests::jaccard_sim_identical ... ok
+test store::tests::jaccard_sim_partial ... ok
+test store::tests::keyword_fingerprint_filters_short_words ... ok
+test store::tests::keyword_fingerprint_sorts_and_dedupes ... ok
+test store::tests::compute_adjustments_signal_shifts_weights ... ok
+test store::tests::empty_store_returns_empty_history ... ok
+test store::tests::find_pattern_by_id_prefix_returns_none_for_missing ... ok
+test store::tests::find_similar_patterns_empty_db ... ok
+test store::tests::insert_postmortem_pattern_persists_with_flag ... ok
+test store::tests::find_similar_patterns_returns_matches ... ok
+test store::tests::load_annotated_patterns_returns_only_annotated ... ok
+test store::tests::load_lessons_filters_by_repo ... ok
+test store::tests::load_history_newest_first ... ok
+test store::tests::load_lessons_respects_limit ... ok
+test store::tests::load_patterns_includes_postmortem_flag ... ok
+test store::tests::load_patterns_ordered_by_success_rate ... ok
+test store::tests::load_patterns_orders_postmortem_with_null_success_rate_last ... ok
+test store::tests::mark_completed_updates_status ... ok
+test store::tests::mine_patterns_inserts_new_row ... ok
+test store::tests::mine_patterns_skips_short_words ... ok
+test store::tests::mine_patterns_updates_existing_row ... ok
+test store::tests::save_lesson_at_quality_gate_stored ... ok
+test store::tests::save_lesson_below_quality_gate_not_stored ... ok
+test store::tests::save_attempt_persists ... ok
+test store::tests::save_and_load_task_round_trip ... ok
+test store::tests::save_task_upserts_status ... ok
+test store::tests::task_count_increments_per_save ... ok
+test store::tests::save_turn_metrics_dedup_on_same_turn_id ... ok
+test store::tests::save_turn_metrics_succeeds ... ok
+test store::trust_ledger::tests::clean_runs_promote_and_persist ... ok
+test store::trust_ledger::tests::failed_run_resets_streak_without_demotion ... ok
+test store::trust_ledger::tests::fresh_scope_loads_base ... ok
+test store::trust_ledger::tests::revert_demotes_toward_floor ... ok
+test store::verifier::tests::load_empty_returns_empty_vec ... ok
+test store::verifier::tests::multiple_attempts_ordered_by_ts ... ok
+test store::verifier::tests::save_and_load_verifier_verdict ... ok
+test store::task_logs::tests::prune_caps_per_task_at_max_per_task ... ok
+test store::tests::open_for_customer_sanitises_id ... ok
+test store::verifier::tests::save_passed_verdict ... ok
+test store::tests::open_for_customer_creates_isolated_db ... ok
+
+test result: ok. 125 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.79s
+
+
+running 6 tests
+test learning_survives_a_simulated_rollback ... ok
+test save_learning_persists_regardless_of_score ... ok
+test empty_critique_is_not_stored ... ok
+test find_relevant_learnings_matches_topic_and_skips_unrelated ... ok
+test save_learning_dedups_identical_critique ... ok
+test find_relevant_learnings_caps_injection ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+
+running 95 tests
+test agent_rate_limit::tests::rate_limit_validates_max_per_minute ... ok
+test agent_rate_limit::tests::bucket_capacity_matches_max_per_minute ... ok
+test health::tests::unknown_agent_returns_none ... ok
+test health::tests::heartbeat_marks_agent_healthy ... ok
+test health::tests::error_rate_reflects_recent_window ... ok
+test health::tests::record_success_resets_failures_and_tracks_latency ... ok
+test pool::tests::an_explicit_verifier_model_also_enables_the_gate ... ok
+test pool::tests::can_satisfy_picks_up_any_matching_agent ... ok
+test pool::tests::can_satisfy_returns_false_with_empty_registry ... ok
+test pool::tests::can_satisfy_with_empty_requirements_always_passes ... ok
+test pool::tests::cancel_nonexistent_task_returns_false ... ok
+test pool::tests::concurrency_cap_short_circuits_before_bucket ... ok
+test pool::tests::deregister_removes_capability_advertisement ... ok
+test pool::tests::effective_topology_classifies_when_unset ... ok
+test pool::tests::effective_topology_uses_explicit_hint ... ok
+test pool::tests::pool_bus_accessor_works ... ok
+test pool::tests::pool_queue_accessor_works ... ok
+test pool::tests::register_rejects_zero_per_minute ... ok
+test pool::tests::release_saturates_at_zero ... ok
+test pool::tests::shutdown_completes_without_running_tasks ... ok
+test pool::tests::stats_when_empty ... ok
+test pool::tests::submit_broadcasts_task_queued_event ... ok
+test pool::tests::submit_duplicate_goal_returns_existing_id ... ok
+test pool::tests::submit_fills_in_missing_topology ... ok
+test pool::tests::submit_high_priority_task ... ok
+test pool::tests::submit_multiple_tasks_increases_queued ... ok
+test pool::tests::submit_task_increases_queued_count ... ok
+test pool::tests::task_max_iterations_override_beats_the_repo_config ... ok
+test pool::tests::task_max_iterations_unset_falls_back_to_the_repo_config ... ok
+test pool::tests::task_max_iterations_zero_is_the_infinite_sentinel_not_rejected ... ok
+test pool::skills::tests::empty_when_no_skill_dirs ... ok
+test pool::tests::token_bucket_caps_burst_at_max_per_minute ... ok
+test pool::tests::unregistered_agent_is_unlimited ... ok
+test pool::tests::verifier_required_enables_the_gate_end_to_end ... ok
+test pool::tests::without_the_flag_or_model_the_gate_stays_off_below_l3 ... ok
+test pool::worktree::tests::cleanup_none_is_a_noop ... ok
+test pool::tests::uptime_is_non_zero_after_submit ... ok
+test pool::tests::pool_with_store_does_not_panic ... ok
+test pool::worktree::tests::non_repo_falls_back_instead_of_failing ... ok
+test q_router::tests::explore_always_returns_a_candidate ... ok
+test q_router::tests::greedy_select_picks_highest_value ... ok
+test q_router::tests::params_are_clamped ... ok
+test q_router::tests::reward_is_clamped ... ok
+test q_router::tests::select_empty_returns_none ... ok
+test q_router::tests::snapshot_round_trips_through_hydrate ... ok
+test q_router::tests::unseen_pair_is_zero ... ok
+test q_router::tests::update_count_accumulates ... ok
+test q_router::tests::update_moves_toward_reward ... ok
+test queue::tests::constraint_merge_deduplicates_shared_constraints ... ok
+test queue::tests::constraint_merging_combines_overlapping_goals ... ok
+test queue::tests::constraint_merging_leaves_disjoint_goals_alone ... ok
+test queue::tests::fifo_same_priority ... ok
+test queue::tests::goal_dedup_returns_existing_id ... ok
+test queue::tests::higher_priority_wins ... ok
+test queue::tests::len_and_is_empty ... ok
+test queue::tests::merged_task_reduces_queue_len ... ok
+test queue::tests::pop_after_push_clears_dedup ... ok
+test schedule_manager::tests::build_task_defaults_unknown_priority_to_normal ... ok
+test schedule_manager::tests::build_task_maps_priority_and_dirs ... ok
+test pool::skills::tests::loads_skills_from_claude_dir ... ok
+test schedule_manager::tests::spec_from_row_carries_fields ... ok
+test pool::skills::tests::malformed_skill_degrades_to_empty ... ok
+test schedule_manager::tests::run_now_records_history ... ok
+test schedule_manager::tests::start_is_idempotent ... ok
+test scheduler::tests::boot_skips_invalid_cron_entry ... ok
+test scheduler::tests::boot_with_allowed_dirs_entry ... ok
+test scheduler::tests::boot_with_empty_entries_returns_scheduler ... ok
+test scheduler::tests::boot_with_mixed_valid_invalid_entries ... ok
+test scheduler::tests::boot_with_multiple_valid_entries ... ok
+test scheduler::tests::boot_with_valid_entry_registers_job ... ok
+test scheduler::tests::next_run_times_all_fields_wildcard ... ok
+test scheduler::tests::next_run_times_count_zero_returns_empty ... ok
+test scheduler::tests::next_run_times_empty_string_returns_empty ... ok
+test scheduler::tests::next_run_times_every_minute_expr ... ok
+test scheduler::tests::next_run_times_invalid_expr ... ok
+test scheduler::tests::next_run_times_partial_cron_returns_empty ... ok
+test scheduler::tests::next_run_times_returns_correct_count ... ok
+test scheduler::tests::next_run_times_times_are_ordered ... ok
+test scheduler::tests::next_run_times_valid_expr ... ok
+test scheduler::tests::next_run_times_weekly_expr ... ok
+test topology::tests::case_insensitive_matching ... ok
+test topology::tests::confidence_is_bounded ... ok
+test topology::tests::corpus_classifies_as_labelled ... ok
+test topology::tests::empty_signal_yields_low_confidence_hybrid ... ok
+test topology::tests::hierarchical_goal_classifies_hierarchical ... ok
+test topology::tests::parallel_goal_classifies_parallel ... ok
+test topology::tests::sequential_goal_classifies_sequential ... ok
+test topology::tests::tie_between_two_categories_falls_back_to_hybrid ... ok
+test schedule_manager::tests::start_registers_enabled_schedules_from_store ... ok
+test schedule_manager::tests::start_then_register_and_unregister ... ok
+Initialized empty Git repository in /private/var/folders/j0/3_bbch6524dbn0cprjcxbqw40000gp/T/.tmp4WhwpX/.git/
+Initialized empty Git repository in /private/var/folders/j0/3_bbch6524dbn0cprjcxbqw40000gp/T/.tmpS5CoAF/.git/
+[main (root-commit) d84b68e] init
+ 1 file changed, 1 insertion(+)
+ create mode 100644 README.md
+[main (root-commit) d84b68e] init
+ 1 file changed, 1 insertion(+)
+ create mode 100644 README.md
+test pool::worktree::tests::disabled_yields_shared_repo_fallback ... ok
+test health::tests::sweep_transitions_through_degraded_then_dead ... ok
+test health::tests::summary_counts_every_status ... ok
+test health::tests::sweeper_runs_periodically ... ok
+test pool::worktree::tests::enabled_creates_isolated_checkout_then_cleans_up ... ok
+
+test result: ok. 95 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.38s
+
+
+running 16 tests
+test budget::tests::default_config_has_conservative_caps ... ok
+test budget::tests::task_scope_trips_first_on_cost ... ok
+test budget::tests::states_snapshot_starts_closed ... ok
+test budget::tests::check_passes_when_under_all_limits ... ok
+test circuit_breaker::tests::starts_closed ... ok
+test circuit_breaker::tests::success_resets_failure_count ... ok
+test budget::tests::record_success_resets_failure_count ... ok
+test circuit_breaker::tests::cost_cap_error_message_contains_cap ... ok
+test budget::tests::failures_trip_breaker_after_threshold ... ok
+test circuit_breaker::tests::trips_on_cost_cap ... ok
+test circuit_breaker::tests::trips_on_failure_threshold ... ok
+test tests::anthropic_limiter_construction ... ok
+test tests::bucket_depletes ... ok
+test tests::bucket_partial_acquire ... ok
+test tests::bucket_starts_full ... ok
+test tests::limiter_acquire_depletes_both_buckets ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 32 tests
+test telegram::format::tests::test_priority_badge_all_variants ... ok
+test telegram::format::tests::test_relative_time_days ... ok
+test telegram::format::tests::test_short_id_already_short ... ok
+test telegram::format::tests::test_short_id_full_uuid ... ok
+test telegram::format::tests::test_relative_time_seconds ... ok
+test telegram::format::tests::test_relative_time_minutes ... ok
+test telegram::format::tests::test_relative_time_hours ... ok
+test telegram::format::tests::test_status_emoji_running ... ok
+test telegram::format::tests::test_status_emoji_failed ... ok
+test telegram::format::tests::test_status_emoji_succeeded ... ok
+test telegram::handlers::tests::test_parse_dock_custom_n ... ok
+test telegram::handlers::tests::test_parse_dock_default_n ... ok
+test telegram::handlers::tests::test_parse_dock_invalid_n ... ok
+test telegram::handlers::tests::test_unauthorized_chat_behavior ... ok
+test telegram::monitor::tests::test_parse_run_schedule_name ... ok
+test telegram::monitor::tests::test_parse_tail_empty ... ok
+test telegram::monitor::tests::test_parse_tail_id_and_n ... ok
+test telegram::monitor::tests::test_parse_tail_id_only ... ok
+test telegram::notify::tests::test_budget_exceeded_message ... ok
+test telegram::notify::tests::test_task_completed_no_pr_message ... ok
+test telegram::notify::tests::test_task_completed_success_message ... ok
+test telegram::notify::tests::test_task_failed_message ... ok
+test whatsapp::tests::empty_signature_fails ... ok
+test whatsapp::tests::tampered_body_fails ... ok
+test whatsapp::tests::valid_signature_passes ... ok
+test whatsapp::tests::wrong_secret_fails ... ok
+test whatsapp::tests::invalid_form_body_returns_400 ... ok
+test whatsapp::tests::invalid_signature_returns_403 ... ok
+test whatsapp::tests::no_secret_non_task_message_returns_ok ... ok
+test whatsapp::tests::task_message_with_valid_secret ... ok
+test whatsapp::tests::valid_signature_accepted ... ok
+test whatsapp::tests::no_secret_task_message_queues_task ... ok
+
+test result: ok. 32 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 33 tests
+test invocation::tests::colon_space_with_empty_name_is_not_an_invocation ... ok
+test invocation::tests::bare_colon_is_not_an_invocation ... ok
+test invocation::tests::plain_goal_is_not_an_invocation ... ok
+test invocation::tests::parses_name_and_args ... ok
+test invocation::tests::name_with_no_args_yields_empty_args ... ok
+test promote::tests::draft_name_handles_empty_fingerprint ... ok
+test promote::tests::clusters_recurring_lessons_over_threshold ... ok
+test promote::tests::empty_fingerprint_for_only_short_words ... ok
+test promote::tests::below_threshold_yields_nothing ... ok
+test promote::tests::fingerprint_is_order_and_case_insensitive ... ok
+test promote::tests::sorted_by_frequency_then_fingerprint ... ok
+test promote::tests::zero_threshold_treated_as_one_and_skips_empty ... ok
+test promote::tests::draft_round_trips_through_the_skill_parser ... ok
+test tests::description_with_colons_is_preserved ... ok
+test tests::missing_opening_fence_errors ... ok
+test tests::missing_required_field_errors_with_line ... ok
+test tests::parses_frontmatter_and_body ... ok
+test tests::optional_version_and_triggers_parse ... ok
+test promoter::tests::nothing_below_threshold ... ok
+test tests::registry_skips_missing_dirs ... ok
+test tests::registry_propagates_malformed_skill ... ok
+test tests::render_body_empty_args_fills_arguments_with_empty_string ... ok
+test tests::render_body_reuses_resolve_escaping_rules ... ok
+test tests::render_body_substitutes_arguments ... ok
+test tests::render_body_with_no_arguments_placeholder_is_unchanged ... ok
+test tests::unterminated_frontmatter_errors ... ok
+test promoter::tests::sweep_is_idempotent ... ok
+test promoter::tests::drafts_land_in_pending_and_do_not_auto_activate ... ok
+test promoter::tests::skips_when_an_active_skill_already_owns_the_name ... ok
+test tests::registry_loads_and_sorts_skills ... ok
+test tests::registry_rejects_duplicate_names ... ok
+test tests::relevant_to_matches_triggers_case_insensitively ... ok
+test tests::loads_the_repos_bundled_skills ... ok
+
+test result: ok. 33 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+
+running 32 tests
+test python_extractor::tests::falls_back_to_name_description ... ok
+test python_extractor::tests::finds_async_test ... ok
+test python_extractor::tests::finds_simple_test ... ok
+test python_extractor::tests::captures_inline_docstring ... ok
+test python_extractor::tests::skips_non_test_functions ... ok
+test rust_extractor::tests::empty_file_returns_empty ... ok
+test python_extractor::tests::multiple_tests ... ok
+test python_extractor::tests::line_numbers_recorded ... ok
+test rust_extractor::tests::finds_plain_test ... ok
+test rust_extractor::tests::captures_doc_comment_as_description ... ok
+test test_runner::tests::cargo_failed_test ... ok
+test rust_extractor::tests::multiple_tests_in_file ... ok
+test test_runner::tests::cargo_multiple_results ... ok
+test test_runner::tests::cargo_ok_test ... ok
+test test_runner::tests::cargo_skips_non_test_lines ... ok
+test test_runner::tests::coverage_gaps_missing_run_is_gap ... ok
+test test_runner::tests::coverage_gaps_returns_failing_items ... ok
+test test_runner::tests::pytest_failed ... ok
+test test_runner::tests::pytest_passed ... ok
+test rust_extractor::tests::records_line_numbers ... ok
+test tests::extract_empty_dir_returns_empty_surface ... ok
+test rust_extractor::tests::skips_non_test_functions ... ok
+test tests::load_returns_none_when_no_cache ... ok
+test tests::extract_skips_target_dir ... ok
+test rust_extractor::tests::falls_back_to_name_as_description ... ok
+test tests::extract_rust_test_functions ... ok
+test python_extractor::tests::class_method_tests ... ok
+test tests::extract_python_test_functions ... ok
+test tests::top_descriptions_caps_at_n ... ok
+test tests::save_and_load_roundtrip ... ok
+test tests::is_empty_and_len_consistent ... ok
+test rust_extractor::tests::finds_tokio_test ... ok
+
+test result: ok. 32 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+
+
+running 13 tests
+test registry::tests::default_path_honours_lopi_home_env ... ok
+test registry::tests::deregister_returns_false_for_missing ... ok
+test registry::tests::get_returns_none_for_unknown ... ok
+test registry::tests::load_missing_file_returns_empty_registry ... ok
+test registry::tests::register_rejects_empty_name ... ok
+test registry::tests::register_rejects_non_object_parameters ... ok
+test registry::tests::deregister_removes_and_returns_true ... ok
+test registry::tests::re_register_updates_in_place ... ok
+test registry::tests::register_and_get_round_trip ... ok
+test registry::tests::register_rejects_whitespace_name ... ok
+test registry::tests::persistence_round_trip_via_load ... ok
+test registry::tests::clear_drops_every_entry ... ok
+test registry::tests::list_returns_every_tool ... ok
+
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
+
+
+running 29 tests
+test tests::empty_object_roundtrip ... ok
+test tests::empty_string_encodes_quoted ... ok
+test tests::bool_roundtrip ... ok
+test tests::empty_array_roundtrip ... ok
+test tests::encode_task_context ... ok
+test tests::flat_object_roundtrip ... ok
+test tests::bool_array_roundtrip ... ok
+test tests::deeply_nested_roundtrip ... ok
+test tests::float_roundtrip ... ok
+test tests::hyphen_string_quoted ... ok
+test tests::integer_roundtrip ... ok
+test tests::mixed_array_with_nested_objects_roundtrip ... ok
+test tests::null_roundtrip ... ok
+test tests::number_array_roundtrip ... ok
+test tests::mixed_type_array_roundtrip ... ok
+test tests::nested_object_roundtrip ... ok
+test tests::number_roundtrip_no_trailing_zeros ... ok
+test tests::reserved_word_value_encodes_quoted ... ok
+test tests::numeric_string_quoted ... ok
+test tests::primitive_array_roundtrip ... ok
+test tests::reserved_words_quoted ... ok
+test tests::string_roundtrip ... ok
+test tests::string_with_colon_quoted ... ok
+test tests::string_with_newline_quoted ... ok
+test tests::spec_example_encodes_correctly ... ok
+test tests::toon_is_shorter_than_json_for_tabular_data ... ok
+test tests::tabular_with_nulls_roundtrip ... ok
+test tests::tabular_array_roundtrip ... ok
+test tests::spec_example_roundtrip ... ok
+
+test result: ok. 29 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 101 tests
+test web::config_handlers::tests::redact_is_noop_when_fields_absent ... ok
+test web::loop_handlers::tests::autonomy_catalog_has_four_levels ... ok
+test web::loop_handlers::tests::discover_skills_and_rules_handle_missing_dirs ... ok
+test web::config_handlers::tests::redact_blanks_present_secrets_only ... ok
+test web::loop_handlers::tests::escalation_ladder_climbs_from_the_base_strategy ... ok
+test web::loop_handlers::tests::gate_catalog_lists_three_walls ... ok
+test web::loop_handlers::tests::parse_frontmatter_falls_back_to_dir_name ... ok
+test web::loop_handlers::tests::loop_config_json_carries_validation ... ok
+test web::loop_health_handlers::tests::attempt_series_is_time_ordered_oldest_first ... ok
+test web::loop_health_handlers::tests::ratio_guards_zero_denominator ... ok
+test web::loop_handlers::tests::self_prompt_catalog_has_four_strategies_with_previews ... ok
+test web::loop_health_handlers::tests::outcome_series_maps_pairs ... ok
+test web::loop_handlers::tests::loop_config_json_carries_self_prompt_tags ... ok
+test web::loop_health_handlers::tests::headline_counts_distinct_runs_and_successes ... ok
+test web::loop_runs_handlers::tests::attempt_json_handles_missing_verifier_and_aggregates ... ok
+test web::loop_runs_handlers::tests::attempt_json_grafts_verifier_and_aggregates ... ok
+test web::loop_runs_handlers::tests::parse_str_array_tolerates_garbage ... ok
+test web::metrics_handlers::tests::dag_graph_derives_edges_from_depends_on ... ok
+test web::metrics_handlers::tests::dag_graph_empty_for_no_rows ... ok
+test web::tests::apply_loop_fields_accepts_telegram_and_rejects_whatsapp ... ok
+test web::tests::apply_loop_fields_accepts_zero_max_iterations_as_the_infinite_sentinel ... ok
+test web::tests::apply_loop_fields_threads_model_and_effort_overrides ... ok
+test web::tests::apply_loop_fields_threads_gate_until_and_on_fail ... ok
+test web::tests::apply_loop_fields_threads_verifier_overrides_through_exactly ... ok
+test web::tests::apply_loop_fields_leaves_task_unchanged_when_all_fields_are_absent ... ok
+test web::tests::auth_rejects_wrong_token ... ok
+test web::tests::auth_rejects_missing_token ... ok
+test web::tests::auth_accepts_correct_token ... ok
+test web::tests::agent_rate_limit_zero_per_minute_returns_422 ... ok
+test web::tests::agent_rate_limit_round_trip_register_get_delete ... ok
+test web::tests::audit_empty_returns_empty_events_and_zero_cursor ... ok
+test web::tests::cache_stats_returns_zero_for_empty_store ... ok
+test web::tests::checkpoint_agent_persists_row_returns_201 ... ok
+test web::tests::cancel_task_not_found_returns_404 ... ok
+test web::tests::create_schedule_rejects_empty_goal ... ok
+test web::tests::checkpoint_agent_rejects_non_uuid_returns_400 ... ok
+test web::tests::clear_cache_returns_deleted_zero_when_empty ... ok
+test web::tests::config_endpoint_returns_200 ... ok
+test web::tests::create_schedule_rejects_invalid_cron ... ok
+test web::tests::create_task_accepts_normal_priority ... ok
+test web::tests::create_task_rejects_oversized_goal ... ok
+test web::tests::create_schedule_returns_201_with_next_runs ... ok
+test web::tests::create_task_accepts_low_priority ... ok
+test web::tests::create_task_accepts_valid_goal ... ok
+test web::tests::create_task_rejects_unreachable_report_channel ... ok
+test web::tests::create_task_with_all_options_returns_201 ... ok
+test web::tests::create_task_with_loop_fields_returns_201 ... ok
+test web::tests::create_task_response_has_queued_field ... ok
+test web::tests::create_task_with_guardrail_fields_returns_201 ... ok
+test web::tests::create_task_with_priority_returns_201 ... ok
+test web::tests::create_task_with_repo_returns_201 ... ok
+test web::tests::create_task_client_ref_survives_round_trip_through_the_store ... ok
+test web::tests::audit_paginates_via_since_id_cursor ... ok
+test web::tests::create_task_with_unsatisfiable_capabilities_returns_422 ... ok
+test web::tests::create_task_without_client_ref_omits_it_on_round_trip ... ok
+test web::tests::dlq_retry_unknown_returns_404 ... ok
+test web::tests::dlq_list_empty_returns_empty_array ... ok
+test web::tests::delete_schedule_then_get_returns_404 ... ok
+test web::tests::dlq_retry_round_trip_takes_row_and_returns_new_task_id ... ok
+test web::tests::duplicate_task_returns_201_with_duplicate_of ... ok
+test web::tests::enable_and_disable_toggle_flag ... ok
+test web::tests::get_task_not_found_returns_404 ... ok
+test web::tests::get_schedule_unknown_returns_404 ... ok
+test web::tests::health_heartbeat_marks_healthy_and_returns_snapshot ... ok
+test web::tests::global_logs_returns_rows_across_tasks_oldest_first ... ok
+test web::tests::get_schedule_includes_run_history_field ... ok
+test web::tests::global_logs_empty_store_returns_empty_array ... ok
+test web::tests::health_response_has_service_field ... ok
+test web::tests::health_returns_200 ... ok
+test web::tests::health_unknown_agent_returns_404 ... ok
+test web::tests::health_summary_empty_returns_zeros ... ok
+test web::tests::invalidate_agent_cache_returns_zero_for_unknown ... ok
+test web::tests::list_schedules_includes_created ... ok
+test web::tests::metrics_has_all_metric_names ... ok
+test web::tests::metrics_returns_prometheus_text ... ok
+test web::tests::plans_response_has_required_fields ... ok
+test web::tests::patterns_response_has_patterns_array ... ok
+test web::tests::patterns_returns_200 ... ok
+test web::tests::plans_returns_four_tiers ... ok
+test web::tests::loop_engineering_snapshot_carries_self_prompt_catalog ... ok
+test web::tests::run_now_unknown_returns_404 ... ok
+test web::tests::run_now_returns_202_and_records_history ... ok
+test web::tests::index_returns_html ... ok
+test web::tests::sse_endpoint_returns_200 ... ok
+test web::tests::stats_has_all_fields ... ok
+test web::tests::stats_returns_200_with_required_fields ... ok
+test web::tests::task_logs_unknown_returns_empty_array ... ok
+test web::tests::task_logs_returns_seeded_rows_oldest_first ... ok
+test web::tests::task_stream_isolates_concurrent_tasks_with_zero_cross_talk ... ok
+test web::tests::tasks_list_response_has_tasks_array ... ok
+test web::tests::tools_get_unknown_returns_404 ... ok
+test web::tests::tasks_list_returns_200 ... ok
+test web::tests::snapshot_carries_escalation_ladder_and_flag ... ok
+test web::tests::set_strategy_rejects_unknown_tag ... ok
+test web::tests::tools_list_returns_empty_by_default ... ok
+test web::tests::tools_register_then_get_round_trip ... ok
+test web::tests::update_unknown_schedule_returns_404 ... ok
+test web::tests::update_schedule_changes_cron ... ok
+test web::tests::version_endpoint_reports_service_and_version ... ok
+test web::tests::set_strategy_persists_loop_as_code_and_round_trips ... ok
+test web::tests::set_escalation_persists_and_round_trips ... ok
+
+test result: ok. 101 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.52s
+
+
+running 31 tests
+test github::tests::empty_signature_fails ... ok
+test github::tests::missing_prefix_fails ... ok
+test github::tests::invalid_secret_returns_401 ... ok
+test github::tests::pr_review_approved_no_task ... ok
+test github::tests::ci_success_no_task ... ok
+test github::tests::invalid_json_returns_400 ... ok
+test github::tests::no_secret_ci_failure_queues_task ... ok
+test github::tests::tampered_body_fails ... ok
+test github::tests::check_run_failure_queues_task ... ok
+test github::tests::pr_review_changes_requested_queues_task ... ok
+test github::tests::valid_signature_passes ... ok
+test github::tests::pr_review_empty_body_no_constraint ... ok
+test issue::tests::no_lopi_fix_label ... ok
+test issue::tests::has_lopi_fix_label_case_insensitive ... ok
+test github::tests::wrong_secret_fails ... ok
+test github::tests::timed_out_conclusion_queues_task ... ok
+test issue_triage::tests::category_labels ... ok
+test issue_triage::tests::build_prompt_truncates_long_body ... ok
+test issue_triage::tests::format_comment_high_confidence_bug_mentions_auto_queue ... ok
+test issue_triage::tests::format_comment_low_confidence_bug_no_auto_queue ... ok
+test issue_triage::tests::parse_bug_response ... ok
+test issue_triage::tests::parse_case_insensitive ... ok
+test issue_triage::tests::parse_clamps_confidence ... ok
+test issue_triage::tests::parse_feature_response ... ok
+test github::tests::valid_secret_ci_failure_queues_task ... ok
+test issue_triage::tests::parse_question_response ... ok
+test issue_triage::tests::parse_rejects_missing_lines ... ok
+test issue_triage::tests::parse_rejects_unknown_category ... ok
+test issue_triage::tests::parse_skips_blank_lines ... ok
+test issue_triage::tests::parse_wontfix_response ... ok
+test issue_triage::tests::summary_truncated_at_120_chars ... ok
+
+test result: ok. 31 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+=== TEST EXIT: 0 ===

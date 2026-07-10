@@ -1,5 +1,27 @@
 # Changelog
 
+## [Unreleased] — Ops-2: full-state audit (docs-only, no behavior change) 🔎
+
+Empirical full-state audit of every surface on macOS with real subscription auth —
+no production code changed. Adds [`docs/ops/FEATURE_STATE.md`](docs/ops/FEATURE_STATE.md)
+(the master table: every backend route hit, every web control clicked and classified
+Wired/Client-only/Stubbed/Broken) and [`docs/ops/LIVE_UI_STATUS.md`](docs/ops/LIVE_UI_STATUS.md)
+(the narrative report) plus captured evidence under `docs/ops/evidence/`.
+
+- **Verified:** all three targets build on macOS; `cargo test --workspace` = 1107 passed / 0
+  failed / 1 ignored; the full agent loop runs live (real `claude-haiku-4-5`, tools, branch,
+  completion) via both the REST API and the `/stacks` "run stack" dock; macOS app builds, launches,
+  connects to `sail`, and renders Metal orbs (resolves all three Ops-1 Linux/headless known issues).
+- **Findings (for a future fix sprint, not fixed here):** `/overview` mis-buckets all tasks as
+  RUNNING (cross-platform miscount); 4 `api.ts` constellation calls hit non-existent routes;
+  cost/token accounting stuck at $0; task status not written back; `POST /api/tasks` accepts empty
+  goal + spawns; `sail` ignores `--config db_path`; model-label mismatch. See the report for the
+  severity-sorted list.
+- **macOS coverage:** all 13 native `NavSection`s interactively swept (manual — no UITest target
+  exists) — **12 Wired, 1 Broken** (Constellations shows a live "Decoding error" from the missing
+  `/api/constellations` route). Cost bug, "N live" miscount, and config-ignored bug are visible on
+  the native surfaces too.
+
 ## [0.3.0] — Unify-2: orb everywhere, one pane primitive, Overview, a four-item nav 🎛️
 
 The collapse Unify-1 began now lands in full. There is one pane primitive, one
