@@ -99,6 +99,12 @@ export interface Acceptance {
 }
 
 export interface CreateTaskOptions {
+  /** Free-form constraints appended to the agent's system prompt. Mirrors
+   *  `crates/lopi-ui/src/web/types.rs::CreateTaskRequest.constraints`. The
+   *  unified pane-launch path (Unify-1) surfaces a branch override here — the
+   *  same channel `postTask` used before it was retired — since neither
+   *  `CreateTaskRequest` nor the task model has a first-class branch column. */
+  constraints?: string[];
   verifier_required?: boolean;
   verifier_model?: string;
   verifier_effort?: string;

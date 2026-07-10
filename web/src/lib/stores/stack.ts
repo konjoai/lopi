@@ -688,6 +688,50 @@ export function cardToTaskPayloadForRunOnce(
   return { ...payload, options: { ...payload.options, max_iterations: 1 } };
 }
 
+/** A bare-prompt launch from a Forge-style pane composer. Unify-1 collapses
+ *  Forge's old `postTask` call into the same `createTask` path a stack card's
+ *  launch takes — this is the pure builder for the "one prompt, no stack
+ *  chrome" case. */
+export interface PaneLaunch {
+  /** The composer's free-text prompt. */
+  goal: string;
+  /** Repo the pane targets (empty falls back to the server's configured repo). */
+  repo: string;
+  /** Scheduling priority; `'normal'` when unset. */
+  priority?: string;
+  /** Worker-model override; omitted from the payload when unset. */
+  model?: string;
+  /** Reasoning-effort hint; omitted from the payload when unset. */
+  effort?: string;
+  /** Target branch; surfaced as a planning constraint when set (the same
+   *  channel the retired `postTask` used), omitted otherwise. */
+  branch?: string;
+}
+
+/** The `createTask(goal, repo, priority, options)` payload a bare pane prompt
+ *  submits as. Deliberately a *bare* payload — it carries only what the pane's
+ *  launch controls actually set (goal/repo/priority + optional model/effort +
+ *  optional branch constraint) and forces none of the stack-loop semantics
+ *  (`max_iterations`/`on_fail`/`gate`/`until`/`acceptance`/`client_ref`) that
+ *  `cardToTaskPayload` adds. So a bare prompt stays a bare prompt while still
+ *  flowing through the one unified launch call. Pure and total; proven equal to
+ *  `cardToTaskPayload`'s shape on the shared fields by `stack.test.ts`. */
+export function paneSubmitPayload(
+  launch: PaneLaunch
+): { goal: string; repo: string; priority: string; options: CreateTaskOptions } {
+  const options: CreateTaskOptions = {};
+  if (launch.model) options.model = launch.model;
+  if (launch.effort) options.effort = launch.effort;
+  const branch = launch.branch?.trim();
+  if (branch) options.constraints = [`Target branch: ${branch}`];
+  return {
+    goal: launch.goal,
+    repo: launch.repo,
+    priority: launch.priority || 'normal',
+    options
+  };
+}
+
 // ── Run-stack execution order + dry run (pure, tested) ────────────────────────
 
 /** The order a pane's cards actually run in: bottom-of-stack (oldest,

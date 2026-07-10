@@ -4,17 +4,16 @@
   import Composer from '$lib/components/Composer.svelte';
   import LaunchControls from '$lib/components/LaunchControls.svelte';
   import {
-    postTask,
     cancelTask,
     stimulate,
     permissionWaiting,
-    type AgentState,
-    type TaskOptions
+    type AgentState
   } from '$lib/stores/agents';
   import { transcripts } from '$lib/stores/transcript';
   import { computeOrbState, IDLE_ORB } from '$lib/forge/orbState';
   import { launchControls } from '$lib/stores/controls';
-  import { approvePlan, rejectPlan } from '$lib/api';
+  import { paneSubmitPayload, type PaneLaunch } from '$lib/stores/stack';
+  import { approvePlan, createTask, rejectPlan } from '$lib/api';
 
   export let agent: AgentState | null = null;
   export let onClose: (() => void) | null = null;
@@ -33,10 +32,11 @@
   $: blocks = agent ? ($transcripts.get(agent.id) ?? []) : [];
   $: streaming = agent?.status === 'running';
 
-  /** Snapshot the shared launch controls into a TaskOptions payload. */
-  function options(): TaskOptions {
+  /** Build the unified `createTask` payload for a bare pane prompt, snapshotting
+   *  the shared launch controls. `repo`/`goal` are supplied per submission. */
+  function launch(goal: string, repo: string): PaneLaunch {
     const c = $launchControls;
-    return { priority: c.priority as TaskOptions['priority'], model: c.model, effort: c.effort, branch: c.branch || undefined };
+    return { goal, repo, priority: c.priority, model: c.model, effort: c.effort, branch: c.branch };
   }
 
   async function decidePlan(approve: boolean) {
@@ -58,9 +58,10 @@
     if (agent) stimulate(agent.id);
     try {
       const repo = agent?.repo || $launchControls.repo || '';
-      await postTask(text, repo, options());
+      const p = paneSubmitPayload(launch(text, repo));
+      await createTask(p.goal, p.repo, p.priority, p.options);
     } catch (err) {
-      console.error('[lopi] postTask failed:', err);
+      console.error('[lopi] createTask failed:', err);
       submitError = err instanceof Error ? err.message : 'failed to submit';
     } finally {
       isSubmitting = false;
@@ -78,7 +79,8 @@
     submitError = '';
     stimulate(agent.id);
     try {
-      await postTask(agent.goal, agent.repo, options());
+      const p = paneSubmitPayload(launch(agent.goal, agent.repo));
+      await createTask(p.goal, p.repo, p.priority, p.options);
     } catch (err) {
       submitError = err instanceof Error ? err.message : 'retry failed';
     } finally {
