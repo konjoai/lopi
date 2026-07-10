@@ -98,7 +98,15 @@ struct AgentPaneView: View {
 
     private var bodyArea: some View {
         GeometryReader { geo in
-            let cornerSize = min(300, max(120, min(geo.size.width, geo.size.height) * 0.42))
+            // Orb-parity (Polish-1 §6): standardize on the COMPACT per-pane orb,
+            // mirroring web's per-card `OrbDot` (a small status dot). The old
+            // 120–300pt corner orb was the single-hero Forge orb, which doesn't
+            // scale once several panes are visible at once — the divergence Ops-2
+            // captured (web = small dot per card, macOS = large orb per pane).
+            // The live orb is now a compact, still-animated status indicator; the
+            // idle launcher below stays a larger hero because it's the
+            // single-pane launch affordance, not the crowded multipane grid.
+            let cornerSize = min(40, max(22, min(geo.size.width, geo.size.height) * 0.1))
             let idleSize = min(320, max(150, min(geo.size.width, geo.size.height) * 0.5))
             ZStack(alignment: .bottomTrailing) {
                 if let agent {

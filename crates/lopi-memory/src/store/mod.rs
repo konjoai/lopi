@@ -401,4 +401,6 @@ pub use trust_ledger::TrustLedgerRow;
 pub use verifier::VerifierVerdictRow;
 
 #[cfg(test)]
+mod lessons_tests;
+#[cfg(test)]
 mod tests;

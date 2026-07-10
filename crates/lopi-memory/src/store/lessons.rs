@@ -104,4 +104,23 @@ impl MemoryStore {
         .await?;
         Ok(row)
     }
+
+    /// Total billed cost (USD) per task, summed over its `turn_metrics` rows.
+    ///
+    /// Returns a map keyed by stringified `task_id`; a task with no recorded
+    /// turns is simply absent (callers treat that as `0.0`). Used to surface a
+    /// real per-task `cost` on the task list/detail endpoints, which previously
+    /// emitted no cost field at all (bug #3).
+    ///
+    /// # Errors
+    /// Returns `Err` if the database query fails.
+    pub async fn task_costs(&self) -> Result<std::collections::HashMap<String, f64>> {
+        let rows: Vec<(String, f64)> = sqlx::query_as(
+            "SELECT task_id, COALESCE(SUM(estimated_cost_usd), 0.0) \
+             FROM turn_metrics GROUP BY task_id",
+        )
+        .fetch_all(&self.read_pool)
+        .await?;
+        Ok(rows.into_iter().collect())
+    }
 }

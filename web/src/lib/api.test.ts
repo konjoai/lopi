@@ -4,8 +4,8 @@
  */
 import {
   ApiError,
-  listTasks,
-  recentLogs,
+  getStats,
+  listDlq,
   createTask,
   createSchedule,
   enableSchedule,
@@ -41,15 +41,18 @@ function mockNetworkFailure() {
 
 async function main() {
   // Happy path: response body passes through.
-  mockFetch(200, { tasks: [{ id: 'a', goal: 'g', status: 'Queued', created_at: '', completed_at: null }] });
-  const t = await listTasks();
-  eq(t.tasks.length, 1, 'listTasks returns parsed body');
-  eq(captured[0].path, '/api/tasks', 'listTasks hits /api/tasks');
+  mockFetch(200, {
+    running: 1, queued: 0, succeeded: 3, failed: 0, uptime_secs: 10,
+    total_tokens_today: 800, total_cost_usd_today: 0.048
+  });
+  const stats = await getStats();
+  eq(stats.total_cost_usd_today, 0.048, 'getStats returns parsed body');
+  eq(captured[0].path, '/api/stats', 'getStats hits /api/stats');
 
   // Query params are encoded.
-  mockFetch(200, { logs: [] });
-  await recentLogs(42);
-  eq(captured[0].path, '/api/logs?n=42', 'recentLogs passes limit');
+  mockFetch(200, { dead_letters: [] });
+  await listDlq(42);
+  eq(captured[0].path, '/api/tasks/dead-letter?n=42', 'listDlq passes limit');
 
   // POST bodies are JSON with content-type.
   mockFetch(200, {});

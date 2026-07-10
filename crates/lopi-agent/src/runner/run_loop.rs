@@ -197,11 +197,11 @@ impl AgentRunner {
                                 self.warn(format!(
                                     "direct API plan failed ({api_err}); falling back to CLI"
                                 ));
-                                self.stream_plan(&claude).await
+                                self.stream_plan(&claude, &model, attempt + 1).await
                             }
                         }
                     } else {
-                        self.stream_plan(&claude).await
+                        self.stream_plan(&claude, &model, attempt + 1).await
                     }
                 }
                 .instrument(think_span)
@@ -277,7 +277,7 @@ impl AgentRunner {
                     attempt = attempt + 1,
                 );
                 let act_result = self
-                    .stream_implement(&claude, &plan)
+                    .stream_implement(&claude, &plan, &model, attempt + 1)
                     .instrument(act_span)
                     .await;
                 if let Err(e) = act_result {

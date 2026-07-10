@@ -349,7 +349,7 @@ pub fn build_app(state: AppState) -> Router {
         .route("/ws", get(ws_handler))
         // Legacy endpoint — kept for compat.
         .route("/ws/tasks", get(ws_handler))
-        // Static handler catches /, /constellation, /favicon.svg,
+        // Static handler catches /, /overview, /favicon.svg,
         // /_app/**/*, and any SPA route fallthrough. Explicit routes above
         // take precedence.
         .fallback(get(static_handler))

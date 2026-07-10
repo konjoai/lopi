@@ -27,8 +27,8 @@ const PLACEHOLDER_HTML: &str = include_str!("../placeholder.html");
 ///
 /// Lookup order:
 ///   1. Direct file match (e.g. `/_app/immutable/chunks/x.js`, `/favicon.svg`)
-///   2. Append `.html` for prerendered routes (e.g. `/constellation` →
-///      `constellation.html`)
+///   2. Append `.html` for prerendered routes (e.g. `/overview` →
+///      `overview.html`)
 ///   3. Fall back to `index.html` (SPA client-side routing for unknown paths)
 ///   4. Fall back to the bundled placeholder if `web/dist/` is empty
 ///      (i.e. `npm run build` hasn't been run yet).
