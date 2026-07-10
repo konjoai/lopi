@@ -14,7 +14,7 @@
   const shortcuts: { keys: string[]; label: string }[] = [
     { keys: ['j', '↓'], label: 'next agent' },
     { keys: ['k', '↑'], label: 'previous agent' },
-    { keys: ['⌘', 'K'], label: 'toggle Forge ↔ Constellation' },
+    { keys: ['⌘', 'K'], label: 'toggle Loop Stack ↔ Overview' },
     { keys: ['Esc'], label: 'clear focus / dismiss' },
     { keys: ['?'], label: 'show this overlay' }
   ];

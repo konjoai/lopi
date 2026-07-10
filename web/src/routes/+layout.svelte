@@ -64,7 +64,7 @@
   </div>
 
   <div class="flex items-center gap-4 font-mono text-[11px]">
-    {#if pathname.startsWith('/forge')}
+    {#if pathname.startsWith('/stacks')}
       <button
         type="button"
         on:click={() => window.dispatchEvent(new CustomEvent('lopi:add-pane'))}

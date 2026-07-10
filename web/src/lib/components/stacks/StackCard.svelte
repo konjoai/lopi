@@ -24,6 +24,9 @@
   } from '$lib/stores/stack';
   import type { StackDefaults } from '$lib/stores/stackDefaults';
   import type { Option } from '$lib/stores/controls';
+  import { agents, permissionWaiting } from '$lib/stores/agents';
+  import { orbStateForCard } from '$lib/forge/cardOrb';
+  import OrbDot from '$lib/forge/OrbDot.svelte';
   import { ICONS, PRESET_ICON, PRESET_ACCENT } from './icons';
   import { dragging } from './dnd';
   import Popover, { togglePopover } from './Popover.svelte';
@@ -61,7 +64,14 @@
   $: scheduleActive = card.scheduled && !scheduleGoverned;
   $: showSep = card.scheduled || guardsOn || evalsOn;
 
-  $: statusLabel =
+  // The orb is the card's sole status vocabulary (Unify-2 §2): the live agent
+  // keyed by `card.taskId` flows through the exact same `computeOrbState` the
+  // Forge pane uses, so color/motion here mean identically what they mean there.
+  // A card that hasn't launched (no taskId) shows the calm idle orb.
+  $: orb = orbStateForCard(card.taskId, $agents, $permissionWaiting);
+  // Text alternative for the visual orb — hover/screen-reader only, never a
+  // second visible badge living alongside it.
+  $: orbLabel =
     card.status === 'running' && card.iteration
       ? `running · iter ${card.iteration.current}/${card.iteration.total}`
       : card.status;
@@ -127,7 +137,7 @@
   class:dragging={draggable && $dragging?.cardId === card.id}
   class:drop-before={dropBefore}
   class:drop-after={dropAfter}
-  style="--accent:{accent}"
+  style="--accent:{accent}; --orb:{orb.glowColor}"
   role="listitem"
   {draggable}
   on:dragstart={onDragStart}
@@ -136,7 +146,7 @@
   on:dragleave={onDragLeave}
   on:drop={onDrop}
 >
-  <span class="runtag {card.status}">{statusLabel}</span>
+  <span class="orbtag"><OrbDot {orb} label={orbLabel} /></span>
 
   <div class="spec">
     {#if card.alias}
@@ -279,14 +289,14 @@
       border-color 0.12s;
   }
   .pc.running {
-    border-color: rgba(255, 150, 70, 0.5);
+    border-color: color-mix(in srgb, var(--orb) 45%, transparent);
     animation: cardflash 5s ease-in-out infinite;
   }
   .pc.queued {
-    border-color: rgba(0, 212, 255, 0.4);
+    border-color: color-mix(in srgb, var(--orb) 40%, transparent);
   }
   .pc.done {
-    border-color: rgba(0, 255, 157, 0.35);
+    border-color: color-mix(in srgb, var(--orb) 35%, transparent);
   }
   .pc.dragging {
     opacity: 0.4;
@@ -300,53 +310,23 @@
   @keyframes cardflash {
     0%,
     100% {
-      border-color: rgba(255, 150, 70, 0.5);
-      box-shadow: 0 0 0 0 rgba(255, 149, 0, 0);
+      border-color: color-mix(in srgb, var(--orb) 45%, transparent);
+      box-shadow: 0 0 0 0 transparent;
     }
     50% {
-      border-color: rgba(255, 195, 110, 0.98);
-      box-shadow: 0 0 20px rgba(255, 149, 0, 0.2);
+      border-color: color-mix(in srgb, var(--orb) 90%, transparent);
+      box-shadow: 0 0 20px color-mix(in srgb, var(--orb) 22%, transparent);
     }
   }
-  .runtag {
+  /* The orb pip sits in a notch on the card's top edge — the sole status
+     indicator, replacing the retired text runtag. */
+  .orbtag {
     position: absolute;
-    top: -10px;
+    top: -5px;
     right: 14px;
-    font-size: 9px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    background: var(--konjo-black, #0b0e10);
-    border: 1px solid;
-    border-radius: 3px;
-    padding: 2px 8px;
     display: inline-flex;
     align-items: center;
-    gap: 5px;
     z-index: 2;
-  }
-  .runtag.running {
-    color: var(--konjo-flame);
-    border-color: rgba(255, 149, 0, 0.5);
-  }
-  .runtag.running::before {
-    content: '';
-    width: 5px;
-    height: 5px;
-    border-radius: 50%;
-    background: var(--konjo-flame);
-    box-shadow: 0 0 5px var(--konjo-ember);
-  }
-  .runtag.queued {
-    color: var(--konjo-ice);
-    border-color: rgba(0, 212, 255, 0.45);
-  }
-  .runtag.idle {
-    color: rgba(245, 245, 245, 0.46);
-    border-color: rgba(255, 255, 255, 0.11);
-  }
-  .runtag.done {
-    color: var(--konjo-jade);
-    border-color: rgba(0, 255, 157, 0.45);
   }
   .spec {
     font-size: 14px;

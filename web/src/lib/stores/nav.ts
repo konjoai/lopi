@@ -18,26 +18,24 @@ export interface NavItem {
   icon: string;
 }
 
-/** Mirrors the tab list that lived inline in `+layout.svelte` before
- *  Shell-1, in the same order, with one change: Forge moved from `/` to
- *  `/forge` so `/` can redirect to `/stacks` (the new default view)
- *  without making Forge unreachable. `/onboard` was never a visible tab
- *  and stays that way. */
+/** The four-item nav — the whole of Unify-2 §5's collapse. Every earlier tab
+ *  either merged into one of these (Fleet/Pulse/Dashboard/Tasks → Overview) or
+ *  was cut outright (Constellation, Logs, Tools, Debug's sub-panels, Patterns,
+ *  Router). `/onboard` was never a visible tab and stays that way; `/` still
+ *  redirects to `/stacks` (Loop Stack, the default working surface).
+ *
+ *  - Loop Stack (`/stacks`): the single primary surface — StackPanes in the
+ *    auto-tiling grid; a one-card pane reads like the old Forge box.
+ *  - Scheduling (`/schedules`): cron/scheduling.
+ *  - Overview (`/overview`): the read-only app-wide rollup that replaced
+ *    Fleet + Dashboard + Pulse's information (Tasks' dead-letter is a filter
+ *    within it).
+ *  - Configuration (`/config`): app settings. */
 export const NAV_ITEMS: NavItem[] = [
-  { href: '/forge', label: 'Forge', icon: 'zap' },
-  { href: '/fleet', label: 'Fleet', icon: 'grid' },
-  { href: '/constellation', label: 'Constellation', icon: 'network' },
-  { href: '/pulse', label: 'Pulse', icon: 'chart' },
-  { href: '/budget', label: 'Budget', icon: 'gauge' },
-  { href: '/tasks', label: 'Tasks', icon: 'list' },
-  { href: '/router', label: 'Router', icon: 'cpu' },
-  { href: '/schedules', label: 'Schedules', icon: 'cron' },
-  { href: '/loop', label: 'Loop', icon: 'loop' },
-  { href: '/stacks', label: 'Stacks', icon: 'layers' },
-  { href: '/tools', label: 'Tools', icon: 'wrench' },
-  { href: '/logs', label: 'Logs', icon: 'logs' },
-  { href: '/config', label: 'Config', icon: 'sliders' },
-  { href: '/debug', label: 'Debug', icon: 'bug' }
+  { href: '/stacks', label: 'Loop Stack', icon: 'layers' },
+  { href: '/schedules', label: 'Scheduling', icon: 'cron' },
+  { href: '/overview', label: 'Overview', icon: 'list' },
+  { href: '/config', label: 'Configuration', icon: 'sliders' }
 ];
 
 /** A destination is active when `pathname` is it or a sub-route of it.
@@ -57,10 +55,10 @@ export function activeNavItem(pathname: string): NavItem | undefined {
  *  canvases); every other route gets a scrollable canvas. */
 export function isImmersiveRoute(pathname: string): boolean {
   return (
-    pathname.startsWith('/forge') ||
-    pathname.startsWith('/fleet') ||
-    pathname.startsWith('/constellation') ||
-    pathname.startsWith('/onboard')
+    // The Loop Stack hosts its panes in the full-viewport auto-tiling grid
+    // (Unify-2 §3), so it owns the whole canvas like the old Forge did.
+    // `/onboard` is the only other full-viewport surface left after the cut.
+    pathname.startsWith('/stacks') || pathname.startsWith('/onboard')
   );
 }
 

@@ -2,6 +2,42 @@
 
 ## NEXT_SESSION_PROMPT (read this first)
 
+**Unify-2 has landed (`CHANGELOG.md` `[0.3.0]`, `LEDGER.md`'s Unify-2 entry):
+one pane primitive, the orb as the only status vocabulary, a read-only Overview,
+and a four-item nav (Loop Stack · Scheduling · Overview · Configuration). Router
+and Patterns (web panel) are fully removed; the old Forge component tree
+(`AgentGrid`/`AgentPane`/`SessionSidebar`) and eight routes are gone.**
+
+### ⛳ Immediate next action — Wes's post-merge live checklist (NOT an agent task)
+Structural proof shipped in-sprint; the **live** half is owned by the operator
+because live `sail`-spawned `claude` cannot authenticate in the CI sandbox (see
+the standing constraint in `LEDGER.md` — settled, do not re-litigate). Run
+`cargo run -- sail --port 3000 --max-agents 4 --repo .` and confirm, all real,
+no `?demo=1`:
+- [ ] A single-card pane (Forge-style) shows real **orb motion** through actual
+      phase transitions — not just a static color.
+- [ ] A single-card pane is visually indistinguishable from the pre-Unify-2
+      Forge baseline (composer + card + orb, no dock/connector).
+- [ ] A multi-card stack still runs and looks unchanged from current Stacks.
+- [ ] Two concurrent real sessions both appear and update live in Overview
+      (cost/phase/elapsed), not just correct at mount.
+- [ ] The nav shows exactly four items: Loop Stack, Scheduling, Overview,
+      Configuration.
+- [ ] No console errors, no dead links to any of the ten cut routes.
+
+### Then — macOS-Parity-1 (its own sprint) needs
+Carry these Unify-1/2 decisions into the native port; none were decided for
+macOS yet:
+1. Orb-everywhere + the single pane-primitive decisions ported to the native UI.
+2. Drop `ConstellationsView` / `.constellations` from macOS `NavSection` to match
+   Router's full removal.
+3. **Open call, decide before assuming either way:** macOS currently makes
+   Patterns / Health / Audit / Dead-Letter first-class nav sections. Should they
+   collapse to match web's four-item nav, or does macOS intentionally keep a
+   richer admin surface? Not decided in Unify-1/2 — make a real call first.
+
+---
+
 **Track A *and* B1 have shipped: A1 + A2 + A3 + B1 are all built.** B1
 (goal-directed stacks) is the newest — see `CHANGELOG.md` `[0.2.6]` and
 `LEDGER.md`'s B1 entry. A stack now **runs the chain until its acceptance

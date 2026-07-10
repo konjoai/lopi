@@ -1045,6 +1045,28 @@ function makeDefaultPanes(): StackPaneState[] {
   ];
 }
 
+/** True when a pane should render as a *bare* box — top composer, a single
+ *  loop card + its orb, and nothing else: no inter-card connector, no purple
+ *  stack control dock. This is the Unify-2 §3 collapse: a one-card pane reads
+ *  identically to a pre-Unify Forge box, and a pane earns its full stack chrome
+ *  (dock + connectors) only once it holds a second loop. An empty pane is bare
+ *  too — just the composer and an idle orb, nothing to govern yet. */
+export function paneIsBare(pane: StackPaneState): boolean {
+  return pane.cards.length <= 1;
+}
+
+/** A fresh, empty stack pane with its own config object and a unique key. */
+export function makeBlankStack(title = 'new stack'): StackPaneState {
+  return { key: makeId(), title, cards: [], config: defaultStackConfig() };
+}
+
+/** Append a fresh blank pane — the create-from-scratch path `deleteStack`'s
+ *  doc comment anticipated ("revisit once pane creation exists"). Pure twin of
+ *  `duplicateStack`. */
+export function addStack(state: StackPaneState[]): StackPaneState[] {
+  return [...state, makeBlankStack()];
+}
+
 /** Apply a pure card-list transform to one pane by key, leaving every other
  *  pane's array reference untouched. No-op (same reference) for an unknown
  *  key. This is the keyed-dispatch primitive every pane op below composes
@@ -1191,4 +1213,7 @@ export function reorderStacksInPanes(fromIndex: number, targetIndex: number, bef
 }
 export function deleteStackFromPanes(key: string): void {
   panes.update((state) => deleteStack(state, key));
+}
+export function addStackPane(): void {
+  panes.update((state) => addStack(state));
 }

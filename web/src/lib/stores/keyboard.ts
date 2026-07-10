@@ -5,7 +5,7 @@
  *   j / ↓        — next agent
  *   k / ↑        — previous agent
  *   Esc          — clear active agent (return to overview)
- *   ⌘K / Ctrl+K  — toggle Forge ↔ Constellation
+ *   ⌘K / Ctrl+K  — toggle Loop Stack ↔ Overview
  *   ?            — show shortcut help overlay
  *   /            — focus task submit (when implemented)
  *
@@ -42,7 +42,9 @@ function cycleAgent(direction: 1 | -1) {
 
 function toggleView() {
   const current = get(page).url.pathname;
-  goto(current.startsWith('/constellation') ? '/' : '/constellation');
+  // The whole-fleet glance now lives on /overview; the working surface is the
+  // Loop Stack. ⌘K flips between them (Constellation was cut in Unify-2).
+  goto(current.startsWith('/overview') ? '/stacks' : '/overview');
 }
 
 function handler(e: KeyboardEvent) {

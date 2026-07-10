@@ -51,8 +51,6 @@ pub struct AppState {
     pub repo_path: std::path::PathBuf,
     /// P2 — Durable tool registry. `clone()` is `Arc<RwLock>` under the hood.
     pub tools: lopi_tools::ToolRegistry,
-    /// P2 — Constellation router. Cheap to `clone()` — wraps an `Arc<RwLock>`.
-    pub constellations: lopi_orchestrator::ConstellationRouter,
     /// P2 — Agent health registry (heartbeats + classification). The
     /// background sweeper is `spawn_sweeper`'d from `serve`/`serve_with_repo`.
     pub health: lopi_orchestrator::HealthRegistry,
@@ -159,10 +157,6 @@ impl AppState {
         // Callers that want the on-disk registry pre-loaded should call
         // `state.hydrate_tools()` after construction (e.g. inside `serve`).
         let tools = lopi_tools::ToolRegistry::new(lopi_tools::default_registry_path());
-        // Constellation router — in-memory; registrations re-created on
-        // every `lopi sail` start (intentional — they describe topology,
-        // not durable agent state).
-        let constellations = lopi_orchestrator::ConstellationRouter::new();
         // Health registry — same lifecycle: heartbeats are ephemeral and
         // re-derived from incoming agent traffic.
         let health =
@@ -178,7 +172,6 @@ impl AppState {
             pool,
             repo_path,
             tools,
-            constellations,
             health,
             schedules,
             serialized_tx,
@@ -243,18 +236,6 @@ pub fn build_app(state: AppState) -> Router {
         .route(
             "/api/cache/agent/:agent",
             axum::routing::delete(invalidate_agent_cache_handler),
-        )
-        .route(
-            "/api/constellations",
-            get(list_constellations_handler).post(register_constellation_handler),
-        )
-        .route(
-            "/api/constellation/:name/dispatch",
-            axum::routing::post(dispatch_constellation_handler),
-        )
-        .route(
-            "/api/constellation/:name/stats",
-            get(constellation_stats_handler),
         )
         .route("/api/tasks/dead-letter", get(dlq_handlers::list_dlq))
         .route(
@@ -435,7 +416,6 @@ mod api_middleware;
 mod audit_handlers;
 mod cache_handlers;
 mod config_handlers;
-mod constellation_handlers;
 mod dlq_handlers;
 mod handlers;
 mod health_handlers;
@@ -450,10 +430,6 @@ mod task_stream_handlers;
 mod tools_handlers;
 use api_middleware::{auth_middleware, rate_limit_middleware};
 use cache_handlers::{cache_stats_handler, clear_cache_handler, invalidate_agent_cache_handler};
-use constellation_handlers::{
-    constellation_stats_handler, dispatch_constellation_handler, list_constellations_handler,
-    register_constellation_handler,
-};
 use handlers::{
     approve_plan, cancel_task, checkpoint_agent, create_task, get_spec, get_stats, get_task,
     health, list_patterns, list_tasks, reject_plan,
