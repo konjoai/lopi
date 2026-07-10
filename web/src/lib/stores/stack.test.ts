@@ -23,6 +23,7 @@ import {
   computeNextRuns,
   cardToTaskPayload,
   cardToTaskPayloadForRunOnce,
+  paneSubmitPayload,
   budgetToTokens,
   resolvePresetAlias,
   evalsToAcceptance,
@@ -420,6 +421,64 @@ eqIs(buildCard(':ratchet "self improve"').preset, 'gain', 'a `:ratchet` composer
     1,
     'Run once overrides even the ∞ sentinel to a single pass'
   );
+}
+
+// ── Unify-1 Phase 1: bare pane prompt → the same unified createTask payload ───
+// A Forge-style pane's submit now flows through `createTask` (via
+// `paneSubmitPayload`) exactly as a stack card's launch does — no separate
+// `postTask`. These prove a bare prompt (a) carries only what its launch
+// controls set, forcing no stack-loop semantics, and (b) produces the identical
+// CreateTaskRequest *shape* a one-card stack would for the same inputs.
+{
+  // A truly bare prompt: only a goal, everything else unset.
+  const bare = paneSubmitPayload({ goal: 'fix foo', repo: '' });
+  eqIs(bare.goal, 'fix foo', 'bare prompt carries the goal verbatim');
+  eqIs(bare.repo, '', 'bare prompt leaves repo empty (server falls back to its configured repo)');
+  eqIs(bare.priority, 'normal', 'bare prompt defaults priority to normal');
+  eq(Object.keys(bare.options).sort(), [], 'a bare prompt sets NO options — no model/effort/gate/until/acceptance/max_iterations forced on it');
+}
+{
+  // Launch-control-driven bare prompt: model/effort/priority set, no branch.
+  const p = paneSubmitPayload({ goal: 'g', repo: 'konjoai/lopi', priority: 'high', model: 'claude-opus-4-8', effort: 'high' });
+  eqIs(p.priority, 'high', 'priority passes through from the launch controls');
+  eqIs(p.options.model, 'claude-opus-4-8', 'model surfaces as a first-class option, not a prompt constraint');
+  eqIs(p.options.effort, 'high', 'effort surfaces as a first-class option, not a prompt constraint');
+  eqIs(p.options.constraints, undefined, 'no branch ⇒ no constraints entry');
+  eq(Object.keys(p.options).sort(), ['effort', 'model'], 'only the set launch-control fields appear — nothing stack-only leaks in');
+}
+{
+  // A branch override survives the move off postTask, as a planning constraint.
+  const p = paneSubmitPayload({ goal: 'g', repo: 'r', branch: 'feature/x' });
+  eq(p.options.constraints, ['Target branch: feature/x'], 'a branch override surfaces as a planning constraint (the channel postTask used)');
+  const trimmed = paneSubmitPayload({ goal: 'g', repo: 'r', branch: '   ' });
+  eqIs(trimmed.options.constraints, undefined, 'a whitespace-only branch is treated as unset');
+}
+{
+  // Shape parity: for the SAME goal/repo/model/effort/priority, a bare pane
+  // prompt and a one-card stack launch agree on every shared field. The card
+  // adds only its stack-loop semantics (max_iterations/on_fail/client_ref) —
+  // which a bare prompt intentionally omits — so parity is asserted on the
+  // fields both actually carry.
+  const defaults = { model: 'sonnet', effort: 'medium', repo: 'konjoai/lopi' };
+  type Row = { name: string; goal: string; model?: string; effort?: string; priority?: string };
+  const rows: Row[] = [
+    { name: 'plain goal, pane defaults', goal: 'do the thing' },
+    { name: 'model + effort override', goal: 'do the thing', model: 'claude-opus-4-8', effort: 'high' },
+    { name: 'high priority', goal: 'urgent', priority: 'high' }
+  ];
+  for (const row of rows) {
+    // The pane launch.
+    const pane = paneSubmitPayload({ goal: row.goal, repo: defaults.repo, priority: row.priority, model: row.model ?? defaults.model, effort: row.effort ?? defaults.effort });
+    // The equivalent one-card stack launch.
+    const c = buildCard(`"${row.goal}"`);
+    if (row.model) c.config.model = row.model;
+    if (row.effort) c.config.effort = row.effort;
+    const stack = cardToTaskPayload(c, defaults);
+    eqIs(pane.goal, stack.goal, `parity/${row.name}: same goal`);
+    eqIs(pane.repo, stack.repo, `parity/${row.name}: same repo`);
+    eqIs(pane.options.model, stack.options.model, `parity/${row.name}: same model`);
+    eqIs(pane.options.effort, stack.options.effort, `parity/${row.name}: same effort`);
+  }
 }
 
 // ── Backend-1: execution order is bottom-of-stack (oldest) first ─────────────

@@ -368,44 +368,6 @@ export function removeAgent(id: string) {
   deleteSession(id);
 }
 
-/** Per-task launch options surfaced by the pane selectors. */
-export interface TaskOptions {
-  priority?: 'low' | 'normal' | 'high' | 'critical';
-  model?: string;
-  effort?: string;
-  branch?: string;
-  constraints?: string[];
-}
-
-/**
- * Build the `constraints` payload from the selector values. Model, effort and
- * branch have no dedicated columns on the task yet, so we surface them as
- * planning constraints (the same channel the backend already appends to the
- * agent's prompt) rather than inventing fields that go nowhere.
- */
-export function buildConstraints(opts: TaskOptions): string[] {
-  const out = [...(opts.constraints ?? [])];
-  if (opts.model) out.push(`Preferred model: ${opts.model}`);
-  if (opts.effort) out.push(`Reasoning effort: ${opts.effort}`);
-  if (opts.branch) out.push(`Target branch: ${opts.branch}`);
-  return out;
-}
-
-export function postTask(goal: string, repo: string, opts: TaskOptions = {}) {
-  if (!browser) return Promise.reject(new Error('not-browser'));
-  const constraints = buildConstraints(opts);
-  return fetch('/api/tasks', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      goal,
-      repo,
-      priority: opts.priority ?? 'normal',
-      ...(constraints.length > 0 ? { constraints } : {})
-    })
-  });
-}
-
 export async function cancelTask(id: string): Promise<boolean> {
   if (!browser) return false;
   try {
