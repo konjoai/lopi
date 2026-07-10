@@ -9,7 +9,7 @@
   drag this slice (whole-*stack* reordering is in scope, via the dock).
 -->
 <script lang="ts">
-  import { type StackPaneState, addToPane, buildCard, perLoopScheduleGoverned } from '$lib/stores/stack';
+  import { type StackPaneState, addToPane, buildCard, perLoopScheduleGoverned, paneIsBare } from '$lib/stores/stack';
   import type { Option } from '$lib/stores/controls';
   import EmptyState from '$lib/components/ui/EmptyState.svelte';
   import StackCard from './StackCard.svelte';
@@ -21,9 +21,15 @@
   export let pane: StackPaneState;
   export let index: number;
   export let repoOptions: Option[] = [];
+  /** Close this pane. Null keeps the header X inert (e.g. a lone pane). */
+  export let onClose: (() => void) | null = null;
 
   $: paneDefaults = pane.config.defaults;
   $: scheduleGoverned = perLoopScheduleGoverned(pane.config);
+  // Unify-2 §3: a 0- or 1-card pane is a *bare* box (composer + card + orb) that
+  // reads like the old Forge pane; the purple stack control dock and inter-card
+  // connectors appear only once a second loop makes it a real stack.
+  $: bare = paneIsBare(pane);
 
   let composerValue = '';
 
@@ -47,7 +53,14 @@
     <span class="ptitle">{pane.title}</span>
     <span class="hsp"></span>
     <span class="hdot"></span>
-    <button class="hx" type="button" title="close (not wired this slice)">{@html ICONS.x}</button>
+    <button
+      class="hx"
+      class:live={onClose}
+      type="button"
+      title={onClose ? 'close pane' : 'close'}
+      disabled={!onClose}
+      on:click={() => onClose?.()}
+    >{@html ICONS.x}</button>
   </div>
 
   <div class="panecomposer">
@@ -85,7 +98,9 @@
     {/if}
   </div>
 
-  <StackControlDock {pane} {index} {repoOptions} />
+  {#if !bare}
+    <StackControlDock {pane} {index} {repoOptions} />
+  {/if}
 </div>
 
 <style>
@@ -94,9 +109,17 @@
     border-radius: 14px;
     background: var(--konjo-panel, #0a0d0f);
     position: relative;
-    flex: 1 1 480px;
-    max-width: 720px;
-    min-width: 320px;
+    /* Fills its auto-tiling TileGrid cell; the card stack scrolls internally so
+       a tall stack never blows out the grid. */
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .panehead,
+  .panecomposer {
+    flex: 0 0 auto;
   }
   .panehead {
     display: flex;
@@ -135,6 +158,12 @@
     color: rgba(245, 245, 245, 0.28);
     cursor: not-allowed;
     display: inline-flex;
+  }
+  .panehead .hx.live {
+    cursor: pointer;
+  }
+  .panehead .hx.live:hover {
+    color: var(--konjo-rose, #ff0066);
   }
   .panehead .hx :global(svg) {
     width: 16px;
@@ -192,6 +221,9 @@
   }
   .panestack {
     padding: 24px 18px 8px;
+    flex: 1 1 auto;
+    overflow-y: auto;
+    min-height: 0;
   }
   .loopwrap.hasout :global(.pc) {
     border-bottom-left-radius: 0;

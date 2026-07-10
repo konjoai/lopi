@@ -1,6 +1,87 @@
 # Changelog
 
-## [Unreleased] — Unify-1: collapse Forge into the loop-stack primitive
+## [0.3.0] — Unify-2: orb everywhere, one pane primitive, Overview, a four-item nav 🎛️
+
+The collapse Unify-1 began now lands in full. There is one pane primitive, one
+status vocabulary, one rollup, and a four-item nav. The old parallel component
+tree and eight of its routes are gone.
+
+### Phase 2 — the orb is the only status vocabulary
+`StackCard` drops its text `.runtag`/`card.status` badge and adopts the living
+orb. The card looks up its live agent in the shared `agents` store by
+`card.taskId` and renders `computeOrbState()` through a new compact `OrbDot` —
+the same pure function, keyed the same way, that the Forge pane's WebGL orb
+consumes. So a card and a pane telegraph an identical state in identical colors;
+the card's rim glow is driven by the orb color too.
+
+- New pure `orbStateForCard(taskId, agents, waiting)` (`lib/forge/cardOrb.ts`)
+  is the one card→orb lookup, kept free of store/`$app` imports so it's unit
+  tested for **byte-for-byte parity** with what a pane computes for the same
+  agent, across every phase and terminal state (`cardOrb.test.ts`).
+
+### Phase 3 — one pane primitive, in the auto-tiling grid
+The Loop Stack (`/stacks`) now hosts `StackPane`s in the kept `TileGrid`
+(auto-tiling, drag-resizable) — the sole surviving grid. A pane is *bare* by
+default (`paneIsBare`): top composer, one loop card + its orb, **no connector,
+no stack control dock** — it reads like a pre-Unify Forge box. A second loop
+surfaces the connector + purple dock, exactly like Stacks always did. The
+topbar `+` adds a pane; a pane's `✕` closes it (the last pane can't close).
+
+- **Retired:** `AgentGrid.svelte`, `AgentPane.svelte`, `SessionSidebar.svelte`,
+  and the `/forge` route (folded into the Loop Stack; `/` still redirects to
+  `/stacks`). Grep-confirmed nothing else imports them. The WebGL orb renderer
+  (`ForgeStage`/`Forge.svelte`) is left in the tree, now unreferenced by any
+  route — preserved for reuse, flagged for a later cleanup call.
+- New pure `paneIsBare`/`makeBlankStack`/`addStack` (`stores/stack.ts`), tested.
+
+### Phase 4 — the Overview
+New read-only `/overview`: one dense, orb-colored row per live agent app-wide —
+goal, repo/branch, phase, elapsed, cost, score — sorted active-first, with a
+lifecycle filter (the old **Tasks** dead-letter view folds in as a
+`dead-letter` filter). Clicking a row focuses that agent on the Loop Stack.
+This is the **sole replacement for Fleet + Dashboard + Pulse's information** —
+Constellation's 3D orbital view is deliberately **not** absorbed, it's cut.
+
+- Pure `overviewRows`/`filterRows`/`filterCounts` (`stores/overview.ts`), unit
+  tested against a seeded fleet for correct metrics + orb-color parity
+  (`overview.test.ts`).
+
+### Phase 5 — the four-item nav + Router removed for real
+`NAV_ITEMS` collapses to **Loop Stack · Scheduling · Overview · Configuration**.
+Dropped routes: Constellation, Fleet, Pulse, Tasks, Logs, Tools, Debug (its
+Health/Audit/Quality-Trend/API-Console/**Patterns** sub-panels), and Router.
+`⌘K` now flips Loop Stack ↔ Overview (was Forge ↔ Constellation).
+
+- **Patterns:** only the web Debug **panel** is removed — the pattern-mining
+  store and its A2 feed are untouched. (macOS `PatternsView` is out of scope —
+  flagged for macOS-Parity-1.)
+- **Router: full removal, not a nav hide.** Its disconnection was re-verified
+  before deleting — `create_task` (`web/handlers.rs`) routes via
+  `pool.submit()` with zero `ConstellationRouter` reference. Removed: the
+  `/router` page, the three backend endpoints (`/api/constellations`,
+  `/api/constellation/:name/dispatch`, `/api/constellation/:name/stats`) and
+  `constellation_handlers.rs`, the `constellation` field on the app state, and
+  the whole `lopi-orchestrator/src/constellation/` module (types, selector,
+  tests, re-exports). `cargo build`/`test` green with it gone. macOS's
+  `ConstellationsView` is a separate surface — flagged, not touched.
+
+### Proof — structural in-sprint, live post-merge
+Per the standing sandbox constraint (below), each phase ships its strongest
+*structural* proof: the full web suite (parity/rollup/nav/bare-chrome tests),
+`svelte-check` (0 errors), `npm run build`, and `cargo build`/`cargo test`
+(orchestrator 95, ui 101) all green. The **live** half — real orb motion, a
+single-card pane matching the Forge baseline, two concurrent sessions in the
+Overview, the four-item nav with no dead links — is Wes's post-merge checklist
+(`NEXT.md`), run with real subscription auth.
+
+### Standing constraint (recorded once, don't re-discover)
+Live `sail`-spawned `claude` verification is **impossible in this sandboxed CI**:
+`scrub_inherited_anthropic_env` strips the sandbox's only auth path
+(`ANTHROPIC_BASE_URL`) and there is no interactive `~/.claude` subscription
+login. So live E2E is permanently an operator (Wes) responsibility here, not an
+agent gate — future sprints should not re-litigate this.
+
+## [0.2.7] — Unify-1: collapse Forge into the loop-stack primitive
 
 Forge stops being a separate launch path. This is **Phase 1 of the Unify-1
 sprint** — unifying the launch call.

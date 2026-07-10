@@ -1,67 +1,68 @@
 <!--
-  /stacks — the loop-stack composer. Independent panes (Stack-1 added
-  duplicate/reorder/delete, so there can be more than the original two),
-  each an ordered queue of loop cards with schedule/guardrails/evals
-  popovers, a config drawer, connectors, a live output attachment for the
-  running task, and — pinned at its base — the purple stack control area
-  (`StackControlDock.svelte`): loop/schedule/guardrails/evals/config for the
-  whole chain, plus the real run-stack action. The existing /loop cockpit is
-  a different surface and is left untouched.
+  /stacks — the Loop Stack, the single primary working surface (Unify-2 §3).
 
-  Guardrails/schedule/model/effort/repo round-trip through the real
-  `CreateTaskOptions` shape (see `stores/stack.ts::cardToTaskPayload`).
-  Backend-1 wired "run stack" for real: each pane's own `stores/stackRun.ts`
-  sequencer launches its cards bottom-to-top via `createTask`, and
-  pause/resume/drain/bump are a client-side state machine (there's no
-  server-side "stack"/"plan" concept — see the sprint's ledger entry).
-  Stack-1 moved "pane defaults" from a single app-wide selector row here
-  into each pane's own `config.defaults` (its control dock's config
-  popover) — a loop's own config still overrides its stack's default, which
-  falls back to the app-wide baseline (`loop ?? stack.default ?? DEF`).
+  The one collapsed pane primitive lives here: `StackPane`s laid out in the
+  auto-tiling, drag-resizable `TileGrid` (the one capability worth keeping from
+  the old Forge). A pane defaults to a *bare* box — top composer, a single loop
+  card + its orb, no connector, no control dock — so it reads exactly like a
+  pre-Unify Forge pane. Add a second loop and the connector + purple stack
+  control dock appear, and it behaves like Stacks always has: schedule /
+  guardrails / evals / config for the whole chain, plus the real run-stack
+  action (each pane's `stores/stackRun.ts` sequencer launches its cards
+  bottom-to-top via `createTask`).
+
+  The topbar `+` adds a fresh pane; a pane's header `✕` closes it (the last
+  pane can't be closed). This replaces the retired Forge component tree
+  (`AgentGrid` / `AgentPane` / `SessionSidebar`) — every launch still flows
+  through the one unified `createTask`, and every live agent is keyed back to
+  its card by `taskId` for the orb.
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
+  import TileGrid from '$lib/components/TileGrid.svelte';
   import StackPane from '$lib/components/stacks/StackPane.svelte';
-  import { panes } from '$lib/stores/stack';
+  import { panes, addStackPane, deleteStackFromPanes } from '$lib/stores/stack';
   import type { Option } from '$lib/stores/controls';
   import { listRepos } from '$lib/api';
 
   let repoOptions: Option[] = [{ value: '', label: 'auto' }];
 
-  onMount(async () => {
-    try {
-      const { repos } = await listRepos();
-      if (repos.length) {
-        repoOptions = [{ value: '', label: 'auto' }, ...repos.map((r) => ({ value: r, label: r }))];
+  onMount(() => {
+    (async () => {
+      try {
+        const { repos } = await listRepos();
+        if (repos.length) {
+          repoOptions = [{ value: '', label: 'auto' }, ...repos.map((r) => ({ value: r, label: r }))];
+        }
+      } catch {
+        // Repo listing is best-effort chrome — the composer works with the
+        // "auto" default if /api/repos is unreachable (e.g. static preview).
       }
-    } catch {
-      // Repo listing is best-effort chrome — the composer works with the
-      // "auto" default if /api/repos is unreachable (e.g. static preview).
-    }
+    })();
+
+    // The topbar "+" (in +layout.svelte) dispatches this on the Loop Stack.
+    const onAdd = () => addStackPane();
+    window.addEventListener('lopi:add-pane', onAdd);
+    return () => window.removeEventListener('lopi:add-pane', onAdd);
   });
 </script>
 
-<div class="max-w-[1400px] mx-auto px-4 py-8 space-y-6">
-  <div>
-    <h1 class="font-display text-2xl">Loop Stack</h1>
-    <p class="font-mono text-[11px] uppercase tracking-widest opacity-50 mt-1">
-      compose independent stacks · each carries its own defaults/schedule/guardrails/evals · run stack launches for real
-    </p>
-  </div>
-
-  <div class="panes">
-    {#each $panes as pane, i (pane.key)}
-      <StackPane {pane} index={i} {repoOptions} />
-    {/each}
-  </div>
+<div class="loopstack">
+  <TileGrid count={$panes.length} let:index>
+    {#if $panes[index]}
+      <StackPane
+        pane={$panes[index]}
+        {index}
+        {repoOptions}
+        onClose={$panes.length > 1 ? () => deleteStackFromPanes($panes[index].key) : null}
+      />
+    {/if}
+  </TileGrid>
 </div>
 
 <style>
-  .panes {
-    display: flex;
-    gap: 22px;
-    align-items: flex-start;
-    justify-content: center;
-    flex-wrap: wrap;
+  .loopstack {
+    width: 100%;
+    height: 100%;
   }
 </style>

@@ -39,6 +39,9 @@ import {
   defaultGuardrails,
   defaultStackConfig,
   duplicateStack,
+  paneIsBare,
+  makeBlankStack,
+  addStack,
   reorderStacks,
   moveStackBeforeOrAfter,
   deleteStack,
@@ -869,6 +872,34 @@ eqIs(
   const payload = cardToTaskPayload(c, defaults);
   ok(payload.options.acceptance !== undefined, 'cardToTaskPayload now emits a real acceptance');
   eqIs(payload.options.acceptance!.checks.length, 2, 'base + judge ⇒ two checks in the payload');
+}
+
+// ── Unify-2 §3: bare vs. stack chrome + pane creation ─────────────────────────
+{
+  const cfg = defaultStackConfig();
+  const empty = { key: 'e', title: 't', cards: [], config: cfg };
+  const one = { key: 'o', title: 't', cards: [buildCard('a')], config: cfg };
+  const two = { key: 'w', title: 't', cards: [buildCard('a'), buildCard('b')], config: cfg };
+  ok(paneIsBare(empty), 'an empty pane is bare (composer + idle orb only)');
+  ok(paneIsBare(one), 'a single-card pane is bare — reads like a pre-Unify Forge box');
+  ok(!paneIsBare(two), 'a second loop earns the stack chrome (dock + connectors)');
+}
+{
+  const blank = makeBlankStack();
+  eqIs(blank.cards.length, 0, 'a fresh pane starts empty');
+  ok(blank.key.length > 0, 'a fresh pane has a unique key');
+  ok(paneIsBare(blank), 'a fresh pane is bare');
+  const blank2 = makeBlankStack();
+  ok(blank.key !== blank2.key, 'each fresh pane gets its own key');
+  // config is its own object, never shared (editing one cannot leak to another).
+  ok(blank.config !== blank2.config, 'each fresh pane gets its own config object');
+}
+{
+  const state = [makeBlankStack('one')];
+  const grown = addStack(state);
+  eqIs(grown.length, 2, 'addStack appends one pane');
+  ok(grown[0] === state[0], 'addStack leaves existing panes by reference');
+  ok(state.length === 1, 'addStack is pure — original array untouched');
 }
 
 namedSummary('stack');

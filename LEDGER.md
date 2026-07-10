@@ -5,6 +5,66 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## Unify-2 — one pane primitive, one status vocabulary, one rollup, a four-item nav
+
+**The orb is the single status vocabulary — the `.runtag` badge is retired, not
+kept as a fallback.** A `StackCard` no longer renders its own `card.status` text
+badge; it looks up its live agent by `card.taskId` in the shared `agents` store
+and renders `computeOrbState()`. The load-bearing choice was to route the card
+through the *exact same pure function* the Forge orb uses (via a leaf module,
+`lib/forge/cardOrb.ts`, with no store/`$app` imports) so parity is provable, not
+asserted — a card and a pane cannot drift because they share the mapping and the
+key. `card.status` survives only as the coarse client run-lifecycle marker the
+sequencer sets (drives the running/output-flash coordination); it is no longer a
+*second* status vocabulary living beside the orb.
+
+**One pane primitive: a bare `StackPane` covers the old Forge box, so the
+parallel tree is retired.** `paneIsBare` (≤1 card) gates the collapse: a
+one-card pane shows composer + card + orb and hides the connector + purple
+control dock, so it reads like a pre-Unify Forge pane; a second loop earns the
+full stack chrome. Coverage was confirmed *before* deletion (grep-confirmed no
+importers), then `AgentGrid`/`AgentPane`/`SessionSidebar` and the `/forge` route
+were retired outright. **Deliberately preserved, not deleted:** the WebGL orb
+renderer (`ForgeStage`/`Forge.svelte`) — the brief named only the three
+components, and `OrbDot` is a compact form of the same orb, so the full renderer
+is kept for reuse and flagged for a later "delete or re-home" call rather than
+cut speculatively.
+
+**Overview absorbs the *information* of three surfaces, and explicitly not the
+fourth.** `/overview` is the sole replacement for Fleet + Dashboard + Pulse
+(per-agent metrics, whole-fleet glance, live status) as one read-only rollup
+over the `agents` store — which is already the app-wide source of truth for
+every launch. Constellation's 3D orbital rendering was **not** folded in: it is
+cut in full, because it's a visualization, not information, and keeping it would
+re-introduce the surface sprawl the sprint exists to remove. Tasks folded in too
+— its dead-letter view is now a filter on Overview, not its own page.
+
+**Patterns: the web panel is removed; the mining store and A2 feed are not
+touched.** The decision boundary is display-vs-data: the Debug sub-panel that
+*showed* learned patterns is gone, but the pattern-mining store and its A2
+reflection feed are load-bearing for A2 and stay. (macOS's first-class
+`PatternsView` is a separate surface — flagged for macOS-Parity-1, not reached
+into from this web sprint.)
+
+**Router is fully removed, not nav-hidden — and its disconnection was
+re-verified before deletion, not taken on faith.** The prior audit's finding
+(that `create_task` routes via `pool.submit()` with zero `ConstellationRouter`
+reference) was re-confirmed directly against current `web/handlers.rs` before
+anything was deleted. Because the router is genuinely dead code, removal was
+total: the `/router` page, the three `/api/constellation*` endpoints +
+`constellation_handlers.rs`, the app-state field, and the entire
+`lopi-orchestrator/src/constellation/` module (types/selector/tests/re-exports).
+Non-code mentions (doc comments, a tier feature string) were left alone.
+
+**The sandboxed-CI live-verification constraint is now a standing fact, recorded
+once.** Live `sail`-spawned `claude` cannot authenticate in this CI sandbox —
+`scrub_inherited_anthropic_env` strips `ANTHROPIC_BASE_URL` and there is no
+interactive `~/.claude` subscription login. This is confirmed, not theoretical
+(Unify-1 Phase 1 hit the same wall). The split is therefore explicit and
+permanent for this environment: **structural proof in-sprint (tests / check /
+build / cargo), live proof post-merge by the operator.** Future sprints should
+treat this as settled and not re-attempt the live gate here.
+
 ## Goal-directed stacks (B1) — binary run-until-goal, because there's no whole-chain rollback to gain-gate against
 
 **The load-bearing decision: ship the binary "re-run the chain until the stack
