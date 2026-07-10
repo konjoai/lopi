@@ -50,20 +50,10 @@ const json = (method: string, payload: unknown): RequestInit => ({
 });
 
 // ── Tasks ─────────────────────────────────────────────────────────────────────
-export interface TaskRow {
-  id: string;
-  goal: string;
-  status: string;
-  created_at: string;
-  completed_at: string | null;
-  /** Backend-1 — the caller-supplied identity echoed back by `createTask`, if any. */
-  client_ref: string | null;
-}
-
-export const listTasks = () => request<{ tasks: TaskRow[] }>('/api/tasks');
-export const getTask = (id: string) => request<TaskRow>(`/api/tasks/${encodeURIComponent(id)}`);
-export const deleteTask = (id: string) =>
-  request<{ cancelled?: boolean }>(`/api/tasks/${encodeURIComponent(id)}`, { method: 'DELETE' });
+// The read/delete task wrappers (listTasks / getTask / deleteTask + the TaskRow
+// type) were removed alongside the standalone Tasks page cut in Unify-2: the
+// Overview reads live task state off the `agents` store, not these REST calls,
+// so they had zero UI callers. `createTask` (below) is the one live task client.
 
 /**
  * Optional fields mirroring `crates/lopi-ui/src/web/types.rs::CreateTaskRequest`.
@@ -197,20 +187,11 @@ export const rejectPlan = (id: string) =>
     { method: 'POST' }
   );
 
-// ── Logs ──────────────────────────────────────────────────────────────────────
-export interface LogRow {
-  id: number;
-  task_id: string;
-  ts: string;
-  level: string;
-  line: string;
-}
-
-export const recentLogs = (n = 500) => request<{ logs: LogRow[] }>(`/api/logs?n=${n}`);
-export const taskLogs = (id: string, n = 500) =>
-  request<{ task_id: string; logs: LogRow[] }>(
-    `/api/tasks/${encodeURIComponent(id)}/logs?n=${n}`
-  );
+// The Logs client (LogRow / recentLogs / taskLogs) was removed with the
+// standalone Logs page cut in Unify-2 — live log lines reach the UI over the
+// WebSocket (`wsClient`), not these REST polls, so they had zero UI callers.
+// The `/api/logs` + `/api/tasks/:id/logs` backend routes stay: they serve the
+// native macOS Tasks panel.
 
 // ── Dead-letter queue ─────────────────────────────────────────────────────────
 export interface DeadLetterRow {
@@ -491,78 +472,21 @@ export interface PoolStatsResponse {
 }
 
 export const getStats = () => request<PoolStatsResponse>('/api/stats');
-
-export interface HealthSummary {
-  total: number;
-  healthy: number;
-  degraded: number;
-  dead: number;
-}
-
-export const healthSummary = () => request<HealthSummary>('/api/agents/health/summary');
 export const cacheStats = () => request<Record<string, unknown>>('/api/cache/stats');
 export const clearCache = () =>
   request<{ deleted: number }>('/api/cache', { method: 'DELETE' });
 
-export interface AuditEvent {
-  id: number;
-  ts: string;
-  action: string;
-  subject_type: string;
-  subject_id: string;
-  actor: string;
-  payload: unknown;
-}
-
-export const queryAudit = (n = 100) =>
-  request<{ events: AuditEvent[]; next_cursor: number }>(`/api/audit?n=${n}`);
-
-export interface PatternRow {
-  id: number;
-  goal_keywords: string;
-  avg_attempts: number;
-  success_rate: number;
-  last_seen: string;
-}
-
-export const listPatterns = () => request<{ patterns: PatternRow[] }>('/api/patterns');
-
-export interface QualityRun {
-  id: number;
-  spec_items: number;
-  passing: number;
-  failing: number;
-  gaps: number;
-  score: number;
-  run_at: string;
-}
-
-export const qualityTrend = (limit = 20) =>
-  request<{ repo: string; runs: QualityRun[] }>(`/api/quality/trend?limit=${limit}`);
-
-// ── Tools (durable tool registry) ─────────────────────────────────────────────
-export interface ToolSpec {
-  name: string;
-  description: string;
-  parameters: unknown;
-  timeout_ms: number;
-  retries: number;
-  updated_at?: string;
-}
-
-export const listTools = () => request<{ tools: ToolSpec[] }>('/api/tools');
-export const registerTool = (spec: Omit<ToolSpec, 'updated_at'>) =>
-  request<{ registered: string }>('/api/tools', json('POST', spec));
-export const deleteTool = (name: string) =>
-  request<{ deregistered: string }>(`/api/tools/${encodeURIComponent(name)}`, {
-    method: 'DELETE'
-  });
-
+// The Debug-page clients — healthSummary/HealthSummary, queryAudit/AuditEvent,
+// listPatterns/PatternRow, qualityTrend/QualityRun — and the Tools registry
+// clients (ToolSpec / listTools / registerTool / deleteTool) plus the Debug API
+// console's `rawGet` were removed with the Debug and Tools pages cut in
+// Unify-2. All had zero web callers. Their backend routes
+// (/api/agents/health/summary, /api/audit, /api/patterns, /api/quality/trend,
+// /api/tools*) stay — they serve the native macOS admin panels, which remain a
+// deliberately platform-exclusive surface.
+//
 // The Constellation router client (listConstellations / registerConstellation /
 // dispatchConstellation / constellationStats + its types) was removed in
 // Ops-2-findings-closure Phase 4: the backend never registered those routes, so
 // every call fell through to the SPA static fallback and returned HTML, which
 // broke JSON decoding (High-severity bug #2). It had zero UI callers.
-
-/** Free-form GET for the Debug tab's API console. Returns raw parsed JSON. */
-export const rawGet = (path: string) => request<unknown>(path);

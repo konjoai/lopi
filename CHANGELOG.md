@@ -1,5 +1,105 @@
 # Changelog
 
+## [0.3.2] — Polish-1: close bug #3, purge remnants, kill UI cruft 🧹
+
+Runs after Fix-1 (#78) merged. Closes the one Ops-2 finding Fix-1's phase list
+missed (bug #3, cost/token accrual), then sweeps the whole codebase for live
+remnants of every already-cut feature and resolves the two decisions Unify-2/
+Ops-2 deliberately left open (Dashboard, orb-parity). No new features.
+
+### Phase 0 — cost/token accrual (bug #3) [Med]
+Real billed runs reported `total_cost_usd_today: 0`, `total_tokens_today: 0`,
+and per-task `cost: null`. Traced the pipeline end-to-end rather than patching
+the display: the `claude` CLI stream **does** parse per-turn usage
+(`claude_events.rs`) and the terminal `result`'s billed `total_cost_usd`, but
+the CLI path — which handles every real run (always the implement step; the plan
+step too unless the direct-API path is configured) — **never persisted a
+`turn_metrics` row**. The only writer was the direct-API planning path
+(`api_plan.rs`), unreachable for CLI runs. `/api/stats`, `/budget`, the loop
+traces and macOS's cost surfaces all read `turn_metrics`, so they summed an
+empty table to `0`.
+
+- **Fix:** each streamed CLI call now accrues its token deltas + the terminal
+  billed cost through a `UsageAccrual` and persists one `turn_metrics` row on
+  completion (`runner/stream.rs`). The direct-API path still records its own
+  planning turn, so there is no double-count.
+- Captured `cache_creation_input_tokens`
+  (`StreamEvent::TokenUsage.cache_write_tokens`) so `daily_token_totals`'
+  four-part token sum is accurate, not just cost.
+- Per-task `cost` is now surfaced: `MemoryStore::task_costs()` aggregates
+  `turn_metrics` by task, and `GET /api/tasks` + `/api/tasks/:id` emit a real
+  `cost` field (was absent → `null`).
+- Tests: `UsageAccrual` sum/cost/has-usage; `task_costs` per-task sum;
+  `daily_token_totals` non-zero after a persisted turn.
+- *Live-billed verification (running real sessions) was not run in the CI
+  sandbox — no funded key, and spending real money autonomously isn't
+  appropriate; the mechanism is covered by the unit/store tests above.*
+
+### Phase 1 — remnant sweep of already-cut features
+Re-verified fresh by full-repo grep (not trusting pre-Fix-1 audit docs). The web
+route/nav layer was already clean; the remnants were orphaned client code and
+stale docs:
+
+- Deleted orphaned web components with zero importers: `Constellation.svelte`
+  (cut Constellation), `LogStream.svelte` (cut Logs), plus `CostAnalytics`,
+  `AgentCard`, `PhaseWheel`, `ThoughtStream`, `TokenGauge`.
+- Pruned the orphaned `api.ts` client wrappers for cut web pages —
+  `listTasks`/`getTask`/`deleteTask`, `recentLogs`/`taskLogs`,
+  `healthSummary`/`queryAudit`/`listPatterns`/`qualityTrend`,
+  `listTools`/`registerTool`/`deleteTool`, and the Debug console's `rawGet` —
+  with their now-unused types. Their **backend routes stay**: they serve the
+  native macOS admin panels. `createTask`/`getStats`/`cacheStats` retained.
+- Removed the dead `pulseKindCounts` store (named the cut Pulse tab, zero
+  consumers) and fixed stale comments that named cut features as live
+  (`excitement.ts`, the `/constellation` static-asset example in
+  `mod.rs`/`static_assets.rs`).
+- Docs: rewrote `docs/RUNNING.md`'s stale 15-route nav + screenshot tables to
+  the real 6-item nav (removed the cut-surface screenshots), and corrected
+  `macos/README.md`'s "admin panels are stubbed" to the true state (all wired;
+  12 of 13 sections live, Constellations since removed).
+- **Not remnants (verified retained):** the macOS admin panels (Tasks, Tools,
+  Health, Patterns, Audit, Dashboard) are a deliberately platform-exclusive
+  native surface, the `pulse`/`budgetAlerts` event feed is live infra,
+  `BudgetScope::Fleet` is a data-model term, and `/api/tasks*`/`/api/logs` are
+  retained routes. `cargo-nextest` doc/reality was already resolved by Fix-1.
+
+### Phase 2 — leftover-cruft sweep
+- Confirmed the general banner-clear-on-navigation fix holds broadly: the macOS
+  banner is a single `model.banner` slot with only two writers (a schedule
+  notice + any view's fetch/decode error), and `navRow` clears it on every
+  section switch — so a *non*-Constellation sticky notice is caught too.
+- Confirmed the model-label fix: web + macOS both map `claude-opus-4-8`→"Opus
+  4.8", `claude-sonnet-4-6`→"Sonnet 4.6", `claude-haiku-4-5`→"Haiku 4.5".
+- No rendered TODO/stub/placeholder text leaked into user-facing views (the
+  `TODO(backend)`/`STUBBED` markers are Svelte doc comments, not UI).
+- Flagged (design calls, left as-is): the stack-cron "not yet enforced" hint is
+  an honest client-only-feature disclosure, not a stray TODO; the macOS
+  "$-0.00" spend was the bug-#3 artifact (spend is a sum of non-negative billed
+  costs, resolved by Phase 0); the macOS "N active" count needs an on-device
+  run to reproduce (the `.active` flag clears correctly on terminal events).
+
+### Phase 3 — Dashboard decision: **keep** (native-exclusive richer view)
+Decided against current reality, not the original plan. Dashboard is macOS-only
+and Overview is web-only — different platforms — so Overview can't "absorb"
+Dashboard's job for a native user. Dashboard's animated cognition-grid offers a
+richer at-a-glance feel than Overview's list rollup, it already buckets
+correctly off `/api/stats`, and Phase 0 fixes its cost tiles. Cutting it would
+leave macOS with no at-a-glance surface. Kept.
+
+### Phase 4 — orb-parity resolution: **standardize on the compact per-pane orb**
+Resolved (not deferred a third time). Web already uses the compact per-card
+`OrbDot` (a 9px status dot); macOS still rendered a 120–300pt Metal orb per live
+pane, which doesn't scale in a multipane grid. Compacted the macOS live-pane orb
+to a small status indicator (`AgentPaneView.cornerSize`), matching web's
+orb-as-status-indicator intent; the idle launcher stays a larger single-pane
+launch hero. *macOS is authored on Linux and built on the M3 per this repo's
+convention — the compact sizing needs an on-device visual confirmation.*
+
+### Housekeeping
+- Version → 0.3.2. Split two now-oversized files under the 500-line gate:
+  `claude_events.rs` (tests → `claude_events_tests.rs`) and the store
+  `tests.rs` (Lessons/postmortem tests → `tests_lessons.rs`).
+
 ## [0.3.1] — Fix-1: close the Ops-2 findings 🔧
 
 Fixes the concrete bugs the Ops-2 audit recorded (`docs/ops/FEATURE_STATE.md` +

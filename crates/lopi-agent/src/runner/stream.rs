@@ -3,41 +3,183 @@
 //! events), instead of waiting for the full response. Split out of
 //! `run_loop.rs` to keep that module under the file-size gate once the
 //! no-progress stall guard landed alongside it.
+//!
+//! Each streamed call also **accrues** the turn's real token usage and billed
+//! cost and persists a `turn_metrics` row when it completes. Without this the
+//! CLI path — which handles every real run (always the implement step, and the
+//! plan step unless the direct-API path is configured) — left `turn_metrics`
+//! empty, so `/api/stats`, `/budget`, the loop traces and macOS's cost surfaces
+//! all read `$0` regardless of real spend (bug #3). The direct-API planning
+//! path persists its own metrics separately (`api_plan.rs`), so there is no
+//! double-count: a given turn is recorded by exactly one path.
 
 use super::AgentRunner;
 use crate::claude::ClaudeCode;
 use crate::claude_events::StreamEvent;
 use anyhow::Result;
-use lopi_core::AgentEvent;
-use std::sync::atomic::{AtomicU64, Ordering};
+use chrono::Utc;
+use lopi_core::{AgentEvent, TurnMetrics};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
+use uuid::Uuid;
 
 impl AgentRunner {
     /// Stream a plan from the CLI, forwarding both the human log line and the
     /// structured pane events (tool calls, token usage, cost, phase, rate
-    /// limits) to the event bus as each `StreamEvent` arrives.
-    pub(super) async fn stream_plan(&self, claude: &ClaudeCode) -> Result<String> {
+    /// limits) to the event bus as each `StreamEvent` arrives, then persist the
+    /// turn's usage/cost to `turn_metrics`.
+    pub(super) async fn stream_plan(
+        &self,
+        claude: &ClaudeCode,
+        model: &str,
+        attempt: u8,
+    ) -> Result<String> {
         let bus = self.bus.clone();
         let tid = self.id();
         let tokens = self.tokens_used.clone();
-        claude
+        let accrual = Arc::new(UsageAccrual::default());
+        let acc = accrual.clone();
+        let text = claude
             .plan_streamed(&self.task, self.last_error.as_deref(), move |ev| {
+                acc.observe(ev);
                 forward_stream_event(&bus, tid, &tokens, ev);
             })
-            .await
+            .await?;
+        self.persist_turn(&accrual, model, attempt).await;
+        Ok(text)
     }
 
     /// Stream the implementation from the CLI, forwarding each `StreamEvent`'s
-    /// log line and structured pane events to the event bus.
-    pub(super) async fn stream_implement(&self, claude: &ClaudeCode, plan: &str) -> Result<String> {
+    /// log line and structured pane events to the event bus, then persist the
+    /// turn's usage/cost to `turn_metrics`.
+    pub(super) async fn stream_implement(
+        &self,
+        claude: &ClaudeCode,
+        plan: &str,
+        model: &str,
+        attempt: u8,
+    ) -> Result<String> {
         let bus = self.bus.clone();
         let tid = self.id();
         let tokens = self.tokens_used.clone();
-        claude
+        let accrual = Arc::new(UsageAccrual::default());
+        let acc = accrual.clone();
+        let text = claude
             .implement_streamed(&self.task, plan, move |ev| {
+                acc.observe(ev);
                 forward_stream_event(&bus, tid, &tokens, ev);
             })
-            .await
+            .await?;
+        self.persist_turn(&accrual, model, attempt).await;
+        Ok(text)
+    }
+
+    /// Persist one `turn_metrics` row for a completed CLI stream, so every cost
+    /// surface reflects real billed spend (bug #3). No-op when no store is
+    /// attached or the stream reported no usage. Failures are logged, not
+    /// fatal — a metrics-write hiccup must never fail the agent run.
+    async fn persist_turn(&self, accrual: &UsageAccrual, model: &str, attempt: u8) {
+        let Some(store) = &self.store else { return };
+        if !accrual.has_usage() {
+            return;
+        }
+        let metrics = TurnMetrics {
+            turn_id: Uuid::new_v4(),
+            task_id: self.task.id,
+            session_id: self.session_id,
+            model: model.to_string(),
+            attempt_number: attempt,
+            input_tokens: accrual.input.saturating_u32(),
+            output_tokens: accrual.output.saturating_u32(),
+            cache_read_input_tokens: accrual.cache_read.saturating_u32(),
+            cache_write_input_tokens: accrual.cache_write.saturating_u32(),
+            ttft_ms: 0,
+            turn_latency_ms: 0,
+            tool_execution_ms: 0,
+            context_tokens: 0,
+            context_pressure: self.context.token_pressure(),
+            evictions_this_turn: 0,
+            tool_calls: 0,
+            tools_parallel: false,
+            // Authoritative billed cost from the terminal `result` envelope.
+            estimated_cost_usd: accrual.cost_usd(),
+            timestamp: Utc::now(),
+        };
+        if let Err(e) = store.save_turn_metrics(&metrics).await {
+            tracing::warn!(error = %e, "failed to persist CLI turn metrics");
+        }
+    }
+}
+
+/// Interior-mutable accumulator for one streamed CLI call. The forwarding
+/// closure is `Fn` (no `&mut`), so the running totals live behind atomics: each
+/// `TokenUsage` delta adds into the token counters, and the terminal `Result`
+/// envelope's cumulative billed cost lands on `cost_bits`.
+#[derive(Default)]
+struct UsageAccrual {
+    input: AtomicU64,
+    output: AtomicU64,
+    cache_read: AtomicU64,
+    cache_write: AtomicU64,
+    /// `f64::to_bits` of the terminal `result`'s cumulative `total_cost_usd`.
+    cost_bits: AtomicU64,
+    /// Whether a terminal `result` was seen (so a run that spent nothing but
+    /// completed is still recorded, and a stream that died mid-flight without a
+    /// result but produced tokens is too).
+    saw_result: AtomicBool,
+}
+
+impl UsageAccrual {
+    /// Fold one decoded event's usage/cost into the running totals.
+    fn observe(&self, ev: &StreamEvent) {
+        match ev {
+            StreamEvent::TokenUsage {
+                output_tokens,
+                input_tokens,
+                cache_read_tokens,
+                cache_write_tokens,
+            } => {
+                self.output
+                    .fetch_add(u64::from(*output_tokens), Ordering::Relaxed);
+                self.input
+                    .fetch_add(u64::from(*input_tokens), Ordering::Relaxed);
+                self.cache_read
+                    .fetch_add(u64::from(*cache_read_tokens), Ordering::Relaxed);
+                self.cache_write
+                    .fetch_add(u64::from(*cache_write_tokens), Ordering::Relaxed);
+            }
+            StreamEvent::Result { total_cost_usd, .. } => {
+                self.cost_bits
+                    .store(total_cost_usd.to_bits(), Ordering::Relaxed);
+                self.saw_result.store(true, Ordering::Relaxed);
+            }
+            _ => {}
+        }
+    }
+
+    /// Whether anything worth persisting was observed.
+    fn has_usage(&self) -> bool {
+        self.saw_result.load(Ordering::Relaxed)
+            || self.input.load(Ordering::Relaxed) > 0
+            || self.output.load(Ordering::Relaxed) > 0
+    }
+
+    /// The billed cost captured from the terminal `result` (`0.0` if none).
+    fn cost_usd(&self) -> f64 {
+        f64::from_bits(self.cost_bits.load(Ordering::Relaxed))
+    }
+}
+
+/// Saturating `AtomicU64` → `u32` read, for the `u32` token fields of
+/// [`TurnMetrics`]. Real per-turn counts are far below `u32::MAX`; the clamp is
+/// a defensive guard, not an expected path.
+trait SaturatingU32 {
+    fn saturating_u32(&self) -> u32;
+}
+
+impl SaturatingU32 for AtomicU64 {
+    fn saturating_u32(&self) -> u32 {
+        u32::try_from(self.load(Ordering::Relaxed)).unwrap_or(u32::MAX)
     }
 }
 
@@ -91,8 +233,9 @@ mod tests {
             output_tokens: 120,
             input_tokens: 80,
             cache_read_tokens: 5000,
+            cache_write_tokens: 200,
         };
-        // Cache reads are excluded; only input + output count.
+        // Cache reads/writes are excluded; only input + output count.
         assert_eq!(event_tokens(&ev), 200);
     }
 
@@ -100,5 +243,59 @@ mod tests {
     fn non_usage_events_contribute_no_tokens() {
         assert_eq!(event_tokens(&StreamEvent::Other), 0);
         assert_eq!(event_tokens(&StreamEvent::Status("x".into())), 0);
+    }
+
+    fn usage(output: u32, input: u32, read: u32, write: u32) -> StreamEvent {
+        StreamEvent::TokenUsage {
+            output_tokens: output,
+            input_tokens: input,
+            cache_read_tokens: read,
+            cache_write_tokens: write,
+        }
+    }
+
+    fn result(cost: f64) -> StreamEvent {
+        StreamEvent::Result {
+            session_id: "s".into(),
+            subtype: "success".into(),
+            final_text: String::new(),
+            total_cost_usd: cost,
+            num_turns: 3,
+        }
+    }
+
+    #[test]
+    fn accrual_sums_token_deltas_across_events() {
+        let acc = UsageAccrual::default();
+        acc.observe(&usage(100, 3, 16_000, 6_000));
+        acc.observe(&usage(50, 1, 22_000, 100));
+        assert_eq!(acc.output.saturating_u32(), 150);
+        assert_eq!(acc.input.saturating_u32(), 4);
+        assert_eq!(acc.cache_read.saturating_u32(), 38_000);
+        assert_eq!(acc.cache_write.saturating_u32(), 6_100);
+    }
+
+    #[test]
+    fn accrual_captures_billed_cost_from_result() {
+        let acc = UsageAccrual::default();
+        acc.observe(&usage(10, 1, 0, 0));
+        acc.observe(&result(0.047_891_6));
+        assert!((acc.cost_usd() - 0.047_891_6).abs() < f64::EPSILON);
+        assert!(acc.has_usage());
+    }
+
+    #[test]
+    fn accrual_reports_no_usage_when_empty() {
+        let acc = UsageAccrual::default();
+        assert!(!acc.has_usage());
+        assert_eq!(acc.cost_usd(), 0.0);
+    }
+
+    #[test]
+    fn accrual_has_usage_on_result_even_with_zero_tokens() {
+        let acc = UsageAccrual::default();
+        acc.observe(&result(0.0));
+        // A completed run that happened to spend nothing is still a real turn.
+        assert!(acc.has_usage());
     }
 }

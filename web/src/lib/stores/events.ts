@@ -10,7 +10,7 @@
  * `recordEvent` is called from the agents store's `applyMessage`, so every
  * frame — WebSocket or mock — flows through here exactly once.
  */
-import { writable, derived, type Readable } from 'svelte/store';
+import { writable } from 'svelte/store';
 import type { AgentEvent, BudgetScope } from '$lib/types';
 
 /** A single entry in the live feed, normalized for rendering. */
@@ -154,10 +154,3 @@ export function recordEvent(ev: AgentEvent) {
 export function dismissBudgetAlert(seqId: number) {
   budgetAlerts.update((a) => a.filter((x) => x.seq !== seqId));
 }
-
-/** Per-kind rolling counts for the Pulse tab's mini-histogram. */
-export const pulseKindCounts: Readable<Record<string, number>> = derived(pulse, ($pulse) => {
-  const counts: Record<string, number> = {};
-  for (const e of $pulse) counts[e.kind] = (counts[e.kind] ?? 0) + 1;
-  return counts;
-});

@@ -1,14 +1,19 @@
 # Lopi for macOS
 
 A native **SwiftUI** dashboard for [lopi](../). It is a client of a running
-`lopi sail` server — it speaks the same REST + WebSocket API the web "Forge"
-dashboard uses, so the two stay in feature-parity, and adds OpenClaw-style
-extras (cron scheduling, a menu-bar companion, admin panels).
+`lopi sail` server — it speaks the same REST + WebSocket API the web dashboard
+uses, so the two stay in *data* parity, and adds OpenClaw-style extras (cron
+scheduling, a menu-bar companion, admin panels). Since the web nav collapse
+(Unify-2), several of those admin panels — Tasks, Tools, Health, Patterns,
+Audit, Dashboard — are deliberately **native-exclusive**: the web folded them
+into Overview or cut them, macOS keeps them as first-class screens.
 
-> Status: **Phase 1–2 + Cron** of the plan in
-> `LOPI_MACOS_UI_PLAN` — networking core, Konjo theme, app shell, menu-bar
-> companion, dashboard, tasks, and the cron screen. Remaining admin panels are
-> stubbed and wired into navigation.
+> Status: **all 13 nav sections live.** Ops-2 swept every section against a
+> running `lopi sail` and found **12 of 13 fully wired**; the 13th
+> (Constellations) was the one broken screen and has since been removed, leaving
+> 12 wired sections. Networking core, Konjo theme, app shell, menu-bar
+> companion, dashboard, tasks, cron, and every admin panel are implemented and
+> backed by live API calls — none are stubs.
 
 ## Requirements
 
@@ -65,5 +70,5 @@ AppModel (@Observable)  ← single source of UI state
 | Tasks         | `/api/tasks`, `/api/tasks/:id`, `/api/tasks/:id/logs`, `/api/tasks/:id/stream` |
 | Cron          | `/api/schedules` (+ `:id`, `/enable`, `/disable`, `/run-now`) |
 | Settings      | `/api/version`, `/api/config` |
-| Admin (stubs) | `/api/tasks/dead-letter`, `/api/tools`, `/api/agents/health/summary`, `/api/audit`, `/api/patterns` |
+| Admin panels  | `/api/tasks/dead-letter`, `/api/tools`, `/api/agents/health/summary`, `/api/audit`, `/api/patterns` |
 ```

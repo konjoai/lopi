@@ -5,6 +5,54 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## Polish-1 — close bug #3, purge cut-feature remnants, resolve the two open decisions
+
+**Cost/token accrual: persist on the CLI path, and the invariant is "one turn,
+one writer."** Bug #3 (`/api/stats` and per-task cost read `$0`) was not a
+display bug — the whole read side (`daily_token_totals`, `run_turn_aggregates`)
+correctly sums `turn_metrics`, but the **billed CLI path never wrote a row**.
+The load-bearing choice was to persist from `runner/stream.rs` after each
+streamed call completes, accruing token deltas + the terminal `result`'s
+authoritative billed `total_cost_usd`, **not** to re-estimate cost at the read
+layer. The correctness invariant to preserve in later sprints: a given turn is
+recorded by *exactly one* path — the direct-API planning path (`api_plan.rs`)
+records its own planning turn, the CLI path records the implement turn (and the
+plan turn when direct-API isn't configured), and the two never overlap for the
+same turn. Per-task `cost` is *derived* from `turn_metrics` (`task_costs()`),
+deliberately not a new `tasks.cost` column — single source of truth, no
+write-path to keep in sync.
+
+**The cut is web-only; the macOS admin panels are a platform-exclusive surface,
+not remnants to purge.** This is the boundary a future cleanup must not cross.
+Unify-2 collapsed the *web* nav; the same feature names (Tasks, Tools, Health,
+Patterns, Audit, Dashboard) survive on macOS as first-class native panels that
+Ops-2 verified live (12 of 13 wired). Removing them from macOS would be *opening
+a new decision*, not finishing an existing one — explicitly out of scope. So the
+Phase-1 sweep deleted only genuinely-orphaned web client code (components with
+no importers, `api.ts` wrappers with no callers) and corrected docs, while
+leaving every backend route those panels depend on intact.
+
+**Dashboard: kept, decided against current reality.** The original theory was
+"Overview absorbs Dashboard." But Dashboard is macOS-only and Overview is
+web-only — they never shared a platform, so Overview cannot absorb Dashboard's
+job for a native user. Now that Overview's bucketing is fixed (Fix-1) it covers
+the *web's* need; macOS keeps Dashboard as its richer at-a-glance cognition grid
+(correct buckets off `/api/stats`, cost tiles fixed by Phase 0). Cutting it would
+leave the native app with no rollup at all. The original plan predated knowing
+Overview would ship web-only.
+
+**Orb-parity: standardize on the compact per-pane orb — resolved, not deferred a
+third time.** Web already replaced its hero orb with a compact per-card `OrbDot`
+(a status dot); macOS still rendered a 120–300pt Metal orb per live pane, which
+does not scale once several panes are visible — the exact multipane case Unify-2
+built the grid for. Chose the compact treatment (orb-as-status-indicator
+everywhere, Unify-2's actual intent) over the single-hero Metal orb: the macOS
+live-pane orb is now a small status indicator; the idle launcher keeps a larger
+orb because it's a single-pane launch affordance, not the crowded grid. macOS is
+authored on Linux and built on the M3 per this repo's standing convention, so
+the visual sizing is pending an on-device confirmation — but the *direction* is
+decided, not deferred.
+
 ## Unify-2 — one pane primitive, one status vocabulary, one rollup, a four-item nav
 
 **The orb is the single status vocabulary — the `.runtag` badge is retired, not

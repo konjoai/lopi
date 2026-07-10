@@ -2,8 +2,8 @@
  * Excitement envelope — the shared math behind the orb's "incoming request"
  * reaction (shake → fast spin → orange glow → settle).
  *
- * Both the Forge centerpiece and the Constellation bodies consume this so
- * the reaction reads as one visual language everywhere.
+ * Every orb surface — the Forge centerpiece and the per-card OrbDots — consumes
+ * this so the reaction reads as one visual language everywhere.
  */
 
 /** How long a single stimulus burns, in milliseconds. */

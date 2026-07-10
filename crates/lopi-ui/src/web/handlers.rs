@@ -38,13 +38,15 @@ pub(super) async fn get_stats(State(s): State<AppState>) -> impl IntoResponse {
 
 pub(super) async fn list_tasks(State(s): State<AppState>) -> Json<Value> {
     let rows = s.store.load_history(100).await.unwrap_or_default();
+    let costs = s.store.task_costs().await.unwrap_or_default();
     let body: Vec<_> = rows
         .into_iter()
         .map(|t| {
+            let cost = costs.get(&t.id).copied().unwrap_or(0.0);
             json!({
                 "id": t.id, "goal": t.goal, "status": t.status,
                 "created_at": t.created_at, "completed_at": t.completed_at,
-                "client_ref": t.client_ref,
+                "client_ref": t.client_ref, "cost": cost,
             })
         })
         .collect();
@@ -57,15 +59,25 @@ pub(super) async fn get_task(
 ) -> impl IntoResponse {
     let rows = s.store.load_history(500).await.unwrap_or_default();
     match rows.into_iter().find(|t| t.id.starts_with(&id)) {
-        Some(t) => (
-            StatusCode::OK,
-            Json(json!({
-                "id": t.id, "goal": t.goal, "status": t.status,
-                "created_at": t.created_at, "completed_at": t.completed_at,
-                "client_ref": t.client_ref,
-            })),
-        )
-            .into_response(),
+        Some(t) => {
+            let cost = s
+                .store
+                .task_costs()
+                .await
+                .unwrap_or_default()
+                .get(&t.id)
+                .copied()
+                .unwrap_or(0.0);
+            (
+                StatusCode::OK,
+                Json(json!({
+                    "id": t.id, "goal": t.goal, "status": t.status,
+                    "created_at": t.created_at, "completed_at": t.completed_at,
+                    "client_ref": t.client_ref, "cost": cost,
+                })),
+            )
+                .into_response()
+        }
         None => (
             StatusCode::NOT_FOUND,
             Json(json!({ "error": "task not found" })),

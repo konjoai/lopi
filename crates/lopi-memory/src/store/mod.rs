@@ -402,3 +402,5 @@ pub use verifier::VerifierVerdictRow;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod lessons_tests;

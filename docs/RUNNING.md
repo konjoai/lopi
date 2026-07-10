@@ -128,9 +128,17 @@ hidden off-canvas sidebar (hamburger, top-left).
 
 ### The routes (sidebar nav)
 
-`/` → `/stacks` · then `/forge`, `/fleet`, `/constellation`, `/pulse`,
-`/budget`, `/tasks`, `/router`, `/schedules`, `/loop`, `/stacks`, `/tools`,
-`/logs`, `/config`, `/debug` (plus a hidden `/onboard`).
+Unify-2 collapsed the old fifteen-tab nav to **six** live destinations. `/` →
+`/stacks`, then the sidebar lists:
+
+`/stacks` (Loop Stack) · `/loop` (Loop) · `/budget` (Budget) ·
+`/schedules` (Scheduling) · `/overview` (Overview) · `/config` (Configuration)
+— plus a hidden `/onboard`.
+
+Fleet, Pulse, Dashboard and the standalone Tasks page were merged into Overview;
+Constellation, Router, Logs, Tools, Patterns and the Debug sub-panels were cut
+outright. Their native equivalents survive as platform-exclusive admin panels in
+the macOS app (see [`../macos/README.md`](../macos/README.md)).
 
 ### Web dev server (hot reload)
 
@@ -143,7 +151,7 @@ npm run dev            # http://localhost:5173, proxies /api + /ws to :3000
 
 If `lopi sail` is running on `:3000`, the dev UI connects to it. If not, it
 renders on simulated mock data. **Live mock data** is opt-in on any route via
-`?demo=1` (e.g. <http://127.0.0.1:3000/forge?demo=1>) — used for the animated
+`?demo=1` (e.g. <http://127.0.0.1:3000/stacks?demo=1>) — used for the animated
 screenshots below.
 
 ### Driving a stack to a running / goal state (demo)
@@ -181,39 +189,30 @@ Chromium. Files live in [`screenshots/web/`](screenshots/web).
 |---|---|---|
 | ![dock collapsed](screenshots/web/stacks-dock-collapsed.png) | ![dock expanded](screenshots/web/stacks-dock-expanded.png) | ![goal surface](screenshots/web/stacks-goal-surface.png) |
 
-**The Forge & live visualizers** (`?demo=1` = mock agents in flight)
+**The Loop Stack grid & live orb** (`?demo=1` = mock agents in flight)
 
-| Forge (empty) | Forge — 4 live panes (demo) |
+The Loop Stack hosts its panes in the full-viewport auto-tiling grid; a one-card
+pane reads like the old Forge box, so the Forge capture below stands in for the
+primary running-agent surface.
+
+| Forge/grid (empty) | Forge/grid — 4 live panes (demo) |
 |---|---|
 | ![forge](screenshots/web/forge.png) | ![forge demo](screenshots/web/forge-demo-running.png) |
 
-| Fleet — agents in flight (demo) | Constellation — orbital view (demo) |
-|---|---|
-| ![fleet demo](screenshots/web/fleet-demo-running.png) | ![constellation demo](screenshots/web/constellation-demo-running.png) |
-
-Empty-state variants of the WebGL surfaces are also captured:
-[`fleet.png`](screenshots/web/fleet.png),
-[`constellation.png`](screenshots/web/constellation.png).
-
 **Every other nav destination**
 
-| Budget | Tasks | Router | Schedules |
+| Budget | Schedules | Loop | Config |
 |---|---|---|---|
-| ![budget](screenshots/web/budget.png) | ![tasks](screenshots/web/tasks.png) | ![router](screenshots/web/router.png) | ![schedules](screenshots/web/schedules.png) |
+| ![budget](screenshots/web/budget.png) | ![schedules](screenshots/web/schedules.png) | ![loop](screenshots/web/loop.png) | ![config](screenshots/web/config.png) |
 
-| Loop | Tools | Logs | Config |
-|---|---|---|---|
-| ![loop](screenshots/web/loop.png) | ![tools](screenshots/web/tools.png) | ![logs](screenshots/web/logs.png) | ![config](screenshots/web/config.png) |
+| Onboard (hidden) |
+|---|
+| ![onboard](screenshots/web/onboard.png) |
 
-| Debug | Onboard |
-|---|---|
-| ![debug](screenshots/web/debug.png) | ![onboard](screenshots/web/onboard.png) |
-
-> **`/pulse` is not embedded** — its live canvas reliably crashes headless
-> Chromium in this environment's software GL renderer, so it could not be
-> rasterized here. The route itself is healthy (`GET /pulse` → `200`, DOM
-> mounts); it renders normally in a real browser. See
-> [Known issues](#known-issues).
+> Screenshots for the cut surfaces (Fleet, Constellation, Router, Tasks, Tools,
+> Logs, Debug, Pulse) were removed with those routes. Overview — the rollup that
+> replaced Fleet + Dashboard + Pulse — is a list-style surface reachable at
+> `/overview`.
 
 ---
 
@@ -292,43 +291,37 @@ but divergent screens.** Because the macOS app is a pure client of the same
 `lopi sail` REST + WS API, it is inherently in *data* parity. On *features*:
 
 - **Shared screens** (both surfaces): Forge (live cockpit / panes), Budget,
-  Tasks, Loop, Constellation(s), Tools, Config.
-- **macOS-only screens:** Dashboard, Cron, Dead-Letter, Health, Patterns,
-  Audit, plus a **menu-bar companion** — the OpenClaw-style admin extras.
-  (macOS nav enum: `Forge, Dashboard, Budget, Tasks, Cron, Loop,
-  Constellations, Dead-Letter, Tools, Health, Patterns, Audit, Config` —
+  Loop, Config.
+- **macOS-only screens:** Dashboard, Tasks, Cron, Dead-Letter, Tools, Health,
+  Patterns, Audit, plus a **menu-bar companion** — the OpenClaw-style admin
+  extras that the web nav collapse (Unify-2) folded into Overview or cut, but
+  which survive here as deliberately platform-exclusive native panels. Ops-2
+  swept all of them live: **12 of 13 sections fully wired** (the 13th,
+  Constellations, was the one broken screen and has since been removed).
+  (macOS nav enum: `Forge, Dashboard, Budget, Tasks, Cron, Loop, Dead-Letter,
+  Tools, Health, Patterns, Audit, Config` —
   [`macos/Lopi/Views/RootView.swift`](../macos/Lopi/Views/RootView.swift).)
-- **Web-only screens:** **Stacks** (the loop-stack composer — the web app's
-  *current default view* and the B1 goal-directed-stacks feature), Fleet,
-  Pulse, Router, Schedules-as-UI, Logs, Debug.
-- Status per [`macos/README.md`](../macos/README.md): "Phase 1–2 + Cron" —
-  networking core, theme, app shell, menu-bar, dashboard, tasks, cron; several
-  admin panels are stubbed and wired into nav.
+- **Web-only screens:** **Loop Stack** (`/stacks` — the loop-stack composer and
+  the web default) and **Overview** (`/overview` — the read-only rollup that
+  replaced Fleet + Dashboard + Pulse). Fleet, Pulse, Constellation, Router,
+  Logs and the Debug sub-panels are **cut everywhere**, not pending ports.
 
-**Bottom line for a "macOS parity" decision:** A native macOS app **exists** and
-mirrors lopi's core cockpit (Forge/live sessions/tasks/loop) while *adding*
-admin surfaces the web lacks. The gap is the **newest** web work — most
-notably the **Stacks** loop-composer (now the web default) and the
-Fleet/Pulse/Router/Logs/Debug views — which the native app does not yet have. A
-follow-up parity sprint would be about porting **Stacks + the goal-directed
-run surface** (and the newer visualizers) into the macOS app, not about
-building a macOS UI from scratch. Meanwhile, the "macOS version" that ships
-today is the web dashboard in a browser plus the TUI; the native app is a
-real-but-partial superset-on-admin / subset-on-newest-loop-UI client.
+**Bottom line for a "macOS parity" decision:** A native macOS app **exists**,
+builds (`xcodebuild -scheme Lopi` → BUILD SUCCEEDED, Ops-2), and mirrors lopi's
+core cockpit while *adding* admin surfaces the web collapsed away. The remaining
+gap is the web's **Loop Stack** composer and **Overview** rollup, which the
+native app does not yet have. A follow-up parity sprint would port those into
+macOS, not build a macOS UI from scratch.
 
 ---
 
 ## Known issues
 
-- **macOS app not buildable on Linux.** This ops run executed on Linux, so the
-  native macOS app was inventoried from source (it requires Xcode + macOS 14+).
-  Its build commands above are transcribed from `macos/README.md` /
-  `RUN_MULTIPANE.md`, not executed here.
-- **`/pulse` could not be screenshotted headlessly.** Its live event-waveform
-  canvas crashes the headless Chromium renderer (software GL) within ~1s every
-  time, across GPU/WebGL flag combinations. The route is server-healthy
-  (`GET /pulse` → `200`) and renders fine in a real browser — this is a
-  headless-CI rendering limitation, not a lopi bug. Every other route captured.
+- **macOS app requires Xcode + macOS 14+ to build.** Web-based ops runs execute
+  on Linux and inventory the native app from source; the build commands above
+  are transcribed from `macos/README.md` / `RUN_MULTIPANE.md`. On a real macOS
+  host the app builds and runs — Ops-2 confirmed `xcodebuild -scheme Lopi` →
+  BUILD SUCCEEDED, launching and connecting to `lopi sail` on `:3000`.
 - **Screenshots use `?demo=1` mock data, not live agents.** Seeding real
   sessions spawns real `claude -p` streams that bill against the subscription;
   to keep this ops run non-mutating and zero-cost, the animated captures use
