@@ -1,5 +1,45 @@
 # Changelog
 
+## [Unreleased] — Unify-1: collapse Forge into the loop-stack primitive
+
+Forge stops being a separate launch path. This is **Phase 1 of the Unify-1
+sprint** — unifying the launch call.
+
+### Phase 1 — one launch call (`createTask`)
+A Forge-style pane's composer used to submit through its own `postTask()`
+helper (`stores/agents.ts`), a second REST path distinct from the `createTask()`
+a loop-stack card's launch takes. `postTask` — and its `buildConstraints` /
+`TaskOptions` helpers — is retired. `AgentPane` now builds its payload with the
+new pure `paneSubmitPayload()` (`stores/stack.ts`) and submits via the same
+`createTask()` call, the identical `POST /api/tasks` a stack card uses.
+
+- **A bare prompt stays bare.** `paneSubmitPayload` carries only what the pane's
+  launch controls actually set — goal/repo/priority, plus optional model/effort
+  and an optional branch — and forces none of the stack-loop semantics
+  (`max_iterations`/`on_fail`/`gate`/`until`/`acceptance`/`client_ref`).
+- **Model/effort become first-class.** They now flow as real
+  `CreateTaskOptions` fields instead of prompt constraints, so every prompt box
+  gains structural access to the same guardrail/eval/model overrides a stack
+  card has — the point of the collapse.
+- **Branch keeps its channel.** Surfaced as a planning constraint via a new
+  `CreateTaskOptions.constraints` field mirroring the Rust
+  `CreateTaskRequest.constraints` — the exact channel `postTask` used.
+- Table-driven tests prove a bare pane prompt produces the identical
+  `CreateTaskRequest` shape a one-card stack launch would for the same inputs.
+
+### Live-verification note
+The sprint's Phase 0/5 discipline requires each phase be proven against a real
+`claude -p` process spawned by a running `sail` server. That live E2E could not
+be reproduced in the headless CI sandbox this change was authored in: lopi's
+`scrub_inherited_anthropic_env` strips `ANTHROPIC_BASE_URL` (the sandbox's only
+claude auth) from every spawn, and there is no interactive `~/.claude`
+subscription login present, so a `sail`-spawned claude loses its credentials.
+Standalone `claude -p` works; the unified endpoint (`POST /api/tasks`) is the
+same one `RUN_MULTIPANE.md` documents as the real live path. Phase 1 is proven
+structurally (table-driven parity test) and by the full web suite + `svelte-check`
++ production build; the live baseline must be captured by an operator running
+`cargo run -- sail` with subscription auth. Phases 2–5 remain.
+
 ## [0.2.6] — Goal-directed stacks (B1): run the chain until the goal is met 🎯
 
 Turns a stack from "run the chain ×N" into "**run the chain until its acceptance
