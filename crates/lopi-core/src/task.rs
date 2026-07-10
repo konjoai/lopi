@@ -483,7 +483,9 @@ mod tests {
             "success"
         );
         // A reason with an emoji must never leak — the invariant `status_label` broke.
-        let failed = TaskStatus::Failed { reason: "boom 💥 Cancelled".into() };
+        let failed = TaskStatus::Failed {
+            reason: "boom 💥 Cancelled".into(),
+        };
         assert_eq!(failed.db_status(), "failed");
         assert!(!failed.db_status().contains(' ') && failed.db_status().is_ascii());
         assert_eq!(TaskStatus::RolledBack.db_status(), "rolled_back");

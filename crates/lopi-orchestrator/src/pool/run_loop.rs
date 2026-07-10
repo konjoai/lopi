@@ -497,7 +497,10 @@ async fn run_one(
         // Canonical status token — one vocabulary shared with the API and the
         // web snapshot bucketing. `db_status` covers every variant, so there's
         // no `"unknown"` fallthrough to mis-bucket.
-        store.mark_completed(&task_id, outcome.db_status()).await.ok();
+        store
+            .mark_completed(&task_id, outcome.db_status())
+            .await
+            .ok();
         if let Err(e) = store.mine_patterns(&task_id, &goal).await {
             warn!("pattern mining failed: {e}");
         }

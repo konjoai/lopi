@@ -380,7 +380,10 @@ async fn config_endpoint_reflects_loaded_config() {
     assert_eq!(resp.status(), StatusCode::OK);
     let json = json_body(resp).await;
     assert_eq!(json["source"], "file");
-    assert_eq!(json["config"]["lopi"]["db_path"], "/tmp/lopi-cfg-surfacing-test.db");
+    assert_eq!(
+        json["config"]["lopi"]["db_path"],
+        "/tmp/lopi-cfg-surfacing-test.db"
+    );
 }
 
 #[tokio::test]
