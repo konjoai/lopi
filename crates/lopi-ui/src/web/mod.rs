@@ -1,7 +1,7 @@
 use anyhow::Result;
 use axum::{middleware, routing::get, Router};
 use dashmap::DashMap;
-use lopi_core::{AgentEvent, EventBus};
+use lopi_core::{AgentEvent, EventBus, LopiConfig};
 use lopi_memory::MemoryStore;
 use lopi_orchestrator::{AgentPool, TaskQueue};
 use lopi_ratelimit::TokenBucket;
@@ -64,6 +64,12 @@ pub struct AppState {
     auth_token: Option<Arc<str>>,
     /// Per-IP token-bucket rate limiter for API endpoints.
     rate_limiter: Arc<DashMap<IpAddr, TokenBucket>>,
+    /// The effective config the server was started with — from `--config` or
+    /// the standard search — or `None` when no `lopi.toml` was loaded. Surfaced
+    /// (secrets redacted) by `GET /api/config` so the endpoint reflects what is
+    /// actually in effect rather than independently re-discovering a file and
+    /// disagreeing with the running server (Ops-2 bug #6).
+    config: Option<Arc<LopiConfig>>,
 }
 
 impl AppState {
@@ -178,7 +184,17 @@ impl AppState {
             patterns_cache: Arc::new(Mutex::new(TtlCache::new(Duration::from_secs(30)))),
             auth_token: auth_token.map(|t| Arc::from(t.as_str())),
             rate_limiter: Arc::new(DashMap::new()),
+            config: None,
         }
+    }
+
+    /// Record the effective config the server was started with, so
+    /// `GET /api/config` reflects what's in effect. `None` leaves the endpoint
+    /// reporting `source: "none"`.
+    #[must_use]
+    pub fn with_config(mut self, config: Option<LopiConfig>) -> Self {
+        self.config = config.map(Arc::new);
+        self
     }
 
     /// Hydrate the tool registry from its on-disk path. Call this from an
@@ -362,6 +378,7 @@ pub async fn serve(
         port,
         auth_token,
         std::path::PathBuf::from("."),
+        None,
     )
     .await
 }
@@ -392,8 +409,10 @@ pub async fn serve_with_repo(
     port: u16,
     auth_token: Option<String>,
     repo_path: std::path::PathBuf,
+    config: Option<LopiConfig>,
 ) -> Result<()> {
-    let mut state = AppState::new_with_repo(store, bus, queue, pool, auth_token, repo_path);
+    let mut state =
+        AppState::new_with_repo(store, bus, queue, pool, auth_token, repo_path).with_config(config);
     warm_up_state(&mut state).await;
     let app = build_app(state);
 

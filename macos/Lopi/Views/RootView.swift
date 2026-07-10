@@ -8,7 +8,6 @@ enum NavSection: String, CaseIterable, Identifiable {
     case tasks = "Tasks"
     case cron = "Cron"
     case loop = "Loop"
-    case constellations = "Constellations"
     case deadLetter = "Dead-Letter"
     case tools = "Tools"
     case health = "Health"
@@ -26,7 +25,6 @@ enum NavSection: String, CaseIterable, Identifiable {
         case .tasks: return "list.bullet.rectangle"
         case .cron: return "clock.arrow.circlepath"
         case .loop: return "arrow.triangle.2.circlepath"
-        case .constellations: return "circle.hexagongrid"
         case .deadLetter: return "tray.full"
         case .tools: return "wrench.and.screwdriver"
         case .health: return "heart.text.square"
@@ -104,6 +102,13 @@ struct RootView: View {
     private func navRow(_ section: NavSection) -> some View {
         let selected = (selection ?? .forge) == section
         return Button {
+            // Clear any stale error banner when navigating. The banner is a
+            // single shared slot with no auto-dismiss, so a decode/fetch error
+            // raised on one section would otherwise stay pinned over every
+            // other section's header until manually closed (the "sticky toast"
+            // Ops-2 saw from the dead Constellations fetch). Removing that view
+            // deletes the trigger; clearing here hardens the general case.
+            model.banner = nil
             selection = section
         } label: {
             HStack(spacing: 10) {
@@ -218,7 +223,6 @@ struct RootView: View {
         case .tasks: TasksView()
         case .cron: CronView()
         case .loop: LoopView()
-        case .constellations: ConstellationsView()
         case .deadLetter: DeadLetterView()
         case .tools: ToolsView()
         case .health: HealthView()

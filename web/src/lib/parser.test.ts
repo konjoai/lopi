@@ -16,7 +16,8 @@ import {
   parseAgentEvent,
   parseSnapshot,
   taskStatusToPhase,
-  isTerminalStatus
+  isTerminalStatus,
+  dbStatusToUiStatus
 } from './parser';
 import type { Phase } from './types';
 import { readFileSync } from 'node:fs';
@@ -338,6 +339,47 @@ eq((decoded[3] as any)?.utilization, 0.92, 'golden api_retry utilization');
 eq((decoded[4] as any)?.session_id, '4fa68a55-05cf-4878-aa2f-d0edaec6b8a6', 'golden cost session_id');
 eq((decoded[4] as any)?.num_turns, 3, 'golden cost num_turns');
 eq(decoded[5], { type: 'phase', task_id: TID, phase: 'review_ready' }, 'golden phase');
+
+// ── dbStatusToUiStatus (Ops-2 bug #1 regression) ───────────────────────────
+// The backend persists canonical LOWERCASE tokens (`TaskStatus::db_status`).
+// A fresh page load buckets terminal tasks off the snapshot alone, so every
+// one of these must land in its real lifecycle bucket — not fall through to
+// `running` the way the old capitalized-only match did.
+console.log('\n── dbStatusToUiStatus ─────────────────────────────────');
+eq(dbStatusToUiStatus('queued'), 'queued', 'db queued → queued');
+eq(dbStatusToUiStatus('running'), 'running', 'db running → running');
+eq(dbStatusToUiStatus('planning'), 'running', 'db planning → running');
+eq(dbStatusToUiStatus('implementing'), 'running', 'db implementing → running');
+eq(dbStatusToUiStatus('testing'), 'running', 'db testing → running');
+eq(dbStatusToUiStatus('scoring'), 'running', 'db scoring → running');
+eq(dbStatusToUiStatus('retrying'), 'running', 'db retrying → running');
+eq(dbStatusToUiStatus('awaiting_plan_approval'), 'running', 'db awaiting → running');
+eq(dbStatusToUiStatus('success'), 'completed', 'db success → completed');
+eq(dbStatusToUiStatus('failed'), 'failed', 'db failed → failed');
+eq(dbStatusToUiStatus('rolled_back'), 'failed', 'db rolled_back → failed');
+eq(dbStatusToUiStatus('conflict'), 'failed', 'db conflict → failed');
+eq(dbStatusToUiStatus('cancelled'), 'cancelled', 'db cancelled → cancelled');
+// Serde enum shapes from live task_completed events map identically.
+eq(dbStatusToUiStatus({ Success: { branch: 'b', pr_url: null } }), 'completed', 'enum Success → completed');
+eq(dbStatusToUiStatus({ Failed: { reason: 'boom' } }), 'failed', 'enum Failed → failed');
+eq(dbStatusToUiStatus('RolledBack'), 'failed', 'enum RolledBack → failed');
+eq(dbStatusToUiStatus('Queued'), 'queued', 'enum Queued → queued');
+// The compound legacy artifact that broke bucketing must NOT read as running.
+eq(dbStatusToUiStatus('unknown'), 'failed', 'legacy unknown → failed');
+
+// A snapshot of terminal DB rows buckets correctly end-to-end: parse then map.
+const termSnap = parseSnapshot({
+  type: 'snapshot',
+  tasks: [
+    { id: 's', goal: 'ok', status: 'success', created_at: '2026-05-06T12:00:00Z' },
+    { id: 'f', goal: 'no', status: 'failed', created_at: '2026-05-06T12:00:00Z' },
+    { id: 'q', goal: 'wait', status: 'queued', created_at: '2026-05-06T12:00:00Z' }
+  ],
+  stats: { running: 0, queued: 1, succeeded: 1, failed: 1, uptime_secs: 9 }
+});
+assertNotNull(termSnap, 'terminal snapshot parses');
+const mapped = (termSnap as any).tasks.map((t: any) => dbStatusToUiStatus(t.status));
+eq(mapped, ['completed', 'failed', 'queued'], 'snapshot terminal rows bucket off canonical strings');
 
 console.log(`\n── Result: ${pass} passed, ${fail} failed ──`);
 if (fail > 0) process.exit(1);

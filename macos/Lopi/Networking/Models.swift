@@ -155,9 +155,17 @@ struct CreateTaskBody: Codable {
     var allowedDirs: [String]?
     var forbiddenDirs: [String]?
     var maxRetries: Int?
+    /// Worker-model override. Sent as the real `model` field the backend's
+    /// `select_model` honors verbatim — previously the picked model was folded
+    /// into a free-text constraint the runner ignored, so it fell back to the
+    /// complexity heuristic and the running model never matched the label the
+    /// pane showed (Ops-2 finding #7).
+    var model: String? = nil
+    /// Reasoning-effort hint. Real `effort` field, same rationale as `model`.
+    var effort: String? = nil
 
     enum CodingKeys: String, CodingKey {
-        case goal, repo, priority, constraints
+        case goal, repo, priority, constraints, model, effort
         case allowedDirs = "allowed_dirs"
         case forbiddenDirs = "forbidden_dirs"
         case maxRetries = "max_retries"

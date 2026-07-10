@@ -180,6 +180,23 @@ impl MemoryStore {
         Ok(())
     }
 
+    /// Transition a task's durable status to `running` when execution begins.
+    ///
+    /// Deliberately does not touch `completed_at` — the row is still in flight.
+    /// This is the single persisted "in flight" marker: without it the row
+    /// stays `queued` for the whole run, so a fresh dashboard load (which only
+    /// has the snapshot to read) mis-reports a running task as queued.
+    ///
+    /// # Errors
+    /// Returns `Err` if the database update fails.
+    pub async fn mark_running(&self, id: &TaskId) -> Result<()> {
+        sqlx::query("UPDATE tasks SET status = 'running' WHERE id = ?1")
+            .bind(id.0.to_string())
+            .execute(&self.write_pool)
+            .await?;
+        Ok(())
+    }
+
     /// Persist an agent attempt record.
     ///
     /// # Errors

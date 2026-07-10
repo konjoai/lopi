@@ -8,10 +8,10 @@ Rust 2021 · tokio · axum · ratatui · sqlx/SQLite · teloxide · git2 · clap
 ## Commands
 ```bash
 cargo build                    # build workspace (also installs git hooks via cargo-husky)
-cargo test                     # run all crate tests
-cargo nextest run              # faster test runner (preferred)
+cargo test --workspace         # run all crate tests (the standard runner — what CI + hooks use)
+cargo nextest run              # optional faster runner; install first: cargo install cargo-nextest
 cargo clippy -- -D warnings    # lint
-cargo llvm-cov nextest         # tests + coverage report
+cargo llvm-cov nextest         # tests + coverage report (needs cargo-nextest + cargo-llvm-cov)
 cargo audit                    # security advisory check
 cargo deny check               # license + advisory + bans
 cargo run -- run --goal "fix foo" --repo .  # run a task

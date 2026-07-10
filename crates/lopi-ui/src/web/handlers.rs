@@ -277,14 +277,45 @@ pub(super) fn apply_loop_fields(
     Ok(())
 }
 
+/// Validate a submitted goal at the API boundary, per `.claude/rules/security.md`
+/// ("max goal length, character set constraints"). Rejects:
+/// - empty or whitespace-only goals (Ops-2 bug #5 — `{"goal":""}` spawned a real
+///   agent),
+/// - goals longer than [`MAX_GOAL_LENGTH`] characters,
+/// - goals carrying C0/C1 control characters other than the ordinary
+///   `\n` / `\r` / `\t` whitespace — NUL and ANSI escape sequences have no place
+///   in a natural-language goal and are a log-poisoning / injection vector.
+///
+/// Pure and separate from [`create_task`] so the boundary contract is
+/// table-testable without an HTTP round-trip. Returns the human-readable
+/// rejection reason on failure.
+pub(super) fn validate_goal(goal: &str) -> Result<(), String> {
+    if goal.trim().is_empty() {
+        return Err("goal must not be empty".to_string());
+    }
+    if goal.chars().count() > MAX_GOAL_LENGTH {
+        return Err(format!("goal too long (max {MAX_GOAL_LENGTH} chars)"));
+    }
+    if let Some(c) = goal
+        .chars()
+        .find(|c| c.is_control() && !matches!(c, '\n' | '\r' | '\t'))
+    {
+        return Err(format!(
+            "goal contains a disallowed control character (U+{:04X})",
+            c as u32
+        ));
+    }
+    Ok(())
+}
+
 pub(super) async fn create_task(
     State(s): State<AppState>,
     Json(req): Json<CreateTaskRequest>,
 ) -> impl IntoResponse {
-    if req.goal.len() > MAX_GOAL_LENGTH {
+    if let Err(reason) = validate_goal(&req.goal) {
         return (
             StatusCode::UNPROCESSABLE_ENTITY,
-            Json(json!({"error": format!("goal too long (max {MAX_GOAL_LENGTH} chars)")})),
+            Json(json!({ "error": reason })),
         )
             .into_response();
     }

@@ -50,23 +50,27 @@ final class LaunchControls {
         branch = defaults.string(forKey: "lopi.lc.branch") ?? ""
     }
 
-    /// Build the `CreateTaskBody` for a goal, folding model/effort/branch into
-    /// planning constraints (the channel the backend already appends to the
-    /// agent prompt) rather than inventing task fields that go nowhere.
+    /// Build the `CreateTaskBody` for a goal. Model and effort ride the real
+    /// `model` / `effort` request fields the backend's `select_model` honors
+    /// verbatim, so the model that runs matches the one the pane shows (Ops-2
+    /// finding #7). They used to be folded into free-text planning constraints
+    /// the runner ignored, which is why a small task silently ran on the
+    /// heuristic default (Haiku) despite the pane displaying the picked model.
+    /// Branch has no `CreateTaskRequest` field, so it stays a constraint.
     func body(goal: String, repoOverride: String? = nil) -> CreateTaskBody {
         var constraints: [String] = []
-        constraints.append("Preferred model: \(model)")
-        constraints.append("Reasoning effort: \(effort)")
         if !branch.isEmpty { constraints.append("Target branch: \(branch)") }
         let resolvedRepo = (repoOverride?.isEmpty == false ? repoOverride : nil) ?? (repo.isEmpty ? nil : repo)
         return CreateTaskBody(
             goal: goal,
             repo: resolvedRepo,
             priority: priority,
-            constraints: constraints,
+            constraints: constraints.isEmpty ? nil : constraints,
             allowedDirs: nil,
             forbiddenDirs: nil,
-            maxRetries: nil
+            maxRetries: nil,
+            model: model.isEmpty ? nil : model,
+            effort: effort.isEmpty ? nil : effort
         )
     }
 

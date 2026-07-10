@@ -12,7 +12,7 @@
  */
 import { writable, derived, type Readable } from 'svelte/store';
 import { browser } from '$app/environment';
-import { parseWireMessage, taskStatusToPhase } from '$lib/parser';
+import { parseWireMessage, taskStatusToPhase, dbStatusToUiStatus } from '$lib/parser';
 import { connect, setMessageHandler, initMock, getConnectionState } from './wsClient';
 import { recordEvent } from './events';
 import { recordTranscript, clearTranscript } from './transcript';
@@ -212,23 +212,14 @@ function applyMessage(msg: WireMessage) {
         // of the "deleted sessions reappear" fix.
         if (isDeleted(t.id)) continue;
         const phase = taskStatusToPhase(t.status as TaskStatus | string);
-        const terminal =
-          typeof t.status === 'string'
-            ? t.status === 'RolledBack'
-            : typeof t.status === 'object' && t.status !== null
-              ? 'Success' in t.status || 'Failed' in t.status
-              : false;
         next.set(t.id, {
           ...makeBlank(t.id),
           goal: t.goal,
           phase,
-          status: terminal
-            ? typeof t.status === 'object' && t.status !== null && 'Failed' in t.status
-              ? 'failed'
-              : 'completed'
-            : typeof t.status === 'string' && t.status === 'Queued'
-              ? 'queued'
-              : 'running',
+          // Single status vocabulary shared with live events (Ops-2 bug #1):
+          // the snapshot carries the backend's canonical lowercase token, which
+          // the old inline logic only matched in its capitalized enum spelling.
+          status: dbStatusToUiStatus(t.status as TaskStatus | string),
           taskStatus: t.status as TaskStatus | string,
           startedAt: Date.parse(t.created_at) || Date.now()
         });

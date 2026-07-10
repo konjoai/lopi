@@ -5,7 +5,7 @@ use lopi_orchestrator::{AgentPool, TaskQueue};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use crate::util::db_path;
+use crate::util::{db_path, expand_home};
 
 pub async fn run(
     max_agents: usize,
@@ -15,7 +15,13 @@ pub async fn run(
     port: u16,
     cfg: Option<&LopiConfig>,
 ) -> Result<()> {
-    let store = MemoryStore::open(db_path()).await?;
+    // Honor the configured db_path when a config was loaded (via `--config` or
+    // the standard search), falling back to the default location otherwise.
+    // Previously this ignored `cfg` entirely, so `--config` with a custom
+    // db_path silently wrote to `~/.lopi/lopi.db` and left the configured file
+    // at 0 bytes — a data-isolation footgun (Ops-2 bug #6).
+    let db = cfg.map_or_else(db_path, |c| expand_home(c.lopi.db_path.clone()));
+    let store = MemoryStore::open(&db).await?;
     let bus: EventBus<AgentEvent> = EventBus::new(512);
     let queue = TaskQueue::new();
 
@@ -108,7 +114,20 @@ pub async fn run(
         });
     }
 
-    lopi_ui::web::serve_with_repo(store, bus, queue, pool, &host, port, auth_token, repo).await
+    // Pass the effective config so `GET /api/config` reflects what's actually
+    // loaded rather than re-discovering a file independently (Ops-2 bug #6).
+    lopi_ui::web::serve_with_repo(
+        store,
+        bus,
+        queue,
+        pool,
+        &host,
+        port,
+        auth_token,
+        repo,
+        cfg.cloned(),
+    )
+    .await
 }
 
 /// Build the dashboard URL, mapping wildcard bind addresses to a routable

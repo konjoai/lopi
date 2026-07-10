@@ -25,7 +25,7 @@ extension AppModel {
             ?? ([], sinceId)
     }
 
-    // MARK: Patterns / health / constellations
+    // MARK: Patterns / health
 
     func patterns() async -> [PatternModel] {
         await fetch { try await self.client.patterns() } ?? []
@@ -33,10 +33,6 @@ extension AppModel {
 
     func healthSummary() async -> HealthSummary? {
         await fetch { try await self.client.healthSummary() }
-    }
-
-    func constellations() async -> [ConstellationModel] {
-        await fetch { try await self.client.constellations() } ?? []
     }
 
     // MARK: Tools
