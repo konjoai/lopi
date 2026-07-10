@@ -18,6 +18,21 @@ exclude_re = [
     # of its own; a "replace body with Ok(())" mutant can only be killed by a full
     # live-agent harness.
     "run_command\\.rs.*: replace run -> ",
+    # `lopi sail` entry point — the async IO shell sibling of `run_command::run`
+    # and `replay_commands::run`. It opens the store (honoring the unit-tested
+    # `util::expand_home` / `util::db_path` for the path), builds the pool,
+    # seeds schedules, spawns the telegram/scheduler/ctrl-c tasks, and awaits
+    # `serve_with_repo`. Its own status/config logic lives in unit-tested units
+    # (`TaskStatus::db_status`, `expand_home`, the `AppState::with_config` +
+    # `GET /api/config` handler tests); the shell only wires them together, so a
+    # "replace body with Ok(())" mutant can only be killed by a live server harness.
+    "sail_commands\\.rs.*: replace run -> ",
+    # REPL goal-dispatch shell (`repl::dispatch_goal`) — spawns the runner and
+    # the AgentEvent→ReplEvent bridge on background tasks and persists the
+    # terminal status via the unit-tested `TaskStatus::db_status`. No
+    # unit-testable branching of its own; killing a "replace body with Ok(())"
+    # mutant would need a live runner + TUI event loop, same as the entries above.
+    "actions\\.rs.*: replace dispatch_goal -> ",
     # Phase 16.2b — autonomy enforcement. The branching *decisions* live in pure,
     # unit-tested helpers (`pr_decision`, `requires_verifier`, `should_auto_merge`,
     # `plan_gate_applies`, `non_empty_constraint`, `pr_create_args`,
