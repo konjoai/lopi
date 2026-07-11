@@ -1,5 +1,34 @@
 # Changelog
 
+## [Unreleased] — Verify-1: the definitive live audit (docs-only, no behavior change) 🔬
+
+First fully-live, on-device audit (real Claude subscription auth, real billed
+runs — $1.33 across 8 tasks) of the whole surface at `a6e4b5f`/v0.3.2. Every
+prior round ran in Linux CI that structurally could not verify live; this closes
+that gap. Adds [`docs/ops/FEATURE_STATE_FINAL.md`](docs/ops/FEATURE_STATE_FINAL.md)
+(master table) and [`docs/ops/LIVE_UI_STATUS_FINAL.md`](docs/ops/LIVE_UI_STATUS_FINAL.md)
+(report), superseding the Ops-2 versions. Evidence under `docs/screenshots/verify-1/`
+(30 shots) and `docs/videos/verify-1/` (2 headless-Playwright recordings).
+
+- **Centerpiece — concurrency: PASS, zero cross-talk.** Two agents simultaneously
+  (disjoint per-task transcripts — 0 foreign `task_id`, 0 cross-mentions;
+  independent cost) and two Loop Stacks simultaneously (each chains its own cards
+  in order; each pane shows only its own repo's cards; 0 console errors). No
+  concurrency defect found. macOS cross-platform parity **unverified** (machine
+  locked for the unattended run — the one environmental limitation).
+- **Regressions re-verified live:** empty-goal→422 (PASS), clean terminal statuses
+  (PASS), `/overview` bucket counts (PASS), `sail --config` db_path (PASS with a
+  complete config), Constellation integration gone (PASS), no sticky banners (web
+  PASS).
+- **New findings (reported, not fixed — see report):** single-prompt "Forge"
+  launch is unwired in the `/stacks` grid (`paneSubmitPayload` has no caller);
+  `/budget` + `/overview` cost surfaces read $0 while server cost is correct
+  ($1.33); topbar "N live" and `/api/stats` state counters undercount; a partial
+  `--config` is silently swallowed; `tier.rs` still lists cut "Constellation
+  routing"; bogus-id endpoints return 200 (want 404) on `main`.
+- **Verdict: conditional go** — concurrency backbone is solid and unblocks
+  Launch-1; the single-task launch gap (above) folds in as a Launch-1 blocker.
+
 ## [0.3.2] — Polish-1: close bug #3, purge remnants, kill UI cruft 🧹
 
 Runs after Fix-1 (#78) merged. Closes the one Ops-2 finding Fix-1's phase list
