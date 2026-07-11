@@ -1,8 +1,8 @@
 //! Append-only audit log.
 //!
 //! One row per actionable event across the orchestrator: task submit /
-//! dispatch / DLQ entry, constellation decisions, breaker trips, cache
-//! hit / miss, tool register / deregister. The shape of `payload` is
+//! dispatch / DLQ entry, breaker trips, cache hit / miss, tool register /
+//! deregister. The shape of `payload` is
 //! per-action and intentionally schemaless — query tools project the
 //! JSON they care about.
 //!
@@ -28,7 +28,7 @@ pub struct AuditRow {
     /// Stable action label — `task.dispatch`, `task.dead_letter`,
     /// `cache.hit`, `cache.miss`, `breaker.trip`, etc.
     pub action: String,
-    /// Optional subject kind: `task` / `agent` / `constellation` / `tool`.
+    /// Optional subject kind: `task` / `agent` / `tool`.
     pub subject_type: Option<String>,
     /// Optional subject identifier (usually a UUID or name).
     pub subject_id: Option<String>,

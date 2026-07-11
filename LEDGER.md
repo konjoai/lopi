@@ -5,6 +5,46 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## Fix-2 — wire the bare-pane launch, close the Verify-1 fast-follows
+
+**F2's root cause: the single-prompt launch was built pure-and-tested but never
+given a click target.** Unify-1 collapsed Forge's `postTask` into the unified
+`createTask` path and left `paneSubmitPayload` — a deliberately loop-semantics-
+free payload builder for the "one prompt, no stack chrome" case — behind, proven
+by `stack.test.ts`. But Unify-2 then made a 0–1-card pane *bare* (`paneIsBare`),
+and the only host of the run action (`StackControlDock` → `runStack`) renders
+only for non-bare panes. So the launch *logic* existed and the launch *button*
+existed, but never in the same pane: a bare pane could not launch at all. The
+fix keeps that separation intentional — a bare pane gets its own `runBarePane`
+(a single-card, no-chain sibling of `advance` that submits through
+`paneSubmitPayload`, so a bare prompt stays a bare prompt), not the stack dock.
+The invariant to preserve: **the bare path never acquires stack-loop semantics**
+(`max_iterations`/`on_fail`/`gate`/`acceptance`) — that's the whole reason
+`paneSubmitPayload` exists apart from `cardToTaskPayload`.
+
+**F3/F4's real mechanism: `/api/stats` and the WS snapshot counted from a
+*per-pool* in-memory counter, and multi-repo mode runs one pool per repo.**
+`sail --repos` spawns a separate `AgentPool` per extra repo; `s.pool` is only the
+primary. Its `stats()` atomics therefore see only primary-repo tasks — the
+undercount Verify-1 measured ("1 live" while 2 ran; `succeeded` 3 vs 7). The
+load-bearing choice: **the DB is the one cross-pool source of truth**, so counts
+come from `MemoryStore::status_counts` (a `GROUP BY status`), not any pool
+counter — mirroring how per-task cost was already derived from `turn_metrics`
+rather than a pool tally (Polish-1). On the client, the topbar likewise stops
+preferring the WS `poolStats` (same per-pool origin) and counts from the local
+`agents` map, which the shared event bus already makes complete across repos —
+the exact source the Overview buckets used and got right. Future stats consumers
+should read the DB or the local agents map, never a single pool's counters.
+
+**F6's real mechanism: cost was dropped three times on the way to the client.**
+The WS snapshot didn't carry per-task cost; adding it wasn't enough because the
+*defensive* wire parser (`parseWireMessage`) reconstructs each snapshot task from
+a known-field whitelist and silently dropped the new field; only then does the
+reducer read it. All three had to carry `cost` for `/budget` + Overview to
+hydrate real spend. Lesson for future wire fields: the defensive parser is a
+whitelist — a new field on the server is invisible to the client until the
+parser is taught to keep it.
+
 ## Polish-1 — close bug #3, purge cut-feature remnants, resolve the two open decisions
 
 **Cost/token accrual: persist on the CLI path, and the invariant is "one turn,

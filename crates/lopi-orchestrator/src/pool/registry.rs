@@ -27,8 +27,8 @@ impl AgentPool {
         self.capabilities.remove(agent_id).is_some()
     }
 
-    /// Snapshot every agent's capabilities — feeds `/metrics`, the Forge
-    /// fleet panel, and the constellation router.
+    /// Snapshot every agent's capabilities — feeds `/metrics` and the Forge
+    /// fleet panel.
     #[must_use]
     pub fn capabilities_snapshot(&self) -> Vec<(String, Vec<String>)> {
         self.capabilities

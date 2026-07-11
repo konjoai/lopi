@@ -16,6 +16,8 @@
   import StackConnector from './StackConnector.svelte';
   import StackOutput from './StackOutput.svelte';
   import StackControlDock from './StackControlDock.svelte';
+  import { runs, runBarePane } from '$lib/stores/stackRun';
+  import { agents } from '$lib/stores/agents';
   import { ICONS } from './icons';
 
   export let pane: StackPaneState;
@@ -25,6 +27,10 @@
   export let onClose: (() => void) | null = null;
 
   $: paneDefaults = pane.config.defaults;
+  // F2 — a bare pane (≤1 card) has no dock, so it carries its own run button.
+  // Its live phase drives the button label the same way the dock's does.
+  $: barePhase = $runs.get(pane.key)?.phase;
+  $: bareRunning = barePhase === 'running';
   $: scheduleGoverned = perLoopScheduleGoverned(pane.config);
   // Unify-2 §3: a 0- or 1-card pane is a *bare* box (composer + card + orb) that
   // reads like the old Forge pane; the purple stack control dock and inter-card
@@ -100,6 +106,21 @@
 
   {#if !bare}
     <StackControlDock {pane} {index} {repoOptions} />
+  {:else if pane.cards.length >= 1}
+    <!-- F2 — bare pane's own run affordance (no dock at ≤1 card). Runs the
+         single staged card via the loop-semantics-free bare payload. -->
+    <div class="barerun">
+      <button
+        class="barerunbtn"
+        type="button"
+        title="run this prompt"
+        disabled={bareRunning}
+        on:click={() => runBarePane(pane.key, paneDefaults, agents)}
+      >
+        {@html ICONS.play}
+        {bareRunning ? 'running…' : 'run'}
+      </button>
+    </div>
   {/if}
 </div>
 
@@ -252,5 +273,34 @@
     .loopwrap.hasout :global(.output) {
       animation: none;
     }
+  }
+
+  /* F2 — bare-pane run button (the ≤1-card pane's stand-in for the dock's
+     run-stack action). Same warm accent as the dock's `.runmain`. */
+  .barerun {
+    padding-top: 13px;
+  }
+  .barerunbtn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+    width: 100%;
+    background: linear-gradient(180deg, #ffb648, #ff9500);
+    color: #231000;
+    border: none;
+    border-radius: 8px;
+    padding: 12px;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .barerunbtn :global(svg) {
+    width: 15px;
+    height: 15px;
+  }
+  .barerunbtn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
   }
 </style>

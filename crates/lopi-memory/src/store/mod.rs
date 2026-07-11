@@ -301,6 +301,57 @@ impl MemoryStore {
         Ok(row.0)
     }
 
+    /// Count tasks by lifecycle bucket, from the durable store.
+    ///
+    /// The source of truth for `/api/stats`' `running`/`queued`/`succeeded`/
+    /// `failed` counts. Reads the DB rather than a pool's in-memory counters
+    /// because those counters are **per-pool**: in multi-repo mode each extra
+    /// repo runs its own pool, so the primary pool's counters miss every task
+    /// dispatched to another repo (Verify-1 F3/F4 — the topbar "N live" showed
+    /// 1 while 2 agents ran, and `succeeded` read 3 against 7 real). The DB is
+    /// shared across all pools, so its counts are exact regardless of repo
+    /// count. Status matching is prefix-based to tolerate any legacy decorated
+    /// rows a pre-Fix-1 write may have left behind.
+    ///
+    /// # Errors
+    /// Returns `Err` if the database query fails.
+    pub async fn status_counts(&self) -> Result<TaskStatusCounts> {
+        let rows: Vec<(String, i64)> =
+            sqlx::query_as("SELECT status, COUNT(*) FROM tasks GROUP BY status")
+                .fetch_all(&self.read_pool)
+                .await?;
+        let mut counts = TaskStatusCounts::default();
+        for (status, n) in rows {
+            let n = usize::try_from(n).unwrap_or(0);
+            match status.as_str() {
+                s if s.starts_with("running") => counts.running += n,
+                s if s.starts_with("queued") => counts.queued += n,
+                s if s.starts_with("success") => counts.succeeded += n,
+                s if s.starts_with("failed") => counts.failed += n,
+                _ => {}
+            }
+        }
+        Ok(counts)
+    }
+
+    /// Whether a task with exactly this id exists in the store.
+    ///
+    /// Lets id-scoped read endpoints (`/logs`, `/stream`, agent `/dag`) tell a
+    /// *bogus* id (→ 404) apart from a *known* task that simply has no rows yet
+    /// (→ valid empty 200) — the distinction Ops-2 #8 / Verify-1 F8 asked for.
+    /// Safe against a create race: `AgentPool::submit` persists the task
+    /// (`save_task(.., "queued")`) before `create_task` returns its id.
+    ///
+    /// # Errors
+    /// Returns `Err` if the database query fails.
+    pub async fn task_exists(&self, id: &str) -> Result<bool> {
+        let row: Option<(i64,)> = sqlx::query_as("SELECT 1 FROM tasks WHERE id = ?1 LIMIT 1")
+            .bind(id)
+            .fetch_optional(&self.read_pool)
+            .await?;
+        Ok(row.is_some())
+    }
+
     /// Persist a single per-turn observability record.
     ///
     /// # Errors
@@ -341,6 +392,23 @@ impl MemoryStore {
         .await?;
         Ok(())
     }
+}
+
+/// Task counts by lifecycle bucket, returned by [`MemoryStore::status_counts`].
+///
+/// Computed from the shared durable store so the totals are correct across
+/// every repo/pool (see the method's docs for the multi-repo undercount this
+/// avoids).
+#[derive(Debug, Default, Clone, Copy)]
+pub struct TaskStatusCounts {
+    /// Tasks currently executing.
+    pub running: usize,
+    /// Tasks queued but not yet started.
+    pub queued: usize,
+    /// Tasks that reached a successful terminal state.
+    pub succeeded: usize,
+    /// Tasks that reached a failed terminal state.
+    pub failed: usize,
 }
 
 /// Flat view of a task record returned by [`MemoryStore::load_history`].

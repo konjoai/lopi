@@ -408,7 +408,11 @@ export function parseSnapshot(raw: Record<string, unknown>): SnapshotMessage | n
         id: t.id,
         goal: t.goal,
         status: (parseTaskStatus(t.status) ?? (typeof t.status === 'string' ? t.status : 'Queued')) as TaskStatus | string,
-        created_at: t.created_at
+        created_at: t.created_at,
+        // Verify-1 F6 — carry real per-task cost through the defensive parser so
+        // /budget + Overview hydrate actual spend, not $0. Omitted by older
+        // servers, so only kept when it's a number.
+        ...(isNumber(t.cost) ? { cost: t.cost } : {})
       }
     ];
   });

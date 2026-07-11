@@ -293,6 +293,26 @@ assertNull(
   parseSnapshot({ type: 'snapshot', tasks: 'nope', stats: {} }),
   'snapshot non-array tasks rejected'
 );
+// Verify-1 F6 — the defensive parser must carry per-task cost through, else
+// /budget "spent" and the Overview COST column hydrate $0 from the snapshot.
+const snapWithCost = parseSnapshot({
+  type: 'snapshot',
+  tasks: [
+    { id: 't1', goal: 'g', status: 'success', created_at: '2026-05-06T12:00:00Z', cost: 0.1234 }
+  ],
+  stats: { running: 0, queued: 0, succeeded: 1, failed: 0, uptime_secs: 1 }
+});
+eq((snapWithCost as any)?.tasks?.[0]?.cost, 0.1234, 'snapshot preserves per-task cost (F6)');
+const snapNoCost = parseSnapshot({
+  type: 'snapshot',
+  tasks: [{ id: 't2', goal: 'g', status: 'queued', created_at: '2026-05-06T12:00:00Z' }],
+  stats: { running: 0, queued: 1, succeeded: 0, failed: 0, uptime_secs: 1 }
+});
+eq(
+  (snapNoCost as any)?.tasks?.[0]?.cost,
+  undefined,
+  'snapshot without cost stays undefined (older servers)'
+);
 
 console.log('\n── parseWireMessage dispatch ──────────────────────────');
 const dispatched = parseWireMessage({

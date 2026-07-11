@@ -6,8 +6,9 @@
 //! `forbidden_dirs` — deliberately shorter than `Task::new`'s defaults so
 //! prompt-section assertions (`"# Allowed dirs"` etc.) stay exact — so this
 //! is the one place that literal is written.
-
-#![cfg(test)]
+//!
+//! The module is already `#[cfg(test)]`-gated at its `lib.rs` declaration, so
+//! no inner `#![cfg(test)]` is needed here (clippy `duplicated_attributes`).
 
 use lopi_core::Task;
 

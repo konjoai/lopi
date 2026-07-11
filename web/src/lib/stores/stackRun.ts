@@ -37,6 +37,7 @@ import {
   executionOrder,
   cardToTaskPayload,
   cardToTaskPayloadForRunOnce,
+  paneSubmitPayload,
   evalsToAcceptance,
   stackPursuesGoal,
   bumpInOrder,
@@ -388,6 +389,91 @@ export function runStack(
     return next;
   });
   void advance(paneKey, defaults, statusSource);
+}
+
+/** F2 — launch a *bare* pane's single staged card.
+ *
+ *  A 0-or-1-card pane never renders `StackControlDock` (Unify-2 §3:
+ *  `paneIsBare` = ≤1 card), so it never got the dock's run button — and no
+ *  other affordance called `createTask`, which is why Verify-1 (F2) found a
+ *  bare pane could not be launched from the UI at all. This is that missing
+ *  affordance: it submits the one card through `paneSubmitPayload` — the
+ *  deliberately loop-semantics-free payload Unify-1 built for exactly the
+ *  "one prompt, no stack chrome" case (`max_iterations`/`on_fail`/`gate`/
+ *  `acceptance` are all omitted) — and wires the returned `taskId` + terminal
+ *  status back onto the card via the same `updateCardInPane`/`waitForTerminal`
+ *  path `advance` uses, so the card's orb and output render live identically.
+ *  One prompt, one run: no chain, no repetition. No-op unless the pane has
+ *  exactly one card and isn't already in flight. */
+export function runBarePane(
+  paneKey: string,
+  defaults: PaneDefaults,
+  statusSource: AgentStatusSource
+): void {
+  const pane = get(panes).find((p) => p.key === paneKey);
+  if (!pane || pane.cards.length !== 1) return;
+  if (get(runs).get(paneKey)?.phase === 'running') return;
+  const card = pane.cards[0];
+  runs.update((m) => {
+    const next = new Map(m);
+    next.set(paneKey, {
+      paneKey,
+      phase: 'running',
+      intent: 'run-once',
+      order: [card.id],
+      cursor: 0,
+      repetition: 0,
+      loopTarget: 1,
+      onFail: 'stop',
+      hadFailure: false,
+      noProgressLimit: 0,
+      noGainStreak: 0
+    });
+    return next;
+  });
+  void launchBareCard(paneKey, card, defaults, statusSource);
+}
+
+/** The bare-pane launch body: submit one card as a bare (no-loop) payload,
+ *  wire taskId + terminal status back onto it. Mirrors `advance`'s single-card
+ *  section without any chain/repetition/goal machinery. */
+async function launchBareCard(
+  paneKey: string,
+  card: StackCard,
+  defaults: PaneDefaults,
+  statusSource: AgentStatusSource
+): Promise<void> {
+  const payload = paneSubmitPayload({
+    goal: card.goal,
+    repo: card.config.repo ?? defaults.repo,
+    priority: 'normal',
+    model: card.config.model ?? defaults.model,
+    effort: card.config.effort ?? defaults.effort,
+    branch: card.config.branch
+  });
+  updateCardInPane(paneKey, card.id, { status: 'queued' });
+  let resp;
+  try {
+    resp = await createTask(payload.goal, payload.repo, payload.priority, payload.options);
+  } catch (err) {
+    updateCardInPane(paneKey, card.id, { status: 'idle' });
+    setRun(paneKey, {
+      phase: 'error',
+      hadFailure: true,
+      error: `"${card.goal}" failed to launch: ${err instanceof Error ? err.message : String(err)}`
+    });
+    return;
+  }
+  const taskId = effectiveTaskId(resp);
+  updateCardInPane(paneKey, card.id, { status: 'running', taskId });
+  const terminal = await waitForTerminal(taskId, statusSource);
+  updateCardInPane(paneKey, card.id, { status: 'done' });
+  setRun(
+    paneKey,
+    terminal === 'completed'
+      ? { phase: 'done', error: undefined }
+      : { phase: 'error', hadFailure: true, error: `"${card.goal}" ended ${terminal}` }
+  );
 }
 
 /** Halt after the currently-running card's task reaches a terminal status;

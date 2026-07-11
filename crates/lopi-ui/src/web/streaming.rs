@@ -44,17 +44,24 @@ pub(super) async fn ws_handler(
 pub(super) async fn handle_ws(mut socket: WebSocket, state: AppState) {
     // Snapshot: send current task list and stats on connect.
     if let Ok(rows) = state.store.load_history(100).await {
+        // Per-task cost so the client hydrates real spend for already-finished
+        // tasks (Verify-1 F6: /budget + Overview cost read the client store and
+        // showed $0). Counts come from the DB (`status_counts`), not the
+        // per-pool `pool.stats()` that undercounts in multi-repo mode (F3/F4).
+        let costs = state.store.task_costs().await.unwrap_or_default();
+        let counts = state.store.status_counts().await.unwrap_or_default();
         let snapshot = json!({
             "type": "snapshot",
             "tasks": rows.iter().map(|t| json!({
                 "id": t.id, "goal": t.goal, "status": t.status,
                 "created_at": t.created_at,
+                "cost": costs.get(&t.id).copied().unwrap_or(0.0),
             })).collect::<Vec<_>>(),
             "stats": {
-                "running": state.pool.stats().running,
-                "queued": state.pool.stats().queued,
-                "succeeded": state.pool.stats().succeeded,
-                "failed": state.pool.stats().failed,
+                "running": counts.running,
+                "queued": counts.queued,
+                "succeeded": counts.succeeded,
+                "failed": counts.failed,
                 "uptime_secs": state.pool.stats().uptime_secs,
             }
         });

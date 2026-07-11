@@ -51,12 +51,27 @@ pub(super) async fn get_quality_trend(
 /// `GET /api/agents/:id/dag` — the DAG-structured execution trace for a task.
 ///
 /// Returns `{ task_id, nodes, edges }`; edges are derived from each node's
-/// `depends_on` list. An unknown task yields an empty graph (200), not 404 —
-/// a task may simply have no recorded DAG yet.
+/// `depends_on` list. A *known* task with no recorded DAG yet still yields an
+/// empty graph (200); a *bogus* id is a 404 (Verify-1 F8 — previously both
+/// returned 200, which the audit flagged as a body/status mismatch).
 pub(super) async fn get_agent_dag(
     Path(id): Path<String>,
     State(s): State<AppState>,
 ) -> impl IntoResponse {
+    match s.store.task_exists(&id).await {
+        Ok(true) => {}
+        Ok(false) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({"error": "unknown task id", "task_id": id})),
+            )
+                .into_response();
+        }
+        Err(e) => {
+            tracing::warn!("task_exists failed: {e}");
+            return (StatusCode::INTERNAL_SERVER_ERROR, "db error").into_response();
+        }
+    }
     match s.store.load_dag_nodes(&id).await {
         Ok(rows) => Json(dag_graph_json(&id, &rows)).into_response(),
         Err(e) => {

@@ -299,3 +299,60 @@ async fn task_count_increments_per_save() {
     }
     assert_eq!(store.task_count().await.unwrap(), 3);
 }
+
+// ── Verify-1 F3/F4: DB-sourced lifecycle counts (the fix for /api/stats +
+//    "N live" undercounting when the per-pool in-memory counters miss tasks
+//    dispatched to other repos' pools). The store is the shared source of
+//    truth, so its counts are correct regardless of how many pools wrote them.
+
+#[tokio::test]
+async fn status_counts_aggregates_every_lifecycle_bucket() {
+    let store = MemoryStore::open_in_memory().await.unwrap();
+    for (goal, status) in [
+        ("a", "running"),
+        ("b", "running"),
+        ("c", "queued"),
+        ("d", "success"),
+        ("e", "success"),
+        ("f", "success"),
+        ("g", "failed"),
+    ] {
+        store.save_task(&Task::new(goal), status).await.unwrap();
+    }
+    let counts = store.status_counts().await.unwrap();
+    assert_eq!(counts.running, 2);
+    assert_eq!(counts.queued, 1);
+    assert_eq!(counts.succeeded, 3);
+    assert_eq!(counts.failed, 1);
+}
+
+#[tokio::test]
+async fn status_counts_tolerates_legacy_decorated_status() {
+    let store = MemoryStore::open_in_memory().await.unwrap();
+    // A pre-Fix-1 write could leave a decorated status like "failed ❌ Cancelled";
+    // prefix matching still buckets it correctly.
+    store
+        .save_task(&Task::new("legacy"), "failed ❌ Cancelled")
+        .await
+        .unwrap();
+    assert_eq!(store.status_counts().await.unwrap().failed, 1);
+}
+
+// ── Verify-1 F8: existence check backing the 404-vs-empty-200 distinction on
+//    the id-scoped read routes.
+
+#[tokio::test]
+async fn task_exists_distinguishes_known_from_bogus_id() {
+    let store = MemoryStore::open_in_memory().await.unwrap();
+    let task = Task::new("known");
+    let id = task.id.0.to_string();
+    store.save_task(&task, "success").await.unwrap();
+    assert!(store.task_exists(&id).await.unwrap(), "known id exists");
+    assert!(
+        !store
+            .task_exists("00000000-0000-0000-0000-000000000000")
+            .await
+            .unwrap(),
+        "bogus id does not exist"
+    );
+}

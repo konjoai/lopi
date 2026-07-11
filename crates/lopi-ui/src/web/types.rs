@@ -24,8 +24,8 @@ pub struct CreateTaskRequest {
     /// Maximum retry attempts before the task is marked failed.
     #[serde(default)]
     pub max_retries: Option<u8>,
-    /// P2 — capabilities every dispatcher (pool, constellation router)
-    /// must satisfy before this task can be picked up. Empty (default)
+    /// P2 — capabilities the pool's dispatcher must satisfy before this task
+    /// can be picked up. Empty (default)
     /// means "any agent can run this".
     #[serde(default)]
     pub required_capabilities: Option<Vec<String>>,
