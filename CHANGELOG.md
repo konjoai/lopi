@@ -1,5 +1,68 @@
 # Changelog
 
+## [0.4.0] — macOS Loop Stacks 🃏
+
+Brings web's unified Loop Stacks to the native macOS app, extending the existing
+Forge into a stack-of-cards cockpit (supersedes the stale macOS-Parity-1 two-target
+framing — web unified Forge and Stacks into one `/stacks` route, so there is one
+nav item here too, not two). A bare pane (≤1 card) is visually + functionally the
+old Forge pane; adding a second card turns it into a real stack. Source of truth
+is the shipped, tested web code (`web/src/lib/components/stacks/*` +
+`stores/{stack,stackGoal,stackRun}.ts`), not any older design doc.
+
+**Sequencer-fork decision: functional port** (recommended, taken). `stackRun.ts`
+lifts cleanly — its side-effecting seams (`createTask`, the status source,
+card-status writes) are already parameter-injected in web (why its tests
+substitute a `writable(new Map())`), so the pure decision core ports to Swift with
+the same seam-injection. A native app should run stacks the same way web does, not
+defer to a server that has no stack concept.
+
+- **[Feat] Phase 1 — the pure logic, ported + tested.** New `macos/Lopi/Stacks/`
+  domain layer with **zero SwiftUI/AppKit imports** (Foundation, plus Observation
+  for the two store wrappers) so a future shared-package extraction
+  (`iOS-Research-1`'s open question) is a move, not a rewrite:
+  - `StackTypes`/`StackConfigTypes` ← the `StackCard`/`StackConfig`/preset/eval/
+    cron/guardrail type layer + `stackDefaults.ts`.
+  - `StackOps` (composer grammar parser, card factory, pure array ops, eval-set
+    ops, iteration stepper, active-state predicates), `StackCron` (cron string +
+    `computeNextRuns` matcher), `StackSummaries`, `StackPayload` (`evalsToAcceptance`
+    / `cardToTaskPayload` / `paneSubmitPayload` + execution order / dry run /
+    `bumpInOrder`), `StackPaneOps` (pane-keyed dispatch + whole-stack ops).
+  - `StackGoal` ← `stackGoal.ts` (the run-until-goal decision core:
+    precedence / `decideAfterMiss` / `foldGain`).
+  - `StackRun`/`StackRunControls` ← `stackRun.ts` (the run-until-goal sequencer,
+    chain loop / on-fail, bare-pane launch, pause/resume/drain, bump, schedule) as
+    an injected-seam engine that reuses the real `createTask` path per card.
+  - `StackStore` — the `panes` writable analogue.
+  - The web `.test.ts` suites are ported 1:1 into `LopiTests`
+    (`StackStoreTests`/`StackGoalTests`/`StackRunTests`, same fixtures + assertions),
+    with a deterministic mock backend mirroring the web mock.
+- **[Feat] Phases 2–6 — the UI, extending Forge.** `StackCardView` is built
+  *around* the same `KonjoOrb` + `TranscriptView` rendering the Forge pane already
+  used (driven by the live agent keyed on `card.taskId`), wrapped with the cardbar
+  (iteration pill · schedule · guards · evals+count · config · duplicate · drag ·
+  delete), hide-inactive summary lines, and the inline config drawer.
+  `StackConnectorView` (insert-between + scheduled/budget badges), the four native
+  popovers (schedule · guardrails · evals · stack config), `StackPaneView`
+  (composer + reversed-order card list + connectors + dock-or-bare-run), and
+  `StackControlDockView` (the collapsible purple dock — STACK chip, stack-level
+  defaults inherited by cards, goal toggle, stop-reason banner, pinned run split
+  button + `RunMenuView`). `ForgeView` now renders the stack grid off `StackStore`;
+  its stale "Mirrors the web Forge" doc-comment is retired; the nav stays at one
+  `.forge` item.
+- **[Wired] Guardrails + max-iter round-trip live.** `CreateTaskBody` gains the
+  additive, optional WIRED fields (`max_iterations` / `on_fail` / `gate` / `until`
+  / `client_ref`) the backend already honors, so a card's guardrails flow to the
+  real create-task call. `budget_tokens` and `acceptance` are deliberately **not**
+  wired to the live body (backend-gap / A1–B1 evaluator track — out of scope, "no
+  backend changes"); the pure payload still carries them and is proven by test,
+  the same honesty stance as web.
+- **Owed:** Swift does not compile on the authoring host (Linux) — the ported
+  tests and the UI are written-not-built this session, same discipline as every
+  prior macOS round ("build on the M3"). The single-card regression screenshot and
+  the live dual-scenario run (bare pane + multi-card stack) are the immediate next
+  step; see `NEXT.md`.
+
 ## [0.3.4] — Fix-3: macOS stats/cost parity 🖥️
 
 Ports Fix-2's web F3/F4 + F6 corrections to the native macOS client — the one

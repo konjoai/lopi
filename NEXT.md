@@ -1,5 +1,25 @@
 # Next — Track A + B are built; Track C is the horizon
 
+## macOS-Loop-Stacks-1 landed (`CHANGELOG.md` `[0.4.0]`, `LEDGER.md`) — what's owed
+
+The native macOS Forge is now a Loop-Stacks cockpit (pure `macos/Lopi/Stacks/`
+domain layer + the extended Forge UI; one `.forge` nav item). Two follow-ups,
+both the same discipline as every macOS round:
+
+1. **Live-verify (immediate).** Swift doesn't build on the Linux authoring host,
+   so the ported Swift tests and the UI are written-not-built. On an M-series Mac:
+   `cd macos && xcodegen && xcodebuild -scheme Lopi test` (runs
+   `StackStoreTests`/`StackGoalTests`/`StackRunTests`), then the two live scenarios
+   against `lopi sail` — a **bare pane** (single-card regression check vs. the Forge
+   baseline screenshot) and a **multi-card stack** (connectors, dock, run-until-goal
+   stop-reason banner). Fix any compile drift the Linux authoring couldn't catch.
+2. **`iOS-Research-1` is now cheaper.** `StackStore`/`StackGoal`/`StackRun` and the
+   whole `Stacks/` layer are already pure Swift (zero SwiftUI/AppKit) — R-1's
+   shared-package-boundary question is now "extract this module," not "rewrite it."
+3. **Wire the eval backend through the existing seam** when A1–B1's evaluator lands
+   server-side: `acceptance`/`budget_tokens` are carried in the pure payload +
+   tested, but intentionally not on the live `CreateTaskBody` yet (backend gap).
+
 ## NEXT_SESSION_PROMPT (read this first)
 
 **Unify-2 has landed (`CHANGELOG.md` `[0.3.0]`, `LEDGER.md`'s Unify-2 entry):

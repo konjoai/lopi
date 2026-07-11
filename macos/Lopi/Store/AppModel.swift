@@ -77,6 +77,24 @@ final class AppModel {
     /// Non-fatal error banner text (auto-cleared by the UI).
     var banner: String?
 
+    // MARK: Loop-stack state (macOS Loop Stacks — client-only, in-memory)
+
+    /// The client-only stack panes (the `panes` writable analogue). Observable so
+    /// the Forge grid re-renders as cards/config change.
+    let stackStore = StackStore()
+
+    /// The stack-run sequencer. Built lazily on first access so its injected
+    /// seams can capture a fully-initialized `self` (the classic init chicken-and-
+    /// egg — the engine references `client`/`liveAgents`/`stackStore`, none of
+    /// which exist until `init` finishes).
+    @ObservationIgnored private var _stackEngine: StackRunEngine?
+    var stackEngine: StackRunEngine {
+        if let e = _stackEngine { return e }
+        let e = StackRunEngine(seams: makeStackSeams())
+        _stackEngine = e
+        return e
+    }
+
     /// REST client — readable by the admin extension; reassigned only here
     /// when the server config changes.
     @ObservationIgnored private(set) var client: LopiClient

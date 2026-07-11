@@ -1,25 +1,32 @@
 import SwiftUI
 
-/// The Forge — lopi's multi-agent cockpit. A sessions rail beside a resizable,
-/// auto-tiling grid of agent panes (default four), each with a live orb and a
-/// launcher. Mirrors the web Forge, including the close-pane ≠ delete-session
-/// model that keeps deleted sessions from resurrecting on reconnect.
+/// The Forge — lopi's multi-agent cockpit, now unified with Loop Stacks (macOS
+/// Loop Stacks). A resizable, auto-tiling grid of stack panes: each pane is a
+/// composer + a stack of loop cards flowing down to the currently-executing loop
+/// at the bottom, plus either the bare-pane run button (≤1 card) or the purple
+/// stack control dock (2+ cards). A one-card pane reads like the pre-unify Forge
+/// pane — adding a second card is what turns a pane into a real stack, exactly
+/// matching web's Unify-2 model where a bare pane *is* the one-card case. This is
+/// the only cockpit nav item — web has no separate Forge route anymore, and
+/// there's no separate Stacks screen here either.
 struct ForgeView: View {
     @Environment(AppModel.self) private var model
-    /// Shared with the unified sidebar in RootView (sessions ↔ panes).
-    var layout: PaneLayout
-    @State private var controls = LaunchControls()
+
+    private var store: StackStore { model.stackStore }
+    private var engine: StackRunEngine { model.stackEngine }
+
+    /// Repo dropdown options for the config popovers/drawers — server-discovered
+    /// git repos, shown by basename, with a leading "no override" entry.
+    private var repoOptions: [StackOption] {
+        [StackOption(value: "", label: "— repo —")]
+            + model.repos.map { StackOption(value: $0, label: ($0 as NSString).lastPathComponent) }
+    }
 
     var body: some View {
         grid
-        .background(Konjo.bg)
-        // Custom black bar instead of system toolbar items, which carry an
-        // unwanted grey "glass" well behind their content.
-        .safeAreaInset(edge: .top, spacing: 0) { topBar }
-        .onAppear { layout.reconcile(model.liveAgents.keys) }
-        .onChange(of: model.liveAgents.keys.sorted()) { _, keys in
-            layout.reconcile(keys)
-        }
+            .background(Konjo.bg)
+            .safeAreaInset(edge: .top, spacing: 0) { topBar }
+            .task { await model.refreshRepos() }
     }
 
     private var topBar: some View {
@@ -27,20 +34,17 @@ struct ForgeView: View {
             Text("lopi").font(Konjo.sans(15, weight: .bold)).foregroundStyle(Konjo.fg)
             ConnectionLED(state: model.connection)
             Spacer()
-            Button { layout.removePane() } label: {
-                Image(systemName: "minus")
-                    .font(.system(size: 17, weight: .semibold)).foregroundStyle(Konjo.fgDim)
+            Button { removePane() } label: {
+                Image(systemName: "minus").font(.system(size: 17, weight: .semibold)).foregroundStyle(Konjo.fgDim)
             }
             .buttonStyle(.plain).focusEffectDisabled()
-            .help("Remove pane").disabled(layout.slots.count <= PaneLayout.minPanes)
-            Text("\(layout.slots.count)")
-                .font(Konjo.mono(11)).foregroundStyle(Konjo.fgDim).monospacedDigit()
-            Button { layout.addPane() } label: {
-                Image(systemName: "plus")
-                    .font(.system(size: 20, weight: .semibold)).foregroundStyle(Konjo.ice)
+            .help("Remove stack").disabled(store.panes.count <= 1)
+            Text("\(store.panes.count)").font(Konjo.mono(11)).foregroundStyle(Konjo.fgDim).monospacedDigit()
+            Button { store.addStackPane() } label: {
+                Image(systemName: "plus").font(.system(size: 20, weight: .semibold)).foregroundStyle(Konjo.ice)
             }
             .buttonStyle(.plain).focusEffectDisabled()
-            .help("Add pane").disabled(layout.slots.count >= PaneLayout.maxPanes)
+            .help("Add stack").disabled(store.panes.count >= 12)
         }
         .padding(.horizontal, 16).padding(.vertical, 8)
         .background(Konjo.bg)
@@ -48,34 +52,26 @@ struct ForgeView: View {
     }
 
     private var grid: some View {
-        PaneGridView(count: layout.slots.count) { idx in
-            AgentPaneView(
-                agent: agent(at: idx),
-                controls: controls,
-                paneCount: layout.slots.count,
-                onClose: { layout.closePane(idx) }
-            )
+        PaneGridView(count: store.panes.count) { idx in
+            if store.panes.indices.contains(idx) {
+                let pane = store.panes[idx]
+                StackPaneView(
+                    store: store, engine: engine, pane: pane, index: idx, repoOptions: repoOptions,
+                    onClose: store.panes.count > 1 ? { closePane(pane.key) } : nil)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .overlay(alignment: .top) { forgeBanner }
     }
 
-    /// Honest connection truth over the grid: no synthetic agents are ever
-    /// seeded, so an unreachable backend says so and an idle one shows empty.
+    /// Honest connection truth over the grid: the stacks are client-only, but a
+    /// live run needs the backend, so an unreachable server says so.
     @ViewBuilder private var forgeBanner: some View {
         if model.connection != .live {
             banner(
                 title: "backend offline",
-                detail: model.connection == .connecting
-                    ? "connecting to lopi sail…" : "start `lopi sail` to see live agents",
-                tint: Konjo.rose
-            )
-        } else if model.liveAgents.isEmpty {
-            banner(
-                title: "no live sessions",
-                detail: "launch a run with `lopi run` to populate the forge",
-                tint: Konjo.fgMute
-            )
+                detail: model.connection == .connecting ? "connecting to lopi sail…" : "start `lopi sail` to run stacks live",
+                tint: Konjo.rose)
         }
     }
 
@@ -92,8 +88,13 @@ struct ForgeView: View {
         .allowsHitTesting(false)
     }
 
-    private func agent(at idx: Int) -> LiveAgent? {
-        guard layout.slots.indices.contains(idx), let id = layout.slots[idx] else { return nil }
-        return model.liveAgents[id]
+    private func closePane(_ key: String) {
+        engine.clearRun(key)
+        store.deleteStackFromPanes(key)
+    }
+
+    private func removePane() {
+        guard store.panes.count > 1, let last = store.panes.last else { return }
+        closePane(last.key)
     }
 }
