@@ -55,11 +55,11 @@ struct DashboardView: View {
 
     private var statRow: some View {
         LazyVGrid(columns: statColumns, spacing: 14) {
-            LiveStat(label: "Running", value: Double(model.stats.running), accent: Konjo.konjo2,
-                     pulse: model.stats.running > 0)
-            LiveStat(label: "Queued", value: Double(model.stats.queued), accent: Konjo.fg)
-            LiveStat(label: "Succeeded", value: Double(model.stats.succeeded), accent: Konjo.ok)
-            LiveStat(label: "Failed", value: Double(model.stats.failed), accent: Konjo.err)
+            LiveStat(label: "Running", value: Double(model.runningCount), accent: Konjo.konjo2,
+                     pulse: model.runningCount > 0)
+            LiveStat(label: "Queued", value: Double(model.queuedCount), accent: Konjo.fg)
+            LiveStat(label: "Succeeded", value: Double(model.succeededCount), accent: Konjo.ok)
+            LiveStat(label: "Failed", value: Double(model.failedCount), accent: Konjo.err)
             LiveStat(label: "Cost today", value: model.stats.totalCostUsdToday,
                      accent: Konjo.warn, format: "$%.2f")
         }

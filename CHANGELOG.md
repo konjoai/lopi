@@ -1,5 +1,48 @@
 # Changelog
 
+## [0.3.4] — Fix-3: macOS stats/cost parity 🖥️
+
+Ports Fix-2's web F3/F4 + F6 corrections to the native macOS client — the one
+real defect Verify-2 surfaced (`docs/ops/LIVE_UI_STATUS_FINAL.md`). On real
+billed runs the Dashboard/Budget stat tiles read the wrong source: COST TODAY
+`$0.00` (real `$0.10`), RUNNING `1` (real 2), SUCCEEDED `1` (real 3), Budget
+SPENT `$0.00`. This is a parity fix — the web fix is the spec; nothing was
+redesigned. What was already correct on macOS (Loop SPEND, cognition "N active",
+Tasks) reads its existing sources unchanged.
+
+- **[Med] F10 — the fleet tiles no longer undercount.** `model.stats.running/
+  succeeded/queued/failed` were driven by the WS `.poolStats` event, which
+  carries a *single pool's* counters — the same multi-repo undercount Fix-2 fixed
+  server-side for web. The Dashboard, menu-bar popover, and menu-bar icon now
+  count from the live session map (`liveAgents`) through a new `FleetBucket`
+  mapping — the Swift mirror of web's `dbStatusToUiStatus` and the same all-repo
+  source the cognition grid's "N active" already trusted. The `.poolStats` event
+  now supplies only server uptime, exactly as web's `poolStats` store now does.
+- **[Med] F9 — COST TODAY stays live.** `stats.totalCostUsdToday` is bound to the
+  correct `/api/stats` field but was fetched only on connect / pull-to-refresh,
+  and the WS stream carries no cost — so it froze at its connect-time value. A
+  short (5 s) background poll of `/api/stats` keeps it and the daily token total
+  current during a run. The snapshot no longer clobbers the polled cost to `$0`
+  on (re)connect (it carries counters + uptime, never the daily totals).
+- **[Med] F6 (port) — Budget SPENT shows real spend.** The client per-agent
+  `costUsd` sum was `$0`: the snapshot's per-task `cost` (added to the wire by
+  Fix-2) was decoded on web but ignored by the Swift `applySnapshot`, so
+  already-finished tasks never hydrated. `hydrateSnapshotTasks` now seeds each
+  freshly-seen task's cost from the snapshot — mirroring web's snapshot upsert,
+  which only hydrates ids it doesn't already hold, so a live task keeps its
+  incrementally-updated cost. The `.cost`/`turn_metrics` live-event paths that
+  update running tasks were already wired.
+
+No regressions to the already-correct paths: Loop SPEND (`/api/loop`), the
+cognition-grid "N active" (`liveAgents.active`), and the Tasks list are untouched.
+
+Verification: macOS `xcodebuild` build + test green (4 new `StatsParityTests`
+locking the `FleetBucket` mapping, session-map counts, and cost hydration incl.
+the no-clobber-on-reconnect case). **Live on-device re-verification was _not_
+performed in this sprint** — it ran sandboxed. Per the standing split (code fix
+in-sprint, live confirmation as a follow-up), an attended re-run of Verify-2
+Phase 2/3 is still owed before this is called closed. Version 0.3.3 → 0.3.4.
+
 ## [Unreleased] — Verify-2: macOS visual verification, attended (docs-only, no behavior change) 🖥️
 
 First **attended, unlocked** on-device run — closes the `Unverified (locked)` gap Verify-1 and Fix-2 both left open (both ran locked). Drove the real native `Lopi.app` on the physical display with real `ffmpeg` screen recordings + `screencapture` stills. Records findings in [`docs/ops/LIVE_UI_STATUS_FINAL.md`](docs/ops/LIVE_UI_STATUS_FINAL.md) (Verify-2 addendum); evidence under `docs/videos/verify-2/` (2 recordings) + `docs/screenshots/verify-2/` (24 shots). Real cost: $0.3896 / 1.41M tokens.

@@ -5,6 +5,49 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## Fix-3 — macOS stats/cost parity (F9 + F10 + the F6 port)
+
+**Phase 1 (F10 counts) chose "macOS counts from its own live session map" over
+"make the WS `pool_stats` event carry DB `status_counts`."** The prompt offered
+both. The deciding factor was fidelity to the reference: Fix-2 did *not* change
+the `pool_stats` event on web — it made the topbar count from the local `agents`
+map and left the pool event supplying only uptime (see the Fix-2 entry below).
+Mirroring that exactly means the macOS `.poolStats` handler drops its running/
+queued/succeeded/failed assignments and the tiles count `liveAgents` through a
+new `FleetBucket` mapping (the Swift mirror of web's `dbStatusToUiStatus`). This
+also (a) needs **zero server change**, so it can't regress the web path or any
+other `pool_stats` consumer; (b) reuses the exact source the cognition grid's "N
+active" already counts correctly, so the two can never disagree; and (c) is
+strictly *more* live than a DB round-trip — the session map updates on every
+event, seeded from the DB-backed snapshot on connect. The rejected option would
+have coupled a client tile fix to a wire-event schema change for no gain the
+session-map count doesn't already deliver. **Invariant for future stats
+consumers on macOS: count the local `liveAgents` map (or read `/api/stats`),
+never the per-pool `.poolStats` event — it is uptime-only by contract now.**
+
+**F9 (cost today) is a poll, not a push.** `stats.totalCostUsdToday` comes from
+`/api/stats` (DB `daily_token_totals`, already cross-pool-correct after Fix-2),
+and the WS stream carries no cost — so the fix is simply to keep re-reading it (a
+5 s background `Task`), not to thread cost through the event spine. Adding cost
+to the WS payload was the heavier alternative and buys nothing the poll doesn't:
+the number is a whole-day DB aggregate, not a per-event delta, so event-rate
+freshness is wasted on it. The one coupled correctness fix: `applySnapshot` must
+*not* overwrite the polled cost with the snapshot's stats (which carry counters +
+uptime but never the daily totals) — otherwise COST TODAY flashes `$0` on every
+reconnect.
+
+**F6 (Budget SPENT) was a decode gap, not a missing event.** The Swift client
+already decoded and handled the `.cost` / `turn_metrics` live events (per-agent
+`costUsd` + `recomputeAggregates`), so *running* tasks were fine. The break was
+that `applySnapshot` seeded only id/goal/phase and ignored the per-task `cost`
+Fix-2 added to the snapshot wire — so already-finished tasks hydrated at `$0`,
+and the `liveAgents`-sum that `/budget` "spent" reads stayed `$0`. The macOS
+analog of web's "the defensive parser dropped the field" — same lesson, mirrored:
+a new snapshot field is invisible to the client until the seeding path is taught
+to read it. Fix hydrates cost only for freshly-seeded ids, matching web's upsert
+that skips ids it already holds, so a live task's incrementally-updated cost is
+never clobbered by a staler snapshot on reconnect.
+
 ## Fix-2 — wire the bare-pane launch, close the Verify-1 fast-follows
 
 **F2's root cause: the single-prompt launch was built pure-and-tested but never

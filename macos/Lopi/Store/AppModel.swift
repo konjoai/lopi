@@ -53,6 +53,27 @@ final class AppModel {
             .sorted { $0.lastUpdate > $1.lastUpdate }
     }
 
+    // MARK: Fleet counts (derived from the live session map)
+
+    /// Tasks currently in flight, counted from `liveAgents`. Mirrors web's
+    /// `stats` derived store (Fix-2 F3/F4): the WS `pool_stats` event carries a
+    /// single pool's counters and undercounts across repos, so the tiles count
+    /// the shared session map — seeded from the DB-backed snapshot, kept live by
+    /// the event stream — the same source the cognition grid's "N active" trusts.
+    var runningCount: Int { fleetCount(.running) }
+    /// Tasks accepted but not yet started, counted from `liveAgents`.
+    var queuedCount: Int { fleetCount(.queued) }
+    /// Tasks that reached a successful terminal state, counted from `liveAgents`.
+    var succeededCount: Int { fleetCount(.succeeded) }
+    /// Tasks that reached a failed terminal state, counted from `liveAgents`.
+    var failedCount: Int { fleetCount(.failed) }
+
+    private func fleetCount(_ bucket: FleetBucket) -> Int {
+        liveAgents.values.reduce(into: 0) { total, agent in
+            if FleetBucket.of(agent.phase) == bucket { total += 1 }
+        }
+    }
+
     /// Non-fatal error banner text (auto-cleared by the UI).
     var banner: String?
 
@@ -60,6 +81,8 @@ final class AppModel {
     /// when the server config changes.
     @ObservationIgnored private(set) var client: LopiClient
     @ObservationIgnored private let stream = EventStream()
+    /// Background `/api/stats` poll — keeps COST TODAY live (see `startStatsPolling`).
+    @ObservationIgnored private var statsPoll: Task<Void, Never>?
 
     init(config: ServerConfig = .load()) {
         self.config = config
@@ -72,6 +95,22 @@ final class AppModel {
     func start() {
         connectStream()
         Task { await refreshAll() }
+        startStatsPolling()
+    }
+
+    /// Poll `/api/stats` on a short interval so COST TODAY (and the daily token
+    /// total) stay live. The WS stream carries no cost — without this the tile
+    /// would freeze at its connect-time value until a manual pull-to-refresh
+    /// (Verify-2 F9). Counts are handled separately, off the live session map.
+    private func startStatsPolling() {
+        statsPoll?.cancel()
+        statsPoll = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 5_000_000_000) // 5s
+                guard let self else { return }
+                await self.refreshStats()
+            }
+        }
     }
 
     /// Apply new server settings: persist, rewire client, reconnect.
@@ -265,17 +304,38 @@ final class AppModel {
         if let statsObj = obj["stats"],
            let data = try? JSONSerialization.data(withJSONObject: statsObj),
            let s = try? JSONDecoder().decode(PoolStats.self, from: data) {
-            stats = s
+            // The snapshot's stats carry counters + uptime but NOT the daily
+            // cost/token totals (those live only in REST /api/stats). Take only
+            // uptime and leave the polled cost intact — otherwise COST TODAY
+            // flashes to $0 on every (re)connect. The tiles derive their counts
+            // from the session map, so the snapshot's counters go unused.
+            stats.uptimeSecs = s.uptimeSecs
         }
         // Seed live agents from the snapshot task list so the cockpit isn't
         // empty between connect and the first live event.
         if let taskList = obj["tasks"] as? [[String: Any]] {
-            for t in taskList {
-                guard let id = t["id"] as? String else { continue }
-                seedAgent(id: id, goal: t["goal"] as? String ?? "", phase: TaskStatusLabel.from(t["status"]))
-            }
+            hydrateSnapshotTasks(taskList)
         }
         Task { await refreshTasks() }
+    }
+
+    /// Seed the live session map from the snapshot's task rows, hydrating each
+    /// freshly-seeded task's cost from the row's `cost` field.
+    ///
+    /// F6 (Fix-2 port): without this, Budget SPENT and the per-agent rollups sit
+    /// at $0 for already-finished tasks — the cost path web F6 added through the
+    /// snapshot was never mirrored here. Cost is applied only to ids we haven't
+    /// seen, so a task already live keeps its incrementally-updated cost — the
+    /// same as web's snapshot upsert, which skips ids it already holds.
+    func hydrateSnapshotTasks(_ tasks: [[String: Any]]) {
+        for t in tasks {
+            guard let id = t["id"] as? String else { continue }
+            let isNew = liveAgents[id] == nil
+            seedAgent(id: id, goal: t["goal"] as? String ?? "", phase: TaskStatusLabel.from(t["status"]))
+            if isNew, let cost = (t["cost"] as? NSNumber)?.doubleValue {
+                liveAgents[id]?.costUsd = cost
+            }
+        }
     }
 
     /// Surface a non-fatal error in the banner. Internal so the admin
