@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased] — Verify-2: macOS visual verification, attended (docs-only, no behavior change) 🖥️
+
+First **attended, unlocked** on-device run — closes the `Unverified (locked)` gap Verify-1 and Fix-2 both left open (both ran locked). Drove the real native `Lopi.app` on the physical display with real `ffmpeg` screen recordings + `screencapture` stills. Records findings in [`docs/ops/LIVE_UI_STATUS_FINAL.md`](docs/ops/LIVE_UI_STATUS_FINAL.md) (Verify-2 addendum); evidence under `docs/videos/verify-2/` (2 recordings) + `docs/screenshots/verify-2/` (24 shots). Real cost: $0.3896 / 1.41M tokens.
+
+- **Confirmed on the real screen:** compact-orb `matchedGeometryEffect` morph (idle-large → compact-live, clean, phase-colored to completion); the concurrency capstone (two agents rendering simultaneously, distinct cards/goals/branches, zero cross-talk, independent Success); "N active" cognition count accurate (2 of 2+5); all 12 nav sections render with zero crashes / zero stuck banners.
+- **One real defect found — deferred to Fix-3 (macOS stats/cost parity):** the macOS Dashboard stat tiles read the wrong source. COST TODAY $0.00 (real $0.10), RUNNING 1 (real 2), SUCCEEDED 1 (real 3), Budget SPENT $0.00. They draw from `model.stats` (per-pool WS `.poolStats` event + connect-only REST) and the client per-agent cost sum — the macOS analog of the web F3/F4+F6 fixes, which Fix-2 applied to web only. Loop SPEND ($0.10), the cognition-grid "N active", and every other section are correct.
+
 ## [0.3.3] — Fix-2: wire the bare-pane launch, close the Verify-1 fast-follows 🔧
 
 Acts on Verify-1's finding inventory (`docs/ops/LIVE_UI_STATUS_FINAL.md`, PR #80).
