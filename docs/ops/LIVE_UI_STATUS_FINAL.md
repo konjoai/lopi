@@ -1,3 +1,23 @@
+# LIVE_UI_STATUS_FINAL
+
+> ## ✅ Verify-2 addendum — macOS visual verification, **attended** (2026-07-11, baseline `cf0344f` / v0.3.3)
+>
+> The whole "Unverified (locked)" column below was the product of two unattended, **locked**-screen runs. Verify-2 ran with the MacBook **unlocked and attended**, driving the real native `Lopi.app` on the physical display (computer-use, full tier) with real `ffmpeg`/avfoundation screen recordings — the exact thing the lock made impossible. Every locked item is now resolved:
+>
+> | Verify-1 item | Verify-2 result | Evidence |
+> |---|---|---|
+> | §2c macOS concurrency | **CONFIRMED** — two agents run simultaneously on the native app; two distinct "Implementing" cards, own goal/progress/branch, LIVE-ACTIVITY feed correctly attributed per goal, **zero cross-talk** (also disjoint per-task logs), independent Success terminal states | `docs/videos/verify-2/phase5-concurrency.mp4`; `p5-01/02/03` |
+> | Compact-orb `matchedGeometryEffect` morph | **CONFIRMED** — clean idle-large-orb → compact-live-orb morph (no jump); compact orb legible, animates Planning(teal)→Success(green) through real phases to completion | `docs/videos/verify-2/phase1-orb-morph.mp4` (144s); `p1-01/02/03` |
+> | "N active" cognition-grid count | **CONFIRMED CORRECT** — "2 active" against 2 running + 5 done; Polish-1's historical-hydration miscount does **not** recur | `p3-02-dashboard-mixed-live.png` |
+> | 12-section guided pass | **CONFIRMED** — all 12 sections render, **zero crashes, zero stuck banners**, nothing broken/unfinished | `p4-*.png` |
+> | Model label (Fix-1 #7) | macOS pane config shows the model (e.g. Sonnet 4.6) consistent with the run | `p1-*` |
+>
+> **One real defect found (new): `F9`+`F10` — macOS Dashboard stat tiles are wrong.** `COST TODAY $0.00` (real `$0.10`), `RUNNING 1` (real 2), `SUCCEEDED 1` (real 3), Budget `SPENT $0.00`. Root cause: those tiles read the `model.stats` path — updated by the **per-pool** WS `.poolStats` event (the multi-repo undercount) + a **connect-only** REST fetch — and the client per-agent cost sum, which isn't populated. This is the **macOS analog of the web F3/F4 + F6 fixes, which Fix-2 applied to web only.** What's correct on macOS: **Loop SPEND `$0.10`**, the **cognition-grid "N active"**, the **Tasks** list, and every other section (they read the server `/api/loop` / the agents map). → deferred to **Fix-3 (macOS stats/cost parity)**, scoped separately; Verify-2 itself changes no behavior.
+>
+> **Verdict: macOS-visual is closed.** Everything that needed eyes-on-screen was confirmed on the real display; the sole finding (F9/F10) is a data-plumbing defect, not a rendering one. Total Verify-2 cost: **$0.3896**, 1.41M tokens.
+
+---
+
 # LIVE_UI_STATUS_FINAL — Verify-1
 
 **Baseline:** `main` @ `a6e4b5f` (Polish-1 / PR #79), v0.3.2 · **Date:** 2026-07-10
