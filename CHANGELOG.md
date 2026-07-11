@@ -1,5 +1,55 @@
 # Changelog
 
+## [0.3.3] — Fix-2: wire the bare-pane launch, close the Verify-1 fast-follows 🔧
+
+Acts on Verify-1's finding inventory (`docs/ops/LIVE_UI_STATUS_FINAL.md`, PR #80).
+Every fix is keyed to its finding ID and was re-verified live on-device (real
+billed runs) through the actual UI, not the API. Concurrency was not re-opened —
+Verify-1 already proved it clean.
+
+- **[High] F2 — the bare-pane launch is wired.** A 0–1-card pane never renders
+  `StackControlDock`, so it had no run button, and the one launch helper for it
+  (`paneSubmitPayload`) had zero callers — Verify-1 had to route around this via
+  direct API calls. Added `runBarePane` (submits the single card through the
+  loop-semantics-free bare payload and wires taskId + terminal status onto the
+  card exactly as `advance` does for a stack card) and a real **run** button on
+  the bare pane. Verified by clicking through the UI: a fresh pane + one prompt +
+  one click launches a real task; two bare panes launched concurrently show zero
+  cross-talk.
+- **[Med] F6 — cost surfaces read real spend.** `/budget` "spent" and the
+  Overview COST column read the client `agents` store, which never carried cost,
+  so both showed `$0` while `/loop` (server-sourced) was correct. Root cause was
+  a chain of drops: the WS snapshot didn't include per-task cost, and even after
+  adding it the *defensive parser* (`parseWireMessage`) stripped it. Now the
+  snapshot carries `cost`, the parser preserves it, and the reducer hydrates it —
+  `/budget` and Overview match `/api/stats` ($0.1362 in the verify run, not $0).
+- **[Med] F3/F4 — stat counters no longer undercount.** `/api/stats` and the
+  WS snapshot read the *primary* pool's in-memory counters, which miss tasks
+  dispatched to other repos' pools in multi-repo mode — so "N live" read 1 while
+  2 agents ran, and `succeeded` read 3 against 7. Counts now come from the shared
+  DB (`MemoryStore::status_counts`); the topbar counts from the complete local
+  agents map (the same all-repo source the Overview buckets already used
+  correctly). Verified: `/api/stats running` = 2 against 2 real across two repos.
+- **[Low] F1 — a partial `--config` warns instead of silently falling back.**
+  `util::load_config`'s bare `.ok()` swallowed a TOML parse error and reverted to
+  the default DB with no signal (the footgun Fix-1 #6 targeted, at the load
+  layer). It now logs a `warn!` naming the file and error.
+- **[Low] F8 — id-scoped reads 404 on a bogus id.** `/api/tasks/:id/{logs,
+  stream}` and `/api/agents/:id/dag` returned 200 for any id on `main` (the
+  Ops-2 #8 fix shipped only on an abandoned branch). Added `task_exists`; a known
+  task with no rows still gets a valid empty 200, a well-formed-but-unknown id is
+  404, a malformed id on `stream` stays 400. Table-driven test lists the
+  exceptions inline.
+- **[Low] F7 — no more cut-feature pricing copy.** Removed "Constellation routing
+  (4 strategies)" from the Growth tier feature list and scrubbed stale
+  "constellation router" architectural doc-comments (no such code exists);
+  deliberate removal-tombstones and the nav cut-list test are retained.
+
+Verification: full workspace `cargo test` + web `npm test` green; `cargo clippy
+-D warnings` clean; live UI re-verification of every finding on-device (bare-pane
+launch, cost surfaces, stat counts, config warning, status codes). Real cost of
+the Fix-2 verification runs is folded into the sprint total.
+
 ## [Unreleased] — Verify-1: the definitive live audit (docs-only, no behavior change) 🔬
 
 First fully-live, on-device audit (real Claude subscription auth, real billed

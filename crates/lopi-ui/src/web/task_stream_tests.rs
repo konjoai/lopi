@@ -124,3 +124,65 @@ async fn task_stream_isolates_concurrent_tasks_with_zero_cross_talk() {
         "every line on B's stream is actually B's: {lines_b:?}"
     );
 }
+
+/// F8 (Ops-2 #8 / Verify-1) — a *bogus* id on the id-scoped read routes must
+/// 404, but a *known* task with no rows yet still gets a valid empty 200. The
+/// exceptions are listed and justified inline: `stream` on a *malformed* (non-
+/// uuid) id is a 400 (client error, distinct from a well-formed-but-unknown
+/// id). Verify-1 found every bogus id returned 200 on `main`; this is the
+/// table that keeps it from regressing a third time.
+#[tokio::test]
+async fn f8_id_scoped_reads_status_codes() {
+    let (app, store) = test_app_with_store().await;
+    // A known task with NO logs and NO DAG — the "valid empty 200" case.
+    let task = Task::new("known but logless task");
+    let known = task.id.0.to_string();
+    store.save_task(&task, "success").await.unwrap();
+    let bogus = "00000000-0000-0000-0000-000000000000"; // well-formed, unknown
+
+    let cases: Vec<(String, StatusCode, &str)> = vec![
+        // known id → 200 even with no rows (gate on task existence, not rows)
+        (
+            format!("/api/tasks/{known}/logs"),
+            StatusCode::OK,
+            "known task, no logs yet -> valid empty 200",
+        ),
+        (
+            format!("/api/agents/{known}/dag"),
+            StatusCode::OK,
+            "known task, no DAG yet -> valid empty 200",
+        ),
+        (
+            format!("/api/tasks/{known}/stream"),
+            StatusCode::OK,
+            "known task -> live SSE 200",
+        ),
+        // bogus (well-formed but unknown) id → 404, not the old 200
+        (
+            format!("/api/tasks/{bogus}/logs"),
+            StatusCode::NOT_FOUND,
+            "unknown id -> 404 (was 200)",
+        ),
+        (
+            format!("/api/agents/{bogus}/dag"),
+            StatusCode::NOT_FOUND,
+            "unknown id -> 404 (was 200)",
+        ),
+        (
+            format!("/api/tasks/{bogus}/stream"),
+            StatusCode::NOT_FOUND,
+            "unknown well-formed id -> 404 (was 200)",
+        ),
+        // exception: a malformed id on stream is a client error, 400 not 404
+        (
+            "/api/tasks/not-a-uuid/stream".to_string(),
+            StatusCode::BAD_REQUEST,
+            "malformed id -> 400 (distinct from a well-formed-but-unknown id)",
+        ),
+    ];
+
+    for (uri, want, why) in cases {
+        let resp = get_req(app.clone(), &uri).await;
+        assert_eq!(resp.status(), want, "{why}: GET {uri}");
+    }
+}

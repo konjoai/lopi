@@ -8,5 +8,5 @@ pub use store::{
     LearningRow, LessonRow, LoopAttemptRow, LoopRunRow, LoopTurnRow, MemoryStore, PatternRow,
     QualityRunRecord, QualityRunRow, RunAttemptRow, RunTurnAgg, ScheduleInput, ScheduleRow,
     ScheduleRunRow, ScorePoint, StabilityEntry, StabilityRecord, TaskLogRow, TaskRow,
-    VerifierVerdictRow, TASK_LOG_MAX_PER_TASK,
+    TaskStatusCounts, VerifierVerdictRow, TASK_LOG_MAX_PER_TASK,
 };

@@ -220,8 +220,8 @@ CREATE INDEX IF NOT EXISTS idx_dlq_dead_at ON dead_letter_queue(dead_at DESC);
 CREATE INDEX IF NOT EXISTS idx_dlq_task_id ON dead_letter_queue(task_id);
 
 -- P2 — Append-only audit log. One row per actionable event across the
--- whole orchestrator: task submit/dispatch, DLQ entry, constellation
--- decisions, breaker trips, cache hit/miss. The `payload` column holds
+-- whole orchestrator: task submit/dispatch, DLQ entry, breaker trips,
+-- cache hit/miss. The `payload` column holds
 -- JSON whose shape is per-action and intentionally schemaless.
 CREATE TABLE IF NOT EXISTS audit_log (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,

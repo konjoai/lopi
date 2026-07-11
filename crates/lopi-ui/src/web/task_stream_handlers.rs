@@ -49,6 +49,18 @@ pub(super) async fn stream_task(
         )
             .into_response();
     };
+    // A well-formed but unknown id is a 404, not a live stream over nothing
+    // (Verify-1 F8). No create race: `submit` persists the task before
+    // `create_task` hands back its id, so a client that just created a task
+    // always finds it here.
+    match s.store.task_exists(&uuid.to_string()).await {
+        Ok(true) => {}
+        Ok(false) => return task_not_found(&id),
+        Err(e) => {
+            tracing::warn!("task_exists failed: {e}");
+            return logs_internal_error(e);
+        }
+    }
     let target_id = lopi_core::TaskId(uuid);
     let rx = s.bus.subscribe();
     let stream = BroadcastStream::new(rx).filter_map(move |r: Result<AgentEvent, _>| async move {
@@ -78,6 +90,16 @@ pub(super) async fn get_logs(
     State(s): State<AppState>,
     Query(params): Query<LogsParams>,
 ) -> impl IntoResponse {
+    // A bogus id is a 404, but a known task with no logs yet is a valid empty
+    // 200 (Verify-1 F8) — so gate on task existence, not on the log rows.
+    match s.store.task_exists(&id).await {
+        Ok(true) => {}
+        Ok(false) => return task_not_found(&id),
+        Err(e) => {
+            tracing::warn!("task_exists failed: {e}");
+            return logs_internal_error(e);
+        }
+    }
     let n = params.n.unwrap_or(200);
     match s.store.load_task_logs(&id, n).await {
         Ok(rows) => {
@@ -131,6 +153,18 @@ fn logs_internal_error(e: impl std::fmt::Display) -> axum::response::Response {
     (
         StatusCode::INTERNAL_SERVER_ERROR,
         Json(json!({"error": format!("{e:#}")})),
+    )
+        .into_response()
+}
+
+/// Shared 404 for an id that names no task — lets `/logs` and `/stream`
+/// (and agent `/dag`) distinguish a bogus id from a known task that merely
+/// has no rows yet, which still gets a valid empty 200 (Ops-2 #8 / Verify-1
+/// F8: previously every bogus id returned 200).
+fn task_not_found(id: &str) -> axum::response::Response {
+    (
+        StatusCode::NOT_FOUND,
+        Json(json!({"error": "unknown task id", "task_id": id})),
     )
         .into_response()
 }

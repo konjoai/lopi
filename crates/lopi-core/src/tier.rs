@@ -17,7 +17,7 @@ pub enum CustomerTier {
     Free,
     /// $299 / month — 4 agents, Telegram remote, pattern learning.
     Starter,
-    /// $999 / month — 16 agents, multi-repo, constellation routing.
+    /// $999 / month — 16 agents, multi-repo, result caching.
     Growth,
     /// $4 999 / month — 64 agents, dedicated infra, SLA 99.9 %.
     Enterprise,
@@ -78,7 +78,6 @@ impl CustomerTier {
             Self::Growth => &[
                 "16 concurrent agents",
                 "Multi-repo dispatch mode",
-                "Constellation routing (4 strategies)",
                 "Result caching",
                 "Tool registry",
                 "OTel observability",

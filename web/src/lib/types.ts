@@ -141,6 +141,9 @@ export interface SnapshotTask {
   goal: string;
   status: TaskStatus | string;
   created_at: string;
+  /** Accumulated USD cost for this task (Verify-1 F6). Absent on older
+   *  servers, so treated as 0 when missing. */
+  cost?: number;
 }
 
 export interface PoolStats {

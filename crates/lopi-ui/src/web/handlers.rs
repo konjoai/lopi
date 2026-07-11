@@ -21,16 +21,26 @@ pub(super) async fn health() -> impl IntoResponse {
 }
 
 pub(super) async fn get_stats(State(s): State<AppState>) -> impl IntoResponse {
-    let stats = s.pool.stats();
+    // Lifecycle counts come from the durable store, not `pool.stats()`: those
+    // in-memory counters are per-pool, so in multi-repo mode the primary pool
+    // misses every task dispatched to an extra repo (Verify-1 F3/F4 — "N live"
+    // read 1 while 2 ran, `succeeded` 3 against 7). The DB is shared across all
+    // pools. `uptime_secs` stays sourced from the pool — it is a server-lifetime
+    // clock, not a per-task tally.
+    let counts = s.store.status_counts().await.unwrap_or_else(|e| {
+        tracing::warn!("status_counts query failed: {e}");
+        Default::default()
+    });
+    let uptime_secs = s.pool.stats().uptime_secs;
     let (total_tokens_today, total_cost_usd_today) =
         s.store.daily_token_totals().await.unwrap_or_else(|e| {
             tracing::warn!("daily_token_totals query failed: {e}");
             (0, 0.0)
         });
     Json(json!({
-        "running": stats.running, "queued": stats.queued,
-        "succeeded": stats.succeeded, "failed": stats.failed,
-        "uptime_secs": stats.uptime_secs,
+        "running": counts.running, "queued": counts.queued,
+        "succeeded": counts.succeeded, "failed": counts.failed,
+        "uptime_secs": uptime_secs,
         "total_tokens_today": total_tokens_today,
         "total_cost_usd_today": total_cost_usd_today,
     }))

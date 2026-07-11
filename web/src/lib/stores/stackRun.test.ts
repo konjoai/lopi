@@ -22,6 +22,7 @@
 import { get, writable } from 'svelte/store';
 import {
   runStack,
+  runBarePane,
   pauseStack,
   resumeStack,
   drainStack,
@@ -534,6 +535,64 @@ async function main() {
       'pursue with baseline-only acceptance launches no eval — an inert goal falls back to legacy behavior'
     );
     eqIs(runState('s1')?.stopReason, undefined, 'no goal pursued → no stop reason recorded (backward-compatible)');
+  }
+
+  // ── Verify-1 F2: the bare-pane launch. A 0-or-1-card pane has no dock, so
+  //    `runBarePane` is its run affordance. It submits the single card through
+  //    the loop-semantics-free `paneSubmitPayload` (no client_ref / max_iterations
+  //    / on_fail) and wires taskId + terminal status onto the card.
+  {
+    resetPanes();
+    seedPane('s1', [card('c1', 'summarize main.rs')]);
+    const statusSource: StatusStore = writable(new Map());
+    const TASK_ID = 'bare-task-1';
+    const captured: Captured[] = [];
+    (globalThis as { fetch: unknown }).fetch = (path: string, init?: RequestInit) => {
+      const body = init?.body ? JSON.parse(String(init.body)) : {};
+      captured.push({ path, body });
+      statusSource.update((m) => {
+        const next = new Map(m);
+        next.set(TASK_ID, { status: 'completed' });
+        return next;
+      });
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () =>
+          Promise.resolve({ id: TASK_ID, goal: body.goal, queued: true, duplicate_of: null, client_ref: null })
+      });
+    };
+
+    runBarePane('s1', defaults, statusSource as AgentStatusSource);
+    await flush();
+
+    const posts = captured.filter((c) => c.path === '/api/tasks');
+    eqIs(posts.length, 1, 'bare pane launches exactly one task via createTask (F2)');
+    const b = posts[0].body;
+    eqIs(b.goal, 'summarize main.rs', 'bare payload carries the card goal');
+    eqIs(b.repo, 'r', 'bare payload falls back to the pane default repo');
+    ok(
+      b.max_iterations === undefined && b.on_fail === undefined && b.client_ref === undefined,
+      'bare payload omits stack-loop semantics (paneSubmitPayload, not cardToTaskPayload)'
+    );
+    eqIs(runState('s1')?.phase, 'done', 'bare run reaches a terminal done phase');
+    const wired = get(panes).find((p) => p.key === 's1')!.cards[0];
+    eqIs(wired.status, 'done', 'the card is marked done');
+    eqIs(wired.taskId, TASK_ID, 'the card carries the launched task id (orb/output can render)');
+  }
+
+  {
+    // A pane with 0 cards, or with 2+ (a real stack, which has the dock), is a
+    // no-op for runBarePane — it only handles the single-card bare case.
+    resetPanes();
+    const statusSource: StatusStore = writable(new Map());
+    const captured = mockBackend(statusSource, {});
+    runBarePane('s1', defaults, statusSource as AgentStatusSource); // 0 cards
+    await flush();
+    seedPane('s2', [card('x'), card('y')]);
+    runBarePane('s2', defaults, statusSource as AgentStatusSource); // 2 cards
+    await flush();
+    eqIs(captured.length, 0, 'runBarePane is a no-op for 0-card and 2+-card panes');
   }
 
   namedSummary('stackRun');

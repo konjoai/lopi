@@ -1,6 +1,6 @@
 //! In-memory agent health monitoring.
 //!
-//! Every dispatcher (constellation router, pool worker) calls
+//! Every dispatcher (the pool worker) calls
 //! [`HealthRegistry::heartbeat`] when an agent reports liveness, and
 //! `record_success` / `record_failure` (with the call's latency) when
 //! a request completes. A background sweeper runs every `sweeper_period`

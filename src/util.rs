@@ -65,7 +65,23 @@ pub(crate) fn status_label(s: &TaskStatus) -> String {
 /// Load lopi config from `path` if given, otherwise search standard locations.
 pub(crate) fn load_config(path: Option<&PathBuf>) -> Option<LopiConfig> {
     if let Some(p) = path {
-        LopiConfig::load(p).ok()
+        match LopiConfig::load(p) {
+            Ok(cfg) => Some(cfg),
+            Err(e) => {
+                // An explicit `--config` that won't parse must not silently fall
+                // back to the default config/DB (Verify-1 F1): that is exactly
+                // the data-isolation footgun Fix-1 #6 targeted, reintroduced at
+                // the load layer by a bare `.ok()`. A partial TOML (e.g. only
+                // `[lopi]`, missing the required `[claude]`/`[git]` tables) is
+                // the common trigger. Surface it loudly — the caller still
+                // degrades to defaults, but the operator now knows.
+                tracing::warn!(
+                    "failed to load --config {}: {e:#} — falling back to default config/DB",
+                    p.display()
+                );
+                None
+            }
+        }
     } else {
         LopiConfig::find_and_load()
     }

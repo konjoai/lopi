@@ -140,12 +140,17 @@ export const stats = derived([agents, poolStats], ([$agents, $pool]) => {
     else if (a.status === 'failed') failed++;
     totalCost += a.cost;
   }
-  // Prefer server-side pool stats when available, falling back to local count.
+  // Count from the local agents map — the same complete, all-repo picture the
+  // Overview buckets use (fed by the shared event bus + the DB-backed snapshot).
+  // The WS `pool_stats`/snapshot counters are *per-pool*, so in multi-repo mode
+  // they undercount: Verify-1 F3/F4 saw the topbar read "1 live" while 2 agents
+  // ran (one per repo) because it preferred the primary pool's counter over the
+  // real count. `poolStats` now only supplies server uptime.
   return {
-    running: $pool.running || running,
-    queued: $pool.queued || queued,
-    completed: $pool.succeeded || completed,
-    failed: $pool.failed || failed,
+    running,
+    queued,
+    completed,
+    failed,
     total: $agents.size,
     totalCost,
     uptimeSecs: $pool.uptime_secs
@@ -221,6 +226,10 @@ function applyMessage(msg: WireMessage) {
           // the old inline logic only matched in its capitalized enum spelling.
           status: dbStatusToUiStatus(t.status as TaskStatus | string),
           taskStatus: t.status as TaskStatus | string,
+          // Verify-1 F6 — hydrate real per-task cost so /budget "spent" and the
+          // Overview COST column aren't stuck at $0 for already-finished tasks.
+          // Live tasks still get incremental updates via the `cost` event.
+          cost: t.cost ?? 0,
           startedAt: Date.parse(t.created_at) || Date.now()
         });
       }
