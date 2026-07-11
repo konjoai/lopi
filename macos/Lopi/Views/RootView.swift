@@ -217,7 +217,7 @@ struct RootView: View {
 
     @ViewBuilder private var detail: some View {
         switch selection ?? .forge {
-        case .forge: ForgeView(layout: layout)
+        case .forge: ForgeView()
         case .dashboard: DashboardView()
         case .budget: BudgetView()
         case .tasks: TasksView()

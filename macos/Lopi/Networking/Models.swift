@@ -163,12 +163,32 @@ struct CreateTaskBody: Codable {
     var model: String? = nil
     /// Reasoning-effort hint. Real `effort` field, same rationale as `model`.
     var effort: String? = nil
+    // ── Loop-stack WIRED fields (macOS Loop Stacks) ──────────────────────────
+    // Real `CreateTaskRequest` fields the backend honors (landed PR #62 / A3).
+    // Additive + optional, so they encode only when a stack card sets them and
+    // every existing bare-prompt call site (LaunchControls.body) still compiles
+    // unchanged. `budget_tokens`/`acceptance` are deliberately NOT mapped here:
+    // acceptance is A1–B1's evaluator track (out of scope, "no backend changes"),
+    // and budget_tokens has no request field yet — same honesty gap as web.
+    /// Hard per-loop iteration ceiling (`0` = infinite sentinel).
+    var maxIterations: Int? = nil
+    /// On-fail policy — `stop` / `continue` / `backoff`.
+    var onFail: String? = nil
+    /// Shell precondition that must pass before the loop runs.
+    var gate: String? = nil
+    /// Shell exit-condition the loop runs until.
+    var until: String? = nil
+    /// Client ref so the response's task id traces back to the launching card.
+    var clientRef: String? = nil
 
     enum CodingKeys: String, CodingKey {
-        case goal, repo, priority, constraints, model, effort
+        case goal, repo, priority, constraints, model, effort, gate, until
         case allowedDirs = "allowed_dirs"
         case forbiddenDirs = "forbidden_dirs"
         case maxRetries = "max_retries"
+        case maxIterations = "max_iterations"
+        case onFail = "on_fail"
+        case clientRef = "client_ref"
     }
 }
 

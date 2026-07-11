@@ -5,6 +5,53 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## macOS-Loop-Stacks-1 — bring Loop Stacks to the native app
+
+**Sequencer fork: functional port, taken (not visual-first).** The prompt flagged
+the same fork macOS-Parity-1 raised — port `stackRun.ts`'s sequencer to Swift, or
+ship a visual-first shell that defers goal-directed sequencing. Pre-flight
+confirmed the port lifts cleanly: `stackRun.ts` is already written against injected
+seams (it takes `statusSource` as a *parameter* rather than importing `./agents`,
+precisely so its unit tests can substitute a plain `writable(new Map())`). So its
+pure decision core — `advance`/`pursueGoal`/`decideAfterMiss`/`foldGain`/
+`bumpInOrder` — ports to a Swift `StackRunEngine` with `StackRunSeams` (createTask
+/ waitForTerminal / score / createSchedule / reorderPaneCards) injected the same
+way; production wires them to `LopiClient`/`liveAgents` in `AppModel+Stacks`, tests
+wire a deterministic mock mirroring the web `mockBackend`. A native app should run
+stacks the way web does, not defer to a server that has no stack concept either.
+
+**This supersedes macOS-Parity-1's two-target framing.** That doc predated
+Unify-1/Unify-2, when Forge and Stacks were two things to port. Web unified them —
+`forge/+page.svelte` is gone, `/stacks` is the only route, a bare pane *is* a
+one-card stack. So macOS extends its existing 965-line Forge into stacks rather
+than adding a parallel Stacks screen: **one `.forge` nav item, not two.** A
+single-card pane is the regression bar — visually + functionally the old Forge
+pane; the connectors + purple dock appear only on a second card.
+
+**Pure-Swift domain types (zero SwiftUI/AppKit), by decision.** `StackStore`/
+`StackGoal`/`StackRun` and the whole `macos/Lopi/Stacks/` layer import only
+Foundation (+ Observation for the two store wrappers — the svelte-`writable`
+analogue, not a UI framework). This costs nothing today and directly de-risks
+`iOS-Research-1`'s still-open shared-package-boundary question: the core is already
+portable, so R-1 evaluates a *move*, not a rewrite. The pure ops are Foundation-
+only; only the observable wrappers touch Observation.
+
+**Live-verify owed, stated plainly.** Swift does not build on the authoring host
+(Linux) — the same constraint every macOS round has carried ("build on the M3").
+The ported Swift tests mirror web's `.test.ts` 1:1 (same fixtures/assertions) and
+are the acceptance bar, but they were not *run* this session; the single-card
+regression screenshot and the live dual-scenario run (bare pane + multi-card stack)
+are the immediate next step, same discipline as every round since Ops-2.
+
+**WIRED-fields honesty gap, made explicit.** `CreateTaskBody` gained the additive
+optional `max_iterations`/`on_fail`/`gate`/`until`/`client_ref` fields the backend
+already honors, so guardrails + max-iter round-trip live. `budget_tokens` and
+`acceptance` are intentionally *not* wired to the live body — `budget_tokens` has
+no request field yet, and `acceptance`/goal-execution is A1–B1's evaluator track
+("no backend changes"). The pure payload still carries both and is proven by test;
+the live wire carries only what the backend accepts today. A future sprint that
+lands the eval backend wires acceptance through the same seam.
+
 ## Fix-3 — macOS stats/cost parity (F9 + F10 + the F6 port)
 
 **Phase 1 (F10 counts) chose "macOS counts from its own live session map" over
