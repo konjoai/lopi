@@ -12,10 +12,12 @@ extension AppModel {
     func ingest(_ event: AgentEvent) {
         switch event {
         case let .poolStats(s):
-            stats.running = s.running
-            stats.queued = s.queued
-            stats.succeeded = s.succeeded
-            stats.failed = s.failed
+            // Only server uptime is trusted from the WS pool event. Its
+            // running/queued/succeeded/failed are a *single pool's* counters,
+            // which undercount in multi-repo mode (Fix-2 F3/F4 / Verify-2 F10 —
+            // Dashboard read RUNNING 1 while 2 ran, SUCCEEDED 1 of 3). The fleet
+            // tiles count the live session map instead — see `AppModel`'s
+            // runningCount/queuedCount/succeededCount/failedCount.
             stats.uptimeSecs = s.uptimeSecs
 
         case let .taskQueued(id, goal, priority):

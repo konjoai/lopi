@@ -1,55 +1,61 @@
-# Next Session — after Verify-2
+# Next Session — after Fix-3
 
-Verify-2 (CHANGELOG `[Unreleased]`) was the first **attended, unlocked** on-device
-run. It closed the `Unverified (locked)` gap that Verify-1 and Fix-2 both left
-open: on the real physical display, the compact-orb `matchedGeometryEffect`
-morph, the two-agent concurrency capstone (zero cross-talk), the "N active"
-cognition count, and all 12 nav sections are **CONFIRMED**. See the Verify-2
-addendum at the top of `docs/ops/LIVE_UI_STATUS_FINAL.md`.
+Fix-3 (CHANGELOG `[0.3.4]`) ports Fix-2's web F3/F4 + F6 corrections to the
+native macOS client — the single real defect Verify-2 surfaced. The macOS
+Dashboard/Budget stat tiles now read the same corrected sources the web fix
+established:
 
-It surfaced exactly one real defect, which is now the next work.
+- **F10 (counts):** RUNNING / SUCCEEDED / QUEUED / FAILED count the live session
+  map (`liveAgents`) through a new `FleetBucket` mapping — the Swift mirror of
+  web's `dbStatusToUiStatus` — instead of the per-pool WS `.poolStats` event,
+  which undercounts in multi-repo mode. The event supplies only uptime now.
+- **F9 (cost today):** a 5 s background poll of `/api/stats` keeps COST TODAY
+  live instead of frozen at its connect-time value; the snapshot no longer
+  clobbers the polled cost to `$0` on reconnect.
+- **F6 (Budget SPENT):** `applySnapshot` hydrates each freshly-seen task's cost
+  from the snapshot's per-task `cost` field (added to the wire by Fix-2 but
+  ignored by the Swift client), so already-finished tasks no longer read `$0`.
 
-## 1. Fix-3 — macOS stats/cost parity [the next real work]
+Build + unit tests are green (`xcodebuild` build/test; 4 new `StatsParityTests`).
+The Phase-1 option chosen (session-map count vs. WS-carries-DB-counts) and its
+rationale are in `LEDGER.md`.
 
-**F9 + F10 — the macOS Dashboard stat tiles read the wrong source.** On real
-billed runs: COST TODAY `$0.00` (real `$0.10`), RUNNING `1` (real 2), SUCCEEDED
-`1` (real 3), Budget SPENT `$0.00`. This is the macOS analog of the web F3/F4 +
-F6 fixes — Fix-2 fixed **web only**. Concretely:
+## 1. ⚠️ Owed: live on-device re-verification of Fix-3
 
-- **Counts (F10):** `model.stats.running/succeeded` are updated by the WS
-  `.poolStats` event (`AppModel+Live.swift`), which carries a **single pool's**
-  counters — the multi-repo undercount. Source them from the DB-corrected path
-  instead (the WS `pool_stats` event still emits per-pool; either make it carry
-  DB `status_counts`, or have macOS count from its own live session map the way
-  the cognition grid already does correctly).
-- **Cost today (F9):** `stats.totalCostUsdToday` is bound to the correct
-  `/api/stats` source but only fetched by `refreshAll()` on connect / pull-to-
-  refresh, and the WS `.poolStats` event carries no cost — so it stays stale at
-  its connect-time value. Refresh it live (poll, or add cost to the WS stats).
-- **Budget SPENT + per-agent cost:** the client per-agent `costUsd` sum is `$0`;
-  the `.cost` live-event / snapshot-cost path web F6 added is not delivering on
-  macOS. Mirror F6 in the Swift client (parse per-task cost from the snapshot /
-  the cost event).
-- What's already correct and must not regress: **Loop SPEND** (server
-  `/api/loop`), the **cognition-grid "N active"**, and the **Tasks** list.
-- Verify by repeating Verify-2 Phase 2/3 on an attended device.
+**Fix-3 landed from a sandboxed run — it was _not_ live-re-verified on-device.**
+Per the standing split every prior round used (code fix in-sprint, live
+confirmation as a follow-up), an attended pass is still owed before Fix-3 is
+called closed. Do not mark it verified until this runs. Repeat **Verify-2
+Phase 2/3** on an attended device:
 
-## 2. Launch-1 — seamless start
+- 2 running + N done across **multiple repos** (`sail --repos …`).
+- Confirm the four tiles match reality, **live, not just at connect**: COST TODAY
+  updates during a billed run; RUNNING / SUCCEEDED match the real cross-repo
+  counts; Budget SPENT shows real matching spend.
+- Regression check (must stay correct): Loop SPEND (`/api/loop`), cognition-grid
+  "N active", Tasks list.
 
-Sequence after Fix-3. Nothing structural blocks it; the concurrency backbone
-(web + native) is now proven on both the data level and the real screen.
+Process that works (Verify-2, proven): keep the screen **unlocked and attended**,
+run `caffeinate -dimsu`, grant computer-use access to `ai.konjo.lopi`, capture
+with `ffmpeg -f avfoundation -i "1"` + `screencapture`. A locked screen yields
+only the lock screen — do not fall back to a headless substitute.
 
-## 3. macOS visual verification — the process that works
+## 2. Launch-1 — seamless start [the next real work]
 
-For any future on-device pass: keep the screen **unlocked and attended**, run
-`caffeinate -dimsu` for the session, grant computer-use access to `ai.konjo.lopi`,
-and capture with `ffmpeg -f avfoundation -i "1"` + `screencapture`. A locked
-screen yields only the lock screen — do not fall back to a headless substitute.
+**Once Fix-3's live re-verification passes, there are no known open findings left
+anywhere in the system** — the entire Verify-1 → Fix-2 → Verify-2 → Fix-3 audit
+chain closes, and Launch-1 begins with a fully clean slate. Nothing structural
+blocks it; the concurrency backbone (web + native) is proven on both the data
+level and the real screen, and the stat/cost data paths now match across surfaces.
 
-## 4. Decisions already closed (do not re-litigate)
+## 3. Decisions already closed (do not re-litigate)
 
 - macOS-visual parity is **confirmed on the real display** (Verify-2) — orb morph,
-  concurrency, N-active, 12 sections. Only the stat-tile data path (Fix-3) is open.
+  concurrency, N-active, 12 sections.
+- Fix-3 counts the local `liveAgents` map for the fleet tiles and polls
+  `/api/stats` for COST TODAY; the per-pool `.poolStats` event is uptime-only by
+  contract (`LEDGER.md`). Future macOS stats consumers read the session map or
+  `/api/stats`, never a single pool's counters.
 - Bare-pane launch uses `paneSubmitPayload`; cross-pool stats come from the DB /
   local session map, never a single pool's counters (Fix-2, `LEDGER.md`).
 - Orb-parity → compact per-pane orb everywhere; Dashboard kept as a macOS-native

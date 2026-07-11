@@ -141,3 +141,36 @@ enum PhaseStyle {
           "rolledback", "rolled_back"].contains(phase.lowercased())
     }
 }
+
+/// Lifecycle bucket a task's phase/status falls into for the Dashboard fleet
+/// tiles — the Swift mirror of web's `dbStatusToUiStatus` (Fix-2 F3/F4). The
+/// tiles count the live session map through this instead of trusting the WS
+/// `pool_stats` event, whose counters are a single pool's and undercount in
+/// multi-repo mode (Verify-2 F10).
+enum FleetBucket: Hashable {
+    /// In flight — planning, implementing, testing, retrying, awaiting approval.
+    case running
+    /// Accepted but not yet started.
+    case queued
+    /// Reached a successful terminal state.
+    case succeeded
+    /// Reached a failed terminal state (failed / rolled back / conflict).
+    case failed
+    /// Cancelled — terminal, but counted in none of the four fleet tiles, exactly
+    /// as web excludes it from running/queued/completed/failed.
+    case cancelled
+
+    /// Bucket a phase/status token in whatever casing the wire or
+    /// `TaskStatusLabel` produced. An unknown or brand-new token reads as
+    /// `running` — in flight rather than silently terminal — matching web's
+    /// `default` arm.
+    static func of(_ phase: String) -> FleetBucket {
+        switch phase.lowercased() {
+        case "queued", "pending": return .queued
+        case "success", "done", "completed", "conclusion": return .succeeded
+        case "cancelled": return .cancelled
+        case "failed", "rolled_back", "rolledback", "conflict", "unknown": return .failed
+        default: return .running
+        }
+    }
+}

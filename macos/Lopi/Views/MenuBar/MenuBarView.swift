@@ -26,7 +26,7 @@ struct MenuBarView: View {
         HStack {
             ConnectionLED(state: model.connection)
             Spacer()
-            Text("\(model.stats.running) running · \(model.stats.queued) queued")
+            Text("\(model.runningCount) running · \(model.queuedCount) queued")
                 .font(Konjo.mono(11))
                 .foregroundStyle(Konjo.fgDim)
         }
