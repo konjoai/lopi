@@ -106,7 +106,7 @@ struct SchedulePopoverView: View {
             Text("CRON").font(Konjo.mono(8)).tracking(0.6).foregroundStyle(Konjo.fgDim)
             TextField("* * * * *", text: Binding(
                 get: { buildCronString(cron) },
-                set: { onChange({ var c = cron; c.freq = .custom; c.raw = $0; return c }()) }))
+                set: { raw in onChange({ var c = cron; c.freq = .custom; c.raw = raw; return c }()) }))
                 .textFieldStyle(.plain).font(Konjo.mono(10.5)).foregroundStyle(Konjo.ice)
                 .padding(5).background(Color.white.opacity(0.03))
                 .overlay(RoundedRectangle(cornerRadius: 5).stroke(Konjo.line, lineWidth: 1))
