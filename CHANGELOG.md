@@ -1,5 +1,68 @@
 # Changelog
 
+## [0.5.0] — macOS Parity Cut + Dead-Letter Retirement 🃏
+
+Brings the native macOS nav in line with web after the `Unify-2`/`Polish-1`
+collapse: macOS stops carrying UI for features web no longer has. Six `NavSection`
+cases removed (12 → 6: `forge, dashboard, budget, cron, loop, config`), their
+SwiftUI views deleted, and the backend endpoints that became orphaned as a result
+removed too — verified against every real caller (web, macOS, CLI, TUI, tests)
+before deletion, not assumed. The dead-letter queue was then retired entirely.
+
+**Breaking (minor bump).** Removes public REST endpoints (`/api/patterns`,
+`/api/audit`, `/api/tools*`, the agent-health surface, `/api/tasks/dead-letter*`),
+the `dead_letter_queue` store table + `MemoryStore` dead-letter methods, and the
+orchestrator's dead-letter write path. Tasks that exhaust retries are still marked
+`failed`; they are simply no longer separately dead-lettered.
+
+- **[Remove] Clean cuts — Tools, Health, Patterns, Audit.** Web cut these outright
+  in Unify-2 (no replacement). Deleted `ToolsView`/`HealthView`/`PatternsView`/
+  `AuditView.swift`, their `NavSection` cases + the macOS admin client methods and
+  models (`ToolModel`/`RegisterToolBody`, `HealthSummary`, `PatternModel`,
+  `AuditEntry`). Their backends had **zero remaining callers** once the panels were
+  gone (web's clients were already removed in Unify-2; no agent code consumes them),
+  so removed server-side as well:
+  - `GET /api/patterns` (+ `list_patterns`, the `patterns_cache`/`TtlCache` it was
+    the sole user of).
+  - `GET /api/audit` (+ `audit_handlers.rs`). The `MemoryStore::query_audit` store
+    API is retained — it is an internal, independently-tested primitive.
+  - The agent-health HTTP surface — `GET /api/agents/:id/health`,
+    `GET /api/agents/health/summary`, `POST /api/agents/:id/heartbeat` (+
+    `health_handlers.rs`, the `AppState.health` field). `lopi_orchestrator::HealthRegistry`
+    stays as a library type. (`GET /api/health` — the generic liveness probe — is
+    **kept**; it is unrelated to the removed Health panel.)
+  - `GET/POST/DELETE /api/tools*` (+ `tools_handlers.rs`, `AppState.tools`,
+    `hydrate_tools`, and lopi-ui's `lopi-tools` dependency). The `lopi-tools` crate
+    remains — `lopi-mcp` still depends on it.
+- **[Remove] Deliberate cut with a documented gap — Tasks + Dead-Letter.** Web
+  folded both into Overview (Tasks as its list, dead-letter as a status filter).
+  macOS has no Overview yet, so removing `TasksView`/`DeadLetterView` genuinely
+  removes the native app's only way to see task history or manage dead-lettered
+  tasks — a **known, deliberate capability gap**, deferred to a future macOS
+  Overview (see the `macOS-Parity-Cut-1` Ledger entry). Also removed the orphaned
+  macOS task-log plumbing (`AppModel.logs`/`client.logs`/`TaskLog`) that only
+  `TasksView` used.
+- **[Remove] The dead-letter queue, retired entirely across every layer.** The
+  DLQ was initially kept server-side (web still shipped a `listDlq`/`retryDlq`/
+  `deleteDlq` client), but the decision was reversed to remove it outright — front,
+  back, storage, and web. Gone: `TasksView`/`DeadLetterView` (above), the
+  `/api/tasks/dead-letter*` routes + `dlq_handlers.rs`, the `MemoryStore`
+  dead-letter methods + `dead_letter.rs` + the `dead_letter_queue` table (and its
+  cascade entry), the orchestrator `push_dlq` write path in `run_loop.rs`, and web's
+  `api.ts` DLQ client + its tests. **Behavioral note:** tasks that exhaust their
+  retry budget are still marked `failed` and counted (`mark_completed` + the pool
+  `failed` counter are untouched) — they are simply no longer copied into a separate
+  dead-letter store or retryable via a dedicated endpoint. The `task.dead_letter`
+  audit action is no longer emitted.
+- **[Fix]** Corrected three stale `/api/tasks/:id/logs` + task-stream tests that
+  predated the Verify-1 F8 task-existence gate (they queried ids that were never
+  saved, so the gate correctly 404'd them); they now create the task first, matching
+  the deliberate contract `f8_id_scoped_reads_status_codes` asserts.
+- **[Verify]** Workspace builds clean; `cargo clippy --workspace -- -D warnings`,
+  the `-W dead_code` and `-D missing_docs` gates all pass; full `cargo test
+  --workspace` green (47 suites, 0 failures); web `api.test.ts` 24/0; macOS
+  `xcodebuild` **BUILD SUCCEEDED** with 6 nav sections.
+
 ## [0.4.0] — macOS Loop Stacks 🃏
 
 Brings web's unified Loop Stacks to the native macOS app, extending the existing

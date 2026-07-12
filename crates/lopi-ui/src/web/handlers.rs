@@ -405,29 +405,6 @@ pub(super) async fn create_task(
     (StatusCode::CREATED, Json(resp)).into_response()
 }
 
-pub(super) async fn list_patterns(State(s): State<AppState>) -> Json<Value> {
-    {
-        let cache = s.patterns_cache.lock().await;
-        if let Some(cached) = cache.get() {
-            return Json(cached.clone());
-        }
-    }
-    let rows = s.store.load_patterns(50).await.unwrap_or_default();
-    let body: Vec<_> = rows
-        .into_iter()
-        .map(|p| {
-            json!({
-                "id": p.id, "goal_keywords": p.goal_keywords,
-                "avg_attempts": p.avg_attempts, "success_rate": p.success_rate,
-                "last_seen": p.last_seen,
-            })
-        })
-        .collect();
-    let value = json!({ "patterns": body });
-    s.patterns_cache.lock().await.set(value.clone());
-    Json(value)
-}
-
 /// `GET /api/spec` — returns the cached or freshly-extracted spec surface.
 pub(super) async fn get_spec(State(s): State<AppState>) -> impl IntoResponse {
     let surface = match SpecSurface::load(&s.repo_path) {

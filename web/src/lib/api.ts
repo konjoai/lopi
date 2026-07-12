@@ -190,33 +190,9 @@ export const rejectPlan = (id: string) =>
 // The Logs client (LogRow / recentLogs / taskLogs) was removed with the
 // standalone Logs page cut in Unify-2 — live log lines reach the UI over the
 // WebSocket (`wsClient`), not these REST polls, so they had zero UI callers.
-// The `/api/logs` + `/api/tasks/:id/logs` backend routes stay: they serve the
-// native macOS Tasks panel.
-
-// ── Dead-letter queue ─────────────────────────────────────────────────────────
-export interface DeadLetterRow {
-  id: string;
-  task_id: string;
-  goal: string;
-  repo_path: string | null;
-  total_attempts: number;
-  last_error: string;
-  first_failed_at: string;
-  dead_at: string;
-  source: string;
-}
-
-export const listDlq = (n = 100) =>
-  request<{ dead_letters: DeadLetterRow[] }>(`/api/tasks/dead-letter?n=${n}`);
-export const retryDlq = (id: string) =>
-  request<{ new_task_id: string; queued: boolean }>(
-    `/api/tasks/dead-letter/${encodeURIComponent(id)}/retry`,
-    { method: 'POST' }
-  );
-export const deleteDlq = (id: string) =>
-  request<{ deleted: string }>(`/api/tasks/dead-letter/${encodeURIComponent(id)}`, {
-    method: 'DELETE'
-  });
+// The dead-letter-queue client (listDlq / retryDlq / deleteDlq) and its backend
+// were removed outright in macOS-Parity-Cut-1 — the queue is gone from every
+// layer (front, back, storage), so there is nothing left to client.
 
 // ── Schedules (cron) ──────────────────────────────────────────────────────────
 export interface ScheduleRun {

@@ -176,7 +176,7 @@ impl AgentRunner {
     /// a progress-gated stop, tagging the [`StopReason`] into the reason string
     /// (the structured-string-in-`reason` convention `NoProgressStall` and
     /// `TurnLimitExceeded` already use) so it persists on the run and flows
-    /// through the DLQ/audit path unchanged.
+    /// through the status-persistence path unchanged.
     pub(super) async fn record_progress_stop(
         &mut self,
         reason: StopReason,

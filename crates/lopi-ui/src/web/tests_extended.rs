@@ -102,18 +102,6 @@
     }
 
     #[tokio::test]
-    async fn patterns_response_has_patterns_array() {
-        let app = test_app().await;
-        let resp = get_req(app, "/api/patterns").await;
-        assert_eq!(resp.status(), StatusCode::OK);
-        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-        assert!(json["patterns"].is_array());
-    }
-
-    #[tokio::test]
     async fn health_response_has_service_field() {
         let app = test_app().await;
         let resp = get_req(app, "/api/health").await;
@@ -195,74 +183,6 @@
         assert!(json2["duplicate_of"].is_string());
     }
 
-    /// Dead-letter list is empty on a fresh sail server.
-    #[tokio::test]
-    async fn dlq_list_empty_returns_empty_array() {
-        let app = test_app().await;
-        let resp = get_req(app, "/api/tasks/dead-letter").await;
-        assert_eq!(resp.status(), StatusCode::OK);
-        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(json["dead_letters"].as_array().map(Vec::len), Some(0));
-    }
-
-    /// Retrying a nonexistent DLQ row returns 404 cleanly.
-    #[tokio::test]
-    async fn dlq_retry_unknown_returns_404() {
-        let app = test_app().await;
-        let resp = send_req(app, "POST", "/api/tasks/dead-letter/nope-not-real/retry", None).await;
-        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
-    }
-
-    /// P2 — `GET /api/audit` returns an empty events array on a fresh
-    /// store, and a 0 next_cursor.
-    #[tokio::test]
-    async fn audit_empty_returns_empty_events_and_zero_cursor() {
-        let app = test_app().await;
-        let resp = get_req(app, "/api/audit").await;
-        assert_eq!(resp.status(), StatusCode::OK);
-        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(json["events"].as_array().map(Vec::len), Some(0));
-        assert_eq!(json["next_cursor"], 0);
-    }
-
-    /// P2 — record three rows via the store, then page through them via
-    /// the endpoint to verify the since_id cursor.
-    #[tokio::test]
-    async fn audit_paginates_via_since_id_cursor() {
-        let (app, store) = test_app_with_store().await;
-
-        for i in 0..3 {
-            store
-                .record_audit(&lopi_memory::AuditInput::new(format!("test.{i}")))
-                .await
-                .unwrap();
-        }
-        // First page — 2 rows.
-        let resp = get_req(app.clone(), "/api/audit?n=2").await;
-        assert_eq!(resp.status(), StatusCode::OK);
-        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(json["events"].as_array().unwrap().len(), 2);
-        let cursor = json["next_cursor"].as_i64().unwrap();
-        // Second page — picks up after the cursor (1 row left).
-        let resp2 = get_req(app, &format!("/api/audit?since_id={cursor}&n=10")).await;
-        let bytes2 = axum::body::to_bytes(resp2.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let json2: serde_json::Value = serde_json::from_slice(&bytes2).unwrap();
-        assert_eq!(json2["events"].as_array().unwrap().len(), 1);
-        let last = &json2["events"][0];
-        assert!(last["id"].as_i64().unwrap() > cursor);
-    }
-
     /// P2 — `POST /api/tasks` with required_capabilities and an empty
     /// agent registry returns 422 with a structured error.
     #[tokio::test]
@@ -285,91 +205,42 @@
             .is_some_and(|e| e.contains("capability")));
     }
 
-    /// Push a DLQ row directly via the store, then retry through the
-    /// endpoint — the row is consumed and a new TaskId is returned.
-    #[tokio::test]
-    async fn dlq_retry_round_trip_takes_row_and_returns_new_task_id() {
-        let (app, store) = test_app_with_store().await;
-
-        // Seed a DLQ row.
-        let mut input = lopi_memory::DeadLetterInput::new(
-            lopi_core::TaskId::new(),
-            "retry-me-via-endpoint",
-        );
-        input.repo_path = Some("/tmp".into());
-        input.total_attempts = 3;
-        input.last_error = Some("3 attempts failed".into());
-        input.source = "cli".into();
-        let dlq_id = store.push_dead_letter(&input).await.unwrap();
-
-        let resp = send_req(app, "POST", &format!("/api/tasks/dead-letter/{dlq_id}/retry"), None).await;
-        assert_eq!(resp.status(), StatusCode::ACCEPTED);
-        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(json["retried_from"], dlq_id);
-        assert!(json["new_task_id"].is_string());
-        // The DLQ row is consumed by retry — count returns to zero.
-        assert_eq!(store.count_dead_letters().await.unwrap(), 0);
-    }
-
-    // ─── F1 — agent health monitoring + heartbeat ────────────────────
-
-    /// Hitting /api/agents/:id/health for an agent that never sent a
-    /// heartbeat returns 404 with a structured error.
-    #[tokio::test]
-    async fn health_unknown_agent_returns_404() {
-        let app = test_app().await;
-        let resp = get_req(app, "/api/agents/ghost/health").await;
-        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
-    }
-
-    /// POST /api/agents/:id/heartbeat creates the entry and returns the
-    /// snapshot marked Healthy.
-    #[tokio::test]
-    async fn health_heartbeat_marks_healthy_and_returns_snapshot() {
-        let app = test_app().await;
-        let resp = send_req(app, "POST", "/api/agents/alpha/heartbeat", None).await;
-        assert_eq!(resp.status(), StatusCode::OK);
-        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(json["status"], "healthy");
-        assert_eq!(json["agent_id"], "alpha");
-        assert!(json["last_seen"].is_string());
-        assert_eq!(json["consecutive_failures"], 0);
-    }
-
     // ─── F2 — per-task SSE stream + log ring buffer ──────────────────
 
-    /// `GET /api/tasks/:id/logs` on an unknown task returns 200 with an
-    /// empty array — not 404 — since "no logs" is a valid state.
+    /// `GET /api/tasks/:id/logs` on a *known* task with no logs yet returns
+    /// 200 with an empty array — "no logs" is a valid state. (An *unknown*
+    /// id is 404, gated on task existence — see `f8_id_scoped_reads_status_codes`.)
     #[tokio::test]
-    async fn task_logs_unknown_returns_empty_array() {
-        let app = test_app().await;
-        let resp = get_req(app, "/api/tasks/never-logged/logs").await;
+    async fn task_logs_known_task_no_logs_returns_empty_array() {
+        let (app, store) = test_app_with_store().await;
+        let task = Task::new("known task, no logs yet");
+        store.save_task(&task, "running").await.unwrap();
+        let tid = task.id.0.to_string();
+
+        let resp = get_req(app, &format!("/api/tasks/{tid}/logs")).await;
         assert_eq!(resp.status(), StatusCode::OK);
         let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
             .await
             .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(json["task_id"], "never-logged");
+        assert_eq!(json["task_id"], tid);
         assert_eq!(json["logs"].as_array().unwrap().len(), 0);
     }
 
-    /// Seed a couple of log rows via the store, then read them back via
-    /// the endpoint to verify the wire shape.
+    /// Seed a couple of log rows via the store for a saved task, then read
+    /// them back via the endpoint to verify the wire shape. The task is saved
+    /// first because `get_logs` gates on task existence (Verify-1 F8).
     #[tokio::test]
     async fn task_logs_returns_seeded_rows_oldest_first() {
         let (app, store) = test_app_with_store().await;
 
-        let tid = "task-with-logs";
+        let task = Task::new("task with logs");
+        store.save_task(&task, "running").await.unwrap();
+        let tid = task.id.0.to_string();
         let now = chrono::Utc::now();
         for (i, level) in ["info", "warn", "info"].iter().enumerate() {
             store
-                .record_task_log(tid, now, level, &format!("line {i}"))
+                .record_task_log(&tid, now, level, &format!("line {i}"))
                 .await
                 .unwrap();
         }
@@ -468,20 +339,4 @@
         // 4. GET after delete → 404.
         let resp = get_req(app, "/api/agents/alpha/rate-limit").await;
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
-    }
-
-    /// /api/agents/health/summary on a fresh server reports all zeros.
-    #[tokio::test]
-    async fn health_summary_empty_returns_zeros() {
-        let app = test_app().await;
-        let resp = get_req(app, "/api/agents/health/summary").await;
-        assert_eq!(resp.status(), StatusCode::OK);
-        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(json["total"], 0);
-        assert_eq!(json["healthy"], 0);
-        assert_eq!(json["degraded"], 0);
-        assert_eq!(json["dead"], 0);
     }

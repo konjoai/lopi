@@ -15,7 +15,7 @@ impl AgentRunner {
     /// all — blocks the loop with a `GateBlocked` failure, the same
     /// structured-string-in-`reason` convention `TurnLimitExceeded` and
     /// `NoProgressStall` already use, so it flows through the existing
-    /// `TaskCompleted` event and DLQ paths with no new event/outcome type.
+    /// `TaskCompleted` event path with no new event/outcome type.
     pub(super) async fn run_gate_preflight(&self) -> Option<TaskStatus> {
         let cmd = self.gate.clone()?;
         let passed = run_guard_command(&cmd, &self.repo_path)

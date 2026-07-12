@@ -5,14 +5,8 @@ enum NavSection: String, CaseIterable, Identifiable {
     case forge = "Forge"
     case dashboard = "Dashboard"
     case budget = "Budget"
-    case tasks = "Tasks"
     case cron = "Cron"
     case loop = "Loop"
-    case deadLetter = "Dead-Letter"
-    case tools = "Tools"
-    case health = "Health"
-    case patterns = "Patterns"
-    case audit = "Audit"
     case config = "Config"
 
     var id: String { rawValue }
@@ -22,14 +16,8 @@ enum NavSection: String, CaseIterable, Identifiable {
         case .forge: return "circle.grid.2x2.fill"
         case .dashboard: return "gauge.with.dots.needle.67percent"
         case .budget: return "dollarsign.circle"
-        case .tasks: return "list.bullet.rectangle"
         case .cron: return "clock.arrow.circlepath"
         case .loop: return "arrow.triangle.2.circlepath"
-        case .deadLetter: return "tray.full"
-        case .tools: return "wrench.and.screwdriver"
-        case .health: return "heart.text.square"
-        case .patterns: return "sparkles"
-        case .audit: return "doc.text.magnifyingglass"
         case .config: return "gearshape.2"
         }
     }
@@ -220,14 +208,8 @@ struct RootView: View {
         case .forge: ForgeView()
         case .dashboard: DashboardView()
         case .budget: BudgetView()
-        case .tasks: TasksView()
         case .cron: CronView()
         case .loop: LoopView()
-        case .deadLetter: DeadLetterView()
-        case .tools: ToolsView()
-        case .health: HealthView()
-        case .patterns: PatternsView()
-        case .audit: AuditView()
         case .config: ConfigView()
         }
     }

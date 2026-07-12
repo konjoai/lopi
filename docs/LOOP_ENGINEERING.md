@@ -79,7 +79,7 @@ store, lessons store, CLAUDE.md+skills+rules, researcher subagent, the Konjo
 four walls, rubrics, forbidden-dirs, budget governance (P10), KV-cache eviction,
 verifier, stability pre-flight, cron scheduling, CI webhook injection, plan
 approval gate (P11), scorer, postmortem, pattern enricher, DAG task graph,
-priority queue, agent pool, dead-letter queue, checkpoints, result cache,
+priority queue, agent pool, checkpoints, result cache,
 remote control, triple-surface dashboards.
 
 **Gaps (what "Loop Engineering" as a *feature* lacks):**

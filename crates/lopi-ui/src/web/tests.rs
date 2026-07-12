@@ -89,8 +89,7 @@ async fn test_app_with_store() -> (Router, lopi_memory::MemoryStore) {
     let pool = Arc::new(
         AgentPool::new(1, PathBuf::from("."), queue.clone(), bus.clone()).with_store(store.clone()),
     );
-    let mut state = AppState::new(store.clone(), bus, queue, pool, None);
-    state.hydrate_tools().await.ok();
+    let state = AppState::new(store.clone(), bus, queue, pool, None);
     (build_app(state), store)
 }
 
@@ -178,43 +177,6 @@ async fn metrics_returns_prometheus_text() {
 }
 
 #[tokio::test]
-async fn tools_list_returns_empty_by_default() {
-    let app = test_app().await;
-    let resp = get_req(app, "/api/tools").await;
-    assert_eq!(resp.status(), StatusCode::OK);
-    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-    assert_eq!(json["tools"].as_array().unwrap().len(), 0);
-}
-
-#[tokio::test]
-async fn tools_register_then_get_round_trip() {
-    let app = test_app().await;
-    let body = serde_json::to_string(&serde_json::json!({
-        "name": "test-search",
-        "description": "search the corpus",
-        "parameters": {"type": "object", "properties": {"q": {"type": "string"}}},
-        "timeout_ms": 5_000,
-        "retries": 1,
-        "updated_at": chrono::Utc::now(),
-    }))
-    .unwrap();
-    let post = send_req(app.clone(), "POST", "/api/tools", Some(body)).await;
-    assert_eq!(post.status(), StatusCode::CREATED);
-
-    let get = get_req(app, "/api/tools/test-search").await;
-    assert_eq!(get.status(), StatusCode::OK);
-    let bytes = axum::body::to_bytes(get.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-    assert_eq!(json["name"], "test-search");
-    assert_eq!(json["timeout_ms"], 5_000);
-}
-
-#[tokio::test]
 async fn cache_stats_returns_zero_for_empty_store() {
     let app = test_app().await;
     let resp = get_req(app, "/api/cache/stats").await;
@@ -252,25 +214,6 @@ async fn invalidate_agent_cache_returns_zero_for_unknown() {
     let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(json["agent_id"], "never-existed");
     assert_eq!(json["deleted"], 0);
-}
-
-#[tokio::test]
-async fn tools_get_unknown_returns_404() {
-    let app = test_app().await;
-    let resp = get_req(app, "/api/tools/never-registered").await;
-    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
-}
-
-#[tokio::test]
-async fn patterns_returns_200() {
-    let app = test_app().await;
-    let resp = get_req(app, "/api/patterns").await;
-    assert_eq!(resp.status(), StatusCode::OK);
-    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
-        .await
-        .unwrap();
-    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-    assert!(json.get("patterns").is_some());
 }
 
 #[tokio::test]

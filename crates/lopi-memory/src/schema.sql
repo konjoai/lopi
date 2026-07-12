@@ -200,27 +200,8 @@ CREATE INDEX IF NOT EXISTS idx_cache_events_ts ON result_cache_events(ts);
 -- ALTER TABLE is wrapped in the idempotent migration guard in apply_schema().
 ALTER TABLE github_installations ADD COLUMN tier TEXT NOT NULL DEFAULT 'free';
 
--- P2 — Dead-letter queue. Tasks that exhaust their retry budget land
--- here so they can be inspected, manually retried, or permanently
--- discarded. The `last_error` column carries the final attempt's
--- failure reason. The `total_attempts` column is the count actually
--- made before giving up.
-CREATE TABLE IF NOT EXISTS dead_letter_queue (
-    id              TEXT PRIMARY KEY,
-    task_id         TEXT NOT NULL,
-    goal            TEXT NOT NULL,
-    repo_path       TEXT,
-    total_attempts  INTEGER NOT NULL DEFAULT 0,
-    last_error      TEXT,
-    first_failed_at TEXT NOT NULL,
-    dead_at         TEXT NOT NULL,
-    source          TEXT NOT NULL DEFAULT 'unknown'
-);
-CREATE INDEX IF NOT EXISTS idx_dlq_dead_at ON dead_letter_queue(dead_at DESC);
-CREATE INDEX IF NOT EXISTS idx_dlq_task_id ON dead_letter_queue(task_id);
-
 -- P2 — Append-only audit log. One row per actionable event across the
--- whole orchestrator: task submit/dispatch, DLQ entry, breaker trips,
+-- whole orchestrator: task submit/dispatch, breaker trips,
 -- cache hit/miss. The `payload` column holds
 -- JSON whose shape is per-action and intentionally schemaless.
 CREATE TABLE IF NOT EXISTS audit_log (
