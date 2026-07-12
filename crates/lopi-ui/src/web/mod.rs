@@ -154,7 +154,6 @@ impl AppState {
         self.config = config.map(Arc::new);
         self
     }
-
 }
 
 /// Build the axum router with all routes wired to `state`.

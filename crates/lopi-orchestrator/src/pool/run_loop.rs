@@ -179,7 +179,11 @@ impl AgentPool {
                     Ok(TaskStatus::Success { .. }) => {
                         counters.succeeded.fetch_add(1, Ordering::Relaxed);
                     }
-                    Ok(TaskStatus::Failed { .. } | TaskStatus::RolledBack | TaskStatus::Conflict { .. })
+                    Ok(
+                        TaskStatus::Failed { .. }
+                        | TaskStatus::RolledBack
+                        | TaskStatus::Conflict { .. },
+                    )
                     | Err(_) => {
                         counters.failed.fetch_add(1, Ordering::Relaxed);
                     }
@@ -214,7 +218,6 @@ fn task_source_label(task: &Task) -> String {
         TaskSource::SelfModify { .. } => "self-modify".into(),
     }
 }
-
 
 /// Phase 5b / Sprint N — Compute score weights from user-annotated pattern history.
 ///
