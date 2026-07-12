@@ -2,18 +2,20 @@
 
 A native **SwiftUI** dashboard for [lopi](../). It is a client of a running
 `lopi sail` server — it speaks the same REST + WebSocket API the web dashboard
-uses, so the two stay in *data* parity, and adds OpenClaw-style extras (cron
-scheduling, a menu-bar companion, admin panels). Since the web nav collapse
-(Unify-2), several of those admin panels — Tasks, Tools, Health, Patterns,
-Audit, Dashboard — are deliberately **native-exclusive**: the web folded them
-into Overview or cut them, macOS keeps them as first-class screens.
+uses, so the two stay in *data* parity, and adds a cron scheduler and a menu-bar
+companion. `macOS-Parity-Cut-1` brought the nav in line with web: the admin
+panels web no longer surfaces — **Tools, Health, Patterns, Audit** (cut outright
+in Unify-2) and **Tasks + Dead-Letter** (folded into web's Overview) — were
+removed here too, along with their now-orphaned backend endpoints. The dead-letter
+queue was then retired entirely — front, back, storage, and web client — so it is
+a removed feature, not a deferred one. macOS does not yet have an Overview
+equivalent, so task history is temporarily unavailable in the native app until one
+is built (see the Ledger's `macOS-Parity-Cut-1` entry).
 
-> Status: **all 13 nav sections live.** Ops-2 swept every section against a
-> running `lopi sail` and found **12 of 13 fully wired**; the 13th
-> (Constellations) was the one broken screen and has since been removed, leaving
-> 12 wired sections. Networking core, Konjo theme, app shell, menu-bar
-> companion, dashboard, tasks, cron, and every admin panel are implemented and
-> backed by live API calls — none are stubs.
+> Status: **6 nav sections live** — Loop Stack (Forge), Dashboard, Budget, Loop,
+> Cron, Config — all backed by live API calls, none stubs. Tasks that exhaust
+> their retry budget are still marked `failed`, but are no longer recorded in a
+> dead-letter store or retryable — that subsystem was removed.
 
 ## Requirements
 
@@ -66,9 +68,10 @@ AppModel (@Observable)  ← single source of UI state
 
 | Screen        | Endpoints |
 |---------------|-----------|
+| Loop Stack (Forge) | `/ws` (live), `/api/tasks` (+ `:id`, `/plan/*`, `/checkpoint`) |
 | Dashboard     | `/ws` (live), `/api/stats` |
-| Tasks         | `/api/tasks`, `/api/tasks/:id`, `/api/tasks/:id/logs`, `/api/tasks/:id/stream` |
+| Budget        | `/api/stats`, `/ws` |
+| Loop          | `/api/loop-engineering/*` (health, runs, strategy) |
 | Cron          | `/api/schedules` (+ `:id`, `/enable`, `/disable`, `/run-now`) |
-| Settings      | `/api/version`, `/api/config` |
-| Admin panels  | `/api/tasks/dead-letter`, `/api/tools`, `/api/agents/health/summary`, `/api/audit`, `/api/patterns` |
+| Config / Settings | `/api/version`, `/api/config`, `/api/cache/stats`, `/api/cache` |
 ```

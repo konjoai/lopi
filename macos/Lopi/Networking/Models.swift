@@ -67,19 +67,6 @@ struct ServerVersion: Codable, Hashable {
     }
 }
 
-/// A single log line from `GET /api/tasks/:id/logs`.
-struct TaskLog: Codable, Identifiable, Hashable {
-    let id: Int
-    let taskId: String
-    let ts: String
-    let level: String
-    let line: String
-
-    enum CodingKeys: String, CodingKey {
-        case id, ts, level, line
-        case taskId = "task_id"
-    }
-}
 
 // MARK: - Schedules (cron)
 

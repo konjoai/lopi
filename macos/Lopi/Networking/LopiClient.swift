@@ -51,10 +51,6 @@ struct LopiClient {
         return wrapper.tasks
     }
 
-    func logs(taskId: String, n: Int = 200) async throws -> [TaskLog] {
-        let wrapper: LogsWrapper = try await get("/api/tasks/\(taskId)/logs?n=\(n)")
-        return wrapper.logs
-    }
 
     @discardableResult
     func createTask(_ body: CreateTaskBody) async throws -> Data {
@@ -247,5 +243,4 @@ struct LopiClient {
 
 // Response envelopes the API wraps collections in.
 private struct TasksWrapper: Decodable { let tasks: [TaskSummary] }
-private struct LogsWrapper: Decodable { let logs: [TaskLog] }
 private struct SchedulesWrapper: Decodable { let schedules: [Schedule] }

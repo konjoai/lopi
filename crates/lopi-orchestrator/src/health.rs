@@ -29,7 +29,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 
-/// Coarse health label exposed via `GET /api/agents/:id/health`.
+/// Coarse health label for a tracked agent, derived by the sweeper.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentHealth {
@@ -87,7 +87,7 @@ struct HealthInner {
     last_seen_wall: Option<DateTime<Utc>>,
 }
 
-/// Public health snapshot returned by `GET /api/agents/:id/health`.
+/// Public health snapshot for a single agent, from [`HealthRegistry::snapshot`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HealthSnapshot {
     /// Stable agent identifier.
@@ -106,7 +106,7 @@ pub struct HealthSnapshot {
     pub samples: u32,
 }
 
-/// Fleet-wide rollup for `GET /api/agents/health/summary`.
+/// Fleet-wide rollup of agent health, produced by [`HealthRegistry::summary`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HealthSummary {
     /// Total agents tracked by the registry.

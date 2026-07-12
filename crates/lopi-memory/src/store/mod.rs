@@ -253,7 +253,6 @@ impl MemoryStore {
             "attempts",
             "turn_metrics",
             "agent_checkpoints",
-            "dead_letter_queue",
             "task_logs",
             "verifier_verdicts",
             "eval_outcomes",
@@ -431,7 +430,6 @@ pub struct TaskRow {
 mod audit;
 mod checkpoints;
 mod dag;
-mod dead_letter;
 mod eval_outcomes;
 mod installations;
 mod learnings;
@@ -451,7 +449,6 @@ mod verifier;
 pub use audit::{AuditInput, AuditQuery, AuditRow};
 pub use checkpoints::{CheckpointInput, CheckpointRow};
 pub use dag::DagNodeRow;
-pub use dead_letter::{DeadLetterInput, DeadLetterRow};
 pub use eval_outcomes::{EvalOutcomeRow, ScorePoint};
 pub use installations::InstallationRow;
 pub use learnings::LearningRow;

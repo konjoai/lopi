@@ -1,8 +1,7 @@
 //! Append-only audit log.
 //!
 //! One row per actionable event across the orchestrator: task submit /
-//! dispatch / DLQ entry, breaker trips, cache hit / miss, tool register /
-//! deregister. The shape of `payload` is
+//! dispatch, breaker trips, cache hit / miss. The shape of `payload` is
 //! per-action and intentionally schemaless — query tools project the
 //! JSON they care about.
 //!

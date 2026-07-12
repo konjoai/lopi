@@ -5,6 +5,65 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## macOS-Parity-Cut-1 — remove what web already cut (front + back + tests + docs)
+
+**The reversal, stated plainly.** `macOS-Loop-Stacks-1`'s README framed the Tools/
+Health/Patterns/Audit/Tasks admin panels as *deliberately native-exclusive* — web
+folded or cut them, macOS kept them. This sprint reverses that: macOS should not
+carry UI for features web no longer has. Twelve `NavSection` cases → six (`forge,
+dashboard, budget, cron, loop, config`); the six removed views and their orphaned
+backends are gone.
+
+**Backend fate was decided per-endpoint against *verified* callers, not the
+assumption "macOS no longer uses it" = "nothing uses it."** Pre-flight grepped web,
+macOS, CLI, TUI, and tests for every candidate. The results split three ways:
+
+- **Removed — zero callers after the panel went (Tools, Health, Patterns, Audit):**
+  `/api/patterns`, `/api/audit`, the agent-health HTTP surface (`/api/agents/:id/health`,
+  `/api/agents/health/summary`, `/api/agents/:id/heartbeat`), and `/api/tools*`. Each
+  was macOS-panel-only — web's clients were already deleted in Unify-2, and no agent
+  code consumes them (the `HealthRegistry` and `ToolRegistry` in `AppState` were read
+  *only* by their own HTTP handlers; the health "sweeper" the struct comment
+  mentioned was never actually spawned in lopi-ui). Removing them cascaded cleanly
+  into `AppState.health`/`tools`/`patterns_cache` + the `TtlCache` helper + the
+  `lopi-tools` dep. The library types (`lopi_orchestrator::HealthRegistry`,
+  `lopi_tools::ToolRegistry` — still used by `lopi-mcp`) stay.
+- **Kept — generic, not the removed feature:** `GET /api/health`. The doc listed it,
+  but verification showed it is a static liveness probe (`{"status":"ok"}`) unrelated
+  to the agent-**Health** panel (which used `/api/agents/health/summary`). Removing it
+  would be scope creep that could break external monitoring. Kept.
+- **Initially kept, then removed outright — the dead-letter queue.** The first pass
+  kept `/api/tasks/dead-letter*` because web's `api.ts` still exported and unit-tested
+  `listDlq`/`retryDlq`/`deleteDlq` (Overview's `dead-letter` chip is a **client-side
+  filter** over the live agents store — it imports `$lib/stores/agents`, never
+  `$lib/api` — so the "Overview depends on it" clause never fired; the only stakeholder
+  was that retained web client). A follow-up call reversed this: **remove the DLQ
+  completely, web included.** Gone across every layer — `dlq_handlers.rs` + routes,
+  the `MemoryStore` dead-letter methods + `dead_letter.rs` + the `dead_letter_queue`
+  table, the orchestrator `push_dlq` write path, and the web client + its tests. The
+  write path was verified purely additive before deletion: `push_dlq` only wrote a
+  `dead_letters` row + a `task.dead_letter` audit entry; task failure status is marked
+  independently by `run_one`/`mark_completed` and the pool `failed` counter, both
+  untouched. So exhausted tasks are still marked `failed` and counted — they are just
+  no longer separately dead-lettered or retryable. This retires the DLQ feature rather
+  than deferring it.
+
+**The Tasks removal is a deliberate capability gap, not a mechanical parity cut —
+recorded here so it is not re-litigated as a bug.** Web folded task history into
+Overview; macOS has no Overview yet. Removing `TasksView` therefore removes the native
+app's *only* way to view task history — a new gap specific to macOS, not a loss web
+already absorbed. The call (confirmed with the owner before the phase ran): remove it
+anyway to hit the full-parity goal, and defer the capability to a future macOS
+Overview. Dead-letter *management* is a separate matter: the DLQ was retired entirely
+(above), so it is not a deferred-until-Overview gap — it is a removed feature. A future
+Overview that wants dead-letter recovery would rebuild the subsystem, not re-expose a
+retained backend.
+
+**Next session — this sprint's direct follow-up.** Build a macOS Overview equivalent
+(the read-only app-wide rollup web has at `/overview`) to close the task-history gap
+this sprint knowingly opened. It is scoped follow-up work, not an indefinite deferral.
+It does **not** restore dead-letter management — that subsystem is gone by decision.
+
 ## macOS-Loop-Stacks-1 — bring Loop Stacks to the native app
 
 **Sequencer fork: functional port, taken (not visual-first).** The prompt flagged

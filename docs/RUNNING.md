@@ -292,14 +292,12 @@ but divergent screens.** Because the macOS app is a pure client of the same
 
 - **Shared screens** (both surfaces): Forge (live cockpit / panes), Budget,
   Loop, Config.
-- **macOS-only screens:** Dashboard, Tasks, Cron, Dead-Letter, Tools, Health,
-  Patterns, Audit, plus a **menu-bar companion** — the OpenClaw-style admin
-  extras that the web nav collapse (Unify-2) folded into Overview or cut, but
-  which survive here as deliberately platform-exclusive native panels. Ops-2
-  swept all of them live: **12 of 13 sections fully wired** (the 13th,
-  Constellations, was the one broken screen and has since been removed).
-  (macOS nav enum: `Forge, Dashboard, Budget, Tasks, Cron, Loop, Dead-Letter,
-  Tools, Health, Patterns, Audit, Config` —
+- **macOS-only screens:** Dashboard, Cron, plus a **menu-bar companion**. The
+  former native-exclusive admin panels — Tasks, Tools, Health, Patterns, Audit,
+  and the Dead-Letter queue — were removed in `macOS-Parity-Cut-1` to bring the
+  native nav in line with web (which had folded or cut them in Unify-2); the
+  dead-letter subsystem was then retired entirely, across front, back, and storage.
+  (macOS nav enum: `Forge, Dashboard, Budget, Cron, Loop, Config` —
   [`macos/Lopi/Views/RootView.swift`](../macos/Lopi/Views/RootView.swift).)
 - **Web-only screens:** **Loop Stack** (`/stacks` — the loop-stack composer and
   the web default) and **Overview** (`/overview` — the read-only rollup that

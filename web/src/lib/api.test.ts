@@ -5,11 +5,10 @@
 import {
   ApiError,
   getStats,
-  listDlq,
   createTask,
   createSchedule,
   enableSchedule,
-  deleteDlq,
+  deleteSchedule,
   getConfig,
   getLoopEngineering,
   setLoopStrategy,
@@ -48,11 +47,6 @@ async function main() {
   const stats = await getStats();
   eq(stats.total_cost_usd_today, 0.048, 'getStats returns parsed body');
   eq(captured[0].path, '/api/stats', 'getStats hits /api/stats');
-
-  // Query params are encoded.
-  mockFetch(200, { dead_letters: [] });
-  await listDlq(42);
-  eq(captured[0].path, '/api/tasks/dead-letter?n=42', 'listDlq passes limit');
 
   // POST bodies are JSON with content-type.
   mockFetch(200, {});
@@ -93,8 +87,8 @@ async function main() {
 
   // DELETE method wiring.
   mockFetch(200, { deleted: 'd1' });
-  await deleteDlq('d1');
-  eq(captured[0].init?.method, 'DELETE', 'deleteDlq DELETEs');
+  await deleteSchedule('d1');
+  eq(captured[0].init?.method, 'DELETE', 'deleteSchedule DELETEs');
 
   // Loop Engineering: snapshot read carries the self-prompt catalog.
   mockFetch(200, {

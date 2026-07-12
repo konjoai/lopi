@@ -294,9 +294,6 @@ final class AppModel {
         } catch { report(error) }
     }
 
-    func logs(for taskId: String) async -> [TaskLog] {
-        (try? await client.logs(taskId: taskId)) ?? []
-    }
 
     // MARK: Live stream wiring
 

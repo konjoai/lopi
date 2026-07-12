@@ -10,8 +10,10 @@
 
 /// Like `test_app_with_store`, but also hands back the `EventBus` handle
 /// so a test can `bus.send(..)` directly instead of driving a real task
-/// through the pool just to get events onto it.
-async fn test_app_with_bus() -> (Router, EventBus<AgentEvent>) {
+/// through the pool just to get events onto it. The store is returned too
+/// so the test can `save_task` the ids it streams — `stream_task` gates on
+/// task existence (Verify-1 F8), so a never-saved id would 404.
+async fn test_app_with_bus() -> (Router, EventBus<AgentEvent>, lopi_memory::MemoryStore) {
     let store = lopi_memory::MemoryStore::open_in_memory().await.unwrap();
     let bus: EventBus<AgentEvent> = EventBus::new(64);
     let queue = TaskQueue::new();
@@ -21,8 +23,8 @@ async fn test_app_with_bus() -> (Router, EventBus<AgentEvent>) {
         queue.clone(),
         bus.clone(),
     ));
-    let state = AppState::new(store, bus.clone(), queue, pool, None);
-    (build_app(state), bus)
+    let state = AppState::new(store.clone(), bus.clone(), queue, pool, None);
+    (build_app(state), bus, store)
 }
 
 /// Read `data: ...` SSE lines off `body` until `want` have arrived. Bounded
@@ -56,9 +58,15 @@ async fn collect_sse_lines(body: axum::body::Body, want: usize) -> Vec<String> {
 
 #[tokio::test]
 async fn task_stream_isolates_concurrent_tasks_with_zero_cross_talk() {
-    let (app, bus) = test_app_with_bus().await;
-    let task_a = lopi_core::TaskId(uuid::Uuid::new_v4());
-    let task_b = lopi_core::TaskId(uuid::Uuid::new_v4());
+    let (app, bus, store) = test_app_with_bus().await;
+    // `stream_task` gates on task existence (Verify-1 F8), so both ids must
+    // name saved tasks or the stream would 404 before any event is filtered.
+    let saved_a = Task::new("stack card a");
+    let saved_b = Task::new("stack card b");
+    store.save_task(&saved_a, "running").await.unwrap();
+    store.save_task(&saved_b, "running").await.unwrap();
+    let task_a = saved_a.id;
+    let task_b = saved_b.id;
 
     // `stream_task` calls `bus.subscribe()` synchronously inside the
     // handler body before it ever constructs the `Sse` response, so by the

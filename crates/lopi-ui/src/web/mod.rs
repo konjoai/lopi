@@ -6,35 +6,10 @@ use lopi_memory::MemoryStore;
 use lopi_orchestrator::{AgentPool, TaskQueue};
 use lopi_ratelimit::TokenBucket;
 
-use serde_json::Value;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
-use tokio::sync::{broadcast, Mutex};
+use tokio::sync::broadcast;
 use tower_http::cors::CorsLayer;
-
-/// Simple TTL cache — returns the stored value if it was set within `ttl`.
-struct TtlCache {
-    data: Option<(Instant, Value)>,
-    ttl: Duration,
-}
-
-impl TtlCache {
-    fn new(ttl: Duration) -> Self {
-        Self { data: None, ttl }
-    }
-
-    fn get(&self) -> Option<&Value> {
-        self.data
-            .as_ref()
-            .filter(|(t, _)| t.elapsed() < self.ttl)
-            .map(|(_, v)| v)
-    }
-
-    fn set(&mut self, data: Value) {
-        self.data = Some((Instant::now(), data));
-    }
-}
 
 /// Shared application state injected into every axum handler.
 #[derive(Clone)]
@@ -49,17 +24,11 @@ pub struct AppState {
     pub pool: Arc<AgentPool>,
     /// Repo root path — used to extract the spec surface on demand.
     pub repo_path: std::path::PathBuf,
-    /// P2 — Durable tool registry. `clone()` is `Arc<RwLock>` under the hood.
-    pub tools: lopi_tools::ToolRegistry,
-    /// P2 — Agent health registry (heartbeats + classification). The
-    /// background sweeper is `spawn_sweeper`'d from `serve`/`serve_with_repo`.
-    pub health: lopi_orchestrator::HealthRegistry,
     /// macOS-UI Phase 0 — runtime-mutable cron scheduler. Started (and seeded
     /// from the `schedules` table) inside `serve_with_repo`.
     pub schedules: lopi_orchestrator::ScheduleManager,
     /// Pre-serialized broadcast: each `AgentEvent` serialized once, shared across all WS/SSE subscribers.
     serialized_tx: Arc<broadcast::Sender<Arc<str>>>,
-    patterns_cache: Arc<Mutex<TtlCache>>,
     /// Bearer token required on /api/* routes. None = auth disabled (dev mode).
     auth_token: Option<Arc<str>>,
     /// Per-IP token-bucket rate limiter for API endpoints.
@@ -159,14 +128,6 @@ impl AppState {
             });
         }
 
-        // Tool registry — empty in-memory store wired to the default path.
-        // Callers that want the on-disk registry pre-loaded should call
-        // `state.hydrate_tools()` after construction (e.g. inside `serve`).
-        let tools = lopi_tools::ToolRegistry::new(lopi_tools::default_registry_path());
-        // Health registry — same lifecycle: heartbeats are ephemeral and
-        // re-derived from incoming agent traffic.
-        let health =
-            lopi_orchestrator::HealthRegistry::new(lopi_orchestrator::HealthConfig::default());
         // Runtime cron scheduler — constructed un-started here; `serve_with_repo`
         // calls `start()` to create the JobScheduler and register stored rows.
         let schedules = lopi_orchestrator::ScheduleManager::new((*pool).clone(), store.clone());
@@ -177,11 +138,8 @@ impl AppState {
             queue,
             pool,
             repo_path,
-            tools,
-            health,
             schedules,
             serialized_tx,
-            patterns_cache: Arc::new(Mutex::new(TtlCache::new(Duration::from_secs(30)))),
             auth_token: auth_token.map(|t| Arc::from(t.as_str())),
             rate_limiter: Arc::new(DashMap::new()),
             config: None,
@@ -195,19 +153,6 @@ impl AppState {
     pub fn with_config(mut self, config: Option<LopiConfig>) -> Self {
         self.config = config.map(Arc::new);
         self
-    }
-
-    /// Hydrate the tool registry from its on-disk path. Call this from an
-    /// async context (e.g. inside `serve`) before binding the listener so
-    /// the first `/tools` request sees previously registered tools.
-    ///
-    /// # Errors
-    /// Returns `Err` only if the registry file exists but is unreadable or
-    /// malformed JSON. A missing file is treated as "empty registry".
-    pub async fn hydrate_tools(&mut self) -> Result<()> {
-        let path = self.tools.path().to_path_buf();
-        self.tools = lopi_tools::ToolRegistry::load(&path).await?;
-        Ok(())
     }
 }
 
@@ -233,44 +178,16 @@ pub fn build_app(state: AppState) -> Router {
             axum::routing::post(checkpoint_agent),
         )
         .route("/api/stats", get(get_stats))
-        .route("/api/patterns", get(list_patterns))
         .route("/api/plans", get(get_plans))
         .route("/api/spec", get(get_spec))
         .route("/api/quality/trend", get(get_quality_trend))
         .route("/api/routing/q-values", get(get_q_values))
         .route("/api/agents/:id/dag", get(get_agent_dag))
-        .route(
-            "/api/tools",
-            get(list_tools_handler).post(register_tool_handler),
-        )
-        .route(
-            "/api/tools/:name",
-            get(get_tool_handler).delete(delete_tool_handler),
-        )
         .route("/api/cache/stats", get(cache_stats_handler))
         .route("/api/cache", axum::routing::delete(clear_cache_handler))
         .route(
             "/api/cache/agent/:agent",
             axum::routing::delete(invalidate_agent_cache_handler),
-        )
-        .route("/api/tasks/dead-letter", get(dlq_handlers::list_dlq))
-        .route(
-            "/api/tasks/dead-letter/:id",
-            get(dlq_handlers::get_dlq).delete(dlq_handlers::delete_dlq),
-        )
-        .route(
-            "/api/tasks/dead-letter/:id/retry",
-            axum::routing::post(dlq_handlers::retry_dlq),
-        )
-        .route("/api/audit", get(audit_handlers::query_audit))
-        .route(
-            "/api/agents/:id/heartbeat",
-            axum::routing::post(health_handlers::heartbeat),
-        )
-        .route("/api/agents/:id/health", get(health_handlers::get_health))
-        .route(
-            "/api/agents/health/summary",
-            get(health_handlers::health_summary),
         )
         .route(
             "/api/tasks/:id/stream",
@@ -384,14 +301,9 @@ pub async fn serve(
 }
 
 /// Best-effort startup steps that should not abort the server on failure:
-/// hydrate the on-disk tool registry and start the cron scheduler. Each failure
-/// is logged and swallowed so the HTTP server still comes up.
+/// start the cron scheduler. Failure is logged and swallowed so the HTTP
+/// server still comes up.
 async fn warm_up_state(state: &mut AppState) {
-    if let Err(e) = state.hydrate_tools().await {
-        // Keep the empty in-memory registry — runtime /tools registrations
-        // still persist; we just lose previously saved entries until re-added.
-        tracing::warn!(error = %e, "tool registry hydrate failed; starting empty");
-    }
     if let Err(e) = state.schedules.start().await {
         // Without a live scheduler, cron rows persist but never fire.
         tracing::warn!(error = %e, "cron scheduler start failed; schedules will not fire");
@@ -432,12 +344,9 @@ pub async fn serve_with_repo(
 
 mod agent_rate_handlers;
 mod api_middleware;
-mod audit_handlers;
 mod cache_handlers;
 mod config_handlers;
-mod dlq_handlers;
 mod handlers;
-mod health_handlers;
 mod loop_handlers;
 mod loop_health_handlers;
 mod loop_runs_handlers;
@@ -446,18 +355,14 @@ mod repos_handlers;
 mod schedule_handlers;
 mod static_assets;
 mod task_stream_handlers;
-mod tools_handlers;
 use api_middleware::{auth_middleware, rate_limit_middleware};
 use cache_handlers::{cache_stats_handler, clear_cache_handler, invalidate_agent_cache_handler};
 use handlers::{
     approve_plan, cancel_task, checkpoint_agent, create_task, get_spec, get_stats, get_task,
-    health, list_patterns, list_tasks, reject_plan,
+    health, list_tasks, reject_plan,
 };
 use metrics_handlers::{get_agent_dag, get_plans, get_q_values, get_quality_trend, metrics};
 use static_assets::static_handler;
-use tools_handlers::{
-    delete_tool_handler, get_tool_handler, list_tools_handler, register_tool_handler,
-};
 mod streaming;
 pub(crate) mod types;
 use streaming::{sse_handler, ws_handler};
