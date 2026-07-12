@@ -62,6 +62,23 @@ defer to a server that has no stack concept.
   prior macOS round ("build on the M3"). The single-card regression screenshot and
   the live dual-scenario run (bare pane + multi-card stack) are the immediate next
   step; see `NEXT.md`.
+- **[Correction — Verify-4, 2026-07-11]** The "written-not-built" code compiled on
+  the M3 with **two real first-compile defects** the Linux host couldn't catch,
+  now fixed (not a silent amendment):
+  1. `SchedulePopoverView.swift:109` — the cron `TextField` `set:` closure used
+     `$0`, which Swift bound to the inner IIFE instead of the setter parameter
+     (two diagnostics, one root cause). Fixed by naming the parameter.
+  2. `LopiTests/StackRunTests.swift` — the nested `Mock` seam helper was
+     non-isolated but synchronously touches `@MainActor` `StackStore` members;
+     marked `Mock` `@MainActor` (mirrors production `AppModel`).
+  After the fixes: clean build (zero warnings suppressed) and **60/60 tests pass**
+  (StackGoal 5, StackRun 19, StackStore 31 + 5 pre-existing), zero behavioral
+  discrepancies in the ported assertions. The live single-card regression,
+  multi-card stack, and **two-simultaneous-stacks concurrency** all held; every
+  WIRED `CreateTaskBody` field (`max_iterations`/`on_fail`/`gate`/`until`/
+  `client_ref`) was confirmed by an observed create-task network call, with
+  `budget_tokens`/`acceptance` confirmed absent. See the Verify-4 addendum in
+  `docs/ops/LIVE_UI_STATUS_FINAL.md`.
 
 ## [0.3.4] — Fix-3: macOS stats/cost parity 🖥️
 
