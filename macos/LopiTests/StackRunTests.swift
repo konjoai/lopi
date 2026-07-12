@@ -19,6 +19,7 @@ final class StackRunTests: XCTestCase {
     private struct Captured { let clientRef: String?; let payload: StackTaskPayload }
 
     /// The deterministic backend + the pane store it drives.
+    @MainActor
     private final class Mock {
         let store: StackStore
         var outcomes: [String: TerminalStatus]

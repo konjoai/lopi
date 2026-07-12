@@ -1,62 +1,62 @@
-# Next Session — after Fix-3
+# Next Session — after Verify-4
 
-Fix-3 (CHANGELOG `[0.3.4]`) ports Fix-2's web F3/F4 + F6 corrections to the
-native macOS client — the single real defect Verify-2 surfaced. The macOS
-Dashboard/Budget stat tiles now read the same corrected sources the web fix
-established:
+Verify-4 (addendum in `docs/ops/LIVE_UI_STATUS_FINAL.md`) closed the macOS Loop
+Stacks loop the way every prior round did: **compile first, trust nothing until
+built.** The `macOS-Loop-Stacks-1` code (PR #84, `[0.4.0]`) — 4,354 lines authored
+on a Linux host that can't build Swift — was compiled for the first time on the M3,
+attended, with real `claude` CLI runs (no mocks, no `?demo=1`).
 
-- **F10 (counts):** RUNNING / SUCCEEDED / QUEUED / FAILED count the live session
-  map (`liveAgents`) through a new `FleetBucket` mapping — the Swift mirror of
-  web's `dbStatusToUiStatus` — instead of the per-pool WS `.poolStats` event,
-  which undercounts in multi-repo mode. The event supplies only uptime now.
-- **F9 (cost today):** a 5 s background poll of `/api/stats` keeps COST TODAY
-  live instead of frozen at its connect-time value; the snapshot no longer
-  clobbers the polled cost to `$0` on reconnect.
-- **F6 (Budget SPENT):** `applySnapshot` hydrates each freshly-seen task's cost
-  from the snapshot's per-task `cost` field (added to the wire by Fix-2 but
-  ignored by the Swift client), so already-finished tasks no longer read `$0`.
+**Result: macOS Loop Stacks is genuinely confirmed, not shipped-on-faith.**
 
-Build + unit tests are green (`xcodebuild` build/test; 4 new `StatsParityTests`).
-The Phase-1 option chosen (session-map count vs. WS-carries-DB-counts) and its
-rationale are in `LEDGER.md`.
+- **Phase 0 (build):** one real defect, one root cause (`SchedulePopoverView.swift:109`
+  `$0` closure-capture) → fixed → clean build, zero warnings suppressed.
+- **Phase 1 (tests):** one compile-gap (`StackRunTests` `Mock` not `@MainActor`) →
+  fixed → **60/60 pass**, zero behavioral drift in the ported assertions.
+- **Phase 2:** single-card regression held — bare pane is the old Forge pane, launches
+  identically.
+- **Phase 3:** connector insert-between, all four popovers, goal toggle + stop-reason
+  banner, run-until-goal halt (`goalMet`). **Every WIRED `CreateTaskBody` field
+  confirmed on the wire** (`max_iterations`=26/`on_fail`=Continue/`gate`/`until`/
+  `client_ref`); `budget_tokens`+`acceptance` confirmed absent; evals confirmed
+  client-only (chain acceptance runs as a spawned `s1::stack-eval::0` verify task).
+- **Phase 4:** two simultaneous multi-card stacks, **zero cross-talk** (distinct
+  branches, distinct per-stack `client_ref`s, divergent mid-run progress, independent
+  completion).
 
-## 1. ⚠️ Owed: live on-device re-verification of Fix-3
+The two Phase 0/1 fixes are committed as a `[0.4.0]` correction (CHANGELOG, not a
+silent amendment). **There are no open product findings left.**
 
-**Fix-3 landed from a sandboxed run — it was _not_ live-re-verified on-device.**
-Per the standing split every prior round used (code fix in-sprint, live
-confirmation as a follow-up), an attended pass is still owed before Fix-3 is
-called closed. Do not mark it verified until this runs. Repeat **Verify-2
-Phase 2/3** on an attended device:
+## 1. Land Verify-4 (housekeeping)
 
-- 2 running + N done across **multiple repos** (`sail --repos …`).
-- Confirm the four tiles match reality, **live, not just at connect**: COST TODAY
-  updates during a billed run; RUNNING / SUCCEEDED match the real cross-repo
-  counts; Budget SPENT shows real matching spend.
-- Regression check (must stay correct): Loop SPEND (`/api/loop`), cognition-grid
-  "N active", Tasks list.
+- Branch `docs/verify-4-loop-stacks` off `origin/main` (`9edca88`): the two Swift
+  first-compile fixes + the Verify-4 addendum + `docs/screenshots/verify-4/`.
+  Open the PR; Wall-2/Wall-3 gate as usual.
+- **Standing guidance baked in from a process finding:** never point a live run at
+  the repo you're editing — lopi's `GitManager` checks out `lopi/<taskid>-attempt-N`
+  branches in the backend's cwd and `git clean`s untracked files. Run `lopi sail`
+  from a throwaway clone for attended macOS runs (Verify-4 did this after the first
+  run hijacked the working tree).
 
-Process that works (Verify-2, proven): keep the screen **unlocked and attended**,
-run `caffeinate -dimsu`, grant computer-use access to `ai.konjo.lopi`, capture
-with `ffmpeg -f avfoundation -i "1"` + `screencapture`. A locked screen yields
-only the lock screen — do not fall back to a headless substitute.
+## 2. iOS-Research-1 — the next real work
 
-## 2. Launch-1 — seamless start [the next real work]
-
-**Once Fix-3's live re-verification passes, there are no known open findings left
-anywhere in the system** — the entire Verify-1 → Fix-2 → Verify-2 → Fix-3 audit
-chain closes, and Launch-1 begins with a fully clean slate. Nothing structural
-blocks it; the concurrency backbone (web + native) is proven on both the data
-level and the real screen, and the stat/cost data paths now match across surfaces.
+With the audit chain (Verify-1 → Fix-2 → Verify-2 → Fix-3 → macOS-Loop-Stacks-1 →
+Verify-4) fully closed, **iOS-Research-1** is next. Its open **R-1 package question**
+(extract `macos/Lopi/Stacks/` into a shared Swift package for iOS reuse) is now
+**cheaper to answer**: Verify-4 proved the `Stacks/` domain layer compiles and
+passes its 55 ported assertions with **zero SwiftUI/AppKit imports** — the
+prerequisite that makes a shared-package extraction "a move, not a rewrite"
+(`[0.4.0]` Phase-1 note) is empirically confirmed, not just claimed. Scope the
+extraction spike against that now-verified boundary.
 
 ## 3. Decisions already closed (do not re-litigate)
 
-- macOS-visual parity is **confirmed on the real display** (Verify-2) — orb morph,
-  concurrency, N-active, 12 sections.
-- Fix-3 counts the local `liveAgents` map for the fleet tiles and polls
-  `/api/stats` for COST TODAY; the per-pool `.poolStats` event is uptime-only by
-  contract (`LEDGER.md`). Future macOS stats consumers read the session map or
-  `/api/stats`, never a single pool's counters.
-- Bare-pane launch uses `paneSubmitPayload`; cross-pool stats come from the DB /
-  local session map, never a single pool's counters (Fix-2, `LEDGER.md`).
-- Orb-parity → compact per-pane orb everywhere; Dashboard kept as a macOS-native
-  richer view (Polish-1, `LEDGER.md`).
+- macOS-visual parity confirmed on the real display (Verify-2).
+- macOS stats/cost parity confirmed (Fix-3; its live backend was re-exercised during
+  the Verify-4 session).
+- **macOS Loop Stacks confirmed end-to-end (Verify-4)** — build, ported tests, bare
+  regression, live multi-card stack, dual-stack concurrency. WIRED = the five
+  `CreateTaskBody` loop fields; `budget_tokens`/`acceptance` intentionally unwired;
+  evals is client-only intent (spawned verify task, never a wired field).
+- Bare-pane launch uses `paneSubmitPayload`; the `Stacks/` domain layer is
+  UI-framework-free (proven compilable + tested), ready for `iOS-Research-1`'s
+  shared-package question.
