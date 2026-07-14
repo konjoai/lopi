@@ -1,8 +1,8 @@
 <!--
   ConfigDrawer — the sliders-button inline drawer with five per-loop
   overrides of the pane defaults. `model`/`effort`/`repo` are WIRED (real
-  `CreateTaskRequest` fields); `branch`/`autonomy` are client-only —
-  TODO(backend). Built on the shared `Dropdown.svelte`, not a popover.
+  `CreateTaskRequest` fields); `branch`/`autonomy` are client-only (backend
+  gap — not yet exposed server-side). Built on `Dropdown.svelte`, not a popover.
 -->
 <script lang="ts">
   import { type StackCard as StackCardT, type CardConfig, updateCardInPane } from '$lib/stores/stack';
@@ -15,9 +15,16 @@
   export let paneKey: string;
   export let paneDefaults: StackDefaults;
   export let repoOptions: Option[] = [];
+  /** Injected card-patch writer (Creation-Flow-1). A draft card is not in
+   *  `pane.cards`, so its config edits must route to the pane's draft, not
+   *  `updateCardInPane` (which would no-op on an id it can't find). When null,
+   *  falls back to the committed-card write path for standalone use. */
+  export let onWrite: ((patch: Partial<StackCardT>) => void) | null = null;
 
   function patchConfig(patch: Partial<CardConfig>) {
-    updateCardInPane(paneKey, card.id, { config: { ...card.config, ...patch } });
+    const next = { config: { ...card.config, ...patch } };
+    if (onWrite) onWrite(next);
+    else updateCardInPane(paneKey, card.id, next);
   }
 
   $: effectiveRepoOptions = repoOptions.length

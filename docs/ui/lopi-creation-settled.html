@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>lopi · creation flow (settled)</title>
+<!--
+  Creation-Flow-1 design truth (settled). The composer is gone: the thing you
+  compose IS the card you'll get. Each pane pins a DRAFT StackCard at the top
+  (dashed until hot, then teal), rendered by the SAME StackCard as a committed
+  card — no forked DraftCard. A single sectioned `templates` dropdown (presets /
+  prompt templates / stack templates / save) drives discovery; template
+  provenance shows as a colored chip (sun = prompt, violet = stack).
+
+  This file is the same code as `lopi-two-stacks.html` with STACK ONE left as an
+  empty pane (just its draft). Mockup wins on appearance; the sprint prompt wins
+  on data/wiring. localStorage-backed templates are CLIENT-ONLY / not durable.
+-->
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet"/>
+<style>
+:root{
+  --black:#0b0e10;--panel:#0a0d0f;--card:#0e1214;--paper:#f5f5f5;
+  --ice:#00d4ff;--ember:#ff4500;--flame:#ff9500;--jade:#00ff9d;--sun:#ffcc00;
+  --rose:#ff2d78;--teal:#00ffd4;--violet:#b79bff;
+  --mist:rgba(255,255,255,.05);--veil:rgba(255,255,255,.11);
+  --dim:rgba(245,245,245,.46);--dim2:rgba(245,245,245,.28);--lbl:rgba(245,245,245,.66);
+  --mono:'JetBrains Mono',ui-monospace,monospace;--sans:'Space Grotesk',system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#060809;color:var(--paper);font-family:var(--sans);-webkit-font-smoothing:antialiased;min-height:100vh;padding:22px}
+svg{display:block}
+.topbar{display:flex;align-items:center;gap:12px;margin-bottom:18px}
+.brand{font-family:var(--mono);font-weight:700;font-size:17px;color:var(--flame)}
+.crumb{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim2)}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:22px;max-width:1180px;margin:0 auto}
+
+/* ── pane chrome ─────────────────────────────────────────────────────────── */
+.pane{border:1px solid var(--veil);border-radius:14px;background:var(--panel);display:flex;flex-direction:column;overflow:visible}
+.panehead{display:flex;align-items:center;gap:11px;padding:14px 18px;border-bottom:1px solid var(--mist)}
+.panehead .logo{color:var(--flame);display:inline-flex}
+.panehead .ptitle{font-family:var(--mono);font-size:12px;letter-spacing:.16em;text-transform:uppercase}
+.panehead .hsp{flex:1}
+.panehead .hdot{width:7px;height:7px;border-radius:50%;background:var(--dim2)}
+.panehead .hx{color:var(--dim2);display:inline-flex}
+.panestack{padding:24px 18px 14px}
+
+/* ── the card (draft + committed share this) ─────────────────────────────── */
+.pc{position:relative;background:var(--card);border:1px solid var(--veil);border-radius:9px;padding:13px 14px;font-family:var(--mono)}
+.pc.draft{border-style:dashed;border-color:rgba(255,255,255,.18)}
+.pc.draft.hot{border-style:solid;border-color:rgba(0,255,212,.5);box-shadow:0 0 18px rgba(0,255,212,.08)}
+.runtag{position:absolute;top:-10px;right:14px;font-size:9px;letter-spacing:.1em;text-transform:uppercase;background:var(--black);border:1px solid var(--veil);border-radius:3px;padding:2px 8px;color:var(--dim);display:inline-flex;align-items:center;gap:5px}
+.pc.draft.hot .runtag{color:var(--teal);border-color:rgba(0,255,212,.45)}
+.runtag.idle{color:var(--dim)}
+
+.spec{display:flex;align-items:center;gap:9px;flex-wrap:wrap;font-size:14px;margin-top:3px}
+.spec .md{color:var(--dim)}
+.draftspec{row-gap:7px}
+
+/* provenance + alias chips (explicit svg sizing — §4) */
+.chip{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;border-radius:7px;padding:3px 10px}
+.chip svg{width:12px;height:12px}
+.chip.alias{color:var(--teal);border:1px solid rgba(0,255,212,.4);background:rgba(0,255,212,.07)}
+.chip.prompt{color:var(--sun);border:1px solid rgba(255,204,0,.4);background:rgba(255,204,0,.08)}
+.chip.stack{color:var(--violet);border:1px solid rgba(183,155,255,.4);background:rgba(183,155,255,.08)}
+
+.goalinput{width:100%;margin-top:10px;background:rgba(255,255,255,.02);border:1px solid var(--veil);border-radius:7px;padding:9px 11px;color:var(--paper);font-family:var(--mono);font-size:14px;outline:none}
+.goalinput.empty{color:var(--dim2)}
+
+.sep{height:1px;background:var(--mist);border:none;margin-top:11px}
+.sumln{display:flex;align-items:center;gap:7px;margin-top:8px;font-size:9.5px}
+.sumln .rl{display:inline-flex;align-items:center;gap:4px;letter-spacing:.08em;text-transform:uppercase;font-size:8px;width:64px}
+.sumln .rl svg{width:11px;height:11px}
+.sumln.eval .rl{color:var(--jade)}
+.sumln .txt{color:var(--dim)}
+
+/* cardbar (live on the draft) */
+.cardbar{display:flex;align-items:center;gap:6px;margin-top:12px}
+.ib{height:29px;min-width:29px;padding:0 7px;border-radius:6px;border:1px solid var(--veil);background:transparent;color:var(--dim2);display:inline-flex;align-items:center;justify-content:center;gap:5px;font-size:11px}
+.ib svg{width:14px;height:14px}
+.ib .cnt{font-size:9px;font-weight:700}
+.ib.eval.act{color:var(--jade);border-color:rgba(0,255,157,.5);background:rgba(0,255,157,.08)}
+.ib.config.act{color:var(--violet);border-color:rgba(183,155,255,.5);background:rgba(183,155,255,.08)}
+.ib.add{color:var(--jade);border-color:rgba(0,255,157,.5);background:rgba(0,255,157,.08);font-weight:700;padding:0 12px}
+.ib.add.off{opacity:.4;color:var(--dim2);border-color:var(--veil);background:transparent}
+.sp{flex:1}
+.iterpill{display:inline-flex;align-items:center;height:29px;border:1px solid rgba(255,149,0,.5);background:rgba(255,69,0,.09);border-radius:6px;font-size:11px;color:var(--flame);font-weight:700}
+.iterpill .lb{display:inline-flex;align-items:center;gap:5px;padding:0 9px}
+.iterpill .lb svg{width:14px;height:14px}
+
+/* connector between the draft and the committed stack */
+.draftconn{position:relative;height:30px;margin:2px 0}
+.draftconn .dcline{position:absolute;left:50%;top:0;bottom:0;border-left:2px dashed var(--dim2);transform:translateX(-1px)}
+.conn{position:relative;height:40px;margin:2px 0}
+.conn .cl{position:absolute;left:50%;top:0;bottom:0;border-left:2px solid var(--flame);opacity:.45;transform:translateX(-1px)}
+
+/* dimmed empty dock stand-in for the empty pane */
+.dockghost{margin-top:16px;border:1px dashed var(--veil);border-radius:11px;padding:14px 16px;display:flex;align-items:center;gap:10px;opacity:.4;font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim2)}
+.dockghost .chipk{border:1px solid var(--violet);color:var(--violet);border-radius:6px;padding:2px 8px}
+
+/* the real purple dock (pane two) */
+.dock{margin-top:16px;border:1px solid rgba(183,155,255,.35);border-radius:12px;background:linear-gradient(180deg,rgba(183,155,255,.06),rgba(183,155,255,.02));padding:12px 14px;display:flex;align-items:center;gap:10px}
+.dock .chipk{border:1px solid var(--violet);color:var(--violet);border-radius:6px;padding:2px 8px;font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase}
+.dock .dsum{font-family:var(--mono);font-size:11px;color:var(--dim)}
+.dock .run{margin-left:auto;background:linear-gradient(180deg,#ffb648,#ff9500);color:#231000;border:none;border-radius:9px;padding:10px 20px;font-weight:700;font-size:12px;display:inline-flex;align-items:center;gap:7px}
+.dock .run svg{width:13px;height:13px;fill:#231000}
+
+/* ── templates dropdown (open, sectioned) ────────────────────────────────── */
+.tmwrap{position:relative;display:inline-flex}
+.tmbtn{display:inline-flex;align-items:center;gap:6px;height:29px;padding:0 10px;border-radius:7px;border:1px solid rgba(245,245,245,.46);background:transparent;color:var(--paper);font-family:var(--mono);font-size:11.5px}
+.tmbtn svg{width:13px;height:13px}
+.tmmenu{position:absolute;top:calc(100% + 7px);left:0;z-index:40;width:288px;background:var(--panel);border:1px solid var(--veil);border-radius:10px;box-shadow:0 18px 50px rgba(0,0,0,.75);padding:6px}
+.sec{padding:4px 0}
+.sec + .sec{border-top:1px solid var(--mist);margin-top:2px}
+.sechd{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:8.5px;letter-spacing:.12em;text-transform:uppercase;padding:5px 8px}
+.sechd svg{width:11px;height:11px}
+.sec.presets .sechd{color:var(--teal)}
+.sec.prompts .sechd{color:var(--sun)}
+.sec.stacks .sechd{color:var(--violet)}
+.sec.save .sechd{color:var(--dim)}
+.row{display:flex;flex-direction:column;gap:1px;padding:6px 8px;border-radius:6px}
+.row .nm{font-family:var(--mono);font-size:12px;color:var(--paper)}
+.row .ds{font-family:var(--mono);font-size:10px;color:var(--dim)}
+.sec.presets .row .nm{color:var(--teal)}
+.row.off .nm{color:var(--dim2)}
+.caption{max-width:1180px;margin:20px auto 0;font-family:var(--mono);font-size:11px;color:var(--dim);line-height:1.7}
+.caption b{color:var(--paper)}
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <span class="brand">lopi</span>
+    <span class="crumb">loop stack · creation flow (settled)</span>
+  </div>
+
+  <div class="grid">
+    <!-- ── STACK ONE: an empty pane = just its draft, dimmed dock below ────── -->
+    <div class="pane">
+      <div class="panehead">
+        <span class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></span>
+        <span class="ptitle">stack one</span>
+        <span class="hsp"></span><span class="hdot"></span>
+        <span class="hx"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></span>
+      </div>
+      <div class="panestack">
+        <div class="pc draft">
+          <span class="runtag">new prompt</span>
+          <div class="spec draftspec">
+            <span class="tmbtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4a2 2 0 0 1 2-2h13v18H6a2 2 0 0 0-2 2z"/><path d="M4 20a2 2 0 0 1 2-2h13"/></svg>templates<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg></span>
+          </div>
+          <input class="goalinput empty" value="describe the prompt or goal…  (:alias @repo ×N ok)" readonly/>
+          <div class="cardbar">
+            <span class="iterpill"><span class="lb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>off</span></span>
+            <span class="ib"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
+            <span class="ib"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z"/></svg></span>
+            <span class="ib"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg><span class="cnt">1</span></span>
+            <span class="sp"></span>
+            <span class="ib add off"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>add</span>
+          </div>
+        </div>
+        <div class="dockghost"><span class="chipk">stack</span>empty — add a loop to govern the chain</div>
+      </div>
+    </div>
+
+    <!-- ── STACK TWO: hot draft + committed stack from the KCQF template ───── -->
+    <div class="pane">
+      <div class="panehead">
+        <span class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></span>
+        <span class="ptitle">stack two</span>
+        <span class="hsp"></span><span class="hdot"></span>
+        <span class="hx"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></span>
+      </div>
+      <div class="panestack">
+        <!-- hot draft with the templates dropdown OPEN (four sections) -->
+        <div class="pc draft hot">
+          <span class="runtag">new prompt</span>
+          <div class="spec draftspec">
+            <span class="tmwrap">
+              <span class="tmbtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4a2 2 0 0 1 2-2h13v18H6a2 2 0 0 0-2 2z"/><path d="M4 20a2 2 0 0 1 2-2h13"/></svg>templates<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg></span>
+              <div class="tmmenu">
+                <div class="sec presets">
+                  <div class="sechd"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/></svg>presets</div>
+                  <div class="row"><span class="nm">:research</span><span class="ds">explore &amp; investigate — judge-reviewed</span></div>
+                  <div class="row"><span class="nm">:implement</span><span class="ds">build a feature — full test + review suite</span></div>
+                  <div class="row"><span class="nm">:optimize</span><span class="ds">improve speed — beats-best + 30-run gate</span></div>
+                </div>
+                <div class="sec prompts">
+                  <div class="sechd"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>prompt templates</div>
+                  <div class="row"><span class="nm">deep research</span><span class="ds">investigate the problem space…</span></div>
+                </div>
+                <div class="sec stacks">
+                  <div class="sechd"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 2 7l10 5 10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>stack templates</div>
+                  <div class="row"><span class="nm">kcqf sprint</span><span class="ds">3 loops · research → implement → optimize</span></div>
+                </div>
+                <div class="sec save">
+                  <div class="sechd"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>save</div>
+                  <div class="row"><span class="nm">save this prompt…</span></div>
+                  <div class="row off"><span class="nm">save this stack…</span></div>
+                </div>
+              </div>
+            </span>
+            <span class="chip alias"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.2L3 17.8 6.2 21l6.3-6.3a4 4 0 0 0 5.2-5.4l-2.6 2.6-2.1-2.1z"/></svg>:research</span>
+          </div>
+          <input class="goalinput" value="survey the rust async landscape" readonly/>
+          <hr class="sep"/>
+          <div class="sumln eval"><span class="rl"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>evals</span><span class="txt">2 checks · baseline + 1 more</span></div>
+          <div class="cardbar">
+            <span class="iterpill"><span class="lb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>off</span></span>
+            <span class="ib"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
+            <span class="ib"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z"/></svg></span>
+            <span class="ib eval act"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg><span class="cnt">2</span></span>
+            <span class="sp"></span>
+            <span class="ib add"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>add</span>
+          </div>
+        </div>
+
+        <div class="draftconn"><span class="dcline"></span></div>
+
+        <!-- committed loops from the KCQF stack template: violet stack chip +
+             each loop's own teal alias chip; first loop (research) at the BOTTOM -->
+        <div class="pc">
+          <span class="runtag idle">idle</span>
+          <div class="spec">
+            <span class="chip stack"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 2 7l10 5 10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>kcqf sprint</span>
+            <span class="chip alias"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.2L3 17.8 6.2 21l6.3-6.3a4 4 0 0 0 5.2-5.4z"/></svg>:optimize</span>
+            <span class="md">"optimize and harden"</span>
+          </div>
+        </div>
+        <div class="conn"><span class="cl"></span></div>
+        <div class="pc">
+          <span class="runtag idle">idle</span>
+          <div class="spec">
+            <span class="chip stack"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 2 7l10 5 10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>kcqf sprint</span>
+            <span class="chip alias"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.2L3 17.8 6.2 21l6.3-6.3a4 4 0 0 0 5.2-5.4z"/></svg>:implement</span>
+            <span class="md">"implement the change"</span>
+          </div>
+        </div>
+        <div class="conn"><span class="cl"></span></div>
+        <div class="pc">
+          <span class="runtag idle">idle · runs first</span>
+          <div class="spec">
+            <span class="chip stack"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 2 7l10 5 10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>kcqf sprint</span>
+            <span class="chip alias"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.2L3 17.8 6.2 21l6.3-6.3a4 4 0 0 0 5.2-5.4z"/></svg>:research</span>
+            <span class="md">"research the problem space"</span>
+          </div>
+        </div>
+
+        <div class="dock">
+          <span class="chipk">stack</span>
+          <span class="dsum">loop ×1 · Opus 4.8 · 3 loops</span>
+          <button class="run"><svg viewBox="0 0 24 24"><path d="M6 4l14 8-14 8z"/></svg>run stack</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="caption">
+    <b>Left:</b> an empty pane is just its <b>draft card</b> — dashed, "new prompt", the templates dropdown, a full-width goal line, and a live cardbar whose <b>+ add</b> is dimmed until the draft is hot. The purple dock sits empty below.<br/>
+    <b>Right:</b> the templates dropdown open (presets · prompt · stack · save); a hot draft carrying a teal <span style="color:var(--teal)">:research</span> alias chip; and the committed <b>kcqf sprint</b> chain — each loop a <span style="color:var(--violet)">violet stack chip</span> + its own teal alias chip, with the template's <b>first loop (research) at the bottom</b> so it runs first.
+  </div>
+</body>
+</html>

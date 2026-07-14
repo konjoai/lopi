@@ -115,10 +115,12 @@ export interface CardConfig {
   autonomy?: string;
 }
 
-/** A card's lifecycle state. Client-only this slice — nothing transitions a
- *  card out of `'idle'` yet, since run-stack actions are stubbed (no
- *  pause/drain/bump signals exist server-side). */
-export type CardStatus = 'idle' | 'queued' | 'running' | 'done';
+/** A card's lifecycle state. `'draft'` is the pre-commit state of the pane's
+ *  in-composer draft card (Creation-Flow-1) — it is never in `pane.cards`, is
+ *  excluded from every run/loop-count/payload path (see `executionOrder`), and
+ *  must be handled explicitly by any `CardStatus` consumer rather than falling
+ *  through to a run path. The rest are the client-only run lifecycle. */
+export type CardStatus = 'draft' | 'idle' | 'queued' | 'running' | 'done';
 
 /** The default iteration ceiling a fresh card starts from. `0` = "off": the
  *  loop is disabled and the card runs a single pass (the card pill floors at
@@ -160,6 +162,14 @@ export interface StackCard {
   /** Set once the card is actually submitted as a task. Never set this
    *  slice — see `cardToTaskPayload`'s doc comment. */
   taskId?: string;
+  /** Name of the template this card came from (provenance, not a binding).
+   *  Records origin only — it survives edits to `goal`/`preset` and never
+   *  tracks drift. `undefined` when the card came from no template. */
+  tpl?: string;
+  /** Which kind of template produced it — drives the provenance chip's color
+   *  (`prompt` → sun chip replacing the alias chip; `stack` → violet chip
+   *  alongside the alias chip). Set iff `tpl` is set. */
+  tplKind?: 'prompt' | 'stack';
 }
 
 // ── Preset catalog (client-side static config this slice) ───────────────────
@@ -251,6 +261,17 @@ export const PRESET_CATALOG: Record<PresetKey, PresetDef> = {
 };
 
 export const PRESET_KEYS = Object.keys(PRESET_CATALOG) as PresetKey[];
+
+/** One-line human descriptions for the templates dropdown's presets section
+ *  (Creation-Flow-1 §5). Kept beside the catalog so the web + macOS surfaces
+ *  read the same copy. */
+export const PRESET_DESCRIPTIONS: Record<PresetKey, string> = {
+  research: 'explore & investigate — judge-reviewed',
+  implement: 'build a feature — full test + review suite',
+  optimize: 'improve speed — beats-best + 30-run gate',
+  gain: 'self-improve — ratchet on beats-best',
+  benchmark: 'measure variance — benchmark + 30-run gate'
+};
 
 /** Legacy `:alias` tokens that map onto a renamed preset key, so old composer
  *  strings / saved cards keep working. A3 renamed `:ratchet` → `:gain`. */
@@ -349,6 +370,144 @@ export function buildCard(raw: string, explicitPreset?: PresetKey): StackCard {
     cron: defaultCron(),
     guardrails: defaultGuardrails(),
     config: parsed.repo ? { repo: parsed.repo } : {}
+  };
+}
+
+/** A fresh draft card — the pre-commit composer replacement pinned to the top
+ *  of every pane (Creation-Flow-1). Same shape as any card but `status:
+ *  'draft'`, so it renders through the one `StackCard.svelte` component with a
+ *  draft branch rather than a forked `DraftCard`. Never enters `pane.cards`. */
+export function makeDraft(): StackCard {
+  return { ...buildCard(''), status: 'draft' };
+}
+
+/** True once a draft carries enough to commit: an alias, non-empty goal, or a
+ *  template origin. Drives the draft's `hot` (teal-border) state and enables
+ *  the `+ add` button. Pure so it reads identically on web and macOS. */
+export function draftIsHot(draft: StackCard): boolean {
+  return !!(draft.alias || draft.goal.trim() || draft.tpl);
+}
+
+// ── Templates (presets + prompt/stack templates, pure + tested) ───────────────
+
+/** A saved single-loop template: a preset and/or alias plus goal text. Client
+ *  provenance only (`tpl`/`tplKind` on the produced card) — applying it fills a
+ *  draft, it does not bind the card to the template afterward. */
+export interface PromptTemplate {
+  id: string;
+  name: string;
+  preset?: PresetKey;
+  alias?: string;
+  goal: string;
+}
+
+/** A saved multi-loop chain template. `loops` is serialized **bottom-first**
+ *  (execution order — first-to-run first) by `stackTemplateFromCards`, so
+ *  `applyStackTemplate` round-trips it back into the same run order. */
+export interface StackTemplate {
+  id: string;
+  name: string;
+  loops: Array<{ preset?: PresetKey; alias?: string; goal: string }>;
+}
+
+/** Attach a preset to a card in place: sets `preset`/`alias`/`evals` from the
+ *  catalog and clears any template provenance (picking a bare preset is not a
+ *  template origin). Leaves `goal` and every configured facet untouched. */
+export function applyPreset(card: StackCard, key: PresetKey): StackCard {
+  const p = PRESET_CATALOG[key];
+  return { ...card, preset: key, alias: p.key, evals: p.evals, literal: false, tpl: undefined, tplKind: undefined };
+}
+
+/** Fill a card from a prompt template: preset/alias/goal/evals from the
+ *  catalog, plus prompt provenance (`tpl`/`tplKind: 'prompt'`). The preset (if
+ *  any) still drives evals/config exactly as a hand-picked preset would. */
+export function applyPromptTemplate(card: StackCard, tpl: PromptTemplate): StackCard {
+  const presetKey = tpl.preset ?? (tpl.alias ? resolvePresetAlias(tpl.alias) ?? undefined : undefined);
+  const preset = presetKey ? PRESET_CATALOG[presetKey] : undefined;
+  return {
+    ...card,
+    preset: presetKey,
+    alias: tpl.alias ?? preset?.key,
+    goal: tpl.goal,
+    evals: preset ? preset.evals : [BASELINE_EVAL],
+    literal: false,
+    tpl: tpl.name,
+    tplKind: 'prompt'
+  };
+}
+
+/** Build one committed card from a stack-template loop, stamped with stack
+ *  provenance. Mirrors `buildCard`'s preset resolution, but from a structured
+ *  loop rather than composer text (loops carry no `@repo`/`×N`). */
+function cardFromLoop(loop: { preset?: PresetKey; alias?: string; goal: string }, tplName: string): StackCard {
+  const presetKey = loop.preset ?? (loop.alias ? resolvePresetAlias(loop.alias) ?? undefined : undefined);
+  const preset = presetKey ? PRESET_CATALOG[presetKey] : undefined;
+  return {
+    id: makeId(),
+    preset: presetKey,
+    goal: loop.goal,
+    alias: loop.alias ?? preset?.key,
+    literal: !presetKey && !loop.alias,
+    evals: preset ? preset.evals : [BASELINE_EVAL],
+    status: 'idle',
+    maxIterations: DEFAULT_MAX_ITERATIONS,
+    scheduled: false,
+    cron: defaultCron(),
+    guardrails: defaultGuardrails(),
+    config: {},
+    tpl: tplName,
+    tplKind: 'stack'
+  };
+}
+
+/** Drop a whole chain template into a pane's cards. `addCard` prepends
+ *  (newest on top; the **bottom** card is oldest and runs first), so to land
+ *  the template's **first loop at the bottom** the loops are prepended in
+ *  reverse. Round-trips with `stackTemplateFromCards` — see its doc + the
+ *  bottom-first unit test. */
+export function applyStackTemplate(cards: StackCard[], tpl: StackTemplate): StackCard[] {
+  const loopCards = tpl.loops.map((l) => cardFromLoop(l, tpl.name));
+  loopCards.reverse();
+  return [...loopCards, ...cards];
+}
+
+/** Serialize a card into a reusable prompt template (provenance is not carried
+ *  — a template is a fresh origin, not a copy of another template's lineage). */
+export function promptTemplateFromCard(card: StackCard, name: string): PromptTemplate {
+  return { id: makeId(), name, preset: card.preset, alias: card.alias, goal: card.goal };
+}
+
+/** Serialize a pane's cards into a stack template **bottom-first** (execution
+ *  order) so `applyStackTemplate` restores the identical run order — the
+ *  easiest thing to get backwards, hence the explicit round-trip test. */
+export function stackTemplateFromCards(cards: StackCard[], name: string): StackTemplate {
+  return {
+    id: makeId(),
+    name,
+    loops: executionOrder(cards).map((c) => ({ preset: c.preset, alias: c.alias, goal: c.goal }))
+  };
+}
+
+/** Commit a draft into a real card. A draft configured via the dropdown
+ *  (preset or template applied) commits as-is; a still-raw draft honors the
+ *  inline `:alias @repo ×N` tokens typed into its goal field — the power-user
+ *  path the retired composer supported. Only ever flips `status` to `'idle'`;
+ *  never mutates the pane. */
+export function finalizeDraft(draft: StackCard): StackCard {
+  if (draft.preset || draft.tpl) return { ...draft, status: 'idle' };
+  const parsed = parseComposerInput(draft.goal);
+  if (!parsed.alias && !parsed.repo && parsed.loopN === null) {
+    return { ...draft, status: 'idle', goal: parsed.goal, literal: true };
+  }
+  const built = buildCard(draft.goal);
+  return {
+    ...built,
+    id: draft.id,
+    status: 'idle',
+    scheduled: draft.scheduled,
+    cron: draft.cron,
+    guardrails: draft.guardrails,
+    config: { ...built.config, ...draft.config }
   };
 }
 
@@ -763,7 +922,10 @@ export function paneSubmitPayload(
  *  "new prompts prepend to the top; the stack flows down to the
  *  currently-executing loop at the bottom" pane chrome. */
 export function executionOrder(cards: StackCard[]): StackCard[] {
-  return [...cards].reverse();
+  // Defensive: a draft card is never in `pane.cards`, but any code path that
+  // resolves a run plan must still refuse to schedule one (Creation-Flow-1
+  // §1.1 — never let `'draft'` fall through to a run path).
+  return cards.filter((c) => c.status !== 'draft').reverse();
 }
 
 /** One problem `dryRunStack` found with a specific card's configuration. */
@@ -1052,18 +1214,21 @@ export function perLoopScheduleGoverned(config: StackConfig): boolean {
 
 // ── Pane store (keyed dispatch over the pure array ops) ───────────────────────
 
-/** One independent stack pane — `key` is its stable identity for keyed ops. */
+/** One independent stack pane — `key` is its stable identity for keyed ops.
+ *  `draft` is the pane's live composer-replacement card (Creation-Flow-1),
+ *  pinned above `cards` and never a member of it. */
 export interface StackPaneState {
   key: string;
   title: string;
   cards: StackCard[];
   config: StackConfig;
+  draft: StackCard;
 }
 
 function makeDefaultPanes(): StackPaneState[] {
   return [
-    { key: 's1', title: 'stack one', cards: [], config: defaultStackConfig() },
-    { key: 's2', title: 'stack two', cards: [], config: defaultStackConfig() }
+    { key: 's1', title: 'stack one', cards: [], config: defaultStackConfig(), draft: makeDraft() },
+    { key: 's2', title: 'stack two', cards: [], config: defaultStackConfig(), draft: makeDraft() }
   ];
 }
 
@@ -1079,7 +1244,7 @@ export function paneIsBare(pane: StackPaneState): boolean {
 
 /** A fresh, empty stack pane with its own config object and a unique key. */
 export function makeBlankStack(title = 'new stack'): StackPaneState {
-  return { key: makeId(), title, cards: [], config: defaultStackConfig() };
+  return { key: makeId(), title, cards: [], config: defaultStackConfig(), draft: makeDraft() };
 }
 
 /** Append a fresh blank pane — the create-from-scratch path `deleteStack`'s
@@ -1143,7 +1308,10 @@ export function duplicateStack(state: StackPaneState[], key: string): StackPaneS
       evals: [...original.config.evals],
       defaults: { ...original.config.defaults },
       goal: { ...original.config.goal }
-    }
+    },
+    // A duplicated stack starts with its own empty draft — the original's
+    // in-progress draft is not part of what "duplicate" means to copy.
+    draft: makeDraft()
   };
   const next = [...state];
   next.splice(idx + 1, 0, clone);
@@ -1212,6 +1380,45 @@ export function insertCardIntoPane(key: string, index: number, card: StackCard):
 }
 export function updateCardInPane(key: string, id: string, patch: Partial<StackCard>): void {
   panes.update((state) => applyToPaneCards(state, key, (cards) => patchCard(cards, id, patch)));
+}
+
+/** Patch a pane's draft card with a shallow merge (Creation-Flow-1). Same
+ *  contract as `updateCardInPane` — callers pass fully-formed nested objects.
+ *  The draft is edited in place until committed via `commitDraft`. */
+export function updateDraftInPane(key: string, patch: Partial<StackCard>): void {
+  panes.update((state) => {
+    const idx = state.findIndex((p) => p.key === key);
+    if (idx === -1) return state;
+    const next = [...state];
+    next[idx] = { ...next[idx], draft: { ...next[idx].draft, ...patch } };
+    return next;
+  });
+}
+
+/** Commit a pane's draft into a real (`'idle'`) card at the top of the stack
+ *  (`addCard` prepends), then mint a fresh empty draft. The one transition a
+ *  draft ever makes out of `'draft'`. No-op for an unknown key. */
+export function commitDraft(key: string): void {
+  panes.update((state) => {
+    const idx = state.findIndex((p) => p.key === key);
+    if (idx === -1) return state;
+    const pane = state[idx];
+    const next = [...state];
+    next[idx] = { ...pane, cards: addCard(pane.cards, finalizeDraft(pane.draft)), draft: makeDraft() };
+    return next;
+  });
+}
+
+/** Replace a pane's draft with a fresh empty one — the templates dropdown's
+ *  "clear" and the reset after a stack template drops its own cards. */
+export function resetDraft(key: string): void {
+  updateDraftInPane(key, makeDraft());
+}
+
+/** Drop a whole stack template into a pane at once, in the correct run order
+ *  (`applyStackTemplate` — first loop at the bottom). */
+export function applyStackTemplateToPane(key: string, tpl: StackTemplate): void {
+  panes.update((state) => applyToPaneCards(state, key, (cards) => applyStackTemplate(cards, tpl)));
 }
 
 /** Patch a pane's stack-level config with a shallow merge — the config

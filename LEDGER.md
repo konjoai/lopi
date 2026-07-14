@@ -5,6 +5,44 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## Creation-Flow-1 (web) — the draft card replaces the composer
+
+**Draft-as-`CardStatus`, not a separate component.** The pre-commit draft is a
+`StackCard` with `status: 'draft'`, rendered by the *same* `StackCard.svelte`
+(a draft branch), never a `DraftCard.svelte`. Rationale: a forked draft
+component is exactly what let the two surfaces drift in the mockups — one card
+component means one place for the cardbar, popovers, and chips to change. The
+draft lives on `StackPaneState.draft`, never in `pane.cards`, so it is excluded
+from run/reorder/loop-count *by construction*; `executionOrder` also filters
+`'draft'` so no run path can ever schedule one.
+
+**Template provenance survives edits — it records origin, not drift.** `tpl`/
+`tplKind` are stamped when a template fills a card and are never cleared by later
+edits to `goal`/`preset`. A card says *where it came from*, not *whether it still
+matches*. Picking a bare preset (not a template) clears provenance, because a
+preset is not a template origin.
+
+**Chip color semantics are load-bearing, not decorative.** prompt template → a
+sun chip that *replaces* the alias chip (the template is the prompt's identity);
+stack template → a violet chip *plus* the loop's own teal alias chip (each loop
+in a chain keeps its distinct preset); no template → the teal alias chip. The
+colors match the dropdown sections so the card says where it came from at a
+glance. Every chip gets an explicit `svg` size (a missing one renders full-size
+and blows the card apart — a real mockup bug).
+
+**Persistence is localStorage-only and honestly labelled client-only.** Templates
+live under `lopi.templates.v1` in one browser profile. No backend, no sync — the
+store comment, the CHANGELOG, and this ledger all say so rather than implying a
+durability we don't have. Every access is try/catch'd; a private-mode / quota /
+corrupt-JSON failure degrades to empty and never throws into a click handler.
+
+**Bottom-first template serialization — the easiest thing to get backwards.**
+`addCard` prepends, so the bottom card is oldest and runs first.
+`stackTemplateFromCards` serializes bottom-first and `applyStackTemplate`
+prepends the loops in reverse, so a saved chain round-trips into the identical
+run order (first loop at the bottom). Pinned down by an explicit round-trip unit
+test, not left to inspection.
+
 ## macOS-Parity-Cut-1 — remove what web already cut (front + back + tests + docs)
 
 **The reversal, stated plainly.** `macOS-Loop-Stacks-1`'s README framed the Tools/

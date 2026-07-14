@@ -56,7 +56,18 @@ import {
   stackGoalSummary,
   defaultStackGoal,
   perLoopScheduleGoverned,
+  makeDraft,
+  draftIsHot,
+  finalizeDraft,
+  applyPreset,
+  applyPromptTemplate,
+  applyStackTemplate,
+  promptTemplateFromCard,
+  stackTemplateFromCards,
+  PRESET_CATALOG,
   BASELINE_EVAL,
+  type PromptTemplate,
+  type StackTemplate,
   type StackCard,
   type StackPaneState,
   type StackConfig
@@ -69,7 +80,7 @@ function card(id: string, goal = id): StackCard {
 }
 
 function pane(key: string, cards: StackCard[] = [], config: Partial<StackConfig> = {}): StackPaneState {
-  return { key, title: key, cards, config: { ...defaultStackConfig(), ...config } };
+  return { key, title: key, cards, config: { ...defaultStackConfig(), ...config }, draft: makeDraft() };
 }
 
 // ── add — prepends ────────────────────────────────────────────────────────────
@@ -759,7 +770,8 @@ eqIs(
       key: 's1',
       title: 'one',
       cards: [],
-      config: { ...defaultStackConfig(), goal: { pursue: true, noProgressLimit: 4 } }
+      config: { ...defaultStackConfig(), goal: { pursue: true, noProgressLimit: 4 } },
+      draft: makeDraft()
     }
   ];
   const dup = duplicateStack(state, 's1');
@@ -889,9 +901,9 @@ eqIs(
 // ── Unify-2 §3: bare vs. stack chrome + pane creation ─────────────────────────
 {
   const cfg = defaultStackConfig();
-  const empty = { key: 'e', title: 't', cards: [], config: cfg };
-  const one = { key: 'o', title: 't', cards: [buildCard('a')], config: cfg };
-  const two = { key: 'w', title: 't', cards: [buildCard('a'), buildCard('b')], config: cfg };
+  const empty = { key: 'e', title: 't', cards: [], config: cfg, draft: makeDraft() };
+  const one = { key: 'o', title: 't', cards: [buildCard('a')], config: cfg, draft: makeDraft() };
+  const two = { key: 'w', title: 't', cards: [buildCard('a'), buildCard('b')], config: cfg, draft: makeDraft() };
   ok(paneIsBare(empty), 'an empty pane is bare (composer + idle orb only)');
   ok(paneIsBare(one), 'a single-card pane is bare — reads like a pre-Unify Forge box');
   ok(!paneIsBare(two), 'a second loop earns the stack chrome (dock + connectors)');
@@ -912,6 +924,119 @@ eqIs(
   eqIs(grown.length, 2, 'addStack appends one pane');
   ok(grown[0] === state[0], 'addStack leaves existing panes by reference');
   ok(state.length === 1, 'addStack is pure — original array untouched');
+}
+
+// ── Creation-Flow-1: draft card, templates, provenance ────────────────────────
+{
+  // A fresh draft is the composer replacement: status 'draft', empty + not hot.
+  const d = makeDraft();
+  eqIs(d.status, 'draft', 'makeDraft starts in the draft status');
+  eqIs(d.goal, '', 'a fresh draft has an empty goal');
+  ok(!draftIsHot(d), 'an empty draft is not hot (nothing to commit)');
+  ok(draftIsHot({ ...d, goal: 'fix foo' }), 'a draft with goal text is hot');
+  ok(draftIsHot({ ...d, alias: 'research' }), 'a draft with an alias is hot');
+  ok(draftIsHot({ ...d, tpl: 'kcqf sprint' }), 'a draft with a template origin is hot');
+}
+{
+  // §1.1 draft-excluded-from-run: executionOrder must never schedule a draft,
+  // even if one somehow appears in a card list.
+  const runnable = buildCard('do the thing');
+  const draft = makeDraft();
+  const order = executionOrder([draft, runnable]);
+  eqIs(order.length, 1, 'a draft is excluded from the execution order');
+  eqIs(order[0].id, runnable.id, 'only the committed card runs');
+  ok(
+    !executionOrder([draft]).length,
+    'a lone draft yields an empty run plan (never falls through to a run path)'
+  );
+}
+{
+  // finalizeDraft: a raw draft honors inline `:alias @repo ×N`; the token text
+  // is stripped from the committed goal.
+  const draft = { ...makeDraft(), goal: ':research investigate X @konjoai/lopi x3' };
+  const committed = finalizeDraft(draft);
+  eqIs(committed.status, 'idle', 'finalizeDraft commits to idle');
+  eqIs(committed.preset, 'research', 'inline :alias resolves to its preset');
+  eqIs(committed.goal, 'investigate X', 'tokens are stripped from the committed goal');
+  eqIs(committed.config.repo, 'konjoai/lopi', 'inline @repo lands on config');
+  eqIs(committed.maxIterations, 3, 'inline ×N sets the iteration ceiling');
+}
+{
+  // A dropdown-configured draft (preset/template already set) commits as-is —
+  // inline parsing does not clobber a deliberate configuration.
+  const draft = applyPreset(makeDraft(), 'implement');
+  draft.goal = 'build the widget';
+  const committed = finalizeDraft(draft);
+  eqIs(committed.preset, 'implement', 'a configured draft keeps its preset on commit');
+  eqIs(committed.goal, 'build the widget', 'a configured draft keeps its literal goal');
+}
+{
+  // applyPreset sets preset/alias/evals and clears any template provenance.
+  const withTpl = { ...makeDraft(), tpl: 'x', tplKind: 'prompt' as const };
+  const p = applyPreset(withTpl, 'optimize');
+  eqIs(p.preset, 'optimize', 'applyPreset sets the preset');
+  eqIs(p.alias, 'optimize', 'applyPreset sets the alias to the preset key');
+  eq(p.evals, PRESET_CATALOG.optimize.evals, 'applyPreset attaches the preset eval suite');
+  eqIs(p.tpl, undefined, 'picking a bare preset clears template provenance');
+  eqIs(p.tplKind, undefined, 'picking a bare preset clears the template kind');
+}
+{
+  // provenance-survives-edit: a prompt template stamps tpl/tplKind, and editing
+  // the goal afterward must NOT erase the origin (it records origin, not drift).
+  const tpl: PromptTemplate = { id: 't1', name: 'deep research', preset: 'research', goal: 'investigate' };
+  const filled = applyPromptTemplate(makeDraft(), tpl);
+  eqIs(filled.tpl, 'deep research', 'applyPromptTemplate stamps the template name');
+  eqIs(filled.tplKind, 'prompt', 'prompt-template provenance kind');
+  eqIs(filled.preset, 'research', 'the template preset drives evals/config');
+  const edited = { ...filled, goal: 'investigate something else entirely' };
+  eqIs(edited.tpl, 'deep research', 'provenance survives an edit to goal');
+  eqIs(edited.tplKind, 'prompt', 'provenance kind survives an edit to goal');
+  // And it survives a commit too.
+  eqIs(finalizeDraft(edited).tpl, 'deep research', 'provenance survives commit');
+}
+{
+  // §1.4 bottom-first round-trip — the easiest thing to get backwards. Build a
+  // pane the way addCard does (prepend → newest on top, bottom runs first),
+  // serialize it, apply it into an empty pane, and assert identical run order.
+  //   run order (executionOrder): first → last.
+  let cards: StackCard[] = [];
+  cards = addCard(cards, buildCard(':research first'));   // added first → sinks to bottom → runs first
+  cards = addCard(cards, buildCard(':implement second'));
+  cards = addCard(cards, buildCard(':optimize third'));   // added last → top → runs last
+  const runGoalsBefore = executionOrder(cards).map((c) => c.goal);
+  eq(runGoalsBefore, ['first', 'second', 'third'], 'sanity: bottom card runs first');
+
+  const tpl = stackTemplateFromCards(cards, 'my chain');
+  eqIs(tpl.loops[0].goal, 'first', 'serialized bottom-first: first-to-run is loop[0]');
+  eqIs(tpl.loops[0].preset, 'research', 'serialized loop carries its preset');
+
+  const restored = applyStackTemplate([], tpl);
+  const runGoalsAfter = executionOrder(restored).map((c) => c.goal);
+  eq(runGoalsAfter, runGoalsBefore, 'applyStackTemplate round-trips into the same run order');
+  // The template's first loop landed at the BOTTOM of the pane (last index).
+  eqIs(restored[restored.length - 1].goal, 'first', "template's first loop lands at the bottom");
+  // Round-trips through a second serialization too (idempotent).
+  eq(stackTemplateFromCards(restored, 'again').loops.map((l) => l.goal), tpl.loops.map((l) => l.goal), 'double round-trip is stable');
+}
+{
+  // Stack-template loops carry violet provenance + keep their own preset alias.
+  const tpl: StackTemplate = {
+    id: 's1',
+    name: 'kcqf',
+    loops: [{ preset: 'research', goal: 'r' }, { preset: 'implement', goal: 'i' }]
+  };
+  const cards = applyStackTemplate([], tpl);
+  ok(cards.every((c) => c.tplKind === 'stack' && c.tpl === 'kcqf'), 'every dropped loop carries stack provenance');
+  ok(cards.every((c) => !!c.alias), 'each loop keeps its own preset alias (distinct per loop)');
+}
+{
+  // promptTemplateFromCard captures the card's identity, not its lineage.
+  const c = applyPreset(makeDraft(), 'benchmark');
+  c.goal = 'measure throughput';
+  const t = promptTemplateFromCard(c, 'bench it');
+  eqIs(t.name, 'bench it', 'prompt template takes the given name');
+  eqIs(t.preset, 'benchmark', 'prompt template captures the preset');
+  eqIs(t.goal, 'measure throughput', 'prompt template captures the goal');
 }
 
 namedSummary('stack');

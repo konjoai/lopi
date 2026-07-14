@@ -158,6 +158,18 @@ body{background:#060809;color:var(--paper);font-family:var(--sans);-webkit-font-
 .addbtn2{width:34px;height:34px;border:1px solid var(--veil);border-radius:7px;background:transparent;color:var(--dim2);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}
 .addbtn2:hover{color:var(--flame);border-color:rgba(255,149,0,.4)}.addbtn2 svg{width:16px;height:16px}
 .panestack{padding:24px 18px 8px}
+/* Creation-Flow-1: the composer is now a pinned draft card (dashed → teal when
+   hot). Full behavior in docs/ui/lopi-creation-settled.html; this keeps the
+   two-stacks reference visually consistent while its JS wiring is unchanged. */
+.pcdraft{margin:13px 18px 0;position:relative;background:var(--card);border:1px dashed rgba(255,255,255,.18);border-radius:9px;padding:13px 14px;font-family:var(--mono)}
+.pcdraft .dtag{position:absolute;top:-10px;right:14px;font-size:9px;letter-spacing:.1em;text-transform:uppercase;background:var(--black);border:1px solid var(--veil);border-radius:3px;padding:2px 8px;color:var(--dim)}
+.pcdraft .dtmpl{display:inline-flex;align-items:center;height:27px;padding:0 10px;border-radius:7px;border:1px solid rgba(245,245,245,.46);color:var(--paper);font-size:11.5px}
+.pcdraft .dgoal{width:100%;margin-top:10px;background:rgba(255,255,255,.02);border:1px solid var(--veil);border-radius:7px;padding:9px 11px;color:var(--paper);font-family:var(--mono);font-size:14px;outline:none}
+.pcdraft .dgoal::placeholder{color:var(--dim2)}
+.pcdraft .dbar{display:flex;align-items:center;gap:6px;margin-top:12px}
+.pcdraft .dpill{display:inline-flex;align-items:center;height:29px;padding:0 10px;border:1px solid rgba(255,149,0,.5);background:rgba(255,69,0,.09);border-radius:6px;font-size:11px;color:var(--flame);font-weight:700}
+.pcdraft .dsp{flex:1}
+.pcdraft .dadd{height:29px;padding:0 12px;border-radius:6px;border:1px solid rgba(0,255,157,.5);background:rgba(0,255,157,.08);color:var(--jade);font-weight:700;font-size:11px;cursor:pointer}
 .panefoot{display:flex;justify-content:center;padding:14px 18px 20px;position:relative}
 .runsplit{display:inline-flex;border-radius:9px;overflow:hidden;box-shadow:0 5px 18px rgba(255,149,0,.28)}
 .runmain{display:inline-flex;align-items:center;gap:8px;background:linear-gradient(180deg,#ffb648,#ff9500);color:#231000;border:none;padding:12px 26px;font-family:var(--mono);font-size:13px;font-weight:700;cursor:pointer}
@@ -479,7 +491,7 @@ function paneHead(s){
   return `<div class="panehead"><span class="logo">${I.grid}</span><span class="ptitle">${s.title}</span><span class="hsp"></span><span class="hdot"></span><button class="hx" data-panex="${s.key}">${I.x}</button></div>`;
 }
 function paneComposer(s){
-  return `<div class="panecomposer"><span class="ar">></span><input class="composerIn" data-composer="${s.key}" placeholder="add a prompt or goal…"/><button class="addbtn2" data-add="${s.key}">${I.plus}</button></div>`;
+  return `<div class="pcdraft"><span class="dtag">new prompt</span><div><span class="dtmpl">📖 templates ▾</span></div><input class="dgoal composerIn" data-composer="${s.key}" placeholder="describe the prompt or goal…  (:alias @repo ×N ok)"/><div class="dbar"><span class="dpill">↻ off</span><span class="dsp"></span><button class="dadd" data-add="${s.key}">+ add</button></div></div>`;
 }
 function stackHTML(s){
   if(!s.cards.length)return `<div style="text-align:center;color:var(--dim2);font-family:var(--mono);font-size:12px;padding:20px 0">no loops yet — add one above</div>`;

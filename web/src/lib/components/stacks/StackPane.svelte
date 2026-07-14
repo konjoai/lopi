@@ -9,9 +9,8 @@
   drag this slice (whole-*stack* reordering is in scope, via the dock).
 -->
 <script lang="ts">
-  import { type StackPaneState, addToPane, buildCard, perLoopScheduleGoverned, paneIsBare } from '$lib/stores/stack';
+  import { type StackPaneState, perLoopScheduleGoverned, paneIsBare } from '$lib/stores/stack';
   import type { Option } from '$lib/stores/controls';
-  import EmptyState from '$lib/components/ui/EmptyState.svelte';
   import StackCard from './StackCard.svelte';
   import StackConnector from './StackConnector.svelte';
   import StackOutput from './StackOutput.svelte';
@@ -36,21 +35,6 @@
   // reads like the old Forge pane; the purple stack control dock and inter-card
   // connectors appear only once a second loop makes it a real stack.
   $: bare = paneIsBare(pane);
-
-  let composerValue = '';
-
-  function submit() {
-    const text = composerValue.trim();
-    if (!text) return;
-    addToPane(pane.key, buildCard(text));
-    composerValue = '';
-  }
-  function onKeydown(e: KeyboardEvent) {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      submit();
-    }
-  }
 </script>
 
 <div class="pane">
@@ -69,23 +53,25 @@
     >{@html ICONS.x}</button>
   </div>
 
-  <div class="panecomposer">
-    <span class="ar">&gt;</span>
-    <input
-      bind:value={composerValue}
-      on:keydown={onKeydown}
-      placeholder="add a prompt or goal…"
-      spellcheck="false"
-    />
-    <button class="addbtn2" type="button" on:click={submit} disabled={!composerValue.trim()} title="add to stack">
-      {@html ICONS.plus}
-    </button>
-  </div>
-
   <div class="panestack">
-    {#if pane.cards.length === 0}
-      <EmptyState title="no loops yet" detail="add one above" />
-    {:else}
+    <!-- Creation-Flow-1: the draft card *is* the composer. Pinned at the top;
+         the committed cards flow down below it toward the currently-executing
+         loop at the bottom. The draft lives on `pane.draft` (never in
+         `pane.cards`), so it's excluded from run/reorder/loop-count. -->
+    <div class="loopwrap draftwrap">
+      <StackCard
+        card={pane.draft}
+        paneKey={pane.key}
+        index={-1}
+        {paneDefaults}
+        {repoOptions}
+        paneCards={pane.cards}
+        {scheduleGoverned}
+      />
+    </div>
+
+    {#if pane.cards.length > 0}
+      <div class="draftconn" aria-hidden="true"><span class="dcline"></span></div>
       {#each pane.cards as card, i (card.id)}
         {#if card.status === 'running' && card.taskId}
           <div class="loopwrap hasout">
@@ -138,8 +124,7 @@
     flex-direction: column;
     overflow: hidden;
   }
-  .panehead,
-  .panecomposer {
+  .panehead {
     flex: 0 0 auto;
   }
   .panehead {
@@ -190,61 +175,26 @@
     width: 16px;
     height: 16px;
   }
-  .panecomposer {
-    display: flex;
-    align-items: center;
-    gap: 11px;
-    padding: 13px 18px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-  }
-  .panecomposer .ar {
-    color: var(--konjo-flame);
-    font-family: var(--font-mono, monospace);
-    font-size: 15px;
-  }
-  .panecomposer input {
-    flex: 1;
-    background: transparent;
-    border: none;
-    color: var(--konjo-paper, #f5f5f5);
-    font-family: var(--font-mono, monospace);
-    font-size: 14px;
-    outline: none;
-    min-width: 0;
-  }
-  .panecomposer input::placeholder {
-    color: rgba(245, 245, 245, 0.28);
-  }
-  .addbtn2 {
-    width: 34px;
-    height: 34px;
-    border: 1px solid rgba(255, 255, 255, 0.11);
-    border-radius: 7px;
-    background: transparent;
-    color: rgba(245, 245, 245, 0.28);
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    flex: 0 0 auto;
-  }
-  .addbtn2:hover:not(:disabled) {
-    color: var(--konjo-flame);
-    border-color: rgba(255, 149, 0, 0.4);
-  }
-  .addbtn2:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-  }
-  .addbtn2 :global(svg) {
-    width: 16px;
-    height: 16px;
-  }
   .panestack {
     padding: 24px 18px 8px;
     flex: 1 1 auto;
     overflow-y: auto;
     min-height: 0;
+  }
+  /* The short connector between the pinned draft and the committed stack —
+     purely visual (unlike StackConnector, no "add between" affordance here). */
+  .draftconn {
+    position: relative;
+    height: 30px;
+    margin: 2px 0;
+  }
+  .draftconn .dcline {
+    position: absolute;
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    border-left: 2px dashed rgba(245, 245, 245, 0.28);
+    transform: translateX(-1px);
   }
   .loopwrap.hasout :global(.pc) {
     border-bottom-left-radius: 0;
