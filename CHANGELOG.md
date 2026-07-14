@@ -1,5 +1,56 @@
 # Changelog
 
+## [0.6.0] — Creation-Flow-1 (web): the draft card replaces the composer ✍️
+
+The thing you compose in `/stacks` is now **the card you'll get**. The old
+one-line `.panecomposer` (`> input +`) is gone; each pane pins a live **draft
+`StackCard`** at the top — dashed until it carries content, teal when hot — with
+a full cardbar (iteration pill, schedule/guardrails/evals/config popovers) you
+configure *before* committing. `+ add` (or Enter in the goal field) commits it to
+a real card and mints a fresh draft. A single sectioned **templates** dropdown
+(presets · prompt templates · stack templates · save) replaces `:alias`-from-
+memory as the discovery path, and template provenance shows as a colored chip.
+
+Additive and web-only — no backend, no API changes. The macOS sibling
+(`Creation-Flow-1 (macOS)`) ports the identical model next.
+
+- **[Feat] Draft is a `CardStatus`, not a fork.** `CardStatus` gains `'draft'`;
+  the draft renders through the *same* `StackCard.svelte` (a draft branch), never
+  a `DraftCard.svelte` — the fork that let the two surfaces drift in the mockups.
+  A draft lives on `StackPaneState.draft` (never in `pane.cards`), so it is
+  excluded from run/reorder/loop-count by construction; `executionOrder` also
+  filters `'draft'` defensively so it can never fall through to a run path.
+- **[Feat] Template provenance that survives edits.** `StackCard` gains
+  `tpl`/`tplKind` (`'prompt' | 'stack'`). It records **origin, not a binding** —
+  editing `goal`/`preset` never clears it. Pure, tested fns: `applyPreset`,
+  `applyPromptTemplate`, `applyStackTemplate`, `promptTemplateFromCard`,
+  `stackTemplateFromCards`, `finalizeDraft`.
+- **[Feat] Chip color semantics (`ProvenanceChips.svelte`).** prompt template →
+  a **sun** chip that *replaces* the teal alias chip (the template is that
+  prompt's identity); stack template → a **violet** chip **plus** the loop's own
+  teal alias chip (each loop keeps its preset); no template → today's teal alias
+  chip. Every chip carries an explicit `svg` size.
+- **[Feat] Templates dropdown (`TemplatesMenu.svelte`).** One sectioned menu,
+  color-coded, keyboard-reachable, closes on outside-click / Esc / selection.
+- **[Feat] localStorage template persistence (`stores/templates.ts`).**
+  **CLIENT-ONLY, EXPLICITLY NOT DURABLE** — one browser profile, no backend, no
+  sync. Every access is try/catch'd (private mode / quota / corrupt JSON →
+  empty, never throws). Seeds a couple of templates only when the key is absent.
+  Cross-machine sharing is out of scope (see `NEXT_SESSION_PROMPT`).
+- **[Fix] Bottom-first template serialization.** `addCard` prepends, so the
+  bottom card is oldest and **runs first**. `stackTemplateFromCards` serializes
+  bottom-first and `applyStackTemplate` prepends the loops in reverse, so a saved
+  chain round-trips into the **same run order** (the template's first loop lands
+  at the bottom). Covered by an explicit round-trip unit test — the easiest thing
+  to get backwards.
+- **[Verify]** `npm test` (309 web assertions incl. the bottom-first round-trip,
+  draft-excluded-from-run, and provenance-survives-edit), `npm run check`
+  (0 errors), `npm run build`, plus a live click-through on `/stacks`: empty
+  pane → draft; pick a preset; commit; drop the KCQF stack template (violet
+  chips, research at the bottom); save a stack template, reload, it persists.
+  Design truth updated: `docs/ui/lopi-creation-settled.html` (new) +
+  `docs/ui/lopi-two-stacks.html`.
+
 ## [0.5.0] — macOS Parity Cut + Dead-Letter Retirement 🃏
 
 Brings the native macOS nav in line with web after the `Unify-2`/`Polish-1`

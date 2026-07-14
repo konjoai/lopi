@@ -35,6 +35,7 @@ import {
   panes,
   buildCard,
   defaultStackConfig,
+  makeDraft,
   BASELINE_EVAL,
   type StackCard,
   type PaneDefaults,
@@ -118,8 +119,8 @@ function seedStackConfig(key: string, patch: Partial<StackConfig>): void {
 
 function resetPanes(): void {
   panes.set([
-    { key: 's1', title: 'stack one', cards: [], config: defaultStackConfig() },
-    { key: 's2', title: 'stack two', cards: [], config: defaultStackConfig() }
+    { key: 's1', title: 'stack one', cards: [], config: defaultStackConfig(), draft: makeDraft() },
+    { key: 's2', title: 'stack two', cards: [], config: defaultStackConfig(), draft: makeDraft() }
   ]);
   runs.set(new Map());
 }

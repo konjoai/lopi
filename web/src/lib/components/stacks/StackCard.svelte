@@ -7,6 +7,7 @@
   drag-hover visuals.
 -->
 <script lang="ts">
+  import { tick } from 'svelte';
   import {
     type StackCard as StackCardT,
     guardActive,
@@ -17,28 +18,36 @@
     scheduleSummary,
     cardIterationsLabel,
     stepCardIterations,
+    draftIsHot,
     duplicateInPane,
     removeFromPane,
     updateCardInPane,
+    updateDraftInPane,
+    commitDraft,
     reorderInPaneRelative
   } from '$lib/stores/stack';
   import type { StackDefaults } from '$lib/stores/stackDefaults';
   import type { Option } from '$lib/stores/controls';
   import { agents, permissionWaiting } from '$lib/stores/agents';
   import { orbStateForCard } from '$lib/forge/cardOrb';
-  import { ICONS, PRESET_ICON, PRESET_ACCENT } from './icons';
+  import { ICONS, PRESET_ACCENT } from './icons';
   import { dragging } from './dnd';
   import Popover, { togglePopover } from './Popover.svelte';
   import SchedulePopover from './SchedulePopover.svelte';
   import GuardrailsPopover from './GuardrailsPopover.svelte';
   import EvalsPopover from './EvalsPopover.svelte';
   import ConfigDrawer from './ConfigDrawer.svelte';
+  import ProvenanceChips from './ProvenanceChips.svelte';
+  import TemplatesMenu from './TemplatesMenu.svelte';
 
   export let card: StackCardT;
   export let paneKey: string;
   export let index: number;
   export let paneDefaults: StackDefaults;
   export let repoOptions: Option[] = [];
+  /** The pane's committed cards — only read by the draft branch, to enable
+   *  the templates dropdown's "save this stack…" when the pane has cards. */
+  export let paneCards: StackCardT[] = [];
   /** True when the stack's own schedule or loop-count governs this pane's
    *  cadence (`perLoopScheduleGoverned` — Stack-1's §1 precedence rule) —
    *  this card's own `scheduled` cron never fires independently while it's
@@ -56,6 +65,41 @@
   $: schedId = `${card.id}:sched`;
   $: guardId = `${card.id}:guard`;
   $: evalId = `${card.id}:eval`;
+
+  // ── draft branch (Creation-Flow-1) ──────────────────────────────────────────
+  // The pane's pre-commit draft renders through this same component with a
+  // `'draft'` status rather than a forked DraftCard. Its edits route to the
+  // pane's `draft` (not a card in `pane.cards`), and its cardbar swaps the
+  // dup/drag/delete cluster for a single `+ add` commit button.
+  $: isDraft = card.status === 'draft';
+  $: hot = isDraft && draftIsHot(card);
+  let goalInput: HTMLInputElement | undefined;
+
+  /** Route a card patch to the right store op: the draft edits the pane's
+   *  `draft`; a committed card edits itself in `pane.cards`. */
+  function writeCard(patch: Partial<StackCardT>): void {
+    if (isDraft) updateDraftInPane(paneKey, patch);
+    else updateCardInPane(paneKey, card.id, patch);
+  }
+
+  function onGoalInput(e: Event): void {
+    writeCard({ goal: (e.currentTarget as HTMLInputElement).value });
+  }
+
+  /** Commit the draft: mints a real card at the top of the stack and a fresh
+   *  empty draft, then re-focuses the (now-empty) goal input for rapid entry. */
+  function commit(): void {
+    if (!hot) return;
+    commitDraft(paneKey);
+    void tick().then(() => goalInput?.focus());
+  }
+
+  function onGoalKeydown(e: KeyboardEvent): void {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      commit();
+    }
+  }
 
   $: guardsOn = guardActive(card.guardrails);
   $: evalsOn = evalActive(card);
@@ -75,7 +119,7 @@
       : card.status;
 
   function step(delta: number) {
-    updateCardInPane(paneKey, card.id, { maxIterations: stepCardIterations(card.maxIterations, delta) });
+    writeCard({ maxIterations: stepCardIterations(card.maxIterations, delta) });
   }
 
   function dupCard() {
@@ -97,6 +141,7 @@
     draggable = false;
   }
   function onDragStart(e: DragEvent) {
+    if (isDraft) return; // the draft is not in pane.cards — never draggable
     dragging.set({ paneKey, cardId: card.id, index });
     if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
   }
@@ -107,6 +152,7 @@
     draggable = false;
   }
   function onDragOver(e: DragEvent) {
+    if (isDraft) return; // never a drop target — reorder must not see the draft
     const cur = $dragging;
     if (!cur || cur.paneKey !== paneKey || cur.cardId === card.id) return;
     e.preventDefault();
@@ -120,6 +166,7 @@
     dropAfter = false;
   }
   function onDrop(e: DragEvent) {
+    if (isDraft) return; // never a drop target — reorder must not see the draft
     e.preventDefault();
     const cur = $dragging;
     const before = dropBefore;
@@ -132,26 +179,44 @@
 
 <div
   class="pc {card.status}"
+  class:draft={isDraft}
+  class:hot
   class:dragging={draggable && $dragging?.cardId === card.id}
   class:drop-before={dropBefore}
   class:drop-after={dropAfter}
   style="--accent:{accent}; --orb:{orb.glowColor}"
   role="listitem"
-  {draggable}
+  draggable={!isDraft && draggable}
   on:dragstart={onDragStart}
   on:dragend={onDragEnd}
   on:dragover={onDragOver}
   on:dragleave={onDragLeave}
   on:drop={onDrop}
 >
-  <span class="runtag {card.status}">{statusLabel}</span>
+  <span class="runtag {card.status}">{isDraft ? 'new prompt' : statusLabel}</span>
 
-  <div class="spec">
-    {#if card.alias}
-      <span class="aliaschip">{@html ICONS.wrench}:{card.alias}</span>
-    {/if}
-    <span class="md">"{card.goal}"</span>
-  </div>
+  {#if isDraft}
+    <div class="spec draftspec">
+      <TemplatesMenu draft={card} {paneKey} {paneCards} />
+      <ProvenanceChips alias={card.alias} tpl={card.tpl} tplKind={card.tplKind} />
+    </div>
+    <!-- Goal on its own full-width line (an inline chip-adjacent input
+         truncated in testing). Still honors `:alias @repo ×N` on commit. -->
+    <input
+      class="goalinput"
+      bind:this={goalInput}
+      value={card.goal}
+      on:input={onGoalInput}
+      on:keydown={onGoalKeydown}
+      placeholder="describe the prompt or goal…  (:alias @repo ×N ok)"
+      spellcheck="false"
+    />
+  {:else}
+    <div class="spec">
+      <ProvenanceChips alias={card.alias} tpl={card.tpl} tplKind={card.tplKind} />
+      <span class="md">"{card.goal}"</span>
+    </div>
+  {/if}
 
   {#if card.status === 'running' && card.iteration}
     <div class="iterbar">
@@ -228,20 +293,26 @@
       {@html ICONS.sliders}
     </button>
     <span class="sp"></span>
-    <button class="ib" on:click={dupCard} title="duplicate">{@html ICONS.dup}</button>
-    <button
-      class="ib drag"
-      title="drag to reorder"
-      on:mousedown={armDrag}
-      on:mouseup={disarmDrag}
-    >
-      {@html ICONS.drag}
-    </button>
-    <button class="ib danger" on:click={delCard} title="delete">{@html ICONS.trash}</button>
+    {#if isDraft}
+      <button class="ib add" disabled={!hot} on:click={commit} title="add to stack">
+        {@html ICONS.plus}<span class="addlbl">add</span>
+      </button>
+    {:else}
+      <button class="ib" on:click={dupCard} title="duplicate">{@html ICONS.dup}</button>
+      <button
+        class="ib drag"
+        title="drag to reorder"
+        on:mousedown={armDrag}
+        on:mouseup={disarmDrag}
+      >
+        {@html ICONS.drag}
+      </button>
+      <button class="ib danger" on:click={delCard} title="delete">{@html ICONS.trash}</button>
+    {/if}
   </div>
 
   {#if cfgOpen}
-    <ConfigDrawer {card} {paneKey} {paneDefaults} {repoOptions} />
+    <ConfigDrawer {card} {paneKey} {paneDefaults} {repoOptions} onWrite={writeCard} />
   {/if}
 </div>
 
@@ -249,8 +320,8 @@
   <SchedulePopover
     scheduled={card.scheduled}
     cron={card.cron}
-    onToggle={() => updateCardInPane(paneKey, card.id, { scheduled: !card.scheduled })}
-    onChange={(next) => updateCardInPane(paneKey, card.id, { cron: next })}
+    onToggle={() => writeCard({ scheduled: !card.scheduled })}
+    onChange={(next) => writeCard({ cron: next })}
   />
 </Popover>
 <Popover id={guardId} anchor={guardBtn ?? null} kind="guard">
@@ -262,16 +333,16 @@
     untilCmd={card.guardrails.untilCmd}
     onFail={card.guardrails.onFail}
     budget={card.guardrails.budget}
-    onChangeGate={(patch) => updateCardInPane(paneKey, card.id, { guardrails: { ...card.guardrails, ...patch } })}
-    onChangeUntil={(patch) => updateCardInPane(paneKey, card.id, { guardrails: { ...card.guardrails, ...patch } })}
-    onChangeOnFail={(onFail) => updateCardInPane(paneKey, card.id, { guardrails: { ...card.guardrails, onFail } })}
-    onChangeBudget={(budget) => updateCardInPane(paneKey, card.id, { guardrails: { ...card.guardrails, budget } })}
+    onChangeGate={(patch) => writeCard({ guardrails: { ...card.guardrails, ...patch } })}
+    onChangeUntil={(patch) => writeCard({ guardrails: { ...card.guardrails, ...patch } })}
+    onChangeOnFail={(onFail) => writeCard({ guardrails: { ...card.guardrails, onFail } })}
+    onChangeBudget={(budget) => writeCard({ guardrails: { ...card.guardrails, budget } })}
     maxIterations={card.maxIterations}
     onStep={step}
   />
 </Popover>
 <Popover id={evalId} anchor={evalBtn ?? null} kind="eval">
-  <EvalsPopover evals={card.evals} onChange={(evals) => updateCardInPane(paneKey, card.id, { evals })} />
+  <EvalsPopover evals={card.evals} onChange={(evals) => writeCard({ evals })} />
 </Popover>
 
 <style>
@@ -295,6 +366,72 @@
   }
   .pc.done {
     border-color: color-mix(in srgb, var(--orb) 35%, transparent);
+  }
+  /* Draft card (Creation-Flow-1): dashed until it carries content, then a
+     teal "hot" border signalling it's ready to commit. */
+  .pc.draft {
+    border-style: dashed;
+    border-color: rgba(255, 255, 255, 0.18);
+  }
+  .pc.draft.hot {
+    border-style: solid;
+    border-color: rgba(0, 255, 212, 0.5);
+    box-shadow: 0 0 18px rgba(0, 255, 212, 0.08);
+  }
+  .runtag.draft {
+    color: rgba(245, 245, 245, 0.46);
+  }
+  .pc.draft.hot .runtag.draft {
+    color: var(--stack-teal, #00ffd4);
+    border-color: rgba(0, 255, 212, 0.45);
+  }
+  .draftspec {
+    row-gap: 7px;
+  }
+  .goalinput {
+    width: 100%;
+    margin-top: 10px;
+    box-sizing: border-box;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.11);
+    border-radius: 7px;
+    padding: 9px 11px;
+    color: var(--konjo-paper, #f5f5f5);
+    font-family: var(--font-mono, 'JetBrains Mono', monospace);
+    font-size: 14px;
+    outline: none;
+    transition:
+      border-color 0.12s,
+      background 0.12s;
+  }
+  .goalinput::placeholder {
+    color: rgba(245, 245, 245, 0.28);
+  }
+  .goalinput:focus {
+    border-color: rgba(0, 255, 212, 0.4);
+    background: rgba(0, 255, 212, 0.03);
+  }
+  .ib.add {
+    color: var(--konjo-jade, #00ff9d);
+    border-color: rgba(0, 255, 157, 0.5);
+    background: rgba(0, 255, 157, 0.08);
+    font-weight: 700;
+    padding: 0 12px;
+  }
+  .ib.add .addlbl {
+    font-size: 11px;
+  }
+  .ib.add:hover:not(:disabled) {
+    color: var(--konjo-jade, #00ff9d);
+    border-color: rgba(0, 255, 157, 0.8);
+    background: rgba(0, 255, 157, 0.14);
+  }
+  .ib.add:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    color: rgba(245, 245, 245, 0.28);
+    border-color: rgba(255, 255, 255, 0.11);
+    background: transparent;
   }
   .pc.dragging {
     opacity: 0.4;
@@ -367,21 +504,6 @@
   }
   .spec .md {
     color: rgba(245, 245, 245, 0.46);
-  }
-  .aliaschip {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    font-size: 12.5px;
-    color: var(--stack-teal, #00ffd4);
-    border: 1px solid rgba(0, 255, 212, 0.4);
-    border-radius: 7px;
-    padding: 3px 10px;
-    background: rgba(0, 255, 212, 0.07);
-  }
-  .aliaschip :global(svg) {
-    width: 12px;
-    height: 12px;
   }
   .iterbar {
     display: flex;

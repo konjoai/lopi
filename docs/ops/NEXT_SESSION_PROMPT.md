@@ -1,3 +1,27 @@
+# Next Session — after Creation-Flow-1 (web)
+
+`Creation-Flow-1 (web)` (`[0.6.0]`) replaced the `/stacks` composer with a live
+draft `StackCard` + a sectioned templates dropdown, with localStorage-only
+template persistence. Two follow-ups fall out of it:
+
+1. **`Creation-Flow-1 (macOS)` — the sibling sprint.** Port the identical model
+   to SwiftUI: `CardStatus.draft`, `tpl`/`tplKind` provenance, the pure template
+   fns (`applyPreset`/`applyPromptTemplate`/`applyStackTemplate`/
+   `stackTemplateFromCards` with the **bottom-first** round-trip), the draft
+   branch inside the one card view (no `DraftCardView` fork), and the same chip
+   color semantics. **Keep the two models identical** — same field names, same
+   ordering, same semantics. Persist templates via `UserDefaults` (the macOS
+   analogue of the web's localStorage-only, client-only store). Compile-first on
+   the M3, trust nothing until built (the standing macOS rule).
+2. **Backend template persistence — only if sharing across machines is needed.**
+   The web store is deliberately client-only (one browser profile, no sync). If
+   templates ever need to be shared across machines/users, that needs a real
+   backend: a `templates` table + REST endpoints, and a decision on scope
+   (per-user vs. per-repo vs. global). Out of scope until the need is real — do
+   not build durability we can't yet justify.
+
+---
+
 # Next Session — after Verify-4
 
 Verify-4 (addendum in `docs/ops/LIVE_UI_STATUS_FINAL.md`) closed the macOS Loop
