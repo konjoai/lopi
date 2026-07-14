@@ -120,12 +120,17 @@ export interface CardConfig {
  *  pause/drain/bump signals exist server-side). */
 export type CardStatus = 'idle' | 'queued' | 'running' | 'done';
 
-/** The backend default iteration ceiling (`default_max_iterations()` in
- *  `crates/lopi-core/src/loop_config.rs`) — the value a fresh card starts
- *  from before anyone touches the iteration pill or guardrails stepper. */
-export const DEFAULT_MAX_ITERATIONS = 25;
+/** The default iteration ceiling a fresh card starts from. `0` = "off": the
+ *  loop is disabled and the card runs a single pass (the card pill floors at
+ *  0 and never reaches the backend's infinite sentinel — see
+ *  `stepCardIterations`/`cardToTaskPayload`, which maps an off card to a
+ *  single `max_iterations: 1` on the wire). A user dials this *up* from off to
+ *  ask for repeats. */
+export const DEFAULT_MAX_ITERATIONS = 0;
 
-/** Floor a stepper will not go below without wrapping to infinite. */
+/** Floor the stack loop-count stepper will not go below without wrapping to
+ *  infinite (`stepMaxIterations`). The *card* iteration pill uses its own
+ *  off-at-zero stepper (`stepCardIterations`) and ignores this. */
 export const MAX_ITERATIONS_FLOOR = 2;
 
 /** One card in the stack — a loop-to-be. */
@@ -456,9 +461,24 @@ export function stepMaxIterations(current: number, delta: number): number {
   return next < MAX_ITERATIONS_FLOOR ? 0 : next;
 }
 
-/** Display text for a card's iteration ceiling (`∞` for the sentinel). */
+/** Display text for the *stack* loop-count pill (`∞` for the infinite
+ *  sentinel). The stack pill keeps the wrap-to-infinite behavior so a
+ *  goal-pursuing chain can still be set to run "until met". */
 export function maxIterationsLabel(maxIterations: number): string {
   return maxIterations === 0 ? '∞' : String(maxIterations);
+}
+
+/** Step a *card's* `maxIterations` by `delta`. Unlike the stack pill, the
+ *  card floors at `0` = "off" (single run) and never wraps to the infinite
+ *  sentinel — stepping down past 0 stays off. */
+export function stepCardIterations(current: number, delta: number): number {
+  return Math.max(0, current + delta);
+}
+
+/** Display text for a *card's* iteration pill — `off` when the loop is
+ *  disabled (`0`), the plain number otherwise. */
+export function cardIterationsLabel(maxIterations: number): string {
+  return maxIterations === 0 ? 'off' : String(maxIterations);
 }
 
 // ── Active-state predicates (pure, drive cardbar highlighting) ────────────────
@@ -580,7 +600,7 @@ export function guardSummary(card: StackCard): string {
   if (g.gate) parts.push('gate');
   if (g.until) parts.push('until');
   parts.push(`budget:${g.budget}`);
-  parts.push(`max ${maxIterationsLabel(card.maxIterations)}`);
+  parts.push(`max ${cardIterationsLabel(card.maxIterations)}`);
   return parts.join(' · ');
 }
 
@@ -650,7 +670,9 @@ export function cardToTaskPayload(
   const options: CreateTaskOptions = {
     model: card.config.model ?? defaults.model,
     effort: card.config.effort ?? defaults.effort,
-    max_iterations: card.maxIterations,
+    // `0` = "off" on the card pill → a single pass on the wire (never the
+    // backend's `0` = infinite sentinel). Any positive N passes through.
+    max_iterations: card.maxIterations === 0 ? 1 : card.maxIterations,
     on_fail: card.guardrails.onFail,
     // Backend-1 — lets the response's `duplicate_of ?? id` (see
     // `api.ts::effectiveTaskId`) be traced straight back to this card

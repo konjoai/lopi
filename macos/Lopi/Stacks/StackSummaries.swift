@@ -16,7 +16,7 @@ func guardSummary(_ card: StackCard) -> String {
     if g.gate { parts.append("gate") }
     if g.until { parts.append("until") }
     parts.append("budget:\(g.budget.rawValue)")
-    parts.append("max \(maxIterationsLabel(card.maxIterations))")
+    parts.append("max \(cardIterationsLabel(card.maxIterations))")
     return parts.joined(separator: " · ")
 }
 

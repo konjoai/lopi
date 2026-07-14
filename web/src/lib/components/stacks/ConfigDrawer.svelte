@@ -9,6 +9,7 @@
   import { type StackDefaults, AUTONOMY_OPTIONS, BRANCH_OPTIONS } from '$lib/stores/stackDefaults';
   import { MODEL_OPTIONS, EFFORT_OPTIONS, type Option } from '$lib/stores/controls';
   import Dropdown from '$lib/components/ui/Dropdown.svelte';
+  import { ICONS } from './icons';
 
   export let card: StackCardT;
   export let paneKey: string;
@@ -29,6 +30,7 @@
     <Dropdown
       dense
       label="model"
+      icon={ICONS.cpu}
       value={card.config.model ?? paneDefaults.model}
       options={MODEL_OPTIONS}
       on:change={(e) => patchConfig({ model: e.detail })}
@@ -38,6 +40,7 @@
     <Dropdown
       dense
       label="effort"
+      icon={ICONS.gauge}
       value={card.config.effort ?? paneDefaults.effort}
       options={EFFORT_OPTIONS}
       on:change={(e) => patchConfig({ effort: e.detail })}
@@ -47,6 +50,7 @@
     <Dropdown
       dense
       label="repo"
+      icon={ICONS.folder}
       value={card.config.repo ?? paneDefaults.repo}
       options={effectiveRepoOptions}
       on:change={(e) => patchConfig({ repo: e.detail })}
@@ -56,6 +60,7 @@
     <Dropdown
       dense
       label="branch"
+      icon={ICONS.branch}
       value={card.config.branch ?? paneDefaults.branch}
       options={BRANCH_OPTIONS}
       on:change={(e) => patchConfig({ branch: e.detail })}
@@ -65,6 +70,7 @@
     <Dropdown
       dense
       label="autonomy"
+      icon={ICONS.ladder}
       value={card.config.autonomy ?? paneDefaults.autonomy}
       options={AUTONOMY_OPTIONS}
       on:change={(e) => patchConfig({ autonomy: e.detail })}

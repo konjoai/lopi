@@ -97,7 +97,9 @@ func cardToTaskPayload(_ card: StackCard, _ defaults: PaneDefaults) -> StackTask
     var options = StackTaskOptions()
     options.model = card.config.model ?? defaults.model
     options.effort = card.config.effort ?? defaults.effort
-    options.maxIterations = card.maxIterations
+    // `0` = "off" on the card pill → a single pass on the wire (never the
+    // backend's `0` = infinite sentinel). Any positive N passes through.
+    options.maxIterations = card.maxIterations == 0 ? 1 : card.maxIterations
     options.onFail = card.guardrails.onFail
     options.clientRef = card.id
     if card.guardrails.gate { options.gate = card.guardrails.gateCmd }

@@ -16,7 +16,7 @@
   on-fail policy (`stores/stackRun.ts`) instead of one task's retry pacing.
 -->
 <script lang="ts">
-  import { type OnFail, type Budget, maxIterationsLabel } from '$lib/stores/stack';
+  import { type OnFail, type Budget, maxIterationsLabel, cardIterationsLabel } from '$lib/stores/stack';
   import { closePopover } from './Popover.svelte';
   import Toggle from './Toggle.svelte';
   import { ICONS } from './icons';
@@ -90,7 +90,7 @@
     <span class="lbl">{iterLabel}</span>
     <span class="stepper">
       <button type="button" on:click={() => onStep(-1)} title="fewer iterations">−</button>
-      <span class="v">{maxIterationsLabel(maxIterations)}</span>
+      <span class="v">{scope === 'stack' ? maxIterationsLabel(maxIterations) : cardIterationsLabel(maxIterations)}</span>
       <button type="button" on:click={() => onStep(1)} title="more iterations">+</button>
     </span>
   </div>

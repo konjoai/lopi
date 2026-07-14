@@ -643,6 +643,9 @@
   .dockrun {
     padding-top: 13px;
     position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
   }
   .runbanner {
     display: flex;
@@ -684,25 +687,24 @@
     color: rgba(150, 255, 210, 0.95);
   }
   .runsplit {
-    display: flex;
-    border-radius: 8px;
+    display: inline-flex;
+    border-radius: 9px;
     overflow: hidden;
-    width: 100%;
-    box-shadow: 0 4px 16px rgba(255, 149, 0, 0.3);
+    box-shadow: 0 5px 18px rgba(255, 149, 0, 0.28);
   }
   .runmain {
-    display: flex;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 9px;
-    flex: 1;
+    gap: 8px;
     background: linear-gradient(180deg, #ffb648, #ff9500);
     color: #231000;
     border: none;
-    padding: 12px;
+    padding: 12px 26px;
     font-size: 13px;
     font-weight: 700;
     cursor: pointer;
+    white-space: nowrap;
   }
   .runmain :global(svg) {
     width: 15px;

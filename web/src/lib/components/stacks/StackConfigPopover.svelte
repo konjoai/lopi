@@ -26,20 +26,20 @@
 
 <div class="ph">{@html ICONS.sliders}default config · every loop inherits</div>
 <div class="pbody">
-  <div class="cfgrow">
-    <Dropdown dense label="model" value={defaults.model} options={MODEL_OPTIONS} on:change={(e) => onChange({ model: e.detail })} />
+  <div class="cfgrow model">
+    <Dropdown dense label="model" icon={ICONS.cpu} value={defaults.model} options={MODEL_OPTIONS} on:change={(e) => onChange({ model: e.detail })} />
   </div>
-  <div class="cfgrow">
-    <Dropdown dense label="effort" value={defaults.effort} options={EFFORT_OPTIONS} on:change={(e) => onChange({ effort: e.detail })} />
+  <div class="cfgrow effort">
+    <Dropdown dense label="effort" icon={ICONS.gauge} value={defaults.effort} options={EFFORT_OPTIONS} on:change={(e) => onChange({ effort: e.detail })} />
   </div>
-  <div class="cfgrow">
-    <Dropdown dense label="repo" value={defaults.repo} options={effectiveRepoOptions} on:change={(e) => onChange({ repo: e.detail })} />
+  <div class="cfgrow repo">
+    <Dropdown dense label="repo" icon={ICONS.folder} value={defaults.repo} options={effectiveRepoOptions} on:change={(e) => onChange({ repo: e.detail })} />
   </div>
-  <div class="cfgrow">
-    <Dropdown dense label="branch" value={defaults.branch} options={BRANCH_OPTIONS} on:change={(e) => onChange({ branch: e.detail })} />
+  <div class="cfgrow branch">
+    <Dropdown dense label="branch" icon={ICONS.branch} value={defaults.branch} options={BRANCH_OPTIONS} on:change={(e) => onChange({ branch: e.detail })} />
   </div>
-  <div class="cfgrow">
-    <Dropdown dense label="autonomy" value={defaults.autonomy} options={AUTONOMY_OPTIONS} on:change={(e) => onChange({ autonomy: e.detail })} />
+  <div class="cfgrow autonomy">
+    <Dropdown dense label="autonomy" icon={ICONS.ladder} value={defaults.autonomy} options={AUTONOMY_OPTIONS} on:change={(e) => onChange({ autonomy: e.detail })} />
   </div>
 </div>
 <div class="popfoot">
@@ -52,5 +52,22 @@
   }
   .cfgrow:last-child {
     margin-bottom: 0;
+  }
+  /* Per-field accent for the leading icon — matches the mockup's icon colours
+     and the loop-scope ConfigDrawer. */
+  .cfgrow.model {
+    --konjo-accent-rgb: 0 212 255;
+  }
+  .cfgrow.effort {
+    --konjo-accent-rgb: 255 69 0;
+  }
+  .cfgrow.repo {
+    --konjo-accent-rgb: 255 204 0;
+  }
+  .cfgrow.branch {
+    --konjo-accent-rgb: 0 255 157;
+  }
+  .cfgrow.autonomy {
+    --konjo-accent-rgb: 183 155 255;
   }
 </style>

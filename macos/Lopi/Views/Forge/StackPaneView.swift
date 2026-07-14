@@ -113,17 +113,22 @@ struct StackPaneView: View {
         if !bare {
             StackControlDockView(store: store, engine: engine, pane: pane, index: index, repoOptions: repoOptions)
         } else if !pane.cards.isEmpty {
-            Button { engine.runBarePane(pane.key, PaneDefaults(paneDefaults)) } label: {
-                HStack(spacing: 9) {
-                    Image(systemName: "play.fill").font(.system(size: 13, weight: .bold))
-                    Text(barePhase == .running ? "running…" : "run").font(Konjo.sans(13, weight: .bold))
+            HStack {
+                Spacer()
+                Button { engine.runBarePane(pane.key, PaneDefaults(paneDefaults)) } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "play.fill").font(.system(size: 13, weight: .bold))
+                        Text(barePhase == .running ? "running…" : "run").font(Konjo.sans(13, weight: .bold))
+                    }
+                    .padding(.horizontal, 26).padding(.vertical, 12)
+                    .background(LinearGradient(colors: [Color(hex: 0xFFB648), Konjo.flame], startPoint: .top, endPoint: .bottom))
+                    .foregroundStyle(Color(hex: 0x231000))
+                    .clipShape(RoundedRectangle(cornerRadius: 9))
+                    .shadow(color: Konjo.flame.opacity(0.28), radius: 9, y: 5)
                 }
-                .frame(maxWidth: .infinity).padding(.vertical, 12)
-                .background(LinearGradient(colors: [Color(hex: 0xFFB648), Konjo.flame], startPoint: .top, endPoint: .bottom))
-                .foregroundStyle(Color(hex: 0x231000))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .buttonStyle(.plain).disabled(barePhase == .running)
+                Spacer()
             }
-            .buttonStyle(.plain).disabled(barePhase == .running)
             .padding(.horizontal, 16).padding(.top, 13).padding(.bottom, 16)
         }
     }

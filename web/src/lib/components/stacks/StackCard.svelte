@@ -15,8 +15,8 @@
     guardSummary,
     evalsSummary,
     scheduleSummary,
-    maxIterationsLabel,
-    stepMaxIterations,
+    cardIterationsLabel,
+    stepCardIterations,
     duplicateInPane,
     removeFromPane,
     updateCardInPane,
@@ -26,7 +26,6 @@
   import type { Option } from '$lib/stores/controls';
   import { agents, permissionWaiting } from '$lib/stores/agents';
   import { orbStateForCard } from '$lib/forge/cardOrb';
-  import OrbDot from '$lib/forge/OrbDot.svelte';
   import { ICONS, PRESET_ICON, PRESET_ACCENT } from './icons';
   import { dragging } from './dnd';
   import Popover, { togglePopover } from './Popover.svelte';
@@ -64,20 +63,19 @@
   $: scheduleActive = card.scheduled && !scheduleGoverned;
   $: showSep = card.scheduled || guardsOn || evalsOn;
 
-  // The orb is the card's sole status vocabulary (Unify-2 §2): the live agent
-  // keyed by `card.taskId` flows through the exact same `computeOrbState` the
-  // Forge pane uses, so color/motion here mean identically what they mean there.
-  // A card that hasn't launched (no taskId) shows the calm idle orb.
+  // The live agent keyed by `card.taskId` flows through the exact same
+  // `computeOrbState` the Forge pane uses; its glow colour still drives the
+  // card's running/queued/done border (via the `--orb` custom property).
   $: orb = orbStateForCard(card.taskId, $agents, $permissionWaiting);
-  // Text alternative for the visual orb — hover/screen-reader only, never a
-  // second visible badge living alongside it.
-  $: orbLabel =
+  // The status runtag badge text (mockup's `statusLabel`): a running card
+  // reads "running · iter N/M", every other status reads its own name.
+  $: statusLabel =
     card.status === 'running' && card.iteration
       ? `running · iter ${card.iteration.current}/${card.iteration.total}`
       : card.status;
 
   function step(delta: number) {
-    updateCardInPane(paneKey, card.id, { maxIterations: stepMaxIterations(card.maxIterations, delta) });
+    updateCardInPane(paneKey, card.id, { maxIterations: stepCardIterations(card.maxIterations, delta) });
   }
 
   function dupCard() {
@@ -146,7 +144,7 @@
   on:dragleave={onDragLeave}
   on:drop={onDrop}
 >
-  <span class="orbtag"><OrbDot {orb} label={orbLabel} /></span>
+  <span class="runtag {card.status}">{statusLabel}</span>
 
   <div class="spec">
     {#if card.alias}
@@ -193,7 +191,7 @@
 
   <div class="cardbar">
     <span class="iterpill">
-      <span class="lb">{@html ICONS.loop}<span class="val">×{maxIterationsLabel(card.maxIterations)}</span></span>
+      <span class="lb">{@html ICONS.loop}<span class="val">{card.maxIterations === 0 ? 'off' : '×' + cardIterationsLabel(card.maxIterations)}</span></span>
       <span class="steppers">
         <button class="sb" on:click={() => step(-1)} title="fewer iterations">−</button>
         <button class="sb" on:click={() => step(1)} title="more iterations">+</button>
@@ -318,15 +316,45 @@
       box-shadow: 0 0 20px color-mix(in srgb, var(--orb) 22%, transparent);
     }
   }
-  /* The orb pip sits in a notch on the card's top edge — the sole status
-     indicator, replacing the retired text runtag. */
-  .orbtag {
+  /* Status runtag badge, sitting in a notch on the card's top edge — the
+     mockup's `.runtag`. Colour + a pulsing dot (running) read the card status. */
+  .runtag {
     position: absolute;
-    top: -5px;
+    top: -10px;
     right: 14px;
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    background: var(--konjo-black, #0b0e10);
+    border: 1px solid rgba(255, 255, 255, 0.11);
+    border-radius: 3px;
+    padding: 2px 8px;
     display: inline-flex;
     align-items: center;
+    gap: 5px;
+    color: rgba(245, 245, 245, 0.46);
     z-index: 2;
+  }
+  .runtag.running {
+    color: var(--konjo-flame, #ff9500);
+    border-color: rgba(255, 149, 0, 0.5);
+  }
+  .runtag.running::before {
+    content: '';
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--konjo-flame, #ff9500);
+    box-shadow: 0 0 5px var(--konjo-ember, #ff4500);
+    animation: pulse 1.4s infinite;
+  }
+  .runtag.queued {
+    color: var(--konjo-ice, #00d4ff);
+    border-color: rgba(0, 212, 255, 0.45);
+  }
+  .runtag.done {
+    color: var(--konjo-jade, #00ff9d);
+    border-color: rgba(0, 255, 157, 0.45);
   }
   .spec {
     font-size: 14px;

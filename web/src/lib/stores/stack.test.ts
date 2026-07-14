@@ -15,6 +15,9 @@ import {
   applySuite,
   stepMaxIterations,
   maxIterationsLabel,
+  stepCardIterations,
+  cardIterationsLabel,
+  DEFAULT_MAX_ITERATIONS,
   guardActive,
   evalActive,
   configActive,
@@ -220,7 +223,7 @@ eqIs(suggestPreset('draft a changelog entry'), null, 'no keyword match suggests 
 }
 {
   const plain = buildCard('a plain goal');
-  eqIs(plain.maxIterations, 25, 'no xN ⇒ maxIterations defaults to the backend default (25)');
+  eqIs(plain.maxIterations, 0, 'no xN ⇒ maxIterations defaults to off (0) — a fresh card does not loop');
   eqIs(plain.scheduled, false, 'fresh card is not scheduled');
   eqIs(plain.status, 'idle', 'fresh card starts idle');
 }
@@ -256,6 +259,15 @@ eqIs(stepMaxIterations(0, 1), 2, 'stepping up from infinite lands on the floor, 
 eqIs(stepMaxIterations(0, -1), 0, 'stepping down from infinite stays infinite');
 eqIs(maxIterationsLabel(0), '∞', 'label renders the infinite sentinel as ∞');
 eqIs(maxIterationsLabel(5), '5', 'label renders a finite ceiling as its number');
+
+// ── card iteration stepper — floors at 0 = "off", never wraps to infinite ─────
+eqIs(stepCardIterations(0, 1), 1, 'stepping up from off lands on 1');
+eqIs(stepCardIterations(1, -1), 0, 'stepping down from 1 reaches off (0)');
+eqIs(stepCardIterations(0, -1), 0, 'stepping down from off stays off — never wraps to infinite');
+eqIs(stepCardIterations(3, 2), 5, 'stepping up increments normally');
+eqIs(cardIterationsLabel(0), 'off', 'card label renders 0 as off');
+eqIs(cardIterationsLabel(4), '4', 'card label renders a finite ceiling as its number');
+eqIs(DEFAULT_MAX_ITERATIONS, 0, 'a fresh card defaults to off (0), not looping');
 
 // ── active-state predicates ────────────────────────────────────────────────────
 eqIs(guardActive(defaultGuardrails()), false, 'fresh guardrails are inactive');
@@ -316,7 +328,7 @@ eq(computeNextRuns('not a cron', new Date(), 3), [], 'a malformed cron expressio
   eqIs(payload.goal, 'do the thing', 'payload carries the goal verbatim');
   eqIs(payload.repo, 'konjoai/lopi', 'no repo override ⇒ payload falls back to the pane default');
   eqIs(payload.options.model, 'sonnet', 'no model override ⇒ payload falls back to the pane default');
-  eqIs(payload.options.max_iterations, 25, 'payload carries maxIterations as max_iterations');
+  eqIs(payload.options.max_iterations, 1, 'a fresh (off) card sends a single pass — off (0) maps to max_iterations 1 on the wire');
   eqIs(payload.options.on_fail, 'stop', 'payload carries the default on_fail policy');
   eqIs(payload.options.gate, undefined, 'gate omitted when the guardrail toggle is off');
 }
@@ -363,10 +375,10 @@ eqIs(buildCard(':ratchet "self improve"').preset, 'gain', 'a `:ratchet` composer
 
 // ── V&V: table-driven WIRED round-trip (§C) — one non-default value per WIRED
 // field, asserting it lands correctly in CreateTaskOptions and that no WIRED
-// field is silently dropped or renamed. `maxIterations: 0` (the ∞ sentinel)
-// gets its own row since it's the one value JS falsy-coercion bugs love to
-// eat (`0 ?? default` is fine; `0 || default` would silently swap it out —
-// this table would catch that class of regression).
+// field is silently dropped or renamed. `maxIterations: 0` ("off") gets its
+// own row: off maps to a single pass (`max_iterations: 1`) on the wire, and
+// it's the one value JS falsy-coercion bugs love to eat — this table would
+// catch that class of regression.
 {
   const defaults = { model: 'sonnet', effort: 'medium', repo: 'konjoai/lopi' };
   type Row = { name: string; apply: (c: StackCard) => void; field: string; expected: unknown };
@@ -379,7 +391,7 @@ eqIs(buildCard(':ratchet "self improve"').preset, 'gain', 'a `:ratchet` composer
     { name: 'on_fail continue', apply: (c) => (c.guardrails = { ...c.guardrails, onFail: 'continue' }), field: 'on_fail', expected: 'continue' },
     { name: 'on_fail backoff', apply: (c) => (c.guardrails = { ...c.guardrails, onFail: 'backoff' }), field: 'on_fail', expected: 'backoff' },
     { name: 'maxIterations finite override (7)', apply: (c) => (c.maxIterations = 7), field: 'max_iterations', expected: 7 },
-    { name: 'maxIterations infinite sentinel (0)', apply: (c) => (c.maxIterations = 0), field: 'max_iterations', expected: 0 }
+    { name: 'maxIterations off (0) → single pass on the wire', apply: (c) => (c.maxIterations = 0), field: 'max_iterations', expected: 1 }
   ];
   for (const row of rows) {
     const c = buildCard('table-driven row');
@@ -417,12 +429,12 @@ eqIs(buildCard(':ratchet "self improve"').preset, 'gain', 'a `:ratchet` composer
   const runOncePayload = cardToTaskPayloadForRunOnce(c, defaults);
   eqIs(runOncePayload.options.max_iterations, 1, 'Run once overrides max_iterations to 1 in the outgoing payload');
   eqIs(c.maxIterations, 7, 'Run once never mutates the card\'s own stored maxIterations');
-  const infinite = buildCard('x');
-  infinite.maxIterations = 0;
+  const off = buildCard('x');
+  off.maxIterations = 0;
   eqIs(
-    cardToTaskPayloadForRunOnce(infinite, defaults).options.max_iterations,
+    cardToTaskPayloadForRunOnce(off, defaults).options.max_iterations,
     1,
-    'Run once overrides even the ∞ sentinel to a single pass'
+    'Run once on an off (0) card still sends a single pass'
   );
 }
 

@@ -12,6 +12,10 @@
   export let label = '';
   /** Compact icon-style trigger (used in dense pane headers). */
   export let dense = false;
+  /** Optional leading icon (raw SVG markup). In dense mode the icon + label
+   *  sit *inside* the trigger, rendering a horizontal `icon · LABEL · value`
+   *  chip (the config-drawer look) instead of the stacked label. */
+  export let icon = '';
 
   const dispatch = createEventDispatcher<{ change: string }>();
 
@@ -65,18 +69,21 @@
 <svelte:window on:click={onWindowClick} />
 
 <div class="kdrop" class:dense bind:this={root}>
-  {#if label}
+  {#if label && !(dense && (icon || label))}
     <span class="kdrop-label">{label}</span>
   {/if}
   <button
     type="button"
     class="kdrop-trigger"
     class:open
+    class:chip={dense && (icon || label)}
     on:click|stopPropagation={toggle}
     on:keydown={onKeydown}
     aria-haspopup="listbox"
     aria-expanded={open}
   >
+    {#if dense && icon}<span class="kdrop-icon">{@html icon}</span>{/if}
+    {#if dense && label}<span class="kdrop-cl">{label}</span>{/if}
     <span class="kdrop-value">{selectedLabel}</span>
     <span class="kdrop-caret" class:open>⌄</span>
   </button>
@@ -139,6 +146,30 @@
   .dense .kdrop-trigger {
     padding: 3px 6px;
     font-size: 10px;
+  }
+  /* Horizontal config-drawer chip: [icon] LABEL value ⌄ (matches the mockup's
+     .cfgchip). The parent sets --konjo-accent-rgb per field, colouring the
+     leading icon exactly like the design's per-field accent. */
+  .kdrop-trigger.chip {
+    gap: 6px;
+    padding: 7px 11px;
+    font-size: 11px;
+  }
+  .kdrop-icon {
+    display: inline-flex;
+    flex: 0 0 auto;
+  }
+  .kdrop-icon :global(svg) {
+    width: 12px;
+    height: 12px;
+    color: rgb(var(--konjo-accent-rgb, 245 245 245));
+  }
+  .kdrop-cl {
+    font-size: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    opacity: 0.5;
+    flex: 0 0 auto;
   }
   .kdrop-trigger:hover,
   .kdrop-trigger.open {
