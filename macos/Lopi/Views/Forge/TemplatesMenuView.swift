@@ -1,50 +1,65 @@
 import SwiftUI
 
-/// TemplatesMenuView — the draft card's single sectioned templates control
-/// (Creation-Flow-1 §5). One trigger (book symbol + the word `templates` + a
-/// chevron, no other label) opens one color-coded popover with four sections:
-///   1. presets (teal)          — the five PRESET_CATALOG presets
-///   2. prompt templates (sun)  — fill the draft (preset + goal + provenance)
-///   3. stack templates (violet)— drop the whole chain into the pane at once
-///   4. save (dim)              — save this prompt… / save this stack…
+/// TemplatesMenuView — the PROMPT-scope templates control (Stack-Templates-1
+/// §2a). Every card gets one: the draft renders it labeled (book symbol + the
+/// word `templates` + a chevron) in its spec row — the teaching surface; a
+/// committed card renders it icon-only via the shared `CardbarButton`,
+/// `Konjo.sun`-accented, in its cardbar immediately left of duplicate. Same
+/// view, `isDraft` just swaps the trigger.
 ///
-/// Uses SwiftUI's `.popover` (the app's existing popover mechanism — not a
-/// forked second system) so the section colors match the web exactly; a native
-/// `Menu` can't tint per-section text on macOS. Name prompts use native alerts.
+/// Menu content is prompt scope ONLY — presets (teal) → prompt templates
+/// (sun) → `save this prompt…`. Stack templates and "saved stacks" moved to
+/// the stack-scope menu (`StackTemplatesMenuView`, in the dock) — a prompt
+/// menu never offers a stack action.
+///
+/// Uses SwiftUI's `.popover` (the app's existing popover mechanism) so the
+/// section colors match the web exactly; a native `Menu` can't tint
+/// per-section text on macOS.
 struct TemplatesMenuView: View {
     var store: StackStore
     var templateStore: StackTemplateStore
     var paneKey: String
-    var draft: StackCard
-    var paneCards: [StackCard]
+    var card: StackCard
+    /// True for the draft's labeled, teaching-surface trigger; false (the
+    /// default) for a committed card's icon-only `CardbarButton` trigger.
+    var isDraft = true
 
     @State private var open = false
     @State private var savePromptAlert = false
-    @State private var saveStackAlert = false
     @State private var nameInput = ""
 
-    private var hot: Bool { draftIsHot(draft) }
-    private var hasCards: Bool { !paneCards.isEmpty }
+    // A committed card always has a preset/goal already, so it's always
+    // "hot" for enabling "save this prompt…"; the draft is only hot once it
+    // carries enough to commit.
+    private var hot: Bool { isDraft ? draftIsHot(card) : true }
 
-    var body: some View {
-        Button { open.toggle() } label: { trigger }
-            .buttonStyle(.plain)
-            .popover(isPresented: $open, arrowEdge: .bottom) { menu }
-            .alert("Name this prompt template", isPresented: $savePromptAlert) {
-                TextField("name", text: $nameInput)
-                Button("Save") { commitSavePrompt() }
-                Button("Cancel", role: .cancel) { nameInput = "" }
-            }
-            .alert("Name this stack template", isPresented: $saveStackAlert) {
-                TextField("name", text: $nameInput)
-                Button("Save") { commitSaveStack() }
-                Button("Cancel", role: .cancel) { nameInput = "" }
-            }
+    /// Route the patch to the right store op: the draft edits the pane's
+    /// `draft`; a committed card edits itself in `pane.cards`.
+    private func writeCard(_ mutate: (inout StackCard) -> Void) {
+        if isDraft { store.updateDraftInPane(paneKey, mutate) }
+        else { store.updateCardInPane(paneKey, card.id, mutate) }
     }
 
-    // MARK: Trigger
+    var body: some View {
+        Group {
+            if isDraft {
+                Button { open.toggle() } label: { labeledTrigger }
+                    .buttonStyle(.plain)
+            } else {
+                CardbarButton(systemImage: "book", active: true, accent: Konjo.sun, help: "templates") { open.toggle() }
+            }
+        }
+        .popover(isPresented: $open, arrowEdge: .bottom) { menu }
+        .alert("Name this prompt template", isPresented: $savePromptAlert) {
+            TextField("name", text: $nameInput)
+            Button("Save") { commitSavePrompt() }
+            Button("Cancel", role: .cancel) { nameInput = "" }
+        }
+    }
 
-    private var trigger: some View {
+    // MARK: Trigger (draft only — committed cards use `CardbarButton` above)
+
+    private var labeledTrigger: some View {
         HStack(spacing: 6) {
             Image(systemName: "book").font(.system(size: 12))
             Text("templates").font(Konjo.mono(11.5))
@@ -53,6 +68,9 @@ struct TemplatesMenuView: View {
         .foregroundStyle(Konjo.fgDim)
         .padding(.horizontal, 10).frame(height: 29)
         .overlay(RoundedRectangle(cornerRadius: 7).stroke(Konjo.line2, lineWidth: 1))
+        // No opaque background here (unlike `CardbarButton`) — without this,
+        // only the icon/text glyphs are clickable, not the rest of the pill.
+        .contentShape(Rectangle())
     }
 
     // MARK: Menu content
@@ -64,13 +82,11 @@ struct TemplatesMenuView: View {
                 sectionDivider
                 promptsSection
                 sectionDivider
-                stacksSection
-                sectionDivider
                 saveSection
             }
             .padding(6)
         }
-        .frame(width: 300).frame(maxHeight: 440)
+        .frame(width: 300).frame(maxHeight: 360)
         .background(Konjo.panel)
     }
 
@@ -84,7 +100,7 @@ struct TemplatesMenuView: View {
             ForEach(PRESET_KEYS, id: \.self) { key in
                 row(name: ":\(PRESET_CATALOG[key]?.label ?? key.rawValue)", nameColor: Konjo.stackTeal,
                     desc: PRESET_DESCRIPTIONS[key]) {
-                    store.updateDraftInPane(paneKey) { $0 = applyPreset(key, to: $0) }
+                    writeCard { $0 = applyPreset(key, to: $0) }
                     open = false
                 }
             }
@@ -99,23 +115,7 @@ struct TemplatesMenuView: View {
             } else {
                 ForEach(templateStore.library.prompts) { tpl in
                     row(name: tpl.name, desc: tpl.goal) {
-                        store.updateDraftInPane(paneKey) { $0 = applyPromptTemplate(tpl, to: $0) }
-                        open = false
-                    }
-                }
-            }
-        }
-    }
-
-    private var stacksSection: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            header("square.3.layers.3d", "stack templates", Konjo.stackViolet)
-            if templateStore.library.stacks.isEmpty {
-                emptyRow
-            } else {
-                ForEach(templateStore.library.stacks) { tpl in
-                    row(name: tpl.name, desc: "\(tpl.loops.count) loop\(tpl.loops.count == 1 ? "" : "s")") {
-                        store.applyStackTemplateToPane(paneKey, tpl)
+                        writeCard { $0 = applyPromptTemplate(tpl, to: $0) }
                         open = false
                     }
                 }
@@ -128,9 +128,6 @@ struct TemplatesMenuView: View {
             header("square.and.arrow.down", "save", Konjo.fgDim)
             row(name: "save this prompt…", disabled: !hot) {
                 open = false; nameInput = ""; savePromptAlert = true
-            }
-            row(name: "save this stack…", disabled: !hasCards) {
-                open = false; nameInput = ""; saveStackAlert = true
             }
         }
     }
@@ -169,17 +166,11 @@ struct TemplatesMenuView: View {
             .padding(.horizontal, 8).padding(.vertical, 4)
     }
 
-    // MARK: Save commits
+    // MARK: Save commit
 
     private func commitSavePrompt() {
         let name = nameInput.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !name.isEmpty { templateStore.savePrompt(promptTemplate(from: draft, name: name)) }
-        nameInput = ""
-    }
-
-    private func commitSaveStack() {
-        let name = nameInput.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !name.isEmpty { templateStore.saveStack(stackTemplate(from: paneCards, name: name)) }
+        if !name.isEmpty { templateStore.savePrompt(promptTemplate(from: card, name: name)) }
         nameInput = ""
     }
 }

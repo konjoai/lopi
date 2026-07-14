@@ -124,6 +124,7 @@ struct IterationPill: View {
         Button { onStep(delta) } label: {
             Text(glyph).font(Konjo.mono(14)).frame(width: 26, height: 29)
                 .overlay(Rectangle().fill(FacetAccent.iteration.opacity(0.35)).frame(width: 1), alignment: .leading)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .foregroundStyle(FacetAccent.iteration)
@@ -151,11 +152,20 @@ struct CardbarButton: View {
                 if let count { Text("\(count)").font(Konjo.mono(9, weight: .bold)) }
                 if let label { Text(label).font(Konjo.mono(11, weight: .bold)) }
             }
-            .frame(minWidth: 29, minHeight: 29).padding(.horizontal, label == nil ? 7 : 11)
+            // Padding INSIDE the minimum frame (web's CSS `min-width` is
+            // border-box, so its padding is absorbed within 29px, not added
+            // on top) — padding-then-frame here keeps an icon-only button at
+            // ~29pt instead of inflating to ~43pt.
+            .padding(.horizontal, label == nil ? 7 : 11)
+            .frame(minWidth: 29, minHeight: 29)
             .foregroundStyle(active ? accent : Konjo.fgMute)
-            .background((active ? accent.opacity(0.09) : Color.clear))
+            .background(active ? accent.opacity(0.09) : Color.clear)
             .overlay(RoundedRectangle(cornerRadius: 6).stroke(active ? accent.opacity(0.5) : Konjo.line, lineWidth: 1))
             .clipShape(RoundedRectangle(cornerRadius: 6))
+            // A `Color.clear` background does not hit-test on macOS — without
+            // this, only the opaque icon/text glyphs are clickable, not the
+            // rest of the button's visual bounds.
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(disabled)
@@ -188,7 +198,7 @@ struct ProvenanceChips: View {
         HStack(spacing: 9) {
             if isPrompt, let tpl { chip(text: tpl, icon: "doc", color: Konjo.sun) }
             if isStack, let tpl { chip(text: tpl, icon: "square.3.layers.3d", color: Konjo.stackViolet) }
-            if showAlias, let alias { chip(text: ":\(alias)", icon: "wrench.adjustable", color: Konjo.stackTeal) }
+            if showAlias, let alias { chip(text: ":\(alias)", icon: "wrench", color: Konjo.stackTeal) }
         }
     }
 

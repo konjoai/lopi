@@ -97,6 +97,9 @@ final class StackStore {
     func duplicateStackInPanes(_ key: String) {
         panes = duplicateStack(panes, key)
     }
+    func loadStackCardsIntoPane(_ targetKey: String, _ sourceKey: String) {
+        panes = loadStackCardsInto(panes, targetKey: targetKey, sourceKey: sourceKey)
+    }
     func reorderStacksInPanes(_ fromIndex: Int, _ targetIndex: Int, _ before: Bool) {
         panes = moveStackBeforeOrAfter(panes, fromIndex, targetIndex, before)
     }

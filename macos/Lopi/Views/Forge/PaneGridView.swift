@@ -88,10 +88,12 @@ struct PaneGridView<Pane: View>: View {
 
     private func divider(vertical: Bool) -> some View {
         ZStack {
+            // Invisible — matches the web, which lays panes out with a plain
+            // flex `gap` and no visible seam. The drag-to-resize affordance
+            // (macOS-only; the web isn't manually resizable) still needs a
+            // hit target, so the hover cursor + gesture stay on this
+            // transparent hit-shape.
             Color.clear.contentShape(Rectangle())
-            RoundedRectangle(cornerRadius: 2)
-                .fill(Konjo.konjo2.opacity(0.18))
-                .frame(width: vertical ? 2 : nil, height: vertical ? nil : 2)
         }
         .onHover { inside in
             #if os(macOS)

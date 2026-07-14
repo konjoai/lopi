@@ -402,6 +402,26 @@ final class StackStoreTests: XCTestCase {
         XCTAssertEqual(deleteStack([pane("only")], "only").map(\.key), ["only"], "refuses to empty the last pane")
     }
 
+    // MARK: Stack-Templates-1 — "saved stacks" copies another open pane's cards
+
+    func testLoadStackCardsInto() {
+        let state = [pane("s1", [card("a"), card("b")]), pane("s2", [card("x")])]
+        let next = loadStackCardsInto(state, targetKey: "s2", sourceKey: "s1")
+        XCTAssertEqual(next[1].cards.map(\.goal), ["a", "b"], "target pane's cards become a copy of the source's")
+        XCTAssertEqual(next[0].cards.map(\.goal), ["a", "b"], "source pane is left untouched")
+        XCTAssertTrue(zip(next[1].cards, next[0].cards).allSatisfy { $0.id != $1.id }, "every copied card gets a fresh id")
+
+        var running = card("a"); running.status = .running; running.iteration = IterationProgress(current: 2, total: 5); running.taskId = "task-123"
+        let copied = loadStackCardsInto([pane("s1", [running]), pane("s2")], targetKey: "s2", sourceKey: "s1")
+        XCTAssertEqual(copied[1].cards[0].status, .idle, "copied card resets status")
+        XCTAssertNil(copied[1].cards[0].taskId, "copied card drops taskId")
+        XCTAssertNil(copied[1].cards[0].iteration, "copied card drops iteration")
+
+        let same = [pane("s1", [card("a")]), pane("s2")]
+        XCTAssertEqual(loadStackCardsInto(same, targetKey: "s1", sourceKey: "s1").map(\.key), ["s1", "s2"], "copying a pane into itself is a no-op")
+        XCTAssertEqual(loadStackCardsInto(same, targetKey: "s2", sourceKey: "missing")[1].cards.count, 0, "copying from an unknown source is a no-op")
+    }
+
     // MARK: stack-level predicates + B1 goal facet
 
     func testStackPredicatesAndGoalFacet() {

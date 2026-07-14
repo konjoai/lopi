@@ -35,7 +35,7 @@ struct StackPaneView: View {
 
     private var header: some View {
         HStack(spacing: 11) {
-            Image(systemName: "circle.grid.2x2.fill").font(.system(size: 15)).foregroundStyle(Konjo.flame)
+            Image(systemName: "square.grid.2x2.fill").font(.system(size: 15)).foregroundStyle(Konjo.flame)
             Text(pane.title.uppercased()).font(Konjo.mono(12)).tracking(1.6).foregroundStyle(Konjo.fg)
             Spacer(minLength: 0)
             Circle().fill(Konjo.fgMute).frame(width: 7, height: 7)
@@ -59,7 +59,7 @@ struct StackPaneView: View {
                 // run/reorder/loop-count. The committed cards flow down below it.
                 StackCardView(store: store, paneKey: pane.key, card: pane.draft, index: -1,
                               paneDefaults: paneDefaults, repoOptions: repoOptions,
-                              scheduleGoverned: scheduleGoverned, paneCards: pane.cards)
+                              scheduleGoverned: scheduleGoverned)
                 if !pane.cards.isEmpty {
                     draftConnector
                     ForEach(Array(pane.cards.enumerated()), id: \.element.id) { i, card in

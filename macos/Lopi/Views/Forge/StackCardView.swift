@@ -18,9 +18,6 @@ struct StackCardView: View {
     var paneDefaults: StackDefaults
     var repoOptions: [StackOption]
     var scheduleGoverned: Bool
-    /// The pane's committed cards — only read by the draft branch, to enable the
-    /// templates menu's "save this stack…" and drive its `paneCards`.
-    var paneCards: [StackCard] = []
 
     @State private var cfgOpen = false
     @State private var schedOpen = false
@@ -142,8 +139,7 @@ struct StackCardView: View {
 
     private var draftHeader: some View {
         HStack(spacing: 9) {
-            TemplatesMenuView(store: store, templateStore: model.stackTemplateStore,
-                              paneKey: paneKey, draft: card, paneCards: paneCards)
+            TemplatesMenuView(store: store, templateStore: model.stackTemplateStore, paneKey: paneKey, card: card)
             ProvenanceChips(alias: card.alias, tpl: card.tpl, tplKind: card.tplKind)
             Spacer(minLength: 0)
         }
@@ -221,7 +217,8 @@ struct StackCardView: View {
             if isDraft {
                 CardbarButton(systemImage: "plus", active: hot, accent: Konjo.jade, label: "add", disabled: !hot, help: "add to stack") { commit() }
             } else {
-                CardbarButton(systemImage: "plus.square.on.square", help: "duplicate") { store.duplicateInPane(paneKey, card.id) }
+                TemplatesMenuView(store: store, templateStore: model.stackTemplateStore, paneKey: paneKey, card: card, isDraft: false)
+                CardbarButton(systemImage: "square.on.square", help: "duplicate") { store.duplicateInPane(paneKey, card.id) }
                 CardbarButton(systemImage: "line.3.horizontal", help: "drag to reorder") {}
                 CardbarButton(systemImage: "trash", accent: Konjo.rose, danger: true, help: "delete") { store.removeFromPane(paneKey, card.id) }
             }

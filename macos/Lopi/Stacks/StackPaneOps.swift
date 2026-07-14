@@ -62,6 +62,27 @@ func duplicateStack(_ state: [StackPaneState], _ key: String) -> [StackPaneState
     return next
 }
 
+/// Copy another currently-open pane's cards into this one, replacing whatever
+/// this pane already has — the "saved stacks" section of the stack-scope
+/// templates menu (Stack-Templates-1 §5). Deliberately not a real stack
+/// library: nothing persists beyond the two in-memory panes `StackStore`
+/// already holds. Every copied card gets a fresh id and wiped run state,
+/// mirroring `duplicateStack`'s per-card reset. No-op if either key is
+/// missing or they're the same pane.
+func loadStackCardsInto(_ state: [StackPaneState], targetKey: String, sourceKey: String) -> [StackPaneState] {
+    if targetKey == sourceKey { return state }
+    guard let source = state.first(where: { $0.key == sourceKey }) else { return state }
+    let copiedCards = source.cards.map { card -> StackCard in
+        var c = card
+        c.id = makeId()
+        c.status = .idle
+        c.iteration = nil
+        c.taskId = nil
+        return c
+    }
+    return applyToPaneCards(state, targetKey) { _ in copiedCards }
+}
+
 /// Move the stack at `from` to index `to`. Out-of-range is a no-op.
 func reorderStacks(_ state: [StackPaneState], _ from: Int, _ to: Int) -> [StackPaneState] {
     guard from >= 0, from < state.count, to >= 0, to < state.count else { return state }
