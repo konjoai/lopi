@@ -48,6 +48,7 @@
   import GuardrailsPopover from './GuardrailsPopover.svelte';
   import EvalsPopover from './EvalsPopover.svelte';
   import StackConfigPopover from './StackConfigPopover.svelte';
+  import StackTemplatesMenu from './StackTemplatesMenu.svelte';
   import RunMenu from './RunMenu.svelte';
 
   export let pane: StackPaneState;
@@ -281,6 +282,7 @@
           {@html ICONS.sliders}
         </button>
         <span class="sp"></span>
+        <StackTemplatesMenu paneKey={pane.key} cards={pane.cards} />
         <button class="ib" type="button" on:click={dupStack} title="duplicate stack">{@html ICONS.dup}</button>
         <button
           class="ib drag"

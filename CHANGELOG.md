@@ -1,5 +1,60 @@
 # Changelog
 
+## [0.8.0] — Stack-Templates-1 (web): templates at both scopes 📑
+
+Templates move from a single draft-card menu to their proper two scopes, on
+top of the stack control dock that already shipped (`Stack-1`). Prompt-scope
+templates (presets · prompt templates · save) now live on **every** card —
+the draft's labeled book-icon button in its spec row, and a new sun-accented
+icon-only button in every committed card's cardbar, immediately left of
+duplicate. Stack templates and "saved stacks" moved out of that menu
+entirely into a new violet, icon-only button in the dock's own button row,
+same position (left of duplicate stack).
+
+- **[Feat] `TemplatesMenu.svelte` split down to prompt scope.** Dropped its
+  stack-templates section and "save this stack…" — a prompt menu never offers
+  a stack action. Gained a `labeled` prop so the same component renders the
+  draft's labeled, teaching-surface button and a committed card's icon-only
+  one; a `card`/`paneKey` pair routes writes to `updateDraftInPane` or
+  `updateCardInPane` depending on which.
+- **[Feat] `StackTemplatesMenu.svelte` (new).** The dock's violet, icon-only
+  templates control: stack templates (drop the whole chain into this pane,
+  correct run order via `applyStackTemplate`), saved stacks (the other panes
+  currently in `$panes` — picking one copies its cards into this pane), and
+  save this stack as a template.
+- **[Feat] `loadStackCardsInto` / `loadStackCardsIntoPane`** (`stores/stack.ts`) —
+  the pure op + store wrapper behind "saved stacks." Deliberately thin: it
+  copies cards between the two in-memory panes with fresh ids and reset run
+  state (mirrors `duplicateStack`'s per-card reset), nothing more. No real
+  stack library, no persistence — that's `Persistence-1`, a separate sprint.
+  No-op copying a pane into itself or from an unknown key.
+- **[Fix] Floating menus now position `fixed`, not `absolute`.** Both new
+  menus compute their position off the trigger's own `getBoundingClientRect()`
+  (mirroring `Popover.svelte`) instead of an inline `position:absolute`
+  wrapper. An `absolute` menu was silently clipped the moment it grew inside
+  an `overflow`-bearing ancestor — the pane's `.panestack{overflow-y:auto}`
+  or, worse, the dock's own `.dockbody{overflow:hidden}` collapse animation,
+  which ate the entire stack-templates menu in manual testing before this fix.
+  Also flips **above** the trigger when it doesn't fit below (the dock sits
+  at the bottom of the pane, so "below" is frequently off-screen) — caught in
+  the same manual pass, where the dock's menu rendered but ran off the bottom
+  of the viewport with no way to reach "saved stacks" or "save."
+- **[Chore] `docs/ui/lopi-two-stacks.html`** updated to the templates-in-dock
+  design truth (both cardbar and dockbar templates buttons, `.tplib`/`.tplmenu`
+  chrome). `lopi-creation-settled.html` is unchanged this sprint — no updated
+  source for it was available; flagging rather than guessing at its content.
+- **[Verify]** `npm test` (307 stack.test.ts cases incl. new `loadStackCardsInto`
+  coverage), `npm run check` clean, `npm run build` green. Manually clicked
+  through in the dev server: dock expands with every facet popover including
+  goal; templates dropdown on the draft, a committed card, and the dock, each
+  scoped correctly (no stack section on a card, no preset/prompt section in
+  the dock); applied a stack template mid-stack (existing cards preserved,
+  new loops carry the violet stack chip *plus* their own teal alias chip,
+  bottom-first run order intact); confirmed the dock menu no longer clips.
+- **NEXT_SESSION_PROMPT:** `Stack-Templates-1 (macOS)`, then `Persistence-1`
+  (server-side stacks — the thing that makes scheduled stacks actually fire,
+  and gives "saved stacks" a real library instead of a same-session pane list).
+
 ## [0.7.0] — Creation-Flow-1 (macOS): the draft card, ported to SwiftUI 🖥️✍️
 
 The macOS sibling of `[0.6.0]`. Ports the web draft-card creation flow to the
