@@ -25,7 +25,7 @@ struct StackConnectorView: View {
             if sched {
                 badge(systemImage: "clock", text: cronHuman(card.cron), color: Konjo.ice)
             } else if budgetCap != nil {
-                badge(systemImage: "gauge.with.dots.needle.67percent", text: "budget \(card.guardrails.budget.rawValue)", color: Konjo.budgetViolet)
+                badge(systemImage: "gauge", text: "budget \(card.guardrails.budget.rawValue)", color: Konjo.budgetViolet)
             }
             if hovering {
                 Button { store.insertCardIntoPane(paneKey, index + 1, buildCard("new prompt")) } label: {

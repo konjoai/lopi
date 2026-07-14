@@ -146,10 +146,10 @@ struct StackConfigPopoverView: View {
         PopoverChrome(systemImage: "slider.horizontal.3", title: "default config · every loop inherits", accent: Konjo.stackViolet) {
             VStack(alignment: .leading, spacing: 9) {
                 StackDropdown(label: "model", value: defaults.model, options: MODEL_OPTIONS, accent: Konjo.ice, icon: "cpu") { v in onChange({ var d = defaults; d.model = v; return d }()) }
-                StackDropdown(label: "effort", value: defaults.effort, options: EFFORT_OPTIONS, accent: Konjo.ember, icon: "gauge.medium") { v in onChange({ var d = defaults; d.effort = v; return d }()) }
+                StackDropdown(label: "effort", value: defaults.effort, options: EFFORT_OPTIONS, accent: Konjo.ember, icon: "gauge") { v in onChange({ var d = defaults; d.effort = v; return d }()) }
                 RepoPickerView(label: "repo", value: defaults.repo, options: effectiveRepoOptions) { v in onChange({ var d = defaults; d.repo = v; return d }()) }
                 StackDropdown(label: "branch", value: branch.resolved, options: branch.options, accent: Konjo.jade, icon: "arrow.triangle.branch") { v in onChange({ var d = defaults; d.branch = v; return d }()) }
-                StackDropdown(label: "autonomy", value: defaults.autonomy, options: AUTONOMY_OPTIONS, accent: Konjo.stackViolet, icon: "square.stack.3d.up") { v in onChange({ var d = defaults; d.autonomy = v; return d }()) }
+                StackDropdown(label: "autonomy", value: defaults.autonomy, options: AUTONOMY_OPTIONS, accent: Konjo.stackViolet, icon: "stairs") { v in onChange({ var d = defaults; d.autonomy = v; return d }()) }
             }
         }
         .task(id: defaults.repo) {
@@ -187,10 +187,10 @@ struct ConfigDrawerView: View {
     var body: some View {
         FlowLayout(hSpacing: 6, vSpacing: 6) {
             StackDropdown(label: "model", value: config.model ?? paneDefaults.model, options: MODEL_OPTIONS, accent: Konjo.ice, icon: "cpu") { v in onChange({ var c = config; c.model = v; return c }()) }
-            StackDropdown(label: "effort", value: config.effort ?? paneDefaults.effort, options: EFFORT_OPTIONS, accent: Konjo.ember, icon: "gauge.medium") { v in onChange({ var c = config; c.effort = v; return c }()) }
+            StackDropdown(label: "effort", value: config.effort ?? paneDefaults.effort, options: EFFORT_OPTIONS, accent: Konjo.ember, icon: "gauge") { v in onChange({ var c = config; c.effort = v; return c }()) }
             RepoPickerView(label: "repo", value: repo, options: effectiveRepoOptions) { v in onChange({ var c = config; c.repo = v; return c }()) }
             StackDropdown(label: "branch", value: branch.resolved, options: branch.options, accent: Konjo.jade, icon: "arrow.triangle.branch") { v in onChange({ var c = config; c.branch = v; return c }()) }
-            StackDropdown(label: "autonomy", value: config.autonomy ?? paneDefaults.autonomy, options: AUTONOMY_OPTIONS, accent: Konjo.stackViolet, icon: "square.stack.3d.up") { v in onChange({ var c = config; c.autonomy = v; return c }()) }
+            StackDropdown(label: "autonomy", value: config.autonomy ?? paneDefaults.autonomy, options: AUTONOMY_OPTIONS, accent: Konjo.stackViolet, icon: "stairs") { v in onChange({ var c = config; c.autonomy = v; return c }()) }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.top, 12)

@@ -1,5 +1,109 @@
 # Changelog
 
+## [0.9.0] — Stack-Templates-1 (macOS): templates at both scopes, ported 🖥️📑
+
+The macOS sibling of `[0.8.0]`. Ports the web split **1:1** — same field
+names, same `UserDefaults` key, same ordering, same semantics; any divergence
+is a bug, not a platform idiom. `TemplatesMenuView` drops down to prompt scope
+only (presets · prompt templates · save this prompt), now rendered on every
+card — the draft's labeled trigger, and a new icon-only `CardbarButton`
+trigger on every committed card, `Konjo.sun`-accented, immediately left of
+duplicate. Stack templates and "saved stacks" move to a new
+`StackTemplatesMenuView`, an icon-only `Konjo.stackViolet` `CardbarButton` in
+the dock's cardbar, same position. Reuses `CardbarButton` throughout — no new
+button style.
+
+- **[Feat] `loadStackCardsInto` / `StackStore.loadStackCardsIntoPane`**
+  (`Stacks/StackPaneOps.swift`) — the pure op + store wrapper behind "saved
+  stacks," a straight port of the web's. Copies another open pane's cards
+  into this one with fresh ids and reset run state (mirrors
+  `duplicateStack`'s per-card reset). No real stack library, no persistence —
+  that's `Persistence-1`. No-op copying a pane into itself or from an unknown
+  key. Unit-tested (`testLoadStackCardsInto`).
+- **[Feat] `TemplatesMenuView` split to prompt scope.** Gained an `isDraft`
+  flag (default `true`) so the same view renders the draft's labeled trigger
+  or a committed card's icon-only `CardbarButton` trigger; writes route to
+  `store.updateDraftInPane` or `store.updateCardInPane` accordingly. Dropped
+  the stack-templates section and "save this stack…" entirely.
+- **[Feat] `StackTemplatesMenuView` (new).** The dock's violet, icon-only
+  templates control: stack templates (drop the whole chain into this pane,
+  correct run order via `applyStackTemplate`), saved stacks (the other panes
+  currently in `StackStore` — picking one copies its cards into this pane),
+  save this stack as a template.
+- **[Chore] `StackControlDockView`** gained `@Environment(AppModel.self)` to
+  reach `model.stackTemplateStore`, the same access pattern `StackCardView`
+  already uses — no new plumbing needed.
+- **Not shared with the web.** `UserDefaults` (`lopi.templates.v1`) and
+  localStorage are separate libraries, per machine, per platform — same key
+  name and JSON shape, but no sync. Stated plainly here rather than left to
+  imply durability the app doesn't have.
+- **[Fix] `CardbarButton` — the rest of the button was dead space.** Its
+  `Color.clear` background (the inactive-facet look) doesn't hit-test on
+  macOS, so only the opaque icon glyph itself registered clicks; the padding
+  around it did nothing. Added `.contentShape(Rectangle())` so the whole
+  visual box is clickable — the actual bug behind "some buttons only respond
+  if you click exactly the icon." Same fix applied to the draft's labeled
+  templates trigger, the dock's expand/collapse chevron, and the iteration
+  pill's ± steppers, all of which shared the same backgroundless-button
+  pattern.
+- **[Fix] `CardbarButton` sizing — buttons were rendering ~40% too wide.**
+  `.frame(minWidth: 29)` was applied *before* `.padding(.horizontal, 7)`, so
+  the padding added on top of the minimum instead of being absorbed inside
+  it (the CSS `min-width` web's `.ib` relies on is border-box, so its padding
+  *is* absorbed). Swapped the order — padding first, then the frame — so an
+  icon-only button renders at ~29pt like the web, not ~43pt. This is what
+  read as "the buttons are further apart than the web."
+- **[Fix] Pane divider — no more faint blue line.** `PaneGridView`'s
+  drag-to-resize divider between panes was filled with `Konjo.konjo2`
+  (`0x5EE6FF`, a bright cyan) at low opacity. The web lays panes out with a
+  plain flex gap and no visible seam at all, so the fill is gone entirely;
+  the divider is now a fully transparent hit-shape, keeping the resize
+  gesture and cursor (macOS-only — the web isn't manually resizable) without
+  drawing anything.
+- **[Fix] Icon parity with the web.** Several SF Symbols were a different
+  pictograph than the web's SVG for the same control, not just a stylistic
+  reskin: duplicate (`plus.square.on.square` → `square.on.square` — the web
+  icon has no plus), goal/budget/effort gauges
+  (`gauge.with.dots.needle.67percent` / `gauge.medium` → the plain `gauge`
+  the web reuses for all three), the alias chip's wrench
+  (`wrench.adjustable` → `wrench`), the pane header logo (`circle.grid.2x2`
+  → `square.grid.2x2`, matching the web's rounded-*square* grid, not
+  circles), "Dry run" in the run menu (`testtube.2` → `flask`, the web's
+  actual flask glyph), and the autonomy field (`square.stack.3d.up` →
+  `stairs`, much closer to the web's ladder-rungs icon; verified against
+  `NSImage(systemSymbolName:)` before committing to it since an invalid
+  symbol name fails silently at runtime, not at compile time). `drag`
+  (`line.3.horizontal`) has no close SF Symbols equivalent to the web's
+  six-dot grip and was left as the standard macOS reorder-handle idiom.
+- **[Verify]** `xcodegen && xcodebuild` clean, no new warnings. `LopiTests`
+  86/86 green, including the ported bottom-first round-trip,
+  provenance-survives-edit, and stack-template-loop-provenance suites
+  (already landed by `Creation-Flow-1 (macOS)`) plus the new
+  `testLoadStackCardsInto`. Launched the built app and confirmed live:
+  every card's templates button (draft labeled, committed icon-only, sun
+  accent) and the dock's templates button (icon-only, violet accent) render
+  in the right position (`templates · duplicate · drag · delete`); the dock's
+  cardbar still carries all five facets — schedule, guards, evals, **goal**,
+  config — before the templates button, so the goal facet the mockup lacks
+  was not dropped; add/commit/delete on cards works and the dock correctly
+  appears once a pane holds 2+ cards; the pane divider is now invisible;
+  proved the click-target fix concretely by clicking 8pt into the duplicate
+  button's padding (well off the icon glyph) and observing the card actually
+  duplicate. Could not visually confirm the popover *contents* (the
+  presets/prompt-templates/save sections, and the
+  stack-templates/saved-stacks/save sections) — this session's screenshot
+  tooling doesn't capture `.popover` auxiliary windows at all, confirmed by
+  testing the pre-existing, already-shipped schedule popover identically
+  failing to appear, so it's an environment/tooling gap rather than a
+  regression. The popover code itself is line-for-line the same
+  `.popover(isPresented:)` mechanism the four existing facet popovers already
+  use in production. A side-by-side pass against the shipped web `/stacks`
+  covering popover contents is still owed.
+- **NEXT_SESSION_PROMPT:** `Persistence-1` — server-side stacks + templates,
+  the prerequisite for scheduled stacks actually firing and for a durable
+  runner; also close out the popover-contents side-by-side this session
+  couldn't screenshot.
+
 ## [0.8.0] — Stack-Templates-1 (web): templates at both scopes 📑
 
 Templates move from a single draft-card menu to their proper two scopes, on

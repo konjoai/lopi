@@ -7,6 +7,7 @@ import SwiftUI
 /// (STACK chip + summary + chevron) always visible, controls expand in the
 /// middle, run pinned at the bottom.
 struct StackControlDockView: View {
+    @Environment(AppModel.self) private var model
     var store: StackStore
     var engine: StackRunEngine
     var pane: StackPaneState
@@ -65,6 +66,7 @@ struct StackControlDockView: View {
                     .rotationEffect(.degrees(dockOpen ? 180 : 0))
                     .frame(width: 34, height: 34)
                     .overlay(RoundedRectangle(cornerRadius: 7).stroke(Konjo.line2, lineWidth: 1))
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain).help("stack controls")
         }
@@ -89,7 +91,7 @@ struct StackControlDockView: View {
                 if guardsOn { SummaryRow(systemImage: "shield", label: "guards", accent: FacetAccent.guards, text: stackGuardSummary(config.guardrails)) }
                 if evalsOn { SummaryRow(systemImage: "checkmark.square", label: "evals", accent: FacetAccent.evals, text: stackEvalsSummary(config)) }
                 if goalOn {
-                    SummaryRow(systemImage: "gauge.with.dots.needle.67percent", label: "goal", accent: FacetAccent.goal, text: stackGoalSummary(config))
+                    SummaryRow(systemImage: "gauge", label: "goal", accent: FacetAccent.goal, text: stackGoalSummary(config))
                     if !pursues {
                         Text("add chain-acceptance evals for the goal to pursue — a goal with nothing to check is inert")
                             .font(Konjo.mono(9)).foregroundStyle(Konjo.fgMute).padding(.leading, 66)
@@ -113,13 +115,14 @@ struct StackControlDockView: View {
                 .popover(isPresented: $guardOpen, arrowEdge: .top) { guardsPopover }
             CardbarButton(systemImage: "checkmark.square", active: evalsOn, accent: FacetAccent.evals, count: config.evals.count, help: "stack evals") { evalOpen = true }
                 .popover(isPresented: $evalOpen, arrowEdge: .top) { evalsPopover }
-            CardbarButton(systemImage: "gauge.with.dots.needle.67percent", active: goalOn, accent: FacetAccent.goal, help: "run until the stack acceptance passes") {
+            CardbarButton(systemImage: "gauge", active: goalOn, accent: FacetAccent.goal, help: "run until the stack acceptance passes") {
                 store.updateStackConfig(pane.key) { $0.goal.pursue.toggle() }
             }
             CardbarButton(systemImage: "slider.horizontal.3", active: configOn, accent: FacetAccent.config, help: "stack default config") { cfgOpen = true }
                 .popover(isPresented: $cfgOpen, arrowEdge: .top) { configPopover }
             Spacer()
-            CardbarButton(systemImage: "plus.square.on.square", help: "duplicate stack") { store.duplicateStackInPanes(pane.key) }
+            StackTemplatesMenuView(store: store, templateStore: model.stackTemplateStore, paneKey: pane.key, cards: pane.cards)
+            CardbarButton(systemImage: "square.on.square", help: "duplicate stack") { store.duplicateStackInPanes(pane.key) }
             CardbarButton(systemImage: "line.3.horizontal", help: "drag to reorder stacks") {}
             CardbarButton(systemImage: "trash", accent: Konjo.rose, danger: true, help: "delete stack") {
                 engine.clearRun(pane.key); store.deleteStackFromPanes(pane.key)
