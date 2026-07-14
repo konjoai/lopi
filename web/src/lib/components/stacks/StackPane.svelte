@@ -65,7 +65,6 @@
         index={-1}
         {paneDefaults}
         {repoOptions}
-        paneCards={pane.cards}
         {scheduleGoverned}
       />
     </div>

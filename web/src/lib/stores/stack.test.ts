@@ -42,6 +42,7 @@ import {
   defaultGuardrails,
   defaultStackConfig,
   duplicateStack,
+  loadStackCardsInto,
   paneIsBare,
   makeBlankStack,
   addStack,
@@ -694,6 +695,34 @@ eqIs(
   const state = [pane('s1'), pane('s2')];
   const untouched = duplicateStack(state, 'missing');
   ok(untouched === state, 'duplicateStack on an unknown key is a total no-op');
+}
+
+// ── Stack-Templates-1: "saved stacks" — copy another open pane's cards ───────
+{
+  const state = [pane('s1', [card('a'), card('b')]), pane('s2', [card('x')])];
+  const next = loadStackCardsInto(state, 's2', 's1');
+  eq(next[1].cards.map((c) => c.goal), ['a', 'b'], "the target pane's cards become a copy of the source pane's");
+  eq(next[0].cards.map((c) => c.goal), ['a', 'b'], 'the source pane is left untouched');
+  ok(
+    next[1].cards.every((c, i) => c.id !== next[0].cards[i].id),
+    'every copied card gets a fresh id, not a shared reference to the source'
+  );
+}
+{
+  const running = card('a');
+  running.status = 'running';
+  running.iteration = { current: 2, total: 5 };
+  running.taskId = 'task-123';
+  const state = [pane('s1', [running]), pane('s2')];
+  const next = loadStackCardsInto(state, 's2', 's1');
+  eqIs(next[1].cards[0].status, 'idle', 'a copied card resets its run status to idle');
+  eqIs(next[1].cards[0].taskId, undefined, 'a copied card drops any taskId from the source');
+  eqIs(next[1].cards[0].iteration, undefined, 'a copied card drops live iteration progress');
+}
+{
+  const state = [pane('s1', [card('a')]), pane('s2')];
+  ok(loadStackCardsInto(state, 's1', 's1') === state, 'copying a pane into itself is a no-op');
+  ok(loadStackCardsInto(state, 's2', 'missing') === state, 'copying from an unknown source key is a no-op');
 }
 {
   const state = [pane('a'), pane('b'), pane('c')];

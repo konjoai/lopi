@@ -1320,6 +1320,23 @@ export function duplicateStack(state: StackPaneState[], key: string): StackPaneS
   return next;
 }
 
+/** Copy another currently-open pane's cards into this one, replacing
+ *  whatever cards this pane already has — the "saved stacks" section of the
+ *  stack-scope templates menu (Stack-Templates-1 §5). This is deliberately
+ *  **not** a real stack library: nothing is persisted beyond the two panes
+ *  already in memory, so "saved" only ever means "currently open elsewhere."
+ *  Real durability is `Persistence-1`, a separate sprint. Every copied card
+ *  gets a fresh id and its run state wiped, mirroring `duplicateStack`'s
+ *  per-card reset. No-op if either key is missing or they're the same pane. */
+export function loadStackCardsInto(state: StackPaneState[], targetKey: string, sourceKey: string): StackPaneState[] {
+  if (targetKey === sourceKey) return state;
+  const source = state.find((p) => p.key === sourceKey);
+  if (!source) return state;
+  return applyToPaneCards(state, targetKey, () =>
+    source.cards.map((c) => ({ ...c, id: makeId(), status: 'idle', iteration: undefined, taskId: undefined }))
+  );
+}
+
 /** Move the stack at `from` to index `to`. Out-of-range indices are a
  *  no-op — the exact same shape as `reorderCard`, just one level up (panes
  *  instead of cards within a pane). */
@@ -1438,6 +1455,9 @@ export function updateStackConfig(key: string, patch: Partial<StackConfig>): voi
 
 export function duplicateStackInPanes(key: string): void {
   panes.update((state) => duplicateStack(state, key));
+}
+export function loadStackCardsIntoPane(targetKey: string, sourceKey: string): void {
+  panes.update((state) => loadStackCardsInto(state, targetKey, sourceKey));
 }
 export function reorderStacksInPanes(fromIndex: number, targetIndex: number, before: boolean): void {
   panes.update((state) => moveStackBeforeOrAfter(state, fromIndex, targetIndex, before));

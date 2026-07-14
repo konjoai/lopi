@@ -51,6 +51,67 @@ body{background:#060809;color:var(--paper);font-family:var(--sans);-webkit-font-
 .spec .md{color:var(--dim)}
 .aliaschip{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:12.5px;color:var(--teal);border:1px solid rgba(0,255,212,.4);border-radius:7px;padding:3px 10px;background:rgba(0,255,212,.07)}
 .aliaschip svg{width:12px;height:12px}
+.tplchip{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:12.5px;border-radius:7px;padding:3px 10px}
+.tplchip svg{width:12px;height:12px;flex:0 0 auto}
+.tplchip.prompt{color:var(--sun);border:1px solid rgba(255,204,0,.45);background:rgba(255,204,0,.08)}
+.tplchip.stack{color:var(--violet);border:1px solid rgba(183,155,255,.45);background:rgba(183,155,255,.08)}
+.pc.draft{border-style:dashed;border-color:rgba(255,255,255,.22);background:rgba(255,255,255,.012)}
+.pc.draft.hot{border-color:rgba(0,255,212,.5);background:rgba(0,255,212,.03)}
+.runtag.draft{color:var(--dim);border-color:var(--veil)}
+.pc.draft.hot .runtag.draft{color:var(--teal);border-color:rgba(0,255,212,.4)}
+.draftgoal{width:100%;background:rgba(0,0,0,.25);border:1px solid var(--veil);border-radius:8px;color:var(--paper);font-family:var(--mono);font-size:14px;padding:10px 12px;outline:none;margin-top:9px}
+.draftgoal:focus{border-color:rgba(0,255,212,.45)}
+.draftgoal::placeholder{color:var(--dim2)}
+.tpldd{position:relative;display:inline-block}
+.tplbtn{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:12px;color:var(--lbl);border:1px solid var(--veil);border-radius:7px;padding:5px 10px;background:rgba(255,255,255,.03);cursor:pointer}
+.tplbtn:hover,.tplbtn.on{color:var(--sun);border-color:rgba(255,204,0,.5);background:rgba(255,204,0,.09)}
+.tplbtn svg{width:13px;height:13px;flex:0 0 auto}
+.tplbtn .cv{display:inline-flex;opacity:.6}.tplbtn .cv svg{width:11px;height:11px}
+.tplmenu{position:absolute;top:calc(100% + 6px);left:0;width:290px;max-height:330px;overflow-y:auto;background:var(--black);border:1px solid var(--veil);border-radius:10px;box-shadow:0 22px 55px rgba(0,0,0,.85);z-index:60}
+.tplmenu .mh{font-family:var(--mono);font-size:8.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim2);padding:10px 12px 7px;position:sticky;top:0;background:var(--black)}
+.tplmenu .mh.p{color:var(--sun)}.tplmenu .mh.s{color:var(--violet)}
+.tplmenu .mi2{display:flex;align-items:center;gap:9px;width:100%;padding:9px 12px;background:none;border:none;cursor:pointer;text-align:left;border-top:1px solid var(--mist)}
+.tplmenu .mi2:hover{background:rgba(255,255,255,.05)}
+.tplmenu .mi2 .ic{display:inline-flex;flex:0 0 auto}.tplmenu .mi2 .ic svg{width:13px;height:13px}
+.tplmenu .mi2 .nm{font-family:var(--mono);font-size:12px}
+.tplmenu .mi2 .ds{font-family:var(--mono);font-size:9px;color:var(--dim);margin-left:auto}
+.tplmenu .mi2.pre .ic,.tplmenu .mi2.pre .nm{color:var(--teal)}
+.tplmenu .mi2.tpl .ic,.tplmenu .mi2.tpl .nm{color:var(--sun)}
+.tplmenu .mi2.stk .ic,.tplmenu .mi2.stk .nm{color:var(--violet)}
+.tplmenu .mi2.sv .ic{color:var(--dim)}.tplmenu .mi2.sv .nm{color:var(--lbl)}
+.tplmenu .mi2:disabled{opacity:.32;cursor:not-allowed}
+.addcard{display:inline-flex;align-items:center;gap:6px;background:rgba(0,255,157,.14);color:var(--jade);border:1px solid rgba(0,255,157,.45);border-radius:7px;height:29px;padding:0 13px;font-family:var(--mono);font-size:11px;font-weight:700;cursor:pointer}
+.addcard:disabled{opacity:.3;cursor:not-allowed}
+.addcard svg{width:13px;height:13px;flex:0 0 auto}
+.cardbar .sp,.dockbar .sp{flex:1}
+.ib.tplib{color:var(--sun);border-color:rgba(255,204,0,.45);background:rgba(255,204,0,.08)}
+.ib.tplib:hover,.ib.tplib.on{border-color:rgba(255,204,0,.85);background:rgba(255,204,0,.18)}
+.dd{position:relative;display:inline-flex}
+.dd .tplmenu{left:auto;right:0}
+.sdock{background:linear-gradient(180deg,rgba(150,120,230,.22),rgba(120,92,205,.14));border-top:1.5px solid rgba(183,155,255,.55);padding:0 16px 15px;border-radius:0 0 13px 13px}
+.dkhead{display:flex;align-items:center;gap:10px;padding:13px 0 2px}
+.stag{font-family:var(--mono);font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:#1a1030;background:var(--violet);border-radius:4px;padding:3px 10px;font-weight:700;flex:0 0 auto}
+.dsum{font-family:var(--mono);font-size:10px;color:var(--lbl);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dsum b{color:var(--paper)}
+.sdock.open .dsum{display:none}
+.dexp{width:32px;height:32px;border:1px solid rgba(255,255,255,.22);border-radius:7px;background:rgba(0,0,0,.22);color:var(--violet);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;flex:0 0 auto;margin-left:auto}
+.dexp svg{width:15px;height:15px;transition:transform .2s}
+.sdock.open .dexp svg{transform:rotate(180deg)}
+.dbody{max-height:0;overflow:hidden;transition:max-height .28s ease}
+.sdock.open .dbody{max-height:380px}
+.dockbar{display:flex;align-items:center;gap:6px;margin-top:12px}
+.dockbar .ib{border-color:rgba(255,255,255,.2);background:rgba(0,0,0,.22);color:var(--lbl)}
+.dockbar .ib:hover{color:var(--paper);border-color:rgba(255,255,255,.42)}
+.dockbar .ib.act.sched{color:var(--ice);border-color:rgba(0,212,255,.55);background:rgba(0,212,255,.13)}
+.dockbar .ib.act.guard{color:var(--sun);border-color:rgba(255,204,0,.55);background:rgba(255,204,0,.13)}
+.dockbar .ib.act.eval{color:var(--jade);border-color:rgba(0,255,157,.55);background:rgba(0,255,157,.13)}
+.dockbar .ib.act.config{color:#efe9ff;border-color:rgba(255,255,255,.5);background:rgba(255,255,255,.14)}
+.dockbar .iterpill{border-color:rgba(255,149,0,.6);background:rgba(255,120,0,.18)}
+.dockrun{padding-top:13px}
+.dockrun .runsplit{width:100%;display:flex}
+.dockrun .runmain{flex:1;justify-content:center}
+.sumln.cfg .rl{color:var(--violet)}
+.toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--black);border:1px solid rgba(255,204,0,.5);color:var(--sun);font-family:var(--mono);font-size:11px;padding:9px 16px;border-radius:8px;z-index:200}
 .iterbar{display:flex;gap:4px;margin-top:9px}
 .iterbar i{height:3px;width:22px;border-radius:2px;background:var(--veil)}
 .iterbar i.done{background:var(--jade)} .iterbar i.cur{background:var(--flame);box-shadow:0 0 5px var(--ember);animation:pulse 1.8s infinite}
@@ -158,18 +219,6 @@ body{background:#060809;color:var(--paper);font-family:var(--sans);-webkit-font-
 .addbtn2{width:34px;height:34px;border:1px solid var(--veil);border-radius:7px;background:transparent;color:var(--dim2);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}
 .addbtn2:hover{color:var(--flame);border-color:rgba(255,149,0,.4)}.addbtn2 svg{width:16px;height:16px}
 .panestack{padding:24px 18px 8px}
-/* Creation-Flow-1: the composer is now a pinned draft card (dashed → teal when
-   hot). Full behavior in docs/ui/lopi-creation-settled.html; this keeps the
-   two-stacks reference visually consistent while its JS wiring is unchanged. */
-.pcdraft{margin:13px 18px 0;position:relative;background:var(--card);border:1px dashed rgba(255,255,255,.18);border-radius:9px;padding:13px 14px;font-family:var(--mono)}
-.pcdraft .dtag{position:absolute;top:-10px;right:14px;font-size:9px;letter-spacing:.1em;text-transform:uppercase;background:var(--black);border:1px solid var(--veil);border-radius:3px;padding:2px 8px;color:var(--dim)}
-.pcdraft .dtmpl{display:inline-flex;align-items:center;height:27px;padding:0 10px;border-radius:7px;border:1px solid rgba(245,245,245,.46);color:var(--paper);font-size:11.5px}
-.pcdraft .dgoal{width:100%;margin-top:10px;background:rgba(255,255,255,.02);border:1px solid var(--veil);border-radius:7px;padding:9px 11px;color:var(--paper);font-family:var(--mono);font-size:14px;outline:none}
-.pcdraft .dgoal::placeholder{color:var(--dim2)}
-.pcdraft .dbar{display:flex;align-items:center;gap:6px;margin-top:12px}
-.pcdraft .dpill{display:inline-flex;align-items:center;height:29px;padding:0 10px;border:1px solid rgba(255,149,0,.5);background:rgba(255,69,0,.09);border-radius:6px;font-size:11px;color:var(--flame);font-weight:700}
-.pcdraft .dsp{flex:1}
-.pcdraft .dadd{height:29px;padding:0 12px;border-radius:6px;border:1px solid rgba(0,255,157,.5);background:rgba(0,255,157,.08);color:var(--jade);font-weight:700;font-size:11px;cursor:pointer}
 .panefoot{display:flex;justify-content:center;padding:14px 18px 20px;position:relative}
 .runsplit{display:inline-flex;border-radius:9px;overflow:hidden;box-shadow:0 5px 18px rgba(255,149,0,.28)}
 .runmain{display:inline-flex;align-items:center;gap:8px;background:linear-gradient(180deg,#ffb648,#ff9500);color:#231000;border:none;padding:12px 26px;font-family:var(--mono);font-size:13px;font-weight:700;cursor:pointer}
@@ -314,6 +363,11 @@ body{background:#060809;color:var(--paper);font-family:var(--sans);-webkit-font-
 <script>
 "use strict";
 const I={
+ book:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>',
+ file:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>',
+ layers:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 12l9 5 9-5M3 16l9 5 9-5"/></svg>',
+ save:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>',
+ chevdown:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>',
  loop:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>',
  clock:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
  shield:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z"/></svg>',
@@ -357,6 +411,23 @@ const REPOS=['konjoai/squish','konjoai/vectro','konjoai/lopi','konjoai/kiban'];
 const BRANCHES=['main','dev','feat/vq2','feat/dequant'];
 const AUTONOMY=['L1','L2','L3','L4'];
 const DEF={model:'Sonnet 4.6',effort:'Medium',repo:'konjoai/lopi',branch:'main',autonomy:'L2'};
+// real app: these persist to localStorage (lopi.templates.v1). in-memory here.
+const PRESETS=[{k:'research',d:'survey + summarize'},{k:'plan',d:'design first'},{k:'implement',d:'write the code'},{k:'kill-test',d:'prove or kill'},{k:'benchmark',d:'measure, 30-run'},{k:'gain',d:'keep if better'}];
+let PROMPT_TPL=[{n:'nightly bench',alias:'benchmark',goal:'10M recall sweep, 30 runs'},{n:'PR review pass',alias:'kill-test',goal:'adversarial review of the diff'}];
+let STACK_TPL=[{n:'KCQF pipeline',loops:[{alias:'implement',goal:'the feature'},{alias:'kill-test',goal:'prove it'},{alias:'benchmark',goal:'measure it'}]},{n:'research → ship',loops:[{alias:'research',goal:'survey the space'},{alias:'plan',goal:'the approach'},{alias:'implement',goal:'build it'}]}];
+let tplOpenFor=null; let dockOpen={}; let stackTplOpenFor=null;
+// A stack's controls ARE a card's controls, one level up. Give each stack a
+// card-shaped object and openPop()/configDrawer() work unchanged at stack scope.
+function ensureStackCtl(st){
+  if(!st.ctl){
+    st.ctl = makeCard({status:'idle', scheduled:true,
+      cron:{freq:'daily',hour12:2,ampm:'AM',min:0},
+      G:{gate:false,until:false,onfail:'stop',budget:'auto',max:3},
+      evalsOn:['execution ok','tests pass','code review']});
+    st.ctl.isStack = true;
+  }
+  return st.ctl;
+}
 
 let configMode='drawer';
 let runMenuEl=null;
@@ -364,6 +435,7 @@ let _id=0;const uid=()=>'c'+(++_id);
 function buildEvals(on){return EVAL_CATALOG.map(e=>({n:e.n,t:e.t,locked:!!e.locked,on:!!e.locked||on.includes(e.n)}));}
 function makeCard(o){o=o||{};return {
   id:uid(),alias:o.alias!==undefined?o.alias:null,goal:o.goal||'',status:o.status||'idle',iter:o.iter||null,
+  tpl:o.tpl||null,tplKind:o.tplKind||null,
   scheduled:!!o.scheduled,cfgOpen:false,
   model:o.model||DEF.model,effort:o.effort||DEF.effort,repo:o.repo||DEF.repo,branch:o.branch||DEF.branch,autonomy:o.autonomy||DEF.autonomy,
   cron:Object.assign({freq:'daily',hour12:2,ampm:'AM',min:0,dow:'Mon',raw:'0 2 * * *'},o.cron||{}),
@@ -395,8 +467,8 @@ let STACKS=[
        outputLines:['ef=200: recall 0.981 @ 14.2k qps']}}),
  ]},
 ];
-function findCard(id){for(const s of STACKS){const c=s.cards.find(x=>x.id===id);if(c)return{s:s,c:c};}return null;}
-function allCards(){return STACKS.reduce((a,s)=>a.concat(s.cards),[]);}
+function findCard(id){for(const s of STACKS){if(s.ctl&&s.ctl.id===id)return{s:s,c:s.ctl};if(s.draft&&s.draft.id===id)return{s:s,c:s.draft};const c=s.cards.find(x=>x.id===id);if(c)return{s:s,c:c};}return null;}
+function allCards(){return STACKS.reduce((a,s)=>a.concat(s.cards,s.draft?[s.draft]:[]),[]);}
 
 // cron helpers
 function to24(c){let h=c.hour12%12;if(c.ampm==='PM')h+=12;return h;}
@@ -435,8 +507,15 @@ function configDrawer(c){
     ${cfgChip(c,'model','model',I.cpu)}${cfgChip(c,'effort','effort',I.gauge)}${cfgChip(c,'repo','repo',I.folder)}${cfgChip(c,'branch','branch',I.branch)}${cfgChip(c,'autonomy','autonomy',I.ladder)}
   </div>`;
 }
+function specChips(c){
+  if(c.tplKind==='prompt'&&c.tpl)return `<span class="tplchip prompt">${I.file}${c.tpl}</span>`;
+  const pre=c.alias?`<span class="aliaschip">${I.build}:${c.alias}</span>`:'';
+  const stk=(c.tplKind==='stack'&&c.tpl)?`<span class="tplchip stack">${I.layers}${c.tpl}</span>`:'';
+  return stk+pre;
+}
 function cardHTML(c){
-  const chip=c.alias?`<span class="aliaschip">${I.build}:${c.alias}</span>`:'';
+  if(c.status==='draft')return draftHTML(c);
+  const chip=specChips(c);
   const drawer=(configMode==='drawer'&&c.cfgOpen)?configDrawer(c):'';
   return `<div class="pc ${c.status}" data-id="${c.id}">
     <span class="runtag ${c.status}">${statusLabel(c)}</span>
@@ -450,9 +529,55 @@ function cardHTML(c){
       <button class="ib eval ${evalActive(c)?'act':''}" data-pop="eval" title="evals">${I.checkbox}<span class="cnt">${onCount(c)}</span></button>
       <button class="ib config ${configActive(c)?'act':''}" data-cfgbtn title="run config">${I.sliders}</button>
       <span class="sp"></span>
+      <span class="dd"><button class="ib tplib ${tplOpenFor===c.id?'on':''}" data-tplbtn="${c.id}" title="templates">${I.book}</button>${tplOpenFor===c.id?tplMenuHTML(c):''}</span>
       <button class="ib" data-act="dup" title="duplicate">${I.dup}</button>
       <button class="ib drag" data-drag title="drag to reorder">${I.drag}</button>
       <button class="ib" data-act="del" title="delete">${I.trash}</button>
+    </div>
+    ${drawer}
+  </div>`;
+}
+function findStackOf(id){for(const s of STACKS){if(s.draft&&s.draft.id===id)return s;if(s.cards.find(x=>x.id===id))return s;}return null;}
+function tplMenuHTML(c){
+  const pre=PRESETS.map(p=>`<button class="mi2 pre" data-tpre="${c.id}:${p.k}"><span class="ic">${I.build}</span><span class="nm">:${p.k}</span><span class="ds">${p.d}</span></button>`).join('');
+  const pt=PROMPT_TPL.map((t,i)=>`<button class="mi2 tpl" data-tprompt="${c.id}:${i}"><span class="ic">${I.file}</span><span class="nm">${t.n}</span><span class="ds">:${t.alias}</span></button>`).join('');
+  return `<div class="tplmenu">
+    <div class="mh">presets</div>${pre}
+    <div class="mh p">prompt templates</div>${pt}
+    <div class="mh">save</div>
+    <button class="mi2 sv" data-savep="${c.id}" ${(c.alias||c.goal.trim())?'':'disabled'}><span class="ic">${I.save}</span><span class="nm">save this prompt…</span></button>
+  </div>`;
+}
+function stackTplMenuHTML(st){
+  const stt=STACK_TPL.map((t,i)=>`<button class="mi2 stk" data-tstack="${st.draft.id}:${i}"><span class="ic">${I.layers}</span><span class="nm">${t.n}</span><span class="ds">${t.loops.length} loops</span></button>`).join('');
+  const saved=STACKS.map(x=>`<button class="mi2 stk" data-openstack="${x.key}"><span class="ic">${I.grid}</span><span class="nm">${x.title}</span><span class="ds">${x.cards.length} loops</span></button>`).join('');
+  return `<div class="tplmenu">
+    <div class="mh s">stack templates</div>${stt}
+    <div class="mh">saved stacks</div>${saved}
+    <div class="mh">save</div>
+    <button class="mi2 sv" data-saves="${st.key}" ${st.cards.length?'':'disabled'}><span class="ic">${I.save}</span><span class="nm">save this stack…</span></button>
+  </div>`;
+}
+function draftHTML(c){
+  const hot=!!(c.alias||c.goal.trim()||c.tpl);
+  const drawer=(configMode==='drawer'&&c.cfgOpen)?configDrawer(c):'';
+  const open=(tplOpenFor===c.id);
+  return `<div class="pc draft ${hot?'hot':''}" data-id="${c.id}">
+    <span class="runtag draft">new prompt</span>
+    <div class="spec">
+      <span class="tpldd"><button class="tplbtn ${open?'on':''}" data-tplbtn="${c.id}">${I.book}<span>templates</span><span class="cv">${I.chevdown}</span></button>${open?tplMenuHTML(c):''}</span>
+      ${specChips(c)}
+    </div>
+    <input class="draftgoal" data-draftgoal="${c.id}" placeholder="what should this loop do?" value="${(c.goal||'').replace(/"/g,'&quot;')}"/>
+    ${summaryBlockHTML(c)}
+    <div class="cardbar">
+      <span class="iterpill" data-iter="${c.id}"><span class="lb">${I.loop}<span class="val">×${c.G.max===0?'∞':c.G.max}</span></span><span class="steppers"><button class="sb" data-idec="${c.id}">−</button><button class="sb" data-iinc="${c.id}">+</button></span></span>
+      <button class="ib sched ${schedActive(c)?'act':''}" data-pop="sched" title="schedule">${I.clock}</button>
+      <button class="ib guard ${guardActive(c)?'act':''}" data-pop="guard" title="guardrails">${I.shield}</button>
+      <button class="ib eval ${evalActive(c)?'act':''}" data-pop="eval" title="evals">${I.checkbox}<span class="cnt">${onCount(c)}</span></button>
+      <button class="ib config ${configActive(c)?'act':''}" data-cfgbtn title="run config">${I.sliders}</button>
+      <span class="sp"></span>
+      <button class="addcard" data-commit="${c.id}" ${hot?'':'disabled'}>${I.plus} add</button>
     </div>
     ${drawer}
   </div>`;
@@ -490,18 +615,47 @@ function connectorHTML(c,gapKey){
 function paneHead(s){
   return `<div class="panehead"><span class="logo">${I.grid}</span><span class="ptitle">${s.title}</span><span class="hsp"></span><span class="hdot"></span><button class="hx" data-panex="${s.key}">${I.x}</button></div>`;
 }
-function paneComposer(s){
-  return `<div class="pcdraft"><span class="dtag">new prompt</span><div><span class="dtmpl">📖 templates ▾</span></div><input class="dgoal composerIn" data-composer="${s.key}" placeholder="describe the prompt or goal…  (:alias @repo ×N ok)"/><div class="dbar"><span class="dpill">↻ off</span><span class="dsp"></span><button class="dadd" data-add="${s.key}">+ add</button></div></div>`;
-}
+function ensureDraft(s){if(!s.draft)s.draft=makeCard({status:"draft"});return s.draft;}
 function stackHTML(s){
-  if(!s.cards.length)return `<div style="text-align:center;color:var(--dim2);font-family:var(--mono);font-size:12px;padding:20px 0">no loops yet — add one above</div>`;
-  return s.cards.map((c,i)=>loopHTML(c)+(i<s.cards.length-1?connectorHTML(c,s.key+':'+i):'')).join('');
+  ensureDraft(s);
+  const draft=cardHTML(s.draft);
+  if(!s.cards.length)return draft;
+  return draft+connectorHTML(s.cards[0],s.key+':d')+s.cards.map((c,i)=>loopHTML(c)+(i<s.cards.length-1?connectorHTML(c,s.key+':'+i):'')).join('');
 }
 function paneFoot(s){
-  return `<div class="panefoot"><div class="runsplit"><button class="runmain" data-runmain="${s.key}">${I.play} run stack</button><button class="runchev" data-runchev="${s.key}">${I.chevup}</button></div></div>`;
+  const ct=ensureStackCtl(s);
+  const open=!!dockOpen[s.key];
+  const cfg=(configMode==='drawer'&&ct.cfgOpen)?configDrawer(ct):'';
+  const sum=`<b>${s.cards.length}</b> loop${s.cards.length===1?'':'s'}${schedActive(ct)?' · <b>nightly 2:00</b>':''} · ${ct.model}`;
+  return `<div class="sdock ${open?'open':''}" data-sdock="${s.key}">
+    <div class="dkhead">
+      <span class="stag">stack</span>
+      <span class="dsum">${sum}</span>
+      <button class="dexp" data-dexp="${s.key}" title="stack controls">${I.chevup}</button>
+    </div>
+    <div class="dbody"><div>
+      ${summaryBlockHTML(ct)}
+      <div class="dockbar">
+        <span class="iterpill" data-iter="${ct.id}"><span class="lb">${I.loop}<span class="val">×${ct.G.max===0?'∞':ct.G.max}</span></span><span class="steppers"><button class="sb" data-idec="${ct.id}">−</button><button class="sb" data-iinc="${ct.id}">+</button></span></span>
+        <button class="ib sched ${schedActive(ct)?'act':''}" data-pop="sched" data-stackpop="${s.key}" title="schedule the stack">${I.clock}</button>
+        <button class="ib guard ${guardActive(ct)?'act':''}" data-pop="guard" data-stackpop="${s.key}" title="stack guardrails">${I.shield}</button>
+        <button class="ib eval ${evalActive(ct)?'act':''}" data-pop="eval" data-stackpop="${s.key}" title="stack evals">${I.checkbox}<span class="cnt">${onCount(ct)}</span></button>
+        <button class="ib config ${configActive(ct)?'act':''}" data-scfg="${s.key}" title="stack default model">${I.sliders}</button>
+        <span class="sp"></span>
+        <span class="dd"><button class="ib tplib ${stackTplOpenFor===s.key?'on':''}" data-stpl="${s.key}" title="stack templates">${I.book}</button>${stackTplOpenFor===s.key?stackTplMenuHTML(s):''}</span>
+        <button class="ib" data-sdup="${s.key}" title="duplicate stack">${I.dup}</button>
+        <button class="ib" data-sdrag="${s.key}" title="reorder stacks">${I.drag}</button>
+        <button class="ib" data-sdel="${s.key}" title="delete stack">${I.trash}</button>
+      </div>
+      ${cfg}
+    </div></div>
+    <div class="dockrun">
+      <div class="runsplit"><button class="runmain" data-runmain="${s.key}">${I.play} run stack</button><button class="runchev" data-runchev="${s.key}">${I.chevup}</button></div>
+    </div>
+  </div>`;
 }
 function paneHTML(s){
-  return `<div class="pane" data-pane="${s.key}">${paneHead(s)}${paneComposer(s)}<div class="panestack">${stackHTML(s)}</div>${paneFoot(s)}</div>`;
+  return `<div class="pane" data-pane="${s.key}">${paneHead(s)}<div class="panestack">${stackHTML(s)}</div>${paneFoot(s)}</div>`;
 }
 function render(){
   closePop();closeRunMenu();
@@ -513,17 +667,58 @@ function openRunMenu(anchor,key){
   const items=[['play','Run now','start now'],['check','Run once','one pass each'],['clock','Schedule stack','one cron'],['flask','Dry run','validate only']];
   runMenuEl=document.createElement('div');runMenuEl.className='runmenu';
   runMenuEl.innerHTML=items.map(it=>`<div class="rm">${I[it[0]]}<span class="rmn">${it[1]}</span><span class="rms">${it[2]}</span></div>`).join('');
-  anchor.closest('.panefoot').appendChild(runMenuEl);
+  anchor.closest('.dockrun').appendChild(runMenuEl);
   runMenuEl.querySelectorAll('.rm').forEach(r=>r.onclick=closeRunMenu);
 }
 function closeRunMenu(){if(runMenuEl){runMenuEl.remove();runMenuEl=null;}}
 function insertAt(gapKey){const [key,gi]=gapKey.split(':');const s=STACKS.find(x=>x.key===key);s.cards.splice(+gi+1,0,makeCard({goal:'new prompt'}));render();}
-function addToStack(key,text){let t=(text||'').trim();if(!t)return;let alias=null;const m=t.match(/^:([a-z-]+)\s*/);if(m){alias=m[1];t=t.slice(m[0].length);}const goal=t.replace(/^"|"$/g,'').trim();const evalsOn=alias&&PRESET_EVALS[alias]?PRESET_EVALS[alias]:['execution ok'];const s=STACKS.find(x=>x.key===key);s.cards.unshift(makeCard({alias,goal,status:'idle',evalsOn}));render();}
+function focusDraft(key){setTimeout(()=>{const st=STACKS.find(x=>x.key===key);if(!st||!st.draft)return;const el=document.querySelector(`[data-draftgoal="${st.draft.id}"]`);if(el)el.focus();},0);}
+function commitDraft(id){const f=findCard(id);if(!f)return;const c=f.c,st=f.s;
+  if(!(c.alias||c.goal.trim()||c.tpl))return;
+  c.status='idle';st.cards.unshift(c);st.draft=makeCard({status:'draft'});render();focusDraft(st.key);}
+function applyPreset(id,alias){const f=findCard(id);if(!f)return;
+  f.c.alias=alias;f.c.tpl=null;f.c.tplKind=null;f.c.evals=buildEvals(PRESET_EVALS[alias]||['execution ok']);
+  tplOpenFor=null;render();focusDraft(f.s.key);}
+function applyPromptTpl(id,i){const f=findCard(id);if(!f)return;const t=PROMPT_TPL[i];
+  f.c.alias=t.alias;f.c.goal=t.goal;f.c.tpl=t.n;f.c.tplKind='prompt';f.c.evals=buildEvals(PRESET_EVALS[t.alias]||['execution ok']);
+  tplOpenFor=null;render();focusDraft(f.s.key);}
+function applyStackTpl(id,i){const f=findCard(id);if(!f)return;const st=f.s,t=STACK_TPL[i];
+  t.loops.slice().reverse().forEach(l=>st.cards.unshift(makeCard({alias:l.alias,goal:l.goal,status:'idle',tpl:t.n,tplKind:'stack',evalsOn:PRESET_EVALS[l.alias]||['execution ok']})));
+  tplOpenFor=null;flash('applied "'+t.n+'" — '+t.loops.length+' loops');render();}
+function saveNewPromptTpl(id){const f=findCard(id);if(!f)return;const c=f.c;
+  PROMPT_TPL.push({n:(c.goal.trim()||c.alias||'untitled').slice(0,22),alias:c.alias,goal:c.goal});
+  tplOpenFor=null;flash('saved prompt template');render();}
+function saveNewStackTpl(id){const f=findCard(id);if(!f)return;const st=f.s;
+  STACK_TPL.push({n:st.title.split('·').pop().trim()||'stack',loops:st.cards.slice().reverse().map(c=>({alias:c.alias,goal:c.goal}))});
+  tplOpenFor=null;flash('saved stack template');render();}
+function flash(m){const t=document.createElement('div');t.className='toast';t.textContent=m;document.body.appendChild(t);setTimeout(()=>t.remove(),1600);}
 function wirePanes(){
   document.querySelectorAll('[data-runchev]').forEach(chev=>chev.onclick=e=>{e.stopPropagation();if(runMenuEl){closeRunMenu();}else openRunMenu(chev,chev.dataset.runchev);});
   document.querySelectorAll('[data-insert]').forEach(b=>b.onclick=e=>{e.stopPropagation();insertAt(b.dataset.insert);});
-  document.querySelectorAll('[data-composer]').forEach(inp=>inp.onkeydown=e=>{if(e.key==='Enter'){addToStack(inp.dataset.composer,inp.value);}});
-  document.querySelectorAll('[data-add]').forEach(b=>b.onclick=()=>{const inp=document.querySelector(`[data-composer="${b.dataset.add}"]`);addToStack(b.dataset.add,inp.value);});
+  document.querySelectorAll('[data-draftgoal]').forEach(inp=>{
+    inp.oninput=e=>{const f=findCard(inp.dataset.draftgoal);if(!f)return;f.c.goal=e.target.value;
+      const btn=document.querySelector(`[data-commit="${f.c.id}"]`);if(btn)btn.disabled=!(f.c.alias||f.c.goal.trim()||f.c.tpl);
+      const card=inp.closest('.pc');if(card)card.classList.toggle('hot',!!(f.c.alias||f.c.goal.trim()||f.c.tpl));};
+    inp.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();commitDraft(inp.dataset.draftgoal);}};
+  });
+  document.querySelectorAll('[data-commit]').forEach(b=>b.onclick=()=>commitDraft(b.dataset.commit));
+  document.querySelectorAll('[data-tplbtn]').forEach(b=>b.onclick=e=>{e.stopPropagation();const id=b.dataset.tplbtn;tplOpenFor=(tplOpenFor===id)?null:id;stackTplOpenFor=null;render();});
+  document.querySelectorAll('[data-dexp]').forEach(b=>b.onclick=e=>{e.stopPropagation();const k=b.dataset.dexp;dockOpen[k]=!dockOpen[k];render();});
+  document.querySelectorAll('.dockbar [data-idec]').forEach(b=>b.onclick=e=>{e.stopPropagation();bumpIter(b.dataset.idec,-1);});
+  document.querySelectorAll('.dockbar [data-iinc]').forEach(b=>b.onclick=e=>{e.stopPropagation();bumpIter(b.dataset.iinc,1);});
+  document.querySelectorAll('[data-stpl]').forEach(b=>b.onclick=e=>{e.stopPropagation();const k=b.dataset.stpl;stackTplOpenFor=(stackTplOpenFor===k)?null:k;tplOpenFor=null;render();});
+  document.querySelectorAll('[data-stackpop]').forEach(b=>b.onclick=e=>{e.stopPropagation();
+    const st=STACKS.find(x=>x.key===b.dataset.stackpop);openPop(b.dataset.pop,b,ensureStackCtl(st));});
+  document.querySelectorAll('[data-scfg]').forEach(b=>b.onclick=e=>{e.stopPropagation();
+    const st=STACKS.find(x=>x.key===b.dataset.scfg);const ct=ensureStackCtl(st);ct.cfgOpen=!ct.cfgOpen;dockOpen[st.key]=true;render();});
+  document.querySelectorAll('[data-openstack]').forEach(b=>b.onclick=e=>{e.stopPropagation();stackTplOpenFor=null;flash('opened saved stack');render();});
+  document.querySelectorAll('[data-sdup]').forEach(b=>b.onclick=e=>{e.stopPropagation();flash('duplicated stack');});
+  document.querySelectorAll('[data-sdel]').forEach(b=>b.onclick=e=>{e.stopPropagation();flash('delete stack (confirm)');});
+  document.querySelectorAll('[data-tpre]').forEach(b=>b.onclick=e=>{e.stopPropagation();const p=b.dataset.tpre.split(':');applyPreset(p[0],p[1]);});
+  document.querySelectorAll('[data-tprompt]').forEach(b=>b.onclick=e=>{e.stopPropagation();const p=b.dataset.tprompt.split(':');applyPromptTpl(p[0],+p[1]);});
+  document.querySelectorAll('[data-tstack]').forEach(b=>b.onclick=e=>{e.stopPropagation();const p=b.dataset.tstack.split(':');applyStackTpl(p[0],+p[1]);});
+  document.querySelectorAll('[data-savep]').forEach(b=>b.onclick=e=>{e.stopPropagation();if(!b.disabled)saveNewPromptTpl(b.dataset.savep);});
+  document.querySelectorAll('[data-saves]').forEach(b=>b.onclick=e=>{e.stopPropagation();if(b.disabled)return;const st=STACKS.find(x=>x.key===b.dataset.saves);if(!st)return;STACK_TPL.push({n:st.title.split('·').pop().trim()||'stack',loops:st.cards.slice().reverse().map(c=>({alias:c.alias,goal:c.goal}))});stackTplOpenFor=null;flash('saved stack template');render();});
   document.querySelectorAll('[data-panex]').forEach(x=>x.onclick=()=>{});
 }
 function updateCard(c){
@@ -543,7 +738,7 @@ function updateCard(c){
 function dupCard(id){const f=findCard(id);const i=f.s.cards.indexOf(f.c);const copy=JSON.parse(JSON.stringify(f.c));copy.id=uid();copy.status='idle';copy.iter=null;copy.output=null;copy.cfgOpen=false;f.s.cards.splice(i+1,0,copy);render();}
 function delCard(id){const f=findCard(id);f.s.cards=f.s.cards.filter(c=>c.id!==id);render();}
 function reorder(fromId,toId,before){const a=findCard(fromId),b=findCard(toId);if(!a||!b||a.s!==b.s)return;const s=a.s;const fi=s.cards.indexOf(a.c);const [m]=s.cards.splice(fi,1);let ti=s.cards.indexOf(b.c);if(!before)ti+=1;s.cards.splice(ti,0,m);render();}
-function bumpIter(id,delta){const f=findCard(id);let v=f.c.G.max+delta;if(v<2)v=(v<=0?0:2);f.c.G.max=v;updateCard(f.c);}
+function bumpIter(id,delta){const f=findCard(id);let v=f.c.G.max+delta;if(v<2)v=(v<=0?0:2);f.c.G.max=v;if(f.c.isStack||f.c.status==='draft'){render();}else{updateCard(f.c);}}
 let dragId=null;
 function clearDrop(){document.querySelectorAll('.pc').forEach(el=>el.classList.remove('drop-before','drop-after'));}
 
@@ -552,13 +747,14 @@ function wireCards(){
     const el=document.querySelector(`.pc[data-id="${c.id}"]`);if(!el)return;
     el.querySelectorAll('[data-pop]').forEach(b=>b.onclick=ev=>{ev.stopPropagation();openPop(b.dataset.pop,b,c);});
     const cfgBtn=el.querySelector('[data-cfgbtn]');
-    cfgBtn.onclick=ev=>{ev.stopPropagation();c.cfgOpen=!c.cfgOpen;render();};
-    el.querySelector('[data-idec]').onclick=ev=>{ev.stopPropagation();bumpIter(c.id,-1);};
-    el.querySelector('[data-iinc]').onclick=ev=>{ev.stopPropagation();bumpIter(c.id,1);};
-    el.querySelector('[data-act="dup"]').onclick=()=>dupCard(c.id);
-    el.querySelector('[data-act="del"]').onclick=()=>delCard(c.id);
+    if(cfgBtn)cfgBtn.onclick=ev=>{ev.stopPropagation();c.cfgOpen=!c.cfgOpen;render();};
+    const dec=el.querySelector('[data-idec]'); if(dec)dec.onclick=ev=>{ev.stopPropagation();bumpIter(c.id,-1);};
+    const inc=el.querySelector('[data-iinc]'); if(inc)inc.onclick=ev=>{ev.stopPropagation();bumpIter(c.id,1);};
+    const dupB=el.querySelector('[data-act="dup"]'); if(dupB)dupB.onclick=()=>dupCard(c.id);
+    const delB=el.querySelector('[data-act="del"]'); if(delB)delB.onclick=()=>delCard(c.id);
     el.querySelectorAll('[data-cfgchip]').forEach(chip=>chip.onclick=ev=>{ev.stopPropagation();openCfgMenu(chip,c,chip.dataset.cfgchip);});
     const handle=el.querySelector('[data-drag]');
+    if(!handle)return;  // draft card has no drag/dup/del — nothing further to wire
     handle.addEventListener('mousedown',()=>el.setAttribute('draggable','true'));
     handle.addEventListener('mouseup',()=>el.setAttribute('draggable','false'));
     el.addEventListener('dragstart',e=>{dragId=c.id;e.dataTransfer.effectAllowed='move';setTimeout(()=>el.classList.add('dragging'),0);});
@@ -697,7 +893,7 @@ function wirePop(kind){
   popEl.querySelector('.apply').onclick=closePop;
   const pb=popEl.querySelector('.pbody');if(pb)pb.addEventListener('scroll',closeDD);
 }
-document.addEventListener('mousedown',e=>{
+document.addEventListener('mousedown',e=>{if((tplOpenFor||stackTplOpenFor)&&(!e.target.closest||(!e.target.closest('.tpldd')&&!e.target.closest('.dd')))){tplOpenFor=null;stackTplOpenFor=null;render();}
   if(runMenuEl&&!e.target.closest('.runmenu')&&!e.target.closest('[data-runchev]'))closeRunMenu();
   if(ddMenu&&!e.target.closest('.dmenu')&&!e.target.closest('[data-dd]')&&!e.target.closest('[data-cfgpop]')&&!e.target.closest('[data-cfgchip]'))closeDD();
   if(popEl&&!e.target.closest('.pop')&&!e.target.closest('[data-pop]')&&!e.target.closest('[data-cfgbtn]')&&!e.target.closest('.dmenu')&&!e.target.closest('[data-dd]')&&!e.target.closest('.sheet-scrim'))closePop();

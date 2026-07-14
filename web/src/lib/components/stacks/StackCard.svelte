@@ -45,9 +45,6 @@
   export let index: number;
   export let paneDefaults: StackDefaults;
   export let repoOptions: Option[] = [];
-  /** The pane's committed cards — only read by the draft branch, to enable
-   *  the templates dropdown's "save this stack…" when the pane has cards. */
-  export let paneCards: StackCardT[] = [];
   /** True when the stack's own schedule or loop-count governs this pane's
    *  cadence (`perLoopScheduleGoverned` — Stack-1's §1 precedence rule) —
    *  this card's own `scheduled` cron never fires independently while it's
@@ -197,7 +194,7 @@
 
   {#if isDraft}
     <div class="spec draftspec">
-      <TemplatesMenu draft={card} {paneKey} {paneCards} />
+      <TemplatesMenu {card} {paneKey} labeled />
       <ProvenanceChips alias={card.alias} tpl={card.tpl} tplKind={card.tplKind} />
     </div>
     <!-- Goal on its own full-width line (an inline chip-adjacent input
@@ -298,6 +295,7 @@
         {@html ICONS.plus}<span class="addlbl">add</span>
       </button>
     {:else}
+      <TemplatesMenu {card} {paneKey} />
       <button class="ib" on:click={dupCard} title="duplicate">{@html ICONS.dup}</button>
       <button
         class="ib drag"
