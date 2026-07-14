@@ -5,8 +5,9 @@
  * global store — Stack-1 made this per-pane so two panes can carry two
  * different default configs (was a single app-wide `writable` through
  * UI-2/Backend-1). `model`/`effort`/`repo` are real `CreateTaskRequest`
- * fields; `branch`/`autonomy` are client-only — see UI_PLAN.md's Backend
- * Bindings table.
+ * fields; `autonomy` is client-only — see UI_PLAN.md's Backend Bindings table.
+ * `branch` is not inert despite having no `CreateTaskRequest` field of its own:
+ * `paneSubmitPayload` turns it into a "Target branch: …" planning constraint.
  */
 import { MODEL_OPTIONS, type Option } from '$lib/stores/options';
 
@@ -29,13 +30,28 @@ export const AUTONOMY_OPTIONS: Option[] = [
   { value: 'L4', label: 'L4 · Auto-merge', hint: 'auto-merge on pass' }
 ];
 
-/** Placeholder branch list — there is no `/api/branches` endpoint yet, so
- *  this is a static, client-only convenience rather than a repo-derived
- *  list (same honesty caveat as `autonomy`). */
-export const BRANCH_OPTIONS: Option[] = [
-  { value: 'main', label: 'main' },
-  { value: 'dev', label: 'dev' }
-];
+/** The branch a fresh stack starts on, before any repo has been picked. The
+ *  live dropdowns no longer read this — they derive their options from
+ *  `stores/branches.ts`, which fetches the selected repo's real branches from
+ *  `/api/branches`. This is only the cold-start seed for
+ *  `DEFAULT_STACK_DEFAULTS`, which lives in the tsx-testable pure layer and so
+ *  cannot reach the network. */
+export const SEED_BRANCH = 'main';
+
+/** Pick the branch to display for a repo, given that repo's real branches.
+ *
+ *  An empty `branches` means we have no knowledge of the repo — unfetched, or
+ *  the fetch failed — so the caller's current value is returned untouched
+ *  rather than being second-guessed away. Otherwise an explicit, still-valid
+ *  choice always wins; only an unset or now-invalid branch falls back to the
+ *  repo's HEAD. `branch` is not inert: it reaches the server as a planning
+ *  constraint via `paneSubmitPayload`, so showing one branch while storing
+ *  another would silently launch against the wrong target. */
+export function resolveBranch(current: string, branches: string[], head: string): string {
+  if (!branches.length) return current;
+  if (current && branches.includes(current)) return current;
+  return head && branches.includes(head) ? head : branches[0];
+}
 
 /** The app-wide `DEF` a stack's own defaults start from and are compared
  *  against (`stackDefaultsActive`) to decide whether the dock's "default"
@@ -44,7 +60,7 @@ export const DEFAULT_STACK_DEFAULTS: StackDefaults = {
   model: MODEL_OPTIONS[0].value,
   effort: 'medium',
   repo: '',
-  branch: BRANCH_OPTIONS[0].value,
+  branch: SEED_BRANCH,
   autonomy: 'L2'
 };
 

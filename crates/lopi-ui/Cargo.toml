@@ -35,3 +35,4 @@ chrono.workspace = true
 # tower::ServiceExt::oneshot requires the `util` feature for `Router::oneshot`
 # in axum integration tests.
 tower = { version = "0.4", features = ["util"] }
+tempfile = "3"

@@ -69,9 +69,10 @@ struct LopiClient {
         return try await send("POST", "/api/tasks/\(id)/plan/\(verb)", body: Optional<Int>.none)
     }
 
-    /// Git repos the server can target (primary + siblings).
-    func repos() async throws -> [String] {
-        struct Wrapper: Decodable { let repos: [String] }
+    /// Git repos the server can target (primary + siblings + `--repos` extras),
+    /// each with its GitHub `owner`/`name` for labelling.
+    func repos() async throws -> [RepoEntry] {
+        struct Wrapper: Decodable { let repos: [RepoEntry] }
         let w: Wrapper = try await get("/api/repos")
         return w.repos
     }

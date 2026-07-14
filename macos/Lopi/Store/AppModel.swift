@@ -23,10 +23,18 @@ final class AppModel {
     var loopTrace: LoopRunTrace?
     var traceLoading = false
     /// Launch-control dropdown sources, fetched from the server (sandbox-safe).
-    var repos: [String] = []
-    var branches: [String] = []
-    /// The selected repo's default (current HEAD) branch.
-    var defaultBranch: String = ""
+    /// `RepoMenu.repoOptions` turns these into labelled, grouped options.
+    var repos: [RepoEntry] = []
+    /// Per-repo branch cache: resolved repo path → its local branches. Keyed by
+    /// repo rather than held flat because a card's effective repo is
+    /// `config.repo ?? paneDefaults.repo` — two cards in one pane can target two
+    /// different repos, and each must offer its own repo's branches.
+    var branchesByRepo: [String: [String]] = [:]
+    /// Per-repo current HEAD branch — the preselect candidate for `resolveBranch`.
+    var headBranchByRepo: [String: String] = [:]
+    /// Repos with a branch fetch in flight — so a second caller doesn't race a
+    /// duplicate request.
+    private var branchFetches: Set<String> = []
 
     /// Rolling buffer of recent live log lines (most recent last), capped.
     var recentLogs: [String] = []
@@ -232,14 +240,21 @@ final class AppModel {
         if let r = try? await client.repos() { repos = r }
     }
 
-    func refreshBranches(_ repo: String) async {
-        if let r = try? await client.branches(repo: repo) {
-            branches = r.branches
-            defaultBranch = r.defaultBranch
-        } else {
-            branches = []
-            defaultBranch = ""
-        }
+    /// Fetch `repo`'s branches once, then serve from the cache. Safe to call
+    /// from a view's `.task`/`.onChange`: a repeat call for a cached or in-flight
+    /// repo is a no-op.
+    ///
+    /// A failed fetch caches an empty entry deliberately — these are driven by
+    /// view lifecycle events that re-fire on every appearance, so an uncached
+    /// miss would refetch in a loop. `resolveBranch` reads an empty list as "no
+    /// knowledge" and leaves the user's branch alone.
+    func ensureBranches(_ repo: String) async {
+        if branchesByRepo[repo] != nil || branchFetches.contains(repo) { return }
+        branchFetches.insert(repo)
+        defer { branchFetches.remove(repo) }
+        let r = try? await client.branches(repo: repo)
+        branchesByRepo[repo] = r?.branches ?? []
+        headBranchByRepo[repo] = r?.defaultBranch ?? ""
     }
 
     // MARK: Mutations

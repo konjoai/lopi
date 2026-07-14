@@ -24,6 +24,10 @@ pub struct AppState {
     pub pool: Arc<AgentPool>,
     /// Repo root path — used to extract the spec surface on demand.
     pub repo_path: std::path::PathBuf,
+    /// Additional repos the pool dispatches to (`sail --repos`). Listed by
+    /// `GET /api/repos` alongside `repo_path` and its siblings, so the launch
+    /// dropdowns offer every repo the server actually serves.
+    pub extra_repos: Vec<std::path::PathBuf>,
     /// macOS-UI Phase 0 — runtime-mutable cron scheduler. Started (and seeded
     /// from the `schedules` table) inside `serve_with_repo`.
     pub schedules: lopi_orchestrator::ScheduleManager,
@@ -138,6 +142,7 @@ impl AppState {
             queue,
             pool,
             repo_path,
+            extra_repos: Vec::new(),
             schedules,
             serialized_tx,
             auth_token: auth_token.map(|t| Arc::from(t.as_str())),
@@ -152,6 +157,15 @@ impl AppState {
     #[must_use]
     pub fn with_config(mut self, config: Option<LopiConfig>) -> Self {
         self.config = config.map(Arc::new);
+        self
+    }
+
+    /// Record the extra repos (`sail --repos`) the pool dispatches to, so
+    /// `GET /api/repos` lists every repo the server serves rather than only the
+    /// primary and its siblings.
+    #[must_use]
+    pub fn with_extra_repos(mut self, extra_repos: Vec<std::path::PathBuf>) -> Self {
+        self.extra_repos = extra_repos;
         self
     }
 }
@@ -295,6 +309,7 @@ pub async fn serve(
         port,
         auth_token,
         std::path::PathBuf::from("."),
+        Vec::new(),
         None,
     )
     .await
@@ -310,7 +325,8 @@ async fn warm_up_state(state: &mut AppState) {
     }
 }
 
-/// Variant that also wires the repo path for `/api/spec` serving.
+/// Variant that also wires the repo path for `/api/spec` serving, plus any
+/// extra dispatch repos for `/api/repos`.
 #[allow(clippy::too_many_arguments)]
 pub async fn serve_with_repo(
     store: MemoryStore,
@@ -321,10 +337,12 @@ pub async fn serve_with_repo(
     port: u16,
     auth_token: Option<String>,
     repo_path: std::path::PathBuf,
+    extra_repos: Vec<std::path::PathBuf>,
     config: Option<LopiConfig>,
 ) -> Result<()> {
-    let mut state =
-        AppState::new_with_repo(store, bus, queue, pool, auth_token, repo_path).with_config(config);
+    let mut state = AppState::new_with_repo(store, bus, queue, pool, auth_token, repo_path)
+        .with_extra_repos(extra_repos)
+        .with_config(config);
     warm_up_state(&mut state).await;
     let app = build_app(state);
 
@@ -351,6 +369,7 @@ mod loop_handlers;
 mod loop_health_handlers;
 mod loop_runs_handlers;
 mod metrics_handlers;
+mod repo_identity;
 mod repos_handlers;
 mod schedule_handlers;
 mod static_assets;

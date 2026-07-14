@@ -1,0 +1,96 @@
+{
+  "_comment": [
+    "Golden fixture for the repo dropdown, decoded by THREE surfaces — the Rust",
+    "shape test (crates/lopi-ui/tests/repo_menu_golden.rs), the web rule",
+    "(web/src/lib/stores/repoMenu.test.ts) and the macOS port",
+    "(macos/LopiTests/RepoMenuTests.swift). All three must agree; this file is the",
+    "single source of truth. Same mechanism as agent_event_golden.json.",
+    "",
+    "`repos` is verbatim `GET /api/repos` output. `options` is repoOptions(repos):",
+    "the exact ordered list both clients must produce. `filtered` maps a query to",
+    "the labels of groupedMenu(options, query).flat, in render order.",
+    "",
+    "Every row is modelled on a real shape found on a working machine — see the",
+    "notes below. Do not simplify them away.",
+    "",
+    "  konjoai/squish x2  a linked worktree and its main checkout share one",
+    "                     origin. TWO DIFFERENT RUN TARGETS, one owner/name.",
+    "                     Path labels can't collide; owner/name labels can.",
+    "  TinyStories        origin is huggingface.co/datasets/<o>/<n> — three path",
+    "                     segments on a non-GitHub host. owner MUST be null.",
+    "  bmaltais/SteveFeldman  both count 1; case-insensitive owner sort, else",
+    "                     'S'(83) < 'b'(98) puts SteveFeldman first."
+  ],
+
+  "repos": [
+    { "path": "/h/lopi", "owner": "konjoai", "name": "lopi" },
+    { "path": "/h/squish", "owner": "konjoai", "name": "squish" },
+    { "path": "/h/squish-w100-hf-url-normalize", "owner": "konjoai", "name": "squish" },
+    { "path": "/h/algos", "owner": "wesleyscholl", "name": "algos" },
+    { "path": "/h/wesleyscholl.github.io", "owner": "wesleyscholl", "name": "wesleyscholl.github.io" },
+    { "path": "/h/kohya_ss", "owner": "bmaltais", "name": "kohya_ss" },
+    { "path": "/h/thing", "owner": "SteveFeldman", "name": "thing" },
+    { "path": "/h/TinyStories", "owner": null, "name": "TinyStories" }
+  ],
+
+  "options": [
+    { "value": "", "label": "auto", "hint": null, "group": null },
+
+    { "value": "/h/lopi", "label": "konjoai/lopi", "hint": "/h/lopi", "group": "konjoai" },
+    {
+      "value": "/h/squish",
+      "label": "konjoai/squish · squish",
+      "hint": "/h/squish",
+      "group": "konjoai"
+    },
+    {
+      "value": "/h/squish-w100-hf-url-normalize",
+      "label": "konjoai/squish · squish-w100-hf-url-normalize",
+      "hint": "/h/squish-w100-hf-url-normalize",
+      "group": "konjoai"
+    },
+
+    { "value": "/h/algos", "label": "wesleyscholl/algos", "hint": "/h/algos", "group": "wesleyscholl" },
+    {
+      "value": "/h/wesleyscholl.github.io",
+      "label": "wesleyscholl/wesleyscholl.github.io",
+      "hint": "/h/wesleyscholl.github.io",
+      "group": "wesleyscholl"
+    },
+
+    { "value": "/h/kohya_ss", "label": "bmaltais/kohya_ss", "hint": "/h/kohya_ss", "group": "bmaltais" },
+
+    { "value": "/h/thing", "label": "SteveFeldman/thing", "hint": "/h/thing", "group": "SteveFeldman" },
+
+    {
+      "value": "/h/TinyStories",
+      "label": "TinyStories",
+      "hint": "/h/TinyStories",
+      "group": "no github remote"
+    }
+  ],
+
+  "filtered": {
+    "": [
+      "auto",
+      "konjoai/lopi",
+      "konjoai/squish · squish",
+      "konjoai/squish · squish-w100-hf-url-normalize",
+      "wesleyscholl/algos",
+      "wesleyscholl/wesleyscholl.github.io",
+      "bmaltais/kohya_ss",
+      "SteveFeldman/thing",
+      "TinyStories"
+    ],
+    "squish": ["konjoai/squish · squish", "konjoai/squish · squish-w100-hf-url-normalize"],
+    "KONJOAI": [
+      "konjoai/lopi",
+      "konjoai/squish · squish",
+      "konjoai/squish · squish-w100-hf-url-normalize"
+    ],
+    "auto": ["auto"],
+    "/h/algos": ["wesleyscholl/algos"],
+    "tiny": ["TinyStories"],
+    "zzz-no-such-repo": []
+  }
+}

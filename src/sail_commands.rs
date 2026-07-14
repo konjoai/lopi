@@ -125,6 +125,7 @@ pub async fn run(
         port,
         auth_token,
         repo,
+        extra_repos,
         cfg.cloned(),
     )
     .await
