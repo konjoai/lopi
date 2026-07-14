@@ -160,8 +160,13 @@ func paneSubmitPayload(_ launch: PaneLaunch) -> StackTaskPayload {
 // MARK: - Run order + dry run
 
 /// Execution order: bottom-of-stack (oldest, next to run) first, top last —
-/// the reverse of array order, since the composer prepends new cards.
-func executionOrder(_ cards: [StackCard]) -> [StackCard] { cards.reversed() }
+/// the reverse of array order, since the composer prepends new cards. A draft
+/// card is never in `pane.cards`, but any run-plan path must still refuse to
+/// schedule one (Creation-Flow-1 §1 — never let `.draft` fall through to a run
+/// path), so it is filtered here defensively. Mirrors the web `executionOrder`.
+func executionOrder(_ cards: [StackCard]) -> [StackCard] {
+    cards.filter { $0.status != .draft }.reversed()
+}
 
 /// One problem `dryRunStack` found with a specific card.
 struct DryRunIssue: Equatable {

@@ -5,6 +5,50 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## Creation-Flow-1 (macOS) — the draft card, ported to SwiftUI
+
+**The model is the web model, verbatim.** `CardStatus.draft`, `StackCard.tpl`/
+`tplKind`, `PromptTemplate`/`StackTemplate`/`TemplateLoop`, and the pure
+functions (`applyPreset`/`applyPromptTemplate`/`applyStackTemplate`/
+`stackTemplate(from:)`/`finalizeDraft`/`makeDraft`/`draftIsHot`) are 1:1 ports
+with the same names, ordering, and semantics as the web sprint (`[0.6.0]`). Same
+reasoning as every macOS-parity sprint: divergence between the two surfaces is a
+bug, not a platform idiom, so the models are literally the same shape and the
+tests are literal ports.
+
+**Draft-as-`CardStatus` earns its keep in Swift specifically.** Making the draft
+a `.draft` case (not a `DraftCardView` fork) means the compiler's exhaustive
+`switch` requirement *forced* every `CardStatus` consumer to handle it — the
+draft can't silently fall through to a run path, which is exactly the §1.1 rule,
+enforced by the type system rather than by review. The draft lives on
+`StackPaneState.draft` via a defaulted custom init, so every existing pane
+construction site stayed unchanged.
+
+**Chip colors + provenance semantics** match the web exactly (sun replaces the
+alias chip for a prompt template; violet + the loop's own teal alias chip for a
+stack template; teal alias chip for no template). Every SF Symbol size is
+constrained — an unconstrained glyph blows the chip apart, same failure mode as
+the web's missing `svg{width;height}`.
+
+**Persistence is `UserDefaults`, honestly per-machine and NOT synced with web.**
+Same key (`lopi.templates.v1`) and JSON shape as the web's localStorage so the
+two are conceptually identical, but they are two physical stores that never talk.
+This is a **real limitation, stated plainly**: a template saved on the web is not
+visible in the macOS app and vice-versa. Fixing that needs a backend (see
+`NEXT_SESSION_PROMPT`), which is out of scope.
+
+**Bottom-first serialization** is the same load-bearing invariant as the web:
+`addCard` prepends (bottom runs first), so `stackTemplate(from:)` serializes
+bottom-first and `applyStackTemplate` prepends in reverse. Pinned by a ported
+round-trip test — the two platforms must agree, and now provably do.
+
+**Deliberate native deviation:** the templates control is a SwiftUI `.popover`
+(the app's existing popover mechanism) with a hand-colored sectioned list, not a
+native `Menu`. A native macOS `Menu` can't tint per-section text, and the web's
+color-coding is load-bearing (the colors are how the card says where it came
+from), so the popover wins on fidelity. Name prompts use native alerts (the macOS
+analogue of the web's `window.prompt`).
+
 ## Creation-Flow-1 (web) — the draft card replaces the composer
 
 **Draft-as-`CardStatus`, not a separate component.** The pre-commit draft is a

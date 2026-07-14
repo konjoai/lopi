@@ -1,5 +1,54 @@
 # Changelog
 
+## [0.7.0] — Creation-Flow-1 (macOS): the draft card, ported to SwiftUI 🖥️✍️
+
+The macOS sibling of `[0.6.0]`. Ports the web draft-card creation flow to the
+native app **1:1** — same field names, same ordering, same semantics; any
+divergence is a bug, not a platform idiom. The one-line composer
+(`TextField("add a prompt or goal…")` + `submit()`) is gone; each pane pins a
+live **draft `StackCard`** at the top (dashed → teal when hot) rendered by the
+*same* `StackCardView` via a draft branch, with a full cardbar, a sectioned
+**templates** menu, and colored provenance chips.
+
+Additive, macOS-only — no backend, no shared state with web. macOS keeps its own
+template library (`UserDefaults`), web keeps its own (`localStorage`); they do
+**not** sync (see `NEXT_SESSION_PROMPT`). Compiled + tested + clicked on the M3.
+
+- **[Feat] Draft is a `CardStatus`, not a fork.** `CardStatus` gains `.draft`;
+  the draft renders through the *same* `StackCardView` (a draft branch), never a
+  `DraftCardView`. It lives on `StackPaneState.draft` (never in `pane.cards`), so
+  Swift's exhaustive `switch` forced every `CardStatus` consumer to handle it and
+  `executionOrder` filters `.draft` — a draft can't fall through to a run path.
+- **[Feat] Template provenance (`tpl`/`tplKind`) that survives edits.** Pure
+  ports of the web fns: `applyPreset`, `applyPromptTemplate`, `applyStackTemplate`,
+  `promptTemplate(from:)`, `stackTemplate(from:)`, `finalizeDraft`, `makeDraft`,
+  `draftIsHot` (`Stacks/StackTemplates.swift`, `Stacks/StackOps.swift`).
+- **[Feat] Provenance chips (`ProvenanceChips` in `StackPrimitives.swift`).**
+  prompt → a sun chip *replacing* the alias chip; stack → a violet chip *plus*
+  the loop's teal alias chip; none → the teal alias chip. Every SF Symbol size is
+  constrained explicitly.
+- **[Feat] Templates menu (`TemplatesMenuView.swift`).** One sectioned `.popover`
+  (book + `templates`), color-coded exactly like the web (a native `Menu` can't
+  tint per-section text on macOS) — presets · prompt · stack · save. Save uses
+  native name alerts.
+- **[Feat] `UserDefaults` template persistence (`StackTemplateStore.swift`).**
+  Same key (`lopi.templates.v1`) and JSON shape as the web's localStorage, but
+  **per-machine, client-only, not durable or synced with web.** Defensive decode
+  (corrupt/missing → empty, never crashes); seeds a couple of templates only when
+  the key is absent.
+- **[Fix] Bottom-first template serialization** — `addCard` prepends (bottom card
+  runs first), so `stackTemplate(from:)` serializes bottom-first and
+  `applyStackTemplate` prepends in reverse; a saved chain round-trips into the
+  same run order. Covered by a ported unit test.
+- **[Verify]** `xcodegen && xcodebuild` clean (no new warnings); **`LopiTests`
+  70/70 green** including the ported Creation-Flow-1 suite (bottom-first
+  round-trip, draft-excluded-from-run, provenance-survives-edit, draft-never-in-
+  `pane.cards`). Attended live click-through on the M3, side-by-side with web:
+  draft card; templates menu; drop the KCQF stack template (violet chips, research
+  at the bottom); commit via `+ add` (real card, full cardbar); **save a stack
+  template, relaunch the app, it persists** (confirmed in the container plist and
+  the menu). Zero behavioral divergence from web.
+
 ## [0.6.0] — Creation-Flow-1 (web): the draft card replaces the composer ✍️
 
 The thing you compose in `/stacks` is now **the card you'll get**. The old

@@ -1,13 +1,14 @@
 import SwiftUI
 
-/// StackCardView — one loop in the stack. Built *around* the same agent
-/// rendering the Forge pane already uses (`KonjoOrb` + `TranscriptView`, driven
-/// by the live agent keyed on `card.taskId`), so a card that hasn't launched
-/// shows the calm idle orb + its staged goal, and a running card renders its orb
-/// + live transcript exactly as a Forge pane does. Wrapped with the cardbar
-/// (iteration pill · schedule · guards · evals+count · config · duplicate · drag
-/// · delete), the hide-inactive summary lines, and the inline config drawer —
-/// matching web's `StackCard`. All mutation goes through `StackStore`.
+/// StackCardView — one loop in the stack, and (Creation-Flow-1) the pane's
+/// pre-commit **draft** card, via a `draft` branch in this *one* view rather
+/// than a forked `DraftCardView`. Built *around* the same agent rendering the
+/// Forge pane uses (`KonjoOrb` + `TranscriptView`, driven by the live agent
+/// keyed on `card.taskId`). Wrapped with the cardbar (iteration pill · schedule
+/// · guards · evals+count · config · then duplicate/drag/delete — or, on a
+/// draft, a single `+ add`), the hide-inactive summary lines, and the inline
+/// config drawer — matching web's `StackCard`. All mutation goes through
+/// `StackStore` (a draft edits the pane's `draft`; a committed card edits itself).
 struct StackCardView: View {
     @Environment(AppModel.self) private var model
     var store: StackStore
@@ -17,11 +18,18 @@ struct StackCardView: View {
     var paneDefaults: StackDefaults
     var repoOptions: [StackOption]
     var scheduleGoverned: Bool
+    /// The pane's committed cards — only read by the draft branch, to enable the
+    /// templates menu's "save this stack…" and drive its `paneCards`.
+    var paneCards: [StackCard] = []
 
     @State private var cfgOpen = false
     @State private var schedOpen = false
     @State private var guardOpen = false
     @State private var evalOpen = false
+    @FocusState private var goalFocused: Bool
+
+    private var isDraft: Bool { card.status == .draft }
+    private var hot: Bool { isDraft && draftIsHot(card) }
 
     private var liveAgent: LiveAgent? { card.taskId.flatMap { model.liveAgents[$0] } }
     private var orb: ForgeOrbState { CardOrb.state(for: card.taskId, in: model.liveAgents) }
@@ -31,6 +39,21 @@ struct StackCardView: View {
     private var scheduleActive: Bool { card.scheduled && !scheduleGoverned }
     private var showSep: Bool { card.scheduled || guardsOn || evalsOn }
 
+    /// Route a card mutation to the right store op: a draft edits the pane's
+    /// `draft`; a committed card edits itself in `pane.cards`.
+    private func writeCard(_ mutate: (inout StackCard) -> Void) {
+        if isDraft { store.updateDraftInPane(paneKey, mutate) }
+        else { store.updateCardInPane(paneKey, card.id, mutate) }
+    }
+
+    /// Commit the draft: mints a real card at the top of the stack and a fresh
+    /// empty draft, then re-focuses the (now-empty) goal field for rapid entry.
+    private func commit() {
+        guard hot else { return }
+        store.commitDraft(paneKey)
+        goalFocused = true
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             agentBody
@@ -38,29 +61,34 @@ struct StackCardView: View {
             cardbar
             if cfgOpen {
                 ConfigDrawerView(config: card.config, paneDefaults: paneDefaults, repoOptions: repoOptions) { next in
-                    store.updateCardInPane(paneKey, card.id) { $0.config = next }
+                    writeCard { $0.config = next }
                 }
             }
         }
         .padding(13)
         .background(Konjo.bg1.opacity(0.6))
-        .overlay(RoundedRectangle(cornerRadius: 9).stroke(borderColor, lineWidth: 1))
+        .overlay(
+            RoundedRectangle(cornerRadius: 9)
+                .stroke(borderColor, style: StrokeStyle(lineWidth: 1, dash: (isDraft && !hot) ? [4, 3] : []))
+        )
         .clipShape(RoundedRectangle(cornerRadius: 9))
         .overlay(alignment: .topTrailing) { runtag }
     }
 
     private var borderColor: Color {
+        if isDraft { return hot ? Konjo.stackTeal.opacity(0.55) : Color.white.opacity(0.18) }
         switch card.status {
         case .running: return orb.glowColor.opacity(0.45)
         case .queued: return orb.glowColor.opacity(0.4)
         case .done: return orb.glowColor.opacity(0.35)
-        case .idle: return Konjo.line
+        case .idle, .draft: return Konjo.line
         }
     }
 
     // MARK: Status runtag badge (the mockup's `.runtag`, top-right)
 
     private var statusLabel: String {
+        if isDraft { return "new prompt" }
         if card.status == .running, let it = card.iteration {
             return "running · iter \(it.current)/\(it.total)"
         }
@@ -68,11 +96,12 @@ struct StackCardView: View {
     }
 
     private var statusColor: Color {
+        if isDraft { return hot ? Konjo.stackTeal : Konjo.fgDim }
         switch card.status {
         case .running: return Konjo.flame
         case .queued: return Konjo.ice
         case .done: return Konjo.jade
-        case .idle: return Konjo.fgDim
+        case .idle, .draft: return Konjo.fgDim
         }
     }
 
@@ -87,30 +116,62 @@ struct StackCardView: View {
         .foregroundStyle(statusColor)
         .padding(.horizontal, 8).padding(.vertical, 2)
         .background(Konjo.bg)
-        .overlay(RoundedRectangle(cornerRadius: 3).stroke(statusColor.opacity(card.status == .idle ? 0.2 : 0.5), lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 3).stroke(statusColor.opacity((card.status == .idle || (isDraft && !hot)) ? 0.2 : 0.5), lineWidth: 1))
         .clipShape(RoundedRectangle(cornerRadius: 3))
         .offset(x: -14, y: -10)
-        .help(CardOrb.label(for: card))
+        .help(isDraft ? "new prompt — configure, then add" : CardOrb.label(for: card))
         .allowsHitTesting(false)
     }
 
-    // MARK: Agent body — idle staged goal, or live transcript
+    // MARK: Body — draft (templates + goal field) or committed (spec + live agent)
 
     @ViewBuilder private var agentBody: some View {
-        HStack(spacing: 9) {
-            if let alias = card.alias {
-                Text("⌘:\(alias)").font(Konjo.mono(12.5)).foregroundStyle(Konjo.stackTeal)
-                    .padding(.horizontal, 10).padding(.vertical, 3)
-                    .overlay(RoundedRectangle(cornerRadius: 7).stroke(Konjo.stackTeal.opacity(0.4), lineWidth: 1))
+        if isDraft {
+            draftHeader
+            goalField
+        } else {
+            committedSpec
+            if card.status == .running, let it = card.iteration {
+                iterBar(it)
             }
-            Text("\"\(card.goal)\"").font(Konjo.mono(14)).foregroundStyle(Konjo.fgDim)
+            if let agent = liveAgent, card.status == .running {
+                LiveOutputView(blocks: TranscriptBuilder.build(from: agent), streaming: agent.active)
+            }
+        }
+    }
+
+    private var draftHeader: some View {
+        HStack(spacing: 9) {
+            TemplatesMenuView(store: store, templateStore: model.stackTemplateStore,
+                              paneKey: paneKey, draft: card, paneCards: paneCards)
+            ProvenanceChips(alias: card.alias, tpl: card.tpl, tplKind: card.tplKind)
             Spacer(minLength: 0)
         }
-        if card.status == .running, let it = card.iteration {
-            iterBar(it)
-        }
-        if let agent = liveAgent, card.status == .running {
-            LiveOutputView(blocks: TranscriptBuilder.build(from: agent), streaming: agent.active)
+    }
+
+    /// Goal on its own full-width inset line (a chip-adjacent field truncated in
+    /// the mockup). Still honors `:alias @repo ×N` on commit via `finalizeDraft`.
+    private var goalField: some View {
+        TextField("describe the prompt or goal…  (:alias @repo ×N ok)", text: goalBinding)
+            .textFieldStyle(.plain).font(Konjo.mono(14)).foregroundStyle(Konjo.fg)
+            .focused($goalFocused)
+            .onSubmit { commit() }
+            .padding(.horizontal, 11).padding(.vertical, 9)
+            .background(Color.white.opacity(0.02))
+            .overlay(RoundedRectangle(cornerRadius: 7).stroke(goalFocused ? Konjo.stackTeal.opacity(0.4) : Konjo.line2, lineWidth: 1))
+            .clipShape(RoundedRectangle(cornerRadius: 7))
+            .padding(.top, 10)
+    }
+
+    private var goalBinding: Binding<String> {
+        Binding(get: { card.goal }, set: { v in store.updateDraftInPane(paneKey) { $0.goal = v } })
+    }
+
+    private var committedSpec: some View {
+        HStack(spacing: 9) {
+            ProvenanceChips(alias: card.alias, tpl: card.tpl, tplKind: card.tplKind)
+            Text("\"\(card.goal)\"").font(Konjo.mono(14)).foregroundStyle(Konjo.fgDim)
+            Spacer(minLength: 0)
         }
     }
 
@@ -142,12 +203,12 @@ struct StackCardView: View {
         }
     }
 
-    // MARK: Cardbar
+    // MARK: Cardbar (live on the draft too — configure, then commit)
 
     private var cardbar: some View {
         HStack(spacing: 6) {
             IterationPill(value: card.maxIterations, offAtZero: true) { delta in
-                store.updateCardInPane(paneKey, card.id) { $0.maxIterations = stepCardIterations($0.maxIterations, delta) }
+                writeCard { $0.maxIterations = stepCardIterations($0.maxIterations, delta) }
             }
             CardbarButton(systemImage: "clock", active: scheduleActive, accent: FacetAccent.schedule, help: scheduleGoverned ? "schedule (governed by the stack)" : "schedule") { schedOpen = true }
                 .popover(isPresented: $schedOpen, arrowEdge: .bottom) { schedulePopover }
@@ -157,24 +218,28 @@ struct StackCardView: View {
                 .popover(isPresented: $evalOpen, arrowEdge: .bottom) { evalsPopover }
             CardbarButton(systemImage: "slider.horizontal.3", active: configOn, accent: FacetAccent.config, help: "run config") { cfgOpen.toggle() }
             Spacer()
-            CardbarButton(systemImage: "plus.square.on.square", help: "duplicate") { store.duplicateInPane(paneKey, card.id) }
-            CardbarButton(systemImage: "line.3.horizontal", help: "drag to reorder") {}
-            CardbarButton(systemImage: "trash", accent: Konjo.rose, danger: true, help: "delete") { store.removeFromPane(paneKey, card.id) }
+            if isDraft {
+                CardbarButton(systemImage: "plus", active: hot, accent: Konjo.jade, label: "add", disabled: !hot, help: "add to stack") { commit() }
+            } else {
+                CardbarButton(systemImage: "plus.square.on.square", help: "duplicate") { store.duplicateInPane(paneKey, card.id) }
+                CardbarButton(systemImage: "line.3.horizontal", help: "drag to reorder") {}
+                CardbarButton(systemImage: "trash", accent: Konjo.rose, danger: true, help: "delete") { store.removeFromPane(paneKey, card.id) }
+            }
         }
         .padding(.top, 12)
     }
 
     private var schedulePopover: some View {
         SchedulePopoverView(scheduled: card.scheduled, cron: card.cron,
-            onToggle: { store.updateCardInPane(paneKey, card.id) { $0.scheduled.toggle() } },
-            onChange: { next in store.updateCardInPane(paneKey, card.id) { $0.cron = next } })
+            onToggle: { writeCard { $0.scheduled.toggle() } },
+            onChange: { next in writeCard { $0.cron = next } })
     }
     private var guardsPopover: some View {
         GuardrailsPopoverView(scope: .loop, guardrails: card.guardrails, maxIterations: card.maxIterations,
-            onChange: { g in store.updateCardInPane(paneKey, card.id) { $0.guardrails = g } },
-            onStep: { delta in store.updateCardInPane(paneKey, card.id) { $0.maxIterations = stepCardIterations($0.maxIterations, delta) } })
+            onChange: { g in writeCard { $0.guardrails = g } },
+            onStep: { delta in writeCard { $0.maxIterations = stepCardIterations($0.maxIterations, delta) } })
     }
     private var evalsPopover: some View {
-        EvalsPopoverView(evals: card.evals) { evals in store.updateCardInPane(paneKey, card.id) { $0.evals = evals } }
+        EvalsPopoverView(evals: card.evals) { evals in writeCard { $0.evals = evals } }
     }
 }

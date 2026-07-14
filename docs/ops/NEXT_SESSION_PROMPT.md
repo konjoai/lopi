@@ -1,24 +1,22 @@
-# Next Session — after Creation-Flow-1 (web)
+# Next Session — after Creation-Flow-1 (macOS)
 
-`Creation-Flow-1 (web)` (`[0.6.0]`) replaced the `/stacks` composer with a live
-draft `StackCard` + a sectioned templates dropdown, with localStorage-only
-template persistence. Two follow-ups fall out of it:
+Both halves of Creation-Flow-1 have landed: `[0.6.0]` (web) and `[0.7.0]`
+(macOS) each replaced their composer with a live draft `StackCard` + a sectioned
+templates control. The models are 1:1; the tests are literal ports.
 
-1. **`Creation-Flow-1 (macOS)` — the sibling sprint.** Port the identical model
-   to SwiftUI: `CardStatus.draft`, `tpl`/`tplKind` provenance, the pure template
-   fns (`applyPreset`/`applyPromptTemplate`/`applyStackTemplate`/
-   `stackTemplateFromCards` with the **bottom-first** round-trip), the draft
-   branch inside the one card view (no `DraftCardView` fork), and the same chip
-   color semantics. **Keep the two models identical** — same field names, same
-   ordering, same semantics. Persist templates via `UserDefaults` (the macOS
-   analogue of the web's localStorage-only, client-only store). Compile-first on
-   the M3, trust nothing until built (the standing macOS rule).
-2. **Backend template persistence — only if sharing across machines is needed.**
-   The web store is deliberately client-only (one browser profile, no sync). If
-   templates ever need to be shared across machines/users, that needs a real
-   backend: a `templates` table + REST endpoints, and a decision on scope
-   (per-user vs. per-repo vs. global). Out of scope until the need is real — do
-   not build durability we can't yet justify.
+**The one real limitation left: web and macOS keep *separate* template
+libraries and do not sync.** Web persists to `localStorage`, macOS to
+`UserDefaults`, both under `lopi.templates.v1` with the same JSON shape — but
+they are two physical stores that never talk. A template saved on one surface is
+invisible on the other, and neither survives moving to a new machine/browser.
+
+**Next sprint (only if the need is real): backend template persistence/sync.**
+So a user's template library follows them across machines and surfaces. This
+needs a real backend — a `templates` table + REST endpoints (`GET/POST/DELETE`),
+a scope decision (per-user vs. per-repo vs. global), and both clients switched
+from their local store to the API with an offline fallback. Do not build this
+until the cross-machine need is real — client-only was the deliberate, honest
+choice for the creation-flow sprints, not an oversight.
 
 ---
 

@@ -1,11 +1,12 @@
 import SwiftUI
 
 /// StackPaneView — one pane's chrome: header (logo + title + status dot + close),
-/// top composer (new prompts prepend), the card stack flowing down to the
-/// currently-executing loop at the bottom, and either the purple stack control
-/// dock (2+ cards) or the bare-pane run button (≤1 card). Unify-2 §3: a 0- or
-/// 1-card pane is a *bare* box that reads like the old Forge pane; the dock and
-/// inter-card connectors appear only once a second loop makes it a real stack.
+/// a pinned **draft** card (Creation-Flow-1 — the composer replacement; the thing
+/// you compose is the card you'll get), the committed card stack flowing down to
+/// the currently-executing loop at the bottom, and either the purple stack
+/// control dock (2+ cards) or the bare-pane run button (≤1 card). Unify-2 §3: a
+/// 0- or 1-card pane still reads like the old Forge pane; the dock and inter-card
+/// connectors appear only once a second loop makes it a real stack.
 struct StackPaneView: View {
     var store: StackStore
     var engine: StackRunEngine
@@ -13,8 +14,6 @@ struct StackPaneView: View {
     var index: Int
     var repoOptions: [StackOption]
     var onClose: (() -> Void)?
-
-    @State private var composerValue = ""
 
     private var paneDefaults: StackDefaults { pane.config.defaults }
     private var scheduleGoverned: Bool { perLoopScheduleGoverned(pane.config) }
@@ -24,7 +23,6 @@ struct StackPaneView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            composer
             cardStack
             footer
         }
@@ -50,41 +48,20 @@ struct StackPaneView: View {
         .overlay(Rectangle().fill(Konjo.line).frame(height: 1), alignment: .bottom)
     }
 
-    // MARK: Composer (prepends)
-
-    private var composer: some View {
-        HStack(spacing: 11) {
-            Text(">").font(Konjo.mono(15)).foregroundStyle(Konjo.flame)
-            TextField("add a prompt or goal…", text: $composerValue)
-                .textFieldStyle(.plain).font(Konjo.mono(14)).foregroundStyle(Konjo.fg)
-                .onSubmit(submit)
-            Button(action: submit) {
-                Image(systemName: "plus").font(.system(size: 14))
-                    .foregroundStyle(composerValue.trimmed.isEmpty ? Konjo.fgMute : Konjo.flame)
-                    .frame(width: 34, height: 34)
-                    .overlay(RoundedRectangle(cornerRadius: 7).stroke(Konjo.line2, lineWidth: 1))
-            }
-            .buttonStyle(.plain).disabled(composerValue.trimmed.isEmpty).help("add to stack")
-        }
-        .padding(.horizontal, 18).padding(.vertical, 13)
-        .overlay(Rectangle().fill(Konjo.line).frame(height: 1), alignment: .bottom)
-    }
-
-    private func submit() {
-        let text = composerValue.trimmed
-        guard !text.isEmpty else { return }
-        store.addToPane(pane.key, buildCard(text))
-        composerValue = ""
-    }
-
-    // MARK: Card stack (newest at top → oldest/next-to-run at the bottom)
+    // MARK: Card stack — pinned draft, then committed loops (newest at top →
+    //        oldest/next-to-run at the bottom)
 
     private var cardStack: some View {
         ScrollView {
             VStack(spacing: 2) {
-                if pane.cards.isEmpty {
-                    emptyState
-                } else {
+                // The draft *is* the composer. Pinned at the top; it lives on
+                // pane.draft (never in pane.cards), so it's excluded from
+                // run/reorder/loop-count. The committed cards flow down below it.
+                StackCardView(store: store, paneKey: pane.key, card: pane.draft, index: -1,
+                              paneDefaults: paneDefaults, repoOptions: repoOptions,
+                              scheduleGoverned: scheduleGoverned, paneCards: pane.cards)
+                if !pane.cards.isEmpty {
+                    draftConnector
                     ForEach(Array(pane.cards.enumerated()), id: \.element.id) { i, card in
                         StackCardView(store: store, paneKey: pane.key, card: card, index: i,
                                       paneDefaults: paneDefaults, repoOptions: repoOptions, scheduleGoverned: scheduleGoverned)
@@ -99,12 +76,13 @@ struct StackPaneView: View {
         .frame(maxHeight: .infinity)
     }
 
-    private var emptyState: some View {
-        VStack(spacing: 6) {
-            Text("no loops yet").font(Konjo.sans(13, weight: .semibold)).foregroundStyle(Konjo.fgDim)
-            Text("add one above").font(Konjo.mono(10)).foregroundStyle(Konjo.fgMute)
-        }
-        .frame(maxWidth: .infinity).padding(.vertical, 40)
+    /// The short visual connector between the pinned draft and the committed
+    /// stack (purely visual — unlike StackConnectorView, no "add between" here).
+    private var draftConnector: some View {
+        DashedVLine()
+            .stroke(Konjo.fgMute, style: StrokeStyle(lineWidth: 2, dash: [4, 3]))
+            .frame(width: 2, height: 26)
+            .padding(.vertical, 2)
     }
 
     // MARK: Footer — dock (stack) or bare-run (≤1 card)
@@ -134,6 +112,13 @@ struct StackPaneView: View {
     }
 }
 
-private extension String {
-    var trimmed: String { trimmingCharacters(in: .whitespacesAndNewlines) }
+/// A one-segment vertical line, dashed via the caller's `StrokeStyle` — the
+/// draft→stack connector in `StackPaneView`.
+private struct DashedVLine: Shape {
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        p.move(to: CGPoint(x: rect.midX, y: rect.minY))
+        p.addLine(to: CGPoint(x: rect.midX, y: rect.maxY))
+        return p
+    }
 }

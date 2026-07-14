@@ -144,13 +144,25 @@ func defaultStackConfig() -> StackConfig {
 // MARK: - Pane state
 
 /// One independent stack pane — `key` is its stable identity for keyed ops.
+/// `draft` is the pane's live composer-replacement card (Creation-Flow-1),
+/// pinned above `cards` and never a member of it. The custom init defaults it to
+/// a fresh draft so every existing construction site stays unchanged.
 struct StackPaneState: Codable, Hashable, Identifiable {
     var key: String
     var title: String
     var cards: [StackCard]
     var config: StackConfig
+    var draft: StackCard
 
     var id: String { key }
+
+    init(key: String, title: String, cards: [StackCard], config: StackConfig, draft: StackCard = makeDraft()) {
+        self.key = key
+        self.title = title
+        self.cards = cards
+        self.config = config
+        self.draft = draft
+    }
 }
 
 // MARK: - Pane-level defaults a card's config falls back to (the 3 WIRED fields)

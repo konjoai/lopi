@@ -158,6 +158,64 @@ func buildCard(_ raw: String, explicitPreset: PresetKey? = nil) -> StackCard {
     )
 }
 
+// MARK: - Draft card (Creation-Flow-1)
+
+/// A fresh draft card — the pre-commit composer replacement pinned to the top of
+/// every pane. Same shape as any card but `status == .draft`, so it renders
+/// through the one `StackCardView` with a draft branch rather than a forked
+/// `DraftCardView`. Never enters `pane.cards`. Mirrors the web `makeDraft`.
+func makeDraft() -> StackCard {
+    var d = buildCard("")
+    d.status = .draft
+    return d
+}
+
+/// True once a draft carries enough to commit: an alias, a non-empty goal, or a
+/// template origin. Drives the draft's `hot` (teal) state and the `+ add`
+/// button's enabled state. Mirrors the web `draftIsHot`.
+func draftIsHot(_ draft: StackCard) -> Bool {
+    draft.alias != nil
+        || !draft.goal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        || draft.tpl != nil
+}
+
+/// Commit a draft into a real card. A draft configured via the templates menu
+/// (preset or template applied) commits as-is; a still-raw draft honors the
+/// inline `:alias @repo ×N` tokens typed into its goal field — the power-user
+/// path the retired composer supported. Only ever flips `status` to `.idle`;
+/// never mutates the pane. Mirrors the web `finalizeDraft`.
+func finalizeDraft(_ draft: StackCard) -> StackCard {
+    if draft.preset != nil || draft.tpl != nil {
+        var c = draft
+        c.status = .idle
+        return c
+    }
+    let parsed = parseComposerInput(draft.goal)
+    if parsed.alias == nil, parsed.repo == nil, parsed.loopN == nil {
+        var c = draft
+        c.status = .idle
+        c.goal = parsed.goal
+        c.literal = true
+        return c
+    }
+    var built = buildCard(draft.goal)
+    built.id = draft.id
+    built.status = .idle
+    built.scheduled = draft.scheduled
+    built.cron = draft.cron
+    built.guardrails = draft.guardrails
+    // Web: `config: { ...built.config, ...draft.config }` — the draft's own
+    // (drawer-set) overrides win per-field; inline @repo survives otherwise.
+    var merged = built.config
+    if let v = draft.config.model { merged.model = v }
+    if let v = draft.config.effort { merged.effort = v }
+    if let v = draft.config.repo { merged.repo = v }
+    if let v = draft.config.branch { merged.branch = v }
+    if let v = draft.config.autonomy { merged.autonomy = v }
+    built.config = merged
+    return built
+}
+
 // MARK: - Pure array ops (unit-tested directly)
 
 /// Prepend a card to the top of the stack.
