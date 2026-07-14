@@ -5,13 +5,15 @@
   stack IS where these defaults live; every loop's `ConfigDrawer.svelte`
   override falls back to exactly this object). `model`/`effort`/`repo` are
   WIRED (resolved into every loop's real `CreateTaskOptions` at the payload
-  step, `stores/stack.ts::cardToTaskPayload`); `branch`/`autonomy` are
-  client-only, same as at loop scope. Reuses `Dropdown.svelte` the same way
-  `ConfigDrawer.svelte` does — not a fork, a second mount of the same
-  primitive over stack-scoped data.
+  step, `stores/stack.ts::cardToTaskPayload`); `autonomy` is client-only, same
+  as at loop scope. `branch` reaches the server as a planning constraint and
+  offers the selected repo's real branches (`stores/branches.ts`). Reuses
+  `Dropdown.svelte` the same way `ConfigDrawer.svelte` does — not a fork, a
+  second mount of the same primitive over stack-scoped data.
 -->
 <script lang="ts">
-  import { type StackDefaults, AUTONOMY_OPTIONS, BRANCH_OPTIONS } from '$lib/stores/stackDefaults';
+  import { type StackDefaults, AUTONOMY_OPTIONS, resolveBranch } from '$lib/stores/stackDefaults';
+  import { branchesByRepo, branchOptionsFor, ensureBranches } from '$lib/stores/branches';
   import { MODEL_OPTIONS, EFFORT_OPTIONS, type Option } from '$lib/stores/controls';
   import { closePopover } from './Popover.svelte';
   import Dropdown from '$lib/components/ui/Dropdown.svelte';
@@ -22,6 +24,12 @@
   export let repoOptions: Option[] = [];
 
   $: effectiveRepoOptions = repoOptions.length ? repoOptions : [{ value: defaults.repo, label: defaults.repo || 'auto' }];
+
+  $: void ensureBranches(defaults.repo);
+  $: branchOptions = branchOptionsFor($branchesByRepo, defaults.repo);
+  // Store what we show — see the same note in `ConfigDrawer.svelte`.
+  $: resolved = resolveBranch(defaults.branch, branchOptions.map((o) => o.value), $branchesByRepo[defaults.repo]?.head ?? '');
+  $: if (resolved !== defaults.branch) onChange({ branch: resolved });
 </script>
 
 <div class="ph">{@html ICONS.sliders}default config · every loop inherits</div>
@@ -33,10 +41,10 @@
     <Dropdown dense label="effort" icon={ICONS.gauge} value={defaults.effort} options={EFFORT_OPTIONS} on:change={(e) => onChange({ effort: e.detail })} />
   </div>
   <div class="cfgrow repo">
-    <Dropdown dense label="repo" icon={ICONS.folder} value={defaults.repo} options={effectiveRepoOptions} on:change={(e) => onChange({ repo: e.detail })} />
+    <Dropdown dense searchable label="repo" icon={ICONS.folder} value={defaults.repo} options={effectiveRepoOptions} on:change={(e) => onChange({ repo: e.detail })} />
   </div>
   <div class="cfgrow branch">
-    <Dropdown dense label="branch" icon={ICONS.branch} value={defaults.branch} options={BRANCH_OPTIONS} on:change={(e) => onChange({ branch: e.detail })} />
+    <Dropdown dense label="branch" icon={ICONS.branch} value={resolved} options={branchOptions} on:change={(e) => onChange({ branch: e.detail })} />
   </div>
   <div class="cfgrow autonomy">
     <Dropdown dense label="autonomy" icon={ICONS.ladder} value={defaults.autonomy} options={AUTONOMY_OPTIONS} on:change={(e) => onChange({ autonomy: e.detail })} />

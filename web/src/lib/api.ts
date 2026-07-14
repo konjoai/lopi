@@ -428,7 +428,20 @@ export const setLoopEscalation = (enabled: boolean) =>
   );
 
 // ── Repos (launch-control repo dropdown) ──────────────────────────────────────
-export const listRepos = () => request<{ repos: string[] }>('/api/repos');
+/** Git repos the server can dispatch to. `path` is the value a launch uses;
+ *  `owner`/`name` are labelling facts (`owner` is null with no GitHub origin).
+ *  `stores/repoMenu.ts` turns these into the dropdown's options. */
+export const listRepos = () =>
+  request<{ repos: { path: string; owner: string | null; name: string }[] }>('/api/repos');
+
+/** Local branches of `repo` plus its current HEAD, for the branch dropdown.
+ *  The only query-string endpoint in this module — every other parameterized
+ *  call takes a path segment, but the server reads `repo` from the query. Repo
+ *  values are filesystem paths, so the slashes must be encoded. */
+export const listBranches = (repo: string) =>
+  request<{ branches: string[]; default: string }>(
+    `/api/branches?repo=${encodeURIComponent(repo)}`
+  );
 
 // ── Config + version ──────────────────────────────────────────────────────────
 export const getConfig = () =>

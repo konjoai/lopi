@@ -1,12 +1,15 @@
 <!--
   ConfigDrawer — the sliders-button inline drawer with five per-loop
   overrides of the pane defaults. `model`/`effort`/`repo` are WIRED (real
-  `CreateTaskRequest` fields); `branch`/`autonomy` are client-only (backend
-  gap — not yet exposed server-side). Built on `Dropdown.svelte`, not a popover.
+  `CreateTaskRequest` fields); `autonomy` is client-only. `branch` reaches the
+  server as a planning constraint (`paneSubmitPayload`) and its options are the
+  selected repo's real branches, fetched via `stores/branches.ts`. Built on
+  `Dropdown.svelte`, not a popover.
 -->
 <script lang="ts">
   import { type StackCard as StackCardT, type CardConfig, updateCardInPane } from '$lib/stores/stack';
-  import { type StackDefaults, AUTONOMY_OPTIONS, BRANCH_OPTIONS } from '$lib/stores/stackDefaults';
+  import { type StackDefaults, AUTONOMY_OPTIONS, resolveBranch } from '$lib/stores/stackDefaults';
+  import { branchesByRepo, branchOptionsFor, ensureBranches } from '$lib/stores/branches';
   import { MODEL_OPTIONS, EFFORT_OPTIONS, type Option } from '$lib/stores/controls';
   import Dropdown from '$lib/components/ui/Dropdown.svelte';
   import { ICONS } from './icons';
@@ -30,6 +33,17 @@
   $: effectiveRepoOptions = repoOptions.length
     ? repoOptions
     : [{ value: paneDefaults.repo, label: paneDefaults.repo || 'auto' }];
+
+  // This card's own repo — not the pane's — drives its branch list.
+  $: repo = card.config.repo ?? paneDefaults.repo;
+  $: void ensureBranches(repo);
+  $: branchOptions = branchOptionsFor($branchesByRepo, repo);
+  $: branch = card.config.branch ?? paneDefaults.branch;
+  // Store what we show. Displaying a resolved branch while leaving a stale one
+  // in `config` would launch against a target the user never saw. Converges:
+  // once patched, `branch` equals `resolved` and this stops firing.
+  $: resolved = resolveBranch(branch, branchOptions.map((o) => o.value), $branchesByRepo[repo]?.head ?? '');
+  $: if (resolved !== branch) patchConfig({ branch: resolved });
 </script>
 
 <div class="cfgdrawer">
@@ -56,6 +70,7 @@
   <div class="chip repo">
     <Dropdown
       dense
+      searchable
       label="repo"
       icon={ICONS.folder}
       value={card.config.repo ?? paneDefaults.repo}
@@ -68,8 +83,8 @@
       dense
       label="branch"
       icon={ICONS.branch}
-      value={card.config.branch ?? paneDefaults.branch}
-      options={BRANCH_OPTIONS}
+      value={resolved}
+      options={branchOptions}
       on:change={(e) => patchConfig({ branch: e.detail })}
     />
   </div>

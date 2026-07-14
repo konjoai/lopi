@@ -16,11 +16,11 @@ struct ForgeView: View {
     private var engine: StackRunEngine { model.stackEngine }
 
     /// Repo dropdown options for the config popovers/drawers — server-discovered
-    /// git repos, shown by basename, with a leading "no override" entry.
-    private var repoOptions: [StackOption] {
-        [StackOption(value: "", label: "— repo —")]
-            + model.repos.map { StackOption(value: $0, label: ($0 as NSString).lastPathComponent) }
-    }
+    /// git repos labelled `owner/name` and grouped by owner, with a leading
+    /// "auto" (no override) entry. The labelling, grouping and order rules are
+    /// the same pure code web's `/stacks` runs (`Stacks/RepoMenu.swift`), pinned
+    /// to one shared golden fixture.
+    private var repoChoices: [StackOption] { repoOptions(model.repos) }
 
     var body: some View {
         grid
@@ -56,7 +56,7 @@ struct ForgeView: View {
             if store.panes.indices.contains(idx) {
                 let pane = store.panes[idx]
                 StackPaneView(
-                    store: store, engine: engine, pane: pane, index: idx, repoOptions: repoOptions,
+                    store: store, engine: engine, pane: pane, index: idx, repoOptions: repoChoices,
                     onClose: store.panes.count > 1 ? { closePane(pane.key) } : nil)
             }
         }

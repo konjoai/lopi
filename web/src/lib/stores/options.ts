@@ -17,6 +17,10 @@ export interface Option {
   value: string;
   label: string;
   hint?: string;
+  /** Section this option belongs to, or absent to pin it above every section.
+   *  Only the repo catalog groups; every other field leaves this unset and so
+   *  renders as one flat list — see `stores/optionMenu.ts`. */
+  group?: string;
 }
 
 /** Claude models lopi can drive, newest first. */

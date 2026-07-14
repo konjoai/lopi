@@ -6,8 +6,9 @@ import Foundation
 // MARK: - Stack defaults (per-pane baseline for every card's config override)
 
 /// Per-stack default config every loop's `CardConfig` override falls back to.
-/// `model`/`effort`/`repo` are real `CreateTaskRequest` fields; `branch`/
-/// `autonomy` are client-only.
+/// `model`/`effort`/`repo` are real `CreateTaskRequest` fields; `autonomy` is
+/// client-only. `branch` has no field of its own but still reaches the server:
+/// `StackPayload` turns it into a "Target branch: …" planning constraint.
 struct StackDefaults: Codable, Hashable {
     var model: String
     var effort: String
@@ -22,6 +23,10 @@ struct StackOption: Hashable {
     var value: String
     var label: String
     var hint: String = ""
+    /// Section this option belongs to, or `nil` to pin it above every section.
+    /// Only the repo catalog groups; every other field leaves this `nil` and so
+    /// renders as one flat list — see `OptionMenu.swift`.
+    var group: String? = nil
 }
 
 /// The real `AutonomyLevel` ladder (`crates/lopi-core/src/loop_config.rs`).
@@ -32,12 +37,30 @@ let AUTONOMY_OPTIONS: [StackOption] = [
     StackOption(value: "L4", label: "L4 · Auto-merge", hint: "auto-merge on pass")
 ]
 
-/// Placeholder branch list — there is no `/api/branches` seed in the pure
-/// layer, so this is a static convenience (same honesty caveat as web).
-let BRANCH_OPTIONS: [StackOption] = [
-    StackOption(value: "main", label: "main"),
-    StackOption(value: "dev", label: "dev")
-]
+/// The branch a fresh stack starts on, before any repo has been picked. The
+/// live dropdowns no longer read this — they derive their options from
+/// `AppModel.branchesByRepo`, fetched from `/api/branches`. This is only the
+/// cold-start seed for `DEFAULT_STACK_DEFAULTS`, which lives in this
+/// Foundation-only pure layer and so cannot reach the network.
+let SEED_BRANCH = "main"
+
+/// Pick the branch to display for a repo, given that repo's real branches.
+///
+/// An empty `branches` means we have no knowledge of the repo — unfetched, or
+/// the fetch failed — so `current` is returned untouched rather than being
+/// second-guessed away. Otherwise an explicit, still-valid choice always wins;
+/// only an unset or now-invalid branch falls back to the repo's HEAD. `branch`
+/// is not inert: it reaches the server as a planning constraint via
+/// `StackPayload`, so showing one branch while storing another would silently
+/// launch against the wrong target.
+///
+/// The 1:1 port of web's `resolveBranch` (`stores/stackDefaults.ts`) — the two
+/// surfaces must agree on which branch a repo switch lands on.
+func resolveBranch(_ current: String, _ branches: [String], _ head: String) -> String {
+    guard let first = branches.first else { return current }
+    if !current.isEmpty, branches.contains(current) { return current }
+    return branches.contains(head) ? head : first
+}
 
 /// Worker-model options — the same catalog `LaunchControls.models` carries, kept
 /// here so the pure layer's `DEFAULT_STACK_DEFAULTS.model` matches the app.
@@ -61,7 +84,7 @@ let DEFAULT_STACK_DEFAULTS = StackDefaults(
     model: MODEL_OPTIONS[0].value,
     effort: "medium",
     repo: "",
-    branch: BRANCH_OPTIONS[0].value,
+    branch: SEED_BRANCH,
     autonomy: "L2"
 )
 

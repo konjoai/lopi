@@ -56,26 +56,30 @@ struct LaunchControlsView: View {
     @Bindable var controls: LaunchControls
     var dense = false
 
-    /// Repo dropdown options — server-discovered git repos (shown by basename),
-    /// with a leading "no override" entry.
+    /// Repo dropdown options — server-discovered git repos labelled `owner/name`
+    /// via the shared `RepoMenu` rule, with a leading "no override" entry.
+    /// Flattened: `KonjoMenu` is a native `Menu` and cannot show sections.
     private var repoOptions: [LaunchOption] {
         [LaunchOption(value: "", label: "— repo —")]
-            + model.repos.map { LaunchOption(value: $0, label: ($0 as NSString).lastPathComponent) }
+            + Lopi.repoOptions(model.repos)
+                .filter { !$0.value.isEmpty }
+                .map { LaunchOption(value: $0.value, label: $0.label) }
     }
+
+    /// The selected repo's branches, from the per-repo cache.
+    private var branches: [String] { model.branchesByRepo[controls.repo] ?? [] }
 
     /// Branch dropdown options — the selected repo's branches (defaults to the
     /// repo's default branch, no confusing "auto").
     private var branchOptions: [LaunchOption] {
-        model.branches.map { LaunchOption(value: $0, label: $0) }
+        branches.map { LaunchOption(value: $0, label: $0) }
     }
 
     /// Preselect the repo's default branch when nothing valid is chosen yet.
     private func applyDefaultBranch() {
-        if controls.branch.isEmpty || !model.branches.contains(controls.branch) {
-            controls.branch = model.defaultBranch.isEmpty
-                ? (model.branches.first ?? "")
-                : model.defaultBranch
-        }
+        controls.branch = resolveBranch(
+            controls.branch, branches, model.headBranchByRepo[controls.repo] ?? ""
+        )
     }
 
     var body: some View {
@@ -88,12 +92,12 @@ struct LaunchControlsView: View {
         }
         .task {
             await model.refreshRepos()
-            await model.refreshBranches(controls.repo)
+            await model.ensureBranches(controls.repo)
             applyDefaultBranch()
         }
         .onChange(of: controls.repo) { _, newRepo in
             Task {
-                await model.refreshBranches(newRepo)
+                await model.ensureBranches(newRepo)
                 applyDefaultBranch()
             }
         }

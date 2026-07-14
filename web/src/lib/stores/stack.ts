@@ -106,7 +106,9 @@ export function defaultCron(): CronConfig {
 /** Per-loop overrides of the pane defaults (model/effort/repo/branch/
  *  autonomy). `undefined` on any field means "inherit the pane default".
  *  `model`/`effort`/`repo` are WIRED (real `CreateTaskRequest` fields);
- *  `branch`/`autonomy` are client-only — backend gap, not yet exposed. */
+ *  `autonomy` is client-only — backend gap, not yet exposed. `branch` has no
+ *  field of its own but still reaches the server: `paneSubmitPayload` turns it
+ *  into a "Target branch: …" planning constraint. */
 export interface CardConfig {
   model?: string;
   effort?: string;

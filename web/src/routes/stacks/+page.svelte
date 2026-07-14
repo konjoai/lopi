@@ -23,17 +23,18 @@
   import StackPane from '$lib/components/stacks/StackPane.svelte';
   import { panes, addStackPane, deleteStackFromPanes } from '$lib/stores/stack';
   import type { Option } from '$lib/stores/controls';
+  import { AUTO_OPTION, repoOptions as buildRepoOptions } from '$lib/stores/repoMenu';
   import { listRepos } from '$lib/api';
 
-  let repoOptions: Option[] = [{ value: '', label: 'auto' }];
+  let repoOptions: Option[] = [AUTO_OPTION];
 
   onMount(() => {
     (async () => {
       try {
         const { repos } = await listRepos();
-        if (repos.length) {
-          repoOptions = [{ value: '', label: 'auto' }, ...repos.map((r) => ({ value: r, label: r }))];
-        }
+        // Labels, grouping and order are one pure rule shared with the macOS
+        // port and pinned by a golden fixture — see `stores/repoMenu.ts`.
+        if (repos.length) repoOptions = buildRepoOptions(repos);
       } catch {
         // Repo listing is best-effort chrome — the composer works with the
         // "auto" default if /api/repos is unreachable (e.g. static preview).
