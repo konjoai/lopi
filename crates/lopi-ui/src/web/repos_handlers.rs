@@ -237,12 +237,15 @@ mod tests {
 
         let extras = vec![
             PathBuf::from(&f),
-            PathBuf::from(&b), // already found as a sibling
+            PathBuf::from(&b),         // already found as a sibling
             far.path().join("no-git"), // not a repo — dropped
         ];
         let got = scan_repos(&PathBuf::from(&a), &extras);
 
-        assert!(got.contains(&f), "extra outside the primary's tree is listed");
+        assert!(
+            got.contains(&f),
+            "extra outside the primary's tree is listed"
+        );
         assert_eq!(
             got.iter().filter(|r| **r == b).count(),
             1,
@@ -306,8 +309,15 @@ mod tests {
         );
         let (branches, default) = git_branches(&repo);
 
-        assert_eq!(branches, vec!["base", "feat/x", "main"], "lopi/* and claude/* are dropped");
-        assert_eq!(default, "main", "HEAD is reported when it survives the filter");
+        assert_eq!(
+            branches,
+            vec!["base", "feat/x", "main"],
+            "lopi/* and claude/* are dropped"
+        );
+        assert_eq!(
+            default, "main",
+            "HEAD is reported when it survives the filter"
+        );
     }
 
     /// A run can leave the repo checked out on a generated branch. The reported
@@ -323,8 +333,14 @@ mod tests {
         let (branches, default) = git_branches(&repo);
 
         assert!(!branches.iter().any(|b| b.starts_with("lopi/")));
-        assert_eq!(default, "main", "a filtered HEAD falls back to main, not itself");
-        assert!(branches.contains(&default), "the default is always selectable");
+        assert_eq!(
+            default, "main",
+            "a filtered HEAD falls back to main, not itself"
+        );
+        assert!(
+            branches.contains(&default),
+            "the default is always selectable"
+        );
     }
 
     #[test]
@@ -337,7 +353,13 @@ mod tests {
         );
         let (branches, _) = git_branches(&repo);
 
-        assert!(branches.contains(&"lopi-ui-refactor".to_string()), "only the `lopi/` path prefix is generated, not `lopi-*`");
-        assert!(branches.contains(&"feat/claude-integration".to_string()), "`claude` mid-name is not a `claude/` prefix");
+        assert!(
+            branches.contains(&"lopi-ui-refactor".to_string()),
+            "only the `lopi/` path prefix is generated, not `lopi-*`"
+        );
+        assert!(
+            branches.contains(&"feat/claude-integration".to_string()),
+            "`claude` mid-name is not a `claude/` prefix"
+        );
     }
 }

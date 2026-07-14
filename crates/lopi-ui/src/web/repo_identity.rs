@@ -103,7 +103,9 @@ fn parse_origin_url(config: &str) -> Option<String> {
         if line.starts_with('[') {
             // git normalizes this header on write; compare loosely anyway, since
             // a hand-edited config may space or case it differently.
-            in_origin = line.replace(' ', "").eq_ignore_ascii_case("[remote\"origin\"]");
+            in_origin = line
+                .replace(' ', "")
+                .eq_ignore_ascii_case("[remote\"origin\"]");
         } else if in_origin {
             // `strip_prefix("url")` alone would also swallow `urlx = …`; the `=`
             // is what proves it's the key rather than a prefix of one.
@@ -175,14 +177,35 @@ mod tests {
     fn github_urls_parse_to_owner_and_name() {
         let cases = [
             ("git@github.com:konjoai/lopi.git", Some(("konjoai", "lopi"))),
-            ("https://github.com/konjoai/lopi.git", Some(("konjoai", "lopi"))),
+            (
+                "https://github.com/konjoai/lopi.git",
+                Some(("konjoai", "lopi")),
+            ),
             ("https://github.com/konjoai/lopi", Some(("konjoai", "lopi"))),
-            ("https://github.com/konjoai/lopi/", Some(("konjoai", "lopi"))),
-            ("ssh://git@github.com/konjoai/lopi.git", Some(("konjoai", "lopi"))),
-            ("ssh://git@github.com:22/konjoai/lopi.git", Some(("konjoai", "lopi"))),
-            ("git://github.com/konjoai/lopi.git", Some(("konjoai", "lopi"))),
-            ("https://user:p@ss@github.com/konjoai/lopi.git", Some(("konjoai", "lopi"))),
-            ("https://GitHub.com/konjoai/lopi.git", Some(("konjoai", "lopi"))),
+            (
+                "https://github.com/konjoai/lopi/",
+                Some(("konjoai", "lopi")),
+            ),
+            (
+                "ssh://git@github.com/konjoai/lopi.git",
+                Some(("konjoai", "lopi")),
+            ),
+            (
+                "ssh://git@github.com:22/konjoai/lopi.git",
+                Some(("konjoai", "lopi")),
+            ),
+            (
+                "git://github.com/konjoai/lopi.git",
+                Some(("konjoai", "lopi")),
+            ),
+            (
+                "https://user:p@ss@github.com/konjoai/lopi.git",
+                Some(("konjoai", "lopi")),
+            ),
+            (
+                "https://GitHub.com/konjoai/lopi.git",
+                Some(("konjoai", "lopi")),
+            ),
             // `.git` comes off the end only — the name is genuinely dotted.
             (
                 "https://github.com/wesleyscholl/wesleyscholl.github.io.git",
@@ -191,7 +214,10 @@ mod tests {
             // A real entry in this operator's tree: three path segments on a
             // non-GitHub host. "last two segments win" would invent the GitHub
             // owner `roneneldan`.
-            ("https://huggingface.co/datasets/roneneldan/TinyStories", None),
+            (
+                "https://huggingface.co/datasets/roneneldan/TinyStories",
+                None,
+            ),
             // Host is matched exactly, never by substring.
             ("https://github.com.evil.test/konjoai/lopi.git", None),
             ("https://notgithub.com/konjoai/lopi.git", None),
@@ -238,7 +264,8 @@ mod tests {
 
     #[test]
     fn missing_origin_section_yields_none() {
-        let config = "[core]\n\tbare = false\n[remote \"upstream\"]\n\turl = https://github.com/o/n.git\n";
+        let config =
+            "[core]\n\tbare = false\n[remote \"upstream\"]\n\turl = https://github.com/o/n.git\n";
         assert_eq!(parse_origin_url(config), None);
     }
 
@@ -255,8 +282,15 @@ mod tests {
 
         assert_eq!(got.len(), 1, "the repo is still listed");
         assert_eq!(got[0].owner, None);
-        assert_eq!(got[0].name, "no-origin-repo", "falls back to the directory name");
-        assert_eq!(got[0].path, repo.display().to_string(), "the path is untouched");
+        assert_eq!(
+            got[0].name, "no-origin-repo",
+            "falls back to the directory name"
+        );
+        assert_eq!(
+            got[0].path,
+            repo.display().to_string(),
+            "the path is untouched"
+        );
     }
 
     /// The golden fixture's `repos` array must be exactly what this server
