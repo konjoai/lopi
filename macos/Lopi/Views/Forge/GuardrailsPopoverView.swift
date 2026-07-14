@@ -90,7 +90,7 @@ struct GuardrailsPopoverView: View {
     private var stepper: some View {
         HStack(spacing: 0) {
             Button { onStep(-1) } label: { Text("−").font(Konjo.mono(14)).foregroundStyle(Konjo.sun).frame(width: 24, height: 25) }.buttonStyle(.plain)
-            Text(maxIterationsLabel(maxIterations)).font(Konjo.mono(11)).foregroundStyle(Konjo.fg).frame(width: 34)
+            Text(scope == .stack ? maxIterationsLabel(maxIterations) : cardIterationsLabel(maxIterations)).font(Konjo.mono(11)).foregroundStyle(Konjo.fg).frame(width: 34)
                 .overlay(Rectangle().fill(Konjo.line).frame(width: 1), alignment: .leading)
                 .overlay(Rectangle().fill(Konjo.line).frame(width: 1), alignment: .trailing)
             Button { onStep(1) } label: { Text("+").font(Konjo.mono(14)).foregroundStyle(Konjo.sun).frame(width: 24, height: 25) }.buttonStyle(.plain)

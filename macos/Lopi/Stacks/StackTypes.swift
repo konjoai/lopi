@@ -133,9 +133,14 @@ enum CardStatus: String, Codable, Hashable {
     case idle, queued, running, done
 }
 
-/// The backend default iteration ceiling (`default_max_iterations()`).
-let DEFAULT_MAX_ITERATIONS = 25
-/// Floor a stepper will not go below without wrapping to infinite.
+/// The default iteration ceiling a fresh card starts from. `0` = "off": the
+/// loop is disabled and the card runs a single pass (the card pill floors at 0
+/// and never reaches the backend's infinite sentinel — the payload maps an off
+/// card to a single `max_iterations: 1`). A user dials this *up* to ask for
+/// repeats.
+let DEFAULT_MAX_ITERATIONS = 0
+/// Floor the *stack* loop-count stepper will not go below without wrapping to
+/// infinite. The card pill uses `stepCardIterations` and ignores this.
 let MAX_ITERATIONS_FLOOR = 2
 
 /// Live iteration progress while a card runs.

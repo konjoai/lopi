@@ -90,14 +90,22 @@ struct StackCombo: View {
 /// by the cardbar (per-loop) and the dock (chain loop-count).
 struct IterationPill: View {
     var value: Int
+    /// Card scope floors at `0` = "off"; the dock (stack loop-count) keeps the
+    /// `∞` sentinel. Drives both the label and whether `off` reads without a `×`.
+    var offAtZero: Bool = false
     var onStep: (Int) -> Void
     @State private var hovering = false
+
+    private var displayText: String {
+        if offAtZero { return value == 0 ? "off" : "×\(value)" }
+        return "×\(maxIterationsLabel(value))"
+    }
 
     var body: some View {
         HStack(spacing: 0) {
             HStack(spacing: 5) {
                 Image(systemName: "arrow.triangle.2.circlepath").font(.system(size: 11, weight: .bold))
-                Text("×\(maxIterationsLabel(value))").font(Konjo.mono(11, weight: .bold))
+                Text(displayText).font(Konjo.mono(11, weight: .bold))
             }
             .padding(.horizontal, 9).frame(height: 29)
             if hovering {

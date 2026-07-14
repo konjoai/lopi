@@ -279,21 +279,24 @@
      run-stack action). Same warm accent as the dock's `.runmain`. */
   .barerun {
     padding-top: 13px;
+    display: flex;
+    justify-content: center;
   }
   .barerunbtn {
-    display: flex;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 9px;
-    width: 100%;
+    gap: 8px;
     background: linear-gradient(180deg, #ffb648, #ff9500);
     color: #231000;
     border: none;
-    border-radius: 8px;
-    padding: 12px;
+    border-radius: 9px;
+    padding: 12px 26px;
     font-size: 13px;
     font-weight: 700;
     cursor: pointer;
+    white-space: nowrap;
+    box-shadow: 0 5px 18px rgba(255, 149, 0, 0.28);
   }
   .barerunbtn :global(svg) {
     width: 15px;

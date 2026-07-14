@@ -150,7 +150,7 @@ struct StackControlDockView: View {
                     Image(systemName: phase == .running ? "pause.fill" : "play.fill").font(.system(size: 13, weight: .bold))
                     Text(runLabel).font(Konjo.sans(13, weight: .bold))
                 }
-                .frame(maxWidth: .infinity).padding(.vertical, 12)
+                .padding(.horizontal, 26).padding(.vertical, 12)
                 .background(LinearGradient(colors: [Color(hex: 0xFFB648), Konjo.flame], startPoint: .top, endPoint: .bottom))
                 .foregroundStyle(Color(hex: 0x231000))
             }

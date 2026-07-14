@@ -110,7 +110,7 @@ final class StackStoreTests: XCTestCase {
         XCTAssertEqual(withLoop.config.repo, "squish", "@repo grammar seeds config.repo")
 
         let plain = buildCard("a plain goal")
-        XCTAssertEqual(plain.maxIterations, 25, "no xN ⇒ default (25)")
+        XCTAssertEqual(plain.maxIterations, 0, "no xN ⇒ default off (0) — a fresh card does not loop")
         XCTAssertFalse(plain.scheduled, "fresh card is not scheduled")
         XCTAssertEqual(plain.status, .idle, "fresh card starts idle")
     }
@@ -140,6 +140,14 @@ final class StackStoreTests: XCTestCase {
         XCTAssertEqual(stepMaxIterations(0, -1), 0, "down from infinite stays infinite")
         XCTAssertEqual(maxIterationsLabel(0), "∞", "label renders infinite sentinel as ∞")
         XCTAssertEqual(maxIterationsLabel(5), "5", "label renders a finite ceiling as its number")
+
+        // Card pill: floors at 0 = "off", never wraps to infinite.
+        XCTAssertEqual(stepCardIterations(0, 1), 1, "stepping up from off lands on 1")
+        XCTAssertEqual(stepCardIterations(1, -1), 0, "stepping down from 1 reaches off (0)")
+        XCTAssertEqual(stepCardIterations(0, -1), 0, "stepping down from off stays off — never wraps to infinite")
+        XCTAssertEqual(cardIterationsLabel(0), "off", "card label renders 0 as off")
+        XCTAssertEqual(cardIterationsLabel(4), "4", "card label renders a finite ceiling as its number")
+        XCTAssertEqual(DEFAULT_MAX_ITERATIONS, 0, "a fresh card defaults to off (0)")
     }
 
     // MARK: active-state predicates
@@ -204,7 +212,7 @@ final class StackStoreTests: XCTestCase {
         XCTAssertEqual(p.goal, "do the thing", "goal verbatim")
         XCTAssertEqual(p.repo, "konjoai/lopi", "no repo override ⇒ pane default")
         XCTAssertEqual(p.options.model, "sonnet", "no model override ⇒ pane default")
-        XCTAssertEqual(p.options.maxIterations, 25, "maxIterations → max_iterations")
+        XCTAssertEqual(p.options.maxIterations, 1, "a fresh (off) card sends a single pass — off (0) maps to max_iterations 1")
         XCTAssertEqual(p.options.onFail, .stop, "default on_fail policy")
         XCTAssertNil(p.options.gate, "gate omitted when toggle off")
 
@@ -246,7 +254,7 @@ final class StackStoreTests: XCTestCase {
             Row(name: "on_fail continue", apply: { $0.guardrails.onFail = .continue }, check: { $0.options.onFail == .continue }),
             Row(name: "on_fail backoff", apply: { $0.guardrails.onFail = .backoff }, check: { $0.options.onFail == .backoff }),
             Row(name: "maxIterations 7", apply: { $0.maxIterations = 7 }, check: { $0.options.maxIterations == 7 }),
-            Row(name: "maxIterations 0 (∞ sentinel)", apply: { $0.maxIterations = 0 }, check: { $0.options.maxIterations == 0 })
+            Row(name: "maxIterations off (0) → single pass", apply: { $0.maxIterations = 0 }, check: { $0.options.maxIterations == 1 })
         ]
         for row in rows {
             var c = buildCard("table-driven row"); row.apply(&c)
@@ -270,8 +278,8 @@ final class StackStoreTests: XCTestCase {
         XCTAssertEqual(c.maxIterations, 7, "sanity: card carries the xN value")
         XCTAssertEqual(cardToTaskPayloadForRunOnce(c, defaults).options.maxIterations, 1, "Run once forces max_iterations=1")
         XCTAssertEqual(c.maxIterations, 7, "Run once never mutates the card")
-        var inf = buildCard("x"); inf.maxIterations = 0
-        XCTAssertEqual(cardToTaskPayloadForRunOnce(inf, defaults).options.maxIterations, 1, "Run once overrides even ∞")
+        var off = buildCard("x"); off.maxIterations = 0
+        XCTAssertEqual(cardToTaskPayloadForRunOnce(off, defaults).options.maxIterations, 1, "Run once on an off (0) card still sends a single pass")
     }
 
     // MARK: bare pane payload (Unify-1)

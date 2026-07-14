@@ -46,7 +46,7 @@ struct StackCardView: View {
         .background(Konjo.bg1.opacity(0.6))
         .overlay(RoundedRectangle(cornerRadius: 9).stroke(borderColor, lineWidth: 1))
         .clipShape(RoundedRectangle(cornerRadius: 9))
-        .overlay(alignment: .topTrailing) { orbPip }
+        .overlay(alignment: .topTrailing) { runtag }
     }
 
     private var borderColor: Color {
@@ -58,16 +58,38 @@ struct StackCardView: View {
         }
     }
 
-    // MARK: Orb pip (the card's sole status vocabulary)
+    // MARK: Status runtag badge (the mockup's `.runtag`, top-right)
 
-    private var orbPip: some View {
-        KonjoOrb(
-            phase: liveAgent?.phase ?? "idle", activity: liveAgent?.activity ?? 0,
-            pressure: liveAgent?.pressure ?? 0, health: liveAgent?.testPassRate ?? 0.85,
-            stimulus: liveAgent?.stimulus ?? .distantPast, stimulusKind: liveAgent?.stimulusKind ?? "request",
-            size: 18, glowColor: orb.glowColor, spinSpeed: orb.spinSpeed, pulseRate: orb.pulseRate,
-            glowIntensity: orb.glowIntensity, turbulence: orb.turbulence, special: orb.special)
-        .offset(x: -14, y: -5)
+    private var statusLabel: String {
+        if card.status == .running, let it = card.iteration {
+            return "running · iter \(it.current)/\(it.total)"
+        }
+        return card.status.rawValue
+    }
+
+    private var statusColor: Color {
+        switch card.status {
+        case .running: return Konjo.flame
+        case .queued: return Konjo.ice
+        case .done: return Konjo.jade
+        case .idle: return Konjo.fgDim
+        }
+    }
+
+    private var runtag: some View {
+        HStack(spacing: 5) {
+            if card.status == .running {
+                Circle().fill(Konjo.flame).frame(width: 5, height: 5)
+                    .shadow(color: Konjo.ember, radius: 3)
+            }
+            Text(statusLabel.uppercased()).font(Konjo.mono(9, weight: .medium)).tracking(1)
+        }
+        .foregroundStyle(statusColor)
+        .padding(.horizontal, 8).padding(.vertical, 2)
+        .background(Konjo.bg)
+        .overlay(RoundedRectangle(cornerRadius: 3).stroke(statusColor.opacity(card.status == .idle ? 0.2 : 0.5), lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: 3))
+        .offset(x: -14, y: -10)
         .help(CardOrb.label(for: card))
         .allowsHitTesting(false)
     }
@@ -88,9 +110,7 @@ struct StackCardView: View {
             iterBar(it)
         }
         if let agent = liveAgent, card.status == .running {
-            TranscriptView(blocks: TranscriptBuilder.build(from: agent), streaming: agent.active)
-                .frame(maxHeight: 220)
-                .padding(.top, 6)
+            LiveOutputView(blocks: TranscriptBuilder.build(from: agent), streaming: agent.active)
         }
     }
 
@@ -126,8 +146,8 @@ struct StackCardView: View {
 
     private var cardbar: some View {
         HStack(spacing: 6) {
-            IterationPill(value: card.maxIterations) { delta in
-                store.updateCardInPane(paneKey, card.id) { $0.maxIterations = stepMaxIterations($0.maxIterations, delta) }
+            IterationPill(value: card.maxIterations, offAtZero: true) { delta in
+                store.updateCardInPane(paneKey, card.id) { $0.maxIterations = stepCardIterations($0.maxIterations, delta) }
             }
             CardbarButton(systemImage: "clock", active: scheduleActive, accent: FacetAccent.schedule, help: scheduleGoverned ? "schedule (governed by the stack)" : "schedule") { schedOpen = true }
                 .popover(isPresented: $schedOpen, arrowEdge: .bottom) { schedulePopover }
@@ -152,7 +172,7 @@ struct StackCardView: View {
     private var guardsPopover: some View {
         GuardrailsPopoverView(scope: .loop, guardrails: card.guardrails, maxIterations: card.maxIterations,
             onChange: { g in store.updateCardInPane(paneKey, card.id) { $0.guardrails = g } },
-            onStep: { delta in store.updateCardInPane(paneKey, card.id) { $0.maxIterations = stepMaxIterations($0.maxIterations, delta) } })
+            onStep: { delta in store.updateCardInPane(paneKey, card.id) { $0.maxIterations = stepCardIterations($0.maxIterations, delta) } })
     }
     private var evalsPopover: some View {
         EvalsPopoverView(evals: card.evals) { evals in store.updateCardInPane(paneKey, card.id) { $0.evals = evals } }

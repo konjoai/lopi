@@ -244,17 +244,30 @@ func applySuite(_ evals: [EvalRef], _ suiteNames: [String]) -> [EvalRef] {
 
 // MARK: - Iteration stepper
 
-/// Step `maxIterations` by `delta`. Floors at `MAX_ITERATIONS_FLOOR`; below it
-/// wraps to the infinite sentinel (`0`). Up from infinite skips to the floor.
+/// Step the *stack* loop-count by `delta`. Floors at `MAX_ITERATIONS_FLOOR`;
+/// below it wraps to the infinite sentinel (`0`), so a goal-pursuing chain can
+/// still be set to run "until met". Up from infinite skips to the floor.
 func stepMaxIterations(_ current: Int, _ delta: Int) -> Int {
     if current == 0 { return delta > 0 ? MAX_ITERATIONS_FLOOR : 0 }
     let next = current + delta
     return next < MAX_ITERATIONS_FLOOR ? 0 : next
 }
 
-/// Display text for an iteration ceiling (`∞` for the sentinel).
+/// Display text for the *stack* loop-count pill (`∞` for the infinite sentinel).
 func maxIterationsLabel(_ maxIterations: Int) -> String {
     maxIterations == 0 ? "∞" : String(maxIterations)
+}
+
+/// Step a *card's* `maxIterations` by `delta`. Unlike the stack pill, the card
+/// floors at `0` = "off" (single run) and never wraps to the infinite sentinel.
+func stepCardIterations(_ current: Int, _ delta: Int) -> Int {
+    max(0, current + delta)
+}
+
+/// Display text for a *card's* iteration pill — `off` when disabled (`0`),
+/// the plain number otherwise.
+func cardIterationsLabel(_ maxIterations: Int) -> String {
+    maxIterations == 0 ? "off" : String(maxIterations)
 }
 
 // MARK: - Active-state predicates (drive cardbar highlighting)
