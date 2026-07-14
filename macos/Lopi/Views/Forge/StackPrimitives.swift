@@ -131,13 +131,16 @@ struct IterationPill: View {
 }
 
 /// A cardbar / dock icon button, accent-lit when its facet is active. Optional
-/// count badge (evals) and danger tint (delete).
+/// count badge (evals), text label (the draft's `+ add`), danger tint (delete),
+/// and disabled state (the `+ add` before the draft is hot).
 struct CardbarButton: View {
     var systemImage: String
     var active = false
     var accent: Color = Konjo.ice
     var count: Int? = nil
+    var label: String? = nil
     var danger = false
+    var disabled = false
     var help: String = ""
     var action: () -> Void
 
@@ -146,15 +149,59 @@ struct CardbarButton: View {
             HStack(spacing: 5) {
                 Image(systemName: systemImage).font(.system(size: 12))
                 if let count { Text("\(count)").font(Konjo.mono(9, weight: .bold)) }
+                if let label { Text(label).font(Konjo.mono(11, weight: .bold)) }
             }
-            .frame(minWidth: 29, minHeight: 29).padding(.horizontal, 7)
+            .frame(minWidth: 29, minHeight: 29).padding(.horizontal, label == nil ? 7 : 11)
             .foregroundStyle(active ? accent : Konjo.fgMute)
             .background((active ? accent.opacity(0.09) : Color.clear))
             .overlay(RoundedRectangle(cornerRadius: 6).stroke(active ? accent.opacity(0.5) : Konjo.line, lineWidth: 1))
             .clipShape(RoundedRectangle(cornerRadius: 6))
         }
         .buttonStyle(.plain)
+        .disabled(disabled)
+        .opacity(disabled ? 0.4 : 1)
         .help(help)
+    }
+}
+
+/// ProvenanceChips — a card's origin chips (Creation-Flow-1 §4). Not a card view
+/// (the "one card view" rule is about not forking StackCardView) — just the
+/// shared chip cluster the draft card and every committed card both render, so
+/// the two never drift. Color semantics match the templates menu's sections:
+///   • prompt template → a SUN chip with the name, *replacing* the teal alias chip
+///   • stack template  → a VIOLET chip with the name, PLUS the card's teal alias chip
+///   • no template     → the teal alias chip
+/// Every symbol size is constrained explicitly — an unconstrained glyph blows the
+/// chip apart (the mockup bug §4 calls out).
+struct ProvenanceChips: View {
+    var alias: String?
+    var tpl: String?
+    var tplKind: TplKind?
+
+    private var isPrompt: Bool { tplKind == .prompt && tpl != nil }
+    private var isStack: Bool { tplKind == .stack && tpl != nil }
+    // The teal alias chip shows for a stack-template loop and a no-template card,
+    // but never for a prompt template (its sun chip *is* the identity).
+    private var showAlias: Bool { alias != nil && !isPrompt }
+
+    var body: some View {
+        HStack(spacing: 9) {
+            if isPrompt, let tpl { chip(text: tpl, icon: "doc", color: Konjo.sun) }
+            if isStack, let tpl { chip(text: tpl, icon: "square.3.layers.3d", color: Konjo.stackViolet) }
+            if showAlias, let alias { chip(text: ":\(alias)", icon: "wrench.adjustable", color: Konjo.stackTeal) }
+        }
+    }
+
+    private func chip(text: String, icon: String, color: Color) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: icon).font(.system(size: 11))
+            Text(text).font(Konjo.mono(12.5))
+        }
+        .foregroundStyle(color)
+        .padding(.horizontal, 10).padding(.vertical, 3)
+        .background(color.opacity(0.08))
+        .overlay(RoundedRectangle(cornerRadius: 7).stroke(color.opacity(0.4), lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: 7))
     }
 }
 

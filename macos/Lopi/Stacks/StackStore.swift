@@ -56,6 +56,36 @@ final class StackStore {
         panes = applyToPaneCards(panes, key) { patchCard($0, id, mutate) }
     }
 
+    // MARK: Draft ops (Creation-Flow-1)
+
+    /// Patch a pane's draft card. The draft is edited in place until committed
+    /// via `commitDraft`. No-op for an unknown key. Mirrors `updateDraftInPane`.
+    func updateDraftInPane(_ key: String, _ mutate: (inout StackCard) -> Void) {
+        guard let idx = panes.firstIndex(where: { $0.key == key }) else { return }
+        mutate(&panes[idx].draft)
+    }
+
+    /// Commit a pane's draft into a real (`.idle`) card at the top of the stack
+    /// (`addCard` prepends), then mint a fresh empty draft. The one transition a
+    /// draft ever makes out of `.draft`. No-op for an unknown key.
+    func commitDraft(_ key: String) {
+        guard let idx = panes.firstIndex(where: { $0.key == key }) else { return }
+        panes[idx].cards = addCard(panes[idx].cards, finalizeDraft(panes[idx].draft))
+        panes[idx].draft = makeDraft()
+    }
+
+    /// Replace a pane's draft with a fresh empty one.
+    func resetDraft(_ key: String) {
+        guard let idx = panes.firstIndex(where: { $0.key == key }) else { return }
+        panes[idx].draft = makeDraft()
+    }
+
+    /// Drop a whole stack template into a pane at once, in the correct run order
+    /// (`applyStackTemplate` — first loop at the bottom).
+    func applyStackTemplateToPane(_ key: String, _ tpl: StackTemplate) {
+        panes = applyToPaneCards(panes, key) { applyStackTemplate(tpl, into: $0) }
+    }
+
     // MARK: Stack-level config + pane ops
 
     /// Patch a pane's stack-level config via a mutating closure.

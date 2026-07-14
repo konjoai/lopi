@@ -83,6 +83,11 @@ final class AppModel {
     /// the Forge grid re-renders as cards/config change.
     let stackStore = StackStore()
 
+    /// The per-machine template library (UserDefaults-backed, client-only, not
+    /// synced with web) — Creation-Flow-1. Observable so the templates menu
+    /// re-renders as templates are saved.
+    let stackTemplateStore = StackTemplateStore()
+
     /// The stack-run sequencer. Built lazily on first access so its injected
     /// seams can capture a fully-initialized `self` (the classic init chicken-and-
     /// egg — the engine references `client`/`liveAgents`/`stackStore`, none of

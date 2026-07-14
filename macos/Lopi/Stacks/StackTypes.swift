@@ -128,9 +128,19 @@ struct CardConfig: Codable, Hashable {
     }
 }
 
-/// A card's lifecycle state.
+/// A card's lifecycle state. `draft` is the pre-commit state of the pane's
+/// in-composer draft card (Creation-Flow-1) — never in `pane.cards`, excluded
+/// from every run/loop-count/payload path (see `executionOrder`), and handled
+/// explicitly by every `CardStatus` switch rather than falling into a run path.
 enum CardStatus: String, Codable, Hashable {
-    case idle, queued, running, done
+    case draft, idle, queued, running, done
+}
+
+/// Which kind of template produced a card — drives the provenance chip's color
+/// (`prompt` → sun chip replacing the alias chip; `stack` → violet chip
+/// alongside the alias chip). Set iff `StackCard.tpl` is set.
+enum TplKind: String, Codable, Hashable {
+    case prompt, stack
 }
 
 /// The default iteration ceiling a fresh card starts from. `0` = "off": the
@@ -166,6 +176,13 @@ struct StackCard: Codable, Hashable, Identifiable {
     var guardrails: Guardrails
     var config: CardConfig
     var taskId: String?
+    /// Name of the template this card came from (provenance, not a binding).
+    /// Records origin only — it survives edits to `goal`/`preset` and never
+    /// tracks drift. `nil` when the card came from no template.
+    var tpl: String? = nil
+    /// Which kind of template produced it — drives the provenance chip's color.
+    /// Set iff `tpl` is set.
+    var tplKind: TplKind? = nil
 }
 
 // MARK: - Eval catalog (client-side static config)
@@ -240,6 +257,17 @@ let PRESET_CATALOG: [PresetKey: PresetDef] = [
 
 /// Ordered preset keys (declaration order matters for `suggestPreset`).
 let PRESET_KEYS: [PresetKey] = [.research, .implement, .optimize, .gain, .benchmark]
+
+/// One-line human descriptions for the templates menu's presets section
+/// (Creation-Flow-1 §5). Kept beside the catalog so web + macOS read the same
+/// copy (mirrors the web `PRESET_DESCRIPTIONS`).
+let PRESET_DESCRIPTIONS: [PresetKey: String] = [
+    .research: "explore & investigate — judge-reviewed",
+    .implement: "build a feature — full test + review suite",
+    .optimize: "improve speed — beats-best + 30-run gate",
+    .gain: "self-improve — ratchet on beats-best",
+    .benchmark: "measure variance — benchmark + 30-run gate"
+]
 
 /// Legacy `:alias` tokens mapping onto a renamed preset key. `:ratchet` → `:gain`.
 let LEGACY_ALIASES: [String: PresetKey] = ["ratchet": .gain]

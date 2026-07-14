@@ -491,4 +491,122 @@ final class StackStoreTests: XCTestCase {
         let grown = addStack([makeBlankStack("one")])
         XCTAssertEqual(grown.count, 2, "addStack appends one pane")
     }
+
+    // MARK: Creation-Flow-1 — draft card, templates, provenance (mirrors web)
+
+    func testMakeDraftAndHot() {
+        let d = makeDraft()
+        XCTAssertEqual(d.status, .draft, "makeDraft starts in the draft status")
+        XCTAssertEqual(d.goal, "", "a fresh draft has an empty goal")
+        XCTAssertFalse(draftIsHot(d), "an empty draft is not hot")
+        var withGoal = d; withGoal.goal = "fix foo"
+        XCTAssertTrue(draftIsHot(withGoal), "a draft with goal text is hot")
+        var withAlias = d; withAlias.alias = "research"
+        XCTAssertTrue(draftIsHot(withAlias), "a draft with an alias is hot")
+        var withTpl = d; withTpl.tpl = "kcqf sprint"
+        XCTAssertTrue(draftIsHot(withTpl), "a draft with a template origin is hot")
+    }
+
+    func testDraftExcludedFromRun() {
+        let runnable = buildCard("do the thing")
+        let order = executionOrder([makeDraft(), runnable])
+        XCTAssertEqual(order.count, 1, "a draft is excluded from the execution order")
+        XCTAssertEqual(order[0].id, runnable.id, "only the committed card runs")
+        XCTAssertTrue(executionOrder([makeDraft()]).isEmpty, "a lone draft yields an empty run plan")
+    }
+
+    func testFinalizeDraftFoldsInlineTokens() {
+        var draft = makeDraft()
+        draft.goal = ":research investigate X @konjoai/lopi x3"
+        let c = finalizeDraft(draft)
+        XCTAssertEqual(c.status, .idle, "finalizeDraft commits to idle")
+        XCTAssertEqual(c.preset, .research, "inline :alias resolves to its preset")
+        XCTAssertEqual(c.goal, "investigate X", "tokens are stripped from the committed goal")
+        XCTAssertEqual(c.config.repo, "konjoai/lopi", "inline @repo lands on config")
+        XCTAssertEqual(c.maxIterations, 3, "inline xN sets the iteration ceiling")
+    }
+
+    func testFinalizeDraftKeepsConfiguredDraft() {
+        var draft = applyPreset(.implement, to: makeDraft())
+        draft.goal = "build the widget"
+        let c = finalizeDraft(draft)
+        XCTAssertEqual(c.preset, .implement, "a configured draft keeps its preset on commit")
+        XCTAssertEqual(c.goal, "build the widget", "a configured draft keeps its literal goal")
+    }
+
+    func testApplyPresetClearsProvenance() {
+        var withTpl = makeDraft(); withTpl.tpl = "x"; withTpl.tplKind = .prompt
+        let p = applyPreset(.optimize, to: withTpl)
+        XCTAssertEqual(p.preset, .optimize, "applyPreset sets the preset")
+        XCTAssertEqual(p.alias, "optimize", "applyPreset sets the alias to the preset key")
+        XCTAssertEqual(p.evals, PRESET_CATALOG[.optimize]?.evals, "applyPreset attaches the preset eval suite")
+        XCTAssertNil(p.tpl, "picking a bare preset clears template provenance")
+        XCTAssertNil(p.tplKind, "picking a bare preset clears the template kind")
+    }
+
+    func testProvenanceSurvivesEdit() {
+        let tpl = PromptTemplate(id: "t1", name: "deep research", preset: .research, alias: nil, goal: "investigate")
+        let filled = applyPromptTemplate(tpl, to: makeDraft())
+        XCTAssertEqual(filled.tpl, "deep research", "applyPromptTemplate stamps the template name")
+        XCTAssertEqual(filled.tplKind, .prompt, "prompt-template provenance kind")
+        XCTAssertEqual(filled.preset, .research, "the template preset drives evals/config")
+        var edited = filled; edited.goal = "investigate something else entirely"
+        XCTAssertEqual(edited.tpl, "deep research", "provenance survives an edit to goal")
+        XCTAssertEqual(edited.tplKind, .prompt, "provenance kind survives an edit to goal")
+        XCTAssertEqual(finalizeDraft(edited).tpl, "deep research", "provenance survives commit")
+    }
+
+    func testStackTemplateBottomFirstRoundTrip() {
+        // Build a pane the way addCard does (prepend → newest on top, bottom
+        // runs first); serialize; apply into an empty pane; assert same run order.
+        var cards: [StackCard] = []
+        cards = addCard(cards, buildCard(":research first"))    // added first → bottom → runs first
+        cards = addCard(cards, buildCard(":implement second"))
+        cards = addCard(cards, buildCard(":optimize third"))    // added last → top → runs last
+        let runBefore = executionOrder(cards).map(\.goal)
+        XCTAssertEqual(runBefore, ["first", "second", "third"], "sanity: bottom card runs first")
+
+        let tpl = stackTemplate(from: cards, name: "my chain")
+        XCTAssertEqual(tpl.loops.first?.goal, "first", "serialized bottom-first: first-to-run is loop[0]")
+        XCTAssertEqual(tpl.loops.first?.preset, .research, "serialized loop carries its preset")
+
+        let restored = applyStackTemplate(tpl, into: [])
+        XCTAssertEqual(executionOrder(restored).map(\.goal), runBefore, "round-trips into the same run order")
+        XCTAssertEqual(restored.last?.goal, "first", "template's first loop lands at the bottom")
+        XCTAssertEqual(stackTemplate(from: restored, name: "again").loops.map(\.goal),
+                       tpl.loops.map(\.goal), "double round-trip is stable")
+    }
+
+    func testStackTemplateLoopProvenance() {
+        let tpl = StackTemplate(id: "s1", name: "kcqf", loops: [
+            TemplateLoop(preset: .research, alias: nil, goal: "r"),
+            TemplateLoop(preset: .implement, alias: nil, goal: "i")
+        ])
+        let cards = applyStackTemplate(tpl, into: [])
+        XCTAssertTrue(cards.allSatisfy { $0.tplKind == .stack && $0.tpl == "kcqf" }, "every dropped loop carries stack provenance")
+        XCTAssertTrue(cards.allSatisfy { $0.alias != nil }, "each loop keeps its own preset alias")
+    }
+
+    func testPromptTemplateFromCard() {
+        var c = applyPreset(.benchmark, to: makeDraft())
+        c.goal = "measure throughput"
+        let t = promptTemplate(from: c, name: "bench it")
+        XCTAssertEqual(t.name, "bench it", "prompt template takes the given name")
+        XCTAssertEqual(t.preset, .benchmark, "prompt template captures the preset")
+        XCTAssertEqual(t.goal, "measure throughput", "prompt template captures the goal")
+    }
+
+    @MainActor
+    func testCommitDraftFlowAndDraftNeverInCards() {
+        let store = StackStore(panes: [pane("p")])
+        store.updateDraftInPane("p") { $0 = applyPreset(.research, to: $0); $0.goal = "survey" }
+        XCTAssertEqual(store.pane(for: "p")?.draft.status, .draft, "the draft is a draft before commit")
+        store.commitDraft("p")
+        let p = store.pane(for: "p")
+        XCTAssertEqual(p?.cards.count, 1, "commit adds one real card")
+        XCTAssertEqual(p?.cards.first?.status, .idle, "the committed card is idle, not draft")
+        XCTAssertEqual(p?.cards.first?.preset, .research, "the committed card keeps its preset")
+        XCTAssertEqual(p?.draft.status, .draft, "a fresh draft is minted after commit")
+        XCTAssertTrue(p?.cards.contains { $0.status == .draft } == false, "no draft ever lands in pane.cards (reorder/dnd never sees it)")
+    }
 }
