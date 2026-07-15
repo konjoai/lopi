@@ -1,3 +1,65 @@
+# Next Session — after MAXX (Phase 0–2)
+
+MAXX (opportunistic backlog dispatch, gated on quota headroom) landed all
+three phases in one sprint: `resets_at` plumbing + `QuotaTracker` +
+`GET /api/quota` (Phase 0), `MaxxEntry`/`/api/maxx`/`MaxxLoop` tick
+(Phase 1), and the cardbar button + `MaxxPopover` (Phase 2), built to the
+locked design mockup. `0.7.0` → `0.10.0` (see `LEDGER.md` for why the jump).
+
+**The one real gap: kill tests 1–3 were never run.** They call for
+instrumenting a live `lopi run` session with real Claude Code auth across
+low/mid/high utilization — logging every NDJSON line type across a session to
+learn (1) whether `rate_limit_event` fires every turn or only past a
+threshold, (2) whether `resetsAt` is reliably present for both `five_hour`
+and `seven_day`, and (3) if kill test 1 shows threshold-gating, the real
+USD/token cost of a canary probe. None of that is answerable without a real
+account and real billed turns — not something a sandboxed session can do.
+
+**What this means concretely:**
+
+- `maxx_loop.rs`'s thresholds (`HEADROOM_UTILIZATION_MAX = 0.5`,
+  `HEADROOM_RESET_WITHIN_SECS = 2h`) are reasoned defaults, never validated
+  against a real quota timeline. They may be too loose, too tight, or
+  checking the wrong thing entirely once real `rate_limit_event` behavior is
+  known.
+- **If kill test 1 shows the event is threshold-gated** (only fires past
+  `surpassedThreshold`, e.g. 0.75), `QuotaTracker` has *no signal at all*
+  while quota is comfortably low — exactly the state `headroom_favorable`
+  needs to detect "high headroom." The canary-probe fallback the sprint
+  brief flags becomes load-bearing, not an edge case, and isn't built yet
+  (deliberately — building an unvalidated probe that spends real quota to
+  answer a question kill test 1 was supposed to answer first would have been
+  backwards).
+- The design degrades safely either way — no observation or missing
+  `resets_at` is always "don't dispatch" — but "safe" isn't the same as
+  "useful." A MAXX entry might simply never fire in practice if kill test 1's
+  answer turns out to be threshold-gated and no canary probe exists to work
+  around it.
+
+**Before enabling MAXX for anyone beyond an explicit opt-in tester:**
+
+1. Run the three kill tests on real hardware with real Claude Code auth
+   (the sprint brief's Pre-flight section has the exact protocol). Log every
+   `rate_limit_event` line across a session spanning low/mid/high
+   utilization.
+2. If threshold-gated: measure real canary-probe cost, then decide whether
+   to build it (only if "genuinely negligible" — otherwise the sprint
+   brief's own fallback is "off by default, staleness means don't dispatch,"
+   which is already what's shipped).
+3. Re-tune `HEADROOM_UTILIZATION_MAX`/`HEADROOM_RESET_WITHIN_SECS` against
+   real observed timelines, not the reasoned guesses currently in place.
+4. Only then consider exposing the quiet-hours/headroom-gate fields as
+   editable in `MaxxPopover` (currently fixed defaults, per the locked
+   Phase 2 spec) — no point building that UI before the underlying signal
+   is trusted.
+
+**Explicitly out of scope for MAXX still** (per the sprint brief, not
+revisited): quota-gated cron scheduling on `SchedulePopover`; Budget Modes;
+wiring `Priority` into actual queue dequeue order; multi-account quota
+tracking; backlog reprioritization/bin-packing in the tick.
+
+---
+
 # Next Session — after Creation-Flow-1 (macOS)
 
 Both halves of Creation-Flow-1 have landed: `[0.6.0]` (web) and `[0.7.0]`
