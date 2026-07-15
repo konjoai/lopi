@@ -46,6 +46,7 @@ import {
   type OnFail
 } from './stack';
 import { decideAfterMiss, foldGain, stackStopLabel, type StackStopReason } from './stackGoal';
+import { AUTO_MODEL } from './options';
 
 /** Which run-menu action started this run — governs the payload each card
  *  submits (`cardToTaskPayload` vs. the max-iterations-forced-to-1 variant). */
@@ -319,12 +320,15 @@ async function evaluateStackAcceptance(
   if (!acceptance) return { passed: true };
   const evalRef = `${paneKey}::stack-eval::${state.repetition}`;
   const options: CreateTaskOptions = {
-    model: defaults.model,
     effort: defaults.effort,
     max_iterations: 1,
     acceptance,
     client_ref: evalRef
   };
+  // `auto` means "no override" — see `cardToTaskPayload`'s matching comment
+  // in `stores/stack.ts`; sending the literal string here would hit the same
+  // `--model auto` CLI failure.
+  if (defaults.model && defaults.model !== AUTO_MODEL) options.model = defaults.model;
   let resp;
   try {
     resp = await createTask(stackGoalPrompt(paneKey), defaults.repo, 'normal', options);
@@ -512,6 +516,30 @@ export function drainStack(paneKey: string): void {
   if (state.phase === 'running') {
     setRun(paneKey, { phase: 'draining' });
   }
+}
+
+/** Whether `cardId` can be bumped right now, and in which directions — the
+ *  pure predicate the card's bump-button UI renders from (Phase 5 — `bumpCard`
+ *  previously had no UI trigger), kept separate from the Svelte component so
+ *  it's unit-testable without a component harness. Mirrors `bumpCard`'s own
+ *  legality checks exactly (queue position past the cursor, room left to move
+ *  in that direction) so a button is never shown enabled for a call that
+ *  would actually be rejected. `runState` is `undefined` when no run is
+ *  active for the pane — nothing is bumpable then. */
+export function bumpUiState(
+  runState: StackRunState | undefined,
+  cardId: string
+): { visible: boolean; canSooner: boolean; canLater: boolean } {
+  const runActive =
+    runState?.phase === 'running' || runState?.phase === 'paused' || runState?.phase === 'draining';
+  if (!runState || !runActive) return { visible: false, canSooner: false, canLater: false };
+  const idx = runState.order.indexOf(cardId);
+  const visible = idx > runState.cursor;
+  return {
+    visible,
+    canSooner: visible && idx - 1 > runState.cursor,
+    canLater: visible && idx + 1 < runState.order.length
+  };
 }
 
 /** Reorder a not-yet-started card within an active run's remaining queue,

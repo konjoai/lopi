@@ -27,9 +27,11 @@ import {
   resumeStack,
   drainStack,
   bumpCard,
+  bumpUiState,
   scheduleStack,
   runs,
-  type AgentStatusSource
+  type AgentStatusSource,
+  type StackRunState
 } from './stackRun';
 import {
   panes,
@@ -41,6 +43,7 @@ import {
   type PaneDefaults,
   type StackConfig
 } from './stack';
+import { AUTO_MODEL } from './options';
 import { eq, eqIs, ok, namedSummary } from '$lib/test-harness';
 
 function card(id: string, goal = id): StackCard {
@@ -48,6 +51,26 @@ function card(id: string, goal = id): StackCard {
 }
 
 const defaults: PaneDefaults = { model: 'm', effort: 'e', repo: 'r' };
+
+/** A minimal `StackRunState` for `bumpUiState` unit tests — pure
+ *  construction, no `runStack`/mock-backend machinery needed since
+ *  `bumpUiState` only reads `phase`/`order`/`cursor`. */
+function runStateFixture(patch: Partial<StackRunState>): StackRunState {
+  return {
+    paneKey: 's1',
+    phase: 'running',
+    intent: 'run',
+    order: ['a', 'b', 'c', 'd'],
+    cursor: 1,
+    repetition: 0,
+    loopTarget: 1,
+    onFail: 'stop',
+    hadFailure: false,
+    noProgressLimit: 0,
+    noGainStreak: 0,
+    ...patch
+  };
+}
 
 interface Captured {
   path: string;
@@ -287,6 +310,56 @@ async function main() {
     ok(!bumpNoRun.ok, 'bumping in a pane with no active run is rejected');
   }
 
+  // ── bumpUiState: the pure predicate the bump-button UI renders from ──────
+  // order = [a, b, c, d], cursor = 1 (a done, b is next up — the untouchable
+  // cursor slot, same reservation `bumpInOrder` enforces).
+  {
+    eq(
+      bumpUiState(undefined, 'a'),
+      { visible: false, canSooner: false, canLater: false },
+      'no active run for the pane ⇒ never bumpable'
+    );
+    eq(
+      bumpUiState(runStateFixture({ phase: 'done' }), 'c'),
+      { visible: false, canSooner: false, canLater: false },
+      'a finished run is never bumpable, even for a card still in its order'
+    );
+    eq(
+      bumpUiState(runStateFixture({}), 'a'),
+      { visible: false, canSooner: false, canLater: false },
+      'the already-run card (at/before the cursor) is never bumpable'
+    );
+    eq(
+      bumpUiState(runStateFixture({}), 'b'),
+      { visible: false, canSooner: false, canLater: false },
+      "the cursor's own next-up slot is never bumpable — matches bumpInOrder's reservation"
+    );
+    eq(
+      bumpUiState(runStateFixture({}), 'c'),
+      { visible: true, canSooner: false, canLater: true },
+      'c is bumpable later but not sooner — moving sooner would land on the reserved cursor slot'
+    );
+    eq(
+      bumpUiState(runStateFixture({}), 'd'),
+      { visible: true, canSooner: true, canLater: false },
+      'd (the last card) is bumpable sooner but not later — nowhere further back to go'
+    );
+    for (const phase of ['paused', 'draining'] as const) {
+      eq(
+        bumpUiState(runStateFixture({ phase }), 'c').visible,
+        true,
+        `${phase} is still an active run — bumpable, same as running`
+      );
+    }
+    for (const phase of ['idle', 'error'] as const) {
+      eq(
+        bumpUiState(runStateFixture({ phase }), 'c').visible,
+        false,
+        `${phase} is not an active run — never bumpable`
+      );
+    }
+  }
+
   // ── scheduleStack: honest about only scheduling the first card ──────────
   {
     resetPanes();
@@ -432,6 +505,29 @@ async function main() {
     ok(!!evalPost?.body.acceptance, 'the eval task carries the compiled stack acceptance (A1 executor at stack scope)');
     eqIs(evalPost?.body.max_iterations, 1, 'the stack eval is a single verification attempt, not more work');
     eqIs(runState('s1')?.stopReason, 'goal_met', 'a passing single-run stack meets its goal');
+  }
+
+  // ── auto model: the stack-eval launch omits `model` for a pane default of
+  // `auto`, same as the per-card run-stack path — a regression here would
+  // send the literal string "auto" straight to the CLI and fail. ──────────
+  {
+    resetPanes();
+    seedPane('s1', [card('a')]);
+    seedStackConfig('s1', {
+      loopCount: 1,
+      evals: [BASELINE_EVAL, { name: 'tests pass', tier: 'test' }],
+      goal: { pursue: true, noProgressLimit: 3 }
+    });
+    const statusSource: StatusStore = writable(new Map());
+    const captured = mockBackend(statusSource, { a: 'completed', 's1::stack-eval::0': 'completed' });
+    const autoDefaults: PaneDefaults = { model: AUTO_MODEL, effort: 'e', repo: 'r' };
+
+    runStack('s1', 'run', autoDefaults, statusSource as AgentStatusSource);
+    await flush(80);
+
+    const evalPost = captured.find((c) => c.body.client_ref === 's1::stack-eval::0');
+    ok(!!evalPost, 'the stack-eval task still launches under an auto pane default');
+    eqIs(evalPost?.body.model, undefined, 'auto pane default omits model on the stack-eval payload, not the literal string');
   }
 
   // ── B1: halts on the chain-loop ceiling with the specific reason ─────────

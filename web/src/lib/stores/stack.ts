@@ -14,6 +14,7 @@
 import { writable } from 'svelte/store';
 import type { Acceptance, AcceptanceCheck, CreateTaskOptions } from '$lib/api';
 import { type StackDefaults, DEFAULT_STACK_DEFAULTS, defaultStackDefaults } from '$lib/stores/stackDefaults';
+import { AUTO_MODEL, MODEL_OPTIONS, labelFor } from '$lib/stores/options';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -130,8 +131,9 @@ export function defaultCron(): CronConfig {
  *  autonomy). `undefined` on any field means "inherit the pane default".
  *  `model`/`effort`/`repo` are WIRED (real `CreateTaskRequest` fields);
  *  `autonomy` is client-only — backend gap, not yet exposed. `branch` has no
- *  field of its own but still reaches the server: `paneSubmitPayload` turns it
- *  into a "Target branch: …" planning constraint. */
+ *  field of its own but still reaches the server: both `paneSubmitPayload`
+ *  (bare-pane launch) and `cardToTaskPayload` (run-stack execution) turn it
+ *  into the same "Target branch: …" planning constraint. */
 export interface CardConfig {
   model?: string;
   effort?: string;
@@ -826,11 +828,15 @@ export function evalsSummary(card: StackCard): string {
 
 // ── Backend round-trip (WIRED fields → real CreateTaskOptions shape) ──────────
 
-/** Pane-level defaults a card's `config` overrides fall back to. */
+/** Pane-level defaults a card's `config` overrides fall back to. `branch` is
+ *  optional here (real callers pass the fuller `StackDefaults`, which always
+ *  has one) purely so a minimal `{model, effort, repo}` literal still
+ *  satisfies this type. */
 export interface PaneDefaults {
   model: string;
   effort: string;
   repo: string;
+  branch?: string;
 }
 
 /** Compile a card's `evals` checklist into a real
@@ -873,14 +879,14 @@ export function evalsToAcceptance(evals: EvalRef[]): Acceptance | undefined {
  *  submit as, resolving `config` overrides against pane defaults. Pure and
  *  total — this is the "round-trips through `api.ts`" contract for the
  *  WIRED guardrail/config fields (`§3` of the UI-2 brief), proven by unit
- *  test even though no run-stack action calls `createTask` yet (that needs
- *  the pause/drain/bump signals called out in `NEXT.md`). */
+ *  test independent of its real call site: `stores/stackRun.ts`'s sequencer
+ *  calls it (via `cardToTaskPayload`/`cardToTaskPayloadForRunOnce`) once per
+ *  card, in execution order, as part of Backend-1's run-stack execution. */
 export function cardToTaskPayload(
   card: StackCard,
   defaults: PaneDefaults
 ): { goal: string; repo: string; priority: string; options: CreateTaskOptions } {
   const options: CreateTaskOptions = {
-    model: card.config.model ?? defaults.model,
     effort: card.config.effort ?? defaults.effort,
     // `0` = "off" on the card pill → a single pass on the wire (never the
     // backend's `0` = infinite sentinel). Any positive N passes through.
@@ -891,6 +897,12 @@ export function cardToTaskPayload(
     // regardless of any server-side dedup.
     client_ref: card.id
   };
+  // `auto` (`AUTO_MODEL`) means "no override" — omit `model` so the backend's
+  // `select_model` size heuristic runs, instead of sending the literal string
+  // `"auto"` through to `task.model`'s override check (which the CLI would
+  // reject as `--model auto`).
+  const resolvedModel = card.config.model ?? defaults.model;
+  if (resolvedModel && resolvedModel !== AUTO_MODEL) options.model = resolvedModel;
   if (card.guardrails.gate) options.gate = card.guardrails.gateCmd;
   if (card.guardrails.until) options.until = card.guardrails.untilCmd;
   // A3 — a budget preset that sets a real cap flows to the metered
@@ -901,6 +913,11 @@ export function cardToTaskPayload(
   // execution finally happens; omitted when the card carries no checks.
   const acceptance = evalsToAcceptance(card.evals);
   if (acceptance) options.acceptance = acceptance;
+  // `branch` has no `CreateTaskRequest` field of its own — same encoding
+  // `paneSubmitPayload` uses, so a card's branch override reaches the
+  // server on the run-stack path too, not just the bare-pane launch.
+  const branch = (card.config.branch ?? defaults.branch)?.trim();
+  if (branch) options.constraints = [`Target branch: ${branch}`];
   return {
     goal: card.goal,
     repo: card.config.repo ?? defaults.repo,
@@ -954,7 +971,8 @@ export function paneSubmitPayload(
   launch: PaneLaunch
 ): { goal: string; repo: string; priority: string; options: CreateTaskOptions } {
   const options: CreateTaskOptions = {};
-  if (launch.model) options.model = launch.model;
+  // `auto` means "no override" — see `cardToTaskPayload`'s matching comment.
+  if (launch.model && launch.model !== AUTO_MODEL) options.model = launch.model;
   if (launch.effort) options.effort = launch.effort;
   const branch = launch.branch?.trim();
   if (branch) options.constraints = [`Target branch: ${branch}`];
@@ -1247,9 +1265,12 @@ export function stackEvalsSummary(config: StackConfig): string {
 }
 
 /** The stack defaults summary line: which model every loop inherits, per
- *  the mockup's "default model X · every loop inherits" copy. */
+ *  the mockup's "default model X · every loop inherits" copy. Uses the
+ *  option's display label rather than the raw wire value — load-bearing for
+ *  `auto`, whose raw value would otherwise render the bare sentinel string
+ *  instead of a real display string. */
 export function stackDefaultsSummary(defaults: StackDefaults): string {
-  return `model ${defaults.model} · every loop inherits`;
+  return `model ${labelFor(MODEL_OPTIONS, defaults.model)} · every loop inherits`;
 }
 
 /** §1's second precedence rule, load-bearing and pure: while the stack
