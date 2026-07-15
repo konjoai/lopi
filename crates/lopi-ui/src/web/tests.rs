@@ -579,6 +579,31 @@ fn apply_loop_fields_threads_model_and_effort_overrides() {
 }
 
 #[test]
+fn apply_loop_fields_omitting_model_lets_select_models_heuristic_choose() {
+    // Mirrors what the UI's `auto` model option does: omit `model` from the
+    // wire request entirely (never send the literal string `"auto"`, which
+    // `select_model`'s `task.model` override check would pass straight to
+    // the CLI as `--model auto` and fail). This proves the whole chain a
+    // live task launch actually exercises — request → `apply_loop_fields` →
+    // `select_model` — resolves to the size heuristic, not a hardcoded model.
+    let mut task = Task::new("fix a typo");
+    let req: CreateTaskRequest =
+        serde_json::from_value(serde_json::json!({"goal": "fix a typo"})).unwrap();
+    apply_loop_fields(&mut task, &req).unwrap();
+    assert_eq!(
+        task.model, None,
+        "an absent `model` key must leave task.model as None, never the string \"auto\""
+    );
+    // 0 constraints + 2 default allowed_dirs = size 2 → Haiku, same shape
+    // `select_model_haiku_for_minimal_task` pins in lopi-agent::claude.
+    assert_eq!(
+        lopi_agent::select_model(&task, 0),
+        lopi_agent::MODEL_HAIKU,
+        "a task with no model override resolves through select_model's size heuristic"
+    );
+}
+
+#[test]
 fn apply_loop_fields_threads_gate_until_and_on_fail() {
     let mut task = Task::new("guarded task");
     let req: CreateTaskRequest = serde_json::from_value(serde_json::json!({

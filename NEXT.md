@@ -1,5 +1,51 @@
 # Next — Track A + B are built; Track C is the horizon
 
+## Loop-Stack-Connect-1 landed (`CHANGELOG.md` `[0.10.0]`, `LEDGER.md`) — what's owed
+
+Scoped as a "connect & test" sprint against a connectivity audit — re-read
+fresh against the live repo rather than trusted verbatim, per the sprint's own
+instruction. Two of five scoped phases (branch picker, pane creation) turned
+out already shipped by `repo + branch pickers` and `Creation-Flow-1`; the
+real work was a stale doc comment, a genuine branch-drop bug on the run-stack
+path (found while re-verifying the "already shipped" branch picker, not
+described by the original audit), a genuine `auto`-model wire bug, and
+`bumpCard` finally getting a UI trigger. Full detail in `LEDGER.md`'s new
+entry.
+
+### ⛳ Post-merge live checklist (NOT an agent task)
+
+Structural proof (unit/contract tests, `cargo build`/`cargo clippy`/
+`cargo test --workspace` green, `npm test`/`npm run check` green, live-browser
+screenshots of the static UI) shipped in-sprint. The following need a real
+`lopi sail` instance with a live authenticated `claude` — out of reach in the
+CI sandbox, same standing constraint as every prior live checklist:
+- [ ] Launch a multi-card stack with one card's branch set to something other
+      than the pane default (config drawer → branch dropdown) and confirm the
+      agent actually works on that branch, not the default — this is the
+      round-trip fix's real-world proof; the structural test only proves the
+      payload shape, not that the backend honors it end-to-end.
+- [ ] Launch a card with model set to `Auto` and confirm `select_model`'s
+      heuristic actually picks a sensible model for the task (not just that
+      the wire omits `model` — that part's proven structurally) — a
+      cost/quality sanity check, not a benchmark.
+- [ ] Start a multi-card stack, let it run past the first card, and use the
+      new bump buttons (▲ run sooner / ▼ run later) on a still-queued card —
+      confirm the reordered card actually launches in the new order, and that
+      the disabled state at each end of the queue matches what's on screen.
+
+### Still open (unchanged by this sprint — carried forward, not decided here)
+
+- **Eval enforcement's live wire gap** (`acceptance`/`budget_tokens` on
+  `CreateTaskBody`) — confirmed still blocked; see `LEDGER.md`'s new entry for
+  why A1's `VerifierAgent` reuse doesn't count as unblocking it. Needs a real
+  decision on what "the evaluator lands server-side" means before the next
+  attempt, not another re-read of the same ledger entries.
+- **`deleteStack`'s last-pane refusal** — pane creation (`addStackPane`, the
+  topbar `+`) has existed since before this sprint, so the "once it exists,
+  revisit together" trigger from the original Stack-1 note is already true.
+  Not unilaterally changed here, per that note's own wording — needs an
+  actual conversation, not another sprint quietly deciding it.
+
 ## macOS-Loop-Stacks-1 landed (`CHANGELOG.md` `[0.4.0]`, `LEDGER.md`) — what's owed
 
 The native macOS Forge is now a Loop-Stacks cockpit (pure `macos/Lopi/Stacks/`

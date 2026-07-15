@@ -30,6 +30,7 @@
   import type { StackDefaults } from '$lib/stores/stackDefaults';
   import type { Option } from '$lib/stores/controls';
   import { agents, permissionWaiting } from '$lib/stores/agents';
+  import { runs, bumpCard, bumpUiState } from '$lib/stores/stackRun';
   import { orbStateForCard } from '$lib/forge/cardOrb';
   import { ICONS, PRESET_ACCENT } from './icons';
   import { dragging } from './dnd';
@@ -146,6 +147,19 @@
   }
   function disarmDrag() {
     draggable = false;
+  }
+
+  // ── mid-run reorder (Backend-1's `bumpCard`, previously wired to no UI) ──────
+  // Drag-to-reorder above edits `pane.cards` directly, but `runStack` snapshots
+  // its own `order`/`cursor` at launch so a composer edit can't reshuffle a plan
+  // already in flight (see `stackRun.ts`'s doc comment) — during an active run,
+  // only `bumpCard` actually moves a still-queued card's real turn. `bumpUiState`
+  // is the pure predicate (unit-tested in `stackRun.test.ts`) that decides
+  // visibility and per-direction enablement so this component stays a thin view.
+  $: bumpState = isDraft ? { visible: false, canSooner: false, canLater: false } : bumpUiState($runs.get(paneKey), card.id);
+
+  function bump(direction: 'up' | 'down') {
+    bumpCard(paneKey, card.id, direction);
   }
   function onDragStart(e: DragEvent) {
     if (isDraft) return; // the draft is not in pane.cards — never draggable
@@ -321,6 +335,24 @@
       </button>
     {:else}
       <TemplatesMenu {card} {paneKey} />
+      {#if bumpState.visible}
+        <button
+          class="ib bump"
+          disabled={!bumpState.canSooner}
+          on:click={() => bump('up')}
+          title="run sooner — moves this card earlier in the active run's queue"
+        >
+          {@html ICONS.chevup}
+        </button>
+        <button
+          class="ib bump"
+          disabled={!bumpState.canLater}
+          on:click={() => bump('down')}
+          title="run later — moves this card later in the active run's queue"
+        >
+          {@html ICONS.chevdown}
+        </button>
+      {/if}
       <button class="ib" on:click={dupCard} title="duplicate">{@html ICONS.dup}</button>
       <button
         class="ib drag"
@@ -691,6 +723,13 @@
   }
   .ib.drag:active {
     cursor: grabbing;
+  }
+  .ib.bump {
+    padding: 0 5px;
+  }
+  .ib.bump:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
   }
   .sp {
     flex: 1;

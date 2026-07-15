@@ -54,6 +54,7 @@ import {
   stackGuardActive,
   stackEvalActive,
   stackDefaultsActive,
+  stackDefaultsSummary,
   stackGoalActive,
   stackPursuesGoal,
   stackGoalSummary,
@@ -76,6 +77,7 @@ import {
   type StackConfig
 } from './stack';
 import { DEFAULT_STACK_DEFAULTS } from './stackDefaults';
+import { AUTO_MODEL, MODEL_OPTIONS } from './options';
 import { eq, eqIs, ok, namedSummary } from '$lib/test-harness';
 
 function card(id: string, goal = id): StackCard {
@@ -464,6 +466,76 @@ eqIs(buildCard(':ratchet "self improve"').preset, 'gain', 'a `:ratchet` composer
     cardToTaskPayload(fullyGuarded, defaults).options.client_ref,
     fullyGuarded.id,
     'client_ref always carries the card\'s own id, so the response traces back to this card even under dedup'
+  );
+}
+
+// ── Loop-Stack connect: a card's branch override reaches the run-stack path,
+// not just the bare-pane launch (`cardToTaskPayload` mirrors `paneSubmitPayload`'s
+// "Target branch: …" constraint encoding) ─────────────────────────────────────
+{
+  const defaults = { model: 'sonnet', effort: 'medium', repo: 'konjoai/lopi', branch: 'main' };
+  const overridden = buildCard('x');
+  overridden.config.branch = 'feature/x';
+  eq(
+    cardToTaskPayload(overridden, defaults).options.constraints,
+    ['Target branch: feature/x'],
+    'a card branch override surfaces as a planning constraint on the run-stack payload'
+  );
+  const inherited = buildCard('x');
+  eq(
+    cardToTaskPayload(inherited, defaults).options.constraints,
+    ['Target branch: main'],
+    'no card override ⇒ falls back to the pane default branch'
+  );
+  const noBranch = buildCard('x');
+  const noBranchDefaults = { model: 'sonnet', effort: 'medium', repo: 'konjoai/lopi' };
+  eqIs(
+    cardToTaskPayload(noBranch, noBranchDefaults).options.constraints,
+    undefined,
+    'no card override and no pane default branch ⇒ no constraints entry'
+  );
+  const whitespace = buildCard('x');
+  whitespace.config.branch = '   ';
+  eqIs(
+    cardToTaskPayload(whitespace, defaults).options.constraints,
+    undefined,
+    'a whitespace-only branch override is treated as unset'
+  );
+}
+
+// ── `auto` model: a non-concrete sentinel that must never hit the wire as
+// the literal string "auto" — `select_model`'s override check would pass it
+// straight to the CLI as `--model auto` and fail. Omitting `model` entirely
+// is how the heuristic gets to run. ─────────────────────────────────────────
+{
+  ok(
+    MODEL_OPTIONS.some((o) => o.value === AUTO_MODEL),
+    'MODEL_OPTIONS carries a real `auto` entry'
+  );
+  const defaults = { model: 'sonnet', effort: 'medium', repo: 'konjoai/lopi' };
+  const autoCard = buildCard('x');
+  autoCard.config.model = AUTO_MODEL;
+  eqIs(
+    cardToTaskPayload(autoCard, defaults).options.model,
+    undefined,
+    'a card explicitly set to auto omits model from the run-stack payload'
+  );
+  const autoDefaults = { model: AUTO_MODEL, effort: 'medium', repo: 'konjoai/lopi' };
+  const plainCard = buildCard('x');
+  eqIs(
+    cardToTaskPayload(plainCard, autoDefaults).options.model,
+    undefined,
+    'a pane default of auto (no card override) also omits model'
+  );
+  eqIs(
+    paneSubmitPayload({ goal: 'g', repo: 'r', model: AUTO_MODEL }).options.model,
+    undefined,
+    'a bare-pane launch set to auto also omits model, not the literal string'
+  );
+  eqIs(
+    stackDefaultsSummary({ ...DEFAULT_STACK_DEFAULTS, model: AUTO_MODEL }),
+    'model Auto · every loop inherits',
+    'the dock summary renders the Auto label, not the bare "auto" wire value'
   );
 }
 

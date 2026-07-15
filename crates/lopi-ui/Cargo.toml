@@ -36,3 +36,7 @@ chrono.workspace = true
 # in axum integration tests.
 tower = { version = "0.4", features = ["util"] }
 tempfile = "3"
+# Test-only: proves the request→Task mapping leaves `model: None` for "auto"
+# all the way through to `select_model`'s heuristic, without adding a real
+# production dependency on lopi-agent.
+lopi-agent.workspace = true

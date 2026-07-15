@@ -5,6 +5,81 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## Loop Stack connect & test — auto model, branch round-trip fix, bumpCard UI
+
+**The audit this sprint was scoped against was already stale, and re-verifying
+against the live repo (not the prompt's specifics) is what found the real
+bug.** The prompt's Phase 3 assumed the branch picker had "zero prior
+callers" — untrue since `repo + branch pickers` shipped it into
+`ConfigDrawer.svelte`/`StackConfigPopover.svelte`. But verifying that claim
+(rather than trusting either the stale prompt or the shipped feature) surfaced
+a real gap the audit never described: `card.config.branch` reached the wire
+via `paneSubmitPayload` (bare-pane launch) but not `cardToTaskPayload` (the
+run-stack sequencer's actual call site) or `evaluateStackAcceptance` (the
+stack-eval task). A branch chosen in the UI silently did nothing once a
+multi-card stack ran. **The lesson, stated for future sprints: re-verifying a
+"this is already done" claim is not optional busywork — this sprint would
+have shipped nothing real on Phase 3 without it.**
+
+**`PaneDefaults.branch` made optional rather than adding a second, richer
+defaults type.** `cardToTaskPayload`/`cardToTaskPayloadForRunOnce`/
+`dryRunStack` are typed against the narrower `PaneDefaults` (`model`/
+`effort`/`repo`), but every real call site actually passes the richer
+`StackDefaults` (`+branch`/`autonomy`) — TS structural typing already made
+this safe at every call site; the type just hadn't caught up. Adding
+`branch?: string` to `PaneDefaults` (optional, so the one bare `{model,
+effort, repo}` test literal in `stackRun.test.ts` still satisfies it) closes
+that gap with a one-line type change instead of threading a second type
+through four function signatures.
+
+**`auto` (`MODEL_OPTIONS`) is a client-only sentinel, never a wire value —
+the same pattern `branch` already established for a config field with no
+`CreateTaskRequest` column of its own, reused rather than reinvented.**
+Selecting it means "omit `model`," not "send the string `auto`" — verified
+against `select_model` (`claude.rs:45-59`): `task.model.is_some()` short-
+circuits the heuristic and would pass `"auto"` straight to the CLI as
+`--model auto`, a guaranteed failure. Appended last in `MODEL_OPTIONS` (not
+first) specifically so it doesn't silently become `DEFAULT_STACK_DEFAULTS
+.model` / `controls.ts`'s launch-control seed via the codebase's existing
+`MODEL_OPTIONS[0]` convention — a real behavior change (every new stack's
+default model silently switching to heuristic-selected) that this sprint
+was not scoped to make and did not make.
+
+**Backend needed zero changes for `auto` to work.** `apply_loop_fields`
+(`crates/lopi-ui/src/web/handlers.rs`) already leaves `task.model: None` when
+the wire `model` key is absent (`#[serde(default)]`), and `select_model`
+already runs its heuristic on `None`. The gap was 100% client-side (the UI
+never had a way to *not* send a concrete model). Proven end-to-end — request
+mapping through to the heuristic's actual model choice, not just the pure
+`select_model` unit tests in isolation — by a new `lopi-ui` test that adds
+`lopi-agent` as a **dev-dependency only**, so the production dependency graph
+(`lopi-ui` → `lopi-orchestrator` → `lopi-agent`, never `lopi-ui` → `lopi-agent`
+directly) is unchanged.
+
+**Phase 1 (wiring `acceptance`/`budget_tokens` onto the live `CreateTaskBody`)
+was scoped as conditionally in-play, pending whether A1's `VerifierAgent`
+reuse counted as "the evaluator landing server-side." It doesn't — confirmed
+by re-reading this ledger's own Eval-Execution-1 (A1) and macOS-Loop-Stacks-1
+entries, not by assumption.** A1 promoted `VerifierAgent` into the tiered eval
+*judge*, real and load-bearing for a task's own pass/fail — but
+macOS-Loop-Stacks-1's entry is explicit and post-dates A1/B1: `acceptance`/
+`budget_tokens` are carried in the pure payload and unit-tested, "intentionally
+not wired to the live body... acceptance/goal-execution is A1–B1's evaluator
+track ('no backend changes')." Nothing this sprint touched changes that.
+Skipped rather than forced, per the sprint's own instruction not to fake it.
+
+**Phase 3 (branch) and Phase 4 (pane creation), as literally scoped, needed
+no new code.** The topbar's `+` (`Add pane`) already dispatches
+`window.dispatchEvent(new CustomEvent('lopi:add-pane'))`, handled in
+`routes/stacks/+page.svelte` since before this sprint; `deleteStack`'s
+last-pane refusal is unchanged and still flagged in `NEXT_SESSION_PROMPT` as
+"worth revisiting together," per `NEXT.md`'s own standing note — not
+unilaterally decided here.
+
+**Version:** `0.10.0` → `0.11.0`, straight increment on top of MAXX's own
+`0.7.0` → `0.10.0` catch-up (merged to `main` first). No drift to reconcile
+this time — `CHANGELOG.md` and `Cargo.toml` now agree.
+
 ## MAXX — opportunistic backlog dispatch, gated on quota headroom
 
 **One-way doors this sprint opened:**

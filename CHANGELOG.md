@@ -1,5 +1,81 @@
 # Changelog
 
+## [0.11.0] — Loop Stack connect & test: auto model, branch round-trip fix, bumpCard UI 🔌
+
+Closes real Loop-Stack connectivity gaps found by re-auditing against the
+live repo rather than trusting a stale audit's specifics — two of the five
+scoped phases (branch picker, pane creation) turned out to already be shipped
+by recent work (`repo + branch pickers`, `Creation-Flow-1`), so this sprint's
+real surface area is narrower than scoped: a stale doc comment, a genuine
+model-sentinel bug, a genuine branch-drop bug on the run-stack path found
+while re-verifying the "already shipped" branch picker, and one long-standing
+UI gap (`bumpCard`) finally getting a real trigger. Eval enforcement
+(`acceptance`/`budget_tokens` on the live `CreateTaskBody`) stays out —
+`LEDGER.md`'s macOS-Loop-Stacks-1 entry is explicit that this is still
+"no backend changes," not unblocked by A1's `VerifierAgent` reuse.
+
+- **[Fix] `stores/stack.ts::cardToTaskPayload`'s doc comment was stale.** It
+  claimed "no run-stack action calls `createTask` yet," predating Backend-1
+  shipping the run-stack sequencer months ago. `stackRun.ts`'s `advance` has
+  called it on every card launch since. Corrected to name the real call site.
+- **[Fix] A card's `branch` override was silently dropped on the run-stack
+  path.** `paneSubmitPayload` (the bare-pane launch) already turned
+  `card.config.branch` into a `"Target branch: …"` planning constraint;
+  `cardToTaskPayload` (what `stackRun.ts`'s sequencer actually calls for every
+  multi-card chain) never did the same, so picking a branch in the config
+  drawer had no effect once a stack actually ran. Same fix applied to the
+  stack-scope eval task launch (`evaluateStackAcceptance`), which had the
+  identical gap. `PaneDefaults.branch` is now optional (real callers already
+  pass the richer `StackDefaults`, which has one).
+- **[Feat] A real `auto` model option** (`MODEL_OPTIONS`, appended last so it
+  doesn't silently become the default) — "no override, let the backend's
+  `select_model` size heuristic choose." Selecting it omits `model` entirely
+  from the wire payload (`cardToTaskPayload`, `paneSubmitPayload`,
+  `evaluateStackAcceptance`) rather than sending the literal string `"auto"`,
+  which would have hit `select_model`'s `task.model` override check and been
+  passed straight to the CLI as `--model auto` (a guaranteed launch failure —
+  flagged during design, confirmed still live in `claude.rs:45-59`). The
+  dock's `stackDefaultsSummary` now renders the option's label
+  (`labelFor(MODEL_OPTIONS, …)`) instead of the raw wire value, so a pane
+  default of `auto` reads "model Auto," not the bare sentinel string.
+- **[Feat] `bumpCard` finally has a UI trigger.** Backend-1 shipped the store
+  function with zero callers. Two icon buttons ("run sooner" / "run later")
+  now appear on a card only when it's genuinely bumpable — part of an active
+  run's `order`, past the cursor, with room to move in that direction — via a
+  new pure predicate, `bumpUiState`, kept separate from `StackCard.svelte` so
+  it's unit-tested without a component harness. Per-direction disabled state
+  mirrors `bumpCard`'s own legality checks exactly, so a button is never shown
+  enabled for a call that would be rejected.
+- **[Test] `apply_loop_fields_omitting_model_lets_select_models_heuristic_choose`**
+  (`lopi-ui`) — a CI-sandboxed integration test (no live `claude` auth needed)
+  proving the whole chain a live task launch exercises: an absent `model` key
+  survives `apply_loop_fields` as `Task.model: None`, and `select_model`
+  resolves it via the size heuristic, not a hardcoded model. `lopi-agent`
+  added as a `lopi-ui` **dev-dependency only** — the production dependency
+  graph is unchanged.
+- **Already shipped, verified rather than rebuilt.** The prompt that scoped
+  this sprint described the branch picker as having "zero prior callers" and
+  pane creation as missing a "+ new empty stack" button — both stale. `/api/
+  branches` + `listBranches()` are wired into `ConfigDrawer.svelte` /
+  `StackConfigPopover.svelte` with real per-repo branch data (server-side
+  tested against generated-branch filtering); the topbar's "+" (`Add pane`)
+  already dispatches `addStackPane()`. No rebuild — this sprint only found
+  and fixed the one real gap left in the branch path (see the round-trip fix
+  above).
+- **[Skip] Phase 1 (wiring `acceptance`/`budget_tokens` onto the live
+  `CreateTaskBody`) stays blocked**, confirmed by re-reading `LEDGER.md`
+  rather than assuming A1's `VerifierAgent` reuse counted as "the evaluator
+  landing server-side." See `NEXT_SESSION_PROMPT` for the precondition that
+  actually unblocks it.
+- **[Verify]** `cargo build`/`cargo test --workspace`/`cargo clippy -D
+  warnings` all green. `npm test` (all 20 web suites) and `npm run check`
+  (`svelte-check`, 0 errors) green. Live-verified in the browser: the model
+  dropdown shows "Auto · heuristic by task size" at both card and pane-default
+  scope, the dock summary renders "model Auto," and the topbar "Add pane"
+  button works — no console errors. `bumpCard`'s UI could not be
+  live-verified (needs an active run against a real backend, out of scope
+  for this sandbox) — see `NEXT_SESSION_PROMPT`'s live checklist.
+
 ## [0.10.0] — MAXX: opportunistic backlog dispatch, gated on quota headroom ⚡
 
 Three-phase sprint: quota signal plumbing → MAXX backend → MAXX frontend.
