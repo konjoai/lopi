@@ -1,4 +1,5 @@
 import SwiftUI
+import LopiStacksKit
 
 /// The Forge — a live command center. The aurora backdrop breathes with fleet
 /// activity; stat tiles roll; the cognition grid shows every running agent's

@@ -1,3 +1,41 @@
+# Next Session — after the iOS-Research-1 spike / kill-test harness prep / eval-enforcement brief
+
+This sprint prepared three things and closed none of them — by design, per
+its own scope (see `LEDGER.md` for the full reasoning). Three concrete items
+carried forward, none resolved here:
+
+1. **Phase 1 needs its M3 compile pass.** `packages/LopiStacksKit/` (the
+   `Stacks/` domain layer, extracted per `docs/ops/IOS_RESEARCH_1_SPIKE.md`)
+   was written and grep-verified, never compiled — this host has no Xcode.
+   Run `xcodegen generate && xcodebuild -scheme Lopi build`, then
+   `cd packages/LopiStacksKit && swift test` (the 60 ported assertions are
+   the acceptance bar, same as Verify-4). Expect at least one real gap:
+   `CardOrbState.swift` stayed in the app target because it transitively
+   depends on SwiftUI-importing `Store/` types — that's a flagged design
+   question for a future sprint, not something the M3 pass needs to solve.
+2. **Run the Phase 2 kill-test harness on real hardware.** MAXX kill tests
+   1–2 are still open (unchanged from before this sprint) — instrumenting
+   the actual `rate_limit_event` cadence needs a real `lopi run` session with
+   real Claude Code auth across low/mid/high utilization, which no sandboxed
+   session can do. The harness is built and unit-tested
+   (`crates/lopi-agent/src/quota_kill_log.rs`); running it is
+   `bash .konjo/scripts/quota-kill-test-log.sh --goal "..." --repo <clone>`
+   (never the repo you're editing — see the standing `GitManager` guidance
+   below). Read the resulting NDJSON log per the script's own printed
+   instructions to answer kill test 1 (threshold-gated vs. every-turn) and
+   kill test 1's second question (`resetsAt` reliability for both window
+   types).
+3. **Wes decides on eval-enforcement from `docs/ops/EVAL_ENFORCEMENT_DECISION.md`.**
+   The real finding: "does the evaluator land server-side" is already
+   answered (yes, since A1/A3 — server and web both apply/send
+   `acceptance`/`budget_tokens` today; only macOS drops them, a bug, not a
+   scope gap, already flagged as its own follow-up task). The actual open
+   question is whether acceptance should stay purely opt-in (today's
+   behavior) or become enforced by default/for specific dispatch paths — the
+   doc lays out three framings without recommending one.
+
+---
+
 # Next Session — after MAXX (Phase 0–2)
 
 MAXX (opportunistic backlog dispatch, gated on quota headroom) landed all

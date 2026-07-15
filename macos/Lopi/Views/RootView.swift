@@ -1,4 +1,5 @@
 import SwiftUI
+import LopiStacksKit
 
 /// Sidebar sections. Each maps to a live screen backed by the lopi REST/WS API.
 enum NavSection: String, CaseIterable, Identifiable {

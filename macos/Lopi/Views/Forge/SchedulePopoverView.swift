@@ -1,4 +1,5 @@
 import SwiftUI
+import LopiStacksKit
 
 /// SchedulePopover — the cyan schedule button's content. `cron.raw` is WIRED at
 /// loop scope (mirrors `ScheduleEntry.cron`); the preset fields two-way-sync with

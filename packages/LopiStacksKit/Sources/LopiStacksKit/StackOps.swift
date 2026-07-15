@@ -10,7 +10,7 @@ import Foundation
 /// Resolve a budget preset to the enforced per-loop token cap, or `nil` when the
 /// preset sets no hard cap (`auto` inherits, `none` is uncapped — both omit the
 /// field so the payload never claims a limit the loop won't enforce).
-func budgetToTokens(_ budget: Budget) -> Int? {
+public func budgetToTokens(_ budget: Budget) -> Int? {
     budget == .k200 ? 200_000 : nil
 }
 
@@ -22,7 +22,7 @@ private func isPresetKey(_ s: String) -> Bool {
 
 /// Resolve a raw alias token (without the leading `:`) to a preset key, applying
 /// legacy renames. Returns `nil` when it names no known preset.
-func resolvePresetAlias(_ alias: String) -> PresetKey? {
+public func resolvePresetAlias(_ alias: String) -> PresetKey? {
     if let key = PresetKey(rawValue: alias) { return key }
     return LEGACY_ALIASES[alias]
 }
@@ -30,7 +30,7 @@ func resolvePresetAlias(_ alias: String) -> PresetKey? {
 /// Keyword-match a typed goal against the preset catalog. Highlight-only —
 /// callers must never auto-attach the result. Returns the first matching preset,
 /// or `nil`.
-func suggestPreset(_ text: String) -> PresetKey? {
+public func suggestPreset(_ text: String) -> PresetKey? {
     let lower = text.lowercased()
     for key in PRESET_KEYS {
         if let def = PRESET_CATALOG[key], def.keywords.contains(where: { lower.contains($0) }) {
@@ -43,16 +43,23 @@ func suggestPreset(_ text: String) -> PresetKey? {
 // MARK: - Composer grammar parser
 
 /// The pieces a composer/CLI string parses into.
-struct ParsedInput: Equatable {
-    var alias: String?
-    var goal: String
-    var repo: String?
-    var loopN: Int?
+public struct ParsedInput: Equatable {
+    public var alias: String?
+    public var goal: String
+    public var repo: String?
+    public var loopN: Int?
+
+    public init(alias: String?, goal: String, repo: String?, loopN: Int?) {
+        self.alias = alias
+        self.goal = goal
+        self.repo = repo
+        self.loopN = loopN
+    }
 }
 
 /// Parse `:alias "goal" @repo xN` (any subset, any order after the leading
 /// alias). Pure and total — never throws.
-func parseComposerInput(_ raw: String) -> ParsedInput {
+public func parseComposerInput(_ raw: String) -> ParsedInput {
     var text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
     var alias: String?
     var repo: String?
@@ -131,10 +138,10 @@ private func isWordChar(_ c: Character) -> Bool {
 
 // MARK: - Card factory
 
-func makeId() -> String { UUID().uuidString }
+public func makeId() -> String { UUID().uuidString }
 
 /// Build a `StackCard` from raw composer text, optionally forcing a preset.
-func buildCard(_ raw: String, explicitPreset: PresetKey? = nil) -> StackCard {
+public func buildCard(_ raw: String, explicitPreset: PresetKey? = nil) -> StackCard {
     let parsed = parseComposerInput(raw)
     let aliasPreset = parsed.alias.flatMap { resolvePresetAlias($0) }
     let presetKey = explicitPreset ?? aliasPreset
@@ -164,7 +171,7 @@ func buildCard(_ raw: String, explicitPreset: PresetKey? = nil) -> StackCard {
 /// every pane. Same shape as any card but `status == .draft`, so it renders
 /// through the one `StackCardView` with a draft branch rather than a forked
 /// `DraftCardView`. Never enters `pane.cards`. Mirrors the web `makeDraft`.
-func makeDraft() -> StackCard {
+public func makeDraft() -> StackCard {
     var d = buildCard("")
     d.status = .draft
     return d
@@ -173,7 +180,7 @@ func makeDraft() -> StackCard {
 /// True once a draft carries enough to commit: an alias, a non-empty goal, or a
 /// template origin. Drives the draft's `hot` (teal) state and the `+ add`
 /// button's enabled state. Mirrors the web `draftIsHot`.
-func draftIsHot(_ draft: StackCard) -> Bool {
+public func draftIsHot(_ draft: StackCard) -> Bool {
     draft.alias != nil
         || !draft.goal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         || draft.tpl != nil
@@ -184,7 +191,7 @@ func draftIsHot(_ draft: StackCard) -> Bool {
 /// inline `:alias @repo ×N` tokens typed into its goal field — the power-user
 /// path the retired composer supported. Only ever flips `status` to `.idle`;
 /// never mutates the pane. Mirrors the web `finalizeDraft`.
-func finalizeDraft(_ draft: StackCard) -> StackCard {
+public func finalizeDraft(_ draft: StackCard) -> StackCard {
     if draft.preset != nil || draft.tpl != nil {
         var c = draft
         c.status = .idle
@@ -219,18 +226,18 @@ func finalizeDraft(_ draft: StackCard) -> StackCard {
 // MARK: - Pure array ops (unit-tested directly)
 
 /// Prepend a card to the top of the stack.
-func addCard(_ cards: [StackCard], _ card: StackCard) -> [StackCard] {
+public func addCard(_ cards: [StackCard], _ card: StackCard) -> [StackCard] {
     [card] + cards
 }
 
 /// Drop a card by id. No-op if the id isn't present.
-func removeCard(_ cards: [StackCard], _ id: String) -> [StackCard] {
+public func removeCard(_ cards: [StackCard], _ id: String) -> [StackCard] {
     cards.filter { $0.id != id }
 }
 
 /// Clone a card in place, immediately after the original. Resets run state on
 /// the clone. No-op if the id isn't present.
-func duplicateCard(_ cards: [StackCard], _ id: String) -> [StackCard] {
+public func duplicateCard(_ cards: [StackCard], _ id: String) -> [StackCard] {
     guard let idx = cards.firstIndex(where: { $0.id == id }) else { return cards }
     var clone = cards[idx]
     clone.id = makeId()
@@ -244,7 +251,7 @@ func duplicateCard(_ cards: [StackCard], _ id: String) -> [StackCard] {
 
 /// Move the card at `from` to index `to` (post-removal indexing). Out-of-range
 /// indices are a no-op.
-func reorderCard(_ cards: [StackCard], _ from: Int, _ to: Int) -> [StackCard] {
+public func reorderCard(_ cards: [StackCard], _ from: Int, _ to: Int) -> [StackCard] {
     guard from >= 0, from < cards.count, to >= 0, to < cards.count else { return cards }
     var next = cards
     let moved = next.remove(at: from)
@@ -254,7 +261,7 @@ func reorderCard(_ cards: [StackCard], _ from: Int, _ to: Int) -> [StackCard] {
 
 /// Drag-and-drop-friendly reorder: move `fromIndex` to just before/after
 /// `targetIndex` (both original-array indices). No-op onto itself.
-func moveCardBeforeOrAfter(_ cards: [StackCard], _ fromIndex: Int, _ targetIndex: Int, _ before: Bool) -> [StackCard] {
+public func moveCardBeforeOrAfter(_ cards: [StackCard], _ fromIndex: Int, _ targetIndex: Int, _ before: Bool) -> [StackCard] {
     if fromIndex == targetIndex { return cards }
     let to = fromIndex < targetIndex
         ? (before ? targetIndex - 1 : targetIndex)
@@ -263,7 +270,7 @@ func moveCardBeforeOrAfter(_ cards: [StackCard], _ fromIndex: Int, _ targetIndex
 }
 
 /// Insert a card at a specific index, clamped into range.
-func insertCardAt(_ cards: [StackCard], _ index: Int, _ card: StackCard) -> [StackCard] {
+public func insertCardAt(_ cards: [StackCard], _ index: Int, _ card: StackCard) -> [StackCard] {
     var next = cards
     let clamped = max(0, min(index, next.count))
     next.insert(card, at: clamped)
@@ -273,7 +280,7 @@ func insertCardAt(_ cards: [StackCard], _ index: Int, _ card: StackCard) -> [Sta
 /// Patch a single card by id (whole-field replacement via a mutating closure —
 /// the Swift analogue of web's shallow-merge `Partial<StackCard>`). No-op if the
 /// id isn't present.
-func patchCard(_ cards: [StackCard], _ id: String, _ mutate: (inout StackCard) -> Void) -> [StackCard] {
+public func patchCard(_ cards: [StackCard], _ id: String, _ mutate: (inout StackCard) -> Void) -> [StackCard] {
     guard let idx = cards.firstIndex(where: { $0.id == id }) else { return cards }
     var next = cards
     mutate(&next[idx])
@@ -283,7 +290,7 @@ func patchCard(_ cards: [StackCard], _ id: String, _ mutate: (inout StackCard) -
 // MARK: - Eval-set ops
 
 /// Toggle one named eval in a card's on-set. The baseline never toggles off.
-func toggleEval(_ evals: [EvalRef], _ name: String) -> [EvalRef] {
+public func toggleEval(_ evals: [EvalRef], _ name: String) -> [EvalRef] {
     if name == BASELINE_EVAL.name { return evals }
     if evals.contains(where: { $0.name == name }) {
         return evals.filter { $0.name != name }
@@ -293,7 +300,7 @@ func toggleEval(_ evals: [EvalRef], _ name: String) -> [EvalRef] {
 }
 
 /// Turn on every eval named in a suite shortcut; already-on evals are untouched.
-func applySuite(_ evals: [EvalRef], _ suiteNames: [String]) -> [EvalRef] {
+public func applySuite(_ evals: [EvalRef], _ suiteNames: [String]) -> [EvalRef] {
     let missing = suiteNames
         .filter { name in !evals.contains(where: { $0.name == name }) }
         .compactMap { name in EVAL_CATALOG.first(where: { $0.name == name }) }
@@ -305,36 +312,36 @@ func applySuite(_ evals: [EvalRef], _ suiteNames: [String]) -> [EvalRef] {
 /// Step the *stack* loop-count by `delta`. Floors at `MAX_ITERATIONS_FLOOR`;
 /// below it wraps to the infinite sentinel (`0`), so a goal-pursuing chain can
 /// still be set to run "until met". Up from infinite skips to the floor.
-func stepMaxIterations(_ current: Int, _ delta: Int) -> Int {
+public func stepMaxIterations(_ current: Int, _ delta: Int) -> Int {
     if current == 0 { return delta > 0 ? MAX_ITERATIONS_FLOOR : 0 }
     let next = current + delta
     return next < MAX_ITERATIONS_FLOOR ? 0 : next
 }
 
 /// Display text for the *stack* loop-count pill (`∞` for the infinite sentinel).
-func maxIterationsLabel(_ maxIterations: Int) -> String {
+public func maxIterationsLabel(_ maxIterations: Int) -> String {
     maxIterations == 0 ? "∞" : String(maxIterations)
 }
 
 /// Step a *card's* `maxIterations` by `delta`. Unlike the stack pill, the card
 /// floors at `0` = "off" (single run) and never wraps to the infinite sentinel.
-func stepCardIterations(_ current: Int, _ delta: Int) -> Int {
+public func stepCardIterations(_ current: Int, _ delta: Int) -> Int {
     max(0, current + delta)
 }
 
 /// Display text for a *card's* iteration pill — `off` when disabled (`0`),
 /// the plain number otherwise.
-func cardIterationsLabel(_ maxIterations: Int) -> String {
+public func cardIterationsLabel(_ maxIterations: Int) -> String {
     maxIterations == 0 ? "off" : String(maxIterations)
 }
 
 // MARK: - Active-state predicates (drive cardbar highlighting)
 
-func guardActive(_ g: Guardrails) -> Bool { g.gate || g.until }
+public func guardActive(_ g: Guardrails) -> Bool { g.gate || g.until }
 
-func evalActive(_ card: StackCard) -> Bool { card.evals.count > 1 }
+public func evalActive(_ card: StackCard) -> Bool { card.evals.count > 1 }
 
-func configActive(_ card: StackCard, _ defaults: StackDefaults) -> Bool {
+public func configActive(_ card: StackCard, _ defaults: StackDefaults) -> Bool {
     let c = card.config
     return (c.model ?? defaults.model) != defaults.model
         || (c.effort ?? defaults.effort) != defaults.effort

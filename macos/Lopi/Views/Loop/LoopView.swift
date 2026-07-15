@@ -1,4 +1,5 @@
 import SwiftUI
+import LopiStacksKit
 
 /// Loop Engineering — the macOS cockpit for lopi's autonomous loops.
 ///

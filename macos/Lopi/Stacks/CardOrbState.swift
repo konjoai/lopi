@@ -1,4 +1,5 @@
 import Foundation
+import LopiStacksKit
 
 // The card's orb-state resolver — the macOS analogue of web's
 // `$lib/forge/cardOrb.ts::orbStateForCard`. A stack card's sole status

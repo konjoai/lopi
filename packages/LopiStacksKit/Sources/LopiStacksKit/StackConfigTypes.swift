@@ -9,28 +9,43 @@ import Foundation
 /// `model`/`effort`/`repo` are real `CreateTaskRequest` fields; `autonomy` is
 /// client-only. `branch` has no field of its own but still reaches the server:
 /// `StackPayload` turns it into a "Target branch: …" planning constraint.
-struct StackDefaults: Codable, Hashable {
-    var model: String
-    var effort: String
-    var repo: String
-    var branch: String
-    var autonomy: String
+public struct StackDefaults: Codable, Hashable {
+    public var model: String
+    public var effort: String
+    public var repo: String
+    public var branch: String
+    public var autonomy: String
+
+    public init(model: String, effort: String, repo: String, branch: String, autonomy: String) {
+        self.model = model
+        self.effort = effort
+        self.repo = repo
+        self.branch = branch
+        self.autonomy = autonomy
+    }
 }
 
 /// A selectable option: stable value + human label + optional hint. Mirrors the
 /// web `Option` shape (kept local to the pure layer so it needs no UI import).
-struct StackOption: Hashable {
-    var value: String
-    var label: String
-    var hint: String = ""
+public struct StackOption: Hashable {
+    public var value: String
+    public var label: String
+    public var hint: String = ""
     /// Section this option belongs to, or `nil` to pin it above every section.
     /// Only the repo catalog groups; every other field leaves this `nil` and so
     /// renders as one flat list — see `OptionMenu.swift`.
-    var group: String? = nil
+    public var group: String? = nil
+
+    public init(value: String, label: String, hint: String = "", group: String? = nil) {
+        self.value = value
+        self.label = label
+        self.hint = hint
+        self.group = group
+    }
 }
 
 /// The real `AutonomyLevel` ladder (`crates/lopi-core/src/loop_config.rs`).
-let AUTONOMY_OPTIONS: [StackOption] = [
+public let AUTONOMY_OPTIONS: [StackOption] = [
     StackOption(value: "L1", label: "L1 · Report only", hint: "report only, no PR"),
     StackOption(value: "L2", label: "L2 · Draft PR", hint: "draft PR, human approves"),
     StackOption(value: "L3", label: "L3 · Verified PR", hint: "verify before PR"),
@@ -42,7 +57,7 @@ let AUTONOMY_OPTIONS: [StackOption] = [
 /// `AppModel.branchesByRepo`, fetched from `/api/branches`. This is only the
 /// cold-start seed for `DEFAULT_STACK_DEFAULTS`, which lives in this
 /// Foundation-only pure layer and so cannot reach the network.
-let SEED_BRANCH = "main"
+public let SEED_BRANCH = "main"
 
 /// Pick the branch to display for a repo, given that repo's real branches.
 ///
@@ -56,7 +71,7 @@ let SEED_BRANCH = "main"
 ///
 /// The 1:1 port of web's `resolveBranch` (`stores/stackDefaults.ts`) — the two
 /// surfaces must agree on which branch a repo switch lands on.
-func resolveBranch(_ current: String, _ branches: [String], _ head: String) -> String {
+public func resolveBranch(_ current: String, _ branches: [String], _ head: String) -> String {
     guard let first = branches.first else { return current }
     if !current.isEmpty, branches.contains(current) { return current }
     return branches.contains(head) ? head : first
@@ -64,14 +79,14 @@ func resolveBranch(_ current: String, _ branches: [String], _ head: String) -> S
 
 /// Worker-model options — the same catalog `LaunchControls.models` carries, kept
 /// here so the pure layer's `DEFAULT_STACK_DEFAULTS.model` matches the app.
-let MODEL_OPTIONS: [StackOption] = [
+public let MODEL_OPTIONS: [StackOption] = [
     StackOption(value: "claude-opus-4-8", label: "Opus 4.8", hint: "deepest"),
     StackOption(value: "claude-sonnet-4-6", label: "Sonnet 4.6", hint: "balanced"),
     StackOption(value: "claude-haiku-4-5", label: "Haiku 4.5", hint: "fastest")
 ]
 
 /// Reasoning-effort options.
-let EFFORT_OPTIONS: [StackOption] = [
+public let EFFORT_OPTIONS: [StackOption] = [
     StackOption(value: "low", label: "Low"),
     StackOption(value: "medium", label: "Medium"),
     StackOption(value: "high", label: "High"),
@@ -80,7 +95,7 @@ let EFFORT_OPTIONS: [StackOption] = [
 
 /// The app-wide `DEF` a stack's own defaults start from and are compared
 /// against (`stackDefaultsActive`).
-let DEFAULT_STACK_DEFAULTS = StackDefaults(
+public let DEFAULT_STACK_DEFAULTS = StackDefaults(
     model: MODEL_OPTIONS[0].value,
     effort: "medium",
     repo: "",
@@ -89,7 +104,7 @@ let DEFAULT_STACK_DEFAULTS = StackDefaults(
 )
 
 /// Fresh defaults for a newly-created stack (value type — no shared reference).
-func defaultStackDefaults() -> StackDefaults { DEFAULT_STACK_DEFAULTS }
+public func defaultStackDefaults() -> StackDefaults { DEFAULT_STACK_DEFAULTS }
 
 // MARK: - Chain-scope guardrails / goal
 
@@ -97,13 +112,18 @@ func defaultStackDefaults() -> StackDefaults { DEFAULT_STACK_DEFAULTS }
 /// (no gate/until: those are shell pre/exit conditions around a *single* task's
 /// retry loop, with nowhere to run at chain scope). `onFail` is WIRED into the
 /// chain sequencer; `budget` stays client-only.
-struct StackGuardrails: Codable, Hashable {
-    var onFail: OnFail
-    var budget: Budget
+public struct StackGuardrails: Codable, Hashable {
+    public var onFail: OnFail
+    public var budget: Budget
+
+    public init(onFail: OnFail, budget: Budget) {
+        self.onFail = onFail
+        self.budget = budget
+    }
 }
 
 /// Freshly-initialized chain guardrails.
-func defaultStackGuardrails() -> StackGuardrails {
+public func defaultStackGuardrails() -> StackGuardrails {
     StackGuardrails(onFail: .stop, budget: .auto)
 }
 
@@ -111,28 +131,33 @@ func defaultStackGuardrails() -> StackGuardrails {
 /// collapsible strip); `sticky` is the always-expanded variant whose CSS ships
 /// unused — flipping this constant is the whole migration (the `SIDEBAR_MODE`
 /// precedent). Not user-facing this sprint.
-enum StackControlMode { case dock, sticky }
-let STACK_CONTROL_MODE: StackControlMode = .dock
+public enum StackControlMode { case dock, sticky }
+public let STACK_CONTROL_MODE: StackControlMode = .dock
 
 /// A chain run's default iteration count — `1` (run once through), not the
 /// per-loop `DEFAULT_MAX_ITERATIONS`. Reuses the `0` = infinite sentinel.
-let DEFAULT_STACK_LOOP_COUNT = 1
+public let DEFAULT_STACK_LOOP_COUNT = 1
 
 /// B1 — default no-progress tolerance for a goal-pursuing stack.
-let DEFAULT_NO_PROGRESS_LIMIT = 3
+public let DEFAULT_NO_PROGRESS_LIMIT = 3
 
 /// B1 — the stack's run-until-goal facet. Off by default (additive/backward-
 /// compatible).
-struct StackGoal: Codable, Hashable {
+public struct StackGoal: Codable, Hashable {
     /// Run-until-goal on/off.
-    var pursue: Bool
+    public var pursue: Bool
     /// Consecutive non-gaining chain-runs tolerated before a `no_progress` stop;
     /// `0` disables the no-progress detector.
-    var noProgressLimit: Int
+    public var noProgressLimit: Int
+
+    public init(pursue: Bool, noProgressLimit: Int) {
+        self.pursue = pursue
+        self.noProgressLimit = noProgressLimit
+    }
 }
 
 /// Freshly-initialized goal facet.
-func defaultStackGoal() -> StackGoal {
+public func defaultStackGoal() -> StackGoal {
     StackGoal(pursue: false, noProgressLimit: DEFAULT_NO_PROGRESS_LIMIT)
 }
 
@@ -141,18 +166,29 @@ func defaultStackGoal() -> StackGoal {
 /// Stack-level config. `scheduled`/`cron` are STUBBED (no whole-chain cron
 /// server-side). `evals` is CLIENT-ONLY chain-acceptance intent. `defaults` is
 /// WIRED (resolved into every loop's payload). `goal` is B1 run-until-goal.
-struct StackConfig: Codable, Hashable {
-    var loopCount: Int
-    var scheduled: Bool
-    var cron: CronConfig
-    var guardrails: StackGuardrails
-    var evals: [EvalRef]
-    var defaults: StackDefaults
-    var goal: StackGoal
+public struct StackConfig: Codable, Hashable {
+    public var loopCount: Int
+    public var scheduled: Bool
+    public var cron: CronConfig
+    public var guardrails: StackGuardrails
+    public var evals: [EvalRef]
+    public var defaults: StackDefaults
+    public var goal: StackGoal
+
+    public init(loopCount: Int, scheduled: Bool, cron: CronConfig, guardrails: StackGuardrails,
+                evals: [EvalRef], defaults: StackDefaults, goal: StackGoal) {
+        self.loopCount = loopCount
+        self.scheduled = scheduled
+        self.cron = cron
+        self.guardrails = guardrails
+        self.evals = evals
+        self.defaults = defaults
+        self.goal = goal
+    }
 }
 
 /// Freshly-initialized stack config — every pane gets its own value.
-func defaultStackConfig() -> StackConfig {
+public func defaultStackConfig() -> StackConfig {
     StackConfig(
         loopCount: DEFAULT_STACK_LOOP_COUNT,
         scheduled: false,
@@ -170,16 +206,16 @@ func defaultStackConfig() -> StackConfig {
 /// `draft` is the pane's live composer-replacement card (Creation-Flow-1),
 /// pinned above `cards` and never a member of it. The custom init defaults it to
 /// a fresh draft so every existing construction site stays unchanged.
-struct StackPaneState: Codable, Hashable, Identifiable {
-    var key: String
-    var title: String
-    var cards: [StackCard]
-    var config: StackConfig
-    var draft: StackCard
+public struct StackPaneState: Codable, Hashable, Identifiable {
+    public var key: String
+    public var title: String
+    public var cards: [StackCard]
+    public var config: StackConfig
+    public var draft: StackCard
 
-    var id: String { key }
+    public var id: String { key }
 
-    init(key: String, title: String, cards: [StackCard], config: StackConfig, draft: StackCard = makeDraft()) {
+    public init(key: String, title: String, cards: [StackCard], config: StackConfig, draft: StackCard = makeDraft()) {
         self.key = key
         self.title = title
         self.cards = cards
@@ -192,13 +228,19 @@ struct StackPaneState: Codable, Hashable, Identifiable {
 
 /// Pane-level defaults a card's `config` overrides fall back to. A superset —
 /// `StackDefaults` — is accepted anywhere this is (the production shape).
-struct PaneDefaults {
-    var model: String
-    var effort: String
-    var repo: String
+public struct PaneDefaults {
+    public var model: String
+    public var effort: String
+    public var repo: String
+
+    public init(model: String, effort: String, repo: String) {
+        self.model = model
+        self.effort = effort
+        self.repo = repo
+    }
 }
 
-extension PaneDefaults {
+public extension PaneDefaults {
     /// Resolve from a full `StackDefaults` — the production call shape, where a
     /// pane's `config.defaults` supplies all three WIRED fields.
     init(_ d: StackDefaults) {

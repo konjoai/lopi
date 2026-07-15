@@ -1,4 +1,5 @@
 import SwiftUI
+import LopiStacksKit
 
 /// The Forge — lopi's multi-agent cockpit, now unified with Loop Stacks (macOS
 /// Loop Stacks). A resizable, auto-tiling grid of stack panes: each pane is a

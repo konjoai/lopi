@@ -1,5 +1,5 @@
 import XCTest
-@testable import Lopi
+@testable import LopiStacksKit
 
 /// Goal-pursuit core tests — the Swift port of `web/src/lib/stores/stackGoal.test.ts`,
 /// same fixtures and assertions. Pure functions only: no store, no mock, no

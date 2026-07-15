@@ -1,4 +1,5 @@
 import SwiftUI
+import LopiStacksKit
 
 /// StackControlDockView — the purple stack control area at the base of each pane
 /// (Stack-1). Reuses the exact per-loop controls (the iteration-pill stepper and

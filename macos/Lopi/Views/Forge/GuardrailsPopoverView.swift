@@ -1,4 +1,5 @@
 import SwiftUI
+import LopiStacksKit
 
 /// Shared popover chrome — a dark padded panel with a titled header row, matching
 /// the web `Popover` body styling. Native `.popover` supplies positioning +

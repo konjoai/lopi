@@ -78,6 +78,16 @@ pub enum StreamEvent {
         /// `resetsAt`. Five-hour windows are rolling from first use, not
         /// wall-clock fixed, so this is the only reliable way to know when.
         resets_at: Option<i64>,
+        /// The CLI's own `surpassedThreshold`, if present — the answer to
+        /// MAXX kill test 1 (is the event threshold-gated or does it fire
+        /// every turn) lives in this field, not in whether the event fired at
+        /// all. `None` for a build of the CLI that omits it; not forwarded
+        /// into `AgentEvent::ApiRetry` today (no consumer needs it yet) but
+        /// kept here so `quota_kill_log` can log it verbatim.
+        surpassed_threshold: Option<f32>,
+        /// The CLI's own `isUsingOverage`, if present — same rationale as
+        /// `surpassed_threshold`.
+        is_using_overage: Option<bool>,
     },
     /// Terminal envelope (`result`).
     Result {
@@ -257,11 +267,20 @@ fn parse_rate_limit(v: &Value) -> StreamEvent {
         .unwrap_or(0.0)
         .clamp(0.0, 1.0) as f32;
     let resets_at = info.and_then(|i| i.get("resetsAt")).and_then(Value::as_i64);
+    let surpassed_threshold = info
+        .and_then(|i| i.get("surpassedThreshold"))
+        .and_then(Value::as_f64)
+        .map(|f| f as f32);
+    let is_using_overage = info
+        .and_then(|i| i.get("isUsingOverage"))
+        .and_then(Value::as_bool);
     StreamEvent::RateLimit {
         status: info.map(|i| str_at(i, "status")).unwrap_or_default(),
         limit_type: info.map(|i| str_at(i, "rateLimitType")).unwrap_or_default(),
         utilization: util,
         resets_at,
+        surpassed_threshold,
+        is_using_overage,
     }
 }
 
@@ -368,6 +387,7 @@ impl StreamEvent {
                 limit_type,
                 utilization,
                 resets_at,
+                ..
             } => vec![AgentEvent::ApiRetry {
                 task_id,
                 status: status.clone(),

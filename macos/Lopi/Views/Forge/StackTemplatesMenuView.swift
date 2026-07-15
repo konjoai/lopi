@@ -1,4 +1,5 @@
 import SwiftUI
+import LopiStacksKit
 
 /// StackTemplatesMenuView — the STACK-scope templates control
 /// (Stack-Templates-1 §2b), in the dock's cardbar, icon-only, `Konjo.violet`,

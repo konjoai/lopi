@@ -8,7 +8,7 @@ import Foundation
 // Foundation only.
 
 /// A chain-scope stop reason. Wire strings match `StopReason::as_str`.
-enum StackStopReason: String, Equatable, CaseIterable {
+public enum StackStopReason: String, Equatable, CaseIterable {
     case goalMet = "goal_met"
     case budget = "budget"
     case noProgress = "no_progress"
@@ -25,15 +25,15 @@ private let RANK: [StackStopReason: Int] = [
 
 /// The higher-precedence of two reasons — the one that "wins" when both trip in
 /// the same chain-run. Mirrors `StopReason::precede`.
-func precede(_ a: StackStopReason, _ b: StackStopReason) -> StackStopReason {
+public func precede(_ a: StackStopReason, _ b: StackStopReason) -> StackStopReason {
     (RANK[b] ?? 0) > (RANK[a] ?? 0) ? b : a
 }
 
 /// Whether a stop reason represents a *successful* termination.
-func isSuccessStop(_ reason: StackStopReason) -> Bool { reason == .goalMet }
+public func isSuccessStop(_ reason: StackStopReason) -> Bool { reason == .goalMet }
 
 /// A short, human-readable line for the recorded stop reason.
-func stackStopLabel(_ reason: StackStopReason) -> String {
+public func stackStopLabel(_ reason: StackStopReason) -> String {
     switch reason {
     case .goalMet:
         return "goal met — stack acceptance passed"
@@ -48,18 +48,25 @@ func stackStopLabel(_ reason: StackStopReason) -> String {
 
 /// The margin a chain-run's stack-eval score must beat the best-so-far by to
 /// count as progress — mirrors A3's `GainRule.margin`.
-let STACK_GAIN_MARGIN = 0.01
+public let STACK_GAIN_MARGIN = 0.01
 
 /// The live goal-pursuit counters the sequencer threads across chain-runs.
-struct GoalPursuit {
-    var chainRun: Int
-    var maxChainLoops: Int
-    var noGainStreak: Int
-    var noProgressLimit: Int
+public struct GoalPursuit {
+    public var chainRun: Int
+    public var maxChainLoops: Int
+    public var noGainStreak: Int
+    public var noProgressLimit: Int
+
+    public init(chainRun: Int, maxChainLoops: Int, noGainStreak: Int, noProgressLimit: Int) {
+        self.chainRun = chainRun
+        self.maxChainLoops = maxChainLoops
+        self.noGainStreak = noGainStreak
+        self.noProgressLimit = noProgressLimit
+    }
 }
 
 /// What the sequencer should do after a chain-run whose acceptance did not pass.
-enum GoalDecision: Equatable {
+public enum GoalDecision: Equatable {
     case rerun
     case stop(reason: StackStopReason)
 }
@@ -69,7 +76,7 @@ enum GoalDecision: Equatable {
 /// checked and the higher-precedence one is reported. `budget` is intentionally
 /// never tripped here (no observable client-side stack-token meter), but stays
 /// in the precedence for when a real meter lands.
-func decideAfterMiss(_ p: GoalPursuit) -> GoalDecision {
+public func decideAfterMiss(_ p: GoalPursuit) -> GoalDecision {
     var tripped: [StackStopReason] = []
     if p.maxChainLoops != 0 && p.chainRun >= p.maxChainLoops { tripped.append(.maxChainLoops) }
     if p.noProgressLimit != 0 && p.noGainStreak >= p.noProgressLimit { tripped.append(.noProgress) }
@@ -78,16 +85,21 @@ func decideAfterMiss(_ p: GoalPursuit) -> GoalDecision {
 }
 
 /// The best-score + no-gain-streak carried between chain-runs.
-struct GainState: Equatable {
-    var best: Double?
-    var streak: Int
+public struct GainState: Equatable {
+    public var best: Double?
+    public var streak: Int
+
+    public init(best: Double? = nil, streak: Int) {
+        self.best = best
+        self.streak = streak
+    }
 }
 
 /// Fold a completed chain-run's stack-eval score into the no-gain streak. A
 /// score at or above `best + margin` is progress (resets streak, raises best);
 /// anything less increments the streak. `nil` (no observable scalar) leaves both
 /// unchanged — an unobservable result is neither progress nor a stall.
-func foldGain(_ prev: GainState, _ score: Double?) -> GainState {
+public func foldGain(_ prev: GainState, _ score: Double?) -> GainState {
     guard let score else { return prev }
     if prev.best == nil || score >= (prev.best ?? 0) + STACK_GAIN_MARGIN {
         return GainState(best: score, streak: 0)

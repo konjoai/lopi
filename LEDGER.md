@@ -5,6 +5,75 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## iOS-Research-1 spike + kill-test harness prep + eval-enforcement decision brief
+
+Three phases, one real feature (the first). Per the sprint's own scoping: the
+other two are tooling/docs, noted here plainly rather than written up as if
+they closed something.
+
+**Phase 1 (shipped): the package boundary is 15 files, not "the whole
+directory."** Verify-4 established the *test* layer was framework-free;
+re-verifying the *source* layer file-by-file (not trusting the rounder claim)
+found two exceptions. `StackTheme.swift` imports SwiftUI directly (a `Color`
+extension) and is UI theming, not domain — it was never a mechanical fit.
+`CardOrbState.swift` is the sharper finding: it imports only `Foundation`, so
+a directory-level import scan calls it clean, but `CardOrb.state(for:in:)`
+reads `LiveAgent`/`ForgeOrbState` from `Store/`, both of which import
+SwiftUI — a transitive dependency an import-statement grep can't see.
+Moving it as-is would have quietly broken the entire point of the
+extraction. Left in the app target; a real fix (a package-local protocol
+`LiveAgent`/`ForgeOrbState` conform to from the app side) is future work, not
+a mechanical port.
+
+**The access-control work is the part "a move, not a rewrite" undersells.**
+Every symbol in the moved files defaulted to `internal`, invisible outside
+the file only because Views/Store shared its module. A separate package
+makes that boundary real, and Swift's sharp edge is that it **never**
+synthesizes a `public` memberwise initializer, even for a fully-`public`
+struct — every struct without a hand-written `init` needed one added,
+mirroring the implicit one's parameters/defaults exactly. Applied uniformly
+by rule (default to `public` when unsure — over-exposing is harmless and
+tightenable later; under-exposing is a compile error at the one point this
+can actually be checked, and there is no compiler on this host). Spot-checked
+against real call sites (`StackRunSeams`'s 7 closure properties against
+`AppModel+Stacks.swift::makeStackSeams()`) rather than assumed correct.
+
+**Prep, not execution, for the other two:**
+
+- **MAXX kill-test instrumentation** (`crates/lopi-agent/src/quota_kill_log.rs`)
+  — real, compiled, unit-tested Rust (unlike Phase 1, this crate builds on
+  this host), but off by default (`LOPI_QUOTA_KILL_TEST_LOG` unset = zero
+  behavior change) and never run against a live session. Extended
+  `StreamEvent::RateLimit` with `surpassed_threshold`/`is_using_overage` —
+  present in the real capture (`artifacts/STREAM_CAPTURE.jsonl`) but
+  previously decoded nowhere, which would have silently defeated kill test
+  1's actual question (is the event threshold-gated). Scoped as a
+  process-wide `OnceLock`, not threaded through `AgentRunner`: a single
+  `lopi run` CLI invocation is one process, matching the kill-test
+  protocol's intended single-task usage; running it against concurrent
+  `lopi sail` tasks would interleave their events into one cadence count — a
+  named caveat, not a silent one. `.konjo/scripts/quota-kill-test-log.sh` is
+  the one command the next session runs on real hardware.
+- **Eval-enforcement decision brief** (`docs/ops/EVAL_ENFORCEMENT_DECISION.md`)
+  — re-reading `LEDGER.md`'s own A1/macOS-Loop-Stacks-1 entries (per the
+  sprint brief) surfaced a bigger finding than expected: **the claim that
+  `acceptance`/`budget_tokens` are "not wired to the live body" is only true
+  for macOS, and even there it's a bug, not a scope decision.** The server
+  has applied both since A1/A3 (`handlers.rs:290-297`); web has sent both
+  since A1 (`stack.ts::cardToTaskPayload` → `api.ts::createTask`'s options
+  spread). Only macOS's `launchStackTask` silently drops them when mapping
+  the pure payload onto the real wire struct — its own code comment claiming
+  this was deliberate is what every later doc (this ledger included, twice)
+  trusted instead of re-checking against `stack.ts`. Not fixed here (the
+  sprint's own instruction); flagged as a follow-up task, not wired even
+  partially.
+
+**Housekeeping:** none of the three "not fixed here" items above are silent —
+Phase 1's compile-risk flags live in `IOS_RESEARCH_1_SPIKE.md`, Phase 2's
+"run this on real hardware" lives in the script + `NEXT_SESSION_PROMPT.md`,
+and the macOS acceptance/budget_tokens bug is flagged as a standalone
+follow-up task, not folded into this sprint's diff.
+
 ## Loop Stack connect & test — auto model, branch round-trip fix, bumpCard UI
 
 **The audit this sprint was scoped against was already stale, and re-verifying

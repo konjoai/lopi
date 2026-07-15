@@ -1,4 +1,5 @@
 import SwiftUI
+import LopiStacksKit
 
 // Shared stack UI primitives — the native analogues of the web `Toggle`,
 // `Combo`, segmented rows, the iteration pill, and the cardbar icon button.

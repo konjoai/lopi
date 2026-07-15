@@ -1,4 +1,5 @@
 import SwiftUI
+import LopiStacksKit
 
 /// StackPaneView — one pane's chrome: header (logo + title + status dot + close),
 /// a pinned **draft** card (Creation-Flow-1 — the composer replacement; the thing

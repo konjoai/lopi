@@ -1,4 +1,5 @@
 import SwiftUI
+import LopiStacksKit
 
 /// StackConnectorView — the vertical gap between two cards. A flame line, dashed
 /// with a cyan cadence badge when the card above is scheduled (and not governed

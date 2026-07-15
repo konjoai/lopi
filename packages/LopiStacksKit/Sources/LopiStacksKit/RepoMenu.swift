@@ -11,21 +11,27 @@ import Foundation
 
 /// A repo as `GET /api/repos` reports it. `owner` is nil when the checkout has
 /// no origin remote, or its origin is not GitHub.
-struct RepoEntry: Codable, Hashable {
+public struct RepoEntry: Codable, Hashable {
     /// Absolute path — the value a launch actually uses.
-    var path: String
-    var owner: String?
-    var name: String
+    public var path: String
+    public var owner: String?
+    public var name: String
+
+    public init(path: String, owner: String?, name: String) {
+        self.path = path
+        self.owner = owner
+        self.name = name
+    }
 }
 
 /// Section for repos with no GitHub identity. The space makes it uncollidable
 /// with a real owner — a GitHub login cannot contain one.
-let NO_REMOTE_GROUP = "no github remote"
+public let NO_REMOTE_GROUP = "no github remote"
 
 /// The no-override sentinel. Ungrouped, so `groupedMenu` pins it above every
 /// section — but only while it matches the query, so that typing "lopi" doesn't
 /// leave `auto` sitting at `flat[0]` where Return would select it.
-let AUTO_REPO_OPTION = StackOption(value: "", label: "auto")
+public let AUTO_REPO_OPTION = StackOption(value: "", label: "auto")
 
 /// The trailing path segment — the disambiguator when one `owner/name` covers
 /// two checkouts.
@@ -91,7 +97,7 @@ private func compareGroups(_ ga: String, _ gb: String, _ counts: [String: Int]) 
 /// labels can, and two different run targets rendering as one row is exactly the
 /// failure this must not introduce — so an ambiguous label, and only an ambiguous
 /// one, is suffixed with its directory name.
-func repoOptions(_ repos: [RepoEntry]) -> [StackOption] {
+public func repoOptions(_ repos: [RepoEntry]) -> [StackOption] {
     let bases = tally(repos.map(baseLabel))
     let counts = tally(repos.map(groupOf))
 

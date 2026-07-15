@@ -1,4 +1,5 @@
 import Foundation
+import LopiStacksKit
 
 // Wires the pure `StackRunEngine` to the real macOS backend paths — the app-side
 // seam layer. This is the ONLY place the framework-free sequencer touches

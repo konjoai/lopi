@@ -1,4 +1,5 @@
 import SwiftUI
+import LopiStacksKit
 
 /// Budget — cost governance. Live fleet spend, burn-rate vs a configurable
 /// hourly cap, projection, per-agent spend with stop controls, and a fleet

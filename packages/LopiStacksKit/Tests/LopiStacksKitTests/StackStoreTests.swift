@@ -1,5 +1,5 @@
 import XCTest
-@testable import Lopi
+@testable import LopiStacksKit
 
 /// Pure-ops + composer-grammar tests — the Swift port of
 /// `web/src/lib/stores/stack.test.ts`, same fixtures and assertions. No SwiftUI,

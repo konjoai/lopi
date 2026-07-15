@@ -17,30 +17,46 @@ import Foundation
 /// An option plus its index into `OptionMenu.flat` — the index the keyboard
 /// cursor uses. Precomputed so the view never does index arithmetic across two
 /// nested loops.
-struct MenuRow: Identifiable, Hashable {
-    var opt: StackOption
-    var index: Int
+public struct MenuRow: Identifiable, Hashable {
+    public var opt: StackOption
+    public var index: Int
 
-    var id: String { opt.value }
+    public init(opt: StackOption, index: Int) {
+        self.opt = opt
+        self.index = index
+    }
+
+    public var id: String { opt.value }
 }
 
 /// One section: the `group` key its options share, and its rows.
-struct OptionGroup: Identifiable, Hashable {
-    var key: String
-    var rows: [MenuRow]
+public struct OptionGroup: Identifiable, Hashable {
+    public var key: String
+    public var rows: [MenuRow]
 
-    var id: String { key }
+    public init(key: String, rows: [MenuRow]) {
+        self.key = key
+        self.rows = rows
+    }
+
+    public var id: String { key }
 }
 
 /// A menu partitioned for rendering: pinned rows, ordered sections, and the flat
 /// cursor list.
-struct OptionMenu: Hashable {
+public struct OptionMenu: Hashable {
     /// Ungrouped options, in their given order — rendered above every section.
-    var pinned: [MenuRow]
-    var groups: [OptionGroup]
+    public var pinned: [MenuRow]
+    public var groups: [OptionGroup]
     /// Every selectable row, in render order. Section headers are absent, so a
     /// cursor walking this list steps over them for free.
-    var flat: [StackOption]
+    public var flat: [StackOption]
+
+    public init(pinned: [MenuRow], groups: [OptionGroup], flat: [StackOption]) {
+        self.pinned = pinned
+        self.groups = groups
+        self.flat = flat
+    }
 }
 
 /// Does `opt` survive `q` (already trimmed and lowercased)? Case-insensitive
@@ -53,7 +69,7 @@ private func optionMatches(_ opt: StackOption, _ q: String) -> Bool {
 
 /// Partition `options` into pinned rows and ordered sections, keeping only what
 /// matches `query`.
-func groupedMenu(_ options: [StackOption], query: String = "") -> OptionMenu {
+public func groupedMenu(_ options: [StackOption], query: String = "") -> OptionMenu {
     let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     let passing = q.isEmpty ? options : options.filter { optionMatches($0, q) }
 

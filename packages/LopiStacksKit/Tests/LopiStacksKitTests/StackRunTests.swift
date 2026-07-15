@@ -1,5 +1,5 @@
 import XCTest
-@testable import Lopi
+@testable import LopiStacksKit
 
 /// Stack-run sequencer tests — the Swift port of
 /// `web/src/lib/stores/stackRun.test.ts`. A deterministic in-memory mock stands

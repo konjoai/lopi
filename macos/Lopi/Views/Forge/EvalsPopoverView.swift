@@ -1,4 +1,5 @@
 import SwiftUI
+import LopiStacksKit
 
 /// EvalsPopover — the jade evals button's content. Client-only intent (eval
 /// execution doesn't exist server-side yet at either scope): an editor of which

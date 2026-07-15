@@ -4,7 +4,7 @@ import Foundation
 // drain, bump, and schedule-stack. Split out of `StackRun.swift` to keep each
 // file under the 500-line rule. Foundation only.
 
-extension StackRunEngine {
+public extension StackRunEngine {
     // MARK: Bare-pane launch (F2)
 
     /// Launch a *bare* pane's single staged card. A ≤1-card pane never renders

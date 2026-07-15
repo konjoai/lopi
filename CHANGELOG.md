@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.12.0] — iOS-Research-1: shared Swift package extraction spike 📦
+
+The one phase of this sprint that touches shipped code — see `LEDGER.md` for
+the full sprint (this extraction, plus a MAXX kill-test instrumentation
+harness and an eval-enforcement decision brief, neither of which shipped a
+feature). Written, not built: Swift does not compile on this host, same
+discipline as every prior macOS round.
+
+- **[Feat] `packages/LopiStacksKit/` — the `Stacks/` domain layer extracted
+  into a standalone Swift package.** 15 of 17 files (2,448 lines) moved via
+  `git mv` from `macos/Lopi/Stacks/` — `StackTheme.swift` (a SwiftUI `Color`
+  extension) and `CardOrbState.swift` (Foundation-only itself, but reads
+  `LiveAgent`/`ForgeOrbState` from `Store/`, which import SwiftUI) stayed
+  behind; the directory was never 100% framework-free, just close to it. The
+  three ported test files (`StackStoreTests`/`StackGoalTests`/`StackRunTests`,
+  1,080 lines, Verify-4's 60 assertions) moved with a one-line import change
+  and are otherwise byte-identical.
+- **[Feat] Every moved symbol re-exposed as `public`.** Splitting into a
+  separate module makes Swift's `internal`-by-default access real: every
+  type/func/constant the app still touches needed `public`, and every struct
+  without a hand-written `init` needed one added — Swift never synthesizes a
+  `public` memberwise initializer, even for a fully-`public` struct. Verified
+  (mechanically, not compiled) against real call sites in
+  `Store/AppModel+Stacks.swift` and `StackConfigTypes.swift`.
+- **[Chore] `macos/project.yml` gained a `packages:` block** (local path
+  dependency) and the `Lopi` target now depends on `LopiStacksKit`; 24
+  app-target files gained `import LopiStacksKit`. `xcodegen generate` has not
+  been run — that, plus `swift test`/`xcodebuild`, is the M3 pass.
+- **[Docs] `docs/ops/IOS_RESEARCH_1_SPIKE.md`** — the full boundary reasoning,
+  what's verified vs. assumed, and the M3 checklist.
+- **[Verify]** Not compiled (no Xcode host). Grep-verified: every file brace-
+  balanced, `import Foundation`/`import Observation` only, zero non-public
+  top-level declarations remaining, zero `SwiftUI`/`AppKit` imports outside
+  the two files that intentionally stayed behind.
+
 ## [0.11.0] — Loop Stack connect & test: auto model, branch round-trip fix, bumpCard UI 🔌
 
 Closes real Loop-Stack connectivity gaps found by re-auditing against the

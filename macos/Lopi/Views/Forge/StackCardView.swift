@@ -1,4 +1,5 @@
 import SwiftUI
+import LopiStacksKit
 
 /// StackCardView — one loop in the stack, and (Creation-Flow-1) the pane's
 /// pre-commit **draft** card, via a `draft` branch in this *one* view rather
