@@ -3,7 +3,7 @@ import LopiStacksKit
 
 /// Sidebar sections. Each maps to a live screen backed by the lopi REST/WS API.
 enum NavSection: String, CaseIterable, Identifiable {
-    case forge = "Forge"
+    case forge = "Loop Stack"
     case dashboard = "Dashboard"
     case budget = "Budget"
     case cron = "Cron"
@@ -14,7 +14,7 @@ enum NavSection: String, CaseIterable, Identifiable {
 
     var icon: String {
         switch self {
-        case .forge: return "circle.grid.2x2.fill"
+        case .forge: return "square.3.layers.3d"
         case .dashboard: return "gauge.with.dots.needle.67percent"
         case .budget: return "dollarsign.circle"
         case .cron: return "clock.arrow.circlepath"
@@ -103,7 +103,7 @@ struct RootView: View {
             HStack(spacing: 10) {
                 Image(systemName: section.icon)
                     .font(.system(size: 13))
-                    .foregroundStyle(selected ? Konjo.ice : Konjo.fgDim)
+                    .foregroundStyle(selected ? Konjo.flame : Konjo.fgDim)
                     .frame(width: 18)
                 Text(section.rawValue)
                     .font(Konjo.sans(13, weight: selected ? .semibold : .regular))
@@ -111,17 +111,17 @@ struct RootView: View {
                 Spacer(minLength: 0)
                 if let badge = badge(for: section) {
                     Text(badge)
-                        .font(Konjo.mono(9, weight: .semibold)).foregroundStyle(Konjo.ice)
+                        .font(Konjo.mono(9, weight: .semibold)).foregroundStyle(Konjo.flame)
                         .padding(.horizontal, 6).padding(.vertical, 1)
-                        .background(Konjo.ice.opacity(0.18)).clipShape(Capsule())
+                        .background(Konjo.flame.opacity(0.18)).clipShape(Capsule())
                 }
             }
             .padding(.horizontal, 10).padding(.vertical, 7)
             .background(
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(selected ? Konjo.ice.opacity(0.12) : .clear)
+                    .fill(selected ? Konjo.flame.opacity(0.12) : .clear)
                     .overlay(RoundedRectangle(cornerRadius: 8)
-                        .stroke(selected ? Konjo.ice.opacity(0.25) : .clear, lineWidth: 1))
+                        .stroke(selected ? Konjo.flame.opacity(0.25) : .clear, lineWidth: 1))
             )
             .contentShape(Rectangle())
         }
@@ -163,9 +163,9 @@ struct RootView: View {
         .padding(.horizontal, 8).padding(.vertical, 6)
         .background(
             RoundedRectangle(cornerRadius: 8)
-                .fill(isOpen ? Konjo.ice.opacity(0.10) : Color.clear)
+                .fill(isOpen ? Konjo.flame.opacity(0.10) : Color.clear)
                 .overlay(RoundedRectangle(cornerRadius: 8)
-                    .stroke(isOpen ? Konjo.ice.opacity(0.25) : Color.clear, lineWidth: 1))
+                    .stroke(isOpen ? Konjo.flame.opacity(0.25) : Color.clear, lineWidth: 1))
         )
     }
 

@@ -8,6 +8,7 @@ struct PopoverChrome<Content: View>: View {
     var systemImage: String
     var title: String
     var accent: Color
+    var width: CGFloat = 300
     @ViewBuilder var content: Content
 
     var body: some View {
@@ -20,7 +21,7 @@ struct PopoverChrome<Content: View>: View {
             Rectangle().fill(Konjo.line).frame(height: 1)
             content.padding(13)
         }
-        .frame(width: 300)
+        .frame(width: width)
         .background(Konjo.panel)
     }
 }

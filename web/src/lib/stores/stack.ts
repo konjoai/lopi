@@ -14,7 +14,9 @@
 import { writable } from 'svelte/store';
 import type { Acceptance, AcceptanceCheck, CreateTaskOptions } from '$lib/api';
 import { type StackDefaults, DEFAULT_STACK_DEFAULTS, defaultStackDefaults } from '$lib/stores/stackDefaults';
-import { AUTO_MODEL, MODEL_OPTIONS, labelFor } from '$lib/stores/options';
+import { AUTO_MODEL, MODEL_OPTIONS, labelFor, type Option } from '$lib/stores/options';
+import { resolveRepoToken } from '$lib/stores/repoMenu';
+import { matches } from '$lib/stores/optionMenu';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -27,8 +29,16 @@ export interface EvalRef {
   tier: EvalTier;
 }
 
-/** The five built-in presets a card can be created from. */
-export type PresetKey = 'research' | 'implement' | 'optimize' | 'gain' | 'benchmark';
+/** The built-in presets a card can be created from. */
+export type PresetKey =
+  | 'research'
+  | 'implement'
+  | 'optimize'
+  | 'gain'
+  | 'benchmark'
+  | 'test'
+  | 'killtest'
+  | 'report';
 
 /** A preset's fixed shape: its alias, keyword-suggestion triggers, and the
  *  eval suite it carries (baseline always first). */
@@ -292,6 +302,44 @@ export const PRESET_CATALOG: Record<PresetKey, PresetDef> = {
       { name: 'benchmark gate', tier: 'test' },
       { name: '30-run gate', tier: 'test' }
     ]
+  },
+  test: {
+    key: 'test',
+    label: 'test',
+    alias: ':test',
+    keywords: ['test', 'verify', 'validate', 'confirm', 'prove', 'check'],
+    evals: [
+      BASELINE_EVAL,
+      { name: 'tests pass', tier: 'test' },
+      { name: 'integration', tier: 'test' },
+      { name: 'code review', tier: 'judge' }
+    ]
+  },
+  // Adversarial "try to break it" testing — distinct from `:test`'s
+  // verification intent. Reuses the existing `adversarial`/`vuln scan` evals
+  // rather than inventing a new eval type for kill-testing.
+  killtest: {
+    key: 'killtest',
+    label: 'killtest',
+    alias: ':killtest',
+    keywords: ['killtest', 'kill test', 'break', 'destroy', 'adversarial', 'stress', 'fuzz', 'attack'],
+    evals: [
+      BASELINE_EVAL,
+      { name: 'adversarial', tier: 'suite' },
+      { name: 'vuln scan', tier: 'suite' },
+      { name: '30-run gate', tier: 'test' }
+    ]
+  },
+  // A documentation-deliverable preset (write an .md summarizing the latest
+  // findings/session) — not a code-correctness suite, so its eval set mirrors
+  // `:research`'s (baseline + judge-reviewed review, since there's no code
+  // change to test/scan, just a write-up worth a review pass for accuracy).
+  report: {
+    key: 'report',
+    label: 'report',
+    alias: ':report',
+    keywords: ['report', 'summarize', 'summary', 'findings', 'writeup', 'write up', 'docs'],
+    evals: [BASELINE_EVAL, { name: 'code review', tier: 'judge' }]
   }
 };
 
@@ -305,7 +353,10 @@ export const PRESET_DESCRIPTIONS: Record<PresetKey, string> = {
   implement: 'build a feature — full test + review suite',
   optimize: 'improve speed — beats-best + 30-run gate',
   gain: 'self-improve — ratchet on beats-best',
-  benchmark: 'measure variance — benchmark + 30-run gate'
+  benchmark: 'measure variance — benchmark + 30-run gate',
+  test: 'verify it works — full test suite + review',
+  killtest: 'try to break it — adversarial + vuln scan + 30-run gate',
+  report: 'write up findings — .md summary, judge-reviewed'
 };
 
 /** Legacy `:alias` tokens that map onto a renamed preset key, so old composer
@@ -317,6 +368,32 @@ const LEGACY_ALIASES: Record<string, PresetKey> = { ratchet: 'gain' };
 export function resolvePresetAlias(alias: string): PresetKey | null {
   if (isPresetKey(alias)) return alias;
   return LEGACY_ALIASES[alias] ?? null;
+}
+
+export interface AliasSuggestion {
+  /** The full token, leading colon included — ready to write straight into
+   *  the goal field (e.g. `:research`). */
+  alias: string;
+  label: string;
+  hint: string;
+}
+
+/** Filtered alias suggestions for the goal input's autocomplete, given its
+ *  *entire current value*. Only suggests while the field is still a bare
+ *  `:token` with no space yet (`^:(\S*)$`) — once a space follows, the user
+ *  has moved on to typing the goal text and this returns `[]`. Only
+ *  canonical `PRESET_KEYS` are ever suggested; legacy aliases (e.g. the
+ *  renamed `:ratchet`→`:gain`) still resolve on commit but never appear here,
+ *  so the autocomplete never steers anyone toward a deprecated token. */
+export function aliasAutocomplete(goalText: string): AliasSuggestion[] {
+  const match = /^:(\S*)$/.exec(goalText);
+  if (!match) return [];
+  const query = match[1].toLowerCase();
+  return PRESET_KEYS.filter((key) => key.toLowerCase().startsWith(query)).map((key) => ({
+    alias: `:${key}`,
+    label: PRESET_CATALOG[key].label,
+    hint: PRESET_DESCRIPTIONS[key]
+  }));
 }
 
 function isPresetKey(s: string): s is PresetKey {
@@ -332,6 +409,104 @@ export function suggestPreset(text: string): PresetKey | null {
     if (PRESET_CATALOG[key].keywords.some((kw) => lower.includes(kw))) return key;
   }
   return null;
+}
+
+// ── Inline `/command` autocomplete ────────────────────────────────────────────
+// Every prompt/stack setting gets a `:`/`@`/`/` alias, not just presets and
+// repo: `/model`, `/effort`, `/branch`, `/autonomy`, `/eval` are value-pickers
+// (mirrors the user's own suggested `/model/<autocomplete>` syntax — the
+// level-2 token embeds the real value directly, so unlike `@repo` there's no
+// label/path resolution step); `/guard`, `/schedule`, `/maxx`, `/goal` carry
+// multi-field state that doesn't reduce to one inline value, so picking one
+// just opens the existing popover for it (the composer component owns that
+// action — this module only supplies the pure matching).
+
+/** One inline `/command` definition. */
+export interface InlineCommandDef {
+  command: string;
+  hint: string;
+  /** `true` → typing `/command` then continues into a second `/command/value`
+   *  token (see `commandValueAutocomplete`). `false` → selecting the command
+   *  fires an immediate action (open a popover) with no value step. */
+  isValuePicker: boolean;
+}
+
+/** Card-scope commands, typed into a loop's own goal field. */
+export const CARD_COMMANDS: InlineCommandDef[] = [
+  { command: 'model', hint: "override this loop's model", isValuePicker: true },
+  { command: 'effort', hint: "override this loop's effort", isValuePicker: true },
+  { command: 'branch', hint: "override this loop's target branch", isValuePicker: true },
+  { command: 'autonomy', hint: "override this loop's autonomy level", isValuePicker: true },
+  { command: 'eval', hint: 'toggle an eval suite (kcqf/security/research)', isValuePicker: true },
+  { command: 'guard', hint: "open this loop's guardrails", isValuePicker: false },
+  { command: 'schedule', hint: "open this loop's schedule", isValuePicker: false },
+  { command: 'maxx', hint: 'open MAXX backlog dispatch', isValuePicker: false }
+];
+
+/** Stack-scope commands, typed into the stack's own command bar
+ *  (`StackControlDock.svelte`) — same vocabulary, writes to `pane.config`
+ *  instead of a card's `config`. No `maxx` (per-card only); adds `loop`
+ *  (chain loop count) and `goal` (run-until-goal), which have no card-level
+ *  analog. */
+export const STACK_COMMANDS: InlineCommandDef[] = [
+  { command: 'model', hint: 'stack default model', isValuePicker: true },
+  { command: 'effort', hint: 'stack default effort', isValuePicker: true },
+  { command: 'branch', hint: 'stack default branch', isValuePicker: true },
+  { command: 'autonomy', hint: 'stack default autonomy', isValuePicker: true },
+  { command: 'loop', hint: 'stack loop count', isValuePicker: true },
+  { command: 'eval', hint: 'toggle a stack eval suite', isValuePicker: true },
+  { command: 'guard', hint: 'open stack guardrails', isValuePicker: false },
+  { command: 'schedule', hint: 'open the stack schedule', isValuePicker: false },
+  { command: 'goal', hint: 'open run-until-goal', isValuePicker: false }
+];
+
+/** A level-1 `/command` suggestion — the bare command name, not yet a value. */
+export interface CommandSuggestion {
+  token: string;
+  command: string;
+  label: string;
+  hint: string;
+}
+
+/** Level 1: filtered command-name suggestions for a trailing `/token` — the
+ *  same trailing-word grammar `repoAutocomplete` uses, generalized over a
+ *  caller-supplied command list (card vs. stack scope differ). */
+export function commandAutocomplete(goalText: string, commands: InlineCommandDef[]): CommandSuggestion[] {
+  const match = /(?:^|\s)\/([a-z]*)$/.exec(goalText);
+  if (!match) return [];
+  const q = match[1].toLowerCase();
+  return commands
+    .filter((c) => c.command.startsWith(q))
+    .map((c) => ({ token: `/${c.command}`, command: c.command, label: c.command, hint: c.hint }));
+}
+
+/** A level-2 `/command/value` suggestion. */
+export interface CommandValueSuggestion {
+  token: string;
+  label: string;
+  hint: string;
+  value: string;
+}
+
+/** Level 2: once a value-picker command has been chosen (the composer tracks
+ *  this as its own `pendingCommand` state), matches a trailing
+ *  `/command/value` token against whatever catalog applies to `command`. */
+export function commandValueAutocomplete(goalText: string, command: string, options: Option[]): CommandValueSuggestion[] {
+  const match = new RegExp(`(?:^|\\s)/${command}/(\\S*)$`).exec(goalText);
+  if (!match) return [];
+  const q = match[1].toLowerCase();
+  return options
+    .filter((o) => matches(o, q))
+    .map((o) => ({ token: `/${command}/${o.value}`, label: o.label, hint: o.hint ?? '', value: o.value }));
+}
+
+/** `/eval`'s value catalog is the suite-shortcut names (`kcqf`/`security`/
+ *  `research`), not individual eval names — those contain spaces (`"vuln
+ *  scan"`, `"code review"`), which the trailing-token grammar can't carry.
+ *  Bulk-toggling a suite is the useful, space-free case; per-eval toggling
+ *  stays a popover click. */
+export function evalSuiteOptions(): Option[] {
+  return Object.keys(EVAL_SUITES).map((name) => ({ value: name, label: name }));
 }
 
 // ── Composer grammar parser ───────────────────────────────────────────────────
@@ -385,12 +560,22 @@ function makeId(): string {
 /** Build a `StackCard` from raw composer text, optionally forcing a preset
  *  (grid card / chip click). When the text's own `:alias` names a known
  *  preset, that preset's eval suite attaches automatically — the same
- *  string works from any of the three creation-flow doors. */
-export function buildCard(raw: string, explicitPreset?: PresetKey): StackCard {
+ *  string works from any of the three creation-flow doors.
+ *
+ *  `repoOptions` resolves a parsed `@token`'s label (e.g. `"konjoai/lopi"`)
+ *  to the real absolute path via `resolveRepoToken` before it lands on
+ *  `config.repo` — `CreateTaskRequest.repo` reaches `git2::Repository::open`
+ *  with no server-side resolution, so a label stored here would fail to
+ *  launch. Defaults to `[]` (no resolution, label stored as-is) for callers
+ *  with no live catalog to resolve against (`makeDraft`, tests, templates);
+ *  live composer commits always pass the fetched catalog — see
+ *  `finalizeDraft`/`commitDraft`. */
+export function buildCard(raw: string, explicitPreset?: PresetKey, repoOptions: Option[] = []): StackCard {
   const parsed = parseComposerInput(raw);
   const aliasPreset = parsed.alias ? resolvePresetAlias(parsed.alias) ?? undefined : undefined;
   const presetKey = explicitPreset ?? aliasPreset;
   const preset = presetKey ? PRESET_CATALOG[presetKey] : undefined;
+  const resolvedRepo = parsed.repo ? resolveRepoToken(parsed.repo, repoOptions) : null;
 
   return {
     id: makeId(),
@@ -405,7 +590,7 @@ export function buildCard(raw: string, explicitPreset?: PresetKey): StackCard {
     cron: defaultCron(),
     maxx: defaultMaxx(),
     guardrails: defaultGuardrails(),
-    config: parsed.repo ? { repo: parsed.repo } : {}
+    config: resolvedRepo ? { repo: resolvedRepo } : {}
   };
 }
 
@@ -529,14 +714,16 @@ export function stackTemplateFromCards(cards: StackCard[], name: string): StackT
  *  (preset or template applied) commits as-is; a still-raw draft honors the
  *  inline `:alias @repo ×N` tokens typed into its goal field — the power-user
  *  path the retired composer supported. Only ever flips `status` to `'idle'`;
- *  never mutates the pane. */
-export function finalizeDraft(draft: StackCard): StackCard {
+ *  never mutates the pane. `repoOptions` resolves any inline `@token` label
+ *  to its real path — see `buildCard`'s doc comment; pass the live catalog
+ *  whenever one is available (`commitDraft` always does). */
+export function finalizeDraft(draft: StackCard, repoOptions: Option[] = []): StackCard {
   if (draft.preset || draft.tpl) return { ...draft, status: 'idle' };
   const parsed = parseComposerInput(draft.goal);
   if (!parsed.alias && !parsed.repo && parsed.loopN === null) {
     return { ...draft, status: 'idle', goal: parsed.goal, literal: true };
   }
-  const built = buildCard(draft.goal);
+  const built = buildCard(draft.goal, undefined, repoOptions);
   return {
     ...built,
     id: draft.id,
@@ -548,6 +735,17 @@ export function finalizeDraft(draft: StackCard): StackCard {
     guardrails: draft.guardrails,
     config: { ...built.config, ...draft.config }
   };
+}
+
+/** Whether committing a card should seed the pane's own stack-level repo
+ *  default — only the first time, while the default is still the cold-start
+ *  `''` ("auto") sentinel. A later card with a different `@repo` never
+ *  clobbers an explicit choice (own or user-picked). Pulled out of
+ *  `commitDraft` so the rule is unit-testable without touching the `panes`
+ *  store. */
+export function adoptRepoDefaultIfUnset(defaults: StackDefaults, committed: StackCard): StackDefaults {
+  if (defaults.repo || !committed.config.repo) return defaults;
+  return { ...defaults, repo: committed.config.repo };
 }
 
 // ── Pure array ops (unit-tested directly) ─────────────────────────────────────
@@ -653,21 +851,27 @@ export function applySuite(evals: EvalRef[], suiteNames: string[]): EvalRef[] {
 
 // ── Iteration stepper (pure, tested) ──────────────────────────────────────────
 
-/** Step a card's `maxIterations` by `delta` (±1 from the pill/guardrails
- *  stepper). Floors at `MAX_ITERATIONS_FLOOR`; stepping below it wraps to
- *  the infinite sentinel (`0`). Stepping up from infinite skips straight to
- *  the floor rather than landing on `1`. */
+/** Step the *stack* loop-count by `delta` (±1 from the pill/guardrails
+ *  stepper). Three states: `1` = off (run the chain once, no repeat), a
+ *  literal count `2..N` (no ceiling — keeps incrementing), and the infinite
+ *  sentinel `0` (run until the goal/guardrails stop it). Cycles
+ *  `1 (off) → 2 → ... → N → 0 (∞) → 1`; there is no way to land on a value
+ *  below `1` other than the infinite sentinel itself. */
 export function stepMaxIterations(current: number, delta: number): number {
-  if (current === 0) return delta > 0 ? MAX_ITERATIONS_FLOOR : 0;
+  if (current === 0) return delta > 0 ? 1 : 0;
+  if (current === 1) return delta > 0 ? MAX_ITERATIONS_FLOOR : 0;
   const next = current + delta;
-  return next < MAX_ITERATIONS_FLOOR ? 0 : next;
+  return next < MAX_ITERATIONS_FLOOR ? 1 : next;
 }
 
-/** Display text for the *stack* loop-count pill (`∞` for the infinite
- *  sentinel). The stack pill keeps the wrap-to-infinite behavior so a
+/** Display text for the *stack* loop-count pill: `∞` for the infinite
+ *  sentinel, `off` for a single run with no chain repeat, the plain number
+ *  otherwise. The stack pill keeps the wrap-to-infinite behavior so a
  *  goal-pursuing chain can still be set to run "until met". */
 export function maxIterationsLabel(maxIterations: number): string {
-  return maxIterations === 0 ? '∞' : String(maxIterations);
+  if (maxIterations === 0) return '∞';
+  if (maxIterations === 1) return 'off';
+  return String(maxIterations);
 }
 
 /** Step a *card's* `maxIterations` by `delta`. Unlike the stack pill, the
@@ -1306,14 +1510,13 @@ function makeDefaultPanes(): StackPaneState[] {
   ];
 }
 
-/** True when a pane should render as a *bare* box — top composer, a single
- *  loop card + its orb, and nothing else: no inter-card connector, no purple
- *  stack control dock. This is the Unify-2 §3 collapse: a one-card pane reads
- *  identically to a pre-Unify Forge box, and a pane earns its full stack chrome
- *  (dock + connectors) only once it holds a second loop. An empty pane is bare
- *  too — just the composer and an idle orb, nothing to govern yet. */
+/** True when a pane should render as a *bare* box — top composer and an idle
+ *  orb, nothing else: no inter-card connector, no purple stack control dock.
+ *  Only an empty pane is bare; a pane earns its full stack chrome (dock +
+ *  connectors) as soon as it holds its first card, so the run/schedule/
+ *  guardrails/goal controls are visible from the very first prompt. */
 export function paneIsBare(pane: StackPaneState): boolean {
-  return pane.cards.length <= 1;
+  return pane.cards.length < 1;
 }
 
 /** A fresh, empty stack pane with its own config object and a unique key. */
@@ -1489,13 +1692,19 @@ export function updateDraftInPane(key: string, patch: Partial<StackCard>): void 
 /** Commit a pane's draft into a real (`'idle'`) card at the top of the stack
  *  (`addCard` prepends), then mint a fresh empty draft. The one transition a
  *  draft ever makes out of `'draft'`. No-op for an unknown key. */
-export function commitDraft(key: string): void {
+export function commitDraft(key: string, repoOptions: Option[] = []): void {
   panes.update((state) => {
     const idx = state.findIndex((p) => p.key === key);
     if (idx === -1) return state;
     const pane = state[idx];
     const next = [...state];
-    next[idx] = { ...pane, cards: addCard(pane.cards, finalizeDraft(pane.draft)), draft: makeDraft() };
+    const finalized = finalizeDraft(pane.draft, repoOptions);
+    next[idx] = {
+      ...pane,
+      cards: addCard(pane.cards, finalized),
+      config: { ...pane.config, defaults: adoptRepoDefaultIfUnset(pane.config.defaults, finalized) },
+      draft: makeDraft()
+    };
     return next;
   });
 }

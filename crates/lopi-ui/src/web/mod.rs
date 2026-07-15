@@ -34,6 +34,9 @@ pub struct AppState {
     /// MAXX Phase 0 — quota headroom tracker. Started (loads persisted
     /// observations, subscribes to the bus) inside `serve_with_repo`.
     pub quota: lopi_orchestrator::QuotaTracker,
+    /// In-process TTL cache for `GET /api/models`'s live Anthropic catalog
+    /// fetch. `Clone`-cheap (an `Arc` inside), shared across every request.
+    pub models_cache: model_handlers::ModelsCache,
     /// Pre-serialized broadcast: each `AgentEvent` serialized once, shared across all WS/SSE subscribers.
     serialized_tx: Arc<broadcast::Sender<Arc<str>>>,
     /// Bearer token required on /api/* routes. None = auth disabled (dev mode).
@@ -151,6 +154,7 @@ impl AppState {
             extra_repos: Vec::new(),
             schedules,
             quota,
+            models_cache: model_handlers::ModelsCache::default(),
             serialized_tx,
             auth_token: auth_token.map(|t| Arc::from(t.as_str())),
             rate_limiter: Arc::new(DashMap::new()),
@@ -290,6 +294,7 @@ pub fn build_app(state: AppState) -> Router {
         )
         .route("/api/config", get(config_handlers::get_config))
         .route("/api/version", get(config_handlers::get_version))
+        .route("/api/models", get(model_handlers::get_models))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             rate_limit_middleware,
@@ -409,6 +414,7 @@ mod loop_health_handlers;
 mod loop_runs_handlers;
 mod maxx_handlers;
 mod metrics_handlers;
+mod model_handlers;
 mod quota_handlers;
 mod repo_identity;
 mod repos_handlers;

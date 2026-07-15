@@ -22,7 +22,7 @@ struct SchedulePopoverView: View {
     }
 
     var body: some View {
-        PopoverChrome(systemImage: "clock", title: "schedule", accent: Konjo.ice) {
+        PopoverChrome(systemImage: "clock", title: "schedule", accent: Konjo.ice, width: 360) {
             VStack(alignment: .leading, spacing: 11) {
                 HStack(spacing: 9) {
                     StackToggle(isOn: scheduled, accent: Konjo.ice, onToggle: onToggle)

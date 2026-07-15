@@ -81,6 +81,7 @@ public func resolveBranch(_ current: String, _ branches: [String], _ head: Strin
 /// here so the pure layer's `DEFAULT_STACK_DEFAULTS.model` matches the app.
 public let MODEL_OPTIONS: [StackOption] = [
     StackOption(value: "claude-opus-4-8", label: "Opus 4.8", hint: "deepest"),
+    StackOption(value: "claude-sonnet-5", label: "Sonnet 5", hint: "balanced"),
     StackOption(value: "claude-sonnet-4-6", label: "Sonnet 4.6", hint: "balanced"),
     StackOption(value: "claude-haiku-4-5", label: "Haiku 4.5", hint: "fastest")
 ]

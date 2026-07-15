@@ -53,7 +53,7 @@
     {
       icon: ICONS.cron,
       name: 'Schedule stack',
-      sub: 'one cron, bottom card',
+      sub: 'Schedule the entire stack',
       action: () => {
         const cards = executionOrder(paneCards());
         if (cards.length === 0) return;

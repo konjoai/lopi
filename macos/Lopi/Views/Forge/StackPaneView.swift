@@ -4,10 +4,9 @@ import LopiStacksKit
 /// StackPaneView — one pane's chrome: header (logo + title + status dot + close),
 /// a pinned **draft** card (Creation-Flow-1 — the composer replacement; the thing
 /// you compose is the card you'll get), the committed card stack flowing down to
-/// the currently-executing loop at the bottom, and either the purple stack
-/// control dock (2+ cards) or the bare-pane run button (≤1 card). Unify-2 §3: a
-/// 0- or 1-card pane still reads like the old Forge pane; the dock and inter-card
-/// connectors appear only once a second loop makes it a real stack.
+/// the currently-executing loop at the bottom, and the purple stack control dock.
+/// An empty pane reads as a bare box (composer + idle orb only); the dock and
+/// inter-card connectors appear as soon as the pane holds its first card.
 struct StackPaneView: View {
     var store: StackStore
     var engine: StackRunEngine
@@ -19,7 +18,6 @@ struct StackPaneView: View {
     private var paneDefaults: StackDefaults { pane.config.defaults }
     private var scheduleGoverned: Bool { perLoopScheduleGoverned(pane.config) }
     private var bare: Bool { paneIsBare(pane) }
-    private var barePhase: RunPhase? { engine.run(for: pane.key)?.phase }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -86,29 +84,11 @@ struct StackPaneView: View {
             .padding(.vertical, 2)
     }
 
-    // MARK: Footer — dock (stack) or bare-run (≤1 card)
+    // MARK: Footer — the purple dock. A bare (empty) pane has nothing to run yet.
 
     @ViewBuilder private var footer: some View {
         if !bare {
             StackControlDockView(store: store, engine: engine, pane: pane, index: index, repoOptions: repoOptions)
-        } else if !pane.cards.isEmpty {
-            HStack {
-                Spacer()
-                Button { engine.runBarePane(pane.key, PaneDefaults(paneDefaults)) } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "play.fill").font(.system(size: 13, weight: .bold))
-                        Text(barePhase == .running ? "running…" : "run").font(Konjo.sans(13, weight: .bold))
-                    }
-                    .padding(.horizontal, 26).padding(.vertical, 12)
-                    .background(LinearGradient(colors: [Color(hex: 0xFFB648), Konjo.flame], startPoint: .top, endPoint: .bottom))
-                    .foregroundStyle(Color(hex: 0x231000))
-                    .clipShape(RoundedRectangle(cornerRadius: 9))
-                    .shadow(color: Konjo.flame.opacity(0.28), radius: 9, y: 5)
-                }
-                .buttonStyle(.plain).disabled(barePhase == .running)
-                Spacer()
-            }
-            .padding(.horizontal, 16).padding(.top, 13).padding(.bottom, 16)
         }
     }
 }

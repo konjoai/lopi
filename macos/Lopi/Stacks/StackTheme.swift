@@ -8,6 +8,9 @@ extension Konjo {
     static let stackViolet = Color(hex: 0xB79BFF)
     /// The alias-chip teal (`--stack-teal`, #00FFD4).
     static let stackTeal = Color(hex: 0x00FFD4)
+    /// The repo-chip sky blue (`--stack-sky`, #66B3FF) — mirrors the web
+    /// `ProvenanceChips.svelte` repo chip color.
+    static let stackSky = Color(hex: 0x66B3FF)
     /// The budget-badge violet (`--konjo-violet` as used by the stack components).
     static let budgetViolet = Color(hex: 0xB388FF)
     /// The output well background (`--stack-outbg`).

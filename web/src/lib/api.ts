@@ -516,6 +516,15 @@ export const listBranches = (repo: string) =>
     `/api/branches?repo=${encodeURIComponent(repo)}`
   );
 
+// ── Models (live Claude model/effort catalog) ─────────────────────────────────
+/** The live model/effort catalog — `GET /api/models` proxies Anthropic's real
+ *  `/v1/models` server-side (never called from the browser directly: no API
+ *  key on the client, no CORS story) and falls back to a static list there if
+ *  the live call fails, so this request itself always succeeds.
+ *  `stores/modelCatalog.ts` turns the result into dropdown options. */
+export const listModels = () =>
+  request<{ models: { id: string; display_name: string; effort: string[] }[] }>('/api/models');
+
 // ── Config + version ──────────────────────────────────────────────────────────
 export const getConfig = () =>
   request<{ config: Record<string, unknown> | null; source: string }>('/api/config');

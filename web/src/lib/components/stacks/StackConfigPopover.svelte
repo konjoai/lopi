@@ -14,7 +14,8 @@
 <script lang="ts">
   import { type StackDefaults, AUTONOMY_OPTIONS, resolveBranch } from '$lib/stores/stackDefaults';
   import { branchesByRepo, branchOptionsFor, ensureBranches } from '$lib/stores/branches';
-  import { MODEL_OPTIONS, EFFORT_OPTIONS, type Option } from '$lib/stores/controls';
+  import { type Option } from '$lib/stores/controls';
+  import { modelCatalog, modelOptionsFrom, effortOptionsFor, ensureModelCatalog } from '$lib/stores/modelCatalog';
   import { closePopover } from './Popover.svelte';
   import Dropdown from '$lib/components/ui/Dropdown.svelte';
   import { ICONS } from './icons';
@@ -24,6 +25,10 @@
   export let repoOptions: Option[] = [];
 
   $: effectiveRepoOptions = repoOptions.length ? repoOptions : [{ value: defaults.repo, label: defaults.repo || 'auto' }];
+
+  $: void ensureModelCatalog();
+  $: modelOptions = modelOptionsFrom($modelCatalog);
+  $: effortOptions = effortOptionsFor($modelCatalog, defaults.model);
 
   $: void ensureBranches(defaults.repo);
   $: branchOptions = branchOptionsFor($branchesByRepo, defaults.repo);
@@ -35,10 +40,10 @@
 <div class="ph">{@html ICONS.sliders}default config · every loop inherits</div>
 <div class="pbody">
   <div class="cfgrow model">
-    <Dropdown dense label="model" icon={ICONS.cpu} value={defaults.model} options={MODEL_OPTIONS} on:change={(e) => onChange({ model: e.detail })} />
+    <Dropdown dense label="model" icon={ICONS.cpu} value={defaults.model} options={modelOptions} on:change={(e) => onChange({ model: e.detail })} />
   </div>
   <div class="cfgrow effort">
-    <Dropdown dense label="effort" icon={ICONS.gauge} value={defaults.effort} options={EFFORT_OPTIONS} on:change={(e) => onChange({ effort: e.detail })} />
+    <Dropdown dense label="effort" icon={ICONS.gauge} value={defaults.effort} options={effortOptions} on:change={(e) => onChange({ effort: e.detail })} />
   </div>
   <div class="cfgrow repo">
     <Dropdown dense searchable label="repo" icon={ICONS.folder} value={defaults.repo} options={effectiveRepoOptions} on:change={(e) => onChange({ repo: e.detail })} />

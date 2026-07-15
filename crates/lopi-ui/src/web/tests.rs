@@ -691,6 +691,32 @@ async fn cancel_task_not_found_returns_404() {
 }
 
 #[tokio::test]
+async fn models_returns_a_valid_catalog() {
+    // No mocking of the outbound Anthropic call — whether this exercises the
+    // live path or the fallback depends on whether ANTHROPIC_API_KEY happens
+    // to be set in the test environment. Assert on the shape both paths
+    // guarantee, not on exact fallback content, so the test is correct
+    // either way (see `model_handlers`'s module doc).
+    let app = test_app().await;
+    let resp = get_req(app, "/api/models").await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    let models = json["models"].as_array().expect("models is an array");
+    assert!(!models.is_empty(), "the dropdown must never see an empty catalog");
+    for m in models {
+        assert!(m["id"].as_str().is_some_and(|s| !s.is_empty()), "every model has a non-empty id");
+        assert!(
+            m["display_name"].as_str().is_some_and(|s| !s.is_empty()),
+            "every model has a non-empty display_name"
+        );
+        assert!(m["effort"].as_array().is_some_and(|a| !a.is_empty()), "every model has at least one effort tier");
+    }
+}
+
+#[tokio::test]
 async fn plans_returns_four_tiers() {
     let app = test_app().await;
     let resp = get_req(app, "/api/plans").await;

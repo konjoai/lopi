@@ -9,6 +9,7 @@
  * `AgentEventGoldenTests.swift` use for `agent_event_golden.json`.
  */
 import type { Option } from '$lib/stores/options';
+import { matches } from '$lib/stores/optionMenu';
 
 /** A repo as `GET /api/repos` reports it. `owner` is null when the checkout has
  *  no origin remote, or its origin is not GitHub. */
@@ -113,4 +114,59 @@ export function repoOptions(repos: RepoEntry[]): Option[] {
   });
 
   return [AUTO_OPTION, ...options];
+}
+
+export interface RepoSuggestion {
+  /** The full `@owner/name` token, ready to splice into the goal text. */
+  token: string;
+  label: string;
+  hint: string;
+  /** The resolved run target — always the absolute path (`Option.value`),
+   *  never the decorative label. `selectRepo` writes this straight onto
+   *  `card.config.repo`, so the card's stored repo is a path from the moment
+   *  it's picked, not re-derived later by re-parsing the label back out of
+   *  free text (see `parseComposerInput`'s repo-resolution doc comment). */
+  value: string;
+}
+
+/** Filtered repo suggestions for the goal input's `@` autocomplete, given its
+ *  *entire current value*. Only suggests while the *trailing* word in the
+ *  goal text is a bare `@token` (`(?:^|\s)@(\S*)$`) — matches the grammar's
+ *  `:alias "goal" @repo ×N` order, where `@repo` is typically the next thing
+ *  typed right after the goal text, so (unlike the leading `:alias` token)
+ *  this never needs to look at the cursor position: the match is always the
+ *  end of the string, so "replace the match" and "replace the string's tail"
+ *  are the same operation. Reuses `optionMenu.ts`'s `matches` predicate (label
+ *  or hint, case-insensitive substring) so `@lopi` finds `konjoai/lopi` the
+ *  same way the repo dropdown's own search box would. The `auto` sentinel
+ *  (empty value) is never suggested — `@auto` names no real run target. */
+export function repoAutocomplete(goalText: string, repoOptions: Option[]): RepoSuggestion[] {
+  const match = /(?:^|\s)@(\S*)$/.exec(goalText);
+  if (!match) return [];
+  const q = match[1].toLowerCase();
+  return repoOptions
+    .filter((o) => o.value !== '' && matches(o, q))
+    .map((o) => ({ token: `@${o.label}`, label: o.label, hint: o.hint ?? '', value: o.value }));
+}
+
+/** Resolve an `@`-token's parsed label (e.g. `"konjoai/lopi"`, as recovered by
+ *  `parseComposerInput`'s `@(\S+)` grammar) back to its real path, by exact
+ *  label match against the fetched catalog. Returns the input unresolved when
+ *  no option matches — a stale/renamed repo, or free text typed by hand
+ *  outside the autocomplete flow — so a value is never silently dropped, only
+ *  left as a label `cardToTaskPayload` can't run (same as before this fix). */
+export function resolveRepoToken(label: string, repoOptions: Option[]): string {
+  return repoOptions.find((o) => o.value !== '' && o.label === label)?.value ?? label;
+}
+
+/** The inverse of `resolveRepoToken` — given a stored `config.repo` path,
+ *  find its display label for the provenance chip. Falls back to the
+ *  basename of the path (never the full absolute path, which is noisy UI)
+ *  when the path isn't in the current catalog — e.g. a repo that's since
+ *  been removed from disk. */
+export function repoLabelForPath(path: string, repoOptions: Option[]): string {
+  const found = repoOptions.find((o) => o.value === path);
+  if (found) return found.label;
+  const trimmed = path.replace(/\/+$/, '');
+  return trimmed.slice(trimmed.lastIndexOf('/') + 1) || path;
 }

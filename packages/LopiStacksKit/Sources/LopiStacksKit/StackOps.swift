@@ -27,6 +27,31 @@ public func resolvePresetAlias(_ alias: String) -> PresetKey? {
     return LEGACY_ALIASES[alias]
 }
 
+/// One alias-autocomplete candidate — the full token (leading colon included),
+/// ready to write straight into the goal field.
+public struct AliasSuggestion: Equatable {
+    public let alias: String
+    public let label: String
+    public let hint: String
+}
+
+/// Filtered alias suggestions for the goal field's autocomplete, given its
+/// *entire current value*. Only suggests while the field is still a bare
+/// `:token` with no space yet — once a space follows, the goal text has moved
+/// on and this returns `[]`. Only canonical `PRESET_KEYS` are ever suggested;
+/// legacy aliases (e.g. the renamed `:ratchet`→`:gain`) still resolve on
+/// commit but never appear here. Mirrors the web `aliasAutocomplete` verbatim.
+public func aliasAutocomplete(_ goalText: String) -> [AliasSuggestion] {
+    guard goalText.hasPrefix(":"), !goalText.dropFirst().contains(where: { $0.isWhitespace }) else { return [] }
+    let query = goalText.dropFirst().lowercased()
+    return PRESET_KEYS
+        .filter { $0.rawValue.lowercased().hasPrefix(query) }
+        .compactMap { key -> AliasSuggestion? in
+            guard let def = PRESET_CATALOG[key], let hint = PRESET_DESCRIPTIONS[key] else { return nil }
+            return AliasSuggestion(alias: def.alias, label: def.label, hint: hint)
+        }
+}
+
 /// Keyword-match a typed goal against the preset catalog. Highlight-only —
 /// callers must never auto-attach the result. Returns the first matching preset,
 /// or `nil`.
@@ -38,6 +63,118 @@ public func suggestPreset(_ text: String) -> PresetKey? {
         }
     }
     return nil
+}
+
+// MARK: - Inline `/command` autocomplete
+// Every prompt/stack setting gets a `:`/`@`/`/` alias, not just presets and
+// repo: `/model`, `/effort`, `/branch`, `/autonomy`, `/eval` are value-pickers
+// (mirrors the user's own suggested `/model/<autocomplete>` syntax — the
+// level-2 token embeds the real value directly, so unlike `@repo` there's no
+// label/path resolution step); `/guard`, `/schedule`, `/maxx`, `/goal` carry
+// multi-field state that doesn't reduce to one inline value, so picking one
+// just opens the existing popover for it (the composer view owns that action
+// — this module only supplies the pure matching). 1:1 port of the web
+// `commandAutocomplete`/`commandValueAutocomplete` pair.
+
+/// One inline `/command` definition.
+public struct InlineCommandDef: Equatable {
+    public let command: String
+    public let hint: String
+    /// `true` → typing `/command` then continues into a second
+    /// `/command/value` token (see `commandValueAutocomplete`). `false` →
+    /// selecting the command fires an immediate action (open a popover) with
+    /// no value step.
+    public let isValuePicker: Bool
+
+    public init(command: String, hint: String, isValuePicker: Bool) {
+        self.command = command
+        self.hint = hint
+        self.isValuePicker = isValuePicker
+    }
+}
+
+/// Card-scope commands, typed into a loop's own goal field. No `maxx` here —
+/// macOS's `StackCard` has no MAXX field yet (web-only feature to date).
+public let CARD_COMMANDS: [InlineCommandDef] = [
+    InlineCommandDef(command: "model", hint: "override this loop's model", isValuePicker: true),
+    InlineCommandDef(command: "effort", hint: "override this loop's effort", isValuePicker: true),
+    InlineCommandDef(command: "branch", hint: "override this loop's target branch", isValuePicker: true),
+    InlineCommandDef(command: "autonomy", hint: "override this loop's autonomy level", isValuePicker: true),
+    InlineCommandDef(command: "eval", hint: "toggle an eval suite (kcqf/security/research)", isValuePicker: true),
+    InlineCommandDef(command: "guard", hint: "open this loop's guardrails", isValuePicker: false),
+    InlineCommandDef(command: "schedule", hint: "open this loop's schedule", isValuePicker: false)
+]
+
+/// Stack-scope commands, typed into the stack's own command bar
+/// (`StackControlDockView`) — same vocabulary, writes to `pane.config`
+/// instead of a card's `config`. Adds `loop` (chain loop count) and `goal`
+/// (run-until-goal), which have no card-level analog.
+public let STACK_COMMANDS: [InlineCommandDef] = [
+    InlineCommandDef(command: "model", hint: "stack default model", isValuePicker: true),
+    InlineCommandDef(command: "effort", hint: "stack default effort", isValuePicker: true),
+    InlineCommandDef(command: "branch", hint: "stack default branch", isValuePicker: true),
+    InlineCommandDef(command: "autonomy", hint: "stack default autonomy", isValuePicker: true),
+    InlineCommandDef(command: "loop", hint: "stack loop count", isValuePicker: true),
+    InlineCommandDef(command: "eval", hint: "toggle a stack eval suite", isValuePicker: true),
+    InlineCommandDef(command: "guard", hint: "open stack guardrails", isValuePicker: false),
+    InlineCommandDef(command: "schedule", hint: "open the stack schedule", isValuePicker: false),
+    InlineCommandDef(command: "goal", hint: "open run-until-goal", isValuePicker: false)
+]
+
+/// A level-1 `/command` suggestion — the bare command name, not yet a value.
+public struct CommandSuggestion: Equatable {
+    public let token: String
+    public let command: String
+    public let label: String
+    public let hint: String
+}
+
+/// Level 1: filtered command-name suggestions for a trailing `/token` — the
+/// same trailing-word grammar `repoAutocomplete` uses, generalized over a
+/// caller-supplied command list (card vs. stack scope differ).
+public func commandAutocomplete(_ goalText: String, _ commands: [InlineCommandDef]) -> [CommandSuggestion] {
+    guard let slashIndex = goalText.lastIndex(of: "/") else { return [] }
+    let isWordStart = slashIndex == goalText.startIndex || goalText[goalText.index(before: slashIndex)].isWhitespace
+    guard isWordStart else { return [] }
+    let after = goalText[goalText.index(after: slashIndex)...]
+    guard after.allSatisfy({ $0.isLowercase || $0.isNumber }) else { return [] }
+    let query = after.lowercased()
+    return commands
+        .filter { $0.command.hasPrefix(query) }
+        .map { CommandSuggestion(token: "/\($0.command)", command: $0.command, label: $0.command, hint: $0.hint) }
+}
+
+/// A level-2 `/command/value` suggestion.
+public struct CommandValueSuggestion: Equatable {
+    public let token: String
+    public let label: String
+    public let hint: String
+    public let value: String
+}
+
+/// Level 2: once a value-picker command has been chosen (the composer view
+/// tracks this as its own `pendingCommand` state), matches a trailing
+/// `/command/value` token against whatever catalog applies to `command`.
+public func commandValueAutocomplete(_ goalText: String, _ command: String, _ options: [StackOption]) -> [CommandValueSuggestion] {
+    let prefix = "/\(command)/"
+    guard let range = goalText.range(of: prefix, options: .backwards) else { return [] }
+    let isWordStart = range.lowerBound == goalText.startIndex || goalText[goalText.index(before: range.lowerBound)].isWhitespace
+    guard isWordStart else { return [] }
+    let after = goalText[range.upperBound...]
+    guard !after.contains(where: { $0.isWhitespace }) else { return [] }
+    let query = after.lowercased()
+    return options
+        .filter { $0.value != "" && optionMatches($0, query) }
+        .map { CommandValueSuggestion(token: "\(prefix)\($0.value)", label: $0.label, hint: $0.hint, value: $0.value) }
+}
+
+/// `/eval`'s value catalog is the suite-shortcut names (`kcqf`/`security`/
+/// `research`), not individual eval names — those contain spaces (`"vuln
+/// scan"`, `"code review"`), which the trailing-token grammar can't carry.
+/// Bulk-toggling a suite is the useful, space-free case; per-eval toggling
+/// stays a popover click.
+public func evalSuiteOptions() -> [StackOption] {
+    EVAL_SUITES.keys.sorted().map { StackOption(value: $0, label: $0) }
 }
 
 // MARK: - Composer grammar parser
@@ -141,11 +278,20 @@ private func isWordChar(_ c: Character) -> Bool {
 public func makeId() -> String { UUID().uuidString }
 
 /// Build a `StackCard` from raw composer text, optionally forcing a preset.
-public func buildCard(_ raw: String, explicitPreset: PresetKey? = nil) -> StackCard {
+///
+/// `repoOptions` resolves a parsed `@token`'s label (e.g. `"konjoai/lopi"`) to
+/// the real absolute path via `resolveRepoToken` before it lands on
+/// `config.repo` — `CreateTaskRequest.repo` reaches `git2::Repository::open`
+/// with no server-side resolution, so a label stored here would fail to
+/// launch. Defaults to `[]` (no resolution, label stored as-is) for callers
+/// with no live catalog to resolve against (`makeDraft`, tests); live composer
+/// commits always pass the fetched catalog — see `finalizeDraft`.
+public func buildCard(_ raw: String, explicitPreset: PresetKey? = nil, repoOptions: [StackOption] = []) -> StackCard {
     let parsed = parseComposerInput(raw)
     let aliasPreset = parsed.alias.flatMap { resolvePresetAlias($0) }
     let presetKey = explicitPreset ?? aliasPreset
     let preset = presetKey.flatMap { PRESET_CATALOG[$0] }
+    let resolvedRepo = parsed.repo.map { resolveRepoToken($0, repoOptions) }
 
     return StackCard(
         id: makeId(),
@@ -160,7 +306,7 @@ public func buildCard(_ raw: String, explicitPreset: PresetKey? = nil) -> StackC
         scheduled: false,
         cron: defaultCron(),
         guardrails: defaultGuardrails(),
-        config: parsed.repo.map { CardConfig(repo: $0) } ?? CardConfig(),
+        config: resolvedRepo.map { CardConfig(repo: $0) } ?? CardConfig(),
         taskId: nil
     )
 }
@@ -190,8 +336,11 @@ public func draftIsHot(_ draft: StackCard) -> Bool {
 /// (preset or template applied) commits as-is; a still-raw draft honors the
 /// inline `:alias @repo ×N` tokens typed into its goal field — the power-user
 /// path the retired composer supported. Only ever flips `status` to `.idle`;
-/// never mutates the pane. Mirrors the web `finalizeDraft`.
-public func finalizeDraft(_ draft: StackCard) -> StackCard {
+/// never mutates the pane. `repoOptions` resolves any inline `@token` label to
+/// its real path — see `buildCard`'s doc comment; pass the live catalog
+/// whenever one is available (`StackStore.commitDraft` always does). Mirrors
+/// the web `finalizeDraft`.
+public func finalizeDraft(_ draft: StackCard, repoOptions: [StackOption] = []) -> StackCard {
     if draft.preset != nil || draft.tpl != nil {
         var c = draft
         c.status = .idle
@@ -205,7 +354,7 @@ public func finalizeDraft(_ draft: StackCard) -> StackCard {
         c.literal = true
         return c
     }
-    var built = buildCard(draft.goal)
+    var built = buildCard(draft.goal, repoOptions: repoOptions)
     built.id = draft.id
     built.status = .idle
     built.scheduled = draft.scheduled
@@ -221,6 +370,18 @@ public func finalizeDraft(_ draft: StackCard) -> StackCard {
     if let v = draft.config.autonomy { merged.autonomy = v }
     built.config = merged
     return built
+}
+
+/// Whether committing a card should seed the pane's own stack-level repo
+/// default — only the first time, while the default is still the cold-start
+/// `""` ("auto") sentinel. A later card with a different `@repo` never
+/// clobbers an explicit choice (own or user-picked). Pulled out of
+/// `StackStore.commitDraft` so the rule is unit-testable without a live store.
+public func adoptRepoDefaultIfUnset(_ defaults: StackDefaults, _ committed: StackCard) -> StackDefaults {
+    guard defaults.repo.isEmpty, let repo = committed.config.repo, !repo.isEmpty else { return defaults }
+    var next = defaults
+    next.repo = repo
+    return next
 }
 
 // MARK: - Pure array ops (unit-tested directly)
@@ -309,18 +470,24 @@ public func applySuite(_ evals: [EvalRef], _ suiteNames: [String]) -> [EvalRef] 
 
 // MARK: - Iteration stepper
 
-/// Step the *stack* loop-count by `delta`. Floors at `MAX_ITERATIONS_FLOOR`;
-/// below it wraps to the infinite sentinel (`0`), so a goal-pursuing chain can
-/// still be set to run "until met". Up from infinite skips to the floor.
+/// Step the *stack* loop-count by `delta`. Three states: `1` = off (run the
+/// chain once, no repeat), a literal count `2..N` (no ceiling), and the
+/// infinite sentinel `0` (run until the goal/guardrails stop it). Cycles
+/// `1 (off) → 2 → ... → N → 0 (∞) → 1`.
 public func stepMaxIterations(_ current: Int, _ delta: Int) -> Int {
-    if current == 0 { return delta > 0 ? MAX_ITERATIONS_FLOOR : 0 }
+    if current == 0 { return delta > 0 ? 1 : 0 }
+    if current == 1 { return delta > 0 ? MAX_ITERATIONS_FLOOR : 0 }
     let next = current + delta
-    return next < MAX_ITERATIONS_FLOOR ? 0 : next
+    return next < MAX_ITERATIONS_FLOOR ? 1 : next
 }
 
-/// Display text for the *stack* loop-count pill (`∞` for the infinite sentinel).
+/// Display text for the *stack* loop-count pill: `∞` for the infinite
+/// sentinel, `off` for a single run with no chain repeat, the plain number
+/// otherwise.
 public func maxIterationsLabel(_ maxIterations: Int) -> String {
-    maxIterations == 0 ? "∞" : String(maxIterations)
+    if maxIterations == 0 { return "∞" }
+    if maxIterations == 1 { return "off" }
+    return String(maxIterations)
 }
 
 /// Step a *card's* `maxIterations` by `delta`. Unlike the stack pill, the card

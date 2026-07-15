@@ -129,3 +129,71 @@ public func repoOptions(_ repos: [RepoEntry]) -> [StackOption] {
 
     return [AUTO_REPO_OPTION] + options
 }
+
+/// One `@repo` autocomplete candidate — the full `@owner/name` token, ready to
+/// splice into the goal text.
+public struct RepoSuggestion: Equatable {
+    public let token: String
+    public let label: String
+    public let hint: String
+    /// The resolved run target — always the absolute path (`StackOption.value`),
+    /// never the decorative label. `selectRepo` writes this straight onto
+    /// `card.config.repo`, so the card's stored repo is a path from the moment
+    /// it's picked, not re-derived later by re-parsing the label back out of
+    /// free text (see `parseComposerInput`'s repo-resolution doc comment).
+    public let value: String
+
+    public init(token: String, label: String, hint: String, value: String) {
+        self.token = token
+        self.label = label
+        self.hint = hint
+        self.value = value
+    }
+}
+
+/// Filtered repo suggestions for the goal field's `@` autocomplete, given its
+/// *entire current value*. Only suggests while the *trailing* word in the
+/// goal text is a bare `@token` — matches the grammar's `:alias "goal" @repo
+/// ×N` order, where `@repo` is typically typed right after the goal text, so
+/// (unlike the leading `:alias` token) this never needs the cursor position:
+/// the match is always the end of the string, so "replace the match" and
+/// "replace the string's tail" are the same operation. Reuses `optionMatches`
+/// (label or hint, case-insensitive substring) so `@lopi` finds
+/// `konjoai/lopi` the same way the repo dropdown's own search box would. The
+/// `auto` sentinel (empty value) is never suggested. Mirrors the web
+/// `repoAutocomplete` verbatim.
+public func repoAutocomplete(_ goalText: String, _ repoOptions: [StackOption]) -> [RepoSuggestion] {
+    guard let atIndex = goalText.lastIndex(of: "@") else { return [] }
+    let isWordStart = atIndex == goalText.startIndex || goalText[goalText.index(before: atIndex)].isWhitespace
+    guard isWordStart else { return [] }
+    let after = goalText[goalText.index(after: atIndex)...]
+    guard !after.contains(where: { $0.isWhitespace }) else { return [] }
+    let query = after.lowercased()
+    return repoOptions
+        .filter { $0.value != "" && optionMatches($0, query) }
+        .map { RepoSuggestion(token: "@\($0.label)", label: $0.label, hint: $0.hint, value: $0.value) }
+}
+
+/// Resolve an `@`-token's parsed label (e.g. `"konjoai/lopi"`, as recovered by
+/// `parseComposerInput`'s `@(\S+)` grammar) back to its real path, by exact
+/// label match against the fetched catalog. Returns the input unresolved when
+/// no option matches — a stale/renamed repo, or free text typed by hand
+/// outside the autocomplete flow — so a value is never silently dropped, only
+/// left as a label `cardToTaskPayload` can't run (same as before this fix).
+public func resolveRepoToken(_ label: String, _ repoOptions: [StackOption]) -> String {
+    repoOptions.first(where: { $0.value != "" && $0.label == label })?.value ?? label
+}
+
+/// The inverse of `resolveRepoToken` — given a stored `config.repo` path, find
+/// its display label for the provenance chip. Falls back to the basename of
+/// the path (never the full absolute path, which is noisy UI) when the path
+/// isn't in the current catalog — e.g. a repo that's since been removed from
+/// disk.
+public func repoLabelForPath(_ path: String, _ repoOptions: [StackOption]) -> String {
+    if let found = repoOptions.first(where: { $0.value == path }) { return found.label }
+    var trimmed = path
+    while trimmed.hasSuffix("/") { trimmed.removeLast() }
+    guard let slash = trimmed.lastIndex(of: "/") else { return trimmed.isEmpty ? path : trimmed }
+    let base = String(trimmed[trimmed.index(after: slash)...])
+    return base.isEmpty ? path : base
+}

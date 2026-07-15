@@ -45,8 +45,11 @@ export interface OptionMenu {
 /** Does `opt` survive `q` (already trimmed and lowercased)? Case-insensitive
  *  substring over the label and the hint. For repos the hint *is* the absolute
  *  path, so this one predicate is "match `owner/name` or the path" — with no
- *  second field to keep in sync across two languages. */
-function matches(opt: Option, q: string): boolean {
+ *  second field to keep in sync across two languages. Exported so other
+ *  filtered-option UIs (the goal input's `@repo` autocomplete —
+ *  `repoMenu.ts::repoAutocomplete`) use the identical rule instead of a second
+ *  copy that could drift. */
+export function matches(opt: Option, q: string): boolean {
   return opt.label.toLowerCase().includes(q) || (opt.hint ?? '').toLowerCase().includes(q);
 }
 

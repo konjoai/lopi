@@ -62,9 +62,17 @@ public struct OptionMenu: Hashable {
 /// Does `opt` survive `q` (already trimmed and lowercased)? Case-insensitive
 /// substring over the label and the hint. For repos the hint *is* the absolute
 /// path, so this one predicate is "match `owner/name` or the path" — with no
-/// second field to keep in sync across two languages.
-private func optionMatches(_ opt: StackOption, _ q: String) -> Bool {
-    opt.label.lowercased().contains(q) || opt.hint.lowercased().contains(q)
+/// second field to keep in sync across two languages. Public so other
+/// filtered-option UIs (the goal field's `@repo` autocomplete —
+/// `RepoMenu.swift::repoAutocomplete`) use the identical rule instead of a
+/// second copy that could drift.
+public func optionMatches(_ opt: StackOption, _ q: String) -> Bool {
+    // `q.isEmpty` short-circuits deliberately: with `Foundation` imported,
+    // `String.contains("")` returns `false` (NSString `range(of:)` semantics
+    // take over the stdlib's own `Collection.contains`, which treats an empty
+    // needle as always-contained). Without this guard, a bare `@` or
+    // `/command/` with nothing typed yet would silently suggest nothing.
+    q.isEmpty || opt.label.lowercased().contains(q) || opt.hint.lowercased().contains(q)
 }
 
 /// Partition `options` into pinned rows and ordered sections, keeping only what

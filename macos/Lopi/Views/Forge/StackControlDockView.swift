@@ -20,8 +20,107 @@ struct StackControlDockView: View {
     @State private var guardOpen = false
     @State private var evalOpen = false
     @State private var cfgOpen = false
+    @State private var goalOpen = false
     @State private var runMenuOpen = false
     @State private var dryRunResult: DryRunResult?
+
+    // ── stack command bar (`@repo` / `/command`) ────────────────────────────
+    // The stack-only analogue of a card's goal-field autocomplete (Stack-1
+    // §4): loop count, stack schedule/guardrails/run-until-goal have no
+    // card-level equivalent to piggyback on, so they need their own
+    // text-entry surface. Same `@`/`/` grammar as `StackCardView`'s composer,
+    // writing to `pane.config` instead of a card's `config`.
+    @State private var cmdText = ""
+    @FocusState private var cmdBarFocused: Bool
+    @State private var cmdActiveIndex = 0
+    @State private var cmdDismissed = false
+    @State private var pendingCommand: String?
+    @State private var cmdBarHeight: CGFloat = 34
+
+    private enum CmdMatch {
+        case command(CommandSuggestion)
+        case value(CommandValueSuggestion)
+        var token: String { switch self { case .command(let c): return c.token; case .value(let v): return v.token } }
+        var label: String { switch self { case .command(let c): return c.label; case .value(let v): return v.label } }
+        var hint: String { switch self { case .command(let c): return c.hint; case .value(let v): return v.hint } }
+    }
+
+    private var repoMatches: [RepoSuggestion] { repoAutocomplete(cmdText, repoOptions) }
+    private var showRepoBarSuggest: Bool { cmdBarFocused && !cmdDismissed && pendingCommand == nil && !repoMatches.isEmpty }
+
+    private func commandOptionsFor(_ command: String) -> [StackOption] {
+        switch command {
+        case "model": return MODEL_OPTIONS
+        case "effort": return EFFORT_OPTIONS
+        case "autonomy": return AUTONOMY_OPTIONS
+        case "branch": return (model.branchesByRepo[config.defaults.repo] ?? []).map { StackOption(value: $0, label: $0) }
+        case "eval": return evalSuiteOptions()
+        case "loop": return [
+            StackOption(value: "1", label: "1 (off)"),
+            StackOption(value: "2", label: "2"),
+            StackOption(value: "3", label: "3"),
+            StackOption(value: "5", label: "5"),
+            StackOption(value: "10", label: "10"),
+            StackOption(value: "0", label: "∞ (unlimited)")
+        ]
+        default: return []
+        }
+    }
+
+    private var cmdMatches: [CmdMatch] {
+        if let pendingCommand {
+            return commandValueAutocomplete(cmdText, pendingCommand, commandOptionsFor(pendingCommand)).map { .value($0) }
+        }
+        return commandAutocomplete(cmdText, STACK_COMMANDS).map { .command($0) }
+    }
+    private var showCmdBarSuggest: Bool { cmdBarFocused && !cmdDismissed && !showRepoBarSuggest && !cmdMatches.isEmpty }
+
+    private func applyCommandValue(_ command: String, _ value: String) {
+        switch command {
+        case "eval": store.updateStackConfig(pane.key) { $0.evals = applySuite($0.evals, EVAL_SUITES[value] ?? []) }
+        case "loop": store.updateStackConfig(pane.key) { $0.loopCount = Int(value) ?? 0 }
+        case "model": store.updateStackConfig(pane.key) { $0.defaults.model = value }
+        case "effort": store.updateStackConfig(pane.key) { $0.defaults.effort = value }
+        case "branch": store.updateStackConfig(pane.key) { $0.defaults.branch = value }
+        case "autonomy": store.updateStackConfig(pane.key) { $0.defaults.autonomy = value }
+        default: break
+        }
+    }
+
+    private func fireCommandAction(_ command: String) {
+        if command == "guard" { guardOpen = true }
+        else if command == "schedule" { schedOpen = true }
+        else if command == "goal" { goalOpen = true }
+    }
+
+    private func selectRepoFromBar(_ token: String) {
+        if let suggestion = repoMatches.first(where: { $0.token == token }) {
+            store.updateStackConfig(pane.key) { $0.defaults.repo = suggestion.value }
+        }
+        cmdText = ""
+        cmdActiveIndex = 0
+    }
+
+    private func selectCommandFromBar(_ token: String) {
+        if let pending = pendingCommand {
+            if case .value(let suggestion)? = cmdMatches.first(where: { $0.token == token }) {
+                applyCommandValue(pending, suggestion.value)
+            }
+            pendingCommand = nil
+            cmdText = ""
+        } else {
+            let command = String(token.dropFirst())
+            let def = STACK_COMMANDS.first(where: { $0.command == command })
+            if def?.isValuePicker == true {
+                cmdText = "/\(command)/"
+                pendingCommand = command
+            } else {
+                fireCommandAction(command)
+                cmdText = ""
+            }
+        }
+        cmdActiveIndex = 0
+    }
 
     private var config: StackConfig { pane.config }
     private var defaults: PaneDefaults { PaneDefaults(config.defaults) }
@@ -33,8 +132,12 @@ struct StackControlDockView: View {
     private var pursues: Bool { stackPursuesGoal(config) }
     private var showSummary: Bool { scheduledOn || guardsOn || evalsOn || configOn || goalOn }
     private var modelLabel: String { MODEL_OPTIONS.first { $0.value == config.defaults.model }?.label ?? config.defaults.model }
+    private var loopLabel: String {
+        let label = maxIterationsLabel(config.loopCount)
+        return config.loopCount <= 1 ? label : "×\(label)"
+    }
     private var dockSummary: String {
-        (scheduledOn ? cronHuman(config.cron) + " · " : "") + "loop ×\(maxIterationsLabel(config.loopCount)) · \(modelLabel)"
+        (scheduledOn ? cronHuman(config.cron) + " · " : "") + "loop \(loopLabel) · \(modelLabel)"
     }
 
     private var runState: StackRunState? { engine.run(for: pane.key) }
@@ -84,6 +187,7 @@ struct StackControlDockView: View {
 
     private var dockBody: some View {
         VStack(alignment: .leading, spacing: 8) {
+            commandBar
             if showSummary {
                 if scheduledOn {
                     SummaryRow(systemImage: "clock", label: "schedule", accent: FacetAccent.schedule, text: cronHuman(config.cron))
@@ -110,25 +214,135 @@ struct StackControlDockView: View {
             IterationPill(value: config.loopCount) { delta in
                 store.updateStackConfig(pane.key) { $0.loopCount = stepMaxIterations($0.loopCount, delta) }
             }
-            CardbarButton(systemImage: "clock", active: scheduledOn, accent: FacetAccent.schedule, help: "schedule the stack") { schedOpen = true }
+            CardbarButton(systemImage: "clock", active: scheduledOn, accent: FacetAccent.schedule, help: "Schedule the entire stack") { schedOpen = true }
                 .popover(isPresented: $schedOpen, arrowEdge: .top) { schedulePopover }
             CardbarButton(systemImage: "shield", active: guardsOn, accent: FacetAccent.guards, help: "stack guardrails") { guardOpen = true }
                 .popover(isPresented: $guardOpen, arrowEdge: .top) { guardsPopover }
             CardbarButton(systemImage: "checkmark.square", active: evalsOn, accent: FacetAccent.evals, count: config.evals.count, help: "stack evals") { evalOpen = true }
                 .popover(isPresented: $evalOpen, arrowEdge: .top) { evalsPopover }
-            CardbarButton(systemImage: "gauge", active: goalOn, accent: FacetAccent.goal, help: "run until the stack acceptance passes") {
-                store.updateStackConfig(pane.key) { $0.goal.pursue.toggle() }
-            }
+            CardbarButton(systemImage: "gauge", active: goalOn, accent: FacetAccent.goal, help: "run until the stack acceptance passes") { goalOpen = true }
+                .popover(isPresented: $goalOpen, arrowEdge: .top) { goalPopover }
             CardbarButton(systemImage: "slider.horizontal.3", active: configOn, accent: FacetAccent.config, help: "stack default config") { cfgOpen = true }
                 .popover(isPresented: $cfgOpen, arrowEdge: .top) { configPopover }
             Spacer()
             StackTemplatesMenuView(store: store, templateStore: model.stackTemplateStore, paneKey: pane.key, cards: pane.cards)
             CardbarButton(systemImage: "square.on.square", help: "duplicate stack") { store.duplicateStackInPanes(pane.key) }
             CardbarButton(systemImage: "line.3.horizontal", help: "drag to reorder stacks") {}
+                .draggable(StackDragPayload(index: index))
             CardbarButton(systemImage: "trash", accent: Konjo.rose, danger: true, help: "delete stack") {
                 engine.clearRun(pane.key); store.deleteStackFromPanes(pane.key)
             }
         }
+    }
+
+    // MARK: Command bar
+
+    private var commandBar: some View {
+        TextField("@org/repo /model /effort /branch /autonomy /loop /guard /schedule /eval /goal", text: $cmdText)
+            .textFieldStyle(.plain).font(Konjo.mono(12)).foregroundStyle(Konjo.fg)
+            .focused($cmdBarFocused)
+            .onChange(of: cmdText) { _, newText in
+                cmdDismissed = false
+                if let pending = pendingCommand, !newText.contains("/\(pending)/") {
+                    pendingCommand = nil
+                }
+            }
+            .onKeyPress(.downArrow) {
+                if showRepoBarSuggest { cmdActiveIndex = (cmdActiveIndex + 1) % repoMatches.count; return .handled }
+                if showCmdBarSuggest { cmdActiveIndex = (cmdActiveIndex + 1) % cmdMatches.count; return .handled }
+                return .ignored
+            }
+            .onKeyPress(.upArrow) {
+                if showRepoBarSuggest { cmdActiveIndex = (cmdActiveIndex - 1 + repoMatches.count) % repoMatches.count; return .handled }
+                if showCmdBarSuggest { cmdActiveIndex = (cmdActiveIndex - 1 + cmdMatches.count) % cmdMatches.count; return .handled }
+                return .ignored
+            }
+            .onKeyPress(.tab) {
+                if showRepoBarSuggest { selectRepoFromBar(repoMatches[cmdActiveIndex].token); return .handled }
+                if showCmdBarSuggest { selectCommandFromBar(cmdMatches[cmdActiveIndex].token); return .handled }
+                return .ignored
+            }
+            .onKeyPress(.return) {
+                if showRepoBarSuggest { selectRepoFromBar(repoMatches[cmdActiveIndex].token); return .handled }
+                if showCmdBarSuggest { selectCommandFromBar(cmdMatches[cmdActiveIndex].token); return .handled }
+                return .ignored
+            }
+            .onKeyPress(.escape) {
+                if showRepoBarSuggest || showCmdBarSuggest { cmdDismissed = true; return .handled }
+                return .ignored
+            }
+            .padding(.horizontal, 10).padding(.vertical, 8)
+            .background(Color.white.opacity(0.02))
+            .overlay(RoundedRectangle(cornerRadius: 7).stroke(cmdBarFocused ? Konjo.stackViolet.opacity(0.5) : Konjo.line2, lineWidth: 1))
+            .clipShape(RoundedRectangle(cornerRadius: 7))
+            .background(
+                GeometryReader { geo in
+                    Color.clear
+                        .onAppear { cmdBarHeight = geo.size.height }
+                        .onChange(of: geo.size.height) { _, h in cmdBarHeight = h }
+                }
+            )
+            .overlay(alignment: .topLeading) {
+                Group {
+                    if showRepoBarSuggest { repoBarSuggestList }
+                    else if showCmdBarSuggest { cmdBarSuggestList }
+                }
+                .offset(y: cmdBarHeight + 4)
+            }
+            .zIndex(showRepoBarSuggest || showCmdBarSuggest ? 10 : 0)
+            .task(id: config.defaults.repo) { await model.ensureBranches(config.defaults.repo) }
+    }
+
+    private var repoBarSuggestList: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(Array(repoMatches.enumerated()), id: \.offset) { i, item in
+                Button { selectRepoFromBar(item.token) } label: {
+                    HStack(spacing: 8) {
+                        Text(item.token).font(Konjo.mono(12, weight: .bold)).foregroundStyle(Konjo.stackViolet)
+                        Text(item.label).font(Konjo.sans(11)).foregroundStyle(Konjo.fg)
+                        Spacer(minLength: 8)
+                        Text(item.hint).font(Konjo.mono(9)).foregroundStyle(Konjo.fgMute).lineLimit(1)
+                    }
+                    .padding(.horizontal, 8).padding(.vertical, 6)
+                    .background(i == cmdActiveIndex ? Konjo.stackViolet.opacity(0.12) : Color.clear)
+                    .clipShape(RoundedRectangle(cornerRadius: 5))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(4)
+        .frame(minWidth: 280)
+        .background(Konjo.panel)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.11), lineWidth: 1))
+        .shadow(color: .black.opacity(0.6), radius: 17, y: 8)
+    }
+
+    private var cmdBarSuggestList: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(Array(cmdMatches.enumerated()), id: \.offset) { i, item in
+                Button { selectCommandFromBar(item.token) } label: {
+                    HStack(spacing: 8) {
+                        Text(item.token).font(Konjo.mono(12, weight: .bold)).foregroundStyle(Konjo.stackViolet)
+                        Text(item.label).font(Konjo.sans(11)).foregroundStyle(Konjo.fg)
+                        Spacer(minLength: 8)
+                        Text(item.hint).font(Konjo.mono(9)).foregroundStyle(Konjo.fgMute).lineLimit(1)
+                    }
+                    .padding(.horizontal, 8).padding(.vertical, 6)
+                    .background(i == cmdActiveIndex ? Konjo.stackViolet.opacity(0.12) : Color.clear)
+                    .clipShape(RoundedRectangle(cornerRadius: 5))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(4)
+        .frame(minWidth: 280)
+        .background(Konjo.panel)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.11), lineWidth: 1))
+        .shadow(color: .black.opacity(0.6), radius: 17, y: 8)
     }
 
     // MARK: Run area
@@ -161,8 +375,8 @@ struct StackControlDockView: View {
             .buttonStyle(.plain).disabled(phase == .draining)
             Button { runMenuOpen.toggle() } label: {
                 Image(systemName: "chevron.up").font(.system(size: 12, weight: .bold)).foregroundStyle(Color(hex: 0x231000))
-                    .padding(.horizontal, 13).padding(.vertical, 14)
-                    .background(Color(hex: 0xF08600))
+                    .padding(.horizontal, 13).padding(.vertical, 12)
+                    .background(LinearGradient(colors: [Color(hex: 0xFFA733), Color(hex: 0xF08600)], startPoint: .top, endPoint: .bottom))
             }
             .buttonStyle(.plain)
             .popover(isPresented: $runMenuOpen, arrowEdge: .top) {
@@ -228,5 +442,10 @@ struct StackControlDockView: View {
     }
     private var configPopover: some View {
         StackConfigPopoverView(defaults: config.defaults, repoOptions: repoOptions) { next in store.updateStackConfig(pane.key) { $0.defaults = next } }
+    }
+    private var goalPopover: some View {
+        GoalPopoverView(pursue: config.goal.pursue, noProgressLimit: config.goal.noProgressLimit, pursues: pursues,
+            onTogglePursue: { store.updateStackConfig(pane.key) { $0.goal.pursue.toggle() } },
+            onChangeNoProgressLimit: { n in store.updateStackConfig(pane.key) { $0.goal.noProgressLimit = n } })
     }
 }

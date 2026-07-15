@@ -36,13 +36,13 @@ struct ForgeView: View {
             ConnectionLED(state: model.connection)
             Spacer()
             Button { removePane() } label: {
-                Image(systemName: "minus").font(.system(size: 17, weight: .semibold)).foregroundStyle(Konjo.fgDim)
+                Image(systemName: "minus").font(.system(size: 18, weight: .semibold)).foregroundStyle(Konjo.fgDim)
             }
             .buttonStyle(.plain).focusEffectDisabled()
             .help("Remove stack").disabled(store.panes.count <= 1)
             Text("\(store.panes.count)").font(Konjo.mono(11)).foregroundStyle(Konjo.fgDim).monospacedDigit()
             Button { store.addStackPane() } label: {
-                Image(systemName: "plus").font(.system(size: 20, weight: .semibold)).foregroundStyle(Konjo.ice)
+                Image(systemName: "plus").font(.system(size: 18, weight: .semibold)).foregroundStyle(Konjo.flame)
             }
             .buttonStyle(.plain).focusEffectDisabled()
             .help("Add stack").disabled(store.panes.count >= 12)
@@ -59,6 +59,11 @@ struct ForgeView: View {
                 StackPaneView(
                     store: store, engine: engine, pane: pane, index: idx, repoOptions: repoChoices,
                     onClose: store.panes.count > 1 ? { closePane(pane.key) } : nil)
+                    .dropDestination(for: StackDragPayload.self) { items, _ in
+                        guard let payload = items.first, payload.index != idx else { return false }
+                        store.reorderStacksInPanes(payload.index, idx, true)
+                        return true
+                    }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

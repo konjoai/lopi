@@ -84,7 +84,9 @@
   <div class="shead">
     <span class="brand"><LopiWordmark size={16} /></span>
     <button type="button" class="sclose" on:click={close} aria-label="Close navigation">
-      {@html SHELL_ICONS.close}
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        {@html SHELL_ICONS.close}
+      </svg>
     </button>
   </div>
   <div class="snav">
@@ -215,15 +217,15 @@
     color: var(--konjo-paper, #f5f5f5);
   }
   .snav a:hover svg {
-    color: var(--konjo-ice);
+    color: var(--konjo-flame);
   }
   .snav a.active {
-    background: rgb(0 212 255 / 0.09);
-    color: var(--konjo-ice);
-    border-color: rgba(0, 212, 255, 0.25);
+    background: rgba(255, 149, 0, 0.09);
+    color: var(--konjo-flame);
+    border-color: rgba(255, 149, 0, 0.25);
   }
   .snav a.active svg {
-    color: var(--konjo-ice);
+    color: var(--konjo-flame);
   }
 
   @media (prefers-reduced-motion: reduce) {

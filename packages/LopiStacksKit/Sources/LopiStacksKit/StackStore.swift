@@ -67,10 +67,16 @@ public final class StackStore {
 
     /// Commit a pane's draft into a real (`.idle`) card at the top of the stack
     /// (`addCard` prepends), then mint a fresh empty draft. The one transition a
-    /// draft ever makes out of `.draft`. No-op for an unknown key.
-    public func commitDraft(_ key: String) {
+    /// draft ever makes out of `.draft`. No-op for an unknown key. `repoOptions`
+    /// resolves any inline `@token` label to its real path (see
+    /// `finalizeDraft`'s doc comment). The stack's own repo default adopts the
+    /// first inline `@repo` while it's still the cold-start "auto" sentinel —
+    /// a later card with a different repo never clobbers an explicit choice.
+    public func commitDraft(_ key: String, repoOptions: [StackOption] = []) {
         guard let idx = panes.firstIndex(where: { $0.key == key }) else { return }
-        panes[idx].cards = addCard(panes[idx].cards, finalizeDraft(panes[idx].draft))
+        let finalized = finalizeDraft(panes[idx].draft, repoOptions: repoOptions)
+        panes[idx].cards = addCard(panes[idx].cards, finalized)
+        panes[idx].config.defaults = adoptRepoDefaultIfUnset(panes[idx].config.defaults, finalized)
         panes[idx].draft = makeDraft()
     }
 
