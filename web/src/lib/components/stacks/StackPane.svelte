@@ -15,8 +15,6 @@
   import StackConnector from './StackConnector.svelte';
   import StackOutput from './StackOutput.svelte';
   import StackControlDock from './StackControlDock.svelte';
-  import { runs, runBarePane } from '$lib/stores/stackRun';
-  import { agents } from '$lib/stores/agents';
   import { ICONS } from './icons';
 
   export let pane: StackPaneState;
@@ -26,14 +24,10 @@
   export let onClose: (() => void) | null = null;
 
   $: paneDefaults = pane.config.defaults;
-  // F2 — a bare pane (≤1 card) has no dock, so it carries its own run button.
-  // Its live phase drives the button label the same way the dock's does.
-  $: barePhase = $runs.get(pane.key)?.phase;
-  $: bareRunning = barePhase === 'running';
   $: scheduleGoverned = perLoopScheduleGoverned(pane.config);
-  // Unify-2 §3: a 0- or 1-card pane is a *bare* box (composer + card + orb) that
-  // reads like the old Forge pane; the purple stack control dock and inter-card
-  // connectors appear only once a second loop makes it a real stack.
+  // An empty pane is a *bare* box (composer + idle orb) that reads like the
+  // old Forge pane; the purple stack control dock and inter-card connectors
+  // appear as soon as the pane holds its first card.
   $: bare = paneIsBare(pane);
 </script>
 
@@ -91,21 +85,6 @@
 
   {#if !bare}
     <StackControlDock {pane} {index} {repoOptions} />
-  {:else if pane.cards.length >= 1}
-    <!-- F2 — bare pane's own run affordance (no dock at ≤1 card). Runs the
-         single staged card via the loop-semantics-free bare payload. -->
-    <div class="barerun">
-      <button
-        class="barerunbtn"
-        type="button"
-        title="run this prompt"
-        disabled={bareRunning}
-        on:click={() => runBarePane(pane.key, paneDefaults, agents)}
-      >
-        {@html ICONS.play}
-        {bareRunning ? 'running…' : 'run'}
-      </button>
-    </div>
   {/if}
 </div>
 
@@ -224,35 +203,4 @@
     }
   }
 
-  /* F2 — bare-pane run button (the ≤1-card pane's stand-in for the dock's
-     run-stack action). Same warm accent as the dock's `.runmain`. */
-  .barerun {
-    padding-top: 13px;
-    display: flex;
-    justify-content: center;
-  }
-  .barerunbtn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    background: linear-gradient(180deg, #ffb648, #ff9500);
-    color: #231000;
-    border: none;
-    border-radius: 9px;
-    padding: 12px 26px;
-    font-size: 13px;
-    font-weight: 700;
-    cursor: pointer;
-    white-space: nowrap;
-    box-shadow: 0 5px 18px rgba(255, 149, 0, 0.28);
-  }
-  .barerunbtn :global(svg) {
-    width: 15px;
-    height: 15px;
-  }
-  .barerunbtn:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
 </style>

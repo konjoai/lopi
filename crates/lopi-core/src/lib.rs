@@ -24,6 +24,12 @@ pub mod event;
 pub mod gain;
 /// Loop-engineering configuration: autonomy levels + the `LoopConfig` schema.
 pub mod loop_config;
+/// Claude model catalog types + the static fallback list `GET /api/models`
+/// serves when the live Anthropic call fails. Single source of truth for
+/// model IDs, replacing the three independently-drifted copies this repo
+/// carried before (`lopi-agent::claude` constants, web's `options.ts`,
+/// macOS's `LaunchControls`/`StackConfigTypes`).
+pub mod models;
 /// Report on Finish (Loop Engineering primitive 6) — the `report` channel
 /// name a completed run's summary can be routed to.
 pub mod report;
@@ -55,6 +61,7 @@ pub use eval_outcome::{CheckResult, EvalOutcome, Verdict};
 pub use event::{AgentEvent, EventBus, LogLevel, PlanDecision};
 pub use gain::{GainDecision, GainRule, GainSample};
 pub use loop_config::{AutonomyLevel, IsolationMode, LoopConfig};
+pub use models::{fallback_models, ModelInfo};
 pub use report::{ReportChannel, ReportChannelError};
 pub use schema::{
     schema_violations_inc, schema_violations_snapshot, validate as validate_schema,

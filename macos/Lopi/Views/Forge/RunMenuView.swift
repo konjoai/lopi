@@ -54,7 +54,7 @@ struct RunMenuView: View {
         } else {
             out.append(Item(systemImage: "play.fill", name: "Run now", sub: "start now") { engine.runStack(paneKey, .run, defaults) })
             out.append(Item(systemImage: "checkmark", name: "Run once", sub: "one pass each") { engine.runStack(paneKey, .runOnce, defaults) })
-            out.append(Item(systemImage: "clock", name: "Schedule stack", sub: "one cron, bottom card") { scheduleStack() })
+            out.append(Item(systemImage: "clock", name: "Schedule stack", sub: "Schedule the entire stack") { scheduleStack() })
         }
         out.append(Item(systemImage: "flask", name: "Dry run", sub: "validate only") { dryRun() })
         return out

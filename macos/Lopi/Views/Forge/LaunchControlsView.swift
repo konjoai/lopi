@@ -62,7 +62,7 @@ struct LaunchControlsView: View {
     /// Flattened: `KonjoMenu` is a native `Menu` and cannot show sections.
     private var repoOptions: [LaunchOption] {
         [LaunchOption(value: "", label: "— repo —")]
-            + Lopi.repoOptions(model.repos)
+            + LopiStacksKit.repoOptions(model.repos)
                 .filter { !$0.value.isEmpty }
                 .map { LaunchOption(value: $0.value, label: $0.label) }
     }

@@ -134,11 +134,14 @@ final class StackStoreTests: XCTestCase {
     func testIterationStepper() {
         XCTAssertEqual(stepMaxIterations(25, 1), 26, "stepping up increments")
         XCTAssertEqual(stepMaxIterations(25, -1), 24, "stepping down decrements")
-        XCTAssertEqual(stepMaxIterations(2, -1), 0, "below the floor wraps to infinite")
-        XCTAssertEqual(stepMaxIterations(3, -2), 0, "multi-step below the floor wraps to infinite")
-        XCTAssertEqual(stepMaxIterations(0, 1), 2, "up from infinite lands on the floor, not 1")
+        XCTAssertEqual(stepMaxIterations(2, -1), 1, "below the floor lands on off (1)")
+        XCTAssertEqual(stepMaxIterations(3, -2), 1, "multi-step below the floor also lands on off (1)")
+        XCTAssertEqual(stepMaxIterations(1, -1), 0, "down from off wraps to infinite")
+        XCTAssertEqual(stepMaxIterations(1, 1), 2, "up from off reaches the floor")
+        XCTAssertEqual(stepMaxIterations(0, 1), 1, "up from infinite lands on off, not the floor")
         XCTAssertEqual(stepMaxIterations(0, -1), 0, "down from infinite stays infinite")
         XCTAssertEqual(maxIterationsLabel(0), "∞", "label renders infinite sentinel as ∞")
+        XCTAssertEqual(maxIterationsLabel(1), "off", "label renders a single run with no repeat as off")
         XCTAssertEqual(maxIterationsLabel(5), "5", "label renders a finite ceiling as its number")
 
         // Card pill: floors at 0 = "off", never wraps to infinite.
@@ -241,6 +244,32 @@ final class StackStoreTests: XCTestCase {
         XCTAssertEqual(resolvePresetAlias("ratchet"), .gain, "legacy `:ratchet` still resolves to gain")
         XCTAssertNil(resolvePresetAlias("nonsense"), "unknown alias resolves to nil")
         XCTAssertEqual(buildCard(":ratchet \"self improve\"").preset, .gain, "`:ratchet` builds a gain-preset card")
+    }
+
+    // MARK: alias autocomplete — filters PRESET_KEYS while the goal is a bare :token
+
+    func testAliasAutocomplete() {
+        // `:re` is deliberately ambiguous (`research` and `report` both start
+        // with it) — `:res`/`:rep` is where the two diverge and each becomes
+        // unique.
+        XCTAssertEqual(aliasAutocomplete(":re").count, 2, "a shared prefix returns every matching preset, research before report (catalog order)")
+        XCTAssertEqual(aliasAutocomplete(":re").first?.alias, ":research", "research sorts first — PRESET_KEYS declaration order")
+        XCTAssertEqual(aliasAutocomplete(":res").count, 1, "a unique prefix returns exactly one match")
+        XCTAssertEqual(aliasAutocomplete(":res").first?.alias, ":research", "the match carries the full canonical alias")
+        XCTAssertEqual(aliasAutocomplete(":res").first?.label, "research", "the match carries the preset label")
+        XCTAssertEqual(
+            aliasAutocomplete(":res").first?.hint, "explore & investigate — judge-reviewed",
+            "the match carries the one-line description")
+        XCTAssertEqual(aliasAutocomplete(":").count, 8, "a bare colon matches every built-in preset")
+        XCTAssertEqual(aliasAutocomplete(":RES").first?.alias, ":research", "matching is case-insensitive")
+        XCTAssertEqual(aliasAutocomplete(":nope").count, 0, "no preset starts with an unknown prefix")
+        XCTAssertEqual(aliasAutocomplete(":ratchet").count, 0, "the legacy `:ratchet` alias is never suggested, only `:gain` is")
+        XCTAssertEqual(aliasAutocomplete("").count, 0, "an empty goal (no colon yet) suggests nothing")
+        XCTAssertEqual(aliasAutocomplete("research").count, 0, "plain text with no leading colon suggests nothing")
+        XCTAssertEqual(
+            aliasAutocomplete(":research and more").count, 0,
+            "once a space follows the token, the goal text has moved on — no suggestions")
+        XCTAssertEqual(aliasAutocomplete(":research ").count, 0, "a trailing space after a completed alias also closes the list")
     }
 
     func testWiredTableRoundTrip() {
@@ -495,13 +524,13 @@ final class StackStoreTests: XCTestCase {
         XCTAssertEqual(cardToTaskPayload(c, defaults).options.acceptance?.checks.count, 2, "base + judge ⇒ two checks")
     }
 
-    // MARK: bare vs stack chrome + pane creation (Unify-2 §3)
+    // MARK: bare vs stack chrome + pane creation
 
     func testPaneIsBareAndCreation() {
         let cfg = defaultStackConfig()
         XCTAssertTrue(paneIsBare(StackPaneState(key: "e", title: "t", cards: [], config: cfg)), "empty pane is bare")
-        XCTAssertTrue(paneIsBare(StackPaneState(key: "o", title: "t", cards: [buildCard("a")], config: cfg)), "single-card pane is bare")
-        XCTAssertFalse(paneIsBare(StackPaneState(key: "w", title: "t", cards: [buildCard("a"), buildCard("b")], config: cfg)), "second loop earns the chrome")
+        XCTAssertFalse(paneIsBare(StackPaneState(key: "o", title: "t", cards: [buildCard("a")], config: cfg)), "the first card already earns the chrome")
+        XCTAssertFalse(paneIsBare(StackPaneState(key: "w", title: "t", cards: [buildCard("a"), buildCard("b")], config: cfg)), "a second loop keeps the chrome")
 
         let blank = makeBlankStack()
         XCTAssertEqual(blank.cards.count, 0, "fresh pane starts empty")
@@ -544,6 +573,76 @@ final class StackStoreTests: XCTestCase {
         XCTAssertEqual(c.goal, "investigate X", "tokens are stripped from the committed goal")
         XCTAssertEqual(c.config.repo, "konjoai/lopi", "inline @repo lands on config")
         XCTAssertEqual(c.maxIterations, 3, "inline xN sets the iteration ceiling")
+    }
+
+    /// `finalizeDraft` resolves an inline `@repo`'s label to its real path
+    /// when a catalog is supplied — the bug fix: the stored `config.repo`
+    /// must be a path (`CreateTaskRequest.repo` reaches
+    /// `git2::Repository::open`), never the decorative label the
+    /// autocomplete inserted into the goal text.
+    func testFinalizeDraftResolvesRepoLabelToPath() {
+        let repos = [StackOption(value: "/h/lopi", label: "konjoai/lopi", hint: "/h/lopi")]
+        var draft = makeDraft()
+        draft.goal = "@konjoai/lopi fix the bug"
+        let c = finalizeDraft(draft, repoOptions: repos)
+        XCTAssertEqual(c.config.repo, "/h/lopi", "inline @repo resolves to its path, not the label, when a catalog is given")
+    }
+
+    /// `adoptRepoDefaultIfUnset` — the "first inline @repo becomes the stack
+    /// default" rule, pulled out of `StackStore.commitDraft` so it's
+    /// testable without a live store.
+    func testAdoptRepoDefaultIfUnset() {
+        let unset = DEFAULT_STACK_DEFAULTS
+        XCTAssertEqual(unset.repo, "", "sanity: the cold-start default repo is the empty/auto sentinel")
+
+        var withRepo = buildCard("\"x\"")
+        withRepo.config.repo = "/h/lopi"
+        XCTAssertEqual(
+            adoptRepoDefaultIfUnset(unset, withRepo).repo, "/h/lopi",
+            "a committed card with a repo seeds the still-unset stack default")
+
+        var alreadySet = unset
+        alreadySet.repo = "/h/other"
+        XCTAssertEqual(
+            adoptRepoDefaultIfUnset(alreadySet, withRepo).repo, "/h/other",
+            "an already-explicit stack default is never clobbered by a later card")
+
+        let noRepoCard = buildCard("\"x\"")
+        XCTAssertEqual(
+            adoptRepoDefaultIfUnset(unset, noRepoCard).repo, "",
+            "a card with no repo of its own leaves the stack default untouched")
+    }
+
+    // MARK: inline `/command` autocomplete — level 1 (command names) + level 2
+    // (`/command/value`), mirroring `@repo`'s trailing-word grammar
+
+    func testInlineCommandAutocomplete() {
+        XCTAssertEqual(commandAutocomplete("/mo", CARD_COMMANDS).count, 1, "a unique command prefix returns one match")
+        XCTAssertEqual(commandAutocomplete("/mo", CARD_COMMANDS).first?.token, "/model", "the match carries the full command token")
+        XCTAssertEqual(commandAutocomplete("fix the bug /", CARD_COMMANDS).count, CARD_COMMANDS.count, "a bare slash matches every command")
+        XCTAssertEqual(commandAutocomplete("/nope", CARD_COMMANDS).count, 0, "no command starts with an unknown prefix")
+        XCTAssertEqual(commandAutocomplete("fix /model bug", CARD_COMMANDS).count, 0, "once a space follows the token, the goal has moved on")
+        XCTAssertEqual(commandAutocomplete("fix the bug", CARD_COMMANDS).count, 0, "no trailing slash means no suggestions")
+        XCTAssertTrue(
+            STACK_COMMANDS.contains(where: { $0.command == "loop" }) && !CARD_COMMANDS.contains(where: { $0.command == "loop" }),
+            "`loop` is stack-scope only — no per-card loop count to override")
+        XCTAssertTrue(
+            CARD_COMMANDS.contains(where: { $0.command == "guard" }) && STACK_COMMANDS.contains(where: { $0.command == "guard" }),
+            "`guard` exists at both scopes")
+
+        XCTAssertEqual(commandValueAutocomplete("/model/op", "model", MODEL_OPTIONS).count, 1, "level 2 filters the given catalog by the value typed so far")
+        XCTAssertEqual(
+            commandValueAutocomplete("/model/op", "model", MODEL_OPTIONS).first?.token, "/model/claude-opus-4-8",
+            "the level-2 token embeds the real value directly — no label/path resolution step, unlike @repo")
+        XCTAssertEqual(commandValueAutocomplete("/model/", "model", MODEL_OPTIONS).count, MODEL_OPTIONS.count, "an empty value query matches everything")
+        XCTAssertEqual(commandValueAutocomplete("/model/nope", "model", MODEL_OPTIONS).count, 0, "no option starts with an unknown value prefix")
+        XCTAssertEqual(commandValueAutocomplete("/model/opus done", "model", MODEL_OPTIONS).count, 0, "a space after the value token closes the list")
+        XCTAssertEqual(
+            commandValueAutocomplete("/effort/lo", "effort", EFFORT_OPTIONS).first?.token, "/effort/low",
+            "a different command matches its own catalog")
+
+        XCTAssertEqual(evalSuiteOptions().count, 3, "eval's catalog is the three suite shortcuts, not individual eval names")
+        XCTAssertTrue(evalSuiteOptions().allSatisfy { !$0.label.contains(" ") }, "every suite name is space-free")
     }
 
     func testFinalizeDraftKeepsConfiguredDraft() {

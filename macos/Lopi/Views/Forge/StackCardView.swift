@@ -26,6 +26,79 @@ struct StackCardView: View {
     @State private var evalOpen = false
     @FocusState private var goalFocused: Bool
 
+    // ── alias autocomplete (`:token`) ────────────────────────────────────────
+    @State private var aliasActiveIndex = 0
+    @State private var aliasDismissed = false
+    private var aliasMatches: [AliasSuggestion] { aliasAutocomplete(card.goal) }
+    private var showAliasSuggest: Bool { isDraft && goalFocused && !aliasDismissed && !aliasMatches.isEmpty }
+
+    // ── repo autocomplete (`@token`) ─────────────────────────────────────────
+    // Independent dismiss/active state from the alias list since the two can
+    // never be active at once — one requires a leading `:`, the other a
+    // trailing `@`.
+    @State private var repoActiveIndex = 0
+    @State private var repoDismissed = false
+    private var repoMatches: [RepoSuggestion] { repoAutocomplete(card.goal, repoOptions) }
+    private var showRepoSuggest: Bool { isDraft && goalFocused && !repoDismissed && !repoMatches.isEmpty }
+    /// The goal field box's own measured height (border box, before the outer
+    /// `.padding(.top, 10)`) — the suggestion overlay offsets down by this much
+    /// plus a small gap, so it sits flush under the input like the web
+    /// `AutocompleteSuggest` dropdown instead of a native `.popover` bubble.
+    @State private var goalFieldHeight: CGFloat = 40
+    /// The provenance chip's label — reverse-looked-up from the resolved path
+    /// so the chip survives even though `@token` is stripped from the goal
+    /// text on commit (see `selectRepo`'s doc comment).
+    private var cardRepoLabel: String? {
+        card.config.repo.map { repoLabelForPath($0, repoOptions) }
+    }
+
+    // ── inline `/command` autocomplete (model/effort/branch/autonomy/eval/
+    //    guard/schedule) ────────────────────────────────────────────────────
+    // Two-level grammar, mirroring the user's own suggested `/model/<value>`
+    // syntax: typing `/` suggests command names (`commandAutocomplete`);
+    // picking a value-picker command moves into a second `/command/value`
+    // token (`commandValueAutocomplete`) against that command's own catalog.
+    // Picking a non-value-picker command (guard/schedule) fires immediately —
+    // strips the token and flips the existing `guardOpen`/`schedOpen` state,
+    // same as clicking its cardbar icon. No `/maxx` here — macOS `StackCard`
+    // has no MAXX field yet (web-only feature to date).
+    @State private var cmdActiveIndex = 0
+    @State private var cmdDismissed = false
+    /// Set once a value-picker command is chosen from the level-1 list.
+    @State private var pendingCommand: String?
+
+    /// One suggestion row, whichever level produced it — Swift has no union
+    /// return type, so this wraps `CommandSuggestion`/`CommandValueSuggestion`
+    /// behind one shape the view can render uniformly.
+    private enum CmdMatch {
+        case command(CommandSuggestion)
+        case value(CommandValueSuggestion)
+        var token: String { switch self { case .command(let c): return c.token; case .value(let v): return v.token } }
+        var label: String { switch self { case .command(let c): return c.label; case .value(let v): return v.label } }
+        var hint: String { switch self { case .command(let c): return c.hint; case .value(let v): return v.hint } }
+    }
+
+    private var effectiveRepo: String { card.config.repo ?? paneDefaults.repo }
+
+    private func commandOptionsFor(_ command: String) -> [StackOption] {
+        switch command {
+        case "model": return MODEL_OPTIONS
+        case "effort": return EFFORT_OPTIONS
+        case "autonomy": return AUTONOMY_OPTIONS
+        case "branch": return (model.branchesByRepo[effectiveRepo] ?? []).map { StackOption(value: $0, label: $0) }
+        case "eval": return evalSuiteOptions()
+        default: return []
+        }
+    }
+
+    private var cmdMatches: [CmdMatch] {
+        if let pendingCommand {
+            return commandValueAutocomplete(card.goal, pendingCommand, commandOptionsFor(pendingCommand)).map { .value($0) }
+        }
+        return commandAutocomplete(card.goal, CARD_COMMANDS).map { .command($0) }
+    }
+    private var showCmdSuggest: Bool { isDraft && goalFocused && !cmdDismissed && !cmdMatches.isEmpty }
+
     private var isDraft: Bool { card.status == .draft }
     private var hot: Bool { isDraft && draftIsHot(card) }
 
@@ -48,11 +121,25 @@ struct StackCardView: View {
     /// empty draft, then re-focuses the (now-empty) goal field for rapid entry.
     private func commit() {
         guard hot else { return }
-        store.commitDraft(paneKey)
+        store.commitDraft(paneKey, repoOptions: repoOptions)
         goalFocused = true
     }
 
     var body: some View {
+        if isDraft {
+            cardContent
+        } else {
+            cardContent
+                .draggable(CardDragPayload(paneKey: paneKey, index: index))
+                .dropDestination(for: CardDragPayload.self) { items, _ in
+                    guard let payload = items.first, payload.paneKey == paneKey, payload.index != index else { return false }
+                    store.reorderInPaneRelative(paneKey, payload.index, index, true)
+                    return true
+                }
+        }
+    }
+
+    private var cardContent: some View {
         VStack(alignment: .leading, spacing: 0) {
             agentBody
             summaryLines
@@ -141,7 +228,7 @@ struct StackCardView: View {
     private var draftHeader: some View {
         HStack(spacing: 9) {
             TemplatesMenuView(store: store, templateStore: model.stackTemplateStore, paneKey: paneKey, card: card)
-            ProvenanceChips(alias: card.alias, tpl: card.tpl, tplKind: card.tplKind)
+            ProvenanceChips(alias: card.alias, tpl: card.tpl, tplKind: card.tplKind, repoLabel: cardRepoLabel)
             Spacer(minLength: 0)
         }
     }
@@ -149,24 +236,246 @@ struct StackCardView: View {
     /// Goal on its own full-width inset line (a chip-adjacent field truncated in
     /// the mockup). Still honors `:alias @repo ×N` on commit via `finalizeDraft`.
     private var goalField: some View {
-        TextField("describe the prompt or goal…  (:alias @repo ×N ok)", text: goalBinding)
+        TextField("describe the prompt or goal...  (i.e. :alias @org/repo /model/opus xN)", text: goalBinding)
             .textFieldStyle(.plain).font(Konjo.mono(14)).foregroundStyle(Konjo.fg)
             .focused($goalFocused)
-            .onSubmit { commit() }
+            .onSubmit {
+                if showAliasSuggest { selectAlias(aliasMatches[aliasActiveIndex].alias) }
+                else if showRepoSuggest { selectRepo(repoMatches[repoActiveIndex].token) }
+                else if showCmdSuggest { selectCommand(cmdMatches[cmdActiveIndex].token) }
+                else { commit() }
+            }
+            .onChange(of: card.goal) { _, newGoal in
+                aliasDismissed = false; aliasActiveIndex = 0
+                repoDismissed = false; repoActiveIndex = 0
+                cmdDismissed = false
+                // Once the `/command/` prefix itself is edited away (e.g.
+                // backspaced), fall back to level-1 command suggestions
+                // rather than staying stuck matching against an abandoned
+                // command.
+                if let pending = pendingCommand, !newGoal.contains("/\(pending)/") {
+                    pendingCommand = nil
+                }
+            }
+            .onKeyPress(.downArrow) {
+                if showAliasSuggest { aliasActiveIndex = (aliasActiveIndex + 1) % aliasMatches.count; return .handled }
+                if showRepoSuggest { repoActiveIndex = (repoActiveIndex + 1) % repoMatches.count; return .handled }
+                if showCmdSuggest { cmdActiveIndex = (cmdActiveIndex + 1) % cmdMatches.count; return .handled }
+                return .ignored
+            }
+            .onKeyPress(.upArrow) {
+                if showAliasSuggest { aliasActiveIndex = (aliasActiveIndex - 1 + aliasMatches.count) % aliasMatches.count; return .handled }
+                if showRepoSuggest { repoActiveIndex = (repoActiveIndex - 1 + repoMatches.count) % repoMatches.count; return .handled }
+                if showCmdSuggest { cmdActiveIndex = (cmdActiveIndex - 1 + cmdMatches.count) % cmdMatches.count; return .handled }
+                return .ignored
+            }
+            .onKeyPress(.tab) {
+                if showAliasSuggest { selectAlias(aliasMatches[aliasActiveIndex].alias); return .handled }
+                if showRepoSuggest { selectRepo(repoMatches[repoActiveIndex].token); return .handled }
+                if showCmdSuggest { selectCommand(cmdMatches[cmdActiveIndex].token); return .handled }
+                return .ignored
+            }
+            .onKeyPress(.escape) {
+                if showAliasSuggest { aliasDismissed = true; return .handled }
+                if showRepoSuggest { repoDismissed = true; return .handled }
+                if showCmdSuggest { cmdDismissed = true; return .handled }
+                return .ignored
+            }
             .padding(.horizontal, 11).padding(.vertical, 9)
             .background(Color.white.opacity(0.02))
             .overlay(RoundedRectangle(cornerRadius: 7).stroke(goalFocused ? Konjo.stackTeal.opacity(0.4) : Konjo.line2, lineWidth: 1))
             .clipShape(RoundedRectangle(cornerRadius: 7))
+            .background(
+                GeometryReader { geo in
+                    Color.clear
+                        .onAppear { goalFieldHeight = geo.size.height }
+                        .onChange(of: geo.size.height) { _, h in goalFieldHeight = h }
+                }
+            )
+            // A flat, borderless dropdown flush under the input — matching the
+            // web `AutocompleteSuggest` (`position: absolute; top: calc(100% +
+            // 4px)`) — rather than SwiftUI's native `.popover`, which renders as
+            // a system bubble with an arrow/tail and vibrancy chrome. Dismissal
+            // on outside click needs no extra wiring: `showAliasSuggest`/
+            // `showRepoSuggest`/`showCmdSuggest` already require `goalFocused`,
+            // and clicking away clears focus, same as web's `on:blur`.
+            .overlay(alignment: .topLeading) {
+                Group {
+                    if showAliasSuggest { aliasSuggestList }
+                    else if showRepoSuggest { repoSuggestList }
+                    else if showCmdSuggest { cmdSuggestList }
+                }
+                .offset(y: goalFieldHeight + 4)
+            }
+            .zIndex(showAliasSuggest || showRepoSuggest || showCmdSuggest ? 10 : 0)
             .padding(.top, 10)
+            .task(id: effectiveRepo) { await model.ensureBranches(effectiveRepo) }
     }
 
     private var goalBinding: Binding<String> {
         Binding(get: { card.goal }, set: { v in store.updateDraftInPane(paneKey) { $0.goal = v } })
     }
 
+    /// Replace the `:token` being typed with the full canonical alias plus a
+    /// trailing space, so the cursor lands ready to type the goal text next —
+    /// the popover closes itself since the goal no longer matches a bare
+    /// `:token` once the space is there.
+    private func selectAlias(_ alias: String) {
+        store.updateDraftInPane(paneKey) { $0.goal = "\(alias) " }
+        aliasActiveIndex = 0
+        goalFocused = true
+    }
+
+    private var aliasSuggestList: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(Array(aliasMatches.enumerated()), id: \.offset) { i, item in
+                Button { selectAlias(item.alias) } label: {
+                    HStack(spacing: 8) {
+                        Text(item.alias).font(Konjo.mono(12, weight: .bold)).foregroundStyle(Konjo.stackTeal)
+                        Text(item.label).font(Konjo.sans(11)).foregroundStyle(Konjo.fg)
+                        Spacer(minLength: 8)
+                        Text(item.hint).font(Konjo.mono(9)).foregroundStyle(Konjo.fgMute).lineLimit(1)
+                    }
+                    .padding(.horizontal, 8).padding(.vertical, 6)
+                    .background(i == aliasActiveIndex ? Konjo.stackTeal.opacity(0.09) : Color.clear)
+                    .clipShape(RoundedRectangle(cornerRadius: 5))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(4)
+        .frame(minWidth: 280)
+        .background(Konjo.panel)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.11), lineWidth: 1))
+        .shadow(color: .black.opacity(0.6), radius: 17, y: 8)
+    }
+
+    /// Replace the trailing `@token` with the full `@owner/name` token plus a
+    /// trailing space (keeps the human-readable label visible while typing).
+    /// Also writes the *resolved path* straight onto `card.config.repo` —
+    /// never relies on `parseComposerInput` re-deriving it from the label
+    /// text later, which is the mismatch that made the repo drawer silently
+    /// show "auto". `repoAutocomplete` only ever matches the goal's last
+    /// word, so the match is always anchored at the string's end — "replace
+    /// the match" and "replace the string's tail" are the same slice-and-
+    /// append, no cursor-position tracking needed.
+    private func selectRepo(_ token: String) {
+        guard let atIndex = card.goal.lastIndex(of: "@") else { return }
+        let resolved = repoMatches.first(where: { $0.token == token })?.value
+        store.updateDraftInPane(paneKey) {
+            $0.goal = "\(card.goal[..<atIndex])\(token) "
+            if let resolved { $0.config.repo = resolved }
+        }
+        repoActiveIndex = 0
+        goalFocused = true
+    }
+
+    /// Apply a value-picker command's chosen value directly to `card.config`
+    /// (or toggle the eval suite) — no chip; the existing config-gear/evals-
+    /// count indicators already surface these once set.
+    private func applyCommandValue(_ command: String, _ value: String) {
+        store.updateDraftInPane(paneKey) { c in
+            switch command {
+            case "eval": c.evals = applySuite(c.evals, EVAL_SUITES[value] ?? [])
+            case "model": c.config.model = value
+            case "effort": c.config.effort = value
+            case "branch": c.config.branch = value
+            case "autonomy": c.config.autonomy = value
+            default: break
+            }
+        }
+    }
+
+    /// Fire a non-value-picker command's immediate action — flips the same
+    /// state its cardbar icon does.
+    private func fireCommandAction(_ command: String) {
+        if command == "guard" { guardOpen = true }
+        else if command == "schedule" { schedOpen = true }
+    }
+
+    private func selectCommand(_ token: String) {
+        if let pending = pendingCommand {
+            if case .value(let suggestion)? = cmdMatches.first(where: { $0.token == token }) {
+                let prefix = "/\(pending)/"
+                if let range = card.goal.range(of: prefix, options: .backwards) {
+                    store.updateDraftInPane(paneKey) { $0.goal = String(card.goal[..<range.lowerBound]) }
+                    applyCommandValue(pending, suggestion.value)
+                }
+            }
+            pendingCommand = nil
+        } else {
+            let command = String(token.dropFirst())
+            guard let slashIndex = card.goal.lastIndex(of: "/") else { return }
+            let def = CARD_COMMANDS.first(where: { $0.command == command })
+            if def?.isValuePicker == true {
+                store.updateDraftInPane(paneKey) { $0.goal = "\(card.goal[..<slashIndex])/\(command)/" }
+                pendingCommand = command
+            } else {
+                store.updateDraftInPane(paneKey) { $0.goal = String(card.goal[..<slashIndex]) }
+                fireCommandAction(command)
+            }
+        }
+        cmdActiveIndex = 0
+        goalFocused = true
+    }
+
+    private var cmdSuggestList: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(Array(cmdMatches.enumerated()), id: \.offset) { i, item in
+                Button { selectCommand(item.token) } label: {
+                    HStack(spacing: 8) {
+                        Text(item.token).font(Konjo.mono(12, weight: .bold)).foregroundStyle(Konjo.stackTeal)
+                        Text(item.label).font(Konjo.sans(11)).foregroundStyle(Konjo.fg)
+                        Spacer(minLength: 8)
+                        Text(item.hint).font(Konjo.mono(9)).foregroundStyle(Konjo.fgMute).lineLimit(1)
+                    }
+                    .padding(.horizontal, 8).padding(.vertical, 6)
+                    .background(i == cmdActiveIndex ? Konjo.stackTeal.opacity(0.09) : Color.clear)
+                    .clipShape(RoundedRectangle(cornerRadius: 5))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(4)
+        .frame(minWidth: 280)
+        .background(Konjo.panel)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.11), lineWidth: 1))
+        .shadow(color: .black.opacity(0.6), radius: 17, y: 8)
+    }
+
+    private var repoSuggestList: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(Array(repoMatches.enumerated()), id: \.offset) { i, item in
+                Button { selectRepo(item.token) } label: {
+                    HStack(spacing: 8) {
+                        Text(item.token).font(Konjo.mono(12, weight: .bold)).foregroundStyle(Konjo.stackTeal)
+                        Text(item.label).font(Konjo.sans(11)).foregroundStyle(Konjo.fg)
+                        Spacer(minLength: 8)
+                        Text(item.hint).font(Konjo.mono(9)).foregroundStyle(Konjo.fgMute).lineLimit(1)
+                    }
+                    .padding(.horizontal, 8).padding(.vertical, 6)
+                    .background(i == repoActiveIndex ? Konjo.stackTeal.opacity(0.09) : Color.clear)
+                    .clipShape(RoundedRectangle(cornerRadius: 5))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(4)
+        .frame(minWidth: 280)
+        .background(Konjo.panel)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.white.opacity(0.11), lineWidth: 1))
+        .shadow(color: .black.opacity(0.6), radius: 17, y: 8)
+    }
+
     private var committedSpec: some View {
         HStack(spacing: 9) {
-            ProvenanceChips(alias: card.alias, tpl: card.tpl, tplKind: card.tplKind)
+            ProvenanceChips(alias: card.alias, tpl: card.tpl, tplKind: card.tplKind, repoLabel: cardRepoLabel)
             Text("\"\(card.goal)\"").font(Konjo.mono(14)).foregroundStyle(Konjo.fgDim)
             Spacer(minLength: 0)
         }

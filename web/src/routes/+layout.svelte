@@ -69,7 +69,7 @@
       <button
         type="button"
         on:click={() => window.dispatchEvent(new CustomEvent('lopi:add-pane'))}
-        class="press text-konjo-accent hover:bg-konjo-accent/10 px-2 py-1 rounded transition-colors"
+        class="press text-konjo-flame hover:bg-konjo-flame/10 px-2 py-1 rounded transition-colors"
         title="Add pane"
       >
         +
@@ -100,7 +100,7 @@
 
 <!-- Immersive views fill the viewport; data tabs get a scrollable canvas. -->
 {#if immersive}
-  <main class="relative pt-12 z-10" style="height: calc(100vh - 3rem); overflow: hidden;">
+  <main class="relative pt-12 z-10" style="height: 100vh; overflow: hidden;">
     <slot />
   </main>
 {:else}
@@ -141,17 +141,6 @@
 
 <!-- Global help overlay (toggle with ?) -->
 <HelpOverlay />
-
-<!-- Subtle hint at the bottom-right when help is hidden -->
-{#if !$helpVisible}
-  <button
-    type="button"
-    on:click={() => helpVisible.set(true)}
-    class="fixed bottom-4 right-4 z-20 font-mono text-[10px] uppercase tracking-widest opacity-30 hover:opacity-70 transition-opacity bg-konjo-deep/60 backdrop-blur px-2.5 py-1 rounded border border-white/5"
-  >
-    press ? for shortcuts
-  </button>
-{/if}
 
 <style>
   /* Budget toast — slide in from the right with a brief shake on entry */

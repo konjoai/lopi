@@ -1,4 +1,5 @@
 import XCTest
+import LopiStacksKit
 @testable import Lopi
 
 /// Repo dropdown rule tests — the Swift port of
@@ -104,6 +105,58 @@ final class RepoMenuTests: XCTestCase {
         XCTAssertEqual(groupedMenu(options, query: "").flat.first?.value, "", "auto leads an unfiltered menu")
         XCTAssertEqual(groupedMenu(options, query: "lopi").flat.first?.value, "/h/lopi", "auto steps aside under a query")
         XCTAssertTrue(groupedMenu(options, query: "lopi").pinned.isEmpty, "auto is gone when it does not match")
+    }
+
+    // MARK: `@repo` autocomplete — only the goal's trailing bare @token
+
+    func testRepoAutocomplete() {
+        let repos = repoOptions([
+            RepoEntry(path: "/h/lopi", owner: "konjoai", name: "lopi"),
+            RepoEntry(path: "/h/other", owner: "konjoai", name: "other-repo"),
+            RepoEntry(path: "/h/TinyStories", owner: nil, name: "TinyStories")
+        ])
+
+        XCTAssertEqual(repoAutocomplete("fix the bug @lo", repos).count, 1, "a unique trailing @ prefix returns one match")
+        XCTAssertEqual(repoAutocomplete("fix the bug @lo", repos).first?.token, "@konjoai/lopi", "the match carries the full @owner/name token")
+        XCTAssertEqual(repoAutocomplete("fix the bug @lo", repos).first?.label, "konjoai/lopi", "the match carries the label")
+        XCTAssertEqual(repoAutocomplete("@lo", repos).first?.token, "@konjoai/lopi", "an @ token works with no goal text before it too")
+        XCTAssertEqual(repoAutocomplete("fix @konjoai", repos).count, 2, "matching is over the whole owner/name label, not just the name")
+        XCTAssertEqual(repoAutocomplete("fix @tinystories", repos).first?.token, "@TinyStories", "a repo with no owner still autocompletes by name")
+        XCTAssertEqual(repoAutocomplete("fix @nope", repos).count, 0, "no repo starts with an unknown prefix")
+        XCTAssertEqual(repoAutocomplete("fix @auto", repos).count, 0, "the auto sentinel is never suggested")
+        XCTAssertEqual(repoAutocomplete("fix the bug", repos).count, 0, "no trailing @ means no suggestions")
+        XCTAssertEqual(repoAutocomplete("fix @lopi and more", repos).count, 0, "once a space follows the @token, the goal has moved on")
+        XCTAssertEqual(repoAutocomplete("fix @lopi ", repos).count, 0, "a trailing space after a completed @token also closes the list")
+        XCTAssertEqual(repoAutocomplete(":implement @lo", repos).first?.token, "@konjoai/lopi", "works alongside a leading :alias token too")
+        XCTAssertEqual(repoAutocomplete("@lo", repos).first?.value, "/h/lopi", "the suggestion carries the resolved path, not just the label")
+        // Regression: with `Foundation` imported, `String.contains("")` returns
+        // `false` (NSString `range(of:)` semantics displace the stdlib's own
+        // `Collection.contains`, which treats an empty needle as always-
+        // contained) — `optionMatches` must special-case an empty query
+        // explicitly, or a bare `@` with nothing typed yet silently shows no
+        // suggestions instead of the full catalog.
+        XCTAssertEqual(repoAutocomplete("@", repos).count, repos.count - 1, "a bare @ with no query yet suggests every real repo (catalog minus the auto sentinel)")
+    }
+
+    // MARK: `resolveRepoToken`/`repoLabelForPath` — the label↔path bridge
+    //
+    // The bug this closes: `@repo`'s inline grammar only ever recovers a
+    // LABEL from free text (`parseComposerInput`'s `@`-token grammar), but
+    // `config.repo` must hold the PATH `CreateTaskRequest.repo` actually
+    // resolves against. These two helpers are the only place that
+    // conversion happens.
+
+    func testResolveRepoTokenAndLabelForPath() {
+        let repos = repoOptions([
+            RepoEntry(path: "/h/lopi", owner: "konjoai", name: "lopi"),
+            RepoEntry(path: "/h/squish", owner: "konjoai", name: "squish")
+        ])
+
+        XCTAssertEqual(resolveRepoToken("konjoai/lopi", repos), "/h/lopi", "a known label resolves to its real path")
+        XCTAssertEqual(resolveRepoToken("nonexistent/repo", repos), "nonexistent/repo", "an unresolvable label is left as-is, never dropped")
+        XCTAssertEqual(repoLabelForPath("/h/lopi", repos), "konjoai/lopi", "a known path resolves back to its label")
+        XCTAssertEqual(repoLabelForPath("/h/unknown/place", repos), "place", "an unresolvable path falls back to its basename, not the full path")
+        XCTAssertEqual(repoLabelForPath("", repos), "auto", "an empty path matches the catalog's own AUTO_REPO_OPTION")
     }
 
     // MARK: The golden fixture — the cross-surface parity gate

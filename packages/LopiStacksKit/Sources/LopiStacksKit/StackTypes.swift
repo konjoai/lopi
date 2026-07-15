@@ -31,9 +31,9 @@ public struct EvalRef: Codable, Hashable {
 
 // MARK: - Presets
 
-/// The five built-in presets a card can be created from.
+/// The built-in presets a card can be created from.
 public enum PresetKey: String, Codable, Hashable, CaseIterable {
-    case research, implement, optimize, gain, benchmark
+    case research, implement, optimize, gain, benchmark, test, killtest, report
 }
 
 /// A preset's fixed shape: its alias, keyword-suggestion triggers, and the eval
@@ -311,11 +311,41 @@ public let PRESET_CATALOG: [PresetKey: PresetDef] = [
             BASELINE_EVAL,
             EvalRef(name: "benchmark gate", tier: .test),
             EvalRef(name: "30-run gate", tier: .test)
-        ])
+        ]),
+    .test: PresetDef(
+        key: .test, label: "test", alias: ":test",
+        keywords: ["test", "verify", "validate", "confirm", "prove", "check"],
+        evals: [
+            BASELINE_EVAL,
+            EvalRef(name: "tests pass", tier: .test),
+            EvalRef(name: "integration", tier: .test),
+            EvalRef(name: "code review", tier: .judge)
+        ]),
+    // Adversarial "try to break it" testing — distinct from `.test`'s
+    // verification intent. Reuses the existing `adversarial`/`vuln scan`
+    // evals rather than inventing a new eval type for kill-testing.
+    .killtest: PresetDef(
+        key: .killtest, label: "killtest", alias: ":killtest",
+        keywords: ["killtest", "kill test", "break", "destroy", "adversarial", "stress", "fuzz", "attack"],
+        evals: [
+            BASELINE_EVAL,
+            EvalRef(name: "adversarial", tier: .suite),
+            EvalRef(name: "vuln scan", tier: .suite),
+            EvalRef(name: "30-run gate", tier: .test)
+        ]),
+    // A documentation-deliverable preset (write an .md summarizing the latest
+    // findings/session) — not a code-correctness suite, so its eval set
+    // mirrors `.research`'s (baseline + judge-reviewed review, since there's
+    // no code change to test/scan, just a write-up worth a review pass for
+    // accuracy).
+    .report: PresetDef(
+        key: .report, label: "report", alias: ":report",
+        keywords: ["report", "summarize", "summary", "findings", "writeup", "write up", "docs"],
+        evals: [BASELINE_EVAL, EvalRef(name: "code review", tier: .judge)])
 ]
 
 /// Ordered preset keys (declaration order matters for `suggestPreset`).
-public let PRESET_KEYS: [PresetKey] = [.research, .implement, .optimize, .gain, .benchmark]
+public let PRESET_KEYS: [PresetKey] = [.research, .implement, .optimize, .gain, .benchmark, .test, .killtest, .report]
 
 /// One-line human descriptions for the templates menu's presets section
 /// (Creation-Flow-1 §5). Kept beside the catalog so web + macOS read the same
@@ -325,7 +355,10 @@ public let PRESET_DESCRIPTIONS: [PresetKey: String] = [
     .implement: "build a feature — full test + review suite",
     .optimize: "improve speed — beats-best + 30-run gate",
     .gain: "self-improve — ratchet on beats-best",
-    .benchmark: "measure variance — benchmark + 30-run gate"
+    .benchmark: "measure variance — benchmark + 30-run gate",
+    .test: "verify it works — full test suite + review",
+    .killtest: "try to break it — adversarial + vuln scan + 30-run gate",
+    .report: "write up findings — .md summary, judge-reviewed"
 ]
 
 /// Legacy `:alias` tokens mapping onto a renamed preset key. `:ratchet` → `:gain`.

@@ -1,10 +1,40 @@
 import SwiftUI
+import UniformTypeIdentifiers
 import LopiStacksKit
 
 // Shared stack UI primitives — the native analogues of the web `Toggle`,
 // `Combo`, segmented rows, the iteration pill, and the cardbar icon button.
 // Reused by `StackCardView`, the popovers, and `StackControlDockView` so a card
 // and the dock read identically, exactly as the web components share them.
+
+extension UTType {
+    /// Drag payload identifying a committed card being reordered within its pane.
+    static var lopiCardReorder: UTType { UTType(exportedAs: "com.konjo.lopi.card-reorder") }
+    /// Drag payload identifying a stack pane being reordered within the grid.
+    static var lopiStackReorder: UTType { UTType(exportedAs: "com.konjo.lopi.stack-reorder") }
+}
+
+/// Drag-and-drop payload for reordering committed cards within one pane
+/// (`StackStore.reorderInPaneRelative`). The draft card (index `-1`) is never
+/// draggable, so `index` here is always a valid `pane.cards` position.
+struct CardDragPayload: Codable, Transferable {
+    var paneKey: String
+    var index: Int
+
+    static var transferRepresentation: some TransferRepresentation {
+        CodableRepresentation(contentType: .lopiCardReorder)
+    }
+}
+
+/// Drag-and-drop payload for reordering whole stack panes in the grid
+/// (`StackStore.reorderStacksInPanes`).
+struct StackDragPayload: Codable, Transferable {
+    var index: Int
+
+    static var transferRepresentation: some TransferRepresentation {
+        CodableRepresentation(contentType: .lopiStackReorder)
+    }
+}
 
 /// A pill toggle (web `Toggle.svelte`) — a track with a sliding knob, accent-lit
 /// when on. Mouse-driven, which is right for Mac.
@@ -88,19 +118,27 @@ struct StackCombo: View {
 }
 
 /// The warm iteration pill — the ×N ceiling with hover-revealed steppers. Shared
-/// by the cardbar (per-loop) and the dock (chain loop-count).
+/// by the cardbar (per-loop) and the dock (chain loop-count). The steppers'
+/// reveal is an animated width expansion (0 → 64pt, matching the web pill's
+/// `max-width` transition) rather than a hard cut.
 struct IterationPill: View {
     var value: Int
-    /// Card scope floors at `0` = "off"; the dock (stack loop-count) keeps the
-    /// `∞` sentinel. Drives both the label and whether `off` reads without a `×`.
+    /// Card scope floors at `0` = "off"; the dock (stack loop-count) treats `1`
+    /// as "off" and keeps `0` as the `∞` sentinel. Drives both the label and
+    /// whether `off`/`∞` render without a `×`.
     var offAtZero: Bool = false
     var onStep: (Int) -> Void
     @State private var hovering = false
 
+    private var isOff: Bool { offAtZero ? value == 0 : value == 1 }
+
     private var displayText: String {
         if offAtZero { return value == 0 ? "off" : "×\(value)" }
-        return "×\(maxIterationsLabel(value))"
+        let label = maxIterationsLabel(value)
+        return value <= 1 ? label : "×\(label)"
     }
+
+    private var tint: Color { isOff ? Konjo.fgDim : FacetAccent.iteration }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -109,26 +147,33 @@ struct IterationPill: View {
                 Text(displayText).font(Konjo.mono(11, weight: .bold))
             }
             .padding(.horizontal, 9).frame(height: 29)
-            if hovering {
+            HStack(spacing: 0) {
                 stepper("−", -1)
                 stepper("+", 1)
             }
+            .frame(width: hovering ? 64 : 0, height: 29, alignment: .leading)
+            .clipped()
         }
-        .foregroundStyle(FacetAccent.iteration)
-        .background(Konjo.ember.opacity(0.09))
-        .overlay(RoundedRectangle(cornerRadius: 6).stroke(FacetAccent.iteration.opacity(0.5), lineWidth: 1))
+        .foregroundStyle(tint)
+        .background(isOff ? Color.white.opacity(0.05) : Konjo.ember.opacity(0.09))
+        .overlay(RoundedRectangle(cornerRadius: 6).stroke(tint.opacity(isOff ? 0.4 : 0.5), lineWidth: 1))
         .clipShape(RoundedRectangle(cornerRadius: 6))
-        .onHover { hovering = $0 }
+        .onHover { isHovering in
+            withAnimation(.timingCurve(0.5, 0, 0.2, 1, duration: 0.24)) {
+                hovering = isHovering
+            }
+        }
+        .help(isOff ? "off · runs once, no repeat" : (value == 0 && !offAtZero ? "unlimited · runs until guardrails or goal stop it" : ""))
     }
 
     private func stepper(_ glyph: String, _ delta: Int) -> some View {
         Button { onStep(delta) } label: {
             Text(glyph).font(Konjo.mono(14)).frame(width: 26, height: 29)
-                .overlay(Rectangle().fill(FacetAccent.iteration.opacity(0.35)).frame(width: 1), alignment: .leading)
+                .overlay(Rectangle().fill(tint.opacity(0.35)).frame(width: 1), alignment: .leading)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .foregroundStyle(FacetAccent.iteration)
+        .foregroundStyle(tint)
     }
 }
 
@@ -188,6 +233,12 @@ struct ProvenanceChips: View {
     var alias: String?
     var tpl: String?
     var tplKind: TplKind?
+    /// The card's resolved repo path (`card.config.repo`), if set — rendered
+    /// as its own chip so an inline `@org/repo` pick stays visible after
+    /// commit instead of vanishing once the goal text's `@token` is stripped.
+    /// Callers pass the already-resolved *label* (via `repoLabelForPath`), not
+    /// the raw path, so this view stays free of the repo catalog.
+    var repoLabel: String?
 
     private var isPrompt: Bool { tplKind == .prompt && tpl != nil }
     private var isStack: Bool { tplKind == .stack && tpl != nil }
@@ -200,6 +251,7 @@ struct ProvenanceChips: View {
             if isPrompt, let tpl { chip(text: tpl, icon: "doc", color: Konjo.sun) }
             if isStack, let tpl { chip(text: tpl, icon: "square.3.layers.3d", color: Konjo.stackViolet) }
             if showAlias, let alias { chip(text: ":\(alias)", icon: "wrench", color: Konjo.stackTeal) }
+            if let repoLabel { chip(text: repoLabel, icon: "folder", color: Konjo.stackSky) }
         }
     }
 

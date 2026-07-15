@@ -1,4 +1,5 @@
 import XCTest
+import LopiStacksKit
 @testable import Lopi
 
 /// Branch-resolution tests — the Swift port of

@@ -35,12 +35,24 @@
     duplicateStackInPanes,
     deleteStackFromPanes,
     reorderStacksInPanes,
-    type DryRunResult
+    STACK_COMMANDS,
+    commandAutocomplete,
+    commandValueAutocomplete,
+    evalSuiteOptions,
+    applySuite,
+    EVAL_SUITES,
+    type DryRunResult,
+    type CommandValueSuggestion
   } from '$lib/stores/stack';
   import { runs, runStack, pauseStack, resumeStack, type RunPhase } from '$lib/stores/stackRun';
   import { stackStopLabel } from '$lib/stores/stackGoal';
   import { agents } from '$lib/stores/agents';
-  import { MODEL_OPTIONS, labelFor, type Option } from '$lib/stores/controls';
+  import { labelFor, type Option } from '$lib/stores/controls';
+  import { modelCatalog, modelOptionsFrom, ensureModelCatalog } from '$lib/stores/modelCatalog';
+  import { MODEL_OPTIONS, EFFORT_OPTIONS } from '$lib/stores/options';
+  import { AUTONOMY_OPTIONS } from '$lib/stores/stackDefaults';
+  import { branchesByRepo, branchOptionsFor, ensureBranches } from '$lib/stores/branches';
+  import { repoAutocomplete } from '$lib/stores/repoMenu';
   import { draggingPane } from './dnd';
   import { ICONS } from './icons';
   import Popover, { togglePopover } from './Popover.svelte';
@@ -48,8 +60,10 @@
   import GuardrailsPopover from './GuardrailsPopover.svelte';
   import EvalsPopover from './EvalsPopover.svelte';
   import StackConfigPopover from './StackConfigPopover.svelte';
+  import GoalPopover from './GoalPopover.svelte';
   import StackTemplatesMenu from './StackTemplatesMenu.svelte';
   import RunMenu from './RunMenu.svelte';
+  import AutocompleteSuggest from './AutocompleteSuggest.svelte';
 
   export let pane: StackPaneState;
   /** This pane's index in `$panes` — the drag-drop source/target identity,
@@ -64,11 +78,13 @@
   let guardBtn: HTMLButtonElement | undefined;
   let evalBtn: HTMLButtonElement | undefined;
   let cfgBtn: HTMLButtonElement | undefined;
+  let goalBtn: HTMLButtonElement | undefined;
 
   $: schedId = `${pane.key}:stack:sched`;
   $: guardId = `${pane.key}:stack:guard`;
   $: evalId = `${pane.key}:stack:eval`;
   $: cfgId = `${pane.key}:stack:config`;
+  $: goalId = `${pane.key}:stack:goal`;
 
   $: scheduledOn = config.scheduled;
   $: guardsOn = stackGuardActive(config.guardrails);
@@ -84,11 +100,167 @@
     updateStackConfig(pane.key, { goal: { ...config.goal, pursue: !config.goal.pursue } });
   }
 
-  $: modelLabel = labelFor(MODEL_OPTIONS, config.defaults.model);
-  $: dockSummary = `${scheduledOn ? cronHuman(config.cron) + ' · ' : ''}loop ×${maxIterationsLabel(config.loopCount)} · ${modelLabel}`;
+  $: void ensureModelCatalog();
+  $: modelLabel = labelFor(modelOptionsFrom($modelCatalog), config.defaults.model);
+  $: loopLabel = config.loopCount <= 1 ? maxIterationsLabel(config.loopCount) : '×' + maxIterationsLabel(config.loopCount);
+  $: dockSummary = `${scheduledOn ? cronHuman(config.cron) + ' · ' : ''}loop ${loopLabel} · ${modelLabel}`;
 
   function stepLoop(delta: number) {
     updateStackConfig(pane.key, { loopCount: stepMaxIterations(config.loopCount, delta) });
+  }
+
+  // ── stack command bar (`@repo` / `/command`) ────────────────────────────────
+  // The stack-only analogue of a card's goal-field autocomplete (Stack-1 §4):
+  // several settings (loop count, stack schedule/guardrails/run-until-goal)
+  // have no card-level equivalent to piggyback on, so they need their own
+  // text-entry surface. Same `@`/`/` grammar as `StackCard.svelte`'s composer,
+  // writing to `pane.config` instead of a card's `config`. Value-picker
+  // commands apply immediately and clear the bar (no goal text to preserve
+  // here); popover-openers reuse the exact `togglePopover(id)` calls the
+  // dock's own icon buttons make.
+  let cmdText = '';
+  let cmdBarFocused = false;
+  let cmdActiveIndex = 0;
+  let cmdDismissed = false;
+  let pendingCommand: string | null = null;
+
+  $: void ensureBranches(config.defaults.repo);
+  $: repoMatches = repoAutocomplete(cmdText, repoOptions);
+
+  function commandOptionsFor(command: string): Option[] {
+    switch (command) {
+      case 'model':
+        return MODEL_OPTIONS;
+      case 'effort':
+        return EFFORT_OPTIONS;
+      case 'autonomy':
+        return AUTONOMY_OPTIONS;
+      case 'branch':
+        return branchOptionsFor($branchesByRepo, config.defaults.repo);
+      case 'eval':
+        return evalSuiteOptions();
+      case 'loop':
+        return [
+          { value: '1', label: '1 (off)' },
+          { value: '2', label: '2' },
+          { value: '3', label: '3' },
+          { value: '5', label: '5' },
+          { value: '10', label: '10' },
+          { value: '0', label: '∞ (unlimited)' }
+        ];
+      default:
+        return [];
+    }
+  }
+
+  $: showRepoBarSuggest = cmdBarFocused && !cmdDismissed && !pendingCommand && repoMatches.length > 0;
+  $: cmdMatches = pendingCommand
+    ? commandValueAutocomplete(cmdText, pendingCommand, commandOptionsFor(pendingCommand))
+    : commandAutocomplete(cmdText, STACK_COMMANDS);
+  $: showCmdBarSuggest = cmdBarFocused && !cmdDismissed && !showRepoBarSuggest && cmdMatches.length > 0;
+  $: if (cmdActiveIndex >= (showRepoBarSuggest ? repoMatches.length : cmdMatches.length)) {
+    cmdActiveIndex = Math.max(0, (showRepoBarSuggest ? repoMatches.length : cmdMatches.length) - 1);
+  }
+  $: if (pendingCommand && !new RegExp(`(^|\\s)/${pendingCommand}/`).test(cmdText)) {
+    pendingCommand = null;
+  }
+
+  function applyDefault(patch: Partial<typeof config.defaults>) {
+    updateStackConfig(pane.key, { defaults: { ...config.defaults, ...patch } });
+  }
+
+  function applyCommandValue(command: string, value: string): void {
+    switch (command) {
+      case 'eval':
+        updateStackConfig(pane.key, { evals: applySuite(config.evals, EVAL_SUITES[value] ?? []) });
+        return;
+      case 'loop':
+        updateStackConfig(pane.key, { loopCount: parseInt(value, 10) || 0 });
+        return;
+      case 'model':
+        applyDefault({ model: value });
+        return;
+      case 'effort':
+        applyDefault({ effort: value });
+        return;
+      case 'branch':
+        applyDefault({ branch: value });
+        return;
+      case 'autonomy':
+        applyDefault({ autonomy: value });
+        return;
+    }
+  }
+
+  function fireCommandAction(command: string): void {
+    if (command === 'guard') togglePopover(guardId);
+    else if (command === 'schedule') togglePopover(schedId);
+    else if (command === 'goal') togglePopover(goalId);
+  }
+
+  function selectRepoFromBar(token: string): void {
+    const suggestion = repoMatches.find((s) => s.token === token);
+    if (suggestion) applyDefault({ repo: suggestion.value });
+    cmdText = '';
+    cmdActiveIndex = 0;
+  }
+
+  function selectCommandFromBar(token: string): void {
+    if (pendingCommand) {
+      const valueMatches = cmdMatches as CommandValueSuggestion[];
+      const suggestion = valueMatches.find((s) => s.token === token);
+      if (suggestion) applyCommandValue(pendingCommand, suggestion.value);
+      pendingCommand = null;
+      cmdText = '';
+    } else {
+      const command = token.slice(1);
+      const def = STACK_COMMANDS.find((c) => c.command === command);
+      if (def?.isValuePicker) {
+        cmdText = `/${command}/`;
+        pendingCommand = command;
+      } else {
+        fireCommandAction(command);
+        cmdText = '';
+      }
+    }
+    cmdActiveIndex = 0;
+  }
+
+  function onCmdBarInput(e: Event): void {
+    cmdText = (e.currentTarget as HTMLInputElement).value;
+    cmdDismissed = false;
+  }
+
+  function onCmdBarKeydown(e: KeyboardEvent): void {
+    const showing = showRepoBarSuggest || showCmdBarSuggest;
+    const matches: Array<{ token: string }> = showRepoBarSuggest ? repoMatches : cmdMatches;
+    if (showing) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        cmdActiveIndex = (cmdActiveIndex + 1) % matches.length;
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        cmdActiveIndex = (cmdActiveIndex - 1 + matches.length) % matches.length;
+        return;
+      }
+      if (e.key === 'Tab' || e.key === 'Enter') {
+        e.preventDefault();
+        if (showRepoBarSuggest) selectRepoFromBar(matches[cmdActiveIndex].token);
+        else selectCommandFromBar(matches[cmdActiveIndex].token);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        cmdDismissed = true;
+        return;
+      }
+    }
+    if (e.key === 'Escape') {
+      cmdText = '';
+      pendingCommand = null;
+    }
   }
 
   // ── run stack (moved verbatim from StackPane.svelte's old footer) ───────────
@@ -214,6 +386,31 @@
 
   <div class="dockbody">
     <div class="inner">
+      <div class="cmdbarwrap">
+        <input
+          class="cmdbar"
+          value={cmdText}
+          on:input={onCmdBarInput}
+          on:keydown={onCmdBarKeydown}
+          on:focus={() => (cmdBarFocused = true)}
+          on:blur={() => (cmdBarFocused = false)}
+          placeholder="@org/repo /model /effort /branch /autonomy /loop /guard /schedule /eval /goal"
+          spellcheck="false"
+        />
+        {#if showRepoBarSuggest}
+          <AutocompleteSuggest
+            items={repoMatches.map((m) => ({ value: m.token, label: m.label, hint: m.hint }))}
+            activeIndex={cmdActiveIndex}
+            onSelect={selectRepoFromBar}
+          />
+        {:else if showCmdBarSuggest}
+          <AutocompleteSuggest
+            items={cmdMatches.map((m) => ({ value: m.token, label: m.label, hint: m.hint }))}
+            activeIndex={cmdActiveIndex}
+            onSelect={selectCommandFromBar}
+          />
+        {/if}
+      </div>
       {#if showSummary}
         {#if scheduledOn}
           <div class="sumln sched">
@@ -252,8 +449,8 @@
       {/if}
 
       <div class="cardbar">
-        <span class="iterpill">
-          <span class="lb">{@html ICONS.loop}<span class="val">×{maxIterationsLabel(config.loopCount)}</span></span>
+        <span class="iterpill" class:off={config.loopCount === 1} title={config.loopCount === 1 ? 'off · runs once, no repeat' : config.loopCount === 0 ? 'unlimited · runs until guardrails or goal stop it' : undefined}>
+          <span class="lb">{@html ICONS.loop}<span class="val">{loopLabel}</span></span>
           <span class="steppers">
             <button class="sb" type="button" on:click={() => stepLoop(-1)} title="fewer chain repeats">−</button>
             <button class="sb" type="button" on:click={() => stepLoop(1)} title="more chain repeats">+</button>
@@ -272,7 +469,8 @@
           class="ib goal"
           class:act={goalOn}
           type="button"
-          on:click={toggleGoal}
+          bind:this={goalBtn}
+          on:click={() => togglePopover(goalId)}
           aria-pressed={goalOn}
           title="run until the stack acceptance passes (goal-directed)"
         >
@@ -373,6 +571,15 @@
     {repoOptions}
   />
 </Popover>
+<Popover id={goalId} anchor={goalBtn ?? null} kind="goal">
+  <GoalPopover
+    pursue={config.goal.pursue}
+    noProgressLimit={config.goal.noProgressLimit}
+    {pursues}
+    onTogglePursue={toggleGoal}
+    onChangeNoProgressLimit={(noProgressLimit) => updateStackConfig(pane.key, { goal: { ...config.goal, noProgressLimit } })}
+  />
+</Popover>
 
 <style>
   .sctrl {
@@ -468,6 +675,31 @@
   }
   .dockbody .inner {
     padding-top: 2px;
+  }
+  .cmdbarwrap {
+    position: relative;
+  }
+  .cmdbar {
+    width: 100%;
+    box-sizing: border-box;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.11);
+    border-radius: 7px;
+    padding: 8px 10px;
+    color: var(--konjo-paper, #f5f5f5);
+    font-family: var(--font-mono, 'JetBrains Mono', monospace);
+    font-size: 12px;
+    outline: none;
+    transition:
+      border-color 0.12s,
+      background 0.12s;
+  }
+  .cmdbar::placeholder {
+    color: rgba(245, 245, 245, 0.24);
+  }
+  .cmdbar:focus {
+    border-color: rgba(183, 155, 255, 0.5);
+    background: rgba(183, 155, 255, 0.05);
   }
   .hintrow {
     font-size: 9px;
@@ -641,6 +873,18 @@
   }
   .iterpill .sb:hover {
     background: rgba(255, 149, 0, 0.24);
+  }
+  .iterpill.off {
+    border-color: rgba(245, 245, 245, 0.22);
+    background: rgba(245, 245, 245, 0.05);
+    color: rgba(245, 245, 245, 0.4);
+  }
+  .iterpill.off .sb {
+    border-left-color: rgba(245, 245, 245, 0.16);
+    color: rgba(245, 245, 245, 0.4);
+  }
+  .iterpill.off .sb:hover {
+    background: rgba(245, 245, 245, 0.08);
   }
   .dockrun {
     padding-top: 13px;

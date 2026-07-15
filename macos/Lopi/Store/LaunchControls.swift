@@ -17,6 +17,7 @@ struct LaunchOption: Identifiable, Hashable {
 final class LaunchControls {
     static let models: [LaunchOption] = [
         .init(value: "claude-opus-4-8", label: "Opus 4.8", hint: "deepest"),
+        .init(value: "claude-sonnet-5", label: "Sonnet 5", hint: "balanced"),
         .init(value: "claude-sonnet-4-6", label: "Sonnet 4.6", hint: "balanced"),
         .init(value: "claude-haiku-4-5", label: "Haiku 4.5", hint: "fastest")
     ]

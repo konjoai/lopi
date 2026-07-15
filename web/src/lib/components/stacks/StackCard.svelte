@@ -25,9 +25,20 @@
     updateCardInPane,
     updateDraftInPane,
     commitDraft,
-    reorderInPaneRelative
+    reorderInPaneRelative,
+    aliasAutocomplete,
+    CARD_COMMANDS,
+    commandAutocomplete,
+    commandValueAutocomplete,
+    evalSuiteOptions,
+    applySuite,
+    EVAL_SUITES,
+    type CommandValueSuggestion
   } from '$lib/stores/stack';
-  import type { StackDefaults } from '$lib/stores/stackDefaults';
+  import { repoAutocomplete, repoLabelForPath } from '$lib/stores/repoMenu';
+  import { MODEL_OPTIONS, EFFORT_OPTIONS } from '$lib/stores/options';
+  import { AUTONOMY_OPTIONS, type StackDefaults } from '$lib/stores/stackDefaults';
+  import { branchesByRepo, branchOptionsFor, ensureBranches } from '$lib/stores/branches';
   import type { Option } from '$lib/stores/controls';
   import { agents, permissionWaiting } from '$lib/stores/agents';
   import { runs, bumpCard, bumpUiState } from '$lib/stores/stackRun';
@@ -42,6 +53,7 @@
   import ConfigDrawer from './ConfigDrawer.svelte';
   import ProvenanceChips from './ProvenanceChips.svelte';
   import TemplatesMenu from './TemplatesMenu.svelte';
+  import AutocompleteSuggest from './AutocompleteSuggest.svelte';
 
   export let card: StackCardT;
   export let paneKey: string;
@@ -86,17 +98,259 @@
 
   function onGoalInput(e: Event): void {
     writeCard({ goal: (e.currentTarget as HTMLInputElement).value });
+    aliasDismissed = false;
+    repoDismissed = false;
+    cmdDismissed = false;
   }
 
   /** Commit the draft: mints a real card at the top of the stack and a fresh
    *  empty draft, then re-focuses the (now-empty) goal input for rapid entry. */
   function commit(): void {
     if (!hot) return;
-    commitDraft(paneKey);
+    commitDraft(paneKey, repoOptions);
+    void tick().then(() => goalInput?.focus());
+  }
+
+  // ── alias autocomplete (`:token`) ────────────────────────────────────────
+  // While the goal field is still just a bare `:token` (no space yet), offer
+  // a filtered list of the built-in preset aliases. Legacy aliases (e.g. the
+  // renamed `:ratchet`→`:gain`) never appear as suggestions — only canonical
+  // `PRESET_KEYS` — so the autocomplete never steers anyone toward a
+  // deprecated token.
+  let goalFocused = false;
+  let aliasActiveIndex = 0;
+  let aliasDismissed = false;
+
+  $: aliasMatches = aliasAutocomplete(card.goal);
+  $: showAliasSuggest = isDraft && goalFocused && !aliasDismissed && aliasMatches.length > 0;
+  $: if (aliasActiveIndex >= aliasMatches.length) aliasActiveIndex = Math.max(0, aliasMatches.length - 1);
+
+  /** Replace the `:token` being typed with the full canonical alias plus a
+   *  trailing space, so the cursor lands ready to type the goal text next —
+   *  the suggestion list closes itself since the goal no longer matches
+   *  `^:(\S*)$` once the space is there. */
+  function selectAlias(alias: string): void {
+    writeCard({ goal: `${alias} ` });
+    aliasActiveIndex = 0;
+    void tick().then(() => goalInput?.focus());
+  }
+
+  // ── repo autocomplete (`@token`) ─────────────────────────────────────────
+  // Same shape as the alias autocomplete, but for the trailing `@repo` token
+  // instead of the leading `:alias` one — matches the composer grammar's
+  // `:alias "goal" @repo ×N` order, where `@repo` is typically typed right
+  // after the goal text. Independent dismiss/active state from the alias
+  // list since the two can never be active at once (mutually exclusive by
+  // construction — one requires a `:` prefix, the other a trailing `@`).
+  let repoActiveIndex = 0;
+  let repoDismissed = false;
+
+  $: repoMatches = repoAutocomplete(card.goal, repoOptions);
+  // The provenance chip's label — reverse-looked-up from the resolved path
+  // so the chip survives even though `@token` is stripped from the goal text
+  // on commit (see `selectRepo`'s doc comment).
+  $: cardRepoLabel = card.config.repo ? repoLabelForPath(card.config.repo, repoOptions) : undefined;
+  $: showRepoSuggest = isDraft && goalFocused && !repoDismissed && repoMatches.length > 0;
+  $: if (repoActiveIndex >= repoMatches.length) repoActiveIndex = Math.max(0, repoMatches.length - 1);
+
+  /** Replace the trailing `@token` with the full `@owner/name` token plus a
+   *  trailing space (keeps the human-readable label visible while typing).
+   *  Also writes the *resolved path* straight onto `card.config.repo` —
+   *  never relies on `parseComposerInput` re-deriving it from the label text
+   *  later, which is the mismatch that made the repo dropdown silently show
+   *  "auto" (`options.find(o => o.value === value)` can't match a label
+   *  against a path-keyed catalog). The match is always anchored at the end
+   *  of the string (`repoAutocomplete` only ever matches the last word), so
+   *  "replace the match" and "replace the string's tail" are the same
+   *  slice-and-append — no cursor-position tracking needed. */
+  function selectRepo(token: string): void {
+    const m = /(^|\s)@(\S*)$/.exec(card.goal);
+    if (!m) return;
+    const suggestion = repoMatches.find((s) => s.token === token);
+    writeCard({
+      goal: `${card.goal.slice(0, m.index)}${m[1]}${token} `,
+      config: { ...card.config, repo: suggestion?.value ?? card.config.repo }
+    });
+    repoActiveIndex = 0;
+    void tick().then(() => goalInput?.focus());
+  }
+
+  // ── inline `/command` autocomplete (model/effort/branch/autonomy/eval/
+  //    guard/schedule/maxx) ────────────────────────────────────────────────
+  // Two-level grammar, mirroring the user's own suggested `/model/<value>`
+  // syntax: typing `/` suggests command names (`commandAutocomplete`); picking
+  // a value-picker command (model/effort/branch/autonomy/eval) moves into a
+  // second `/command/value` token (`commandValueAutocomplete`) against that
+  // command's own catalog. Picking a non-value-picker command (guard/
+  // schedule/maxx) fires immediately — strips the token and opens the
+  // existing popover for it, same as clicking its cardbar icon.
+  let cmdActiveIndex = 0;
+  let cmdDismissed = false;
+  /** Set once a value-picker command is chosen from the level-1 list; cleared
+   *  on selection, dismissal, or whenever the goal text changes out from
+   *  under it (`onGoalInput`/`onChange` below). */
+  let pendingCommand: string | null = null;
+
+  // This card's own repo — not the pane's — drives its branch list, same
+  // resolution `ConfigDrawer` uses.
+  $: effectiveRepo = card.config.repo ?? paneDefaults.repo;
+  $: void ensureBranches(effectiveRepo);
+
+  function commandOptionsFor(command: string): Option[] {
+    switch (command) {
+      case 'model':
+        return MODEL_OPTIONS;
+      case 'effort':
+        return EFFORT_OPTIONS;
+      case 'autonomy':
+        return AUTONOMY_OPTIONS;
+      case 'branch':
+        return branchOptionsFor($branchesByRepo, effectiveRepo);
+      case 'eval':
+        return evalSuiteOptions();
+      default:
+        return [];
+    }
+  }
+
+  $: cmdMatches = pendingCommand
+    ? commandValueAutocomplete(card.goal, pendingCommand, commandOptionsFor(pendingCommand))
+    : commandAutocomplete(card.goal, CARD_COMMANDS);
+  $: showCmdSuggest = isDraft && goalFocused && !cmdDismissed && cmdMatches.length > 0;
+  $: if (cmdActiveIndex >= cmdMatches.length) cmdActiveIndex = Math.max(0, cmdMatches.length - 1);
+  // Once the `/command/` prefix itself is edited away (e.g. backspaced),
+  // fall back to level-1 command suggestions rather than staying stuck
+  // matching against an abandoned command.
+  $: if (pendingCommand && !new RegExp(`(^|\\s)/${pendingCommand}/`).test(card.goal)) {
+    pendingCommand = null;
+  }
+
+  /** Apply a value-picker command's chosen value directly to `card.config`
+   *  (or toggle the eval suite) and strip the resolved token from the goal
+   *  text — no chip; the existing config-gear/evals-count indicators already
+   *  surface these once set. */
+  function applyCommandValue(command: string, value: string): void {
+    switch (command) {
+      case 'eval':
+        writeCard({ evals: applySuite(card.evals, EVAL_SUITES[value] ?? []) });
+        return;
+      case 'model':
+        writeCard({ config: { ...card.config, model: value } });
+        return;
+      case 'effort':
+        writeCard({ config: { ...card.config, effort: value } });
+        return;
+      case 'branch':
+        writeCard({ config: { ...card.config, branch: value } });
+        return;
+      case 'autonomy':
+        writeCard({ config: { ...card.config, autonomy: value } });
+        return;
+    }
+  }
+
+  /** Fire a non-value-picker command's immediate action — opens the same
+   *  popover its cardbar icon does. */
+  function fireCommandAction(command: string): void {
+    if (command === 'guard') togglePopover(guardId);
+    else if (command === 'schedule') togglePopover(schedId);
+    else if (command === 'maxx') togglePopover(maxId);
+  }
+
+  function selectCommand(token: string): void {
+    if (pendingCommand) {
+      const valueMatches = cmdMatches as CommandValueSuggestion[];
+      const suggestion = valueMatches.find((s) => s.token === token);
+      const m = new RegExp(`(^|\\s)/${pendingCommand}/(\\S*)$`).exec(card.goal);
+      if (m && suggestion) {
+        writeCard({ goal: `${card.goal.slice(0, m.index)}${m[1]}` });
+        applyCommandValue(pendingCommand, suggestion.value);
+      }
+      pendingCommand = null;
+    } else {
+      const command = token.slice(1);
+      const def = CARD_COMMANDS.find((c) => c.command === command);
+      const m = /(^|\s)\/(\S*)$/.exec(card.goal);
+      if (!m) return;
+      if (def?.isValuePicker) {
+        writeCard({ goal: `${card.goal.slice(0, m.index)}${m[1]}/${command}/` });
+        pendingCommand = command;
+      } else {
+        writeCard({ goal: `${card.goal.slice(0, m.index)}${m[1]}` });
+        fireCommandAction(command);
+      }
+    }
+    cmdActiveIndex = 0;
     void tick().then(() => goalInput?.focus());
   }
 
   function onGoalKeydown(e: KeyboardEvent): void {
+    if (showAliasSuggest) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        aliasActiveIndex = (aliasActiveIndex + 1) % aliasMatches.length;
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        aliasActiveIndex = (aliasActiveIndex - 1 + aliasMatches.length) % aliasMatches.length;
+        return;
+      }
+      if (e.key === 'Tab' || e.key === 'Enter') {
+        e.preventDefault();
+        selectAlias(aliasMatches[aliasActiveIndex].alias);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        aliasDismissed = true;
+        return;
+      }
+    }
+    if (showRepoSuggest) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        repoActiveIndex = (repoActiveIndex + 1) % repoMatches.length;
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        repoActiveIndex = (repoActiveIndex - 1 + repoMatches.length) % repoMatches.length;
+        return;
+      }
+      if (e.key === 'Tab' || e.key === 'Enter') {
+        e.preventDefault();
+        selectRepo(repoMatches[repoActiveIndex].token);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        repoDismissed = true;
+        return;
+      }
+    }
+    if (showCmdSuggest) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        cmdActiveIndex = (cmdActiveIndex + 1) % cmdMatches.length;
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        cmdActiveIndex = (cmdActiveIndex - 1 + cmdMatches.length) % cmdMatches.length;
+        return;
+      }
+      if (e.key === 'Tab' || e.key === 'Enter') {
+        e.preventDefault();
+        selectCommand(cmdMatches[cmdActiveIndex].token);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        cmdDismissed = true;
+        return;
+      }
+    }
     if (e.key === 'Enter') {
       e.preventDefault();
       commit();
@@ -219,22 +473,45 @@
   {#if isDraft}
     <div class="spec draftspec">
       <TemplatesMenu {card} {paneKey} labeled />
-      <ProvenanceChips alias={card.alias} tpl={card.tpl} tplKind={card.tplKind} />
+      <ProvenanceChips alias={card.alias} tpl={card.tpl} tplKind={card.tplKind} repoLabel={cardRepoLabel} />
     </div>
     <!-- Goal on its own full-width line (an inline chip-adjacent input
          truncated in testing). Still honors `:alias @repo ×N` on commit. -->
-    <input
-      class="goalinput"
-      bind:this={goalInput}
-      value={card.goal}
-      on:input={onGoalInput}
-      on:keydown={onGoalKeydown}
-      placeholder="describe the prompt or goal…  (:alias @repo ×N ok)"
-      spellcheck="false"
-    />
+    <div class="goalwrap">
+      <input
+        class="goalinput"
+        bind:this={goalInput}
+        value={card.goal}
+        on:input={onGoalInput}
+        on:keydown={onGoalKeydown}
+        on:focus={() => (goalFocused = true)}
+        on:blur={() => (goalFocused = false)}
+        placeholder="describe the prompt or goal...  (i.e. :alias @org/repo /model/opus xN)"
+        spellcheck="false"
+      />
+      {#if showAliasSuggest}
+        <AutocompleteSuggest
+          items={aliasMatches.map((m) => ({ value: m.alias, label: m.label, hint: m.hint }))}
+          activeIndex={aliasActiveIndex}
+          onSelect={selectAlias}
+        />
+      {:else if showRepoSuggest}
+        <AutocompleteSuggest
+          items={repoMatches.map((m) => ({ value: m.token, label: m.label, hint: m.hint }))}
+          activeIndex={repoActiveIndex}
+          onSelect={selectRepo}
+        />
+      {:else if showCmdSuggest}
+        <AutocompleteSuggest
+          items={cmdMatches.map((m) => ({ value: m.token, label: m.label, hint: m.hint }))}
+          activeIndex={cmdActiveIndex}
+          onSelect={selectCommand}
+        />
+      {/if}
+    </div>
   {:else}
     <div class="spec">
-      <ProvenanceChips alias={card.alias} tpl={card.tpl} tplKind={card.tplKind} />
+      <ProvenanceChips alias={card.alias} tpl={card.tpl} tplKind={card.tplKind} repoLabel={cardRepoLabel} />
       <span class="md">"{card.goal}"</span>
     </div>
   {/if}
@@ -282,7 +559,7 @@
   {/if}
 
   <div class="cardbar">
-    <span class="iterpill">
+    <span class="iterpill" class:off={card.maxIterations === 0} title={card.maxIterations === 0 ? 'off · runs once, no repeat' : undefined}>
       <span class="lb">{@html ICONS.loop}<span class="val">{card.maxIterations === 0 ? 'off' : '×' + cardIterationsLabel(card.maxIterations)}</span></span>
       <span class="steppers">
         <button class="sb" on:click={() => step(-1)} title="fewer iterations">−</button>
@@ -297,15 +574,6 @@
       title={scheduleGoverned ? 'schedule (governed by the stack)' : 'schedule'}
     >
       {@html ICONS.cron}
-    </button>
-    <button
-      class="ib max"
-      class:act={card.maxx.enabled}
-      bind:this={maxBtn}
-      on:click={() => togglePopover(maxId)}
-      title="MAXX"
-    >
-      {@html ICONS.bolt}
     </button>
     <button
       class="ib guard"
@@ -324,6 +592,15 @@
       title="evals"
     >
       {@html ICONS.checkbox}<span class="cnt">{card.evals.length}</span>
+    </button>
+    <button
+      class="ib max"
+      class:act={card.maxx.enabled}
+      bind:this={maxBtn}
+      on:click={() => togglePopover(maxId)}
+      title="MAXX"
+    >
+      {@html ICONS.bolt}
     </button>
     <button class="ib config" class:act={configOn} on:click={() => (cfgOpen = !cfgOpen)} title="run config">
       {@html ICONS.sliders}
@@ -452,9 +729,12 @@
   .draftspec {
     row-gap: 7px;
   }
+  .goalwrap {
+    position: relative;
+    margin-top: 10px;
+  }
   .goalinput {
     width: 100%;
-    margin-top: 10px;
     box-sizing: border-box;
     background: rgba(255, 255, 255, 0.02);
     border: 1px solid rgba(255, 255, 255, 0.11);
@@ -783,6 +1063,18 @@
   }
   .iterpill .sb:hover {
     background: rgba(255, 149, 0, 0.2);
+  }
+  .iterpill.off {
+    border-color: rgba(245, 245, 245, 0.22);
+    background: rgba(245, 245, 245, 0.05);
+    color: rgba(245, 245, 245, 0.4);
+  }
+  .iterpill.off .sb {
+    border-left-color: rgba(245, 245, 245, 0.16);
+    color: rgba(245, 245, 245, 0.4);
+  }
+  .iterpill.off .sb:hover {
+    background: rgba(245, 245, 245, 0.08);
   }
   @media (prefers-reduced-motion: reduce) {
     .pc.running,

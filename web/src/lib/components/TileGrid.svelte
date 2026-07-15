@@ -144,7 +144,7 @@
     height: 100%;
     display: grid;
     gap: 10px;
-    padding: 10px;
+    padding: 20px;
     box-sizing: border-box;
   }
   .cell {

@@ -49,6 +49,7 @@ targets:
       - path: LopiTests
     dependencies:
       - target: Lopi
+      - package: LopiStacksKit
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES

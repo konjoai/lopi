@@ -15,7 +15,7 @@ struct PaneGridView<Pane: View>: View {
     @State private var dragBase: [Double]?
 
     private let gap: CGFloat = 10
-    private let pad: CGFloat = 14
+    private let pad: CGFloat = 24
     private let minFrac = 0.18
 
     var body: some View {

@@ -5,12 +5,13 @@ import Foundation
 // `deleteStack` / `paneIsBare` / `makeBlankStack` / `addStack` block in
 // `stores/stack.ts`. Pure and isolated per pane. Foundation only.
 
-/// True when a pane should render as a *bare* box — composer + a single loop
-/// card + its orb, no connector, no purple dock. Unify-2 §3: a one-card pane
-/// reads identically to a pre-Unify Forge box; full stack chrome appears only
-/// once it holds a second loop. An empty pane is bare too.
+/// True when a pane should render as a *bare* box — composer + an idle orb,
+/// no connector, no purple dock. Only an empty pane is bare; a pane earns its
+/// full stack chrome (dock + connectors) as soon as it holds its first card,
+/// so the run/schedule/guardrails/goal controls are visible from the very
+/// first prompt.
 public func paneIsBare(_ pane: StackPaneState) -> Bool {
-    pane.cards.count <= 1
+    pane.cards.isEmpty
 }
 
 /// A fresh, empty stack pane with its own config and a unique key.

@@ -5,15 +5,15 @@
    * setup persists and is identical across every empty pane.
    */
   import Dropdown from '$lib/components/ui/Dropdown.svelte';
-  import {
-    launchControls,
-    MODEL_OPTIONS,
-    EFFORT_OPTIONS,
-    PRIORITY_OPTIONS
-  } from '$lib/stores/controls';
+  import { launchControls, PRIORITY_OPTIONS } from '$lib/stores/controls';
+  import { modelCatalog, modelOptionsFrom, effortOptionsFor, ensureModelCatalog } from '$lib/stores/modelCatalog';
 
   /** Compact mode trims labels for dense pane footers. */
   export let dense = false;
+
+  $: void ensureModelCatalog();
+  $: modelOptions = modelOptionsFrom($modelCatalog);
+  $: effortOptions = effortOptionsFor($modelCatalog, $launchControls.model);
 </script>
 
 <div class="controls" class:dense>
@@ -21,13 +21,13 @@
     {dense}
     label={dense ? '' : 'model'}
     bind:value={$launchControls.model}
-    options={MODEL_OPTIONS}
+    options={modelOptions}
   />
   <Dropdown
     {dense}
     label={dense ? '' : 'effort'}
     bind:value={$launchControls.effort}
-    options={EFFORT_OPTIONS}
+    options={effortOptions}
   />
   <Dropdown
     {dense}

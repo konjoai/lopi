@@ -10,7 +10,8 @@
   import { type StackCard as StackCardT, type CardConfig, updateCardInPane } from '$lib/stores/stack';
   import { type StackDefaults, AUTONOMY_OPTIONS, resolveBranch } from '$lib/stores/stackDefaults';
   import { branchesByRepo, branchOptionsFor, ensureBranches } from '$lib/stores/branches';
-  import { MODEL_OPTIONS, EFFORT_OPTIONS, type Option } from '$lib/stores/controls';
+  import { type Option } from '$lib/stores/controls';
+  import { modelCatalog, modelOptionsFrom, effortOptionsFor, ensureModelCatalog } from '$lib/stores/modelCatalog';
   import Dropdown from '$lib/components/ui/Dropdown.svelte';
   import { ICONS } from './icons';
 
@@ -34,6 +35,11 @@
     ? repoOptions
     : [{ value: paneDefaults.repo, label: paneDefaults.repo || 'auto' }];
 
+  $: void ensureModelCatalog();
+  $: modelOptions = modelOptionsFrom($modelCatalog);
+  $: effectiveModel = card.config.model ?? paneDefaults.model;
+  $: effortOptions = effortOptionsFor($modelCatalog, effectiveModel);
+
   // This card's own repo — not the pane's — drives its branch list.
   $: repo = card.config.repo ?? paneDefaults.repo;
   $: void ensureBranches(repo);
@@ -53,7 +59,7 @@
       label="model"
       icon={ICONS.cpu}
       value={card.config.model ?? paneDefaults.model}
-      options={MODEL_OPTIONS}
+      options={modelOptions}
       on:change={(e) => patchConfig({ model: e.detail })}
     />
   </div>
@@ -63,7 +69,7 @@
       label="effort"
       icon={ICONS.gauge}
       value={card.config.effort ?? paneDefaults.effort}
-      options={EFFORT_OPTIONS}
+      options={effortOptions}
       on:change={(e) => patchConfig({ effort: e.detail })}
     />
   </div>

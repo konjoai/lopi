@@ -29,6 +29,7 @@ import {
   paneSubmitPayload,
   budgetToTokens,
   resolvePresetAlias,
+  aliasAutocomplete,
   evalsToAcceptance,
   executionOrder,
   dryRunStack,
@@ -70,6 +71,12 @@ import {
   stackTemplateFromCards,
   PRESET_CATALOG,
   BASELINE_EVAL,
+  adoptRepoDefaultIfUnset,
+  CARD_COMMANDS,
+  STACK_COMMANDS,
+  commandAutocomplete,
+  commandValueAutocomplete,
+  evalSuiteOptions,
   type PromptTemplate,
   type StackTemplate,
   type StackCard,
@@ -77,7 +84,7 @@ import {
   type StackConfig
 } from './stack';
 import { DEFAULT_STACK_DEFAULTS } from './stackDefaults';
-import { AUTO_MODEL, MODEL_OPTIONS } from './options';
+import { AUTO_MODEL, MODEL_OPTIONS, EFFORT_OPTIONS } from './options';
 import { eq, eqIs, ok, namedSummary } from '$lib/test-harness';
 
 function card(id: string, goal = id): StackCard {
@@ -298,14 +305,17 @@ eqIs(suggestPreset('draft a changelog entry'), null, 'no keyword match suggests 
   eq(again.map((e) => e.name), ['execution ok', 'vuln scan', 'adversarial'], 'applySuite never duplicates an already-on eval');
 }
 
-// ── iteration stepper — floor 2, wraps to infinite (0) ────────────────────────
+// ── iteration stepper — three states: off (1), floor 2.., infinite (0) ────────
 eqIs(stepMaxIterations(25, 1), 26, 'stepping up increments normally');
 eqIs(stepMaxIterations(25, -1), 24, 'stepping down decrements normally');
-eqIs(stepMaxIterations(2, -1), 0, 'stepping below the floor wraps to infinite');
-eqIs(stepMaxIterations(3, -2), 0, 'a multi-step decrement below the floor also wraps to infinite');
-eqIs(stepMaxIterations(0, 1), 2, 'stepping up from infinite lands on the floor, not 1');
+eqIs(stepMaxIterations(2, -1), 1, 'stepping below the floor lands on off (1)');
+eqIs(stepMaxIterations(3, -2), 1, 'a multi-step decrement below the floor also lands on off (1)');
+eqIs(stepMaxIterations(1, -1), 0, 'stepping down from off wraps to infinite');
+eqIs(stepMaxIterations(1, 1), 2, 'stepping up from off reaches the floor');
+eqIs(stepMaxIterations(0, 1), 1, 'stepping up from infinite lands on off, not the floor');
 eqIs(stepMaxIterations(0, -1), 0, 'stepping down from infinite stays infinite');
 eqIs(maxIterationsLabel(0), '∞', 'label renders the infinite sentinel as ∞');
+eqIs(maxIterationsLabel(1), 'off', 'label renders a single run with no repeat as off');
 eqIs(maxIterationsLabel(5), '5', 'label renders a finite ceiling as its number');
 
 // ── card iteration stepper — floors at 0 = "off", never wraps to infinite ─────
@@ -420,6 +430,67 @@ eqIs(resolvePresetAlias('gain'), 'gain', "the `:gain` alias resolves to the gain
 eqIs(resolvePresetAlias('ratchet'), 'gain', "the legacy `:ratchet` alias still resolves to `gain`");
 eqIs(resolvePresetAlias('nonsense'), null, 'an unknown alias resolves to null');
 eqIs(buildCard(':ratchet "self improve"').preset, 'gain', 'a `:ratchet` composer string builds a gain-preset card');
+
+// ── alias autocomplete — filters PRESET_KEYS while the goal is a bare :token ──
+{
+  // `:re` is deliberately ambiguous (`research` and `report` both start with
+  // it) — `:res`/`:rep` is where the two diverge and each becomes unique.
+  eqIs(aliasAutocomplete(':re').length, 2, 'a shared prefix returns every matching preset, research before report (catalog order)');
+  eqIs(aliasAutocomplete(':re')[0].alias, ':research', 'research sorts first — PRESET_KEYS declaration order');
+  eqIs(aliasAutocomplete(':res').length, 1, 'a unique prefix returns exactly one match');
+  eqIs(aliasAutocomplete(':res')[0].alias, ':research', 'the match carries the full canonical alias');
+  eqIs(aliasAutocomplete(':res')[0].label, 'research', 'the match carries the preset label');
+  eqIs(aliasAutocomplete(':res')[0].hint, 'explore & investigate — judge-reviewed', 'the match carries the one-line description');
+  eqIs(aliasAutocomplete(':').length, 8, 'a bare colon matches every built-in preset');
+  eqIs(aliasAutocomplete(':RES')[0].alias, ':research', 'matching is case-insensitive');
+  eqIs(aliasAutocomplete(':nope').length, 0, 'no preset starts with an unknown prefix');
+  eqIs(aliasAutocomplete(':ratchet').length, 0, 'the legacy `:ratchet` alias is never suggested, only `:gain` is');
+  eqIs(aliasAutocomplete('').length, 0, 'an empty goal (no colon yet) suggests nothing');
+  eqIs(aliasAutocomplete('research').length, 0, 'plain text with no leading colon suggests nothing');
+  eqIs(aliasAutocomplete(':research and more').length, 0, 'once a space follows the token, the goal text has moved on — no suggestions');
+  eqIs(aliasAutocomplete(':research ').length, 0, 'a trailing space after a completed alias also closes the list');
+}
+
+// ── inline `/command` autocomplete — level 1 (command names) + level 2
+//    (`/command/value`), mirroring `@repo`'s trailing-word grammar ───────────
+{
+  eqIs(commandAutocomplete('/mo', CARD_COMMANDS).length, 1, 'a unique command prefix returns one match');
+  eqIs(commandAutocomplete('/mo', CARD_COMMANDS)[0].token, '/model', 'the match carries the full command token');
+  eqIs(commandAutocomplete('fix the bug /', CARD_COMMANDS).length, CARD_COMMANDS.length, 'a bare slash matches every command');
+  eqIs(commandAutocomplete('/', CARD_COMMANDS).length, CARD_COMMANDS.length, 'works with no goal text before it too');
+  eqIs(commandAutocomplete('/nope', CARD_COMMANDS).length, 0, 'no command starts with an unknown prefix');
+  eqIs(commandAutocomplete('fix /model bug', CARD_COMMANDS).length, 0, 'once a space follows the token, the goal has moved on');
+  eqIs(commandAutocomplete('fix the bug', CARD_COMMANDS).length, 0, 'no trailing slash means no suggestions');
+  ok(
+    STACK_COMMANDS.some((c) => c.command === 'loop') && !CARD_COMMANDS.some((c) => c.command === 'loop'),
+    '`loop` is stack-scope only — no per-card loop count to override'
+  );
+  ok(
+    CARD_COMMANDS.some((c) => c.command === 'guard') && STACK_COMMANDS.some((c) => c.command === 'guard'),
+    '`guard` exists at both scopes, opening the card’s or the stack’s own guardrails popover'
+  );
+
+  eqIs(
+    commandValueAutocomplete('/model/op', 'model', MODEL_OPTIONS).length,
+    1,
+    'level 2 filters the given catalog by the value typed so far'
+  );
+  eqIs(
+    commandValueAutocomplete('/model/op', 'model', MODEL_OPTIONS)[0].token,
+    '/model/claude-opus-4-8',
+    'the level-2 token embeds the real value directly — no label/path resolution step, unlike @repo'
+  );
+  eqIs(commandValueAutocomplete('/model/', 'model', MODEL_OPTIONS).length, MODEL_OPTIONS.length, 'an empty value query matches everything');
+  eqIs(commandValueAutocomplete('/model/nope', 'model', MODEL_OPTIONS).length, 0, 'no option starts with an unknown value prefix');
+  eqIs(commandValueAutocomplete('/model/opus done', 'model', MODEL_OPTIONS).length, 0, 'a space after the value token closes the list');
+  eqIs(
+    commandValueAutocomplete('/effort/lo', 'effort', EFFORT_OPTIONS)[0]?.token,
+    '/effort/low',
+    'a different command matches its own catalog, not the one from the last call'
+  );
+  eqIs(evalSuiteOptions().length, 3, "eval's catalog is the three suite shortcuts, not individual eval names");
+  ok(evalSuiteOptions().every((o) => !o.label.includes(' ')), 'every suite name is space-free — the trailing-token grammar could not carry a spaced value');
+}
 
 // ── V&V: table-driven WIRED round-trip (§C) — one non-default value per WIRED
 // field, asserting it lands correctly in CreateTaskOptions and that no WIRED
@@ -1033,15 +1104,15 @@ eqIs(
   eqIs(payload.options.acceptance!.checks.length, 2, 'base + judge ⇒ two checks in the payload');
 }
 
-// ── Unify-2 §3: bare vs. stack chrome + pane creation ─────────────────────────
+// ── bare vs. stack chrome + pane creation ──────────────────────────────────
 {
   const cfg = defaultStackConfig();
   const empty = { key: 'e', title: 't', cards: [], config: cfg, draft: makeDraft() };
   const one = { key: 'o', title: 't', cards: [buildCard('a')], config: cfg, draft: makeDraft() };
   const two = { key: 'w', title: 't', cards: [buildCard('a'), buildCard('b')], config: cfg, draft: makeDraft() };
   ok(paneIsBare(empty), 'an empty pane is bare (composer + idle orb only)');
-  ok(paneIsBare(one), 'a single-card pane is bare — reads like a pre-Unify Forge box');
-  ok(!paneIsBare(two), 'a second loop earns the stack chrome (dock + connectors)');
+  ok(!paneIsBare(one), 'the first card already earns the stack chrome (dock + connectors)');
+  ok(!paneIsBare(two), 'a second loop keeps the stack chrome');
 }
 {
   const blank = makeBlankStack();
@@ -1095,6 +1166,41 @@ eqIs(
   eqIs(committed.goal, 'investigate X', 'tokens are stripped from the committed goal');
   eqIs(committed.config.repo, 'konjoai/lopi', 'inline @repo lands on config');
   eqIs(committed.maxIterations, 3, 'inline ×N sets the iteration ceiling');
+}
+{
+  // finalizeDraft resolves an inline @repo's label to its real path when a
+  // catalog is supplied — the bug fix: the stored config.repo must be a path
+  // (`CreateTaskRequest.repo` reaches `git2::Repository::open`), never the
+  // decorative label the autocomplete inserted into the goal text.
+  const repos = [{ value: '/h/lopi', label: 'konjoai/lopi', hint: '/h/lopi' }];
+  const draft = { ...makeDraft(), goal: '@konjoai/lopi fix the bug' };
+  const committed = finalizeDraft(draft, repos);
+  eqIs(committed.config.repo, '/h/lopi', 'inline @repo resolves to its path, not the label, when a catalog is given');
+}
+{
+  // adoptRepoDefaultIfUnset — the "first inline @repo becomes the stack
+  // default" rule, pulled out of commitDraft so it's testable without a
+  // live panes store.
+  const unsetDefaults = DEFAULT_STACK_DEFAULTS;
+  eqIs(unsetDefaults.repo, '', 'sanity: the cold-start default repo is the empty/auto sentinel');
+  const withRepo = { ...buildCard('"x"'), config: { repo: '/h/lopi' } };
+  eqIs(
+    adoptRepoDefaultIfUnset(unsetDefaults, withRepo).repo,
+    '/h/lopi',
+    'a committed card with a repo seeds the still-unset stack default'
+  );
+  const alreadySet = { ...unsetDefaults, repo: '/h/other' };
+  eqIs(
+    adoptRepoDefaultIfUnset(alreadySet, withRepo).repo,
+    '/h/other',
+    'an already-explicit stack default is never clobbered by a later card'
+  );
+  const noRepoCard = buildCard('"x"');
+  eqIs(
+    adoptRepoDefaultIfUnset(unsetDefaults, noRepoCard).repo,
+    '',
+    'a card with no repo of its own leaves the stack default untouched'
+  );
 }
 {
   // A dropdown-configured draft (preset/template already set) commits as-is —

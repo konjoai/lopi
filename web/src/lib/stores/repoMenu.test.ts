@@ -11,7 +11,15 @@
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { repoOptions, type RepoEntry, NO_REMOTE_GROUP, AUTO_OPTION } from './repoMenu';
+import {
+  repoOptions,
+  repoAutocomplete,
+  resolveRepoToken,
+  repoLabelForPath,
+  type RepoEntry,
+  NO_REMOTE_GROUP,
+  AUTO_OPTION
+} from './repoMenu';
 import { groupedMenu } from './optionMenu';
 import type { Option } from './options';
 import { eq, eqIs, ok, namedSummary } from '$lib/test-harness';
@@ -95,6 +103,45 @@ const withAuto = repoOptions([{ path: '/h/lopi', owner: 'konjoai', name: 'lopi' 
 eqIs(groupedMenu(withAuto, '').flat[0].value, '', 'auto leads an unfiltered menu');
 eqIs(groupedMenu(withAuto, 'lopi').flat[0].value, '/h/lopi', 'auto steps aside under a query');
 eq(groupedMenu(withAuto, 'lopi').pinned.length, 0, 'auto is gone when it does not match');
+
+// ── repoMenu: `@repo` autocomplete — only the goal's trailing bare @token ────
+{
+  const repos = repoOptions([
+    { path: '/h/lopi', owner: 'konjoai', name: 'lopi' },
+    { path: '/h/other', owner: 'konjoai', name: 'other-repo' },
+    { path: '/h/TinyStories', owner: null, name: 'TinyStories' }
+  ]);
+  eqIs(repoAutocomplete('fix the bug @lo', repos).length, 1, 'a unique trailing @ prefix returns one match');
+  eqIs(repoAutocomplete('fix the bug @lo', repos)[0].token, '@konjoai/lopi', 'the match carries the full @owner/name token');
+  eqIs(repoAutocomplete('fix the bug @lo', repos)[0].label, 'konjoai/lopi', 'the match carries the label');
+  eqIs(repoAutocomplete('@lo', repos)[0].token, '@konjoai/lopi', 'an @ token works with no goal text before it too');
+  eqIs(repoAutocomplete('fix @konjoai', repos).length, 2, 'matching is over the whole owner/name label, not just the name');
+  eqIs(repoAutocomplete('fix @tinystories', repos)[0].token, '@TinyStories', 'a repo with no owner still autocompletes by name');
+  eqIs(repoAutocomplete('fix @nope', repos).length, 0, 'no repo starts with an unknown prefix');
+  eqIs(repoAutocomplete('fix @auto', repos).length, 0, 'the auto sentinel is never suggested — @auto names no real target');
+  eqIs(repoAutocomplete('fix the bug', repos).length, 0, 'no trailing @ means no suggestions');
+  eqIs(repoAutocomplete('fix @lopi and more', repos).length, 0, 'once a space follows the @token, the goal has moved on');
+  eqIs(repoAutocomplete('fix @lopi ', repos).length, 0, 'a trailing space after a completed @token also closes the list');
+  eqIs(repoAutocomplete(':implement @lo', repos)[0].token, '@konjoai/lopi', 'works alongside a leading :alias token too');
+  eqIs(repoAutocomplete('@lo', repos)[0].value, '/h/lopi', 'the suggestion carries the resolved path, not just the label');
+}
+
+// ── repoMenu: `resolveRepoToken`/`repoLabelForPath` — the label↔path bridge ──
+// The bug this closes: `@repo`'s inline grammar only ever recovers a LABEL
+// from free text (`parseComposerInput`'s `@(\S+)`), but `config.repo` must
+// hold the PATH `CreateTaskRequest.repo` actually resolves against. These two
+// helpers are the only place that conversion happens.
+{
+  const repos = repoOptions([
+    { path: '/h/lopi', owner: 'konjoai', name: 'lopi' },
+    { path: '/h/squish', owner: 'konjoai', name: 'squish' }
+  ]);
+  eqIs(resolveRepoToken('konjoai/lopi', repos), '/h/lopi', 'a known label resolves to its real path');
+  eqIs(resolveRepoToken('nonexistent/repo', repos), 'nonexistent/repo', 'an unresolvable label is left as-is, never dropped');
+  eqIs(repoLabelForPath('/h/lopi', repos), 'konjoai/lopi', 'a known path resolves back to its label');
+  eqIs(repoLabelForPath('/h/unknown/place', repos), 'place', 'an unresolvable path falls back to its basename, not the full path');
+  eqIs(repoLabelForPath('', repos), 'auto', 'an empty path matches the catalog\'s own AUTO_OPTION — not reached in practice, since the chip only calls this when `config.repo` is truthy');
+}
 
 // ── The golden fixture — the cross-surface parity gate ───────────────────────
 console.log('\n── golden repo-menu fixture ──────────────────────────');

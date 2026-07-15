@@ -20,6 +20,10 @@
   export let alias: string | undefined = undefined;
   export let tpl: string | undefined = undefined;
   export let tplKind: 'prompt' | 'stack' | undefined = undefined;
+  /** The card's resolved repo path (`card.config.repo`), if set — rendered as
+   *  its own chip so an inline `@org/repo` pick stays visible after commit
+   *  instead of vanishing once the goal text's `@token` is stripped. */
+  export let repoLabel: string | undefined = undefined;
 
   $: isPrompt = tplKind === 'prompt' && !!tpl;
   $: isStack = tplKind === 'stack' && !!tpl;
@@ -36,6 +40,9 @@
 {/if}
 {#if showAlias}
   <span class="chip alias">{@html ICONS.wrench}:{alias}</span>
+{/if}
+{#if repoLabel}
+  <span class="chip repo" title="target repo">{@html ICONS.folder}{repoLabel}</span>
 {/if}
 
 <style>
@@ -65,5 +72,10 @@
     color: var(--stack-violet, #b79bff);
     border: 1px solid rgba(183, 155, 255, 0.4);
     background: rgba(183, 155, 255, 0.08);
+  }
+  .chip.repo {
+    color: var(--stack-sky, #66b3ff);
+    border: 1px solid rgba(102, 179, 255, 0.4);
+    background: rgba(102, 179, 255, 0.08);
   }
 </style>
