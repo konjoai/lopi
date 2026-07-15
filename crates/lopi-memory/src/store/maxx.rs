@@ -276,8 +276,12 @@ fn maxx_from_row(row: sqlx::sqlite::SqliteRow) -> MaxxRow {
         enabled: row.get::<i64, _>("enabled") != 0,
         autonomy_level: row.get("autonomy_level"),
         report: row.get("report"),
-        quiet_hours_start: row.get::<Option<i64>, _>("quiet_hours_start").map(|v| v as u8),
-        quiet_hours_end: row.get::<Option<i64>, _>("quiet_hours_end").map(|v| v as u8),
+        quiet_hours_start: row
+            .get::<Option<i64>, _>("quiet_hours_start")
+            .map(|v| v as u8),
+        quiet_hours_end: row
+            .get::<Option<i64>, _>("quiet_hours_end")
+            .map(|v| v as u8),
         headroom_gate: row.get::<i64, _>("headroom_gate") != 0,
         windows: parse_json_array(&row.get::<String, _>("windows_json")),
         created_at: row.get("created_at"),
@@ -365,7 +369,14 @@ mod tests {
         let store = MemoryStore::open_in_memory().await.unwrap();
         let row = store.upsert_maxx_entry(&input("toggle")).await.unwrap();
         assert!(store.set_maxx_enabled(&row.id, false).await.unwrap());
-        assert!(!store.get_maxx_entry(&row.id).await.unwrap().unwrap().enabled);
+        assert!(
+            !store
+                .get_maxx_entry(&row.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .enabled
+        );
         assert!(!store.set_maxx_enabled("nope", true).await.unwrap());
     }
 

@@ -71,7 +71,10 @@ mod tests {
     fn empty_dir_overrides_leave_task_defaults_untouched() {
         let bare = Task::new("g");
         let task = build_task_from_fields("g", None, "normal", &[], &[], AutonomyLevel::default());
-        assert_eq!(task.allowed_dirs, bare.allowed_dirs, "empty override doesn't clobber Task::new's defaults");
+        assert_eq!(
+            task.allowed_dirs, bare.allowed_dirs,
+            "empty override doesn't clobber Task::new's defaults"
+        );
         assert_eq!(task.forbidden_dirs, bare.forbidden_dirs);
     }
 }

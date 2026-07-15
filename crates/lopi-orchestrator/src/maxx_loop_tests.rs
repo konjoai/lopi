@@ -83,7 +83,10 @@ fn window_favorable_rejects_high_utilization() {
         .unwrap()
         .with_timezone(&Utc);
     let o = obs(0.51, Some(now.timestamp() + 3600));
-    assert!(!window_favorable(Some(&o), now), "just above the 0.5 ceiling");
+    assert!(
+        !window_favorable(Some(&o), now),
+        "just above the 0.5 ceiling"
+    );
 }
 
 #[test]
@@ -92,7 +95,10 @@ fn window_favorable_boundary_utilization_is_favorable() {
         .unwrap()
         .with_timezone(&Utc);
     let o = obs(0.50, Some(now.timestamp() + 3600));
-    assert!(window_favorable(Some(&o), now), "0.5 exactly is still favorable");
+    assert!(
+        window_favorable(Some(&o), now),
+        "0.5 exactly is still favorable"
+    );
 }
 
 #[test]
@@ -149,11 +155,19 @@ async fn headroom_favorable_requires_every_configured_window() {
     let near = now.timestamp() + 3600;
     // five_hour is favorable, seven_day is not (utilization too high) —
     // AND semantics mean the whole gate must be unfavorable.
-    let tracker = tracker_with(&[("five_hour", 0.2, Some(near)), ("seven_day", 0.9, Some(near))]).await;
+    let tracker = tracker_with(&[
+        ("five_hour", 0.2, Some(near)),
+        ("seven_day", 0.9, Some(near)),
+    ])
+    .await;
     let windows = vec![LimitWindow::FiveHour, LimitWindow::SevenDay];
     assert!(!headroom_favorable(&windows, true, &tracker, now));
 
-    let tracker2 = tracker_with(&[("five_hour", 0.2, Some(near)), ("seven_day", 0.3, Some(near))]).await;
+    let tracker2 = tracker_with(&[
+        ("five_hour", 0.2, Some(near)),
+        ("seven_day", 0.3, Some(near)),
+    ])
+    .await;
     assert!(headroom_favorable(&windows, true, &tracker2, now));
 }
 
@@ -161,7 +175,12 @@ async fn headroom_favorable_requires_every_configured_window() {
 async fn headroom_favorable_false_when_gate_off_or_windows_empty() {
     let now = Utc::now();
     let tracker = tracker_with(&[("five_hour", 0.1, Some(now.timestamp() + 60))]).await;
-    assert!(!headroom_favorable(&[LimitWindow::FiveHour], false, &tracker, now));
+    assert!(!headroom_favorable(
+        &[LimitWindow::FiveHour],
+        false,
+        &tracker,
+        now
+    ));
     assert!(!headroom_favorable(&[], true, &tracker, now));
 }
 
@@ -261,7 +280,10 @@ async fn tick_respects_cooldown_on_repeat_ticks() {
 #[tokio::test]
 async fn in_cooldown_false_once_interval_elapsed() {
     let (pool, store) = pool_with_store().await;
-    let entry = store.upsert_maxx_entry(&maxx_input("e", None)).await.unwrap();
+    let entry = store
+        .upsert_maxx_entry(&maxx_input("e", None))
+        .await
+        .unwrap();
     store
         .record_maxx_run(&entry.id, Some("t1"), "queued")
         .await
@@ -273,5 +295,8 @@ async fn in_cooldown_false_once_interval_elapsed() {
     assert!(tick.in_cooldown(&entry.id, just_now).await, "just fired");
 
     let well_past = just_now + chrono::Duration::seconds(MIN_REFIRE_INTERVAL_SECS + 1);
-    assert!(!tick.in_cooldown(&entry.id, well_past).await, "cooldown elapsed");
+    assert!(
+        !tick.in_cooldown(&entry.id, well_past).await,
+        "cooldown elapsed"
+    );
 }

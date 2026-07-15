@@ -71,8 +71,14 @@ impl MaxxBody {
                 return Err("quiet_hours must be within 0..=23".into());
             }
         }
-        if let Some(bad) = self.windows.iter().find(|w| LimitWindow::parse(w).is_none()) {
-            return Err(format!("unknown window '{bad}' (expected five_hour/seven_day)"));
+        if let Some(bad) = self
+            .windows
+            .iter()
+            .find(|w| LimitWindow::parse(w).is_none())
+        {
+            return Err(format!(
+                "unknown window '{bad}' (expected five_hour/seven_day)"
+            ));
         }
         Ok(())
     }

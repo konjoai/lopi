@@ -128,7 +128,10 @@ pub fn quiet_hours_favorable(quiet_hours: Option<(u8, u8)>, local_hour: u32) -> 
 /// window is never favorable, per the kill-test guidance that staleness
 /// should mean "don't dispatch," not "assume it's fine."
 #[must_use]
-pub fn window_favorable(obs: Option<&crate::quota_tracker::QuotaObservation>, now: DateTime<Utc>) -> bool {
+pub fn window_favorable(
+    obs: Option<&crate::quota_tracker::QuotaObservation>,
+    now: DateTime<Utc>,
+) -> bool {
     let Some(obs) = obs else {
         return false;
     };
@@ -268,7 +271,10 @@ async fn fire(pool: &AgentPool, store: &MemoryStore, spec: &MaxxSpec) {
         Some(existing) => (existing.0.to_string(), "duplicate"),
         None => (new_id, "queued"),
     };
-    if let Err(e) = store.record_maxx_run(&spec.id, Some(&task_id), outcome).await {
+    if let Err(e) = store
+        .record_maxx_run(&spec.id, Some(&task_id), outcome)
+        .await
+    {
         warn!(maxx = %spec.id, "failed to record maxx run: {e:#}");
     }
 }
