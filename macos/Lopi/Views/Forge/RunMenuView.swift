@@ -1,4 +1,5 @@
 import SwiftUI
+import LopiStacksKit
 
 /// RunMenu — the run-stack chevron's dropdown. Genuinely wired to the
 /// `StackRunEngine`: Run now / Run once / Schedule stack / Dry run when no run is

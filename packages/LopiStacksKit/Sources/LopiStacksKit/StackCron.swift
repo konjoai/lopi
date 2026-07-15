@@ -13,7 +13,7 @@ private func to24Hour(_ hour12: Int, _ ampm: CronConfig.AmPm) -> Int {
 
 /// Derive the standard 5-field cron string from a preset cadence. Returns
 /// `c.raw` verbatim when `freq == .custom`.
-func buildCronString(_ c: CronConfig) -> String {
+public func buildCronString(_ c: CronConfig) -> String {
     switch c.freq {
     case .everyMinute:
         return "* * * * *"
@@ -42,7 +42,7 @@ private func matchesCronField(_ field: String, _ value: Int) -> Bool {
 /// standard 5-field cron fires. Bounded to ~40 days so an unsatisfiable
 /// expression can't spin forever. Unknown syntax (or a non-5-field string)
 /// yields no results rather than throwing.
-func computeNextRuns(_ cronExpr: String, from: Date, count: Int = 3, calendar: Calendar = .current) -> [Date] {
+public func computeNextRuns(_ cronExpr: String, from: Date, count: Int = 3, calendar: Calendar = .current) -> [Date] {
     let fields = cronExpr.split(whereSeparator: { $0.isWhitespace }).map(String.init)
     guard fields.count == 5 else { return [] }
     let (minF, hourF, domF, monF, dowF) = (fields[0], fields[1], fields[2], fields[3], fields[4])
@@ -72,7 +72,7 @@ func computeNextRuns(_ cronExpr: String, from: Date, count: Int = 3, calendar: C
 }
 
 /// Human-readable echo of a cron config's cadence.
-func cronHuman(_ c: CronConfig) -> String {
+public func cronHuman(_ c: CronConfig) -> String {
     let mm = String(format: "%02d", c.min)
     switch c.freq {
     case .everyMinute:

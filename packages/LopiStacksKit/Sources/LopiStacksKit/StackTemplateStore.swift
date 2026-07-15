@@ -13,35 +13,40 @@ import Observation
 
 /// The persisted shape under `lopi.templates.v1` — mirrors the web
 /// `{ prompts: [...], stacks: [...] }`.
-struct TemplateLibrary: Codable {
-    var prompts: [PromptTemplate]
-    var stacks: [StackTemplate]
+public struct TemplateLibrary: Codable {
+    public var prompts: [PromptTemplate]
+    public var stacks: [StackTemplate]
 
-    static let empty = TemplateLibrary(prompts: [], stacks: [])
+    public init(prompts: [PromptTemplate], stacks: [StackTemplate]) {
+        self.prompts = prompts
+        self.stacks = stacks
+    }
+
+    public static let empty = TemplateLibrary(prompts: [], stacks: [])
 }
 
 @Observable
 @MainActor
-final class StackTemplateStore {
+public final class StackTemplateStore {
     private static let storageKey = "lopi.templates.v1"
     private let defaults: UserDefaults
 
     /// The live template library, mirrored to UserDefaults on every mutation.
-    private(set) var library: TemplateLibrary
+    public private(set) var library: TemplateLibrary
 
-    init(defaults: UserDefaults = .standard) {
+    public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         self.library = Self.load(from: defaults)
     }
 
     /// Append a prompt template and persist.
-    func savePrompt(_ tpl: PromptTemplate) {
+    public func savePrompt(_ tpl: PromptTemplate) {
         library.prompts.append(tpl)
         persist()
     }
 
     /// Append a stack template and persist.
-    func saveStack(_ tpl: StackTemplate) {
+    public func saveStack(_ tpl: StackTemplate) {
         library.stacks.append(tpl)
         persist()
     }

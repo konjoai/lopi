@@ -17,68 +17,132 @@ import Observation
 // substitute a deterministic mock backend.
 
 /// Which run-menu action started this run.
-enum RunIntent: Equatable { case run, runOnce }
+public enum RunIntent: Equatable { case run, runOnce }
 
 /// A run's lifecycle. `paused` is resumable; `draining` finalizes to `done`
 /// once the in-flight card's wait resolves, and does not resume.
-enum RunPhase: String, Equatable {
+public enum RunPhase: String, Equatable {
     case idle, running, paused, draining, done, error
 }
 
 /// A card task's terminal outcome.
-enum TerminalStatus: String, Equatable { case completed, failed, cancelled }
+public enum TerminalStatus: String, Equatable { case completed, failed, cancelled }
 
 /// One pane's active (or just-finished) run. `order`/`cursor` are a snapshot of
 /// execution order taken at launch time; `loopTarget`/`onFail` are likewise
 /// snapshotted from `pane.config` — tweaking the dock mid-run never reshuffles a
 /// run already in flight. `acceptance`/`noProgressLimit`/`noGainStreak`/
 /// `goalBest`/`stopReason` are the B1 run-until-goal state.
-struct StackRunState: Equatable {
-    var paneKey: String
-    var phase: RunPhase
-    var intent: RunIntent
-    var order: [String]
-    var cursor: Int
-    var repetition: Int
-    var loopTarget: Int
-    var onFail: OnFail
-    var hadFailure: Bool
-    var error: String?
-    var acceptance: StackAcceptance?
-    var noProgressLimit: Int
-    var noGainStreak: Int
-    var goalBest: Double?
-    var stopReason: StackStopReason?
+public struct StackRunState: Equatable {
+    public init(
+        paneKey: String,
+        phase: RunPhase,
+        intent: RunIntent,
+        order: [String],
+        cursor: Int,
+        repetition: Int,
+        loopTarget: Int,
+        onFail: OnFail,
+        hadFailure: Bool,
+        error: String?,
+        acceptance: StackAcceptance?,
+        noProgressLimit: Int,
+        noGainStreak: Int,
+        goalBest: Double?,
+        stopReason: StackStopReason?
+    ) {
+        self.paneKey = paneKey
+        self.phase = phase
+        self.intent = intent
+        self.order = order
+        self.cursor = cursor
+        self.repetition = repetition
+        self.loopTarget = loopTarget
+        self.onFail = onFail
+        self.hadFailure = hadFailure
+        self.error = error
+        self.acceptance = acceptance
+        self.noProgressLimit = noProgressLimit
+        self.noGainStreak = noGainStreak
+        self.goalBest = goalBest
+        self.stopReason = stopReason
+    }
+
+    public var paneKey: String
+    public var phase: RunPhase
+    public var intent: RunIntent
+    public var order: [String]
+    public var cursor: Int
+    public var repetition: Int
+    public var loopTarget: Int
+    public var onFail: OnFail
+    public var hadFailure: Bool
+    public var error: String?
+    public var acceptance: StackAcceptance?
+    public var noProgressLimit: Int
+    public var noGainStreak: Int
+    public var goalBest: Double?
+    public var stopReason: StackStopReason?
 }
 
 /// The injected side-effecting seams — the only non-pure surface the engine
 /// touches. In production these are wired to `AppModel`/`LopiClient`; in tests
 /// they're a deterministic mock (mirroring the web `mockBackend`).
-struct StackRunSeams {
+public struct StackRunSeams {
+    public init(
+        panes: @escaping () -> [StackPaneState],
+        updateCard: @escaping (_ paneKey: String, _ cardId: String, _ mutate: (inout StackCard) -> Void) -> Void,
+        createTask: @escaping (_ payload: StackTaskPayload) async throws -> String,
+        waitForTerminal: @escaping (_ taskId: String) async -> TerminalStatus,
+        score: @escaping (_ taskId: String) -> Double?,
+        createSchedule: @escaping (_ name: String, _ cron: String, _ goal: String, _ repo: String, _ priority: String) async throws -> Void,
+        reorderPaneCards: @escaping (_ paneKey: String, _ from: Int, _ to: Int) -> Void
+    ) {
+        self.panes = panes
+        self.updateCard = updateCard
+        self.createTask = createTask
+        self.waitForTerminal = waitForTerminal
+        self.score = score
+        self.createSchedule = createSchedule
+        self.reorderPaneCards = reorderPaneCards
+    }
+
     /// A fresh snapshot of the pane list.
-    var panes: () -> [StackPaneState]
+    public var panes: () -> [StackPaneState]
     /// Patch one card in a pane (status/taskId writes as the run progresses).
-    var updateCard: (_ paneKey: String, _ cardId: String, _ mutate: (inout StackCard) -> Void) -> Void
+    public var updateCard: (_ paneKey: String, _ cardId: String, _ mutate: (inout StackCard) -> Void) -> Void
     /// Submit a task; returns the effective task id (the response's
     /// `duplicate_of ?? id`, so a client_ref traces back even under dedup).
-    var createTask: (_ payload: StackTaskPayload) async throws -> String
+    public var createTask: (_ payload: StackTaskPayload) async throws -> String
     /// Resolve once `taskId` reaches a terminal status.
-    var waitForTerminal: (_ taskId: String) async -> TerminalStatus
+    public var waitForTerminal: (_ taskId: String) async -> TerminalStatus
     /// The live scalar score for a finished task, if any (drives no-progress).
-    var score: (_ taskId: String) -> Double?
+    public var score: (_ taskId: String) -> Double?
     /// Attach one cron via the real schedule endpoint.
-    var createSchedule: (_ name: String, _ cron: String, _ goal: String, _ repo: String, _ priority: String) async throws -> Void
+    public var createSchedule: (_ name: String, _ cron: String, _ goal: String, _ repo: String, _ priority: String) async throws -> Void
     /// Reorder a pane's card array (so the rendered order matches a mid-run bump).
-    var reorderPaneCards: (_ paneKey: String, _ from: Int, _ to: Int) -> Void
+    public var reorderPaneCards: (_ paneKey: String, _ from: Int, _ to: Int) -> Void
 }
 
 /// The result of `scheduleStack` — honest that it can only attach the cron to
 /// the bottom-of-stack (first-to-run) card, not the whole plan.
-struct ScheduleStackResult: Equatable {
-    var ok: Bool
-    var scheduledCardId: String?
-    var skippedCardIds: [String]
-    var error: String?
+public struct ScheduleStackResult: Equatable {
+    public init(
+        ok: Bool,
+        scheduledCardId: String?,
+        skippedCardIds: [String],
+        error: String?
+    ) {
+        self.ok = ok
+        self.scheduledCardId = scheduledCardId
+        self.skippedCardIds = skippedCardIds
+        self.error = error
+    }
+
+    public var ok: Bool
+    public var scheduledCardId: String?
+    public var skippedCardIds: [String]
+    public var error: String?
 }
 
 /// The stack-run sequencer. Owns the per-pane `runs` map; drives launches via
@@ -86,27 +150,27 @@ struct ScheduleStackResult: Equatable {
 /// (the svelte `writable` analogue).
 @Observable
 @MainActor
-final class StackRunEngine {
+public final class StackRunEngine {
     /// Active runs, keyed by pane key. In-memory — a relaunch loses run state.
-    private(set) var runs: [String: StackRunState] = [:]
+    public private(set) var runs: [String: StackRunState] = [:]
 
-    @ObservationIgnored let seams: StackRunSeams
+    @ObservationIgnored public let seams: StackRunSeams
 
-    init(seams: StackRunSeams) {
+    public init(seams: StackRunSeams) {
         self.seams = seams
     }
 
-    func run(for paneKey: String) -> StackRunState? { runs[paneKey] }
+    public func run(for paneKey: String) -> StackRunState? { runs[paneKey] }
 
     /// Install a fresh run state (bare-pane launch).
-    func putRun(_ state: StackRunState) { runs[state.paneKey] = state }
+    public func putRun(_ state: StackRunState) { runs[state.paneKey] = state }
 
     /// Drop a pane's run state.
-    func removeRun(_ paneKey: String) { runs.removeValue(forKey: paneKey) }
+    public func removeRun(_ paneKey: String) { runs.removeValue(forKey: paneKey) }
 
     /// Patch an existing run in place. Internal so the controls extension shares
     /// the one mutation path.
-    func setRun(_ paneKey: String, _ patch: (inout StackRunState) -> Void) {
+    public func setRun(_ paneKey: String, _ patch: (inout StackRunState) -> Void) {
         guard var current = runs[paneKey] else { return }
         patch(&current)
         runs[paneKey] = current
@@ -122,7 +186,7 @@ final class StackRunEngine {
     /// plain "Run" with a real goal (`stackPursuesGoal`), the compiled acceptance
     /// is snapshotted too, flipping the chain from fixed-count to run-until-goal.
     /// "Run once" never pursues.
-    func runStack(_ paneKey: String, _ intent: RunIntent, _ defaults: PaneDefaults) {
+    public func runStack(_ paneKey: String, _ intent: RunIntent, _ defaults: PaneDefaults) {
         guard let pane = seams.panes().first(where: { $0.key == paneKey }), !pane.cards.isEmpty else { return }
         let order = executionOrder(pane.cards).map(\.id)
         let pursuing = intent == .run && stackPursuesGoal(pane.config)
@@ -143,7 +207,7 @@ final class StackRunEngine {
     /// evaluates the goal and re-runs, or finishes. Re-reads `runs`/`panes` fresh
     /// at the top of each pass, which is what makes an infinite (`loopTarget ==
     /// 0`) chain safe: every pass re-checks pause/drain first.
-    func advance(_ paneKey: String, _ defaults: PaneDefaults) async {
+    public func advance(_ paneKey: String, _ defaults: PaneDefaults) async {
         while true {
             guard let state = runs[paneKey] else { return }
             switch state.phase {

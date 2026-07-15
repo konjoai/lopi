@@ -19,6 +19,9 @@ pub mod eval;
 /// Pattern enrichment from memory history.
 pub mod pattern_enricher;
 mod prompt;
+/// MAXX kill-test prep — logs `rate_limit_event` cadence for a real session's
+/// eventual run, off by default (see `docs/ops/NEXT_SESSION_PROMPT.md`).
+pub mod quota_kill_log;
 /// A2 §2 — the deterministic reflect-vs-blind measurement harness.
 pub mod reflection_harness;
 /// Agent execution runner — plan, implement, test, score, retry.

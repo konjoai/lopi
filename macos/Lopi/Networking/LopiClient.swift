@@ -1,4 +1,5 @@
 import Foundation
+import LopiStacksKit
 
 /// Errors surfaced by `LopiClient`.
 enum LopiError: LocalizedError {

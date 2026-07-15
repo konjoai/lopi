@@ -1,4 +1,5 @@
 import Foundation
+import LopiStacksKit
 
 // Translates the raw `/ws` event stream into the live cockpit state: per-agent
 // cognition, the event ticker, and the cost/throughput time series.

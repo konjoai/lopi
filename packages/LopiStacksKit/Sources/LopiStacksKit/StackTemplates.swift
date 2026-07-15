@@ -9,29 +9,49 @@ import Foundation
 /// A saved single-loop template: a preset and/or alias plus goal text. Client
 /// provenance only (`tpl`/`tplKind` on the produced card) — applying it fills a
 /// draft, it does not bind the card to the template afterward.
-struct PromptTemplate: Codable, Identifiable, Hashable {
-    var id: String
-    var name: String
-    var preset: PresetKey?
-    var alias: String?
-    var goal: String
+public struct PromptTemplate: Codable, Identifiable, Hashable {
+    public var id: String
+    public var name: String
+    public var preset: PresetKey?
+    public var alias: String?
+    public var goal: String
+
+    public init(id: String, name: String, preset: PresetKey? = nil, alias: String? = nil, goal: String) {
+        self.id = id
+        self.name = name
+        self.preset = preset
+        self.alias = alias
+        self.goal = goal
+    }
 }
 
 /// A saved multi-loop chain template. `loops` is serialized **bottom-first**
 /// (execution order — first-to-run first) by `stackTemplate(from:name:)`, so
 /// `applyStackTemplate(_:into:)` round-trips it back into the same run order.
-struct StackTemplate: Codable, Identifiable, Hashable {
-    var id: String
-    var name: String
-    var loops: [TemplateLoop]
+public struct StackTemplate: Codable, Identifiable, Hashable {
+    public var id: String
+    public var name: String
+    public var loops: [TemplateLoop]
+
+    public init(id: String, name: String, loops: [TemplateLoop]) {
+        self.id = id
+        self.name = name
+        self.loops = loops
+    }
 }
 
 /// One rung of a stack template — preset/alias/goal, no per-loop config (loops
 /// carry no `@repo`/`×N`, matching the web `StackTemplate.loops` shape).
-struct TemplateLoop: Codable, Hashable {
-    var preset: PresetKey?
-    var alias: String?
-    var goal: String
+public struct TemplateLoop: Codable, Hashable {
+    public var preset: PresetKey?
+    public var alias: String?
+    public var goal: String
+
+    public init(preset: PresetKey? = nil, alias: String? = nil, goal: String) {
+        self.preset = preset
+        self.alias = alias
+        self.goal = goal
+    }
 }
 
 // MARK: - Pure apply / serialize functions (mirror the web 1:1)
@@ -40,7 +60,7 @@ struct TemplateLoop: Codable, Hashable {
 /// clears any template provenance (picking a bare preset is not a template
 /// origin). Leaves `goal` and every configured facet untouched. Mirrors
 /// the web `applyPreset`.
-func applyPreset(_ key: PresetKey, to card: StackCard) -> StackCard {
+public func applyPreset(_ key: PresetKey, to card: StackCard) -> StackCard {
     guard let p = PRESET_CATALOG[key] else { return card }
     var c = card
     c.preset = key
@@ -56,7 +76,7 @@ func applyPreset(_ key: PresetKey, to card: StackCard) -> StackCard {
 /// plus prompt provenance (`tpl`/`tplKind == .prompt`). The preset (if any) still
 /// drives evals/config exactly as a hand-picked preset would. Mirrors the web
 /// `applyPromptTemplate`.
-func applyPromptTemplate(_ tpl: PromptTemplate, to card: StackCard) -> StackCard {
+public func applyPromptTemplate(_ tpl: PromptTemplate, to card: StackCard) -> StackCard {
     let presetKey = tpl.preset ?? tpl.alias.flatMap { resolvePresetAlias($0) }
     let preset = presetKey.flatMap { PRESET_CATALOG[$0] }
     var c = card
@@ -99,7 +119,7 @@ private func cardFromLoop(_ loop: TemplateLoop, tplName: String) -> StackCard {
 /// template's **first loop at the bottom** the loops are prepended in reverse.
 /// Round-trips with `stackTemplate(from:name:)`. Mirrors the web
 /// `applyStackTemplate`.
-func applyStackTemplate(_ tpl: StackTemplate, into cards: [StackCard]) -> [StackCard] {
+public func applyStackTemplate(_ tpl: StackTemplate, into cards: [StackCard]) -> [StackCard] {
     let loopCards = tpl.loops.map { cardFromLoop($0, tplName: tpl.name) }
     return loopCards.reversed() + cards
 }
@@ -107,7 +127,7 @@ func applyStackTemplate(_ tpl: StackTemplate, into cards: [StackCard]) -> [Stack
 /// Serialize a card into a reusable prompt template (provenance is not carried —
 /// a template is a fresh origin, not a copy of another template's lineage).
 /// Mirrors the web `promptTemplateFromCard`.
-func promptTemplate(from card: StackCard, name: String) -> PromptTemplate {
+public func promptTemplate(from card: StackCard, name: String) -> PromptTemplate {
     PromptTemplate(id: makeId(), name: name, preset: card.preset, alias: card.alias, goal: card.goal)
 }
 
@@ -115,7 +135,7 @@ func promptTemplate(from card: StackCard, name: String) -> PromptTemplate {
 /// order) so `applyStackTemplate(_:into:)` restores the identical run order —
 /// the easiest thing to get backwards, hence the explicit round-trip test.
 /// Mirrors the web `stackTemplateFromCards`.
-func stackTemplate(from cards: [StackCard], name: String) -> StackTemplate {
+public func stackTemplate(from cards: [StackCard], name: String) -> StackTemplate {
     StackTemplate(
         id: makeId(),
         name: name,

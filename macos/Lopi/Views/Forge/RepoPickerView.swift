@@ -1,4 +1,5 @@
 import SwiftUI
+import LopiStacksKit
 
 /// The repo field's control: the same `ConfigChip` the other four config fields
 /// wear, opening a searchable, owner-grouped popover.

@@ -1,4 +1,5 @@
 import SwiftUI
+import LopiStacksKit
 
 /// TemplatesMenuView — the PROMPT-scope templates control (Stack-Templates-1
 /// §2a). Every card gets one: the draft renders it labeled (book symbol + the

@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import LopiStacksKit
 
 /// Single source of UI state. Owns the REST client and the live event stream,
 /// and exposes everything the views render. Lives on the main actor.

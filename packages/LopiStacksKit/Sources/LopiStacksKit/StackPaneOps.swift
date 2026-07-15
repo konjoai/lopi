@@ -9,23 +9,23 @@ import Foundation
 /// card + its orb, no connector, no purple dock. Unify-2 §3: a one-card pane
 /// reads identically to a pre-Unify Forge box; full stack chrome appears only
 /// once it holds a second loop. An empty pane is bare too.
-func paneIsBare(_ pane: StackPaneState) -> Bool {
+public func paneIsBare(_ pane: StackPaneState) -> Bool {
     pane.cards.count <= 1
 }
 
 /// A fresh, empty stack pane with its own config and a unique key.
-func makeBlankStack(_ title: String = "new stack") -> StackPaneState {
+public func makeBlankStack(_ title: String = "new stack") -> StackPaneState {
     StackPaneState(key: makeId(), title: title, cards: [], config: defaultStackConfig())
 }
 
 /// Append a fresh blank pane — the create-from-scratch path.
-func addStack(_ state: [StackPaneState]) -> [StackPaneState] {
+public func addStack(_ state: [StackPaneState]) -> [StackPaneState] {
     state + [makeBlankStack()]
 }
 
 /// Apply a pure card-list transform to one pane by key, leaving every other
 /// pane untouched. No-op for an unknown key.
-func applyToPaneCards(_ state: [StackPaneState], _ key: String, _ fn: ([StackCard]) -> [StackCard]) -> [StackPaneState] {
+public func applyToPaneCards(_ state: [StackPaneState], _ key: String, _ fn: ([StackCard]) -> [StackCard]) -> [StackPaneState] {
     guard let idx = state.firstIndex(where: { $0.key == key }) else { return state }
     var next = state
     next[idx].cards = fn(next[idx].cards)
@@ -33,7 +33,7 @@ func applyToPaneCards(_ state: [StackPaneState], _ key: String, _ fn: ([StackCar
 }
 
 /// Insert a card into a specific pane at `index`.
-func insertIntoPane(_ state: [StackPaneState], _ key: String, _ index: Int, _ card: StackCard) -> [StackPaneState] {
+public func insertIntoPane(_ state: [StackPaneState], _ key: String, _ index: Int, _ card: StackCard) -> [StackPaneState] {
     applyToPaneCards(state, key) { insertCardAt($0, index, card) }
 }
 
@@ -41,7 +41,7 @@ func insertIntoPane(_ state: [StackPaneState], _ key: String, _ index: Int, _ ca
 /// after the original. Every cloned card gets a fresh id and wiped run state;
 /// the clone gets a fresh key and its own config (value types make this
 /// automatic). No-op if the key isn't present.
-func duplicateStack(_ state: [StackPaneState], _ key: String) -> [StackPaneState] {
+public func duplicateStack(_ state: [StackPaneState], _ key: String) -> [StackPaneState] {
     guard let idx = state.firstIndex(where: { $0.key == key }) else { return state }
     let original = state[idx]
     let clonedCards = original.cards.map { card -> StackCard in
@@ -69,7 +69,7 @@ func duplicateStack(_ state: [StackPaneState], _ key: String) -> [StackPaneState
 /// already holds. Every copied card gets a fresh id and wiped run state,
 /// mirroring `duplicateStack`'s per-card reset. No-op if either key is
 /// missing or they're the same pane.
-func loadStackCardsInto(_ state: [StackPaneState], targetKey: String, sourceKey: String) -> [StackPaneState] {
+public func loadStackCardsInto(_ state: [StackPaneState], targetKey: String, sourceKey: String) -> [StackPaneState] {
     if targetKey == sourceKey { return state }
     guard let source = state.first(where: { $0.key == sourceKey }) else { return state }
     let copiedCards = source.cards.map { card -> StackCard in
@@ -84,7 +84,7 @@ func loadStackCardsInto(_ state: [StackPaneState], targetKey: String, sourceKey:
 }
 
 /// Move the stack at `from` to index `to`. Out-of-range is a no-op.
-func reorderStacks(_ state: [StackPaneState], _ from: Int, _ to: Int) -> [StackPaneState] {
+public func reorderStacks(_ state: [StackPaneState], _ from: Int, _ to: Int) -> [StackPaneState] {
     guard from >= 0, from < state.count, to >= 0, to < state.count else { return state }
     var next = state
     let moved = next.remove(at: from)
@@ -94,7 +94,7 @@ func reorderStacks(_ state: [StackPaneState], _ from: Int, _ to: Int) -> [StackP
 
 /// Drag-and-drop-friendly stack reorder — the pane-level twin of
 /// `moveCardBeforeOrAfter`.
-func moveStackBeforeOrAfter(_ state: [StackPaneState], _ fromIndex: Int, _ targetIndex: Int, _ before: Bool) -> [StackPaneState] {
+public func moveStackBeforeOrAfter(_ state: [StackPaneState], _ fromIndex: Int, _ targetIndex: Int, _ before: Bool) -> [StackPaneState] {
     if fromIndex == targetIndex { return state }
     let to = fromIndex < targetIndex
         ? (before ? targetIndex - 1 : targetIndex)
@@ -104,7 +104,7 @@ func moveStackBeforeOrAfter(_ state: [StackPaneState], _ fromIndex: Int, _ targe
 
 /// Drop a stack by key. Refuses to delete the last remaining pane (no
 /// pane-creation affordance to recover — a deliberate floor).
-func deleteStack(_ state: [StackPaneState], _ key: String) -> [StackPaneState] {
+public func deleteStack(_ state: [StackPaneState], _ key: String) -> [StackPaneState] {
     if state.count <= 1 { return state }
     return state.filter { $0.key != key }
 }

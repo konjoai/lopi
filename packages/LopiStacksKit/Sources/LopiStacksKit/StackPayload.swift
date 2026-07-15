@@ -15,13 +15,13 @@ import Foundation
 // MARK: - Acceptance
 
 /// One acceptance check's spec — the tier→spec routing A1 defines.
-enum AcceptanceSpec: Equatable {
+public enum AcceptanceSpec: Equatable {
     case executionOk
     case judge(rubricName: String, criteria: [String])
     case suite(name: String)
 
     /// The wire `kind` discriminant, matching the web `spec.kind`.
-    var kind: String {
+    public var kind: String {
         switch self {
         case .executionOk: return "execution_ok"
         case .judge: return "judge"
@@ -31,23 +31,34 @@ enum AcceptanceSpec: Equatable {
 }
 
 /// One acceptance check the backend's tiered eval executor scores against.
-struct AcceptanceCheck: Equatable {
-    var tier: EvalTier
-    var spec: AcceptanceSpec
-    var weight: Int
-    var required: Bool
+public struct AcceptanceCheck: Equatable {
+    public var tier: EvalTier
+    public var spec: AcceptanceSpec
+    public var weight: Int
+    public var required: Bool
+
+    public init(tier: EvalTier, spec: AcceptanceSpec, weight: Int, required: Bool) {
+        self.tier = tier
+        self.spec = spec
+        self.weight = weight
+        self.required = required
+    }
 }
 
 /// A compiled acceptance goal.
-struct StackAcceptance: Equatable {
-    var checks: [AcceptanceCheck]
+public struct StackAcceptance: Equatable {
+    public var checks: [AcceptanceCheck]
+
+    public init(checks: [AcceptanceCheck]) {
+        self.checks = checks
+    }
 }
 
 /// Compile a card's `evals` checklist into a real `StackAcceptance`. Objective
 /// (`base`/`test`) → one deterministic `execution_ok` check; `judge` → one judge
 /// check whose criteria are the selected judge evals' names; `suite` → one suite
 /// check per selected suite eval. Returns `nil` when there is nothing to check.
-func evalsToAcceptance(_ evals: [EvalRef]) -> StackAcceptance? {
+public func evalsToAcceptance(_ evals: [EvalRef]) -> StackAcceptance? {
     var checks: [AcceptanceCheck] = []
     let hasDeterministic = evals.contains { $0.tier == .base || $0.tier == .test }
     if hasDeterministic {
@@ -70,30 +81,53 @@ func evalsToAcceptance(_ evals: [EvalRef]) -> StackAcceptance? {
 
 /// The create-task options a card/pane would submit as — mirrors the web
 /// `CreateTaskOptions`. `nil` means the field is omitted from the payload.
-struct StackTaskOptions: Equatable {
-    var model: String?
-    var effort: String?
-    var maxIterations: Int?
-    var onFail: OnFail?
-    var clientRef: String?
-    var gate: String?
-    var until: String?
-    var budgetTokens: Int?
-    var acceptance: StackAcceptance?
-    var constraints: [String]?
+public struct StackTaskOptions: Equatable {
+    public var model: String?
+    public var effort: String?
+    public var maxIterations: Int?
+    public var onFail: OnFail?
+    public var clientRef: String?
+    public var gate: String?
+    public var until: String?
+    public var budgetTokens: Int?
+    public var acceptance: StackAcceptance?
+    public var constraints: [String]?
+
+    public init(model: String? = nil, effort: String? = nil, maxIterations: Int? = nil,
+                onFail: OnFail? = nil, clientRef: String? = nil, gate: String? = nil,
+                until: String? = nil, budgetTokens: Int? = nil, acceptance: StackAcceptance? = nil,
+                constraints: [String]? = nil) {
+        self.model = model
+        self.effort = effort
+        self.maxIterations = maxIterations
+        self.onFail = onFail
+        self.clientRef = clientRef
+        self.gate = gate
+        self.until = until
+        self.budgetTokens = budgetTokens
+        self.acceptance = acceptance
+        self.constraints = constraints
+    }
 }
 
 /// A full create-task payload (goal/repo/priority + options).
-struct StackTaskPayload: Equatable {
-    var goal: String
-    var repo: String
-    var priority: String
-    var options: StackTaskOptions
+public struct StackTaskPayload: Equatable {
+    public var goal: String
+    public var repo: String
+    public var priority: String
+    public var options: StackTaskOptions
+
+    public init(goal: String, repo: String, priority: String, options: StackTaskOptions) {
+        self.goal = goal
+        self.repo = repo
+        self.priority = priority
+        self.options = options
+    }
 }
 
 /// The payload a card would submit as, resolving `config` overrides against
 /// pane defaults. Pure and total — the WIRED-fields round-trip contract.
-func cardToTaskPayload(_ card: StackCard, _ defaults: PaneDefaults) -> StackTaskPayload {
+public func cardToTaskPayload(_ card: StackCard, _ defaults: PaneDefaults) -> StackTaskPayload {
     var options = StackTaskOptions()
     options.model = card.config.model ?? defaults.model
     options.effort = card.config.effort ?? defaults.effort
@@ -115,22 +149,22 @@ func cardToTaskPayload(_ card: StackCard, _ defaults: PaneDefaults) -> StackTask
 
 /// "Run once": identical resolution, but `maxIterations` forced to `1` in the
 /// outgoing payload only (never mutating the card's own stored value).
-func cardToTaskPayloadForRunOnce(_ card: StackCard, _ defaults: PaneDefaults) -> StackTaskPayload {
+public func cardToTaskPayloadForRunOnce(_ card: StackCard, _ defaults: PaneDefaults) -> StackTaskPayload {
     var payload = cardToTaskPayload(card, defaults)
     payload.options.maxIterations = 1
     return payload
 }
 
 /// A bare-prompt launch from a Forge-style pane composer.
-struct PaneLaunch {
-    var goal: String
-    var repo: String
-    var priority: String?
-    var model: String?
-    var effort: String?
-    var branch: String?
+public struct PaneLaunch {
+    public var goal: String
+    public var repo: String
+    public var priority: String?
+    public var model: String?
+    public var effort: String?
+    public var branch: String?
 
-    init(goal: String, repo: String, priority: String? = nil,
+    public init(goal: String, repo: String, priority: String? = nil,
          model: String? = nil, effort: String? = nil, branch: String? = nil) {
         self.goal = goal
         self.repo = repo
@@ -143,7 +177,7 @@ struct PaneLaunch {
 
 /// The payload a bare pane prompt submits as — deliberately bare (no stack-loop
 /// semantics forced). A branch override surfaces as a planning constraint.
-func paneSubmitPayload(_ launch: PaneLaunch) -> StackTaskPayload {
+public func paneSubmitPayload(_ launch: PaneLaunch) -> StackTaskPayload {
     var options = StackTaskOptions()
     if let model = launch.model { options.model = model }
     if let effort = launch.effort { options.effort = effort }
@@ -164,34 +198,52 @@ func paneSubmitPayload(_ launch: PaneLaunch) -> StackTaskPayload {
 /// card is never in `pane.cards`, but any run-plan path must still refuse to
 /// schedule one (Creation-Flow-1 §1 — never let `.draft` fall through to a run
 /// path), so it is filtered here defensively. Mirrors the web `executionOrder`.
-func executionOrder(_ cards: [StackCard]) -> [StackCard] {
+public func executionOrder(_ cards: [StackCard]) -> [StackCard] {
     cards.filter { $0.status != .draft }.reversed()
 }
 
 /// One problem `dryRunStack` found with a specific card.
-struct DryRunIssue: Equatable {
-    var cardId: String
-    var message: String
+public struct DryRunIssue: Equatable {
+    public var cardId: String
+    public var message: String
+
+    public init(cardId: String, message: String) {
+        self.cardId = cardId
+        self.message = message
+    }
 }
 
 /// One card's resolved plan entry, exactly as `dryRunStack` would submit it.
-struct DryRunPlanEntry: Equatable {
-    var cardId: String
-    var goal: String
-    var repo: String
-    var maxIterations: Int
+public struct DryRunPlanEntry: Equatable {
+    public var cardId: String
+    public var goal: String
+    public var repo: String
+    public var maxIterations: Int
+
+    public init(cardId: String, goal: String, repo: String, maxIterations: Int) {
+        self.cardId = cardId
+        self.goal = goal
+        self.repo = repo
+        self.maxIterations = maxIterations
+    }
 }
 
 /// The plan-validation result `dryRunStack` returns.
-struct DryRunResult: Equatable {
-    var valid: Bool
-    var issues: [DryRunIssue]
-    var plan: [DryRunPlanEntry]
+public struct DryRunResult: Equatable {
+    public var valid: Bool
+    public var issues: [DryRunIssue]
+    public var plan: [DryRunPlanEntry]
+
+    public init(valid: Bool, issues: [DryRunIssue], plan: [DryRunPlanEntry]) {
+        self.valid = valid
+        self.issues = issues
+        self.plan = plan
+    }
 }
 
 /// Validate a pane's execution plan without running anything. Pure and total;
 /// never launches.
-func dryRunStack(_ cards: [StackCard], _ defaults: PaneDefaults) -> DryRunResult {
+public func dryRunStack(_ cards: [StackCard], _ defaults: PaneDefaults) -> DryRunResult {
     var issues: [DryRunIssue] = []
     let plan: [DryRunPlanEntry] = executionOrder(cards).map { card in
         let payload = cardToTaskPayload(card, defaults)
@@ -216,7 +268,7 @@ func dryRunStack(_ cards: [StackCard], _ defaults: PaneDefaults) -> DryRunResult
 // MARK: - Bump (reorder a queued card within an active run's remaining order)
 
 /// The result of `bumpInOrder` — the swapped order, or a clear rejection.
-enum BumpResult: Equatable {
+public enum BumpResult: Equatable {
     case ok([String])
     case err(String)
 }
@@ -224,7 +276,7 @@ enum BumpResult: Equatable {
 /// Attempt to bump (swap with its immediate neighbor) a not-yet-started card
 /// within an active run's remaining execution order. `cursor` and everything at
 /// or before it are off-limits. Pure.
-func bumpInOrder(_ order: [String], _ cursor: Int, _ cardId: String, _ direction: BumpDirection) -> BumpResult {
+public func bumpInOrder(_ order: [String], _ cursor: Int, _ cardId: String, _ direction: BumpDirection) -> BumpResult {
     guard let idx = order.firstIndex(of: cardId) else {
         return .err("card is not part of this run’s plan")
     }
@@ -244,4 +296,4 @@ func bumpInOrder(_ order: [String], _ cursor: Int, _ cardId: String, _ direction
 }
 
 /// Bump direction — up (earlier in the queue) or down (later).
-enum BumpDirection: Equatable { case up, down }
+public enum BumpDirection: Equatable { case up, down }

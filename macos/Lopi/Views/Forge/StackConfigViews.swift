@@ -1,4 +1,5 @@
 import SwiftUI
+import LopiStacksKit
 
 /// The mockup's `.cfgchip` — `.kdrop-trigger.chip` in `Dropdown.svelte`: a
 /// horizontal `icon · LABEL · value ⌄` pill with the icon tinted `accent`.

@@ -208,6 +208,7 @@ fn forward_stream_event(
     tokens: &Arc<AtomicU64>,
     ev: &StreamEvent,
 ) {
+    crate::quota_kill_log::observe_global(ev, Utc::now().timestamp());
     let spent = event_tokens(ev);
     if spent > 0 {
         tokens.fetch_add(spent, Ordering::Relaxed);
