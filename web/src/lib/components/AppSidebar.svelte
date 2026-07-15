@@ -16,6 +16,7 @@
   import { page } from '$app/stores';
   import { NAV_ITEMS, isActiveRoute, sidebarOpen, SIDEBAR_MODE } from '$lib/stores/nav';
   import { SHELL_ICONS, type ShellIconKey } from './icons';
+  import LopiWordmark from './LopiWordmark.svelte';
 
   /** The hamburger button that opens this sidebar — focus returns here on
    *  close. `null` is tolerated (focus just stays wherever it was). */
@@ -81,7 +82,7 @@
   inert={!$sidebarOpen}
 >
   <div class="shead">
-    <span class="brand">lopi</span>
+    <span class="brand"><LopiWordmark size={16} /></span>
     <button type="button" class="sclose" on:click={close} aria-label="Close navigation">
       {@html SHELL_ICONS.close}
     </button>
