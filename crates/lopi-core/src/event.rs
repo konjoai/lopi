@@ -185,6 +185,11 @@ pub enum AgentEvent {
         limit_type: String,
         /// Fraction of the window consumed, clamped to `[0.0, 1.0]`.
         utilization: f32,
+        /// When this window resets, unix seconds — `None` if the CLI omitted
+        /// `resetsAt`. Five-hour windows are rolling from first use, not
+        /// wall-clock fixed, so this is the only reliable way to know when.
+        #[serde(default)]
+        resets_at: Option<i64>,
     },
     /// Cumulative session cost reported by the CLI (decoded from the `result`
     /// envelope's `total_cost_usd`). Drives the `CostAnalytics` pane.

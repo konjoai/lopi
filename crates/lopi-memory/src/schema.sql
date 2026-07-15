@@ -350,4 +350,56 @@ CREATE TABLE IF NOT EXISTS agent_dag_nodes (
     updated_at      TEXT NOT NULL,
     PRIMARY KEY (task_id, kind)
 );
+
+-- MAXX Phase 0 — Quota headroom tracking. One row per Anthropic account rate
+-- limit window (`five_hour` / `seven_day`), upserted every time an agent
+-- observes a `rate_limit_event`. limit_type is the primary key so a
+-- `five_hour` observation can never clobber a `seven_day` one (they arrive
+-- through the same AgentEvent::ApiRetry variant, so this is an easy bug to
+-- introduce silently). resets_at is unix seconds, nullable — the CLI does
+-- not always report it.
+CREATE TABLE IF NOT EXISTS quota_observations (
+    limit_type   TEXT PRIMARY KEY,
+    status       TEXT NOT NULL,
+    utilization  REAL NOT NULL,
+    resets_at    INTEGER,
+    observed_at  TEXT NOT NULL
+);
+
+-- MAXX Phase 1 — Opportunistic backlog dispatch entries. Mirrors `schedules`
+-- (same CRUD conventions, `/api/maxx` instead of `/api/schedules`) minus
+-- `cron`, plus quiet_hours/headroom_gate/windows_json — a MAXX entry fires on
+-- "favorable" conditions (quiet hours or comfortable quota headroom) rather
+-- than a fixed cadence. quiet_hours_start/end are 0-23 local hours, both NULL
+-- when quiet-hours gating is off. windows_json is a JSON array of the limit
+-- types (`five_hour`/`seven_day`) headroom_gate checks.
+CREATE TABLE IF NOT EXISTS maxx_entries (
+    id                TEXT PRIMARY KEY,
+    name              TEXT NOT NULL,
+    goal              TEXT NOT NULL,
+    repo              TEXT,
+    priority          TEXT NOT NULL DEFAULT 'normal',
+    allowed_dirs      TEXT NOT NULL DEFAULT '[]',
+    forbidden_dirs    TEXT NOT NULL DEFAULT '[]',
+    enabled           INTEGER NOT NULL DEFAULT 1,
+    autonomy_level    TEXT NOT NULL DEFAULT 'draft_pr',
+    report            TEXT,
+    quiet_hours_start INTEGER,
+    quiet_hours_end   INTEGER,
+    headroom_gate     INTEGER NOT NULL DEFAULT 0,
+    windows_json      TEXT NOT NULL DEFAULT '[]',
+    created_at        TEXT NOT NULL,
+    updated_at        TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_maxx_entries_name ON maxx_entries(name);
+
+-- MAXX Phase 1 — Per-entry fire history, mirrors schedule_runs.
+CREATE TABLE IF NOT EXISTS maxx_runs (
+    id       TEXT PRIMARY KEY,
+    maxx_id  TEXT NOT NULL,
+    fired_at TEXT NOT NULL,
+    task_id  TEXT,
+    outcome  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_maxx_runs_entry ON maxx_runs(maxx_id, fired_at DESC);
 CREATE INDEX IF NOT EXISTS idx_agent_dag_nodes_task ON agent_dag_nodes(task_id);

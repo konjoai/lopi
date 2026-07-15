@@ -181,11 +181,26 @@ fn rate_limit_clamps_utilization_and_maps_to_api_retry() {
             status,
             limit_type,
             utilization,
+            resets_at,
             ..
         } => {
             assert_eq!(status, "allowed_warning");
             assert_eq!(limit_type, "seven_day");
             assert!((*utilization - 1.0).abs() < f32::EPSILON, "clamped to 1.0");
+            assert_eq!(*resets_at, None, "no resetsAt in the payload");
+        }
+        other => panic!("expected ApiRetry, got {other:?}"),
+    }
+}
+
+#[test]
+fn rate_limit_carries_resets_at_when_present() {
+    let ev = one(
+        r#"{"type":"rate_limit_event","rate_limit_info":{"status":"allowed_warning","resetsAt":1782691200,"rateLimitType":"seven_day","utilization":0.92,"isUsingOverage":false,"surpassedThreshold":0.75}}"#,
+    );
+    match &ev.structured_events(TaskId::new())[0] {
+        AgentEvent::ApiRetry { resets_at, .. } => {
+            assert_eq!(*resets_at, Some(1_782_691_200));
         }
         other => panic!("expected ApiRetry, got {other:?}"),
     }

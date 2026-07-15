@@ -8,6 +8,8 @@ pub mod pool;
 pub mod q_router;
 /// Priority task queue with deduplication and async blocking pop.
 pub mod queue;
+/// MAXX Phase 0 — quota headroom tracking, subscribed to the event bus.
+pub mod quota_tracker;
 /// Runtime-mutable cron scheduler backing the dashboard cron UI.
 pub mod schedule_manager;
 /// Cron-style task scheduler that injects recurring tasks into the queue.
@@ -20,6 +22,7 @@ pub use health::{AgentHealth, HealthConfig, HealthRegistry, HealthSnapshot, Heal
 pub use pool::{AgentPool, PoolStats, RunningAgentInfo};
 pub use q_router::{QRouter, QValueEntry, DEFAULT_ALPHA, DEFAULT_EPSILON};
 pub use queue::TaskQueue;
+pub use quota_tracker::{QuotaObservation, QuotaTracker};
 pub use schedule_manager::{build_task as build_schedule_task, ScheduleManager, ScheduleSpec};
 pub use scheduler::{boot as boot_scheduler, next_run_times};
 pub use topology::{classify as classify_topology, TopologyClassification, CONFIDENCE_THRESHOLD};

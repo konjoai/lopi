@@ -6,7 +6,7 @@ pub use store::{
     compute_cache_key, AuditInput, AuditQuery, AuditRow, CacheStats, CachedResult, CheckpointInput,
     CheckpointRow, DagNodeRow, EvalOutcomeRow, InstallationRow, LearningRow, LessonRow,
     LoopAttemptRow, LoopRunRow, LoopTurnRow, MemoryStore, PatternRow, QualityRunRecord,
-    QualityRunRow, RunAttemptRow, RunTurnAgg, ScheduleInput, ScheduleRow, ScheduleRunRow,
-    ScorePoint, StabilityEntry, StabilityRecord, TaskLogRow, TaskRow, TaskStatusCounts,
-    VerifierVerdictRow, TASK_LOG_MAX_PER_TASK,
+    QualityRunRow, QuotaObservationRow, RunAttemptRow, RunTurnAgg, ScheduleInput, ScheduleRow,
+    ScheduleRunRow, ScorePoint, StabilityEntry, StabilityRecord, TaskLogRow, TaskRow,
+    TaskStatusCounts, VerifierVerdictRow, TASK_LOG_MAX_PER_TASK,
 };

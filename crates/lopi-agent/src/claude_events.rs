@@ -74,6 +74,10 @@ pub enum StreamEvent {
         limit_type: String,
         /// Window utilization in `[0.0, 1.0]`.
         utilization: f32,
+        /// When this window resets, unix seconds — `None` if the CLI omitted
+        /// `resetsAt`. Five-hour windows are rolling from first use, not
+        /// wall-clock fixed, so this is the only reliable way to know when.
+        resets_at: Option<i64>,
     },
     /// Terminal envelope (`result`).
     Result {
@@ -252,10 +256,12 @@ fn parse_rate_limit(v: &Value) -> StreamEvent {
         .and_then(Value::as_f64)
         .unwrap_or(0.0)
         .clamp(0.0, 1.0) as f32;
+    let resets_at = info.and_then(|i| i.get("resetsAt")).and_then(Value::as_i64);
     StreamEvent::RateLimit {
         status: info.map(|i| str_at(i, "status")).unwrap_or_default(),
         limit_type: info.map(|i| str_at(i, "rateLimitType")).unwrap_or_default(),
         utilization: util,
+        resets_at,
     }
 }
 
@@ -361,11 +367,13 @@ impl StreamEvent {
                 status,
                 limit_type,
                 utilization,
+                resets_at,
             } => vec![AgentEvent::ApiRetry {
                 task_id,
                 status: status.clone(),
                 limit_type: limit_type.clone(),
                 utilization: *utilization,
+                resets_at: *resets_at,
             }],
             StreamEvent::Status(phase) => vec![AgentEvent::Phase {
                 task_id,

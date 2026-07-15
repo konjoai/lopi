@@ -31,6 +31,9 @@ pub struct AppState {
     /// macOS-UI Phase 0 — runtime-mutable cron scheduler. Started (and seeded
     /// from the `schedules` table) inside `serve_with_repo`.
     pub schedules: lopi_orchestrator::ScheduleManager,
+    /// MAXX Phase 0 — quota headroom tracker. Started (loads persisted
+    /// observations, subscribes to the bus) inside `serve_with_repo`.
+    pub quota: lopi_orchestrator::QuotaTracker,
     /// Pre-serialized broadcast: each `AgentEvent` serialized once, shared across all WS/SSE subscribers.
     serialized_tx: Arc<broadcast::Sender<Arc<str>>>,
     /// Bearer token required on /api/* routes. None = auth disabled (dev mode).
@@ -135,6 +138,9 @@ impl AppState {
         // Runtime cron scheduler — constructed un-started here; `serve_with_repo`
         // calls `start()` to create the JobScheduler and register stored rows.
         let schedules = lopi_orchestrator::ScheduleManager::new((*pool).clone(), store.clone());
+        // Quota tracker — constructed un-started here; `serve_with_repo` calls
+        // `start()` to load persisted observations and subscribe to the bus.
+        let quota = lopi_orchestrator::QuotaTracker::new(store.clone());
 
         Self {
             store,
@@ -144,6 +150,7 @@ impl AppState {
             repo_path,
             extra_repos: Vec::new(),
             schedules,
+            quota,
             serialized_tx,
             auth_token: auth_token.map(|t| Arc::from(t.as_str())),
             rate_limiter: Arc::new(DashMap::new()),
@@ -241,6 +248,7 @@ pub fn build_app(state: AppState) -> Router {
             "/api/schedules/:id/autonomy",
             axum::routing::post(schedule_handlers::set_autonomy),
         )
+        .route("/api/quota", get(quota_handlers::get_quota))
         .route("/api/loop-engineering", get(loop_handlers::get_loop))
         .route(
             "/api/loop-engineering/health",
@@ -323,6 +331,11 @@ async fn warm_up_state(state: &mut AppState) {
         // Without a live scheduler, cron rows persist but never fire.
         tracing::warn!(error = %e, "cron scheduler start failed; schedules will not fire");
     }
+    if let Err(e) = state.quota.start(&state.bus).await {
+        // Without a loaded tracker, /api/quota and maxx_loop just see `None`
+        // until the next ApiRetry event — degraded, not broken.
+        tracing::warn!(error = %e, "quota tracker start failed; quota observations will not persist across restart");
+    }
 }
 
 /// Variant that also wires the repo path for `/api/spec` serving, plus any
@@ -369,6 +382,7 @@ mod loop_handlers;
 mod loop_health_handlers;
 mod loop_runs_handlers;
 mod metrics_handlers;
+mod quota_handlers;
 mod repo_identity;
 mod repos_handlers;
 mod schedule_handlers;
