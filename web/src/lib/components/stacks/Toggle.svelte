@@ -4,7 +4,7 @@
 <script lang="ts">
   export let on: boolean;
   export let onToggle: () => void;
-  export let accent: 'ice' | 'sun' = 'sun';
+  export let accent: 'ice' | 'sun' | 'flame' = 'sun';
 </script>
 
 <button type="button" class="gtog {accent}" class:on on:click={onToggle} aria-pressed={on}>
@@ -47,5 +47,12 @@
   .gtog.ice.on .knob {
     left: 15px;
     background: var(--konjo-ice);
+  }
+  .gtog.flame.on {
+    background: rgba(255, 149, 0, 0.28);
+  }
+  .gtog.flame.on .knob {
+    left: 15px;
+    background: var(--konjo-flame);
   }
 </style>

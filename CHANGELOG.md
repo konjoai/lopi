@@ -1,5 +1,83 @@
 # Changelog
 
+## [0.10.0] — MAXX: opportunistic backlog dispatch, gated on quota headroom ⚡
+
+Three-phase sprint: quota signal plumbing → MAXX backend → MAXX frontend.
+Kill-test caveat up front — the sprint brief's pre-flight kill tests
+(firing cadence of `rate_limit_event`, `resetsAt` reliability, canary-probe
+cost) call for instrumenting a live `lopi run` session with real Claude
+Code auth across low/mid/high utilization, which this sandboxed session
+cannot do. Everything below is built to degrade safely regardless of the
+answer (see Phase 1's design notes), but the gating thresholds themselves
+are still unverified against real usage. See `LEDGER.md` and
+`docs/ops/NEXT_SESSION_PROMPT.md`.
+
+**Phase 0 — quota signal plumbing.**
+- **[Feat] `resets_at` on `StreamEvent::RateLimit` / `AgentEvent::ApiRetry`.**
+  Parsed from `rate_limit_info.resetsAt` in `parse_rate_limit`
+  (`crates/lopi-agent/src/claude_events.rs`) — the field the CLI's rate-limit
+  payload carried but the parser previously dropped. `#[serde(default)]` so
+  the existing three-language golden fixture (`agent_event_golden.json`)
+  didn't need updating.
+- **[Feat] `QuotaTracker`** (`crates/lopi-orchestrator/src/quota_tracker.rs`)
+  — subscribes to the same event bus `AgentPool` broadcasts on, upserts one
+  persisted row per rate-limit window (`five_hour` / `seven_day`) on every
+  `ApiRetry`. `snapshot(limit_type)` returns `None` until that window has
+  ever been observed. New `quota_observations` table (`lopi-memory`).
+- **[Feat] `GET /api/quota`** — both window snapshots, `null` for an
+  unobserved window (not omitted — the UI needs to tell "never observed"
+  apart from "0% used").
+
+**Phase 1 — MAXX backend.**
+- **[Feat] `MaxxEntry`** (`crates/lopi-core/src/config.rs`) + `LimitWindow`
+  enum — mirrors `ScheduleEntry`'s shared fields minus `cron`, plus
+  `quiet_hours`, `headroom_gate`, `windows`. New `maxx_entries` +
+  `maxx_runs` tables and CRUD (`lopi-memory`), mirroring `schedules.rs`.
+- **[Feat] `GET/POST/PUT/DELETE /api/maxx`, `/enable`, `/disable`** — mirrors
+  `/api/schedules`'s shape and conventions exactly.
+- **[Feat] `MaxxLoop`** (`crates/lopi-orchestrator/src/maxx_loop.rs`) — a
+  background tick (default 5 min) that checks every enabled entry's
+  favorability (quiet hours OR comfortable quota headroom on its configured
+  windows) and fires it into the shared `AgentPool`. The favorability
+  functions are pure and take `now`/`local_hour` as parameters rather than
+  reading the wall clock, so the tick's timing is tested against a
+  simulated `resets_at` timeline. `headroom_favorable` requires **every**
+  configured window to be favorable (`AND`, not `OR`) — a real dispatch
+  consumes quota against every window at once, so one exhausted window
+  makes dispatch unsafe regardless of how comfortable the others look.
+- **[Feat] Added a 1-hour per-entry refire cooldown** — not in the sprint's
+  locked spec, but without it an entry with an 8-hour quiet-hours window
+  would resubmit its identical goal on every 5-minute tick all night
+  (~96 duplicate runs), burning exactly the quota headroom this feature
+  exists to protect.
+- **[Chore] Extracted `task_build::build_task_from_fields`** — the
+  `ScheduleSpec`→`Task` and `MaxxSpec`→`Task` mappings were byte-identical;
+  both `schedule_manager::build_task` and `maxx_loop::build_task` now call
+  the one shared function (caught by the repo's DRY pre-commit gate).
+
+**Phase 2 — frontend**, built to the locked popover design mockup.
+- **[Feat] `StackCard.svelte`** — flame bolt cardbar button alongside the
+  existing schedule button (independent toggle — a card can have both a
+  cron schedule and MAXX on at once) and a `.sumln.max` summary row
+  ("on · quiet hours + headroom").
+- **[Feat] New `MaxxPopover.svelte`.** The enable toggle is wired to real
+  `/api/maxx` CRUD directly (create-on-first-enable, then enable/disable) —
+  unlike `SchedulePopover`, which stays client-local until stack submit.
+  Quota bars wired to `GET /api/quota`. The two "run" conditions (quiet
+  hours, headroom gate) are fixed policy text in this sprint, not
+  per-field editable controls — only the top-level toggle is interactive;
+  no UI exists yet to change the defaults (11PM–7AM, both windows).
+- **[Feat] `Popover.svelte`** — new `'max'` kind (flame chrome, reusing the
+  shared `.ph`/`.pbody`/`.popfoot`/`.apply` chrome exactly, per spec). The
+  header icon is sized explicitly (`13px`) to avoid the unsized-SVG
+  regression the spec called out from an earlier draft.
+- **[Feat] `Toggle.svelte`** — new `'flame'` accent.
+
+**Out of scope, per the sprint brief:** quota-gated cron scheduling on the
+existing `SchedulePopover`; Budget Modes; wiring `Priority` into actual
+queue dequeue order; a canary-probe UI; multi-account quota tracking;
+backlog reprioritization/bin-packing in the `maxx_loop` tick.
+
 ## [0.9.0] — Stack-Templates-1 (macOS): templates at both scopes, ported 🖥️📑
 
 The macOS sibling of `[0.8.0]`. Ports the web split **1:1** — same field

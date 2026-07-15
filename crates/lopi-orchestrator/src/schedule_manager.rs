@@ -15,7 +15,7 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use dashmap::DashMap;
-use lopi_core::{AutonomyLevel, Priority, RepoProfile, Task, TaskSource};
+use lopi_core::{AutonomyLevel, Task};
 use lopi_memory::{MemoryStore, ScheduleRow};
 use tokio::sync::Mutex;
 use tokio_cron_scheduler::{Job, JobScheduler};
@@ -66,26 +66,14 @@ impl From<ScheduleRow> for ScheduleSpec {
 /// `run_now` so both paths produce identical tasks.
 #[must_use]
 pub fn build_task(spec: &ScheduleSpec) -> Task {
-    let mut task = Task::new(spec.goal.clone());
-    task.source = TaskSource::Api;
-    task.priority = match spec.priority.as_str() {
-        "low" => Priority::Low,
-        "high" => Priority::High,
-        "critical" => Priority::Critical,
-        _ => Priority::Normal,
-    };
-    if !spec.allowed_dirs.is_empty() {
-        task.allowed_dirs.clone_from(&spec.allowed_dirs);
-    }
-    if !spec.forbidden_dirs.is_empty() {
-        task.forbidden_dirs.clone_from(&spec.forbidden_dirs);
-    }
-    if let Some(repo) = &spec.repo {
-        task.repo_path = Some(repo.clone());
-        RepoProfile::load_from_repo(repo).apply(&mut task);
-    }
-    task.autonomy_level = spec.autonomy_level;
-    task
+    crate::task_build::build_task_from_fields(
+        &spec.goal,
+        spec.repo.as_deref(),
+        &spec.priority,
+        &spec.allowed_dirs,
+        &spec.forbidden_dirs,
+        spec.autonomy_level,
+    )
 }
 
 /// Live, mutable cron scheduler. Cheap to `clone()` — all state is behind `Arc`.
@@ -240,7 +228,7 @@ async fn fire(pool: &AgentPool, store: &MemoryStore, spec: &ScheduleSpec) -> Opt
 mod tests {
     use super::*;
     use crate::queue::TaskQueue;
-    use lopi_core::{AgentEvent, EventBus};
+    use lopi_core::{AgentEvent, EventBus, Priority};
 
     fn spec(cron: &str) -> ScheduleSpec {
         ScheduleSpec {

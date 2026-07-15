@@ -703,3 +703,5 @@ include!("tests_extended.rs");
 include!("schedules_tests.rs");
 include!("task_stream_tests.rs");
 include!("loop_tests.rs");
+include!("quota_tests.rs");
+include!("maxx_tests.rs");

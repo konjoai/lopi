@@ -98,6 +98,29 @@ export interface CronConfig {
   raw: string;
 }
 
+/** An Anthropic account rate-limit window MAXX's headroom gate can check —
+ *  mirrors `lopi_core::LimitWindow`'s wire tags exactly. */
+export type LimitWindow = 'five_hour' | 'seven_day';
+
+/** A card's MAXX (opportunistic backlog dispatch) settings. `quietHours` and
+ *  `windows`/`headroomGate` are the fixed policy this popover offers (no
+ *  per-field editing in this sprint — see `MaxxPopover.svelte`'s doc comment)
+ *  sent to `/api/maxx` when `enabled` flips on. Mirrors `CronConfig`'s
+ *  per-card, always-present-object convention. */
+export interface MaxxConfig {
+  enabled: boolean;
+  /** `(start, end)` local hours, e.g. `[23, 7]` for 11PM-7AM. */
+  quietHours: [number, number];
+  headroomGate: boolean;
+  windows: LimitWindow[];
+}
+
+/** Freshly-initialized MAXX config — every card gets its own object. Matches
+ *  the sample values in the locked popover design (11PM-7AM, both windows). */
+export function defaultMaxx(): MaxxConfig {
+  return { enabled: false, quietHours: [23, 7], headroomGate: true, windows: ['five_hour', 'seven_day'] };
+}
+
 /** Freshly-initialized cron config — every card gets its own object. */
 export function defaultCron(): CronConfig {
   return { freq: 'daily', hour12: 2, min: 0, ampm: 'AM', dow: 'Mon', raw: '0 2 * * *' };
@@ -159,6 +182,14 @@ export interface StackCard {
   iteration?: { current: number; total: number };
   scheduled: boolean;
   cron: CronConfig;
+  /** MAXX — opportunistic backlog dispatch. Independent of `scheduled`/
+   *  `cron`: a card can have both a cron schedule and MAXX on at once. */
+  maxx: MaxxConfig;
+  /** The `/api/maxx` row id backing this card's MAXX toggle, once created.
+   *  `undefined` until `enabled` is flipped on for the first time — never set
+   *  by anything other than `MaxxPopover`'s CRUD wiring, and cleared on
+   *  duplicate so a clone never shares its original's backend entry. */
+  maxxEntryId?: string;
   guardrails: Guardrails;
   config: CardConfig;
   /** Set once the card is actually submitted as a task. Never set this
@@ -370,6 +401,7 @@ export function buildCard(raw: string, explicitPreset?: PresetKey): StackCard {
     maxIterations: parsed.loopN ?? DEFAULT_MAX_ITERATIONS,
     scheduled: false,
     cron: defaultCron(),
+    maxx: defaultMaxx(),
     guardrails: defaultGuardrails(),
     config: parsed.repo ? { repo: parsed.repo } : {}
   };
@@ -455,6 +487,7 @@ function cardFromLoop(loop: { preset?: PresetKey; alias?: string; goal: string }
     maxIterations: DEFAULT_MAX_ITERATIONS,
     scheduled: false,
     cron: defaultCron(),
+    maxx: defaultMaxx(),
     guardrails: defaultGuardrails(),
     config: {},
     tpl: tplName,
@@ -508,6 +541,8 @@ export function finalizeDraft(draft: StackCard): StackCard {
     status: 'idle',
     scheduled: draft.scheduled,
     cron: draft.cron,
+    maxx: draft.maxx,
+    maxxEntryId: draft.maxxEntryId,
     guardrails: draft.guardrails,
     config: { ...built.config, ...draft.config }
   };
@@ -536,7 +571,11 @@ export function duplicateCard(cards: StackCard[], id: string): StackCard[] {
     id: makeId(),
     status: 'idle',
     iteration: undefined,
-    taskId: undefined
+    taskId: undefined,
+    // A clone never shares its original's backend /api/maxx row — reset to
+    // off so the popover doesn't show "enabled" with nothing behind it.
+    maxx: { ...cards[idx].maxx, enabled: false },
+    maxxEntryId: undefined
   };
   const next = [...cards];
   next.splice(idx + 1, 0, clone);
@@ -752,6 +791,18 @@ export function cronHuman(c: CronConfig): string {
 /** The schedule line shown when `card.scheduled`. */
 export function scheduleSummary(card: StackCard): string {
   return cronHuman(card.cron);
+}
+
+/** The bolded descriptor half of the MAXX summary line — e.g. "quiet hours +
+ *  headroom", matching the locked design's "on · **quiet hours + headroom**"
+ *  sample text (the "on ·" prefix is rendered unbolded by the caller). */
+export function maxxSummary(card: StackCard): string {
+  // `quietHours` is a fixed policy field, always present once MAXX exists on
+  // a card — there's no UI to unset it independently of `enabled` in this
+  // sprint (see `MaxxPopover.svelte`'s doc comment), so it's always listed.
+  const parts: string[] = ['quiet hours'];
+  if (card.maxx.headroomGate) parts.push('headroom');
+  return parts.join(' + ');
 }
 
 /** The guardrails line shown when `gate || until`. */

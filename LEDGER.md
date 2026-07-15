@@ -5,6 +5,75 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## MAXX — opportunistic backlog dispatch, gated on quota headroom
+
+**One-way doors this sprint opened:**
+
+- **`AgentEvent::ApiRetry` gained `resets_at: Option<i64>`.** `#[serde(default)]`
+  so the wire format stays backward-compatible and the three-language golden
+  fixture didn't need a matching update — but any future consumer of `ApiRetry`
+  (TS `parser.ts`, the Swift decoder) that starts asserting on exhaustive field
+  sets will need to learn about this field. Chosen over a separate `resets_at`
+  event because it's the same underlying `rate_limit_event` payload; splitting
+  it into two events would have meant correlating them by `task_id` + a race
+  window for no benefit.
+- **New persisted `quota_observations` table, one row per `limit_type`.**
+  Deliberately keyed by `limit_type` (not a single "last event wins" row) —
+  `five_hour` and `seven_day` arrive through the identical `ApiRetry` variant,
+  so a scalar-overwrite design would silently lose one window's state every
+  time the other updates. `QuotaTracker::snapshot` returning `None` for an
+  unobserved window (rather than defaulting to `0.0`/favorable) is load-bearing
+  for Phase 1: it's what keeps `maxx_loop` from ever treating "we don't know"
+  as "it's fine to dispatch."
+- **New `MaxxEntry` type + `/api/maxx` routes**, deliberately shaped to mirror
+  `ScheduleEntry`/`/api/schedules` rather than inventing a new convention.
+  Anyone touching one CRUD surface without touching the other should notice
+  the asymmetry immediately — that was the point of mirroring it exactly.
+- **`headroom_favorable` requires every configured window to be favorable
+  (`AND`), not any one of them (`OR`).** A real dispatch spends quota against
+  every window simultaneously — a `five_hour` window with no headroom left
+  makes a dispatch unsafe even if `seven_day` looks comfortable. Getting this
+  backwards (`OR`) would look correct in testing (the happy path where both
+  windows agree) and only misbehave once a real account has one window under
+  pressure and the other not — exactly the situation MAXX exists to be careful
+  around. Locked by `headroom_favorable_requires_every_configured_window`.
+- **A 1-hour per-entry refire cooldown, not in the sprint's locked spec.**
+  The sprint's Phase 1 design is a straight favorable/not-favorable check per
+  tick with no mention of a cooldown; without one, an entry with an 8-hour
+  quiet-hours window would resubmit its identical goal on every 5-minute tick
+  all night — ~96 duplicate runs, burning exactly the quota headroom this
+  feature exists to protect. Added deliberately as a safety property of the
+  tick itself rather than left for a future sprint to discover the hard way.
+  If a real use case needs faster re-dispatch of the *same* entry, that's a
+  config knob to add later, not a reason to remove the default.
+- **Kill tests 1–3 (firing cadence of `rate_limit_event`, `resetsAt`
+  reliability, canary-probe cost) were not run.** They require instrumenting
+  a live `lopi run` session with real Claude Code auth across low/mid/high
+  utilization, which this sandboxed session cannot do. The gating numbers in
+  `maxx_loop.rs` (`HEADROOM_UTILIZATION_MAX = 0.5`, `HEADROOM_RESET_WITHIN_SECS
+  = 2h`) are therefore reasoned defaults, not empirically validated ones. The
+  design was kept conservative specifically so this gap is safe to carry
+  forward: a missing/stale observation is always "don't dispatch," never
+  "assume favorable," and no canary probe was built (kill test 3's premise —
+  that the event might be threshold-gated — was never confirmed, so spending
+  real quota on an unvalidated probe mechanism would have been the wrong kind
+  of decisive). **This needs to be closed out on real hardware before MAXX
+  ships to anyone who isn't explicitly opting into an unverified feature** —
+  see `docs/ops/NEXT_SESSION_PROMPT.md`.
+- **MAXX's popover only exposes one interactive control (the enable
+  toggle).** The locked design's "run" list (quiet hours / headroom gate) is
+  descriptive text, not per-field editors — `MaxxConfig.quietHours` and
+  `.headroomGate` exist on the client type and are sent to `/api/maxx` on
+  create, but nothing in this sprint lets a user change them from the
+  defaults (`11PM–7AM`, both windows). This is a real gap, not an oversight:
+  building the editing UI wasn't in the locked Phase 2 spec, which showed
+  static text only.
+- **Version:** `0.7.0` → `0.10.0`. Catches up a two-version drift where
+  `CHANGELOG.md` had already reached `[0.9.0]` (Stack-Templates-1, both
+  platforms) without a matching `Cargo.toml` bump in either of the last two
+  sprints — this sprint's version now matches `CHANGELOG.md`'s actual
+  sequence again.
+
 ## Creation-Flow-1 (macOS) — the draft card, ported to SwiftUI
 
 **The model is the web model, verbatim.** `CardStatus.draft`, `StackCard.tpl`/
