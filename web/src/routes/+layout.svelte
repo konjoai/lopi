@@ -9,6 +9,7 @@
   import { activeNavItem, isImmersiveRoute, sidebarOpen } from '$lib/stores/nav';
   import HelpOverlay from '$lib/components/HelpOverlay.svelte';
   import AppSidebar from '$lib/components/AppSidebar.svelte';
+  import LopiWordmark from '$lib/components/LopiWordmark.svelte';
   import { SHELL_ICONS } from '$lib/components/icons';
 
   onMount(() => {
@@ -55,8 +56,8 @@
         {@html SHELL_ICONS.menu}
       </svg>
     </button>
-    <a href="/stacks" class="font-display text-xl tracking-tight hover:text-konjo-accent transition-colors">
-      lopi
+    <a href="/stacks" class="font-display tracking-tight hover:text-konjo-accent transition-colors">
+      <LopiWordmark size={20} />
     </a>
     <span class="font-mono text-[10px] uppercase tracking-widest opacity-50 hidden sm:inline">
       · {activeLabel.toLowerCase()}

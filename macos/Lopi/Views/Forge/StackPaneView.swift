@@ -36,7 +36,7 @@ struct StackPaneView: View {
 
     private var header: some View {
         HStack(spacing: 11) {
-            Image(systemName: "square.grid.2x2.fill").font(.system(size: 15)).foregroundStyle(Konjo.flame)
+            LopiMark(size: 15, color: Konjo.flame)
             Text(pane.title.uppercased()).font(Konjo.mono(12)).tracking(1.6).foregroundStyle(Konjo.fg)
             Spacer(minLength: 0)
             Circle().fill(Konjo.fgMute).frame(width: 7, height: 7)
