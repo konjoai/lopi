@@ -56,7 +56,10 @@ mod tests {
     #[test]
     fn fallback_list_is_non_empty_and_every_entry_has_effort_tiers() {
         let models = fallback_models();
-        assert!(!models.is_empty(), "an empty fallback would leave the dropdown blank offline");
+        assert!(
+            !models.is_empty(),
+            "an empty fallback would leave the dropdown blank offline"
+        );
         for m in &models {
             assert!(!m.id.is_empty());
             assert!(!m.display_name.is_empty());
@@ -70,7 +73,11 @@ mod tests {
         let mut ids: Vec<&str> = models.iter().map(|m| m.id.as_str()).collect();
         ids.sort_unstable();
         ids.dedup();
-        assert_eq!(ids.len(), models.len(), "duplicate model id in the fallback list");
+        assert_eq!(
+            ids.len(),
+            models.len(),
+            "duplicate model id in the fallback list"
+        );
     }
 
     #[test]

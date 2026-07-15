@@ -213,19 +213,25 @@ mod tests {
         }"#;
         let parsed: AnthropicModelsResponse = serde_json::from_str(body)?;
         assert_eq!(parsed.data.len(), 3);
-        let opus_caps = parsed.data[0]
-            .capabilities
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("sample body's first model must decode with capabilities"))?;
-        let mut opus_supported: Vec<&str> =
-            opus_caps.effort.iter().filter(|(_, v)| effort_supported(v)).map(|(k, _)| k.as_str()).collect();
+        let opus_caps = parsed.data[0].capabilities.as_ref().ok_or_else(|| {
+            anyhow::anyhow!("sample body's first model must decode with capabilities")
+        })?;
+        let mut opus_supported: Vec<&str> = opus_caps
+            .effort
+            .iter()
+            .filter(|(_, v)| effort_supported(v))
+            .map(|(k, _)| k.as_str())
+            .collect();
         opus_supported.sort_unstable();
         assert_eq!(
             opus_supported,
             ["high", "low", "medium"],
             "a bool-true tier and an object-shaped tier both count as supported; only the explicit false is excluded"
         );
-        assert!(parsed.data[2].capabilities.is_none(), "a model with no capabilities field at all must not error");
+        assert!(
+            parsed.data[2].capabilities.is_none(),
+            "a model with no capabilities field at all must not error"
+        );
         Ok(())
     }
 
@@ -257,5 +263,4 @@ mod tests {
         });
         assert!(cache.fresh().await.is_none());
     }
-
 }

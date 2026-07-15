@@ -705,14 +705,23 @@ async fn models_returns_a_valid_catalog() {
         .unwrap();
     let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     let models = json["models"].as_array().expect("models is an array");
-    assert!(!models.is_empty(), "the dropdown must never see an empty catalog");
+    assert!(
+        !models.is_empty(),
+        "the dropdown must never see an empty catalog"
+    );
     for m in models {
-        assert!(m["id"].as_str().is_some_and(|s| !s.is_empty()), "every model has a non-empty id");
+        assert!(
+            m["id"].as_str().is_some_and(|s| !s.is_empty()),
+            "every model has a non-empty id"
+        );
         assert!(
             m["display_name"].as_str().is_some_and(|s| !s.is_empty()),
             "every model has a non-empty display_name"
         );
-        assert!(m["effort"].as_array().is_some_and(|a| !a.is_empty()), "every model has at least one effort tier");
+        assert!(
+            m["effort"].as_array().is_some_and(|a| !a.is_empty()),
+            "every model has at least one effort tier"
+        );
     }
 }
 
