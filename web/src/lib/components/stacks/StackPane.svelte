@@ -39,7 +39,7 @@
 
 <div class="pane">
   <div class="panehead">
-    <span class="logo">{@html ICONS.loop}</span>
+    <span class="logo">{@html ICONS.mark}</span>
     <span class="ptitle">{pane.title}</span>
     <span class="hsp"></span>
     <span class="hdot"></span>

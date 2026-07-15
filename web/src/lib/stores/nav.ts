@@ -37,7 +37,7 @@ export interface NavItem {
  *    within it).
  *  - Configuration (`/config`): app settings. */
 export const NAV_ITEMS: NavItem[] = [
-  { href: '/stacks', label: 'Loop Stack', icon: 'layers' },
+  { href: '/stacks', label: 'Loop Stack', icon: 'mark' },
   { href: '/loop', label: 'Loop', icon: 'loop' },
   { href: '/budget', label: 'Budget', icon: 'gauge' },
   { href: '/schedules', label: 'Scheduling', icon: 'cron' },

@@ -101,10 +101,16 @@ struct RootView: View {
             selection = section
         } label: {
             HStack(spacing: 10) {
-                Image(systemName: section.icon)
-                    .font(.system(size: 13))
-                    .foregroundStyle(selected ? Konjo.ice : Konjo.fgDim)
-                    .frame(width: 18)
+                Group {
+                    if section == .forge {
+                        LopiLogoMark(size: 16)
+                    } else {
+                        Image(systemName: section.icon)
+                            .font(.system(size: 13))
+                            .foregroundStyle(selected ? Konjo.ice : Konjo.fgDim)
+                    }
+                }
+                .frame(width: 18)
                 Text(section.rawValue)
                     .font(Konjo.sans(13, weight: selected ? .semibold : .regular))
                     .foregroundStyle(selected ? Konjo.fg : Konjo.fgDim)
