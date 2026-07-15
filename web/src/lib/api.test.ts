@@ -12,7 +12,10 @@ import {
   getConfig,
   getLoopEngineering,
   setLoopStrategy,
-  setLoopEscalation
+  setLoopEscalation,
+  createMaxx,
+  enableMaxx,
+  getQuota
 } from './api';
 import { eqIs as eq, summary } from '$lib/test-harness';
 
@@ -89,6 +92,39 @@ async function main() {
   mockFetch(200, { deleted: 'd1' });
   await deleteSchedule('d1');
   eq(captured[0].init?.method, 'DELETE', 'deleteSchedule DELETEs');
+
+  // MAXX: create sends the favorability fields through untouched.
+  mockFetch(200, { id: 'm1', name: 'n', headroom_gate: true, windows: ['five_hour'] });
+  await createMaxx({
+    name: 'overnight',
+    goal: 'work the backlog',
+    quiet_hours: [23, 7],
+    headroom_gate: true,
+    windows: ['five_hour', 'seven_day']
+  });
+  eq(captured[0].path, '/api/maxx', 'createMaxx hits /api/maxx');
+  eq(captured[0].init?.method, 'POST', 'createMaxx POSTs');
+  eq(
+    JSON.stringify(JSON.parse(String(captured[0].init?.body)).quiet_hours),
+    JSON.stringify([23, 7]),
+    'createMaxx serializes quiet_hours'
+  );
+
+  // MAXX: path segments are URI-encoded, same as schedules.
+  mockFetch(200, { id: 'x', enabled: true });
+  await enableMaxx('has space');
+  eq(captured[0].path, '/api/maxx/has%20space/enable', 'enableMaxx encodes id');
+
+  // Quota: GET with no body, response passes through untouched (including
+  // a null window for "never observed").
+  mockFetch(200, {
+    five_hour: { status: 'allowed', utilization: 0.1, resets_at: 123, observed_at: 't' },
+    seven_day: null
+  });
+  const quota = await getQuota();
+  eq(captured[0].path, '/api/quota', 'getQuota hits /api/quota');
+  eq(quota.five_hour?.utilization, 0.1, 'getQuota returns five_hour snapshot');
+  eq(quota.seven_day, null, 'getQuota preserves null for an unobserved window');
 
   // Loop Engineering: snapshot read carries the self-prompt catalog.
   mockFetch(200, {

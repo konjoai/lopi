@@ -16,6 +16,7 @@
     guardSummary,
     evalsSummary,
     scheduleSummary,
+    maxxSummary,
     cardIterationsLabel,
     stepCardIterations,
     draftIsHot,
@@ -34,6 +35,7 @@
   import { dragging } from './dnd';
   import Popover, { togglePopover } from './Popover.svelte';
   import SchedulePopover from './SchedulePopover.svelte';
+  import MaxxPopover from './MaxxPopover.svelte';
   import GuardrailsPopover from './GuardrailsPopover.svelte';
   import EvalsPopover from './EvalsPopover.svelte';
   import ConfigDrawer from './ConfigDrawer.svelte';
@@ -55,11 +57,13 @@
   $: accent = card.preset ? PRESET_ACCENT[card.preset] : 'var(--konjo-dim2, rgba(245,245,245,.28))';
 
   let schedBtn: HTMLButtonElement | undefined;
+  let maxBtn: HTMLButtonElement | undefined;
   let guardBtn: HTMLButtonElement | undefined;
   let evalBtn: HTMLButtonElement | undefined;
   let cfgOpen = false;
 
   $: schedId = `${card.id}:sched`;
+  $: maxId = `${card.id}:max`;
   $: guardId = `${card.id}:guard`;
   $: evalId = `${card.id}:eval`;
 
@@ -102,7 +106,13 @@
   $: evalsOn = evalActive(card);
   $: configOn = configActive(card, paneDefaults);
   $: scheduleActive = card.scheduled && !scheduleGoverned;
-  $: showSep = card.scheduled || guardsOn || evalsOn;
+  $: showSep = card.scheduled || card.maxx.enabled || guardsOn || evalsOn;
+
+  /** Persist the popover's toggle outcome onto the card — independent of
+   *  `scheduled`/`cron`; a card can have both on at once. */
+  function onMaxxToggled(next: { enabled: boolean; entryId: string | undefined }): void {
+    writeCard({ maxx: { ...card.maxx, enabled: next.enabled }, maxxEntryId: next.entryId });
+  }
 
   // The live agent keyed by `card.taskId` flows through the exact same
   // `computeOrbState` the Forge pane uses; its glow colour still drives the
@@ -237,6 +247,12 @@
         </span>
       </div>
     {/if}
+    {#if card.maxx.enabled}
+      <div class="sumln max">
+        <span class="rl">{@html ICONS.bolt}MAXX</span>
+        <span class="txt">on{#if maxxSummary(card)} · <b>{maxxSummary(card)}</b>{/if}</span>
+      </div>
+    {/if}
     {#if guardsOn}
       <div class="sumln guard">
         <span class="rl">{@html ICONS.shield}guards</span>
@@ -267,6 +283,15 @@
       title={scheduleGoverned ? 'schedule (governed by the stack)' : 'schedule'}
     >
       {@html ICONS.cron}
+    </button>
+    <button
+      class="ib max"
+      class:act={card.maxx.enabled}
+      bind:this={maxBtn}
+      on:click={() => togglePopover(maxId)}
+      title="MAXX"
+    >
+      {@html ICONS.bolt}
     </button>
     <button
       class="ib guard"
@@ -320,6 +345,15 @@
     cron={card.cron}
     onToggle={() => writeCard({ scheduled: !card.scheduled })}
     onChange={(next) => writeCard({ cron: next })}
+  />
+</Popover>
+<Popover id={maxId} anchor={maxBtn ?? null} kind="max">
+  <MaxxPopover
+    maxx={card.maxx}
+    entryId={card.maxxEntryId}
+    goal={card.goal}
+    repo={card.config.repo}
+    onToggled={onMaxxToggled}
   />
 </Popover>
 <Popover id={guardId} anchor={guardBtn ?? null} kind="guard">
@@ -562,6 +596,9 @@
   .sumln.sched .rl {
     color: var(--konjo-ice);
   }
+  .sumln.max .rl {
+    color: var(--konjo-flame);
+  }
   .sumln.guard .rl {
     color: var(--konjo-sun);
   }
@@ -581,6 +618,9 @@
   }
   .sumln.sched.governed .rl {
     color: rgba(245, 245, 245, 0.28);
+  }
+  .sumln.max .txt b {
+    color: var(--konjo-flame);
   }
   .cardbar {
     display: flex;
@@ -621,6 +661,11 @@
     color: var(--konjo-ice);
     border-color: rgba(0, 212, 255, 0.5);
     background: rgba(0, 212, 255, 0.08);
+  }
+  .ib.max.act {
+    color: var(--konjo-flame);
+    border-color: rgba(255, 149, 0, 0.5);
+    background: rgba(255, 149, 0, 0.08);
   }
   .ib.danger:hover {
     color: var(--konjo-rose, #ff0066);

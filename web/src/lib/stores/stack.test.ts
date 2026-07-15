@@ -39,6 +39,8 @@ import {
   suggestPreset,
   buildCard,
   defaultCron,
+  defaultMaxx,
+  maxxSummary,
   defaultGuardrails,
   defaultStackConfig,
   duplicateStack,
@@ -115,6 +117,38 @@ eq(removeCard([card('a')], 'a'), [], 'remove down to empty stack');
   eq(dup[2].id, 'b', 'duplicate does not disturb later cards');
 }
 eq(duplicateCard([card('a')], 'missing').length, 1, 'duplicate is a no-op for an unknown id');
+
+// ── MAXX — every card gets its own object, defaults match the locked design ──
+{
+  const a = buildCard('"x"');
+  const b = buildCard('"y"');
+  ok(a.maxx !== b.maxx, 'every card gets its own maxx object, not a shared reference');
+  eqIs(a.maxx.enabled, false, 'maxx starts disabled');
+  eq(a.maxx.quietHours, [23, 7], 'default quiet hours match the locked popover design (11PM-7AM)');
+  eqIs(a.maxx.headroomGate, true, 'headroom gate defaults on');
+  eq(a.maxx.windows, ['five_hour', 'seven_day'], 'both windows checked by default');
+}
+
+// ── MAXX — duplicate never shares the original's backend entry ───────────────
+{
+  const on: StackCard = { ...card('a'), maxx: { ...defaultMaxx(), enabled: true }, maxxEntryId: 'entry-1' };
+  const dup = duplicateCard([on], 'a');
+  eqIs(dup[1].maxxEntryId, undefined, 'duplicate clears the backend entry id');
+  eqIs(dup[1].maxx.enabled, false, 'duplicate resets maxx to disabled — no entry to back it');
+  eqIs(dup[0].maxxEntryId, 'entry-1', 'the original keeps its own entry id');
+}
+
+// ── MAXX — summary text ───────────────────────────────────────────────────────
+eq(
+  maxxSummary({ ...card('a'), maxx: { enabled: true, quietHours: [23, 7], headroomGate: true, windows: [] } }),
+  'quiet hours + headroom',
+  'summary lists every active condition'
+);
+eq(
+  maxxSummary({ ...card('a'), maxx: { enabled: true, quietHours: [23, 7], headroomGate: false, windows: [] } }),
+  'quiet hours',
+  'summary drops headroom when its gate is off'
+);
 
 // ── reorder — moves by index ──────────────────────────────────────────────────
 eq(

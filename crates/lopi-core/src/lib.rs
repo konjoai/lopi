@@ -49,7 +49,7 @@ pub mod topology;
 pub use acceptance::{Acceptance, AcceptanceCheck, CheckSpec, EvalTier, MetricGate, Op};
 pub use agent::{AgentRun, AgentState, Attempt, Score, ScoreWeights, TurnMetrics};
 pub use budget::BudgetScope;
-pub use config::{LopiConfig, RepoProfile, ScheduleEntry};
+pub use config::{LimitWindow, LopiConfig, MaxxEntry, RepoProfile, ScheduleEntry};
 pub use earned_trust::EarnedTrust;
 pub use eval_outcome::{CheckResult, EvalOutcome, Verdict};
 pub use event::{AgentEvent, EventBus, LogLevel, PlanDecision};

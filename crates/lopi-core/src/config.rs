@@ -192,6 +192,99 @@ impl ScheduleEntry {
     }
 }
 
+/// An Anthropic account rate-limit window MAXX's headroom gate can check.
+/// Mirrors the `limit_type` values the CLI reports on `rate_limit_event`
+/// (`AgentEvent::ApiRetry::limit_type`) — kept as a closed enum here (rather
+/// than the raw `String` `ApiRetry` uses) so `/api/maxx` can reject a typo'd
+/// window name at the API boundary instead of silently never matching.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum LimitWindow {
+    /// The rolling five-hour window (rolls from first use, not wall-clock fixed).
+    FiveHour,
+    /// The rolling seven-day window.
+    SevenDay,
+}
+
+impl LimitWindow {
+    /// The wire/storage tag, matching `ApiRetry::limit_type` exactly.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::FiveHour => "five_hour",
+            Self::SevenDay => "seven_day",
+        }
+    }
+
+    /// Parse a wire tag. `None` for anything other than `five_hour`/`seven_day`.
+    #[must_use]
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "five_hour" => Some(Self::FiveHour),
+            "seven_day" => Some(Self::SevenDay),
+            _ => None,
+        }
+    }
+}
+
+/// MAXX — opportunistic backlog dispatch entry. Mirrors [`ScheduleEntry`]'s
+/// shared fields (everything but `cron`) plus the conditions that decide
+/// when it's favorable to fire: quiet hours, and/or comfortable quota
+/// headroom on the configured windows. Unlike a schedule, a `MaxxEntry`
+/// never fires on a fixed cadence — `lopi_orchestrator::maxx_loop` ticks
+/// on an interval and fires it only when [`LimitWindow`] conditions say so.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct MaxxEntry {
+    /// Human-readable name shown in the dashboard.
+    pub name: String,
+    /// Absolute path to the git repo this task runs against.
+    pub repo: PathBuf,
+    /// The agent goal (passed to `lopi run --goal`).
+    pub goal: String,
+    /// Optional priority override ("low", "normal", "high", "critical").
+    #[serde(default = "default_priority_str")]
+    pub priority: String,
+    /// Allowed dirs override (falls back to global git config if empty).
+    #[serde(default)]
+    pub allowed_dirs: Vec<String>,
+    /// Forbidden dirs override.
+    #[serde(default)]
+    pub forbidden_dirs: Vec<String>,
+    /// Trust level governing how far this loop may act without a human.
+    #[serde(default)]
+    pub autonomy_level: crate::loop_config::AutonomyLevel,
+    /// Report on Finish channel, e.g. `"telegram"`.
+    #[serde(default)]
+    pub report: Option<String>,
+    /// Local hours `(start, end)` treated as quiet hours, e.g. `Some((23, 7))`
+    /// for 11PM-7AM. `end < start` wraps past midnight. `None` disables this
+    /// condition.
+    #[serde(default)]
+    pub quiet_hours: Option<(u8, u8)>,
+    /// Whether to also fire when quota headroom on `windows` is favorable
+    /// ("nearing quota reset with high headroom").
+    #[serde(default)]
+    pub headroom_gate: bool,
+    /// Which windows `headroom_gate` checks. Ignored when `headroom_gate`
+    /// is `false`. Empty means the gate can never be satisfied even if
+    /// `headroom_gate` is `true` — a misconfiguration, not "always favorable".
+    #[serde(default)]
+    pub windows: Vec<LimitWindow>,
+}
+
+impl MaxxEntry {
+    /// Validate the `report` channel name, if set. `None` is always valid.
+    ///
+    /// # Errors
+    /// Returns [`crate::report::ReportChannelError`] when `report` is set to
+    /// a channel lopi doesn't recognize or can't reach yet.
+    pub fn validate_report(&self) -> Result<(), crate::report::ReportChannelError> {
+        self.report.as_deref().map_or(Ok(()), |name| {
+            crate::report::ReportChannel::parse(name).map(|_| ())
+        })
+    }
+}
+
 /// Per-repo profile loaded from `<repo>/.lopi.toml`.
 /// Fields present here override the global config for that repo.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

@@ -249,6 +249,24 @@ pub fn build_app(state: AppState) -> Router {
             axum::routing::post(schedule_handlers::set_autonomy),
         )
         .route("/api/quota", get(quota_handlers::get_quota))
+        .route(
+            "/api/maxx",
+            get(maxx_handlers::list_maxx).post(maxx_handlers::create_maxx),
+        )
+        .route(
+            "/api/maxx/:id",
+            get(maxx_handlers::get_maxx)
+                .put(maxx_handlers::update_maxx)
+                .delete(maxx_handlers::delete_maxx),
+        )
+        .route(
+            "/api/maxx/:id/enable",
+            axum::routing::post(maxx_handlers::enable_maxx),
+        )
+        .route(
+            "/api/maxx/:id/disable",
+            axum::routing::post(maxx_handlers::disable_maxx),
+        )
         .route("/api/loop-engineering", get(loop_handlers::get_loop))
         .route(
             "/api/loop-engineering/health",
@@ -336,6 +354,14 @@ async fn warm_up_state(state: &mut AppState) {
         // until the next ApiRetry event — degraded, not broken.
         tracing::warn!(error = %e, "quota tracker start failed; quota observations will not persist across restart");
     }
+    // MAXX Phase 1 — the tick has no explicit shutdown handle (same as the
+    // cron scheduler's jobs); it runs for the life of the process.
+    lopi_orchestrator::MaxxLoop::new(
+        state.store.clone(),
+        state.quota.clone(),
+        (*state.pool).clone(),
+    )
+    .spawn();
 }
 
 /// Variant that also wires the repo path for `/api/spec` serving, plus any
@@ -381,6 +407,7 @@ mod handlers;
 mod loop_handlers;
 mod loop_health_handlers;
 mod loop_runs_handlers;
+mod maxx_handlers;
 mod metrics_handlers;
 mod quota_handlers;
 mod repo_identity;

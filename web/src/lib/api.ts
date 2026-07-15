@@ -250,6 +250,79 @@ export const runScheduleNow = (id: string) =>
     { method: 'POST' }
   );
 
+// ── MAXX (opportunistic backlog dispatch) ───────────────────────────────────
+/** One `/api/maxx` row. Mirrors `Schedule`'s shape minus `cron`/`next_runs`,
+ *  plus the favorability fields (`crates/lopi-ui/src/web/maxx_handlers.rs`). */
+export interface MaxxEntryRun {
+  id: string;
+  maxx_id: string;
+  fired_at: string;
+  task_id: string | null;
+  outcome: string;
+}
+
+export interface MaxxEntry {
+  id: string;
+  name: string;
+  goal: string;
+  repo: string | null;
+  priority: string | null;
+  enabled: boolean;
+  autonomy_level: string;
+  report: string | null;
+  quiet_hours: [number, number] | null;
+  headroom_gate: boolean;
+  windows: string[];
+  created_at: string;
+  updated_at: string;
+  last_run: MaxxEntryRun | null;
+  runs?: MaxxEntryRun[];
+}
+
+export interface MaxxBody {
+  name: string;
+  goal: string;
+  repo?: string;
+  priority?: string;
+  enabled?: boolean;
+  autonomy_level?: string;
+  report?: string;
+  quiet_hours?: [number, number];
+  headroom_gate?: boolean;
+  windows?: string[];
+}
+
+export const listMaxx = () => request<{ maxx: MaxxEntry[] }>('/api/maxx');
+export const createMaxx = (body: MaxxBody) => request<MaxxEntry>('/api/maxx', json('POST', body));
+export const updateMaxx = (id: string, body: MaxxBody) =>
+  request<MaxxEntry>(`/api/maxx/${encodeURIComponent(id)}`, json('PUT', body));
+export const deleteMaxx = (id: string) =>
+  request<{ deleted: string }>(`/api/maxx/${encodeURIComponent(id)}`, { method: 'DELETE' });
+export const enableMaxx = (id: string) =>
+  request<{ id: string; enabled: boolean }>(`/api/maxx/${encodeURIComponent(id)}/enable`, {
+    method: 'POST'
+  });
+export const disableMaxx = (id: string) =>
+  request<{ id: string; enabled: boolean }>(`/api/maxx/${encodeURIComponent(id)}/disable`, {
+    method: 'POST'
+  });
+
+// ── Quota (MAXX Phase 0) ─────────────────────────────────────────────────────
+/** One rate-limit window's last-observed state, or `null` if never observed. */
+export interface QuotaWindow {
+  status: string;
+  utilization: number;
+  resets_at: number | null;
+  observed_at: string;
+}
+
+export interface QuotaSnapshot {
+  five_hour: QuotaWindow | null;
+  seven_day: QuotaWindow | null;
+}
+
+export const getQuota = () => request<QuotaSnapshot>('/api/quota');
+
 // ── Loop Engineering ──────────────────────────────────────────────────────────
 /** One pickable trust level on the L1–L4 autonomy ladder. */
 export interface AutonomyOption {
