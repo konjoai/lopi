@@ -38,6 +38,7 @@
     STACK_COMMANDS,
     commandAutocomplete,
     commandValueAutocomplete,
+    detectPendingCommand,
     evalSuiteOptions,
     applySuite,
     EVAL_SUITES,
@@ -161,8 +162,16 @@
   $: if (cmdActiveIndex >= (showRepoBarSuggest ? repoMatches.length : cmdMatches.length)) {
     cmdActiveIndex = Math.max(0, (showRepoBarSuggest ? repoMatches.length : cmdMatches.length) - 1);
   }
-  $: if (pendingCommand && !new RegExp(`(^|\\s)/${pendingCommand}/`).test(cmdText)) {
-    pendingCommand = null;
+  // Re-infer `pendingCommand` from the typed text on every change — see
+  // StackCard.svelte's identical comment for why relying only on
+  // `selectCommand`'s explicit assignment misses hand-typed `/model/`.
+  $: {
+    const inferred = detectPendingCommand(cmdText, STACK_COMMANDS);
+    if (inferred) {
+      pendingCommand = inferred;
+    } else if (pendingCommand && !new RegExp(`(^|\\s)/${pendingCommand}/`).test(cmdText)) {
+      pendingCommand = null;
+    }
   }
 
   function applyDefault(patch: Partial<typeof config.defaults>) {

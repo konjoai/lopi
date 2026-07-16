@@ -27,9 +27,12 @@
     commitDraft,
     reorderInPaneRelative,
     aliasAutocomplete,
+    resolvePresetAlias,
+    applyPreset,
     CARD_COMMANDS,
     commandAutocomplete,
     commandValueAutocomplete,
+    detectPendingCommand,
     evalSuiteOptions,
     applySuite,
     EVAL_SUITES,
@@ -128,9 +131,16 @@
   /** Replace the `:token` being typed with the full canonical alias plus a
    *  trailing space, so the cursor lands ready to type the goal text next —
    *  the suggestion list closes itself since the goal no longer matches
-   *  `^:(\S*)$` once the space is there. */
+   *  `^:(\S*)$` once the space is there. Also applies the preset's
+   *  alias/evals to the draft immediately via `applyPreset` — mirroring
+   *  `selectRepo`/`applyCommandValue`, which already write their resolved
+   *  facet onto `card`/`card.config` at selection time rather than waiting
+   *  for commit. Without this the provenance chip (`card.alias`) never
+   *  appeared and the preset's eval suite never attached until commit. */
   function selectAlias(alias: string): void {
-    writeCard({ goal: `${alias} ` });
+    const key = resolvePresetAlias(alias.slice(1));
+    const patched = key ? applyPreset(card, key) : card;
+    writeCard({ ...patched, goal: `${alias} ` });
     aliasActiveIndex = 0;
     void tick().then(() => goalInput?.focus());
   }
@@ -218,11 +228,18 @@
     : commandAutocomplete(card.goal, CARD_COMMANDS);
   $: showCmdSuggest = isDraft && goalFocused && !cmdDismissed && cmdMatches.length > 0;
   $: if (cmdActiveIndex >= cmdMatches.length) cmdActiveIndex = Math.max(0, cmdMatches.length - 1);
-  // Once the `/command/` prefix itself is edited away (e.g. backspaced),
-  // fall back to level-1 command suggestions rather than staying stuck
-  // matching against an abandoned command.
-  $: if (pendingCommand && !new RegExp(`(^|\\s)/${pendingCommand}/`).test(card.goal)) {
-    pendingCommand = null;
+  // Re-infer `pendingCommand` from the goal text on every change, not just
+  // from `selectCommand`'s explicit assignment — otherwise hand-typing
+  // `/model/` (rather than clicking the `/model` row) never entered
+  // value-picker mode. Falls back to the old clear-on-abandon behavior once
+  // the `/command/` prefix itself is edited away (e.g. backspaced).
+  $: {
+    const inferred = detectPendingCommand(card.goal, CARD_COMMANDS);
+    if (inferred) {
+      pendingCommand = inferred;
+    } else if (pendingCommand && !new RegExp(`(^|\\s)/${pendingCommand}/`).test(card.goal)) {
+      pendingCommand = null;
+    }
   }
 
   /** Apply a value-picker command's chosen value directly to `card.config`

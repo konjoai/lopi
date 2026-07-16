@@ -480,6 +480,21 @@ export function commandAutocomplete(goalText: string, commands: InlineCommandDef
     .map((c) => ({ token: `/${c.command}`, command: c.command, label: c.command, hint: c.hint }));
 }
 
+/** Infers the level-2 `pendingCommand` straight from the goal text's trailing
+ *  `/command/` token, rather than relying solely on the composer having set
+ *  it when a level-1 suggestion was clicked. Without this, hand-typing
+ *  `/model/` (never clicking the `/model` row) left `pendingCommand` unset,
+ *  so `commandValueAutocomplete` never ran and the value list silently never
+ *  appeared — typing the token had to produce the same state that clicking
+ *  it does. Only matches commands flagged `isValuePicker`; a fired-immediately
+ *  command like `/guard/` has no level-2 catalog to switch into. */
+export function detectPendingCommand(goalText: string, commands: InlineCommandDef[]): string | null {
+  const match = /(?:^|\s)\/([a-z]+)\/\S*$/.exec(goalText);
+  if (!match) return null;
+  const def = commands.find((c) => c.command === match[1]);
+  return def?.isValuePicker ? def.command : null;
+}
+
 /** A level-2 `/command/value` suggestion. */
 export interface CommandValueSuggestion {
   token: string;

@@ -76,6 +76,7 @@ import {
   STACK_COMMANDS,
   commandAutocomplete,
   commandValueAutocomplete,
+  detectPendingCommand,
   evalSuiteOptions,
   type PromptTemplate,
   type StackTemplate,
@@ -488,6 +489,17 @@ eqIs(buildCard(':ratchet "self improve"').preset, 'gain', 'a `:ratchet` composer
     '/effort/low',
     'a different command matches its own catalog, not the one from the last call'
   );
+  eqIs(
+    detectPendingCommand(':research /model/', CARD_COMMANDS),
+    'model',
+    'hand-typing a value-picker token enters level-2 mode, same as clicking the level-1 suggestion would'
+  );
+  eqIs(detectPendingCommand('/model/op', CARD_COMMANDS), 'model', 'detects even with a partial value already typed');
+  eqIs(detectPendingCommand('/guard/', CARD_COMMANDS), null, 'a non-value-picker command never enters level-2 mode');
+  eqIs(detectPendingCommand('/nope/', CARD_COMMANDS), null, 'an unknown command name matches nothing');
+  eqIs(detectPendingCommand('fix the bug', CARD_COMMANDS), null, 'no trailing /command/ token means no pending command');
+  eqIs(detectPendingCommand('/loop/3', STACK_COMMANDS), 'loop', 'stack-scope commands are matched against their own list');
+
   eqIs(evalSuiteOptions().length, 3, "eval's catalog is the three suite shortcuts, not individual eval names");
   ok(evalSuiteOptions().every((o) => !o.label.includes(' ')), 'every suite name is space-free — the trailing-token grammar could not carry a spaced value');
 }
