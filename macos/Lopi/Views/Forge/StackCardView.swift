@@ -249,11 +249,16 @@ struct StackCardView: View {
                 aliasDismissed = false; aliasActiveIndex = 0
                 repoDismissed = false; repoActiveIndex = 0
                 cmdDismissed = false
-                // Once the `/command/` prefix itself is edited away (e.g.
-                // backspaced), fall back to level-1 command suggestions
-                // rather than staying stuck matching against an abandoned
-                // command.
-                if let pending = pendingCommand, !newGoal.contains("/\(pending)/") {
+                // Re-infer `pendingCommand` from the goal text on every
+                // change, not just from `selectCommand`'s explicit
+                // assignment — otherwise hand-typing `/model/` (rather than
+                // clicking the `/model` row) never entered value-picker
+                // mode. Falls back to the old clear-on-abandon behavior once
+                // the `/command/` prefix itself is edited away (e.g.
+                // backspaced).
+                if let inferred = detectPendingCommand(newGoal, CARD_COMMANDS) {
+                    pendingCommand = inferred
+                } else if let pending = pendingCommand, !newGoal.contains("/\(pending)/") {
                     pendingCommand = nil
                 }
             }
@@ -319,9 +324,18 @@ struct StackCardView: View {
     /// Replace the `:token` being typed with the full canonical alias plus a
     /// trailing space, so the cursor lands ready to type the goal text next —
     /// the popover closes itself since the goal no longer matches a bare
-    /// `:token` once the space is there.
+    /// `:token` once the space is there. Also applies the preset's
+    /// alias/evals to the draft immediately via `applyPreset` — mirroring
+    /// `selectRepo`/`applyCommandValue`, which already write their resolved
+    /// facet onto `card`/`card.config` at selection time rather than waiting
+    /// for commit. Without this the provenance chip (`card.alias`) never
+    /// appeared and the preset's eval suite never attached until commit.
     private func selectAlias(_ alias: String) {
-        store.updateDraftInPane(paneKey) { $0.goal = "\(alias) " }
+        let key = resolvePresetAlias(String(alias.dropFirst()))
+        store.updateDraftInPane(paneKey) { c in
+            if let key { c = applyPreset(key, to: c) }
+            c.goal = "\(alias) "
+        }
         aliasActiveIndex = 0
         goalFocused = true
     }

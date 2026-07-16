@@ -72,8 +72,20 @@ public func stackEvalsSummary(_ config: StackConfig) -> String {
     return "\(n) checks · chain acceptance"
 }
 
-public func stackDefaultsSummary(_ defaults: StackDefaults) -> String {
-    "model \(defaults.model) · every loop inherits"
+/// The stack defaults summary line: which model (and, when set, repo) every
+/// loop inherits, per the mockup's "default model X · every loop inherits"
+/// copy. Uses the option's display label rather than the raw wire value —
+/// load-bearing for `auto`, whose raw value would otherwise render the bare
+/// sentinel string instead of a real display string. `repoLabel` is the
+/// caller's already-resolved display label for `defaults.repo` (see
+/// `repoLabelForPath`) — this function stays repo-catalog-agnostic, same as
+/// every other summary helper in this file. Omitted from the summary
+/// entirely when no repo override is set (`defaults.repo == ""`). Mirrors
+/// the web `stackDefaultsSummary`.
+public func stackDefaultsSummary(_ defaults: StackDefaults, repoLabel: String? = nil) -> String {
+    let modelLabel = MODEL_OPTIONS.first { $0.value == defaults.model }?.label ?? defaults.model
+    let repoPart = (!defaults.repo.isEmpty && repoLabel != nil) ? " · repo \(repoLabel!)" : ""
+    return "model \(modelLabel)\(repoPart) · every loop inherits"
 }
 
 /// While the stack drives cadence (own schedule, or chain-loop > 1), a card's

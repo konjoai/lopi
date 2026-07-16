@@ -473,6 +473,20 @@ final class StackStoreTests: XCTestCase {
         XCTAssertTrue(stackGoalSummary({ var c = config; c.loopCount = 0; return c }()).contains("until met"), "infinite ceiling reads 'until met'")
     }
 
+    func testStackDefaultsSummary() {
+        XCTAssertEqual(
+            stackDefaultsSummary({ var d = DEFAULT_STACK_DEFAULTS; d.model = "claude-haiku-4-5"; return d }()),
+            "model Haiku 4.5 · every loop inherits",
+            "the dock summary renders the option's display label, not the raw wire value")
+        XCTAssertFalse(
+            stackDefaultsSummary(DEFAULT_STACK_DEFAULTS).contains("repo"),
+            "no repo override set means the summary omits the repo term entirely")
+        XCTAssertTrue(
+            stackDefaultsSummary({ var d = DEFAULT_STACK_DEFAULTS; d.repo = "konjoai/lopi"; return d }(), repoLabel: "konjoai/lopi")
+                .contains("repo konjoai/lopi"),
+            "a chosen repo shows up in the dock's own summary, not just the config popover")
+    }
+
     func testPerLoopScheduleGoverned() {
         let config = defaultStackConfig()
         XCTAssertFalse(perLoopScheduleGoverned(config), "un-scheduled ×1 stack does not govern")
@@ -643,6 +657,20 @@ final class StackStoreTests: XCTestCase {
 
         XCTAssertEqual(evalSuiteOptions().count, 3, "eval's catalog is the three suite shortcuts, not individual eval names")
         XCTAssertTrue(evalSuiteOptions().allSatisfy { !$0.label.contains(" ") }, "every suite name is space-free")
+    }
+
+    // MARK: `detectPendingCommand` — infers level-2 mode from hand-typed text,
+    // not just from clicking a level-1 suggestion
+
+    func testDetectPendingCommand() {
+        XCTAssertEqual(
+            detectPendingCommand(":research /model/", CARD_COMMANDS), "model",
+            "hand-typing a value-picker token enters level-2 mode, same as clicking the level-1 suggestion would")
+        XCTAssertEqual(detectPendingCommand("/model/op", CARD_COMMANDS), "model", "detects even with a partial value already typed")
+        XCTAssertNil(detectPendingCommand("/guard/", CARD_COMMANDS), "a non-value-picker command never enters level-2 mode")
+        XCTAssertNil(detectPendingCommand("/nope/", CARD_COMMANDS), "an unknown command name matches nothing")
+        XCTAssertNil(detectPendingCommand("fix the bug", CARD_COMMANDS), "no trailing /command/ token means no pending command")
+        XCTAssertEqual(detectPendingCommand("/loop/3", STACK_COMMANDS), "loop", "stack-scope commands are matched against their own list")
     }
 
     func testFinalizeDraftKeepsConfiguredDraft() {

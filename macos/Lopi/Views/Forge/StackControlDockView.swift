@@ -132,6 +132,10 @@ struct StackControlDockView: View {
     private var pursues: Bool { stackPursuesGoal(config) }
     private var showSummary: Bool { scheduledOn || guardsOn || evalsOn || configOn || goalOn }
     private var modelLabel: String { MODEL_OPTIONS.first { $0.value == config.defaults.model }?.label ?? config.defaults.model }
+    /// A chosen repo previously vanished from the dock's own summary the
+    /// instant it was set — visible in the config popover (`StackConfigPopoverView`
+    /// reads `defaults.repo` directly) but nowhere else. Mirrors web's `repoLabel`.
+    private var repoLabel: String? { config.defaults.repo.isEmpty ? nil : repoLabelForPath(config.defaults.repo, repoOptions) }
     private var loopLabel: String {
         let label = maxIterationsLabel(config.loopCount)
         return config.loopCount <= 1 ? label : "×\(label)"
@@ -152,7 +156,13 @@ struct StackControlDockView: View {
             runArea
         }
         .padding(.horizontal, 16).padding(.vertical, 14)
-        .background(LinearGradient(colors: [Konjo.stackViolet.opacity(0.22), Konjo.stackViolet.opacity(0.12)], startPoint: .top, endPoint: .bottom))
+        // Rounded at the bottom two corners only (this is the pane's last child,
+        // sitting flush against its bottom edge) via a shape fill, not a clip —
+        // `StackPaneView` no longer clips its own frame (see its doc comment), so
+        // this dock is what has to supply its own corner rounding without
+        // clipping the command-bar autocomplete dropdown that overflows past it.
+        .background(UnevenRoundedRectangle(bottomLeadingRadius: 14, bottomTrailingRadius: 14)
+            .fill(LinearGradient(colors: [Konjo.stackViolet.opacity(0.22), Konjo.stackViolet.opacity(0.12)], startPoint: .top, endPoint: .bottom)))
         .overlay(Rectangle().fill(Konjo.stackViolet.opacity(0.55)).frame(height: 1.5), alignment: .top)
     }
 
@@ -202,7 +212,7 @@ struct StackControlDockView: View {
                             .font(Konjo.mono(9)).foregroundStyle(Konjo.fgMute).padding(.leading, 66)
                     }
                 }
-                if configOn { SummaryRow(systemImage: "slider.horizontal.3", label: "default", accent: Konjo.stackViolet, text: stackDefaultsSummary(config.defaults)) }
+                if configOn { SummaryRow(systemImage: "slider.horizontal.3", label: "default", accent: Konjo.stackViolet, text: stackDefaultsSummary(config.defaults, repoLabel: repoLabel)) }
             }
             cardbar
         }
@@ -243,7 +253,13 @@ struct StackControlDockView: View {
             .focused($cmdBarFocused)
             .onChange(of: cmdText) { _, newText in
                 cmdDismissed = false
-                if let pending = pendingCommand, !newText.contains("/\(pending)/") {
+                // Re-infer `pendingCommand` from the typed text on every
+                // change — see `StackCardView`'s identical comment for why
+                // relying only on `selectCommandFromBar`'s explicit
+                // assignment misses hand-typed `/model/`.
+                if let inferred = detectPendingCommand(newText, STACK_COMMANDS) {
+                    pendingCommand = inferred
+                } else if let pending = pendingCommand, !newText.contains("/\(pending)/") {
                     pendingCommand = nil
                 }
             }

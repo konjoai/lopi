@@ -5,8 +5,10 @@ import LopiStacksKit
 /// a pinned **draft** card (Creation-Flow-1 — the composer replacement; the thing
 /// you compose is the card you'll get), the committed card stack flowing down to
 /// the currently-executing loop at the bottom, and the purple stack control dock.
-/// An empty pane reads as a bare box (composer + idle orb only); the dock and
-/// inter-card connectors appear as soon as the pane holds its first card.
+/// The dock renders even on an empty pane (composer only, no committed cards
+/// yet) so stack-level defaults/schedule/guardrails and whole-stack templates
+/// can be set up before writing any prompt; inter-card connectors still only
+/// appear once the pane holds its first card.
 struct StackPaneView: View {
     var store: StackStore
     var engine: StackRunEngine
@@ -17,7 +19,6 @@ struct StackPaneView: View {
 
     private var paneDefaults: StackDefaults { pane.config.defaults }
     private var scheduleGoverned: Bool { perLoopScheduleGoverned(pane.config) }
-    private var bare: Bool { paneIsBare(pane) }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -25,8 +26,16 @@ struct StackPaneView: View {
             cardStack
             footer
         }
-        .background(Konjo.panel)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
+        // A shape-based `.background()` fill rather than `.clipShape` — the
+        // dock's own command-bar autocomplete dropdown (`StackControlDockView`)
+        // is a descendant of `footer` here, and `.clipShape` on this outer
+        // VStack silently cropped it the instant it grew taller than the
+        // pane's remaining height ("cut off by the dock's container"). A shape
+        // fill paints the rounded silhouette without clipping anything drawn
+        // outside it, so overflowing content (the dropdown) still renders in
+        // full; see `StackControlDockView`'s own bottom-corner fill for the
+        // same technique applied one layer down.
+        .background(RoundedRectangle(cornerRadius: 14).fill(Konjo.panel))
         .overlay(RoundedRectangle(cornerRadius: 14).stroke(Konjo.line2, lineWidth: 1))
     }
 
@@ -84,12 +93,16 @@ struct StackPaneView: View {
             .padding(.vertical, 2)
     }
 
-    // MARK: Footer — the purple dock. A bare (empty) pane has nothing to run yet.
+    // MARK: Footer — the purple dock.
+    //
+    // Previously gated behind `if !bare` — an empty pane showed only the
+    // composer, with no way to set stack defaults/schedule/guardrails or add
+    // a whole stack template until the first prompt existed. The dock is now
+    // always present so those controls (and stack templates) can be set up
+    // before writing any prompt, not just after. Mirrors web's StackPane.svelte.
 
-    @ViewBuilder private var footer: some View {
-        if !bare {
-            StackControlDockView(store: store, engine: engine, pane: pane, index: index, repoOptions: repoOptions)
-        }
+    private var footer: some View {
+        StackControlDockView(store: store, engine: engine, pane: pane, index: index, repoOptions: repoOptions)
     }
 }
 

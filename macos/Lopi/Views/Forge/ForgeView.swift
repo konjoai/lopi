@@ -4,12 +4,11 @@ import LopiStacksKit
 /// The Forge — lopi's multi-agent cockpit, now unified with Loop Stacks (macOS
 /// Loop Stacks). A resizable, auto-tiling grid of stack panes: each pane is a
 /// composer + a stack of loop cards flowing down to the currently-executing loop
-/// at the bottom, plus either the bare-pane run button (≤1 card) or the purple
-/// stack control dock (2+ cards). A one-card pane reads like the pre-unify Forge
-/// pane — adding a second card is what turns a pane into a real stack, exactly
-/// matching web's Unify-2 model where a bare pane *is* the one-card case. This is
-/// the only cockpit nav item — web has no separate Forge route anymore, and
-/// there's no separate Stacks screen here either.
+/// at the bottom, plus the purple stack control dock — present from the very
+/// first (empty) pane, not just once a card has been committed, so stack-level
+/// defaults/schedule/guardrails/templates can be set up before writing any
+/// prompt. This is the only cockpit nav item — web has no separate Forge route
+/// anymore, and there's no separate Stacks screen here either.
 struct ForgeView: View {
     @Environment(AppModel.self) private var model
 

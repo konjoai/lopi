@@ -144,6 +144,26 @@ public func commandAutocomplete(_ goalText: String, _ commands: [InlineCommandDe
         .map { CommandSuggestion(token: "/\($0.command)", command: $0.command, label: $0.command, hint: $0.hint) }
 }
 
+/// Infers the level-2 `pendingCommand` straight from the goal text's trailing
+/// `/command/` token, rather than relying solely on the composer having set
+/// it when a level-1 suggestion was clicked. Without this, hand-typing
+/// `/model/` (never clicking the `/model` row) left `pendingCommand` unset,
+/// so `commandValueAutocomplete` never ran and the value list silently never
+/// appeared — typing the token had to produce the same state that clicking
+/// it does. Only matches commands flagged `isValuePicker`; a fired-immediately
+/// command like `/guard/` has no level-2 catalog to switch into. Mirrors the
+/// web `detectPendingCommand`.
+public func detectPendingCommand(_ goalText: String, _ commands: [InlineCommandDef]) -> String? {
+    guard let match = goalText.range(of: #"(?:^|\s)/([a-z]+)/\S*$"#, options: .regularExpression) else { return nil }
+    let token = goalText[match]
+    guard let slash1 = token.firstIndex(of: "/") else { return nil }
+    let afterFirstSlash = token[token.index(after: slash1)...]
+    guard let slash2 = afterFirstSlash.firstIndex(of: "/") else { return nil }
+    let command = String(afterFirstSlash[..<slash2])
+    let def = commands.first(where: { $0.command == command })
+    return def?.isValuePicker == true ? def?.command : nil
+}
+
 /// A level-2 `/command/value` suggestion.
 public struct CommandValueSuggestion: Equatable {
     public let token: String
