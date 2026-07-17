@@ -343,10 +343,7 @@ fn budget_section_round_trips_through_toml() {
         "[budget]\npreset = \"deep\"\nmax_budget_usd = 7.5\npermission_allow = [\"Bash\"]\n",
     )
     .unwrap();
-    assert_eq!(
-        c.budget.preset,
-        crate::budget_preset::BudgetPreset::Deep
-    );
+    assert_eq!(c.budget.preset, crate::budget_preset::BudgetPreset::Deep);
     assert_eq!(c.budget.max_budget_usd, Some(7.5));
     assert_eq!(c.budget.permission_allow, vec!["Bash".to_string()]);
 }

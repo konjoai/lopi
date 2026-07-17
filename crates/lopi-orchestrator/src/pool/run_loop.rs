@@ -312,9 +312,10 @@ pub(super) fn effective_task_budget(
     task: &Task,
     cfg: &lopi_core::LoopConfig,
 ) -> lopi_core::ResolvedBudget {
-    task.budget_override
-        .as_ref()
-        .map_or_else(|| cfg.resolved_budget(), |ov| ov.apply(cfg.resolved_budget()))
+    task.budget_override.as_ref().map_or_else(
+        || cfg.resolved_budget(),
+        |ov| ov.apply(cfg.resolved_budget()),
+    )
 }
 
 /// The repo-level (`.lopi/loop.toml`) guardrail defaults a task's own

@@ -208,7 +208,9 @@ async fn handle_queue(
     let kb = build_priority_keyboard(priority, &goal);
     bot.send_message(
         msg.chat.id,
-        format!("⛵ queued {badge} {goal}\nID: {id_short}  ·  Position: {pos} in queue{budget_note}"),
+        format!(
+            "⛵ queued {badge} {goal}\nID: {id_short}  ·  Position: {pos} in queue{budget_note}"
+        ),
     )
     .reply_markup(kb)
     .await?;

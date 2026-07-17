@@ -191,10 +191,7 @@ mod tests {
         assert!(argv.contains("--max-budget-usd\n2.5"), "argv={argv}");
         assert!(argv.contains("--max-turns\n7"), "argv={argv}");
         assert!(argv.contains("--allowedTools\nBash"), "argv={argv}");
-        assert!(
-            argv.contains("--disallowedTools\nWorkflow"),
-            "argv={argv}"
-        );
+        assert!(argv.contains("--disallowedTools\nWorkflow"), "argv={argv}");
 
         std::fs::remove_file(&script).ok();
         std::fs::remove_file(&capture).ok();
