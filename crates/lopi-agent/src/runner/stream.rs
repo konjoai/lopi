@@ -100,10 +100,12 @@ impl AgentRunner {
             session_id: self.session_id,
             model: model.to_string(),
             attempt_number: attempt,
-            input_tokens: accrual.input.saturating_u32(),
-            output_tokens: accrual.output.saturating_u32(),
-            cache_read_input_tokens: accrual.cache_read.saturating_u32(),
-            cache_write_input_tokens: accrual.cache_write.saturating_u32(),
+            // Authoritative sub-agent-inclusive totals from the terminal
+            // `result` when present, else the parent-only delta sums.
+            input_tokens: accrual.input_tokens(),
+            output_tokens: accrual.output_tokens(),
+            cache_read_input_tokens: accrual.cache_read_tokens(),
+            cache_write_input_tokens: accrual.cache_write_tokens(),
             ttft_ms: 0,
             turn_latency_ms: 0,
             tool_execution_ms: 0,
@@ -126,6 +128,14 @@ impl AgentRunner {
 /// closure is `Fn` (no `&mut`), so the running totals live behind atomics: each
 /// `TokenUsage` delta adds into the token counters, and the terminal `Result`
 /// envelope's cumulative billed cost lands on `cost_bits`.
+///
+/// The incremental `TokenUsage` deltas only report the *parent* agent, so on a
+/// run that fans out into sub-agents they undercount the persisted token
+/// columns badly (while the billed cost, taken from the terminal `result`, is
+/// already correct). The `result` envelope also carries an authoritative,
+/// sub-agent-inclusive token total (summed across `modelUsage`); when present
+/// it supersedes the deltas for the persisted counts — same envelope, same
+/// trust as the cost.
 #[derive(Default)]
 struct UsageAccrual {
     input: AtomicU64,
@@ -142,6 +152,15 @@ struct UsageAccrual {
     /// this stream, so a session hovering near its cap warns once, not on
     /// every subsequent `TokenUsage` delta.
     warned: AtomicBool,
+    /// Authoritative cumulative token totals from the terminal `result`'s
+    /// usage breakdown — sub-agent-inclusive. Preferred over the delta sums
+    /// for the persisted `turn_metrics` row once `has_authoritative` is set.
+    auth_input: AtomicU64,
+    auth_output: AtomicU64,
+    auth_cache_read: AtomicU64,
+    auth_cache_write: AtomicU64,
+    /// Whether the terminal `result` carried an authoritative usage breakdown.
+    has_authoritative: AtomicBool,
 }
 
 impl UsageAccrual {
@@ -163,10 +182,23 @@ impl UsageAccrual {
                 self.cache_write
                     .fetch_add(u64::from(*cache_write_tokens), Ordering::Relaxed);
             }
-            StreamEvent::Result { total_cost_usd, .. } => {
+            StreamEvent::Result {
+                total_cost_usd,
+                usage,
+                ..
+            } => {
                 self.cost_bits
                     .store(total_cost_usd.to_bits(), Ordering::Relaxed);
                 self.saw_result.store(true, Ordering::Relaxed);
+                if let Some(u) = usage {
+                    self.auth_input.store(u.input_tokens, Ordering::Relaxed);
+                    self.auth_output.store(u.output_tokens, Ordering::Relaxed);
+                    self.auth_cache_read
+                        .store(u.cache_read_tokens, Ordering::Relaxed);
+                    self.auth_cache_write
+                        .store(u.cache_write_tokens, Ordering::Relaxed);
+                    self.has_authoritative.store(true, Ordering::Relaxed);
+                }
             }
             _ => {}
         }
@@ -182,6 +214,38 @@ impl UsageAccrual {
     /// The billed cost captured from the terminal `result` (`0.0` if none).
     fn cost_usd(&self) -> f64 {
         f64::from_bits(self.cost_bits.load(Ordering::Relaxed))
+    }
+
+    /// Effective input tokens for the persisted row: the authoritative,
+    /// sub-agent-inclusive total when the terminal `result` carried one, else
+    /// the parent-only delta sum.
+    fn input_tokens(&self) -> u32 {
+        self.effective(&self.auth_input, &self.input)
+    }
+
+    /// Effective output tokens — see [`input_tokens`](Self::input_tokens).
+    fn output_tokens(&self) -> u32 {
+        self.effective(&self.auth_output, &self.output)
+    }
+
+    /// Effective cache-read tokens — see [`input_tokens`](Self::input_tokens).
+    fn cache_read_tokens(&self) -> u32 {
+        self.effective(&self.auth_cache_read, &self.cache_read)
+    }
+
+    /// Effective cache-write tokens — see [`input_tokens`](Self::input_tokens).
+    fn cache_write_tokens(&self) -> u32 {
+        self.effective(&self.auth_cache_write, &self.cache_write)
+    }
+
+    /// Pick the authoritative counter when the `result` supplied one, else the
+    /// delta-summed fallback — saturating into the `u32` the row stores.
+    fn effective(&self, authoritative: &AtomicU64, delta: &AtomicU64) -> u32 {
+        if self.has_authoritative.load(Ordering::Relaxed) {
+            authoritative.saturating_u32()
+        } else {
+            delta.saturating_u32()
+        }
     }
 
     /// Budget & Guardrail Controls Part 4.2 — soft-warn at 80% of the
@@ -293,136 +357,5 @@ fn emit_budget_soft_warn(
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn token_usage_event_sums_input_and_output() {
-        let ev = StreamEvent::TokenUsage {
-            output_tokens: 120,
-            input_tokens: 80,
-            cache_read_tokens: 5000,
-            cache_write_tokens: 200,
-        };
-        // Cache reads/writes are excluded; only input + output count.
-        assert_eq!(event_tokens(&ev), 200);
-    }
-
-    #[test]
-    fn non_usage_events_contribute_no_tokens() {
-        assert_eq!(event_tokens(&StreamEvent::Other), 0);
-        assert_eq!(event_tokens(&StreamEvent::Status("x".into())), 0);
-    }
-
-    fn usage(output: u32, input: u32, read: u32, write: u32) -> StreamEvent {
-        StreamEvent::TokenUsage {
-            output_tokens: output,
-            input_tokens: input,
-            cache_read_tokens: read,
-            cache_write_tokens: write,
-        }
-    }
-
-    fn result(cost: f64) -> StreamEvent {
-        StreamEvent::Result {
-            session_id: "s".into(),
-            subtype: "success".into(),
-            final_text: String::new(),
-            total_cost_usd: cost,
-            num_turns: 3,
-        }
-    }
-
-    #[test]
-    fn accrual_sums_token_deltas_across_events() {
-        let acc = UsageAccrual::default();
-        acc.observe(&usage(100, 3, 16_000, 6_000));
-        acc.observe(&usage(50, 1, 22_000, 100));
-        assert_eq!(acc.output.saturating_u32(), 150);
-        assert_eq!(acc.input.saturating_u32(), 4);
-        assert_eq!(acc.cache_read.saturating_u32(), 38_000);
-        assert_eq!(acc.cache_write.saturating_u32(), 6_100);
-    }
-
-    #[test]
-    fn accrual_captures_billed_cost_from_result() {
-        let acc = UsageAccrual::default();
-        acc.observe(&usage(10, 1, 0, 0));
-        acc.observe(&result(0.047_891_6));
-        assert!((acc.cost_usd() - 0.047_891_6).abs() < f64::EPSILON);
-        assert!(acc.has_usage());
-    }
-
-    #[test]
-    fn accrual_reports_no_usage_when_empty() {
-        let acc = UsageAccrual::default();
-        assert!(!acc.has_usage());
-        assert_eq!(acc.cost_usd(), 0.0);
-    }
-
-    #[test]
-    fn accrual_has_usage_on_result_even_with_zero_tokens() {
-        let acc = UsageAccrual::default();
-        acc.observe(&result(0.0));
-        // A completed run that happened to spend nothing is still a real turn.
-        assert!(acc.has_usage());
-    }
-
-    // ── Budget & Guardrail Controls Part 4.2 — soft-warn at 80% of cap ──────
-
-    #[test]
-    fn check_soft_warn_disabled_when_cap_is_zero() {
-        let acc = UsageAccrual::default();
-        acc.observe(&usage(1_000_000, 1_000_000, 0, 0));
-        assert_eq!(acc.check_soft_warn(crate::claude::MODEL_OPUS, 0.0), None);
-    }
-
-    #[test]
-    fn check_soft_warn_none_under_the_threshold() {
-        let acc = UsageAccrual::default();
-        // A trickle of tokens on a generous cap — nowhere near 80%.
-        acc.observe(&usage(10, 10, 0, 0));
-        assert_eq!(acc.check_soft_warn(crate::claude::MODEL_SONNET, 10.0), None);
-    }
-
-    #[test]
-    fn check_soft_warn_fires_once_at_80_percent() {
-        let acc = UsageAccrual::default();
-        // Sonnet: 300K output tokens * $15/MTok = $4.50 — 90% of a $5 cap.
-        acc.observe(&usage(300_000, 0, 0, 0));
-        let first = acc.check_soft_warn(crate::claude::MODEL_SONNET, 5.0);
-        assert!(first.is_some(), "must fire once 80% of the cap is crossed");
-        assert!((first.unwrap() - 4.5).abs() < 0.01);
-
-        // A second observation at the same (or higher) usage must not
-        // re-fire — the warn latches per stream.
-        acc.observe(&usage(10, 0, 0, 0));
-        assert_eq!(
-            acc.check_soft_warn(crate::claude::MODEL_SONNET, 5.0),
-            None,
-            "must not fire a second time for the same stream"
-        );
-    }
-
-    #[test]
-    fn emit_budget_soft_warn_sends_the_structured_event() {
-        let bus: lopi_core::EventBus<AgentEvent> = lopi_core::EventBus::new(4);
-        let mut rx = bus.subscribe();
-        let tid = lopi_core::TaskId::new();
-        emit_budget_soft_warn(&bus, tid, 4.5, 5.0);
-        let ev = rx.try_recv().expect("event should have been sent");
-        match ev {
-            AgentEvent::BudgetSoftWarn {
-                task_id,
-                estimated_usd,
-                cap_usd,
-            } => {
-                assert_eq!(task_id, tid);
-                assert!((estimated_usd - 4.5).abs() < f64::EPSILON);
-                assert!((cap_usd - 5.0).abs() < f64::EPSILON);
-            }
-            other => panic!("expected BudgetSoftWarn, got {other:?}"),
-        }
-    }
-}
+#[path = "stream_tests.rs"]
+mod tests;
