@@ -1,0 +1,9 @@
+[
+  {
+    "limit_type": "five_hour",
+    "status": "rejected",
+    "utilization": 0.0,
+    "resets_at": 1784254800,
+    "observed_at": "2026-07-16T22:23:38.150273+00:00"
+  }
+]
