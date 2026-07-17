@@ -104,6 +104,11 @@ impl AgentRunner {
                 .with_patterns(pattern_pairs.clone())
                 .with_lessons(lessons_data.clone())
                 .with_model(model.clone())
+                // Fold the card's `Effort` knob into the worker session.
+                // `with_effort` validates against the CLI's accepted levels
+                // and drops anything else, so a malformed `Task.effort`
+                // can't wedge the spawn. Empty/None leaves the CLI default.
+                .with_effort(self.task.effort.clone().unwrap_or_default())
                 // `ClaudeCode::new`'s own default (300s) was sized for a
                 // single-shot plan/implement call, not a session that fans
                 // out into several parallel research sub-agents (each doing

@@ -74,6 +74,22 @@ pub(crate) fn build_implement_prompt(task: &Task, plan: &str) -> String {
     )
 }
 
+/// Canonicalize a reasoning-effort string to one of the levels
+/// `claude --effort` accepts (`low`/`medium`/`high`/`xhigh`/`max`),
+/// lowercasing and trimming first. Returns `None` for anything the CLI
+/// would reject, so a malformed `Task.effort` is dropped rather than
+/// spawned as an invalid flag.
+pub(crate) fn normalize_effort(raw: &str) -> Option<&'static str> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "low" => Some("low"),
+        "medium" => Some("medium"),
+        "high" => Some("high"),
+        "xhigh" => Some("xhigh"),
+        "max" => Some("max"),
+        _ => None,
+    }
+}
+
 /// Apply the caps shared by all three `claude -p` spawn sites — `--model`,
 /// `--max-turns`, `--max-budget-usd`, `--allowedTools`, `--disallowedTools`
 /// — to `cmd`. Each site still adds its own `-p <prompt>` and
@@ -85,6 +101,7 @@ pub(crate) fn build_implement_prompt(task: &Task, plan: &str) -> String {
 pub(crate) fn apply_cli_caps(
     cmd: &mut Command,
     model: Option<&str>,
+    effort: Option<&str>,
     max_turns: Option<u32>,
     max_budget_usd: Option<f64>,
     allowed_tools: &[String],
@@ -104,6 +121,15 @@ pub(crate) fn apply_cli_caps(
         // chosen model. Set explicitly so an inherited value from lopi's own
         // env can't leak in. See code.claude.com/docs/en/model-config.
         cmd.env("CLAUDE_CODE_SUBAGENT_MODEL", m);
+    }
+    // The card's `Effort` knob (`Task.effort`) was previously stored but
+    // never reached the worker — only the verifier's grading pass honored
+    // it — so "Low" had zero effect on a run's reasoning depth or cost.
+    // `--effort` is a CLI-path flag independent of the direct-API path's
+    // cached-system-prompt constraint that kept this unwired. Callers pass
+    // an already-validated level (see `normalize_effort`).
+    if let Some(e) = effort {
+        cmd.arg("--effort").arg(e);
     }
     if let Some(turns) = max_turns {
         cmd.arg("--max-turns").arg(turns.to_string());
@@ -252,7 +278,7 @@ mod tests {
     #[test]
     fn apply_cli_caps_omits_flags_for_none_and_empty() {
         let mut cmd = Command::new("true");
-        apply_cli_caps(&mut cmd, None, None, None, &[], &[]);
+        apply_cli_caps(&mut cmd, None, None, None, None, &[], &[]);
         let argv: Vec<String> = cmd
             .as_std()
             .get_args()
@@ -269,9 +295,24 @@ mod tests {
     }
 
     #[test]
+    fn normalize_effort_accepts_cli_levels_case_insensitively() {
+        for (raw, want) in [
+            ("low", Some("low")),
+            ("  Medium ", Some("medium")),
+            ("HIGH", Some("high")),
+            ("xhigh", Some("xhigh")),
+            ("Max", Some("max")),
+            ("turbo", None),
+            ("", None),
+        ] {
+            assert_eq!(normalize_effort(raw), want, "raw={raw:?}");
+        }
+    }
+
+    #[test]
     fn apply_cli_caps_pins_subagent_model_to_the_session_model() {
         let mut cmd = Command::new("true");
-        apply_cli_caps(&mut cmd, Some("haiku"), None, None, &[], &[]);
+        apply_cli_caps(&mut cmd, Some("haiku"), None, None, None, &[], &[]);
         assert!(
             env_overrides(&cmd)
                 .iter()
@@ -287,6 +328,7 @@ mod tests {
         apply_cli_caps(
             &mut cmd,
             Some("claude-opus-4-7"),
+            Some("high"),
             Some(5),
             Some(2.5),
             &["Bash".to_string()],
@@ -302,6 +344,8 @@ mod tests {
             vec![
                 "--model",
                 "claude-opus-4-7",
+                "--effort",
+                "high",
                 "--max-turns",
                 "5",
                 "--max-budget-usd",

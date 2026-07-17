@@ -5,6 +5,9 @@ pub mod api_budget;
 pub mod api_client;
 /// Claude Code subprocess management and model selection.
 pub mod claude;
+/// Fluent `with_*` builders for `ClaudeCode`, split out of `claude.rs` to
+/// keep it under the file-size gate. See that module's doc comment.
+mod claude_builders;
 /// Single decoder for `claude -p --output-format stream-json` NDJSON: derives
 /// both the log-panel status line and the structured `AgentEvent`s the panes consume.
 pub mod claude_events;
