@@ -469,6 +469,12 @@ impl ClaudeCode {
     /// Stream plan steps as they are generated. Returns a channel receiver that emits
     /// numbered plan steps (lines matching `^\d+\.`) and a join handle that resolves to
     /// the full plan text when the claude process exits.
+    ///
+    /// Forwards `self.model`/`max_budget_usd`/`max_turns`/`allowed_tools`/
+    /// `disallowed_tools` to [`claude_stream::plan_streaming`](crate::claude_stream::plan_streaming) —
+    /// the same caps [`run`](Self::run) and [`run_streamed`](Self::run_streamed) apply,
+    /// so a `--speculative` session can never spawn `claude -p` uncapped just
+    /// because it took this third spawn path instead of the other two.
     #[must_use]
     pub fn plan_streaming(
         &self,
@@ -489,6 +495,11 @@ impl ClaudeCode {
             self.timeout,
             task,
             all_constraints,
+            self.model.as_deref(),
+            self.max_budget_usd,
+            self.max_turns,
+            &self.allowed_tools,
+            &self.disallowed_tools,
         )
     }
 
@@ -755,6 +766,49 @@ mod tests {
         let c = ClaudeCode::new(".");
         assert!(c.allowed_tools.is_empty());
         assert!(c.disallowed_tools.is_empty());
+    }
+
+    /// Part 0 — `ClaudeCode::plan_streaming` (the wrapper `implement_speculative`
+    /// actually calls) must forward `self.max_budget_usd`/`disallowed_tools` to
+    /// the real subprocess argv, not just hold them as fields. Before this fix,
+    /// a `ClaudeCode` built exactly the way `run_loop.rs` builds it for a
+    /// speculative attempt — with `LoopConfig`'s caps already wired via
+    /// `with_max_budget_usd`/`with_disallowed_tools` — still spawned this one
+    /// path uncapped, because the free-function `claude_stream::plan_streaming`
+    /// it delegated to didn't accept those params at all.
+    #[tokio::test]
+    async fn plan_streaming_wrapper_forwards_budget_and_deny_to_subprocess() {
+        use std::os::unix::fs::PermissionsExt;
+        let script = std::env::temp_dir().join("lopi_claude_wrapper_stub.sh");
+        let capture = std::env::temp_dir().join("lopi_claude_wrapper_capture.txt");
+        std::fs::remove_file(&capture).ok();
+        std::fs::write(
+            &script,
+            format!(
+                "#!/bin/sh\nfor a in \"$@\"; do printf '%s\\n' \"$a\" >> {}; done\necho '1. step'\n",
+                capture.display()
+            ),
+        )
+        .unwrap();
+        let mut perms = std::fs::metadata(&script).unwrap().permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&script, perms).unwrap();
+
+        let claude = ClaudeCode::new(".")
+            .with_cli(script.to_str().unwrap())
+            .with_max_budget_usd(1.0)
+            .with_disallowed_tools(vec!["Workflow".to_string()]);
+        let task = Task::new("wrapper forwarding test");
+        let (handle, mut rx) = claude.plan_streaming(&task);
+        while rx.recv().await.is_some() {}
+        handle.await.unwrap().unwrap();
+
+        let argv = std::fs::read_to_string(&capture).unwrap();
+        assert!(argv.contains("--max-budget-usd\n1"), "argv={argv}");
+        assert!(argv.contains("--disallowedTools\nWorkflow"), "argv={argv}");
+
+        std::fs::remove_file(&script).ok();
+        std::fs::remove_file(&capture).ok();
     }
 
     #[test]
