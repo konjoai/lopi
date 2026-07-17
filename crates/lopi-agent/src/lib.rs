@@ -8,7 +8,13 @@ pub mod claude;
 /// Single decoder for `claude -p --output-format stream-json` NDJSON: derives
 /// both the log-panel status line and the structured `AgentEvent`s the panes consume.
 pub mod claude_events;
+/// Model identifiers, model-routing heuristic, and the CLI output envelope.
+/// Re-exported from `claude` — see that module's doc comment.
+mod claude_model;
 mod claude_stream;
+/// Subprocess-env scrubbing and fix-prompt error compression.
+/// Re-exported from `claude` — see that module's doc comment.
+mod claude_support;
 /// Sprint U — DAG-structured execution trace for partial-restart retry.
 pub mod dag;
 /// Sprint U — reconstruct an `AgentDag` from persisted rows.

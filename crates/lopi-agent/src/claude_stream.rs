@@ -70,21 +70,14 @@ pub fn plan_streaming(
             .current_dir(&repo_path)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::null());
-        if let Some(m) = &model {
-            cmd.arg("--model").arg(m);
-        }
-        if let Some(usd) = max_budget_usd {
-            cmd.arg("--max-budget-usd").arg(format!("{usd}"));
-        }
-        if let Some(turns) = max_turns {
-            cmd.arg("--max-turns").arg(turns.to_string());
-        }
-        if !allowed_tools.is_empty() {
-            cmd.arg("--allowedTools").args(&allowed_tools);
-        }
-        if !disallowed_tools.is_empty() {
-            cmd.arg("--disallowedTools").args(&disallowed_tools);
-        }
+        crate::claude_support::apply_cli_caps(
+            &mut cmd,
+            model.as_deref(),
+            max_turns,
+            max_budget_usd,
+            &allowed_tools,
+            &disallowed_tools,
+        );
         // Same auth guard as the one-shot path: never let inherited routing
         // env (ANTHROPIC_API_KEY, ANTHROPIC_BASE_URL, etc.) silently switch
         // the CLI from the user's subscription to API-key billing.

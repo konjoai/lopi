@@ -104,11 +104,43 @@ pub(crate) async fn run_with_live_print(
     // billed spend (already flowing into turn_metrics via every streamed
     // call) in the run-complete line, so it's visible without a SQL query.
     match store.task_cost(&task_id.0.to_string()).await {
-        Ok(cost_usd) if cost_usd > 0.0 => println!("💵 session cost: ${cost_usd:.4}"),
-        Ok(_) => {}
+        Ok(cost_usd) => {
+            if let Some(line) = format_session_cost_line(cost_usd) {
+                println!("{line}");
+            }
+        }
         Err(e) => tracing::warn!(task_id = %task_id, "failed to load session cost: {e}"),
     }
     Ok(outcome)
+}
+
+/// The per-session cost line for the run-complete summary, or `None` when
+/// nothing was billed (a `$0.0000` line is noise, not signal — e.g. a
+/// dry-run, or every attempt used the direct-API path instead of a streamed
+/// `claude -p` call).
+fn format_session_cost_line(cost_usd: f64) -> Option<String> {
+    if cost_usd > 0.0 {
+        Some(format!("💵 session cost: ${cost_usd:.4}"))
+    } else {
+        None
+    }
+}
+
+/// The "one-off budget override in effect" line printed before a run, or
+/// `None` when `budget_override` is empty (the common case, so an ordinary
+/// `lopi run` with no `--budget*` flags stays quiet).
+fn format_budget_override_line(
+    budget_override: &BudgetOverride,
+    resolved: &lopi_core::ResolvedBudget,
+) -> Option<String> {
+    if budget_override.is_empty() {
+        None
+    } else {
+        Some(format!(
+            "   budget: ${:.2} / {} tokens / deny {:?}",
+            resolved.usd, resolved.tokens, resolved.deny
+        ))
+    }
 }
 
 /// `lopi run` — execute a single agent task on the current terminal.
@@ -182,11 +214,8 @@ pub async fn run(
     } else {
         budget_override.apply(loop_cfg.resolved_budget())
     };
-    if !budget_override.is_empty() {
-        println!(
-            "   budget: ${:.2} / {} tokens / deny {:?}",
-            resolved_budget.usd, resolved_budget.tokens, resolved_budget.deny
-        );
+    if let Some(line) = format_budget_override_line(&budget_override, &resolved_budget) {
+        println!("{line}");
     }
     let mut runner = AgentRunner::standalone(task.clone(), repo)
         .0
@@ -266,6 +295,47 @@ fn resolve_skill_invocation(goal: String, repo: &Path) -> Result<String> {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn format_session_cost_line_shows_nonzero_spend() {
+        assert_eq!(
+            format_session_cost_line(0.0421),
+            Some("💵 session cost: $0.0421".to_string())
+        );
+    }
+
+    #[test]
+    fn format_session_cost_line_hides_zero_spend() {
+        assert_eq!(format_session_cost_line(0.0), None);
+    }
+
+    #[test]
+    fn format_session_cost_line_hides_negative_spend() {
+        // Defensive: a negative cost should never happen, but the boundary
+        // is `> 0.0`, not `>= 0.0` — pin the exact comparison.
+        assert_eq!(format_session_cost_line(-0.01), None);
+    }
+
+    #[test]
+    fn format_budget_override_line_hides_empty_override() {
+        let resolved = lopi_core::LoopConfig::default().resolved_budget();
+        assert_eq!(
+            format_budget_override_line(&BudgetOverride::default(), &resolved),
+            None
+        );
+    }
+
+    #[test]
+    fn format_budget_override_line_shows_a_nonempty_override() {
+        let resolved = BudgetPreset::Deep.resolved();
+        let ov = BudgetOverride {
+            preset: Some(BudgetPreset::Deep),
+            ..Default::default()
+        };
+        let line = format_budget_override_line(&ov, &resolved).unwrap();
+        assert!(line.contains("$10.00"));
+        assert!(line.contains("5000000 tokens"));
+    }
 
     #[test]
     fn budget_args_default_resolves_to_an_empty_override() {

@@ -423,3 +423,7 @@ impl LoopConfig {
 #[cfg(test)]
 #[path = "loop_config_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "loop_config_budget_tests.rs"]
+mod budget_tests;
