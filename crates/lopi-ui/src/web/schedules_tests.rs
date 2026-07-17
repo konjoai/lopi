@@ -260,6 +260,71 @@ async fn run_now_unknown_returns_404() {
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
 
+// `POST /api/schedules/:id/autonomy` (`set_autonomy`) had zero test coverage
+// at any level — confirmed by grep before writing these.
+#[tokio::test]
+async fn set_autonomy_returns_200_with_the_normalized_level() {
+    let app = test_app_started().await;
+    let id = create_one(&app).await;
+    let resp = app
+        .clone()
+        .oneshot(json_post(
+            &format!("/api/schedules/{id}/autonomy"),
+            serde_json::json!({ "level": "verified_pr" }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = body_json(resp).await;
+    assert_eq!(json["id"], id);
+    assert_eq!(json["autonomy_level"], "verified_pr");
+
+    // Round-trip: the change is a real write, not just an echoed response.
+    let get_resp = app
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/schedules/{id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let get_json = body_json(get_resp).await;
+    assert_eq!(get_json["autonomy_level"], "verified_pr");
+}
+
+#[tokio::test]
+async fn set_autonomy_normalizes_an_unrecognized_level_to_draft_pr() {
+    let app = test_app_started().await;
+    let id = create_one(&app).await;
+    let resp = app
+        .oneshot(json_post(
+            &format!("/api/schedules/{id}/autonomy"),
+            serde_json::json!({ "level": "not-a-real-level" }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = body_json(resp).await;
+    assert_eq!(
+        json["autonomy_level"], "draft_pr",
+        "an unrecognized level falls back to AutonomyLevel's #[default] (DraftPr), not an error"
+    );
+}
+
+#[tokio::test]
+async fn set_autonomy_unknown_schedule_returns_404() {
+    let app = test_app_started().await;
+    let resp = app
+        .oneshot(json_post(
+            "/api/schedules/nope/autonomy",
+            serde_json::json!({ "level": "draft_pr" }),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
 #[tokio::test]
 async fn config_endpoint_returns_200() {
     // No lopi.toml in the test working dir → source "none", config null.
