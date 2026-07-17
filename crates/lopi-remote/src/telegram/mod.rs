@@ -10,13 +10,34 @@ use std::sync::Arc;
 use teloxide::{dispatching::UpdateHandler, prelude::*, utils::command::BotCommands};
 use tokio::sync::Mutex;
 
+pub mod budget;
 pub mod callbacks;
 pub mod format;
 pub mod handlers;
 pub mod monitor;
 pub mod notify;
 
+use budget::PendingBudgetMap;
 use handlers::{message_handler, text_message_handler, DraftMap};
+
+/// Bundled bot dependencies injected into every command handler.
+///
+/// teloxide's `dptree::Injectable` only supports a bounded number of
+/// separately-injected parameters — bundling everything the handlers share
+/// (queue/store/pool/allowed-list/schedules/draft state/pending-budget
+/// state) into one `Clone` struct keeps `message_handler` well under that
+/// bound regardless of how many more remote-control features add shared
+/// state later. Every field is already cheap to clone (`Arc`/`Arc<Mutex<_>>`).
+#[derive(Clone)]
+pub struct BotDeps {
+    pub(crate) queue: Arc<TaskQueue>,
+    pub(crate) store: Arc<MemoryStore>,
+    pub(crate) pool: Arc<AgentPool>,
+    pub(crate) allowed: Arc<Vec<i64>>,
+    pub(crate) schedules: Arc<Vec<ScheduleEntry>>,
+    pub(crate) drafts: DraftMap,
+    pub(crate) pending_budgets: PendingBudgetMap,
+}
 
 /// All commands accepted by the lopi Telegram bot.
 #[derive(BotCommands, Clone)]
@@ -79,6 +100,11 @@ pub enum LopiCmd {
     /// Discard the current draft.
     #[command(description = "discard current draft", rename = "cancel_draft")]
     CancelDraft,
+    /// Set a one-off budget override for the next queued card, or show it.
+    #[command(
+        description = "budget override for the next card: /budget <preset|usd> or /budget status"
+    )]
+    Budget(String),
 }
 
 /// Start the Telegram bot.
@@ -106,22 +132,39 @@ pub async fn run(
     let allowed = Arc::new(allowed_chat_ids);
     let schedules_arc = Arc::new(schedules);
     let drafts: DraftMap = Arc::new(Mutex::new(HashMap::new()));
+    let pending_budgets: PendingBudgetMap = Arc::new(Mutex::new(HashMap::new()));
 
     // Spawn the completion notifier task.
     let notify_bot = bot.clone();
     let bus_rx = bus.subscribe();
     tokio::spawn(notify::notify_loop(notify_bot, bus_rx, notify_chat_id));
 
+    // `message_handler` takes the bundled `BotDeps` (see its doc comment for
+    // why); `callback_query_handler`/`text_message_handler` still take their
+    // own individual types, so both the bundle and its constituent pieces
+    // are registered — dptree matches whichever type each handler asks for.
+    let deps = BotDeps {
+        queue: queue_arc.clone(),
+        store: store_arc.clone(),
+        pool: pool_arc.clone(),
+        allowed: allowed.clone(),
+        schedules: schedules_arc.clone(),
+        drafts: drafts.clone(),
+        pending_budgets: pending_budgets.clone(),
+    };
+
     let handler = build_handler();
 
     Dispatcher::builder(bot, handler)
         .dependencies(dptree::deps![
+            deps,
             queue_arc,
             store_arc,
             pool_arc,
             allowed,
             schedules_arc,
-            drafts
+            drafts,
+            pending_budgets
         ])
         .build()
         .dispatch()

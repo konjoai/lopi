@@ -1,12 +1,50 @@
 use anyhow::Result;
 use lopi_agent::{AgentRunner, AnthropicClient, AnthropicLimiter, CircuitBreaker, StabilityConfig};
-use lopi_core::{AgentEvent, LopiConfig, RepoProfile, Task, TaskId, TaskSource, TaskStatus};
+use lopi_core::{
+    AgentEvent, BudgetOverride, BudgetPreset, LopiConfig, RepoProfile, Task, TaskId, TaskSource,
+    TaskStatus,
+};
 use lopi_memory::MemoryStore;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
 use crate::util::{db_path, is_self_modify_attempt, status_label};
+
+/// One-off budget overrides parsed from `lopi run`'s `--budget`/
+/// `--budget-preset`/`--budget-tokens` flags — the CLI-argument-parsing
+/// counterpart of [`lopi_core::BudgetOverride`], kept separate so this module
+/// doesn't need to construct the core type before validating the preset name.
+#[derive(Default)]
+pub struct BudgetArgs {
+    /// `--budget <usd>` — one-off per-session USD cap.
+    pub budget: Option<f64>,
+    /// `--budget-preset <name>` — one-off named preset (quick/standard/deep/unlimited).
+    pub budget_preset: Option<String>,
+    /// `--budget-tokens <n>` — one-off per-run token budget.
+    pub budget_tokens: Option<u64>,
+}
+
+impl BudgetArgs {
+    /// Parse into a [`BudgetOverride`]. Errors loudly on an unrecognized
+    /// preset name rather than silently falling back to the repo default —
+    /// a typo'd `--budget-preset` should never quietly run uncapped-standard.
+    fn resolve(self) -> Result<BudgetOverride> {
+        let preset = self
+            .budget_preset
+            .as_deref()
+            .map(|s| {
+                BudgetPreset::parse(s)
+                    .ok_or_else(|| anyhow::anyhow!("unknown --budget-preset '{s}' (expected quick, standard, deep, or unlimited)"))
+            })
+            .transpose()?;
+        Ok(BudgetOverride {
+            preset,
+            usd: self.budget,
+            tokens: self.budget_tokens,
+        })
+    }
+}
 
 /// Run `runner` to completion while bridging its `AgentEvent` bus to stdout
 /// (status transitions, log lines, and — when `print_score` is set — score
@@ -75,7 +113,9 @@ pub async fn run(
     adaptive_retry: bool,
     stability_gate: bool,
     cfg: Option<&LopiConfig>,
+    budget_args: BudgetArgs,
 ) -> Result<()> {
+    let budget_override = budget_args.resolve()?;
     // Skill Arguments (Sprint 2) — a `:name args` goal resolves to the named
     // skill's rendered body *before* anything else sees `goal`; Claude only
     // ever sees the resolved literal, exactly like a Sprint 1 template.
@@ -125,11 +165,28 @@ pub async fn run(
     // Loop-as-code: honor the repo's `.lopi/loop.toml` self-prompting strategy.
     // A malformed file falls back to the conservative default rather than aborting the run.
     let loop_cfg = lopi_core::LoopConfig::load_from_repo(&repo).unwrap_or_default();
+    // Budget & Guardrail Controls Part 3 — resolve the repo's `[budget]`
+    // preset, then layer any one-off `--budget`/`--budget-preset`/
+    // `--budget-tokens` override on top, same resolution order the pool
+    // uses for a queued task's `budget_override`.
+    let resolved_budget = if budget_override.is_empty() {
+        loop_cfg.resolved_budget()
+    } else {
+        budget_override.apply(loop_cfg.resolved_budget())
+    };
+    if !budget_override.is_empty() {
+        println!(
+            "   budget: ${:.2} / {} tokens / deny {:?}",
+            resolved_budget.usd, resolved_budget.tokens, resolved_budget.deny
+        );
+    }
     let mut runner = AgentRunner::standalone(task.clone(), repo)
         .0
         .with_self_prompt(loop_cfg.self_prompt)
         .with_strategy_escalation(loop_cfg.escalate_strategy)
-        .with_task_budget(loop_cfg.budget_tokens);
+        .with_task_budget(resolved_budget.tokens)
+        .with_cli_budget_usd(resolved_budget.usd)
+        .with_tool_permissions(resolved_budget.allow, resolved_budget.deny);
     if adaptive_retry {
         runner = runner.with_adaptive_retry();
         let mode = if loop_cfg.escalate_strategy {
@@ -195,4 +252,69 @@ fn resolve_skill_invocation(goal: String, repo: &Path) -> Result<String> {
         anyhow::bail!("no skill named `{name}` in {}", repo.display());
     };
     Ok(skill.render_body(args)?)
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn budget_args_default_resolves_to_an_empty_override() {
+        let ov = BudgetArgs::default().resolve().unwrap();
+        assert!(ov.is_empty());
+    }
+
+    #[test]
+    fn budget_args_bare_usd_resolves_without_touching_preset() {
+        let ov = BudgetArgs {
+            budget: Some(5.0),
+            budget_preset: None,
+            budget_tokens: None,
+        }
+        .resolve()
+        .unwrap();
+        assert_eq!(ov.usd, Some(5.0));
+        assert!(ov.preset.is_none());
+    }
+
+    #[test]
+    fn budget_args_valid_preset_name_resolves() {
+        let ov = BudgetArgs {
+            budget: None,
+            budget_preset: Some("deep".to_string()),
+            budget_tokens: None,
+        }
+        .resolve()
+        .unwrap();
+        assert_eq!(ov.preset, Some(BudgetPreset::Deep));
+    }
+
+    /// A typo'd `--budget-preset` must fail loudly, never silently fall back
+    /// to a different (potentially wider-open) tier.
+    #[test]
+    fn budget_args_unknown_preset_name_errors() {
+        let err = BudgetArgs {
+            budget: None,
+            budget_preset: Some("deap".to_string()),
+            budget_tokens: None,
+        }
+        .resolve()
+        .unwrap_err();
+        assert!(err.to_string().contains("unknown --budget-preset"));
+    }
+
+    #[test]
+    fn budget_args_all_three_flags_combine() {
+        let ov = BudgetArgs {
+            budget: Some(25.0),
+            budget_preset: Some("deep".to_string()),
+            budget_tokens: Some(9_000_000),
+        }
+        .resolve()
+        .unwrap();
+        assert_eq!(ov.preset, Some(BudgetPreset::Deep));
+        assert_eq!(ov.usd, Some(25.0));
+        assert_eq!(ov.tokens, Some(9_000_000));
+    }
 }
