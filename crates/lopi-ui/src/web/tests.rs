@@ -639,6 +639,22 @@ fn apply_loop_fields_threads_verifier_overrides_through_exactly() {
 }
 
 #[test]
+fn apply_loop_fields_threads_deliverable_override_through() {
+    let mut task = Task::new("review the auth module");
+    // Without an explicit override, this goal infers review-only; assert the
+    // API can still pin it explicitly and that it round-trips as snake_case.
+    let req: CreateTaskRequest = serde_json::from_value(serde_json::json!({
+        "goal": "review the auth module",
+        "deliverable": "file_changes",
+    }))
+    .unwrap();
+    apply_loop_fields(&mut task, &req).unwrap();
+    assert_eq!(task.deliverable, Some(lopi_core::Deliverable::FileChanges));
+    // The explicit override wins over the goal-text inference.
+    assert_eq!(task.deliverable_kind(), lopi_core::Deliverable::FileChanges);
+}
+
+#[test]
 fn apply_loop_fields_accepts_telegram_and_rejects_whatsapp() {
     let mut telegram_task = Task::new("t");
     let telegram_req: CreateTaskRequest =

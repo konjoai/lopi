@@ -59,11 +59,17 @@ pub struct CreateTaskRequest {
     /// Explicit worker-model override. Mirrors [`lopi_core::Task::model`].
     #[serde(default)]
     pub model: Option<String>,
-    /// Reasoning-effort hint for the worker's planning pass. Stored for
-    /// round-trip only — not yet folded into any planning prompt. Mirrors
+    /// Reasoning-effort level for the worker session, passed to the CLI as
+    /// `--effort` (`low`/`medium`/`high`/`xhigh`/`max`). Mirrors
     /// [`lopi_core::Task::effort`].
     #[serde(default)]
     pub effort: Option<String>,
+    /// Goal-intent override for zero-diff success handling: `"file_changes"`
+    /// (a zero-diff attempt fails and retries) or `"review_only"` (zero diff
+    /// is a valid success). `None` infers it from the goal text. Mirrors
+    /// [`lopi_core::Task::deliverable`].
+    #[serde(default)]
+    pub deliverable: Option<lopi_core::Deliverable>,
     /// Guardrail precondition — a shell command that must exit `0` before
     /// the loop's first iteration. Mirrors [`lopi_core::Task::gate`].
     #[serde(default)]

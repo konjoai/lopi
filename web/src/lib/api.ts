@@ -109,6 +109,10 @@ export interface CreateTaskOptions {
   max_iterations?: number;
   model?: string;
   effort?: string;
+  /** Goal-intent override for zero-diff success: 'file_changes' (a run that
+   *  writes nothing fails and retries) or 'review_only' (zero diff is a valid
+   *  success). Omit to infer from the goal text. */
+  deliverable?: 'file_changes' | 'review_only';
   /** Guardrail precondition — a shell command that must exit 0 before the loop starts. */
   gate?: string;
   /** Guardrail exit-condition — a shell command; exit 0 ends the loop early as a success. */
