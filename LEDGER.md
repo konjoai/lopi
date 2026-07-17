@@ -5,6 +5,155 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## Stack-Chain-1 / Popover-Fix-1 / Parity-Audit-1
+
+**New tables, not an overload of `schedules`.** `schedule_chains` /
+`schedule_chain_steps` / `schedule_chain_runs`
+(`crates/lopi-memory/src/schema.sql`) are new, sibling to `schedules` rather
+than an extension of it.
+
+**Why:** confirmed by two pre-flight kill-tests before any schema was
+written. KT1 read `crates/lopi-agent/src/dag.rs` in full: it's a fixed
+7-node linear pipeline of *stages within one agent attempt*
+(`Plan→Implement→Test→Score→Verify→Diff→PR`), not a sequence of independent
+goals — reusing it would have force-fit a structure that doesn't model the
+problem. KT4 confirmed `schedules`' `ScheduleSpec`/`ScheduleRow` have exactly
+one `goal: String` field each, with no chain/step concept anywhere, and that
+`AgentPool::submit()` is the only task-injection entrypoint — extending the
+existing row shape in place would have meant either cramming a
+serialized-list hack into `goal` or breaking every existing single-schedule
+caller.
+
+**How to apply:** any future "sequence of N independent things, each its own
+full unit of work" primitive in this codebase should follow the same
+shape — a header table + an ordered child table + a per-fire run-state
+table — rather than trying to generalize an existing single-item table.
+
+**Restart-resume is real, not best-effort-and-hope.** `ChainScheduleManager`
+(`crates/lopi-orchestrator/src/chain_schedule_manager.rs`) scans
+`schedule_chain_runs` still `running` on boot and either advances (task
+actually finished before the restart, per its durable `tasks.status` row) or
+resubmits the same step (orphaned).
+
+**Why:** KT4's research established that `AgentPool`'s `TaskQueue` is purely
+in-memory — nothing about a queued or running task survives a process
+restart today, anywhere in this codebase. A chain scheduler that assumed
+`TaskCompleted` events would eventually arrive post-restart would have
+silently hung forever on exactly the incident scenario (backend offline
+overnight) that motivated this sprint. This was proven, not assumed: a
+genuine integration test (`crates/lopi-orchestrator/tests/chain_schedule_resume.rs`)
+opens a real on-disk SQLite file, drops every in-process object, and reopens
+a fresh set against the same file — the actual boundary a process restart
+crosses.
+
+**How to apply:** any future server-side scheduler that spans more than one
+fire-and-forget task submission must assume zero in-memory state survives a
+restart and re-derive "what was I doing" from the durable store on boot, the
+same pattern `ChainScheduleManager::start()`/`resume_orphaned` establishes.
+
+**Popover fix is a bug fix, not a `preferAbove` policy default.** The sprint
+brief proposed adding a `preferAbove` prop to `Popover.svelte` and defaulting
+it `true` at every stack-context call site. That was not implemented.
+
+**Why:** KT2 reproduced the bug with hard numbers before writing any fix
+code — `popEl.getBoundingClientRect()` before and after toggling "run on a
+schedule" on. The popover correctly flipped above the anchor for the small
+pre-toggle content (`computePosition()`'s existing flip logic already
+worked); it only failed to reposition *after* the content grew, because
+nothing re-triggered `computePosition()` on a content-size change — only on
+`open` and `window resize`. A `preferAbove` default would have been treating
+a stale-measurement bug as if it were a "never enough room below" design
+question, and would not have actually fixed anything: the popover would
+still fail to reposition on content growth, just from a different starting
+side. The real fix (a `ResizeObserver` on the popover element) was
+live-verified: pre-fix the popover overflowed the 700px window by 57.4px
+after the toggle; post-fix the identical interaction repositions with
+133.6px of clearance.
+
+**How to apply:** any future "popover/dropdown clips off-screen" report
+should be kill-tested with real before/after `getBoundingClientRect()`
+numbers before reaching for a positioning-policy prop — the fix is usually
+"the reposition trigger is missing," not "the default side is wrong."
+
+**macOS needed no popover-positioning fix — confirmed live, not inferred.**
+`request_access` for the `Lopi` app was denied earlier in the session; the
+user re-granted it later in the same session, which let KT3 actually run:
+build the app, add a card, open the dock's schedule popover from its
+bottom-pinned anchor, toggle "run on a schedule" on (mounting the full
+frequency-picker/cron-field/next-runs content — the same growth trigger that
+broke web), and screenshot. Result: the popover renders fully above the
+anchor with zero clipping. `StackCardView.swift` uses `arrowEdge: .bottom`,
+`StackControlDockView.swift`/`StackTemplatesMenuView.swift` use `.top` — an
+inconsistency, but cosmetic-only, since native `NSPopover` re-flips either
+preference to whichever side actually has room. Left as-is.
+
+**Why this belongs in the ledger despite being a non-fix:** it's the
+resolution of the previous entry's open question, not a new decision — the
+previous entry explicitly warned against inferring an `arrowEdge` fix from
+the web bug without live evidence, and that caution paid off: the naive
+inference (`.top` looks backwards for a bottom-pinned anchor, "fix" it to
+`.bottom`) would have been wrong. `NSPopover`'s native repositioning made the
+web-style bug structurally impossible on macOS.
+
+**Also fixed live, same verification session:** the stack dock's split "run
+stack ▾" button had a mismatched chevron-segment height relative to web (spotted
+by the user from a live screenshot, not part of the original sprint scope).
+First fix attempt (`.frame(maxHeight: .infinity)` on the chevron) overcorrected
+into a much worse regression — a chevron bar stretching the full window
+height — because SwiftUI's `HStack` doesn't stretch children to a sibling's
+height the way CSS flex `align-items: stretch` does; `maxHeight: .infinity`
+instead fills whatever *unbounded* space an ancestor offers. Caught immediately
+via live screenshot before being reported as done, then corrected with a
+measure-then-match `PreferenceKey` that reads `.runmain`'s actual rendered
+height and applies it as a fixed `.frame(height:)` on the chevron — the
+general-purpose SwiftUI technique for matching a sibling's height when the
+parent stack won't do it automatically.
+
+**How to apply:** when a SwiftUI layout needs "match my sibling's height"
+(the CSS `align-items: stretch` behavior), reach for a `GeometryReader` +
+`PreferenceKey` pair, not `frame(maxHeight: .infinity)` — the latter answers
+a different question ("fill available space") and will visibly misbehave
+the moment the parent has more room to give than the sibling used.
+
+**Playwright added as a new web devDependency** (`@playwright/test` in
+`web/package.json`, config at `web/playwright.config.ts`, specs under
+`web/e2e/`) — the first browser-automation test tooling in this repo.
+
+**Why:** the sprint's Phase 6 explicitly required e2e coverage for the
+chain-scheduling flow and the popover-viewport regression, and
+`web/src/lib/**/*.test.ts` (the `tsx`-run unit suite) has no browser — it
+cannot drive real DOM layout/`ResizeObserver` behavior, which is exactly
+what the popover fix needed proving. 8 specs were written and actually run
+(not just written) against a live dev server: all 8 pass.
+
+**How to apply:** future browser-level regressions (real layout, real
+`ResizeObserver`/`IntersectionObserver` behavior, real cross-tab timing)
+belong in `web/e2e/`, not forced into the `tsx` unit-test harness. Don't add
+a second e2e framework — extend this one.
+
+**XCUITest added as a new macOS test target** (`LopiUITests` in
+`macos/project.yml`, sources under `macos/LopiUITests/`) — the first UI-level
+test target in this repo (`LopiTests` is unit-only).
+
+**Why:** same Phase 6 requirement, macOS side. Unlike computer-use (which
+drives the *user's* screen interactively and was denied this session),
+XCUITest drives the app's own accessibility tree via a test-runner process —
+a different, already-implicitly-authorized mechanism (the same one
+`xcodebuild test` uses for `LopiTests`). `build-for-testing` succeeds
+cleanly; actually *running* `LopiUITests` hit a local code-signing/Team-ID
+mismatch in this environment's DerivedData, unrelated to the test code —
+documented rather than silently worked around or claimed as passing.
+Element identifiers (`stack.dockExpand`, `stack.scheduleToggle`,
+`stack.goalField`, plus `CardbarButton`'s `.accessibilityIdentifier(help)`)
+were added alongside the tests rather than guessing at implicit AppKit
+labels for icon-only buttons, which would have made the suite fragile from
+day one.
+
+**How to apply:** the next macOS session should resolve the DerivedData
+signing mismatch (likely a stale/inconsistent local signing identity, not a
+project.yml issue) and actually run `LopiUITests` before trusting it as a
+real gate — see `NEXT_SESSION_PROMPT.md`.
+
 ## iOS-Research-1 spike + kill-test harness prep + eval-enforcement decision brief
 
 Three phases, one real feature (the first). Per the sprint's own scoping: the
