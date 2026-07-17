@@ -131,6 +131,98 @@ struct ScheduleBody: Codable {
     }
 }
 
+// MARK: - Schedule chains (whole-stack cron)
+
+/// Stack-Chain-1 — sibling to `Schedule`, but a chain carries an ORDERED
+/// SEQUENCE of goals (one per stack card) instead of a single `goal`.
+/// Mirrors `web/src/lib/api.ts`'s `ScheduleChain`.
+struct ScheduleChainStep: Codable, Hashable {
+    var stepOrder: Int
+    var goal: String
+    var allowedDirs: [String]
+    var forbiddenDirs: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case goal
+        case stepOrder = "step_order"
+        case allowedDirs = "allowed_dirs"
+        case forbiddenDirs = "forbidden_dirs"
+    }
+}
+
+struct ScheduleChainRun: Codable, Identifiable, Hashable {
+    let id: String
+    let chainId: String
+    let firedAt: String
+    let currentStep: Int
+    let currentTaskId: String?
+    let status: String
+
+    enum CodingKeys: String, CodingKey {
+        case id, status
+        case chainId = "chain_id"
+        case firedAt = "fired_at"
+        case currentStep = "current_step"
+        case currentTaskId = "current_task_id"
+    }
+}
+
+struct ScheduleChain: Codable, Identifiable, Hashable {
+    let id: String
+    var name: String
+    var cron: String
+    var repo: String?
+    var priority: String?
+    var autonomyLevel: String
+    var onFail: String
+    var enabled: Bool
+    var steps: [ScheduleChainStep]
+    var createdAt: String?
+    var updatedAt: String?
+    var nextRuns: [String]?
+    var lastRun: ScheduleChainRun?
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, cron, repo, priority, enabled, steps
+        case autonomyLevel = "autonomy_level"
+        case onFail = "on_fail"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+        case nextRuns = "next_runs"
+        case lastRun = "last_run"
+    }
+}
+
+/// Body for creating/updating a schedule chain.
+struct ScheduleChainStepBody: Codable {
+    var goal: String
+    var allowedDirs: [String]?
+    var forbiddenDirs: [String]?
+
+    enum CodingKeys: String, CodingKey {
+        case goal
+        case allowedDirs = "allowed_dirs"
+        case forbiddenDirs = "forbidden_dirs"
+    }
+}
+
+struct ScheduleChainBody: Codable {
+    var name: String
+    var cron: String
+    var steps: [ScheduleChainStepBody]
+    var repo: String?
+    var priority: String?
+    var autonomyLevel: String?
+    var onFail: String?
+    var enabled: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case name, cron, steps, repo, priority, enabled
+        case autonomyLevel = "autonomy_level"
+        case onFail = "on_fail"
+    }
+}
+
 // MARK: - Task creation
 
 /// Body for `POST /api/tasks`.

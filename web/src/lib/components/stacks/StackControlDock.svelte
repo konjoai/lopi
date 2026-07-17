@@ -45,7 +45,14 @@
     type DryRunResult,
     type CommandValueSuggestion
   } from '$lib/stores/stack';
-  import { runs, runStack, pauseStack, resumeStack, type RunPhase } from '$lib/stores/stackRun';
+  import {
+    runs,
+    runStack,
+    pauseStack,
+    resumeStack,
+    syncStackSchedule,
+    type RunPhase
+  } from '$lib/stores/stackRun';
   import { stackStopLabel } from '$lib/stores/stackGoal';
   import { agents } from '$lib/stores/agents';
   import { labelFor, type Option } from '$lib/stores/controls';
@@ -53,8 +60,8 @@
   import { MODEL_OPTIONS, EFFORT_OPTIONS } from '$lib/stores/options';
   import { AUTONOMY_OPTIONS } from '$lib/stores/stackDefaults';
   import { branchesByRepo, branchOptionsFor, ensureBranches } from '$lib/stores/branches';
-  import { repoAutocomplete } from '$lib/stores/repoMenu';
-  import { draggingPane } from './dnd';
+  import { repoAutocomplete, repoLabelForPath } from '$lib/stores/repoMenu';
+  import { draggingPane, armedPaneKey } from './dnd';
   import { ICONS } from './icons';
   import Popover, { togglePopover } from './Popover.svelte';
   import SchedulePopover from './SchedulePopover.svelte';
@@ -74,7 +81,11 @@
 
   $: config = pane.config;
 
-  let dockOpen = false;
+  // Open by default so the loop/schedule/guardrails/config controls (and
+  // the cmdbar) are visible without an extra click — adding prompts must
+  // NOT close it (a card commit doesn't touch `dockOpen` at all), only an
+  // actual run starting does, below.
+  let dockOpen = true;
   let schedBtn: HTMLButtonElement | undefined;
   let guardBtn: HTMLButtonElement | undefined;
   let evalBtn: HTMLButtonElement | undefined;
@@ -103,6 +114,11 @@
 
   $: void ensureModelCatalog();
   $: modelLabel = labelFor(modelOptionsFrom($modelCatalog), config.defaults.model);
+  // A chosen repo previously vanished from the dock's own summary the
+  // instant it was set — visible in the config popover (`StackConfigPopover`
+  // reads `defaults.repo` directly) but nowhere else, since this line was
+  // hardcoded to "model X · every loop inherits" with no repo term at all.
+  $: repoLabel = config.defaults.repo ? repoLabelForPath(config.defaults.repo, repoOptions) : '';
   $: loopLabel = config.loopCount <= 1 ? maxIterationsLabel(config.loopCount) : '×' + maxIterationsLabel(config.loopCount);
   $: dockSummary = `${scheduledOn ? cronHuman(config.cron) + ' · ' : ''}loop ${loopLabel} · ${modelLabel}`;
 
@@ -121,6 +137,7 @@
   // dock's own icon buttons make.
   let cmdText = '';
   let cmdBarFocused = false;
+  let cmdBarInput: HTMLInputElement | undefined;
   let cmdActiveIndex = 0;
   let cmdDismissed = false;
   let pendingCommand: string | null = null;
@@ -207,11 +224,20 @@
     else if (command === 'goal') togglePopover(goalId);
   }
 
+  // Splices the resolved token back into `cmdText` (plus a trailing space)
+  // rather than clearing it, mirroring `StackCard.svelte`'s `selectRepo`/
+  // `selectCommand` — otherwise the bar goes blank the instant a repo or
+  // command value is picked, and the only place the choice is visible is the
+  // popovers/summary line, not the text input itself. `cmdDismissed = true`
+  // closes the now-stale suggestion list (it would otherwise keep matching
+  // its own just-inserted token and stay open); typing further clears it via
+  // `onCmdBarInput`.
   function selectRepoFromBar(token: string): void {
     const suggestion = repoMatches.find((s) => s.token === token);
     if (suggestion) applyDefault({ repo: suggestion.value });
-    cmdText = '';
+    cmdText = `${token} `;
     cmdActiveIndex = 0;
+    cmdDismissed = true;
   }
 
   function selectCommandFromBar(token: string): void {
@@ -219,8 +245,9 @@
       const valueMatches = cmdMatches as CommandValueSuggestion[];
       const suggestion = valueMatches.find((s) => s.token === token);
       if (suggestion) applyCommandValue(pendingCommand, suggestion.value);
+      cmdText = `/${pendingCommand}/${suggestion?.value ?? ''} `;
       pendingCommand = null;
-      cmdText = '';
+      cmdDismissed = true;
     } else {
       const command = token.slice(1);
       const def = STACK_COMMANDS.find((c) => c.command === command);
@@ -230,6 +257,7 @@
       } else {
         fireCommandAction(command);
         cmdText = '';
+        cmdDismissed = true;
       }
     }
     cmdActiveIndex = 0;
@@ -277,6 +305,10 @@
   let dryRunResult: DryRunResult | null = null;
 
   $: phase = $runs.get(pane.key)?.phase as RunPhase | undefined;
+  // Auto-close only on the transition into an actual run — depends solely
+  // on `phase`, so it fires once when the stack starts running and never
+  // re-fires just because the user reopens the dock while still running.
+  $: if (phase === 'running') dockOpen = false;
   $: runError = $runs.get(pane.key)?.error;
   // B1 — the specific reason a goal run halted (goal_met vs no_progress vs
   // max_chain_loops). When present it drives its own banner and supersedes the
@@ -326,16 +358,6 @@
     });
     deleteStackFromPanes(pane.key);
   }
-  function onDragStart(e: DragEvent) {
-    draggingPane.set({ paneKey: pane.key, index });
-    if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
-  }
-  function onDragEnd() {
-    draggingPane.set(null);
-    dropBefore = false;
-    dropAfter = false;
-  }
-
   // ── drop target: the dock's own root, before/after by cursor Y — mirrors
   //    StackCard.svelte's within-pane card drag exactly, one level up. ──────
   let dropBefore = false;
@@ -398,6 +420,7 @@
       <div class="cmdbarwrap">
         <input
           class="cmdbar"
+          bind:this={cmdBarInput}
           value={cmdText}
           on:input={onCmdBarInput}
           on:keydown={onCmdBarKeydown}
@@ -408,12 +431,14 @@
         />
         {#if showRepoBarSuggest}
           <AutocompleteSuggest
+            anchor={cmdBarInput}
             items={repoMatches.map((m) => ({ value: m.token, label: m.label, hint: m.hint }))}
             activeIndex={cmdActiveIndex}
             onSelect={selectRepoFromBar}
           />
         {:else if showCmdBarSuggest}
           <AutocompleteSuggest
+            anchor={cmdBarInput}
             items={cmdMatches.map((m) => ({ value: m.token, label: m.label, hint: m.hint }))}
             activeIndex={cmdActiveIndex}
             onSelect={selectCommandFromBar}
@@ -426,7 +451,6 @@
             <span class="rl">{@html ICONS.cron}schedule</span>
             <span class="txt"><b>{cronHuman(config.cron)}</b></span>
           </div>
-          <div class="hintrow">not yet enforced — no whole-chain cron exists server-side yet</div>
         {/if}
         {#if guardsOn}
           <div class="sumln guard">
@@ -452,7 +476,7 @@
         {#if configOn}
           <div class="sumln cfg">
             <span class="rl">{@html ICONS.sliders}default</span>
-            <span class="txt">model <b>{modelLabel}</b> · every loop inherits</span>
+            <span class="txt">model <b>{modelLabel}</b>{#if repoLabel}{' · repo '}<b>{repoLabel}</b>{/if} · every loop inherits</span>
           </div>
         {/if}
       {/if}
@@ -495,9 +519,8 @@
           class="ib drag"
           type="button"
           title="drag to reorder stacks"
-          draggable="true"
-          on:dragstart={onDragStart}
-          on:dragend={onDragEnd}
+          on:mousedown={() => armedPaneKey.set(pane.key)}
+          on:mouseup={() => armedPaneKey.set(null)}
         >
           {@html ICONS.drag}
         </button>
@@ -554,8 +577,14 @@
   <SchedulePopover
     scheduled={config.scheduled}
     cron={config.cron}
-    onToggle={() => updateStackConfig(pane.key, { scheduled: !config.scheduled })}
-    onChange={(next) => updateStackConfig(pane.key, { cron: next })}
+    onToggle={() => {
+      updateStackConfig(pane.key, { scheduled: !config.scheduled });
+      void syncStackSchedule(pane.key, config.defaults);
+    }}
+    onChange={(next) => {
+      updateStackConfig(pane.key, { cron: next });
+      void syncStackSchedule(pane.key, config.defaults);
+    }}
   />
 </Popover>
 <Popover id={guardId} anchor={guardBtn ?? null} kind="guard">
@@ -567,7 +596,7 @@
     onChangeBudget={(budget) => updateStackConfig(pane.key, { guardrails: { ...config.guardrails, budget } })}
     maxIterations={config.loopCount}
     onStep={stepLoop}
-    iterLabel="loop stack"
+    iterLabel="loop stacks"
   />
 </Popover>
 <Popover id={evalId} anchor={evalBtn ?? null} kind="eval">

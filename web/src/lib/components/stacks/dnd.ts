@@ -26,3 +26,14 @@ export interface PaneDragState {
 }
 
 export const draggingPane = writable<PaneDragState | null>(null);
+
+/** Which pane's whole-stack drag handle is currently held down (`null` when
+ *  none) — the pane-level twin of `StackCard.svelte`'s local `armDrag`/
+ *  `disarmDrag` boolean. Has to be module-scope rather than local component
+ *  state, unlike the card version: the handle lives in
+ *  `StackControlDock.svelte`, but the element it needs to arm — the pane's
+ *  own root — is one component up, in `StackPane.svelte`. Before this, the
+ *  handle button itself carried a static `draggable="true"`, so only that
+ *  ~14px icon was ever the actual drag source; real drags routinely lost
+ *  the cursor off something that small and snapped back on drop. */
+export const armedPaneKey = writable<string | null>(null);

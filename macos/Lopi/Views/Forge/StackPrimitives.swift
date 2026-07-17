@@ -217,6 +217,7 @@ struct CardbarButton: View {
         .disabled(disabled)
         .opacity(disabled ? 0.4 : 1)
         .help(help)
+        .accessibilityIdentifier(help)
     }
 }
 

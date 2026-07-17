@@ -27,6 +27,7 @@ final class StackRunTests: XCTestCase {
         var onCreate: ((String?) -> Void)?
         var bareTaskId = "bare-task-1"
         var scheduleCount = 0
+        var scheduledGoals: [[String]] = []
         var captured: [Captured] = []
 
         init(store: StackStore, outcomes: [String: TerminalStatus], scores: [String: Double] = [:], onCreate: ((String?) -> Void)? = nil) {
@@ -51,7 +52,11 @@ final class StackRunTests: XCTestCase {
                     return await withCheckedContinuation { (_: CheckedContinuation<TerminalStatus, Never>) in }
                 },
                 score: { [self] taskId in scores[taskId] },
-                createSchedule: { [self] _, _, _, _, _ in scheduleCount += 1 },
+                createScheduleChain: { [self] _, _, goals, _, _, _ in
+                    scheduleCount += 1
+                    scheduledGoals.append(goals)
+                    return "chain-\(scheduleCount)"
+                },
                 reorderPaneCards: { [store] key, from, to in store.reorderInPane(key, from, to) })
         }
     }
@@ -172,16 +177,16 @@ final class StackRunTests: XCTestCase {
         if case .ok = engine.bumpCard("s2", "x", .up) { XCTFail("bumping in a pane with no active run should be rejected") }
     }
 
-    func testScheduleStackHonest() async {
+    func testScheduleStackWiresEveryCard() async {
         let store = freshStore()
         seedNewestFirst(store, "s1", ["c", "b", "a"])
         let mock = Mock(store: store, outcomes: [:])
         let engine = StackRunEngine(seams: mock.seams())
         let result = await engine.scheduleStack("s1", "0 * * * *", defaults)
         XCTAssertTrue(result.ok, "scheduleStack succeeds")
-        XCTAssertEqual(result.scheduledCardId, "a", "only the bottom (first-to-run) card is scheduled")
-        XCTAssertEqual(result.skippedCardIds, ["b", "c"], "every other card reported as skipped")
-        XCTAssertEqual(mock.scheduleCount, 1, "exactly one schedule is created, not one per card")
+        XCTAssertEqual(result.chainId, "chain-1", "the created chain id is returned")
+        XCTAssertEqual(mock.scheduleCount, 1, "exactly one chain is created, not one per card")
+        XCTAssertEqual(mock.scheduledGoals, [["a", "b", "c"]], "every card is submitted as a step, in bottom-of-stack-first execution order")
     }
 
     func testChainLoopTwice() async {

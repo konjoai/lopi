@@ -1,3 +1,72 @@
+# Next Session — after Stack-Chain-1 / Popover-Fix-1 / Parity-Audit-1
+
+Server-side whole-stack cron scheduling shipped end-to-end (schema →
+`ChainScheduleManager` with proven restart-resume → REST → web + macOS
+wiring), the web popover overflow bug is fixed and live-verified, and a
+citation-backed parity audit landed. Three concrete items carried forward:
+
+1. **Run KT3 for real: screenshot the macOS schedule popover at a short
+   window height.** `request_access` for the `Lopi` app was denied this
+   session, so `macos/Lopi/Views/Forge/StackControlDockView.swift:217-225`'s
+   `arrowEdge: .top` values (inconsistent with `StackCardView.swift:529-533`'s
+   `.bottom`) were audited but deliberately left unchanged — see `LEDGER.md`'s
+   "macOS `arrowEdge` values were audited but deliberately left unchanged"
+   entry for why guessing would have been worse than leaving it alone. Build
+   and run the app (`cd macos && xcodegen generate && open Lopi.xcodeproj`,
+   ⌘R), resize the window to ~700px tall, add a 1-card stack, open the
+   schedule popover, toggle "run on a schedule" on, and screenshot. If it
+   clips: normalize the inconsistent `arrowEdge` values (`StackControlDockView`
+   is the one this sprint is actually about — the stack-level dock pinned to
+   the pane's bottom edge). If it doesn't clip (plausible — `.popover` is
+   native `NSPopover`-backed on macOS and may already self-correct): leave it
+   alone and note in `docs/ops/PARITY_AUDIT_2026-07-16.md` that KT3 resolved
+   "already fine," closing that open row.
+2. **Resolve the `LopiUITests` code-signing mismatch and actually run it.**
+   `xcodebuild build-for-testing` succeeds; `xcodebuild test
+   -only-testing:LopiUITests` fails to load the test bundle
+   ("mapping process and mapped file (non-platform) have different Team
+   IDs") — a local DerivedData signing inconsistency, not a project.yml or
+   test-code issue (the app + `LopiTests` build and run fine with the same
+   config). Likely fix: clean DerivedData
+   (`rm -rf ~/Library/Developer/Xcode/DerivedData/Lopi-*`) and rebuild, or
+   check `CODE_SIGN_STYLE: Automatic`/`DEVELOPMENT_TEAM: ""` in
+   `macos/project.yml` resolves consistently for all three targets on this
+   machine. Once it runs, `StackChainScheduleUITests.swift`'s two tests are
+   the acceptance bar (chain-schedule popover opens with the cron builder;
+   popover stays within the window frame at 700px height — the macOS
+   analogue of the web Playwright regression test).
+3. **Finish the parity audit's deferred items**, all blocked by the same
+   macOS-access gap: the full 48-icon SF-Symbols-vs-SVG pairing (§3 of the
+   audit doc did only a structural comparison), the sidebar/layout pixel-gap
+   measurement (web half is tractable without macOS access — do that first,
+   independently), and saving the web-side evidence as actual PNG files
+   under `docs/ops/evidence/parity/` (this session's web evidence is DOM-
+   measurement based, not saved screenshots — see the audit doc's
+   "Verification method" section for why).
+
+Also carried forward from the sprint's explicit non-goals, not forgotten:
+**chain run-until-goal / no-progress-detection stays client-side-only.**
+Porting `stackRun.ts`'s `acceptance`/`noProgressLimit` machinery
+(lines 86-104) to the server-side `ChainScheduleManager` is real future
+work, deliberately deferred — the current server chain always runs a fixed
+number of passes (in practice, one full pass per fire), it does not re-run
+toward a goal the way the client-side sequencer can.
+
+**Also flagged: the parity audit's "Orphaned (backend-only)" row is a
+candidate cleanup sprint**, not fixed this session (out of scope for a
+scheduling/popover sprint). `web/src/lib/api.ts:633-640`'s comment claiming
+`/api/agents/health/summary`, `/api/audit`, `/api/patterns`,
+`/api/quality/trend`, `/api/tools*` "serve the native macOS admin panels" is
+stale — `LEDGER.md`'s `macOS-Parity-Cut-1` entry removed those exact panels
+from macOS too, so these routes (plus `/api/health`, `/api/spec`,
+`/api/plans`, `/api/routing/q-values`, `/api/agents/:id/dag`,
+`/api/agents/:id/checkpoint`, `/api/agents/:id/rate-limit`,
+`/api/cache/agent/:agent`, `/api/tasks/:id/logs`, `/api/tasks/:id/stream`)
+are genuinely dead on both platforms today. A cleanup sprint should either
+delete them or wire a real caller — not leave the stale comment standing.
+
+---
+
 # Next Session — after the iOS-Research-1 spike / kill-test harness prep / eval-enforcement brief
 
 This sprint prepared three things and closed none of them — by design, per

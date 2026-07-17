@@ -2,8 +2,8 @@
   import '../app.css';
   import { onMount } from 'svelte';
   import { page } from '$app/stores';
-  import { init, connectionState, stats } from '$lib/stores/agents';
-  import { installKeyboardShortcuts, helpVisible } from '$lib/stores/keyboard';
+  import { init, connectionState } from '$lib/stores/agents';
+  import { installKeyboardShortcuts } from '$lib/stores/keyboard';
   import { applyTheme } from '$lib/stores/theme';
   import { budgetAlerts, dismissBudgetAlert } from '$lib/stores/events';
   import { activeNavItem, isImmersiveRoute, sidebarOpen } from '$lib/stores/nav';
@@ -25,7 +25,7 @@
     return 'var(--konjo-rose)';
   }
   function indicatorLabel(s: string): string {
-    if (s === 'connected') return 'live';
+    if (s === 'connected') return 'online';
     if (s === 'mock') return 'preview';
     if (s === 'connecting') return 'connecting';
     return 'offline';
@@ -50,7 +50,7 @@
       on:click={() => sidebarOpen.set(!$sidebarOpen)}
       aria-label="Toggle navigation"
       aria-expanded={$sidebarOpen}
-      class="press w-8 h-8 flex items-center justify-center rounded-md border border-white/10 text-white/50 hover:text-konjo-accent hover:border-konjo-accent/40 transition-colors flex-shrink-0"
+      class="press w-8 h-8 flex items-center justify-center rounded-md border border-white/10 text-white/50 hover:text-konjo-flame hover:border-konjo-flame/40 transition-colors flex-shrink-0"
     >
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="w-[18px] h-[18px]">
         {@html SHELL_ICONS.menu}
@@ -65,34 +65,24 @@
   </div>
 
   <div class="flex items-center gap-4 font-mono text-[11px]">
-    {#if pathname.startsWith('/stacks')}
-      <button
-        type="button"
-        on:click={() => window.dispatchEvent(new CustomEvent('lopi:add-pane'))}
-        class="press text-konjo-flame hover:bg-konjo-flame/10 px-2 py-1 rounded transition-colors"
-        title="Add pane"
-      >
-        +
-      </button>
-      <span class="opacity-20">·</span>
-    {/if}
-    <span class="opacity-50 tabular-nums hidden md:inline">{$stats.running} live</span>
-    <span class="opacity-20 hidden md:inline">·</span>
     <span
       class="w-1.5 h-1.5 rounded-full"
       style:background={indicatorColor($connectionState)}
       class:animate-pulse={$connectionState === 'connecting'}
     ></span>
     <span class="uppercase tracking-widest opacity-70">{indicatorLabel($connectionState)}</span>
-    <span class="opacity-20">·</span>
-    <button
-      type="button"
-      on:click={() => helpVisible.set(!$helpVisible)}
-      class="press text-konjo-accent hover:bg-konjo-accent/10 px-2 py-1 rounded transition-colors"
-      title="Help & Shortcuts"
-    >
-      ?
-    </button>
+    {#if pathname.startsWith('/stacks')}
+      <span class="opacity-20">·</span>
+      <button
+        type="button"
+        on:click={() => window.dispatchEvent(new CustomEvent('lopi:add-pane'))}
+        aria-label="Add pane"
+        class="press w-8 h-8 flex items-center justify-center rounded-md border border-konjo-flame/40 bg-konjo-flame/15 text-konjo-flame text-base leading-none hover:bg-konjo-flame/25 hover:border-konjo-flame/60 transition-colors flex-shrink-0"
+        title="Add pane"
+      >
+        +
+      </button>
+    {/if}
   </div>
 </header>
 

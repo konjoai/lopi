@@ -274,6 +274,26 @@ impl MemoryStore {
         Ok(result.rows_affected() > 0)
     }
 
+    /// Fetch a single task row by id.
+    ///
+    /// Stack-Chain-1 — used by `ChainScheduleManager`'s boot-time resume to
+    /// tell whether a step's task actually reached a terminal state before
+    /// the process restarted (in which case the chain advances) or was still
+    /// in flight and lost with the old process's in-memory queue (in which
+    /// case the step must be resubmitted).
+    ///
+    /// # Errors
+    /// Returns `Err` if the query fails.
+    pub async fn get_task(&self, id: &TaskId) -> Result<Option<TaskRow>> {
+        let row = sqlx::query_as::<_, TaskRow>(
+            "SELECT id, goal, status, created_at, completed_at, client_ref FROM tasks WHERE id = ?1",
+        )
+        .bind(id.0.to_string())
+        .fetch_optional(&self.read_pool)
+        .await?;
+        Ok(row)
+    }
+
     /// Recent tasks, newest first.
     ///
     /// # Errors
@@ -442,6 +462,7 @@ mod quality;
 mod quota;
 mod result_cache;
 mod run_trace;
+mod schedule_chains;
 mod schedules;
 mod stability;
 mod task_logs;
@@ -463,6 +484,9 @@ pub use quality::{QualityRunRecord, QualityRunRow};
 pub use quota::QuotaObservationRow;
 pub use result_cache::{compute_key as compute_cache_key, CacheStats, CachedResult};
 pub use run_trace::{LoopRunRow, RunAttemptRow, RunTurnAgg};
+pub use schedule_chains::{
+    ChainRunRow, ChainStepInput, ChainStepRow, ScheduleChainInput, ScheduleChainRow,
+};
 pub use schedules::{ScheduleInput, ScheduleRow, ScheduleRunRow};
 pub use stability::{StabilityEntry, StabilityRecord};
 pub use task_logs::{TaskLogRow, MAX_PER_TASK as TASK_LOG_MAX_PER_TASK};

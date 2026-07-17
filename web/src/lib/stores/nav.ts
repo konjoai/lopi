@@ -27,7 +27,7 @@ export interface NavItem {
  *  Ops-2 confirmed both work end-to-end, so they are restored here. `/onboard`
  *  was never a visible tab and stays that way; `/` still redirects to `/stacks`.
  *
- *  - Loop Stack (`/stacks`): the single primary surface — StackPanes in the
+ *  - Loop Stacks (`/stacks`): the single primary surface — StackPanes in the
  *    auto-tiling grid; a one-card pane reads like the old Forge box.
  *  - Loop (`/loop`): loop-engineering — run traces, strategy, escalation switch.
  *  - Budget (`/budget`): spend caps and the fleet cost surface.
@@ -37,7 +37,7 @@ export interface NavItem {
  *    within it).
  *  - Configuration (`/config`): app settings. */
 export const NAV_ITEMS: NavItem[] = [
-  { href: '/stacks', label: 'Loop Stack', icon: 'mark' },
+  { href: '/stacks', label: 'Loop Stacks', icon: 'mark' },
   { href: '/loop', label: 'Loop', icon: 'loop' },
   { href: '/budget', label: 'Budget', icon: 'gauge' },
   { href: '/schedules', label: 'Scheduling', icon: 'cron' },
@@ -62,7 +62,7 @@ export function activeNavItem(pathname: string): NavItem | undefined {
  *  canvases); every other route gets a scrollable canvas. */
 export function isImmersiveRoute(pathname: string): boolean {
   return (
-    // The Loop Stack hosts its panes in the full-viewport auto-tiling grid
+    // The Loop Stacks page hosts its panes in the full-viewport auto-tiling grid
     // (Unify-2 §3), so it owns the whole canvas like the old Forge did.
     // `/onboard` is the only other full-viewport surface left after the cut.
     pathname.startsWith('/stacks') || pathname.startsWith('/onboard')

@@ -6,12 +6,13 @@
  */
 export const ICONS = {
   loop: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>',
-  // The lopi mark — `loop` boxed on a dark squircle with a flame border,
-  // matching `web/static/favicon.svg` and macOS's `LopiLogoMark`. Colors are
-  // hardcoded (not `currentColor`) since this is the brand logo, not a
-  // themeable glyph — it stands in wherever a "stack/block" icon or the app
-  // icon was doing duty as lopi's logo (nav, pane headers).
-  mark: '<svg viewBox="0 0 24 24"><rect x="1.5" y="1.5" width="21" height="21" rx="5.25" fill="#0a0a0a"/><rect x="2.55" y="2.55" width="18.9" height="18.9" rx="4.5" fill="none" stroke="#ff9500" stroke-width="1.05" opacity="0.85"/><g transform="translate(3.9,3.9) scale(0.675)" fill="none" stroke="#ff9500" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></g></svg>',
+  // The lopi Stacks mark — the boxed `loop` badge (dark squircle, flame
+  // border) overlapping the top-right corner of a three-bar stack that fades
+  // toward the back, matching macOS's `LopiLogoMark`. Colors are hardcoded
+  // (not `currentColor`) since this is the brand logo, not a themeable glyph.
+  // Scoped to the Stacks nav item and each pane header (not the favicon or
+  // wordmark, which keep the plain boxed/bare loop glyph).
+  mark: '<svg viewBox="-40 -40 522 681"><g><path d="M 395.5 208.17 L 395.5 225 A 37.5 37.5 0 0 1 358 262.5 L 121 262.5 A 37.5 37.5 0 0 1 83.5 225 L 83.5 128 A 37.5 37.5 0 0 1 121 90.5 L 360 90.5" fill="none" stroke="#f49e31" stroke-width="48.44" stroke-linecap="round"/><path d="M 309.5 2.06 L 397 88 L 307.94 175.5" fill="none" stroke="#f49e31" stroke-width="48.44" stroke-linecap="round" stroke-linejoin="round"/></g><g transform="rotate(180 239.5 294.5)"><path d="M 395.5 208.17 L 395.5 225 A 37.5 37.5 0 0 1 358 262.5 L 121 262.5 A 37.5 37.5 0 0 1 83.5 225 L 83.5 128 A 37.5 37.5 0 0 1 121 90.5 L 360 90.5" fill="none" stroke="#f49e31" stroke-width="48.44" stroke-linecap="round"/><path d="M 309.5 2.06 L 397 88 L 307.94 175.5" fill="none" stroke="#f49e31" stroke-width="48.44" stroke-linecap="round" stroke-linejoin="round"/></g></svg>',
   cron: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
   shield:
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z"/></svg>',

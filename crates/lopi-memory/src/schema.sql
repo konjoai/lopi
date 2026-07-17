@@ -403,3 +403,52 @@ CREATE TABLE IF NOT EXISTS maxx_runs (
 );
 CREATE INDEX IF NOT EXISTS idx_maxx_runs_entry ON maxx_runs(maxx_id, fired_at DESC);
 CREATE INDEX IF NOT EXISTS idx_agent_dag_nodes_task ON agent_dag_nodes(task_id);
+
+-- Stack-Chain-1 — server-side whole-stack cron scheduling. Distinct from
+-- `schedules` (one row = one goal) because a stack is an ORDERED SEQUENCE of
+-- independent goals: `schedule_chains` is the cron header, one row per stack
+-- card lives in `schedule_chain_steps`, and `schedule_chain_runs` tracks which
+-- step a given fire is currently on so a backend restart mid-chain resumes
+-- the in-flight step instead of restarting from step 1 or dropping the rest
+-- of the chain (see `ChainScheduleManager`).
+CREATE TABLE IF NOT EXISTS schedule_chains (
+    id             TEXT PRIMARY KEY,
+    name           TEXT NOT NULL,
+    cron           TEXT NOT NULL,
+    repo           TEXT,
+    priority       TEXT NOT NULL DEFAULT 'normal',
+    autonomy_level TEXT NOT NULL DEFAULT 'draft_pr',
+    -- Mirrors the client-side `OnFail` policy (`web/src/lib/stores/stack.ts`):
+    -- stop | continue | backoff.
+    on_fail        TEXT NOT NULL DEFAULT 'stop',
+    enabled        INTEGER NOT NULL DEFAULT 1,
+    created_at     TEXT NOT NULL,
+    updated_at     TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_schedule_chains_name ON schedule_chains(name);
+
+-- One row per stack card, ordered by `step_order` (0-based).
+CREATE TABLE IF NOT EXISTS schedule_chain_steps (
+    chain_id       TEXT NOT NULL,
+    step_order     INTEGER NOT NULL,
+    goal           TEXT NOT NULL,
+    allowed_dirs   TEXT NOT NULL DEFAULT '[]',
+    forbidden_dirs TEXT NOT NULL DEFAULT '[]',
+    PRIMARY KEY (chain_id, step_order)
+);
+
+-- One row per chain-fire attempt (cron tick or manual run-now). `status` is
+-- running | completed | failed. `current_step`/`current_task_id` are updated
+-- as each step is submitted so `ChainScheduleManager::resume_orphaned` can
+-- tell, on boot, exactly which step was in flight when the process died.
+CREATE TABLE IF NOT EXISTS schedule_chain_runs (
+    id              TEXT PRIMARY KEY,
+    chain_id        TEXT NOT NULL,
+    fired_at        TEXT NOT NULL,
+    current_step    INTEGER NOT NULL DEFAULT 0,
+    current_task_id TEXT,
+    status          TEXT NOT NULL DEFAULT 'running',
+    updated_at      TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_schedule_chain_runs_chain ON schedule_chain_runs(chain_id, fired_at DESC);
+CREATE INDEX IF NOT EXISTS idx_schedule_chain_runs_status ON schedule_chain_runs(status);

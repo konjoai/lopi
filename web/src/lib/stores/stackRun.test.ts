@@ -123,6 +123,34 @@ function mockBackend(
         json: () => Promise.resolve({ id: 'sched-1', ...body })
       });
     }
+    if (path === '/api/schedule-chains') {
+      return Promise.resolve({
+        ok: true,
+        status: 201,
+        json: () => Promise.resolve({ id: 'chain-1', ...body })
+      });
+    }
+    if (path.startsWith('/api/schedule-chains/') && path.endsWith('/enable')) {
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ id: path.split('/')[3], enabled: true })
+      });
+    }
+    if (path.startsWith('/api/schedule-chains/') && path.endsWith('/disable')) {
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ id: path.split('/')[3], enabled: false })
+      });
+    }
+    if (path.startsWith('/api/schedule-chains/')) {
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ id: path.split('/')[3], ...body })
+      });
+    }
     return Promise.resolve({ ok: false, status: 404, json: () => Promise.resolve({ error: 'unmocked path' }) });
   };
   return captured;
@@ -360,7 +388,7 @@ async function main() {
     }
   }
 
-  // ── scheduleStack: honest about only scheduling the first card ──────────
+  // ── scheduleStack: every card in execution order joins one chain ────────
   {
     resetPanes();
     seedPane('s1', [card('c'), card('b'), card('a')]);
@@ -368,11 +396,15 @@ async function main() {
     const captured = mockBackend(statusSource, {});
 
     const result = await scheduleStack('s1', '0 * * * *', defaults);
-    ok(result.ok, 'scheduleStack succeeds when createSchedule succeeds');
-    eqIs(result.scheduledCardId, 'a', 'only the bottom-of-stack (first-to-run) card is actually scheduled');
-    eq(result.skippedCardIds, ['b', 'c'], 'every other card is reported back as skipped, not silently dropped');
-    eqIs(captured.length, 1, 'exactly one POST /api/schedules is made, not one per card');
-    eqIs(captured[0]?.path, '/api/schedules', 'scheduleStack hits the real schedules endpoint');
+    ok(result.ok, 'scheduleStack succeeds when createScheduleChain succeeds');
+    eqIs(result.chainId, 'chain-1', 'the created chain id is returned');
+    eqIs(captured.length, 1, 'exactly one POST /api/schedule-chains is made, not one per card');
+    eqIs(captured[0]?.path, '/api/schedule-chains', 'scheduleStack hits the real schedule-chains endpoint');
+    eq(
+      (captured[0]?.body.steps as Array<{ goal: string }>).map((s) => s.goal),
+      ['a', 'b', 'c'],
+      'every card is submitted as a step, in bottom-of-stack-first execution order'
+    );
   }
 
   // ── chain loop: a 3-card stack looped ×2 runs 6 launches in order ───────

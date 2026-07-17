@@ -16,6 +16,9 @@
   import StackOutput from './StackOutput.svelte';
   import StackControlDock from './StackControlDock.svelte';
   import { ICONS } from './icons';
+  import { orbStateForCard } from '$lib/forge/cardOrb';
+  import { agents, permissionWaiting } from '$lib/stores/agents';
+  import { draggingPane, armedPaneKey } from './dnd';
 
   export let pane: StackPaneState;
   export let index: number;
@@ -29,9 +32,37 @@
   // old Forge pane; the purple stack control dock and inter-card connectors
   // appear as soon as the pane holds its first card.
   $: bare = paneIsBare(pane);
+
+  // ── whole-stack drag (Stack-1): armed by StackControlDock.svelte's grip
+  //    handle (mousedown/mouseup on `armedPaneKey`, module-scope since the
+  //    handle and this root are different components — see dnd.ts), same
+  //    shape as StackCard.svelte's own armDrag/disarmDrag. `.pane` itself is
+  //    the actual drag source only while armed, so the browser's native drag
+  //    tracks a target big enough to reliably keep the cursor over —
+  //    previously the handle button itself was the (tiny, ~14px) drag
+  //    source, which is what made real drags lose the cursor and snap back
+  //    on drop. The drop-target logic (before/after by cursor Y) stays in
+  //    StackControlDock.svelte, unchanged.
+  $: paneDraggable = $armedPaneKey === pane.key;
+
+  function onPaneDragStart(e: DragEvent) {
+    draggingPane.set({ paneKey: pane.key, index });
+    if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+  }
+  function onPaneDragEnd() {
+    draggingPane.set(null);
+    armedPaneKey.set(null);
+  }
 </script>
 
-<div class="pane">
+<div
+  class="pane"
+  class:dragging={$draggingPane?.paneKey === pane.key}
+  role="listitem"
+  draggable={paneDraggable}
+  on:dragstart={onPaneDragStart}
+  on:dragend={onPaneDragEnd}
+>
   <div class="panehead">
     <span class="logo">{@html ICONS.mark}</span>
     <span class="ptitle">{pane.title}</span>
@@ -66,13 +97,38 @@
     {#if pane.cards.length > 0}
       <div class="draftconn" aria-hidden="true"><span class="dcline"></span></div>
       {#each pane.cards as card, i (card.id)}
-        {#if card.status === 'running' && card.taskId}
-          <div class="loopwrap hasout">
+        <!-- Computed once here (not inside StackCard/StackOutput) and set as
+             `--orb` on the shared `.loopwrap` ancestor, so the card's border
+             and — when attached — the live-output panel's border both read
+             the same custom property. -->
+        {@const orb = orbStateForCard(card.taskId, $agents, $permissionWaiting)}
+        {#if card.taskId}
+          <!-- Once a card has ever run, its output stays reachable regardless
+               of current status (previously gated on `status === 'running'`,
+               so the log vanished the instant a run finished — `StackOutput`
+               itself relabels to "logs" once it's no longer live).
+
+               The border+radius+animation live HERE, on the wrapper, not on
+               `.pc`/`.output` individually (both are borderless below) — two
+               separately-animated elements can share the exact same color
+               and keyframes and *still* visibly desync, because each one's
+               `animation` starts counting from whenever IT individually
+               mounted/gained the class, not from a shared clock. A single
+               animated border on their shared ancestor can't be out of sync
+               with itself, and it also removes the seam a `.pc` bottom
+               border + `.output` (no top border) used to draw between them. -->
+          <div
+            class="loopwrap hasout"
+            class:running={card.status === 'running'}
+            class:queued={card.status === 'queued'}
+            class:done={card.status === 'done'}
+            style="--orb:{orb.glowColor}"
+          >
             <StackCard {card} paneKey={pane.key} index={i} {paneDefaults} {repoOptions} {scheduleGoverned} />
-            <StackOutput taskId={card.taskId} />
+            <StackOutput taskId={card.taskId} isRunning={card.status === 'running'} />
           </div>
         {:else}
-          <div class="loopwrap">
+          <div class="loopwrap" style="--orb:{orb.glowColor}">
             <StackCard {card} paneKey={pane.key} index={i} {paneDefaults} {repoOptions} {scheduleGoverned} />
           </div>
         {/if}
@@ -83,9 +139,12 @@
     {/if}
   </div>
 
-  {#if !bare}
-    <StackControlDock {pane} {index} {repoOptions} />
-  {/if}
+  <!-- Previously gated behind `{#if !bare}` — an empty pane showed only the
+       composer, with no way to set stack defaults/schedule/guardrails or add
+       a whole stack template until the first prompt existed. The dock is now
+       always present so those controls (and stack templates) can be set up
+       before writing any prompt, not just after. -->
+  <StackControlDock {pane} {index} {repoOptions} />
 </div>
 
 <style>
@@ -94,6 +153,7 @@
     border-radius: 14px;
     background: var(--konjo-panel, #0a0d0f);
     position: relative;
+    transition: opacity 0.12s;
     /* Fills its auto-tiling TileGrid cell; the card stack scrolls internally so
        a tall stack never blows out the grid. */
     width: 100%;
@@ -101,6 +161,9 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
+  }
+  .pane.dragging {
+    opacity: 0.4;
   }
   .panehead {
     flex: 0 0 auto;
@@ -174,33 +237,57 @@
     border-left: 2px dashed rgba(245, 245, 245, 0.28);
     transform: translateX(-1px);
   }
+  /* `.loopwrap.hasout` owns the ENTIRE border for a card with output
+     attached — `.pc` and `.output` are borderless inside it (see below), so
+     there's exactly one outline and (when running) exactly one animation
+     instance, not two independently-clocked ones. Radius resets keep each
+     child's own background from showing a stray rounded corner at the seam
+     the wrapper's single border now spans. */
+  .loopwrap.hasout {
+    border-radius: 9px;
+    /* No `overflow: hidden` here — `.pc`'s bottom corners are already
+       forced square just below, and `.output`'s own corners already match
+       this radius, so nothing actually needs clipping for the outline to
+       read as one seamless shape. Adding it clipped the "DONE"/"RUNNING"
+       runtag badge, which is deliberately positioned to poke above the
+       card's own top edge (`.runtag { top: -10px }` in StackCard.svelte). */
+  }
   .loopwrap.hasout :global(.pc) {
+    border: none !important;
     border-bottom-left-radius: 0;
     border-bottom-right-radius: 0;
   }
-  .loopwrap.hasout :global(.pc.running) {
-    border-bottom-color: rgba(255, 255, 255, 0.1);
-    animation-name: cardflash;
-  }
   .loopwrap.hasout :global(.output) {
-    animation: outflash 5s ease-in-out infinite;
+    border: none !important;
   }
-  @keyframes outflash {
+  .loopwrap.hasout.queued {
+    border: 1px solid color-mix(in srgb, var(--orb) 40%, transparent);
+  }
+  .loopwrap.hasout.done {
+    border: 1px solid color-mix(in srgb, var(--orb) 35%, transparent);
+  }
+  .loopwrap.hasout.running {
+    border: 1px solid color-mix(in srgb, var(--orb) 45%, transparent);
+    animation: edgeflash 5s ease-in-out infinite;
+  }
+  /* Kept byte-for-byte identical to StackCard.svelte's own `edgeflash` (its
+     copy still drives borderless-output cards, i.e. `.pc.running` with no
+     attached `.output`) — same name is fine, Svelte scopes each
+     component's `<style>` independently. */
+  @keyframes edgeflash {
     0%,
     100% {
-      border-color: rgba(255, 150, 70, 0.5);
-      box-shadow: 0 0 0 0 rgba(255, 149, 0, 0);
+      border-color: color-mix(in srgb, var(--orb) 45%, transparent);
+      box-shadow: 0 0 0 0 transparent;
     }
     50% {
-      border-color: rgba(255, 195, 110, 0.98);
-      box-shadow: 0 0 20px rgba(255, 149, 0, 0.2);
+      border-color: color-mix(in srgb, var(--orb) 90%, transparent);
+      box-shadow: 0 0 20px color-mix(in srgb, var(--orb) 22%, transparent);
     }
   }
   @media (prefers-reduced-motion: reduce) {
-    .loopwrap.hasout :global(.pc.running),
-    .loopwrap.hasout :global(.output) {
+    .loopwrap.hasout.running {
       animation: none;
     }
   }
-
 </style>

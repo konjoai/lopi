@@ -10,11 +10,11 @@ import { eq, eqIs, ok, namedSummary } from '$lib/test-harness';
   eq(
     NAV_ITEMS.map((i) => i.href),
     ['/stacks', '/loop', '/budget', '/schedules', '/overview', '/config'],
-    'the nav is six: Loop Stack, Loop, Budget, Scheduling, Overview, Configuration'
+    'the nav is six: Loop Stacks, Loop, Budget, Scheduling, Overview, Configuration'
   );
   eq(
     NAV_ITEMS.map((i) => i.label),
-    ['Loop Stack', 'Loop', 'Budget', 'Scheduling', 'Overview', 'Configuration'],
+    ['Loop Stacks', 'Loop', 'Budget', 'Scheduling', 'Overview', 'Configuration'],
     'the six labels, in order'
   );
   eqIs(NAV_ITEMS.length, 6, 'exactly six nav entries');
@@ -46,14 +46,14 @@ import { eq, eqIs, ok, namedSummary } from '$lib/test-harness';
 
 // ── activeNavItem: resolves the matching item, undefined for unknown paths ─
 {
-  eqIs(activeNavItem('/stacks')?.label, 'Loop Stack', 'activeNavItem resolves the Loop Stack');
+  eqIs(activeNavItem('/stacks')?.label, 'Loop Stacks', 'activeNavItem resolves Loop Stacks');
   eqIs(activeNavItem('/overview')?.label, 'Overview', 'activeNavItem resolves Overview');
   eqIs(activeNavItem('/nowhere'), undefined, 'an unknown path resolves to no active item');
 }
 
 // ── isImmersiveRoute: only the surviving full-viewport surfaces ────────────
 {
-  ok(isImmersiveRoute('/stacks'), 'stacks (Loop Stack) is immersive — hosts the full-viewport pane grid');
+  ok(isImmersiveRoute('/stacks'), 'stacks (Loop Stacks) is immersive — hosts the full-viewport pane grid');
   ok(isImmersiveRoute('/onboard'), 'onboard is immersive (never a visible tab, still full-viewport)');
   ok(!isImmersiveRoute('/overview'), 'overview is a scrolling data view, not immersive');
   ok(!isImmersiveRoute('/schedules'), 'scheduling is a scrolling data view, not immersive');

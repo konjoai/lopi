@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
-    "test": "tsx src/lib/parser.test.ts && tsx src/lib/forge/connections.test.ts && tsx src/lib/forge/excitement.test.ts && tsx src/lib/api.test.ts && tsx src/lib/components/ui/badges.test.ts && tsx src/lib/stores/events.test.ts && tsx src/lib/stores/layout-core.test.ts && tsx src/lib/stores/agentReducer.test.ts && tsx src/lib/stores/session-groups.test.ts && tsx src/lib/stores/transcript.test.ts && tsx src/lib/render/markdown.test.ts && tsx src/lib/forge/orbState.test.ts && tsx src/lib/forge/cardOrb.test.ts && tsx src/lib/stores/stack.test.ts && tsx src/lib/stores/stackDefaults.test.ts && tsx src/lib/stores/repoMenu.test.ts && tsx src/lib/stores/stackGoal.test.ts && tsx src/lib/stores/stackRun.test.ts && tsx src/lib/stores/overview.test.ts && tsx src/lib/stores/nav.test.ts && tsx src/lib/stores/modelCatalog.test.ts"
+    "test": "tsx src/lib/parser.test.ts && tsx src/lib/forge/connections.test.ts && tsx src/lib/forge/excitement.test.ts && tsx src/lib/api.test.ts && tsx src/lib/components/ui/badges.test.ts && tsx src/lib/stores/events.test.ts && tsx src/lib/stores/layout-core.test.ts && tsx src/lib/stores/agentReducer.test.ts && tsx src/lib/stores/session-groups.test.ts && tsx src/lib/stores/transcript.test.ts && tsx src/lib/render/markdown.test.ts && tsx src/lib/forge/orbState.test.ts && tsx src/lib/forge/cardOrb.test.ts && tsx src/lib/stores/stack.test.ts && tsx src/lib/stores/stackDefaults.test.ts && tsx src/lib/stores/repoMenu.test.ts && tsx src/lib/stores/stackGoal.test.ts && tsx src/lib/stores/stackRun.test.ts && tsx src/lib/stores/overview.test.ts && tsx src/lib/stores/nav.test.ts && tsx src/lib/stores/modelCatalog.test.ts",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "dompurify": "^3.4.11",
@@ -19,6 +20,7 @@
     "three": "^0.160.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@sveltejs/adapter-static": "^3.0.0",
     "@sveltejs/kit": "^2.5.0",
     "@sveltejs/vite-plugin-svelte": "^3.0.0",

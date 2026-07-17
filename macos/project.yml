@@ -55,6 +55,24 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         PRODUCT_BUNDLE_IDENTIFIER: ai.konjo.lopi.tests
 
+  # Stack-Chain-1 / Popover-Fix-1 — first XCUITest target in this repo
+  # (logged as a one-way-door dependency addition, see `LEDGER.md`). Drives
+  # the real built `Lopi.app` via the accessibility-based XCUITest harness —
+  # a different mechanism from interactive computer-use screen control, so it
+  # can run headlessly in CI without a granted screen-recording permission.
+  LopiUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    sources:
+      - path: LopiUITests
+    dependencies:
+      - target: Lopi
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: ai.konjo.lopi.uitests
+        TEST_TARGET_NAME: Lopi
+
 schemes:
   Lopi:
     build:
@@ -63,3 +81,4 @@ schemes:
     test:
       targets:
         - LopiTests
+        - LopiUITests

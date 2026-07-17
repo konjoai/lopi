@@ -176,6 +176,113 @@ async fn metrics_returns_prometheus_text() {
     assert!(body.contains("lopi_agents_running"));
 }
 
+// `get_quality_trend`, `get_q_values`, and `get_agent_dag` (metrics_handlers.rs)
+// had zero HTTP-level coverage — only the pure `dag_graph_json` helper was
+// tested in-module.
+#[tokio::test]
+async fn quality_trend_returns_200_with_empty_runs_for_fresh_store() {
+    let app = test_app().await;
+    let resp = get_req(app, "/api/quality/trend").await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = json_body(resp).await;
+    assert!(json["runs"].as_array().unwrap().is_empty());
+    assert!(json.get("repo").is_some());
+}
+
+#[tokio::test]
+async fn q_values_returns_200_with_empty_values_for_fresh_store() {
+    let app = test_app().await;
+    let resp = get_req(app, "/api/routing/q-values").await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = json_body(resp).await;
+    assert!(json["values"].as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn agent_dag_unknown_task_returns_404() {
+    let app = test_app().await;
+    let resp = get_req(app, "/api/agents/00000000-0000-0000-0000-000000000000/dag").await;
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn agent_dag_known_task_with_no_nodes_yet_returns_empty_graph() {
+    let (app, store) = test_app_with_store().await;
+    let task = Task::new("a task with no dag nodes recorded yet");
+    let id = task.id.0.to_string();
+    store.save_task(&task, "running").await.unwrap();
+
+    let resp = get_req(app, &format!("/api/agents/{id}/dag")).await;
+    assert_eq!(
+        resp.status(),
+        StatusCode::OK,
+        "a known task with no recorded DAG yet is a 200 with an empty graph, not a 404"
+    );
+    let json = json_body(resp).await;
+    assert_eq!(json["task_id"], id);
+    assert!(json["nodes"].as_array().unwrap().is_empty());
+    assert!(json["edges"].as_array().unwrap().is_empty());
+}
+
+// `list_runs`/`get_run_trace` (loop_runs_handlers.rs) had zero HTTP-level
+// coverage — only the pure `attempt_json`/`parse_str_array` helpers were
+// tested in-module.
+#[tokio::test]
+async fn list_runs_returns_empty_for_fresh_store() {
+    let app = test_app().await;
+    let resp = get_req(app, "/api/loop-engineering/runs").await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = json_body(resp).await;
+    assert!(json["runs"].as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn list_runs_summarizes_a_seeded_attempt() {
+    let (app, store) = test_app_with_store().await;
+    let task = Task::new("tighten retry backoff");
+    store.save_task(&task, "success").await.unwrap();
+    let mut attempt = lopi_core::Attempt::new(task.id, 1, "lopi/abc-attempt-1");
+    attempt.outcome = "success".into();
+    store.save_attempt(&attempt).await.unwrap();
+
+    let resp = get_req(app, "/api/loop-engineering/runs").await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = json_body(resp).await;
+    let runs = json["runs"].as_array().unwrap();
+    assert_eq!(runs.len(), 1);
+    assert_eq!(runs[0]["task_id"], task.id.0.to_string());
+    assert_eq!(runs[0]["final_outcome"], "success");
+    assert_eq!(runs[0]["attempts"], 1);
+}
+
+#[tokio::test]
+async fn run_trace_unknown_task_returns_404() {
+    let app = test_app().await;
+    let resp = get_req(app, "/api/loop-engineering/runs/not-a-real-run").await;
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn run_trace_known_task_returns_attempt_timeline() {
+    let (app, store) = test_app_with_store().await;
+    let task = Task::new("fix flaky scorer");
+    store.save_task(&task, "success").await.unwrap();
+    let mut attempt = lopi_core::Attempt::new(task.id, 1, "lopi/abc-attempt-1");
+    attempt.outcome = "success".into();
+    store.save_attempt(&attempt).await.unwrap();
+
+    let id = task.id.0.to_string();
+    let resp = get_req(app, &format!("/api/loop-engineering/runs/{id}")).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = json_body(resp).await;
+    assert_eq!(json["task_id"], id);
+    assert_eq!(json["goal"], "fix flaky scorer");
+    let attempts = json["attempts"].as_array().unwrap();
+    assert_eq!(attempts.len(), 1);
+    assert_eq!(attempts[0]["attempt"], 1);
+    assert_eq!(attempts[0]["outcome"], "success");
+}
+
 #[tokio::test]
 async fn cache_stats_returns_zero_for_empty_store() {
     let app = test_app().await;
@@ -633,6 +740,119 @@ async fn create_task_with_guardrail_fields_returns_201() {
     assert_eq!(resp.status(), StatusCode::CREATED);
 }
 
+// `acceptance`/`verifier_fail_open`/`budget_tokens` were wired into
+// `apply_loop_fields` (Sprint A1/A3) but never exercised by any request body
+// — `get_task`'s response deliberately exposes only a small fixed field set
+// (id/goal/status/created_at/completed_at/client_ref/cost, see `get_task`
+// above), so a `POST` → `GET` round trip can't observe these three even
+// where they DO persist; the field-mapping logic itself is what's actually
+// verifiable, matching this file's existing `apply_loop_fields_threads_*`
+// pattern for gate/until/on_fail above.
+#[test]
+fn apply_loop_fields_threads_acceptance_verifier_fail_open_and_budget_tokens() {
+    let mut task = Task::new("budgeted task with an explicit acceptance gate");
+    let req: CreateTaskRequest = serde_json::from_value(serde_json::json!({
+        "goal": "budgeted task with an explicit acceptance gate",
+        "acceptance": { "checks": [] },
+        "verifier_fail_open": true,
+        "budget_tokens": 50_000,
+    }))
+    .unwrap();
+    apply_loop_fields(&mut task, &req).unwrap();
+    assert_eq!(
+        task.acceptance,
+        Some(lopi_core::acceptance::Acceptance::empty()),
+        "an explicit (even empty) acceptance must land on the task, not be dropped"
+    );
+    assert!(
+        task.verifier_fail_open,
+        "an explicit true must overwrite the false default"
+    );
+    assert_eq!(
+        task.budget_tokens, 50_000,
+        "an explicit budget must overwrite the 0 (\"inherits repo/global budget\") default"
+    );
+}
+
+#[test]
+fn apply_loop_fields_omitting_acceptance_verifier_fail_open_and_budget_tokens_keeps_defaults() {
+    let mut task = Task::new("no overrides here");
+    let req: CreateTaskRequest = serde_json::from_value(serde_json::json!({
+        "goal": "no overrides here",
+    }))
+    .unwrap();
+    apply_loop_fields(&mut task, &req).unwrap();
+    assert_eq!(
+        task.acceptance, None,
+        "an omitted acceptance must not be fabricated"
+    );
+    assert!(
+        !task.verifier_fail_open,
+        "an omitted verifier_fail_open keeps Task::new's false default"
+    );
+    assert_eq!(
+        task.budget_tokens, 0,
+        "an omitted budget_tokens keeps the 0 sentinel (\"inherits repo/global budget\")"
+    );
+}
+
+#[tokio::test]
+async fn create_task_with_acceptance_verifier_fail_open_and_budget_tokens_returns_201() {
+    let app = test_app().await;
+    let body = serde_json::to_string(&serde_json::json!({
+        "goal": "budgeted task with an explicit acceptance gate",
+        "acceptance": { "checks": [] },
+        "verifier_fail_open": true,
+        "budget_tokens": 50_000,
+    }))
+    .unwrap();
+    let resp = send_req(app, "POST", "/api/tasks", Some(body)).await;
+    assert_eq!(
+        resp.status(),
+        StatusCode::CREATED,
+        "the wire format for all three fields must actually deserialize, not just the pure struct-level call above"
+    );
+}
+
+// `approve_plan`/`reject_plan` (Phase 11 plan-approval gate) had zero test
+// coverage — neither the "unknown task" 404 nor the "task isn't currently
+// paused awaiting approval" conflict path was exercised. A real approve of a
+// *live* paused runner needs a real `claude` subprocess (covered instead at
+// the pool level by `AgentPool::decide_plan`'s unit tests), but both HTTP
+// error paths are reachable with no live agent at all.
+#[tokio::test]
+async fn approve_plan_unknown_task_returns_404() {
+    let app = test_app().await;
+    let resp = send_req(app, "POST", "/api/tasks/not-a-real-task/plan/approve", None).await;
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn reject_plan_unknown_task_returns_404() {
+    let app = test_app().await;
+    let resp = send_req(app, "POST", "/api/tasks/not-a-real-task/plan/reject", None).await;
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn approve_plan_task_not_awaiting_approval_returns_409() {
+    let app = test_app().await;
+    // A well-formed UUID resolves without a store lookup (see
+    // `resolve_task_id`), but no agent is running under it — the pool has no
+    // handle, so there's nothing paused to approve.
+    let uri = format!("/api/tasks/{}/plan/approve", uuid::Uuid::new_v4());
+    let resp = send_req(app, "POST", &uri, None).await;
+    assert_eq!(resp.status(), StatusCode::CONFLICT);
+}
+
+#[tokio::test]
+async fn reject_plan_task_not_awaiting_approval_returns_409() {
+    let app = test_app().await;
+    let uri = format!("/api/tasks/{}/plan/reject", uuid::Uuid::new_v4());
+    let resp = send_req(app, "POST", &uri, None).await;
+    assert_eq!(resp.status(), StatusCode::CONFLICT);
+}
+
 #[tokio::test]
 async fn checkpoint_agent_persists_row_returns_201() {
     let app = test_app().await;
@@ -761,6 +981,7 @@ async fn plans_response_has_required_fields() {
 
 include!("tests_extended.rs");
 include!("schedules_tests.rs");
+include!("schedule_chains_tests.rs");
 include!("task_stream_tests.rs");
 include!("loop_tests.rs");
 include!("quota_tests.rs");

@@ -35,6 +35,24 @@
   let activeIndex = 0;
   let query = '';
 
+  // `position: fixed`, computed from the trigger's real rect — NOT absolute
+  // inside `.kdrop` (`position: relative` + `top: 100%`). This dropdown
+  // renders inside card config drawers, popovers, and other panes that clip
+  // with `overflow: hidden`; an absolutely-positioned panel gets silently
+  // cut off the instant it extends past those bounds (e.g. the repo picker's
+  // long, hundreds-deep list). Same fix as `AutocompleteSuggest.svelte`.
+  let panelLeft = 0;
+  let panelTop = 0;
+  let panelMinWidth = 0;
+
+  function computePosition() {
+    if (!root) return;
+    const r = root.getBoundingClientRect();
+    panelLeft = r.left;
+    panelTop = r.bottom + 4;
+    panelMinWidth = r.width;
+  }
+
   $: selected = options.find((o) => o.value === value) ?? options[0];
   $: selectedLabel = selected?.label ?? value;
 
@@ -48,6 +66,7 @@
   async function toggle() {
     open = !open;
     if (!open) return;
+    computePosition();
     query = '';
     activeIndex = Math.max(0, rows.findIndex((o) => o.value === value));
     await tick();
@@ -105,7 +124,7 @@
   }
 </script>
 
-<svelte:window on:click={onWindowClick} />
+<svelte:window on:click={onWindowClick} on:resize={computePosition} />
 
 <div class="kdrop" class:dense bind:this={root}>
   {#if label && !(dense && (icon || label))}
@@ -128,7 +147,7 @@
   </button>
 
   {#if open}
-    <div class="kdrop-panel">
+    <div class="kdrop-panel" style="left:{panelLeft}px; top:{panelTop}px; min-width:{panelMinWidth}px;">
       {#if searchable}
         <!-- svelte-ignore a11y-autofocus -->
         <input
@@ -274,16 +293,21 @@
     transform: rotate(180deg);
   }
   /* The floating panel: the (optional) search box pinned above a scrolling
-     list, so filtering never scrolls the input out of reach. */
+     list, so filtering never scrolls the input out of reach.
+     `position: fixed`, positioned from `root`'s real rect (see
+     `computePosition`) — this dropdown renders inside config drawers, card
+     popovers, and other `overflow: hidden` panes, so an absolutely-
+     positioned child got silently clipped the moment it grew past the
+     nearest scrolling ancestor (e.g. the repo picker's hundreds-deep list).
+     `z-index` above `Popover.svelte`'s (60) and `AutocompleteSuggest.svelte`'s
+     (70), so it floats over every other overlay in the app, not just its
+     own trigger's container. */
   .kdrop-panel {
-    position: absolute;
-    top: calc(100% + 4px);
-    left: 0;
-    z-index: 50;
-    min-width: 100%;
-    /* Cap the panel so a long row can't widen it past the pane and give the
-       pane a horizontal scrollbar. Rows stack their hint under the label
-       (`.kdrop-item.stacked`) precisely so this can stay narrow. */
+    position: fixed;
+    z-index: 80;
+    /* Cap the panel so a long row can't grow it unreasonably wide. Rows
+       stack their hint under the label (`.kdrop-item.stacked`) precisely so
+       this can stay narrow. */
     max-width: 20rem;
     border-radius: 9px;
     border: 1px solid rgba(255, 255, 255, 0.1);

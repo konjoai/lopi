@@ -18,10 +18,18 @@ export const SHELL_ICONS = {
   cron: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   loop: '<path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/>',
   layers: '<path d="M12 3l8 4-8 4-8-4 8-4z"/><path d="M4 11l8 4 8-4M4 15l8 4 8-4"/>',
-  // The lopi mark (see `stacks/icons.ts`'s `ICONS.mark`) — hardcoded colors,
-  // so it ignores this catalog's `fill="none" stroke="currentColor"` wrapper
-  // on purpose: it's the brand logo, not a themeable glyph.
-  mark: '<rect x="1.5" y="1.5" width="21" height="21" rx="5.25" fill="#0a0a0a"/><rect x="2.55" y="2.55" width="18.9" height="18.9" rx="4.5" fill="none" stroke="#ff9500" stroke-width="1.05" opacity="0.85"/><g transform="translate(3.9,3.9) scale(0.675)" fill="none" stroke="#ff9500" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></g>',
+  // The lopi Loop Stacks mark (see `stacks/icons.ts`'s `ICONS.mark`) —
+  // hardcoded colors, so it ignores this catalog's `fill="none"
+  // stroke="currentColor"` wrapper on purpose: it's the brand logo, not a
+  // themeable glyph. Exact path data from the design source
+  // (Downloads/Logo request/LoopStack Logo.dc.html) — two stacked
+  // rounded-rect brackets, the second the first rotated 180° about the
+  // asset's center, each opening into a chevron arrow. A nested `<svg>`
+  // with its own `viewBox` (not just a `<g>`) since the design's native
+  // coordinate space (442×601) doesn't match this catalog's 24×24
+  // convention — nesting lets it establish its own scale rather than
+  // requiring the path data to be hand-rescaled.
+  mark: '<svg viewBox="-40 -40 522 681" width="100%" height="100%"><g><path d="M 395.5 208.17 L 395.5 225 A 37.5 37.5 0 0 1 358 262.5 L 121 262.5 A 37.5 37.5 0 0 1 83.5 225 L 83.5 128 A 37.5 37.5 0 0 1 121 90.5 L 360 90.5" fill="none" stroke="#f49e31" stroke-width="48.44" stroke-linecap="round"/><path d="M 309.5 2.06 L 397 88 L 307.94 175.5" fill="none" stroke="#f49e31" stroke-width="48.44" stroke-linecap="round" stroke-linejoin="round"/></g><g transform="rotate(180 239.5 294.5)"><path d="M 395.5 208.17 L 395.5 225 A 37.5 37.5 0 0 1 358 262.5 L 121 262.5 A 37.5 37.5 0 0 1 83.5 225 L 83.5 128 A 37.5 37.5 0 0 1 121 90.5 L 360 90.5" fill="none" stroke="#f49e31" stroke-width="48.44" stroke-linecap="round"/><path d="M 309.5 2.06 L 397 88 L 307.94 175.5" fill="none" stroke="#f49e31" stroke-width="48.44" stroke-linecap="round" stroke-linejoin="round"/></g></svg>',
   wrench:
     '<path d="M14.7 6.3a4 4 0 0 1-5.4 5.4L4 17l3 3 5.3-5.3a4 4 0 0 1 5.4-5.4L14.7 12.7z"/>',
   logs: '<path d="M6 3h9l5 5v13H6z"/><path d="M15 3v5h5M8 12h8M8 16h8"/>',

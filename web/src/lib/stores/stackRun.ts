@@ -25,16 +25,23 @@ import { get, writable, type Readable } from 'svelte/store';
 import {
   createTask,
   createSchedule,
+  createScheduleChain,
+  updateScheduleChain,
+  enableScheduleChain,
+  disableScheduleChain,
   effectiveTaskId,
   type ScheduleBody,
+  type ScheduleChainBody,
   type CreateTaskOptions,
   type Acceptance
 } from '$lib/api';
 import {
   panes,
   updateCardInPane,
+  updateStackConfig,
   reorderInPane,
   executionOrder,
+  buildCronString,
   cardToTaskPayload,
   cardToTaskPayloadForRunOnce,
   paneSubmitPayload,
@@ -42,6 +49,7 @@ import {
   stackPursuesGoal,
   bumpInOrder,
   type StackCard,
+  type StackConfig,
   type PaneDefaults,
   type OnFail
 } from './stack';
@@ -575,53 +583,95 @@ export function bumpCard(
   return { ok: true };
 }
 
-/** The result of `scheduleStack` — honest about the fact that it can only
- *  attach the given cron to the bottom-of-stack (first-to-run) card, not
- *  the whole plan. */
+/** The result of `scheduleStack` — every card in execution order is wired
+ *  into one server-side chain (Stack-Chain-1), not just the first. */
 export interface ScheduleStackResult {
   ok: boolean;
-  scheduledCardId?: string;
-  /** Every other card in the stack — the server-side `Schedule` model
-   *  (`crates/lopi-*` `ScheduleBody.goal: String`) has no concept of a
-   *  multi-goal pipeline, so a "schedule stack" run-menu intent can only
-   *  ever wire up one goal per cron. Making the rest run on the same
-   *  trigger would need a backend change (`ScheduleSpec.goal: String` →
-   *  `Vec<String>`, per the pre-flight's own notes) that's out of scope
-   *  here — this reports the gap instead of silently dropping it. */
-  skippedCardIds: string[];
+  chainId?: string;
   error?: string;
 }
 
-/** Run-menu "Schedule stack": deliberately minimal, and says so. Attaches
- *  one cron to the first card in execution order via the real
- *  `createSchedule`; every other card is reported back as skipped rather
- *  than pretended-scheduled. */
+/** Build the `/api/schedule-chains` body for `pane`'s full execution order,
+ *  reusing the same per-card payload resolution the run-stack sequencer
+ *  itself uses (`cardToTaskPayload`) so a scheduled chain fires the exact
+ *  goals a live run-stack would submit. Shared by `scheduleStack` (run-menu,
+ *  one-shot create) and `syncStackSchedule` (the dock's live toggle/edit). */
+function buildChainBody(
+  pane: { cards: StackCard[]; config: StackConfig },
+  paneKey: string,
+  cronExpr: string,
+  defaults: PaneDefaults
+): ScheduleChainBody | undefined {
+  const order = executionOrder(pane.cards);
+  if (order.length === 0) return undefined;
+  const first = cardToTaskPayload(order[0], defaults);
+  return {
+    name: `stack:${paneKey}`,
+    cron: cronExpr,
+    steps: order.map((card) => ({ goal: cardToTaskPayload(card, defaults).goal })),
+    repo: first.repo,
+    priority: first.priority,
+    on_fail: pane.config.guardrails.onFail
+  };
+}
+
+/** Run-menu "Schedule stack": wires every card in execution order into one
+ *  server-side chain via the real `createScheduleChain` — the chain then
+ *  fires step-by-step entirely server-side (`ChainScheduleManager`), with no
+ *  browser tab required to keep it advancing. */
 export async function scheduleStack(
   paneKey: string,
   cronExpr: string,
   defaults: PaneDefaults
 ): Promise<ScheduleStackResult> {
   const pane = get(panes).find((p) => p.key === paneKey);
-  if (!pane || pane.cards.length === 0) {
-    return { ok: false, skippedCardIds: [], error: 'nothing to schedule' };
-  }
-  const [first, ...rest] = executionOrder(pane.cards);
-  const payload = cardToTaskPayload(first, defaults);
-  const body: ScheduleBody = {
-    name: `stack:${paneKey}:${first.id}`,
-    cron: cronExpr,
-    goal: payload.goal,
-    repo: payload.repo,
-    priority: payload.priority
-  };
+  if (!pane) return { ok: false, error: 'nothing to schedule' };
+  const body = buildChainBody(pane, paneKey, cronExpr, defaults);
+  if (!body) return { ok: false, error: 'nothing to schedule' };
   try {
-    await createSchedule(body);
+    const chain = await createScheduleChain(body);
+    updateStackConfig(paneKey, { chainId: chain.id });
+    return { ok: true, chainId: chain.id };
   } catch (err) {
-    return {
-      ok: false,
-      skippedCardIds: rest.map((c) => c.id),
-      error: err instanceof Error ? err.message : String(err)
-    };
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
-  return { ok: true, scheduledCardId: first.id, skippedCardIds: rest.map((c) => c.id) };
+}
+
+/** The stack control dock's "schedule the entire stack" toggle/cron-edit:
+ *  creates, updates, enables, or disables the pane's `/api/schedule-chains`
+ *  row to match `config.scheduled`/`config.cron`, and persists the returned
+ *  chain id on the pane so the next edit updates the same row instead of
+ *  creating a duplicate. Called after every `updateStackConfig` that touches
+ *  `scheduled`/`cron` — fire-and-forget, matching `scheduleStack`'s existing
+ *  `void` call convention at its `RunMenu.svelte` call site. */
+export async function syncStackSchedule(paneKey: string, defaults: PaneDefaults): Promise<void> {
+  const pane = get(panes).find((p) => p.key === paneKey);
+  if (!pane) return;
+  const { config } = pane;
+  if (!config.scheduled) {
+    if (config.chainId) {
+      try {
+        await disableScheduleChain(config.chainId);
+      } catch {
+        // Best-effort: the chain stays enabled server-side until the next
+        // successful sync, same failure mode `sync_job` already accepts
+        // server-side for the single-card schedule path.
+      }
+    }
+    return;
+  }
+  const cronExpr = buildCronString(config.cron);
+  const body = buildChainBody(pane, paneKey, cronExpr, defaults);
+  if (!body) return;
+  try {
+    const chain = config.chainId
+      ? await updateScheduleChain(config.chainId, body)
+      : await createScheduleChain(body);
+    if (config.chainId) await enableScheduleChain(chain.id);
+    updateStackConfig(paneKey, { chainId: chain.id });
+  } catch {
+    // Best-effort — the popover's toggle/cron UI already reflects the
+    // client's intended state; a failed sync just means the next edit (or
+    // toggle) retries against the same not-yet-created/updated chain.
+  }
 }

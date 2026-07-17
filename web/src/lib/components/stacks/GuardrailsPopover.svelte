@@ -4,7 +4,7 @@
   `onFail` map onto the real `CreateTaskOptions.gate` / `.until` /
   `.on_fail` fields (landed PR #62), and the max-iter stepper edits the same
   `maxIterations` the cardbar's iteration pill does. `budget` is the one
-  client-only field — TODO(backend).
+  client-only field — not yet wired to a backend budget parameter.
 
   Generalized (Stack-1) to value + callback props instead of `card`/
   `paneKey`, and a `scope` prop that hides the gate/until rows at stack
@@ -34,7 +34,7 @@
   export let onChangeBudget: (value: Budget) => void;
   /** Max-iter stepper — the same field the cardbar's iteration pill edits at
    *  loop scope, or the chain loop-count at stack scope. `label` lets the
-   *  stack scope call it "loop stack" instead of "max iter". */
+   *  stack scope call it "loop stacks" instead of "max iter". */
   export let maxIterations: number;
   export let onStep: (delta: number) => void;
   export let iterLabel = 'max iter';

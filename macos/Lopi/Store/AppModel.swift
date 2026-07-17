@@ -25,6 +25,14 @@ final class AppModel {
     var traceLoading = false
     /// Launch-control dropdown sources, fetched from the server (sandbox-safe).
     /// `RepoMenu.repoOptions` turns these into labelled, grouped options.
+    /// Set for the duration the stack dock's drag handle is pressed, cleared
+    /// on release — the grid index of the pane it belongs to. Mirrors web's
+    /// `armDrag`/`disarmDrag` (toggling a card/pane's `draggable` HTML
+    /// attribute only while its handle is held): `ForgeView`'s grid attaches
+    /// `.draggable()` to a whole `StackPaneView` only when this matches its
+    /// index, so the entire pane becomes the drag source for exactly the
+    /// press's duration rather than the handle icon alone.
+    var armedStackDragIndex: Int?
     var repos: [RepoEntry] = []
     /// Per-repo branch cache: resolved repo path → its local branches. Keyed by
     /// repo rather than held flat because a card's effective repo is

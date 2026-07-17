@@ -7,6 +7,12 @@
       "runtimeArgs": ["run", "dev", "--", "--port", "5173"],
       "port": 5173,
       "cwd": "web"
+    },
+    {
+      "name": "lopi-sail",
+      "runtimeExecutable": "cargo",
+      "runtimeArgs": ["run", "--", "sail", "--repo", "/Users/wscholl/lopi-sail-clone"],
+      "port": 3000
     }
   ]
 }

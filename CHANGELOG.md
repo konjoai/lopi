@@ -1,5 +1,84 @@
 # Changelog
 
+## [0.13.0] — Stack-Chain-1 / Popover-Fix-1 / Parity-Audit-1: real whole-stack scheduling, popover overflow fix, web/macOS parity audit 🔗
+
+Three workstreams: (1) the stack control dock's "schedule the entire stack"
+cron is now real end-to-end on both platforms instead of a client-only stub;
+(2) the stack-context popover overflow at short window heights is fixed on
+web (root-caused, not policy-patched) and audited-but-not-yet-fixed on macOS;
+(3) a citation-backed web/macOS parity audit plus first-ever Playwright and
+XCUITest coverage for this repo.
+
+- **[Feat] Server-side whole-stack cron chains.** New `schedule_chains` /
+  `schedule_chain_steps` / `schedule_chain_runs` tables
+  (`crates/lopi-memory/src/schema.sql`) model an ORDERED SEQUENCE of
+  independent goals — the thing a single-`goal` `schedules` row structurally
+  can't represent. `ChainScheduleManager`
+  (`crates/lopi-orchestrator/src/chain_schedule_manager.rs`) registers the
+  chain's cron, fires step 0, subscribes to `EventBus<AgentEvent>` for that
+  task's terminal status, and submits the next step on completion — entirely
+  server-side, so the chain keeps advancing with the browser tab closed
+  (previously: `stackRun.ts`'s client-side `advance()` died with the tab).
+  New REST surface: `/api/schedule-chains[/:id[/enable|disable|run-now]]`
+  (`crates/lopi-ui/src/web/schedule_chain_handlers.rs`).
+- **[Fix] Backend-restart mid-chain no longer drops or replays a run.**
+  `ChainScheduleManager::start()` scans `schedule_chain_runs` still marked
+  `running` on boot, checks the in-flight step's task against its durable
+  status, and either advances (already finished before the restart) or
+  resubmits the *same* step (orphaned by the restart) — never step 0, never
+  silently dropped. This is the exact failure mode from the incident that
+  motivated this sprint (backend offline overnight). Covered by 2
+  crate-boundary unit tests plus a genuine on-disk-SQLite integration test
+  (`crates/lopi-orchestrator/tests/chain_schedule_resume.rs`) that drops
+  every in-process object and reopens a fresh set against the same DB file.
+- **[Feat] Web + macOS wiring.** `stackRun.ts::scheduleStack()` now submits
+  every card in execution order (previously: only the first, with the rest
+  reported as `skippedCardIds`); a new `syncStackSchedule()` creates/
+  updates/enables/disables the pane's chain to match the dock's toggle/cron
+  edits. `StackControlDock.svelte`'s "not yet enforced" stub hint is gone.
+  macOS: `StackRunControls.swift::scheduleStack()`, `AppModel+Stacks.swift`'s
+  new `syncStackSchedule(paneKey:defaults:)`, new `ScheduleChain*` models and
+  `LopiClient` methods, `StackConfig.chainId` — same stub hint removed from
+  `StackControlDockView.swift`.
+- **[Fix] Web stack-context popover overflow at short window heights.**
+  Root-caused (not assumed): `Popover.svelte`'s `computePosition()` only
+  re-ran on open or window-resize, never when the popover's *own* content
+  grew after opening (e.g. toggling "run on a schedule" mounts a taller cron
+  builder in the same popover) — it flipped correctly for the small initial
+  content, then never repositioned once the content grew past the viewport
+  bottom. Fixed with a `ResizeObserver` on the popover element, not a
+  `preferAbove` policy default (the kill-test showed this was a stale-
+  measurement bug, not a "no room above" question). Live-verified: pre-fix
+  the popover overflowed by 57.4px in a 700px window; post-fix it repositions
+  with 133.6px of clearance for the identical interaction.
+  macOS `arrowEdge` call sites were audited but deliberately left unchanged —
+  live verification (KT3) was blocked this session (computer-use access to
+  the app was denied), and `.popover` is backed by native `NSPopover` on
+  macOS, which may already self-correct; changing `arrowEdge` values without
+  evidence risked "fixing" something that wasn't broken.
+- **[Docs] `docs/ops/PARITY_AUDIT_2026-07-16.md`** — nav-section inventory,
+  the popover-fix evidence above, a citation-backed feature matrix, and two
+  new findings: a macOS-exclusive `Dashboard` nav section with no web
+  equivalent (not previously logged, unlike the already-known Overview gap),
+  and a set of backend routes (`/api/agents/health/summary`, `/api/audit`,
+  `/api/patterns`, `/api/quality/trend`, `/api/tools*`) whose "serves the
+  macOS admin panels" justification comment in `web/src/lib/api.ts` is now
+  stale — `macOS-Parity-Cut-1` removed those exact panels from macOS too.
+- **[Chore] First Playwright (web) and XCUITest (macOS) coverage in this
+  repo** — logged as one-way-door dependency additions in `LEDGER.md`. 8
+  Playwright specs (chain-schedule wiring, popover-viewport regression, nav
+  smoke) all pass against a live dev server. The XCUITest target builds
+  clean (`xcodebuild build-for-testing`); execution hit a local code-signing/
+  Team-ID mismatch in this environment's DerivedData, unrelated to the test
+  code itself — flagged in `NEXT_SESSION_PROMPT.md`, not silently skipped.
+- **[Verify]** `cargo build`/`clippy -D warnings`/`fmt --check` clean across
+  the workspace; 9 new orchestrator unit tests + 2 integration tests + 8
+  memory-store tests + 13 web-handler tests all pass. `npm test` (162 web
+  unit tests) and `npm run check` (0 type errors) pass. macOS: `swift test`
+  (70 package tests) and `xcodebuild test -only-testing:LopiTests` (21
+  tests) pass; `LopiUITests` builds but did not execute this session (see
+  above).
+
 ## [0.12.0] — iOS-Research-1: shared Swift package extraction spike 📦
 
 The one phase of this sprint that touches shipped code — see `LEDGER.md` for

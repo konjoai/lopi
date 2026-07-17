@@ -128,6 +128,40 @@ struct LopiClient {
         _ = try await send("DELETE", "/api/schedules/\(id)", body: Optional<Int>.none)
     }
 
+    // Schedule chains (whole-stack cron)
+
+    func scheduleChains() async throws -> [ScheduleChain] {
+        let wrapper: ScheduleChainsWrapper = try await get("/api/schedule-chains")
+        return wrapper.chains
+    }
+
+    func scheduleChain(id: String) async throws -> ScheduleChain {
+        try await get("/api/schedule-chains/\(id)")
+    }
+
+    @discardableResult
+    func createScheduleChain(_ body: ScheduleChainBody) async throws -> ScheduleChain {
+        try await sendDecoding("POST", "/api/schedule-chains", body: body)
+    }
+
+    @discardableResult
+    func updateScheduleChain(id: String, _ body: ScheduleChainBody) async throws -> ScheduleChain {
+        try await sendDecoding("PUT", "/api/schedule-chains/\(id)", body: body)
+    }
+
+    func setScheduleChainEnabled(id: String, enabled: Bool) async throws {
+        let path = "/api/schedule-chains/\(id)/\(enabled ? "enable" : "disable")"
+        _ = try await send("POST", path, body: Optional<Int>.none)
+    }
+
+    func runScheduleChainNow(id: String) async throws {
+        _ = try await send("POST", "/api/schedule-chains/\(id)/run-now", body: Optional<Int>.none)
+    }
+
+    func deleteScheduleChain(id: String) async throws {
+        _ = try await send("DELETE", "/api/schedule-chains/\(id)", body: Optional<Int>.none)
+    }
+
     // Loop Engineering
 
     func loopEngineering() async throws -> LoopSnapshot {
@@ -246,3 +280,4 @@ struct LopiClient {
 // Response envelopes the API wraps collections in.
 private struct TasksWrapper: Decodable { let tasks: [TaskSummary] }
 private struct SchedulesWrapper: Decodable { let schedules: [Schedule] }
+private struct ScheduleChainsWrapper: Decodable { let chains: [ScheduleChain] }

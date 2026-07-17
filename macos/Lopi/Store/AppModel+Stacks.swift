@@ -35,15 +35,58 @@ extension AppModel {
                 await self?.awaitTerminal(taskId) ?? .cancelled
             },
             score: { [weak self] taskId in self?.liveAgents[taskId]?.testPassRate },
-            createSchedule: { [weak self] name, cron, goal, repo, priority in
+            createScheduleChain: { [weak self] name, cron, goals, repo, priority, onFail in
                 guard let self else { throw LopiError.transport("model deallocated") }
-                _ = try await self.client.createSchedule(ScheduleBody(
-                    name: name, cron: cron, goal: goal,
+                let chain = try await self.client.createScheduleChain(ScheduleChainBody(
+                    name: name, cron: cron,
+                    steps: goals.map { ScheduleChainStepBody(goal: $0, allowedDirs: nil, forbiddenDirs: nil) },
                     repo: repo.isEmpty ? nil : repo, priority: priority,
-                    allowedDirs: nil, forbiddenDirs: nil, enabled: true))
-                await self.refreshSchedules()
+                    autonomyLevel: nil, onFail: onFail.rawValue, enabled: true))
+                return chain.id
             },
             reorderPaneCards: { [stackStore] key, from, to in stackStore.reorderInPane(key, from, to) })
+    }
+
+    /// The stack control dock's "schedule the entire stack" toggle/cron-edit:
+    /// creates, updates, enables, or disables the pane's `/api/schedule-chains`
+    /// row to match `config.scheduled`/`config.cron`, and persists the returned
+    /// chain id on the pane (`StackConfig.chainId`) so the next edit updates the
+    /// same row instead of creating a duplicate. Mirrors
+    /// `web/src/lib/stores/stackRun.ts::syncStackSchedule`. Best-effort — a
+    /// failed sync leaves the client's toggle state as the source of truth
+    /// until the next edit retries.
+    func syncStackSchedule(paneKey: String, defaults: PaneDefaults) {
+        guard let pane = stackStore.panes.first(where: { $0.key == paneKey }) else { return }
+        let config = pane.config
+        Task { [weak self] in
+            guard let self else { return }
+            guard config.scheduled else {
+                if let chainId = config.chainId {
+                    try? await self.client.setScheduleChainEnabled(id: chainId, enabled: false)
+                }
+                return
+            }
+            let ordered = executionOrder(pane.cards)
+            guard !ordered.isEmpty else { return }
+            let first = cardToTaskPayload(ordered[0], defaults)
+            let body = ScheduleChainBody(
+                name: "stack:\(paneKey)", cron: buildCronString(config.cron),
+                steps: ordered.map { ScheduleChainStepBody(goal: cardToTaskPayload($0, defaults).goal, allowedDirs: nil, forbiddenDirs: nil) },
+                repo: first.repo, priority: first.priority,
+                autonomyLevel: nil, onFail: config.guardrails.onFail.rawValue, enabled: true)
+            do {
+                let chain: ScheduleChain
+                if let chainId = config.chainId {
+                    chain = try await self.client.updateScheduleChain(id: chainId, body)
+                    try await self.client.setScheduleChainEnabled(id: chainId, enabled: true)
+                } else {
+                    chain = try await self.client.createScheduleChain(body)
+                }
+                self.stackStore.updateStackConfig(paneKey) { $0.chainId = chain.id }
+            } catch {
+                // Best-effort — see doc comment above.
+            }
+        }
     }
 
     /// Submit one card/pane payload through the real create-task path and return

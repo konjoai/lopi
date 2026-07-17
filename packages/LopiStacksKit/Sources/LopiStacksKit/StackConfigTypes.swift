@@ -164,9 +164,10 @@ public func defaultStackGoal() -> StackGoal {
 
 // MARK: - Stack config (the purple control area's full state)
 
-/// Stack-level config. `scheduled`/`cron` are STUBBED (no whole-chain cron
-/// server-side). `evals` is CLIENT-ONLY chain-acceptance intent. `defaults` is
-/// WIRED (resolved into every loop's payload). `goal` is B1 run-until-goal.
+/// Stack-level config. `scheduled`/`cron` are WIRED to a real server-side
+/// `/api/schedule-chains` row (Stack-Chain-1) via `chainId`. `evals` is
+/// CLIENT-ONLY chain-acceptance intent. `defaults` is WIRED (resolved into
+/// every loop's payload). `goal` is B1 run-until-goal.
 public struct StackConfig: Codable, Hashable {
     public var loopCount: Int
     public var scheduled: Bool
@@ -175,9 +176,14 @@ public struct StackConfig: Codable, Hashable {
     public var evals: [EvalRef]
     public var defaults: StackDefaults
     public var goal: StackGoal
+    /// Stack-Chain-1 — the server-side `/api/schedule-chains` row backing this
+    /// stack's schedule toggle, once one has been created. `nil` until the
+    /// first successful sync (`AppModel.syncStackSchedule`) — a stack that has
+    /// never been scheduled has no chain to enable/disable/edit.
+    public var chainId: String?
 
     public init(loopCount: Int, scheduled: Bool, cron: CronConfig, guardrails: StackGuardrails,
-                evals: [EvalRef], defaults: StackDefaults, goal: StackGoal) {
+                evals: [EvalRef], defaults: StackDefaults, goal: StackGoal, chainId: String? = nil) {
         self.loopCount = loopCount
         self.scheduled = scheduled
         self.cron = cron
@@ -185,6 +191,7 @@ public struct StackConfig: Codable, Hashable {
         self.evals = evals
         self.defaults = defaults
         self.goal = goal
+        self.chainId = chainId
     }
 }
 
