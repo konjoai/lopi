@@ -41,6 +41,19 @@ pub(crate) enum Commands {
         /// Run the Layer 5 stability gate: generate N plan samples and block if variance is too high.
         #[arg(long)]
         stability_gate: bool,
+        /// One-off per-`claude -p` session USD cap for this run, overriding
+        /// the repo's `.lopi/loop.toml` budget (e.g. `--budget 5`). `0`
+        /// disables the cap.
+        #[arg(long)]
+        budget: Option<f64>,
+        /// One-off named budget preset for this run (quick/standard/deep/
+        /// unlimited), overriding the repo's `.lopi/loop.toml` preset.
+        #[arg(long)]
+        budget_preset: Option<String>,
+        /// One-off per-run token budget for this run, overriding the repo's
+        /// `.lopi/loop.toml` budget. `0` disables the cap.
+        #[arg(long)]
+        budget_tokens: Option<u64>,
     },
     /// Run with directory restrictions disabled — use in trusted environments only.
     ///

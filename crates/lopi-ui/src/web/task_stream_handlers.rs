@@ -193,5 +193,6 @@ fn event_task_id(ev: &AgentEvent) -> Option<lopi_core::TaskId> {
         AgentEvent::PoolStats { .. } => None,
         AgentEvent::BudgetExceeded { task_id, .. } => *task_id,
         AgentEvent::VerifierVerdict { task_id, .. } => Some(*task_id),
+        AgentEvent::BudgetSoftWarn { task_id, .. } => Some(*task_id),
     }
 }

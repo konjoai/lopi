@@ -12,33 +12,36 @@ use teloxide::{
 use tokio::sync::Mutex;
 use tracing::warn;
 
-use super::{monitor, LopiCmd};
+use super::budget::{handle_budget, take_pending_budget, PendingBudgetMap};
+use super::{monitor, BotDeps, LopiCmd};
 use crate::telegram::format::{priority_badge, short_id};
 
 /// Shared draft state: maps chat_id → accumulated lines.
 pub type DraftMap = Arc<Mutex<HashMap<i64, Vec<String>>>>;
 
 /// Dispatch all bot commands — entry point for the teloxide command handler.
-#[allow(clippy::too_many_arguments)]
-pub async fn message_handler(
-    bot: Bot,
-    msg: Message,
-    cmd: LopiCmd,
-    queue: Arc<TaskQueue>,
-    store: Arc<MemoryStore>,
-    pool: Arc<AgentPool>,
-    allowed: Arc<Vec<i64>>,
-    schedules: Arc<Vec<ScheduleEntry>>,
-    drafts: DraftMap,
-) -> Result<()> {
-    if !allowed.is_empty() && !allowed.contains(&msg.chat.id.0) {
+/// Takes the bundled [`BotDeps`] rather than each dependency separately —
+/// see that struct's doc comment.
+pub async fn message_handler(bot: Bot, msg: Message, cmd: LopiCmd, deps: BotDeps) -> Result<()> {
+    if !deps.allowed.is_empty() && !deps.allowed.contains(&msg.chat.id.0) {
         warn!(
             "telegram: rejected command from unauthorized chat {}",
             msg.chat.id.0
         );
         return Ok(());
     }
-    dispatch_task_cmd(&bot, &msg, cmd, &queue, &store, &pool, &schedules, &drafts).await
+    dispatch_task_cmd(
+        &bot,
+        &msg,
+        cmd,
+        &deps.queue,
+        &deps.store,
+        &deps.pool,
+        &deps.schedules,
+        &deps.drafts,
+        &deps.pending_budgets,
+    )
+    .await
 }
 
 /// Route task-action commands; delegates monitoring commands to `dispatch_monitor_cmd`.
@@ -52,17 +55,25 @@ async fn dispatch_task_cmd(
     pool: &Arc<AgentPool>,
     schedules: &Arc<Vec<ScheduleEntry>>,
     drafts: &DraftMap,
+    pending_budgets: &PendingBudgetMap,
 ) -> Result<()> {
     match cmd {
-        LopiCmd::Task(goal) => handle_queue(bot, msg, queue, goal, Priority::Normal).await,
-        LopiCmd::Urgent(goal) => handle_queue(bot, msg, queue, goal, Priority::High).await,
-        LopiCmd::Critical(goal) => handle_queue(bot, msg, queue, goal, Priority::Critical).await,
+        LopiCmd::Task(goal) => {
+            handle_queue(bot, msg, queue, goal, Priority::Normal, pending_budgets).await
+        }
+        LopiCmd::Urgent(goal) => {
+            handle_queue(bot, msg, queue, goal, Priority::High, pending_budgets).await
+        }
+        LopiCmd::Critical(goal) => {
+            handle_queue(bot, msg, queue, goal, Priority::Critical, pending_budgets).await
+        }
         LopiCmd::Cancel(id) => handle_cancel(bot, msg, &id, pool).await,
         LopiCmd::Retry(id) => handle_retry(bot, msg, &id, store, queue).await,
         LopiCmd::Approve(id) => handle_approve(bot, msg, &id).await,
         LopiCmd::Draft => handle_draft(bot, msg, drafts).await,
-        LopiCmd::Submit => handle_submit(bot, msg, queue, drafts).await,
+        LopiCmd::Submit => handle_submit(bot, msg, queue, drafts, pending_budgets).await,
         LopiCmd::CancelDraft => handle_cancel_draft(bot, msg, drafts).await,
+        LopiCmd::Budget(arg) => handle_budget(bot, msg, &arg, pool, pending_budgets).await,
         cmd => dispatch_monitor_cmd(bot, msg, cmd, queue, store, pool, schedules).await,
     }
 }
@@ -144,6 +155,9 @@ async fn handle_help(bot: &Bot, msg: &Message) -> Result<()> {
         SCHEDULES\n\
         /schedules         list configured cron schedules\n\
         /run <name>        trigger a schedule immediately\n\n\
+        BUDGET\n\
+        /budget <preset|usd>  one-off cap for the next card (quick/standard/deep/unlimited or a $ amount)\n\
+        /budget status     show the resolved budget for the next card\n\n\
         MEMORY\n\
         /learn [N]         learned patterns (default: 5)\n\
         /approve <id>      record PR approval\n\
@@ -163,6 +177,7 @@ async fn handle_queue(
     queue: &TaskQueue,
     goal: String,
     priority: Priority,
+    pending_budgets: &PendingBudgetMap,
 ) -> Result<()> {
     if goal.trim().is_empty() {
         bot.send_message(msg.chat.id, "Usage: /task <goal>").await?;
@@ -174,6 +189,7 @@ async fn handle_queue(
         message_id: msg.id.0,
     };
     t.priority = priority;
+    let budget_note = take_pending_budget(pending_budgets, msg.chat.id.0, &mut t).await;
     let id_short = short_id(&t.id.to_string()).to_string();
     let dup = queue.push(t).await;
     if let Some(existing) = dup {
@@ -192,7 +208,9 @@ async fn handle_queue(
     let kb = build_priority_keyboard(priority, &goal);
     bot.send_message(
         msg.chat.id,
-        format!("⛵ queued {badge} {goal}\nID: {id_short}  ·  Position: {pos} in queue"),
+        format!(
+            "⛵ queued {badge} {goal}\nID: {id_short}  ·  Position: {pos} in queue{budget_note}"
+        ),
     )
     .reply_markup(kb)
     .await?;
@@ -372,6 +390,7 @@ async fn handle_submit(
     msg: &Message,
     queue: &TaskQueue,
     drafts: &DraftMap,
+    pending_budgets: &PendingBudgetMap,
 ) -> Result<()> {
     let lines = drafts.lock().await.remove(&msg.chat.id.0);
     let has_content = lines.as_ref().is_some_and(|v| !v.is_empty());
@@ -389,11 +408,12 @@ async fn handle_submit(
         chat_id: msg.chat.id.0,
         message_id: msg.id.0,
     };
+    let budget_note = take_pending_budget(pending_budgets, msg.chat.id.0, &mut t).await;
     let id_short = short_id(&t.id.to_string()).to_string();
     queue.push(t).await;
     bot.send_message(
         msg.chat.id,
-        format!("✅ Draft submitted as task\n{goal}\nID: {id_short}"),
+        format!("✅ Draft submitted as task\n{goal}\nID: {id_short}{budget_note}"),
     )
     .await?;
     Ok(())

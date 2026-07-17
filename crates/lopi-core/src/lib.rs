@@ -8,8 +8,15 @@
 pub mod acceptance;
 /// Agent execution state machine and scoring primitives.
 pub mod agent;
+/// Autonomy ladder — how much a loop is trusted to act without a human.
+/// Re-exported from `loop_config` for backward compatibility.
+pub mod autonomy;
 /// Token-budget tracking and scope definitions.
 pub mod budget;
+/// Named budget presets (Budget & Guardrail Controls, Part 2) — the
+/// `[budget]` section of `.lopi/loop.toml` and `LoopConfig::resolved_budget`'s
+/// output type.
+pub mod budget_preset;
 /// Global and per-repo configuration structures.
 pub mod config;
 /// Earned-trust auto-promotion state machine (Phase 16.7).
@@ -54,13 +61,15 @@ pub mod topology;
 
 pub use acceptance::{Acceptance, AcceptanceCheck, CheckSpec, EvalTier, MetricGate, Op};
 pub use agent::{AgentRun, AgentState, Attempt, Score, ScoreWeights, TurnMetrics};
+pub use autonomy::AutonomyLevel;
 pub use budget::BudgetScope;
+pub use budget_preset::{BudgetOverride, BudgetPreset, BudgetSection, ResolvedBudget};
 pub use config::{LimitWindow, LopiConfig, MaxxEntry, RepoProfile, ScheduleEntry};
 pub use earned_trust::EarnedTrust;
 pub use eval_outcome::{CheckResult, EvalOutcome, Verdict};
 pub use event::{AgentEvent, EventBus, LogLevel, PlanDecision};
 pub use gain::{GainDecision, GainRule, GainSample};
-pub use loop_config::{AutonomyLevel, IsolationMode, LoopConfig};
+pub use loop_config::{IsolationMode, LoopConfig};
 pub use models::{fallback_models, ModelInfo};
 pub use report::{ReportChannel, ReportChannelError};
 pub use schema::{

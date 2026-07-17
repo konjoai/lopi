@@ -300,6 +300,24 @@ pub(super) fn build_runner(
     }
 }
 
+/// Budget & Guardrail Controls Part 2/3 — resolve the effective budget for
+/// one task: the repo's `[budget]` preset (plus any explicit overrides under
+/// it), then any per-task override layered on top (`lopi run --budget`/
+/// `--budget-preset`/`--budget-tokens`, Telegram `/budget`). A bare per-task
+/// USD/token override never touches the tool allow/deny lists on its own —
+/// see [`lopi_core::BudgetOverride::apply`]'s "fan-out stays opt-in" doc
+/// comment. Pure (no I/O) so it's unit-testable without the pool's
+/// git/worktree machinery.
+pub(super) fn effective_task_budget(
+    task: &Task,
+    cfg: &lopi_core::LoopConfig,
+) -> lopi_core::ResolvedBudget {
+    task.budget_override.as_ref().map_or_else(
+        || cfg.resolved_budget(),
+        |ov| ov.apply(cfg.resolved_budget()),
+    )
+}
+
 /// The repo-level (`.lopi/loop.toml`) guardrail defaults a task's own
 /// `gate`/`until`/`on_fail` may override. Bundled into one struct — rather
 /// than three more positional args on [`build_runner`] — since they're
@@ -384,6 +402,8 @@ async fn run_one(
         .as_ref()
         .map_or_else(|| repo.clone(), |w| w.path().to_path_buf());
 
+    let resolved_budget = effective_task_budget(&task, &cfg);
+
     let mut runner = build_runner(
         task,
         work_repo,
@@ -395,10 +415,10 @@ async fn run_one(
         cfg.self_prompt,
         cfg.escalate_strategy,
         skills,
-        cfg.budget_tokens,
-        cfg.max_budget_usd,
-        cfg.permission_allow.clone(),
-        cfg.permission_deny.clone(),
+        resolved_budget.tokens,
+        resolved_budget.usd,
+        resolved_budget.allow,
+        resolved_budget.deny,
         cfg.max_iterations,
         repo_guardrails,
         cfg.reflect_cross_run,
@@ -427,6 +447,21 @@ async fn run_one(
             .ok();
         if let Err(e) = store.mine_patterns(&task_id, &goal).await {
             warn!("pattern mining failed: {e}");
+        }
+        // Budget & Guardrail Controls Part 4.3 — the per-session cost already
+        // flows into `turn_metrics` via every streamed call's
+        // `persist_turn` (stream.rs); surface the sum in the run-complete
+        // log so real spend is visible without a SQL query, same as the web
+        // burn view (`/api/loop-engineering/health`) already reads.
+        match store.task_cost(&task_id.0.to_string()).await {
+            Ok(cost_usd) => {
+                tracing::info!(task_id = %task_id, cost_usd, total_attempts, "run complete");
+                bus.send(AgentEvent::info(
+                    task_id,
+                    format!("💵 session cost: ${cost_usd:.4} over {total_attempts} attempt(s)"),
+                ));
+            }
+            Err(e) => warn!(task_id = %task_id, "failed to load session cost: {e}"),
         }
     }
 

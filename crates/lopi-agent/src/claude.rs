@@ -8,87 +8,24 @@
 use crate::claude_events::{parse_line, StreamEvent};
 use anyhow::{Context, Result};
 use lopi_core::Task;
-use lopi_toon::encode_task_context;
-use serde::Deserialize;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, BufReader as AsyncBufReader};
 use tokio::process::Command;
 
-// ── Model identifiers ─────────────────────────────────────────────────────────
-
-/// Claude Haiku model identifier — lowest cost, fast latency.
-pub const MODEL_HAIKU: &str = "claude-haiku-4-5-20251001";
-/// Claude Sonnet model identifier — default balanced model.
-pub const MODEL_SONNET: &str = "claude-sonnet-4-6";
-/// Claude Opus model identifier — highest capability, used for complex or retried tasks.
-pub const MODEL_OPUS: &str = "claude-opus-4-7";
-
-/// Sentinel substring used by the run loop to detect a non-retryable billing
-/// failure from the Anthropic API. Matched against the error chain so we don't
-/// burn the retry budget looping on a credit-exhausted account.
-pub const ERR_CREDIT_EXHAUSTED: &str = "anthropic credits exhausted";
-
-/// Route a task to the cheapest model capable of handling its complexity.
-///
-/// `task.model`, when set, is always honored verbatim — an explicit override
-/// wins over both the complexity heuristic and the retry escalation, the
-/// same "explicit wins over default" precedent already established by
-/// `verifier_model`. Otherwise:
-///
-/// Heuristic: task size = constraints + `allowed_dirs` count.
-/// - ≤ 2: Haiku (read-only discovery, simple rewrites) — ~20× cheaper than Opus
-/// - 3–6: Sonnet (default — implementation, test writing)
-/// - > 6 or retry ≥ 2: Opus (complex multi-file changes, repeated failures)
-#[must_use]
-pub fn select_model(task: &Task, attempt: u8) -> String {
-    if let Some(m) = &task.model {
-        return m.clone();
-    }
-    if attempt >= 2 {
-        return MODEL_OPUS.to_string(); // escalate on repeated failure
-    }
-    let size = task.constraints.len() + task.allowed_dirs.len();
-    match size {
-        0..=2 => MODEL_HAIKU,
-        3..=6 => MODEL_SONNET,
-        _ => MODEL_OPUS,
-    }
-    .to_string()
-}
-
-/// Structured output from `claude --output-format json`.
-#[derive(Debug, Deserialize)]
-pub struct ClaudeOutput {
-    /// JSON `type` field from the CLI response envelope.
-    #[serde(rename = "type")]
-    pub kind: Option<String>,
-    /// The assistant's text response, if present.
-    pub result: Option<String>,
-    /// `true` when the CLI reports an error outcome.
-    pub is_error: Option<bool>,
-    /// Estimated cost in USD as reported by the CLI.
-    pub cost_usd: Option<f64>,
-    /// Wall-clock duration of the CLI invocation in milliseconds.
-    pub duration_ms: Option<u64>,
-    /// Raw stdout from the CLI process — fallback when JSON parsing fails.
-    #[serde(skip)]
-    pub raw: String,
-}
-
-impl ClaudeOutput {
-    /// Return the response text, falling back to raw stdout when `result` is absent.
-    #[must_use]
-    pub fn text(&self) -> &str {
-        self.result.as_deref().unwrap_or(&self.raw)
-    }
-    /// Return `true` when the CLI did not report an error.
-    #[must_use]
-    pub fn succeeded(&self) -> bool {
-        !self.is_error.unwrap_or(false)
-    }
-}
+/// Re-exported so every existing `crate::claude::MODEL_*`/`select_model`/
+/// `ClaudeOutput`/`ERR_CREDIT_EXHAUSTED` path stays valid — these moved to
+/// `claude_model.rs` purely to keep this file under the 500-line CI
+/// file-size gate; see that module's doc comment.
+pub use crate::claude_model::{
+    select_model, ClaudeOutput, ERR_CREDIT_EXHAUSTED, MODEL_HAIKU, MODEL_OPUS, MODEL_SONNET,
+};
+/// Re-exported so `crate::claude::scrub_inherited_anthropic_env` stays valid
+/// for `claude_stream.rs`'s call site — moved to `claude_support.rs` for the
+/// same file-size reason.
+pub(crate) use crate::claude_support::scrub_inherited_anthropic_env;
+use crate::claude_support::{apply_cli_caps, compress_errors};
 
 /// Wrapper around the `claude` CLI — drives plan, implement, fix, and streaming calls.
 pub struct ClaudeCode {
@@ -232,61 +169,14 @@ impl ClaudeCode {
         Ok(out.text().to_string())
     }
 
-    /// Build the planning prompt: a TOON-encoded task context (goal, dirs,
-    /// constraints, pattern memory, lessons) plus the optional previous-failure
-    /// addendum. Shared by the one-shot [`plan`](Self::plan) and streaming
-    /// [`plan_streamed`](Self::plan_streamed) paths so the prompt stays identical.
+    /// See [`claude_support::build_plan_prompt`](crate::claude_support::build_plan_prompt).
     fn build_plan_prompt(&self, task: &Task, last_error: Option<&str>) -> String {
-        let all_constraints: Vec<&str> = task
-            .constraints
-            .iter()
-            .chain(self.extra_constraints.iter())
-            .map(String::as_str)
-            .collect();
-        let allowed: Vec<&str> = task.allowed_dirs.iter().map(String::as_str).collect();
-        let forbidden: Vec<&str> = task.forbidden_dirs.iter().map(String::as_str).collect();
-        // Convert lessons from Vec<(String, String)> to Vec<(&str, &str)> for TOON.
-        let lesson_refs: Vec<(&str, &str)> = self
-            .lessons
-            .iter()
-            .map(|(cat, content)| (cat.as_str(), content.as_str()))
-            .collect();
-        let ctx = encode_task_context(
-            &task.goal,
-            &allowed,
-            &forbidden,
-            &all_constraints,
+        crate::claude_support::build_plan_prompt(
+            task,
+            last_error,
+            &self.extra_constraints,
             &self.patterns,
-            &lesson_refs,
-        );
-        let mut prompt = format!(
-            "You are running inside lopi. \
-             Produce a concise implementation plan. \
-             Output a numbered list of steps only.\n\n\
-             ## Task context (TOON)\n\
-             {ctx}"
-        );
-        if let Some(err) = last_error {
-            prompt.push_str(&format!(
-                "\n\n## Previous attempt failed\nAnalyze this error and adjust your approach:\n{err}"
-            ));
-        }
-        prompt
-    }
-
-    /// Build the implementation prompt: a TOON-encoded scope plus the plan.
-    /// Shared by [`implement`](Self::implement) and
-    /// [`implement_streamed`](Self::implement_streamed).
-    fn build_implement_prompt(&self, task: &Task, plan: &str) -> String {
-        let allowed: Vec<&str> = task.allowed_dirs.iter().map(String::as_str).collect();
-        let forbidden: Vec<&str> = task.forbidden_dirs.iter().map(String::as_str).collect();
-        let scope = encode_task_context(&task.goal, &allowed, &forbidden, &[], &[], &[]);
-        format!(
-            "Implement the plan below in the current repository.\n\n\
-             ## Scope (TOON)\n\
-             {scope}\n\
-             ## Plan\n\
-             {plan}"
+            &self.lessons,
         )
     }
 
@@ -320,21 +210,14 @@ impl ClaudeCode {
             // builder toggle: the user wants every run unattended today and
             // can gate it back per-task later.
             .arg("--dangerously-skip-permissions");
-        if let Some(model) = &self.model {
-            cmd.arg("--model").arg(model);
-        }
-        if let Some(turns) = self.max_turns {
-            cmd.arg("--max-turns").arg(turns.to_string());
-        }
-        if let Some(usd) = self.max_budget_usd {
-            cmd.arg("--max-budget-usd").arg(format!("{usd}"));
-        }
-        if !self.allowed_tools.is_empty() {
-            cmd.arg("--allowedTools").args(&self.allowed_tools);
-        }
-        if !self.disallowed_tools.is_empty() {
-            cmd.arg("--disallowedTools").args(&self.disallowed_tools);
-        }
+        apply_cli_caps(
+            &mut cmd,
+            self.model.as_deref(),
+            self.max_turns,
+            self.max_budget_usd,
+            &self.allowed_tools,
+            &self.disallowed_tools,
+        );
         cmd.stdout(Stdio::piped());
         cmd.stderr(Stdio::null());
         cmd.current_dir(&self.repo_path);
@@ -418,7 +301,7 @@ impl ClaudeCode {
     where
         F: Fn(&StreamEvent) + Send,
     {
-        let prompt = self.build_implement_prompt(task, plan);
+        let prompt = crate::claude_support::build_implement_prompt(task, plan);
         self.run_streamed(&prompt, on_event).await
     }
 
@@ -430,7 +313,7 @@ impl ClaudeCode {
     ///
     /// Returns an error if the claude CLI process fails or times out.
     pub async fn implement(&self, task: &Task, plan: &str) -> Result<String> {
-        let prompt = self.build_implement_prompt(task, plan);
+        let prompt = crate::claude_support::build_implement_prompt(task, plan);
         let out = self.run(&prompt).await?;
         if !out.succeeded() {
             anyhow::bail!("claude implement failed: {}", out.text());
@@ -469,6 +352,12 @@ impl ClaudeCode {
     /// Stream plan steps as they are generated. Returns a channel receiver that emits
     /// numbered plan steps (lines matching `^\d+\.`) and a join handle that resolves to
     /// the full plan text when the claude process exits.
+    ///
+    /// Forwards `self.model`/`max_budget_usd`/`max_turns`/`allowed_tools`/
+    /// `disallowed_tools` to [`claude_stream::plan_streaming`](crate::claude_stream::plan_streaming) —
+    /// the same caps [`run`](Self::run) and [`run_streamed`](Self::run_streamed) apply,
+    /// so a `--speculative` session can never spawn `claude -p` uncapped just
+    /// because it took this third spawn path instead of the other two.
     #[must_use]
     pub fn plan_streaming(
         &self,
@@ -489,6 +378,11 @@ impl ClaudeCode {
             self.timeout,
             task,
             all_constraints,
+            self.model.as_deref(),
+            self.max_budget_usd,
+            self.max_turns,
+            &self.allowed_tools,
+            &self.disallowed_tools,
         )
     }
 
@@ -520,25 +414,18 @@ impl ClaudeCode {
         if self.json_output {
             cmd.arg("--output-format").arg("json");
         }
-        if let Some(model) = &self.model {
-            cmd.arg("--model").arg(model);
-        }
         // Same caps as `run_streamed` — this one-shot path backs `fix()` and
         // `implement_step()` (speculative mode), both real spend that was
         // previously uncapped here regardless of what `run_streamed`'s caller
         // configured.
-        if let Some(turns) = self.max_turns {
-            cmd.arg("--max-turns").arg(turns.to_string());
-        }
-        if let Some(usd) = self.max_budget_usd {
-            cmd.arg("--max-budget-usd").arg(format!("{usd}"));
-        }
-        if !self.allowed_tools.is_empty() {
-            cmd.arg("--allowedTools").args(&self.allowed_tools);
-        }
-        if !self.disallowed_tools.is_empty() {
-            cmd.arg("--disallowedTools").args(&self.disallowed_tools);
-        }
+        apply_cli_caps(
+            &mut cmd,
+            self.model.as_deref(),
+            self.max_turns,
+            self.max_budget_usd,
+            &self.allowed_tools,
+            &self.disallowed_tools,
+        );
         cmd.current_dir(&self.repo_path);
         scrub_inherited_anthropic_env(&mut cmd);
 
@@ -550,25 +437,6 @@ impl ClaudeCode {
         if !raw_out.status.success() {
             let stderr = String::from_utf8_lossy(&raw_out.stderr);
             let stdout = String::from_utf8_lossy(&raw_out.stdout);
-
-            // Claude CLI writes structured failure payloads to stdout (rate-limit
-            // JSON, auth errors, billing errors) while exiting non-zero. Parse
-            // the JSON envelope when present so we surface the human-readable
-            // `result` field plus the API status code, instead of a wall of
-            // JSON noise. Falls back to raw streams when the envelope is absent
-            // or unparseable.
-            let parsed_msg: Option<(String, Option<u16>)> =
-                serde_json::from_str::<serde_json::Value>(&stdout)
-                    .ok()
-                    .and_then(|v| {
-                        let result = v.get("result")?.as_str()?.to_string();
-                        let status = v
-                            .get("api_error_status")
-                            .and_then(serde_json::Value::as_u64)
-                            .map(|s| s as u16);
-                        Some((result, status))
-                    });
-
             tracing::error!(
                 cwd = %self.repo_path.display(),
                 model = self.model.as_deref().unwrap_or("<default>"),
@@ -578,225 +446,23 @@ impl ClaudeCode {
                 stdout = %stdout,
                 "claude cli failed"
             );
-
-            if let Some((msg, api_status)) = parsed_msg {
-                // Hard stop for billing failure — retrying just stalls the
-                // agent. The run loop matches on ERR_CREDIT_EXHAUSTED to
-                // short-circuit instead of burning the retry budget.
-                if msg.to_lowercase().contains("credit balance") || api_status == Some(402) {
-                    anyhow::bail!(
-                        "{ERR_CREDIT_EXHAUSTED}: {msg}. \
-                         Add credits at https://console.anthropic.com/settings/billing"
-                    );
-                }
-                let api = api_status
-                    .map(|s| format!(" (api_error_status={s})"))
-                    .unwrap_or_default();
-                anyhow::bail!("claude api error{api}: {msg}");
-            }
-
-            let detail = match (stderr.trim().is_empty(), stdout.trim().is_empty()) {
-                (false, false) => format!("stderr={stderr}; stdout={stdout}"),
-                (false, true) => format!("stderr={stderr}"),
-                (true, false) => format!("stdout={stdout}"),
-                (true, true) => "no output on stderr or stdout".to_string(),
-            };
-            anyhow::bail!(
-                "claude cli exited {} (cwd={}, prompt={}B): {detail}",
+            return Err(crate::claude_support::build_cli_error(
+                &stdout,
+                &stderr,
                 raw_out.status,
-                self.repo_path.display(),
+                &self.repo_path,
                 prompt.len(),
-            );
+            ));
         }
 
         let stdout = String::from_utf8_lossy(&raw_out.stdout).into_owned();
-        if self.json_output {
-            match serde_json::from_str::<ClaudeOutput>(&stdout) {
-                Ok(mut o) => {
-                    o.raw = stdout;
-                    Ok(o)
-                }
-                Err(_) => Ok(ClaudeOutput {
-                    kind: None,
-                    result: Some(stdout.clone()),
-                    is_error: None,
-                    cost_usd: None,
-                    duration_ms: None,
-                    raw: stdout,
-                }),
-            }
-        } else {
-            Ok(ClaudeOutput {
-                kind: None,
-                result: Some(stdout.clone()),
-                is_error: None,
-                cost_usd: None,
-                duration_ms: None,
-                raw: stdout,
-            })
-        }
+        Ok(crate::claude_model::parse_claude_output(
+            stdout,
+            self.json_output,
+        ))
     }
-}
-
-/// Names of environment variables that, when inherited from the parent
-/// process, cause the spawned `claude` CLI to bypass the user's interactive
-/// subscription auth and route through the per-token billed API (or a custom
-/// gateway). lopi must NOT silently bill against the user's API balance —
-/// the design intent is to drive their Claude Code subscription. We strip
-/// these from the child process env so the CLI falls back to its on-disk
-/// credentials at `~/.claude/`.
-const ANTHROPIC_ROUTING_ENV: &[&str] = &[
-    "ANTHROPIC_API_KEY",
-    "ANTHROPIC_AUTH_TOKEN",
-    "ANTHROPIC_BASE_URL",
-    "ANTHROPIC_MODEL",
-    "ANTHROPIC_SMALL_FAST_MODEL",
-    "ANTHROPIC_BEDROCK_BASE_URL",
-    "ANTHROPIC_VERTEX_PROJECT_ID",
-    "CLAUDE_CODE_USE_BEDROCK",
-    "CLAUDE_CODE_USE_VERTEX",
-];
-
-/// Remove inherited Anthropic routing/auth env vars from a spawned-process
-/// command. Used for both the one-shot `run()` path and the streaming plan
-/// path so neither accidentally bills against a user's API credits.
-pub(crate) fn scrub_inherited_anthropic_env(cmd: &mut Command) {
-    for var in ANTHROPIC_ROUTING_ENV {
-        cmd.env_remove(var);
-    }
-}
-
-/// Strip Rust backtrace noise and deduplicate repeated error blocks to reduce fix-prompt token count.
-/// Removes lines matching `at src/`, `note: run with RUST_BACKTRACE`, and limits each error to
-/// 30 lines. Identical adjacent blocks are collapsed to one copy.
-fn compress_errors(errors: &[String]) -> String {
-    let mut seen: Vec<String> = Vec::with_capacity(errors.len());
-    for err in errors {
-        let compressed: String = err
-            .lines()
-            .filter(|line| {
-                let t = line.trim();
-                !t.starts_with("note: run with RUST_BACKTRACE")
-                    && !t.starts_with("stack backtrace:")
-                    && !(t.starts_with("at ") && (t.contains("src/") || t.contains(".rs:")))
-            })
-            .take(30)
-            .collect::<Vec<_>>()
-            .join("\n");
-        if !seen.contains(&compressed) {
-            seen.push(compressed);
-        }
-    }
-    seen.join("\n---\n")
 }
 
 #[cfg(test)]
-#[allow(clippy::panic, clippy::unwrap_used, clippy::expect_used)]
-mod tests {
-    use super::*;
-    use lopi_core::Task;
-
-    #[test]
-    fn select_model_haiku_for_minimal_task() {
-        // 0 constraints + 2 default allowed_dirs = size 2 → Haiku
-        let t = Task::new("fix a typo");
-        assert_eq!(select_model(&t, 0), MODEL_HAIKU);
-    }
-
-    #[test]
-    fn select_model_sonnet_for_medium_task() {
-        let mut t = Task::new("implement feature");
-        t.constraints = vec!["no new deps".into(), "keep API stable".into()];
-        // 2 constraints + 2 default dirs = size 4 → Sonnet
-        assert_eq!(select_model(&t, 0), MODEL_SONNET);
-    }
-
-    #[test]
-    fn select_model_opus_for_large_task() {
-        let mut t = Task::new("big refactor");
-        t.constraints = vec![
-            "c1".into(),
-            "c2".into(),
-            "c3".into(),
-            "c4".into(),
-            "c5".into(),
-        ];
-        // 5 constraints + 2 dirs = size 7 → Opus
-        assert_eq!(select_model(&t, 0), MODEL_OPUS);
-    }
-
-    #[test]
-    fn select_model_escalates_to_opus_at_attempt_2() {
-        let t = Task::new("simple task");
-        assert_eq!(select_model(&t, 2), MODEL_OPUS);
-    }
-
-    /// `with_allowed_tools`/`with_disallowed_tools` back `--allowedTools`/
-    /// `--disallowedTools` — verified live (outside this test, since it needs
-    /// a real `claude -p` call) that these are genuinely enforced even
-    /// alongside the unconditional `--dangerously-skip-permissions`, not
-    /// silently bypassed by it. This locks in the builder plumbing itself.
-    #[test]
-    fn with_allowed_tools_sets_the_field() {
-        let c = ClaudeCode::new(".").with_allowed_tools(vec!["Bash".to_string()]);
-        assert_eq!(c.allowed_tools, vec!["Bash".to_string()]);
-        assert!(c.disallowed_tools.is_empty());
-    }
-
-    #[test]
-    fn with_disallowed_tools_sets_the_field() {
-        let c = ClaudeCode::new(".").with_disallowed_tools(vec!["Workflow".to_string()]);
-        assert_eq!(c.disallowed_tools, vec!["Workflow".to_string()]);
-        assert!(c.allowed_tools.is_empty());
-    }
-
-    #[test]
-    fn a_fresh_claude_code_has_no_tool_restrictions() {
-        let c = ClaudeCode::new(".");
-        assert!(c.allowed_tools.is_empty());
-        assert!(c.disallowed_tools.is_empty());
-    }
-
-    #[test]
-    fn select_model_escalates_to_opus_at_attempt_3() {
-        let t = Task::new("simple task");
-        assert_eq!(select_model(&t, 3), MODEL_OPUS);
-    }
-
-    #[test]
-    fn select_model_honors_explicit_override_over_heuristic_and_escalation() {
-        let mut t = Task::new("big refactor");
-        t.constraints = vec![
-            "c1".into(),
-            "c2".into(),
-            "c3".into(),
-            "c4".into(),
-            "c5".into(),
-        ];
-        t.model = Some(MODEL_HAIKU.to_string());
-        // Would heuristically resolve to Opus (size 7) and escalate at attempt
-        // 2 — the explicit override wins over both, mirroring verifier_model.
-        assert_eq!(select_model(&t, 2), MODEL_HAIKU);
-    }
-
-    #[test]
-    fn compress_errors_removes_backtrace_noise() {
-        let errors = vec![
-            "error[E0308]: mismatched types\n  at src/main.rs:10\nnote: run with RUST_BACKTRACE=1\nstack backtrace:\n  at src/foo.rs:5".to_string(),
-        ];
-        let out = compress_errors(&errors);
-        assert!(!out.contains("RUST_BACKTRACE"));
-        assert!(!out.contains("stack backtrace:"));
-        assert!(!out.contains("at src/"));
-        assert!(out.contains("mismatched types"));
-    }
-
-    #[test]
-    fn compress_errors_deduplicates_identical_blocks() {
-        let block = "error: cannot borrow as mutable".to_string();
-        let errors = vec![block.clone(), block.clone(), block.clone()];
-        let out = compress_errors(&errors);
-        // Only one copy should survive deduplication
-        assert_eq!(out.matches("cannot borrow").count(), 1);
-    }
-}
+#[path = "claude_tests.rs"]
+mod tests;

@@ -51,7 +51,17 @@ pub async fn run_inline(
     if bypass {
         actions::run_bypass(goal, repo, cfg).await
     } else {
-        run_command::run(goal, repo, false, false, false, false, cfg).await
+        run_command::run(
+            goal,
+            repo,
+            false,
+            false,
+            false,
+            false,
+            cfg,
+            run_command::BudgetArgs::default(),
+        )
+        .await
     }
 }
 

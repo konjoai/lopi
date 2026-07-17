@@ -110,6 +110,14 @@ impl AgentPool {
         self.bus.clone()
     }
 
+    /// This pool's default repo path — the one `.lopi/loop.toml` (and hence
+    /// [`LoopConfig::resolved_budget`](lopi_core::LoopConfig::resolved_budget))
+    /// resolves against for a task with no per-task `repo_path` override.
+    #[must_use]
+    pub fn repo_path(&self) -> &std::path::Path {
+        &self.repo_path
+    }
+
     /// Cancel the first running task whose UUID string starts with `id_prefix`.
     /// Returns `true` if a cancel signal was sent.
     pub async fn cancel_by_prefix(&self, id_prefix: &str) -> bool {
@@ -182,5 +190,7 @@ impl AgentPool {
     }
 }
 
+#[cfg(test)]
+mod budget_tests;
 #[cfg(test)]
 mod tests;

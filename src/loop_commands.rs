@@ -122,7 +122,12 @@ mod tests {
             out.contains("autonomy      L2 (Draft PR)"),
             "default autonomy"
         );
-        assert!(out.contains("budget        inherit global"));
+        // Pre-existing gap (predates Budget & Guardrail Controls): this
+        // assertion expected "inherit global" (budget_tokens == 0), but
+        // 0c5343e changed the default to a non-zero 1_000_000 without
+        // updating this test — `render()`'s own `budget_tokens == 0` check
+        // was correct, only this expectation was stale.
+        assert!(out.contains("budget        1000000 tokens"));
         assert!(out.contains("max-iter      25"));
         assert!(out.contains("(none — showing defaults)"));
     }

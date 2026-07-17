@@ -102,6 +102,9 @@ async fn main() -> Result<()> {
             speculative,
             adaptive_retry,
             stability_gate,
+            budget,
+            budget_preset,
+            budget_tokens,
         }) => {
             run_command::run(
                 goal,
@@ -111,6 +114,11 @@ async fn main() -> Result<()> {
                 adaptive_retry,
                 stability_gate,
                 cfg.as_ref(),
+                run_command::BudgetArgs {
+                    budget,
+                    budget_preset,
+                    budget_tokens,
+                },
             )
             .await?;
         }

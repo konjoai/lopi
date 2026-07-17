@@ -151,6 +151,22 @@ async fn handle_event(
             send_msg(bot, chat_id, &text).await;
         }
 
+        // Budget & Guardrail Controls Part 4.2 — a streamed session's
+        // estimated cost crossed 80% of its resolved --max-budget-usd cap.
+        // A heads-up, not a refusal: the CLI's own hard stop still applies.
+        AgentEvent::BudgetSoftWarn {
+            task_id,
+            estimated_usd,
+            cap_usd,
+        } => {
+            let id_str = task_id.to_string();
+            let goal = goal_cache.get(&id_str).map_or("(unknown)", String::as_str);
+            let text = format!(
+                "🟡 approaching budget cap\n{goal}\nEstimated: ${estimated_usd:.2}  ·  Cap: ${cap_usd:.2}"
+            );
+            send_msg(bot, chat_id, &text).await;
+        }
+
         // Report on Finish (Loop Engineering primitive 6) — the summary text
         // is fully rendered by `emit_report`; this just delivers it.
         AgentEvent::ReportReady {
@@ -238,5 +254,18 @@ mod tests {
         assert!(msg.contains("agent"));
         assert!(msg.contains("5.00"));
         assert!(msg.contains("5.12"));
+    }
+
+    fn budget_soft_warn_msg(goal: &str, estimated: f64, cap: f64) -> String {
+        format!("🟡 approaching budget cap\n{goal}\nEstimated: ${estimated:.2}  ·  Cap: ${cap:.2}")
+    }
+
+    #[test]
+    fn test_budget_soft_warn_message() {
+        let msg = budget_soft_warn_msg("fix the auth bug", 4.50, 5.00);
+        assert!(msg.contains("🟡 approaching budget cap"));
+        assert!(msg.contains("fix the auth bug"));
+        assert!(msg.contains("4.50"));
+        assert!(msg.contains("5.00"));
     }
 }

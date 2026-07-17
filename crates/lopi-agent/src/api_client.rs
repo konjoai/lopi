@@ -186,14 +186,24 @@ pub struct ApiUsage {
 }
 
 impl ApiUsage {
-    /// Estimated USD cost using Anthropic's 2025-06 pricing for the given model.
+    /// Estimated USD cost using Anthropic's 2026-07 pricing for the given model.
+    ///
+    /// Rates are per 1M tokens (input, output, cache-read, cache-write): Opus
+    /// $5/$25, Haiku $1/$5, Sonnet $3/$15 — cache-read at ~10% of the input
+    /// rate, cache-write at ~1.25x, matching Anthropic's published cache
+    /// pricing multipliers. `MODEL_OPUS`'s prior rate here ($15/$75) was
+    /// Opus 4.1, retired since — every burn chart computed against a live
+    /// Opus session was over-reporting spend by roughly 3x. Sonnet 5 ships an
+    /// introductory $2/$10 window; this estimator intentionally stays on the
+    /// standard $3/$15 rate (the sustained price after the window ends)
+    /// rather than tracking a promotional rate that expires out from under it.
     #[must_use]
     pub fn estimated_cost(&self, model: &str) -> f64 {
         let (input_rate, output_rate, cache_read_rate, cache_write_rate) = if model.contains("opus")
         {
-            (15.0, 75.0, 1.50, 18.75)
+            (5.00, 25.0, 0.50, 6.25)
         } else if model.contains("haiku") {
-            (0.80, 4.00, 0.08, 1.00)
+            (1.00, 5.00, 0.10, 1.25)
         } else {
             // sonnet default
             (3.00, 15.0, 0.30, 3.75)
@@ -443,43 +453,5 @@ Never include apologies, preamble, or explanations unless asked. \
 Always follow the task constraints exactly.";
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::claude::MODEL_SONNET;
-
-    #[test]
-    fn usage_cost_sonnet() {
-        let u = ApiUsage {
-            input_tokens: 1_000_000,
-            ..ApiUsage::default()
-        };
-        let cost = u.estimated_cost(MODEL_SONNET);
-        assert!(
-            (cost - 3.0).abs() < 0.01,
-            "sonnet input rate should be $3/MTok"
-        );
-    }
-
-    #[test]
-    fn usage_cost_cache_hit_cheaper() {
-        let full = ApiUsage {
-            input_tokens: 100_000,
-            ..ApiUsage::default()
-        };
-        let cached = ApiUsage {
-            cache_read_tokens: 100_000,
-            ..ApiUsage::default()
-        };
-        assert!(
-            cached.estimated_cost(MODEL_SONNET) < full.estimated_cost(MODEL_SONNET),
-            "cache read must be cheaper than full input"
-        );
-    }
-
-    #[test]
-    fn shared_http_returns_same_instance() {
-        let a = shared_http();
-        let b = shared_http();
-        assert!(Arc::ptr_eq(&a, &b), "shared_http must return the same Arc");
-    }
-}
+#[path = "api_client_tests.rs"]
+mod tests;
