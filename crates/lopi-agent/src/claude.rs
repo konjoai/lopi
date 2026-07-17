@@ -270,22 +270,19 @@ impl ClaudeCode {
     ///
     /// Returns an error if the claude CLI process fails or times out.
     pub async fn fix(&self, task: &Task, errors: &[String]) -> Result<String> {
+        // Reuse the shared TOON scope encoder (same as `implement`) instead of
+        // a hand-rolled `allowed[..]:` line, so every worker prompt lopi builds
+        // is TOON-encoded and the fix agent also sees the forbidden dirs it
+        // must not touch. Patterns/lessons are omitted — a fix pass only needs
+        // the goal, the scope, and the compressed failures.
         let allowed: Vec<&str> = task.allowed_dirs.iter().map(String::as_str).collect();
-        // Inline primitive array: site 1 partial (dirs only).
-        let allowed_str = if allowed.is_empty() {
-            String::new()
-        } else {
-            format!("allowed[{}]: {}\n", allowed.len(), allowed.join(","))
-        };
-
+        let forbidden: Vec<&str> = task.forbidden_dirs.iter().map(String::as_str).collect();
+        let scope = lopi_toon::encode_task_context(&task.goal, &allowed, &forbidden, &[], &[], &[]);
         let failures = compress_errors(errors);
         let prompt = format!(
-            "The previous attempt failed. Fix the failures below.\n\
-             {allowed_str}\n\
-             Goal: {goal}\n\n\
-             ## Failures\n\
-             {failures}",
-            goal = task.goal,
+            "The previous attempt failed. Fix the failures below.\n\n\
+             ## Scope (TOON)\n{scope}\n\n\
+             ## Failures\n{failures}"
         );
         let out = self.run(&prompt).await?;
         Ok(out.text().to_string())

@@ -103,6 +103,15 @@ pub struct CreateTaskRequest {
     /// inherits the repo/global budget. Mirrors [`lopi_core::Task::budget_tokens`].
     #[serde(default)]
     pub budget_tokens: Option<u64>,
+    /// Per-card budget override, taking precedence over the target repo's
+    /// `.lopi/loop.toml` `[budget]`. A `preset` of `"quick"`/`"standard"`
+    /// caps spend and **denies the `Workflow`/`Task`/`Agent` fan-out tools**
+    /// (so sub-agents can't run up cost), while `"deep"`/`"unlimited"` allow
+    /// fan-out; `usd`/`tokens` cap spend directly. This is the card-level
+    /// lever to stop a cheap-model card from fanning out into pricier
+    /// sub-agents. Mirrors [`lopi_core::Task::budget_override`].
+    #[serde(default)]
+    pub budget_override: Option<lopi_core::BudgetOverride>,
 }
 
 /// Response body for `POST /api/tasks`.

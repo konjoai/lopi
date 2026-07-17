@@ -299,6 +299,9 @@ pub(super) fn apply_loop_fields(
     if let Some(b) = req.budget_tokens {
         task.budget_tokens = b;
     }
+    if let Some(bo) = &req.budget_override {
+        task.budget_override = Some(bo.clone());
+    }
     Ok(())
 }
 

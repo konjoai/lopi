@@ -113,6 +113,15 @@ export interface CreateTaskOptions {
    *  writes nothing fails and retries) or 'review_only' (zero diff is a valid
    *  success). Omit to infer from the goal text. */
   deliverable?: 'file_changes' | 'review_only';
+  /** Per-card budget override, taking precedence over the repo's loop.toml.
+   *  'quick'/'standard' cap spend AND deny the Task/Agent/Workflow fan-out
+   *  tools (stops a cheap-model card from spawning pricier sub-agents);
+   *  'deep'/'unlimited' allow fan-out. usd/tokens cap spend directly. */
+  budget_override?: {
+    preset?: 'quick' | 'standard' | 'deep' | 'unlimited';
+    usd?: number;
+    tokens?: number;
+  };
   /** Guardrail precondition — a shell command that must exit 0 before the loop starts. */
   gate?: string;
   /** Guardrail exit-condition — a shell command; exit 0 ends the loop early as a success. */

@@ -639,6 +639,25 @@ fn apply_loop_fields_threads_verifier_overrides_through_exactly() {
 }
 
 #[test]
+fn apply_loop_fields_threads_budget_override_through() {
+    // A card pinning `standard` must override the repo config and deny the
+    // fan-out tools — the card-level lever against sub-agent cost blowup.
+    let mut task = Task::new("cheap capped card");
+    let req: CreateTaskRequest = serde_json::from_value(serde_json::json!({
+        "goal": "cheap capped card",
+        "budget_override": { "preset": "standard", "usd": 1.0 },
+    }))
+    .unwrap();
+    apply_loop_fields(&mut task, &req).unwrap();
+    let ov = task.budget_override.expect("override must be applied");
+    assert_eq!(ov.preset, Some(lopi_core::BudgetPreset::Standard));
+    assert_eq!(ov.usd, Some(1.0));
+    // `standard` denies the fan-out tools when resolved against any base.
+    let resolved = ov.apply(lopi_core::BudgetPreset::Deep.resolved());
+    assert_eq!(resolved.deny, vec!["Workflow", "Task", "Agent"]);
+}
+
+#[test]
 fn apply_loop_fields_threads_deliverable_override_through() {
     let mut task = Task::new("review the auth module");
     // Without an explicit override, this goal infers review-only; assert the
