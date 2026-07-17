@@ -253,8 +253,18 @@ jobs:
       - name: Evaluate mutation survival rate
         if: steps.changed.outputs.files != ''
         run: |
-          CAUGHT=$(grep -c "caught" mutation_report.txt 2>/dev/null || echo 0)
-          MISSED=$(grep -c "missed" mutation_report.txt 2>/dev/null || echo 0)
+          # `grep -c` counts matching *lines*, not occurrences — cargo-mutants'
+          # own one-line summary ("N mutants tested in Xm: A missed, B caught,
+          # C unviable") always contains both the literal words "missed" and
+          # "caught" regardless of A/B, so the old `grep -c "caught"`/
+          # `grep -c "missed"` always matched exactly 1 line each, pinning
+          # CAUGHT=1 MISSED=1 (50% survival) on every run with any output at
+          # all. Parse the actual counts out of that summary line instead.
+          SUMMARY=$(grep -E "mutants tested in" mutation_report.txt | tail -1)
+          MISSED=$(echo "$SUMMARY" | grep -oE '[0-9]+ missed' | sed -E 's/ missed//')
+          CAUGHT=$(echo "$SUMMARY" | grep -oE '[0-9]+ caught' | sed -E 's/ caught//')
+          MISSED=${MISSED:-0}
+          CAUGHT=${CAUGHT:-0}
           TOTAL=$((CAUGHT + MISSED))
           echo "Mutations: caught=$CAUGHT missed=$MISSED total=$TOTAL"
 
