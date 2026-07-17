@@ -92,6 +92,18 @@ pub(crate) fn apply_cli_caps(
 ) {
     if let Some(m) = model {
         cmd.arg("--model").arg(m);
+        // Pin Task-tool sub-agents to the card's model too. `--model`
+        // governs only the top-level `claude -p` process; a sub-agent whose
+        // `.claude/agents/*.md` frontmatter pins `model:` (e.g. a research
+        // agent set to `sonnet`) ignores `--model` and runs on that pricier
+        // model — so a "Haiku" card silently fans out Sonnet-billed
+        // sub-agents, the confirmed cause of a Haiku run costing several
+        // dollars. `CLAUDE_CODE_SUBAGENT_MODEL` is the only lever that
+        // overrides an agent's frontmatter (and the Task tool's
+        // per-invocation model), forcing every sub-agent onto the card's
+        // chosen model. Set explicitly so an inherited value from lopi's own
+        // env can't leak in. See code.claude.com/docs/en/model-config.
+        cmd.env("CLAUDE_CODE_SUBAGENT_MODEL", m);
     }
     if let Some(turns) = max_turns {
         cmd.arg("--max-turns").arg(turns.to_string());
@@ -222,6 +234,21 @@ mod tests {
         ExitStatus::from_raw(code << 8)
     }
 
+    /// Collect the `(key, value)` env overrides set on a `Command`.
+    fn env_overrides(cmd: &Command) -> Vec<(String, String)> {
+        cmd.as_std()
+            .get_envs()
+            .filter_map(|(k, v)| {
+                v.map(|v| {
+                    (
+                        k.to_string_lossy().into_owned(),
+                        v.to_string_lossy().into_owned(),
+                    )
+                })
+            })
+            .collect()
+    }
+
     #[test]
     fn apply_cli_caps_omits_flags_for_none_and_empty() {
         let mut cmd = Command::new("true");
@@ -232,6 +259,26 @@ mod tests {
             .map(|a| a.to_string_lossy().into_owned())
             .collect();
         assert!(argv.is_empty(), "argv={argv:?}");
+        // No model ⇒ no sub-agent pin: sub-agents inherit the CLI default.
+        assert!(
+            !env_overrides(&cmd)
+                .iter()
+                .any(|(k, _)| k == "CLAUDE_CODE_SUBAGENT_MODEL"),
+            "sub-agent model must not be pinned when no --model is set"
+        );
+    }
+
+    #[test]
+    fn apply_cli_caps_pins_subagent_model_to_the_session_model() {
+        let mut cmd = Command::new("true");
+        apply_cli_caps(&mut cmd, Some("haiku"), None, None, &[], &[]);
+        assert!(
+            env_overrides(&cmd)
+                .iter()
+                .any(|(k, v)| k == "CLAUDE_CODE_SUBAGENT_MODEL" && v == "haiku"),
+            "sub-agents must be pinned to the card's model so a Haiku card \
+             can't fan out pricier sub-agents"
+        );
     }
 
     #[test]
