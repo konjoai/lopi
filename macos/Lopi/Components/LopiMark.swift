@@ -62,35 +62,35 @@ struct LopiWordmark: View {
     }
 }
 
-/// Two arced loop-arrows facing opposite directions, in the shared 48×48
+/// Two arced loop-arrows facing opposite directions, in the shared 52×52
 /// native space used by `LopiLogoMark` (matching the web `ICONS.mark`/
 /// `SHELL_ICONS.mark` glyphs' path data point-for-point, quad-curves
 /// standing in for the SVG's circular arcs same as `LopiMarkShape` does).
 struct LopiLogoLoopShape: Shape {
     func path(in rect: CGRect) -> Path {
-        let s = min(rect.width, rect.height) / 48
+        let s = min(rect.width, rect.height) / 52
         func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
             CGPoint(x: rect.minX + x * s, y: rect.minY + y * s)
         }
         var path = Path()
 
-        path.move(to: p(11, 15))
-        path.addLine(to: p(11, 12))
-        path.addQuadCurve(to: p(15, 8), control: p(11, 8))
-        path.addLine(to: p(29, 8))
+        path.move(to: p(12.5, 15.5))
+        path.addLine(to: p(12.5, 14))
+        path.addQuadCurve(to: p(18.5, 8), control: p(12.5, 8))
+        path.addLine(to: p(39.5, 8))
 
-        path.move(to: p(24, 3))
-        path.addLine(to: p(29, 8))
-        path.addLine(to: p(24, 13))
+        path.move(to: p(33.5, 2))
+        path.addLine(to: p(39.5, 8))
+        path.addLine(to: p(33.5, 14))
 
-        path.move(to: p(35, 15))
-        path.addLine(to: p(35, 18))
-        path.addQuadCurve(to: p(31, 22), control: p(35, 22))
-        path.addLine(to: p(17, 22))
+        path.move(to: p(39.5, 18.5))
+        path.addLine(to: p(39.5, 20))
+        path.addQuadCurve(to: p(33.5, 26), control: p(39.5, 26))
+        path.addLine(to: p(12.5, 26))
 
-        path.move(to: p(22, 17))
-        path.addLine(to: p(17, 22))
-        path.addLine(to: p(22, 27))
+        path.move(to: p(18.5, 32))
+        path.addLine(to: p(12.5, 26))
+        path.addLine(to: p(18.5, 20))
 
         return path
     }
@@ -106,27 +106,27 @@ struct LopiLogoMark: View {
     var color: Color = Konjo.flame
 
     var body: some View {
-        let scale: CGFloat = size / 48
+        let scale: CGFloat = size / 52
         return ZStack {
             LopiLogoLoopShape()
-                .stroke(color, style: StrokeStyle(lineWidth: 3.4 * scale, lineCap: .round, lineJoin: .round))
+                .stroke(color, style: StrokeStyle(lineWidth: 2.85 * scale, lineCap: .round, lineJoin: .round))
                 .frame(width: size, height: size)
-            bar(y: 29, opacity: 0.9)
-            bar(y: 36, opacity: 0.65)
-            bar(y: 43, opacity: 0.4)
+            bar(y: 34, opacity: 0.9)
+            bar(y: 40, opacity: 0.65)
+            bar(y: 46, opacity: 0.4)
         }
         .frame(width: size, height: size)
     }
 
-    /// One filled stack bar, fixed at `x: 6, width: 36, height: 5` in the
-    /// shared 48×48 native space (matching the web SVG's `<rect>`s), then
+    /// One filled stack bar, fixed at `x: 8, width: 36, height: 4` in the
+    /// shared 52×52 native space (matching the web SVG's `<rect>`s), then
     /// re-centered for SwiftUI's center-anchored `ZStack` offsets.
     private func bar(y: CGFloat, opacity: Double) -> some View {
-        let scale: CGFloat = size / 48
+        let scale: CGFloat = size / 52
         let width: CGFloat = 36 * scale
-        let height: CGFloat = 5 * scale
-        let cornerRadius: CGFloat = 2.5 * scale
-        let offsetY: CGFloat = (y + 5 / 2 - 24) * scale
+        let height: CGFloat = 4 * scale
+        let cornerRadius: CGFloat = 2 * scale
+        let offsetY: CGFloat = (y + 4 / 2 - 26) * scale
         return RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
             .fill(color.opacity(opacity))
             .frame(width: width, height: height)
