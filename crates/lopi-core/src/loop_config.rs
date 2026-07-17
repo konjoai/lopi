@@ -296,10 +296,22 @@ pub struct LoopConfig {
     #[serde(default)]
     pub rules_enabled: Vec<String>,
     /// Tool-call patterns pre-approved without prompting (e.g. `"Bash(cargo test *)"`).
+    /// Forwarded to `claude -p` as `--allowedTools`. Include a tool named in
+    /// `permission_deny`'s default (currently just `"Workflow"`) here to
+    /// re-enable it for a repo that intentionally wants multi-agent fan-out.
     #[serde(default)]
     pub permission_allow: Vec<String>,
-    /// Tool-call patterns always denied (e.g. `"Bash(rm -rf *)"`).
-    #[serde(default)]
+    /// Tool-call patterns always denied (e.g. `"Bash(rm -rf *)"`). Forwarded
+    /// to `claude -p` as `--disallowedTools` — genuinely enforced even
+    /// alongside `--dangerously-skip-permissions` (verified live: the model
+    /// reports the tool as simply absent, not merely unapproved). Defaults to
+    /// denying `Workflow`, the multi-agent orchestration primitive: a
+    /// deep-research-style goal fanning out through it is what actually ran
+    /// one `claude -p` session to $25.79 with no budget cap in place at all.
+    /// `max_budget_usd`/`budget_tokens` above cap *how much* such a session
+    /// can spend before halting; this stops the fan-out itself from starting
+    /// on loops that don't explicitly opt in via `permission_allow`.
+    #[serde(default = "default_permission_deny")]
     pub permission_deny: Vec<String>,
     /// Halt after this many consecutive no-progress iterations (`0` = disabled).
     #[serde(default = "default_no_progress_limit")]
@@ -307,9 +319,26 @@ pub struct LoopConfig {
     /// Hard iteration ceiling regardless of any other condition.
     #[serde(default = "default_max_iterations")]
     pub max_iterations: u8,
-    /// Per-run token budget ceiling (`0` = inherit the global budget).
-    #[serde(default)]
+    /// Per-run token budget ceiling metered from the outer runner's own
+    /// streamed usage across the whole retry loop (`0` = disabled). Second,
+    /// independent line of defense alongside `max_budget_usd` below — this one
+    /// catches ordinary retry-loop accumulation (many small attempts adding
+    /// up), while `max_budget_usd` catches one session spending big in one
+    /// shot. Defaults to a conservative non-zero value for the same reason
+    /// `max_budget_usd` does: an unattended loop needs a hard stop by default,
+    /// not an opt-in one. Raise or disable per-repo in `.lopi/loop.toml`.
+    #[serde(default = "default_budget_tokens")]
     pub budget_tokens: u64,
+    /// Per-`claude -p` session USD spend ceiling, forwarded as `--max-budget-usd`
+    /// (the CLI halts cleanly once reached). `0.0` disables the cap. Defaults to
+    /// a conservative non-zero value: `budget_tokens` above only meters the
+    /// outer runner's own streamed usage, not a session that fans out into
+    /// parallel sub-agents (e.g. a deep-research goal) — this flag is the only
+    /// thing that actually caps that spend, since it's CLI-enforced regardless
+    /// of what the outer session sees. Raise it per-repo in `.lopi/loop.toml`
+    /// for loops that intentionally need expensive sessions.
+    #[serde(default = "default_max_budget_usd")]
+    pub max_budget_usd: f64,
     /// How each run's working copy is isolated. Defaults to
     /// [`Branch`](IsolationMode::Branch) — the legacy shared-checkout behavior.
     #[serde(default)]
@@ -368,10 +397,11 @@ impl Default for LoopConfig {
             skills_enabled: Vec::new(),
             rules_enabled: Vec::new(),
             permission_allow: Vec::new(),
-            permission_deny: Vec::new(),
+            permission_deny: default_permission_deny(),
             no_progress_limit: default_no_progress_limit(),
             max_iterations: default_max_iterations(),
-            budget_tokens: 0,
+            budget_tokens: default_budget_tokens(),
+            max_budget_usd: default_max_budget_usd(),
             isolation: IsolationMode::default(),
             promote_after: 0,
             trust_ceiling: AutonomyLevel::default(),
@@ -389,6 +419,26 @@ fn default_no_progress_limit() -> u8 {
 
 fn default_max_iterations() -> u8 {
     25
+}
+
+/// Conservative enough to stop a runaway fan-out (a deep-research-style goal
+/// invoking several parallel sub-agents) well short of real damage, generous
+/// enough for ordinary plan/implement sessions.
+fn default_max_budget_usd() -> f64 {
+    3.0
+}
+
+/// A few times the single-turn context budget (`AgentRunner::CONTEXT_BUDGET`,
+/// 150K) — generous for legitimate multi-attempt work, still a hard ceiling
+/// well short of the tens of millions of tokens a genuine runaway fan-out
+/// burns through.
+fn default_budget_tokens() -> u64 {
+    1_000_000
+}
+
+/// See `LoopConfig::permission_deny`'s doc comment.
+fn default_permission_deny() -> Vec<String> {
+    vec!["Workflow".to_string()]
 }
 
 impl LoopConfig {

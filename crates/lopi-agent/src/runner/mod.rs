@@ -109,6 +109,12 @@ pub struct AgentRunner {
     /// Per-session USD cost ceiling passed to `claude -p` as `--max-budget-usd`
     /// on the streaming path. `None` (the default) sets no CLI budget cap.
     pub(super) cli_budget_usd: Option<f64>,
+    /// Wired from `LoopConfig::permission_allow` — forwarded as `claude -p`'s
+    /// `--allowedTools`. Empty (the default) adds nothing.
+    pub(super) permission_allow: Vec<String>,
+    /// Wired from `LoopConfig::permission_deny` — forwarded as `claude -p`'s
+    /// `--disallowedTools`. Empty (the default) denies nothing.
+    pub(super) permission_deny: Vec<String>,
     /// Sprint S — when true, the Konjo Verifier second-score pass runs after
     /// the heuristic score passes. Requires `api_client` to be set.
     pub(super) verifier_enabled: bool,
@@ -196,6 +202,8 @@ impl AgentRunner {
             escalate_strategy: false,
             task_budget: None,
             cli_budget_usd: None,
+            permission_allow: Vec::new(),
+            permission_deny: Vec::new(),
             verifier_enabled: false,
             last_plan: None,
             session_id: Uuid::new_v4(),
@@ -380,10 +388,41 @@ impl AgentRunner {
         self
     }
 
+    /// Wire the per-`claude -p` session USD cap from `.lopi/loop.toml`'s
+    /// `max_budget_usd` (or a task-level override, none exists yet). `0.0`
+    /// disables it — the CLI receives no `--max-budget-usd` flag at all, same
+    /// "0 = disabled" sentinel as `with_task_budget`.
+    #[must_use]
+    pub const fn with_cli_budget_usd(mut self, budget_usd: f64) -> Self {
+        self.cli_budget_usd = if budget_usd <= 0.0 {
+            None
+        } else {
+            Some(budget_usd)
+        };
+        self
+    }
+
     /// The configured per-run token budget, if any.
     #[must_use]
     pub const fn task_budget(&self) -> Option<u64> {
         self.task_budget
+    }
+
+    /// The configured per-`claude -p` session USD cap, if any.
+    #[must_use]
+    pub const fn cli_budget_usd(&self) -> Option<f64> {
+        self.cli_budget_usd
+    }
+
+    /// Wire the tool allow/deny lists from `.lopi/loop.toml`'s
+    /// `permission_allow`/`permission_deny` — forwarded to `claude -p` as
+    /// `--allowedTools`/`--disallowedTools`. Both empty (the default) changes
+    /// nothing about which tools are available.
+    #[must_use]
+    pub fn with_tool_permissions(mut self, allow: Vec<String>, deny: Vec<String>) -> Self {
+        self.permission_allow = allow;
+        self.permission_deny = deny;
+        self
     }
 
     /// Sprint I — attach the Layer 5 patch stability gate.
@@ -435,5 +474,67 @@ impl AgentRunner {
     #[must_use]
     pub fn tokens_used(&self) -> u64 {
         self.tokens_used.load(Ordering::Relaxed)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lopi_core::Task;
+
+    /// `with_cli_budget_usd` had never actually been wired from any config
+    /// path (`self.cli_budget_usd` was always `None`), so `--max-budget-usd`
+    /// was never passed to `claude -p` regardless of any budget the operator
+    /// configured — a research-style task that fanned out into several
+    /// parallel sub-agents ran fully uncapped and reached $25.79 for one
+    /// session. Locks in the builder itself, since a runaway session is
+    /// exactly what a regression here would silently reintroduce.
+    #[test]
+    fn with_cli_budget_usd_zero_disables_the_cap() {
+        let (runner, _bus) = AgentRunner::standalone(Task::new("t"), std::env::temp_dir());
+        let runner = runner.with_cli_budget_usd(0.0);
+        assert_eq!(runner.cli_budget_usd(), None);
+    }
+
+    #[test]
+    fn with_cli_budget_usd_negative_also_disables_the_cap() {
+        let (runner, _bus) = AgentRunner::standalone(Task::new("t"), std::env::temp_dir());
+        let runner = runner.with_cli_budget_usd(-1.0);
+        assert_eq!(runner.cli_budget_usd(), None);
+    }
+
+    #[test]
+    fn with_cli_budget_usd_positive_value_is_set() {
+        let (runner, _bus) = AgentRunner::standalone(Task::new("t"), std::env::temp_dir());
+        let runner = runner.with_cli_budget_usd(5.0);
+        assert_eq!(runner.cli_budget_usd(), Some(5.0));
+    }
+
+    #[test]
+    fn a_fresh_runner_has_no_cli_budget_cap_until_wired() {
+        let (runner, _bus) = AgentRunner::standalone(Task::new("t"), std::env::temp_dir());
+        assert_eq!(
+            runner.cli_budget_usd(),
+            None,
+            "the pool is responsible for wiring LoopConfig::max_budget_usd in; the bare runner defaults to uncapped"
+        );
+    }
+
+    #[test]
+    fn a_fresh_runner_has_no_tool_permission_overrides_until_wired() {
+        let (runner, _bus) = AgentRunner::standalone(Task::new("t"), std::env::temp_dir());
+        assert!(runner.permission_allow.is_empty());
+        assert!(runner.permission_deny.is_empty());
+    }
+
+    #[test]
+    fn with_tool_permissions_sets_both_lists() {
+        let (runner, _bus) = AgentRunner::standalone(Task::new("t"), std::env::temp_dir());
+        let runner = runner.with_tool_permissions(
+            vec!["Bash".to_string()],
+            vec!["Workflow".to_string()],
+        );
+        assert_eq!(runner.permission_allow, vec!["Bash".to_string()]);
+        assert_eq!(runner.permission_deny, vec!["Workflow".to_string()]);
     }
 }

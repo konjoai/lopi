@@ -10,6 +10,27 @@ use lopi_git::GitManager;
 use std::sync::atomic::Ordering;
 use tracing::Instrument as _;
 
+/// Tool-use turns allowed within a single `claude -p` session (planning or
+/// implementing). Deliberately independent of `AgentRunner::max_turns`
+/// (`task.max_iterations`, the card's "loop ×N" repeat-count) — a
+/// multi-step research-and-write task can easily need dozens of tool calls
+/// in one session, which has nothing to do with how many times the whole
+/// card is set to repeat. Generous rather than tight: `CLI_SESSION_TIMEOUT_SECS`
+/// and `self.cli_budget_usd` are the real cost/runaway safety nets; this just
+/// guards against a session that's genuinely stuck looping tool calls forever.
+const CLI_SESSION_MAX_TURNS: u32 = 100;
+
+/// Wall-clock budget for a single `claude -p` session. `ClaudeCode::new`'s
+/// own default (300s) is sized for a single-shot plan/implement call and was
+/// never a real constraint back when `CLI_SESSION_MAX_TURNS` was
+/// accidentally tiny (a session died from `error_max_turns` in seconds) —
+/// raising the turn budget surfaced this as the *next* bottleneck, confirmed
+/// live: a deep-research task read the repo, launched 6 parallel research
+/// sub-agents, and got verified findings back from 5 of them before dying on
+/// "claude cli timed out after 300s" — 5 minutes was never enough wall-clock
+/// for that much real work either.
+const CLI_SESSION_TIMEOUT_SECS: u64 = 1800;
+
 /// Roll back uncommitted changes and return to the default branch — the
 /// standard cleanup before recording a retry, cancellation, or terminal
 /// failure. Both operations are best-effort: a rollback/checkout failure
@@ -80,16 +101,38 @@ impl AgentRunner {
                 .with_extra_constraints(all_constraints)
                 .with_patterns(pattern_pairs.clone())
                 .with_lessons(lessons_data.clone())
-                .with_model(model.clone());
-            // Cost ceiling: the CLI session must not out-run the runner's own
-            // turn cap. `max_turns == 0` is the infinite-loop sentinel — omit
-            // `--max-turns` entirely rather than pass a literal 0, which would
-            // cap the subprocess at zero turns instead of leaving it unbounded.
-            if self.max_turns > 0 {
-                claude = claude.with_max_turns(self.max_turns);
-            }
+                .with_model(model.clone())
+                // `ClaudeCode::new`'s own default (300s) was sized for a
+                // single-shot plan/implement call, not a session that fans
+                // out into several parallel research sub-agents (each doing
+                // multiple web fetches) — confirmed live: raising
+                // `CLI_SESSION_MAX_TURNS` above let a deep-research task
+                // actually do the work (read the repo, launch 6 sub-agents,
+                // get verified findings back from 5 of them) and then die on
+                // "claude cli timed out after 300s" instead, since 5 minutes
+                // was never enough wall-clock for that much real work either.
+                .with_timeout(CLI_SESSION_TIMEOUT_SECS);
+            // `self.max_turns` is `task.max_iterations` — the card's "loop
+            // ×N" repeat-count setting (`pool/run_loop.rs`'s `AgentRunner`
+            // builder) — and governs the OUTER plan→implement→test attempt
+            // loop below (`self.turn_count > self.max_turns`), not this
+            // subprocess. It used to also be passed as this CLI session's
+            // own `--max-turns` (tool-use turns within ONE `claude -p`
+            // call), which meant "loop ×2" silently capped Claude at two
+            // tool calls total per attempt — nowhere near enough for a
+            // multi-step research/write task, which reliably hit
+            // `error_max_turns` before doing any real work regardless of the
+            // actual loop-count setting. The two are unrelated axes: use a
+            // fixed, generous per-session budget here instead, independent
+            // of how many times the user wants the whole card to repeat.
+            claude = claude.with_max_turns(CLI_SESSION_MAX_TURNS);
             if let Some(usd) = self.cli_budget_usd {
                 claude = claude.with_max_budget_usd(usd);
+            }
+            if !self.permission_allow.is_empty() || !self.permission_deny.is_empty() {
+                claude = claude
+                    .with_allowed_tools(self.permission_allow.clone())
+                    .with_disallowed_tools(self.permission_deny.clone());
             }
             tracing::info!(model, attempt, "model selected for attempt");
             // Hard stop: prevent runaway agents from looping past the turn cap.
@@ -131,7 +174,12 @@ impl AgentRunner {
                 attempt: attempt + 1,
                 branch: branch.clone(),
             });
-            self.log(format!("🔀 branch: {branch}"));
+            // `●` marks this as synthetic status, not Claude output — the
+            // frontend's `reduceLogLine` (web/src/lib/stores/transcript.ts)
+            // treats any *unprefixed* log line as real assistant text, so an
+            // unmarked line here would render indistinguishably from
+            // something Claude actually said.
+            self.log(format!("● branch: {branch}"));
 
             if let Err(e) = git.checkout_new_branch(&branch).await {
                 self.warn(format!("checkout failed: {e}"));
@@ -236,7 +284,7 @@ impl AgentRunner {
 
                 // Dry-run: print plan and exit without touching git or running tests.
                 if self.dry_run {
-                    self.log("🔍 dry-run — plan generated, no changes applied");
+                    self.log("● dry-run — plan generated, no changes applied");
                     for line in plan.lines() {
                         self.log(line.to_string());
                     }
@@ -303,7 +351,11 @@ impl AgentRunner {
                 pressure = self.context.token_pressure(),
                 "context at testing"
             );
-            self.log("🧪 running tests…");
+            // No narration line here — it added nothing beyond restating
+            // the `TaskStatus::Testing` transition just above, and (worse)
+            // rendered indistinguishably from real Claude output in the
+            // transcript. The real, useful signal is the score line right
+            // below, once the scorer actually has a result.
             // OTel GenAI-aligned span: score phase.
             let score_span = tracing::info_span!(
                 "lopi.agent.score",
@@ -340,7 +392,7 @@ impl AgentRunner {
             });
             let weighted = score.weighted(&self.score_weights);
             self.log(format!(
-                "📊 score: pass={:.0}% lint={} diff={}L (weighted={:.3})",
+                "● score: pass={:.0}% lint={} diff={}L (weighted={:.3})",
                 score.test_pass_rate * 100.0,
                 score.lint_errors,
                 score.diff_lines,
@@ -370,7 +422,7 @@ impl AgentRunner {
             let until_satisfied = self.check_until().await;
             if score.passed() || until_satisfied {
                 if until_satisfied && !score.passed() {
-                    self.log("🏁 until condition met — concluding the loop early");
+                    self.log("● until condition met — concluding the loop early");
                 }
                 // Phase 16.3 — finalize per the L1–L4 autonomy ladder. `finalize`
                 // forces the verifier on for L3/L4, commits, rebases onto the
@@ -380,14 +432,18 @@ impl AgentRunner {
                 if let Some(status) = self.finalize(&branch, &git, &score, attempt + 1).await {
                     // Goal-met (A3) — the highest-precedence terminal: the loop
                     // satisfied its acceptance/until goal and finalized.
-                    self.log(format!("🎯 stop reason: {}", StopReason::GoalMet.as_str()));
+                    self.log(format!("● stop reason: {}", StopReason::GoalMet.as_str()));
                     return Ok(self.conclude_finalized(status, &score, attempt + 1));
                 }
                 continue;
             }
 
-            // In-place fix attempt.
-            self.log(format!("🔧 fixing {} error(s)…", score.errors.len()));
+            // In-place fix attempt. `🔧` is reserved by the frontend for its
+            // structured tool_call dedup (`reduceLogLine` drops any log line
+            // starting with it, on the assumption it's the redundant plain
+            // twin of a `ToolCall` event) — this line isn't one, so it was
+            // being silently dropped before `●` replaced the wrench.
+            self.log(format!("● fixing {} error(s)…", score.errors.len()));
             if let Err(e) = claude.fix(&self.task, &score.errors).await {
                 self.warn(format!("fix failed: {e}"));
             }
@@ -407,7 +463,7 @@ impl AgentRunner {
                 });
                 let weighted = fixed_score.weighted(&self.score_weights);
                 self.log(format!(
-                    "📊 fixed score: pass={:.0}% lint={} diff={}L (weighted={:.3})",
+                    "● fixed score: pass={:.0}% lint={} diff={}L (weighted={:.3})",
                     fixed_score.test_pass_rate * 100.0,
                     fixed_score.lint_errors,
                     fixed_score.diff_lines,
@@ -417,7 +473,7 @@ impl AgentRunner {
                 // the two for the stall guard.
                 attempt_weighted = attempt_weighted.max(weighted);
                 if fixed_score.passed() {
-                    self.log("✅ fix worked — finalizing…");
+                    self.log("● fix worked — finalizing…");
                     // Same L1–L4 finalize path as the primary success branch.
                     if let Some(status) = self
                         .finalize(&branch, &git, &fixed_score, attempt + 1)

@@ -108,6 +108,13 @@ pub struct ClaudeCode {
     max_turns: Option<u32>,
     /// Per-session `--max-budget-usd` cap passed to `claude -p`. None = no cap.
     max_budget_usd: Option<f64>,
+    /// `--allowedTools` — tool names explicitly permitted (e.g. `"Bash(git *)"`).
+    /// Wired from `LoopConfig::permission_allow`. Empty = no additions beyond
+    /// the CLI's own defaults.
+    allowed_tools: Vec<String>,
+    /// `--disallowedTools` — tool names explicitly denied. Wired from
+    /// `LoopConfig::permission_deny`. Empty = nothing denied.
+    disallowed_tools: Vec<String>,
 }
 
 impl ClaudeCode {
@@ -124,6 +131,8 @@ impl ClaudeCode {
             lessons: vec![],
             max_turns: None,
             max_budget_usd: None,
+            allowed_tools: vec![],
+            disallowed_tools: vec![],
         }
     }
 
@@ -147,6 +156,23 @@ impl ClaudeCode {
     #[must_use]
     pub fn with_max_budget_usd(mut self, usd: f64) -> Self {
         self.max_budget_usd = Some(usd);
+        self
+    }
+
+    /// Set `--allowedTools` — tool names explicitly permitted for this
+    /// session. Empty (the default) adds nothing beyond the CLI's own
+    /// defaults.
+    #[must_use]
+    pub fn with_allowed_tools(mut self, tools: Vec<String>) -> Self {
+        self.allowed_tools = tools;
+        self
+    }
+
+    /// Set `--disallowedTools` — tool names explicitly denied for this
+    /// session. Empty (the default) denies nothing.
+    #[must_use]
+    pub fn with_disallowed_tools(mut self, tools: Vec<String>) -> Self {
+        self.disallowed_tools = tools;
         self
     }
 
@@ -284,7 +310,16 @@ impl ClaudeCode {
             .arg("--output-format")
             .arg("stream-json")
             .arg("--verbose")
-            .arg("--include-partial-messages");
+            .arg("--include-partial-messages")
+            // Without this, a tool call needing approval (e.g. a multi-part
+            // Bash command) stalls the session waiting on a prompt nothing
+            // in this headless pipeline can answer, burning turns until
+            // `--max-turns` cuts it off (`error_max_turns`) with the actual
+            // work half-done — see run_loop.rs's Planning/Implementing
+            // phases. Deliberately unconditional for now, not a `with_*`
+            // builder toggle: the user wants every run unattended today and
+            // can gate it back per-task later.
+            .arg("--dangerously-skip-permissions");
         if let Some(model) = &self.model {
             cmd.arg("--model").arg(model);
         }
@@ -293,6 +328,12 @@ impl ClaudeCode {
         }
         if let Some(usd) = self.max_budget_usd {
             cmd.arg("--max-budget-usd").arg(format!("{usd}"));
+        }
+        if !self.allowed_tools.is_empty() {
+            cmd.arg("--allowedTools").args(&self.allowed_tools);
+        }
+        if !self.disallowed_tools.is_empty() {
+            cmd.arg("--disallowedTools").args(&self.disallowed_tools);
         }
         cmd.stdout(Stdio::piped());
         cmd.stderr(Stdio::null());
@@ -473,12 +514,28 @@ impl ClaudeCode {
 
     async fn run(&self, prompt: &str) -> Result<ClaudeOutput> {
         let mut cmd = Command::new(&self.cli_path);
-        cmd.arg("-p").arg(prompt);
+        cmd.arg("-p").arg(prompt).arg("--dangerously-skip-permissions");
         if self.json_output {
             cmd.arg("--output-format").arg("json");
         }
         if let Some(model) = &self.model {
             cmd.arg("--model").arg(model);
+        }
+        // Same caps as `run_streamed` — this one-shot path backs `fix()` and
+        // `implement_step()` (speculative mode), both real spend that was
+        // previously uncapped here regardless of what `run_streamed`'s caller
+        // configured.
+        if let Some(turns) = self.max_turns {
+            cmd.arg("--max-turns").arg(turns.to_string());
+        }
+        if let Some(usd) = self.max_budget_usd {
+            cmd.arg("--max-budget-usd").arg(format!("{usd}"));
+        }
+        if !self.allowed_tools.is_empty() {
+            cmd.arg("--allowedTools").args(&self.allowed_tools);
+        }
+        if !self.disallowed_tools.is_empty() {
+            cmd.arg("--disallowedTools").args(&self.disallowed_tools);
         }
         cmd.current_dir(&self.repo_path);
         scrub_inherited_anthropic_env(&mut cmd);
@@ -670,6 +727,32 @@ mod tests {
     fn select_model_escalates_to_opus_at_attempt_2() {
         let t = Task::new("simple task");
         assert_eq!(select_model(&t, 2), MODEL_OPUS);
+    }
+
+    /// `with_allowed_tools`/`with_disallowed_tools` back `--allowedTools`/
+    /// `--disallowedTools` — verified live (outside this test, since it needs
+    /// a real `claude -p` call) that these are genuinely enforced even
+    /// alongside the unconditional `--dangerously-skip-permissions`, not
+    /// silently bypassed by it. This locks in the builder plumbing itself.
+    #[test]
+    fn with_allowed_tools_sets_the_field() {
+        let c = ClaudeCode::new(".").with_allowed_tools(vec!["Bash".to_string()]);
+        assert_eq!(c.allowed_tools, vec!["Bash".to_string()]);
+        assert!(c.disallowed_tools.is_empty());
+    }
+
+    #[test]
+    fn with_disallowed_tools_sets_the_field() {
+        let c = ClaudeCode::new(".").with_disallowed_tools(vec!["Workflow".to_string()]);
+        assert_eq!(c.disallowed_tools, vec!["Workflow".to_string()]);
+        assert!(c.allowed_tools.is_empty());
+    }
+
+    #[test]
+    fn a_fresh_claude_code_has_no_tool_restrictions() {
+        let c = ClaudeCode::new(".");
+        assert!(c.allowed_tools.is_empty());
+        assert!(c.disallowed_tools.is_empty());
     }
 
     #[test]

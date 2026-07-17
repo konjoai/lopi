@@ -66,6 +66,73 @@ async fn cancel_nonexistent_task_returns_false() {
     assert!(!cancelled);
 }
 
+/// `AgentPool::decide_plan` had zero coverage — it backs the
+/// `approve_plan`/`reject_plan` HTTP handlers, which relay a decision to a
+/// runner paused mid-execution awaiting plan approval. Constructs a fake
+/// paused handle directly (mirroring what `run_loop.rs` inserts on a real
+/// gated run) since standing up an actual paused agent needs a live `claude`
+/// subprocess.
+#[tokio::test]
+async fn decide_plan_nonexistent_task_returns_false() {
+    let pool = make_pool(2);
+    let fake_id = TaskId::new();
+    let decided = pool
+        .decide_plan(&fake_id, lopi_core::PlanDecision::Approve)
+        .await;
+    assert!(!decided);
+}
+
+#[tokio::test]
+async fn decide_plan_delivers_the_decision_to_the_paused_runner() {
+    let pool = make_pool(2);
+    let task_id = TaskId::new();
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    pool.handles.insert(
+        task_id,
+        Arc::new(RwLock::new(AgentHandle {
+            goal: "a gated task awaiting plan approval".to_string(),
+            cancel_tx: None,
+            plan_decision_tx: Some(tx),
+            attempt: Arc::new(AtomicUsize::new(1)),
+            started_at: std::time::Instant::now(),
+        })),
+    );
+
+    let decided = pool
+        .decide_plan(&task_id, lopi_core::PlanDecision::Approve)
+        .await;
+    assert!(decided);
+    assert_eq!(rx.await.unwrap(), lopi_core::PlanDecision::Approve);
+}
+
+#[tokio::test]
+async fn decide_plan_returns_false_once_already_decided() {
+    let pool = make_pool(2);
+    let task_id = TaskId::new();
+    let (tx, _rx) = tokio::sync::oneshot::channel();
+    pool.handles.insert(
+        task_id,
+        Arc::new(RwLock::new(AgentHandle {
+            goal: "a gated task awaiting plan approval".to_string(),
+            cancel_tx: None,
+            plan_decision_tx: Some(tx),
+            attempt: Arc::new(AtomicUsize::new(1)),
+            started_at: std::time::Instant::now(),
+        })),
+    );
+
+    let first = pool
+        .decide_plan(&task_id, lopi_core::PlanDecision::Reject)
+        .await;
+    assert!(first);
+
+    // The sender was already taken — a second decision has nothing to deliver to.
+    let second = pool
+        .decide_plan(&task_id, lopi_core::PlanDecision::Approve)
+        .await;
+    assert!(!second);
+}
+
 #[tokio::test]
 async fn pool_queue_accessor_works() {
     let pool = make_pool(2);
@@ -327,6 +394,9 @@ fn runner_for(task: Task) -> lopi_agent::AgentRunner {
         false,
         lopi_skill::SkillRegistry::default(),
         0,
+        lopi_core::LoopConfig::default().max_budget_usd,
+        Vec::new(),
+        Vec::new(),
         lopi_core::LoopConfig::default().max_iterations,
         run_loop::RepoGuardrails::default(),
         false,
