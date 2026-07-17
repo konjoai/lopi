@@ -63,6 +63,7 @@
   import { repoAutocomplete, repoLabelForPath } from '$lib/stores/repoMenu';
   import { draggingPane, armedPaneKey } from './dnd';
   import { ICONS } from './icons';
+  import { autoGrow } from './autoGrow';
   import Popover, { togglePopover } from './Popover.svelte';
   import SchedulePopover from './SchedulePopover.svelte';
   import GuardrailsPopover from './GuardrailsPopover.svelte';
@@ -137,7 +138,7 @@
   // dock's own icon buttons make.
   let cmdText = '';
   let cmdBarFocused = false;
-  let cmdBarInput: HTMLInputElement | undefined;
+  let cmdBarInput: HTMLTextAreaElement | undefined;
   let cmdActiveIndex = 0;
   let cmdDismissed = false;
   let pendingCommand: string | null = null;
@@ -264,7 +265,7 @@
   }
 
   function onCmdBarInput(e: Event): void {
-    cmdText = (e.currentTarget as HTMLInputElement).value;
+    cmdText = (e.currentTarget as HTMLTextAreaElement).value;
     cmdDismissed = false;
   }
 
@@ -297,6 +298,13 @@
     if (e.key === 'Escape') {
       cmdText = '';
       pendingCommand = null;
+      return;
+    }
+    // The bar is a single-token command line, not free-form prose — a bare
+    // Enter with no suggestion showing is a no-op (as it always was for the
+    // plain `<input>` this replaced), not a newline insertion.
+    if (e.key === 'Enter') {
+      e.preventDefault();
     }
   }
 
@@ -428,7 +436,7 @@
   <div class="dockbody">
     <div class="inner">
       <div class="cmdbarwrap">
-        <input
+        <textarea
           class="cmdbar"
           bind:this={cmdBarInput}
           value={cmdText}
@@ -436,9 +444,11 @@
           on:keydown={onCmdBarKeydown}
           on:focus={() => (cmdBarFocused = true)}
           on:blur={() => (cmdBarFocused = false)}
+          use:autoGrow
+          rows="1"
           placeholder="@org/repo /model /effort /branch /autonomy /loop /guard /schedule /eval /goal"
           spellcheck="false"
-        />
+        ></textarea>
         {#if showRepoBarSuggest}
           <AutocompleteSuggest
             anchor={cmdBarInput}
@@ -743,8 +753,11 @@
     position: relative;
   }
   .cmdbar {
+    display: block;
     width: 100%;
     box-sizing: border-box;
+    resize: none;
+    overflow: hidden;
     background: rgba(255, 255, 255, 0.02);
     border: 1px solid rgba(255, 255, 255, 0.11);
     border-radius: 7px;
@@ -752,6 +765,7 @@
     color: var(--konjo-paper, #f5f5f5);
     font-family: var(--font-mono, 'JetBrains Mono', monospace);
     font-size: 12px;
+    line-height: 1.5;
     outline: none;
     transition:
       border-color 0.12s,

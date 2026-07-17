@@ -20,6 +20,7 @@
   import { closePopover } from './Popover.svelte';
   import Toggle from './Toggle.svelte';
   import { ICONS } from './icons';
+  import { autoGrow } from './autoGrow';
 
   export let scope: 'loop' | 'stack' = 'loop';
   export let gate = false;
@@ -43,10 +44,10 @@
   const BUDGETS: Budget[] = ['auto', '200k', 'none'];
 
   function onGateInput(e: Event) {
-    onChangeGate({ gateCmd: (e.target as HTMLInputElement).value });
+    onChangeGate({ gateCmd: (e.target as HTMLTextAreaElement).value });
   }
   function onUntilInput(e: Event) {
-    onChangeUntil({ untilCmd: (e.target as HTMLInputElement).value });
+    onChangeUntil({ untilCmd: (e.target as HTMLTextAreaElement).value });
   }
 </script>
 
@@ -56,12 +57,26 @@
     <div class="gline">
       <Toggle on={gate} onToggle={() => onChangeGate({ gate: !gate })} accent="sun" />
       <span class="lbl">gate</span>
-      <input value={gateCmd} disabled={!gate} placeholder="shell cmd, must pass first" on:input={onGateInput} />
+      <textarea
+        value={gateCmd}
+        disabled={!gate}
+        placeholder="shell cmd, must pass first"
+        on:input={onGateInput}
+        use:autoGrow
+        rows="1"
+      ></textarea>
     </div>
     <div class="gline">
       <Toggle on={until} onToggle={() => onChangeUntil({ until: !until })} accent="sun" />
       <span class="lbl">until</span>
-      <input value={untilCmd} disabled={!until} placeholder="loop until exit 0" on:input={onUntilInput} />
+      <textarea
+        value={untilCmd}
+        disabled={!until}
+        placeholder="loop until exit 0"
+        on:input={onUntilInput}
+        use:autoGrow
+        rows="1"
+      ></textarea>
     </div>
   {/if}
   <div class="gseg-row">
@@ -112,8 +127,11 @@
     width: 38px;
     flex: 0 0 auto;
   }
-  .gline input {
+  .gline textarea {
+    display: block;
     flex: 1;
+    resize: none;
+    overflow: hidden;
     background: rgba(255, 255, 255, 0.03);
     border: 1px solid rgba(255, 255, 255, 0.11);
     border-radius: 5px;
@@ -121,9 +139,11 @@
     color: var(--konjo-paper, #f5f5f5);
     font-family: var(--font-mono, monospace);
     font-size: 10px;
+    line-height: 1.5;
     min-width: 0;
+    outline: none;
   }
-  .gline input:disabled {
+  .gline textarea:disabled {
     opacity: 0.35;
   }
   .gseg-row {

@@ -47,6 +47,7 @@
   import { runs, bumpCard, bumpUiState } from '$lib/stores/stackRun';
   import { ICONS, PRESET_ACCENT } from './icons';
   import { dragging } from './dnd';
+  import { autoGrow } from './autoGrow';
   import Popover, { togglePopover } from './Popover.svelte';
   import SchedulePopover from './SchedulePopover.svelte';
   import MaxxPopover from './MaxxPopover.svelte';
@@ -89,7 +90,7 @@
   // dup/drag/delete cluster for a single `+ add` commit button.
   $: isDraft = card.status === 'draft';
   $: hot = isDraft && draftIsHot(card);
-  let goalInput: HTMLInputElement | undefined;
+  let goalInput: HTMLTextAreaElement | undefined;
 
   /** Route a card patch to the right store op: the draft edits the pane's
    *  `draft`; a committed card edits itself in `pane.cards`. */
@@ -105,25 +106,8 @@
     writeCard({ goal: (e.currentTarget as HTMLTextAreaElement).value });
   }
 
-  /** Grows a `<textarea>` to fit its content (no inner scrollbar) — called
-   *  on mount, so a card committed with an already-long goal starts at full
-   *  height, and on every keystroke thereafter. */
-  function autoGrow(node: HTMLTextAreaElement) {
-    const resize = () => {
-      node.style.height = 'auto';
-      node.style.height = `${node.scrollHeight}px`;
-    };
-    resize();
-    node.addEventListener('input', resize);
-    return {
-      destroy() {
-        node.removeEventListener('input', resize);
-      }
-    };
-  }
-
   function onGoalInput(e: Event): void {
-    writeCard({ goal: (e.currentTarget as HTMLInputElement).value });
+    writeCard({ goal: (e.currentTarget as HTMLTextAreaElement).value });
     aliasDismissed = false;
     repoDismissed = false;
     cmdDismissed = false;
@@ -525,10 +509,12 @@
       <TemplatesMenu {card} {paneKey} labeled />
       <ProvenanceChips alias={card.alias} tpl={card.tpl} tplKind={card.tplKind} repoLabel={cardRepoLabel} />
     </div>
-    <!-- Goal on its own full-width line (an inline chip-adjacent input
-         truncated in testing). Still honors `:alias @repo ×N` on commit. -->
+    <!-- Goal on its own full-width line, a `<textarea>` (not `<input>`) with
+         `use:autoGrow` so a long prompt wraps and stays fully visible
+         instead of scrolling off sideways in a single line. Still honors
+         `:alias @repo ×N` on commit. -->
     <div class="goalwrap">
-      <input
+      <textarea
         class="goalinput"
         bind:this={goalInput}
         value={card.goal}
@@ -536,9 +522,11 @@
         on:keydown={onGoalKeydown}
         on:focus={() => (goalFocused = true)}
         on:blur={() => (goalFocused = false)}
+        use:autoGrow
+        rows="1"
         placeholder="describe the prompt or goal...  (i.e. :alias @org/repo /model/opus xN)"
         spellcheck="false"
-      />
+      ></textarea>
       {#if showAliasSuggest}
         <AutocompleteSuggest
           anchor={goalInput}
@@ -822,8 +810,11 @@
     margin-top: 10px;
   }
   .goalinput {
+    display: block;
     width: 100%;
     box-sizing: border-box;
+    resize: none;
+    overflow: hidden;
     background: rgba(255, 255, 255, 0.02);
     border: 1px solid rgba(255, 255, 255, 0.11);
     border-radius: 7px;
@@ -831,6 +822,7 @@
     color: var(--konjo-paper, #f5f5f5);
     font-family: var(--font-mono, 'JetBrains Mono', monospace);
     font-size: 14px;
+    line-height: 1.5;
     outline: none;
     transition:
       border-color 0.12s,
