@@ -88,6 +88,25 @@ function pushStatus(
   return [...sealOpenText(blocks), { kind: 'status', id, tier, label }];
 }
 
+/**
+ * Tier for a synthetic status line whose severity isn't in its glyph alone —
+ * inferred from the same verdict/decision keywords the Rust side formats the
+ * line with (`crates/lopi-agent/src/runner/{eval_runner,verifier_runner,
+ * progress}.rs`), so e.g. `verdict=error` (a judge/infra failure) reads
+ * distinctly from `verdict=fail` (a real content rejection) instead of both
+ * collapsing into one generic "info" pill — or, before this, into
+ * indistinguishable plain assistant text (see module doc: these all arrive
+ * as `log_line`s, and an unrecognized prefix used to fall through to
+ * `appendText`, rendering literal `verdict=error` dumps as if Claude had
+ * said them).
+ */
+function inferredTier(t: string): ChipTier {
+  if (/verdict=error|errored|fail-closed/.test(t)) return 'bad';
+  if (/verdict=pass|passed=true|gain gate: gain\b/.test(t)) return 'good';
+  if (/rejected|verdict=fail|passed=false|regression|failed/.test(t)) return 'warn';
+  return 'info';
+}
+
 /** Route a `log_line` to the right block kind by its glyph prefix. */
 function reduceLogLine(blocks: TranscriptBlock[], line: string, level: string, id: string): TranscriptBlock[] {
   const t = line.trim();
@@ -96,6 +115,14 @@ function reduceLogLine(blocks: TranscriptBlock[], line: string, level: string, i
   if (t.startsWith('💭')) return appendThinking(blocks, t.replace(/^💭\s*/, ''), id);
   if (t.startsWith('●')) return pushStatus(blocks, 'info', t.replace(/^●\s*/, ''), id);
   if (t.startsWith('⛔')) return pushStatus(blocks, 'bad', t.replace(/^⛔\s*/, ''), id);
+  // Eval-tier (🎯), verifier (🔬), gain gate (📈), schema validation (📐) —
+  // all synthetic status, not Claude output; without this they fell through
+  // to plain assistant markdown, indistinguishable from something Claude
+  // actually said (the bug this closes).
+  if (/^[🎯🔬📈📐]/.test(t)) {
+    const glyph = t.slice(0, t.indexOf(' ') === -1 ? t.length : t.indexOf(' '));
+    return pushStatus(blocks, inferredTier(t), t.replace(new RegExp(`^${glyph}\\s*`), ''), id);
+  }
   if (level === 'error') return pushStatus(blocks, 'bad', t, id);
   return appendText(blocks, t, id);
 }
