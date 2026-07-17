@@ -15,6 +15,7 @@
   import Combo from './Combo.svelte';
   import Toggle from './Toggle.svelte';
   import { ICONS } from './icons';
+  import { autoGrow } from './autoGrow';
 
   export let scheduled: boolean;
   export let cron: CronConfig;
@@ -34,7 +35,7 @@
   }
 
   function onRawInput(e: Event) {
-    const raw = (e.target as HTMLInputElement).value;
+    const raw = (e.target as HTMLTextAreaElement).value;
     onChange({ ...cron, freq: 'custom', raw });
   }
 
@@ -101,7 +102,14 @@
 
     <div class="rawrow">
       <span class="rl">cron</span>
-      <input value={cronExpr} size={rawSize} on:input={onRawInput} spellcheck="false" />
+      <textarea
+        value={cronExpr}
+        style="width: {rawSize}ch"
+        on:input={onRawInput}
+        use:autoGrow
+        rows="1"
+        spellcheck="false"
+      ></textarea>
     </div>
     <div class="human">{human} → <b>{cronExpr}</b></div>
   {/if}
@@ -223,7 +231,10 @@
     color: rgba(245, 245, 245, 0.66);
     flex: 0 0 auto;
   }
-  .rawrow input {
+  .rawrow textarea {
+    display: block;
+    resize: none;
+    overflow: hidden;
     background: rgba(255, 255, 255, 0.03);
     border: 1px solid rgba(255, 255, 255, 0.11);
     border-radius: 5px;
@@ -231,10 +242,11 @@
     color: var(--konjo-ice);
     font-family: var(--font-mono, monospace);
     font-size: 10.5px;
+    line-height: 1.4;
     letter-spacing: 0.05em;
     max-width: 100%;
   }
-  .rawrow input:focus {
+  .rawrow textarea:focus {
     outline: none;
     border-color: rgba(0, 212, 255, 0.5);
   }

@@ -21,15 +21,12 @@ export const SHELL_ICONS = {
   // The lopi Loop Stacks mark (see `stacks/icons.ts`'s `ICONS.mark`) —
   // hardcoded colors, so it ignores this catalog's `fill="none"
   // stroke="currentColor"` wrapper on purpose: it's the brand logo, not a
-  // themeable glyph. Exact path data from the design source
-  // (Downloads/Logo request/LoopStack Logo.dc.html) — two stacked
-  // rounded-rect brackets, the second the first rotated 180° about the
-  // asset's center, each opening into a chevron arrow. A nested `<svg>`
-  // with its own `viewBox` (not just a `<g>`) since the design's native
-  // coordinate space (442×601) doesn't match this catalog's 24×24
-  // convention — nesting lets it establish its own scale rather than
-  // requiring the path data to be hand-rescaled.
-  mark: '<svg viewBox="-40 -40 522 681" width="100%" height="100%"><g><path d="M 395.5 208.17 L 395.5 225 A 37.5 37.5 0 0 1 358 262.5 L 121 262.5 A 37.5 37.5 0 0 1 83.5 225 L 83.5 128 A 37.5 37.5 0 0 1 121 90.5 L 360 90.5" fill="none" stroke="#f49e31" stroke-width="48.44" stroke-linecap="round"/><path d="M 309.5 2.06 L 397 88 L 307.94 175.5" fill="none" stroke="#f49e31" stroke-width="48.44" stroke-linecap="round" stroke-linejoin="round"/></g><g transform="rotate(180 239.5 294.5)"><path d="M 395.5 208.17 L 395.5 225 A 37.5 37.5 0 0 1 358 262.5 L 121 262.5 A 37.5 37.5 0 0 1 83.5 225 L 83.5 128 A 37.5 37.5 0 0 1 121 90.5 L 360 90.5" fill="none" stroke="#f49e31" stroke-width="48.44" stroke-linecap="round"/><path d="M 309.5 2.06 L 397 88 L 307.94 175.5" fill="none" stroke="#f49e31" stroke-width="48.44" stroke-linecap="round" stroke-linejoin="round"/></g></svg>',
+  // themeable glyph. Two arced loop arrows above a three-bar stack that
+  // fades toward the back. A nested `<svg>` with its own `viewBox` (not
+  // just a `<g>`) since the design's native 48×48 coordinate space doesn't
+  // match this catalog's 24×24 convention — nesting lets it establish its
+  // own scale rather than requiring the path data to be hand-rescaled.
+  mark: '<svg viewBox="0 0 48 48" fill="none" width="100%" height="100%"><path d="M11,15 V12 A4,4 0 0 1 15,8 H29" stroke="#f49e31" stroke-width="3.4" stroke-linecap="round"/><polyline points="24,3 29,8 24,13" stroke="#f49e31" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M35,15 V18 A4,4 0 0 1 31,22 H17" stroke="#f49e31" stroke-width="3.4" stroke-linecap="round"/><polyline points="22,17 17,22 22,27" stroke="#f49e31" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/><rect x="6" y="29" width="36" height="5" rx="2.5" fill="#f49e31" opacity="0.9"/><rect x="6" y="36" width="36" height="5" rx="2.5" fill="#f49e31" opacity="0.65"/><rect x="6" y="43" width="36" height="5" rx="2.5" fill="#f49e31" opacity="0.4"/></svg>',
   wrench:
     '<path d="M14.7 6.3a4 4 0 0 1-5.4 5.4L4 17l3 3 5.3-5.3a4 4 0 0 1 5.4-5.4L14.7 12.7z"/>',
   logs: '<path d="M6 3h9l5 5v13H6z"/><path d="M15 3v5h5M8 12h8M8 16h8"/>',
