@@ -86,6 +86,27 @@ impl AgentRunner {
             return None;
         }
 
+        // `commit_all` uses libgit2 directly, not the `git` CLI — unlike
+        // `git commit` (which refuses and exits non-zero on an empty tree),
+        // `Repository::commit` happily creates a commit whose tree is
+        // byte-identical to its parent's. So without this check, an attempt
+        // that made zero real changes (e.g. the goal's target file already
+        // existed from an earlier run, and this attempt's Planning/
+        // Implementing halted on `error_max_turns` before doing anything new)
+        // still "succeeds": an empty commit, then a genuinely diff-less PR
+        // opened against it. `score.diff_lines` is already computed
+        // (`Scorer::score`, including untracked new files) — reuse it as the
+        // single source of truth for "is there anything to commit" instead
+        // of re-deriving it here.
+        if score.diff_lines == 0 {
+            self.log("● no file changes produced — skipping commit and PR");
+            git.checkout_default().await.ok();
+            return Some(TaskStatus::Success {
+                branch: branch.to_string(),
+                pr_url: None,
+            });
+        }
+
         self.log(format!("✅ finalizing ({}) — committing…", level.tag()));
         git.commit_all(&format!("lopi: {}", self.task.goal))
             .await
