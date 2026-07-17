@@ -9,7 +9,7 @@ use crate::claude::ClaudeCode;
 use crate::scorer::Scorer;
 use anyhow::Result;
 use lopi_context::Phase;
-use lopi_core::{AgentEvent, Attempt, TaskStatus};
+use lopi_core::{AgentEvent, Attempt, Score, TaskStatus};
 use lopi_git::GitManager;
 use tracing::Instrument as _;
 
@@ -22,12 +22,32 @@ pub(super) enum TestPhaseOutcome {
     Continue,
 }
 
+/// Outcome of [`AgentRunner::attempt_inplace_fix`].
+enum FixOutcome {
+    /// The fix lifted the score to a pass and finalize succeeded.
+    Finalized(TaskStatus),
+    /// The fix lifted the score to a pass, but finalize rejected it (the
+    /// verifier bounced it back to `Retrying`) — the caller just loops.
+    Continue,
+    /// Still failing after the fix (or the diff scope broke) — carries the
+    /// best weighted score seen so far, for the stall guard below.
+    StillFailing(f32),
+}
+
 impl AgentRunner {
     /// Score the just-implemented attempt, finalize on a pass (or `until`),
     /// try an in-place fix on a fail and rescore, and — if still failing —
     /// run the gain gate/reflection/retry-delay before signalling the caller
     /// to retry.
-    #[allow(clippy::too_many_arguments)]
+    ///
+    /// `finalize_on_pass`/`attempt_inplace_fix` are already split out below
+    /// to shrink this (was 36, now 29 against CI's 25 threshold) — the
+    /// remaining shape is an inherently sequential score → persist →
+    /// finalize-or-fix → retry-prep pipeline, the same reason `run()` in
+    /// `run_loop.rs` carries `#[allow(clippy::too_many_lines)]` rather than
+    /// fragmenting further into cross-called micro-steps that would cost
+    /// more in indirection than they'd save in per-function complexity.
+    #[allow(clippy::too_many_arguments, clippy::cognitive_complexity)]
     pub(super) async fn run_test_phase(
         &mut self,
         scorer: &Scorer,
@@ -123,73 +143,26 @@ impl AgentRunner {
         // this field existed.
         let until_satisfied = self.check_until().await;
         if score.passed() || until_satisfied {
-            if until_satisfied && !score.passed() {
-                self.log("● until condition met — concluding the loop early");
-            }
-            // Phase 16.3 — finalize per the L1–L4 autonomy ladder. `finalize`
-            // forces the verifier on for L3/L4, commits, rebases onto the
-            // advanced default, then opens (or skips) the PR. `None` ⇒
-            // verifier rejected (already rolled back, marked Retrying); a
-            // `Conflict` ⇒ the rebase collided and the loop stops here.
-            if let Some(status) = self.finalize(branch, git, &score, attempt + 1).await {
-                // Goal-met (A3) — the highest-precedence terminal: the loop
-                // satisfied its acceptance/until goal and finalized.
-                self.log(format!(
-                    "● stop reason: {}",
-                    lopi_core::StopReason::GoalMet.as_str()
-                ));
-                return Ok(TestPhaseOutcome::Terminal(self.conclude_finalized(
-                    status,
-                    &score,
-                    attempt + 1,
-                )));
-            }
-            return Ok(TestPhaseOutcome::Continue);
+            return Ok(self
+                .finalize_on_pass(branch, git, &score, until_satisfied, attempt)
+                .await);
         }
 
-        // In-place fix attempt. `🔧` is reserved by the frontend for its
-        // structured tool_call dedup (`reduceLogLine` drops any log line
-        // starting with it, on the assumption it's the redundant plain
-        // twin of a `ToolCall` event) — this line isn't one, so it was
-        // being silently dropped before `●` replaced the wrench.
-        self.log(format!("● fixing {} error(s)…", score.errors.len()));
-        if let Err(e) = claude.fix(&self.task, &score.errors).await {
-            self.warn(format!("fix failed: {e}"));
-        }
-
-        if git
-            .check_diff_scope(&self.task.allowed_dirs, &self.task.forbidden_dirs)
-            .await
-            .is_ok()
+        match self
+            .attempt_inplace_fix(
+                scorer,
+                claude,
+                git,
+                branch,
+                &score,
+                attempt_weighted,
+                attempt,
+            )
+            .await?
         {
-            self.status(TaskStatus::Testing, attempt + 1);
-            let fixed_score = scorer.score().await?;
-            self.bus.send(AgentEvent::ScoreUpdated {
-                task_id: self.id(),
-                test_pass_rate: fixed_score.test_pass_rate,
-                lint_errors: fixed_score.lint_errors,
-                diff_lines: fixed_score.diff_lines,
-            });
-            let weighted = fixed_score.weighted(&self.score_weights);
-            self.log(format!(
-                "● fixed score: pass={:.0}% lint={} diff={}L (weighted={:.3})",
-                fixed_score.test_pass_rate * 100.0,
-                fixed_score.lint_errors,
-                fixed_score.diff_lines,
-                weighted
-            ));
-            // The fix lifted (or lowered) the score — track the better of
-            // the two for the stall guard.
-            attempt_weighted = attempt_weighted.max(weighted);
-            if fixed_score.passed() {
-                self.log("● fix worked — finalizing…");
-                // Same L1–L4 finalize path as the primary success branch.
-                if let Some(status) = self.finalize(branch, git, &fixed_score, attempt + 1).await {
-                    self.status(status.clone(), attempt + 1);
-                    return Ok(TestPhaseOutcome::Terminal(status));
-                }
-                return Ok(TestPhaseOutcome::Continue);
-            }
+            FixOutcome::Finalized(status) => return Ok(TestPhaseOutcome::Terminal(status)),
+            FixOutcome::Continue => return Ok(TestPhaseOutcome::Continue),
+            FixOutcome::StillFailing(best) => attempt_weighted = best,
         }
 
         // Sprint H — adaptive retry: stash the score's error list so the
@@ -235,5 +208,100 @@ impl AgentRunner {
         self.abort_and_mark_retrying(git, attempt).await;
         self.apply_on_fail_delay(attempt).await;
         Ok(TestPhaseOutcome::Continue)
+    }
+
+    /// The `score.passed() || until_satisfied` finalize path: forces the
+    /// verifier on for L3/L4, commits, rebases onto the advanced default,
+    /// then opens (or skips) the PR. `None` from `finalize` ⇒ verifier
+    /// rejected (already rolled back, marked `Retrying`) — the caller just
+    /// loops. Split out of `run_test_phase` purely to keep that function's
+    /// cognitive complexity under CI's gate — pure code motion.
+    async fn finalize_on_pass(
+        &mut self,
+        branch: &str,
+        git: &GitManager,
+        score: &Score,
+        until_satisfied: bool,
+        attempt: u8,
+    ) -> TestPhaseOutcome {
+        if until_satisfied && !score.passed() {
+            self.log("● until condition met — concluding the loop early");
+        }
+        let Some(status) = self.finalize(branch, git, score, attempt + 1).await else {
+            return TestPhaseOutcome::Continue;
+        };
+        // Goal-met (A3) — the highest-precedence terminal: the loop
+        // satisfied its acceptance/until goal and finalized.
+        self.log(format!(
+            "● stop reason: {}",
+            lopi_core::StopReason::GoalMet.as_str()
+        ));
+        TestPhaseOutcome::Terminal(self.conclude_finalized(status, score, attempt + 1))
+    }
+
+    /// In-place fix attempt on a failing score: ask Claude to fix the
+    /// reported errors, rescore, and finalize if that lifted the score to a
+    /// pass. Split out of `run_test_phase` purely to keep that function's
+    /// cognitive complexity under CI's gate — pure code motion.
+    ///
+    /// `🔧` is reserved by the frontend for its structured tool_call dedup
+    /// (`reduceLogLine` drops any log line starting with it, on the
+    /// assumption it's the redundant plain twin of a `ToolCall` event) —
+    /// the log line below isn't one, so it was being silently dropped
+    /// before `●` replaced the wrench.
+    #[allow(clippy::too_many_arguments)]
+    async fn attempt_inplace_fix(
+        &mut self,
+        scorer: &Scorer,
+        claude: &ClaudeCode,
+        git: &GitManager,
+        branch: &str,
+        score: &Score,
+        attempt_weighted: f32,
+        attempt: u8,
+    ) -> Result<FixOutcome> {
+        self.log(format!("● fixing {} error(s)…", score.errors.len()));
+        if let Err(e) = claude.fix(&self.task, &score.errors).await {
+            self.warn(format!("fix failed: {e}"));
+        }
+
+        if git
+            .check_diff_scope(&self.task.allowed_dirs, &self.task.forbidden_dirs)
+            .await
+            .is_err()
+        {
+            return Ok(FixOutcome::StillFailing(attempt_weighted));
+        }
+
+        self.status(TaskStatus::Testing, attempt + 1);
+        let fixed_score = scorer.score().await?;
+        self.bus.send(AgentEvent::ScoreUpdated {
+            task_id: self.id(),
+            test_pass_rate: fixed_score.test_pass_rate,
+            lint_errors: fixed_score.lint_errors,
+            diff_lines: fixed_score.diff_lines,
+        });
+        let weighted = fixed_score.weighted(&self.score_weights);
+        self.log(format!(
+            "● fixed score: pass={:.0}% lint={} diff={}L (weighted={:.3})",
+            fixed_score.test_pass_rate * 100.0,
+            fixed_score.lint_errors,
+            fixed_score.diff_lines,
+            weighted
+        ));
+        // The fix lifted (or lowered) the score — track the better of the
+        // two for the stall guard.
+        let best = attempt_weighted.max(weighted);
+        if !fixed_score.passed() {
+            return Ok(FixOutcome::StillFailing(best));
+        }
+
+        self.log("● fix worked — finalizing…");
+        // Same L1–L4 finalize path as the primary success branch.
+        if let Some(status) = self.finalize(branch, git, &fixed_score, attempt + 1).await {
+            self.status(status.clone(), attempt + 1);
+            return Ok(FixOutcome::Finalized(status));
+        }
+        Ok(FixOutcome::Continue)
     }
 }
