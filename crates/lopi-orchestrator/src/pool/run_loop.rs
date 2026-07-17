@@ -447,6 +447,21 @@ async fn run_one(
         if let Err(e) = store.mine_patterns(&task_id, &goal).await {
             warn!("pattern mining failed: {e}");
         }
+        // Budget & Guardrail Controls Part 4.3 — the per-session cost already
+        // flows into `turn_metrics` via every streamed call's
+        // `persist_turn` (stream.rs); surface the sum in the run-complete
+        // log so real spend is visible without a SQL query, same as the web
+        // burn view (`/api/loop-engineering/health`) already reads.
+        match store.task_cost(&task_id.0.to_string()).await {
+            Ok(cost_usd) => {
+                tracing::info!(task_id = %task_id, cost_usd, total_attempts, "run complete");
+                bus.send(AgentEvent::info(
+                    task_id,
+                    format!("💵 session cost: ${cost_usd:.4} over {total_attempts} attempt(s)"),
+                ));
+            }
+            Err(e) => warn!(task_id = %task_id, "failed to load session cost: {e}"),
+        }
     }
 
     Ok(outcome)

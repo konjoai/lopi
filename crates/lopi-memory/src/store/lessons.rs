@@ -123,4 +123,24 @@ impl MemoryStore {
         .await?;
         Ok(rows.into_iter().collect())
     }
+
+    /// Total billed cost (USD) for one task, summed over its `turn_metrics`
+    /// rows. `0.0` for a task with no recorded turns (e.g. every attempt used
+    /// the direct-API path, or the task failed before any streamed call
+    /// completed) — not an error. Budget & Guardrail Controls Part 4.3: backs
+    /// the per-session cost line in the run-complete log, without pulling
+    /// [`task_costs`](Self::task_costs)'s full-table scan for a single task.
+    ///
+    /// # Errors
+    /// Returns `Err` if the database query fails.
+    pub async fn task_cost(&self, task_id: &str) -> Result<f64> {
+        let (cost,): (f64,) = sqlx::query_as(
+            "SELECT COALESCE(SUM(estimated_cost_usd), 0.0) \
+             FROM turn_metrics WHERE task_id = ?1",
+        )
+        .bind(task_id)
+        .fetch_one(&self.read_pool)
+        .await?;
+        Ok(cost)
+    }
 }

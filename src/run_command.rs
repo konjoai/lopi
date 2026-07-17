@@ -100,6 +100,14 @@ pub(crate) async fn run_with_live_print(
     store.mine_patterns(&task_id, goal).await.ok();
     println!();
     println!("⚓ {}", status_label(&outcome));
+    // Budget & Guardrail Controls Part 4.3 — surface the session's real
+    // billed spend (already flowing into turn_metrics via every streamed
+    // call) in the run-complete line, so it's visible without a SQL query.
+    match store.task_cost(&task_id.0.to_string()).await {
+        Ok(cost_usd) if cost_usd > 0.0 => println!("💵 session cost: ${cost_usd:.4}"),
+        Ok(_) => {}
+        Err(e) => tracing::warn!(task_id = %task_id, "failed to load session cost: {e}"),
+    }
     Ok(outcome)
 }
 

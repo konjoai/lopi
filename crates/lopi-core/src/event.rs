@@ -227,6 +227,23 @@ pub enum AgentEvent {
         /// Amount already burned in the rolling 1-hour window in USD.
         burned_usd: f64,
     },
+    /// Budget & Guardrail Controls Part 4.2 — a streamed `claude -p` session's
+    /// *estimated* running cost (from token counts, before the terminal
+    /// billed `result`) crossed 80% of its resolved `--max-budget-usd` cap.
+    /// Fired at most once per streamed call, so a legitimately expensive
+    /// `deep`/`unlimited` run self-reports getting expensive before the
+    /// CLI's own hard stop, not after. Distinct from [`BudgetExceeded`],
+    /// which is the *hourly* cost-governor's hard breach — this is a
+    /// per-session soft heads-up, not a refusal.
+    BudgetSoftWarn {
+        /// Task whose streamed session is approaching its cap.
+        task_id: TaskId,
+        /// Estimated running cost so far, in USD (token-count-based, not the
+        /// CLI's own billed total).
+        estimated_usd: f64,
+        /// The resolved `--max-budget-usd` cap this session is approaching.
+        cap_usd: f64,
+    },
     /// Report on Finish (Loop Engineering primitive 6) — a finished run's
     /// summary, addressed to the channel declared on the task
     /// (`Task::report`). Emitted from the L1 report-only finalize hook;

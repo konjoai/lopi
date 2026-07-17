@@ -14,6 +14,7 @@
 //! double-count: a given turn is recorded by exactly one path.
 
 use super::AgentRunner;
+use crate::api_client::ApiUsage;
 use crate::claude::ClaudeCode;
 use crate::claude_events::StreamEvent;
 use anyhow::Result;
@@ -39,10 +40,15 @@ impl AgentRunner {
         let tokens = self.tokens_used.clone();
         let accrual = Arc::new(UsageAccrual::default());
         let acc = accrual.clone();
+        let cap_usd = self.cli_budget_usd.unwrap_or(0.0);
+        let model_owned = model.to_string();
         let text = claude
             .plan_streamed(&self.task, self.last_error.as_deref(), move |ev| {
                 acc.observe(ev);
                 forward_stream_event(&bus, tid, &tokens, ev);
+                if let Some(estimated_usd) = acc.check_soft_warn(&model_owned, cap_usd) {
+                    emit_budget_soft_warn(&bus, tid, estimated_usd, cap_usd);
+                }
             })
             .await?;
         self.persist_turn(&accrual, model, attempt).await;
@@ -64,10 +70,15 @@ impl AgentRunner {
         let tokens = self.tokens_used.clone();
         let accrual = Arc::new(UsageAccrual::default());
         let acc = accrual.clone();
+        let cap_usd = self.cli_budget_usd.unwrap_or(0.0);
+        let model_owned = model.to_string();
         let text = claude
             .implement_streamed(&self.task, plan, move |ev| {
                 acc.observe(ev);
                 forward_stream_event(&bus, tid, &tokens, ev);
+                if let Some(estimated_usd) = acc.check_soft_warn(&model_owned, cap_usd) {
+                    emit_budget_soft_warn(&bus, tid, estimated_usd, cap_usd);
+                }
             })
             .await?;
         self.persist_turn(&accrual, model, attempt).await;
@@ -127,6 +138,10 @@ struct UsageAccrual {
     /// completed is still recorded, and a stream that died mid-flight without a
     /// result but produced tokens is too).
     saw_result: AtomicBool,
+    /// Latches once [`check_soft_warn`](Self::check_soft_warn) has fired for
+    /// this stream, so a session hovering near its cap warns once, not on
+    /// every subsequent `TokenUsage` delta.
+    warned: AtomicBool,
 }
 
 impl UsageAccrual {
@@ -167,6 +182,35 @@ impl UsageAccrual {
     /// The billed cost captured from the terminal `result` (`0.0` if none).
     fn cost_usd(&self) -> f64 {
         f64::from_bits(self.cost_bits.load(Ordering::Relaxed))
+    }
+
+    /// Budget & Guardrail Controls Part 4.2 — soft-warn at 80% of the
+    /// session's resolved USD cap. The CLI's own `--max-budget-usd` only
+    /// hard-stops on the *billed* total, which this accrual only learns at
+    /// the terminal `result` (too late for an early warning) — so this
+    /// estimates a running cost from token counts observed so far, using the
+    /// same per-model rate table as [`ApiUsage::estimated_cost`]. Fires at
+    /// most once per streamed call: `warned` latches so a legitimately
+    /// expensive `deep`/`unlimited` run gets one heads-up, not one per token
+    /// delta. `cap_usd <= 0.0` (the "disabled" sentinel) never warns.
+    fn check_soft_warn(&self, model: &str, cap_usd: f64) -> Option<f64> {
+        if cap_usd <= 0.0 {
+            return None;
+        }
+        let usage = ApiUsage {
+            input_tokens: self.input.saturating_u32(),
+            output_tokens: self.output.saturating_u32(),
+            cache_read_tokens: self.cache_read.saturating_u32(),
+            cache_write_tokens: self.cache_write.saturating_u32(),
+        };
+        let estimated = usage.estimated_cost(model);
+        if estimated < cap_usd * 0.8 {
+            return None;
+        }
+        if self.warned.swap(true, Ordering::Relaxed) {
+            return None;
+        }
+        Some(estimated)
     }
 }
 
@@ -224,7 +268,32 @@ fn forward_stream_event(
     }
 }
 
+/// Budget & Guardrail Controls Part 4.2 — self-report a session's estimated
+/// cost crossing 80% of its resolved cap, via both a `tracing::warn!` (so
+/// it's visible without a UI attached) and a structured [`AgentEvent`] (so a
+/// listener — the web Forge, `lopi-remote`'s Telegram notifier — can ping a
+/// human before the CLI's own hard stop, not after).
+fn emit_budget_soft_warn(
+    bus: &lopi_core::EventBus<AgentEvent>,
+    tid: lopi_core::TaskId,
+    estimated_usd: f64,
+    cap_usd: f64,
+) {
+    tracing::warn!(
+        task_id = %tid,
+        estimated_usd,
+        cap_usd,
+        "session cost crossed 80% of its resolved --max-budget-usd cap"
+    );
+    bus.send(AgentEvent::BudgetSoftWarn {
+        task_id: tid,
+        estimated_usd,
+        cap_usd,
+    });
+}
+
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
 
@@ -298,5 +367,62 @@ mod tests {
         acc.observe(&result(0.0));
         // A completed run that happened to spend nothing is still a real turn.
         assert!(acc.has_usage());
+    }
+
+    // ── Budget & Guardrail Controls Part 4.2 — soft-warn at 80% of cap ──────
+
+    #[test]
+    fn check_soft_warn_disabled_when_cap_is_zero() {
+        let acc = UsageAccrual::default();
+        acc.observe(&usage(1_000_000, 1_000_000, 0, 0));
+        assert_eq!(acc.check_soft_warn(crate::claude::MODEL_OPUS, 0.0), None);
+    }
+
+    #[test]
+    fn check_soft_warn_none_under_the_threshold() {
+        let acc = UsageAccrual::default();
+        // A trickle of tokens on a generous cap — nowhere near 80%.
+        acc.observe(&usage(10, 10, 0, 0));
+        assert_eq!(acc.check_soft_warn(crate::claude::MODEL_SONNET, 10.0), None);
+    }
+
+    #[test]
+    fn check_soft_warn_fires_once_at_80_percent() {
+        let acc = UsageAccrual::default();
+        // Sonnet: 300K output tokens * $15/MTok = $4.50 — 90% of a $5 cap.
+        acc.observe(&usage(300_000, 0, 0, 0));
+        let first = acc.check_soft_warn(crate::claude::MODEL_SONNET, 5.0);
+        assert!(first.is_some(), "must fire once 80% of the cap is crossed");
+        assert!((first.unwrap() - 4.5).abs() < 0.01);
+
+        // A second observation at the same (or higher) usage must not
+        // re-fire — the warn latches per stream.
+        acc.observe(&usage(10, 0, 0, 0));
+        assert_eq!(
+            acc.check_soft_warn(crate::claude::MODEL_SONNET, 5.0),
+            None,
+            "must not fire a second time for the same stream"
+        );
+    }
+
+    #[test]
+    fn emit_budget_soft_warn_sends_the_structured_event() {
+        let bus: lopi_core::EventBus<AgentEvent> = lopi_core::EventBus::new(4);
+        let mut rx = bus.subscribe();
+        let tid = lopi_core::TaskId::new();
+        emit_budget_soft_warn(&bus, tid, 4.5, 5.0);
+        let ev = rx.try_recv().expect("event should have been sent");
+        match ev {
+            AgentEvent::BudgetSoftWarn {
+                task_id,
+                estimated_usd,
+                cap_usd,
+            } => {
+                assert_eq!(task_id, tid);
+                assert!((estimated_usd - 4.5).abs() < f64::EPSILON);
+                assert!((cap_usd - 5.0).abs() < f64::EPSILON);
+            }
+            other => panic!("expected BudgetSoftWarn, got {other:?}"),
+        }
     }
 }

@@ -262,6 +262,29 @@ async fn task_costs_sums_billed_cost_per_task() {
 }
 
 #[tokio::test]
+async fn task_cost_sums_billed_cost_for_a_single_task() {
+    let store = MemoryStore::open_in_memory().await.unwrap();
+    let task = Task::new("accrue cost, single-task query");
+    store.save_task(&task, "queued").await.unwrap();
+    let mut plan = make_turn_metrics(task.id);
+    plan.estimated_cost_usd = 0.010;
+    let mut implement = make_turn_metrics(task.id);
+    implement.estimated_cost_usd = 0.037;
+    store.save_turn_metrics(&plan).await.unwrap();
+    store.save_turn_metrics(&implement).await.unwrap();
+
+    let total = store.task_cost(&task.id.0.to_string()).await.unwrap();
+    assert!((total - 0.047).abs() < 1e-9, "expected 0.047, got {total}");
+}
+
+#[tokio::test]
+async fn task_cost_is_zero_for_a_task_with_no_recorded_turns() {
+    let store = MemoryStore::open_in_memory().await.unwrap();
+    let cost = store.task_cost("no-such-task").await.unwrap();
+    assert_eq!(cost, 0.0);
+}
+
+#[tokio::test]
 async fn daily_token_totals_nonzero_after_cli_turn_persisted() {
     let store = MemoryStore::open_in_memory().await.unwrap();
     let task = Task::new("real billed run");
