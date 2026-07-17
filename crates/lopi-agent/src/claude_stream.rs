@@ -22,6 +22,7 @@ pub fn plan_streaming(
     task: &Task,
     all_constraints: Vec<String>,
     model: Option<&str>,
+    effort: Option<&str>,
     max_budget_usd: Option<f64>,
     max_turns: Option<u32>,
     allowed_tools: &[String],
@@ -38,6 +39,7 @@ pub fn plan_streaming(
     let cli_path = cli_path.to_string();
     let repo_path = repo_path.to_path_buf();
     let model = model.map(str::to_string);
+    let effort = effort.map(str::to_string);
     let allowed_tools = allowed_tools.to_vec();
     let disallowed_tools = disallowed_tools.to_vec();
 
@@ -73,6 +75,7 @@ pub fn plan_streaming(
         crate::claude_support::apply_cli_caps(
             &mut cmd,
             model.as_deref(),
+            effort.as_deref(),
             max_turns,
             max_budget_usd,
             &allowed_tools,
@@ -167,6 +170,7 @@ mod tests {
             &task,
             vec![],
             Some("claude-opus-4-7"),
+            Some("high"),
             Some(2.5),
             Some(7),
             &["Bash".to_string()],
@@ -181,6 +185,7 @@ mod tests {
             "argv={argv}"
         );
         assert!(argv.contains("--model\nclaude-opus-4-7"), "argv={argv}");
+        assert!(argv.contains("--effort\nhigh"), "argv={argv}");
         assert!(argv.contains("--max-budget-usd\n2.5"), "argv={argv}");
         assert!(argv.contains("--max-turns\n7"), "argv={argv}");
         assert!(argv.contains("--allowedTools\nBash"), "argv={argv}");
@@ -210,6 +215,7 @@ mod tests {
             None,
             None,
             None,
+            None,
             &[],
             &[],
         );
@@ -219,6 +225,7 @@ mod tests {
         let argv = std::fs::read_to_string(&capture).unwrap();
         assert!(argv.contains("--dangerously-skip-permissions"));
         assert!(!argv.contains("--model"));
+        assert!(!argv.contains("--effort"));
         assert!(!argv.contains("--max-budget-usd"));
         assert!(!argv.contains("--max-turns"));
         assert!(!argv.contains("--allowedTools"));

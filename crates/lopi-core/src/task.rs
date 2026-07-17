@@ -1,3 +1,4 @@
+use crate::deliverable::Deliverable;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -260,15 +261,21 @@ pub struct Task {
     /// `verifier_model`'s "explicit wins over the heuristic" precedent.
     #[serde(default)]
     pub model: Option<String>,
-    /// Reasoning-effort hint for the worker's planning pass (e.g. `"low"`,
-    /// `"medium"`, `"high"`, `"max"`). Stored so the API/UI can round-trip
-    /// it; not yet folded into any planning prompt — the direct-API path's
-    /// system prompt (`LOPI_SYSTEM_PROMPT`) is `cache_control: ephemeral`
-    /// and must stay byte-identical across requests to keep its cache-hit
-    /// rate, so per-task injection needs a deliberate design pass rather
-    /// than a default added here. `None` changes nothing.
+    /// Reasoning-effort level for the worker session (`"low"`/`"medium"`/
+    /// `"high"`/`"xhigh"`/`"max"`). Passed to the CLI worker as `--effort`
+    /// (validated in `ClaudeCode::with_effort`; an unrecognized value is
+    /// dropped). Not injected into the direct-API path's system prompt —
+    /// that's `cache_control: ephemeral` and must stay byte-identical to keep
+    /// its cache-hit rate. `None` leaves the CLI default.
     #[serde(default)]
     pub effort: Option<String>,
+    /// What kind of deliverable this goal is expected to produce, which
+    /// governs whether a zero-diff attempt counts as success (intent-aware
+    /// success — see [`crate::deliverable::Deliverable`]). `None` (the
+    /// default) infers it from the goal text via
+    /// [`Task::deliverable_kind`]; set explicitly to override the guess.
+    #[serde(default)]
+    pub deliverable: Option<Deliverable>,
     /// Per-task override of the hard iteration ceiling, taking precedence
     /// over the repo's `.lopi/loop.toml` [`crate::loop_config::LoopConfig::max_iterations`]
     /// when set. `0` is the infinite-loop sentinel (by design decision, not
@@ -391,6 +398,7 @@ impl Task {
             verifier_effort: None,
             model: None,
             effort: None,
+            deliverable: None,
             max_iterations: None,
             gate: None,
             until: None,
@@ -428,6 +436,16 @@ impl Task {
         self.required_capabilities
             .iter()
             .all(|req| provided.iter().any(|p| p == req))
+    }
+
+    /// Resolve this task's [`Deliverable`]: the explicit `deliverable` field
+    /// when set, otherwise inferred from the goal text. Drives intent-aware
+    /// success — whether a zero-diff attempt is a failure to retry or a valid
+    /// review-only conclusion.
+    #[must_use]
+    pub fn deliverable_kind(&self) -> Deliverable {
+        self.deliverable
+            .unwrap_or_else(|| Deliverable::infer_from_goal(&self.goal))
     }
 }
 

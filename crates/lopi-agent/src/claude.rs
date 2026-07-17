@@ -30,29 +30,36 @@ use crate::claude_support::{apply_cli_caps, compress_errors};
 
 /// Wrapper around the `claude` CLI — drives plan, implement, fix, and streaming calls.
 pub struct ClaudeCode {
-    repo_path: PathBuf,
-    cli_path: String,
-    timeout: Duration,
-    json_output: bool,
+    // Fields are `pub(crate)` so the `with_*` builders can live in
+    // `claude_builders.rs` (keeping this file under the 500-line CI gate)
+    // while still setting them directly. Not part of the public API.
+    pub(crate) repo_path: PathBuf,
+    pub(crate) cli_path: String,
+    pub(crate) timeout: Duration,
+    pub(crate) json_output: bool,
     /// Constraints seeded from pattern memory — injected into the planning prompt.
-    extra_constraints: Vec<String>,
+    pub(crate) extra_constraints: Vec<String>,
     /// Model to use for CLI calls. None = let the CLI pick its default.
-    model: Option<String>,
+    pub(crate) model: Option<String>,
+    /// Reasoning-effort level (`--effort`) for the worker session. Stored
+    /// only after validation against the CLI's accepted levels (see
+    /// `with_effort`). None = let the CLI pick its default.
+    pub(crate) effort: Option<String>,
     /// Phase 5b — tabular pattern pairs (keywords, constraints) for TOON encoding.
-    patterns: Vec<(String, String)>,
+    pub(crate) patterns: Vec<(String, String)>,
     /// Phase 5b — lessons learned from past patterns or post-mortems (category, content).
-    lessons: Vec<(String, String)>,
+    pub(crate) lessons: Vec<(String, String)>,
     /// Per-session `--max-turns` cap passed to `claude -p`. None = CLI default.
-    max_turns: Option<u32>,
+    pub(crate) max_turns: Option<u32>,
     /// Per-session `--max-budget-usd` cap passed to `claude -p`. None = no cap.
-    max_budget_usd: Option<f64>,
+    pub(crate) max_budget_usd: Option<f64>,
     /// `--allowedTools` — tool names explicitly permitted (e.g. `"Bash(git *)"`).
     /// Wired from `LoopConfig::permission_allow`. Empty = no additions beyond
     /// the CLI's own defaults.
-    allowed_tools: Vec<String>,
+    pub(crate) allowed_tools: Vec<String>,
     /// `--disallowedTools` — tool names explicitly denied. Wired from
     /// `LoopConfig::permission_deny`. Empty = nothing denied.
-    disallowed_tools: Vec<String>,
+    pub(crate) disallowed_tools: Vec<String>,
 }
 
 impl ClaudeCode {
@@ -65,6 +72,7 @@ impl ClaudeCode {
             json_output: true,
             extra_constraints: vec![],
             model: None,
+            effort: None,
             patterns: vec![],
             lessons: vec![],
             max_turns: None,
@@ -72,88 +80,6 @@ impl ClaudeCode {
             allowed_tools: vec![],
             disallowed_tools: vec![],
         }
-    }
-
-    /// Override the Claude model used for CLI invocations.
-    #[must_use]
-    pub fn with_model(mut self, model: impl Into<String>) -> Self {
-        self.model = Some(model.into());
-        self
-    }
-
-    /// Set the per-session `--max-turns` cap. The CLI halts cleanly at the cap
-    /// and emits a terminal `result`, rather than running on.
-    #[must_use]
-    pub fn with_max_turns(mut self, turns: u32) -> Self {
-        self.max_turns = Some(turns);
-        self
-    }
-
-    /// Set the per-session `--max-budget-usd` cap. The CLI halts cleanly once
-    /// cumulative cost reaches the cap.
-    #[must_use]
-    pub fn with_max_budget_usd(mut self, usd: f64) -> Self {
-        self.max_budget_usd = Some(usd);
-        self
-    }
-
-    /// Set `--allowedTools` — tool names explicitly permitted for this
-    /// session. Empty (the default) adds nothing beyond the CLI's own
-    /// defaults.
-    #[must_use]
-    pub fn with_allowed_tools(mut self, tools: Vec<String>) -> Self {
-        self.allowed_tools = tools;
-        self
-    }
-
-    /// Set `--disallowedTools` — tool names explicitly denied for this
-    /// session. Empty (the default) denies nothing.
-    #[must_use]
-    pub fn with_disallowed_tools(mut self, tools: Vec<String>) -> Self {
-        self.disallowed_tools = tools;
-        self
-    }
-
-    /// Override the path to the `claude` CLI binary.
-    #[must_use]
-    pub fn with_cli(mut self, cli_path: impl Into<String>) -> Self {
-        self.cli_path = cli_path.into();
-        self
-    }
-
-    /// Set the per-invocation timeout in seconds.
-    #[must_use]
-    pub fn with_timeout(mut self, secs: u64) -> Self {
-        self.timeout = Duration::from_secs(secs);
-        self
-    }
-
-    /// Enable or disable `--output-format json` on CLI calls.
-    #[must_use]
-    pub fn with_json_output(mut self, enabled: bool) -> Self {
-        self.json_output = enabled;
-        self
-    }
-
-    /// Inject additional constraints from pattern memory into the planning prompt.
-    #[must_use]
-    pub fn with_extra_constraints(mut self, constraints: Vec<String>) -> Self {
-        self.extra_constraints = constraints;
-        self
-    }
-
-    /// Attach TOON-encoded keyword/constraint pattern pairs for the planning prompt.
-    #[must_use]
-    pub fn with_patterns(mut self, patterns: Vec<(String, String)>) -> Self {
-        self.patterns = patterns;
-        self
-    }
-
-    /// Attach lessons learned from past post-mortems for the planning prompt.
-    #[must_use]
-    pub fn with_lessons(mut self, lessons: Vec<(String, String)>) -> Self {
-        self.lessons = lessons;
-        self
     }
 
     /// Plan the task. Uses TOON for constraints/dirs/pattern memory context.
@@ -220,6 +146,7 @@ impl ClaudeCode {
         apply_cli_caps(
             &mut cmd,
             self.model.as_deref(),
+            self.effort.as_deref(),
             self.max_turns,
             self.max_budget_usd,
             &self.allowed_tools,
@@ -343,22 +270,19 @@ impl ClaudeCode {
     ///
     /// Returns an error if the claude CLI process fails or times out.
     pub async fn fix(&self, task: &Task, errors: &[String]) -> Result<String> {
+        // Reuse the shared TOON scope encoder (same as `implement`) instead of
+        // a hand-rolled `allowed[..]:` line, so every worker prompt lopi builds
+        // is TOON-encoded and the fix agent also sees the forbidden dirs it
+        // must not touch. Patterns/lessons are omitted — a fix pass only needs
+        // the goal, the scope, and the compressed failures.
         let allowed: Vec<&str> = task.allowed_dirs.iter().map(String::as_str).collect();
-        // Inline primitive array: site 1 partial (dirs only).
-        let allowed_str = if allowed.is_empty() {
-            String::new()
-        } else {
-            format!("allowed[{}]: {}\n", allowed.len(), allowed.join(","))
-        };
-
+        let forbidden: Vec<&str> = task.forbidden_dirs.iter().map(String::as_str).collect();
+        let scope = lopi_toon::encode_task_context(&task.goal, &allowed, &forbidden, &[], &[], &[]);
         let failures = compress_errors(errors);
         let prompt = format!(
-            "The previous attempt failed. Fix the failures below.\n\
-             {allowed_str}\n\
-             Goal: {goal}\n\n\
-             ## Failures\n\
-             {failures}",
-            goal = task.goal,
+            "The previous attempt failed. Fix the failures below.\n\n\
+             ## Scope (TOON)\n{scope}\n\n\
+             ## Failures\n{failures}"
         );
         let out = self.run(&prompt).await?;
         Ok(out.text().to_string())
@@ -394,6 +318,7 @@ impl ClaudeCode {
             task,
             all_constraints,
             self.model.as_deref(),
+            self.effort.as_deref(),
             self.max_budget_usd,
             self.max_turns,
             &self.allowed_tools,
@@ -436,6 +361,7 @@ impl ClaudeCode {
         apply_cli_caps(
             &mut cmd,
             self.model.as_deref(),
+            self.effort.as_deref(),
             self.max_turns,
             self.max_budget_usd,
             &self.allowed_tools,

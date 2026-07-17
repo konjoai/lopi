@@ -278,6 +278,9 @@ pub(super) fn apply_loop_fields(
     if let Some(e) = &req.effort {
         task.effort = Some(e.clone());
     }
+    if let Some(d) = req.deliverable {
+        task.deliverable = Some(d);
+    }
     if let Some(g) = &req.gate {
         task.gate = Some(g.clone());
     }
@@ -295,6 +298,9 @@ pub(super) fn apply_loop_fields(
     }
     if let Some(b) = req.budget_tokens {
         task.budget_tokens = b;
+    }
+    if let Some(bo) = &req.budget_override {
+        task.budget_override = Some(bo.clone());
     }
     Ok(())
 }

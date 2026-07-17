@@ -227,7 +227,10 @@ impl AgentRunner {
         if until_satisfied && !score.passed() {
             self.log("● until condition met — concluding the loop early");
         }
-        let Some(status) = self.finalize(branch, git, score, attempt + 1).await else {
+        let Some(status) = self
+            .finalize(branch, git, score, until_satisfied, attempt + 1)
+            .await
+        else {
             return TestPhaseOutcome::Continue;
         };
         // Goal-met (A3) — the highest-precedence terminal: the loop
@@ -297,8 +300,12 @@ impl AgentRunner {
         }
 
         self.log("● fix worked — finalizing…");
-        // Same L1–L4 finalize path as the primary success branch.
-        if let Some(status) = self.finalize(branch, git, &fixed_score, attempt + 1).await {
+        // Same L1–L4 finalize path as the primary success branch. The fix
+        // path is never an `until`-driven conclusion, so pass `false`.
+        if let Some(status) = self
+            .finalize(branch, git, &fixed_score, false, attempt + 1)
+            .await
+        {
             self.status(status.clone(), attempt + 1);
             return Ok(FixOutcome::Finalized(status));
         }

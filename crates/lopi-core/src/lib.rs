@@ -19,6 +19,9 @@ pub mod budget;
 pub mod budget_preset;
 /// Global and per-repo configuration structures.
 pub mod config;
+/// Goal-intent classification (file-changes vs review-only) for intent-aware
+/// success — see [`deliverable::Deliverable`].
+pub mod deliverable;
 /// Earned-trust auto-promotion state machine (Phase 16.7).
 pub mod earned_trust;
 /// Eval-Execution-1 (A1) — the one eval-result object (cross-cutting seam #3),
@@ -67,6 +70,7 @@ pub use budget_preset::{
     parse_usd_amount, BudgetOverride, BudgetPreset, BudgetSection, ResolvedBudget,
 };
 pub use config::{LimitWindow, LopiConfig, MaxxEntry, RepoProfile, ScheduleEntry};
+pub use deliverable::Deliverable;
 pub use earned_trust::EarnedTrust;
 pub use eval_outcome::{CheckResult, EvalOutcome, Verdict};
 pub use event::{AgentEvent, EventBus, LogLevel, PlanDecision};

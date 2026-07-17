@@ -17,7 +17,7 @@
 
 use super::AgentRunner;
 use lopi_core::loop_config::AutonomyLevel;
-use lopi_core::{AgentEvent, LoopConfig, Score, TaskStatus};
+use lopi_core::{AgentEvent, Deliverable, LoopConfig, Score, TaskStatus};
 use lopi_git::GitManager;
 
 /// What the runner should do with a passing attempt's branch.
@@ -56,6 +56,15 @@ pub(super) fn should_auto_merge(decision: PrDecision, pr_opened: bool) -> bool {
     decision == PrDecision::AutoMerge && pr_opened
 }
 
+/// Whether a zero-diff attempt should conclude as a success rather than be
+/// rejected for retry (intent-aware success). True when the goal is
+/// review-only — it legitimately changes nothing — or whenever the loop's
+/// `until` exit condition already fired, which ends the loop early regardless
+/// of this attempt's own output.
+pub(super) fn zero_diff_is_success(deliverable: Deliverable, until_satisfied: bool) -> bool {
+    until_satisfied || deliverable.allows_zero_diff_success()
+}
+
 impl AgentRunner {
     /// Finalize a passing attempt according to the task's autonomy level.
     ///
@@ -69,6 +78,7 @@ impl AgentRunner {
         branch: &str,
         git: &GitManager,
         score: &Score,
+        until_satisfied: bool,
         attempt: u8,
     ) -> Option<TaskStatus> {
         let level = self.task.autonomy_level;
@@ -86,25 +96,21 @@ impl AgentRunner {
             return None;
         }
 
-        // `commit_all` uses libgit2 directly, not the `git` CLI — unlike
-        // `git commit` (which refuses and exits non-zero on an empty tree),
-        // `Repository::commit` happily creates a commit whose tree is
-        // byte-identical to its parent's. So without this check, an attempt
-        // that made zero real changes (e.g. the goal's target file already
-        // existed from an earlier run, and this attempt's Planning/
-        // Implementing halted on `error_max_turns` before doing anything new)
-        // still "succeeds": an empty commit, then a genuinely diff-less PR
-        // opened against it. `score.diff_lines` is already computed
-        // (`Scorer::score`, including untracked new files) — reuse it as the
-        // single source of truth for "is there anything to commit" instead
-        // of re-deriving it here.
+        // Zero-diff handling (intent-aware success). `commit_all` uses
+        // libgit2, not the `git` CLI — unlike `git commit` (which refuses on
+        // an empty tree), `Repository::commit` happily creates a commit whose
+        // tree is byte-identical to its parent's, so an attempt that changed
+        // nothing must never be committed or PR'd. But *what a zero diff
+        // means* depends on the goal: a "write research.md" goal that wrote
+        // nothing is a failure, while a "review the auth module" goal
+        // legitimately produces no changes. `conclude_zero_diff` routes on the
+        // task's `Deliverable` (see below). `score.diff_lines` is already
+        // computed (`Scorer::score`, incl. untracked new files) — the single
+        // source of truth for "is there anything to commit".
         if score.diff_lines == 0 {
-            self.log("● no file changes produced — skipping commit and PR");
-            git.checkout_default().await.ok();
-            return Some(TaskStatus::Success {
-                branch: branch.to_string(),
-                pr_url: None,
-            });
+            return self
+                .conclude_zero_diff(branch, git, until_satisfied, attempt)
+                .await;
         }
 
         self.log(format!("✅ finalizing ({}) — committing…", level.tag()));
@@ -125,6 +131,47 @@ impl AgentRunner {
             branch: branch.to_string(),
             pr_url,
         })
+    }
+
+    /// Decide what a zero-diff attempt means for this task (intent-aware
+    /// success). A review-only goal — or any attempt whose `until` exit
+    /// condition fired — legitimately concludes with no changes: check out
+    /// the default and return `Success` (no PR, nothing to commit). A goal
+    /// that expects file changes but produced none is *not* a success: roll
+    /// back, seed the next planning prompt with a pointed critique (when
+    /// adaptive retry is on), mark `Retrying`, and return `None` so the loop
+    /// tries again (and ultimately fails honestly on `MaxIterations` rather
+    /// than reporting a phantom `goal_met`).
+    async fn conclude_zero_diff(
+        &mut self,
+        branch: &str,
+        git: &GitManager,
+        until_satisfied: bool,
+        attempt: u8,
+    ) -> Option<TaskStatus> {
+        if zero_diff_is_success(self.task.deliverable_kind(), until_satisfied) {
+            self.log("● no file changes produced — concluding (none expected for this goal)");
+            git.checkout_default().await.ok();
+            return Some(TaskStatus::Success {
+                branch: branch.to_string(),
+                pr_url: None,
+            });
+        }
+        self.warn(
+            "● no file changes produced, but this goal expects file edits — \
+             rejecting attempt",
+        );
+        if self.adaptive_retry {
+            self.last_error = Some(format!(
+                "Attempt {attempt} finished without changing any files, but the goal \
+                 requires creating or editing files. Use the Write/Edit tools to make \
+                 the actual changes on disk before finishing — a summary is not enough."
+            ));
+        }
+        git.hard_rollback().await.ok();
+        git.checkout_default().await.ok();
+        self.status(TaskStatus::Retrying { attempt }, attempt);
+        None
     }
 
     /// Rebase the committed branch onto the advanced default before a PR.
@@ -256,11 +303,11 @@ pub(super) fn build_report_summary(goal: &str, branch: &str, score: &Score, atte
 #[allow(clippy::expect_used)]
 mod tests {
     use super::{
-        build_report_summary, pr_decision, requires_verifier, should_auto_merge, AgentRunner,
-        PrDecision,
+        build_report_summary, pr_decision, requires_verifier, should_auto_merge,
+        zero_diff_is_success, AgentRunner, PrDecision,
     };
     use lopi_core::loop_config::AutonomyLevel;
-    use lopi_core::{AgentEvent, Score, Task};
+    use lopi_core::{AgentEvent, Deliverable, Score, Task};
     use std::path::PathBuf;
 
     #[test]
@@ -329,6 +376,29 @@ mod tests {
         ] {
             assert!(!should_auto_merge(d, true));
         }
+    }
+
+    // ── Intent-aware zero-diff success ──────────────────────────────────────
+
+    #[test]
+    fn review_only_zero_diff_is_a_success() {
+        // A review/analysis goal legitimately produces no file changes.
+        assert!(zero_diff_is_success(Deliverable::ReviewOnly, false));
+    }
+
+    #[test]
+    fn file_changes_zero_diff_is_not_a_success() {
+        // A goal that must edit files but produced nothing is a failure to
+        // retry — the phantom-`goal_met` regression this guards against.
+        assert!(!zero_diff_is_success(Deliverable::FileChanges, false));
+    }
+
+    #[test]
+    fn until_fired_concludes_even_a_file_changes_goal() {
+        // The loop's `until` exit condition ends the loop early regardless of
+        // this attempt's own (empty) output.
+        assert!(zero_diff_is_success(Deliverable::FileChanges, true));
+        assert!(zero_diff_is_success(Deliverable::ReviewOnly, true));
     }
 
     // ── Report on Finish (Sprint 3) ─────────────────────────────────────────
