@@ -163,20 +163,25 @@ pub struct LoopConfig {
     pub rules_enabled: Vec<String>,
     /// Tool-call patterns pre-approved without prompting (e.g. `"Bash(cargo test *)"`).
     /// Forwarded to `claude -p` as `--allowedTools`. Include a tool named in
-    /// `permission_deny`'s default (currently just `"Workflow"`) here to
-    /// re-enable it for a repo that intentionally wants multi-agent fan-out.
+    /// `permission_deny`'s default (`Workflow`/`Task`/`Agent`) here to re-enable
+    /// it for a repo that intentionally wants multi-agent fan-out.
     #[serde(default)]
     pub permission_allow: Vec<String>,
     /// Tool-call patterns always denied (e.g. `"Bash(rm -rf *)"`). Forwarded
     /// to `claude -p` as `--disallowedTools` — genuinely enforced even
     /// alongside `--dangerously-skip-permissions` (verified live: the model
     /// reports the tool as simply absent, not merely unapproved). Defaults to
-    /// denying `Workflow`, the multi-agent orchestration primitive: a
-    /// deep-research-style goal fanning out through it is what actually ran
-    /// one `claude -p` session to $25.79 with no budget cap in place at all.
-    /// `max_budget_usd`/`budget_tokens` above cap *how much* such a session
-    /// can spend before halting; this stops the fan-out itself from starting
-    /// on loops that don't explicitly opt in via `permission_allow`.
+    /// denying every parallel sub-agent fan-out primitive — `Workflow` (the
+    /// orchestration script) plus `Task`/`Agent` (the direct spawn tool, under
+    /// both CLI names): fanning out through `Task` is what blew a $3-capped
+    /// session to $6.89 (and, uncapped, $25.79). `max_budget_usd` only caps a
+    /// session *between* turns, so it cannot govern money sub-agents burn in
+    /// parallel; denying the fan-out stops it from starting on loops that
+    /// don't explicitly opt in via `permission_allow`.
+    ///
+    /// Note: the runtime budget is resolved from the `[budget]` preset
+    /// ([`LoopConfig::resolved_budget`]); this flat field is the legacy
+    /// pre-`[budget]` knob, kept in sync so it never contradicts the preset.
     #[serde(default = "default_permission_deny")]
     pub permission_deny: Vec<String>,
     /// Halt after this many consecutive no-progress iterations (`0` = disabled).
@@ -295,11 +300,12 @@ fn default_max_iterations() -> u8 {
     25
 }
 
-/// Conservative enough to stop a runaway fan-out (a deep-research-style goal
-/// invoking several parallel sub-agents) well short of real damage, generous
-/// enough for ordinary plan/implement sessions.
+/// Kept in sync with the default `standard` preset's cap ($1): a conservative
+/// per-session ceiling that, with fan-out denied, keeps one plan/implement/fix
+/// session's spend in the low-cents-to-$1 range a normal agent uses. Legacy
+/// flat mirror of [`BudgetPreset::Standard`](crate::budget_preset::BudgetPreset).
 fn default_max_budget_usd() -> f64 {
-    3.0
+    1.0
 }
 
 /// A few times the single-turn context budget (`AgentRunner::CONTEXT_BUDGET`,
@@ -310,9 +316,17 @@ fn default_budget_tokens() -> u64 {
     1_000_000
 }
 
-/// See `LoopConfig::permission_deny`'s doc comment.
+/// See `LoopConfig::permission_deny`'s doc comment. Denies every parallel
+/// sub-agent fan-out primitive — `Workflow` plus both names the direct spawn
+/// tool ships under (`Task`, `Agent`). Mirrors the capped presets'
+/// [`FAN_OUT_DENY`](crate::budget_preset) set; a name the running CLI doesn't
+/// expose is a harmless no-op.
 fn default_permission_deny() -> Vec<String> {
-    vec!["Workflow".to_string()]
+    vec![
+        "Workflow".to_string(),
+        "Task".to_string(),
+        "Agent".to_string(),
+    ]
 }
 
 impl LoopConfig {
@@ -395,10 +409,9 @@ impl LoopConfig {
     /// `permission_allow` — which always wins over the preset's own deny
     /// list, so re-opening a tool (e.g. `Workflow` for an intentional
     /// fan-out repo) needs only `permission_allow`, never also clearing a
-    /// deny list by hand. `LoopConfig::default().resolved_budget()` is a
-    /// no-op: it reproduces the pre-existing hardcoded defaults ($3, 1M
-    /// tokens, deny `Workflow`) exactly, since `standard` — the default
-    /// preset — already carries those same values.
+    /// deny list by hand. `LoopConfig::default().resolved_budget()` yields
+    /// the conservative `standard` preset — a $1 cap, 1M tokens, and every
+    /// sub-agent fan-out primitive (`Workflow`/`Task`/`Agent`) denied.
     ///
     /// The legacy flat `max_budget_usd`/`budget_tokens`/`permission_allow`/
     /// `permission_deny` fields above predate `[budget]` and still parse for
