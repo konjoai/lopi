@@ -470,3 +470,44 @@ fn task_max_iterations_unset_falls_back_to_the_repo_config() {
         "no override set — the repo's LoopConfig ceiling applies unchanged"
     );
 }
+
+// ── Budget & Guardrail Controls Part 2/3 — effective_task_budget ───────────
+
+#[test]
+fn effective_task_budget_with_no_override_is_the_repo_resolved_budget() {
+    let task = Task::new("no budget override");
+    let cfg = lopi_core::LoopConfig::default();
+    let resolved = run_loop::effective_task_budget(&task, &cfg);
+    assert_eq!(resolved, cfg.resolved_budget());
+}
+
+#[test]
+fn effective_task_budget_bare_usd_override_never_reopens_workflow() {
+    let mut task = Task::new("bump the cap only");
+    task.budget_override = Some(lopi_core::BudgetOverride {
+        usd: Some(9.0),
+        ..Default::default()
+    });
+    let cfg = lopi_core::LoopConfig::default();
+    let resolved = run_loop::effective_task_budget(&task, &cfg);
+    assert_eq!(resolved.usd, 9.0);
+    assert_eq!(
+        resolved.deny,
+        vec!["Workflow".to_string()],
+        "a bare USD override must not touch the tool deny list"
+    );
+}
+
+#[test]
+fn effective_task_budget_preset_override_replaces_the_repo_budget() {
+    let mut task = Task::new("go deep for this one card");
+    task.budget_override = Some(lopi_core::BudgetOverride {
+        preset: Some(lopi_core::BudgetPreset::Deep),
+        ..Default::default()
+    });
+    let cfg = lopi_core::LoopConfig::default();
+    let resolved = run_loop::effective_task_budget(&task, &cfg);
+    assert_eq!(resolved.usd, 10.0);
+    assert_eq!(resolved.tokens, 5_000_000);
+    assert!(resolved.deny.is_empty(), "deep preset re-enables Workflow");
+}

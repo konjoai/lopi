@@ -326,6 +326,13 @@ pub struct Task {
     /// usage against it and stops with [`crate::StopReason::Budget`] on exceed.
     #[serde(default)]
     pub budget_tokens: u64,
+    /// Budget & Guardrail Controls Part 3 — per-task override applied on top
+    /// of the repo's [`crate::loop_config::LoopConfig::resolved_budget`]
+    /// (`lopi run --budget`/`--budget-preset`/`--budget-tokens`, Telegram
+    /// `/budget`). `None` (the default) leaves the repo's resolved budget as
+    /// the sole source, unchanged from before this field existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub budget_override: Option<crate::budget_preset::BudgetOverride>,
 }
 
 /// Where a task originated — used for routing replies and audit logging.
@@ -392,6 +399,7 @@ impl Task {
             acceptance: None,
             verifier_fail_open: false,
             budget_tokens: 0,
+            budget_override: None,
         }
     }
 

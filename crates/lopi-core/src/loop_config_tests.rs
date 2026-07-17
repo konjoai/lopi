@@ -272,6 +272,97 @@ fn loop_config_permission_lists_round_trip_through_toml() {
     assert!(back.permission_deny.is_empty());
 }
 
+/// Behavioral invariant (Budget & Guardrail Controls Part 2): `standard` ==
+/// today's behavior. Existing repos with no `[budget]` section resolve to
+/// $3 / 1M tokens / deny `Workflow` — a no-op migration.
+#[test]
+fn loop_config_default_resolved_budget_is_a_no_op_migration() {
+    let r = LoopConfig::default().resolved_budget();
+    assert_eq!(r.usd, 3.0);
+    assert_eq!(r.tokens, 1_000_000);
+    assert_eq!(r.deny, vec!["Workflow".to_string()]);
+    assert!(r.allow.is_empty());
+}
+
+#[test]
+fn resolved_budget_honors_preset_choice() {
+    let c = LoopConfig {
+        budget: crate::budget_preset::BudgetSection {
+            preset: crate::budget_preset::BudgetPreset::Deep,
+            ..Default::default()
+        },
+        ..LoopConfig::default()
+    };
+    let r = c.resolved_budget();
+    assert_eq!(r.usd, 10.0);
+    assert_eq!(r.tokens, 5_000_000);
+    assert!(r.deny.is_empty(), "deep re-enables Workflow by default");
+}
+
+#[test]
+fn resolved_budget_explicit_fields_win_over_preset() {
+    let c = LoopConfig {
+        budget: crate::budget_preset::BudgetSection {
+            preset: crate::budget_preset::BudgetPreset::Quick,
+            max_budget_usd: Some(2.5),
+            budget_tokens: Some(500_000),
+            ..Default::default()
+        },
+        ..LoopConfig::default()
+    };
+    let r = c.resolved_budget();
+    assert_eq!(r.usd, 2.5);
+    assert_eq!(r.tokens, 500_000);
+    assert_eq!(
+        r.deny,
+        vec!["Workflow".to_string()],
+        "quick's own deny list is untouched by the usd/token overrides"
+    );
+}
+
+/// `permission_allow` under `[budget]` re-opens a preset-denied tool without
+/// also needing to clear a deny list by hand.
+#[test]
+fn resolved_budget_permission_allow_reopens_preset_deny() {
+    let c = LoopConfig {
+        budget: crate::budget_preset::BudgetSection {
+            preset: crate::budget_preset::BudgetPreset::Standard,
+            permission_allow: vec!["Workflow".to_string()],
+            ..Default::default()
+        },
+        ..LoopConfig::default()
+    };
+    let r = c.resolved_budget();
+    assert!(r.deny.is_empty());
+    assert_eq!(r.allow, vec!["Workflow".to_string()]);
+}
+
+#[test]
+fn budget_section_round_trips_through_toml() {
+    let c: LoopConfig = toml::from_str(
+        "[budget]\npreset = \"deep\"\nmax_budget_usd = 7.5\npermission_allow = [\"Bash\"]\n",
+    )
+    .unwrap();
+    assert_eq!(
+        c.budget.preset,
+        crate::budget_preset::BudgetPreset::Deep
+    );
+    assert_eq!(c.budget.max_budget_usd, Some(7.5));
+    assert_eq!(c.budget.permission_allow, vec!["Bash".to_string()]);
+}
+
+/// A config predating `[budget]` (this sprint's own baseline) must still
+/// parse and land on the standard-preset defaults.
+#[test]
+fn loop_config_parses_toml_missing_budget_section() {
+    let c: LoopConfig = toml::from_str("autonomy_level = \"draft_pr\"\n").unwrap();
+    assert_eq!(
+        c.budget.preset,
+        crate::budget_preset::BudgetPreset::Standard
+    );
+    assert_eq!(c.resolved_budget().usd, 3.0);
+}
+
 #[test]
 fn loop_config_verifier_gate_defaults_off() {
     let c = LoopConfig::default();

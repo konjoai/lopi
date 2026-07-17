@@ -300,6 +300,23 @@ pub(super) fn build_runner(
     }
 }
 
+/// Budget & Guardrail Controls Part 2/3 — resolve the effective budget for
+/// one task: the repo's `[budget]` preset (plus any explicit overrides under
+/// it), then any per-task override layered on top (`lopi run --budget`/
+/// `--budget-preset`/`--budget-tokens`, Telegram `/budget`). A bare per-task
+/// USD/token override never touches the tool allow/deny lists on its own —
+/// see [`lopi_core::BudgetOverride::apply`]'s "fan-out stays opt-in" doc
+/// comment. Pure (no I/O) so it's unit-testable without the pool's
+/// git/worktree machinery.
+pub(super) fn effective_task_budget(
+    task: &Task,
+    cfg: &lopi_core::LoopConfig,
+) -> lopi_core::ResolvedBudget {
+    task.budget_override
+        .as_ref()
+        .map_or_else(|| cfg.resolved_budget(), |ov| ov.apply(cfg.resolved_budget()))
+}
+
 /// The repo-level (`.lopi/loop.toml`) guardrail defaults a task's own
 /// `gate`/`until`/`on_fail` may override. Bundled into one struct — rather
 /// than three more positional args on [`build_runner`] — since they're
@@ -384,6 +401,8 @@ async fn run_one(
         .as_ref()
         .map_or_else(|| repo.clone(), |w| w.path().to_path_buf());
 
+    let resolved_budget = effective_task_budget(&task, &cfg);
+
     let mut runner = build_runner(
         task,
         work_repo,
@@ -395,10 +414,10 @@ async fn run_one(
         cfg.self_prompt,
         cfg.escalate_strategy,
         skills,
-        cfg.budget_tokens,
-        cfg.max_budget_usd,
-        cfg.permission_allow.clone(),
-        cfg.permission_deny.clone(),
+        resolved_budget.tokens,
+        resolved_budget.usd,
+        resolved_budget.allow,
+        resolved_budget.deny,
         cfg.max_iterations,
         repo_guardrails,
         cfg.reflect_cross_run,
