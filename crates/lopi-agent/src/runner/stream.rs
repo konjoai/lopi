@@ -49,6 +49,11 @@ impl AgentRunner {
                 if let Some(estimated_usd) = acc.check_soft_warn(&model_owned, cap_usd) {
                     emit_budget_soft_warn(&bus, tid, estimated_usd, cap_usd);
                 }
+                if let Some(estimated_usd) = acc.check_hard_stop(&model_owned, cap_usd) {
+                    emit_budget_hard_stop(&bus, tid, estimated_usd, cap_usd);
+                    return false;
+                }
+                true
             })
             .await?;
         self.persist_turn(&accrual, model, attempt).await;
@@ -79,6 +84,11 @@ impl AgentRunner {
                 if let Some(estimated_usd) = acc.check_soft_warn(&model_owned, cap_usd) {
                     emit_budget_soft_warn(&bus, tid, estimated_usd, cap_usd);
                 }
+                if let Some(estimated_usd) = acc.check_hard_stop(&model_owned, cap_usd) {
+                    emit_budget_hard_stop(&bus, tid, estimated_usd, cap_usd);
+                    return false;
+                }
+                true
             })
             .await?;
         self.persist_turn(&accrual, model, attempt).await;
@@ -152,6 +162,10 @@ struct UsageAccrual {
     /// this stream, so a session hovering near its cap warns once, not on
     /// every subsequent `TokenUsage` delta.
     warned: AtomicBool,
+    /// Latches once [`check_hard_stop`](Self::check_hard_stop) has requested
+    /// an abort, so a stream already being killed doesn't re-request it on
+    /// every remaining event in the same decoded line.
+    hard_stopped: AtomicBool,
     /// Authoritative cumulative token totals from the terminal `result`'s
     /// usage breakdown — sub-agent-inclusive. Preferred over the delta sums
     /// for the persisted `turn_metrics` row once `has_authoritative` is set.
@@ -276,6 +290,37 @@ impl UsageAccrual {
         }
         Some(estimated)
     }
+
+    /// Hard-stop check: same estimated-cost basis as [`check_soft_warn`], but
+    /// fires at 100% of `cap_usd` rather than 80%, and the caller kills the
+    /// subprocess on `Some` rather than merely logging. This is lopi's own
+    /// backstop for the CLI's `--max-budget-usd` flag, which only checks its
+    /// *billed* total between turns — a turn packing several serial
+    /// `WebFetch`/`WebSearch` calls can accumulate real cost mid-turn and
+    /// only get compared against the cap once the whole turn finishes, by
+    /// which point spend may already be well past it. Estimating from token
+    /// counts observed *within* the turn closes that window instead of
+    /// trusting the CLI's own end-of-turn accounting. `cap_usd <= 0.0` (the
+    /// "disabled" sentinel) never stops.
+    fn check_hard_stop(&self, model: &str, cap_usd: f64) -> Option<f64> {
+        if cap_usd <= 0.0 {
+            return None;
+        }
+        let usage = ApiUsage {
+            input_tokens: self.input.saturating_u32(),
+            output_tokens: self.output.saturating_u32(),
+            cache_read_tokens: self.cache_read.saturating_u32(),
+            cache_write_tokens: self.cache_write.saturating_u32(),
+        };
+        let estimated = usage.estimated_cost(model);
+        if estimated < cap_usd {
+            return None;
+        }
+        if self.hard_stopped.swap(true, Ordering::Relaxed) {
+            return None;
+        }
+        Some(estimated)
+    }
 }
 
 /// Saturating `AtomicU64` → `u32` read, for the `u32` token fields of
@@ -353,6 +398,39 @@ fn emit_budget_soft_warn(
         task_id: tid,
         estimated_usd,
         cap_usd,
+    });
+}
+
+/// Budget & Guardrail Controls — lopi's own hard stop: estimated cost reached
+/// 100% of the resolved cap, so the caller is about to kill the subprocess
+/// rather than let the CLI's own between-turn accounting decide when to
+/// (see [`UsageAccrual::check_hard_stop`]). Reuses [`AgentEvent::BudgetExceeded`]
+/// (scope [`BudgetScope::Task`](lopi_core::BudgetScope::Task)) — the same wire
+/// shape the fleet-hourly governor emits — so the web Forge's existing
+/// budget-exceeded handling picks this up with no new client-side plumbing.
+fn emit_budget_hard_stop(
+    bus: &lopi_core::EventBus<AgentEvent>,
+    tid: lopi_core::TaskId,
+    estimated_usd: f64,
+    cap_usd: f64,
+) {
+    tracing::warn!(
+        task_id = %tid,
+        estimated_usd,
+        cap_usd,
+        "session cost reached its resolved --max-budget-usd cap — killing the subprocess"
+    );
+    bus.send(AgentEvent::info(
+        tid,
+        format!(
+            "● budget hard-stop: estimated ${estimated_usd:.4} reached the ${cap_usd:.2} cap — ending this session"
+        ),
+    ));
+    bus.send(AgentEvent::BudgetExceeded {
+        task_id: Some(tid),
+        scope: lopi_core::BudgetScope::Task,
+        limit_usd: cap_usd,
+        burned_usd: estimated_usd,
     });
 }
 

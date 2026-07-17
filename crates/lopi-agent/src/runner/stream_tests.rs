@@ -183,3 +183,67 @@ fn emit_budget_soft_warn_sends_the_structured_event() {
         other => panic!("expected BudgetSoftWarn, got {other:?}"),
     }
 }
+
+// ── Budget hard-stop — lopi's own kill switch at 100% of cap ────────────
+
+#[test]
+fn check_hard_stop_disabled_when_cap_is_zero() {
+    let acc = UsageAccrual::default();
+    acc.observe(&usage(1_000_000, 1_000_000, 0, 0));
+    assert_eq!(acc.check_hard_stop(crate::claude::MODEL_OPUS, 0.0), None);
+}
+
+#[test]
+fn check_hard_stop_none_under_the_cap() {
+    let acc = UsageAccrual::default();
+    // 90% of cap (same fixture as the soft-warn test) must not hard-stop —
+    // 80% and 100% are genuinely different thresholds.
+    acc.observe(&usage(300_000, 0, 0, 0));
+    assert_eq!(acc.check_hard_stop(crate::claude::MODEL_SONNET, 5.0), None);
+}
+
+#[test]
+fn check_hard_stop_fires_once_at_100_percent() {
+    let acc = UsageAccrual::default();
+    // Sonnet: 400K output tokens * $15/MTok = $6.00 — over a $5 cap.
+    acc.observe(&usage(400_000, 0, 0, 0));
+    let first = acc.check_hard_stop(crate::claude::MODEL_SONNET, 5.0);
+    assert!(first.is_some(), "must fire once the cap is reached/crossed");
+    assert!((first.unwrap() - 6.0).abs() < 0.01);
+
+    // Latches — a second poll for the same stream (about to be killed)
+    // must not re-request the abort.
+    assert_eq!(
+        acc.check_hard_stop(crate::claude::MODEL_SONNET, 5.0),
+        None,
+        "must not fire a second time for the same stream"
+    );
+}
+
+#[test]
+fn emit_budget_hard_stop_sends_a_budget_exceeded_event() {
+    let bus: lopi_core::EventBus<AgentEvent> = lopi_core::EventBus::new(8);
+    let mut rx = bus.subscribe();
+    let tid = lopi_core::TaskId::new();
+    emit_budget_hard_stop(&bus, tid, 6.0, 5.0);
+
+    // A log line precedes the structured event — drain it first.
+    rx.try_recv().expect("log line should have been sent");
+    let ev = rx
+        .try_recv()
+        .expect("structured event should have been sent");
+    match ev {
+        AgentEvent::BudgetExceeded {
+            task_id,
+            scope,
+            limit_usd,
+            burned_usd,
+        } => {
+            assert_eq!(task_id, Some(tid));
+            assert_eq!(scope, lopi_core::BudgetScope::Task);
+            assert!((limit_usd - 5.0).abs() < f64::EPSILON);
+            assert!((burned_usd - 6.0).abs() < f64::EPSILON);
+        }
+        other => panic!("expected BudgetExceeded, got {other:?}"),
+    }
+}

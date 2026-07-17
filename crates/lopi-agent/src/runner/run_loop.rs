@@ -1,7 +1,7 @@
 use super::progress::ProgressGate;
 use super::speculative::SpecFlow;
 use super::{schema_gate, AgentRunner};
-use crate::claude::{select_model, ClaudeCode, ERR_CREDIT_EXHAUSTED};
+use crate::claude::{select_model, ClaudeCode, ERR_BUDGET_HARD_STOP, ERR_CREDIT_EXHAUSTED};
 use crate::scorer::Scorer;
 use anyhow::Result;
 use lopi_context::Phase;
@@ -271,6 +271,19 @@ impl AgentRunner {
                             self.status(status.clone(), attempt + 1);
                             return Ok(status);
                         }
+                        // Non-retryable: lopi itself killed this session for
+                        // crossing its resolved USD cap (`stream.rs`'s hard
+                        // stop). A fresh attempt would spend a fresh session
+                        // against the same cap and, absent a wider budget,
+                        // hit it again — fail fast instead of burning another
+                        // full plan+implement cycle that can't succeed.
+                        if err_chain.contains(ERR_BUDGET_HARD_STOP) {
+                            let status = TaskStatus::Failed {
+                                reason: format!("BudgetExceeded: {e}"),
+                            };
+                            self.status(status.clone(), attempt + 1);
+                            return Ok(status);
+                        }
                         self.status(
                             TaskStatus::Retrying {
                                 attempt: attempt + 1,
@@ -329,7 +342,27 @@ impl AgentRunner {
                     .instrument(act_span)
                     .await;
                 if let Err(e) = act_result {
+                    let err_chain = format!("{e:#}");
                     self.warn(format!("implement failed: {e}"));
+                    // Same non-retryable cases as the plan path above: out of
+                    // credits, or lopi's own budget hard-stop killed this
+                    // session — a fresh attempt can't succeed either.
+                    if err_chain.contains(ERR_CREDIT_EXHAUSTED) {
+                        abort_attempt(&git).await;
+                        let status = TaskStatus::Failed {
+                            reason: format!("CreditExhausted: {e}"),
+                        };
+                        self.status(status.clone(), attempt + 1);
+                        return Ok(status);
+                    }
+                    if err_chain.contains(ERR_BUDGET_HARD_STOP) {
+                        abort_attempt(&git).await;
+                        let status = TaskStatus::Failed {
+                            reason: format!("BudgetExceeded: {e}"),
+                        };
+                        self.status(status.clone(), attempt + 1);
+                        return Ok(status);
+                    }
                     self.abort_and_mark_retrying(&git, attempt).await;
                     continue;
                 }
