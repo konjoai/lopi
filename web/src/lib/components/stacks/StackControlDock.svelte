@@ -17,6 +17,7 @@
   `SIDEBAR_MODE`).
 -->
 <script lang="ts">
+  import { tick } from 'svelte';
   import {
     type StackPaneState,
     STACK_CONTROL_MODE,
@@ -42,6 +43,9 @@
     evalSuiteOptions,
     applySuite,
     EVAL_SUITES,
+    aliasAutocomplete,
+    resolvePresetAlias,
+    PRESET_CATALOG,
     type DryRunResult,
     type CommandValueSuggestion
   } from '$lib/stores/stack';
@@ -144,6 +148,7 @@
   let pendingCommand: string | null = null;
 
   $: void ensureBranches(config.defaults.repo);
+  $: aliasMatches = aliasAutocomplete(cmdText);
   $: repoMatches = repoAutocomplete(cmdText, repoOptions);
 
   function commandOptionsFor(command: string): Option[] {
@@ -172,13 +177,21 @@
     }
   }
 
-  $: showRepoBarSuggest = cmdBarFocused && !cmdDismissed && !pendingCommand && repoMatches.length > 0;
+  $: showAliasBarSuggest = cmdBarFocused && !cmdDismissed && !pendingCommand && aliasMatches.length > 0;
+  $: showRepoBarSuggest =
+    cmdBarFocused && !cmdDismissed && !pendingCommand && !showAliasBarSuggest && repoMatches.length > 0;
   $: cmdMatches = pendingCommand
     ? commandValueAutocomplete(cmdText, pendingCommand, commandOptionsFor(pendingCommand))
     : commandAutocomplete(cmdText, STACK_COMMANDS);
-  $: showCmdBarSuggest = cmdBarFocused && !cmdDismissed && !showRepoBarSuggest && cmdMatches.length > 0;
-  $: if (cmdActiveIndex >= (showRepoBarSuggest ? repoMatches.length : cmdMatches.length)) {
-    cmdActiveIndex = Math.max(0, (showRepoBarSuggest ? repoMatches.length : cmdMatches.length) - 1);
+  $: showCmdBarSuggest =
+    cmdBarFocused && !cmdDismissed && !showAliasBarSuggest && !showRepoBarSuggest && cmdMatches.length > 0;
+  $: activeMatchCount = showAliasBarSuggest
+    ? aliasMatches.length
+    : showRepoBarSuggest
+      ? repoMatches.length
+      : cmdMatches.length;
+  $: if (cmdActiveIndex >= activeMatchCount) {
+    cmdActiveIndex = Math.max(0, activeMatchCount - 1);
   }
   // Re-infer `pendingCommand` from the typed text on every change — see
   // StackCard.svelte's identical comment for why relying only on
@@ -225,6 +238,20 @@
     else if (command === 'goal') togglePopover(goalId);
   }
 
+  // A picked preset alias has no dedicated stack-level field to land on (no
+  // `pane.config.alias`) — the closest existing stack-scope equivalent to a
+  // card's `applyPreset` is its eval suite, so selecting a preset here
+  // attaches that preset's evals to the stack's chain acceptance, same as it
+  // would attach to a fresh card. Splices the resolved token back into
+  // `cmdText`, same pattern as `selectRepoFromBar` below.
+  function selectAliasFromBar(alias: string): void {
+    const key = resolvePresetAlias(alias.slice(1));
+    if (key) updateStackConfig(pane.key, { evals: PRESET_CATALOG[key].evals });
+    cmdText = `${alias} `;
+    cmdActiveIndex = 0;
+    cmdDismissed = true;
+  }
+
   // Splices the resolved token back into `cmdText` (plus a trailing space)
   // rather than clearing it, mirroring `StackCard.svelte`'s `selectRepo`/
   // `selectCommand` — otherwise the bar goes blank the instant a repo or
@@ -264,14 +291,45 @@
     cmdActiveIndex = 0;
   }
 
+  // ── grammar chips (always-visible entry points into the bar's own
+  //    autocomplete above) ─────────────────────────────────────────────────
+  function chipSpacer(text: string): string {
+    return text.length > 0 && !/\s$/.test(text) ? ' ' : '';
+  }
+
+  function chipAliasBar(): void {
+    cmdBarFocused = true;
+    cmdDismissed = false;
+    cmdText = `${cmdText}${chipSpacer(cmdText)}:`;
+    void tick().then(() => cmdBarInput?.focus());
+  }
+
+  function chipRepoBar(): void {
+    cmdBarFocused = true;
+    cmdDismissed = false;
+    cmdText = `${cmdText}${chipSpacer(cmdText)}@`;
+    void tick().then(() => cmdBarInput?.focus());
+  }
+
+  function chipCommandBar(command: string): void {
+    cmdBarFocused = true;
+    cmdDismissed = false;
+    selectCommandFromBar(`/${command}`);
+    void tick().then(() => cmdBarInput?.focus());
+  }
+
   function onCmdBarInput(e: Event): void {
     cmdText = (e.currentTarget as HTMLTextAreaElement).value;
     cmdDismissed = false;
   }
 
   function onCmdBarKeydown(e: KeyboardEvent): void {
-    const showing = showRepoBarSuggest || showCmdBarSuggest;
-    const matches: Array<{ token: string }> = showRepoBarSuggest ? repoMatches : cmdMatches;
+    const showing = showAliasBarSuggest || showRepoBarSuggest || showCmdBarSuggest;
+    const matches: Array<{ token: string }> = showAliasBarSuggest
+      ? aliasMatches.map((m) => ({ token: m.alias }))
+      : showRepoBarSuggest
+        ? repoMatches
+        : cmdMatches;
     if (showing) {
       if (e.key === 'ArrowDown') {
         e.preventDefault();
@@ -285,7 +343,8 @@
       }
       if (e.key === 'Tab' || e.key === 'Enter') {
         e.preventDefault();
-        if (showRepoBarSuggest) selectRepoFromBar(matches[cmdActiveIndex].token);
+        if (showAliasBarSuggest) selectAliasFromBar(matches[cmdActiveIndex].token);
+        else if (showRepoBarSuggest) selectRepoFromBar(matches[cmdActiveIndex].token);
         else selectCommandFromBar(matches[cmdActiveIndex].token);
         return;
       }
@@ -446,10 +505,17 @@
           on:blur={() => (cmdBarFocused = false)}
           use:autoGrow
           rows="1"
-          placeholder="@org/repo /model /effort /branch /autonomy /loop /guard /schedule /eval /goal"
+          placeholder="stack command..."
           spellcheck="false"
         ></textarea>
-        {#if showRepoBarSuggest}
+        {#if showAliasBarSuggest}
+          <AutocompleteSuggest
+            anchor={cmdBarInput}
+            items={aliasMatches.map((m) => ({ value: m.alias, label: m.label, hint: m.hint }))}
+            activeIndex={cmdActiveIndex}
+            onSelect={selectAliasFromBar}
+          />
+        {:else if showRepoBarSuggest}
           <AutocompleteSuggest
             anchor={cmdBarInput}
             items={repoMatches.map((m) => ({ value: m.token, label: m.label, hint: m.hint }))}
@@ -464,6 +530,13 @@
             onSelect={selectCommandFromBar}
           />
         {/if}
+      </div>
+      <div class="grammarchips">
+        <button type="button" class="gchip alias" on:click={chipAliasBar}>:alias</button>
+        <button type="button" class="gchip repo" on:click={chipRepoBar}>@repo</button>
+        <button type="button" class="gchip model" on:click={() => chipCommandBar('model')}>/model</button>
+        <button type="button" class="gchip effort" on:click={() => chipCommandBar('effort')}>/effort</button>
+        <button type="button" class="gchip loop" on:click={() => chipCommandBar('loop')}>×N</button>
       </div>
       {#if showSummary}
         {#if scheduledOn}
@@ -778,6 +851,64 @@
     border-color: rgba(183, 155, 255, 0.5);
     background: rgba(183, 155, 255, 0.05);
   }
+  .grammarchips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .gchip {
+    height: 22px;
+    display: inline-flex;
+    align-items: center;
+    padding: 0 8px;
+    border-radius: 11px;
+    background: transparent;
+    font-family: var(--font-mono, 'JetBrains Mono', monospace);
+    font-size: 9.5px;
+    cursor: pointer;
+    transition: 0.12s;
+  }
+  .gchip.alias {
+    border: 1px solid rgba(0, 255, 212, 0.4);
+    color: var(--stack-teal, #00ffd4);
+  }
+  .gchip.alias:hover {
+    border-color: rgba(0, 255, 212, 0.7);
+    background: rgba(0, 255, 212, 0.08);
+  }
+  .gchip.repo {
+    border: 1px solid rgba(0, 212, 255, 0.4);
+    color: var(--konjo-ice, #00d4ff);
+  }
+  .gchip.repo:hover {
+    border-color: rgba(0, 212, 255, 0.7);
+    background: rgba(0, 212, 255, 0.08);
+  }
+  .gchip.model {
+    border: 1px solid rgba(183, 155, 255, 0.4);
+    color: var(--stack-violet, #b79bff);
+  }
+  .gchip.model:hover {
+    border-color: rgba(183, 155, 255, 0.7);
+    background: rgba(183, 155, 255, 0.08);
+  }
+  .gchip.effort {
+    border: 1px solid rgba(255, 149, 0, 0.4);
+    color: var(--konjo-flame, #ff9500);
+  }
+  .gchip.effort:hover {
+    border-color: rgba(255, 149, 0, 0.7);
+    background: rgba(255, 149, 0, 0.08);
+  }
+  .gchip.loop {
+    border: 1px solid rgba(255, 204, 0, 0.4);
+    color: var(--konjo-sun, #ffcc00);
+  }
+  .gchip.loop:hover {
+    border-color: rgba(255, 204, 0, 0.7);
+    background: rgba(255, 204, 0, 0.08);
+  }
   .hintrow {
     font-size: 9px;
     color: rgba(245, 245, 245, 0.28);
@@ -808,19 +939,19 @@
     height: 11px;
   }
   .sumln.sched .rl {
-    color: var(--konjo-ice);
+    color: rgba(245, 245, 245, 0.6);
   }
   .sumln.guard .rl {
-    color: var(--konjo-sun);
+    color: rgba(245, 245, 245, 0.6);
   }
   .sumln.eval .rl {
-    color: var(--konjo-jade);
+    color: rgba(245, 245, 245, 0.6);
   }
   .sumln.goal .rl {
-    color: var(--konjo-flame, #ff9500);
+    color: rgba(245, 245, 245, 0.6);
   }
   .sumln.cfg .rl {
-    color: #e6ddff;
+    color: rgba(245, 245, 245, 0.6);
   }
   .sumln .txt {
     color: rgba(245, 245, 245, 0.66);
@@ -870,29 +1001,29 @@
     font-weight: 700;
   }
   .ib.sched.act {
-    color: var(--konjo-ice);
-    border-color: rgba(0, 212, 255, 0.6);
-    background: rgba(0, 212, 255, 0.14);
+    color: #f5f5f5;
+    border-color: rgba(255, 255, 255, 0.5);
+    background: rgba(255, 255, 255, 0.1);
   }
   .ib.guard.act {
-    color: var(--konjo-sun);
-    border-color: rgba(255, 204, 0, 0.6);
-    background: rgba(255, 204, 0, 0.14);
+    color: #f5f5f5;
+    border-color: rgba(255, 255, 255, 0.5);
+    background: rgba(255, 255, 255, 0.1);
   }
   .ib.eval.act {
-    color: var(--konjo-jade);
-    border-color: rgba(0, 255, 157, 0.6);
-    background: rgba(0, 255, 157, 0.14);
+    color: #f5f5f5;
+    border-color: rgba(255, 255, 255, 0.5);
+    background: rgba(255, 255, 255, 0.1);
   }
   .ib.config.act {
-    color: #efe9ff;
+    color: #f5f5f5;
     border-color: rgba(255, 255, 255, 0.5);
-    background: rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.1);
   }
   .ib.goal.act {
-    color: var(--konjo-flame, #ff9500);
-    border-color: rgba(255, 149, 0, 0.6);
-    background: rgba(255, 149, 0, 0.14);
+    color: #f5f5f5;
+    border-color: rgba(255, 255, 255, 0.5);
+    background: rgba(255, 255, 255, 0.1);
   }
   .ib.danger:hover {
     color: var(--konjo-rose, #ff0066);
@@ -1034,12 +1165,14 @@
     color: rgba(150, 255, 210, 0.95);
   }
   .runsplit {
+    width: clamp(220px, 62%, 420px);
     display: inline-flex;
     border-radius: 9px;
     overflow: hidden;
     box-shadow: 0 5px 18px rgba(255, 149, 0, 0.28);
   }
   .runmain {
+    flex: 1 1 auto;
     display: inline-flex;
     align-items: center;
     justify-content: center;
