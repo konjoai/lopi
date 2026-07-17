@@ -92,6 +92,47 @@ const fold = (blocks: TranscriptBlock[], e: AgentEvent) => appendEvent(blocks, e
   ok(b === before, 'turn_metrics is a no-op (same reference)');
 }
 
+// ── 🎯/🔬/📈/📐 synthetic status lines become chips, not plain prose ──────────
+{
+  // Before this fix these fell through to `appendText` — an eval verdict
+  // dump rendering indistinguishably from real Claude output.
+  let b: TranscriptBlock[] = [];
+  b = fold(b, log('🎯 eval: verdict=error score=0.500 (2 check(s))'));
+  ok(b[0].kind === 'status', 'eval line becomes a status chip, not prose');
+  eq((b[0] as { tier: string }).tier, 'bad', 'verdict=error is a bad chip (infra/config, not content)');
+  eq((b[0] as { label: string }).label, 'eval: verdict=error score=0.500 (2 check(s))', 'glyph stripped from label');
+}
+{
+  let b: TranscriptBlock[] = [];
+  b = fold(b, log('🎯 eval: verdict=pass score=1.000 (2 check(s))'));
+  eq((b[0] as { tier: string }).tier, 'good', 'verdict=pass is a good chip');
+}
+{
+  let b: TranscriptBlock[] = [];
+  b = fold(b, log('🎯 eval rejected — 2 critique item(s); appending for next attempt'));
+  eq((b[0] as { tier: string }).tier, 'warn', 'a rejected eval is a warn chip');
+}
+{
+  let b: TranscriptBlock[] = [];
+  b = fold(b, log('🔬 verifier: passed=true confidence=90% gaps=0'));
+  eq((b[0] as { tier: string }).tier, 'good', 'verifier passed=true is a good chip');
+}
+{
+  let b: TranscriptBlock[] = [];
+  b = fold(b, log('🔬 verifier errored — fail-closed: blocking finalize and retrying'));
+  eq((b[0] as { tier: string }).tier, 'bad', 'verifier erroring is a bad chip');
+}
+{
+  let b: TranscriptBlock[] = [];
+  b = fold(b, log('📈 gain gate: gain (weighted=0.850)'));
+  eq((b[0] as { tier: string }).tier, 'good', 'a gain-gate gain is a good chip');
+}
+{
+  let b: TranscriptBlock[] = [];
+  b = fold(b, log('📐 output_schema validation failed (1 issue(s)):'));
+  eq((b[0] as { tier: string }).tier, 'warn', 'schema validation failure is a warn chip');
+}
+
 // ── block list is capped at MAX_BLOCKS ────────────────────────────────────────
 {
   let b: TranscriptBlock[] = [];

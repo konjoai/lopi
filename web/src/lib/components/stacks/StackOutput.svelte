@@ -65,6 +65,16 @@
     }
   }
 
+  /** A status block's severity tier drives its line color (see `.tier-*`
+   *  below); every other kind has no tier of its own, so its line keeps the
+   *  section's plain color. Without this a `bad` verifier error and a
+   *  `good` score pass rendered in the exact same dim gray — the tier
+   *  `transcript.ts` computes was reaching this component and being
+   *  silently discarded. */
+  function tierOf(b: TranscriptBlock): string | null {
+    return b.kind === 'status' ? b.tier : null;
+  }
+
   function toggleSection(kind: Kind) {
     openSections = { ...openSections, [kind]: !openSections[kind] };
   }
@@ -86,7 +96,9 @@
       <div class="ostrip">
         <span class="live" class:idle={!isRunning}><i></i></span>
         {#if latestKind}<span class="ok">{latestKind}</span>{/if}
-        <span class="ol">{latest ? textOf(latest) : ''}</span>
+        <span class="ol" class:tier-good={latest && tierOf(latest) === 'good'} class:tier-warn={latest && tierOf(latest) === 'warn'} class:tier-bad={latest && tierOf(latest) === 'bad'}
+          >{latest ? textOf(latest) : ''}</span
+        >
         <button type="button" class="omini oexpbtn" on:click={() => (expanded = true)} title="expand">
           {@html ICONS.expand}
         </button>
@@ -116,7 +128,14 @@
               <div class="osbody">
                 <div class="inner">
                   {#each byKind[s.kind] as b (b.id)}
-                    <div class="oline">{textOf(b)}</div>
+                    <div
+                      class="oline"
+                      class:tier-good={tierOf(b) === 'good'}
+                      class:tier-warn={tierOf(b) === 'warn'}
+                      class:tier-bad={tierOf(b) === 'bad'}
+                    >
+                      {textOf(b)}
+                    </div>
                   {/each}
                 </div>
               </div>
@@ -356,6 +375,21 @@
   }
   .osec.output .oline {
     color: rgba(0, 255, 157, 0.75);
+  }
+  /* Severity tier wins over the section's plain color — a `bad` verifier
+     error or `good` score pass must read distinctly from routine `info`
+     status, matching StatusChip.svelte's jade/flame/rose language. */
+  .oline.tier-good,
+  .ol.tier-good {
+    color: var(--konjo-jade);
+  }
+  .oline.tier-warn,
+  .ol.tier-warn {
+    color: var(--konjo-flame);
+  }
+  .oline.tier-bad,
+  .ol.tier-bad {
+    color: var(--konjo-rose);
   }
   @media (prefers-reduced-motion: reduce) {
     .live i {

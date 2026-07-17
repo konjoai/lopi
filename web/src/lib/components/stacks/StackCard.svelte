@@ -45,6 +45,7 @@
   import { branchesByRepo, branchOptionsFor, ensureBranches } from '$lib/stores/branches';
   import type { Option } from '$lib/stores/controls';
   import { runs, bumpCard, bumpUiState } from '$lib/stores/stackRun';
+  import { agents } from '$lib/stores/agents';
   import { ICONS, PRESET_ACCENT } from './icons';
   import { dragging } from './dnd';
   import { autoGrow } from './autoGrow';
@@ -57,6 +58,7 @@
   import ProvenanceChips from './ProvenanceChips.svelte';
   import TemplatesMenu from './TemplatesMenu.svelte';
   import AutocompleteSuggest from './AutocompleteSuggest.svelte';
+  import RunStatsPill from './RunStatsPill.svelte';
 
   export let card: StackCardT;
   export let paneKey: string;
@@ -395,6 +397,13 @@
   // off card (single pass) never shows the running-loop chrome even mid-run.
   $: loopRunning = card.status === 'running' && !!card.iteration && card.iteration.total > 1;
 
+  // Live elapsed/token/cost readout while this card's task is actually
+  // running — `AgentState` already ticks `elapsedMs` and accumulates
+  // tokens/cost from the wire (see `stores/agents.ts`), so this is a plain
+  // lookup, not new accumulation logic.
+  $: liveAgent = card.taskId ? $agents.get(card.taskId) : undefined;
+  $: showRunStats = card.status === 'running' && !!liveAgent;
+
   /** Persist the popover's toggle outcome onto the card — independent of
    *  `scheduled`/`cron`; a card can have both on at once. */
   function onMaxxToggled(next: { enabled: boolean; entryId: string | undefined }): void {
@@ -642,6 +651,13 @@
         <button class="sb" on:click={() => step(1)} title="more iterations">+</button>
       </span>
     </span>
+    {#if showRunStats && liveAgent}
+      <RunStatsPill
+        elapsedMs={liveAgent.elapsedMs}
+        tokens={(liveAgent.outputTokens ?? 0) + (liveAgent.inputTokens ?? 0)}
+        costUsd={liveAgent.cost}
+      />
+    {/if}
     <button
       class="ib sched"
       class:act={scheduleActive}
