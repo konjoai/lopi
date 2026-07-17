@@ -1,11 +1,13 @@
 use super::progress::ProgressGate;
 use super::speculative::SpecFlow;
-use super::{schema_gate, AgentRunner};
-use crate::claude::{select_model, ClaudeCode, ERR_BUDGET_HARD_STOP, ERR_CREDIT_EXHAUSTED};
+use super::terminal_errors::terminal_failure_reason;
+use super::test_phase::TestPhaseOutcome;
+use super::AgentRunner;
+use crate::claude::{select_model, ClaudeCode};
 use crate::scorer::Scorer;
 use anyhow::Result;
 use lopi_context::Phase;
-use lopi_core::{AgentEvent, Attempt, StopReason, TaskStatus};
+use lopi_core::{AgentEvent, StopReason, TaskStatus};
 use lopi_git::GitManager;
 use std::sync::atomic::Ordering;
 use tracing::Instrument as _;
@@ -261,25 +263,13 @@ impl AgentRunner {
                         let err_chain = format!("{e:#}");
                         self.warn(format!("plan failed: {e}"));
                         abort_attempt(&git).await;
-                        // Non-retryable: out of API credits. Retrying just stalls
-                        // the agent and floods the log — fail fast with a clear
-                        // terminal status so the operator sees the billing issue.
-                        if err_chain.contains(ERR_CREDIT_EXHAUSTED) {
+                        // Non-retryable failures (out of API credits, or lopi's
+                        // own budget hard-stop) fail identically on any future
+                        // attempt — stop now instead of stalling the agent and
+                        // flooding the log with retries that can't succeed.
+                        if let Some(reason) = terminal_failure_reason(&err_chain) {
                             let status = TaskStatus::Failed {
-                                reason: format!("CreditExhausted: {e}"),
-                            };
-                            self.status(status.clone(), attempt + 1);
-                            return Ok(status);
-                        }
-                        // Non-retryable: lopi itself killed this session for
-                        // crossing its resolved USD cap (`stream.rs`'s hard
-                        // stop). A fresh attempt would spend a fresh session
-                        // against the same cap and, absent a wider budget,
-                        // hit it again — fail fast instead of burning another
-                        // full plan+implement cycle that can't succeed.
-                        if err_chain.contains(ERR_BUDGET_HARD_STOP) {
-                            let status = TaskStatus::Failed {
-                                reason: format!("BudgetExceeded: {e}"),
+                                reason: format!("{reason}: {e}"),
                             };
                             self.status(status.clone(), attempt + 1);
                             return Ok(status);
@@ -344,21 +334,11 @@ impl AgentRunner {
                 if let Err(e) = act_result {
                     let err_chain = format!("{e:#}");
                     self.warn(format!("implement failed: {e}"));
-                    // Same non-retryable cases as the plan path above: out of
-                    // credits, or lopi's own budget hard-stop killed this
-                    // session — a fresh attempt can't succeed either.
-                    if err_chain.contains(ERR_CREDIT_EXHAUSTED) {
+                    // Same non-retryable cases as the plan path above.
+                    if let Some(reason) = terminal_failure_reason(&err_chain) {
                         abort_attempt(&git).await;
                         let status = TaskStatus::Failed {
-                            reason: format!("CreditExhausted: {e}"),
-                        };
-                        self.status(status.clone(), attempt + 1);
-                        return Ok(status);
-                    }
-                    if err_chain.contains(ERR_BUDGET_HARD_STOP) {
-                        abort_attempt(&git).await;
-                        let status = TaskStatus::Failed {
-                            reason: format!("BudgetExceeded: {e}"),
+                            reason: format!("{reason}: {e}"),
                         };
                         self.status(status.clone(), attempt + 1);
                         return Ok(status);
@@ -368,198 +348,13 @@ impl AgentRunner {
                 }
             }
 
-            if let Err(e) = git
-                .check_diff_scope(&self.task.allowed_dirs, &self.task.forbidden_dirs)
-                .await
+            match self
+                .run_test_phase(&scorer, &claude, &git, &mut gate, &branch, attempt)
+                .await?
             {
-                self.warn(format!("diff scope violation: {e}"));
-                self.status(TaskStatus::RolledBack, attempt + 1);
-                abort_attempt(&git).await;
-                continue;
+                TestPhaseOutcome::Terminal(status) => return Ok(status),
+                TestPhaseOutcome::Continue => continue,
             }
-
-            self.status(TaskStatus::Testing, attempt + 1);
-            self.context.transition_phase(Phase::Testing);
-            tracing::info!(
-                pressure = self.context.token_pressure(),
-                "context at testing"
-            );
-            // No narration line here — it added nothing beyond restating
-            // the `TaskStatus::Testing` transition just above, and (worse)
-            // rendered indistinguishably from real Claude output in the
-            // transcript. The real, useful signal is the score line right
-            // below, once the scorer actually has a result.
-            // OTel GenAI-aligned span: score phase.
-            let score_span = tracing::info_span!(
-                "lopi.agent.score",
-                task_id = %self.id(),
-                attempt = attempt + 1,
-            );
-            let score = scorer.score().instrument(score_span).await?;
-
-            // P1.4 — Optional structured-output schema validation (see
-            // `schema_gate.rs`). On any violation the agent stashes the
-            // messages as `last_error` (so the next planning prompt sees them
-            // via adaptive retry) and rolls into the next attempt.
-            if let Some(ref schema) = self.task.output_schema {
-                if let Some((count, summary)) = schema_gate::violation_summary(schema, &score) {
-                    self.warn(format!(
-                        "📐 output_schema validation failed ({count} issue(s)):\n{summary}"
-                    ));
-                    if self.adaptive_retry {
-                        self.last_error = Some(format!(
-                            "Attempt {} output failed schema validation:\n{summary}",
-                            attempt + 1
-                        ));
-                    }
-                    self.abort_and_mark_retrying(&git, attempt).await;
-                    continue;
-                }
-            }
-
-            self.bus.send(AgentEvent::ScoreUpdated {
-                task_id: self.id(),
-                test_pass_rate: score.test_pass_rate,
-                lint_errors: score.lint_errors,
-                diff_lines: score.diff_lines,
-            });
-            let weighted = score.weighted(&self.score_weights);
-            self.log(format!(
-                "● score: pass={:.0}% lint={} diff={}L (weighted={:.3})",
-                score.test_pass_rate * 100.0,
-                score.lint_errors,
-                score.diff_lines,
-                weighted
-            ));
-            // Best weighted score seen this attempt — updated if an in-place
-            // fix lifts it. Drives the no-progress stall guard below.
-            let mut attempt_weighted = weighted;
-
-            // Persist attempt.
-            if let Some(store) = &self.store {
-                let mut a = Attempt::new(self.id(), attempt + 1, &branch);
-                a.score = Some(score.clone());
-                a.outcome = if score.passed() {
-                    "success".into()
-                } else {
-                    "retry".into()
-                };
-                store.save_attempt(&a).await.ok();
-            }
-
-            // Guardrails — `until`: an independent exit-condition checked
-            // every iteration. A pass ends the loop early as a success
-            // regardless of the iteration's own test score; `None`
-            // configured leaves `score.passed()` as the sole condition,
-            // unchanged from before this field existed.
-            let until_satisfied = self.check_until().await;
-            if score.passed() || until_satisfied {
-                if until_satisfied && !score.passed() {
-                    self.log("● until condition met — concluding the loop early");
-                }
-                // Phase 16.3 — finalize per the L1–L4 autonomy ladder. `finalize`
-                // forces the verifier on for L3/L4, commits, rebases onto the
-                // advanced default, then opens (or skips) the PR. `None` ⇒
-                // verifier rejected (already rolled back, marked Retrying); a
-                // `Conflict` ⇒ the rebase collided and the loop stops here.
-                if let Some(status) = self.finalize(&branch, &git, &score, attempt + 1).await {
-                    // Goal-met (A3) — the highest-precedence terminal: the loop
-                    // satisfied its acceptance/until goal and finalized.
-                    self.log(format!("● stop reason: {}", StopReason::GoalMet.as_str()));
-                    return Ok(self.conclude_finalized(status, &score, attempt + 1));
-                }
-                continue;
-            }
-
-            // In-place fix attempt. `🔧` is reserved by the frontend for its
-            // structured tool_call dedup (`reduceLogLine` drops any log line
-            // starting with it, on the assumption it's the redundant plain
-            // twin of a `ToolCall` event) — this line isn't one, so it was
-            // being silently dropped before `●` replaced the wrench.
-            self.log(format!("● fixing {} error(s)…", score.errors.len()));
-            if let Err(e) = claude.fix(&self.task, &score.errors).await {
-                self.warn(format!("fix failed: {e}"));
-            }
-
-            if git
-                .check_diff_scope(&self.task.allowed_dirs, &self.task.forbidden_dirs)
-                .await
-                .is_ok()
-            {
-                self.status(TaskStatus::Testing, attempt + 1);
-                let fixed_score = scorer.score().await?;
-                self.bus.send(AgentEvent::ScoreUpdated {
-                    task_id: self.id(),
-                    test_pass_rate: fixed_score.test_pass_rate,
-                    lint_errors: fixed_score.lint_errors,
-                    diff_lines: fixed_score.diff_lines,
-                });
-                let weighted = fixed_score.weighted(&self.score_weights);
-                self.log(format!(
-                    "● fixed score: pass={:.0}% lint={} diff={}L (weighted={:.3})",
-                    fixed_score.test_pass_rate * 100.0,
-                    fixed_score.lint_errors,
-                    fixed_score.diff_lines,
-                    weighted
-                ));
-                // The fix lifted (or lowered) the score — track the better of
-                // the two for the stall guard.
-                attempt_weighted = attempt_weighted.max(weighted);
-                if fixed_score.passed() {
-                    self.log("● fix worked — finalizing…");
-                    // Same L1–L4 finalize path as the primary success branch.
-                    if let Some(status) = self
-                        .finalize(&branch, &git, &fixed_score, attempt + 1)
-                        .await
-                    {
-                        self.status(status.clone(), attempt + 1);
-                        return Ok(status);
-                    }
-                    continue;
-                }
-            }
-
-            // Sprint H — adaptive retry: stash the score's error list so the
-            // next attempt's planning prompt can include it. Only stored
-            // when adaptive_retry is enabled to avoid pointless work.
-            if self.adaptive_retry {
-                let base_failure = format!(
-                    "Attempt {} failed:\n  test_pass_rate: {:.0}%\n  lint_errors: {}\n  diff_lines: {}\n  errors: {}",
-                    attempt + 1,
-                    score.test_pass_rate * 100.0,
-                    score.lint_errors,
-                    score.diff_lines,
-                    if score.errors.is_empty() { "(none captured)".into() } else { score.errors.join("\n  - ") }
-                );
-                // Phase 16.4/16.5 — reframe the raw failure per the self-prompting
-                // strategy. `Direct` returns it unchanged (legacy behaviour);
-                // richer strategies prepend a Reflexion / Self-Refine /
-                // Plan-Then-Act preamble. With escalation enabled the strategy
-                // climbs one S-rung per failed attempt (see `effective_strategy`).
-                let strategy = self.effective_strategy(attempt + 1);
-                self.last_error = Some(strategy.frame(&base_failure, attempt + 1));
-            }
-
-            // Gain gate + termination (A3) — feed this attempt's best objective
-            // score to the gate (a gain locks best + resets the streak; a
-            // non-gain keeps the prior best and grows it) and stop with a
-            // specific `StopReason` when budget or no-progress trips. The
-            // rejected (non-gaining) iteration's work is discarded by
-            // `abort_and_mark_retrying` below — A1's rollback path, unchanged.
-            if let Some(status) = self
-                .observe_and_check_stop(&mut gate, attempt_weighted, &git, attempt + 1)
-                .await
-            {
-                return Ok(status);
-            }
-
-            // A2 (reflection) — capture the durable learning from this
-            // non-gaining attempt *before* `abort_and_mark_retrying` rolls it
-            // back. The heuristic score's errors are the critique. No-op unless
-            // cross-run reflection is enabled.
-            self.capture_learning(&score.errors, "non_gaining").await;
-            self.abort_and_mark_retrying(&git, attempt).await;
-            self.apply_on_fail_delay(attempt).await;
         }
 
         // Sprint H — post-mortem on terminal failure. Best-effort; never
