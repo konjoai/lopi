@@ -16,6 +16,25 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Parse a USD amount from a CLI flag, Telegram `/budget` argument, or any
+/// other user-facing budget field. Accepts a bare number (`"0.25"`) or the
+/// same number prefixed with a `$` (`"$0.25"`) — the `$` is a pure alias,
+/// stripped before parsing, so both spellings resolve to the identical
+/// [`BudgetOverride::usd`]/`--budget` value. Whitespace around the sign or
+/// the whole string is tolerated (`" $ 0.25 "`). Rejects negative amounts
+/// and anything that isn't a finite number, same as the pre-existing bare
+/// `f64` parse this replaces.
+pub fn parse_usd_amount(s: &str) -> Result<f64, String> {
+    let trimmed = s.trim();
+    let unprefixed = trimmed.strip_prefix('$').unwrap_or(trimmed).trim();
+    match unprefixed.parse::<f64>() {
+        Ok(usd) if usd.is_finite() && usd >= 0.0 => Ok(usd),
+        _ => Err(format!(
+            "'{s}' isn't a valid USD amount (e.g. 0.25 or $0.25)"
+        )),
+    }
+}
+
 /// Every parallel sub-agent fan-out primitive, denied together by the capped
 /// presets (`quick`/`standard`). Denying only `Workflow` (the orchestration
 /// script) once left `Task`/`Agent` — the direct sub-agent spawn tool, which
@@ -206,6 +225,38 @@ mod tests {
     #[test]
     fn preset_default_is_standard() {
         assert_eq!(BudgetPreset::default(), BudgetPreset::Standard);
+    }
+
+    #[test]
+    fn parse_usd_amount_accepts_a_bare_number() {
+        assert_eq!(parse_usd_amount("0.25"), Ok(0.25));
+    }
+
+    #[test]
+    fn parse_usd_amount_accepts_the_dollar_alias() {
+        assert_eq!(parse_usd_amount("$0.25"), Ok(0.25));
+        assert_eq!(parse_usd_amount("$0.50"), Ok(0.50));
+        assert_eq!(parse_usd_amount("$25"), Ok(25.0));
+    }
+
+    #[test]
+    fn parse_usd_amount_tolerates_whitespace_around_the_sign() {
+        assert_eq!(parse_usd_amount(" $ 0.25 "), Ok(0.25));
+        assert_eq!(parse_usd_amount("  7.5  "), Ok(7.5));
+    }
+
+    #[test]
+    fn parse_usd_amount_rejects_negative_amounts() {
+        assert!(parse_usd_amount("-3").is_err());
+        assert!(parse_usd_amount("-$3").is_err());
+        assert!(parse_usd_amount("$-3").is_err());
+    }
+
+    #[test]
+    fn parse_usd_amount_rejects_nonsense() {
+        assert!(parse_usd_amount("banana").is_err());
+        assert!(parse_usd_amount("$").is_err());
+        assert!(parse_usd_amount("").is_err());
     }
 
     #[test]
