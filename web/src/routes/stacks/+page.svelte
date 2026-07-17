@@ -1,5 +1,5 @@
 <!--
-  /stacks — the Loop Stack, the single primary working surface (Unify-2 §3).
+  /stacks — Loop Stacks, the single primary working surface (Unify-2 §3).
 
   The one collapsed pane primitive lives here: `StackPane`s laid out in the
   auto-tiling, drag-resizable `TileGrid` (the one capability worth keeping from
@@ -41,7 +41,7 @@
       }
     })();
 
-    // The topbar "+" (in +layout.svelte) dispatches this on the Loop Stack.
+    // The topbar "+" (in +layout.svelte) dispatches this on Loop Stacks.
     const onAdd = () => addStackPane();
     window.addEventListener('lopi:add-pane', onAdd);
     return () => window.removeEventListener('lopi:add-pane', onAdd);

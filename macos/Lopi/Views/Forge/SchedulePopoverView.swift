@@ -26,6 +26,7 @@ struct SchedulePopoverView: View {
             VStack(alignment: .leading, spacing: 11) {
                 HStack(spacing: 9) {
                     StackToggle(isOn: scheduled, accent: Konjo.ice, onToggle: onToggle)
+                        .accessibilityIdentifier("stack.scheduleToggle")
                     Text("run on a schedule").font(Konjo.mono(11)).foregroundStyle(Konjo.fg)
                 }
                 if scheduled {

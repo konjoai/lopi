@@ -24,6 +24,8 @@ struct StackCardView: View {
     @State private var schedOpen = false
     @State private var guardOpen = false
     @State private var evalOpen = false
+    @State private var cardHeight: CGFloat = 0
+    @State private var dragArmed = false
     @FocusState private var goalFocused: Bool
 
     // ── alias autocomplete (`:token`) ────────────────────────────────────────
@@ -129,14 +131,43 @@ struct StackCardView: View {
         if isDraft {
             cardContent
         } else {
-            cardContent
-                .draggable(CardDragPayload(paneKey: paneKey, index: index))
-                .dropDestination(for: CardDragPayload.self) { items, _ in
+            draggableCardContent
+                .dropDestination(for: CardDragPayload.self) { items, location in
                     guard let payload = items.first, payload.paneKey == paneKey, payload.index != index else { return false }
-                    store.reorderInPaneRelative(paneKey, payload.index, index, true)
+                    let before = location.y < cardHeight / 2
+                    store.reorderInPaneRelative(paneKey, payload.index, index, before)
                     return true
                 }
+                .background(GeometryReader { geo in
+                    Color.clear.preference(key: CardHeightKey.self, value: geo.size.height)
+                })
+                .onPreferenceChange(CardHeightKey.self) { cardHeight = $0 }
         }
+    }
+
+    /// Mirrors web's `armDrag`/`disarmDrag` (`StackCard.svelte`): the whole
+    /// card becomes a drag source, but only for the duration the drag handle
+    /// is actually pressed. `.draggable()` can't be conditionally toggled by
+    /// a flag directly — attaching/detaching it via an `if` branch on
+    /// `dragArmed` is the SwiftUI equivalent of web's `draggable={armed}`
+    /// HTML attribute. Without this, `.draggable()` permanently on
+    /// `cardContent` would compete with every button/text field inside it
+    /// for the press gesture (see `cardDragHandle`'s doc comment) — but
+    /// putting `.draggable()` on the handle ALONE only made that small icon
+    /// draggable, not the card, which is the wrong visual (confirmed by
+    /// screen recording).
+    @ViewBuilder
+    private var draggableCardContent: some View {
+        if dragArmed {
+            cardContent.draggable(CardDragPayload(paneKey: paneKey, index: index))
+        } else {
+            cardContent
+        }
+    }
+
+    private struct CardHeightKey: PreferenceKey {
+        static var defaultValue: CGFloat = 0
+        static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
     }
 
     private var cardContent: some View {
@@ -151,12 +182,21 @@ struct StackCardView: View {
             }
         }
         .padding(13)
-        .background(Konjo.bg1.opacity(0.6))
-        .overlay(
+        // Fill *and* border both live in `.background()`, not `.overlay()` —
+        // a card-wide `.clipShape` or border `.overlay()` would paint in
+        // front of the goal field's `:`/`@`/`/` suggestion dropdown (itself
+        // an `.overlay` nested inside this VStack), either clipping it at
+        // the card's bottom edge or drawing the border stroke across it.
+        // `.background()` content always paints behind a view's own
+        // content, so the dropdown stays on top regardless of its zIndex.
+        .background(
             RoundedRectangle(cornerRadius: 9)
-                .stroke(borderColor, style: StrokeStyle(lineWidth: 1, dash: (isDraft && !hot) ? [4, 3] : []))
+                .fill(Konjo.bg1.opacity(0.6))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 9)
+                        .stroke(borderColor, style: StrokeStyle(lineWidth: 1, dash: (isDraft && !hot) ? [4, 3] : []))
+                )
         )
-        .clipShape(RoundedRectangle(cornerRadius: 9))
         .overlay(alignment: .topTrailing) { runtag }
     }
 
@@ -239,6 +279,7 @@ struct StackCardView: View {
         TextField("describe the prompt or goal...  (i.e. :alias @org/repo /model/opus xN)", text: goalBinding)
             .textFieldStyle(.plain).font(Konjo.mono(14)).foregroundStyle(Konjo.fg)
             .focused($goalFocused)
+            .accessibilityIdentifier("stack.goalField")
             .onSubmit {
                 if showAliasSuggest { selectAlias(aliasMatches[aliasActiveIndex].alias) }
                 else if showRepoSuggest { selectRepo(repoMatches[repoActiveIndex].token) }
@@ -543,11 +584,37 @@ struct StackCardView: View {
             } else {
                 TemplatesMenuView(store: store, templateStore: model.stackTemplateStore, paneKey: paneKey, card: card, isDraft: false)
                 CardbarButton(systemImage: "square.on.square", help: "duplicate") { store.duplicateInPane(paneKey, card.id) }
-                CardbarButton(systemImage: "line.3.horizontal", help: "drag to reorder") {}
+                cardDragHandle
                 CardbarButton(systemImage: "trash", accent: Konjo.rose, danger: true, help: "delete") { store.removeFromPane(paneKey, card.id) }
             }
         }
         .padding(.top, 12)
+    }
+
+    /// Same visual chrome as `CardbarButton`, deliberately NOT a `Button`
+    /// (a `.draggable()`/gesture chained onto an actual `Button` loses to
+    /// the button's own tap recognizer — see `StackControlDockView.dragHandle`).
+    /// Doesn't carry `.draggable()` itself — it only arms/disarms
+    /// `dragArmed`, which `draggableCardContent` uses to attach
+    /// `.draggable()` to the WHOLE card for exactly the press's duration,
+    /// mirroring web's `armDrag`/`disarmDrag` (`on:mousedown`/`on:mouseup`
+    /// toggling the card's own `draggable` HTML attribute). Putting
+    /// `.draggable()` on the handle alone only made the small icon
+    /// draggable, not the card.
+    private var cardDragHandle: some View {
+        Image(systemName: "line.3.horizontal").font(.system(size: 12))
+            .padding(.horizontal, 7)
+            .frame(minWidth: 29, minHeight: 29)
+            .foregroundStyle(Konjo.fgMute)
+            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Konjo.line, lineWidth: 1))
+            .contentShape(Rectangle())
+            .help("drag to reorder")
+            .accessibilityIdentifier("drag to reorder")
+            .gesture(
+                DragGesture(minimumDistance: 0, coordinateSpace: .local)
+                    .onChanged { _ in dragArmed = true }
+                    .onEnded { _ in dragArmed = false }
+            )
     }
 
     private var schedulePopover: some View {

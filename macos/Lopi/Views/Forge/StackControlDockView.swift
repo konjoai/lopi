@@ -22,6 +22,7 @@ struct StackControlDockView: View {
     @State private var cfgOpen = false
     @State private var goalOpen = false
     @State private var runMenuOpen = false
+    @State private var runMainHeight: CGFloat = 0
     @State private var dryRunResult: DryRunResult?
 
     // ── stack command bar (`@repo` / `/command`) ────────────────────────────
@@ -181,6 +182,7 @@ struct StackControlDockView: View {
                     .frame(width: 34, height: 34)
                     .overlay(RoundedRectangle(cornerRadius: 7).stroke(Konjo.line2, lineWidth: 1))
                     .contentShape(Rectangle())
+                    .accessibilityIdentifier("stack.dockExpand")
             }
             .buttonStyle(.plain).help("stack controls")
         }
@@ -201,7 +203,6 @@ struct StackControlDockView: View {
             if showSummary {
                 if scheduledOn {
                     SummaryRow(systemImage: "clock", label: "schedule", accent: FacetAccent.schedule, text: cronHuman(config.cron))
-                    Text("not yet enforced — no whole-chain cron exists server-side yet").font(Konjo.mono(9)).foregroundStyle(Konjo.fgMute).padding(.leading, 66)
                 }
                 if guardsOn { SummaryRow(systemImage: "shield", label: "guards", accent: FacetAccent.guards, text: stackGuardSummary(config.guardrails)) }
                 if evalsOn { SummaryRow(systemImage: "checkmark.square", label: "evals", accent: FacetAccent.evals, text: stackEvalsSummary(config)) }
@@ -237,12 +238,35 @@ struct StackControlDockView: View {
             Spacer()
             StackTemplatesMenuView(store: store, templateStore: model.stackTemplateStore, paneKey: pane.key, cards: pane.cards)
             CardbarButton(systemImage: "square.on.square", help: "duplicate stack") { store.duplicateStackInPanes(pane.key) }
-            CardbarButton(systemImage: "line.3.horizontal", help: "drag to reorder stacks") {}
-                .draggable(StackDragPayload(index: index))
+            dragHandle
             CardbarButton(systemImage: "trash", accent: Konjo.rose, danger: true, help: "delete stack") {
                 engine.clearRun(pane.key); store.deleteStackFromPanes(pane.key)
             }
         }
+    }
+
+    /// Same visual chrome as `CardbarButton`, deliberately NOT a `Button`
+    /// (a `.draggable()`/gesture chained onto an actual `Button` loses to
+    /// the button's own tap recognizer). Doesn't carry `.draggable()`
+    /// itself — pressing it sets `model.armedStackDragIndex`, which
+    /// `ForgeView`'s grid uses to attach `.draggable()` to the WHOLE pane
+    /// for exactly the press's duration, mirroring web's `armDrag`/
+    /// `disarmDrag`. Putting `.draggable()` on the handle alone only made
+    /// the small icon draggable, not the stack pane.
+    private var dragHandle: some View {
+        Image(systemName: "line.3.horizontal").font(.system(size: 12))
+            .padding(.horizontal, 7)
+            .frame(minWidth: 29, minHeight: 29)
+            .foregroundStyle(Konjo.fgMute)
+            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Konjo.line, lineWidth: 1))
+            .contentShape(Rectangle())
+            .help("drag to reorder stacks")
+            .accessibilityIdentifier("drag to reorder stacks")
+            .gesture(
+                DragGesture(minimumDistance: 0, coordinateSpace: .local)
+                    .onChanged { _ in model.armedStackDragIndex = index }
+                    .onEnded { _ in model.armedStackDragIndex = nil }
+            )
     }
 
     // MARK: Command bar
@@ -377,6 +401,22 @@ struct StackControlDockView: View {
         .padding(.top, 13)
     }
 
+    /// Web's `.runchev` sets no vertical padding of its own — it relies on
+    /// `.runsplit`'s flex-row `align-items: stretch` default to inherit
+    /// `.runmain`'s full height. SwiftUI's `HStack` doesn't stretch children
+    /// that way, and `frame(maxHeight: .infinity)` overcorrects: it fills
+    /// every bit of *unbounded* vertical space an ancestor offers (the whole
+    /// scroll column here), not just the sibling's height. Reading
+    /// `.runmain`'s actual rendered height via this preference key and
+    /// applying it as a fixed `.frame(height:)` on the chevron is the
+    /// measure-then-match approach that avoids both failure modes.
+    private struct RunMainHeightKey: PreferenceKey {
+        static var defaultValue: CGFloat = 0
+        static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+            value = max(value, nextValue())
+        }
+    }
+
     private var runSplit: some View {
         HStack(spacing: 0) {
             Button(action: runMain) {
@@ -387,12 +427,17 @@ struct StackControlDockView: View {
                 .padding(.horizontal, 26).padding(.vertical, 12)
                 .background(LinearGradient(colors: [Color(hex: 0xFFB648), Konjo.flame], startPoint: .top, endPoint: .bottom))
                 .foregroundStyle(Color(hex: 0x231000))
+                .background(GeometryReader { geo in
+                    Color.clear.preference(key: RunMainHeightKey.self, value: geo.size.height)
+                })
             }
             .buttonStyle(.plain).disabled(phase == .draining)
             Button { runMenuOpen.toggle() } label: {
                 Image(systemName: "chevron.up").font(.system(size: 12, weight: .bold)).foregroundStyle(Color(hex: 0x231000))
-                    .padding(.horizontal, 13).padding(.vertical, 12)
+                    .padding(.horizontal, 13)
+                    .frame(height: runMainHeight > 0 ? runMainHeight : nil)
                     .background(LinearGradient(colors: [Color(hex: 0xFFA733), Color(hex: 0xF08600)], startPoint: .top, endPoint: .bottom))
+                    .overlay(Rectangle().fill(Color.black.opacity(0.28)).frame(width: 1), alignment: .leading)
             }
             .buttonStyle(.plain)
             .popover(isPresented: $runMenuOpen, arrowEdge: .top) {
@@ -400,6 +445,7 @@ struct StackControlDockView: View {
                             onDryRun: { dryRunResult = $0 }, onClose: { runMenuOpen = false })
             }
         }
+        .onPreferenceChange(RunMainHeightKey.self) { runMainHeight = $0 }
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .shadow(color: Konjo.flame.opacity(0.3), radius: 8, y: 4)
     }
@@ -443,8 +489,14 @@ struct StackControlDockView: View {
 
     private var schedulePopover: some View {
         SchedulePopoverView(scheduled: config.scheduled, cron: config.cron,
-            onToggle: { store.updateStackConfig(pane.key) { $0.scheduled.toggle() } },
-            onChange: { next in store.updateStackConfig(pane.key) { $0.cron = next } })
+            onToggle: {
+                store.updateStackConfig(pane.key) { $0.scheduled.toggle() }
+                model.syncStackSchedule(paneKey: pane.key, defaults: defaults)
+            },
+            onChange: { next in
+                store.updateStackConfig(pane.key) { $0.cron = next }
+                model.syncStackSchedule(paneKey: pane.key, defaults: defaults)
+            })
     }
     private var guardsPopover: some View {
         GuardrailsPopoverView(scope: .stack,

@@ -22,10 +22,23 @@ struct ForgeView: View {
     /// to one shared golden fixture.
     private var repoChoices: [StackOption] { repoOptions(model.repos) }
 
+    /// Per-pane rendered width, keyed by grid index — measured so the stack
+    /// drop-destination can tell which half of the target pane the cursor is
+    /// over (before/after), matching web's cursor-midpoint rule.
+    @State private var paneWidths: [Int: CGFloat] = [:]
+
+    private struct PaneWidthKey: PreferenceKey {
+        static var defaultValue: [Int: CGFloat] = [:]
+        static func reduce(value: inout [Int: CGFloat], nextValue: () -> [Int: CGFloat]) {
+            value.merge(nextValue()) { _, new in new }
+        }
+    }
+
     var body: some View {
         grid
             .background(Konjo.bg)
             .safeAreaInset(edge: .top, spacing: 0) { topBar }
+            .onPreferenceChange(PaneWidthKey.self) { paneWidths = $0 }
             .task { await model.refreshRepos() }
     }
 
@@ -55,18 +68,46 @@ struct ForgeView: View {
         PaneGridView(count: store.panes.count) { idx in
             if store.panes.indices.contains(idx) {
                 let pane = store.panes[idx]
-                StackPaneView(
-                    store: store, engine: engine, pane: pane, index: idx, repoOptions: repoChoices,
-                    onClose: store.panes.count > 1 ? { closePane(pane.key) } : nil)
-                    .dropDestination(for: StackDragPayload.self) { items, _ in
+                draggablePane(pane, idx)
+                    // `before` was hardcoded `true` — a no-op exactly when
+                    // dragging pane 0 onto pane 1 (`moveStackBeforeOrAfter`'s
+                    // `to = targetIndex - 1 = fromIndex`). Web decides
+                    // before/after from the drop cursor's position relative
+                    // to the target's midpoint; `location` (previously
+                    // ignored) is the SwiftUI equivalent.
+                    .background(GeometryReader { geo in
+                        Color.clear.preference(key: PaneWidthKey.self, value: [idx: geo.size.width])
+                    })
+                    .dropDestination(for: StackDragPayload.self) { items, location in
                         guard let payload = items.first, payload.index != idx else { return false }
-                        store.reorderStacksInPanes(payload.index, idx, true)
+                        let width = paneWidths[idx] ?? 0
+                        let before = width > 0 ? location.x < width / 2 : true
+                        store.reorderStacksInPanes(payload.index, idx, before)
                         return true
                     }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .overlay(alignment: .top) { forgeBanner }
+    }
+
+    /// `.draggable()` attaches to the WHOLE pane only while
+    /// `model.armedStackDragIndex` matches it — i.e. only for the duration
+    /// its dock's drag handle (`StackControlDockView.dragHandle`) is
+    /// pressed. Mirrors web's `armDrag`/`disarmDrag`. Attaching
+    /// `.draggable()` unconditionally to the pane would make the whole
+    /// pane a drag source all the time, breaking every button/text field
+    /// inside it the same way it did on the drag handle itself.
+    @ViewBuilder
+    private func draggablePane(_ pane: StackPaneState, _ idx: Int) -> some View {
+        let content = StackPaneView(
+            store: store, engine: engine, pane: pane, index: idx, repoOptions: repoChoices,
+            onClose: store.panes.count > 1 ? { closePane(pane.key) } : nil)
+        if model.armedStackDragIndex == idx {
+            content.draggable(StackDragPayload(index: idx))
+        } else {
+            content
+        }
     }
 
     /// Honest connection truth over the grid: the stacks are client-only, but a

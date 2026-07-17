@@ -1397,6 +1397,11 @@ export interface StackConfig {
    *  reason fires. Additive — default `pursue: false` reproduces today's
    *  fixed-`loopCount` behavior exactly. */
   goal: StackGoal;
+  /** Stack-Chain-1 — the server-side `/api/schedule-chains` row backing this
+   *  stack's "schedule the entire stack" toggle, once one has been created.
+   *  `undefined` until the first successful sync (`stackRun.ts::syncStackSchedule`)
+   *  — a stack that has never been scheduled has no chain to enable/disable/edit. */
+  chainId?: string;
 }
 
 /** Freshly-initialized stack config — every pane gets its own objects
@@ -1483,13 +1488,18 @@ export function stackEvalsSummary(config: StackConfig): string {
   return `${n} checks · chain acceptance`;
 }
 
-/** The stack defaults summary line: which model every loop inherits, per
- *  the mockup's "default model X · every loop inherits" copy. Uses the
- *  option's display label rather than the raw wire value — load-bearing for
- *  `auto`, whose raw value would otherwise render the bare sentinel string
- *  instead of a real display string. */
-export function stackDefaultsSummary(defaults: StackDefaults): string {
-  return `model ${labelFor(MODEL_OPTIONS, defaults.model)} · every loop inherits`;
+/** The stack defaults summary line: which model (and, when set, repo) every
+ *  loop inherits, per the mockup's "default model X · every loop inherits"
+ *  copy. Uses the option's display label rather than the raw wire value —
+ *  load-bearing for `auto`, whose raw value would otherwise render the bare
+ *  sentinel string instead of a real display string. `repoLabel` is the
+ *  caller's already-resolved display label for `defaults.repo` (see
+ *  `repoLabelForPath`) — this function stays repo-catalog-agnostic, same as
+ *  every other summary helper in this file. Omitted from the summary
+ *  entirely when no repo override is set (`defaults.repo === ''`). */
+export function stackDefaultsSummary(defaults: StackDefaults, repoLabel?: string): string {
+  const repoPart = defaults.repo && repoLabel ? ` · repo ${repoLabel}` : '';
+  return `model ${labelFor(MODEL_OPTIONS, defaults.model)}${repoPart} · every loop inherits`;
 }
 
 /** §1's second precedence rule, load-bearing and pure: while the stack

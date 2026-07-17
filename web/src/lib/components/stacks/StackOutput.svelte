@@ -14,6 +14,11 @@
   import { ICONS } from './icons';
 
   export let taskId: string;
+  /** Whether the attached card is still running. Drives the "live output"
+   *  (pulsing dot) vs "logs" (static) label — the panel itself stays
+   *  reachable either way; only the framing changes once nothing new is
+   *  actually streaming in. */
+  export let isRunning: boolean = true;
 
   type Kind = 'thinking' | 'actions' | 'tools' | 'output';
   type Filter = 'all' | Kind;
@@ -79,7 +84,7 @@
   <div class="output">
     {#if !expanded}
       <div class="ostrip">
-        <span class="live"><i></i></span>
+        <span class="live" class:idle={!isRunning}><i></i></span>
         {#if latestKind}<span class="ok">{latestKind}</span>{/if}
         <span class="ol">{latest ? textOf(latest) : ''}</span>
         <button type="button" class="omini oexpbtn" on:click={() => (expanded = true)} title="expand">
@@ -88,7 +93,7 @@
       </div>
     {:else}
       <div class="obar">
-        <span class="live"><i></i>live output</span>
+        <span class="live" class:idle={!isRunning}><i></i>{isRunning ? 'live output' : 'logs'}</span>
         <div class="filters">
           {#each FILTERS as f (f)}
             <button type="button" class="fchip" class:on={filter === f} on:click={() => (filter = f)}>{f}</button>
@@ -124,10 +129,14 @@
 {/if}
 
 <style>
+  /* No border/animation here — `.loopwrap.hasout` in StackPane.svelte owns
+     the entire outline (and, while running, its single animation) for a
+     card with output attached; this panel is always borderless. Radius
+     stays for background-clipping (the wrapper's own border-radius clips
+     the outline, but each child's background still needs its own matching
+     corners underneath it). */
   .output {
     background: var(--stack-outbg, #0c1417);
-    border: 1px solid rgba(255, 150, 70, 0.45);
-    border-top: none;
     border-radius: 0 0 9px 9px;
     overflow: hidden;
     font-family: var(--font-mono, monospace);
@@ -152,6 +161,17 @@
     background: var(--konjo-ice);
     box-shadow: 0 0 6px var(--konjo-ice);
     animation: pulse 1.4s infinite;
+  }
+  /* Once the card isn't running anymore, this is a static log, not a live
+     stream — the dot stops pulsing and dims instead of implying new
+     content could still arrive. */
+  .live.idle i {
+    background: rgba(245, 245, 245, 0.28);
+    box-shadow: none;
+    animation: none;
+  }
+  .obar .live.idle {
+    color: rgba(245, 245, 245, 0.46);
   }
   @keyframes pulse {
     0%,
@@ -245,7 +265,11 @@
     background: rgba(0, 212, 255, 0.06);
   }
   .osecs {
-    max-height: 340px;
+    /* +25% over the original 340px. This is the ONLY scrollbar for the
+       whole live-output section — `.osbody` below must never grow its own
+       (that was the nested-scrollbar bug: an inner scrollable section
+       inside this already-scrollable list). */
+    max-height: 425px;
     overflow-y: auto;
   }
   .osec {
@@ -310,8 +334,9 @@
     transition: max-height 0.22s ease;
   }
   .osec.open .osbody {
-    max-height: 260px;
-    overflow-y: auto;
+    /* A generous ceiling for the expand transition, not a scroll viewport —
+       `.osecs` is the single scrollbar for the whole panel. */
+    max-height: 4000px;
   }
   .osbody .inner {
     padding: 2px 12px 11px 32px;

@@ -43,9 +43,7 @@
   import { AUTONOMY_OPTIONS, type StackDefaults } from '$lib/stores/stackDefaults';
   import { branchesByRepo, branchOptionsFor, ensureBranches } from '$lib/stores/branches';
   import type { Option } from '$lib/stores/controls';
-  import { agents, permissionWaiting } from '$lib/stores/agents';
   import { runs, bumpCard, bumpUiState } from '$lib/stores/stackRun';
-  import { orbStateForCard } from '$lib/forge/cardOrb';
   import { ICONS, PRESET_ACCENT } from './icons';
   import { dragging } from './dnd';
   import Popover, { togglePopover } from './Popover.svelte';
@@ -97,6 +95,30 @@
   function writeCard(patch: Partial<StackCardT>): void {
     if (isDraft) updateDraftInPane(paneKey, patch);
     else updateCardInPane(paneKey, card.id, patch);
+  }
+
+  /** The committed (non-draft) card's own goal edit — no autocomplete, no
+   *  alias/repo/command re-parsing, just a direct text patch; those tokens
+   *  only ever apply once, at commit time, via the draft's `onGoalInput`. */
+  function onCommittedGoalInput(e: Event): void {
+    writeCard({ goal: (e.currentTarget as HTMLTextAreaElement).value });
+  }
+
+  /** Grows a `<textarea>` to fit its content (no inner scrollbar) — called
+   *  on mount, so a card committed with an already-long goal starts at full
+   *  height, and on every keystroke thereafter. */
+  function autoGrow(node: HTMLTextAreaElement) {
+    const resize = () => {
+      node.style.height = 'auto';
+      node.style.height = `${node.scrollHeight}px`;
+    };
+    resize();
+    node.addEventListener('input', resize);
+    return {
+      destroy() {
+        node.removeEventListener('input', resize);
+      }
+    };
   }
 
   function onGoalInput(e: Event): void {
@@ -386,10 +408,12 @@
     writeCard({ maxx: { ...card.maxx, enabled: next.enabled }, maxxEntryId: next.entryId });
   }
 
-  // The live agent keyed by `card.taskId` flows through the exact same
-  // `computeOrbState` the Forge pane uses; its glow colour still drives the
-  // card's running/queued/done border (via the `--orb` custom property).
-  $: orb = orbStateForCard(card.taskId, $agents, $permissionWaiting);
+  // The card's running/queued/done border color comes from `--orb`, a CSS
+  // custom property set by the parent (`StackPane.svelte`) on the shared
+  // `.loopwrap` ancestor rather than computed here — the live-output panel
+  // (`StackOutput.svelte`) is a *sibling*, not a descendant, of this card, so
+  // for both to inherit the identical value (and stay in visual lockstep)
+  // it has to live above both of them, not on this component's own root.
   // The status runtag badge text (mockup's `statusLabel`): a running card
   // reads "running · iter N/M", every other status reads its own name.
   $: statusLabel =
@@ -476,7 +500,7 @@
   class:dragging={draggable && $dragging?.cardId === card.id}
   class:drop-before={dropBefore}
   class:drop-after={dropAfter}
-  style="--accent:{accent}; --orb:{orb.glowColor}"
+  style="--accent:{accent}"
   role="listitem"
   draggable={!isDraft && draggable}
   on:dragstart={onDragStart}
@@ -508,18 +532,21 @@
       />
       {#if showAliasSuggest}
         <AutocompleteSuggest
+          anchor={goalInput}
           items={aliasMatches.map((m) => ({ value: m.alias, label: m.label, hint: m.hint }))}
           activeIndex={aliasActiveIndex}
           onSelect={selectAlias}
         />
       {:else if showRepoSuggest}
         <AutocompleteSuggest
+          anchor={goalInput}
           items={repoMatches.map((m) => ({ value: m.token, label: m.label, hint: m.hint }))}
           activeIndex={repoActiveIndex}
           onSelect={selectRepo}
         />
       {:else if showCmdSuggest}
         <AutocompleteSuggest
+          anchor={goalInput}
           items={cmdMatches.map((m) => ({ value: m.token, label: m.label, hint: m.hint }))}
           activeIndex={cmdActiveIndex}
           onSelect={selectCommand}
@@ -529,7 +556,19 @@
   {:else}
     <div class="spec">
       <ProvenanceChips alias={card.alias} tpl={card.tpl} tplKind={card.tplKind} repoLabel={cardRepoLabel} />
-      <span class="md">"{card.goal}"</span>
+      {#if card.status !== 'running'}
+        <textarea
+          class="md mdinput"
+          value={card.goal}
+          on:input={onCommittedGoalInput}
+          use:autoGrow
+          rows="1"
+          spellcheck="false"
+          aria-label="edit prompt"
+        ></textarea>
+      {:else}
+        <span class="md">"{card.goal}"</span>
+      {/if}
     </div>
   {/if}
 
@@ -717,7 +756,7 @@
   }
   .pc.running {
     border-color: color-mix(in srgb, var(--orb) 45%, transparent);
-    animation: cardflash 5s ease-in-out infinite;
+    animation: edgeflash 5s ease-in-out infinite;
   }
   .pc.queued {
     border-color: color-mix(in srgb, var(--orb) 40%, transparent);
@@ -803,7 +842,14 @@
   .pc.drop-after {
     box-shadow: 0 3px 0 var(--konjo-ice);
   }
-  @keyframes cardflash {
+  /* Only actually paints when this card has no output attached — StackPane's
+     `.loopwrap.hasout` strips `.pc`'s border (`border: none !important`) and
+     takes over the identical animation itself once a `taskId` exists, since
+     two separately-animated elements can share this exact color/keyframes
+     and still drift out of phase (each one's `animation` clocks from its
+     own mount time, not a shared clock). Kept as a real fallback here, not
+     dead code, for a running card that somehow has no `taskId` yet. */
+  @keyframes edgeflash {
     0%,
     100% {
       border-color: color-mix(in srgb, var(--orb) 45%, transparent);
@@ -865,6 +911,43 @@
   }
   .spec .md {
     color: rgba(245, 245, 245, 0.46);
+  }
+  /* Committed cards' goal is editable (as long as the card isn't running) —
+     styled to read as plain text at rest and reveal an input affordance on
+     hover/focus, rather than looking like a form field all the time.
+     `<textarea>`, not `<input>`, so a long prompt wraps and stays fully
+     visible (the auto-grow action above sizes it to content) instead of
+     scrolling off sideways in a single line. */
+  .spec .mdinput {
+    flex: 1 1 100%;
+    width: 100%;
+    min-width: 120px;
+    display: block;
+    resize: none;
+    overflow: hidden;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 5px;
+    margin: -3px -6px;
+    padding: 2px 6px;
+    color: rgba(245, 245, 245, 0.46);
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
+    outline: none;
+    transition:
+      border-color 0.12s,
+      background 0.12s,
+      color 0.12s;
+  }
+  .spec .mdinput:hover {
+    border-color: rgba(255, 255, 255, 0.11);
+    background: rgba(255, 255, 255, 0.02);
+  }
+  .spec .mdinput:focus {
+    border-color: rgba(0, 255, 212, 0.4);
+    background: rgba(0, 255, 212, 0.03);
+    color: var(--konjo-paper, #f5f5f5);
   }
   .iterbar {
     display: flex;

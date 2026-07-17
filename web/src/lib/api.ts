@@ -250,6 +250,89 @@ export const runScheduleNow = (id: string) =>
     { method: 'POST' }
   );
 
+// ── Schedule chains (whole-stack cron) ──────────────────────────────────────
+/** Stack-Chain-1 — sibling to `Schedule`, but a chain carries an ORDERED
+ *  SEQUENCE of goals (one per stack card) instead of a single `goal` field.
+ *  Mirrors `crates/lopi-memory/src/store/schedule_chains.rs::ScheduleChainRow`. */
+export interface ScheduleChainStep {
+  step_order: number;
+  goal: string;
+  allowed_dirs: string[];
+  forbidden_dirs: string[];
+}
+
+export interface ScheduleChainRun {
+  id: string;
+  chain_id: string;
+  fired_at: string;
+  current_step: number;
+  current_task_id: string | null;
+  status: string;
+  updated_at: string;
+}
+
+export interface ScheduleChain {
+  id: string;
+  name: string;
+  cron: string;
+  repo: string | null;
+  priority: string | null;
+  autonomy_level: string;
+  on_fail: string;
+  enabled: boolean;
+  steps: ScheduleChainStep[];
+  created_at: string;
+  updated_at: string;
+  next_runs: string[];
+  last_run: ScheduleChainRun | null;
+  runs?: ScheduleChainRun[];
+}
+
+export interface ScheduleChainStepBody {
+  goal: string;
+  allowed_dirs?: string[];
+  forbidden_dirs?: string[];
+}
+
+export interface ScheduleChainBody {
+  name: string;
+  cron: string;
+  steps: ScheduleChainStepBody[];
+  repo?: string;
+  priority?: string;
+  autonomy_level?: string;
+  on_fail?: string;
+  enabled?: boolean;
+}
+
+export const listScheduleChains = () =>
+  request<{ chains: ScheduleChain[] }>('/api/schedule-chains');
+export const getScheduleChain = (id: string) =>
+  request<ScheduleChain>(`/api/schedule-chains/${encodeURIComponent(id)}`);
+export const createScheduleChain = (body: ScheduleChainBody) =>
+  request<ScheduleChain>('/api/schedule-chains', json('POST', body));
+export const updateScheduleChain = (id: string, body: ScheduleChainBody) =>
+  request<ScheduleChain>(`/api/schedule-chains/${encodeURIComponent(id)}`, json('PUT', body));
+export const deleteScheduleChain = (id: string) =>
+  request<{ deleted: string }>(`/api/schedule-chains/${encodeURIComponent(id)}`, {
+    method: 'DELETE'
+  });
+export const enableScheduleChain = (id: string) =>
+  request<{ id: string; enabled: boolean }>(
+    `/api/schedule-chains/${encodeURIComponent(id)}/enable`,
+    { method: 'POST' }
+  );
+export const disableScheduleChain = (id: string) =>
+  request<{ id: string; enabled: boolean }>(
+    `/api/schedule-chains/${encodeURIComponent(id)}/disable`,
+    { method: 'POST' }
+  );
+export const runScheduleChainNow = (id: string) =>
+  request<{ chain_id: string; run_id: string | null; queued: boolean }>(
+    `/api/schedule-chains/${encodeURIComponent(id)}/run-now`,
+    { method: 'POST' }
+  );
+
 // ── MAXX (opportunistic backlog dispatch) ───────────────────────────────────
 /** One `/api/maxx` row. Mirrors `Schedule`'s shape minus `cron`/`next_runs`,
  *  plus the favorability fields (`crates/lopi-ui/src/web/maxx_handlers.rs`). */

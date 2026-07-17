@@ -3,7 +3,7 @@
   across every pane and card, sortable by lifecycle with orb-colored status.
   This is the single surface that replaces Fleet + Dashboard + Pulse's
   *information* (per-agent metrics, whole-fleet glance, live status). Clicking a
-  row focuses that agent on the Loop Stack. Constellation's 3D orbital view is
+  row focuses that agent on Loop Stacks. Constellation's 3D orbital view is
   cut, not folded in here. The old Tasks page folds in too: its dead-letter view
   is now the `dead-letter` status filter, not a separate route.
 
@@ -106,7 +106,7 @@
               tabindex="0"
               role="button"
               on:keydown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), focus(row))}
-              title="Open on the Loop Stack"
+              title="Open on Loop Stacks"
             >
               <td class="c-dot"><span class="dot" class:awaiting={row.awaiting}></span></td>
               <td class="c-goal"><span class="goal">{row.goal}</span></td>

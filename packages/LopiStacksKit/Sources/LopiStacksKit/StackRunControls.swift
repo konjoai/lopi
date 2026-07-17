@@ -111,25 +111,27 @@ public extension StackRunEngine {
         return .ok(nextOrder)
     }
 
-    // MARK: Schedule stack (honest: only the bottom card)
+    // MARK: Schedule stack
 
-    /// Run-menu "Schedule stack": attaches one cron to the first card in
-    /// execution order via the real schedule endpoint; every other card is
-    /// reported back as skipped rather than pretended-scheduled.
+    /// Run-menu "Schedule stack": wires every card in execution order into
+    /// one server-side chain via the real `createScheduleChain` seam — the
+    /// chain then fires step-by-step entirely server-side
+    /// (`ChainScheduleManager`), with no window/tab required to keep it
+    /// advancing.
     func scheduleStack(_ paneKey: String, _ cronExpr: String, _ defaults: PaneDefaults) async -> ScheduleStackResult {
         guard let pane = seams.panes().first(where: { $0.key == paneKey }), !pane.cards.isEmpty else {
-            return ScheduleStackResult(ok: false, scheduledCardId: nil, skippedCardIds: [], error: "nothing to schedule")
+            return ScheduleStackResult(ok: false, chainId: nil, error: "nothing to schedule")
         }
         let ordered = executionOrder(pane.cards)
-        let first = ordered[0]
-        let rest = Array(ordered.dropFirst())
-        let payload = cardToTaskPayload(first, defaults)
+        let first = cardToTaskPayload(ordered[0], defaults)
+        let goals = ordered.map { cardToTaskPayload($0, defaults).goal }
         do {
-            try await seams.createSchedule("stack:\(paneKey):\(first.id)", cronExpr, payload.goal, payload.repo, payload.priority)
+            let chainId = try await seams.createScheduleChain(
+                "stack:\(paneKey)", cronExpr, goals, first.repo, first.priority, pane.config.guardrails.onFail)
+            return ScheduleStackResult(ok: true, chainId: chainId, error: nil)
         } catch {
-            return ScheduleStackResult(ok: false, scheduledCardId: nil, skippedCardIds: rest.map(\.id), error: error.localizedDescription)
+            return ScheduleStackResult(ok: false, chainId: nil, error: error.localizedDescription)
         }
-        return ScheduleStackResult(ok: true, scheduledCardId: first.id, skippedCardIds: rest.map(\.id), error: nil)
     }
 
     /// Clear a pane's run state (dismiss its banner / delete-with-run).

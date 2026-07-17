@@ -95,7 +95,7 @@ public struct StackRunSeams {
         createTask: @escaping (_ payload: StackTaskPayload) async throws -> String,
         waitForTerminal: @escaping (_ taskId: String) async -> TerminalStatus,
         score: @escaping (_ taskId: String) -> Double?,
-        createSchedule: @escaping (_ name: String, _ cron: String, _ goal: String, _ repo: String, _ priority: String) async throws -> Void,
+        createScheduleChain: @escaping (_ name: String, _ cron: String, _ goals: [String], _ repo: String, _ priority: String, _ onFail: OnFail) async throws -> String,
         reorderPaneCards: @escaping (_ paneKey: String, _ from: Int, _ to: Int) -> Void
     ) {
         self.panes = panes
@@ -103,7 +103,7 @@ public struct StackRunSeams {
         self.createTask = createTask
         self.waitForTerminal = waitForTerminal
         self.score = score
-        self.createSchedule = createSchedule
+        self.createScheduleChain = createScheduleChain
         self.reorderPaneCards = reorderPaneCards
     }
 
@@ -118,30 +118,29 @@ public struct StackRunSeams {
     public var waitForTerminal: (_ taskId: String) async -> TerminalStatus
     /// The live scalar score for a finished task, if any (drives no-progress).
     public var score: (_ taskId: String) -> Double?
-    /// Attach one cron via the real schedule endpoint.
-    public var createSchedule: (_ name: String, _ cron: String, _ goal: String, _ repo: String, _ priority: String) async throws -> Void
+    /// Wire every card in execution order into one server-side chain
+    /// (Stack-Chain-1) via the real `/api/schedule-chains` endpoint. Returns
+    /// the created chain's id.
+    public var createScheduleChain: (_ name: String, _ cron: String, _ goals: [String], _ repo: String, _ priority: String, _ onFail: OnFail) async throws -> String
     /// Reorder a pane's card array (so the rendered order matches a mid-run bump).
     public var reorderPaneCards: (_ paneKey: String, _ from: Int, _ to: Int) -> Void
 }
 
-/// The result of `scheduleStack` — honest that it can only attach the cron to
-/// the bottom-of-stack (first-to-run) card, not the whole plan.
+/// The result of `scheduleStack` — every card in execution order joins one
+/// server-side chain, not just the first.
 public struct ScheduleStackResult: Equatable {
     public init(
         ok: Bool,
-        scheduledCardId: String?,
-        skippedCardIds: [String],
+        chainId: String?,
         error: String?
     ) {
         self.ok = ok
-        self.scheduledCardId = scheduledCardId
-        self.skippedCardIds = skippedCardIds
+        self.chainId = chainId
         self.error = error
     }
 
     public var ok: Bool
-    public var scheduledCardId: String?
-    public var skippedCardIds: [String]
+    public var chainId: String?
     public var error: String?
 }
 

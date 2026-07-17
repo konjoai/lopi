@@ -105,7 +105,26 @@
     computePosition();
   }
 
+  // Stack-Chain-1 kill-test finding: `computePosition` only re-ran on open or
+  // window resize, never when the popover's OWN content grew after opening
+  // (e.g. toggling "run on a schedule" mounts a taller cron builder inside
+  // the same popover). It correctly flipped above for the small initial
+  // content, then never repositioned once the content grew past the
+  // viewport bottom — a stale-measurement bug, not a "no room above" policy
+  // gap. A `ResizeObserver` on `popEl` re-runs the same flip/clamp logic
+  // whenever its content box actually changes size, fixing that directly.
+  let resizeObserver: ResizeObserver | undefined;
+  $: if (popEl) {
+    resizeObserver?.disconnect();
+    resizeObserver = new ResizeObserver(() => computePosition());
+    resizeObserver.observe(popEl);
+  } else {
+    resizeObserver?.disconnect();
+    resizeObserver = undefined;
+  }
+
   onDestroy(() => {
+    resizeObserver?.disconnect();
     if ($activePopoverId === id) closePopover();
   });
 </script>
