@@ -20,11 +20,39 @@ public func guardSummary(_ card: StackCard) -> String {
     return parts.joined(separator: " · ")
 }
 
+/// The bolded descriptor half of the MAXX summary line — e.g. "quiet hours +
+/// headroom", matching the locked design's "on · **quiet hours + headroom**"
+/// sample text (the "on ·" prefix is rendered unbolded by the caller).
+public func maxxSummary(_ card: StackCard) -> String {
+    // `quietHours` is a fixed policy field, always present once MAXX exists on
+    // a card — there's no UI to unset it independently of `enabled` in this
+    // sprint (see `MaxxPopoverView`'s doc comment), so it's always listed.
+    var parts: [String] = ["quiet hours"]
+    if card.maxx.headroomGate { parts.append("headroom") }
+    return parts.joined(separator: " + ")
+}
+
 /// The evals line shown when more than the baseline is on.
 public func evalsSummary(_ card: StackCard) -> String {
     let n = card.evals.count
     if n <= 1 { return "1 check · baseline only" }
     return "\(n) checks · baseline + \(n - 1) more"
+}
+
+/// The run-config override line shown when `configActive` (the sliders
+/// button's drawer is collapsed but at least one field diverges from the pane
+/// defaults) — lists only the overridden fields, mirroring the exact
+/// conditions `configActive` checks so the two never drift out of sync.
+/// Mirrors web `configSummary`.
+public func configSummary(_ card: StackCard, _ defaults: StackDefaults) -> String {
+    let c = card.config
+    var parts: [String] = []
+    if (c.model ?? defaults.model) != defaults.model { parts.append("model \(c.model ?? "")") }
+    if (c.effort ?? defaults.effort) != defaults.effort { parts.append("effort \(c.effort ?? "")") }
+    if (c.repo ?? defaults.repo) != defaults.repo { parts.append("repo \(c.repo ?? "")") }
+    if (c.branch ?? defaults.branch) != defaults.branch { parts.append("branch \(c.branch ?? "")") }
+    if (c.autonomy ?? defaults.autonomy) != defaults.autonomy { parts.append("autonomy \(c.autonomy ?? "")") }
+    return parts.joined(separator: " · ")
 }
 
 // MARK: - Stack-level active-state predicates

@@ -127,12 +127,23 @@ struct IterationPill: View {
     /// as "off" and keeps `0` as the `∞` sentinel. Drives both the label and
     /// whether `off`/`∞` render without a `×`.
     var offAtZero: Bool = false
+    /// Set once this loop is both actively running (`card.status ==
+    /// .running` / the stack's own `RunPhase == .running`) AND has a real
+    /// repeat configured — matches web's `loopRunning`/`stackLoopRunning`.
+    /// Non-nil swaps the static `loop` glyph for a spinning arc, the `×N`
+    /// label for this live "current/total" text, and adds the slow glow —
+    /// mirroring `StackCard.svelte`/`StackControlDock.svelte`'s `.running`.
+    var runningLabel: String? = nil
     var onStep: (Int) -> Void
     @State private var hovering = false
+    @State private var pulse = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var isOff: Bool { offAtZero ? value == 0 : value == 1 }
+    private var isRunning: Bool { runningLabel != nil }
 
     private var displayText: String {
+        if let runningLabel { return runningLabel }
         if offAtZero { return value == 0 ? "off" : "×\(value)" }
         let label = maxIterationsLabel(value)
         return value <= 1 ? label : "×\(label)"
@@ -143,7 +154,11 @@ struct IterationPill: View {
     var body: some View {
         HStack(spacing: 0) {
             HStack(spacing: 5) {
-                Image(systemName: "arrow.triangle.2.circlepath").font(.system(size: 11, weight: .bold))
+                if isRunning {
+                    SpinnerArc().frame(width: 11, height: 11)
+                } else {
+                    Image(systemName: "arrow.triangle.2.circlepath").font(.system(size: 11, weight: .bold))
+                }
                 Text(displayText).font(Konjo.mono(11, weight: .bold))
             }
             .padding(.horizontal, 9).frame(height: 29)
@@ -156,14 +171,35 @@ struct IterationPill: View {
         }
         .foregroundStyle(tint)
         .background(isOff ? Color.white.opacity(0.05) : Konjo.ember.opacity(0.09))
-        .overlay(RoundedRectangle(cornerRadius: 6).stroke(tint.opacity(isOff ? 0.4 : 0.5), lineWidth: 1))
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(tint.opacity(isRunning && pulse ? 0.95 : (isOff ? 0.4 : 0.5)), lineWidth: 1)
+        )
+        .shadow(color: isRunning ? Konjo.ember.opacity(pulse ? 0.45 : 0) : .clear, radius: pulse ? 8 : 0)
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .onHover { isHovering in
             withAnimation(.timingCurve(0.5, 0, 0.2, 1, duration: 0.24)) {
                 hovering = isHovering
             }
         }
+        .onAppear { startPulseIfRunning() }
+        .onChange(of: isRunning) { _, _ in startPulseIfRunning() }
         .help(isOff ? "off · runs once, no repeat" : (value == 0 && !offAtZero ? "unlimited · runs until guardrails or goal stop it" : ""))
+    }
+
+    /// Kicks off (or stops) the glow's repeating animation. Driven from
+    /// `onAppear`/`onChange` rather than a bare `.animation(value:)` on
+    /// `pulse` — `repeatForever` needs an explicit `withAnimation` to start,
+    /// and toggling `isRunning` off must also snap `pulse` back to its rest
+    /// state rather than freezing mid-pulse.
+    private func startPulseIfRunning() {
+        guard isRunning, !reduceMotion else {
+            pulse = false
+            return
+        }
+        withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) {
+            pulse = true
+        }
     }
 
     private func stepper(_ glyph: String, _ delta: Int) -> some View {
@@ -174,6 +210,28 @@ struct IterationPill: View {
         }
         .buttonStyle(.plain)
         .foregroundStyle(tint)
+    }
+}
+
+/// A continuously-rotating three-quarter arc — the native analogue of web's
+/// `ICONS.spinner` (a partial-circle SVG animated via CSS `spin`). Used only
+/// by `IterationPill` while a loop is actively running, so the pill itself
+/// (not just its glow) reads as "in motion".
+private struct SpinnerArc: View {
+    @State private var rotation = 0.0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Circle()
+            .trim(from: 0, to: 0.75)
+            .stroke(style: StrokeStyle(lineWidth: 2, lineCap: .round))
+            .rotationEffect(.degrees(rotation))
+            .onAppear {
+                guard !reduceMotion else { return }
+                withAnimation(.linear(duration: 1.1).repeatForever(autoreverses: false)) {
+                    rotation = 360
+                }
+            }
     }
 }
 

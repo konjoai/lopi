@@ -24,6 +24,7 @@ struct StackCardView: View {
     @State private var schedOpen = false
     @State private var guardOpen = false
     @State private var evalOpen = false
+    @State private var maxxOpen = false
     @State private var cardHeight: CGFloat = 0
     @State private var dragArmed = false
     @FocusState private var goalFocused: Bool
@@ -60,10 +61,10 @@ struct StackCardView: View {
     // syntax: typing `/` suggests command names (`commandAutocomplete`);
     // picking a value-picker command moves into a second `/command/value`
     // token (`commandValueAutocomplete`) against that command's own catalog.
-    // Picking a non-value-picker command (guard/schedule) fires immediately —
-    // strips the token and flips the existing `guardOpen`/`schedOpen` state,
-    // same as clicking its cardbar icon. No `/maxx` here — macOS `StackCard`
-    // has no MAXX field yet (web-only feature to date).
+    // Picking a non-value-picker command (guard/schedule/maxx) fires
+    // immediately — strips the token and flips the existing
+    // `guardOpen`/`schedOpen`/`maxxOpen` state, same as clicking its cardbar
+    // icon.
     @State private var cmdActiveIndex = 0
     @State private var cmdDismissed = false
     /// Set once a value-picker command is chosen from the level-1 list.
@@ -84,8 +85,8 @@ struct StackCardView: View {
 
     private func commandOptionsFor(_ command: String) -> [StackOption] {
         switch command {
-        case "model": return MODEL_OPTIONS
-        case "effort": return EFFORT_OPTIONS
+        case "model": return modelOptionsFrom(model.modelCatalog)
+        case "effort": return effortOptionsFor(model.modelCatalog, model: card.config.model ?? paneDefaults.model)
         case "autonomy": return AUTONOMY_OPTIONS
         case "branch": return (model.branchesByRepo[effectiveRepo] ?? []).map { StackOption(value: $0, label: $0) }
         case "eval": return evalSuiteOptions()
@@ -101,6 +102,13 @@ struct StackCardView: View {
     }
     private var showCmdSuggest: Bool { isDraft && goalFocused && !cmdDismissed && !cmdMatches.isEmpty }
 
+    /// Whether this card's run-sooner/run-later buttons should show, and
+    /// which directions are legal — only meaningful for a still-queued card
+    /// in an active run. Mirrors web's `bumpUiState` (`StackCard.svelte`).
+    private var bumpState: (visible: Bool, canSooner: Bool, canLater: Bool) {
+        isDraft ? (false, false, false) : model.stackEngine.bumpUiState(paneKey, card.id)
+    }
+
     private var isDraft: Bool { card.status == .draft }
     private var hot: Bool { isDraft && draftIsHot(card) }
 
@@ -110,7 +118,19 @@ struct StackCardView: View {
     private var evalsOn: Bool { evalActive(card) }
     private var configOn: Bool { configActive(card, paneDefaults) }
     private var scheduleActive: Bool { card.scheduled && !scheduleGoverned }
-    private var showSep: Bool { card.scheduled || guardsOn || evalsOn }
+    // The config drawer already shows every field inline while open — the
+    // hide-inactive summary line only needs to cover the gap left when it's
+    // collapsed (mirrors web's identical `showConfigSummary`).
+    private var showConfigSummary: Bool { configOn && !cfgOpen }
+    private var showSep: Bool { card.scheduled || card.maxx.enabled || guardsOn || evalsOn || showConfigSummary }
+    /// This card's loop reads as "actively running" only once it has both a
+    /// live iteration and an actual repeat configured — an off card (single
+    /// pass) never shows the running-loop chrome even mid-run. Mirrors web's
+    /// `loopRunning`.
+    private var iterationRunningLabel: String? {
+        guard card.status == .running, let it = card.iteration, it.total > 1 else { return nil }
+        return "\(it.current)/\(it.total)"
+    }
 
     /// Route a card mutation to the right store op: a draft edits the pane's
     /// `draft`; a committed card edits itself in `pane.cards`.
@@ -198,6 +218,7 @@ struct StackCardView: View {
                 )
         )
         .overlay(alignment: .topTrailing) { runtag }
+        .task { await model.ensureModelCatalog() }
     }
 
     private var borderColor: Color {
@@ -448,6 +469,7 @@ struct StackCardView: View {
     private func fireCommandAction(_ command: String) {
         if command == "guard" { guardOpen = true }
         else if command == "schedule" { schedOpen = true }
+        else if command == "maxx" { maxxOpen = true }
     }
 
     private func selectCommand(_ token: String) {
@@ -559,6 +581,12 @@ struct StackCardView: View {
                 }
                 if guardsOn { SummaryRow(systemImage: "shield", label: "guards", accent: FacetAccent.guards, text: guardSummary(card)) }
                 if evalsOn { SummaryRow(systemImage: "checkmark.square", label: "evals", accent: FacetAccent.evals, text: evalsSummary(card)) }
+                if card.maxx.enabled {
+                    SummaryRow(systemImage: "bolt.fill", label: "MAXX", accent: FacetAccent.maxx, text: "on · \(maxxSummary(card))")
+                }
+                if showConfigSummary {
+                    SummaryRow(systemImage: "slider.horizontal.3", label: "config", accent: FacetAccent.config, text: configSummary(card, paneDefaults))
+                }
             }
             .padding(.top, 8)
         }
@@ -568,7 +596,7 @@ struct StackCardView: View {
 
     private var cardbar: some View {
         HStack(spacing: 6) {
-            IterationPill(value: card.maxIterations, offAtZero: true) { delta in
+            IterationPill(value: card.maxIterations, offAtZero: true, runningLabel: iterationRunningLabel) { delta in
                 writeCard { $0.maxIterations = stepCardIterations($0.maxIterations, delta) }
             }
             CardbarButton(systemImage: "clock", active: scheduleActive, accent: FacetAccent.schedule, help: scheduleGoverned ? "schedule (governed by the stack)" : "schedule") { schedOpen = true }
@@ -577,12 +605,24 @@ struct StackCardView: View {
                 .popover(isPresented: $guardOpen, arrowEdge: .bottom) { guardsPopover }
             CardbarButton(systemImage: "checkmark.square", active: evalsOn, accent: FacetAccent.evals, count: card.evals.count, help: "evals") { evalOpen = true }
                 .popover(isPresented: $evalOpen, arrowEdge: .bottom) { evalsPopover }
+            CardbarButton(systemImage: "bolt.fill", active: card.maxx.enabled, accent: FacetAccent.maxx, help: "MAXX") { maxxOpen = true }
+                .popover(isPresented: $maxxOpen, arrowEdge: .bottom) { maxxPopover }
             CardbarButton(systemImage: "slider.horizontal.3", active: configOn, accent: FacetAccent.config, help: "run config") { cfgOpen.toggle() }
             Spacer()
             if isDraft {
                 CardbarButton(systemImage: "plus", active: hot, accent: Konjo.jade, label: "add", disabled: !hot, help: "add to stack") { commit() }
             } else {
                 TemplatesMenuView(store: store, templateStore: model.stackTemplateStore, paneKey: paneKey, card: card, isDraft: false)
+                if bumpState.visible {
+                    CardbarButton(systemImage: "chevron.up", disabled: !bumpState.canSooner,
+                                  help: "run sooner — moves this card earlier in the active run's queue") {
+                        _ = model.stackEngine.bumpCard(paneKey, card.id, .up)
+                    }
+                    CardbarButton(systemImage: "chevron.down", disabled: !bumpState.canLater,
+                                  help: "run later — moves this card later in the active run's queue") {
+                        _ = model.stackEngine.bumpCard(paneKey, card.id, .down)
+                    }
+                }
                 CardbarButton(systemImage: "square.on.square", help: "duplicate") { store.duplicateInPane(paneKey, card.id) }
                 cardDragHandle
                 CardbarButton(systemImage: "trash", accent: Konjo.rose, danger: true, help: "delete") { store.removeFromPane(paneKey, card.id) }
@@ -629,5 +669,13 @@ struct StackCardView: View {
     }
     private var evalsPopover: some View {
         EvalsPopoverView(evals: card.evals) { evals in writeCard { $0.evals = evals } }
+    }
+    private var maxxPopover: some View {
+        MaxxPopoverView(maxx: card.maxx, entryId: card.maxxEntryId, goal: card.goal, repo: card.config.repo) { enabled, entryId in
+            writeCard { c in
+                c.maxx.enabled = enabled
+                c.maxxEntryId = entryId
+            }
+        }
     }
 }

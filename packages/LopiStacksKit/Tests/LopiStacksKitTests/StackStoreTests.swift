@@ -47,6 +47,37 @@ final class StackStoreTests: XCTestCase {
         XCTAssertEqual(duplicateCard([card("a")], "missing").count, 1, "duplicate no-op for unknown id")
     }
 
+    // MARK: MAXX — defaults, duplicate semantics, summary text
+
+    func testMaxxDefaults() {
+        let a = card("x")
+        XCTAssertEqual(a.maxx.enabled, false, "maxx starts disabled")
+        XCTAssertEqual(a.maxx.quietHours, [23, 7], "default quiet hours match the locked popover design (11PM-7AM)")
+        XCTAssertEqual(a.maxx.headroomGate, true, "headroom gate defaults on")
+        XCTAssertEqual(a.maxx.windows, [.fiveHour, .sevenDay], "both windows checked by default")
+        XCTAssertNil(a.maxxEntryId, "no backend entry until MAXX is enabled")
+    }
+
+    func testMaxxDuplicateResetsBackendEntry() {
+        var on = card("a")
+        on.maxx = MaxxConfig(enabled: true, quietHours: [23, 7], headroomGate: true, windows: [.fiveHour, .sevenDay])
+        on.maxxEntryId = "entry-1"
+        let dup = duplicateCard([on], "a")
+        XCTAssertNil(dup[1].maxxEntryId, "duplicate clears the backend entry id")
+        XCTAssertEqual(dup[1].maxx.enabled, false, "duplicate resets maxx to disabled — no entry to back it")
+        XCTAssertEqual(dup[0].maxxEntryId, "entry-1", "the original keeps its own entry id")
+    }
+
+    func testMaxxSummary() {
+        var withHeadroom = card("a")
+        withHeadroom.maxx = MaxxConfig(enabled: true, quietHours: [23, 7], headroomGate: true, windows: [])
+        XCTAssertEqual(maxxSummary(withHeadroom), "quiet hours + headroom", "summary lists every active condition")
+
+        var withoutHeadroom = card("a")
+        withoutHeadroom.maxx = MaxxConfig(enabled: true, quietHours: [23, 7], headroomGate: false, windows: [])
+        XCTAssertEqual(maxxSummary(withoutHeadroom), "quiet hours", "summary drops headroom when its gate is off")
+    }
+
     func testReorder() {
         XCTAssertEqual(reorderCard([card("a"), card("b"), card("c")], 0, 2).map(\.id), ["b", "c", "a"], "reorder moves to target")
         XCTAssertEqual(reorderCard([card("a"), card("b")], 0, 99).map(\.id), ["a", "b"], "out-of-range `to` is a no-op")
@@ -144,9 +175,13 @@ final class StackStoreTests: XCTestCase {
         XCTAssertEqual(maxIterationsLabel(1), "off", "label renders a single run with no repeat as off")
         XCTAssertEqual(maxIterationsLabel(5), "5", "label renders a finite ceiling as its number")
 
-        // Card pill: floors at 0 = "off", never wraps to infinite.
-        XCTAssertEqual(stepCardIterations(0, 1), 1, "stepping up from off lands on 1")
-        XCTAssertEqual(stepCardIterations(1, -1), 0, "stepping down from 1 reaches off (0)")
+        // Card pill: floors at 0 = "off", never wraps to infinite. Skips 1 in
+        // both directions — max_iterations 1 and 0 submit identically, so off
+        // now steps straight to 2 (the stack stepper's own floor).
+        XCTAssertEqual(stepCardIterations(0, 1), 2, "stepping up from off skips the no-op 1 and lands on 2")
+        XCTAssertEqual(stepCardIterations(2, -1), 0, "stepping down from 2 reaches off (0), skipping 1")
+        XCTAssertEqual(stepCardIterations(1, -1), 0, "stepping down from a legacy 1 reaches off (0)")
+        XCTAssertEqual(stepCardIterations(1, 1), 2, "stepping up from a legacy 1 lands on 2")
         XCTAssertEqual(stepCardIterations(0, -1), 0, "stepping down from off stays off — never wraps to infinite")
         XCTAssertEqual(cardIterationsLabel(0), "off", "card label renders 0 as off")
         XCTAssertEqual(cardIterationsLabel(4), "4", "card label renders a finite ceiling as its number")
@@ -244,6 +279,39 @@ final class StackStoreTests: XCTestCase {
         XCTAssertEqual(resolvePresetAlias("ratchet"), .gain, "legacy `:ratchet` still resolves to gain")
         XCTAssertNil(resolvePresetAlias("nonsense"), "unknown alias resolves to nil")
         XCTAssertEqual(buildCard(":ratchet \"self improve\"").preset, .gain, "`:ratchet` builds a gain-preset card")
+    }
+
+    // MARK: live model/effort catalog
+
+    func testModelOptionsFromFallsBackWhenCatalogEmpty() {
+        XCTAssertEqual(modelOptionsFrom([]), MODEL_OPTIONS, "empty catalog falls back to the static list")
+    }
+
+    func testModelOptionsFromUsesLiveCatalog() {
+        let catalog = [LiveModel(id: "claude-opus-9", displayName: "Opus 9", effort: ["low", "high"])]
+        let options = modelOptionsFrom(catalog)
+        XCTAssertEqual(options, [StackOption(value: "claude-opus-9", label: "Opus 9")],
+                       "live entries replace the static list when the catalog has loaded")
+    }
+
+    func testEffortOptionsForFallsBackWhenModelUnknown() {
+        XCTAssertEqual(effortOptionsFor([], model: "claude-opus-4-8"), EFFORT_OPTIONS)
+        let catalog = [LiveModel(id: "claude-opus-9", displayName: "Opus 9", effort: ["low", "high"])]
+        XCTAssertEqual(effortOptionsFor(catalog, model: "some-other-model"), EFFORT_OPTIONS,
+                       "a model absent from the catalog falls back to the static tiers")
+    }
+
+    func testEffortOptionsForUsesLiveTiers() {
+        let catalog = [LiveModel(id: "claude-opus-9", displayName: "Opus 9", effort: ["low", "high"])]
+        let options = effortOptionsFor(catalog, model: "claude-opus-9")
+        XCTAssertEqual(options.map(\.value), ["low", "high"], "only the model's own tiers are offered")
+        XCTAssertEqual(options.map(\.label), ["Low", "High"], "known tiers reuse the static label")
+    }
+
+    func testEffortOptionsForUnknownTierGetsTitleCasedLabel() {
+        let catalog = [LiveModel(id: "m", displayName: "M", effort: ["ultra"])]
+        XCTAssertEqual(effortOptionsFor(catalog, model: "m"), [StackOption(value: "ultra", label: "Ultra")],
+                       "a tier the static catalog doesn't know gets a title-cased fallback label")
     }
 
     // MARK: alias autocomplete — filters PRESET_KEYS while the goal is a bare :token

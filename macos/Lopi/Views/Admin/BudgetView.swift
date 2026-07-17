@@ -37,7 +37,7 @@ struct BudgetView: View {
                 statCards
                 burnMeter
                 topSpenders
-                if let breach = model.lastBudget { breachRow(breach) }
+                if !model.budgetBreaches.isEmpty { breachHistory }
             }
             .padding(20)
             .frame(maxWidth: 920, alignment: .leading)
@@ -172,17 +172,30 @@ struct BudgetView: View {
         }
     }
 
-    private func breachRow(_ breach: BudgetBreach) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: "exclamationmark.octagon.fill").foregroundStyle(Konjo.rose)
-            Text("RECENT BREACH").font(Konjo.mono(9, weight: .semibold)).tracking(1).foregroundStyle(Konjo.rose)
-            Spacer()
-            Text("\(breach.scope) · \(String(format: "$%.2f / $%.2f/h", breach.burnedUsd, breach.limitUsd))")
-                .font(Konjo.mono(11)).foregroundStyle(Konjo.fgDim).monospacedDigit()
+    /// Every entry in `model.budgetBreaches` (up to 5) — mirrors web's
+    /// `budget/+page.svelte` "recent breaches" panel.
+    private var breachHistory: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("RECENT BREACHES").font(Konjo.mono(9, weight: .semibold)).tracking(1).foregroundStyle(Konjo.rose)
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(Array(model.budgetBreaches.enumerated()), id: \.offset) { _, breach in
+                    breachRow(breach)
+                }
+            }
         }
         .padding(14)
         .background(RoundedRectangle(cornerRadius: 12).fill(Konjo.rose.opacity(0.06)))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Konjo.rose.opacity(0.3), lineWidth: 1))
+    }
+
+    private func breachRow(_ breach: BudgetBreach) -> some View {
+        HStack(spacing: 8) {
+            Text("◈").foregroundStyle(Konjo.rose)
+            Text(breach.scope).font(Konjo.mono(11)).foregroundStyle(Konjo.fgDim)
+            Text("·").foregroundStyle(Konjo.fgMute)
+            Text(String(format: "$%.2f / $%.2f/h", breach.burnedUsd, breach.limitUsd))
+                .font(Konjo.mono(11)).foregroundStyle(Konjo.fgDim).monospacedDigit()
+        }
     }
 
     // MARK: Actions / helpers

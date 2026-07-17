@@ -137,6 +137,42 @@ public func defaultCron() -> CronConfig {
     CronConfig(freq: .daily, hour12: 2, min: 0, ampm: .AM, dow: .Mon, raw: "0 2 * * *")
 }
 
+// MARK: - MAXX (opportunistic backlog dispatch)
+
+/// An Anthropic account rate-limit window MAXX's headroom gate can check —
+/// mirrors `lopi_core::LimitWindow`'s wire tags exactly.
+public enum LimitWindow: String, Codable, Hashable {
+    case fiveHour = "five_hour"
+    case sevenDay = "seven_day"
+}
+
+/// A card's MAXX (opportunistic backlog dispatch) settings. `quietHours` and
+/// `windows`/`headroomGate` are the fixed policy this popover offers (no
+/// per-field editing in this sprint — see `MaxxPopoverView`'s doc comment)
+/// sent to `/api/maxx` when `enabled` flips on. Mirrors `CronConfig`'s
+/// per-card, always-present-object convention.
+public struct MaxxConfig: Codable, Hashable {
+    public init(enabled: Bool, quietHours: [Int], headroomGate: Bool, windows: [LimitWindow]) {
+        self.enabled = enabled
+        self.quietHours = quietHours
+        self.headroomGate = headroomGate
+        self.windows = windows
+    }
+
+    public var enabled: Bool
+    /// `[start, end]` local hours, e.g. `[23, 7]` for 11PM-7AM.
+    public var quietHours: [Int]
+    public var headroomGate: Bool
+    public var windows: [LimitWindow]
+}
+
+/// Freshly-initialized MAXX config — every card gets its own value (structs
+/// are value types, so no shared-reference hazard). Matches the sample values
+/// in the locked popover design (11PM-7AM, both windows).
+public func defaultMaxx() -> MaxxConfig {
+    MaxxConfig(enabled: false, quietHours: [23, 7], headroomGate: true, windows: [.fiveHour, .sevenDay])
+}
+
 // MARK: - Card config
 
 /// Per-loop overrides of the pane defaults. `nil` on any field means "inherit
@@ -201,7 +237,8 @@ public struct StackCard: Codable, Hashable, Identifiable {
                 evals: [EvalRef], status: CardStatus, maxIterations: Int,
                 iteration: IterationProgress?, scheduled: Bool, cron: CronConfig,
                 guardrails: Guardrails, config: CardConfig, taskId: String?,
-                tpl: String? = nil, tplKind: TplKind? = nil) {
+                tpl: String? = nil, tplKind: TplKind? = nil,
+                maxx: MaxxConfig = defaultMaxx(), maxxEntryId: String? = nil) {
         self.id = id
         self.preset = preset
         self.goal = goal
@@ -218,6 +255,8 @@ public struct StackCard: Codable, Hashable, Identifiable {
         self.taskId = taskId
         self.tpl = tpl
         self.tplKind = tplKind
+        self.maxx = maxx
+        self.maxxEntryId = maxxEntryId
     }
 
     public var id: String
@@ -242,6 +281,14 @@ public struct StackCard: Codable, Hashable, Identifiable {
     /// Which kind of template produced it — drives the provenance chip's color.
     /// Set iff `tpl` is set.
     public var tplKind: TplKind? = nil
+    /// MAXX — opportunistic backlog dispatch. Independent of `scheduled`/
+    /// `cron`: a card can have both a cron schedule and MAXX on at once.
+    public var maxx: MaxxConfig = defaultMaxx()
+    /// The `/api/maxx` row id backing this card's MAXX toggle, once created.
+    /// `nil` until `enabled` is flipped on for the first time — never set by
+    /// anything other than the MAXX popover's CRUD wiring, and cleared on
+    /// duplicate so a clone never shares its original's backend entry.
+    public var maxxEntryId: String? = nil
 }
 
 // MARK: - Eval catalog (client-side static config)

@@ -177,6 +177,35 @@ final class StackRunTests: XCTestCase {
         if case .ok = engine.bumpCard("s2", "x", .up) { XCTFail("bumping in a pane with no active run should be rejected") }
     }
 
+    func testBumpUiState() async {
+        let store = freshStore()
+        seedNewestFirst(store, "s1", ["d", "c", "b", "a"]) // execution order a,b,c,d
+        let mock = Mock(store: store, outcomes: ["a": .completed, "b": .completed, "c": .completed, "d": .completed])
+        var engine: StackRunEngine!
+        mock.onCreate = { ref in if ref == "a" { engine.pauseStack("s1") } }
+        engine = StackRunEngine(seams: mock.seams())
+        engine.runStack("s1", .run, defaults)
+        await settle()
+        XCTAssertEqual(engine.run(for: "s1")?.phase, .paused, "sanity: paused after 'a' completes")
+        XCTAssertEqual(engine.run(for: "s1")?.cursor, 1, "cursor now points at 'b' — the next card up")
+
+        XCTAssertEqual(engine.bumpUiState("s1", "a").visible, false, "the already-completed card never shows buttons")
+        XCTAssertEqual(engine.bumpUiState("s1", "b").visible, false, "the card at the cursor (next to run) isn't bumpable either")
+
+        let c = engine.bumpUiState("s1", "c")
+        XCTAssertTrue(c.visible, "c is still queued")
+        XCTAssertFalse(c.canSooner, "nothing queued between c and the cursor")
+        XCTAssertTrue(c.canLater, "d remains after c")
+
+        let d = engine.bumpUiState("s1", "d")
+        XCTAssertTrue(d.visible)
+        XCTAssertTrue(d.canSooner, "c is between d and the cursor")
+        XCTAssertFalse(d.canLater, "d is already last in the queue")
+
+        XCTAssertEqual(engine.bumpUiState("s1", "missing").visible, false, "an unknown card id is never visible")
+        XCTAssertEqual(engine.bumpUiState("s2", "a").visible, false, "no active run for the pane")
+    }
+
     func testScheduleStackWiresEveryCard() async {
         let store = freshStore()
         seedNewestFirst(store, "s1", ["c", "b", "a"])

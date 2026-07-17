@@ -304,7 +304,17 @@
   let runMenuOpen = false;
   let dryRunResult: DryRunResult | null = null;
 
-  $: phase = $runs.get(pane.key)?.phase as RunPhase | undefined;
+  $: runState = $runs.get(pane.key);
+  $: phase = runState?.phase as RunPhase | undefined;
+  // The stack's own loop reads as "actively running" once it's mid-run
+  // (`phase === 'running'`) with a real chain repeat configured (`loopCount
+  // !== 1` — 1 is the dock's own "off" sentinel, matching `IterationPill`'s
+  // `offAtZero: false` convention). `repetition` is 0-indexed and counts
+  // *completed* passes, so the live iteration is `repetition + 1`.
+  $: stackLoopRunning = phase === 'running' && config.loopCount !== 1;
+  $: stackIterCurrent = (runState?.repetition ?? 0) + 1;
+  $: stackIterTotal = runState?.loopTarget ?? config.loopCount;
+  $: stackIterLabel = stackIterTotal === 0 ? `${stackIterCurrent}/∞` : `${stackIterCurrent}/${stackIterTotal}`;
   // Auto-close only on the transition into an actual run — depends solely
   // on `phase`, so it fires once when the stack starts running and never
   // re-fires just because the user reopens the dock while still running.
@@ -482,8 +492,23 @@
       {/if}
 
       <div class="cardbar">
-        <span class="iterpill" class:off={config.loopCount === 1} title={config.loopCount === 1 ? 'off · runs once, no repeat' : config.loopCount === 0 ? 'unlimited · runs until guardrails or goal stop it' : undefined}>
-          <span class="lb">{@html ICONS.loop}<span class="val">{loopLabel}</span></span>
+        <span
+          class="iterpill"
+          class:off={config.loopCount === 1}
+          class:running={stackLoopRunning}
+          title={stackLoopRunning
+            ? `chain-run ${stackIterLabel}`
+            : config.loopCount === 1
+              ? 'off · runs once, no repeat'
+              : config.loopCount === 0
+                ? 'unlimited · runs until guardrails or goal stop it'
+                : undefined}
+        >
+          <span class="lb"
+            >{@html stackLoopRunning ? ICONS.spinner : ICONS.loop}<span class="val"
+              >{stackLoopRunning ? stackIterLabel : loopLabel}</span
+            ></span
+          >
           <span class="steppers">
             <button class="sb" type="button" on:click={() => stepLoop(-1)} title="fewer chain repeats">−</button>
             <button class="sb" type="button" on:click={() => stepLoop(1)} title="more chain repeats">+</button>
@@ -924,6 +949,30 @@
   .iterpill.off .sb:hover {
     background: rgba(245, 245, 245, 0.08);
   }
+  /* Running-loop chrome — mirrors `StackCard.svelte`'s identical pill glow +
+     spinner, scoped to the whole stack instead of one card. */
+  .iterpill.running {
+    animation: iterglow 2.4s ease-in-out infinite;
+  }
+  @keyframes iterglow {
+    0%,
+    100% {
+      box-shadow: 0 0 0 0 rgba(255, 149, 0, 0);
+      border-color: rgba(255, 149, 0, 0.6);
+    }
+    50% {
+      box-shadow: 0 0 14px 1px rgba(255, 149, 0, 0.45);
+      border-color: rgba(255, 149, 0, 1);
+    }
+  }
+  .iterpill .lb :global(svg.spin) {
+    animation: spin 1.1s linear infinite;
+  }
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
   .dockrun {
     padding-top: 13px;
     position: relative;
@@ -1021,6 +1070,10 @@
   @media (prefers-reduced-motion: reduce) {
     .dockbody {
       transition: none;
+    }
+    .iterpill.running,
+    .iterpill .lb :global(svg.spin) {
+      animation: none;
     }
   }
 </style>

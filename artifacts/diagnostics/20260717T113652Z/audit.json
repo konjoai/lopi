@@ -1,0 +1,569 @@
+[
+  {
+    "id": 1,
+    "ts": "2026-06-09T02:40:39.031529+00:00",
+    "action": "task.dispatch",
+    "subject_type": "task",
+    "subject_id": "a013300c-39b8-4e25-86c8-75c2591dede7",
+    "actor": "cli",
+    "payload": "{\"priority\":\"Normal\",\"required_capabilities\":[]}"
+  },
+  {
+    "id": 2,
+    "ts": "2026-06-09T02:40:39.308969+00:00",
+    "action": "task.dead_letter",
+    "subject_type": "task",
+    "subject_id": "a013300c-39b8-4e25-86c8-75c2591dede7",
+    "actor": "pool",
+    "payload": "{\"total_attempts\":1,\"source\":\"cli\"}"
+  },
+  {
+    "id": 3,
+    "ts": "2026-06-09T02:43:45.809684+00:00",
+    "action": "task.dispatch",
+    "subject_type": "task",
+    "subject_id": "248a409b-0108-4ad5-88eb-089b92faa585",
+    "actor": "cli",
+    "payload": "{\"priority\":\"Normal\",\"required_capabilities\":[]}"
+  },
+  {
+    "id": 4,
+    "ts": "2026-06-09T02:43:49.817665+00:00",
+    "action": "task.dead_letter",
+    "subject_type": "task",
+    "subject_id": "248a409b-0108-4ad5-88eb-089b92faa585",
+    "actor": "pool",
+    "payload": "{\"total_attempts\":3,\"source\":\"cli\"}"
+  },
+  {
+    "id": 5,
+    "ts": "2026-06-09T02:48:56.882787+00:00",
+    "action": "task.dispatch",
+    "subject_type": "task",
+    "subject_id": "ae92a3a9-d033-4f26-8001-0c7a38b2c479",
+    "actor": "cli",
+    "payload": "{\"priority\":\"Normal\",\"required_capabilities\":[]}"
+  },
+  {
+    "id": 6,
+    "ts": "2026-06-09T02:49:00.479060+00:00",
+    "action": "task.dead_letter",
+    "subject_type": "task",
+    "subject_id": "ae92a3a9-d033-4f26-8001-0c7a38b2c479",
+    "actor": "pool",
+    "payload": "{\"total_attempts\":3,\"source\":\"cli\"}"
+  },
+  {
+    "id": 7,
+    "ts": "2026-06-09T02:50:11.316681+00:00",
+    "action": "task.dispatch",
+    "subject_type": "task",
+    "subject_id": "73620013-303a-410c-bae4-09b421d311dd",
+    "actor": "cli",
+    "payload": "{\"priority\":\"Normal\",\"required_capabilities\":[]}"
+  },
+  {
+    "id": 8,
+    "ts": "2026-06-09T02:50:14.630542+00:00",
+    "action": "task.dead_letter",
+    "subject_type": "task",
+    "subject_id": "73620013-303a-410c-bae4-09b421d311dd",
+    "actor": "pool",
+    "payload": "{\"total_attempts\":3,\"source\":\"cli\"}"
+  },
+  {
+    "id": 9,
+    "ts": "2026-06-09T02:51:21.407674+00:00",
+    "action": "task.dispatch",
+    "subject_type": "task",
+    "subject_id": "3a6cb1b6-5e30-42df-9304-4da7be7f6af6",
+    "actor": "cli",
+    "payload": "{\"priority\":\"Normal\",\"required_capabilities\":[]}"
+  },
+  {
+    "id": 10,
+    "ts": "2026-06-09T02:51:24.922092+00:00",
+    "action": "task.dead_letter",
+    "subject_type": "task",
+    "subject_id": "3a6cb1b6-5e30-42df-9304-4da7be7f6af6",
+    "actor": "pool",
+    "payload": "{\"total_attempts\":3,\"source\":\"cli\"}"
+  },
+  {
+    "id": 11,
+    "ts": "2026-06-09T02:53:29.016430+00:00",
+    "action": "task.dispatch",
+    "subject_type": "task",
+    "subject_id": "a69da1ce-ba47-43ce-bdd5-9f391d9d231f",
+    "actor": "cli",
+    "payload": "{\"priority\":\"Normal\",\"required_capabilities\":[]}"
+  },
+  {
+    "id": 12,
+    "ts": "2026-06-09T02:53:32.740885+00:00",
+    "action": "task.dead_letter",
+    "subject_type": "task",
+    "subject_id": "a69da1ce-ba47-43ce-bdd5-9f391d9d231f",
+    "actor": "pool",
+    "payload": "{\"total_attempts\":3,\"source\":\"cli\"}"
+  },
+  {
+    "id": 13,
+    "ts": "2026-06-23T18:35:09.435558+00:00",
+    "action": "task.dispatch",
+    "subject_type": "task",
+    "subject_id": "a6dcb710-85d0-497c-ba40-375564c8dfe2",
+    "actor": "cli",
+    "payload": "{\"priority\":\"Normal\",\"required_capabilities\":[]}"
+  },
+  {
+    "id": 14,
+    "ts": "2026-06-23T18:41:53.966641+00:00",
+    "action": "task.dead_letter",
+    "subject_type": "task",
+    "subject_id": "a6dcb710-85d0-497c-ba40-375564c8dfe2",
+    "actor": "pool",
+    "payload": "{\"total_attempts\":1,\"source\":\"cli\"}"
+  },
+  {
+    "id": 15,
+    "ts": "2026-06-23T18:47:40.899510+00:00",
+    "action": "task.dispatch",
+    "subject_type": "task",
+    "subject_id": "b771bf41-912e-4f4b-b9f9-f915e5eaa145",
+    "actor": "cli",
+    "payload": "{\"priority\":\"Normal\",\"required_capabilities\":[]}"
+  },
+  {
+    "id": 16,
+    "ts": "2026-06-23T18:53:55.815182+00:00",
+    "action": "task.dead_letter",
+    "subject_type": "task",
+    "subject_id": "b771bf41-912e-4f4b-b9f9-f915e5eaa145",
+    "actor": "pool",
+    "payload": "{\"total_attempts\":1,\"source\":\"cli\"}"
+  },
+  {
+    "id": 17,
+    "ts": "2026-06-23T18:56:38.620429+00:00",
+    "action": "task.dispatch",
+    "subject_type": "task",
+    "subject_id": "95bcdc8c-3598-4b12-b990-af6f99804067",
+    "actor": "cli",
+    "payload": "{\"priority\":\"Normal\",\"required_capabilities\":[]}"
+  },
+  {
+    "id": 18,
+    "ts": "2026-06-23T19:02:25.913562+00:00",
+    "action": "task.dead_letter",
+    "subject_type": "task",
+    "subject_id": "95bcdc8c-3598-4b12-b990-af6f99804067",
+    "actor": "pool",
+    "payload": "{\"total_attempts\":2,\"source\":\"cli\"}"
+  },
+  {
+    "id": 19,
+    "ts": "2026-06-23T19:51:43.710893+00:00",
+    "action": "task.dispatch",
+    "subject_type": "task",
+    "subject_id": "6853d5da-51e0-40d0-87a1-9bf66109ecf8",
+    "actor": "cli",
+    "payload": "{\"priority\":\"Normal\",\"required_capabilities\":[]}"
+  },
+  {
+    "id": 20,
+    "ts": "2026-06-23T19:58:04.477913+00:00",
+    "action": "task.dead_letter",
+    "subject_type": "task",
+    "subject_id": "6853d5da-51e0-40d0-87a1-9bf66109ecf8",
+    "actor": "pool",
+    "payload": "{\"total_attempts\":1,\"source\":\"cli\"}"
+  },
+  {
+    "id": 21,
+    "ts": "2026-06-28T17:36:13.440513+00:00",
+    "action": "task.dispatch",
+    "subject_type": "task",
+    "subject_id": "71dbb6b4-34f0-4baa-b3f4-1344f7bd10a1",
+    "actor": "cli",
+    "payload": "{\"priority\":\"Normal\",\"required_capabilities\":[]}"
+  },
+  {
+    "id": 22,
+    "ts": "2026-06-28T17:39:54.072935+00:00",
+    "action": "task.dispatch",
+    "subject_type": "task",
+    "subject_id": "8aa8867e-b060-4708-bac5-c9521c25c6cb",
+    "actor": "cli",
+    "payload": "{\"priority\":\"High\",\"required_capabilities\":[]}"
+  },
+  {
+    "id": 23,
+    "ts": "2026-06-28T17:47:27.268886+00:00",
+    "action": "task.dispatch",
+    "subject_type": "task",
+    "subject_id": "cf8527a8-310d-4696-af05-7761fbdd7b42",
+    "actor": "cli",
+    "payload": "{\"priority\":\"High\",\"required_capabilities\":[]}"
+  },
+  {
+    "id": 24,
+    "ts": "2026-06-28T17:47:27.456459+00:00",
+    "action": "task.dispatch",
+    "subject_type": "task",
+    "subject_id": "5fa241d5-5443-45da-9ba4-c30cca728755",
+    "actor": "cli",
+    "payload": "{\"priority\":\"High\",\"required_capabilities\":[]}"
+  },
+  {
+    "id": 25,
+    "ts": "2026-06-28T17:47:27.660461+00:00",
+    "action": "task.dispatch",
+    "subject_type": "task",
+    "subject_id": "23dbcb4d-709f-46c3-98f4-23c59dc0b1cf",
+    "actor": "cli",
+    "payload": "{\"priority\":\"High\",\"required_capabilities\":[]}"
+  },
+  {
+    "id": 26,
+    "ts": "2026-06-28T17:49:42.031918+00:00",
+    "action": "task.dispatch",
+    "subject_type": "task",
+    "subject_id": "0a34d61c-ef9e-4dbe-9bc3-796796516eb7",
+    "actor": "cli",
+    "payload": "{\"priority\":\"High\",\"required_capabilities\":[]}"
+  },
+  {
+    "id": 27,
+    "ts": "2026-06-28T17:49:42.456573+00:00",
+    "action": "task.dispatch",
+    "subject_type": "task",
+    "subject_id": "f5a7b8b1-7192-468f-8a44-97a143fe2568",
+    "actor": "cli",
+    "payload": "{\"priority\":\"High\",\"required_capabilities\":[]}"
+  },
+  {
+    "id": 28,
+    "ts": "2026-06-28T17:49:42.949689+00:00",
+    "action": "task.dispatch",
+    "subject_type": "task",
+    "subject_id": "73ca93ed-f868-4756-9f6f-f957c279489e",
+    "actor": "cli",
+    "payload": "{\"priority\":\"High\",\"required_capabilities\":[]}"
+  },
+  {
+    "id": 29,
+    "ts": "2026-06-28T17:49:43.632302+00:00",
+    "action": "task.dispatch",
+    "subject_type": "task",
+    "subject_id": "edf4c379-12e1-4b81-a7a4-6989fd215abf",
+    "actor": "cli",
+    "payload": "{\"priority\":\"High\",\"required_capabilities\":[]}"
+  },
+  {
+    "id": 30,
+    "ts": "2026-07-10T02:23:44.852981+00:00",
+    "action": "task.dispatch",
+    "subject_type": "task",
+    "subject_id": "a0ef18c5-3e26-4b28-abcc-7631f7321efd",
+    "actor": "cli",
+    "payload": "{\"priority\":\"Normal\",\"required_capabilities\":[]}"
+  },
+  {
+    "id": 31,
+    "ts": "2026-07-10T02:34:59.558172+00:00",
+    "action": "task.dispatch",
+    "subject_type": "task",
+    "subject_id": "06f8a3e8-c1eb-4281-8ed9-ab3774ec691e",
+    "actor": "cli",
+    "payload": "{\"priority\":\"Normal\",\"required_capabilities\":[]}"
+  },
+  {
+    "id": 32,
+    "ts": "2026-07-10T02:39:44.156608+00:00",
+    "action": "task.dispatch",
+    "subject_type": "task",
+    "subject_id": "e4890462-de4f-4a46-b59c-2096590ad033",
+    "actor": "cli",
+    "payload": "{\"priority\":\"Normal\",\"required_capabilities\":[]}"
+  },
+  {
+    "id": 33,
+    "ts": "2026-07-12T00:51:28.730057+00:00",
+    "action": "task.dispatch",
+    "subject_type": "task",
+    "subject_id": "50cb6637-20d7-4f83-a137-a6d084a40d18",
+    "actor": "cli",
+    "payload": "{\"priority\":\"Normal\",\"required_capabilities\":[]}"
+  },
+  {
+    "id": 34,
+    "ts": "2026-07-12T01:09:15.971849+00:00",
+    "action": "task.dispatch",
+    "subject_type": "task",
+    "subject_id": "3c91d585-2c12-4442-a6ec-aef07249bdf9",
+    "actor": "cli",
+    "payload": "{\"priority\":\"Normal\",\"required_capabilities\":[]}"
+  },
+  {
+    "id": 35,
+    "ts": "2026-07-12T01:13:34.805327+00:00",
+    "action": "task.dispatch",
+    "subject_type": "task",
+    "subject_id": "d9c34986-d390-495b-9199-d8ce77a4e302",
+    "actor": "cli",
+    "payload": "{\"priority\":\"Normal\",\"required_capabilities\":[]}"
+  },
+  {
+    "id": 36,
+    "ts": "2026-07-12T01:14:07.169830+00:00",
+    "action": "task.dispatch",
+    "subject_type": "task",
+    "subject_id": "b681268c-3cd7-4fb1-b3d5-bc745980d774",
+    "actor": "cli",
+    "payload": "{\"priority\":\"Normal\",\"required_capabilities\":[]}"
+  },
+  {
+    "id": 37,
+    "ts": "2026-07-12T01:18:37.356058+00:00",
+    "action": "task.dispatch",
+    "subject_type": "task",
+    "subject_id": "b88fbc41-a2d6-41d4-b673-b9b8368062ec",
+    "actor": "cli",
+    "payload": "{\"priority\":\"Normal\",\"required_capabilities\":[]}"
+  },
+  {
+    "id": 38,
+    "ts": "2026-07-12T01:18:37.526776+00:00",
+    "action": "task.dispatch",
+    "subject_type": "task",
+    "subject_id": "cb94bac5-752e-425a-90bb-6880ac680752",
+    "actor": "cli",
+    "payload": "{\"priority\":\"Normal\",\"required_capabilities\":[]}"
+  },
+  {
+    "id": 39,
+    "ts": "2026-07-12T01:19:10.571085+00:00",
+    "action": "task.dispatch",
+    "subject_type": "task",
+    "subject_id": "fe125cc0-63b6-43e4-a273-52f1dc84d1e4",
+    "actor": "cli",
+    "payload": "{\"priority\":\"Normal\",\"required_capabilities\":[]}"
+  },
+  {
+    "id": 40,
+    "ts": "2026-07-12T01:19:22.735824+00:00",
+    "action": "task.dispatch",
+    "subject_type": "task",
+    "subject_id": "9692f278-2a62-4771-a571-71c3a35625a6",
+    "actor": "cli",
+    "payload": "{\"priority\":\"Normal\",\"required_capabilities\":[]}"
+  },
+  {
+    "id": 41,
+    "ts": "2026-07-12T01:19:48.337734+00:00",
+    "action": "task.dispatch",
+    "subject_type": "task",
+    "subject_id": "576d527a-d3af-45e4-be6f-faa1df57ad09",
+    "actor": "cli",
+    "payload": "{\"priority\":\"Normal\",\"required_capabilities\":[]}"
+  },
+  {
+    "id": 42,
+    "ts": "2026-07-12T01:27:55.092892+00:00",
+    "action": "task.dispatch",
+    "subject_type": "task",
+    "subject_id": "df76bcb2-7379-4c5f-8d6b-92873a63474c",
+    "actor": "cli",
+    "payload": "{\"priority\":\"Normal\",\"required_capabilities\":[]}"
+  },
+  {
+    "id": 43,
+    "ts": "2026-07-13T18:46:53.139246+00:00",
+    "action": "task.dispatch",
+    "subject_type": "task",
+    "subject_id": "067307c9-010a-4047-8630-f6d62f4029e8",
+    "actor": "cli",
+    "payload": "{\"priority\":\"Normal\",\"required_capabilities\":[]}"
+  },
+  {
+    "id": 44,
+    "ts": "2026-07-16T02:53:28.076457+00:00",
+    "action": "task.dispatch",
+    "subject_type": "task",
+    "subject_id": "76e807d9-b757-49f9-9949-6b2864bb9c93",
+    "actor": "cli",
+    "payload": "{\"priority\":\"Normal\",\"required_capabilities\":[]}"
+  },
+  {
+    "id": 45,
+    "ts": "2026-07-16T03:00:41.803706+00:00",
+    "action": "task.dispatch",
+    "subject_type": "task",
+    "subject_id": "a64a4e21-febc-4ca1-8d74-de40d838da5e",
+    "actor": "api",
+    "payload": "{\"priority\":\"Normal\",\"required_capabilities\":[]}"
+  },
+  {
+    "id": 46,
+    "ts": "2026-07-16T03:00:41.805297+00:00",
+    "action": "task.dispatch",
+    "subject_type": "task",
+    "subject_id": "57323fee-b38a-491f-9f4b-2a56235f90e4",
+    "actor": "api",
+    "payload": "{\"priority\":\"Normal\",\"required_capabilities\":[]}"
+  },
+  {
+    "id": 47,
+    "ts": "2026-07-16T03:00:41.806541+00:00",
+    "action": "task.dispatch",
+    "subject_type": "task",
+    "subject_id": "84ba054a-d500-4d30-a0f8-227b476a4d94",
+    "actor": "api",
+    "payload": "{\"priority\":\"Normal\",\"required_capabilities\":[]}"
+  },
+  {
+    "id": 48,
+    "ts": "2026-07-16T03:00:41.807570+00:00",
+    "action": "task.dispatch",
+    "subject_type": "task",
+    "subject_id": "3a2d32f5-5189-4eca-b7ab-4c19e30895a3",
+    "actor": "api",
+    "payload": "{\"priority\":\"Normal\",\"required_capabilities\":[]}"
+  },
+  {
+    "id": 49,
+    "ts": "2026-07-16T14:40:25.724809+00:00",
+    "action": "task.dispatch",
+    "subject_type": "task",
+    "subject_id": "a2371938-b362-49e4-9265-a5149e95ce54",
+    "actor": "cli",
+    "payload": "{\"priority\":\"Normal\",\"required_capabilities\":[]}"
+  },
+  {
+    "id": 50,
+    "ts": "2026-07-16T14:48:26.726662+00:00",
+    "action": "task.dispatch",
+    "subject_type": "task",
+    "subject_id": "d0a1a841-6955-4536-8cde-2ef4dd7e10d8",
+    "actor": "cli",
+    "payload": "{\"priority\":\"Normal\",\"required_capabilities\":[]}"
+  },
+  {
+    "id": 51,
+    "ts": "2026-07-16T15:09:40.813289+00:00",
+    "action": "task.dispatch",
+    "subject_type": "task",
+    "subject_id": "9465b1cf-ae56-453a-b50e-a3dc849a42cf",
+    "actor": "cli",
+    "payload": "{\"priority\":\"Normal\",\"required_capabilities\":[]}"
+  },
+  {
+    "id": 52,
+    "ts": "2026-07-16T15:30:46.422005+00:00",
+    "action": "task.dispatch",
+    "subject_type": "task",
+    "subject_id": "69c5f5a7-ef23-4a08-a1e8-29fedeab13a1",
+    "actor": "cli",
+    "payload": "{\"priority\":\"Normal\",\"required_capabilities\":[]}"
+  },
+  {
+    "id": 53,
+    "ts": "2026-07-16T15:36:09.691176+00:00",
+    "action": "task.dispatch",
+    "subject_type": "task",
+    "subject_id": "dd5b8854-3b10-4777-a47f-14c69b281533",
+    "actor": "cli",
+    "payload": "{\"priority\":\"Normal\",\"required_capabilities\":[]}"
+  },
+  {
+    "id": 54,
+    "ts": "2026-07-16T15:42:59.685030+00:00",
+    "action": "task.dispatch",
+    "subject_type": "task",
+    "subject_id": "31064400-4a2b-4934-b89a-9d3ae0fddcdd",
+    "actor": "cli",
+    "payload": "{\"priority\":\"Normal\",\"required_capabilities\":[]}"
+  },
+  {
+    "id": 55,
+    "ts": "2026-07-16T15:47:25.484276+00:00",
+    "action": "task.dispatch",
+    "subject_type": "task",
+    "subject_id": "d8bf09ce-2ed1-4de7-be8e-0b6f026d8aaf",
+    "actor": "cli",
+    "payload": "{\"priority\":\"Normal\",\"required_capabilities\":[]}"
+  },
+  {
+    "id": 56,
+    "ts": "2026-07-16T16:01:24.951325+00:00",
+    "action": "task.dispatch",
+    "subject_type": "task",
+    "subject_id": "0cda11ee-d7e0-4a9f-a4ca-f42cb3fd30f8",
+    "actor": "cli",
+    "payload": "{\"priority\":\"Normal\",\"required_capabilities\":[]}"
+  },
+  {
+    "id": 57,
+    "ts": "2026-07-16T16:01:49.608335+00:00",
+    "action": "task.dispatch",
+    "subject_type": "task",
+    "subject_id": "89f55370-4227-4768-be61-2f390ff5b8fb",
+    "actor": "cli",
+    "payload": "{\"priority\":\"Normal\",\"required_capabilities\":[]}"
+  },
+  {
+    "id": 58,
+    "ts": "2026-07-16T17:22:44.397352+00:00",
+    "action": "task.dispatch",
+    "subject_type": "task",
+    "subject_id": "daf1fc56-bc90-4e1c-a7a2-0df0aabebded",
+    "actor": "cli",
+    "payload": "{\"priority\":\"Normal\",\"required_capabilities\":[]}"
+  },
+  {
+    "id": 59,
+    "ts": "2026-07-16T17:23:15.987779+00:00",
+    "action": "task.dispatch",
+    "subject_type": "task",
+    "subject_id": "2b0bd306-0e78-4ac0-a0b6-78482bd3b221",
+    "actor": "cli",
+    "payload": "{\"priority\":\"Normal\",\"required_capabilities\":[]}"
+  },
+  {
+    "id": 60,
+    "ts": "2026-07-16T17:32:37.306932+00:00",
+    "action": "task.dispatch",
+    "subject_type": "task",
+    "subject_id": "77829d85-a1b0-4791-ae71-9159488b84af",
+    "actor": "cli",
+    "payload": "{\"priority\":\"Normal\",\"required_capabilities\":[]}"
+  },
+  {
+    "id": 61,
+    "ts": "2026-07-16T17:33:05.955970+00:00",
+    "action": "task.dispatch",
+    "subject_type": "task",
+    "subject_id": "7b34b156-b595-4d0e-ae5e-3d9b2be98868",
+    "actor": "cli",
+    "payload": "{\"priority\":\"Normal\",\"required_capabilities\":[]}"
+  },
+  {
+    "id": 62,
+    "ts": "2026-07-16T21:43:27.065222+00:00",
+    "action": "task.dispatch",
+    "subject_type": "task",
+    "subject_id": "4cc73747-458a-4c2c-a80d-0522d57959b8",
+    "actor": "cli",
+    "payload": "{\"priority\":\"Normal\",\"required_capabilities\":[]}"
+  },
+  {
+    "id": 63,
+    "ts": "2026-07-16T22:02:18.459283+00:00",
+    "action": "task.dispatch",
+    "subject_type": "task",
+    "subject_id": "d23c4d56-308e-4cff-b4f8-a393f3d24c1e",
+    "actor": "cli",
+    "payload": "{\"priority\":\"Normal\",\"required_capabilities\":[]}"
+  }
+]

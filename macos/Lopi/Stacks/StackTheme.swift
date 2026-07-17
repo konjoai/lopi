@@ -28,4 +28,6 @@ enum FacetAccent {
     static let config = Konjo.stackViolet
     static let goal = Konjo.flame
     static let iteration = Konjo.flame
+    /// MAXX's bolt icon — matches web's `kind="max"` popover accent (`--konjo-flame`).
+    static let maxx = Konjo.flame
 }

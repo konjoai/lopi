@@ -52,6 +52,16 @@ struct LopiClient {
         return wrapper.tasks
     }
 
+    /// The live model/effort catalog — a server-side proxy to Anthropic's real
+    /// `/v1/models` (the client never calls Anthropic directly). The server
+    /// already falls back to a static list itself when live fetch fails, so
+    /// this call essentially never errors on that front — only on transport.
+    func models() async throws -> [LiveModel] {
+        struct Wrapper: Decodable { let models: [LiveModel] }
+        let w: Wrapper = try await get("/api/models")
+        return w.models
+    }
+
 
     @discardableResult
     func createTask(_ body: CreateTaskBody) async throws -> Data {

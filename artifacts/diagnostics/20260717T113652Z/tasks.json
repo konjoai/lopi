@@ -1,0 +1,338 @@
+[
+  {
+    "client_ref": "258de249-12ee-4a69-88e5-caa3eaeb1dcd",
+    "completed_at": "2026-07-16T22:23:39.597387+00:00",
+    "created_at": "2026-07-16T22:02:18.453812+00:00",
+    "goal": "conduct deep research about llm memory architectures and how they could be implemented then write the findings to research.md",
+    "id": "d23c4d56-308e-4cff-b4f8-a393f3d24c1e",
+    "status": "success"
+  },
+  {
+    "client_ref": "776f82d1-ba39-4e27-86d0-cfcbea2f6df1",
+    "completed_at": "2026-07-16T21:48:46.453038+00:00",
+    "created_at": "2026-07-16T21:43:27.056968+00:00",
+    "goal": "conduct deep research about llm memory architectures and how they could be implemented then write the findings to research.md",
+    "id": "4cc73747-458a-4c2c-a80d-0522d57959b8",
+    "status": "failed"
+  },
+  {
+    "client_ref": "cde5dd0d-730f-4495-9a80-144085e592d5",
+    "completed_at": "2026-07-16T17:38:37.027015+00:00",
+    "created_at": "2026-07-16T17:33:05.955656+00:00",
+    "goal": "conduct deep research about llm memory architectures and how they could be implemented then write the findings to research.md",
+    "id": "7b34b156-b595-4d0e-ae5e-3d9b2be98868",
+    "status": "success"
+  },
+  {
+    "client_ref": "cde5dd0d-730f-4495-9a80-144085e592d5",
+    "completed_at": "2026-07-16T17:33:05.944636+00:00",
+    "created_at": "2026-07-16T17:32:37.304743+00:00",
+    "goal": "conduct deep research about llm memory architectures and how they could be implemented then write the findings to research.md",
+    "id": "77829d85-a1b0-4791-ae71-9159488b84af",
+    "status": "success"
+  },
+  {
+    "client_ref": "41a43400-838b-4305-957f-ebced2e5054d",
+    "completed_at": "2026-07-16T17:23:33.835571+00:00",
+    "created_at": "2026-07-16T17:23:15.987243+00:00",
+    "goal": "conduct deep research about llm memory architectures and how they could be implemented then write the findings to research.md",
+    "id": "2b0bd306-0e78-4ac0-a0b6-78482bd3b221",
+    "status": "success"
+  },
+  {
+    "client_ref": "41a43400-838b-4305-957f-ebced2e5054d",
+    "completed_at": "2026-07-16T17:23:15.978536+00:00",
+    "created_at": "2026-07-16T17:22:44.292824+00:00",
+    "goal": "conduct deep research about llm memory architectures and how they could be implemented then write the findings to research.md",
+    "id": "daf1fc56-bc90-4e1c-a7a2-0df0aabebded",
+    "status": "success"
+  },
+  {
+    "client_ref": "58cb518a-091c-487d-90dc-3db47c0741cb",
+    "completed_at": "2026-07-16T16:02:14.222141+00:00",
+    "created_at": "2026-07-16T16:01:49.607871+00:00",
+    "goal": "conduct deep research about llm memory architectures and how they could be implemented then write the findings to research.md",
+    "id": "89f55370-4227-4768-be61-2f390ff5b8fb",
+    "status": "success"
+  },
+  {
+    "client_ref": "58cb518a-091c-487d-90dc-3db47c0741cb",
+    "completed_at": "2026-07-16T16:01:49.598252+00:00",
+    "created_at": "2026-07-16T16:01:24.947030+00:00",
+    "goal": "conduct deep research about llm memory architectures and how they could be implemented then write the findings to research.md",
+    "id": "0cda11ee-d7e0-4a9f-a4ca-f42cb3fd30f8",
+    "status": "success"
+  },
+  {
+    "client_ref": "ca3b16e4-2f2c-4b12-8412-d50ddf246f5c",
+    "completed_at": "2026-07-16T15:57:25.384658+00:00",
+    "created_at": "2026-07-16T15:47:25.480451+00:00",
+    "goal": "conduct deep research about llm memory architectures, components, approaches that can be applied to kairu and how they could be implemented then write the findings to research.md",
+    "id": "d8bf09ce-2ed1-4de7-be8e-0b6f026d8aaf",
+    "status": "success"
+  },
+  {
+    "client_ref": "ca3b16e4-2f2c-4b12-8412-d50ddf246f5c",
+    "completed_at": "2026-07-16T15:43:37.576163+00:00",
+    "created_at": "2026-07-16T15:42:59.663541+00:00",
+    "goal": "conduct deep research about architectures, components, approaches that can be applied to kairu and how they could be implemented then write the findings to research.md",
+    "id": "31064400-4a2b-4934-b89a-9d3ae0fddcdd",
+    "status": "success"
+  },
+  {
+    "client_ref": "ca3b16e4-2f2c-4b12-8412-d50ddf246f5c",
+    "completed_at": "2026-07-16T15:37:42.237665+00:00",
+    "created_at": "2026-07-16T15:36:09.684563+00:00",
+    "goal": "conduct deep research about architectures, components, approaches that can be applied to kairu and how they could be implemented then write the findings to research.md",
+    "id": "dd5b8854-3b10-4777-a47f-14c69b281533",
+    "status": "success"
+  },
+  {
+    "client_ref": "54dd9c67-b92f-4b9c-8381-b205094bca3e",
+    "completed_at": "2026-07-16T15:37:35.841097+00:00",
+    "created_at": "2026-07-16T15:30:46.415351+00:00",
+    "goal": "conduct deep research about llm memory architectures and how they could be implemented then write the findings to research.md",
+    "id": "69c5f5a7-ef23-4a08-a1e8-29fedeab13a1",
+    "status": "failed"
+  },
+  {
+    "client_ref": "c858c55c-b59c-45af-b28e-fa1eb992a5ce",
+    "completed_at": "2026-07-16T15:12:20.708092+00:00",
+    "created_at": "2026-07-16T15:09:40.808918+00:00",
+    "goal": "conduct deep research about llm memory architectures and how they could be implemented then write the findings to research.md",
+    "id": "9465b1cf-ae56-453a-b50e-a3dc849a42cf",
+    "status": "failed"
+  },
+  {
+    "client_ref": "47ee67ee-11de-411b-aca1-c3d275cce73a",
+    "completed_at": "2026-07-16T15:03:49.477118+00:00",
+    "created_at": "2026-07-16T14:48:26.723763+00:00",
+    "goal": "conduct deep research about llm memory architectures and how they could be implemented then write the findings to research.md",
+    "id": "d0a1a841-6955-4536-8cde-2ef4dd7e10d8",
+    "status": "failed"
+  },
+  {
+    "client_ref": "d82b4c19-ca01-4a5d-a5e9-b9a5e0d58c9e",
+    "completed_at": "2026-07-16T14:45:54.773787+00:00",
+    "created_at": "2026-07-16T14:40:25.711611+00:00",
+    "goal": "research the problem space",
+    "id": "a2371938-b362-49e4-9265-a5149e95ce54",
+    "status": "failed"
+  },
+  {
+    "client_ref": null,
+    "completed_at": null,
+    "created_at": "2026-07-16T03:00:41.807235+00:00",
+    "goal": "test",
+    "id": "3a2d32f5-5189-4eca-b7ab-4c19e30895a3",
+    "status": "running"
+  },
+  {
+    "client_ref": null,
+    "completed_at": "2026-07-12T01:28:15.612422+00:00",
+    "created_at": "2026-07-12T01:27:55.088887+00:00",
+    "goal": "summarize what the README describes in one sentence",
+    "id": "df76bcb2-7379-4c5f-8d6b-92873a63474c",
+    "status": "success"
+  },
+  {
+    "client_ref": "s1::stack-eval::0",
+    "completed_at": "2026-07-12T01:20:16.666575+00:00",
+    "created_at": "2026-07-12T01:19:48.337220+00:00",
+    "goal": "verify stack acceptance for \"stack one\"",
+    "id": "576d527a-d3af-45e4-be6f-faa1df57ad09",
+    "status": "success"
+  },
+  {
+    "client_ref": "39D239AF-BBF7-4662-8719-2727B0E099AF",
+    "completed_at": "2026-07-12T01:19:48.086648+00:00",
+    "created_at": "2026-07-12T01:19:22.735233+00:00",
+    "goal": "count the total number of .rs files in the crates directory",
+    "id": "9692f278-2a62-4771-a571-71c3a35625a6",
+    "status": "success"
+  },
+  {
+    "client_ref": "22CE1D71-8376-4F9C-A2DF-4338F82D402B",
+    "completed_at": "2026-07-12T01:19:38.279061+00:00",
+    "created_at": "2026-07-12T01:19:10.570518+00:00",
+    "goal": "list the top-level directories in this repository",
+    "id": "fe125cc0-63b6-43e4-a273-52f1dc84d1e4",
+    "status": "success"
+  },
+  {
+    "client_ref": "72B6E6B1-9593-4B3A-89AF-103D3362298B",
+    "completed_at": "2026-07-12T01:19:22.649505+00:00",
+    "created_at": "2026-07-12T01:18:37.526039+00:00",
+    "goal": "list the crate names under crates/ and report how many there are",
+    "id": "cb94bac5-752e-425a-90bb-6880ac680752",
+    "status": "success"
+  },
+  {
+    "client_ref": "C7105FBC-E13C-410A-81D3-D478C296B6B7",
+    "completed_at": "2026-07-12T01:19:10.425611+00:00",
+    "created_at": "2026-07-12T01:18:37.355511+00:00",
+    "goal": "count how many markdown .md files exist in the docs directory and report the number",
+    "id": "b88fbc41-a2d6-41d4-b673-b9b8368062ec",
+    "status": "success"
+  },
+  {
+    "client_ref": "s1::stack-eval::0",
+    "completed_at": "2026-07-12T01:14:35.481922+00:00",
+    "created_at": "2026-07-12T01:14:07.169329+00:00",
+    "goal": "verify stack acceptance for \"stack one\"",
+    "id": "b681268c-3cd7-4fb1-b3d5-bc745980d774",
+    "status": "success"
+  },
+  {
+    "client_ref": "39D239AF-BBF7-4662-8719-2727B0E099AF",
+    "completed_at": "2026-07-12T01:14:06.938506+00:00",
+    "created_at": "2026-07-12T01:13:34.804965+00:00",
+    "goal": "count the total number of .rs files in the crates directory",
+    "id": "d9c34986-d390-495b-9199-d8ce77a4e302",
+    "status": "success"
+  },
+  {
+    "client_ref": "72B6E6B1-9593-4B3A-89AF-103D3362298B",
+    "completed_at": "2026-07-12T01:13:34.690951+00:00",
+    "created_at": "2026-07-12T01:09:15.970027+00:00",
+    "goal": "list the crate names under crates/ and report how many there are",
+    "id": "3c91d585-2c12-4442-a6ec-aef07249bdf9",
+    "status": "success"
+  },
+  {
+    "client_ref": null,
+    "completed_at": "2026-07-12T00:53:23.944410+00:00",
+    "created_at": "2026-07-12T00:51:28.705761+00:00",
+    "goal": "count how many Rust source files are in this repo and report the number",
+    "id": "50cb6637-20d7-4f83-a137-a6d084a40d18",
+    "status": "success"
+  },
+  {
+    "client_ref": "ab53d941-ec13-4a82-942e-39ce855c3c69",
+    "completed_at": "2026-07-10T02:40:14.912778+00:00",
+    "created_at": "2026-07-10T02:39:44.156023+00:00",
+    "goal": "Read main.rs and note what it prints.",
+    "id": "e4890462-de4f-4a46-b59c-2096590ad033",
+    "status": "success"
+  },
+  {
+    "client_ref": null,
+    "completed_at": "2026-07-10T02:36:09.593766+00:00",
+    "created_at": "2026-07-10T02:34:59.557138+00:00",
+    "goal": "Read main.rs and add a one-line comment at the top summarizing what it does.",
+    "id": "06f8a3e8-c1eb-4281-8ed9-ab3774ec691e",
+    "status": "success"
+  },
+  {
+    "client_ref": null,
+    "completed_at": "2026-06-28T17:50:51.438540+00:00",
+    "created_at": "2026-06-28T17:49:43.631416+00:00",
+    "goal": "List files, read mod4.rs, and explain helper4 in one sentence",
+    "id": "edf4c379-12e1-4b81-a7a4-6989fd215abf",
+    "status": "success"
+  },
+  {
+    "client_ref": null,
+    "completed_at": "2026-06-28T17:50:15.575261+00:00",
+    "created_at": "2026-06-28T17:49:42.949154+00:00",
+    "goal": "List files, read mod3.rs, and explain helper3 in one sentence",
+    "id": "73ca93ed-f868-4756-9f6f-f957c279489e",
+    "status": "success"
+  },
+  {
+    "client_ref": null,
+    "completed_at": "2026-06-28T17:50:20.988134+00:00",
+    "created_at": "2026-06-28T17:49:42.456040+00:00",
+    "goal": "List files, read mod2.rs, and explain helper2 in one sentence",
+    "id": "f5a7b8b1-7192-468f-8a44-97a143fe2568",
+    "status": "success"
+  },
+  {
+    "client_ref": null,
+    "completed_at": "2026-06-28T17:50:15.524577+00:00",
+    "created_at": "2026-06-28T17:49:42.031520+00:00",
+    "goal": "List files, read mod1.rs, and explain helper1 in one sentence",
+    "id": "0a34d61c-ef9e-4dbe-9bc3-796796516eb7",
+    "status": "success"
+  },
+  {
+    "client_ref": null,
+    "completed_at": "2026-06-28T17:48:00.056504+00:00",
+    "created_at": "2026-06-28T17:47:27.660054+00:00",
+    "goal": "List files and read lib.rs, then describe task3 in one line",
+    "id": "23dbcb4d-709f-46c3-98f4-23c59dc0b1cf",
+    "status": "success"
+  },
+  {
+    "client_ref": null,
+    "completed_at": "2026-06-28T17:47:58.174087+00:00",
+    "created_at": "2026-06-28T17:47:27.453605+00:00",
+    "goal": "List files and read lib.rs, then describe task2 in one line",
+    "id": "5fa241d5-5443-45da-9ba4-c30cca728755",
+    "status": "success"
+  },
+  {
+    "client_ref": null,
+    "completed_at": "2026-06-28T17:47:58.653161+00:00",
+    "created_at": "2026-06-28T17:47:27.268327+00:00",
+    "goal": "List files and read lib.rs, then describe task1 in one line",
+    "id": "cf8527a8-310d-4696-af05-7761fbdd7b42",
+    "status": "success"
+  },
+  {
+    "client_ref": null,
+    "completed_at": "2026-06-28T17:40:22.671483+00:00",
+    "created_at": "2026-06-28T17:39:54.072497+00:00",
+    "goal": "List the files and read main.rs, then explain what add does in one sentence",
+    "id": "8aa8867e-b060-4708-bac5-c9521c25c6cb",
+    "status": "success"
+  },
+  {
+    "client_ref": null,
+    "completed_at": "2026-06-28T17:36:37.631339+00:00",
+    "created_at": "2026-06-28T17:36:13.439790+00:00",
+    "goal": "List the files in this repo and read main.rs, then say done",
+    "id": "71dbb6b4-34f0-4baa-b3f4-1344f7bd10a1",
+    "status": "success"
+  },
+  {
+    "client_ref": null,
+    "completed_at": "2026-06-09T02:50:14.629712+00:00",
+    "created_at": "2026-06-09T02:50:11.313753+00:00",
+    "goal": "create next steps for the konjoai repos",
+    "id": "73620013-303a-410c-bae4-09b421d311dd",
+    "status": "failed"
+  },
+  {
+    "client_ref": null,
+    "completed_at": "2026-06-09T02:49:00.471167+00:00",
+    "created_at": "2026-06-09T02:48:56.881084+00:00",
+    "goal": "make a next steps plan for the konjoai repos",
+    "id": "ae92a3a9-d033-4f26-8001-0c7a38b2c479",
+    "status": "failed"
+  },
+  {
+    "client_ref": null,
+    "completed_at": "2026-06-09T02:43:49.816588+00:00",
+    "created_at": "2026-06-09T02:43:45.805115+00:00",
+    "goal": "test",
+    "id": "248a409b-0108-4ad5-88eb-089b92faa585",
+    "status": "failed"
+  },
+  {
+    "client_ref": null,
+    "completed_at": "2026-06-09T02:40:39.308423+00:00",
+    "created_at": "2026-06-09T02:40:39.027881+00:00",
+    "goal": "Create a next steps plan for the konjoai repos",
+    "id": "a013300c-39b8-4e25-86c8-75c2591dede7",
+    "status": "failed"
+  },
+  {
+    "client_ref": null,
+    "completed_at": "2026-06-01T14:27:03.492006+00:00",
+    "created_at": "2026-06-01T14:27:03.445470+00:00",
+    "goal": "create a next steps plan for the konjoai repo vectro",
+    "id": "fb08930c-cdf5-406c-b0ef-1f352b08b52d",
+    "status": "failed ❌ Cancelled"
+  }
+]

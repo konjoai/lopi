@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import SwiftUI
 import LopiStacksKit
 
 /// Single source of UI state. Owns the REST client and the live event stream,
@@ -11,6 +12,15 @@ final class AppModel {
     var config: ServerConfig
     var connection: ConnectionState = .offline
     var serverVersion: ServerVersion?
+
+    /// The browser-local accent-theme pick (Config → Appearance). Mirrors
+    /// web's `stores/theme.ts`: persisted, applied live, no server round-trip.
+    var accentTheme: AccentTheme = .load() {
+        didSet { accentTheme.persist() }
+    }
+    /// The live accent color chrome-level UI (not per-facet colors) reads —
+    /// mirrors web's `--konjo-accent` CSS var.
+    var accentColor: Color { accentTheme.swatch }
 
     // Live state
     var stats = PoolStats()
@@ -34,6 +44,13 @@ final class AppModel {
     /// press's duration rather than the handle icon alone.
     var armedStackDragIndex: Int?
     var repos: [RepoEntry] = []
+    /// The live model/effort catalog (`GET /api/models`), fetched once and
+    /// cached for the app's lifetime — success or failure. Empty until
+    /// `ensureModelCatalog` lands; callers fall back to the static
+    /// `MODEL_OPTIONS`/`EFFORT_OPTIONS` via `modelOptionsFrom`/`effortOptionsFor`.
+    var modelCatalog: [LiveModel] = []
+    private var modelCatalogAttempted = false
+    private var modelCatalogInflight = false
     /// Per-repo branch cache: resolved repo path → its local branches. Keyed by
     /// repo rather than held flat because a card's effective repo is
     /// `config.repo ?? paneDefaults.repo` — two cards in one pane can target two
@@ -61,8 +78,14 @@ final class AppModel {
     /// Mean generation activity across active agents, 0...1 — drives the
     /// intensity of the animated background.
     var aggregateActivity: Double = 0
-    /// Most recent budget breach, if any (cleared by the UI).
-    var lastBudget: BudgetBreach?
+    /// Budget breach history, most-recent last — capped at 5, deduped by
+    /// `(scope, taskId)` so a repeat breach for the same task/scope replaces
+    /// (moves to the end of) its existing entry rather than duplicating it.
+    /// Mirrors web's `budgetAlerts`. Populated in `AppModel+Live.swift`.
+    var budgetBreaches: [BudgetBreach] = []
+    /// Most recent budget breach, if any — the dashboard's pulsing banner
+    /// reads only this one; the Budget screen reads the full history above.
+    var lastBudget: BudgetBreach? { budgetBreaches.last }
 
     /// Active agents, most-recently-updated first.
     var activeAgents: [LiveAgent] {
@@ -249,6 +272,17 @@ final class AppModel {
         if let r = try? await client.repos() { repos = r }
     }
 
+    /// Fetch the live model catalog once, success or failure — safe to call
+    /// repeatedly/reactively from every config view's `.task`. Mirrors web's
+    /// `ensureModelCatalog`.
+    func ensureModelCatalog() async {
+        guard !modelCatalogAttempted, !modelCatalogInflight else { return }
+        modelCatalogInflight = true
+        if let live = try? await client.models(), !live.isEmpty { modelCatalog = live }
+        modelCatalogAttempted = true
+        modelCatalogInflight = false
+    }
+
     /// Fetch `repo`'s branches once, then serve from the cache. Safe to call
     /// from a view's `.task`/`.onChange`: a repeat call for a cached or in-flight
     /// repo is a no-op.
@@ -379,6 +413,14 @@ final class AppModel {
             if isNew, let cost = (t["cost"] as? NSNumber)?.doubleValue {
                 liveAgents[id]?.costUsd = cost
             }
+            // Overview's elapsed column needs a real start time for tasks that
+            // began before this session connected — only applied to newly-seen
+            // ids, same as `cost` above, so a task already live keeps its own
+            // first-sight `startedAt` rather than being reset from the snapshot.
+            if isNew, let createdAt = t["created_at"] as? String,
+               let parsed = parseISO8601(createdAt) {
+                liveAgents[id]?.startedAt = parsed
+            }
         }
     }
 
@@ -387,4 +429,14 @@ final class AppModel {
     func report(_ error: Error) {
         banner = (error as? LopiError)?.errorDescription ?? error.localizedDescription
     }
+}
+
+/// Parses an RFC3339/ISO8601 timestamp, trying with-fractional-seconds first
+/// (chrono's default `DateTime<Utc>` serialization) and falling back to
+/// whole-seconds precision.
+private func parseISO8601(_ s: String) -> Date? {
+    let withFractional = ISO8601DateFormatter()
+    withFractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    if let d = withFractional.date(from: s) { return d }
+    return ISO8601DateFormatter().date(from: s)
 }

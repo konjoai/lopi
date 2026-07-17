@@ -17,6 +17,7 @@
     evalsSummary,
     scheduleSummary,
     maxxSummary,
+    configSummary,
     cardIterationsLabel,
     stepCardIterations,
     draftIsHot,
@@ -400,7 +401,15 @@
   $: evalsOn = evalActive(card);
   $: configOn = configActive(card, paneDefaults);
   $: scheduleActive = card.scheduled && !scheduleGoverned;
-  $: showSep = card.scheduled || card.maxx.enabled || guardsOn || evalsOn;
+  // The config drawer already shows every field inline while open — the
+  // hide-inactive summary line only needs to cover the gap left when it's
+  // collapsed (previously nothing surfaced an override at all once closed).
+  $: showConfigSummary = configOn && !cfgOpen;
+  $: showSep = card.scheduled || card.maxx.enabled || guardsOn || evalsOn || showConfigSummary;
+  // A card's loop reads as "actively running" only once it has both a live
+  // iteration (status === 'running') and an actual repeat configured — an
+  // off card (single pass) never shows the running-loop chrome even mid-run.
+  $: loopRunning = card.status === 'running' && !!card.iteration && card.iteration.total > 1;
 
   /** Persist the popover's toggle outcome onto the card — independent of
    *  `scheduled`/`cron`; a card can have both on at once. */
@@ -612,11 +621,34 @@
         <span class="txt">{evalsSummary(card)}</span>
       </div>
     {/if}
+    {#if showConfigSummary}
+      <div class="sumln cfg">
+        <span class="rl">{@html ICONS.sliders}config</span>
+        <span class="txt">{configSummary(card, paneDefaults)}</span>
+      </div>
+    {/if}
   {/if}
 
   <div class="cardbar">
-    <span class="iterpill" class:off={card.maxIterations === 0} title={card.maxIterations === 0 ? 'off · runs once, no repeat' : undefined}>
-      <span class="lb">{@html ICONS.loop}<span class="val">{card.maxIterations === 0 ? 'off' : '×' + cardIterationsLabel(card.maxIterations)}</span></span>
+    <span
+      class="iterpill"
+      class:off={card.maxIterations === 0}
+      class:running={loopRunning}
+      title={loopRunning
+        ? `iteration ${card.iteration?.current}/${card.iteration?.total}`
+        : card.maxIterations === 0
+          ? 'off · runs once, no repeat'
+          : undefined}
+    >
+      <span class="lb"
+        >{@html loopRunning ? ICONS.spinner : ICONS.loop}<span class="val"
+          >{loopRunning
+            ? `${card.iteration?.current}/${card.iteration?.total}`
+            : card.maxIterations === 0
+              ? 'off'
+              : '×' + cardIterationsLabel(card.maxIterations)}</span
+        ></span
+      >
       <span class="steppers">
         <button class="sb" on:click={() => step(-1)} title="fewer iterations">−</button>
         <button class="sb" on:click={() => step(1)} title="more iterations">+</button>
@@ -1017,6 +1049,9 @@
   .sumln.eval .rl {
     color: var(--konjo-jade);
   }
+  .sumln.cfg .rl {
+    color: var(--stack-violet, #b79bff);
+  }
   .sumln .txt {
     color: rgba(245, 245, 245, 0.46);
     white-space: nowrap;
@@ -1176,9 +1211,37 @@
   .iterpill.off .sb:hover {
     background: rgba(245, 245, 245, 0.08);
   }
+  /* Running-loop chrome (card.status === 'running' with a real repeat
+     configured): a slow glow on the pill itself, distinct from the card's own
+     faster `edgeflash` border pulse, plus a continuously-spinning icon so the
+     pill reads as actively mid-iteration rather than just "on". */
+  .iterpill.running {
+    animation: iterglow 2.4s ease-in-out infinite;
+  }
+  @keyframes iterglow {
+    0%,
+    100% {
+      box-shadow: 0 0 0 0 rgba(255, 149, 0, 0);
+      border-color: rgba(255, 149, 0, 0.5);
+    }
+    50% {
+      box-shadow: 0 0 14px 1px rgba(255, 149, 0, 0.45);
+      border-color: rgba(255, 149, 0, 0.95);
+    }
+  }
+  .iterpill .lb :global(svg.spin) {
+    animation: spin 1.1s linear infinite;
+  }
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
   @media (prefers-reduced-motion: reduce) {
     .pc.running,
-    .iterbar i.cur {
+    .iterbar i.cur,
+    .iterpill.running,
+    .iterpill .lb :global(svg.spin) {
       animation: none;
     }
   }
