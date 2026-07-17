@@ -135,7 +135,7 @@ fn effective_task_budget_bare_usd_override_never_reopens_workflow() {
     assert_eq!(resolved.usd, 9.0);
     assert_eq!(
         resolved.deny,
-        vec!["Workflow".to_string()],
+        vec!["Workflow", "Task", "Agent"],
         "a bare USD override must not touch the tool deny list"
     );
 }

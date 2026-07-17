@@ -1,10 +1,11 @@
 //! Named budget presets (Budget & Guardrail Controls, Part 2).
 //!
-//! Replaces the single hardcoded `$3` default with a tiered, per-task- and
+//! Replaces the single hardcoded default with a tiered, per-task- and
 //! remote-overridable budget system. A `[budget]` section in
 //! `.lopi/loop.toml` names a [`BudgetPreset`] (quick/standard/deep/unlimited)
-//! that sets USD cap, token cap, and the `Workflow` fan-out deny list
-//! together; explicit fields under `[budget]` win over the preset.
+//! that sets USD cap, token cap, and the sub-agent fan-out deny list
+//! ([`FAN_OUT_DENY`]) together; explicit fields under `[budget]` win over the
+//! preset.
 //! [`LoopConfig::resolved_budget`](crate::loop_config::LoopConfig::resolved_budget)
 //! folds all of that into one [`ResolvedBudget`] the pool wires in one shot.
 //! [`BudgetOverride`] is the further per-task/CLI/Telegram layer (Part 3)
@@ -15,23 +16,39 @@
 
 use serde::{Deserialize, Serialize};
 
-/// A named budget preset — sets USD cap, token cap, and the `Workflow`
-/// fan-out deny list together, so a repo "intends" a cost class rather than
-/// tuning three independent knobs. `Standard` reproduces the exact defaults
-/// this repo shipped before named presets existed (`$3`, 1M tokens, deny
-/// `Workflow`) — a no-op migration for every config predating this field.
+/// Every parallel sub-agent fan-out primitive, denied together by the capped
+/// presets (`quick`/`standard`). Denying only `Workflow` (the orchestration
+/// script) once left `Task`/`Agent` — the direct sub-agent spawn tool, which
+/// ships under both names across CLI versions — wide open: a session that
+/// fanned out through `Task` burned a $3-capped run to $6.89 (and, earlier,
+/// $25.79). The per-session `--max-budget-usd` cap is only a *between-turn*
+/// checkpoint, so it cannot cap money the sub-agents of a single turn spend in
+/// parallel; denying the fan-out keeps each `claude -p` session a single
+/// bounded agent, the one shape that cap reliably governs. Listing a name the
+/// running CLI doesn't expose is a harmless no-op, so covering both `Task` and
+/// `Agent` is free insurance against a version rename. `deep`/`unlimited`
+/// deliberately omit this — they are the intentional-fan-out tiers.
+const FAN_OUT_DENY: &[&str] = &["Workflow", "Task", "Agent"];
+
+/// A named budget preset — sets USD cap, token cap, and the fan-out deny list
+/// ([`FAN_OUT_DENY`]) together, so a repo "intends" a cost class rather than
+/// tuning three independent knobs. The default `Standard` is a conservative
+/// $1 cap with a generous 1M-token budget; only `deep`/`unlimited` re-enable
+/// parallel sub-agent fan-out.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum BudgetPreset {
-    /// One bugfix / small refactor / single file. $1 cap, 200K tokens.
+    /// One bugfix / small refactor / single file. $1 cap, 200K tokens,
+    /// fan-out denied.
     Quick,
-    /// Multi-file feature, test-and-fix loop with a retry or two. $3 cap, 1M
-    /// tokens — the pre-existing default, unchanged.
+    /// Multi-file feature, test-and-fix loop with a retry or two. $1 cap, 1M
+    /// tokens, fan-out denied — the conservative default.
     #[default]
     Standard,
     /// Research + implement, migration, *intentional* fan-out. $10 cap, 5M
-    /// tokens, and the only tier below `unlimited` that re-enables `Workflow`
-    /// by default — opt-in by naming this preset, never by accident.
+    /// tokens, and the only tier below `unlimited` that re-enables sub-agent
+    /// fan-out (`Workflow`/`Task`/`Agent`) by default — opt-in by naming this
+    /// preset, never by accident.
     Deep,
     /// No cap at all (`0.0`/`0` — the pre-existing "disabled" sentinel).
     /// Requires explicitly setting `preset = "unlimited"`; never the default.
@@ -70,8 +87,8 @@ impl BudgetPreset {
     /// [`resolved`](Self::resolved), which shapes this into a [`ResolvedBudget`].
     fn table(self) -> (f64, u64, &'static [&'static str]) {
         match self {
-            Self::Quick => (1.0, 200_000, &["Workflow"]),
-            Self::Standard => (3.0, 1_000_000, &["Workflow"]),
+            Self::Quick => (1.0, 200_000, FAN_OUT_DENY),
+            Self::Standard => (1.0, 1_000_000, FAN_OUT_DENY),
             Self::Deep => (10.0, 5_000_000, &[]),
             Self::Unlimited => (0.0, 0, &[]),
         }
@@ -202,28 +219,29 @@ mod tests {
     }
 
     /// The $1 floor: `quick` produces a live, non-zero USD cap — never the
-    /// `0.0` "disabled" sentinel.
+    /// `0.0` "disabled" sentinel — and denies every fan-out primitive.
     #[test]
     fn quick_preset_is_the_one_dollar_floor() {
         let r = BudgetPreset::Quick.resolved();
         assert_eq!(r.usd, 1.0);
         assert_eq!(r.tokens, 200_000);
-        assert_eq!(r.deny, vec!["Workflow".to_string()]);
+        assert_eq!(r.deny, vec!["Workflow", "Task", "Agent"]);
     }
 
-    /// `standard` must reproduce the pre-existing defaults exactly — the
-    /// no-op migration invariant for every repo with no `[budget]` section.
+    /// The conservative default: `standard` caps a session at $1 with a
+    /// generous 1M-token budget and denies every parallel sub-agent fan-out
+    /// primitive — the shape that once blew a $3 cap to $6.89.
     #[test]
-    fn standard_preset_matches_pre_existing_defaults() {
+    fn standard_preset_is_the_conservative_default() {
         let r = BudgetPreset::Standard.resolved();
-        assert_eq!(r.usd, 3.0);
+        assert_eq!(r.usd, 1.0);
         assert_eq!(r.tokens, 1_000_000);
-        assert_eq!(r.deny, vec!["Workflow".to_string()]);
+        assert_eq!(r.deny, vec!["Workflow", "Task", "Agent"]);
         assert!(r.allow.is_empty());
     }
 
-    /// `deep`/`unlimited` are the only presets that re-enable `Workflow` —
-    /// never by accident, only by naming the preset.
+    /// `deep`/`unlimited` are the only presets that re-enable sub-agent
+    /// fan-out — never by accident, only by naming the preset.
     #[test]
     fn deep_and_unlimited_deny_nothing() {
         assert!(BudgetPreset::Deep.resolved().deny.is_empty());
@@ -268,7 +286,7 @@ mod tests {
         let r = ov.apply(base);
         assert_eq!(r.usd, 9.0);
         assert_eq!(r.tokens, 1_000_000);
-        assert_eq!(r.deny, vec!["Workflow".to_string()]);
+        assert_eq!(r.deny, vec!["Workflow", "Task", "Agent"]);
     }
 
     /// A preset override replaces the base wholesale, including its deny list.

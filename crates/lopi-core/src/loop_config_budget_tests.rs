@@ -10,12 +10,13 @@ use super::*;
 
 /// A task that fans out into several parallel sub-agents (e.g. a
 /// deep-research goal) ran fully uncapped and reached $25.79 for one
-/// `claude -p` session before this field existed — the default must be
-/// non-zero so an unattended loop is never uncapped by default.
+/// `claude -p` session before this field existed — the default must be a
+/// conservative non-zero cap (kept in sync with the `standard` preset's $1)
+/// so an unattended loop is never uncapped by default.
 #[test]
 fn loop_config_default_max_budget_usd_is_a_conservative_nonzero_cap() {
     let c = LoopConfig::default();
-    assert_eq!(c.max_budget_usd, 3.0);
+    assert_eq!(c.max_budget_usd, 1.0);
 }
 
 /// A config predating this field must still parse, landing on the
@@ -24,7 +25,7 @@ fn loop_config_default_max_budget_usd_is_a_conservative_nonzero_cap() {
 #[test]
 fn loop_config_parses_toml_missing_max_budget_usd() {
     let c: LoopConfig = toml::from_str("autonomy_level = \"draft_pr\"\n").unwrap();
-    assert_eq!(c.max_budget_usd, 3.0);
+    assert_eq!(c.max_budget_usd, 1.0);
 }
 
 #[test]
@@ -55,13 +56,14 @@ fn loop_config_parses_toml_missing_budget_tokens() {
     assert_eq!(c.budget_tokens, 1_000_000);
 }
 
-/// The multi-agent orchestration primitive that turned a $0 baseline into
-/// $25.79 for one session — denied by default so an unattended loop must
-/// explicitly opt in (via `permission_allow`) before it can fan out.
+/// Every parallel sub-agent fan-out primitive is denied by default so an
+/// unattended loop must explicitly opt in (via `permission_allow`) before it
+/// can fan out. `Workflow` alone once ran a session to $25.79; leaving
+/// `Task`/`Agent` open blew a $3-capped session to $6.89 the same way.
 #[test]
-fn loop_config_default_denies_the_workflow_tool() {
+fn loop_config_default_denies_every_fan_out_primitive() {
     let c = LoopConfig::default();
-    assert_eq!(c.permission_deny, vec!["Workflow".to_string()]);
+    assert_eq!(c.permission_deny, vec!["Workflow", "Task", "Agent"]);
     assert!(
         c.permission_allow.is_empty(),
         "nothing is pre-approved by default"
@@ -71,7 +73,7 @@ fn loop_config_default_denies_the_workflow_tool() {
 #[test]
 fn loop_config_parses_toml_missing_permission_deny() {
     let c: LoopConfig = toml::from_str("autonomy_level = \"draft_pr\"\n").unwrap();
-    assert_eq!(c.permission_deny, vec!["Workflow".to_string()]);
+    assert_eq!(c.permission_deny, vec!["Workflow", "Task", "Agent"]);
 }
 
 /// A repo that wants deep-research-style runs re-enables `Workflow` via
@@ -89,15 +91,15 @@ fn loop_config_permission_lists_round_trip_through_toml() {
     assert!(back.permission_deny.is_empty());
 }
 
-/// Behavioral invariant (Budget & Guardrail Controls Part 2): `standard` ==
-/// today's behavior. Existing repos with no `[budget]` section resolve to
-/// $3 / 1M tokens / deny `Workflow` — a no-op migration.
+/// The runtime default: a repo with no `[budget]` section resolves to the
+/// conservative `standard` preset — a $1 cap, 1M tokens, and every sub-agent
+/// fan-out primitive denied. This is the knob the pool actually wires in.
 #[test]
-fn loop_config_default_resolved_budget_is_a_no_op_migration() {
+fn loop_config_default_resolved_budget_is_conservative() {
     let r = LoopConfig::default().resolved_budget();
-    assert_eq!(r.usd, 3.0);
+    assert_eq!(r.usd, 1.0);
     assert_eq!(r.tokens, 1_000_000);
-    assert_eq!(r.deny, vec!["Workflow".to_string()]);
+    assert_eq!(r.deny, vec!["Workflow", "Task", "Agent"]);
     assert!(r.allow.is_empty());
 }
 
@@ -132,13 +134,14 @@ fn resolved_budget_explicit_fields_win_over_preset() {
     assert_eq!(r.tokens, 500_000);
     assert_eq!(
         r.deny,
-        vec!["Workflow".to_string()],
+        vec!["Workflow", "Task", "Agent"],
         "quick's own deny list is untouched by the usd/token overrides"
     );
 }
 
 /// `permission_allow` under `[budget]` re-opens a preset-denied tool without
-/// also needing to clear a deny list by hand.
+/// also needing to clear a deny list by hand — and only the named tool, so a
+/// repo can re-enable `Workflow` while `Task`/`Agent` stay denied.
 #[test]
 fn resolved_budget_permission_allow_reopens_preset_deny() {
     let c = LoopConfig {
@@ -150,7 +153,7 @@ fn resolved_budget_permission_allow_reopens_preset_deny() {
         ..LoopConfig::default()
     };
     let r = c.resolved_budget();
-    assert!(r.deny.is_empty());
+    assert_eq!(r.deny, vec!["Task", "Agent"], "only Workflow is re-opened");
     assert_eq!(r.allow, vec!["Workflow".to_string()]);
 }
 
@@ -174,5 +177,5 @@ fn loop_config_parses_toml_missing_budget_section() {
         c.budget.preset,
         crate::budget_preset::BudgetPreset::Standard
     );
-    assert_eq!(c.resolved_budget().usd, 3.0);
+    assert_eq!(c.resolved_budget().usd, 1.0);
 }
