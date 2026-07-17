@@ -6,13 +6,13 @@
  */
 export const ICONS = {
   loop: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>',
-  // The lopi Stacks mark — the boxed `loop` badge (dark squircle, flame
-  // border) overlapping the top-right corner of a three-bar stack that fades
-  // toward the back, matching macOS's `LopiLogoMark`. Colors are hardcoded
-  // (not `currentColor`) since this is the brand logo, not a themeable glyph.
-  // Scoped to the Stacks nav item and each pane header (not the favicon or
-  // wordmark, which keep the plain boxed/bare loop glyph).
-  mark: '<svg viewBox="-40 -40 522 681"><g><path d="M 395.5 208.17 L 395.5 225 A 37.5 37.5 0 0 1 358 262.5 L 121 262.5 A 37.5 37.5 0 0 1 83.5 225 L 83.5 128 A 37.5 37.5 0 0 1 121 90.5 L 360 90.5" fill="none" stroke="#f49e31" stroke-width="48.44" stroke-linecap="round"/><path d="M 309.5 2.06 L 397 88 L 307.94 175.5" fill="none" stroke="#f49e31" stroke-width="48.44" stroke-linecap="round" stroke-linejoin="round"/></g><g transform="rotate(180 239.5 294.5)"><path d="M 395.5 208.17 L 395.5 225 A 37.5 37.5 0 0 1 358 262.5 L 121 262.5 A 37.5 37.5 0 0 1 83.5 225 L 83.5 128 A 37.5 37.5 0 0 1 121 90.5 L 360 90.5" fill="none" stroke="#f49e31" stroke-width="48.44" stroke-linecap="round"/><path d="M 309.5 2.06 L 397 88 L 307.94 175.5" fill="none" stroke="#f49e31" stroke-width="48.44" stroke-linecap="round" stroke-linejoin="round"/></g></svg>',
+  // The lopi Stacks mark — two arced loop arrows sitting above a three-bar
+  // stack that fades toward the back, matching macOS's `LopiLogoMark`.
+  // Colors are hardcoded (not `currentColor`) since this is the brand logo,
+  // not a themeable glyph. Scoped to the Stacks nav item and each pane
+  // header (not the favicon or wordmark, which keep the plain boxed/bare
+  // loop glyph).
+  mark: '<svg viewBox="0 0 48 48" fill="none"><path d="M11,15 V12 A4,4 0 0 1 15,8 H29" stroke="#f49e31" stroke-width="3.4" stroke-linecap="round"/><polyline points="24,3 29,8 24,13" stroke="#f49e31" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M35,15 V18 A4,4 0 0 1 31,22 H17" stroke="#f49e31" stroke-width="3.4" stroke-linecap="round"/><polyline points="22,17 17,22 22,27" stroke="#f49e31" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/><rect x="6" y="29" width="36" height="5" rx="2.5" fill="#f49e31" opacity="0.9"/><rect x="6" y="36" width="36" height="5" rx="2.5" fill="#f49e31" opacity="0.65"/><rect x="6" y="43" width="36" height="5" rx="2.5" fill="#f49e31" opacity="0.4"/></svg>',
   cron: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
   shield:
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z"/></svg>',
@@ -67,7 +67,14 @@ export const ICONS = {
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>',
   save: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>',
   // MAXX — opportunistic backlog dispatch (cardbar button + popover header).
-  bolt: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z"/></svg>'
+  bolt: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z"/></svg>',
+  // The running-loop spinner — swaps in for `loop` on the iteration pill only
+  // while a loop-enabled card/stack is actively running, so the pill itself
+  // (not just the surrounding glow) reads as "in motion". A three-quarter
+  // arc rather than the full double-arrow `loop` glyph, continuously rotated
+  // in CSS — the classic indeterminate-spinner shape.
+  spinner:
+    '<svg class="spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-3.5-7.1"/></svg>'
 } as const;
 
 /** Accent color per preset, keyed the same as `PRESET_CATALOG`. */

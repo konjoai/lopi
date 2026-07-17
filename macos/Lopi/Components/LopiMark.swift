@@ -62,63 +62,74 @@ struct LopiWordmark: View {
     }
 }
 
-/// The full lopi Stacks logo mark: the boxed `LopiMarkShape` loop badge
-/// overlapping the top-right corner of a three-bar stack that fades toward
-/// the back, point-for-point matching the web `ICONS.mark`/`SHELL_ICONS.mark`
-/// glyphs. Scoped to the unified sidebar's Loop Stack row and each stack
-/// pane's header (not the app icon, which keeps the plain boxed badge).
+/// Two arced loop-arrows facing opposite directions, in the shared 48×48
+/// native space used by `LopiLogoMark` (matching the web `ICONS.mark`/
+/// `SHELL_ICONS.mark` glyphs' path data point-for-point, quad-curves
+/// standing in for the SVG's circular arcs same as `LopiMarkShape` does).
+struct LopiLogoLoopShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        let s = min(rect.width, rect.height) / 48
+        func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
+            CGPoint(x: rect.minX + x * s, y: rect.minY + y * s)
+        }
+        var path = Path()
+
+        path.move(to: p(11, 15))
+        path.addLine(to: p(11, 12))
+        path.addQuadCurve(to: p(15, 8), control: p(11, 8))
+        path.addLine(to: p(29, 8))
+
+        path.move(to: p(24, 3))
+        path.addLine(to: p(29, 8))
+        path.addLine(to: p(24, 13))
+
+        path.move(to: p(35, 15))
+        path.addLine(to: p(35, 18))
+        path.addQuadCurve(to: p(31, 22), control: p(35, 22))
+        path.addLine(to: p(17, 22))
+
+        path.move(to: p(22, 17))
+        path.addLine(to: p(17, 22))
+        path.addLine(to: p(22, 27))
+
+        return path
+    }
+}
+
+/// The full lopi Stacks logo mark: `LopiLogoLoopShape` sitting above a
+/// three-bar stack that fades toward the back, point-for-point matching the
+/// web `ICONS.mark`/`SHELL_ICONS.mark` glyphs. Scoped to the unified
+/// sidebar's Loop Stack row and each stack pane's header (not the app icon,
+/// which keeps the plain boxed badge).
 struct LopiLogoMark: View {
     var size: CGFloat = 24
     var color: Color = Konjo.flame
-    var background: Color = Konjo.bg
 
     var body: some View {
-        let scale: CGFloat = size / 24
-        let badgeSize: CGFloat = size * 0.4
-        let badgeOffsetX: CGFloat = 6.9 * scale
-        let badgeOffsetY: CGFloat = -6.4 * scale
+        let scale: CGFloat = size / 48
         return ZStack {
-            bar(y: 19.1, opacity: 0.3)
-            bar(y: 13.7, opacity: 0.58)
-            bar(y: 8.3, opacity: 1)
-            badge(boxSize: badgeSize)
-                .offset(x: badgeOffsetX, y: badgeOffsetY)
+            LopiLogoLoopShape()
+                .stroke(color, style: StrokeStyle(lineWidth: 3.4 * scale, lineCap: .round, lineJoin: .round))
+                .frame(width: size, height: size)
+            bar(y: 29, opacity: 0.9)
+            bar(y: 36, opacity: 0.65)
+            bar(y: 43, opacity: 0.4)
         }
         .frame(width: size, height: size)
     }
 
-    /// One stroked stack bar, fixed at `x: 0.9, width: 15.9, height: 4` in the
-    /// shared 24×24 native space (matching the web SVG's `<rect>`s), then
+    /// One filled stack bar, fixed at `x: 6, width: 36, height: 5` in the
+    /// shared 48×48 native space (matching the web SVG's `<rect>`s), then
     /// re-centered for SwiftUI's center-anchored `ZStack` offsets.
     private func bar(y: CGFloat, opacity: Double) -> some View {
-        let scale: CGFloat = size / 24
-        let width: CGFloat = 15.9 * scale
-        let height: CGFloat = 4.0 * scale
-        let cornerRadius: CGFloat = 2.0 * scale
-        let strokeWidth: CGFloat = 1.15 * scale
-        let offsetX: CGFloat = (0.9 + 15.9 / 2 - 12) * scale
-        let offsetY: CGFloat = (y + 4.0 / 2 - 12) * scale
+        let scale: CGFloat = size / 48
+        let width: CGFloat = 36 * scale
+        let height: CGFloat = 5 * scale
+        let cornerRadius: CGFloat = 2.5 * scale
+        let offsetY: CGFloat = (y + 5 / 2 - 24) * scale
         return RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-            .stroke(color.opacity(opacity), lineWidth: strokeWidth)
+            .fill(color.opacity(opacity))
             .frame(width: width, height: height)
-            .offset(x: offsetX, y: offsetY)
-    }
-
-    /// The boxed loop badge at a given rendered size — the pre-Stacks-rebrand
-    /// `LopiLogoMark` body, now reused as the corner badge.
-    private func badge(boxSize: CGFloat) -> some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: boxSize * (5.25 / 24), style: .continuous)
-                .fill(background)
-                .frame(width: boxSize * (21.0 / 24), height: boxSize * (21.0 / 24))
-            RoundedRectangle(cornerRadius: boxSize * (4.5 / 24), style: .continuous)
-                .stroke(color.opacity(0.85), lineWidth: boxSize * (1.05 / 24))
-                .frame(width: boxSize * (18.9 / 24), height: boxSize * (18.9 / 24))
-            LopiMarkShape()
-                .stroke(color, style: StrokeStyle(
-                    lineWidth: boxSize * (2.3 * 0.675 / 24), lineCap: .round, lineJoin: .round))
-                .frame(width: boxSize * 0.675, height: boxSize * 0.675)
-        }
-        .frame(width: boxSize, height: boxSize)
+            .offset(y: offsetY)
     }
 }
