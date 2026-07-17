@@ -31,6 +31,10 @@ pub struct AppState {
     /// macOS-UI Phase 0 — runtime-mutable cron scheduler. Started (and seeded
     /// from the `schedules` table) inside `serve_with_repo`.
     pub schedules: lopi_orchestrator::ScheduleManager,
+    /// Stack-Chain-1 — runtime-mutable whole-stack cron chain scheduler.
+    /// Started (and seeded from the `schedule_chains` table, resuming any
+    /// run orphaned by a prior restart) inside `serve_with_repo`.
+    pub schedule_chains: lopi_orchestrator::ChainScheduleManager,
     /// MAXX Phase 0 — quota headroom tracker. Started (loads persisted
     /// observations, subscribes to the bus) inside `serve_with_repo`.
     pub quota: lopi_orchestrator::QuotaTracker,
@@ -141,6 +145,11 @@ impl AppState {
         // Runtime cron scheduler — constructed un-started here; `serve_with_repo`
         // calls `start()` to create the JobScheduler and register stored rows.
         let schedules = lopi_orchestrator::ScheduleManager::new((*pool).clone(), store.clone());
+        // Chain cron scheduler — constructed un-started here; `serve_with_repo`
+        // calls `start()` to create the JobScheduler, register stored chains,
+        // and resume any run orphaned by a prior restart.
+        let schedule_chains =
+            lopi_orchestrator::ChainScheduleManager::new((*pool).clone(), store.clone());
         // Quota tracker — constructed un-started here; `serve_with_repo` calls
         // `start()` to load persisted observations and subscribe to the bus.
         let quota = lopi_orchestrator::QuotaTracker::new(store.clone());
@@ -153,6 +162,7 @@ impl AppState {
             repo_path,
             extra_repos: Vec::new(),
             schedules,
+            schedule_chains,
             quota,
             models_cache: model_handlers::ModelsCache::default(),
             serialized_tx,
@@ -251,6 +261,28 @@ pub fn build_app(state: AppState) -> Router {
         .route(
             "/api/schedules/:id/autonomy",
             axum::routing::post(schedule_handlers::set_autonomy),
+        )
+        .route(
+            "/api/schedule-chains",
+            get(schedule_chain_handlers::list_chains).post(schedule_chain_handlers::create_chain),
+        )
+        .route(
+            "/api/schedule-chains/:id",
+            get(schedule_chain_handlers::get_chain)
+                .put(schedule_chain_handlers::update_chain)
+                .delete(schedule_chain_handlers::delete_chain),
+        )
+        .route(
+            "/api/schedule-chains/:id/enable",
+            axum::routing::post(schedule_chain_handlers::enable_chain),
+        )
+        .route(
+            "/api/schedule-chains/:id/disable",
+            axum::routing::post(schedule_chain_handlers::disable_chain),
+        )
+        .route(
+            "/api/schedule-chains/:id/run-now",
+            axum::routing::post(schedule_chain_handlers::run_now),
         )
         .route("/api/quota", get(quota_handlers::get_quota))
         .route(
@@ -354,6 +386,11 @@ async fn warm_up_state(state: &mut AppState) {
         // Without a live scheduler, cron rows persist but never fire.
         tracing::warn!(error = %e, "cron scheduler start failed; schedules will not fire");
     }
+    if let Err(e) = state.schedule_chains.start().await {
+        // Without a live chain scheduler, chains persist but never fire, and
+        // any run orphaned by a prior restart stays stuck at its last step.
+        tracing::warn!(error = %e, "chain scheduler start failed; schedule chains will not fire");
+    }
     if let Err(e) = state.quota.start(&state.bus).await {
         // Without a loaded tracker, /api/quota and maxx_loop just see `None`
         // until the next ApiRetry event — degraded, not broken.
@@ -418,6 +455,7 @@ mod model_handlers;
 mod quota_handlers;
 mod repo_identity;
 mod repos_handlers;
+mod schedule_chain_handlers;
 mod schedule_handlers;
 mod static_assets;
 mod task_stream_handlers;
