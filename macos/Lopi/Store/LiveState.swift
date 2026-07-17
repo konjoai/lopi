@@ -40,6 +40,14 @@ struct LiveAgent: Identifiable, Hashable {
 
     var active: Bool = true
     var lastUpdate: Date = .now
+    /// First time this task was seen this session — set once on `seedAgent`/
+    /// `mutateAgent`'s first sight, never overwritten. Drives the Overview
+    /// screen's elapsed-time column (mirrors web's `AgentState.startedAt`).
+    var startedAt: Date = .now
+    /// Composite 0...1 score from the latest `score_updated` event —
+    /// `testPassRate` weighted, penalized by lint errors. `nil` until the
+    /// first `score_updated` event lands. Mirrors web's `AgentState.score`.
+    var score: Double?
 
     /// Recent log lines for this task — feeds the pane's log strip (web parity).
     var logTail: [AgentLog] = []
@@ -106,8 +114,11 @@ struct FeedItem: Identifiable, Hashable {
     }
 }
 
-/// Most recent budget breach, surfaced as a pulsing banner on the dashboard.
+/// A budget breach, surfaced as a pulsing banner on the dashboard (the most
+/// recent one) and as history on the Budget screen (`AppModel.budgetBreaches`).
 struct BudgetBreach: Equatable {
+    /// `nil` for a fleet-scope breach, which has no single owning task.
+    let taskId: String?
     let scope: String
     let limitUsd: Double
     let burnedUsd: Double

@@ -111,6 +111,26 @@ public extension StackRunEngine {
         return .ok(nextOrder)
     }
 
+    /// Whether a card's bump (run sooner/later) buttons should render, and
+    /// which directions are legal — the pure predicate the cardbar's up/down
+    /// buttons read so `StackCardView` stays a thin view. Only a card that is
+    /// (a) not yet started and (b) part of an active (running/paused/
+    /// draining) run shows buttons at all; "sooner" is disabled once nothing
+    /// queued remains between it and the cursor, "later" once it's already
+    /// last in the queue. Mirrors web's `bumpUiState`.
+    func bumpUiState(_ paneKey: String, _ cardId: String) -> (visible: Bool, canSooner: Bool, canLater: Bool) {
+        guard let state = run(for: paneKey),
+              state.phase == .running || state.phase == .paused || state.phase == .draining
+        else { return (false, false, false) }
+        let idx = state.order.firstIndex(of: cardId) ?? -1
+        let visible = idx > state.cursor
+        return (
+            visible: visible,
+            canSooner: visible && idx - 1 > state.cursor,
+            canLater: visible && idx + 1 < state.order.count
+        )
+    }
+
     // MARK: Schedule stack
 
     /// Run-menu "Schedule stack": wires every card in execution order into

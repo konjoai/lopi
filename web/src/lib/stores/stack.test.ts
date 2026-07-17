@@ -320,8 +320,13 @@ eqIs(maxIterationsLabel(1), 'off', 'label renders a single run with no repeat as
 eqIs(maxIterationsLabel(5), '5', 'label renders a finite ceiling as its number');
 
 // ── card iteration stepper — floors at 0 = "off", never wraps to infinite ─────
-eqIs(stepCardIterations(0, 1), 1, 'stepping up from off lands on 1');
-eqIs(stepCardIterations(1, -1), 0, 'stepping down from 1 reaches off (0)');
+// Skips 1 in both directions: max_iterations 1 and 0 submit identically (a
+// single pass), so landing on 1 would look like a real step without changing
+// anything. Off now steps straight to 2, matching the stack stepper's floor.
+eqIs(stepCardIterations(0, 1), 2, 'stepping up from off skips the no-op 1 and lands on 2');
+eqIs(stepCardIterations(2, -1), 0, 'stepping down from 2 reaches off (0), skipping 1');
+eqIs(stepCardIterations(1, -1), 0, 'stepping down from a legacy 1 reaches off (0)');
+eqIs(stepCardIterations(1, 1), 2, 'stepping up from a legacy 1 lands on 2');
 eqIs(stepCardIterations(0, -1), 0, 'stepping down from off stays off — never wraps to infinite');
 eqIs(stepCardIterations(3, 2), 5, 'stepping up increments normally');
 eqIs(cardIterationsLabel(0), 'off', 'card label renders 0 as off');

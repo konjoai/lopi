@@ -51,8 +51,8 @@ struct StackControlDockView: View {
 
     private func commandOptionsFor(_ command: String) -> [StackOption] {
         switch command {
-        case "model": return MODEL_OPTIONS
-        case "effort": return EFFORT_OPTIONS
+        case "model": return modelOptionsFrom(model.modelCatalog)
+        case "effort": return effortOptionsFor(model.modelCatalog, model: config.defaults.model)
         case "autonomy": return AUTONOMY_OPTIONS
         case "branch": return (model.branchesByRepo[config.defaults.repo] ?? []).map { StackOption(value: $0, label: $0) }
         case "eval": return evalSuiteOptions()
@@ -132,7 +132,9 @@ struct StackControlDockView: View {
     private var goalOn: Bool { stackGoalActive(config) }
     private var pursues: Bool { stackPursuesGoal(config) }
     private var showSummary: Bool { scheduledOn || guardsOn || evalsOn || configOn || goalOn }
-    private var modelLabel: String { MODEL_OPTIONS.first { $0.value == config.defaults.model }?.label ?? config.defaults.model }
+    private var modelLabel: String {
+        modelOptionsFrom(model.modelCatalog).first { $0.value == config.defaults.model }?.label ?? config.defaults.model
+    }
     /// A chosen repo previously vanished from the dock's own summary the
     /// instant it was set — visible in the config popover (`StackConfigPopoverView`
     /// reads `defaults.repo` directly) but nowhere else. Mirrors web's `repoLabel`.
@@ -149,6 +151,16 @@ struct StackControlDockView: View {
     private var phase: RunPhase? { runState?.phase }
     private var stopReason: StackStopReason? { runState?.stopReason }
     private var runError: String? { runState?.error }
+    /// The stack's own loop reads as "actively running" once it's mid-run
+    /// with a real chain repeat configured (`loopCount != 1` — 1 is this
+    /// pill's own "off" sentinel). `repetition` is 0-indexed and counts
+    /// *completed* passes, so the live iteration is `repetition + 1`. Mirrors
+    /// web's `stackLoopRunning`/`stackIterLabel`.
+    private var loopRunningLabel: String? {
+        guard phase == .running, config.loopCount != 1, let runState else { return nil }
+        let total = runState.loopTarget
+        return total == 0 ? "\(runState.repetition + 1)/∞" : "\(runState.repetition + 1)/\(total)"
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -165,6 +177,7 @@ struct StackControlDockView: View {
         .background(UnevenRoundedRectangle(bottomLeadingRadius: 14, bottomTrailingRadius: 14)
             .fill(LinearGradient(colors: [Konjo.stackViolet.opacity(0.22), Konjo.stackViolet.opacity(0.12)], startPoint: .top, endPoint: .bottom)))
         .overlay(Rectangle().fill(Konjo.stackViolet.opacity(0.55)).frame(height: 1.5), alignment: .top)
+        .task { await model.ensureModelCatalog() }
     }
 
     // MARK: Header
@@ -222,7 +235,7 @@ struct StackControlDockView: View {
 
     private var cardbar: some View {
         HStack(spacing: 6) {
-            IterationPill(value: config.loopCount) { delta in
+            IterationPill(value: config.loopCount, runningLabel: loopRunningLabel) { delta in
                 store.updateStackConfig(pane.key) { $0.loopCount = stepMaxIterations($0.loopCount, delta) }
             }
             CardbarButton(systemImage: "clock", active: scheduledOn, accent: FacetAccent.schedule, help: "Schedule the entire stack") { schedOpen = true }

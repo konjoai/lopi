@@ -8,6 +8,7 @@ enum NavSection: String, CaseIterable, Identifiable {
     case budget = "Budget"
     case cron = "Cron"
     case loop = "Loop"
+    case overview = "Overview"
     case config = "Config"
 
     var id: String { rawValue }
@@ -19,6 +20,7 @@ enum NavSection: String, CaseIterable, Identifiable {
         case .budget: return "dollarsign.circle"
         case .cron: return "clock.arrow.circlepath"
         case .loop: return "arrow.triangle.2.circlepath"
+        case .overview: return "list.bullet.rectangle"
         case .config: return "gearshape.2"
         }
     }
@@ -107,7 +109,7 @@ struct RootView: View {
                     } else {
                         Image(systemName: section.icon)
                             .font(.system(size: 13))
-                            .foregroundStyle(selected ? Konjo.ice : Konjo.fgDim)
+                            .foregroundStyle(selected ? model.accentColor : Konjo.fgDim)
                     }
                 }
                 .frame(width: 18)
@@ -200,7 +202,7 @@ struct RootView: View {
             Spacer()
             if runningCount > 0 {
                 HStack(spacing: 5) {
-                    PulseOrb(color: Konjo.ice, active: true).frame(width: 14, height: 14)
+                    PulseOrb(color: model.accentColor, active: true).frame(width: 14, height: 14)
                     Text("\(runningCount) live")
                         .font(Konjo.mono(10)).foregroundStyle(Konjo.fgDim)
                 }
@@ -217,6 +219,11 @@ struct RootView: View {
         case .budget: BudgetView()
         case .cron: CronView()
         case .loop: LoopView()
+        case .overview: OverviewView(onFocus: { id in
+            model.banner = nil
+            selection = .forge
+            layout.openSession(id)
+        })
         case .config: ConfigView()
         }
     }

@@ -87,6 +87,10 @@ extension AppModel {
                 $0.testPassRate = pass
                 $0.lintErrors = lint
                 $0.diffLines = diff
+                // Composite 0...1 score: primarily test_pass_rate, penalized by
+                // lint errors. `diffLines` deliberately does not factor in —
+                // mirrors web's `agentReducer.ts` `score_updated` case exactly.
+                $0.score = min(1, max(0, pass * 0.85 - min(Double(lint) / 50.0, 0.15)))
                 if pass >= 0.8 { $0.stimulus = .now; $0.stimulusKind = "success" }
             }
             push(.score, "Score \(Int(pass * 100))%", "\(lint) lint · \(diff) diff lines")
@@ -134,8 +138,14 @@ extension AppModel {
             recomputeAggregates()
             scheduleTaskRefresh()
 
-        case let .budgetExceeded(_, scope, limit, burned):
-            lastBudget = BudgetBreach(scope: scope, limitUsd: limit, burnedUsd: burned, at: .now)
+        case let .budgetExceeded(taskId, scope, limit, burned):
+            // Drop any existing entry for this same (scope, taskId), keep only
+            // the last 4 of what remains, then append — max 5 alerts, newest
+            // last. Mirrors web's `recordEvent` budget_exceeded handling.
+            var next = budgetBreaches.filter { $0.scope != scope || $0.taskId != taskId }
+            if next.count > 4 { next.removeFirst(next.count - 4) }
+            next.append(BudgetBreach(taskId: taskId, scope: scope, limitUsd: limit, burnedUsd: burned, at: .now))
+            budgetBreaches = next
             push(.budget, "Budget exceeded (\(scope))", String(format: "$%.2f / $%.2f", burned, limit))
 
         case let .toolCall(id, tool, summary):

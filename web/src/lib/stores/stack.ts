@@ -891,9 +891,17 @@ export function maxIterationsLabel(maxIterations: number): string {
 
 /** Step a *card's* `maxIterations` by `delta`. Unlike the stack pill, the
  *  card floors at `0` = "off" (single run) and never wraps to the infinite
- *  sentinel — stepping down past 0 stays off. */
+ *  sentinel — stepping down past 0 stays off. Skips `1` in both directions:
+ *  `maxIterations: 1` submits identically to `0` on the wire
+ *  (`cardToTaskPayload` maps both to a single `max_iterations: 1`), so
+ *  landing on it read as a real step up from "off" while actually changing
+ *  nothing. Off now steps straight to `2` — the stack loop-count stepper's
+ *  own floor (`MAX_ITERATIONS_FLOOR`) — so "off → one step" always means one
+ *  real extra pass on both controls. */
 export function stepCardIterations(current: number, delta: number): number {
-  return Math.max(0, current + delta);
+  if (delta > 0 && current === 0) return Math.max(MAX_ITERATIONS_FLOOR, delta);
+  const next = current + delta;
+  return next > 0 && next < MAX_ITERATIONS_FLOOR ? 0 : Math.max(0, next);
 }
 
 /** Display text for a *card's* iteration pill — `off` when the loop is
@@ -1043,6 +1051,25 @@ export function evalsSummary(card: StackCard): string {
   const n = card.evals.length;
   if (n <= 1) return '1 check · baseline only';
   return `${n} checks · baseline + ${n - 1} more`;
+}
+
+/** The run-config override line shown when `configActive` (the sliders
+ *  button's drawer is collapsed but at least one field diverges from the
+ *  pane defaults) — lists only the overridden fields, in the same `field
+ *  value` shape per part, mirroring the exact conditions `configActive`
+ *  checks so the two never drift out of sync. */
+export function configSummary(
+  card: StackCard,
+  defaults: { model: string; effort: string; repo: string; branch: string; autonomy: string }
+): string {
+  const c = card.config;
+  const parts: string[] = [];
+  if ((c.model ?? defaults.model) !== defaults.model) parts.push(`model ${c.model}`);
+  if ((c.effort ?? defaults.effort) !== defaults.effort) parts.push(`effort ${c.effort}`);
+  if ((c.repo ?? defaults.repo) !== defaults.repo) parts.push(`repo ${c.repo}`);
+  if ((c.branch ?? defaults.branch) !== defaults.branch) parts.push(`branch ${c.branch}`);
+  if ((c.autonomy ?? defaults.autonomy) !== defaults.autonomy) parts.push(`autonomy ${c.autonomy}`);
+  return parts.join(' · ');
 }
 
 // ── Backend round-trip (WIRED fields → real CreateTaskOptions shape) ──────────

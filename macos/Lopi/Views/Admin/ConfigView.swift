@@ -11,6 +11,7 @@ struct ConfigView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
+                appearancePanel
                 cachePanel
                 configPanel
             }
@@ -25,6 +26,45 @@ struct ConfigView: View {
                 }
             }
         }
+    }
+
+    private var appearancePanel: some View {
+        KonjoPanel {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("APPEARANCE")
+                    .font(Konjo.mono(11))
+                    .foregroundStyle(Konjo.fgMute)
+                Text("accent theme · stored on this Mac only")
+                    .font(Konjo.sans(11))
+                    .foregroundStyle(Konjo.fgDim)
+                HStack(spacing: 10) {
+                    ForEach(AccentTheme.allCases) { theme in
+                        themeSwatch(theme)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func themeSwatch(_ theme: AccentTheme) -> some View {
+        let active = model.accentTheme == theme
+        return Button { model.accentTheme = theme } label: {
+            HStack(spacing: 8) {
+                Circle().fill(theme.swatch).frame(width: 12, height: 12)
+                    .shadow(color: theme.swatch.opacity(active ? 0.7 : 0), radius: 6)
+                Text(theme.label.uppercased())
+                    .font(Konjo.mono(10, weight: .semibold)).tracking(1.2)
+                    .foregroundStyle(active ? Konjo.fg : Konjo.fgDim)
+            }
+            .padding(.horizontal, 12).padding(.vertical, 7)
+            .background(active ? theme.swatch.opacity(0.12) : Color.white.opacity(0.03))
+            .overlay(RoundedRectangle(cornerRadius: 7).stroke(active ? theme.swatch.opacity(0.55) : Konjo.line, lineWidth: 1))
+            .clipShape(RoundedRectangle(cornerRadius: 7))
+            .scaleEffect(active ? 1.03 : 1)
+        }
+        .buttonStyle(.plain)
+        .animation(.easeOut(duration: 0.15), value: active)
     }
 
     private var cachePanel: some View {

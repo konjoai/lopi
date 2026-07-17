@@ -94,6 +94,52 @@ public let EFFORT_OPTIONS: [StackOption] = [
     StackOption(value: "max", label: "Max")
 ]
 
+// MARK: - Live model/effort catalog (`GET /api/models`)
+
+/// One model as `GET /api/models` reports it — a server-side proxy to
+/// Anthropic's real `/v1/models` (never called directly from the client).
+/// Decoded straight off the wire by `LopiClient`, so field names match the
+/// JSON exactly. Mirrors web's `ModelCatalogEntry`.
+public struct LiveModel: Codable, Hashable {
+    public var id: String
+    public var displayName: String
+    /// Reasoning-effort tiers this model supports, low-to-high.
+    public var effort: [String]
+
+    public init(id: String, displayName: String, effort: [String]) {
+        self.id = id
+        self.displayName = displayName
+        self.effort = effort
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, effort
+        case displayName = "display_name"
+    }
+}
+
+/// Model dropdown options from the live catalog — falls back to the static
+/// `MODEL_OPTIONS` when the catalog hasn't loaded (or failed to). An `auto`
+/// sentinel in the static list, if present, is always appended after the live
+/// entries — `/v1/models` has no concept of it. Mirrors web's `modelOptionsFrom`.
+public func modelOptionsFrom(_ catalog: [LiveModel]) -> [StackOption] {
+    guard !catalog.isEmpty else { return MODEL_OPTIONS }
+    var options = catalog.map { StackOption(value: $0.id, label: $0.displayName) }
+    if let auto = MODEL_OPTIONS.first(where: { $0.value == "auto" }) { options.append(auto) }
+    return options
+}
+
+/// Effort-tier options for `model`, from the live catalog — falls back to the
+/// static `EFFORT_OPTIONS` when the catalog hasn't loaded or doesn't carry
+/// this model. Mirrors web's `effortOptionsFor`.
+public func effortOptionsFor(_ catalog: [LiveModel], model: String) -> [StackOption] {
+    guard let entry = catalog.first(where: { $0.id == model }) else { return EFFORT_OPTIONS }
+    return entry.effort.map { tier in
+        EFFORT_OPTIONS.first(where: { $0.value == tier })
+            ?? StackOption(value: tier, label: tier.prefix(1).uppercased() + tier.dropFirst())
+    }
+}
+
 /// The app-wide `DEF` a stack's own defaults start from and are compared
 /// against (`stackDefaultsActive`).
 public let DEFAULT_STACK_DEFAULTS = StackDefaults(

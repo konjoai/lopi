@@ -102,7 +102,8 @@ public let CARD_COMMANDS: [InlineCommandDef] = [
     InlineCommandDef(command: "autonomy", hint: "override this loop's autonomy level", isValuePicker: true),
     InlineCommandDef(command: "eval", hint: "toggle an eval suite (kcqf/security/research)", isValuePicker: true),
     InlineCommandDef(command: "guard", hint: "open this loop's guardrails", isValuePicker: false),
-    InlineCommandDef(command: "schedule", hint: "open this loop's schedule", isValuePicker: false)
+    InlineCommandDef(command: "schedule", hint: "open this loop's schedule", isValuePicker: false),
+    InlineCommandDef(command: "maxx", hint: "open MAXX backlog dispatch", isValuePicker: false)
 ]
 
 /// Stack-scope commands, typed into the stack's own command bar
@@ -380,6 +381,8 @@ public func finalizeDraft(_ draft: StackCard, repoOptions: [StackOption] = []) -
     built.scheduled = draft.scheduled
     built.cron = draft.cron
     built.guardrails = draft.guardrails
+    built.maxx = draft.maxx
+    built.maxxEntryId = draft.maxxEntryId
     // Web: `config: { ...built.config, ...draft.config }` — the draft's own
     // (drawer-set) overrides win per-field; inline @repo survives otherwise.
     var merged = built.config
@@ -425,6 +428,10 @@ public func duplicateCard(_ cards: [StackCard], _ id: String) -> [StackCard] {
     clone.status = .idle
     clone.iteration = nil
     clone.taskId = nil
+    // A clone never shares its original's backend /api/maxx row — reset to
+    // disabled and drop the entry id (mirrors web's `duplicateCard`).
+    clone.maxx.enabled = false
+    clone.maxxEntryId = nil
     var next = cards
     next.insert(clone, at: idx + 1)
     return next
@@ -512,8 +519,14 @@ public func maxIterationsLabel(_ maxIterations: Int) -> String {
 
 /// Step a *card's* `maxIterations` by `delta`. Unlike the stack pill, the card
 /// floors at `0` = "off" (single run) and never wraps to the infinite sentinel.
+/// Skips `1` in both directions: `maxIterations: 1` submits identically to `0`
+/// on the wire (a single pass), so landing on it read as a real step up from
+/// "off" while changing nothing. Off now steps straight to `MAX_ITERATIONS_FLOOR`
+/// (2), matching the stack loop-count stepper's own floor.
 public func stepCardIterations(_ current: Int, _ delta: Int) -> Int {
-    max(0, current + delta)
+    if delta > 0 && current == 0 { return max(MAX_ITERATIONS_FLOOR, delta) }
+    let next = current + delta
+    return (next > 0 && next < MAX_ITERATIONS_FLOOR) ? 0 : max(0, next)
 }
 
 /// Display text for a *card's* iteration pill — `off` when disabled (`0`),

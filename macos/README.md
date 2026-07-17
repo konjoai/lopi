@@ -8,14 +8,15 @@ panels web no longer surfaces — **Tools, Health, Patterns, Audit** (cut outrig
 in Unify-2) and **Tasks + Dead-Letter** (folded into web's Overview) — were
 removed here too, along with their now-orphaned backend endpoints. The dead-letter
 queue was then retired entirely — front, back, storage, and web client — so it is
-a removed feature, not a deferred one. macOS does not yet have an Overview
-equivalent, so task history is temporarily unavailable in the native app until one
-is built (see the Ledger's `macOS-Parity-Cut-1` entry).
+a removed feature, not a deferred one. macOS now has its own Overview section —
+a dense, read-only, filterable rollup of every live agent (goal/repo/branch/
+phase/elapsed/cost/score), click-to-focus onto the Forge grid — mirroring web's
+`/overview` route.
 
-> Status: **6 nav sections live** — Loop Stack (Forge), Dashboard, Budget, Loop,
-> Cron, Config — all backed by live API calls, none stubs. Tasks that exhaust
-> their retry budget are still marked `failed`, but are no longer recorded in a
-> dead-letter store or retryable — that subsystem was removed.
+> Status: **7 nav sections live** — Loop Stack (Forge), Dashboard, Budget, Loop,
+> Cron, Overview, Config — all backed by live API calls, none stubs. Tasks that
+> exhaust their retry budget are still marked `failed`, but are no longer
+> recorded in a dead-letter store or retryable — that subsystem was removed.
 
 ## Requirements
 
