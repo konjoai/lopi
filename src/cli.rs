@@ -42,9 +42,10 @@ pub(crate) enum Commands {
         #[arg(long)]
         stability_gate: bool,
         /// One-off per-`claude -p` session USD cap for this run, overriding
-        /// the repo's `.lopi/loop.toml` budget (e.g. `--budget 5`). `0`
-        /// disables the cap.
-        #[arg(long)]
+        /// the repo's `.lopi/loop.toml` budget (e.g. `--budget 5` or
+        /// `--budget '$5'` — the `$` is a pure alias for the bare number).
+        /// `0` disables the cap.
+        #[arg(long, value_parser = lopi_core::parse_usd_amount)]
         budget: Option<f64>,
         /// One-off named budget preset for this run (quick/standard/deep/
         /// unlimited), overriding the repo's `.lopi/loop.toml` preset.

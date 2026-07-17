@@ -63,7 +63,9 @@ pub use acceptance::{Acceptance, AcceptanceCheck, CheckSpec, EvalTier, MetricGat
 pub use agent::{AgentRun, AgentState, Attempt, Score, ScoreWeights, TurnMetrics};
 pub use autonomy::AutonomyLevel;
 pub use budget::BudgetScope;
-pub use budget_preset::{BudgetOverride, BudgetPreset, BudgetSection, ResolvedBudget};
+pub use budget_preset::{
+    parse_usd_amount, BudgetOverride, BudgetPreset, BudgetSection, ResolvedBudget,
+};
 pub use config::{LimitWindow, LopiConfig, MaxxEntry, RepoProfile, ScheduleEntry};
 pub use earned_trust::EarnedTrust;
 pub use eval_outcome::{CheckResult, EvalOutcome, Verdict};

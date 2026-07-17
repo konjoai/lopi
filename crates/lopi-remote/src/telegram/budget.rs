@@ -97,7 +97,9 @@ pub(super) async fn handle_budget(
     Ok(())
 }
 
-/// Parse a `/budget` argument as either a named preset or a bare USD number.
+/// Parse a `/budget` argument as either a named preset or a USD number —
+/// bare (`7.5`) or `$`-prefixed (`$7.5`), the latter a pure alias for the
+/// former (see [`lopi_core::parse_usd_amount`]).
 fn parse_budget_arg(arg: &str) -> std::result::Result<BudgetOverride, String> {
     if let Some(preset) = lopi_core::BudgetPreset::parse(arg) {
         return Ok(BudgetOverride {
@@ -105,12 +107,12 @@ fn parse_budget_arg(arg: &str) -> std::result::Result<BudgetOverride, String> {
             ..Default::default()
         });
     }
-    match arg.parse::<f64>() {
-        Ok(usd) if usd >= 0.0 => Ok(BudgetOverride {
+    match lopi_core::parse_usd_amount(arg) {
+        Ok(usd) => Ok(BudgetOverride {
             usd: Some(usd),
             ..Default::default()
         }),
-        _ => Err(format!(
+        Err(_) => Err(format!(
             "'{arg}' isn't a known preset (quick/standard/deep/unlimited) or a USD amount"
         )),
     }
@@ -178,6 +180,13 @@ mod tests {
     fn parse_budget_arg_accepts_a_bare_usd_amount() {
         let ov = parse_budget_arg("7.5").unwrap();
         assert_eq!(ov.usd, Some(7.5));
+        assert!(ov.preset.is_none());
+    }
+
+    #[test]
+    fn parse_budget_arg_accepts_the_dollar_alias() {
+        let ov = parse_budget_arg("$0.50").unwrap();
+        assert_eq!(ov.usd, Some(0.50));
         assert!(ov.preset.is_none());
     }
 
