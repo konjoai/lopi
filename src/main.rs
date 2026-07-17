@@ -1,5 +1,6 @@
 //! lopi — high-performance Rust orchestrator for concurrent Claude Code agents.
 #![allow(clippy::print_stdout, clippy::print_stderr)]
+mod diag_commands;
 mod gap_fill_commands;
 mod learn_commands;
 mod loop_commands;
@@ -193,6 +194,24 @@ enum Commands {
         repo: PathBuf,
         #[arg(long)]
         fail_on_violations: bool,
+    },
+    /// Export a diagnostic snapshot (tasks, logs, audit, stability, quota)
+    /// from the local SQLite store into a committable JSON directory —
+    /// so Claude chat or other agents without local filesystem access
+    /// can see it.
+    Diag {
+        /// Output directory; a timestamped subdirectory is created inside it.
+        #[arg(short, long, default_value = "artifacts/diagnostics")]
+        out: PathBuf,
+        /// Max task rows to include.
+        #[arg(long, default_value = "200")]
+        task_limit: i64,
+        /// Max task-log lines to include.
+        #[arg(long, default_value = "2000")]
+        log_limit: i64,
+        /// Max audit-log rows to include.
+        #[arg(long, default_value = "500")]
+        audit_limit: i64,
     },
     /// Start a dedicated GitHub webhook server.
     ServeWebhooks {
@@ -480,6 +499,23 @@ async fn main() -> Result<()> {
         })) => stability_commands::list(limit, unstable_only).await?,
 
         Some(Commands::Stability(StabilityCmd::Summary)) => stability_commands::summary().await?,
+
+        Some(Commands::Diag {
+            out,
+            task_limit,
+            log_limit,
+            audit_limit,
+        }) => {
+            diag_commands::export(
+                out,
+                diag_commands::DiagLimits {
+                    tasks: task_limit,
+                    logs: log_limit,
+                    audit: audit_limit,
+                },
+            )
+            .await?;
+        }
     }
 
     Ok(())
