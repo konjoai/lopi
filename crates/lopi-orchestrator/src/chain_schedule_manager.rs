@@ -249,12 +249,7 @@ impl ChainScheduleManager {
     /// state.
     async fn submit_step(&self, chain: &ChainSpec, run: &ChainRunRow, step_order: usize) {
         let Some(step) = chain.steps.get(step_order) else {
-            let _ = self
-                .inner
-                .store
-                .finish_chain_run(&run.id, "completed")
-                .await;
-            info!(chain = %chain.id, run = %run.id, "chain run completed");
+            self.finish_run_completed(chain, run).await;
             return;
         };
         let task = build_task_from_fields(
@@ -266,6 +261,37 @@ impl ChainScheduleManager {
             chain.autonomy_level,
         );
         let task_id = task.id;
+        self.record_step_advance(chain, run, step_order, task_id)
+            .await;
+        // Duplicate goals within a running repo are deduplicated by the pool
+        // — `submit` returns the existing id in that case, and we still
+        // listen on it, so the chain advances off the real in-flight task.
+        let effective_id = self.inner.pool.submit(task).await.unwrap_or(task_id);
+        info!(chain = %chain.id, run = %run.id, step = step_order, task = %effective_id.0, "submitted chain step");
+        self.spawn_listener(chain.clone(), run.id.clone(), step_order, effective_id);
+    }
+
+    /// Mark a run `completed` — reached when `submit_step` is called past the
+    /// last step.
+    async fn finish_run_completed(&self, chain: &ChainSpec, run: &ChainRunRow) {
+        let _ = self
+            .inner
+            .store
+            .finish_chain_run(&run.id, "completed")
+            .await;
+        info!(chain = %chain.id, run = %run.id, "chain run completed");
+    }
+
+    /// Persist which task is now driving `step_order`, best-effort (a failure
+    /// here means resume-on-restart may resubmit a step that already has a
+    /// task in flight — logged, not fatal).
+    async fn record_step_advance(
+        &self,
+        chain: &ChainSpec,
+        run: &ChainRunRow,
+        step_order: usize,
+        task_id: TaskId,
+    ) {
         if let Err(e) = self
             .inner
             .store
@@ -278,12 +304,6 @@ impl ChainScheduleManager {
         {
             warn!(chain = %chain.id, run = %run.id, "failed to record chain step advance: {e:#}");
         }
-        // Duplicate goals within a running repo are deduplicated by the pool
-        // — `submit` returns the existing id in that case, and we still
-        // listen on it, so the chain advances off the real in-flight task.
-        let effective_id = self.inner.pool.submit(task).await.unwrap_or(task_id);
-        info!(chain = %chain.id, run = %run.id, step = step_order, task = %effective_id.0, "submitted chain step");
-        self.spawn_listener(chain.clone(), run.id.clone(), step_order, effective_id);
     }
 
     /// Spawn a task that waits for `task_id`'s terminal `AgentEvent` and
@@ -337,14 +357,29 @@ impl ChainScheduleManager {
         outcome: &TaskStatus,
     ) {
         let succeeded = matches!(outcome, TaskStatus::Success { .. });
-        if !succeeded && chain.on_fail == OnFail::Stop {
-            let _ = self.inner.store.finish_chain_run(run_id, "failed").await;
-            warn!(chain = %chain.id, run = %run_id, step = step_order, "chain step failed, stopping (on_fail=stop)");
-            return;
+        if !succeeded {
+            match chain.on_fail {
+                OnFail::Stop => {
+                    self.stop_run_failed(chain, run_id, step_order).await;
+                    return;
+                }
+                OnFail::Backoff => {
+                    tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+                }
+                OnFail::Continue => {}
+            }
         }
-        if !succeeded && chain.on_fail == OnFail::Backoff {
-            tokio::time::sleep(std::time::Duration::from_secs(30)).await;
-        }
+        self.advance_to_next_step(chain, run_id, step_order).await;
+    }
+
+    /// Mark a run `failed` — reached when a step fails and `on_fail == Stop`.
+    async fn stop_run_failed(&self, chain: &ChainSpec, run_id: &str, step_order: usize) {
+        let _ = self.inner.store.finish_chain_run(run_id, "failed").await;
+        warn!(chain = %chain.id, run = %run_id, step = step_order, "chain step failed, stopping (on_fail=stop)");
+    }
+
+    /// Reload the run row and submit the next step off its current state.
+    async fn advance_to_next_step(&self, chain: &ChainSpec, run_id: &str, step_order: usize) {
         match self.inner.store.get_chain_run(run_id).await {
             Ok(Some(run)) => self.submit_step(chain, &run, step_order + 1).await,
             Ok(None) => warn!(chain = %chain.id, run = %run_id, "chain run vanished mid-flight"),
@@ -367,29 +402,48 @@ impl ChainScheduleManager {
             }
         };
         for run in running {
-            let Ok(Some(chain_row)) = self.inner.store.get_schedule_chain(&run.chain_id).await
-            else {
-                warn!(run = %run.id, chain = %run.chain_id, "orphaned run references missing chain; leaving as-is");
-                continue;
-            };
-            let chain: ChainSpec = chain_row.into();
-            let step_order = usize::try_from(run.current_step).unwrap_or(0);
+            self.resume_one_run(run).await;
+        }
+    }
 
-            let terminal_status = match &run.current_task_id {
-                Some(tid) => task_terminal_status(&self.inner.store, tid).await,
-                None => None,
-            };
+    /// Resume a single `running` chain run found on boot — see
+    /// [`resume_orphaned`](Self::resume_orphaned)'s doc comment for the
+    /// completed-vs-orphaned distinction this makes.
+    async fn resume_one_run(&self, run: ChainRunRow) {
+        let Ok(Some(chain_row)) = self.inner.store.get_schedule_chain(&run.chain_id).await else {
+            warn!(run = %run.id, chain = %run.chain_id, "orphaned run references missing chain; leaving as-is");
+            return;
+        };
+        let chain: ChainSpec = chain_row.into();
+        let step_order = usize::try_from(run.current_step).unwrap_or(0);
 
-            match terminal_status {
-                Some(outcome) => {
-                    info!(run = %run.id, chain = %chain.id, step = step_order, "resuming chain run: step already completed before restart");
-                    self.on_step_terminal(&chain, &run.id, step_order, &outcome)
-                        .await;
-                }
-                None => {
-                    info!(run = %run.id, chain = %chain.id, step = step_order, "resuming chain run: step orphaned by restart, resubmitting");
-                    self.submit_step(&chain, &run, step_order).await;
-                }
+        let terminal_status = match &run.current_task_id {
+            Some(tid) => task_terminal_status(&self.inner.store, tid).await,
+            None => None,
+        };
+        self.resume_run_by_status(chain, run, step_order, terminal_status)
+            .await;
+    }
+
+    /// Either replay the step's already-known outcome (it finished before the
+    /// restart) or resubmit the same step (it was orphaned by the restart),
+    /// depending on whether `terminal_status` resolved to something.
+    async fn resume_run_by_status(
+        &self,
+        chain: ChainSpec,
+        run: ChainRunRow,
+        step_order: usize,
+        terminal_status: Option<TaskStatus>,
+    ) {
+        match terminal_status {
+            Some(outcome) => {
+                info!(run = %run.id, chain = %chain.id, step = step_order, "resuming chain run: step already completed before restart");
+                self.on_step_terminal(&chain, &run.id, step_order, &outcome)
+                    .await;
+            }
+            None => {
+                info!(run = %run.id, chain = %chain.id, step = step_order, "resuming chain run: step orphaned by restart, resubmitting");
+                self.submit_step(&chain, &run, step_order).await;
             }
         }
     }
