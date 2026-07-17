@@ -16,6 +16,25 @@ use serde_json::Value;
 const ARG_CAP: usize = 80;
 const PREVIEW_CAP: usize = 240;
 
+/// Authoritative cumulative token usage from a terminal `result` envelope.
+///
+/// Summed across the CLI's `modelUsage` map (per-model, and therefore
+/// sub-agent-inclusive — the same breakdown its `total_cost_usd` is derived
+/// from), so it is the correct source of truth for `turn_metrics`' token
+/// columns on any run that fanned out into sub-agents. Falls back to the
+/// envelope's flat top-level `usage` object when `modelUsage` is absent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ResultUsage {
+    /// Cumulative non-cached input tokens across every model in the session.
+    pub input_tokens: u64,
+    /// Cumulative output tokens across every model in the session.
+    pub output_tokens: u64,
+    /// Cumulative cache-read input tokens.
+    pub cache_read_tokens: u64,
+    /// Cumulative cache-creation (cache-write) input tokens.
+    pub cache_write_tokens: u64,
+}
+
 /// One decoded, UI-relevant item from a single stream-json NDJSON line.
 #[derive(Debug, Clone, PartialEq)]
 pub enum StreamEvent {
@@ -102,6 +121,13 @@ pub enum StreamEvent {
         total_cost_usd: f64,
         /// Number of turns completed.
         num_turns: u32,
+        /// Authoritative cumulative token usage for the whole session,
+        /// summed across the CLI's `modelUsage` breakdown — which includes
+        /// every sub-agent's model, so a fan-out run's real usage is captured
+        /// here even though the incremental [`TokenUsage`](Self::TokenUsage)
+        /// deltas only report the parent agent. `None` when the envelope
+        /// carried no usage breakdown (e.g. an early-halt error result).
+        usage: Option<ResultUsage>,
     },
     /// Any unrecognized or unparseable line — a no-op, never panics.
     Other,
@@ -294,7 +320,40 @@ fn parse_result(v: &Value) -> StreamEvent {
             .and_then(Value::as_f64)
             .unwrap_or(0.0),
         num_turns: v.get("num_turns").and_then(Value::as_u64).unwrap_or(0) as u32,
+        usage: parse_result_usage(v),
     }
+}
+
+/// Extract the session's cumulative token usage from a `result` envelope.
+///
+/// Prefers `modelUsage` — the CLI's per-model breakdown, summed across every
+/// key so a sub-agent running on a different model is counted (this is the
+/// same map its `total_cost_usd` is derived from). Falls back to the flat
+/// top-level `usage` object when `modelUsage` is absent, and returns `None`
+/// only when neither is present (e.g. an early-halt error result).
+fn parse_result_usage(v: &Value) -> Option<ResultUsage> {
+    if let Some(models) = v.get("modelUsage").and_then(Value::as_object) {
+        let mut acc = ResultUsage::default();
+        for usage in models.values() {
+            acc.input_tokens += u64_at(usage, "inputTokens");
+            acc.output_tokens += u64_at(usage, "outputTokens");
+            acc.cache_read_tokens += u64_at(usage, "cacheReadInputTokens");
+            acc.cache_write_tokens += u64_at(usage, "cacheCreationInputTokens");
+        }
+        return Some(acc);
+    }
+    let usage = v.get("usage")?;
+    Some(ResultUsage {
+        input_tokens: u64_at(usage, "input_tokens"),
+        output_tokens: u64_at(usage, "output_tokens"),
+        cache_read_tokens: u64_at(usage, "cache_read_input_tokens"),
+        cache_write_tokens: u64_at(usage, "cache_creation_input_tokens"),
+    })
+}
+
+/// Read a `u64` field, treating a missing/non-numeric value as `0`.
+fn u64_at(v: &Value, key: &str) -> u64 {
+    v.get(key).and_then(Value::as_u64).unwrap_or(0)
 }
 
 fn non_empty(s: String) -> Option<String> {

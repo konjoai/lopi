@@ -256,3 +256,57 @@ fn result_yields_final_text_cost_and_session() {
         other => panic!("expected Cost, got {other:?}"),
     }
 }
+
+/// Extract the `usage` out of a parsed `result` event, panicking otherwise.
+fn result_usage(line: &str) -> Option<ResultUsage> {
+    match one(line) {
+        StreamEvent::Result { usage, .. } => usage,
+        other => panic!("expected Result, got {other:?}"),
+    }
+}
+
+/// `modelUsage` is summed across every model key, so a fan-out run whose
+/// sub-agents ran on other models has their tokens counted too — the same
+/// breakdown `total_cost_usd` is derived from.
+#[test]
+fn result_usage_sums_across_model_usage() {
+    let u = result_usage(
+        r#"{"type":"result","subtype":"success","result":"","total_cost_usd":6.79,"num_turns":9,"session_id":"s",
+            "modelUsage":{
+              "claude-opus-4-8":{"inputTokens":700,"outputTokens":3800,"cacheReadInputTokens":150000,"cacheCreationInputTokens":8000},
+              "claude-sonnet-4-6":{"inputTokens":44300,"outputTokens":216200,"cacheReadInputTokens":3950000,"cacheCreationInputTokens":82000}
+            }}"#,
+    )
+    .expect("modelUsage present");
+    assert_eq!(u.input_tokens, 45_000);
+    assert_eq!(u.output_tokens, 220_000);
+    assert_eq!(u.cache_read_tokens, 4_100_000);
+    assert_eq!(u.cache_write_tokens, 90_000);
+}
+
+/// With no `modelUsage`, fall back to the flat top-level `usage` object
+/// (snake_case keys) so single-model runs still record authoritative totals.
+#[test]
+fn result_usage_falls_back_to_flat_usage() {
+    let u = result_usage(
+        r#"{"type":"result","subtype":"success","result":"","total_cost_usd":0.05,"num_turns":1,"session_id":"s",
+            "usage":{"input_tokens":6,"output_tokens":8,"cache_read_input_tokens":22709,"cache_creation_input_tokens":8491}}"#,
+    )
+    .expect("flat usage present");
+    assert_eq!(u.input_tokens, 6);
+    assert_eq!(u.output_tokens, 8);
+    assert_eq!(u.cache_read_tokens, 22_709);
+    assert_eq!(u.cache_write_tokens, 8_491);
+}
+
+/// An early-halt error result with no usage breakdown yields `None`, so the
+/// accrual keeps its parent-delta fallback rather than zeroing the row.
+#[test]
+fn result_usage_is_none_without_a_breakdown() {
+    assert_eq!(
+        result_usage(
+            r#"{"type":"result","subtype":"error_max_turns","result":"","total_cost_usd":0.01,"num_turns":1,"session_id":"s"}"#,
+        ),
+        None
+    );
+}
