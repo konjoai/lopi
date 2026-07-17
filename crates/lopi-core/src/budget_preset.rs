@@ -29,7 +29,9 @@ pub fn parse_usd_amount(s: &str) -> Result<f64, String> {
     let unprefixed = trimmed.strip_prefix('$').unwrap_or(trimmed).trim();
     match unprefixed.parse::<f64>() {
         Ok(usd) if usd.is_finite() && usd >= 0.0 => Ok(usd),
-        _ => Err(format!("'{s}' isn't a valid USD amount (e.g. 0.25 or $0.25)")),
+        _ => Err(format!(
+            "'{s}' isn't a valid USD amount (e.g. 0.25 or $0.25)"
+        )),
     }
 }
 
