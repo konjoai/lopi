@@ -22,6 +22,14 @@ pub const MODEL_OPUS: &str = "claude-opus-4-7";
 /// burn the retry budget looping on a credit-exhausted account.
 pub const ERR_CREDIT_EXHAUSTED: &str = "anthropic credits exhausted";
 
+/// Sentinel substring for a streamed session lopi itself killed for crossing
+/// its resolved `--max-budget-usd` cap (see `runner::stream`'s hard-stop
+/// check). Matched against the error chain the same way as
+/// [`ERR_CREDIT_EXHAUSTED`] — retrying would spend a fresh session against
+/// the exact same cap and, absent a wider budget, blow it again, so the run
+/// loop treats this as terminal rather than burning another attempt.
+pub const ERR_BUDGET_HARD_STOP: &str = "lopi budget hard-stop";
+
 /// Route a task to the cheapest model capable of handling its complexity.
 ///
 /// `task.model`, when set, is always honored verbatim — an explicit override

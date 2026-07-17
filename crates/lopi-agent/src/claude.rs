@@ -19,7 +19,8 @@ use tokio::process::Command;
 /// `claude_model.rs` purely to keep this file under the 500-line CI
 /// file-size gate; see that module's doc comment.
 pub use crate::claude_model::{
-    select_model, ClaudeOutput, ERR_CREDIT_EXHAUSTED, MODEL_HAIKU, MODEL_OPUS, MODEL_SONNET,
+    select_model, ClaudeOutput, ERR_BUDGET_HARD_STOP, ERR_CREDIT_EXHAUSTED, MODEL_HAIKU,
+    MODEL_OPUS, MODEL_SONNET,
 };
 /// Re-exported so `crate::claude::scrub_inherited_anthropic_env` stays valid
 /// for `claude_stream.rs`'s call site — moved to `claude_support.rs` for the
@@ -189,10 +190,16 @@ impl ClaudeCode {
     /// `rate_limit_event`s, and the terminal `result`. Each line is decoded by
     /// [`parse_line`] and every [`StreamEvent`] is handed to `on_event` the
     /// moment it arrives, so the caller can derive both the log line and the
-    /// structured pane events. Returns the canonical final response text.
+    /// structured pane events. `on_event` returns `false` to hard-stop the
+    /// session immediately (the subprocess is killed and this bails with
+    /// [`ERR_BUDGET_HARD_STOP`]) — the caller's own budget accrual is the
+    /// only thing that can request this; a `--max-budget-usd` cap alone only
+    /// stops the CLI's *own* internal accounting, which is checked between
+    /// turns and can let one expensive turn overshoot the cap before it
+    /// fires. Returns the canonical final response text.
     async fn run_streamed<F>(&self, prompt: &str, on_event: F) -> Result<String>
     where
-        F: Fn(&StreamEvent) + Send,
+        F: Fn(&StreamEvent) -> bool + Send,
     {
         let mut cmd = Command::new(&self.cli_path);
         cmd.arg("-p")
@@ -236,6 +243,7 @@ impl ClaudeCode {
         loop {
             match tokio::time::timeout_at(deadline, lines.next_line()).await {
                 Ok(Ok(Some(line))) => {
+                    let mut hard_stop = false;
                     for ev in parse_line(&line) {
                         if let Some(t) = ev.final_text() {
                             final_text = t.to_string();
@@ -243,7 +251,14 @@ impl ClaudeCode {
                             fallback.push_str(&l);
                             fallback.push('\n');
                         }
-                        on_event(&ev);
+                        if !on_event(&ev) {
+                            hard_stop = true;
+                            break;
+                        }
+                    }
+                    if hard_stop {
+                        child.kill().await.ok();
+                        anyhow::bail!("{ERR_BUDGET_HARD_STOP}");
                     }
                 }
                 Ok(Ok(None)) => break,
@@ -281,7 +296,7 @@ impl ClaudeCode {
         on_event: F,
     ) -> Result<String>
     where
-        F: Fn(&StreamEvent) + Send,
+        F: Fn(&StreamEvent) -> bool + Send,
     {
         let prompt = self.build_plan_prompt(task, last_error);
         self.run_streamed(&prompt, on_event).await
@@ -299,7 +314,7 @@ impl ClaudeCode {
         on_event: F,
     ) -> Result<String>
     where
-        F: Fn(&StreamEvent) + Send,
+        F: Fn(&StreamEvent) -> bool + Send,
     {
         let prompt = crate::claude_support::build_implement_prompt(task, plan);
         self.run_streamed(&prompt, on_event).await

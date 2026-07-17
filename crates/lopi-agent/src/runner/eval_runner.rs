@@ -14,6 +14,7 @@ use crate::claude::select_model;
 use crate::eval::ErroringJudge;
 use crate::eval::{EvalContext, Judge, TieredEvaluator, VerifierJudge};
 use crate::verifier::{get_repo_diff, resolve_verifier};
+use lopi_core::acceptance::{Acceptance, CheckSpec};
 use lopi_core::Score;
 use tracing::warn;
 
@@ -31,6 +32,20 @@ impl AgentRunner {
             return true;
         };
         if acceptance.is_empty() {
+            return true;
+        }
+
+        // No API client wired ⇒ the judge tier can never run, this attempt or
+        // any future one (`.with_api()` is production-unwired, not a transient
+        // outage) — retrying is a guaranteed-wasted plan+implement cycle every
+        // time. Mirrors `run_verifier_pass`'s own "not configured ⇒ proceed"
+        // rule (`verifier_runner.rs`) rather than the fail-closed path reserved
+        // for a *configured* judge that actually errors (rate limit, parse
+        // failure, etc.), which still blocks and retries as designed.
+        if self.api_client.is_none() && acceptance_needs_judge(&acceptance) {
+            self.log(
+                "🎯 eval: judge tier has no API client configured — skipping the judge check and proceeding on the scorer's pass".to_string(),
+            );
             return true;
         }
 
@@ -96,9 +111,10 @@ impl AgentRunner {
     }
 
     /// Build the judge backend for the judge tier. Reuses the verifier's
-    /// model-resolution ("never grade your own homework"). With no API client
-    /// configured, the judge tier fails closed rather than silently passing a
-    /// judge check it cannot evaluate.
+    /// model-resolution ("never grade your own homework"). Only reached when
+    /// either a client is configured or the acceptance has no judge-tier
+    /// check to run (`evaluate_acceptance_gate` skips the gate entirely in
+    /// the remaining case — no client, but the acceptance needs one).
     fn build_judge(&self, attempt: u8) -> Box<dyn Judge> {
         match self.api_client.clone() {
             Some(client) => {
@@ -115,6 +131,17 @@ impl AgentRunner {
             )),
         }
     }
+}
+
+/// Whether `acceptance` contains at least one judge-tier check — the only
+/// tier that needs an API client. An acceptance built purely from
+/// `ExecutionOk`/`MetricGate` checks evaluates deterministically and must
+/// not be short-circuited just because no judge client is wired.
+fn acceptance_needs_judge(acceptance: &Acceptance) -> bool {
+    acceptance
+        .checks
+        .iter()
+        .any(|c| matches!(c.spec, CheckSpec::Judge { .. }))
 }
 
 #[cfg(test)]
@@ -158,10 +185,13 @@ mod tests {
         assert!(runner.evaluate_acceptance_gate(&score, 1).await);
     }
 
+    /// Unconfigured (no client at all) must proceed rather than burn a
+    /// guaranteed-to-repeat retry — mirrors `run_verifier_pass`'s own
+    /// "not configured ⇒ proceed" rule. `.with_api()` is production-unwired,
+    /// so failing closed here meant every judge-tier acceptance retried to
+    /// exhaustion on every attempt, with zero chance of ever passing.
     #[tokio::test]
-    async fn judge_acceptance_without_api_fails_closed_and_routes_critique() {
-        // A required judge check with no configured API client can't be
-        // evaluated → fail-closed → gate rejects and appends critique.
+    async fn judge_acceptance_without_api_client_proceeds_unevaluated() {
         let mut task = Task::new("needs a judge");
         task.acceptance = Some(Acceptance::new(vec![AcceptanceCheck::new(
             CheckSpec::Judge {
@@ -172,12 +202,27 @@ mod tests {
         let (mut runner, _bus) = AgentRunner::standalone(task, PathBuf::from("."));
         let score = Score::new(1.0, 0, 10);
         assert!(
-            !runner.evaluate_acceptance_gate(&score, 1).await,
-            "an unevaluable judge check must not pass"
+            runner.evaluate_acceptance_gate(&score, 1).await,
+            "no client at all is a wiring gap, not a content rejection — must not retry"
         );
         assert!(
-            !runner.task.constraints.is_empty(),
-            "critique must be routed into the next attempt's constraints"
+            runner.task.constraints.is_empty(),
+            "skipping the gate must not fabricate critique for the next attempt"
         );
+    }
+
+    #[test]
+    fn acceptance_needs_judge_is_true_only_for_a_judge_check() {
+        let execution_only = Acceptance::new(vec![AcceptanceCheck::new(CheckSpec::ExecutionOk)]);
+        assert!(!acceptance_needs_judge(&execution_only));
+
+        let with_judge = Acceptance::new(vec![
+            AcceptanceCheck::new(CheckSpec::ExecutionOk),
+            AcceptanceCheck::new(CheckSpec::Judge {
+                rubric: lopi_core::Rubric::default(),
+                metric: None,
+            }),
+        ]);
+        assert!(acceptance_needs_judge(&with_judge));
     }
 }

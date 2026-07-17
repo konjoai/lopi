@@ -23,10 +23,10 @@ export const SHELL_ICONS = {
   // stroke="currentColor"` wrapper on purpose: it's the brand logo, not a
   // themeable glyph. Two arced loop arrows above a three-bar stack that
   // fades toward the back. A nested `<svg>` with its own `viewBox` (not
-  // just a `<g>`) since the design's native 48×48 coordinate space doesn't
+  // just a `<g>`) since the design's native 52×52 coordinate space doesn't
   // match this catalog's 24×24 convention — nesting lets it establish its
   // own scale rather than requiring the path data to be hand-rescaled.
-  mark: '<svg viewBox="0 0 48 48" fill="none" width="100%" height="100%"><path d="M11,15 V12 A4,4 0 0 1 15,8 H29" stroke="#f49e31" stroke-width="3.4" stroke-linecap="round"/><polyline points="24,3 29,8 24,13" stroke="#f49e31" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M35,15 V18 A4,4 0 0 1 31,22 H17" stroke="#f49e31" stroke-width="3.4" stroke-linecap="round"/><polyline points="22,17 17,22 22,27" stroke="#f49e31" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/><rect x="6" y="29" width="36" height="5" rx="2.5" fill="#f49e31" opacity="0.9"/><rect x="6" y="36" width="36" height="5" rx="2.5" fill="#f49e31" opacity="0.65"/><rect x="6" y="43" width="36" height="5" rx="2.5" fill="#f49e31" opacity="0.4"/></svg>',
+  mark: '<svg viewBox="0 0 52 52" fill="none" width="100%" height="100%"><path d="M12.5,15.5 V14 A6,6 0 0 1 18.5,8 H39.5" stroke="#ff9e12" stroke-width="2.85" stroke-linecap="round"/><polyline points="33.5,2 39.5,8 33.5,14" stroke="#ff9e12" stroke-width="2.85" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M39.5,18.5 V20 A6,6 0 0 1 33.5,26 H12.5" stroke="#ff9e12" stroke-width="2.85" stroke-linecap="round"/><polyline points="18.5,32 12.5,26 18.5,20" stroke="#ff9e12" stroke-width="2.85" stroke-linecap="round" stroke-linejoin="round" fill="none"/><rect x="8" y="34" width="36" height="4" rx="2" fill="#ff9e12" opacity="0.9"/><rect x="8" y="40" width="36" height="4" rx="2" fill="#ff9e12" opacity="0.65"/><rect x="8" y="46" width="36" height="4" rx="2" fill="#ff9e12" opacity="0.4"/></svg>',
   wrench:
     '<path d="M14.7 6.3a4 4 0 0 1-5.4 5.4L4 17l3 3 5.3-5.3a4 4 0 0 1 5.4-5.4L14.7 12.7z"/>',
   logs: '<path d="M6 3h9l5 5v13H6z"/><path d="M15 3v5h5M8 12h8M8 16h8"/>',
