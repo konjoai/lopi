@@ -530,10 +530,8 @@ mod tests {
     #[test]
     fn with_tool_permissions_sets_both_lists() {
         let (runner, _bus) = AgentRunner::standalone(Task::new("t"), std::env::temp_dir());
-        let runner = runner.with_tool_permissions(
-            vec!["Bash".to_string()],
-            vec!["Workflow".to_string()],
-        );
+        let runner =
+            runner.with_tool_permissions(vec!["Bash".to_string()], vec!["Workflow".to_string()]);
         assert_eq!(runner.permission_allow, vec!["Bash".to_string()]);
         assert_eq!(runner.permission_deny, vec!["Workflow".to_string()]);
     }

@@ -514,7 +514,9 @@ impl ClaudeCode {
 
     async fn run(&self, prompt: &str) -> Result<ClaudeOutput> {
         let mut cmd = Command::new(&self.cli_path);
-        cmd.arg("-p").arg(prompt).arg("--dangerously-skip-permissions");
+        cmd.arg("-p")
+            .arg(prompt)
+            .arg("--dangerously-skip-permissions");
         if self.json_output {
             cmd.arg("--output-format").arg("json");
         }
