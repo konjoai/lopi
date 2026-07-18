@@ -41,6 +41,7 @@
     evalSuiteOptions,
     applySuite,
     EVAL_SUITES,
+    tokenizeGoalChips,
     type CommandValueSuggestion
   } from '$lib/stores/stack';
   import { repoAutocomplete, repoLabelForPath } from '$lib/stores/repoMenu';
@@ -64,6 +65,7 @@
   import ProvenanceChips from './ProvenanceChips.svelte';
   import TemplatesMenu from './TemplatesMenu.svelte';
   import AutocompleteSuggest from './AutocompleteSuggest.svelte';
+  import ChipInput from './ChipInput.svelte';
   import RunStatsPill from './RunStatsPill.svelte';
 
   export let card: StackCardT;
@@ -101,7 +103,13 @@
   // dup/drag/delete cluster for a single `+ add` commit button.
   $: isDraft = card.status === 'draft';
   $: hot = isDraft && draftIsHot(card);
-  let goalInput: HTMLTextAreaElement | undefined;
+  // Round 2, item 2 — the draft's own goal field is a `ChipInput`, not a
+  // plain `<textarea>`; `goalInput` is now that contenteditable `<div>`
+  // (bound out via `bind:rootEl`), not a native textarea element. Every
+  // existing `goalInput?.focus()` / `anchor={goalInput}` call site below
+  // keeps working unchanged — both `.focus()` and `AutocompleteSuggest`'s
+  // `anchor` prop work identically against any `HTMLElement`.
+  let goalInput: HTMLDivElement | undefined;
 
   /** Route a card patch to the right store op: the draft edits the pane's
    *  `draft`; a committed card edits itself in `pane.cards`. */
@@ -117,8 +125,11 @@
     writeCard({ goal: (e.currentTarget as HTMLTextAreaElement).value });
   }
 
-  function onGoalInput(e: Event): void {
-    writeCard({ goal: (e.currentTarget as HTMLTextAreaElement).value });
+  /** `ChipInput`'s `onInput` hands back the plain serialized string directly
+   *  (no `Event`/`currentTarget` to unwrap — see `ChipInput.svelte`'s doc
+   *  comment on why it owns its own DOM serialization). */
+  function onGoalInput(value: string): void {
+    writeCard({ goal: value });
     aliasDismissed = false;
     repoDismissed = false;
     cmdDismissed = false;
@@ -141,6 +152,12 @@
   let goalFocused = false;
   let aliasActiveIndex = 0;
   let aliasDismissed = false;
+
+  // Round 2, item 2 — resolved-token chip segments for the draft's ChipInput.
+  // Pure derivation off `card.goal`; see `tokenizeGoalChips`'s doc comment in
+  // stores/stack.ts for why this is a distinct concern from the autocomplete
+  // matching just below.
+  $: goalSegments = tokenizeGoalChips(card.goal, CARD_COMMANDS);
 
   $: aliasMatches = aliasAutocomplete(card.goal);
   $: showAliasSuggest = isDraft && goalFocused && !aliasDismissed && aliasMatches.length > 0;
@@ -581,24 +598,23 @@
       <TemplatesMenu {card} {paneKey} labeled />
       <ProvenanceChips alias={card.alias} tpl={card.tpl} tplKind={card.tplKind} repoLabel={cardRepoLabel} />
     </div>
-    <!-- Goal on its own full-width line, a `<textarea>` (not `<input>`) with
-         `use:autoGrow` so a long prompt wraps and stays fully visible
-         instead of scrolling off sideways in a single line. Still honors
-         `:alias @repo ×N` on commit. -->
+    <!-- Goal on its own full-width line — round 2, item 2: a `ChipInput`
+         (contenteditable, atomic resolved-token chips), not a plain
+         `<textarea>`, so a resolved `:alias`/`@repo`/`/model/opus`/`×N`
+         renders inline in place rather than in a separate row. Still honors
+         `:alias @repo ×N` on commit either way — nothing about the
+         underlying `card.goal` string changed. -->
     <div class="goalwrap">
-      <textarea
-        class="goalinput"
-        bind:this={goalInput}
+      <ChipInput
+        bind:rootEl={goalInput}
         value={card.goal}
-        on:input={onGoalInput}
-        on:keydown={onGoalKeydown}
-        on:focus={() => (goalFocused = true)}
-        on:blur={() => (goalFocused = false)}
-        use:autoGrow
-        rows="1"
+        segments={goalSegments}
+        onInput={onGoalInput}
+        onKeydown={onGoalKeydown}
+        onFocus={() => (goalFocused = true)}
+        onBlur={() => (goalFocused = false)}
         placeholder="describe the prompt or goal..."
-        spellcheck="false"
-      ></textarea>
+      />
       {#if showAliasSuggest}
         <AutocompleteSuggest
           anchor={goalInput}
@@ -942,29 +958,24 @@
     position: relative;
     margin-top: 10px;
   }
-  .goalinput {
-    display: block;
-    width: 100%;
-    box-sizing: border-box;
-    resize: none;
-    overflow: hidden;
+  /* `ChipInput`'s root is rendered by a child component, so it never carries
+     this component's own scoping hash — `:global()` scoped through
+     `.goalwrap` (which DOES belong to this template) is how a parent styles
+     into a child's internal DOM in Svelte, and keeps this from leaking to
+     every other `ChipInput` instance on the page (e.g. the stack dock's
+     cmdbar, which wants its own violet-focus/smaller-font treatment). */
+  :global(.goalwrap .chipinput) {
     background: rgba(255, 255, 255, 0.02);
     border: 1px solid rgba(255, 255, 255, 0.11);
     border-radius: 7px;
     padding: 9px 11px;
     color: var(--konjo-paper, #f5f5f5);
-    font-family: var(--font-mono, 'JetBrains Mono', monospace);
     font-size: 14px;
-    line-height: 1.5;
-    outline: none;
     transition:
       border-color 0.12s,
       background 0.12s;
   }
-  .goalinput::placeholder {
-    color: rgba(245, 245, 245, 0.28);
-  }
-  .goalinput:focus {
+  :global(.goalwrap .chipinput:focus) {
     border-color: rgba(0, 255, 212, 0.4);
     background: rgba(0, 255, 212, 0.03);
   }

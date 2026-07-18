@@ -52,6 +52,7 @@
     PRESET_CATALOG,
     HIGH_N_CONFIRM_THRESHOLD,
     estimateRunCost,
+    tokenizeGoalChips,
     type DryRunResult,
     type CommandValueSuggestion
   } from '$lib/stores/stack';
@@ -74,7 +75,6 @@
   import { repoAutocomplete, repoLabelForPath } from '$lib/stores/repoMenu';
   import { draggingPane, armedPaneKey } from './dnd';
   import { ICONS } from './icons';
-  import { autoGrow } from './autoGrow';
   import Popover, { togglePopover } from './Popover.svelte';
   import SchedulePopover from './SchedulePopover.svelte';
   import GuardrailsPopover from './GuardrailsPopover.svelte';
@@ -84,6 +84,7 @@
   import StackTemplatesMenu from './StackTemplatesMenu.svelte';
   import RunMenu from './RunMenu.svelte';
   import AutocompleteSuggest from './AutocompleteSuggest.svelte';
+  import ChipInput from './ChipInput.svelte';
 
   export let pane: StackPaneState;
   /** This pane's index in `$panes` — the drag-drop source/target identity,
@@ -159,12 +160,17 @@
   // dock's own icon buttons make.
   let cmdText = '';
   let cmdBarFocused = false;
-  let cmdBarInput: HTMLTextAreaElement | undefined;
+  // Round 2, item 2 — the bar is a `ChipInput` (contenteditable), not a
+  // plain `<textarea>`; see `StackCard.svelte`'s identical `goalInput`
+  // rename comment for why every existing `cmdBarInput?.focus()`/
+  // `anchor={cmdBarInput}` call site below keeps working unchanged.
+  let cmdBarInput: HTMLDivElement | undefined;
   let cmdActiveIndex = 0;
   let cmdDismissed = false;
   let pendingCommand: string | null = null;
 
   $: void ensureBranches(config.defaults.repo);
+  $: cmdBarSegments = tokenizeGoalChips(cmdText, STACK_COMMANDS);
   $: aliasMatches = aliasAutocomplete(cmdText);
   $: repoMatches = repoAutocomplete(cmdText, repoOptions);
 
@@ -335,8 +341,10 @@
     void tick().then(() => cmdBarInput?.focus());
   }
 
-  function onCmdBarInput(e: Event): void {
-    cmdText = (e.currentTarget as HTMLTextAreaElement).value;
+  /** `ChipInput`'s `onInput` hands back the plain serialized string directly
+   *  — see `StackCard.svelte`'s identical `onGoalInput` doc comment. */
+  function onCmdBarInput(value: string): void {
+    cmdText = value;
     cmdDismissed = false;
   }
 
@@ -551,19 +559,16 @@
   <div class="dockbody">
     <div class="inner">
       <div class="cmdbarwrap">
-        <textarea
-          class="cmdbar"
-          bind:this={cmdBarInput}
+        <ChipInput
+          bind:rootEl={cmdBarInput}
           value={cmdText}
-          on:input={onCmdBarInput}
-          on:keydown={onCmdBarKeydown}
-          on:focus={() => (cmdBarFocused = true)}
-          on:blur={() => (cmdBarFocused = false)}
-          use:autoGrow
-          rows="1"
+          segments={cmdBarSegments}
+          onInput={onCmdBarInput}
+          onKeydown={onCmdBarKeydown}
+          onFocus={() => (cmdBarFocused = true)}
+          onBlur={() => (cmdBarFocused = false)}
           placeholder="stack command..."
-          spellcheck="false"
-        ></textarea>
+        />
         {#if showAliasBarSuggest}
           <AutocompleteSuggest
             anchor={cmdBarInput}
@@ -915,29 +920,22 @@
   .cmdbarwrap {
     position: relative;
   }
-  .cmdbar {
-    display: block;
-    width: 100%;
-    box-sizing: border-box;
-    resize: none;
-    overflow: hidden;
+  /* `ChipInput`'s root is rendered by a child component — `:global()` scoped
+     through `.cmdbarwrap` (this component's own template) is how a parent
+     reaches into a child's internal DOM in Svelte; see the identical note in
+     `StackCard.svelte`'s `.goalwrap .chipinput` rule. */
+  :global(.cmdbarwrap .chipinput) {
     background: rgba(255, 255, 255, 0.02);
     border: 1px solid rgba(255, 255, 255, 0.11);
     border-radius: 7px;
     padding: 8px 10px;
     color: var(--konjo-paper, #f5f5f5);
-    font-family: var(--font-mono, 'JetBrains Mono', monospace);
     font-size: 12px;
-    line-height: 1.5;
-    outline: none;
     transition:
       border-color 0.12s,
       background 0.12s;
   }
-  .cmdbar::placeholder {
-    color: rgba(245, 245, 245, 0.24);
-  }
-  .cmdbar:focus {
+  :global(.cmdbarwrap .chipinput:focus) {
     border-color: rgba(183, 155, 255, 0.5);
     background: rgba(183, 155, 255, 0.05);
   }

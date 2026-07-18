@@ -544,6 +544,74 @@ export function commandValueAutocomplete(goalText: string, command: string, opti
     .map((o) => ({ token: `/${command}/${o.value}`, label: o.label, hint: o.hint ?? '', value: o.value }));
 }
 
+// ── Inline chip tokenizer (round 2, item 2) ───────────────────────────────────
+// Splits goal/cmdbar text into plain-text runs and *resolved* token chips for
+// inline rendering — the corrected direction from the first (wrong) demo,
+// where the resolved token rendered in a separate row instead of in place.
+// This is deliberately a distinct concern from the autocomplete *matching*
+// above (`aliasAutocomplete`/`repoAutocomplete`/`commandAutocomplete`/
+// `commandValueAutocomplete`), which only ever looks at a trailing
+// in-progress token and is untouched by this file's round 2 changes — this
+// function instead scans the *whole* string for already-complete tokens, so
+// it can only ever match a token in exactly the state it lands in only once
+// `selectAlias`/`selectRepo`/`selectCommand` (or hand-typing to the same
+// literal completion) has already finished writing it into the text, at
+// which point resolved-token-rendering and raw-text-rendering are simply two
+// ways to draw the identical underlying string — nothing about the string
+// itself, or what gets committed/submitted, changes.
+
+/** One segment of tokenized goal/cmdbar text — either a plain-text run
+ *  (`chipKind` unset) or a resolved token to render as an inline chip.
+ *  `chipKind` picks the accent color, reusing the exact hues the round 1
+ *  grammar chips already established (`:alias` teal, `@repo` ice, `/effort`
+ *  ember, everything else `/command/value` violet, `×N` sun). */
+export interface GoalSegment {
+  text: string;
+  chipKind?: 'alias' | 'repo' | 'effort' | 'command' | 'loop';
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** Tokenize `text` against `commands`' value-picker vocabulary (card-scope
+ *  `CARD_COMMANDS` or stack-scope `STACK_COMMANDS` — the two differ, so this
+ *  can't hardcode one). Every match is word-bounded (`(?=\s|$)`) so an
+ *  in-progress prefix (e.g. `:res` while still typing toward `:research`)
+ *  is never mistaken for a resolved token — only a complete, standalone word
+ *  chips. Non-value-picker commands (`guard`/`schedule`/`maxx`/`goal`) never
+ *  appear here: `selectCommand`/`selectCommandFromBar` strip those tokens
+ *  from the text the instant they're picked, so there's never a resolved
+ *  `/guard` word left in the string to chip. */
+export function tokenizeGoalChips(text: string, commands: InlineCommandDef[]): GoalSegment[] {
+  if (!text) return [{ text: '' }];
+  const valuePickers = commands.filter((c) => c.isValuePicker).map((c) => escapeRegExp(c.command));
+  const alternatives = [
+    PRESET_KEYS.length ? `:(?:${PRESET_KEYS.map(escapeRegExp).join('|')})(?=\\s|$)` : null,
+    `@[^\\s@]+\\/[^\\s@]+(?=\\s|$)`,
+    valuePickers.length ? `\\/(?:${valuePickers.join('|')})\\/[^\\s/]+(?=\\s|$)` : null,
+    `[×xX]\\d+(?=\\s|$)`
+  ].filter((p): p is string => p !== null);
+  const re = new RegExp(alternatives.join('|'), 'g');
+
+  const segments: GoalSegment[] = [];
+  let cursor = 0;
+  for (const m of text.matchAll(re)) {
+    const idx = m.index ?? 0;
+    if (idx > cursor) segments.push({ text: text.slice(cursor, idx) });
+    const token = m[0];
+    let kind: NonNullable<GoalSegment['chipKind']>;
+    if (token.startsWith(':')) kind = 'alias';
+    else if (token.startsWith('@')) kind = 'repo';
+    else if (token.startsWith('/')) kind = token.slice(1, token.indexOf('/', 1)) === 'effort' ? 'effort' : 'command';
+    else kind = 'loop';
+    segments.push({ text: token, chipKind: kind });
+    cursor = idx + token.length;
+  }
+  if (cursor < text.length) segments.push({ text: text.slice(cursor) });
+  return segments.length ? segments : [{ text: '' }];
+}
+
 /** `/eval`'s value catalog is the suite-shortcut names (`kcqf`/`security`/
  *  `research`), not individual eval names — those contain spaces (`"vuln
  *  scan"`, `"code review"`), which the trailing-token grammar can't carry.
