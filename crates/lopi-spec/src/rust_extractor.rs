@@ -46,7 +46,7 @@ pub fn extract_rust(path: impl AsRef<Path>) -> Result<Vec<SpecItem>> {
         }
 
         // Detect function definition following a test attribute.
-        if next_is_test && trimmed.starts_with("fn ") || trimmed.starts_with("async fn ") {
+        if next_is_test && (trimmed.starts_with("fn ") || trimmed.starts_with("async fn ")) {
             next_is_test = false;
             if let Some(name) = parse_fn_name(trimmed) {
                 items.push(build_item(name, &doc_buf, line_num));
@@ -152,6 +152,17 @@ mod tests {
     #[test]
     fn skips_non_test_functions() {
         let f = write_temp("fn helper() {}\nfn also_not_a_test() {}\n");
+        let items = extract_rust(&f).unwrap();
+        assert!(items.is_empty());
+    }
+
+    /// Regression test for an operator-precedence bug: `&&` binds tighter
+    /// than `||`, so `next_is_test && starts_with("fn ") || starts_with("async
+    /// fn ")` used to match ANY `async fn`, test attribute or not. A bare
+    /// `async fn` with no preceding test attribute must not be recorded.
+    #[test]
+    fn skips_async_fn_without_preceding_test_attribute() {
+        let f = write_temp("async fn not_a_test() {}\n");
         let items = extract_rust(&f).unwrap();
         assert!(items.is_empty());
     }
