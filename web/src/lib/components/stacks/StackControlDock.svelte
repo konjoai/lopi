@@ -131,6 +131,13 @@
   $: loopTier = config.loopCount === 1 ? null : loopCountTier(config.loopCount === 0 ? Infinity : config.loopCount);
   $: dockSummary = `${scheduledOn ? cronHuman(config.cron) + ' · ' : ''}loop ${loopLabel} · ${modelLabel}`;
 
+  // Round 2, item 4 — live running cost total: summed straight from the
+  // `agents` store (already reactive per-agent `cost`, the same field the
+  // Overview COST column reads) for every card in this pane that has ever
+  // launched a task. Not gated on `status === 'running'` — a finished card's
+  // final cost still counts toward what this stack actually spent.
+  $: runningTotal = pane.cards.reduce((sum, c) => sum + (c.taskId ? ($agents.get(c.taskId)?.cost ?? 0) : 0), 0);
+
   function stepLoop(delta: number) {
     updateStackConfig(pane.key, { loopCount: stepMaxIterations(config.loopCount, delta) });
   }
@@ -484,6 +491,9 @@
   {#if STACK_CONTROL_MODE === 'dock'}
     <div class="dockhead">
       <span class="stag">stack</span>
+      {#if runningTotal > 0}
+        <span class="costtotal"><span class="costlbl">running total:</span> ${runningTotal.toFixed(2)}</span>
+      {/if}
       <span class="dsum">{dockSummary}</span>
       <button class="exp" type="button" on:click={() => (dockOpen = !dockOpen)} aria-expanded={dockOpen} title="stack controls">
         {@html ICONS.chevup}
@@ -786,6 +796,18 @@
     align-items: center;
     gap: 11px;
     padding: 13px 0 2px;
+  }
+  .dockhead .costtotal {
+    font-size: 11px;
+    color: var(--konjo-paper, #f5f5f5);
+    font-weight: 700;
+    white-space: nowrap;
+    flex: 0 0 auto;
+  }
+  .dockhead .costtotal .costlbl {
+    color: rgba(245, 245, 245, 0.6);
+    font-weight: 400;
+    margin-right: 3px;
   }
   .dockhead .dsum {
     font-size: 10px;
