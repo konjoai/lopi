@@ -88,6 +88,82 @@ fn budget_full_returns_error_when_nothing_evictable() {
     );
 }
 
+/// `token_pressure()` had no test that called it directly and asserted a
+/// value — it was only ever exercised indirectly via the auto-eviction
+/// threshold check inside `push`/`push_tool_pair`.
+#[test]
+fn token_pressure_reflects_current_usage_ratio() {
+    let mut window = ContextWindow::new(200);
+    assert!((window.token_pressure() - 0.0).abs() < f32::EPSILON);
+
+    window
+        .push(msg_tokens("m1", 100, PinPolicy::BudgetEvictable))
+        .unwrap();
+    assert!((window.token_pressure() - 0.5).abs() < 1e-6);
+
+    window
+        .push(msg_tokens("m2", 50, PinPolicy::BudgetEvictable))
+        .unwrap();
+    assert!((window.token_pressure() - 0.75).abs() < 1e-6);
+}
+
+/// A zero token budget is a documented special case (`push` never rejects
+/// on capacity), and `token_pressure` must report 0.0 rather than divide by
+/// zero.
+#[test]
+fn token_pressure_is_zero_with_an_unbounded_budget() {
+    let mut window = ContextWindow::new(0);
+    window
+        .push(msg_tokens(
+            "unbounded",
+            1_000_000,
+            PinPolicy::BudgetEvictable,
+        ))
+        .unwrap();
+    assert!((window.token_pressure() - 0.0).abs() < f32::EPSILON);
+}
+
+/// `evict_toward_threshold` (private, only reachable through `push`'s
+/// pre-insert pressure check) is documented to evict down to
+/// `budget_threshold - 0.1`. Pin the exact math: budget=1000,
+/// threshold=0.75 (default) ⇒ target=650. 8 turns of 100 tokens each bring
+/// pressure to 800/1000=0.8 the moment a 9th push's pre-insert check runs;
+/// eviction must remove the two oldest turns (800→600, the first point
+/// at-or-under 650) — not one turn (still 700, over target) or three
+/// (500, further than necessary).
+#[test]
+fn evict_toward_threshold_evicts_down_to_exactly_threshold_minus_one_tenth() {
+    let mut window = ContextWindow::new(1_000);
+    let mut ids = Vec::new();
+    for i in 0..8 {
+        ids.push(
+            window
+                .push(msg_tokens(
+                    &format!("m{i}"),
+                    100,
+                    PinPolicy::BudgetEvictable,
+                ))
+                .unwrap(),
+        );
+    }
+    assert!((window.token_pressure() - 0.8).abs() < 1e-6);
+
+    // This push's pre-insert pressure check (800/1000=0.8 > 0.75) fires
+    // evict_toward_threshold before the new turn is added.
+    window
+        .push(msg_tokens("trigger", 100, PinPolicy::BudgetEvictable))
+        .unwrap();
+
+    let remaining: Vec<_> = window.turns().iter().map(|t| t.id).collect();
+    let evicted_count = ids.iter().filter(|id| !remaining.contains(id)).count();
+    assert_eq!(
+        evicted_count, 2,
+        "must evict exactly the 2 oldest turns to land at/under the 650 target"
+    );
+    // 600 (post-eviction) + 100 (the triggering push itself) = 700.
+    assert_eq!(window.stats().active_tokens, 700);
+}
+
 #[test]
 fn explicit_evict_to_budget_frees_oldest_first() {
     let mut window = ContextWindow::new(10_000);
