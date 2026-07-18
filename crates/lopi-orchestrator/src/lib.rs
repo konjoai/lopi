@@ -4,7 +4,6 @@ pub mod agent_rate_limit;
 /// Stack-Chain-1 — server-side whole-stack cron scheduling: fires an ordered
 /// sequence of independent goals, one per stack card, entirely server-side.
 pub mod chain_schedule_manager;
-pub mod health;
 /// MAXX Phase 1 — opportunistic backlog dispatch tick.
 pub mod maxx_loop;
 /// Concurrent agent pool that drives task execution from a shared `TaskQueue`.
@@ -26,7 +25,6 @@ pub mod topology;
 
 pub use agent_rate_limit::{AgentRateLimit, AgentRateLimitSnapshot};
 pub use chain_schedule_manager::{ChainScheduleManager, ChainSpec, OnFail};
-pub use health::{AgentHealth, HealthConfig, HealthRegistry, HealthSnapshot, HealthSummary};
 pub use maxx_loop::{
     build_task as build_maxx_task, is_favorable as maxx_is_favorable, MaxxLoop, MaxxSpec,
 };
