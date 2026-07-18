@@ -122,6 +122,7 @@
             class:running={card.status === 'running'}
             class:queued={card.status === 'queued'}
             class:done={card.status === 'done'}
+            class:blocked={card.status === 'blocked'}
             style="--orb:{orb.glowColor}"
           >
             <StackCard {card} paneKey={pane.key} index={i} {paneDefaults} {repoOptions} {scheduleGoverned} />
@@ -265,6 +266,12 @@
   }
   .loopwrap.hasout.done {
     border: 1px solid color-mix(in srgb, var(--orb) 35%, transparent);
+  }
+  /* Blocked/error (round 2, item 3) — static rose, mirrors
+     `StackCard.svelte`'s identical `.pc.blocked` fixed-color rationale
+     (durable `card.status`, not a live `--orb` lookup). */
+  .loopwrap.hasout.blocked {
+    border: 1px solid rgba(255, 0, 102, 0.45);
   }
   .loopwrap.hasout.running {
     border: 1px solid color-mix(in srgb, var(--orb) 45%, transparent);

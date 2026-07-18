@@ -156,8 +156,11 @@ export interface CardConfig {
  *  in-composer draft card (Creation-Flow-1) — it is never in `pane.cards`, is
  *  excluded from every run/loop-count/payload path (see `executionOrder`), and
  *  must be handled explicitly by any `CardStatus` consumer rather than falling
- *  through to a run path. The rest are the client-only run lifecycle. */
-export type CardStatus = 'draft' | 'idle' | 'queued' | 'running' | 'done';
+ *  through to a run path. The rest are the client-only run lifecycle.
+ *  `'blocked'` (round 2, item 3) is the terminal state for a run that ended
+ *  anything other than `completed` — previously folded indistinguishably into
+ *  `'done'`, so a failed run and a successful one looked identical. */
+export type CardStatus = 'draft' | 'idle' | 'queued' | 'running' | 'done' | 'blocked';
 
 /** The default iteration ceiling a fresh card starts from. `0` = "off": the
  *  loop is disabled and the card runs a single pass (the card pill floors at
@@ -192,6 +195,9 @@ export interface StackCard {
   maxIterations: number;
   /** Live progress while `status === 'running'` — `undefined` otherwise. */
   iteration?: { current: number; total: number };
+  /** The failure message when `status === 'blocked'` — round 2, item 3.
+   *  `undefined` otherwise (including a card that has never run). */
+  blockReason?: string;
   scheduled: boolean;
   cron: CronConfig;
   /** MAXX — opportunistic backlog dispatch. Independent of `scheduled`/
@@ -787,6 +793,7 @@ export function duplicateCard(cards: StackCard[], id: string): StackCard[] {
     status: 'idle',
     iteration: undefined,
     taskId: undefined,
+    blockReason: undefined,
     // A clone never shares its original's backend /api/maxx row — reset to
     // off so the popover doesn't show "enabled" with nothing behind it.
     maxx: { ...cards[idx].maxx, enabled: false },
@@ -908,6 +915,20 @@ export function stepCardIterations(current: number, delta: number): number {
  *  disabled (`0`), the plain number otherwise. */
 export function cardIterationsLabel(maxIterations: number): string {
   return maxIterations === 0 ? 'off' : String(maxIterations);
+}
+
+/** The ×N pill's color-ramp tier — a glanceable warning as the loop count
+ *  climbs. `orange` is the baseline "on" treatment (closest to the pill's
+ *  pre-ramp default), stepping up to `yellow` then `red` the higher N goes.
+ *  Thresholds are operator judgement calls, not measured cost data — tune
+ *  freely. Callers pass `Infinity` for an unbounded count (the stack pill's
+ *  `0` = infinite sentinel), which always reads as the top `red` tier since
+ *  it has no ceiling at all. Never called for an "off" pill (`0` on a card,
+ *  `1` on a stack) — those keep their own separate neutral `.off` styling. */
+export function loopCountTier(n: number): 'orange' | 'yellow' | 'red' {
+  if (n >= 25) return 'red';
+  if (n >= 11) return 'yellow';
+  return 'orange';
 }
 
 // ── Active-state predicates (pure, drive cardbar highlighting) ────────────────
@@ -1629,7 +1650,7 @@ export function duplicateStack(state: StackPaneState[], key: string): StackPaneS
   const clone: StackPaneState = {
     key: makeId(),
     title: `${original.title} copy`,
-    cards: original.cards.map((c) => ({ ...c, id: makeId(), status: 'idle', iteration: undefined, taskId: undefined })),
+    cards: original.cards.map((c) => ({ ...c, id: makeId(), status: 'idle', iteration: undefined, taskId: undefined, blockReason: undefined })),
     config: {
       ...original.config,
       cron: { ...original.config.cron },
@@ -1660,7 +1681,7 @@ export function loadStackCardsInto(state: StackPaneState[], targetKey: string, s
   const source = state.find((p) => p.key === sourceKey);
   if (!source) return state;
   return applyToPaneCards(state, targetKey, () =>
-    source.cards.map((c) => ({ ...c, id: makeId(), status: 'idle', iteration: undefined, taskId: undefined }))
+    source.cards.map((c) => ({ ...c, id: makeId(), status: 'idle', iteration: undefined, taskId: undefined, blockReason: undefined }))
   );
 }
 

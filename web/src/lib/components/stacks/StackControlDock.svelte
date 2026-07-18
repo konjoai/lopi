@@ -31,6 +31,7 @@
     stackGoalSummary,
     maxIterationsLabel,
     stepMaxIterations,
+    loopCountTier,
     cronHuman,
     updateStackConfig,
     duplicateStackInPanes,
@@ -125,6 +126,9 @@
   // hardcoded to "model X · every loop inherits" with no repo term at all.
   $: repoLabel = config.defaults.repo ? repoLabelForPath(config.defaults.repo, repoOptions) : '';
   $: loopLabel = config.loopCount <= 1 ? maxIterationsLabel(config.loopCount) : '×' + maxIterationsLabel(config.loopCount);
+  // ×N loop-count color ramp (round 2, item 5) — `null` while off (`1`); the
+  // infinite sentinel (`0`) has no ceiling at all, so it always reads `red`.
+  $: loopTier = config.loopCount === 1 ? null : loopCountTier(config.loopCount === 0 ? Infinity : config.loopCount);
   $: dockSummary = `${scheduledOn ? cronHuman(config.cron) + ' · ' : ''}loop ${loopLabel} · ${modelLabel}`;
 
   function stepLoop(delta: number) {
@@ -579,6 +583,8 @@
           class="iterpill"
           class:off={config.loopCount === 1}
           class:running={stackLoopRunning}
+          class:tier-yellow={loopTier === 'yellow'}
+          class:tier-red={loopTier === 'red'}
           title={stackLoopRunning
             ? `chain-run ${stackIterLabel}`
             : config.loopCount === 1
@@ -732,8 +738,11 @@
     position: relative;
     flex: 0 0 auto;
     background: linear-gradient(180deg, rgba(150, 120, 230, 0.22), rgba(120, 92, 205, 0.14));
+    border: 1px solid rgba(183, 155, 255, 0.4);
     border-top: 1.5px solid rgba(183, 155, 255, 0.55);
-    box-shadow: 0 -10px 30px rgba(120, 90, 200, 0.14);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.1),
+      0 -10px 30px rgba(120, 90, 200, 0.14);
     padding: 14px 16px 16px;
     font-family: var(--font-mono, 'JetBrains Mono', monospace);
   }
@@ -1093,6 +1102,32 @@
   }
   .iterpill.off .sb:hover {
     background: rgba(245, 245, 245, 0.08);
+  }
+  /* ×N color ramp (round 2, item 5) — mirrors StackCard.svelte's identical
+     ramp, scoped to the stack pill instead of a card's. */
+  .iterpill.tier-yellow {
+    border-color: rgba(255, 204, 0, 0.5);
+    background: rgba(255, 204, 0, 0.08);
+    color: #ffcc00;
+  }
+  .iterpill.tier-yellow .sb {
+    border-left-color: rgba(255, 204, 0, 0.4);
+    color: #ffcc00;
+  }
+  .iterpill.tier-yellow .sb:hover {
+    background: rgba(255, 204, 0, 0.24);
+  }
+  .iterpill.tier-red {
+    border-color: rgba(255, 0, 102, 0.5);
+    background: rgba(255, 0, 102, 0.1);
+    color: #ff0066;
+  }
+  .iterpill.tier-red .sb {
+    border-left-color: rgba(255, 0, 102, 0.4);
+    color: #ff0066;
+  }
+  .iterpill.tier-red .sb:hover {
+    background: rgba(255, 0, 102, 0.24);
   }
   /* Running-loop chrome — mirrors `StackCard.svelte`'s identical pill glow +
      spinner, scoped to the whole stack instead of one card. */

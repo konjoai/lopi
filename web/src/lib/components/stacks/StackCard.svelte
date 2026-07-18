@@ -20,6 +20,7 @@
     configSummary,
     cardIterationsLabel,
     stepCardIterations,
+    loopCountTier,
     draftIsHot,
     duplicateInPane,
     removeFromPane,
@@ -439,6 +440,10 @@
   // off card (single pass) never shows the running-loop chrome even mid-run.
   $: loopRunning = card.status === 'running' && !!card.iteration && card.iteration.total > 1;
 
+  // ×N loop-count color ramp (round 2, item 5) — `null` while off, since the
+  // off pill keeps its own neutral `.off` styling untouched by the ramp.
+  $: iterTier = card.maxIterations === 0 ? null : loopCountTier(card.maxIterations);
+
   // Live elapsed/token/cost readout while this card's task is actually
   // running — `AgentState` already ticks `elapsedMs` and accumulates
   // tokens/cost from the wire (see `stores/agents.ts`), so this is a plain
@@ -627,6 +632,10 @@
     </div>
   {/if}
 
+  {#if card.status === 'blocked' && card.blockReason}
+    <div class="blockreason">{@html ICONS.x}{card.blockReason}</div>
+  {/if}
+
   {#if card.status === 'running' && card.iteration}
     <div class="iterbar">
       {#each Array(card.iteration.total) as _, i}
@@ -690,6 +699,8 @@
       class="iterpill"
       class:off={card.maxIterations === 0}
       class:running={loopRunning}
+      class:tier-yellow={iterTier === 'yellow'}
+      class:tier-red={iterTier === 'red'}
       title={loopRunning
         ? `iteration ${card.iteration?.current}/${card.iteration?.total}`
         : card.maxIterations === 0
@@ -841,10 +852,13 @@
   .pc {
     position: relative;
     background: var(--konjo-card, #0e1214);
-    border: 1px solid rgba(255, 255, 255, 0.11);
+    border: 1px solid rgba(255, 255, 255, 0.14);
     border-radius: 9px;
     padding: 13px 14px;
     font-family: var(--font-mono, 'JetBrains Mono', monospace);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.08),
+      0 1px 2px rgba(0, 0, 0, 0.4);
     transition:
       box-shadow 0.12s,
       border-color 0.12s;
@@ -858,6 +872,15 @@
   }
   .pc.done {
     border-color: color-mix(in srgb, var(--orb) 35%, transparent);
+  }
+  /* Blocked/error (round 2, item 3) — rose, static (no edgeflash; a blocked
+     run is terminal, not actively in motion). Fixed rose rather than
+     `--orb`-derived like `.pc.done`/`.queued`/`.running`: `card.status` is
+     the pane's own durable state, while `--orb` is a live lookup keyed by
+     `taskId` into the `agents` store — one that goes stale/empty on reload
+     long before the card itself stops reading `'blocked'`. */
+  .pc.blocked {
+    border-color: rgba(255, 0, 102, 0.45);
   }
   /* Draft card (Creation-Flow-1): dashed until it carries content, then a
      teal "hot" border signalling it's ready to commit. */
@@ -1056,6 +1079,31 @@
   .runtag.done {
     color: var(--konjo-jade, #00ff9d);
     border-color: rgba(0, 255, 157, 0.45);
+  }
+  .runtag.blocked {
+    color: var(--konjo-rose, #ff0066);
+    border-color: rgba(255, 0, 102, 0.5);
+  }
+  /* Blocked-run inline reason (round 2, item 3) — only rendered when the
+     card actually carries a failure message, immediately under the goal
+     text. */
+  .blockreason {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 9px;
+    padding: 8px 10px;
+    border-radius: 7px;
+    background: rgba(255, 0, 102, 0.08);
+    color: #ffaacb;
+    font-size: 10px;
+    line-height: 1.4;
+  }
+  .blockreason :global(svg) {
+    width: 12px;
+    height: 12px;
+    flex: 0 0 auto;
+    color: var(--konjo-rose, #ff0066);
   }
   .spec {
     font-size: 14px;
@@ -1359,6 +1407,32 @@
   }
   .iterpill.off .sb:hover {
     background: rgba(245, 245, 245, 0.08);
+  }
+  /* ×N color ramp (round 2, item 5) — untagged pill stays the pre-ramp
+     orange baseline; these two classes are the only overrides needed. */
+  .iterpill.tier-yellow {
+    border-color: rgba(255, 204, 0, 0.5);
+    background: rgba(255, 204, 0, 0.08);
+    color: #ffcc00;
+  }
+  .iterpill.tier-yellow .sb {
+    border-left-color: rgba(255, 204, 0, 0.35);
+    color: #ffcc00;
+  }
+  .iterpill.tier-yellow .sb:hover {
+    background: rgba(255, 204, 0, 0.2);
+  }
+  .iterpill.tier-red {
+    border-color: rgba(255, 0, 102, 0.5);
+    background: rgba(255, 0, 102, 0.1);
+    color: #ff0066;
+  }
+  .iterpill.tier-red .sb {
+    border-left-color: rgba(255, 0, 102, 0.35);
+    color: #ff0066;
+  }
+  .iterpill.tier-red .sb:hover {
+    background: rgba(255, 0, 102, 0.2);
   }
   /* Running-loop chrome (card.status === 'running' with a real repeat
      configured): a slow glow on the pill itself, distinct from the card's own
