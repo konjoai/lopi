@@ -1,13 +1,10 @@
 //! Per-agent rate limiting — bolted on to `AgentPool`.
 //!
-//! Each registered agent gets a token bucket sized by `max_per_minute`
-//! plus an atomic in-flight counter capped by `max_concurrent`. Callers
-//! gate dispatch (non-blocking) and release when the task finishes.
-//!
-//! Agents not in the registry are *unlimited* — registration is opt-in.
-//! REST handlers translate "registry hit, acquire fails" into HTTP 429.
+//! Operators register a `max_per_minute`/`max_concurrent` limit per agent
+//! via the `/api/agents/:id/rate-limit` REST surface; `AgentRateState`
+//! tracks an in-flight counter for the registered value. Dispatch itself
+//! does not yet gate on these limits (see `pool/run_loop.rs`).
 
-use lopi_ratelimit::TokenBucket;
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::AtomicU32;
 use std::sync::Arc;
@@ -36,17 +33,13 @@ impl AgentRateLimit {
 #[derive(Clone)]
 pub(crate) struct AgentRateState {
     pub limit: AgentRateLimit,
-    pub bucket: TokenBucket,
     pub in_flight: Arc<AtomicU32>,
 }
 
 impl AgentRateState {
     pub(crate) fn new(limit: AgentRateLimit) -> Self {
-        let capacity = f64::from(limit.max_per_minute);
-        let refill = capacity / 60.0;
         Self {
             limit,
-            bucket: TokenBucket::new(capacity, refill),
             in_flight: Arc::new(AtomicU32::new(0)),
         }
     }
@@ -84,17 +77,15 @@ mod tests {
         .is_valid());
     }
 
-    #[tokio::test]
-    async fn bucket_capacity_matches_max_per_minute() {
+    #[test]
+    fn new_state_starts_with_zero_in_flight() {
         let state = AgentRateState::new(AgentRateLimit {
             max_per_minute: 3,
             max_concurrent: 0,
         });
-        assert!(state.bucket.try_acquire(1.0).await);
-        assert!(state.bucket.try_acquire(1.0).await);
-        assert!(state.bucket.try_acquire(1.0).await);
-        // 4th immediate acquire fails — refill rate is 3/60 = 0.05/sec,
-        // so the bucket is empty until at least 20s pass.
-        assert!(!state.bucket.try_acquire(1.0).await);
+        assert_eq!(
+            state.in_flight.load(std::sync::atomic::Ordering::Relaxed),
+            0
+        );
     }
 }

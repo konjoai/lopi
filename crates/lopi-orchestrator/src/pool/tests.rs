@@ -284,18 +284,6 @@ async fn deregister_removes_capability_advertisement() {
 // ─── P2 — per-agent rate limiting ────────────────────────────────
 
 #[tokio::test]
-async fn unregistered_agent_is_unlimited() {
-    let pool = make_pool(2);
-    // Without registration the gate is wide open — every acquire
-    // returns true and there's no in-flight to release.
-    for _ in 0..100 {
-        assert!(pool.try_acquire_agent("ghost").await);
-    }
-    // release_agent on an unregistered id is a clean noop.
-    pool.release_agent("ghost");
-}
-
-#[tokio::test]
 async fn register_rejects_zero_per_minute() {
     let pool = make_pool(2);
     let ok = pool.register_agent_rate_limit(
@@ -308,65 +296,6 @@ async fn register_rejects_zero_per_minute() {
     assert!(!ok, "0/min should be rejected");
     // No entry was written.
     assert!(pool.agent_rate_limit("bad").is_none());
-}
-
-#[tokio::test]
-async fn token_bucket_caps_burst_at_max_per_minute() {
-    let pool = make_pool(2);
-    assert!(pool.register_agent_rate_limit(
-        "alpha",
-        crate::AgentRateLimit {
-            max_per_minute: 3,
-            max_concurrent: 0
-        },
-    ));
-    // First 3 acquires succeed; the 4th is rate-limited.
-    for _ in 0..3 {
-        assert!(pool.try_acquire_agent("alpha").await);
-    }
-    assert!(!pool.try_acquire_agent("alpha").await);
-    let snap = pool.agent_rate_limit("alpha").unwrap();
-    assert_eq!(snap.in_flight, 3);
-}
-
-#[tokio::test]
-async fn concurrency_cap_short_circuits_before_bucket() {
-    let pool = make_pool(2);
-    assert!(pool.register_agent_rate_limit(
-        "alpha",
-        crate::AgentRateLimit {
-            max_per_minute: 1_000,
-            max_concurrent: 2
-        },
-    ));
-    // Two acquires use 2 of 1000 tokens but saturate the concurrency cap.
-    assert!(pool.try_acquire_agent("alpha").await);
-    assert!(pool.try_acquire_agent("alpha").await);
-    assert!(
-        !pool.try_acquire_agent("alpha").await,
-        "concurrency cap should block even with tokens to spare"
-    );
-    // Release frees a slot.
-    pool.release_agent("alpha");
-    assert!(pool.try_acquire_agent("alpha").await);
-}
-
-#[tokio::test]
-async fn release_saturates_at_zero() {
-    let pool = make_pool(2);
-    assert!(pool.register_agent_rate_limit(
-        "alpha",
-        crate::AgentRateLimit {
-            max_per_minute: 10,
-            max_concurrent: 2
-        },
-    ));
-    // Three releases against zero in-flight must not underflow.
-    pool.release_agent("alpha");
-    pool.release_agent("alpha");
-    pool.release_agent("alpha");
-    let snap = pool.agent_rate_limit("alpha").unwrap();
-    assert_eq!(snap.in_flight, 0);
 }
 
 // Verifier-as-explicit-gate, `Task.max_iterations` override, and Budget &

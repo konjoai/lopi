@@ -54,9 +54,7 @@ impl AgentPool {
     }
 
     /// Remove an agent's rate-limit entry. Returns `true` when a row was
-    /// removed. Active in-flight counters held by the removed entry are
-    /// dropped — completing tasks have no slot to decrement and just
-    /// log a warning via `release_agent`.
+    /// removed.
     pub fn deregister_agent_rate_limit(&self, agent_id: &str) -> bool {
         self.agent_rate_limits.remove(agent_id).is_some()
     }
@@ -72,52 +70,6 @@ impl AgentPool {
             max_concurrent: entry.limit.max_concurrent,
             in_flight: entry.in_flight.load(Ordering::Relaxed),
         })
-    }
-
-    /// Try to reserve a dispatch slot for `agent_id`. Returns `true` when
-    /// both gates pass (token bucket + concurrency cap), `false` when the
-    /// agent is at its rate or concurrency limit.
-    ///
-    /// Agents that were never registered are **unlimited** and always
-    /// return `true` — registration is opt-in.
-    ///
-    /// On success the caller MUST pair with [`Self::release_agent`] when
-    /// the task completes.
-    pub async fn try_acquire_agent(&self, agent_id: &str) -> bool {
-        let Some(entry) = self.agent_rate_limits.get(agent_id) else {
-            return true;
-        };
-        // Concurrency cap is checked first because it's cheap (atomic load)
-        // and the token bucket lookup acquires an async lock.
-        if entry.limit.max_concurrent > 0
-            && entry.in_flight.load(Ordering::Relaxed) >= entry.limit.max_concurrent
-        {
-            return false;
-        }
-        if !entry.bucket.try_acquire(1.0).await {
-            return false;
-        }
-        entry.in_flight.fetch_add(1, Ordering::Relaxed);
-        true
-    }
-
-    /// Release a previously-acquired slot. Safe to call when the agent has
-    /// no registry entry (e.g. it was deregistered mid-flight) — that's a
-    /// noop. Underflow is impossible because the counter saturates at 0.
-    pub fn release_agent(&self, agent_id: &str) {
-        if let Some(entry) = self.agent_rate_limits.get(agent_id) {
-            // Saturating decrement — if a runaway release call lands after
-            // the slot was already returned, we just stay at 0.
-            let _ = entry
-                .in_flight
-                .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |v| {
-                    if v == 0 {
-                        None
-                    } else {
-                        Some(v - 1)
-                    }
-                });
-        }
     }
 
     /// True when at least one registered agent advertises every capability

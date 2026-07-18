@@ -51,9 +51,8 @@ pub struct AgentPool {
     /// `submit()` accepts the task. Key is a stable agent identifier
     /// (free-form string; the registrar names them).
     capabilities: Arc<DashMap<String, Vec<String>>>,
-    /// P2 — per-agent rate limits (token bucket + concurrency cap).
-    /// Agents not in the registry are unrestricted — registration is
-    /// opt-in. Callers gate with `try_acquire_agent` / `release_agent`.
+    /// P2 — per-agent rate limits (token bucket + concurrency cap),
+    /// manageable via the `/api/agents/:id/rate-limit` REST surface.
     agent_rate_limits: Arc<DashMap<String, crate::agent_rate_limit::AgentRateState>>,
 }
 

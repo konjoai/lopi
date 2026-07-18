@@ -1988,7 +1988,6 @@ dependencies = [
  "lopi-core",
  "lopi-git",
  "lopi-memory",
- "lopi-ratelimit",
  "lopi-skill",
  "serde",
  "tempfile",
