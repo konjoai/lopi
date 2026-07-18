@@ -957,6 +957,44 @@ export function loopCountTier(n: number): 'orange' | 'yellow' | 'red' {
   return 'orange';
 }
 
+// ── Run-cost confirm (round 2, item 6) ────────────────────────────────────────
+
+/** Loop count at/above which hitting Run shows the cost-estimate confirm
+ *  instead of launching immediately. Same operator-judgement-call caveat as
+ *  `loopCountTier`'s thresholds — tune freely. */
+export const HIGH_N_CONFIRM_THRESHOLD = 15;
+
+/** A rough $/iteration rate by model tier — matched by substring against the
+ *  model id/display name so it degrades gracefully for any live-catalog
+ *  model the static tiers don't name explicitly. This is NOT a real pricing
+ *  table: no per-token cost estimator exists client-side yet (the live
+ *  catalog carries no rate data — see `stores/modelCatalog.ts`), so these are
+ *  rough operator numbers, deliberately presented as a wide approximate band
+ *  by `estimateRunCost` rather than a precise quote. Revisit once a real
+ *  estimator exists. */
+function roughCostPerIteration(model: string): number {
+  const m = model.toLowerCase();
+  if (m.includes('opus')) return 0.9;
+  if (m.includes('haiku')) return 0.05;
+  return 0.25; // sonnet, and the 'auto'/unknown default
+}
+
+/** A ×N run's rough cost estimate — the confirm banner's `low`–`high` figure. */
+export interface CostEstimate {
+  low: number;
+  high: number;
+}
+
+/** Estimate a ×`n` run's cost as a ±35% band around `roughCostPerIteration(model)
+ *  * n` — wide enough to read honestly as approximate rather than a precise
+ *  quote. Callers must not call this for an unbounded run (`n === 0`, the
+ *  infinite sentinel) — there's no ceiling to estimate against; gate on the
+ *  raw loop count first and show a distinct "unbounded" message instead. */
+export function estimateRunCost(model: string, n: number): CostEstimate {
+  const mid = roughCostPerIteration(model) * n;
+  return { low: mid * 0.65, high: mid * 1.35 };
+}
+
 // ── Active-state predicates (pure, drive cardbar highlighting) ────────────────
 
 export function guardActive(g: Guardrails): boolean {

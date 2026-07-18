@@ -47,6 +47,8 @@
     aliasAutocomplete,
     resolvePresetAlias,
     PRESET_CATALOG,
+    HIGH_N_CONFIRM_THRESHOLD,
+    estimateRunCost,
     type DryRunResult,
     type CommandValueSuggestion
   } from '$lib/stores/stack';
@@ -414,14 +416,39 @@
             : 'run stack';
   $: runIcon = phase === 'running' ? ICONS.pause : ICONS.play;
 
+  // ── cost-estimate confirm above a high loop count (round 2, item 6) ─────────
+  // A non-blocking inline row, not a modal: hitting Run with a high ×N holds
+  // the launch for one extra click ("run anyway" / "lower to ×N") instead of
+  // dispatching immediately. `0` (the infinite sentinel) always qualifies —
+  // it has no ceiling, which is exactly the case most worth a pause.
+  let costConfirmOpen = false;
+  $: costEst = config.loopCount > 0 ? estimateRunCost(config.defaults.model, config.loopCount) : null;
+
+  function launchRun() {
+    dryRunResult = null;
+    runStack(pane.key, 'run', config.defaults, agents);
+  }
+
+  function confirmRunAnyway() {
+    costConfirmOpen = false;
+    launchRun();
+  }
+
+  function confirmLowerAndRun() {
+    costConfirmOpen = false;
+    updateStackConfig(pane.key, { loopCount: 10 });
+    launchRun();
+  }
+
   function runMain() {
     if (phase === 'running') {
       pauseStack(pane.key);
     } else if (phase === 'paused') {
       resumeStack(pane.key, config.defaults, agents);
+    } else if (config.loopCount === 0 || config.loopCount >= HIGH_N_CONFIRM_THRESHOLD) {
+      costConfirmOpen = true;
     } else {
-      dryRunResult = null;
-      runStack(pane.key, 'run', config.defaults, agents);
+      launchRun();
     }
     runMenuOpen = false;
   }
@@ -654,7 +681,23 @@
   </div>
 
   <div class="dockrun">
-    {#if stopReason}
+    {#if costConfirmOpen}
+      <div class="costconfirm">
+        <span class="ccmsg">
+          {@html ICONS.zap}
+          {#if config.loopCount === 0}
+            <b>×∞</b> on <b>{modelLabel}</b> — unbounded, no cost ceiling to estimate
+          {:else if costEst}
+            <b>×{config.loopCount}</b> on <b>{modelLabel}</b> ≈ <b>${costEst.low.toFixed(2)}–${costEst.high.toFixed(2)}</b>
+            estimated (approximate)
+          {/if}
+        </span>
+        <div class="ccactions">
+          <button type="button" on:click={confirmRunAnyway}>run anyway</button>
+          <button type="button" on:click={confirmLowerAndRun}>lower to ×10</button>
+        </div>
+      </div>
+    {:else if stopReason}
       <div class="runbanner" class:err={stopReason !== 'goal_met'} class:ok={stopReason === 'goal_met'}>
         <span>{stackStopLabel(stopReason)}</span>
         <button type="button" on:click={dismissRunError}>{@html ICONS.x}</button>
@@ -692,6 +735,7 @@
         {phase}
         onDryRun={(r) => (dryRunResult = r)}
         onClose={() => (runMenuOpen = false)}
+        onRunNow={runMain}
       />
     {/if}
   </div>
@@ -1220,6 +1264,55 @@
     background: rgba(0, 255, 157, 0.1);
     border-color: rgba(0, 255, 157, 0.4);
     color: rgba(150, 255, 210, 0.95);
+  }
+  /* Cost-estimate confirm (round 2, item 6) — non-blocking, two explicit
+     actions instead of a single dismiss X like the banners above. */
+  .costconfirm {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+    padding: 10px 12px;
+    margin-bottom: 9px;
+    border-radius: 8px;
+    background: rgba(255, 204, 0, 0.08);
+    border: 1px solid rgba(255, 204, 0, 0.35);
+    font-size: 11px;
+  }
+  .costconfirm .ccmsg {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: rgba(245, 245, 245, 0.8);
+  }
+  .costconfirm .ccmsg :global(svg) {
+    width: 13px;
+    height: 13px;
+    flex: 0 0 auto;
+    color: #ffcc00;
+  }
+  .costconfirm .ccmsg b {
+    color: #ffcc00;
+    font-weight: 700;
+  }
+  .costconfirm .ccactions {
+    display: flex;
+    gap: 8px;
+  }
+  .costconfirm .ccactions button {
+    flex: 1;
+    padding: 7px 10px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 204, 0, 0.4);
+    background: rgba(255, 204, 0, 0.12);
+    color: #ffcc00;
+    font-family: var(--font-mono, 'JetBrains Mono', monospace);
+    font-size: 10.5px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .costconfirm .ccactions button:hover {
+    background: rgba(255, 204, 0, 0.22);
   }
   .runsplit {
     width: clamp(220px, 62%, 420px);

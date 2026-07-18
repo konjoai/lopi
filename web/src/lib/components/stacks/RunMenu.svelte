@@ -25,6 +25,14 @@
   /** Bubbles a "Dry run" result up so the pane can show it — dry-running
    *  never executes anything, so there's nothing else to react to. */
   export let onDryRun: (result: DryRunResult) => void = () => {};
+  /** "Run now" routes through the dock's own `runMain`, not straight to
+   *  `runStack` — round 2's cost-estimate confirm (item 6) lives in
+   *  `runMain`'s gate, and this is the menu's only other path to the exact
+   *  same launch, so it has to go through the same gate rather than bypass
+   *  it. "Run once" is exempt: it always forces a single pass per card
+   *  regardless of the stack's ×N loop count, so the high-N warning has
+   *  nothing to warn about there. */
+  export let onRunNow: () => void;
 
   interface MenuItem {
     icon: string;
@@ -42,7 +50,7 @@
       icon: ICONS.play,
       name: 'Run now',
       sub: 'start now',
-      action: () => runStack(paneKey, 'run', defaults, agents)
+      action: () => onRunNow()
     },
     {
       icon: ICONS.check,
