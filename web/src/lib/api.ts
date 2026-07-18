@@ -639,9 +639,6 @@ export interface PoolStatsResponse {
 }
 
 export const getStats = () => request<PoolStatsResponse>('/api/stats');
-export const cacheStats = () => request<Record<string, unknown>>('/api/cache/stats');
-export const clearCache = () =>
-  request<{ deleted: number }>('/api/cache', { method: 'DELETE' });
 
 // The Debug-page clients — healthSummary/HealthSummary, queryAudit/AuditEvent,
 // listPatterns/PatternRow, qualityTrend/QualityRun — and the Tools registry

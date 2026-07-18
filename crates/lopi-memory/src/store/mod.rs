@@ -460,7 +460,6 @@ mod patterns;
 mod q_routing;
 mod quality;
 mod quota;
-mod result_cache;
 mod run_trace;
 mod schedule_chains;
 mod schedules;
@@ -482,7 +481,6 @@ pub use patterns::{jaccard_similarity, keyword_fingerprint, PatternRow};
 pub use q_routing::RoutingQValueRow;
 pub use quality::{QualityRunRecord, QualityRunRow};
 pub use quota::QuotaObservationRow;
-pub use result_cache::{compute_key as compute_cache_key, CacheStats, CachedResult};
 pub use run_trace::{LoopRunRow, RunAttemptRow, RunTurnAgg};
 pub use schedule_chains::{
     ChainRunRow, ChainStepInput, ChainStepRow, ScheduleChainInput, ScheduleChainRow,
