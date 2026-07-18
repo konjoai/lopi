@@ -92,7 +92,15 @@ pub fn decode_with(input: &str, opts: &DecoderOptions) -> Result<Value, ToonErro
         pos: 0,
         opts,
     };
-    p.parse_root()
+    let value = p.parse_root()?;
+    // A successful parse must consume every line. Trailing unconsumed lines
+    // mean the structure didn't line up with what the parser expected (e.g.
+    // a depth mismatch) — silently returning a truncated `Value` in that
+    // case hides real corruption rather than surfacing it as an error.
+    if let Some(line) = p.lines.get(p.pos) {
+        return Err(ToonError::Unexpected(line.lineno));
+    }
+    Ok(value)
 }
 
 // ── Preprocessing ────────────────────────────────────────────────────────────
