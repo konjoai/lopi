@@ -13,6 +13,8 @@
     guardActive,
     evalActive,
     configActive,
+    cardGoalActive,
+    cardPursuesGoal,
     guardSummary,
     evalsSummary,
     scheduleSummary,
@@ -55,6 +57,7 @@
   import MaxxPopover from './MaxxPopover.svelte';
   import GuardrailsPopover from './GuardrailsPopover.svelte';
   import EvalsPopover from './EvalsPopover.svelte';
+  import GoalPopover from './GoalPopover.svelte';
   import ConfigDrawer from './ConfigDrawer.svelte';
   import ProvenanceChips from './ProvenanceChips.svelte';
   import TemplatesMenu from './TemplatesMenu.svelte';
@@ -79,6 +82,7 @@
   let maxBtn: HTMLButtonElement | undefined;
   let guardBtn: HTMLButtonElement | undefined;
   let evalBtn: HTMLButtonElement | undefined;
+  let goalBtn: HTMLButtonElement | undefined;
   let cfgOpen = false;
   let summaryExpanded = false;
 
@@ -86,6 +90,7 @@
   $: maxId = `${card.id}:max`;
   $: guardId = `${card.id}:guard`;
   $: evalId = `${card.id}:eval`;
+  $: goalId = `${card.id}:goal`;
 
   // ── draft branch (Creation-Flow-1) ──────────────────────────────────────────
   // The pane's pre-commit draft renders through this same component with a
@@ -428,6 +433,8 @@
   $: guardsOn = guardActive(card.guardrails);
   $: evalsOn = evalActive(card);
   $: configOn = configActive(card, paneDefaults);
+  $: goalOn = cardGoalActive(card);
+  $: goalPursues = cardPursuesGoal(card);
   $: scheduleActive = card.scheduled && !scheduleGoverned;
   // The config drawer already shows every field inline while open — the
   // hide-inactive summary line only needs to cover the gap left when it's
@@ -756,6 +763,17 @@
       {@html ICONS.checkbox}<span class="cnt">{card.evals.length}</span>
     </button>
     <button
+      class="ib goal"
+      class:act={goalOn}
+      type="button"
+      bind:this={goalBtn}
+      on:click={() => togglePopover(goalId)}
+      aria-pressed={goalOn}
+      title="pursue this loop's own acceptance goal"
+    >
+      {@html ICONS.gauge}
+    </button>
+    <button
       class="ib max"
       class:act={card.maxx.enabled}
       bind:this={maxBtn}
@@ -846,6 +864,14 @@
 </Popover>
 <Popover id={evalId} anchor={evalBtn ?? null} kind="eval">
   <EvalsPopover evals={card.evals} onChange={(evals) => writeCard({ evals })} />
+</Popover>
+<Popover id={goalId} anchor={goalBtn ?? null} kind="goal">
+  <GoalPopover
+    scope="card"
+    pursue={card.goalPursuit.pursue}
+    pursues={goalPursues}
+    onTogglePursue={() => writeCard({ goalPursuit: { ...card.goalPursuit, pursue: !card.goalPursuit.pursue } })}
+  />
 </Popover>
 
 <style>
@@ -1321,6 +1347,11 @@
     background: rgba(255, 255, 255, 0.1);
   }
   .ib.eval.act {
+    color: #f5f5f5;
+    border-color: rgba(255, 255, 255, 0.5);
+    background: rgba(255, 255, 255, 0.1);
+  }
+  .ib.goal.act {
     color: #f5f5f5;
     border-color: rgba(255, 255, 255, 0.5);
     background: rgba(255, 255, 255, 0.1);

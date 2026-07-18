@@ -88,6 +88,17 @@ export function defaultGuardrails(): Guardrails {
   return { gate: false, gateCmd: '', until: false, untilCmd: '', onFail: 'stop', budget: 'auto' };
 }
 
+/** Round 2, item 9 — a card's goal facet. See `StackCard.goal`'s doc comment
+ *  for why this is narrower than the stack-level `StackGoal`. */
+export interface CardGoal {
+  pursue: boolean;
+}
+
+/** Freshly-initialized card goal facet — every card gets its own object. */
+export function defaultCardGoal(): CardGoal {
+  return { pursue: false };
+}
+
 /** The five preset schedule cadences a card can pick, plus a raw-cron escape
  *  hatch. Matches the settled mockup's frequency chip row. */
 export type CronFreq = 'every minute' | 'hourly' | 'daily' | 'weekly' | 'custom';
@@ -198,6 +209,18 @@ export interface StackCard {
   /** The failure message when `status === 'blocked'` — round 2, item 3.
    *  `undefined` otherwise (including a card that has never run). */
   blockReason?: string;
+  /** Round 2, item 9 — the card-scoped analogue of the stack's `StackGoal`
+   *  facet. Named `goalPursuit`, not `goal` — that name is already taken by
+   *  the card's own prompt text above. Deliberately narrower than
+   *  `StackGoal` (no `noProgressLimit`): that field drives the *stack*
+   *  sequencer's own re-run-the-whole-chain loop
+   *  (`stores/stackRun.ts::pursueGoal`), which has no per-card equivalent —
+   *  a single card's loop already retries against its own `evals`-compiled
+   *  acceptance via the real `max_iterations`/`acceptance` wire fields
+   *  (`cardToTaskPayload`), server-side, every time. `pursue` toggles
+   *  nothing new server-side; it's the discoverability fix itself — see
+   *  `cardPursuesGoal`'s doc comment for what "on" actually means. */
+  goalPursuit: CardGoal;
   scheduled: boolean;
   cron: CronConfig;
   /** MAXX — opportunistic backlog dispatch. Independent of `scheduled`/
@@ -611,6 +634,7 @@ export function buildCard(raw: string, explicitPreset?: PresetKey, repoOptions: 
     cron: defaultCron(),
     maxx: defaultMaxx(),
     guardrails: defaultGuardrails(),
+    goalPursuit: defaultCardGoal(),
     config: resolvedRepo ? { repo: resolvedRepo } : {}
   };
 }
@@ -697,6 +721,7 @@ function cardFromLoop(loop: { preset?: PresetKey; alias?: string; goal: string }
     cron: defaultCron(),
     maxx: defaultMaxx(),
     guardrails: defaultGuardrails(),
+    goalPursuit: defaultCardGoal(),
     config: {},
     tpl: tplName,
     tplKind: 'stack'
@@ -754,6 +779,7 @@ export function finalizeDraft(draft: StackCard, repoOptions: Option[] = []): Sta
     maxx: draft.maxx,
     maxxEntryId: draft.maxxEntryId,
     guardrails: draft.guardrails,
+    goalPursuit: draft.goalPursuit,
     config: { ...built.config, ...draft.config }
   };
 }
@@ -939,6 +965,25 @@ export function guardActive(g: Guardrails): boolean {
 
 export function evalActive(card: StackCard): boolean {
   return card.evals.length > 1;
+}
+
+/** Round 2, item 9 — the card goal facet reads "active" once the toggle is
+ *  on, mirroring `stackGoalActive`'s shape one scope down. */
+export function cardGoalActive(card: StackCard): boolean {
+  return card.goalPursuit.pursue;
+}
+
+/** True only when the toggle is on *and* the card carries real acceptance
+ *  beyond the baseline (`evalActive`) — the exact condition under which the
+ *  card's loop is honestly "pursuing" something: `evalsToAcceptance`
+ *  compiles those evals into the task's real `acceptance`, which the
+ *  backend's Plan→Implement→Test→Score→Retry loop already re-attempts up to
+ *  `maxIterations` times until it passes. `pursue` on with only the baseline
+ *  eval set is inert — there's nothing beyond "did it run" to retry against
+ *  — so `GoalPopover` surfaces that exact gap via its shared hint, same as
+ *  the stack-level `stackPursuesGoal`/`pursues` pairing. */
+export function cardPursuesGoal(card: StackCard): boolean {
+  return card.goalPursuit.pursue && evalActive(card);
 }
 
 export function configActive(card: StackCard, defaults: { model: string; effort: string; repo: string; branch: string; autonomy: string }): boolean {
