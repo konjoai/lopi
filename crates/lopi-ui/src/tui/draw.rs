@@ -180,16 +180,8 @@ pub(super) fn draw_agent_table(f: &mut Frame, area: Rect, state: &mut AppState) 
         .map(|a: &AgentRow| {
             let (status_label, status_color) = a.status_label();
             let id_short = a.id.0.to_string()[..8].to_string();
-            let goal = if a.goal.len() > 40 {
-                format!("{}…", &a.goal[..39])
-            } else {
-                a.goal.clone()
-            };
-            let branch = if a.branch.len() > 22 {
-                format!("…{}", &a.branch[a.branch.len() - 20..])
-            } else {
-                a.branch.clone()
-            };
+            let goal = truncate_goal(&a.goal);
+            let branch = truncate_branch(&a.branch);
             let score_pct = format!("{:.0}%", a.score * 100.0);
 
             Row::new([
@@ -247,6 +239,35 @@ pub(super) fn draw_agent_table(f: &mut Frame, area: Rect, state: &mut AppState) 
         .highlight_symbol("▶ ");
 
     f.render_stateful_widget(table, area, &mut state.table_state);
+}
+
+/// Truncate a goal string for the table's fixed-width column, without
+/// panicking when a multibyte character straddles the cutoff.
+fn truncate_goal(goal: &str) -> String {
+    if goal.len() > 40 {
+        format!("{}…", lopi_core::safe_truncate(goal, 39))
+    } else {
+        goal.to_string()
+    }
+}
+
+/// Truncate a branch name to its last 20 characters for the table's
+/// fixed-width column. Char-based (not byte-based) so it never panics on a
+/// multibyte branch name.
+fn truncate_branch(branch: &str) -> String {
+    if branch.chars().count() > 22 {
+        let tail: String = branch
+            .chars()
+            .rev()
+            .take(20)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect();
+        format!("…{tail}")
+    } else {
+        branch.to_string()
+    }
 }
 
 fn draw_log_panel(f: &mut Frame, area: Rect, state: &AppState) {
@@ -362,4 +383,51 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
             Constraint::Percentage((100 - percent_x) / 2),
         ])
         .split(layout[1])[1]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn truncate_goal_leaves_short_goals_untouched() {
+        assert_eq!(truncate_goal("fix the bug"), "fix the bug");
+    }
+
+    #[test]
+    fn truncate_goal_ascii_over_limit() {
+        let goal = "a".repeat(50);
+        let out = truncate_goal(&goal);
+        assert_eq!(out, format!("{}…", "a".repeat(39)));
+    }
+
+    /// A goal whose 39-byte cutoff lands mid-multibyte-char must not panic.
+    #[test]
+    fn truncate_goal_multibyte_boundary_does_not_panic() {
+        let goal = format!("{}🦀{}", "a".repeat(38), "b".repeat(20));
+        let out = truncate_goal(&goal);
+        assert!(out.ends_with('…'));
+    }
+
+    #[test]
+    fn truncate_branch_leaves_short_branches_untouched() {
+        assert_eq!(truncate_branch("lopi/abc-attempt-1"), "lopi/abc-attempt-1");
+    }
+
+    #[test]
+    fn truncate_branch_ascii_over_limit_keeps_last_20_chars() {
+        let branch = format!("lopi/{}-attempt-1", "x".repeat(30));
+        let out = truncate_branch(&branch);
+        assert!(out.starts_with('…'));
+        assert_eq!(out.chars().count(), 21); // "…" + 20 chars
+    }
+
+    /// A branch name with multibyte characters near the suffix boundary
+    /// must not panic.
+    #[test]
+    fn truncate_branch_multibyte_boundary_does_not_panic() {
+        let branch = format!("lopi/🦀-{}-attempt-1", "y".repeat(20));
+        let out = truncate_branch(&branch);
+        assert!(out.starts_with('…'));
+    }
 }

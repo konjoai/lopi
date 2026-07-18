@@ -209,19 +209,22 @@ fn verify_signature(secret: &[u8], body: &[u8], sig_header: &str) -> bool {
     use hmac::{Hmac, Mac};
     use sha2::Sha256;
 
-    let expected_hex = sig_header.strip_prefix("sha256=").unwrap_or("");
-    let Ok(expected_bytes) = hex::decode(expected_hex) else {
-        return false;
-    };
+    // Lowercased so casing differences in the header don't cause a spurious
+    // mismatch — `hex::decode` (the previous approach) was case-insensitive
+    // too, this preserves that.
+    let expected_hex = sig_header
+        .strip_prefix("sha256=")
+        .unwrap_or("")
+        .to_lowercase();
 
     let Ok(mut mac) = Hmac::<Sha256>::new_from_slice(secret) else {
         return false;
     };
     mac.update(body);
-    let computed = mac.finalize().into_bytes();
+    let computed_hex = hex::encode(mac.finalize().into_bytes());
 
     // Constant-time comparison to prevent timing attacks.
-    computed.as_slice() == expected_bytes.as_slice()
+    lopi_core::constant_time_eq(&computed_hex, &expected_hex)
 }
 
 #[cfg(test)]
@@ -299,6 +302,20 @@ mod tests {
         let secret = b"mysecret";
         let sig = make_signature(secret, b"original body");
         assert!(!verify_signature(secret, b"tampered body", &sig));
+    }
+
+    /// Regression test for the switch to `lopi_core::constant_time_eq`
+    /// (hex-string comparison): an uppercase-hex signature header must still
+    /// verify, matching the case-insensitive `hex::decode` behavior this
+    /// replaced.
+    #[test]
+    fn uppercase_hex_signature_still_passes() {
+        let secret = b"mysecret";
+        let body = b"hello github";
+        let sig = make_signature(secret, body).to_uppercase();
+        // `to_uppercase` also uppercases the "sha256=" prefix; rebuild it.
+        let sig = format!("sha256={}", sig.trim_start_matches("SHA256="));
+        assert!(verify_signature(secret, body, &sig));
     }
 
     #[test]

@@ -285,9 +285,27 @@ impl Encoder<'_> {
                 self.buf.push_str("-\n");
             }
             Value::Object(map) => {
-                // First field on the `- ` line; remainder indented one more.
-                let mut entries = map.iter();
-                let Some((fk, fv)) = entries.next() else {
+                // Choose which field goes on the `- ` line. An Object-valued
+                // field can't safely sit there when the item has any other
+                // field: the decoder parses the first field's nested body
+                // at exactly the same depth its siblings live at (unlike
+                // arrays, which are self-delimited by their `[N]:` header /
+                // `- ` item markers), so it can't tell where the object's
+                // own body ends and the next sibling begins — it silently
+                // swallows the sibling into the object. Prefer a
+                // scalar/array field for the marker line; an Object is only
+                // safe there when it's the item's one and only field (no
+                // sibling ⇒ no ambiguity).
+                //
+                // Known residual gap: if EVERY field of a multi-field item
+                // is itself an object (no scalar/array anywhere to anchor
+                // the `- ` line), this heuristic can't help — one object
+                // still ends up first and can swallow a sibling object. That
+                // shape is rare in practice; fixing it fully would require a
+                // decoder-side closing marker for nested objects, which is
+                // out of scope here.
+                let first = map.iter().find(|(_, v)| !matches!(v, Value::Object(_)));
+                let Some((fk, fv)) = first.or_else(|| map.iter().next()) else {
                     return;
                 };
                 let k0 = encode_key(fk);
@@ -319,9 +337,16 @@ impl Encoder<'_> {
                             }
                         }
                     }
-                    Value::Object(_) => {
+                    Value::Object(inner_map) => {
+                        // Header only — `k0` already sits on the `- ` line,
+                        // so writing the field via `write_field` here would
+                        // re-emit the key (it always writes `indent + key +
+                        // ":\n"` for objects) and land its children two
+                        // levels too deep. Write the header, then the
+                        // object's own fields at depth+1, matching how the
+                        // item's remaining (non-first) fields are indented.
                         writeln!(self.buf, "{k0}:").ok();
-                        self.write_field(fk, fv, depth + 2);
+                        self.write_object_fields(inner_map, depth + 1);
                     }
                     scalar => {
                         let v = encode_scalar_value(scalar, self.opts.delimiter);
@@ -330,7 +355,7 @@ impl Encoder<'_> {
                 }
                 // Remaining fields at depth+1.
                 let extra_indent = self.indent(depth + 1);
-                for (k, v) in entries {
+                for (k, v) in map.iter().filter(|(k, _)| *k != fk) {
                     let ek = encode_key(k);
                     match v {
                         Value::Array(_) => {

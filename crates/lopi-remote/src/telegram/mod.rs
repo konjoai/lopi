@@ -12,13 +12,15 @@ use tokio::sync::Mutex;
 
 pub mod budget;
 pub mod callbacks;
+pub mod draft;
 pub mod format;
 pub mod handlers;
 pub mod monitor;
 pub mod notify;
 
 use budget::PendingBudgetMap;
-use handlers::{message_handler, text_message_handler, DraftMap};
+use draft::DraftMap;
+use handlers::{message_handler, text_message_handler};
 
 /// Bundled bot dependencies injected into every command handler.
 ///

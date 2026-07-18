@@ -65,9 +65,17 @@ pub fn coverage_gaps<'a>(
         .collect()
 }
 
+/// Arguments passed to `cargo test`. Kept as a named constant (rather than
+/// inlined) so a regression to an invalid libtest flag — like the
+/// `--test-output immediate` flag this replaced, which isn't a real libtest
+/// option and made every spec item look like a coverage gap — is caught by
+/// `cargo_test_args_contains_no_invalid_libtest_flags` below instead of only
+/// surfacing at runtime.
+const CARGO_TEST_ARGS: [&str; 2] = ["test", "--no-fail-fast"];
+
 async fn run_cargo(root: &Path) -> Result<Vec<TestRunResult>> {
     let out = Command::new("cargo")
-        .args(["test", "--no-fail-fast", "--", "--test-output", "immediate"])
+        .args(CARGO_TEST_ARGS)
         .env("RUSTC_WRAPPER", "sccache")
         .current_dir(root)
         .output()
@@ -253,6 +261,18 @@ mod tests {
         // No test results at all — test_c was never run → gap
         let gaps = coverage_gaps(&items, &[]);
         assert_eq!(gaps.len(), 1);
+    }
+
+    /// Regression test for the invalid `--test-output immediate` libtest
+    /// flag that used to be passed here: it isn't a real `cargo test`/libtest
+    /// option, so `cargo test` exited non-zero, `parse_cargo_output` never
+    /// saw a real ok/FAILED line, and every spec item was reported as a
+    /// coverage gap. Pin the args list so a regression is caught here
+    /// instead of only surfacing as "every test looks like it's failing".
+    #[test]
+    fn cargo_test_args_contains_no_invalid_libtest_flags() {
+        assert_eq!(CARGO_TEST_ARGS, ["test", "--no-fail-fast"]);
+        assert!(!CARGO_TEST_ARGS.contains(&"--test-output"));
     }
 
     #[test]

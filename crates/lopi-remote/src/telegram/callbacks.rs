@@ -33,8 +33,11 @@ async fn dispatch_callback(data: &str, store: &MemoryStore, pool: &AgentPool) ->
     } else if data.starts_with("annotate:") {
         handle_annotate(data, store).await
     } else if data.starts_with("bump:") {
-        let goal = data.trim_start_matches("bump:");
-        format!("⬆️ priority bumped for: {goal}")
+        let task_id_prefix = data.trim_start_matches("bump:");
+        format!(
+            "⬆️ priority bumped for task {}",
+            &task_id_prefix[..task_id_prefix.len().min(8)]
+        )
     } else if data == "fleet_refresh" {
         "🔄 use /fleet to refresh the fleet view.".to_string()
     } else {

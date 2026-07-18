@@ -6,7 +6,7 @@
 use crate::api_client::AnthropicClient;
 use crate::claude::{MODEL_OPUS, MODEL_SONNET};
 use anyhow::{Context, Result};
-use lopi_core::{Rubric, VerifierVerdict};
+use lopi_core::{safe_truncate, Rubric, VerifierVerdict};
 use std::sync::Arc;
 use tokio::process::Command;
 
@@ -185,10 +185,10 @@ fn build_prompt(
     include_plan: bool,
 ) -> String {
     let criteria = rubric.criteria.join("\n- ");
-    let diff_excerpt = &diff[..diff.len().min(6_000)];
-    let test_excerpt = &test_output[..test_output.len().min(1_000)];
+    let diff_excerpt = safe_truncate(diff, 6_000);
+    let test_excerpt = safe_truncate(test_output, 1_000);
     let plan_section = if include_plan {
-        format!("PLAN (excerpt):\n{}\n\n", &plan[..plan.len().min(1_500)])
+        format!("PLAN (excerpt):\n{}\n\n", safe_truncate(plan, 1_500))
     } else {
         String::new()
     };
@@ -314,6 +314,22 @@ mod tests {
             true, // include plan (legacy)
         );
         assert!(prompt.contains("PLAN (excerpt):\nMAKER REASONING here"));
+    }
+
+    /// A diff/plan/test-output whose excerpt cutoff lands mid-multibyte-char
+    /// must not panic ("byte index N is not a char boundary").
+    #[test]
+    fn build_prompt_does_not_panic_on_multibyte_boundary() {
+        // "🦀" is 4 bytes; pad so the excerpt cutoffs (6000/1500/1000) fall
+        // squarely inside the emoji rather than before or after it.
+        let diff = format!("{}🦀{}", "d".repeat(5_999), "e".repeat(50));
+        let plan = format!("{}🦀{}", "p".repeat(1_499), "q".repeat(50));
+        let test_output = format!("{}🦀{}", "t".repeat(999), "u".repeat(50));
+        let prompt = build_prompt("goal", &plan, &diff, &test_output, &sample_rubric(), true);
+        // Must not panic, and must not contain a truncated (invalid) partial
+        // emoji — Rust's `String` type guarantees well-formed UTF-8, so if
+        // this compiles and runs it already proves no mid-char slice occurred.
+        assert!(prompt.contains("GOAL:\ngoal"));
     }
 
     #[test]

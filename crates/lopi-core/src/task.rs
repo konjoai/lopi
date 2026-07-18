@@ -183,13 +183,6 @@ pub struct Task {
     /// Override repository path for this task. Pool default is used when None.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub repo_path: Option<PathBuf>,
-    /// P2 — capabilities the pool's dispatcher must satisfy before this task
-    /// can be picked up. Empty (default)
-    /// means "any agent can run this". Compared against
-    /// `AgentPool::register_capabilities` tags via
-    /// [`crate::Task::capabilities_satisfied_by`].
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub required_capabilities: Vec<String>,
     /// P1.4 — Optional JSON Schema the agent's structured output must
     /// satisfy. Stored as raw `serde_json::Value` so callers can supply
     /// any schema shape; the validator in `lopi_core::schema` enforces a
@@ -387,7 +380,6 @@ impl Task {
             repo_path: None,
             output_schema: None,
             tools: Vec::new(),
-            required_capabilities: Vec::new(),
             rubric: None,
             topology: None,
             require_plan_approval: false,
@@ -425,17 +417,6 @@ impl Task {
         vars: &BTreeMap<String, String>,
     ) -> Result<Self, crate::template::TemplateError> {
         crate::template::resolve(template, vars).map(Self::new)
-    }
-
-    /// True when every entry in `required_capabilities` appears in
-    /// `provided`. Empty requirements vacuously satisfy.
-    ///
-    /// Used by `AgentPool::submit` to filter candidate agents before dispatch.
-    #[must_use]
-    pub fn capabilities_satisfied_by(&self, provided: &[String]) -> bool {
-        self.required_capabilities
-            .iter()
-            .all(|req| provided.iter().any(|p| p == req))
     }
 
     /// Resolve this task's [`Deliverable`]: the explicit `deliverable` field

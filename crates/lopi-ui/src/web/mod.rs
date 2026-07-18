@@ -218,12 +218,6 @@ pub fn build_app(state: AppState) -> Router {
         .route("/api/quality/trend", get(get_quality_trend))
         .route("/api/routing/q-values", get(get_q_values))
         .route("/api/agents/:id/dag", get(get_agent_dag))
-        .route("/api/cache/stats", get(cache_stats_handler))
-        .route("/api/cache", axum::routing::delete(clear_cache_handler))
-        .route(
-            "/api/cache/agent/:agent",
-            axum::routing::delete(invalidate_agent_cache_handler),
-        )
         .route(
             "/api/tasks/:id/stream",
             get(task_stream_handlers::stream_task),
@@ -459,7 +453,6 @@ pub async fn serve_with_repo(
 
 mod agent_rate_handlers;
 mod api_middleware;
-mod cache_handlers;
 mod config_handlers;
 mod handlers;
 mod loop_handlers;
@@ -476,7 +469,6 @@ mod schedule_handlers;
 mod static_assets;
 mod task_stream_handlers;
 use api_middleware::{auth_middleware, rate_limit_middleware};
-use cache_handlers::{cache_stats_handler, clear_cache_handler, invalidate_agent_cache_handler};
 use handlers::{
     approve_plan, cancel_task, checkpoint_agent, create_task, get_spec, get_stats, get_task,
     health, list_tasks, reject_plan,

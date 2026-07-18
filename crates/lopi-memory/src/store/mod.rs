@@ -460,13 +460,11 @@ mod patterns;
 mod q_routing;
 mod quality;
 mod quota;
-mod result_cache;
 mod run_trace;
 mod schedule_chains;
 mod schedules;
 mod stability;
 mod task_logs;
-mod trust_ledger;
 mod verifier;
 // Re-export helpers for tests (tests.rs uses `use super::*`).
 pub use audit::{AuditInput, AuditQuery, AuditRow};
@@ -482,7 +480,6 @@ pub use patterns::{jaccard_similarity, keyword_fingerprint, PatternRow};
 pub use q_routing::RoutingQValueRow;
 pub use quality::{QualityRunRecord, QualityRunRow};
 pub use quota::QuotaObservationRow;
-pub use result_cache::{compute_key as compute_cache_key, CacheStats, CachedResult};
 pub use run_trace::{LoopRunRow, RunAttemptRow, RunTurnAgg};
 pub use schedule_chains::{
     ChainRunRow, ChainStepInput, ChainStepRow, ScheduleChainInput, ScheduleChainRow,
@@ -490,7 +487,6 @@ pub use schedule_chains::{
 pub use schedules::{ScheduleInput, ScheduleRow, ScheduleRunRow};
 pub use stability::{StabilityEntry, StabilityRecord};
 pub use task_logs::{TaskLogRow, MAX_PER_TASK as TASK_LOG_MAX_PER_TASK};
-pub use trust_ledger::TrustLedgerRow;
 pub use verifier::VerifierVerdictRow;
 
 #[cfg(test)]

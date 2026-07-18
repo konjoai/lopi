@@ -54,16 +54,7 @@ impl AgentPool {
             // chrono + thiserror via lopi-core, but not serde_json, so
             // staying string-only keeps the dep graph thin. The shape is
             // fixed enough that escape risk is bounded.
-            let caps = task
-                .required_capabilities
-                .iter()
-                .map(|c| format!("\"{}\"", c.replace('"', "\\\"")))
-                .collect::<Vec<_>>()
-                .join(",");
-            let payload = format!(
-                "{{\"priority\":\"{:?}\",\"required_capabilities\":[{caps}]}}",
-                task.priority,
-            );
+            let payload = format!("{{\"priority\":\"{:?}\"}}", task.priority);
             let _ = store
                 .record_audit(
                     &AuditInput::new("task.dispatch")

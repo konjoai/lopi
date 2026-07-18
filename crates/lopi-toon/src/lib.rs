@@ -180,6 +180,54 @@ mod tests {
         assert_eq!(rt(v.clone()), v);
     }
 
+    /// Regression test: a list-item whose object-map iteration happens to
+    /// put an object-valued field first used to corrupt the round trip —
+    /// the encoder inlined the object onto the `- ` line, doubling its key
+    /// and landing its children at the wrong depth, which the decoder then
+    /// silently swallowed a sibling field into (or dropped entirely).
+    #[test]
+    fn list_item_with_object_first_field_roundtrips() {
+        let v = json!({
+            "items": [
+                {"meta": {"a": 1}, "name": "x"}
+            ]
+        });
+        assert_eq!(rt(v.clone()), v);
+    }
+
+    /// The item's only field happening to be an object is unambiguous (no
+    /// sibling field to collide with) and must keep working.
+    #[test]
+    fn list_item_with_only_an_object_field_roundtrips() {
+        let v = json!({"items": [{"meta": {"a": 1}}]});
+        assert_eq!(rt(v.clone()), v);
+    }
+
+    /// A trailing line the root parse didn't consume (e.g. a stray `- ` list
+    /// item after plain object fields, which doesn't belong to the object)
+    /// used to be silently dropped, returning a truncated `Value` with no
+    /// error. It must now surface as `ToonError::Unexpected`.
+    #[test]
+    fn unconsumed_trailing_line_is_an_error_not_silent_truncation() {
+        let input = "a: 1\n- b\n";
+        let err = decode(input).expect_err("trailing unconsumed line must error");
+        assert!(matches!(err, ToonError::Unexpected(_)));
+    }
+
+    /// Multiple object-valued fields on one item, with a scalar field
+    /// available to take the `- ` line — every object field ends up in the
+    /// "remaining fields" path, which already handles nested objects
+    /// correctly.
+    #[test]
+    fn list_item_with_multiple_object_fields_roundtrips() {
+        let v = json!({
+            "items": [
+                {"meta": {"a": 1}, "extra": {"b": 2}, "name": "x"}
+            ]
+        });
+        assert_eq!(rt(v.clone()), v);
+    }
+
     // ── Full spec example ─────────────────────────────────────────────────────
 
     /// The TOON spec's canonical worked example — shared by the round-trip

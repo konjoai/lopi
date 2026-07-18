@@ -84,46 +84,60 @@ impl TaskQueue {
     /// removed from the queue, reducing redundant agent runs for near-duplicate goals.
     pub async fn pop(&self) -> Task {
         loop {
-            {
-                let mut heap = self.inner.heap.lock().await;
-                if let Some(entry) = heap.pop() {
-                    if let Some((_, mut task)) = self.inner.tasks.remove(&entry.id) {
-                        let goal_key = task.goal.trim().to_lowercase();
-                        self.inner.seen_goals.remove(&goal_key);
-
-                        // Keyword fingerprint of the dequeued task.
-                        let primary_kws = keyword_set(&task.goal);
-
-                        // Collect IDs of queued tasks with > 50% keyword overlap.
-                        let mut to_merge: Vec<TaskId> = vec![];
-                        for item in &self.inner.tasks {
-                            let overlap = keyword_overlap(&primary_kws, &keyword_set(&item.goal));
-                            if overlap > 0.5 {
-                                to_merge.push(*item.key());
-                            }
-                        }
-
-                        // Merge constraints from overlapping tasks, then remove them.
-                        for id in to_merge {
-                            if let Some((_, merged)) = self.inner.tasks.remove(&id) {
-                                let mk = merged.goal.trim().to_lowercase();
-                                self.inner.seen_goals.remove(&mk);
-                                // Inject the merged task's constraints as additional context.
-                                for c in merged.constraints {
-                                    if !task.constraints.contains(&c) {
-                                        task.constraints.push(c);
-                                    }
-                                }
-                            }
-                            // Remove from heap lazily — orphaned entries are skipped on next pop.
-                        }
-
-                        return task;
-                    }
-                }
+            if let Some(task) = self.try_pop_one().await {
+                return task;
             }
             self.inner.notify.notified().await;
         }
+    }
+
+    /// Drain the heap for a single real task, transparently skipping entries
+    /// left behind by a prior merge (their `Task` was already removed from
+    /// `self.inner.tasks`, but a `BinaryHeap` can't cheaply drop an
+    /// arbitrary element by id, so the entry is purged lazily here instead).
+    ///
+    /// Returns `None` only once the heap itself is empty — never on an
+    /// orphaned entry — so a run of orphans can't make the caller wait on
+    /// `notify` while a real task still sits deeper in the heap.
+    async fn try_pop_one(&self) -> Option<Task> {
+        let mut heap = self.inner.heap.lock().await;
+        while let Some(entry) = heap.pop() {
+            let Some((_, mut task)) = self.inner.tasks.remove(&entry.id) else {
+                continue; // orphaned by an earlier merge — keep draining
+            };
+            let goal_key = task.goal.trim().to_lowercase();
+            self.inner.seen_goals.remove(&goal_key);
+
+            // Keyword fingerprint of the dequeued task.
+            let primary_kws = keyword_set(&task.goal);
+
+            // Collect IDs of queued tasks with > 50% keyword overlap.
+            let mut to_merge: Vec<TaskId> = vec![];
+            for item in &self.inner.tasks {
+                let overlap = keyword_overlap(&primary_kws, &keyword_set(&item.goal));
+                if overlap > 0.5 {
+                    to_merge.push(*item.key());
+                }
+            }
+
+            // Merge constraints from overlapping tasks, then remove them.
+            for id in to_merge {
+                if let Some((_, merged)) = self.inner.tasks.remove(&id) {
+                    let mk = merged.goal.trim().to_lowercase();
+                    self.inner.seen_goals.remove(&mk);
+                    // Inject the merged task's constraints as additional context.
+                    for c in merged.constraints {
+                        if !task.constraints.contains(&c) {
+                            task.constraints.push(c);
+                        }
+                    }
+                }
+                // Their heap entries are now orphaned too — skipped above on a future pop.
+            }
+
+            return Some(task);
+        }
+        None
     }
 
     /// Number of tasks currently waiting in the queue.
@@ -182,6 +196,7 @@ fn keyword_overlap(
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used)]
 mod tests {
     use super::*;
     use lopi_core::Priority;
@@ -324,6 +339,56 @@ mod tests {
             .filter(|c| c.as_str() == "no new deps")
             .count();
         assert_eq!(count, 1, "duplicate constraint should be deduplicated");
+    }
+
+    /// Regression test for a liveness bug: merging siblings into a dequeued
+    /// task leaves their heap entries orphaned (their `Task` is gone from
+    /// `self.inner.tasks`, but a `BinaryHeap` can't cheaply drop an
+    /// arbitrary element). A `pop()` that lands on an orphan used to fall
+    /// through to `notify.notified().await` — identical to the
+    /// truly-empty-queue case — instead of retrying the heap. Since
+    /// `Notify` coalesces every `notify_one()` call between two
+    /// `notified().await`s into a single stored permit, two or more
+    /// consecutive orphans could exhaust that one permit and hang the
+    /// worker forever, even with a real task still sitting deeper in the
+    /// heap. This must now resolve immediately instead of hanging.
+    #[tokio::test]
+    async fn pop_skips_multiple_orphaned_entries_without_hanging() {
+        let q = TaskQueue::new();
+        // t2 and t3 each overlap >50% with t1's keywords, so popping t1
+        // merges both of them away, orphaning two heap entries in a row.
+        q.push(make_task(
+            "refactor authentication middleware logging",
+            Priority::Normal,
+        ))
+        .await;
+        q.push(make_task(
+            "refactor authentication middleware database",
+            Priority::Normal,
+        ))
+        .await;
+        q.push(make_task(
+            "refactor authentication middleware handler",
+            Priority::Normal,
+        ))
+        .await;
+        // A real, keyword-disjoint task sitting deeper in the heap.
+        q.push(make_task(
+            "implement telemetry metrics dashboard",
+            Priority::Normal,
+        ))
+        .await;
+
+        let first = q.pop().await;
+        assert!(first.goal.contains("logging"));
+        assert_eq!(q.len(), 1, "both overlapping siblings were merged away");
+
+        // Before the fix, this could hang forever skipping the two
+        // now-orphaned heap entries left behind by the merge above.
+        let second = tokio::time::timeout(std::time::Duration::from_secs(2), q.pop())
+            .await
+            .expect("pop() must not hang on orphaned heap entries");
+        assert!(second.goal.contains("telemetry"));
     }
 
     #[tokio::test]

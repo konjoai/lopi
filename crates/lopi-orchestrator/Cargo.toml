@@ -13,7 +13,6 @@ lopi-agent.workspace = true
 lopi-git.workspace = true
 lopi-skill.workspace = true
 lopi-memory.workspace = true
-lopi-ratelimit.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 tokio-cron-scheduler.workspace = true
