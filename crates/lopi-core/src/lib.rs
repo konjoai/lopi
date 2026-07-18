@@ -57,6 +57,8 @@ pub mod task;
 /// Literal-string prompt templates with named `{hole}` markers, resolved
 /// against a variable map at enqueue time (Prompt Templates, Sprint 1).
 pub mod template;
+/// UTF-8-safe string truncation for excerpting arbitrary text.
+pub mod text;
 /// Customer tier classification.
 pub mod tier;
 /// Orchestration topology hints (Sprint T).
@@ -87,6 +89,7 @@ pub use self_prompt::SelfPromptStrategy;
 pub use stop_reason::StopReason;
 pub use task::{Priority, Rubric, Task, TaskId, TaskSource, TaskStatus, VerifierVerdict};
 pub use template::{resolve as resolve_template, TemplateError};
+pub use text::safe_truncate;
 pub use tier::CustomerTier;
 
 #[cfg(test)]

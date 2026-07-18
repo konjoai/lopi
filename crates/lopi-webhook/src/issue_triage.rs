@@ -116,7 +116,7 @@ pub async fn classify_issue(
 
 pub(crate) fn build_triage_prompt(title: &str, body: &str) -> String {
     let body_preview = if body.len() > 2000 {
-        format!("{}…[truncated]", &body[..2000])
+        format!("{}…[truncated]", lopi_core::safe_truncate(body, 2000))
     } else {
         body.to_string()
     };
@@ -300,5 +300,14 @@ mod tests {
         let prompt = build_triage_prompt("Test title", &long_body);
         assert!(prompt.contains("truncated"));
         assert!(prompt.len() < 4000);
+    }
+
+    /// A body whose 2000-byte cutoff lands mid-multibyte-char must not
+    /// panic ("byte index 2000 is not a char boundary").
+    #[test]
+    fn build_prompt_truncates_long_body_with_multibyte_boundary() {
+        let long_body = format!("{}🦀{}", "x".repeat(1999), "y".repeat(500));
+        let prompt = build_triage_prompt("Test title", &long_body);
+        assert!(prompt.contains("truncated"));
     }
 }
