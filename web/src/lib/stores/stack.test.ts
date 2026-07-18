@@ -78,6 +78,12 @@ import {
   commandValueAutocomplete,
   detectPendingCommand,
   evalSuiteOptions,
+  tokenizeGoalChips,
+  loopCountTier,
+  estimateRunCost,
+  cardGoalActive,
+  cardPursuesGoal,
+  insertPaneAt,
   type PromptTemplate,
   type StackTemplate,
   type StackCard,
@@ -1295,6 +1301,116 @@ eqIs(
   eqIs(t.name, 'bench it', 'prompt template takes the given name');
   eqIs(t.preset, 'benchmark', 'prompt template captures the preset');
   eqIs(t.goal, 'measure throughput', 'prompt template captures the goal');
+}
+
+// ── round 2 ─────────────────────────────────────────────────────────────────
+{
+  // tokenizeGoalChips (item 2) — plain text only, no resolved tokens yet.
+  const segs = tokenizeGoalChips('fix the thing', CARD_COMMANDS);
+  eq(segs, [{ text: 'fix the thing' }], 'plain text with no resolved tokens is one plain segment');
+}
+{
+  // An in-progress prefix never chips — only a complete, word-bounded token.
+  const segs = tokenizeGoalChips(':res', CARD_COMMANDS);
+  eq(segs, [{ text: ':res' }], 'a partial alias prefix stays plain text, not a chip');
+}
+{
+  const segs = tokenizeGoalChips(':research fix the bug', CARD_COMMANDS);
+  eq(
+    segs,
+    [{ text: ':research', chipKind: 'alias' }, { text: ' fix the bug' }],
+    'a resolved leading alias chips, the rest stays plain'
+  );
+}
+{
+  const segs = tokenizeGoalChips('fix the bug @konjoai/lopi please', CARD_COMMANDS);
+  eq(
+    segs,
+    [{ text: 'fix the bug ' }, { text: '@konjoai/lopi', chipKind: 'repo' }, { text: ' please' }],
+    'a resolved @owner/repo token chips in place, mid-string'
+  );
+}
+{
+  const segs = tokenizeGoalChips('do it /model/opus now', CARD_COMMANDS);
+  eq(
+    segs,
+    [{ text: 'do it ' }, { text: '/model/opus', chipKind: 'command' }, { text: ' now' }],
+    'a resolved /command/value token chips (non-effort command → command kind)'
+  );
+}
+{
+  const segs = tokenizeGoalChips('go /effort/high', CARD_COMMANDS);
+  eq(
+    segs,
+    [{ text: 'go ' }, { text: '/effort/high', chipKind: 'effort' }],
+    '/effort/value gets its own kind, distinct from other commands'
+  );
+}
+{
+  const segs = tokenizeGoalChips('loop it x5 please', CARD_COMMANDS);
+  eq(
+    segs,
+    [{ text: 'loop it ' }, { text: 'x5', chipKind: 'loop' }, { text: ' please' }],
+    'a bare ×N/xN loop count chips'
+  );
+}
+{
+  // Non-value-picker commands (guard/schedule/maxx) are stripped from the
+  // text the moment they're picked (selectCommand's existing behavior) —
+  // they should never appear as a literal `/guard` word to chip.
+  const segs = tokenizeGoalChips('please /guard the loop', CARD_COMMANDS);
+  eq(segs, [{ text: 'please /guard the loop' }], 'a non-value-picker command word never chips');
+}
+{
+  // STACK_COMMANDS carries `loop`/`goal` instead of card-only `maxx` —
+  // confirm the tokenizer is genuinely parameterized per scope, not
+  // hardcoded to CARD_COMMANDS.
+  const segs = tokenizeGoalChips('/loop/5', STACK_COMMANDS);
+  eqIs(segs[0].chipKind, 'command', 'stack-scope /loop/value resolves using STACK_COMMANDS, not CARD_COMMANDS');
+}
+{
+  eqIs(tokenizeGoalChips('', CARD_COMMANDS).length, 1, 'empty text still yields one (empty) segment');
+  eqIs(tokenizeGoalChips('', CARD_COMMANDS)[0].text, '', 'the empty segment carries no chip kind');
+}
+
+{
+  // loopCountTier / estimateRunCost (items 5, 6)
+  eqIs(loopCountTier(1), 'orange', 'low N is the orange baseline');
+  eqIs(loopCountTier(10), 'orange', 'N=10 is still orange');
+  eqIs(loopCountTier(11), 'yellow', 'N=11 crosses into yellow');
+  eqIs(loopCountTier(24), 'yellow', 'N=24 is still yellow');
+  eqIs(loopCountTier(25), 'red', 'N=25 crosses into red');
+  eqIs(loopCountTier(Infinity), 'red', 'unbounded always reads red');
+
+  const est = estimateRunCost('claude-sonnet-5', 10);
+  ok(est.low > 0 && est.low < est.high, 'estimateRunCost returns a real low < high band');
+  const opusEst = estimateRunCost('claude-opus-4-8', 10);
+  ok(opusEst.low > est.low, 'opus estimates higher than sonnet for the same N');
+}
+
+{
+  // cardGoalActive / cardPursuesGoal (item 9)
+  const c = buildCard('"do the thing"');
+  eqIs(cardGoalActive(c), false, 'a fresh card has goalPursuit off');
+  eqIs(cardPursuesGoal(c), false, 'off ⇒ never pursues, regardless of evals');
+
+  const pursuingNoEvals = { ...c, goalPursuit: { pursue: true } };
+  eqIs(cardGoalActive(pursuingNoEvals), true, 'toggle on ⇒ active');
+  eqIs(cardPursuesGoal(pursuingNoEvals), false, 'on with only the baseline eval ⇒ not actually pursuing (inert)');
+
+  const preset = applyPreset(c, 'implement');
+  const pursuingWithEvals = { ...preset, goalPursuit: { pursue: true } };
+  eqIs(cardPursuesGoal(pursuingWithEvals), true, 'on with real evals beyond baseline ⇒ pursuing');
+}
+
+{
+  // insertPaneAt (item 1 — undo toast restores a deleted stack)
+  const s1 = makeBlankStack('one');
+  const s2 = makeBlankStack('two');
+  const s3 = makeBlankStack('three');
+  const restored = insertPaneAt([s1, s3], 1, s2);
+  eq(restored.map((p) => p.title), ['one', 'two', 'three'], 'restores the pane at its exact prior index');
+  eq(insertPaneAt([s1], 99, s2).map((p) => p.title), ['one', 'two'], 'an out-of-range index clamps to the end');
 }
 
 namedSummary('stack');

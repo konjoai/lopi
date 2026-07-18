@@ -13,6 +13,8 @@
     guardActive,
     evalActive,
     configActive,
+    cardGoalActive,
+    cardPursuesGoal,
     guardSummary,
     evalsSummary,
     scheduleSummary,
@@ -20,9 +22,11 @@
     configSummary,
     cardIterationsLabel,
     stepCardIterations,
+    loopCountTier,
     draftIsHot,
     duplicateInPane,
     removeFromPane,
+    insertCardIntoPane,
     updateCardInPane,
     updateDraftInPane,
     commitDraft,
@@ -37,6 +41,7 @@
     evalSuiteOptions,
     applySuite,
     EVAL_SUITES,
+    tokenizeGoalChips,
     type CommandValueSuggestion
   } from '$lib/stores/stack';
   import { repoAutocomplete, repoLabelForPath } from '$lib/stores/repoMenu';
@@ -49,15 +54,18 @@
   import { ICONS, PRESET_ACCENT } from './icons';
   import { dragging } from './dnd';
   import { autoGrow } from './autoGrow';
+  import { showToast } from '$lib/stores/toastStore';
   import Popover, { togglePopover } from './Popover.svelte';
   import SchedulePopover from './SchedulePopover.svelte';
   import MaxxPopover from './MaxxPopover.svelte';
   import GuardrailsPopover from './GuardrailsPopover.svelte';
   import EvalsPopover from './EvalsPopover.svelte';
+  import GoalPopover from './GoalPopover.svelte';
   import ConfigDrawer from './ConfigDrawer.svelte';
   import ProvenanceChips from './ProvenanceChips.svelte';
   import TemplatesMenu from './TemplatesMenu.svelte';
   import AutocompleteSuggest from './AutocompleteSuggest.svelte';
+  import ChipInput from './ChipInput.svelte';
   import RunStatsPill from './RunStatsPill.svelte';
 
   export let card: StackCardT;
@@ -78,6 +86,7 @@
   let maxBtn: HTMLButtonElement | undefined;
   let guardBtn: HTMLButtonElement | undefined;
   let evalBtn: HTMLButtonElement | undefined;
+  let goalBtn: HTMLButtonElement | undefined;
   let cfgOpen = false;
   let summaryExpanded = false;
 
@@ -85,6 +94,7 @@
   $: maxId = `${card.id}:max`;
   $: guardId = `${card.id}:guard`;
   $: evalId = `${card.id}:eval`;
+  $: goalId = `${card.id}:goal`;
 
   // ── draft branch (Creation-Flow-1) ──────────────────────────────────────────
   // The pane's pre-commit draft renders through this same component with a
@@ -93,7 +103,13 @@
   // dup/drag/delete cluster for a single `+ add` commit button.
   $: isDraft = card.status === 'draft';
   $: hot = isDraft && draftIsHot(card);
-  let goalInput: HTMLTextAreaElement | undefined;
+  // Round 2, item 2 — the draft's own goal field is a `ChipInput`, not a
+  // plain `<textarea>`; `goalInput` is now that contenteditable `<div>`
+  // (bound out via `bind:rootEl`), not a native textarea element. Every
+  // existing `goalInput?.focus()` / `anchor={goalInput}` call site below
+  // keeps working unchanged — both `.focus()` and `AutocompleteSuggest`'s
+  // `anchor` prop work identically against any `HTMLElement`.
+  let goalInput: HTMLDivElement | undefined;
 
   /** Route a card patch to the right store op: the draft edits the pane's
    *  `draft`; a committed card edits itself in `pane.cards`. */
@@ -109,8 +125,11 @@
     writeCard({ goal: (e.currentTarget as HTMLTextAreaElement).value });
   }
 
-  function onGoalInput(e: Event): void {
-    writeCard({ goal: (e.currentTarget as HTMLTextAreaElement).value });
+  /** `ChipInput`'s `onInput` hands back the plain serialized string directly
+   *  (no `Event`/`currentTarget` to unwrap — see `ChipInput.svelte`'s doc
+   *  comment on why it owns its own DOM serialization). */
+  function onGoalInput(value: string): void {
+    writeCard({ goal: value });
     aliasDismissed = false;
     repoDismissed = false;
     cmdDismissed = false;
@@ -133,6 +152,12 @@
   let goalFocused = false;
   let aliasActiveIndex = 0;
   let aliasDismissed = false;
+
+  // Round 2, item 2 — resolved-token chip segments for the draft's ChipInput.
+  // Pure derivation off `card.goal`; see `tokenizeGoalChips`'s doc comment in
+  // stores/stack.ts for why this is a distinct concern from the autocomplete
+  // matching just below.
+  $: goalSegments = tokenizeGoalChips(card.goal, CARD_COMMANDS);
 
   $: aliasMatches = aliasAutocomplete(card.goal);
   $: showAliasSuggest = isDraft && goalFocused && !aliasDismissed && aliasMatches.length > 0;
@@ -427,6 +452,8 @@
   $: guardsOn = guardActive(card.guardrails);
   $: evalsOn = evalActive(card);
   $: configOn = configActive(card, paneDefaults);
+  $: goalOn = cardGoalActive(card);
+  $: goalPursues = cardPursuesGoal(card);
   $: scheduleActive = card.scheduled && !scheduleGoverned;
   // The config drawer already shows every field inline while open — the
   // hide-inactive summary line only needs to cover the gap left when it's
@@ -438,6 +465,10 @@
   // iteration (status === 'running') and an actual repeat configured — an
   // off card (single pass) never shows the running-loop chrome even mid-run.
   $: loopRunning = card.status === 'running' && !!card.iteration && card.iteration.total > 1;
+
+  // ×N loop-count color ramp (round 2, item 5) — `null` while off, since the
+  // off pill keeps its own neutral `.off` styling untouched by the ramp.
+  $: iterTier = card.maxIterations === 0 ? null : loopCountTier(card.maxIterations);
 
   // Live elapsed/token/cost readout while this card's task is actually
   // running — `AgentState` already ticks `elapsedMs` and accumulates
@@ -472,8 +503,15 @@
   function dupCard() {
     duplicateInPane(paneKey, card.id);
   }
+  // Round 2, item 1 — instant delete, no confirm modal, but a toast holds a
+  // real undo for a few seconds. `card`/`index` are captured synchronously
+  // (before the store update below), so the restore lands the exact same
+  // object back at its exact prior position, not just re-appended.
   function delCard() {
+    const snapshot = card;
+    const at = index;
     removeFromPane(paneKey, card.id);
+    showToast('Card deleted', { label: 'Undo', onClick: () => insertCardIntoPane(paneKey, at, snapshot) });
   }
 
   // ── drag to reorder (within this pane only) ─────────────────────────────────
@@ -560,24 +598,23 @@
       <TemplatesMenu {card} {paneKey} labeled />
       <ProvenanceChips alias={card.alias} tpl={card.tpl} tplKind={card.tplKind} repoLabel={cardRepoLabel} />
     </div>
-    <!-- Goal on its own full-width line, a `<textarea>` (not `<input>`) with
-         `use:autoGrow` so a long prompt wraps and stays fully visible
-         instead of scrolling off sideways in a single line. Still honors
-         `:alias @repo ×N` on commit. -->
+    <!-- Goal on its own full-width line — round 2, item 2: a `ChipInput`
+         (contenteditable, atomic resolved-token chips), not a plain
+         `<textarea>`, so a resolved `:alias`/`@repo`/`/model/opus`/`×N`
+         renders inline in place rather than in a separate row. Still honors
+         `:alias @repo ×N` on commit either way — nothing about the
+         underlying `card.goal` string changed. -->
     <div class="goalwrap">
-      <textarea
-        class="goalinput"
-        bind:this={goalInput}
+      <ChipInput
+        bind:rootEl={goalInput}
         value={card.goal}
-        on:input={onGoalInput}
-        on:keydown={onGoalKeydown}
-        on:focus={() => (goalFocused = true)}
-        on:blur={() => (goalFocused = false)}
-        use:autoGrow
-        rows="1"
+        segments={goalSegments}
+        onInput={onGoalInput}
+        onKeydown={onGoalKeydown}
+        onFocus={() => (goalFocused = true)}
+        onBlur={() => (goalFocused = false)}
         placeholder="describe the prompt or goal..."
-        spellcheck="false"
-      ></textarea>
+      />
       {#if showAliasSuggest}
         <AutocompleteSuggest
           anchor={goalInput}
@@ -625,6 +662,10 @@
         <span class="md">"{card.goal}"</span>
       {/if}
     </div>
+  {/if}
+
+  {#if card.status === 'blocked' && card.blockReason}
+    <div class="blockreason">{@html ICONS.x}{card.blockReason}</div>
   {/if}
 
   {#if card.status === 'running' && card.iteration}
@@ -690,6 +731,8 @@
       class="iterpill"
       class:off={card.maxIterations === 0}
       class:running={loopRunning}
+      class:tier-yellow={iterTier === 'yellow'}
+      class:tier-red={iterTier === 'red'}
       title={loopRunning
         ? `iteration ${card.iteration?.current}/${card.iteration?.total}`
         : card.maxIterations === 0
@@ -743,6 +786,17 @@
       title="evals"
     >
       {@html ICONS.checkbox}<span class="cnt">{card.evals.length}</span>
+    </button>
+    <button
+      class="ib goal"
+      class:act={goalOn}
+      type="button"
+      bind:this={goalBtn}
+      on:click={() => togglePopover(goalId)}
+      aria-pressed={goalOn}
+      title="pursue this loop's own acceptance goal"
+    >
+      {@html ICONS.gauge}
     </button>
     <button
       class="ib max"
@@ -836,15 +890,26 @@
 <Popover id={evalId} anchor={evalBtn ?? null} kind="eval">
   <EvalsPopover evals={card.evals} onChange={(evals) => writeCard({ evals })} />
 </Popover>
+<Popover id={goalId} anchor={goalBtn ?? null} kind="goal">
+  <GoalPopover
+    scope="card"
+    pursue={card.goalPursuit.pursue}
+    pursues={goalPursues}
+    onTogglePursue={() => writeCard({ goalPursuit: { ...card.goalPursuit, pursue: !card.goalPursuit.pursue } })}
+  />
+</Popover>
 
 <style>
   .pc {
     position: relative;
     background: var(--konjo-card, #0e1214);
-    border: 1px solid rgba(255, 255, 255, 0.11);
+    border: 1px solid rgba(255, 255, 255, 0.14);
     border-radius: 9px;
     padding: 13px 14px;
     font-family: var(--font-mono, 'JetBrains Mono', monospace);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.08),
+      0 1px 2px rgba(0, 0, 0, 0.4);
     transition:
       box-shadow 0.12s,
       border-color 0.12s;
@@ -858,6 +923,15 @@
   }
   .pc.done {
     border-color: color-mix(in srgb, var(--orb) 35%, transparent);
+  }
+  /* Blocked/error (round 2, item 3) — rose, static (no edgeflash; a blocked
+     run is terminal, not actively in motion). Fixed rose rather than
+     `--orb`-derived like `.pc.done`/`.queued`/`.running`: `card.status` is
+     the pane's own durable state, while `--orb` is a live lookup keyed by
+     `taskId` into the `agents` store — one that goes stale/empty on reload
+     long before the card itself stops reading `'blocked'`. */
+  .pc.blocked {
+    border-color: rgba(255, 0, 102, 0.45);
   }
   /* Draft card (Creation-Flow-1): dashed until it carries content, then a
      teal "hot" border signalling it's ready to commit. */
@@ -884,29 +958,24 @@
     position: relative;
     margin-top: 10px;
   }
-  .goalinput {
-    display: block;
-    width: 100%;
-    box-sizing: border-box;
-    resize: none;
-    overflow: hidden;
+  /* `ChipInput`'s root is rendered by a child component, so it never carries
+     this component's own scoping hash — `:global()` scoped through
+     `.goalwrap` (which DOES belong to this template) is how a parent styles
+     into a child's internal DOM in Svelte, and keeps this from leaking to
+     every other `ChipInput` instance on the page (e.g. the stack dock's
+     cmdbar, which wants its own violet-focus/smaller-font treatment). */
+  :global(.goalwrap .chipinput) {
     background: rgba(255, 255, 255, 0.02);
     border: 1px solid rgba(255, 255, 255, 0.11);
     border-radius: 7px;
     padding: 9px 11px;
     color: var(--konjo-paper, #f5f5f5);
-    font-family: var(--font-mono, 'JetBrains Mono', monospace);
     font-size: 14px;
-    line-height: 1.5;
-    outline: none;
     transition:
       border-color 0.12s,
       background 0.12s;
   }
-  .goalinput::placeholder {
-    color: rgba(245, 245, 245, 0.28);
-  }
-  .goalinput:focus {
+  :global(.goalwrap .chipinput:focus) {
     border-color: rgba(0, 255, 212, 0.4);
     background: rgba(0, 255, 212, 0.03);
   }
@@ -1056,6 +1125,31 @@
   .runtag.done {
     color: var(--konjo-jade, #00ff9d);
     border-color: rgba(0, 255, 157, 0.45);
+  }
+  .runtag.blocked {
+    color: var(--konjo-rose, #ff0066);
+    border-color: rgba(255, 0, 102, 0.5);
+  }
+  /* Blocked-run inline reason (round 2, item 3) — only rendered when the
+     card actually carries a failure message, immediately under the goal
+     text. */
+  .blockreason {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 9px;
+    padding: 8px 10px;
+    border-radius: 7px;
+    background: rgba(255, 0, 102, 0.08);
+    color: #ffaacb;
+    font-size: 10px;
+    line-height: 1.4;
+  }
+  .blockreason :global(svg) {
+    width: 12px;
+    height: 12px;
+    flex: 0 0 auto;
+    color: var(--konjo-rose, #ff0066);
   }
   .spec {
     font-size: 14px;
@@ -1277,6 +1371,11 @@
     border-color: rgba(255, 255, 255, 0.5);
     background: rgba(255, 255, 255, 0.1);
   }
+  .ib.goal.act {
+    color: #f5f5f5;
+    border-color: rgba(255, 255, 255, 0.5);
+    background: rgba(255, 255, 255, 0.1);
+  }
   .ib.config.act {
     color: #f5f5f5;
     border-color: rgba(255, 255, 255, 0.5);
@@ -1359,6 +1458,32 @@
   }
   .iterpill.off .sb:hover {
     background: rgba(245, 245, 245, 0.08);
+  }
+  /* ×N color ramp (round 2, item 5) — untagged pill stays the pre-ramp
+     orange baseline; these two classes are the only overrides needed. */
+  .iterpill.tier-yellow {
+    border-color: rgba(255, 204, 0, 0.5);
+    background: rgba(255, 204, 0, 0.08);
+    color: #ffcc00;
+  }
+  .iterpill.tier-yellow .sb {
+    border-left-color: rgba(255, 204, 0, 0.35);
+    color: #ffcc00;
+  }
+  .iterpill.tier-yellow .sb:hover {
+    background: rgba(255, 204, 0, 0.2);
+  }
+  .iterpill.tier-red {
+    border-color: rgba(255, 0, 102, 0.5);
+    background: rgba(255, 0, 102, 0.1);
+    color: #ff0066;
+  }
+  .iterpill.tier-red .sb {
+    border-left-color: rgba(255, 0, 102, 0.35);
+    color: #ff0066;
+  }
+  .iterpill.tier-red .sb:hover {
+    background: rgba(255, 0, 102, 0.2);
   }
   /* Running-loop chrome (card.status === 'running' with a real repeat
      configured): a slow glow on the pill itself, distinct from the card's own

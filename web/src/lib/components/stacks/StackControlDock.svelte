@@ -18,8 +18,10 @@
 -->
 <script lang="ts">
   import { tick } from 'svelte';
+  import { get } from 'svelte/store';
   import {
     type StackPaneState,
+    panes,
     STACK_CONTROL_MODE,
     stackGuardActive,
     stackEvalActive,
@@ -31,10 +33,12 @@
     stackGoalSummary,
     maxIterationsLabel,
     stepMaxIterations,
+    loopCountTier,
     cronHuman,
     updateStackConfig,
     duplicateStackInPanes,
     deleteStackFromPanes,
+    insertPaneIntoPanes,
     reorderStacksInPanes,
     STACK_COMMANDS,
     commandAutocomplete,
@@ -46,6 +50,9 @@
     aliasAutocomplete,
     resolvePresetAlias,
     PRESET_CATALOG,
+    HIGH_N_CONFIRM_THRESHOLD,
+    estimateRunCost,
+    tokenizeGoalChips,
     type DryRunResult,
     type CommandValueSuggestion
   } from '$lib/stores/stack';
@@ -58,6 +65,7 @@
     type RunPhase
   } from '$lib/stores/stackRun';
   import { stackStopLabel } from '$lib/stores/stackGoal';
+  import { showToast } from '$lib/stores/toastStore';
   import { agents } from '$lib/stores/agents';
   import { labelFor, type Option } from '$lib/stores/controls';
   import { modelCatalog, modelOptionsFrom, ensureModelCatalog } from '$lib/stores/modelCatalog';
@@ -67,7 +75,6 @@
   import { repoAutocomplete, repoLabelForPath } from '$lib/stores/repoMenu';
   import { draggingPane, armedPaneKey } from './dnd';
   import { ICONS } from './icons';
-  import { autoGrow } from './autoGrow';
   import Popover, { togglePopover } from './Popover.svelte';
   import SchedulePopover from './SchedulePopover.svelte';
   import GuardrailsPopover from './GuardrailsPopover.svelte';
@@ -77,6 +84,7 @@
   import StackTemplatesMenu from './StackTemplatesMenu.svelte';
   import RunMenu from './RunMenu.svelte';
   import AutocompleteSuggest from './AutocompleteSuggest.svelte';
+  import ChipInput from './ChipInput.svelte';
 
   export let pane: StackPaneState;
   /** This pane's index in `$panes` — the drag-drop source/target identity,
@@ -125,7 +133,17 @@
   // hardcoded to "model X · every loop inherits" with no repo term at all.
   $: repoLabel = config.defaults.repo ? repoLabelForPath(config.defaults.repo, repoOptions) : '';
   $: loopLabel = config.loopCount <= 1 ? maxIterationsLabel(config.loopCount) : '×' + maxIterationsLabel(config.loopCount);
+  // ×N loop-count color ramp (round 2, item 5) — `null` while off (`1`); the
+  // infinite sentinel (`0`) has no ceiling at all, so it always reads `red`.
+  $: loopTier = config.loopCount === 1 ? null : loopCountTier(config.loopCount === 0 ? Infinity : config.loopCount);
   $: dockSummary = `${scheduledOn ? cronHuman(config.cron) + ' · ' : ''}loop ${loopLabel} · ${modelLabel}`;
+
+  // Round 2, item 4 — live running cost total: summed straight from the
+  // `agents` store (already reactive per-agent `cost`, the same field the
+  // Overview COST column reads) for every card in this pane that has ever
+  // launched a task. Not gated on `status === 'running'` — a finished card's
+  // final cost still counts toward what this stack actually spent.
+  $: runningTotal = pane.cards.reduce((sum, c) => sum + (c.taskId ? ($agents.get(c.taskId)?.cost ?? 0) : 0), 0);
 
   function stepLoop(delta: number) {
     updateStackConfig(pane.key, { loopCount: stepMaxIterations(config.loopCount, delta) });
@@ -142,12 +160,17 @@
   // dock's own icon buttons make.
   let cmdText = '';
   let cmdBarFocused = false;
-  let cmdBarInput: HTMLTextAreaElement | undefined;
+  // Round 2, item 2 — the bar is a `ChipInput` (contenteditable), not a
+  // plain `<textarea>`; see `StackCard.svelte`'s identical `goalInput`
+  // rename comment for why every existing `cmdBarInput?.focus()`/
+  // `anchor={cmdBarInput}` call site below keeps working unchanged.
+  let cmdBarInput: HTMLDivElement | undefined;
   let cmdActiveIndex = 0;
   let cmdDismissed = false;
   let pendingCommand: string | null = null;
 
   $: void ensureBranches(config.defaults.repo);
+  $: cmdBarSegments = tokenizeGoalChips(cmdText, STACK_COMMANDS);
   $: aliasMatches = aliasAutocomplete(cmdText);
   $: repoMatches = repoAutocomplete(cmdText, repoOptions);
 
@@ -318,8 +341,10 @@
     void tick().then(() => cmdBarInput?.focus());
   }
 
-  function onCmdBarInput(e: Event): void {
-    cmdText = (e.currentTarget as HTMLTextAreaElement).value;
+  /** `ChipInput`'s `onInput` hands back the plain serialized string directly
+   *  — see `StackCard.svelte`'s identical `onGoalInput` doc comment. */
+  function onCmdBarInput(value: string): void {
+    cmdText = value;
     cmdDismissed = false;
   }
 
@@ -403,14 +428,39 @@
             : 'run stack';
   $: runIcon = phase === 'running' ? ICONS.pause : ICONS.play;
 
+  // ── cost-estimate confirm above a high loop count (round 2, item 6) ─────────
+  // A non-blocking inline row, not a modal: hitting Run with a high ×N holds
+  // the launch for one extra click ("run anyway" / "lower to ×N") instead of
+  // dispatching immediately. `0` (the infinite sentinel) always qualifies —
+  // it has no ceiling, which is exactly the case most worth a pause.
+  let costConfirmOpen = false;
+  $: costEst = config.loopCount > 0 ? estimateRunCost(config.defaults.model, config.loopCount) : null;
+
+  function launchRun() {
+    dryRunResult = null;
+    runStack(pane.key, 'run', config.defaults, agents);
+  }
+
+  function confirmRunAnyway() {
+    costConfirmOpen = false;
+    launchRun();
+  }
+
+  function confirmLowerAndRun() {
+    costConfirmOpen = false;
+    updateStackConfig(pane.key, { loopCount: 10 });
+    launchRun();
+  }
+
   function runMain() {
     if (phase === 'running') {
       pauseStack(pane.key);
     } else if (phase === 'paused') {
       resumeStack(pane.key, config.defaults, agents);
+    } else if (config.loopCount === 0 || config.loopCount >= HIGH_N_CONFIRM_THRESHOLD) {
+      costConfirmOpen = true;
     } else {
-      dryRunResult = null;
-      runStack(pane.key, 'run', config.defaults, agents);
+      launchRun();
     }
     runMenuOpen = false;
   }
@@ -427,13 +477,24 @@
   function dupStack() {
     duplicateStackInPanes(pane.key);
   }
+  // Round 2, item 1 — instant delete, no confirm modal, but a toast holds a
+  // real undo for a few seconds, restoring the whole pane (cards + config)
+  // at its exact prior position. `pane`/`index` are captured synchronously
+  // before the store updates below.
   function delStack() {
+    // `deleteStack` (stack.ts) refuses to remove the last remaining pane —
+    // mirror that guard here so the toast never claims a delete that didn't
+    // actually happen.
+    if (get(panes).length <= 1) return;
+    const snapshot = pane;
+    const at = index;
     runs.update((m) => {
       const next = new Map(m);
       next.delete(pane.key);
       return next;
     });
     deleteStackFromPanes(pane.key);
+    showToast('Stack deleted', { label: 'Undo', onClick: () => insertPaneIntoPanes(at, snapshot) });
   }
   // ── drop target: the dock's own root, before/after by cursor Y — mirrors
   //    StackCard.svelte's within-pane card drag exactly, one level up. ──────
@@ -480,6 +541,9 @@
   {#if STACK_CONTROL_MODE === 'dock'}
     <div class="dockhead">
       <span class="stag">stack</span>
+      {#if runningTotal > 0}
+        <span class="costtotal"><span class="costlbl">running total:</span> ${runningTotal.toFixed(2)}</span>
+      {/if}
       <span class="dsum">{dockSummary}</span>
       <button class="exp" type="button" on:click={() => (dockOpen = !dockOpen)} aria-expanded={dockOpen} title="stack controls">
         {@html ICONS.chevup}
@@ -495,19 +559,16 @@
   <div class="dockbody">
     <div class="inner">
       <div class="cmdbarwrap">
-        <textarea
-          class="cmdbar"
-          bind:this={cmdBarInput}
+        <ChipInput
+          bind:rootEl={cmdBarInput}
           value={cmdText}
-          on:input={onCmdBarInput}
-          on:keydown={onCmdBarKeydown}
-          on:focus={() => (cmdBarFocused = true)}
-          on:blur={() => (cmdBarFocused = false)}
-          use:autoGrow
-          rows="1"
+          segments={cmdBarSegments}
+          onInput={onCmdBarInput}
+          onKeydown={onCmdBarKeydown}
+          onFocus={() => (cmdBarFocused = true)}
+          onBlur={() => (cmdBarFocused = false)}
           placeholder="stack command..."
-          spellcheck="false"
-        ></textarea>
+        />
         {#if showAliasBarSuggest}
           <AutocompleteSuggest
             anchor={cmdBarInput}
@@ -579,6 +640,8 @@
           class="iterpill"
           class:off={config.loopCount === 1}
           class:running={stackLoopRunning}
+          class:tier-yellow={loopTier === 'yellow'}
+          class:tier-red={loopTier === 'red'}
           title={stackLoopRunning
             ? `chain-run ${stackIterLabel}`
             : config.loopCount === 1
@@ -638,7 +701,23 @@
   </div>
 
   <div class="dockrun">
-    {#if stopReason}
+    {#if costConfirmOpen}
+      <div class="costconfirm">
+        <span class="ccmsg">
+          {@html ICONS.zap}
+          {#if config.loopCount === 0}
+            <b>×∞</b> on <b>{modelLabel}</b> — unbounded, no cost ceiling to estimate
+          {:else if costEst}
+            <b>×{config.loopCount}</b> on <b>{modelLabel}</b> ≈ <b>${costEst.low.toFixed(2)}–${costEst.high.toFixed(2)}</b>
+            estimated (approximate)
+          {/if}
+        </span>
+        <div class="ccactions">
+          <button type="button" on:click={confirmRunAnyway}>run anyway</button>
+          <button type="button" on:click={confirmLowerAndRun}>lower to ×10</button>
+        </div>
+      </div>
+    {:else if stopReason}
       <div class="runbanner" class:err={stopReason !== 'goal_met'} class:ok={stopReason === 'goal_met'}>
         <span>{stackStopLabel(stopReason)}</span>
         <button type="button" on:click={dismissRunError}>{@html ICONS.x}</button>
@@ -676,6 +755,7 @@
         {phase}
         onDryRun={(r) => (dryRunResult = r)}
         onClose={() => (runMenuOpen = false)}
+        onRunNow={runMain}
       />
     {/if}
   </div>
@@ -732,8 +812,11 @@
     position: relative;
     flex: 0 0 auto;
     background: linear-gradient(180deg, rgba(150, 120, 230, 0.22), rgba(120, 92, 205, 0.14));
+    border: 1px solid rgba(183, 155, 255, 0.4);
     border-top: 1.5px solid rgba(183, 155, 255, 0.55);
-    box-shadow: 0 -10px 30px rgba(120, 90, 200, 0.14);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.1),
+      0 -10px 30px rgba(120, 90, 200, 0.14);
     padding: 14px 16px 16px;
     font-family: var(--font-mono, 'JetBrains Mono', monospace);
   }
@@ -777,6 +860,18 @@
     align-items: center;
     gap: 11px;
     padding: 13px 0 2px;
+  }
+  .dockhead .costtotal {
+    font-size: 11px;
+    color: var(--konjo-paper, #f5f5f5);
+    font-weight: 700;
+    white-space: nowrap;
+    flex: 0 0 auto;
+  }
+  .dockhead .costtotal .costlbl {
+    color: rgba(245, 245, 245, 0.6);
+    font-weight: 400;
+    margin-right: 3px;
   }
   .dockhead .dsum {
     font-size: 10px;
@@ -825,29 +920,22 @@
   .cmdbarwrap {
     position: relative;
   }
-  .cmdbar {
-    display: block;
-    width: 100%;
-    box-sizing: border-box;
-    resize: none;
-    overflow: hidden;
+  /* `ChipInput`'s root is rendered by a child component — `:global()` scoped
+     through `.cmdbarwrap` (this component's own template) is how a parent
+     reaches into a child's internal DOM in Svelte; see the identical note in
+     `StackCard.svelte`'s `.goalwrap .chipinput` rule. */
+  :global(.cmdbarwrap .chipinput) {
     background: rgba(255, 255, 255, 0.02);
     border: 1px solid rgba(255, 255, 255, 0.11);
     border-radius: 7px;
     padding: 8px 10px;
     color: var(--konjo-paper, #f5f5f5);
-    font-family: var(--font-mono, 'JetBrains Mono', monospace);
     font-size: 12px;
-    line-height: 1.5;
-    outline: none;
     transition:
       border-color 0.12s,
       background 0.12s;
   }
-  .cmdbar::placeholder {
-    color: rgba(245, 245, 245, 0.24);
-  }
-  .cmdbar:focus {
+  :global(.cmdbarwrap .chipinput:focus) {
     border-color: rgba(183, 155, 255, 0.5);
     background: rgba(183, 155, 255, 0.05);
   }
@@ -1094,6 +1182,32 @@
   .iterpill.off .sb:hover {
     background: rgba(245, 245, 245, 0.08);
   }
+  /* ×N color ramp (round 2, item 5) — mirrors StackCard.svelte's identical
+     ramp, scoped to the stack pill instead of a card's. */
+  .iterpill.tier-yellow {
+    border-color: rgba(255, 204, 0, 0.5);
+    background: rgba(255, 204, 0, 0.08);
+    color: #ffcc00;
+  }
+  .iterpill.tier-yellow .sb {
+    border-left-color: rgba(255, 204, 0, 0.4);
+    color: #ffcc00;
+  }
+  .iterpill.tier-yellow .sb:hover {
+    background: rgba(255, 204, 0, 0.24);
+  }
+  .iterpill.tier-red {
+    border-color: rgba(255, 0, 102, 0.5);
+    background: rgba(255, 0, 102, 0.1);
+    color: #ff0066;
+  }
+  .iterpill.tier-red .sb {
+    border-left-color: rgba(255, 0, 102, 0.4);
+    color: #ff0066;
+  }
+  .iterpill.tier-red .sb:hover {
+    background: rgba(255, 0, 102, 0.24);
+  }
   /* Running-loop chrome — mirrors `StackCard.svelte`'s identical pill glow +
      spinner, scoped to the whole stack instead of one card. */
   .iterpill.running {
@@ -1163,6 +1277,55 @@
     background: rgba(0, 255, 157, 0.1);
     border-color: rgba(0, 255, 157, 0.4);
     color: rgba(150, 255, 210, 0.95);
+  }
+  /* Cost-estimate confirm (round 2, item 6) — non-blocking, two explicit
+     actions instead of a single dismiss X like the banners above. */
+  .costconfirm {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+    padding: 10px 12px;
+    margin-bottom: 9px;
+    border-radius: 8px;
+    background: rgba(255, 204, 0, 0.08);
+    border: 1px solid rgba(255, 204, 0, 0.35);
+    font-size: 11px;
+  }
+  .costconfirm .ccmsg {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: rgba(245, 245, 245, 0.8);
+  }
+  .costconfirm .ccmsg :global(svg) {
+    width: 13px;
+    height: 13px;
+    flex: 0 0 auto;
+    color: #ffcc00;
+  }
+  .costconfirm .ccmsg b {
+    color: #ffcc00;
+    font-weight: 700;
+  }
+  .costconfirm .ccactions {
+    display: flex;
+    gap: 8px;
+  }
+  .costconfirm .ccactions button {
+    flex: 1;
+    padding: 7px 10px;
+    border-radius: 6px;
+    border: 1px solid rgba(255, 204, 0, 0.4);
+    background: rgba(255, 204, 0, 0.12);
+    color: #ffcc00;
+    font-family: var(--font-mono, 'JetBrains Mono', monospace);
+    font-size: 10.5px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .costconfirm .ccactions button:hover {
+    background: rgba(255, 204, 0, 0.22);
   }
   .runsplit {
     width: clamp(220px, 62%, 420px);
