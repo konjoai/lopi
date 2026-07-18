@@ -1,6 +1,6 @@
 //! Command handlers — task management, draft, help, memory, auth.
 use anyhow::Result;
-use lopi_core::{Priority, ScheduleEntry, Task, TaskSource};
+use lopi_core::{Priority, ScheduleEntry, Task, TaskId, TaskSource};
 use lopi_memory::MemoryStore;
 use lopi_orchestrator::{AgentPool, TaskQueue};
 use std::collections::HashMap;
@@ -190,6 +190,7 @@ async fn handle_queue(
     };
     t.priority = priority;
     let budget_note = take_pending_budget(pending_budgets, msg.chat.id.0, &mut t).await;
+    let task_id = t.id;
     let id_short = short_id(&t.id.to_string()).to_string();
     let dup = queue.push(t).await;
     if let Some(existing) = dup {
@@ -205,7 +206,7 @@ async fn handle_queue(
     }
     let badge = priority_badge(priority);
     let pos = queue.len();
-    let kb = build_priority_keyboard(priority, &goal);
+    let kb = build_priority_keyboard(priority, task_id);
     bot.send_message(
         msg.chat.id,
         format!(
@@ -217,19 +218,24 @@ async fn handle_queue(
     Ok(())
 }
 
-fn build_priority_keyboard(priority: Priority, goal: &str) -> InlineKeyboardMarkup {
+/// Build the cancel/bump inline keyboard for a just-queued task.
+///
+/// Callback data embeds the task's UUID, not its goal text: goal text can be
+/// arbitrarily long (Telegram caps `callback_data` at 64 bytes) and isn't
+/// what `handle_cancel` parses back out anyway — it expects a `TaskId`.
+fn build_priority_keyboard(priority: Priority, task_id: TaskId) -> InlineKeyboardMarkup {
     match priority {
         Priority::Critical => InlineKeyboardMarkup::new([[InlineKeyboardButton::callback(
             "🗑 Cancel task",
-            format!("cancel:{goal}"),
+            format!("cancel:{task_id}"),
         )]]),
         Priority::High => InlineKeyboardMarkup::new([[
-            InlineKeyboardButton::callback("🚨 Bump to CRITICAL", format!("bump:{goal}")),
-            InlineKeyboardButton::callback("🗑 Cancel task", format!("cancel:{goal}")),
+            InlineKeyboardButton::callback("🚨 Bump to CRITICAL", format!("bump:{task_id}")),
+            InlineKeyboardButton::callback("🗑 Cancel task", format!("cancel:{task_id}")),
         ]]),
         _ => InlineKeyboardMarkup::new([[
-            InlineKeyboardButton::callback("⬆️ Bump to URGENT", format!("bump:{goal}")),
-            InlineKeyboardButton::callback("🗑 Cancel task", format!("cancel:{goal}")),
+            InlineKeyboardButton::callback("⬆️ Bump to URGENT", format!("bump:{task_id}")),
+            InlineKeyboardButton::callback("🗑 Cancel task", format!("cancel:{task_id}")),
         ]]),
     }
 }
@@ -456,5 +462,41 @@ mod tests {
         let unauthorized_id = 99999_i64;
         // Verify auth check logic used in message_handler
         assert!(!allowed.is_empty() && !allowed.contains(&unauthorized_id));
+    }
+
+    fn callback_data_strings(kb: &InlineKeyboardMarkup) -> Vec<String> {
+        use teloxide::types::InlineKeyboardButtonKind;
+        kb.inline_keyboard
+            .iter()
+            .flatten()
+            .map(|b| match &b.kind {
+                InlineKeyboardButtonKind::CallbackData(s) => s.clone(),
+                _ => panic!("expected CallbackData button"),
+            })
+            .collect()
+    }
+
+    /// Regression test: callback data used to embed the raw goal text, which
+    /// (a) `handle_cancel`'s `Uuid::from_str` could never parse, and (b)
+    /// blew past Telegram's 64-byte `callback_data` cap for any goal over
+    /// ~57 bytes. It must now embed the task's UUID instead, regardless of
+    /// how long the goal is.
+    #[test]
+    fn priority_keyboard_callback_data_uses_task_id_not_goal() {
+        use std::str::FromStr;
+
+        let task_id = TaskId::new();
+        let long_goal_kb = build_priority_keyboard(Priority::High, task_id);
+        for data in callback_data_strings(&long_goal_kb) {
+            assert!(
+                data.len() < 64,
+                "callback_data must stay under Telegram's 64-byte cap: {data:?}"
+            );
+            let payload = data
+                .strip_prefix("cancel:")
+                .or_else(|| data.strip_prefix("bump:"))
+                .expect("expected cancel: or bump: prefix");
+            uuid::Uuid::from_str(payload).expect("payload must be a parseable task UUID");
+        }
     }
 }
