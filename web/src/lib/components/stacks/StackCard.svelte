@@ -26,6 +26,7 @@
     draftIsHot,
     duplicateInPane,
     removeFromPane,
+    insertCardIntoPane,
     updateCardInPane,
     updateDraftInPane,
     commitDraft,
@@ -52,6 +53,7 @@
   import { ICONS, PRESET_ACCENT } from './icons';
   import { dragging } from './dnd';
   import { autoGrow } from './autoGrow';
+  import { showToast } from '$lib/stores/toastStore';
   import Popover, { togglePopover } from './Popover.svelte';
   import SchedulePopover from './SchedulePopover.svelte';
   import MaxxPopover from './MaxxPopover.svelte';
@@ -484,8 +486,15 @@
   function dupCard() {
     duplicateInPane(paneKey, card.id);
   }
+  // Round 2, item 1 — instant delete, no confirm modal, but a toast holds a
+  // real undo for a few seconds. `card`/`index` are captured synchronously
+  // (before the store update below), so the restore lands the exact same
+  // object back at its exact prior position, not just re-appended.
   function delCard() {
+    const snapshot = card;
+    const at = index;
     removeFromPane(paneKey, card.id);
+    showToast('Card deleted', { label: 'Undo', onClick: () => insertCardIntoPane(paneKey, at, snapshot) });
   }
 
   // ── drag to reorder (within this pane only) ─────────────────────────────────

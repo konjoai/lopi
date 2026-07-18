@@ -1794,6 +1794,17 @@ export function moveStackBeforeOrAfter(
   return reorderStacks(state, fromIndex, to);
 }
 
+/** Insert a whole pane back into the array at `index`, clamped into range —
+ *  the stack-level twin of `insertCardAt`. Round 2, item 1: the undo action
+ *  on a deleted stack's toast restores the exact pane object (same key,
+ *  cards, config) at the position it occupied, not just appends it. */
+export function insertPaneAt(state: StackPaneState[], index: number, pane: StackPaneState): StackPaneState[] {
+  const next = [...state];
+  const clamped = Math.max(0, Math.min(index, next.length));
+  next.splice(clamped, 0, pane);
+  return next;
+}
+
 /** Drop a stack by key. Refuses to delete the last remaining pane — there
  *  is no "add a new stack" affordance anywhere in the app yet (panes are
  *  only ever created via `duplicateStack`), so emptying the array would
@@ -1901,6 +1912,9 @@ export function reorderStacksInPanes(fromIndex: number, targetIndex: number, bef
 }
 export function deleteStackFromPanes(key: string): void {
   panes.update((state) => deleteStack(state, key));
+}
+export function insertPaneIntoPanes(index: number, pane: StackPaneState): void {
+  panes.update((state) => insertPaneAt(state, index, pane));
 }
 export function addStackPane(): void {
   panes.update((state) => addStack(state));

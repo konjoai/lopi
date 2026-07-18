@@ -18,8 +18,10 @@
 -->
 <script lang="ts">
   import { tick } from 'svelte';
+  import { get } from 'svelte/store';
   import {
     type StackPaneState,
+    panes,
     STACK_CONTROL_MODE,
     stackGuardActive,
     stackEvalActive,
@@ -36,6 +38,7 @@
     updateStackConfig,
     duplicateStackInPanes,
     deleteStackFromPanes,
+    insertPaneIntoPanes,
     reorderStacksInPanes,
     STACK_COMMANDS,
     commandAutocomplete,
@@ -61,6 +64,7 @@
     type RunPhase
   } from '$lib/stores/stackRun';
   import { stackStopLabel } from '$lib/stores/stackGoal';
+  import { showToast } from '$lib/stores/toastStore';
   import { agents } from '$lib/stores/agents';
   import { labelFor, type Option } from '$lib/stores/controls';
   import { modelCatalog, modelOptionsFrom, ensureModelCatalog } from '$lib/stores/modelCatalog';
@@ -465,13 +469,24 @@
   function dupStack() {
     duplicateStackInPanes(pane.key);
   }
+  // Round 2, item 1 — instant delete, no confirm modal, but a toast holds a
+  // real undo for a few seconds, restoring the whole pane (cards + config)
+  // at its exact prior position. `pane`/`index` are captured synchronously
+  // before the store updates below.
   function delStack() {
+    // `deleteStack` (stack.ts) refuses to remove the last remaining pane —
+    // mirror that guard here so the toast never claims a delete that didn't
+    // actually happen.
+    if (get(panes).length <= 1) return;
+    const snapshot = pane;
+    const at = index;
     runs.update((m) => {
       const next = new Map(m);
       next.delete(pane.key);
       return next;
     });
     deleteStackFromPanes(pane.key);
+    showToast('Stack deleted', { label: 'Undo', onClick: () => insertPaneIntoPanes(at, snapshot) });
   }
   // ── drop target: the dock's own root, before/after by cursor Y — mirrors
   //    StackCard.svelte's within-pane card drag exactly, one level up. ──────
