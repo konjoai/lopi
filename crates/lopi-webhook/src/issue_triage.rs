@@ -102,16 +102,31 @@ pub async fn classify_issue(
     }
 
     let prompt = build_triage_prompt(title, body);
-    let (text, _usage) = client
+    let (text, usage) = match client
         .stream_plan(model, TRIAGE_SYSTEM_PROMPT, &prompt, None, |_| {})
         .await
-        .context("triage API call failed")?;
+    {
+        Ok(result) => result,
+        Err(e) => {
+            if let Some(b) = breaker {
+                b.record_failure().await;
+            }
+            return Err(e).context("triage API call failed");
+        }
+    };
 
     if let Some(b) = breaker {
         b.record_success().await;
+        b.record_cost(usage.estimated_cost(model)).await;
     }
 
-    parse_triage_response(&text).context("failed to parse triage response")
+    let Some(triage) = parse_triage_response(&text) else {
+        if let Some(b) = breaker {
+            b.record_failure().await;
+        }
+        return Err(anyhow::anyhow!("failed to parse triage response"));
+    };
+    Ok(triage)
 }
 
 pub(crate) fn build_triage_prompt(title: &str, body: &str) -> String {
