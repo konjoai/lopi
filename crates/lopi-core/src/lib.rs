@@ -114,7 +114,6 @@ mod tests {
         assert!(t.allowed_dirs.contains(&"src/".to_string()));
         assert!(t.forbidden_dirs.contains(&".github/".to_string()));
         assert!(matches!(t.source, TaskSource::Cli));
-        assert!(t.required_capabilities.is_empty(), "default = no caps");
         assert!(t.report.is_none(), "no report channel by default");
         assert!(!t.verifier_required, "verifier not required by default");
         assert!(
@@ -142,20 +141,6 @@ mod tests {
         assert!(!back.verifier_required);
         assert!(back.verifier_model.is_none());
         assert!(back.verifier_effort.is_none());
-    }
-
-    #[test]
-    fn capabilities_satisfied_by_handles_subset_match() {
-        let mut t = Task::new("needs rust + git");
-        t.required_capabilities = vec!["rust".into(), "git".into()];
-        assert!(t.capabilities_satisfied_by(&["rust".into(), "git".into(), "extra".into()]));
-        // Missing one → not satisfied.
-        assert!(!t.capabilities_satisfied_by(&["rust".into()]));
-        // Empty provided → not satisfied for non-empty requirements.
-        assert!(!t.capabilities_satisfied_by(&[]));
-        // Empty requirements vacuously satisfied.
-        let plain = Task::new("plain task");
-        assert!(plain.capabilities_satisfied_by(&[]));
     }
 
     #[test]

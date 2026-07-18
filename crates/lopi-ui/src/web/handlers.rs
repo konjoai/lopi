@@ -377,26 +377,8 @@ pub(super) async fn create_task(
     if let Some(r) = req.max_retries {
         task.max_retries = r;
     }
-    if let Some(caps) = req.required_capabilities {
-        task.required_capabilities = caps;
-    }
     task.require_plan_approval = req.require_plan_approval.unwrap_or(false);
     task.client_ref = req.client_ref.clone();
-
-    // P2 — refuse pre-submit if no registered agent can satisfy the
-    // task's required capabilities. Returns 422 with the offending list
-    // so the caller can surface a meaningful error.
-    if !s.pool.can_satisfy(&task) {
-        return (
-            StatusCode::UNPROCESSABLE_ENTITY,
-            Json(json!({
-                "error": "no registered agent advertises every required capability",
-                "required_capabilities": task.required_capabilities,
-                "registered_agent_count": s.pool.capabilities_snapshot().len(),
-            })),
-        )
-            .into_response();
-    }
 
     let task_id = task.id.0.to_string();
     let client_ref = task.client_ref.clone();

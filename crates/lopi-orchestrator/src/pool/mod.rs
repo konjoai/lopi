@@ -3,7 +3,7 @@
 //!
 //! The pool's surface is split across this module for readability:
 //! - [`types`] — the plain handle/counter/snapshot structs.
-//! - `registry` — capability advertisement + per-agent rate limiting.
+//! - `registry` — per-agent rate limiting.
 //! - `run_loop` — `submit`, the dispatch `run` loop, and single-task execution.
 //! - `worktree` — per-task `git worktree` isolation setup/teardown.
 
@@ -46,11 +46,6 @@ pub struct AgentPool {
     started_at: Arc<std::time::Instant>,
     /// Structured task tracker — allows `shutdown()` to abort all running agents.
     join_set: Arc<Mutex<JoinSet<()>>>,
-    /// P2 — agent capability registry. `Task::required_capabilities`
-    /// must be a subset of *some* registered agent's capabilities before
-    /// `submit()` accepts the task. Key is a stable agent identifier
-    /// (free-form string; the registrar names them).
-    capabilities: Arc<DashMap<String, Vec<String>>>,
     /// P2 — per-agent rate limits (token bucket + concurrency cap),
     /// manageable via the `/api/agents/:id/rate-limit` REST surface.
     agent_rate_limits: Arc<DashMap<String, crate::agent_rate_limit::AgentRateState>>,
@@ -77,7 +72,6 @@ impl AgentPool {
             counters: Arc::new(PoolCounters::default()),
             started_at: Arc::new(std::time::Instant::now()),
             join_set: Arc::new(Mutex::new(JoinSet::new())),
-            capabilities: Arc::new(DashMap::new()),
             agent_rate_limits: Arc::new(DashMap::new()),
         }
     }

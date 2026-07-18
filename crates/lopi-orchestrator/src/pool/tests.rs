@@ -237,50 +237,6 @@ async fn submit_fills_in_missing_topology() {
     assert_eq!(pool.stats().queued, 1);
 }
 
-// ─── P2 — required-capability matching ───────────────────────────
-
-#[tokio::test]
-async fn can_satisfy_with_empty_requirements_always_passes() {
-    let pool = make_pool(2);
-    let task = Task::new("vanilla task, no requirements");
-    assert!(pool.can_satisfy(&task));
-}
-
-#[tokio::test]
-async fn can_satisfy_returns_false_with_empty_registry() {
-    let pool = make_pool(2);
-    let mut task = Task::new("needs python");
-    task.required_capabilities = vec!["python".into()];
-    // No agents registered → must fail closed.
-    assert!(!pool.can_satisfy(&task));
-}
-
-#[tokio::test]
-async fn can_satisfy_picks_up_any_matching_agent() {
-    let pool = make_pool(2);
-    pool.register_capabilities("alpha", vec!["rust".into(), "git".into()]);
-    pool.register_capabilities("beta", vec!["python".into(), "ml".into()]);
-    let mut task = Task::new("ml inference");
-    task.required_capabilities = vec!["python".into(), "ml".into()];
-    assert!(pool.can_satisfy(&task), "beta covers both required caps");
-    // No single agent has rust+python — must fail.
-    task.required_capabilities = vec!["rust".into(), "python".into()];
-    assert!(!pool.can_satisfy(&task));
-}
-
-#[tokio::test]
-async fn deregister_removes_capability_advertisement() {
-    let pool = make_pool(2);
-    pool.register_capabilities("alpha", vec!["rust".into()]);
-    let mut task = Task::new("rust work");
-    task.required_capabilities = vec!["rust".into()];
-    assert!(pool.can_satisfy(&task));
-    assert!(pool.deregister_capabilities("alpha"));
-    assert!(!pool.can_satisfy(&task));
-    // Second deregister is a no-op.
-    assert!(!pool.deregister_capabilities("alpha"));
-}
-
 // ─── P2 — per-agent rate limiting ────────────────────────────────
 
 #[tokio::test]

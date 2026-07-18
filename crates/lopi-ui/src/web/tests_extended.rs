@@ -183,28 +183,6 @@
         assert!(json2["duplicate_of"].is_string());
     }
 
-    /// P2 — `POST /api/tasks` with required_capabilities and an empty
-    /// agent registry returns 422 with a structured error.
-    #[tokio::test]
-    async fn create_task_with_unsatisfiable_capabilities_returns_422() {
-        let app = test_app().await;
-        let body = serde_json::to_string(&serde_json::json!({
-            "goal": "needs gpu-cuda capability",
-            "required_capabilities": ["gpu-cuda"],
-        }))
-        .unwrap();
-        let resp = send_req(app, "POST", "/api/tasks", Some(body)).await;
-        assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
-        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-        assert_eq!(json["registered_agent_count"], 0);
-        assert!(json["error"]
-            .as_str()
-            .is_some_and(|e| e.contains("capability")));
-    }
-
     // ─── F2 — per-task SSE stream + log ring buffer ──────────────────
 
     /// `GET /api/tasks/:id/logs` on a *known* task with no logs yet returns
