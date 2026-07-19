@@ -5,6 +5,109 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## Permission-Modes-1
+
+**Four-mode subset (`bypassPermissions`/`auto`/`acceptEdits`/`dontAsk`),
+`plan`/`manual` deliberately excluded — logged as a one-way door on the
+selectable set, not a permanent ceiling.** `claude --permission-mode` accepts
+six values on the installed CLI (`2.1.211`); only four are exposed as
+`PermissionMode` variants / web dropdown entries.
+
+**Why:** `plan` and `manual` both need every tool call to round-trip through
+a live human decision, which headless `claude -p` has no channel for today.
+`plan_gate.rs` proves lopi *can* build this kind of relay (it does exactly
+this for one specific point — the first attempt's plan), but generalizing it
+to every tool call is a distinct, larger feature, not a dropdown addition.
+Live kill-test evidence for the four that *are* exposed:
+
+- **KT1 (`auto`/`dontAsk` don't stall headless) — PASS.** Ran both live
+  against a throwaway clone with a Bash write outside the read-only set
+  (`mkdir` + file write, not pre-approved). `auto` self-approved the command
+  as low-risk and completed in 10s; `dontAsk` cleanly denied it (no matching
+  allow-list entry) and reported back in 14s. Neither stalled.
+- **KT2 (`acceptEdits` + `permission_allow` avoids stalling) — PASS.** Ran a
+  real `cargo test -p lopi-toon --lib` under `acceptEdits`. With
+  `--allowedTools "Bash(cargo test:*)"` (what `LoopConfig::permission_allow`
+  forwards as): completed in 8s, 33/33 passed, no prompt. Negative control —
+  same command, `acceptEdits`, no allow entry — was denied cleanly in 16s
+  ("requires your explicit approval... isn't going through"), confirming the
+  allow-list is what prevents the stall, not the mode alone.
+- **KT3 (`bypassPermissions` is a true drop-in for
+  `--dangerously-skip-permissions`) — PASS**, on the installed CLI. Both
+  flags produced the byte-identical root-refusal error string
+  (`"--dangerously-skip-permissions cannot be used with root/sudo privileges
+  for security reasons"`) — even the `--permission-mode bypassPermissions`
+  path's error names the other flag, confirming a shared refusal code path.
+  The non-root success path wasn't independently re-verified (no working
+  non-root `claude` auth in the sandbox this sprint ran in); the shared
+  refusal path is strong evidence of true equivalence regardless. Note: the
+  repo pins no `claude` CLI version anywhere (the Dockerfile builds only the
+  `lopi` binary, never installs `claude` at all) — there is no "pinned
+  version" to diff a changelog against; `2.1.211` is simply what was
+  installed in the sandbox that ran this kill-test.
+- **KT4 (`auto` mode account eligibility) — NOT VERIFIED, open item.** The
+  account this sprint's sandbox authenticated as is not the account lopi's
+  production deployment authenticates as — this session had no visibility
+  into that deployment's real credentials, so eligibility (model/provider/
+  plan, Team/Enterprise Owner toggle) could not be confirmed for the account
+  that will actually run this. Decision made anyway, per the spec's "pick
+  one, don't leave it implicit": `auto` is **shown, not hidden or
+  disabled** — an ineligible account fails at spawn time with a surfaced
+  CLI error, the same failure-visibility default `select_model`/`with_effort`
+  already use elsewhere in this codebase for a malformed value. Re-verify
+  against the real deployment account before trusting this silently.
+- **KT5 (container root check) — NOT VERIFIED, open item.** Static audit
+  only: `Dockerfile:74` sets `USER lopi`; `fly.toml` carries no process-level
+  user override. No `fly` CLI or attended access to the live deployed
+  container was available this sprint to confirm at runtime, per the kickoff
+  prompt's own anticipated gap. Do not treat the Dockerfile as proof; a
+  compose override or fly.toml directive could still change the runtime user
+  without touching it.
+
+**Enum wire-value strings match the CLI's own literal flag values verbatim,
+not a snake_case translation.** `PermissionMode` serializes to
+`"bypassPermissions"`/`"auto"`/`"acceptEdits"`/`"dontAsk"` via per-variant
+`#[serde(rename = ...)]`, and `PermissionMode::parse` matches those same
+literals case-sensitively (no lowercasing, unlike `normalize_effort` — these
+come from a controlled dropdown, not free-form text). Rejected: a
+snake_case Rust-side representation with a translation table at the CLI
+spawn site — that's exactly the indirection `--model`/`--effort` already
+avoid by storing the CLI-ready string directly, and it's an extra place a
+`bypass_permissions` ↔ `bypassPermissions` typo could silently drift.
+
+**Default variant: `BypassPermissions`.** An absent `Task.permission_mode`
+(and an absent `CreateTaskRequest.permission_mode`) must reproduce the
+pre-existing unconditional `--dangerously-skip-permissions` behavior
+exactly — this sprint is an opt-in loosening of autonomy, never a silent
+behavior change for a task that doesn't touch the new field.
+
+**`--permission-mode` folded into `apply_cli_caps`, reversing that
+function's own prior doc comment.** The doc comment at
+`claude_support.rs:93-100` explicitly said `--dangerously-skip-permissions`
+was kept per-site because "their positions/doc comments differ enough not to
+share." This sprint revisited that call and inverted it: permission mode is
+now emitted unconditionally inside `apply_cli_caps`, the one shared
+injection point already used for `--model`/`--effort`/`--max-turns`/
+`--max-budget-usd`/`--allowedTools`/`--disallowedTools`.
+
+**Why:** every other cap in `apply_cli_caps` is genuinely optional —
+`None`/empty means "add nothing, let the CLI default stand." Permission mode
+is categorically different: there is no "add nothing" state for it anymore.
+Every one of the three spawn sites must emit *some* `--permission-mode`
+value on every call, always (falling back to `PermissionMode::default()`
+when the task hasn't set one). That "always emits, never optional" shape is
+precisely the pattern a shared cap-injection point is for; keeping it
+per-site after this sprint would mean three near-identical
+`cmd.arg("--permission-mode").arg(...)` blocks instead of one, the exact
+copy-paste risk `apply_cli_caps` was built to close for the other caps.
+
+**How to apply:** any future flag that becomes "always emitted, resolved
+from a typed default" rather than "optional, `None` = omit" should fold into
+`apply_cli_caps` the same way, not stay per-site by default. A cap that's
+still genuinely optional (can validly be entirely absent from the argv)
+should stay following the existing `Option<T>` + per-site-comment pattern
+until it, too, gains an unconditional fallback.
+
 ## Composer-Grammar-2
 
 **Kill-test 1 (does `claude -p` expand a `/name` token embedded mid-prompt,

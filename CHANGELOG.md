@@ -1,5 +1,61 @@
 # Changelog
 
+## [0.16.0] — Permission-Modes-1: per-task `permission_mode`, web-wired end to end 🔐
+
+Replaces the unconditional `--dangerously-skip-permissions` on every
+`claude -p` spawn with a per-task `permission_mode` the operator can pick
+from a web dropdown, matching Claude Code's own mode selector. The default
+(`bypassPermissions`) reproduces the exact prior behavior when the field is
+absent — this is an opt-in loosening of autonomy, not a silent behavior
+change, and it's wired end to end (unlike `autonomy`, which stays client-only
+on the web wire types).
+
+- **[Feat] `PermissionMode` (`lopi-core`).** New enum exposing exactly the
+  four values proven headless-safe by this sprint's live kill-tests —
+  `bypassPermissions` (default) / `auto` / `acceptEdits` / `dontAsk`.
+  Serializes to the CLI's own literal flag strings, not a snake_case
+  translation. `Task.permission_mode` carries it, defaulted the same way
+  `autonomy_level` is.
+- **[Feat] `--permission-mode` folded into `apply_cli_caps`
+  (`lopi-agent`).** The shared cap-injection point (`--model`/`--effort`/
+  `--max-turns`/`--max-budget-usd`/`--allowedTools`/`--disallowedTools`) now
+  also emits `--permission-mode`, always — falling back to
+  `PermissionMode::default()` when unset. Reverses `apply_cli_caps`'s prior
+  doc-comment rationale for keeping the permission flag per-site: unlike the
+  other caps (genuinely optional), a permission mode is never actually
+  absent from the spawned argv, which makes it a true shared cap. All three
+  `claude -p` spawn sites (`ClaudeCode::run`, `ClaudeCode::run_streamed`,
+  `claude_stream::plan_streaming`) route through it instead of a hardcoded
+  flag. New `ClaudeCode::with_permission_mode` builder, validate-and-drop
+  exactly like `with_effort`.
+- **[Feat] `CreateTaskRequest.permission_mode` (`lopi-ui`).** Validated via
+  `PermissionMode::parse` at request time — an unrecognized value is
+  rejected with a 422, never silently dropped or coerced. Wired in
+  `apply_loop_fields` alongside `report`/`require_plan_approval`.
+- **[Feat] Web dropdown (`PERMISSION_MODE_OPTIONS`).** New row in both
+  `StackConfigPopover.svelte` (stack-level default) and `ConfigDrawer.svelte`
+  (per-loop override), labeled in operator language ("Bypass · no prompts,
+  full autonomy (current default)", "Auto · model reviews each action,
+  blocks anything risky", "Accept edits · file edits auto-approved,
+  everything else needs an allow-list entry", "Locked · only pre-approved
+  commands run, everything else denied"). `cardToTaskPayload`/
+  `cardToTaskPayloadForRunOnce`/`paneSubmitPayload` all round-trip it into
+  a real `CreateTaskOptions.permission_mode`, omitting the literal default
+  string from the wire when untouched (mirrors `model`'s `AUTO_MODEL`
+  omission). `configActive`/`configSummary`/`stackDefaultsActive` extended
+  so a non-default value surfaces in the existing "overridden" indicators.
+- **[Docs] Kill-test evidence.** `KT1`–`KT3` verified live against a
+  throwaway repo clone: `auto`/`dontAsk` deny-not-stall headless on a Bash
+  command outside the read-only set; `acceptEdits` + a matching
+  `--allowedTools` entry completes a real `cargo test` run without a
+  permission prompt (and a negative control confirms the allow-list is what
+  makes the difference); `bypassPermissions` and
+  `--dangerously-skip-permissions` produce the identical root/sudo refusal
+  on the installed CLI. `KT4` (account auto-mode eligibility) and `KT5`
+  (deployed-container root check) could not be verified from the sandboxed
+  session that ran this sprint — see `LEDGER.md` and
+  `NEXT_SESSION_PROMPT.md`.
+
 ## [0.15.0] — Composer-Grammar-2: real Claude Code `/name` command discovery + composer hookup 🪝
 
 Hooks the composer's now-vacated `/` prefix (Composer-Grammar-1) up to real

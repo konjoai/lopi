@@ -218,6 +218,20 @@ pub struct Task {
     /// (draft PR), the conservative level inherited from a schedule or config.
     #[serde(default)]
     pub autonomy_level: crate::loop_config::AutonomyLevel,
+    /// How much the `claude -p` worker session may act on tool calls without
+    /// a human answering a prompt, passed through as `--permission-mode`.
+    /// Defaults to [`PermissionMode::BypassPermissions`], so an absent field
+    /// reproduces lopi's pre-existing unconditional
+    /// `--dangerously-skip-permissions` behavior exactly — this is an opt-in
+    /// loosening of autonomy, not a silent behavior change.
+    ///
+    /// A genuinely different axis from both `require_plan_approval` (lopi's
+    /// own plan-approval gate, not the CLI's tool-call permission system) and
+    /// `autonomy_level` (PR/merge behavior after a run finishes, not
+    /// execution-time permission at all) — see
+    /// [`crate::permission_mode::PermissionMode`]'s module doc.
+    #[serde(default)]
+    pub permission_mode: crate::permission_mode::PermissionMode,
     /// Report on Finish (Loop Engineering primitive 6) — channel name a
     /// completed run's summary is routed to (e.g. `"telegram"`), threaded
     /// from [`crate::config::ScheduleEntry::report`] the same way
@@ -384,6 +398,7 @@ impl Task {
             topology: None,
             require_plan_approval: false,
             autonomy_level: crate::loop_config::AutonomyLevel::default(),
+            permission_mode: crate::permission_mode::PermissionMode::default(),
             report: None,
             verifier_required: false,
             verifier_model: None,

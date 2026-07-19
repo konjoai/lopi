@@ -13,7 +13,12 @@
  */
 import { writable } from 'svelte/store';
 import type { Acceptance, AcceptanceCheck, CreateTaskOptions } from '$lib/api';
-import { type StackDefaults, DEFAULT_STACK_DEFAULTS, defaultStackDefaults } from '$lib/stores/stackDefaults';
+import {
+  type StackDefaults,
+  DEFAULT_STACK_DEFAULTS,
+  DEFAULT_PERMISSION_MODE,
+  defaultStackDefaults
+} from '$lib/stores/stackDefaults';
 import { AUTO_MODEL, MODEL_OPTIONS, labelFor, type Option } from '$lib/stores/options';
 import { resolveRepoToken } from '$lib/stores/repoMenu';
 import { matches } from '$lib/stores/optionMenu';
@@ -149,18 +154,24 @@ export function defaultCron(): CronConfig {
 }
 
 /** Per-loop overrides of the pane defaults (model/effort/repo/branch/
- *  autonomy). `undefined` on any field means "inherit the pane default".
- *  `model`/`effort`/`repo` are WIRED (real `CreateTaskRequest` fields);
- *  `autonomy` is client-only — backend gap, not yet exposed. `branch` has no
- *  field of its own but still reaches the server: both `paneSubmitPayload`
- *  (bare-pane launch) and `cardToTaskPayload` (run-stack execution) turn it
- *  into the same "Target branch: …" planning constraint. */
+ *  autonomy/permission_mode). `undefined` on any field means "inherit the
+ *  pane default". `model`/`effort`/`repo`/`permission_mode` are WIRED (real
+ *  `CreateTaskRequest` fields); `autonomy` is client-only — backend gap, not
+ *  yet exposed. `branch` has no field of its own but still reaches the
+ *  server: both `paneSubmitPayload` (bare-pane launch) and
+ *  `cardToTaskPayload` (run-stack execution) turn it into the same "Target
+ *  branch: …" planning constraint. */
 export interface CardConfig {
   model?: string;
   effort?: string;
   repo?: string;
   branch?: string;
   autonomy?: string;
+  /** How much the `claude -p` worker session may act on tool calls without a
+   *  human answering a prompt (see `stores/stackDefaults.ts::PERMISSION_MODE_OPTIONS`).
+   *  Unlike `autonomy` above, this one is wired end to end — it reaches a
+   *  real `CreateTaskRequest.permission_mode`, validated server-side. */
+  permission_mode?: string;
 }
 
 /** A card's lifecycle state. `'draft'` is the pre-commit state of the pane's
@@ -1142,14 +1153,19 @@ export function cardPursuesGoal(card: StackCard): boolean {
   return card.goalPursuit.pursue && evalActive(card);
 }
 
-export function configActive(card: StackCard, defaults: { model: string; effort: string; repo: string; branch: string; autonomy: string }): boolean {
+export function configActive(
+  card: StackCard,
+  defaults: { model: string; effort: string; repo: string; branch: string; autonomy: string; permission_mode?: string }
+): boolean {
   const c = card.config;
   return (
     (c.model ?? defaults.model) !== defaults.model ||
     (c.effort ?? defaults.effort) !== defaults.effort ||
     (c.repo ?? defaults.repo) !== defaults.repo ||
     (c.branch ?? defaults.branch) !== defaults.branch ||
-    (c.autonomy ?? defaults.autonomy) !== defaults.autonomy
+    (c.autonomy ?? defaults.autonomy) !== defaults.autonomy ||
+    (c.permission_mode ?? defaults.permission_mode ?? DEFAULT_PERMISSION_MODE) !==
+      (defaults.permission_mode ?? DEFAULT_PERMISSION_MODE)
   );
 }
 
@@ -1282,7 +1298,7 @@ export function evalsSummary(card: StackCard): string {
  *  checks so the two never drift out of sync. */
 export function configSummary(
   card: StackCard,
-  defaults: { model: string; effort: string; repo: string; branch: string; autonomy: string }
+  defaults: { model: string; effort: string; repo: string; branch: string; autonomy: string; permission_mode?: string }
 ): string {
   const c = card.config;
   const parts: string[] = [];
@@ -1291,6 +1307,9 @@ export function configSummary(
   if ((c.repo ?? defaults.repo) !== defaults.repo) parts.push(`repo ${c.repo}`);
   if ((c.branch ?? defaults.branch) !== defaults.branch) parts.push(`branch ${c.branch}`);
   if ((c.autonomy ?? defaults.autonomy) !== defaults.autonomy) parts.push(`autonomy ${c.autonomy}`);
+  const defaultPermissionMode = defaults.permission_mode ?? DEFAULT_PERMISSION_MODE;
+  const resolvedPermissionMode = c.permission_mode ?? defaultPermissionMode;
+  if (resolvedPermissionMode !== defaultPermissionMode) parts.push(`permission_mode ${resolvedPermissionMode}`);
   return parts.join(' · ');
 }
 
@@ -1305,6 +1324,7 @@ export interface PaneDefaults {
   effort: string;
   repo: string;
   branch?: string;
+  permission_mode?: string;
 }
 
 /** Compile a card's `evals` checklist into a real
@@ -1371,6 +1391,12 @@ export function cardToTaskPayload(
   // reject as `--model auto`).
   const resolvedModel = card.config.model ?? defaults.model;
   if (resolvedModel && resolvedModel !== AUTO_MODEL) options.model = resolvedModel;
+  // Never send the literal default (`bypassPermissions`) on the wire when
+  // the field wasn't touched — mirrors `model`'s `AUTO_MODEL` omission above.
+  const resolvedPermissionMode = card.config.permission_mode ?? defaults.permission_mode ?? DEFAULT_PERMISSION_MODE;
+  if (resolvedPermissionMode && resolvedPermissionMode !== DEFAULT_PERMISSION_MODE) {
+    options.permission_mode = resolvedPermissionMode;
+  }
   if (card.guardrails.gate) options.gate = card.guardrails.gateCmd;
   if (card.guardrails.until) options.until = card.guardrails.untilCmd;
   // A3 — a budget preset that sets a real cap flows to the metered
@@ -1425,6 +1451,10 @@ export interface PaneLaunch {
   /** Target branch; surfaced as a planning constraint when set (the same
    *  channel the retired `postTask` used), omitted otherwise. */
   branch?: string;
+  /** Permission-mode override; omitted from the payload when unset or equal
+   *  to `DEFAULT_PERMISSION_MODE` — never sends the literal default string
+   *  on the wire, mirroring `model`'s `AUTO_MODEL` omission. */
+  permission_mode?: string;
 }
 
 /** The `createTask(goal, repo, priority, options)` payload a bare pane prompt
@@ -1442,6 +1472,9 @@ export function paneSubmitPayload(
   // `auto` means "no override" — see `cardToTaskPayload`'s matching comment.
   if (launch.model && launch.model !== AUTO_MODEL) options.model = launch.model;
   if (launch.effort) options.effort = launch.effort;
+  if (launch.permission_mode && launch.permission_mode !== DEFAULT_PERMISSION_MODE) {
+    options.permission_mode = launch.permission_mode;
+  }
   const branch = launch.branch?.trim();
   if (branch) options.constraints = [`Target branch: ${branch}`];
   return {
@@ -1717,7 +1750,8 @@ export function stackDefaultsActive(defaults: StackDefaults): boolean {
     defaults.effort !== DEFAULT_STACK_DEFAULTS.effort ||
     defaults.repo !== DEFAULT_STACK_DEFAULTS.repo ||
     defaults.branch !== DEFAULT_STACK_DEFAULTS.branch ||
-    defaults.autonomy !== DEFAULT_STACK_DEFAULTS.autonomy
+    defaults.autonomy !== DEFAULT_STACK_DEFAULTS.autonomy ||
+    defaults.permission_mode !== DEFAULT_STACK_DEFAULTS.permission_mode
   );
 }
 

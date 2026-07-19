@@ -1,18 +1,24 @@
 <!--
   StackConfigPopover — content rendered inside `Popover` for the stack
   control dock's sliders button: the stack's own default model/effort/repo/
-  branch/autonomy, edited directly (not an override of something else — the
-  stack IS where these defaults live; every loop's `ConfigDrawer.svelte`
-  override falls back to exactly this object). `model`/`effort`/`repo` are
-  WIRED (resolved into every loop's real `CreateTaskOptions` at the payload
-  step, `stores/stack.ts::cardToTaskPayload`); `autonomy` is client-only, same
+  branch/autonomy/permission_mode, edited directly (not an override of
+  something else — the stack IS where these defaults live; every loop's
+  `ConfigDrawer.svelte` override falls back to exactly this object).
+  `model`/`effort`/`repo`/`permission_mode` are WIRED (resolved into every
+  loop's real `CreateTaskOptions` at the payload step,
+  `stores/stack.ts::cardToTaskPayload`); `autonomy` is client-only, same
   as at loop scope. `branch` reaches the server as a planning constraint and
   offers the selected repo's real branches (`stores/branches.ts`). Reuses
   `Dropdown.svelte` the same way `ConfigDrawer.svelte` does — not a fork, a
   second mount of the same primitive over stack-scoped data.
 -->
 <script lang="ts">
-  import { type StackDefaults, AUTONOMY_OPTIONS, resolveBranch } from '$lib/stores/stackDefaults';
+  import {
+    type StackDefaults,
+    AUTONOMY_OPTIONS,
+    PERMISSION_MODE_OPTIONS,
+    resolveBranch
+  } from '$lib/stores/stackDefaults';
   import { branchesByRepo, branchOptionsFor, ensureBranches } from '$lib/stores/branches';
   import { type Option } from '$lib/stores/controls';
   import { modelCatalog, modelOptionsFrom, effortOptionsFor, ensureModelCatalog } from '$lib/stores/modelCatalog';
@@ -54,6 +60,9 @@
   <div class="cfgrow autonomy">
     <Dropdown dense label="autonomy" icon={ICONS.ladder} value={defaults.autonomy} options={AUTONOMY_OPTIONS} on:change={(e) => onChange({ autonomy: e.detail })} />
   </div>
+  <div class="cfgrow permission-mode">
+    <Dropdown dense label="permission" icon={ICONS.lock} value={defaults.permission_mode} options={PERMISSION_MODE_OPTIONS} on:change={(e) => onChange({ permission_mode: e.detail })} />
+  </div>
 </div>
 <div class="popfoot">
   <button class="apply" on:click={closePopover}>done</button>
@@ -82,5 +91,8 @@
   }
   .cfgrow.autonomy {
     --konjo-accent-rgb: 183 155 255;
+  }
+  .cfgrow.permission-mode {
+    --konjo-accent-rgb: 255 90 90;
   }
 </style>

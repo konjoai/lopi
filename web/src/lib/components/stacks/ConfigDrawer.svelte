@@ -1,6 +1,6 @@
 <!--
-  ConfigDrawer — the sliders-button inline drawer with five per-loop
-  overrides of the pane defaults. `model`/`effort`/`repo` are WIRED (real
+  ConfigDrawer — the sliders-button inline drawer with per-loop overrides of
+  the pane defaults. `model`/`effort`/`repo`/`permission_mode` are WIRED (real
   `CreateTaskRequest` fields); `autonomy` is client-only. `branch` reaches the
   server as a planning constraint (`paneSubmitPayload`) and its options are the
   selected repo's real branches, fetched via `stores/branches.ts`. Built on
@@ -8,7 +8,12 @@
 -->
 <script lang="ts">
   import { type StackCard as StackCardT, type CardConfig, updateCardInPane } from '$lib/stores/stack';
-  import { type StackDefaults, AUTONOMY_OPTIONS, resolveBranch } from '$lib/stores/stackDefaults';
+  import {
+    type StackDefaults,
+    AUTONOMY_OPTIONS,
+    PERMISSION_MODE_OPTIONS,
+    resolveBranch
+  } from '$lib/stores/stackDefaults';
   import { branchesByRepo, branchOptionsFor, ensureBranches } from '$lib/stores/branches';
   import { type Option } from '$lib/stores/controls';
   import { modelCatalog, modelOptionsFrom, effortOptionsFor, ensureModelCatalog } from '$lib/stores/modelCatalog';
@@ -104,6 +109,16 @@
       on:change={(e) => patchConfig({ autonomy: e.detail })}
     />
   </div>
+  <div class="chip permission-mode">
+    <Dropdown
+      dense
+      label="permission"
+      icon={ICONS.lock}
+      value={card.config.permission_mode ?? paneDefaults.permission_mode}
+      options={PERMISSION_MODE_OPTIONS}
+      on:change={(e) => patchConfig({ permission_mode: e.detail })}
+    />
+  </div>
 </div>
 
 <style>
@@ -135,5 +150,8 @@
   }
   .chip.autonomy {
     --konjo-accent-rgb: 183 155 255;
+  }
+  .chip.permission-mode {
+    --konjo-accent-rgb: 255 90 90;
   }
 </style>
