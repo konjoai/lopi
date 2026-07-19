@@ -119,7 +119,10 @@ mod tests {
 
     #[test]
     fn as_str_matches_the_cli_literal_exactly() {
-        assert_eq!(PermissionMode::BypassPermissions.as_str(), "bypassPermissions");
+        assert_eq!(
+            PermissionMode::BypassPermissions.as_str(),
+            "bypassPermissions"
+        );
         assert_eq!(PermissionMode::Auto.as_str(), "auto");
         assert_eq!(PermissionMode::AcceptEdits.as_str(), "acceptEdits");
         assert_eq!(PermissionMode::DontAsk.as_str(), "dontAsk");

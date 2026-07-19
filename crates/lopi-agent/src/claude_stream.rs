@@ -186,10 +186,7 @@ mod tests {
         handle.await.unwrap().unwrap();
 
         let argv = std::fs::read_to_string(&capture).unwrap();
-        assert!(
-            argv.contains("--permission-mode\ndontAsk"),
-            "argv={argv}"
-        );
+        assert!(argv.contains("--permission-mode\ndontAsk"), "argv={argv}");
         assert!(argv.contains("--model\nclaude-opus-4-7"), "argv={argv}");
         assert!(argv.contains("--effort\nhigh"), "argv={argv}");
         assert!(argv.contains("--max-budget-usd\n2.5"), "argv={argv}");

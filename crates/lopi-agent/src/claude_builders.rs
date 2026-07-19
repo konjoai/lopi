@@ -43,7 +43,9 @@ impl ClaudeCode {
         match lopi_core::PermissionMode::parse(&raw) {
             Ok(parsed) => self.permission_mode = Some(parsed.as_str().to_string()),
             Err(_) if raw.trim().is_empty() => {}
-            Err(_) => tracing::warn!(permission_mode = %raw, "ignoring unrecognized permission mode"),
+            Err(_) => {
+                tracing::warn!(permission_mode = %raw, "ignoring unrecognized permission mode")
+            }
         }
         self
     }

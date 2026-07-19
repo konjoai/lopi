@@ -104,7 +104,10 @@ async fn run_forwards_configured_permission_mode_to_the_subprocess_argv() {
     claude.implement_step(&task, "do the thing").await.unwrap();
 
     let argv = std::fs::read_to_string(&capture).unwrap();
-    assert!(argv.contains("--permission-mode\nacceptEdits"), "argv={argv}");
+    assert!(
+        argv.contains("--permission-mode\nacceptEdits"),
+        "argv={argv}"
+    );
     assert!(
         !argv.contains("--dangerously-skip-permissions"),
         "argv={argv}"
@@ -173,10 +176,7 @@ async fn run_streamed_forwards_configured_permission_mode_to_the_subprocess_argv
         .with_cli(script.to_str().unwrap())
         .with_permission_mode("dontAsk");
     let task = Task::new("streamed permission mode forwarding test");
-    claude
-        .plan_streamed(&task, None, |_| true)
-        .await
-        .unwrap();
+    claude.plan_streamed(&task, None, |_| true).await.unwrap();
 
     let argv = std::fs::read_to_string(&capture).unwrap();
     assert!(argv.contains("--permission-mode\ndontAsk"), "argv={argv}");
