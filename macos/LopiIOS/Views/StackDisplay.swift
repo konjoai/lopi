@@ -102,12 +102,17 @@ enum StackDisplay {
 
     /// The pane's most representative goal text for the Overview card's
     /// summary line — the active card's goal if one is running, else the
-    /// stack's first card.
+    /// stack's first card. A card can exist with an empty `goal` (e.g. just
+    /// committed from an untouched draft), so this falls back on blank text,
+    /// not just a missing card — `?? "no cards yet"` alone would never fire
+    /// since an empty string isn't `nil`.
     static func representativeGoal(for pane: StackPaneState, liveAgents: [String: LiveAgent]) -> String {
-        if let active = pane.cards.first(where: { cardStatus($0, liveAgents: liveAgents).isActive }) {
-            return active.goal
+        let goal = pane.cards.first(where: { cardStatus($0, liveAgents: liveAgents).isActive })?.goal
+            ?? pane.cards.first?.goal
+        guard let goal, !goal.isEmpty else {
+            return pane.cards.isEmpty ? "no cards yet" : "no goal set"
         }
-        return pane.cards.first?.goal ?? "no cards yet"
+        return goal
     }
 
     /// Elapsed-time + running cost for the pane's active card, if any.
