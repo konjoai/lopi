@@ -23,7 +23,14 @@ struct FacetPopoverContent: View {
     /// — only the pane-scoped `goal` tab is available there.
     let card: StackCard?
     let isDraft: Bool
-    @State private var tab: CardFacet = .schedule
+    @State private var tab: CardFacet
+
+    init(paneKey: String, card: StackCard?, isDraft: Bool, initialTab: CardFacet = .schedule) {
+        self.paneKey = paneKey
+        self.card = card
+        self.isDraft = isDraft
+        self._tab = State(initialValue: initialTab)
+    }
 
     private func write(_ mutate: @escaping CardMutator) {
         guard let card else { return }

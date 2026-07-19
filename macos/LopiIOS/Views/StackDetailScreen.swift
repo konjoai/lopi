@@ -32,7 +32,7 @@ struct StackDetailScreen: View {
                     .padding(.top, 20)
                     .padding(.bottom, 8)
                 }
-                stackDock(pane)
+                StackDockView(paneKey: pane.key)
             }
         }
         .background(Konjo.panel)
@@ -60,101 +60,10 @@ struct StackDetailScreen: View {
         .overlay(alignment: .bottom) { Rectangle().fill(Konjo.line).frame(height: 1) }
     }
 
-    private func stackDock(_ pane: StackPaneState) -> some View {
-        let runningTotal = pane.cards.compactMap { $0.taskId }
-            .compactMap { model.liveAgents[$0] }
-            .reduce(0.0) { $0 + $1.costUsd }
-        return VStack(alignment: .leading, spacing: 9) {
-            HStack(spacing: 8) {
-                Text("STACK")
-                    .font(Konjo.mono(9, weight: .bold))
-                    .tracking(0.5)
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 7).padding(.vertical, 2)
-                    .background(Konjo.violet, in: RoundedRectangle(cornerRadius: 5))
-                Text("running total: ")
-                    .font(Konjo.mono(10.5)).foregroundStyle(Konjo.fgDim)
-                + Text(String(format: "$%.2f", runningTotal))
-                    .font(Konjo.mono(10.5, weight: .bold)).foregroundStyle(Konjo.fg)
-                Spacer()
-                Image(systemName: "chevron.down").font(.system(size: 11)).foregroundStyle(Konjo.fgMute)
-            }
-
-            Text("stack command…")
-                .font(Konjo.sans(12.5))
-                .foregroundStyle(Konjo.fgMute)
-                .padding(.horizontal, 11).padding(.vertical, 9)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Konjo.violet.opacity(0.3), lineWidth: 1))
-
-            HStack(spacing: 6) {
-                GrammarChip(label: ":alias", color: Konjo.stackTeal)
-                GrammarChip(label: "@repo", color: Konjo.ice)
-                GrammarChip(label: "/model", color: Konjo.stackViolet)
-                GrammarChip(label: "/effort", color: Konjo.flame)
-                GrammarChip(label: "×N", color: Konjo.sun)
-            }
-
-            StackDockCardBar(paneKey: pane.key)
-
-            Button {
-                model.stackEngine.runStack(paneKey, .run, PaneDefaults(pane.config.defaults))
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "play.fill").font(.system(size: 12))
-                    Text("run stack").font(Konjo.sans(14, weight: .bold))
-                }
-                .foregroundStyle(Color(hex: 0x1A0F00))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-                .background(
-                    LinearGradient(colors: [Konjo.flame, Color(hex: 0xE6820A)], startPoint: .top, endPoint: .bottom),
-                    in: RoundedRectangle(cornerRadius: 10)
-                )
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal, 16)
-        .padding(.top, 12)
-        .padding(.bottom, 16)
-        .background(
-            LinearGradient(
-                colors: [Konjo.violet.opacity(0.12), Konjo.violet.opacity(0.04)],
-                startPoint: .top, endPoint: .bottom
-            )
-        )
-        .overlay(alignment: .top) { Rectangle().fill(Konjo.violet.opacity(0.3)).frame(height: 1) }
-    }
 }
 
-/// The stack-level cardbar in the dock — same chrome as a card's, minus the
-/// duplicate/drag affordances (a stack itself isn't reorderable within
-/// itself).
-private struct StackDockCardBar: View {
-    @Environment(AppModel.self) private var model
-    let paneKey: String
-    @State private var popoverOpen = false
-
-    var body: some View {
-        HStack(spacing: 6) {
-            IterationPill(label: "off")
-            Button { popoverOpen = true } label: {
-                Text("•••")
-                    .font(Konjo.mono(10.5))
-                    .foregroundStyle(Konjo.fgDim)
-                    .padding(.horizontal, 10)
-                    .frame(height: 26)
-                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Konjo.line2, lineWidth: 1))
-            }
-            .buttonStyle(.plain)
-            .popover(isPresented: $popoverOpen) {
-                FacetPopoverContent(paneKey: paneKey, card: nil, isDraft: false)
-                    .presentationCompactAdaptation(.popover)
-            }
-            Spacer()
-        }
-    }
-}
+// `StackDockView` (the "STACK" header, running total, collapse chevron,
+// command bar, cardbar, and run button) lives in `StackCommandBar.swift`.
 
 /// The composer — the draft card a new prompt is written into before
 /// `commitDraft` turns it into a real (`.idle`) `StackCard`.
