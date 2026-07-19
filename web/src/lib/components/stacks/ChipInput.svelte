@@ -58,7 +58,13 @@
     // real autonomy violet already happens to be this bucket's existing
     // color, so it doubles as both without a distinct `chipKind`.
     command: 'chip-autonomy',
-    loop: 'chip-loop'
+    loop: 'chip-loop',
+    // A real Claude Code `/name` command (Composer-Grammar-2) — deliberately
+    // its own color, not a reuse of any `;`-verb hue: the brief's suggestion
+    // to reuse the freed generic violet no longer applies once `chip-command`
+    // became `chip-autonomy` (still actively claimed by six `;` commands,
+    // never actually freed) — see LEDGER.md.
+    claude: 'chip-claude'
   };
 
   /** What this component itself last emitted via `onInput` — the guard that
@@ -234,5 +240,10 @@
     border: 1px solid rgba(255, 204, 0, 0.4);
     background: rgba(255, 204, 0, 0.1);
     color: var(--konjo-sun, #ffcc00);
+  }
+  .chipinput :global(.chip.chip-claude) {
+    border: 1px solid rgba(255, 0, 102, 0.4);
+    background: rgba(255, 0, 102, 0.1);
+    color: var(--konjo-rose, #ff0066);
   }
 </style>

@@ -42,12 +42,14 @@
     applySuite,
     EVAL_SUITES,
     tokenizeGoalChips,
+    claudeCommandAutocomplete,
     type CommandValueSuggestion
   } from '$lib/stores/stack';
   import { repoAutocomplete, repoLabelForPath } from '$lib/stores/repoMenu';
   import { MODEL_OPTIONS, EFFORT_OPTIONS } from '$lib/stores/options';
   import { AUTONOMY_OPTIONS, type StackDefaults } from '$lib/stores/stackDefaults';
   import { branchesByRepo, branchOptionsFor, ensureBranches } from '$lib/stores/branches';
+  import { claudeCommandsByRepo, claudeCommandOptionsFor, ensureClaudeCommands } from '$lib/stores/claudeCommands';
   import type { Option } from '$lib/stores/controls';
   import { runs, bumpCard, bumpUiState } from '$lib/stores/stackRun';
   import { agents } from '$lib/stores/agents';
@@ -133,6 +135,7 @@
     aliasDismissed = false;
     repoDismissed = false;
     cmdDismissed = false;
+    claudeDismissed = false;
   }
 
   /** Commit the draft: mints a real card at the top of the stack and a fresh
@@ -156,8 +159,14 @@
   // Round 2, item 2 — resolved-token chip segments for the draft's ChipInput.
   // Pure derivation off `card.goal`; see `tokenizeGoalChips`'s doc comment in
   // stores/stack.ts for why this is a distinct concern from the autocomplete
-  // matching just below.
-  $: goalSegments = tokenizeGoalChips(card.goal, CARD_COMMANDS);
+  // matching just below. `claudeCommandOptions` (declared below, alongside
+  // `effectiveRepo`) is in scope here regardless of source order — Svelte
+  // resolves `$:` statements by dependency, not declaration position.
+  $: goalSegments = tokenizeGoalChips(
+    card.goal,
+    CARD_COMMANDS,
+    claudeCommandOptions.map((o) => o.value)
+  );
 
   $: aliasMatches = aliasAutocomplete(card.goal);
   $: showAliasSuggest = isDraft && goalFocused && !aliasDismissed && aliasMatches.length > 0;
@@ -237,10 +246,20 @@
    *  under it (`onGoalInput`/`onChange` below). */
   let pendingCommand: string | null = null;
 
+  // ── real Claude Code `/name` command autocomplete (Composer-Grammar-2) ───
+  // Single-level, unlike `;command` above — no value-picker step, see
+  // `claudeCommandAutocomplete`'s doc comment in stores/stack.ts.
+  let claudeActiveIndex = 0;
+  let claudeDismissed = false;
+
   // This card's own repo — not the pane's — drives its branch list, same
   // resolution `ConfigDrawer` uses.
   $: effectiveRepo = card.config.repo ?? paneDefaults.repo;
   $: void ensureBranches(effectiveRepo);
+  // Composer-Grammar-2 — same effective-repo resolution drives the real
+  // Claude Code `/name` command catalog.
+  $: void ensureClaudeCommands(effectiveRepo);
+  $: claudeCommandOptions = claudeCommandOptionsFor($claudeCommandsByRepo, effectiveRepo);
 
   function commandOptionsFor(command: string): Option[] {
     switch (command) {
@@ -337,6 +356,23 @@
     void tick().then(() => goalInput?.focus());
   }
 
+  $: claudeMatches = claudeCommandAutocomplete(card.goal, claudeCommandOptions);
+  $: showClaudeSuggest = isDraft && goalFocused && !claudeDismissed && claudeMatches.length > 0;
+  $: if (claudeActiveIndex >= claudeMatches.length) claudeActiveIndex = Math.max(0, claudeMatches.length - 1);
+
+  /** Replace the trailing `/token` being typed with the full `/name` token
+   *  plus a trailing space — no config write, unlike `selectRepo`/
+   *  `applyCommandValue`: a real Claude command carries no lopi-side facet,
+   *  it is passed straight through to `claude -p` as goal text (see
+   *  `claude.rs`'s `build_plan_prompt` — Composer-Grammar-2's Phase 3). */
+  function selectClaudeCommand(token: string): void {
+    const m = /(^|\s)\/(\S*)$/.exec(card.goal);
+    if (!m) return;
+    writeCard({ goal: `${card.goal.slice(0, m.index)}${m[1]}${token} ` });
+    claudeActiveIndex = 0;
+    void tick().then(() => goalInput?.focus());
+  }
+
   // ── grammar chips (always-visible entry points into the autocomplete
   //    above) ────────────────────────────────────────────────────────────
   // Each chip inserts the same trigger token a user would type by hand, then
@@ -373,6 +409,18 @@
   async function chipLoop(): Promise<void> {
     goalFocused = true;
     writeCard({ goal: `${card.goal}${chipSpacer(card.goal)}x3 ` });
+    await tick();
+    goalInput?.focus();
+  }
+
+  /** Unlike `chipCommand`, no single command to auto-select — the repo's
+   *  catalog is dynamic, so this only opens the level-1 list (mirrors
+   *  `chipAlias`/`chipRepo`'s bare-trigger shape, not `chipCommand`'s
+   *  immediate level-2 jump). */
+  async function chipClaude(): Promise<void> {
+    goalFocused = true;
+    claudeDismissed = false;
+    writeCard({ goal: `${card.goal}${chipSpacer(card.goal)}/` });
     await tick();
     goalInput?.focus();
   }
@@ -441,6 +489,28 @@
       if (e.key === 'Escape') {
         e.preventDefault();
         cmdDismissed = true;
+        return;
+      }
+    }
+    if (showClaudeSuggest) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        claudeActiveIndex = (claudeActiveIndex + 1) % claudeMatches.length;
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        claudeActiveIndex = (claudeActiveIndex - 1 + claudeMatches.length) % claudeMatches.length;
+        return;
+      }
+      if (e.key === 'Tab' || e.key === 'Enter') {
+        e.preventDefault();
+        selectClaudeCommand(claudeMatches[claudeActiveIndex].token);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        claudeDismissed = true;
         return;
       }
     }
@@ -637,6 +707,13 @@
           activeIndex={cmdActiveIndex}
           onSelect={selectCommand}
         />
+      {:else if showClaudeSuggest}
+        <AutocompleteSuggest
+          anchor={goalInput}
+          items={claudeMatches.map((m) => ({ value: m.token, label: m.name, hint: m.hint }))}
+          activeIndex={claudeActiveIndex}
+          onSelect={selectClaudeCommand}
+        />
       {/if}
     </div>
     <div class="grammarchips">
@@ -645,6 +722,9 @@
       <button type="button" class="gchip model" on:click={() => chipCommand('model')}>;model</button>
       <button type="button" class="gchip effort" on:click={() => chipCommand('effort')}>;effort</button>
       <button type="button" class="gchip loop" on:click={chipLoop}>×N</button>
+      {#if claudeCommandOptions.length > 0}
+        <button type="button" class="gchip claude" on:click={chipClaude}>/cmd</button>
+      {/if}
     </div>
   {:else}
     <div class="spec">
@@ -1037,6 +1117,14 @@
   .gchip.loop:hover {
     border-color: rgba(255, 204, 0, 0.7);
     background: rgba(255, 204, 0, 0.08);
+  }
+  .gchip.claude {
+    border: 1px solid rgba(255, 0, 102, 0.4);
+    color: var(--konjo-rose, #ff0066);
+  }
+  .gchip.claude:hover {
+    border-color: rgba(255, 0, 102, 0.7);
+    background: rgba(255, 0, 102, 0.08);
   }
   .ib.add {
     color: var(--konjo-jade, #00ff9d);

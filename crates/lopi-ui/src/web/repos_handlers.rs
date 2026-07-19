@@ -60,6 +60,35 @@ pub(super) async fn list_branches(
         .into_response()
 }
 
+/// Query for [`list_claude_commands`].
+#[derive(Deserialize)]
+pub(super) struct ClaudeCommandsQuery {
+    /// Repo path; empty falls back to the server's primary repo.
+    #[serde(default)]
+    repo: String,
+}
+
+/// `GET /api/claude-commands?repo=<path>` — the real Claude Code `/name`
+/// commands (legacy `.claude/commands/*.md` + user-invocable
+/// `.claude/skills/*/SKILL.md`) registered in `repo`, for the composer's
+/// `/`-triggered autocomplete (Composer-Grammar-2). Mirrors
+/// [`list_branches`]'s repo-scoped query shape exactly.
+pub(super) async fn list_claude_commands(
+    State(s): State<AppState>,
+    Query(q): Query<ClaudeCommandsQuery>,
+) -> impl IntoResponse {
+    let repo = if q.repo.trim().is_empty() {
+        s.repo_path.display().to_string()
+    } else {
+        q.repo
+    };
+    let commands =
+        tokio::task::spawn_blocking(move || lopi_skill::discover_claude_commands(Path::new(&repo)))
+            .await
+            .unwrap_or_default();
+    (StatusCode::OK, Json(json!({ "commands": commands }))).into_response()
+}
+
 /// Upper bound on the repos returned to the dropdown. A backstop against a
 /// pathological scan directory, not a curation policy — a developer keeping
 /// every checkout in one folder is ordinary (this repo's own author has 164 in
