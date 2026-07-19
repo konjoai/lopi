@@ -148,7 +148,8 @@ private struct StackDockCardBar: View {
             }
             .buttonStyle(.plain)
             .popover(isPresented: $popoverOpen) {
-                FacetPopoverContent().presentationCompactAdaptation(.popover)
+                FacetPopoverContent(paneKey: paneKey, card: nil, isDraft: false)
+                    .presentationCompactAdaptation(.popover)
             }
             Spacer()
         }
@@ -255,7 +256,10 @@ private struct ComposerCardView: View {
                 }
                 .buttonStyle(.plain)
                 .popover(isPresented: $popoverOpen) {
-                    FacetPopoverContent().presentationCompactAdaptation(.popover)
+                    FacetPopoverContent(
+                        paneKey: paneKey, card: model.stackStore.pane(for: paneKey)?.draft, isDraft: true
+                    )
+                    .presentationCompactAdaptation(.popover)
                 }
                 Spacer()
                 Button {
@@ -411,7 +415,8 @@ private struct LoopCardView: View {
                 }
                 .buttonStyle(.plain)
                 .popover(isPresented: $popoverOpen) {
-                    FacetPopoverContent().presentationCompactAdaptation(.popover)
+                    FacetPopoverContent(paneKey: paneKey, card: card, isDraft: false)
+                        .presentationCompactAdaptation(.popover)
                 }
                 Spacer()
                 CardIconButton(systemImage: "square.on.square") {
@@ -485,66 +490,6 @@ private struct DashedVLine: Shape {
     }
 }
 
-/// The facet tab-strip popover — schedule/guardrails/evals/goal/MAXX/config.
-/// Content panes are placeholder copy in this pass (matches the design
-/// handoff's own note: "wire to the real facet UI... in the native build");
-/// wiring each to `SchedulePopoverView`/`GuardrailsPopoverView`/etc.'s real
-/// controls is real follow-up work once this screen shape is confirmed.
-private struct FacetPopoverContent: View {
-    @State private var tab: CardFacet = .schedule
-
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 0) {
-                ForEach(CardFacet.allCases) { facet in
-                    Button { tab = facet } label: {
-                        Image(systemName: facet.systemImage)
-                            .font(.system(size: 13))
-                            .foregroundStyle(tab == facet ? Konjo.fg : Konjo.fgMute)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 8)
-                            .background(tab == facet ? Color.white.opacity(0.06) : .clear)
-                            .overlay(alignment: .bottom) {
-                                Rectangle().fill(tab == facet ? Konjo.ice : .clear).frame(height: 2)
-                            }
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .overlay(alignment: .bottom) { Rectangle().fill(Konjo.line).frame(height: 1) }
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text(tab.label.uppercased())
-                    .font(Konjo.mono(10.5, weight: .bold))
-                    .tracking(1)
-                    .foregroundStyle(Konjo.fg)
-                Text("tap to configure \(tab.label) for this loop")
-                    .font(Konjo.sans(11.5))
-                    .foregroundStyle(Konjo.fgMute)
-            }
-            .padding(14)
-        }
-        .frame(width: 240)
-        .background(Color(hex: 0x101418))
-    }
-}
-
-/// The six facets a card/stack can configure, matching `FacetAccent`
-/// (`Stacks/StackTheme.swift`) for color consistency with macOS/web.
-private enum CardFacet: String, CaseIterable, Identifiable {
-    case schedule, guardrails, evals, goal, maxx, config
-
-    var id: String { rawValue }
-    var label: String { rawValue }
-
-    var systemImage: String {
-        switch self {
-        case .schedule: return "clock"
-        case .guardrails: return "checkmark.shield"
-        case .evals: return "checklist"
-        case .goal: return "target"
-        case .maxx: return "bolt.fill"
-        case .config: return "gearshape"
-        }
-    }
-}
+// `FacetPopoverContent` and its six per-facet tabs now live in
+// `FacetPopovers.swift` — real controls wired to `StackCard`/`StackConfig`,
+// not the placeholder copy this file used to hold.
