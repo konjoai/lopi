@@ -21,6 +21,7 @@ import {
   guardActive,
   evalActive,
   configActive,
+  configSummary,
   buildCronString,
   cronHuman,
   computeNextRuns,
@@ -90,7 +91,7 @@ import {
   type StackPaneState,
   type StackConfig
 } from './stack';
-import { DEFAULT_STACK_DEFAULTS } from './stackDefaults';
+import { DEFAULT_STACK_DEFAULTS, PERMISSION_MODE_OPTIONS, DEFAULT_PERMISSION_MODE } from './stackDefaults';
 import { AUTO_MODEL, MODEL_OPTIONS, EFFORT_OPTIONS } from './options';
 import { eq, eqIs, ok, namedSummary } from '$lib/test-harness';
 
@@ -559,6 +560,7 @@ eqIs(buildCard(':ratchet "self improve"').preset, 'gain', 'a `:ratchet` composer
     { name: 'model override', apply: (c) => (c.config.model = 'claude-opus-4-8'), field: 'model', expected: 'claude-opus-4-8' },
     { name: 'effort override', apply: (c) => (c.config.effort = 'high'), field: 'effort', expected: 'high' },
     { name: 'repo override', apply: (c) => (c.config.repo = 'konjoai/squish'), field: 'repo', expected: 'konjoai/squish' },
+    { name: 'permission_mode override', apply: (c) => (c.config.permission_mode = 'dontAsk'), field: 'permission_mode', expected: 'dontAsk' },
     { name: 'gate on', apply: (c) => (c.guardrails = { ...c.guardrails, gate: true, gateCmd: './gate.sh' }), field: 'gate', expected: './gate.sh' },
     { name: 'until on', apply: (c) => (c.guardrails = { ...c.guardrails, until: true, untilCmd: 'exit 0' }), field: 'until', expected: 'exit 0' },
     { name: 'on_fail continue', apply: (c) => (c.guardrails = { ...c.guardrails, onFail: 'continue' }), field: 'on_fail', expected: 'continue' },
@@ -664,6 +666,91 @@ eqIs(buildCard(':ratchet "self improve"').preset, 'gain', 'a `:ratchet` composer
   );
 }
 
+// ── Permission-Modes-1: `permission_mode` — wired end to end (unlike
+// `autonomy`), and the literal default (`bypassPermissions`) must never hit
+// the wire when the field wasn't touched — mirrors the `auto` model
+// sentinel-omission pattern above, but the "sentinel" here is the real
+// backend default itself. ─────────────────────────────────────────────────
+{
+  ok(
+    PERMISSION_MODE_OPTIONS.some((o) => o.value === DEFAULT_PERMISSION_MODE),
+    'PERMISSION_MODE_OPTIONS carries the default bypassPermissions entry'
+  );
+  eq(
+    PERMISSION_MODE_OPTIONS.map((o) => o.value).sort(),
+    ['acceptEdits', 'auto', 'bypassPermissions', 'dontAsk'],
+    'PERMISSION_MODE_OPTIONS carries exactly the four headless-safe modes — no plan/manual'
+  );
+
+  const defaults = { model: 'sonnet', effort: 'medium', repo: 'konjoai/lopi' };
+  const untouchedCard = buildCard('x');
+  eqIs(
+    cardToTaskPayload(untouchedCard, defaults).options.permission_mode,
+    undefined,
+    'no card override and no pane default ⇒ permission_mode omitted (resolves to bypassPermissions)'
+  );
+
+  const overriddenCard = buildCard('x');
+  overriddenCard.config.permission_mode = 'dontAsk';
+  eqIs(
+    cardToTaskPayload(overriddenCard, defaults).options.permission_mode,
+    'dontAsk',
+    'a card override away from the default is sent on the wire'
+  );
+
+  const explicitDefaultCard = buildCard('x');
+  explicitDefaultCard.config.permission_mode = DEFAULT_PERMISSION_MODE;
+  eqIs(
+    cardToTaskPayload(explicitDefaultCard, defaults).options.permission_mode,
+    undefined,
+    'a card explicitly set to bypassPermissions still omits it — never send the literal default'
+  );
+
+  const nonDefaultPaneDefaults = { model: 'sonnet', effort: 'medium', repo: 'konjoai/lopi', permission_mode: 'acceptEdits' };
+  const inheritingCard = buildCard('x');
+  eqIs(
+    cardToTaskPayload(inheritingCard, nonDefaultPaneDefaults).options.permission_mode,
+    'acceptEdits',
+    'a pane default away from bypassPermissions (no card override) is sent on the wire'
+  );
+
+  eqIs(
+    paneSubmitPayload({ goal: 'g', repo: 'r', permission_mode: DEFAULT_PERMISSION_MODE }).options.permission_mode,
+    undefined,
+    'a bare-pane launch set to the default also omits permission_mode'
+  );
+  eqIs(
+    paneSubmitPayload({ goal: 'g', repo: 'r', permission_mode: 'auto' }).options.permission_mode,
+    'auto',
+    'a bare-pane launch set to a non-default mode sends it on the wire'
+  );
+
+  // configActive/configSummary — the sliders/drawer "overridden" indicator.
+  const baseDefaults = { model: 'sonnet', effort: 'medium', repo: 'konjoai/lopi', branch: 'main', autonomy: 'L2' };
+  const plain = buildCard('x');
+  eqIs(configActive(plain, baseDefaults), false, 'no overrides at all ⇒ configActive false');
+  const withPermissionOverride = buildCard('x');
+  withPermissionOverride.config.permission_mode = 'auto';
+  eqIs(configActive(withPermissionOverride, baseDefaults), true, 'a permission_mode override alone flips configActive on');
+  eqIs(
+    configSummary(withPermissionOverride, baseDefaults),
+    'permission_mode auto',
+    'configSummary reports the overridden permission_mode'
+  );
+
+  // The stack-level "sliders button is active" indicator.
+  eqIs(
+    stackDefaultsActive(DEFAULT_STACK_DEFAULTS),
+    false,
+    'untouched stack defaults are not active'
+  );
+  eqIs(
+    stackDefaultsActive({ ...DEFAULT_STACK_DEFAULTS, permission_mode: 'dontAsk' }),
+    true,
+    'a stack-level permission_mode override alone flips stackDefaultsActive on'
+  );
+}
+
 // ── Backend-1: "Run once" forces max_iterations=1 without mutating the card ──
 {
   const defaults = { model: 'sonnet', effort: 'medium', repo: 'konjoai/lopi' };
@@ -718,24 +805,34 @@ eqIs(buildCard(':ratchet "self improve"').preset, 'gain', 'a `:ratchet` composer
   // which a bare prompt intentionally omits — so parity is asserted on the
   // fields both actually carry.
   const defaults = { model: 'sonnet', effort: 'medium', repo: 'konjoai/lopi' };
-  type Row = { name: string; goal: string; model?: string; effort?: string; priority?: string };
+  type Row = { name: string; goal: string; model?: string; effort?: string; priority?: string; permission_mode?: string };
   const rows: Row[] = [
     { name: 'plain goal, pane defaults', goal: 'do the thing' },
     { name: 'model + effort override', goal: 'do the thing', model: 'claude-opus-4-8', effort: 'high' },
-    { name: 'high priority', goal: 'urgent', priority: 'high' }
+    { name: 'high priority', goal: 'urgent', priority: 'high' },
+    { name: 'permission_mode override', goal: 'do the thing', permission_mode: 'acceptEdits' }
   ];
   for (const row of rows) {
     // The pane launch.
-    const pane = paneSubmitPayload({ goal: row.goal, repo: defaults.repo, priority: row.priority, model: row.model ?? defaults.model, effort: row.effort ?? defaults.effort });
+    const pane = paneSubmitPayload({
+      goal: row.goal,
+      repo: defaults.repo,
+      priority: row.priority,
+      model: row.model ?? defaults.model,
+      effort: row.effort ?? defaults.effort,
+      permission_mode: row.permission_mode
+    });
     // The equivalent one-card stack launch.
     const c = buildCard(`"${row.goal}"`);
     if (row.model) c.config.model = row.model;
     if (row.effort) c.config.effort = row.effort;
+    if (row.permission_mode) c.config.permission_mode = row.permission_mode;
     const stack = cardToTaskPayload(c, defaults);
     eqIs(pane.goal, stack.goal, `parity/${row.name}: same goal`);
     eqIs(pane.repo, stack.repo, `parity/${row.name}: same repo`);
     eqIs(pane.options.model, stack.options.model, `parity/${row.name}: same model`);
     eqIs(pane.options.effort, stack.options.effort, `parity/${row.name}: same effort`);
+    eqIs(pane.options.permission_mode, stack.options.permission_mode, `parity/${row.name}: same permission_mode`);
   }
 }
 

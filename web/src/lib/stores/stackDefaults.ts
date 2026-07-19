@@ -1,12 +1,13 @@
 /**
  * Stack-level defaults — per-stack (per-pane) baseline for every card's
- * config-drawer override: model, effort, repo, branch, autonomy. Owned by
- * each `StackPaneState.config.defaults` (`stores/stack.ts`), not a single
- * global store — Stack-1 made this per-pane so two panes can carry two
- * different default configs (was a single app-wide `writable` through
- * UI-2/Backend-1). `model`/`effort`/`repo` are real `CreateTaskRequest`
- * fields; `autonomy` is client-only — see UI_PLAN.md's Backend Bindings table.
- * `branch` is not inert despite having no `CreateTaskRequest` field of its own:
+ * config-drawer override: model, effort, repo, branch, autonomy,
+ * permission_mode. Owned by each `StackPaneState.config.defaults`
+ * (`stores/stack.ts`), not a single global store — Stack-1 made this
+ * per-pane so two panes can carry two different default configs (was a
+ * single app-wide `writable` through UI-2/Backend-1). `model`/`effort`/
+ * `repo`/`permission_mode` are real `CreateTaskRequest` fields; `autonomy` is
+ * client-only — see UI_PLAN.md's Backend Bindings table. `branch` is not
+ * inert despite having no `CreateTaskRequest` field of its own:
  * `paneSubmitPayload` turns it into a "Target branch: …" planning constraint.
  */
 import { MODEL_OPTIONS, type Option } from '$lib/stores/options';
@@ -17,6 +18,7 @@ export interface StackDefaults {
   repo: string;
   branch: string;
   autonomy: string;
+  permission_mode: string;
 }
 
 /** The real `AutonomyLevel` ladder (`crates/lopi-core/src/loop_config.rs`) —
@@ -29,6 +31,29 @@ export const AUTONOMY_OPTIONS: Option[] = [
   { value: 'L3', label: 'L3 · Verified PR', hint: 'verify before PR' },
   { value: 'L4', label: 'L4 · Auto-merge', hint: 'auto-merge on pass' }
 ];
+
+/** How much the `claude -p` worker session may act on tool calls without a
+ *  human answering a prompt, passed to the CLI as `--permission-mode`.
+ *  Mirrors `crates/lopi-core/src/permission_mode.rs::PermissionMode` — the
+ *  wire value is the CLI's own literal string, unlike `autonomy` (which is
+ *  client-only). Unlike `autonomy`, this one is wired end to end: it reaches
+ *  a real `CreateTaskRequest.permission_mode`. Only the four modes proven
+ *  headless-safe by Permission-Modes-1's kill-tests are selectable — the
+ *  CLI's own `plan`/`manual` need a live human relay every headless `-p` run
+ *  has no channel for, so they're deliberately absent here. */
+export const PERMISSION_MODE_OPTIONS: Option[] = [
+  { value: 'bypassPermissions', label: 'Bypass', hint: 'no prompts, full autonomy (current default)' },
+  { value: 'auto', label: 'Auto', hint: 'model reviews each action, blocks anything risky' },
+  { value: 'acceptEdits', label: 'Accept edits', hint: 'file edits auto-approved, everything else needs an allow-list entry' },
+  { value: 'dontAsk', label: 'Locked', hint: 'only pre-approved commands run, everything else denied' }
+];
+
+/** The `PERMISSION_MODE_OPTIONS` value reproducing lopi's pre-existing
+ *  unconditional `--dangerously-skip-permissions` behavior — the wire
+ *  default an absent `CreateTaskRequest.permission_mode` resolves to
+ *  server-side. Never sent explicitly on the wire when a field resolves to
+ *  this value untouched (see `cardToTaskPayload`/`paneSubmitPayload`). */
+export const DEFAULT_PERMISSION_MODE = 'bypassPermissions';
 
 /** The branch a fresh stack starts on, before any repo has been picked. The
  *  live dropdowns no longer read this — they derive their options from
@@ -61,7 +86,8 @@ export const DEFAULT_STACK_DEFAULTS: StackDefaults = {
   effort: 'medium',
   repo: '',
   branch: SEED_BRANCH,
-  autonomy: 'L2'
+  autonomy: 'L2',
+  permission_mode: DEFAULT_PERMISSION_MODE
 };
 
 /** Fresh defaults for a newly-created stack — every pane gets its own
