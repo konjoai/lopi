@@ -53,6 +53,7 @@
     HIGH_N_CONFIRM_THRESHOLD,
     estimateRunCost,
     tokenizeGoalChips,
+    claudeCommandAutocomplete,
     type DryRunResult,
     type CommandValueSuggestion
   } from '$lib/stores/stack';
@@ -72,6 +73,7 @@
   import { MODEL_OPTIONS, EFFORT_OPTIONS } from '$lib/stores/options';
   import { AUTONOMY_OPTIONS } from '$lib/stores/stackDefaults';
   import { branchesByRepo, branchOptionsFor, ensureBranches } from '$lib/stores/branches';
+  import { claudeCommandsByRepo, claudeCommandOptionsFor, ensureClaudeCommands } from '$lib/stores/claudeCommands';
   import { repoAutocomplete, repoLabelForPath } from '$lib/stores/repoMenu';
   import { draggingPane, armedPaneKey } from './dnd';
   import { ICONS } from './icons';
@@ -170,7 +172,15 @@
   let pendingCommand: string | null = null;
 
   $: void ensureBranches(config.defaults.repo);
-  $: cmdBarSegments = tokenizeGoalChips(cmdText, STACK_COMMANDS);
+  // Composer-Grammar-2 — same stack-default-repo resolution drives the real
+  // Claude Code `/name` command catalog.
+  $: void ensureClaudeCommands(config.defaults.repo);
+  $: claudeCommandOptions = claudeCommandOptionsFor($claudeCommandsByRepo, config.defaults.repo);
+  $: cmdBarSegments = tokenizeGoalChips(
+    cmdText,
+    STACK_COMMANDS,
+    claudeCommandOptions.map((o) => o.value)
+  );
   $: aliasMatches = aliasAutocomplete(cmdText);
   $: repoMatches = repoAutocomplete(cmdText, repoOptions);
 
@@ -199,11 +209,24 @@
     : commandAutocomplete(cmdText, STACK_COMMANDS);
   $: showCmdBarSuggest =
     cmdBarFocused && !cmdDismissed && !showAliasBarSuggest && !showRepoBarSuggest && cmdMatches.length > 0;
+  // Composer-Grammar-2 — lowest priority in the chain; mutually exclusive
+  // with the others by construction (distinct trigger characters), same as
+  // every other pairing here.
+  $: claudeMatches = claudeCommandAutocomplete(cmdText, claudeCommandOptions);
+  $: showClaudeBarSuggest =
+    cmdBarFocused &&
+    !cmdDismissed &&
+    !showAliasBarSuggest &&
+    !showRepoBarSuggest &&
+    !showCmdBarSuggest &&
+    claudeMatches.length > 0;
   $: activeMatchCount = showAliasBarSuggest
     ? aliasMatches.length
     : showRepoBarSuggest
       ? repoMatches.length
-      : cmdMatches.length;
+      : showCmdBarSuggest
+        ? cmdMatches.length
+        : claudeMatches.length;
   $: if (cmdActiveIndex >= activeMatchCount) {
     cmdActiveIndex = Math.max(0, activeMatchCount - 1);
   }
@@ -302,6 +325,15 @@
     cmdActiveIndex = 0;
   }
 
+  /** No config write, unlike `selectRepoFromBar`/`applyCommandValue` — a real
+   *  Claude command carries no lopi-side facet, see `StackCard.svelte`'s
+   *  identical `selectClaudeCommand` doc comment. */
+  function selectClaudeCommandFromBar(token: string): void {
+    cmdText = `${token} `;
+    cmdActiveIndex = 0;
+    cmdDismissed = true;
+  }
+
   // ── grammar chips (always-visible entry points into the bar's own
   //    autocomplete above) ─────────────────────────────────────────────────
   function chipSpacer(text: string): string {
@@ -339,6 +371,16 @@
     void tick().then(() => cmdBarInput?.focus());
   }
 
+  /** No single command to auto-select (the repo's catalog is dynamic) —
+   *  only opens the level-1 list, mirroring `chipAliasBar`/`chipRepoBar`'s
+   *  bare-trigger shape, not `chipCommandBar`'s immediate level-2 jump. */
+  function chipClaudeBar(): void {
+    cmdBarFocused = true;
+    cmdDismissed = false;
+    cmdText = `${cmdText}${chipSpacer(cmdText)}/`;
+    void tick().then(() => cmdBarInput?.focus());
+  }
+
   /** `ChipInput`'s `onInput` hands back the plain serialized string directly
    *  — see `StackCard.svelte`'s identical `onGoalInput` doc comment. */
   function onCmdBarInput(value: string): void {
@@ -347,12 +389,14 @@
   }
 
   function onCmdBarKeydown(e: KeyboardEvent): void {
-    const showing = showAliasBarSuggest || showRepoBarSuggest || showCmdBarSuggest;
+    const showing = showAliasBarSuggest || showRepoBarSuggest || showCmdBarSuggest || showClaudeBarSuggest;
     const matches: Array<{ token: string }> = showAliasBarSuggest
       ? aliasMatches.map((m) => ({ token: m.alias }))
       : showRepoBarSuggest
         ? repoMatches
-        : cmdMatches;
+        : showCmdBarSuggest
+          ? cmdMatches
+          : claudeMatches;
     if (showing) {
       if (e.key === 'ArrowDown') {
         e.preventDefault();
@@ -368,7 +412,8 @@
         e.preventDefault();
         if (showAliasBarSuggest) selectAliasFromBar(matches[cmdActiveIndex].token);
         else if (showRepoBarSuggest) selectRepoFromBar(matches[cmdActiveIndex].token);
-        else selectCommandFromBar(matches[cmdActiveIndex].token);
+        else if (showCmdBarSuggest) selectCommandFromBar(matches[cmdActiveIndex].token);
+        else selectClaudeCommandFromBar(matches[cmdActiveIndex].token);
         return;
       }
       if (e.key === 'Escape') {
@@ -588,6 +633,13 @@
             activeIndex={cmdActiveIndex}
             onSelect={selectCommandFromBar}
           />
+        {:else if showClaudeBarSuggest}
+          <AutocompleteSuggest
+            anchor={cmdBarInput}
+            items={claudeMatches.map((m) => ({ value: m.token, label: m.name, hint: m.hint }))}
+            activeIndex={cmdActiveIndex}
+            onSelect={selectClaudeCommandFromBar}
+          />
         {/if}
       </div>
       <div class="grammarchips">
@@ -596,6 +648,9 @@
         <button type="button" class="gchip model" on:click={() => chipCommandBar('model')}>;model</button>
         <button type="button" class="gchip effort" on:click={() => chipCommandBar('effort')}>;effort</button>
         <button type="button" class="gchip loop" on:click={chipLoopBar}>×N</button>
+        {#if claudeCommandOptions.length > 0}
+          <button type="button" class="gchip claude" on:click={chipClaudeBar}>/cmd</button>
+        {/if}
       </div>
       {#if showSummary}
         {#if scheduledOn}
@@ -994,6 +1049,14 @@
   .gchip.loop:hover {
     border-color: rgba(255, 204, 0, 0.7);
     background: rgba(255, 204, 0, 0.08);
+  }
+  .gchip.claude {
+    border: 1px solid rgba(255, 0, 102, 0.4);
+    color: var(--konjo-rose, #ff0066);
+  }
+  .gchip.claude:hover {
+    border-color: rgba(255, 0, 102, 0.7);
+    background: rgba(255, 0, 102, 0.08);
   }
   .hintrow {
     font-size: 9px;

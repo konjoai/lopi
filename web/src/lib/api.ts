@@ -621,6 +621,16 @@ export const listBranches = (repo: string) =>
     `/api/branches?repo=${encodeURIComponent(repo)}`
   );
 
+/** Real Claude Code `/name` commands (legacy `.claude/commands/*.md` +
+ *  user-invocable `.claude/skills/*\/SKILL.md`) registered in `repo` — the
+ *  composer's `/`-triggered autocomplete catalog (Composer-Grammar-2).
+ *  Query-string shaped like `listBranches`, same reasoning: `repo` is a
+ *  filesystem path, not a path segment. */
+export const listClaudeCommands = (repo: string) =>
+  request<{ commands: { name: string; hint: string }[] }>(
+    `/api/claude-commands?repo=${encodeURIComponent(repo)}`
+  );
+
 // ── Models (live Claude model/effort catalog) ─────────────────────────────────
 /** The live model/effort catalog — `GET /api/models` proxies Anthropic's real
  *  `/v1/models` server-side (never called from the browser directly: no API

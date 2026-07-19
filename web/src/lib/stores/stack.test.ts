@@ -80,6 +80,7 @@ import {
   detectPendingCommand,
   evalSuiteOptions,
   tokenizeGoalChips,
+  claudeCommandAutocomplete,
   loopCountTier,
   estimateRunCost,
   cardGoalActive,
@@ -1520,6 +1521,66 @@ eqIs(
 {
   eqIs(tokenizeGoalChips('', CARD_COMMANDS).length, 1, 'empty text still yields one (empty) segment');
   eqIs(tokenizeGoalChips('', CARD_COMMANDS)[0].text, '', 'the empty segment carries no chip kind');
+}
+
+// ── Composer-Grammar-2 — real Claude Code `/name` command tokenizing ─────────
+{
+  const segs = tokenizeGoalChips('run /konjo-boot now', CARD_COMMANDS, ['konjo-boot', 'other-skill']);
+  eq(
+    segs,
+    [{ text: 'run ' }, { text: '/konjo-boot', chipKind: 'claude' }, { text: ' now' }],
+    'a `/name` token matching the supplied repo catalog chips as its own kind'
+  );
+}
+{
+  // A `/name` not in the supplied catalog stays plain text — the chip is
+  // catalog-driven, not a blanket "anything after a slash" match.
+  const segs = tokenizeGoalChips('run /unknown-thing now', CARD_COMMANDS, ['konjo-boot']);
+  eq(segs, [{ text: 'run /unknown-thing now' }], 'a `/name` outside the discovered catalog never chips');
+}
+{
+  // No claudeCommandNames arg at all (every pre-existing call site) ⇒ zero
+  // `/name` chips, never a crash — the default `[]` degrades safely.
+  const segs = tokenizeGoalChips('run /konjo-boot now', CARD_COMMANDS);
+  eq(segs, [{ text: 'run /konjo-boot now' }], 'omitting claudeCommandNames yields no /name chips (safe default)');
+}
+{
+  // No collision with the `@owner/repo` grammar's own embedded `/` — the
+  // repo alternative matches first at the `@` position and consumes the
+  // whole token, so the claude alternative never gets a chance to
+  // mis-fire on the `/` inside it.
+  const segs = tokenizeGoalChips('fix it @konjoai/lopi please', CARD_COMMANDS, ['lopi']);
+  eq(
+    segs,
+    [{ text: 'fix it ' }, { text: '@konjoai/lopi', chipKind: 'repo' }, { text: ' please' }],
+    'an @owner/repo token is never mistaken for a /name command even when the tail matches the catalog'
+  );
+}
+
+// ── claudeCommandAutocomplete — single-level `/name` grammar, no value picker ─
+{
+  const catalog = [
+    { value: 'konjo-boot', label: 'konjo-boot', hint: 'boot a session' },
+    { value: 'konjo-quality', label: 'konjo-quality', hint: 'quality gate reference' }
+  ];
+  eqIs(claudeCommandAutocomplete('/kon', catalog).length, 2, 'a shared prefix returns every matching command');
+  eqIs(claudeCommandAutocomplete('/konjo-b', catalog).length, 1, 'a unique prefix returns exactly one match');
+  eqIs(claudeCommandAutocomplete('/konjo-b', catalog)[0].token, '/konjo-boot', 'the match carries the full token');
+  eqIs(claudeCommandAutocomplete('/konjo-b', catalog)[0].hint, 'boot a session', 'the match carries its hint');
+  eqIs(claudeCommandAutocomplete('/KONJO-B', catalog)[0].token, '/konjo-boot', 'matching is case-insensitive');
+  eqIs(claudeCommandAutocomplete('/nope', catalog).length, 0, 'no command starts with an unknown prefix');
+  eqIs(claudeCommandAutocomplete('fix the bug /', catalog).length, 2, 'a bare slash matches every command');
+  eqIs(claudeCommandAutocomplete('/', catalog).length, 2, 'works with no goal text before it too');
+  eqIs(claudeCommandAutocomplete('fix /konjo-boot bug', catalog).length, 0, 'once a space follows the token, the goal has moved on');
+  eqIs(claudeCommandAutocomplete('fix the bug', catalog).length, 0, 'no trailing slash means no suggestions');
+  eqIs(claudeCommandAutocomplete('/konjo-boot', []).length, 0, 'an empty repo catalog suggests nothing, never throws');
+  // No level-2 step exists at all — unlike `;model/`, a real Claude command
+  // takes free-form `$ARGUMENTS` text, not a fixed value catalog.
+  eqIs(
+    claudeCommandAutocomplete('/konjo-boot do the thing', catalog).length,
+    0,
+    'once a command token is followed by free-form argument text, there is no value-picker step to re-enter'
+  );
 }
 
 {

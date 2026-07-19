@@ -209,6 +209,10 @@ pub fn build_app(state: AppState) -> Router {
         .route("/api/repos", get(repos_handlers::list_repos))
         .route("/api/branches", get(repos_handlers::list_branches))
         .route(
+            "/api/claude-commands",
+            get(repos_handlers::list_claude_commands),
+        )
+        .route(
             "/api/agents/:id/checkpoint",
             axum::routing::post(checkpoint_agent),
         )

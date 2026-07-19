@@ -557,6 +557,37 @@ export function commandValueAutocomplete(goalText: string, command: string, opti
     .map((o) => ({ token: `;${command}/${o.value}`, label: o.label, hint: o.hint ?? '', value: o.value }));
 }
 
+// ── Real Claude Code `/name` command autocomplete (Composer-Grammar-2) ───────
+// A single-level grammar, unlike `;command`'s two-level value-picker one:
+// Claude's own commands/skills take free-form `$ARGUMENTS` text after the
+// token, not a fixed value catalog, so there is no second `/name/value` step
+// — selecting inserts the bare `/name` token and typing continues past it as
+// plain text. The catalog itself is per-repo and dynamic (discovered from
+// the target repo's own `.claude/commands/*.md` + `.claude/skills/*/SKILL.md`
+// — `GET /api/claude-commands`, `stores/claudeCommands.ts`), unlike
+// `CARD_COMMANDS`/`STACK_COMMANDS`'s static built-in vocabulary.
+
+/** A `/name` suggestion for a real Claude Code command/skill. */
+export interface ClaudeCommandSuggestion {
+  token: string;
+  name: string;
+  hint: string;
+}
+
+/** Filtered `/name` suggestions for a trailing `/token` in `goalText`,
+ *  against `commands` (the effective repo's discovered catalog — pass
+ *  `claudeCommandOptionsFor($claudeCommandsByRepo, effectiveRepo)`). Same
+ *  trailing-word grammar `commandAutocomplete` uses, generalized to a
+ *  dynamic per-repo catalog instead of a static built-in one. */
+export function claudeCommandAutocomplete(goalText: string, commands: Option[]): ClaudeCommandSuggestion[] {
+  const match = /(?:^|\s)\/([a-zA-Z0-9_-]*)$/.exec(goalText);
+  if (!match) return [];
+  const q = match[1].toLowerCase();
+  return commands
+    .filter((c) => c.value.toLowerCase().startsWith(q))
+    .map((c) => ({ token: `/${c.value}`, name: c.value, hint: c.hint ?? '' }));
+}
+
 // ── Inline chip tokenizer (round 2, item 2) ───────────────────────────────────
 // Splits goal/cmdbar text into plain-text runs and *resolved* token chips for
 // inline rendering — the corrected direction from the first (wrong) demo,
@@ -578,10 +609,12 @@ export function commandValueAutocomplete(goalText: string, command: string, opti
  *  `chipKind` picks the accent color, reusing `ConfigDrawer.svelte`'s exact
  *  per-field hues (`:alias` teal, `@repo` ice, `;effort` ember, `;model`
  *  cyan, `;branch` green, `;autonomy`/everything else `;command/value`
- *  violet, `×N` sun). */
+ *  violet, `×N` sun) plus its own rose for a real Claude Code `/name`
+ *  command (Composer-Grammar-2) — deliberately distinct from every `;`
+ *  color so a real Claude command never reads as one of lopi's own verbs. */
 export interface GoalSegment {
   text: string;
-  chipKind?: 'alias' | 'repo' | 'effort' | 'command' | 'loop' | 'model' | 'branch';
+  chipKind?: 'alias' | 'repo' | 'effort' | 'command' | 'loop' | 'model' | 'branch' | 'claude';
 }
 
 function escapeRegExp(s: string): string {
@@ -590,20 +623,31 @@ function escapeRegExp(s: string): string {
 
 /** Tokenize `text` against `commands`' value-picker vocabulary (card-scope
  *  `CARD_COMMANDS` or stack-scope `STACK_COMMANDS` — the two differ, so this
- *  can't hardcode one). Every match is word-bounded (`(?=\s|$)`) so an
- *  in-progress prefix (e.g. `:res` while still typing toward `:research`)
- *  is never mistaken for a resolved token — only a complete, standalone word
- *  chips. Non-value-picker commands (`guard`/`schedule`/`maxx`/`goal`) never
- *  appear here: `selectCommand`/`selectCommandFromBar` strip those tokens
- *  from the text the instant they're picked, so there's never a resolved
- *  `;guard` word left in the string to chip. */
-export function tokenizeGoalChips(text: string, commands: InlineCommandDef[]): GoalSegment[] {
+ *  can't hardcode one) plus `claudeCommandNames`, the real `/name` Claude
+ *  Code commands discovered for the card/stack's effective repo
+ *  (`stores/claudeCommands.ts::claudeCommandOptionsFor` — Composer-Grammar-2).
+ *  Every match is word-bounded (`(?=\s|$)`) so an in-progress prefix (e.g.
+ *  `:res` while still typing toward `:research`) is never mistaken for a
+ *  resolved token — only a complete, standalone word chips. Non-value-picker
+ *  `;`-commands (`guard`/`schedule`/`maxx`/`goal`) never appear here:
+ *  `selectCommand`/`selectCommandFromBar` strip those tokens from the text
+ *  the instant they're picked, so there's never a resolved `;guard` word
+ *  left in the string to chip. `claudeCommandNames` defaults to `[]` so
+ *  every existing caller (tests, anywhere the repo's catalog hasn't loaded
+ *  yet) keeps working with zero `/name` chips, never a crash. */
+export function tokenizeGoalChips(
+  text: string,
+  commands: InlineCommandDef[],
+  claudeCommandNames: string[] = []
+): GoalSegment[] {
   if (!text) return [{ text: '' }];
   const valuePickers = commands.filter((c) => c.isValuePicker).map((c) => escapeRegExp(c.command));
+  const claudeNames = claudeCommandNames.map(escapeRegExp);
   const alternatives = [
     PRESET_KEYS.length ? `:(?:${PRESET_KEYS.map(escapeRegExp).join('|')})(?=\\s|$)` : null,
     `@[^\\s@]+\\/[^\\s@]+(?=\\s|$)`,
     valuePickers.length ? `;(?:${valuePickers.join('|')})\\/[^\\s/]+(?=\\s|$)` : null,
+    claudeNames.length ? `\\/(?:${claudeNames.join('|')})(?=\\s|$)` : null,
     `[×xX]\\d+(?=\\s|$)`
   ].filter((p): p is string => p !== null);
   const re = new RegExp(alternatives.join('|'), 'g');
@@ -620,7 +664,8 @@ export function tokenizeGoalChips(text: string, commands: InlineCommandDef[]): G
     else if (token.startsWith(';')) {
       const cmd = token.slice(1, token.indexOf('/', 1));
       kind = cmd === 'effort' ? 'effort' : cmd === 'model' ? 'model' : cmd === 'branch' ? 'branch' : 'command';
-    } else kind = 'loop';
+    } else if (token.startsWith('/')) kind = 'claude';
+    else kind = 'loop';
     segments.push({ text: token, chipKind: kind });
     cursor = idx + token.length;
   }

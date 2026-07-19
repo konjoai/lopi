@@ -2096,6 +2096,7 @@ dependencies = [
  "lopi-memory",
  "lopi-orchestrator",
  "lopi-ratelimit",
+ "lopi-skill",
  "lopi-spec",
  "mime_guess",
  "ratatui",
