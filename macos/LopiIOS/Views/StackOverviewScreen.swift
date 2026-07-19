@@ -7,6 +7,7 @@ import LopiStacksKit
 /// into that pane's `StackDetailScreen`.
 struct StackOverviewScreen: View {
     @Environment(AppModel.self) private var model
+    @State private var configOpen = false
 
     private var panes: [StackPaneState] { model.stackStore.panes }
 
@@ -54,6 +55,23 @@ struct StackOverviewScreen: View {
                     StackDetailScreen(paneKey: pane.key)
                 }
             }
+            .sheet(isPresented: $configOpen) { ServerConfigScreen() }
+        }
+    }
+
+    private var connectionLabel: String {
+        switch model.connection {
+        case .live: return "LIVE"
+        case .connecting: return "CONNECTING"
+        case .offline: return "OFFLINE"
+        }
+    }
+
+    private var connectionColor: Color {
+        switch model.connection {
+        case .live: return Konjo.jade
+        case .connecting: return Konjo.sun
+        case .offline: return Konjo.fgMute
         }
     }
 
@@ -64,9 +82,13 @@ struct StackOverviewScreen: View {
                     .font(Konjo.sans(22, weight: .heavy))
                     .foregroundStyle(Konjo.fg)
                 Spacer()
+                Button { configOpen = true } label: {
+                    Image(systemName: "gearshape").font(.system(size: 15)).foregroundStyle(Konjo.fgMute)
+                }
+                .buttonStyle(.plain)
                 HStack(spacing: 5) {
-                    Circle().fill(Konjo.jade).frame(width: 6, height: 6)
-                    Text("LIVE").font(Konjo.mono(10)).foregroundStyle(Konjo.jade)
+                    Circle().fill(connectionColor).frame(width: 6, height: 6)
+                    Text(connectionLabel).font(Konjo.mono(10)).foregroundStyle(connectionColor)
                 }
             }
             Text("\(panes.count) stacks · \(runningCount) running · $\(String(format: "%.4f", totalCost)) today")
