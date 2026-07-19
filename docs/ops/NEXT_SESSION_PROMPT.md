@@ -1,3 +1,52 @@
+# Next Session — after Permission-Modes-1
+
+`Task.permission_mode` / `CreateTaskRequest.permission_mode` now thread end
+to end: `lopi-core::PermissionMode` (four headless-safe values, CLI-literal
+serde tags, default `bypassPermissions`) → `apply_cli_caps` (now emits
+`--permission-mode` unconditionally, folded in from being per-site) → all
+three `claude -p` spawn sites → the web dropdown in both
+`StackConfigPopover.svelte` and `ConfigDrawer.svelte`, fully wired through
+`cardToTaskPayload`/`cardToTaskPayloadForRunOnce`/`paneSubmitPayload` (unlike
+`autonomy`, which stays client-only). See `LEDGER.md`'s `Permission-Modes-1`
+entry for the kill-test evidence and the one-way-door decisions (the
+four-mode subset, the CLI-literal enum strings, the `BypassPermissions`
+default, and why the flag folded into `apply_cli_caps` instead of staying
+per-site).
+
+**Two concrete items carried forward, both explicitly out of scope for this
+sprint:**
+
+1. **Wire `require_plan_approval` into the frontend.** Real, already
+   server-side (`Task.require_plan_approval` /
+   `CreateTaskRequest.require_plan_approval` / `plan_gate.rs`'s
+   channel-based human-approval gate on the first attempt's plan), and
+   architecturally the closest thing lopi has to Claude Code's own `plan`
+   mode — but it needs its own approve/reject UI for
+   `AwaitingPlanApproval`/`PlanProposed` before it's safe to expose as a
+   toggle. Flipping it on today would let an operator silently strand a
+   task for an hour (the gate's auto-reject-on-timeout) with no UI telling
+   them a plan is even awaiting approval. Build the approve/reject surface
+   first, then wire the toggle.
+2. **`.lopi/loop.toml` repo-level `default_permission_mode`.** `LoopConfig`
+   already carries `permission_allow`/`permission_deny` (used by this
+   sprint's KT2, unmodified); a repo-level default permission mode is a
+   reasonable follow-up but touches the TOML schema and the
+   `/api/loop-engineering` read surface, which has no write path today
+   either. Deliberately deferred — this sprint was "start with web," not
+   repo config.
+
+**Also flagged, not carried forward as a sprint (informational only):**
+KT4 (the account lopi's production deployment authenticates as — `auto`
+mode's model/provider/plan/Team-Owner-toggle eligibility) and KT5 (the
+deployed container's actual runtime user) were both left unverified this
+sprint — the sandbox that ran it had no visibility into the production
+account's credentials and no `fly`/attended access to the live container.
+A session with either kind of access should close these two rather than
+continuing to defer them; see `LEDGER.md`'s entry for exactly what's
+missing from each.
+
+---
+
 # Next Session — after Composer-Grammar-1 (web)
 
 `/` is now fully vacated on web: every lopi-specific composer command
