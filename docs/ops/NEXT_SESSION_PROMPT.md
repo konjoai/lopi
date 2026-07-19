@@ -1,3 +1,64 @@
+# Next Session — after Composer-Grammar-2
+
+Real Claude Code `/name` command discovery + composer hookup landed for
+Phases 1-2 (backend discovery + frontend autocomplete/chip wiring), fully
+tested and merged. **Phase 3 — the actual `claude -p` pass-through — did
+not ship.** It is gated on a live-proof kill-test this session's sandboxed
+environment cannot run: a nested `claude` CLI invocation is blocked at the
+permission-classifier level (confirmed by attempting it with a real fixture
+repo, not assumed blocked).
+
+**The one concrete item carried forward — run kill-test 1 for real:**
+
+1. **Find an environment where a `claude` CLI call isn't self-referentially
+   blocked** (the user's own machine, or wherever this repo's prior
+   "M3 + real auth" sessions ran from — `LEDGER.md`'s MAXX/quota entries and
+   the iOS-Research-1 entries used the same phrase for the same class of
+   problem, though those were missing-hardware/missing-toolchain, not
+   permission-classifier, blockers).
+2. **The fixture-repo protocol is already built out** — don't re-derive it,
+   re-run it: create `.claude/commands/foo.md` with a body that prints a
+   literal marker string (e.g. `KILLTEST_FOO_EXPANDED`) and nothing else, no
+   tool use. Run `claude -p "/foo" --output-format stream-json --verbose
+   --dangerously-skip-permissions` two ways: (a) the command as the bare
+   entire prompt, (b) the command embedded mid-string inside prose shaped
+   like `crates/lopi-agent/src/claude_support.rs::build_plan_prompt`'s real
+   TOON-wrapped output (goal + constraints + allowed/forbidden dirs +
+   pattern-memory table preamble, `/foo` somewhere in the middle, more prose
+   after). Check the `stream-json` output's system-init event for the
+   command name appearing in `slash_commands`, and confirm the fixture's
+   *actual body content* executes (the literal marker string appears in the
+   response) — not just the literal `/foo` text echoed back uninterpreted.
+3. **Branch on the result, per the original sprint brief's Phase 3:**
+   - **Passed both ways** (command expands even embedded mid-prompt): no
+     code change needed. A `/name` token a user picks from the composer
+     autocomplete already flows into `build_plan_prompt`'s wrapped prompt
+     unmodified, since nothing strips or escapes it — Phase 3 is "done" by
+     inaction, just needs the CHANGELOG/LEDGER entries confirming it.
+   - **Failed embedded, passed bare only**: add the bypass Phase 3
+     originally specified — detect a goal text whose leading token matches
+     a discovered `/name` (reuse
+     `lopi_skill::discover_claude_commands(repo)` against the task's own
+     repo) and route around `build_plan_prompt`'s wrapping entirely via a
+     new `ClaudeCode::run_raw(prompt)` that sends the goal text bare to
+     `-p`. Small change — the live proof was always the hard part, not the
+     code.
+   - Either way, once resolved: verify end-to-end through lopi's own real
+     task-submission path (not `claude` invoked in isolation) — a card whose
+     goal is literally `/foo` (or `/foo` embedded in a longer prompt,
+     depending on which branch fired) should produce a task whose plan/
+     implement output shows the fixture command's real body content, not a
+     literal `/foo` string surviving untouched in the model's response.
+
+**Also worth revisiting once kill-test 1 resolves:** whether the composer
+should visually distinguish "this `/name` token will definitely work"
+(passed embedded) from "this only works as the very first thing typed"
+(failed embedded) — today the autocomplete offers every discovered command
+identically regardless of position in the goal text, which would be
+actively misleading if kill-test 1 comes back position-sensitive.
+
+---
+
 # Next Session — after Composer-Grammar-1 (web)
 
 `/` is now fully vacated on web: every lopi-specific composer command

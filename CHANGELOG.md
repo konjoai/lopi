@@ -1,5 +1,60 @@
 # Changelog
 
+## [0.15.0] — Composer-Grammar-2: real Claude Code `/name` command discovery + composer hookup 🪝
+
+Hooks the composer's now-vacated `/` prefix (Composer-Grammar-1) up to real
+Claude Code commands and skills — discovery lands and is fully wired
+end-to-end on the frontend; the actual `claude -p` pass-through (Phase 3) is
+explicitly **not** shipped this sprint, blocked on a live-proof kill-test
+this session's environment cannot run (see LEDGER.md).
+
+- **[Feat] Backend discovery: `lopi_skill::discover_claude_commands`.** New
+  module (`crates/lopi-skill/src/claude_commands.rs`) scans a target repo's
+  `.claude/commands/*.md` (legacy — frontmatter optional, hint defaults to
+  empty) and `.claude/skills/*/SKILL.md` (current format — only
+  `user-invocable: true` skills are returned, since a skill without that
+  flag is auto-trigger-only, never a token meant for direct `/name` typing).
+  A skill wins over a legacy command of the same name. Deliberately does
+  **not** reuse `SkillRegistry::load_from_dirs`'s all-or-nothing validation:
+  a target repo is arbitrary and not lopi's own trusted `.claude/`, so one
+  malformed `SKILL.md` is logged (`tracing::warn!`) and skipped, never fatal
+  to the rest of the catalog.
+- **[Feat] `GET /api/claude-commands?repo=<path>`** (`lopi-ui`'s
+  `repos_handlers.rs`) — mirrors `GET /api/branches`'s exact query-string
+  shape. `lopi-skill` is now a **production** dependency of `lopi-ui`
+  (previously only `lopi-agent` was considered for this, as a dev-only
+  dependency explicitly kept out of production — this module's much
+  lighter dependency footprint, no process-spawning/reqwest, was the
+  deciding factor; see LEDGER.md).
+- **[Feat] Composer wiring, both scopes.** `StackCard.svelte` (per-card) and
+  `StackControlDock.svelte` (stack-level bar) both grow a fourth,
+  lowest-priority autocomplete: typing `/` offers the effective repo's
+  discovered commands (`stores/claudeCommands.ts::ensureClaudeCommands`/
+  `claudeCommandOptionsFor`, same per-repo-cache shape as `stores/branches.ts`).
+  Single-level, unlike `;command`'s two-level value-picker grammar — a real
+  Claude command takes free-form `$ARGUMENTS` text, not a fixed value
+  catalog, so selecting inserts the bare `/name` token and typing continues
+  past it as plain goal text. A `/cmd` grammar-discoverability chip appears
+  only once the effective repo actually has a discovered command (no
+  dead-end button for an empty catalog).
+- **[Feat] Its own chip color: rose.** `ChipInput.svelte` gains
+  `chip-claude` (`--konjo-rose`, `#ff0066`) — deliberately **not** a reuse of
+  any `;`-verb color. The brief's suggested reuse of "the generic violet
+  freed up by the `;` sprint" no longer holds: Composer-Grammar-1 renamed
+  that bucket to `chip-autonomy` and it stayed claimed (six `;` commands
+  still use it) rather than becoming free — see LEDGER.md for the full
+  reasoning.
+- **[Blocked, not shipped] Phase 3 — the actual `claude -p` pass-through.**
+  Kill-test 1 (does `claude -p` expand a `/name` token embedded mid-prompt
+  inside `build_plan_prompt`'s TOON-wrapped goal text, or only when the
+  command is the *entire* prompt?) requires a live `claude` CLI call, and
+  this session's sandboxed environment blocks a nested `claude` invocation
+  at the permission-classifier level — confirmed by attempting it, not
+  assumed. Selecting a `/name` command today inserts real, correctly
+  chip-rendered text into the goal field; whether that text actually
+  expands as a Claude command once submitted through lopi's run loop is
+  **unverified**. See `docs/ops/NEXT_SESSION_PROMPT.md`.
+
 ## [0.14.0] — Composer-Grammar-1 (web): `;` catch-all prefix for lopi's own commands, per-field chip colors ⌨️
 
 Frees `/` entirely for real Claude Code slash commands (next sprint) by moving

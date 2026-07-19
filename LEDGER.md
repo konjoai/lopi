@@ -5,6 +5,76 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## Composer-Grammar-2
+
+**Kill-test 1 (does `claude -p` expand a `/name` token embedded mid-prompt,
+or only standalone?) was attempted, not assumed unanswerable, and is
+genuinely blocked in this environment.** The sprint brief called this
+"BLOCKING, live proof only — M3 + real auth." A `claude` CLI binary
+(`/opt/node22/bin/claude`, authenticated) is actually present in this
+session's environment — unlike prior sprints' Xcode/quota kill-tests, which
+were blocked by a missing toolchain or missing hardware entirely. A fixture
+repo with a real `.claude/commands/foo.md` was built and the kill-test's own
+two-scenario protocol (bare `-p "/foo"` vs. embedded mid-prose) was attempted
+verbatim — both invocations were refused by this session's own permission
+classifier ("Blocked by classifier" — a nested/recursive `claude` CLI
+invocation from within an active Claude Code session, distinct from every
+other kill-test's missing-hardware blocker). This was proven by attempting
+it, exactly as the pre-flight kill-test itself instructs, not skipped on
+assumption.
+
+**Why this matters for what shipped:** Phase 3 (the actual `claude -p`
+pass-through) is explicitly gated on kill-test 1's result by the brief's own
+phased-build section — "if kill-test 1 failed: add a pre-submission bypass
+route... if it passed: no change needed." Building either branch on a guess
+would mean shipping unverified core-loop behavior (`claude.rs`'s
+`build_plan_prompt` wrapping) with a 50/50 chance of being backwards. Phase
+1 (backend discovery) and Phase 2 (frontend autocomplete/chip wiring) do not
+depend on kill-test 1's answer at all — a `/name` token reaching the goal
+field is real, correct behavior regardless of how it later gets wrapped —
+so those shipped. Phase 3 did not.
+
+**How to apply:** the next session with an unblocked `claude` CLI (the
+user's own machine, or wherever "M3 + real auth" resolves to for this repo)
+should re-run the exact fixture-repo protocol this entry describes — it is
+already built out, not something to re-derive — read the
+`--output-format stream-json` system-init event's `slash_commands` field
+and confirm the fixture command's actual body executes (not just literal
+text echoed back) in both the bare and embedded-in-TOON-wrapped-prose cases.
+Whichever branch fires, Phase 3's implementation is small (either "no
+change" or one bypass function) — the live proof, not the code, was always
+the hard part.
+
+**The `/name` chip color (`chip-claude`, rose) breaks from the sprint
+brief's suggested reuse — because the brief's premise didn't survive how
+Composer-Grammar-1 actually landed.** The brief assumed "the generic violet
+freed up by the `;` sprint's per-field split is the natural reuse, since
+nothing else claims it anymore." That was true of the brief's own mental
+model of Composer-Grammar-1, but not of what actually shipped:
+Composer-Grammar-1's `chip-command` bucket was *renamed* to `chip-autonomy`
+(same violet value, still actively used by `;autonomy` plus five
+non-value-picker commands), not freed. Reusing it here would have made a
+real Claude Code command visually indistinguishable from `;autonomy`/`;eval`/
+`;guard`/`;schedule`/`;maxx`/`;goal` chips — the opposite of the stated goal
+("own chip color" so it never reads as one of lopi's own verbs). `--konjo-rose`
+(`#ff0066`) was picked from the app's existing named palette (`app.css`) —
+the one color token no stack chip had claimed yet — rather than inventing a
+new hex value from nothing.
+
+**`lopi-skill` becomes a real production dependency of `lopi-ui`, where
+`lopi-agent` deliberately stayed dev-only.** `lopi-ui/Cargo.toml` already
+carries a comment on its `lopi-agent` dev-dependency: "Test-only... without
+adding a real production dependency on lopi-agent." That boundary was
+respected, not routed around: the new discovery module was built in
+`lopi-skill` (already a dependency of `lopi-agent`, so no new crate enters
+the build graph — just a direct edge for visibility) rather than beside
+`claude.rs` in `lopi-agent` as the brief's "New module (lopi-agent or
+lopi-core)" line suggested. `lopi-skill` carries none of `lopi-agent`'s
+process-spawning/`reqwest` weight, so taking it as a real (not dev-only)
+dependency doesn't reintroduce the coupling the earlier comment was written
+to avoid. `lopi-core` was ruled out outright: `lopi-skill` depends on
+`lopi-core`, so the reverse edge would be a cycle.
+
 ## Composer-Grammar-1 (web)
 
 **`/` → `;` prefix swap for lopi's own composer verbs — logged as a one-way
