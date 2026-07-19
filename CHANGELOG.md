@@ -1,5 +1,58 @@
 # Changelog
 
+## [0.14.0] — Composer-Grammar-1 (web): `;` catch-all prefix for lopi's own commands, per-field chip colors ⌨️
+
+Frees `/` entirely for real Claude Code slash commands (next sprint) by moving
+every lopi-specific composer command (`model`/`effort`/`branch`/`autonomy`/
+`eval`/`guard`/`schedule`/`maxx`) off `/` onto a new `;` catch-all prefix —
+one consistent home for lopi's own grammar instead of squatting on a
+character Claude Code itself uses. `:alias`, `@repo`, and `×N`/`xN` are
+untouched; they already had their own prefixes.
+
+- **[Breaking] `/command` → `;command`, one-way door.** `CARD_COMMANDS`/
+  `STACK_COMMANDS`' matching prefix (`commandAutocomplete`,
+  `detectPendingCommand`, `commandValueAutocomplete`, `tokenizeGoalChips`'s
+  value-picker alternative — `web/src/lib/stores/stack.ts`) moved from `/` to
+  `;`; the level-2 `command/value` separator stays `/` (e.g. `;model/sonnet`,
+  not `;model;sonnet`). Hard cutover, no read-compat shim: an old
+  `/model/...`-style token in a saved card/stack goal string now renders as
+  inert plain text instead of a chip — harmless (the text itself is
+  unaffected), just no longer parsed as a command. `StackCard.svelte`'s and
+  `StackControlDock.svelte`'s grammar-chip buttons, inline autocomplete, and
+  `ChipInput` token-building all updated to emit `;`-prefixed tokens.
+- **[Removed] `/loop/N` killed outright, not just renamed.** `STACK_COMMANDS`
+  no longer carries a `loop` command at all — `xN` was already the primary
+  loop-count grammar and having two paths to the same field was redundant.
+  The stack dock's `×N` grammar-chip button now inserts a literal `x3` token
+  directly (mirroring `StackCard.svelte`'s `chipLoop`) instead of opening a
+  value-picker; the dock's own iteration-pill stepper is unaffected.
+- **[Feat] Per-field chip colors, reusing `ConfigDrawer.svelte`'s existing
+  palette.** `ChipInput.svelte`'s resolved-token chips previously collapsed
+  every non-effort command into one generic violet `chip-command`. Split into
+  `chip-model` (cyan, `0,212,255`) and `chip-branch` (green, `0,255,157`) —
+  both new `GoalSegment['chipKind']` variants — plus a renamed `chip-autonomy`
+  (violet, `183,155,255`, byte-identical to the old `chip-command` value) that
+  now doubles as both the resolved `;autonomy/...` chip color and the
+  generic-bucket fallback for non-value/suite-toggle commands (`eval`/
+  `guard`/`schedule`/`maxx`/`goal`), since `ConfigDrawer` has no distinct
+  swatch for those. `chip-effort` reconciled to `ConfigDrawer`'s real
+  `255,69,0` (was `255,149,0` — two different oranges for the same field
+  across the two surfaces).
+- **[Test]** `stack.test.ts` extended with `;model/sonnet`, `;effort/high`,
+  `;branch/main`, `;autonomy/L2`, `;eval/kcqf` round-trip cases (level-1
+  autocomplete, level-2 pending-command detection, tokenizer chip-kind
+  resolution) plus explicit regressions proving the retired `/`-prefixed
+  grammar no longer parses and that `;loop/N` resolves to nothing (STACK_COMMANDS
+  carries no such command). `:alias`/`@repo`/`xN` matching confirmed
+  byte-for-byte unchanged.
+- **[Known gap] macOS (`StackCardView.swift`/`StackControlDockView.swift`)
+  still speaks the old `/`-prefixed grammar** — out of scope for this
+  web-only sprint (no Xcode toolchain in this environment to verify a Swift
+  change against) and not called out in the sprint brief. Composer-grammar
+  divergence between platforms is cosmetic, not functional (each platform
+  parses its own local text into the same wire fields), but should be closed
+  in a follow-up. See `docs/ops/NEXT_SESSION_PROMPT.md`.
+
 ## [0.13.0] — Stack-Chain-1 / Popover-Fix-1 / Parity-Audit-1: real whole-stack scheduling, popover overflow fix, web/macOS parity audit 🔗
 
 Three workstreams: (1) the stack control dock's "schedule the entire stack"

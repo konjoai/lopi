@@ -463,19 +463,25 @@ eqIs(buildCard(':ratchet "self improve"').preset, 'gain', 'a `:ratchet` composer
   eqIs(aliasAutocomplete(':research ').length, 0, 'a trailing space after a completed alias also closes the list');
 }
 
-// ── inline `/command` autocomplete — level 1 (command names) + level 2
-//    (`/command/value`), mirroring `@repo`'s trailing-word grammar ───────────
+// ── inline `;command` autocomplete — level 1 (command names) + level 2
+//    (`;command/value`), mirroring `@repo`'s trailing-word grammar ───────────
+// `;` is lopi's own catch-all verb prefix (composer-grammar sprint) — `/` is
+// vacated entirely for real Claude Code slash commands. Only the leading
+// trigger character changed; the level-2 `command/value` separator stays `/`.
 {
-  eqIs(commandAutocomplete('/mo', CARD_COMMANDS).length, 1, 'a unique command prefix returns one match');
-  eqIs(commandAutocomplete('/mo', CARD_COMMANDS)[0].token, '/model', 'the match carries the full command token');
-  eqIs(commandAutocomplete('fix the bug /', CARD_COMMANDS).length, CARD_COMMANDS.length, 'a bare slash matches every command');
-  eqIs(commandAutocomplete('/', CARD_COMMANDS).length, CARD_COMMANDS.length, 'works with no goal text before it too');
-  eqIs(commandAutocomplete('/nope', CARD_COMMANDS).length, 0, 'no command starts with an unknown prefix');
-  eqIs(commandAutocomplete('fix /model bug', CARD_COMMANDS).length, 0, 'once a space follows the token, the goal has moved on');
-  eqIs(commandAutocomplete('fix the bug', CARD_COMMANDS).length, 0, 'no trailing slash means no suggestions');
+  eqIs(commandAutocomplete(';mo', CARD_COMMANDS).length, 1, 'a unique command prefix returns one match');
+  eqIs(commandAutocomplete(';mo', CARD_COMMANDS)[0].token, ';model', 'the match carries the full command token');
+  eqIs(commandAutocomplete('fix the bug ;', CARD_COMMANDS).length, CARD_COMMANDS.length, 'a bare semicolon matches every command');
+  eqIs(commandAutocomplete(';', CARD_COMMANDS).length, CARD_COMMANDS.length, 'works with no goal text before it too');
+  eqIs(commandAutocomplete(';nope', CARD_COMMANDS).length, 0, 'no command starts with an unknown prefix');
+  eqIs(commandAutocomplete('fix ;model bug', CARD_COMMANDS).length, 0, 'once a space follows the token, the goal has moved on');
+  eqIs(commandAutocomplete('fix the bug', CARD_COMMANDS).length, 0, 'no trailing semicolon means no suggestions');
+  // `/model`-style tokens (the old prefix) must never match the new `;` grammar —
+  // this is the one-way-door hard cutover: no read-compat shim.
+  eqIs(commandAutocomplete('/mo', CARD_COMMANDS).length, 0, 'the retired `/` prefix no longer triggers command autocomplete');
   ok(
-    STACK_COMMANDS.some((c) => c.command === 'loop') && !CARD_COMMANDS.some((c) => c.command === 'loop'),
-    '`loop` is stack-scope only — no per-card loop count to override'
+    !STACK_COMMANDS.some((c) => c.command === 'loop'),
+    '`loop` has no `;loop/N` command at all — xN is the sole loop-count grammar, no second path under the new prefix'
   );
   ok(
     CARD_COMMANDS.some((c) => c.command === 'guard') && STACK_COMMANDS.some((c) => c.command === 'guard'),
@@ -483,36 +489,61 @@ eqIs(buildCard(':ratchet "self improve"').preset, 'gain', 'a `:ratchet` composer
   );
 
   eqIs(
-    commandValueAutocomplete('/model/op', 'model', MODEL_OPTIONS).length,
+    commandValueAutocomplete(';model/op', 'model', MODEL_OPTIONS).length,
     1,
     'level 2 filters the given catalog by the value typed so far'
   );
   eqIs(
-    commandValueAutocomplete('/model/op', 'model', MODEL_OPTIONS)[0].token,
-    '/model/claude-opus-4-8',
+    commandValueAutocomplete(';model/op', 'model', MODEL_OPTIONS)[0].token,
+    ';model/claude-opus-4-8',
     'the level-2 token embeds the real value directly — no label/path resolution step, unlike @repo'
   );
-  eqIs(commandValueAutocomplete('/model/', 'model', MODEL_OPTIONS).length, MODEL_OPTIONS.length, 'an empty value query matches everything');
-  eqIs(commandValueAutocomplete('/model/nope', 'model', MODEL_OPTIONS).length, 0, 'no option starts with an unknown value prefix');
-  eqIs(commandValueAutocomplete('/model/opus done', 'model', MODEL_OPTIONS).length, 0, 'a space after the value token closes the list');
+  eqIs(commandValueAutocomplete(';model/', 'model', MODEL_OPTIONS).length, MODEL_OPTIONS.length, 'an empty value query matches everything');
+  eqIs(commandValueAutocomplete(';model/nope', 'model', MODEL_OPTIONS).length, 0, 'no option starts with an unknown value prefix');
+  eqIs(commandValueAutocomplete(';model/opus done', 'model', MODEL_OPTIONS).length, 0, 'a space after the value token closes the list');
   eqIs(
-    commandValueAutocomplete('/effort/lo', 'effort', EFFORT_OPTIONS)[0]?.token,
-    '/effort/low',
+    commandValueAutocomplete(';effort/lo', 'effort', EFFORT_OPTIONS)[0]?.token,
+    ';effort/low',
     'a different command matches its own catalog, not the one from the last call'
   );
   eqIs(
-    detectPendingCommand(':research /model/', CARD_COMMANDS),
+    detectPendingCommand(':research ;model/', CARD_COMMANDS),
     'model',
     'hand-typing a value-picker token enters level-2 mode, same as clicking the level-1 suggestion would'
   );
-  eqIs(detectPendingCommand('/model/op', CARD_COMMANDS), 'model', 'detects even with a partial value already typed');
-  eqIs(detectPendingCommand('/guard/', CARD_COMMANDS), null, 'a non-value-picker command never enters level-2 mode');
-  eqIs(detectPendingCommand('/nope/', CARD_COMMANDS), null, 'an unknown command name matches nothing');
-  eqIs(detectPendingCommand('fix the bug', CARD_COMMANDS), null, 'no trailing /command/ token means no pending command');
-  eqIs(detectPendingCommand('/loop/3', STACK_COMMANDS), 'loop', 'stack-scope commands are matched against their own list');
+  eqIs(detectPendingCommand(';model/op', CARD_COMMANDS), 'model', 'detects even with a partial value already typed');
+  eqIs(detectPendingCommand(';guard/', CARD_COMMANDS), null, 'a non-value-picker command never enters level-2 mode');
+  eqIs(detectPendingCommand(';nope/', CARD_COMMANDS), null, 'an unknown command name matches nothing');
+  eqIs(detectPendingCommand('fix the bug', CARD_COMMANDS), null, 'no trailing ;command/ token means no pending command');
+  eqIs(detectPendingCommand('/model/op', CARD_COMMANDS), null, 'a `/`-prefixed token (the retired grammar) is never detected as pending');
 
   eqIs(evalSuiteOptions().length, 3, "eval's catalog is the three suite shortcuts, not individual eval names");
   ok(evalSuiteOptions().every((o) => !o.label.includes(' ')), 'every suite name is space-free — the trailing-token grammar could not carry a spaced value');
+}
+
+// ── Kill-test 1 — `;`-prefixed value-picker tokens for every CARD_COMMANDS
+//    field resolve end-to-end: level-1 command name, level-2 pending-command
+//    detection, and the tokenizer's resolved chip kind ─────────────────────
+{
+  type Row = { token: string; command: string; chipKind: 'model' | 'effort' | 'branch' | 'command' };
+  const rows: Row[] = [
+    { token: ';model/sonnet', command: 'model', chipKind: 'model' },
+    { token: ';effort/high', command: 'effort', chipKind: 'effort' },
+    { token: ';branch/main', command: 'branch', chipKind: 'branch' },
+    { token: ';autonomy/L2', command: 'autonomy', chipKind: 'command' },
+    { token: ';eval/kcqf', command: 'eval', chipKind: 'command' }
+  ];
+  for (const row of rows) {
+    eqIs(
+      detectPendingCommand(row.token, CARD_COMMANDS),
+      row.command,
+      `${row.token}: detected as a pending ${row.command} value-picker token`
+    );
+    const segs = tokenizeGoalChips(row.token, CARD_COMMANDS);
+    eqIs(segs.length, 1, `${row.token}: tokenizes to exactly one resolved chip`);
+    eqIs(segs[0].text, row.token, `${row.token}: the chip carries the token verbatim`);
+    eqIs(segs[0].chipKind, row.chipKind, `${row.token}: resolves to the '${row.chipKind}' chip kind`);
+  }
 }
 
 // ── V&V: table-driven WIRED round-trip (§C) — one non-default value per WIRED
@@ -1331,19 +1362,35 @@ eqIs(
   );
 }
 {
-  const segs = tokenizeGoalChips('do it /model/opus now', CARD_COMMANDS);
+  const segs = tokenizeGoalChips('do it ;autonomy/L2 now', CARD_COMMANDS);
   eq(
     segs,
-    [{ text: 'do it ' }, { text: '/model/opus', chipKind: 'command' }, { text: ' now' }],
-    'a resolved /command/value token chips (non-effort command → command kind)'
+    [{ text: 'do it ' }, { text: ';autonomy/L2', chipKind: 'command' }, { text: ' now' }],
+    'a resolved ;command/value token chips (non-effort/model/branch command → generic command kind)'
   );
 }
 {
-  const segs = tokenizeGoalChips('go /effort/high', CARD_COMMANDS);
+  const segs = tokenizeGoalChips('go ;effort/high', CARD_COMMANDS);
   eq(
     segs,
-    [{ text: 'go ' }, { text: '/effort/high', chipKind: 'effort' }],
-    '/effort/value gets its own kind, distinct from other commands'
+    [{ text: 'go ' }, { text: ';effort/high', chipKind: 'effort' }],
+    ';effort/value gets its own kind, distinct from other commands'
+  );
+}
+{
+  const segs = tokenizeGoalChips('use ;model/claude-opus-4-8 please', CARD_COMMANDS);
+  eq(
+    segs,
+    [{ text: 'use ' }, { text: ';model/claude-opus-4-8', chipKind: 'model' }, { text: ' please' }],
+    ';model/value gets its own kind (Phase 2 — reuses ConfigDrawer\'s cyan)'
+  );
+}
+{
+  const segs = tokenizeGoalChips('target ;branch/main now', CARD_COMMANDS);
+  eq(
+    segs,
+    [{ text: 'target ' }, { text: ';branch/main', chipKind: 'branch' }, { text: ' now' }],
+    ';branch/value gets its own kind (Phase 2 — reuses ConfigDrawer\'s green)'
   );
 }
 {
@@ -1357,16 +1404,21 @@ eqIs(
 {
   // Non-value-picker commands (guard/schedule/maxx) are stripped from the
   // text the moment they're picked (selectCommand's existing behavior) —
-  // they should never appear as a literal `/guard` word to chip.
-  const segs = tokenizeGoalChips('please /guard the loop', CARD_COMMANDS);
-  eq(segs, [{ text: 'please /guard the loop' }], 'a non-value-picker command word never chips');
+  // they should never appear as a literal `;guard` word to chip.
+  const segs = tokenizeGoalChips('please ;guard the loop', CARD_COMMANDS);
+  eq(segs, [{ text: 'please ;guard the loop' }], 'a non-value-picker command word never chips');
 }
 {
-  // STACK_COMMANDS carries `loop`/`goal` instead of card-only `maxx` —
-  // confirm the tokenizer is genuinely parameterized per scope, not
-  // hardcoded to CARD_COMMANDS.
-  const segs = tokenizeGoalChips('/loop/5', STACK_COMMANDS);
-  eqIs(segs[0].chipKind, 'command', 'stack-scope /loop/value resolves using STACK_COMMANDS, not CARD_COMMANDS');
+  // `loop` carries no `;loop/N` command at all (killed this sprint) — xN is
+  // the sole loop-count grammar, no second path under either scope's catalog.
+  const segs = tokenizeGoalChips(';loop/5', STACK_COMMANDS);
+  eq(segs, [{ text: ';loop/5' }], 'a `;loop/value` token never chips — no such command exists in STACK_COMMANDS');
+}
+{
+  // The retired `/`-prefixed grammar is a hard cutover — a `/model/...` token
+  // now renders as inert plain text, never a chip (kill-test 3's decision).
+  const segs = tokenizeGoalChips('do it /model/opus now', CARD_COMMANDS);
+  eq(segs, [{ text: 'do it /model/opus now' }], 'a `/`-prefixed token (the retired prefix) never chips');
 }
 {
   eqIs(tokenizeGoalChips('', CARD_COMMANDS).length, 1, 'empty text still yields one (empty) segment');

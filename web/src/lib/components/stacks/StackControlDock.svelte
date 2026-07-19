@@ -149,12 +149,12 @@
     updateStackConfig(pane.key, { loopCount: stepMaxIterations(config.loopCount, delta) });
   }
 
-  // ── stack command bar (`@repo` / `/command`) ────────────────────────────────
+  // ── stack command bar (`@repo` / `;command`) ────────────────────────────────
   // The stack-only analogue of a card's goal-field autocomplete (Stack-1 §4):
-  // several settings (loop count, stack schedule/guardrails/run-until-goal)
-  // have no card-level equivalent to piggyback on, so they need their own
-  // text-entry surface. Same `@`/`/` grammar as `StackCard.svelte`'s composer,
-  // writing to `pane.config` instead of a card's `config`. Value-picker
+  // several settings (stack schedule/guardrails/run-until-goal) have no
+  // card-level equivalent to piggyback on, so they need their own text-entry
+  // surface. Same `@`/`;` grammar as `StackCard.svelte`'s composer, writing
+  // to `pane.config` instead of a card's `config`. Value-picker
   // commands apply immediately and clear the bar (no goal text to preserve
   // here); popover-openers reuse the exact `togglePopover(id)` calls the
   // dock's own icon buttons make.
@@ -186,15 +186,6 @@
         return branchOptionsFor($branchesByRepo, config.defaults.repo);
       case 'eval':
         return evalSuiteOptions();
-      case 'loop':
-        return [
-          { value: '1', label: '1 (off)' },
-          { value: '2', label: '2' },
-          { value: '3', label: '3' },
-          { value: '5', label: '5' },
-          { value: '10', label: '10' },
-          { value: '0', label: '∞ (unlimited)' }
-        ];
       default:
         return [];
     }
@@ -218,12 +209,12 @@
   }
   // Re-infer `pendingCommand` from the typed text on every change — see
   // StackCard.svelte's identical comment for why relying only on
-  // `selectCommand`'s explicit assignment misses hand-typed `/model/`.
+  // `selectCommand`'s explicit assignment misses hand-typed `;model/`.
   $: {
     const inferred = detectPendingCommand(cmdText, STACK_COMMANDS);
     if (inferred) {
       pendingCommand = inferred;
-    } else if (pendingCommand && !new RegExp(`(^|\\s)/${pendingCommand}/`).test(cmdText)) {
+    } else if (pendingCommand && !new RegExp(`(^|\\s);${pendingCommand}/`).test(cmdText)) {
       pendingCommand = null;
     }
   }
@@ -236,9 +227,6 @@
     switch (command) {
       case 'eval':
         updateStackConfig(pane.key, { evals: applySuite(config.evals, EVAL_SUITES[value] ?? []) });
-        return;
-      case 'loop':
-        updateStackConfig(pane.key, { loopCount: parseInt(value, 10) || 0 });
         return;
       case 'model':
         applyDefault({ model: value });
@@ -296,14 +284,14 @@
       const valueMatches = cmdMatches as CommandValueSuggestion[];
       const suggestion = valueMatches.find((s) => s.token === token);
       if (suggestion) applyCommandValue(pendingCommand, suggestion.value);
-      cmdText = `/${pendingCommand}/${suggestion?.value ?? ''} `;
+      cmdText = `;${pendingCommand}/${suggestion?.value ?? ''} `;
       pendingCommand = null;
       cmdDismissed = true;
     } else {
       const command = token.slice(1);
       const def = STACK_COMMANDS.find((c) => c.command === command);
       if (def?.isValuePicker) {
-        cmdText = `/${command}/`;
+        cmdText = `;${command}/`;
         pendingCommand = command;
       } else {
         fireCommandAction(command);
@@ -337,7 +325,17 @@
   function chipCommandBar(command: string): void {
     cmdBarFocused = true;
     cmdDismissed = false;
-    selectCommandFromBar(`/${command}`);
+    selectCommandFromBar(`;${command}`);
+    void tick().then(() => cmdBarInput?.focus());
+  }
+
+  /** `×N` has no `;loop/N` command grammar (killed — `xN` is the sole
+   *  loop-count grammar) — inserts the literal token directly, mirroring
+   *  `StackCard.svelte`'s `chipLoop`. */
+  function chipLoopBar(): void {
+    cmdBarFocused = true;
+    cmdDismissed = false;
+    cmdText = `${cmdText}${chipSpacer(cmdText)}x3 `;
     void tick().then(() => cmdBarInput?.focus());
   }
 
@@ -595,9 +593,9 @@
       <div class="grammarchips">
         <button type="button" class="gchip alias" on:click={chipAliasBar}>:alias</button>
         <button type="button" class="gchip repo" on:click={chipRepoBar}>@repo</button>
-        <button type="button" class="gchip model" on:click={() => chipCommandBar('model')}>/model</button>
-        <button type="button" class="gchip effort" on:click={() => chipCommandBar('effort')}>/effort</button>
-        <button type="button" class="gchip loop" on:click={() => chipCommandBar('loop')}>×N</button>
+        <button type="button" class="gchip model" on:click={() => chipCommandBar('model')}>;model</button>
+        <button type="button" class="gchip effort" on:click={() => chipCommandBar('effort')}>;effort</button>
+        <button type="button" class="gchip loop" on:click={chipLoopBar}>×N</button>
       </div>
       {#if showSummary}
         {#if scheduledOn}

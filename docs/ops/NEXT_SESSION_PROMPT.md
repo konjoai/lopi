@@ -1,3 +1,41 @@
+# Next Session — after Composer-Grammar-1 (web)
+
+`/` is now fully vacated on web: every lopi-specific composer command
+(`model`/`effort`/`branch`/`autonomy`/`eval`/`guard`/`schedule`/`maxx`) moved
+to a new `;` catch-all prefix, `/loop/N` was killed outright (`xN` is the
+sole loop-count grammar), and `ChipInput.svelte`'s resolved-token chips now
+reuse `ConfigDrawer.svelte`'s real per-field colors (`chip-model` cyan,
+`chip-branch` green, `chip-effort` reconciled to the real ember, `chip-command`
+renamed to `chip-autonomy`). `:alias`/`@repo`/`×N` untouched. See `LEDGER.md`'s
+`Composer-Grammar-1 (web)` entry for the full reasoning, including why this
+was a deliberate hard cutover with no backward-compat shim.
+
+**Two concrete items carried forward:**
+
+1. **`/` is safe to claim for real Claude Code slash commands now (the
+   sprint this one was explicitly gating).** Web's `stack.ts`/`StackCard.svelte`/
+   `StackControlDock.svelte` no longer read or write anything under a `/`
+   prefix — that character is fully free for a real Claude Code `/`-command
+   hookup in the same goal/cmdbar fields, with no autocomplete collision
+   against lopi's own grammar (which now lives entirely under `;`).
+2. **macOS still speaks the old `/`-prefixed grammar — genuine, unclosed
+   platform divergence.** `StackCardView.swift`/`StackControlDockView.swift`
+   (and whatever `LopiStacksKit` Swift file mirrors `stack.ts`'s
+   `CARD_COMMANDS`/`commandAutocomplete`/`detectPendingCommand`) were not
+   touched this session — the sprint brief scoped every referenced file to
+   web, and this environment has no Xcode to compile-verify a Swift change
+   against (same standing constraint prior sessions hit). The divergence is
+   cosmetic, not functional — each platform's composer only ever parses its
+   own locally-typed text into the same `card.config` wire fields, so
+   behavior is identical, only the shortcut *text* a user types differs by
+   platform. Port the identical `/` → `;` rename (plus the `/loop/N` removal)
+   to the Swift side once a session with real Xcode access is available;
+   `stack.test.ts`'s new kill-test-1 table (`;model/sonnet`, `;effort/high`,
+   `;branch/main`, `;autonomy/L2`, `;eval/kcqf`) is the literal acceptance
+   bar to port over as Swift assertions.
+
+---
+
 # Next Session — after Stack-Chain-1 / Popover-Fix-1 / Parity-Audit-1
 
 Server-side whole-stack cron scheduling shipped end-to-end (schema →
