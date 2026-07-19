@@ -160,7 +160,10 @@ private struct StackDockCardBar: View {
 private struct ComposerCardView: View {
     @Environment(AppModel.self) private var model
     let paneKey: String
+    @State private var templatesOpen = false
     @State private var popoverOpen = false
+    @State private var savePromptAlert = false
+    @State private var nameInput = ""
 
     private var draftGoal: Binding<String> {
         Binding(
@@ -169,13 +172,19 @@ private struct ComposerCardView: View {
         )
     }
 
+    private var hot: Bool {
+        model.stackStore.pane(for: paneKey).map { draftIsHot($0.draft) } ?? false
+    }
+
+    private func writeDraft(_ mutate: (inout StackCard) -> Void) {
+        model.stackStore.updateDraftInPane(paneKey, mutate)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             RunTag(label: "new prompt", color: Konjo.fgMute, background: Konjo.panel)
 
-            // Placeholder — full template-menu wiring (StackTemplateStore) is
-            // real follow-up work, not part of this screens pass.
-            Button {} label: {
+            Button { templatesOpen = true } label: {
                 HStack(spacing: 5) {
                     Image(systemName: "list.bullet.rectangle").font(.system(size: 10))
                     Text("templates").font(Konjo.mono(10.5))
@@ -186,6 +195,37 @@ private struct ComposerCardView: View {
                 .overlay(Capsule().stroke(Konjo.line2, lineWidth: 1))
             }
             .buttonStyle(.plain)
+            .popover(isPresented: $templatesOpen) {
+                TemplatesMenuContent(
+                    hot: hot,
+                    prompts: model.stackTemplateStore.library.prompts,
+                    onSelectPreset: { key in
+                        writeDraft { $0 = applyPreset(key, to: $0) }
+                        templatesOpen = false
+                    },
+                    onSelectPrompt: { tpl in
+                        writeDraft { $0 = applyPromptTemplate(tpl, to: $0) }
+                        templatesOpen = false
+                    },
+                    onSave: {
+                        templatesOpen = false
+                        nameInput = ""
+                        savePromptAlert = true
+                    }
+                )
+                .presentationCompactAdaptation(.popover)
+            }
+            .alert("Name this prompt template", isPresented: $savePromptAlert) {
+                TextField("name", text: $nameInput)
+                Button("Save") {
+                    let name = nameInput.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !name.isEmpty, let draft = model.stackStore.pane(for: paneKey)?.draft {
+                        model.stackTemplateStore.savePrompt(promptTemplate(from: draft, name: name))
+                    }
+                    nameInput = ""
+                }
+                Button("Cancel", role: .cancel) { nameInput = "" }
+            }
 
             TextField("describe the prompt or goal...", text: draftGoal, axis: .vertical)
                 .font(Konjo.sans(13))
@@ -235,6 +275,88 @@ private struct ComposerCardView: View {
                 .strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
                 .foregroundStyle(Konjo.line2)
         )
+    }
+}
+
+/// Prompt-scope templates menu — presets → saved prompt templates → save
+/// current draft, matching macOS's `TemplatesMenuView` menu content (the
+/// draft-only trigger path; the iOS composer never renders the committed-card
+/// `CardbarButton` trigger, so that half of the macOS view isn't needed here).
+private struct TemplatesMenuContent: View {
+    let hot: Bool
+    let prompts: [PromptTemplate]
+    let onSelectPreset: (PresetKey) -> Void
+    let onSelectPrompt: (PromptTemplate) -> Void
+    let onSave: () -> Void
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                section("arrow.triangle.2.circlepath", "presets", Konjo.stackTeal) {
+                    ForEach(PRESET_KEYS, id: \.self) { key in
+                        row(name: ":\(PRESET_CATALOG[key]?.label ?? key.rawValue)", nameColor: Konjo.stackTeal,
+                            desc: PRESET_DESCRIPTIONS[key]) { onSelectPreset(key) }
+                    }
+                }
+                divider
+                section("doc", "prompt templates", Konjo.sun) {
+                    if prompts.isEmpty {
+                        Text("none saved yet")
+                            .font(Konjo.mono(10.5)).foregroundStyle(Konjo.fgMute)
+                            .padding(.horizontal, 8).padding(.vertical, 4)
+                    } else {
+                        ForEach(prompts) { tpl in
+                            row(name: tpl.name, desc: tpl.goal) { onSelectPrompt(tpl) }
+                        }
+                    }
+                }
+                divider
+                section("square.and.arrow.down", "save", Konjo.fgDim) {
+                    row(name: "save this prompt…", disabled: !hot, action: onSave)
+                }
+            }
+            .padding(6)
+        }
+        .frame(width: 280).frame(maxHeight: 340)
+        .background(Konjo.panel)
+    }
+
+    private var divider: some View {
+        Divider().overlay(Konjo.line).padding(.vertical, 2)
+    }
+
+    private func section<Rows: View>(
+        _ icon: String, _ text: String, _ color: Color, @ViewBuilder rows: () -> Rows
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 6) {
+                Image(systemName: icon).font(.system(size: 10))
+                Text(text.uppercased()).font(Konjo.mono(8.5)).tracking(1)
+            }
+            .foregroundStyle(color)
+            .padding(.horizontal, 8).padding(.vertical, 5)
+            rows()
+        }
+    }
+
+    private func row(
+        name: String, nameColor: Color = Konjo.fg, desc: String? = nil,
+        disabled: Bool = false, action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(name).font(Konjo.mono(12)).foregroundStyle(disabled ? Konjo.fgMute : nameColor)
+                if let desc {
+                    Text(desc).font(Konjo.mono(10)).foregroundStyle(Konjo.fgDim).lineLimit(1)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 8).padding(.vertical, 6)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(disabled)
+        .opacity(disabled ? 0.4 : 1)
     }
 }
 
