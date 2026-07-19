@@ -1,7 +1,7 @@
 <!--
   ChipInput — round 2, item 2 (corrected direction). A single-line
   `contenteditable` field that renders resolved `:alias`/`@repo`/
-  `/command/value`/`×N` tokens as inline atomic chips, mixed with plain text,
+  `;command/value`/`×N` tokens as inline atomic chips, mixed with plain text,
   in place of the raw characters they replace — a mention/tag-pill input
   (Linear/Notion-style), not a plain `<textarea>`.
 
@@ -51,7 +51,13 @@
     alias: 'chip-alias',
     repo: 'chip-repo',
     effort: 'chip-effort',
-    command: 'chip-command',
+    model: 'chip-model',
+    branch: 'chip-branch',
+    // Generic bucket for `;autonomy` and the non-value/suite-toggle commands
+    // (`;eval`/`;guard`/`;schedule`/`;maxx`/`;goal`) — `ConfigDrawer.svelte`'s
+    // real autonomy violet already happens to be this bucket's existing
+    // color, so it doubles as both without a distinct `chipKind`.
+    command: 'chip-autonomy',
     loop: 'chip-loop'
   };
 
@@ -205,11 +211,21 @@
     color: var(--konjo-ice, #00d4ff);
   }
   .chipinput :global(.chip.chip-effort) {
-    border: 1px solid rgba(255, 149, 0, 0.4);
-    background: rgba(255, 149, 0, 0.1);
-    color: var(--konjo-flame, #ff9500);
+    border: 1px solid rgba(255, 69, 0, 0.4);
+    background: rgba(255, 69, 0, 0.1);
+    color: rgb(255, 69, 0);
   }
-  .chipinput :global(.chip.chip-command) {
+  .chipinput :global(.chip.chip-model) {
+    border: 1px solid rgba(0, 212, 255, 0.4);
+    background: rgba(0, 212, 255, 0.1);
+    color: rgb(0, 212, 255);
+  }
+  .chipinput :global(.chip.chip-branch) {
+    border: 1px solid rgba(0, 255, 157, 0.4);
+    background: rgba(0, 255, 157, 0.1);
+    color: rgb(0, 255, 157);
+  }
+  .chipinput :global(.chip.chip-autonomy) {
     border: 1px solid rgba(183, 155, 255, 0.4);
     background: rgba(183, 155, 255, 0.1);
     color: var(--stack-violet, #b79bff);

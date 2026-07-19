@@ -440,21 +440,24 @@ export function suggestPreset(text: string): PresetKey | null {
   return null;
 }
 
-// ── Inline `/command` autocomplete ────────────────────────────────────────────
-// Every prompt/stack setting gets a `:`/`@`/`/` alias, not just presets and
-// repo: `/model`, `/effort`, `/branch`, `/autonomy`, `/eval` are value-pickers
-// (mirrors the user's own suggested `/model/<autocomplete>` syntax — the
-// level-2 token embeds the real value directly, so unlike `@repo` there's no
-// label/path resolution step); `/guard`, `/schedule`, `/maxx`, `/goal` carry
-// multi-field state that doesn't reduce to one inline value, so picking one
-// just opens the existing popover for it (the composer component owns that
-// action — this module only supplies the pure matching).
+// ── Inline `;command` autocomplete ────────────────────────────────────────────
+// Every prompt/stack setting gets a `:`/`@`/`;` alias, not just presets and
+// repo: `;model`, `;effort`, `;branch`, `;autonomy`, `;eval` are value-pickers
+// (mirrors the user's own suggested `/model/<autocomplete>` syntax, now under
+// the `;` prefix — the level-2 token embeds the real value directly after a
+// `/` separator, so unlike `@repo` there's no label/path resolution step);
+// `;guard`, `;schedule`, `;maxx`, `;goal` carry multi-field state that doesn't
+// reduce to one inline value, so picking one just opens the existing popover
+// for it (the composer component owns that action — this module only
+// supplies the pure matching). `;` is lopi's own catch-all verb prefix,
+// deliberately distinct from `/`, which is reserved for real Claude Code
+// slash commands.
 
-/** One inline `/command` definition. */
+/** One inline `;command` definition. */
 export interface InlineCommandDef {
   command: string;
   hint: string;
-  /** `true` → typing `/command` then continues into a second `/command/value`
+  /** `true` → typing `;command` then continues into a second `;command/value`
    *  token (see `commandValueAutocomplete`). `false` → selecting the command
    *  fires an immediate action (open a popover) with no value step. */
   isValuePicker: boolean;
@@ -474,22 +477,21 @@ export const CARD_COMMANDS: InlineCommandDef[] = [
 
 /** Stack-scope commands, typed into the stack's own command bar
  *  (`StackControlDock.svelte`) — same vocabulary, writes to `pane.config`
- *  instead of a card's `config`. No `maxx` (per-card only); adds `loop`
- *  (chain loop count) and `goal` (run-until-goal), which have no card-level
- *  analog. */
+ *  instead of a card's `config`. No `maxx` (per-card only); adds `goal`
+ *  (run-until-goal), which has no card-level analog. Chain loop count has no
+ *  `;loop/N` command — `xN` is the sole loop-count grammar. */
 export const STACK_COMMANDS: InlineCommandDef[] = [
   { command: 'model', hint: 'stack default model', isValuePicker: true },
   { command: 'effort', hint: 'stack default effort', isValuePicker: true },
   { command: 'branch', hint: 'stack default branch', isValuePicker: true },
   { command: 'autonomy', hint: 'stack default autonomy', isValuePicker: true },
-  { command: 'loop', hint: 'stack loop count', isValuePicker: true },
   { command: 'eval', hint: 'toggle a stack eval suite', isValuePicker: true },
   { command: 'guard', hint: 'open stack guardrails', isValuePicker: false },
   { command: 'schedule', hint: 'open the stack schedule', isValuePicker: false },
   { command: 'goal', hint: 'open run-until-goal', isValuePicker: false }
 ];
 
-/** A level-1 `/command` suggestion — the bare command name, not yet a value. */
+/** A level-1 `;command` suggestion — the bare command name, not yet a value. */
 export interface CommandSuggestion {
   token: string;
   command: string;
@@ -501,24 +503,24 @@ export interface CommandSuggestion {
  *  same trailing-word grammar `repoAutocomplete` uses, generalized over a
  *  caller-supplied command list (card vs. stack scope differ). */
 export function commandAutocomplete(goalText: string, commands: InlineCommandDef[]): CommandSuggestion[] {
-  const match = /(?:^|\s)\/([a-z]*)$/.exec(goalText);
+  const match = /(?:^|\s);([a-z]*)$/.exec(goalText);
   if (!match) return [];
   const q = match[1].toLowerCase();
   return commands
     .filter((c) => c.command.startsWith(q))
-    .map((c) => ({ token: `/${c.command}`, command: c.command, label: c.command, hint: c.hint }));
+    .map((c) => ({ token: `;${c.command}`, command: c.command, label: c.command, hint: c.hint }));
 }
 
 /** Infers the level-2 `pendingCommand` straight from the goal text's trailing
- *  `/command/` token, rather than relying solely on the composer having set
+ *  `;command/` token, rather than relying solely on the composer having set
  *  it when a level-1 suggestion was clicked. Without this, hand-typing
- *  `/model/` (never clicking the `/model` row) left `pendingCommand` unset,
+ *  `;model/` (never clicking the `;model` row) left `pendingCommand` unset,
  *  so `commandValueAutocomplete` never ran and the value list silently never
  *  appeared — typing the token had to produce the same state that clicking
  *  it does. Only matches commands flagged `isValuePicker`; a fired-immediately
- *  command like `/guard/` has no level-2 catalog to switch into. */
+ *  command like `;guard/` has no level-2 catalog to switch into. */
 export function detectPendingCommand(goalText: string, commands: InlineCommandDef[]): string | null {
-  const match = /(?:^|\s)\/([a-z]+)\/\S*$/.exec(goalText);
+  const match = /(?:^|\s);([a-z]+)\/\S*$/.exec(goalText);
   if (!match) return null;
   const def = commands.find((c) => c.command === match[1]);
   return def?.isValuePicker ? def.command : null;
@@ -534,14 +536,14 @@ export interface CommandValueSuggestion {
 
 /** Level 2: once a value-picker command has been chosen (the composer tracks
  *  this as its own `pendingCommand` state), matches a trailing
- *  `/command/value` token against whatever catalog applies to `command`. */
+ *  `;command/value` token against whatever catalog applies to `command`. */
 export function commandValueAutocomplete(goalText: string, command: string, options: Option[]): CommandValueSuggestion[] {
-  const match = new RegExp(`(?:^|\\s)/${command}/(\\S*)$`).exec(goalText);
+  const match = new RegExp(`(?:^|\\s);${command}/(\\S*)$`).exec(goalText);
   if (!match) return [];
   const q = match[1].toLowerCase();
   return options
     .filter((o) => matches(o, q))
-    .map((o) => ({ token: `/${command}/${o.value}`, label: o.label, hint: o.hint ?? '', value: o.value }));
+    .map((o) => ({ token: `;${command}/${o.value}`, label: o.label, hint: o.hint ?? '', value: o.value }));
 }
 
 // ── Inline chip tokenizer (round 2, item 2) ───────────────────────────────────
@@ -562,12 +564,13 @@ export function commandValueAutocomplete(goalText: string, command: string, opti
 
 /** One segment of tokenized goal/cmdbar text — either a plain-text run
  *  (`chipKind` unset) or a resolved token to render as an inline chip.
- *  `chipKind` picks the accent color, reusing the exact hues the round 1
- *  grammar chips already established (`:alias` teal, `@repo` ice, `/effort`
- *  ember, everything else `/command/value` violet, `×N` sun). */
+ *  `chipKind` picks the accent color, reusing `ConfigDrawer.svelte`'s exact
+ *  per-field hues (`:alias` teal, `@repo` ice, `;effort` ember, `;model`
+ *  cyan, `;branch` green, `;autonomy`/everything else `;command/value`
+ *  violet, `×N` sun). */
 export interface GoalSegment {
   text: string;
-  chipKind?: 'alias' | 'repo' | 'effort' | 'command' | 'loop';
+  chipKind?: 'alias' | 'repo' | 'effort' | 'command' | 'loop' | 'model' | 'branch';
 }
 
 function escapeRegExp(s: string): string {
@@ -582,14 +585,14 @@ function escapeRegExp(s: string): string {
  *  chips. Non-value-picker commands (`guard`/`schedule`/`maxx`/`goal`) never
  *  appear here: `selectCommand`/`selectCommandFromBar` strip those tokens
  *  from the text the instant they're picked, so there's never a resolved
- *  `/guard` word left in the string to chip. */
+ *  `;guard` word left in the string to chip. */
 export function tokenizeGoalChips(text: string, commands: InlineCommandDef[]): GoalSegment[] {
   if (!text) return [{ text: '' }];
   const valuePickers = commands.filter((c) => c.isValuePicker).map((c) => escapeRegExp(c.command));
   const alternatives = [
     PRESET_KEYS.length ? `:(?:${PRESET_KEYS.map(escapeRegExp).join('|')})(?=\\s|$)` : null,
     `@[^\\s@]+\\/[^\\s@]+(?=\\s|$)`,
-    valuePickers.length ? `\\/(?:${valuePickers.join('|')})\\/[^\\s/]+(?=\\s|$)` : null,
+    valuePickers.length ? `;(?:${valuePickers.join('|')})\\/[^\\s/]+(?=\\s|$)` : null,
     `[×xX]\\d+(?=\\s|$)`
   ].filter((p): p is string => p !== null);
   const re = new RegExp(alternatives.join('|'), 'g');
@@ -603,8 +606,10 @@ export function tokenizeGoalChips(text: string, commands: InlineCommandDef[]): G
     let kind: NonNullable<GoalSegment['chipKind']>;
     if (token.startsWith(':')) kind = 'alias';
     else if (token.startsWith('@')) kind = 'repo';
-    else if (token.startsWith('/')) kind = token.slice(1, token.indexOf('/', 1)) === 'effort' ? 'effort' : 'command';
-    else kind = 'loop';
+    else if (token.startsWith(';')) {
+      const cmd = token.slice(1, token.indexOf('/', 1));
+      kind = cmd === 'effort' ? 'effort' : cmd === 'model' ? 'model' : cmd === 'branch' ? 'branch' : 'command';
+    } else kind = 'loop';
     segments.push({ text: token, chipKind: kind });
     cursor = idx + token.length;
   }
@@ -612,7 +617,7 @@ export function tokenizeGoalChips(text: string, commands: InlineCommandDef[]): G
   return segments.length ? segments : [{ text: '' }];
 }
 
-/** `/eval`'s value catalog is the suite-shortcut names (`kcqf`/`security`/
+/** `;eval`'s value catalog is the suite-shortcut names (`kcqf`/`security`/
  *  `research`), not individual eval names — those contain spaces (`"vuln
  *  scan"`, `"code review"`), which the trailing-token grammar can't carry.
  *  Bulk-toggling a suite is the useful, space-free case; per-eval toggling

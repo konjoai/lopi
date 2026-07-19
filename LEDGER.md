@@ -5,6 +5,68 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## Composer-Grammar-1 (web)
+
+**`/` → `;` prefix swap for lopi's own composer verbs — logged as a one-way
+door.** `CARD_COMMANDS`/`STACK_COMMANDS` (`model`/`effort`/`branch`/
+`autonomy`/`eval`/`guard`/`schedule`/`maxx`) moved from the `/` prefix to a
+new `;` catch-all prefix. `:alias`, `@repo`, and `×N`/`xN` keep their own
+prefixes, untouched.
+
+**Why:** `/` is what real Claude Code slash commands use. Lopi's own
+composer grammar squatting on that character blocks ever wiring up real
+Claude Code `/` commands in the same goal field without a collision — two
+different command vocabularies can't safely share one trigger character in
+the same autocomplete surface. `;` is free, unambiguous, and gives lopi's
+verbs one consistent home instead of borrowing a character it doesn't own.
+
+**Hard cutover, no backward-compat shim.** An old `/model/...`-style token
+already sitting in a saved card/stack goal string (composer text, templates,
+`localStorage`) stops parsing as a chip after this sprint — it renders as
+plain text instead. This was a deliberate default, not an oversight: the
+underlying text is unaffected (nothing is deleted or silently rewritten),
+only the chip-rendering/autocomplete behavior stops recognizing it. Adding a
+read-compat shim (accept both `/` and `;` as trigger prefixes) was considered
+and rejected — it would have kept `/` semantically occupied by lopi's own
+grammar exactly as long as any old saved text existed, defeating the entire
+point of vacating `/` for the next sprint's real Claude Code hookup.
+
+**`/loop/N` killed outright, not renamed to `;loop/N`.** `xN` was already the
+sole primary loop-count grammar; `/loop/N` was a second, redundant path to
+the identical `pane.config.loopCount` field. Rather than carry that
+redundancy forward under the new prefix, it was deleted. The stack dock's
+`×N` grammar-chip button (previously wired through the value-picker command
+path) now inserts a literal `x3` token directly, the same way
+`StackCard.svelte`'s own `chipLoop` always has.
+
+**Chip colors reuse `ConfigDrawer.svelte`'s palette verbatim, not new
+values.** `ChipInput.svelte`'s generic violet `chip-command` bucket split
+into `chip-model` (cyan) and `chip-branch` (green) as distinct
+`GoalSegment['chipKind']` variants, and was renamed (not recolored) to
+`chip-autonomy` — the exact same violet RGB triple it already had, since that
+color happened to already match `ConfigDrawer`'s real autonomy swatch. No new
+colors were invented for `eval`/`guard`/`schedule`/`maxx`/`goal` — those stay
+on the renamed `chip-autonomy` bucket as the generic fallback, since
+`ConfigDrawer` has no per-field swatch for any of them to reuse.
+
+**macOS (`StackCardView.swift`/`StackControlDockView.swift`) was not
+touched.** The sprint brief scoped every file reference to web
+(`stack.ts`/`ChipInput.svelte`/`ConfigDrawer.svelte`) and never mentioned
+macOS; this session also has no Xcode toolchain to compile-verify a Swift
+change against (a standing constraint noted in prior `NEXT_SESSION_PROMPT.md`
+entries). macOS still parses the old `/`-prefixed grammar — a real
+composer-grammar divergence between platforms, but not a functional
+regression: each platform only ever parses its own locally-typed text into
+the same wire fields (`card.config.model`/`.effort`/`.branch`/`.autonomy`),
+so a card's *behavior* is identical either way, only its *composer shortcut
+text* differs. Flagged as a concrete follow-up, not silently dropped.
+
+**How to apply:** any future addition to lopi's own composer grammar
+(another `;command`) is a pure catalog append to `CARD_COMMANDS`/
+`STACK_COMMANDS` — the four matching functions and the tokenizer are already
+generic over `InlineCommandDef[]`, proven by this sprint's own rename being
+mechanical rather than requiring new parsing logic.
+
 ## Stack-Chain-1 / Popover-Fix-1 / Parity-Audit-1
 
 **New tables, not an overload of `schedules`.** `schedule_chains` /

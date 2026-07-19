@@ -220,15 +220,16 @@
     void tick().then(() => goalInput?.focus());
   }
 
-  // ── inline `/command` autocomplete (model/effort/branch/autonomy/eval/
+  // ── inline `;command` autocomplete (model/effort/branch/autonomy/eval/
   //    guard/schedule/maxx) ────────────────────────────────────────────────
   // Two-level grammar, mirroring the user's own suggested `/model/<value>`
-  // syntax: typing `/` suggests command names (`commandAutocomplete`); picking
-  // a value-picker command (model/effort/branch/autonomy/eval) moves into a
-  // second `/command/value` token (`commandValueAutocomplete`) against that
-  // command's own catalog. Picking a non-value-picker command (guard/
-  // schedule/maxx) fires immediately — strips the token and opens the
-  // existing popover for it, same as clicking its cardbar icon.
+  // syntax under lopi's own `;` catch-all prefix: typing `;` suggests command
+  // names (`commandAutocomplete`); picking a value-picker command (model/
+  // effort/branch/autonomy/eval) moves into a second `;command/value` token
+  // (`commandValueAutocomplete`) against that command's own catalog. Picking
+  // a non-value-picker command (guard/schedule/maxx) fires immediately —
+  // strips the token and opens the existing popover for it, same as clicking
+  // its cardbar icon.
   let cmdActiveIndex = 0;
   let cmdDismissed = false;
   /** Set once a value-picker command is chosen from the level-1 list; cleared
@@ -265,14 +266,14 @@
   $: if (cmdActiveIndex >= cmdMatches.length) cmdActiveIndex = Math.max(0, cmdMatches.length - 1);
   // Re-infer `pendingCommand` from the goal text on every change, not just
   // from `selectCommand`'s explicit assignment — otherwise hand-typing
-  // `/model/` (rather than clicking the `/model` row) never entered
+  // `;model/` (rather than clicking the `;model` row) never entered
   // value-picker mode. Falls back to the old clear-on-abandon behavior once
-  // the `/command/` prefix itself is edited away (e.g. backspaced).
+  // the `;command/` prefix itself is edited away (e.g. backspaced).
   $: {
     const inferred = detectPendingCommand(card.goal, CARD_COMMANDS);
     if (inferred) {
       pendingCommand = inferred;
-    } else if (pendingCommand && !new RegExp(`(^|\\s)/${pendingCommand}/`).test(card.goal)) {
+    } else if (pendingCommand && !new RegExp(`(^|\\s);${pendingCommand}/`).test(card.goal)) {
       pendingCommand = null;
     }
   }
@@ -313,7 +314,7 @@
     if (pendingCommand) {
       const valueMatches = cmdMatches as CommandValueSuggestion[];
       const suggestion = valueMatches.find((s) => s.token === token);
-      const m = new RegExp(`(^|\\s)/${pendingCommand}/(\\S*)$`).exec(card.goal);
+      const m = new RegExp(`(^|\\s);${pendingCommand}/(\\S*)$`).exec(card.goal);
       if (m && suggestion) {
         writeCard({ goal: `${card.goal.slice(0, m.index)}${m[1]}` });
         applyCommandValue(pendingCommand, suggestion.value);
@@ -322,10 +323,10 @@
     } else {
       const command = token.slice(1);
       const def = CARD_COMMANDS.find((c) => c.command === command);
-      const m = /(^|\s)\/(\S*)$/.exec(card.goal);
+      const m = /(^|\s);(\S*)$/.exec(card.goal);
       if (!m) return;
       if (def?.isValuePicker) {
-        writeCard({ goal: `${card.goal.slice(0, m.index)}${m[1]}/${command}/` });
+        writeCard({ goal: `${card.goal.slice(0, m.index)}${m[1]};${command}/` });
         pendingCommand = command;
       } else {
         writeCard({ goal: `${card.goal.slice(0, m.index)}${m[1]}` });
@@ -364,9 +365,9 @@
   async function chipCommand(command: string): Promise<void> {
     goalFocused = true;
     cmdDismissed = false;
-    writeCard({ goal: `${card.goal}${chipSpacer(card.goal)}/` });
+    writeCard({ goal: `${card.goal}${chipSpacer(card.goal)};` });
     await tick();
-    selectCommand(`/${command}`);
+    selectCommand(`;${command}`);
   }
 
   async function chipLoop(): Promise<void> {
@@ -600,7 +601,7 @@
     </div>
     <!-- Goal on its own full-width line — round 2, item 2: a `ChipInput`
          (contenteditable, atomic resolved-token chips), not a plain
-         `<textarea>`, so a resolved `:alias`/`@repo`/`/model/opus`/`×N`
+         `<textarea>`, so a resolved `:alias`/`@repo`/`;model/opus`/`×N`
          renders inline in place rather than in a separate row. Still honors
          `:alias @repo ×N` on commit either way — nothing about the
          underlying `card.goal` string changed. -->
@@ -641,8 +642,8 @@
     <div class="grammarchips">
       <button type="button" class="gchip alias" on:click={chipAlias}>:alias</button>
       <button type="button" class="gchip repo" on:click={chipRepo}>@repo</button>
-      <button type="button" class="gchip model" on:click={() => chipCommand('model')}>/model</button>
-      <button type="button" class="gchip effort" on:click={() => chipCommand('effort')}>/effort</button>
+      <button type="button" class="gchip model" on:click={() => chipCommand('model')}>;model</button>
+      <button type="button" class="gchip effort" on:click={() => chipCommand('effort')}>;effort</button>
       <button type="button" class="gchip loop" on:click={chipLoop}>×N</button>
     </div>
   {:else}
