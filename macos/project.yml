@@ -3,6 +3,7 @@ options:
   bundleIdPrefix: ai.konjo.lopi
   deploymentTarget:
     macOS: "14.0"
+    iOS: "17.0"
   createIntermediateGroups: true
 
 settings:
@@ -73,6 +74,33 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: ai.konjo.lopi.uitests
         TEST_TARGET_NAME: Lopi
 
+  # iOS port — shares Networking/Store/Theme/Stacks with the macOS `Lopi`
+  # target (none of those directories import AppKit; confirmed by grep before
+  # sharing them) plus the same LopiStacksKit package. `LopiIOS/` holds only
+  # the iOS-specific entry point and screens; there is no macOS analogue for
+  # MenuBarExtra/Settings scenes, so LopiIOSApp.swift is its own file rather
+  # than a shared one with #if os() branches.
+  LopiIOS:
+    type: application
+    platform: iOS
+    sources:
+      - path: LopiIOS
+      - path: Lopi/Networking
+      - path: Lopi/Store
+      - path: Lopi/Theme
+      - path: Lopi/Stacks
+      - path: Lopi/Components
+    dependencies:
+      - package: LopiStacksKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ai.konjo.lopi.ios
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+        INFOPLIST_KEY_NSHumanReadableCopyright: "Konjo AI"
+        TARGETED_DEVICE_FAMILY: "1" # iPhone only for the first pass; iPad later
+
 schemes:
   Lopi:
     build:
@@ -82,3 +110,7 @@ schemes:
       targets:
         - LopiTests
         - LopiUITests
+  LopiIOS:
+    build:
+      targets:
+        LopiIOS: all
