@@ -31,6 +31,23 @@ impl ClaudeCode {
         self
     }
 
+    /// Set the permission mode (`--permission-mode`) for the worker session.
+    /// Only [`lopi_core::PermissionMode`]'s four headless-safe values are
+    /// forwarded; an unrecognized value is dropped with a warning so a
+    /// malformed task field can't make the CLI reject the whole spawn.
+    /// `None`/empty leaves `apply_cli_caps` to fall back to
+    /// `PermissionMode::default()` (`bypassPermissions`).
+    #[must_use]
+    pub fn with_permission_mode(mut self, mode: impl Into<String>) -> Self {
+        let raw = mode.into();
+        match lopi_core::PermissionMode::parse(&raw) {
+            Ok(parsed) => self.permission_mode = Some(parsed.as_str().to_string()),
+            Err(_) if raw.trim().is_empty() => {}
+            Err(_) => tracing::warn!(permission_mode = %raw, "ignoring unrecognized permission mode"),
+        }
+        self
+    }
+
     /// Set the per-session `--max-turns` cap. The CLI halts cleanly at the cap
     /// and emits a terminal `result`, rather than running on.
     #[must_use]

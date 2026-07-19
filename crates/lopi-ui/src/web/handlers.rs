@@ -10,7 +10,9 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Json},
 };
-use lopi_core::{Priority, ReportChannel, ReportChannelError, Task, TaskId};
+use lopi_core::{
+    PermissionMode, PermissionModeError, Priority, ReportChannel, ReportChannelError, Task, TaskId,
+};
 use lopi_memory::CheckpointInput;
 use lopi_spec::SpecSurface;
 use serde::Deserialize;
@@ -242,23 +244,42 @@ async fn resolve_task_id(s: &AppState, id: &str) -> Option<TaskId> {
     t.id.parse::<uuid::Uuid>().ok().map(TaskId)
 }
 
+/// Why [`apply_loop_fields`] rejected a `CreateTaskRequest` — every variant
+/// maps to a 422, never a silent drop or coercion of the offending field.
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+pub(super) enum ApplyLoopFieldsError {
+    /// `req.report` named an unknown or currently-unreachable channel.
+    #[error(transparent)]
+    Report(#[from] ReportChannelError),
+    /// `req.permission_mode` named anything other than the four headless-safe
+    /// modes [`PermissionMode`] exposes.
+    #[error(transparent)]
+    PermissionMode(#[from] PermissionModeError),
+}
+
 /// Apply the loop/verifier/report/override fields exposed on
 /// [`CreateTaskRequest`] onto a freshly constructed `Task`. Kept separate
 /// from [`create_task`] so the field-mapping contract is unit-testable
 /// without an HTTP round-trip.
 ///
 /// # Errors
-/// Returns [`ReportChannelError`] when `req.report` names an unknown or
-/// currently-unreachable channel (e.g. `"whatsapp"`) — reuses
+/// Returns [`ApplyLoopFieldsError::Report`] when `req.report` names an
+/// unknown or currently-unreachable channel (e.g. `"whatsapp"`) — reuses
 /// [`ReportChannel::parse`], the same validator `Task`/`ScheduleEntry`
-/// already use, rather than a second report-channel parser.
+/// already use, rather than a second report-channel parser. Returns
+/// [`ApplyLoopFieldsError::PermissionMode`] when `req.permission_mode` names
+/// anything other than the four headless-safe modes, reusing
+/// [`PermissionMode::parse`] the same way.
 pub(super) fn apply_loop_fields(
     task: &mut Task,
     req: &CreateTaskRequest,
-) -> Result<(), ReportChannelError> {
+) -> Result<(), ApplyLoopFieldsError> {
     if let Some(report) = &req.report {
         ReportChannel::parse(report)?;
         task.report = Some(report.clone());
+    }
+    if let Some(mode) = &req.permission_mode {
+        task.permission_mode = PermissionMode::parse(mode)?;
     }
     if let Some(v) = req.verifier_required {
         task.verifier_required = v;

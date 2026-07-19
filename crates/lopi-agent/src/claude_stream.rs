@@ -8,8 +8,9 @@ use tokio::io::AsyncBufReadExt;
 /// numbered plan steps (lines matching `^\d+\.`) and a join handle that resolves to
 /// the full plan text when the claude process exits.
 ///
-/// `model`/`max_budget_usd`/`max_turns`/`allowed_tools`/`disallowed_tools` mirror
-/// the caps [`ClaudeCode::run`](crate::claude::ClaudeCode) and
+/// `model`/`effort`/`permission_mode`/`max_budget_usd`/`max_turns`/
+/// `allowed_tools`/`disallowed_tools` mirror the caps
+/// [`ClaudeCode::run`](crate::claude::ClaudeCode) and
 /// [`ClaudeCode::run_streamed`] already apply — this is the third (speculative)
 /// `claude -p` spawn site, and until these were threaded through it was the one
 /// path a `--speculative` run could still spend on with no cap at all, even when
@@ -23,6 +24,7 @@ pub fn plan_streaming(
     all_constraints: Vec<String>,
     model: Option<&str>,
     effort: Option<&str>,
+    permission_mode: Option<&str>,
     max_budget_usd: Option<f64>,
     max_turns: Option<u32>,
     allowed_tools: &[String],
@@ -40,6 +42,7 @@ pub fn plan_streaming(
     let repo_path = repo_path.to_path_buf();
     let model = model.map(str::to_string);
     let effort = effort.map(str::to_string);
+    let permission_mode = permission_mode.map(str::to_string);
     let allowed_tools = allowed_tools.to_vec();
     let disallowed_tools = disallowed_tools.to_vec();
 
@@ -65,17 +68,19 @@ pub fn plan_streaming(
         let mut cmd = tokio::process::Command::new(&cli_path);
         cmd.arg("-p")
             .arg(&prompt)
-            // Same unattended-session guard as the streaming plan/implement
-            // path (`ClaudeCode::run_streamed`) — without it a tool call
-            // needing approval stalls this headless pipeline forever.
-            .arg("--dangerously-skip-permissions")
             .current_dir(&repo_path)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::null());
+        // Same unattended-session guard as the streaming plan/implement path
+        // (`ClaudeCode::run_streamed`) — `apply_cli_caps` always emits
+        // `--permission-mode` (falling back to `PermissionMode::default()`,
+        // `bypassPermissions`, when `permission_mode` is unset), so a tool
+        // call needing approval never stalls this headless pipeline forever.
         crate::claude_support::apply_cli_caps(
             &mut cmd,
             model.as_deref(),
             effort.as_deref(),
+            permission_mode.as_deref(),
             max_turns,
             max_budget_usd,
             &allowed_tools,
@@ -171,6 +176,7 @@ mod tests {
             vec![],
             Some("claude-opus-4-7"),
             Some("high"),
+            Some("dontAsk"),
             Some(2.5),
             Some(7),
             &["Bash".to_string()],
@@ -181,7 +187,7 @@ mod tests {
 
         let argv = std::fs::read_to_string(&capture).unwrap();
         assert!(
-            argv.contains("--dangerously-skip-permissions"),
+            argv.contains("--permission-mode\ndontAsk"),
             "argv={argv}"
         );
         assert!(argv.contains("--model\nclaude-opus-4-7"), "argv={argv}");
@@ -197,7 +203,10 @@ mod tests {
 
     /// Absent caps (the pre-Part-0 default) must still add nothing — `None`/
     /// empty stays a true no-op, matching every other `claude -p` spawn site's
-    /// "0/None = disabled" convention.
+    /// "0/None = disabled" convention. `permission_mode` is the one exception:
+    /// it always emits a value, falling back to `PermissionMode::default()`
+    /// (`bypassPermissions`) — the pre-Permission-Modes-1 unconditional
+    /// `--dangerously-skip-permissions` behavior, reproduced exactly.
     #[tokio::test]
     async fn plan_streaming_omits_flags_for_absent_caps() {
         let script = unique_path("nocaps_script");
@@ -216,6 +225,7 @@ mod tests {
             None,
             None,
             None,
+            None,
             &[],
             &[],
         );
@@ -223,7 +233,7 @@ mod tests {
         handle.await.unwrap().unwrap();
 
         let argv = std::fs::read_to_string(&capture).unwrap();
-        assert!(argv.contains("--dangerously-skip-permissions"));
+        assert!(argv.contains("--permission-mode\nbypassPermissions"));
         assert!(!argv.contains("--model"));
         assert!(!argv.contains("--effort"));
         assert!(!argv.contains("--max-budget-usd"));

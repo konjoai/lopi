@@ -115,7 +115,12 @@ fn apply_loop_fields_accepts_telegram_and_rejects_whatsapp() {
     let whatsapp_req: CreateTaskRequest =
         serde_json::from_value(serde_json::json!({"goal": "w", "report": "whatsapp"})).unwrap();
     let err = apply_loop_fields(&mut whatsapp_task, &whatsapp_req).unwrap_err();
-    assert_eq!(err, lopi_core::ReportChannelError::WhatsappUnsupported);
+    assert_eq!(
+        err,
+        crate::web::handlers::ApplyLoopFieldsError::Report(
+            lopi_core::ReportChannelError::WhatsappUnsupported
+        )
+    );
     assert_eq!(
         whatsapp_task.report, None,
         "task must not be mutated on a rejected report channel"
