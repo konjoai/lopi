@@ -23,7 +23,6 @@ use crate::api_client::AnthropicClient;
 use anyhow::{Context, Result};
 use lopi_ratelimit::{AnthropicLimiter, CircuitBreaker};
 use std::sync::Arc;
-use std::time::Duration;
 
 /// System prompt for the post-mortem session. Must be byte-stable so that
 /// `cache_control: ephemeral` hits across all post-mortems in a run.
@@ -217,11 +216,6 @@ pub async fn run_postmortem_quiet(
         }
     }
 }
-
-// Suppress unused warning when nothing in this crate calls these directly
-// (they are public surface for the caller in main.rs / orchestrator).
-#[allow(dead_code)]
-const _BUILDER_HINT: Duration = Duration::from_secs(0);
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
