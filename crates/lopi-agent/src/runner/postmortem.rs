@@ -166,18 +166,11 @@ pub(crate) fn extract_constraint(raw: &str) -> Option<String> {
     if line.is_empty() {
         return None;
     }
-    if line.len() > 200 {
-        // Truncate over-long lines to 200 chars rather than rejecting —
-        // gives the user something usable.
-        return Some(
-            line.chars()
-                .take(200)
-                .collect::<String>()
-                .trim()
-                .to_string(),
-        );
-    }
 
+    // Validate imperative-ness *before* truncating — length must never be
+    // able to bypass this check. It used to run after an early-return
+    // truncation branch, so any over-long non-imperative line was accepted
+    // unconditionally instead of rejected.
     let lower = line.to_lowercase();
     let starts_with_imperative = lower.starts_with("must")
         || lower.starts_with("do not")
@@ -186,6 +179,20 @@ pub(crate) fn extract_constraint(raw: &str) -> Option<String> {
 
     if !starts_with_imperative {
         return None;
+    }
+
+    if line.chars().count() > 200 {
+        // Truncate over-long lines to 200 chars rather than rejecting —
+        // gives the user something usable. Char count (not byte length)
+        // so a line whose byte length exceeds 200 but whose char count
+        // doesn't isn't spuriously flagged as over-long.
+        return Some(
+            line.chars()
+                .take(200)
+                .collect::<String>()
+                .trim()
+                .to_string(),
+        );
     }
 
     Some(line.to_string())
@@ -288,6 +295,37 @@ mod tests {
             assert!(r.len() <= 200);
             assert!(r.starts_with("must "));
         }
+    }
+
+    /// Regression: the length/truncation branch used to run *before* the
+    /// imperative-prefix check and return early, so any over-long
+    /// non-imperative line was accepted unconditionally instead of
+    /// rejected — length must never bypass the imperative validation.
+    #[test]
+    fn extract_rejects_overlong_non_imperative_line() {
+        let long = "the agent should have been more careful about ".to_string() + &"x".repeat(200);
+        assert!(extract_constraint(&long).is_none());
+    }
+
+    /// Regression: the over-long gate used byte length (`line.len()`)
+    /// while the truncation used char count (`chars().take(200)`) — for a
+    /// line with multi-byte chars, a >200-*byte*, <=200-*char* line would
+    /// trip the gate but not actually get truncated. Assert the char count
+    /// itself is what's compared against 200, using a multi-byte string
+    /// whose byte length exceeds 200 while its char count does not.
+    #[test]
+    fn extract_gate_uses_char_count_not_byte_length() {
+        let word = "must "; // 5 ASCII bytes/chars
+        let filler = "é".repeat(150); // 150 chars, 300 bytes
+        let long = format!("{word}{filler}");
+        assert!(long.len() > 200, "byte length should exceed 200");
+        assert!(long.chars().count() <= 200, "char count should not");
+        let result = extract_constraint(&long);
+        assert_eq!(
+            result,
+            Some(long.trim().to_string()),
+            "should be returned unchanged, not truncated, since char count is within bounds"
+        );
     }
 
     #[test]
