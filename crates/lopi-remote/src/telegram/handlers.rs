@@ -275,6 +275,24 @@ async fn handle_cancel(bot: &Bot, msg: &Message, id_prefix: &str, pool: &AgentPo
     Ok(())
 }
 
+/// Build the `/retry` reply text from `queue.push()`'s dedup result.
+/// `push()` returns `Some(existing_id)` when an identical goal is already
+/// queued — in that case the goal was *not* requeued, and the reply must
+/// say so rather than unconditionally reporting success with a fabricated
+/// "new" ID that was never actually enqueued.
+fn format_retry_reply(goal: &str, new_id: TaskId, push_result: Option<TaskId>) -> String {
+    match push_result {
+        None => format!(
+            "🔁 requeued at HIGH priority\n{goal}\nNew ID: {}",
+            short_id(&new_id.to_string())
+        ),
+        Some(existing_id) => format!(
+            "⏳ already queued\n{goal}\nExisting ID: {}",
+            short_id(&existing_id.to_string())
+        ),
+    }
+}
+
 async fn handle_retry(
     bot: &Bot,
     msg: &Message,
@@ -296,14 +314,11 @@ async fn handle_retry(
                     chat_id: msg.chat.id.0,
                     message_id: msg.id.0,
                 };
-                let new_id = short_id(&t.id.to_string()).to_string();
-                queue.push(t).await;
+                let new_id = t.id;
+                let push_result = queue.push(t).await;
                 bot.send_message(
                     msg.chat.id,
-                    format!(
-                        "🔁 requeued at HIGH priority\n{}\nNew ID: {new_id}",
-                        row.goal
-                    ),
+                    format_retry_reply(&row.goal, new_id, push_result),
                 )
                 .await?;
             } else {
@@ -421,6 +436,28 @@ mod tests {
         let unauthorized_id = 99999_i64;
         // Verify auth check logic used in message_handler
         assert!(!allowed.is_empty() && !allowed.contains(&unauthorized_id));
+    }
+
+    #[test]
+    fn retry_reply_reports_requeued_on_fresh_push() {
+        let new_id = TaskId::new();
+        let reply = format_retry_reply("fix the bug", new_id, None);
+        assert!(reply.starts_with("🔁 requeued at HIGH priority"));
+        assert!(reply.contains(&short_id(&new_id.to_string()).to_string()));
+    }
+
+    /// Regression test: `queue.push()` returning `Some(existing_id)` means
+    /// the goal was deduped, not requeued — the reply must say "already
+    /// queued" with the *existing* task's ID, not fabricate a "new" one.
+    #[test]
+    fn retry_reply_reports_already_queued_on_dedup() {
+        let new_id = TaskId::new();
+        let existing_id = TaskId::new();
+        let reply = format_retry_reply("fix the bug", new_id, Some(existing_id));
+        assert!(reply.starts_with("⏳ already queued"));
+        assert!(reply.contains(&short_id(&existing_id.to_string()).to_string()));
+        assert!(!reply.contains(&short_id(&new_id.to_string()).to_string()));
+        assert!(!reply.contains("requeued"));
     }
 
     fn callback_data_strings(kb: &InlineKeyboardMarkup) -> Vec<String> {
