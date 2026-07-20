@@ -1,5 +1,15 @@
 # Changelog
 
+## [Unreleased] — KT-B3-Live: attended MCPB install attempt — three first-real-run bugs found and fixed 🔧
+
+The first real runs of the `LOPI_KTB3_ATTENDED_RUNBOOK.md` checklist. Full diagnostic detail in `LEDGER.md`'s `KT-B3-Live` entries.
+
+- **[Fix] `mcpb/manifest.json`'s `entry_point`/`mcp_config.command` used `${platform}`, which is not a real MCPB substitution token** (confirmed against the upstream spec — only `${__dirname}`, `${HOME}`, `${DESKTOP}`, `${DOCUMENTS}`, `${DOWNLOADS}`, `${pathSeparator}`/`${/}`, `${user_config.*}` exist). Hardcoded the literal `server/darwin-arm64/lopi` path instead, matching what the release workflow actually bundles. Every previously-built `.mcpb` was affected — the earlier `mcpb pack`/`unpack` verification never exercised this path.
+- **[Fix] `.github/workflows/mcpb-release.yml` on this branch had regressed to `timeout 10`** (unavailable on macOS runners) — this branch's `main` merge predated the `timeout` → `perl -e 'alarm N; exec @ARGV'` fix landing on main. Re-applied directly.
+- **[Fix] the stack-status widget resource advertised bare `text/html`, which MCP Apps (SEP-1865) rejects** — Claude Desktop's `initialize` capability negotiation and the `@modelcontextprotocol/ext-apps` `RESOURCE_MIME_TYPE` constant both require `text/html;profile=mcp-app`. The resource was discovered and fetched correctly; it failed only at the final render-format check.
+- **[Docs] `LOPI_KTB3_ATTENDED_RUNBOOK.md` committed** — referenced by name in this file, `LEDGER.md`, and `NEXT_SESSION_PROMPT.md` since `MCPB-App-1` but never actually added to the repo.
+- **Verified together in one green run** (`29770853385`, headSha `467abb8`), including the smoke-test's real `initialize`/`serverInfo` round trip. **The widget-render question itself is still open** — the MIME-type fix hasn't yet been confirmed against a real Claude Desktop install.
+
 ## [0.20.0] — Startup-Script-1: `scripts/start-dashboard.sh`, one idempotent command for "make sure `sail` is up" 🚀
 
 Closes the one manual step `Browser-Pane-1` left standing: `lopi sail` had

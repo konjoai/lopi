@@ -44,7 +44,7 @@ pub(super) fn ui_resources() -> Vec<McpResource> {
         uri: RESOURCE_URI.into(),
         name: "lopi stack status".into(),
         description: "Read-only task roster: goal, branch, stage, status.".into(),
-        mime_type: "text/html".into(),
+        mime_type: "text/html;profile=mcp-app".into(),
     }]
 }
 
@@ -54,7 +54,7 @@ pub(super) fn ui_resource_contents(uri: &str) -> Result<McpResourceContents> {
     if uri == RESOURCE_URI {
         Ok(McpResourceContents {
             uri: uri.to_string(),
-            mime_type: "text/html".into(),
+            mime_type: "text/html;profile=mcp-app".into(),
             text: WIDGET_HTML.to_string(),
         })
     } else {

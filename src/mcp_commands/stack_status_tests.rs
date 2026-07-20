@@ -139,14 +139,14 @@ fn ui_resources_advertises_the_stack_status_widget() {
     let resources = ui_resources();
     assert_eq!(resources.len(), 1);
     assert_eq!(resources[0].uri, RESOURCE_URI);
-    assert_eq!(resources[0].mime_type, "text/html");
+    assert_eq!(resources[0].mime_type, "text/html;profile=mcp-app");
 }
 
 #[test]
 fn ui_resource_contents_serves_the_widget_html() {
     let contents = ui_resource_contents(RESOURCE_URI).unwrap();
     assert_eq!(contents.uri, RESOURCE_URI);
-    assert_eq!(contents.mime_type, "text/html");
+    assert_eq!(contents.mime_type, "text/html;profile=mcp-app");
     // The three MCP Apps lifecycle methods the sprint brief specified must
     // actually be present in the shipped widget, not just planned.
     assert!(contents.text.contains("ui/initialize"));
