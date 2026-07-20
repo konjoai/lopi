@@ -174,10 +174,10 @@ pub struct LoopConfig {
     /// denying every parallel sub-agent fan-out primitive — `Workflow` (the
     /// orchestration script) plus `Task`/`Agent` (the direct spawn tool, under
     /// both CLI names): fanning out through `Task` is what blew a $3-capped
-    /// session to $6.89 (and, uncapped, $25.79). `max_budget_usd` only caps a
-    /// session *between* turns, so it cannot govern money sub-agents burn in
-    /// parallel; denying the fan-out stops it from starting on loops that
-    /// don't explicitly opt in via `permission_allow`.
+    /// session to $6.89 (and, uncapped, $25.79). The `[budget]` USD cap only
+    /// caps a session *between* turns, so it cannot govern money sub-agents
+    /// burn in parallel; denying the fan-out stops it from starting on loops
+    /// that don't explicitly opt in via `permission_allow`.
     ///
     /// Note: the runtime budget is resolved from the `[budget]` preset
     /// ([`LoopConfig::resolved_budget`]); this flat field is the legacy
@@ -192,24 +192,19 @@ pub struct LoopConfig {
     pub max_iterations: u8,
     /// Per-run token budget ceiling metered from the outer runner's own
     /// streamed usage across the whole retry loop (`0` = disabled). Second,
-    /// independent line of defense alongside `max_budget_usd` below — this one
-    /// catches ordinary retry-loop accumulation (many small attempts adding
-    /// up), while `max_budget_usd` catches one session spending big in one
-    /// shot. Defaults to a conservative non-zero value for the same reason
-    /// `max_budget_usd` does: an unattended loop needs a hard stop by default,
-    /// not an opt-in one. Raise or disable per-repo in `.lopi/loop.toml`.
+    /// independent line of defense alongside the `[budget]` USD cap — this
+    /// one catches ordinary retry-loop accumulation (many small attempts
+    /// adding up), while the USD cap catches one session spending big in one
+    /// shot. Defaults to a conservative non-zero value for the same reason:
+    /// an unattended loop needs a hard stop by default, not an opt-in one.
+    /// Raise or disable per-repo in `.lopi/loop.toml`.
+    ///
+    /// Legacy pre-`[budget]` flat field — `resolved_budget()` resolves
+    /// purely from `[budget].budget_tokens` (falling back to the preset,
+    /// never to this field), so this value has no runtime effect on its
+    /// own; `load_from_repo` warns if the two disagree.
     #[serde(default = "default_budget_tokens")]
     pub budget_tokens: u64,
-    /// Per-`claude -p` session USD spend ceiling, forwarded as `--max-budget-usd`
-    /// (the CLI halts cleanly once reached). `0.0` disables the cap. Defaults to
-    /// a conservative non-zero value: `budget_tokens` above only meters the
-    /// outer runner's own streamed usage, not a session that fans out into
-    /// parallel sub-agents (e.g. a deep-research goal) — this flag is the only
-    /// thing that actually caps that spend, since it's CLI-enforced regardless
-    /// of what the outer session sees. Raise it per-repo in `.lopi/loop.toml`
-    /// for loops that intentionally need expensive sessions.
-    #[serde(default = "default_max_budget_usd")]
-    pub max_budget_usd: f64,
     /// How each run's working copy is isolated. Defaults to
     /// [`Branch`](IsolationMode::Branch) — the legacy shared-checkout behavior.
     #[serde(default)]
@@ -256,8 +251,8 @@ pub struct LoopConfig {
     /// Budget & Guardrail Controls Part 2 — the `[budget]` section: a named
     /// preset plus optional explicit overrides. See
     /// [`resolved_budget`](Self::resolved_budget) for how this combines with
-    /// the legacy flat `max_budget_usd`/`budget_tokens`/`permission_*` fields
-    /// above. Defaults to the `standard` preset with no overrides.
+    /// the legacy flat `budget_tokens`/`permission_*` fields above. Defaults
+    /// to the `standard` preset with no overrides.
     #[serde(default)]
     pub budget: BudgetSection,
 }
@@ -279,7 +274,6 @@ impl Default for LoopConfig {
             no_progress_limit: default_no_progress_limit(),
             max_iterations: default_max_iterations(),
             budget_tokens: default_budget_tokens(),
-            max_budget_usd: default_max_budget_usd(),
             isolation: IsolationMode::default(),
             promote_after: 0,
             trust_ceiling: AutonomyLevel::default(),
@@ -298,14 +292,6 @@ fn default_no_progress_limit() -> u8 {
 
 fn default_max_iterations() -> u8 {
     25
-}
-
-/// Kept in sync with the default `standard` preset's cap ($1): a conservative
-/// per-session ceiling that, with fan-out denied, keeps one plan/implement/fix
-/// session's spend in the low-cents-to-$1 range a normal agent uses. Legacy
-/// flat mirror of [`BudgetPreset::Standard`](crate::budget_preset::BudgetPreset).
-fn default_max_budget_usd() -> f64 {
-    1.0
 }
 
 /// A few times the single-turn context budget (`AgentRunner::CONTEXT_BUDGET`,
@@ -345,7 +331,33 @@ impl LoopConfig {
         }
         let text = std::fs::read_to_string(&p)?;
         let cfg: Self = toml::from_str(&text)?;
+        cfg.warn_on_budget_tokens_divergence();
         Ok(cfg)
+    }
+
+    /// Returns `Some((flat, section))` when the legacy flat `budget_tokens`
+    /// and `[budget].budget_tokens` are both set to disagreeing values —
+    /// split out from [`warn_on_budget_tokens_divergence`] so the detection
+    /// logic is directly testable without capturing log output.
+    fn diverging_budget_tokens(&self) -> Option<(u64, u64)> {
+        let section_tokens = self.budget.budget_tokens?;
+        (section_tokens != self.budget_tokens).then_some((self.budget_tokens, section_tokens))
+    }
+
+    /// Warn when the legacy flat `budget_tokens` and `[budget].budget_tokens`
+    /// are both set to disagreeing values. Nothing currently guards this:
+    /// `resolved_budget()` silently prefers `[budget]` and never reads the
+    /// flat field, so a repo that edited only the flat value would see no
+    /// effect and no signal as to why.
+    fn warn_on_budget_tokens_divergence(&self) {
+        if let Some((flat, section)) = self.diverging_budget_tokens() {
+            tracing::warn!(
+                flat_budget_tokens = flat,
+                section_budget_tokens = section,
+                "loop.toml: budget_tokens and [budget].budget_tokens disagree — \
+                 resolved_budget() uses [budget].budget_tokens; the flat value is ignored"
+            );
+        }
     }
 
     /// Serialize and write this config to `<repo>/.lopi/loop.toml`, creating the
@@ -413,11 +425,11 @@ impl LoopConfig {
     /// the conservative `standard` preset — a $1 cap, 1M tokens, and every
     /// sub-agent fan-out primitive (`Workflow`/`Task`/`Agent`) denied.
     ///
-    /// The legacy flat `max_budget_usd`/`budget_tokens`/`permission_allow`/
-    /// `permission_deny` fields above predate `[budget]` and still parse for
-    /// backward compatibility, but this method resolves purely from
-    /// `[budget]` — a repo that customized only the flat fields should
-    /// migrate that customization into `[budget]`.
+    /// The legacy flat `budget_tokens`/`permission_allow`/`permission_deny`
+    /// fields above predate `[budget]` and still parse for backward
+    /// compatibility, but this method resolves purely from `[budget]` — a
+    /// repo that customized only the flat fields should migrate that
+    /// customization into `[budget]`.
     #[must_use]
     pub fn resolved_budget(&self) -> ResolvedBudget {
         let mut resolved = self.budget.preset.resolved();
