@@ -2,12 +2,16 @@ import SwiftUI
 import LopiStacksKit
 
 /// "Stack Loops" overview — every stack pane grouped by lifecycle phase, the
-/// iOS mobile counterpart to `web/src/routes/stacks` (grouped-list layout;
-/// see the design handoff's `OverviewGroupedList`). Tapping a card pushes
-/// into that pane's `StackDetailScreen`.
+/// iOS mobile counterpart to `web/src/routes/stacks` (production layout; see
+/// the design handoff's `OverviewProduction`): swipe-to-manage on each card,
+/// and a "+ New Stack" FAB that opens a blank pane full-screen. Tapping a
+/// card pushes into that pane's `StackDetailScreen`.
 struct StackOverviewScreen: View {
     @Environment(AppModel.self) private var model
     @State private var configOpen = false
+    @State private var path = NavigationPath()
+    @State private var showNewStack = false
+    @State private var newStackKey: String?
 
     private var panes: [StackPaneState] { model.stackStore.panes }
 
@@ -20,31 +24,12 @@ struct StackOverviewScreen: View {
     }
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
-                    ForEach(OverviewPhase.allCases) { phase in
-                        let items = panes.filter {
-                            StackDisplay.overviewPhase(for: $0, liveAgents: model.liveAgents) == phase
-                        }
-                        if !items.isEmpty {
-                            Section {
-                                VStack(spacing: 10) {
-                                    ForEach(items) { pane in
-                                        NavigationLink(value: pane.key) {
-                                            StackOverviewCard(pane: pane)
-                                        }
-                                        .buttonStyle(.plain)
-                                    }
-                                }
-                                .padding(.horizontal, 18)
-                                .padding(.vertical, 10)
-                            } header: {
-                                phaseSectionHeader(phase, count: items.count)
-                            }
-                        }
-                    }
-                }
+        NavigationStack(path: $path) {
+            ZStack(alignment: .bottomTrailing) {
+                list
+                NewStackFAB(action: startNewStack)
+                    .padding(.trailing, 18)
+                    .padding(.bottom, 26)
             }
             .background(Konjo.deep)
             .navigationTitle("")
@@ -56,6 +41,81 @@ struct StackOverviewScreen: View {
                 }
             }
             .sheet(isPresented: $configOpen) { ServerConfigScreen() }
+            .fullScreenCover(isPresented: $showNewStack, onDismiss: cleanupNewStackIfEmpty) {
+                if let key = newStackKey { StackDetailScreen(paneKey: key) }
+            }
+        }
+    }
+
+    private var list: some View {
+        List {
+            ForEach(OverviewPhase.allCases) { phase in
+                let items = panes.filter {
+                    StackDisplay.overviewPhase(for: $0, liveAgents: model.liveAgents) == phase
+                }
+                if !items.isEmpty {
+                    Section {
+                        ForEach(items) { pane in
+                            StackOverviewCard(pane: pane)
+                                .contentShape(Rectangle())
+                                .onTapGesture { path.append(pane.key) }
+                                .listRowInsets(EdgeInsets(top: 5, leading: 18, bottom: 5, trailing: 18))
+                                .listRowBackground(Konjo.deep)
+                                .listRowSeparator(.hidden)
+                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                    Button(role: .destructive) { deleteStack(pane.key) } label: {
+                                        Label("Delete", systemImage: "trash.fill")
+                                    }
+                                    .tint(Konjo.rose)
+                                    pauseResumeButton(for: pane)
+                                }
+                        }
+                    } header: {
+                        phaseSectionHeader(phase, count: items.count)
+                    }
+                }
+            }
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .contentMargins(.bottom, 90, for: .scrollContent)
+    }
+
+    private func pauseResumeButton(for pane: StackPaneState) -> some View {
+        let paused = model.stackEngine.run(for: pane.key)?.phase == .paused
+        return Button {
+            if paused {
+                model.stackEngine.resumeStack(pane.key, PaneDefaults(pane.config.defaults))
+            } else {
+                model.stackEngine.pauseStack(pane.key)
+            }
+        } label: {
+            Label(paused ? "Resume" : "Pause", systemImage: paused ? "play.fill" : "pause.fill")
+        }
+        .tint(Color(hex: 0x3A3A3D))
+    }
+
+    private func deleteStack(_ key: String) {
+        model.stackEngine.clearRun(key)
+        model.stackStore.deleteStackFromPanes(key)
+    }
+
+    /// Creates the blank pane immediately (mirrors macOS `ForgeView`'s
+    /// always-materialized empty pane) and opens it full-screen.
+    private func startNewStack() {
+        model.stackStore.addStackPane()
+        newStackKey = model.stackStore.panes.last?.key
+        showNewStack = true
+    }
+
+    /// Tears the pane back down if the user backed out without committing a
+    /// card, so cancelling never litters the Overview with empty stacks.
+    private func cleanupNewStackIfEmpty() {
+        defer { newStackKey = nil }
+        guard let key = newStackKey else { return }
+        if model.stackStore.pane(for: key)?.cards.isEmpty ?? true {
+            model.stackEngine.clearRun(key)
+            model.stackStore.deleteStackFromPanes(key)
         }
     }
 
@@ -93,6 +153,9 @@ struct StackOverviewScreen: View {
             }
             Text("\(panes.count) stacks · \(runningCount) running · $\(String(format: "%.4f", totalCost)) today")
                 .font(Konjo.mono(10.5))
+                .foregroundStyle(Konjo.fgMute)
+            Text("swipe a card left to pause or delete")
+                .font(Konjo.mono(9.5))
                 .foregroundStyle(Konjo.fgMute)
         }
         .padding(.horizontal, 18)
