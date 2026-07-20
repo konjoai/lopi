@@ -50,7 +50,7 @@ jobs:
           npx --yes @anthropic-ai/mcpb unpack "lopi-${{ github.sha }}-darwin-arm64.mcpb" unpacked
           chmod +x unpacked/server/darwin-arm64/lopi
           printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"ci-smoke","version":"0.1"}}}' \
-            | timeout 10 unpacked/server/darwin-arm64/lopi mcp-serve --repo . \
+            | perl -e 'alarm 10; exec @ARGV' unpacked/server/darwin-arm64/lopi mcp-serve --repo . \
             | grep -q '"serverInfo"' \
             || (echo "::error::mcp-serve did not answer initialize as the bundle's mcp_config specifies" && exit 1)
 
