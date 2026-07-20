@@ -79,6 +79,7 @@
   let guardBtn: HTMLButtonElement | undefined;
   let evalBtn: HTMLButtonElement | undefined;
   let cfgOpen = false;
+  let summaryExpanded = false;
 
   $: schedId = `${card.id}:sched`;
   $: maxId = `${card.id}:max`;
@@ -310,6 +311,46 @@
     void tick().then(() => goalInput?.focus());
   }
 
+  // ── grammar chips (always-visible entry points into the autocomplete
+  //    above) ────────────────────────────────────────────────────────────
+  // Each chip inserts the same trigger token a user would type by hand, then
+  // hands off to the exact selection path that trigger already opens — no
+  // new parsing/selection logic, just a discoverable shortcut into it.
+  function chipSpacer(text: string): string {
+    return text.length > 0 && !/\s$/.test(text) ? ' ' : '';
+  }
+
+  async function chipAlias(): Promise<void> {
+    goalFocused = true;
+    aliasDismissed = false;
+    writeCard({ goal: `${card.goal}${chipSpacer(card.goal)}:` });
+    await tick();
+    goalInput?.focus();
+  }
+
+  async function chipRepo(): Promise<void> {
+    goalFocused = true;
+    repoDismissed = false;
+    writeCard({ goal: `${card.goal}${chipSpacer(card.goal)}@` });
+    await tick();
+    goalInput?.focus();
+  }
+
+  async function chipCommand(command: string): Promise<void> {
+    goalFocused = true;
+    cmdDismissed = false;
+    writeCard({ goal: `${card.goal}${chipSpacer(card.goal)}/` });
+    await tick();
+    selectCommand(`/${command}`);
+  }
+
+  async function chipLoop(): Promise<void> {
+    goalFocused = true;
+    writeCard({ goal: `${card.goal}${chipSpacer(card.goal)}x3 ` });
+    await tick();
+    goalInput?.focus();
+  }
+
   function onGoalKeydown(e: KeyboardEvent): void {
     if (showAliasSuggest) {
       if (e.key === 'ArrowDown') {
@@ -392,6 +433,7 @@
   // collapsed (previously nothing surfaced an override at all once closed).
   $: showConfigSummary = configOn && !cfgOpen;
   $: showSep = card.scheduled || card.maxx.enabled || guardsOn || evalsOn || showConfigSummary;
+  $: summaryCount = [card.scheduled, card.maxx.enabled, guardsOn, evalsOn, showConfigSummary].filter(Boolean).length;
   // A card's loop reads as "actively running" only once it has both a live
   // iteration (status === 'running') and an actual repeat configured — an
   // off card (single pass) never shows the running-loop chrome even mid-run.
@@ -533,7 +575,7 @@
         on:blur={() => (goalFocused = false)}
         use:autoGrow
         rows="1"
-        placeholder="describe the prompt or goal...  (i.e. :alias @org/repo /model/opus xN)"
+        placeholder="describe the prompt or goal..."
         spellcheck="false"
       ></textarea>
       {#if showAliasSuggest}
@@ -558,6 +600,13 @@
           onSelect={selectCommand}
         />
       {/if}
+    </div>
+    <div class="grammarchips">
+      <button type="button" class="gchip alias" on:click={chipAlias}>:alias</button>
+      <button type="button" class="gchip repo" on:click={chipRepo}>@repo</button>
+      <button type="button" class="gchip model" on:click={() => chipCommand('model')}>/model</button>
+      <button type="button" class="gchip effort" on:click={() => chipCommand('effort')}>/effort</button>
+      <button type="button" class="gchip loop" on:click={chipLoop}>×N</button>
     </div>
   {:else}
     <div class="spec">
@@ -588,41 +637,51 @@
 
   {#if showSep}
     <hr class="sep" />
-    {#if card.scheduled}
-      <div class="sumln sched" class:governed={scheduleGoverned}>
-        <span class="rl">{@html ICONS.cron}schedule</span>
-        <span class="txt">
-          {#if scheduleGoverned}
-            governed by stack — won't fire on its own
-          {:else}
-            <b>{scheduleSummary(card)}</b>
-          {/if}
-        </span>
-      </div>
-    {/if}
-    {#if card.maxx.enabled}
-      <div class="sumln max">
-        <span class="rl">{@html ICONS.bolt}MAXX</span>
-        <span class="txt">on{#if maxxSummary(card)} · <b>{maxxSummary(card)}</b>{/if}</span>
-      </div>
-    {/if}
-    {#if guardsOn}
-      <div class="sumln guard">
-        <span class="rl">{@html ICONS.shield}guards</span>
-        <span class="txt">{guardSummary(card)}</span>
-      </div>
-    {/if}
-    {#if evalsOn}
-      <div class="sumln eval">
-        <span class="rl">{@html ICONS.checkbox}evals</span>
-        <span class="txt">{evalsSummary(card)}</span>
-      </div>
-    {/if}
-    {#if showConfigSummary}
-      <div class="sumln cfg">
-        <span class="rl">{@html ICONS.sliders}config</span>
-        <span class="txt">{configSummary(card, paneDefaults)}</span>
-      </div>
+    <button
+      type="button"
+      class="sumchip"
+      on:click={() => (summaryExpanded = !summaryExpanded)}
+      aria-expanded={summaryExpanded}
+    >
+      {summaryCount} configured {@html summaryExpanded ? ICONS.chevup : ICONS.chevdown}
+    </button>
+    {#if summaryExpanded}
+      {#if card.scheduled}
+        <div class="sumln sched" class:governed={scheduleGoverned}>
+          <span class="rl">{@html ICONS.cron}schedule</span>
+          <span class="txt">
+            {#if scheduleGoverned}
+              governed by stack — won't fire on its own
+            {:else}
+              <b>{scheduleSummary(card)}</b>
+            {/if}
+          </span>
+        </div>
+      {/if}
+      {#if card.maxx.enabled}
+        <div class="sumln max">
+          <span class="rl">{@html ICONS.bolt}MAXX</span>
+          <span class="txt">on{#if maxxSummary(card)} · <b>{maxxSummary(card)}</b>{/if}</span>
+        </div>
+      {/if}
+      {#if guardsOn}
+        <div class="sumln guard">
+          <span class="rl">{@html ICONS.shield}guards</span>
+          <span class="txt">{guardSummary(card)}</span>
+        </div>
+      {/if}
+      {#if evalsOn}
+        <div class="sumln eval">
+          <span class="rl">{@html ICONS.checkbox}evals</span>
+          <span class="txt">{evalsSummary(card)}</span>
+        </div>
+      {/if}
+      {#if showConfigSummary}
+        <div class="sumln cfg">
+          <span class="rl">{@html ICONS.sliders}config</span>
+          <span class="txt">{configSummary(card, paneDefaults)}</span>
+        </div>
+      {/if}
     {/if}
   {/if}
 
@@ -851,6 +910,64 @@
     border-color: rgba(0, 255, 212, 0.4);
     background: rgba(0, 255, 212, 0.03);
   }
+  .grammarchips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .gchip {
+    height: 22px;
+    display: inline-flex;
+    align-items: center;
+    padding: 0 8px;
+    border-radius: 11px;
+    background: transparent;
+    font-family: var(--font-mono, 'JetBrains Mono', monospace);
+    font-size: 9.5px;
+    cursor: pointer;
+    transition: 0.12s;
+  }
+  .gchip.alias {
+    border: 1px solid rgba(0, 255, 212, 0.4);
+    color: var(--stack-teal, #00ffd4);
+  }
+  .gchip.alias:hover {
+    border-color: rgba(0, 255, 212, 0.7);
+    background: rgba(0, 255, 212, 0.08);
+  }
+  .gchip.repo {
+    border: 1px solid rgba(0, 212, 255, 0.4);
+    color: var(--konjo-ice, #00d4ff);
+  }
+  .gchip.repo:hover {
+    border-color: rgba(0, 212, 255, 0.7);
+    background: rgba(0, 212, 255, 0.08);
+  }
+  .gchip.model {
+    border: 1px solid rgba(183, 155, 255, 0.4);
+    color: var(--stack-violet, #b79bff);
+  }
+  .gchip.model:hover {
+    border-color: rgba(183, 155, 255, 0.7);
+    background: rgba(183, 155, 255, 0.08);
+  }
+  .gchip.effort {
+    border: 1px solid rgba(255, 149, 0, 0.4);
+    color: var(--konjo-flame, #ff9500);
+  }
+  .gchip.effort:hover {
+    border-color: rgba(255, 149, 0, 0.7);
+    background: rgba(255, 149, 0, 0.08);
+  }
+  .gchip.loop {
+    border: 1px solid rgba(255, 204, 0, 0.4);
+    color: var(--konjo-sun, #ffcc00);
+  }
+  .gchip.loop:hover {
+    border-color: rgba(255, 204, 0, 0.7);
+    background: rgba(255, 204, 0, 0.08);
+  }
   .ib.add {
     color: var(--konjo-jade, #00ff9d);
     border-color: rgba(0, 255, 157, 0.5);
@@ -1023,6 +1140,30 @@
     border: none;
     margin-top: 11px;
   }
+  .sumchip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 24px;
+    margin-top: 9px;
+    padding: 0 10px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    background: rgba(255, 255, 255, 0.04);
+    color: rgba(245, 245, 245, 0.7);
+    font-family: var(--font-mono, 'JetBrains Mono', monospace);
+    font-size: 10px;
+    cursor: pointer;
+    transition: 0.12s;
+  }
+  .sumchip:hover {
+    border-color: rgba(255, 255, 255, 0.32);
+    background: rgba(255, 255, 255, 0.08);
+  }
+  .sumchip :global(svg) {
+    width: 11px;
+    height: 11px;
+  }
   .sumln {
     display: flex;
     align-items: center;
@@ -1046,19 +1187,19 @@
     height: 11px;
   }
   .sumln.sched .rl {
-    color: var(--konjo-ice);
+    color: rgba(245, 245, 245, 0.6);
   }
   .sumln.max .rl {
-    color: var(--konjo-flame);
+    color: rgba(245, 245, 245, 0.6);
   }
   .sumln.guard .rl {
-    color: var(--konjo-sun);
+    color: rgba(245, 245, 245, 0.6);
   }
   .sumln.eval .rl {
-    color: var(--konjo-jade);
+    color: rgba(245, 245, 245, 0.6);
   }
   .sumln.cfg .rl {
-    color: var(--stack-violet, #b79bff);
+    color: rgba(245, 245, 245, 0.6);
   }
   .sumln .txt {
     color: rgba(245, 245, 245, 0.46);
@@ -1113,33 +1254,33 @@
     font-weight: 700;
   }
   .ib.sched.act {
-    color: var(--konjo-ice);
-    border-color: rgba(0, 212, 255, 0.5);
-    background: rgba(0, 212, 255, 0.08);
+    color: #f5f5f5;
+    border-color: rgba(255, 255, 255, 0.5);
+    background: rgba(255, 255, 255, 0.1);
   }
   .ib.max.act {
-    color: var(--konjo-flame);
-    border-color: rgba(255, 149, 0, 0.5);
-    background: rgba(255, 149, 0, 0.08);
+    color: #f5f5f5;
+    border-color: rgba(255, 255, 255, 0.5);
+    background: rgba(255, 255, 255, 0.1);
   }
   .ib.danger:hover {
     color: var(--konjo-rose, #ff0066);
     border-color: rgba(255, 0, 102, 0.4);
   }
   .ib.guard.act {
-    color: var(--konjo-sun);
-    border-color: rgba(255, 204, 0, 0.5);
-    background: rgba(255, 204, 0, 0.08);
+    color: #f5f5f5;
+    border-color: rgba(255, 255, 255, 0.5);
+    background: rgba(255, 255, 255, 0.1);
   }
   .ib.eval.act {
-    color: var(--konjo-jade);
-    border-color: rgba(0, 255, 157, 0.5);
-    background: rgba(0, 255, 157, 0.08);
+    color: #f5f5f5;
+    border-color: rgba(255, 255, 255, 0.5);
+    background: rgba(255, 255, 255, 0.1);
   }
   .ib.config.act {
-    color: var(--stack-violet, #b79bff);
-    border-color: rgba(183, 155, 255, 0.5);
-    background: rgba(183, 155, 255, 0.08);
+    color: #f5f5f5;
+    border-color: rgba(255, 255, 255, 0.5);
+    background: rgba(255, 255, 255, 0.1);
   }
   .ib.drag {
     cursor: grab;
