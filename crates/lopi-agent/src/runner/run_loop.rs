@@ -213,7 +213,10 @@ impl AgentRunner {
                 // Speculative mode: apply plan steps as they stream (see
                 // `speculative.rs`). On a plan-stream failure the branch is
                 // already rolled back — just retry.
-                match self.implement_speculative(&claude, &git, attempt).await {
+                match self
+                    .implement_speculative(&claude, &git, &model, attempt)
+                    .await
+                {
                     SpecFlow::Proceed => {}
                     SpecFlow::Retry => continue,
                 }

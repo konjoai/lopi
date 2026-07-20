@@ -329,12 +329,14 @@ impl ClaudeCode {
         )
     }
 
-    /// Apply a single plan step to the repository.
+    /// Apply a single plan step to the repository. Returns the full CLI
+    /// output envelope (not just success) so the caller can meter the
+    /// step's real token usage and cost — see [`ClaudeOutput::usage`].
     ///
     /// # Errors
     ///
     /// Returns an error if the claude CLI process fails or times out.
-    pub async fn implement_step(&self, task: &Task, step: &str) -> Result<()> {
+    pub async fn implement_step(&self, task: &Task, step: &str) -> Result<ClaudeOutput> {
         let allowed: Vec<&str> = task.allowed_dirs.iter().map(String::as_str).collect();
         let scope = lopi_toon::encode_task_context(&task.goal, &allowed, &[], &[], &[], &[]);
         let prompt = format!(
@@ -346,7 +348,7 @@ impl ClaudeCode {
         if !out.succeeded() {
             anyhow::bail!("step failed: {}", out.text());
         }
-        Ok(())
+        Ok(out)
     }
 
     async fn run(&self, prompt: &str) -> Result<ClaudeOutput> {

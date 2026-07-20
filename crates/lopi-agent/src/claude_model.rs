@@ -72,6 +72,13 @@ pub struct ClaudeOutput {
     pub cost_usd: Option<f64>,
     /// Wall-clock duration of the CLI invocation in milliseconds.
     pub duration_ms: Option<u64>,
+    /// Cumulative token usage, parsed separately from the envelope's
+    /// `modelUsage`/`usage` object (same shape and precedence as the
+    /// streaming `result` message's usage — see
+    /// [`claude_events::parse_result_usage`](crate::claude_events::parse_result_usage)).
+    /// `None` when the envelope carried neither field (e.g. an error result).
+    #[serde(skip)]
+    pub usage: Option<crate::claude_events::ResultUsage>,
     /// Raw stdout from the CLI process — fallback when JSON parsing fails.
     #[serde(skip)]
     pub raw: String,
@@ -99,10 +106,25 @@ impl ClaudeOutput {
 #[must_use]
 pub(crate) fn parse_claude_output(stdout: String, json_output: bool) -> ClaudeOutput {
     if json_output {
-        match serde_json::from_str::<ClaudeOutput>(&stdout) {
-            Ok(mut o) => {
-                o.raw = stdout;
-                o
+        match serde_json::from_str::<serde_json::Value>(&stdout) {
+            Ok(v) => {
+                let usage = crate::claude_events::parse_result_usage(&v);
+                match serde_json::from_value::<ClaudeOutput>(v) {
+                    Ok(mut o) => {
+                        o.raw = stdout;
+                        o.usage = usage;
+                        o
+                    }
+                    Err(_) => ClaudeOutput {
+                        kind: None,
+                        result: Some(stdout.clone()),
+                        is_error: None,
+                        cost_usd: None,
+                        duration_ms: None,
+                        usage: None,
+                        raw: stdout,
+                    },
+                }
             }
             Err(_) => ClaudeOutput {
                 kind: None,
@@ -110,6 +132,7 @@ pub(crate) fn parse_claude_output(stdout: String, json_output: bool) -> ClaudeOu
                 is_error: None,
                 cost_usd: None,
                 duration_ms: None,
+                usage: None,
                 raw: stdout,
             },
         }
@@ -120,6 +143,7 @@ pub(crate) fn parse_claude_output(stdout: String, json_output: bool) -> ClaudeOu
             is_error: None,
             cost_usd: None,
             duration_ms: None,
+            usage: None,
             raw: stdout,
         }
     }
@@ -185,5 +209,70 @@ mod tests {
         // Would heuristically resolve to Opus (size 7) and escalate at attempt
         // 2 — the explicit override wins over both, mirroring verifier_model.
         assert_eq!(select_model(&t, 2), MODEL_HAIKU);
+    }
+
+    /// Regression test: the one-shot JSON envelope (`self.run()`, backing
+    /// `fix()` and speculative mode's `implement_step()`) used to discard
+    /// token usage entirely — `ClaudeOutput` had no `usage` field — so those
+    /// paths' real spend never reached `tokens_used`/`turn_metrics`. It must
+    /// now parse the same `modelUsage` breakdown the streaming `result`
+    /// envelope uses.
+    #[test]
+    fn parse_claude_output_captures_usage_from_model_usage_map() {
+        let stdout = serde_json::json!({
+            "type": "result",
+            "result": "done",
+            "is_error": false,
+            "cost_usd": 0.0123,
+            "duration_ms": 4200,
+            "modelUsage": {
+                "claude-sonnet-4-6": {
+                    "inputTokens": 1000,
+                    "outputTokens": 250,
+                    "cacheReadInputTokens": 10,
+                    "cacheCreationInputTokens": 5,
+                }
+            }
+        })
+        .to_string();
+        let out = parse_claude_output(stdout, true);
+        let usage = out.usage.expect("usage must be parsed");
+        assert_eq!(usage.input_tokens, 1000);
+        assert_eq!(usage.output_tokens, 250);
+        assert_eq!(usage.cache_read_tokens, 10);
+        assert_eq!(usage.cache_write_tokens, 5);
+        assert_eq!(out.cost_usd, Some(0.0123));
+    }
+
+    /// Same as above, but for the flat top-level `usage` object the envelope
+    /// falls back to when `modelUsage` is absent.
+    #[test]
+    fn parse_claude_output_captures_usage_from_flat_usage_object() {
+        let stdout = serde_json::json!({
+            "type": "result",
+            "result": "done",
+            "is_error": false,
+            "usage": {
+                "input_tokens": 42,
+                "output_tokens": 7,
+            }
+        })
+        .to_string();
+        let out = parse_claude_output(stdout, true);
+        let usage = out.usage.expect("usage must be parsed");
+        assert_eq!(usage.input_tokens, 42);
+        assert_eq!(usage.output_tokens, 7);
+    }
+
+    #[test]
+    fn parse_claude_output_usage_is_none_without_usage_fields() {
+        let stdout = serde_json::json!({
+            "type": "result",
+            "result": "done",
+            "is_error": true,
+        })
+        .to_string();
+        let out = parse_claude_output(stdout, true);
+        assert!(out.usage.is_none());
     }
 }
