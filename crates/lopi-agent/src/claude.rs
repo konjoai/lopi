@@ -1,7 +1,7 @@
 // TOON integration sites (from token analysis):
-//   plan()      — constraints, allowed_dirs, forbidden_dirs arrays + pattern memory table
-//   implement() — allowed_dirs, forbidden_dirs arrays
-//   fix()       — allowed_dirs only (error text is free-form prose; TOON skipped)
+//   plan_streamed()      — constraints, allowed_dirs, forbidden_dirs arrays + pattern memory table
+//   implement_streamed() — allowed_dirs, forbidden_dirs arrays
+//   fix()                — allowed_dirs only (error text is free-form prose; TOON skipped)
 //
 // Token savings: ~17/prompt for dir/constraint arrays; ~158/attempt for pattern table.
 
@@ -88,20 +88,6 @@ impl ClaudeCode {
             allowed_tools: vec![],
             disallowed_tools: vec![],
         }
-    }
-
-    /// Plan the task. Uses TOON for constraints/dirs/pattern memory context.
-    ///
-    /// Site 1 (struct arrays, §9.1) — ~17 tokens/prompt saved.
-    /// Site 2 (pattern memory table, §9.3 tabular) — ~158 tokens/attempt saved (grows with memory).
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the claude CLI process fails or times out.
-    pub async fn plan(&self, task: &Task, last_error: Option<&str>) -> Result<String> {
-        let prompt = self.build_plan_prompt(task, last_error);
-        let out = self.run(&prompt).await?;
-        Ok(out.text().to_string())
     }
 
     /// See [`claude_support::build_plan_prompt`](crate::claude_support::build_plan_prompt).
@@ -255,22 +241,6 @@ impl ClaudeCode {
     {
         let prompt = crate::claude_support::build_implement_prompt(task, plan);
         self.run_streamed(&prompt, on_event).await
-    }
-
-    /// Implement the plan. Uses TOON for dir arrays in the constraint block.
-    ///
-    /// Site 1 (struct arrays) — ~17 tokens/prompt saved.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the claude CLI process fails or times out.
-    pub async fn implement(&self, task: &Task, plan: &str) -> Result<String> {
-        let prompt = crate::claude_support::build_implement_prompt(task, plan);
-        let out = self.run(&prompt).await?;
-        if !out.succeeded() {
-            anyhow::bail!("claude implement failed: {}", out.text());
-        }
-        Ok(out.text().to_string())
     }
 
     /// Fix the failing tests. Error text is free-form prose — TOON not applied here (no gain).
