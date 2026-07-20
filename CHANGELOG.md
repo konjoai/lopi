@@ -1,13 +1,48 @@
 # Changelog
 
-## [Unreleased] — KT-B3-Live: first attended MCPB install attempt — server spawn fixed, widget render still unverified 🔧
+## [Unreleased] — KT-B3-Live: attended MCPB install attempt — three first-real-run bugs found and fixed 🔧
 
-The first real run of the `LOPI_KTB3_ATTENDED_RUNBOOK.md` checklist. It did not reach the widget-render question — the server failed to spawn at all. Full diagnostic detail in `LEDGER.md`'s `KT-B3-Live` entry.
+The first real runs of the `LOPI_KTB3_ATTENDED_RUNBOOK.md` checklist. Full diagnostic detail in `LEDGER.md`'s `KT-B3-Live` entries.
 
 - **[Fix] `mcpb/manifest.json`'s `entry_point`/`mcp_config.command` used `${platform}`, which is not a real MCPB substitution token** (confirmed against the upstream spec — only `${__dirname}`, `${HOME}`, `${DESKTOP}`, `${DOCUMENTS}`, `${DOWNLOADS}`, `${pathSeparator}`/`${/}`, `${user_config.*}` exist). Hardcoded the literal `server/darwin-arm64/lopi` path instead, matching what the release workflow actually bundles. Every previously-built `.mcpb` was affected — the earlier `mcpb pack`/`unpack` verification never exercised this path.
 - **[Fix] `.github/workflows/mcpb-release.yml` on this branch had regressed to `timeout 10`** (unavailable on macOS runners) — this branch's `main` merge predated the `timeout` → `perl -e 'alarm N; exec @ARGV'` fix landing on main. Re-applied directly.
+- **[Fix] the stack-status widget resource advertised bare `text/html`, which MCP Apps (SEP-1865) rejects** — Claude Desktop's `initialize` capability negotiation and the `@modelcontextprotocol/ext-apps` `RESOURCE_MIME_TYPE` constant both require `text/html;profile=mcp-app`. The resource was discovered and fetched correctly; it failed only at the final render-format check.
 - **[Docs] `LOPI_KTB3_ATTENDED_RUNBOOK.md` committed** — referenced by name in this file, `LEDGER.md`, and `NEXT_SESSION_PROMPT.md` since `MCPB-App-1` but never actually added to the repo.
-- **Verified together in one green run** (`29770853385`, headSha `467abb8`), including the smoke-test's real `initialize`/`serverInfo` round trip. **Not yet verified: the actual widget render in a real Claude Desktop** — that's the next attended step, against the fresh `lopi-467abb86e6e3408e73fefc7367db9e72d428587c-darwin-arm64.mcpb` artifact.
+- **Verified together in one green run** (`29770853385`, headSha `467abb8`), including the smoke-test's real `initialize`/`serverInfo` round trip. **The widget-render question itself is still open** — the MIME-type fix hasn't yet been confirmed against a real Claude Desktop install.
+
+## [0.20.0] — Startup-Script-1: `scripts/start-dashboard.sh`, one idempotent command for "make sure `sail` is up" 🚀
+
+Closes the one manual step `Browser-Pane-1` left standing: `lopi sail` had
+to be started by hand, every session, before the Browser pane had anything
+to find. This adds a thin, boring wrapper — no new config surface, no
+background service — that checks first and only acts if it has to.
+
+- **[Feature] `scripts/start-dashboard.sh`.** Checks `/api/health` on the
+  target port; if it answers, prints an "already running" message and exits
+  — does nothing else. If it doesn't, backgrounds `lopi sail` (`nohup … &
+  disown` — no process supervisor, per the sprint's own scope guidance) with
+  output logged to `~/.lopi/sail.log`, matching the existing `db_path =
+  "~/.lopi/lopi.db"` convention from `lopi.toml.example`, then polls
+  `/api/health` until it comes up (or times out at 60s) before returning.
+  Accepts the same real `lopi sail` flags (`--port`, `--host`,
+  `--max-agents`, `--repo`, `--repos`) as a thin pass-through — not a second
+  config surface to keep in sync. On macOS only, also attempts
+  `open -a Claude` if Claude Desktop isn't already running; does nothing
+  OS-specific beyond that. Does **not** attempt to open or navigate the
+  Browser pane itself — per `Browser-Pane-1`'s own finding, Claude already
+  gets there unprompted once a reachable `sail` exists.
+- **[Test] `scripts/test-start-dashboard.sh`.** Exercises the
+  health-check-first logic for real (not just written and assumed correct):
+  a fake `/api/health` responder stands in for an already-running `sail`
+  (asserts the start command is never invoked), and a fake `lopi` stub
+  (swapped in via `LOPI_CMD`) stands in for a real one so the "not running →
+  starts fresh" and "killed → correctly detected and restarted" paths run
+  without needing a real `cargo build`. All 4 cases (already-running no-op,
+  fresh start, idempotent double-run, kill-and-restart) pass.
+- **[Docs] `CLAUDE.md`'s "Live Dashboard (Browser Pane)" section and
+  `docs/RUNNING.md`'s Surface 1 now point at the script** as the preferred
+  way to ensure `sail` is up, ahead of the raw `cargo run -- sail` /
+  `lsof`/`ps` hand-checks they documented before.
 
 ## [Unreleased] — Browser-Pane-1: live `lopi sail` dashboard via Claude Code Desktop's Browser pane (docs-only, no behavior change) 🖥️
 

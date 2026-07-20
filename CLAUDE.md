@@ -16,6 +16,7 @@ cargo audit                    # security advisory check
 cargo deny check               # license + advisory + bans
 cargo run -- run --goal "fix foo" --repo .  # run a task
 cargo run -- sail              # web dashboard on :3000
+scripts/start-dashboard.sh     # same, but idempotent — checks /api/health first, no-ops if already up
 cargo run -- watch             # TUI dashboard
 bash .konjo/scripts/install-hooks.sh        # install pre-commit hooks
 ```
@@ -62,8 +63,8 @@ This repo runs the **Konjo Three-Wall Quality Framework**. See `KONJO_QUALITY_FR
 
 ## Live Dashboard (Browser Pane)
 When asked to check on running stacks/tasks ("what's lopi running right now", "show me the stacks"), in a Claude Code Desktop session with a Browser pane:
-1. Check whether `lopi sail` is already running before starting a new one — `lsof -iTCP:<port>` (port from `lopi.toml`, default `3000`) or `ps aux | grep "lopi sail"`. Reuse the running instance and its `--repo` target; don't spawn a duplicate.
-2. If nothing is running, start it: `cargo run -- sail --repo <path>` (as a background process).
+1. Run `scripts/start-dashboard.sh --repo <path>` — it checks `/api/health` on the target port (from `lopi.toml`, default `3000`) and no-ops with an "already running" message if `sail` is up, so it's always safe to run instead of hand-checking with `lsof`/`ps`.
+2. If nothing was running, the script starts `lopi sail` backgrounded and waits until it's healthy before returning.
 3. Open the dashboard with the Browser pane's `preview_start` tool using `{url: "http://localhost:<port>"}`. This step is required every time — the Browser pane does **not** auto-detect an already-running `lopi sail` process the way it detects a typical `npm run dev` server, since it's a Rust binary outside the usual JS dev-server patterns.
 
 ## Skills
