@@ -48,6 +48,11 @@ struct BreakerInner {
     cost_per_hour_limit: f64,
     cost_this_hour: f64,
     hour_start: Instant,
+    /// True while a `HalfOpen` probe request is outstanding. Gates
+    /// `HalfOpen` to exactly one in-flight caller — without it, every
+    /// caller that observes `HalfOpen` is let through, defeating the
+    /// point of a single recovery probe.
+    probe_in_flight: bool,
 }
 
 impl CircuitBreaker {
@@ -68,6 +73,7 @@ impl CircuitBreaker {
                 cost_per_hour_limit,
                 cost_this_hour: 0.0,
                 hour_start: Instant::now(),
+                probe_in_flight: false,
             })),
         }
     }
@@ -95,12 +101,24 @@ impl CircuitBreaker {
                 if let Some(t) = inner.last_failure {
                     if t.elapsed() >= inner.open_duration {
                         inner.state = BreakerState::HalfOpen;
+                        inner.probe_in_flight = true;
                         return Ok(());
                     }
                 }
                 Err(BreakerError::Open)
             }
-            BreakerState::Closed | BreakerState::HalfOpen => Ok(()),
+            // Only the single caller that flipped Open -> HalfOpen (above)
+            // gets through; every other caller sees probe_in_flight and is
+            // rejected until record_success/record_failure resolves it.
+            BreakerState::HalfOpen => {
+                if inner.probe_in_flight {
+                    Err(BreakerError::Open)
+                } else {
+                    inner.probe_in_flight = true;
+                    Ok(())
+                }
+            }
+            BreakerState::Closed => Ok(()),
         }
     }
 
@@ -109,6 +127,7 @@ impl CircuitBreaker {
         let mut inner = self.inner.lock().await;
         inner.failure_count = 0;
         inner.state = BreakerState::Closed;
+        inner.probe_in_flight = false;
     }
 
     /// Call after a failed downstream response. May trip the breaker to Open.
@@ -116,6 +135,7 @@ impl CircuitBreaker {
         let mut inner = self.inner.lock().await;
         inner.failure_count += 1;
         inner.last_failure = Some(Instant::now());
+        inner.probe_in_flight = false;
         if inner.failure_count >= inner.failure_threshold {
             inner.state = BreakerState::Open;
             tracing::warn!(
@@ -133,6 +153,7 @@ impl CircuitBreaker {
         if inner.cost_this_hour >= inner.cost_per_hour_limit {
             inner.state = BreakerState::Open;
             inner.last_failure = Some(Instant::now());
+            inner.probe_in_flight = false;
             tracing::warn!(
                 cost = inner.cost_this_hour,
                 cap = inner.cost_per_hour_limit,
@@ -206,5 +227,37 @@ mod tests {
             }
             other => panic!("expected CostCapExceeded, got: {other:?}"),
         }
+    }
+
+    /// Regression test for the original bug: once the breaker flips
+    /// Open -> HalfOpen, every concurrent caller used to see `HalfOpen =>
+    /// Ok(())` and pass through — not just the single recovery probe the
+    /// state is meant to allow. Fires many concurrent callers the instant
+    /// `open_duration` elapses and asserts exactly one gets through.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn half_open_allows_exactly_one_probe() {
+        let cb = Arc::new(CircuitBreaker::new(1, Duration::from_millis(20), 100.0));
+        cb.record_failure().await; // threshold=1, trips immediately.
+        assert_eq!(cb.state().await, BreakerState::Open);
+
+        tokio::time::sleep(Duration::from_millis(40)).await;
+
+        let handles: Vec<_> = (0..16)
+            .map(|_| {
+                let cb = Arc::clone(&cb);
+                tokio::spawn(async move { cb.check().await.is_ok() })
+            })
+            .collect();
+
+        let mut ok_count = 0;
+        for h in handles {
+            if h.await.expect("task panicked") {
+                ok_count += 1;
+            }
+        }
+        assert_eq!(
+            ok_count, 1,
+            "exactly one HalfOpen probe should be let through concurrently"
+        );
     }
 }
