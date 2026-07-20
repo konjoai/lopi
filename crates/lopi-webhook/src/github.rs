@@ -130,8 +130,26 @@ async fn dispatch_event(s: &WebhookState, payload: &Value, event: &str, repo: &s
         handle_pr_review(payload, repo, event, &s.queue).await;
     }
     let action = payload.get("action").and_then(|v| v.as_str()).unwrap_or("");
-    if event == "issues" && (action == "opened" || action == "labeled") {
+    if event == "issues" && should_triage_issue_event(action, payload) {
         handle_issue_triage(payload, repo, s);
+    }
+}
+
+/// Decide whether an `issues` webhook event should trigger (re-)triage.
+///
+/// Every newly `opened` issue is triaged once. For `labeled` events, only
+/// the `lopi:fix` label should re-trigger triage — otherwise adding any
+/// unrelated label (e.g. `good first issue`) would re-classify the issue
+/// and re-post the triage comment on every label change.
+fn should_triage_issue_event(action: &str, payload: &Value) -> bool {
+    match action {
+        "opened" => true,
+        "labeled" => payload
+            .get("label")
+            .and_then(|l| l.get("name"))
+            .and_then(|v| v.as_str())
+            .is_some_and(|name| name.eq_ignore_ascii_case("lopi:fix")),
+        _ => false,
     }
 }
 
@@ -445,6 +463,60 @@ mod tests {
         });
         let body_bytes = serde_json::to_vec(&body).unwrap();
         let resp = post_webhook(app, "check_run", body_bytes, None).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[test]
+    fn should_triage_opened_issue() {
+        let payload = serde_json::json!({});
+        assert!(should_triage_issue_event("opened", &payload));
+    }
+
+    #[test]
+    fn should_triage_lopi_fix_label() {
+        let payload = serde_json::json!({ "label": { "name": "lopi:fix" } });
+        assert!(should_triage_issue_event("labeled", &payload));
+    }
+
+    #[test]
+    fn should_triage_lopi_fix_label_case_insensitive() {
+        let payload = serde_json::json!({ "label": { "name": "LOPI:FIX" } });
+        assert!(should_triage_issue_event("labeled", &payload));
+    }
+
+    /// Regression test for the original bug: a `labeled` event for an
+    /// unrelated label (e.g. `good first issue`) must not re-trigger
+    /// classification/re-commenting.
+    #[test]
+    fn should_not_triage_unrelated_label() {
+        let payload = serde_json::json!({ "label": { "name": "good first issue" } });
+        assert!(!should_triage_issue_event("labeled", &payload));
+    }
+
+    #[test]
+    fn should_not_triage_labeled_with_missing_label_field() {
+        let payload = serde_json::json!({});
+        assert!(!should_triage_issue_event("labeled", &payload));
+    }
+
+    #[test]
+    fn should_not_triage_other_actions() {
+        let payload = serde_json::json!({ "label": { "name": "lopi:fix" } });
+        assert!(!should_triage_issue_event("closed", &payload));
+        assert!(!should_triage_issue_event("unlabeled", &payload));
+    }
+
+    #[tokio::test]
+    async fn labeled_event_with_unrelated_label_returns_ok_without_triage() {
+        let app = make_test_router(None);
+        let body = serde_json::json!({
+            "repository": { "full_name": "org/repo" },
+            "action": "labeled",
+            "label": { "name": "good first issue" },
+            "issue": { "number": 1, "title": "t", "body": "b", "labels": [] }
+        });
+        let body_bytes = serde_json::to_vec(&body).unwrap();
+        let resp = post_webhook(app, "issues", body_bytes, None).await;
         assert_eq!(resp.status(), StatusCode::OK);
     }
 

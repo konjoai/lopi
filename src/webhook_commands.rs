@@ -6,6 +6,29 @@ use lopi_webhook::{serve as serve_webhooks, TriageConfig};
 use std::net::SocketAddr;
 use std::sync::Arc;
 
+/// Enforce the fail-closed webhook-secret policy: refuse to boot without a
+/// signing secret unless the `LOPI_ALLOW_UNVERIFIED_WEBHOOK=1` escape hatch
+/// is set for local/test use. Previously an unset secret silently disabled
+/// GitHub HMAC signature verification (fail-open) rather than refusing to
+/// start.
+fn enforce_webhook_secret_policy(secret: &Option<String>, allow_unverified: bool) -> Result<()> {
+    if secret.is_some() {
+        return Ok(());
+    }
+    if allow_unverified {
+        tracing::warn!(
+            "LOPI_WEBHOOK_SECRET not set — running with UNVERIFIED webhook signatures \
+             (LOPI_ALLOW_UNVERIFIED_WEBHOOK=1 escape hatch active). Do not use in production."
+        );
+        return Ok(());
+    }
+    anyhow::bail!(
+        "refusing to start serve-webhooks: LOPI_WEBHOOK_SECRET is not set. GitHub webhook \
+         HMAC verification is mandatory outside local/test use. Set LOPI_WEBHOOK_SECRET, or \
+         set LOPI_ALLOW_UNVERIFIED_WEBHOOK=1 to explicitly run unverified for local/test use."
+    )
+}
+
 pub async fn run(
     port: u16,
     host: String,
@@ -13,6 +36,11 @@ pub async fn run(
     github_token: Option<String>,
     anthropic_key: Option<String>,
 ) -> Result<()> {
+    let allow_unverified = std::env::var("LOPI_ALLOW_UNVERIFIED_WEBHOOK")
+        .map(|v| v == "1")
+        .unwrap_or(false);
+    enforce_webhook_secret_policy(&webhook_secret, allow_unverified)?;
+
     let addr: SocketAddr = format!("{host}:{port}")
         .parse()
         .map_err(|e| anyhow::anyhow!("invalid address: {e}"))?;
@@ -47,4 +75,26 @@ pub async fn run(
     }
 
     serve_webhooks(queue, webhook_secret, addr, triage).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn secret_configured_boots_regardless_of_escape_hatch() {
+        let secret = Some("s3cret".to_string());
+        assert!(enforce_webhook_secret_policy(&secret, false).is_ok());
+        assert!(enforce_webhook_secret_policy(&secret, true).is_ok());
+    }
+
+    #[test]
+    fn no_secret_and_no_escape_hatch_fails_closed() {
+        assert!(enforce_webhook_secret_policy(&None, false).is_err());
+    }
+
+    #[test]
+    fn no_secret_with_escape_hatch_boots_unverified() {
+        assert!(enforce_webhook_secret_policy(&None, true).is_ok());
+    }
 }
