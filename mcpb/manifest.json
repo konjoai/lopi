@@ -16,9 +16,9 @@
   "license": "MIT",
   "server": {
     "type": "binary",
-    "entry_point": "server/${platform}/lopi",
+    "entry_point": "server/darwin-arm64/lopi",
     "mcp_config": {
-      "command": "${__dirname}/server/${platform}/lopi",
+      "command": "${__dirname}/server/darwin-arm64/lopi",
       "args": ["mcp-serve"]
     }
   },
