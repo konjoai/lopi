@@ -174,11 +174,18 @@ fn is_generated_branch(name: &str) -> bool {
     name.starts_with("lopi/") || name.starts_with("claude/")
 }
 
+/// Upper bound on the branches returned to the dropdown — see [`MAX_REPOS`]'s
+/// doc for the same backstop-not-curation rationale. Unlike the repos cap,
+/// this one is a real risk: a long-lived repo with many contributors (or one
+/// that doesn't prune merged branches) can easily exceed it, so a truncation
+/// is logged rather than silently swallowed.
+const MAX_BRANCHES: usize = 100;
+
 /// List human local branch short-names via the git CLI (already a hard
 /// dependency of the agent runtime), plus the default (current HEAD) branch —
 /// falling back to main/master, then the first branch. Empty on any error.
 fn git_branches(repo: &str) -> (Vec<String>, String) {
-    let branches: Vec<String> = match std::process::Command::new("git")
+    let mut branches: Vec<String> = match std::process::Command::new("git")
         .args(["-C", repo, "branch", "--format=%(refname:short)"])
         .output()
     {
@@ -186,10 +193,18 @@ fn git_branches(repo: &str) -> (Vec<String>, String) {
             .lines()
             .map(|l| l.trim().to_string())
             .filter(|l| !l.is_empty() && !is_generated_branch(l))
-            .take(100)
             .collect(),
         _ => Vec::new(),
     };
+    if branches.len() > MAX_BRANCHES {
+        tracing::warn!(
+            repo,
+            found = branches.len(),
+            limit = MAX_BRANCHES,
+            "more branches than the dropdown lists; the remainder are hidden"
+        );
+        branches.truncate(MAX_BRANCHES);
+    }
 
     let default = current_branch(repo)
         // HEAD itself can be a generated branch (a run left the repo on one).
@@ -346,6 +361,24 @@ mod tests {
         assert_eq!(
             default, "main",
             "HEAD is reported when it survives the filter"
+        );
+    }
+
+    /// Regression: `.take(100)` used to cap the branch list with no signal
+    /// that anything was hidden. Assert the cap still applies (unchanged
+    /// behavior) now that it's a logged `truncate` — a real repo can easily
+    /// carry more than 100 local branches, unlike the 500-repo cap.
+    #[test]
+    fn truncates_past_max_branches() {
+        let tmp = tempfile::tempdir().unwrap();
+        let extra: Vec<String> = (0..(MAX_BRANCHES + 5)).map(|i| format!("b{i}")).collect();
+        let extra_refs: Vec<&str> = extra.iter().map(String::as_str).collect();
+        let repo = repo_with_branches(&tmp.path().join("r"), "base", &extra_refs);
+        let (branches, _default) = git_branches(&repo);
+        assert_eq!(
+            branches.len(),
+            MAX_BRANCHES,
+            "must cap at MAX_BRANCHES, not return every branch"
         );
     }
 
