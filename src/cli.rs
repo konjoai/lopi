@@ -200,6 +200,14 @@ pub(crate) enum Commands {
         #[arg(long, default_value = "500")]
         audit_limit: i64,
     },
+    /// Serve a curated MCP tool set (submit/list/get/cancel task, logs, DAG,
+    /// stats) over stdio — the Claude Code plugin entry point.
+    McpServe {
+        #[arg(short, long, default_value = ".")]
+        repo: PathBuf,
+        #[arg(long, default_value = "4")]
+        max_agents: usize,
+    },
     /// Start a dedicated GitHub webhook server.
     ServeWebhooks {
         #[arg(short, long, default_value = "3001")]

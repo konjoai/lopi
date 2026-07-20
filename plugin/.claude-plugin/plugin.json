@@ -1,0 +1,10 @@
+{
+  "name": "lopi",
+  "version": "0.17.0",
+  "description": "Multi-agent Claude Code orchestrator — submit tasks, watch agents run, check status from inside a Claude Code session.",
+  "author": { "name": "KonjoAI", "url": "https://github.com/konjoai" },
+  "homepage": "https://github.com/konjoai/lopi",
+  "repository": "https://github.com/konjoai/lopi",
+  "license": "MIT",
+  "keywords": ["agent-orchestrator", "multi-agent", "rust", "claude-code"]
+}

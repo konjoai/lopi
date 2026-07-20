@@ -468,7 +468,7 @@ mod verifier;
 // Re-export helpers for tests (tests.rs uses `use super::*`).
 pub use audit::{AuditInput, AuditQuery, AuditRow};
 pub use checkpoints::{CheckpointInput, CheckpointRow};
-pub use dag::DagNodeRow;
+pub use dag::{dag_graph_json, DagNodeRow};
 pub use eval_outcomes::{EvalOutcomeRow, ScorePoint};
 pub use installations::InstallationRow;
 pub use learnings::LearningRow;

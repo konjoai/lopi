@@ -1,5 +1,63 @@
 # Changelog
 
+## [0.17.0] — MCP-Serve-1: `lopi mcp-serve` + the self-hosted Claude Code plugin 🔌
+
+Wires up `crates/lopi-mcp`'s previously-unused `ToolHandler`/`serve()` scaffolding
+(confirmed zero call sites at sprint start) into a real `lopi mcp-serve` subcommand,
+then packages it as a self-hosted Claude Code plugin: `/plugin marketplace add
+konjoai/lopi` now installs a working `lopi` skill + MCP server. This is the whole
+goal — something a stranger can install and watch run, not a finished product.
+Track B (MCPB) and Track C (Connectors Directory) are explicitly out of scope; see
+`NEXT_SESSION_PROMPT.md`.
+
+- **[Feat] `lopi mcp-serve` (`src/mcp_commands.rs`).** New subcommand exposing a
+  curated seven-tool set (`lopi_submit_task`/`lopi_list_tasks`/`lopi_get_task`/
+  `lopi_cancel_task`/`lopi_get_logs`/`lopi_get_agent_dag`/`lopi_get_stats`) over
+  stdio via `lopi_mcp::server::serve()`, reused unmodified. **State-sharing design
+  (KT4):** builds its own standalone `AgentPool`/`TaskQueue`/dispatch loop
+  in-process — mirroring `sail_commands::run`'s wiring minus the HTTP listener,
+  browser auto-open, Telegram bot, and cron/quota warm-up — rather than reaching
+  into an already-running `lopi sail` process (impossible cross-process for
+  in-memory state regardless). The `MemoryStore` (SQLite) *is* shared with any
+  concurrently-running `lopi sail`: both open the same DB file, so
+  `lopi_list_tasks`/`lopi_get_task`/`lopi_get_logs`/`lopi_get_agent_dag`/
+  `lopi_get_stats` reflect true durable history regardless of which process
+  submitted a task. Live dispatch is *not* shared — a task submitted via MCP is
+  executed by that `mcp-serve` process's own pool, not a separately-running
+  `sail`'s. Full write-up in `LEDGER.md`.
+- **[Feat] Self-hosted Claude Code plugin (`plugin/`, `.claude-plugin/`).**
+  `plugin/.claude-plugin/plugin.json` (name `lopi` — immutable slug, logged in
+  `LEDGER.md`), `.claude-plugin/marketplace.json` at repo root (fixed discovery
+  location) pointing its one entry at `./plugin`, and `plugin/.mcp.json` wiring
+  `${CLAUDE_PLUGIN_ROOT}/bin/lopi mcp-serve`. Plugin content lives in a `plugin/`
+  subdirectory rather than the repo root — `claude plugin validate --strict`
+  flags a repo-root `CLAUDE.md` as invalid plugin context, and this repo's
+  `CLAUDE.md` is real, load-bearing content for contributors, not something to
+  remove. `scripts/build-plugin-bin.sh` builds the release binary into
+  `plugin/bin/lopi` (gitignored — platform-specific, not committed; a prebuilt
+  cross-platform version is Track B's job).
+- **[Docs] `skills/lopi-cli/SKILL.md`.** Documents `run`/`watch`/`tail`/`dock`/
+  `sail`/`bypass`/`cancel` as they exist today, including real console output
+  shapes and the `TaskStatus` lifecycle. Flags a real drift: `LOPI_VS_OPENCLAW.md`
+  cites an `AgentState` enum with `OpeningPr`/`RollingBack` transitions that
+  don't exist in the current `AgentState` (`crates/lopi-core/src/agent.rs`) —
+  which additionally is constructed nowhere in the codebase. `TaskStatus`
+  (`crates/lopi-core/src/task.rs`) is the real, live status type the CLI/API
+  surface; the skill documents that, not the stale table.
+- **[Test] Kill-tests KT1–KT4 run live, not assumed.** KT1: a throwaway plugin's
+  binary keeps `rwxr-xr-x` and runs after a real marketplace install-to-cache
+  copy (cache path includes a version subdir, e.g. `<plugin>/<version>/bin/…`).
+  KT2: a subprocess launched via the Bash-tool mechanism a nested `claude -p`
+  session would use gets an immediate-EOF stdin, not a blocking TTY — a
+  `serve()`-shaped read loop returns cleanly, no hang; `mcp-serve` also never
+  spawns `claude -p` itself, so there's no recursion path. KT3: a minimal
+  `plugin.json`/`marketplace.json` skeleton passes `--strict` clean. KT4: see
+  above. End-to-end verified against the actual packaged/installed binary (not
+  just the dev build): `lopi_submit_task` in one `mcp-serve` process, then
+  `lopi_get_task` in a fresh process pointed at the same DB, correctly returns
+  `"status":"queued"` — demonstrating the shared-store/unshared-dispatch design
+  live, not just on paper.
+
 ## [0.16.0] — Permission-Modes-1: per-task `permission_mode`, web-wired end to end 🔐
 
 Replaces the unconditional `--dangerously-skip-permissions` on every

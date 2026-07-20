@@ -5,6 +5,81 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## MCP-Serve-1
+
+**Plugin `name` slug: `lopi` — one-way door.** `plugin/.claude-plugin/plugin.json`'s
+`name` field is `"lopi"`. Once anything installs against this slug from any
+marketplace (self-hosted or `anthropics/claude-plugins-community`), it is pinned —
+changing it later is a new plugin, not a rename. Chosen over `lopi-orchestrator`
+or a `konjo-` prefix because it's the name every other surface (crate, binary,
+CLI verb, repo) already uses; a mismatched plugin slug would be the one thing
+that *doesn't* match. Matches the marketplace entry name (`lopi@lopi-marketplace`)
+and the MCP server key (`"lopi"` in `.mcp.json`'s `mcpServers`) — all three are
+independently renameable later without breaking installs, `name` in `plugin.json`
+is the only one that can't be.
+
+**Plugin content lives in `plugin/`, not the repo root — a real constraint
+discovered live, not a style choice.** `claude plugin validate --strict` on a
+`plugin.json` at repo root fails: it flags the repo's own `CLAUDE.md` sitting at
+"plugin root" as invalid plugin context (`CLAUDE.md at the plugin root is not
+loaded as project context`). This repo's `CLAUDE.md` is real, load-bearing
+content for human/agent contributors — not something to delete or move to
+satisfy a plugin validator. `.claude-plugin/marketplace.json` stays at the repo
+root (Claude Code's marketplace discovery is a fixed path — `/plugin marketplace
+add konjoai/lopi` only looks there) but its one plugin entry's `source` points at
+`./plugin`, a subdirectory with no `CLAUDE.md` sibling. Verified live: installing
+via this layout resolves `${CLAUDE_PLUGIN_ROOT}` to the `plugin/` subtree's cache
+copy, not the repo root — `plugin/bin/lopi`, `plugin/.mcp.json`, and
+`plugin/skills/lopi-cli/SKILL.md` all land where `.mcp.json`'s
+`${CLAUDE_PLUGIN_ROOT}/bin/lopi` expects them.
+
+**KT4 — `lopi mcp-serve`'s `ToolHandler` state-sharing design.** Decision: build
+a standalone, in-process `AgentPool` + `TaskQueue` + dispatch loop inside
+`mcp-serve` itself (mirroring `sail_commands::run`'s wiring, minus the HTTP
+listener/browser-open/Telegram/cron-quota-warmup — those are dashboard-only
+convenience, out of scope for the curated tool set), reusing `lopi_ui::web::AppState`
+as the literal state type rather than inventing a second one. The one piece
+that's genuinely shared across any concurrently-running `lopi sail` process is
+the `MemoryStore` — both open the same SQLite file at the same `db_path()` (or
+`--config`'s `lopi.db_path`), so every read-only tool (`lopi_list_tasks`/
+`lopi_get_task`/`lopi_get_logs`/`lopi_get_agent_dag`/`lopi_get_stats`) reflects
+true durable history no matter which process a task was submitted through. Live
+dispatch (the pool that actually runs `AgentRunner`, i.e. `claude -p`) is *not*
+shared and structurally can't be — `TaskQueue`/`AgentPool` are pure in-memory
+`Arc`/`DashMap`/`Mutex<BinaryHeap>` state, not backed by the DB, confirmed by
+reading `crates/lopi-orchestrator/src/queue.rs` and `pool/mod.rs` before writing
+a line of `mcp_commands.rs`. A task submitted via `lopi_submit_task` in one
+`mcp-serve` invocation is executed only by that invocation's own pool.
+
+**Why this and not an HTTP-client `ToolHandler` calling an already-running
+`sail`'s REST API:** that alternative would make `lopi mcp-serve` depend on a
+separately-started `lopi sail` as a hidden prerequisite — contradicting the
+sprint's own goal ("something a stranger can install and watch run"), since a
+freshly-installed plugin user has no `sail` running yet. The standalone-pool
+design makes `submit_task → get_task` genuinely round-trip end-to-end inside one
+`mcp-serve` process's lifetime, with no setup step beyond installing the plugin.
+The cost — a task submitted via MCP isn't visible as "running" in a *different*,
+already-running `sail` dashboard's live view, and `lopi_cancel_task`'s
+`pool.cancel()` only succeeds against tasks that process itself dispatched — is
+real but bounded: `get_task`/`list_tasks`/`get_stats`/`get_logs`/`get_agent_dag`
+all still resolve correctly cross-process because they read `s.store`, not
+`s.pool`'s live handles. Verified live against the actual packaged binary, not
+just the dev build: `lopi_submit_task` in one `mcp-serve` process, `lopi_get_task`
+in a fresh second process pointed at the same `--config` DB, correctly returns
+`"status":"queued"` — the durable read succeeded; the second process's pool
+never ran it, exactly as designed, not a bug.
+
+**How to apply:** Track B (MCPB) reuses this exact same `ToolHandler` and the
+same state-sharing design — a `.mcpb`-bundled binary invoked as `lopi mcp-serve`
+is architecturally identical to the plugin's `.mcp.json` invocation, just a
+different wrapper (per `LOPI_DISTRIBUTION_PLAN.md` §2.1: "No new tool logic").
+Track C (remote connector) is a different animal — a Streamable HTTP transport
+serving *multiple concurrent clients* against one long-lived process changes
+the calculus entirely (that process's pool *would* need to be the one true
+dispatcher, since there's no "the user's own separate `sail`" to defer to) —
+don't assume this sprint's answer carries over uncritically; re-derive it when
+Track C is actually scoped.
+
 ## Permission-Modes-1
 
 **Four-mode subset (`bypassPermissions`/`auto`/`acceptEdits`/`dontAsk`),
