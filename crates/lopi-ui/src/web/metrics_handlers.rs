@@ -81,30 +81,6 @@ pub(super) async fn get_agent_dag(
     }
 }
 
-/// Shape DAG node rows into the `{ task_id, nodes, edges }` JSON graph. Edges
-/// are derived from each node's `depends_on` list (`dep → kind`).
-fn dag_graph_json(task_id: &str, rows: &[lopi_memory::DagNodeRow]) -> Value {
-    let mut edges = Vec::new();
-    let nodes: Vec<Value> = rows
-        .iter()
-        .map(|r| {
-            let deps: Vec<String> = serde_json::from_str(&r.depends_on_json).unwrap_or_default();
-            for dep in &deps {
-                edges.push(json!({ "from": dep, "to": r.kind }));
-            }
-            json!({
-                "kind": r.kind,
-                "status": r.status,
-                "depends_on": deps,
-                "output_hash": r.output_hash,
-                "idempotency_key": r.idempotency_key,
-                "updated_at": r.updated_at,
-            })
-        })
-        .collect();
-    json!({ "task_id": task_id, "nodes": nodes, "edges": edges })
-}
-
 /// Prometheus text-format metrics.
 pub(super) async fn metrics(State(s): State<AppState>) -> impl IntoResponse {
     let stats = s.pool.stats();
