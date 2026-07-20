@@ -15,3 +15,8 @@ mutants.out/
 
 # E2E screenshots are delivered separately, not committed (binary blobs)
 artifacts/screenshots/
+
+# Locally-built plugin binary — see scripts/build-plugin-bin.sh. Not
+# committed: platform-specific, and Track B (MCPB) is where prebuilt
+# cross-platform binaries eventually come from.
+/plugin/bin/

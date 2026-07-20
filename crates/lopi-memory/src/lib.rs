@@ -3,8 +3,9 @@
 /// SQLite store implementations for all lopi memory tables.
 pub mod store;
 pub use store::{
-    AuditInput, AuditQuery, AuditRow, ChainRunRow, ChainStepInput, ChainStepRow, CheckpointInput,
-    CheckpointRow, DagNodeRow, EvalOutcomeRow, InstallationRow, LearningRow, LessonRow,
+    dag_graph_json, AuditInput, AuditQuery, AuditRow, ChainRunRow, ChainStepInput, ChainStepRow,
+    CheckpointInput, CheckpointRow, DagNodeRow, EvalOutcomeRow, InstallationRow, LearningRow,
+    LessonRow,
     LoopAttemptRow, LoopRunRow, LoopTurnRow, MaxxInput, MaxxRow, MaxxRunRow, MemoryStore,
     PatternRow, QualityRunRecord, QualityRunRow, QuotaObservationRow, RunAttemptRow, RunTurnAgg,
     ScheduleChainInput, ScheduleChainRow, ScheduleInput, ScheduleRow, ScheduleRunRow, ScorePoint,

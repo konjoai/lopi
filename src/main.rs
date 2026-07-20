@@ -5,6 +5,7 @@ mod diag_commands;
 mod gap_fill_commands;
 mod learn_commands;
 mod loop_commands;
+mod mcp_commands;
 mod remote;
 mod repl;
 mod replay_commands;
@@ -261,6 +262,10 @@ async fn main() -> Result<()> {
         })) => stability_commands::list(limit, unstable_only).await?,
 
         Some(Commands::Stability(StabilityCmd::Summary)) => stability_commands::summary().await?,
+
+        Some(Commands::McpServe { repo, max_agents }) => {
+            mcp_commands::serve(repo, max_agents, cfg.as_ref()).await?;
+        }
 
         Some(Commands::Diag {
             out,

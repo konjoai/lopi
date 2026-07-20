@@ -1,0 +1,12 @@
+{
+  "name": "lopi-marketplace",
+  "owner": { "name": "KonjoAI", "url": "https://github.com/konjoai" },
+  "description": "Self-hosted marketplace for the lopi Claude Code plugin — a multi-agent orchestrator that runs Claude Code agents concurrently in git-isolated branches.",
+  "plugins": [
+    {
+      "name": "lopi",
+      "source": "./plugin",
+      "description": "Multi-agent Claude Code orchestrator — submit tasks, watch agents run, check status from inside a Claude Code session."
+    }
+  ]
+}

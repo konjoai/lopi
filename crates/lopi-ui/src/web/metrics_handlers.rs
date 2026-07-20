@@ -73,7 +73,7 @@ pub(super) async fn get_agent_dag(
         }
     }
     match s.store.load_dag_nodes(&id).await {
-        Ok(rows) => Json(dag_graph_json(&id, &rows)).into_response(),
+        Ok(rows) => Json(lopi_memory::dag_graph_json(&id, &rows)).into_response(),
         Err(e) => {
             tracing::warn!("agent dag query failed: {e}");
             (StatusCode::INTERNAL_SERVER_ERROR, "db error").into_response()
@@ -190,42 +190,4 @@ pub(super) async fn get_plans() -> Json<Value> {
     })
     .collect();
     Json(json!({ "plans": plans }))
-}
-
-#[cfg(test)]
-#[allow(clippy::unwrap_used)]
-mod tests {
-    use super::dag_graph_json;
-    use lopi_memory::DagNodeRow;
-
-    fn row(kind: &str, depends_on_json: &str) -> DagNodeRow {
-        DagNodeRow {
-            task_id: "t".into(),
-            kind: kind.into(),
-            status: "pending".into(),
-            depends_on_json: depends_on_json.into(),
-            output_hash: None,
-            idempotency_key: None,
-            updated_at: "now".into(),
-        }
-    }
-
-    #[test]
-    fn dag_graph_derives_edges_from_depends_on() {
-        let rows = vec![row("plan", "[]"), row("implement", "[\"plan\"]")];
-        let g = dag_graph_json("t1", &rows);
-        assert_eq!(g["task_id"], "t1");
-        assert_eq!(g["nodes"].as_array().unwrap().len(), 2);
-        let edges = g["edges"].as_array().unwrap();
-        assert_eq!(edges.len(), 1);
-        assert_eq!(edges[0]["from"], "plan");
-        assert_eq!(edges[0]["to"], "implement");
-    }
-
-    #[test]
-    fn dag_graph_empty_for_no_rows() {
-        let g = dag_graph_json("t1", &[]);
-        assert!(g["nodes"].as_array().unwrap().is_empty());
-        assert!(g["edges"].as_array().unwrap().is_empty());
-    }
 }

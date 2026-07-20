@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "lopi": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/bin/lopi",
+      "args": ["mcp-serve"]
+    }
+  }
+}

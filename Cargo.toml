@@ -21,7 +21,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "0.16.0"
+version = "0.17.0"
 edition = "2021"
 authors = ["KonjoAI"]
 license = "MIT"
@@ -125,6 +125,7 @@ lopi-webhook.workspace = true
 lopi-github.workspace = true
 lopi-spec.workspace = true
 lopi-skill.workspace = true
+lopi-mcp.workspace = true
 reqwest.workspace = true
 serde_json.workspace = true
 tokio-cron-scheduler.workspace = true
