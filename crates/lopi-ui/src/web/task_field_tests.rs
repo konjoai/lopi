@@ -380,6 +380,55 @@ async fn cancel_task_not_found_returns_404() {
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
 
+/// Two tasks sharing an id prefix: `get_task` used to pick whichever one
+/// `Iterator::find` reached first, silently returning the wrong task's data
+/// for a genuinely ambiguous short id. Must surface a 409 instead.
+#[tokio::test]
+async fn get_task_ambiguous_prefix_returns_409() {
+    let (app, store) = test_app_with_store().await;
+    let mut t1 = Task::new("first task");
+    t1.id = TaskId(uuid::Uuid::parse_str("aaaaaaaa-0000-0000-0000-000000000001").unwrap());
+    let mut t2 = Task::new("second task");
+    t2.id = TaskId(uuid::Uuid::parse_str("aaaaaaaa-0000-0000-0000-000000000002").unwrap());
+    store.save_task(&t1, "queued").await.unwrap();
+    store.save_task(&t2, "queued").await.unwrap();
+
+    let resp = get_req(app, "/api/tasks/aaaaaaaa").await;
+    assert_eq!(resp.status(), StatusCode::CONFLICT);
+}
+
+/// Same ambiguity, but on the cancel path — must not cancel/delete an
+/// arbitrary one of the two candidates.
+#[tokio::test]
+async fn cancel_task_ambiguous_prefix_returns_409() {
+    let (app, store) = test_app_with_store().await;
+    let mut t1 = Task::new("first task");
+    t1.id = TaskId(uuid::Uuid::parse_str("bbbbbbbb-0000-0000-0000-000000000001").unwrap());
+    let mut t2 = Task::new("second task");
+    t2.id = TaskId(uuid::Uuid::parse_str("bbbbbbbb-0000-0000-0000-000000000002").unwrap());
+    store.save_task(&t1, "queued").await.unwrap();
+    store.save_task(&t2, "queued").await.unwrap();
+
+    let resp = send_req(app, "DELETE", "/api/tasks/bbbbbbbb", None).await;
+    assert_eq!(resp.status(), StatusCode::CONFLICT);
+}
+
+/// Same ambiguity via `resolve_task_id`, exercised through the plan-approval
+/// path (a non-UUID prefix falls back to the history lookup).
+#[tokio::test]
+async fn approve_plan_ambiguous_prefix_returns_409() {
+    let (app, store) = test_app_with_store().await;
+    let mut t1 = Task::new("first task");
+    t1.id = TaskId(uuid::Uuid::parse_str("cccccccc-0000-0000-0000-000000000001").unwrap());
+    let mut t2 = Task::new("second task");
+    t2.id = TaskId(uuid::Uuid::parse_str("cccccccc-0000-0000-0000-000000000002").unwrap());
+    store.save_task(&t1, "queued").await.unwrap();
+    store.save_task(&t2, "queued").await.unwrap();
+
+    let resp = send_req(app, "POST", "/api/tasks/cccccccc/plan/approve", None).await;
+    assert_eq!(resp.status(), StatusCode::CONFLICT);
+}
+
 #[tokio::test]
 async fn models_returns_a_valid_catalog() {
     // No mocking of the outbound Anthropic call — whether this exercises the

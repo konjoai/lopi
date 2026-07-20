@@ -5,7 +5,7 @@ use crate::web::handlers::{apply_loop_fields, validate_goal};
 use crate::web::types::{CreateTaskRequest, MAX_GOAL_LENGTH};
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
-use lopi_core::{LopiConfig, Task};
+use lopi_core::{LopiConfig, Task, TaskId};
 use lopi_orchestrator::AgentPool;
 use std::path::PathBuf;
 use tower::ServiceExt;
