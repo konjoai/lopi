@@ -15,8 +15,8 @@ toml.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 lopi-tools.workspace = true
-tokio = { version = "1", features = ["process", "io-util"] }
+tokio = { version = "1", features = ["process", "io-util", "time"] }
 
 [dev-dependencies]
-tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "io-util", "time"] }
+tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "io-util", "time", "test-util"] }
 tempfile = "3"

@@ -18,8 +18,14 @@ use crate::protocol::{
 use anyhow::{bail, Context, Result};
 use serde_json::Value;
 use std::process::Stdio;
+use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{ChildStdin, ChildStdout, Command};
+
+/// Maximum time to wait for a single request's response. MCP servers are
+/// local subprocesses; a hang this long almost certainly means the server
+/// is stuck or dead, not merely slow.
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// A client connected to a spawned server over its piped stdio — the concrete
 /// type returned by [`McpClient::spawn`].
@@ -95,11 +101,20 @@ where
     }
 
     /// Send a request and read until the response with the matching id, skipping
-    /// interleaved notifications/log lines.
+    /// interleaved notifications/log lines. Bounded by [`REQUEST_TIMEOUT`] —
+    /// a server that never answers must not hang the caller forever.
     async fn request(&mut self, req: crate::jsonrpc::Request) -> Result<Value> {
         let want = req.id;
         let line = encode_line(&req)?;
         self.write_line(&line).await?;
+        tokio::time::timeout(REQUEST_TIMEOUT, self.read_response(want))
+            .await
+            .with_context(|| format!("MCP request id {want} timed out after {REQUEST_TIMEOUT:?}"))?
+    }
+
+    /// Read lines until the response with `want`'s id arrives, skipping
+    /// interleaved notifications/log lines.
+    async fn read_response(&mut self, want: i64) -> Result<Value> {
         let mut buf = String::new();
         loop {
             buf.clear();
@@ -114,7 +129,13 @@ where
             let trimmed = buf.trim();
             match serde_json::from_str::<Response>(trimmed) {
                 // A response for our id — return its result or propagate the error.
-                Ok(resp) if resp.id == want => return resp.into_result().map_err(Into::into),
+                Ok(resp) if resp.id == Some(want) => return resp.into_result().map_err(Into::into),
+                // JSON-RPC 2.0's `"id": null` — the server couldn't
+                // correlate this to any request id (e.g. its own request
+                // failed to parse). Calls are serial, so this can only be
+                // answering our in-flight request; surface it instead of
+                // looping forever waiting for an id that will never arrive.
+                Ok(resp) if resp.id.is_none() => return resp.into_result().map_err(Into::into),
                 // A response for some other id, or a non-response line
                 // (notification / log) — keep reading.
                 _ => continue,

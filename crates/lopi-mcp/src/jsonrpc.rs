@@ -70,8 +70,11 @@ impl Notification {
 pub struct Response {
     /// Always [`JSONRPC_VERSION`].
     pub jsonrpc: String,
-    /// The id of the request this answers.
-    pub id: i64,
+    /// The id of the request this answers, or `null` per JSON-RPC 2.0 when
+    /// the server couldn't determine the request's id at all (e.g. the
+    /// request itself failed to parse) — such a response can't be
+    /// correlated to any specific in-flight call by id.
+    pub id: Option<i64>,
     /// The success payload, present iff `error` is absent.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub result: Option<Value>,
@@ -156,7 +159,7 @@ mod tests {
     fn response_into_result_maps_ok_and_err() {
         let ok = Response {
             jsonrpc: "2.0".into(),
-            id: 1,
+            id: Some(1),
             result: Some(json!({"v": 1})),
             error: None,
         };
@@ -164,7 +167,7 @@ mod tests {
 
         let err = Response {
             jsonrpc: "2.0".into(),
-            id: 1,
+            id: Some(1),
             result: None,
             error: Some(RpcError {
                 code: -32601,
@@ -181,7 +184,7 @@ mod tests {
     fn missing_result_and_error_collapses_to_null() {
         let r = Response {
             jsonrpc: "2.0".into(),
-            id: 2,
+            id: Some(2),
             result: None,
             error: None,
         };
@@ -211,5 +214,20 @@ mod tests {
         let v: Value = serde_json::from_str(&serde_json::to_string(&n).unwrap()).unwrap();
         assert!(v.get("id").is_none(), "notifications carry no id");
         assert_eq!(v["method"], "notifications/initialized");
+    }
+
+    /// Regression test: per JSON-RPC 2.0, a server that can't determine a
+    /// malformed request's id responds with `"id": null`. When `Response.id`
+    /// was a plain `i64`, that line failed to deserialize as a `Response` at
+    /// all and was silently treated as an unrelated notification/log line —
+    /// the client looped forever waiting for a response that could never
+    /// correlate. It must parse cleanly into `id: None`.
+    #[test]
+    fn response_with_null_id_parses() {
+        let line = r#"{"jsonrpc":"2.0","id":null,"error":{"code":-32700,"message":"Parse error"}}"#;
+        let resp: Response = serde_json::from_str(line).unwrap();
+        assert_eq!(resp.id, None);
+        let e = resp.into_result().unwrap_err();
+        assert_eq!(e.code, -32700);
     }
 }

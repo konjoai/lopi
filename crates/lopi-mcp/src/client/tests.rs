@@ -110,3 +110,44 @@ async fn errors_when_server_closes_without_responding() {
     let mut client = McpClient::new(client_w, BufReader::new(client_r));
     assert!(client.list_tools().await.is_err());
 }
+
+/// Regression test: previously `Response.id` was a plain `i64`, so a
+/// JSON-RPC 2.0 `"id": null` response (sent when the server couldn't
+/// correlate its error to any request) failed to deserialize as a
+/// `Response` at all — it fell through to the "skip non-response lines"
+/// branch and the client looped forever waiting for a response that could
+/// never match. It must now be surfaced as an error immediately.
+#[tokio::test]
+async fn null_id_error_response_is_surfaced_not_looped() {
+    let (client_w, server_r) = tokio::io::duplex(8192);
+    let (mut server_w, client_r) = tokio::io::duplex(8192);
+    tokio::spawn(async move {
+        let mut lines = BufReader::new(server_r).lines();
+        let _ = lines.next_line().await; // consume the request line
+        let resp = b"{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32700,\"message\":\"Parse error\"}}\n";
+        server_w.write_all(resp).await.unwrap();
+        server_w.flush().await.unwrap();
+    });
+
+    let mut client = McpClient::new(client_w, BufReader::new(client_r));
+    let err = tokio::time::timeout(std::time::Duration::from_secs(5), client.list_tools())
+        .await
+        .expect("must not hang waiting for an id that can never match")
+        .expect_err("id:null carries an error and must surface as one");
+    assert!(err.to_string().contains("Parse error"), "{err}");
+}
+
+/// Regression test: a server that never responds must not hang the caller
+/// forever — the request has to be bounded by REQUEST_TIMEOUT.
+#[tokio::test(start_paused = true)]
+async fn request_times_out_when_server_never_responds() {
+    let (client_w, server_r) = tokio::io::duplex(64);
+    let (server_w, client_r) = tokio::io::duplex(64);
+    // Keep the server side of the pipe open (but silent) so reads block
+    // waiting for data rather than hitting EOF immediately.
+    let _keep_alive = (server_r, server_w);
+
+    let mut client = McpClient::new(client_w, BufReader::new(client_r));
+    let err = client.list_tools().await.unwrap_err();
+    assert!(err.to_string().contains("timed out"), "{err}");
+}
