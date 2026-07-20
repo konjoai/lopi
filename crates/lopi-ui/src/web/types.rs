@@ -2,6 +2,27 @@ use serde::{Deserialize, Serialize};
 
 pub(super) const MAX_GOAL_LENGTH: usize = 2000;
 
+/// Reject goal text carrying C0/C1 control characters other than ordinary
+/// `\n`/`\r`/`\t` whitespace — NUL and ANSI escape sequences have no place
+/// in a natural-language goal and are a log-poisoning/injection vector (see
+/// `.claude/rules/security.md`). Shared by every handler that persists a
+/// goal string (`handlers::validate_goal`, `ScheduleBody::validate`,
+/// `MaxxBody::validate`, `ScheduleChainBody::validate`'s per-step check) so
+/// a scheduled/MAXX/chain path can't reopen the vector `POST /api/tasks`
+/// closes.
+pub(super) fn reject_control_chars(goal: &str) -> Result<(), String> {
+    if let Some(c) = goal
+        .chars()
+        .find(|c| c.is_control() && !matches!(c, '\n' | '\r' | '\t'))
+    {
+        return Err(format!(
+            "goal contains a disallowed control character (U+{:04X})",
+            c as u32
+        ));
+    }
+    Ok(())
+}
+
 /// Request body for `POST /api/tasks`.
 #[derive(Debug, Deserialize)]
 pub struct CreateTaskRequest {

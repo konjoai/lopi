@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers},
     execute,
@@ -244,15 +244,26 @@ impl AppState {
 /// # Errors
 ///
 /// Returns an error if the terminal cannot be initialized or the event loop fails.
-#[allow(clippy::unused_async)]
 pub async fn run(bus: EventBus<AgentEvent>) -> Result<()> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
     let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)?;
+    let terminal = Terminal::new(backend)?;
 
-    let res = run_loop(&mut terminal, &bus);
+    // `run_loop` blocks on crossterm's synchronous terminal I/O
+    // (`event::poll`/`event::read`) for the whole TUI session — running it
+    // inline on this async task would pin its tokio worker thread for that
+    // entire duration instead of yielding, starving any other task
+    // scheduled on it (e.g. `src/remote.rs` runs a WebSocket-pump task
+    // concurrently with this on the same bus). Run it on the blocking pool.
+    let (mut terminal, res) = tokio::task::spawn_blocking(move || {
+        let mut terminal = terminal;
+        let res = run_loop(&mut terminal, &bus);
+        (terminal, res)
+    })
+    .await
+    .context("TUI event loop task panicked")?;
 
     disable_raw_mode()?;
     execute!(
