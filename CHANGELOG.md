@@ -1,5 +1,39 @@
 # Changelog
 
+## [0.20.0] — Startup-Script-1: `scripts/start-dashboard.sh`, one idempotent command for "make sure `sail` is up" 🚀
+
+Closes the one manual step `Browser-Pane-1` left standing: `lopi sail` had
+to be started by hand, every session, before the Browser pane had anything
+to find. This adds a thin, boring wrapper — no new config surface, no
+background service — that checks first and only acts if it has to.
+
+- **[Feature] `scripts/start-dashboard.sh`.** Checks `/api/health` on the
+  target port; if it answers, prints an "already running" message and exits
+  — does nothing else. If it doesn't, backgrounds `lopi sail` (`nohup … &
+  disown` — no process supervisor, per the sprint's own scope guidance) with
+  output logged to `~/.lopi/sail.log`, matching the existing `db_path =
+  "~/.lopi/lopi.db"` convention from `lopi.toml.example`, then polls
+  `/api/health` until it comes up (or times out at 60s) before returning.
+  Accepts the same real `lopi sail` flags (`--port`, `--host`,
+  `--max-agents`, `--repo`, `--repos`) as a thin pass-through — not a second
+  config surface to keep in sync. On macOS only, also attempts
+  `open -a Claude` if Claude Desktop isn't already running; does nothing
+  OS-specific beyond that. Does **not** attempt to open or navigate the
+  Browser pane itself — per `Browser-Pane-1`'s own finding, Claude already
+  gets there unprompted once a reachable `sail` exists.
+- **[Test] `scripts/test-start-dashboard.sh`.** Exercises the
+  health-check-first logic for real (not just written and assumed correct):
+  a fake `/api/health` responder stands in for an already-running `sail`
+  (asserts the start command is never invoked), and a fake `lopi` stub
+  (swapped in via `LOPI_CMD`) stands in for a real one so the "not running →
+  starts fresh" and "killed → correctly detected and restarted" paths run
+  without needing a real `cargo build`. All 4 cases (already-running no-op,
+  fresh start, idempotent double-run, kill-and-restart) pass.
+- **[Docs] `CLAUDE.md`'s "Live Dashboard (Browser Pane)" section and
+  `docs/RUNNING.md`'s Surface 1 now point at the script** as the preferred
+  way to ensure `sail` is up, ahead of the raw `cargo run -- sail` /
+  `lsof`/`ps` hand-checks they documented before.
+
 ## [Unreleased] — Browser-Pane-1: live `lopi sail` dashboard via Claude Code Desktop's Browser pane (docs-only, no behavior change) 🖥️
 
 Verification sprint, not an engineering one: confirmed the Browser pane can show the real, already-running `lopi sail` dashboard (real stack cards, real task/queue data) as a zero-new-code alternative to the MCPB widget track for "integrate this with Claude Code." Full findings in `LEDGER.md`'s "Browser-Pane-1" entry.
