@@ -116,6 +116,11 @@ cargo run -- sail --port 3000 --host 127.0.0.1 --max-agents 4 --repo .
 # ./target/release/lopi sail --port 3000 --repo .
 ```
 
+Or, to skip remembering whether it's already running: `scripts/start-dashboard.sh`
+(same flags, pass-through) checks `/api/health` first and only starts a new
+one if nothing answers — safe to run every session. See the script's header
+comment for exactly what it does and doesn't do.
+
 This serves:
 
 - **Dashboard:** <http://127.0.0.1:3000>
