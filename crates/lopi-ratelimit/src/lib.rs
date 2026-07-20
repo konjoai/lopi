@@ -50,12 +50,23 @@ impl TokenBucket {
             let wait = {
                 let mut state = self.inner.lock().await;
                 state.refill();
+                // A request for more than the bucket can ever hold would
+                // otherwise never be satisfied (`state.tokens` is capped at
+                // `capacity` by refill()), hanging forever. Clamp to capacity.
+                let tokens = tokens.min(state.capacity);
                 if state.tokens >= tokens {
                     state.tokens -= tokens;
                     return;
                 }
                 let deficit = tokens - state.tokens;
-                Duration::from_secs_f64(deficit / state.refill_rate)
+                if state.refill_rate <= 0.0 {
+                    // No refill configured — the deficit can never close.
+                    // Poll instead of computing deficit/0.0, which is +inf
+                    // and would make Duration::from_secs_f64 panic.
+                    Duration::from_secs(1)
+                } else {
+                    Duration::from_secs_f64(deficit / state.refill_rate)
+                }
             };
             tokio::time::sleep(wait).await;
         }
@@ -157,5 +168,35 @@ mod tests {
         // RPM bucket had 2 tokens, should be at 1 now.
         let rpm_ok = limiter.rpm.try_acquire(1.0).await;
         assert!(rpm_ok, "RPM bucket should still have 1 token");
+    }
+
+    /// Regression test: requesting more tokens than the bucket's capacity
+    /// used to hang forever, since `refill()` caps `tokens` at `capacity`
+    /// and the request could never be satisfied. `acquire` now clamps the
+    /// request to capacity so it completes.
+    #[tokio::test(start_paused = true)]
+    async fn acquire_more_than_capacity_does_not_hang() {
+        let bucket = TokenBucket::new(10.0, 5.0);
+        let result = tokio::time::timeout(Duration::from_secs(30), bucket.acquire(1_000.0)).await;
+        assert!(
+            result.is_ok(),
+            "acquire() should not hang when tokens > capacity"
+        );
+    }
+
+    /// Regression test: with `refill_rate == 0.0`, the old `deficit /
+    /// refill_rate` division produced `+inf`, and `Duration::from_secs_f64`
+    /// panics on non-finite input. `acquire` must poll instead of panicking.
+    #[tokio::test(start_paused = true)]
+    async fn zero_refill_rate_does_not_panic() {
+        let bucket = TokenBucket::new(10.0, 0.0);
+        assert!(bucket.try_acquire(10.0).await, "bucket starts full");
+        // No refill configured, so this can never be satisfied — it must
+        // time out rather than panic or complete.
+        let result = tokio::time::timeout(Duration::from_millis(50), bucket.acquire(1.0)).await;
+        assert!(
+            result.is_err(),
+            "should time out (no refill available), not panic or complete"
+        );
     }
 }
