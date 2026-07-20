@@ -140,6 +140,40 @@ impl TaskQueue {
         None
     }
 
+    /// Bump a still-queued task to `new_priority`. Returns `true` if the task
+    /// was found (and either updated or already at that priority); `false`
+    /// if no queued task matches `task_id` (already dispatched, cancelled,
+    /// or unknown).
+    ///
+    /// A `BinaryHeap` can't cheaply re-key an existing entry, so this pushes
+    /// a *second* heap entry at the new priority and leaves the old one in
+    /// place. Whichever entry's `try_pop_one` reaches first removes the task
+    /// from `self.inner.tasks` and dispatches it; the other is then an
+    /// orphan and silently skipped — the same pattern `pop()` already uses
+    /// for entries left behind by keyword-overlap merges.
+    pub async fn bump_priority(&self, task_id: &TaskId, new_priority: Priority) -> bool {
+        let Some(mut task) = self.inner.tasks.get_mut(task_id) else {
+            return false;
+        };
+        if task.priority == new_priority {
+            return true;
+        }
+        task.priority = new_priority;
+        drop(task);
+
+        let mut c = self.inner.counter.lock().await;
+        *c += 1;
+        let entry = PrioEntry {
+            priority: new_priority,
+            seq: *c,
+            id: *task_id,
+        };
+        drop(c);
+        self.inner.heap.lock().await.push(entry);
+        self.inner.notify.notify_one();
+        true
+    }
+
     /// Number of tasks currently waiting in the queue.
     #[must_use]
     pub fn len(&self) -> usize {
@@ -389,6 +423,28 @@ mod tests {
             .await
             .expect("pop() must not hang on orphaned heap entries");
         assert!(second.goal.contains("telemetry"));
+    }
+
+    #[tokio::test]
+    async fn bump_priority_promotes_a_queued_task() {
+        let q = TaskQueue::new();
+        let low = make_task("low priority background job", Priority::Low);
+        let low_id = low.id;
+        q.push(low).await;
+        q.push(make_task("normal priority job unrelated", Priority::Normal))
+            .await;
+
+        assert!(q.bump_priority(&low_id, Priority::Critical).await);
+        let first = q.pop().await;
+        assert_eq!(first.id, low_id);
+        assert_eq!(first.priority, Priority::Critical);
+    }
+
+    #[tokio::test]
+    async fn bump_priority_returns_false_for_unknown_task() {
+        let q = TaskQueue::new();
+        let unknown = Task::new("never queued").id;
+        assert!(!q.bump_priority(&unknown, Priority::Critical).await);
     }
 
     #[tokio::test]
