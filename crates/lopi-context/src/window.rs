@@ -63,7 +63,14 @@ impl ContextWindow {
         let msg_tokens = msg.tokens;
         let msg_id = msg.id;
 
-        if self.token_pressure() > self.budget_threshold {
+        // Include this message's own weight in the pressure check — matches
+        // push_tool_pair()'s calculation. Using token_pressure() (current
+        // state only) let a message that would itself push pressure over
+        // the threshold slip in without triggering auto-eviction first.
+        // usize→f32 precision loss is acceptable: token counts are rough budget estimates.
+        #[allow(clippy::cast_precision_loss)]
+        let pressure = (self.current_tokens + msg_tokens) as f32 / self.token_budget as f32;
+        if self.token_budget > 0 && pressure > self.budget_threshold {
             self.evict_toward_threshold();
         }
 
