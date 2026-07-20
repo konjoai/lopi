@@ -47,7 +47,10 @@ impl DiffChecker {
             return true;
         }
         self.allowed.iter().any(|pat| pat.matches(p))
-            || self.raw_allowed.iter().any(|prefix| p.starts_with(prefix))
+            || self
+                .raw_allowed
+                .iter()
+                .any(|prefix| path_has_prefix(p, prefix))
     }
 
     fn is_forbidden(&self, p: &str) -> bool {
@@ -55,8 +58,17 @@ impl DiffChecker {
             || self
                 .raw_forbidden
                 .iter()
-                .any(|prefix| p.starts_with(prefix))
+                .any(|prefix| path_has_prefix(p, prefix))
     }
+}
+
+/// True when `p` is exactly `prefix`, or lies inside the `prefix` directory —
+/// a plain `p.starts_with(prefix)` would incorrectly treat `"src2/evil.rs"`
+/// as inside `"src"`, since `"src2/..."` textually starts with `"src"` with
+/// no path-separator boundary between them.
+fn path_has_prefix(p: &str, prefix: &str) -> bool {
+    let prefix = prefix.trim_end_matches('/');
+    p == prefix || p.starts_with(&format!("{prefix}/"))
 }
 
 fn compile(s: &str) -> Option<Pattern> {
@@ -120,5 +132,27 @@ mod tests {
     fn glob_matches_nested_paths() {
         let c = DiffChecker::new(vec!["src/".into()], vec![]);
         assert!(c.validate(&["src/a/b/deep/file.rs".into()]).is_ok());
+    }
+
+    /// Regression test: a `"src"` allow prefix (no trailing slash) must not
+    /// let a sibling directory like `"src2/"` through just because it
+    /// textually starts with the same characters.
+    #[test]
+    fn prefix_without_trailing_slash_respects_path_boundary() {
+        let c = DiffChecker::new(vec!["src".into()], vec![]);
+        assert!(c.validate(&["src/main.rs".into()]).is_ok());
+        assert!(c.validate(&["src".into()]).is_ok());
+        assert!(c.validate(&["src2/evil.rs".into()]).is_err());
+        assert!(c.validate(&["src-legacy/main.rs".into()]).is_err());
+    }
+
+    /// Same boundary requirement on the forbidden side: a `"secrets"` deny
+    /// prefix must not also catch `"secrets-backup/"`.
+    #[test]
+    fn forbidden_prefix_without_trailing_slash_respects_path_boundary() {
+        let c = DiffChecker::new(vec![], vec!["secrets".into()]);
+        assert!(c.validate(&["secrets/keys.pem".into()]).is_err());
+        assert!(c.validate(&["secrets".into()]).is_err());
+        assert!(c.validate(&["secrets-backup/keys.pem".into()]).is_ok());
     }
 }
