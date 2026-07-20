@@ -29,6 +29,13 @@ fn enforce_webhook_secret_policy(secret: &Option<String>, allow_unverified: bool
     )
 }
 
+/// Parse the `LOPI_ALLOW_UNVERIFIED_WEBHOOK` escape-hatch env var. Only the
+/// exact value `"1"` enables it — unset, empty, or any other value fails
+/// closed, matching `enforce_webhook_secret_policy`'s default-deny stance.
+fn parse_allow_unverified(raw: Option<&str>) -> bool {
+    raw == Some("1")
+}
+
 pub async fn run(
     port: u16,
     host: String,
@@ -36,9 +43,8 @@ pub async fn run(
     github_token: Option<String>,
     anthropic_key: Option<String>,
 ) -> Result<()> {
-    let allow_unverified = std::env::var("LOPI_ALLOW_UNVERIFIED_WEBHOOK")
-        .map(|v| v == "1")
-        .unwrap_or(false);
+    let raw_env = std::env::var("LOPI_ALLOW_UNVERIFIED_WEBHOOK").ok();
+    let allow_unverified = parse_allow_unverified(raw_env.as_deref());
     enforce_webhook_secret_policy(&webhook_secret, allow_unverified)?;
 
     let addr: SocketAddr = format!("{host}:{port}")
@@ -96,5 +102,27 @@ mod tests {
     #[test]
     fn no_secret_with_escape_hatch_boots_unverified() {
         assert!(enforce_webhook_secret_policy(&None, true).is_ok());
+    }
+
+    #[test]
+    fn parse_allow_unverified_requires_exact_one() {
+        assert!(parse_allow_unverified(Some("1")));
+        assert!(!parse_allow_unverified(Some("0")));
+        assert!(!parse_allow_unverified(Some("true")));
+        assert!(!parse_allow_unverified(Some("")));
+        assert!(!parse_allow_unverified(None));
+    }
+
+    /// Regression test exercising `run()` itself (not just the extracted
+    /// policy helper): with no webhook secret and the escape hatch unset in
+    /// the ambient environment, `run()` must fail before ever attempting to
+    /// bind a socket.
+    #[tokio::test]
+    async fn run_fails_closed_without_secret_or_escape_hatch() {
+        // SAFETY-relevant only in the sense that env vars are process-global;
+        // no other test in this binary reads/writes this key.
+        std::env::remove_var("LOPI_ALLOW_UNVERIFIED_WEBHOOK");
+        let result = run(0, "127.0.0.1".to_string(), None, None, None).await;
+        assert!(result.is_err());
     }
 }
