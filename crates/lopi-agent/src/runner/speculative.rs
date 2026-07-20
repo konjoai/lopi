@@ -140,3 +140,153 @@ impl AgentRunner {
         SpecFlow::Retry
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+mod tests {
+    use super::*;
+    use crate::claude_events::ResultUsage;
+    use lopi_core::{AgentEvent, Task};
+    use lopi_memory::MemoryStore;
+    use std::path::PathBuf;
+    use std::process::Command;
+
+    fn blank_output(usage: Option<ResultUsage>, cost_usd: Option<f64>) -> ClaudeOutput {
+        ClaudeOutput {
+            kind: None,
+            result: None,
+            is_error: None,
+            cost_usd,
+            duration_ms: Some(42),
+            usage,
+            raw: String::new(),
+        }
+    }
+
+    #[test]
+    fn saturating_u32_passes_through_in_range_values() {
+        assert_eq!(saturating_u32(0), 0);
+        assert_eq!(saturating_u32(1_000), 1_000);
+        assert_eq!(saturating_u32(u64::from(u32::MAX)), u32::MAX);
+    }
+
+    #[test]
+    fn saturating_u32_clamps_values_above_u32_max() {
+        assert_eq!(saturating_u32(u64::from(u32::MAX) + 1), u32::MAX);
+        assert_eq!(saturating_u32(u64::MAX), u32::MAX);
+    }
+
+    /// No store attached (the `AgentRunner::standalone` default) — must not
+    /// panic, and real token usage must still be metered into `tokens_used`
+    /// even though there's nowhere to persist a `turn_metrics` row.
+    #[tokio::test]
+    async fn record_speculative_usage_without_a_store_still_meters_tokens() {
+        let (runner, _bus) = AgentRunner::standalone(Task::new("fix the bug"), PathBuf::from("."));
+        let usage = ResultUsage {
+            input_tokens: 100,
+            output_tokens: 50,
+            cache_read_tokens: 0,
+            cache_write_tokens: 0,
+        };
+        let out = blank_output(Some(usage), Some(0.01));
+        runner
+            .record_speculative_usage(&out, crate::claude::MODEL_SONNET, 0)
+            .await;
+        assert_eq!(runner.tokens_used.load(Ordering::Relaxed), 150);
+    }
+
+    /// Neither usage nor a nonzero cost — the early-return branch must skip
+    /// persisting a `turn_metrics` row entirely, not write a mostly-zero one.
+    #[tokio::test]
+    async fn record_speculative_usage_skips_persisting_when_no_usage_and_no_cost() {
+        let store = MemoryStore::open_in_memory().await.unwrap();
+        let (mut runner, _bus) =
+            AgentRunner::standalone(Task::new("fix the bug"), PathBuf::from("."));
+        runner.store = Some(store.clone());
+        let out = blank_output(None, None);
+        runner
+            .record_speculative_usage(&out, crate::claude::MODEL_SONNET, 0)
+            .await;
+        assert!(store.recent_turn_metrics(10).await.unwrap().is_empty());
+    }
+
+    /// Real usage with a store attached — a `turn_metrics` row must actually
+    /// land, mirroring `stream.rs::persist_turn` for the streamed path.
+    #[tokio::test]
+    async fn record_speculative_usage_persists_a_row_when_usage_present() {
+        let store = MemoryStore::open_in_memory().await.unwrap();
+        let (mut runner, _bus) =
+            AgentRunner::standalone(Task::new("fix the bug"), PathBuf::from("."));
+        runner.store = Some(store.clone());
+        let usage = ResultUsage {
+            input_tokens: 200,
+            output_tokens: 80,
+            cache_read_tokens: 10,
+            cache_write_tokens: 5,
+        };
+        let out = blank_output(Some(usage), Some(0.05));
+        runner
+            .record_speculative_usage(&out, crate::claude::MODEL_SONNET, 2)
+            .await;
+        let rows = store.recent_turn_metrics(10).await.unwrap();
+        assert_eq!(rows.len(), 1, "one turn_metrics row must be persisted");
+    }
+
+    fn git(repo: &std::path::Path, args: &[&str]) {
+        let out = Command::new("git")
+            .arg("-C")
+            .arg(repo)
+            .args(args)
+            .output()
+            .expect("spawn git");
+        assert!(
+            out.status.success(),
+            "git {args:?} failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+
+    fn init_repo() -> (tempfile::TempDir, PathBuf) {
+        let dir = tempfile::TempDir::new().unwrap();
+        let repo = dir.path().to_path_buf();
+        git(&repo, &["init", "-b", "main"]);
+        git(&repo, &["config", "user.email", "t@konjoai.dev"]);
+        git(&repo, &["config", "user.name", "tester"]);
+        std::fs::write(repo.join("file.txt"), "base\n").unwrap();
+        git(&repo, &["add", "."]);
+        git(&repo, &["commit", "-m", "base"]);
+        (dir, repo)
+    }
+
+    /// A speculative plan-stream failure must roll back, transition the
+    /// runner to `Retrying`, and always return `SpecFlow::Retry` —
+    /// regardless of whether the git rollback itself succeeds (both calls
+    /// are best-effort `.ok()`).
+    #[tokio::test]
+    async fn speculative_plan_failed_transitions_to_retrying_and_signals_retry() {
+        let (_dir, repo) = init_repo();
+        let git_mgr = GitManager::new(&repo).unwrap();
+        let (mut runner, bus) = AgentRunner::standalone(Task::new("fix the bug"), repo);
+        let mut rx = bus.subscribe();
+
+        let flow = runner
+            .speculative_plan_failed(&git_mgr, 1, "stream disconnected")
+            .await;
+
+        assert!(matches!(flow, SpecFlow::Retry));
+        let mut saw_retrying = false;
+        while let Ok(ev) = rx.try_recv() {
+            if let AgentEvent::StatusChanged {
+                status: TaskStatus::Retrying { attempt: 2 },
+                ..
+            } = ev
+            {
+                saw_retrying = true;
+            }
+        }
+        assert!(
+            saw_retrying,
+            "must broadcast a Retrying{{attempt: 2}} status transition"
+        );
+    }
+}
