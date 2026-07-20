@@ -1,12 +1,14 @@
-//! Agent checkpoints — durable snapshots of [`AgentState`] for crash-resume.
+//! Agent checkpoints — durable snapshots of an agent's lifecycle state for
+//! crash-resume.
 //!
 //! The runner calls [`MemoryStore::save_checkpoint`] before any action that
 //! can fail (plan / implement / score / PR). On crash or `lopi sail`
 //! restart, `lopi resume --agent-id <uuid>` calls
 //! [`MemoryStore::latest_checkpoint`] to recover the last known state.
 //!
-//! `state` mirrors `lopi_core::AgentState` (lowercase snake_case so the
-//! SQLite check constraint is human-readable in queries).
+//! `state` is a lowercase snake_case string (e.g. `planning` /
+//! `implementing` / `testing` / `scoring` / `done` / `errored`) so the
+//! SQLite check constraint is human-readable in queries.
 
 use anyhow::{Context, Result};
 use chrono::Utc;
@@ -26,7 +28,7 @@ pub struct CheckpointRow {
     pub task_id: String,
     /// Attempt number at the time of the snapshot.
     pub attempt: u8,
-    /// Lowercase `AgentState` discriminant: `planning` / `implementing`
+    /// Lowercase lifecycle-state discriminant: `planning` / `implementing`
     /// / `testing` / `scoring` / `done` / `errored` / `idle`.
     pub state: String,
     /// Most recent plan text (truncated upstream if huge).

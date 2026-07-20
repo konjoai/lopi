@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 pub enum BudgetScope {
     /// Whole `lopi sail` process — caps the total burn across all agents.
     Fleet,
-    /// One running [`AgentRun`](crate::AgentRun) — caps one agent's burn.
+    /// One running agent — caps one agent's burn.
     Agent,
     /// One task across its attempts — caps the retry budget per goal.
     Task,
