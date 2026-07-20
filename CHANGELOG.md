@@ -1,5 +1,14 @@
 # Changelog
 
+## [Unreleased] — Browser-Pane-1: live `lopi sail` dashboard via Claude Code Desktop's Browser pane (docs-only, no behavior change) 🖥️
+
+Verification sprint, not an engineering one: confirmed the Browser pane can show the real, already-running `lopi sail` dashboard (real stack cards, real task/queue data) as a zero-new-code alternative to the MCPB widget track for "integrate this with Claude Code." Full findings in `LEDGER.md`'s "Browser-Pane-1" entry.
+
+- **[Docs] `CLAUDE.md` gained a "Live Dashboard (Browser Pane)" section** teaching a session to check for an already-running `lopi sail`, start one if needed, and open it with `preview_start` — since the Browser pane does not auto-detect a `lopi sail` process the way it would a typical `npm run dev` server.
+- **Real negative result: the Browser pane's `preview_list` does not auto-detect a `lopi sail` process it didn't launch itself**, even after it had been running for hours — confirmed by direct test, not assumption.
+- **Real positive result found unprompted, before the `CLAUDE.md` note existed:** a natural, mechanism-blind request ("what's lopi running right now, show me the stacks") was answered correctly twice — once directly, once by a freshly spawned subagent that reasoned its way to `preview_start` via plain `ps`/`lsof`/`curl` exploration.
+- **One open item, carried to `docs/ops/NEXT_SESSION_PROMPT.md`:** whether the new `CLAUDE.md` note is actually what a *genuinely* cold session relies on couldn't be tested from inside this session — the subagent used to probe this inherited a pre-edit `CLAUDE.md` snapshot, so it solved the task independently of the note, not because of it.
+
 ## [0.13.0] — Stack-Chain-1 / Popover-Fix-1 / Parity-Audit-1: real whole-stack scheduling, popover overflow fix, web/macOS parity audit 🔗
 
 Three workstreams: (1) the stack control dock's "schedule the entire stack"

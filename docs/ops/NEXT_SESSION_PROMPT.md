@@ -1,3 +1,11 @@
+# Next Session — after Browser-Pane-1
+
+Browser-Pane-1 confirmed the Browser pane cleanly shows the real, already-running `lopi sail` dashboard (real data, zero new code) and that Claude navigates there autonomously from a natural, mechanism-blind prompt — both true even before any `CLAUDE.md` note existed (see `LEDGER.md`'s "Browser-Pane-1" entry for the full finding). A `CLAUDE.md` "Live Dashboard (Browser Pane)" section was added anyway, to make the check-for-already-running / start-if-needed / `preview_start`-explicitly sequence explicit rather than rely on every future session re-deriving it.
+
+**One unresolved kill-test, carried forward: does a genuinely cold Claude Code Desktop session actually rely on that new `CLAUDE.md` section, or does it keep succeeding independently of it the way this session's test subagent did?** The `Agent`-tool subagent spawned to test this inherited a `CLAUDE.md` context snapshot from the start of the Browser-Pane-1 conversation — *before* the note was added — so its success only proves the underlying capability doesn't strictly need the note; it isn't evidence the note works. Testing this for real requires quitting and relaunching the actual Claude Code Desktop app (a new top-level process, not a subagent spawned mid-session) and asking something like "what's lopi running right now" cold, with no other hint. If a fresh top-level session cites or clearly acts on the `CLAUDE.md` section, this closes clean. If it (still) succeeds without ever touching that section, the honest conclusion is that the note is unnecessary — remove it as noise rather than leave a rule nothing reads.
+
+---
+
 # Next Session — after Stack-Chain-1 / Popover-Fix-1 / Parity-Audit-1
 
 Server-side whole-stack cron scheduling shipped end-to-end (schema →
