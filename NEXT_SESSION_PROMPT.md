@@ -5,6 +5,79 @@ the `lopi` repo. Newest first.
 
 ---
 
+## Next Session — after MCP-App-1
+
+Read first, in order: `CLAUDE.md`, `CHANGELOG.md`'s `[0.18.0]` entry,
+`LEDGER.md`'s `MCP-App-1` entry in full, `LOPI_DISTRIBUTION_PLAN.md`'s
+Track D section — **but read it with caution, see the drift note below.**
+
+### What happened this sprint — KT-D2 blocked, correctly, nothing shipped
+
+MCP-App-1 attempted Track D (Loop Stacks inline MCP App dashboard). Its own
+hard gate, KT-D2 ("does the MCP Apps `ui/initialize` handshake actually
+complete in a real Claude Desktop install and a real claude.ai account"),
+cannot be run in this sandboxed environment: headless Linux container, no
+`DISPLAY`, no macOS/Windows, no authenticated claude.ai session anywhere on
+disk. This was checked concretely (`uname`, `$DISPLAY`, `/Applications`,
+credential paths, `ps aux` for any usable interactive `claude` session — see
+`LEDGER.md` for the exact commands and output), not assumed. Per the sprint
+brief's own instructions, that's a legitimate stop: no widget code, no
+`ui://` resource, no new tool implementation were written. This is the
+correct outcome, not an incomplete one — don't treat "no widget shipped" as
+a task left undone.
+
+**What *was* answered, since it doesn't need live hosts:** KT-D3 (the
+tool-binding decision). Full reasoning in `LEDGER.md`, short version: the
+widget needs a **new aggregating tool**, not a rebind of
+`lopi_get_agent_dag`. Neither existing tool covers Deliverable 4's fields
+(task roster + branch + live stage-level `TaskStatus`) — `tasks.status` is
+coarse (`"running"` for the entire execution, no stage detail), stage
+detail only lives in `agent_dag_nodes`, and **branch has no structured
+durable source at all** (only an in-memory event, a freeform log line, or
+the terminal `Success{branch}` variant). That last point is a new
+prerequisite MCP-App-1 found mid-research, not something the original plan
+anticipated: **persisting branch as a real column (or dedicated store call)
+when `TaskStarted` fires needs to happen before the aggregating tool can be
+built cleanly.**
+
+### What a session with real Claude Desktop and claude.ai access needs to check first
+
+1. **KT-D2 itself.** Build the trivial "hello from lopi" `ui://` resource
+   exactly as the original brief specified (a static HTML page, bound to
+   any throwaway tool), and attempt the real round trip in a real Claude
+   Desktop install and a real claude.ai account. If it renders cleanly,
+   proceed to KT-D1. If the handshake fails silently (tool call succeeds,
+   resource fetch succeeds, no iframe appears), log the exact protocol
+   version / SDK version / host version / failure point and treat Track D
+   as blocked pending an upstream fix — there's no client-side workaround
+   for a host not completing its half of the handshake.
+2. **KT-D1**, once KT-D2 clears: with the trivial resource attached,
+   confirm a plain-text MCP-Serve-1 tool (not bound to the resource) still
+   renders clean text in Claude Code, nothing broken by the resource's mere
+   presence elsewhere in the server.
+3. **The branch-persistence prerequisite this sprint found**, before
+   building the new aggregating tool: decide how branch gets persisted
+   structurally (new `tasks` column vs. a dedicated store call keyed on
+   `TaskStarted`) — see `LEDGER.md`'s `MCP-App-1` entry for the exact
+   places branch currently does and doesn't appear.
+4. Only then: Phase D1 (minimal widget against the new tool), D2 (real
+   `structuredContent`), D3 (cross-host verify: Desktop, claude.ai, Cowork
+   if reachable; confirm Claude Code still degrades cleanly).
+
+### A repo-doc drift worth fixing before it trips up a future session
+
+`LOPI_DISTRIBUTION_PLAN.md` in the repo is stale — it's the pre-`MCP-Serve-1`
+draft (Track A still shown as unbuilt, no Track D section at all). This
+sprint's brief pasted an up-to-date version (Track A marked shipped, Track D
+added) directly into the session rather than pointing at the repo file,
+which is the only reason this sprint had the real Track D spec to work
+from. Not this sprint's job to fix (same call as the two-`NEXT_SESSION_
+PROMPT.md`-files drift already flagged in the MCP-Serve-1 entry below), but
+worth a sync pass — a session that trusts the repo's own copy over a pasted
+one will miss Track D's existence entirely.
+
+---
+
 ## Next Session — after MCP-Serve-1
 
 Read first, in order: `CLAUDE.md`, `CHANGELOG.md`'s `[0.17.0]` entry,
