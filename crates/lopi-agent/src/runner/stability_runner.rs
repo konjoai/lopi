@@ -51,6 +51,14 @@ impl AgentRunner {
             ));
         }
 
+        if !verdict.semantic_flags().is_empty() {
+            self.warn(format!(
+                "⚠️  plan sample(s) mentioned file(s) outside allowed_dirs: {} \
+                 (advisory — the real diff is still enforced separately)",
+                verdict.semantic_flags().join(", ")
+            ));
+        }
+
         // Stash the consensus plan (the sample most representative of the
         // others) so `gather_seed` can inform the first attempt's planning
         // prompt with it instead of the N samples being generated purely to
@@ -89,7 +97,7 @@ impl AgentRunner {
             n_samples,
             variance_score,
             verdict: verdict_str,
-            semantic_flags: &[],
+            semantic_flags: verdict.semantic_flags(),
             accepted: !matches!(verdict, StabilityVerdict::Unstable { .. }),
         };
         if let Err(e) = store.save_stability_entry(rec).await {
