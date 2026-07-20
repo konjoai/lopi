@@ -245,19 +245,6 @@ CREATE TABLE IF NOT EXISTS eval_outcomes (
 );
 CREATE INDEX IF NOT EXISTS idx_eval_outcomes_task ON eval_outcomes(task_id, attempt);
 
--- Sprint T — Q-learning router value table. One row per (task_type, agent
--- config) pair. The q column is the running value estimate in 0..1 and
--- update_count is how many rewards were folded in. The (state, action) pair
--- is the primary key so writes upsert the estimate in place.
-CREATE TABLE IF NOT EXISTS routing_q_values (
-    state        TEXT NOT NULL,
-    action       TEXT NOT NULL,
-    q            REAL NOT NULL DEFAULT 0.0,
-    update_count INTEGER NOT NULL DEFAULT 0,
-    updated_at   TEXT NOT NULL,
-    PRIMARY KEY (state, action)
-);
-
 -- macOS-UI Phase 0 — Durable cron schedules. The static `[[schedules]]`
 -- list in `lopi.toml` is loaded once at boot and cannot be edited at
 -- runtime. This table backs the OpenClaw-style cron UI: schedules are
