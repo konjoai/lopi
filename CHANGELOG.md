@@ -1,5 +1,58 @@
 # Changelog
 
+## [0.18.0] — MCP-App-1: Track D kill-tested — KT-D2 blocked on real-host access, tool-binding decided 🖼️
+
+Attempted Track D (Loop Stacks inline MCP App dashboard) per
+`LOPI_DISTRIBUTION_PLAN.md`'s Track D section. **No widget code shipped —
+correctly, per the sprint's own hard gate.** KT-D2 (does the MCP Apps
+`ui/initialize` handshake actually complete in a real Claude Desktop install
+and a real claude.ai account) cannot be run in this sandboxed environment:
+no GUI surface for Claude Desktop (headless Linux container, no `DISPLAY`,
+no macOS/Windows), and no authenticated claude.ai session to test against.
+Per the brief, that's a legitimate stopping point, not a failure to route
+around — see `LEDGER.md`'s `MCP-App-1` entry for exactly what was checked.
+KT-D1 (Claude Code's text fallback staying clean) is blocked for the same
+root cause and wasn't attempted. This is a docs/decision-only release —
+no functional code changed — but the tool-binding decision (KT-D3) *was*
+answered from source, and it surfaced a real gap worth a version-worthy
+finding in its own right.
+
+- **[Decision] KT-D3 — the widget needs a new aggregating tool, not
+  `lopi_get_agent_dag` as-is.** Read `lopi_get_agent_dag`'s actual
+  source chain (`crates/lopi-memory/src/store/dag.rs`,
+  `crates/lopi-agent/src/runner/lifecycle.rs`,
+  `crates/lopi-memory/src/store/mod.rs`). Neither existing tool covers
+  Deliverable 4's three fields (task roster, branch, live `TaskStatus`)
+  together: `lopi_get_agent_dag` is scoped to one task's pipeline stages
+  and carries no branch; `lopi_list_tasks`/`lopi_get_task` read the `tasks`
+  table's `status` column, which is coarse by design — `mark_running` sets
+  it to the literal string `"running"` once and it stays there for the
+  entire execution, through every `Planning`/`Implementing`/`Testing`/
+  `Scoring` transition, until a terminal `mark_completed` call. Stage-level
+  detail only ever lands durably in `agent_dag_nodes`, via
+  `record_dag_transition` on every `self.status()` call — so a new
+  aggregating tool would need to join a task roster (`load_history`-shaped)
+  with a per-task `load_dag_nodes` read, not just add a new field to one
+  existing tool.
+- **[Finding] Branch has no structured durable source yet — a real
+  prerequisite for Deliverable 4, not just the aggregating tool itself.**
+  `lopi/{task_id}-attempt-{n}` is deterministic but only ever appears as:
+  an in-memory `AgentEvent::TaskStarted` (pool-local, not shared
+  cross-process per MCP-Serve-1's KT4), a freeform `"● branch: …"` line in
+  `task_logs` (durable but not structured), or `TaskStatus::Success{branch}`
+  (only once a task finishes). None of these is a clean field to bind a
+  widget to. Persisting branch as a real column (or a dedicated store call)
+  when `TaskStarted` fires is now a known prerequisite for Track D's next
+  session, not something to discover mid-build.
+- **[Test] KT-D2 attempted and confirmed blocked, not assumed.** Checked
+  concretely, not just asserted: `uname`/`$DISPLAY`/`/Applications` confirm
+  a headless Linux container with no GUI surface Claude Desktop could run
+  on; no saved claude.ai browser profile/credentials exist to test a real
+  account; the only `claude` binary present is this session's own harness
+  process, not an interactive session available for nested testing (same
+  classifier-blocked shape MCP-Serve-1's KT2 and Composer-Grammar-2's
+  kill-test hit). Full detail in `LEDGER.md`.
+
 ## [0.17.0] — MCP-Serve-1: `lopi mcp-serve` + the self-hosted Claude Code plugin 🔌
 
 Wires up `crates/lopi-mcp`'s previously-unused `ToolHandler`/`serve()` scaffolding

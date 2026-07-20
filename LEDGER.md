@@ -5,6 +5,120 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## MCP-App-1
+
+**KT-D2 attempted and confirmed blocked in this environment — the sprint's
+hard gate did its job.** The brief ordered KT-D2 first specifically because
+everything downstream (Deliverables 2–4, Phase D1–D4) is wasted effort if it
+fails, and named the exact honest-stop condition: "If this sandboxed
+environment has no real Claude Desktop install or real claude.ai account to
+test against: stop here. Do not simulate, do not assume the spec's happy
+path, do not mark this passed." Checked concretely rather than assumed:
+
+- `uname -a` / `$DISPLAY` / `/Applications` confirm a headless Linux
+  container (`Linux vm 6.18.5`, no `DISPLAY` set, no `/Applications`) — Claude
+  Desktop is a macOS/Windows GUI app with no possible rendering surface here,
+  structural, not a permissions issue to work around.
+- No saved claude.ai browser profile/cookies/credentials exist anywhere on
+  disk (checked `~/.config`, `~/Library` — neither present or populated with
+  auth state). Chromium/Playwright is installed but there is no real
+  authenticated claude.ai account to log a widget render into, and obtaining
+  one isn't this session's to do.
+- The only `claude` binary present (`/opt/node22/bin/claude`) is this very
+  session's own harness process (`ps aux` shows it running
+  `--output-format=stream-json` as the driver of this conversation), not a
+  separate interactive session available for nested testing — the same
+  classifier-blocked shape MCP-Serve-1's KT2 and Composer-Grammar-2's kill
+  test hit (see that entry below), not a new failure mode.
+
+**Consequence, per the brief's own instructions, followed exactly:** no
+widget code, no `ui://` resource, no new tool implementation this sprint.
+KT-D1 (Claude Code's text fallback staying clean with a resource attached)
+depends on both a built resource *and* live interactive Claude Code
+verification — blocked for the identical root cause, not attempted.
+Deliverables 2–4 (the resource, the tool binding wired to real
+`structuredContent`, the status view) are Phase D1–D3 work, explicitly
+gated behind KT-D2 by the brief's own "Phased build (only past this point
+if KT-D2 cleared)" section — not started, correctly.
+
+**KT-D3 (tool-binding decision) does not depend on live hosts, so it was
+answered — the brief calls this out as a real decision "logged either way."**
+Read the actual source chain before deciding, not the plan doc's assumption:
+
+- `lopi_get_agent_dag` (`src/mcp_commands.rs:311-328`) reads
+  `state.store.load_dag_nodes(&id)` → `lopi_memory::dag_graph_json`
+  (`crates/lopi-memory/src/store/dag.rs:36-56`). This is scoped to **one**
+  task's pipeline-stage nodes (`plan`/`implement`/`test`/`score`/…) and
+  carries no branch field at all.
+- `lopi_list_tasks`/`lopi_get_task` read `TaskRow` (`crates/lopi-memory/src/
+  store/mod.rs:433-448`), sourced from the `tasks` table's `status` column.
+  That column is coarser than it looks: `save_task` writes `"queued"` at
+  submission, `mark_running` (`store/mod.rs:192-198`) flips it to the
+  **literal string `"running"` exactly once**, and nothing updates it again
+  until a terminal `mark_completed` call. Every `Planning → Implementing →
+  Testing → Scoring` transition happens *without* touching this column — so
+  `tasks.status` cannot answer "what stage is this task in right now," only
+  "queued / running / done."
+- Stage-level `TaskStatus` detail only ever lands durably in
+  `agent_dag_nodes`, via `record_dag_transition`
+  (`crates/lopi-agent/src/runner/lifecycle.rs:52-58`), called from
+  `self.status()` on every transition — the same call that also broadcasts
+  the in-memory (pool-local, not cross-process) `AgentEvent::StatusChanged`.
+
+**Decision: the widget needs a new aggregating tool** (not yet built —
+gated behind KT-D2), not a rebind of `lopi_get_agent_dag` as-is. It would
+need to join a task roster (`load_history`-shaped, like `lopi_list_tasks`)
+with a per-task `load_dag_nodes` read for stage-level status, since neither
+existing tool alone covers "which tasks are running" (a roster) plus
+"current `TaskStatus`" (stage granularity `tasks.status` doesn't carry) in
+one call. This is *more* specific than the plan doc's "one task's DAG vs.
+a new tool" framing assumed — it's not just about multi-pane aggregation,
+`tasks.status`'s coarseness is an independent reason `lopi_get_agent_dag`
+alone can't be the whole answer either, since the DAG alone doesn't give a
+roster and `list_tasks` alone doesn't give live stage detail.
+
+**A second, unplanned finding: "branch" (Deliverable 4's second required
+field) has no clean structured source anywhere in the store.** Branch names
+are deterministic (`format!("lopi/{}-attempt-{}", task_id, attempt+1)`,
+`crates/lopi-agent/src/runner/run_loop.rs:186`) but only ever materialize
+as: an in-memory `AgentEvent::TaskStarted { branch, .. }` (pool-local, not
+shared cross-process — confirmed dead-end per MCP-Serve-1's KT4, the same
+constraint that ruled out reading pool state for anything else); a freeform
+`"● branch: {branch}"` line inside `task_logs` (durable, reachable via
+`lopi_get_logs`, but string-embedded, not a field — parsing it is fragile,
+not a real API contract); or `TaskStatus::Success{branch}` (only present
+once a task has already finished, useless for "which branch is this
+*running* task on"). None of these is a queryable structured column today.
+**This means the new aggregating tool from KT-D3 isn't just new
+aggregation logic — it needs a small store-side prerequisite first**
+(persisting branch as a real column, or a dedicated store call, when
+`TaskStarted` fires) that neither the plan doc nor the original KT-D3
+framing anticipated. Carried forward to `NEXT_SESSION_PROMPT.md` rather
+than built speculatively this sprint, since building it without KT-D2
+resolved would be shipping widget-adjacent surface area with no proof the
+render path it's for will ever complete a handshake.
+
+**Freshness (the other half of the narrowed KT-D3): store-backed DAG reads
+are checkpoint-fresh, not continuously live.** `record_dag_transition`
+writes synchronously on every stage transition, so a store poll reflects
+the true current stage within moments of it changing — accurate at each
+`Planning`/`Implementing`/`Testing`/`Scoring` boundary — but there is no
+push/stream from the store between transitions. A widget built on this
+needs to poll on an interval (a few seconds is plausible given transitions
+happen on the order of tens of seconds to minutes per stage, per the run
+loop's own pacing), not assume any continuous live feed.
+
+**Also flagged, not fixed this sprint:** the repo's `LOPI_DISTRIBUTION_PLAN.md`
+is stale — it's the pre-`MCP-Serve-1` draft (no "Track A shipped" update, no
+Track D section at all). The session prompt that kicked this sprint off
+pasted the up-to-date version (with Track D, and Track A marked shipped)
+as an attachment rather than relying on the repo's own copy — which is how
+this sprint could be scoped at all despite the repo file's drift. This is
+the same class of "small, real inconsistency… not this sprint's job to fix"
+already called out for the two `NEXT_SESSION_PROMPT.md` files; worth a sync
+pass before another session gets tripped up trusting the repo's copy over
+a pasted one.
+
 ## MCP-Serve-1
 
 **Plugin `name` slug: `lopi` — one-way door.** `plugin/.claude-plugin/plugin.json`'s
