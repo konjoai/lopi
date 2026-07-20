@@ -292,16 +292,16 @@ impl UsageAccrual {
     }
 
     /// Hard-stop check: same estimated-cost basis as [`check_soft_warn`], but
-    /// fires at 100% of `cap_usd` rather than 80%, and the caller kills the
-    /// subprocess on `Some` rather than merely logging. This is lopi's own
-    /// backstop for the CLI's `--max-budget-usd` flag, which only checks its
-    /// *billed* total between turns — a turn packing several serial
-    /// `WebFetch`/`WebSearch` calls can accumulate real cost mid-turn and
-    /// only get compared against the cap once the whole turn finishes, by
-    /// which point spend may already be well past it. Estimating from token
-    /// counts observed *within* the turn closes that window instead of
-    /// trusting the CLI's own end-of-turn accounting. `cap_usd <= 0.0` (the
-    /// "disabled" sentinel) never stops.
+    /// fires at [`HARD_STOP_MARGIN`] of `cap_usd` rather than 80%, and the
+    /// caller kills the subprocess on `Some` rather than merely logging.
+    /// This is lopi's own backstop for the CLI's `--max-budget-usd` flag,
+    /// which only checks its *billed* total between turns — a turn packing
+    /// several serial `WebFetch`/`WebSearch` calls can accumulate real cost
+    /// mid-turn and only get compared against the cap once the whole turn
+    /// finishes, by which point spend may already be well past it.
+    /// Estimating from token counts observed *within* the turn closes that
+    /// window instead of trusting the CLI's own end-of-turn accounting.
+    /// `cap_usd <= 0.0` (the "disabled" sentinel) never stops.
     fn check_hard_stop(&self, model: &str, cap_usd: f64) -> Option<f64> {
         if cap_usd <= 0.0 {
             return None;
@@ -313,7 +313,7 @@ impl UsageAccrual {
             cache_write_tokens: self.cache_write.saturating_u32(),
         };
         let estimated = usage.estimated_cost(model);
-        if estimated < cap_usd {
+        if estimated < cap_usd * HARD_STOP_MARGIN {
             return None;
         }
         if self.hard_stopped.swap(true, Ordering::Relaxed) {
@@ -322,6 +322,18 @@ impl UsageAccrual {
         Some(estimated)
     }
 }
+
+/// Fraction of `cap_usd` at which [`UsageAccrual::check_hard_stop`] fires —
+/// below 100%, not at it. The check only re-evaluates when a
+/// `StreamEvent::TokenUsage` delta arrives, and the closure returning
+/// `false` only *requests* the subprocess be killed — real spend can still
+/// tick up between that last observed delta and the moment the process
+/// actually exits. Streaming deltas land in small chunks (tens to low
+/// hundreds of tokens per event, a small fraction of the cost of most
+/// configured caps), so 5% headroom comfortably absorbs one more such
+/// chunk without giving up enough of the user's budget to make the stop
+/// fire meaningfully early on a legitimately expensive run.
+const HARD_STOP_MARGIN: f64 = 0.95;
 
 /// Saturating `AtomicU64` → `u32` read, for the `u32` token fields of
 /// [`TurnMetrics`]. Real per-turn counts are far below `u32::MAX`; the clamp is
