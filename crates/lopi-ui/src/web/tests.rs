@@ -5,7 +5,7 @@ use crate::web::handlers::{apply_loop_fields, validate_goal};
 use crate::web::types::{CreateTaskRequest, MAX_GOAL_LENGTH};
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
-use lopi_core::{LopiConfig, Task};
+use lopi_core::{LopiConfig, Task, TaskId};
 use lopi_orchestrator::AgentPool;
 use std::path::PathBuf;
 use tower::ServiceExt;
@@ -176,9 +176,9 @@ async fn metrics_returns_prometheus_text() {
     assert!(body.contains("lopi_agents_running"));
 }
 
-// `get_quality_trend`, `get_q_values`, and `get_agent_dag` (metrics_handlers.rs)
-// had zero HTTP-level coverage — only the pure `dag_graph_json` helper was
-// tested in-module.
+// `get_quality_trend` and `get_agent_dag` (metrics_handlers.rs) had zero
+// HTTP-level coverage — only the pure `dag_graph_json` helper was tested
+// in-module.
 #[tokio::test]
 async fn quality_trend_returns_200_with_empty_runs_for_fresh_store() {
     let app = test_app().await;
@@ -187,15 +187,6 @@ async fn quality_trend_returns_200_with_empty_runs_for_fresh_store() {
     let json = json_body(resp).await;
     assert!(json["runs"].as_array().unwrap().is_empty());
     assert!(json.get("repo").is_some());
-}
-
-#[tokio::test]
-async fn q_values_returns_200_with_empty_values_for_fresh_store() {
-    let app = test_app().await;
-    let resp = get_req(app, "/api/routing/q-values").await;
-    assert_eq!(resp.status(), StatusCode::OK);
-    let json = json_body(resp).await;
-    assert!(json["values"].as_array().unwrap().is_empty());
 }
 
 #[tokio::test]
@@ -450,3 +441,5 @@ include!("quota_tests.rs");
 include!("maxx_tests.rs");
 include!("task_create_tests.rs");
 include!("task_field_tests.rs");
+include!("permission_mode_field_tests.rs");
+include!("claude_commands_tests.rs");

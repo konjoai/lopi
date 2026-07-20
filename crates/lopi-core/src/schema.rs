@@ -145,18 +145,6 @@ fn validate_at(value: &Value, schema: &Value, path: &str, out: &mut Vec<Violatio
                     };
                     let before = out.len();
                     validate_at(v, subschema, &next_path, out);
-                    // Re-label nested failures as Property so the operator
-                    // knows where the cascade started.
-                    for v in &mut out[before..] {
-                        if v.kind == ViolationKind::Type
-                            || v.kind == ViolationKind::Required
-                            || v.kind == ViolationKind::EnumMismatch
-                            || v.kind == ViolationKind::Property
-                        {
-                            // Keep the original kind for the leaf failure;
-                            // the path already conveys the property.
-                        }
-                    }
                     if out.len() > before {
                         // Bubble up that this property was the source.
                         out.push(Violation::new(

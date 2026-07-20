@@ -1,7 +1,7 @@
 //! Core shared types for the lopi agent orchestrator.
 //!
-//! Exposes `Task`, `AgentRun`, `Score`, `LopiConfig`, and supporting types
-//! used across all lopi crates.
+//! Exposes `Task`, `Score`, `LopiConfig`, and supporting types used across
+//! all lopi crates.
 
 /// Eval-Execution-1 (A1) — the goal/acceptance object (cross-cutting seam #1):
 /// a tier-tagged, machine-checkable success condition for a loop or a stack.
@@ -40,6 +40,9 @@ pub mod loop_config;
 /// carried before (`lopi-agent::claude` constants, web's `options.ts`,
 /// macOS's `LaunchControls`/`StackConfigTypes`).
 pub mod models;
+/// Permission mode — how much a `claude -p` worker session may act on tool
+/// calls without a human answering a prompt.
+pub mod permission_mode;
 /// Report on Finish (Loop Engineering primitive 6) — the `report` channel
 /// name a completed run's summary can be routed to.
 pub mod report;
@@ -65,7 +68,7 @@ pub mod tier;
 pub mod topology;
 
 pub use acceptance::{Acceptance, AcceptanceCheck, CheckSpec, EvalTier, MetricGate, Op};
-pub use agent::{AgentRun, AgentState, Attempt, Score, ScoreWeights, TurnMetrics};
+pub use agent::{Attempt, Score, ScoreWeights, TurnMetrics};
 pub use autonomy::AutonomyLevel;
 pub use budget::BudgetScope;
 pub use budget_preset::{
@@ -79,6 +82,7 @@ pub use event::{AgentEvent, EventBus, LogLevel, PlanDecision};
 pub use gain::{GainDecision, GainRule, GainSample};
 pub use loop_config::{IsolationMode, LoopConfig};
 pub use models::{fallback_models, ModelInfo};
+pub use permission_mode::{PermissionMode, PermissionModeError};
 pub use report::{ReportChannel, ReportChannelError};
 pub use schema::{
     schema_violations_inc, schema_violations_snapshot, validate as validate_schema,
@@ -203,15 +207,6 @@ mod tests {
         assert_eq!(a.outcome, "pending");
         assert_eq!(a.attempt_num, 1);
         assert_eq!(a.branch, "lopi/abc-attempt-1");
-    }
-
-    #[test]
-    fn agent_run_starts_idle() {
-        let tid = TaskId::new();
-        let run = AgentRun::new(tid);
-        assert!(matches!(run.state, AgentState::Idle));
-        assert!(run.attempts.is_empty());
-        assert!(run.finished_at.is_none());
     }
 
     #[test]

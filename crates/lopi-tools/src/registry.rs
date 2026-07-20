@@ -98,6 +98,11 @@ const fn default_version() -> u32 {
 pub struct ToolRegistry {
     inner: Arc<RwLock<HashMap<String, ToolSpec>>>,
     registry_path: Arc<PathBuf>,
+    /// Serializes `save_to_disk`'s snapshot-then-write-tmp-then-rename
+    /// sequence. Without it, concurrent flushes race on the same tmp file:
+    /// one call's rename can find the tmp file already moved by another,
+    /// failing with `NotFound`.
+    save_lock: Arc<tokio::sync::Mutex<()>>,
 }
 
 impl ToolRegistry {
@@ -108,6 +113,7 @@ impl ToolRegistry {
         Self {
             inner: Arc::new(RwLock::new(HashMap::new())),
             registry_path: Arc::new(registry_path.as_ref().to_path_buf()),
+            save_lock: Arc::new(tokio::sync::Mutex::new(())),
         }
     }
 
@@ -131,6 +137,7 @@ impl ToolRegistry {
         Ok(Self {
             inner: Arc::new(RwLock::new(map)),
             registry_path: Arc::new(path),
+            save_lock: Arc::new(tokio::sync::Mutex::new(())),
         })
     }
 
@@ -201,6 +208,7 @@ impl ToolRegistry {
     /// # Errors
     /// I/O failure on the temp write, rename, or serde encoding.
     pub async fn save_to_disk(&self) -> Result<(), RegistryError> {
+        let _guard = self.save_lock.lock().await;
         let snap = ToolRegistrySnapshot {
             version: default_version(),
             tools: self.inner.read().await.clone(),
@@ -415,5 +423,75 @@ mod tests {
         assert!(p.ends_with("tool_registry.json"));
         assert!(p.starts_with("/tmp/lopi-test-home"));
         std::env::remove_var("LOPI_HOME");
+    }
+
+    #[tokio::test]
+    async fn load_corrupt_json_errors() {
+        let (_dir, path) = temp_path();
+        tokio::fs::write(&path, b"{ this is not valid json")
+            .await
+            .unwrap();
+        let err = ToolRegistry::load(&path).await.unwrap_err();
+        assert!(matches!(err, RegistryError::Serde(_)));
+    }
+
+    #[tokio::test]
+    async fn load_empty_file_returns_empty_registry() {
+        let (_dir, path) = temp_path();
+        tokio::fs::write(&path, b"").await.unwrap();
+        let reg = ToolRegistry::load(&path).await.unwrap();
+        assert!(reg.list().await.is_empty());
+    }
+
+    /// Concurrent registrations of distinct tools must all land — the
+    /// write lock serialises mutations, so nothing should be lost under
+    /// contention.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn concurrent_registrations_all_persist() {
+        let (_dir, path) = temp_path();
+        let reg = ToolRegistry::new(&path);
+        let handles: Vec<_> = (0..20)
+            .map(|i| {
+                let reg = reg.clone();
+                tokio::spawn(async move { reg.register(sample_spec(&format!("tool-{i}"))).await })
+            })
+            .collect();
+        for h in handles {
+            h.await.unwrap().unwrap();
+        }
+        assert_eq!(reg.list().await.len(), 20);
+
+        // The on-disk snapshot reflects the same final state.
+        let reloaded = ToolRegistry::load(&path).await.unwrap();
+        assert_eq!(reloaded.list().await.len(), 20);
+    }
+
+    /// Concurrent register/deregister racing on the same name must leave
+    /// the registry in one consistent state, not a torn or duplicated one.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn concurrent_register_and_deregister_same_name_stays_consistent() {
+        let (_dir, path) = temp_path();
+        let reg = ToolRegistry::new(&path);
+        reg.register(sample_spec("shared")).await.unwrap();
+
+        let reg_a = reg.clone();
+        let reg_b = reg.clone();
+        let (r1, r2) = tokio::join!(
+            tokio::spawn(async move { reg_a.register(sample_spec("shared")).await }),
+            tokio::spawn(async move { reg_b.deregister("shared").await }),
+        );
+        r1.unwrap().unwrap();
+        r2.unwrap();
+
+        // Either the register-after-deregister or deregister-after-register
+        // ordering won — both are valid outcomes of a race, but the map
+        // must contain at most one "shared" entry either way.
+        let count = reg
+            .list()
+            .await
+            .iter()
+            .filter(|t| t.name == "shared")
+            .count();
+        assert!(count <= 1, "no duplicate/torn entries under contention");
     }
 }

@@ -99,6 +99,7 @@
         assert!(body.contains("lopi_tasks_succeeded_total"));
         assert!(body.contains("lopi_tasks_failed_total"));
         assert!(body.contains("lopi_uptime_seconds"));
+        assert!(body.contains("lopi_audit_log_total"));
     }
 
     #[tokio::test]

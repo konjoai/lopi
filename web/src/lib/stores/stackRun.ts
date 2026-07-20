@@ -115,10 +115,14 @@ export interface StackRunState {
  *  loses run state exactly like it loses pane state. */
 export const runs = writable<Map<string, StackRunState>>(new Map());
 
-/** The minimal shape `waitForTerminal` needs from a live agent-state store —
- *  satisfied by the real `agents` store (`stores/agents.ts`) and, in tests,
- *  by a plain `writable(new Map())`. */
-export type AgentStatusSource = Readable<Map<string, { status?: string; score?: number }>>;
+/** The minimal shape `waitForTerminal`/`blockReasonFor` need from a live
+ *  agent-state store — satisfied by the real `agents` store
+ *  (`stores/agents.ts`) and, in tests, by a plain `writable(new Map())`.
+ *  `taskStatus`/`verifierGaps` (round 2, item 3) are optional so a minimal
+ *  test double carrying only `status`/`score` still satisfies the type. */
+export type AgentStatusSource = Readable<
+  Map<string, { status?: string; score?: number; taskStatus?: unknown; verifierGaps?: string[] }>
+>;
 
 function setRun(paneKey: string, patch: Partial<StackRunState>): void {
   runs.update((m) => {
@@ -141,6 +145,25 @@ function findCard(paneKey: string, cardId: string): StackCard | undefined {
  *  transport needed. Deferred unsubscribe (`queueMicrotask`) avoids
  *  referencing `unsub` before its `const` binding completes during a
  *  Svelte store's synchronous initial-subscribe callback. */
+/** The blocked-card reason string (round 2, item 3) — prefers real eval
+ *  failure detail already carried by the agent's live state (the adversarial
+ *  verifier's first gap, or the backend's own `Failed { reason }` status)
+ *  over the generic `"<goal>" ended <terminal>"` fallback, so the card's
+ *  inline reason row reads as specifically as the data on hand allows
+ *  without inventing anything the backend didn't actually report. */
+function blockReasonFor(
+  entry: { taskStatus?: unknown; verifierGaps?: string[] } | undefined,
+  fallback: string
+): string {
+  if (entry?.verifierGaps?.length) return `eval failed: ${entry.verifierGaps[0]}`;
+  const ts = entry?.taskStatus;
+  if (ts && typeof ts === 'object' && 'Failed' in ts) {
+    const reason = (ts as { Failed: { reason?: string } }).Failed?.reason;
+    if (reason) return reason;
+  }
+  return fallback;
+}
+
 function waitForTerminal(
   taskId: string,
   statusSource: AgentStatusSource
@@ -220,7 +243,9 @@ async function advance(
         ? cardToTaskPayloadForRunOnce(card, defaults)
         : cardToTaskPayload(card, defaults);
 
-    updateCardInPane(paneKey, cardId, { status: 'queued' });
+    // Clear a stale `blockReason` from a prior failed run — a re-run starts
+    // clean, not still showing last time's failure while it's mid-flight.
+    updateCardInPane(paneKey, cardId, { status: 'queued', blockReason: undefined });
 
     let resp;
     try {
@@ -239,7 +264,12 @@ async function advance(
     updateCardInPane(paneKey, cardId, { status: 'running', taskId });
 
     const terminal = await waitForTerminal(taskId, statusSource);
-    updateCardInPane(paneKey, cardId, { status: 'done' });
+    if (terminal === 'completed') {
+      updateCardInPane(paneKey, cardId, { status: 'done' });
+    } else {
+      const reason = blockReasonFor(get(statusSource).get(taskId), `"${card.goal}" ended ${terminal}`);
+      updateCardInPane(paneKey, cardId, { status: 'blocked', blockReason: reason });
+    }
 
     if (terminal !== 'completed') {
       const error = `"${card.goal}" ended ${terminal}`;
@@ -463,7 +493,7 @@ async function launchBareCard(
     effort: card.config.effort ?? defaults.effort,
     branch: card.config.branch
   });
-  updateCardInPane(paneKey, card.id, { status: 'queued' });
+  updateCardInPane(paneKey, card.id, { status: 'queued', blockReason: undefined });
   let resp;
   try {
     resp = await createTask(payload.goal, payload.repo, payload.priority, payload.options);
@@ -479,7 +509,12 @@ async function launchBareCard(
   const taskId = effectiveTaskId(resp);
   updateCardInPane(paneKey, card.id, { status: 'running', taskId });
   const terminal = await waitForTerminal(taskId, statusSource);
-  updateCardInPane(paneKey, card.id, { status: 'done' });
+  if (terminal === 'completed') {
+    updateCardInPane(paneKey, card.id, { status: 'done' });
+  } else {
+    const reason = blockReasonFor(get(statusSource).get(taskId), `"${card.goal}" ended ${terminal}`);
+    updateCardInPane(paneKey, card.id, { status: 'blocked', blockReason: reason });
+  }
   setRun(
     paneKey,
     terminal === 'completed'

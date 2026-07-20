@@ -21,6 +21,7 @@ import {
   guardActive,
   evalActive,
   configActive,
+  configSummary,
   buildCronString,
   cronHuman,
   computeNextRuns,
@@ -78,13 +79,20 @@ import {
   commandValueAutocomplete,
   detectPendingCommand,
   evalSuiteOptions,
+  tokenizeGoalChips,
+  claudeCommandAutocomplete,
+  loopCountTier,
+  estimateRunCost,
+  cardGoalActive,
+  cardPursuesGoal,
+  insertPaneAt,
   type PromptTemplate,
   type StackTemplate,
   type StackCard,
   type StackPaneState,
   type StackConfig
 } from './stack';
-import { DEFAULT_STACK_DEFAULTS } from './stackDefaults';
+import { DEFAULT_STACK_DEFAULTS, PERMISSION_MODE_OPTIONS, DEFAULT_PERMISSION_MODE } from './stackDefaults';
 import { AUTO_MODEL, MODEL_OPTIONS, EFFORT_OPTIONS } from './options';
 import { eq, eqIs, ok, namedSummary } from '$lib/test-harness';
 
@@ -457,19 +465,25 @@ eqIs(buildCard(':ratchet "self improve"').preset, 'gain', 'a `:ratchet` composer
   eqIs(aliasAutocomplete(':research ').length, 0, 'a trailing space after a completed alias also closes the list');
 }
 
-// ── inline `/command` autocomplete — level 1 (command names) + level 2
-//    (`/command/value`), mirroring `@repo`'s trailing-word grammar ───────────
+// ── inline `;command` autocomplete — level 1 (command names) + level 2
+//    (`;command/value`), mirroring `@repo`'s trailing-word grammar ───────────
+// `;` is lopi's own catch-all verb prefix (composer-grammar sprint) — `/` is
+// vacated entirely for real Claude Code slash commands. Only the leading
+// trigger character changed; the level-2 `command/value` separator stays `/`.
 {
-  eqIs(commandAutocomplete('/mo', CARD_COMMANDS).length, 1, 'a unique command prefix returns one match');
-  eqIs(commandAutocomplete('/mo', CARD_COMMANDS)[0].token, '/model', 'the match carries the full command token');
-  eqIs(commandAutocomplete('fix the bug /', CARD_COMMANDS).length, CARD_COMMANDS.length, 'a bare slash matches every command');
-  eqIs(commandAutocomplete('/', CARD_COMMANDS).length, CARD_COMMANDS.length, 'works with no goal text before it too');
-  eqIs(commandAutocomplete('/nope', CARD_COMMANDS).length, 0, 'no command starts with an unknown prefix');
-  eqIs(commandAutocomplete('fix /model bug', CARD_COMMANDS).length, 0, 'once a space follows the token, the goal has moved on');
-  eqIs(commandAutocomplete('fix the bug', CARD_COMMANDS).length, 0, 'no trailing slash means no suggestions');
+  eqIs(commandAutocomplete(';mo', CARD_COMMANDS).length, 1, 'a unique command prefix returns one match');
+  eqIs(commandAutocomplete(';mo', CARD_COMMANDS)[0].token, ';model', 'the match carries the full command token');
+  eqIs(commandAutocomplete('fix the bug ;', CARD_COMMANDS).length, CARD_COMMANDS.length, 'a bare semicolon matches every command');
+  eqIs(commandAutocomplete(';', CARD_COMMANDS).length, CARD_COMMANDS.length, 'works with no goal text before it too');
+  eqIs(commandAutocomplete(';nope', CARD_COMMANDS).length, 0, 'no command starts with an unknown prefix');
+  eqIs(commandAutocomplete('fix ;model bug', CARD_COMMANDS).length, 0, 'once a space follows the token, the goal has moved on');
+  eqIs(commandAutocomplete('fix the bug', CARD_COMMANDS).length, 0, 'no trailing semicolon means no suggestions');
+  // `/model`-style tokens (the old prefix) must never match the new `;` grammar —
+  // this is the one-way-door hard cutover: no read-compat shim.
+  eqIs(commandAutocomplete('/mo', CARD_COMMANDS).length, 0, 'the retired `/` prefix no longer triggers command autocomplete');
   ok(
-    STACK_COMMANDS.some((c) => c.command === 'loop') && !CARD_COMMANDS.some((c) => c.command === 'loop'),
-    '`loop` is stack-scope only — no per-card loop count to override'
+    !STACK_COMMANDS.some((c) => c.command === 'loop'),
+    '`loop` has no `;loop/N` command at all — xN is the sole loop-count grammar, no second path under the new prefix'
   );
   ok(
     CARD_COMMANDS.some((c) => c.command === 'guard') && STACK_COMMANDS.some((c) => c.command === 'guard'),
@@ -477,36 +491,61 @@ eqIs(buildCard(':ratchet "self improve"').preset, 'gain', 'a `:ratchet` composer
   );
 
   eqIs(
-    commandValueAutocomplete('/model/op', 'model', MODEL_OPTIONS).length,
+    commandValueAutocomplete(';model/op', 'model', MODEL_OPTIONS).length,
     1,
     'level 2 filters the given catalog by the value typed so far'
   );
   eqIs(
-    commandValueAutocomplete('/model/op', 'model', MODEL_OPTIONS)[0].token,
-    '/model/claude-opus-4-8',
+    commandValueAutocomplete(';model/op', 'model', MODEL_OPTIONS)[0].token,
+    ';model/claude-opus-4-8',
     'the level-2 token embeds the real value directly — no label/path resolution step, unlike @repo'
   );
-  eqIs(commandValueAutocomplete('/model/', 'model', MODEL_OPTIONS).length, MODEL_OPTIONS.length, 'an empty value query matches everything');
-  eqIs(commandValueAutocomplete('/model/nope', 'model', MODEL_OPTIONS).length, 0, 'no option starts with an unknown value prefix');
-  eqIs(commandValueAutocomplete('/model/opus done', 'model', MODEL_OPTIONS).length, 0, 'a space after the value token closes the list');
+  eqIs(commandValueAutocomplete(';model/', 'model', MODEL_OPTIONS).length, MODEL_OPTIONS.length, 'an empty value query matches everything');
+  eqIs(commandValueAutocomplete(';model/nope', 'model', MODEL_OPTIONS).length, 0, 'no option starts with an unknown value prefix');
+  eqIs(commandValueAutocomplete(';model/opus done', 'model', MODEL_OPTIONS).length, 0, 'a space after the value token closes the list');
   eqIs(
-    commandValueAutocomplete('/effort/lo', 'effort', EFFORT_OPTIONS)[0]?.token,
-    '/effort/low',
+    commandValueAutocomplete(';effort/lo', 'effort', EFFORT_OPTIONS)[0]?.token,
+    ';effort/low',
     'a different command matches its own catalog, not the one from the last call'
   );
   eqIs(
-    detectPendingCommand(':research /model/', CARD_COMMANDS),
+    detectPendingCommand(':research ;model/', CARD_COMMANDS),
     'model',
     'hand-typing a value-picker token enters level-2 mode, same as clicking the level-1 suggestion would'
   );
-  eqIs(detectPendingCommand('/model/op', CARD_COMMANDS), 'model', 'detects even with a partial value already typed');
-  eqIs(detectPendingCommand('/guard/', CARD_COMMANDS), null, 'a non-value-picker command never enters level-2 mode');
-  eqIs(detectPendingCommand('/nope/', CARD_COMMANDS), null, 'an unknown command name matches nothing');
-  eqIs(detectPendingCommand('fix the bug', CARD_COMMANDS), null, 'no trailing /command/ token means no pending command');
-  eqIs(detectPendingCommand('/loop/3', STACK_COMMANDS), 'loop', 'stack-scope commands are matched against their own list');
+  eqIs(detectPendingCommand(';model/op', CARD_COMMANDS), 'model', 'detects even with a partial value already typed');
+  eqIs(detectPendingCommand(';guard/', CARD_COMMANDS), null, 'a non-value-picker command never enters level-2 mode');
+  eqIs(detectPendingCommand(';nope/', CARD_COMMANDS), null, 'an unknown command name matches nothing');
+  eqIs(detectPendingCommand('fix the bug', CARD_COMMANDS), null, 'no trailing ;command/ token means no pending command');
+  eqIs(detectPendingCommand('/model/op', CARD_COMMANDS), null, 'a `/`-prefixed token (the retired grammar) is never detected as pending');
 
   eqIs(evalSuiteOptions().length, 3, "eval's catalog is the three suite shortcuts, not individual eval names");
   ok(evalSuiteOptions().every((o) => !o.label.includes(' ')), 'every suite name is space-free — the trailing-token grammar could not carry a spaced value');
+}
+
+// ── Kill-test 1 — `;`-prefixed value-picker tokens for every CARD_COMMANDS
+//    field resolve end-to-end: level-1 command name, level-2 pending-command
+//    detection, and the tokenizer's resolved chip kind ─────────────────────
+{
+  type Row = { token: string; command: string; chipKind: 'model' | 'effort' | 'branch' | 'command' };
+  const rows: Row[] = [
+    { token: ';model/sonnet', command: 'model', chipKind: 'model' },
+    { token: ';effort/high', command: 'effort', chipKind: 'effort' },
+    { token: ';branch/main', command: 'branch', chipKind: 'branch' },
+    { token: ';autonomy/L2', command: 'autonomy', chipKind: 'command' },
+    { token: ';eval/kcqf', command: 'eval', chipKind: 'command' }
+  ];
+  for (const row of rows) {
+    eqIs(
+      detectPendingCommand(row.token, CARD_COMMANDS),
+      row.command,
+      `${row.token}: detected as a pending ${row.command} value-picker token`
+    );
+    const segs = tokenizeGoalChips(row.token, CARD_COMMANDS);
+    eqIs(segs.length, 1, `${row.token}: tokenizes to exactly one resolved chip`);
+    eqIs(segs[0].text, row.token, `${row.token}: the chip carries the token verbatim`);
+    eqIs(segs[0].chipKind, row.chipKind, `${row.token}: resolves to the '${row.chipKind}' chip kind`);
+  }
 }
 
 // ── V&V: table-driven WIRED round-trip (§C) — one non-default value per WIRED
@@ -522,6 +561,7 @@ eqIs(buildCard(':ratchet "self improve"').preset, 'gain', 'a `:ratchet` composer
     { name: 'model override', apply: (c) => (c.config.model = 'claude-opus-4-8'), field: 'model', expected: 'claude-opus-4-8' },
     { name: 'effort override', apply: (c) => (c.config.effort = 'high'), field: 'effort', expected: 'high' },
     { name: 'repo override', apply: (c) => (c.config.repo = 'konjoai/squish'), field: 'repo', expected: 'konjoai/squish' },
+    { name: 'permission_mode override', apply: (c) => (c.config.permission_mode = 'dontAsk'), field: 'permission_mode', expected: 'dontAsk' },
     { name: 'gate on', apply: (c) => (c.guardrails = { ...c.guardrails, gate: true, gateCmd: './gate.sh' }), field: 'gate', expected: './gate.sh' },
     { name: 'until on', apply: (c) => (c.guardrails = { ...c.guardrails, until: true, untilCmd: 'exit 0' }), field: 'until', expected: 'exit 0' },
     { name: 'on_fail continue', apply: (c) => (c.guardrails = { ...c.guardrails, onFail: 'continue' }), field: 'on_fail', expected: 'continue' },
@@ -627,6 +667,91 @@ eqIs(buildCard(':ratchet "self improve"').preset, 'gain', 'a `:ratchet` composer
   );
 }
 
+// ── Permission-Modes-1: `permission_mode` — wired end to end (unlike
+// `autonomy`), and the literal default (`bypassPermissions`) must never hit
+// the wire when the field wasn't touched — mirrors the `auto` model
+// sentinel-omission pattern above, but the "sentinel" here is the real
+// backend default itself. ─────────────────────────────────────────────────
+{
+  ok(
+    PERMISSION_MODE_OPTIONS.some((o) => o.value === DEFAULT_PERMISSION_MODE),
+    'PERMISSION_MODE_OPTIONS carries the default bypassPermissions entry'
+  );
+  eq(
+    PERMISSION_MODE_OPTIONS.map((o) => o.value).sort(),
+    ['acceptEdits', 'auto', 'bypassPermissions', 'dontAsk'],
+    'PERMISSION_MODE_OPTIONS carries exactly the four headless-safe modes — no plan/manual'
+  );
+
+  const defaults = { model: 'sonnet', effort: 'medium', repo: 'konjoai/lopi' };
+  const untouchedCard = buildCard('x');
+  eqIs(
+    cardToTaskPayload(untouchedCard, defaults).options.permission_mode,
+    undefined,
+    'no card override and no pane default ⇒ permission_mode omitted (resolves to bypassPermissions)'
+  );
+
+  const overriddenCard = buildCard('x');
+  overriddenCard.config.permission_mode = 'dontAsk';
+  eqIs(
+    cardToTaskPayload(overriddenCard, defaults).options.permission_mode,
+    'dontAsk',
+    'a card override away from the default is sent on the wire'
+  );
+
+  const explicitDefaultCard = buildCard('x');
+  explicitDefaultCard.config.permission_mode = DEFAULT_PERMISSION_MODE;
+  eqIs(
+    cardToTaskPayload(explicitDefaultCard, defaults).options.permission_mode,
+    undefined,
+    'a card explicitly set to bypassPermissions still omits it — never send the literal default'
+  );
+
+  const nonDefaultPaneDefaults = { model: 'sonnet', effort: 'medium', repo: 'konjoai/lopi', permission_mode: 'acceptEdits' };
+  const inheritingCard = buildCard('x');
+  eqIs(
+    cardToTaskPayload(inheritingCard, nonDefaultPaneDefaults).options.permission_mode,
+    'acceptEdits',
+    'a pane default away from bypassPermissions (no card override) is sent on the wire'
+  );
+
+  eqIs(
+    paneSubmitPayload({ goal: 'g', repo: 'r', permission_mode: DEFAULT_PERMISSION_MODE }).options.permission_mode,
+    undefined,
+    'a bare-pane launch set to the default also omits permission_mode'
+  );
+  eqIs(
+    paneSubmitPayload({ goal: 'g', repo: 'r', permission_mode: 'auto' }).options.permission_mode,
+    'auto',
+    'a bare-pane launch set to a non-default mode sends it on the wire'
+  );
+
+  // configActive/configSummary — the sliders/drawer "overridden" indicator.
+  const baseDefaults = { model: 'sonnet', effort: 'medium', repo: 'konjoai/lopi', branch: 'main', autonomy: 'L2' };
+  const plain = buildCard('x');
+  eqIs(configActive(plain, baseDefaults), false, 'no overrides at all ⇒ configActive false');
+  const withPermissionOverride = buildCard('x');
+  withPermissionOverride.config.permission_mode = 'auto';
+  eqIs(configActive(withPermissionOverride, baseDefaults), true, 'a permission_mode override alone flips configActive on');
+  eqIs(
+    configSummary(withPermissionOverride, baseDefaults),
+    'permission_mode auto',
+    'configSummary reports the overridden permission_mode'
+  );
+
+  // The stack-level "sliders button is active" indicator.
+  eqIs(
+    stackDefaultsActive(DEFAULT_STACK_DEFAULTS),
+    false,
+    'untouched stack defaults are not active'
+  );
+  eqIs(
+    stackDefaultsActive({ ...DEFAULT_STACK_DEFAULTS, permission_mode: 'dontAsk' }),
+    true,
+    'a stack-level permission_mode override alone flips stackDefaultsActive on'
+  );
+}
+
 // ── Backend-1: "Run once" forces max_iterations=1 without mutating the card ──
 {
   const defaults = { model: 'sonnet', effort: 'medium', repo: 'konjoai/lopi' };
@@ -681,24 +806,34 @@ eqIs(buildCard(':ratchet "self improve"').preset, 'gain', 'a `:ratchet` composer
   // which a bare prompt intentionally omits — so parity is asserted on the
   // fields both actually carry.
   const defaults = { model: 'sonnet', effort: 'medium', repo: 'konjoai/lopi' };
-  type Row = { name: string; goal: string; model?: string; effort?: string; priority?: string };
+  type Row = { name: string; goal: string; model?: string; effort?: string; priority?: string; permission_mode?: string };
   const rows: Row[] = [
     { name: 'plain goal, pane defaults', goal: 'do the thing' },
     { name: 'model + effort override', goal: 'do the thing', model: 'claude-opus-4-8', effort: 'high' },
-    { name: 'high priority', goal: 'urgent', priority: 'high' }
+    { name: 'high priority', goal: 'urgent', priority: 'high' },
+    { name: 'permission_mode override', goal: 'do the thing', permission_mode: 'acceptEdits' }
   ];
   for (const row of rows) {
     // The pane launch.
-    const pane = paneSubmitPayload({ goal: row.goal, repo: defaults.repo, priority: row.priority, model: row.model ?? defaults.model, effort: row.effort ?? defaults.effort });
+    const pane = paneSubmitPayload({
+      goal: row.goal,
+      repo: defaults.repo,
+      priority: row.priority,
+      model: row.model ?? defaults.model,
+      effort: row.effort ?? defaults.effort,
+      permission_mode: row.permission_mode
+    });
     // The equivalent one-card stack launch.
     const c = buildCard(`"${row.goal}"`);
     if (row.model) c.config.model = row.model;
     if (row.effort) c.config.effort = row.effort;
+    if (row.permission_mode) c.config.permission_mode = row.permission_mode;
     const stack = cardToTaskPayload(c, defaults);
     eqIs(pane.goal, stack.goal, `parity/${row.name}: same goal`);
     eqIs(pane.repo, stack.repo, `parity/${row.name}: same repo`);
     eqIs(pane.options.model, stack.options.model, `parity/${row.name}: same model`);
     eqIs(pane.options.effort, stack.options.effort, `parity/${row.name}: same effort`);
+    eqIs(pane.options.permission_mode, stack.options.permission_mode, `parity/${row.name}: same permission_mode`);
   }
 }
 
@@ -1295,6 +1430,197 @@ eqIs(
   eqIs(t.name, 'bench it', 'prompt template takes the given name');
   eqIs(t.preset, 'benchmark', 'prompt template captures the preset');
   eqIs(t.goal, 'measure throughput', 'prompt template captures the goal');
+}
+
+// ── round 2 ─────────────────────────────────────────────────────────────────
+{
+  // tokenizeGoalChips (item 2) — plain text only, no resolved tokens yet.
+  const segs = tokenizeGoalChips('fix the thing', CARD_COMMANDS);
+  eq(segs, [{ text: 'fix the thing' }], 'plain text with no resolved tokens is one plain segment');
+}
+{
+  // An in-progress prefix never chips — only a complete, word-bounded token.
+  const segs = tokenizeGoalChips(':res', CARD_COMMANDS);
+  eq(segs, [{ text: ':res' }], 'a partial alias prefix stays plain text, not a chip');
+}
+{
+  const segs = tokenizeGoalChips(':research fix the bug', CARD_COMMANDS);
+  eq(
+    segs,
+    [{ text: ':research', chipKind: 'alias' }, { text: ' fix the bug' }],
+    'a resolved leading alias chips, the rest stays plain'
+  );
+}
+{
+  const segs = tokenizeGoalChips('fix the bug @konjoai/lopi please', CARD_COMMANDS);
+  eq(
+    segs,
+    [{ text: 'fix the bug ' }, { text: '@konjoai/lopi', chipKind: 'repo' }, { text: ' please' }],
+    'a resolved @owner/repo token chips in place, mid-string'
+  );
+}
+{
+  const segs = tokenizeGoalChips('do it ;autonomy/L2 now', CARD_COMMANDS);
+  eq(
+    segs,
+    [{ text: 'do it ' }, { text: ';autonomy/L2', chipKind: 'command' }, { text: ' now' }],
+    'a resolved ;command/value token chips (non-effort/model/branch command → generic command kind)'
+  );
+}
+{
+  const segs = tokenizeGoalChips('go ;effort/high', CARD_COMMANDS);
+  eq(
+    segs,
+    [{ text: 'go ' }, { text: ';effort/high', chipKind: 'effort' }],
+    ';effort/value gets its own kind, distinct from other commands'
+  );
+}
+{
+  const segs = tokenizeGoalChips('use ;model/claude-opus-4-8 please', CARD_COMMANDS);
+  eq(
+    segs,
+    [{ text: 'use ' }, { text: ';model/claude-opus-4-8', chipKind: 'model' }, { text: ' please' }],
+    ';model/value gets its own kind (Phase 2 — reuses ConfigDrawer\'s cyan)'
+  );
+}
+{
+  const segs = tokenizeGoalChips('target ;branch/main now', CARD_COMMANDS);
+  eq(
+    segs,
+    [{ text: 'target ' }, { text: ';branch/main', chipKind: 'branch' }, { text: ' now' }],
+    ';branch/value gets its own kind (Phase 2 — reuses ConfigDrawer\'s green)'
+  );
+}
+{
+  const segs = tokenizeGoalChips('loop it x5 please', CARD_COMMANDS);
+  eq(
+    segs,
+    [{ text: 'loop it ' }, { text: 'x5', chipKind: 'loop' }, { text: ' please' }],
+    'a bare ×N/xN loop count chips'
+  );
+}
+{
+  // Non-value-picker commands (guard/schedule/maxx) are stripped from the
+  // text the moment they're picked (selectCommand's existing behavior) —
+  // they should never appear as a literal `;guard` word to chip.
+  const segs = tokenizeGoalChips('please ;guard the loop', CARD_COMMANDS);
+  eq(segs, [{ text: 'please ;guard the loop' }], 'a non-value-picker command word never chips');
+}
+{
+  // `loop` carries no `;loop/N` command at all (killed this sprint) — xN is
+  // the sole loop-count grammar, no second path under either scope's catalog.
+  const segs = tokenizeGoalChips(';loop/5', STACK_COMMANDS);
+  eq(segs, [{ text: ';loop/5' }], 'a `;loop/value` token never chips — no such command exists in STACK_COMMANDS');
+}
+{
+  // The retired `/`-prefixed grammar is a hard cutover — a `/model/...` token
+  // now renders as inert plain text, never a chip (kill-test 3's decision).
+  const segs = tokenizeGoalChips('do it /model/opus now', CARD_COMMANDS);
+  eq(segs, [{ text: 'do it /model/opus now' }], 'a `/`-prefixed token (the retired prefix) never chips');
+}
+{
+  eqIs(tokenizeGoalChips('', CARD_COMMANDS).length, 1, 'empty text still yields one (empty) segment');
+  eqIs(tokenizeGoalChips('', CARD_COMMANDS)[0].text, '', 'the empty segment carries no chip kind');
+}
+
+// ── Composer-Grammar-2 — real Claude Code `/name` command tokenizing ─────────
+{
+  const segs = tokenizeGoalChips('run /konjo-boot now', CARD_COMMANDS, ['konjo-boot', 'other-skill']);
+  eq(
+    segs,
+    [{ text: 'run ' }, { text: '/konjo-boot', chipKind: 'claude' }, { text: ' now' }],
+    'a `/name` token matching the supplied repo catalog chips as its own kind'
+  );
+}
+{
+  // A `/name` not in the supplied catalog stays plain text — the chip is
+  // catalog-driven, not a blanket "anything after a slash" match.
+  const segs = tokenizeGoalChips('run /unknown-thing now', CARD_COMMANDS, ['konjo-boot']);
+  eq(segs, [{ text: 'run /unknown-thing now' }], 'a `/name` outside the discovered catalog never chips');
+}
+{
+  // No claudeCommandNames arg at all (every pre-existing call site) ⇒ zero
+  // `/name` chips, never a crash — the default `[]` degrades safely.
+  const segs = tokenizeGoalChips('run /konjo-boot now', CARD_COMMANDS);
+  eq(segs, [{ text: 'run /konjo-boot now' }], 'omitting claudeCommandNames yields no /name chips (safe default)');
+}
+{
+  // No collision with the `@owner/repo` grammar's own embedded `/` — the
+  // repo alternative matches first at the `@` position and consumes the
+  // whole token, so the claude alternative never gets a chance to
+  // mis-fire on the `/` inside it.
+  const segs = tokenizeGoalChips('fix it @konjoai/lopi please', CARD_COMMANDS, ['lopi']);
+  eq(
+    segs,
+    [{ text: 'fix it ' }, { text: '@konjoai/lopi', chipKind: 'repo' }, { text: ' please' }],
+    'an @owner/repo token is never mistaken for a /name command even when the tail matches the catalog'
+  );
+}
+
+// ── claudeCommandAutocomplete — single-level `/name` grammar, no value picker ─
+{
+  const catalog = [
+    { value: 'konjo-boot', label: 'konjo-boot', hint: 'boot a session' },
+    { value: 'konjo-quality', label: 'konjo-quality', hint: 'quality gate reference' }
+  ];
+  eqIs(claudeCommandAutocomplete('/kon', catalog).length, 2, 'a shared prefix returns every matching command');
+  eqIs(claudeCommandAutocomplete('/konjo-b', catalog).length, 1, 'a unique prefix returns exactly one match');
+  eqIs(claudeCommandAutocomplete('/konjo-b', catalog)[0].token, '/konjo-boot', 'the match carries the full token');
+  eqIs(claudeCommandAutocomplete('/konjo-b', catalog)[0].hint, 'boot a session', 'the match carries its hint');
+  eqIs(claudeCommandAutocomplete('/KONJO-B', catalog)[0].token, '/konjo-boot', 'matching is case-insensitive');
+  eqIs(claudeCommandAutocomplete('/nope', catalog).length, 0, 'no command starts with an unknown prefix');
+  eqIs(claudeCommandAutocomplete('fix the bug /', catalog).length, 2, 'a bare slash matches every command');
+  eqIs(claudeCommandAutocomplete('/', catalog).length, 2, 'works with no goal text before it too');
+  eqIs(claudeCommandAutocomplete('fix /konjo-boot bug', catalog).length, 0, 'once a space follows the token, the goal has moved on');
+  eqIs(claudeCommandAutocomplete('fix the bug', catalog).length, 0, 'no trailing slash means no suggestions');
+  eqIs(claudeCommandAutocomplete('/konjo-boot', []).length, 0, 'an empty repo catalog suggests nothing, never throws');
+  // No level-2 step exists at all — unlike `;model/`, a real Claude command
+  // takes free-form `$ARGUMENTS` text, not a fixed value catalog.
+  eqIs(
+    claudeCommandAutocomplete('/konjo-boot do the thing', catalog).length,
+    0,
+    'once a command token is followed by free-form argument text, there is no value-picker step to re-enter'
+  );
+}
+
+{
+  // loopCountTier / estimateRunCost (items 5, 6)
+  eqIs(loopCountTier(1), 'orange', 'low N is the orange baseline');
+  eqIs(loopCountTier(10), 'orange', 'N=10 is still orange');
+  eqIs(loopCountTier(11), 'yellow', 'N=11 crosses into yellow');
+  eqIs(loopCountTier(24), 'yellow', 'N=24 is still yellow');
+  eqIs(loopCountTier(25), 'red', 'N=25 crosses into red');
+  eqIs(loopCountTier(Infinity), 'red', 'unbounded always reads red');
+
+  const est = estimateRunCost('claude-sonnet-5', 10);
+  ok(est.low > 0 && est.low < est.high, 'estimateRunCost returns a real low < high band');
+  const opusEst = estimateRunCost('claude-opus-4-8', 10);
+  ok(opusEst.low > est.low, 'opus estimates higher than sonnet for the same N');
+}
+
+{
+  // cardGoalActive / cardPursuesGoal (item 9)
+  const c = buildCard('"do the thing"');
+  eqIs(cardGoalActive(c), false, 'a fresh card has goalPursuit off');
+  eqIs(cardPursuesGoal(c), false, 'off ⇒ never pursues, regardless of evals');
+
+  const pursuingNoEvals = { ...c, goalPursuit: { pursue: true } };
+  eqIs(cardGoalActive(pursuingNoEvals), true, 'toggle on ⇒ active');
+  eqIs(cardPursuesGoal(pursuingNoEvals), false, 'on with only the baseline eval ⇒ not actually pursuing (inert)');
+
+  const preset = applyPreset(c, 'implement');
+  const pursuingWithEvals = { ...preset, goalPursuit: { pursue: true } };
+  eqIs(cardPursuesGoal(pursuingWithEvals), true, 'on with real evals beyond baseline ⇒ pursuing');
+}
+
+{
+  // insertPaneAt (item 1 — undo toast restores a deleted stack)
+  const s1 = makeBlankStack('one');
+  const s2 = makeBlankStack('two');
+  const s3 = makeBlankStack('three');
+  const restored = insertPaneAt([s1, s3], 1, s2);
+  eq(restored.map((p) => p.title), ['one', 'two', 'three'], 'restores the pane at its exact prior index');
+  eq(insertPaneAt([s1], 99, s2).map((p) => p.title), ['one', 'two'], 'an out-of-range index clamps to the end');
 }
 
 namedSummary('stack');

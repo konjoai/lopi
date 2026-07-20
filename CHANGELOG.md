@@ -9,6 +9,339 @@ Verification sprint, not an engineering one: confirmed the Browser pane can show
 - **Real positive result found unprompted, before the `CLAUDE.md` note existed:** a natural, mechanism-blind request ("what's lopi running right now, show me the stacks") was answered correctly twice — once directly, once by a freshly spawned subagent that reasoned its way to `preview_start` via plain `ps`/`lsof`/`curl` exploration.
 - **One open item, carried to `docs/ops/NEXT_SESSION_PROMPT.md`:** whether the new `CLAUDE.md` note is actually what a *genuinely* cold session relies on couldn't be tested from inside this session — the subagent used to probe this inherited a pre-edit `CLAUDE.md` snapshot, so it solved the task independently of the note, not because of it.
 
+## [0.19.0] — MCPB-App-1: branch persistence, `lopi_get_stack_status`, the stack-status widget, and the `.mcpb` build — packaged, not render-verified 📦
+
+Builds everything `MCP-App-1` (PR #130) found standing between "the plan
+says bind a UI resource to a tool" and an actual widget, per
+`LOPI_DISTRIBUTION_PLAN.md`'s Track B section (2.1–2.2, the merged
+Track-B-absorbs-Track-D spec). Ships: durable branch persistence, the new
+`lopi_get_stack_status` aggregating tool, the `ui://` widget resource bound
+to it, `resources/list`/`resources/read` support in `lopi-mcp` (new — didn't
+exist before this sprint), and `manifest.json` + a `.github/workflows/
+mcpb-release.yml` for the actual `.mcpb` build. **What this sprint cannot
+and does not claim: that the widget renders anywhere.** KT-B3 (the real MCP
+Apps handshake in a live Claude Desktop) is explicitly out of scope here —
+see `LOPI_KTB3_ATTENDED_RUNBOOK.md`, and `NEXT_SESSION_PROMPT.md` below for
+exactly what's still open.
+
+- **[Feature] Branch persistence — `tasks.branch`, a real column.** Per
+  `MCP-App-1`'s finding that a running task's branch had no structured
+  durable source anywhere, `AgentRunner::persist_branch`
+  (`crates/lopi-agent/src/runner/lifecycle.rs`) now writes it the moment
+  `TaskStarted` fires, mirroring `record_dag_transition`'s existing
+  fire-and-forget store-write pattern exactly. `TaskRow`/`get_task`/
+  `load_history` all carry it now. Full KT-B1 reasoning in `LEDGER.md`.
+- **[Feature] `lopi_get_stack_status` — the eighth MCP tool.** Joins the
+  task roster (`load_history`) with each task's current pipeline stage
+  (`load_dag_nodes` → new `lopi_memory::current_stage` pure fn) and its
+  branch. Verified against a real two-task, two-stage concurrent fixture
+  (KT-B2) — real field values asserted per task, not just "the query runs."
+- **[Feature] `ui://lopi/stack-status` — the read-only status widget.**
+  Plain HTML/JS (`src/mcp_ui/stack_status.html`), implements the MCP Apps
+  lifecycle (`ui/initialize` / `ui/notifications/initialized` /
+  `ui/notifications/tool-result`) and nothing beyond that — no
+  interactivity, no widget-initiated tool calls, per the sprint's explicit
+  non-goals. Bound to `lopi_get_stack_status` via `_meta.ui.resourceUri`.
+- **[Feature] `resources/list`/`resources/read` + `structuredContent` —
+  new `lopi-mcp` protocol surface.** `_meta.ui.resourceUri` alone doesn't
+  let a host fetch the resource it points at; this sprint added the
+  standard MCP methods to do that (`ToolHandler::resources()`/
+  `read_resource()`, both defaulted so the two prior implementors are
+  unaffected), plus `structuredContent` on every `tools/call` whose text
+  output is valid JSON — the data path a bound widget's `ui/initialize`
+  needs to actually receive.
+- **[Build] `mcpb/manifest.json` + `.github/workflows/mcpb-release.yml`,
+  macOS arm64 only.** `mcpb validate` passes clean (caught and fixed two
+  real schema errors the plan doc's own example JSON had). `mcpb pack`/
+  `unpack` mechanics verified for real using the host's own binary as a
+  packaging-mechanics stand-in — the unpacked binary, invoked exactly as
+  `mcp_config` specifies, correctly answered `initialize`/`tools/list`/
+  `resources/list`/`resources/read`/`tools/call` over real stdio.
+- **[Finding] A real macOS arm64 build cannot be produced in this sandbox
+  at all — checked two ways, not assumed.** Plain cross-compilation fails
+  immediately (Linux `cc` rejects Apple-targeted flags); `cargo-zigbuild`
+  gets past that and past `openssl-sys`, but `libgit2-sys` hardcodes
+  Apple's Security/CoreFoundation frameworks for any `apple` target with no
+  override available — a genuine toolchain gap, not a lopi defect. The new
+  GitHub Actions workflow builds natively on a real `macos-14` runner
+  instead (not yet run for real — `workflow_dispatch` only). Full detail
+  in `LEDGER.md`.
+
+## [0.18.0] — MCP-App-1: Track D kill-tested — KT-D2 blocked on real-host access, tool-binding decided 🖼️
+
+Attempted Track D (Loop Stacks inline MCP App dashboard) per
+`LOPI_DISTRIBUTION_PLAN.md`'s Track D section. **No widget code shipped —
+correctly, per the sprint's own hard gate.** KT-D2 (does the MCP Apps
+`ui/initialize` handshake actually complete in a real Claude Desktop install
+and a real claude.ai account) cannot be run in this sandboxed environment:
+no GUI surface for Claude Desktop (headless Linux container, no `DISPLAY`,
+no macOS/Windows), and no authenticated claude.ai session to test against.
+Per the brief, that's a legitimate stopping point, not a failure to route
+around — see `LEDGER.md`'s `MCP-App-1` entry for exactly what was checked.
+KT-D1 (Claude Code's text fallback staying clean) is blocked for the same
+root cause and wasn't attempted. This is a docs/decision-only release —
+no functional code changed — but the tool-binding decision (KT-D3) *was*
+answered from source, and it surfaced a real gap worth a version-worthy
+finding in its own right.
+
+- **[Decision] KT-D3 — the widget needs a new aggregating tool, not
+  `lopi_get_agent_dag` as-is.** Read `lopi_get_agent_dag`'s actual
+  source chain (`crates/lopi-memory/src/store/dag.rs`,
+  `crates/lopi-agent/src/runner/lifecycle.rs`,
+  `crates/lopi-memory/src/store/mod.rs`). Neither existing tool covers
+  Deliverable 4's three fields (task roster, branch, live `TaskStatus`)
+  together: `lopi_get_agent_dag` is scoped to one task's pipeline stages
+  and carries no branch; `lopi_list_tasks`/`lopi_get_task` read the `tasks`
+  table's `status` column, which is coarse by design — `mark_running` sets
+  it to the literal string `"running"` once and it stays there for the
+  entire execution, through every `Planning`/`Implementing`/`Testing`/
+  `Scoring` transition, until a terminal `mark_completed` call. Stage-level
+  detail only ever lands durably in `agent_dag_nodes`, via
+  `record_dag_transition` on every `self.status()` call — so a new
+  aggregating tool would need to join a task roster (`load_history`-shaped)
+  with a per-task `load_dag_nodes` read, not just add a new field to one
+  existing tool.
+- **[Finding] Branch has no structured durable source yet — a real
+  prerequisite for Deliverable 4, not just the aggregating tool itself.**
+  `lopi/{task_id}-attempt-{n}` is deterministic but only ever appears as:
+  an in-memory `AgentEvent::TaskStarted` (pool-local, not shared
+  cross-process per MCP-Serve-1's KT4), a freeform `"● branch: …"` line in
+  `task_logs` (durable but not structured), or `TaskStatus::Success{branch}`
+  (only once a task finishes). None of these is a clean field to bind a
+  widget to. Persisting branch as a real column (or a dedicated store call)
+  when `TaskStarted` fires is now a known prerequisite for Track D's next
+  session, not something to discover mid-build.
+- **[Test] KT-D2 attempted and confirmed blocked, not assumed.** Checked
+  concretely, not just asserted: `uname`/`$DISPLAY`/`/Applications` confirm
+  a headless Linux container with no GUI surface Claude Desktop could run
+  on; no saved claude.ai browser profile/credentials exist to test a real
+  account; the only `claude` binary present is this session's own harness
+  process, not an interactive session available for nested testing (same
+  classifier-blocked shape MCP-Serve-1's KT2 and Composer-Grammar-2's
+  kill-test hit). Full detail in `LEDGER.md`.
+
+## [0.17.0] — MCP-Serve-1: `lopi mcp-serve` + the self-hosted Claude Code plugin 🔌
+
+Wires up `crates/lopi-mcp`'s previously-unused `ToolHandler`/`serve()` scaffolding
+(confirmed zero call sites at sprint start) into a real `lopi mcp-serve` subcommand,
+then packages it as a self-hosted Claude Code plugin: `/plugin marketplace add
+konjoai/lopi` now installs a working `lopi` skill + MCP server. This is the whole
+goal — something a stranger can install and watch run, not a finished product.
+Track B (MCPB) and Track C (Connectors Directory) are explicitly out of scope; see
+`NEXT_SESSION_PROMPT.md`.
+
+- **[Feat] `lopi mcp-serve` (`src/mcp_commands.rs`).** New subcommand exposing a
+  curated seven-tool set (`lopi_submit_task`/`lopi_list_tasks`/`lopi_get_task`/
+  `lopi_cancel_task`/`lopi_get_logs`/`lopi_get_agent_dag`/`lopi_get_stats`) over
+  stdio via `lopi_mcp::server::serve()`, reused unmodified. **State-sharing design
+  (KT4):** builds its own standalone `AgentPool`/`TaskQueue`/dispatch loop
+  in-process — mirroring `sail_commands::run`'s wiring minus the HTTP listener,
+  browser auto-open, Telegram bot, and cron/quota warm-up — rather than reaching
+  into an already-running `lopi sail` process (impossible cross-process for
+  in-memory state regardless). The `MemoryStore` (SQLite) *is* shared with any
+  concurrently-running `lopi sail`: both open the same DB file, so
+  `lopi_list_tasks`/`lopi_get_task`/`lopi_get_logs`/`lopi_get_agent_dag`/
+  `lopi_get_stats` reflect true durable history regardless of which process
+  submitted a task. Live dispatch is *not* shared — a task submitted via MCP is
+  executed by that `mcp-serve` process's own pool, not a separately-running
+  `sail`'s. Full write-up in `LEDGER.md`.
+- **[Feat] Self-hosted Claude Code plugin (`plugin/`, `.claude-plugin/`).**
+  `plugin/.claude-plugin/plugin.json` (name `lopi` — immutable slug, logged in
+  `LEDGER.md`), `.claude-plugin/marketplace.json` at repo root (fixed discovery
+  location) pointing its one entry at `./plugin`, and `plugin/.mcp.json` wiring
+  `${CLAUDE_PLUGIN_ROOT}/bin/lopi mcp-serve`. Plugin content lives in a `plugin/`
+  subdirectory rather than the repo root — `claude plugin validate --strict`
+  flags a repo-root `CLAUDE.md` as invalid plugin context, and this repo's
+  `CLAUDE.md` is real, load-bearing content for contributors, not something to
+  remove. `scripts/build-plugin-bin.sh` builds the release binary into
+  `plugin/bin/lopi` (gitignored — platform-specific, not committed; a prebuilt
+  cross-platform version is Track B's job).
+- **[Docs] `skills/lopi-cli/SKILL.md`.** Documents `run`/`watch`/`tail`/`dock`/
+  `sail`/`bypass`/`cancel` as they exist today, including real console output
+  shapes and the `TaskStatus` lifecycle. Flags a real drift: `LOPI_VS_OPENCLAW.md`
+  cites an `AgentState` enum with `OpeningPr`/`RollingBack` transitions that
+  don't exist in the current `AgentState` (`crates/lopi-core/src/agent.rs`) —
+  which additionally is constructed nowhere in the codebase. `TaskStatus`
+  (`crates/lopi-core/src/task.rs`) is the real, live status type the CLI/API
+  surface; the skill documents that, not the stale table.
+- **[Test] Kill-tests KT1–KT4 run live, not assumed.** KT1: a throwaway plugin's
+  binary keeps `rwxr-xr-x` and runs after a real marketplace install-to-cache
+  copy (cache path includes a version subdir, e.g. `<plugin>/<version>/bin/…`).
+  KT2: a subprocess launched via the Bash-tool mechanism a nested `claude -p`
+  session would use gets an immediate-EOF stdin, not a blocking TTY — a
+  `serve()`-shaped read loop returns cleanly, no hang; `mcp-serve` also never
+  spawns `claude -p` itself, so there's no recursion path. KT3: a minimal
+  `plugin.json`/`marketplace.json` skeleton passes `--strict` clean. KT4: see
+  above. End-to-end verified against the actual packaged/installed binary (not
+  just the dev build): `lopi_submit_task` in one `mcp-serve` process, then
+  `lopi_get_task` in a fresh process pointed at the same DB, correctly returns
+  `"status":"queued"` — demonstrating the shared-store/unshared-dispatch design
+  live, not just on paper.
+
+## [0.16.0] — Permission-Modes-1: per-task `permission_mode`, web-wired end to end 🔐
+
+Replaces the unconditional `--dangerously-skip-permissions` on every
+`claude -p` spawn with a per-task `permission_mode` the operator can pick
+from a web dropdown, matching Claude Code's own mode selector. The default
+(`bypassPermissions`) reproduces the exact prior behavior when the field is
+absent — this is an opt-in loosening of autonomy, not a silent behavior
+change, and it's wired end to end (unlike `autonomy`, which stays client-only
+on the web wire types).
+
+- **[Feat] `PermissionMode` (`lopi-core`).** New enum exposing exactly the
+  four values proven headless-safe by this sprint's live kill-tests —
+  `bypassPermissions` (default) / `auto` / `acceptEdits` / `dontAsk`.
+  Serializes to the CLI's own literal flag strings, not a snake_case
+  translation. `Task.permission_mode` carries it, defaulted the same way
+  `autonomy_level` is.
+- **[Feat] `--permission-mode` folded into `apply_cli_caps`
+  (`lopi-agent`).** The shared cap-injection point (`--model`/`--effort`/
+  `--max-turns`/`--max-budget-usd`/`--allowedTools`/`--disallowedTools`) now
+  also emits `--permission-mode`, always — falling back to
+  `PermissionMode::default()` when unset. Reverses `apply_cli_caps`'s prior
+  doc-comment rationale for keeping the permission flag per-site: unlike the
+  other caps (genuinely optional), a permission mode is never actually
+  absent from the spawned argv, which makes it a true shared cap. All three
+  `claude -p` spawn sites (`ClaudeCode::run`, `ClaudeCode::run_streamed`,
+  `claude_stream::plan_streaming`) route through it instead of a hardcoded
+  flag. New `ClaudeCode::with_permission_mode` builder, validate-and-drop
+  exactly like `with_effort`.
+- **[Feat] `CreateTaskRequest.permission_mode` (`lopi-ui`).** Validated via
+  `PermissionMode::parse` at request time — an unrecognized value is
+  rejected with a 422, never silently dropped or coerced. Wired in
+  `apply_loop_fields` alongside `report`/`require_plan_approval`.
+- **[Feat] Web dropdown (`PERMISSION_MODE_OPTIONS`).** New row in both
+  `StackConfigPopover.svelte` (stack-level default) and `ConfigDrawer.svelte`
+  (per-loop override), labeled in operator language ("Bypass · no prompts,
+  full autonomy (current default)", "Auto · model reviews each action,
+  blocks anything risky", "Accept edits · file edits auto-approved,
+  everything else needs an allow-list entry", "Locked · only pre-approved
+  commands run, everything else denied"). `cardToTaskPayload`/
+  `cardToTaskPayloadForRunOnce`/`paneSubmitPayload` all round-trip it into
+  a real `CreateTaskOptions.permission_mode`, omitting the literal default
+  string from the wire when untouched (mirrors `model`'s `AUTO_MODEL`
+  omission). `configActive`/`configSummary`/`stackDefaultsActive` extended
+  so a non-default value surfaces in the existing "overridden" indicators.
+- **[Docs] Kill-test evidence.** `KT1`–`KT3` verified live against a
+  throwaway repo clone: `auto`/`dontAsk` deny-not-stall headless on a Bash
+  command outside the read-only set; `acceptEdits` + a matching
+  `--allowedTools` entry completes a real `cargo test` run without a
+  permission prompt (and a negative control confirms the allow-list is what
+  makes the difference); `bypassPermissions` and
+  `--dangerously-skip-permissions` produce the identical root/sudo refusal
+  on the installed CLI. `KT4` (account auto-mode eligibility) and `KT5`
+  (deployed-container root check) could not be verified from the sandboxed
+  session that ran this sprint — see `LEDGER.md` and
+  `NEXT_SESSION_PROMPT.md`.
+
+## [0.15.0] — Composer-Grammar-2: real Claude Code `/name` command discovery + composer hookup 🪝
+
+Hooks the composer's now-vacated `/` prefix (Composer-Grammar-1) up to real
+Claude Code commands and skills — discovery lands and is fully wired
+end-to-end on the frontend; the actual `claude -p` pass-through (Phase 3) is
+explicitly **not** shipped this sprint, blocked on a live-proof kill-test
+this session's environment cannot run (see LEDGER.md).
+
+- **[Feat] Backend discovery: `lopi_skill::discover_claude_commands`.** New
+  module (`crates/lopi-skill/src/claude_commands.rs`) scans a target repo's
+  `.claude/commands/*.md` (legacy — frontmatter optional, hint defaults to
+  empty) and `.claude/skills/*/SKILL.md` (current format — only
+  `user-invocable: true` skills are returned, since a skill without that
+  flag is auto-trigger-only, never a token meant for direct `/name` typing).
+  A skill wins over a legacy command of the same name. Deliberately does
+  **not** reuse `SkillRegistry::load_from_dirs`'s all-or-nothing validation:
+  a target repo is arbitrary and not lopi's own trusted `.claude/`, so one
+  malformed `SKILL.md` is logged (`tracing::warn!`) and skipped, never fatal
+  to the rest of the catalog.
+- **[Feat] `GET /api/claude-commands?repo=<path>`** (`lopi-ui`'s
+  `repos_handlers.rs`) — mirrors `GET /api/branches`'s exact query-string
+  shape. `lopi-skill` is now a **production** dependency of `lopi-ui`
+  (previously only `lopi-agent` was considered for this, as a dev-only
+  dependency explicitly kept out of production — this module's much
+  lighter dependency footprint, no process-spawning/reqwest, was the
+  deciding factor; see LEDGER.md).
+- **[Feat] Composer wiring, both scopes.** `StackCard.svelte` (per-card) and
+  `StackControlDock.svelte` (stack-level bar) both grow a fourth,
+  lowest-priority autocomplete: typing `/` offers the effective repo's
+  discovered commands (`stores/claudeCommands.ts::ensureClaudeCommands`/
+  `claudeCommandOptionsFor`, same per-repo-cache shape as `stores/branches.ts`).
+  Single-level, unlike `;command`'s two-level value-picker grammar — a real
+  Claude command takes free-form `$ARGUMENTS` text, not a fixed value
+  catalog, so selecting inserts the bare `/name` token and typing continues
+  past it as plain goal text. A `/cmd` grammar-discoverability chip appears
+  only once the effective repo actually has a discovered command (no
+  dead-end button for an empty catalog).
+- **[Feat] Its own chip color: rose.** `ChipInput.svelte` gains
+  `chip-claude` (`--konjo-rose`, `#ff0066`) — deliberately **not** a reuse of
+  any `;`-verb color. The brief's suggested reuse of "the generic violet
+  freed up by the `;` sprint" no longer holds: Composer-Grammar-1 renamed
+  that bucket to `chip-autonomy` and it stayed claimed (six `;` commands
+  still use it) rather than becoming free — see LEDGER.md for the full
+  reasoning.
+- **[Blocked, not shipped] Phase 3 — the actual `claude -p` pass-through.**
+  Kill-test 1 (does `claude -p` expand a `/name` token embedded mid-prompt
+  inside `build_plan_prompt`'s TOON-wrapped goal text, or only when the
+  command is the *entire* prompt?) requires a live `claude` CLI call, and
+  this session's sandboxed environment blocks a nested `claude` invocation
+  at the permission-classifier level — confirmed by attempting it, not
+  assumed. Selecting a `/name` command today inserts real, correctly
+  chip-rendered text into the goal field; whether that text actually
+  expands as a Claude command once submitted through lopi's run loop is
+  **unverified**. See `docs/ops/NEXT_SESSION_PROMPT.md`.
+
+## [0.14.0] — Composer-Grammar-1 (web): `;` catch-all prefix for lopi's own commands, per-field chip colors ⌨️
+
+Frees `/` entirely for real Claude Code slash commands (next sprint) by moving
+every lopi-specific composer command (`model`/`effort`/`branch`/`autonomy`/
+`eval`/`guard`/`schedule`/`maxx`) off `/` onto a new `;` catch-all prefix —
+one consistent home for lopi's own grammar instead of squatting on a
+character Claude Code itself uses. `:alias`, `@repo`, and `×N`/`xN` are
+untouched; they already had their own prefixes.
+
+- **[Breaking] `/command` → `;command`, one-way door.** `CARD_COMMANDS`/
+  `STACK_COMMANDS`' matching prefix (`commandAutocomplete`,
+  `detectPendingCommand`, `commandValueAutocomplete`, `tokenizeGoalChips`'s
+  value-picker alternative — `web/src/lib/stores/stack.ts`) moved from `/` to
+  `;`; the level-2 `command/value` separator stays `/` (e.g. `;model/sonnet`,
+  not `;model;sonnet`). Hard cutover, no read-compat shim: an old
+  `/model/...`-style token in a saved card/stack goal string now renders as
+  inert plain text instead of a chip — harmless (the text itself is
+  unaffected), just no longer parsed as a command. `StackCard.svelte`'s and
+  `StackControlDock.svelte`'s grammar-chip buttons, inline autocomplete, and
+  `ChipInput` token-building all updated to emit `;`-prefixed tokens.
+- **[Removed] `/loop/N` killed outright, not just renamed.** `STACK_COMMANDS`
+  no longer carries a `loop` command at all — `xN` was already the primary
+  loop-count grammar and having two paths to the same field was redundant.
+  The stack dock's `×N` grammar-chip button now inserts a literal `x3` token
+  directly (mirroring `StackCard.svelte`'s `chipLoop`) instead of opening a
+  value-picker; the dock's own iteration-pill stepper is unaffected.
+- **[Feat] Per-field chip colors, reusing `ConfigDrawer.svelte`'s existing
+  palette.** `ChipInput.svelte`'s resolved-token chips previously collapsed
+  every non-effort command into one generic violet `chip-command`. Split into
+  `chip-model` (cyan, `0,212,255`) and `chip-branch` (green, `0,255,157`) —
+  both new `GoalSegment['chipKind']` variants — plus a renamed `chip-autonomy`
+  (violet, `183,155,255`, byte-identical to the old `chip-command` value) that
+  now doubles as both the resolved `;autonomy/...` chip color and the
+  generic-bucket fallback for non-value/suite-toggle commands (`eval`/
+  `guard`/`schedule`/`maxx`/`goal`), since `ConfigDrawer` has no distinct
+  swatch for those. `chip-effort` reconciled to `ConfigDrawer`'s real
+  `255,69,0` (was `255,149,0` — two different oranges for the same field
+  across the two surfaces).
+- **[Test]** `stack.test.ts` extended with `;model/sonnet`, `;effort/high`,
+  `;branch/main`, `;autonomy/L2`, `;eval/kcqf` round-trip cases (level-1
+  autocomplete, level-2 pending-command detection, tokenizer chip-kind
+  resolution) plus explicit regressions proving the retired `/`-prefixed
+  grammar no longer parses and that `;loop/N` resolves to nothing (STACK_COMMANDS
+  carries no such command). `:alias`/`@repo`/`xN` matching confirmed
+  byte-for-byte unchanged.
+- **[Known gap] macOS (`StackCardView.swift`/`StackControlDockView.swift`)
+  still speaks the old `/`-prefixed grammar** — out of scope for this
+  web-only sprint (no Xcode toolchain in this environment to verify a Swift
+  change against) and not called out in the sprint brief. Composer-grammar
+  divergence between platforms is cosmetic, not functional (each platform
+  parses its own local text into the same wire fields), but should be closed
+  in a follow-up. See `docs/ops/NEXT_SESSION_PROMPT.md`.
+
 ## [0.13.0] — Stack-Chain-1 / Popover-Fix-1 / Parity-Audit-1: real whole-stack scheduling, popover overflow fix, web/macOS parity audit 🔗
 
 Three workstreams: (1) the stack control dock's "schedule the entire stack"

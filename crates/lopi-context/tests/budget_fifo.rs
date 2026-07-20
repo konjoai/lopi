@@ -6,7 +6,9 @@
 )]
 mod common;
 
-use lopi_context::{ContextError, ContextWindow, Phase, PinPolicy, Role, TaggedMessage};
+use lopi_context::{
+    ContextError, ContextWindow, EvictionReason, Phase, PinPolicy, Role, TaggedMessage,
+};
 
 fn msg_tokens(text: &str, tokens: usize, pin: PinPolicy) -> TaggedMessage {
     common::make_msg(Role::User, text, Phase::Implementation, pin, tokens)
@@ -126,11 +128,12 @@ fn token_pressure_is_zero_with_an_unbounded_budget() {
 /// `evict_toward_threshold` (private, only reachable through `push`'s
 /// pre-insert pressure check) is documented to evict down to
 /// `budget_threshold - 0.1`. Pin the exact math: budget=1000,
-/// threshold=0.75 (default) ⇒ target=650. 8 turns of 100 tokens each bring
-/// pressure to 800/1000=0.8 the moment a 9th push's pre-insert check runs;
-/// eviction must remove the two oldest turns (800→600, the first point
-/// at-or-under 650) — not one turn (still 700, over target) or three
-/// (500, further than necessary).
+/// threshold=0.75 (default) ⇒ target=650. Each of the first 7 pushes below
+/// keeps *post-insertion* pressure at or under 0.7, so none of them trigger
+/// eviction on their own — but since the check now includes each push's
+/// own weight (see `push_pressure_check_includes_incoming_message_own_weight`
+/// below), pressure crosses 0.75 mid-loop and eviction fires incrementally,
+/// one oldest turn at a time, keeping the window at/under target throughout.
 #[test]
 fn evict_toward_threshold_evicts_down_to_exactly_threshold_minus_one_tenth() {
     let mut window = ContextWindow::new(1_000);
@@ -146,10 +149,13 @@ fn evict_toward_threshold_evicts_down_to_exactly_threshold_minus_one_tenth() {
                 .unwrap(),
         );
     }
-    assert!((window.token_pressure() - 0.8).abs() < 1e-6);
+    // Eviction already fired mid-loop (at push #8, pressure (700+100)/1000
+    // = 0.8 > 0.75), so pressure here is 700/1000 = 0.7, not the pre-fix
+    // 0.8 — the earlier push already brought it back under target.
+    assert!((window.token_pressure() - 0.7).abs() < 1e-6);
 
-    // This push's pre-insert pressure check (800/1000=0.8 > 0.75) fires
-    // evict_toward_threshold before the new turn is added.
+    // This push's pre-insert pressure check ((700+100)/1000=0.8 > 0.75)
+    // fires evict_toward_threshold before the new turn is added.
     window
         .push(msg_tokens("trigger", 100, PinPolicy::BudgetEvictable))
         .unwrap();
@@ -158,10 +164,43 @@ fn evict_toward_threshold_evicts_down_to_exactly_threshold_minus_one_tenth() {
     let evicted_count = ids.iter().filter(|id| !remaining.contains(id)).count();
     assert_eq!(
         evicted_count, 2,
-        "must evict exactly the 2 oldest turns to land at/under the 650 target"
+        "two of the original 8 turns evicted across the two eviction events"
     );
-    // 600 (post-eviction) + 100 (the triggering push itself) = 700.
     assert_eq!(window.stats().active_tokens, 700);
+}
+
+/// Regression test for `push()`'s pressure check excluding the incoming
+/// message's own weight: `token_pressure()` (current state only,
+/// pre-insertion) was checked, not `current_tokens + msg.tokens` like
+/// `push_tool_pair()` does. A message whose own weight would tip pressure
+/// over the threshold could slip in without triggering auto-eviction first
+/// — and if that also pushed `current_tokens` past the outright budget,
+/// the push returned `Full` even though eviction could have made room.
+#[test]
+fn push_pressure_check_includes_incoming_message_own_weight() {
+    let mut window = ContextWindow::new(1_000);
+    // 740/1000 = 0.74, comfortably under the 0.75 threshold on its own —
+    // this push does not trigger eviction.
+    window
+        .push(msg_tokens("base", 740, PinPolicy::BudgetEvictable))
+        .unwrap();
+    assert!((window.token_pressure() - 0.74).abs() < 1e-6);
+
+    // 740 + 300 = 1040 > budget(1000): without a pre-insert eviction this
+    // would return ContextError::Full. Pressure including this message's
+    // own weight is (740+300)/1000 = 1.04 > 0.75, so eviction must run
+    // first — evicting "base" (the only evictable turn) down to 0, which
+    // is under the 650 target — making room for the new turn to fit.
+    let result = window.push(msg_tokens("big", 300, PinPolicy::BudgetEvictable));
+    assert!(
+        result.is_ok(),
+        "eviction should make room instead of returning Full: {result:?}"
+    );
+    assert_eq!(
+        window.stats().active_tokens,
+        300,
+        "base turn was evicted; only the new turn remains"
+    );
 }
 
 #[test]
@@ -183,4 +222,30 @@ fn explicit_evict_to_budget_frees_oldest_first() {
     let ids: Vec<_> = window.turns().iter().map(|t| t.id).collect();
     assert!(!ids.contains(&id_old), "oldest turn must be evicted first");
     assert!(ids.contains(&id_new), "newest turn must remain");
+}
+
+/// Regression test: `record()` used to be a permanent no-op — it updated
+/// the running totals and logged via `tracing::debug!`, but never actually
+/// pushed anything into `eviction_log`, so `eviction_log()` always returned
+/// empty regardless of how much eviction had happened.
+#[test]
+fn eviction_log_is_populated_after_eviction() {
+    let mut window = ContextWindow::new(10_000);
+    assert!(window.eviction_log().is_empty(), "starts empty");
+
+    let evicted_id = window
+        .push(msg_tokens("m1", 100, PinPolicy::BudgetEvictable))
+        .unwrap();
+    window
+        .push(msg_tokens("m2", 100, PinPolicy::BudgetEvictable))
+        .unwrap();
+
+    let stats = window.evict_to_budget(150).unwrap();
+    assert_eq!(stats.turns_evicted, 1);
+
+    let log = window.eviction_log();
+    assert_eq!(log.len(), 1, "one EvictionRecord per evicted turn");
+    assert_eq!(log[0].turn_id, evicted_id);
+    assert_eq!(log[0].tokens, 100);
+    assert!(matches!(log[0].reason, EvictionReason::BudgetFifo));
 }

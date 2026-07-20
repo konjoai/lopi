@@ -46,23 +46,7 @@ impl AgentPool {
             priority: task.priority,
         });
         if let Some(store) = &self.store {
-            store.save_task(&task, "queued").await.ok();
-            // P2 — audit every dispatch so the operator can trace task
-            // flow without recomputing from PoolStats deltas.
-            let actor = task_source_label(&task);
-            // Hand-build the payload — lopi-orchestrator already pulls in
-            // chrono + thiserror via lopi-core, but not serde_json, so
-            // staying string-only keeps the dep graph thin. The shape is
-            // fixed enough that escape risk is bounded.
-            let payload = format!("{{\"priority\":\"{:?}\"}}", task.priority);
-            let _ = store
-                .record_audit(
-                    &AuditInput::new("task.dispatch")
-                        .subject("task", task.id.0.to_string())
-                        .actor(actor)
-                        .payload_json(payload),
-                )
-                .await;
+            persist_queued_dispatch(store, &task).await;
         }
         self.queue.push(task).await
     }
@@ -190,11 +174,42 @@ impl AgentPool {
                         total_attempts: 1,
                     });
                     if let Some(store) = &store {
-                        let _ = store.mark_completed(&task_id, "failed").await;
+                        if let Err(e) = store.mark_completed(&task_id, "failed").await {
+                            warn!(task_id = %task_id, "mark_completed(failed) failed: {e}");
+                        }
                     }
                 }
             });
         }
+    }
+}
+
+/// Durably record a freshly-queued task and its dispatch audit entry.
+/// Best-effort — a write failure here must never block dispatch, but it
+/// must not be silent either: each failure is logged so an operator can
+/// trace why the store diverged from `PoolStats`.
+async fn persist_queued_dispatch(store: &MemoryStore, task: &Task) {
+    if let Err(e) = store.save_task(task, "queued").await {
+        warn!(task_id = %task.id, "save_task(queued) failed: {e}");
+    }
+    // P2 — audit every dispatch so the operator can trace task
+    // flow without recomputing from PoolStats deltas.
+    let actor = task_source_label(task);
+    // Hand-build the payload — lopi-orchestrator already pulls in
+    // chrono + thiserror via lopi-core, but not serde_json, so
+    // staying string-only keeps the dep graph thin. The shape is
+    // fixed enough that escape risk is bounded.
+    let payload = format!("{{\"priority\":\"{:?}\"}}", task.priority);
+    if let Err(e) = store
+        .record_audit(
+            &AuditInput::new("task.dispatch")
+                .subject("task", task.id.0.to_string())
+                .actor(actor)
+                .payload_json(payload),
+        )
+        .await
+    {
+        warn!(task_id = %task.id, "record_audit(task.dispatch) failed: {e}");
     }
 }
 
@@ -432,10 +447,9 @@ async fn run_one(
         // Canonical status token — one vocabulary shared with the API and the
         // web snapshot bucketing. `db_status` covers every variant, so there's
         // no `"unknown"` fallthrough to mis-bucket.
-        store
-            .mark_completed(&task_id, outcome.db_status())
-            .await
-            .ok();
+        if let Err(e) = store.mark_completed(&task_id, outcome.db_status()).await {
+            warn!(task_id = %task_id, "mark_completed failed: {e}");
+        }
         if let Err(e) = store.mine_patterns(&task_id, &goal).await {
             warn!("pattern mining failed: {e}");
         }

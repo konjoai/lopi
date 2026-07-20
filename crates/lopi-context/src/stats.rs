@@ -26,8 +26,10 @@ pub struct ContextStats {
 pub enum EvictionReason {
     /// Evicted because the agent entered a new phase that supersedes the turns' phase.
     PhaseTransition(Phase),
-    /// Evicted newest-first to bring the window below the budget threshold.
-    BudgetLIFO,
+    /// Evicted oldest-first (FIFO) to bring the window below the budget
+    /// threshold — the standard "keep recent turns, drop stale ones"
+    /// eviction order for a conversation window.
+    BudgetFifo,
     /// Evicted because they carried a matching explicit eviction tag.
     ExplicitTag,
     /// Evicted by a direct caller request (force eviction).
@@ -35,7 +37,7 @@ pub enum EvictionReason {
 }
 
 /// Summary of a single eviction batch.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EvictionStats {
     /// Number of turns removed in this batch.
     pub turns_evicted: usize,
@@ -43,6 +45,10 @@ pub struct EvictionStats {
     pub tokens_freed: usize,
     /// Reason this batch was evicted.
     pub reason: EvictionReason,
+    /// `(turn_id, phase, tokens)` for each turn actually evicted in this
+    /// batch — carries the per-turn detail `EvictionRecord` needs, since
+    /// this struct itself only summarizes the batch.
+    pub evicted: Vec<(TurnId, Phase, usize)>,
 }
 
 /// Persistent record of a single evicted turn for audit and analytics.

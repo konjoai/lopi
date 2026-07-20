@@ -109,6 +109,15 @@ export interface CreateTaskOptions {
   max_iterations?: number;
   model?: string;
   effort?: string;
+  /** How much the `claude -p` worker session may act on tool calls without a
+   *  human answering a prompt: 'bypassPermissions' (current default) /
+   *  'auto' / 'acceptEdits' / 'dontAsk'. Validated server-side via
+   *  `lopi_core::PermissionMode::parse` — an unrecognized value is rejected
+   *  with a 422, never coerced. Mirrors
+   *  `crates/lopi-ui/src/web/types.rs::CreateTaskRequest.permission_mode`.
+   *  Unlike `autonomy` on the `CardConfig`/`StackDefaults` wire types, this
+   *  one is wired end to end. */
+  permission_mode?: string;
   /** Goal-intent override for zero-diff success: 'file_changes' (a run that
    *  writes nothing fails and retries) or 'review_only' (zero diff is a valid
    *  success). Omit to infer from the goal text. */
@@ -610,6 +619,16 @@ export const listRepos = () =>
 export const listBranches = (repo: string) =>
   request<{ branches: string[]; default: string }>(
     `/api/branches?repo=${encodeURIComponent(repo)}`
+  );
+
+/** Real Claude Code `/name` commands (legacy `.claude/commands/*.md` +
+ *  user-invocable `.claude/skills/*\/SKILL.md`) registered in `repo` — the
+ *  composer's `/`-triggered autocomplete catalog (Composer-Grammar-2).
+ *  Query-string shaped like `listBranches`, same reasoning: `repo` is a
+ *  filesystem path, not a path segment. */
+export const listClaudeCommands = (repo: string) =>
+  request<{ commands: { name: string; hint: string }[] }>(
+    `/api/claude-commands?repo=${encodeURIComponent(repo)}`
   );
 
 // ── Models (live Claude model/effort catalog) ─────────────────────────────────

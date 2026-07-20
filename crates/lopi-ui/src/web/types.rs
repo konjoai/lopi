@@ -2,6 +2,27 @@ use serde::{Deserialize, Serialize};
 
 pub(super) const MAX_GOAL_LENGTH: usize = 2000;
 
+/// Reject goal text carrying C0/C1 control characters other than ordinary
+/// `\n`/`\r`/`\t` whitespace — NUL and ANSI escape sequences have no place
+/// in a natural-language goal and are a log-poisoning/injection vector (see
+/// `.claude/rules/security.md`). Shared by every handler that persists a
+/// goal string (`handlers::validate_goal`, `ScheduleBody::validate`,
+/// `MaxxBody::validate`, `ScheduleChainBody::validate`'s per-step check) so
+/// a scheduled/MAXX/chain path can't reopen the vector `POST /api/tasks`
+/// closes.
+pub(super) fn reject_control_chars(goal: &str) -> Result<(), String> {
+    if let Some(c) = goal
+        .chars()
+        .find(|c| c.is_control() && !matches!(c, '\n' | '\r' | '\t'))
+    {
+        return Err(format!(
+            "goal contains a disallowed control character (U+{:04X})",
+            c as u32
+        ));
+    }
+    Ok(())
+}
+
 /// Request body for `POST /api/tasks`.
 #[derive(Debug, Deserialize)]
 pub struct CreateTaskRequest {
@@ -59,6 +80,17 @@ pub struct CreateTaskRequest {
     /// [`lopi_core::Task::effort`].
     #[serde(default)]
     pub effort: Option<String>,
+    /// How much the `claude -p` worker session may act on tool calls without
+    /// a human answering a prompt (`"bypassPermissions"` / `"auto"` /
+    /// `"acceptEdits"` / `"dontAsk"`), passed to the CLI as
+    /// `--permission-mode`. Validated via
+    /// [`lopi_core::PermissionMode::parse`] at request time — an unrecognized
+    /// value is rejected with a 422, never silently dropped or coerced.
+    /// Unlike `autonomy` on the web wire type, this one is wired end to end:
+    /// it reaches a real `--permission-mode` subprocess arg, not just
+    /// client-side state. Mirrors [`lopi_core::Task::permission_mode`].
+    #[serde(default)]
+    pub permission_mode: Option<String>,
     /// Goal-intent override for zero-diff success handling: `"file_changes"`
     /// (a zero-diff attempt fails and retries) or `"review_only"` (zero diff
     /// is a valid success). `None` infers it from the goal text. Mirrors

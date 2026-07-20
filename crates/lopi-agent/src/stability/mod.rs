@@ -28,7 +28,7 @@
 pub mod semantic;
 pub mod similarity;
 
-pub use semantic::flag_out_of_scope;
+pub use semantic::{flag_out_of_scope, flag_plan_out_of_scope};
 pub use similarity::{jaccard, variance_and_consensus};
 
 use crate::api_client::{AnthropicClient, LOPI_SYSTEM_PROMPT};
@@ -73,6 +73,10 @@ pub enum StabilityVerdict {
         variance_score: f32,
         /// Number of plan samples actually collected.
         n_samples: usize,
+        /// Files referenced by plan samples that fall outside
+        /// `allowed_dirs` — see [`semantic::flag_plan_out_of_scope`].
+        /// Advisory; never affects the verdict itself.
+        semantic_flags: Vec<String>,
     },
     /// Variance in `(stable_threshold, warning_threshold]` — proceed with a
     /// diagnostic warning logged to the event bus.
@@ -83,6 +87,8 @@ pub enum StabilityVerdict {
         variance_score: f32,
         /// Number of plan samples actually collected.
         n_samples: usize,
+        /// See [`Self::Stable`]'s field of the same name.
+        semantic_flags: Vec<String>,
     },
     /// Variance > `warning_threshold` — block the run and require human review.
     Unstable {
@@ -90,6 +96,8 @@ pub enum StabilityVerdict {
         variance_score: f32,
         /// Number of plan samples actually collected.
         n_samples: usize,
+        /// See [`Self::Stable`]'s field of the same name.
+        semantic_flags: Vec<String>,
     },
 }
 
@@ -122,6 +130,19 @@ impl StabilityVerdict {
                 Some(consensus_plan.as_str())
             }
             Self::Unstable { .. } => None,
+        }
+    }
+
+    /// Files plan samples referenced outside `allowed_dirs` (deduped,
+    /// heuristic — see [`semantic::flag_plan_out_of_scope`]). Always empty
+    /// when the task declared no `allowed_dirs`. Advisory only — surfaced
+    /// to the stability ledger, never gates the run.
+    #[must_use]
+    pub fn semantic_flags(&self) -> &[String] {
+        match self {
+            Self::Stable { semantic_flags, .. }
+            | Self::Warning { semantic_flags, .. }
+            | Self::Unstable { semantic_flags, .. } => semantic_flags,
         }
     }
 }
@@ -175,6 +196,12 @@ impl StabilityHarness {
             );
         }
 
+        // Layer 5 check 7 — flag any sample that names an out-of-scope
+        // file before a single line of code is written. Union across every
+        // sample (not just the eventual consensus): a plan variant that
+        // drifted out of scope is worth surfacing even if it didn't win.
+        let semantic_flags = semantic_flags_across(&plans, &task.allowed_dirs);
+
         // Single sample: trivially stable (no variance to compute).
         if plans.len() == 1 {
             let mut plans = plans;
@@ -182,6 +209,7 @@ impl StabilityHarness {
                 consensus_plan: plans.remove(0),
                 variance_score: 0.0,
                 n_samples: 1,
+                semantic_flags,
             });
         }
 
@@ -194,17 +222,20 @@ impl StabilityHarness {
                 consensus_plan,
                 variance_score,
                 n_samples,
+                semantic_flags,
             }
         } else if variance_score <= self.config.warning_threshold {
             StabilityVerdict::Warning {
                 consensus_plan,
                 variance_score,
                 n_samples,
+                semantic_flags,
             }
         } else {
             StabilityVerdict::Unstable {
                 variance_score,
                 n_samples,
+                semantic_flags,
             }
         })
     }
@@ -273,6 +304,18 @@ impl StabilityHarness {
     }
 }
 
+/// Deduped union of [`semantic::flag_plan_out_of_scope`] across every
+/// collected sample. Pure — unit-testable without a harness or client.
+fn semantic_flags_across(plans: &[String], allowed_dirs: &[String]) -> Vec<String> {
+    let mut flags: Vec<String> = plans
+        .iter()
+        .flat_map(|p| semantic::flag_plan_out_of_scope(p, allowed_dirs))
+        .collect();
+    flags.sort();
+    flags.dedup();
+    flags
+}
+
 /// Build the planning prompt for the stability harness.
 ///
 /// Delegates to `crate::prompt::build_user_prompt` (shared with the direct-API
@@ -325,10 +368,12 @@ mod tests {
             consensus_plan: "plan".into(),
             variance_score: 0.1,
             n_samples: 5,
+            semantic_flags: vec![],
         };
         assert_eq!(v.as_str(), "stable");
         assert!((v.variance_score() - 0.1).abs() < f32::EPSILON);
         assert_eq!(v.consensus_plan(), Some("plan"));
+        assert!(v.semantic_flags().is_empty());
     }
 
     #[test]
@@ -336,6 +381,7 @@ mod tests {
         let v = StabilityVerdict::Unstable {
             variance_score: 0.8,
             n_samples: 5,
+            semantic_flags: vec![],
         };
         assert_eq!(v.as_str(), "unstable");
         assert!(v.consensus_plan().is_none());
@@ -347,9 +393,28 @@ mod tests {
             consensus_plan: "plan".into(),
             variance_score: 0.25,
             n_samples: 4,
+            semantic_flags: vec!["web/src/App.tsx".to_string()],
         };
         assert_eq!(v.as_str(), "warning");
         assert_eq!(v.consensus_plan(), Some("plan"));
+        assert_eq!(v.semantic_flags(), ["web/src/App.tsx"]);
+    }
+
+    #[test]
+    fn semantic_flags_across_dedupes_and_unions_across_samples() {
+        let plans = vec![
+            "Modify `web/src/App.tsx` and `crates/lopi-agent/src/lib.rs`".to_string(),
+            "Modify `web/src/App.tsx` and `web/src/Header.tsx`".to_string(),
+        ];
+        let allowed = vec!["crates/".to_string()];
+        let flags = semantic_flags_across(&plans, &allowed);
+        assert_eq!(
+            flags,
+            vec![
+                "web/src/App.tsx".to_string(),
+                "web/src/Header.tsx".to_string()
+            ]
+        );
     }
 
     #[test]

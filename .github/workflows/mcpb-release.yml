@@ -1,0 +1,60 @@
+name: "MCPB Release — macOS arm64"
+
+# MCPB-App-1: builds `lopi mcp-serve` natively on a real macOS arm64 runner
+# and packs it into `lopi.mcpb`. Deliberately NOT cross-compiled from Linux —
+# `libgit2-sys` hardcodes Apple's Security.framework/CoreFoundation.framework
+# for HTTPS + SHA-256 on any `apple` target (see LEDGER.md's MCPB-App-1
+# entry), which a Linux sandbox has no legitimate way to provide. A native
+# `macos-14` (Apple Silicon) runner sidesteps the whole problem — the same
+# reason real-world Rust projects build macOS releases on macOS runners
+# instead of cross-compiling. Manual dispatch only for now: this hasn't been
+# run for real yet, and shouldn't fire on every push before that first real
+# run is watched end to end.
+on:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-mcpb-macos-arm64:
+    name: "Build + pack lopi.mcpb (macOS arm64)"
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: mcpb-macos-arm64
+
+      - name: Build release binary
+        run: cargo build --release --target aarch64-apple-darwin --bin lopi
+
+      - name: Assemble bundle
+        run: |
+          mkdir -p mcpb/server/darwin-arm64
+          cp target/aarch64-apple-darwin/release/lopi mcpb/server/darwin-arm64/lopi
+
+      - name: mcpb pack
+        run: npx --yes @anthropic-ai/mcpb pack mcpb "lopi-${{ github.sha }}-darwin-arm64.mcpb"
+
+      - name: Smoke-test — the packed binary launches exactly as mcp_config specifies
+        # A build that compiles isn't the same as a build the bundle format
+        # can actually launch (MCPB-App-1's own success criteria) — unpack
+        # and drive a real `initialize` over stdio before calling this done.
+        run: |
+          npx --yes @anthropic-ai/mcpb unpack "lopi-${{ github.sha }}-darwin-arm64.mcpb" unpacked
+          chmod +x unpacked/server/darwin-arm64/lopi
+          printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"ci-smoke","version":"0.1"}}}' \
+            | timeout 10 unpacked/server/darwin-arm64/lopi mcp-serve --repo . \
+            | grep -q '"serverInfo"' \
+            || (echo "::error::mcp-serve did not answer initialize as the bundle's mcp_config specifies" && exit 1)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lopi-darwin-arm64-mcpb
+          path: lopi-*.mcpb

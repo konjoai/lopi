@@ -15,6 +15,10 @@ const USER_AGENT: &str = concat!("lopi/", env!("CARGO_PKG_VERSION"));
 pub struct GitHubClient {
     http: Client,
     token: String,
+    /// API base URL — `GITHUB_API` in production. Overridable only via
+    /// `new_with_base_url` (test-only) so a test can point this client at a
+    /// local mock server instead of the real GitHub API.
+    base_url: String,
 }
 
 impl GitHubClient {
@@ -24,6 +28,18 @@ impl GitHubClient {
     ///
     /// Returns an error if the reqwest client cannot be constructed.
     pub fn new(token: impl Into<String>) -> Result<Self> {
+        Self::new_with_base_url(token, GITHUB_API)
+    }
+
+    /// Construct against a caller-supplied base URL instead of the real
+    /// GitHub API — the seam that lets tests point this client at a local
+    /// mock server. `pub(crate)` since no production caller ever needs a
+    /// non-GitHub base URL; kept out of the public API on purpose.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the reqwest client cannot be constructed.
+    fn new_with_base_url(token: impl Into<String>, base_url: impl Into<String>) -> Result<Self> {
         let http = Client::builder()
             .user_agent(USER_AGENT)
             .build()
@@ -31,6 +47,7 @@ impl GitHubClient {
         Ok(Self {
             http,
             token: token.into(),
+            base_url: base_url.into(),
         })
     }
 
@@ -46,7 +63,8 @@ impl GitHubClient {
         issue_number: u64,
         body: &str,
     ) -> Result<()> {
-        let url = format!("{GITHUB_API}/repos/{owner}/{repo}/issues/{issue_number}/comments");
+        let base = &self.base_url;
+        let url = format!("{base}/repos/{owner}/{repo}/issues/{issue_number}/comments");
         let resp = self
             .http
             .post(&url)
@@ -77,7 +95,8 @@ impl GitHubClient {
         issue_number: u64,
         labels: &[&str],
     ) -> Result<()> {
-        let url = format!("{GITHUB_API}/repos/{owner}/{repo}/issues/{issue_number}/labels");
+        let base = &self.base_url;
+        let url = format!("{base}/repos/{owner}/{repo}/issues/{issue_number}/labels");
         let resp = self
             .http
             .post(&url)
@@ -98,9 +117,11 @@ impl GitHubClient {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
+    use wiremock::matchers::{header, method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
 
     #[test]
     fn client_constructs_with_token() {
@@ -113,5 +134,107 @@ mod tests {
         // Empty token is allowed at construction time — GitHub will reject at API call time.
         let c = GitHubClient::new("");
         assert!(c.is_ok());
+    }
+
+    async fn mock_client(server: &MockServer) -> GitHubClient {
+        GitHubClient::new_with_base_url("test_token", server.uri()).unwrap()
+    }
+
+    #[tokio::test]
+    async fn post_comment_sends_the_expected_request_and_succeeds() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/repos/acme/widgets/issues/42/comments"))
+            .and(header("authorization", "Bearer test_token"))
+            .respond_with(ResponseTemplate::new(201))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = mock_client(&server).await;
+        client
+            .post_comment("acme", "widgets", 42, "hello from lopi")
+            .await
+            .unwrap();
+        // `.expect(1)` above is verified when `server` drops at end of scope.
+    }
+
+    #[tokio::test]
+    async fn post_comment_sends_the_body_as_json() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/repos/acme/widgets/issues/42/comments"))
+            .and(wiremock::matchers::body_json(
+                serde_json::json!({ "body": "hello from lopi" }),
+            ))
+            .respond_with(ResponseTemplate::new(201))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = mock_client(&server).await;
+        client
+            .post_comment("acme", "widgets", 42, "hello from lopi")
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn post_comment_surfaces_a_non_2xx_status_as_an_error() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/repos/acme/widgets/issues/42/comments"))
+            .respond_with(ResponseTemplate::new(404).set_body_string("Not Found"))
+            .mount(&server)
+            .await;
+
+        let client = mock_client(&server).await;
+        let err = client
+            .post_comment("acme", "widgets", 42, "hello")
+            .await
+            .unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("404"), "{msg}");
+        assert!(msg.contains("Not Found"), "{msg}");
+    }
+
+    #[tokio::test]
+    async fn add_labels_sends_the_expected_request_and_succeeds() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/repos/acme/widgets/issues/7/labels"))
+            .and(header("authorization", "Bearer test_token"))
+            .and(wiremock::matchers::body_json(
+                serde_json::json!({ "labels": ["bug", "triaged"] }),
+            ))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = mock_client(&server).await;
+        client
+            .add_labels("acme", "widgets", 7, &["bug", "triaged"])
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn add_labels_surfaces_a_non_2xx_status_as_an_error() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/repos/acme/widgets/issues/7/labels"))
+            .respond_with(ResponseTemplate::new(422).set_body_string("Validation Failed"))
+            .mount(&server)
+            .await;
+
+        let client = mock_client(&server).await;
+        let err = client
+            .add_labels("acme", "widgets", 7, &["bug"])
+            .await
+            .unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("422"), "{msg}");
+        assert!(msg.contains("Validation Failed"), "{msg}");
     }
 }

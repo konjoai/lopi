@@ -8,42 +8,11 @@
 
 use super::*;
 
-/// A task that fans out into several parallel sub-agents (e.g. a
-/// deep-research goal) ran fully uncapped and reached $25.79 for one
-/// `claude -p` session before this field existed — the default must be a
-/// conservative non-zero cap (kept in sync with the `standard` preset's $1)
-/// so an unattended loop is never uncapped by default.
-#[test]
-fn loop_config_default_max_budget_usd_is_a_conservative_nonzero_cap() {
-    let c = LoopConfig::default();
-    assert_eq!(c.max_budget_usd, 1.0);
-}
-
-/// A config predating this field must still parse, landing on the
-/// conservative non-zero default — same convention as the verifier-gate
-/// fields (`loop_config_parses_toml_missing_verifier_fields`).
-#[test]
-fn loop_config_parses_toml_missing_max_budget_usd() {
-    let c: LoopConfig = toml::from_str("autonomy_level = \"draft_pr\"\n").unwrap();
-    assert_eq!(c.max_budget_usd, 1.0);
-}
-
-#[test]
-fn loop_config_max_budget_usd_round_trips_through_toml() {
-    let c = LoopConfig {
-        max_budget_usd: 20.0,
-        ..LoopConfig::default()
-    };
-    let toml_str = toml::to_string(&c).unwrap();
-    let back: LoopConfig = toml::from_str(&toml_str).unwrap();
-    assert_eq!(back.max_budget_usd, 20.0);
-}
-
 /// The token-budget progress gate (`ProgressGate`/`effective_budget_tokens`)
 /// is a second, independent line of defense catching ordinary retry-loop
 /// accumulation — it was off (`0`) by default, so an unattended loop had no
-/// protection here either. Same "safe by default" convention as
-/// `max_budget_usd`.
+/// protection here either. Same "safe by default" convention as the
+/// `[budget]` USD cap.
 #[test]
 fn loop_config_default_budget_tokens_is_a_conservative_nonzero_cap() {
     let c = LoopConfig::default();
@@ -178,4 +147,62 @@ fn loop_config_parses_toml_missing_budget_section() {
         crate::budget_preset::BudgetPreset::Standard
     );
     assert_eq!(c.resolved_budget().usd, 1.0);
+}
+
+/// No `[budget].budget_tokens` override at all — nothing to disagree with.
+#[test]
+fn diverging_budget_tokens_none_when_section_unset() {
+    let c = LoopConfig::default();
+    assert!(c.diverging_budget_tokens().is_none());
+}
+
+/// `[budget].budget_tokens` set but matching the flat field — not a
+/// divergence.
+#[test]
+fn diverging_budget_tokens_none_when_values_match() {
+    let c = LoopConfig {
+        budget_tokens: 500_000,
+        budget: crate::budget_preset::BudgetSection {
+            budget_tokens: Some(500_000),
+            ..Default::default()
+        },
+        ..LoopConfig::default()
+    };
+    assert!(c.diverging_budget_tokens().is_none());
+}
+
+/// Regression test for the finding: the flat `budget_tokens` and
+/// `[budget].budget_tokens` can silently disagree with nothing guarding it.
+/// `resolved_budget()` always wins with the `[budget]` value; this asserts
+/// the divergence is at least detected.
+#[test]
+fn diverging_budget_tokens_detects_mismatch() {
+    let c = LoopConfig {
+        budget_tokens: 1_000_000,
+        budget: crate::budget_preset::BudgetSection {
+            budget_tokens: Some(250_000),
+            ..Default::default()
+        },
+        ..LoopConfig::default()
+    };
+    assert_eq!(c.diverging_budget_tokens(), Some((1_000_000, 250_000)));
+    assert_eq!(c.resolved_budget().tokens, 250_000, "[budget] always wins");
+}
+
+/// End-to-end through `load_from_repo`: a real `.lopi/loop.toml` with both
+/// fields set to disagreeing values must still load successfully (this is
+/// a warning, not a hard error) and resolve using `[budget]`.
+#[test]
+fn load_from_repo_tolerates_diverging_budget_tokens() {
+    let dir = std::env::temp_dir().join(format!("lopi_loop_cfg_diverge_{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(dir.join(".lopi")).unwrap();
+    std::fs::write(
+        dir.join(".lopi/loop.toml"),
+        "budget_tokens = 1000000\n[budget]\nbudget_tokens = 250000\n",
+    )
+    .unwrap();
+
+    let c = LoopConfig::load_from_repo(&dir).unwrap();
+    assert_eq!(c.diverging_budget_tokens(), Some((1_000_000, 250_000)));
+    assert_eq!(c.resolved_budget().tokens, 250_000);
 }

@@ -20,13 +20,25 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import TileGrid from '$lib/components/TileGrid.svelte';
+  import Toast from '$lib/components/Toast.svelte';
   import StackPane from '$lib/components/stacks/StackPane.svelte';
-  import { panes, addStackPane, deleteStackFromPanes } from '$lib/stores/stack';
+  import { panes, addStackPane, deleteStackFromPanes, insertPaneIntoPanes } from '$lib/stores/stack';
+  import { showToast } from '$lib/stores/toastStore';
   import type { Option } from '$lib/stores/controls';
   import { AUTO_OPTION, repoOptions as buildRepoOptions } from '$lib/stores/repoMenu';
   import { listRepos } from '$lib/api';
 
   let repoOptions: Option[] = [AUTO_OPTION];
+
+  // Round 2, item 1 — the pane header's ✕ is a second stack-delete
+  // affordance alongside the dock's own trash icon (`StackControlDock.svelte`
+  // `delStack`); both must carry the same instant-delete-with-undo-toast
+  // behavior rather than one silently bypassing it.
+  function closePane(index: number) {
+    const snapshot = $panes[index];
+    deleteStackFromPanes(snapshot.key);
+    showToast('Stack deleted', { label: 'Undo', onClick: () => insertPaneIntoPanes(index, snapshot) });
+  }
 
   onMount(() => {
     (async () => {
@@ -55,11 +67,12 @@
         pane={$panes[index]}
         {index}
         {repoOptions}
-        onClose={$panes.length > 1 ? () => deleteStackFromPanes($panes[index].key) : null}
+        onClose={$panes.length > 1 ? () => closePane(index) : null}
       />
     {/if}
   </TileGrid>
 </div>
+<Toast />
 
 <style>
   .loopstack {

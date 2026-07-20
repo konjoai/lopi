@@ -117,6 +117,19 @@ pub enum NodeStatus {
     Failed,
 }
 
+impl NodeStatus {
+    /// Lowercase wire/persistence name — the inverse of [`Self::from_str`].
+    #[must_use]
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            NodeStatus::Pending => "pending",
+            NodeStatus::Running => "running",
+            NodeStatus::Done => "done",
+            NodeStatus::Failed => "failed",
+        }
+    }
+}
+
 impl std::str::FromStr for NodeStatus {
     type Err = String;
 
@@ -413,6 +426,14 @@ mod tests {
         assert_eq!(NodeStatus::from_str("done").unwrap(), NodeStatus::Done);
         assert_eq!(NodeStatus::from_str("failed").unwrap(), NodeStatus::Failed);
         assert!(NodeStatus::from_str("weird").is_err());
+        for status in [
+            NodeStatus::Pending,
+            NodeStatus::Running,
+            NodeStatus::Done,
+            NodeStatus::Failed,
+        ] {
+            assert_eq!(NodeStatus::from_str(status.as_str()).unwrap(), status);
+        }
     }
 
     #[test]

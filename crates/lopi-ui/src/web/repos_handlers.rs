@@ -60,6 +60,35 @@ pub(super) async fn list_branches(
         .into_response()
 }
 
+/// Query for [`list_claude_commands`].
+#[derive(Deserialize)]
+pub(super) struct ClaudeCommandsQuery {
+    /// Repo path; empty falls back to the server's primary repo.
+    #[serde(default)]
+    repo: String,
+}
+
+/// `GET /api/claude-commands?repo=<path>` — the real Claude Code `/name`
+/// commands (legacy `.claude/commands/*.md` + user-invocable
+/// `.claude/skills/*/SKILL.md`) registered in `repo`, for the composer's
+/// `/`-triggered autocomplete (Composer-Grammar-2). Mirrors
+/// [`list_branches`]'s repo-scoped query shape exactly.
+pub(super) async fn list_claude_commands(
+    State(s): State<AppState>,
+    Query(q): Query<ClaudeCommandsQuery>,
+) -> impl IntoResponse {
+    let repo = if q.repo.trim().is_empty() {
+        s.repo_path.display().to_string()
+    } else {
+        q.repo
+    };
+    let commands =
+        tokio::task::spawn_blocking(move || lopi_skill::discover_claude_commands(Path::new(&repo)))
+            .await
+            .unwrap_or_default();
+    (StatusCode::OK, Json(json!({ "commands": commands }))).into_response()
+}
+
 /// Upper bound on the repos returned to the dropdown. A backstop against a
 /// pathological scan directory, not a curation policy — a developer keeping
 /// every checkout in one folder is ordinary (this repo's own author has 164 in
@@ -145,11 +174,18 @@ fn is_generated_branch(name: &str) -> bool {
     name.starts_with("lopi/") || name.starts_with("claude/")
 }
 
+/// Upper bound on the branches returned to the dropdown — see [`MAX_REPOS`]'s
+/// doc for the same backstop-not-curation rationale. Unlike the repos cap,
+/// this one is a real risk: a long-lived repo with many contributors (or one
+/// that doesn't prune merged branches) can easily exceed it, so a truncation
+/// is logged rather than silently swallowed.
+const MAX_BRANCHES: usize = 100;
+
 /// List human local branch short-names via the git CLI (already a hard
 /// dependency of the agent runtime), plus the default (current HEAD) branch —
 /// falling back to main/master, then the first branch. Empty on any error.
 fn git_branches(repo: &str) -> (Vec<String>, String) {
-    let branches: Vec<String> = match std::process::Command::new("git")
+    let mut branches: Vec<String> = match std::process::Command::new("git")
         .args(["-C", repo, "branch", "--format=%(refname:short)"])
         .output()
     {
@@ -157,10 +193,18 @@ fn git_branches(repo: &str) -> (Vec<String>, String) {
             .lines()
             .map(|l| l.trim().to_string())
             .filter(|l| !l.is_empty() && !is_generated_branch(l))
-            .take(100)
             .collect(),
         _ => Vec::new(),
     };
+    if branches.len() > MAX_BRANCHES {
+        tracing::warn!(
+            repo,
+            found = branches.len(),
+            limit = MAX_BRANCHES,
+            "more branches than the dropdown lists; the remainder are hidden"
+        );
+        branches.truncate(MAX_BRANCHES);
+    }
 
     let default = current_branch(repo)
         // HEAD itself can be a generated branch (a run left the repo on one).
@@ -317,6 +361,24 @@ mod tests {
         assert_eq!(
             default, "main",
             "HEAD is reported when it survives the filter"
+        );
+    }
+
+    /// Regression: `.take(100)` used to cap the branch list with no signal
+    /// that anything was hidden. Assert the cap still applies (unchanged
+    /// behavior) now that it's a logged `truncate` — a real repo can easily
+    /// carry more than 100 local branches, unlike the 500-repo cap.
+    #[test]
+    fn truncates_past_max_branches() {
+        let tmp = tempfile::tempdir().unwrap();
+        let extra: Vec<String> = (0..(MAX_BRANCHES + 5)).map(|i| format!("b{i}")).collect();
+        let extra_refs: Vec<&str> = extra.iter().map(String::as_str).collect();
+        let repo = repo_with_branches(&tmp.path().join("r"), "base", &extra_refs);
+        let (branches, _default) = git_branches(&repo);
+        assert_eq!(
+            branches.len(),
+            MAX_BRANCHES,
+            "must cap at MAX_BRANCHES, not return every branch"
         );
     }
 

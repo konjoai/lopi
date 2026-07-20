@@ -10,7 +10,9 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Json},
 };
-use lopi_core::{Priority, ReportChannel, ReportChannelError, Task, TaskId};
+use lopi_core::{
+    PermissionMode, PermissionModeError, Priority, ReportChannel, ReportChannelError, Task, TaskId,
+};
 use lopi_memory::CheckpointInput;
 use lopi_spec::SpecSurface;
 use serde::Deserialize;
@@ -68,8 +70,8 @@ pub(super) async fn get_task(
     State(s): State<AppState>,
 ) -> impl IntoResponse {
     let rows = s.store.load_history(500).await.unwrap_or_default();
-    match rows.into_iter().find(|t| t.id.starts_with(&id)) {
-        Some(t) => {
+    match find_by_id_prefix(rows, &id, |t| t.id.as_str()) {
+        PrefixMatch::Unique(t) => {
             let cost = s
                 .store
                 .task_costs()
@@ -88,12 +90,47 @@ pub(super) async fn get_task(
             )
                 .into_response()
         }
-        None => (
+        PrefixMatch::NotFound => (
             StatusCode::NOT_FOUND,
             Json(json!({ "error": "task not found" })),
         )
             .into_response(),
+        PrefixMatch::Ambiguous => ambiguous_prefix_response(),
     }
+}
+
+/// Outcome of a lookup by a full id or a possibly-partial prefix.
+enum PrefixMatch<T> {
+    /// No entity's id starts with the given prefix.
+    NotFound,
+    /// Exactly one match — the unambiguous case.
+    Unique(T),
+    /// More than one entity's id starts with the given prefix. The caller
+    /// must not silently act on an arbitrary one of them (`Iterator::find`'s
+    /// usual first-match behavior) — surface this to the client instead.
+    Ambiguous,
+}
+
+/// Find the row in `rows` whose `id_of` value starts with `prefix`,
+/// distinguishing a unique match from an ambiguous one.
+fn find_by_id_prefix<T>(rows: Vec<T>, prefix: &str, id_of: impl Fn(&T) -> &str) -> PrefixMatch<T> {
+    let mut matches = rows.into_iter().filter(|t| id_of(t).starts_with(prefix));
+    let Some(first) = matches.next() else {
+        return PrefixMatch::NotFound;
+    };
+    if matches.next().is_some() {
+        return PrefixMatch::Ambiguous;
+    }
+    PrefixMatch::Unique(first)
+}
+
+/// `409` response for an id prefix that matches more than one task.
+fn ambiguous_prefix_response() -> axum::response::Response {
+    (
+        StatusCode::CONFLICT,
+        Json(json!({ "error": "id prefix matches more than one task" })),
+    )
+        .into_response()
 }
 
 /// Body for `POST /api/agents/:id/checkpoint`. All fields optional — only
@@ -150,12 +187,16 @@ pub(super) async fn cancel_task(
     State(s): State<AppState>,
 ) -> impl IntoResponse {
     let rows = s.store.load_history(500).await.unwrap_or_default();
-    let Some(t) = rows.into_iter().find(|t| t.id.starts_with(&id)) else {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(json!({"error": "task not found"})),
-        )
-            .into_response();
+    let t = match find_by_id_prefix(rows, &id, |t| t.id.as_str()) {
+        PrefixMatch::Unique(t) => t,
+        PrefixMatch::NotFound => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({"error": "task not found"})),
+            )
+                .into_response();
+        }
+        PrefixMatch::Ambiguous => return ambiguous_prefix_response(),
     };
     let Ok(uuid) = t.id.parse::<uuid::Uuid>() else {
         return (
@@ -210,12 +251,16 @@ async fn decide_plan(
     id: &str,
     decision: lopi_core::PlanDecision,
 ) -> axum::response::Response {
-    let Some(task_id) = resolve_task_id(s, id).await else {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(json!({"error": "task not found"})),
-        )
-            .into_response();
+    let task_id = match resolve_task_id(s, id).await {
+        PrefixMatch::Unique(task_id) => task_id,
+        PrefixMatch::NotFound => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({"error": "task not found"})),
+            )
+                .into_response();
+        }
+        PrefixMatch::Ambiguous => return ambiguous_prefix_response(),
     };
     if s.pool.decide_plan(&task_id, decision).await {
         (
@@ -233,13 +278,32 @@ async fn decide_plan(
 }
 
 /// Resolve a task id from a full UUID or a unique prefix (history fallback).
-async fn resolve_task_id(s: &AppState, id: &str) -> Option<TaskId> {
+async fn resolve_task_id(s: &AppState, id: &str) -> PrefixMatch<TaskId> {
     if let Ok(uuid) = id.parse::<uuid::Uuid>() {
-        return Some(TaskId(uuid));
+        return PrefixMatch::Unique(TaskId(uuid));
     }
     let rows = s.store.load_history(500).await.unwrap_or_default();
-    let t = rows.into_iter().find(|t| t.id.starts_with(id))?;
-    t.id.parse::<uuid::Uuid>().ok().map(TaskId)
+    match find_by_id_prefix(rows, id, |t| t.id.as_str()) {
+        PrefixMatch::Unique(t) => match t.id.parse::<uuid::Uuid>() {
+            Ok(uuid) => PrefixMatch::Unique(TaskId(uuid)),
+            Err(_) => PrefixMatch::NotFound,
+        },
+        PrefixMatch::NotFound => PrefixMatch::NotFound,
+        PrefixMatch::Ambiguous => PrefixMatch::Ambiguous,
+    }
+}
+
+/// Why [`apply_loop_fields`] rejected a `CreateTaskRequest` — every variant
+/// maps to a 422, never a silent drop or coercion of the offending field.
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+pub(super) enum ApplyLoopFieldsError {
+    /// `req.report` named an unknown or currently-unreachable channel.
+    #[error(transparent)]
+    Report(#[from] ReportChannelError),
+    /// `req.permission_mode` named anything other than the four headless-safe
+    /// modes [`PermissionMode`] exposes.
+    #[error(transparent)]
+    PermissionMode(#[from] PermissionModeError),
 }
 
 /// Apply the loop/verifier/report/override fields exposed on
@@ -248,17 +312,23 @@ async fn resolve_task_id(s: &AppState, id: &str) -> Option<TaskId> {
 /// without an HTTP round-trip.
 ///
 /// # Errors
-/// Returns [`ReportChannelError`] when `req.report` names an unknown or
-/// currently-unreachable channel (e.g. `"whatsapp"`) — reuses
+/// Returns [`ApplyLoopFieldsError::Report`] when `req.report` names an
+/// unknown or currently-unreachable channel (e.g. `"whatsapp"`) — reuses
 /// [`ReportChannel::parse`], the same validator `Task`/`ScheduleEntry`
-/// already use, rather than a second report-channel parser.
+/// already use, rather than a second report-channel parser. Returns
+/// [`ApplyLoopFieldsError::PermissionMode`] when `req.permission_mode` names
+/// anything other than the four headless-safe modes, reusing
+/// [`PermissionMode::parse`] the same way.
 pub(super) fn apply_loop_fields(
     task: &mut Task,
     req: &CreateTaskRequest,
-) -> Result<(), ReportChannelError> {
+) -> Result<(), ApplyLoopFieldsError> {
     if let Some(report) = &req.report {
         ReportChannel::parse(report)?;
         task.report = Some(report.clone());
+    }
+    if let Some(mode) = &req.permission_mode {
+        task.permission_mode = PermissionMode::parse(mode)?;
     }
     if let Some(v) = req.verifier_required {
         task.verifier_required = v;
@@ -324,16 +394,7 @@ pub(super) fn validate_goal(goal: &str) -> Result<(), String> {
     if goal.chars().count() > MAX_GOAL_LENGTH {
         return Err(format!("goal too long (max {MAX_GOAL_LENGTH} chars)"));
     }
-    if let Some(c) = goal
-        .chars()
-        .find(|c| c.is_control() && !matches!(c, '\n' | '\r' | '\t'))
-    {
-        return Err(format!(
-            "goal contains a disallowed control character (U+{:04X})",
-            c as u32
-        ));
-    }
-    Ok(())
+    super::types::reject_control_chars(goal)
 }
 
 pub(super) async fn create_task(

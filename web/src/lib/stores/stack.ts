@@ -13,7 +13,12 @@
  */
 import { writable } from 'svelte/store';
 import type { Acceptance, AcceptanceCheck, CreateTaskOptions } from '$lib/api';
-import { type StackDefaults, DEFAULT_STACK_DEFAULTS, defaultStackDefaults } from '$lib/stores/stackDefaults';
+import {
+  type StackDefaults,
+  DEFAULT_STACK_DEFAULTS,
+  DEFAULT_PERMISSION_MODE,
+  defaultStackDefaults
+} from '$lib/stores/stackDefaults';
 import { AUTO_MODEL, MODEL_OPTIONS, labelFor, type Option } from '$lib/stores/options';
 import { resolveRepoToken } from '$lib/stores/repoMenu';
 import { matches } from '$lib/stores/optionMenu';
@@ -88,6 +93,17 @@ export function defaultGuardrails(): Guardrails {
   return { gate: false, gateCmd: '', until: false, untilCmd: '', onFail: 'stop', budget: 'auto' };
 }
 
+/** Round 2, item 9 — a card's goal facet. See `StackCard.goal`'s doc comment
+ *  for why this is narrower than the stack-level `StackGoal`. */
+export interface CardGoal {
+  pursue: boolean;
+}
+
+/** Freshly-initialized card goal facet — every card gets its own object. */
+export function defaultCardGoal(): CardGoal {
+  return { pursue: false };
+}
+
 /** The five preset schedule cadences a card can pick, plus a raw-cron escape
  *  hatch. Matches the settled mockup's frequency chip row. */
 export type CronFreq = 'every minute' | 'hourly' | 'daily' | 'weekly' | 'custom';
@@ -138,26 +154,35 @@ export function defaultCron(): CronConfig {
 }
 
 /** Per-loop overrides of the pane defaults (model/effort/repo/branch/
- *  autonomy). `undefined` on any field means "inherit the pane default".
- *  `model`/`effort`/`repo` are WIRED (real `CreateTaskRequest` fields);
- *  `autonomy` is client-only — backend gap, not yet exposed. `branch` has no
- *  field of its own but still reaches the server: both `paneSubmitPayload`
- *  (bare-pane launch) and `cardToTaskPayload` (run-stack execution) turn it
- *  into the same "Target branch: …" planning constraint. */
+ *  autonomy/permission_mode). `undefined` on any field means "inherit the
+ *  pane default". `model`/`effort`/`repo`/`permission_mode` are WIRED (real
+ *  `CreateTaskRequest` fields); `autonomy` is client-only — backend gap, not
+ *  yet exposed. `branch` has no field of its own but still reaches the
+ *  server: both `paneSubmitPayload` (bare-pane launch) and
+ *  `cardToTaskPayload` (run-stack execution) turn it into the same "Target
+ *  branch: …" planning constraint. */
 export interface CardConfig {
   model?: string;
   effort?: string;
   repo?: string;
   branch?: string;
   autonomy?: string;
+  /** How much the `claude -p` worker session may act on tool calls without a
+   *  human answering a prompt (see `stores/stackDefaults.ts::PERMISSION_MODE_OPTIONS`).
+   *  Unlike `autonomy` above, this one is wired end to end — it reaches a
+   *  real `CreateTaskRequest.permission_mode`, validated server-side. */
+  permission_mode?: string;
 }
 
 /** A card's lifecycle state. `'draft'` is the pre-commit state of the pane's
  *  in-composer draft card (Creation-Flow-1) — it is never in `pane.cards`, is
  *  excluded from every run/loop-count/payload path (see `executionOrder`), and
  *  must be handled explicitly by any `CardStatus` consumer rather than falling
- *  through to a run path. The rest are the client-only run lifecycle. */
-export type CardStatus = 'draft' | 'idle' | 'queued' | 'running' | 'done';
+ *  through to a run path. The rest are the client-only run lifecycle.
+ *  `'blocked'` (round 2, item 3) is the terminal state for a run that ended
+ *  anything other than `completed` — previously folded indistinguishably into
+ *  `'done'`, so a failed run and a successful one looked identical. */
+export type CardStatus = 'draft' | 'idle' | 'queued' | 'running' | 'done' | 'blocked';
 
 /** The default iteration ceiling a fresh card starts from. `0` = "off": the
  *  loop is disabled and the card runs a single pass (the card pill floors at
@@ -192,6 +217,21 @@ export interface StackCard {
   maxIterations: number;
   /** Live progress while `status === 'running'` — `undefined` otherwise. */
   iteration?: { current: number; total: number };
+  /** The failure message when `status === 'blocked'` — round 2, item 3.
+   *  `undefined` otherwise (including a card that has never run). */
+  blockReason?: string;
+  /** Round 2, item 9 — the card-scoped analogue of the stack's `StackGoal`
+   *  facet. Named `goalPursuit`, not `goal` — that name is already taken by
+   *  the card's own prompt text above. Deliberately narrower than
+   *  `StackGoal` (no `noProgressLimit`): that field drives the *stack*
+   *  sequencer's own re-run-the-whole-chain loop
+   *  (`stores/stackRun.ts::pursueGoal`), which has no per-card equivalent —
+   *  a single card's loop already retries against its own `evals`-compiled
+   *  acceptance via the real `max_iterations`/`acceptance` wire fields
+   *  (`cardToTaskPayload`), server-side, every time. `pursue` toggles
+   *  nothing new server-side; it's the discoverability fix itself — see
+   *  `cardPursuesGoal`'s doc comment for what "on" actually means. */
+  goalPursuit: CardGoal;
   scheduled: boolean;
   cron: CronConfig;
   /** MAXX — opportunistic backlog dispatch. Independent of `scheduled`/
@@ -411,21 +451,24 @@ export function suggestPreset(text: string): PresetKey | null {
   return null;
 }
 
-// ── Inline `/command` autocomplete ────────────────────────────────────────────
-// Every prompt/stack setting gets a `:`/`@`/`/` alias, not just presets and
-// repo: `/model`, `/effort`, `/branch`, `/autonomy`, `/eval` are value-pickers
-// (mirrors the user's own suggested `/model/<autocomplete>` syntax — the
-// level-2 token embeds the real value directly, so unlike `@repo` there's no
-// label/path resolution step); `/guard`, `/schedule`, `/maxx`, `/goal` carry
-// multi-field state that doesn't reduce to one inline value, so picking one
-// just opens the existing popover for it (the composer component owns that
-// action — this module only supplies the pure matching).
+// ── Inline `;command` autocomplete ────────────────────────────────────────────
+// Every prompt/stack setting gets a `:`/`@`/`;` alias, not just presets and
+// repo: `;model`, `;effort`, `;branch`, `;autonomy`, `;eval` are value-pickers
+// (mirrors the user's own suggested `/model/<autocomplete>` syntax, now under
+// the `;` prefix — the level-2 token embeds the real value directly after a
+// `/` separator, so unlike `@repo` there's no label/path resolution step);
+// `;guard`, `;schedule`, `;maxx`, `;goal` carry multi-field state that doesn't
+// reduce to one inline value, so picking one just opens the existing popover
+// for it (the composer component owns that action — this module only
+// supplies the pure matching). `;` is lopi's own catch-all verb prefix,
+// deliberately distinct from `/`, which is reserved for real Claude Code
+// slash commands.
 
-/** One inline `/command` definition. */
+/** One inline `;command` definition. */
 export interface InlineCommandDef {
   command: string;
   hint: string;
-  /** `true` → typing `/command` then continues into a second `/command/value`
+  /** `true` → typing `;command` then continues into a second `;command/value`
    *  token (see `commandValueAutocomplete`). `false` → selecting the command
    *  fires an immediate action (open a popover) with no value step. */
   isValuePicker: boolean;
@@ -445,22 +488,21 @@ export const CARD_COMMANDS: InlineCommandDef[] = [
 
 /** Stack-scope commands, typed into the stack's own command bar
  *  (`StackControlDock.svelte`) — same vocabulary, writes to `pane.config`
- *  instead of a card's `config`. No `maxx` (per-card only); adds `loop`
- *  (chain loop count) and `goal` (run-until-goal), which have no card-level
- *  analog. */
+ *  instead of a card's `config`. No `maxx` (per-card only); adds `goal`
+ *  (run-until-goal), which has no card-level analog. Chain loop count has no
+ *  `;loop/N` command — `xN` is the sole loop-count grammar. */
 export const STACK_COMMANDS: InlineCommandDef[] = [
   { command: 'model', hint: 'stack default model', isValuePicker: true },
   { command: 'effort', hint: 'stack default effort', isValuePicker: true },
   { command: 'branch', hint: 'stack default branch', isValuePicker: true },
   { command: 'autonomy', hint: 'stack default autonomy', isValuePicker: true },
-  { command: 'loop', hint: 'stack loop count', isValuePicker: true },
   { command: 'eval', hint: 'toggle a stack eval suite', isValuePicker: true },
   { command: 'guard', hint: 'open stack guardrails', isValuePicker: false },
   { command: 'schedule', hint: 'open the stack schedule', isValuePicker: false },
   { command: 'goal', hint: 'open run-until-goal', isValuePicker: false }
 ];
 
-/** A level-1 `/command` suggestion — the bare command name, not yet a value. */
+/** A level-1 `;command` suggestion — the bare command name, not yet a value. */
 export interface CommandSuggestion {
   token: string;
   command: string;
@@ -472,24 +514,24 @@ export interface CommandSuggestion {
  *  same trailing-word grammar `repoAutocomplete` uses, generalized over a
  *  caller-supplied command list (card vs. stack scope differ). */
 export function commandAutocomplete(goalText: string, commands: InlineCommandDef[]): CommandSuggestion[] {
-  const match = /(?:^|\s)\/([a-z]*)$/.exec(goalText);
+  const match = /(?:^|\s);([a-z]*)$/.exec(goalText);
   if (!match) return [];
   const q = match[1].toLowerCase();
   return commands
     .filter((c) => c.command.startsWith(q))
-    .map((c) => ({ token: `/${c.command}`, command: c.command, label: c.command, hint: c.hint }));
+    .map((c) => ({ token: `;${c.command}`, command: c.command, label: c.command, hint: c.hint }));
 }
 
 /** Infers the level-2 `pendingCommand` straight from the goal text's trailing
- *  `/command/` token, rather than relying solely on the composer having set
+ *  `;command/` token, rather than relying solely on the composer having set
  *  it when a level-1 suggestion was clicked. Without this, hand-typing
- *  `/model/` (never clicking the `/model` row) left `pendingCommand` unset,
+ *  `;model/` (never clicking the `;model` row) left `pendingCommand` unset,
  *  so `commandValueAutocomplete` never ran and the value list silently never
  *  appeared — typing the token had to produce the same state that clicking
  *  it does. Only matches commands flagged `isValuePicker`; a fired-immediately
- *  command like `/guard/` has no level-2 catalog to switch into. */
+ *  command like `;guard/` has no level-2 catalog to switch into. */
 export function detectPendingCommand(goalText: string, commands: InlineCommandDef[]): string | null {
-  const match = /(?:^|\s)\/([a-z]+)\/\S*$/.exec(goalText);
+  const match = /(?:^|\s);([a-z]+)\/\S*$/.exec(goalText);
   if (!match) return null;
   const def = commands.find((c) => c.command === match[1]);
   return def?.isValuePicker ? def.command : null;
@@ -505,17 +547,133 @@ export interface CommandValueSuggestion {
 
 /** Level 2: once a value-picker command has been chosen (the composer tracks
  *  this as its own `pendingCommand` state), matches a trailing
- *  `/command/value` token against whatever catalog applies to `command`. */
+ *  `;command/value` token against whatever catalog applies to `command`. */
 export function commandValueAutocomplete(goalText: string, command: string, options: Option[]): CommandValueSuggestion[] {
-  const match = new RegExp(`(?:^|\\s)/${command}/(\\S*)$`).exec(goalText);
+  const match = new RegExp(`(?:^|\\s);${command}/(\\S*)$`).exec(goalText);
   if (!match) return [];
   const q = match[1].toLowerCase();
   return options
     .filter((o) => matches(o, q))
-    .map((o) => ({ token: `/${command}/${o.value}`, label: o.label, hint: o.hint ?? '', value: o.value }));
+    .map((o) => ({ token: `;${command}/${o.value}`, label: o.label, hint: o.hint ?? '', value: o.value }));
 }
 
-/** `/eval`'s value catalog is the suite-shortcut names (`kcqf`/`security`/
+// ── Real Claude Code `/name` command autocomplete (Composer-Grammar-2) ───────
+// A single-level grammar, unlike `;command`'s two-level value-picker one:
+// Claude's own commands/skills take free-form `$ARGUMENTS` text after the
+// token, not a fixed value catalog, so there is no second `/name/value` step
+// — selecting inserts the bare `/name` token and typing continues past it as
+// plain text. The catalog itself is per-repo and dynamic (discovered from
+// the target repo's own `.claude/commands/*.md` + `.claude/skills/*/SKILL.md`
+// — `GET /api/claude-commands`, `stores/claudeCommands.ts`), unlike
+// `CARD_COMMANDS`/`STACK_COMMANDS`'s static built-in vocabulary.
+
+/** A `/name` suggestion for a real Claude Code command/skill. */
+export interface ClaudeCommandSuggestion {
+  token: string;
+  name: string;
+  hint: string;
+}
+
+/** Filtered `/name` suggestions for a trailing `/token` in `goalText`,
+ *  against `commands` (the effective repo's discovered catalog — pass
+ *  `claudeCommandOptionsFor($claudeCommandsByRepo, effectiveRepo)`). Same
+ *  trailing-word grammar `commandAutocomplete` uses, generalized to a
+ *  dynamic per-repo catalog instead of a static built-in one. */
+export function claudeCommandAutocomplete(goalText: string, commands: Option[]): ClaudeCommandSuggestion[] {
+  const match = /(?:^|\s)\/([a-zA-Z0-9_-]*)$/.exec(goalText);
+  if (!match) return [];
+  const q = match[1].toLowerCase();
+  return commands
+    .filter((c) => c.value.toLowerCase().startsWith(q))
+    .map((c) => ({ token: `/${c.value}`, name: c.value, hint: c.hint ?? '' }));
+}
+
+// ── Inline chip tokenizer (round 2, item 2) ───────────────────────────────────
+// Splits goal/cmdbar text into plain-text runs and *resolved* token chips for
+// inline rendering — the corrected direction from the first (wrong) demo,
+// where the resolved token rendered in a separate row instead of in place.
+// This is deliberately a distinct concern from the autocomplete *matching*
+// above (`aliasAutocomplete`/`repoAutocomplete`/`commandAutocomplete`/
+// `commandValueAutocomplete`), which only ever looks at a trailing
+// in-progress token and is untouched by this file's round 2 changes — this
+// function instead scans the *whole* string for already-complete tokens, so
+// it can only ever match a token in exactly the state it lands in only once
+// `selectAlias`/`selectRepo`/`selectCommand` (or hand-typing to the same
+// literal completion) has already finished writing it into the text, at
+// which point resolved-token-rendering and raw-text-rendering are simply two
+// ways to draw the identical underlying string — nothing about the string
+// itself, or what gets committed/submitted, changes.
+
+/** One segment of tokenized goal/cmdbar text — either a plain-text run
+ *  (`chipKind` unset) or a resolved token to render as an inline chip.
+ *  `chipKind` picks the accent color, reusing `ConfigDrawer.svelte`'s exact
+ *  per-field hues (`:alias` teal, `@repo` ice, `;effort` ember, `;model`
+ *  cyan, `;branch` green, `;autonomy`/everything else `;command/value`
+ *  violet, `×N` sun) plus its own rose for a real Claude Code `/name`
+ *  command (Composer-Grammar-2) — deliberately distinct from every `;`
+ *  color so a real Claude command never reads as one of lopi's own verbs. */
+export interface GoalSegment {
+  text: string;
+  chipKind?: 'alias' | 'repo' | 'effort' | 'command' | 'loop' | 'model' | 'branch' | 'claude';
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** Tokenize `text` against `commands`' value-picker vocabulary (card-scope
+ *  `CARD_COMMANDS` or stack-scope `STACK_COMMANDS` — the two differ, so this
+ *  can't hardcode one) plus `claudeCommandNames`, the real `/name` Claude
+ *  Code commands discovered for the card/stack's effective repo
+ *  (`stores/claudeCommands.ts::claudeCommandOptionsFor` — Composer-Grammar-2).
+ *  Every match is word-bounded (`(?=\s|$)`) so an in-progress prefix (e.g.
+ *  `:res` while still typing toward `:research`) is never mistaken for a
+ *  resolved token — only a complete, standalone word chips. Non-value-picker
+ *  `;`-commands (`guard`/`schedule`/`maxx`/`goal`) never appear here:
+ *  `selectCommand`/`selectCommandFromBar` strip those tokens from the text
+ *  the instant they're picked, so there's never a resolved `;guard` word
+ *  left in the string to chip. `claudeCommandNames` defaults to `[]` so
+ *  every existing caller (tests, anywhere the repo's catalog hasn't loaded
+ *  yet) keeps working with zero `/name` chips, never a crash. */
+export function tokenizeGoalChips(
+  text: string,
+  commands: InlineCommandDef[],
+  claudeCommandNames: string[] = []
+): GoalSegment[] {
+  if (!text) return [{ text: '' }];
+  const valuePickers = commands.filter((c) => c.isValuePicker).map((c) => escapeRegExp(c.command));
+  const claudeNames = claudeCommandNames.map(escapeRegExp);
+  const alternatives = [
+    PRESET_KEYS.length ? `:(?:${PRESET_KEYS.map(escapeRegExp).join('|')})(?=\\s|$)` : null,
+    `@[^\\s@]+\\/[^\\s@]+(?=\\s|$)`,
+    valuePickers.length ? `;(?:${valuePickers.join('|')})\\/[^\\s/]+(?=\\s|$)` : null,
+    claudeNames.length ? `\\/(?:${claudeNames.join('|')})(?=\\s|$)` : null,
+    `[×xX]\\d+(?=\\s|$)`
+  ].filter((p): p is string => p !== null);
+  const re = new RegExp(alternatives.join('|'), 'g');
+
+  const segments: GoalSegment[] = [];
+  let cursor = 0;
+  for (const m of text.matchAll(re)) {
+    const idx = m.index ?? 0;
+    if (idx > cursor) segments.push({ text: text.slice(cursor, idx) });
+    const token = m[0];
+    let kind: NonNullable<GoalSegment['chipKind']>;
+    if (token.startsWith(':')) kind = 'alias';
+    else if (token.startsWith('@')) kind = 'repo';
+    else if (token.startsWith(';')) {
+      const cmd = token.slice(1, token.indexOf('/', 1));
+      kind = cmd === 'effort' ? 'effort' : cmd === 'model' ? 'model' : cmd === 'branch' ? 'branch' : 'command';
+    } else if (token.startsWith('/')) kind = 'claude';
+    else kind = 'loop';
+    segments.push({ text: token, chipKind: kind });
+    cursor = idx + token.length;
+  }
+  if (cursor < text.length) segments.push({ text: text.slice(cursor) });
+  return segments.length ? segments : [{ text: '' }];
+}
+
+/** `;eval`'s value catalog is the suite-shortcut names (`kcqf`/`security`/
  *  `research`), not individual eval names — those contain spaces (`"vuln
  *  scan"`, `"code review"`), which the trailing-token grammar can't carry.
  *  Bulk-toggling a suite is the useful, space-free case; per-eval toggling
@@ -605,6 +763,7 @@ export function buildCard(raw: string, explicitPreset?: PresetKey, repoOptions: 
     cron: defaultCron(),
     maxx: defaultMaxx(),
     guardrails: defaultGuardrails(),
+    goalPursuit: defaultCardGoal(),
     config: resolvedRepo ? { repo: resolvedRepo } : {}
   };
 }
@@ -691,6 +850,7 @@ function cardFromLoop(loop: { preset?: PresetKey; alias?: string; goal: string }
     cron: defaultCron(),
     maxx: defaultMaxx(),
     guardrails: defaultGuardrails(),
+    goalPursuit: defaultCardGoal(),
     config: {},
     tpl: tplName,
     tplKind: 'stack'
@@ -748,6 +908,7 @@ export function finalizeDraft(draft: StackCard, repoOptions: Option[] = []): Sta
     maxx: draft.maxx,
     maxxEntryId: draft.maxxEntryId,
     guardrails: draft.guardrails,
+    goalPursuit: draft.goalPursuit,
     config: { ...built.config, ...draft.config }
   };
 }
@@ -787,6 +948,7 @@ export function duplicateCard(cards: StackCard[], id: string): StackCard[] {
     status: 'idle',
     iteration: undefined,
     taskId: undefined,
+    blockReason: undefined,
     // A clone never shares its original's backend /api/maxx row — reset to
     // off so the popover doesn't show "enabled" with nothing behind it.
     maxx: { ...cards[idx].maxx, enabled: false },
@@ -910,6 +1072,58 @@ export function cardIterationsLabel(maxIterations: number): string {
   return maxIterations === 0 ? 'off' : String(maxIterations);
 }
 
+/** The ×N pill's color-ramp tier — a glanceable warning as the loop count
+ *  climbs. `orange` is the baseline "on" treatment (closest to the pill's
+ *  pre-ramp default), stepping up to `yellow` then `red` the higher N goes.
+ *  Thresholds are operator judgement calls, not measured cost data — tune
+ *  freely. Callers pass `Infinity` for an unbounded count (the stack pill's
+ *  `0` = infinite sentinel), which always reads as the top `red` tier since
+ *  it has no ceiling at all. Never called for an "off" pill (`0` on a card,
+ *  `1` on a stack) — those keep their own separate neutral `.off` styling. */
+export function loopCountTier(n: number): 'orange' | 'yellow' | 'red' {
+  if (n >= 25) return 'red';
+  if (n >= 11) return 'yellow';
+  return 'orange';
+}
+
+// ── Run-cost confirm (round 2, item 6) ────────────────────────────────────────
+
+/** Loop count at/above which hitting Run shows the cost-estimate confirm
+ *  instead of launching immediately. Same operator-judgement-call caveat as
+ *  `loopCountTier`'s thresholds — tune freely. */
+export const HIGH_N_CONFIRM_THRESHOLD = 15;
+
+/** A rough $/iteration rate by model tier — matched by substring against the
+ *  model id/display name so it degrades gracefully for any live-catalog
+ *  model the static tiers don't name explicitly. This is NOT a real pricing
+ *  table: no per-token cost estimator exists client-side yet (the live
+ *  catalog carries no rate data — see `stores/modelCatalog.ts`), so these are
+ *  rough operator numbers, deliberately presented as a wide approximate band
+ *  by `estimateRunCost` rather than a precise quote. Revisit once a real
+ *  estimator exists. */
+function roughCostPerIteration(model: string): number {
+  const m = model.toLowerCase();
+  if (m.includes('opus')) return 0.9;
+  if (m.includes('haiku')) return 0.05;
+  return 0.25; // sonnet, and the 'auto'/unknown default
+}
+
+/** A ×N run's rough cost estimate — the confirm banner's `low`–`high` figure. */
+export interface CostEstimate {
+  low: number;
+  high: number;
+}
+
+/** Estimate a ×`n` run's cost as a ±35% band around `roughCostPerIteration(model)
+ *  * n` — wide enough to read honestly as approximate rather than a precise
+ *  quote. Callers must not call this for an unbounded run (`n === 0`, the
+ *  infinite sentinel) — there's no ceiling to estimate against; gate on the
+ *  raw loop count first and show a distinct "unbounded" message instead. */
+export function estimateRunCost(model: string, n: number): CostEstimate {
+  const mid = roughCostPerIteration(model) * n;
+  return { low: mid * 0.65, high: mid * 1.35 };
+}
+
 // ── Active-state predicates (pure, drive cardbar highlighting) ────────────────
 
 export function guardActive(g: Guardrails): boolean {
@@ -920,14 +1134,38 @@ export function evalActive(card: StackCard): boolean {
   return card.evals.length > 1;
 }
 
-export function configActive(card: StackCard, defaults: { model: string; effort: string; repo: string; branch: string; autonomy: string }): boolean {
+/** Round 2, item 9 — the card goal facet reads "active" once the toggle is
+ *  on, mirroring `stackGoalActive`'s shape one scope down. */
+export function cardGoalActive(card: StackCard): boolean {
+  return card.goalPursuit.pursue;
+}
+
+/** True only when the toggle is on *and* the card carries real acceptance
+ *  beyond the baseline (`evalActive`) — the exact condition under which the
+ *  card's loop is honestly "pursuing" something: `evalsToAcceptance`
+ *  compiles those evals into the task's real `acceptance`, which the
+ *  backend's Plan→Implement→Test→Score→Retry loop already re-attempts up to
+ *  `maxIterations` times until it passes. `pursue` on with only the baseline
+ *  eval set is inert — there's nothing beyond "did it run" to retry against
+ *  — so `GoalPopover` surfaces that exact gap via its shared hint, same as
+ *  the stack-level `stackPursuesGoal`/`pursues` pairing. */
+export function cardPursuesGoal(card: StackCard): boolean {
+  return card.goalPursuit.pursue && evalActive(card);
+}
+
+export function configActive(
+  card: StackCard,
+  defaults: { model: string; effort: string; repo: string; branch: string; autonomy: string; permission_mode?: string }
+): boolean {
   const c = card.config;
   return (
     (c.model ?? defaults.model) !== defaults.model ||
     (c.effort ?? defaults.effort) !== defaults.effort ||
     (c.repo ?? defaults.repo) !== defaults.repo ||
     (c.branch ?? defaults.branch) !== defaults.branch ||
-    (c.autonomy ?? defaults.autonomy) !== defaults.autonomy
+    (c.autonomy ?? defaults.autonomy) !== defaults.autonomy ||
+    (c.permission_mode ?? defaults.permission_mode ?? DEFAULT_PERMISSION_MODE) !==
+      (defaults.permission_mode ?? DEFAULT_PERMISSION_MODE)
   );
 }
 
@@ -1060,7 +1298,7 @@ export function evalsSummary(card: StackCard): string {
  *  checks so the two never drift out of sync. */
 export function configSummary(
   card: StackCard,
-  defaults: { model: string; effort: string; repo: string; branch: string; autonomy: string }
+  defaults: { model: string; effort: string; repo: string; branch: string; autonomy: string; permission_mode?: string }
 ): string {
   const c = card.config;
   const parts: string[] = [];
@@ -1069,6 +1307,9 @@ export function configSummary(
   if ((c.repo ?? defaults.repo) !== defaults.repo) parts.push(`repo ${c.repo}`);
   if ((c.branch ?? defaults.branch) !== defaults.branch) parts.push(`branch ${c.branch}`);
   if ((c.autonomy ?? defaults.autonomy) !== defaults.autonomy) parts.push(`autonomy ${c.autonomy}`);
+  const defaultPermissionMode = defaults.permission_mode ?? DEFAULT_PERMISSION_MODE;
+  const resolvedPermissionMode = c.permission_mode ?? defaultPermissionMode;
+  if (resolvedPermissionMode !== defaultPermissionMode) parts.push(`permission_mode ${resolvedPermissionMode}`);
   return parts.join(' · ');
 }
 
@@ -1083,6 +1324,7 @@ export interface PaneDefaults {
   effort: string;
   repo: string;
   branch?: string;
+  permission_mode?: string;
 }
 
 /** Compile a card's `evals` checklist into a real
@@ -1149,6 +1391,12 @@ export function cardToTaskPayload(
   // reject as `--model auto`).
   const resolvedModel = card.config.model ?? defaults.model;
   if (resolvedModel && resolvedModel !== AUTO_MODEL) options.model = resolvedModel;
+  // Never send the literal default (`bypassPermissions`) on the wire when
+  // the field wasn't touched — mirrors `model`'s `AUTO_MODEL` omission above.
+  const resolvedPermissionMode = card.config.permission_mode ?? defaults.permission_mode ?? DEFAULT_PERMISSION_MODE;
+  if (resolvedPermissionMode && resolvedPermissionMode !== DEFAULT_PERMISSION_MODE) {
+    options.permission_mode = resolvedPermissionMode;
+  }
   if (card.guardrails.gate) options.gate = card.guardrails.gateCmd;
   if (card.guardrails.until) options.until = card.guardrails.untilCmd;
   // A3 — a budget preset that sets a real cap flows to the metered
@@ -1203,6 +1451,10 @@ export interface PaneLaunch {
   /** Target branch; surfaced as a planning constraint when set (the same
    *  channel the retired `postTask` used), omitted otherwise. */
   branch?: string;
+  /** Permission-mode override; omitted from the payload when unset or equal
+   *  to `DEFAULT_PERMISSION_MODE` — never sends the literal default string
+   *  on the wire, mirroring `model`'s `AUTO_MODEL` omission. */
+  permission_mode?: string;
 }
 
 /** The `createTask(goal, repo, priority, options)` payload a bare pane prompt
@@ -1220,6 +1472,9 @@ export function paneSubmitPayload(
   // `auto` means "no override" — see `cardToTaskPayload`'s matching comment.
   if (launch.model && launch.model !== AUTO_MODEL) options.model = launch.model;
   if (launch.effort) options.effort = launch.effort;
+  if (launch.permission_mode && launch.permission_mode !== DEFAULT_PERMISSION_MODE) {
+    options.permission_mode = launch.permission_mode;
+  }
   const branch = launch.branch?.trim();
   if (branch) options.constraints = [`Target branch: ${branch}`];
   return {
@@ -1495,7 +1750,8 @@ export function stackDefaultsActive(defaults: StackDefaults): boolean {
     defaults.effort !== DEFAULT_STACK_DEFAULTS.effort ||
     defaults.repo !== DEFAULT_STACK_DEFAULTS.repo ||
     defaults.branch !== DEFAULT_STACK_DEFAULTS.branch ||
-    defaults.autonomy !== DEFAULT_STACK_DEFAULTS.autonomy
+    defaults.autonomy !== DEFAULT_STACK_DEFAULTS.autonomy ||
+    defaults.permission_mode !== DEFAULT_STACK_DEFAULTS.permission_mode
   );
 }
 
@@ -1629,7 +1885,7 @@ export function duplicateStack(state: StackPaneState[], key: string): StackPaneS
   const clone: StackPaneState = {
     key: makeId(),
     title: `${original.title} copy`,
-    cards: original.cards.map((c) => ({ ...c, id: makeId(), status: 'idle', iteration: undefined, taskId: undefined })),
+    cards: original.cards.map((c) => ({ ...c, id: makeId(), status: 'idle', iteration: undefined, taskId: undefined, blockReason: undefined })),
     config: {
       ...original.config,
       cron: { ...original.config.cron },
@@ -1660,7 +1916,7 @@ export function loadStackCardsInto(state: StackPaneState[], targetKey: string, s
   const source = state.find((p) => p.key === sourceKey);
   if (!source) return state;
   return applyToPaneCards(state, targetKey, () =>
-    source.cards.map((c) => ({ ...c, id: makeId(), status: 'idle', iteration: undefined, taskId: undefined }))
+    source.cards.map((c) => ({ ...c, id: makeId(), status: 'idle', iteration: undefined, taskId: undefined, blockReason: undefined }))
   );
 }
 
@@ -1688,6 +1944,17 @@ export function moveStackBeforeOrAfter(
   if (fromIndex === targetIndex) return state;
   const to = fromIndex < targetIndex ? (before ? targetIndex - 1 : targetIndex) : before ? targetIndex : targetIndex + 1;
   return reorderStacks(state, fromIndex, to);
+}
+
+/** Insert a whole pane back into the array at `index`, clamped into range —
+ *  the stack-level twin of `insertCardAt`. Round 2, item 1: the undo action
+ *  on a deleted stack's toast restores the exact pane object (same key,
+ *  cards, config) at the position it occupied, not just appends it. */
+export function insertPaneAt(state: StackPaneState[], index: number, pane: StackPaneState): StackPaneState[] {
+  const next = [...state];
+  const clamped = Math.max(0, Math.min(index, next.length));
+  next.splice(clamped, 0, pane);
+  return next;
 }
 
 /** Drop a stack by key. Refuses to delete the last remaining pane — there
@@ -1797,6 +2064,9 @@ export function reorderStacksInPanes(fromIndex: number, targetIndex: number, bef
 }
 export function deleteStackFromPanes(key: string): void {
   panes.update((state) => deleteStack(state, key));
+}
+export function insertPaneIntoPanes(index: number, pane: StackPaneState): void {
+  panes.update((state) => insertPaneAt(state, index, pane));
 }
 export function addStackPane(): void {
   panes.update((state) => addStack(state));

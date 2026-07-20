@@ -11,6 +11,9 @@
 //! pulling in a YAML dependency. Malformed input fails loudly — with the file
 //! and line — never silently.
 
+/// Discovery of real Claude Code `/name` commands + user-invocable skills in
+/// a *target* repo — Composer-Grammar-2's backend half.
+pub mod claude_commands;
 /// Skill-invocation prefix parsing (`:name args`) — Skill Arguments, Sprint 2.
 pub mod invocation;
 /// Lesson → skill promotion detection — the self-evolving Ratchet's detector.
@@ -24,6 +27,7 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
+pub use claude_commands::{discover_claude_commands, ClaudeCommand};
 pub use invocation::parse_invocation;
 pub use promote::{draft_skill_md, promotion_candidates, PromotionCandidate};
 pub use promoter::{promote_lessons, PromotionReport, PENDING_SKILLS_DIR};

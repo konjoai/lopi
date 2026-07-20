@@ -13,6 +13,8 @@
     guardActive,
     evalActive,
     configActive,
+    cardGoalActive,
+    cardPursuesGoal,
     guardSummary,
     evalsSummary,
     scheduleSummary,
@@ -20,9 +22,11 @@
     configSummary,
     cardIterationsLabel,
     stepCardIterations,
+    loopCountTier,
     draftIsHot,
     duplicateInPane,
     removeFromPane,
+    insertCardIntoPane,
     updateCardInPane,
     updateDraftInPane,
     commitDraft,
@@ -37,27 +41,33 @@
     evalSuiteOptions,
     applySuite,
     EVAL_SUITES,
+    tokenizeGoalChips,
+    claudeCommandAutocomplete,
     type CommandValueSuggestion
   } from '$lib/stores/stack';
   import { repoAutocomplete, repoLabelForPath } from '$lib/stores/repoMenu';
   import { MODEL_OPTIONS, EFFORT_OPTIONS } from '$lib/stores/options';
   import { AUTONOMY_OPTIONS, type StackDefaults } from '$lib/stores/stackDefaults';
   import { branchesByRepo, branchOptionsFor, ensureBranches } from '$lib/stores/branches';
+  import { claudeCommandsByRepo, claudeCommandOptionsFor, ensureClaudeCommands } from '$lib/stores/claudeCommands';
   import type { Option } from '$lib/stores/controls';
   import { runs, bumpCard, bumpUiState } from '$lib/stores/stackRun';
   import { agents } from '$lib/stores/agents';
   import { ICONS, PRESET_ACCENT } from './icons';
   import { dragging } from './dnd';
   import { autoGrow } from './autoGrow';
+  import { showToast } from '$lib/stores/toastStore';
   import Popover, { togglePopover } from './Popover.svelte';
   import SchedulePopover from './SchedulePopover.svelte';
   import MaxxPopover from './MaxxPopover.svelte';
   import GuardrailsPopover from './GuardrailsPopover.svelte';
   import EvalsPopover from './EvalsPopover.svelte';
+  import GoalPopover from './GoalPopover.svelte';
   import ConfigDrawer from './ConfigDrawer.svelte';
   import ProvenanceChips from './ProvenanceChips.svelte';
   import TemplatesMenu from './TemplatesMenu.svelte';
   import AutocompleteSuggest from './AutocompleteSuggest.svelte';
+  import ChipInput from './ChipInput.svelte';
   import RunStatsPill from './RunStatsPill.svelte';
 
   export let card: StackCardT;
@@ -78,12 +88,15 @@
   let maxBtn: HTMLButtonElement | undefined;
   let guardBtn: HTMLButtonElement | undefined;
   let evalBtn: HTMLButtonElement | undefined;
+  let goalBtn: HTMLButtonElement | undefined;
   let cfgOpen = false;
+  let summaryExpanded = false;
 
   $: schedId = `${card.id}:sched`;
   $: maxId = `${card.id}:max`;
   $: guardId = `${card.id}:guard`;
   $: evalId = `${card.id}:eval`;
+  $: goalId = `${card.id}:goal`;
 
   // ── draft branch (Creation-Flow-1) ──────────────────────────────────────────
   // The pane's pre-commit draft renders through this same component with a
@@ -92,7 +105,13 @@
   // dup/drag/delete cluster for a single `+ add` commit button.
   $: isDraft = card.status === 'draft';
   $: hot = isDraft && draftIsHot(card);
-  let goalInput: HTMLTextAreaElement | undefined;
+  // Round 2, item 2 — the draft's own goal field is a `ChipInput`, not a
+  // plain `<textarea>`; `goalInput` is now that contenteditable `<div>`
+  // (bound out via `bind:rootEl`), not a native textarea element. Every
+  // existing `goalInput?.focus()` / `anchor={goalInput}` call site below
+  // keeps working unchanged — both `.focus()` and `AutocompleteSuggest`'s
+  // `anchor` prop work identically against any `HTMLElement`.
+  let goalInput: HTMLDivElement | undefined;
 
   /** Route a card patch to the right store op: the draft edits the pane's
    *  `draft`; a committed card edits itself in `pane.cards`. */
@@ -108,11 +127,15 @@
     writeCard({ goal: (e.currentTarget as HTMLTextAreaElement).value });
   }
 
-  function onGoalInput(e: Event): void {
-    writeCard({ goal: (e.currentTarget as HTMLTextAreaElement).value });
+  /** `ChipInput`'s `onInput` hands back the plain serialized string directly
+   *  (no `Event`/`currentTarget` to unwrap — see `ChipInput.svelte`'s doc
+   *  comment on why it owns its own DOM serialization). */
+  function onGoalInput(value: string): void {
+    writeCard({ goal: value });
     aliasDismissed = false;
     repoDismissed = false;
     cmdDismissed = false;
+    claudeDismissed = false;
   }
 
   /** Commit the draft: mints a real card at the top of the stack and a fresh
@@ -132,6 +155,18 @@
   let goalFocused = false;
   let aliasActiveIndex = 0;
   let aliasDismissed = false;
+
+  // Round 2, item 2 — resolved-token chip segments for the draft's ChipInput.
+  // Pure derivation off `card.goal`; see `tokenizeGoalChips`'s doc comment in
+  // stores/stack.ts for why this is a distinct concern from the autocomplete
+  // matching just below. `claudeCommandOptions` (declared below, alongside
+  // `effectiveRepo`) is in scope here regardless of source order — Svelte
+  // resolves `$:` statements by dependency, not declaration position.
+  $: goalSegments = tokenizeGoalChips(
+    card.goal,
+    CARD_COMMANDS,
+    claudeCommandOptions.map((o) => o.value)
+  );
 
   $: aliasMatches = aliasAutocomplete(card.goal);
   $: showAliasSuggest = isDraft && goalFocused && !aliasDismissed && aliasMatches.length > 0;
@@ -194,15 +229,16 @@
     void tick().then(() => goalInput?.focus());
   }
 
-  // ── inline `/command` autocomplete (model/effort/branch/autonomy/eval/
+  // ── inline `;command` autocomplete (model/effort/branch/autonomy/eval/
   //    guard/schedule/maxx) ────────────────────────────────────────────────
   // Two-level grammar, mirroring the user's own suggested `/model/<value>`
-  // syntax: typing `/` suggests command names (`commandAutocomplete`); picking
-  // a value-picker command (model/effort/branch/autonomy/eval) moves into a
-  // second `/command/value` token (`commandValueAutocomplete`) against that
-  // command's own catalog. Picking a non-value-picker command (guard/
-  // schedule/maxx) fires immediately — strips the token and opens the
-  // existing popover for it, same as clicking its cardbar icon.
+  // syntax under lopi's own `;` catch-all prefix: typing `;` suggests command
+  // names (`commandAutocomplete`); picking a value-picker command (model/
+  // effort/branch/autonomy/eval) moves into a second `;command/value` token
+  // (`commandValueAutocomplete`) against that command's own catalog. Picking
+  // a non-value-picker command (guard/schedule/maxx) fires immediately —
+  // strips the token and opens the existing popover for it, same as clicking
+  // its cardbar icon.
   let cmdActiveIndex = 0;
   let cmdDismissed = false;
   /** Set once a value-picker command is chosen from the level-1 list; cleared
@@ -210,10 +246,20 @@
    *  under it (`onGoalInput`/`onChange` below). */
   let pendingCommand: string | null = null;
 
+  // ── real Claude Code `/name` command autocomplete (Composer-Grammar-2) ───
+  // Single-level, unlike `;command` above — no value-picker step, see
+  // `claudeCommandAutocomplete`'s doc comment in stores/stack.ts.
+  let claudeActiveIndex = 0;
+  let claudeDismissed = false;
+
   // This card's own repo — not the pane's — drives its branch list, same
   // resolution `ConfigDrawer` uses.
   $: effectiveRepo = card.config.repo ?? paneDefaults.repo;
   $: void ensureBranches(effectiveRepo);
+  // Composer-Grammar-2 — same effective-repo resolution drives the real
+  // Claude Code `/name` command catalog.
+  $: void ensureClaudeCommands(effectiveRepo);
+  $: claudeCommandOptions = claudeCommandOptionsFor($claudeCommandsByRepo, effectiveRepo);
 
   function commandOptionsFor(command: string): Option[] {
     switch (command) {
@@ -239,14 +285,14 @@
   $: if (cmdActiveIndex >= cmdMatches.length) cmdActiveIndex = Math.max(0, cmdMatches.length - 1);
   // Re-infer `pendingCommand` from the goal text on every change, not just
   // from `selectCommand`'s explicit assignment — otherwise hand-typing
-  // `/model/` (rather than clicking the `/model` row) never entered
+  // `;model/` (rather than clicking the `;model` row) never entered
   // value-picker mode. Falls back to the old clear-on-abandon behavior once
-  // the `/command/` prefix itself is edited away (e.g. backspaced).
+  // the `;command/` prefix itself is edited away (e.g. backspaced).
   $: {
     const inferred = detectPendingCommand(card.goal, CARD_COMMANDS);
     if (inferred) {
       pendingCommand = inferred;
-    } else if (pendingCommand && !new RegExp(`(^|\\s)/${pendingCommand}/`).test(card.goal)) {
+    } else if (pendingCommand && !new RegExp(`(^|\\s);${pendingCommand}/`).test(card.goal)) {
       pendingCommand = null;
     }
   }
@@ -287,7 +333,7 @@
     if (pendingCommand) {
       const valueMatches = cmdMatches as CommandValueSuggestion[];
       const suggestion = valueMatches.find((s) => s.token === token);
-      const m = new RegExp(`(^|\\s)/${pendingCommand}/(\\S*)$`).exec(card.goal);
+      const m = new RegExp(`(^|\\s);${pendingCommand}/(\\S*)$`).exec(card.goal);
       if (m && suggestion) {
         writeCard({ goal: `${card.goal.slice(0, m.index)}${m[1]}` });
         applyCommandValue(pendingCommand, suggestion.value);
@@ -296,10 +342,10 @@
     } else {
       const command = token.slice(1);
       const def = CARD_COMMANDS.find((c) => c.command === command);
-      const m = /(^|\s)\/(\S*)$/.exec(card.goal);
+      const m = /(^|\s);(\S*)$/.exec(card.goal);
       if (!m) return;
       if (def?.isValuePicker) {
-        writeCard({ goal: `${card.goal.slice(0, m.index)}${m[1]}/${command}/` });
+        writeCard({ goal: `${card.goal.slice(0, m.index)}${m[1]};${command}/` });
         pendingCommand = command;
       } else {
         writeCard({ goal: `${card.goal.slice(0, m.index)}${m[1]}` });
@@ -308,6 +354,75 @@
     }
     cmdActiveIndex = 0;
     void tick().then(() => goalInput?.focus());
+  }
+
+  $: claudeMatches = claudeCommandAutocomplete(card.goal, claudeCommandOptions);
+  $: showClaudeSuggest = isDraft && goalFocused && !claudeDismissed && claudeMatches.length > 0;
+  $: if (claudeActiveIndex >= claudeMatches.length) claudeActiveIndex = Math.max(0, claudeMatches.length - 1);
+
+  /** Replace the trailing `/token` being typed with the full `/name` token
+   *  plus a trailing space — no config write, unlike `selectRepo`/
+   *  `applyCommandValue`: a real Claude command carries no lopi-side facet,
+   *  it is passed straight through to `claude -p` as goal text (see
+   *  `claude.rs`'s `build_plan_prompt` — Composer-Grammar-2's Phase 3). */
+  function selectClaudeCommand(token: string): void {
+    const m = /(^|\s)\/(\S*)$/.exec(card.goal);
+    if (!m) return;
+    writeCard({ goal: `${card.goal.slice(0, m.index)}${m[1]}${token} ` });
+    claudeActiveIndex = 0;
+    void tick().then(() => goalInput?.focus());
+  }
+
+  // ── grammar chips (always-visible entry points into the autocomplete
+  //    above) ────────────────────────────────────────────────────────────
+  // Each chip inserts the same trigger token a user would type by hand, then
+  // hands off to the exact selection path that trigger already opens — no
+  // new parsing/selection logic, just a discoverable shortcut into it.
+  function chipSpacer(text: string): string {
+    return text.length > 0 && !/\s$/.test(text) ? ' ' : '';
+  }
+
+  async function chipAlias(): Promise<void> {
+    goalFocused = true;
+    aliasDismissed = false;
+    writeCard({ goal: `${card.goal}${chipSpacer(card.goal)}:` });
+    await tick();
+    goalInput?.focus();
+  }
+
+  async function chipRepo(): Promise<void> {
+    goalFocused = true;
+    repoDismissed = false;
+    writeCard({ goal: `${card.goal}${chipSpacer(card.goal)}@` });
+    await tick();
+    goalInput?.focus();
+  }
+
+  async function chipCommand(command: string): Promise<void> {
+    goalFocused = true;
+    cmdDismissed = false;
+    writeCard({ goal: `${card.goal}${chipSpacer(card.goal)};` });
+    await tick();
+    selectCommand(`;${command}`);
+  }
+
+  async function chipLoop(): Promise<void> {
+    goalFocused = true;
+    writeCard({ goal: `${card.goal}${chipSpacer(card.goal)}x3 ` });
+    await tick();
+    goalInput?.focus();
+  }
+
+  /** Unlike `chipCommand`, no single command to auto-select — the repo's
+   *  catalog is dynamic, so this only opens the level-1 list (mirrors
+   *  `chipAlias`/`chipRepo`'s bare-trigger shape, not `chipCommand`'s
+   *  immediate level-2 jump). */
+  async function chipClaude(): Promise<void> {
+    goalFocused = true;
+    claudeDismissed = false;
+    writeCard({ goal: `${card.goal}${chipSpacer(card.goal)}/` });
+    await tick();
+    goalInput?.focus();
   }
 
   function onGoalKeydown(e: KeyboardEvent): void {
@@ -377,6 +492,28 @@
         return;
       }
     }
+    if (showClaudeSuggest) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        claudeActiveIndex = (claudeActiveIndex + 1) % claudeMatches.length;
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        claudeActiveIndex = (claudeActiveIndex - 1 + claudeMatches.length) % claudeMatches.length;
+        return;
+      }
+      if (e.key === 'Tab' || e.key === 'Enter') {
+        e.preventDefault();
+        selectClaudeCommand(claudeMatches[claudeActiveIndex].token);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        claudeDismissed = true;
+        return;
+      }
+    }
     if (e.key === 'Enter') {
       e.preventDefault();
       commit();
@@ -386,16 +523,23 @@
   $: guardsOn = guardActive(card.guardrails);
   $: evalsOn = evalActive(card);
   $: configOn = configActive(card, paneDefaults);
+  $: goalOn = cardGoalActive(card);
+  $: goalPursues = cardPursuesGoal(card);
   $: scheduleActive = card.scheduled && !scheduleGoverned;
   // The config drawer already shows every field inline while open — the
   // hide-inactive summary line only needs to cover the gap left when it's
   // collapsed (previously nothing surfaced an override at all once closed).
   $: showConfigSummary = configOn && !cfgOpen;
   $: showSep = card.scheduled || card.maxx.enabled || guardsOn || evalsOn || showConfigSummary;
+  $: summaryCount = [card.scheduled, card.maxx.enabled, guardsOn, evalsOn, showConfigSummary].filter(Boolean).length;
   // A card's loop reads as "actively running" only once it has both a live
   // iteration (status === 'running') and an actual repeat configured — an
   // off card (single pass) never shows the running-loop chrome even mid-run.
   $: loopRunning = card.status === 'running' && !!card.iteration && card.iteration.total > 1;
+
+  // ×N loop-count color ramp (round 2, item 5) — `null` while off, since the
+  // off pill keeps its own neutral `.off` styling untouched by the ramp.
+  $: iterTier = card.maxIterations === 0 ? null : loopCountTier(card.maxIterations);
 
   // Live elapsed/token/cost readout while this card's task is actually
   // running — `AgentState` already ticks `elapsedMs` and accumulates
@@ -430,8 +574,15 @@
   function dupCard() {
     duplicateInPane(paneKey, card.id);
   }
+  // Round 2, item 1 — instant delete, no confirm modal, but a toast holds a
+  // real undo for a few seconds. `card`/`index` are captured synchronously
+  // (before the store update below), so the restore lands the exact same
+  // object back at its exact prior position, not just re-appended.
   function delCard() {
+    const snapshot = card;
+    const at = index;
     removeFromPane(paneKey, card.id);
+    showToast('Card deleted', { label: 'Undo', onClick: () => insertCardIntoPane(paneKey, at, snapshot) });
   }
 
   // ── drag to reorder (within this pane only) ─────────────────────────────────
@@ -518,24 +669,23 @@
       <TemplatesMenu {card} {paneKey} labeled />
       <ProvenanceChips alias={card.alias} tpl={card.tpl} tplKind={card.tplKind} repoLabel={cardRepoLabel} />
     </div>
-    <!-- Goal on its own full-width line, a `<textarea>` (not `<input>`) with
-         `use:autoGrow` so a long prompt wraps and stays fully visible
-         instead of scrolling off sideways in a single line. Still honors
-         `:alias @repo ×N` on commit. -->
+    <!-- Goal on its own full-width line — round 2, item 2: a `ChipInput`
+         (contenteditable, atomic resolved-token chips), not a plain
+         `<textarea>`, so a resolved `:alias`/`@repo`/`;model/opus`/`×N`
+         renders inline in place rather than in a separate row. Still honors
+         `:alias @repo ×N` on commit either way — nothing about the
+         underlying `card.goal` string changed. -->
     <div class="goalwrap">
-      <textarea
-        class="goalinput"
-        bind:this={goalInput}
+      <ChipInput
+        bind:rootEl={goalInput}
         value={card.goal}
-        on:input={onGoalInput}
-        on:keydown={onGoalKeydown}
-        on:focus={() => (goalFocused = true)}
-        on:blur={() => (goalFocused = false)}
-        use:autoGrow
-        rows="1"
-        placeholder="describe the prompt or goal...  (i.e. :alias @org/repo /model/opus xN)"
-        spellcheck="false"
-      ></textarea>
+        segments={goalSegments}
+        onInput={onGoalInput}
+        onKeydown={onGoalKeydown}
+        onFocus={() => (goalFocused = true)}
+        onBlur={() => (goalFocused = false)}
+        placeholder="describe the prompt or goal..."
+      />
       {#if showAliasSuggest}
         <AutocompleteSuggest
           anchor={goalInput}
@@ -557,6 +707,23 @@
           activeIndex={cmdActiveIndex}
           onSelect={selectCommand}
         />
+      {:else if showClaudeSuggest}
+        <AutocompleteSuggest
+          anchor={goalInput}
+          items={claudeMatches.map((m) => ({ value: m.token, label: m.name, hint: m.hint }))}
+          activeIndex={claudeActiveIndex}
+          onSelect={selectClaudeCommand}
+        />
+      {/if}
+    </div>
+    <div class="grammarchips">
+      <button type="button" class="gchip alias" on:click={chipAlias}>:alias</button>
+      <button type="button" class="gchip repo" on:click={chipRepo}>@repo</button>
+      <button type="button" class="gchip model" on:click={() => chipCommand('model')}>;model</button>
+      <button type="button" class="gchip effort" on:click={() => chipCommand('effort')}>;effort</button>
+      <button type="button" class="gchip loop" on:click={chipLoop}>×N</button>
+      {#if claudeCommandOptions.length > 0}
+        <button type="button" class="gchip claude" on:click={chipClaude}>/cmd</button>
       {/if}
     </div>
   {:else}
@@ -578,6 +745,10 @@
     </div>
   {/if}
 
+  {#if card.status === 'blocked' && card.blockReason}
+    <div class="blockreason">{@html ICONS.x}{card.blockReason}</div>
+  {/if}
+
   {#if card.status === 'running' && card.iteration}
     <div class="iterbar">
       {#each Array(card.iteration.total) as _, i}
@@ -588,41 +759,51 @@
 
   {#if showSep}
     <hr class="sep" />
-    {#if card.scheduled}
-      <div class="sumln sched" class:governed={scheduleGoverned}>
-        <span class="rl">{@html ICONS.cron}schedule</span>
-        <span class="txt">
-          {#if scheduleGoverned}
-            governed by stack — won't fire on its own
-          {:else}
-            <b>{scheduleSummary(card)}</b>
-          {/if}
-        </span>
-      </div>
-    {/if}
-    {#if card.maxx.enabled}
-      <div class="sumln max">
-        <span class="rl">{@html ICONS.bolt}MAXX</span>
-        <span class="txt">on{#if maxxSummary(card)} · <b>{maxxSummary(card)}</b>{/if}</span>
-      </div>
-    {/if}
-    {#if guardsOn}
-      <div class="sumln guard">
-        <span class="rl">{@html ICONS.shield}guards</span>
-        <span class="txt">{guardSummary(card)}</span>
-      </div>
-    {/if}
-    {#if evalsOn}
-      <div class="sumln eval">
-        <span class="rl">{@html ICONS.checkbox}evals</span>
-        <span class="txt">{evalsSummary(card)}</span>
-      </div>
-    {/if}
-    {#if showConfigSummary}
-      <div class="sumln cfg">
-        <span class="rl">{@html ICONS.sliders}config</span>
-        <span class="txt">{configSummary(card, paneDefaults)}</span>
-      </div>
+    <button
+      type="button"
+      class="sumchip"
+      on:click={() => (summaryExpanded = !summaryExpanded)}
+      aria-expanded={summaryExpanded}
+    >
+      {summaryCount} configured {@html summaryExpanded ? ICONS.chevup : ICONS.chevdown}
+    </button>
+    {#if summaryExpanded}
+      {#if card.scheduled}
+        <div class="sumln sched" class:governed={scheduleGoverned}>
+          <span class="rl">{@html ICONS.cron}schedule</span>
+          <span class="txt">
+            {#if scheduleGoverned}
+              governed by stack — won't fire on its own
+            {:else}
+              <b>{scheduleSummary(card)}</b>
+            {/if}
+          </span>
+        </div>
+      {/if}
+      {#if card.maxx.enabled}
+        <div class="sumln max">
+          <span class="rl">{@html ICONS.bolt}MAXX</span>
+          <span class="txt">on{#if maxxSummary(card)} · <b>{maxxSummary(card)}</b>{/if}</span>
+        </div>
+      {/if}
+      {#if guardsOn}
+        <div class="sumln guard">
+          <span class="rl">{@html ICONS.shield}guards</span>
+          <span class="txt">{guardSummary(card)}</span>
+        </div>
+      {/if}
+      {#if evalsOn}
+        <div class="sumln eval">
+          <span class="rl">{@html ICONS.checkbox}evals</span>
+          <span class="txt">{evalsSummary(card)}</span>
+        </div>
+      {/if}
+      {#if showConfigSummary}
+        <div class="sumln cfg">
+          <span class="rl">{@html ICONS.sliders}config</span>
+          <span class="txt">{configSummary(card, paneDefaults)}</span>
+        </div>
+      {/if}
     {/if}
   {/if}
 
@@ -631,6 +812,8 @@
       class="iterpill"
       class:off={card.maxIterations === 0}
       class:running={loopRunning}
+      class:tier-yellow={iterTier === 'yellow'}
+      class:tier-red={iterTier === 'red'}
       title={loopRunning
         ? `iteration ${card.iteration?.current}/${card.iteration?.total}`
         : card.maxIterations === 0
@@ -684,6 +867,17 @@
       title="evals"
     >
       {@html ICONS.checkbox}<span class="cnt">{card.evals.length}</span>
+    </button>
+    <button
+      class="ib goal"
+      class:act={goalOn}
+      type="button"
+      bind:this={goalBtn}
+      on:click={() => togglePopover(goalId)}
+      aria-pressed={goalOn}
+      title="pursue this loop's own acceptance goal"
+    >
+      {@html ICONS.gauge}
     </button>
     <button
       class="ib max"
@@ -777,15 +971,26 @@
 <Popover id={evalId} anchor={evalBtn ?? null} kind="eval">
   <EvalsPopover evals={card.evals} onChange={(evals) => writeCard({ evals })} />
 </Popover>
+<Popover id={goalId} anchor={goalBtn ?? null} kind="goal">
+  <GoalPopover
+    scope="card"
+    pursue={card.goalPursuit.pursue}
+    pursues={goalPursues}
+    onTogglePursue={() => writeCard({ goalPursuit: { ...card.goalPursuit, pursue: !card.goalPursuit.pursue } })}
+  />
+</Popover>
 
 <style>
   .pc {
     position: relative;
     background: var(--konjo-card, #0e1214);
-    border: 1px solid rgba(255, 255, 255, 0.11);
+    border: 1px solid rgba(255, 255, 255, 0.14);
     border-radius: 9px;
     padding: 13px 14px;
     font-family: var(--font-mono, 'JetBrains Mono', monospace);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.08),
+      0 1px 2px rgba(0, 0, 0, 0.4);
     transition:
       box-shadow 0.12s,
       border-color 0.12s;
@@ -799,6 +1004,15 @@
   }
   .pc.done {
     border-color: color-mix(in srgb, var(--orb) 35%, transparent);
+  }
+  /* Blocked/error (round 2, item 3) — rose, static (no edgeflash; a blocked
+     run is terminal, not actively in motion). Fixed rose rather than
+     `--orb`-derived like `.pc.done`/`.queued`/`.running`: `card.status` is
+     the pane's own durable state, while `--orb` is a live lookup keyed by
+     `taskId` into the `agents` store — one that goes stale/empty on reload
+     long before the card itself stops reading `'blocked'`. */
+  .pc.blocked {
+    border-color: rgba(255, 0, 102, 0.45);
   }
   /* Draft card (Creation-Flow-1): dashed until it carries content, then a
      teal "hot" border signalling it's ready to commit. */
@@ -825,31 +1039,92 @@
     position: relative;
     margin-top: 10px;
   }
-  .goalinput {
-    display: block;
-    width: 100%;
-    box-sizing: border-box;
-    resize: none;
-    overflow: hidden;
+  /* `ChipInput`'s root is rendered by a child component, so it never carries
+     this component's own scoping hash — `:global()` scoped through
+     `.goalwrap` (which DOES belong to this template) is how a parent styles
+     into a child's internal DOM in Svelte, and keeps this from leaking to
+     every other `ChipInput` instance on the page (e.g. the stack dock's
+     cmdbar, which wants its own violet-focus/smaller-font treatment). */
+  :global(.goalwrap .chipinput) {
     background: rgba(255, 255, 255, 0.02);
     border: 1px solid rgba(255, 255, 255, 0.11);
     border-radius: 7px;
     padding: 9px 11px;
     color: var(--konjo-paper, #f5f5f5);
-    font-family: var(--font-mono, 'JetBrains Mono', monospace);
     font-size: 14px;
-    line-height: 1.5;
-    outline: none;
     transition:
       border-color 0.12s,
       background 0.12s;
   }
-  .goalinput::placeholder {
-    color: rgba(245, 245, 245, 0.28);
-  }
-  .goalinput:focus {
+  :global(.goalwrap .chipinput:focus) {
     border-color: rgba(0, 255, 212, 0.4);
     background: rgba(0, 255, 212, 0.03);
+  }
+  .grammarchips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .gchip {
+    height: 22px;
+    display: inline-flex;
+    align-items: center;
+    padding: 0 8px;
+    border-radius: 11px;
+    background: transparent;
+    font-family: var(--font-mono, 'JetBrains Mono', monospace);
+    font-size: 9.5px;
+    cursor: pointer;
+    transition: 0.12s;
+  }
+  .gchip.alias {
+    border: 1px solid rgba(0, 255, 212, 0.4);
+    color: var(--stack-teal, #00ffd4);
+  }
+  .gchip.alias:hover {
+    border-color: rgba(0, 255, 212, 0.7);
+    background: rgba(0, 255, 212, 0.08);
+  }
+  .gchip.repo {
+    border: 1px solid rgba(0, 212, 255, 0.4);
+    color: var(--konjo-ice, #00d4ff);
+  }
+  .gchip.repo:hover {
+    border-color: rgba(0, 212, 255, 0.7);
+    background: rgba(0, 212, 255, 0.08);
+  }
+  .gchip.model {
+    border: 1px solid rgba(183, 155, 255, 0.4);
+    color: var(--stack-violet, #b79bff);
+  }
+  .gchip.model:hover {
+    border-color: rgba(183, 155, 255, 0.7);
+    background: rgba(183, 155, 255, 0.08);
+  }
+  .gchip.effort {
+    border: 1px solid rgba(255, 149, 0, 0.4);
+    color: var(--konjo-flame, #ff9500);
+  }
+  .gchip.effort:hover {
+    border-color: rgba(255, 149, 0, 0.7);
+    background: rgba(255, 149, 0, 0.08);
+  }
+  .gchip.loop {
+    border: 1px solid rgba(255, 204, 0, 0.4);
+    color: var(--konjo-sun, #ffcc00);
+  }
+  .gchip.loop:hover {
+    border-color: rgba(255, 204, 0, 0.7);
+    background: rgba(255, 204, 0, 0.08);
+  }
+  .gchip.claude {
+    border: 1px solid rgba(255, 0, 102, 0.4);
+    color: var(--konjo-rose, #ff0066);
+  }
+  .gchip.claude:hover {
+    border-color: rgba(255, 0, 102, 0.7);
+    background: rgba(255, 0, 102, 0.08);
   }
   .ib.add {
     color: var(--konjo-jade, #00ff9d);
@@ -940,6 +1215,31 @@
     color: var(--konjo-jade, #00ff9d);
     border-color: rgba(0, 255, 157, 0.45);
   }
+  .runtag.blocked {
+    color: var(--konjo-rose, #ff0066);
+    border-color: rgba(255, 0, 102, 0.5);
+  }
+  /* Blocked-run inline reason (round 2, item 3) — only rendered when the
+     card actually carries a failure message, immediately under the goal
+     text. */
+  .blockreason {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 9px;
+    padding: 8px 10px;
+    border-radius: 7px;
+    background: rgba(255, 0, 102, 0.08);
+    color: #ffaacb;
+    font-size: 10px;
+    line-height: 1.4;
+  }
+  .blockreason :global(svg) {
+    width: 12px;
+    height: 12px;
+    flex: 0 0 auto;
+    color: var(--konjo-rose, #ff0066);
+  }
   .spec {
     font-size: 14px;
     line-height: 1.5;
@@ -1023,6 +1323,30 @@
     border: none;
     margin-top: 11px;
   }
+  .sumchip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 24px;
+    margin-top: 9px;
+    padding: 0 10px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    background: rgba(255, 255, 255, 0.04);
+    color: rgba(245, 245, 245, 0.7);
+    font-family: var(--font-mono, 'JetBrains Mono', monospace);
+    font-size: 10px;
+    cursor: pointer;
+    transition: 0.12s;
+  }
+  .sumchip:hover {
+    border-color: rgba(255, 255, 255, 0.32);
+    background: rgba(255, 255, 255, 0.08);
+  }
+  .sumchip :global(svg) {
+    width: 11px;
+    height: 11px;
+  }
   .sumln {
     display: flex;
     align-items: center;
@@ -1046,19 +1370,19 @@
     height: 11px;
   }
   .sumln.sched .rl {
-    color: var(--konjo-ice);
+    color: rgba(245, 245, 245, 0.6);
   }
   .sumln.max .rl {
-    color: var(--konjo-flame);
+    color: rgba(245, 245, 245, 0.6);
   }
   .sumln.guard .rl {
-    color: var(--konjo-sun);
+    color: rgba(245, 245, 245, 0.6);
   }
   .sumln.eval .rl {
-    color: var(--konjo-jade);
+    color: rgba(245, 245, 245, 0.6);
   }
   .sumln.cfg .rl {
-    color: var(--stack-violet, #b79bff);
+    color: rgba(245, 245, 245, 0.6);
   }
   .sumln .txt {
     color: rgba(245, 245, 245, 0.46);
@@ -1113,33 +1437,38 @@
     font-weight: 700;
   }
   .ib.sched.act {
-    color: var(--konjo-ice);
-    border-color: rgba(0, 212, 255, 0.5);
-    background: rgba(0, 212, 255, 0.08);
+    color: #f5f5f5;
+    border-color: rgba(255, 255, 255, 0.5);
+    background: rgba(255, 255, 255, 0.1);
   }
   .ib.max.act {
-    color: var(--konjo-flame);
-    border-color: rgba(255, 149, 0, 0.5);
-    background: rgba(255, 149, 0, 0.08);
+    color: #f5f5f5;
+    border-color: rgba(255, 255, 255, 0.5);
+    background: rgba(255, 255, 255, 0.1);
   }
   .ib.danger:hover {
     color: var(--konjo-rose, #ff0066);
     border-color: rgba(255, 0, 102, 0.4);
   }
   .ib.guard.act {
-    color: var(--konjo-sun);
-    border-color: rgba(255, 204, 0, 0.5);
-    background: rgba(255, 204, 0, 0.08);
+    color: #f5f5f5;
+    border-color: rgba(255, 255, 255, 0.5);
+    background: rgba(255, 255, 255, 0.1);
   }
   .ib.eval.act {
-    color: var(--konjo-jade);
-    border-color: rgba(0, 255, 157, 0.5);
-    background: rgba(0, 255, 157, 0.08);
+    color: #f5f5f5;
+    border-color: rgba(255, 255, 255, 0.5);
+    background: rgba(255, 255, 255, 0.1);
+  }
+  .ib.goal.act {
+    color: #f5f5f5;
+    border-color: rgba(255, 255, 255, 0.5);
+    background: rgba(255, 255, 255, 0.1);
   }
   .ib.config.act {
-    color: var(--stack-violet, #b79bff);
-    border-color: rgba(183, 155, 255, 0.5);
-    background: rgba(183, 155, 255, 0.08);
+    color: #f5f5f5;
+    border-color: rgba(255, 255, 255, 0.5);
+    background: rgba(255, 255, 255, 0.1);
   }
   .ib.drag {
     cursor: grab;
@@ -1218,6 +1547,32 @@
   }
   .iterpill.off .sb:hover {
     background: rgba(245, 245, 245, 0.08);
+  }
+  /* ×N color ramp (round 2, item 5) — untagged pill stays the pre-ramp
+     orange baseline; these two classes are the only overrides needed. */
+  .iterpill.tier-yellow {
+    border-color: rgba(255, 204, 0, 0.5);
+    background: rgba(255, 204, 0, 0.08);
+    color: #ffcc00;
+  }
+  .iterpill.tier-yellow .sb {
+    border-left-color: rgba(255, 204, 0, 0.35);
+    color: #ffcc00;
+  }
+  .iterpill.tier-yellow .sb:hover {
+    background: rgba(255, 204, 0, 0.2);
+  }
+  .iterpill.tier-red {
+    border-color: rgba(255, 0, 102, 0.5);
+    background: rgba(255, 0, 102, 0.1);
+    color: #ff0066;
+  }
+  .iterpill.tier-red .sb {
+    border-left-color: rgba(255, 0, 102, 0.35);
+    color: #ff0066;
+  }
+  .iterpill.tier-red .sb:hover {
+    background: rgba(255, 0, 102, 0.2);
   }
   /* Running-loop chrome (card.status === 'running' with a real repeat
      configured): a slow glow on the pill itself, distinct from the card's own

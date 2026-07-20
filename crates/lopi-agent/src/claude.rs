@@ -1,7 +1,7 @@
 // TOON integration sites (from token analysis):
-//   plan()      — constraints, allowed_dirs, forbidden_dirs arrays + pattern memory table
-//   implement() — allowed_dirs, forbidden_dirs arrays
-//   fix()       — allowed_dirs only (error text is free-form prose; TOON skipped)
+//   plan_streamed()      — constraints, allowed_dirs, forbidden_dirs arrays + pattern memory table
+//   implement_streamed() — allowed_dirs, forbidden_dirs arrays
+//   fix()                — allowed_dirs only (error text is free-form prose; TOON skipped)
 //
 // Token savings: ~17/prompt for dir/constraint arrays; ~158/attempt for pattern table.
 
@@ -45,6 +45,13 @@ pub struct ClaudeCode {
     /// only after validation against the CLI's accepted levels (see
     /// `with_effort`). None = let the CLI pick its default.
     pub(crate) effort: Option<String>,
+    /// Permission mode (`--permission-mode`) for the worker session. Stored
+    /// only after validation against `PermissionMode`'s four headless-safe
+    /// values (see `with_permission_mode`). None = `apply_cli_caps` falls
+    /// back to `PermissionMode::default()` (`bypassPermissions`), reproducing
+    /// the pre-existing unconditional `--dangerously-skip-permissions`
+    /// behavior exactly.
+    pub(crate) permission_mode: Option<String>,
     /// Phase 5b — tabular pattern pairs (keywords, constraints) for TOON encoding.
     pub(crate) patterns: Vec<(String, String)>,
     /// Phase 5b — lessons learned from past patterns or post-mortems (category, content).
@@ -73,6 +80,7 @@ impl ClaudeCode {
             extra_constraints: vec![],
             model: None,
             effort: None,
+            permission_mode: None,
             patterns: vec![],
             lessons: vec![],
             max_turns: None,
@@ -80,20 +88,6 @@ impl ClaudeCode {
             allowed_tools: vec![],
             disallowed_tools: vec![],
         }
-    }
-
-    /// Plan the task. Uses TOON for constraints/dirs/pattern memory context.
-    ///
-    /// Site 1 (struct arrays, §9.1) — ~17 tokens/prompt saved.
-    /// Site 2 (pattern memory table, §9.3 tabular) — ~158 tokens/attempt saved (grows with memory).
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the claude CLI process fails or times out.
-    pub async fn plan(&self, task: &Task, last_error: Option<&str>) -> Result<String> {
-        let prompt = self.build_plan_prompt(task, last_error);
-        let out = self.run(&prompt).await?;
-        Ok(out.text().to_string())
     }
 
     /// See [`claude_support::build_plan_prompt`](crate::claude_support::build_plan_prompt).
@@ -133,20 +127,22 @@ impl ClaudeCode {
             .arg("--output-format")
             .arg("stream-json")
             .arg("--verbose")
-            .arg("--include-partial-messages")
-            // Without this, a tool call needing approval (e.g. a multi-part
-            // Bash command) stalls the session waiting on a prompt nothing
-            // in this headless pipeline can answer, burning turns until
-            // `--max-turns` cuts it off (`error_max_turns`) with the actual
-            // work half-done — see run_loop.rs's Planning/Implementing
-            // phases. Deliberately unconditional for now, not a `with_*`
-            // builder toggle: the user wants every run unattended today and
-            // can gate it back per-task later.
-            .arg("--dangerously-skip-permissions");
+            .arg("--include-partial-messages");
+        // `apply_cli_caps` always emits `--permission-mode` (falling back to
+        // `PermissionMode::default()`, `bypassPermissions`, when
+        // `self.permission_mode` is unset) — without a headless-safe mode, a
+        // tool call needing approval (e.g. a multi-part Bash command) stalls
+        // the session waiting on a prompt nothing in this pipeline can
+        // answer, burning turns until `--max-turns` cuts it off
+        // (`error_max_turns`) with the actual work half-done — see
+        // run_loop.rs's Planning/Implementing phases. The default preserves
+        // that unconditional bypass exactly; a task may now opt into a
+        // tighter mode via `Task::permission_mode`.
         apply_cli_caps(
             &mut cmd,
             self.model.as_deref(),
             self.effort.as_deref(),
+            self.permission_mode.as_deref(),
             self.max_turns,
             self.max_budget_usd,
             &self.allowed_tools,
@@ -247,22 +243,6 @@ impl ClaudeCode {
         self.run_streamed(&prompt, on_event).await
     }
 
-    /// Implement the plan. Uses TOON for dir arrays in the constraint block.
-    ///
-    /// Site 1 (struct arrays) — ~17 tokens/prompt saved.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the claude CLI process fails or times out.
-    pub async fn implement(&self, task: &Task, plan: &str) -> Result<String> {
-        let prompt = crate::claude_support::build_implement_prompt(task, plan);
-        let out = self.run(&prompt).await?;
-        if !out.succeeded() {
-            anyhow::bail!("claude implement failed: {}", out.text());
-        }
-        Ok(out.text().to_string())
-    }
-
     /// Fix the failing tests. Error text is free-form prose — TOON not applied here (no gain).
     /// Only the `allowed_dirs` scope is encoded as TOON.
     ///
@@ -295,8 +275,9 @@ impl ClaudeCode {
     /// numbered plan steps (lines matching `^\d+\.`) and a join handle that resolves to
     /// the full plan text when the claude process exits.
     ///
-    /// Forwards `self.model`/`max_budget_usd`/`max_turns`/`allowed_tools`/
-    /// `disallowed_tools` to [`claude_stream::plan_streaming`](crate::claude_stream::plan_streaming) —
+    /// Forwards `self.model`/`effort`/`permission_mode`/`max_budget_usd`/
+    /// `max_turns`/`allowed_tools`/`disallowed_tools` to
+    /// [`claude_stream::plan_streaming`](crate::claude_stream::plan_streaming) —
     /// the same caps [`run`](Self::run) and [`run_streamed`](Self::run_streamed) apply,
     /// so a `--speculative` session can never spawn `claude -p` uncapped just
     /// because it took this third spawn path instead of the other two.
@@ -322,6 +303,7 @@ impl ClaudeCode {
             all_constraints,
             self.model.as_deref(),
             self.effort.as_deref(),
+            self.permission_mode.as_deref(),
             self.max_budget_usd,
             self.max_turns,
             &self.allowed_tools,
@@ -353,20 +335,21 @@ impl ClaudeCode {
 
     async fn run(&self, prompt: &str) -> Result<ClaudeOutput> {
         let mut cmd = Command::new(&self.cli_path);
-        cmd.arg("-p")
-            .arg(prompt)
-            .arg("--dangerously-skip-permissions");
+        cmd.arg("-p").arg(prompt);
         if self.json_output {
             cmd.arg("--output-format").arg("json");
         }
         // Same caps as `run_streamed` — this one-shot path backs `fix()` and
         // `implement_step()` (speculative mode), both real spend that was
         // previously uncapped here regardless of what `run_streamed`'s caller
-        // configured.
+        // configured. `apply_cli_caps` emits `--permission-mode`, falling
+        // back to `PermissionMode::default()` (`bypassPermissions`) when
+        // unset — the same unconditional bypass this site always used.
         apply_cli_caps(
             &mut cmd,
             self.model.as_deref(),
             self.effort.as_deref(),
+            self.permission_mode.as_deref(),
             self.max_turns,
             self.max_budget_usd,
             &self.allowed_tools,

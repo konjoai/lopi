@@ -306,7 +306,11 @@ impl AgentRunner {
             .finalize(branch, git, &fixed_score, false, attempt + 1)
             .await
         {
-            self.status(status.clone(), attempt + 1);
+            // Same terminal bookkeeping as `finalize_on_pass` — pins the
+            // conclusion message and closes the OTel completion span. This
+            // path used to call the bare `self.status(...)` instead, so a
+            // task succeeding via in-place fix never got either.
+            let status = self.conclude_finalized(status, &fixed_score, attempt + 1);
             return Ok(FixOutcome::Finalized(status));
         }
         Ok(FixOutcome::Continue)

@@ -109,6 +109,14 @@ impl AgentRunner {
                 // and drops anything else, so a malformed `Task.effort`
                 // can't wedge the spawn. Empty/None leaves the CLI default.
                 .with_effort(self.task.effort.clone().unwrap_or_default())
+                // Fold the card's `PermissionMode` knob into the worker
+                // session. `with_permission_mode` validates against the
+                // CLI's four headless-safe values and drops anything else;
+                // `Task::permission_mode` defaults to `BypassPermissions`, so
+                // an unconfigured task reproduces the pre-existing
+                // unconditional `--dangerously-skip-permissions` behavior
+                // exactly.
+                .with_permission_mode(self.task.permission_mode.as_str())
                 // `ClaudeCode::new`'s own default (300s) was sized for a
                 // single-shot plan/implement call, not a session that fans
                 // out into several parallel research sub-agents (each doing
@@ -181,6 +189,7 @@ impl AgentRunner {
                 attempt: attempt + 1,
                 branch: branch.clone(),
             });
+            self.persist_branch(&branch);
             // `●` marks this as synthetic status, not Claude output — the
             // frontend's `reduceLogLine` (web/src/lib/stores/transcript.ts)
             // treats any *unprefixed* log line as real assistant text, so an

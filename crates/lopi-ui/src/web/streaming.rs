@@ -123,6 +123,7 @@ mod tests {
             created_at: "2026-07-16T00:00:00Z".to_string(),
             completed_at: None,
             client_ref: None,
+            branch: None,
         }
     }
 

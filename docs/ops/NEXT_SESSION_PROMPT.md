@@ -6,6 +6,154 @@ Browser-Pane-1 confirmed the Browser pane cleanly shows the real, already-runnin
 
 ---
 
+# Next Session — after Permission-Modes-1
+
+`Task.permission_mode` / `CreateTaskRequest.permission_mode` now thread end
+to end: `lopi-core::PermissionMode` (four headless-safe values, CLI-literal
+serde tags, default `bypassPermissions`) → `apply_cli_caps` (now emits
+`--permission-mode` unconditionally, folded in from being per-site) → all
+three `claude -p` spawn sites → the web dropdown in both
+`StackConfigPopover.svelte` and `ConfigDrawer.svelte`, fully wired through
+`cardToTaskPayload`/`cardToTaskPayloadForRunOnce`/`paneSubmitPayload` (unlike
+`autonomy`, which stays client-only). See `LEDGER.md`'s `Permission-Modes-1`
+entry for the kill-test evidence and the one-way-door decisions (the
+four-mode subset, the CLI-literal enum strings, the `BypassPermissions`
+default, and why the flag folded into `apply_cli_caps` instead of staying
+per-site).
+
+**Two concrete items carried forward, both explicitly out of scope for this
+sprint:**
+
+1. **Wire `require_plan_approval` into the frontend.** Real, already
+   server-side (`Task.require_plan_approval` /
+   `CreateTaskRequest.require_plan_approval` / `plan_gate.rs`'s
+   channel-based human-approval gate on the first attempt's plan), and
+   architecturally the closest thing lopi has to Claude Code's own `plan`
+   mode — but it needs its own approve/reject UI for
+   `AwaitingPlanApproval`/`PlanProposed` before it's safe to expose as a
+   toggle. Flipping it on today would let an operator silently strand a
+   task for an hour (the gate's auto-reject-on-timeout) with no UI telling
+   them a plan is even awaiting approval. Build the approve/reject surface
+   first, then wire the toggle.
+2. **`.lopi/loop.toml` repo-level `default_permission_mode`.** `LoopConfig`
+   already carries `permission_allow`/`permission_deny` (used by this
+   sprint's KT2, unmodified); a repo-level default permission mode is a
+   reasonable follow-up but touches the TOML schema and the
+   `/api/loop-engineering` read surface, which has no write path today
+   either. Deliberately deferred — this sprint was "start with web," not
+   repo config.
+
+**Also flagged, not carried forward as a sprint (informational only):**
+KT4 (the account lopi's production deployment authenticates as — `auto`
+mode's model/provider/plan/Team-Owner-toggle eligibility) and KT5 (the
+deployed container's actual runtime user) were both left unverified this
+sprint — the sandbox that ran it had no visibility into the production
+account's credentials and no `fly`/attended access to the live container.
+A session with either kind of access should close these two rather than
+continuing to defer them; see `LEDGER.md`'s entry for exactly what's
+missing from each.
+
+---
+
+# Next Session — after Composer-Grammar-2
+
+Real Claude Code `/name` command discovery + composer hookup landed for
+Phases 1-2 (backend discovery + frontend autocomplete/chip wiring), fully
+tested and merged. **Phase 3 — the actual `claude -p` pass-through — did
+not ship.** It is gated on a live-proof kill-test this session's sandboxed
+environment cannot run: a nested `claude` CLI invocation is blocked at the
+permission-classifier level (confirmed by attempting it with a real fixture
+repo, not assumed blocked).
+
+**The one concrete item carried forward — run kill-test 1 for real:**
+
+1. **Find an environment where a `claude` CLI call isn't self-referentially
+   blocked** (the user's own machine, or wherever this repo's prior
+   "M3 + real auth" sessions ran from — `LEDGER.md`'s MAXX/quota entries and
+   the iOS-Research-1 entries used the same phrase for the same class of
+   problem, though those were missing-hardware/missing-toolchain, not
+   permission-classifier, blockers).
+2. **The fixture-repo protocol is already built out** — don't re-derive it,
+   re-run it: create `.claude/commands/foo.md` with a body that prints a
+   literal marker string (e.g. `KILLTEST_FOO_EXPANDED`) and nothing else, no
+   tool use. Run `claude -p "/foo" --output-format stream-json --verbose
+   --dangerously-skip-permissions` two ways: (a) the command as the bare
+   entire prompt, (b) the command embedded mid-string inside prose shaped
+   like `crates/lopi-agent/src/claude_support.rs::build_plan_prompt`'s real
+   TOON-wrapped output (goal + constraints + allowed/forbidden dirs +
+   pattern-memory table preamble, `/foo` somewhere in the middle, more prose
+   after). Check the `stream-json` output's system-init event for the
+   command name appearing in `slash_commands`, and confirm the fixture's
+   *actual body content* executes (the literal marker string appears in the
+   response) — not just the literal `/foo` text echoed back uninterpreted.
+3. **Branch on the result, per the original sprint brief's Phase 3:**
+   - **Passed both ways** (command expands even embedded mid-prompt): no
+     code change needed. A `/name` token a user picks from the composer
+     autocomplete already flows into `build_plan_prompt`'s wrapped prompt
+     unmodified, since nothing strips or escapes it — Phase 3 is "done" by
+     inaction, just needs the CHANGELOG/LEDGER entries confirming it.
+   - **Failed embedded, passed bare only**: add the bypass Phase 3
+     originally specified — detect a goal text whose leading token matches
+     a discovered `/name` (reuse
+     `lopi_skill::discover_claude_commands(repo)` against the task's own
+     repo) and route around `build_plan_prompt`'s wrapping entirely via a
+     new `ClaudeCode::run_raw(prompt)` that sends the goal text bare to
+     `-p`. Small change — the live proof was always the hard part, not the
+     code.
+   - Either way, once resolved: verify end-to-end through lopi's own real
+     task-submission path (not `claude` invoked in isolation) — a card whose
+     goal is literally `/foo` (or `/foo` embedded in a longer prompt,
+     depending on which branch fired) should produce a task whose plan/
+     implement output shows the fixture command's real body content, not a
+     literal `/foo` string surviving untouched in the model's response.
+
+**Also worth revisiting once kill-test 1 resolves:** whether the composer
+should visually distinguish "this `/name` token will definitely work"
+(passed embedded) from "this only works as the very first thing typed"
+(failed embedded) — today the autocomplete offers every discovered command
+identically regardless of position in the goal text, which would be
+actively misleading if kill-test 1 comes back position-sensitive.
+
+---
+
+# Next Session — after Composer-Grammar-1 (web)
+
+`/` is now fully vacated on web: every lopi-specific composer command
+(`model`/`effort`/`branch`/`autonomy`/`eval`/`guard`/`schedule`/`maxx`) moved
+to a new `;` catch-all prefix, `/loop/N` was killed outright (`xN` is the
+sole loop-count grammar), and `ChipInput.svelte`'s resolved-token chips now
+reuse `ConfigDrawer.svelte`'s real per-field colors (`chip-model` cyan,
+`chip-branch` green, `chip-effort` reconciled to the real ember, `chip-command`
+renamed to `chip-autonomy`). `:alias`/`@repo`/`×N` untouched. See `LEDGER.md`'s
+`Composer-Grammar-1 (web)` entry for the full reasoning, including why this
+was a deliberate hard cutover with no backward-compat shim.
+
+**Two concrete items carried forward:**
+
+1. **`/` is safe to claim for real Claude Code slash commands now (the
+   sprint this one was explicitly gating).** Web's `stack.ts`/`StackCard.svelte`/
+   `StackControlDock.svelte` no longer read or write anything under a `/`
+   prefix — that character is fully free for a real Claude Code `/`-command
+   hookup in the same goal/cmdbar fields, with no autocomplete collision
+   against lopi's own grammar (which now lives entirely under `;`).
+2. **macOS still speaks the old `/`-prefixed grammar — genuine, unclosed
+   platform divergence.** `StackCardView.swift`/`StackControlDockView.swift`
+   (and whatever `LopiStacksKit` Swift file mirrors `stack.ts`'s
+   `CARD_COMMANDS`/`commandAutocomplete`/`detectPendingCommand`) were not
+   touched this session — the sprint brief scoped every referenced file to
+   web, and this environment has no Xcode to compile-verify a Swift change
+   against (same standing constraint prior sessions hit). The divergence is
+   cosmetic, not functional — each platform's composer only ever parses its
+   own locally-typed text into the same `card.config` wire fields, so
+   behavior is identical, only the shortcut *text* a user types differs by
+   platform. Port the identical `/` → `;` rename (plus the `/loop/N` removal)
+   to the Swift side once a session with real Xcode access is available;
+   `stack.test.ts`'s new kill-test-1 table (`;model/sonnet`, `;effort/high`,
+   `;branch/main`, `;autonomy/L2`, `;eval/kcqf`) is the literal acceptance
+   bar to port over as Swift assertions.
+
+---
+
 # Next Session — after Stack-Chain-1 / Popover-Fix-1 / Parity-Audit-1
 
 Server-side whole-stack cron scheduling shipped end-to-end (schema →

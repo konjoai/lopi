@@ -203,6 +203,22 @@ fn check_hard_stop_none_under_the_cap() {
 }
 
 #[test]
+fn check_hard_stop_fires_at_the_95_percent_margin_not_only_at_100() {
+    let acc = UsageAccrual::default();
+    // Sonnet: 317K output tokens * $15/MTok = $4.755 — 95.1% of a $5 cap,
+    // short of 100%. The margin exists so a burst of tokens that streams
+    // in between this check and the subprocess actually exiting can't push
+    // realized spend past the cap — pins that it fires here, not only once
+    // the estimate reaches the cap outright.
+    acc.observe(&usage(317_000, 0, 0, 0));
+    let first = acc.check_hard_stop(crate::claude::MODEL_SONNET, 5.0);
+    assert!(
+        first.is_some(),
+        "must fire once the margin (95% of cap) is crossed, before 100%"
+    );
+}
+
+#[test]
 fn check_hard_stop_fires_once_at_100_percent() {
     let acc = UsageAccrual::default();
     // Sonnet: 400K output tokens * $15/MTok = $6.00 — over a $5 cap.

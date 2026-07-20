@@ -50,14 +50,6 @@ impl ContextWindow {
         }
     }
 
-    /// Override the auto-eviction pressure threshold (default 0.75).
-    #[must_use]
-    #[allow(dead_code)]
-    pub fn with_threshold(mut self, threshold: f32) -> Self {
-        self.budget_threshold = threshold;
-        self
-    }
-
     /// Insert a turn. Estimates tokens if `msg.tokens == 0`.
     ///
     /// Auto-evicts `BudgetEvictable` turns when pressure exceeds the threshold.
@@ -71,7 +63,14 @@ impl ContextWindow {
         let msg_tokens = msg.tokens;
         let msg_id = msg.id;
 
-        if self.token_pressure() > self.budget_threshold {
+        // Include this message's own weight in the pressure check — matches
+        // push_tool_pair()'s calculation. Using token_pressure() (current
+        // state only) let a message that would itself push pressure over
+        // the threshold slip in without triggering auto-eviction first.
+        // usize→f32 precision loss is acceptable: token counts are rough budget estimates.
+        #[allow(clippy::cast_precision_loss)]
+        let pressure = (self.current_tokens + msg_tokens) as f32 / self.token_budget as f32;
+        if self.token_budget > 0 && pressure > self.budget_threshold {
             self.evict_toward_threshold();
         }
 
@@ -218,7 +217,7 @@ impl ContextWindow {
     /// Returns `Err` if the eviction logic encounters an inconsistency.
     pub fn evict_phase(&mut self, phase: Phase) -> Result<EvictionStats, ContextError> {
         let stats = eviction::evict_phase(&mut self.turns, phase, &mut self.current_tokens)?;
-        self.record(stats);
+        self.record(stats.clone());
         Ok(stats)
     }
 
@@ -228,7 +227,7 @@ impl ContextWindow {
     /// Returns `Err` if the eviction logic encounters an inconsistency.
     pub fn evict_to_budget(&mut self, target: usize) -> Result<EvictionStats, ContextError> {
         let stats = eviction::evict_to_budget(&mut self.turns, target, &mut self.current_tokens)?;
-        self.record(stats);
+        self.record(stats.clone());
         Ok(stats)
     }
 
@@ -238,7 +237,7 @@ impl ContextWindow {
     /// Returns `Err` if the turn cannot be evicted (e.g., pinned and `force` is false).
     pub fn evict_turn(&mut self, id: TurnId, force: bool) -> Result<EvictionStats, ContextError> {
         let stats = eviction::evict_turn(&mut self.turns, id, force, &mut self.current_tokens)?;
-        self.record(stats);
+        self.record(stats.clone());
         Ok(stats)
     }
 
@@ -323,8 +322,17 @@ impl ContextWindow {
             reason = ?stats.reason,
             "eviction"
         );
-        // Phase 2: persist EvictionRecord rows to lopi-memory SQLite store.
-        let _ = (stats, now_unix(), &mut self.eviction_log);
+        let evicted_at_unix = now_unix();
+        let reason = stats.reason;
+        for (turn_id, phase, tokens) in stats.evicted {
+            self.eviction_log.push(EvictionRecord {
+                turn_id,
+                phase,
+                tokens,
+                reason,
+                evicted_at_unix,
+            });
+        }
     }
 }
 

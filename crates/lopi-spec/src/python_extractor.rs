@@ -49,8 +49,12 @@ pub fn extract_python(path: impl AsRef<Path>) -> Result<Vec<SpecItem>> {
 }
 
 fn is_test_def(line: &str) -> bool {
+    // pytest's default collection only matches `test_*` (python_functions =
+    // "test_*"); a bare `def test (...)` never actually runs as a pytest
+    // test, so matching it here just produced a permanent, unfillable
+    // coverage gap.
     let stripped = line.trim_start_matches("async").trim();
-    stripped.starts_with("def test_") || stripped.starts_with("def test ")
+    stripped.starts_with("def test_")
 }
 
 fn parse_py_fn_name(line: &str) -> Option<String> {

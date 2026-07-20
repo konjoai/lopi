@@ -91,22 +91,35 @@ pub(crate) fn normalize_effort(raw: &str) -> Option<&'static str> {
 }
 
 /// Apply the caps shared by all three `claude -p` spawn sites — `--model`,
-/// `--max-turns`, `--max-budget-usd`, `--allowedTools`, `--disallowedTools`
-/// — to `cmd`. Each site still adds its own `-p <prompt>` and
-/// `--dangerously-skip-permissions` (their positions/doc comments differ
-/// enough not to share), but the optional-cap block was identical
-/// copy-paste across `ClaudeCode::run`, `ClaudeCode::run_streamed`, and
-/// `claude_stream::plan_streaming` — a fourth spawn site could easily drop
-/// one by hand-copying the block again.
+/// `--permission-mode`, `--max-turns`, `--max-budget-usd`, `--allowedTools`,
+/// `--disallowedTools` — to `cmd`. Each site still adds its own `-p <prompt>`
+/// (their positions/doc comments differ enough not to share), but the
+/// optional-cap block was identical copy-paste across `ClaudeCode::run`,
+/// `ClaudeCode::run_streamed`, and `claude_stream::plan_streaming` — a
+/// fourth spawn site could easily drop one by hand-copying the block again.
+///
+/// `--permission-mode` folded in here (Permission-Modes-1), reversing this
+/// function's own prior doc comment that kept `--dangerously-skip-permissions`
+/// per-site: unlike the caps above (each genuinely optional, `None`/empty
+/// meaning "add nothing"), permission mode is *never* absent from the spawned
+/// argv — every site must emit some value — which makes it a true shared
+/// cap, not a per-site concern. `permission_mode: None` falls back to
+/// [`lopi_core::PermissionMode::default()`] (`bypassPermissions`), so an
+/// unconfigured task reproduces the old unconditional
+/// `--dangerously-skip-permissions` behavior exactly.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn apply_cli_caps(
     cmd: &mut Command,
     model: Option<&str>,
     effort: Option<&str>,
+    permission_mode: Option<&str>,
     max_turns: Option<u32>,
     max_budget_usd: Option<f64>,
     allowed_tools: &[String],
     disallowed_tools: &[String],
 ) {
+    let mode = permission_mode.unwrap_or(lopi_core::PermissionMode::default().as_str());
+    cmd.arg("--permission-mode").arg(mode);
     if let Some(m) = model {
         cmd.arg("--model").arg(m);
         // Pin Task-tool sub-agents to the card's model too. `--model`
@@ -276,15 +289,22 @@ mod tests {
     }
 
     #[test]
-    fn apply_cli_caps_omits_flags_for_none_and_empty() {
+    fn apply_cli_caps_omits_optional_flags_for_none_and_empty() {
         let mut cmd = Command::new("true");
-        apply_cli_caps(&mut cmd, None, None, None, None, &[], &[]);
+        apply_cli_caps(&mut cmd, None, None, None, None, None, &[], &[]);
         let argv: Vec<String> = cmd
             .as_std()
             .get_args()
             .map(|a| a.to_string_lossy().into_owned())
             .collect();
-        assert!(argv.is_empty(), "argv={argv:?}");
+        // `--permission-mode` is never optional — it always falls back to
+        // `PermissionMode::default()` (`bypassPermissions`) — everything else
+        // stays a true no-op.
+        assert_eq!(
+            argv,
+            vec!["--permission-mode", "bypassPermissions"],
+            "argv={argv:?}"
+        );
         // No model ⇒ no sub-agent pin: sub-agents inherit the CLI default.
         assert!(
             !env_overrides(&cmd)
@@ -312,7 +332,7 @@ mod tests {
     #[test]
     fn apply_cli_caps_pins_subagent_model_to_the_session_model() {
         let mut cmd = Command::new("true");
-        apply_cli_caps(&mut cmd, Some("haiku"), None, None, None, &[], &[]);
+        apply_cli_caps(&mut cmd, Some("haiku"), None, None, None, None, &[], &[]);
         assert!(
             env_overrides(&cmd)
                 .iter()
@@ -329,6 +349,7 @@ mod tests {
             &mut cmd,
             Some("claude-opus-4-7"),
             Some("high"),
+            Some("dontAsk"),
             Some(5),
             Some(2.5),
             &["Bash".to_string()],
@@ -342,6 +363,8 @@ mod tests {
         assert_eq!(
             argv,
             vec![
+                "--permission-mode",
+                "dontAsk",
                 "--model",
                 "claude-opus-4-7",
                 "--effort",

@@ -286,7 +286,7 @@ impl MemoryStore {
     /// Returns `Err` if the query fails.
     pub async fn get_task(&self, id: &TaskId) -> Result<Option<TaskRow>> {
         let row = sqlx::query_as::<_, TaskRow>(
-            "SELECT id, goal, status, created_at, completed_at, client_ref FROM tasks WHERE id = ?1",
+            "SELECT id, goal, status, created_at, completed_at, client_ref, branch FROM tasks WHERE id = ?1",
         )
         .bind(id.0.to_string())
         .fetch_optional(&self.read_pool)
@@ -300,7 +300,7 @@ impl MemoryStore {
     /// Returns `Err` if the database query fails.
     pub async fn load_history(&self, limit: i64) -> Result<Vec<TaskRow>> {
         let rows = sqlx::query_as::<_, TaskRow>(
-            "SELECT id, goal, status, created_at, completed_at, client_ref FROM tasks \
+            "SELECT id, goal, status, created_at, completed_at, client_ref, branch FROM tasks \
              ORDER BY created_at DESC LIMIT ?1",
         )
         .bind(limit)
@@ -445,9 +445,13 @@ pub struct TaskRow {
     pub completed_at: Option<String>,
     /// Backend-1 — the caller-supplied [`lopi_core::Task::client_ref`], if any.
     pub client_ref: Option<String>,
+    /// MCPB-App-1 — the git branch this task's most recent attempt runs (or
+    /// ran) on, `None` until the first `TaskStarted` event fires.
+    pub branch: Option<String>,
 }
 
 mod audit;
+mod branch;
 mod checkpoints;
 mod dag;
 mod eval_outcomes;
@@ -457,7 +461,6 @@ mod lessons;
 mod loop_health;
 mod maxx;
 mod patterns;
-mod q_routing;
 mod quality;
 mod quota;
 mod run_trace;
@@ -469,7 +472,7 @@ mod verifier;
 // Re-export helpers for tests (tests.rs uses `use super::*`).
 pub use audit::{AuditInput, AuditQuery, AuditRow};
 pub use checkpoints::{CheckpointInput, CheckpointRow};
-pub use dag::DagNodeRow;
+pub use dag::{current_stage, dag_graph_json, DagNodeRow};
 pub use eval_outcomes::{EvalOutcomeRow, ScorePoint};
 pub use installations::InstallationRow;
 pub use learnings::LearningRow;
@@ -477,7 +480,6 @@ pub use lessons::LessonRow;
 pub use loop_health::{LoopAttemptRow, LoopTurnRow};
 pub use maxx::{MaxxInput, MaxxRow, MaxxRunRow};
 pub use patterns::{jaccard_similarity, keyword_fingerprint, PatternRow};
-pub use q_routing::RoutingQValueRow;
 pub use quality::{QualityRunRecord, QualityRunRow};
 pub use quota::QuotaObservationRow;
 pub use run_trace::{LoopRunRow, RunAttemptRow, RunTurnAgg};

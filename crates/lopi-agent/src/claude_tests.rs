@@ -75,3 +75,133 @@ async fn plan_streaming_wrapper_forwards_budget_and_deny_to_subprocess() {
     std::fs::remove_file(&script).ok();
     std::fs::remove_file(&capture).ok();
 }
+
+/// Permission-Modes-1 — `run` (backs `implement_step`/`fix`) must emit
+/// `--permission-mode <value>` for a configured mode, not the old
+/// unconditional `--dangerously-skip-permissions`.
+#[tokio::test]
+async fn run_forwards_configured_permission_mode_to_the_subprocess_argv() {
+    use std::os::unix::fs::PermissionsExt;
+    let script = std::env::temp_dir().join("lopi_claude_run_permmode_stub.sh");
+    let capture = std::env::temp_dir().join("lopi_claude_run_permmode_capture.txt");
+    std::fs::remove_file(&capture).ok();
+    std::fs::write(
+        &script,
+        format!(
+            "#!/bin/sh\nfor a in \"$@\"; do printf '%s\\n' \"$a\" >> {}; done\n",
+            capture.display()
+        ),
+    )
+    .unwrap();
+    let mut perms = std::fs::metadata(&script).unwrap().permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&script, perms).unwrap();
+
+    let claude = ClaudeCode::new(".")
+        .with_cli(script.to_str().unwrap())
+        .with_permission_mode("acceptEdits");
+    let task = Task::new("permission mode forwarding test");
+    claude.implement_step(&task, "do the thing").await.unwrap();
+
+    let argv = std::fs::read_to_string(&capture).unwrap();
+    assert!(
+        argv.contains("--permission-mode\nacceptEdits"),
+        "argv={argv}"
+    );
+    assert!(
+        !argv.contains("--dangerously-skip-permissions"),
+        "argv={argv}"
+    );
+
+    std::fs::remove_file(&script).ok();
+    std::fs::remove_file(&capture).ok();
+}
+
+/// `run` with no configured permission mode must still reproduce the old
+/// unconditional behavior exactly: `--permission-mode bypassPermissions`.
+#[tokio::test]
+async fn run_falls_back_to_bypass_permissions_when_unset() {
+    use std::os::unix::fs::PermissionsExt;
+    let script = std::env::temp_dir().join("lopi_claude_run_permmode_default_stub.sh");
+    let capture = std::env::temp_dir().join("lopi_claude_run_permmode_default_capture.txt");
+    std::fs::remove_file(&capture).ok();
+    std::fs::write(
+        &script,
+        format!(
+            "#!/bin/sh\nfor a in \"$@\"; do printf '%s\\n' \"$a\" >> {}; done\n",
+            capture.display()
+        ),
+    )
+    .unwrap();
+    let mut perms = std::fs::metadata(&script).unwrap().permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&script, perms).unwrap();
+
+    let claude = ClaudeCode::new(".").with_cli(script.to_str().unwrap());
+    let task = Task::new("permission mode default test");
+    claude.implement_step(&task, "do the thing").await.unwrap();
+
+    let argv = std::fs::read_to_string(&capture).unwrap();
+    assert!(
+        argv.contains("--permission-mode\nbypassPermissions"),
+        "argv={argv}"
+    );
+
+    std::fs::remove_file(&script).ok();
+    std::fs::remove_file(&capture).ok();
+}
+
+/// Permission-Modes-1 — `run_streamed` (backs `plan_streamed`/
+/// `implement_streamed`) must emit `--permission-mode <value>` too, not just
+/// the one-shot `run` path.
+#[tokio::test]
+async fn run_streamed_forwards_configured_permission_mode_to_the_subprocess_argv() {
+    use std::os::unix::fs::PermissionsExt;
+    let script = std::env::temp_dir().join("lopi_claude_streamed_permmode_stub.sh");
+    let capture = std::env::temp_dir().join("lopi_claude_streamed_permmode_capture.txt");
+    std::fs::remove_file(&capture).ok();
+    std::fs::write(
+        &script,
+        format!(
+            "#!/bin/sh\nfor a in \"$@\"; do printf '%s\\n' \"$a\" >> {}; done\n",
+            capture.display()
+        ),
+    )
+    .unwrap();
+    let mut perms = std::fs::metadata(&script).unwrap().permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&script, perms).unwrap();
+
+    let claude = ClaudeCode::new(".")
+        .with_cli(script.to_str().unwrap())
+        .with_permission_mode("dontAsk");
+    let task = Task::new("streamed permission mode forwarding test");
+    claude.plan_streamed(&task, None, |_| true).await.unwrap();
+
+    let argv = std::fs::read_to_string(&capture).unwrap();
+    assert!(argv.contains("--permission-mode\ndontAsk"), "argv={argv}");
+    assert!(
+        !argv.contains("--dangerously-skip-permissions"),
+        "argv={argv}"
+    );
+
+    std::fs::remove_file(&script).ok();
+    std::fs::remove_file(&capture).ok();
+}
+
+/// `with_permission_mode` mirrors `with_effort`'s validate-and-drop pattern:
+/// an unrecognized value must not wedge the builder, and must leave the
+/// field at its prior state rather than storing garbage.
+#[test]
+fn with_permission_mode_drops_unrecognized_values() {
+    let c = ClaudeCode::new(".").with_permission_mode("not-a-real-mode");
+    assert_eq!(c.permission_mode, None);
+}
+
+#[test]
+fn with_permission_mode_accepts_every_headless_safe_value() {
+    for mode in ["bypassPermissions", "auto", "acceptEdits", "dontAsk"] {
+        let c = ClaudeCode::new(".").with_permission_mode(mode);
+        assert_eq!(c.permission_mode.as_deref(), Some(mode));
+    }
+}
