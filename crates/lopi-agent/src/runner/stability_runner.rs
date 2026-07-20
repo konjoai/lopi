@@ -14,7 +14,7 @@ impl AgentRunner {
     /// the ledger entry, and return `Some(TaskStatus::Failed)` if the gate
     /// blocks this run. Returns `None` when the gate passes (Stable or
     /// Warning) or when no harness is configured.
-    pub(super) async fn run_stability_preflight(&self) -> Option<TaskStatus> {
+    pub(super) async fn run_stability_preflight(&mut self) -> Option<TaskStatus> {
         let harness = self.stability_harness.as_ref()?;
 
         self.log(format!(
@@ -50,6 +50,12 @@ impl AgentRunner {
                  proceeding but flagging for review"
             ));
         }
+
+        // Stash the consensus plan (the sample most representative of the
+        // others) so `gather_seed` can inform the first attempt's planning
+        // prompt with it instead of the N samples being generated purely to
+        // compute a variance score and then thrown away.
+        self.consensus_plan_hint = verdict.consensus_plan().map(str::to_string);
 
         self.save_stability_ledger_entry(&harness.config.model, verdict_str, n, variance, &verdict)
             .await;
