@@ -1,9 +1,11 @@
 //! Model identifiers, model-routing heuristic, and the one-shot CLI output
 //! envelope — split out of `claude.rs` purely to keep that file under the
-//! 500-line CI file-size gate; every item here is re-exported from `claude`
-//! unchanged (`pub use crate::claude_model::*` in `claude.rs`), so every
+//! 500-line CI file-size gate; every public item here is re-exported from
+//! `claude` by an explicit named `pub use` list (not a glob), so every
 //! existing `crate::claude::MODEL_*`/`select_model`/`ClaudeOutput` path
-//! stays valid.
+//! stays valid. Adding a new `pub` item to this module does NOT
+//! automatically make it visible at `crate::claude::*` — extend that list
+//! in `claude.rs` too.
 
 use lopi_core::Task;
 use serde::Deserialize;
