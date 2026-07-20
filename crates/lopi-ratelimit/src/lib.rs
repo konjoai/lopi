@@ -131,6 +131,7 @@ impl AnthropicLimiter {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
 
@@ -198,5 +199,50 @@ mod tests {
             result.is_err(),
             "should time out (no refill available), not panic or complete"
         );
+    }
+
+    /// Concurrency test: many tasks racing `try_acquire` against a bucket
+    /// must never collectively deduct more than the bucket ever held —
+    /// the lock inside `try_acquire`/`acquire` must make the check-then-
+    /// deduct atomic across concurrent callers, not just within one.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn concurrent_try_acquire_never_overdraws_bucket() {
+        let bucket = Arc::new(TokenBucket::new(50.0, 0.0)); // no refill: fixed budget
+        let handles: Vec<_> = (0..100)
+            .map(|_| {
+                let bucket = Arc::clone(&bucket);
+                tokio::spawn(async move { bucket.try_acquire(1.0).await })
+            })
+            .collect();
+
+        let mut granted = 0;
+        for h in handles {
+            if h.await.unwrap() {
+                granted += 1;
+            }
+        }
+        assert_eq!(
+            granted, 50,
+            "exactly `capacity` acquisitions should succeed under concurrent contention"
+        );
+    }
+
+    /// Timing test: `acquire()` actually waits for tokens to refill rather
+    /// than returning early or erroring when the bucket starts empty.
+    ///
+    /// Uses real time (not `start_paused`): `BucketState::refill()` is
+    /// driven by `std::time::Instant`, which tokio's paused virtual clock
+    /// does not advance, so a genuine refill requires real wall-clock time
+    /// to pass.
+    #[tokio::test]
+    async fn acquire_waits_for_refill_then_succeeds() {
+        let bucket = TokenBucket::new(10.0, 100.0); // fast refill: 100 tokens/sec
+        assert!(bucket.try_acquire(10.0).await, "drain the bucket");
+        assert!(
+            !bucket.try_acquire(1.0).await,
+            "should be empty immediately after draining"
+        );
+        let result = tokio::time::timeout(Duration::from_secs(5), bucket.acquire(1.0)).await;
+        assert!(result.is_ok(), "acquire() should succeed after refill");
     }
 }
