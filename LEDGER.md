@@ -5,6 +5,27 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## KT-B3-Live — first real attended install attempt: server failed to spawn, two independent packaging bugs found and fixed
+
+**KT-B3 (the widget render handshake) still has not been observed — but this is the first time the attended runbook actually ran, and it surfaced a real failure before ever reaching the render question.** Repo-gap fixed first: `LOPI_KTB3_ATTENDED_RUNBOOK.md` was referenced by `CHANGELOG.md`, `LEDGER.md`, and `NEXT_SESSION_PROMPT.md` but never committed (same drift class as `LOPI_DISTRIBUTION_PLAN.md`) — committed as-is, nothing in it was stale.
+
+**Finding 1 — `mcpb/manifest.json` used a substitution token that doesn't exist.** Installing `lopi-bfe4d7bb...-darwin-arm64.mcpb` (the real `MCPB-App-1` artifact, correct SHA, green build) into a real Claude Desktop produced this in its MCP log:
+
+```
+Using MCP server command: .../server/${platform}/lopi
+Failed to spawn process: No such file or directory
+```
+
+`${platform}` never got substituted — `${__dirname}` in the same string resolved fine. Checked against the authoritative spec ([`modelcontextprotocol/mcpb` `MANIFEST.md`](https://github.com/modelcontextprotocol/mcpb/blob/main/MANIFEST.md#variable-substitution)): the only supported tokens are `${__dirname}`, `${HOME}`, `${DESKTOP}`, `${DOCUMENTS}`, `${DOWNLOADS}`, `${pathSeparator}`/`${/}`, and `${user_config.*}`. Platform variance is meant to go through a sibling `platform_overrides` key, not a template token in the path itself — `${platform}` was never real. Since `compatibility.platforms` is already `["darwin"]`-only, no override mechanism was even needed: fixed by hardcoding the literal path the release workflow actually bundles, `server/darwin-arm64/lopi`, in both `entry_point` and `mcp_config.command`. This means **every previously-built `.mcpb` artifact, including the one this sprint verified with `mcpb pack`/`unpack` mechanics, was never actually installable** — the packaging-mechanics check exercised `unpack` + direct binary invocation, never the manifest's own command-resolution path a real host uses.
+
+**Finding 2 — independent of Finding 1: this branch's copy of `mcpb-release.yml` had regressed to `timeout 10`, which doesn't exist on macOS runners.** The branch's `origin/main` merge predated `bfe4d7bb` ("Fix timeout handling in mcpb-release workflow") landing on main, so re-triggering the workflow after Finding 1's fix hit `timeout: command not found` in the smoke-test step (run `29770546202`) — nothing to do with the manifest fix, pure branch/main drift on a file that had already been fixed once. Re-applied `perl -e 'alarm 10; exec @ARGV'` directly rather than merging main wholesale.
+
+**Both fixes verified together in one real run, not assumed:** `29770853385` (headSha `467abb8`) went green end to end, including the smoke-test's real `initialize` → `serverInfo` round trip. Fresh artifact: `lopi-467abb86e6e3408e73fefc7367db9e72d428587c-darwin-arm64.mcpb`.
+
+**What's still open — the actual KT-B3 question.** None of this touched the widget-render check itself; the runbook's steps 2-5 (tool list, task submission, panel-renders-or-doesn't) have not run against a build that can even spawn yet. The `.mcpb` dropped in the repo root from the failed attempt (`lopi-bfe4d7bb...`) is stale — the new artifact from `29770853385` needs to replace it before the next attended attempt.
+
+**How to apply:** any future MCPB manifest change should be smoke-tested through the manifest's own `mcp_config.command` resolution (i.e., actually installed and spawned by a real host), not just `mcpb pack`/`unpack` + direct binary invocation — the latter is necessary but was not sufficient here and gave false confidence. Also: a stale-workflow-file-on-a-branch check (`git merge-base --is-ancestor <known-fix-commit> HEAD`) before trusting a CI file on a long-lived feature branch would have caught Finding 2 before spending a run on it.
+
 ## Browser-Pane-1 — Live Dashboard via Claude Code Desktop's Browser Pane (no new code; `CLAUDE.md`)
 
 **Finding: the Browser pane does NOT auto-detect a `lopi sail` process it didn't start itself, but Claude navigates to it autonomously anyway — even without any written instruction telling it to.** Verified against a real, already-running instance (`--repo /Users/wscholl/kohaku`, port `3000` per `lopi.toml`'s default, running for hours before this session touched it): `preview_list` returned `[]` for it. The pane's "auto-detect a dev server" behavior is scoped to processes *it* launches via `preview_start({name})`/`.claude/launch.json` (the standard `npm run dev` pattern) — a Rust binary spawned independently outside that flow is invisible to it until pointed at explicitly. Calling `preview_start({url: "http://localhost:3000"})` showed the real dashboard immediately: real stack cards, real running/queued task counts, zero console errors.

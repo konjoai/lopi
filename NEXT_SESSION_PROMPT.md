@@ -5,6 +5,57 @@ the `lopi` repo. Newest first.
 
 ---
 
+## Next Session — after KT-B3-Live
+
+**The attended runbook (`LOPI_KTB3_ATTENDED_RUNBOOK.md`) ran for real for the
+first time and did not reach the widget-render question — the server failed
+to spawn.** Two independent packaging bugs found and fixed this session, both
+verified in one green run. Full detail in `LEDGER.md`'s `KT-B3-Live` entry;
+short version below.
+
+Read first, in order: `CLAUDE.md`, `CHANGELOG.md`'s `KT-B3-Live` entry,
+`LEDGER.md`'s `KT-B3-Live` entry in full, then `LOPI_KTB3_ATTENDED_RUNBOOK.md`
+itself.
+
+### What this session found and fixed
+
+1. **`mcpb/manifest.json` used `${platform}`, which is not a real MCPB
+   substitution token** — Claude Desktop's MCP log showed it passed through
+   literally, so `entry_point`/`mcp_config.command` resolved to a directory
+   that never existed and the server hit "Failed to spawn process: No such
+   file or directory" before tool discovery could even start. Fixed by
+   hardcoding the literal `server/darwin-arm64/lopi` path (the repo is
+   `darwin`-only per `compatibility.platforms`, so no `platform_overrides`
+   mechanism was needed).
+2. **This branch's `mcpb-release.yml` had regressed to `timeout 10`**
+   (unavailable on macOS runners) — a `main`-merge timing gap, unrelated to
+   Finding 1. Re-applied `perl -e 'alarm 10; exec @ARGV'` directly.
+3. Both verified together in run `29770853385` (headSha `467abb8`), smoke-test
+   included — green end to end, real `initialize`/`serverInfo` round trip.
+
+### What a session with real Claude Desktop access needs to do next
+
+1. **Discard the stale `.mcpb` in the repo root** (`lopi-bfe4d7bb...`, the
+   artifact from the *failed* attempt) and pull the fresh one:
+   `lopi-467abb86e6e3408e73fefc7367db9e72d428587c-darwin-arm64.mcpb` from run
+   [`29770853385`](https://github.com/konjoai/lopi/actions/runs/29770853385).
+2. **Re-run `LOPI_KTB3_ATTENDED_RUNBOOK.md` from step 1.** This time the
+   server should actually spawn — confirm that first (no repeat of the
+   `${platform}` failure), then continue: tool list (all eight, including
+   `lopi_get_stack_status`), submit/check a real task, watch for an actual
+   rendered panel vs. silent text fallback.
+3. **Given two packaging bugs slipped past the earlier `mcpb pack`/`unpack`
+   verification, don't trust that check alone again** — it exercises the
+   bundle mechanics, not the manifest's own command-resolution path a real
+   host uses. If this session finds a third packaging issue, that's a sign
+   the smoke-test step itself needs to install via a real (or real-ish) host
+   path, not just unpack-and-invoke.
+4. Write the `LEDGER.md` KT-B3 outcome entry per the runbook's own "either
+   way" section — this will be the first time that section has real data to
+   report instead of "not attempted."
+
+---
+
 ## Next Session — after MCPB-App-1
 
 **The next step is the attended `LOPI_KTB3_ATTENDED_RUNBOOK.md` runbook —
