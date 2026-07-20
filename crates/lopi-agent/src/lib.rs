@@ -25,8 +25,6 @@ mod dag_rows;
 /// Eval-Execution-1 (A1) — the tiered eval executor: goal/acceptance scoring
 /// across execution-ok, shell-test, judge, and suite tiers, fail-closed.
 pub mod eval;
-/// Pattern enrichment from memory history.
-pub mod pattern_enricher;
 mod prompt;
 /// MAXX kill-test prep — logs `rate_limit_event` cadence for a real session's
 /// eventual run, off by default (see `docs/ops/NEXT_SESSION_PROMPT.md`).
@@ -52,7 +50,6 @@ pub use eval::{
     TieredEvaluator, VerifierJudge,
 };
 pub use lopi_ratelimit::{AnthropicLimiter, CircuitBreaker};
-pub use pattern_enricher::PatternEnricher;
 pub use reflection_harness::{
     precision_sweep, reflection_fixtures, run_three_arm, Arm, ArmStats, FixtureTask, HarnessParams,
     ThreeArmReport,
