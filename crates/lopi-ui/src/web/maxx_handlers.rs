@@ -13,7 +13,7 @@
 //! - `POST   /api/maxx/:id/enable` — enable
 //! - `POST   /api/maxx/:id/disable`— disable
 
-use super::types::MAX_GOAL_LENGTH;
+use super::types::{reject_control_chars, MAX_GOAL_LENGTH};
 use super::AppState;
 use axum::{
     extract::{Path, State},
@@ -63,9 +63,10 @@ impl MaxxBody {
         if self.goal.trim().is_empty() {
             return Err("goal must not be empty".into());
         }
-        if self.goal.len() > MAX_GOAL_LENGTH {
+        if self.goal.chars().count() > MAX_GOAL_LENGTH {
             return Err(format!("goal exceeds {MAX_GOAL_LENGTH} chars"));
         }
+        reject_control_chars(&self.goal)?;
         if let Some((start, end)) = self.quiet_hours {
             if start > 23 || end > 23 {
                 return Err("quiet_hours must be within 0..=23".into());
@@ -246,4 +247,40 @@ fn server_error(e: &anyhow::Error) -> axum::response::Response {
         Json(json!({ "error": format!("{e:#}") })),
     )
         .into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn valid_body() -> MaxxBody {
+        MaxxBody {
+            name: "backlog".to_string(),
+            goal: "clean up warnings".to_string(),
+            repo: None,
+            priority: None,
+            allowed_dirs: None,
+            forbidden_dirs: None,
+            enabled: None,
+            autonomy_level: None,
+            report: None,
+            quiet_hours: None,
+            headroom_gate: false,
+            windows: vec![],
+        }
+    }
+
+    /// Regression: mirrors `POST /api/tasks`'s log-poisoning/ANSI-injection
+    /// guard, which MAXX entry creation had been skipping.
+    #[test]
+    fn validate_rejects_control_char_in_goal() {
+        let mut body = valid_body();
+        body.goal = "clean up\u{0007} warnings".to_string();
+        assert!(body.validate().is_err());
+    }
+
+    #[test]
+    fn validate_accepts_a_well_formed_body() {
+        assert!(valid_body().validate().is_ok());
+    }
 }

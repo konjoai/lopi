@@ -23,7 +23,7 @@
 //! - `POST   /api/schedule-chains/:id/disable`— disable + unregister
 //! - `POST   /api/schedule-chains/:id/run-now`— fire immediately
 
-use super::types::MAX_GOAL_LENGTH;
+use super::types::{reject_control_chars, MAX_GOAL_LENGTH};
 use super::AppState;
 use axum::{
     extract::{Path, State},
@@ -80,9 +80,10 @@ impl ScheduleChainBody {
             if step.goal.trim().is_empty() {
                 return Err(format!("step {i} goal must not be empty"));
             }
-            if step.goal.len() > MAX_GOAL_LENGTH {
+            if step.goal.chars().count() > MAX_GOAL_LENGTH {
                 return Err(format!("step {i} goal exceeds {MAX_GOAL_LENGTH} chars"));
             }
+            reject_control_chars(&step.goal).map_err(|e| format!("step {i}: {e}"))?;
         }
         Ok(())
     }
@@ -308,4 +309,40 @@ fn server_error(e: &anyhow::Error) -> axum::response::Response {
         Json(json!({ "error": format!("{e:#}") })),
     )
         .into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn valid_body() -> ScheduleChainBody {
+        ScheduleChainBody {
+            name: "nightly stack".to_string(),
+            cron: "0 2 * * *".to_string(),
+            steps: vec![ChainStepBody {
+                goal: "step one".to_string(),
+                allowed_dirs: None,
+                forbidden_dirs: None,
+            }],
+            repo: None,
+            priority: None,
+            autonomy_level: None,
+            on_fail: None,
+            enabled: None,
+        }
+    }
+
+    /// Regression: mirrors `POST /api/tasks`'s log-poisoning/ANSI-injection
+    /// guard, which chain-step creation had been skipping.
+    #[test]
+    fn validate_rejects_control_char_in_a_step_goal() {
+        let mut body = valid_body();
+        body.steps[0].goal = "step one\u{0007}".to_string();
+        assert!(body.validate().is_err());
+    }
+
+    #[test]
+    fn validate_accepts_a_well_formed_body() {
+        assert!(valid_body().validate().is_ok());
+    }
 }

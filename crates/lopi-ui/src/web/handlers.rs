@@ -345,16 +345,7 @@ pub(super) fn validate_goal(goal: &str) -> Result<(), String> {
     if goal.chars().count() > MAX_GOAL_LENGTH {
         return Err(format!("goal too long (max {MAX_GOAL_LENGTH} chars)"));
     }
-    if let Some(c) = goal
-        .chars()
-        .find(|c| c.is_control() && !matches!(c, '\n' | '\r' | '\t'))
-    {
-        return Err(format!(
-            "goal contains a disallowed control character (U+{:04X})",
-            c as u32
-        ));
-    }
-    Ok(())
+    super::types::reject_control_chars(goal)
 }
 
 pub(super) async fn create_task(

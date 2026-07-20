@@ -15,7 +15,7 @@
 //! - `POST   /api/schedules/:id/disable`— disable + unregister
 //! - `POST   /api/schedules/:id/run-now`— fire immediately
 
-use super::types::MAX_GOAL_LENGTH;
+use super::types::{reject_control_chars, MAX_GOAL_LENGTH};
 use super::AppState;
 use axum::{
     extract::{Path, State},
@@ -57,9 +57,10 @@ impl ScheduleBody {
         if self.goal.trim().is_empty() {
             return Err("goal must not be empty".into());
         }
-        if self.goal.len() > MAX_GOAL_LENGTH {
+        if self.goal.chars().count() > MAX_GOAL_LENGTH {
             return Err(format!("goal exceeds {MAX_GOAL_LENGTH} chars"));
         }
+        reject_control_chars(&self.goal)?;
         if next_run_times(&self.cron, 1).is_empty() {
             return Err("invalid cron expression (expected 5 fields)".into());
         }
@@ -311,4 +312,40 @@ fn server_error(e: &anyhow::Error) -> axum::response::Response {
         Json(json!({ "error": format!("{e:#}") })),
     )
         .into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn valid_body() -> ScheduleBody {
+        ScheduleBody {
+            name: "nightly".to_string(),
+            cron: "0 2 * * *".to_string(),
+            goal: "run tests".to_string(),
+            repo: None,
+            priority: None,
+            allowed_dirs: None,
+            forbidden_dirs: None,
+            enabled: None,
+            autonomy_level: None,
+        }
+    }
+
+    /// Regression: `POST /api/tasks` rejects control characters (log-poisoning
+    /// / ANSI-injection guard) via `handlers::validate_goal`, but schedule
+    /// creation had its own, separate `validate()` that skipped this check —
+    /// a scheduled goal could carry a NUL byte or ANSI escape straight
+    /// through to the cron log and the dispatched task.
+    #[test]
+    fn validate_rejects_control_char_in_goal() {
+        let mut body = valid_body();
+        body.goal = "do the thing\u{0007}".to_string();
+        assert!(body.validate().is_err());
+    }
+
+    #[test]
+    fn validate_accepts_a_well_formed_body() {
+        assert!(valid_body().validate().is_ok());
+    }
 }
