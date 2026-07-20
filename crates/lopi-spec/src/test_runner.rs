@@ -87,13 +87,23 @@ pub fn coverage_gaps<'a>(
 /// surfacing at runtime.
 const CARGO_TEST_ARGS: [&str; 2] = ["test", "--no-fail-fast"];
 
+/// Check whether `sccache` is on `PATH`. Runs the (blocking) filesystem
+/// lookup via `spawn_blocking` since this is called from an async path.
+async fn sccache_available() -> bool {
+    tokio::task::spawn_blocking(|| which::which("sccache").is_ok())
+        .await
+        .unwrap_or(false)
+}
+
 async fn run_cargo(root: &Path) -> Result<Vec<TestRunResult>> {
-    let out = Command::new("cargo")
-        .args(CARGO_TEST_ARGS)
-        .env("RUSTC_WRAPPER", "sccache")
-        .current_dir(root)
-        .output()
-        .await?;
+    let mut cmd = Command::new("cargo");
+    cmd.args(CARGO_TEST_ARGS).current_dir(root);
+    if sccache_available().await {
+        cmd.env("RUSTC_WRAPPER", "sccache");
+    } else {
+        tracing::warn!("sccache not found on PATH — running cargo test without it");
+    }
+    let out = cmd.output().await?;
 
     let combined = format!(
         "{}\n{}",
@@ -180,7 +190,7 @@ pub(crate) fn parse_pytest_output(output: &str) -> Vec<TestRunResult> {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 
@@ -332,5 +342,51 @@ mod tests {
         let results = parse_cargo_output(out);
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].name, "a");
+    }
+
+    #[tokio::test]
+    async fn sccache_available_matches_which_lookup() {
+        let expected = which::which("sccache").is_ok();
+        assert_eq!(sccache_available().await, expected);
+    }
+
+    /// Regression test for the command-spawn path itself never being
+    /// exercised: every other test here feeds pre-captured strings straight
+    /// to the parsers, so a real invalid-flag/invocation bug (like the
+    /// `--test-output immediate` regression above) would only ever surface
+    /// at runtime against a real repo. This actually spawns `cargo test`
+    /// against a minimal fixture crate end-to-end through `run_tests`.
+    #[tokio::test]
+    async fn run_tests_spawns_real_cargo_test() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join("Cargo.toml"),
+            "[package]\nname = \"fixture\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+        )
+        .expect("write Cargo.toml");
+        std::fs::create_dir_all(dir.path().join("src")).expect("mkdir src");
+        std::fs::write(
+            dir.path().join("src/lib.rs"),
+            "#[test]\nfn passing_test() { assert_eq!(1 + 1, 2); }\n\n\
+             #[test]\nfn failing_test() { assert_eq!(1 + 1, 3); }\n",
+        )
+        .expect("write src/lib.rs");
+
+        let results =
+            tokio::time::timeout(std::time::Duration::from_secs(120), run_tests(dir.path()))
+                .await
+                .expect("run_tests timed out")
+                .expect("run_tests failed");
+
+        let passing = results.iter().find(|r| r.name == "passing_test");
+        let failing = results.iter().find(|r| r.name == "failing_test");
+        assert!(
+            passing.is_some_and(|r| r.passed),
+            "expected passing_test to pass: {results:?}"
+        );
+        assert!(
+            failing.is_some_and(|r| !r.passed && r.error.is_some()),
+            "expected failing_test to fail with an error: {results:?}"
+        );
     }
 }
