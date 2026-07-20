@@ -34,7 +34,7 @@ pub async fn handle_fleet(
     } else {
         for a in &running_agents {
             let id = short_id(&a.task_id);
-            let goal_preview = &a.goal[..a.goal.len().min(35)];
+            let goal_preview = lopi_core::safe_truncate(&a.goal, 35);
             lines.push(format!("  • {id}  {goal_preview}  attempt {}", a.attempt));
         }
     }
@@ -44,7 +44,7 @@ pub async fn handle_fleet(
         lines.push("  (none)".to_string());
     } else {
         for (i, (prio, goal)) in queued_items.iter().take(5).enumerate() {
-            let preview = &goal[..goal.len().min(40)];
+            let preview = lopi_core::safe_truncate(goal, 40);
             lines.push(format!("  {}. {}  {preview}", i + 1, priority_badge(*prio)));
         }
         if queued_items.len() > 5 {
@@ -73,16 +73,21 @@ pub async fn handle_fleet(
 /// Show recent task history; `arg` is an optional count (defaults to 8, max 20).
 pub async fn handle_dock(bot: &Bot, msg: &Message, store: &MemoryStore, arg: &str) -> Result<()> {
     let n = arg_n(arg, 8).min(20) as i64;
+    let text = format_dock(store, n).await;
+    bot.send_message(msg.chat.id, text).await?;
+    Ok(())
+}
+
+/// Render the recent-task-history text shared by `/dock` and the inline
+/// "🚢 Dock" callback button on `/fleet`.
+pub(crate) async fn format_dock(store: &MemoryStore, n: i64) -> String {
     match store.load_history(n).await {
-        Ok(rows) if rows.is_empty() => {
-            bot.send_message(msg.chat.id, "🚢 no tasks recorded yet.")
-                .await?;
-        }
+        Ok(rows) if rows.is_empty() => "🚢 no tasks recorded yet.".to_string(),
         Ok(rows) => {
             let mut lines = vec![format!("🚢 recent tasks ({})\n", rows.len())];
             for row in &rows {
                 let emoji = status_emoji(&row.status);
-                let goal_preview = &row.goal[..row.goal.len().min(40)];
+                let goal_preview = lopi_core::safe_truncate(&row.goal, 40);
                 let when = row
                     .created_at
                     .parse::<chrono::DateTime<chrono::Utc>>()
@@ -94,15 +99,13 @@ pub async fn handle_dock(bot: &Bot, msg: &Message, store: &MemoryStore, arg: &st
                     "{emoji}  {goal_preview:<40}  {when}  {id_short}{verdict}"
                 ));
             }
-            bot.send_message(msg.chat.id, lines.join("\n")).await?;
+            lines.join("\n")
         }
         Err(e) => {
             warn!("dock load_history error: {e}");
-            bot.send_message(msg.chat.id, format!("❌ failed to load history: {e}"))
-                .await?;
+            format!("❌ failed to load history: {e}")
         }
     }
-    Ok(())
 }
 
 /// Konjo Verifier marker for a task's latest verdict, for inline display in
@@ -157,7 +160,7 @@ pub async fn handle_tail(bot: &Bot, msg: &Message, arg: &str, store: &MemoryStor
         }
         Ok(logs) => {
             let id_short = short_id(&row.id);
-            let goal_preview = &row.goal[..row.goal.len().min(30)];
+            let goal_preview = lopi_core::safe_truncate(&row.goal, 30);
             let mut lines = vec![format!(
                 "📜 last {} lines — {goal_preview} ({id_short})\n",
                 logs.len()
@@ -165,7 +168,7 @@ pub async fn handle_tail(bot: &Bot, msg: &Message, arg: &str, store: &MemoryStor
             for log in &logs {
                 lines.push(format!(
                     "[{}] {}  {}",
-                    &log.ts[..19.min(log.ts.len())],
+                    lopi_core::safe_truncate(&log.ts, 19),
                     log.level.to_uppercase(),
                     log.line
                 ));
@@ -206,7 +209,7 @@ pub async fn handle_schedules(bot: &Bot, msg: &Message, schedules: &[ScheduleEnt
             || "unknown".to_string(),
             |t| format!("{}", t.format("%a %H:%M UTC")),
         );
-        let goal_preview = &s.goal[..s.goal.len().min(50)];
+        let goal_preview = lopi_core::safe_truncate(&s.goal, 50);
         lines.push(format!(
             "📅 {}\n   goal: {goal_preview}\n   cron: {}\n   next: {next_str}\n   priority: {}\n",
             s.name,
@@ -246,7 +249,7 @@ pub async fn handle_run_schedule(
         };
         let id_short = short_id(&t.id.to_string()).to_string();
         queue.push(t).await;
-        let goal_preview = &entry.goal[..entry.goal.len().min(50)];
+        let goal_preview = lopi_core::safe_truncate(&entry.goal, 50);
         bot.send_message(
             msg.chat.id,
             format!(
@@ -306,5 +309,20 @@ mod tests {
     fn test_parse_run_schedule_name() {
         let name = "  nightly-lint  ";
         assert_eq!(name.trim(), "nightly-lint");
+    }
+
+    /// Regression guard for the byte-offset previews used throughout this
+    /// module (`/fleet`, `/dock`, `/tail`, `/schedules`, `/run`): a
+    /// multibyte character straddling any of the fixed cutoffs (19, 30,
+    /// 35, 40, 50) used to panic with "byte index N is not a char
+    /// boundary" via `&s[..n]`. All call sites now go through
+    /// `lopi_core::safe_truncate`.
+    #[test]
+    fn goal_preview_truncation_survives_multibyte_boundary() {
+        for cutoff in [19, 30, 35, 40, 50] {
+            let s = format!("{}🦀 rest of the goal text here", "x".repeat(cutoff - 1));
+            let preview = lopi_core::safe_truncate(&s, cutoff);
+            assert!(preview.len() <= cutoff);
+        }
     }
 }
