@@ -263,12 +263,23 @@ impl ChainScheduleManager {
         let task_id = task.id;
         self.record_step_advance(chain, run, step_order, task_id)
             .await;
+
+        // Subscribe *before* submitting: `tokio::sync::broadcast` only
+        // delivers events to receivers already attached at send time. A
+        // fast-completing task can broadcast `TaskCompleted` inside
+        // `pool.submit(...).await` itself (an idle pool can pop, run, and
+        // finish it before `submit` even returns), so subscribing after
+        // that call — as `spawn_listener` used to, internally — could miss
+        // the event entirely and strand the chain until the next process
+        // restart's `resume_orphaned` sweep.
+        let rx = self.inner.pool.bus().subscribe();
+
         // Duplicate goals within a running repo are deduplicated by the pool
         // — `submit` returns the existing id in that case, and we still
         // listen on it, so the chain advances off the real in-flight task.
         let effective_id = self.inner.pool.submit(task).await.unwrap_or(task_id);
         info!(chain = %chain.id, run = %run.id, step = step_order, task = %effective_id.0, "submitted chain step");
-        self.spawn_listener(chain.clone(), run.id.clone(), step_order, effective_id);
+        self.spawn_listener(chain.clone(), run.id.clone(), step_order, effective_id, rx);
     }
 
     /// Mark a run `completed` — reached when `submit_step` is called past the
@@ -306,11 +317,19 @@ impl ChainScheduleManager {
         }
     }
 
-    /// Spawn a task that waits for `task_id`'s terminal `AgentEvent` and
-    /// advances the chain (or stops it, per `on_fail`) when it arrives.
-    fn spawn_listener(&self, chain: ChainSpec, run_id: String, step_order: usize, task_id: TaskId) {
+    /// Spawn a task that waits for `task_id`'s terminal `AgentEvent` on the
+    /// already-subscribed `rx` and advances the chain (or stops it, per
+    /// `on_fail`) when it arrives. `rx` must have been subscribed *before*
+    /// the task was submitted — see the comment in `submit_step`.
+    fn spawn_listener(
+        &self,
+        chain: ChainSpec,
+        run_id: String,
+        step_order: usize,
+        task_id: TaskId,
+        mut rx: tokio::sync::broadcast::Receiver<AgentEvent>,
+    ) {
         let manager = self.clone();
-        let mut rx = self.inner.pool.bus().subscribe();
         tokio::spawn(async move {
             loop {
                 match rx.recv().await {
