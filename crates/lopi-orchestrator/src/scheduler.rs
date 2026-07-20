@@ -21,7 +21,14 @@ pub async fn boot(entries: Vec<ScheduleEntry>, pool: AgentPool) -> Result<JobSch
         let cron_str = entry.cron.clone();
         let entry_name = entry.name.clone();
 
-        let job = match Job::new_async(cron_str.as_str(), move |_uuid, _lock| {
+        // `tokio-cron-scheduler` (via the `cron` crate) requires a 6-field
+        // expression with a leading seconds field. lopi's user-facing
+        // convention — matching `next_run_times` — is 5-field with seconds
+        // pinned to 0, so prepend it here (mirrors `schedule_manager::register`
+        // and `chain_schedule_manager`'s handling of the same entry format).
+        let six_field = format!("0 {cron_str}");
+
+        let job = match Job::new_async(six_field.as_str(), move |_uuid, _lock| {
             let pool = pool.clone();
             let entry = entry.clone();
             Box::pin(async move {
@@ -208,6 +215,30 @@ mod tests {
         assert!(result.is_ok(), "boot with empty entries should succeed");
         let mut sched = result.unwrap();
         sched.shutdown().await.unwrap();
+    }
+
+    /// Regression pin for the cron seconds-field mismatch: `Job::new_async`
+    /// (what `boot()` calls) requires a 6-field expression with a leading
+    /// seconds field — a bare 5-field cron string (the documented
+    /// `ScheduleEntry.cron` format, e.g. `"0 2 * * *"`) fails to parse on
+    /// its own. `boot()` used to pass the raw 5-field string straight
+    /// through, so every schedule silently failed and was skipped (only a
+    /// `warn!` marked it, while `boot()` itself still returned `Ok`).
+    /// Pins that prepending the seconds field — what `boot()` now does —
+    /// is what makes it parse.
+    #[test]
+    fn five_field_cron_alone_fails_six_field_with_prepended_seconds_succeeds() {
+        let five_field = "0 2 * * *";
+        assert!(
+            Job::new_async(five_field, |_uuid, _lock| Box::pin(async {})).is_err(),
+            "a bare 5-field cron string must fail Job::new_async"
+        );
+
+        let six_field = format!("0 {five_field}");
+        assert!(
+            Job::new_async(six_field.as_str(), |_uuid, _lock| Box::pin(async {})).is_ok(),
+            "prepending the seconds field must make it parse"
+        );
     }
 
     #[tokio::test]

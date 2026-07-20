@@ -38,6 +38,15 @@ impl AgentRunner {
         // mode) can't bloat the prompt.
         extra_constraints.extend(self.seed_reflection_learnings().await);
 
+        // Sprint I — seed the stability gate's consensus plan (if one was
+        // computed by `run_stability_preflight`) as a planning constraint,
+        // so the samples generated to gate stability also inform the real
+        // plan instead of being discarded once their variance is scored.
+        // `take()` — this is attempt 0's seed only, not re-injected on retry.
+        if let Some(consensus_plan) = self.consensus_plan_hint.take() {
+            extra_constraints.push(consensus_plan_constraint(&consensus_plan));
+        }
+
         // Store lessons for use in the API planning path.
         self.task_lessons = lessons_data
             .iter()
@@ -221,6 +230,18 @@ fn reflection_constraint(critique: &str) -> String {
     format!("Past learning — a prior attempt failed because: {critique}")
 }
 
+/// Frame the stability gate's consensus plan as a planning-prompt
+/// constraint. Pure, so the wording is unit-testable without a runner.
+/// Labeled as a starting point (not a mandate) — the worker still owns the
+/// final plan.
+fn consensus_plan_constraint(consensus_plan: &str) -> String {
+    format!(
+        "Stability pre-flight already sampled several plan variants for this \
+         goal; the most representative one is below — use it as a starting \
+         point rather than planning from scratch:\n{consensus_plan}"
+    )
+}
+
 /// Return an owned copy of `c` when it is present and non-empty.
 fn non_empty_constraint(c: Option<&str>) -> Option<String> {
     c.and_then(|c| (!c.is_empty()).then(|| c.to_string()))
@@ -229,8 +250,8 @@ fn non_empty_constraint(c: Option<&str>) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        non_empty_constraint, reflection_constraint, skill_constraint_blocks,
-        REFLECTION_INJECTION_CAP,
+        consensus_plan_constraint, non_empty_constraint, reflection_constraint,
+        skill_constraint_blocks, REFLECTION_INJECTION_CAP,
     };
     use lopi_skill::Skill;
     use std::path::PathBuf;
@@ -279,5 +300,12 @@ mod tests {
     #[test]
     fn skill_blocks_empty_for_no_matches() {
         assert!(skill_constraint_blocks(&[]).is_empty());
+    }
+
+    #[test]
+    fn consensus_plan_constraint_labels_it_as_a_starting_point_and_carries_the_text() {
+        let c = consensus_plan_constraint("1. Read the file\n2. Fix the bug");
+        assert!(c.contains("starting point"));
+        assert!(c.contains("1. Read the file\n2. Fix the bug"));
     }
 }

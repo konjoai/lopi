@@ -156,6 +156,44 @@ async fn find_similar_patterns_returns_matches() {
     assert!(!results.is_empty(), "should find similar pattern");
 }
 
+/// `find_similar_patterns` now pre-filters candidates via the
+/// `pattern_keywords` junction table before Jaccard-scoring in Rust —
+/// this pins that the candidate lookup still surfaces the closest match
+/// and excludes an unrelated pattern with no shared keywords.
+#[tokio::test]
+async fn find_similar_patterns_ranks_best_match_first_via_keyword_candidates() {
+    let store = MemoryStore::open_in_memory().await.unwrap();
+
+    let close = Task::new("refactor authentication middleware layer");
+    store.save_task(&close, "success").await.unwrap();
+    store.mine_patterns(&close.id, &close.goal).await.unwrap();
+
+    let unrelated = Task::new("optimize database query planner");
+    store.save_task(&unrelated, "success").await.unwrap();
+    store
+        .mine_patterns(&unrelated.id, &unrelated.goal)
+        .await
+        .unwrap();
+
+    let results = store
+        .find_similar_patterns("refactor authentication middleware handling")
+        .await
+        .unwrap();
+
+    assert!(!results.is_empty(), "should find the close match");
+    assert!(
+        results[0].goal_keywords.contains("authentication"),
+        "best match should be the authentication pattern, got {:?}",
+        results[0].goal_keywords
+    );
+    assert!(
+        results
+            .iter()
+            .all(|r| !r.goal_keywords.contains("database")),
+        "unrelated pattern with no shared keywords must not appear"
+    );
+}
+
 #[tokio::test]
 async fn mine_patterns_inserts_new_row() {
     let store = MemoryStore::open_in_memory().await.unwrap();
@@ -182,6 +220,34 @@ async fn mine_patterns_updates_existing_row() {
 
     let patterns = store.load_patterns(10).await.unwrap();
     assert_eq!(patterns.len(), 1);
+}
+
+/// Regression test for the `mine_patterns` race: two calls for the same
+/// fingerprint firing concurrently used to both read "no existing row" via
+/// the read pool before either had written, and both insert — leaving
+/// duplicate rows for one goal. The transaction on the single-connection
+/// write pool must serialize them into exactly one row.
+#[tokio::test]
+async fn mine_patterns_concurrent_same_fingerprint_yields_one_row() {
+    let store = MemoryStore::open_in_memory().await.unwrap();
+    let t1 = Task::new("consolidate the warp core telemetry");
+    let t2 = Task::new("consolidate the warp core telemetry");
+    store.save_task(&t1, "queued").await.unwrap();
+    store.save_task(&t2, "queued").await.unwrap();
+
+    let (r1, r2) = tokio::join!(
+        store.mine_patterns(&t1.id, &t1.goal),
+        store.mine_patterns(&t2.id, &t2.goal),
+    );
+    r1.unwrap();
+    r2.unwrap();
+
+    let patterns = store.load_patterns(10).await.unwrap();
+    assert_eq!(
+        patterns.len(),
+        1,
+        "concurrent mine_patterns must not duplicate rows"
+    );
 }
 
 #[tokio::test]

@@ -86,6 +86,13 @@ pub struct AgentRunner {
     /// generates N plan samples before the first implementation attempt and
     /// blocks if pairwise variance exceeds the configured threshold.
     pub(super) stability_harness: Option<StabilityHarness>,
+    /// Sprint I — the stability gate's consensus plan (the sample closest to
+    /// every other sample), stashed by `run_stability_preflight` on a
+    /// `Stable`/`Warning` verdict so `gather_seed` can seed the first
+    /// attempt's planning prompt with it instead of discarding it. `None`
+    /// when no harness is configured, the gate blocked the run, or seeding
+    /// has already consumed it.
+    pub(super) consensus_plan_hint: Option<String>,
     /// Sprint H — when true, retries inject the previous attempt's error
     /// log into the next planning prompt (Reflexion-style adaptive retry).
     /// Also enables the failure post-mortem when all retries fail.
@@ -198,6 +205,7 @@ impl AgentRunner {
             limiter: None,
             breaker: None,
             stability_harness: None,
+            consensus_plan_hint: None,
             adaptive_retry: false,
             last_error: None,
             self_prompt: SelfPromptStrategy::default(),

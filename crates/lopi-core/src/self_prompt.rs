@@ -173,7 +173,7 @@ impl SelfPromptStrategy {
                  Self-reflection (write this first): in 1–2 sentences, name the single root \
                  cause of the failure above. Then plan a *different* approach — do not repeat \
                  the same edits that just failed.",
-                next = attempt + 1,
+                next = attempt.saturating_add(1),
             ),
             Self::SelfRefine => format!(
                 "Self-Refine — critique attempt {attempt}, then revise.\n\n\
@@ -188,7 +188,7 @@ impl SelfPromptStrategy {
                  Plan (write this first): produce a numbered, dependency-ordered list of the \
                  concrete steps that will make the tests pass. Only after the plan is complete, \
                  implement step by step — do not edit any file before the plan exists.",
-                next = attempt + 1,
+                next = attempt.saturating_add(1),
             ),
         }
     }
@@ -358,6 +358,17 @@ mod tests {
         // Independently pins PlanThenAct's `next = attempt + 1` expression.
         let framed = SelfPromptStrategy::PlanThenAct.frame("x", 1);
         assert!(framed.contains("attempt 2"), "next attempt is N+1");
+    }
+
+    /// Regression test: `frame()`'s `next = attempt + 1` used plain `+`,
+    /// unlike its sibling `escalated()` which already used
+    /// `saturating_add` — an attempt counter at `u8::MAX` would panic on
+    /// overflow (debug builds) instead of saturating. Both branches that
+    /// compute `next` (Reflexion, PlanThenAct) must not panic here.
+    #[test]
+    fn frame_does_not_panic_at_max_attempt() {
+        let _ = SelfPromptStrategy::Reflexion.frame("x", u8::MAX);
+        let _ = SelfPromptStrategy::PlanThenAct.frame("x", u8::MAX);
     }
 
     #[test]

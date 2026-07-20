@@ -44,12 +44,53 @@ fn covered(path: &str, allowed_dirs: &[String]) -> bool {
 /// Empty `allowed_dirs` → no flags (no declared scope = no violation).
 /// Empty diff → no flags.
 pub fn flag_out_of_scope(diff: &str, allowed_dirs: &[String]) -> Vec<String> {
+    out_of_scope(diff_file_paths(diff), allowed_dirs)
+}
+
+/// Advisory scope check for [`crate::stability::StabilityHarness::assess`]'s
+/// per-sample plan text: flag any backtick-quoted, `/`-containing path a
+/// plan sample mentions that falls outside `allowed_dirs`.
+///
+/// This is a heuristic over prose, not ground truth against a diff — a plan
+/// can touch files it never names, or name a file in passing that it never
+/// actually touches — so it is advisory only (surfaced to the stability
+/// ledger for early operator visibility), never blocking. The real,
+/// authoritative enforcement is
+/// [`lopi_git::GitManager::check_diff_scope`], which runs against the
+/// actual diff before every attempt is scored.
+///
+/// Empty `allowed_dirs` → no flags (no declared scope = no violation).
+#[must_use]
+pub fn flag_plan_out_of_scope(plan: &str, allowed_dirs: &[String]) -> Vec<String> {
+    out_of_scope(backtick_paths(plan), allowed_dirs)
+}
+
+/// Filter `paths` down to those not covered by any entry in `allowed_dirs`
+/// — the shared tail of both [`flag_out_of_scope`] and
+/// [`flag_plan_out_of_scope`].
+fn out_of_scope(paths: Vec<String>, allowed_dirs: &[String]) -> Vec<String> {
     if allowed_dirs.is_empty() {
         return vec![];
     }
-    diff_file_paths(diff)
+    paths
         .into_iter()
         .filter(|path| !covered(path, allowed_dirs))
+        .collect()
+}
+
+/// Extract path-like tokens from backtick-quoted spans in prose — the
+/// idiomatic way a plan step names a file, e.g. "Modify `src/main.rs` to
+/// add the flag." Only spans containing a `/` (and no whitespace) are
+/// treated as paths, so inline code like `foo()` or a bare identifier isn't
+/// mistaken for one.
+fn backtick_paths(text: &str) -> Vec<String> {
+    text.split('`')
+        .skip(1)
+        .step_by(2)
+        .filter(|span| {
+            !span.is_empty() && span.contains('/') && !span.contains(char::is_whitespace)
+        })
+        .map(str::to_string)
         .collect()
 }
 
@@ -141,5 +182,45 @@ index 333..444 100644
         let allowed = vec!["src/".to_string()];
         let flags = flag_out_of_scope(diff, &allowed);
         assert!(flags.contains(&"src2/lib.rs".to_string()), "{flags:?}");
+    }
+
+    #[test]
+    fn backtick_paths_extracts_slash_containing_spans_only() {
+        let text = "Modify `src/main.rs` to add `foo()` and update `Cargo.toml` too.";
+        let paths = backtick_paths(text);
+        assert_eq!(paths, vec!["src/main.rs".to_string()]);
+    }
+
+    #[test]
+    fn backtick_paths_empty_for_no_backticks() {
+        assert!(backtick_paths("No code spans here at all.").is_empty());
+    }
+
+    #[test]
+    fn flag_plan_out_of_scope_flags_mentioned_file_outside_allowed() {
+        let plan = "1. Read the config\n2. Modify `web/src/App.tsx` to add the button";
+        let allowed = vec!["crates/".to_string()];
+        let flags = flag_plan_out_of_scope(plan, &allowed);
+        assert_eq!(flags, vec!["web/src/App.tsx".to_string()]);
+    }
+
+    #[test]
+    fn flag_plan_out_of_scope_empty_when_mentioned_file_is_covered() {
+        let plan = "1. Update `crates/lopi-agent/src/lib.rs`";
+        let allowed = vec!["crates/".to_string()];
+        assert!(flag_plan_out_of_scope(plan, &allowed).is_empty());
+    }
+
+    #[test]
+    fn flag_plan_out_of_scope_empty_when_allowed_dirs_unset() {
+        let plan = "Modify `web/src/App.tsx`";
+        assert!(flag_plan_out_of_scope(plan, &[]).is_empty());
+    }
+
+    #[test]
+    fn flag_plan_out_of_scope_ignores_non_path_code_spans() {
+        let plan = "Call `foo()` and check `bar` returns `true`";
+        let allowed = vec!["crates/".to_string()];
+        assert!(flag_plan_out_of_scope(plan, &allowed).is_empty());
     }
 }

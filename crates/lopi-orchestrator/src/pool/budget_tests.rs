@@ -36,7 +36,7 @@ fn runner_for(task: Task) -> lopi_agent::AgentRunner {
         false,
         lopi_skill::SkillRegistry::default(),
         0,
-        lopi_core::LoopConfig::default().max_budget_usd,
+        lopi_core::LoopConfig::default().resolved_budget().usd,
         Vec::new(),
         Vec::new(),
         lopi_core::LoopConfig::default().max_iterations,

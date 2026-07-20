@@ -105,26 +105,6 @@ fn dag_graph_json(task_id: &str, rows: &[lopi_memory::DagNodeRow]) -> Value {
     json!({ "task_id": task_id, "nodes": nodes, "edges": edges })
 }
 
-/// `GET /api/routing/q-values` — the Q-learning router's learned value table.
-pub(super) async fn get_q_values(State(s): State<AppState>) -> impl IntoResponse {
-    match s.store.load_q_table().await {
-        Ok(rows) => Json(json!({
-            "values": rows.iter().map(|r| json!({
-                "state": r.state,
-                "action": r.action,
-                "q": r.q,
-                "update_count": r.update_count,
-                "updated_at": r.updated_at,
-            })).collect::<Vec<_>>(),
-        }))
-        .into_response(),
-        Err(e) => {
-            tracing::warn!("q-values query failed: {e}");
-            (StatusCode::INTERNAL_SERVER_ERROR, "db error").into_response()
-        }
-    }
-}
-
 /// Prometheus text-format metrics.
 pub(super) async fn metrics(State(s): State<AppState>) -> impl IntoResponse {
     let stats = s.pool.stats();
@@ -165,6 +145,15 @@ pub(super) async fn metrics(State(s): State<AppState>) -> impl IntoResponse {
                 "lopi_schema_violations_total{{kind=\"{kind}\"}} {count}\n"
             ));
         }
+    }
+
+    match s.store.count_audit().await {
+        Ok(audit_total) => {
+            body.push_str("# HELP lopi_audit_log_total Rows recorded in the audit log\n");
+            body.push_str("# TYPE lopi_audit_log_total counter\n");
+            body.push_str(&format!("lopi_audit_log_total {audit_total}\n"));
+        }
+        Err(e) => tracing::warn!("count_audit failed: {e}"),
     }
 
     (

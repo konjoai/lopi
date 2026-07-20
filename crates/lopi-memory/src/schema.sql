@@ -245,19 +245,6 @@ CREATE TABLE IF NOT EXISTS eval_outcomes (
 );
 CREATE INDEX IF NOT EXISTS idx_eval_outcomes_task ON eval_outcomes(task_id, attempt);
 
--- Sprint T — Q-learning router value table. One row per (task_type, agent
--- config) pair. The q column is the running value estimate in 0..1 and
--- update_count is how many rewards were folded in. The (state, action) pair
--- is the primary key so writes upsert the estimate in place.
-CREATE TABLE IF NOT EXISTS routing_q_values (
-    state        TEXT NOT NULL,
-    action       TEXT NOT NULL,
-    q            REAL NOT NULL DEFAULT 0.0,
-    update_count INTEGER NOT NULL DEFAULT 0,
-    updated_at   TEXT NOT NULL,
-    PRIMARY KEY (state, action)
-);
-
 -- macOS-UI Phase 0 — Durable cron schedules. The static `[[schedules]]`
 -- list in `lopi.toml` is loaded once at boot and cannot be edited at
 -- runtime. This table backs the OpenClaw-style cron UI: schedules are
@@ -416,3 +403,16 @@ CREATE TABLE IF NOT EXISTS schedule_chain_runs (
 );
 CREATE INDEX IF NOT EXISTS idx_schedule_chain_runs_chain ON schedule_chain_runs(chain_id, fired_at DESC);
 CREATE INDEX IF NOT EXISTS idx_schedule_chain_runs_status ON schedule_chain_runs(status);
+
+-- One row per (pattern, keyword) token. idx_patterns_keywords (above) indexes
+-- the whole goal_keywords string, which can only accelerate an exact-string
+-- match — useless for find_similar_patterns' per-token overlap query, which
+-- is why it went unused and that query fell back to scanning every pattern
+-- row. This table is the join target: querying by a single keyword hits
+-- idx_pattern_keywords_keyword directly instead.
+CREATE TABLE IF NOT EXISTS pattern_keywords (
+    pattern_id TEXT NOT NULL,
+    keyword    TEXT NOT NULL,
+    PRIMARY KEY (pattern_id, keyword)
+);
+CREATE INDEX IF NOT EXISTS idx_pattern_keywords_keyword ON pattern_keywords(keyword);

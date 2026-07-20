@@ -82,14 +82,42 @@ impl MemoryStore {
         if query_fp.is_empty() {
             return Ok(vec![]);
         }
-        let all: Vec<PatternRow> = sqlx::query_as::<_, PatternRow>(
-            "SELECT id, goal_keywords, successful_constraints, avg_attempts, success_rate, \
-             last_seen, derived_from_postmortem FROM patterns",
-        )
-        .fetch_all(&self.read_pool)
-        .await?;
+        let tokens: Vec<&str> = query_fp.split_whitespace().collect();
 
-        let mut scored: Vec<(f32, PatternRow)> = all
+        // Narrow to candidates sharing at least one keyword token via
+        // pattern_keywords (idx_pattern_keywords_keyword), instead of
+        // fetching and scoring every row in the table.
+        let mut candidates_qb = sqlx::QueryBuilder::new(
+            "SELECT DISTINCT pattern_id FROM pattern_keywords WHERE keyword IN (",
+        );
+        let mut separated = candidates_qb.separated(", ");
+        for token in &tokens {
+            separated.push_bind(*token);
+        }
+        separated.push_unseparated(")");
+        let candidate_ids: Vec<String> = candidates_qb
+            .build_query_scalar()
+            .fetch_all(&self.read_pool)
+            .await?;
+        if candidate_ids.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let mut rows_qb = sqlx::QueryBuilder::new(
+            "SELECT id, goal_keywords, successful_constraints, avg_attempts, success_rate, \
+             last_seen, derived_from_postmortem FROM patterns WHERE id IN (",
+        );
+        let mut separated = rows_qb.separated(", ");
+        for id in &candidate_ids {
+            separated.push_bind(id);
+        }
+        separated.push_unseparated(")");
+        let candidates: Vec<PatternRow> = rows_qb
+            .build_query_as::<PatternRow>()
+            .fetch_all(&self.read_pool)
+            .await?;
+
+        let mut scored: Vec<(f32, PatternRow)> = candidates
             .into_iter()
             .filter_map(|row| {
                 let sim = jaccard_similarity(&query_fp, &row.goal_keywords);
@@ -98,6 +126,32 @@ impl MemoryStore {
             .collect();
         scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
         Ok(scored.into_iter().take(5).map(|(_, r)| r).collect())
+    }
+
+    /// Replace `pattern_id`'s indexed keyword tokens with those in
+    /// `goal_keywords` (space-separated, as produced by
+    /// [`keyword_fingerprint`]) — keeps `pattern_keywords` in sync so
+    /// [`Self::find_similar_patterns`]' candidate lookup stays correct.
+    async fn index_pattern_keywords(
+        executor: &mut sqlx::SqliteConnection,
+        pattern_id: &str,
+        goal_keywords: &str,
+    ) -> Result<()> {
+        sqlx::query("DELETE FROM pattern_keywords WHERE pattern_id = ?1")
+            .bind(pattern_id)
+            .execute(&mut *executor)
+            .await?;
+        for token in goal_keywords.split_whitespace() {
+            sqlx::query(
+                "INSERT INTO pattern_keywords (pattern_id, keyword) VALUES (?1, ?2) \
+                 ON CONFLICT(pattern_id, keyword) DO NOTHING",
+            )
+            .bind(pattern_id)
+            .bind(token)
+            .execute(&mut *executor)
+            .await?;
+        }
+        Ok(())
     }
 
     /// Load all patterns ordered by success rate descending.
@@ -157,6 +211,8 @@ impl MemoryStore {
         .bind(now)
         .execute(&self.write_pool)
         .await?;
+        let mut conn = self.write_pool.acquire().await?;
+        Self::index_pattern_keywords(&mut conn, &id, goal_keywords).await?;
         Ok(id)
     }
 
@@ -178,16 +234,25 @@ impl MemoryStore {
 
         let (avg_pass, attempt_count) = stats.unwrap_or((0.0, 0));
         let success_rate = avg_pass.clamp(0.0, 1.0);
+        #[allow(clippy::cast_precision_loss)]
+        let attempt_f = attempt_count as f64;
+        let now = Utc::now().to_rfc3339();
+
+        // The existing-row lookup and its resulting insert/update must
+        // happen inside one transaction on the (single-connection) write
+        // pool: acquiring that pool's only connection here blocks any
+        // concurrent mine_patterns call at the same point, closing the
+        // window where two calls for the same fingerprint could both read
+        // "no existing row" (via the separate, multi-connection read pool)
+        // before either had written — and both insert, creating duplicate
+        // rows for the same goal_keywords.
+        let mut tx = self.write_pool.begin().await?;
         let existing: Option<(String, Option<f64>, Option<f64>)> = sqlx::query_as(
             "SELECT id, avg_attempts, success_rate FROM patterns WHERE goal_keywords = ?1",
         )
         .bind(&fingerprint)
-        .fetch_optional(&self.read_pool)
+        .fetch_optional(&mut *tx)
         .await?;
-
-        #[allow(clippy::cast_precision_loss)]
-        let attempt_f = attempt_count as f64;
-        let now = Utc::now().to_rfc3339();
 
         if let Some((existing_id, prev_avg, prev_sr)) = existing {
             let new_avg = f64::midpoint(prev_avg.unwrap_or(0.0), attempt_f).max(1.0);
@@ -199,21 +264,24 @@ impl MemoryStore {
             .bind(new_sr)
             .bind(&now)
             .bind(existing_id)
-            .execute(&self.write_pool)
+            .execute(&mut *tx)
             .await?;
         } else {
+            let id = uuid::Uuid::new_v4().to_string();
             sqlx::query(
                 "INSERT INTO patterns (id, goal_keywords, avg_attempts, success_rate, last_seen) \
                  VALUES (?1, ?2, ?3, ?4, ?5)",
             )
-            .bind(uuid::Uuid::new_v4().to_string())
+            .bind(&id)
             .bind(&fingerprint)
             .bind(attempt_f)
             .bind(success_rate)
             .bind(&now)
-            .execute(&self.write_pool)
+            .execute(&mut *tx)
             .await?;
+            Self::index_pattern_keywords(&mut tx, &id, &fingerprint).await?;
         }
+        tx.commit().await?;
         Ok(())
     }
 

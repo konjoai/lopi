@@ -46,7 +46,13 @@ impl AgentRunner {
             .await
         {
             Ok(id) => {
-                self.log(format!("🧠 post-mortem pattern saved [{}]", &id[..8]));
+                // `id` is always a UUID string today (see
+                // `MemoryStore::insert_postmortem_pattern`), but slice by
+                // `char_indices` rather than a raw byte index so a future
+                // change to a shorter/non-ASCII id can't turn this log line
+                // into a panic.
+                let short_id = id.get(..8).unwrap_or(id.as_str());
+                self.log(format!("🧠 post-mortem pattern saved [{short_id}]"));
                 self.log(format!("    constraint: {constraint}"));
                 let task_id_str = self.task.id.0.to_string();
                 if let Err(e) = store

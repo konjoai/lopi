@@ -51,25 +51,6 @@ pub struct TurnMetrics {
     pub timestamp: DateTime<Utc>,
 }
 
-/// Lifecycle state of a single agent run.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub enum AgentState {
-    /// Agent is waiting for its first task.
-    Idle,
-    /// Agent is generating an implementation plan.
-    Planning,
-    /// Agent is applying code changes.
-    Implementing,
-    /// Agent is running the test suite.
-    Testing,
-    /// Agent is evaluating test and lint results.
-    Scoring,
-    /// Agent has finished and produced a final result.
-    Done,
-    /// Agent encountered a non-recoverable error.
-    Errored,
-}
-
 /// Tunable penalties applied by [`Score::weighted`] to derive a composite quality score.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScoreWeights {
@@ -159,7 +140,7 @@ impl Score {
     }
 }
 
-/// One execution attempt within an [`AgentRun`], representing a single branch-and-score cycle.
+/// One execution attempt for a task, representing a single branch-and-score cycle.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Attempt {
     /// Unique identifier for this attempt.
@@ -189,38 +170,6 @@ impl Attempt {
             score: None,
             outcome: "pending".into(),
             created_at: Utc::now(),
-        }
-    }
-}
-
-/// Full lifecycle record for one agent's execution of a task.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AgentRun {
-    /// Unique identifier for this agent run.
-    pub id: Uuid,
-    /// Task being executed by this run.
-    pub task_id: TaskId,
-    /// Current lifecycle state of the agent.
-    pub state: AgentState,
-    /// Ordered list of execution attempts made so far.
-    pub attempts: Vec<Attempt>,
-    /// Timestamp when this run was created.
-    pub started_at: DateTime<Utc>,
-    /// Timestamp when this run reached a terminal state, if complete.
-    pub finished_at: Option<DateTime<Utc>>,
-}
-
-impl AgentRun {
-    /// Create a new `AgentRun` in the `Idle` state with no attempts.
-    #[must_use]
-    pub fn new(task_id: TaskId) -> Self {
-        Self {
-            id: Uuid::new_v4(),
-            task_id,
-            state: AgentState::Idle,
-            attempts: vec![],
-            started_at: Utc::now(),
-            finished_at: None,
         }
     }
 }

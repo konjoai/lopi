@@ -107,6 +107,12 @@ pub struct WhatsappConfig {
     /// Twilio signing secret for HMAC-SHA1 webhook signature verification.
     #[serde(default)]
     pub signing_secret: Option<String>,
+    /// The exact public URL Twilio is configured to POST this webhook to
+    /// (e.g. `"https://example.com/webhook/whatsapp"`). Required for
+    /// signature verification: Twilio signs `URL + sorted(params)`, not
+    /// just the request body, so verification must know its own public URL.
+    #[serde(default)]
+    pub webhook_url: Option<String>,
 }
 
 /// Web dashboard server settings (`[web]` table in `lopi.toml`).

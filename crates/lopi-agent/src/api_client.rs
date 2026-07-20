@@ -318,11 +318,8 @@ impl AnthropicClient {
         ))
         .lines();
 
-        let mut event_type = String::new();
-
         while let Some(line) = lines.next_line().await.context("reading SSE stream")? {
             if line.starts_with("event:") {
-                event_type = line.trim_start_matches("event:").trim().to_string();
                 continue;
             }
             if line.starts_with("data:") {
@@ -357,7 +354,6 @@ impl AnthropicClient {
                     }
                     _ => {}
                 }
-                let _ = &event_type;
             }
         }
 

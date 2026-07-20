@@ -96,7 +96,7 @@ fn initialize_result() -> Value {
 fn ok(id: i64, result: Value) -> Response {
     Response {
         jsonrpc: crate::jsonrpc::JSONRPC_VERSION.to_string(),
-        id,
+        id: Some(id),
         result: Some(result),
         error: None,
     }
@@ -106,7 +106,7 @@ fn ok(id: i64, result: Value) -> Response {
 fn err(id: i64, code: i64, message: String) -> Response {
     Response {
         jsonrpc: crate::jsonrpc::JSONRPC_VERSION.to_string(),
-        id,
+        id: Some(id),
         result: None,
         error: Some(RpcError {
             code,

@@ -23,6 +23,12 @@ pub struct TestRunResult {
     pub passed: bool,
     /// Captured failure output (empty when `passed == true`).
     pub error: Option<String>,
+    /// True when the runner explicitly skipped this test (e.g. Rust's
+    /// `#[ignore]`), as opposed to running it and failing. Ignored tests are
+    /// neither a pass nor a coverage gap — they were deliberately excluded,
+    /// not left untested.
+    #[serde(default)]
+    pub ignored: bool,
 }
 
 /// Run the repo's tests and return per-test pass/fail results.
@@ -59,9 +65,17 @@ pub fn coverage_gaps<'a>(
         .filter(|r| r.passed)
         .map(|r| r.name.as_str())
         .collect();
+    // Deliberately-ignored tests are excluded too — they're not "never ran",
+    // they ran the runner's decision to skip them, which is a different
+    // signal than a spec item nobody wrote a test for at all.
+    let excluded: std::collections::HashSet<_> = results
+        .iter()
+        .filter(|r| r.ignored)
+        .map(|r| r.name.as_str())
+        .collect();
     spec_items
         .iter()
-        .filter(|i| !passing.contains(i.name.as_str()))
+        .filter(|i| !passing.contains(i.name.as_str()) && !excluded.contains(i.name.as_str()))
         .collect()
 }
 
@@ -73,13 +87,23 @@ pub fn coverage_gaps<'a>(
 /// surfacing at runtime.
 const CARGO_TEST_ARGS: [&str; 2] = ["test", "--no-fail-fast"];
 
+/// Check whether `sccache` is on `PATH`. Runs the (blocking) filesystem
+/// lookup via `spawn_blocking` since this is called from an async path.
+async fn sccache_available() -> bool {
+    tokio::task::spawn_blocking(|| which::which("sccache").is_ok())
+        .await
+        .unwrap_or(false)
+}
+
 async fn run_cargo(root: &Path) -> Result<Vec<TestRunResult>> {
-    let out = Command::new("cargo")
-        .args(CARGO_TEST_ARGS)
-        .env("RUSTC_WRAPPER", "sccache")
-        .current_dir(root)
-        .output()
-        .await?;
+    let mut cmd = Command::new("cargo");
+    cmd.args(CARGO_TEST_ARGS).current_dir(root);
+    if sccache_available().await {
+        cmd.env("RUSTC_WRAPPER", "sccache");
+    } else {
+        tracing::warn!("sccache not found on PATH — running cargo test without it");
+    }
+    let out = cmd.output().await?;
 
     let combined = format!(
         "{}\n{}",
@@ -126,6 +150,7 @@ pub(crate) fn parse_cargo_output(output: &str) -> Vec<TestRunResult> {
                     } else {
                         None
                     },
+                    ignored: verdict.starts_with("ignored"),
                 });
             }
         }
@@ -156,6 +181,7 @@ pub(crate) fn parse_pytest_output(output: &str) -> Vec<TestRunResult> {
                     } else {
                         None
                     },
+                    ignored: false,
                 });
             }
         }
@@ -164,7 +190,7 @@ pub(crate) fn parse_pytest_output(output: &str) -> Vec<TestRunResult> {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 
@@ -236,11 +262,13 @@ mod tests {
                 name: "test_a".into(),
                 passed: true,
                 error: None,
+                ignored: false,
             },
             TestRunResult {
                 name: "test_b".into(),
                 passed: false,
                 error: Some("FAILED".into()),
+                ignored: false,
             },
         ];
         let gaps = coverage_gaps(&items, &results);
@@ -263,6 +291,39 @@ mod tests {
         assert_eq!(gaps.len(), 1);
     }
 
+    #[test]
+    fn cargo_ignored_test_is_marked_ignored_not_failed() {
+        let out = "test slow::heavy_bench ... ignored\n";
+        let results = parse_cargo_output(out);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].name, "heavy_bench");
+        assert!(!results[0].passed);
+        assert!(results[0].ignored);
+        assert!(results[0].error.is_none());
+    }
+
+    /// Regression test for the original bug: an `#[ignore]`d test's
+    /// `... ignored` libtest line was parsed as `passed: false` with no
+    /// `ignored` bucket, so `coverage_gaps` reported it as a gap — the same
+    /// class of false-positive that made every spec item look untested.
+    #[test]
+    fn coverage_gaps_excludes_ignored_tests() {
+        use crate::{SpecItem, SpecKind};
+        let items = vec![SpecItem {
+            name: "heavy_bench".into(),
+            description: "a slow ignored test".into(),
+            kind: SpecKind::RustTest,
+            file: "x.rs".into(),
+            line: 1,
+        }];
+        let results = parse_cargo_output("test slow::heavy_bench ... ignored\n");
+        let gaps = coverage_gaps(&items, &results);
+        assert!(
+            gaps.is_empty(),
+            "an explicitly-ignored test must not count as a coverage gap"
+        );
+    }
+
     /// Regression test for the invalid `--test-output immediate` libtest
     /// flag that used to be passed here: it isn't a real `cargo test`/libtest
     /// option, so `cargo test` exited non-zero, `parse_cargo_output` never
@@ -281,5 +342,51 @@ mod tests {
         let results = parse_cargo_output(out);
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].name, "a");
+    }
+
+    #[tokio::test]
+    async fn sccache_available_matches_which_lookup() {
+        let expected = which::which("sccache").is_ok();
+        assert_eq!(sccache_available().await, expected);
+    }
+
+    /// Regression test for the command-spawn path itself never being
+    /// exercised: every other test here feeds pre-captured strings straight
+    /// to the parsers, so a real invalid-flag/invocation bug (like the
+    /// `--test-output immediate` regression above) would only ever surface
+    /// at runtime against a real repo. This actually spawns `cargo test`
+    /// against a minimal fixture crate end-to-end through `run_tests`.
+    #[tokio::test]
+    async fn run_tests_spawns_real_cargo_test() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join("Cargo.toml"),
+            "[package]\nname = \"fixture\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+        )
+        .expect("write Cargo.toml");
+        std::fs::create_dir_all(dir.path().join("src")).expect("mkdir src");
+        std::fs::write(
+            dir.path().join("src/lib.rs"),
+            "#[test]\nfn passing_test() { assert_eq!(1 + 1, 2); }\n\n\
+             #[test]\nfn failing_test() { assert_eq!(1 + 1, 3); }\n",
+        )
+        .expect("write src/lib.rs");
+
+        let results =
+            tokio::time::timeout(std::time::Duration::from_secs(120), run_tests(dir.path()))
+                .await
+                .expect("run_tests timed out")
+                .expect("run_tests failed");
+
+        let passing = results.iter().find(|r| r.name == "passing_test");
+        let failing = results.iter().find(|r| r.name == "failing_test");
+        assert!(
+            passing.is_some_and(|r| r.passed),
+            "expected passing_test to pass: {results:?}"
+        );
+        assert!(
+            failing.is_some_and(|r| !r.passed && r.error.is_some()),
+            "expected failing_test to fail with an error: {results:?}"
+        );
     }
 }

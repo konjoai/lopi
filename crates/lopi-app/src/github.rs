@@ -34,8 +34,14 @@ pub async fn install_redirect(State(s): State<Arc<AppState>>) -> impl IntoRespon
     Redirect::temporary(&url).into_response()
 }
 
-/// OAuth callback: exchange `code` for an access token, look up/create the
-/// customer record, and provision their isolated `MemoryStore`.
+/// OAuth callback: exchange `code` for an access token and confirm the
+/// install to the user.
+///
+/// This endpoint does *not* create the customer record or provision a
+/// `MemoryStore` — that happens separately, driven by the `installation`
+/// GitHub App webhook event (`created` action) in [`webhook`] via
+/// [`handle_installation_created`], which fires once the installation is
+/// actually attached to the app rather than at OAuth-code-exchange time.
 pub async fn oauth_callback(
     Query(params): Query<HashMap<String, String>>,
     State(s): State<Arc<AppState>>,
@@ -195,18 +201,26 @@ async fn exchange_code(
     Ok(resp.json::<OAuthToken>().await?)
 }
 
+/// Verify GitHub's `X-Hub-Signature-256: sha256=<hex>` header against `body`.
 fn verify_hmac(secret: &[u8], body: &[u8], sig_header: &str) -> bool {
     use hmac::{Hmac, Mac};
     use sha2::Sha256;
-    let expected = sig_header.strip_prefix("sha256=").unwrap_or("");
-    let Ok(expected_bytes) = hex::decode(expected) else {
-        return false;
-    };
+
+    // Lowercased so casing differences in the header don't cause a spurious
+    // mismatch — `hex::decode` (the previous approach) was case-insensitive too.
+    let expected_hex = sig_header
+        .strip_prefix("sha256=")
+        .unwrap_or("")
+        .to_lowercase();
+
     let Ok(mut mac) = Hmac::<Sha256>::new_from_slice(secret) else {
         return false;
     };
     mac.update(body);
-    mac.finalize().into_bytes().as_slice() == expected_bytes.as_slice()
+    let computed_hex = hex::encode(mac.finalize().into_bytes());
+
+    // Constant-time comparison to prevent timing attacks.
+    lopi_core::constant_time_eq(&computed_hex, &expected_hex)
 }
 
 #[cfg(test)]
@@ -231,5 +245,24 @@ mod tests {
         assert!(!verify_hmac(b"secret", b"body", "sha256=badhex"));
         assert!(!verify_hmac(b"secret", b"body", "notsha256=abc"));
         assert!(!verify_hmac(b"secret", b"body", ""));
+    }
+
+    /// Regression test for the switch to `lopi_core::constant_time_eq`
+    /// (hex-string comparison): an uppercase-hex signature header must still
+    /// verify, matching the case-insensitive `hex::decode` behavior this
+    /// replaced.
+    #[test]
+    fn verify_hmac_uppercase_hex_still_passes() {
+        use hmac::{Hmac, Mac};
+        use sha2::Sha256;
+        let secret = b"mysecret";
+        let body = b"hello github";
+        let mut mac = Hmac::<Sha256>::new_from_slice(secret).unwrap();
+        mac.update(body);
+        let sig = format!(
+            "sha256={}",
+            hex::encode(mac.finalize().into_bytes()).to_uppercase()
+        );
+        assert!(verify_hmac(secret, body, &sig));
     }
 }
