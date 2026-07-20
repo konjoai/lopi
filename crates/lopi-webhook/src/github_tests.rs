@@ -147,6 +147,25 @@ async fn invalid_secret_returns_401() {
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 }
 
+/// Distinct from `invalid_secret_returns_401` (which always sends *some*
+/// signature header, just one derived from the wrong secret) and from the
+/// function-level `empty_signature_fails` (which passes `sig_header = ""`
+/// directly to `verify_signature`, not an actual HTTP request). This is the
+/// literal "header never sent" case on a request against a router with a
+/// secret configured — `hmac_guard` must still reject it, not fall through
+/// as if no secret were configured.
+#[tokio::test]
+async fn missing_signature_header_returns_401_when_secret_configured() {
+    let app = make_test_router(Some("mysecret"));
+    let body = serde_json::json!({
+        "repository": { "full_name": "org/repo" },
+        "workflow_run": { "conclusion": "failure" }
+    });
+    let body_bytes = serde_json::to_vec(&body).unwrap();
+    let resp = post_webhook(app, "workflow_run", body_bytes, None).await;
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
 #[tokio::test]
 async fn pr_review_changes_requested_queues_task() {
     let app = make_test_router(None);

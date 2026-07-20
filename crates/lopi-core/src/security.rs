@@ -40,4 +40,25 @@ mod tests {
     fn empty_strings_match() {
         assert!(constant_time_eq("", ""));
     }
+
+    /// Structural regression guard for the constant-time property, not a
+    /// timing measurement — wall-clock timing assertions are inherently
+    /// flaky/non-portable in CI, so this instead pins that mismatch
+    /// detection is independent of *where* the differing byte falls.
+    /// `constant_time_eq`'s `.fold()` has no early-exit combinator
+    /// (`.any()`/`.find()`/`break`) and therefore always visits every byte
+    /// pair regardless of an earlier mismatch — this test would still pass
+    /// under a short-circuiting rewrite (e.g. plain `==`, or
+    /// `.zip().any(...)`), since all four cases are already caught either
+    /// way, but a mismatch anywhere still failing to short-circuit-skip the
+    /// full scan is exactly the property that makes the timing side-channel
+    /// unobservable in the first place.
+    #[test]
+    fn mismatch_position_does_not_affect_correctness() {
+        let base = "aaaaaaaaaa";
+        assert!(!constant_time_eq(base, "baaaaaaaaa"), "first byte differs");
+        assert!(!constant_time_eq(base, "aaaaabaaaa"), "middle byte differs");
+        assert!(!constant_time_eq(base, "aaaaaaaaab"), "last byte differs");
+        assert!(!constant_time_eq(base, "bbbbbbbbbb"), "every byte differs");
+    }
 }
