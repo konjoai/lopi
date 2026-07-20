@@ -403,3 +403,16 @@ CREATE TABLE IF NOT EXISTS schedule_chain_runs (
 );
 CREATE INDEX IF NOT EXISTS idx_schedule_chain_runs_chain ON schedule_chain_runs(chain_id, fired_at DESC);
 CREATE INDEX IF NOT EXISTS idx_schedule_chain_runs_status ON schedule_chain_runs(status);
+
+-- One row per (pattern, keyword) token. idx_patterns_keywords (above) indexes
+-- the whole goal_keywords string, which can only accelerate an exact-string
+-- match — useless for find_similar_patterns' per-token overlap query, which
+-- is why it went unused and that query fell back to scanning every pattern
+-- row. This table is the join target: querying by a single keyword hits
+-- idx_pattern_keywords_keyword directly instead.
+CREATE TABLE IF NOT EXISTS pattern_keywords (
+    pattern_id TEXT NOT NULL,
+    keyword    TEXT NOT NULL,
+    PRIMARY KEY (pattern_id, keyword)
+);
+CREATE INDEX IF NOT EXISTS idx_pattern_keywords_keyword ON pattern_keywords(keyword);
