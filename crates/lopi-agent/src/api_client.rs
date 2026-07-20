@@ -270,7 +270,7 @@ impl AnthropicClient {
         mut on_delta: F,
     ) -> Result<(String, ApiUsage)>
     where
-        F: FnMut(&str),
+        F: FnMut(&str) + Send,
     {
         let mut body = serde_json::json!({
             "model": model,
@@ -310,54 +310,11 @@ impl AnthropicClient {
             anyhow::bail!("Anthropic API {status}: {body}");
         }
 
-        let mut text = String::new();
-        let mut usage = ApiUsage::default();
         let stream = resp.bytes_stream();
-        let mut lines = BufReader::new(tokio_util::io::StreamReader::new(
+        let reader = BufReader::new(tokio_util::io::StreamReader::new(
             stream.map(|r: reqwest::Result<bytes::Bytes>| r.map_err(std::io::Error::other)),
-        ))
-        .lines();
-
-        while let Some(line) = lines.next_line().await.context("reading SSE stream")? {
-            if line.starts_with("event:") {
-                continue;
-            }
-            if line.starts_with("data:") {
-                let data = line.trim_start_matches("data:").trim();
-                if data == "[DONE]" {
-                    break;
-                }
-                let ev: SseEvent = match serde_json::from_str(data) {
-                    Ok(e) => e,
-                    Err(_) => continue,
-                };
-                match ev {
-                    SseEvent::MessageStart { message } => {
-                        if let Some(u) = message.usage {
-                            usage.input_tokens += u.input_tokens.unwrap_or(0);
-                            usage.cache_read_tokens += u.cache_read_input_tokens.unwrap_or(0);
-                            usage.cache_write_tokens += u.cache_creation_input_tokens.unwrap_or(0);
-                        }
-                    }
-                    SseEvent::ContentBlockDelta {
-                        delta: SseDelta::TextDelta { text: t },
-                        ..
-                    } => {
-                        on_delta(&t);
-                        text.push_str(&t);
-                    }
-                    SseEvent::MessageDelta { usage: Some(u), .. } => {
-                        usage.output_tokens += u.output_tokens.unwrap_or(0);
-                    }
-                    SseEvent::Error { error } => {
-                        anyhow::bail!("Anthropic SSE error: {}", error.message);
-                    }
-                    _ => {}
-                }
-            }
-        }
-
-        Ok((text, usage))
+        ));
+        decode_sse_stream(reader, &mut on_delta).await
     }
 
     /// Non-streaming single-turn call (for fix and score prompts).
@@ -432,6 +389,73 @@ impl AnthropicClient {
         }
         Ok(())
     }
+}
+
+/// Decode one SSE stream from Anthropic's streaming Messages API into the
+/// accumulated response text and token usage, invoking `on_delta` for each
+/// text delta as it arrives.
+///
+/// Split out of `stream_plan` so the parsing logic — `event:`/`data:` line
+/// dispatch, `[DONE]` handling, per-`SseEvent`-variant usage accounting, and
+/// the SSE `error` event — is testable against synthetic in-memory SSE
+/// bytes, independent of a real HTTP response (`stream_plan` builds `reader`
+/// from `resp.bytes_stream()`; a test can instead wrap a `Cursor` over a
+/// literal SSE payload).
+async fn decode_sse_stream<R>(
+    reader: R,
+    on_delta: &mut (dyn FnMut(&str) + Send),
+) -> Result<(String, ApiUsage)>
+where
+    R: tokio::io::AsyncBufRead + Unpin,
+{
+    let mut text = String::new();
+    let mut usage = ApiUsage::default();
+    let mut lines = reader.lines();
+
+    while let Some(line) = lines.next_line().await.context("reading SSE stream")? {
+        if line.starts_with("event:") {
+            continue;
+        }
+        let Some(data) = line.strip_prefix("data:") else {
+            continue;
+        };
+        let data = data.trim();
+        if data == "[DONE]" {
+            break;
+        }
+        let ev: SseEvent = match serde_json::from_str(data) {
+            Ok(e) => e,
+            Err(e) => {
+                tracing::warn!(error = %e, "failed to decode SSE data line; skipping");
+                continue;
+            }
+        };
+        match ev {
+            SseEvent::MessageStart { message } => {
+                if let Some(u) = message.usage {
+                    usage.input_tokens += u.input_tokens.unwrap_or(0);
+                    usage.cache_read_tokens += u.cache_read_input_tokens.unwrap_or(0);
+                    usage.cache_write_tokens += u.cache_creation_input_tokens.unwrap_or(0);
+                }
+            }
+            SseEvent::ContentBlockDelta {
+                delta: SseDelta::TextDelta { text: t },
+                ..
+            } => {
+                on_delta(&t);
+                text.push_str(&t);
+            }
+            SseEvent::MessageDelta { usage: Some(u), .. } => {
+                usage.output_tokens += u.output_tokens.unwrap_or(0);
+            }
+            SseEvent::Error { error } => {
+                anyhow::bail!("Anthropic SSE error: {}", error.message);
+            }
+            _ => {}
+        }
+    }
+
+    Ok((text, usage))
 }
 
 // ── Lopi system prompt (cached prefix) ───────────────────────────────────────

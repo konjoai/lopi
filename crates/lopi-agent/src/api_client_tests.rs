@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
 use super::*;
 use crate::claude::MODEL_SONNET;
 
@@ -103,4 +105,167 @@ fn shared_http_returns_same_instance() {
     let a = shared_http();
     let b = shared_http();
     assert!(Arc::ptr_eq(&a, &b), "shared_http must return the same Arc");
+}
+
+// ── decode_sse_stream ────────────────────────────────────────────────────────
+
+fn reader_for(sse: &str) -> tokio::io::BufReader<std::io::Cursor<Vec<u8>>> {
+    tokio::io::BufReader::new(std::io::Cursor::new(sse.as_bytes().to_vec()))
+}
+
+fn text_delta_line(text: &str) -> String {
+    format!(
+        "data: {}\n",
+        serde_json::json!({
+            "type": "content_block_delta",
+            "index": 0,
+            "delta": {"type": "text_delta", "text": text},
+        })
+    )
+}
+
+#[tokio::test]
+async fn decode_sse_stream_accumulates_text_and_invokes_on_delta() {
+    let sse = format!(
+        "{}{}",
+        text_delta_line("Hello, "),
+        text_delta_line("world!")
+    );
+    let mut deltas = Vec::new();
+    let (text, _usage) = decode_sse_stream(reader_for(&sse), &mut |t| deltas.push(t.to_string()))
+        .await
+        .unwrap();
+    assert_eq!(text, "Hello, world!");
+    assert_eq!(deltas, vec!["Hello, ".to_string(), "world!".to_string()]);
+}
+
+#[tokio::test]
+async fn decode_sse_stream_ignores_event_lines() {
+    let sse = format!("event: content_block_delta\n{}", text_delta_line("hi"));
+    let (text, _usage) = decode_sse_stream(reader_for(&sse), &mut |_| {})
+        .await
+        .unwrap();
+    assert_eq!(text, "hi");
+}
+
+#[tokio::test]
+async fn decode_sse_stream_stops_at_done_marker() {
+    let sse = format!(
+        "{}data: [DONE]\n{}",
+        text_delta_line("before"),
+        text_delta_line("after")
+    );
+    let (text, _usage) = decode_sse_stream(reader_for(&sse), &mut |_| {})
+        .await
+        .unwrap();
+    assert_eq!(
+        text, "before",
+        "[DONE] must stop processing, dropping anything after it"
+    );
+}
+
+/// A malformed `data:` line must be skipped, not abort the whole stream —
+/// the surrounding well-formed deltas still accumulate.
+#[tokio::test]
+async fn decode_sse_stream_skips_malformed_json_and_continues() {
+    let sse = format!(
+        "{}data: {{not valid json\n{}",
+        text_delta_line("before"),
+        text_delta_line("after")
+    );
+    let (text, _usage) = decode_sse_stream(reader_for(&sse), &mut |_| {})
+        .await
+        .unwrap();
+    assert_eq!(text, "beforeafter");
+}
+
+/// An SSE `error` event must propagate as an `Err`, not be silently
+/// swallowed like an unrecognized event type.
+#[tokio::test]
+async fn decode_sse_stream_propagates_error_event() {
+    let sse = format!(
+        "data: {}\n",
+        serde_json::json!({
+            "type": "error",
+            "error": {"type": "overloaded_error", "message": "server overloaded"},
+        })
+    );
+    let err = decode_sse_stream(reader_for(&sse), &mut |_| {})
+        .await
+        .unwrap_err();
+    assert!(err.to_string().contains("server overloaded"));
+}
+
+/// A stream that ends without `[DONE]` or a terminal `message_stop` (the
+/// connection just closes) must still return whatever accumulated, not error.
+#[tokio::test]
+async fn decode_sse_stream_returns_accumulated_state_when_stream_ends_abruptly() {
+    let sse = text_delta_line("partial");
+    let (text, _usage) = decode_sse_stream(reader_for(&sse), &mut |_| {})
+        .await
+        .unwrap();
+    assert_eq!(text, "partial");
+}
+
+#[tokio::test]
+async fn decode_sse_stream_accumulates_usage_from_message_start_and_message_delta() {
+    let sse = format!(
+        "data: {}\ndata: {}\n",
+        serde_json::json!({
+            "type": "message_start",
+            "message": {
+                "usage": {
+                    "input_tokens": 100,
+                    "cache_read_input_tokens": 20,
+                    "cache_creation_input_tokens": 5,
+                }
+            },
+        }),
+        serde_json::json!({
+            "type": "message_delta",
+            "delta": {"stop_reason": "end_turn"},
+            "usage": {"output_tokens": 50},
+        }),
+    );
+    let (_text, usage) = decode_sse_stream(reader_for(&sse), &mut |_| {})
+        .await
+        .unwrap();
+    assert_eq!(usage.input_tokens, 100);
+    assert_eq!(usage.cache_read_tokens, 20);
+    assert_eq!(usage.cache_write_tokens, 5);
+    assert_eq!(usage.output_tokens, 50);
+}
+
+/// `message_delta` events without a `usage` field (mid-stream deltas that
+/// only carry `stop_reason` progress) must not affect the accumulated usage.
+#[tokio::test]
+async fn decode_sse_stream_message_delta_without_usage_is_a_no_op() {
+    let sse = format!(
+        "data: {}\n",
+        serde_json::json!({
+            "type": "message_delta",
+            "delta": {"stop_reason": null},
+            "usage": null,
+        }),
+    );
+    let (_text, usage) = decode_sse_stream(reader_for(&sse), &mut |_| {})
+        .await
+        .unwrap();
+    assert_eq!(usage.output_tokens, 0);
+}
+
+/// Unrecognized/ignored event types (`ping`, `content_block_start`,
+/// `content_block_stop`, `message_stop`) must not affect accumulated state.
+#[tokio::test]
+async fn decode_sse_stream_ignores_unhandled_event_types() {
+    let sse = format!(
+        "data: {}\ndata: {}\n{}",
+        serde_json::json!({"type": "ping"}),
+        serde_json::json!({"type": "message_stop"}),
+        text_delta_line("still works"),
+    );
+    let (text, _usage) = decode_sse_stream(reader_for(&sse), &mut |_| {})
+        .await
+        .unwrap();
+    assert_eq!(text, "still works");
 }
