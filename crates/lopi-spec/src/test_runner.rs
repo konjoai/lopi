@@ -23,6 +23,12 @@ pub struct TestRunResult {
     pub passed: bool,
     /// Captured failure output (empty when `passed == true`).
     pub error: Option<String>,
+    /// True when the runner explicitly skipped this test (e.g. Rust's
+    /// `#[ignore]`), as opposed to running it and failing. Ignored tests are
+    /// neither a pass nor a coverage gap — they were deliberately excluded,
+    /// not left untested.
+    #[serde(default)]
+    pub ignored: bool,
 }
 
 /// Run the repo's tests and return per-test pass/fail results.
@@ -59,9 +65,17 @@ pub fn coverage_gaps<'a>(
         .filter(|r| r.passed)
         .map(|r| r.name.as_str())
         .collect();
+    // Deliberately-ignored tests are excluded too — they're not "never ran",
+    // they ran the runner's decision to skip them, which is a different
+    // signal than a spec item nobody wrote a test for at all.
+    let excluded: std::collections::HashSet<_> = results
+        .iter()
+        .filter(|r| r.ignored)
+        .map(|r| r.name.as_str())
+        .collect();
     spec_items
         .iter()
-        .filter(|i| !passing.contains(i.name.as_str()))
+        .filter(|i| !passing.contains(i.name.as_str()) && !excluded.contains(i.name.as_str()))
         .collect()
 }
 
@@ -126,6 +140,7 @@ pub(crate) fn parse_cargo_output(output: &str) -> Vec<TestRunResult> {
                     } else {
                         None
                     },
+                    ignored: verdict.starts_with("ignored"),
                 });
             }
         }
@@ -156,6 +171,7 @@ pub(crate) fn parse_pytest_output(output: &str) -> Vec<TestRunResult> {
                     } else {
                         None
                     },
+                    ignored: false,
                 });
             }
         }
@@ -236,11 +252,13 @@ mod tests {
                 name: "test_a".into(),
                 passed: true,
                 error: None,
+                ignored: false,
             },
             TestRunResult {
                 name: "test_b".into(),
                 passed: false,
                 error: Some("FAILED".into()),
+                ignored: false,
             },
         ];
         let gaps = coverage_gaps(&items, &results);
@@ -261,6 +279,39 @@ mod tests {
         // No test results at all — test_c was never run → gap
         let gaps = coverage_gaps(&items, &[]);
         assert_eq!(gaps.len(), 1);
+    }
+
+    #[test]
+    fn cargo_ignored_test_is_marked_ignored_not_failed() {
+        let out = "test slow::heavy_bench ... ignored\n";
+        let results = parse_cargo_output(out);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].name, "heavy_bench");
+        assert!(!results[0].passed);
+        assert!(results[0].ignored);
+        assert!(results[0].error.is_none());
+    }
+
+    /// Regression test for the original bug: an `#[ignore]`d test's
+    /// `... ignored` libtest line was parsed as `passed: false` with no
+    /// `ignored` bucket, so `coverage_gaps` reported it as a gap — the same
+    /// class of false-positive that made every spec item look untested.
+    #[test]
+    fn coverage_gaps_excludes_ignored_tests() {
+        use crate::{SpecItem, SpecKind};
+        let items = vec![SpecItem {
+            name: "heavy_bench".into(),
+            description: "a slow ignored test".into(),
+            kind: SpecKind::RustTest,
+            file: "x.rs".into(),
+            line: 1,
+        }];
+        let results = parse_cargo_output("test slow::heavy_bench ... ignored\n");
+        let gaps = coverage_gaps(&items, &results);
+        assert!(
+            gaps.is_empty(),
+            "an explicitly-ignored test must not count as a coverage gap"
+        );
     }
 
     /// Regression test for the invalid `--test-output immediate` libtest

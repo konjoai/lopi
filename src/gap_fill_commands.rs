@@ -33,7 +33,7 @@ pub async fn run(
     }
     let results = run_tests(&repo).await?;
     let passing = results.iter().filter(|r| r.passed).count();
-    let failing = results.iter().filter(|r| !r.passed).count();
+    let failing = results.iter().filter(|r| !r.passed && !r.ignored).count();
     if !quiet {
         println!(
             "  ✅ {} results: {} passing, {} failing",
