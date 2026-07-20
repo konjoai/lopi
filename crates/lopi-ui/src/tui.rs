@@ -203,6 +203,29 @@ impl AppState {
         }
     }
 
+    /// Move the table selection forward by one, wrapping to the first row
+    /// past the last. No-op when there are no agents.
+    pub(super) fn select_next(&mut self) {
+        let len = self.agents.len();
+        if len > 0 {
+            let i = self.table_state.selected().map_or(0, |i| (i + 1) % len);
+            self.table_state.select(Some(i));
+        }
+    }
+
+    /// Move the table selection backward by one, wrapping to the last row
+    /// before the first. No-op when there are no agents.
+    pub(super) fn select_prev(&mut self) {
+        let len = self.agents.len();
+        if len > 0 {
+            let i = self
+                .table_state
+                .selected()
+                .map_or(0, |i| if i == 0 { len - 1 } else { i - 1 });
+            self.table_state.select(Some(i));
+        }
+    }
+
     pub(super) fn sorted_agents(&self) -> Vec<&AgentRow> {
         let mut v: Vec<&AgentRow> = self.agents.values().collect();
         v.sort_by_key(|a| a.started);
@@ -323,26 +346,8 @@ fn run_loop<B: ratatui::backend::Backend>(
                     (KeyCode::Char('?') | KeyCode::F(1), _) => {
                         state.show_help = !state.show_help;
                     }
-                    (KeyCode::Down | KeyCode::Char('j'), _) => {
-                        let len = state.agents.len();
-                        if len > 0 {
-                            let i = state.table_state.selected().map_or(0, |i| (i + 1) % len);
-                            state.table_state.select(Some(i));
-                        }
-                    }
-                    (KeyCode::Up | KeyCode::Char('k'), _) => {
-                        let len = state.agents.len();
-                        if len > 0 {
-                            let i = state.table_state.selected().map_or(0, |i| {
-                                if i == 0 {
-                                    len - 1
-                                } else {
-                                    i - 1
-                                }
-                            });
-                            state.table_state.select(Some(i));
-                        }
-                    }
+                    (KeyCode::Down | KeyCode::Char('j'), _) => state.select_next(),
+                    (KeyCode::Up | KeyCode::Char('k'), _) => state.select_prev(),
                     (KeyCode::Enter, _) => {
                         state.selected_task = state.selected_id();
                         state.log_filter = state.selected_task;
@@ -366,3 +371,7 @@ fn run_loop<B: ratatui::backend::Backend>(
         }
     }
 }
+
+#[cfg(test)]
+#[path = "tui_tests.rs"]
+mod tests;
