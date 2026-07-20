@@ -147,6 +147,15 @@ pub(super) async fn metrics(State(s): State<AppState>) -> impl IntoResponse {
         }
     }
 
+    match s.store.count_audit().await {
+        Ok(audit_total) => {
+            body.push_str("# HELP lopi_audit_log_total Rows recorded in the audit log\n");
+            body.push_str("# TYPE lopi_audit_log_total counter\n");
+            body.push_str(&format!("lopi_audit_log_total {audit_total}\n"));
+        }
+        Err(e) => tracing::warn!("count_audit failed: {e}"),
+    }
+
     (
         StatusCode::OK,
         [(
