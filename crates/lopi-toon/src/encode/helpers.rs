@@ -150,9 +150,13 @@ fn is_numeric_like(s: &str) -> bool {
     }
     if i < b.len() && b[i] == b'.' {
         i += 1;
-        if i >= b.len() || !b[i].is_ascii_digit() {
-            return false;
-        }
+        // A trailing dot with no fractional digits ("1.") isn't valid JSON
+        // number syntax, but `decode_primitive`'s fallback (`str::parse::
+        // <f64>`) is more lenient than JSON and accepts it anyway — so an
+        // unquoted "1." would silently decode back as the float 1.0 instead
+        // of the original string. Treat it as numeric-like (i.e. requiring
+        // quoting) to match what the decoder actually does, not just the
+        // strict grammar.
         while i < b.len() && b[i].is_ascii_digit() {
             i += 1;
         }
@@ -204,22 +208,23 @@ pub(crate) fn normalize_number(n: &Number) -> String {
         if f.is_nan() || f.is_infinite() {
             return "null".into();
         }
-        if f == 0.0 {
-            return "0".into();
+        // `f64`'s `Display` produces the shortest decimal string that parses
+        // back to the exact same value, with no exponent notation — unlike a
+        // fixed `{:.15}` truncation, it never rounds a subnormal-ish nonzero
+        // value (e.g. 1e-16) down to a silently-wrong "0". Reaching this
+        // branch at all means `n.as_i64()`/`as_u64()` were `None`, i.e. the
+        // source JSON number was itself float-typed (`serde_json` only
+        // returns `None` there for a `Number::from_f64` value) — so a whole
+        // number like 2.0 must keep a decimal point on the way out, or the
+        // decoder (which tries `i64`/`u64` before `f64`) reads it back as an
+        // integer and the float/int distinction is lost on round-trip.
+        let s = f.to_string();
+        if s.contains('.') {
+            s
+        } else {
+            format!("{s}.0")
         }
-        // Format with enough precision, then strip trailing zeros.
-        let s = format!("{f:.15}");
-        strip_trailing_zeros(&s)
     } else {
         n.to_string()
     }
-}
-
-fn strip_trailing_zeros(s: &str) -> String {
-    if !s.contains('.') {
-        return s.into();
-    }
-    let s = s.trim_end_matches('0');
-    let s = s.trim_end_matches('.');
-    s.into()
 }

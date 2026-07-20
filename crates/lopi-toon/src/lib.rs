@@ -328,6 +328,50 @@ mod tests {
         assert_eq!(rt(v), json!({"x": 1.5}));
     }
 
+    /// A JSON number constructed from an `f64` (as opposed to an integer
+    /// literal) must decode back as a float, not an integer. Encoding 2.0 as
+    /// bare "2" — the old `normalize_number` behavior — round-trips through
+    /// `decode_primitive`'s int-before-float parse order as `Number(2)`
+    /// (i64-typed), which is a different `serde_json::Value` than the
+    /// original `Number::from_f64(2.0)` despite comparing mathematically
+    /// equal.
+    #[test]
+    fn int_valued_float_preserves_float_type_on_roundtrip() {
+        let v = json!(2.0);
+        assert!(v.is_f64());
+        let out = rt(v.clone());
+        assert_eq!(out, v);
+        assert!(out.is_f64(), "2.0 must decode back as a float, not {out:?}");
+    }
+
+    /// A float small enough that `{:.15}` formatting rounds it to a literal
+    /// "0" (the old `normalize_number` behavior) must not silently become
+    /// zero on round-trip.
+    #[test]
+    fn sub_1e15_float_does_not_round_to_zero() {
+        let v = json!(1e-16);
+        let out = rt(v.clone());
+        assert_eq!(out, v);
+        assert_ne!(out, json!(0.0), "1e-16 must not silently become 0");
+    }
+
+    /// A string that looks like a number with a trailing decimal point (no
+    /// fractional digits) must stay a string on round-trip. `decode_primitive`
+    /// falls back to `str::parse::<f64>()`, which is more lenient than JSON's
+    /// number grammar and happily parses "1." as `1.0` — so encoding this
+    /// value unquoted (as the old `is_numeric_like`, which required a digit
+    /// after the dot, did) silently changes its type.
+    #[test]
+    fn trailing_dot_string_stays_a_string_on_roundtrip() {
+        let v = json!("1.");
+        let out = rt(v.clone());
+        assert_eq!(out, v);
+        assert!(
+            out.is_string(),
+            "\"1.\" must decode back as a string, not {out:?}"
+        );
+    }
+
     // ── Task encoding helper ──────────────────────────────────────────────────
 
     #[test]
