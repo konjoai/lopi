@@ -26,8 +26,10 @@ pub struct ContextStats {
 pub enum EvictionReason {
     /// Evicted because the agent entered a new phase that supersedes the turns' phase.
     PhaseTransition(Phase),
-    /// Evicted newest-first to bring the window below the budget threshold.
-    BudgetLIFO,
+    /// Evicted oldest-first (FIFO) to bring the window below the budget
+    /// threshold — the standard "keep recent turns, drop stale ones"
+    /// eviction order for a conversation window.
+    BudgetFifo,
     /// Evicted because they carried a matching explicit eviction tag.
     ExplicitTag,
     /// Evicted by a direct caller request (force eviction).

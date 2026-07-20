@@ -130,7 +130,7 @@ pub fn evict_to_budget(
     Ok(EvictionStats {
         turns_evicted,
         tokens_freed,
-        reason: EvictionReason::BudgetLIFO,
+        reason: EvictionReason::BudgetFifo,
     })
 }
 
