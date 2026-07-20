@@ -65,7 +65,7 @@ async fn dispatch_task_cmd(
         }
         LopiCmd::Cancel(id) => handle_cancel(bot, msg, &id, pool).await,
         LopiCmd::Retry(id) => handle_retry(bot, msg, &id, store, queue).await,
-        LopiCmd::Approve(id) => handle_approve(bot, msg, &id).await,
+        LopiCmd::Approve(id) => handle_approve(bot, msg, &id, store).await,
         LopiCmd::Draft => handle_draft(bot, msg, drafts).await,
         LopiCmd::Submit => handle_submit(bot, msg, queue, drafts, pending_budgets).await,
         LopiCmd::CancelDraft => handle_cancel_draft(bot, msg, drafts).await,
@@ -218,7 +218,10 @@ async fn handle_queue(
 ///
 /// Callback data embeds the task's UUID, not its goal text: goal text can be
 /// arbitrarily long (Telegram caps `callback_data` at 64 bytes) and isn't
-/// what `handle_cancel` parses back out anyway — it expects a `TaskId`.
+/// what `handle_cancel` parses back out anyway — it expects a `TaskId`. The
+/// bump target priority is embedded too (`bump:<level>:<id>`) since
+/// "Bump to CRITICAL" and "Bump to URGENT" need to resolve to different
+/// priorities, not just the same generic "bump" action.
 fn build_priority_keyboard(priority: Priority, task_id: TaskId) -> InlineKeyboardMarkup {
     match priority {
         Priority::Critical => InlineKeyboardMarkup::new([[InlineKeyboardButton::callback(
@@ -226,11 +229,14 @@ fn build_priority_keyboard(priority: Priority, task_id: TaskId) -> InlineKeyboar
             format!("cancel:{task_id}"),
         )]]),
         Priority::High => InlineKeyboardMarkup::new([[
-            InlineKeyboardButton::callback("🚨 Bump to CRITICAL", format!("bump:{task_id}")),
+            InlineKeyboardButton::callback(
+                "🚨 Bump to CRITICAL",
+                format!("bump:critical:{task_id}"),
+            ),
             InlineKeyboardButton::callback("🗑 Cancel task", format!("cancel:{task_id}")),
         ]]),
         _ => InlineKeyboardMarkup::new([[
-            InlineKeyboardButton::callback("⬆️ Bump to URGENT", format!("bump:{task_id}")),
+            InlineKeyboardButton::callback("⬆️ Bump to URGENT", format!("bump:high:{task_id}")),
             InlineKeyboardButton::callback("🗑 Cancel task", format!("cancel:{task_id}")),
         ]]),
     }
@@ -366,14 +372,21 @@ pub async fn handle_learn(bot: &Bot, msg: &Message, store: &MemoryStore, n: usiz
     Ok(())
 }
 
-async fn handle_approve(bot: &Bot, msg: &Message, id: &str) -> Result<()> {
-    bot.send_message(
-        msg.chat.id,
+async fn handle_approve(bot: &Bot, msg: &Message, id: &str, store: &MemoryStore) -> Result<()> {
+    use lopi_memory::AuditInput;
+
+    let record = AuditInput::new("task.approved")
+        .subject("task", id)
+        .actor("telegram");
+    let reply = if let Err(e) = store.record_audit(&record).await {
+        warn!("approve record_audit error for {id}: {e}");
+        format!("❌ failed to record approval for task {id}: {e}")
+    } else {
         format!(
             "✅ approval recorded for task {id}\n(PR merge requires manual action via gh/GitHub)"
-        ),
-    )
-    .await?;
+        )
+    };
+    bot.send_message(msg.chat.id, reply).await?;
     Ok(())
 }
 
@@ -440,8 +453,9 @@ mod tests {
             );
             let payload = data
                 .strip_prefix("cancel:")
-                .or_else(|| data.strip_prefix("bump:"))
-                .expect("expected cancel: or bump: prefix");
+                .or_else(|| data.strip_prefix("bump:critical:"))
+                .or_else(|| data.strip_prefix("bump:high:"))
+                .expect("expected cancel: or bump:<level>: prefix");
             uuid::Uuid::from_str(payload).expect("payload must be a parseable task UUID");
         }
     }

@@ -331,7 +331,7 @@ fn parse_result(v: &Value) -> StreamEvent {
 /// same map its `total_cost_usd` is derived from). Falls back to the flat
 /// top-level `usage` object when `modelUsage` is absent, and returns `None`
 /// only when neither is present (e.g. an early-halt error result).
-fn parse_result_usage(v: &Value) -> Option<ResultUsage> {
+pub(crate) fn parse_result_usage(v: &Value) -> Option<ResultUsage> {
     if let Some(models) = v.get("modelUsage").and_then(Value::as_object) {
         let mut acc = ResultUsage::default();
         for usage in models.values() {
