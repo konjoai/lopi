@@ -24,6 +24,44 @@ pub struct McpTool {
     /// JSON Schema describing the tool's arguments (the `inputSchema` member).
     #[serde(rename = "inputSchema", default)]
     pub input_schema: Value,
+    /// MCP Apps binding (SEP-1865) — e.g.
+    /// `{"ui": {"resourceUri": "ui://lopi/stack-status"}}` when this tool has
+    /// an inline widget a supporting host renders instead of plain text.
+    /// `None` for every plain-text tool (the whole curated set except
+    /// `lopi_get_stack_status`, MCPB-App-1).
+    #[serde(rename = "_meta", default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<Value>,
+}
+
+/// A resource advertised by an MCP server — one entry of a `resources/list`
+/// result. lopi's only resource today is the `ui://` widget bound to
+/// `lopi_get_stack_status` (MCPB-App-1).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct McpResource {
+    /// The resource's address, e.g. `"ui://lopi/stack-status"`.
+    pub uri: String,
+    /// Human-readable resource name.
+    pub name: String,
+    /// Optional longer description.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub description: String,
+    /// IANA media type of the resource's contents, e.g. `"text/html"`.
+    #[serde(rename = "mimeType", default, skip_serializing_if = "String::is_empty")]
+    pub mime_type: String,
+}
+
+/// One resource's contents, as returned by a `resources/read` call.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct McpResourceContents {
+    /// The resource's address, echoed back from the request.
+    pub uri: String,
+    /// IANA media type of `text`.
+    #[serde(rename = "mimeType", default, skip_serializing_if = "String::is_empty")]
+    pub mime_type: String,
+    /// The resource's text contents (lopi only ever serves text/HTML
+    /// resources — no binary `blob` variant is needed yet).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub text: String,
 }
 
 /// Build the `initialize` request that opens an MCP session, advertising the

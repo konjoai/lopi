@@ -1,0 +1,48 @@
+{
+  "manifest_version": "0.4",
+  "name": "lopi",
+  "display_name": "lopi",
+  "version": "0.19.0",
+  "description": "Multi-agent Claude Code orchestrator for Claude Desktop — submit tasks, watch agents run in isolated git branches, and see live stack status inline.",
+  "author": {
+    "name": "KonjoAI",
+    "url": "https://github.com/konjoai"
+  },
+  "homepage": "https://github.com/konjoai/lopi",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/konjoai/lopi"
+  },
+  "license": "MIT",
+  "server": {
+    "type": "binary",
+    "entry_point": "server/${platform}/lopi",
+    "mcp_config": {
+      "command": "${__dirname}/server/${platform}/lopi",
+      "args": ["mcp-serve"]
+    }
+  },
+  "user_config": {
+    "max_agents": {
+      "type": "number",
+      "title": "Max concurrent agents",
+      "description": "Upper bound on how many agent tasks lopi runs at once.",
+      "default": 4
+    },
+    "default_repo": {
+      "type": "string",
+      "title": "Default repo path",
+      "description": "Repository path used when a submitted task doesn't specify one."
+    },
+    "claude_cli_path": {
+      "type": "string",
+      "title": "Claude CLI path",
+      "description": "Path to the `claude` binary lopi's agent runner invokes.",
+      "default": "claude"
+    }
+  },
+  "privacy_policies": ["https://github.com/konjoai/lopi/blob/main/PRIVACY.md"],
+  "compatibility": {
+    "platforms": ["darwin"]
+  }
+}

@@ -5,6 +5,103 @@ the `lopi` repo. Newest first.
 
 ---
 
+## Next Session — after MCPB-App-1
+
+**The next step is the attended `LOPI_KTB3_ATTENDED_RUNBOOK.md` runbook —
+not more Claude Code work.** Everything automatable in `LOPI_DISTRIBUTION_
+PLAN.md`'s Track B is now built and packaged. Nothing about the actual
+render has been verified — that's not an oversight, it's the correct
+boundary a sandbox can't cross, per the runbook itself and the `MCP-Serve-1`
+KT2 / `MCP-App-1` KT-D2 precedent for this exact class of blocker.
+
+Read first, in order: `CLAUDE.md`, `CHANGELOG.md`'s `[0.19.0]` entry,
+`LEDGER.md`'s `MCPB-App-1` entry in full (the branch-persistence decision,
+the join fixture, and — importantly — the macOS-build toolchain finding are
+all there), this file's own words below, then `LOPI_KTB3_ATTENDED_RUNBOOK.md`.
+
+### What shipped this sprint (all four deliverables, none render-verified)
+
+1. **Branch persistence** — `tasks.branch`, written by `AgentRunner::
+   persist_branch` the moment `TaskStarted` fires. Real column, real store
+   call, tested.
+2. **`lopi_get_stack_status`** — the eighth MCP tool. Joins the roster with
+   per-task DAG stage and branch. Verified against a real two-task,
+   two-stage concurrent fixture (KT-B2) — real field values, not just
+   success/failure.
+3. **The `ui://lopi/stack-status` widget** — `src/mcp_ui/stack_status.html`,
+   implements exactly the three lifecycle methods specified
+   (`ui/initialize`/`ui/notifications/initialized`/`ui/notifications/
+   tool-result`), read-only, no interactivity. Bound via `_meta.ui.
+   resourceUri`. `lopi-mcp` gained real `resources/list`/`resources/read`
+   support to serve it, plus `structuredContent` on every tool call.
+4. **`mcpb/manifest.json` + `.github/workflows/mcpb-release.yml`** —
+   `mcpb validate`/`pack`/`unpack` mechanics verified for real (caught and
+   fixed two schema errors in the process). **The actual macOS arm64
+   binary does not exist yet** — see below.
+
+### A real, concretely-checked blocker this sprint found: no macOS arm64
+### binary was produced, and this sandbox structurally cannot produce one
+
+This is new — MCP-App-1 and the plan doc both assumed Deliverable 4 was
+sandbox-safe ("nothing here needs nested-spawn access or a GUI host"). That
+assumption held for KT-B1/KT-B2 and doesn't hold for a real target binary.
+Checked two ways, not assumed (full detail in `LEDGER.md`):
+
+1. Plain `cargo build --target aarch64-apple-darwin` fails immediately —
+   this sandbox's `cc` is Linux GCC/Clang, incompatible with `ring`'s
+   macOS-targeted build flags.
+2. `cargo-zigbuild` gets substantially further (past `ring`, past
+   `openssl-sys` with vendored OpenSSL) but hits a hard wall at
+   `libgit2-sys`'s own `build.rs`, which unconditionally requires Apple's
+   Security.framework/CoreFoundation.framework for any `apple` target —
+   no feature flag exists upstream to avoid this. Proprietary Apple
+   frameworks aren't obtainable in this sandbox, legitimately or otherwise.
+
+**What a session with real macOS access (attended, or a GitHub Actions run
+on the new `macos-14` workflow) needs to do:**
+
+1. Trigger `.github/workflows/mcpb-release.yml` for real (currently
+   `workflow_dispatch`-only, deliberately not wired to run automatically
+   before its first real run is watched end to end) — or run
+   `cargo build --release --target aarch64-apple-darwin --bin lopi` plus
+   `mcpb pack mcpb` natively on real Apple Silicon hardware.
+2. Confirm the resulting `.mcpb`'s binary actually launches `mcp-serve`
+   when invoked exactly as `mcp_config` specifies — the workflow's own
+   smoke-test step does this already; if run by hand, replicate it (drive
+   a real `initialize` over stdio, confirm `serverInfo` comes back).
+3. **Then, and only then**, run `LOPI_KTB3_ATTENDED_RUNBOOK.md` against
+   that real bundle: install in Claude Desktop, confirm the tools list
+   shows all eight tools including `lopi_get_stack_status`, submit a
+   trivial task, and watch whether an actual rendered panel appears versus
+   silent text-only fallback. Write the `LEDGER.md` entry for whichever
+   outcome happens — both are legitimate, complete results per the
+   runbook's own framing.
+
+### Explicitly not started, correctly
+
+Phase B2's remaining items (privacy policy doc, README quick-install
+section, desktop-extension form submission) all wait behind KT-B3 clearing,
+per the plan's own phasing — not attempted here. One consequence worth
+knowing before it surprises anyone: `mcpb/manifest.json`'s
+`privacy_policies` array points at `PRIVACY.md`, which doesn't exist in the
+repo yet — a 404 until Phase B2 writes it. Sideloading (this sprint's whole
+distribution path) doesn't require the file to exist for install to work,
+only directory listing does, so this doesn't block anything here — just
+don't be surprised the link is dead if you follow it now.
+
+### A repo-doc drift worth fixing — flagged a third time now
+
+`LOPI_DISTRIBUTION_PLAN.md`'s repo copy is still the pre-Track-D-merge
+draft (no Deliverables 1–2, no KT-B1/B2/B3, no widget mention in its Track
+B section). This sprint, like `MCP-App-1` before it, worked from a pasted
+up-to-date version rather than the repo's own stale copy. Third time this
+exact drift has been logged (`LEDGER.md`'s `MCP-App-1` and `MCPB-App-1`
+entries both flag it) — genuinely overdue for a sync pass; a session that
+trusts the repo's own file over a pasted one will miss the entire Track
+B/D merge.
+
+---
+
 ## Next Session — after MCP-App-1
 
 Read first, in order: `CLAUDE.md`, `CHANGELOG.md`'s `[0.18.0]` entry,

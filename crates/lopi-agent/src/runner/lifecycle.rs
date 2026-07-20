@@ -49,6 +49,24 @@ impl AgentRunner {
         });
     }
 
+    /// Best-effort persist of the attempt's branch into the `tasks.branch`
+    /// column the moment `TaskStarted` fires (MCPB-App-1 KT-B1) — the only
+    /// structured, queryable source of "which branch is this task on" while
+    /// it's still in flight. Same fire-and-forget shape as
+    /// `record_dag_transition`: errors are logged, never fatal to the run.
+    pub(super) fn persist_branch(&self, branch: &str) {
+        let Some(store) = self.store.clone() else {
+            return;
+        };
+        let task_id = self.id();
+        let branch = branch.to_string();
+        tokio::spawn(async move {
+            if let Err(e) = store.set_task_branch(&task_id, &branch).await {
+                tracing::warn!(error = %e, "failed to persist task branch");
+            }
+        });
+    }
+
     /// Best-effort mirror of `TaskStatus` into the `agent_dag_nodes` table so
     /// `GET /api/agents/:id/dag` and `lopi replay` reflect real progress
     /// instead of an always-empty graph. This only *records* the DAG — the

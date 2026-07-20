@@ -97,6 +97,7 @@ mod tests {
             name: name.into(),
             description: format!("the {name} tool"),
             input_schema: schema,
+            meta: None,
         }
     }
 

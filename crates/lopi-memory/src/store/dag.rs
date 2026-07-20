@@ -55,6 +55,31 @@ pub fn dag_graph_json(task_id: &str, rows: &[DagNodeRow]) -> Value {
     json!({ "task_id": task_id, "nodes": nodes, "edges": edges })
 }
 
+/// The pipeline stages `AgentRunner::record_dag_transition`
+/// (`crates/lopi-agent/src/runner/lifecycle.rs`) ever actually writes, in
+/// execution order. `Verify`/`Diff`/`Pr` exist in `lopi_agent::dag::NodeKind`
+/// but that transition match arm never reaches them, so they're excluded
+/// here rather than silently ranked as "more advanced than test/score."
+const RECORDED_PIPELINE: [&str; 4] = ["plan", "implement", "test", "score"];
+
+/// Derive a human-readable "current stage" for the `lopi_get_stack_status`
+/// MCP tool (MCPB-App-1 KT-B1/KT-B2) from a task's DAG nodes: the stage
+/// currently `running`, or else the most advanced stage marked `done`, or
+/// `"queued"` when no DAG node has been recorded yet (the task hasn't
+/// started).
+#[must_use]
+pub fn current_stage(rows: &[DagNodeRow]) -> String {
+    if let Some(running) = rows.iter().find(|r| r.status == "running") {
+        return running.kind.clone();
+    }
+    RECORDED_PIPELINE
+        .iter()
+        .rev()
+        .find(|kind| rows.iter().any(|r| &r.kind == *kind && r.status == "done"))
+        .map(|s| (*s).to_string())
+        .unwrap_or_else(|| "queued".to_string())
+}
+
 impl MemoryStore {
     /// Upsert a single DAG node, keyed on `(task_id, kind)`.
     ///
@@ -196,5 +221,38 @@ mod tests {
         let g = dag_graph_json("t1", &[]);
         assert!(g["nodes"].as_array().unwrap().is_empty());
         assert!(g["edges"].as_array().unwrap().is_empty());
+    }
+
+    #[test]
+    fn current_stage_prefers_the_running_node() {
+        use super::current_stage;
+        let mut plan = row("plan", "[]");
+        plan.status = "done".into();
+        let mut implement = row("implement", "[\"plan\"]");
+        implement.status = "running".into();
+        assert_eq!(current_stage(&[plan, implement]), "implement");
+    }
+
+    #[test]
+    fn current_stage_falls_back_to_most_advanced_done() {
+        use super::current_stage;
+        let mut plan = row("plan", "[]");
+        plan.status = "done".into();
+        let mut implement = row("implement", "[\"plan\"]");
+        implement.status = "done".into();
+        assert_eq!(current_stage(&[implement, plan]), "implement");
+    }
+
+    #[test]
+    fn current_stage_is_queued_with_no_nodes() {
+        use super::current_stage;
+        assert_eq!(current_stage(&[]), "queued");
+    }
+
+    #[test]
+    fn current_stage_ignores_pending_nodes() {
+        use super::current_stage;
+        let pending = row("test", "[]");
+        assert_eq!(current_stage(&[pending]), "queued");
     }
 }
