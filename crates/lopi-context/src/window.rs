@@ -210,7 +210,7 @@ impl ContextWindow {
     /// Returns `Err` if the eviction logic encounters an inconsistency.
     pub fn evict_phase(&mut self, phase: Phase) -> Result<EvictionStats, ContextError> {
         let stats = eviction::evict_phase(&mut self.turns, phase, &mut self.current_tokens)?;
-        self.record(stats);
+        self.record(stats.clone());
         Ok(stats)
     }
 
@@ -220,7 +220,7 @@ impl ContextWindow {
     /// Returns `Err` if the eviction logic encounters an inconsistency.
     pub fn evict_to_budget(&mut self, target: usize) -> Result<EvictionStats, ContextError> {
         let stats = eviction::evict_to_budget(&mut self.turns, target, &mut self.current_tokens)?;
-        self.record(stats);
+        self.record(stats.clone());
         Ok(stats)
     }
 
@@ -230,7 +230,7 @@ impl ContextWindow {
     /// Returns `Err` if the turn cannot be evicted (e.g., pinned and `force` is false).
     pub fn evict_turn(&mut self, id: TurnId, force: bool) -> Result<EvictionStats, ContextError> {
         let stats = eviction::evict_turn(&mut self.turns, id, force, &mut self.current_tokens)?;
-        self.record(stats);
+        self.record(stats.clone());
         Ok(stats)
     }
 
@@ -315,8 +315,17 @@ impl ContextWindow {
             reason = ?stats.reason,
             "eviction"
         );
-        // Phase 2: persist EvictionRecord rows to lopi-memory SQLite store.
-        let _ = (stats, now_unix(), &mut self.eviction_log);
+        let evicted_at_unix = now_unix();
+        let reason = stats.reason;
+        for (turn_id, phase, tokens) in stats.evicted {
+            self.eviction_log.push(EvictionRecord {
+                turn_id,
+                phase,
+                tokens,
+                reason,
+                evicted_at_unix,
+            });
+        }
     }
 }
 

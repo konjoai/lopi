@@ -57,14 +57,17 @@ pub fn evict_phase(
     to_remove.sort_unstable();
     to_remove.dedup();
     let turns_evicted = to_remove.len();
+    let mut evicted = Vec::with_capacity(turns_evicted);
 
     for idx in to_remove.iter().rev() {
+        let turn = &turns[*idx];
         tracing::debug!(
-            turn_id = %turns[*idx].id,
-            phase = ?turns[*idx].phase,
-            tokens = turns[*idx].tokens,
+            turn_id = %turn.id,
+            phase = ?turn.phase,
+            tokens = turn.tokens,
             "phase-evicting turn"
         );
+        evicted.push((turn.id, turn.phase, turn.tokens));
         turns.remove(*idx);
     }
 
@@ -74,6 +77,7 @@ pub fn evict_phase(
         turns_evicted,
         tokens_freed,
         reason: EvictionReason::PhaseTransition(phase),
+        evicted,
     })
 }
 
@@ -89,6 +93,7 @@ pub fn evict_to_budget(
 ) -> Result<EvictionStats, ContextError> {
     let mut tokens_freed = 0usize;
     let mut turns_evicted = 0usize;
+    let mut evicted = Vec::new();
 
     let mut i = 0;
     while i < turns.len() && *current_tokens > target_tokens {
@@ -109,6 +114,8 @@ pub fn evict_to_budget(
                 let p_tokens = turns[pidx].tokens;
                 let (lo, hi) = if i < pidx { (i, pidx) } else { (pidx, i) };
                 tracing::debug!(lo, hi, "budget-evicting tool pair");
+                evicted.push((turns[lo].id, turns[lo].phase, turns[lo].tokens));
+                evicted.push((turns[hi].id, turns[hi].phase, turns[hi].tokens));
                 turns.remove(hi);
                 turns.remove(lo);
                 tokens_freed += t_tokens + p_tokens;
@@ -121,6 +128,7 @@ pub fn evict_to_budget(
 
         let t_tokens = turns[i].tokens;
         tracing::debug!(turn_id = %turns[i].id, tokens = t_tokens, "budget-evicting turn");
+        evicted.push((turns[i].id, turns[i].phase, turns[i].tokens));
         turns.remove(i);
         tokens_freed += t_tokens;
         turns_evicted += 1;
@@ -131,6 +139,7 @@ pub fn evict_to_budget(
         turns_evicted,
         tokens_freed,
         reason: EvictionReason::BudgetFifo,
+        evicted,
     })
 }
 
@@ -172,6 +181,10 @@ pub fn evict_turn(
         let t_tokens = turns[idx].tokens;
         let p_tokens = turns[pidx].tokens;
         let (lo, hi) = if idx < pidx { (idx, pidx) } else { (pidx, idx) };
+        let evicted = vec![
+            (turns[lo].id, turns[lo].phase, turns[lo].tokens),
+            (turns[hi].id, turns[hi].phase, turns[hi].tokens),
+        ];
         turns.remove(hi);
         turns.remove(lo);
         *current_tokens = current_tokens.saturating_sub(t_tokens + p_tokens);
@@ -179,10 +192,12 @@ pub fn evict_turn(
             turns_evicted: 2,
             tokens_freed: t_tokens + p_tokens,
             reason: EvictionReason::Manual,
+            evicted,
         });
     }
 
     let tokens = turns[idx].tokens;
+    let evicted = vec![(turns[idx].id, turns[idx].phase, turns[idx].tokens)];
     turns.remove(idx);
     *current_tokens = current_tokens.saturating_sub(tokens);
 
@@ -190,6 +205,7 @@ pub fn evict_turn(
         turns_evicted: 1,
         tokens_freed: tokens,
         reason: EvictionReason::Manual,
+        evicted,
     })
 }
 
@@ -208,9 +224,12 @@ pub fn check_expired_tags(
 
     let turns_evicted = to_remove.len();
     let mut tokens_freed = 0usize;
+    let mut evicted = Vec::with_capacity(turns_evicted);
 
     for idx in to_remove.iter().rev() {
-        tokens_freed += turns[*idx].tokens;
+        let turn = &turns[*idx];
+        tokens_freed += turn.tokens;
+        evicted.push((turn.id, turn.phase, turn.tokens));
         turns.remove(*idx);
     }
 
@@ -220,6 +239,7 @@ pub fn check_expired_tags(
         turns_evicted,
         tokens_freed,
         reason: EvictionReason::ExplicitTag,
+        evicted,
     }
 }
 
