@@ -189,6 +189,7 @@ impl AgentRunner {
                 attempt: attempt + 1,
                 branch: branch.clone(),
             });
+            self.persist_branch(&branch);
             // `●` marks this as synthetic status, not Claude output — the
             // frontend's `reduceLogLine` (web/src/lib/stores/transcript.ts)
             // treats any *unprefixed* log line as real assistant text, so an

@@ -18,7 +18,7 @@
 
 use anyhow::{Context, Result};
 use lopi_core::{AgentEvent, EventBus, LopiConfig, Priority, Task, TaskId};
-use lopi_mcp::{McpTool, ToolHandler};
+use lopi_mcp::{McpResource, McpResourceContents, McpTool, ToolHandler};
 use lopi_memory::MemoryStore;
 use lopi_orchestrator::{AgentPool, TaskQueue};
 use lopi_ui::web::AppState;
@@ -29,6 +29,11 @@ use std::sync::Arc;
 use tokio::io::{stdin, stdout, BufReader};
 
 use crate::util::{db_path, expand_home};
+
+/// `lopi_get_stack_status` — the MCPB-App-1 aggregating tool + its bound
+/// `ui://` widget resource. Split out to keep this file under the 500-line
+/// CI gate; see `stack_status.rs`'s module doc for why the tool exists.
+mod stack_status;
 
 /// Start `lopi mcp-serve`: build a standalone in-process orchestrator (own
 /// pool + queue, shared SQLite store) and serve the curated tool set over
@@ -84,11 +89,21 @@ impl ToolHandler for LopiToolHandler {
         let name = name.to_string();
         async move { dispatch(&state, &name, arguments).await }
     }
+
+    fn resources(&self) -> Vec<McpResource> {
+        stack_status::ui_resources()
+    }
+
+    fn read_resource(&self, uri: &str) -> impl Future<Output = Result<McpResourceContents>> + Send {
+        let uri = uri.to_string();
+        async move { stack_status::ui_resource_contents(&uri) }
+    }
 }
 
-/// The curated tool set — the plan's Track A 1.1 table, exactly seven tools.
-/// Deliberately not extended: every additional tool is context budget spent
-/// on every turn a plugin user has installed.
+/// The curated tool set: Track A's seven plus MCPB-App-1's
+/// `lopi_get_stack_status`. Deliberately not extended further beyond that —
+/// every additional tool is context budget spent on every turn a plugin user
+/// has installed.
 fn tool_defs() -> Vec<McpTool> {
     let task_id_prop = json!({
         "task_id": {
@@ -119,21 +134,25 @@ fn tool_defs() -> Vec<McpTool> {
                 },
                 "required": ["goal"],
             }),
+            meta: None,
         },
         McpTool {
             name: "lopi_list_tasks".into(),
             description: "List the most recent lopi tasks and their status.".into(),
             input_schema: json!({ "type": "object", "properties": {} }),
+            meta: None,
         },
         McpTool {
             name: "lopi_get_task".into(),
             description: "Get one lopi task's status by id.".into(),
             input_schema: json!({ "type": "object", "properties": task_id_prop, "required": ["task_id"] }),
+            meta: None,
         },
         McpTool {
             name: "lopi_cancel_task".into(),
             description: "Cancel a running or queued lopi task and delete it.".into(),
             input_schema: json!({ "type": "object", "properties": task_id_prop, "required": ["task_id"] }),
+            meta: None,
         },
         McpTool {
             name: "lopi_get_logs".into(),
@@ -146,17 +165,21 @@ fn tool_defs() -> Vec<McpTool> {
                 },
                 "required": ["task_id"],
             }),
+            meta: None,
         },
         McpTool {
             name: "lopi_get_agent_dag".into(),
             description: "Get the DAG-structured execution trace (nodes + edges) for one lopi task.".into(),
             input_schema: json!({ "type": "object", "properties": task_id_prop, "required": ["task_id"] }),
+            meta: None,
         },
         McpTool {
             name: "lopi_get_stats".into(),
             description: "Get lopi's live stats: running/queued/succeeded/failed counts, uptime, and today's token/cost totals.".into(),
             input_schema: json!({ "type": "object", "properties": {} }),
+            meta: None,
         },
+        stack_status::tool_def(),
     ]
 }
 
@@ -171,6 +194,7 @@ async fn dispatch(state: &AppState, name: &str, args: Value) -> Result<String> {
         "lopi_get_logs" => get_logs(state, &args).await?,
         "lopi_get_agent_dag" => get_agent_dag(state, &args).await?,
         "lopi_get_stats" => get_stats(state).await,
+        "lopi_get_stack_status" => stack_status::get_stack_status(state).await,
         other => anyhow::bail!("unknown tool: {other}"),
     };
     Ok(result.to_string())
@@ -349,5 +373,5 @@ async fn get_stats(state: &AppState) -> Value {
 }
 
 #[cfg(test)]
-#[path = "mcp_commands_tests.rs"]
+#[path = "mod_tests.rs"]
 mod tests;

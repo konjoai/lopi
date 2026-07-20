@@ -19,7 +19,7 @@ async fn test_state() -> AppState {
 }
 
 #[test]
-fn tool_defs_advertises_exactly_the_curated_seven() {
+fn tool_defs_advertises_exactly_the_curated_eight() {
     let tools = tool_defs();
     let names: Vec<_> = tools.iter().map(|t| t.name.as_str()).collect();
     assert_eq!(
@@ -32,7 +32,21 @@ fn tool_defs_advertises_exactly_the_curated_seven() {
             "lopi_get_logs",
             "lopi_get_agent_dag",
             "lopi_get_stats",
+            "lopi_get_stack_status",
         ]
+    );
+}
+
+#[test]
+fn lopi_get_stack_status_binds_the_ui_resource() {
+    let tools = tool_defs();
+    let tool = tools
+        .iter()
+        .find(|t| t.name == "lopi_get_stack_status")
+        .unwrap();
+    assert_eq!(
+        tool.meta.as_ref().unwrap()["ui"]["resourceUri"],
+        stack_status::RESOURCE_URI
     );
 }
 
@@ -234,8 +248,24 @@ async fn tool_handler_call_round_trips_through_dispatch() {
     let handler = LopiToolHandler {
         state: test_state().await,
     };
-    assert_eq!(handler.tools().len(), 7);
+    assert_eq!(handler.tools().len(), 8);
     let text = handler.call("lopi_list_tasks", json!({})).await.unwrap();
     let parsed: Value = serde_json::from_str(&text).unwrap();
     assert!(parsed["tasks"].as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn tool_handler_serves_the_bound_ui_resource() {
+    let handler = LopiToolHandler {
+        state: test_state().await,
+    };
+    let resources = handler.resources();
+    assert_eq!(resources.len(), 1);
+    assert_eq!(resources[0].uri, stack_status::RESOURCE_URI);
+    let contents = handler
+        .read_resource(stack_status::RESOURCE_URI)
+        .await
+        .unwrap();
+    assert!(contents.text.contains("<html"));
+    assert!(handler.read_resource("ui://nope").await.is_err());
 }

@@ -5,6 +5,178 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## MCPB-App-1
+
+**KT-B1 — branch-persistence shape: a new `tasks.branch` column, written by
+a dedicated `set_task_branch` store call fired from `TaskStarted`.** Read
+`crates/lopi-core/src/event.rs`'s `AgentEvent::TaskStarted` and
+`crates/lopi-agent/src/runner/run_loop.rs:186-197` (where the event fires)
+before deciding, per the brief's own instruction not to assume the plan
+doc's phrasing. Found a clean synchronous path already in place: `AgentRunner`
+(`crates/lopi-agent/src/runner/mod.rs:60`) carries `pub store: Option<MemoryStore>`,
+and `lifecycle.rs`'s existing `record_dag_transition` (called from every
+`self.status()`) already establishes the exact shape needed — clone the
+store, `tokio::spawn` a fire-and-forget write, `tracing::warn!` on error,
+never block the run loop. `persist_branch` (`lifecycle.rs`) copies that
+shape exactly and is called immediately after `TaskStarted` fires in
+`run_loop.rs`, alongside the existing `self.bus.send(AgentEvent::TaskStarted
+{ .. })`. **Chosen over a dedicated non-`tasks`-table store call** (the
+brief's other option) because `client_ref`'s prior `ALTER TABLE tasks ADD
+COLUMN client_ref TEXT;` (`crates/lopi-memory/src/schema.sql:71`, Backend-1)
+is the exact precedent: a plain nullable column, applied via the same
+idempotent `ALTER TABLE` migration guard `apply_schema()` already tolerates
+duplicate-column errors on. A dedicated table would need its own join for
+every roster read `lopi_get_stack_status` does; a column doesn't. `TaskRow`,
+`get_task`, and `load_history` all now carry/select `branch`. The store
+method itself lives in a new `crates/lopi-memory/src/store/branch.rs` (not
+inline in `store/mod.rs`) purely because `store/mod.rs` was already at 493
+lines against the repo's 500-line hard gate before this sprint touched it —
+same file-splitting precedent `dag.rs`/`task_logs.rs`/etc. already set.
+
+**KT-B2 — `lopi_get_stack_status`'s join verified against a real two-task,
+two-stage fixture, real field values asserted.** Per the brief's own
+mutation-testing-precedent bar (`MCP-Serve-1`'s G3 gate), not just "the
+query runs." `src/mcp_commands/stack_status_tests.rs` seeds one task with a
+`DagNodeRow` in `running` state at `plan` (a `Planning`-shaped attempt) and
+a concurrent second task with `plan`/`implement` `done` and `test` `running`
+(a `Testing`-shaped attempt), each on its own `set_task_branch`-set branch.
+`get_stack_status_joins_roster_branch_and_stage_for_concurrent_tasks`
+asserts each task's `branch`, `stage`, `status`, and `goal` independently —
+confirms the join doesn't cross-contaminate between concurrently-running
+tasks, not just that both rows exist. `current_stage` (new pure fn,
+`crates/lopi-memory/src/store/dag.rs`) derives the roster's `stage` field:
+the currently-`running` node's kind, else the most advanced `done` node
+(ranked by a small fixed `RECORDED_PIPELINE` array — `plan`/`implement`/
+`test`/`score`, deliberately excluding `verify`/`diff`/`pr` from
+`lopi_agent::dag::NodeKind::PIPELINE` since `record_dag_transition`'s match
+arms never actually write those three), else `"queued"` when no DAG node
+exists yet. Neither existing tool was rebound — per `MCP-App-1`'s KT-D3
+finding below, `lopi_get_agent_dag` is one-task-scoped with no branch, and
+`tasks.status` alone can't carry stage granularity.
+
+**A new MCP protocol surface, not scoped by the original plan doc's
+`_meta.ui.resourceUri`-only framing: `resources/list`/`resources/read` plus
+`structuredContent`.** `_meta.ui.resourceUri` on a tool only tells a host
+*which* `ui://` URI to fetch — the host still needs a standard MCP way to
+actually fetch it. `crates/lopi-mcp` had zero resource scaffolding before
+this sprint (confirmed: `grep -rn "ui://|resources/read"` across the whole
+repo returned nothing). Added: `McpResource`/`McpResourceContents` types
+(`protocol.rs`), `ToolHandler::resources()`/`read_resource()` with
+default-empty/default-error bodies (RPITIT default methods — Rust
+1.94/stable supports this; the trait is used generically, `H: ToolHandler`,
+never as `dyn`, so this doesn't hit RPITIT's dyn-compatibility gap), new
+`resources/list`/`resources/read` dispatch arms in `server.rs`, and
+`initialize`'s capabilities now advertise `resources: {}` alongside
+`tools: {}`. Also added: `tools/call`'s response now includes
+`structuredContent` whenever the tool's text output parses as JSON (every
+lopi tool's output does) — this is what an MCP Apps host is specified to
+hand into a bound widget's `ui/initialize` response; without it there'd be
+a `ui://` resource and a binding but no actual data path into the iframe.
+Both are backward-compatible additions (existing `content`-only consumers
+unaffected) verified by `crates/lopi-mcp/src/server/tests.rs`'s new cases,
+and by directly driving the packed-then-unpacked binary's real stdio
+protocol (see the packaging finding below) — `resources/list`,
+`resources/read`, and `tools/call` for `lopi_get_stack_status` all round-
+tripped correctly, including a byte-exact widget HTML fetch.
+
+**The widget (`src/mcp_ui/stack_status.html`) implements exactly the three
+lifecycle methods the brief specified — `ui/initialize`,
+`ui/notifications/initialized`, `ui/notifications/tool-result` — and
+nothing beyond that.** Plain HTML/JS, no framework, `include_str!`'d into
+the binary (not a loose file the `.mcpb` needs to carry separately — the
+plan's bundle-layout diagram showing `server/ui/*.html` as a bundle member
+turned out to be one workable option, not the only one; embedding avoids a
+second thing that has to stay in sync with the binary). Deliberately
+**not** implemented: any widget-initiated `tools/call` for interval
+polling — the plan's "the widget polls on an interval" freshness note
+describes the *store's* checkpoint-fresh write behavior, not a specified
+widget-side polling API, and SEP-1865 doesn't define one lopi could target
+with confidence from a doc read alone. Building an unspecified polling
+mechanism now would be exactly the "simulate the happy path" failure mode
+KT-B3 exists to catch — deferred to whatever the real handshake in KT-B3
+actually looks like. User-controlled text (`goal`) is HTML-escaped before
+insertion (`escapeHtml`) — the roster renders free-text task goals, and a
+prior task's goal is attacker-adjacent input the same way any other stored
+user content is (see `.claude/rules/security.md`).
+
+**A new, concretely-checked kill-test the original brief didn't anticipate:
+this sandbox cannot produce a real macOS arm64 binary at all, cross-
+compilation or otherwise — checked two ways, not assumed.** The brief's
+Deliverable 4 assumed "local or cloud both work... nothing here needs
+nested-spawn access or a GUI host," reasonably extrapolating from KT-B1/B2
+being sandbox-safe. That assumption doesn't extend to producing the actual
+target binary:
+
+1. Plain `cargo build --target aarch64-apple-darwin`: fails immediately —
+   this sandbox's `cc` is Linux GCC/Clang, which rejects `ring`'s
+   macOS-targeted build flags (`-arch arm64`, `-mmacosx-version-min=11.0`,
+   `-gfull`) outright.
+2. `cargo-zigbuild` (the standard cross-compilation workaround, installed
+   live via `pip install ziglang` + `cargo install cargo-zigbuild`): gets
+   substantially further — `zig cc` accepts the Apple-targeted flags `ring`
+   needs, and even `openssl-sys` cross-builds cleanly once `git2`'s
+   `vendored-openssl`/`vendored-libgit2` features are enabled. It still
+   hits a hard wall on `libgit2-sys`'s own `build.rs`
+   (`~/.cargo/registry/.../libgit2-sys-*/build.rs:166-213`), which
+   **unconditionally** selects `GIT_SECURE_TRANSPORT` + `GIT_SHA256_COMMON_
+   CRYPTO` and links `framework=Security`/`framework=CoreFoundation` for
+   any `target.contains("apple")` — there is no feature flag or env var in
+   the upstream crate to force OpenSSL on a Darwin target instead. Apple's
+   Security/CoreFoundation frameworks are proprietary and not present in
+   zig's bundled SDK subset (nor legitimately obtainable in this sandbox).
+   The `git2/vendored-openssl,vendored-libgit2` feature experiment used to
+   reach this finding was reverted afterward (`crates/lopi-git/Cargo.toml`,
+   confirmed clean via `git diff`/`git status`) — it doesn't fully solve
+   the problem anyway, and enabling "vendor and build OpenSSL from source
+   on every build" isn't a decision to make silently as a side effect of a
+   kill-test.
+
+**This is a structural toolchain gap, not a code defect** — disabling
+`git2`'s `https` feature would dodge it by silently removing HTTPS git
+support from the shipped binary, which is exactly the "quietly redefine
+success downward" failure mode the brief warned against; not done. Real-
+world Rust projects hit this identical wall and solve it by building
+natively on a macOS runner rather than cross-compiling from Linux, which is
+what `.github/workflows/mcpb-release.yml` (new, `workflow_dispatch`-only,
+not yet run for real) now does.
+
+**What was verified instead, for real, since the actual target binary
+couldn't be:** `mcpb validate` against `mcpb/manifest.json` (this caught
+two real schema errors the plan doc's own example JSON had — `repository`
+must be an object not a string, and every `user_config` entry needs a
+`description` — fixed, then passed clean). `mcpb pack`/`unpack` round-
+tripped the real manifest + directory layout using the host's own
+(x86_64 Linux) `lopi mcp-serve` binary as a packaging-mechanics stand-in —
+**not a substitute for the real macOS arm64 build**, but it did confirm the
+manifest schema, `entry_point` path convention, and bundle layout are all
+correct, and that the unpacked binary — invoked exactly as `mcp_config`
+specifies (`command` + `args: ["mcp-serve"]`) — correctly answers
+`initialize`, `tools/list` (all eight tools, `lopi_get_stack_status`
+carrying the right `_meta.ui.resourceUri`), `resources/list`,
+`resources/read` (byte-exact widget HTML), and `tools/call` for
+`lopi_get_stack_status` (`structuredContent: {"tasks":[]}` against an empty
+fixture). Every piece of this sprint's own code is now real-protocol
+verified; only "does this literal binary exist for arm64 macOS" remains
+open, and that's a toolchain question, not a lopi-code question.
+
+**KT-B3 (the widget render handshake) was not attempted — out of scope for
+this sprint by its own brief, not a gap.** See
+`LOPI_KTB3_ATTENDED_RUNBOOK.md` for the attended checklist; nothing in this
+sprint tries to simulate or approximate that check.
+
+**`LOPI_DISTRIBUTION_PLAN.md`'s repo copy is still stale — flagged again,
+not fixed, per the brief's own instruction not to silently trust either
+copy.** Confirmed live: the repo's Track B section (`## TRACK B — MCPB
+Desktop Extension`, no "+ Inline Dashboard" suffix) is still the
+pre-Track-D-merge draft — no Deliverables 1–2 (branch persistence, the
+aggregating tool), no KT-B1/KT-B2/KT-B3, no widget mention at all. This
+sprint worked from the session prompt's pasted `LOPI_DISTRIBUTION_PLAN.md`
+(the merged version), exactly as `NEXT_SESSION_PROMPT.md`'s prior entry
+warned would be necessary. Third time this exact drift has been logged
+(`MCP-App-1`'s entry below, and that entry's own note about the two
+`NEXT_SESSION_PROMPT.md` files) — still not this sprint's job to fix, but
+now clearly overdue for a sync pass.
+
 ## MCP-App-1
 
 **KT-D2 attempted and confirmed blocked in this environment — the sprint's

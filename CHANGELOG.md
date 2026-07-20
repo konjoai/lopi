@@ -1,5 +1,63 @@
 # Changelog
 
+## [0.19.0] — MCPB-App-1: branch persistence, `lopi_get_stack_status`, the stack-status widget, and the `.mcpb` build — packaged, not render-verified 📦
+
+Builds everything `MCP-App-1` (PR #130) found standing between "the plan
+says bind a UI resource to a tool" and an actual widget, per
+`LOPI_DISTRIBUTION_PLAN.md`'s Track B section (2.1–2.2, the merged
+Track-B-absorbs-Track-D spec). Ships: durable branch persistence, the new
+`lopi_get_stack_status` aggregating tool, the `ui://` widget resource bound
+to it, `resources/list`/`resources/read` support in `lopi-mcp` (new — didn't
+exist before this sprint), and `manifest.json` + a `.github/workflows/
+mcpb-release.yml` for the actual `.mcpb` build. **What this sprint cannot
+and does not claim: that the widget renders anywhere.** KT-B3 (the real MCP
+Apps handshake in a live Claude Desktop) is explicitly out of scope here —
+see `LOPI_KTB3_ATTENDED_RUNBOOK.md`, and `NEXT_SESSION_PROMPT.md` below for
+exactly what's still open.
+
+- **[Feature] Branch persistence — `tasks.branch`, a real column.** Per
+  `MCP-App-1`'s finding that a running task's branch had no structured
+  durable source anywhere, `AgentRunner::persist_branch`
+  (`crates/lopi-agent/src/runner/lifecycle.rs`) now writes it the moment
+  `TaskStarted` fires, mirroring `record_dag_transition`'s existing
+  fire-and-forget store-write pattern exactly. `TaskRow`/`get_task`/
+  `load_history` all carry it now. Full KT-B1 reasoning in `LEDGER.md`.
+- **[Feature] `lopi_get_stack_status` — the eighth MCP tool.** Joins the
+  task roster (`load_history`) with each task's current pipeline stage
+  (`load_dag_nodes` → new `lopi_memory::current_stage` pure fn) and its
+  branch. Verified against a real two-task, two-stage concurrent fixture
+  (KT-B2) — real field values asserted per task, not just "the query runs."
+- **[Feature] `ui://lopi/stack-status` — the read-only status widget.**
+  Plain HTML/JS (`src/mcp_ui/stack_status.html`), implements the MCP Apps
+  lifecycle (`ui/initialize` / `ui/notifications/initialized` /
+  `ui/notifications/tool-result`) and nothing beyond that — no
+  interactivity, no widget-initiated tool calls, per the sprint's explicit
+  non-goals. Bound to `lopi_get_stack_status` via `_meta.ui.resourceUri`.
+- **[Feature] `resources/list`/`resources/read` + `structuredContent` —
+  new `lopi-mcp` protocol surface.** `_meta.ui.resourceUri` alone doesn't
+  let a host fetch the resource it points at; this sprint added the
+  standard MCP methods to do that (`ToolHandler::resources()`/
+  `read_resource()`, both defaulted so the two prior implementors are
+  unaffected), plus `structuredContent` on every `tools/call` whose text
+  output is valid JSON — the data path a bound widget's `ui/initialize`
+  needs to actually receive.
+- **[Build] `mcpb/manifest.json` + `.github/workflows/mcpb-release.yml`,
+  macOS arm64 only.** `mcpb validate` passes clean (caught and fixed two
+  real schema errors the plan doc's own example JSON had). `mcpb pack`/
+  `unpack` mechanics verified for real using the host's own binary as a
+  packaging-mechanics stand-in — the unpacked binary, invoked exactly as
+  `mcp_config` specifies, correctly answered `initialize`/`tools/list`/
+  `resources/list`/`resources/read`/`tools/call` over real stdio.
+- **[Finding] A real macOS arm64 build cannot be produced in this sandbox
+  at all — checked two ways, not assumed.** Plain cross-compilation fails
+  immediately (Linux `cc` rejects Apple-targeted flags); `cargo-zigbuild`
+  gets past that and past `openssl-sys`, but `libgit2-sys` hardcodes
+  Apple's Security/CoreFoundation frameworks for any `apple` target with no
+  override available — a genuine toolchain gap, not a lopi defect. The new
+  GitHub Actions workflow builds natively on a real `macos-14` runner
+  instead (not yet run for real — `workflow_dispatch` only). Full detail
+  in `LEDGER.md`.
+
 ## [0.18.0] — MCP-App-1: Track D kill-tested — KT-D2 blocked on real-host access, tool-binding decided 🖼️
 
 Attempted Track D (Loop Stacks inline MCP App dashboard) per

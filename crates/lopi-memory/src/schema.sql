@@ -70,6 +70,13 @@ ALTER TABLE patterns ADD COLUMN user_annotation TEXT;
 -- TaskId the pool assigns, without lopi needing to understand that concept.
 ALTER TABLE tasks ADD COLUMN client_ref TEXT;
 
+-- MCPB-App-1 (KT-B1): the running attempt's git branch, the one field
+-- `TaskStatus::Success{branch}`/a freeform log line/an in-memory
+-- `AgentEvent::TaskStarted` could never answer durably and structurally for
+-- an in-flight task. Written by `AgentRunner::persist_branch` the moment
+-- `TaskStarted` fires — see LEDGER.md's MCPB-App-1 entry.
+ALTER TABLE tasks ADD COLUMN branch TEXT;
+
 -- Sprint I: Layer 5 patch stability ledger.
 -- Accumulates empirical data on model-output variance per task class.
 -- Drives the research dataset for which task types are safe to self-ship.

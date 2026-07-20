@@ -31,6 +31,6 @@ pub use config::{load_servers, parse_servers, McpServerSpec};
 pub use jsonrpc::{encode_line, IdGen, Notification, Request, Response, RpcError};
 pub use protocol::{
     call_tool_request, initialize_request, initialized_notification, list_tools_request,
-    parse_tool_text, parse_tools, McpTool, MCP_PROTOCOL_VERSION,
+    parse_tool_text, parse_tools, McpResource, McpResourceContents, McpTool, MCP_PROTOCOL_VERSION,
 };
 pub use server::{serve, ToolHandler};
