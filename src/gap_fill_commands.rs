@@ -33,7 +33,7 @@ pub async fn run(
     }
     let results = run_tests(&repo).await?;
     let passing = results.iter().filter(|r| r.passed).count();
-    let failing = results.iter().filter(|r| !r.passed && !r.ignored).count();
+    let failing = count_failing(&results);
     if !quiet {
         println!(
             "  ✅ {} results: {} passing, {} failing",
@@ -88,6 +88,13 @@ pub async fn run(
 
     queue_fix_tasks(&gaps, &repo, sail_url, quiet).await;
     Ok(snapshot)
+}
+
+/// Count results that are genuine failures: ran and did not pass, and were
+/// not deliberately skipped (`ignored`) by the runner. Kept separate from
+/// `run()` so the count is unit-testable without a full gap-fill run.
+fn count_failing(results: &[lopi_spec::TestRunResult]) -> usize {
+    results.iter().filter(|r| !r.passed && !r.ignored).count()
 }
 
 fn load_surface(repo: &std::path::Path, quiet: bool) -> Result<SpecSurface> {
@@ -285,6 +292,40 @@ fn log_snapshot(snap: &QualitySnapshot) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use lopi_spec::TestRunResult;
+
+    fn result(passed: bool, ignored: bool) -> TestRunResult {
+        TestRunResult {
+            name: "t".into(),
+            passed,
+            error: if passed { None } else { Some("boom".into()) },
+            ignored,
+        }
+    }
+
+    // Each case below isolates one branch of `!r.passed && !r.ignored` —
+    // together they pin down all three legs (each `!` and the `&&`) rather
+    // than just the aggregate count, which a mutated `||` or a deleted `!`
+    // can otherwise still satisfy by coincidence.
+    #[test]
+    fn count_failing_excludes_passing() {
+        assert_eq!(count_failing(&[result(true, false)]), 0);
+    }
+
+    #[test]
+    fn count_failing_counts_genuine_failure() {
+        assert_eq!(count_failing(&[result(false, false)]), 1);
+    }
+
+    #[test]
+    fn count_failing_excludes_ignored() {
+        assert_eq!(count_failing(&[result(false, true)]), 0);
+    }
+
+    #[test]
+    fn count_failing_excludes_passing_and_ignored() {
+        assert_eq!(count_failing(&[result(true, true)]), 0);
+    }
 
     #[test]
     fn snapshot_score_zero_when_empty() {
