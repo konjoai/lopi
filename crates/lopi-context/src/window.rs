@@ -50,14 +50,6 @@ impl ContextWindow {
         }
     }
 
-    /// Override the auto-eviction pressure threshold (default 0.75).
-    #[must_use]
-    #[allow(dead_code)]
-    pub fn with_threshold(mut self, threshold: f32) -> Self {
-        self.budget_threshold = threshold;
-        self
-    }
-
     /// Insert a turn. Estimates tokens if `msg.tokens == 0`.
     ///
     /// Auto-evicts `BudgetEvictable` turns when pressure exceeds the threshold.
