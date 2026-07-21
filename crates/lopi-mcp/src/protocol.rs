@@ -10,8 +10,12 @@ use crate::jsonrpc::{Notification, Request};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-/// The MCP protocol revision lopi implements.
-pub const MCP_PROTOCOL_VERSION: &str = "2024-11-05";
+/// The MCP protocol revision lopi implements. `2024-11-05` predates the
+/// extensions framework entirely — a host has no spec-compliant reason to
+/// negotiate an extension (e.g. MCP Apps, SEP-1865) against a server still
+/// declaring that revision. Bumped to the first stable revision the
+/// extensions capabilities mechanism ships in.
+pub const MCP_PROTOCOL_VERSION: &str = "2025-11-25";
 
 /// A tool advertised by an MCP server — one entry of a `tools/list` result.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
