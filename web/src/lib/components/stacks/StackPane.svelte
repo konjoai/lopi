@@ -21,12 +21,25 @@
   import { orbStateForCard } from '$lib/forge/cardOrb';
   import { agents, permissionWaiting } from '$lib/stores/agents';
   import { draggingPane, armedPaneKey } from './dnd';
+  import { focusedStackKey } from '$lib/stores/focusStack';
 
   export let pane: StackPaneState;
   export let index: number;
   export let repoOptions: Option[] = [];
   /** Close this pane. Null keeps the header X inert (e.g. a lone pane). */
   export let onClose: (() => void) | null = null;
+
+  // The `/overview` board's "open this stack" click sets `focusedStackKey`;
+  // this pane scrolls itself into view and flashes once, then clears the
+  // key so re-clicking the same card still re-triggers the flash.
+  let root: HTMLDivElement;
+  let flashing = false;
+  $: if ($focusedStackKey === pane.key) {
+    root?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    flashing = true;
+    focusedStackKey.set(null);
+    setTimeout(() => (flashing = false), 1400);
+  }
 
   $: paneDefaults = pane.config.defaults;
   $: scheduleGoverned = perLoopScheduleGoverned(pane.config);
@@ -65,6 +78,8 @@
 <div
   class="pane"
   class:dragging={$draggingPane?.paneKey === pane.key}
+  class:flash={flashing}
+  bind:this={root}
   role="listitem"
   draggable={paneDraggable}
   on:dragstart={onPaneDragStart}
@@ -176,6 +191,22 @@
   }
   .pane.dragging {
     opacity: 0.4;
+  }
+  .pane.flash {
+    animation: focusflash 1.4s ease-out;
+  }
+  @keyframes focusflash {
+    0% {
+      box-shadow: 0 0 0 2px rgba(0, 212, 255, 0.9);
+    }
+    100% {
+      box-shadow: 0 0 0 2px rgba(0, 212, 255, 0);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .pane.flash {
+      animation: none;
+    }
   }
   .panehead {
     flex: 0 0 auto;
