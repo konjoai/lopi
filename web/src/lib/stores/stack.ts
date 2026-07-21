@@ -257,6 +257,35 @@ export interface StackCard {
   tplKind?: 'prompt' | 'stack';
 }
 
+/** A ghost card: a specific next-loop suggestion rendered directly beneath
+ *  the card that produced it, until the user accepts or discards it (Ghost
+ *  Card in the Stack). Lives on the pane itself, like `draft` — never in
+ *  `cards` — so it's excluded from every run/loop-count/payload path the
+ *  same way a `'draft'` card is, with no new `CardStatus` value and nothing
+ *  new for `executionOrder`/`dryRunStack`/`cardToTaskPayload` to special-case. */
+export interface StackProposal {
+  id: string;
+  goal: string;
+  /** The spawning card's id — the proposal renders directly beneath it. */
+  afterCardId: string;
+  /** "proposed · loop N/6" — caller-supplied, not computed here. Where a
+   *  proposal originates (agent-emitted vs. a rule) is out of scope for this
+   *  slice; this type only models how one renders and resolves. */
+  loopNumber: number;
+  loopTotal: number;
+  status: 'proposed' | 'discarded';
+  /** Denormalized provenance, captured at proposal time (same reasoning as
+   *  `duplicateCard` cloning the whole card rather than re-deriving it), so
+   *  `ProposalCard.svelte` needs only the proposal to render its
+   *  `ProvenanceChips`. `repoLabel` is display-only — unlike `StackCard`'s
+   *  resolved `config.repo` path, there's no real repo resolution behind a
+   *  proposal yet, so accepting one does not carry a repo config forward. */
+  alias?: string;
+  tpl?: string;
+  tplKind?: 'prompt' | 'stack';
+  repoLabel?: string;
+}
+
 // ── Preset catalog (client-side static config this slice) ───────────────────
 
 /** Baseline eval — always present, on every card, rendered dashed/dimmed. */
@@ -1004,6 +1033,57 @@ export function patchCard(cards: StackCard[], id: string, patch: Partial<StackCa
   const next = [...cards];
   next[idx] = { ...next[idx], ...patch };
   return next;
+}
+
+// ── Successor-proposal ops (pure, tested) — Ghost Card in the Stack ──────────
+
+/** Set (or replace) a pane's proposal. */
+export function proposeAfterCard(pane: StackPaneState, proposal: StackProposal): StackPaneState {
+  return { ...pane, proposal };
+}
+
+/** Patch the proposal's goal text — the click-to-edit textarea has no
+ *  separate edit/save mode, just a direct patch on every keystroke (same
+ *  contract as `onCommittedGoalInput` for a real card). No-op if there's no
+ *  proposal, or it's already discarded (the discarded strip has no editable
+ *  text). */
+export function updateProposalGoal(pane: StackPaneState, goal: string): StackPaneState {
+  if (!pane.proposal || pane.proposal.status !== 'proposed') return pane;
+  return { ...pane, proposal: { ...pane.proposal, goal } };
+}
+
+/** Collapse the proposal to its one-line "discarded" strip. Kept (not
+ *  cleared) so `undoDiscardProposal` can restore it — no-op if there's no
+ *  proposal. */
+export function discardProposal(pane: StackPaneState): StackPaneState {
+  if (!pane.proposal) return pane;
+  return { ...pane, proposal: { ...pane.proposal, status: 'discarded' } };
+}
+
+/** Restore a discarded proposal back to its full card. No-op if there's no
+ *  proposal. */
+export function undoDiscardProposal(pane: StackPaneState): StackPaneState {
+  if (!pane.proposal) return pane;
+  return { ...pane, proposal: { ...pane.proposal, status: 'proposed' } };
+}
+
+/** Materialize the proposal into a real, `'idle'` card inserted immediately
+ *  after `afterCardId` (the same `idx + 1` placement `StackConnector`'s "add
+ *  between" affordance already uses), then clear the proposal. No-op if
+ *  there's no proposal, or its spawning card no longer exists (deleted while
+ *  the proposal was pending). */
+export function acceptProposal(pane: StackPaneState): StackPaneState {
+  const proposal = pane.proposal;
+  if (!proposal) return pane;
+  const afterIdx = pane.cards.findIndex((c) => c.id === proposal.afterCardId);
+  if (afterIdx === -1) return pane;
+  const card: StackCard = {
+    ...buildCard(proposal.goal),
+    alias: proposal.alias,
+    tpl: proposal.tpl,
+    tplKind: proposal.tplKind
+  };
+  return { ...pane, cards: insertCardAt(pane.cards, afterIdx + 1, card), proposal: undefined };
 }
 
 // ── Eval-set ops (pure, tested) ────────────────────────────────────────────────
@@ -1809,6 +1889,8 @@ export interface StackPaneState {
   cards: StackCard[];
   config: StackConfig;
   draft: StackCard;
+  /** The pane's ghost card, if any — see `StackProposal`. */
+  proposal?: StackProposal;
 }
 
 function makeDefaultPanes(): StackPaneState[] {
@@ -1865,6 +1947,22 @@ export function insertIntoPane(
   card: StackCard
 ): StackPaneState[] {
   return applyToPaneCards(state, key, (cards) => insertCardAt(cards, index, card));
+}
+
+/** Apply a pure whole-pane transform by key, leaving every other pane's
+ *  reference untouched. No-op (same reference) for an unknown key. The
+ *  pane-level analogue of `applyToPaneCards` above, for ops (like the
+ *  successor-proposal ones) that read/write fields other than `cards`. */
+function applyToPane(
+  state: StackPaneState[],
+  key: string,
+  fn: (pane: StackPaneState) => StackPaneState
+): StackPaneState[] {
+  const idx = state.findIndex((p) => p.key === key);
+  if (idx === -1) return state;
+  const next = [...state];
+  next[idx] = fn(next[idx]);
+  return next;
 }
 
 // ── Stack-level ops (Stack-1 §2 pre-flight: none of these existed before —
@@ -2006,6 +2104,27 @@ export function updateDraftInPane(key: string, patch: Partial<StackCard>): void 
     next[idx] = { ...next[idx], draft: { ...next[idx].draft, ...patch } };
     return next;
   });
+}
+
+/** Spawn (or replace) a pane's ghost card. */
+export function proposeAfterCardInPane(key: string, proposal: StackProposal): void {
+  panes.update((state) => applyToPane(state, key, (pane) => proposeAfterCard(pane, proposal)));
+}
+/** Patch the pane's proposal goal text as the user types. */
+export function updateProposalGoalInPane(key: string, goal: string): void {
+  panes.update((state) => applyToPane(state, key, (pane) => updateProposalGoal(pane, goal)));
+}
+/** Collapse the pane's proposal to its "discarded" strip. */
+export function discardProposalInPane(key: string): void {
+  panes.update((state) => applyToPane(state, key, discardProposal));
+}
+/** Restore a discarded proposal. */
+export function undoDiscardProposalInPane(key: string): void {
+  panes.update((state) => applyToPane(state, key, undoDiscardProposal));
+}
+/** Accept the pane's proposal — materializes it into a real queued card. */
+export function acceptProposalInPane(key: string): void {
+  panes.update((state) => applyToPane(state, key, acceptProposal));
 }
 
 /** Commit a pane's draft into a real (`'idle'`) card at the top of the stack

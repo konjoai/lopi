@@ -1,172 +1,147 @@
 <!--
-  /overview — the app-wide rollup. One dense, read-only row per live agent
-  across every pane and card, sortable by lifecycle with orb-colored status.
-  This is the single surface that replaces Fleet + Dashboard + Pulse's
-  *information* (per-agent metrics, whole-fleet glance, live status). Clicking a
-  row focuses that agent on Loop Stacks. Constellation's 3D orbital view is
-  cut, not folded in here. The old Tasks page folds in too: its dead-letter view
-  is now the `dead-letter` status filter, not a separate route.
+  /overview — the Loop Stacks board: every stack across the account, grouped
+  into four lifecycle columns (queued/running/testing/done), kanban-style.
+  Replaces the old per-agent rollup table — a "stack" (a Loop Stacks pane,
+  see `stores/stack.ts`) is the unit users actually think in, and one stack
+  can chain several loops, each of which used to show as its own disconnected
+  row here.
 
-  Honest truth: rows come only from the live `agents` store — no fabricated
-  agents ever fill it. Offline says offline; connected-but-idle says idle.
+  Web translation of the iOS "Overview" handoff
+  (`design_handoff_ios_loop_stacks/README.md`): its column-header treatment
+  ("1a" — dot + uppercase label + right-aligned count, a colored underline)
+  paired with its denser card body ("1b" — left-accent bar, name + live dot,
+  single prompt line, compact loop-progress dots, one right-aligned meta
+  value) rather than iOS's swipe-to-manage single scrolling list, since the
+  web app already has a full per-stack management surface on `/stacks`.
+
+  Honest truth: every card is a real client-side pane from `panes`, resolved
+  against the live `agents` map — no fabricated stacks. A stack with no
+  cards yet (still just an open composer) doesn't appear; add its first
+  prompt on Loop Stacks to put it on the board.
 -->
 <script lang="ts">
   import { goto } from '$app/navigation';
-  import { flip } from 'svelte/animate';
-  import { agents, permissionWaiting, activeAgentId, connectionState } from '$lib/stores/agents';
+  import { panes } from '$lib/stores/stack';
+  import { agents, connectionState } from '$lib/stores/agents';
+  import { focusStack } from '$lib/stores/focusStack';
   import {
-    overviewRows,
-    filterRows,
-    filterCounts,
-    formatElapsed,
-    type StatusFilter,
-    type OverviewRow
-  } from '$lib/stores/overview';
+    buildStackOverviewCards,
+    groupByLifecycle,
+    totalCost,
+    LIFECYCLE_ORDER,
+    LIFECYCLE_LABEL,
+    LIFECYCLE_COLOR,
+    type StackOverviewCard as StackOverviewCardT
+  } from '$lib/stores/stackOverview';
+  import StackOverviewCard from '$lib/components/stacks/StackOverviewCard.svelte';
 
-  let filter: StatusFilter = 'all';
+  $: cards = buildStackOverviewCards($panes, $agents);
+  $: groups = groupByLifecycle(cards);
+  $: liveCount = groups.running.length + groups.testing.length;
+  $: spent = totalCost($agents);
+  $: offline = $connectionState === 'offline';
 
-  $: rows = overviewRows($agents, $permissionWaiting);
-  $: counts = filterCounts(rows);
-  $: shown = filterRows(rows, filter);
-  $: offline = $connectionState === 'offline' || $connectionState === 'connecting';
-  $: idle = $connectionState === 'connected' && rows.length === 0;
-
-  const FILTERS: { key: StatusFilter; label: string }[] = [
-    { key: 'all', label: 'all' },
-    { key: 'running', label: 'running' },
-    { key: 'queued', label: 'queued' },
-    { key: 'done', label: 'done' },
-    { key: 'dead-letter', label: 'dead-letter' }
-  ];
-
-  function focus(row: OverviewRow) {
-    activeAgentId.set(row.id);
+  function open(card: StackOverviewCardT) {
+    focusStack(card.key);
     goto('/stacks');
-  }
-
-  function scoreColor(score: number): string {
-    if (score >= 0.8) return 'var(--konjo-jade)';
-    if (score >= 0.5) return 'var(--konjo-sun)';
-    return 'var(--konjo-rose)';
   }
 </script>
 
-<div class="max-w-[1400px] mx-auto px-4 py-8 space-y-6">
-  <div>
-    <h1 class="font-display text-2xl">Overview</h1>
-    <p class="font-mono text-[11px] uppercase tracking-widest opacity-50 mt-1">
-      every active pane &amp; card · goal · phase · elapsed · cost · score · click to open
+<div class="max-w-[1400px] mx-auto px-4 py-8 space-y-5">
+  <div class="head">
+    <div class="titlerow">
+      <h1 class="font-display text-2xl">Stack Loops</h1>
+      <span class="live" class:offline>
+        <span class="livedot"></span>{offline ? 'OFFLINE' : 'LIVE'}
+      </span>
+    </div>
+    <p class="subtitle">
+      <span class="stat"><b>{cards.length}</b> stacks</span>
+      <span class="stat"><b class="ice">{liveCount}</b> live</span>
+      <span class="stat"><b>${spent.toFixed(4)}</b> spent</span>
     </p>
   </div>
 
-  <!-- Lifecycle filter chips (dead-letter folds in the old Tasks view) -->
-  <div class="flex flex-wrap gap-2">
-    {#each FILTERS as f (f.key)}
-      <button
-        type="button"
-        class="chip"
-        class:active={filter === f.key}
-        on:click={() => (filter = f.key)}
-      >
-        {f.label}
-        <span class="cnt">{counts[f.key]}</span>
-      </button>
-    {/each}
-  </div>
-
-  {#if offline}
-    <div class="banner err">
-      backend offline — {$connectionState === 'connecting' ? 'connecting to lopi sail…' : 'start `lopi sail` to see live agents'}
-    </div>
-  {:else if idle}
-    <div class="banner">no live sessions — launch a run to populate the overview</div>
-  {:else if shown.length === 0}
-    <div class="banner">no {filter} agents</div>
+  {#if cards.length === 0}
+    <div class="banner">no stacks yet — add a prompt on Loop Stacks to put one on the board</div>
   {:else}
-    <div class="tablewrap">
-      <table>
-        <thead>
-          <tr>
-            <th class="c-dot"></th>
-            <th class="c-goal">goal</th>
-            <th class="c-repo">repo · branch</th>
-            <th class="c-phase">phase</th>
-            <th class="c-num">elapsed</th>
-            <th class="c-num">cost</th>
-            <th class="c-num">score</th>
-          </tr>
-        </thead>
-        <tbody>
-          {#each shown as row (row.id)}
-            <tr
-              class="row {row.special}"
-              animate:flip={{ duration: 260 }}
-              style:--orb={row.orbColor}
-              on:click={() => focus(row)}
-              tabindex="0"
-              role="button"
-              on:keydown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), focus(row))}
-              title="Open on Loop Stacks"
-            >
-              <td class="c-dot"><span class="dot" class:awaiting={row.awaiting}></span></td>
-              <td class="c-goal"><span class="goal">{row.goal}</span></td>
-              <td class="c-repo">
-                <span class="repo">{row.repo || '—'}</span>
-                {#if row.branch}<span class="branch">{row.branch}</span>{/if}
-              </td>
-              <td class="c-phase">
-                <span class="phase" style:color={row.orbColor}>{row.phase}</span>
-                {#if row.status !== 'running' && row.status !== 'queued'}
-                  <span class="term">{row.status}</span>
-                {/if}
-              </td>
-              <td class="c-num tabular">{formatElapsed(row.elapsedMs)}</td>
-              <td class="c-num tabular cost">${row.cost.toFixed(4)}</td>
-              <td class="c-num tabular">
-                {#if row.score !== undefined}
-                  <span style:color={scoreColor(row.score)}>{Math.round(row.score * 100)}</span>
-                {:else}
-                  <span class="opacity-30">—</span>
-                {/if}
-              </td>
-            </tr>
-          {/each}
-        </tbody>
-      </table>
+    <div class="board">
+      {#each LIFECYCLE_ORDER as lifecycle (lifecycle)}
+        <div class="col">
+          <div class="colhead" style:border-color={LIFECYCLE_COLOR[lifecycle]}>
+            <span class="cdot" style:background={LIFECYCLE_COLOR[lifecycle]}></span>
+            <span class="clabel">{LIFECYCLE_LABEL[lifecycle]}</span>
+            <span class="ccount" style:color={LIFECYCLE_COLOR[lifecycle]}>{groups[lifecycle].length}</span>
+          </div>
+          <div class="cbody">
+            {#each groups[lifecycle] as card (card.key)}
+              <StackOverviewCard {card} on:click={() => open(card)} />
+            {:else}
+              <div class="empty">none</div>
+            {/each}
+          </div>
+        </div>
+      {/each}
     </div>
   {/if}
 </div>
 
 <style>
-  .chip {
-    font-family: var(--font-mono, monospace);
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    padding: 5px 12px;
-    border-radius: 7px;
-    border: 1px solid rgba(255, 255, 255, 0.11);
-    background: transparent;
-    color: rgba(245, 245, 245, 0.5);
-    cursor: pointer;
+  .head {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .titlerow {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+  }
+  .live {
+    margin-left: auto;
     display: inline-flex;
     align-items: center;
-    gap: 7px;
-    transition: 0.12s;
-  }
-  .chip:hover {
-    color: var(--konjo-paper, #f5f5f5);
-    border-color: rgba(245, 245, 245, 0.4);
-  }
-  .chip.active {
-    color: var(--konjo-ice);
-    border-color: rgba(0, 212, 255, 0.5);
-    background: rgba(0, 212, 255, 0.08);
-  }
-  .chip .cnt {
+    gap: 6px;
+    font-family: var(--font-mono, monospace);
     font-size: 10px;
+    letter-spacing: 0.1em;
+    color: var(--konjo-jade, #00ff9d);
+  }
+  .live.offline {
+    color: rgba(245, 245, 245, 0.35);
+  }
+  .livedot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+  .live:not(.offline) .livedot {
+    animation: livepulse 1.8s ease-in-out infinite;
+  }
+  @keyframes livepulse {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.4;
+    }
+  }
+  .subtitle {
+    display: flex;
+    gap: 18px;
+    font-family: var(--font-mono, monospace);
+    font-size: 11px;
+    color: rgba(245, 245, 245, 0.5);
+    margin: 0;
+  }
+  .subtitle b {
+    color: var(--konjo-paper, #f5f5f5);
     font-weight: 700;
-    opacity: 0.7;
+  }
+  .subtitle b.ice {
+    color: var(--konjo-ice, #00d4ff);
   }
   .banner {
     font-family: var(--font-mono, monospace);
@@ -177,119 +152,58 @@
     border-radius: 10px;
     color: rgba(245, 245, 245, 0.5);
   }
-  .banner.err {
-    border-color: rgba(255, 0, 102, 0.35);
-    color: var(--konjo-rose, #ff0066);
+  .board {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    align-items: start;
   }
-  .tablewrap {
-    overflow-x: auto;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 10px;
+  .col {
+    min-width: 0;
   }
-  table {
-    width: 100%;
-    border-collapse: collapse;
-    font-family: var(--font-mono, monospace);
-    font-size: 12px;
+  .colhead {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 4px 10px;
+    border-bottom: 2px solid;
+    position: sticky;
+    top: 0;
+    background: var(--konjo-black, #0a0a0a);
+    z-index: 1;
   }
-  thead th {
-    text-align: left;
-    font-size: 9px;
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
-    color: rgba(245, 245, 245, 0.4);
-    padding: 10px 12px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-    font-weight: 500;
-  }
-  .c-num {
-    text-align: right;
-  }
-  .c-dot {
-    width: 26px;
-    text-align: center;
-  }
-  tbody .row {
-    cursor: pointer;
-    transition: background 0.12s;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-  }
-  tbody .row:hover,
-  tbody .row:focus-visible {
-    background: color-mix(in srgb, var(--orb) 9%, transparent);
-    outline: none;
-  }
-  td {
-    padding: 9px 12px;
-    vertical-align: middle;
-  }
-  .dot {
-    display: inline-block;
-    width: 9px;
-    height: 9px;
+  .cdot {
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
-    background: var(--orb);
-    box-shadow: 0 0 7px 0 color-mix(in srgb, var(--orb) 70%, transparent);
   }
-  /* Motion echoes the orb vocabulary: running phases breathe, terminal
-     hardStop is steady, awaiting pulses for attention. */
-  .row.none .dot,
-  .row.attentionPulse .dot,
-  .row.kryptonite .dot,
-  .row.stutter .dot,
-  .row.reverseSpin .dot {
-    animation: dotpulse 1.8s ease-in-out infinite;
-  }
-  .row.hardStop .dot {
-    animation: none;
-  }
-  .dot.awaiting {
-    animation: dotpulse 0.9s ease-in-out infinite !important;
-  }
-  @keyframes dotpulse {
-    0%,
-    100% {
-      opacity: 1;
-    }
-    50% {
-      opacity: 0.45;
-    }
-  }
-  .goal {
+  .clabel {
     color: var(--konjo-paper, #f5f5f5);
-    display: inline-block;
-    max-width: 420px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    vertical-align: bottom;
-  }
-  .repo {
-    color: rgba(245, 245, 245, 0.7);
-  }
-  .branch {
-    color: rgba(245, 245, 245, 0.4);
-    margin-left: 8px;
-  }
-  .phase {
     font-weight: 600;
-  }
-  .term {
-    margin-left: 8px;
-    font-size: 9px;
+    font-size: 12px;
+    letter-spacing: 0.06em;
     text-transform: uppercase;
-    letter-spacing: 0.1em;
-    opacity: 0.5;
   }
-  .tabular {
-    font-variant-numeric: tabular-nums;
+  .ccount {
+    margin-left: auto;
+    font-family: var(--font-mono, monospace);
+    font-size: 11px;
   }
-  .cost {
-    color: var(--konjo-flame, #ff9500);
+  .cbody {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 12px;
+    max-height: calc(100vh - 260px);
+    overflow-y: auto;
   }
-  @media (prefers-reduced-motion: reduce) {
-    .dot {
-      animation: none !important;
-    }
+  .empty {
+    font-family: var(--font-mono, monospace);
+    font-size: 10.5px;
+    color: rgba(245, 245, 245, 0.25);
+    padding: 10px 4px;
+    text-align: center;
+    border: 1px dashed rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
   }
 </style>
