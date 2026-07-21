@@ -89,7 +89,10 @@ fn validate_rejects_an_empty_goal() {
 
 #[test]
 fn validate_rejects_a_whitespace_only_goal() {
-    assert_eq!(sample("   \n\t").validate().unwrap_err(), SuccessorError::EmptyGoal);
+    assert_eq!(
+        sample("   \n\t").validate().unwrap_err(),
+        SuccessorError::EmptyGoal
+    );
 }
 
 #[test]
@@ -144,7 +147,10 @@ fn depth_cap_permits_the_exact_boundary_depth() {
 fn invalid_successor_goal_rejects_before_any_gate_runs() {
     let parent = parent_task();
     let err = derive_successor_task(&parent, &sample(""), 5).unwrap_err();
-    assert_eq!(err, SuccessorRejection::InvalidGoal(SuccessorError::EmptyGoal));
+    assert_eq!(
+        err,
+        SuccessorRejection::InvalidGoal(SuccessorError::EmptyGoal)
+    );
 }
 
 // ── Gate 2: autonomy ceiling ─────────────────────────────────────────

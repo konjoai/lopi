@@ -147,7 +147,10 @@ pub fn clamp_autonomy_to_parent(
 /// looking at the plan first.
 #[must_use]
 pub fn is_untrusted_source(source: &TaskSource) -> bool {
-    matches!(source, TaskSource::Webhook { .. } | TaskSource::Telegram { .. })
+    matches!(
+        source,
+        TaskSource::Webhook { .. } | TaskSource::Telegram { .. }
+    )
 }
 
 /// Union two directory lists, preserving `a`'s order and skipping any of

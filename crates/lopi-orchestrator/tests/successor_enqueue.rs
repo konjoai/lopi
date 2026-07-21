@@ -68,7 +68,10 @@ async fn a_derived_successor_appears_in_the_queue_with_lineage_depth_and_gates_a
     // already-queued identical goal — `None` here is the expected "enqueued
     // fresh" outcome, not a failure.
     let dedup_hit = pool.submit(child).await;
-    assert!(dedup_hit.is_none(), "nothing else is queued to dedup against");
+    assert!(
+        dedup_hit.is_none(),
+        "nothing else is queued to dedup against"
+    );
 
     assert_eq!(
         pool.stats().queued,

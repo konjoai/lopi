@@ -19,7 +19,10 @@ async fn lineage_fields_persist_and_round_trip() {
     store.save_task(&child, "queued").await.unwrap();
 
     let row = store.get_task(&child.id).await.unwrap().unwrap();
-    assert_eq!(row.parent_task.as_deref(), Some(parent.id.0.to_string().as_str()));
+    assert_eq!(
+        row.parent_task.as_deref(),
+        Some(parent.id.0.to_string().as_str())
+    );
     assert_eq!(row.chain_depth, 1);
 }
 

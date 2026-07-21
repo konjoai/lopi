@@ -5,8 +5,8 @@
 #![allow(clippy::expect_used)]
 
 use super::{
-    build_report_summary, pr_decision, requires_verifier, should_auto_merge,
-    zero_diff_is_success, AgentRunner, PrDecision,
+    build_report_summary, pr_decision, requires_verifier, should_auto_merge, zero_diff_is_success,
+    AgentRunner, PrDecision,
 };
 use lopi_core::loop_config::AutonomyLevel;
 use lopi_core::{AgentEvent, Deliverable, Score, Task};

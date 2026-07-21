@@ -52,13 +52,13 @@ pub mod schema;
 pub mod security;
 /// Self-prompting loop strategies — how an agent re-prompts itself on retry.
 pub mod self_prompt;
+/// Progress-Gating (A3) — the specific reason a loop terminated and the
+/// precedence among reasons when several trip at once.
+pub mod stop_reason;
 /// Sprint Successor-1 — agent-authored, cross-task-boundary follow-up tasks:
 /// the `Successor` proposal type and its validation. Distinct from
 /// `self_prompt` (framework-authored, same-task retry reframing).
 pub mod successor;
-/// Progress-Gating (A3) — the specific reason a loop terminated and the
-/// precedence among reasons when several trip at once.
-pub mod stop_reason;
 /// Task definition, status, priority, and source types.
 pub mod task;
 /// [`TaskSource`] — split out of `task.rs` to keep it under the 500-line CI

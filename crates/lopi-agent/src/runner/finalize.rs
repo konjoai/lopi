@@ -348,7 +348,6 @@ pub(super) fn build_report_summary(goal: &str, branch: &str, score: &Score, atte
     )
 }
 
-
 #[cfg(test)]
 #[path = "finalize_tests.rs"]
 mod tests;
