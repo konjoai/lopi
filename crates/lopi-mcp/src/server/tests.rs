@@ -134,6 +134,19 @@ async fn initialize_advertises_lopi_server_info() {
     assert!(result["capabilities"]["resources"].is_object());
 }
 
+/// Per SEP-1865, MCP Apps is optional and a host will never call
+/// `resources/read` for a bound widget unless the server explicitly
+/// negotiates the `io.modelcontextprotocol/ui` extension in `initialize` —
+/// this is the negotiation lopi's stack-status widget depends on to ever
+/// be requested by a real host.
+#[tokio::test]
+async fn initialize_advertises_the_mcp_apps_extension() {
+    let resp = handle_request(&MockHandler, &Request::new(1, "initialize", None)).await;
+    let result = resp.into_result().unwrap();
+    let ui_ext = &result["capabilities"]["extensions"]["io.modelcontextprotocol/ui"];
+    assert_eq!(ui_ext["mimeTypes"], json!(["text/html;profile=mcp-app"]));
+}
+
 #[tokio::test]
 async fn resources_list_returns_the_handlers_resources() {
     let resp = handle_request(&JsonToolHandler, &Request::new(1, "resources/list", None)).await;
