@@ -119,6 +119,32 @@
     text-transform: uppercase;
     padding-top: 1px;
   }
+  .cancel-btn {
+    flex: 0 0 auto;
+    margin-left: 6px;
+    font: inherit;
+    font-size: 10.5px;
+    padding: 3px 8px;
+    border-radius: 5px;
+    border: 1px solid var(--dim);
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .cancel-btn:hover:not(:disabled) { color: var(--fg); border-color: var(--fg); }
+  .cancel-btn:disabled { opacity: 0.5; cursor: default; }
+  .row-gone {
+    padding: 11px 10px;
+    border-left: 3px solid var(--dim);
+    border-radius: 0 7px 7px 0;
+    color: var(--dim);
+    font-size: 12px;
+  }
+  .row-error {
+    margin: 4px 10px 0 13px;
+    font-size: 10.5px;
+    color: #ff4d4d;
+  }
   @keyframes lopipulse {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.35; }
@@ -304,6 +330,15 @@ container holding the app. Specify either width or maxWidth, and either height o
     return bucket !== "done" && bucket !== "deadletter";
   }
 
+  // A task can be cancelled while it's still in flight — the same two
+  // buckets `isPulsing` treats as non-terminal. `conflict`/`deadletter`/
+  // `done` tasks have already stopped running (per `AgentPool::cancel`,
+  // Phase 0's KT-4), so no Cancel action is offered for them.
+  function isCancelable(status) {
+    var bucket = bucketOf(status);
+    return bucket === "queued" || bucket === "running";
+  }
+
   // "implement · attempt-2", or just the stage name when the branch doesn't
   // carry a recognizable "-attempt-N" suffix (e.g. no branch yet).
   function subLine(stage, branch) {
@@ -339,9 +374,18 @@ container holding the app. Specify either width or maxWidth, and either height o
   function rowHtml(t, idx) {
     var color = orbColor(t.status, t.stage);
     var detailId = "detail-" + idx;
+    // `.row` is a div, not a button: a real nested `<button class="cancel-btn">`
+    // for the cancel action would auto-close a `<button class="row">` the
+    // instant the parser hit it (HTML forbids interactive-in-interactive
+    // nesting), silently breaking the row markup. `role="button"` +
+    // `tabindex` + the keydown handler in `render()` keep it keyboard-
+    // operable in place of the native button semantics this gives up.
+    var cancelBtn = isCancelable(t.status)
+      ? '<button type="button" class="cancel-btn" data-task="' + escapeHtml(t.id) + '" data-goal="' + escapeHtml(t.goal) + '">Cancel</button>'
+      : "";
     return (
       '<div class="rowwrap">' +
-        '<button type="button" class="row" style="--c:' + color + '" data-detail="' + detailId + '">' +
+        '<div class="row" role="button" tabindex="0" style="--c:' + color + '" data-detail="' + detailId + '">' +
           '<div class="rbody">' +
             '<div class="rtitle">' +
               "<span>" + escapeHtml(t.goal) + "</span>" +
@@ -350,7 +394,8 @@ container holding the app. Specify either width or maxWidth, and either height o
             '<div class="rsub">' + escapeHtml(subLine(t.stage, t.branch)) + "</div>" +
           "</div>" +
           '<div class="rmeta" style="color:' + color + '">' + escapeHtml(t.status) + "</div>" +
-        "</button>" +
+          cancelBtn +
+        "</div>" +
         '<div class="detail" id="' + detailId + '">' + detailHtml(t) + "</div>" +
       "</div>"
     );
@@ -393,15 +438,38 @@ container holding the app. Specify either width or maxWidth, and either height o
 
     // Assignment, not addEventListener — idempotent across re-renders so
     // repeated `ontoolresult` calls never stack duplicate handlers. Only one
-    // row expanded at a time.
+    // row expanded at a time. Cancel clicks are checked first since a
+    // `.cancel-btn` sits inside a `.row` div — falling through to the
+    // expand-toggle would otherwise fire on every cancel click too.
     root.onclick = function (ev) {
+      var cancelBtn = ev.target.closest && ev.target.closest(".cancel-btn");
+      if (cancelBtn) {
+        requestCancel(cancelBtn);
+        return;
+      }
       var btn = ev.target.closest && ev.target.closest(".row");
       if (!btn) return;
-      var detail = document.getElementById(btn.getAttribute("data-detail"));
-      var wasOpen = detail.classList.contains("open");
-      root.querySelectorAll(".detail.open").forEach(function (el) { el.classList.remove("open"); });
-      if (!wasOpen) detail.classList.add("open");
+      toggleDetail(btn);
     };
+
+    // `.row` gave up native `<button>` keyboard handling when it became a
+    // div (see `rowHtml`'s comment) — restore Enter/Space activation for the
+    // expand toggle so that regression doesn't ship silently.
+    root.onkeydown = function (ev) {
+      if (ev.key !== "Enter" && ev.key !== " ") return;
+      if (ev.target.closest && ev.target.closest(".cancel-btn")) return;
+      var btn = ev.target.closest && ev.target.closest(".row");
+      if (!btn) return;
+      ev.preventDefault();
+      toggleDetail(btn);
+    };
+  }
+
+  function toggleDetail(btn) {
+    var detail = document.getElementById(btn.getAttribute("data-detail"));
+    var wasOpen = detail.classList.contains("open");
+    document.querySelectorAll("#root .detail.open").forEach(function (el) { el.classList.remove("open"); });
+    if (!wasOpen) detail.classList.add("open");
   }
 
   // Structured data can arrive shaped as the raw tool result, or nested
@@ -431,9 +499,107 @@ container holding the app. Specify either width or maxWidth, and either height o
     return direct;
   }
 
+  // Set once `main()`'s `app.connect()` resolves; read by `doCancel()`. A
+  // click arriving before that (unlikely — the widget has nothing to click
+  // until `render()` has run at least once from `ontoolresult`) would throw
+  // on `app.callServerTool`, which `doCancel`'s own try/catch already
+  // surfaces as this row's inline error rather than crashing the widget.
+  var app;
+
+  // Confirm-before-destructive-action: `lopi_cancel_task` deletes the task
+  // row outright (Phase 0's KT-4 confirmed no undo/approval gate sits behind
+  // it), so this never fires the cancel on a single click. `window.confirm`
+  // is tried first; MCP Apps hosts commonly sandbox the widget iframe
+  // without `allow-modals`, which makes `confirm()` throw rather than
+  // return `false` — that throw (not a live host to observe it against,
+  // per this sprint's KT-3) is what selects the two-click fallback below,
+  // not a host-detection guess.
+  function requestCancel(btn) {
+    if (btn.disabled) return;
+    var goal = btn.getAttribute("data-goal") || "";
+    var confirmed;
+    try {
+      confirmed = window.confirm('Cancel and permanently delete "' + goal + '"? This cannot be undone.');
+    } catch (e) {
+      confirmed = null; // confirm() unavailable in this sandbox — fall through
+    }
+    if (confirmed === true) {
+      doCancel(btn);
+      return;
+    }
+    if (confirmed === false) return; // user declined
+    if (btn.getAttribute("data-armed") === "1") {
+      doCancel(btn);
+      return;
+    }
+    btn.setAttribute("data-armed", "1");
+    btn.textContent = "Confirm cancel?";
+    setTimeout(function () {
+      if (btn.isConnected && btn.getAttribute("data-armed") === "1") {
+        btn.removeAttribute("data-armed");
+        btn.textContent = "Cancel";
+      }
+    }, 4000);
+  }
+
+  // Fires the real write: `lopi_cancel_task` via `callServerTool()` — a
+  // plain awaited JSON-RPC `tools/call`, distinct from `ontoolresult`
+  // (Phase 0's KT-2), which only ever fires for `lopi_get_stack_status`
+  // re-invocations, not this tool's own response.
+  async function doCancel(btn) {
+    var taskId = btn.getAttribute("data-task");
+    var goal = btn.getAttribute("data-goal") || "";
+    btn.disabled = true; // real `disabled`, not just a flag — browsers never
+    btn.removeAttribute("data-armed"); // dispatch `click` to a disabled button, so this alone
+    btn.textContent = "Cancelling…"; // is what actually prevents a double-submit race.
+    var rowwrap = btn.closest(".rowwrap");
+    try {
+      var result = await app.callServerTool({ name: "lopi_cancel_task", arguments: { task_id: taskId } });
+      var payload = unwrap(result);
+      if (!payload || payload.error) {
+        showRowError(rowwrap, btn, (payload && payload.error) || "no response");
+        return;
+      }
+      if (payload.deleted !== true) {
+        showRowError(rowwrap, btn, "cancel did not complete");
+        return;
+      }
+      if (rowwrap) {
+        rowwrap.innerHTML = '<div class="row-gone">' + escapeHtml(goal) + " — cancelled</div>";
+      }
+      // Bidirectional data flow (MCP Apps design intent): tell the model
+      // what the user just did, so the conversation's own context reflects
+      // it instead of only this widget's local DOM.
+      try {
+        await app.updateModelContext({
+          content: [{ type: "text", text: 'Cancelled lopi task ' + taskId + ' ("' + goal + '") by user action in the stack-status widget.' }]
+        });
+      } catch (e) {
+        console.error("[lopi stack status] updateModelContext failed:", e);
+      }
+    } catch (err) {
+      showRowError(rowwrap, btn, (err && err.message) || "request failed");
+    }
+  }
+
+  // Re-enables the button (a retry needs it clickable) and appends a
+  // one-line inline error under the row rather than failing silently.
+  function showRowError(rowwrap, btn, message) {
+    btn.disabled = false;
+    btn.removeAttribute("data-armed");
+    btn.textContent = "Cancel";
+    if (!rowwrap) return;
+    var existing = rowwrap.querySelector(".row-error");
+    if (existing) existing.remove();
+    var el = document.createElement("div");
+    el.className = "row-error";
+    el.textContent = "Cancel failed: " + message;
+    rowwrap.appendChild(el);
+  }
+
   async function main() {
     try {
-      var app = new eI({ name: "lopi stack status", version: "0.1.0" }, {});
+      app = new eI({ name: "lopi stack status", version: "0.1.0" }, {});
 
       // Fires once right after connect (initial data) and again on every
       // subsequent lopi_get_stack_status call while this widget is mounted.

@@ -375,3 +375,10 @@ async fn get_stats(state: &AppState) -> Value {
 #[cfg(test)]
 #[path = "mod_tests.rs"]
 mod tests;
+
+/// Regression coverage at the real `lopi_mcp` JSON-RPC surface (MCPB-App-2
+/// Phase 2) — see the module doc there for why this is separate from
+/// `mod_tests.rs`'s `dispatch()`-level tests.
+#[cfg(test)]
+#[path = "server_wire_tests.rs"]
+mod server_wire_tests;

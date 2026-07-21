@@ -5,6 +5,87 @@ the `lopi` repo. Newest first.
 
 ---
 
+## Next Session — after MCPB-App-2 (Click Interactivity + Backend Write Path)
+
+**MCPB-App-2 wired the stack-status widget's first click-driven write path —
+a Cancel button per row, calling the already-existing `lopi_cancel_task` MCP
+tool — but its own Phase 3 (live verification) is explicitly blocked, not
+skipped: KT-B3, the widget's basic live render in a real Claude Desktop, still
+has not been confirmed as of the most recent `KT-B3-Live` entries.** Read
+first, in order: `CLAUDE.md`, `CHANGELOG.md`'s `MCPB-App-2` entry, `LEDGER.md`'s
+`MCPB-App-2` entry in full (the KT-1–KT-4 findings and the four "how to apply"
+points), then this file's own words below.
+
+### What shipped this sprint (Phases 0–2, all completable without KT-B3)
+
+- Pre-flight kill-tests KT-1 (tool-call symmetry — confirmed, no origin
+  branching in `crates/lopi-mcp/src/server.rs`), KT-2 (`callServerTool()` vs.
+  `ontoolresult` — confirmed distinct, cancel result wired through the
+  former), KT-4 (no autonomy/plan-approval gate on `cancel`/`delete_task` —
+  confirmed absent by reading the pool/store code directly). KT-3 (host-level
+  approval UX) is unanswerable without a real host — correctly left open.
+- `src/mcp_ui/stack_status.html`: a Cancel button on every `queued`/`running`
+  row (`isCancelable()`), a confirm-then-two-click-fallback guard
+  (`requestCancel`/`doCancel`), real-`disabled`-button double-submit
+  prevention, inline `.row-error` on failure, row replaced with a grayed
+  "cancelled" line on success, and an `app.updateModelContext(...)` call
+  after a successful cancel. `.row` changed from `<button>` to a
+  `role="button"` div (nesting a real button inside it was invalid HTML —
+  see `LEDGER.md`) with a new `root.onkeydown` restoring keyboard activation.
+- `src/mcp_commands/server_wire_tests.rs` — new. Two tests drive
+  `lopi_cancel_task` through the real `lopi_mcp::serve()` JSON-RPC loop with
+  the real `LopiToolHandler`, not a mock — the surface the brief asked for,
+  relocated from the (inaccessible) `crates/lopi-mcp` location the brief
+  named, since that crate has no dependency on lopi's actual tool
+  implementations by design. `mod_tests.rs`'s `test_state()` is now
+  `pub(super)` so both test modules share it.
+- 1576 workspace tests green, `cargo clippy --workspace --all-targets -- -D
+  warnings` clean, widget's script body still `node --check` clean, `VERSION`
+  bumped to `0.22.0`.
+
+### What could NOT be verified this session — needs a live Claude Desktop, and needs KT-B3 first
+
+**Phase 3 did not run at all.** Nothing in this sprint's own testing exercises
+whether the widget actually renders in a real host in the first place — that
+question (KT-B3) predates this sprint and is still open per `KT-B3-Live`'s
+most recent entries (server spawns, MIME type and extension-negotiation fixes
+landed, but the widget-render check itself was never observed against a real
+Claude Desktop in any session so far). A session with real Claude Desktop
+access needs to, **in this order**:
+
+1. Confirm KT-B3 itself first — install the current `.mcpb`, submit a task,
+   confirm the stack-status panel actually renders inline (not a text
+   fallback / warning toast). If this still fails, that is this sprint's
+   blocker, not this sprint's own code — stop and diagnose against
+   `KT-B3-Live`'s three prior findings before touching anything here.
+2. Only once KT-B3 passes: click Cancel on a real running/queued task,
+   observe whether `window.confirm()` fires a native dialog or throws (this
+   resolves KT-3 and the confirm-vs-two-click fallback split at once — if
+   `confirm()` works, the two-click fallback code path can be considered
+   dead code and reconsidered), confirm the task is actually cancelled and
+   deleted (`lopi_list_tasks` or a direct DB check), confirm the row updates
+   without a full widget refresh, confirm no console errors.
+3. Click Cancel on a task that completes between page-load and click —
+   confirm the resulting "not found" `error` payload renders as this
+   sprint's inline `.row-error`, not a crash.
+4. Rapid double-click on Cancel — confirm the real `disabled` attribute
+   actually prevents a second `callServerTool()` call (not just a UI-level
+   debounce).
+5. Capture a screenshot or recording of at least one successful cancel round
+   trip as evidence, per this repo's own precedent for live-host checks —
+   not just a text claim that it worked.
+
+### Open question carried forward
+
+Whether a real MCP Apps host adds its own approval modal on top of a
+widget-initiated `tools/call` (KT-3) is still genuinely unknown — the
+widget's own confirm step does not assume either answer, and should not be
+simplified away even if a host turns out to add a modal of its own; two
+prompts (one host-level, one app-level) for a destructive action is not a
+bug.
+
+---
+
 ## Next Session — after Sprint Successor-1 (Task Lineage and Containment)
 
 **Sprint Successor-1 built the data model, lineage fields, and containment
