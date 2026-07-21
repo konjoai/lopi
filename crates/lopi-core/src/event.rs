@@ -89,6 +89,12 @@ pub enum AgentEvent {
         outcome: TaskStatus,
         /// Total number of attempts made before reaching this outcome.
         total_attempts: u8,
+        /// Sprint Successor-1 — identifier of the successor task derived
+        /// and enqueued from this one, if any. `None` (the default) for
+        /// every task without `successor_enabled`, or when no successor was
+        /// derived (rejected by a containment gate, or none proposed).
+        #[serde(default)]
+        successor: Option<TaskId>,
     },
     /// A task was cancelled before reaching a terminal state.
     TaskCancelled {

@@ -423,3 +423,13 @@ CREATE TABLE IF NOT EXISTS pattern_keywords (
     PRIMARY KEY (pattern_id, keyword)
 );
 CREATE INDEX IF NOT EXISTS idx_pattern_keywords_keyword ON pattern_keywords(keyword);
+
+-- Sprint Successor-1 — lineage columns. `parent_task` links a derived
+-- successor task back to the task it came from (NULL for anything not
+-- derived by `derive_successor_task`). `chain_depth` is how many successor
+-- hops separate it from the root of its chain (0 for anything not derived).
+-- Both are no-ops for every task written before this sprint, since
+-- ALTER TABLE is idempotent via apply_schema()'s duplicate-column guard.
+ALTER TABLE tasks ADD COLUMN parent_task TEXT;
+ALTER TABLE tasks ADD COLUMN chain_depth INTEGER NOT NULL DEFAULT 0;
+CREATE INDEX IF NOT EXISTS idx_tasks_parent_task ON tasks(parent_task);

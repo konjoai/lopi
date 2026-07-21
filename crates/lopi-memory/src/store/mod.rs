@@ -151,8 +151,8 @@ impl MemoryStore {
     pub async fn save_task(&self, task: &Task, status: &str) -> Result<()> {
         let source = serde_json::to_string(&task.source)?;
         sqlx::query(
-            "INSERT INTO tasks (id, goal, status, created_at, source, client_ref) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6) \
+            "INSERT INTO tasks (id, goal, status, created_at, source, client_ref, parent_task, chain_depth) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8) \
              ON CONFLICT(id) DO UPDATE SET status = excluded.status",
         )
         .bind(task.id.0.to_string())
@@ -161,6 +161,8 @@ impl MemoryStore {
         .bind(task.created_at.to_rfc3339())
         .bind(source)
         .bind(&task.client_ref)
+        .bind(task.parent_task.map(|id| id.0.to_string()))
+        .bind(i64::from(task.chain_depth))
         .execute(&self.write_pool)
         .await?;
         Ok(())
@@ -274,33 +276,14 @@ impl MemoryStore {
         Ok(result.rows_affected() > 0)
     }
 
-    /// Fetch a single task row by id.
-    ///
-    /// Stack-Chain-1 — used by `ChainScheduleManager`'s boot-time resume to
-    /// tell whether a step's task actually reached a terminal state before
-    /// the process restarted (in which case the chain advances) or was still
-    /// in flight and lost with the old process's in-memory queue (in which
-    /// case the step must be resubmitted).
-    ///
-    /// # Errors
-    /// Returns `Err` if the query fails.
-    pub async fn get_task(&self, id: &TaskId) -> Result<Option<TaskRow>> {
-        let row = sqlx::query_as::<_, TaskRow>(
-            "SELECT id, goal, status, created_at, completed_at, client_ref, branch FROM tasks WHERE id = ?1",
-        )
-        .bind(id.0.to_string())
-        .fetch_optional(&self.read_pool)
-        .await?;
-        Ok(row)
-    }
-
     /// Recent tasks, newest first.
     ///
     /// # Errors
     /// Returns `Err` if the database query fails.
     pub async fn load_history(&self, limit: i64) -> Result<Vec<TaskRow>> {
         let rows = sqlx::query_as::<_, TaskRow>(
-            "SELECT id, goal, status, created_at, completed_at, client_ref, branch FROM tasks \
+            "SELECT id, goal, status, created_at, completed_at, client_ref, branch, \
+             parent_task, chain_depth FROM tasks \
              ORDER BY created_at DESC LIMIT ?1",
         )
         .bind(limit)
@@ -448,6 +431,13 @@ pub struct TaskRow {
     /// MCPB-App-1 — the git branch this task's most recent attempt runs (or
     /// ran) on, `None` until the first `TaskStarted` event fires.
     pub branch: Option<String>,
+    /// Sprint Successor-1 — stringified UUID of the task this one was
+    /// derived from, `None` for anything not created by
+    /// `derive_successor_task`.
+    pub parent_task: Option<String>,
+    /// Sprint Successor-1 — successor hops from the root of this task's
+    /// chain; `0` for anything not derived.
+    pub chain_depth: i64,
 }
 
 mod audit;
@@ -458,6 +448,7 @@ mod eval_outcomes;
 mod installations;
 mod learnings;
 mod lessons;
+mod lineage;
 mod loop_health;
 mod maxx;
 mod patterns;
@@ -493,5 +484,7 @@ pub use verifier::VerifierVerdictRow;
 
 #[cfg(test)]
 mod lessons_tests;
+#[cfg(test)]
+mod lineage_tests;
 #[cfg(test)]
 mod tests;

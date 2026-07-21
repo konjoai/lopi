@@ -77,4 +77,59 @@ mod tests {
         );
         assert_eq!(task.forbidden_dirs, bare.forbidden_dirs);
     }
+
+    /// Sprint Successor-1, KT-A (pre-flight kill test) — containment is
+    /// currently absent. A constrained, untrusted-origin "parent" task
+    /// (`Webhook` source, `DraftPr` autonomy, non-empty `forbidden_dirs`) can
+    /// have a "successor" built from it via `build_task_from_fields` with a
+    /// *wider* autonomy level and *empty* `forbidden_dirs` — nothing in the
+    /// current codebase links the two tasks or enforces that the child can
+    /// only narrow, never widen, what the parent was allowed to do.
+    ///
+    /// This test MUST PASS today (it demonstrates the gap: no containment
+    /// exists yet). Phase 2 introduces `derive_successor_task`, the actual
+    /// containment gate for the parent→successor edge; the *equivalent*
+    /// escalation attempt run through that new function is asserted to be
+    /// blocked by `successor::gates_block_the_kt_a_escalation` in
+    /// `crates/lopi-core/src/successor.rs` — that's this test's inversion.
+    /// `build_task_from_fields` itself is untouched by Phase 2 (it builds
+    /// cron/MAXX-spec tasks with no parent at all, a different call path),
+    /// so it continues to permit this — by design, not oversight.
+    #[test]
+    fn kt_a_containment_is_currently_absent() {
+        let parent = Task {
+            source: TaskSource::Webhook {
+                repo: "org/repo".into(),
+                event: "check_run".into(),
+            },
+            autonomy_level: AutonomyLevel::DraftPr,
+            forbidden_dirs: vec!["infra/".to_string(), "secrets/".to_string()],
+            ..Task::new("fix the failing check")
+        };
+        assert!(parent.forbidden_dirs.iter().any(|d| d == "secrets/"));
+
+        // Nothing about `parent` is consulted here — no parent id, no
+        // inherited constraint. A second task widens autonomy past the
+        // parent's DraftPr to AutoMerge and declares its own forbidden dirs
+        // with no relation whatsoever to the parent's — the builder never
+        // even sees `parent`, so it has no way to union or narrow anything.
+        let successor = build_task_from_fields(
+            "escalate and merge everything",
+            None,
+            "critical",
+            &[],
+            &["docs/".to_string()], // disjoint from the parent's forbidden set
+            AutonomyLevel::AutoMerge, // wider than the parent's DraftPr
+        );
+
+        assert_eq!(successor.autonomy_level, AutonomyLevel::AutoMerge);
+        assert!(
+            !successor.forbidden_dirs.iter().any(|d| d == "secrets/"),
+            "gap: the successor has no memory of the parent's `secrets/` restriction"
+        );
+        assert!(
+            successor.autonomy_level.rank() > parent.autonomy_level.rank(),
+            "gap: the successor can freely widen past the parent's autonomy level"
+        );
+    }
 }

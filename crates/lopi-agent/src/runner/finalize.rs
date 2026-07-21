@@ -66,6 +66,14 @@ pub(super) fn zero_diff_is_success(deliverable: Deliverable, until_satisfied: bo
 }
 
 impl AgentRunner {
+    /// Sprint Successor-1 — take the successor task derived from this run's
+    /// completion, if any. Meant to be called once, after `run()` returns;
+    /// the pool submits the returned task to the queue and attributes it to
+    /// this run in `AgentEvent::TaskCompleted::successor`.
+    pub fn take_pending_successor(&mut self) -> Option<lopi_core::Task> {
+        self.pending_successor.take()
+    }
+
     /// Finalize a passing attempt according to the task's autonomy level.
     ///
     /// Runs the verifier first when [`requires_verifier`] holds; on verifier
@@ -127,10 +135,51 @@ impl AgentRunner {
         let pr_url = self
             .apply_pr_decision(decision, branch, git, score, attempt)
             .await;
+        self.derive_and_stash_successor();
         Some(TaskStatus::Success {
             branch: branch.to_string(),
             pr_url,
         })
+    }
+
+    /// Sprint Successor-1 — derive this run's successor task (if any) and
+    /// stash it for the pool to collect via
+    /// [`take_pending_successor`](AgentRunner::take_pending_successor) once
+    /// `run()` returns. Gated on `Task::successor_enabled`, mirroring
+    /// `emit_report`'s "an unset lever changes nothing" precedent: a task
+    /// with the default `successor_enabled: false` — every task before this
+    /// sprint, and every task that doesn't opt in — takes this branch and
+    /// stashes nothing.
+    ///
+    /// For this sprint the proposed [`Successor`](lopi_core::Successor) is
+    /// `Task::successor_fixture` — a config/test-fixture value, never parsed
+    /// from the agent's own output (that's Sprint Successor-2). A rejection
+    /// from any containment gate is logged, never silent, and simply leaves
+    /// no successor stashed — it does not fail this (already-successful)
+    /// attempt.
+    fn derive_and_stash_successor(&mut self) {
+        if !self.task.successor_enabled {
+            return;
+        }
+        let Some(successor) = self.task.successor_fixture.clone() else {
+            return;
+        };
+        match lopi_core::derive_successor_task(
+            &self.task,
+            &successor,
+            lopi_core::DEFAULT_MAX_CHAIN_DEPTH,
+        ) {
+            Ok(child) => {
+                self.log(format!(
+                    "🔗 successor derived: \"{}\" (depth {})",
+                    child.goal, child.chain_depth
+                ));
+                self.pending_successor = Some(child);
+            }
+            Err(e) => {
+                self.warn(format!("successor not derived: {e}"));
+            }
+        }
     }
 
     /// Decide what a zero-diff attempt means for this task (intent-aware
@@ -299,179 +348,7 @@ pub(super) fn build_report_summary(goal: &str, branch: &str, score: &Score, atte
     )
 }
 
+
 #[cfg(test)]
-#[allow(clippy::expect_used)]
-mod tests {
-    use super::{
-        build_report_summary, pr_decision, requires_verifier, should_auto_merge,
-        zero_diff_is_success, AgentRunner, PrDecision,
-    };
-    use lopi_core::loop_config::AutonomyLevel;
-    use lopi_core::{AgentEvent, Deliverable, Score, Task};
-    use std::path::PathBuf;
-
-    #[test]
-    fn each_level_maps_to_its_decision() {
-        assert_eq!(
-            pr_decision(AutonomyLevel::ReportOnly),
-            PrDecision::ReportOnly
-        );
-        assert_eq!(pr_decision(AutonomyLevel::DraftPr), PrDecision::Draft);
-        assert_eq!(pr_decision(AutonomyLevel::VerifiedPr), PrDecision::Normal);
-        assert_eq!(pr_decision(AutonomyLevel::AutoMerge), PrDecision::AutoMerge);
-    }
-
-    #[test]
-    fn only_l1_skips_the_pr() {
-        let no_pr: Vec<_> = AutonomyLevel::all()
-            .into_iter()
-            .filter(|l| pr_decision(*l) == PrDecision::ReportOnly)
-            .collect();
-        assert_eq!(no_pr, vec![AutonomyLevel::ReportOnly]);
-    }
-
-    #[test]
-    fn only_l4_auto_merges() {
-        let merges: Vec<_> = AutonomyLevel::all()
-            .into_iter()
-            .filter(|l| pr_decision(*l) == PrDecision::AutoMerge)
-            .collect();
-        assert_eq!(merges, vec![AutonomyLevel::AutoMerge]);
-    }
-
-    #[test]
-    fn only_l2_opens_a_draft() {
-        let drafts: Vec<_> = AutonomyLevel::all()
-            .into_iter()
-            .filter(|l| pr_decision(*l) == PrDecision::Draft)
-            .collect();
-        assert_eq!(drafts, vec![AutonomyLevel::DraftPr]);
-    }
-
-    #[test]
-    fn l3_and_l4_force_the_verifier_even_when_disabled() {
-        assert!(requires_verifier(false, AutonomyLevel::VerifiedPr));
-        assert!(requires_verifier(false, AutonomyLevel::AutoMerge));
-    }
-
-    #[test]
-    fn l1_and_l2_only_verify_when_explicitly_enabled() {
-        assert!(!requires_verifier(false, AutonomyLevel::ReportOnly));
-        assert!(!requires_verifier(false, AutonomyLevel::DraftPr));
-        assert!(requires_verifier(true, AutonomyLevel::ReportOnly));
-        assert!(requires_verifier(true, AutonomyLevel::DraftPr));
-    }
-
-    #[test]
-    fn auto_merge_only_when_l4_and_pr_opened() {
-        // L4 + PR opened → merge.
-        assert!(should_auto_merge(PrDecision::AutoMerge, true));
-        // L4 but the PR failed to open → never merge a branch with no PR.
-        assert!(!should_auto_merge(PrDecision::AutoMerge, false));
-        // Lower levels never auto-merge, even with a PR open.
-        for d in [
-            PrDecision::ReportOnly,
-            PrDecision::Draft,
-            PrDecision::Normal,
-        ] {
-            assert!(!should_auto_merge(d, true));
-        }
-    }
-
-    // ── Intent-aware zero-diff success ──────────────────────────────────────
-
-    #[test]
-    fn review_only_zero_diff_is_a_success() {
-        // A review/analysis goal legitimately produces no file changes.
-        assert!(zero_diff_is_success(Deliverable::ReviewOnly, false));
-    }
-
-    #[test]
-    fn file_changes_zero_diff_is_not_a_success() {
-        // A goal that must edit files but produced nothing is a failure to
-        // retry — the phantom-`goal_met` regression this guards against.
-        assert!(!zero_diff_is_success(Deliverable::FileChanges, false));
-    }
-
-    #[test]
-    fn until_fired_concludes_even_a_file_changes_goal() {
-        // The loop's `until` exit condition ends the loop early regardless of
-        // this attempt's own (empty) output.
-        assert!(zero_diff_is_success(Deliverable::FileChanges, true));
-        assert!(zero_diff_is_success(Deliverable::ReviewOnly, true));
-    }
-
-    // ── Report on Finish (Sprint 3) ─────────────────────────────────────────
-
-    fn drain_report_ready(
-        rx: &mut tokio::sync::broadcast::Receiver<AgentEvent>,
-    ) -> Option<(String, String)> {
-        let mut found = None;
-        while let Ok(ev) = rx.try_recv() {
-            if let AgentEvent::ReportReady {
-                channel, summary, ..
-            } = ev
-            {
-                found = Some((channel, summary));
-            }
-        }
-        found
-    }
-
-    #[test]
-    fn emit_report_routes_to_the_declared_channel() {
-        let mut task = Task::new("ship the report");
-        task.report = Some("telegram".to_string());
-        let (runner, bus) = AgentRunner::standalone(task, PathBuf::from("."));
-        let mut rx = bus.subscribe();
-        let score = Score::new(1.0, 0, 10);
-
-        runner.emit_report("lopi/feature/x", &score, 2);
-
-        let (channel, summary) =
-            drain_report_ready(&mut rx).expect("a ReportReady event should have been sent");
-        assert_eq!(channel, "telegram");
-        assert!(summary.contains("ship the report"));
-        assert!(summary.contains("pass"));
-    }
-
-    #[test]
-    fn emit_report_with_no_channel_sends_nothing() {
-        let task = Task::new("quiet run"); // report defaults to None
-        let (runner, bus) = AgentRunner::standalone(task, PathBuf::from("."));
-        let mut rx = bus.subscribe();
-        let score = Score::new(1.0, 0, 10);
-
-        runner.emit_report("lopi/feature/x", &score, 1);
-
-        assert!(
-            drain_report_ready(&mut rx).is_none(),
-            "no channel declared → no report broadcast"
-        );
-    }
-
-    #[test]
-    fn emit_report_warns_and_sends_nothing_for_an_unrecognized_channel() {
-        let mut task = Task::new("misconfigured run");
-        task.report = Some("carrier-pigeon".to_string());
-        let (runner, bus) = AgentRunner::standalone(task, PathBuf::from("."));
-        let mut rx = bus.subscribe();
-        let score = Score::new(1.0, 0, 10);
-
-        runner.emit_report("lopi/feature/x", &score, 1);
-
-        assert!(
-            drain_report_ready(&mut rx).is_none(),
-            "an unparseable channel must warn, not silently send"
-        );
-    }
-
-    #[test]
-    fn build_report_summary_contains_goal_and_pass_verdict() {
-        let score = Score::new(0.9, 1, 42);
-        let summary = build_report_summary("fix the bug", "lopi/feature/y", &score, 3);
-        assert!(summary.contains("fix the bug"));
-        assert!(summary.contains("pass"));
-        assert!(summary.contains("lopi/feature/y"));
-    }
-}
+#[path = "finalize_tests.rs"]
+mod tests;

@@ -177,6 +177,10 @@ pub struct AgentRunner {
     /// cross-run reflection stays flagged until a live three-arm run clears the
     /// pre-registered margin against blind retry.
     pub(super) reflect_cross_run: bool,
+    /// Sprint Successor-1 — a successor task stashed by
+    /// `finalize::derive_and_stash_successor`, collected once `run()`
+    /// returns. See `take_pending_successor`'s own doc comment.
+    pub(super) pending_successor: Option<Task>,
 }
 
 impl AgentRunner {
@@ -231,6 +235,7 @@ impl AgentRunner {
             on_fail: OnFail::default(),
             tokens_used: Arc::new(AtomicU64::new(0)),
             reflect_cross_run: false,
+            pending_successor: None,
         }
     }
 

@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.21.0] — Sprint Successor-1: Task Lineage and Containment
+
+Data model, lineage, and containment gates for agent-authored successor tasks. No agent authoring in this sprint — a `Successor` is supplied by a test fixture or config field only; parsing one out of an agent's own output is Sprint Successor-2.
+
+- **[Feature] `lopi-core::successor` — the `Successor` proposal type.** `goal`/`when` (`SuccessorCondition::OnSuccess`/`OnFailure`/`Always`, parsed case-insensitively)/`rationale`/`allowed_dirs`. `Successor::validate()` rejects an empty or over-`MAX_GOAL_LEN` (2000 bytes) goal via a named `SuccessorError`, never a silent drop.
+- **[Feature] Lineage on `Task`.** New `#[serde(default)]` fields: `parent_task: Option<TaskId>`, `chain_depth: u8`, `successor_enabled: bool` (default `false`), `successor_fixture: Option<Successor>`. New `TaskSource::SelfAuthored { parent: TaskId }` variant, distinct from `SelfModify` (that's *what* a task targets; this is *who* authored it). `TaskSource` split into its own `task_source.rs` module to keep `task.rs` under the 500-line CI file-size gate.
+- **[Feature] `derive_successor_task(parent, successor, max_depth)` — the containment gate.** Enforces, in order: (1) depth cap — refuses once `parent.chain_depth + 1 > max_depth`, warn-logged; (2) autonomy ceiling — `clamp_autonomy_to_parent` narrows, never widens, the child's `autonomy_level` past the parent's; (3) directory inheritance — `forbidden_dirs` is the union of parent + a fresh task's own defaults, `allowed_dirs` is the intersection with the parent's when non-empty; (4) untrusted-source lockdown — a `Webhook`/`Telegram`-sourced parent forces `require_plan_approval = true` and `successor_enabled = false` on the child, so a chain seeded by unsupervised input can extend at most one hop. The child always carries `parent_task`, `chain_depth = parent.chain_depth + 1`, and `source = SelfAuthored`.
+- **[Feature] `AgentEvent::TaskCompleted` gains `#[serde(default)] successor: Option<TaskId>`.**
+- **[Feature] `lopi-memory` lineage persistence.** New `tasks.parent_task`/`tasks.chain_depth` columns (idempotent `ALTER TABLE` migration). New `MemoryStore::lineage_chain(task_id, max_depth)` — a bounded walk up the parent pointers (not a full recursive descendant tree).
+- **[Feature] Enqueue wiring (fixture-only this sprint).** `AgentRunner::derive_and_stash_successor` (beside `emit_report`, in `finalize.rs`) runs on a passing attempt when `Task::successor_enabled` and `Task::successor_fixture` are both set; the pool's `run_one` collects it via `take_pending_successor()` and enqueues it through the same `AgentPool::submit` every other caller uses.
+- **[Test] Pre-flight kill-tests.** `lopi-orchestrator::task_build::tests::kt_a_containment_is_currently_absent` demonstrates the gap (green before this sprint's gates existed); `lopi-core::successor::tests::kt_a_inverted_derive_successor_task_blocks_the_escalation` proves the same scenario is now blocked. KT-B (no lineage representation) confirmed by grep. KT-C: `Task`/`LoopConfig` round-trip tests recorded green pre-edit; new tests deserialize a JSON blob missing every new field.
+- 1574 tests green across the workspace; `cargo clippy --workspace --all-targets -- -D warnings` clean.
+
 ## [Unreleased] — KT-B3-Live: attended MCPB install attempt — four first-real-run bugs found and fixed 🔧
 
 The first real runs of the `LOPI_KTB3_ATTENDED_RUNBOOK.md` checklist. Full diagnostic detail in `LEDGER.md`'s `KT-B3-Live` entries.

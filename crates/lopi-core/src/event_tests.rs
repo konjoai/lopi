@@ -205,6 +205,7 @@ fn task_completed_event_fields() {
             pr_url: Some("https://github.com/org/repo/pull/42".to_string()),
         },
         total_attempts: 2,
+        successor: None,
     };
     let json = serde_json::to_string(&ev).unwrap();
     assert!(json.contains("task_completed"));

@@ -1,4 +1,4 @@
-#![allow(clippy::unwrap_used, clippy::expect_used)]
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 //! Split out of `task.rs` purely to keep that file under the 500-line CI
 //! file-size gate as the `budget_override` field was added; no behavioral
 //! difference from being inline.
@@ -34,6 +34,64 @@ fn rubric_from_toml_str_parses_name_and_criteria() {
 #[test]
 fn rubric_from_toml_str_rejects_malformed() {
     assert!(Rubric::from_toml_str("name = ").is_err());
+}
+
+// ── Sprint Successor-1: KT-C serde round-trip ───────────────────────────────
+
+/// KT-C — every new lineage field must be `#[serde(default)]` so a `Task`
+/// JSON payload serialized before this sprint (none of `parent_task`,
+/// `chain_depth`, `successor_enabled`, `successor_fixture` present) still
+/// deserializes, landing on the same conservative defaults `Task::new`
+/// already produces.
+#[test]
+fn task_deserializes_when_successor_fields_are_absent() {
+    let t = Task::new("legacy payload predating successors");
+    let mut json = serde_json::to_value(&t).unwrap();
+    let obj = json.as_object_mut().unwrap();
+    obj.remove("parent_task");
+    obj.remove("chain_depth");
+    obj.remove("successor_enabled");
+    obj.remove("successor_fixture");
+    let back: Task = serde_json::from_value(json).unwrap();
+    assert!(back.parent_task.is_none());
+    assert_eq!(back.chain_depth, 0);
+    assert!(!back.successor_enabled);
+    assert!(back.successor_fixture.is_none());
+}
+
+/// Same as above, but from a hand-authored JSON blob rather than a
+/// round-tripped `Task` — proves a genuinely pre-sprint payload (not just
+/// one this sprint's own serializer happened to omit fields from) parses.
+#[test]
+fn task_json_blob_with_none_of_the_new_fields_deserializes() {
+    let json = serde_json::json!({
+        "id": TaskId::new(),
+        "goal": "pre-existing task",
+        "constraints": [],
+        "allowed_dirs": ["src/"],
+        "forbidden_dirs": [],
+        "priority": "Normal",
+        "max_retries": 3,
+        "created_at": Utc::now().to_rfc3339(),
+        "source": "Cli",
+    });
+    let t: Task = serde_json::from_value(json).unwrap();
+    assert!(t.parent_task.is_none());
+    assert_eq!(t.chain_depth, 0);
+    assert!(!t.successor_enabled);
+    assert!(t.successor_fixture.is_none());
+}
+
+#[test]
+fn task_source_selfauthored_serde_round_trip() {
+    let parent = TaskId::new();
+    let s = TaskSource::SelfAuthored { parent };
+    let json = serde_json::to_string(&s).unwrap();
+    let back: TaskSource = serde_json::from_str(&json).unwrap();
+    match back {
+        TaskSource::SelfAuthored { parent: p } => assert_eq!(p, parent),
+        _ => panic!("wrong variant"),
+    }
 }
 
 #[test]
