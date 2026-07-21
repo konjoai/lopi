@@ -110,6 +110,7 @@ fn task_completed_updates_row_and_increments_succeeded() {
             pr_url: None,
         },
         total_attempts: 1,
+        successor: None,
     });
     assert_eq!(state.succeeded, 1);
     assert_eq!(state.failed, 0);
@@ -130,6 +131,7 @@ fn task_completed_increments_failed_on_failure_outcome() {
             reason: "boom".to_string(),
         },
         total_attempts: 3,
+        successor: None,
     });
     assert_eq!(state.failed, 1);
     assert_eq!(state.succeeded, 0);
@@ -148,6 +150,7 @@ fn task_completed_increments_counters_even_for_an_unknown_task_id() {
             pr_url: None,
         },
         total_attempts: 1,
+        successor: None,
     });
     assert_eq!(state.succeeded, 1);
     assert!(state.agents.is_empty());

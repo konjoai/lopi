@@ -138,6 +138,7 @@ async fn task_completion_advances_to_next_step_and_finishes_chain() {
             pr_url: None,
         },
         total_attempts: 1,
+        successor: None,
     });
 
     // Step advances to 1 with a *different* task id.
@@ -154,6 +155,7 @@ async fn task_completion_advances_to_next_step_and_finishes_chain() {
             pr_url: None,
         },
         total_attempts: 1,
+        successor: None,
     });
 
     wait_for_run(&store, &run_id, |r| r.status == "completed").await;
@@ -182,6 +184,7 @@ async fn on_fail_stop_ends_run_without_submitting_next_step() {
             reason: "boom".into(),
         },
         total_attempts: 3,
+        successor: None,
     });
 
     // Still parked on step 0 — never advanced past the failed step.
@@ -212,6 +215,7 @@ async fn on_fail_continue_advances_past_a_failed_step() {
             reason: "boom".into(),
         },
         total_attempts: 3,
+        successor: None,
     });
 
     wait_for_run(&store, &run_id, |r| r.current_step == 1).await;

@@ -57,11 +57,49 @@ fn task_completed_with_struct_outcome_serializes() {
             pr_url: None,
         },
         total_attempts: 2,
+        successor: None,
     };
     let v = serde_json::to_value(&ev).unwrap();
     assert_eq!(v["type"], "task_completed");
     assert_eq!(v["outcome"]["Success"]["branch"], "feat/x");
     assert!(v["outcome"]["Success"]["pr_url"].is_null());
+    assert!(v["successor"].is_null(), "no successor by default");
+}
+
+/// Sprint Successor-1 — `successor` is `#[serde(default)]`, so a
+/// `TaskCompleted` payload predating this field (none present in the JSON)
+/// must still deserialize, landing on `successor: None`.
+#[test]
+fn task_completed_deserializes_when_successor_field_is_absent() {
+    let json = serde_json::json!({
+        "type": "task_completed",
+        "task_id": TaskId::new(),
+        "outcome": { "Success": { "branch": "feat/x", "pr_url": null } },
+        "total_attempts": 1,
+    });
+    let ev: AgentEvent = serde_json::from_value(json).unwrap();
+    match ev {
+        AgentEvent::TaskCompleted { successor, .. } => assert!(successor.is_none()),
+        _ => panic!("wrong variant"),
+    }
+}
+
+/// The wire shape carries a real successor id when one was derived.
+#[test]
+fn task_completed_carries_the_successor_id_when_present() {
+    let id = TaskId::new();
+    let successor_id = TaskId::new();
+    let ev = AgentEvent::TaskCompleted {
+        task_id: id,
+        outcome: crate::task::TaskStatus::Success {
+            branch: "feat/x".to_string(),
+            pr_url: None,
+        },
+        total_attempts: 1,
+        successor: Some(successor_id),
+    };
+    let v = serde_json::to_value(&ev).unwrap();
+    assert_eq!(v["successor"], serde_json::json!(successor_id));
 }
 
 #[test]

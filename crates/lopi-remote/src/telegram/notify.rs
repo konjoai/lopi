@@ -98,6 +98,7 @@ async fn handle_event(
             task_id,
             outcome,
             total_attempts,
+            ..
         } => {
             let id_str = task_id.to_string();
             let id_short = short_id(&id_str);

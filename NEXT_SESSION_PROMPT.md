@@ -5,6 +5,88 @@ the `lopi` repo. Newest first.
 
 ---
 
+## Next Session — after Sprint Successor-1 (Task Lineage and Containment)
+
+**Sprint Successor-1 built the data model, lineage fields, and containment
+gates for agent-authored successor tasks — no agent authoring yet.** Read
+first, in order: `CLAUDE.md`, `CHANGELOG.md`'s `[0.21.0]` entry, `LEDGER.md`'s
+`Sprint Successor-1` entry in full (the three one-way-door decisions:
+`SelfAuthored` vs. `SelfModify`, the autonomy-ceiling clamp, and the
+untrusted-source ratchet), then this file's own words below.
+
+### What shipped this sprint
+
+- `lopi-core::successor` — the `Successor` proposal type (`goal`/`when`/
+  `rationale`/`allowed_dirs`), `SuccessorCondition`, and `Successor::validate()`.
+- `Task` gained `parent_task`, `chain_depth`, `successor_enabled`,
+  `successor_fixture` (all `#[serde(default)]`); `TaskSource::SelfAuthored`.
+  `TaskSource` moved to its own `task_source.rs` (file-size gate).
+- `derive_successor_task(parent, successor, max_depth)` — the four
+  containment gates (depth cap, autonomy ceiling, directory inheritance,
+  untrusted-source lockdown), each with its own dedicated test.
+- `AgentEvent::TaskCompleted` gained `successor: Option<TaskId>`.
+- `lopi-memory`: `tasks.parent_task`/`tasks.chain_depth` columns +
+  `MemoryStore::lineage_chain` (bounded ancestor walk, not a recursive tree).
+- `AgentRunner::derive_and_stash_successor` (finalize.rs, beside
+  `emit_report`) + pool-level enqueue via the real `AgentPool::submit` —
+  gated on `Task::successor_enabled`, fed by `Task::successor_fixture` only
+  (no parsing from agent output — that's this sprint's own hard boundary).
+- Pre-flight kill-tests KT-A/B/C all recorded (see `LEDGER.md`); 1574
+  workspace tests green, clippy clean.
+
+### What could NOT be verified in this sandbox — needs a live check
+
+**The Phase 4 integration test does not drive a real `claude -p` subprocess
+through `AgentRunner::run()`'s full plan → implement → test → score loop.**
+That requires a live Anthropic API session, which this sandbox cannot reach
+(no `claude` CLI session/network for that path). What was actually verified
+instead, and why it's still meaningful:
+- `crates/lopi-agent/src/runner/finalize.rs`'s `derive_and_stash_successor_*`
+  tests prove a passing `finalize()` call really does invoke
+  `derive_successor_task` and stash a gated child — the *logic* seam.
+- `crates/lopi-orchestrator/tests/successor_enqueue.rs` proves the derived
+  child really does land in the real `TaskQueue` via the real
+  `AgentPool::submit` (dedup/topology/audit intact) with lineage/depth/gates
+  correct on the popped task — the *plumbing* seam.
+- **Not yet verified: that a real end-to-end task run (real git repo, real
+  `claude -p` session, real diff, real commit) that reaches `TaskStatus::
+  Success` actually produces a `TaskCompleted` event with a populated
+  `successor` field and a second row appearing in a live `lopi sail`
+  dashboard.** This needs a session with real Claude Code CLI access: submit
+  a task with `successor_enabled: true` and a `successor_fixture` set (no
+  API surface exists yet to set these from the CLI/REST layer — that's
+  itself an open question below, KT-1) against a real repo, watch it run to
+  completion, and confirm the successor task appears queued and eventually
+  dispatched.
+
+### Open questions for Sprint Successor-2
+
+- **KT-1 — no submission surface for `successor_enabled`/`successor_fixture`
+  exists yet.** Neither `lopi run`'s CLI flags, the REST `POST /api/tasks`
+  handler, nor `.lopi/loop.toml` expose a way to set these fields today —
+  this sprint only exercises them via directly-constructed `Task` values in
+  tests. Before Sprint Successor-2 adds parsing-from-agent-output, decide
+  where a human-supplied fixture successor should be configurable from (a
+  repo-level `.lopi/loop.toml` default? a per-task REST field? both?) —
+  otherwise the only way to use this sprint's plumbing today is a hand-built
+  `Task`.
+- **KT-2 — `DEFAULT_MAX_CHAIN_DEPTH = 3` is a hardcoded constant, not a
+  per-repo config.** `crates/lopi-core/src/successor.rs` documents this as a
+  deliberate scope cut (a natural `.lopi/loop.toml` ceiling once chains
+  actually run unattended for a while), but it means every repo currently
+  gets the same depth cap regardless of how much it trusts self-extending
+  chains. Worth revisiting once Sprint Successor-2/3 make chains something
+  that actually runs unattended rather than fixture-only.
+- Sprint Successor-2's own explicit scope (per the brief that ran this
+  sprint): parse a `Successor` out of an agent's own `final_text`, replacing
+  the `successor_fixture` config-only path. Sprint Successor-3: branch
+  `advance_to_next_step`'s static-goal chain scheduling on top of dynamic
+  successors, plus web/macOS lineage rendering. Sprint Successor-4 (gated on
+  a hardware kill-test not yet run): `claude --resume`/`StreamEvent::
+  session_id()` — explicitly out of scope until then.
+
+---
+
 ## Next Session — after KT-B3-Live
 
 **The attended runbook (`LOPI_KTB3_ATTENDED_RUNBOOK.md`) ran for real for the
