@@ -8,17 +8,15 @@
     color-scheme: light dark;
     --fg: #1a1a1a;
     --bg: #ffffff;
-    --border: #e2e2e2;
     --muted: #6b6b6b;
-    --head-bg: #f6f6f7;
+    --dim: #8a8a8a;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --fg: #e8e8e8;
       --bg: #1c1c1e;
-      --border: #3a3a3c;
       --muted: #9a9a9e;
-      --head-bg: #2a2a2c;
+      --dim: #7a7a7e;
     }
   }
   * { box-sizing: border-box; }
@@ -29,30 +27,124 @@
     color: var(--fg);
     background: var(--bg);
   }
-  table { width: 100%; border-collapse: collapse; }
-  th, td {
-    text-align: left;
-    padding: 6px 8px;
-    border-bottom: 1px solid var(--border);
-    vertical-align: top;
+  .empty { color: var(--muted); padding: 8px 0; }
+
+  .board {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 12px;
+    align-items: start;
   }
-  th {
-    background: var(--head-bg);
+  .col { min-width: 0; }
+  .colhead {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 2px 8px;
+    border-bottom: 2px solid;
+  }
+  .cdot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }
+  .clabel {
     font-weight: 600;
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .ccount {
+    margin-left: auto;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px;
+  }
+  .cbody {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .colempty {
+    font-size: 11px;
+    color: var(--dim);
+    padding: 6px 2px;
+  }
+
+  .rowwrap { display: flex; flex-direction: column; }
+  .row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    width: 100%;
+    border: none;
+    border-left: 3px solid var(--c);
+    background: color-mix(in srgb, var(--c) 6%, transparent);
+    border-radius: 0 7px 7px 0;
+    padding: 11px 10px;
+    text-align: left;
+    cursor: pointer;
+    font: inherit;
+    color: inherit;
+    transition: background 0.12s;
+  }
+  .row:hover, .row:focus-visible {
+    background: color-mix(in srgb, var(--c) 11%, transparent);
+    outline: none;
+  }
+  .rbody { flex: 1; min-width: 0; }
+  .rtitle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 600;
+    font-size: 12.5px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .rdot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    flex: 0 0 auto;
+    animation: lopipulse 1.8s ease-in-out infinite;
+  }
+  .rsub {
+    margin-top: 3px;
+    font-size: 11px;
+    color: var(--dim);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .rmeta {
+    flex: 0 0 auto;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 11px;
     text-transform: uppercase;
-    letter-spacing: 0.03em;
+    padding-top: 1px;
+  }
+  @keyframes lopipulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .rdot { animation: none; }
+  }
+
+  .detail {
+    display: none;
+    padding: 6px 10px 10px 13px;
+    font-size: 11px;
+  }
+  .detail.open { display: block; }
+  .drow { display: flex; gap: 6px; padding: 2px 0; }
+  .dlabel {
+    flex: 0 0 80px;
     color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-size: 10px;
   }
-  td.goal { max-width: 320px; }
-  td.branch, td.stage {
+  .dval {
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 12px;
+    word-break: break-all;
   }
-  .empty { color: var(--muted); padding: 8px 0; }
-  .stage-running { color: #0a7d3c; font-weight: 600; }
-  .stage-planning, .stage-implement, .stage-test, .stage-score { color: #0a5cd8; }
-  .stage-queued { color: var(--muted); }
 </style>
 </head>
 <body>
@@ -156,6 +248,114 @@ container holding the app. Specify either width or maxWidth, and either height o
     });
   }
 
+  // 5-column kanban board: Queued / Running / Conflict / Dead-letter / Done.
+  // "Testing" is not its own column — it's a `stage` value (see `orbColor`
+  // below), independent of which status column a task is actually sitting in.
+  var COLUMNS = [
+    { key: "queued", label: "Queued", color: "#0088aa" },
+    { key: "running", label: "Running", color: "#00d4ff" },
+    { key: "conflict", label: "Conflict", color: "#ffcc00" },
+    { key: "deadletter", label: "Dead-letter", color: "#ff0066" },
+    { key: "done", label: "Done", color: "#00ff9d" }
+  ];
+  var COLUMN_COLOR = {};
+  COLUMNS.forEach(function (c) { COLUMN_COLOR[c.key] = c.color; });
+
+  // Maps a task's coarse `status` string to its column. `tasks.status` today
+  // only ever holds queued/running/success/failed/rolled_back/conflict (see
+  // `crates/lopi-memory/src/store/mod.rs`), but the extra aliases cost
+  // nothing and keep this correct if the status vocabulary ever grows a
+  // synonym.
+  function bucketOf(status) {
+    switch (status) {
+      case "queued":
+        return "queued";
+      case "running":
+        return "running";
+      case "conflict":
+        return "conflict";
+      case "failed":
+      case "cancelled":
+      case "dead":
+      case "rolledback":
+      case "rolled_back":
+        return "deadletter";
+      case "success":
+      case "succeeded":
+      case "completed":
+        return "done";
+      default:
+        return "running";
+    }
+  }
+
+  // A row's accent is normally its column's color — except a task currently
+  // in the `test` stage always reads as the testing accent, regardless of
+  // which column (e.g. Conflict) it's actually sitting in.
+  function orbColor(status, stage) {
+    if (stage === "test") return "#7c3aed";
+    return COLUMN_COLOR[bucketOf(status)];
+  }
+
+  // The row dot pulses while a task is still in flight — anything short of
+  // a terminal (done / dead-letter) bucket.
+  function isPulsing(status) {
+    var bucket = bucketOf(status);
+    return bucket !== "done" && bucket !== "deadletter";
+  }
+
+  // "implement · attempt-2", or just the stage name when the branch doesn't
+  // carry a recognizable "-attempt-N" suffix (e.g. no branch yet).
+  function subLine(stage, branch) {
+    var label = stage || "queued";
+    var m = /-attempt-(\d+)$/.exec(branch || "");
+    return m ? label + " · attempt-" + m[1] : label;
+  }
+
+  // Pure, no-library relative-time formatter: "12m ago", "3h ago", etc.
+  function relTime(iso) {
+    if (!iso) return "—";
+    var then = Date.parse(iso);
+    if (isNaN(then)) return iso;
+    var sec = Math.max(0, Math.round((Date.now() - then) / 1000));
+    if (sec < 60) return sec + "s ago";
+    var min = Math.round(sec / 60);
+    if (min < 60) return min + "m ago";
+    var hr = Math.round(min / 60);
+    if (hr < 24) return hr + "h ago";
+    return Math.round(hr / 24) + "d ago";
+  }
+
+  // Fields already in the payload but not shown on the row itself.
+  function detailHtml(t) {
+    return (
+      '<div class="drow"><span class="dlabel">id</span><span class="dval">' + escapeHtml(t.id) + "</span></div>" +
+      '<div class="drow"><span class="dlabel">branch</span><span class="dval">' + escapeHtml(t.branch || "—") + "</span></div>" +
+      '<div class="drow"><span class="dlabel">created</span><span class="dval">' + escapeHtml(relTime(t.created_at)) + "</span></div>" +
+      '<div class="drow"><span class="dlabel">completed</span><span class="dval">' + escapeHtml(t.completed_at ? relTime(t.completed_at) : "—") + "</span></div>"
+    );
+  }
+
+  function rowHtml(t, idx) {
+    var color = orbColor(t.status, t.stage);
+    var detailId = "detail-" + idx;
+    return (
+      '<div class="rowwrap">' +
+        '<button type="button" class="row" style="--c:' + color + '" data-detail="' + detailId + '">' +
+          '<div class="rbody">' +
+            '<div class="rtitle">' +
+              "<span>" + escapeHtml(t.goal) + "</span>" +
+              (isPulsing(t.status) ? '<span class="rdot" style="background:' + color + '"></span>' : "") +
+            "</div>" +
+            '<div class="rsub">' + escapeHtml(subLine(t.stage, t.branch)) + "</div>" +
+          "</div>" +
+          '<div class="rmeta" style="color:' + color + '">' + escapeHtml(t.status) + "</div>" +
+        "</button>" +
+        '<div class="detail" id="' + detailId + '">' + detailHtml(t) + "</div>" +
+      "</div>"
+    );
+  }
+
   function render(data) {
     var root = document.getElementById("root");
     var tasks = (data && data.tasks) || [];
@@ -163,22 +363,45 @@ container holding the app. Specify either width or maxWidth, and either height o
       root.innerHTML = '<p class="empty">No lopi tasks yet.</p>';
       return;
     }
-    var rows = tasks
-      .map(function (t) {
-        var stage = t.stage || "";
-        return (
-          "<tr>" +
-          '<td class="goal">' + escapeHtml(t.goal) + "</td>" +
-          '<td class="branch">' + escapeHtml(t.branch || "—") + "</td>" +
-          '<td class="stage stage-' + escapeHtml(stage) + '">' + escapeHtml(stage) + "</td>" +
-          '<td class="status">' + escapeHtml(t.status) + "</td>" +
-          "</tr>"
-        );
-      })
-      .join("");
+    var groups = { queued: [], running: [], conflict: [], deadletter: [], done: [] };
+    tasks.forEach(function (t) { groups[bucketOf(t.status)].push(t); });
+
+    var seq = 0;
     root.innerHTML =
-      "<table><thead><tr><th>Task</th><th>Branch</th><th>Stage</th><th>Status</th></tr></thead>" +
-      "<tbody>" + rows + "</tbody></table>";
+      '<div class="board">' +
+      COLUMNS.map(function (col) {
+        var items = groups[col.key];
+        var rows = items
+          .map(function (t) {
+            var html = rowHtml(t, seq);
+            seq++;
+            return html;
+          })
+          .join("");
+        return (
+          '<div class="col">' +
+            '<div class="colhead" style="border-color:' + col.color + '">' +
+              '<span class="cdot" style="background:' + col.color + '"></span>' +
+              '<span class="clabel">' + col.label + "</span>" +
+              '<span class="ccount" style="color:' + col.color + '">' + items.length + "</span>" +
+            "</div>" +
+            '<div class="cbody">' + (rows || '<div class="colempty">—</div>') + "</div>" +
+          "</div>"
+        );
+      }).join("") +
+      "</div>";
+
+    // Assignment, not addEventListener — idempotent across re-renders so
+    // repeated `ontoolresult` calls never stack duplicate handlers. Only one
+    // row expanded at a time.
+    root.onclick = function (ev) {
+      var btn = ev.target.closest && ev.target.closest(".row");
+      if (!btn) return;
+      var detail = document.getElementById(btn.getAttribute("data-detail"));
+      var wasOpen = detail.classList.contains("open");
+      root.querySelectorAll(".detail.open").forEach(function (el) { el.classList.remove("open"); });
+      if (!wasOpen) detail.classList.add("open");
+    };
   }
 
   // Structured data can arrive shaped as the raw tool result, or nested
