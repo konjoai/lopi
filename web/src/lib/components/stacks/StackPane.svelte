@@ -9,10 +9,12 @@
   drag this slice (whole-*stack* reordering is in scope, via the dock).
 -->
 <script lang="ts">
-  import { type StackPaneState, perLoopScheduleGoverned, paneIsBare } from '$lib/stores/stack';
+  import { type StackPaneState, perLoopScheduleGoverned, paneIsBare, executionOrder } from '$lib/stores/stack';
   import type { Option } from '$lib/stores/controls';
   import StackCard from './StackCard.svelte';
   import StackConnector from './StackConnector.svelte';
+  import ProposalConnector from './ProposalConnector.svelte';
+  import ProposalCard from './ProposalCard.svelte';
   import StackOutput from './StackOutput.svelte';
   import StackControlDock from './StackControlDock.svelte';
   import { ICONS } from './icons';
@@ -32,6 +34,11 @@
   // old Forge pane; the purple stack control dock and inter-card connectors
   // appear as soon as the pane holds its first card.
   $: bare = paneIsBare(pane);
+  // Ghost Card in the Stack: "proposed after loop N" names the spawning
+  // card by its position in the actual run order, not its array index (the
+  // array is newest-first — the reverse of execution order, see
+  // `executionOrder`'s doc comment).
+  $: runOrder = executionOrder(pane.cards);
 
   // ── whole-stack drag (Stack-1): armed by StackControlDock.svelte's grip
   //    handle (mousedown/mouseup on `armedPaneKey`, module-scope since the
@@ -132,6 +139,10 @@
           <div class="loopwrap" style="--orb:{orb.glowColor}">
             <StackCard {card} paneKey={pane.key} index={i} {paneDefaults} {repoOptions} {scheduleGoverned} />
           </div>
+        {/if}
+        {#if pane.proposal && pane.proposal.afterCardId === card.id}
+          <ProposalConnector loopNumber={runOrder.findIndex((c) => c.id === card.id) + 1} />
+          <ProposalCard proposal={pane.proposal} paneKey={pane.key} />
         {/if}
         {#if i < pane.cards.length - 1}
           <StackConnector {card} paneKey={pane.key} index={i} {scheduleGoverned} />

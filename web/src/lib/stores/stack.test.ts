@@ -86,11 +86,17 @@ import {
   cardGoalActive,
   cardPursuesGoal,
   insertPaneAt,
+  proposeAfterCard,
+  updateProposalGoal,
+  discardProposal,
+  undoDiscardProposal,
+  acceptProposal,
   type PromptTemplate,
   type StackTemplate,
   type StackCard,
   type StackPaneState,
-  type StackConfig
+  type StackConfig,
+  type StackProposal
 } from './stack';
 import { DEFAULT_STACK_DEFAULTS, PERMISSION_MODE_OPTIONS, DEFAULT_PERMISSION_MODE } from './stackDefaults';
 import { AUTO_MODEL, MODEL_OPTIONS, EFFORT_OPTIONS } from './options';
@@ -1621,6 +1627,55 @@ eqIs(
   const restored = insertPaneAt([s1, s3], 1, s2);
   eq(restored.map((p) => p.title), ['one', 'two', 'three'], 'restores the pane at its exact prior index');
   eq(insertPaneAt([s1], 99, s2).map((p) => p.title), ['one', 'two'], 'an out-of-range index clamps to the end');
+}
+
+{
+  // Successor-proposal ops (pure) — Ghost Card in the Stack
+  function proposal(afterCardId: string, patch: Partial<StackProposal> = {}): StackProposal {
+    return {
+      id: 'p1',
+      goal: 'run the tests',
+      afterCardId,
+      loopNumber: 2,
+      loopTotal: 6,
+      status: 'proposed',
+      ...patch
+    };
+  }
+
+  const a = card('a');
+  const p1 = pane('s1', [a]);
+
+  eqIs(proposeAfterCard(p1, proposal('a')).proposal?.goal, 'run the tests', 'propose sets the pane proposal');
+  eqIs(proposeAfterCard(p1, proposal('a')).cards.length, 1, 'propose never touches pane.cards');
+
+  const proposed = proposeAfterCard(p1, proposal('a'));
+  eqIs(updateProposalGoal(proposed, 'do it differently').proposal?.goal, 'do it differently', 'goal edits patch the proposal in place');
+  eqIs(updateProposalGoal(p1, 'nothing to edit').proposal, undefined, 'goal edit is a no-op with no proposal');
+
+  const discarded = discardProposal(proposed);
+  eqIs(discarded.proposal?.status, 'discarded', 'discard flips status to discarded');
+  eqIs(discarded.proposal?.goal, 'run the tests', 'discard keeps the goal text (undo restores the same proposal)');
+  eqIs(discardProposal(p1).proposal, undefined, 'discard is a no-op with no proposal');
+  eqIs(updateProposalGoal(discarded, 'edit while discarded').proposal?.status, 'discarded', 'a discarded proposal is not editable');
+  eqIs(updateProposalGoal(discarded, 'edit while discarded').proposal?.goal, 'run the tests', 'a discarded proposal ignores goal edits');
+
+  const restored = undoDiscardProposal(discarded);
+  eqIs(restored.proposal?.status, 'proposed', 'undo restores the proposed status');
+  eqIs(restored.proposal?.goal, 'run the tests', 'undo restores the exact same proposal');
+  eqIs(undoDiscardProposal(p1).proposal, undefined, 'undo is a no-op with no proposal');
+
+  const accepted = acceptProposal(proposed);
+  eqIs(accepted.proposal, undefined, 'accept clears the pane proposal');
+  eq(accepted.cards.map((c) => c.id), ['a', accepted.cards[1].id], 'accept inserts right after the spawning card');
+  eqIs(accepted.cards[1].goal, 'run the tests', 'accept carries the proposal goal onto the new card');
+  eqIs(accepted.cards[1].status, 'idle', 'the materialized card starts idle, like any freshly built card');
+  ok(accepted.cards[1].id !== 'a' && accepted.cards[1].id !== 'p1', 'the materialized card gets its own fresh id');
+  eqIs(acceptProposal(p1).cards.length, 1, 'accept is a no-op with no proposal');
+
+  const orphaned = proposeAfterCard(pane('s1', [a]), proposal('missing'));
+  eqIs(acceptProposal(orphaned).proposal?.id, 'p1', 'accept is a no-op if the spawning card no longer exists');
+  eqIs(acceptProposal(orphaned).cards.length, 1, 'accept never inserts when the spawning card is gone');
 }
 
 namedSummary('stack');
