@@ -212,46 +212,65 @@
   .plus-btn:hover { border-color: #00ff9d; }
 
   /* ── stack loop detail view ───────────────────────────────────────── */
-  .detailhead {
-    padding: 2px 2px 12px;
-    border-bottom: 1px solid var(--dim);
-    margin-bottom: 12px;
+  /* `.icard`/`.runtag` mirror `StackCard.svelte`'s `.pc`/`.runtag` —
+     a bordered, tinted card with a small status badge sitting in a notch on
+     its top edge, rather than this widget's previous flat inline banner. */
+  .icard {
+    position: relative;
+    background: color-mix(in srgb, var(--cardc, var(--dim)) 5%, var(--bg));
+    border: 1px solid color-mix(in srgb, var(--cardc, var(--dim)) 32%, transparent);
+    border-radius: 9px;
+    padding: 16px 14px 14px;
+    margin: 6px 0 14px;
   }
-  .detailhead .goal {
-    font-weight: 600;
-    font-size: 14px;
-    margin-bottom: 8px;
-  }
-  .live-badge {
+  .runtag {
+    position: absolute;
+    top: -10px;
+    right: 14px;
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    background: var(--bg);
+    border: 1px solid color-mix(in srgb, var(--cardc, var(--dim)) 45%, transparent);
+    border-radius: 3px;
+    padding: 2px 8px;
     display: inline-flex;
     align-items: center;
     gap: 5px;
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    margin-left: 8px;
-    vertical-align: middle;
+    color: var(--cardc, var(--muted));
   }
-  .live-badge .rdot { width: 5px; height: 5px; }
+  .runtag .rdot { width: 5px; height: 5px; background: currentColor; }
+  .icard .goal {
+    font-weight: 600;
+    font-size: 14px;
+    padding-right: 68px;
+  }
 
-  .stages {
-    display: flex;
-    gap: 6px;
-    margin: 10px 0 2px;
+  /* Stage timeline — same thin-segment-bar language as `StackCard.svelte`'s
+     `.iterbar`, one segment per `RECORDED_PIPELINE` stage instead of per
+     iteration. */
+  .iterbar { display: flex; gap: 4px; margin: 14px 0 2px; }
+  .iterseg { flex: 1; min-width: 0; }
+  .iterseg .bar { height: 3px; border-radius: 2px; background: var(--dim); }
+  .iterseg.done .bar { background: #00ff9d; }
+  .iterseg.running .bar {
+    background: #7c3aed;
+    box-shadow: 0 0 5px color-mix(in srgb, #7c3aed 60%, transparent);
+    animation: lopipulse 1.4s infinite;
   }
-  .stage {
-    flex: 1;
-    text-align: center;
-    padding: 6px 4px;
-    border-radius: 6px;
-    font-size: 10px;
+  .iterseg .lbl {
+    margin-top: 4px;
+    font-size: 9px;
     text-transform: uppercase;
     letter-spacing: 0.04em;
-    background: color-mix(in srgb, var(--stagec) 10%, transparent);
-    color: var(--stagec);
-    border-bottom: 2px solid var(--stagec);
+    color: var(--dim);
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
-  .stage.pending { opacity: 0.4; }
+  .iterseg.done .lbl, .iterseg.running .lbl { color: var(--fg); }
 
   .loghead {
     font-size: 11px;
@@ -289,62 +308,143 @@
   }
 
   /* ── stack loop builder (create) view ─────────────────────────────── */
-  .field { margin-bottom: 12px; }
-  .field label {
-    display: block;
-    font-size: 10.5px;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--fieldc, var(--muted));
-    margin-bottom: 4px;
-  }
-  .field textarea,
-  .field input[type="text"],
-  .field select {
+  /* The goal box has no `StackConfigPopover` analog (goal lives in the
+     composer's own `ChipInput`, not the defaults popover) — a plain
+     textarea, styled close to `Composer.svelte`'s. */
+  .goalbox {
     width: 100%;
     font: inherit;
-    font-size: 12.5px;
+    font-size: 13px;
+    padding: 9px 11px;
+    border-radius: 8px;
+    border: 1px solid var(--dim);
+    background: transparent;
+    color: var(--fg);
+    resize: vertical;
+    min-height: 64px;
+    box-sizing: border-box;
+    margin-bottom: 10px;
+  }
+  .goalbox:focus { outline: none; border-color: #00ff9d; }
+
+  /* `.cfgrow` mirrors `StackConfigPopover.svelte`'s row: a leading
+     per-field-accented icon, a short label, and the control itself, all on
+     one line — instead of this widget's previous stacked label-then-input. */
+  .cfgrow {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    margin-bottom: 9px;
     padding: 7px 9px;
     border-radius: 7px;
     border: 1px solid var(--dim);
     background: transparent;
-    color: var(--fg);
-    box-sizing: border-box;
   }
-  .field textarea:focus,
-  .field input:focus,
-  .field select:focus {
-    outline: none;
-    border-color: var(--fieldc, var(--dim));
+  .cfgrow:focus-within { border-color: var(--fieldc, var(--dim)); }
+  .cfgrow .ic {
+    flex: 0 0 auto;
+    width: 15px;
+    height: 15px;
+    color: var(--fieldc, var(--muted));
+    display: inline-flex;
   }
-  .field textarea { resize: vertical; min-height: 64px; }
-  .field.model { --fieldc: #00d4ff; }
-  .field.effort { --fieldc: #ff4500; }
-  .field.repo { --fieldc: #ffcc00; }
-  .field.branch { --fieldc: #00ff9d; }
-  .field.permission { --fieldc: #ff5a5a; }
-
-  .advanced summary {
-    cursor: pointer;
-    font-size: 11px;
-    font-weight: 600;
+  .cfgrow .ic svg { width: 100%; height: 100%; }
+  .cfgrow .lbl {
+    flex: 0 0 60px;
+    font-size: 10px;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.04em;
     color: var(--muted);
-    margin: 6px 0 12px;
   }
-  .advanced[open] summary { margin-bottom: 12px; }
-
-  .submit-btn {
+  .cfgrow textarea,
+  .cfgrow input[type="text"],
+  .cfgrow select {
+    flex: 1;
+    min-width: 0;
     font: inherit;
     font-size: 12.5px;
-    font-weight: 600;
+    border: none;
+    background: transparent;
+    color: var(--fg);
+    padding: 0;
+  }
+  .cfgrow textarea:focus,
+  .cfgrow input:focus,
+  .cfgrow select:focus { outline: none; }
+  .cfgrow textarea { resize: vertical; min-height: 54px; padding-top: 2px; }
+  .cfgrow.model { --fieldc: #00d4ff; }
+  .cfgrow.effort { --fieldc: #ff4500; }
+  .cfgrow.repo { --fieldc: #ffcc00; }
+  .cfgrow.branch { --fieldc: #00ff9d; }
+  .cfgrow.permission { --fieldc: #ff5a5a; }
+  .cfgrow.iter { --fieldc: #ffcc00; }
+
+  /* Iteration stepper — mirrors `.iterpill`'s ± steppers. */
+  .iterctl { display: inline-flex; align-items: center; gap: 8px; }
+  .iterctl .val {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+    min-width: 30px;
+    text-align: center;
+  }
+  .iterctl button {
+    width: 22px;
+    height: 22px;
+    border-radius: 5px;
+    border: 1px solid var(--dim);
+    background: transparent;
+    color: var(--fg);
+    font: inherit;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .iterctl button:hover { border-color: var(--fieldc, var(--fg)); }
+
+  /* "N configured" toggle — mirrors `.sumchip`'s pill + chevron, in place of
+     a native `<details>/<summary>` disclosure. */
+  .sumchip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 24px;
+    padding: 0 10px;
+    border-radius: 12px;
+    border: 1px solid var(--dim);
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    margin: 4px 0 12px;
+  }
+  .sumchip:hover { color: var(--fg); border-color: var(--fg); }
+  .sumchip .ic { width: 11px; height: 11px; display: inline-flex; }
+  .sumchip .ic svg { width: 100%; height: 100%; }
+  .advbody { display: none; }
+  .advbody.open { display: block; }
+
+  /* Submit — mirrors `.ib.add`'s jade icon+label treatment. */
+  .submit-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font: inherit;
+    font-size: 12.5px;
+    font-weight: 700;
     padding: 8px 16px;
     border-radius: 7px;
-    border: 1px solid transparent;
-    background: #00ff9d;
-    color: #0a0a0a;
+    border: 1px solid color-mix(in srgb, #00ff9d 50%, transparent);
+    background: color-mix(in srgb, #00ff9d 12%, transparent);
+    color: #00ff9d;
     cursor: pointer;
+  }
+  .submit-btn .ic { width: 14px; height: 14px; }
+  .submit-btn .ic svg { width: 100%; height: 100%; }
+  .submit-btn:hover:not(:disabled) {
+    background: color-mix(in srgb, #00ff9d 20%, transparent);
+    border-color: #00ff9d;
   }
   .submit-btn:disabled { opacity: 0.5; cursor: default; }
   .form-error {
@@ -352,6 +452,19 @@
     font-size: 11.5px;
     margin-bottom: 10px;
   }
+  .iconbtn.danger {
+    color: #ff0066;
+    border-color: color-mix(in srgb, #ff0066 45%, var(--dim));
+  }
+  .iconbtn.danger:hover { border-color: #ff0066; }
+  .iconbtn .ic {
+    width: 11px;
+    height: 11px;
+    display: inline-flex;
+    vertical-align: -1px;
+    margin-right: 4px;
+  }
+  .iconbtn .ic svg { width: 100%; height: 100%; }
 </style>
 </head>
 <body>
@@ -871,17 +984,49 @@ container holding the app. Specify either width or maxWidth, and either height o
     }
   }
 
+  // Inline SVG fragments — trimmed from the same glyph set as the web app's
+  // `web/src/lib/components/stacks/icons.ts` (kept to the subset this widget
+  // actually has real fields for: repo/branch/model/effort/permission-mode/
+  // iteration-count/advanced-toggle/submit). Rendered via string
+  // concatenation into `innerHTML` on static, hardcoded strings only, same
+  // "never interpolated with data" rule `icons.ts` documents — no XSS
+  // surface. Deliberately omits the reference UI's schedule/guardrails/
+  // evals/MAXX/goal-pursuit icons: those features have no MCP tool behind
+  // them here, and a decorative icon for a control that does nothing would
+  // be misleading.
+  var ICONS = {
+    folder: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>',
+    branch: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="7" r="2.5"/><path d="M6 8.5v7M18 9.5c0 4-6 2-6 6.5"/></svg>',
+    cpu: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="1.5"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>',
+    gauge: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 14l4-4"/><path d="M4 18a8 8 0 1 1 16 0"/></svg>',
+    lock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
+    loop: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>',
+    sliders: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h10M18 6h2M4 12h2M10 12h10M4 18h8M16 18h4"/><circle cx="15" cy="6" r="2"/><circle cx="7" cy="12" r="2"/><circle cx="13" cy="18" r="2"/></svg>',
+    chevdown: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>',
+    chevup: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M18 15l-6-6-6 6"/></svg>',
+    plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+    trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>'
+  };
+
   var STAGE_ORDER = ["plan", "implement", "test", "score"];
 
+  // Thin-segment stage timeline — same visual language as `StackCard.svelte`'s
+  // `.iterbar` (a segment per unit, done=jade/running=violet-pulsing/
+  // pending=dim), one segment per `RECORDED_PIPELINE` stage instead of per
+  // loop iteration.
   function stagesHtml(dag) {
     var nodesByKind = {};
     ((dag && dag.nodes) || []).forEach(function (n) { nodesByKind[n.kind] = n; });
     return STAGE_ORDER.map(function (kind) {
       var node = nodesByKind[kind];
       var status = node ? node.status : "pending";
-      var color = status === "done" ? "#00ff9d" : status === "running" ? "#7c3aed" : "var(--dim)";
-      var pendingCls = status === "done" || status === "running" ? "" : " pending";
-      return '<div class="stage' + pendingCls + '" style="--stagec:' + color + '">' + escapeHtml(kind) + "</div>";
+      var cls = status === "done" ? "done" : status === "running" ? "running" : "";
+      return (
+        '<div class="iterseg' + (cls ? " " + cls : "") + '">' +
+          '<div class="bar"></div>' +
+          '<div class="lbl">' + escapeHtml(kind) + "</div>" +
+        "</div>"
+      );
     }).join("");
   }
 
@@ -971,27 +1116,26 @@ container holding the app. Specify either width or maxWidth, and either height o
 
     var blocks = buildLogBlocks((logsPayload && logsPayload.logs) || []);
     var logHtml = blocks.length ? blocks.map(blockHtml).join("") : '<p class="empty">No log output yet.</p>';
+    var statusText = failed ? task.status + " · failed" : task.status;
 
     root.innerHTML =
       '<div class="topbar">' +
         '<button type="button" class="iconbtn" id="back-btn">← Back</button>' +
         '<span class="title">' + escapeHtml(task.goal) + "</span>" +
         (isCancelable(task.status)
-          ? '<button type="button" class="iconbtn cancel-btn" data-task="' + escapeHtml(taskId) + '" data-goal="' + escapeHtml(task.goal) + '">Cancel</button>'
+          ? '<button type="button" class="iconbtn danger cancel-btn" data-task="' + escapeHtml(taskId) + '" data-goal="' + escapeHtml(task.goal) + '"><span class="ic">' + ICONS.trash + "</span>Cancel</button>"
           : "") +
       "</div>" +
-      '<div class="detailhead">' +
-        '<div class="goal">' + escapeHtml(task.goal) +
-          '<span class="live-badge" style="color:' + color + '">' +
-            (live ? '<span class="rdot" style="background:' + color + '"></span>' : "") +
-            escapeHtml(failed ? task.status + " · failed" : task.status) +
-          "</span>" +
-        "</div>" +
+      '<div class="icard" style="--cardc:' + color + '">' +
+        '<span class="runtag" style="color:' + color + '">' +
+          (live ? '<span class="rdot"></span>' : "") + escapeHtml(statusText) +
+        "</span>" +
+        '<div class="goal">' + escapeHtml(task.goal) + "</div>" +
         '<div class="drow"><span class="dlabel">id</span><span class="dval">' + escapeHtml(task.id) + "</span></div>" +
         (branch ? '<div class="drow"><span class="dlabel">branch</span><span class="dval">' + escapeHtml(branch) + "</span></div>" : "") +
         '<div class="drow"><span class="dlabel">created</span><span class="dval">' + escapeHtml(relTime(task.created_at)) + "</span></div>" +
         '<div class="drow"><span class="dlabel">completed</span><span class="dval">' + escapeHtml(task.completed_at ? relTime(task.completed_at) : "—") + "</span></div>" +
-        '<div class="stages">' + stagesHtml(dag) + "</div>" +
+        '<div class="iterbar">' + stagesHtml(dag) + "</div>" +
       "</div>" +
       '<div class="loghead">' + (live ? "Live output" : "Log") + "</div>" +
       '<div class="logfeed">' + logHtml + "</div>";
@@ -1002,12 +1146,60 @@ container holding the app. Specify either width or maxWidth, and either height o
   }
 
   // ── Create view: the stack-loop builder ──────────────────────────────
-  // Basic fields (goal/repo/priority) plus a collapsible Advanced section
-  // mirroring `StackConfigPopover.svelte`'s field set exactly
-  // (model/effort/branch/permission_mode) — its `autonomy` field is left
-  // out since it's client-only on the web side too, wired to nothing on the
-  // server.
-  var createState = { selectedRepo: "" };
+  // Basic fields (goal/repo/priority/iteration-count) plus a collapsible
+  // Advanced section mirroring `StackConfigPopover.svelte`'s field set
+  // exactly (model/effort/branch/permission_mode) — its `autonomy` field is
+  // left out since it's client-only on the web side too, wired to nothing
+  // on the server. Deliberately omits the reference UI's schedule/
+  // guardrails/evals/MAXX/goal-pursuit controls — no MCP tool backs any of
+  // those here, and a decorative control that silently does nothing would
+  // be worse than not offering it.
+  var ITER_MAX = 20;
+  var createState = { selectedRepo: "", advancedOpen: false, maxIterations: null };
+
+  function iterLabel(v) { return v === null ? "auto" : String(v); }
+
+  // Never reachable via the stepper: the backend's `max_iterations: 0` is
+  // the *infinite*-loop sentinel (`lopi_core::Task::max_iterations`'s own
+  // doc), not "off" — a casual decrement landing on a silent run-forever
+  // value would be a footgun, so decrementing from 1 returns to "auto"
+  // (the field omitted entirely) instead of continuing down to 0.
+  function stepIter(delta) {
+    var cur = createState.maxIterations;
+    var next = cur === null ? (delta > 0 ? 1 : null) : cur + delta;
+    if (next !== null && next < 1) next = null;
+    if (next !== null && next > ITER_MAX) next = ITER_MAX;
+    createState.maxIterations = next;
+    var valEl = document.getElementById("iter-val");
+    if (valEl) valEl.textContent = iterLabel(next);
+  }
+
+  // Recomputes the "N configured" advanced-section summary chip from the
+  // live field values — mirrors `StackCard.svelte`'s `summaryCount`/
+  // `.sumchip`, minus the schedule/MAXX/guard/eval counters this widget has
+  // no fields for.
+  function updateAdvancedSummary() {
+    var branch = document.getElementById("f-branch");
+    var model = document.getElementById("f-model");
+    var effort = document.getElementById("f-effort");
+    var perm = document.getElementById("f-permission");
+    var n = 0;
+    if (branch && branch.value) n++;
+    if (model && model.value) n++;
+    if (effort && effort.value) n++;
+    if (perm && perm.value) n++;
+    if (createState.maxIterations !== null) n++;
+    var chip = document.getElementById("adv-chip-count");
+    if (chip) chip.textContent = n + " configured";
+  }
+
+  function toggleAdvanced() {
+    createState.advancedOpen = !createState.advancedOpen;
+    var body = document.getElementById("adv-body");
+    var chevIc = document.getElementById("adv-chev");
+    if (body) body.classList.toggle("open", createState.advancedOpen);
+    if (chevIc) chevIc.innerHTML = createState.advancedOpen ? ICONS.chevup : ICONS.chevdown;
+  }
 
   function renderCreate() {
     var root = document.getElementById("root");
@@ -1017,16 +1209,15 @@ container holding the app. Specify either width or maxWidth, and either height o
         '<span class="title">New stack loop</span>' +
       "</div>" +
       '<div id="create-error"></div>' +
-      '<div class="field">' +
-        "<label>goal</label>" +
-        '<textarea id="f-goal" placeholder="what should this loop accomplish?"></textarea>' +
-      "</div>" +
-      '<div class="field repo">' +
-        "<label>repo</label>" +
+      '<textarea id="f-goal" class="goalbox" placeholder="describe the prompt or goal..."></textarea>' +
+      '<div class="cfgrow repo">' +
+        '<span class="ic">' + ICONS.folder + "</span>" +
+        '<span class="lbl">repo</span>' +
         '<select id="f-repo"><option value="">loading…</option></select>' +
       "</div>" +
-      '<div class="field">' +
-        "<label>priority</label>" +
+      '<div class="cfgrow">' +
+        '<span class="ic">' + ICONS.gauge + "</span>" +
+        '<span class="lbl">priority</span>' +
         '<select id="f-priority">' +
           '<option value="normal" selected>normal</option>' +
           '<option value="low">low</option>' +
@@ -1034,13 +1225,28 @@ container holding the app. Specify either width or maxWidth, and either height o
           '<option value="critical">critical</option>' +
         "</select>" +
       "</div>" +
-      '<details class="advanced"><summary>Advanced</summary>' +
-        '<div class="field branch">' +
-          "<label>branch</label>" +
+      '<div class="cfgrow iter">' +
+        '<span class="ic">' + ICONS.loop + "</span>" +
+        '<span class="lbl">loop</span>' +
+        '<span class="iterctl">' +
+          '<button type="button" id="iter-dec" title="fewer iterations">−</button>' +
+          '<span class="val" id="iter-val">auto</span>' +
+          '<button type="button" id="iter-inc" title="more iterations">+</button>' +
+        "</span>" +
+      "</div>" +
+      '<button type="button" class="sumchip" id="adv-toggle">' +
+        '<span class="ic" id="adv-chev">' + ICONS.chevdown + "</span>" +
+        '<span id="adv-chip-count">0 configured</span>' +
+      "</button>" +
+      '<div class="advbody" id="adv-body">' +
+        '<div class="cfgrow branch">' +
+          '<span class="ic">' + ICONS.branch + "</span>" +
+          '<span class="lbl">branch</span>' +
           '<select id="f-branch"><option value="">auto</option></select>' +
         "</div>" +
-        '<div class="field model">' +
-          "<label>model</label>" +
+        '<div class="cfgrow model">' +
+          '<span class="ic">' + ICONS.cpu + "</span>" +
+          '<span class="lbl">model</span>' +
           '<select id="f-model">' +
             '<option value="">auto</option>' +
             '<option value="claude-opus-4-8">claude-opus-4-8</option>' +
@@ -1048,8 +1254,9 @@ container holding the app. Specify either width or maxWidth, and either height o
             '<option value="claude-haiku-4-5">claude-haiku-4-5</option>' +
           "</select>" +
         "</div>" +
-        '<div class="field effort">' +
-          "<label>effort</label>" +
+        '<div class="cfgrow effort">' +
+          '<span class="ic">' + ICONS.gauge + "</span>" +
+          '<span class="lbl">effort</span>' +
           '<select id="f-effort">' +
             '<option value="">default</option>' +
             '<option value="low">low</option>' +
@@ -1059,8 +1266,9 @@ container holding the app. Specify either width or maxWidth, and either height o
             '<option value="max">max</option>' +
           "</select>" +
         "</div>" +
-        '<div class="field permission">' +
-          "<label>permission</label>" +
+        '<div class="cfgrow permission">' +
+          '<span class="ic">' + ICONS.lock + "</span>" +
+          '<span class="lbl">permission</span>' +
           '<select id="f-permission">' +
             '<option value="">bypassPermissions (default)</option>' +
             '<option value="auto">auto</option>' +
@@ -1068,15 +1276,21 @@ container holding the app. Specify either width or maxWidth, and either height o
             '<option value="dontAsk">dontAsk</option>' +
           "</select>" +
         "</div>" +
-      "</details>" +
-      '<button type="button" class="submit-btn" id="submit-btn">Start stack loop</button>';
+      "</div>" +
+      '<button type="button" class="submit-btn" id="submit-btn"><span class="ic">' + ICONS.plus + "</span>Start stack loop</button>";
 
     document.getElementById("back-btn").onclick = function () { setView("overview"); };
     document.getElementById("submit-btn").onclick = function () { submitCreate(); };
+    document.getElementById("adv-toggle").onclick = toggleAdvanced;
+    document.getElementById("iter-dec").onclick = function () { stepIter(-1); updateAdvancedSummary(); };
+    document.getElementById("iter-inc").onclick = function () { stepIter(1); updateAdvancedSummary(); };
     document.getElementById("f-repo").onchange = function (ev) {
       createState.selectedRepo = ev.target.value;
       loadBranches(ev.target.value);
     };
+    ["f-branch", "f-model", "f-effort", "f-permission"].forEach(function (id) {
+      document.getElementById(id).onchange = updateAdvancedSummary;
+    });
 
     loadRepos();
   }
@@ -1117,6 +1331,7 @@ container holding the app. Specify either width or maxWidth, and either height o
         branches.map(function (b) {
           return '<option value="' + escapeHtml(b) + '"' + (b === def ? " selected" : "") + ">" + escapeHtml(b) + "</option>";
         }).join("");
+      updateAdvancedSummary();
     } catch (e) {
       if (sel.isConnected) sel.innerHTML = '<option value="">auto</option>';
     }
@@ -1131,6 +1346,7 @@ container holding the app. Specify either width or maxWidth, and either height o
       return;
     }
     var btn = document.getElementById("submit-btn");
+    var originalBtnHtml = btn.innerHTML;
     btn.disabled = true;
     btn.textContent = "Starting…";
     var args = {
@@ -1140,7 +1356,8 @@ container holding the app. Specify either width or maxWidth, and either height o
       branch: document.getElementById("f-branch").value || undefined,
       model: document.getElementById("f-model").value || undefined,
       effort: document.getElementById("f-effort").value || undefined,
-      permission_mode: document.getElementById("f-permission").value || undefined
+      permission_mode: document.getElementById("f-permission").value || undefined,
+      max_iterations: createState.maxIterations === null ? undefined : createState.maxIterations
     };
     try {
       var result = await app.callServerTool({ name: "lopi_submit_task", arguments: args });
@@ -1148,7 +1365,7 @@ container holding the app. Specify either width or maxWidth, and either height o
       if (!payload || payload.error || !payload.id) {
         errEl.innerHTML = '<div class="form-error">' + escapeHtml((payload && payload.error) || "submit failed") + "</div>";
         btn.disabled = false;
-        btn.textContent = "Start stack loop";
+        btn.innerHTML = originalBtnHtml;
         return;
       }
       try {
@@ -1163,7 +1380,7 @@ container holding the app. Specify either width or maxWidth, and either height o
     } catch (e) {
       errEl.innerHTML = '<div class="form-error">' + escapeHtml((e && e.message) || "request failed") + "</div>";
       btn.disabled = false;
-      btn.textContent = "Start stack loop";
+      btn.innerHTML = originalBtnHtml;
     }
   }
 

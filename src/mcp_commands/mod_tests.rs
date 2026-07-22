@@ -135,6 +135,42 @@ async fn submit_task_applies_branch_model_effort_and_permission_mode() {
     assert_eq!(task.permission_mode, PermissionMode::Auto);
 }
 
+/// `max_iterations` mirrors `StackCard.svelte`'s iteration-pill field —
+/// `0` is the real infinite-loop sentinel (not "unset"), so it must survive
+/// the round trip distinctly from an omitted field.
+#[tokio::test]
+async fn submit_task_applies_max_iterations_including_the_zero_sentinel() {
+    let state = test_state().await;
+    submit_task(
+        &state,
+        &json!({ "goal": "bounded loop goal", "max_iterations": 7 }),
+    )
+    .await
+    .unwrap();
+    assert_eq!(state.queue.pop().await.max_iterations, Some(7));
+
+    submit_task(
+        &state,
+        &json!({ "goal": "unlimited loop goal", "max_iterations": 0 }),
+    )
+    .await
+    .unwrap();
+    assert_eq!(state.queue.pop().await.max_iterations, Some(0));
+}
+
+#[tokio::test]
+async fn submit_task_rejects_a_max_iterations_that_does_not_fit_a_u8() {
+    let state = test_state().await;
+    let err = submit_task(
+        &state,
+        &json!({ "goal": "overflow goal", "max_iterations": 9_999 }),
+    )
+    .await
+    .unwrap_err();
+    assert!(err.to_string().contains("max_iterations"));
+    assert!(state.queue.is_empty());
+}
+
 #[tokio::test]
 async fn submit_task_without_advanced_fields_leaves_defaults_untouched() {
     let state = test_state().await;

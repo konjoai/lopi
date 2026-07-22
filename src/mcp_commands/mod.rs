@@ -151,6 +151,10 @@ fn tool_defs() -> Vec<McpTool> {
                         "enum": ["bypassPermissions", "auto", "acceptEdits", "dontAsk"],
                         "description": "How much the worker session may act on tool calls without a human prompt. Defaults to bypassPermissions.",
                     },
+                    "max_iterations": {
+                        "type": "integer",
+                        "description": "Hard iteration ceiling for the retry loop, taking precedence over the repo's .lopi/loop.toml. 0 means unlimited. Omitted leaves the repo default.",
+                    },
                 },
                 "required": ["goal"],
             }),
@@ -255,9 +259,10 @@ fn required_str(args: &Value, key: &str) -> Result<String> {
 /// pool. Covers the same "stack default config" fields the web UI's
 /// `StackConfigPopover` edits (model/effort/repo/branch/permission_mode —
 /// `autonomy` excluded since it's client-only there too, wired to nothing on
-/// the server). Skips the REST route's remaining advanced fields
-/// (verifier/budget/gate/until/acceptance/...) — out of scope for the
-/// curated v1 tool set.
+/// the server) plus `max_iterations` (the widget's iteration-pill field,
+/// mirroring `StackCard.svelte`'s `card.maxIterations`). Skips the REST
+/// route's remaining advanced fields (verifier/budget/gate/until/
+/// acceptance/...) — out of scope for the curated v1 tool set.
 async fn submit_task(state: &AppState, args: &Value) -> Result<Value> {
     let goal = required_str(args, "goal")?;
     let mut task = Task::new(goal.clone());
@@ -287,6 +292,15 @@ async fn submit_task(state: &AppState, args: &Value) -> Result<Value> {
     }
     if let Some(mode) = args.get("permission_mode").and_then(Value::as_str) {
         task.permission_mode = PermissionMode::parse(mode)?;
+    }
+    if let Some(v) = args.get("max_iterations") {
+        let n = v
+            .as_u64()
+            .ok_or_else(|| anyhow::anyhow!("max_iterations must be a non-negative integer"))?;
+        task.max_iterations = Some(
+            u8::try_from(n)
+                .map_err(|_| anyhow::anyhow!("max_iterations must be between 0 and 255"))?,
+        );
     }
     let task_id = task.id.0.to_string();
     let duplicate_of = state.pool.submit(task).await.map(|id| id.0.to_string());
