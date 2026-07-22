@@ -13,6 +13,7 @@
     budgetColor,
     startBudgetSampler
   } from '$lib/stores/budget';
+  import StatCard from '$lib/components/ui/StatCard.svelte';
 
   onMount(startBudgetSampler);
 
@@ -39,6 +40,8 @@
   }
 </script>
 
+<svelte:head><title>lopi · budget</title></svelte:head>
+
 <div class="max-w-5xl mx-auto px-6 py-8 space-y-6">
   <!-- Header -->
   <div class="flex items-end justify-between flex-wrap gap-4">
@@ -61,10 +64,7 @@
   <!-- Stat cards -->
   <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
     {#each [['spent (session)', `$${$fleetBudget.spent.toFixed(4)}`, 'var(--konjo-flame)'], ['burn rate', `$${$fleetBudget.burnPerHour.toFixed(2)}/h`, color], ['hourly cap', `$${$fleetBudget.cap.toFixed(2)}`, 'var(--konjo-ice)'], ['to cap', fmtMins($fleetBudget.minutesToCap), color]] as [label, value, c]}
-      <div class="rounded-xl border border-white/8 bg-konjo-deep/50 backdrop-blur-sm p-4">
-        <div class="font-mono text-[9px] uppercase tracking-widest opacity-40">{label}</div>
-        <div class="font-display text-xl tabular-nums mt-1" style:color={c}>{value}</div>
-      </div>
+      <StatCard {label} {value} color={c} />
     {/each}
   </div>
 

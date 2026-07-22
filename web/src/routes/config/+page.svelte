@@ -54,6 +54,16 @@
 <svelte:head><title>lopi · config</title></svelte:head>
 
 <div class="max-w-6xl mx-auto px-6 py-8 space-y-6">
+  <!-- Header -->
+  <div class="flex items-end justify-between flex-wrap gap-4">
+    <div>
+      <h1 class="font-display text-2xl">Configuration</h1>
+      <p class="font-mono text-[11px] uppercase tracking-widest opacity-50 mt-1">
+        app settings · theme · effective config
+      </p>
+    </div>
+  </div>
+
   <!-- Server identity -->
   <Panel title="Server" subtitle="identity + uptime">
     {#if version}

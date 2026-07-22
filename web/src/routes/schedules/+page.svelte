@@ -109,9 +109,19 @@
 <svelte:head><title>lopi · schedules</title></svelte:head>
 
 <div class="max-w-6xl mx-auto px-6 py-8 space-y-6">
+  <!-- Header -->
+  <div class="flex items-end justify-between flex-wrap gap-4">
+    <div>
+      <h1 class="font-display text-2xl">Scheduling</h1>
+      <p class="font-mono text-[11px] uppercase tracking-widest opacity-50 mt-1">
+        cron-driven agent runs · {schedules.length} configured
+      </p>
+    </div>
+  </div>
+
   <Panel
-    title="Schedules"
-    subtitle="cron-driven agent runs · {schedules.length} configured"
+    title="All Schedules"
+    subtitle="click run to fire one now, or edit to change its cron"
   >
     <svelte:fragment slot="actions">
       {#if flash}

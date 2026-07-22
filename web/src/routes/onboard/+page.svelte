@@ -8,259 +8,113 @@
     installing = true;
     window.location.href = INSTALL_URL;
   }
+
+  const STEPS = [
+    {
+      title: 'Install the GitHub App',
+      detail: 'Grant lopi read access to your repo. You can revoke at any time from GitHub Settings.'
+    },
+    {
+      title: 'Run lopi spec --save',
+      detail: 'Extract your test suite as a spec surface — the ground truth for what your repo claims to do.'
+    },
+    {
+      title: 'Start lopi watch-gap-fill',
+      detail: 'The continuous loop runs tests, finds failures, and queues fix tasks every hour.'
+    }
+  ];
+
+  const PLANS = [
+    {
+      price: '$299',
+      name: 'Starter',
+      featured: false,
+      features: ['1 repo', 'KCQF quality gate', 'Weekly quality report', 'Human reviews all changes']
+    },
+    {
+      price: '$999',
+      name: 'Growth',
+      featured: true,
+      features: ['Up to 10 repos', 'Continuous gap-fill loop', 'Issue triage + auto-queue', 'Trust calibration']
+    },
+    {
+      price: '$4,999',
+      name: 'Enterprise',
+      featured: false,
+      features: ['Unlimited repos', 'Full self-evolving loop', 'Squash compliance certs', 'SLA: 99.9% uptime']
+    }
+  ];
 </script>
 
 <svelte:head>
   <title>lopi — Connect your repo</title>
 </svelte:head>
 
-<main>
-  <section class="hero">
-    <h1>⛵ Connect your GitHub repo</h1>
-    <p class="sub">
+<div class="max-w-3xl mx-auto px-6 py-16 space-y-14">
+  <!-- Hero -->
+  <section class="text-center space-y-4">
+    <h1 class="font-display text-4xl tracking-tight">⛵ Connect your GitHub repo</h1>
+    <p class="font-mono text-sm opacity-60 max-w-xl mx-auto leading-relaxed">
       lopi watches your repo, runs tests, finds gaps, and queues fix tasks — automatically.
       Connect in under 5 minutes.
     </p>
   </section>
 
-  <section class="steps">
-    <div class="step">
-      <span class="num">1</span>
-      <div>
-        <strong>Install the GitHub App</strong>
-        <p>Grant lopi read access to your repo. You can revoke at any time from GitHub Settings.</p>
+  <!-- Steps -->
+  <section class="space-y-3">
+    {#each STEPS as step, i}
+      <div class="flex gap-5 items-start rounded-lg border border-white/5 bg-konjo-deep/60 backdrop-blur-sm px-5 py-4">
+        <span class="font-display text-xl text-konjo-ice flex-shrink-0 w-8">{i + 1}</span>
+        <div class="min-w-0">
+          <div class="font-display text-sm font-bold">{step.title}</div>
+          <p class="font-mono text-[11px] opacity-50 mt-1 leading-relaxed">{step.detail}</p>
+        </div>
       </div>
-    </div>
-    <div class="step">
-      <span class="num">2</span>
-      <div>
-        <strong>Run lopi spec --save</strong>
-        <p>Extract your test suite as a spec surface — the ground truth for what your repo claims to do.</p>
-      </div>
-    </div>
-    <div class="step">
-      <span class="num">3</span>
-      <div>
-        <strong>Start lopi watch-gap-fill</strong>
-        <p>The continuous loop runs tests, finds failures, and queues fix tasks every hour.</p>
-      </div>
-    </div>
+    {/each}
   </section>
 
-  <section class="cta">
-    <button class="install-btn" on:click={startInstall} disabled={installing}>
-      {installing ? 'Redirecting to GitHub…' : '🔗 Install GitHub App'}
+  <!-- CTA -->
+  <section class="text-center space-y-3">
+    <button
+      type="button"
+      on:click={startInstall}
+      disabled={installing}
+      class="press font-mono text-xs uppercase tracking-widest px-6 py-3 rounded-lg border border-konjo-ice/40 bg-konjo-ice/10 text-konjo-ice hover:bg-konjo-ice/20 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+    >
+      {installing ? 'redirecting to github…' : '🔗 install github app'}
     </button>
-    <p class="note">
-      Already installed? Run <code>lopi sail</code> and visit the
-      <a href="/">Forge dashboard</a>.
+    <p class="font-mono text-[11px] opacity-40">
+      Already installed? Run <code class="px-1.5 py-0.5 rounded bg-black/40 border border-white/10 text-konjo-sun">lopi sail</code>
+      and visit <a href="/stacks" class="text-konjo-ice hover:underline">Loop Stacks</a>.
     </p>
   </section>
 
-  <section class="pricing">
-    <h2>Plans</h2>
-    <div class="plans">
-      <div class="plan">
-        <div class="price">$299<span>/mo</span></div>
-        <div class="name">Starter</div>
-        <ul>
-          <li>1 repo</li>
-          <li>KCQF quality gate</li>
-          <li>Weekly quality report</li>
-          <li>Human reviews all changes</li>
-        </ul>
-      </div>
-      <div class="plan featured">
-        <div class="price">$999<span>/mo</span></div>
-        <div class="name">Growth</div>
-        <ul>
-          <li>Up to 10 repos</li>
-          <li>Continuous gap-fill loop</li>
-          <li>Issue triage + auto-queue</li>
-          <li>Trust calibration</li>
-        </ul>
-      </div>
-      <div class="plan">
-        <div class="price">$4,999<span>/mo</span></div>
-        <div class="name">Enterprise</div>
-        <ul>
-          <li>Unlimited repos</li>
-          <li>Full self-evolving loop</li>
-          <li>squash compliance certs</li>
-          <li>SLA: 99.9% uptime</li>
-        </ul>
-      </div>
+  <!-- Pricing -->
+  <section class="space-y-5">
+    <h2 class="font-display text-lg text-center">Plans</h2>
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      {#each PLANS as plan}
+        <div
+          class="rounded-lg border bg-konjo-deep/60 backdrop-blur-sm p-5"
+          class:border-konjo-ice={plan.featured}
+          class:border-white-5={!plan.featured}
+          style:border-color={plan.featured ? 'var(--konjo-ice)' : 'rgba(255,255,255,0.05)'}
+        >
+          <div class="font-display text-2xl">
+            {plan.price}<span class="font-mono text-xs opacity-40">/mo</span>
+          </div>
+          <div class="font-mono text-[10px] uppercase tracking-widest opacity-40 mt-1 mb-4">
+            {plan.name}
+          </div>
+          <ul class="space-y-1.5">
+            {#each plan.features as f}
+              <li class="font-mono text-[11px] opacity-70 flex items-start gap-1.5">
+                <span class="text-konjo-jade">✓</span>{f}
+              </li>
+            {/each}
+          </ul>
+        </div>
+      {/each}
     </div>
   </section>
-</main>
-
-<style>
-  main {
-    max-width: 860px;
-    margin: 0 auto;
-    padding: 56px 24px 96px;
-    font-family: 'Syne', sans-serif;
-    color: #9898b0;
-  }
-
-  .hero {
-    text-align: center;
-    margin-bottom: 56px;
-  }
-
-  h1 {
-    font-size: 48px;
-    font-weight: 800;
-    color: #e8e8f2;
-    letter-spacing: -0.03em;
-    margin-bottom: 16px;
-  }
-
-  .sub {
-    font-size: 18px;
-    max-width: 600px;
-    margin: 0 auto;
-    line-height: 1.6;
-  }
-
-  .steps {
-    display: flex;
-    flex-direction: column;
-    gap: 24px;
-    margin-bottom: 48px;
-  }
-
-  .step {
-    display: flex;
-    gap: 20px;
-    align-items: flex-start;
-    background: #0e0e12;
-    border: 1px solid #252530;
-    border-radius: 8px;
-    padding: 20px 24px;
-  }
-
-  .num {
-    font-size: 24px;
-    font-weight: 800;
-    color: #22d3ee;
-    min-width: 32px;
-  }
-
-  .step strong {
-    color: #e8e8f2;
-    font-size: 16px;
-    display: block;
-    margin-bottom: 4px;
-  }
-
-  .step p {
-    margin: 0;
-    font-size: 14px;
-    line-height: 1.5;
-  }
-
-  .cta {
-    text-align: center;
-    margin-bottom: 64px;
-  }
-
-  .install-btn {
-    background: #22d3ee;
-    color: #08080a;
-    font-weight: 700;
-    font-size: 16px;
-    border: none;
-    border-radius: 6px;
-    padding: 14px 32px;
-    cursor: pointer;
-    transition: opacity 0.15s;
-  }
-
-  .install-btn:hover:not(:disabled) {
-    opacity: 0.85;
-  }
-
-  .install-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .note {
-    margin-top: 16px;
-    font-size: 13px;
-  }
-
-  .note a {
-    color: #22d3ee;
-    text-decoration: none;
-  }
-
-  code {
-    background: #1a1a22;
-    padding: 2px 6px;
-    border-radius: 3px;
-    font-family: 'Fira Code', monospace;
-    font-size: 12px;
-    color: #f59e0b;
-  }
-
-  h2 {
-    font-size: 24px;
-    font-weight: 700;
-    color: #e8e8f2;
-    text-align: center;
-    margin-bottom: 24px;
-  }
-
-  .plans {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 16px;
-  }
-
-  .plan {
-    background: #0e0e12;
-    border: 1px solid #252530;
-    border-radius: 8px;
-    padding: 24px;
-  }
-
-  .plan.featured {
-    border-color: #22d3ee;
-  }
-
-  .price {
-    font-size: 32px;
-    font-weight: 800;
-    color: #e8e8f2;
-    margin-bottom: 4px;
-  }
-
-  .price span {
-    font-size: 14px;
-    color: #48485c;
-    font-weight: 400;
-  }
-
-  .name {
-    font-size: 12px;
-    letter-spacing: 0.15em;
-    text-transform: uppercase;
-    color: #48485c;
-    margin-bottom: 16px;
-  }
-
-  .plan ul {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-    font-size: 13px;
-    line-height: 2;
-  }
-
-  .plan li::before {
-    content: '✓ ';
-    color: #10b981;
-  }
-</style>
+</div>

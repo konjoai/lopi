@@ -47,6 +47,8 @@
   }
 </script>
 
+<svelte:head><title>lopi · overview</title></svelte:head>
+
 <div class="max-w-[1400px] mx-auto px-4 py-8 space-y-5">
   <div class="head">
     <div class="titlerow">
