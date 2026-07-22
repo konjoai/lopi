@@ -217,6 +217,10 @@ pub fn build_app(state: AppState) -> Router {
             axum::routing::post(checkpoint_agent),
         )
         .route("/api/stats", get(get_stats))
+        .route(
+            "/api/budget/breakdown",
+            get(budget_handlers::get_budget_breakdown),
+        )
         .route("/api/plans", get(get_plans))
         .route("/api/spec", get(get_spec))
         .route("/api/quality/trend", get(get_quality_trend))
@@ -456,6 +460,7 @@ pub async fn serve_with_repo(
 
 mod agent_rate_handlers;
 mod api_middleware;
+mod budget_handlers;
 mod config_handlers;
 mod handlers;
 mod loop_handlers;

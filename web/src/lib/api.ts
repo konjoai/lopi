@@ -659,6 +659,15 @@ export interface PoolStatsResponse {
 
 export const getStats = () => request<PoolStatsResponse>('/api/stats');
 
+// ── Budget breakdown (by-model spend + daily trend) ───────────────────────────
+export interface BudgetBreakdownResponse {
+  by_model: { model: string; cost_usd: number }[];
+  trend: { date: string; cost_usd: number }[];
+}
+
+export const getBudgetBreakdown = () =>
+  request<BudgetBreakdownResponse>('/api/budget/breakdown');
+
 // The Debug-page clients — healthSummary/HealthSummary, queryAudit/AuditEvent,
 // listPatterns/PatternRow, qualityTrend/QualityRun — and the Tools registry
 // clients (ToolSpec / listTools / registerTool / deleteTool) plus the Debug API

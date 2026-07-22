@@ -6,7 +6,7 @@ export default defineConfig({
   // Inline GLSL files as raw strings via ?raw imports
   assetsInclude: ['**/*.glsl'],
   server: {
-    port: 5173,
+    port: Number(process.env.PORT) || 5173,
     // Proxy WebSocket and API to running lopi sail server
     proxy: {
       '/ws': {

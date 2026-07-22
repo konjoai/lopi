@@ -8,8 +8,10 @@
  */
 import { writable, derived, get, type Readable } from 'svelte/store';
 import { agents } from './agents';
+import { getBudgetBreakdown, getStats } from '$lib/api';
 
 const CAP_KEY = 'lopi-budget-cap-v1';
+const ALERT_KEY = 'lopi-budget-alert-v1';
 
 function loadCap(): number {
   if (typeof localStorage === 'undefined') return 5;
@@ -17,10 +19,22 @@ function loadCap(): number {
   return Number.isFinite(v) && v > 0 ? v : 5;
 }
 
+function loadAlertPct(): number {
+  if (typeof localStorage === 'undefined') return 80;
+  const v = Number(localStorage.getItem(ALERT_KEY));
+  return Number.isFinite(v) && v >= 10 && v <= 100 ? v : 80;
+}
+
 /** Soft hourly spend cap (USD/hour) the burn-rate is measured against. */
 export const hourlyCap = writable<number>(loadCap());
 hourlyCap.subscribe((v) => {
   if (typeof localStorage !== 'undefined') localStorage.setItem(CAP_KEY, String(v));
+});
+
+/** Burn-fraction (% of cap) above which a budget alert should surface. */
+export const alertPct = writable<number>(loadAlertPct());
+alertPct.subscribe((v) => {
+  if (typeof localStorage !== 'undefined') localStorage.setItem(ALERT_KEY, String(v));
 });
 
 type Sample = { t: number; cost: number };
@@ -88,4 +102,67 @@ export function budgetColor(state: BudgetState): string {
     : state === 'warn'
       ? 'var(--konjo-flame)'
       : 'var(--konjo-jade)';
+}
+
+export interface CostBreakdownRow {
+  name: string;
+  cost: number;
+}
+
+/** Cost grouped by repo, derived from the live session's agent map (session
+ *  scope — matches `fleetBudget.spent`'s own scope, since `repo` is only
+ *  carried on live wire events and isn't persisted per task in the DB). */
+export const byRepo: Readable<CostBreakdownRow[]> = derived(agents, ($agents) => {
+  const totals = new Map<string, number>();
+  for (const a of $agents.values()) {
+    if (a.cost <= 0) continue;
+    totals.set(a.repo, (totals.get(a.repo) ?? 0) + a.cost);
+  }
+  return [...totals.entries()]
+    .map(([name, cost]) => ({ name, cost }))
+    .sort((a, b) => b.cost - a.cost);
+});
+
+/** Cost grouped by model, billed today (UTC) — pulled from `turn_metrics` via
+ *  `GET /api/budget/breakdown`, refreshed by {@link startBudgetBreakdownPoller}. */
+export const byModel = writable<CostBreakdownRow[]>([]);
+
+/** Daily spend (USD) for the last 7 calendar days, oldest first. */
+export const trend = writable<{ date: string; cost: number }[]>([]);
+
+/** Total tokens billed today (UTC) — the same daily ledger `/api/stats` uses. */
+export const tokensToday = writable<number>(0);
+
+let breakdownStarted = false;
+
+/**
+ * Poll the durable cost-breakdown endpoints (idempotent). Separate from
+ * {@link startBudgetSampler}: that one tracks the live burn rate off the
+ * event-driven agent map, this one is a REST pull against SQLite-backed
+ * history (`turn_metrics`), so it needs its own interval.
+ */
+export function startBudgetBreakdownPoller(): void {
+  if (breakdownStarted || typeof window === 'undefined') return;
+  breakdownStarted = true;
+  const tick = async () => {
+    try {
+      const breakdown = await getBudgetBreakdown();
+      byModel.set(
+        breakdown.by_model
+          .map((m) => ({ name: m.model, cost: m.cost_usd }))
+          .sort((a, b) => b.cost - a.cost)
+      );
+      trend.set(breakdown.trend.map((t) => ({ date: t.date, cost: t.cost_usd })));
+    } catch (err) {
+      console.warn('[lopi] GET /api/budget/breakdown failed:', err);
+    }
+    try {
+      const stats = await getStats();
+      tokensToday.set(stats.total_tokens_today);
+    } catch (err) {
+      console.warn('[lopi] GET /api/stats failed:', err);
+    }
+  };
+  tick();
+  setInterval(tick, 15000);
 }

@@ -452,6 +452,7 @@ pub struct TaskRow {
 
 mod audit;
 mod branch;
+mod budget;
 mod checkpoints;
 mod dag;
 mod eval_outcomes;
