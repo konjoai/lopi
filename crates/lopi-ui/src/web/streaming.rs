@@ -124,6 +124,8 @@ mod tests {
             completed_at: None,
             client_ref: None,
             branch: None,
+            parent_task: None,
+            chain_depth: 0,
         }
     }
 

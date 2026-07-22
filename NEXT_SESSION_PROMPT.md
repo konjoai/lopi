@@ -5,6 +5,169 @@ the `lopi` repo. Newest first.
 
 ---
 
+## Next Session — after MCPB-App-2 (Click Interactivity + Backend Write Path)
+
+**MCPB-App-2 wired the stack-status widget's first click-driven write path —
+a Cancel button per row, calling the already-existing `lopi_cancel_task` MCP
+tool — but its own Phase 3 (live verification) is explicitly blocked, not
+skipped: KT-B3, the widget's basic live render in a real Claude Desktop, still
+has not been confirmed as of the most recent `KT-B3-Live` entries.** Read
+first, in order: `CLAUDE.md`, `CHANGELOG.md`'s `MCPB-App-2` entry, `LEDGER.md`'s
+`MCPB-App-2` entry in full (the KT-1–KT-4 findings and the four "how to apply"
+points), then this file's own words below.
+
+### What shipped this sprint (Phases 0–2, all completable without KT-B3)
+
+- Pre-flight kill-tests KT-1 (tool-call symmetry — confirmed, no origin
+  branching in `crates/lopi-mcp/src/server.rs`), KT-2 (`callServerTool()` vs.
+  `ontoolresult` — confirmed distinct, cancel result wired through the
+  former), KT-4 (no autonomy/plan-approval gate on `cancel`/`delete_task` —
+  confirmed absent by reading the pool/store code directly). KT-3 (host-level
+  approval UX) is unanswerable without a real host — correctly left open.
+- `src/mcp_ui/stack_status.html`: a Cancel button on every `queued`/`running`
+  row (`isCancelable()`), a confirm-then-two-click-fallback guard
+  (`requestCancel`/`doCancel`), real-`disabled`-button double-submit
+  prevention, inline `.row-error` on failure, row replaced with a grayed
+  "cancelled" line on success, and an `app.updateModelContext(...)` call
+  after a successful cancel. `.row` changed from `<button>` to a
+  `role="button"` div (nesting a real button inside it was invalid HTML —
+  see `LEDGER.md`) with a new `root.onkeydown` restoring keyboard activation.
+- `src/mcp_commands/server_wire_tests.rs` — new. Two tests drive
+  `lopi_cancel_task` through the real `lopi_mcp::serve()` JSON-RPC loop with
+  the real `LopiToolHandler`, not a mock — the surface the brief asked for,
+  relocated from the (inaccessible) `crates/lopi-mcp` location the brief
+  named, since that crate has no dependency on lopi's actual tool
+  implementations by design. `mod_tests.rs`'s `test_state()` is now
+  `pub(super)` so both test modules share it.
+- 1576 workspace tests green, `cargo clippy --workspace --all-targets -- -D
+  warnings` clean, widget's script body still `node --check` clean, `VERSION`
+  bumped to `0.22.0`.
+
+### What could NOT be verified this session — needs a live Claude Desktop, and needs KT-B3 first
+
+**Phase 3 did not run at all.** Nothing in this sprint's own testing exercises
+whether the widget actually renders in a real host in the first place — that
+question (KT-B3) predates this sprint and is still open per `KT-B3-Live`'s
+most recent entries (server spawns, MIME type and extension-negotiation fixes
+landed, but the widget-render check itself was never observed against a real
+Claude Desktop in any session so far). A session with real Claude Desktop
+access needs to, **in this order**:
+
+1. Confirm KT-B3 itself first — install the current `.mcpb`, submit a task,
+   confirm the stack-status panel actually renders inline (not a text
+   fallback / warning toast). If this still fails, that is this sprint's
+   blocker, not this sprint's own code — stop and diagnose against
+   `KT-B3-Live`'s three prior findings before touching anything here.
+2. Only once KT-B3 passes: click Cancel on a real running/queued task,
+   observe whether `window.confirm()` fires a native dialog or throws (this
+   resolves KT-3 and the confirm-vs-two-click fallback split at once — if
+   `confirm()` works, the two-click fallback code path can be considered
+   dead code and reconsidered), confirm the task is actually cancelled and
+   deleted (`lopi_list_tasks` or a direct DB check), confirm the row updates
+   without a full widget refresh, confirm no console errors.
+3. Click Cancel on a task that completes between page-load and click —
+   confirm the resulting "not found" `error` payload renders as this
+   sprint's inline `.row-error`, not a crash.
+4. Rapid double-click on Cancel — confirm the real `disabled` attribute
+   actually prevents a second `callServerTool()` call (not just a UI-level
+   debounce).
+5. Capture a screenshot or recording of at least one successful cancel round
+   trip as evidence, per this repo's own precedent for live-host checks —
+   not just a text claim that it worked.
+
+### Open question carried forward
+
+Whether a real MCP Apps host adds its own approval modal on top of a
+widget-initiated `tools/call` (KT-3) is still genuinely unknown — the
+widget's own confirm step does not assume either answer, and should not be
+simplified away even if a host turns out to add a modal of its own; two
+prompts (one host-level, one app-level) for a destructive action is not a
+bug.
+
+---
+
+## Next Session — after Sprint Successor-1 (Task Lineage and Containment)
+
+**Sprint Successor-1 built the data model, lineage fields, and containment
+gates for agent-authored successor tasks — no agent authoring yet.** Read
+first, in order: `CLAUDE.md`, `CHANGELOG.md`'s `[0.21.0]` entry, `LEDGER.md`'s
+`Sprint Successor-1` entry in full (the three one-way-door decisions:
+`SelfAuthored` vs. `SelfModify`, the autonomy-ceiling clamp, and the
+untrusted-source ratchet), then this file's own words below.
+
+### What shipped this sprint
+
+- `lopi-core::successor` — the `Successor` proposal type (`goal`/`when`/
+  `rationale`/`allowed_dirs`), `SuccessorCondition`, and `Successor::validate()`.
+- `Task` gained `parent_task`, `chain_depth`, `successor_enabled`,
+  `successor_fixture` (all `#[serde(default)]`); `TaskSource::SelfAuthored`.
+  `TaskSource` moved to its own `task_source.rs` (file-size gate).
+- `derive_successor_task(parent, successor, max_depth)` — the four
+  containment gates (depth cap, autonomy ceiling, directory inheritance,
+  untrusted-source lockdown), each with its own dedicated test.
+- `AgentEvent::TaskCompleted` gained `successor: Option<TaskId>`.
+- `lopi-memory`: `tasks.parent_task`/`tasks.chain_depth` columns +
+  `MemoryStore::lineage_chain` (bounded ancestor walk, not a recursive tree).
+- `AgentRunner::derive_and_stash_successor` (finalize.rs, beside
+  `emit_report`) + pool-level enqueue via the real `AgentPool::submit` —
+  gated on `Task::successor_enabled`, fed by `Task::successor_fixture` only
+  (no parsing from agent output — that's this sprint's own hard boundary).
+- Pre-flight kill-tests KT-A/B/C all recorded (see `LEDGER.md`); 1574
+  workspace tests green, clippy clean.
+
+### What could NOT be verified in this sandbox — needs a live check
+
+**The Phase 4 integration test does not drive a real `claude -p` subprocess
+through `AgentRunner::run()`'s full plan → implement → test → score loop.**
+That requires a live Anthropic API session, which this sandbox cannot reach
+(no `claude` CLI session/network for that path). What was actually verified
+instead, and why it's still meaningful:
+- `crates/lopi-agent/src/runner/finalize.rs`'s `derive_and_stash_successor_*`
+  tests prove a passing `finalize()` call really does invoke
+  `derive_successor_task` and stash a gated child — the *logic* seam.
+- `crates/lopi-orchestrator/tests/successor_enqueue.rs` proves the derived
+  child really does land in the real `TaskQueue` via the real
+  `AgentPool::submit` (dedup/topology/audit intact) with lineage/depth/gates
+  correct on the popped task — the *plumbing* seam.
+- **Not yet verified: that a real end-to-end task run (real git repo, real
+  `claude -p` session, real diff, real commit) that reaches `TaskStatus::
+  Success` actually produces a `TaskCompleted` event with a populated
+  `successor` field and a second row appearing in a live `lopi sail`
+  dashboard.** This needs a session with real Claude Code CLI access: submit
+  a task with `successor_enabled: true` and a `successor_fixture` set (no
+  API surface exists yet to set these from the CLI/REST layer — that's
+  itself an open question below, KT-1) against a real repo, watch it run to
+  completion, and confirm the successor task appears queued and eventually
+  dispatched.
+
+### Open questions for Sprint Successor-2
+
+- **KT-1 — no submission surface for `successor_enabled`/`successor_fixture`
+  exists yet.** Neither `lopi run`'s CLI flags, the REST `POST /api/tasks`
+  handler, nor `.lopi/loop.toml` expose a way to set these fields today —
+  this sprint only exercises them via directly-constructed `Task` values in
+  tests. Before Sprint Successor-2 adds parsing-from-agent-output, decide
+  where a human-supplied fixture successor should be configurable from (a
+  repo-level `.lopi/loop.toml` default? a per-task REST field? both?) —
+  otherwise the only way to use this sprint's plumbing today is a hand-built
+  `Task`.
+- **KT-2 — `DEFAULT_MAX_CHAIN_DEPTH = 3` is a hardcoded constant, not a
+  per-repo config.** `crates/lopi-core/src/successor.rs` documents this as a
+  deliberate scope cut (a natural `.lopi/loop.toml` ceiling once chains
+  actually run unattended for a while), but it means every repo currently
+  gets the same depth cap regardless of how much it trusts self-extending
+  chains. Worth revisiting once Sprint Successor-2/3 make chains something
+  that actually runs unattended rather than fixture-only.
+- Sprint Successor-2's own explicit scope (per the brief that ran this
+  sprint): parse a `Successor` out of an agent's own `final_text`, replacing
+  the `successor_fixture` config-only path. Sprint Successor-3: branch
+  `advance_to_next_step`'s static-goal chain scheduling on top of dynamic
+  successors, plus web/macOS lineage rendering. Sprint Successor-4 (gated on
+  a hardware kill-test not yet run): `claude --resume`/`StreamEvent::
+  session_id()` — explicitly out of scope until then.
+
+---
+
 ## Next Session — after KT-B3-Live
 
 **The attended runbook (`LOPI_KTB3_ATTENDED_RUNBOOK.md`) ran for real for the

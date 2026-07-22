@@ -347,35 +347,43 @@ pub struct Task {
     /// the sole source, unchanged from before this field existed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub budget_override: Option<crate::budget_preset::BudgetOverride>,
+    /// Sprint Successor-1 — the task this one was derived from, when it was
+    /// created by [`crate::successor::derive_successor_task`] rather than
+    /// submitted directly. `None` (the default) means this task has no
+    /// lineage — unchanged for every task submitted before this sprint.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_task: Option<TaskId>,
+    /// Sprint Successor-1 — how many successor hops separate this task from
+    /// the human/webhook/API-submitted task at the root of its chain. `0`
+    /// (the default) for any directly-submitted task; a derived successor's
+    /// depth is always `parent.chain_depth + 1`, enforced by
+    /// [`crate::successor::derive_successor_task`]'s depth-cap gate.
+    #[serde(default)]
+    pub chain_depth: u8,
+    /// Sprint Successor-1 — whether this task's own finalize step may derive
+    /// and enqueue a successor task. `false` (the default) is the safe,
+    /// no-op-changing default: without this sprint's finalize-path wiring
+    /// (`Task::successor_enabled` gate), nothing about a task's behavior
+    /// changes. Forced back to `false` on any child derived from a task
+    /// whose `source` is untrusted (see the derive function's gate 4) so a
+    /// chain seeded by unsupervised input cannot self-extend past one hop.
+    #[serde(default)]
+    pub successor_enabled: bool,
+    /// Sprint Successor-1 (this sprint's own scope boundary) — the
+    /// successor value this task's finalize step will derive from and
+    /// enqueue when `successor_enabled` is set, supplied directly by a
+    /// config field or test fixture. Parsing a successor out of the agent's
+    /// own final output is explicitly out of scope until Sprint
+    /// Successor-2; until that lands, this is the only way a successor gets
+    /// proposed. `None` (the default) — every existing task is unaffected.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub successor_fixture: Option<crate::successor::Successor>,
 }
 
-/// Where a task originated — used for routing replies and audit logging.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum TaskSource {
-    /// Submitted via the `lopi run` command-line interface.
-    Cli,
-    /// Submitted by a Telegram bot message.
-    Telegram {
-        /// Telegram chat that sent the command.
-        chat_id: i64,
-        /// Message ID of the originating Telegram message.
-        message_id: i32,
-    },
-    /// Injected by the GitHub webhook handler in response to a CI event.
-    Webhook {
-        /// Repository full name (e.g. `"org/repo"`).
-        repo: String,
-        /// GitHub event type that triggered the task (e.g. `"check_run"`).
-        event: String,
-    },
-    /// Submitted via the REST API.
-    Api,
-    /// Approved self-modification task targeting lopi's own codebase.
-    SelfModify {
-        /// Identity or mechanism that approved the self-modification.
-        approved_by: String,
-    },
-}
+/// Re-exported so `task::TaskSource` stays valid — the type moved to its own
+/// module (`task_source.rs`) purely to keep this file under the 500-line CI
+/// file-size gate; see that module's doc comment.
+pub use crate::task_source::TaskSource;
 
 impl Task {
     /// Create a new `Task` with sensible defaults and `Normal` priority.
@@ -415,6 +423,10 @@ impl Task {
             verifier_fail_open: false,
             budget_tokens: 0,
             budget_override: None,
+            parent_task: None,
+            chain_depth: 0,
+            successor_enabled: false,
+            successor_fixture: None,
         }
     }
 

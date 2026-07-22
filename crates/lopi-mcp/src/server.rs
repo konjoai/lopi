@@ -125,10 +125,25 @@ async fn handle_read_resource<H: ToolHandler>(handler: &H, req: &Request) -> Res
 /// The `initialize` result advertising lopi's server identity + tool/resource
 /// capabilities. `resources` is advertised unconditionally (cheap, and lets
 /// a host probe `resources/list` even for a handler with none today).
+///
+/// `capabilities.extensions` declares the MCP Apps extension (SEP-1865,
+/// `io.modelcontextprotocol/ui`) unconditionally too — per SEP-1865, MCP
+/// Apps is optional and a host will never call `resources/read` for a
+/// bound widget unless the server explicitly negotiates this extension
+/// here. Without it, `_meta.ui.resourceUri` on a tool and a correctly
+/// MIME-typed `ui://` resource are both inert.
 fn initialize_result() -> Value {
     json!({
         "protocolVersion": MCP_PROTOCOL_VERSION,
-        "capabilities": { "tools": {}, "resources": {} },
+        "capabilities": {
+            "tools": {},
+            "resources": {},
+            "extensions": {
+                "io.modelcontextprotocol/ui": {
+                    "mimeTypes": ["text/html;profile=mcp-app"]
+                }
+            }
+        },
         "serverInfo": { "name": "lopi", "version": env!("CARGO_PKG_VERSION") },
     })
 }

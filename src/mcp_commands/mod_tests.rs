@@ -8,7 +8,7 @@ use super::*;
 /// dispatch loop spawned — submitted tasks stay queued (never picked up
 /// by a runner), which is exactly what lets these tests inspect queue
 /// state directly instead of racing a real `AgentRunner`.
-async fn test_state() -> AppState {
+pub(super) async fn test_state() -> AppState {
     let store = MemoryStore::open_in_memory().await.unwrap();
     let bus: EventBus<AgentEvent> = EventBus::new(8);
     let queue = TaskQueue::new();

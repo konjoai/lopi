@@ -120,6 +120,8 @@
   $: byModelMax = Math.max(1, ...$byModel.map((m) => m.cost));
 </script>
 
+<svelte:head><title>lopi · budget</title></svelte:head>
+
 <div class="max-w-5xl mx-auto px-6 py-8 space-y-6">
   <!-- Header -->
   <div class="flex items-end justify-between flex-wrap gap-4">

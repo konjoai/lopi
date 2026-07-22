@@ -125,6 +125,9 @@ impl AgentPool {
             let handles = self.handles.clone();
             let counters = self.counters.clone();
             let join_set = self.join_set.clone();
+            // Sprint Successor-1 — lets `run_one` enqueue a derived successor
+            // via the real `submit()` path instead of duplicating it.
+            let pool = self.clone();
 
             let mut js = join_set.lock().await;
             // Drain any completed tasks to keep the JoinSet from growing unboundedly.
@@ -141,6 +144,7 @@ impl AgentPool {
                     cancel_rx,
                     plan_decision_rx,
                     attempt.clone(),
+                    pool,
                 )
                 .await;
                 handles.remove(&task_id);
@@ -172,6 +176,7 @@ impl AgentPool {
                         task_id,
                         outcome: TaskStatus::Failed { reason },
                         total_attempts: 1,
+                        successor: None,
                     });
                     if let Some(store) = &store {
                         if let Err(e) = store.mark_completed(&task_id, "failed").await {
@@ -222,6 +227,7 @@ fn task_source_label(task: &Task) -> String {
         TaskSource::Telegram { .. } => "telegram".into(),
         TaskSource::Webhook { .. } => "webhook".into(),
         TaskSource::SelfModify { .. } => "self-modify".into(),
+        TaskSource::SelfAuthored { .. } => "self-authored".into(),
     }
 }
 
@@ -335,7 +341,8 @@ pub(super) struct RepoGuardrails {
     pub(super) on_fail: lopi_core::loop_config::OnFail,
 }
 
-#[tracing::instrument(skip(bus, store, cancel_rx, plan_decision_rx, attempt_counter), fields(task_id = %task.id, goal = %task.goal))]
+#[allow(clippy::too_many_arguments)]
+#[tracing::instrument(skip(bus, store, cancel_rx, plan_decision_rx, attempt_counter, pool), fields(task_id = %task.id, goal = %task.goal))]
 async fn run_one(
     task: Task,
     repo: PathBuf,
@@ -344,6 +351,7 @@ async fn run_one(
     cancel_rx: oneshot::Receiver<()>,
     plan_decision_rx: oneshot::Receiver<lopi_core::PlanDecision>,
     attempt_counter: Arc<AtomicUsize>,
+    pool: AgentPool,
 ) -> Result<TaskStatus> {
     info!(task_id = %task.id, "starting agent");
     let task_id = task.id;
@@ -437,10 +445,23 @@ async fn run_one(
 
     let total_attempts = runner.attempts_made();
 
+    // Sprint Successor-1 — enqueue any derived successor via the real
+    // `submit()` path. `submit()` returns `Some` only on a dedup hit, so the
+    // successor's own `id` is captured before the task moves into `submit`.
+    let successor_id = match runner.take_pending_successor() {
+        Some(child) => {
+            let child_id = child.id;
+            pool.submit(child).await;
+            Some(child_id)
+        }
+        None => None,
+    };
+
     bus.send(AgentEvent::TaskCompleted {
         task_id,
         outcome: outcome.clone(),
         total_attempts,
+        successor: successor_id,
     });
 
     if let Some(store) = store {

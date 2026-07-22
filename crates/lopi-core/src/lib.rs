@@ -55,8 +55,15 @@ pub mod self_prompt;
 /// Progress-Gating (A3) — the specific reason a loop terminated and the
 /// precedence among reasons when several trip at once.
 pub mod stop_reason;
+/// Sprint Successor-1 — agent-authored, cross-task-boundary follow-up tasks:
+/// the `Successor` proposal type and its validation. Distinct from
+/// `self_prompt` (framework-authored, same-task retry reframing).
+pub mod successor;
 /// Task definition, status, priority, and source types.
 pub mod task;
+/// [`TaskSource`] — split out of `task.rs` to keep it under the 500-line CI
+/// file-size gate; re-exported from `task` unchanged.
+pub mod task_source;
 /// Literal-string prompt templates with named `{hole}` markers, resolved
 /// against a variable map at enqueue time (Prompt Templates, Sprint 1).
 pub mod template;
@@ -91,6 +98,10 @@ pub use schema::{
 pub use security::constant_time_eq;
 pub use self_prompt::SelfPromptStrategy;
 pub use stop_reason::StopReason;
+pub use successor::{
+    clamp_autonomy_to_parent, derive_successor_task, is_untrusted_source, Successor,
+    SuccessorCondition, SuccessorError, SuccessorRejection, DEFAULT_MAX_CHAIN_DEPTH, MAX_GOAL_LEN,
+};
 pub use task::{Priority, Rubric, Task, TaskId, TaskSource, TaskStatus, VerifierVerdict};
 pub use template::{resolve as resolve_template, TemplateError};
 pub use text::safe_truncate;
