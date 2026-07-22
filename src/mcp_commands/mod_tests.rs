@@ -173,13 +173,18 @@ async fn submit_task_rejects_an_unrecognized_permission_mode() {
     .await
     .unwrap_err();
     assert!(err.to_string().contains("not-a-real-mode"));
-    assert!(state.queue.is_empty(), "a rejected submission must not queue a task");
+    assert!(
+        state.queue.is_empty(),
+        "a rejected submission must not queue a task"
+    );
 }
 
 #[tokio::test]
 async fn dispatch_routes_list_repos_to_real_json() {
     let state = test_state().await;
-    let text = dispatch(&state, "lopi_list_repos", json!({})).await.unwrap();
+    let text = dispatch(&state, "lopi_list_repos", json!({}))
+        .await
+        .unwrap();
     let parsed: Value = serde_json::from_str(&text).unwrap();
     assert!(parsed["repos"].is_array());
 }
@@ -187,7 +192,9 @@ async fn dispatch_routes_list_repos_to_real_json() {
 #[tokio::test]
 async fn dispatch_routes_list_branches_to_real_json() {
     let state = test_state().await;
-    let text = dispatch(&state, "lopi_list_branches", json!({})).await.unwrap();
+    let text = dispatch(&state, "lopi_list_branches", json!({}))
+        .await
+        .unwrap();
     let parsed: Value = serde_json::from_str(&text).unwrap();
     assert!(parsed["branches"].is_array());
     assert!(parsed["default"].is_string());
