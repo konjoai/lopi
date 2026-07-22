@@ -38,9 +38,22 @@ use worktree_commands::WorktreeCmd;
 #[allow(clippy::too_many_lines)]
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Parsed before the tracing subscriber is set up so `mcp-serve`'s writer
+    // choice below can depend on it — `mcp-serve` speaks JSON-RPC framed
+    // over stdout/stdin, so any log line landing on stdout (the `fmt` layer's
+    // default writer) corrupts the frame the MCP Apps host is trying to
+    // parse. Every other command keeps stdout, matching prior behavior.
+    let cli = Cli::parse();
+    let is_mcp_serve = matches!(cli.command, Some(Commands::McpServe { .. }));
+
     let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn"));
-    let fmt_layer = tracing_subscriber::fmt::layer();
+    let writer = if is_mcp_serve {
+        tracing_subscriber::fmt::writer::BoxMakeWriter::new(std::io::stderr)
+    } else {
+        tracing_subscriber::fmt::writer::BoxMakeWriter::new(std::io::stdout)
+    };
+    let fmt_layer = tracing_subscriber::fmt::layer().with_writer(writer);
 
     #[cfg(feature = "otel")]
     if std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").is_ok() {
@@ -77,7 +90,6 @@ async fn main() -> Result<()> {
         .with(fmt_layer)
         .init();
 
-    let cli = Cli::parse();
     let cfg = load_config(cli.config.as_ref());
 
     match cli.command {
