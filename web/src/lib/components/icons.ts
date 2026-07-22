@@ -12,7 +12,7 @@ export const SHELL_ICONS = {
   network:
     '<circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="12" cy="18" r="2"/><path d="M6.7 7.3L11 16M17.3 7.3L13 16M7 6h10"/>',
   chart: '<path d="M3 12h4l2 8 4-16 2 8h6"/>',
-  gauge: '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M9 2h6"/>',
+  dollar: '<path d="M12 3v18"/><path d="M16.5 7.5c0-1.7-1.6-3-4.5-3s-5 1.3-5 3.5 2.1 3 5 3.5 5 1.3 5 3.5-2.1 3.5-5 3.5-4.5-1.3-4.5-3"/>',
   list: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
   cpu: '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 10h16M10 4v16"/>',
   cron: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',

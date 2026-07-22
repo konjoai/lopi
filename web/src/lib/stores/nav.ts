@@ -39,7 +39,7 @@ export interface NavItem {
 export const NAV_ITEMS: NavItem[] = [
   { href: '/stacks', label: 'Loop Stacks', icon: 'mark' },
   { href: '/loop', label: 'Loop', icon: 'loop' },
-  { href: '/budget', label: 'Budget', icon: 'gauge' },
+  { href: '/budget', label: 'Budget', icon: 'dollar' },
   { href: '/schedules', label: 'Scheduling', icon: 'cron' },
   { href: '/overview', label: 'Overview', icon: 'list' },
   { href: '/config', label: 'Configuration', icon: 'sliders' }
