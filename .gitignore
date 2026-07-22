@@ -20,3 +20,9 @@ artifacts/screenshots/
 # committed: platform-specific, and Track B (MCPB) is where prebuilt
 # cross-platform binaries eventually come from.
 /plugin/bin/
+
+# Swift Package Manager build output (packages/LopiStacksKit) and
+# packaged MCP bundles — build artifacts, not source.
+.build/
+.swiftpm/
+*.mcpb

@@ -15,6 +15,13 @@ export default {
           jade: '#00ff9d',
           sun: '#ffcc00',
           rose: '#ff0066',
+          // Budget page (Phase 10 redesign) — a brighter teal than `ice` and a
+          // lighter violet than the existing phase-testing `violet`, plus the
+          // slightly-darker-than-`deep` card background the notch-badge stat
+          // cards sit on. Distinct keys so they don't recolor existing usages.
+          teal: '#00ffd4',
+          'violet-light': '#b79bff',
+          card: '#0e1214',
           mist: 'rgba(255,255,255,0.04)',
           veil: 'rgba(255,255,255,0.08)',
           accent: 'rgb(var(--konjo-accent-rgb) / <alpha-value>)'
