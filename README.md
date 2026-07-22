@@ -76,6 +76,19 @@ API key for their own use, but the core agent loop never needs one.)
   `lopi skill promote` turns recurring lessons into reviewable `SKILL.md`
   drafts.
 
+## Requirements
+
+| To… | You need |
+|---|---|
+| Run agents at all | The [`claude` CLI](https://docs.claude.com/en/docs/claude-code), logged into a Claude subscription (Pro, Max, Team, or Enterprise) — lopi drives it as a subprocess and never needs a separate API key |
+| Build from source | A stable Rust toolchain (edition 2021; verified with 1.89–1.94) and `git` |
+| Build the Forge web dashboard | Node.js 18+ and npm — optional; without it, `lopi sail` serves a placeholder page instead |
+| Build the native macOS app | Xcode 15+ and XcodeGen, macOS 14+ (only needed for [`macos/`](./macos)) |
+
+lopi itself runs on macOS or Linux; the native app is macOS-only. No
+database server, no Docker, no cloud account — everything (SQLite, git
+worktrees, the web dashboard) is local to the machine you run it on.
+
 ## Quickstart
 
 ```bash
@@ -86,10 +99,15 @@ cp lopi.toml.example lopi.toml
 ./target/release/lopi run --goal "fix the failing test in src/foo.rs" --repo .
 ```
 
-Requires the `claude` CLI installed and logged into a Claude subscription
-(Pro, Max, Team, or Enterprise). Building the web dashboard is optional but
-recommended (`cd web && npm install && npm run build`) — without it, `lopi
-sail` serves a placeholder page instead of the Forge UI. See
+Or via Homebrew (macOS/Linux):
+
+```bash
+brew install konjoai/lopi/lopi
+```
+
+Building the web dashboard is optional but recommended (`cd web && npm
+install && npm run build`) — without it, `lopi sail` serves a placeholder
+page instead of the Forge UI (the Homebrew formula builds it for you). See
 [`docs/RUNNING.md`](./docs/RUNNING.md) for the full build/run guide, including
 the native macOS app.
 
