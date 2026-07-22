@@ -17,11 +17,11 @@
 //! separately-running `sail`'s. See `LEDGER.md` for the full write-up.
 
 use anyhow::{Context, Result};
-use lopi_core::{AgentEvent, EventBus, LopiConfig, Priority, Task, TaskId};
+use lopi_core::{AgentEvent, EventBus, LopiConfig, PermissionMode, Priority, Task, TaskId};
 use lopi_mcp::{McpResource, McpResourceContents, McpTool, ToolHandler};
 use lopi_memory::MemoryStore;
 use lopi_orchestrator::{AgentPool, TaskQueue};
-use lopi_ui::web::AppState;
+use lopi_ui::web::{repos_handlers, AppState};
 use serde_json::{json, Value};
 use std::future::Future;
 use std::path::PathBuf;
@@ -100,10 +100,12 @@ impl ToolHandler for LopiToolHandler {
     }
 }
 
-/// The curated tool set: Track A's seven plus MCPB-App-1's
-/// `lopi_get_stack_status`. Deliberately not extended further beyond that —
-/// every additional tool is context budget spent on every turn a plugin user
-/// has installed.
+/// The curated tool set: Track A's seven, MCPB-App-1's
+/// `lopi_get_stack_status`, and MCPB-App-3's `lopi_list_repos` /
+/// `lopi_list_branches` (the widget's stack-loop-builder view needs real
+/// dropdowns, not free-text). Not extended beyond that without a concrete
+/// widget need — every additional tool is context budget spent on every turn
+/// a plugin user has installed.
 fn tool_defs() -> Vec<McpTool> {
     let task_id_prop = json!({
         "task_id": {
@@ -130,6 +132,24 @@ fn tool_defs() -> Vec<McpTool> {
                         "type": "string",
                         "enum": ["low", "normal", "high", "critical"],
                         "description": "Task priority. Defaults to normal.",
+                    },
+                    "branch": {
+                        "type": "string",
+                        "description": "Target branch, surfaced to the agent as a planning constraint (mirrors the web UI's stack-config branch field).",
+                    },
+                    "model": {
+                        "type": "string",
+                        "description": "Explicit worker-model override, e.g. \"claude-opus-4-7\". Defaults to lopi's own complexity-based selection.",
+                    },
+                    "effort": {
+                        "type": "string",
+                        "enum": ["low", "medium", "high", "xhigh", "max"],
+                        "description": "Reasoning-effort level for the worker session.",
+                    },
+                    "permission_mode": {
+                        "type": "string",
+                        "enum": ["bypassPermissions", "auto", "acceptEdits", "dontAsk"],
+                        "description": "How much the worker session may act on tool calls without a human prompt. Defaults to bypassPermissions.",
                     },
                 },
                 "required": ["goal"],
@@ -180,6 +200,26 @@ fn tool_defs() -> Vec<McpTool> {
             meta: None,
         },
         stack_status::tool_def(),
+        McpTool {
+            name: "lopi_list_repos".into(),
+            description: "List the git repos lopi can dispatch to: the server's configured repo plus its siblings and any extra --repos. Backs the stack-loop-builder repo dropdown.".into(),
+            input_schema: json!({ "type": "object", "properties": {} }),
+            meta: None,
+        },
+        McpTool {
+            name: "lopi_list_branches".into(),
+            description: "List local git branches for a repo, plus its default (current HEAD) branch. Backs the stack-loop-builder branch dropdown.".into(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "repo": {
+                        "type": "string",
+                        "description": "Repo path, as returned by lopi_list_repos. Defaults to the server's configured repo.",
+                    },
+                },
+            }),
+            meta: None,
+        },
     ]
 }
 
@@ -195,6 +235,8 @@ async fn dispatch(state: &AppState, name: &str, args: Value) -> Result<String> {
         "lopi_get_agent_dag" => get_agent_dag(state, &args).await?,
         "lopi_get_stats" => get_stats(state).await,
         "lopi_get_stack_status" => stack_status::get_stack_status(state).await,
+        "lopi_list_repos" => repos_handlers::repos_json(state).await,
+        "lopi_list_branches" => list_branches(state, &args).await?,
         other => anyhow::bail!("unknown tool: {other}"),
     };
     Ok(result.to_string())
@@ -210,8 +252,12 @@ fn required_str(args: &Value, key: &str) -> Result<String> {
 }
 
 /// Mirrors `handlers::create_task`'s core: build a `Task`, submit it to the
-/// pool. Skips the REST route's advanced fields (verifier/budget/permission
-/// mode/...) — out of scope for the curated v1 tool set.
+/// pool. Covers the same "stack default config" fields the web UI's
+/// `StackConfigPopover` edits (model/effort/repo/branch/permission_mode —
+/// `autonomy` excluded since it's client-only there too, wired to nothing on
+/// the server). Skips the REST route's remaining advanced fields
+/// (verifier/budget/gate/until/acceptance/...) — out of scope for the
+/// curated v1 tool set.
 async fn submit_task(state: &AppState, args: &Value) -> Result<Value> {
     let goal = required_str(args, "goal")?;
     let mut task = Task::new(goal.clone());
@@ -224,6 +270,24 @@ async fn submit_task(state: &AppState, args: &Value) -> Result<Value> {
         Some("critical") => Priority::Critical,
         _ => Priority::Normal,
     };
+    // Same encoding `cardToTaskPayload`/`paneSubmitPayload` use on the web
+    // side: `CreateTaskRequest` has no dedicated branch field, so a target
+    // branch reaches the planner as a constraint instead.
+    if let Some(branch) = args.get("branch").and_then(Value::as_str) {
+        let branch = branch.trim();
+        if !branch.is_empty() {
+            task.constraints.push(format!("Target branch: {branch}"));
+        }
+    }
+    if let Some(model) = args.get("model").and_then(Value::as_str) {
+        task.model = Some(model.to_string());
+    }
+    if let Some(effort) = args.get("effort").and_then(Value::as_str) {
+        task.effort = Some(effort.to_string());
+    }
+    if let Some(mode) = args.get("permission_mode").and_then(Value::as_str) {
+        task.permission_mode = PermissionMode::parse(mode)?;
+    }
     let task_id = task.id.0.to_string();
     let duplicate_of = state.pool.submit(task).await.map(|id| id.0.to_string());
     Ok(json!({
@@ -349,6 +413,13 @@ async fn get_agent_dag(state: &AppState, args: &Value) -> Result<Value> {
             Ok(json!({ "error": format!("{e:#}") }))
         }
     }
+}
+
+/// Mirrors `repos_handlers::list_branches`; `repo` defaults to the server's
+/// configured repo when omitted, same as the REST route's empty-query case.
+async fn list_branches(state: &AppState, args: &Value) -> Result<Value> {
+    let repo = args.get("repo").and_then(Value::as_str).unwrap_or("");
+    Ok(repos_handlers::branches_json(state, repo).await)
 }
 
 /// Mirrors `handlers::get_stats`.

@@ -13,22 +13,29 @@ use axum::{
     response::{IntoResponse, Json},
 };
 use serde::Deserialize;
-use serde_json::json;
+use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 
-/// `GET /api/repos` — the server's primary repo plus immediate sibling git
-/// repos, each decorated with its GitHub `owner`/`name`, for the launch-control
-/// repo dropdown.
-pub(super) async fn list_repos(State(s): State<AppState>) -> impl IntoResponse {
-    let base = s.repo_path.clone();
-    let extras = s.extra_repos.clone();
-    // One blocking hop covers the scan and the per-repo config reads. Decorating
-    // *after* the scan's sort/dedup means each surviving repo is read once,
-    // rather than every candidate the walk considered.
+/// The server's primary repo plus immediate sibling git repos, each decorated
+/// with its GitHub `owner`/`name` — the launch-control repo dropdown's data,
+/// shared by `GET /api/repos` and the `lopi_list_repos` MCP tool so both
+/// surfaces enumerate the exact same set.
+///
+/// One blocking hop covers the scan and the per-repo config reads. Decorating
+/// *after* the scan's sort/dedup means each surviving repo is read once,
+/// rather than every candidate the walk considered.
+pub async fn repos_json(state: &AppState) -> Value {
+    let base = state.repo_path.clone();
+    let extras = state.extra_repos.clone();
     let repos = tokio::task::spawn_blocking(move || describe_repos(scan_repos(&base, &extras)))
         .await
         .unwrap_or_default();
-    (StatusCode::OK, Json(json!({ "repos": repos }))).into_response()
+    json!({ "repos": repos })
+}
+
+/// `GET /api/repos` — thin axum wrapper over [`repos_json`].
+pub(super) async fn list_repos(State(s): State<AppState>) -> impl IntoResponse {
+    (StatusCode::OK, Json(repos_json(&s).await)).into_response()
 }
 
 /// Query for [`list_branches`].
@@ -39,25 +46,27 @@ pub(super) struct BranchQuery {
     repo: String,
 }
 
-/// `GET /api/branches?repo=<path>` — local branch names of `repo`, plus the
-/// repo's default (current HEAD) branch so the UI can preselect it.
-pub(super) async fn list_branches(
-    State(s): State<AppState>,
-    Query(q): Query<BranchQuery>,
-) -> impl IntoResponse {
-    let repo = if q.repo.trim().is_empty() {
-        s.repo_path.display().to_string()
+/// Local branch names of `repo` (empty falls back to the server's primary
+/// repo), plus its default (current HEAD) branch — shared by
+/// `GET /api/branches` and the `lopi_list_branches` MCP tool.
+pub async fn branches_json(state: &AppState, repo: &str) -> Value {
+    let repo = if repo.trim().is_empty() {
+        state.repo_path.display().to_string()
     } else {
-        q.repo
+        repo.to_string()
     };
     let (branches, default) = tokio::task::spawn_blocking(move || git_branches(&repo))
         .await
         .unwrap_or_default();
-    (
-        StatusCode::OK,
-        Json(json!({ "branches": branches, "default": default })),
-    )
-        .into_response()
+    json!({ "branches": branches, "default": default })
+}
+
+/// `GET /api/branches?repo=<path>` — thin axum wrapper over [`branches_json`].
+pub(super) async fn list_branches(
+    State(s): State<AppState>,
+    Query(q): Query<BranchQuery>,
+) -> impl IntoResponse {
+    (StatusCode::OK, Json(branches_json(&s, &q.repo).await)).into_response()
 }
 
 /// Query for [`list_claude_commands`].

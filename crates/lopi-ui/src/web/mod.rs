@@ -466,7 +466,7 @@ mod metrics_handlers;
 mod model_handlers;
 mod quota_handlers;
 mod repo_identity;
-mod repos_handlers;
+pub mod repos_handlers;
 mod schedule_chain_handlers;
 mod schedule_handlers;
 mod static_assets;

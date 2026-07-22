@@ -31,7 +31,7 @@
 
   .board {
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 12px;
     align-items: start;
   }
@@ -171,6 +171,187 @@
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     word-break: break-all;
   }
+
+  /* ── shared chrome: topbar, back button, plus button ─────────────── */
+  .topbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-bottom: 10px;
+    margin-bottom: 2px;
+  }
+  .topbar .title {
+    font-weight: 600;
+    font-size: 13px;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .iconbtn {
+    flex: 0 0 auto;
+    font: inherit;
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--dim);
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .iconbtn:hover { color: var(--fg); border-color: var(--fg); }
+  .plus-btn {
+    font-weight: 700;
+    font-size: 14px;
+    line-height: 1;
+    padding: 4px 11px;
+    color: #00ff9d;
+    border-color: color-mix(in srgb, #00ff9d 45%, var(--dim));
+  }
+  .plus-btn:hover { border-color: #00ff9d; }
+
+  /* ── stack loop detail view ───────────────────────────────────────── */
+  .detailhead {
+    padding: 2px 2px 12px;
+    border-bottom: 1px solid var(--dim);
+    margin-bottom: 12px;
+  }
+  .detailhead .goal {
+    font-weight: 600;
+    font-size: 14px;
+    margin-bottom: 8px;
+  }
+  .live-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-left: 8px;
+    vertical-align: middle;
+  }
+  .live-badge .rdot { width: 5px; height: 5px; }
+
+  .stages {
+    display: flex;
+    gap: 6px;
+    margin: 10px 0 2px;
+  }
+  .stage {
+    flex: 1;
+    text-align: center;
+    padding: 6px 4px;
+    border-radius: 6px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    background: color-mix(in srgb, var(--stagec) 10%, transparent);
+    color: var(--stagec);
+    border-bottom: 2px solid var(--stagec);
+  }
+  .stage.pending { opacity: 0.4; }
+
+  .loghead {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+    margin: 16px 0 6px;
+  }
+  .logfeed {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 60vh;
+    overflow-y: auto;
+  }
+  .blk { font-size: 12px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; }
+  .blk-text { color: var(--fg); }
+  .blk-thinking { color: var(--dim); font-style: italic; }
+  .blk-tool {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px;
+    background: color-mix(in srgb, var(--muted) 8%, transparent);
+    border-radius: 5px;
+    padding: 5px 8px;
+    color: var(--muted);
+  }
+  .blk-status {
+    font-size: 10.5px;
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--tierc) 15%, transparent);
+    color: var(--tierc);
+  }
+
+  /* ── stack loop builder (create) view ─────────────────────────────── */
+  .field { margin-bottom: 12px; }
+  .field label {
+    display: block;
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--fieldc, var(--muted));
+    margin-bottom: 4px;
+  }
+  .field textarea,
+  .field input[type="text"],
+  .field select {
+    width: 100%;
+    font: inherit;
+    font-size: 12.5px;
+    padding: 7px 9px;
+    border-radius: 7px;
+    border: 1px solid var(--dim);
+    background: transparent;
+    color: var(--fg);
+    box-sizing: border-box;
+  }
+  .field textarea:focus,
+  .field input:focus,
+  .field select:focus {
+    outline: none;
+    border-color: var(--fieldc, var(--dim));
+  }
+  .field textarea { resize: vertical; min-height: 64px; }
+  .field.model { --fieldc: #00d4ff; }
+  .field.effort { --fieldc: #ff4500; }
+  .field.repo { --fieldc: #ffcc00; }
+  .field.branch { --fieldc: #00ff9d; }
+  .field.permission { --fieldc: #ff5a5a; }
+
+  .advanced summary {
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+    margin: 6px 0 12px;
+  }
+  .advanced[open] summary { margin-bottom: 12px; }
+
+  .submit-btn {
+    font: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    padding: 8px 16px;
+    border-radius: 7px;
+    border: 1px solid transparent;
+    background: #00ff9d;
+    color: #0a0a0a;
+    cursor: pointer;
+  }
+  .submit-btn:disabled { opacity: 0.5; cursor: default; }
+  .form-error {
+    color: #ff0066;
+    font-size: 11.5px;
+    margin-bottom: 10px;
+  }
 </style>
 </head>
 <body>
@@ -274,79 +455,6 @@ container holding the app. Specify either width or maxWidth, and either height o
     });
   }
 
-  // 5-column kanban board: Queued / Running / Conflict / Dead-letter / Done.
-  // "Testing" is not its own column — it's a `stage` value (see `orbColor`
-  // below), independent of which status column a task is actually sitting in.
-  var COLUMNS = [
-    { key: "queued", label: "Queued", color: "#0088aa" },
-    { key: "running", label: "Running", color: "#00d4ff" },
-    { key: "conflict", label: "Conflict", color: "#ffcc00" },
-    { key: "deadletter", label: "Dead-letter", color: "#ff0066" },
-    { key: "done", label: "Done", color: "#00ff9d" }
-  ];
-  var COLUMN_COLOR = {};
-  COLUMNS.forEach(function (c) { COLUMN_COLOR[c.key] = c.color; });
-
-  // Maps a task's coarse `status` string to its column. `tasks.status` today
-  // only ever holds queued/running/success/failed/rolled_back/conflict (see
-  // `crates/lopi-memory/src/store/mod.rs`), but the extra aliases cost
-  // nothing and keep this correct if the status vocabulary ever grows a
-  // synonym.
-  function bucketOf(status) {
-    switch (status) {
-      case "queued":
-        return "queued";
-      case "running":
-        return "running";
-      case "conflict":
-        return "conflict";
-      case "failed":
-      case "cancelled":
-      case "dead":
-      case "rolledback":
-      case "rolled_back":
-        return "deadletter";
-      case "success":
-      case "succeeded":
-      case "completed":
-        return "done";
-      default:
-        return "running";
-    }
-  }
-
-  // A row's accent is normally its column's color — except a task currently
-  // in the `test` stage always reads as the testing accent, regardless of
-  // which column (e.g. Conflict) it's actually sitting in.
-  function orbColor(status, stage) {
-    if (stage === "test") return "#7c3aed";
-    return COLUMN_COLOR[bucketOf(status)];
-  }
-
-  // The row dot pulses while a task is still in flight — anything short of
-  // a terminal (done / dead-letter) bucket.
-  function isPulsing(status) {
-    var bucket = bucketOf(status);
-    return bucket !== "done" && bucket !== "deadletter";
-  }
-
-  // A task can be cancelled while it's still in flight — the same two
-  // buckets `isPulsing` treats as non-terminal. `conflict`/`deadletter`/
-  // `done` tasks have already stopped running (per `AgentPool::cancel`,
-  // Phase 0's KT-4), so no Cancel action is offered for them.
-  function isCancelable(status) {
-    var bucket = bucketOf(status);
-    return bucket === "queued" || bucket === "running";
-  }
-
-  // "implement · attempt-2", or just the stage name when the branch doesn't
-  // carry a recognizable "-attempt-N" suffix (e.g. no branch yet).
-  function subLine(stage, branch) {
-    var label = stage || "queued";
-    var m = /-attempt-(\d+)$/.exec(branch || "");
-    return m ? label + " · attempt-" + m[1] : label;
-  }
-
   // Pure, no-library relative-time formatter: "12m ago", "3h ago", etc.
   function relTime(iso) {
     if (!iso) return "—";
@@ -361,117 +469,6 @@ container holding the app. Specify either width or maxWidth, and either height o
     return Math.round(hr / 24) + "d ago";
   }
 
-  // Fields already in the payload but not shown on the row itself.
-  function detailHtml(t) {
-    return (
-      '<div class="drow"><span class="dlabel">id</span><span class="dval">' + escapeHtml(t.id) + "</span></div>" +
-      '<div class="drow"><span class="dlabel">branch</span><span class="dval">' + escapeHtml(t.branch || "—") + "</span></div>" +
-      '<div class="drow"><span class="dlabel">created</span><span class="dval">' + escapeHtml(relTime(t.created_at)) + "</span></div>" +
-      '<div class="drow"><span class="dlabel">completed</span><span class="dval">' + escapeHtml(t.completed_at ? relTime(t.completed_at) : "—") + "</span></div>"
-    );
-  }
-
-  function rowHtml(t, idx) {
-    var color = orbColor(t.status, t.stage);
-    var detailId = "detail-" + idx;
-    // `.row` is a div, not a button: a real nested `<button class="cancel-btn">`
-    // for the cancel action would auto-close a `<button class="row">` the
-    // instant the parser hit it (HTML forbids interactive-in-interactive
-    // nesting), silently breaking the row markup. `role="button"` +
-    // `tabindex` + the keydown handler in `render()` keep it keyboard-
-    // operable in place of the native button semantics this gives up.
-    var cancelBtn = isCancelable(t.status)
-      ? '<button type="button" class="cancel-btn" data-task="' + escapeHtml(t.id) + '" data-goal="' + escapeHtml(t.goal) + '">Cancel</button>'
-      : "";
-    return (
-      '<div class="rowwrap">' +
-        '<div class="row" role="button" tabindex="0" style="--c:' + color + '" data-detail="' + detailId + '">' +
-          '<div class="rbody">' +
-            '<div class="rtitle">' +
-              "<span>" + escapeHtml(t.goal) + "</span>" +
-              (isPulsing(t.status) ? '<span class="rdot" style="background:' + color + '"></span>' : "") +
-            "</div>" +
-            '<div class="rsub">' + escapeHtml(subLine(t.stage, t.branch)) + "</div>" +
-          "</div>" +
-          '<div class="rmeta" style="color:' + color + '">' + escapeHtml(t.status) + "</div>" +
-          cancelBtn +
-        "</div>" +
-        '<div class="detail" id="' + detailId + '">' + detailHtml(t) + "</div>" +
-      "</div>"
-    );
-  }
-
-  function render(data) {
-    var root = document.getElementById("root");
-    var tasks = (data && data.tasks) || [];
-    if (!tasks.length) {
-      root.innerHTML = '<p class="empty">No lopi tasks yet.</p>';
-      return;
-    }
-    var groups = { queued: [], running: [], conflict: [], deadletter: [], done: [] };
-    tasks.forEach(function (t) { groups[bucketOf(t.status)].push(t); });
-
-    var seq = 0;
-    root.innerHTML =
-      '<div class="board">' +
-      COLUMNS.map(function (col) {
-        var items = groups[col.key];
-        var rows = items
-          .map(function (t) {
-            var html = rowHtml(t, seq);
-            seq++;
-            return html;
-          })
-          .join("");
-        return (
-          '<div class="col">' +
-            '<div class="colhead" style="border-color:' + col.color + '">' +
-              '<span class="cdot" style="background:' + col.color + '"></span>' +
-              '<span class="clabel">' + col.label + "</span>" +
-              '<span class="ccount" style="color:' + col.color + '">' + items.length + "</span>" +
-            "</div>" +
-            '<div class="cbody">' + (rows || '<div class="colempty">—</div>') + "</div>" +
-          "</div>"
-        );
-      }).join("") +
-      "</div>";
-
-    // Assignment, not addEventListener — idempotent across re-renders so
-    // repeated `ontoolresult` calls never stack duplicate handlers. Only one
-    // row expanded at a time. Cancel clicks are checked first since a
-    // `.cancel-btn` sits inside a `.row` div — falling through to the
-    // expand-toggle would otherwise fire on every cancel click too.
-    root.onclick = function (ev) {
-      var cancelBtn = ev.target.closest && ev.target.closest(".cancel-btn");
-      if (cancelBtn) {
-        requestCancel(cancelBtn);
-        return;
-      }
-      var btn = ev.target.closest && ev.target.closest(".row");
-      if (!btn) return;
-      toggleDetail(btn);
-    };
-
-    // `.row` gave up native `<button>` keyboard handling when it became a
-    // div (see `rowHtml`'s comment) — restore Enter/Space activation for the
-    // expand toggle so that regression doesn't ship silently.
-    root.onkeydown = function (ev) {
-      if (ev.key !== "Enter" && ev.key !== " ") return;
-      if (ev.target.closest && ev.target.closest(".cancel-btn")) return;
-      var btn = ev.target.closest && ev.target.closest(".row");
-      if (!btn) return;
-      ev.preventDefault();
-      toggleDetail(btn);
-    };
-  }
-
-  function toggleDetail(btn) {
-    var detail = document.getElementById(btn.getAttribute("data-detail"));
-    var wasOpen = detail.classList.contains("open");
-    document.querySelectorAll("#root .detail.open").forEach(function (el) { el.classList.remove("open"); });
-    if (!wasOpen) detail.classList.add("open");
-  }
-
   // Structured data can arrive shaped as the raw tool result, or nested
   // under `structuredContent`/`toolResult` depending on how the host wraps
   // it — accept any of the three rather than assuming one exact shape.
@@ -483,6 +480,8 @@ container holding the app. Specify either width or maxWidth, and either height o
   // Pull the tool's JSON payload out of a CallToolResult-shaped object
   // (the params of `ui/notifications/tool-result`): prefer
   // `structuredContent`, else parse the first JSON text content block.
+  // Only used for `app.ontoolresult` — a direct `callServerTool()` result
+  // is unwrapped with plain `unwrap()` instead (see its call sites below).
   function extractResult(params) {
     var direct = unwrap(params);
     if (direct && direct.tasks) return direct;
@@ -499,21 +498,247 @@ container holding the app. Specify either width or maxWidth, and either height o
     return direct;
   }
 
-  // Set once `main()`'s `app.connect()` resolves; read by `doCancel()`. A
-  // click arriving before that (unlikely — the widget has nothing to click
-  // until `render()` has run at least once from `ontoolresult`) would throw
-  // on `app.callServerTool`, which `doCancel`'s own try/catch already
-  // surfaces as this row's inline error rather than crashing the widget.
+  // ── Router state ──────────────────────────────────────────────────────
+  // Three views share one resource/one document (no extra `ui://` resources
+  // needed): `overview` (the board), `detail` (one stack loop, running or
+  // completed), `create` (the stack-loop builder). `app` is set once
+  // `main()`'s `app.connect()` resolves.
   var app;
+  var state = { view: "overview", taskId: null };
+  var overviewCache = null; // last {tasks:[...]} payload, for instant Back navigation
+  var detailPoll = null; // setTimeout id for the detail view's 5s live poll
+
+  function setView(view, opts) {
+    stopDetailPoll();
+    state.view = view;
+    state.taskId = (opts && opts.taskId) || null;
+    if (view === "overview") {
+      if (overviewCache) renderOverview(overviewCache);
+      else showLoading();
+      refreshOverview();
+    } else if (view === "detail") {
+      renderDetail(state.taskId);
+    } else if (view === "create") {
+      renderCreate();
+    }
+  }
+
+  function showLoading() {
+    document.getElementById("root").innerHTML = '<p class="empty">Loading…</p>';
+  }
+
+  function stopDetailPoll() {
+    if (detailPoll) {
+      clearTimeout(detailPoll);
+      detailPoll = null;
+    }
+  }
+
+  function findCachedTask(taskId) {
+    var tasks = (overviewCache && overviewCache.tasks) || [];
+    for (var i = 0; i < tasks.length; i++) {
+      if (tasks[i].id === taskId) return tasks[i];
+    }
+    return null;
+  }
+
+  // ── Overview (the board) ─────────────────────────────────────────────
+  // 4-column board — queued/running/testing/done — matching the web
+  // dashboard's `/overview` page exactly (`stackOverview.ts`'s
+  // `LIFECYCLE_ORDER`/`LIFECYCLE_COLOR`). There is no separate Conflict or
+  // Dead-letter column: every terminal-but-not-success status (failed,
+  // cancelled, rolled back, conflict) folds into Done with a rose accent,
+  // the same "failed: true" treatment `stackOverview.ts` gives a blocked
+  // card. `queued`'s color is `var(--dim)` rather than the web app's literal
+  // `rgba(245,245,245,0.5)` so it still reads correctly in this widget's
+  // light-mode theme, which the (always-dark) web app doesn't have to
+  // support.
+  var COLUMNS = [
+    { key: "queued", label: "Queued", color: "var(--dim)" },
+    { key: "running", label: "Running", color: "#00d4ff" },
+    { key: "testing", label: "Testing", color: "#7c3aed" },
+    { key: "done", label: "Done", color: "#00ff9d" }
+  ];
+  var COLUMN_COLOR = {};
+  COLUMNS.forEach(function (c) { COLUMN_COLOR[c.key] = c.color; });
+  var ROSE = "#ff0066";
+
+  // Maps a task's `db_status()` string to its column. `"testing"` is a real,
+  // literal `TaskStatus::Testing` value — no `stage` heuristic needed.
+  // Every other in-flight value (planning/awaiting_plan_approval/
+  // implementing/scoring/retrying) has no case of its own and falls through
+  // to the `running` default, same spirit as the aliases below: harmless if
+  // the status vocabulary grows a synonym.
+  function bucketOf(status) {
+    switch (status) {
+      case "queued":
+        return "queued";
+      case "testing":
+        return "testing";
+      case "success":
+      case "succeeded":
+      case "completed":
+        return "done";
+      case "failed":
+      case "cancelled":
+      case "dead":
+      case "rolledback":
+      case "rolled_back":
+      case "conflict":
+        return "done";
+      default:
+        return "running";
+    }
+  }
+
+  // A `done`-bucket task is "failed" unless it actually succeeded.
+  function isFailedStatus(status) {
+    return (
+      bucketOf(status) === "done" &&
+      status !== "success" &&
+      status !== "succeeded" &&
+      status !== "completed"
+    );
+  }
+
+  function rowColor(status) {
+    return isFailedStatus(status) ? ROSE : COLUMN_COLOR[bucketOf(status)];
+  }
+
+  // The row dot pulses only while genuinely live — matches
+  // `StackOverviewCard.svelte`'s `isLive` (running/testing only; queued
+  // does not pulse).
+  function isPulsing(status) {
+    var bucket = bucketOf(status);
+    return bucket === "running" || bucket === "testing";
+  }
+
+  // A task can be cancelled any time it hasn't reached the `done` bucket.
+  function isCancelable(status) {
+    return bucketOf(status) !== "done";
+  }
+
+  // "implement · attempt-2", or just the stage name when the branch doesn't
+  // carry a recognizable "-attempt-N" suffix (e.g. no branch yet).
+  function subLine(stage, branch) {
+    var label = stage || "queued";
+    var m = /-attempt-(\d+)$/.exec(branch || "");
+    return m ? label + " · attempt-" + m[1] : label;
+  }
+
+  function rowHtml(t) {
+    var color = rowColor(t.status);
+    var failed = isFailedStatus(t.status);
+    var cancelBtn = isCancelable(t.status)
+      ? '<button type="button" class="cancel-btn" data-task="' + escapeHtml(t.id) + '" data-goal="' + escapeHtml(t.goal) + '">Cancel</button>'
+      : "";
+    return (
+      '<div class="rowwrap">' +
+        '<div class="row" role="button" tabindex="0" style="--c:' + color + '" data-task="' + escapeHtml(t.id) + '">' +
+          '<div class="rbody">' +
+            '<div class="rtitle">' +
+              "<span>" + escapeHtml(t.goal) + "</span>" +
+              (isPulsing(t.status) ? '<span class="rdot" style="background:' + color + '"></span>' : "") +
+            "</div>" +
+            '<div class="rsub">' + escapeHtml(subLine(t.stage, t.branch)) + "</div>" +
+          "</div>" +
+          '<div class="rmeta" style="color:' + color + '">' + escapeHtml(failed ? t.status + " · failed" : t.status) + "</div>" +
+          cancelBtn +
+        "</div>" +
+      "</div>"
+    );
+  }
+
+  function renderOverview(data) {
+    overviewCache = data || { tasks: [] };
+    var tasks = overviewCache.tasks || [];
+    var root = document.getElementById("root");
+
+    var body;
+    if (!tasks.length) {
+      body = '<p class="empty">No lopi tasks yet.</p>';
+    } else {
+      var groups = { queued: [], running: [], testing: [], done: [] };
+      tasks.forEach(function (t) { groups[bucketOf(t.status)].push(t); });
+      body =
+        '<div class="board">' +
+        COLUMNS.map(function (col) {
+          var items = groups[col.key];
+          var rows = items.map(rowHtml).join("");
+          return (
+            '<div class="col">' +
+              '<div class="colhead" style="border-color:' + col.color + '">' +
+                '<span class="cdot" style="background:' + col.color + '"></span>' +
+                '<span class="clabel">' + col.label + "</span>" +
+                '<span class="ccount" style="color:' + col.color + '">' + items.length + "</span>" +
+              "</div>" +
+              '<div class="cbody">' + (rows || '<div class="colempty">—</div>') + "</div>" +
+            "</div>"
+          );
+        }).join("") +
+        "</div>";
+    }
+
+    root.innerHTML =
+      '<div class="topbar">' +
+        '<span class="title">lopi stack loops</span>' +
+        '<button type="button" class="iconbtn plus-btn" id="new-stack-btn" title="New stack loop">+</button>' +
+      "</div>" +
+      body;
+
+    var plusBtn = document.getElementById("new-stack-btn");
+    if (plusBtn) plusBtn.onclick = function () { setView("create"); };
+
+    // Assignment, not addEventListener — idempotent across re-renders so
+    // repeated refreshes never stack duplicate handlers. Cancel clicks are
+    // checked first since `.cancel-btn` sits inside `.row` — falling
+    // through to the navigate handler would otherwise open the detail view
+    // on every cancel click too.
+    root.onclick = function (ev) {
+      var cancelBtn = ev.target.closest && ev.target.closest(".cancel-btn");
+      if (cancelBtn) {
+        requestCancel(cancelBtn);
+        return;
+      }
+      var row = ev.target.closest && ev.target.closest(".row");
+      if (!row) return;
+      setView("detail", { taskId: row.getAttribute("data-task") });
+    };
+    root.onkeydown = function (ev) {
+      if (ev.key !== "Enter" && ev.key !== " ") return;
+      if (ev.target.closest && ev.target.closest(".cancel-btn")) return;
+      var row = ev.target.closest && ev.target.closest(".row");
+      if (!row) return;
+      ev.preventDefault();
+      setView("detail", { taskId: row.getAttribute("data-task") });
+    };
+  }
+
+  // Re-invokes `lopi_get_stack_status` directly rather than waiting on a
+  // host-pushed `ontoolresult` — makes the board self-sufficient on first
+  // load and on every Back navigation, not dependent on the model calling
+  // the tool again.
+  async function refreshOverview() {
+    if (!app) return;
+    try {
+      var result = await app.callServerTool({ name: "lopi_get_stack_status", arguments: {} });
+      var payload = unwrap(result);
+      if (payload && payload.tasks) {
+        overviewCache = payload;
+        if (state.view === "overview") renderOverview(payload);
+      }
+    } catch (e) {
+      console.error("[lopi stack status] refreshOverview failed:", e);
+    }
+  }
 
   // Confirm-before-destructive-action: `lopi_cancel_task` deletes the task
   // row outright (Phase 0's KT-4 confirmed no undo/approval gate sits behind
   // it), so this never fires the cancel on a single click. `window.confirm`
   // is tried first; MCP Apps hosts commonly sandbox the widget iframe
   // without `allow-modals`, which makes `confirm()` throw rather than
-  // return `false` — that throw (not a live host to observe it against,
-  // per this sprint's KT-3) is what selects the two-click fallback below,
-  // not a host-detection guess.
+  // return `false` — that throw is what selects the two-click fallback
+  // below, not a host-detection guess.
   function requestCancel(btn) {
     if (btn.disabled) return;
     var goal = btn.getAttribute("data-goal") || "";
@@ -543,9 +768,10 @@ container holding the app. Specify either width or maxWidth, and either height o
   }
 
   // Fires the real write: `lopi_cancel_task` via `callServerTool()` — a
-  // plain awaited JSON-RPC `tools/call`, distinct from `ontoolresult`
-  // (Phase 0's KT-2), which only ever fires for `lopi_get_stack_status`
-  // re-invocations, not this tool's own response.
+  // plain awaited JSON-RPC `tools/call`. Shared by the overview row's
+  // Cancel button and the detail view's topbar Cancel button; `rowwrap` is
+  // only present for the former (the latter has nothing to collapse in
+  // place, so it navigates back to the board instead).
   async function doCancel(btn) {
     var taskId = btn.getAttribute("data-task");
     var goal = btn.getAttribute("data-goal") || "";
@@ -564,7 +790,9 @@ container holding the app. Specify either width or maxWidth, and either height o
         showRowError(rowwrap, btn, "cancel did not complete");
         return;
       }
-      if (rowwrap) {
+      if (state.view === "detail" && state.taskId === taskId) {
+        setView("overview");
+      } else if (rowwrap) {
         rowwrap.innerHTML = '<div class="row-gone">' + escapeHtml(goal) + " — cancelled</div>";
       }
       // Bidirectional data flow (MCP Apps design intent): tell the model
@@ -597,18 +825,367 @@ container holding the app. Specify either width or maxWidth, and either height o
     rowwrap.appendChild(el);
   }
 
+  // ── Detail view: one stack loop, running or completed ────────────────
+  function renderDetail(taskId) {
+    var root = document.getElementById("root");
+    root.innerHTML =
+      '<div class="topbar">' +
+        '<button type="button" class="iconbtn" id="back-btn">← Back</button>' +
+        '<span class="title">Stack loop</span>' +
+      "</div>" +
+      '<p class="empty">Loading…</p>';
+    document.getElementById("back-btn").onclick = function () { setView("overview"); };
+    loadDetail(taskId);
+  }
+
+  // Fans out the three read tools a detail view needs — no dedicated
+  // "stack detail" tool exists, and folding three cheap reads client-side
+  // keeps the curated tool set from growing just for this view. Polls every
+  // 5s while the task hasn't reached the `done` bucket; a completed task
+  // gets one fetch and stays static.
+  async function loadDetail(taskId) {
+    try {
+      var results = await Promise.all([
+        app.callServerTool({ name: "lopi_get_task", arguments: { task_id: taskId } }),
+        app.callServerTool({ name: "lopi_get_agent_dag", arguments: { task_id: taskId } }),
+        app.callServerTool({ name: "lopi_get_logs", arguments: { task_id: taskId, n: 300 } })
+      ]);
+      if (state.view !== "detail" || state.taskId !== taskId) return; // navigated away mid-flight
+      var task = unwrap(results[0]);
+      var dag = unwrap(results[1]);
+      var logs = unwrap(results[2]);
+      renderDetailData(taskId, task, dag, logs);
+      if (task && !task.error && bucketOf(task.status) !== "done") {
+        detailPoll = setTimeout(function () { loadDetail(taskId); }, 5000);
+      }
+    } catch (e) {
+      if (state.view !== "detail" || state.taskId !== taskId) return;
+      var root = document.getElementById("root");
+      root.innerHTML =
+        '<div class="topbar">' +
+          '<button type="button" class="iconbtn" id="back-btn">← Back</button>' +
+          '<span class="title">Stack loop</span>' +
+        "</div>" +
+        '<p class="empty">Failed to load: ' + escapeHtml((e && e.message) || "request failed") + "</p>";
+      document.getElementById("back-btn").onclick = function () { setView("overview"); };
+    }
+  }
+
+  var STAGE_ORDER = ["plan", "implement", "test", "score"];
+
+  function stagesHtml(dag) {
+    var nodesByKind = {};
+    ((dag && dag.nodes) || []).forEach(function (n) { nodesByKind[n.kind] = n; });
+    return STAGE_ORDER.map(function (kind) {
+      var node = nodesByKind[kind];
+      var status = node ? node.status : "pending";
+      var color = status === "done" ? "#00ff9d" : status === "running" ? "#7c3aed" : "var(--dim)";
+      var pendingCls = status === "done" || status === "running" ? "" : " pending";
+      return '<div class="stage' + pendingCls + '" style="--stagec:' + color + '">' + escapeHtml(kind) + "</div>";
+    }).join("");
+  }
+
+  // Severity for a synthetic status line, inferred the same way
+  // `transcript.ts`'s `inferredTier` reads the Rust runner's own
+  // verdict/decision keywords.
+  function inferredTier(t) {
+    if (/verdict=error|errored|fail-closed/.test(t)) return "bad";
+    if (/verdict=pass|passed=true|gain gate: gain\b/.test(t)) return "good";
+    if (/rejected|verdict=fail|passed=false|regression|failed/.test(t)) return "warn";
+    return "info";
+  }
+  var TIER_COLOR = { info: "var(--dim)", good: "#00ff9d", warn: "#ffcc00", bad: ROSE };
+
+  // Routes one `lopi_get_logs` row to a block kind by its glyph prefix —
+  // the same rules `transcript.ts`'s `reduceLogLine` applies to the live
+  // event stream, ported to plain historical log lines. One difference: the
+  // live transcript drops `🔧` lines in favor of a structured `tool_call`
+  // event it also receives over the WS — this widget has no WS/structured
+  // event access, only `lopi_get_logs`' raw lines, so the `🔧` line itself
+  // is kept and rendered as the tool signal.
+  function categorizeLine(row) {
+    var t = (row.line || "").trim();
+    if (!t) return null;
+    // `.charAt(0)`/un-flagged regex compare UTF-16 *code units*, not code
+    // points — every glyph below is outside the BMP (🔧💭🎯🔬📈📐 are all
+    // surrogate pairs) except ●/⛔, so `startsWith()` and the `u`-flagged
+    // regex are required here, not cosmetic.
+    if (t.startsWith("🔧")) return { kind: "tool", text: t.replace(/^🔧\s*/u, "") };
+    if (t.startsWith("💭")) return { kind: "thinking", text: t.replace(/^💭\s*/u, "") };
+    if (t.charAt(0) === "●") return { kind: "status", tier: "info", text: t.replace(/^●\s*/, "") };
+    if (t.charAt(0) === "⛔") return { kind: "status", tier: "bad", text: t.replace(/^⛔\s*/, "") };
+    if (/^[🎯🔬📈📐]/u.test(t)) {
+      var sp = t.indexOf(" ");
+      return { kind: "status", tier: inferredTier(t), text: sp === -1 ? "" : t.slice(sp + 1) };
+    }
+    if (row.level === "error") return { kind: "status", tier: "bad", text: t };
+    return { kind: "text", text: t };
+  }
+
+  // Merges consecutive same-kind text/thinking lines into one block, same
+  // spirit as `transcript.ts`'s `appendText`/`appendThinking` — tool and
+  // status blocks stay one-per-line.
+  function buildLogBlocks(rows) {
+    var out = [];
+    rows.forEach(function (row) {
+      var c = categorizeLine(row);
+      if (!c) return;
+      var last = out[out.length - 1];
+      if (last && last.kind === c.kind && (c.kind === "text" || c.kind === "thinking")) {
+        last.text += "\n" + c.text;
+        return;
+      }
+      out.push(c);
+    });
+    return out;
+  }
+
+  function blockHtml(b) {
+    if (b.kind === "status") {
+      return '<div class="blk"><span class="blk-status" style="--tierc:' + TIER_COLOR[b.tier] + '">' + escapeHtml(b.text) + "</span></div>";
+    }
+    if (b.kind === "tool") return '<div class="blk blk-tool">🔧 ' + escapeHtml(b.text) + "</div>";
+    if (b.kind === "thinking") return '<div class="blk blk-thinking">' + escapeHtml(b.text) + "</div>";
+    return '<div class="blk blk-text">' + escapeHtml(b.text) + "</div>";
+  }
+
+  function renderDetailData(taskId, task, dag, logsPayload) {
+    var root = document.getElementById("root");
+    if (!task || task.error) {
+      root.innerHTML =
+        '<div class="topbar">' +
+          '<button type="button" class="iconbtn" id="back-btn">← Back</button>' +
+          '<span class="title">Stack loop</span>' +
+        "</div>" +
+        '<p class="empty">' + escapeHtml((task && task.error) || "task not found") + "</p>";
+      document.getElementById("back-btn").onclick = function () { setView("overview"); };
+      return;
+    }
+
+    var bucket = bucketOf(task.status);
+    var failed = isFailedStatus(task.status);
+    var color = failed ? ROSE : COLUMN_COLOR[bucket];
+    var live = bucket !== "done";
+    var cached = findCachedTask(taskId);
+    var branch = cached && cached.branch;
+
+    var blocks = buildLogBlocks((logsPayload && logsPayload.logs) || []);
+    var logHtml = blocks.length ? blocks.map(blockHtml).join("") : '<p class="empty">No log output yet.</p>';
+
+    root.innerHTML =
+      '<div class="topbar">' +
+        '<button type="button" class="iconbtn" id="back-btn">← Back</button>' +
+        '<span class="title">' + escapeHtml(task.goal) + "</span>" +
+        (isCancelable(task.status)
+          ? '<button type="button" class="iconbtn cancel-btn" data-task="' + escapeHtml(taskId) + '" data-goal="' + escapeHtml(task.goal) + '">Cancel</button>'
+          : "") +
+      "</div>" +
+      '<div class="detailhead">' +
+        '<div class="goal">' + escapeHtml(task.goal) +
+          '<span class="live-badge" style="color:' + color + '">' +
+            (live ? '<span class="rdot" style="background:' + color + '"></span>' : "") +
+            escapeHtml(failed ? task.status + " · failed" : task.status) +
+          "</span>" +
+        "</div>" +
+        '<div class="drow"><span class="dlabel">id</span><span class="dval">' + escapeHtml(task.id) + "</span></div>" +
+        (branch ? '<div class="drow"><span class="dlabel">branch</span><span class="dval">' + escapeHtml(branch) + "</span></div>" : "") +
+        '<div class="drow"><span class="dlabel">created</span><span class="dval">' + escapeHtml(relTime(task.created_at)) + "</span></div>" +
+        '<div class="drow"><span class="dlabel">completed</span><span class="dval">' + escapeHtml(task.completed_at ? relTime(task.completed_at) : "—") + "</span></div>" +
+        '<div class="stages">' + stagesHtml(dag) + "</div>" +
+      "</div>" +
+      '<div class="loghead">' + (live ? "Live output" : "Log") + "</div>" +
+      '<div class="logfeed">' + logHtml + "</div>";
+
+    document.getElementById("back-btn").onclick = function () { setView("overview"); };
+    var cancelBtn = root.querySelector(".topbar .cancel-btn");
+    if (cancelBtn) cancelBtn.onclick = function () { requestCancel(cancelBtn); };
+  }
+
+  // ── Create view: the stack-loop builder ──────────────────────────────
+  // Basic fields (goal/repo/priority) plus a collapsible Advanced section
+  // mirroring `StackConfigPopover.svelte`'s field set exactly
+  // (model/effort/branch/permission_mode) — its `autonomy` field is left
+  // out since it's client-only on the web side too, wired to nothing on the
+  // server.
+  var createState = { selectedRepo: "" };
+
+  function renderCreate() {
+    var root = document.getElementById("root");
+    root.innerHTML =
+      '<div class="topbar">' +
+        '<button type="button" class="iconbtn" id="back-btn">← Back</button>' +
+        '<span class="title">New stack loop</span>' +
+      "</div>" +
+      '<div id="create-error"></div>' +
+      '<div class="field">' +
+        "<label>goal</label>" +
+        '<textarea id="f-goal" placeholder="what should this loop accomplish?"></textarea>' +
+      "</div>" +
+      '<div class="field repo">' +
+        "<label>repo</label>" +
+        '<select id="f-repo"><option value="">loading…</option></select>' +
+      "</div>" +
+      '<div class="field">' +
+        "<label>priority</label>" +
+        '<select id="f-priority">' +
+          '<option value="normal" selected>normal</option>' +
+          '<option value="low">low</option>' +
+          '<option value="high">high</option>' +
+          '<option value="critical">critical</option>' +
+        "</select>" +
+      "</div>" +
+      '<details class="advanced"><summary>Advanced</summary>' +
+        '<div class="field branch">' +
+          "<label>branch</label>" +
+          '<select id="f-branch"><option value="">auto</option></select>' +
+        "</div>" +
+        '<div class="field model">' +
+          "<label>model</label>" +
+          '<select id="f-model">' +
+            '<option value="">auto</option>' +
+            '<option value="claude-opus-4-8">claude-opus-4-8</option>' +
+            '<option value="claude-sonnet-5">claude-sonnet-5</option>' +
+            '<option value="claude-haiku-4-5">claude-haiku-4-5</option>' +
+          "</select>" +
+        "</div>" +
+        '<div class="field effort">' +
+          "<label>effort</label>" +
+          '<select id="f-effort">' +
+            '<option value="">default</option>' +
+            '<option value="low">low</option>' +
+            '<option value="medium">medium</option>' +
+            '<option value="high">high</option>' +
+            '<option value="xhigh">xhigh</option>' +
+            '<option value="max">max</option>' +
+          "</select>" +
+        "</div>" +
+        '<div class="field permission">' +
+          "<label>permission</label>" +
+          '<select id="f-permission">' +
+            '<option value="">bypassPermissions (default)</option>' +
+            '<option value="auto">auto</option>' +
+            '<option value="acceptEdits">acceptEdits</option>' +
+            '<option value="dontAsk">dontAsk</option>' +
+          "</select>" +
+        "</div>" +
+      "</details>" +
+      '<button type="button" class="submit-btn" id="submit-btn">Start stack loop</button>';
+
+    document.getElementById("back-btn").onclick = function () { setView("overview"); };
+    document.getElementById("submit-btn").onclick = function () { submitCreate(); };
+    document.getElementById("f-repo").onchange = function (ev) {
+      createState.selectedRepo = ev.target.value;
+      loadBranches(ev.target.value);
+    };
+
+    loadRepos();
+  }
+
+  async function loadRepos() {
+    var sel = document.getElementById("f-repo");
+    try {
+      var result = await app.callServerTool({ name: "lopi_list_repos", arguments: {} });
+      var payload = unwrap(result);
+      var repos = (payload && payload.repos) || [];
+      if (!sel || !sel.isConnected) return; // navigated away mid-flight
+      if (!repos.length) {
+        sel.innerHTML = '<option value="">(none found)</option>';
+        return;
+      }
+      sel.innerHTML = repos.map(function (r) {
+        return '<option value="' + escapeHtml(r.path) + '">' + escapeHtml(r.name || r.path) + "</option>";
+      }).join("");
+      createState.selectedRepo = sel.value;
+      loadBranches(sel.value);
+    } catch (e) {
+      if (sel && sel.isConnected) sel.innerHTML = '<option value="">(failed to load)</option>';
+    }
+  }
+
+  async function loadBranches(repo) {
+    var sel = document.getElementById("f-branch");
+    if (!sel) return;
+    sel.innerHTML = '<option value="">loading…</option>';
+    try {
+      var result = await app.callServerTool({ name: "lopi_list_branches", arguments: { repo: repo || "" } });
+      var payload = unwrap(result);
+      if (!sel.isConnected || createState.selectedRepo !== repo) return; // stale response
+      var branches = (payload && payload.branches) || [];
+      var def = (payload && payload.default) || "";
+      sel.innerHTML =
+        '<option value="">auto</option>' +
+        branches.map(function (b) {
+          return '<option value="' + escapeHtml(b) + '"' + (b === def ? " selected" : "") + ">" + escapeHtml(b) + "</option>";
+        }).join("");
+    } catch (e) {
+      if (sel.isConnected) sel.innerHTML = '<option value="">auto</option>';
+    }
+  }
+
+  async function submitCreate() {
+    var goal = document.getElementById("f-goal").value.trim();
+    var errEl = document.getElementById("create-error");
+    errEl.innerHTML = "";
+    if (!goal) {
+      errEl.innerHTML = '<div class="form-error">A goal is required.</div>';
+      return;
+    }
+    var btn = document.getElementById("submit-btn");
+    btn.disabled = true;
+    btn.textContent = "Starting…";
+    var args = {
+      goal: goal,
+      repo: document.getElementById("f-repo").value || undefined,
+      priority: document.getElementById("f-priority").value,
+      branch: document.getElementById("f-branch").value || undefined,
+      model: document.getElementById("f-model").value || undefined,
+      effort: document.getElementById("f-effort").value || undefined,
+      permission_mode: document.getElementById("f-permission").value || undefined
+    };
+    try {
+      var result = await app.callServerTool({ name: "lopi_submit_task", arguments: args });
+      var payload = unwrap(result);
+      if (!payload || payload.error || !payload.id) {
+        errEl.innerHTML = '<div class="form-error">' + escapeHtml((payload && payload.error) || "submit failed") + "</div>";
+        btn.disabled = false;
+        btn.textContent = "Start stack loop";
+        return;
+      }
+      try {
+        await app.updateModelContext({
+          content: [{ type: "text", text: 'Submitted a new lopi stack loop ("' + goal + '"), task ' + payload.id + '.' }]
+        });
+      } catch (e) {
+        console.error("[lopi stack status] updateModelContext failed:", e);
+      }
+      overviewCache = null; // force a fresh fetch once the user lands back on the board
+      setView("detail", { taskId: payload.id });
+    } catch (e) {
+      errEl.innerHTML = '<div class="form-error">' + escapeHtml((e && e.message) || "request failed") + "</div>";
+      btn.disabled = false;
+      btn.textContent = "Start stack loop";
+    }
+  }
+
   async function main() {
     try {
       app = new eI({ name: "lopi stack status", version: "0.1.0" }, {});
 
-      // Fires once right after connect (initial data) and again on every
-      // subsequent lopi_get_stack_status call while this widget is mounted.
+      // Host-initiated re-invocations of the bound tool (e.g. the model
+      // calls `lopi_get_stack_status` again mid-conversation) still land
+      // here; `refreshOverview()` covers the widget's own on-demand
+      // refreshes (initial load, Back navigation).
       app.ontoolresult = function (params) {
-        render(extractResult(params));
+        var payload = extractResult(params);
+        if (payload && payload.tasks) {
+          overviewCache = payload;
+          if (state.view === "overview") renderOverview(payload);
+        }
       };
 
       var transport = new Mu(window.parent, window.parent);
       await app.connect(transport);
+      setView("overview");
     } catch (err) {
       var root = document.getElementById("root");
       root.innerHTML = '<p class="empty">Failed to connect: ' + escapeHtml(err && err.message) + "</p>";
