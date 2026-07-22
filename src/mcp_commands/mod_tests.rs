@@ -19,7 +19,7 @@ pub(super) async fn test_state() -> AppState {
 }
 
 #[test]
-fn tool_defs_advertises_exactly_the_curated_eight() {
+fn tool_defs_advertises_exactly_the_curated_ten() {
     let tools = tool_defs();
     let names: Vec<_> = tools.iter().map(|t| t.name.as_str()).collect();
     assert_eq!(
@@ -33,6 +33,8 @@ fn tool_defs_advertises_exactly_the_curated_eight() {
             "lopi_get_agent_dag",
             "lopi_get_stats",
             "lopi_get_stack_status",
+            "lopi_list_repos",
+            "lopi_list_branches",
         ]
     );
 }
@@ -100,6 +102,102 @@ async fn submit_task_honors_each_priority_value() {
 async fn submit_task_requires_goal() {
     let state = test_state().await;
     assert!(submit_task(&state, &json!({})).await.is_err());
+}
+
+/// Covers the fields added to mirror `StackConfigPopover`'s "default
+/// config" set (model/effort/branch/permission_mode) — `state.queue.pop()`
+/// hands back the real submitted `Task`, unlike `peek_queued()` which only
+/// exposes `(Priority, goal)`.
+#[tokio::test]
+async fn submit_task_applies_branch_model_effort_and_permission_mode() {
+    let state = test_state().await;
+    submit_task(
+        &state,
+        &json!({
+            "goal": "wire the advanced fields",
+            "branch": "feat/widget-views",
+            "model": "claude-opus-4-8",
+            "effort": "high",
+            "permission_mode": "auto",
+        }),
+    )
+    .await
+    .unwrap();
+    let task = state.queue.pop().await;
+    assert_eq!(task.goal, "wire the advanced fields");
+    assert_eq!(
+        task.constraints,
+        vec!["Target branch: feat/widget-views".to_string()],
+        "branch has no CreateTaskRequest field of its own — same planning-constraint encoding the web UI uses"
+    );
+    assert_eq!(task.model.as_deref(), Some("claude-opus-4-8"));
+    assert_eq!(task.effort.as_deref(), Some("high"));
+    assert_eq!(task.permission_mode, PermissionMode::Auto);
+}
+
+#[tokio::test]
+async fn submit_task_without_advanced_fields_leaves_defaults_untouched() {
+    let state = test_state().await;
+    submit_task(&state, &json!({ "goal": "bare goal, no advanced fields" }))
+        .await
+        .unwrap();
+    let task = state.queue.pop().await;
+    assert!(task.constraints.is_empty());
+    assert_eq!(task.model, None);
+    assert_eq!(task.effort, None);
+    assert_eq!(task.permission_mode, PermissionMode::BypassPermissions);
+}
+
+/// A whitespace-only branch must not append a hollow `"Target branch: "`
+/// constraint.
+#[tokio::test]
+async fn submit_task_ignores_a_blank_branch() {
+    let state = test_state().await;
+    submit_task(
+        &state,
+        &json!({ "goal": "blank branch goal", "branch": "   " }),
+    )
+    .await
+    .unwrap();
+    let task = state.queue.pop().await;
+    assert!(task.constraints.is_empty());
+}
+
+#[tokio::test]
+async fn submit_task_rejects_an_unrecognized_permission_mode() {
+    let state = test_state().await;
+    let err = submit_task(
+        &state,
+        &json!({ "goal": "bad mode goal", "permission_mode": "not-a-real-mode" }),
+    )
+    .await
+    .unwrap_err();
+    assert!(err.to_string().contains("not-a-real-mode"));
+    assert!(
+        state.queue.is_empty(),
+        "a rejected submission must not queue a task"
+    );
+}
+
+#[tokio::test]
+async fn dispatch_routes_list_repos_to_real_json() {
+    let state = test_state().await;
+    let text = dispatch(&state, "lopi_list_repos", json!({}))
+        .await
+        .unwrap();
+    let parsed: Value = serde_json::from_str(&text).unwrap();
+    assert!(parsed["repos"].is_array());
+}
+
+#[tokio::test]
+async fn dispatch_routes_list_branches_to_real_json() {
+    let state = test_state().await;
+    let text = dispatch(&state, "lopi_list_branches", json!({}))
+        .await
+        .unwrap();
+    let parsed: Value = serde_json::from_str(&text).unwrap();
+    assert!(parsed["branches"].is_array());
+    assert!(parsed["default"].is_string());
 }
 
 #[tokio::test]
@@ -248,7 +346,7 @@ async fn tool_handler_call_round_trips_through_dispatch() {
     let handler = LopiToolHandler {
         state: test_state().await,
     };
-    assert_eq!(handler.tools().len(), 8);
+    assert_eq!(handler.tools().len(), 10);
     let text = handler.call("lopi_list_tasks", json!({})).await.unwrap();
     let parsed: Value = serde_json::from_str(&text).unwrap();
     assert!(parsed["tasks"].as_array().unwrap().is_empty());
