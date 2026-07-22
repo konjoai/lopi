@@ -972,6 +972,10 @@
   }
   .cmdbarwrap {
     position: relative;
+    /* Recolors the shared `:focus-visible` ring (app.css) from its default
+       ice/cyan to the run-stack button's orange, so the keyboard-focus halo
+       matches the border-color below instead of clashing with it. */
+    --konjo-accent-rgb: 255 149 0;
   }
   /* `ChipInput`'s root is rendered by a child component — `:global()` scoped
      through `.cmdbarwrap` (this component's own template) is how a parent
@@ -989,8 +993,8 @@
       background 0.12s;
   }
   :global(.cmdbarwrap .chipinput:focus) {
-    border-color: rgba(183, 155, 255, 0.5);
-    background: rgba(183, 155, 255, 0.05);
+    border-color: var(--konjo-flame, #ff9500);
+    background: rgba(255, 149, 0, 0.06);
   }
   .grammarchips {
     display: flex;

@@ -1044,7 +1044,7 @@
      `.goalwrap` (which DOES belong to this template) is how a parent styles
      into a child's internal DOM in Svelte, and keeps this from leaking to
      every other `ChipInput` instance on the page (e.g. the stack dock's
-     cmdbar, which wants its own violet-focus/smaller-font treatment). */
+     cmdbar, which wants its own orange-focus/smaller-font treatment). */
   :global(.goalwrap .chipinput) {
     background: rgba(255, 255, 255, 0.02);
     border: 1px solid rgba(255, 255, 255, 0.11);
