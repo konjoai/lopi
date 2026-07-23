@@ -1,3 +1,28 @@
+# Next Session — after iOS-Web-Parity-Plan-1 Phase 0 (handoff to a local/Xcode session)
+
+**SHIPPED.** Two PRs, both merged to `main`: **#146** — `docs/ops/IOS_WEB_PARITY_PLAN_2026-07-23.md`, a citation-backed audit of `macos/LopiIOS/` against web's 6-item nav plus a 7-phase plan to close the gaps; **#147** — Phase 0 of that plan, porting web's Composer-Grammar-1 `/` → `;` rename into `packages/LopiStacksKit/Sources/LopiStacksKit/StackOps.swift`'s shared `CARD_COMMANDS`/`STACK_COMMANDS` grammar (fixes macOS and iOS in one change), killing `/loop/N` outright (not renaming it — `xN`/`×N` is the sole loop-count grammar, matching web), and updating the per-platform call sites that aren't shared (`StackCardView.swift`/`StackControlDockView.swift` on macOS, `StackCommandBar.swift`/`StackDetailScreen.swift` on iOS).
+
+**TESTS.** `cargo build --workspace` is green (no Rust touched by either PR). **The Swift side is written, not built** — this session ran on a Linux host with no Xcode, the same standing constraint as every prior Swift round in this repo (`docs/ops/IOS_RESEARCH_1_SPIKE.md`, Verify-4, macOS-Loop-Stacks-1). `StackStoreTests.swift` gained a new `testComposerGrammarRenameAcceptance` (the `;model/sonnet`/`;effort/high`/`;branch/main`/`;autonomy/L2`/`;eval/kcqf` table) plus renamed `testInlineCommandAutocomplete`/`testDetectPendingCommand` assertions, but none of it has been compiled or run — this is real, unverified risk, not a formality.
+
+**PUSHED.** Both merged: `817a9d5` (PR #146), `953883b` (PR #147). This handoff section itself is the next commit on this branch.
+
+**NEXT SESSION (the exact next task, in order):**
+1. **Compile-verify Phase 0 first, before writing any new Swift.** On a machine with Xcode:
+   - `cd macos && xcodegen generate && xcodebuild -scheme Lopi build` (macOS target)
+   - `xcodebuild -scheme LopiIOS build` (iOS target)
+   - `cd packages/LopiStacksKit && swift test` — acceptance bar is `testInlineCommandAutocomplete`/`testDetectPendingCommand`/`testComposerGrammarRenameAcceptance` passing alongside the existing ~60 ported assertions, untouched by this change.
+   - Fix whatever the Linux-authored diff got wrong — expect at most a small, single-root-cause gap, per the discipline every prior "written not built" round in this repo has actually hit (one closure-capture bug, one `@MainActor` gap — never a pile of typos).
+   - Live smoke test: type `;model/` in the composer on both platforms, confirm the value picker appears; confirm the old `/model/` no longer triggers anything (hard cutover, by design).
+2. **Then Phase 1 of `docs/ops/IOS_WEB_PARITY_PLAN_2026-07-23.md`: RunMenu + bump on iOS.** iOS's `StackDockView` (`StackCommandBar.swift`) currently has only a bare "run stack" button that always calls `.run` directly — no Run once / Dry run / Schedule stack / Pause / Resume / Drain, and no bump (▲/▼ reorder) UI, both of which macOS (`RunMenuView.swift`) and web (`RunMenu.svelte`) already have. This is an iOS-specific regression versus *both* other platforms, not a platform-parity nice-to-have — closes the biggest in-surface gap on the one surface iOS already ships, before Phases 2–6 (Budget/Scheduling/Loop/Overview/Config, all currently missing entire iOS screens) add new nav destinations.
+
+**DISCOVERIES worth carrying forward:**
+- **iOS's missing surfaces (Budget/Loop/Scheduling/Config) are a UI-screens problem, not a networking problem** — `project.yml`'s `LopiIOS` target already compiles in `Lopi/Networking`/`Lopi/Store` wholesale, and the macOS views for those surfaces (`BudgetView.swift`, `LoopView.swift`, `CronView.swift`, `ConfigView.swift`) have zero AppKit-only dependencies. This changes the shape of Phases 2–6: expect narrow-layout SwiftUI adaptation, not new backend integration.
+- **`LopiStacksKit`'s shared-package boundary is real leverage.** One edit to `StackOps.swift` fixed the grammar on both native platforms at once — the same pattern should be checked for before assuming any future macOS/iOS divergence needs two fixes.
+
+**HEALTH: Yellow.** Structurally sound (tests written, docs updated, `cargo build` green, both PRs passed CI and merged clean) but the core Swift logic change has never been compiled — that's the one thing standing between "done" and "shipped" here, and it's squarely a local-session task.
+
+---
+
 # Next Session — after Browser-Pane-1
 
 Browser-Pane-1 confirmed the Browser pane cleanly shows the real, already-running `lopi sail` dashboard (real data, zero new code) and that Claude navigates there autonomously from a natural, mechanism-blind prompt — both true even before any `CLAUDE.md` note existed (see `LEDGER.md`'s "Browser-Pane-1" entry for the full finding). A `CLAUDE.md` "Live Dashboard (Browser Pane)" section was added anyway, to make the check-for-already-running / start-if-needed / `preview_start`-explicitly sequence explicit rather than rely on every future session re-deriving it.
