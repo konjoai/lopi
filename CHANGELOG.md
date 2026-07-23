@@ -1,5 +1,15 @@
 # Changelog
 
+## [Unreleased] — iOS-Web-Parity-Plan-1 Phase 0: composer grammar unification (`/` → `;`)
+
+Ports web's Composer-Grammar-1 rename into the shared `LopiStacksKit` domain layer, closing the platform divergence `NEXT_SESSION_PROMPT.md` carried forward since that sprint — the first phase of `docs/ops/IOS_WEB_PARITY_PLAN_2026-07-23.md`'s plan.
+
+- **[Fix] `packages/LopiStacksKit/Sources/LopiStacksKit/StackOps.swift`'s `commandAutocomplete`/`detectPendingCommand`/`commandValueAutocomplete` now trigger on `;` instead of `/`**, matching web's `stack.ts` exactly. Fixes macOS and iOS in one change, since both `StackCardView.swift` (macOS) and `StackCommandBar.swift`/`StackDetailScreen.swift` (iOS) read their autocomplete suggestions from this shared module.
+- **[Fix] `/loop/N` killed outright from `STACK_COMMANDS`, not renamed to `;loop/N`** — `xN`/`×N` was already the sole loop-count grammar, so the redundant second path to `pane.config.loopCount` is gone, mirroring web's own decision. Removed the now-dead `case "loop"` branches and the unused `loopCountOptions` catalog from both `StackControlDockView.swift` (macOS) and `StackCommandBar.swift` (iOS).
+- **[Fix] Platform-local grammar call sites updated in lockstep**, since these aren't shared by `LopiStacksKit`: the `;`-vs-`/` trigger-character text-field completion logic in `StackCardView.swift`/`StackControlDockView.swift` (macOS) and `StackCommandBar.swift` (iOS), plus iOS's literal `GrammarChip` hint labels (`StackCommandBar.swift`, `StackDetailScreen.swift`) and both platforms' command-bar placeholder text.
+- **[Test] `StackStoreTests.swift`'s grammar tests renamed to the `;` prefix**, the `loop`-removal assertions updated to reflect the kill (not a rename), and a new `testComposerGrammarRenameAcceptance` ports web's `stack.test.ts` kill-test-1 table (`;model/sonnet`, `;effort/high`, `;branch/main`, `;autonomy/L2`, `;eval/kcqf`) as the literal acceptance bar `NEXT_SESSION_PROMPT.md` called out, using `detectPendingCommand` (which only depends on the command name matching, not a catalog's contents) rather than asserting a literal-value round-trip through the real `MODEL_OPTIONS` catalog, which doesn't hold for every display label.
+- **Written, not built — same standing constraint as every prior Swift round in this repo.** This host has no Xcode; `xcodegen generate && xcodebuild -scheme Lopi build` (or `-scheme LopiIOS`) plus `cd packages/LopiStacksKit && swift test` are still owed before this is confirmed compiling.
+
 ## [Unreleased] — MCPB-App-2: the stack-status widget gets its first write path — click-to-cancel
 
 Wires the widget's `Cancel` action to the already-existing `lopi_cancel_task` MCP tool (`src/mcp_commands/mod.rs`) — the template for click-driven widget actions this repo didn't have before. `lopi_cancel_task` itself is not new; this sprint is entirely the click → `callServerTool()` → server round trip, plus the regression test that proves that round trip actually works over real JSON-RPC, not just in-process.

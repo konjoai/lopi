@@ -65,23 +65,26 @@ public func suggestPreset(_ text: String) -> PresetKey? {
     return nil
 }
 
-// MARK: - Inline `/command` autocomplete
-// Every prompt/stack setting gets a `:`/`@`/`/` alias, not just presets and
-// repo: `/model`, `/effort`, `/branch`, `/autonomy`, `/eval` are value-pickers
-// (mirrors the user's own suggested `/model/<autocomplete>` syntax — the
+// MARK: - Inline `;command` autocomplete
+// Every prompt/stack setting gets a `:`/`@`/`;` alias, not just presets and
+// repo: `;model`, `;effort`, `;branch`, `;autonomy`, `;eval` are value-pickers
+// (mirrors the user's own suggested `;model/<autocomplete>` syntax — the
 // level-2 token embeds the real value directly, so unlike `@repo` there's no
-// label/path resolution step); `/guard`, `/schedule`, `/maxx`, `/goal` carry
+// label/path resolution step); `;guard`, `;schedule`, `;maxx`, `;goal` carry
 // multi-field state that doesn't reduce to one inline value, so picking one
 // just opens the existing popover for it (the composer view owns that action
 // — this module only supplies the pure matching). 1:1 port of the web
-// `commandAutocomplete`/`commandValueAutocomplete` pair.
+// `commandAutocomplete`/`commandValueAutocomplete` pair, including the
+// Composer-Grammar-1 `/` → `;` rename (`/` is reserved for real Claude Code
+// slash commands; `;` is lopi's own catch-all prefix, freed up so the two
+// vocabularies never collide in the same autocomplete surface).
 
-/// One inline `/command` definition.
+/// One inline `;command` definition.
 public struct InlineCommandDef: Equatable {
     public let command: String
     public let hint: String
-    /// `true` → typing `/command` then continues into a second
-    /// `/command/value` token (see `commandValueAutocomplete`). `false` →
+    /// `true` → typing `;command` then continues into a second
+    /// `;command/value` token (see `commandValueAutocomplete`). `false` →
     /// selecting the command fires an immediate action (open a popover) with
     /// no value step.
     public let isValuePicker: Bool
@@ -108,21 +111,22 @@ public let CARD_COMMANDS: [InlineCommandDef] = [
 
 /// Stack-scope commands, typed into the stack's own command bar
 /// (`StackControlDockView`) — same vocabulary, writes to `pane.config`
-/// instead of a card's `config`. Adds `loop` (chain loop count) and `goal`
-/// (run-until-goal), which have no card-level analog.
+/// instead of a card's `config`. Adds `goal` (run-until-goal), which has no
+/// card-level analog. No `;loop/N` command — `xN`/`×N` is the sole
+/// loop-count grammar, so a redundant second path to the same
+/// `pane.config.loopCount` field was killed outright rather than renamed.
 public let STACK_COMMANDS: [InlineCommandDef] = [
     InlineCommandDef(command: "model", hint: "stack default model", isValuePicker: true),
     InlineCommandDef(command: "effort", hint: "stack default effort", isValuePicker: true),
     InlineCommandDef(command: "branch", hint: "stack default branch", isValuePicker: true),
     InlineCommandDef(command: "autonomy", hint: "stack default autonomy", isValuePicker: true),
-    InlineCommandDef(command: "loop", hint: "stack loop count", isValuePicker: true),
     InlineCommandDef(command: "eval", hint: "toggle a stack eval suite", isValuePicker: true),
     InlineCommandDef(command: "guard", hint: "open stack guardrails", isValuePicker: false),
     InlineCommandDef(command: "schedule", hint: "open the stack schedule", isValuePicker: false),
     InlineCommandDef(command: "goal", hint: "open run-until-goal", isValuePicker: false)
 ]
 
-/// A level-1 `/command` suggestion — the bare command name, not yet a value.
+/// A level-1 `;command` suggestion — the bare command name, not yet a value.
 public struct CommandSuggestion: Equatable {
     public let token: String
     public let command: String
@@ -134,38 +138,38 @@ public struct CommandSuggestion: Equatable {
 /// same trailing-word grammar `repoAutocomplete` uses, generalized over a
 /// caller-supplied command list (card vs. stack scope differ).
 public func commandAutocomplete(_ goalText: String, _ commands: [InlineCommandDef]) -> [CommandSuggestion] {
-    guard let slashIndex = goalText.lastIndex(of: "/") else { return [] }
-    let isWordStart = slashIndex == goalText.startIndex || goalText[goalText.index(before: slashIndex)].isWhitespace
+    guard let triggerIndex = goalText.lastIndex(of: ";") else { return [] }
+    let isWordStart = triggerIndex == goalText.startIndex || goalText[goalText.index(before: triggerIndex)].isWhitespace
     guard isWordStart else { return [] }
-    let after = goalText[goalText.index(after: slashIndex)...]
+    let after = goalText[goalText.index(after: triggerIndex)...]
     guard after.allSatisfy({ $0.isLowercase || $0.isNumber }) else { return [] }
     let query = after.lowercased()
     return commands
         .filter { $0.command.hasPrefix(query) }
-        .map { CommandSuggestion(token: "/\($0.command)", command: $0.command, label: $0.command, hint: $0.hint) }
+        .map { CommandSuggestion(token: ";\($0.command)", command: $0.command, label: $0.command, hint: $0.hint) }
 }
 
 /// Infers the level-2 `pendingCommand` straight from the goal text's trailing
-/// `/command/` token, rather than relying solely on the composer having set
+/// `;command/` token, rather than relying solely on the composer having set
 /// it when a level-1 suggestion was clicked. Without this, hand-typing
-/// `/model/` (never clicking the `/model` row) left `pendingCommand` unset,
+/// `;model/` (never clicking the `;model` row) left `pendingCommand` unset,
 /// so `commandValueAutocomplete` never ran and the value list silently never
 /// appeared — typing the token had to produce the same state that clicking
 /// it does. Only matches commands flagged `isValuePicker`; a fired-immediately
-/// command like `/guard/` has no level-2 catalog to switch into. Mirrors the
+/// command like `;guard/` has no level-2 catalog to switch into. Mirrors the
 /// web `detectPendingCommand`.
 public func detectPendingCommand(_ goalText: String, _ commands: [InlineCommandDef]) -> String? {
-    guard let match = goalText.range(of: #"(?:^|\s)/([a-z]+)/\S*$"#, options: .regularExpression) else { return nil }
+    guard let match = goalText.range(of: #"(?:^|\s);([a-z]+)/\S*$"#, options: .regularExpression) else { return nil }
     let token = goalText[match]
-    guard let slash1 = token.firstIndex(of: "/") else { return nil }
-    let afterFirstSlash = token[token.index(after: slash1)...]
-    guard let slash2 = afterFirstSlash.firstIndex(of: "/") else { return nil }
-    let command = String(afterFirstSlash[..<slash2])
+    guard let triggerIndex = token.firstIndex(of: ";") else { return nil }
+    let afterTrigger = token[token.index(after: triggerIndex)...]
+    guard let valueSlash = afterTrigger.firstIndex(of: "/") else { return nil }
+    let command = String(afterTrigger[..<valueSlash])
     let def = commands.first(where: { $0.command == command })
     return def?.isValuePicker == true ? def?.command : nil
 }
 
-/// A level-2 `/command/value` suggestion.
+/// A level-2 `;command/value` suggestion.
 public struct CommandValueSuggestion: Equatable {
     public let token: String
     public let label: String
@@ -175,9 +179,9 @@ public struct CommandValueSuggestion: Equatable {
 
 /// Level 2: once a value-picker command has been chosen (the composer view
 /// tracks this as its own `pendingCommand` state), matches a trailing
-/// `/command/value` token against whatever catalog applies to `command`.
+/// `;command/value` token against whatever catalog applies to `command`.
 public func commandValueAutocomplete(_ goalText: String, _ command: String, _ options: [StackOption]) -> [CommandValueSuggestion] {
-    let prefix = "/\(command)/"
+    let prefix = ";\(command)/"
     guard let range = goalText.range(of: prefix, options: .backwards) else { return [] }
     let isWordStart = range.lowerBound == goalText.startIndex || goalText[goalText.index(before: range.lowerBound)].isWhitespace
     guard isWordStart else { return [] }
@@ -189,7 +193,7 @@ public func commandValueAutocomplete(_ goalText: String, _ command: String, _ op
         .map { CommandValueSuggestion(token: "\(prefix)\($0.value)", label: $0.label, hint: $0.hint, value: $0.value) }
 }
 
-/// `/eval`'s value catalog is the suite-shortcut names (`kcqf`/`security`/
+/// `;eval`'s value catalog is the suite-shortcut names (`kcqf`/`security`/
 /// `research`), not individual eval names — those contain spaces (`"vuln
 /// scan"`, `"code review"`), which the trailing-token grammar can't carry.
 /// Bulk-toggling a suite is the useful, space-free case; per-eval toggling
