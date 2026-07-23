@@ -25,12 +25,12 @@ struct StackControlDockView: View {
     @State private var runMainHeight: CGFloat = 0
     @State private var dryRunResult: DryRunResult?
 
-    // ── stack command bar (`@repo` / `/command`) ────────────────────────────
+    // ── stack command bar (`@repo` / `;command`) ────────────────────────────
     // The stack-only analogue of a card's goal-field autocomplete (Stack-1
-    // §4): loop count, stack schedule/guardrails/run-until-goal have no
-    // card-level equivalent to piggyback on, so they need their own
-    // text-entry surface. Same `@`/`/` grammar as `StackCardView`'s composer,
-    // writing to `pane.config` instead of a card's `config`.
+    // §4): stack schedule/guardrails/run-until-goal have no card-level
+    // equivalent to piggyback on, so they need their own text-entry surface.
+    // Same `@`/`;` grammar as `StackCardView`'s composer, writing to
+    // `pane.config` instead of a card's `config`.
     @State private var cmdText = ""
     @FocusState private var cmdBarFocused: Bool
     @State private var cmdActiveIndex = 0
@@ -56,14 +56,6 @@ struct StackControlDockView: View {
         case "autonomy": return AUTONOMY_OPTIONS
         case "branch": return (model.branchesByRepo[config.defaults.repo] ?? []).map { StackOption(value: $0, label: $0) }
         case "eval": return evalSuiteOptions()
-        case "loop": return [
-            StackOption(value: "1", label: "1 (off)"),
-            StackOption(value: "2", label: "2"),
-            StackOption(value: "3", label: "3"),
-            StackOption(value: "5", label: "5"),
-            StackOption(value: "10", label: "10"),
-            StackOption(value: "0", label: "∞ (unlimited)")
-        ]
         default: return []
         }
     }
@@ -79,7 +71,6 @@ struct StackControlDockView: View {
     private func applyCommandValue(_ command: String, _ value: String) {
         switch command {
         case "eval": store.updateStackConfig(pane.key) { $0.evals = applySuite($0.evals, EVAL_SUITES[value] ?? []) }
-        case "loop": store.updateStackConfig(pane.key) { $0.loopCount = Int(value) ?? 0 }
         case "model": store.updateStackConfig(pane.key) { $0.defaults.model = value }
         case "effort": store.updateStackConfig(pane.key) { $0.defaults.effort = value }
         case "branch": store.updateStackConfig(pane.key) { $0.defaults.branch = value }
@@ -113,7 +104,7 @@ struct StackControlDockView: View {
             let command = String(token.dropFirst())
             let def = STACK_COMMANDS.first(where: { $0.command == command })
             if def?.isValuePicker == true {
-                cmdText = "/\(command)/"
+                cmdText = ";\(command)/"
                 pendingCommand = command
             } else {
                 fireCommandAction(command)
@@ -285,7 +276,7 @@ struct StackControlDockView: View {
     // MARK: Command bar
 
     private var commandBar: some View {
-        TextField("@org/repo /model /effort /branch /autonomy /loop /guard /schedule /eval /goal", text: $cmdText)
+        TextField("@org/repo ;model ;effort ;branch ;autonomy ;guard ;schedule ;eval ;goal", text: $cmdText)
             .textFieldStyle(.plain).font(Konjo.mono(12)).foregroundStyle(Konjo.fg)
             .focused($cmdBarFocused)
             .onChange(of: cmdText) { _, newText in
@@ -293,10 +284,10 @@ struct StackControlDockView: View {
                 // Re-infer `pendingCommand` from the typed text on every
                 // change — see `StackCardView`'s identical comment for why
                 // relying only on `selectCommandFromBar`'s explicit
-                // assignment misses hand-typed `/model/`.
+                // assignment misses hand-typed `;model/`.
                 if let inferred = detectPendingCommand(newText, STACK_COMMANDS) {
                     pendingCommand = inferred
-                } else if let pending = pendingCommand, !newText.contains("/\(pending)/") {
+                } else if let pending = pendingCommand, !newText.contains(";\(pending)/") {
                     pendingCommand = nil
                 }
             }

@@ -7,7 +7,7 @@ import LopiStacksKit
 /// StackControlDock.svelte`), not the stale macOS SwiftUI view.
 ///
 /// The command bar is the same trailing-token grammar as the card composer
-/// (`:alias`, `@repo`, `/command/value`) but scoped to `STACK_COMMANDS` and
+/// (`:alias`, `@repo`, `;command/value`) but scoped to `STACK_COMMANDS` and
 /// applied straight to `StackConfig` via `updateStackConfig` — there is no
 /// commit step, each selection takes effect immediately, matching web.
 struct StackDockView: View {
@@ -44,8 +44,8 @@ struct StackDockView: View {
                 HStack(spacing: 6) {
                     GrammarChip(label: ":alias", color: Konjo.stackTeal)
                     GrammarChip(label: "@repo", color: Konjo.ice)
-                    GrammarChip(label: "/model", color: Konjo.stackViolet)
-                    GrammarChip(label: "/effort", color: Konjo.flame)
+                    GrammarChip(label: ";model", color: Konjo.stackViolet)
+                    GrammarChip(label: ";effort", color: Konjo.flame)
                     GrammarChip(label: "×N", color: Konjo.sun)
                 }
 
@@ -176,22 +176,12 @@ struct StackDockView: View {
         case "effort": return EFFORT_OPTIONS
         case "autonomy": return AUTONOMY_OPTIONS
         case "eval": return evalSuiteOptions()
-        case "loop": return StackDockView.loopCountOptions
         case "branch":
             let repo = config?.defaults.repo ?? ""
             return (model.branchesByRepo[repo] ?? []).map { StackOption(value: $0, label: $0) }
         default: return []
         }
     }
-
-    private static let loopCountOptions: [StackOption] = [
-        StackOption(value: "0", label: "off"),
-        StackOption(value: "1", label: "1"),
-        StackOption(value: "2", label: "2"),
-        StackOption(value: "3", label: "3"),
-        StackOption(value: "5", label: "5"),
-        StackOption(value: "10", label: "10")
-    ]
 
     private var suggestions: [CmdSuggestion] {
         if let command = detectPendingCommand(cmdText, STACK_COMMANDS) {
@@ -231,8 +221,8 @@ struct StackDockView: View {
     private func completeCommandToken(_ s: CommandSuggestion) {
         let def = STACK_COMMANDS.first(where: { $0.command == s.command })
         if def?.isValuePicker == true {
-            if let slashIndex = cmdText.lastIndex(of: "/") {
-                cmdText.replaceSubrange(slashIndex..., with: "\(s.token)/")
+            if let triggerIndex = cmdText.lastIndex(of: ";") {
+                cmdText.replaceSubrange(triggerIndex..., with: "\(s.token)/")
             }
         } else {
             cmdText = ""
@@ -255,7 +245,6 @@ struct StackDockView: View {
             case "branch": cfg.defaults.branch = value
             case "autonomy": cfg.defaults.autonomy = value
             case "repo": cfg.defaults.repo = value
-            case "loop": cfg.loopCount = Int(value) ?? 0
             case "eval":
                 for name in EVAL_SUITES[value] ?? [] {
                     guard let ref = EVAL_CATALOG.first(where: { $0.name == name }), !cfg.evals.contains(ref) else { continue }

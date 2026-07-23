@@ -695,32 +695,32 @@ final class StackStoreTests: XCTestCase {
             "a card with no repo of its own leaves the stack default untouched")
     }
 
-    // MARK: inline `/command` autocomplete — level 1 (command names) + level 2
-    // (`/command/value`), mirroring `@repo`'s trailing-word grammar
+    // MARK: inline `;command` autocomplete — level 1 (command names) + level 2
+    // (`;command/value`), mirroring `@repo`'s trailing-word grammar
 
     func testInlineCommandAutocomplete() {
-        XCTAssertEqual(commandAutocomplete("/mo", CARD_COMMANDS).count, 1, "a unique command prefix returns one match")
-        XCTAssertEqual(commandAutocomplete("/mo", CARD_COMMANDS).first?.token, "/model", "the match carries the full command token")
-        XCTAssertEqual(commandAutocomplete("fix the bug /", CARD_COMMANDS).count, CARD_COMMANDS.count, "a bare slash matches every command")
-        XCTAssertEqual(commandAutocomplete("/nope", CARD_COMMANDS).count, 0, "no command starts with an unknown prefix")
-        XCTAssertEqual(commandAutocomplete("fix /model bug", CARD_COMMANDS).count, 0, "once a space follows the token, the goal has moved on")
-        XCTAssertEqual(commandAutocomplete("fix the bug", CARD_COMMANDS).count, 0, "no trailing slash means no suggestions")
-        XCTAssertTrue(
-            STACK_COMMANDS.contains(where: { $0.command == "loop" }) && !CARD_COMMANDS.contains(where: { $0.command == "loop" }),
-            "`loop` is stack-scope only — no per-card loop count to override")
+        XCTAssertEqual(commandAutocomplete(";mo", CARD_COMMANDS).count, 1, "a unique command prefix returns one match")
+        XCTAssertEqual(commandAutocomplete(";mo", CARD_COMMANDS).first?.token, ";model", "the match carries the full command token")
+        XCTAssertEqual(commandAutocomplete("fix the bug ;", CARD_COMMANDS).count, CARD_COMMANDS.count, "a bare semicolon matches every command")
+        XCTAssertEqual(commandAutocomplete(";nope", CARD_COMMANDS).count, 0, "no command starts with an unknown prefix")
+        XCTAssertEqual(commandAutocomplete("fix ;model bug", CARD_COMMANDS).count, 0, "once a space follows the token, the goal has moved on")
+        XCTAssertEqual(commandAutocomplete("fix the bug", CARD_COMMANDS).count, 0, "no trailing semicolon means no suggestions")
+        XCTAssertFalse(
+            STACK_COMMANDS.contains(where: { $0.command == "loop" }) || CARD_COMMANDS.contains(where: { $0.command == "loop" }),
+            "`loop` was killed outright, not renamed — `xN`/`×N` is the sole loop-count grammar")
         XCTAssertTrue(
             CARD_COMMANDS.contains(where: { $0.command == "guard" }) && STACK_COMMANDS.contains(where: { $0.command == "guard" }),
             "`guard` exists at both scopes")
 
-        XCTAssertEqual(commandValueAutocomplete("/model/op", "model", MODEL_OPTIONS).count, 1, "level 2 filters the given catalog by the value typed so far")
+        XCTAssertEqual(commandValueAutocomplete(";model/op", "model", MODEL_OPTIONS).count, 1, "level 2 filters the given catalog by the value typed so far")
         XCTAssertEqual(
-            commandValueAutocomplete("/model/op", "model", MODEL_OPTIONS).first?.token, "/model/claude-opus-4-8",
+            commandValueAutocomplete(";model/op", "model", MODEL_OPTIONS).first?.token, ";model/claude-opus-4-8",
             "the level-2 token embeds the real value directly — no label/path resolution step, unlike @repo")
-        XCTAssertEqual(commandValueAutocomplete("/model/", "model", MODEL_OPTIONS).count, MODEL_OPTIONS.count, "an empty value query matches everything")
-        XCTAssertEqual(commandValueAutocomplete("/model/nope", "model", MODEL_OPTIONS).count, 0, "no option starts with an unknown value prefix")
-        XCTAssertEqual(commandValueAutocomplete("/model/opus done", "model", MODEL_OPTIONS).count, 0, "a space after the value token closes the list")
+        XCTAssertEqual(commandValueAutocomplete(";model/", "model", MODEL_OPTIONS).count, MODEL_OPTIONS.count, "an empty value query matches everything")
+        XCTAssertEqual(commandValueAutocomplete(";model/nope", "model", MODEL_OPTIONS).count, 0, "no option starts with an unknown value prefix")
+        XCTAssertEqual(commandValueAutocomplete(";model/opus done", "model", MODEL_OPTIONS).count, 0, "a space after the value token closes the list")
         XCTAssertEqual(
-            commandValueAutocomplete("/effort/lo", "effort", EFFORT_OPTIONS).first?.token, "/effort/low",
+            commandValueAutocomplete(";effort/lo", "effort", EFFORT_OPTIONS).first?.token, ";effort/low",
             "a different command matches its own catalog")
 
         XCTAssertEqual(evalSuiteOptions().count, 3, "eval's catalog is the three suite shortcuts, not individual eval names")
@@ -732,13 +732,49 @@ final class StackStoreTests: XCTestCase {
 
     func testDetectPendingCommand() {
         XCTAssertEqual(
-            detectPendingCommand(":research /model/", CARD_COMMANDS), "model",
+            detectPendingCommand(":research ;model/", CARD_COMMANDS), "model",
             "hand-typing a value-picker token enters level-2 mode, same as clicking the level-1 suggestion would")
-        XCTAssertEqual(detectPendingCommand("/model/op", CARD_COMMANDS), "model", "detects even with a partial value already typed")
-        XCTAssertNil(detectPendingCommand("/guard/", CARD_COMMANDS), "a non-value-picker command never enters level-2 mode")
-        XCTAssertNil(detectPendingCommand("/nope/", CARD_COMMANDS), "an unknown command name matches nothing")
-        XCTAssertNil(detectPendingCommand("fix the bug", CARD_COMMANDS), "no trailing /command/ token means no pending command")
-        XCTAssertEqual(detectPendingCommand("/loop/3", STACK_COMMANDS), "loop", "stack-scope commands are matched against their own list")
+        XCTAssertEqual(detectPendingCommand(";model/op", CARD_COMMANDS), "model", "detects even with a partial value already typed")
+        XCTAssertNil(detectPendingCommand(";guard/", CARD_COMMANDS), "a non-value-picker command never enters level-2 mode")
+        XCTAssertNil(detectPendingCommand(";nope/", CARD_COMMANDS), "an unknown command name matches nothing")
+        XCTAssertNil(detectPendingCommand("fix the bug", CARD_COMMANDS), "no trailing ;command/ token means no pending command")
+        XCTAssertNil(detectPendingCommand(";loop/3", STACK_COMMANDS), "`loop` was removed outright — never enters level-2 mode")
+    }
+
+    // MARK: Composer-Grammar-1 rename acceptance bar — ported from web's
+    // `stack.test.ts` kill-test-1 table (`;model/sonnet`, `;effort/high`,
+    // `;branch/main`, `;autonomy/L2`, `;eval/kcqf`), per `NEXT.md`'s
+    // carried-forward note calling this the literal bar for the Swift port.
+    // `detectPendingCommand` only depends on the command *name* matching the
+    // regex, not a catalog's contents, so it's the safe apples-to-apples
+    // check for every entry in the table; `commandValueAutocomplete`'s value
+    // match is a `label`-substring test (`OptionMenu.swift`'s `optionMatches`),
+    // so its real-catalog behavior is exercised separately above rather than
+    // assumed to round-trip every literal value in this table (e.g.
+    // `MODEL_OPTIONS`'s "sonnet" entries have `label`s like "Sonnet 5", so a
+    // `;model/sonnet` query would legitimately resolve to a *different*
+    // value token than the query text itself — that's correct behavior, not
+    // a bug this test should assert against).
+
+    func testComposerGrammarRenameAcceptance() {
+        for (token, command) in [
+            (";model/sonnet", "model"),
+            (";effort/high", "effort"),
+            (";branch/main", "branch"),
+            (";autonomy/L2", "autonomy"),
+            (";eval/kcqf", "eval")
+        ] {
+            XCTAssertEqual(
+                detectPendingCommand(token, CARD_COMMANDS), command,
+                "\(token) is recognized as a pending `\(command)` command under the new `;` prefix")
+        }
+
+        // Hard cutover, no backward-compat shim: the retired `/` prefix must
+        // never match post-rename (`LEDGER.md`'s Composer-Grammar-1 entry —
+        // an old `/model/...` token now renders as plain text, not a chip).
+        XCTAssertNil(detectPendingCommand("/model/sonnet", CARD_COMMANDS), "the retired `/` prefix no longer matches")
+        XCTAssertEqual(commandAutocomplete(";mo", CARD_COMMANDS).first?.token, ";model")
+        XCTAssertEqual(commandValueAutocomplete(";effort/hi", "effort", EFFORT_OPTIONS).first?.token, ";effort/high")
     }
 
     func testFinalizeDraftKeepsConfiguredDraft() {

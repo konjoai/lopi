@@ -148,8 +148,8 @@ private struct ComposerCardView: View {
             HStack(spacing: 6) {
                 GrammarChip(label: ":alias", color: Konjo.stackTeal)
                 GrammarChip(label: "@repo", color: Konjo.ice)
-                GrammarChip(label: "/model", color: Konjo.stackViolet)
-                GrammarChip(label: "/effort", color: Konjo.flame)
+                GrammarChip(label: ";model", color: Konjo.stackViolet)
+                GrammarChip(label: ";effort", color: Konjo.flame)
                 GrammarChip(label: "×N", color: Konjo.sun)
             }
 

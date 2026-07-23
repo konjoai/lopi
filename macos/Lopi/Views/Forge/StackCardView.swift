@@ -55,11 +55,11 @@ struct StackCardView: View {
         card.config.repo.map { repoLabelForPath($0, repoOptions) }
     }
 
-    // ── inline `/command` autocomplete (model/effort/branch/autonomy/eval/
+    // ── inline `;command` autocomplete (model/effort/branch/autonomy/eval/
     //    guard/schedule) ────────────────────────────────────────────────────
-    // Two-level grammar, mirroring the user's own suggested `/model/<value>`
-    // syntax: typing `/` suggests command names (`commandAutocomplete`);
-    // picking a value-picker command moves into a second `/command/value`
+    // Two-level grammar, mirroring the user's own suggested `;model/<value>`
+    // syntax: typing `;` suggests command names (`commandAutocomplete`);
+    // picking a value-picker command moves into a second `;command/value`
     // token (`commandValueAutocomplete`) against that command's own catalog.
     // Picking a non-value-picker command (guard/schedule/maxx) fires
     // immediately — strips the token and flips the existing
@@ -297,7 +297,7 @@ struct StackCardView: View {
     /// Goal on its own full-width inset line (a chip-adjacent field truncated in
     /// the mockup). Still honors `:alias @repo ×N` on commit via `finalizeDraft`.
     private var goalField: some View {
-        TextField("describe the prompt or goal...  (i.e. :alias @org/repo /model/opus xN)", text: goalBinding)
+        TextField("describe the prompt or goal...  (i.e. :alias @org/repo ;model/opus xN)", text: goalBinding)
             .textFieldStyle(.plain).font(Konjo.mono(14)).foregroundStyle(Konjo.fg)
             .focused($goalFocused)
             .accessibilityIdentifier("stack.goalField")
@@ -313,14 +313,14 @@ struct StackCardView: View {
                 cmdDismissed = false
                 // Re-infer `pendingCommand` from the goal text on every
                 // change, not just from `selectCommand`'s explicit
-                // assignment — otherwise hand-typing `/model/` (rather than
-                // clicking the `/model` row) never entered value-picker
+                // assignment — otherwise hand-typing `;model/` (rather than
+                // clicking the `;model` row) never entered value-picker
                 // mode. Falls back to the old clear-on-abandon behavior once
-                // the `/command/` prefix itself is edited away (e.g.
+                // the `;command/` prefix itself is edited away (e.g.
                 // backspaced).
                 if let inferred = detectPendingCommand(newGoal, CARD_COMMANDS) {
                     pendingCommand = inferred
-                } else if let pending = pendingCommand, !newGoal.contains("/\(pending)/") {
+                } else if let pending = pendingCommand, !newGoal.contains(";\(pending)/") {
                     pendingCommand = nil
                 }
             }
@@ -475,7 +475,7 @@ struct StackCardView: View {
     private func selectCommand(_ token: String) {
         if let pending = pendingCommand {
             if case .value(let suggestion)? = cmdMatches.first(where: { $0.token == token }) {
-                let prefix = "/\(pending)/"
+                let prefix = ";\(pending)/"
                 if let range = card.goal.range(of: prefix, options: .backwards) {
                     store.updateDraftInPane(paneKey) { $0.goal = String(card.goal[..<range.lowerBound]) }
                     applyCommandValue(pending, suggestion.value)
@@ -484,13 +484,13 @@ struct StackCardView: View {
             pendingCommand = nil
         } else {
             let command = String(token.dropFirst())
-            guard let slashIndex = card.goal.lastIndex(of: "/") else { return }
+            guard let triggerIndex = card.goal.lastIndex(of: ";") else { return }
             let def = CARD_COMMANDS.first(where: { $0.command == command })
             if def?.isValuePicker == true {
-                store.updateDraftInPane(paneKey) { $0.goal = "\(card.goal[..<slashIndex])/\(command)/" }
+                store.updateDraftInPane(paneKey) { $0.goal = "\(card.goal[..<triggerIndex]);\(command)/" }
                 pendingCommand = command
             } else {
-                store.updateDraftInPane(paneKey) { $0.goal = String(card.goal[..<slashIndex]) }
+                store.updateDraftInPane(paneKey) { $0.goal = String(card.goal[..<triggerIndex]) }
                 fireCommandAction(command)
             }
         }

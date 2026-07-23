@@ -136,21 +136,21 @@ was a deliberate hard cutover with no backward-compat shim.
    prefix — that character is fully free for a real Claude Code `/`-command
    hookup in the same goal/cmdbar fields, with no autocomplete collision
    against lopi's own grammar (which now lives entirely under `;`).
-2. **macOS still speaks the old `/`-prefixed grammar — genuine, unclosed
-   platform divergence.** `StackCardView.swift`/`StackControlDockView.swift`
-   (and whatever `LopiStacksKit` Swift file mirrors `stack.ts`'s
-   `CARD_COMMANDS`/`commandAutocomplete`/`detectPendingCommand`) were not
-   touched this session — the sprint brief scoped every referenced file to
-   web, and this environment has no Xcode to compile-verify a Swift change
-   against (same standing constraint prior sessions hit). The divergence is
-   cosmetic, not functional — each platform's composer only ever parses its
-   own locally-typed text into the same `card.config` wire fields, so
-   behavior is identical, only the shortcut *text* a user types differs by
-   platform. Port the identical `/` → `;` rename (plus the `/loop/N` removal)
-   to the Swift side once a session with real Xcode access is available;
-   `stack.test.ts`'s new kill-test-1 table (`;model/sonnet`, `;effort/high`,
-   `;branch/main`, `;autonomy/L2`, `;eval/kcqf`) is the literal acceptance
-   bar to port over as Swift assertions.
+2. **Resolved (`iOS-Web-Parity-Plan-1` Phase 0) — `LopiStacksKit`'s
+   `StackOps.swift` (`CARD_COMMANDS`/`STACK_COMMANDS`/`commandAutocomplete`/
+   `detectPendingCommand`/`commandValueAutocomplete`) now speaks the same
+   `;` prefix as web, fixing both macOS and iOS in one shared-package change
+   (`StackCardView.swift`/`StackControlDockView.swift` on macOS,
+   `StackCommandBar.swift`/`StackDetailScreen.swift` on iOS were also updated
+   for their own literal grammar-hint chips and trigger-character text-field
+   logic, which aren't shared). `/loop/N` was killed outright on the Swift
+   side too — `xN`/`×N` is the sole loop-count grammar, matching web.
+   `stack.test.ts`'s kill-test-1 table (`;model/sonnet`, `;effort/high`,
+   `;branch/main`, `;autonomy/L2`, `;eval/kcqf`) is ported as
+   `StackStoreTests.testComposerGrammarRenameAcceptance`. **Still owed:** this
+   was written on the same Xcode-less host as every prior Swift round in this
+   repo — compile-verify (`xcodegen generate && xcodebuild -scheme Lopi
+   build`, `swift test` for `LopiStacksKit`) before treating it as done.
 
 ---
 
