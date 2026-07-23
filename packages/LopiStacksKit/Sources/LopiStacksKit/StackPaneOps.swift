@@ -51,6 +51,7 @@ public func duplicateStack(_ state: [StackPaneState], _ key: String) -> [StackPa
         c.status = .idle
         c.iteration = nil
         c.taskId = nil
+        c.blockReason = nil
         return c
     }
     let clone = StackPaneState(
@@ -79,6 +80,7 @@ public func loadStackCardsInto(_ state: [StackPaneState], targetKey: String, sou
         c.status = .idle
         c.iteration = nil
         c.taskId = nil
+        c.blockReason = nil
         return c
     }
     return applyToPaneCards(state, targetKey) { _ in copiedCards }

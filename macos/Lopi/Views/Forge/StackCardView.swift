@@ -227,6 +227,11 @@ struct StackCardView: View {
         case .running: return orb.glowColor.opacity(0.45)
         case .queued: return orb.glowColor.opacity(0.4)
         case .done: return orb.glowColor.opacity(0.35)
+        // Fixed rose rather than orb-derived like running/queued/done: unlike
+        // those, `blocked` is the card's own durable state, while `orb` is a
+        // live lookup keyed by `taskId` that goes stale on reload long before
+        // the card itself stops reading `.blocked`. Mirrors web's `.pc.blocked`.
+        case .blocked: return Konjo.rose.opacity(0.45)
         case .idle, .draft: return Konjo.line
         }
     }
@@ -247,6 +252,7 @@ struct StackCardView: View {
         case .running: return Konjo.flame
         case .queued: return Konjo.ice
         case .done: return Konjo.jade
+        case .blocked: return Konjo.rose
         case .idle, .draft: return Konjo.fgDim
         }
     }
@@ -277,6 +283,9 @@ struct StackCardView: View {
             goalField
         } else {
             committedSpec
+            if card.status == .blocked, let reason = card.blockReason {
+                blockReasonRow(reason)
+            }
             if card.status == .running, let it = card.iteration {
                 iterBar(it)
             }
@@ -284,6 +293,19 @@ struct StackCardView: View {
                 LiveOutputView(blocks: TranscriptBuilder.build(from: agent), streaming: agent.active)
             }
         }
+    }
+
+    /// Inline failure reason for a blocked card (round 2, item 3) — only
+    /// rendered when the card actually carries one. Mirrors web's
+    /// `.blockreason` row (`StackCard.svelte`).
+    private func blockReasonRow(_ reason: String) -> some View {
+        HStack(alignment: .top, spacing: 6) {
+            Image(systemName: "xmark.circle").font(.system(size: 10)).foregroundStyle(Konjo.rose)
+            Text(reason).font(Konjo.mono(10)).foregroundStyle(Color(hex: 0xFFAACB))
+        }
+        .padding(.horizontal, 10).padding(.vertical, 8)
+        .background(RoundedRectangle(cornerRadius: 7).fill(Konjo.rose.opacity(0.08)))
+        .padding(.top, 9)
     }
 
     private var draftHeader: some View {

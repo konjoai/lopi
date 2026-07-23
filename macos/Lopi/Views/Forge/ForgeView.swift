@@ -104,9 +104,27 @@ struct ForgeView: View {
             store: store, engine: engine, pane: pane, index: idx, repoOptions: repoChoices,
             onClose: store.panes.count > 1 ? { closePane(pane.key) } : nil)
         if model.armedStackDragIndex == idx {
-            content.draggable(StackDragPayload(index: idx))
+            content.draggable(StackDragPayload(index: idx)).overlay { focusFlash(pane.key) }
         } else {
-            content
+            content.overlay { focusFlash(pane.key) }
+        }
+    }
+
+    /// The `/overview` board's "open this stack" affordance: a fading ice
+    /// ring around the pane the user just clicked through to, then clears
+    /// itself. Mirrors web's `focusStack.ts` + `StackPane.svelte`'s 1.4s
+    /// `focusflash` (`box-shadow` ring fading from 0.9 to 0 opacity).
+    @ViewBuilder
+    private func focusFlash(_ key: String) -> some View {
+        if model.focusedStackKey == key {
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Konjo.ice, lineWidth: 2)
+                .transition(.opacity)
+                .task {
+                    try? await Task.sleep(nanoseconds: 1_400_000_000)
+                    if model.focusedStackKey == key { model.focusedStackKey = nil }
+                }
+                .animation(.easeOut(duration: 1.4), value: model.focusedStackKey)
         }
     }
 

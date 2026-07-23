@@ -110,6 +110,9 @@ final class StackRunTests: XCTestCase {
         XCTAssertEqual(refs(mock), ["a", "b"], "failing second card stops before the third launches")
         XCTAssertEqual(engine.run(for: "s1")?.phase, .error, "a failed card puts the run into error")
         XCTAssertTrue(engine.run(for: "s1")?.error?.contains("failed") ?? false, "the error names the outcome")
+        let failedCard = store.pane(for: "s1")?.cards.first { $0.id == "b" }
+        XCTAssertEqual(failedCard?.status, .blocked, "the failed card is marked blocked, not done")
+        XCTAssertTrue(failedCard?.blockReason?.contains("failed") ?? false, "blockReason names the outcome")
     }
 
     func testPauseThenResume() async {
