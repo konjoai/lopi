@@ -8,6 +8,7 @@
 > Telegram/WhatsApp.
 >
 > By [KonjoAI](https://github.com/konjoai) · MIT licensed · `v0.22.0`
+> [![crates.io](https://img.shields.io/crates/v/lopi.svg)](https://crates.io/crates/lopi)
 
 ```
 lopi run     # queue and run a task
@@ -91,6 +92,20 @@ worktrees, the web dashboard) is local to the machine you run it on.
 
 ## Quickstart
 
+Via Homebrew (macOS/Linux):
+
+```bash
+brew install konjoai/lopi/lopi
+```
+
+Via [crates.io](https://crates.io/crates/lopi):
+
+```bash
+cargo install lopi
+```
+
+From source:
+
 ```bash
 git clone https://github.com/konjoai/lopi.git
 cd lopi
@@ -99,17 +114,12 @@ cp lopi.toml.example lopi.toml
 ./target/release/lopi run --goal "fix the failing test in src/foo.rs" --repo .
 ```
 
-Or via Homebrew (macOS/Linux):
-
-```bash
-brew install konjoai/lopi/lopi
-```
-
 Building the web dashboard is optional but recommended (`cd web && npm
 install && npm run build`) — without it, `lopi sail` serves a placeholder
-page instead of the Forge UI (the Homebrew formula builds it for you). See
-[`docs/RUNNING.md`](./docs/RUNNING.md) for the full build/run guide, including
-the native macOS app.
+page instead of the Forge UI (the Homebrew formula builds it for you; `cargo
+install` ships without it — build from source if you want the Forge UI from
+a `cargo install`). See [`docs/RUNNING.md`](./docs/RUNNING.md) for the full
+build/run guide, including the native macOS app.
 
 ## CLI
 
