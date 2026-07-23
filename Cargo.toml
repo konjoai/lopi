@@ -97,6 +97,8 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "High-performance Rust agent orchestrator for Claude Code"
+readme = "README.md"
+include = ["src/**", "/README.md", "/LICENSE"]
 
 [[bin]]
 name = "lopi"
