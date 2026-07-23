@@ -432,6 +432,7 @@ public func duplicateCard(_ cards: [StackCard], _ id: String) -> [StackCard] {
     clone.status = .idle
     clone.iteration = nil
     clone.taskId = nil
+    clone.blockReason = nil
     // A clone never shares its original's backend /api/maxx row — reset to
     // disabled and drop the entry id (mirrors web's `duplicateCard`).
     clone.maxx.enabled = false

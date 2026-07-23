@@ -117,6 +117,11 @@ final class AppModel {
     /// Non-fatal error banner text (auto-cleared by the UI).
     var banner: String?
 
+    /// The `/overview` board's "open this stack" signal — set to a pane key
+    /// when a kanban card is clicked; `ForgeView` flashes the matching pane
+    /// and clears this back to `nil`. Mirrors web's `focusStack.ts`.
+    var focusedStackKey: String?
+
     // MARK: Loop-stack state (macOS Loop Stacks — client-only, in-memory)
 
     /// The client-only stack panes (the `panes` writable analogue). Observable so

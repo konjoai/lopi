@@ -219,10 +219,10 @@ struct RootView: View {
         case .budget: BudgetView()
         case .cron: CronView()
         case .loop: LoopView()
-        case .overview: OverviewView(onFocus: { id in
+        case .overview: OverviewView(onOpenStack: { key in
             model.banner = nil
             selection = .forge
-            layout.openSession(id)
+            model.focusedStackKey = key
         })
         case .config: ConfigView()
         }

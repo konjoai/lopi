@@ -199,8 +199,12 @@ public struct CardConfig: Codable, Hashable {
 /// in-composer draft card (Creation-Flow-1) — never in `pane.cards`, excluded
 /// from every run/loop-count/payload path (see `executionOrder`), and handled
 /// explicitly by every `CardStatus` switch rather than falling into a run path.
+/// `blocked` (mirrors web's round 2, item 3) is the terminal state for a run
+/// that ended failed/cancelled — as distinct from `done`, which is reserved
+/// for a completed run. Must be handled explicitly by any `CardStatus`
+/// consumer rather than falling into the `done` branch by default.
 public enum CardStatus: String, Codable, Hashable {
-    case draft, idle, queued, running, done
+    case draft, idle, queued, running, done, blocked
 }
 
 /// Which kind of template produced a card — drives the provenance chip's color
@@ -238,7 +242,8 @@ public struct StackCard: Codable, Hashable, Identifiable {
                 iteration: IterationProgress?, scheduled: Bool, cron: CronConfig,
                 guardrails: Guardrails, config: CardConfig, taskId: String?,
                 tpl: String? = nil, tplKind: TplKind? = nil,
-                maxx: MaxxConfig = defaultMaxx(), maxxEntryId: String? = nil) {
+                maxx: MaxxConfig = defaultMaxx(), maxxEntryId: String? = nil,
+                blockReason: String? = nil) {
         self.id = id
         self.preset = preset
         self.goal = goal
@@ -257,6 +262,7 @@ public struct StackCard: Codable, Hashable, Identifiable {
         self.tplKind = tplKind
         self.maxx = maxx
         self.maxxEntryId = maxxEntryId
+        self.blockReason = blockReason
     }
 
     public var id: String
@@ -289,6 +295,10 @@ public struct StackCard: Codable, Hashable, Identifiable {
     /// anything other than the MAXX popover's CRUD wiring, and cleared on
     /// duplicate so a clone never shares its original's backend entry.
     public var maxxEntryId: String? = nil
+    /// The failure message when `status == .blocked` (mirrors web's round 2,
+    /// item 3). `nil` otherwise; cleared whenever a card is re-queued or
+    /// cloned so a re-run/copy never shows a stale prior failure.
+    public var blockReason: String? = nil
 }
 
 // MARK: - Eval catalog (client-side static config)

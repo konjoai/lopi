@@ -267,7 +267,10 @@ public final class StackRunEngine {
             ? cardToTaskPayloadForRunOnce(card, defaults)
             : cardToTaskPayload(card, defaults)
 
-        seams.updateCard(paneKey, cardId) { $0.status = .queued }
+        // Clear a stale `blockReason` from a prior failed run — a re-run
+        // starts clean, not still showing last time's failure while it's
+        // mid-flight (mirrors web's `advance`).
+        seams.updateCard(paneKey, cardId) { $0.status = .queued; $0.blockReason = nil }
         let taskId: String
         do {
             taskId = try await seams.createTask(payload)
@@ -281,7 +284,12 @@ public final class StackRunEngine {
         }
         seams.updateCard(paneKey, cardId) { $0.status = .running; $0.taskId = taskId }
         let terminal = await seams.waitForTerminal(taskId)
-        seams.updateCard(paneKey, cardId) { $0.status = .done }
+        if terminal == .completed {
+            seams.updateCard(paneKey, cardId) { $0.status = .done }
+        } else {
+            let reason = "\"\(card.goal)\" ended \(terminal.rawValue)"
+            seams.updateCard(paneKey, cardId) { $0.status = .blocked; $0.blockReason = reason }
+        }
         return applyCardOutcome(paneKey, state, card, terminal)
     }
 

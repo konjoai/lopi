@@ -1,10 +1,12 @@
 import XCTest
 @testable import Lopi
 
-/// Overview nav section — Swift mirror of web's `overview.test.ts`. Covers the
-/// pure projection (`overviewRows`/`filterRows`/`filterCounts`/`formatElapsed`)
-/// plus the two `AppModel` data-plumbing additions (`score` composite,
-/// snapshot-hydrated `startedAt`) that feed it.
+/// Overview nav section — Swift mirror of web's `overview.test.ts`, scoped to
+/// what's left post-kanban-port: `formatElapsed` (the one survivor of the old
+/// per-agent rollup projection, still used by `StackOverview.swift` — see
+/// `StackOverviewTests.swift` for the board itself) plus the two `AppModel`
+/// data-plumbing additions (`score` composite, snapshot-hydrated `startedAt`)
+/// that feed live-agent state generally.
 @MainActor
 final class OverviewTests: XCTestCase {
     private func agent(_ id: String, phase: String, startedAt: Date = .now, cost: Double = 0) -> LiveAgent {
@@ -12,58 +14,6 @@ final class OverviewTests: XCTestCase {
         a.startedAt = startedAt
         a.costUsd = cost
         return a
-    }
-
-    // MARK: overviewRows — sort order
-
-    func testOverviewRowsSortsByLifecycleRankThenMostRecentFirst() {
-        let now = Date()
-        let agents = [
-            agent("done-old", phase: "completed", startedAt: now.addingTimeInterval(-500)),
-            agent("running-old", phase: "implementing", startedAt: now.addingTimeInterval(-300)),
-            agent("running-new", phase: "planning", startedAt: now.addingTimeInterval(-10)),
-            agent("queued", phase: "queued", startedAt: now.addingTimeInterval(-5)),
-            agent("failed", phase: "failed", startedAt: now.addingTimeInterval(-1)),
-        ]
-        let rows = overviewRows(agents, now: now)
-        XCTAssertEqual(rows.map(\.id), ["running-old", "running-new", "queued", "done-old", "failed"],
-                        "running < queued < done < failed, most-recently-started first within a rank")
-    }
-
-    func testOverviewRowsComputesElapsedFromStartedAt() {
-        let now = Date()
-        let rows = overviewRows([agent("a", phase: "running", startedAt: now.addingTimeInterval(-90))], now: now)
-        XCTAssertEqual(rows[0].elapsedMs, 90_000, accuracy: 1)
-    }
-
-    func testOverviewRowsCarriesAwaitingFlag() {
-        var a = agent("a", phase: "AwaitingPlanApproval")
-        a.awaitingApproval = true
-        let rows = overviewRows([a])
-        XCTAssertTrue(rows[0].awaiting)
-    }
-
-    // MARK: filterRows / filterCounts
-
-    func testFilterRowsAndCounts() {
-        let rows = overviewRows([
-            agent("r1", phase: "running"),
-            agent("r2", phase: "implementing"),
-            agent("q1", phase: "queued"),
-            agent("d1", phase: "completed"),
-            agent("f1", phase: "failed"),
-            agent("c1", phase: "cancelled"),
-        ])
-        let counts = filterCounts(rows)
-        XCTAssertEqual(counts[.all], 6)
-        XCTAssertEqual(counts[.running], 2)
-        XCTAssertEqual(counts[.queued], 1)
-        XCTAssertEqual(counts[.done], 1)
-        XCTAssertEqual(counts[.deadLetter], 2, "dead-letter folds failed + cancelled")
-
-        XCTAssertEqual(filterRows(rows, .all).count, 6)
-        XCTAssertEqual(filterRows(rows, .running).count, 2)
-        XCTAssertEqual(Set(filterRows(rows, .deadLetter).map(\.id)), ["f1", "c1"])
     }
 
     // MARK: formatElapsed

@@ -1,82 +1,68 @@
 import SwiftUI
 import LopiStacksKit
 
-/// Overview — the app-wide rollup. One dense, read-only row per live agent
-/// across every pane and card, sortable by lifecycle with orb-colored status.
-/// Clicking a row focuses that agent on the Forge grid. Mirrors web's
-/// `/overview` route (`overviewRows`/`filterRows`/`filterCounts` in
-/// `Store/Overview.swift` are the pure Swift port of `stores/overview.ts`).
+/// Overview — the Loop Stacks board: every stack across the app, grouped into
+/// four lifecycle columns (queued/running/testing/done), kanban-style. Mirrors
+/// web's `/overview` route (`StackOverview.swift`'s `buildStackOverviewCards`/
+/// `groupByLifecycle`/`totalCost` are the pure-ish Swift port of
+/// `stores/stackOverview.ts`).
 ///
-/// Rows come only from the live `liveAgents` map — no fabricated rows.
+/// Every card is a real client-side stack from `model.stackStore.panes`,
+/// resolved against the live `liveAgents` map — no fabricated stacks. A stack
+/// with no cards yet (still just an open composer) doesn't appear; add its
+/// first prompt on the Forge grid to put it on the board.
 struct OverviewView: View {
     @Environment(AppModel.self) private var model
-    /// Focuses the given agent id on the Forge grid — supplied by `RootView`,
-    /// which owns the `selection`/`PaneLayout` state this screen doesn't.
-    var onFocus: (String) -> Void
+    /// Opens the given stack (pane key) on the Forge grid — supplied by
+    /// `RootView`, which owns the `selection` this screen doesn't.
+    var onOpenStack: (String) -> Void
 
-    @State private var filter: OverviewFilter = .all
-
-    private var rows: [OverviewRow] { overviewRows(Array(model.liveAgents.values)) }
-    private var shown: [OverviewRow] { filterRows(rows, filter) }
-    private var counts: [OverviewFilter: Int] { filterCounts(rows) }
+    private var cards: [StackOverviewCard] { buildStackOverviewCards(model.stackStore.panes, model.liveAgents) }
+    private var groups: [StackLifecycle: [StackOverviewCard]] { groupByLifecycle(cards) }
+    private var liveCount: Int { (groups[.running]?.count ?? 0) + (groups[.testing]?.count ?? 0) }
+    private var spent: Double { totalCost(model.liveAgents) }
     private var offline: Bool { model.connection == .offline || model.connection == .connecting }
-    private var idle: Bool { model.connection == .live && rows.isEmpty }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                header
-                filterChips
-                content
+        VStack(alignment: .leading, spacing: 16) {
+            header
+            if cards.isEmpty {
+                emptyState(offline
+                    ? "start `lopi sail` to see live stacks"
+                    : "no stacks yet — add a prompt on the Forge grid to put one on the board")
+            } else {
+                board
             }
-            .padding(24)
-            .frame(maxWidth: 1200, alignment: .leading)
-            .frame(maxWidth: .infinity)
         }
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Konjo.bg)
     }
 
-    private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text("OVERVIEW")
-                .font(Konjo.sans(24, weight: .bold))
-                .foregroundStyle(Konjo.fg)
-                .tracking(3)
-            Spacer()
-            ConnectionLED(state: model.connection)
-        }
-    }
+    // MARK: Header
 
-    private var filterChips: some View {
-        HStack(spacing: 8) {
-            ForEach(OverviewFilter.allCases) { f in
-                Button { filter = f } label: {
-                    HStack(spacing: 5) {
-                        Text(f.label).font(Konjo.mono(10.5, weight: filter == f ? .semibold : .regular))
-                        Text("\(counts[f] ?? 0)").font(Konjo.mono(9)).foregroundStyle(Konjo.fgMute)
-                    }
-                    .foregroundStyle(filter == f ? Konjo.ice : Konjo.fgDim)
-                    .padding(.horizontal, 11).padding(.vertical, 5)
-                    .background(filter == f ? Konjo.ice.opacity(0.12) : Color.clear)
-                    .overlay(Capsule().stroke(filter == f ? Konjo.ice.opacity(0.4) : Konjo.line, lineWidth: 1))
-                    .clipShape(Capsule())
-                }
-                .buttonStyle(.plain)
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("STACK LOOPS")
+                    .font(Konjo.sans(24, weight: .bold))
+                    .foregroundStyle(Konjo.fg)
+                    .tracking(3)
+                Spacer()
+                ConnectionLED(state: model.connection)
+            }
+            HStack(spacing: 18) {
+                statPill("\(cards.count)", "stacks", Konjo.fg)
+                statPill("\(liveCount)", "live", Konjo.ice)
+                statPill(String(format: "$%.4f", spent), "spent", Konjo.fg)
             }
         }
     }
 
-    @ViewBuilder private var content: some View {
-        if offline {
-            emptyState(model.connection == .connecting
-                ? "backend offline — connecting to lopi sail…"
-                : "start `lopi sail` to see live agents")
-        } else if idle {
-            emptyState("no live sessions — launch a run to populate the overview")
-        } else if shown.isEmpty {
-            emptyState("no \(filter.label) agents")
-        } else {
-            table
+    private func statPill(_ value: String, _ label: String, _ color: Color) -> some View {
+        HStack(spacing: 4) {
+            Text(value).font(Konjo.mono(11, weight: .bold)).foregroundStyle(color)
+            Text(label).font(Konjo.mono(11)).foregroundStyle(Konjo.fgMute)
         }
     }
 
@@ -88,87 +74,51 @@ struct OverviewView: View {
             .frame(maxWidth: .infinity, alignment: .center)
     }
 
-    // MARK: Table
+    // MARK: Board — four lifecycle columns
 
-    private var table: some View {
+    private var board: some View {
+        HStack(alignment: .top, spacing: 16) {
+            ForEach(StackLifecycle.allCases) { lifecycle in
+                column(lifecycle, groups[lifecycle] ?? [])
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+            }
+        }
+        .frame(maxHeight: .infinity, alignment: .top)
+    }
+
+    private func column(_ lifecycle: StackLifecycle, _ cards: [StackOverviewCard]) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            tableHeader
-            Rectangle().fill(Konjo.line).frame(height: 1)
-            ForEach(shown) { row in
-                rowView(row)
-                Rectangle().fill(Konjo.line.opacity(0.5)).frame(height: 1)
+            columnHeader(lifecycle, cards.count)
+            ScrollView {
+                VStack(spacing: 10) {
+                    if cards.isEmpty {
+                        Text("none")
+                            .font(Konjo.mono(10.5))
+                            .foregroundStyle(Konjo.fg.opacity(0.25))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Konjo.line, style: StrokeStyle(lineWidth: 1, dash: [3, 3])))
+                    } else {
+                        ForEach(cards) { card in
+                            StackOverviewCardView(card: card) { onOpenStack(card.key) }
+                        }
+                    }
+                }
+                .padding(.top, 12)
             }
         }
-        .konjoSurface(10, fill: Konjo.bg1.opacity(0.4))
     }
 
-    private var tableHeader: some View {
-        HStack(spacing: 12) {
-            Color.clear.frame(width: 8)
-            Text("goal").frame(maxWidth: .infinity, alignment: .leading)
-            Text("repo · branch").frame(width: 180, alignment: .leading)
-            Text("phase").frame(width: 140, alignment: .leading)
-            Text("elapsed").frame(width: 70, alignment: .trailing)
-            Text("cost").frame(width: 80, alignment: .trailing)
-            Text("score").frame(width: 50, alignment: .trailing)
-        }
-        .font(Konjo.mono(9, weight: .semibold)).tracking(0.6).foregroundStyle(Konjo.fgMute)
-        .padding(.horizontal, 12).padding(.vertical, 8)
-    }
-
-    private func rowView(_ row: OverviewRow) -> some View {
-        HStack(spacing: 12) {
-            statusDot(row)
-            Text(row.goal).lineLimit(1).truncationMode(.tail)
+    private func columnHeader(_ lifecycle: StackLifecycle, _ count: Int) -> some View {
+        HStack(spacing: 8) {
+            Circle().fill(lifecycle.color).frame(width: 8, height: 8)
+            Text(lifecycle.label.uppercased())
+                .font(Konjo.sans(12, weight: .semibold)).tracking(0.9)
                 .foregroundStyle(Konjo.fg)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            Text(repoBranchLabel(row)).lineLimit(1)
-                .foregroundStyle(Konjo.fgDim)
-                .frame(width: 180, alignment: .leading)
-            phaseCell(row)
-            Text(formatElapsed(row.elapsedMs)).foregroundStyle(Konjo.fgDim)
-                .frame(width: 70, alignment: .trailing)
-            Text(String(format: "$%.4f", row.cost)).foregroundStyle(Konjo.flame)
-                .frame(width: 80, alignment: .trailing)
-            scoreCell(row)
+            Spacer(minLength: 0)
+            Text("\(count)").font(Konjo.mono(11)).foregroundStyle(lifecycle.color)
         }
-        .font(Konjo.mono(11))
-        .padding(.horizontal, 12).padding(.vertical, 9)
-        .contentShape(Rectangle())
-        .background(Color.white.opacity(0.0))
-        .onTapGesture { onFocus(row.id) }
-        .help("Open on the Forge grid")
-        .accessibilityAddTraits(.isButton)
-    }
-
-    private func repoBranchLabel(_ row: OverviewRow) -> String {
-        row.branch.isEmpty ? row.repo : "\(row.repo) · \(row.branch)"
-    }
-
-    private func statusDot(_ row: OverviewRow) -> some View {
-        Circle()
-            .fill(row.orbColor)
-            .frame(width: 7, height: 7)
-            .shadow(color: row.orbColor.opacity(row.awaiting ? 0.9 : 0.5), radius: row.awaiting ? 5 : 3)
-            .frame(width: 8)
-    }
-
-    @ViewBuilder private func phaseCell(_ row: OverviewRow) -> some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text(row.phase).foregroundStyle(row.orbColor).lineLimit(1)
-            if row.bucket != .running, row.bucket != .queued {
-                Text(row.phase).font(Konjo.mono(8)).foregroundStyle(Konjo.fgMute)
-            }
-        }
-        .frame(width: 140, alignment: .leading)
-    }
-
-    @ViewBuilder private func scoreCell(_ row: OverviewRow) -> some View {
-        if let score = row.score {
-            Text("\(Int((score * 100).rounded()))").foregroundStyle(overviewScoreColor(score))
-                .frame(width: 50, alignment: .trailing)
-        } else {
-            Text("—").foregroundStyle(Konjo.fgMute).frame(width: 50, alignment: .trailing)
-        }
+        .padding(.bottom, 10)
+        .overlay(alignment: .bottom) { Rectangle().fill(lifecycle.color).frame(height: 2) }
     }
 }

@@ -33,7 +33,7 @@ public extension StackRunEngine {
             model: card.config.model ?? defaults.model,
             effort: card.config.effort ?? defaults.effort,
             branch: card.config.branch))
-        seams.updateCard(paneKey, card.id) { $0.status = .queued }
+        seams.updateCard(paneKey, card.id) { $0.status = .queued; $0.blockReason = nil }
         let taskId: String
         do {
             taskId = try await seams.createTask(payload)
@@ -47,7 +47,12 @@ public extension StackRunEngine {
         }
         seams.updateCard(paneKey, card.id) { $0.status = .running; $0.taskId = taskId }
         let terminal = await seams.waitForTerminal(taskId)
-        seams.updateCard(paneKey, card.id) { $0.status = .done }
+        if terminal == .completed {
+            seams.updateCard(paneKey, card.id) { $0.status = .done }
+        } else {
+            let reason = "\"\(card.goal)\" ended \(terminal.rawValue)"
+            seams.updateCard(paneKey, card.id) { $0.status = .blocked; $0.blockReason = reason }
+        }
         setRun(paneKey) {
             if terminal == .completed {
                 $0.phase = .done; $0.error = nil
