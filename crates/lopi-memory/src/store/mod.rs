@@ -493,4 +493,6 @@ mod lessons_tests;
 #[cfg(test)]
 mod lineage_tests;
 #[cfg(test)]
+mod patterns_tests;
+#[cfg(test)]
 mod tests;
