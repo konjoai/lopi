@@ -1,0 +1,28 @@
+# Recipe: fix-failing-test — the canonical loop.
+#
+# Apply: copy this file to <repo>/.lopi/loop.toml, replace <TEST_FILTER> below
+# with the actual failing test's name/path, then:
+#   lopi run --goal "fix the failing test: <TEST_FILTER>" --repo <repo>
+# Full rationale: recipes/fix-failing-test/README.md
+
+autonomy_level = "draft_pr"    # F6 — L2: open a draft PR; a human approves before merge.
+
+# F3 — three hard stops, set explicitly (never inherited silently).
+max_iterations = 5             # A single deterministic test fix should converge fast;
+                                # 5 failed attempts means it needs a human, not more retries.
+no_progress_limit = 2          # Two consecutive non-improving attempts and stop.
+
+# F1 — the test itself is the deterministic oracle. `until` ends the loop the
+# moment this exits 0, independent of the scoring pass. Replace <TEST_FILTER>
+# with your test runner's equivalent of "run just this one test":
+#   Rust (cargo test):        cargo test <name> -- --exact
+#   JS/TS (vitest/jest):      npx vitest run -t "<name>"  /  npx jest -t "<name>"
+#   Python (pytest):          pytest -k "<name>"
+until = "cargo test <TEST_FILTER> -- --exact"
+
+# NOTE: `[budget]` (and any table header) must come last in this file — every
+# key written after a `[table]` header belongs to *that* table in TOML, not
+# to the top level. Every recipe in this library keeps `[budget]` at the end
+# for exactly this reason.
+[budget]
+preset = "quick"               # $1 / 200K tokens / fan-out denied — one file, one test.

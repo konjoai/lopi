@@ -121,6 +121,13 @@ install` ships without it — build from source if you want the Forge UI from
 a `cargo install`). See [`docs/RUNNING.md`](./docs/RUNNING.md) for the full
 build/run guide, including the native macOS app.
 
+**New to lopi? Start with [`recipes/`](./recipes)** rather than a blank
+`.lopi/loop.toml`. Six ready-to-copy loop configs — `fix-failing-test`,
+`lint-burndown`, `dependency-bump`, `flaky-test-hunter`, `doc-drift-check`,
+`triage-issues` — each with a README explaining what it does, the simpler
+thing it beats, and its measured cost/duration from a real run. Copy one
+into `.lopi/loop.toml`, adjust it for your repo, run it.
+
 ## CLI
 
 `lopi` is a single binary. Bare `lopi` (no args) drops into an interactive
