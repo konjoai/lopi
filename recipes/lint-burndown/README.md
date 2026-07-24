@@ -39,9 +39,23 @@ can't make.
 
 ## Expected cost and duration
 
-**TODO — pending live-run measurement.** Will be filled in from a real
-`lopi_submit_task` run against a scratch crate with clippy/fmt warnings,
-per `recipes/README.md`'s applied-and-run steps, before this sprint closes.
+Measured live (2026-07-24) against a scratch crate with exactly two clippy
+warnings (`needless_range_loop`, `needless_return`), applied and run per
+`recipes/README.md`'s steps via `lopi_submit_task`
+(`permission_mode: "acceptEdits"`; see `NEXT_SESSION_PROMPT.md` for why the
+CLI's default couldn't be used in this sandbox):
+
+- **Outcome:** `success` in 1 attempt — verified afterward: `cargo clippy
+  --all-targets -- -D warnings` and `cargo fmt --check` both clean on the
+  resulting branch, with the fix exactly what you'd expect (`for i in
+  0..items.len() { result.push(items[i] * 2) }` → `for item in items {
+  result.push(item * 2) }`, and the bare `return result;` dropped).
+- **Wall-clock:** 60.5s end-to-end (task `created_at` → `completed_at`)
+- **Cost:** $0.057, well inside the `quick` preset's $1 cap
+
+A real repo with warnings scattered across many files should expect to use
+more of the 8-iteration ceiling and should watch the token count more
+closely than this two-warning reproduction did.
 
 ## When not to use this
 
