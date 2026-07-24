@@ -24,8 +24,7 @@ pub async fn run(
     let auth_token = cfg
         .and_then(|c| c.web.auth_token.clone())
         .or_else(|| std::env::var("LOPI_WEB_AUTH_TOKEN").ok());
-    let effective_insecure_no_auth =
-        insecure_no_auth || cfg.is_some_and(|c| c.web.insecure_no_auth);
+    let effective_insecure_no_auth = effective_insecure_no_auth(insecure_no_auth, cfg);
     lopi_ui::web::validate_auth_policy(auth_token.as_deref(), effective_insecure_no_auth, &host)?;
 
     // Honor the configured db_path when a config was loaded (via `--config` or
@@ -140,6 +139,14 @@ pub async fn run(
         cfg.cloned(),
     )
     .await
+}
+
+/// Whether auth should be treated as explicitly disabled: either the CLI
+/// flag or the config key opts out — either source alone is sufficient, so
+/// an operator can set it in `lopi.toml` without needing to also remember
+/// the flag on every invocation.
+fn effective_insecure_no_auth(cli_flag: bool, cfg: Option<&LopiConfig>) -> bool {
+    cli_flag || cfg.is_some_and(|c| c.web.insecure_no_auth)
 }
 
 /// Build the dashboard URL, mapping wildcard bind addresses to a routable
@@ -397,6 +404,25 @@ mod tests {
         )
         .await;
         assert!(result.is_err());
+    }
+
+    /// Either source alone — the CLI flag or `[web].insecure_no_auth` — must
+    /// be sufficient to opt out; neither is required to imply the other.
+    /// Pins the `||`, not `&&`: with `&&`, a bare CLI flag (no config file)
+    /// would silently fail to opt out, and a bare config key (no flag)
+    /// would too.
+    #[test]
+    fn effective_insecure_no_auth_is_true_when_either_source_alone_is_true() {
+        assert!(effective_insecure_no_auth(true, None));
+
+        let cfg: LopiConfig = serde_json::from_value(serde_json::json!({
+            "lopi": {}, "claude": {}, "git": {},
+            "web": { "insecure_no_auth": true }
+        }))
+        .expect("minimal config deserializes");
+        assert!(effective_insecure_no_auth(false, Some(&cfg)));
+
+        assert!(!effective_insecure_no_auth(false, None));
     }
 
     /// `--insecure-no-auth` on a non-loopback host must also refuse to
