@@ -74,12 +74,38 @@ fn derive_candidate(transcript_path: &Path, session: &HistoricalSession) -> Opti
     })
 }
 
+/// Per-run tallies, returned so callers (tests, primarily — the CLI just
+/// prints them) can assert on the actual counts instead of only on the
+/// printed summary line.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct ImportSummary {
+    /// Sessions inserted (or, in `--dry-run`, that would have been).
+    pub imported: u32,
+    /// Sessions already present in `onboarding_imports` — skipped.
+    pub already_imported: u32,
+    /// Sessions with no human turn to derive a goal from — skipped.
+    pub skipped_no_goal: u32,
+    /// Sessions whose goal produced an empty keyword fingerprint — skipped.
+    pub skipped_empty_fingerprint: u32,
+}
+
 /// Run the onboarding import. `dry_run` opens the store read-only to report
 /// accurate status but performs no writes.
 ///
 /// # Errors
 /// Returns `Err` if the store can't be opened.
 pub async fn run(dry_run: bool, claude_dir: Option<PathBuf>, db_path: PathBuf) -> Result<()> {
+    run_import(dry_run, claude_dir, db_path).await?;
+    Ok(())
+}
+
+/// The actual import logic, split out from [`run`] so tests can assert on
+/// the resulting [`ImportSummary`] directly rather than only on stdout.
+async fn run_import(
+    dry_run: bool,
+    claude_dir: Option<PathBuf>,
+    db_path: PathBuf,
+) -> Result<ImportSummary> {
     let claude_dir = claude_dir.unwrap_or_else(default_claude_dir);
     let transcripts = discover_transcripts(&claude_dir);
 
@@ -94,14 +120,11 @@ pub async fn run(dry_run: bool, claude_dir: Option<PathBuf>, db_path: PathBuf) -
             "  No transcripts found. Nothing to import — this is a normal state on a \
              fresh machine or a fresh `~/.claude` install."
         );
-        return Ok(());
+        return Ok(ImportSummary::default());
     }
 
     let store = MemoryStore::open(&db_path).await?;
-    let mut imported = 0u32;
-    let mut already_imported = 0u32;
-    let mut skipped_no_goal = 0u32;
-    let mut skipped_empty_fingerprint = 0u32;
+    let mut summary = ImportSummary::default();
 
     for path in &transcripts {
         let session = match parse_session_file(path) {
@@ -112,32 +135,34 @@ pub async fn run(dry_run: bool, claude_dir: Option<PathBuf>, db_path: PathBuf) -
             }
         };
         let Some(candidate) = derive_candidate(path, &session) else {
-            skipped_no_goal += 1;
+            summary.skipped_no_goal += 1;
             continue;
         };
-
-        if store
-            .onboarding_session_imported(&candidate.session_id)
-            .await?
-        {
-            already_imported += 1;
-            continue;
-        }
 
         let short_id = &candidate.session_id[..8.min(candidate.session_id.len())];
         let toolchain_label = candidate.toolchain.as_deref().unwrap_or("unknown");
         let goal_preview = preview(&candidate.goal, 60);
 
         if dry_run {
-            println!(
-                "  [dry-run] would import {short_id} · {toolchain_label} · \"{goal_preview}\"{}",
-                if candidate.constraint.is_some() {
-                    " · +constraint"
-                } else {
-                    ""
-                }
-            );
-            imported += 1;
+            // Dry-run must never call backfill_onboarding_pattern — a genuine
+            // insert there would write — so the idempotency check happens
+            // here instead, read-only, purely to report accurate status.
+            if store
+                .onboarding_session_imported(&candidate.session_id)
+                .await?
+            {
+                summary.already_imported += 1;
+            } else {
+                println!(
+                    "  [dry-run] would import {short_id} · {toolchain_label} · \"{goal_preview}\"{}",
+                    if candidate.constraint.is_some() {
+                        " · +constraint"
+                    } else {
+                        ""
+                    }
+                );
+                summary.imported += 1;
+            }
             continue;
         }
 
@@ -154,21 +179,24 @@ pub async fn run(dry_run: bool, claude_dir: Option<PathBuf>, db_path: PathBuf) -
                     "  ✅ {short_id} · {toolchain_label} · \"{goal_preview}\" → pattern {}",
                     &id[..8.min(id.len())]
                 );
-                imported += 1;
+                summary.imported += 1;
             }
-            BackfillOutcome::AlreadyImported => already_imported += 1,
-            BackfillOutcome::EmptyFingerprint => skipped_empty_fingerprint += 1,
+            BackfillOutcome::AlreadyImported => summary.already_imported += 1,
+            BackfillOutcome::EmptyFingerprint => summary.skipped_empty_fingerprint += 1,
         }
     }
 
     println!();
     println!(
-        "🧭 {} {} · {already_imported} already imported · {skipped_no_goal} with no human turn \
-         · {skipped_empty_fingerprint} with an empty keyword fingerprint",
+        "🧭 {} {} · {} already imported · {} with no human turn \
+         · {} with an empty keyword fingerprint",
         if dry_run { "would import" } else { "imported" },
-        imported
+        summary.imported,
+        summary.already_imported,
+        summary.skipped_no_goal,
+        summary.skipped_empty_fingerprint,
     );
-    Ok(())
+    Ok(summary)
 }
 
 /// Truncate a goal string to `cap` characters for a one-line preview.
@@ -185,6 +213,7 @@ fn preview(s: &str, cap: usize) -> String {
 mod tests {
     use super::*;
     use lopi_agent::transcript_import::HistoricalSession;
+    use lopi_memory::MemoryStore;
 
     #[test]
     fn derive_candidate_returns_none_without_a_human_turn() {
@@ -214,5 +243,219 @@ mod tests {
         assert_eq!(preview("first line\nsecond line", 60), "first line");
         let long = "x".repeat(80);
         assert_eq!(preview(&long, 10), "xxxxxxxxxx…");
+    }
+
+    #[test]
+    fn default_claude_dir_resolves_under_home() {
+        std::env::set_var("HOME", "/tmp/lopi-onboarding-import-test-home");
+        assert_eq!(
+            default_claude_dir(),
+            PathBuf::from("/tmp/lopi-onboarding-import-test-home/.claude")
+        );
+    }
+
+    fn write_transcript(claude_dir: &Path, project_folder: &str, session_id: &str, line: &str) {
+        let dir = claude_dir.join("projects").join(project_folder);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(format!("{session_id}.jsonl")), line).unwrap();
+    }
+
+    fn human_turn_line(session_id: &str, text: &str) -> String {
+        format!(
+            r#"{{"type":"user","message":{{"role":"user","content":"{text}"}},"sessionId":"{session_id}"}}"#
+        )
+    }
+
+    #[tokio::test]
+    async fn run_import_reports_zero_and_never_opens_a_store_when_nothing_is_found() {
+        let dir = tempfile::tempdir().unwrap();
+        let claude_dir = dir.path().join("claude-empty"); // never created
+        let db_path = dir.path().join("lopi.db");
+
+        let summary = run_import(false, Some(claude_dir), db_path.clone())
+            .await
+            .unwrap();
+        assert_eq!(summary, ImportSummary::default());
+        assert!(!db_path.exists(), "must not open/create the store");
+    }
+
+    #[tokio::test]
+    async fn run_import_skips_a_session_with_no_human_turn() {
+        let dir = tempfile::tempdir().unwrap();
+        let claude_dir = dir.path().join("claude");
+        write_transcript(
+            &claude_dir,
+            "-home-user-proj",
+            "session-no-human",
+            r#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"hi"}]}}"#,
+        );
+        let db_path = dir.path().join("lopi.db");
+
+        let summary = run_import(false, Some(claude_dir), db_path).await.unwrap();
+        assert_eq!(
+            summary,
+            ImportSummary {
+                skipped_no_goal: 1,
+                ..Default::default()
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn run_import_dry_run_reports_would_import_without_writing() {
+        let dir = tempfile::tempdir().unwrap();
+        let claude_dir = dir.path().join("claude");
+        write_transcript(
+            &claude_dir,
+            "-home-user-proj",
+            "session-dry",
+            &human_turn_line("session-dry", "migrate the database schema"),
+        );
+        let db_path = dir.path().join("lopi.db");
+
+        let summary = run_import(true, Some(claude_dir), db_path.clone())
+            .await
+            .unwrap();
+        assert_eq!(
+            summary,
+            ImportSummary {
+                imported: 1,
+                ..Default::default()
+            }
+        );
+
+        let store = MemoryStore::open(&db_path).await.unwrap();
+        assert!(store.load_patterns(10).await.unwrap().is_empty());
+        assert!(!store
+            .onboarding_session_imported("session-dry")
+            .await
+            .unwrap());
+    }
+
+    #[tokio::test]
+    async fn run_import_real_run_inserts_and_a_second_run_reports_already_imported() {
+        let dir = tempfile::tempdir().unwrap();
+        let claude_dir = dir.path().join("claude");
+        write_transcript(
+            &claude_dir,
+            "-home-user-proj",
+            "session-real",
+            &human_turn_line("session-real", "migrate the database schema"),
+        );
+        let db_path = dir.path().join("lopi.db");
+
+        let first = run_import(false, Some(claude_dir.clone()), db_path.clone())
+            .await
+            .unwrap();
+        assert_eq!(
+            first,
+            ImportSummary {
+                imported: 1,
+                ..Default::default()
+            }
+        );
+
+        let store = MemoryStore::open(&db_path).await.unwrap();
+        assert_eq!(store.load_patterns(10).await.unwrap().len(), 1);
+
+        let second = run_import(false, Some(claude_dir), db_path.clone())
+            .await
+            .unwrap();
+        assert_eq!(
+            second,
+            ImportSummary {
+                already_imported: 1,
+                ..Default::default()
+            }
+        );
+        assert_eq!(
+            store.load_patterns(10).await.unwrap().len(),
+            1,
+            "re-run must not duplicate the pattern row"
+        );
+    }
+
+    #[tokio::test]
+    async fn run_import_dry_run_reports_already_imported_for_a_session_from_a_prior_real_run() {
+        let dir = tempfile::tempdir().unwrap();
+        let claude_dir = dir.path().join("claude");
+        write_transcript(
+            &claude_dir,
+            "-home-user-proj",
+            "session-dry-after-real",
+            &human_turn_line("session-dry-after-real", "migrate the database schema"),
+        );
+        let db_path = dir.path().join("lopi.db");
+
+        let real = run_import(false, Some(claude_dir.clone()), db_path.clone())
+            .await
+            .unwrap();
+        assert_eq!(
+            real,
+            ImportSummary {
+                imported: 1,
+                ..Default::default()
+            }
+        );
+
+        let dry = run_import(true, Some(claude_dir), db_path).await.unwrap();
+        assert_eq!(
+            dry,
+            ImportSummary {
+                already_imported: 1,
+                ..Default::default()
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn run_import_real_run_reports_empty_fingerprint() {
+        let dir = tempfile::tempdir().unwrap();
+        let claude_dir = dir.path().join("claude");
+        // A human turn whose every word is <=3 chars — keyword_fingerprint()
+        // filters all of them out, so backfill_onboarding_pattern returns
+        // EmptyFingerprint rather than inserting anything.
+        write_transcript(
+            &claude_dir,
+            "-home-user-proj",
+            "session-empty-fp",
+            &human_turn_line("session-empty-fp", "fix a bug now ok"),
+        );
+        let db_path = dir.path().join("lopi.db");
+
+        let summary = run_import(false, Some(claude_dir), db_path.clone())
+            .await
+            .unwrap();
+        assert_eq!(
+            summary,
+            ImportSummary {
+                skipped_empty_fingerprint: 1,
+                ..Default::default()
+            }
+        );
+        let store = MemoryStore::open(&db_path).await.unwrap();
+        assert!(store.load_patterns(10).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn run_wrapper_drives_a_real_import_through_to_the_store() {
+        let dir = tempfile::tempdir().unwrap();
+        let claude_dir = dir.path().join("claude");
+        write_transcript(
+            &claude_dir,
+            "-home-user-proj",
+            "session-via-run",
+            &human_turn_line("session-via-run", "migrate the database schema"),
+        );
+        let db_path = dir.path().join("lopi.db");
+
+        run(false, Some(claude_dir), db_path.clone()).await.unwrap();
+
+        let store = MemoryStore::open(&db_path).await.unwrap();
+        assert_eq!(store.load_patterns(10).await.unwrap().len(), 1);
+        assert!(store
+            .onboarding_session_imported("session-via-run")
+            .await
+            .unwrap());
     }
 }
