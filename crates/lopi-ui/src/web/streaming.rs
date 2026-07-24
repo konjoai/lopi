@@ -37,6 +37,7 @@ fn build_snapshot(
             "id": t.id, "goal": t.goal, "status": t.status,
             "created_at": t.created_at,
             "cost": costs.get(&t.id).copied().unwrap_or(0.0),
+            "repo": t.repo,
         })).collect::<Vec<_>>(),
         "stats": {
             "running": counts.running,
@@ -124,6 +125,7 @@ mod tests {
             completed_at: None,
             client_ref: None,
             branch: None,
+            repo: None,
             parent_task: None,
             chain_depth: 0,
         }
@@ -149,6 +151,23 @@ mod tests {
         assert_eq!(
             tasks[1]["cost"], 0.0,
             "a task with no entry in the cost map defaults to 0.0, not null/missing"
+        );
+    }
+
+    #[test]
+    fn build_snapshot_carries_repo_through_when_set() {
+        let mut r = row("t1", "running");
+        r.repo = Some("/Users/dev/lopi".to_string());
+        let snapshot = build_snapshot(&[r], &HashMap::new(), counts(), 42);
+        assert_eq!(snapshot["tasks"][0]["repo"], "/Users/dev/lopi");
+    }
+
+    #[test]
+    fn build_snapshot_repo_is_null_when_never_set() {
+        let snapshot = build_snapshot(&[row("t1", "queued")], &HashMap::new(), counts(), 42);
+        assert!(
+            snapshot["tasks"][0]["repo"].is_null(),
+            "an in-flight/never-started task has no repo yet, not an omitted field"
         );
     }
 

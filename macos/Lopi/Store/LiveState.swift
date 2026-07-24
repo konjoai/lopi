@@ -10,6 +10,9 @@ struct LiveAgent: Identifiable, Hashable {
     var phase: String
     var attempt: Int
     var branch: String?
+    /// Effective repo the task's most recent attempt ran against
+    /// (macOS-Web-Parity-5). `nil` until the first `TaskStarted` fires.
+    var repo: String?
 
     // Latest turn_metrics (cognition).
     var pressure: Double = 0 // context-window fill, 0...1

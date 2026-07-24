@@ -89,6 +89,52 @@ final class StatsParityTests: XCTestCase {
                        "an already-seen task keeps its live cost — snapshot only hydrates new ids")
     }
 
+    // MARK: macOS-Web-Parity-5 — repo hydrates the same way cost does
+
+    func testTaskStartedEventSetsRepo() {
+        let model = AppModel()
+        model.ingest(.taskQueued(taskId: "a", goal: "fix foo", priority: ""))
+        model.ingest(.taskStarted(taskId: "a", attempt: 1, branch: "lopi/a-attempt-1", repo: "/Users/dev/lopi"))
+        XCTAssertEqual(model.liveAgents["a"]?.repo, "/Users/dev/lopi")
+    }
+
+    func testTaskStartedEmptyRepoDoesNotClobberExisting() {
+        let model = AppModel()
+        model.ingest(.taskQueued(taskId: "a", goal: "fix foo", priority: ""))
+        model.ingest(.taskStarted(taskId: "a", attempt: 1, branch: "lopi/a-attempt-1", repo: "/Users/dev/lopi"))
+        // A later attempt's event from an old server (or a genuinely empty
+        // value) must not blank out the repo the first attempt already set —
+        // mirrors `branch`'s own empty-string-as-absent convention.
+        model.ingest(.taskStarted(taskId: "a", attempt: 2, branch: "lopi/a-attempt-2", repo: ""))
+        XCTAssertEqual(model.liveAgents["a"]?.repo, "/Users/dev/lopi")
+    }
+
+    func testSnapshotHydratesPerTaskRepo() {
+        let model = AppModel()
+        model.hydrateSnapshotTasks([
+            ["id": "a", "goal": "fix foo", "status": "running", "repo": "/Users/dev/lopi"],
+            ["id": "b", "goal": "no repo yet", "status": "queued"],
+        ])
+        XCTAssertEqual(model.liveAgents["a"]?.repo, "/Users/dev/lopi")
+        XCTAssertNil(model.liveAgents["b"]?.repo, "a task with no TaskStarted yet has no repo")
+    }
+
+    func testSnapshotDoesNotClobberLiveRepoOnReconnect() {
+        let model = AppModel()
+        var live = agent("a", phase: "implementing")
+        live.repo = "/Users/dev/lopi"
+        model.liveAgents["a"] = live
+        // A reconnect snapshot carries the same repo for an already-known id —
+        // the guard is "only hydrate new ids", same as cost, so this is a
+        // no-op either way, but asserted explicitly for the same reason F6's
+        // reconnect test is.
+        model.hydrateSnapshotTasks([
+            ["id": "a", "goal": "fix foo", "status": "implementing", "repo": "/Users/dev/other-repo"],
+        ])
+        XCTAssertEqual(model.liveAgents["a"]?.repo, "/Users/dev/lopi",
+                       "an already-seen task keeps its live repo — snapshot only hydrates new ids")
+    }
+
     // MARK: Helpers
 
     private func agent(_ id: String, phase: String) -> LiveAgent {

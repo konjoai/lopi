@@ -21,7 +21,7 @@ impl MemoryStore {
     /// Returns `Err` if the query fails.
     pub async fn get_task(&self, id: &TaskId) -> Result<Option<TaskRow>> {
         let row = sqlx::query_as::<_, TaskRow>(
-            "SELECT id, goal, status, created_at, completed_at, client_ref, branch, \
+            "SELECT id, goal, status, created_at, completed_at, client_ref, branch, repo, \
              parent_task, chain_depth FROM tasks WHERE id = ?1",
         )
         .bind(id.0.to_string())
