@@ -1,4 +1,5 @@
 mod api_plan;
+mod capture;
 mod eval_runner;
 mod finalize;
 mod guardrails;

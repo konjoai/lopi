@@ -171,7 +171,15 @@ pub(super) async fn dispatch_goal(
         let _ = store
             .mark_completed(&task_id, final_status.db_status())
             .await;
-        let _ = store.mine_patterns(&task_id, &task.goal).await;
+        // Constraint-Capture-2 — only a clean success has a constraint worth
+        // seeding forward; see the matching comment in
+        // `lopi_orchestrator::pool::run_loop`.
+        let success_constraint = matches!(final_status, TaskStatus::Success { .. })
+            .then(|| runner.success_constraint())
+            .flatten();
+        let _ = store
+            .mine_patterns(&task_id, &task.goal, success_constraint.as_deref())
+            .await;
         let _ = tx2.send(ReplEvent::TaskDone {
             label: "⚓ done".into(),
             success: false,

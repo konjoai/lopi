@@ -475,3 +475,20 @@ CREATE TABLE IF NOT EXISTS onboarding_imports (
     pattern_id  TEXT,
     imported_at TEXT NOT NULL
 );
+
+-- Constraint-Capture-2: how many completed tasks have contributed to this
+-- pattern's rolling averages. `mine_patterns` had recorded avg_attempts/
+-- success_rate on every completed task but never a `successful_constraints`
+-- value, so `seed_from_patterns` was silently reading nothing back for the
+-- auto-mined (non-postmortem) path. Now that a constraint is written on a
+-- clean success, a single one-off task would otherwise become an
+-- equally-weighted "template" the moment it completes. occurrence_count is
+-- the promotion-gate signal (`seed_from_patterns`) that keeps a pattern's
+-- constraint out of the planning prompt until it has actually recurred.
+-- DEFAULT 1 so every pre-existing row (mined before this column existed,
+-- necessarily seen at least once) reads as one real occurrence, not zero.
+-- No semicolons anywhere in this comment block: apply_schema() splits
+-- SCHEMA on the literal semicolon character without comment-aware parsing,
+-- so one inside a `--` line would silently fracture this ALTER TABLE
+-- statement in two.
+ALTER TABLE patterns ADD COLUMN occurrence_count INTEGER NOT NULL DEFAULT 1;

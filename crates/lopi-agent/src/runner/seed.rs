@@ -3,7 +3,45 @@
 //! prompt starts warm.
 
 use super::AgentRunner;
+use lopi_memory::PatternRow;
 use lopi_spec::SpecSurface;
+
+/// Constraint-Capture-2 promotion gate — minimum occurrences a mined
+/// (non-postmortem) pattern needs before `seed_from_patterns` treats its
+/// constraint as a reusable template rather than one-off noise. `2` is the
+/// smallest value that means "this has recurred," not "this happened once" —
+/// the mission this gate exists for: without it, every completed task's
+/// mined pattern is equally weighted with one seen dozens of times.
+const MIN_PATTERN_OCCURRENCES: i64 = 2;
+
+/// Constraint-Capture-2 promotion gate — minimum rolling `success_rate` a
+/// mined (non-postmortem) pattern needs before its constraint is injected.
+/// `0.5` is a bare majority: seeding a constraint whose own history tips
+/// more failure than success would inject noise, not guidance.
+///
+/// Both thresholds are deliberately conservative starting points, not
+/// derived from a real usage corpus — this repo has none to tune against
+/// yet (Session Prompt 2's own KT-D found the same absence for the
+/// similarity threshold). Revisit once real mined-pattern data accumulates;
+/// see `LEDGER.md`'s Constraint-Capture-2 entry for why these are a
+/// deliberate one-way door, not a number to casually retune.
+const MIN_PATTERN_SUCCESS_RATE: f64 = 0.5;
+
+/// Whether a pattern's constraint has earned a place in the planning
+/// prompt. Postmortem-derived patterns (`derived_from_postmortem == 1`) are
+/// exempt from both thresholds: they are already a single, deliberately
+/// curated failure lesson (`insert_postmortem_pattern` has always treated
+/// one signal as enough), and a fresh postmortem pattern starts at
+/// `success_rate = 0.0` by construction — applying the success-rate floor
+/// to it would silently un-seed the exact warning postmortem mining exists
+/// to inject. Pure, so it's unit-testable without a store.
+fn is_promotable(p: &PatternRow) -> bool {
+    if p.derived_from_postmortem != 0 {
+        return true;
+    }
+    p.occurrence_count >= MIN_PATTERN_OCCURRENCES
+        && p.success_rate.unwrap_or(0.0) >= MIN_PATTERN_SUCCESS_RATE
+}
 
 /// Constraints, patterns, and lessons injected into the planning prompt.
 pub(super) struct PlanningSeed {
@@ -89,11 +127,13 @@ impl AgentRunner {
 
         let constraints: Vec<String> = patterns
             .iter()
+            .filter(|p| is_promotable(p))
             .take(5)
             .filter_map(|p| non_empty_constraint(p.successful_constraints.as_deref()))
             .collect();
         let pairs: Vec<(String, String)> = patterns
             .iter()
+            .filter(|p| is_promotable(p))
             .take(5)
             .filter_map(|p| {
                 non_empty_constraint(p.successful_constraints.as_deref())
@@ -248,64 +288,5 @@ fn non_empty_constraint(c: Option<&str>) -> Option<String> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{
-        consensus_plan_constraint, non_empty_constraint, reflection_constraint,
-        skill_constraint_blocks, REFLECTION_INJECTION_CAP,
-    };
-    use lopi_skill::Skill;
-    use std::path::PathBuf;
-
-    #[test]
-    fn reflection_constraint_labels_the_prior_failure() {
-        let c = reflection_constraint("the mutex was held across an await");
-        assert!(c.starts_with("Past learning"));
-        assert!(c.contains("the mutex was held across an await"));
-    }
-
-    #[test]
-    fn injection_cap_is_small_and_bounded() {
-        assert!(
-            (1..=5).contains(&REFLECTION_INJECTION_CAP),
-            "the cap must stay small — bounded injection is the §2 discipline"
-        );
-    }
-
-    #[test]
-    fn keeps_non_empty_drops_empty_and_none() {
-        assert_eq!(non_empty_constraint(Some("x")), Some("x".to_string()));
-        assert_eq!(non_empty_constraint(Some("")), None);
-        assert_eq!(non_empty_constraint(None), None);
-    }
-
-    #[test]
-    fn skill_blocks_label_name_version_description_and_body() {
-        let skill = Skill {
-            name: "refactor".into(),
-            description: "safe refactors".into(),
-            user_invocable: false,
-            version: "1.0.0".into(),
-            triggers: vec!["refactor".into()],
-            body: "Always run tests after.".into(),
-            source: PathBuf::from("x/SKILL.md"),
-        };
-        let blocks = skill_constraint_blocks(&[&skill]);
-        assert_eq!(blocks.len(), 1);
-        assert_eq!(
-            blocks[0],
-            "Skill «refactor» (v1.0.0) — safe refactors\nAlways run tests after."
-        );
-    }
-
-    #[test]
-    fn skill_blocks_empty_for_no_matches() {
-        assert!(skill_constraint_blocks(&[]).is_empty());
-    }
-
-    #[test]
-    fn consensus_plan_constraint_labels_it_as_a_starting_point_and_carries_the_text() {
-        let c = consensus_plan_constraint("1. Read the file\n2. Fix the bug");
-        assert!(c.contains("starting point"));
-        assert!(c.contains("1. Read the file\n2. Fix the bug"));
-    }
-}
+#[path = "seed_tests.rs"]
+mod tests;

@@ -145,7 +145,7 @@ async fn load_patterns_orders_postmortem_with_null_success_rate_last() {
     let attempt = make_high_score_attempt(task.id);
     store.save_attempt(&attempt).await.unwrap();
     store
-        .mine_patterns(&task.id, "real success kw")
+        .mine_patterns(&task.id, "real success kw", None)
         .await
         .unwrap();
 
@@ -175,8 +175,14 @@ async fn load_annotated_patterns_returns_only_annotated() {
     let task2 = Task::new("refactor api");
     store.save_task(&task1, "success").await.unwrap();
     store.save_task(&task2, "success").await.unwrap();
-    store.mine_patterns(&task1.id, &task1.goal).await.unwrap();
-    store.mine_patterns(&task2.id, &task2.goal).await.unwrap();
+    store
+        .mine_patterns(&task1.id, &task1.goal, None)
+        .await
+        .unwrap();
+    store
+        .mine_patterns(&task2.id, &task2.goal, None)
+        .await
+        .unwrap();
 
     let patterns = store.load_patterns(10).await.unwrap();
     assert_eq!(patterns.len(), 2);
@@ -212,11 +218,11 @@ async fn compute_adjustments_signal_shifts_weights() {
     store.save_task(&task_approved, "success").await.unwrap();
     store.save_task(&task_rejected, "success").await.unwrap();
     store
-        .mine_patterns(&task_approved.id, &task_approved.goal)
+        .mine_patterns(&task_approved.id, &task_approved.goal, None)
         .await
         .unwrap();
     store
-        .mine_patterns(&task_rejected.id, &task_rejected.goal)
+        .mine_patterns(&task_rejected.id, &task_rejected.goal, None)
         .await
         .unwrap();
 

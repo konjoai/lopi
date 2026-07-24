@@ -41,6 +41,15 @@ pub struct PatternRow {
     /// transcript backfill) — see `schema.sql`'s Onboarding-Import-1 entry.
     #[sqlx(default)]
     pub source: String,
+    /// Number of completed tasks that have contributed to this pattern's
+    /// rolling averages — the promotion-gate signal `seed_from_patterns`
+    /// uses to keep a single one-off success from being treated as a
+    /// reusable template. `#[sqlx(default)]` so a query that omits this
+    /// column (there should be none after this sprint, but a future partial
+    /// SELECT would otherwise fail the row mapping) reads as `0` rather
+    /// than erroring.
+    #[sqlx(default)]
+    pub occurrence_count: i64,
 }
 
 // ── Private helpers ───────────────────────────────────────────────────────────
@@ -114,7 +123,7 @@ impl MemoryStore {
 
         let mut rows_qb = sqlx::QueryBuilder::new(
             "SELECT id, goal_keywords, successful_constraints, avg_attempts, success_rate, \
-             last_seen, derived_from_postmortem, toolchain, source \
+             last_seen, derived_from_postmortem, toolchain, source, occurrence_count \
              FROM patterns WHERE id IN (",
         );
         let mut separated = rows_qb.separated(", ");
@@ -171,7 +180,7 @@ impl MemoryStore {
     pub async fn load_patterns(&self, limit: i64) -> Result<Vec<PatternRow>> {
         sqlx::query_as::<_, PatternRow>(
             "SELECT id, goal_keywords, successful_constraints, avg_attempts, success_rate, \
-             last_seen, derived_from_postmortem, toolchain, source \
+             last_seen, derived_from_postmortem, toolchain, source, occurrence_count \
              FROM patterns ORDER BY COALESCE(success_rate, 0) DESC, last_seen DESC LIMIT ?1",
         )
         .bind(limit)
@@ -187,7 +196,7 @@ impl MemoryStore {
     pub async fn find_pattern_by_id_prefix(&self, prefix: &str) -> Result<Option<PatternRow>> {
         sqlx::query_as::<_, PatternRow>(
             "SELECT id, goal_keywords, successful_constraints, avg_attempts, success_rate, \
-             last_seen, derived_from_postmortem, toolchain, source \
+             last_seen, derived_from_postmortem, toolchain, source, occurrence_count \
              FROM patterns WHERE id LIKE ?1 LIMIT 1",
         )
         .bind(format!("{prefix}%"))
@@ -228,9 +237,27 @@ impl MemoryStore {
 
     /// Mine a completed task's attempts into the patterns table.
     ///
+    /// Runs after every completed task regardless of outcome (unchanged from
+    /// before Constraint-Capture-2) and always updates `avg_attempts`/
+    /// `success_rate`/`last_seen`/`occurrence_count`. `success_constraint` is
+    /// new: pass `Some(text)` only when the caller's attempt was a clean
+    /// success and has a non-empty constraint to record — it flows through
+    /// to [`upsert_pattern_row`](super::pattern_upsert)'s
+    /// `successful_constraints` column (shared with the onboarding-import
+    /// backfill path), the field `seed_from_patterns` reads back into future
+    /// planning prompts. `None` leaves an existing constraint untouched on
+    /// an update (never overwritten once set — see
+    /// `upsert_pattern_row`'s own doc comment) or `NULL` on a fresh insert.
+    ///
     /// # Errors
     /// Returns `Err` if any database query or update fails.
-    pub async fn mine_patterns(&self, task_id: &lopi_core::TaskId, goal: &str) -> Result<()> {
+    pub async fn mine_patterns(
+        &self,
+        task_id: &lopi_core::TaskId,
+        goal: &str,
+        success_constraint: Option<&str>,
+    ) -> Result<()> {
+        let success_constraint = success_constraint.filter(|c| !c.is_empty());
         let fingerprint = keyword_fingerprint(goal);
         if fingerprint.is_empty() {
             return Ok(());
@@ -263,7 +290,10 @@ impl MemoryStore {
             attempt_f,
             success_rate,
             &now,
-            &PatternExtra::default(),
+            &PatternExtra {
+                successful_constraints: success_constraint,
+                ..PatternExtra::default()
+            },
         )
         .await?;
         tx.commit().await?;
@@ -290,7 +320,8 @@ impl MemoryStore {
     pub async fn load_annotated_patterns(&self) -> Result<Vec<PatternRow>> {
         sqlx::query_as(
             "SELECT id, goal_keywords, successful_constraints, avg_attempts, success_rate, \
-             last_seen, derived_from_postmortem, user_annotation, toolchain, source \
+             last_seen, derived_from_postmortem, user_annotation, toolchain, source, \
+             occurrence_count \
              FROM patterns WHERE user_annotation IS NOT NULL ORDER BY last_seen DESC LIMIT 100",
         )
         .fetch_all(&self.read_pool)
@@ -339,3 +370,7 @@ impl MemoryStore {
         })
     }
 }
+
+#[cfg(test)]
+#[path = "patterns_tests.rs"]
+mod tests;
