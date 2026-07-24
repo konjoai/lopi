@@ -23,6 +23,8 @@
 //! mutation should call [`ToolRegistry::save_to_disk`] explicitly and check
 //! the `Result`.
 
+#![warn(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
 pub mod registry;
 
 pub use registry::{

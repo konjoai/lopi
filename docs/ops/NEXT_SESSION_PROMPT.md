@@ -1,3 +1,44 @@
+# Next Session — after Sprint S5 (panic audit)
+
+**SHIPPED (pending PR).** Pre-flight measurement (`docs/ops/PANIC_AUDIT.md`) found the real,
+AST-verified count of panicking call sites (`unwrap()`/`expect()`/`panic!()`) on production paths,
+workspace-wide, is **0** — and that `.github/workflows/konjo-gate.yml`'s G1 job already hard-gated
+this across the whole workspace (not just the hot-path crates the brief scoped to), already green.
+Nothing needed fixing or annotating. What was real: the guarantee lived only in specific CLI
+invocations, not the source — closed by adding `#![deny(clippy::unwrap_used, clippy::expect_used,
+clippy::panic)]` to `lopi-agent`/`lopi-orchestrator`/`lopi-ui` and `#![warn(...)]` to every other
+crate's `lib.rs` (+ `src/main.rs`). Also removed `.konjo/hooks/pre-commit`'s step "1c. unwrap/expect
+scan" — a grep+awk brace-depth scanner that both mis-parses Rust and can't see `#[allow(...)]`,
+now fully redundant with step "1b. clippy"'s AST-based check.
+
+**TESTS.** `cargo build --workspace`, `cargo test --workspace`, and the exact CI clippy command
+(`cargo clippy --workspace --all-targets --all-features -- -D warnings -D clippy::unwrap_used -D
+clippy::expect_used -D clippy::panic -D clippy::todo -D clippy::unimplemented -D
+clippy::dbg_macro -D clippy::print_stdout -D clippy::print_stderr -W
+clippy::cognitive_complexity`) are all green. Live-tested the new deny gate: a probe `unwrap()` in
+`lopi-orchestrator::pool::worktree::cleanup_worktree` failed the build immediately; reverted.
+
+**NEXT SESSION — the `warn`-level crates, in blast-radius order, for future promotion to `deny`
+on a schedule (all currently measure 0 violations; promoting is a zero-risk source-only change
+whenever someone wants the stronger local-dev signal, since CI already denies workspace-wide):**
+1. `lopi-memory` — every task/agent-run persistence path; second-highest blast radius after the
+   three already-deny crates (a panic here loses in-flight run state, not just the current task).
+2. `lopi-core` — shared types used by every other crate; a panic here likely means the same bug
+   is reachable from a hot path too, just not yet caught by this pass's scope.
+3. `lopi-remote`, `lopi-webhook` — external-facing (Telegram/WhatsApp, GitHub webhooks); untrusted
+   input reaches these directly, same F10 lethal-trifecta shape as Sprint S2's containment work.
+4. `lopi-spec`, `lopi-mcp`, `lopi-tools`, `lopi-skill`, `lopi-context`, `lopi-git`, `lopi-github`,
+   `lopi-toon`, `lopi-ratelimit`, `lopi-app` — internal/library or narrower-surface crates, lower
+   urgency; promote opportunistically.
+5. Root binary (`src/`) — deliberately left at `warn`, not `deny`: one-shot CLI subcommand panics
+   are low blast radius by the brief's own out-of-scope call, not worth a hard gate.
+
+Re-run `cargo clippy --workspace --all-targets --all-features -- -D clippy::unwrap_used -D
+clippy::expect_used -D clippy::panic` before trusting this order still holds — `decays: state` on
+`docs/ops/PANIC_AUDIT.md` means don't assume the count is still 0 without checking.
+
+---
+
 # Next Session — after macOS-Web-Parity-5 (handoff to a local/Xcode session)
 
 **SHIPPED (pending PR).** Threaded a task's effective `repo` through the entire stack: `AgentEvent::TaskStarted` (Rust) → a new `tasks.repo` DB column (persisted the moment `TaskStarted` fires, mirroring `tasks.branch`'s exact precedent) → `GET /api/tasks`/`:id` + the WS snapshot → both web's and macOS's client decode paths. This closes the structural gap Parity-4 flagged, **and fixes a real bug in web itself**: `agentReducer.ts`/`types.ts` already read/declared `repo` client-side, entirely dead because the Rust backend never sent it — web's own `byRepo` Budget panel has apparently never worked. macOS's `LiveAgent` gained `repo`, and Budget gained the "by repo" panel Parity-3 deliberately deferred pending exactly this.

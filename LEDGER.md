@@ -52,6 +52,47 @@ own changelog recommends for exactly this case (PR#753). This is a defensible re
 protecting against, it's a config value to revisit, not a load-bearing assumption to
 silently keep.
 
+## Sprint S5 — the earlier grep-based panic counts (up to 796) were never trustworthy; the AST-based baseline is 0
+
+**Correction, logged so it isn't silently re-derived (or re-doubted) later.** A prior framing of
+this codebase's panic risk cited four grep-based counting methods disagreeing by up to 3x and
+topping out at 796 hits. That spread was real but the number itself never was: every method that
+grepped for `.unwrap()`/`.expect(` and tried to exclude test code by filename or a hand-rolled
+brace-depth strip was measuring the wrong thing, because this repo's dominant test layout is an
+inline `#[cfg(test)] mod tests { ... }` block inside the same production file, not a separate
+`_test.rs` file — exactly the structure line-based tools can't parse and an AST-based tool (clippy)
+parses by construction. The trustworthy number, re-derivable at any time with
+`cargo clippy --workspace --all-targets --all-features -- -D clippy::unwrap_used -D
+clippy::expect_used -D clippy::panic`, is **0** — see `docs/ops/PANIC_AUDIT.md` for the full
+method comparison and per-crate table. Future sprints citing a panic/unwrap count for this repo
+should re-run that command, not grep.
+
+**The enforcement this sprint's brief asked for already existed, more broadly than asked — pre-
+flight caught that before any fixing work started.** The brief's plan was: measure at `warn`,
+fix/annotate hot-path unwraps (`lopi-agent`, `lopi-orchestrator`, `lopi-ui`), then promote just
+those three crates to `deny` in CI while leaving the rest at `warn`-with-a-count. Reading
+`.github/workflows/konjo-gate.yml`'s G1 job first (per the brief's own "confirm the existing
+adoption" step) showed the workspace-wide `-D clippy::unwrap_used/expect_used/panic` gate was
+already a hard check (never `continue-on-error`) across *all* crates, not scoped to hot paths,
+and was already green. This is exactly the "let the measurement set the scope, don't pre-commit
+to fixing things that mostly don't exist" instruction in the brief's own text — applied one level
+up, to the enforcement mechanism itself, not just the fix count. Doing the fix/annotate/promote
+sequence anyway once the measurement showed 0 to fix would have been the ocean-boiling this
+framework exists to reject.
+
+**What was still real work, found by verifying rather than assuming the CI flags were the whole
+story:** the guarantee lived only in specific command invocations (CI's job, the pre-commit
+hook's mirror of it), not in the source itself — a contributor running plain `cargo clippy` with
+no flags, or an editor's rust-analyzer, got no signal. Every crate now carries an explicit
+`#![deny(...)]` (hot-path three) or `#![warn(...)]` (everyone else) attribute in `lib.rs`/
+`main.rs`, redundant with the CI flags by design. And `.konjo/hooks/pre-commit`'s step "1c.
+unwrap/expect scan" — the one place in this repo still doing exactly the untrustworthy
+grep-plus-brace-depth-strip this sprint's own measurement work discredited — is now removed;
+step "1b. clippy" (AST-based, same lints as CI) already subsumed it and does so correctly. Kept
+narrow deliberately: no new error-handling framework, no touching test code, no `[lints]
+workspace = true` table (would've required restructuring every crate's `Cargo.toml` for no
+behavior change over the inline attributes already in place).
+
 ## Sprint S2 — the trifecta containment is a one-way door for existing deployments
 
 **Auth flips from opt-in to mandatory — this breaks any running `lopi sail` deployed

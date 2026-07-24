@@ -3,6 +3,8 @@
 //! Exposes `Task`, `Score`, `LopiConfig`, and supporting types used across
 //! all lopi crates.
 
+#![warn(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
 /// Eval-Execution-1 (A1) — the goal/acceptance object (cross-cutting seam #1):
 /// a tier-tagged, machine-checkable success condition for a loop or a stack.
 pub mod acceptance;
