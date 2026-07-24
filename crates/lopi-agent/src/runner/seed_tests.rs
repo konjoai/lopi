@@ -229,6 +229,9 @@ async fn gather_seed_only_injects_promotable_pattern_constraints() {
 /// verify — everything after this point is the CLI subprocess handing
 /// this exact string to Claude unmodified.
 #[tokio::test]
+// The printed prompt is the point of this test — it's the human-visible
+// evidence a live-verification check exists to produce, not debug noise.
+#[allow(clippy::print_stdout)]
 async fn live_check_backfilled_pattern_constraint_reaches_the_real_planning_prompt() {
     let db_path = std::env::temp_dir().join(format!(
         "lopi-constraint-capture-2-live-check-{}.db",
