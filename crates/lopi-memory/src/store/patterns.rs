@@ -7,6 +7,7 @@ use chrono::Utc;
 use lopi_core::ScoreWeights;
 use std::collections::HashSet;
 
+use super::pattern_upsert::PatternExtra;
 use super::MemoryStore;
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -32,6 +33,14 @@ pub struct PatternRow {
     /// User validation: `'approved'`, `'rejected'`, or `None` (unannotated).
     #[sqlx(default)]
     pub user_annotation: Option<String>,
+    /// Coarse per-project ecosystem label (e.g. `"rust"`), or `None` when no
+    /// toolchain detection ran for this row (every live `mine_patterns` row).
+    #[sqlx(default)]
+    pub toolchain: Option<String>,
+    /// `'lopi_run'` (live task mining) or `'onboarding_import'` (historical
+    /// transcript backfill) — see `schema.sql`'s Onboarding-Import-1 entry.
+    #[sqlx(default)]
+    pub source: String,
 }
 
 // ── Private helpers ───────────────────────────────────────────────────────────
@@ -105,7 +114,8 @@ impl MemoryStore {
 
         let mut rows_qb = sqlx::QueryBuilder::new(
             "SELECT id, goal_keywords, successful_constraints, avg_attempts, success_rate, \
-             last_seen, derived_from_postmortem FROM patterns WHERE id IN (",
+             last_seen, derived_from_postmortem, toolchain, source \
+             FROM patterns WHERE id IN (",
         );
         let mut separated = rows_qb.separated(", ");
         for id in &candidate_ids {
@@ -132,7 +142,7 @@ impl MemoryStore {
     /// `goal_keywords` (space-separated, as produced by
     /// [`keyword_fingerprint`]) — keeps `pattern_keywords` in sync so
     /// [`Self::find_similar_patterns`]' candidate lookup stays correct.
-    async fn index_pattern_keywords(
+    pub(super) async fn index_pattern_keywords(
         executor: &mut sqlx::SqliteConnection,
         pattern_id: &str,
         goal_keywords: &str,
@@ -161,7 +171,7 @@ impl MemoryStore {
     pub async fn load_patterns(&self, limit: i64) -> Result<Vec<PatternRow>> {
         sqlx::query_as::<_, PatternRow>(
             "SELECT id, goal_keywords, successful_constraints, avg_attempts, success_rate, \
-             last_seen, derived_from_postmortem \
+             last_seen, derived_from_postmortem, toolchain, source \
              FROM patterns ORDER BY COALESCE(success_rate, 0) DESC, last_seen DESC LIMIT ?1",
         )
         .bind(limit)
@@ -177,7 +187,7 @@ impl MemoryStore {
     pub async fn find_pattern_by_id_prefix(&self, prefix: &str) -> Result<Option<PatternRow>> {
         sqlx::query_as::<_, PatternRow>(
             "SELECT id, goal_keywords, successful_constraints, avg_attempts, success_rate, \
-             last_seen, derived_from_postmortem \
+             last_seen, derived_from_postmortem, toolchain, source \
              FROM patterns WHERE id LIKE ?1 LIMIT 1",
         )
         .bind(format!("{prefix}%"))
@@ -247,40 +257,15 @@ impl MemoryStore {
         // before either had written — and both insert, creating duplicate
         // rows for the same goal_keywords.
         let mut tx = self.write_pool.begin().await?;
-        let existing: Option<(String, Option<f64>, Option<f64>)> = sqlx::query_as(
-            "SELECT id, avg_attempts, success_rate FROM patterns WHERE goal_keywords = ?1",
+        Self::upsert_pattern_row(
+            &mut tx,
+            &fingerprint,
+            attempt_f,
+            success_rate,
+            &now,
+            &PatternExtra::default(),
         )
-        .bind(&fingerprint)
-        .fetch_optional(&mut *tx)
         .await?;
-
-        if let Some((existing_id, prev_avg, prev_sr)) = existing {
-            let new_avg = f64::midpoint(prev_avg.unwrap_or(0.0), attempt_f).max(1.0);
-            let new_sr = f64::midpoint(prev_sr.unwrap_or(0.0), success_rate).clamp(0.0, 1.0);
-            sqlx::query(
-                "UPDATE patterns SET avg_attempts=?1, success_rate=?2, last_seen=?3 WHERE id=?4",
-            )
-            .bind(new_avg)
-            .bind(new_sr)
-            .bind(&now)
-            .bind(existing_id)
-            .execute(&mut *tx)
-            .await?;
-        } else {
-            let id = uuid::Uuid::new_v4().to_string();
-            sqlx::query(
-                "INSERT INTO patterns (id, goal_keywords, avg_attempts, success_rate, last_seen) \
-                 VALUES (?1, ?2, ?3, ?4, ?5)",
-            )
-            .bind(&id)
-            .bind(&fingerprint)
-            .bind(attempt_f)
-            .bind(success_rate)
-            .bind(&now)
-            .execute(&mut *tx)
-            .await?;
-            Self::index_pattern_keywords(&mut tx, &id, &fingerprint).await?;
-        }
         tx.commit().await?;
         Ok(())
     }
@@ -305,7 +290,7 @@ impl MemoryStore {
     pub async fn load_annotated_patterns(&self) -> Result<Vec<PatternRow>> {
         sqlx::query_as(
             "SELECT id, goal_keywords, successful_constraints, avg_attempts, success_rate, \
-             last_seen, derived_from_postmortem, user_annotation \
+             last_seen, derived_from_postmortem, user_annotation, toolchain, source \
              FROM patterns WHERE user_annotation IS NOT NULL ORDER BY last_seen DESC LIMIT 100",
         )
         .fetch_all(&self.read_pool)

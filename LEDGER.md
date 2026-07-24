@@ -5,6 +5,79 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## Onboarding-Import-1 — `toolchain`, not `stack` (KT-C); KT-A/KT-B left genuinely open
+
+**KT-C — the naming decision, confirmed and logged, not asked interactively.**
+The mission brief itself already did the naming analysis and proposed
+`toolchain` (table/column, not `toolchain_id`-as-separate-table) with a
+concrete collision rationale: `web/src/lib/stores/stack.ts` and the whole
+loop-stack/card concept already own the word `stack` in this codebase — a
+grep against `stack.ts` before writing the migration confirmed the concept is
+load-bearing there (`StackCard`, `buildCard`, `applyStackTemplate`, dozens of
+call sites), not a stray usage that could tolerate a second meaning. Given the
+brief itself had already reasoned through and proposed the one defensible
+name, and given this is a one-way schema/naming decision worth surfacing but
+not worth blocking an otherwise self-contained sprint on, the call made here
+was: proceed with `toolchain` as a plain nullable `patterns.toolchain` column
+(the simpler of the brief's two sanctioned shapes — a full `toolchains` table
+would add a join with no present payoff, since Phase 2 only ever derives one
+label per project directory), document the rationale here, and surface it
+plainly in the session summary so a human can redirect before this actually
+ships to production data. Logged as a one-way door regardless of which way it
+had gone, per the brief's own instruction.
+
+**KT-A — partially answered from real data, but not the corpus the kill-test
+asked for.** This session's sandbox is a single-session ephemeral container,
+not Wes's machine: `~/.claude/projects/` here contains exactly one file, this
+very session's own in-progress transcript (`2afe0e65-....jsonl`), not 3+ files
+across separate projects (lopi/squish/kiban). That one file was real enough to
+settle the core structural question with certainty rather than a guess: a
+`type: "user"` transcript line is not always a genuine human turn. Diffing two
+real entries from the same file — `message.content` as a plain JSON string
+(session-transcript line 2, no `toolUseResult` key) versus `message.content`
+as a JSON array containing a `{"type":"tool_result",...}` block plus a
+top-level `toolUseResult` key (line 13) — pins the distinguishing signal as
+content *shape*, not the envelope's own `type` field, mirroring exactly what
+`claude_events.rs` had to handle for the live-stream format. What this single
+file cannot answer: whether every historical session across a real multi-
+project corpus follows this same shape with no exceptions, and whether any
+transcript ever carries a `type: "summary"` entry (raised as a possible richer
+goal source in the brief) — none appeared in this one file, so
+`transcript_import.rs` does not special-case it. Left open for a session with
+real `~/.claude` access on Wes's machine; do not treat the one-file finding as
+a full corpus validation.
+
+**KT-B — could not be run at all, stated plainly rather than assumed.**
+`~/.claude/settings.json` does not exist anywhere in this container (only
+`launcher-settings.json`, a different file with a different purpose — SDK
+hook wiring, not user retention prefs). There is no `cleanupPeriodDays` to
+read here, so onboarding's real-world recovery window (30-day default vs.
+whatever a given user has configured) is genuinely unknown from inside this
+sandbox. Not assumed to be the 30-day default; not assumed to be anything.
+Needs a session with real `~/.claude` access.
+
+**Backfill success-rate semantics deliberately diverge from `mine_patterns`'s
+live-run stats, not by oversight.** A live-mined pattern's `success_rate` is a
+real test-pass-rate average across `attempts` rows; a historical transcript
+has no `attempts` rows at all. `backfill_onboarding_pattern` uses a binary
+proxy instead — `1.0` when Phase 4's completion heuristic passed, `0.0`
+(no signal either way) otherwise — rather than inventing a fractional
+pass-rate the data can't actually support. The shared `upsert_pattern_row`
+blend-on-collision path (`f64::midpoint`) then treats that binary proxy the
+same as a real average when folding it into an existing live-mined row, which
+is an accepted approximation for this sprint, not a hidden precision loss —
+worth revisiting if a future sprint finds backfilled evidence measurably
+skewing blended success rates.
+
+**How to apply:** any future migration touching the toolchain/language
+dimension (the continual-recognition follow-on this sprint explicitly sets up
+for) must keep the `toolchain` name — this is the point a one-way door was
+meant to close. Any future kill-test gated on real `~/.claude` access should
+assume a fresh Claude Code on the web / remote-environment session starts
+with zero pre-existing transcript history, by design — that is not a bug to
+work around, it is the reason this sprint's onboarding-import mission exists
+in the first place.
+
 ## macOS-Web-Parity-5 — threading `repo` closes a gap on *three* surfaces at once, one of them web's own
 
 **Why this sprint, now.** Parity-4's handoff named this the one open structural gap worth a real audit rather than a mechanical port: `LiveAgent` has no `repo` field, blocking a `byRepo` Budget panel and keeping `Overview`'s old goal/repo column stuck at `"—"`. Rather than guess at scope, this sprint opened with a research pass (an `Explore` agent tracing the actual call graph) before writing anything — the standing discipline this repo's LEDGER already models for every prior "is this actually small or does it touch the orchestrator" question.

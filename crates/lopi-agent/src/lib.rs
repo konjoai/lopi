@@ -39,6 +39,10 @@ pub mod scorer;
 pub mod stability;
 #[cfg(test)]
 mod test_support;
+/// Onboarding-Import-1 — defensive decoder for historical
+/// `~/.claude/projects/**/*.jsonl` session transcripts. See that module's
+/// doc comment for how this differs from `claude_events`.
+pub mod transcript_import;
 /// Konjo Verifier — rubric-guided Opus second-score pass (Sprint S).
 pub mod verifier;
 

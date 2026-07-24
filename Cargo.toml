@@ -21,7 +21,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "0.22.0"
+version = "0.23.0"
 edition = "2021"
 authors = ["KonjoAI"]
 license = "MIT"
@@ -71,23 +71,23 @@ tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 mimalloc = { version = "0.1", default-features = false }
 
-lopi-core = { path = "crates/lopi-core", version = "0.22.0" }
-lopi-context = { path = "crates/lopi-context", version = "0.22.0" }
-lopi-git = { path = "crates/lopi-git", version = "0.22.0" }
-lopi-agent = { path = "crates/lopi-agent", version = "0.22.0" }
-lopi-memory = { path = "crates/lopi-memory", version = "0.22.0" }
-lopi-orchestrator = { path = "crates/lopi-orchestrator", version = "0.22.0" }
-lopi-ui = { path = "crates/lopi-ui", version = "0.22.0" }
-lopi-remote = { path = "crates/lopi-remote", version = "0.22.0" }
-lopi-webhook = { path = "crates/lopi-webhook", version = "0.22.0" }
-lopi-toon = { path = "crates/lopi-toon", version = "0.22.0" }
-lopi-ratelimit = { path = "crates/lopi-ratelimit", version = "0.22.0" }
-lopi-app = { path = "crates/lopi-app", version = "0.22.0" }
-lopi-github = { path = "crates/lopi-github", version = "0.22.0" }
-lopi-spec = { path = "crates/lopi-spec", version = "0.22.0" }
-lopi-tools = { path = "crates/lopi-tools", version = "0.22.0" }
-lopi-skill = { path = "crates/lopi-skill", version = "0.22.0" }
-lopi-mcp = { path = "crates/lopi-mcp", version = "0.22.0" }
+lopi-core = { path = "crates/lopi-core", version = "0.23.0" }
+lopi-context = { path = "crates/lopi-context", version = "0.23.0" }
+lopi-git = { path = "crates/lopi-git", version = "0.23.0" }
+lopi-agent = { path = "crates/lopi-agent", version = "0.23.0" }
+lopi-memory = { path = "crates/lopi-memory", version = "0.23.0" }
+lopi-orchestrator = { path = "crates/lopi-orchestrator", version = "0.23.0" }
+lopi-ui = { path = "crates/lopi-ui", version = "0.23.0" }
+lopi-remote = { path = "crates/lopi-remote", version = "0.23.0" }
+lopi-webhook = { path = "crates/lopi-webhook", version = "0.23.0" }
+lopi-toon = { path = "crates/lopi-toon", version = "0.23.0" }
+lopi-ratelimit = { path = "crates/lopi-ratelimit", version = "0.23.0" }
+lopi-app = { path = "crates/lopi-app", version = "0.23.0" }
+lopi-github = { path = "crates/lopi-github", version = "0.23.0" }
+lopi-spec = { path = "crates/lopi-spec", version = "0.23.0" }
+lopi-tools = { path = "crates/lopi-tools", version = "0.23.0" }
+lopi-skill = { path = "crates/lopi-skill", version = "0.23.0" }
+lopi-mcp = { path = "crates/lopi-mcp", version = "0.23.0" }
 
 [package]
 name = "lopi"
