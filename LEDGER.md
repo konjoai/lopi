@@ -5,6 +5,53 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## Sprint S4 — the coverage floor is a one-way door; the soft-gate lint is a lopi-local divergence
+
+**The coverage floor gate is deliberately a one-way door.** Once `.konjo/coverage-floor.txt`
++ `.konjo/scripts/coverage_floor_check.py` is live as a hard CI step, every future PR
+depends on it never silently vanishing or going soft again — that's the entire point
+of Pillar 2 ("a cleared bar never moves backward"). Concretely: the floor value can
+only move *up* (ratcheted in the same PR that earns the higher number), and the gate
+itself must stay hard. If a future sprint needs to touch this mechanism, the burden of
+proof is on that sprint to show the floor is still measuring the same thing (workspace-
+scoped `LF:`/`LH:` from `lcov.info`, not the `--workspace`-flag-ignoring `cargo llvm-cov
+report --json` under-scoping bug the coverage gate above it already documents) — not on
+this sprint to have anticipated every future need. The floor started at 68.34%
+(verified against `3a8a2ff`); the number itself is not the decision worth logging, the
+mechanism's one-way nature is.
+
+**The soft-gate lint (`.konjo/scripts/soft_gate_lint.py`) is a deliberate, temporary
+lopi-local divergence from the distribution model, not an oversight.** Pre-flight
+kill-test 3 required checking whether kiban `v1.4.0` already ships a coverage-floor/
+ratchet checker or a generic soft-gate linter before building either locally — per the
+standing rule that a local reimplementation of something kiban already provides is
+exactly the drift the distribution model exists to prevent. Kiban `v1.4.0` ships
+neither: `konjo-gates-py` is a Python/ML-repo tool (prose net-new, secrets, the
+self_test replay eval, specialist stats) with no coverage or CI-config-lint logic, and
+`konjo-gates-rs` (the Rust equivalent) is an explicit phase-1 stub — its `main.rs`
+prints `"konjo-gates-rs: phase 1"` and nothing else; its own README says the working
+runner "lands in Phase 1," future tense. Both mechanisms this sprint built
+(`coverage_floor_check.py` and `soft_gate_lint.py`) are therefore lopi-local by
+necessity, not by choice, and both are flagged in `NEXT_SESSION_PROMPT.md` as
+migration candidates for whenever `konjo-gates-rs` actually ships working logic —
+whoever picks that up should port lopi's kill-tested behavior into the crate rather
+than re-deriving it from scratch, since the fixture-based verification here (5 cases
+each) is the part most worth preserving.
+
+**`cargo-deny` 0.19's `[advisories].unmaintained`/`unsound` fields changed meaning, not
+just syntax — the migration re-derives intent, it doesn't just fix a parse error.**
+The old `unmaintained = "warn"` was a lint-level knob (report, don't fail). The field
+was repurposed into a scope selector (`"all"`/`"workspace"`/`"transitive"`/`"none"`)
+that controls which crates get checked at all — there is no soft "warn but still
+check everything" tier anymore in the new schema. `unmaintained = "workspace"` (error
+only if a *workspace* crate directly depends on the unmaintained/unsound crate; ignore
+purely transitive ones) was chosen as the closest available equivalent to the old
+"watch everywhere, don't hard-block" intent, following the exact migration cargo-deny's
+own changelog recommends for exactly this case (PR#753). This is a defensible read of
+"warn," not a first-principles one — if it undershoots or overshoots what "warn" was
+protecting against, it's a config value to revisit, not a load-bearing assumption to
+silently keep.
+
 ## Sprint S5 — the earlier grep-based panic counts (up to 796) were never trustworthy; the AST-based baseline is 0
 
 **Correction, logged so it isn't silently re-derived (or re-doubted) later.** A prior framing of

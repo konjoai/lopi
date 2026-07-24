@@ -3,7 +3,14 @@
 # Docs: https://embarkstudios.github.io/cargo-deny/
 
 [licenses]
-# Allowed open-source licenses — conservative set covering common Rust crates
+# cargo-deny 0.16+ denies-by-default: any license not explicitly listed in
+# `allow` below is now an error, and `copyleft`/`unlicensed`/`allow-osi-fsf-free`
+# were removed as config keys (PR#611/#681) since they're irrelevant once
+# everything not allow-listed is denied. This allow list already covered the
+# workspace's actual licenses under the old default-allow scheme, so the
+# behavior for every crate the workspace already depends on is unchanged;
+# the new default-deny only bites a *newly added* dependency with a license
+# not in this list, which is exactly the point.
 allow = [
     "MIT",
     "Apache-2.0",
@@ -12,27 +19,71 @@ allow = [
     "BSD-3-Clause",
     "ISC",
     "Unicode-DFS-2016",
+    # The ICU/unicode-adjacent stack (icu_*, litemap, tinystr, writeable, yoke,
+    # zerofrom, zerovec, zerotrie, potential_utf, unicode-ident) moved to this
+    # newer SPDX id (2024) — same OSI-approved permissive terms as
+    # Unicode-DFS-2016 above, just the current identifier. Sprint S4 triage,
+    # verified 2026-07-24.
+    "Unicode-3.0",
     "CC0-1.0",
     "Zlib",
     "OpenSSL",
 ]
-# Copyleft licenses require all derivative works to be open-source — not allowed
-# in a product codebase without explicit legal review
-copyleft = "deny"
-unlicensed = "deny"
 # Confidence threshold: crates whose license is ambiguous get denied
 confidence-threshold = 0.8
+
+# Copyleft licenses are denied by not being in `allow` above (cargo-deny 0.16+
+# denies anything unlisted). These two crates are the only MPL-2.0 dependencies
+# in the graph, both build-time/runtime deps consumed unmodified — never
+# forked, patched, or redistributed as modified source — so the copyleft
+# obligation (share modifications to the MPL-licensed *files themselves*)
+# never triggers. Scoped per-crate rather than adding MPL-2.0 to the global
+# allow list, so a *future* MPL-2.0 dependency still needs its own review.
+# Sprint S4 triage, verified 2026-07-24.
+[[licenses.exceptions]]
+name = "option-ext"
+allow = ["MPL-2.0"]
+
+[[licenses.exceptions]]
+name = "webpki-roots"
+allow = ["MPL-2.0"]
 
 [advisories]
 # rustsec/advisory-db is the Rust security advisory database
 db-urls = ["https://github.com/rustsec/advisory-db"]
-# Known vulnerabilities: hard block
-vulnerability = "deny"
-# Unmaintained crates: warn (not always exploitable, but watch them)
-unmaintained = "warn"
+# Known vulnerabilities: hard block. (cargo-deny 0.19+ removed the top-level
+# `vulnerability` severity knob entirely — RUSTSEC vulnerability advisories
+# always error, unconditionally. There is no longer a config key for this.)
+#
+# `unmaintained` and `unsound` are no longer lint-level knobs ("warn"/"deny")
+# as of cargo-deny 0.19 — they were repurposed as scope selectors
+# ("all"/"workspace"/"transitive"/"none") that control which crates get
+# checked at all; a match in scope always errors, there is no soft "warn"
+# tier anymore. "workspace" (error only if a workspace crate directly
+# depends on the unmaintained/unsound crate, ignore purely transitive ones)
+# is the closest equivalent to the old "warn everywhere" intent without
+# hard-failing on every unmaintained crate three hops down the tree.
+unmaintained = "workspace"
+unsound = "workspace"
 # Yanked versions: hard block (yanked = the crate author pulled it for a reason)
 yanked = "deny"
-notice = "warn"
+
+# Sprint S4 triage (verified 2026-07-24): every advisory found by this gate
+# has been resolved by upgrading the affected crate (anyhow, crossbeam-epoch,
+# git2, spin — see git log for this file's sprint), except the four below.
+# All four trace to `sqlx 0.7.4`'s own `rustls 0.21`/`rustls-webpki 0.101`
+# pin — fixing them means upgrading sqlx to a major version (0.7 -> 0.8+,
+# `cargo update -p sqlx`/`-p rustls-webpki` confirm no 0.7-compatible fix
+# exists), which is real application-code migration work (sqlx's query/macro
+# API changed between majors), not a config-scale fix — out of scope for a
+# CI-mechanism sprint. Scheduled in NEXT_SESSION_PROMPT.md. Not blanket-silenced:
+# each is named individually so a *new*, unrelated advisory still fails the gate.
+ignore = [
+    { id = "RUSTSEC-2026-0098", reason = "rustls-webpki via sqlx 0.7's pinned rustls 0.21; fix requires sqlx 0.8+ major upgrade, scheduled separately" },
+    { id = "RUSTSEC-2026-0099", reason = "rustls-webpki via sqlx 0.7's pinned rustls 0.21; fix requires sqlx 0.8+ major upgrade, scheduled separately" },
+    { id = "RUSTSEC-2026-0104", reason = "rustls-webpki via sqlx 0.7's pinned rustls 0.21; fix requires sqlx 0.8+ major upgrade, scheduled separately" },
+    { id = "RUSTSEC-2024-0363", reason = "sqlx 0.7.4 binary-protocol cast issue; fix requires sqlx 0.8.1+ major upgrade, scheduled separately" },
+]
 
 [bans]
 # Duplicate versions of the same crate waste compile time and inflate binary size.

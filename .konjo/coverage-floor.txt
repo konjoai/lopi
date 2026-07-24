@@ -1,0 +1,14 @@
+# Konjo coverage floor — Konjo Forward Pillar 2 (main is truth, gates only move up).
+#
+# The value below is the lowest workspace line coverage `main` has ever cleared.
+# CI's "Coverage floor gate" step (.github/workflows/konjo-gate.yml) fails any PR
+# that drops measured coverage (summed LF/LH from lcov.info, workspace-scoped)
+# below it. The 80%/95% coverage gate above it stays soft — this floor is hard.
+#
+# Ratchet up only: when a PR raises coverage, bump this number (and
+# verified-against) in the same PR. Never lower it, except to correct a proven
+# measurement bug — and if you do, say why in the commit message and LEDGER.md.
+#
+# verified-against: 3a8a2ff (main, v0.24.0)
+# measured: 23355 lines found, 15960 hit (cargo llvm-cov nextest --workspace --lcov)
+68.34
