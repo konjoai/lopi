@@ -71,7 +71,7 @@ private func firstNonEmpty(_ values: String?...) -> String? {
     return nil
 }
 
-private func repoBasename(_ path: String?) -> String {
+func repoBasename(_ path: String?) -> String {
     guard let path, !path.isEmpty else { return "" }
     return path.split(separator: "/").last.map(String.init) ?? path
 }

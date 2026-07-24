@@ -230,6 +230,10 @@ function applyMessage(msg: WireMessage) {
           // Overview COST column aren't stuck at $0 for already-finished tasks.
           // Live tasks still get incremental updates via the `cost` event.
           cost: t.cost ?? 0,
+          // macOS-Web-Parity-5 — hydrate repo the same way, so `byRepo`
+          // reflects already-finished tasks too, not just ones still live
+          // this session.
+          repo: t.repo ?? '',
           startedAt: Date.parse(t.created_at) || Date.now()
         });
       }

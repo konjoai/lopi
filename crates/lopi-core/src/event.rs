@@ -37,6 +37,9 @@ pub enum AgentEvent {
         attempt: u8,
         /// Git branch created for this attempt.
         branch: String,
+        /// Effective repo this attempt is running against (task-level
+        /// override, or the pool's default when the task set none).
+        repo: String,
     },
     /// The task's lifecycle status has changed.
     StatusChanged {

@@ -313,6 +313,32 @@ eq(
   undefined,
   'snapshot without cost stays undefined (older servers)'
 );
+// macOS-Web-Parity-5 — same F6 lesson applied to `repo`: a new server field
+// is invisible to the client until this whitelist is taught to keep it.
+const snapWithRepo = parseSnapshot({
+  type: 'snapshot',
+  tasks: [
+    {
+      id: 't1',
+      goal: 'g',
+      status: 'success',
+      created_at: '2026-05-06T12:00:00Z',
+      repo: '/Users/dev/lopi'
+    }
+  ],
+  stats: { running: 0, queued: 0, succeeded: 1, failed: 0, uptime_secs: 1 }
+});
+eq((snapWithRepo as any)?.tasks?.[0]?.repo, '/Users/dev/lopi', 'snapshot preserves per-task repo');
+const snapNoRepo = parseSnapshot({
+  type: 'snapshot',
+  tasks: [{ id: 't2', goal: 'g', status: 'queued', created_at: '2026-05-06T12:00:00Z' }],
+  stats: { running: 0, queued: 1, succeeded: 0, failed: 0, uptime_secs: 1 }
+});
+eq(
+  (snapNoRepo as any)?.tasks?.[0]?.repo,
+  undefined,
+  'snapshot without repo stays undefined (task never started, or older servers)'
+);
 
 console.log('\n── parseWireMessage dispatch ──────────────────────────');
 const dispatched = parseWireMessage({
