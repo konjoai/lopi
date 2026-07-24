@@ -10,6 +10,7 @@ struct CronView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
+                header
                 if model.schedules.isEmpty {
                     Text("No schedules yet — create one to run a goal on a cron.")
                         .font(Konjo.sans(13))
@@ -41,6 +42,20 @@ struct CronView: View {
             ScheduleEditor(schedule: schedule) { body in
                 await model.saveSchedule(id: schedule.id, body)
             }
+        }
+    }
+
+    // MARK: Header
+
+    /// Mirrors web's `schedules/+page.svelte` header (added in the same
+    /// design-system-alignment sprint that gave Budget/Overview/Loop their
+    /// page headers) — Cron previously led straight into the schedule list
+    /// with no page-level title, an inconsistency with every other screen.
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("Scheduling").font(Konjo.sans(22, weight: .semibold)).foregroundStyle(Konjo.fg)
+            Text("CRON-DRIVEN AGENT RUNS · \(model.schedules.count) CONFIGURED")
+                .font(Konjo.mono(9, weight: .semibold)).tracking(1.4).foregroundStyle(Konjo.fgMute)
         }
     }
 

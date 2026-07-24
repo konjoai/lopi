@@ -11,6 +11,7 @@ struct ConfigView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
+                header
                 appearancePanel
                 cachePanel
                 configPanel
@@ -25,6 +26,20 @@ struct ConfigView: View {
                     Label("Refresh", systemImage: "arrow.clockwise")
                 }
             }
+        }
+    }
+
+    // MARK: Header
+
+    /// Mirrors web's `config/+page.svelte` header (added in the same
+    /// design-system-alignment sprint that gave Budget/Overview/Loop their
+    /// page headers) — Config previously led straight into a panel with no
+    /// page-level title at all, an inconsistency with every other screen.
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("Configuration").font(Konjo.sans(22, weight: .semibold)).foregroundStyle(Konjo.fg)
+            Text("APP SETTINGS · THEME · EFFECTIVE CONFIG")
+                .font(Konjo.mono(9, weight: .semibold)).tracking(1.4).foregroundStyle(Konjo.fgMute)
         }
     }
 
