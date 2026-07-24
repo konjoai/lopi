@@ -1,5 +1,13 @@
 # Changelog
 
+## [Unreleased] — Composer-Grammar-2 follow-up: `/cmd` autocomplete widens past repo-only Konjo commands
+
+`GET /api/claude-commands` (and the composer's `/`-triggered autocomplete it feeds) only ever scanned the *target repo's* own `.claude/commands`/`.claude/skills` — for this repo that's just `konjo.md` plus the `konjo-*` skills, so the dropdown surfaced only Konjo commands, never the rest of what's actually usable in a Claude Code session against that repo.
+
+- **[Feature] `lopi_skill::discover_claude_commands` gains a `home: Option<&Path>` parameter** and now merges four sources, most-specific-wins: repo `.claude/commands`+`.claude/skills` (unchanged), user-level `~/.claude/commands`+`~/.claude/skills` (identical file format), plugins installed under `<claude_dir>/plugins/**` at both project and user scope (plugin roots found structurally — any directory holding its own `commands/`/`skills/` — since Claude Code's on-disk plugin layout isn't a published schema), and a new hand-maintained `builtin_commands()` list of Claude Code's own native commands (`/help`, `/review`, `/security-review`, ...), which have no offline/filesystem discovery path at all.
+- **[Fix] `repos_handlers::list_claude_commands`** now resolves `$HOME` and passes it through, so the live endpoint actually returns the merged catalog instead of the repo-only slice.
+- **[Test]** `lopi-skill`'s unit tests grow 10 cases covering home-level discovery, plugin discovery at both scopes, and repo-over-home-over-plugin-over-builtin precedence. The three existing `lopi-ui` HTTP tests were loosened from exact-count assertions to presence checks, since the endpoint's result is no longer hermetic to the query repo alone (it now legitimately depends on the running machine's real `$HOME`).
+
 ## [Unreleased] — macOS-Web-Parity-4: Config and Cron get page headers
 
 Web's `feat(web): align Config, Schedules, Onboard to the Loop Stacks/Overview/Budget design system` (2026-07-22) gave Config and Schedules the same h1+subtitle page header Budget/Loop/Overview already used, instead of leading straight into a panel/list. macOS's `ConfigView`/`CronView` had the identical gap — and it was already an internal inconsistency on macOS too, since `BudgetView`/`OverviewView`/`DashboardView` all use this exact header convention and Config/Cron didn't.

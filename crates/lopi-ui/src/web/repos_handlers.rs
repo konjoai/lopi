@@ -77,11 +77,13 @@ pub(super) struct ClaudeCommandsQuery {
     repo: String,
 }
 
-/// `GET /api/claude-commands?repo=<path>` — the real Claude Code `/name`
-/// commands (legacy `.claude/commands/*.md` + user-invocable
-/// `.claude/skills/*/SKILL.md`) registered in `repo`, for the composer's
-/// `/`-triggered autocomplete (Composer-Grammar-2). Mirrors
-/// [`list_branches`]'s repo-scoped query shape exactly.
+/// `GET /api/claude-commands?repo=<path>` — every real Claude Code `/name`
+/// command available for `repo`: Claude Code's own built-ins, installed
+/// plugins (user + project scope), user-level commands/skills
+/// (`~/.claude/...`), and `repo`'s own — see
+/// [`lopi_skill::discover_claude_commands`] for the full precedence order.
+/// Feeds the composer's `/`-triggered autocomplete (Composer-Grammar-2).
+/// Mirrors [`list_branches`]'s repo-scoped query shape exactly.
 pub(super) async fn list_claude_commands(
     State(s): State<AppState>,
     Query(q): Query<ClaudeCommandsQuery>,
@@ -91,10 +93,12 @@ pub(super) async fn list_claude_commands(
     } else {
         q.repo
     };
-    let commands =
-        tokio::task::spawn_blocking(move || lopi_skill::discover_claude_commands(Path::new(&repo)))
-            .await
-            .unwrap_or_default();
+    let home = std::env::var("HOME").ok().map(PathBuf::from);
+    let commands = tokio::task::spawn_blocking(move || {
+        lopi_skill::discover_claude_commands(Path::new(&repo), home.as_deref())
+    })
+    .await
+    .unwrap_or_default();
     (StatusCode::OK, Json(json!({ "commands": commands }))).into_response()
 }
 
