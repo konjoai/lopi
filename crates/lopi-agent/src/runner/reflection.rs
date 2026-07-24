@@ -20,7 +20,10 @@ use super::AgentRunner;
 
 /// Longest `attempted` summary persisted with a learning. Keeps the durable row
 /// bounded — the plan can be large, but the learning only needs a gist.
-const ATTEMPTED_SUMMARY_CAP: usize = 280;
+///
+/// `pub(super)` — `capture.rs` reuses this same cap for its success-side
+/// constraint summary rather than duplicating it.
+pub(super) const ATTEMPTED_SUMMARY_CAP: usize = 280;
 
 impl AgentRunner {
     /// Capture a durable learning from a rejected/rolled-back attempt.
@@ -68,7 +71,10 @@ impl AgentRunner {
 /// truncated to `cap` chars. Pure so its wording is unit-testable without a
 /// runner. An absent/blank plan yields an empty summary (the critique still
 /// carries the signal).
-fn summarize_attempt(plan: Option<&str>, cap: usize) -> String {
+///
+/// `pub(super)` — also reused by `capture.rs::success_constraint` to distil a
+/// clean-success plan into a pattern constraint, the same bounded shape.
+pub(super) fn summarize_attempt(plan: Option<&str>, cap: usize) -> String {
     let first_line = plan
         .and_then(|p| p.lines().map(str::trim).find(|l| !l.is_empty()))
         .unwrap_or("");

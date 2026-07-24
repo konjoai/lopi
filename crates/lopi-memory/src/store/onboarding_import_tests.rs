@@ -96,7 +96,7 @@ async fn backfill_blends_into_a_live_mined_pattern_without_stealing_its_source()
     let store = MemoryStore::open_in_memory().await.unwrap();
     let task_id = TaskId::new();
     store
-        .mine_patterns(&task_id, "refactor the retry backoff logic")
+        .mine_patterns(&task_id, "refactor the retry backoff logic", None)
         .await
         .unwrap();
 

@@ -5,6 +5,112 @@ the `lopi` repo. Newest first.
 
 ---
 
+## Next Session — after Constraint-Capture-2 (mine_patterns finally writes a constraint) — Phase 1 is now unblocked
+
+**Constraint-Capture-2 closed the gap where `mine_patterns` recorded stats but
+never a constraint, and gated the newly-populated constraints behind a
+promotion threshold. Its own Phase 1 (toolchain-scoped retrieval) was not
+attempted during the sprint itself, because the stated dependency (Session
+Prompt 1) hadn't landed yet — but it landed on `main` as `Onboarding-Import-1`
+(below) while this PR was still open, and had to be merged in.** Read first,
+in order: `CLAUDE.md`, `CHANGELOG.md`'s `Constraint-Capture-2` entry (updated
+at merge time), `LEDGER.md`'s `Constraint-Capture-2` entry in full (especially
+the KT-C/KT-D findings, the promotion-gate numbers, and the merge-time
+`PatternExtra`/`upsert_pattern_row`/COALESCE reconciliation), then this file's
+own words below and `Onboarding-Import-1`'s entry underneath it.
+
+### Phase 1 (toolchain-scoped retrieval) is now buildable — read this before starting
+
+At sprint time, a full grep of `schema.sql`, `CHANGELOG.md`, and `LEDGER.md`
+for `toolchain`/`onboarding`/`detect_stack` found nothing. That has changed:
+`Onboarding-Import-1` added `patterns.toolchain` (nullable, populated only by
+the onboarding backfill path — still `NULL` for every live-mined
+`mine_patterns` row) and `patterns.source` (`'lopi_run'` vs.
+`'onboarding_import'`). **Before starting Phase 1, re-confirm the current
+state rather than trusting this note indefinitely** — schemas can keep moving
+between sessions, the same lesson this merge itself is proof of. Two real
+open questions Phase 1 will hit immediately:
+- `find_similar_patterns` has no toolchain parameter yet — adding one is
+  additive (default to unscoped, matching this sprint's Constraint-Capture-2
+  brief's own "backward-compatible: an unscoped call still works" framing).
+- Live-mined patterns (`mine_patterns`, the path this sprint's own constraint
+  capture feeds) still don't populate `toolchain` at all — only the
+  onboarding backfill path does. Toolchain-scoping a *live* task's retrieval
+  would need `mine_patterns` to also call `src/toolchain_detect.rs` (or
+  receive a toolchain hint from its caller), which today it does not. Decide
+  whether Phase 1 should close that gap too, or scope toolchain retrieval to
+  backfilled patterns only for a first cut.
+
+### What shipped this sprint
+
+- `MemoryStore::mine_patterns` gained a `success_constraint: Option<&str>`
+  parameter, writing it into `patterns.successful_constraints` on both insert
+  and update. All three real call sites (`pool/run_loop.rs::run_one`,
+  `src/run_command.rs::run_with_live_print`, `src/repl/actions.rs`) now pass a
+  real constraint on a clean success (`matches!(outcome, TaskStatus::Success
+  { .. })`), `None` otherwise.
+- `patterns.occurrence_count` — new column, incremented on every
+  `mine_patterns` update.
+- `AgentRunner::success_constraint()` (`crates/lopi-agent/src/runner/
+  capture.rs`, new) — derives a bounded constraint from `last_plan`, reusing
+  `reflection::summarize_attempt` rather than duplicating it.
+- `seed_from_patterns`'s promotion gate (`crates/lopi-agent/src/runner/
+  seed.rs::is_promotable`): `occurrence_count ≥ 2` and `success_rate ≥ 0.5`
+  for mined patterns; postmortem-derived patterns exempt from both. See
+  `LEDGER.md` for the full reasoning and the "how to apply" note on retuning
+  these numbers later.
+- Phase 1 (toolchain-scoped retrieval) — **not attempted this sprint**, but
+  its precondition (Session Prompt 1 / `Onboarding-Import-1`) landed at merge
+  time — see above for what's now unblocked and what's still missing.
+- New tests across `crates/lopi-memory/src/store/tests.rs`,
+  `crates/lopi-agent/src/runner/capture.rs`, and
+  `crates/lopi-agent/src/runner/seed.rs`, including a live-verification test
+  (`live_check_backfilled_pattern_constraint_reaches_the_real_planning_prompt`)
+  that drives a file-backed store through the real `mine_patterns` →
+  `gather_seed` → `claude_support::build_plan_prompt` pipeline and asserts the
+  backfilled constraint appears in the literal planning-prompt text.
+- `cargo build --workspace`, `cargo test --workspace` (all crates), `cargo
+  clippy --workspace --all-targets -- -D warnings`, `cargo fmt --check`, and
+  `RUSTDOCFLAGS="-D missing_docs" cargo doc` all clean. `VERSION` (workspace
+  `Cargo.toml`) bumped to `0.24.0` at merge time — this sprint and
+  `Onboarding-Import-1` (below) both independently bumped to `0.23.0`, but
+  that version had already shipped on `main` without this sprint's changes
+  by the time the two were reconciled, so this sprint's own bump moved to
+  `0.24.0` rather than silently reusing an already-released version number.
+
+### What could not be verified in this sandbox — needs a live check
+
+**No live Anthropic API session exists in this sandbox to run `claude -p`
+itself**, the same standing constraint recorded in every prior sprint's
+`LEDGER.md` entry (Sprint Successor-1, MCPB-App-1/2). What was verified
+instead: a real, file-backed `MemoryStore`, backfilled through the real
+production write path, feeding the real `gather_seed()` → real
+`build_plan_prompt()` — the literal string `ClaudeCode` hands to the `claude`
+CLI subprocess for both its one-shot and streaming plan paths, confirmed (via
+`--nocapture`) to contain the backfilled constraint. A session with real
+`claude -p` access should, once Phase 4 (below) or any other planning-prompt
+change lands: submit a real task in a repo with backfilled pattern history,
+confirm the printed/logged planning prompt (or a debug log of it) contains a
+non-empty constraint sourced from a prior pattern, and confirm the resulting
+implementation actually reflects it (not just that the string was present in
+the prompt).
+
+### Open items for a future sprint
+
+- **Phase 4 (stretch, explicitly deferred by this sprint's own brief) — a
+  promoted pattern as a live composer suggestion.** Not started. The brief's
+  own kill-test for this phase (does `web/src/lib/components/Composer.svelte`
+  have a hook point for this without disrupting the `;`-prefix verb grammar
+  work) was never run. Scope as its own sprint if picked up.
+- **Toolchain scoping (Phase 1)** — no longer blocked on schema; see the new
+  section above for what's ready and what still needs deciding (live-mined
+  patterns don't carry a toolchain today, only backfilled ones do).
+- **The constraint-update policy is COALESCE (never overwrite once set), not
+  this sprint's originally-designed overwrite-latest** — reconciled at merge
+  time against `Onboarding-Import-1`'s already-shipped `upsert_pattern_row`
+  semantics (see `LEDGER.md`). Revisit only with real evidence a stale
+  constraint is stuck wrong on a row, not on intuition.
+
 ## Next Session — after Onboarding-Import-1 (Toolchain-Scoped Pattern Backfill)
 
 **Onboarding-Import-1 shipped all five phases and both hard exit-gate

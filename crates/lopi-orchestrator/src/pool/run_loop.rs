@@ -471,7 +471,11 @@ async fn run_one(
         if let Err(e) = store.mark_completed(&task_id, outcome.db_status()).await {
             warn!(task_id = %task_id, "mark_completed failed: {e}");
         }
-        if let Err(e) = store.mine_patterns(&task_id, &goal).await {
+        let constraint = matches!(outcome, TaskStatus::Success { .. })
+            .then(|| runner.success_constraint())
+            .flatten();
+        let constraint_ref = constraint.as_deref();
+        if let Err(e) = store.mine_patterns(&task_id, &goal, constraint_ref).await {
             warn!("pattern mining failed: {e}");
         }
         // Budget & Guardrail Controls Part 4.3 — the per-session cost already

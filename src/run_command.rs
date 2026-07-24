@@ -97,7 +97,16 @@ pub(crate) async fn run_with_live_print(
         .mark_completed(&task_id, outcome.db_status())
         .await
         .ok();
-    store.mine_patterns(&task_id, goal).await.ok();
+    // Constraint-Capture-2 — only a clean success has a constraint worth
+    // seeding forward; see the matching comment in
+    // `lopi_orchestrator::pool::run_loop`.
+    let success_constraint = matches!(outcome, TaskStatus::Success { .. })
+        .then(|| runner.success_constraint())
+        .flatten();
+    store
+        .mine_patterns(&task_id, goal, success_constraint.as_deref())
+        .await
+        .ok();
     println!();
     println!("⚓ {}", status_label(&outcome));
     // Budget & Guardrail Controls Part 4.3 — surface the session's real

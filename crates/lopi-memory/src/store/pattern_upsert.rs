@@ -35,14 +35,15 @@ impl MemoryStore {
         now: &str,
         extra: &PatternExtra<'_>,
     ) -> Result<String> {
-        let existing: Option<(String, Option<f64>, Option<f64>)> = sqlx::query_as(
-            "SELECT id, avg_attempts, success_rate FROM patterns WHERE goal_keywords = ?1",
+        let existing: Option<(String, Option<f64>, Option<f64>, i64)> = sqlx::query_as(
+            "SELECT id, avg_attempts, success_rate, occurrence_count \
+             FROM patterns WHERE goal_keywords = ?1",
         )
         .bind(fingerprint)
         .fetch_optional(&mut **tx)
         .await?;
 
-        if let Some((existing_id, prev_avg, prev_sr)) = existing {
+        if let Some((existing_id, prev_avg, prev_sr, prev_occurrence)) = existing {
             let new_avg = f64::midpoint(prev_avg.unwrap_or(0.0), avg_attempts).max(1.0);
             let new_sr = f64::midpoint(prev_sr.unwrap_or(0.0), success_rate).clamp(0.0, 1.0);
             // `source` is deliberately never overwritten on an existing row:
@@ -53,15 +54,23 @@ impl MemoryStore {
             // in only when the row doesn't already have one (COALESCE), so a
             // live-mined row's genuine constraint is never clobbered by a
             // backfill's weaker, transcript-derived guess.
+            //
+            // Constraint-Capture-2: `occurrence_count` always increments
+            // here — it counts how many completed tasks (live or backfilled)
+            // have contributed to this row, independent of whether this
+            // particular call carried a constraint.
+            let new_occurrence = prev_occurrence + 1;
             sqlx::query(
                 "UPDATE patterns SET avg_attempts=?1, success_rate=?2, last_seen=?3, \
-                 toolchain=COALESCE(toolchain, ?4), \
-                 successful_constraints=COALESCE(successful_constraints, ?5) \
-                 WHERE id=?6",
+                 occurrence_count=?4, \
+                 toolchain=COALESCE(toolchain, ?5), \
+                 successful_constraints=COALESCE(successful_constraints, ?6) \
+                 WHERE id=?7",
             )
             .bind(new_avg)
             .bind(new_sr)
             .bind(now)
+            .bind(new_occurrence)
             .bind(extra.toolchain)
             .bind(extra.successful_constraints)
             .bind(&existing_id)
@@ -72,9 +81,9 @@ impl MemoryStore {
             let id = uuid::Uuid::new_v4().to_string();
             sqlx::query(
                 "INSERT INTO patterns \
-                 (id, goal_keywords, avg_attempts, success_rate, last_seen, toolchain, \
-                  successful_constraints, source) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, COALESCE(?8, 'lopi_run'))",
+                 (id, goal_keywords, avg_attempts, success_rate, last_seen, occurrence_count, \
+                  toolchain, successful_constraints, source) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6, ?7, COALESCE(?8, 'lopi_run'))",
             )
             .bind(&id)
             .bind(fingerprint)
