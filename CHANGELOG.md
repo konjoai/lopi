@@ -1,5 +1,52 @@
 # Changelog
 
+## [0.26.0] — Sprint S5: panic audit — replace grep-guessing with a lint that can't lie
+
+Konjo Forward Pillar 1 (an honest starting position) and F11 (a durable unattended loop should
+not die on an `unwrap`). The brief opened with four grep-based unwrap/expect counting methods on
+this codebase disagreeing by orders of magnitude (up to 796) and asked for an AST-based clippy
+measurement to settle it, then a fix/annotate/promote-to-deny pass on the hot-path crates
+(`lopi-agent`, `lopi-orchestrator`, `lopi-ui`). Pre-flight found the enforcement half of that work
+already live: `.github/workflows/konjo-gate.yml`'s G1 job already ran
+`cargo clippy --workspace --all-targets --all-features -- -D clippy::unwrap_used -D
+clippy::expect_used -D clippy::panic` as a hard, workspace-wide gate (not hot-paths-only), and it
+was already green. **The real, AST-verified number of panicking call sites on production paths,
+workspace-wide, is 0** — full method comparison and per-crate table in `docs/ops/PANIC_AUDIT.md`.
+
+- **[Fix, measurement]** Reproduced all four grep methods against current `HEAD` (`34a73d1`):
+  raw grep excluding test *files* only found 788 hits, a naive single-pass `#[cfg(test)]` strip
+  found 246, hand-sampling the three hot-path directories found 0 unwraps, and the AST-based
+  clippy command found 0 — confirming text tools cannot answer this question on this codebase's
+  dominant test layout (inline `#[cfg(test)] mod tests` blocks inside production files, not
+  separate test files).
+- **[Hardening]** Every crate's `lib.rs` (and `src/main.rs` for the binary) now carries an
+  explicit `#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]` (hot-path crates:
+  `lopi-agent`, `lopi-orchestrator`, `lopi-ui`) or `#![warn(...)]` (every other crate) inner
+  attribute. This makes the guarantee visible in-editor and on a plain `cargo clippy` with no
+  special flags — previously the only enforcement was the specific CI/hook command line, not a
+  property of the source. Redundant with the existing CI flags by design (defense in depth);
+  re-verified `-D warnings` stays at 0 warnings/0 errors with the attributes in place. Gate
+  live-tested: a probe `unwrap()` in `lopi-orchestrator::pool::worktree::cleanup_worktree` (hot
+  path) failed the build with a clear `deny`-level error; reverted after confirming.
+- **[Fix]** Removed `.konjo/hooks/pre-commit` step "1c. unwrap/expect scan" — a hand-rolled
+  `awk` brace-depth counter that tried to strip `#[cfg(test)]` blocks before grepping staged
+  files. It desyncs on any `{`/`}` inside a string literal or `format!()`/`write!()` argument in
+  a skipped region, and has no concept of `#[allow(clippy::unwrap_used)]`, so a legitimately
+  justified, clippy-clean production unwrap would still fail the commit. Step "1b. clippy" (same
+  AST-based lints as CI) already covers everything 1c approximated, correctly, across every
+  target. This is the concrete "grep-guessing" the sprint title refers to — the only such tool
+  left in the repo, now retired.
+- **[No change, verified already correct]** `.github/workflows/konjo-gate.yml`'s G1 job needed
+  no changes — it was already a hard gate (never `continue-on-error`), already workspace-wide
+  rather than scoped to hot paths, and was already passing. Out-of-scope items from the brief
+  (no blanket-deny if the number is large, no touching test code, no new error-handling
+  framework) were all moot: the number was 0, not large, so a workspace-wide posture was already
+  the correct one per the brief's own "let the measurement set the scope" rule.
+
+See `docs/ops/PANIC_AUDIT.md` for the full method comparison, per-crate breakdown, and verify
+steps. See `LEDGER.md` for why the earlier grep-based counts were never trustworthy and what that
+means for citing similar numbers in future sprints.
+
 ## [0.25.0] — Sprint S2: contain the lethal trifecta
 
 Security hardening against F10 (untrusted webhook/CI content in → powerful tools →

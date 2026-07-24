@@ -3,6 +3,8 @@
 //! Encodes/decodes the JSON data model with ~40% fewer tokens than JSON.
 //! Key features: tabular arrays, minimal quoting, indentation over braces.
 
+#![warn(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
 mod decode;
 mod encode;
 

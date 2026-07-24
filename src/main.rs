@@ -1,5 +1,6 @@
 //! lopi — high-performance Rust orchestrator for concurrent Claude Code agents.
 #![allow(clippy::print_stdout, clippy::print_stderr)]
+#![warn(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod cli;
 mod diag_commands;
 mod gap_fill_commands;

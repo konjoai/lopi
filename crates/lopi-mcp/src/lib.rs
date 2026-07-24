@@ -12,6 +12,8 @@
 //! The stdio transport and the session client that drives a live server are
 //! layered on top of these in later sprints.
 
+#![warn(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
 /// Bridge discovered MCP tools into lopi's `ToolRegistry`.
 pub mod bridge;
 /// The stdio transport + session client that drives a live MCP server.

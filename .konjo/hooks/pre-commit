@@ -63,33 +63,15 @@ if $HAS_RUST && [[ -n "$STAGED_RS" ]]; then
     fi
     pass "clippy"
 
-    banner "1c. unwrap/expect scan (non-test Rust)"
-    UNWRAP_HITS=""
-    while IFS= read -r f; do
-        [[ -f "$f" ]] || continue
-        # Skip test/bench files and directories
-        [[ "$f" =~ _tests?\.rs$ ]] && continue
-        [[ "$f" =~ /tests?\.rs$ ]] && continue
-        [[ "$f" =~ _extended\.rs$ ]] && continue   # include!()-based test extensions
-        [[ "$f" =~ /tests/ ]] && continue
-        [[ "$f" =~ /benches/ ]] && continue
-        # Strip #[cfg(test)] blocks before scanning (awk state machine)
-        HITS=$(awk '
-            /^#\[cfg\(test\)\]/ { skip=1; depth=0 }
-            skip { n=split($0,a,"{"); depth+=(n-1); n=split($0,b,"}"); depth-=(n-1); if (depth<0) { skip=0; next } }
-            !skip { print NR": "$0 }
-        ' "$f" \
-            | grep -E '(\.unwrap\(\)|\.expect\()' \
-            | grep -v '^\s*//' || true)
-        if [[ -n "$HITS" ]]; then
-            UNWRAP_HITS+="$f: $HITS"$'\n'
-        fi
-    done <<< "$STAGED_RS"
-    if [[ -n "$UNWRAP_HITS" ]]; then
-        echo "$UNWRAP_HITS"
-        fail "unwrap()/expect() found outside test code. Use anyhow::Result and '?' instead."
-    fi
-    pass "no unwrap/expect in production Rust"
+    # NOTE: a step "1c. unwrap/expect scan" used to live here — a grep+awk
+    # brace-depth scanner over staged files trying to strip #[cfg(test)]
+    # blocks by hand. Sprint S5 (panic audit) retired it: it can't parse Rust
+    # (a "{" inside a string literal or format!() arg desyncs its depth
+    # counter) and it can't see `#[allow(clippy::unwrap_used)]`, so a
+    # legitimately justified production unwrap would still fail the commit.
+    # Step 1b's `-D clippy::unwrap_used/expect_used/panic` is AST-based and
+    # already covers every target (including tests) workspace-wide — see
+    # docs/ops/PANIC_AUDIT.md for the measurement that established this.
 
     banner "1d. dead code scan"
     DEAD_COUNT=$(RUSTFLAGS="-W dead_code" cargo check --workspace --quiet 2>&1 \

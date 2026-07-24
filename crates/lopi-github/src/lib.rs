@@ -4,6 +4,8 @@
 //! handles the outbound side: posting triage comments, adding labels,
 //! so lopi can participate in GitHub workflows without a full SDK.
 
+#![warn(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
 use anyhow::{Context, Result};
 use reqwest::Client;
 use serde_json::json;
