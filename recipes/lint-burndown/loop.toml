@@ -1,0 +1,38 @@
+# Recipe: lint-burndown — scheduled, bounded clippy/fmt cleanup.
+#
+# Apply: copy this file to <repo>/.lopi/loop.toml, adjust the `until` command
+# if this isn't a cargo workspace, then either run it once:
+#   lopi run --goal "fix all clippy warnings and formatting issues" --repo <repo>
+# or (recommended — this recipe is meant to be scheduled, not run ad hoc) add
+# a [[schedules]] entry to lopi.toml pointing at the same repo and goal —
+# see lopi.toml.example's `nightly-lint` example.
+# Full rationale: recipes/lint-burndown/README.md
+
+autonomy_level = "report_only"  # F6 — L1: produce a diff/report only, never open a PR
+                                 # unattended. A cron-fired loop that also auto-opened PRs
+                                 # every night would spam the repo; promote to draft_pr once
+                                 # you've reviewed a few nights of reports.
+
+# F3 — three hard stops, set explicitly.
+max_iterations = 8              # A lint burndown can need a few more passes than a single
+                                 # test fix (warnings often touch several files), but it's
+                                 # still a bounded, mechanical task.
+no_progress_limit = 2
+
+# F1 — the deterministic oracle: both clippy and fmt must be clean.
+until = "cargo clippy --workspace --all-targets -- -D warnings && cargo fmt --check"
+
+# F5 — a cron-fired loop can easily overlap a manual `lopi run` on the same
+# repo; a dedicated worktree per attempt keeps them from corrupting each
+# other's checkout.
+isolation = "worktree"
+
+# F7 — a lint pass is exactly the low-stakes, mechanical case that doesn't
+# need the maker/checker split's extra cost: `verifier_required` stays
+# `false` (the default) and is left unset here deliberately — the deterministic
+# `until` gate above is already the check that matters for this recipe.
+
+# NOTE: `[budget]` must come last — every key after a `[table]` header
+# belongs to that table in TOML, not the top level.
+[budget]
+preset = "quick"                # F7 — a lint pass doesn't need a research-grade budget.
