@@ -1,3 +1,7 @@
+---
+decays: historical
+---
+
 # FEATURE_STATE_FINAL — Verify-1 live audit master table
 
 > **HISTORICAL SNAPSHOT — v0.3.2, 2026-07-10. Superseded.**

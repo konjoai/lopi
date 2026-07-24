@@ -31,6 +31,13 @@ executable ships the whole experience.
 - Reconciled `FEATURE_STATE_FINAL.md`'s F1–F8 findings — all 7 fixed at the
   source level; recorded in `docs/ops/FEATURE_STATE_RECONCILIATION_2026-07-24.md`.
 - Fixed the `README.md` version banner (`v0.22.0` → `0.24.0`).
+- **Phase 4 (was blocked, landed same sprint):** pulled `konjoai/kiban@v1.4.0`
+  once it shipped the `decays:` front-matter convention + `konjo-doc-staleness`
+  checker; pinned it (`.konjo/kiban.ref`), stamped the roadmap `decays: state`
+  and all 13 historical docs `decays: historical`, and wired the checker into
+  `.github/workflows/konjo-gate.yml` as a **hard gate** (`G0 · Doc Staleness`) —
+  verified locally to fail on an unstamped/stale test doc and pass clean on
+  this repo's real set before wiring it in.
 - Docs-only sprint; no VERSION bump.
 
 ### v0.19.x — Native macOS app + web OpenClaw-parity UI 🖥️

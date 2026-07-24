@@ -1,3 +1,7 @@
+---
+decays: historical
+---
+
 # Feature State Reconciliation — 2026-07-24
 
 **Baseline:** `main` @ `63908a5`, v0.24.0 · **Date:** 2026-07-24

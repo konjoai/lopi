@@ -1,3 +1,7 @@
+---
+decays: historical
+---
+
 # EVAL_ENFORCEMENT_DECISION — what "the evaluator lands server-side" actually means today
 
 > **HISTORICAL SNAPSHOT — v0.11.0, 2026-07-15. Superseded.**

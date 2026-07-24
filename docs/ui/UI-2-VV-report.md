@@ -1,3 +1,7 @@
+---
+decays: historical
+---
+
 # UI-2 V&V Report — Loop Stack (`/stacks`)
 
 > **HISTORICAL SNAPSHOT — PR #64, `55338d5`. Superseded.**

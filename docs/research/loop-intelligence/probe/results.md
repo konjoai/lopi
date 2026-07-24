@@ -1,3 +1,7 @@
+---
+decays: historical
+---
+
 # Master kill-test — RESULT (the highest-value hour in the sprint)
 
 > **HISTORICAL SNAPSHOT — Research-1 sprint, 2026-07-17. Superseded.**

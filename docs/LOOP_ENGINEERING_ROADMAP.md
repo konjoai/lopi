@@ -1,3 +1,9 @@
+---
+decays: state
+verified-against: 63908a5
+verified-date: 2026-07-24
+---
+
 # The Pentad — Loop Engineering Completion Roadmap
 
 Verified against: 63908a5 · 2026-07-24

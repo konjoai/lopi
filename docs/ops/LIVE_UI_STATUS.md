@@ -1,3 +1,7 @@
+---
+decays: historical
+---
+
 # lopi — Live UI Status (Ops-2)
 
 > **HISTORICAL SNAPSHOT — 2026-07-09. Superseded.**

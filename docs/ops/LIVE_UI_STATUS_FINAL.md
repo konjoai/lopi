@@ -1,3 +1,7 @@
+---
+decays: historical
+---
+
 # LIVE_UI_STATUS_FINAL
 
 > **HISTORICAL SNAPSHOT — v0.4.0, 2026-07-11. Superseded.**

@@ -1,3 +1,7 @@
+---
+decays: historical
+---
+
 # Ops-2 working notes (raw findings, pre-report)
 
 > **HISTORICAL SNAPSHOT — 2026-07-09/10 (Ops-2, `4e9b390`). Superseded.**

@@ -1,3 +1,7 @@
+---
+decays: historical
+---
+
 # IOS_RESEARCH_1_SPIKE — Swift package extraction, written not built
 
 > **HISTORICAL SNAPSHOT — v0.11.0, 2026-07-15. Superseded.**

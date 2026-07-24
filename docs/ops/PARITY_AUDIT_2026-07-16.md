@@ -1,3 +1,7 @@
+---
+decays: historical
+---
+
 # Web/macOS Parity Audit — 2026-07-16
 
 > **HISTORICAL SNAPSHOT — 2026-07-16. Superseded.**

@@ -5,24 +5,31 @@ the `lopi` repo. Newest first.
 
 ---
 
-## Next Session — after Doc-Integrity (roadmap correction) — three deferred items
+## Next Session — after Doc-Integrity Phase 4 (kiban's `decays:` gate landed) — three deferred items
 
 **Doc-Integrity corrected `docs/LOOP_ENGINEERING_ROADMAP.md`'s state table and
 per-sprint status (9/18 sprints already shipped), banner-labeled 12 historical
-audit docs, and reconciled `FEATURE_STATE_FINAL.md`'s F1–F8 findings (all 7
-fixed at the source level).** Read `CHANGELOG.md`'s `Doc-Integrity` entry and
-`LEDGER.md`'s `Doc-Integrity` entry first. Three things were deliberately
-deferred, not forgotten:
+audit docs, reconciled `FEATURE_STATE_FINAL.md`'s F1–F8 findings (all 7 fixed
+at the source level), and — once `konjoai/kiban@v1.4.0` shipped the `decays:`
+convention — pulled it in and wired `konjo-doc-staleness` into
+`.github/workflows/konjo-gate.yml` as a hard gate (`G0 · Doc Staleness`).**
+Read `CHANGELOG.md`'s `Doc-Integrity Phase 4` entry and `LEDGER.md`'s two
+`Doc-Integrity` entries first (why the gate clones kiban instead of
+`pip install`ing it; why `PLAN.md` was deliberately left unstamped rather than
+given a fabricated `verified-against`). Three things remain, not forgotten:
 
-1. **Phase 4 (stamp state docs + adopt the staleness checker) is blocked on
-   kiban's doc-integrity sprint landing.** That sprint owns the `decays:`
-   front-matter convention and the checker that enforces it. Once it ships:
-   add `decays: state` / `verified-against: <SHA>` / `verified-date: <date>`
-   front matter to every doc that asserts current state, `decays: historical`
-   to the 12 snapshot docs this sprint banner-labeled, and wire the checker
-   into `.github/workflows/konjo-gate.yml` as a **hard gate** — not
-   `continue-on-error: true`, which is the same silent-non-enforcement bug
-   one layer down.
+1. **`PLAN.md` is stale — frozen at v0.19.0 (2026-06-18) while `main` is
+   `v0.24.0` — and needs `decays: state` front matter once it's caught up.**
+   Found while sourcing this sprint's `LEDGER.md` entry, flagged with a
+   "known drift" note in `PLAN.md` itself rather than fixed (fixing it means
+   re-auditing everything shipped across five versions — out of scope for a
+   docs-correction sprint), and deliberately left unstamped rather than given
+   a fabricated `verified-against` (stamping it today would repeat the exact
+   failure this sprint exists to catch, one file over). The next session that
+   touches `PLAN.md` should catch up its "Shipped" log and "Current Health"
+   table to `main` the same way this sprint caught up
+   `docs/LOOP_ENGINEERING_ROADMAP.md`, then add `decays: state` front matter
+   in the same pass so `G0 · Doc Staleness` starts enforcing it immediately.
 
 2. **A real live F1–F8 re-verification is still owed.** This sprint's
    reconciliation (`docs/ops/FEATURE_STATE_RECONCILIATION_2026-07-24.md`) is
@@ -35,13 +42,12 @@ deferred, not forgotten:
    Schedule this as its own live-audit sprint, same discipline as `FEATURE_STATE_FINAL.md`
    (`?demo=1` forbidden, no CI sandbox, real subscription auth).
 
-3. **`PLAN.md` is stale — frozen at v0.19.0 (2026-06-18) while `main` is
-   `v0.24.0`.** Found while sourcing this sprint's `LEDGER.md` entry, flagged
-   with a "known drift" note in `PLAN.md` itself rather than fixed (fixing it
-   means re-auditing everything shipped across five versions — out of scope
-   for a docs-correction sprint). The next session that touches `PLAN.md`
-   should catch up its "Shipped" log and "Current Health" table to `main`, the
-   same way this sprint caught up `docs/LOOP_ENGINEERING_ROADMAP.md`.
+3. **`docs/ui/UI-2-VV-report.md` WARNs on the new doc-staleness gate** ("historical
+   doc lacks a dated banner") because this repo's git history can't resolve a
+   calendar date for its baseline (`PR #64`, `55338d5`) — left honest rather
+   than guessed. If a real date turns up (GitHub's PR#64 merge timestamp,
+   checked from outside this repo's local history), add it to the banner and
+   the WARN clears.
 
 Also worth a look, not urgent: this sprint's brief scoped an *optional* Phase 5
 — a `cargo xtask capability-matrix` (or `lopi state`) command that mechanically

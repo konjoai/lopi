@@ -1,3 +1,7 @@
+---
+decays: historical
+---
+
 # E2E Feature Inventory — Web + macOS — 2026-07-16
 
 > **HISTORICAL SNAPSHOT — 2026-07-16. Superseded.**

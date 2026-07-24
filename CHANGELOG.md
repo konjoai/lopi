@@ -1,5 +1,14 @@
 # Changelog
 
+## [Unreleased] — Doc-Integrity Phase 4: adopting kiban's `decays:` checker as a hard gate
+
+Phase 4 was blocked on kiban's own doc-integrity sprint landing the `decays:` convention and the `konjo-doc-staleness` checker — it has, as `konjoai/kiban@v1.4.0`. Pulled it, verified it against this repo, and wired it in rather than leaving Phase 4 deferred.
+
+- **[Feature]** `.konjo/kiban.ref` — pins the session-plane kiban ref to `v1.4.0`, per kiban's own distribution model (`docs/DISTRIBUTION.md`).
+- **[Feature]** `.github/workflows/konjo-gate.yml` gains **G0 · Doc Staleness**: clones kiban at the same pinned ref (`KIBAN_REF` env, kept in lockstep with `.konjo/kiban.ref`) and runs `konjo-doc-staleness scan --repo .`, wired as a **hard gate** — added to `konjo-gate`'s `needs:` list and its `FAILED` check, not `continue-on-error: true`. Verified locally before wiring: fails on a deliberately unstamped `decays: state` test doc, fails on a deliberately stale one (2396 days behind on a fixed `verified-against`), and passes clean on this repo's real stamped set — all three cases match this sprint's own kill-test requirement.
+- **[Doc]** Stamped `docs/LOOP_ENGINEERING_ROADMAP.md` with `decays: state` / `verified-against: 63908a5` / `verified-date: 2026-07-24` front matter — the doc this whole sprint corrected is now the first one the new gate enforces. Stamped all 13 historical snapshot docs (the 12 from Phase 1 plus the new F1–F8 reconciliation doc) `decays: historical`. Left `PLAN.md` unstamped rather than fabricate a `verified-against` for a re-audit that wasn't actually done — see `NEXT_SESSION_PROMPT.md`.
+- **[Known gap, disclosed not fixed]** `docs/ui/UI-2-VV-report.md` WARNs ("historical doc lacks a dated banner") because its own baseline (`PR #64`, `55338d5`) has no reconstructable calendar date in this repo's git history — left honest rather than guessing a date.
+
 ## [Unreleased] — Doc-Integrity: correcting `LOOP_ENGINEERING_ROADMAP.md`, not shipping a feature
 
 This sprint is a documentation correction, found by a kill-test, not new code. `docs/LOOP_ENGINEERING_ROADMAP.md` §1 was titled "Current state — audited" and asserted four capability gaps that are all closed on `main` @ `63908a5`: real `git worktree` isolation (`crates/lopi-git/src/worktree.rs`), an MCP client + server (`crates/lopi-mcp/`, `src/mcp_commands/mod.rs`), a runtime skill engine (`crates/lopi-skill/`), and a maker/checker verifier split (`VerifierAgent::new` isolated by default, `crates/lopi-agent/src/verifier.rs:120-127`). A pre-flight kill-test re-derived `file:line` citations against the working tree for all four claims (not trusting the sprint brief's own citations) and confirmed the roadmap, not the codebase, was wrong.

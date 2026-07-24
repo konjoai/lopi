@@ -1,3 +1,7 @@
+---
+decays: historical
+---
+
 # lopi — Feature State (Ops-2 full-state audit)
 
 > **HISTORICAL SNAPSHOT — 2026-07-09. Superseded.**
