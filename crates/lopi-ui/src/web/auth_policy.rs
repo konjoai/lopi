@@ -28,7 +28,11 @@ use anyhow::{bail, Result};
 /// # Errors
 /// Returns an error with a message identifying which case fired and how to
 /// fix it — never a generic "refused" with no next step.
-pub fn validate_auth_policy(auth_token: Option<&str>, insecure_no_auth: bool, host: &str) -> Result<()> {
+pub fn validate_auth_policy(
+    auth_token: Option<&str>,
+    insecure_no_auth: bool,
+    host: &str,
+) -> Result<()> {
     if auth_token.is_some() {
         return Ok(());
     }
