@@ -1,4 +1,11 @@
+---
+decays: historical
+---
+
 # Ops-2 working notes (raw findings, pre-report)
+
+> **HISTORICAL SNAPSHOT — 2026-07-09/10 (Ops-2, `4e9b390`). Superseded.**
+> Do not plan against this document. See [`../FEATURE_STATE.md`](../FEATURE_STATE.md) for the report these notes fed.
 
 ## Pre-flight
 - Local main was 137 commits behind origin/main (PR#41 vs PR#76). Fast-forwarded to `4e9b390` (Unify-2, PR#76). Ops-1's RUNNING.md/nav.ts only exist post-sync.

@@ -1,7 +1,12 @@
 # PLAN.md — lopi Master Plan
 
-**Updated:** 2026-06-18 · v0.19.0 shipped (Sprint S — Konjo Verifier).
-Next: Sprint T (Topology-Adaptive Routing + Q-Learning Constellation).
+**Updated:** 2026-07-24 · Doc-Integrity sprint (roadmap correction, see below).
+**Known drift:** the "Shipped" log below and the "Current Health" table were
+last kept current at v0.19.0 (2026-06-18) — `Cargo.toml` is now `0.24.0`. Do
+not treat entries or metrics past that point as live status; this is the same
+orphan-doc failure mode `docs/LOOP_ENGINEERING_ROADMAP.md` had, caught but not
+fixed here (out of this sprint's scope — see `NEXT_SESSION_PROMPT.md`).
+Next: catch up this file's Shipped/Current-Health sections to `main`.
 
 ## Vision
 
@@ -14,6 +19,26 @@ executable ships the whole experience.
 ---
 
 ## Shipped (chronological)
+
+### Doc-Integrity — stop the repo from lying about itself 📋
+- Kill-tested `docs/LOOP_ENGINEERING_ROADMAP.md` §1 against `main` @ `63908a5`:
+  4 of 6 claimed capability gaps (real `git worktree` isolation, MCP client+
+  server, runtime skill engine, maker/checker split) were already shipped —
+  see `CHANGELOG.md` / `LEDGER.md` for the full writeup.
+- Rewrote the roadmap's state table and all 18 sprint entries with `file:line`
+  citations; added `HISTORICAL SNAPSHOT` banners to 12 dated audit docs under
+  `docs/` so they can't be mistaken for present state.
+- Reconciled `FEATURE_STATE_FINAL.md`'s F1–F8 findings — all 7 fixed at the
+  source level; recorded in `docs/ops/FEATURE_STATE_RECONCILIATION_2026-07-24.md`.
+- Fixed the `README.md` version banner (`v0.22.0` → `0.24.0`).
+- **Phase 4 (was blocked, landed same sprint):** pulled `konjoai/kiban@v1.4.0`
+  once it shipped the `decays:` front-matter convention + `konjo-doc-staleness`
+  checker; pinned it (`.konjo/kiban.ref`), stamped the roadmap `decays: state`
+  and all 13 historical docs `decays: historical`, and wired the checker into
+  `.github/workflows/konjo-gate.yml` as a **hard gate** (`G0 · Doc Staleness`) —
+  verified locally to fail on an unstamped/stale test doc and pass clean on
+  this repo's real set before wiring it in.
+- Docs-only sprint; no VERSION bump.
 
 ### v0.19.x — Native macOS app + web OpenClaw-parity UI 🖥️
 - **macOS (SwiftUI):** native dashboard scaffold (Phases 1–2 + Cron) ·

@@ -1,4 +1,11 @@
+---
+decays: historical
+---
+
 # lopi — Live UI Status (Ops-2)
+
+> **HISTORICAL SNAPSHOT — 2026-07-09. Superseded.**
+> Do not plan against this document. See [`LIVE_UI_STATUS_FINAL.md`](LIVE_UI_STATUS_FINAL.md) for the next audit round.
 
 **Audit date:** 2026-07-09/10 · **Commit:** `main` @ `4e9b390` (Unify-2, PR #76) ·
 **Machine:** MacBook, macOS 15 (Darwin 25.5), Xcode 26.6, real `claude` subscription auth

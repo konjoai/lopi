@@ -7,7 +7,7 @@
 > a TUI + web dashboard, a native macOS app, and remote control over
 > Telegram/WhatsApp.
 >
-> By [KonjoAI](https://github.com/konjoai) · MIT licensed · `v0.22.0`
+> By [KonjoAI](https://github.com/konjoai) · MIT licensed · `v0.24.0`
 > [![crates.io](https://img.shields.io/crates/v/lopi.svg)](https://crates.io/crates/lopi)
 
 ```

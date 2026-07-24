@@ -1,4 +1,11 @@
+---
+decays: historical
+---
+
 # 00 · Current-state map — the real code behind Track A/B
+
+> **HISTORICAL SNAPSHOT — Research-1 sprint, 2026-07-17, commit `12de652`. Superseded.**
+> Do not plan against this document. See `docs/LOOP_ENGINEERING_ROADMAP.md` for present state.
 
 **Method:** every claim cites `file:line` from the working tree at commit `12de652`. Where
 this contradicts the roadmap or a design doc, it is flagged **[DOC-DRIFT]**. Read this

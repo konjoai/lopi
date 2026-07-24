@@ -5,6 +5,66 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## Doc-Integrity Phase 4 — why the gate clones kiban instead of `pip install`ing it
+
+**kiban's own CI-plane convention is `pip install "kiban @ git+...@$KIBAN_REF"` then run the installed `konjo-gates` console script** (`templates/repo-ci.yml`). `konjo-doc-staleness` doesn't follow that path: kiban's `pyproject.toml` `[project.scripts]` declares only `konjo-gates = "konjo_gates_py.cli:main"` — `bin/konjo-doc-staleness` is not a registered console script, and the script itself resolves its own root via `Path(__file__).resolve().parent.parent`, a relative-to-clone assumption that breaks once site-packages relocates the file. Checked this by reading kiban's actual `pyproject.toml`, not assumed from the CI template's prose. So the gate shallow-clones kiban at the pinned tag (`git clone --depth 1 --branch v1.4.0`) and runs the script from the clone — the same shape kiban's own `install.sh` uses for the session plane, adapted for CI. This is a real deviation from kiban's documented CI-plane pattern, recorded here so a future session doesn't "fix" it into a `pip install` that would silently break (no console script to find) or partially work (importing `lib.doc_staleness` directly would succeed, but `bin/konjo-doc-staleness`'s CLI argument parsing and root-resolution logic would need porting) instead of investigating why the deviation exists.
+
+**Full `konjo-gates` orchestrator was NOT adopted — narrower gate only.** kiban's CI template runs the whole `konjo-gates` engine against a `.konjo/profile.yml`, which lopi does not have; `.github/workflows/konjo-gate.yml` is a fully independent, hand-rolled set of gates (G1–G5) that predates kiban's existence as a distributable package. Migrating lopi's entire gate suite onto kiban's orchestrator is a real, large, separate decision (profile authoring, gate-by-gate behavioral parity, a cutover plan) — not a side effect of landing one new checker. This sprint added exactly one new gate (G0, doc staleness) to the existing hand-rolled suite and left everything else untouched.
+
+**Not stamped: `PLAN.md`, and the two intentionally-empty classes (`reference`, `intent`).** `PLAN.md` genuinely is a `decays: state`-shaped doc (a "Shipped" log + "Current Health" table), but stamping it today would require asserting a `verified-against` I have not actually re-verified — Doc-Integrity's own §3 scope explicitly excluded a full PLAN.md re-audit (five versions of drift, its own sprint). A fabricated stamp on `PLAN.md` today would be the exact failure this whole sprint exists to catch, just moved one file over. Left unstamped (`SKIP` in the checker's own vocabulary — "convention not adopted"), which is an honest gap, not a silent one; `NEXT_SESSION_PROMPT.md` names it as the next session's stamp to add once the re-audit happens. `README.md`/`CLAUDE.md` (`reference`) and the design docs (`intent`) were left unstamped too — same reasoning at smaller stakes: kiban's convention makes those classes warn-only regardless of age, so there's no enforcement urgency, and stamping a doc I have not actually verified line-by-line just to complete a checklist would be decorative, not honest.
+
+**Verification before wiring, not after.** Ran `konjo-doc-staleness scan --repo .` locally against the real repo (13 OK, 1 honest WARN, 0 FAIL) before touching CI, then constructed two throwaway test docs — one `decays: state` with no `verified-against` (the exact unstamped case the sprint brief asked the gate to catch), one `decays: state` stamped but 2396 days stale — and confirmed both FAIL with exit code 1, and a correctly-stamped doc passes. This is the sprint's own Phase 4 verify bar ("fails on a deliberately un-stamped test doc... then passes once stamped"), run before commit rather than assumed from reading kiban's source.
+
+## Doc-Integrity — orphan docs, and why "checklist-listed" isn't the same as "checked"
+
+**The finding.** `docs/LOOP_ENGINEERING_ROADMAP.md` §1 asserted four capability
+gaps — no real `git worktree` isolation, no MCP, no runtime skill engine, no
+maker/checker split — that were all closed on `main`. This wasn't sloppiness:
+`konjo-ship`'s Sprint Completion Checklist names exactly three docs
+(`CHANGELOG.md`, `PLAN.md`, `README.md`), all three of which *are* accurate —
+`README.md` correctly documents worktrees, MCP, and skills. The roadmap is on
+no checklist. `grep -r LOOP_ENGINEERING_ROADMAP` across `.claude/skills/`,
+`CLAUDE.md`, and `KONJO_PROMPT.md` returns nothing. The checklist mechanism
+worked exactly as designed; it simply had no way to know this file existed.
+**The generalizable lesson:** a hand-maintained "state of the world" doc that
+isn't on any enforced checklist decays silently and by design, not by
+accident — the fix isn't "try harder to remember it," it's "put it on a
+checklist or generate it" (see this roadmap's own new §5, a `cargo xtask
+capability-matrix` prototype, deferred to a follow-up sprint).
+
+**How stale, with real evidence rather than a guessed number.** This repo's
+git history here is a squashed/imported baseline (178 total commits, one
+merge commit introducing hundreds of files at once), so "how many versions
+was the roadmap wrong" isn't reliably reconstructable from `git log` — stating
+a specific version count would repeat the exact failure this sprint exists to
+fix, just with a fabricated number instead of a stale doc. What *is* verified:
+`CHANGELOG.md` dates MCP-Serve-1 (the MCP server) to `v0.17.0`; `main` is now
+`v0.24.0` — a real, sourced 7-release gap for that one claim alone. More
+concretely, this repo's own `LEDGER.md` ("Git hygiene — fixed the committed
+DRY violations") records a session that built a **second, independent
+`WorktreeManager`** from a stash, then had to discard 21 of 25 files as
+redundant once it discovered `main` already had one — a real, paid cost of
+exactly this class of doc drift, not a hypothetical one.
+
+**What was corrected vs. what wasn't.** Only §1 (state) and §4 (per-sprint
+status lines) changed. §2 (principles), §3 (movement ordering/diagram), §5
+(Definition of Done scenario), §6 (risks), and §7 (sequencing) were left
+untouched — correcting facts is this sprint's job; re-planning given those
+facts is a different one (see `NEXT_SESSION_PROMPT.md`). Historical audit
+docs (`docs/ops/FEATURE_STATE.md` and 11 others) were labeled with an
+expiry banner, never rewritten — Konjo Forward Pillar 1 treats a documented
+past as forward motion, not clutter to delete.
+
+**Scope discipline: PLAN.md's staleness was found, not fixed.** While
+sourcing this entry, `PLAN.md`'s own "Shipped" log and "Current Health" table
+turned out to have been frozen at v0.19.0 since 2026-06-18 — five versions of
+silent drift, the same failure mode this sprint exists to fix, one level up.
+Fixing it fully would mean re-auditing everything shipped between v0.19.0 and
+v0.24.0, which is its own sprint, not a side effect of this one. `PLAN.md` now
+carries an explicit "known drift" note instead of a silent gap — flagging the
+problem honestly beats declaring it fixed based on time pressure, which is
+the exact anti-pattern this whole sprint is about.
+
 ## Constraint-Capture-2 — closing the gap, finding the sprint's own premise was wrong, and the promotion-gate numbers
 
 **Pre-flight found this sprint's stated dependency doesn't exist — checked, not assumed.** The brief opens: "Assumes Session Prompt 1 (onboarding import + toolchain schema) has already landed — read its `CHANGELOG.md`/`LEDGER.md` entries first to confirm the toolchain column name it settled on." Grepped both files (and the whole `crates/` tree, and `schema.sql`) for `toolchain`, `onboarding`, `detect_stack`, `tech_stack` before writing anything: nothing. The most recent `ALTER TABLE patterns` columns before this sprint are `embedding`, `derived_from_postmortem`, `user_annotation` (Sprint H/H1) — no toolchain column, no toolchain detector, no backfilled transcript-import data anywhere in this repo. Session Prompt 1 had not run. This is exactly the class of assumption this repo's own kill-test discipline exists to catch (the brief's own KT-C/KT-D wording), so rather than fabricate a toolchain schema to make Phase 1 "work," Phase 1 (toolchain-scoped `find_similar_patterns` retrieval) was **not attempted this sprint** — building it then would have meant inventing, under time pressure and without design review, the exact schema a real Session Prompt 1 was supposed to own, with real risk of a naming/shape mismatch a future session would then have to reconcile or discard. **Session Prompt 1 (`Onboarding-Import-1`, below) landed on `main` later the same day, while this PR was still open**, and had to be merged in here — see the `PatternExtra`/`upsert_pattern_row` reconciliation entry below. Phase 1 is unblocked for whichever session picks it up next; see `NEXT_SESSION_PROMPT.md`.

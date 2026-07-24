@@ -1,4 +1,11 @@
+---
+decays: historical
+---
+
 # LIVE_UI_STATUS_FINAL
+
+> **HISTORICAL SNAPSHOT — v0.4.0, 2026-07-11. Superseded.**
+> Do not plan against this document. See [`README.md`](../../README.md) for present state; see `docs/ops/` for any later live-audit round.
 
 > ## ✅ Verify-4 addendum — macOS Loop Stacks: built, tested, watched, **attended** (2026-07-11, baseline `9edca88` / v0.4.0 + PR #84)
 >

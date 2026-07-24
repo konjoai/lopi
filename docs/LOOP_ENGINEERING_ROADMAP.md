@@ -1,4 +1,12 @@
+---
+decays: state
+verified-against: 63908a5
+verified-date: 2026-07-24
+---
+
 # The Pentad — Loop Engineering Completion Roadmap
+
+Verified against: 63908a5 · 2026-07-24
 
 > **North star:** lopi is no longer a thing you *prompt*. It is a loop you *design*.
 > This roadmap closes the five (+ one) building blocks of loop engineering to a
@@ -30,21 +38,33 @@ useful loop needs **five building blocks and one memory layer**.
 
 ## 1. Current state — audited
 
-Status from a full-tree audit (`crates/`, `src/`, `web/`, `macos/`, `.claude/`,
-`.konjo/`). Legend: 🟢 solid · 🟡 partial · 🔴 missing.
+**This section was previously wrong.** A 2026-07-24 kill-test against `main` @
+`63908a5` found four of the six blocks below misreported — each citing a
+concrete capability (real `git worktree` isolation, an MCP client+server, a
+runtime skill engine, maker/checker isolation) as missing when it was already
+shipped. See `CHANGELOG.md` / `LEDGER.md` for the correction writeup. Every
+cell below traces to a `file:line`, re-derived from the working tree, not
+carried over from the prior version of this table.
+
+Legend: 🟢 solid · 🟡 partial · 🔴 missing.
 
 | Block | Status | What exists | The true gap |
 |-------|--------|-------------|--------------|
-| **Automations** | 🟢 | `lopi-orchestrator` (`scheduler.rs`, `schedule_manager.rs`) cron; `lopi-webhook` CI-failure → task with HMAC verify; per-schedule autonomy L1–L4; run-history persistence | No dead-letter queue, no event **dedup**, synchronous triage, no event-payload **templating**, no change audit trail |
-| **Worktrees** | 🟡 | `lopi-git/manager.rs` branch-per-attempt (`lopi/{task}-attempt-{n}`), `WORKTREE_LOCK`, per-repo semaphore, `hard_rollback`, `open_pr`/`auto_merge`, `CARGO_TARGET_DIR` split | **Branch-only — no real `git worktree`.** Concurrent runs share one working dir; the lock serializes what worktrees would parallelize. No mid-run snapshot, no rebase-on-moved-main, no branch GC |
-| **Skills** | 🟡 | `.claude/skills/` (6 `SKILL.md`, web-only); `lopi-tools` `ToolRegistry`; pattern/lesson injection into the planning prompt | **No runtime skill engine** — skills never load into the lopi agent loop; no invocation, versioning, activation audit, or lesson→skill **promotion** |
-| **Plugins & connectors** | 🟡 | `lopi-remote` (Telegram + WhatsApp), `lopi-webhook` (GitHub), `lopi-github` client | **No MCP at all** — neither consumes external MCP servers nor exposes lopi as one. Connectors are hardcoded singletons; no plugin loader |
-| **Sub-agents** | 🟡 | `lopi-orchestrator` `AgentPool` (bounded concurrency), `constellation` routing, `q_router` (ε-greedy), capability matching | **Peer-level workers only** — no true sub-agent spawn, no **maker/checker split** (verifier shares the implementer's session), no decomposition/delegation/inter-agent messaging |
-| **Memory / state** | 🟡 | `lopi-memory` SQLite (patterns, lessons, audit, schedules); `CLAUDE.md` + rules; `LoopConfig` → `.lopi/loop.toml` | No per-loop **external state file** (Ralph), no `VISION.md` intent anchor + propagation, no no-progress/semantic-stall detector |
+| **Automations** | 🟢 | `lopi-orchestrator` (`scheduler.rs`, `schedule_manager.rs`) cron; `lopi-webhook` CI-failure → task with HMAC verify; per-schedule autonomy L1–L4; run-history persistence | `crates/lopi-webhook/src/github.rs:36-60` — no delivery-id **dedup**, no **dead-letter queue**, triage is synchronous, no schedule-change audit trail. `crates/lopi-core/src/template.rs:44` has a generic `{name}`-hole templating primitive and `Task::from_template` (`crates/lopi-core/src/task.rs:442`) exists, but neither is called outside tests — event-payload templating is unwired scaffolding, not shipped |
+| **Worktrees** | 🟢 | **Real `git worktree` isolation, shipped and wired.** `crates/lopi-git/src/worktree.rs:36-217` (`WorktreeManager` add/add_detached/prune/list/gc) with RAII `Drop` cleanup (`worktree.rs:295-330`); `crates/lopi-orchestrator/src/pool/worktree.rs:25-50` (`setup_worktree`) puts each task in its own detached worktree when `IsolationMode::Worktree` is set (`crates/lopi-core/src/loop_config.rs:29-35`), with per-worktree `CARGO_TARGET_DIR` (`worktree.rs:266-277`); `crates/lopi-git/src/rebase.rs:27-75` (`rebase_onto`/`rebase_onto_default`) rebases onto a moved default branch and maps conflicts to `TaskStatus::Conflict` (wired at `crates/lopi-agent/src/runner/finalize.rs:228-245`); GC exposed via `lopi worktree gc`/`list` (`src/worktree_commands.rs:18-51`) | Isolation mode defaults to `Branch`, not `Worktree` — a repo must opt in via `.lopi/loop.toml`. No mid-run snapshot |
+| **Skills** | 🟢 | **Runtime skill engine, shipped and wired.** `crates/lopi-skill/src/registry.rs:17-93` (`SkillRegistry::load_from_dirs`, dup-name validation) parses `SKILL.md` frontmatter into a typed registry; `crates/lopi-agent/src/runner/mod.rs:329` (`with_skills`) and `crates/lopi-agent/src/runner/seed.rs:210-241` (`seed_skills`/`record_skill_activation`) inject matching skills into the planning prompt and record activation | Lesson→skill promotion is **partial**: `crates/lopi-skill/src/promote.rs:37-60` (clustering) and `promoter.rs:40-60` (drafts to `.lopi/skills-pending/`, human-approval gate) exist and are reachable via `src/skill_commands.rs:64`, but drafting is a fixed string template, not "via a sub-agent" as originally scoped, and nothing triggers it automatically — it's a manual CLI-only path today |
+| **Plugins & connectors** | 🟢 | **MCP client + server, shipped and wired — both directions.** `crates/lopi-mcp/src/client.rs:36-65` + `config.rs:19-37` (`[[mcp.servers]]` in `.lopi/loop.toml`) + `bridge.rs:21-49` (merges discovered tools into `lopi-tools::ToolRegistry`) is the consuming side; `crates/lopi-mcp/src/server.rs:18-80` wired at `src/mcp_commands/mod.rs:117-243` exposes `lopi_submit_task`/`lopi_get_task`/`lopi_cancel_task`/`lopi_list_tasks`/`lopi_get_logs`/`lopi_get_agent_dag`/`lopi_get_stats` as MCP tools over stdio (`McpServe` registered at `src/main.rs:49,288`) — more surface than the original sprint scoped | `crates/lopi-remote/src/lib.rs:1-6` still has independent hardcoded `telegram`/`whatsapp` modules — **no `Connector` trait, no durable outbound queue.** This part of the original claim ("connectors are hardcoded singletons") still holds |
+| **Sub-agents** | 🟢 | **Maker/checker split, shipped and wired.** `crates/lopi-agent/src/verifier.rs:120-127` — `VerifierAgent::new` defaults `isolated: true`; `resolve_verifier` (`verifier.rs:34`) forces a different model than the maker; test `verifier.rs:287` (`isolated_prompt_excludes_the_maker_plan`) asserts a maker's plan text never reaches the verifier's prompt | No parallel task decomposition: `crates/lopi-core/src/successor.rs:1-27` is a depth-capped (3) **sequential** one-hop successor chain, not a sub-task DAG dispatched through `AgentPool`. Earned-trust auto-promotion exists as an isolated, tested state machine (`crates/lopi-core/src/earned_trust.rs:31-101`) but has zero callers outside its own module — not wired into `schedule_manager.rs`, not persisted |
+| **Memory / state** | 🟡 | `lopi-memory` SQLite (patterns, lessons, audit, schedules); `CLAUDE.md` + rules; `LoopConfig` → `.lopi/loop.toml`. Stall detection exists in a narrower form than originally claimed missing: `StopReason::NoProgress` (`crates/lopi-core/src/stop_reason.rs:27-28`) + `ProgressGate` (`crates/lopi-agent/src/runner/progress.rs:20-55`) halts on score-delta stagnation | Still genuinely open: no `AgentEvent::ProgressStall` variant (only a string-convention reason), no per-loop external markdown state file (Ralph), no `VISION.md` intent anchor |
 
-**Verdict:** the *backbone* is production-grade; the *loop-defining* primitives
-(true worktrees, MCP, runtime skills, maker/checker) are the missing 20% that
-separate "an orchestrator with cron" from "a loop you can walk away from."
+**Verdict (corrected 2026-07-24):** four of the five "loop-defining primitives"
+this roadmap called missing — true worktrees, MCP (both directions), the
+runtime skill engine, and maker/checker isolation — are shipped and wired on
+`main`. What's actually left is narrower and different in kind from what §1
+used to claim: a `Connector` trait + durable outbound queue, parallel task
+decomposition, wiring the already-built earned-trust state machine into the
+scheduler, webhook dedup/DLQ, and the Ralph state file + `VISION.md` anchor.
+See §4 for per-sprint status.
 
 ---
 
@@ -80,8 +100,11 @@ and MCP can run in parallel; automations/memory hardening (M5) is low-risk and
 fills the cron path while the heavy work lands; the unifying surface (M6) comes
 last so it reflects finished primitives, not moving ones.
 
-**Estimated envelope:** ~18 sprints. A sprint = one PR-sized increment, every
-wall green. Movements M1–M3 run partially in parallel across worktrees (dogfood).
+**Estimated envelope:** 18 sprints originally scoped. As of 2026-07-24, 9 are
+shipped (all of M1; 2.1–2.2; 3.1–3.2; 4.1; 6.1), 6 are partial (2.3, 4.3, 5.2,
+5.3, 6.2, 6.3), and 3 are not started (3.3, 4.2, 5.1) — see §4 for the
+per-sprint breakdown. A sprint = one PR-sized increment, every wall green.
+Movements M1–M3 run partially in parallel across worktrees (dogfood).
 
 ---
 
@@ -96,6 +119,7 @@ the standing Three-Wall gates; only sprint-specific acceptance is spelled out.
 > physical checkouts. This is the single highest-leverage gap.
 
 **Sprint 1.1 — `WorktreeManager` core**
+- **Status: ✅ DONE.** `crates/lopi-git/src/worktree.rs:36-217` (add/add_detached/prune/list/gc), RAII `Drop` cleanup at `worktree.rs:295-330`, rooted under `.lopi/worktrees` (`worktree.rs:24`); `IsolationMode::{Branch,Worktree}` at `crates/lopi-core/src/loop_config.rs:29-35`.
 - **Goal:** First-class git-worktree lifecycle in `lopi-git`.
 - **Deliverables:** `git worktree add <path> -b <branch>` / `remove` / `prune`;
   worktrees rooted under `.lopi/worktrees/{task_id}-{attempt}`; auto-clean on
@@ -107,6 +131,7 @@ the standing Three-Wall gates; only sprint-specific acceptance is spelled out.
   drops to *creation only*, not the whole run.
 
 **Sprint 1.2 — Pool runs in worktrees**
+- **Status: ✅ DONE.** `crates/lopi-orchestrator/src/pool/worktree.rs:25-50` (`setup_worktree`) wires per-task detached worktrees into the pool, called from `crates/lopi-orchestrator/src/pool/run_loop.rs:414-444`; per-worktree `CARGO_TARGET_DIR` at `crates/lopi-git/src/worktree.rs:266-277`.
 - **Goal:** `AgentRunner` executes inside its worktree, not the shared root.
 - **Deliverables:** thread the worktree path through `run_loop.rs`; per-worktree
   `CARGO_TARGET_DIR`; remove the global serialization now made unnecessary.
@@ -116,6 +141,7 @@ the standing Three-Wall gates; only sprint-specific acceptance is spelled out.
   `target/` contention; wall-clock for 4 parallel tasks ≤ 1.6× a single task.
 
 **Sprint 1.3 — Rebase-on-moved-main + branch GC**
+- **Status: ✅ DONE.** `crates/lopi-git/src/rebase.rs:27-75` (`rebase_onto`/`rebase_onto_default`), conflicts mapped to `TaskStatus::Conflict` at `crates/lopi-agent/src/runner/finalize.rs:228-245`; GC at `crates/lopi-git/src/worktree.rs:157-216`; CLI at `src/worktree_commands.rs:18-51` (`lopi worktree gc`/`list`).
 - **Goal:** Loops survive a moving `main`; no branch litter.
 - **Deliverables:** pre-PR `git rebase origin/main` with conflict → structured
   `TaskStatus::Conflict` (not silent fail); post-merge worktree+branch GC;
@@ -131,6 +157,7 @@ the standing Three-Wall gates; only sprint-specific acceptance is spelled out.
 > **loads, injects, audits, and grows**.
 
 **Sprint 2.1 — `SkillRegistry` + loader**
+- **Status: ✅ DONE.** `crates/lopi-skill/src/lib.rs:40-57` (typed `Skill`), `crates/lopi-skill/src/registry.rs:17-93` (`SkillRegistry::load_from_dirs`, duplicate-name validation).
 - **Goal:** Parse `SKILL.md` (frontmatter: name, description, triggers, version)
   into a typed registry.
 - **Deliverables:** `lopi-skill` crate; discovery from `.claude/skills/` and
@@ -141,6 +168,7 @@ the standing Three-Wall gates; only sprint-specific acceptance is spelled out.
   file+line, never silently.
 
 **Sprint 2.2 — Relevance injection into the loop**
+- **Status: ✅ DONE.** `crates/lopi-agent/src/runner/mod.rs:329` (`with_skills`); `crates/lopi-agent/src/runner/seed.rs:210-241` (`seed_skills`/`record_skill_activation`). Activation is recorded through the generic audit trail rather than a dedicated `lopi-memory/src/store/skills.rs` (that file doesn't exist) — functionally equivalent, different location than originally scoped.
 - **Goal:** The right skills enter the planning prompt automatically.
 - **Deliverables:** trigger-match (keyword now, embedding-ready interface) →
   inject skill body into `AgentRunner` context; per-task **activation record**
@@ -151,6 +179,7 @@ the standing Three-Wall gates; only sprint-specific acceptance is spelled out.
   audit trail; no-match tasks inject nothing (no context bloat).
 
 **Sprint 2.3 — Lesson → Skill promotion (self-evolving)**
+- **Status: 🟡 PARTIAL.** Detector + drafting exist: `crates/lopi-skill/src/promote.rs:37-60` (clustering), `promoter.rs:40-60` (writes to `.lopi/skills-pending/`, the approval gate), reachable via `src/skill_commands.rs:64`. Still missing: drafting is a fixed string template, not "via a sub-agent"; nothing triggers promotion automatically (CLI-only today).
 - **Goal:** Close the Ratchet automatically — recurring lessons become named skills.
 - **Deliverables:** detector (≥ N occurrences of a lesson cluster) → draft
   `SKILL.md` via a sub-agent → **human approval gate** → commit to `.lopi/skills/`.
@@ -167,6 +196,7 @@ the standing Three-Wall gates; only sprint-specific acceptance is spelled out.
 > agents drive lopi).
 
 **Sprint 3.1 — MCP client**
+- **Status: ✅ DONE.** `crates/lopi-mcp/src/client.rs:36-65` (`McpClient`/`StdioClient`), `crates/lopi-mcp/src/config.rs:19-37` (`[[mcp.servers]]` in `.lopi/loop.toml`), `crates/lopi-mcp/src/bridge.rs:21-49` (merges into `lopi_tools::ToolRegistry`).
 - **Goal:** lopi agents can call tools from configured MCP servers.
 - **Deliverables:** `lopi-mcp` crate (stdio + HTTP transports); server config in
   `.lopi/loop.toml` (`[[mcp.servers]]`); discovered tools merged into
@@ -178,6 +208,7 @@ the standing Three-Wall gates; only sprint-specific acceptance is spelled out.
   unreachable server degrades gracefully with `tracing::warn!`, never panics.
 
 **Sprint 3.2 — MCP server (expose lopi)**
+- **Status: ✅ DONE — exceeds original scope.** `crates/lopi-mcp/src/server.rs:18-80` (`ToolHandler` trait + `serve`), wired at `src/mcp_commands/mod.rs:117-243` exposing `lopi_submit_task`, `lopi_get_task`, `lopi_cancel_task`, `lopi_list_tasks`, `lopi_get_logs`, `lopi_get_agent_dag`, `lopi_get_stats` — more tools than this sprint's minimal ask (`submit_task`/`task_status`/`list_schedules`/`approve_plan`/`loop_health`); `list_schedules`/`approve_plan` specifically are not present, everything else is covered or exceeded.
 - **Goal:** External Claude Code / agents drive lopi over MCP.
 - **Deliverables:** expose `submit_task`, `task_status`, `list_schedules`,
   `approve_plan`, `loop_health` as MCP tools; auth via existing allowlist model.
@@ -186,6 +217,7 @@ the standing Three-Wall gates; only sprint-specific acceptance is spelled out.
   tool has a JSON-Schema + doc string (zero undocumented public APIs).
 
 **Sprint 3.3 — Connector plugin trait**
+- **Status: ⬜ NOT STARTED.** `crates/lopi-remote/src/lib.rs:1-6` has only independent `telegram`/`whatsapp` modules; no `Connector` trait anywhere in the crate, no durable outbound queue.
 - **Goal:** New connectors without forking core.
 - **Deliverables:** `Connector` trait (inbound events + outbound notify) with the
   existing Telegram/WhatsApp/GitHub re-expressed as implementations; durable
@@ -200,6 +232,7 @@ the standing Three-Wall gates; only sprint-specific acceptance is spelled out.
 > fresh session**, then enable shallow decomposition.
 
 **Sprint 4.1 — True maker/checker split**
+- **Status: ✅ DONE.** `crates/lopi-agent/src/verifier.rs:120-127` — `VerifierAgent::new` defaults `isolated: true`; test `verifier.rs:287` (`isolated_prompt_excludes_the_maker_plan`) proves a maker's plan text never reaches the verifier's prompt.
 - **Goal:** The checker never sees the maker's chain-of-thought.
 - **Deliverables:** verifier runs as a fresh sub-process/session against the
   maker's worktree diff only; structured verdict (pass/fail + reasons + score);
@@ -210,6 +243,7 @@ the standing Three-Wall gates; only sprint-specific acceptance is spelled out.
   isolation); measured score-vs-revert correlation improves over the shared-session baseline.
 
 **Sprint 4.2 — Bounded task decomposition**
+- **Status: ⬜ NOT STARTED.** `crates/lopi-core/src/task.rs` has no parent/child DAG fields. The only related mechanism is `crates/lopi-core/src/successor.rs:1-27` — a depth-capped (3) **sequential** one-hop successor chain, not a parallel decomposition dispatched through `AgentPool`.
 - **Goal:** One agent splits a large goal; children run in parallel worktrees.
 - **Deliverables:** planner emits a small sub-task DAG (depth-capped); children
   dispatch through `AgentPool`; parent integrates; hard cap on fan-out + budget.
@@ -218,6 +252,7 @@ the standing Three-Wall gates; only sprint-specific acceptance is spelled out.
   prevents runaway fan-out; partial-failure rolls up as a coherent parent status.
 
 **Sprint 4.3 — Earned-trust auto-promotion**
+- **Status: 🟡 PARTIAL.** `crates/lopi-core/src/earned_trust.rs:31-101` — a complete, tested `EarnedTrust` state machine (`on_clean_run`/`on_failed_run`/`on_revert`) matching the spec. But it has zero callers outside its own module: not invoked from `schedule_manager.rs`, not persisted (no `trust_ledger` in `lopi-memory`). Built, not wired.
 - **Goal:** Schedules climb autonomy by demonstrated reliability (from `LOOP_ENGINEERING.md` §6 backlog).
 - **Deliverables:** promote `AutonomyLevel` after N consecutive clean verified
   runs; **instant demote** on a post-merge revert; full audit.
@@ -231,6 +266,7 @@ the standing Three-Wall gates; only sprint-specific acceptance is spelled out.
 > Low-risk, runs in parallel with M1–M4.
 
 **Sprint 5.1 — Webhook resilience**
+- **Status: ⬜ NOT STARTED.** `crates/lopi-webhook/src/github.rs:36-60` has no delivery-id dedup, no dead-letter queue, no async triage (triage is synchronous), no schedule-change audit trail.
 - **Goal:** No dropped or duplicated triggers.
 - **Deliverables:** event **dedup** (delivery-id idempotency), **dead-letter
   queue** for failed deliveries, async triage off the request path,
@@ -240,6 +276,7 @@ the standing Three-Wall gates; only sprint-specific acceptance is spelled out.
   lands in the DLQ and is replayable.
 
 **Sprint 5.2 — Event-payload templating**
+- **Status: 🟡 PARTIAL.** `crates/lopi-core/src/template.rs:44` (`resolve`) is a generic `{name}`-hole templating primitive (single-brace, not `{{issue.title}}` syntax), and `Task::from_template` (`crates/lopi-core/src/task.rs:442`) exists — but neither has a caller outside `task_tests.rs`. Not wired into schedules or `lopi-webhook`.
 - **Goal:** Schedules/webhooks parameterize goals from the event.
 - **Deliverables:** safe template (`{{issue.title}}`, `{{ci.failed_job}}`) with
   injection-safe rendering.
@@ -248,6 +285,7 @@ the standing Three-Wall gates; only sprint-specific acceptance is spelled out.
   template errors are validation-time, not run-time.
 
 **Sprint 5.3 — External state (Ralph) + VISION anchor + stall detector**
+- **Status: 🟡 PARTIAL.** Stall detection exists in narrower form: `StopReason::NoProgress` (`crates/lopi-core/src/stop_reason.rs:27-28`) + `ProgressGate` (`crates/lopi-agent/src/runner/progress.rs:20-55`) halts on score-delta stagnation, but there's no `AgentEvent::ProgressStall` variant (only a string-convention reason in `guardrails.rs:17`). Still missing entirely: no `VISION.md` intent anchor, no per-loop external markdown state file.
 - **Goal:** Continuity and a stop condition.
 - **Deliverables:** per-loop markdown state file (`done` / `next`) the loop reads
   and updates each tick; `VISION.md` loaded as the intent anchor and propagated
@@ -262,6 +300,7 @@ the standing Three-Wall gates; only sprint-specific acceptance is spelled out.
 > Reflect the finished primitives in one place (builds on `LOOP_ENGINEERING.md` §5 Option E).
 
 **Sprint 6.1 — `GET /api/loop-engineering` aggregation + read-only Loop Lens**
+- **Status: ✅ DONE.** `crates/lopi-ui/src/web/loop_handlers.rs:1-60` aggregates config/skills/rules/schedules; route registered at `crates/lopi-ui/src/web/mod.rs:307`; consumed by `web/src/routes/loop/+page.svelte` (685 lines).
 - **Goal:** One screen: CLAUDE.md, skills (with versions), MCP servers, schedules,
   worktrees, autonomy levels, gates — read-only.
 - **Key files:** `crates/lopi-ui/src/web/`, `web/src/routes/loop/`,
@@ -269,6 +308,7 @@ the standing Three-Wall gates; only sprint-specific acceptance is spelled out.
 - **DoD:** every pillar's live state is visible without reading a TOML by hand.
 
 **Sprint 6.2 — Loop-health dashboard**
+- **Status: 🟡 PARTIAL.** `crates/lopi-ui/src/web/loop_health_handlers.rs:26-50` (`GET /api/loop-engineering/health` — stats/attempts/outcomes/burn series) consumed at `web/src/routes/loop/+page.svelte:50,102-106,234-341`; config-validity badge confirmed (`+page.svelte:450-451,488`). Missing: series are windowed by attempt count (60), not calendar 7-day; no per-schedule budget estimate anywhere in the handler or frontend.
 - **Goal:** The visibility half of "production loop."
 - **Deliverables:** 7-day sparklines (verifier pass-rate, score trend, lessons,
   skill activations, stalls), per-schedule budget estimate + cumulative spend,
@@ -279,6 +319,7 @@ the standing Three-Wall gates; only sprint-specific acceptance is spelled out.
   in one glance.
 
 **Sprint 6.3 — Writable controls + per-loop token economics**
+- **Status: 🟡 PARTIAL.** Real writable controls exist: per-schedule autonomy picker (`crates/lopi-ui/src/web/schedule_handlers.rs:202`, `POST /api/schedules/:id/autonomy`), self-prompt strategy (`loop_handlers.rs:233-254`), escalation toggle (`loop_handlers.rs:258-269`). Missing: no skill enable/disable toggle (despite `LoopConfig.skills_enabled` existing at `crates/lopi-core/src/loop_config.rs:160` — the web panel is read-only), no MCP-server toggle in the web UI, no write path for `task_budget` caps (backend plumbing exists at `crates/lopi-agent/src/api_budget.rs`, but the loop page only displays it read-only).
 - **Goal:** Tune the loop from the surface, safely.
 - **Deliverables:** per-schedule autonomy picker, skill enable/disable, MCP-server
   toggle, budget caps; wire `LoopConfig.budget_tokens` → Claude API `task_budget`

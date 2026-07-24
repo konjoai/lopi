@@ -1,4 +1,11 @@
+---
+decays: historical
+---
+
 # Master kill-test — RESULT (the highest-value hour in the sprint)
+
+> **HISTORICAL SNAPSHOT — Research-1 sprint, 2026-07-17. Superseded.**
+> Do not plan against this document. See [`../build-plan-and-go-no-go.md`](../build-plan-and-go-no-go.md) for what was built from this result.
 
 **Verdict: PASS on all four pre-registered thresholds — with one honest caveat that
 shapes A1's tier boundaries. The evaluator is viable to build on. Proceed to A1.**

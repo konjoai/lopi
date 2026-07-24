@@ -1,4 +1,11 @@
+---
+decays: historical
+---
+
 # FEATURE_STATE_FINAL — Verify-1 live audit master table
+
+> **HISTORICAL SNAPSHOT — v0.3.2, 2026-07-10. Superseded.**
+> Do not plan against this document. See [`README.md`](../../README.md) for present state; see `docs/ops/` for any later live-audit round.
 
 **Baseline:** `main` @ `a6e4b5f` (Polish-1 / PR #79), v0.3.2 · **Date:** 2026-07-10
 **Method:** live, on-device, real Claude subscription auth (`ANTHROPIC_API_KEY` unset), real billed agent runs on scratch repos. No `?demo=1`, no CI sandbox.

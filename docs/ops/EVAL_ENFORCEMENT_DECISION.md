@@ -1,4 +1,11 @@
+---
+decays: historical
+---
+
 # EVAL_ENFORCEMENT_DECISION — what "the evaluator lands server-side" actually means today
+
+> **HISTORICAL SNAPSHOT — v0.11.0, 2026-07-15. Superseded.**
+> Do not plan against this document. See [`README.md`](../../README.md) for present state.
 
 **Baseline:** `origin/main` @ `43f7cd5` (Loop Stack connect & test, v0.11.0) · **Date:** 2026-07-15
 **This is a decision aid, not a decision.** No code in this repo changed as a result of writing it — `CreateTaskBody`/`launchStackTask` are untouched. Its job is to correct the record on what's actually built (several standing docs turn out to be wrong about this, not just imprecise) and lay out what's genuinely still open.

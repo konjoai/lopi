@@ -21,6 +21,40 @@ env:
 jobs:
 
   # ════════════════════════════════════════════════════════════════════════════
+  # Gate 0 — Doc Staleness (kiban's `decays:` convention)
+  # ════════════════════════════════════════════════════════════════════════════
+  # Doc-Integrity sprint (2026-07-24): `docs/LOOP_ENGINEERING_ROADMAP.md` asserted
+  # four capability gaps that were already closed on `main` — caught by a kill-test,
+  # not by CI, because no gate checked whether a "current state" doc still matched
+  # the code. This job is that gate. It is a HARD gate — not `continue-on-error:
+  # true` — deliberately: an unstamped `decays: state` doc, or one whose
+  # `verified-against` has drifted too far behind HEAD, fails the scan. Softening
+  # this later reproduces the exact failure this job exists to close.
+  doc-staleness:
+    name: "G0 · Doc Staleness"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # decays: state docs are checked by commit distance from verified-against
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install kiban's doc-staleness checker
+        env:
+          # Pinned deliberately — matches .konjo/kiban.ref (the session-plane pin).
+          # Bump both together; a kiban change should not silently reach this gate.
+          KIBAN_REF: "v1.4.0"
+        run: |
+          pip install --quiet pyyaml
+          git clone --quiet --depth 1 --branch "$KIBAN_REF" https://github.com/konjoai/kiban.git /tmp/kiban
+
+      - name: "Scan for stale decays: state docs"
+        run: python3 /tmp/kiban/bin/konjo-doc-staleness scan --repo .
+
+  # ════════════════════════════════════════════════════════════════════════════
   # Gate 1 — Static Analysis (format + lint + audit + deny)
   # ════════════════════════════════════════════════════════════════════════════
   static:
@@ -523,7 +557,7 @@ jobs:
     # blocking merge. Both are added below; both are also legitimately
     # `skipped` on a push-to-main run (they're PR-only jobs), which must not
     # itself count as a failure.
-    needs: [static, coverage, complexity, mutation, review]
+    needs: [doc-staleness, static, coverage, complexity, mutation, review]
     steps:
       - name: Evaluate all required gates
         run: |
@@ -531,12 +565,14 @@ jobs:
           # mutation/review, and only because they're gated on
           # `github.event_name == 'pull_request'` — a push-to-main run is
           # expected to skip them, not fail them.
+          DOC_STALENESS="${{ needs.doc-staleness.result }}"
           STATIC="${{ needs.static.result }}"
           COVERAGE="${{ needs.coverage.result }}"
           COMPLEXITY="${{ needs.complexity.result }}"
           MUTATION="${{ needs.mutation.result }}"
           REVIEW="${{ needs.review.result }}"
 
+          echo "doc-staleness: $DOC_STALENESS"
           echo "static:     $STATIC"
           echo "coverage:   $COVERAGE"
           echo "complexity: $COMPLEXITY"
@@ -544,6 +580,7 @@ jobs:
           echo "review:     $REVIEW"
 
           FAILED=""
+          [ "$DOC_STALENESS" != "success" ] && FAILED="$FAILED doc-staleness"
           [ "$STATIC"     != "success" ] && FAILED="$FAILED static"
           [ "$COVERAGE"   != "success" ] && FAILED="$FAILED coverage"
           [ "$COMPLEXITY" != "success" ] && FAILED="$FAILED complexity"
