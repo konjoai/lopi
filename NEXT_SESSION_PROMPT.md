@@ -5,6 +5,79 @@ the `lopi` repo. Newest first.
 
 ---
 
+## Next Session — after Sprint S9 (the recipe library) — three confirmed runner gaps, HV-4 portability, deferred CLI
+
+**Sprint S9 shipped `recipes/`** — six documented, live-run-measured `.lopi/loop.toml`
+recipes plus the format contract (`recipes/README.md`) and an F0–F10 principle legend
+this sprint introduced (no prior canonical numbering existed). `CHANGELOG.md`'s
+`[Unreleased] — Sprint S9` entry has the full list; `recipes/README.md` is `decays:
+state`, re-verify it before trusting its cost/duration numbers. Four of six recipes
+(`fix-failing-test`, `lint-burndown`, `flaky-test-hunter`, `triage-issues`) live-ran to a
+clean, measured success. Two (`dependency-bump`, `doc-drift-check`) did not — not because
+the recipes are wrong, but because live-running them surfaced real runner bugs, reported
+honestly rather than retried into a fake clean number. Three things carry forward:
+
+1. **`src/mcp_commands/mod.rs::submit_task` never applies `RepoProfile`.**
+   `run_command.rs:177` and `src/repl/actions.rs:101` both call
+   `RepoProfile::load_from_repo(&repo).apply(&mut task)`; the MCP `lopi_submit_task` tool
+   builds a bare `Task::new(goal)` and never does. Confirmed live: `dependency-bump` and
+   `doc-drift-check` each correctly did the right work three times in a row (a real
+   `cargo update`/doc rewrite, verified by hand on the resulting branch) and were
+   hard-rolled-back every time by `DiffChecker`'s default `allowed_dirs` (`["src/",
+   "tests/"]`) because the `.lopi.toml` `allowed_dirs` override meant to fix that never
+   reached the task — reproduced twice, independently, same root cause both times. Fix:
+   add the same `RepoProfile::load_from_repo(&repo).apply(&mut task)` call to
+   `submit_task` that the other two entry points already have. Real-world impact: any
+   task submitted through the Claude Code/Desktop MCP plugin integration against a repo
+   with a customized `.lopi.toml` silently ignores it today.
+2. **`LoopConfig::permission_allow`/`permission_deny` (the flat, legacy fields) have no
+   runtime effect.** Traced both `crates/lopi-orchestrator/src/pool/run_loop.rs` and
+   `src/run_command.rs`: both wire `--allowedTools`/`--disallowedTools` purely from
+   `LoopConfig::resolved_budget()` (i.e. `[budget]`'s preset deny-list +
+   `budget.permission_allow`), never from the flat fields. The flat fields' only live
+   code path is `lopi loop show`'s display (`src/loop_commands.rs`). This means the field
+   doc comment's claim ("genuinely enforced even alongside
+   `--dangerously-skip-permissions`") is stale — true of the mechanism that predated
+   `[budget]`, not of what ships today. `recipes/triage-issues/README.md`'s "Known
+   containment gap" section is the full write-up; that recipe's safety story currently
+   rests entirely on `autonomy_level = "report_only"`, not on `permission_deny`. Fix:
+   either wire the flat fields into `resolved_budget()` (extra denies beyond the preset's
+   own list) or deprecate them outright so the doc comment stops overclaiming.
+3. **`run_guard_command` (the `gate`/`until` shell runner,
+   `crates/lopi-core/src/loop_config.rs`) inherits the parent process's stdio.** Harmless
+   for the CLI (`lopi run`), where that's just extra visible terminal output. Corrupts
+   `lopi mcp-serve`'s stdio JSON-RPC transport when a recipe's `gate`/`until` command
+   produces its own stdout (e.g. `dependency-bump`'s `cargo test --workspace` gate) —
+   confirmed live, worked around in this sprint's own test harness by tolerating/skipping
+   non-JSON lines, not fixed at the source. Fix: redirect the guard command's stdout/
+   stderr (`Stdio::null()` or captured, per the existing doc comment's stated intent that
+   only the exit code matters).
+
+Also carried forward, unrelated to the three bugs above:
+
+4. **A recipe-authoring gotcha, not a bug**: `Deliverable::infer_from_goal`
+   (`crates/lopi-core/src/deliverable.rs`) infers whether a zero-diff attempt is a
+   legitimate success from whole-word verbs in the goal text — `write`/`update`/`create`/
+   `edit`/etc. imply file changes are expected (zero diff = retry), `summarize`/`review`/
+   `analyze`/etc. imply review-only (zero diff = success). `triage-issues`'s goal
+   originally said "**write** a one-paragraph summary" and failed three times despite
+   explicitly saying "do not create files," because `write` matched the change-verb list
+   first. Reworded to "**summarize** the report" and it succeeded in one attempt. Worth a
+   lint or at least a callout in `recipes/README.md`'s format contract for anyone adding a
+   report-only recipe later.
+5. **HV-4 (recipe marketplace/portability)** — explicitly out of scope for S9 ("No
+   recipe marketplace, registry, or sharing infrastructure"). The six recipes here are
+   the proof-of-concept; HV-4 is packaging/distributing that pattern beyond this repo,
+   sized as its own sprint.
+6. **`lopi recipes list|show|apply` CLI** — deferred per the sprint brief's own
+   instruction ("Only if the copy workflow is demonstrably awkward... Decide this from
+   the Phase 2 experience, not in advance"). The copy workflow (`mkdir .lopi && cp
+   recipes/<name>/loop.toml .lopi/loop.toml`) proved perfectly workable across all six
+   live-run applications in this sprint — no CLI command was needed. Revisit only if a
+   future session finds the plain-directory approach genuinely awkward in practice.
+
+---
+
 ## Next Session — after Sprint S4 (quality gate enforcement) — coverage climb, rustdoc cleanup, sqlx migration, kiban migration
 
 **Sprint S4 closed Problems 1 and 2 from the quality-gate brief** — a hard,
