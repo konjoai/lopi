@@ -163,7 +163,9 @@ fn discover_transcripts_walks_project_directories_one_level_deep() {
     let mut found = discover_transcripts(claude_dir);
     found.sort();
     assert_eq!(found.len(), 2);
-    assert!(found.iter().all(|p| p.extension().and_then(|e| e.to_str()) == Some("jsonl")));
+    assert!(found
+        .iter()
+        .all(|p| p.extension().and_then(|e| e.to_str()) == Some("jsonl")));
 }
 
 #[test]
@@ -210,7 +212,10 @@ fn session_looks_successful_requires_both_clean_tail_and_success_language() {
     )));
 
     // No assistant text at all → false (nothing to confirm success with).
-    assert!(!session_looks_successful(&session_with(vec![], vec![false])));
+    assert!(!session_looks_successful(&session_with(
+        vec![],
+        vec![false]
+    )));
 }
 
 #[test]

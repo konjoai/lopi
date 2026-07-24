@@ -293,7 +293,10 @@ pub fn extract_success_constraint(session: &HistoricalSession) -> Option<String>
     if !session_looks_successful(session) {
         return None;
     }
-    session.assistant_texts.last().map(|t| truncate(t, CONSTRAINT_CAP))
+    session
+        .assistant_texts
+        .last()
+        .map(|t| truncate(t, CONSTRAINT_CAP))
 }
 
 fn truncate(s: &str, cap: usize) -> String {

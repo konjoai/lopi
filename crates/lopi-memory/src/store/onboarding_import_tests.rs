@@ -72,12 +72,18 @@ async fn backfill_skips_empty_fingerprint_goal() {
 #[tokio::test]
 async fn onboarding_session_imported_reflects_the_ledger() {
     let store = MemoryStore::open_in_memory().await.unwrap();
-    assert!(!store.onboarding_session_imported("session-4").await.unwrap());
+    assert!(!store
+        .onboarding_session_imported("session-4")
+        .await
+        .unwrap());
     store
         .backfill_onboarding_pattern(&item("session-4", "migrate the sqlx pool"))
         .await
         .unwrap();
-    assert!(store.onboarding_session_imported("session-4").await.unwrap());
+    assert!(store
+        .onboarding_session_imported("session-4")
+        .await
+        .unwrap());
 }
 
 /// A backfill sharing a fingerprint with a pattern already mined from a real
@@ -100,10 +106,7 @@ async fn backfill_blends_into_a_live_mined_pattern_without_stealing_its_source()
     assert!(before[0].toolchain.is_none());
 
     let outcome = store
-        .backfill_onboarding_pattern(&item(
-            "session-5",
-            "refactor the retry backoff logic",
-        ))
+        .backfill_onboarding_pattern(&item("session-5", "refactor the retry backoff logic"))
         .await
         .unwrap();
     assert!(matches!(outcome, BackfillOutcome::Inserted(_)));
