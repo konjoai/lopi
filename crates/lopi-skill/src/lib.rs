@@ -27,7 +27,7 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
-pub use claude_commands::{discover_claude_commands, ClaudeCommand};
+pub use claude_commands::{builtin_commands, discover_claude_commands, ClaudeCommand};
 pub use invocation::parse_invocation;
 pub use promote::{draft_skill_md, promotion_candidates, PromotionCandidate};
 pub use promoter::{promote_lessons, PromotionReport, PENDING_SKILLS_DIR};
