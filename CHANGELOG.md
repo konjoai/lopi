@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.25.1] — Sprint S2′: egress-allowlist re-verify + provenance surfacing
+
+Trimmed follow-on to Sprint S2, scoped to the one trifecta leg still open on a
+local-only deployment. The pre-flight kill-test (`docs/security/EGRESS_SURFACE.md`)
+found the brief's own baseline (`3a8a2ff`, v0.24.0) stale: Sprint S2 (below) had
+already shipped the deny-by-default egress allowlist this sprint's Phase 1 asked
+for, on `main` before this sprint started. Re-verified rather than re-implemented —
+no code change for Phase 1.
+
+- **[No change, verified already fixed]** Deny-by-default Telegram egress allowlist
+  (`crates/lopi-remote/src/egress.rs`) — confirmed still wired into `notify_loop`,
+  confirmed its empty-allowlist-denies test still passes, confirmed WhatsApp has no
+  outbound send path to gate (inbound webhook only) and no third transport exists.
+  See `docs/security/EGRESS_SURFACE.md` §1–§4.
+- **[Feature]** Provenance marker surfaced on the run record. `Task::source` was
+  already persisted to SQLite (`tasks.source`, predates this sprint) but never read
+  back out — `MemoryStore::load_history`/`get_task` now `SELECT` it, `TaskRow`
+  gained a `provenance()` method (`"operator"` / `"untrusted"` / `"unknown"`), and
+  `GET /api/tasks` / `GET /api/tasks/:id` now include `"provenance"` in their JSON
+  response. Foundation for a later human-approval gate on notification/egress
+  specifically (deferred — see `NEXT_SESSION_PROMPT.md`); this sprint only records
+  and surfaces the marker, nothing gates on it yet.
+
 ## [0.25.0] — Sprint S2: contain the lethal trifecta
 
 Security hardening against F10 (untrusted webhook/CI content in → powerful tools →

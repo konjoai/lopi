@@ -283,7 +283,7 @@ impl MemoryStore {
     pub async fn load_history(&self, limit: i64) -> Result<Vec<TaskRow>> {
         let rows = sqlx::query_as::<_, TaskRow>(
             "SELECT id, goal, status, created_at, completed_at, client_ref, branch, repo, \
-             parent_task, chain_depth FROM tasks \
+             parent_task, chain_depth, source FROM tasks \
              ORDER BY created_at DESC LIMIT ?1",
         )
         .bind(limit)
@@ -442,6 +442,43 @@ pub struct TaskRow {
     /// Sprint Successor-1 — successor hops from the root of this task's
     /// chain; `0` for anything not derived.
     pub chain_depth: i64,
+    /// Egress-Allowlist-1 — the task's `source` column, a JSON-serialized
+    /// [`lopi_core::TaskSource`] written by `save_task`. Kept raw (not
+    /// deserialized eagerly) since most callers only need the derived
+    /// [`Self::provenance`] label, not the full enum. Use `provenance()`
+    /// rather than matching on this directly.
+    pub source: String,
+}
+
+impl TaskRow {
+    /// Whether this run originated from untrusted input (a GitHub webhook) or
+    /// an operator-initiated path (CLI, API, Telegram, self-modify,
+    /// self-authored successor) — foundation for a future human-approval
+    /// gate on outbound notification. This sprint only records and surfaces
+    /// the marker; see `docs/security/EGRESS_SURFACE.md`.
+    ///
+    /// Deliberately narrower than [`lopi_core::is_untrusted_source`], which
+    /// also classifies `TaskSource::Telegram` as untrusted for a different
+    /// purpose (Sprint Successor-1's chain-extension caution). Sprint S2's
+    /// own trifecta gate (`require_plan_approval`) never extended to
+    /// Telegram — it's inbound-authenticated via `allowed_chat_ids`, a
+    /// different threat model than an unauthenticated webhook payload (see
+    /// `docs/security/TRIFECTA_PATHS.md` §1, row E). This marker mirrors
+    /// that same operational judgment rather than the broader predicate.
+    /// Falls back to `"unknown"` (logged, not silent) if `source` predates
+    /// this column or fails to parse — never guesses in either safety
+    /// direction, since nothing gates on this value yet.
+    #[must_use]
+    pub fn provenance(&self) -> &'static str {
+        match serde_json::from_str::<lopi_core::TaskSource>(&self.source) {
+            Ok(lopi_core::TaskSource::Webhook { .. }) => "untrusted",
+            Ok(_) => "operator",
+            Err(e) => {
+                tracing::warn!("TaskRow::provenance: failed to parse source column: {e}");
+                "unknown"
+            }
+        }
+    }
 }
 
 mod audit;

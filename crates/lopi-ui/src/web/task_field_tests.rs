@@ -213,8 +213,8 @@ async fn create_task_with_guardrail_fields_returns_201() {
 // `acceptance`/`verifier_fail_open`/`budget_tokens` were wired into
 // `apply_loop_fields` (Sprint A1/A3) but never exercised by any request body
 // — `get_task`'s response deliberately exposes only a small fixed field set
-// (id/goal/status/created_at/completed_at/client_ref/cost, see `get_task`
-// above), so a `POST` → `GET` round trip can't observe these three even
+// (id/goal/status/created_at/completed_at/client_ref/cost/repo/provenance,
+// see `get_task` above), so a `POST` → `GET` round trip can't observe these three even
 // where they DO persist; the field-mapping logic itself is what's actually
 // verifiable, matching this file's existing `apply_loop_fields_threads_*`
 // pattern for gate/until/on_fail above.
@@ -395,6 +395,43 @@ async fn get_task_ambiguous_prefix_returns_409() {
 
     let resp = get_req(app, "/api/tasks/aaaaaaaa").await;
     assert_eq!(resp.status(), StatusCode::CONFLICT);
+}
+
+/// Egress-Allowlist-1, Phase 2 — `get_task`'s response must surface the
+/// operator-vs-untrusted provenance marker `TaskRow::provenance()` derives
+/// from `task.source`, distinguishing an operator-initiated run (`Cli`,
+/// the default) from an untrusted-origin one (a simulated webhook task).
+#[tokio::test]
+async fn get_task_surfaces_provenance_marker() {
+    let (app, store) = test_app_with_store().await;
+
+    let operator_task = Task::new("run from the CLI");
+    store.save_task(&operator_task, "queued").await.unwrap();
+
+    let mut untrusted_task = Task::new("run from a CI webhook");
+    untrusted_task.source = lopi_core::TaskSource::Webhook {
+        repo: "konjoai/lopi".into(),
+        event: "check_run".into(),
+    };
+    store.save_task(&untrusted_task, "queued").await.unwrap();
+
+    let operator_resp = get_req(app.clone(), &format!("/api/tasks/{}", operator_task.id.0)).await;
+    let operator_json: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(operator_resp.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(operator_json["provenance"], "operator");
+
+    let untrusted_resp = get_req(app, &format!("/api/tasks/{}", untrusted_task.id.0)).await;
+    let untrusted_json: serde_json::Value = serde_json::from_slice(
+        &axum::body::to_bytes(untrusted_resp.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(untrusted_json["provenance"], "untrusted");
 }
 
 /// Same ambiguity, but on the cancel path — must not cancel/delete an
