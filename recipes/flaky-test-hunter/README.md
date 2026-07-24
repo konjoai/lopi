@@ -41,10 +41,33 @@ no `until`, a low `no_progress_limit` — exists to resist that failure mode.
 
 ## Expected cost and duration
 
-**TODO — pending live-run measurement.** Will be filled in from a real
-`lopi_submit_task` run against a scratch crate whose test fails roughly 1 in
-3 runs by design, per `recipes/README.md`'s applied-and-run steps, before
-this sprint closes.
+Measured live (2026-07-24) against a scratch crate whose test fails on
+every third run by design (a counter persisted to disk), applied and run
+per `recipes/README.md`'s steps via `lopi_submit_task`:
+
+- **Outcome:** `success` after 3 attempts — and the 3-attempt shape is
+  itself the demonstration, not overhead to explain away:
+  - **Attempt 1**: ran the suite 9 times, correctly identified the root
+    cause (the persisted counter), but only *reported* it — no file
+    changed. Rejected: `no file changes produced, but this goal expects
+    file edits`.
+  - **Attempt 2**: re-characterized (correctly: "2:1 pass/fail ratio,
+    deterministic pattern"), again with zero diff. Rejected for the same
+    reason. Two accurate reports in a row, both correctly refused as "not
+    yet done" — this is `no_progress_limit` doing exactly its job: neither
+    attempt advanced the loop even though both were substantively good
+    analysis.
+  - **Attempt 3**: applied a real fix removing the counter-driven
+    intermittency (verified: the resulting diff is a genuine, minimal fix,
+    not a deleted or weakened test). Accepted, loop ends.
+- **Wall-clock:** 276.6s end-to-end (task `created_at` → `completed_at`)
+- **Cost:** $0.535 over 3 attempts, inside the `quick` preset's $1 cap
+
+The two "rejected but correct" attempts are the point: a scoring/no-progress
+mechanism that only looked at whether *something* changed would have
+accepted attempt 1's zero-diff report as final and stopped there, no fix
+applied. `flaky-test-hunter`'s F3 stop conditions and this recipe's
+"goal expects file edits" scoring signal are what pushed it to attempt 3.
 
 ## When not to use this
 
