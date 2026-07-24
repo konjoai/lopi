@@ -5,6 +5,65 @@ the `lopi` repo. Newest first.
 
 ---
 
+## Next Session — after Sprint S4 (quality gate enforcement) — coverage climb, rustdoc cleanup, sqlx migration, kiban migration
+
+**Sprint S4 closed Problems 1 and 2 from the quality-gate brief** — a hard,
+never-regress coverage floor locked at 68.34% (`.konjo/coverage-floor.txt` +
+`.konjo/scripts/coverage_floor_check.py`, kill-tested), a soft-gate convention lint
+(`.konjo/scripts/soft_gate_lint.py`, kill-tested) that makes the `KNOWN DEBT, verified
+<date>` / `ADVISORY BY DESIGN` comment convention mechanical instead of hand-held, and
+made `cargo deny`/`cargo audit` hard gates after triaging every finding (four crate
+upgrades, one migrated config schema, four scoped license exceptions/allowances, five
+scoped advisory ignores — see `CHANGELOG.md`'s `[0.26.0]` entry for the full list and
+`LEDGER.md`'s `Sprint S4` entry for the *why* behind the one-way-door coverage floor,
+the lopi-local soft-gate lint, and the `unmaintained`/`unsound` schema migration).
+Five things carry forward, not forgotten:
+
+1. **The coverage climb toward 80%, then 95%, is still owed — this sprint locked the
+   floor at 68.34%, it did not raise it.** The soft 80%/95% gate (`konjo-gate.yml`,
+   "Coverage gate" step) still has its own `KNOWN DEBT, verified 2026-07` comment
+   pointing at the lowest-coverage crates as the next step. Every future sprint that
+   raises real coverage should also ratchet `.konjo/coverage-floor.txt` up in the same
+   PR — the mechanism only protects a number that keeps moving.
+
+2. **The rustdoc intra-doc-link cleanup (`lopi-agent`'s `StreamEvent` x4,
+   `lopi-orchestrator`'s `JobScheduler`/`TopologyHint`/types) is still deferred.**
+   Explicitly out of scope for S4 (real doc-writing work, not config-scale). The
+   "Documentation gate (rustdoc)" step in `konjo-gate.yml` still carries its own
+   `KNOWN DEBT` comment with the grep-and-qualify next step.
+
+3. **The sqlx 0.7 -> 0.8+ major-version migration is now the single blocker on four
+   RUSTSEC advisories** (RUSTSEC-2026-0098/-0099/-0104 on `rustls-webpki`,
+   RUSTSEC-2024-0363 on `sqlx` itself — all pinned via sqlx 0.7.4's own `rustls 0.21`
+   dependency; `cargo update -p sqlx`/`-p rustls-webpki` both confirm no
+   0.7-compatible fix exists). This is real application-code migration work — sqlx's
+   query/macro API changed across majors, and `lopi-memory` is the crate map's whole
+   SQLite persistence layer — sized as its own sprint, not a burn-down line item. Both
+   `.konjo/deny.toml` and `.cargo/audit.toml` carry matching, reasoned
+   `[advisories.ignore]` entries for all four IDs; keep the two lists in sync if either
+   changes, and delete both sets of entries in the same PR that lands the sqlx bump.
+
+4. **`.konjo/scripts/coverage_floor_check.py` and `.konjo/scripts/soft_gate_lint.py`
+   are lopi-local by necessity, not by choice — pre-flight kill-test 3 confirmed kiban
+   `v1.4.0` ships neither mechanism** (`konjo-gates-py` is Python/ML-repo-scoped;
+   `konjo-gates-rs`, the Rust equivalent, is an explicit phase-1 stub whose `main.rs`
+   only prints `"konjo-gates-rs: phase 1"`). Whoever picks up `konjo-gates-rs`'s real
+   implementation should port both scripts' kill-tested behavior
+   (`.konjo/scripts/test_coverage_floor_killtest.sh`,
+   `.konjo/scripts/test_soft_gate_lint_killtest.sh` — 5 fixture cases each) into the
+   crate rather than re-deriving the edge cases from scratch, then retire the
+   lopi-local copies in favor of consuming kiban.
+
+5. **`cargo-deny`'s `multiple-versions` duplicate-crate warnings and
+   `license-not-encountered` warnings are pre-existing, non-blocking noise** — `cargo
+   deny check` reports them but they don't fail the gate (`bans.multiple-versions =
+   "warn"`, not `"deny"`). Not touched this sprint (out of scope: no new production
+   code paths, config-scale only), but worth a look if a future sprint is already
+   auditing the dependency graph — several duplicate versions (`base64`, `hashbrown`,
+   `itertools` x3, `windows-sys` family) look collapsible.
+
+---
+
 ## Next Session — after Sprint S2 (trifecta containment) — S3 identity, tool sandboxing, dormant paths
 
 **Sprint S2 closed F10's five phases** — auth fail-closed (`--insecure-no-auth`,

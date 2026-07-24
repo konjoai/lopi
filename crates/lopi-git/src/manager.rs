@@ -142,7 +142,7 @@ impl GitManager {
             let statuses = repo.statuses(Some(&mut opts))?;
             for s in statuses.iter() {
                 if s.status().contains(git2::Status::WT_NEW) {
-                    if let Some(rel) = s.path() {
+                    if let Ok(rel) = s.path() {
                         let p = repo_path.join(rel);
                         if p.is_file() {
                             let _ = std::fs::remove_file(&p);
