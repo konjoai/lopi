@@ -43,12 +43,66 @@ just be `cargo update` with extra steps.
 | `no_progress_limit` | `2` | Two non-improving attempts means the agent is fighting the same breakage repeatedly rather than resolving it. |
 | `[budget] preset = "standard"` | $1 / 1M tokens, fan-out denied | One notch above `quick`: a bump can touch a lockfile plus call sites across multiple files if the dependency's API shifted. |
 
+## Required prerequisite: allow `Cargo.lock` in the target repo's `.lopi.toml`
+
+**Read this before applying — every attempt fails without it.** lopi's
+`DiffChecker` rejects any changed path outside `Task::allowed_dirs`, which
+defaults to `["src/", "tests/"]` (`crates/lopi-core/src/task.rs`). A
+dependency bump touches `Cargo.lock` (at the repo root) by definition, so
+without an override **every attempt of this recipe hard-rolls-back with
+`diff scope violation: diff touches path outside allowed scope: Cargo.lock`
+— confirmed live, three attempts in a row, full cost charged each time**
+before `max_iterations` gives up. This is not a corner case; it is the
+normal shape of this recipe's only possible output. Add this to
+`<repo>/.lopi.toml` (create it if it doesn't exist) before running:
+
+```toml
+allowed_dirs = ["src/", "tests/", "Cargo.lock"]
+```
+
+(Add other lockfile paths as needed for your ecosystem — e.g.
+`package-lock.json`, `poetry.lock`.)
+
 ## Expected cost and duration
 
-**TODO — pending live-run measurement.** Will be filled in from a real
-`lopi_submit_task` run against a scratch crate with one dependency pinned to
-an old exact version, per `recipes/README.md`'s applied-and-run steps,
-before this sprint closes.
+Measured live (2026-07-24) against a scratch crate with `itoa` locked to an
+older-but-still-in-range version (`Cargo.toml` allows `^1.0.9`, `Cargo.lock`
+pinned to `1.0.9` when `1.0.18` is available). Three separate live attempts
+went into this number, and the first two are as important a result as the
+third:
+
+1. **First attempt, no `allowed_dirs` override**: the agent correctly ran
+   `cargo update -p itoa`, correctly bumped `1.0.9 → 1.0.18`, correctly
+   confirmed tests still passed — three times in a row across
+   `max_iterations` — and every single attempt was hard-rolled-back by the
+   `DiffChecker` for the exact reason above. `failed` after 3 attempts,
+   **$0.33**, 122s. This is what motivated the prerequisite section above;
+   it is not a hypothetical.
+2. **Second attempt, `.lopi.toml` override added but submitted through
+   `lopi_submit_task` (MCP)**: still failed, same violation. Root-caused to
+   a second, independent, confirmed finding: **the MCP submission path
+   (`src/mcp_commands/mod.rs::submit_task`) never calls
+   `RepoProfile::load_from_repo(&repo).apply(&mut task)`** — unlike the CLI
+   path (`src/run_command.rs:177`) and the REPL (`src/repl/actions.rs:101`),
+   which both do. A task submitted via the Claude Code/Desktop MCP plugin
+   integration silently ignores `.lopi.toml` entirely, regardless of this
+   sandbox's constraints. See `NEXT_SESSION_PROMPT.md`.
+3. Every measurement in this library used `lopi_submit_task` over MCP
+   because this sandbox's `root` user can't use the CLI's default
+   `bypassPermissions` (see the library's methodology note). For
+   dependency-bump specifically, that same substitution collides with
+   finding 2 above, so **this recipe could not be measured to a clean
+   success in this environment** — reported here as the honest result,
+   not papered over. A real user running the documented CLI path
+   (`lopi run --goal "…" --repo <repo>`) with the `.lopi.toml` override in
+   place is not subject to either gap and should see this recipe succeed
+   in one attempt; that combination just isn't reachable from this sandbox.
+
+**Total measured cost across all three diagnostic attempts: ~$0.85.**
+Budget accordingly if you're reproducing this investigation rather than
+just applying the recipe — a normal application, override in place,
+should cost close to attempt 3's $0.32 for one successful attempt, not
+three.
 
 ## When not to use this
 
