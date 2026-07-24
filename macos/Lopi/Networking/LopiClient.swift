@@ -47,6 +47,12 @@ struct LopiClient {
         try await get("/api/stats")
     }
 
+    /// Cost by model (billed today) + 7-day daily spend trend for the
+    /// Budget page's breakdown panels.
+    func budgetBreakdown() async throws -> BudgetBreakdown {
+        try await get("/api/budget/breakdown")
+    }
+
     func tasks() async throws -> [TaskSummary] {
         let wrapper: TasksWrapper = try await get("/api/tasks")
         return wrapper.tasks

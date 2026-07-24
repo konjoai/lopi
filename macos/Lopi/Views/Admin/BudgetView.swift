@@ -7,7 +7,11 @@ import LopiStacksKit
 struct BudgetView: View {
     @Environment(AppModel.self) private var model
     @State private var cap: Double = BudgetView.loadCap()
+    @State private var alertPct: Double = BudgetView.loadAlertPct()
     @State private var samples: [(t: Date, cost: Double)] = []
+    /// Cost-by-model + 7-day trend, polled from `GET /api/budget/breakdown`
+    /// while this view is on screen (mirrors web's `startBudgetBreakdownPoller`).
+    @State private var breakdown = BudgetBreakdown()
 
     private let tick = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
     private let presets: [Double] = [1, 5, 10, 25, 50]
@@ -35,7 +39,9 @@ struct BudgetView: View {
             VStack(alignment: .leading, spacing: 16) {
                 header
                 statCards
+                spendTrend
                 burnMeter
+                byModelBreakdown
                 topSpenders
                 if !model.budgetBreaches.isEmpty { breachHistory }
             }
@@ -47,6 +53,19 @@ struct BudgetView: View {
         .onReceive(tick) { _ in
             samples.append((Date(), spent))
             if samples.count > 150 { samples.removeFirst(samples.count - 150) }
+        }
+        .task { await pollBreakdown() }
+    }
+
+    /// Poll the durable cost-breakdown endpoint while this view is mounted.
+    /// `.task` auto-cancels on disappear, so there's no separate teardown —
+    /// mirrors web's view-scoped `onMount { startBudgetBreakdownPoller() }`.
+    private func pollBreakdown() async {
+        while !Task.isCancelled {
+            if let fresh = try? await model.client.budgetBreakdown() {
+                breakdown = fresh
+            }
+            try? await Task.sleep(nanoseconds: 15_000_000_000)
         }
     }
 
@@ -77,7 +96,17 @@ struct BudgetView: View {
             stat("BURN RATE", String(format: "$%.2f/h", burnPerHour), color)
             stat("HOURLY CAP", String(format: "$%.2f", cap), Konjo.ice)
             stat("TO CAP", fmtMins(minutesToCap), color)
+            stat("TOKENS", tokensDisplay, Konjo.sun)
+            stat("RUNNING", "\(running)", Konjo.jade)
         }
+    }
+
+    /// Total tokens billed today (UTC), from the same `/api/stats` poll the
+    /// Dashboard's COST TODAY tile reads — abbreviated past 1000, matching
+    /// web's `tokensDisplay`.
+    private var tokensDisplay: String {
+        let tokens = model.stats.totalTokensToday
+        return tokens >= 1000 ? "\(Int((Double(tokens) / 1000).rounded()))K" : "\(tokens)"
     }
 
     private func stat(_ label: String, _ value: String, _ c: Color) -> some View {
@@ -120,6 +149,97 @@ struct BudgetView: View {
                 }
                 Stepper("", value: Binding(get: { cap }, set: { setCap($0) }), in: 0.5...200, step: 0.5)
                     .labelsHidden()
+            }
+
+            HStack(spacing: 10) {
+                Text("ALERT THRESHOLD").font(Konjo.mono(9.5)).tracking(0.8).foregroundStyle(Konjo.fgMute)
+                Slider(value: Binding(get: { alertPct }, set: { setAlertPct($0) }), in: 10...100, step: 1)
+                Text("\(Int(alertPct))%").font(Konjo.mono(10.5)).foregroundStyle(Konjo.flame)
+                    .frame(width: 34, alignment: .trailing)
+            }
+        }
+        .padding(16)
+        .konjoSurface(12)
+    }
+
+    // MARK: Spend trend (7 days)
+
+    private var spendTrend: some View {
+        let bars = trendBars(breakdown.trend)
+        let delta = trendDelta(breakdown.trend)
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("SPEND, LAST 7 DAYS").font(Konjo.mono(9, weight: .semibold)).tracking(1).foregroundStyle(Konjo.fgDim)
+                Spacer()
+                if let delta {
+                    HStack(spacing: 3) {
+                        Text(delta.up ? "▲" : "▼")
+                        Text(delta.pct.map { "\($0)%" } ?? "new spend")
+                        Text("vs 6-day avg")
+                    }
+                    .font(Konjo.mono(11))
+                    .foregroundStyle(delta.up ? Konjo.jade : Konjo.flame)
+                }
+            }
+            if bars.isEmpty {
+                Text("no spend recorded yet").font(Konjo.mono(11)).foregroundStyle(Konjo.fgMute)
+                    .frame(maxWidth: .infinity).padding(.vertical, 10)
+            } else {
+                HStack(alignment: .bottom, spacing: 6) {
+                    ForEach(Array(bars.enumerated()), id: \.offset) { _, bar in
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(bar.isToday ? Konjo.stackTeal : Konjo.stackTeal.opacity(0.35))
+                            .frame(height: max(2, 64 * bar.heightPct / 100))
+                    }
+                }
+                .frame(height: 64, alignment: .bottom)
+                HStack(spacing: 6) {
+                    ForEach(Array(bars.enumerated()), id: \.offset) { _, bar in
+                        Text(bar.label).frame(maxWidth: .infinity)
+                    }
+                }
+                .font(Konjo.mono(9)).foregroundStyle(Konjo.fgMute)
+            }
+        }
+        .padding(16)
+        .konjoSurface(12)
+    }
+
+    // MARK: By-model breakdown
+
+    /// Cost grouped by model, billed today (UTC) — from
+    /// `GET /api/budget/breakdown`. No "by repo" panel: `LiveAgent` carries
+    /// no `repo` field yet on macOS (the same pre-existing gap
+    /// `Store/Overview.swift` already documents — `repo` isn't wired
+    /// end-to-end on the wire), so it isn't buildable without a separate,
+    /// larger change threading `repo` through the live event model.
+    private var byModelBreakdown: some View {
+        let maxCost = max(1, breakdown.byModel.map(\.costUsd).max() ?? 0)
+        return VStack(alignment: .leading, spacing: 10) {
+            Text("BY MODEL").font(Konjo.mono(9, weight: .semibold)).tracking(1).foregroundStyle(Konjo.fgDim)
+            if breakdown.byModel.isEmpty {
+                Text("no spend today").font(Konjo.mono(11)).foregroundStyle(Konjo.fgMute)
+                    .frame(maxWidth: .infinity).padding(.vertical, 8)
+            } else {
+                VStack(spacing: 8) {
+                    ForEach(breakdown.byModel) { row in
+                        HStack(spacing: 10) {
+                            Text(row.model).font(Konjo.mono(11)).foregroundStyle(Konjo.fgDim)
+                                .lineLimit(1).frame(width: 74, alignment: .leading)
+                            GeometryReader { g in
+                                ZStack(alignment: .leading) {
+                                    Capsule().fill(Color.black.opacity(0.4))
+                                    Capsule().fill(Konjo.stackViolet)
+                                        .frame(width: g.size.width * CGFloat(row.costUsd / maxCost))
+                                }
+                            }
+                            .frame(height: 6)
+                            Text(String(format: "$%.2f", row.costUsd))
+                                .font(Konjo.mono(11)).foregroundStyle(Konjo.stackViolet).monospacedDigit()
+                                .frame(width: 52, alignment: .trailing)
+                        }
+                    }
+                }
             }
         }
         .padding(16)
@@ -211,6 +331,11 @@ struct BudgetView: View {
         UserDefaults.standard.set(v, forKey: Self.capKey)
     }
 
+    private func setAlertPct(_ v: Double) {
+        alertPct = v
+        UserDefaults.standard.set(v, forKey: Self.alertKey)
+    }
+
     private func fmtMins(_ m: Double?) -> String {
         guard let m else { return "—" }
         if m < 1 { return "<1m" }
@@ -222,6 +347,14 @@ struct BudgetView: View {
     static func loadCap() -> Double {
         let v = UserDefaults.standard.double(forKey: capKey)
         return v > 0 ? v : 5
+    }
+
+    private static let alertKey = "lopi.budget.alertPct"
+    /// Burn-fraction (% of cap) above which a budget alert should surface —
+    /// mirrors web's `loadAlertPct` (10...100, default 80).
+    static func loadAlertPct() -> Double {
+        let v = UserDefaults.standard.double(forKey: alertKey)
+        return v >= 10 && v <= 100 ? v : 80
     }
 }
 
