@@ -85,6 +85,44 @@
         assert!(json["tasks"].is_array());
     }
 
+    /// macOS-Web-Parity-5 — `repo` (persisted by `set_task_repo` the moment
+    /// `TaskStarted` fires, per `AgentRunner::persist_repo`) surfaces on both
+    /// `GET /api/tasks` and `GET /api/tasks/:id`, and is `null` (not omitted)
+    /// before the first attempt has started.
+    #[tokio::test]
+    async fn tasks_list_and_get_surface_repo_once_set() {
+        let (app, store) = test_app_with_store().await;
+        let never_started = Task::new("queued, never started");
+        store.save_task(&never_started, "queued").await.unwrap();
+        let started = Task::new("running with a resolved repo");
+        store.save_task(&started, "running").await.unwrap();
+        store
+            .set_task_repo(&started.id, "/Users/dev/lopi")
+            .await
+            .unwrap();
+
+        let list_resp = get_req(app.clone(), "/api/tasks").await;
+        let list_json = json_body(list_resp).await;
+        let tasks = list_json["tasks"].as_array().unwrap();
+        let started_row = tasks
+            .iter()
+            .find(|t| t["id"] == started.id.0.to_string())
+            .unwrap();
+        assert_eq!(started_row["repo"], "/Users/dev/lopi");
+        let queued_row = tasks
+            .iter()
+            .find(|t| t["id"] == never_started.id.0.to_string())
+            .unwrap();
+        assert!(
+            queued_row["repo"].is_null(),
+            "a task with no TaskStarted yet has no repo, not an omitted field"
+        );
+
+        let get_resp = get_req(app, &format!("/api/tasks/{}", started.id.0)).await;
+        let get_json = json_body(get_resp).await;
+        assert_eq!(get_json["repo"], "/Users/dev/lopi");
+    }
+
     #[tokio::test]
     async fn metrics_has_all_metric_names() {
         let app = test_app().await;

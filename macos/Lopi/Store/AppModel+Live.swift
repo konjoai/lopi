@@ -26,11 +26,12 @@ extension AppModel {
             push(.queued, "Task queued", priority.isEmpty ? goal : "\(priority) · \(goal)")
             scheduleTaskRefresh()
 
-        case let .taskStarted(id, attempt, branch):
+        case let .taskStarted(id, attempt, branch, repo):
             mutateAgent(id) {
                 $0.phase = "planning"
                 $0.attempt = attempt
                 $0.branch = branch.isEmpty ? nil : branch
+                $0.repo = repo.isEmpty ? $0.repo : repo
                 $0.active = true
                 $0.stimulus = .now
                 $0.stimulusKind = "request"

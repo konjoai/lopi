@@ -418,6 +418,12 @@ final class AppModel {
             if isNew, let cost = (t["cost"] as? NSNumber)?.doubleValue {
                 liveAgents[id]?.costUsd = cost
             }
+            // macOS-Web-Parity-5 — same reasoning and guard as `cost`: hydrate
+            // repo only for ids we haven't seen, so a task already live keeps
+            // whatever `.taskStarted` already set for it.
+            if isNew, let repo = t["repo"] as? String, !repo.isEmpty {
+                liveAgents[id]?.repo = repo
+            }
             // Overview's elapsed column needs a real start time for tasks that
             // began before this session connected — only applied to newly-seen
             // ids, same as `cost` above, so a task already live keeps its own

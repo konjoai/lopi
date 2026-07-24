@@ -184,12 +184,15 @@ impl AgentRunner {
                 .store(attempt as usize + 1, Ordering::Relaxed);
 
             let branch = format!("lopi/{}-attempt-{}", self.task.id.0, attempt + 1);
+            let repo = self.repo_path.display().to_string();
             self.bus.send(AgentEvent::TaskStarted {
                 task_id: self.id(),
                 attempt: attempt + 1,
                 branch: branch.clone(),
+                repo: repo.clone(),
             });
             self.persist_branch(&branch);
+            self.persist_repo(&repo);
             // `●` marks this as synthetic status, not Claude output — the
             // frontend's `reduceLogLine` (web/src/lib/stores/transcript.ts)
             // treats any *unprefixed* log line as real assistant text, so an
