@@ -5,6 +5,56 @@ the `lopi` repo. Newest first.
 
 ---
 
+## Next Session — after Doc-Integrity (roadmap correction) — three deferred items
+
+**Doc-Integrity corrected `docs/LOOP_ENGINEERING_ROADMAP.md`'s state table and
+per-sprint status (9/18 sprints already shipped), banner-labeled 12 historical
+audit docs, and reconciled `FEATURE_STATE_FINAL.md`'s F1–F8 findings (all 7
+fixed at the source level).** Read `CHANGELOG.md`'s `Doc-Integrity` entry and
+`LEDGER.md`'s `Doc-Integrity` entry first. Three things were deliberately
+deferred, not forgotten:
+
+1. **Phase 4 (stamp state docs + adopt the staleness checker) is blocked on
+   kiban's doc-integrity sprint landing.** That sprint owns the `decays:`
+   front-matter convention and the checker that enforces it. Once it ships:
+   add `decays: state` / `verified-against: <SHA>` / `verified-date: <date>`
+   front matter to every doc that asserts current state, `decays: historical`
+   to the 12 snapshot docs this sprint banner-labeled, and wire the checker
+   into `.github/workflows/konjo-gate.yml` as a **hard gate** — not
+   `continue-on-error: true`, which is the same silent-non-enforcement bug
+   one layer down.
+
+2. **A real live F1–F8 re-verification is still owed.** This sprint's
+   reconciliation (`docs/ops/FEATURE_STATE_RECONCILIATION_2026-07-24.md`) is
+   source-level only — it confirms the code changed in the right direction
+   and each fix has a test, but it does not re-observe behavior in a running
+   `lopi sail` with real auth and real spend the way the original Verify-1
+   audit did. F2 in particular has one open caveat: the store-layer wiring
+   (`runBarePane`/`launchBareCard`) was confirmed, but the `StackPane.svelte`
+   markup wasn't traced to confirm a visible run control actually invokes it.
+   Schedule this as its own live-audit sprint, same discipline as `FEATURE_STATE_FINAL.md`
+   (`?demo=1` forbidden, no CI sandbox, real subscription auth).
+
+3. **`PLAN.md` is stale — frozen at v0.19.0 (2026-06-18) while `main` is
+   `v0.24.0`.** Found while sourcing this sprint's `LEDGER.md` entry, flagged
+   with a "known drift" note in `PLAN.md` itself rather than fixed (fixing it
+   means re-auditing everything shipped across five versions — out of scope
+   for a docs-correction sprint). The next session that touches `PLAN.md`
+   should catch up its "Shipped" log and "Current Health" table to `main`, the
+   same way this sprint caught up `docs/LOOP_ENGINEERING_ROADMAP.md`.
+
+Also worth a look, not urgent: this sprint's brief scoped an *optional* Phase 5
+— a `cargo xtask capability-matrix` (or `lopi state`) command that mechanically
+probes the four claims this sprint had to hand-verify (MCP call sites +
+`McpServe` registration, `worktree.rs` existence + agent-path wiring,
+`lopi-skill`'s `registry.rs`/`invocation.rs`, `VerifierAgent::new`'s isolation
+default) and emits the table the roadmap embeds instead of hand-maintains.
+Not built this sprint (scope was correction, not new tooling) — building it
+would make the next drift mechanical to catch instead of requiring another
+manual audit.
+
+---
+
 ## Next Session — after Constraint-Capture-2 (mine_patterns finally writes a constraint) — Phase 1 is now unblocked
 
 **Constraint-Capture-2 closed the gap where `mine_patterns` recorded stats but

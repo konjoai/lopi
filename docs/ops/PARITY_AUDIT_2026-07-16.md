@@ -1,5 +1,8 @@
 # Web/macOS Parity Audit — 2026-07-16
 
+> **HISTORICAL SNAPSHOT — 2026-07-16. Superseded.**
+> Do not plan against this document. See [`README.md`](../../README.md) for present state.
+
 Companion to the Real Stack-Chain Scheduling / Popover Positioning sprint. Scope: enumerate every nav section on both platforms, screenshot/measure the stack-context popovers, and produce a citation-backed feature matrix.
 
 ## Verification method and honest limitations

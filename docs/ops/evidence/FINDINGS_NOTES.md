@@ -1,5 +1,8 @@
 # Ops-2 working notes (raw findings, pre-report)
 
+> **HISTORICAL SNAPSHOT — 2026-07-09/10 (Ops-2, `4e9b390`). Superseded.**
+> Do not plan against this document. See [`../FEATURE_STATE.md`](../FEATURE_STATE.md) for the report these notes fed.
+
 ## Pre-flight
 - Local main was 137 commits behind origin/main (PR#41 vs PR#76). Fast-forwarded to `4e9b390` (Unify-2, PR#76). Ops-1's RUNNING.md/nav.ts only exist post-sync.
 - Tool versions: rustc/cargo 1.89.0, node v20.19.4, npm 9.5.0, Xcode 26.6, xcodegen 2.45.4, ffmpeg 8.0.1, claude 2.1.153. No ANTHROPIC_API_KEY (subscription auth).

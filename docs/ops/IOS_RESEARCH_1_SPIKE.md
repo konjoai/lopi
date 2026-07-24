@@ -1,5 +1,8 @@
 # IOS_RESEARCH_1_SPIKE — Swift package extraction, written not built
 
+> **HISTORICAL SNAPSHOT — v0.11.0, 2026-07-15. Superseded.**
+> Do not plan against this document. See [`IOS_WEB_PARITY_PLAN_2026-07-23.md`](IOS_WEB_PARITY_PLAN_2026-07-23.md) for the later iOS/web parity work.
+
 **Baseline:** `origin/main` @ `43f7cd5` (Loop Stack connect & test, v0.11.0) · **Date:** 2026-07-15
 **Discipline, stated up front:** Swift does not compile on this host (Linux, no Xcode). Everything below is grep-verified against the source and reasoned from Swift's documented access-control rules — it is **not** a compiled result. Nothing here should be read as "this builds." The M3 pass (`xcodegen generate && xcodebuild -scheme Lopi test`, plus `cd packages/LopiStacksKit && swift test`) is the actual acceptance bar, same discipline as every macOS round since Ops-2.
 

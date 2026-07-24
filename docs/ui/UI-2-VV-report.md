@@ -1,5 +1,8 @@
 # UI-2 V&V Report — Loop Stack (`/stacks`)
 
+> **HISTORICAL SNAPSHOT — PR #64, `55338d5`. Superseded.**
+> Do not plan against this document. See [`README.md`](../../README.md) for present state.
+
 **Under test:** PR #64 (merged to `main` as `55338d5`), audited on `chore/ui-2-vv` from `origin/main` at that same commit.
 **Auditor scope:** read-only verification pass + coverage-gap-closing tests only. No shipped-code defects were found this audit, so no functional fixes were needed.
 

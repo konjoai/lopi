@@ -1,5 +1,8 @@
 # 00 · Current-state map — the real code behind Track A/B
 
+> **HISTORICAL SNAPSHOT — commit `12de652`. Superseded.**
+> Do not plan against this document. See `docs/LOOP_ENGINEERING_ROADMAP.md` for present state.
+
 **Method:** every claim cites `file:line` from the working tree at commit `12de652`. Where
 this contradicts the roadmap or a design doc, it is flagged **[DOC-DRIFT]**. Read this
 before any design section — it is the ground truth the specs build on.

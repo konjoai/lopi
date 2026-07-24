@@ -1,5 +1,8 @@
 # lopi — Feature State (Ops-2 full-state audit)
 
+> **HISTORICAL SNAPSHOT — 2026-07-09. Superseded.**
+> Do not plan against this document. See [`FEATURE_STATE_FINAL.md`](FEATURE_STATE_FINAL.md) for the next audit round.
+
 **Empirically verified** on `main` @ `4e9b390` (Unify-2, PR #76), macOS 15 (Darwin 25.5),
 2026-07-09/10. Every row below is backed by an **observed action** — a real request
 fired, a click classified by network/DOM delta, or a screenshot — not a code comment.

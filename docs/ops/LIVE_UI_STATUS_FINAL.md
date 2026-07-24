@@ -1,5 +1,8 @@
 # LIVE_UI_STATUS_FINAL
 
+> **HISTORICAL SNAPSHOT — v0.4.0, 2026-07-11. Superseded.**
+> Do not plan against this document. See [`README.md`](../../README.md) for present state; see `docs/ops/` for any later live-audit round.
+
 > ## ✅ Verify-4 addendum — macOS Loop Stacks: built, tested, watched, **attended** (2026-07-11, baseline `9edca88` / v0.4.0 + PR #84)
 >
 > Verify-4 is the first time the 4,354-line `macOS-Loop-Stacks-1` code was **compiled anywhere** — it was authored on a Linux host that structurally can't build Swift. Ran on the M3, unlocked + attended, `caffeinate -dimsu`, computer-use full tier, real `claude` CLI 2.1.153, no `?demo=1`, no mocks. **Every phase held; two real first-compile defects were found and fixed.**

@@ -1,5 +1,8 @@
 # E2E Feature Inventory — Web + macOS — 2026-07-16
 
+> **HISTORICAL SNAPSHOT — 2026-07-16. Superseded.**
+> Do not plan against this document. See [`README.md`](../../README.md) for present state.
+
 Reference checklist for the Playwright (web) + XCUITest (macOS) coverage effort. Companion to `PARITY_AUDIT_2026-07-16.md` (nav-section matrix, popover-fix writeup). This document enumerates every distinct interactive feature on both platforms, tags each with its current test status, and cross-references the underlying Rust backend logic where relevant.
 
 ## Method
