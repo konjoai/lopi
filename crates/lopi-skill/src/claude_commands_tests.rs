@@ -33,7 +33,10 @@ fn empty_repo_and_no_home_yields_only_builtins() {
 fn builtin_commands_include_well_known_names() {
     let names = names_of(&builtin_commands());
     for expected in ["help", "review", "security-review", "model"] {
-        assert!(names.contains(&expected.to_string()), "missing built-in: {expected}");
+        assert!(
+            names.contains(&expected.to_string()),
+            "missing built-in: {expected}"
+        );
     }
 }
 
@@ -125,7 +128,10 @@ fn a_malformed_skill_is_skipped_not_fatal_to_the_rest() {
     );
 
     let found = discover_claude_commands(tmp.path(), None);
-    assert!(found.iter().any(|c| c.name == "fine"), "the valid skill is found");
+    assert!(
+        found.iter().any(|c| c.name == "fine"),
+        "the valid skill is found"
+    );
     assert!(
         !found.iter().any(|c| c.name == "broken"),
         "the malformed skill is skipped, not fatal"
@@ -170,7 +176,10 @@ fn home_level_skill_is_discovered() {
         "---\nname: loop\ndescription: run on an interval\nuser-invocable: true\n---\n\nbody",
     );
     let found = discover_claude_commands(repo.path(), Some(home.path()));
-    assert!(found.iter().any(|c| c.name == "loop"), "a user-level skill is discovered");
+    assert!(
+        found.iter().any(|c| c.name == "loop"),
+        "a user-level skill is discovered"
+    );
 }
 
 #[test]
@@ -203,7 +212,10 @@ fn repo_command_overrides_same_named_home_command() {
     );
     let found = discover_claude_commands(repo.path(), Some(home.path()));
     let dup = found.iter().find(|c| c.name == "dup").unwrap();
-    assert_eq!(dup.hint, "repo version", "the more specific repo-level command wins");
+    assert_eq!(
+        dup.hint, "repo version",
+        "the more specific repo-level command wins"
+    );
 }
 
 #[test]
@@ -211,9 +223,9 @@ fn plugin_command_is_discovered_at_user_scope() {
     let repo = tempfile::tempdir().unwrap();
     let home = tempfile::tempdir().unwrap();
     write(
-        &home
-            .path()
-            .join(".claude/plugins/repos/anthropics/claude-code-plugins/code-simplifier/commands/tidy.md"),
+        &home.path().join(
+            ".claude/plugins/repos/anthropics/claude-code-plugins/code-simplifier/commands/tidy.md",
+        ),
         "---\ndescription: tidy up\n---\n\nbody",
     );
     let found = discover_claude_commands(repo.path(), Some(home.path()));
@@ -227,7 +239,9 @@ fn plugin_command_is_discovered_at_user_scope() {
 fn plugin_skill_is_discovered_at_project_scope() {
     let repo = tempfile::tempdir().unwrap();
     write(
-        &repo.path().join(".claude/plugins/local/my-plugin/skills/greet/SKILL.md"),
+        &repo
+            .path()
+            .join(".claude/plugins/local/my-plugin/skills/greet/SKILL.md"),
         "---\nname: greet\ndescription: say hi\nuser-invocable: true\n---\n\nbody",
     );
     let found = discover_claude_commands(repo.path(), None);
@@ -241,7 +255,9 @@ fn plugin_skill_is_discovered_at_project_scope() {
 fn repo_command_overrides_same_named_plugin_command() {
     let repo = tempfile::tempdir().unwrap();
     write(
-        &repo.path().join(".claude/plugins/local/my-plugin/commands/dup.md"),
+        &repo
+            .path()
+            .join(".claude/plugins/local/my-plugin/commands/dup.md"),
         "---\ndescription: plugin version\n---\n\nbody",
     );
     write(
@@ -250,7 +266,10 @@ fn repo_command_overrides_same_named_plugin_command() {
     );
     let found = discover_claude_commands(repo.path(), None);
     let dup = found.iter().find(|c| c.name == "dup").unwrap();
-    assert_eq!(dup.hint, "repo version", "a real repo command outranks a plugin of the same name");
+    assert_eq!(
+        dup.hint, "repo version",
+        "a real repo command outranks a plugin of the same name"
+    );
 }
 
 #[test]

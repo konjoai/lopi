@@ -112,7 +112,10 @@ const BUILTIN_COMMANDS: &[(&str, &str)] = &[
     ("pr-comments", "Show pull request review comments"),
     ("resume", "Resume a previous session"),
     ("review", "Review a pull request"),
-    ("security-review", "Run a security review of pending changes"),
+    (
+        "security-review",
+        "Run a security review of pending changes",
+    ),
     ("status", "Show session/account status"),
     ("statusline", "Configure the status line"),
     ("terminal-setup", "Configure terminal integration"),
@@ -297,7 +300,11 @@ fn find_plugin_roots(dir: &Path, depth: u8, out: &mut Vec<PathBuf>) {
 /// have no plugins installed at all.
 fn scan_plugins(claude_dir: &Path) -> Vec<ClaudeCommand> {
     let mut roots = Vec::new();
-    find_plugin_roots(&claude_dir.join("plugins"), PLUGIN_SCAN_MAX_DEPTH, &mut roots);
+    find_plugin_roots(
+        &claude_dir.join("plugins"),
+        PLUGIN_SCAN_MAX_DEPTH,
+        &mut roots,
+    );
     roots.sort();
     let mut by_name = BTreeMap::new();
     for root in roots {
