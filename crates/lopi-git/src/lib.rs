@@ -1,5 +1,7 @@
 //! lopi-git — git branch management and path diff validation for agent runs.
 
+#![warn(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
 /// Validates that a set of changed paths stays within configured allow/deny globs.
 pub mod diff;
 /// Manages git branches, worktrees, and rollbacks for isolated agent runs.

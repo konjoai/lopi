@@ -18,6 +18,8 @@
 //! When variables are absent the server starts but the relevant routes
 //! return 503 with a clear message.
 
+#![warn(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
 pub mod github;
 pub mod stripe;
 

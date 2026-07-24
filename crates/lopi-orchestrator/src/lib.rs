@@ -1,5 +1,7 @@
 //! lopi-orchestrator — concurrent agent pool, priority task queue, and scheduler.
 
+#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
 pub mod agent_rate_limit;
 /// Stack-Chain-1 — server-side whole-stack cron scheduling: fires an ordered
 /// sequence of independent goals, one per stack card, entirely server-side.

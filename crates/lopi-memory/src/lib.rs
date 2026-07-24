@@ -1,5 +1,7 @@
 //! `lopi-memory`: `SQLite`-backed persistent store for tasks, patterns, turn metrics, and learned lessons.
 
+#![warn(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
 /// SQLite store implementations for all lopi memory tables.
 pub mod store;
 pub use store::{
