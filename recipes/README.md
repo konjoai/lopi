@@ -77,14 +77,19 @@ Each recipe lives in `recipes/<name>/` and contains exactly two files:
 
 ## The recipes
 
+**"Live run" reports what was actually measured, not what was hoped for** —
+two recipes below ran live and surfaced real, confirmed gaps rather than a
+clean success; both are documented in full in their own READMEs and carried
+forward in `NEXT_SESSION_PROMPT.md`, not papered over.
+
 | Recipe | Purpose | Budget | Principles | Live run |
 |---|---|---|---|---|
-| [`fix-failing-test`](./fix-failing-test/) | The canonical loop — a failing test is a deterministic pass/fail oracle | `quick` | F1, F3, F5 | ✅ |
-| [`lint-burndown`](./lint-burndown/) | Scheduled, bounded clippy/fmt burndown — a lint pass doesn't need the biggest model | `quick` | F3, F7 | ✅ |
-| [`dependency-bump`](./dependency-bump/) | Update dependencies, gated on the full test suite passing | `standard` | F1, F3 | ✅ |
-| [`flaky-test-hunter`](./flaky-test-hunter/) | Re-run a suspect test N times and characterize intermittency | `quick` | F1, F3 | ✅ |
-| [`doc-drift-check`](./doc-drift-check/) | Scan for `decays: state` docs whose `verified-against` has fallen behind `HEAD` | `quick` | F1, F3, F4 | ✅ |
-| [`triage-issues`](./triage-issues/) | Read incoming issues, label and summarize — untrusted input, tight containment | `quick` | F3, F10 | ✅ |
+| [`fix-failing-test`](./fix-failing-test/) | The canonical loop — a failing test is a deterministic pass/fail oracle | `quick` | F1, F3, F6 | ✅ success — 34.2s, $0.033 |
+| [`lint-burndown`](./lint-burndown/) | Scheduled, bounded clippy/fmt burndown — a lint pass doesn't need the biggest model | `quick` | F3, F5, F7 | ✅ success — 60.5s, $0.057 |
+| [`dependency-bump`](./dependency-bump/) | Update dependencies, gated on the full test suite passing | `standard` | F1, F2, F3, F5, F6 | ⚠️ ran live, found a real `DiffChecker`/MCP gap — [details](./dependency-bump/) |
+| [`flaky-test-hunter`](./flaky-test-hunter/) | Re-run a suspect test N times and characterize intermittency | `quick` | F1 (inverted), F3 | ✅ success after 3 attempts — 276.6s, $0.535 (`no_progress_limit` demonstrated live) |
+| [`doc-drift-check`](./doc-drift-check/) | Scan for `decays: state` docs whose `verified-against` has fallen behind `HEAD` | `quick` | F1, F3, F4, F5 | ⚠️ ran live, hit the same gap as `dependency-bump` — [details](./doc-drift-check/) |
+| [`triage-issues`](./triage-issues/) | Read incoming issues, label and summarize — untrusted input, tight containment | `quick` | F2, F3, F10 | ✅ success — 27.6s, $0.024 (injection attempt correctly ignored) |
 
 ## Applying a recipe
 
@@ -100,7 +105,10 @@ existing loop config, not scaffolding a project.
 2. **Open the copied file and adjust anything repo-specific** — each recipe's
    README calls out what to check (e.g. `gate`/`until` commands that assume a
    particular test runner, `vision_path` pointing at a doc that may not exist
-   in your repo).
+   in your repo). **Check for a "Required prerequisite" section** —
+   `dependency-bump` and `doc-drift-check` both need an `allowed_dirs`
+   addition in `<repo>/.lopi.toml` before they can produce an accepted diff
+   at all (confirmed live; see each recipe's README for why).
 3. **Validate it parses and inspect the effective config:**
    ```bash
    lopi loop validate --repo /path/to/your-repo
@@ -114,10 +122,18 @@ existing loop config, not scaffolding a project.
    a `[[schedules]]` entry to your `lopi.toml` pointing at the same repo and
    goal — see `lopi.toml.example`.
 
-This library was verified end-to-end by following exactly these four steps
-against a fresh scratch repo with no access to this source tree — see each
-recipe's "Expected cost and duration" section for the numbers that run
-produced.
+Every recipe was applied and run against a fresh scratch repo using exactly
+these steps — see each recipe's "Expected cost and duration" section for
+what that run actually produced. Four of six reached a clean success;
+`dependency-bump` and `doc-drift-check` did not, and their READMEs report
+the real, root-caused reason rather than a retried-until-clean number. All
+measurements used `lopi_submit_task` over MCP (`permission_mode:
+"acceptEdits"`/`"auto"`) rather than the CLI shown above, because this
+sprint's own sandbox runs as `root` and the CLI's default
+`bypassPermissions` refuses to run as root outside a CLI-recognized
+sandbox — a constraint of *this development environment*, not of the CLI
+path itself, which is what a real user runs and what these recipes'
+instructions describe.
 
 ## Out of scope (this sprint)
 
