@@ -177,6 +177,7 @@ async fn run_triage(
             let preview = payload.body.chars().take(500).collect::<String>();
             task.constraints.push(format!("Issue body: {preview}"));
         }
+        crate::github::gate_untrusted_source(&mut task);
         queue.push(task).await;
         tracing::info!(
             repo = %payload.full_name,

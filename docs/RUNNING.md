@@ -108,12 +108,16 @@ Run `lopi <cmd> --help` for the full flag set of any subcommand.
 
 ## Surface 1 — the web dashboard ("the Forge")
 
-Start the backend + web dashboard:
+Start the backend + web dashboard. Auth is required by default (Sprint S2) —
+on a loopback host for local dev, pass `--insecure-no-auth` to skip it; on
+any other `--host`, set `[web].auth_token` in `lopi.toml` (or
+`LOPI_WEB_AUTH_TOKEN`) instead, since `--insecure-no-auth` refuses to start
+on a non-loopback bind:
 
 ```bash
-cargo run -- sail --port 3000 --host 127.0.0.1 --max-agents 4 --repo .
+cargo run -- sail --port 3000 --host 127.0.0.1 --max-agents 4 --repo . --insecure-no-auth
 # or the release binary:
-# ./target/release/lopi sail --port 3000 --repo .
+# ./target/release/lopi sail --port 3000 --repo . --insecure-no-auth
 ```
 
 Or, to skip remembering whether it's already running: `scripts/start-dashboard.sh`

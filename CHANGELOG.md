@@ -1,5 +1,63 @@
 # Changelog
 
+## [0.25.0] — Sprint S2: contain the lethal trifecta
+
+Security hardening against F10 (untrusted webhook/CI content in → powerful tools →
+external comms out). Pre-flight kill-test in `docs/security/TRIFECTA_PATHS.md` found
+the webhook-secret gap already fixed by an earlier, unrelated sprint (dropped that
+phase) and a live exposure the brief's own gap table hadn't named: `fly.toml` already
+runs `lopi sail --host 0.0.0.0` with no config file loaded, so auth was silently
+`None` on the one documented deployment path.
+
+- **[Breaking]** `lopi sail` and `lopi_ui::web::serve`/`serve_with_repo` now refuse to
+  start unless `[web].auth_token` (or `LOPI_WEB_AUTH_TOKEN`, newly wired — previously
+  referenced only in `fly.toml`'s comments, read by no code) is set, or
+  `--insecure-no-auth` / `[web].insecure_no_auth` is passed explicitly. That opt-out
+  itself refuses to start on a non-loopback `--host` — the single highest-value check
+  in the sprint. `crates/lopi-ui/src/web/auth_policy.rs` (new).
+- **[Breaking]** `CorsLayer::permissive()` replaced with an explicit origin allowlist
+  (`[web].cors_allowed_origins`), defaulting to the local dev origins the web app
+  actually uses (`localhost:5173`, `127.0.0.1:5173` — `web/vite.config.js`'s dev
+  server). `[web].cors_permissive = true` restores the old behavior, same explicit-opt-out
+  shape as auth. `crates/lopi-ui/src/web/cors_policy.rs` (new). Verified live: a real
+  `lopi sail` + `npm run dev` round-trip works with zero config; a request with
+  `Origin: https://evil.example.com` gets no `Access-Control-Allow-Origin` header back.
+- **[No change, verified already fixed]** `lopi serve-webhooks` already refuses to
+  start without `LOPI_WEBHOOK_SECRET` (`src/webhook_commands.rs`, predates this
+  sprint) — re-derived against the brief's own citations and dropped from scope
+  rather than re-implemented. See `docs/security/TRIFECTA_PATHS.md` §3.
+- **[Feature]** Deny-by-default egress allowlist for `lopi-remote`'s automated/proactive
+  Telegram sends (completion notifications, report-on-finish routing) —
+  `[remote.telegram].egress_allowed_chat_ids`, checked in the transport layer
+  (`crates/lopi-remote/src/egress.rs`, new) before every such send, independent of
+  `allowed_chat_ids` (inbound command authz, which defaults *open*). An empty
+  allowlist denies, never permits — has its own dedicated regression test.
+  Bundled in: `callback_query_handler` (inline-keyboard button presses) now checks
+  `allowed_chat_ids` the same way `message_handler`/`text_message_handler` already
+  did — a defense-in-depth gap against the standing rule in
+  `.claude/rules/security.md` ("validate `chat_id` against config allowlist before
+  executing any command"), not a currently-reachable one (every keyboard sent is
+  already downstream of that same gate).
+- **[Feature]** Trifecta human gate: every task created from `TaskSource::Webhook`
+  (the three `lopi-webhook` task-creation sites — CI-failure fix, PR-review
+  feedback, auto-queued issue fix — plus the dormant WhatsApp `/task` path) now has
+  `require_plan_approval` forced `true`, reusing the existing L2 draft-and-approve
+  gate (`lopi-agent`'s `plan_gate.rs`, `/api/tasks/:id/plan/approve|reject`)
+  end-to-end rather than a new mechanism. Provenance was already present
+  (`TaskSource`, `is_untrusted_source` — built for Sprint Successor-1's chain-depth
+  gate); this sprint is the first thing that reads it for this purpose. An
+  operator-started (CLI) task at the same autonomy level is never gated — that
+  asymmetry is the point.
+- **[Doc]** `docs/security/TRIFECTA_PATHS.md` (new) — the pre-flight/post-flight
+  trifecta-path inventory, `decays: state` stamped.
+- **[Doc]** `README.md` gains a **Security** section; `docs/RUNNING.md`'s `sail`
+  example now includes `--insecure-no-auth` (it would otherwise fail to start after
+  this sprint); `scripts/start-dashboard.sh` now always passes
+  `--insecure-no-auth` through (a no-op once a real token is configured — `sail`
+  checks the token first — but required for the script's zero-config local-dev
+  default to keep working); `lopi.toml.example` documents every new key.
+- VERSION bumped `0.24.0` → `0.25.0` — breaking startup-behavior changes.
+
 ## [Unreleased] — Doc-Integrity Phase 4: adopting kiban's `decays:` checker as a hard gate
 
 Phase 4 was blocked on kiban's own doc-integrity sprint landing the `decays:` convention and the `konjo-doc-staleness` checker — it has, as `konjoai/kiban@v1.4.0`. Pulled it, verified it against this repo, and wired it in rather than leaving Phase 4 deferred.

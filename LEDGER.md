@@ -5,6 +5,95 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## Sprint S2 — the trifecta containment is a one-way door for existing deployments
+
+**Auth flips from opt-in to mandatory — this breaks any running `lopi sail` deployed
+without a token.** Before this sprint, an absent `[web].auth_token` silently meant
+"dev mode." After it, `sail`/`serve()`/`serve_with_repo()` refuse to start at all
+unless a token is configured or `--insecure-no-auth` is passed explicitly (and that
+opt-out itself refuses on a non-loopback bind). Anyone who deployed `lopi sail`
+without ever setting a token — which, per the pre-flight kill-test below, is exactly
+what `fly.toml`'s own process command does — will have their next restart refuse to
+boot instead of quietly serving unauthenticated. That is the intended, correct
+outcome (a deployment that would otherwise be unauthenticated and public), but it is
+a hard behavioral break with no soft-landing path, logged here so it isn't
+"discovered" as a regression later. Same shape, smaller blast radius, for CORS:
+`cors_permissive` now defaults `false` instead of always-on, which can silently
+break a cross-origin integration nobody remembered configuring — the fix is one
+`cors_allowed_origins` entry, but it's still a break, not a warning.
+
+**The Fly.io live exposure wasn't in the brief's own gap table — found by actually
+running the kill-test's §3 instruction instead of trusting the table.** The brief's
+gap table cited four known gaps (auth, CORS, webhook secret, egress) plus "no
+trifecta-path gate," all with file:line citations to check. None of those citations
+mentioned `fly.toml`. Reading `fly.toml` anyway (because the pre-flight instructions
+required confirming the bind-address default survives the Fly path, not because
+anything else pointed there) turned up `web = "lopi sail --port 3000 --host
+0.0.0.0"` with no `--config` flag and no `lopi.toml` in the Docker image — meaning
+`cfg` is `None` on that deployment and the auth token comment in `fly.toml`
+(`LOPI_WEB_AUTH_TOKEN`) was pure documentation: no code in this repository read that
+environment variable before this sprint. `sail_commands::run` now reads it as a
+fallback when no config file sets `[web].auth_token`, closing the loop the comment
+always implied existed. This is exactly the failure mode the pre-flight kill-test
+protocol exists to catch — a security posture asserted in a comment, never wired to
+code, never re-verified — the same category of drift Doc-Integrity's own sprints
+below exist to prevent, just in a deployment manifest instead of a doc.
+
+**Phase 3 (webhook secret) was dropped, not implemented — re-derived, not assumed.**
+The brief's gap table cited `lopi-webhook/src/github.rs`'s library-level
+`hmac_guard`, which does still accept `secret: None` unverified — that citation is
+accurate. But `src/webhook_commands.rs::enforce_webhook_secret_policy` — the sole
+production caller of `lopi_webhook::serve` — already fails closed unless
+`LOPI_ALLOW_UNVERIFIED_WEBHOOK=1` is explicitly set, with its own pre-existing test
+coverage matching this sprint's exact verify criteria. `git log --follow` on that
+file shows this predates the sprint; it is not a half-finished attempt at this same
+brief. Pushing the enforcement down into the library itself was considered and
+rejected: it has exactly one caller, that caller already enforces the policy, and
+moving the check would require reworking `github_tests.rs`'s
+`no_secret_ci_failure_queues_task` test (which deliberately exercises the library's
+own unverified-request path) for no live-exposure benefit. Documented, not silently
+skipped — see `docs/security/TRIFECTA_PATHS.md` §3, and flagged in
+`NEXT_SESSION_PROMPT.md` in case a second caller is ever added.
+
+**Phase 5's human gate reuses `is_untrusted_source` and `require_plan_approval`
+rather than inventing new state — and deliberately does *not* extend the same
+forced-approval treatment to Telegram, even though `is_untrusted_source` already
+classifies `TaskSource::Telegram` as untrusted.** That classification exists for a
+different, more conservative reason (Sprint Successor-1's chain-depth gate: don't
+let *any* task self-extend unsupervised past one hop, regardless of how trusted its
+origin looks). F10's threat model is specifically "anyone who can reach an
+unauthenticated surface" — a GitHub issue filer, not an operator issuing commands
+through a chat that already passed `allowed_chat_ids`. Gating every Telegram-sourced
+task through mandatory plan approval would have been a real UX regression for
+exactly the audience Telegram remote control exists to serve, for a threat that
+doesn't apply to it. The three `lopi-webhook` task-creation sites (plus the dormant
+WhatsApp `/task` path, gated for consistency even though it's unreachable — see
+below) get the forced gate; Telegram does not. This is a narrower reading of
+"untrusted source" than the existing helper's own scope, chosen deliberately rather
+than by omission — recorded here so a later sprint doesn't "fix" the asymmetry by
+widening it back out without re-deriving why it was drawn this way.
+
+**Phase 4's egress allowlist defaults *closed*, deliberately the opposite default
+from the pre-existing `allowed_chat_ids` (inbound authz), which defaults *open*
+("empty = allow all chats", a documented dev-mode convenience).** The two lists
+protect different things: a reply only ever targets a chat that already passed the
+inbound check on the way in, so open-by-default is a reasonable convenience there.
+A proactive, automated send (the completion notifier, report-on-finish) has no such
+upstream gate, so `egress_allowed_chat_ids` defaults to nothing sends at all —
+matching the brief's explicit instruction and the fail-closed shape `auth_policy`
+already established for Phase 1. This means an existing Telegram deployment's
+completion notifications go silent after upgrading until `egress_allowed_chat_ids`
+is set — a real, if narrower, one-way door alongside the two above.
+
+**`crates/lopi-remote/src/whatsapp.rs::serve` is dead code in the running binary —
+confirmed, not assumed.** `grep -rn "whatsapp::serve" src/ crates/` matches only its
+own crate's tests; no CLI command wires it up. Its inbound task-creation path still
+got the same `require_plan_approval` gate as the reachable GitHub webhook paths
+(cheap, and prevents the same gap from being inherited silently whenever someone
+does wire it up), but its optional-HMAC-by-default shape (mirroring the pre-Phase-3
+`github.rs` library layer) was left alone — there is no CLI wrapper to enforce a
+policy in, because there is no CLI wrapper. Flagged in `NEXT_SESSION_PROMPT.md`.
+
 ## Doc-Integrity Phase 4 — why the gate clones kiban instead of `pip install`ing it
 
 **kiban's own CI-plane convention is `pip install "kiban @ git+...@$KIBAN_REF"` then run the installed `konjo-gates` console script** (`templates/repo-ci.yml`). `konjo-doc-staleness` doesn't follow that path: kiban's `pyproject.toml` `[project.scripts]` declares only `konjo-gates = "konjo_gates_py.cli:main"` — `bin/konjo-doc-staleness` is not a registered console script, and the script itself resolves its own root via `Path(__file__).resolve().parent.parent`, a relative-to-clone assumption that breaks once site-packages relocates the file. Checked this by reading kiban's actual `pyproject.toml`, not assumed from the CI template's prose. So the gate shallow-clones kiban at the pinned tag (`git clone --depth 1 --branch v1.4.0`) and runs the script from the clone — the same shape kiban's own `install.sh` uses for the session plane, adapted for CI. This is a real deviation from kiban's documented CI-plane pattern, recorded here so a future session doesn't "fix" it into a `pip install` that would silently break (no console script to find) or partially work (importing `lib.doc_staleness` directly would succeed, but `bin/konjo-doc-staleness`'s CLI argument parsing and root-resolution logic would need porting) instead of investigating why the deviation exists.

@@ -3,16 +3,38 @@ use anyhow::Result;
 use lopi_memory::MemoryStore;
 use lopi_orchestrator::AgentPool;
 use std::sync::Arc;
+use teloxide::dispatching::dialogue::GetChatId;
 use teloxide::prelude::*;
 use tracing::warn;
 
 /// Handle all inline keyboard callback queries.
+///
+/// Gated by `allowed` (inbound command authz) the same way
+/// `message_handler`/`text_message_handler` are — a button press is a
+/// command like any other, and every keyboard sent in the first place is
+/// already downstream of that same gate, so this closes a defense-in-depth
+/// gap rather than a currently-reachable one.
 pub async fn callback_query_handler(
     bot: Bot,
     q: CallbackQuery,
     store: Arc<MemoryStore>,
     pool: Arc<AgentPool>,
+    allowed: Arc<Vec<i64>>,
 ) -> Result<()> {
+    let is_authorized = q
+        .chat_id()
+        .is_some_and(|c| allowed.is_empty() || allowed.contains(&c.0));
+    if !is_authorized {
+        warn!(
+            "telegram: rejected callback from unauthorized chat {:?}",
+            q.chat_id()
+        );
+        if let Err(e) = bot.answer_callback_query(q.id).await {
+            warn!("telegram answer_callback_query error: {e}");
+        }
+        return Ok(());
+    }
+
     let data = q.data.as_deref().unwrap_or("");
     let reply = dispatch_callback(data, &store, &pool).await;
 

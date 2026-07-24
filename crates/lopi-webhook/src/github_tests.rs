@@ -264,6 +264,53 @@ fn should_not_triage_unrelated_label() {
     assert!(!should_triage_issue_event("labeled", &payload));
 }
 
+// ── Sprint S2, Phase 5 — trifecta human gate ────────────────────────────────
+
+#[test]
+fn gate_untrusted_source_forces_plan_approval_on_webhook_tasks() {
+    let mut t = Task::new("do something");
+    t.source = TaskSource::Webhook {
+        repo: "org/repo".into(),
+        event: "workflow_run".into(),
+    };
+    assert!(!t.require_plan_approval);
+    gate_untrusted_source(&mut t);
+    assert!(t.require_plan_approval);
+}
+
+/// The asymmetry Phase 5 exists to create: an operator-started task (CLI or
+/// API) is never forced through the gate, even at the same autonomy level a
+/// webhook-seeded task would be held at.
+#[test]
+fn gate_untrusted_source_leaves_operator_sourced_tasks_ungated() {
+    let mut t = Task::new("do something");
+    assert!(matches!(t.source, TaskSource::Cli));
+    gate_untrusted_source(&mut t);
+    assert!(!t.require_plan_approval);
+}
+
+#[tokio::test]
+async fn queue_ci_fix_requires_plan_approval() {
+    let queue = TaskQueue::new();
+    queue_ci_fix("org/repo", "workflow_run", &queue).await;
+    let task = queue.pop().await;
+    assert!(task.require_plan_approval);
+    assert!(matches!(task.source, TaskSource::Webhook { .. }));
+}
+
+#[tokio::test]
+async fn handle_pr_review_requires_plan_approval() {
+    let queue = TaskQueue::new();
+    let payload = serde_json::json!({
+        "action": "submitted",
+        "review": { "state": "changes_requested", "body": "please fix the tests" },
+        "pull_request": { "title": "add feature" }
+    });
+    handle_pr_review(&payload, "org/repo", "pull_request_review", &queue).await;
+    let task = queue.pop().await;
+    assert!(task.require_plan_approval);
+}
+
 #[test]
 fn should_not_triage_labeled_with_missing_label_field() {
     let payload = serde_json::json!({});

@@ -5,6 +5,54 @@ the `lopi` repo. Newest first.
 
 ---
 
+## Next Session — after Sprint S2 (trifecta containment) — S3 identity, tool sandboxing, dormant paths
+
+**Sprint S2 closed F10's five phases** — auth fail-closed (`--insecure-no-auth`,
+refused on non-loopback), CORS allowlist, webhook secret (confirmed already fixed,
+no change needed), a deny-by-default egress allowlist for `lopi-remote`'s automated
+Telegram sends, and a human-approval gate on any task seeded from `TaskSource::Webhook`
+(reusing the pre-existing L2 plan-approval mechanism, not a new one). Read
+`docs/security/TRIFECTA_PATHS.md` first — it's the full untrusted-input-to-side-effect
+inventory, `decays: state`, re-verify it before trusting any of it — and
+`LEDGER.md`'s `Sprint S2` entry for the *why* behind each breaking default and the
+two scope decisions (Telegram excluded from the forced-approval gate; the dormant
+WhatsApp path still got it). `CHANGELOG.md`'s `[0.25.0]` entry has the full diff
+summary. Four things carry forward, not forgotten:
+
+1. **S3 — per-user identity.** Explicitly out of scope for S2 ("no auth provider
+   integration... deliberately a separate sprint with a larger blast radius"). S2's
+   single shared bearer token is a real improvement over no auth at all, but it's
+   still one token for every caller — no per-user attribution, no per-user
+   revocation. OAuth/SSO/identity-provider integration is S3's job, sized and staffed
+   as its own sprint given the blast radius the brief already named.
+
+2. **Tool execution sandboxing / container isolation.** Also explicitly out of scope
+   ("real, valuable, much larger"). The agent runner has full code-exec, git, and PR
+   capability with no sandbox boundary — S2's containment is entirely about *when* a
+   run is allowed to happen (auth, provenance-gated approval) and *where* its output
+   can go (CORS, egress allowlist), not about bounding what a running agent can touch
+   on the host. A real fix here is process/container isolation for tool execution,
+   scoped as its own sprint.
+
+3. **`crates/lopi-remote/src/whatsapp.rs::serve` is dead code in the built binary** —
+   confirmed via `grep -rn "whatsapp::serve" src/ crates/`, matches only its own
+   crate's tests. Its inbound `/task` path got S2's `require_plan_approval` gate (so
+   that containment travels with it), but its Twilio HMAC verification is still
+   optional-by-default with no CLI wrapper enforcing a policy the way
+   `webhook_commands.rs` does for the GitHub webhook — because there's no CLI wrapper
+   at all. Whoever wires this up next (a `lopi serve-whatsapp` command, presumably)
+   should give it the same fail-closed treatment `enforce_webhook_secret_policy` gives
+   the GitHub path, not inherit the "accepts unsigned when unset" library default.
+
+4. **`crates/lopi-core/src/config.rs`'s `WebConfig.host` is dead configuration** —
+   parsed from `lopi.toml` but never read; `Sail`'s actual bind host only ever comes
+   from the CLI `--host` flag. Noted in passing during S2's kill-test, not a security
+   issue, just pre-existing drift — either wire it up (so `lopi.toml`'s `[web].host`
+   actually does something) or remove it so the config doesn't lie about what's
+   configurable.
+
+---
+
 ## Next Session — after Doc-Integrity Phase 4 (kiban's `decays:` gate landed) — three deferred items
 
 **Doc-Integrity corrected `docs/LOOP_ENGINEERING_ROADMAP.md`'s state table and

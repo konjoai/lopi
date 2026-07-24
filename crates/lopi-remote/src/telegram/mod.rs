@@ -116,6 +116,11 @@ pub enum LopiCmd {
 ///
 /// `notify_chat_id`: single chat ID to receive completion notifications.
 /// `None` disables outbound notifications.
+///
+/// `egress_allowed_chat_ids`: allowlist proactive/automated sends
+/// (`notify_chat_id`'s completion notifications, report-on-finish) must
+/// appear in — deny by default (Sprint S2, Phase 4). Independent of
+/// `allowed_chat_ids`, which gates inbound commands, not outbound sends.
 #[allow(clippy::too_many_arguments)]
 pub async fn run(
     token: String,
@@ -126,6 +131,7 @@ pub async fn run(
     schedules: Vec<ScheduleEntry>,
     notify_chat_id: Option<i64>,
     allowed_chat_ids: Vec<i64>,
+    egress_allowed_chat_ids: Vec<i64>,
 ) -> Result<()> {
     let bot = Bot::new(token);
     let queue_arc = Arc::new(queue);
@@ -139,7 +145,12 @@ pub async fn run(
     // Spawn the completion notifier task.
     let notify_bot = bot.clone();
     let bus_rx = bus.subscribe();
-    tokio::spawn(notify::notify_loop(notify_bot, bus_rx, notify_chat_id));
+    tokio::spawn(notify::notify_loop(
+        notify_bot,
+        bus_rx,
+        notify_chat_id,
+        egress_allowed_chat_ids,
+    ));
 
     // `message_handler` takes the bundled `BotDeps` (see its doc comment for
     // why); `callback_query_handler`/`text_message_handler` still take their
