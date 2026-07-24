@@ -9,7 +9,6 @@ use lopi_ratelimit::TokenBucket;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use tokio::sync::broadcast;
-use tower_http::cors::CorsLayer;
 
 /// Shared application state injected into every axum handler.
 #[derive(Clone)]
@@ -43,7 +42,9 @@ pub struct AppState {
     pub models_cache: model_handlers::ModelsCache,
     /// Pre-serialized broadcast: each `AgentEvent` serialized once, shared across all WS/SSE subscribers.
     serialized_tx: Arc<broadcast::Sender<Arc<str>>>,
-    /// Bearer token required on /api/* routes. None = auth disabled (dev mode).
+    /// Bearer token required on /api/* routes. `None` is only reachable when
+    /// `--insecure-no-auth` was explicitly passed and validated at startup
+    /// (`auth_policy::validate_auth_policy`) — see Sprint S2, Phase 1.
     auth_token: Option<Arc<str>>,
     /// Per-IP token-bucket rate limiter for API endpoints.
     rate_limiter: Arc<DashMap<IpAddr, TokenBucket>>,
@@ -53,6 +54,12 @@ pub struct AppState {
     /// actually in effect rather than independently re-discovering a file and
     /// disagreeing with the running server (Ops-2 bug #6).
     config: Option<Arc<LopiConfig>>,
+    /// CORS origin allowlist (Sprint S2, Phase 2). Empty = fall back to the
+    /// local dev origins the web app actually uses — see `resolve_cors_layer`.
+    cors_allowed_origins: Vec<String>,
+    /// Explicit opt-out that restores unrestricted CORS. Same posture as
+    /// `--insecure-no-auth`: never the default, always explicit.
+    cors_permissive: bool,
 }
 
 impl AppState {
@@ -87,60 +94,7 @@ impl AppState {
     ) -> Self {
         let (serialized_tx, _) = broadcast::channel::<Arc<str>>(512);
         let serialized_tx = Arc::new(serialized_tx);
-
-        // Bridge: subscribe to raw AgentEvent bus, serialize once,
-        // re-broadcast as Arc<str>. Side-effect: mirror every
-        // `AgentEvent::LogLine` to the `task_logs` SQLite table so the
-        // per-task SSE endpoint has a historical tail and the web UI
-        // can render progress retroactively.
-        {
-            let mut rx = bus.subscribe();
-            let tx = serialized_tx.clone();
-            let log_store = store.clone();
-            tokio::spawn(async move {
-                let mut log_counter: u64 = 0;
-                loop {
-                    match rx.recv().await {
-                        Ok(ev) => {
-                            if let Ok(json) = serde_json::to_string(&ev) {
-                                let _ = tx.send(Arc::from(json.as_str()));
-                            }
-                            if let lopi_core::AgentEvent::LogLine {
-                                task_id,
-                                line,
-                                level,
-                                ts,
-                            } = &ev
-                            {
-                                let tid = task_id.0.to_string();
-                                let lvl = match level {
-                                    lopi_core::LogLevel::Info => "info",
-                                    lopi_core::LogLevel::Warn => "warn",
-                                    lopi_core::LogLevel::Error => "error",
-                                    lopi_core::LogLevel::Debug => "debug",
-                                };
-                                if let Err(e) =
-                                    log_store.record_task_log(&tid, *ts, lvl, line).await
-                                {
-                                    tracing::warn!("task_log persist failed: {e}");
-                                }
-                                // Amortise pruning: run every 64 inserts.
-                                log_counter = log_counter.wrapping_add(1);
-                                if log_counter.is_multiple_of(64) {
-                                    if let Err(e) = log_store.prune_task_logs(&tid).await {
-                                        tracing::warn!("task_log prune failed: {e}");
-                                    }
-                                }
-                            }
-                        }
-                        Err(broadcast::error::RecvError::Lagged(n)) => {
-                            tracing::warn!("serializer bridge lagged {n} events");
-                        }
-                        Err(broadcast::error::RecvError::Closed) => break,
-                    }
-                }
-            });
-        }
+        event_bridge::spawn(&bus, serialized_tx.clone(), store.clone());
 
         // Runtime cron scheduler — constructed un-started here; `serve_with_repo`
         // calls `start()` to create the JobScheduler and register stored rows.
@@ -169,6 +123,8 @@ impl AppState {
             auth_token: auth_token.map(|t| Arc::from(t.as_str())),
             rate_limiter: Arc::new(DashMap::new()),
             config: None,
+            cors_allowed_origins: Vec::new(),
+            cors_permissive: false,
         }
     }
 
@@ -178,6 +134,16 @@ impl AppState {
     #[must_use]
     pub fn with_config(mut self, config: Option<LopiConfig>) -> Self {
         self.config = config.map(Arc::new);
+        self
+    }
+
+    /// Set the CORS policy (Sprint S2, Phase 2). Empty `allowed_origins` with
+    /// `permissive: false` falls back to the local dev origins the web app
+    /// actually uses — see `resolve_cors_layer`.
+    #[must_use]
+    pub fn with_cors(mut self, allowed_origins: Vec<String>, permissive: bool) -> Self {
+        self.cors_allowed_origins = allowed_origins;
+        self.cors_permissive = permissive;
         self
     }
 
@@ -337,6 +303,8 @@ pub fn build_app(state: AppState) -> Router {
             auth_middleware,
         ));
 
+    let cors = cors_policy::resolve_cors_layer(&state.cors_allowed_origins, state.cors_permissive);
+
     Router::new()
         .merge(api)
         .route("/metrics", get(metrics))
@@ -348,7 +316,7 @@ pub fn build_app(state: AppState) -> Router {
         // /_app/**/*, and any SPA route fallthrough. Explicit routes above
         // take precedence.
         .fallback(get(static_handler))
-        .layer(CorsLayer::permissive())
+        .layer(cors)
         .with_state(state)
 }
 
@@ -378,6 +346,10 @@ pub async fn serve(
     )
     .await
 }
+
+/// Re-exported so every caller of [`serve`]/[`serve_with_repo`] enforces the
+/// same fail-closed auth policy — see `auth_policy`'s module docs.
+pub use auth_policy::validate_auth_policy;
 
 /// Best-effort startup steps that should not abort the server on failure:
 /// start the cron scheduler. Failure is logged and swallowed so the HTTP
@@ -438,9 +410,11 @@ pub async fn serve_with_repo(
     extra_repos: Vec<std::path::PathBuf>,
     config: Option<LopiConfig>,
 ) -> Result<()> {
+    let (cors_origins, cors_permissive) = cors_policy::resolve_from_config(config.as_ref());
     let mut state = AppState::new_with_repo(store, bus, queue, pool, auth_token, repo_path)
         .with_extra_repos(extra_repos)
-        .with_config(config);
+        .with_config(config)
+        .with_cors(cors_origins, cors_permissive);
     warm_up_state(&mut state).await;
     let app = build_app(state);
 
@@ -460,8 +434,11 @@ pub async fn serve_with_repo(
 
 mod agent_rate_handlers;
 mod api_middleware;
+mod auth_policy;
 mod budget_handlers;
 mod config_handlers;
+mod cors_policy;
+mod event_bridge;
 mod handlers;
 mod loop_handlers;
 mod loop_health_handlers;

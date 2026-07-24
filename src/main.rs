@@ -148,8 +148,18 @@ async fn main() -> Result<()> {
             max_agents,
             repo,
             repos,
+            insecure_no_auth,
         }) => {
-            sail_commands::run(max_agents, repo, repos, host, port, cfg.as_ref()).await?;
+            sail_commands::run(
+                max_agents,
+                repo,
+                repos,
+                host,
+                port,
+                insecure_no_auth,
+                cfg.as_ref(),
+            )
+            .await?;
         }
         Some(Commands::Cancel { task_id }) => task_commands::cancel(task_id).await?,
         Some(Commands::Resume { agent_id }) => task_commands::resume(agent_id).await?,

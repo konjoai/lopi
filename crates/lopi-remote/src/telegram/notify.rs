@@ -5,15 +5,28 @@ use teloxide::prelude::*;
 use tokio::sync::broadcast;
 use tracing::warn;
 
+use crate::egress::check_egress;
 use crate::telegram::format::short_id;
 
-/// Spawn the notification loop. Returns immediately if `chat_id` is `None`.
+/// Spawn the notification loop. Returns immediately if `chat_id` is `None`,
+/// or — Sprint S2, Phase 4 — if `chat_id` is set but not present in
+/// `egress_allowed_chat_ids`: an unset destination and a denied one both
+/// mean "no automated sends," logged as a security event in the latter case
+/// rather than silently behaving like the former.
 ///
 /// Maintains a local `goal_cache` seeded from `TaskQueued` events so that
 /// completion messages can include the task goal even though `TaskCompleted`
 /// does not carry it.
-pub async fn notify_loop(bot: Bot, mut rx: broadcast::Receiver<AgentEvent>, chat_id: Option<i64>) {
+pub async fn notify_loop(
+    bot: Bot,
+    mut rx: broadcast::Receiver<AgentEvent>,
+    chat_id: Option<i64>,
+    egress_allowed_chat_ids: Vec<i64>,
+) {
     let Some(cid) = chat_id else { return };
+    if !check_egress(&egress_allowed_chat_ids, cid, "notify_loop") {
+        return;
+    }
     let tg_chat = ChatId(cid);
     let mut goal_cache: HashMap<String, String> = HashMap::new();
 
@@ -204,6 +217,59 @@ async fn send_msg(bot: &Bot, chat_id: ChatId, text: &str) {
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
+    use super::*;
+
+    /// Sprint S2, Phase 4 — a destination outside `egress_allowed_chat_ids`
+    /// must never reach the event loop at all: `tx` is kept alive so if
+    /// `notify_loop` entered the loop it would block on `rx.recv()`, and the
+    /// short timeout would fire instead of the function returning.
+    #[tokio::test]
+    async fn denied_egress_destination_never_enters_the_loop() {
+        let bot = Bot::new("test-token");
+        let (_tx, rx) = broadcast::channel::<AgentEvent>(1);
+        let result = tokio::time::timeout(
+            std::time::Duration::from_millis(50),
+            notify_loop(bot, rx, Some(999), vec![]),
+        )
+        .await;
+        assert!(
+            result.is_ok(),
+            "denied destination must return immediately, not block on the event loop"
+        );
+    }
+
+    /// The contrasting case: an allowlisted destination does enter the
+    /// event loop and blocks on `rx.recv()` — the timeout fires because
+    /// nothing was sent, proving the function didn't just return early.
+    #[tokio::test]
+    async fn allowed_egress_destination_enters_the_loop() {
+        let bot = Bot::new("test-token");
+        let (_tx, rx) = broadcast::channel::<AgentEvent>(1);
+        let result = tokio::time::timeout(
+            std::time::Duration::from_millis(50),
+            notify_loop(bot, rx, Some(111), vec![111]),
+        )
+        .await;
+        assert!(
+            result.is_err(),
+            "allowed destination should enter the event loop and block on rx.recv()"
+        );
+    }
+
+    /// `chat_id: None` is the pre-existing "notifications disabled" case —
+    /// must still short-circuit the same way regardless of the allowlist.
+    #[tokio::test]
+    async fn no_chat_id_returns_immediately_regardless_of_allowlist() {
+        let bot = Bot::new("test-token");
+        let (_tx, rx) = broadcast::channel::<AgentEvent>(1);
+        let result = tokio::time::timeout(
+            std::time::Duration::from_millis(50),
+            notify_loop(bot, rx, None, vec![111]),
+        )
+        .await;
+        assert!(result.is_ok());
+    }
+
     fn task_completed_success_msg(goal: &str, attempts: u8) -> String {
         let s = if attempts == 1 { "" } else { "s" };
         let branch = "lopi/feature/abc".to_string();

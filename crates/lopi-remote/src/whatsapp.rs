@@ -113,6 +113,12 @@ async fn handle(
             repo: "whatsapp".into(),
             event: "message".into(),
         };
+        // Sprint S2, Phase 5 — same trifecta human gate as the GitHub
+        // webhook path: untrusted-origin tasks require plan approval before
+        // the runner acts, regardless of autonomy level.
+        if lopi_core::is_untrusted_source(&t.source) {
+            t.require_plan_approval = true;
+        }
         s.queue.push(t).await;
     }
     // Twilio expects 200 with TwiML; an empty 200 is fine.

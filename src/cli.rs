@@ -96,6 +96,11 @@ pub(crate) enum Commands {
         /// Additional repo paths to watch concurrently (multi-repo mode).
         #[arg(long, value_delimiter = ',')]
         repos: Vec<PathBuf>,
+        /// Explicitly run the web dashboard without Bearer auth. Refused
+        /// unless `--host` is a loopback address — auth is required by
+        /// default everywhere else.
+        #[arg(long)]
+        insecure_no_auth: bool,
     },
     /// Cancel a running task by ID prefix
     Cancel {

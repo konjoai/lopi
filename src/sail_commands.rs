@@ -13,8 +13,20 @@ pub async fn run(
     extra_repos: Vec<PathBuf>,
     host: String,
     port: u16,
+    insecure_no_auth: bool,
     cfg: Option<&LopiConfig>,
 ) -> Result<()> {
+    // Sprint S2, Phase 1 — fail closed before any side effect (store open,
+    // socket bind) runs. `LOPI_WEB_AUTH_TOKEN` is the env-var path the
+    // fly.toml deployment already documents (`fly secrets set
+    // LOPI_WEB_AUTH_TOKEN=...`); config-file `[web].auth_token` takes
+    // precedence when both are set.
+    let auth_token = cfg
+        .and_then(|c| c.web.auth_token.clone())
+        .or_else(|| std::env::var("LOPI_WEB_AUTH_TOKEN").ok());
+    let effective_insecure_no_auth = effective_insecure_no_auth(insecure_no_auth, cfg);
+    lopi_ui::web::validate_auth_policy(auth_token.as_deref(), effective_insecure_no_auth, &host)?;
+
     // Honor the configured db_path when a config was loaded (via `--config` or
     // the standard search), falling back to the default location otherwise.
     // Previously this ignored `cfg` entirely, so `--config` with a custom
@@ -100,8 +112,6 @@ pub async fn run(
         );
     }
 
-    let auth_token = cfg.and_then(|c| c.web.auth_token.clone());
-
     // Open the dashboard in the user's browser once the server is up.
     // Honors LOPI_NO_BROWSER=1 for headless / remote deployments.
     if std::env::var("LOPI_NO_BROWSER").ok().as_deref() != Some("1") {
@@ -129,6 +139,14 @@ pub async fn run(
         cfg.cloned(),
     )
     .await
+}
+
+/// Whether auth should be treated as explicitly disabled: either the CLI
+/// flag or the config key opts out — either source alone is sufficient, so
+/// an operator can set it in `lopi.toml` without needing to also remember
+/// the flag on every invocation.
+fn effective_insecure_no_auth(cli_flag: bool, cfg: Option<&LopiConfig>) -> bool {
+    cli_flag || cfg.is_some_and(|c| c.web.insecure_no_auth)
 }
 
 /// Build the dashboard URL, mapping wildcard bind addresses to a routable
@@ -324,6 +342,9 @@ fn spawn_telegram(
     let allowed_chat_ids = cfg
         .map(|c| c.remote.telegram.allowed_chat_ids.clone())
         .unwrap_or_default();
+    let egress_allowed_chat_ids = cfg
+        .map(|c| c.remote.telegram.egress_allowed_chat_ids.clone())
+        .unwrap_or_default();
     let notify_chat_id = cfg.and_then(|c| c.remote.telegram.chat_id);
     tokio::spawn(async move {
         if let Err(e) = lopi_remote::telegram::run(
@@ -335,6 +356,7 @@ fn spawn_telegram(
             schedules,
             notify_chat_id,
             allowed_chat_ids,
+            egress_allowed_chat_ids,
         )
         .await
         {
@@ -361,6 +383,64 @@ mod tests {
             autonomy_level: AutonomyLevel::VerifiedPr,
             report: None,
         }
+    }
+
+    /// Sprint S2, Phase 1 — `run()` must refuse before touching the store or
+    /// binding a socket when auth is unconfigured and no opt-out was given.
+    /// `port: 0` would let the OS pick a free port if this test's premise
+    /// were wrong and it actually reached the bind — the failure is
+    /// asserted before that point either way.
+    #[tokio::test]
+    async fn run_fails_closed_without_auth_token_or_opt_out() {
+        std::env::remove_var("LOPI_WEB_AUTH_TOKEN");
+        let result = run(
+            1,
+            PathBuf::from("."),
+            Vec::new(),
+            "127.0.0.1".to_string(),
+            0,
+            false,
+            None,
+        )
+        .await;
+        assert!(result.is_err());
+    }
+
+    /// Either source alone — the CLI flag or `[web].insecure_no_auth` — must
+    /// be sufficient to opt out; neither is required to imply the other.
+    /// Pins the `||`, not `&&`: with `&&`, a bare CLI flag (no config file)
+    /// would silently fail to opt out, and a bare config key (no flag)
+    /// would too.
+    #[test]
+    fn effective_insecure_no_auth_is_true_when_either_source_alone_is_true() {
+        assert!(effective_insecure_no_auth(true, None));
+
+        let cfg: LopiConfig = serde_json::from_value(serde_json::json!({
+            "lopi": {}, "claude": {}, "git": {},
+            "web": { "insecure_no_auth": true }
+        }))
+        .expect("minimal config deserializes");
+        assert!(effective_insecure_no_auth(false, Some(&cfg)));
+
+        assert!(!effective_insecure_no_auth(false, None));
+    }
+
+    /// `--insecure-no-auth` on a non-loopback host must also refuse to
+    /// start, even before any config file is involved.
+    #[tokio::test]
+    async fn run_fails_closed_insecure_no_auth_on_non_loopback() {
+        std::env::remove_var("LOPI_WEB_AUTH_TOKEN");
+        let result = run(
+            1,
+            PathBuf::from("."),
+            Vec::new(),
+            "0.0.0.0".to_string(),
+            0,
+            true,
+            None,
+        )
+        .await;
+        assert!(result.is_err());
     }
 
     #[tokio::test]

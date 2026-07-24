@@ -7,7 +7,7 @@
 > a TUI + web dashboard, a native macOS app, and remote control over
 > Telegram/WhatsApp.
 >
-> By [KonjoAI](https://github.com/konjoai) · MIT licensed · `v0.24.0`
+> By [KonjoAI](https://github.com/konjoai) · MIT licensed · `v0.25.0`
 > [![crates.io](https://img.shields.io/crates/v/lopi.svg)](https://crates.io/crates/lopi)
 
 ```
@@ -182,7 +182,7 @@ Copy `lopi.toml.example` to `lopi.toml` and edit. Key sections:
 - `[claude]` — `claude` CLI path and per-call timeout
 - `[git]` — allowed/forbidden directories, auto-PR toggle
 - `[remote.telegram]` / `[remote.whatsapp]` — bot token / Twilio credentials
-- `[web]` — dashboard host/port
+- `[web]` — dashboard host/port/auth (see **Security** below)
 - `[[schedules]]` — cron-style recurring tasks (also editable live from the dashboard)
 
 Per-repo budget and safety policy lives in `.lopi/loop.toml` (see `lopi loop
@@ -203,6 +203,25 @@ authenticates.
   allowed after a violation.
 - lopi never auto-merges. Every PR requires human review — from the
   dashboard, the macOS app, or a Telegram approve button.
+- A task originating from an untrusted source — a GitHub webhook (issue, CI
+  failure, PR review) — is held for plan approval before the runner acts on
+  it, regardless of its configured autonomy level. See
+  `docs/security/TRIFECTA_PATHS.md`.
+
+## Security
+
+`lopi sail`'s dashboard/API is **auth-required by default** — it refuses to
+start without `[web].auth_token` (or `LOPI_WEB_AUTH_TOKEN`) unless you pass
+`--insecure-no-auth` explicitly, and that opt-out itself refuses to start on
+any non-loopback `--host`. CORS on `/api/*` defaults to an explicit origin
+allowlist (the local dev origins the web app uses); set
+`[web].cors_allowed_origins` for other origins, or `[web].cors_permissive =
+true` to opt out entirely. `lopi serve-webhooks` refuses to start without
+`LOPI_WEBHOOK_SECRET` unless `LOPI_ALLOW_UNVERIFIED_WEBHOOK=1` is set.
+Telegram's automated/proactive sends (completion notifications,
+report-on-finish) are deny-by-default — set
+`[remote.telegram].egress_allowed_chat_ids` to receive them. Full inventory
+and rationale: `docs/security/TRIFECTA_PATHS.md`.
 
 ## Contributing / feedback
 

@@ -53,7 +53,12 @@ fi
 
 mkdir -p "$LOG_DIR"
 
-nohup "${LOPI_CMD_ARR[@]}" sail "$@" >>"$LOG_FILE" 2>&1 &
+# --insecure-no-auth is a no-op when [web].auth_token (or LOPI_WEB_AUTH_TOKEN)
+# is actually configured — validate_auth_policy checks a real token first,
+# regardless of this flag — so it's always safe to pass. Without it, `sail`
+# now refuses to start with no auth configured (Sprint S2), which would
+# break this script's default zero-config local-dev usage.
+nohup "${LOPI_CMD_ARR[@]}" sail --insecure-no-auth "$@" >>"$LOG_FILE" 2>&1 &
 disown
 
 echo "starting lopi sail (log: ${LOG_FILE}) ..."

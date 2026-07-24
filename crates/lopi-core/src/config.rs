@@ -93,6 +93,15 @@ pub struct TelegramConfig {
     /// Empty = allow all chats (dev mode).
     #[serde(default)]
     pub allowed_chat_ids: Vec<i64>,
+    /// Allowlist of Telegram chat IDs proactive, automated sends
+    /// (completion notifications, report-on-finish) may target — checked in
+    /// the transport layer before every such send (Sprint S2, Phase 4).
+    /// Deny by default: empty means no automated sends, not unrestricted
+    /// ones — the opposite default from `allowed_chat_ids`, since an
+    /// automated outbound message is not a reply to something already
+    /// inbound-authorized.
+    #[serde(default)]
+    pub egress_allowed_chat_ids: Vec<i64>,
 }
 
 /// WhatsApp (Twilio) settings (`[remote.whatsapp]` table in `lopi.toml`).
@@ -125,9 +134,28 @@ pub struct WebConfig {
     #[serde(default = "default_host")]
     pub host: String,
     /// Bearer token required on all /api/* routes.
-    /// None = auth disabled (dev mode).
+    /// None = auth is unconfigured — refused at startup unless
+    /// `insecure_no_auth` explicitly opts out (Sprint S2, Phase 1).
     #[serde(default)]
     pub auth_token: Option<String>,
+    /// Explicit opt-out for running the web server without Bearer auth.
+    /// Mirrors the CLI's `--insecure-no-auth` flag (either may set it).
+    /// Refused at startup unless `host` is a loopback address — see
+    /// `lopi_ui::web::validate_auth_policy`.
+    #[serde(default)]
+    pub insecure_no_auth: bool,
+    /// Explicit origin allowlist for CORS on `/api/*` and `/ws`. Empty
+    /// (default) falls back to the local dev origins the web app actually
+    /// uses (`http://localhost:5173`, `http://127.0.0.1:5173`) plus the
+    /// server's own `host:port`. Set `cors_permissive` instead to allow any
+    /// origin — never the default.
+    #[serde(default)]
+    pub cors_allowed_origins: Vec<String>,
+    /// Explicit opt-out that restores unrestricted CORS (`Access-Control-
+    /// Allow-Origin: *`). Same posture as `insecure_no_auth`: an explicit
+    /// choice, never inferred from an absent allowlist.
+    #[serde(default)]
+    pub cors_permissive: bool,
 }
 
 impl Default for WebConfig {
@@ -136,6 +164,9 @@ impl Default for WebConfig {
             port: default_port(),
             host: default_host(),
             auth_token: None,
+            insecure_no_auth: false,
+            cors_allowed_origins: Vec::new(),
+            cors_permissive: false,
         }
     }
 }

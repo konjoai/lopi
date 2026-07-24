@@ -15,6 +15,9 @@ auto_pr = true
 [remote.telegram]
 # token = "your-bot-token"
 # chat_id = 123456789
+# allowed_chat_ids = [123456789]        # empty = any chat may issue commands (dev mode)
+# egress_allowed_chat_ids = [123456789] # empty = no automated sends (deny by default);
+#                                        # required to receive completion notifications / reports
 
 [remote.whatsapp]
 # account_sid = "ACxxxxxxxxxxxxxxx"
@@ -24,6 +27,13 @@ auto_pr = true
 [web]
 port = 3000
 host = "127.0.0.1"
+# Auth is required by default — set auth_token, or explicitly opt out with
+# insecure_no_auth (refused unless host is loopback):
+# auth_token = "your-bearer-token"      # or set LOPI_WEB_AUTH_TOKEN instead
+# insecure_no_auth = true               # only valid with host = "127.0.0.1" / "::1" / "localhost"
+# CORS defaults to the local dev origins the web app uses (localhost:5173).
+# cors_allowed_origins = ["https://your-dashboard.example.com"]
+# cors_permissive = true                # allow any origin — never the default
 
 # ── Scheduled tasks ───────────────────────────────────────────────────────────
 # Each [[schedules]] entry fires a task at a cron interval.

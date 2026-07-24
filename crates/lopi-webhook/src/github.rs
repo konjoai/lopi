@@ -161,8 +161,23 @@ async fn queue_ci_fix(repo: &str, event: &str, queue: &TaskQueue) {
         repo: repo.to_string(),
         event: event.to_string(),
     };
+    gate_untrusted_source(&mut t);
     queue.push(t).await;
     tracing::info!("queued CI fix task for {repo} (event: {event})");
+}
+
+/// Sprint S2, Phase 5 — the trifecta human gate. A task seeded from
+/// untrusted input (a GitHub issue/CI event anyone who can reach this
+/// webhook controls) must clear a human's plan-approval before the runner
+/// does anything with it, reusing the existing L2 draft-and-approve gate
+/// (`lopi-agent`'s `plan_gate.rs`) rather than a parallel mechanism. This is
+/// unconditional — independent of the task's `autonomy_level` — because
+/// autonomy is about how much a *trusted* run may do unattended, not about
+/// whether the run's origin is trustworthy at all.
+pub(crate) fn gate_untrusted_source(t: &mut Task) {
+    if lopi_core::is_untrusted_source(&t.source) {
+        t.require_plan_approval = true;
+    }
 }
 
 /// Re-queue a fix task when a reviewer requests changes on a PR.
@@ -200,6 +215,7 @@ async fn handle_pr_review(payload: &Value, repo: &str, event: &str, queue: &Task
         t.constraints
             .push(format!("Review feedback: {review_body}"));
     }
+    gate_untrusted_source(&mut t);
     queue.push(t).await;
     tracing::info!("queued PR review fix task for {repo}: {pr_title}");
 }
