@@ -1,3 +1,16 @@
+# Next Session — after macOS-Web-Parity-4 (handoff to a local/Xcode session)
+
+**SHIPPED (pending PR).** Small, well-scoped round: `ConfigView.swift` and `CronView.swift` each gained a page-level header ("Configuration"/"Scheduling" + subtitle), matching web's `0cdd3a0` design-system-alignment commit — and, more to the point, matching the header convention `BudgetView`/`OverviewView`/`DashboardView` already use on macOS itself. Deliberately not touched: the web-only "Onboard" screen (no macOS nav equivalent, a platform-structural asymmetry like `Dashboard`'s own one-way gap) and `a2ce843`'s focus-ring CSS recolor (no macOS analogue — AppKit's native focus ring has no equivalent seam). No new tests: both changes are static header text, same no-dedicated-test precedent as every other page header here.
+
+**TESTS.** `cargo build --workspace` green (no Rust touched). Written, not built — same standing constraint as every prior Swift round.
+
+**NEXT SESSION:**
+1. **Compile-verify before writing any new Swift**, same as every round: `cd macos && xcodegen generate && xcodebuild -scheme Lopi build`.
+2. **The macOS-web parity backlog is thin right now** — three rounds (Overview kanban + blocked-status fix, Budget breakdown, Config/Cron headers) have worked through every web commit touching `web/` since the last full parity audit (`PARITY_AUDIT_2026-07-16.md`) up through `a2ce843` (2026-07-22, the newest `web/`-touching commit as of this writing). Before starting a new round, **re-run the same method these four rounds used**: `git log --oneline -- web/` and diff anything newer against the current macOS state — don't assume the backlog is still empty by the time this is read.
+3. **Two structural gaps surfaced across these rounds, neither mechanical, both worth a real audit session:** (a) `LiveAgent` has no `repo` field — blocks a `byRepo` Budget panel and keeps `Store/Overview.swift`'s goal/repo column stuck at `"—"`; threading it through means touching the wire event model (`crates/lopi-core`'s task-started event, `AppModel+Live.swift`'s decode), not just the Swift client. (b) web's Budget redesign switched several elements from state-reactive (jade/flame/rose) to fixed literal colors; macOS still branches on burn state. Neither was fixed opportunistically during these rounds — both need a human call on which platform's behavior is actually correct before mechanically porting either direction.
+
+---
+
 # Next Session — after macOS-Web-Parity-3 (handoff to a local/Xcode session)
 
 **SHIPPED (pending PR).** macOS's Budget view catches up to web's 2026-07-22 `feat(budget)` sprint: new `Networking/BudgetModels.swift` (`BudgetBreakdown` decoding `GET /api/budget/breakdown`) + `LopiClient.budgetBreakdown()`, new `Store/BudgetTrend.swift` (pure `weekdayAbbrev`/`trendBars`/`trendDelta`), and `BudgetView.swift` gains a 7-day spend-trend chart, a by-model cost breakdown, an alert-threshold slider, and TOKENS/RUNNING stat cards (6 total, up from 4). Deliberately not ported: the "by repo" breakdown — macOS's `LiveAgent` has no `repo` field yet (same pre-existing gap `Store/Overview.swift` already flags), and no color-scheme reconciliation with web's newly-fixed (non-state-reactive) meter/stat-card colors — see `LEDGER.md`'s `macOS-Web-Parity-3` entry for why both were deliberately left alone rather than folded into this sprint.

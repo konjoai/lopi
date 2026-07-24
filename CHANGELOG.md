@@ -1,5 +1,16 @@
 # Changelog
 
+## [Unreleased] — macOS-Web-Parity-4: Config and Cron get page headers
+
+Web's `feat(web): align Config, Schedules, Onboard to the Loop Stacks/Overview/Budget design system` (2026-07-22) gave Config and Schedules the same h1+subtitle page header Budget/Loop/Overview already used, instead of leading straight into a panel/list. macOS's `ConfigView`/`CronView` had the identical gap — and it was already an internal inconsistency on macOS too, since `BudgetView`/`OverviewView`/`DashboardView` all use this exact header convention and Config/Cron didn't.
+
+- **[Fix] `ConfigView.swift` gains a "Configuration" header** ("APP SETTINGS · THEME · EFFECTIVE CONFIG" subtitle, matching web's copy), in the same `Text(title).sans(22, semibold) + Text(subtitle).mono(9, semibold).tracking(1.4)` style `BudgetView.header` already established.
+- **[Fix] `CronView.swift` gains a "Scheduling" header** ("CRON-DRIVEN AGENT RUNS · N CONFIGURED" subtitle, dynamic count, matching web's `schedules/+page.svelte`).
+- **Not ported: the web-only "Onboard" screen.** macOS has no nav equivalent — first-run setup is handled through native config/server-settings UI, not a dedicated onboarding route, the same platform-appropriate asymmetry as `Dashboard` being macOS-only with no web equivalent.
+- **Not ported: the focus-ring recolor (`a2ce843`).** A `:focus-visible` CSS accessibility-ring color fix specific to web's hand-rolled focus styling; macOS uses the OS's native per-control focus ring, so there's no equivalent seam to change.
+- No new tests: both changes are static header text with no computed logic beyond an existing count (`model.schedules.count`), the same no-dedicated-test precedent as every other page header in this codebase.
+- `cargo build --workspace` green (no Rust touched); Swift written, not built — same standing constraint as every prior round.
+
 ## [Unreleased] — macOS-Web-Parity-3: Budget gets the 7-day trend + by-model breakdown
 
 Web's `feat(budget)` sprint (2026-07-22) added a real backend cost-breakdown endpoint (`GET /api/budget/breakdown`, projected from `turn_metrics`) and rebuilt `/budget` around it: a 7-day spend trend sparkline, a by-model cost bar list, an alert-threshold slider, and two more stat cards (tokens today, running count). macOS's `BudgetView` — ported earlier as "budget history" — never picked any of this up.
