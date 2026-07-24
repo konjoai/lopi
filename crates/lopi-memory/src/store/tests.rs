@@ -146,7 +146,10 @@ async fn find_similar_patterns_returns_matches() {
     let store = MemoryStore::open_in_memory().await.unwrap();
     let task = Task::new("refactor authentication middleware");
     store.save_task(&task, "success").await.unwrap();
-    store.mine_patterns(&task.id, &task.goal).await.unwrap();
+    store
+        .mine_patterns(&task.id, &task.goal, None)
+        .await
+        .unwrap();
 
     // Similar goal should match above 0.3 Jaccard threshold.
     let results = store
@@ -166,12 +169,15 @@ async fn find_similar_patterns_ranks_best_match_first_via_keyword_candidates() {
 
     let close = Task::new("refactor authentication middleware layer");
     store.save_task(&close, "success").await.unwrap();
-    store.mine_patterns(&close.id, &close.goal).await.unwrap();
+    store
+        .mine_patterns(&close.id, &close.goal, None)
+        .await
+        .unwrap();
 
     let unrelated = Task::new("optimize database query planner");
     store.save_task(&unrelated, "success").await.unwrap();
     store
-        .mine_patterns(&unrelated.id, &unrelated.goal)
+        .mine_patterns(&unrelated.id, &unrelated.goal, None)
         .await
         .unwrap();
 
@@ -199,12 +205,23 @@ async fn mine_patterns_inserts_new_row() {
     let store = MemoryStore::open_in_memory().await.unwrap();
     let task = Task::new("refactor authentication middleware");
     store.save_task(&task, "queued").await.unwrap();
-    store.mine_patterns(&task.id, &task.goal).await.unwrap();
+    store
+        .mine_patterns(&task.id, &task.goal, None)
+        .await
+        .unwrap();
 
     let patterns = store.load_patterns(10).await.unwrap();
     assert_eq!(patterns.len(), 1);
     let kw = &patterns[0].goal_keywords;
     assert!(kw.contains("authentication") || kw.contains("middleware") || kw.contains("refactor"));
+    assert_eq!(
+        patterns[0].occurrence_count, 1,
+        "a fresh pattern has been seen exactly once"
+    );
+    assert_eq!(
+        patterns[0].successful_constraints, None,
+        "no constraint passed in means none recorded, same as before this sprint"
+    );
 }
 
 #[tokio::test]
@@ -215,11 +232,113 @@ async fn mine_patterns_updates_existing_row() {
     store.save_task(&t1, "queued").await.unwrap();
     store.save_task(&t2, "queued").await.unwrap();
 
-    store.mine_patterns(&t1.id, &t1.goal).await.unwrap();
-    store.mine_patterns(&t2.id, &t2.goal).await.unwrap();
+    store.mine_patterns(&t1.id, &t1.goal, None).await.unwrap();
+    store.mine_patterns(&t2.id, &t2.goal, None).await.unwrap();
 
     let patterns = store.load_patterns(10).await.unwrap();
     assert_eq!(patterns.len(), 1);
+    assert_eq!(
+        patterns[0].occurrence_count, 2,
+        "a second mine_patterns call for the same fingerprint increments occurrence_count"
+    );
+}
+
+/// Constraint-Capture-2 — a clean success's derived constraint is written
+/// into `successful_constraints` on insert, closing the gap where
+/// `mine_patterns` recorded `avg_attempts`/`success_rate` but never a
+/// constraint for `seed_from_patterns` to read back.
+#[tokio::test]
+async fn mine_patterns_records_constraint_on_insert() {
+    let store = MemoryStore::open_in_memory().await.unwrap();
+    let task = Task::new("refactor authentication middleware");
+    store.save_task(&task, "queued").await.unwrap();
+    store
+        .mine_patterns(&task.id, &task.goal, Some("always mock the token clock"))
+        .await
+        .unwrap();
+
+    let patterns = store.load_patterns(10).await.unwrap();
+    assert_eq!(patterns.len(), 1);
+    assert_eq!(
+        patterns[0].successful_constraints.as_deref(),
+        Some("always mock the token clock")
+    );
+}
+
+/// A second success for the same fingerprint overwrites the constraint with
+/// the most recent one and bumps `occurrence_count` — the "latest known-good
+/// template wins" policy chosen over merging multiple constraint strings,
+/// since this repo has no real corpus yet to justify a merge strategy over
+/// a simple overwrite (see `LEDGER.md`'s Constraint-Capture-2 entry).
+#[tokio::test]
+async fn mine_patterns_overwrites_constraint_and_increments_occurrence_on_update() {
+    let store = MemoryStore::open_in_memory().await.unwrap();
+    let t1 = Task::new("optimize database queries");
+    let t2 = Task::new("optimize database queries");
+    store.save_task(&t1, "queued").await.unwrap();
+    store.save_task(&t2, "queued").await.unwrap();
+
+    store
+        .mine_patterns(&t1.id, &t1.goal, Some("add an index on user_id"))
+        .await
+        .unwrap();
+    store
+        .mine_patterns(&t2.id, &t2.goal, Some("batch the writes"))
+        .await
+        .unwrap();
+
+    let patterns = store.load_patterns(10).await.unwrap();
+    assert_eq!(patterns.len(), 1);
+    assert_eq!(patterns[0].occurrence_count, 2);
+    assert_eq!(
+        patterns[0].successful_constraints.as_deref(),
+        Some("batch the writes")
+    );
+}
+
+/// A `None` constraint on an update call must not clobber a constraint a
+/// prior call already recorded — only a `Some` should ever overwrite.
+#[tokio::test]
+async fn mine_patterns_none_constraint_does_not_clobber_existing_one_on_update() {
+    let store = MemoryStore::open_in_memory().await.unwrap();
+    let t1 = Task::new("optimize database queries");
+    let t2 = Task::new("optimize database queries");
+    store.save_task(&t1, "queued").await.unwrap();
+    store.save_task(&t2, "queued").await.unwrap();
+
+    store
+        .mine_patterns(&t1.id, &t1.goal, Some("add an index on user_id"))
+        .await
+        .unwrap();
+    // t2's attempt was not a clean success — no constraint passed.
+    store.mine_patterns(&t2.id, &t2.goal, None).await.unwrap();
+
+    let patterns = store.load_patterns(10).await.unwrap();
+    assert_eq!(patterns.len(), 1);
+    assert_eq!(patterns[0].occurrence_count, 2, "stats still update");
+    assert_eq!(
+        patterns[0].successful_constraints.as_deref(),
+        Some("add an index on user_id"),
+        "a non-success run's None must not erase the earlier constraint"
+    );
+}
+
+/// An empty-string constraint is treated the same as `None` — defensive
+/// against a future caller that derives an empty summary and passes
+/// `Some("")` instead of `None`.
+#[tokio::test]
+async fn mine_patterns_empty_string_constraint_is_treated_as_none() {
+    let store = MemoryStore::open_in_memory().await.unwrap();
+    let task = Task::new("refactor authentication middleware");
+    store.save_task(&task, "queued").await.unwrap();
+    store
+        .mine_patterns(&task.id, &task.goal, Some(""))
+        .await
+        .unwrap();
+
+    let patterns = store.load_patterns(10).await.unwrap();
+    assert_eq!(patterns.len(), 1);
+    assert_eq!(patterns[0].successful_constraints, None);
 }
 
 /// Regression test for the `mine_patterns` race: two calls for the same
@@ -236,8 +355,8 @@ async fn mine_patterns_concurrent_same_fingerprint_yields_one_row() {
     store.save_task(&t2, "queued").await.unwrap();
 
     let (r1, r2) = tokio::join!(
-        store.mine_patterns(&t1.id, &t1.goal),
-        store.mine_patterns(&t2.id, &t2.goal),
+        store.mine_patterns(&t1.id, &t1.goal, None),
+        store.mine_patterns(&t2.id, &t2.goal, None),
     );
     r1.unwrap();
     r2.unwrap();
@@ -255,7 +374,10 @@ async fn mine_patterns_skips_short_words() {
     let store = MemoryStore::open_in_memory().await.unwrap();
     let task = Task::new("do it now");
     store.save_task(&task, "queued").await.unwrap();
-    store.mine_patterns(&task.id, &task.goal).await.unwrap();
+    store
+        .mine_patterns(&task.id, &task.goal, None)
+        .await
+        .unwrap();
     let patterns = store.load_patterns(10).await.unwrap();
     assert!(patterns.is_empty());
 }
@@ -267,8 +389,8 @@ async fn load_patterns_ordered_by_success_rate() {
     let t2 = Task::new("deploy production infrastructure");
     store.save_task(&t1, "success").await.unwrap();
     store.save_task(&t2, "failed").await.unwrap();
-    store.mine_patterns(&t1.id, &t1.goal).await.unwrap();
-    store.mine_patterns(&t2.id, &t2.goal).await.unwrap();
+    store.mine_patterns(&t1.id, &t1.goal, None).await.unwrap();
+    store.mine_patterns(&t2.id, &t2.goal, None).await.unwrap();
 
     let patterns = store.load_patterns(10).await.unwrap();
     assert_eq!(patterns.len(), 2);

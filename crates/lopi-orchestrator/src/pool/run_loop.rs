@@ -471,7 +471,19 @@ async fn run_one(
         if let Err(e) = store.mark_completed(&task_id, outcome.db_status()).await {
             warn!(task_id = %task_id, "mark_completed failed: {e}");
         }
-        if let Err(e) = store.mine_patterns(&task_id, &goal).await {
+        // Constraint-Capture-2: derive a short constraint string from this
+        // run's final plan only on a clean success — `mine_patterns` writes
+        // it into `patterns.successful_constraints`, the field
+        // `seed_from_patterns` reads back into future planning prompts and
+        // which no auto-mined (non-postmortem) pattern ever populated before
+        // this sprint.
+        let success_constraint = matches!(outcome, TaskStatus::Success { .. })
+            .then(|| runner.success_constraint())
+            .flatten();
+        if let Err(e) = store
+            .mine_patterns(&task_id, &goal, success_constraint.as_deref())
+            .await
+        {
             warn!("pattern mining failed: {e}");
         }
         // Budget & Guardrail Controls Part 4.3 — the per-session cost already

@@ -5,6 +5,99 @@ the `lopi` repo. Newest first.
 
 ---
 
+## Next Session — after Constraint-Capture-2 (mine_patterns finally writes a constraint)
+
+**Constraint-Capture-2 closed the gap where `mine_patterns` recorded stats but
+never a constraint, and gated the newly-populated constraints behind a
+promotion threshold — but its own Phase 1 (toolchain-scoped retrieval) was
+never attempted, because this sprint's stated dependency turned out not to
+exist.** Read first, in order: `CLAUDE.md`, `CHANGELOG.md`'s
+`Constraint-Capture-2` entry, `LEDGER.md`'s `Constraint-Capture-2` entry in
+full (especially the KT-C/KT-D findings and the promotion-gate numbers), then
+this file's own words below.
+
+### The precondition this sprint found missing — read this before touching Phase 1
+
+This sprint's brief opened with: "Assumes Session Prompt 1 (onboarding import +
+toolchain schema) has already landed." It has not. A full grep of `schema.sql`,
+`CHANGELOG.md`, and `LEDGER.md` for `toolchain`/`onboarding`/`detect_stack`
+found nothing — no toolchain column on `patterns` or `tasks`, no toolchain
+detector anywhere in `crates/`, no backfilled transcript-import data. **Before
+attempting toolchain-scoped `find_similar_patterns` retrieval, confirm Session
+Prompt 1 has actually landed in the meantime** (repeat the same grep this
+sprint ran) — do not assume a future session's brief describing it as done
+means it's done; check the source, the same discipline this sprint's own
+kill-tests apply. If it still hasn't landed, either run Session Prompt 1
+first, or fold its minimum toolchain-detection/schema work into whatever
+sprint needs it, rather than re-deferring indefinitely.
+
+### What shipped this sprint
+
+- `MemoryStore::mine_patterns` gained a `success_constraint: Option<&str>`
+  parameter, writing it into `patterns.successful_constraints` on both insert
+  and update. All three real call sites (`pool/run_loop.rs::run_one`,
+  `src/run_command.rs::run_with_live_print`, `src/repl/actions.rs`) now pass a
+  real constraint on a clean success (`matches!(outcome, TaskStatus::Success
+  { .. })`), `None` otherwise.
+- `patterns.occurrence_count` — new column, incremented on every
+  `mine_patterns` update.
+- `AgentRunner::success_constraint()` (`crates/lopi-agent/src/runner/
+  capture.rs`, new) — derives a bounded constraint from `last_plan`, reusing
+  `reflection::summarize_attempt` rather than duplicating it.
+- `seed_from_patterns`'s promotion gate (`crates/lopi-agent/src/runner/
+  seed.rs::is_promotable`): `occurrence_count ≥ 2` and `success_rate ≥ 0.5`
+  for mined patterns; postmortem-derived patterns exempt from both. See
+  `LEDGER.md` for the full reasoning and the "how to apply" note on retuning
+  these numbers later.
+- Phase 1 (toolchain-scoped retrieval) — **not attempted**, precondition
+  missing (see above).
+- New tests across `crates/lopi-memory/src/store/tests.rs`,
+  `crates/lopi-agent/src/runner/capture.rs`, and
+  `crates/lopi-agent/src/runner/seed.rs`, including a live-verification test
+  (`live_check_backfilled_pattern_constraint_reaches_the_real_planning_prompt`)
+  that drives a file-backed store through the real `mine_patterns` →
+  `gather_seed` → `claude_support::build_plan_prompt` pipeline and asserts the
+  backfilled constraint appears in the literal planning-prompt text.
+- `cargo build --workspace`, `cargo test --workspace` (all crates), `cargo
+  clippy --workspace --all-targets -- -D warnings`, `cargo fmt --check`, and
+  `RUSTDOCFLAGS="-D missing_docs" cargo doc` all clean. `VERSION` (workspace
+  `Cargo.toml`) bumped to `0.23.0`.
+
+### What could not be verified in this sandbox — needs a live check
+
+**No live Anthropic API session exists in this sandbox to run `claude -p`
+itself**, the same standing constraint recorded in every prior sprint's
+`LEDGER.md` entry (Sprint Successor-1, MCPB-App-1/2). What was verified
+instead: a real, file-backed `MemoryStore`, backfilled through the real
+production write path, feeding the real `gather_seed()` → real
+`build_plan_prompt()` — the literal string `ClaudeCode` hands to the `claude`
+CLI subprocess for both its one-shot and streaming plan paths, confirmed (via
+`--nocapture`) to contain the backfilled constraint. A session with real
+`claude -p` access should, once Phase 4 (below) or any other planning-prompt
+change lands: submit a real task in a repo with backfilled pattern history,
+confirm the printed/logged planning prompt (or a debug log of it) contains a
+non-empty constraint sourced from a prior pattern, and confirm the resulting
+implementation actually reflects it (not just that the string was present in
+the prompt).
+
+### Open items for a future sprint
+
+- **Phase 4 (stretch, explicitly deferred by this sprint's own brief) — a
+  promoted pattern as a live composer suggestion.** Not started. The brief's
+  own kill-test for this phase (does `web/src/lib/components/Composer.svelte`
+  have a hook point for this without disrupting the `;`-prefix verb grammar
+  work) was never run. Scope as its own sprint if picked up.
+- **Toolchain scoping (Phase 1)** — blocked on Session Prompt 1 actually
+  landing; see above.
+- **The overwrite-on-update constraint policy** (latest success replaces the
+  stored constraint rather than merging) is a deliberate simplification
+  chosen for lack of a real corpus to justify anything richer — revisit with
+  real mined-pattern data if a future sprint finds it flip-flopping
+  unhelpfully between similar-but-different fixes for the same goal
+  fingerprint.
+
+---
+
 ## Next Session — after MCPB-App-2 (Click Interactivity + Backend Write Path)
 
 **MCPB-App-2 wired the stack-status widget's first click-driven write path —
