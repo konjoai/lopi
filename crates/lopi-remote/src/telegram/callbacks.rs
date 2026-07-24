@@ -21,18 +21,8 @@ pub async fn callback_query_handler(
     pool: Arc<AgentPool>,
     allowed: Arc<Vec<i64>>,
 ) -> Result<()> {
-    let is_authorized = q
-        .chat_id()
-        .is_some_and(|c| allowed.is_empty() || allowed.contains(&c.0));
-    if !is_authorized {
-        warn!(
-            "telegram: rejected callback from unauthorized chat {:?}",
-            q.chat_id()
-        );
-        if let Err(e) = bot.answer_callback_query(q.id).await {
-            warn!("telegram answer_callback_query error: {e}");
-        }
-        return Ok(());
+    if !is_authorized(q.chat_id(), &allowed) {
+        return reject_unauthorized(&bot, &q).await;
     }
 
     let data = q.data.as_deref().unwrap_or("");
@@ -44,6 +34,24 @@ pub async fn callback_query_handler(
         }
     }
     if let Err(e) = bot.answer_callback_query(q.id).await {
+        warn!("telegram answer_callback_query error: {e}");
+    }
+    Ok(())
+}
+
+/// Whether the callback's originating chat may issue commands — same policy
+/// `message_handler`/`text_message_handler` apply to text commands.
+fn is_authorized(chat_id: Option<ChatId>, allowed: &[i64]) -> bool {
+    chat_id.is_some_and(|c| allowed.is_empty() || allowed.contains(&c.0))
+}
+
+/// Acknowledge (but do not act on) a callback from an unauthorized chat.
+async fn reject_unauthorized(bot: &Bot, q: &CallbackQuery) -> Result<()> {
+    warn!(
+        "telegram: rejected callback from unauthorized chat {:?}",
+        q.chat_id()
+    );
+    if let Err(e) = bot.answer_callback_query(q.id.clone()).await {
         warn!("telegram answer_callback_query error: {e}");
     }
     Ok(())
