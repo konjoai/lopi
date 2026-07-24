@@ -3,6 +3,13 @@
 // unit-tested exhaustively in `lopi-skill`; these confirm only the HTTP
 // wiring — repo-query resolution, the `?repo=` fallback to the server's
 // primary repo, and the response shape.
+//
+// The endpoint merges in Claude Code's built-ins and the *real* `$HOME`'s
+// commands/skills/plugins (see `repos_handlers::list_claude_commands`), so
+// the response is not hermetic — it can carry entries this test process
+// never wrote, depending on whatever the machine running the test happens
+// to have under its home directory. Assertions below only ever check that
+// the repo-specific fixture is (or isn't) present, never the total count.
 
 #[tokio::test]
 async fn claude_commands_finds_a_legacy_command_in_the_query_repo() {
@@ -23,9 +30,11 @@ async fn claude_commands_finds_a_legacy_command_in_the_query_repo() {
     assert_eq!(resp.status(), StatusCode::OK);
     let json = json_body(resp).await;
     let commands = json["commands"].as_array().unwrap();
-    assert_eq!(commands.len(), 1);
-    assert_eq!(commands[0]["name"], "foo");
-    assert_eq!(commands[0]["hint"], "does foo");
+    let foo = commands
+        .iter()
+        .find(|c| c["name"] == "foo")
+        .expect("the repo-scoped command is present in the response");
+    assert_eq!(foo["hint"], "does foo");
 }
 
 #[tokio::test]
@@ -43,12 +52,14 @@ async fn claude_commands_empty_repo_query_falls_back_to_the_primary_repo() {
     assert_eq!(resp.status(), StatusCode::OK);
     let json = json_body(resp).await;
     let commands = json["commands"].as_array().unwrap();
-    assert_eq!(commands.len(), 1);
-    assert_eq!(commands[0]["name"], "primary");
+    assert!(
+        commands.iter().any(|c| c["name"] == "primary"),
+        "the server's primary repo is scanned when `?repo=` is empty"
+    );
 }
 
 #[tokio::test]
-async fn claude_commands_repo_with_neither_dir_returns_an_empty_list() {
+async fn claude_commands_repo_with_neither_dir_still_returns_builtins() {
     let tmp = tempfile::tempdir().unwrap();
     let app = test_app().await;
     let resp = get_req(
@@ -58,5 +69,13 @@ async fn claude_commands_repo_with_neither_dir_returns_an_empty_list() {
     .await;
     assert_eq!(resp.status(), StatusCode::OK);
     let json = json_body(resp).await;
-    assert_eq!(json["commands"].as_array().unwrap().len(), 0);
+    let commands = json["commands"].as_array().unwrap();
+    assert!(
+        commands.iter().any(|c| c["name"] == "help"),
+        "a repo with no .claude dir still surfaces Claude Code's own built-ins"
+    );
+    assert!(
+        !commands.iter().any(|c| c["name"] == "nonexistent-repo-command"),
+        "nothing from an unrelated repo leaks in"
+    );
 }

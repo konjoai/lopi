@@ -65,6 +65,14 @@ logic rather than a parallel implementation.
   correctly reported it as already imported (0 would-import, 1 already
   imported) — genuine idempotency, not just a claim.
 
+## [Unreleased] — Composer-Grammar-2 follow-up: `/cmd` autocomplete widens past repo-only Konjo commands
+
+`GET /api/claude-commands` (and the composer's `/`-triggered autocomplete it feeds) only ever scanned the *target repo's* own `.claude/commands`/`.claude/skills` — for this repo that's just `konjo.md` plus the `konjo-*` skills, so the dropdown surfaced only Konjo commands, never the rest of what's actually usable in a Claude Code session against that repo.
+
+- **[Feature] `lopi_skill::discover_claude_commands` gains a `home: Option<&Path>` parameter** and now merges four sources, most-specific-wins: repo `.claude/commands`+`.claude/skills` (unchanged), user-level `~/.claude/commands`+`~/.claude/skills` (identical file format), plugins installed under `<claude_dir>/plugins/**` at both project and user scope (plugin roots found structurally — any directory holding its own `commands/`/`skills/` — since Claude Code's on-disk plugin layout isn't a published schema), and a new hand-maintained `builtin_commands()` list of Claude Code's own native commands (`/help`, `/review`, `/security-review`, ...), which have no offline/filesystem discovery path at all.
+- **[Fix] `repos_handlers::list_claude_commands`** now resolves `$HOME` and passes it through, so the live endpoint actually returns the merged catalog instead of the repo-only slice.
+- **[Test]** `lopi-skill`'s unit tests grow 10 cases covering home-level discovery, plugin discovery at both scopes, and repo-over-home-over-plugin-over-builtin precedence. The three existing `lopi-ui` HTTP tests were loosened from exact-count assertions to presence checks, since the endpoint's result is no longer hermetic to the query repo alone (it now legitimately depends on the running machine's real `$HOME`).
+
 ## [Unreleased] — macOS-Web-Parity-5: thread `repo` through the wire — fixes web's dead `byRepo` panel too
 
 Closes a gap flagged (not fixed) in Parity-3 and Parity-4's handoffs: `LiveAgent`/`AgentState` never carried a task's repo, so macOS's Budget view had no `byRepo` panel and `Overview`'s old goal/repo column was permanently `"—"` on both platforms. Investigation found the runtime data was already fully resolved at the exact point `TaskStarted` fires (`AgentRunner.repo_path`) — this was pure field-threading, not a design change, and along the way surfaced that **web's own `byRepo` breakdown panel has been silently non-functional since it shipped**: `web/src/lib/stores/agentReducer.ts` and `web/src/lib/types.ts` already had `repo` wired end-to-end on the client, entirely unreachable because the Rust backend never sent it.
