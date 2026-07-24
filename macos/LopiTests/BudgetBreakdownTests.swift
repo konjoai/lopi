@@ -2,9 +2,10 @@ import XCTest
 @testable import Lopi
 
 /// `BudgetBreakdown` — decode test for `GET /api/budget/breakdown`'s real
-/// JSON shape (`crates/lopi-ui/src/web/budget_handlers.rs`), plus the pure
-/// trend formatting/analysis in `BudgetTrend.swift` (the Swift mirror of
-/// web's `budget/+page.svelte` trend computations).
+/// JSON shape (`crates/lopi-ui/src/web/budget_handlers.rs`), the pure trend
+/// formatting/analysis in `BudgetTrend.swift`, and `groupCostByRepo`
+/// (`BudgetRepoBreakdown.swift`) — together the Swift mirror of web's
+/// `budget/+page.svelte` + `stores/budget.ts` computations.
 final class BudgetBreakdownTests: XCTestCase {
     private let decoder = JSONDecoder()
 
@@ -94,5 +95,45 @@ final class BudgetBreakdownTests: XCTestCase {
 
     func testTrendDeltaNilWhenNoSpendAtAll() {
         XCTAssertNil(trendDelta([day("2026-07-22", 0.0), day("2026-07-23", 0.0)]))
+    }
+
+    // MARK: groupCostByRepo
+
+    private func agent(_ id: String, repo: String?, cost: Double) -> LiveAgent {
+        var a = LiveAgent(id: id, goal: id, phase: "running", attempt: 0)
+        a.repo = repo
+        a.costUsd = cost
+        return a
+    }
+
+    func testGroupCostByRepoBasenamesAndSortsBySpend() {
+        let agents = [
+            "a": agent("a", repo: "/Users/dev/lopi", cost: 0.5),
+            "b": agent("b", repo: "/Users/dev/other-repo", cost: 1.5),
+            "c": agent("c", repo: "/Users/dev/lopi", cost: 0.25),
+        ]
+        let grouped = groupCostByRepo(agents)
+        XCTAssertEqual(grouped.map(\.name), ["other-repo", "lopi"], "highest spend first")
+        XCTAssertEqual(grouped[0].cost, 1.5, accuracy: 1e-9)
+        XCTAssertEqual(grouped[1].cost, 0.75, accuracy: 1e-9, "same-repo agents sum together")
+    }
+
+    func testGroupCostByRepoExcludesZeroAndNegativeSpend() {
+        let agents = [
+            "a": agent("a", repo: "/repo/a", cost: 0),
+            "b": agent("b", repo: "/repo/b", cost: -1),
+        ]
+        XCTAssertEqual(groupCostByRepo(agents), [])
+    }
+
+    func testGroupCostByRepoFallsBackToAutoWhenRepoIsNilOrEmpty() {
+        let agents = [
+            "a": agent("a", repo: nil, cost: 0.1),
+            "b": agent("b", repo: "", cost: 0.2),
+        ]
+        let grouped = groupCostByRepo(agents)
+        XCTAssertEqual(grouped.count, 1, "nil and empty repo group under the same 'auto' bucket")
+        XCTAssertEqual(grouped[0].name, "auto")
+        XCTAssertEqual(grouped[0].cost, 0.3, accuracy: 1e-9)
     }
 }

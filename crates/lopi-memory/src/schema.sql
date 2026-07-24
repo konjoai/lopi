@@ -77,6 +77,15 @@ ALTER TABLE tasks ADD COLUMN client_ref TEXT;
 -- `TaskStarted` fires — see LEDGER.md's MCPB-App-1 entry.
 ALTER TABLE tasks ADD COLUMN branch TEXT;
 
+-- macOS-Web-Parity-5: the effective repo (task-level override, or the pool
+-- default when the task set none) an attempt actually runs against — never
+-- persisted before, so every "goal/repo" column on both web and macOS Overview
+-- read a permanent "—" placeholder. Same shape and same write-site timing as
+-- `branch` above: unresolved until dequeue (pool default vs. task override),
+-- so it's written by `AgentRunner::persist_repo` the moment `TaskStarted`
+-- fires, not at initial `save_task`.
+ALTER TABLE tasks ADD COLUMN repo TEXT;
+
 -- Sprint I: Layer 5 patch stability ledger.
 -- Accumulates empirical data on model-output variance per task class.
 -- Drives the research dataset for which task types are safe to self-ship.

@@ -67,6 +67,24 @@ impl AgentRunner {
         });
     }
 
+    /// Best-effort persist of the attempt's effective repo into the
+    /// `tasks.repo` column the moment `TaskStarted` fires (macOS-Web-Parity-5)
+    /// — mirrors `persist_branch` exactly, same reasoning: the resolved repo
+    /// (task override vs. pool default) isn't known until dequeue, so it
+    /// can't be written at `save_task` time.
+    pub(super) fn persist_repo(&self, repo: &str) {
+        let Some(store) = self.store.clone() else {
+            return;
+        };
+        let task_id = self.id();
+        let repo = repo.to_string();
+        tokio::spawn(async move {
+            if let Err(e) = store.set_task_repo(&task_id, &repo).await {
+                tracing::warn!(error = %e, "failed to persist task repo");
+            }
+        });
+    }
+
     /// Best-effort mirror of `TaskStatus` into the `agent_dag_nodes` table so
     /// `GET /api/agents/:id/dag` and `lopi replay` reflect real progress
     /// instead of an always-empty graph. This only *records* the DAG — the

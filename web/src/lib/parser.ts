@@ -412,7 +412,12 @@ export function parseSnapshot(raw: Record<string, unknown>): SnapshotMessage | n
         // Verify-1 F6 — carry real per-task cost through the defensive parser so
         // /budget + Overview hydrate actual spend, not $0. Omitted by older
         // servers, so only kept when it's a number.
-        ...(isNumber(t.cost) ? { cost: t.cost } : {})
+        ...(isNumber(t.cost) ? { cost: t.cost } : {}),
+        // macOS-Web-Parity-5 — same reasoning as `cost`: a new server field is
+        // invisible to the client until this whitelist is taught to keep it.
+        // `null` until the task's first `TaskStarted` fires, so only kept when
+        // it's actually a string.
+        ...(isString(t.repo) ? { repo: t.repo } : {})
       }
     ];
   });

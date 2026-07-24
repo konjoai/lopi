@@ -282,7 +282,7 @@ impl MemoryStore {
     /// Returns `Err` if the database query fails.
     pub async fn load_history(&self, limit: i64) -> Result<Vec<TaskRow>> {
         let rows = sqlx::query_as::<_, TaskRow>(
-            "SELECT id, goal, status, created_at, completed_at, client_ref, branch, \
+            "SELECT id, goal, status, created_at, completed_at, client_ref, branch, repo, \
              parent_task, chain_depth FROM tasks \
              ORDER BY created_at DESC LIMIT ?1",
         )
@@ -431,6 +431,10 @@ pub struct TaskRow {
     /// MCPB-App-1 — the git branch this task's most recent attempt runs (or
     /// ran) on, `None` until the first `TaskStarted` event fires.
     pub branch: Option<String>,
+    /// macOS-Web-Parity-5 — the effective repo (task override, or the pool
+    /// default) this task's most recent attempt runs (or ran) against,
+    /// `None` until the first `TaskStarted` event fires.
+    pub repo: Option<String>,
     /// Sprint Successor-1 — stringified UUID of the task this one was
     /// derived from, `None` for anything not created by
     /// `derive_successor_task`.
@@ -462,6 +466,7 @@ mod schedule_chains;
 mod schedules;
 mod stability;
 mod task_logs;
+mod task_repo;
 mod verifier;
 // Re-export helpers for tests (tests.rs uses `use super::*`).
 pub use audit::{AuditInput, AuditQuery, AuditRow};

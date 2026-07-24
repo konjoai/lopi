@@ -144,6 +144,10 @@ export interface SnapshotTask {
   /** Accumulated USD cost for this task (Verify-1 F6). Absent on older
    *  servers, so treated as 0 when missing. */
   cost?: number;
+  /** Effective repo the task's most recent attempt ran against
+   *  (macOS-Web-Parity-5). Absent until the first `TaskStarted` fires, or on
+   *  older servers, so treated as `''` when missing. */
+  repo?: string;
 }
 
 export interface PoolStats {

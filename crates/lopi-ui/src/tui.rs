@@ -114,6 +114,7 @@ impl AppState {
                 task_id,
                 attempt,
                 branch,
+                ..
             } => {
                 if let Some(a) = self.agents.get_mut(&task_id) {
                     a.attempt = attempt;

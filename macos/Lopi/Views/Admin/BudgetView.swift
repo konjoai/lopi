@@ -41,6 +41,7 @@ struct BudgetView: View {
                 statCards
                 spendTrend
                 burnMeter
+                byRepoBreakdown
                 byModelBreakdown
                 topSpenders
                 if !model.budgetBreaches.isEmpty { breachHistory }
@@ -205,14 +206,52 @@ struct BudgetView: View {
         .konjoSurface(12)
     }
 
+    // MARK: By-repo breakdown
+
+    /// Cost grouped by repo, from the live session's agent map — client-side,
+    /// same scope as `spent`/`topSpenders` above. Was blocked until
+    /// macOS-Web-Parity-5 threaded `repo` onto `LiveAgent`/
+    /// `AgentEvent.taskStarted`; see that sprint's `LEDGER.md` entry for why
+    /// it wasn't buildable before. Grouping logic lives in
+    /// `groupCostByRepo` (`Store/BudgetRepoBreakdown.swift`) so it's
+    /// unit-testable without a live view.
+    private var byRepoBreakdown: some View {
+        let repos = groupCostByRepo(model.liveAgents)
+        let maxCost = max(1, repos.map(\.cost).max() ?? 0)
+        return VStack(alignment: .leading, spacing: 10) {
+            Text("BY REPO").font(Konjo.mono(9, weight: .semibold)).tracking(1).foregroundStyle(Konjo.fgDim)
+            if repos.isEmpty {
+                Text("no spend yet").font(Konjo.mono(11)).foregroundStyle(Konjo.fgMute)
+                    .frame(maxWidth: .infinity).padding(.vertical, 8)
+            } else {
+                VStack(spacing: 8) {
+                    ForEach(repos) { row in
+                        HStack(spacing: 10) {
+                            Text(row.name).font(Konjo.mono(11)).foregroundStyle(Konjo.fgDim)
+                                .lineLimit(1).frame(width: 74, alignment: .leading)
+                            GeometryReader { g in
+                                ZStack(alignment: .leading) {
+                                    Capsule().fill(Color.black.opacity(0.4))
+                                    Capsule().fill(Konjo.stackTeal)
+                                        .frame(width: g.size.width * CGFloat(row.cost / maxCost))
+                                }
+                            }
+                            .frame(height: 6)
+                            Text(String(format: "$%.2f", row.cost))
+                                .font(Konjo.mono(11)).foregroundStyle(Konjo.stackTeal).monospacedDigit()
+                                .frame(width: 52, alignment: .trailing)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(16)
+        .konjoSurface(12)
+    }
+
     // MARK: By-model breakdown
 
-    /// Cost grouped by model, billed today (UTC) — from
-    /// `GET /api/budget/breakdown`. No "by repo" panel: `LiveAgent` carries
-    /// no `repo` field yet on macOS (the same pre-existing gap
-    /// `Store/Overview.swift` already documents — `repo` isn't wired
-    /// end-to-end on the wire), so it isn't buildable without a separate,
-    /// larger change threading `repo` through the live event model.
+    /// Cost grouped by model, billed today (UTC) — from `GET /api/budget/breakdown`.
     private var byModelBreakdown: some View {
         let maxCost = max(1, breakdown.byModel.map(\.costUsd).max() ?? 0)
         return VStack(alignment: .leading, spacing: 10) {

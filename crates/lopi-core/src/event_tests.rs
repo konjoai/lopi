@@ -177,10 +177,15 @@ fn task_started_event_fields() {
         task_id,
         attempt: 1,
         branch: "feat/lopi-abc123".to_string(),
+        repo: "/Users/dev/lopi".to_string(),
     };
     let json = serde_json::to_string(&ev).unwrap();
     assert!(json.contains("task_started"));
     assert!(json.contains("feat/lopi-abc123"));
+    assert!(
+        json.contains("/Users/dev/lopi"),
+        "repo must round-trip through the wire event"
+    );
 }
 
 #[test]

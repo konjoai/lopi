@@ -35,6 +35,7 @@ fn task_started_updates_an_existing_row() {
         task_id: id,
         attempt: 2,
         branch: "lopi/abc-attempt-2".to_string(),
+        repo: "/repo".to_string(),
     });
     let row = state.agents.get(&id).unwrap();
     assert_eq!(row.attempt, 2);
@@ -48,6 +49,7 @@ fn task_started_for_unknown_id_is_a_silent_no_op() {
         task_id: TaskId::new(),
         attempt: 1,
         branch: "b".to_string(),
+        repo: "/repo".to_string(),
     });
     assert!(state.agents.is_empty());
 }
