@@ -1,5 +1,7 @@
 //! lopi-context — token-budget context window with phase-aware eviction for agent message history.
 
+#![warn(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
 /// Error types for context window operations.
 pub mod error;
 /// Eviction policy implementations.

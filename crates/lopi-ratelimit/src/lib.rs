@@ -1,4 +1,6 @@
 //! Token-bucket rate limiting and Anthropic API concurrency controls.
+
+#![warn(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 /// Cost governor, budget enforcement, and hierarchical budget limits.
 pub mod budget;
 /// Adaptive circuit breaker combining failure counting with a per-hour cost cap.

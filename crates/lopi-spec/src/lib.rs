@@ -17,6 +17,8 @@
 //! `.lopi/spec_surface.json` for caching. The planning prompt injector in
 //! `lopi-agent` reads this file to seed the task context.
 
+#![warn(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
 mod python_extractor;
 mod rust_extractor;
 pub mod test_runner;

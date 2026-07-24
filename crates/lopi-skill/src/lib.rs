@@ -11,6 +11,8 @@
 //! pulling in a YAML dependency. Malformed input fails loudly — with the file
 //! and line — never silently.
 
+#![warn(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
 /// Discovery of real Claude Code `/name` commands + user-invocable skills in
 /// a *target* repo — Composer-Grammar-2's backend half.
 pub mod claude_commands;
