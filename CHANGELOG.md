@@ -1,5 +1,70 @@
 # Changelog
 
+## [Unreleased] — Onboarding-Import-1: toolchain-scoped pattern backfill
+
+One-time backfill of `lopi-memory`'s `patterns` table from historical Claude Code
+session transcripts (`~/.claude/projects/**/*.jsonl`), so a fresh `lopi` install
+starts with real signal instead of a cold store. Also lays the schema groundwork
+(a `toolchain` dimension) a follow-on continual-recognition sprint will keep
+populated going forward. A pure delta against existing infrastructure — reuses
+`keyword_fingerprint()`/`jaccard_similarity()`/`mine_patterns()`'s insert/update
+logic rather than a parallel implementation.
+
+- **[Schema] `patterns.toolchain` (nullable) + `patterns.source` (`DEFAULT
+  'lopi_run'`, backfilled onto every pre-existing row) + a new
+  `onboarding_imports` idempotency ledger table** (`schema.sql`). Named
+  `toolchain`, not `stack` — `web/src/lib/stores/stack.ts` already owns that
+  word — a one-way-door naming decision; see `LEDGER.md`'s Onboarding-Import-1
+  entry (KT-C).
+- **[Feature] `crates/lopi-agent/src/transcript_import.rs` — new.** Defensive
+  decoder for `~/.claude/projects/**/*.jsonl`, mirroring `claude_events.rs`'s
+  discipline (unrecognized shapes become `Other`, never panics). Confirmed
+  against a real captured sample (this very session's own in-progress
+  transcript) that a `type: "user"` line is not always a genuine human turn —
+  `message.content` as a plain string is a human turn; as a list containing a
+  `tool_result` block, it's a tool result wrapped in a user-shaped envelope
+  (KT-A). `session_looks_successful()` + `extract_success_constraint()`
+  implement the Phase 4 completion heuristic: a clean tail of tool results
+  *and* explicit success language in the final assistant text, both required.
+- **[Feature] `src/toolchain_detect.rs` — new.** The first language/toolchain
+  detection anywhere in lopi (`src/repo_detect.rs` confirmed none existed
+  before this sprint). Manifest-file based: `Cargo.toml`/`package.json`/
+  `pyproject.toml`/`requirements.txt`/`go.mod`/`Gemfile` → `rust`/`node`/
+  `python`/`go`/`ruby`.
+- **[Feature] `MemoryStore::backfill_onboarding_pattern`** (new
+  `crates/lopi-memory/src/store/onboarding_import.rs`), reusing a shared
+  `upsert_pattern_row` helper (extracted to its own
+  `crates/lopi-memory/src/store/pattern_upsert.rs` to hold the file-size gate)
+  that `mine_patterns` now also calls — one write path, not two. Idempotent on
+  the transcript's own `sessionId` via `onboarding_imports`, checked before any
+  write; a fingerprint collision with an existing live-mined pattern blends in
+  rather than duplicating, and never steals that row's `source` (`'lopi_run'`
+  stays `'lopi_run'` — provenance is first-observed, not most-recently-touched).
+- **[Feature] `lopi import [--dry-run] [--claude-dir PATH]`** — new CLI command
+  (`src/onboarding_import_commands.rs`), orchestrating discovery → toolchain
+  detection → backfill. `--dry-run` opens the store read-only (accurate
+  already-imported status) but writes nothing.
+- **33 new tests** across `onboarding_import_tests.rs` (5),
+  `transcript_import_tests.rs` (16), `toolchain_detect.rs` (9), and
+  `onboarding_import_commands.rs` (3); 1620 workspace tests green,
+  `cargo clippy --workspace --all-targets -- -D warnings` clean,
+  `RUSTDOCFLAGS="-D missing_docs" cargo doc` clean.
+- **KT-A and KT-B left explicitly open — this sandbox is a single-session
+  ephemeral container, not Wes's machine.** `~/.claude/projects` here holds
+  exactly one file: this session's own in-progress transcript (confirmed the
+  human-turn-vs-tool-result schema question directly, since real data),
+  not the 3+ files across separate projects (lopi/squish/kiban) the kill-test
+  asked for. `~/.claude/settings.json` doesn't exist in this container at all,
+  so `cleanupPeriodDays` (retention — KT-B) is simply unknown here. Both need a
+  session with real access to `~/.claude` on Wes's actual machine; see
+  `NEXT_SESSION_PROMPT.md`.
+- **Dry-run verified against this container's one real transcript** (paste in
+  `NEXT_SESSION_PROMPT.md`): correctly detected the `rust` toolchain for this
+  repo, then a real (non-dry-run) run in this same sandbox round-tripped an
+  actual insert, showed up in `lopi learn list`, and a second `--dry-run`
+  correctly reported it as already imported (0 would-import, 1 already
+  imported) — genuine idempotency, not just a claim.
+
 ## [Unreleased] — macOS-Web-Parity-4: Config and Cron get page headers
 
 Web's `feat(web): align Config, Schedules, Onboard to the Loop Stacks/Overview/Budget design system` (2026-07-22) gave Config and Schedules the same h1+subtitle page header Budget/Loop/Overview already used, instead of leading straight into a panel/list. macOS's `ConfigView`/`CronView` had the identical gap — and it was already an internal inconsistency on macOS too, since `BudgetView`/`OverviewView`/`DashboardView` all use this exact header convention and Config/Cron didn't.

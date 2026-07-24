@@ -6,6 +6,7 @@ mod gap_fill_commands;
 mod learn_commands;
 mod loop_commands;
 mod mcp_commands;
+mod onboarding_import_commands;
 mod remote;
 mod repl;
 mod replay_commands;
@@ -17,6 +18,7 @@ mod skill_commands;
 mod spec_commands;
 mod stability_commands;
 mod task_commands;
+mod toolchain_detect;
 mod trust_commands;
 mod util;
 mod webhook_commands;
@@ -219,6 +221,14 @@ async fn main() -> Result<()> {
         }
 
         Some(Commands::Learn(cmd)) => learn_commands::run(cmd, util::db_path()).await?,
+
+        // ── lopi import ──────────────────────────────────────────
+        Some(Commands::Import {
+            dry_run,
+            claude_dir,
+        }) => {
+            onboarding_import_commands::run(dry_run, claude_dir, util::db_path()).await?;
+        }
 
         Some(Commands::ServeWebhooks {
             port,

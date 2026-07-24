@@ -5,6 +5,115 @@ the `lopi` repo. Newest first.
 
 ---
 
+## Next Session — after Onboarding-Import-1 (Toolchain-Scoped Pattern Backfill)
+
+**Onboarding-Import-1 shipped all five phases and both hard exit-gate
+checks that don't require Wes's real machine — KT-A/KT-B (live,
+`~/.claude`-access-dependent kill-tests) are correctly left open, not
+assumed.** Read first, in order: `CLAUDE.md`, `CHANGELOG.md`'s
+Onboarding-Import-1 entry, `LEDGER.md`'s Onboarding-Import-1 entry in full
+(the KT-C naming confirmation and the honest KT-A/KT-B scope limits), then
+this file's own words below.
+
+### What shipped this sprint
+
+- **Schema (Phase 0):** `patterns.toolchain` (nullable), `patterns.source`
+  (`DEFAULT 'lopi_run'`), and a new `onboarding_imports` idempotency ledger
+  table — all backward-compatible `ALTER TABLE`/`CREATE TABLE IF NOT EXISTS`.
+- **Transcript reader (Phase 1):** `crates/lopi-agent/src/transcript_import.rs`
+  — defensive NDJSON decoder for `~/.claude/projects/**/*.jsonl`, built
+  against a real captured line from this very session's own transcript.
+- **Toolchain detection (Phase 2):** `src/toolchain_detect.rs` — manifest-file
+  based (`Cargo.toml`→rust, `package.json`→node, `pyproject.toml`/
+  `requirements.txt`→python, `go.mod`→go, `Gemfile`→ruby), the first toolchain
+  detection anywhere in lopi.
+- **Backfill store path (Phase 3):** `MemoryStore::backfill_onboarding_pattern`
+  reuses a shared `upsert_pattern_row` helper with `mine_patterns` — one write
+  path, not two, per the brief's own hard reuse constraint.
+- **Constraint extraction (Phase 4):** `session_looks_successful()` +
+  `extract_success_constraint()` — a clean tool-result tail *and* explicit
+  success language in the final assistant text, both required, documented
+  in-code as a deliberately conservative heuristic (false positives here
+  pollute `successful_constraints` with bad guidance).
+- **CLI + idempotency (Phase 5):** `lopi import [--dry-run] [--claude-dir]`,
+  idempotent on the transcript's own `sessionId`.
+- 33 new tests, 1620 workspace tests green, clippy clean, `-D missing_docs`
+  clean. Dry-run **and** a real (non-dry-run) round trip both verified against
+  this sandbox's one real transcript — actual pasted output below, not a
+  description of expected output:
+
+```
+$ lopi import --dry-run
+🧭 lopi import — scanning /root/.claude (1 transcript file found)
+  [dry-run] would import 2afe0e65 · rust · "# Session Prompt 1 — Onboarding Import: Toolchain-Scoped Pat…"
+
+🧭 would import 1 · 0 already imported · 0 with no human turn · 0 with an empty keyword fingerprint
+
+$ lopi import
+🧭 lopi import — scanning /root/.claude (1 transcript file found)
+  ✅ 2afe0e65 · rust · "# Session Prompt 1 — Onboarding Import: Toolchain-Scoped Pat…" → pattern a711bd4e
+
+🧭 imported 1 · 0 already imported · 0 with no human turn · 0 with an empty keyword fingerprint
+
+$ lopi learn list
+🧠 lopi learn — 1 pattern(s)
+
+  Id        Keywords                                   Avg Att.   Success%  Source
+  ──────────────────────────────────────────────────────────────────────────────────────────
+  a711bd4e  access across actual actually adds agai…        1.0         0%  📊 mined
+
+$ lopi import --dry-run   # re-run: idempotency check
+🧭 lopi import — scanning /root/.claude (1 transcript file found)
+
+🧭 would import 0 · 1 already imported · 0 with no human turn · 0 with an empty keyword fingerprint
+```
+
+(The 0% success rate is correct, not a bug: this session is still
+in-progress, so `session_looks_successful()` rightly found no completion
+signal in it yet — the heuristic didn't spuriously mark an unfinished session
+as a clean success.)
+
+### What could NOT be verified this session — needs Wes's real machine
+
+**KT-A (needs a real, multi-project `~/.claude/projects` corpus).** This
+sandbox's `~/.claude/projects/` holds exactly one file — this session's own
+in-progress transcript — not the 3+ files across separate projects
+(lopi/squish/kiban) the original brief asked for. The one file available was
+still genuinely useful: it directly confirmed the human-turn-vs-tool-result
+schema ambiguity (see `LEDGER.md`) from real data, not a guess. What it
+*can't* confirm: whether every real historical session across a full corpus
+follows the same shape with zero exceptions, and whether any transcript ever
+carries a `type: "summary"` entry (a possible richer goal source the brief
+raised — none appeared here, so `transcript_import.rs` doesn't special-case
+it). A session with real `~/.claude` access needs to: capture 3+ real files
+across genuinely different projects, diff them against
+`transcript_import.rs`'s assumptions, and either confirm no `summary` type
+exists or add a case for it if one does.
+
+**KT-B (needs a real `~/.claude/settings.json`).** This container has no such
+file at all (only `launcher-settings.json`, a different SDK-hook config, not
+user retention prefs) — `cleanupPeriodDays` is simply unknown here, not
+assumed to be the 30-day default or anything else. A session with real access
+needs to check it and report how many days of real history exist — if
+retention is near the default, that's a real finding about how much signal a
+first `lopi import` run actually recovers, worth surfacing to Wes plainly.
+
+### Open questions for a follow-on sprint
+
+- **Continual recognition (this sprint's explicit non-goal, by design).** The
+  `toolchain`/`source` schema groundwork this sprint laid is meant to be kept
+  populated going forward by a live-capture sprint, not just this one-time
+  backfill — that sprint still needs to be scoped and built.
+- **Embedding-based clustering** is out of scope unless a future kill-test
+  against a real multi-project corpus shows Jaccard/`keyword_fingerprint` is
+  inadequate at real scale — untested here, since this sandbox never had more
+  than one transcript to test scale against.
+- **claude.ai chat export ingestion** (manual, email-delivered ZIP, no live
+  API) — flagged as a possible future manual-import command, correctly not
+  built this sprint.
+
+---
+
 ## Next Session — after MCPB-App-2 (Click Interactivity + Backend Write Path)
 
 **MCPB-App-2 wired the stack-status widget's first click-driven write path —
