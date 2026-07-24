@@ -31,6 +31,8 @@ fn promotable_row() -> PatternRow {
         last_seen: "2026-01-01T00:00:00Z".into(),
         derived_from_postmortem: 0,
         user_annotation: None,
+        toolchain: None,
+        source: "lopi_run".into(),
         occurrence_count: MIN_PATTERN_OCCURRENCES,
     }
 }

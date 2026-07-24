@@ -2,16 +2,81 @@
 
 ## [Unreleased] — Constraint-Capture-2: `mine_patterns` finally writes a constraint, and `seed_from_patterns` gates it
 
-Closes a real, live gap named in this sprint's own brief: `mine_patterns` (`crates/lopi-memory/src/store/patterns.rs`, called from `pool/run_loop.rs`, `src/run_command.rs`, and `src/repl/actions.rs` after every completed task) recorded `avg_attempts`/`success_rate`/`last_seen` but never `successful_constraints` — the one field `seed_from_patterns` (`crates/lopi-agent/src/runner/seed.rs`) reads back into every new task's planning prompt. Every auto-mined pattern has been silently feeding the planner nothing beyond a bare fingerprint since `mine_patterns` shipped; only the separate, LLM-driven failure post-mortem path (`insert_postmortem_pattern`) ever populated that column. This sprint's own pre-flight found that **Session Prompt 1 (the onboarding-import + toolchain-schema sprint this brief assumed had already landed) is not present in this repo** — no toolchain column, no toolchain detector, no backfilled transcript data anywhere in `schema.sql`, `CHANGELOG.md`, or `LEDGER.md` — so this sprint's Phase 1 (toolchain-scoped retrieval) is deliberately **not attempted**; see `LEDGER.md`'s entry and `NEXT_SESSION_PROMPT.md` for what that means for the next session.
+Closes a real, live gap named in this sprint's own brief: `mine_patterns` (`crates/lopi-memory/src/store/patterns.rs`, called from `pool/run_loop.rs`, `src/run_command.rs`, and `src/repl/actions.rs` after every completed task) recorded `avg_attempts`/`success_rate`/`last_seen` but never `successful_constraints` — the one field `seed_from_patterns` (`crates/lopi-agent/src/runner/seed.rs`) reads back into every new task's planning prompt. Every auto-mined pattern has been silently feeding the planner nothing beyond a bare fingerprint since `mine_patterns` shipped; only the separate, LLM-driven failure post-mortem path (`insert_postmortem_pattern`) ever populated that column. This sprint's own pre-flight found that **Session Prompt 1 (the onboarding-import + toolchain-schema sprint this brief assumed had already landed) was not present in this repo at the time this sprint started** — no toolchain column, no toolchain detector, no backfilled transcript data anywhere in `schema.sql`, `CHANGELOG.md`, or `LEDGER.md` — so this sprint's Phase 1 (toolchain-scoped retrieval) was deliberately **not attempted**. **Update, merge time:** Session Prompt 1 (below, `Onboarding-Import-1`) landed on `main` while this PR was open and had to be reconciled here — see `LEDGER.md`'s Constraint-Capture-2 entry for the merge-time resolution (a genuine collision on the same `patterns` table/`PatternRow`/upsert path, not just a doc conflict) and `NEXT_SESSION_PROMPT.md` for Phase 1's now-unblocked status.
 
-- **[Fix] `MemoryStore::mine_patterns` gains a `success_constraint: Option<&str>` parameter and now writes it into `patterns.successful_constraints`** on both the insert and update paths, extending the existing function rather than forking it (per the brief's own instruction). A `None`/empty-string constraint leaves the column exactly as untouched as before this sprint — every pre-existing call site's behavior is unchanged unless it explicitly opts in.
-- **[Feature] `patterns.occurrence_count` — new column** (`ALTER TABLE patterns ADD COLUMN occurrence_count INTEGER NOT NULL DEFAULT 1`), incremented on every `mine_patterns` update. This is Phase 3's promotion-gate signal — see `LEDGER.md` for why `occurrence_count ≥ 2` and `success_rate ≥ 0.5` were chosen and why postmortem-derived patterns are exempt from both.
+- **[Fix] `MemoryStore::mine_patterns` gains a `success_constraint: Option<&str>` parameter and now writes it into `patterns.successful_constraints`** on both the insert and update paths, extending the existing function rather than forking it (per the brief's own instruction). A `None`/empty-string constraint leaves the column exactly as untouched as before this sprint — every pre-existing call site's behavior is unchanged unless it explicitly opts in. **Merge-time note:** this now flows through `Onboarding-Import-1`'s shared `upsert_pattern_row`/`PatternExtra` (below) rather than the inline transaction this sprint originally wrote — the two sessions independently converged on "extend the shared upsert, don't fork it," so the reconciliation adopted the already-landed shared path and this sprint's `successful_constraints` value plugs into its existing `PatternExtra` field.
+- **[Feature] `patterns.occurrence_count` — new column** (`ALTER TABLE patterns ADD COLUMN occurrence_count INTEGER NOT NULL DEFAULT 1`), incremented on every `upsert_pattern_row` update (both the live `mine_patterns` path and `Onboarding-Import-1`'s backfill path now share this counter). This is Phase 3's promotion-gate signal — see `LEDGER.md` for why `occurrence_count ≥ 2` and `success_rate ≥ 0.5` were chosen and why postmortem-derived patterns are exempt from both.
 - **[Feature] `AgentRunner::success_constraint()` — new** (`crates/lopi-agent/src/runner/capture.rs`), the write-side counterpart to `postmortem_runner`'s failure-side capture. Derives a bounded, single-line constraint from the run's final `last_plan`, reusing `reflection::summarize_attempt` (promoted from private to `pub(super)`) rather than duplicating its "first non-empty line, truncated to 280 chars" logic.
 - **[Fix] Every `mine_patterns` call site now passes a real constraint on a clean success, `None` otherwise**: `pool/run_loop.rs::run_one`, `src/run_command.rs::run_with_live_print`, `src/repl/actions.rs`'s background task — all three gate on `matches!(outcome, TaskStatus::Success { .. })` before calling `runner.success_constraint()`.
 - **[Feature] Promotion gate in `seed_from_patterns`** (`crates/lopi-agent/src/runner/seed.rs::is_promotable`): a mined (non-postmortem) pattern's constraint is only injected once `occurrence_count ≥ 2` and `success_rate ≥ 0.5` — without this, this sprint's own fix would have turned every one-off completed task into an equally-weighted "template," which is noise, not recognition. Postmortem-derived patterns are unconditionally exempt (see `LEDGER.md`).
-- **[Not attempted] Phase 1 — toolchain-scoped retrieval.** `find_similar_patterns`' 0.3 Jaccard cutoff (KT-D) was left unchanged — this sprint found no backfilled corpus to hand-validate it against (Session Prompt 1's data doesn't exist), so per the brief's own fallback ("if the sample is too small to validate confidently, say so and leave the threshold unchanged"), it wasn't touched. Toolchain-scoping itself has no schema to build on top of yet.
-- **[Test]** `crates/lopi-memory/src/store/tests.rs`: 5 new tests (constraint recorded on insert, overwritten + occurrence incremented on update, a `None` update doesn't clobber an earlier constraint, empty-string treated as `None`, `occurrence_count` assertions added to the two existing insert/update tests). `crates/lopi-agent/src/runner/capture.rs`: 3 new tests for `success_constraint`. `crates/lopi-agent/src/runner/seed.rs`: 6 new tests for `is_promotable` (postmortem exemption, both thresholds independently) plus `gather_seed_only_injects_promotable_pattern_constraints` (real store, real gate) and `live_check_backfilled_pattern_constraint_reaches_the_real_planning_prompt` — the exit gate's own "not just a unit test" bar: a file-backed SQLite store backfilled through the real `mine_patterns` sequence, then the real `gather_seed()` → `claude_support::build_plan_prompt()` pipeline, asserting the constraint appears in the literal text that would be sent to `claude -p` (this sandbox has no live Anthropic API session to go further, the same standing constraint every prior sprint's `LEDGER.md` entry records).
-- **`cargo build --workspace`, `cargo test --workspace` (all crates green, no regressions), `cargo clippy --workspace --all-targets -- -D warnings`, `cargo fmt --check`, and `RUSTDOCFLAGS="-D missing_docs" cargo doc` all clean.**
+- **[Not attempted, and now unblocked] Phase 1 — toolchain-scoped retrieval.** `find_similar_patterns`' 0.3 Jaccard cutoff (KT-D) was left unchanged — this sprint found no backfilled corpus to hand-validate it against (Session Prompt 1's data didn't exist yet), so per the brief's own fallback ("if the sample is too small to validate confidently, say so and leave the threshold unchanged"), it wasn't touched. `Onboarding-Import-1`'s `toolchain` column landed via the merge below, so a future sprint can now build toolchain-scoped retrieval against real schema and (once onboarding has actually run somewhere) real backfilled data.
+- **[Test]** `crates/lopi-memory/src/store/tests.rs`: 5 new tests (constraint recorded on insert, overwritten + occurrence incremented on update, a `None` update doesn't clobber an earlier constraint, empty-string treated as `None`, `occurrence_count` assertions added to the two existing insert/update tests) — updated at merge time to assert the COALESCE-style "never clobber an existing constraint" semantics `Onboarding-Import-1`'s `upsert_pattern_row` already established, in place of this sprint's original overwrite-latest design (see `LEDGER.md`). `crates/lopi-agent/src/runner/capture.rs`: 3 new tests for `success_constraint`. `crates/lopi-agent/src/runner/seed.rs`: 6 new tests for `is_promotable` (postmortem exemption, both thresholds independently) plus `gather_seed_only_injects_promotable_pattern_constraints` (real store, real gate) and `live_check_backfilled_pattern_constraint_reaches_the_real_planning_prompt` — the exit gate's own "not just a unit test" bar: a file-backed SQLite store backfilled through the real `mine_patterns` sequence, then the real `gather_seed()` → `claude_support::build_plan_prompt()` pipeline, asserting the constraint appears in the literal text that would be sent to `claude -p` (this sandbox has no live Anthropic API session to go further, the same standing constraint every prior sprint's `LEDGER.md` entry records).
+- **`cargo build --workspace`, `cargo test --workspace` (all crates green, no regressions), `cargo clippy --workspace --all-targets -- -D warnings`, `cargo fmt --check`, and `RUSTDOCFLAGS="-D missing_docs" cargo doc` all clean, re-verified after reconciling with `Onboarding-Import-1`.**
+
+## [Unreleased] — Onboarding-Import-1: toolchain-scoped pattern backfill
+
+One-time backfill of `lopi-memory`'s `patterns` table from historical Claude Code
+session transcripts (`~/.claude/projects/**/*.jsonl`), so a fresh `lopi` install
+starts with real signal instead of a cold store. Also lays the schema groundwork
+(a `toolchain` dimension) a follow-on continual-recognition sprint will keep
+populated going forward. A pure delta against existing infrastructure — reuses
+`keyword_fingerprint()`/`jaccard_similarity()`/`mine_patterns()`'s insert/update
+logic rather than a parallel implementation.
+
+- **[Schema] `patterns.toolchain` (nullable) + `patterns.source` (`DEFAULT
+  'lopi_run'`, backfilled onto every pre-existing row) + a new
+  `onboarding_imports` idempotency ledger table** (`schema.sql`). Named
+  `toolchain`, not `stack` — `web/src/lib/stores/stack.ts` already owns that
+  word — a one-way-door naming decision; see `LEDGER.md`'s Onboarding-Import-1
+  entry (KT-C).
+- **[Feature] `crates/lopi-agent/src/transcript_import.rs` — new.** Defensive
+  decoder for `~/.claude/projects/**/*.jsonl`, mirroring `claude_events.rs`'s
+  discipline (unrecognized shapes become `Other`, never panics). Confirmed
+  against a real captured sample (this very session's own in-progress
+  transcript) that a `type: "user"` line is not always a genuine human turn —
+  `message.content` as a plain string is a human turn; as a list containing a
+  `tool_result` block, it's a tool result wrapped in a user-shaped envelope
+  (KT-A). `session_looks_successful()` + `extract_success_constraint()`
+  implement the Phase 4 completion heuristic: a clean tail of tool results
+  *and* explicit success language in the final assistant text, both required.
+- **[Feature] `src/toolchain_detect.rs` — new.** The first language/toolchain
+  detection anywhere in lopi (`src/repo_detect.rs` confirmed none existed
+  before this sprint). Manifest-file based: `Cargo.toml`/`package.json`/
+  `pyproject.toml`/`requirements.txt`/`go.mod`/`Gemfile` → `rust`/`node`/
+  `python`/`go`/`ruby`.
+- **[Feature] `MemoryStore::backfill_onboarding_pattern`** (new
+  `crates/lopi-memory/src/store/onboarding_import.rs`), reusing a shared
+  `upsert_pattern_row` helper (extracted to its own
+  `crates/lopi-memory/src/store/pattern_upsert.rs` to hold the file-size gate)
+  that `mine_patterns` now also calls — one write path, not two. Idempotent on
+  the transcript's own `sessionId` via `onboarding_imports`, checked before any
+  write; a fingerprint collision with an existing live-mined pattern blends in
+  rather than duplicating, and never steals that row's `source` (`'lopi_run'`
+  stays `'lopi_run'` — provenance is first-observed, not most-recently-touched).
+- **[Feature] `lopi import [--dry-run] [--claude-dir PATH]`** — new CLI command
+  (`src/onboarding_import_commands.rs`), orchestrating discovery → toolchain
+  detection → backfill. `--dry-run` opens the store read-only (accurate
+  already-imported status) but writes nothing.
+- **33 new tests** across `onboarding_import_tests.rs` (5),
+  `transcript_import_tests.rs` (16), `toolchain_detect.rs` (9), and
+  `onboarding_import_commands.rs` (3); 1620 workspace tests green,
+  `cargo clippy --workspace --all-targets -- -D warnings` clean,
+  `RUSTDOCFLAGS="-D missing_docs" cargo doc` clean.
+- **KT-A and KT-B left explicitly open — this sandbox is a single-session
+  ephemeral container, not Wes's machine.** `~/.claude/projects` here holds
+  exactly one file: this session's own in-progress transcript (confirmed the
+  human-turn-vs-tool-result schema question directly, since real data),
+  not the 3+ files across separate projects (lopi/squish/kiban) the kill-test
+  asked for. `~/.claude/settings.json` doesn't exist in this container at all,
+  so `cleanupPeriodDays` (retention — KT-B) is simply unknown here. Both need a
+  session with real access to `~/.claude` on Wes's actual machine; see
+  `NEXT_SESSION_PROMPT.md`.
+- **Dry-run verified against this container's one real transcript** (paste in
+  `NEXT_SESSION_PROMPT.md`): correctly detected the `rust` toolchain for this
+  repo, then a real (non-dry-run) run in this same sandbox round-tripped an
+  actual insert, showed up in `lopi learn list`, and a second `--dry-run`
+  correctly reported it as already imported (0 would-import, 1 already
+  imported) — genuine idempotency, not just a claim.
 
 ## [Unreleased] — Composer-Grammar-2 follow-up: `/cmd` autocomplete widens past repo-only Konjo commands
 

@@ -7,13 +7,13 @@ newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 
 ## Constraint-Capture-2 — closing the gap, finding the sprint's own premise was wrong, and the promotion-gate numbers
 
-**Pre-flight found this sprint's stated dependency doesn't exist — checked, not assumed.** The brief opens: "Assumes Session Prompt 1 (onboarding import + toolchain schema) has already landed — read its `CHANGELOG.md`/`LEDGER.md` entries first to confirm the toolchain column name it settled on." Grepped both files (and the whole `crates/` tree, and `schema.sql`) for `toolchain`, `onboarding`, `detect_stack`, `tech_stack` before writing anything: nothing. The most recent `ALTER TABLE patterns` columns before this sprint are `embedding`, `derived_from_postmortem`, `user_annotation` (Sprint H/H1) — no toolchain column, no toolchain detector, no backfilled transcript-import data anywhere in this repo. Session Prompt 1 has not run. This is exactly the class of assumption this repo's own kill-test discipline exists to catch (the brief's own KT-C/KT-D wording), so rather than fabricate a toolchain schema to make Phase 1 "work," Phase 1 (toolchain-scoped `find_similar_patterns` retrieval) is **not attempted this sprint** — building it now would mean inventing, under time pressure and without design review, the exact schema a real Session Prompt 1 is supposed to own, with real risk of a naming/shape mismatch a future session would then have to reconcile or discard. Recorded here, not silently dropped; `NEXT_SESSION_PROMPT.md` carries it forward as a precondition, not a task.
+**Pre-flight found this sprint's stated dependency doesn't exist — checked, not assumed.** The brief opens: "Assumes Session Prompt 1 (onboarding import + toolchain schema) has already landed — read its `CHANGELOG.md`/`LEDGER.md` entries first to confirm the toolchain column name it settled on." Grepped both files (and the whole `crates/` tree, and `schema.sql`) for `toolchain`, `onboarding`, `detect_stack`, `tech_stack` before writing anything: nothing. The most recent `ALTER TABLE patterns` columns before this sprint are `embedding`, `derived_from_postmortem`, `user_annotation` (Sprint H/H1) — no toolchain column, no toolchain detector, no backfilled transcript-import data anywhere in this repo. Session Prompt 1 had not run. This is exactly the class of assumption this repo's own kill-test discipline exists to catch (the brief's own KT-C/KT-D wording), so rather than fabricate a toolchain schema to make Phase 1 "work," Phase 1 (toolchain-scoped `find_similar_patterns` retrieval) was **not attempted this sprint** — building it then would have meant inventing, under time pressure and without design review, the exact schema a real Session Prompt 1 was supposed to own, with real risk of a naming/shape mismatch a future session would then have to reconcile or discard. **Session Prompt 1 (`Onboarding-Import-1`, below) landed on `main` later the same day, while this PR was still open**, and had to be merged in here — see the `PatternExtra`/`upsert_pattern_row` reconciliation entry below. Phase 1 is unblocked for whichever session picks it up next; see `NEXT_SESSION_PROMPT.md`.
 
 **KT-C (capture point) resolved by reading the actual call site, not assumed from the brief's two candidate designs.** `pool/run_loop.rs::run_one` still owns `runner: AgentRunner` (not moved, not dropped) at the exact point `mine_patterns` is called — `runner.attempts_made()` and `runner.take_pending_successor()` are both called on it afterward — so the brief's first candidate ("extend `mine_patterns` itself at its existing call site") is the one the code actually supports; no new hook was needed. The one real design question was *what data* a constraint could be derived from at that point. `mine_patterns` itself only has `task_id`/`goal` in scope and queries `attempts` (`score_test_pass_rate`/`score_lint_errors`/`score_diff_lines`/`outcome`/`errors` — no free text worth summarizing as a constraint beyond a failure's `errors` column, already spoken for by the postmortem path). The caller (`run_loop.rs`), by contrast, still holds the *runner*, which carries `last_plan: Option<String>` — the exact same field `reflection.rs::capture_learning` already summarizes into a bounded "what was attempted" gist for a *rejected* attempt's durable learning. The success-side counterpart didn't need new plumbing, just the mirror-image read: `AgentRunner::success_constraint()` (`crates/lopi-agent/src/runner/capture.rs`, new) reuses `reflection::summarize_attempt` (promoted from private to `pub(super)`, not duplicated) to distil `last_plan`'s first non-empty line into the same bounded shape. The call site passes this through only when `matches!(outcome, TaskStatus::Success { .. })` — the "clean success" the brief specified — never as a query mine_patterns itself performs.
 
 **Why `mine_patterns` gained a parameter instead of a new function.** The brief was explicit: "extend the function, don't fork it." A `success_constraint: Option<&str>` parameter (rather than a separate `mine_patterns_with_constraint` or a follow-up `set_pattern_constraint` call) means the insert/update transaction that already exists — the one already carefully scoped to a single write-pool connection to close the concurrent-duplicate-row race (see this file's own prior notes on that transaction) — stays the single place a pattern row is created or touched. All three real call sites (`pool/run_loop.rs`, `src/run_command.rs`, `src/repl/actions.rs`) and every test call site were updated in lockstep (mechanical `, None` insertion where no constraint applies) rather than adding a parallel code path.
 
-**Overwrite-on-update, not merge — a deliberate, documented non-choice.** A second success for the same goal fingerprint replaces `successful_constraints` with the newest one rather than concatenating or keeping the first. This repo has no real corpus of competing constraint strings for the same pattern to justify a merge policy, and "latest known-good template wins" is the simplest correct behavior available without one — same reasoning KT-D below applies to the similarity threshold. If a future sprint finds patterns whose constraint flips unhelpfully between similar-but-different fixes, that's the trigger to revisit this, with real data in hand.
+**Overwrite-on-update was this sprint's original design — superseded at merge time by an already-shipped, stricter convention, not by a fresh decision made here.** This sprint originally had a second success for the same goal fingerprint replace `successful_constraints` with the newest one rather than keeping the first, reasoning that this repo had no real corpus of competing constraint strings to justify anything richer. While this PR was open, `Onboarding-Import-1` (below) landed on `main` and, independently, built the same "extend the shared upsert" instinct — but chose the opposite update policy: `upsert_pattern_row`'s `UPDATE` uses `COALESCE(successful_constraints, ?)`, meaning an existing constraint is *never* overwritten once set, only filled in when null. Reconciling the two required a real choice, not a mechanical merge: adopting this sprint's original overwrite policy would have meant special-casing the shared upsert function per caller (mined vs. backfilled), reintroducing exactly the "two parallel write paths" problem both sessions independently avoided. The already-landed, already-tested COALESCE policy was kept as the one true policy for `upsert_pattern_row`; this sprint's own tests (`store/tests.rs`) were updated at merge time to assert COALESCE semantics instead of overwrite. If a future sprint finds a stale constraint stuck on a row that should have updated, that's the trigger to revisit COALESCE specifically — not to re-litigate "overwrite vs. merge" from scratch, since that question already has a live answer now.
 
 **KT-D (0.3 Jaccard threshold) — left unchanged, per the brief's own explicit fallback, because there is nothing to validate against.** The brief's instruction: "pull a sample of real `goal_keywords` from Session Prompt 1's backfilled data and hand-check whether 0.3 correctly separates 'same template' from 'different task'... If the sample is too small to validate confidently, say so and leave the threshold unchanged rather than tuning it on vibes." Session Prompt 1's backfilled data does not exist (see above) — the sample size is exactly zero, not merely small. The threshold is untouched.
 
@@ -26,6 +26,79 @@ newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 **A real schema-file bug found and fixed during this sprint, worth recording so it isn't repeated: a semicolon inside a SQL `--` comment silently fractures a migration statement.** `MemoryStore::apply_schema` (`crates/lopi-memory/src/store/mod.rs`) splits `SCHEMA` on the literal `;` character with no comment- or string-aware parsing, then strips lines starting with `--` from each resulting chunk. The first draft of this sprint's `occurrence_count` migration comment used a prose semicolon ("...the moment it completes; occurrence_count is...") — invisible as a problem when reading the file, but it split the comment (and the `ALTER TABLE` statement after it) into two chunks at that exact character. The tail fragment of the comment (everything after the semicolon, which does *not* start with `--` since it's mid-sentence) survived the comment-stripping filter and became literal leading text in front of the `ALTER TABLE` statement — turning it into invalid SQL that no longer matched `apply_schema`'s `starts_with("alter table")` duplicate-column-error suppression, so the error surfaced for real instead of being silently swallowed. Caught immediately by the full test suite (10 unrelated `lopi-agent` tests failed on `MemoryStore::open_in_memory()` itself, since every fresh store applies the full schema). **How to apply:** never write a literal `;` character anywhere inside a `schema.sql` comment block, including when describing this very bug in a future comment (the first fix attempt re-introduced it while explaining the rule) — spell out "semicolon" in prose instead.
 
 **Live verification — the exit gate's own bar, not just a passing test suite.** `crates/lopi-agent/src/runner/seed.rs::live_check_backfilled_pattern_constraint_reaches_the_real_planning_prompt` opens a **file-backed** SQLite store (not `:memory:`), runs a simulated prior task through the exact production sequence (`AgentRunner` with a real `last_plan` → `success_constraint()` → `mine_patterns`, twice, to clear the occurrence gate), then drives a fresh task through the real `gather_seed()` and the real `claude_support::build_plan_prompt()` — the identical function `ClaudeCode` calls for both the one-shot and streaming plan paths — and asserts the backfilled constraint appears in the literal prompt text. Captured output (`cargo test -p lopi-agent --lib runner::seed::tests -- --nocapture`) shows the real TOON-encoded prompt with `constraints[1]: Wrap the pool acquire call in exponential backoff with jitter` present. This sandbox has no live Anthropic API session to run `claude -p` itself against — the same standing constraint recorded in every prior sprint's entry in this file (Sprint Successor-1, MCPB-App-1/2) — so this is as far into the real pipeline as this session can verify; everything past this point is the CLI subprocess handing this exact string to Claude unmodified.
+
+## Onboarding-Import-1 — `toolchain`, not `stack` (KT-C); KT-A/KT-B left genuinely open
+
+**KT-C — the naming decision, confirmed and logged, not asked interactively.**
+The mission brief itself already did the naming analysis and proposed
+`toolchain` (table/column, not `toolchain_id`-as-separate-table) with a
+concrete collision rationale: `web/src/lib/stores/stack.ts` and the whole
+loop-stack/card concept already own the word `stack` in this codebase — a
+grep against `stack.ts` before writing the migration confirmed the concept is
+load-bearing there (`StackCard`, `buildCard`, `applyStackTemplate`, dozens of
+call sites), not a stray usage that could tolerate a second meaning. Given the
+brief itself had already reasoned through and proposed the one defensible
+name, and given this is a one-way schema/naming decision worth surfacing but
+not worth blocking an otherwise self-contained sprint on, the call made here
+was: proceed with `toolchain` as a plain nullable `patterns.toolchain` column
+(the simpler of the brief's two sanctioned shapes — a full `toolchains` table
+would add a join with no present payoff, since Phase 2 only ever derives one
+label per project directory), document the rationale here, and surface it
+plainly in the session summary so a human can redirect before this actually
+ships to production data. Logged as a one-way door regardless of which way it
+had gone, per the brief's own instruction.
+
+**KT-A — partially answered from real data, but not the corpus the kill-test
+asked for.** This session's sandbox is a single-session ephemeral container,
+not Wes's machine: `~/.claude/projects/` here contains exactly one file, this
+very session's own in-progress transcript (`2afe0e65-....jsonl`), not 3+ files
+across separate projects (lopi/squish/kiban). That one file was real enough to
+settle the core structural question with certainty rather than a guess: a
+`type: "user"` transcript line is not always a genuine human turn. Diffing two
+real entries from the same file — `message.content` as a plain JSON string
+(session-transcript line 2, no `toolUseResult` key) versus `message.content`
+as a JSON array containing a `{"type":"tool_result",...}` block plus a
+top-level `toolUseResult` key (line 13) — pins the distinguishing signal as
+content *shape*, not the envelope's own `type` field, mirroring exactly what
+`claude_events.rs` had to handle for the live-stream format. What this single
+file cannot answer: whether every historical session across a real multi-
+project corpus follows this same shape with no exceptions, and whether any
+transcript ever carries a `type: "summary"` entry (raised as a possible richer
+goal source in the brief) — none appeared in this one file, so
+`transcript_import.rs` does not special-case it. Left open for a session with
+real `~/.claude` access on Wes's machine; do not treat the one-file finding as
+a full corpus validation.
+
+**KT-B — could not be run at all, stated plainly rather than assumed.**
+`~/.claude/settings.json` does not exist anywhere in this container (only
+`launcher-settings.json`, a different file with a different purpose — SDK
+hook wiring, not user retention prefs). There is no `cleanupPeriodDays` to
+read here, so onboarding's real-world recovery window (30-day default vs.
+whatever a given user has configured) is genuinely unknown from inside this
+sandbox. Not assumed to be the 30-day default; not assumed to be anything.
+Needs a session with real `~/.claude` access.
+
+**Backfill success-rate semantics deliberately diverge from `mine_patterns`'s
+live-run stats, not by oversight.** A live-mined pattern's `success_rate` is a
+real test-pass-rate average across `attempts` rows; a historical transcript
+has no `attempts` rows at all. `backfill_onboarding_pattern` uses a binary
+proxy instead — `1.0` when Phase 4's completion heuristic passed, `0.0`
+(no signal either way) otherwise — rather than inventing a fractional
+pass-rate the data can't actually support. The shared `upsert_pattern_row`
+blend-on-collision path (`f64::midpoint`) then treats that binary proxy the
+same as a real average when folding it into an existing live-mined row, which
+is an accepted approximation for this sprint, not a hidden precision loss —
+worth revisiting if a future sprint finds backfilled evidence measurably
+skewing blended success rates.
+
+**How to apply:** any future migration touching the toolchain/language
+dimension (the continual-recognition follow-on this sprint explicitly sets up
+for) must keep the `toolchain` name — this is the point a one-way door was
+meant to close. Any future kill-test gated on real `~/.claude` access should
+assume a fresh Claude Code on the web / remote-environment session starts
+with zero pre-existing transcript history, by design — that is not a bug to
+work around, it is the reason this sprint's onboarding-import mission exists
+in the first place.
 
 ## macOS-Web-Parity-5 — threading `repo` closes a gap on *three* surfaces at once, one of them web's own
 

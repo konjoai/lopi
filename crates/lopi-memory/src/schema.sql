@@ -443,6 +443,39 @@ ALTER TABLE tasks ADD COLUMN parent_task TEXT;
 ALTER TABLE tasks ADD COLUMN chain_depth INTEGER NOT NULL DEFAULT 0;
 CREATE INDEX IF NOT EXISTS idx_tasks_parent_task ON tasks(parent_task);
 
+-- Onboarding-Import-1 (Phase 0) — toolchain-scoped pattern backfill.
+--
+-- `toolchain` is a coarse per-project ecosystem label (e.g. "rust", "node",
+-- "python") derived by walking a historical session's project directory for
+-- manifest files (Cargo.toml, package.json, ...) — see `src/toolchain_detect.rs`.
+-- NULL for every pre-existing row and for any live `mine_patterns` row, since
+-- no toolchain detection runs on the live-task path (only the onboarding
+-- backfill populates it today).
+--
+-- Deliberately named `toolchain`, not `stack` — `web/src/lib/stores/stack.ts`
+-- and the loop-stack/card concept already own that word in this codebase.
+-- One-way-door naming decision — see LEDGER.md's Onboarding-Import-1 entry
+-- (KT-C) for the confirmation record.
+ALTER TABLE patterns ADD COLUMN toolchain TEXT;
+
+-- `source` distinguishes patterns mined from live lopi task runs
+-- ('lopi_run' — the default, applied retroactively to every pre-existing
+-- row) from patterns backfilled once from historical Claude Code session
+-- transcripts ('onboarding_import').
+ALTER TABLE patterns ADD COLUMN source TEXT NOT NULL DEFAULT 'lopi_run';
+
+-- Onboarding-Import-1 (Phase 5) — per-session idempotency ledger. One row
+-- per historical transcript session already folded into `patterns`, keyed
+-- on the JSONL's own sessionId. Onboarding may re-trigger (reinstall or a
+-- new machine) — this lets a re-run skip sessions already imported instead
+-- of re-blending their stats into existing pattern rows a second time.
+CREATE TABLE IF NOT EXISTS onboarding_imports (
+    session_id  TEXT PRIMARY KEY,
+    project_dir TEXT NOT NULL,
+    pattern_id  TEXT,
+    imported_at TEXT NOT NULL
+);
+
 -- Constraint-Capture-2: how many completed tasks have contributed to this
 -- pattern's rolling averages. `mine_patterns` had recorded avg_attempts/
 -- success_rate on every completed task but never a `successful_constraints`

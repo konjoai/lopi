@@ -110,6 +110,17 @@ pub(crate) enum Commands {
     /// Browse the mined pattern library
     #[command(subcommand)]
     Learn(LearnCmd),
+    /// One-time backfill of the pattern library from historical Claude Code
+    /// session transcripts (`~/.claude/projects/**/*.jsonl`), so a fresh
+    /// install starts with real signal instead of a cold store.
+    Import {
+        /// Print what would be imported without writing to the database.
+        #[arg(long)]
+        dry_run: bool,
+        /// Override the `~/.claude` directory to scan (default: `$HOME/.claude`).
+        #[arg(long)]
+        claude_dir: Option<PathBuf>,
+    },
     /// Manage scheduled tasks
     #[command(subcommand)]
     Schedules(ScheduleCmd),

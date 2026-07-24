@@ -184,13 +184,15 @@ async fn mine_patterns_records_constraint_on_insert() {
     );
 }
 
-/// A second success for the same fingerprint overwrites the constraint with
-/// the most recent one and bumps `occurrence_count` — the "latest known-good
-/// template wins" policy chosen over merging multiple constraint strings,
-/// since this repo has no real corpus yet to justify a merge strategy over
-/// a simple overwrite (see `LEDGER.md`'s Constraint-Capture-2 entry).
+/// A second success for the same fingerprint bumps `occurrence_count` but
+/// keeps the first constraint recorded rather than replacing it — the
+/// COALESCE-on-update policy `upsert_pattern_row`
+/// (`store/pattern_upsert.rs`) already established for the onboarding-import
+/// backfill path, adopted here rather than forked per-caller (see
+/// `LEDGER.md`'s Constraint-Capture-2 entry for why this superseded the
+/// sprint's original overwrite-latest design).
 #[tokio::test]
-async fn mine_patterns_overwrites_constraint_and_increments_occurrence_on_update() {
+async fn mine_patterns_keeps_first_constraint_and_increments_occurrence_on_update() {
     let store = MemoryStore::open_in_memory().await.unwrap();
     let t1 = Task::new("optimize database queries");
     let t2 = Task::new("optimize database queries");
@@ -211,7 +213,8 @@ async fn mine_patterns_overwrites_constraint_and_increments_occurrence_on_update
     assert_eq!(patterns[0].occurrence_count, 2);
     assert_eq!(
         patterns[0].successful_constraints.as_deref(),
-        Some("batch the writes")
+        Some("add an index on user_id"),
+        "the first-recorded constraint must survive a later success's own constraint"
     );
 }
 

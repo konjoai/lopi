@@ -5,31 +5,41 @@ the `lopi` repo. Newest first.
 
 ---
 
-## Next Session — after Constraint-Capture-2 (mine_patterns finally writes a constraint)
+## Next Session — after Constraint-Capture-2 (mine_patterns finally writes a constraint) — Phase 1 is now unblocked
 
 **Constraint-Capture-2 closed the gap where `mine_patterns` recorded stats but
 never a constraint, and gated the newly-populated constraints behind a
-promotion threshold — but its own Phase 1 (toolchain-scoped retrieval) was
-never attempted, because this sprint's stated dependency turned out not to
-exist.** Read first, in order: `CLAUDE.md`, `CHANGELOG.md`'s
-`Constraint-Capture-2` entry, `LEDGER.md`'s `Constraint-Capture-2` entry in
-full (especially the KT-C/KT-D findings and the promotion-gate numbers), then
-this file's own words below.
+promotion threshold. Its own Phase 1 (toolchain-scoped retrieval) was not
+attempted during the sprint itself, because the stated dependency (Session
+Prompt 1) hadn't landed yet — but it landed on `main` as `Onboarding-Import-1`
+(below) while this PR was still open, and had to be merged in.** Read first,
+in order: `CLAUDE.md`, `CHANGELOG.md`'s `Constraint-Capture-2` entry (updated
+at merge time), `LEDGER.md`'s `Constraint-Capture-2` entry in full (especially
+the KT-C/KT-D findings, the promotion-gate numbers, and the merge-time
+`PatternExtra`/`upsert_pattern_row`/COALESCE reconciliation), then this file's
+own words below and `Onboarding-Import-1`'s entry underneath it.
 
-### The precondition this sprint found missing — read this before touching Phase 1
+### Phase 1 (toolchain-scoped retrieval) is now buildable — read this before starting
 
-This sprint's brief opened with: "Assumes Session Prompt 1 (onboarding import +
-toolchain schema) has already landed." It has not. A full grep of `schema.sql`,
-`CHANGELOG.md`, and `LEDGER.md` for `toolchain`/`onboarding`/`detect_stack`
-found nothing — no toolchain column on `patterns` or `tasks`, no toolchain
-detector anywhere in `crates/`, no backfilled transcript-import data. **Before
-attempting toolchain-scoped `find_similar_patterns` retrieval, confirm Session
-Prompt 1 has actually landed in the meantime** (repeat the same grep this
-sprint ran) — do not assume a future session's brief describing it as done
-means it's done; check the source, the same discipline this sprint's own
-kill-tests apply. If it still hasn't landed, either run Session Prompt 1
-first, or fold its minimum toolchain-detection/schema work into whatever
-sprint needs it, rather than re-deferring indefinitely.
+At sprint time, a full grep of `schema.sql`, `CHANGELOG.md`, and `LEDGER.md`
+for `toolchain`/`onboarding`/`detect_stack` found nothing. That has changed:
+`Onboarding-Import-1` added `patterns.toolchain` (nullable, populated only by
+the onboarding backfill path — still `NULL` for every live-mined
+`mine_patterns` row) and `patterns.source` (`'lopi_run'` vs.
+`'onboarding_import'`). **Before starting Phase 1, re-confirm the current
+state rather than trusting this note indefinitely** — schemas can keep moving
+between sessions, the same lesson this merge itself is proof of. Two real
+open questions Phase 1 will hit immediately:
+- `find_similar_patterns` has no toolchain parameter yet — adding one is
+  additive (default to unscoped, matching this sprint's Constraint-Capture-2
+  brief's own "backward-compatible: an unscoped call still works" framing).
+- Live-mined patterns (`mine_patterns`, the path this sprint's own constraint
+  capture feeds) still don't populate `toolchain` at all — only the
+  onboarding backfill path does. Toolchain-scoping a *live* task's retrieval
+  would need `mine_patterns` to also call `src/toolchain_detect.rs` (or
+  receive a toolchain hint from its caller), which today it does not. Decide
+  whether Phase 1 should close that gap too, or scope toolchain retrieval to
+  backfilled patterns only for a first cut.
 
 ### What shipped this sprint
 
@@ -49,8 +59,9 @@ sprint needs it, rather than re-deferring indefinitely.
   for mined patterns; postmortem-derived patterns exempt from both. See
   `LEDGER.md` for the full reasoning and the "how to apply" note on retuning
   these numbers later.
-- Phase 1 (toolchain-scoped retrieval) — **not attempted**, precondition
-  missing (see above).
+- Phase 1 (toolchain-scoped retrieval) — **not attempted this sprint**, but
+  its precondition (Session Prompt 1 / `Onboarding-Import-1`) landed at merge
+  time — see above for what's now unblocked and what's still missing.
 - New tests across `crates/lopi-memory/src/store/tests.rs`,
   `crates/lopi-agent/src/runner/capture.rs`, and
   `crates/lopi-agent/src/runner/seed.rs`, including a live-verification test
@@ -61,7 +72,11 @@ sprint needs it, rather than re-deferring indefinitely.
 - `cargo build --workspace`, `cargo test --workspace` (all crates), `cargo
   clippy --workspace --all-targets -- -D warnings`, `cargo fmt --check`, and
   `RUSTDOCFLAGS="-D missing_docs" cargo doc` all clean. `VERSION` (workspace
-  `Cargo.toml`) bumped to `0.23.0`.
+  `Cargo.toml`) bumped to `0.24.0` at merge time — this sprint and
+  `Onboarding-Import-1` (below) both independently bumped to `0.23.0`, but
+  that version had already shipped on `main` without this sprint's changes
+  by the time the two were reconciled, so this sprint's own bump moved to
+  `0.24.0` rather than silently reusing an already-released version number.
 
 ### What could not be verified in this sandbox — needs a live check
 
@@ -87,14 +102,121 @@ the prompt).
   own kill-test for this phase (does `web/src/lib/components/Composer.svelte`
   have a hook point for this without disrupting the `;`-prefix verb grammar
   work) was never run. Scope as its own sprint if picked up.
-- **Toolchain scoping (Phase 1)** — blocked on Session Prompt 1 actually
-  landing; see above.
-- **The overwrite-on-update constraint policy** (latest success replaces the
-  stored constraint rather than merging) is a deliberate simplification
-  chosen for lack of a real corpus to justify anything richer — revisit with
-  real mined-pattern data if a future sprint finds it flip-flopping
-  unhelpfully between similar-but-different fixes for the same goal
-  fingerprint.
+- **Toolchain scoping (Phase 1)** — no longer blocked on schema; see the new
+  section above for what's ready and what still needs deciding (live-mined
+  patterns don't carry a toolchain today, only backfilled ones do).
+- **The constraint-update policy is COALESCE (never overwrite once set), not
+  this sprint's originally-designed overwrite-latest** — reconciled at merge
+  time against `Onboarding-Import-1`'s already-shipped `upsert_pattern_row`
+  semantics (see `LEDGER.md`). Revisit only with real evidence a stale
+  constraint is stuck wrong on a row, not on intuition.
+
+## Next Session — after Onboarding-Import-1 (Toolchain-Scoped Pattern Backfill)
+
+**Onboarding-Import-1 shipped all five phases and both hard exit-gate
+checks that don't require Wes's real machine — KT-A/KT-B (live,
+`~/.claude`-access-dependent kill-tests) are correctly left open, not
+assumed.** Read first, in order: `CLAUDE.md`, `CHANGELOG.md`'s
+Onboarding-Import-1 entry, `LEDGER.md`'s Onboarding-Import-1 entry in full
+(the KT-C naming confirmation and the honest KT-A/KT-B scope limits), then
+this file's own words below.
+
+### What shipped this sprint
+
+- **Schema (Phase 0):** `patterns.toolchain` (nullable), `patterns.source`
+  (`DEFAULT 'lopi_run'`), and a new `onboarding_imports` idempotency ledger
+  table — all backward-compatible `ALTER TABLE`/`CREATE TABLE IF NOT EXISTS`.
+- **Transcript reader (Phase 1):** `crates/lopi-agent/src/transcript_import.rs`
+  — defensive NDJSON decoder for `~/.claude/projects/**/*.jsonl`, built
+  against a real captured line from this very session's own transcript.
+- **Toolchain detection (Phase 2):** `src/toolchain_detect.rs` — manifest-file
+  based (`Cargo.toml`→rust, `package.json`→node, `pyproject.toml`/
+  `requirements.txt`→python, `go.mod`→go, `Gemfile`→ruby), the first toolchain
+  detection anywhere in lopi.
+- **Backfill store path (Phase 3):** `MemoryStore::backfill_onboarding_pattern`
+  reuses a shared `upsert_pattern_row` helper with `mine_patterns` — one write
+  path, not two, per the brief's own hard reuse constraint.
+- **Constraint extraction (Phase 4):** `session_looks_successful()` +
+  `extract_success_constraint()` — a clean tool-result tail *and* explicit
+  success language in the final assistant text, both required, documented
+  in-code as a deliberately conservative heuristic (false positives here
+  pollute `successful_constraints` with bad guidance).
+- **CLI + idempotency (Phase 5):** `lopi import [--dry-run] [--claude-dir]`,
+  idempotent on the transcript's own `sessionId`.
+- 33 new tests, 1620 workspace tests green, clippy clean, `-D missing_docs`
+  clean. Dry-run **and** a real (non-dry-run) round trip both verified against
+  this sandbox's one real transcript — actual pasted output below, not a
+  description of expected output:
+
+```
+$ lopi import --dry-run
+🧭 lopi import — scanning /root/.claude (1 transcript file found)
+  [dry-run] would import 2afe0e65 · rust · "# Session Prompt 1 — Onboarding Import: Toolchain-Scoped Pat…"
+
+🧭 would import 1 · 0 already imported · 0 with no human turn · 0 with an empty keyword fingerprint
+
+$ lopi import
+🧭 lopi import — scanning /root/.claude (1 transcript file found)
+  ✅ 2afe0e65 · rust · "# Session Prompt 1 — Onboarding Import: Toolchain-Scoped Pat…" → pattern a711bd4e
+
+🧭 imported 1 · 0 already imported · 0 with no human turn · 0 with an empty keyword fingerprint
+
+$ lopi learn list
+🧠 lopi learn — 1 pattern(s)
+
+  Id        Keywords                                   Avg Att.   Success%  Source
+  ──────────────────────────────────────────────────────────────────────────────────────────
+  a711bd4e  access across actual actually adds agai…        1.0         0%  📊 mined
+
+$ lopi import --dry-run   # re-run: idempotency check
+🧭 lopi import — scanning /root/.claude (1 transcript file found)
+
+🧭 would import 0 · 1 already imported · 0 with no human turn · 0 with an empty keyword fingerprint
+```
+
+(The 0% success rate is correct, not a bug: this session is still
+in-progress, so `session_looks_successful()` rightly found no completion
+signal in it yet — the heuristic didn't spuriously mark an unfinished session
+as a clean success.)
+
+### What could NOT be verified this session — needs Wes's real machine
+
+**KT-A (needs a real, multi-project `~/.claude/projects` corpus).** This
+sandbox's `~/.claude/projects/` holds exactly one file — this session's own
+in-progress transcript — not the 3+ files across separate projects
+(lopi/squish/kiban) the original brief asked for. The one file available was
+still genuinely useful: it directly confirmed the human-turn-vs-tool-result
+schema ambiguity (see `LEDGER.md`) from real data, not a guess. What it
+*can't* confirm: whether every real historical session across a full corpus
+follows the same shape with zero exceptions, and whether any transcript ever
+carries a `type: "summary"` entry (a possible richer goal source the brief
+raised — none appeared here, so `transcript_import.rs` doesn't special-case
+it). A session with real `~/.claude` access needs to: capture 3+ real files
+across genuinely different projects, diff them against
+`transcript_import.rs`'s assumptions, and either confirm no `summary` type
+exists or add a case for it if one does.
+
+**KT-B (needs a real `~/.claude/settings.json`).** This container has no such
+file at all (only `launcher-settings.json`, a different SDK-hook config, not
+user retention prefs) — `cleanupPeriodDays` is simply unknown here, not
+assumed to be the 30-day default or anything else. A session with real access
+needs to check it and report how many days of real history exist — if
+retention is near the default, that's a real finding about how much signal a
+first `lopi import` run actually recovers, worth surfacing to Wes plainly.
+
+### Open questions for a follow-on sprint
+
+- **Continual recognition (this sprint's explicit non-goal, by design).** The
+  `toolchain`/`source` schema groundwork this sprint laid is meant to be kept
+  populated going forward by a live-capture sprint, not just this one-time
+  backfill — that sprint still needs to be scoped and built.
+- **Embedding-based clustering** is out of scope unless a future kill-test
+  against a real multi-project corpus shows Jaccard/`keyword_fingerprint` is
+  inadequate at real scale — untested here, since this sandbox never had more
+  than one transcript to test scale against.
+- **claude.ai chat export ingestion** (manual, email-delivered ZIP, no live
+  API) — flagged as a possible future manual-import command, correctly not
+  built this sprint.
 
 ---
 
