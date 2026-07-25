@@ -22,7 +22,7 @@ impl MemoryStore {
     pub async fn get_task(&self, id: &TaskId) -> Result<Option<TaskRow>> {
         let row = sqlx::query_as::<_, TaskRow>(
             "SELECT id, goal, status, created_at, completed_at, client_ref, branch, repo, \
-             parent_task, chain_depth FROM tasks WHERE id = ?1",
+             parent_task, chain_depth, source FROM tasks WHERE id = ?1",
         )
         .bind(id.0.to_string())
         .fetch_optional(&self.read_pool)

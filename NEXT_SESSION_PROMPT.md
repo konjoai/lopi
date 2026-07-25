@@ -137,6 +137,39 @@ Five things carry forward, not forgotten:
 
 ---
 
+## Next Session — after Sprint S2′ (egress re-verify + provenance surfacing) — the deferred human gate, and the VPS-tied phases
+
+**Sprint S2′'s kill-test found its own brief's baseline stale — Sprint S2 (below)
+had already shipped the deny-by-default Telegram egress allowlist this sprint was
+asked to build, so no code changed there. What did land: `GET /api/tasks` and
+`GET /api/tasks/:id` now surface a `provenance` field (`"operator"` / `"untrusted"`
+/ `"unknown"`), derived from `Task::source` (already persisted, never previously
+read back).** Read `docs/security/EGRESS_SURFACE.md` first — the re-verification
+kill-test, `decays: state`, re-run it before trusting it — and `LEDGER.md`'s
+`Sprint S2′` entry for why a stale brief was treated as a finding rather than a
+green light to rebuild. Two things carry forward:
+
+1. **The human gate on egress that this marker is a foundation for is still
+   deferred, and still tied to the VPS/webhook path's return.** `notify_loop`
+   (`crates/lopi-remote/src/telegram/notify.rs`) doesn't check `provenance()` at
+   all today — it only checks `egress_allowed_chat_ids`. When the VPS returns and
+   untrusted-origin (`TaskSource::Webhook`) notifications become a live concern
+   again, the gate is now cheap to add: reuse `require_plan_approval`'s existing
+   shape, but applied to the *send*, not just the *plan* — e.g. hold or
+   flag-in-text any `ReportReady`/`TaskCompleted` notification whose task's
+   provenance is `"untrusted"`, the same way Sprint S2 Phase 5 already holds
+   *execution* on those tasks pending plan approval. Don't build it against a
+   loopback-only deployment with no reachable untrusted-webhook path — that was
+   this sprint's own reason for stopping at "record and surface."
+2. **All four items from the Sprint S2 entry below are unchanged and still
+   open** — S3 per-user identity, tool-execution sandboxing, the dormant
+   `whatsapp::serve` path's optional-by-default HMAC (still true: confirmed
+   again in `EGRESS_SURFACE.md` §1 that no outbound WhatsApp sender exists to
+   need the egress allowlist, but its *inbound* signature-verification gap is
+   untouched), and `WebConfig.host`'s dead configuration.
+
+---
+
 ## Next Session — after Sprint S2 (trifecta containment) — S3 identity, tool sandboxing, dormant paths
 
 **Sprint S2 closed F10's five phases** — auth fail-closed (`--insecure-no-auth`,

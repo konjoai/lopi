@@ -213,8 +213,8 @@ async fn create_task_with_guardrail_fields_returns_201() {
 // `acceptance`/`verifier_fail_open`/`budget_tokens` were wired into
 // `apply_loop_fields` (Sprint A1/A3) but never exercised by any request body
 // — `get_task`'s response deliberately exposes only a small fixed field set
-// (id/goal/status/created_at/completed_at/client_ref/cost, see `get_task`
-// above), so a `POST` → `GET` round trip can't observe these three even
+// (id/goal/status/created_at/completed_at/client_ref/cost/repo/provenance,
+// see `get_task` above), so a `POST` → `GET` round trip can't observe these three even
 // where they DO persist; the field-mapping logic itself is what's actually
 // verifiable, matching this file's existing `apply_loop_fields_threads_*`
 // pattern for gate/until/on_fail above.

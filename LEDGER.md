@@ -52,6 +52,49 @@ own changelog recommends for exactly this case (PR#753). This is a defensible re
 protecting against, it's a config value to revisit, not a load-bearing assumption to
 silently keep.
 
+## Sprint S2′ — a stale sprint brief is a kill-test finding, not a green light to rebuild
+
+**The brief cited `3a8a2ff` (v0.24.0) as baseline and asked for a deny-by-default
+egress allowlist as still-open work. By the time this sprint ran, `main` was at
+`34a73d1` (v0.25.0) — Sprint S2 had already merged, and its Phase 4 *is* this
+sprint's Phase 1, already shipped.** The kill-test protocol both sprints share
+("re-derive the containment claim before building on it") exists precisely to catch
+this: a brief is a snapshot of someone's understanding at write time, not a live
+query against the repo. Trusting it without re-deriving would have meant either
+silently re-implementing an already-shipped feature (wasted work, and a real risk of
+regressing the existing empty-allowlist-denies test if the reimplementation drifted
+from it) or, worse, layering a second allowlist mechanism next to the first one and
+creating exactly the "two allowlists, unclear which one is authoritative" confusion
+Konjo's "no policy engine" scope-out warns against. Re-deriving first (§1–§4 of
+`docs/security/EGRESS_SURFACE.md`) turned a "rebuild the allowlist" sprint into a
+"verify the allowlist, then close the one real gap" sprint — a five-minute git-log
+check away from a wasted implementation.
+
+**This sprint's actual shipped change (provenance surfacing) is additive and
+non-breaking, unlike S2's auth/CORS/egress defaults below.** `TaskRow` gained a new
+field and a new derived method; two `SELECT` lists gained a column that was already
+in the schema; two API responses gained a new JSON key. Nothing that previously
+succeeded now fails, nothing that previously sent now gets blocked — a genuine
+patch-level change, not a breaking one (rebased onto Sprint S5's `0.26.0` once that
+merged first, landing as `0.26.1`). Worth stating plainly specifically *because* the
+Sprint S2 entry below is the opposite case, and a reader skimming version history
+for "what's a safe upgrade" should be able to tell the two apart without
+re-reading both changelogs in full.
+
+**The provenance marker deliberately gates nothing yet — recording ahead of gating
+is itself the load-bearing decision.** It would have been cheap to also make
+`notify_loop` check `provenance() == "untrusted"` and hold sends pending approval,
+reusing the exact `require_plan_approval` machinery Sprint S2's Phase 5 already
+wired up for task execution. Not done: the brief is explicit that the human gate on
+egress is deferred until the VPS/webhook path returns and untrusted-origin
+notifications become a live, not hypothetical, concern — building it now against a
+loopback-only deployment with no reachable untrusted-webhook path would be
+defending a threat model that isn't active, the same reasoning `TRIFECTA_PATHS.md`
+already used to defer S3's identity/sandboxing work. What *is* done now is cheap and
+irreversible-to-skip-later: the marker exists in the run record today, so the
+eventual gate is "add one `if` in `notify_loop`," not "thread provenance through
+every layer for the first time under time pressure once the VPS is back."
+
 ## Sprint S5 — the earlier grep-based panic counts (up to 796) were never trustworthy; the AST-based baseline is 0
 
 **Correction, logged so it isn't silently re-derived (or re-doubted) later.** A prior framing of

@@ -59,6 +59,7 @@ pub(super) async fn list_tasks(State(s): State<AppState>) -> Json<Value> {
                 "id": t.id, "goal": t.goal, "status": t.status,
                 "created_at": t.created_at, "completed_at": t.completed_at,
                 "client_ref": t.client_ref, "cost": cost, "repo": t.repo,
+                "provenance": t.provenance(),
             })
         })
         .collect();
@@ -86,6 +87,7 @@ pub(super) async fn get_task(
                     "id": t.id, "goal": t.goal, "status": t.status,
                     "created_at": t.created_at, "completed_at": t.completed_at,
                     "client_ref": t.client_ref, "cost": cost, "repo": t.repo,
+                    "provenance": t.provenance(),
                 })),
             )
                 .into_response()

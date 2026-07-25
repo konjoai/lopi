@@ -442,5 +442,6 @@ include!("maxx_tests.rs");
 include!("task_create_tests.rs");
 include!("task_field_tests.rs");
 include!("permission_mode_field_tests.rs");
+include!("provenance_field_tests.rs");
 include!("claude_commands_tests.rs");
 include!("security_tests.rs");

@@ -128,6 +128,7 @@ mod tests {
             repo: None,
             parent_task: None,
             chain_depth: 0,
+            source: "\"Cli\"".to_string(),
         }
     }
 

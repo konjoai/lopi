@@ -7,7 +7,7 @@
 
 use super::*;
 use chrono::Utc;
-use lopi_core::{Attempt, Task, TaskId, TurnMetrics};
+use lopi_core::{Attempt, Task, TaskId, TaskSource, TurnMetrics};
 use uuid::Uuid;
 
 #[tokio::test]
@@ -20,6 +20,65 @@ async fn save_and_load_task_round_trip() {
     assert_eq!(history.len(), 1);
     assert_eq!(history[0].goal, "integrate the flux capacitor");
     assert_eq!(history[0].status, "queued");
+}
+
+/// Egress-Allowlist-1, Phase 2 — a manually-initiated run (`TaskSource::Cli`,
+/// the default) and a webhook-initiated run must carry distinguishable
+/// provenance after a save/load round trip through the real store, not just
+/// in the in-memory `Task` before it's persisted.
+#[tokio::test]
+async fn operator_and_untrusted_sources_have_distinguishable_provenance() {
+    let store = MemoryStore::open_in_memory().await.unwrap();
+
+    let operator_task = Task::new("manually queued via the CLI");
+    store.save_task(&operator_task, "queued").await.unwrap();
+
+    let mut untrusted_task = Task::new("queued from a CI failure webhook");
+    untrusted_task.source = TaskSource::Webhook {
+        repo: "konjoai/lopi".into(),
+        event: "check_run".into(),
+    };
+    store.save_task(&untrusted_task, "queued").await.unwrap();
+
+    let history = store.load_history(10).await.unwrap();
+    let operator_row = history
+        .iter()
+        .find(|r| r.id == operator_task.id.0.to_string())
+        .unwrap();
+    let untrusted_row = history
+        .iter()
+        .find(|r| r.id == untrusted_task.id.0.to_string())
+        .unwrap();
+
+    assert_eq!(operator_row.provenance(), "operator");
+    assert_eq!(untrusted_row.provenance(), "untrusted");
+    assert_ne!(operator_row.provenance(), untrusted_row.provenance());
+}
+
+/// A Telegram-sourced task is `"operator"`, not `"untrusted"` — deliberately
+/// narrower than `lopi_core::is_untrusted_source` (which also matches
+/// `TaskSource::Telegram`, for Sprint Successor-1's unrelated chain-extension
+/// purpose). Telegram commands are inbound-authenticated via
+/// `allowed_chat_ids`; Sprint S2's own trifecta gate never treated them as
+/// untrusted, and this marker must not regress to a broader classification
+/// that would mislabel every Telegram-initiated run.
+#[tokio::test]
+async fn telegram_sourced_task_is_operator_provenance() {
+    let store = MemoryStore::open_in_memory().await.unwrap();
+
+    let mut telegram_task = Task::new("queued via /task from Telegram");
+    telegram_task.source = TaskSource::Telegram {
+        chat_id: 123,
+        message_id: 1,
+    };
+    store.save_task(&telegram_task, "queued").await.unwrap();
+
+    let history = store.load_history(10).await.unwrap();
+    let row = history
+        .iter()
+        .find(|r| r.id == telegram_task.id.0.to_string())
+        .unwrap();
+    assert_eq!(row.provenance(), "operator");
 }
 
 #[tokio::test]

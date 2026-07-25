@@ -227,8 +227,12 @@ true` to opt out entirely. `lopi serve-webhooks` refuses to start without
 `LOPI_WEBHOOK_SECRET` unless `LOPI_ALLOW_UNVERIFIED_WEBHOOK=1` is set.
 Telegram's automated/proactive sends (completion notifications,
 report-on-finish) are deny-by-default — set
-`[remote.telegram].egress_allowed_chat_ids` to receive them. Full inventory
-and rationale: `docs/security/TRIFECTA_PATHS.md`.
+`[remote.telegram].egress_allowed_chat_ids` to receive them. `GET /api/tasks`
+and `GET /api/tasks/:id` include a `provenance` field (`"operator"` or
+`"untrusted"`) showing whether a run came from an authenticated human action
+(CLI, API, Telegram) or an untrusted source (a GitHub webhook) — recorded and
+surfaced today, not yet gated on. Full inventory and rationale:
+`docs/security/TRIFECTA_PATHS.md` and `docs/security/EGRESS_SURFACE.md`.
 
 ## Contributing / feedback
 
