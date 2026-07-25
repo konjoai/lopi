@@ -1,3 +1,22 @@
+## [Unreleased] — Doc-Integrity: re-verify `LOOP_ENGINEERING_ROADMAP.md`'s `verified-against` stamp
+
+`G0 · Doc Staleness` went red on an unrelated PR: `docs/LOOP_ENGINEERING_ROADMAP.md`'s
+`verified-against` had drifted 22+ commits behind `HEAD` purely from other PRs landing
+on `main` — the doc itself hadn't been touched since Doc-Integrity Phase 4 (`fee09ce`).
+Re-verifying it (not just re-stamping it) is this sprint's whole job.
+
+- **[Doc]** Re-derived every file:line citation in `docs/LOOP_ENGINEERING_ROADMAP.md`
+  §1/§4 against `main` @ `4d8418c` (30 commits past the prior `63908a5` stamp). Two
+  citations had drifted from unrelated refactors landing in the same files — `crates/
+  lopi-ui/src/web/mod.rs`'s loop-route registration (`:307` → `:273`, after a CORS-layer
+  refactor) and `src/main.rs`'s `McpServe` registration (`:49,288` → `:50,299`, after
+  `--insecure-no-auth` was threaded through `main`) — fixed. No status cell changed:
+  nothing in the 30-commit range touched the connector trait, task decomposition,
+  webhook dedup/DLQ, event-payload templating, earned-trust wiring, or loop-health/
+  writable-controls gaps the roadmap already called out as open.
+- **[Chore]** Bumped `verified-against`/`verified-date` frontmatter to `4d8418c` /
+  2026-07-25, resetting `G0`'s commit-distance counter to 0.
+
 ## [Unreleased] — Sprint S9: the recipe library — canonical loops that teach the framework
 
 lopi's config surface is expressive but the gap was the blank page: nobody knows what a
