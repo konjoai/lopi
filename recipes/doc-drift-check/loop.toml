@@ -7,6 +7,11 @@
 # doesn't yet, the goal below still works — the agent finds docs claiming to
 # describe "current state" and checks them against git history by name/content.
 #   lopi run --goal "find decays: state docs whose verified-against commit is more than 10 commits behind HEAD, and either update them to match current code or flag exactly what has drifted" --repo <repo>
+#
+# REQUIRED PREREQUISITE — confirmed live (see README): this recipe edits
+# doc files outside the default allowed_dirs (["src/", "tests/"]). Add to
+# <repo>/.lopi.toml (create it if absent) before running:
+#   allowed_dirs = ["src/", "tests/", "docs/"]
 # Full rationale: recipes/doc-drift-check/README.md
 
 autonomy_level = "report_only"  # F6 — L1: reconciling a stale doc's *claims* with what the

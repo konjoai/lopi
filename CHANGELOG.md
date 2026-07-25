@@ -1,5 +1,46 @@
 # Changelog
 
+## [Unreleased] — Sprint S9: the recipe library — canonical loops that teach the framework
+
+lopi's config surface is expressive but the gap was the blank page: nobody knows what a
+*good* `.lopi/loop.toml` looks like until they've seen several. `recipes/` is the smallest
+mechanism that closes that gap — no `init`/scaffold command, no registry, just six
+documented, live-run, copy-into-`.lopi/loop.toml` configs plus the format contract they
+follow (`recipes/README.md`).
+
+- **[Feature]** `recipes/README.md` — the recipe format contract (`loop.toml` +
+  required README sections: what it does, F0 rationale, principles demonstrated, stop
+  conditions, measured cost/duration, when not to use) and an **F0–F7 / F10** legend
+  grounded in `LoopConfig` fields — introduced by this sprint since no such numbering
+  existed in the repo before it; `docs/LOOP_ENGINEERING.md`'s prose is the source these
+  labels name, not a new standard.
+- **[Feature]** Six recipes, each validated with `lopi loop validate`/`show` and
+  **live-run measured**, not estimated: `fix-failing-test` (F1 canonical loop, `quick`,
+  34.2s/$0.033), `lint-burndown` (F3/F7, `quick`, 60.5s/$0.057), `dependency-bump`
+  (F1/F2/F3/F6, `standard`), `flaky-test-hunter` (`no_progress_limit` earning its keep —
+  2 correctly-rejected zero-diff attempts before a real fix on attempt 3, `quick`,
+  276.6s/$0.535), `doc-drift-check` (F1/F4, `quick`), `triage-issues` (F10, the untrusted-
+  input recipe — a live prompt-injection attempt was correctly flagged and ignored,
+  `quick`, 27.6s/$0.024).
+- **[Found live, not fixed — recorded for a later sprint]** Two real, confirmed gaps
+  this sprint's live-run requirement surfaced, out of scope to fix here (no `LoopConfig`/
+  budget-preset/runner changes this sprint):
+  1. `src/mcp_commands/mod.rs::submit_task` never applies `RepoProfile::load_from_repo`
+     (unlike `run_command.rs` and the REPL) — an MCP-submitted task silently ignores
+     `.lopi.toml`'s `allowed_dirs`/`forbidden_dirs`/etc. Confirmed live: `dependency-bump`
+     and `doc-drift-check` both correctly did the right work three times over, and were
+     hard-rolled-back every time by `DiffChecker`'s default `allowed_dirs` (`src/`,
+     `tests/` only) because the `.lopi.toml` override meant to fix that never reached
+     either task.
+  2. `LoopConfig::permission_allow`/`permission_deny` (the flat, legacy fields) are wired
+     to exactly one place — `lopi loop show`'s display — and have **no effect on the
+     runtime tool gate**, which resolves solely from `[budget]`'s preset deny-list and
+     `budget.permission_allow`. Documented prominently in `recipes/triage-issues/README.md`
+     since that recipe's entire safety story depends on `permission_deny` actually working.
+  Both fully written up in `NEXT_SESSION_PROMPT.md` with reproduction steps.
+- **[Doc]** Root `README.md` now points new users at `recipes/` as the recommended
+  starting point, ahead of a blank `.lopi/loop.toml`.
+
 ## [0.27.0] — Sprint S4: quality gate enforcement (stop the bar from moving backward)
 
 Konjo Forward Pillar 2: main is truth, gates only move up. `konjo-gate.yml` had ten

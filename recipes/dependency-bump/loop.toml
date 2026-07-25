@@ -3,6 +3,10 @@
 # Apply: copy this file to <repo>/.lopi/loop.toml, adjust `gate`/`until` if
 # this isn't a cargo workspace, then:
 #   lopi run --goal "update dependencies to the latest compatible versions, keep tests green" --repo <repo>
+#
+# REQUIRED PREREQUISITE — confirmed live (see README): every attempt fails
+# without this. Add to <repo>/.lopi.toml (create it if absent) first:
+#   allowed_dirs = ["src/", "tests/", "Cargo.lock"]
 # Full rationale: recipes/dependency-bump/README.md
 
 autonomy_level = "draft_pr"     # F6 — L2: a dependency bump always opens a PR for review,
