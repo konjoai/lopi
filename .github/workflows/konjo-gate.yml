@@ -102,34 +102,33 @@ jobs:
           echo "Pedantic lints above are advisory — fix over time."
 
       - name: cargo audit — zero known vulnerabilities
-        # KNOWN DEBT, verified 2026-07 (backend-1 Phase 0), not a silent
-        # soft-fail: `cargo audit` currently finds 6 real vulnerabilities in
-        # transitive deps — RUSTSEC-2026-0204 (crossbeam-epoch), 2023-0071
-        # (rsa, Marvin timing attack), 2026-0098/-0099/-0104 (rustls-webpki),
-        # 2024-0363 (sqlx binary-protocol cast issue) — none introduced by
-        # this PR, none yet triaged. Next step: for each, decide upgrade
-        # path vs. an explicit `[[advisories.ignore]]` accept-risk entry
-        # with a reason, then remove this line.
-        continue-on-error: true
+        # HARD GATE — Sprint S4 Phase 3. Every finding triaged: anyhow,
+        # crossbeam-epoch, git2, and spin were upgraded to fixed versions
+        # (see this sprint's commits); RUSTSEC-2023-0071 (rsa) is an
+        # unreachable Cargo.lock entry (`cargo tree -i rsa` is empty — no
+        # code path pulls it in); RUSTSEC-2026-0098/-0099/-0104
+        # (rustls-webpki) and RUSTSEC-2024-0363 (sqlx) all trace to sqlx
+        # 0.7.4's pinned rustls 0.21 and require a sqlx 0.7->0.8+ major
+        # upgrade (real application-code migration, out of scope here) —
+        # scheduled in NEXT_SESSION_PROMPT.md. All five are scoped, reasoned
+        # `[advisories.ignore]` entries in `.cargo/audit.toml` (auto-
+        # discovered, no flag needed), not a blanket silence — a new,
+        # untriaged advisory still fails this step.
         run: |
           cargo install cargo-audit --locked --quiet 2>/dev/null || true
           cargo audit
 
       - name: cargo deny — license + advisory + bans
-        # KNOWN DEBT, verified 2026-07 (backend-1 Phase 0), not a silent
-        # soft-fail: `.konjo/deny.toml` does not even PARSE against the
-        # installed cargo-deny 0.19.9 — `[advisories].unmaintained = "warn"`
-        # is a pre-0.19 severity value; 0.19 repurposed that key as a scope
-        # selector (`"all"`/`"workspace"`/`"transitive"`/`"none"`). This is a
-        # config-schema break, not a real license/advisory finding — this
-        # step cannot produce a trustworthy verdict at all right now. Next
-        # step: migrate deny.toml's [advisories] block to the 0.19 schema
-        # (see https://embarkstudios.github.io/cargo-deny/checks/advisories/cfg.html),
-        # confirm it parses and reflects real policy, then remove this line.
-        continue-on-error: true
+        # HARD GATE — Sprint S4 Phase 3. `.konjo/deny.toml` migrated to the
+        # cargo-deny 0.19+ schema (`[advisories].unmaintained`/`unsound` are
+        # now scope selectors, not lint levels; `[licenses].copyleft`/
+        # `unlicensed` were removed — see the config file's own comments for
+        # the full migration notes and the per-crate exceptions/ignores this
+        # sprint added). `cargo deny check` now returns a real, clean
+        # verdict: advisories ok, bans ok, licenses ok, sources ok.
         run: |
           cargo install cargo-deny --locked --quiet 2>/dev/null || true
-          cargo deny check --config .konjo/deny.toml
+          cargo deny --config .konjo/deny.toml check
 
       - name: dead code — zero tolerance
         run: |
@@ -141,6 +140,15 @@ jobs:
             echo "::error::$COUNT dead code warning(s). Remove all dead code before merging."
             exit 1
           fi
+
+      - name: Soft-gate convention lint
+        # HARD GATE — Sprint S4 Phase 2. Makes the `KNOWN DEBT, verified
+        # <date>` / `ADVISORY BY DESIGN` convention this file already
+        # follows by hand mechanical: any future `continue-on-error: true`
+        # step added without one of those two markers fails here, instead
+        # of quietly joining the pile of undocumented soft gates the
+        # convention exists to prevent.
+        run: python3 .konjo/scripts/soft_gate_lint.py .github/workflows/*.yml
 
   # ════════════════════════════════════════════════════════════════════════════
   # Gate 2 — Tests + Coverage (≥ 80% line coverage)
@@ -237,6 +245,21 @@ jobs:
           elif cov < 95:
               print(f'::warning::Coverage {cov:.1f}% < 95% target. Aim higher.')
           "
+
+      - name: Coverage floor gate (never regress below the locked value)
+        # HARD GATE — Konjo Forward Pillar 2: main is truth, gates only move up.
+        # The 80%/95% step above stays soft (real coverage isn't there yet), but
+        # the bar lopi HAS cleared (locked in .konjo/coverage-floor.txt, 68.34%
+        # as of Sprint S4) must never be allowed to slide back down un-noticed.
+        # Reuses the same LF:/LH: summation as the soft gate above — see that
+        # step's comment for why `cargo llvm-cov report --json` cannot be used
+        # instead (it silently under-scopes to ~1/7th of the workspace).
+        # Ratcheting up is allowed and expected: a PR that raises coverage may
+        # bump .konjo/coverage-floor.txt to the new value in the same PR.
+        run: |
+          python3 .konjo/scripts/coverage_floor_check.py \
+            --lcov lcov.info \
+            --floor-file .konjo/coverage-floor.txt
 
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v4
@@ -449,22 +472,23 @@ jobs:
           python-version: "3.11"
 
       - name: Install anthropic SDK
-        # Legitimately safe to soft-fail (not a gate, a prerequisite): if
-        # this fails, `_load_anthropic()` inside konjo_review.py raises
-        # ImportError, which main() already catches and treats as a soft
-        # WARNING (returns 0) rather than crashing — see the review step's
-        # own comment below. There is no scenario where this step failing
-        # silently produces a false "approved."
+        # ADVISORY BY DESIGN: legitimately safe to soft-fail (not a gate, a
+        # prerequisite): if this fails, `_load_anthropic()` inside
+        # konjo_review.py raises ImportError, which main() already catches
+        # and treats as a soft WARNING (returns 0) rather than crashing —
+        # see the review step's own comment below. There is no scenario
+        # where this step failing silently produces a false "approved."
         continue-on-error: true
         run: pip install anthropic --quiet
 
       - name: Generate diff
-        # Legitimately safe to soft-fail: the next step defensively checks
-        # for a missing/empty pr.diff and treats that as "nothing to
-        # review," not a blocker — see below. Without that guard this would
-        # have been a real gap (a git/fetch hiccup here could otherwise
-        # crash the review script with an uncaught exception, which Python
-        # exits as code 1 — indistinguishable from a genuine BLOCKER).
+        # ADVISORY BY DESIGN: legitimately safe to soft-fail: the next step
+        # defensively checks for a missing/empty pr.diff and treats that as
+        # "nothing to review," not a blocker — see below. Without that
+        # guard this would have been a real gap (a git/fetch hiccup here
+        # could otherwise crash the review script with an uncaught
+        # exception, which Python exits as code 1 — indistinguishable from
+        # a genuine BLOCKER).
         continue-on-error: true
         run: |
           git diff origin/${{ github.base_ref }}...HEAD > pr.diff
@@ -472,12 +496,12 @@ jobs:
 
       - name: Run Konjo Adversarial Review
         id: review
-        # Legitimately safe to soft-fail: this step's own run: block never
-        # aborts (the `&& / ||` pattern below always captures REVIEW_EXIT
-        # and the empty-diff guard means a missing pr.diff can't reach the
-        # script at all), so continue-on-error here is a defensive no-op,
-        # not a gate. The actual gate is REVIEW_EXIT's value, hard-enforced
-        # by "Fail if BLOCKER verdict" below.
+        # ADVISORY BY DESIGN: legitimately safe to soft-fail: this step's
+        # own run: block never aborts (the `&& / ||` pattern below always
+        # captures REVIEW_EXIT and the empty-diff guard means a missing
+        # pr.diff can't reach the script at all), so continue-on-error here
+        # is a defensive no-op, not a gate. The actual gate is REVIEW_EXIT's
+        # value, hard-enforced by "Fail if BLOCKER verdict" below.
         continue-on-error: true
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -504,7 +528,7 @@ jobs:
 
       - name: Post review comment to PR
         if: always()
-        continue-on-error: true  # cosmetic UX only — a comment-post failure must never affect the verdict already captured in REVIEW_EXIT
+        continue-on-error: true  # ADVISORY BY DESIGN: cosmetic UX only — a comment-post failure must never affect the verdict already captured in REVIEW_EXIT
         uses: actions/github-script@v7
         with:
           script: |

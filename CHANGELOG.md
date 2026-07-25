@@ -1,4 +1,106 @@
-# Changelog
+## [Unreleased] — Sprint S9: the recipe library — canonical loops that teach the framework
+
+lopi's config surface is expressive but the gap was the blank page: nobody knows what a
+*good* `.lopi/loop.toml` looks like until they've seen several. `recipes/` is the smallest
+mechanism that closes that gap — no `init`/scaffold command, no registry, just six
+documented, live-run, copy-into-`.lopi/loop.toml` configs plus the format contract they
+follow (`recipes/README.md`).
+
+- **[Feature]** `recipes/README.md` — the recipe format contract (`loop.toml` +
+  required README sections: what it does, F0 rationale, principles demonstrated, stop
+  conditions, measured cost/duration, when not to use) and an **F0–F7 / F10** legend
+  grounded in `LoopConfig` fields — introduced by this sprint since no such numbering
+  existed in the repo before it; `docs/LOOP_ENGINEERING.md`'s prose is the source these
+  labels name, not a new standard.
+- **[Feature]** Six recipes, each validated with `lopi loop validate`/`show` and
+  **live-run measured**, not estimated: `fix-failing-test` (F1 canonical loop, `quick`,
+  34.2s/$0.033), `lint-burndown` (F3/F7, `quick`, 60.5s/$0.057), `dependency-bump`
+  (F1/F2/F3/F6, `standard`), `flaky-test-hunter` (`no_progress_limit` earning its keep —
+  2 correctly-rejected zero-diff attempts before a real fix on attempt 3, `quick`,
+  276.6s/$0.535), `doc-drift-check` (F1/F4, `quick`), `triage-issues` (F10, the untrusted-
+  input recipe — a live prompt-injection attempt was correctly flagged and ignored,
+  `quick`, 27.6s/$0.024).
+- **[Found live, not fixed — recorded for a later sprint]** Two real, confirmed gaps
+  this sprint's live-run requirement surfaced, out of scope to fix here (no `LoopConfig`/
+  budget-preset/runner changes this sprint):
+  1. `src/mcp_commands/mod.rs::submit_task` never applies `RepoProfile::load_from_repo`
+     (unlike `run_command.rs` and the REPL) — an MCP-submitted task silently ignores
+     `.lopi.toml`'s `allowed_dirs`/`forbidden_dirs`/etc. Confirmed live: `dependency-bump`
+     and `doc-drift-check` both correctly did the right work three times over, and were
+     hard-rolled-back every time by `DiffChecker`'s default `allowed_dirs` (`src/`,
+     `tests/` only) because the `.lopi.toml` override meant to fix that never reached
+     either task.
+  2. `LoopConfig::permission_allow`/`permission_deny` (the flat, legacy fields) are wired
+     to exactly one place — `lopi loop show`'s display — and have **no effect on the
+     runtime tool gate**, which resolves solely from `[budget]`'s preset deny-list and
+     `budget.permission_allow`. Documented prominently in `recipes/triage-issues/README.md`
+     since that recipe's entire safety story depends on `permission_deny` actually working.
+  Both fully written up in `NEXT_SESSION_PROMPT.md` with reproduction steps.
+- **[Doc]** Root `README.md` now points new users at `recipes/` as the recommended
+  starting point, ahead of a blank `.lopi/loop.toml`.
+
+## [0.27.0] — Sprint S4: quality gate enforcement (stop the bar from moving backward)
+
+Konjo Forward Pillar 2: main is truth, gates only move up. `konjo-gate.yml` had ten
+`continue-on-error: true` steps; most were honestly commented, but nothing stopped
+coverage from drifting below its already-cleared value, and nothing enforced the
+comment convention itself on the *next* soft gate someone adds. This sprint closes
+both gaps and burns down the two cheapest of the four real-debt soft gates. No
+production code paths changed except a one-line API-signature fix forced by a
+security-driven dependency bump (see below).
+
+- **[Feature] Coverage floor — hard, never-regress gate.** `.konjo/coverage-floor.txt`
+  locks the lowest workspace line coverage `main` has ever cleared (68.34%, verified
+  against `3a8a2ff`). A new hard CI step (`.konjo/scripts/coverage_floor_check.py`)
+  sums `lcov.info`'s `LF:`/`LH:` — the same workspace-scoped measurement the existing
+  soft 80%/95% gate already uses, since `cargo llvm-cov report --json` silently
+  under-scopes with `--workspace` — and fails any PR that drops below the locked
+  floor. Ratcheting up is allowed and expected: a PR that raises coverage may bump
+  the floor file in the same PR. The 80%/95% gate above it stays soft; this is the
+  bar lopi has actually earned, not the aspiration. Verified with a synthetic
+  kill-test (`.konjo/scripts/test_coverage_floor_killtest.sh`, 5 cases: holds, drops,
+  raises+bumps, raises-without-bumping, missing-lcov).
+- **[Feature] Soft-gate convention lint — makes the honesty convention mechanical.**
+  `.konjo/scripts/soft_gate_lint.py` fails on any `continue-on-error: true` step in
+  `.github/workflows/*.yml` that lacks either a `KNOWN DEBT, verified <date>` comment
+  with a stated next step, or an `ADVISORY BY DESIGN` marker for the permanently-soft
+  cases. Wired in as a new hard step in Gate 1 (Static Analysis). The four
+  permanently-soft steps in the adversarial-review job (Install SDK, Generate diff,
+  Run Konjo Adversarial Review, Post review comment) now carry the explicit
+  `ADVISORY BY DESIGN` marker their existing comments already argued for but didn't
+  literally say. Verified with a kill-test
+  (`.konjo/scripts/test_soft_gate_lint_killtest.sh`): passes on the current file,
+  fails on an injected bare `continue-on-error: true`.
+- **[Fix] `cargo deny` — hard gate, real verdict.** `.konjo/deny.toml` migrated to the
+  installed cargo-deny 0.20.2 schema: `[advisories].unmaintained`/`unsound` are now
+  scope selectors (`"workspace"`, matching the old "watch but don't hard-fail on
+  transitive noise" intent) rather than removed lint-level keys, and
+  `[licenses].copyleft`/`unlicensed` were removed in favor of deny-by-default (only
+  `allow`-listed licenses pass). Also fixed the CLI invocation itself
+  (`cargo deny --config <path> check`, not `check --config <path>` — 0.20 rejects the
+  old argument order). With the schema fixed, real findings surfaced: `Unicode-3.0`
+  (the ICU stack's current SPDX id, same terms as the already-allowed
+  `Unicode-DFS-2016`) added to `allow`; `option-ext` and `webpki-roots` (the only two
+  MPL-2.0 dependencies, both consumed unmodified) given scoped
+  `[[licenses.exceptions]]`; four RUSTSEC advisories that require a sqlx 0.7->0.8+
+  major upgrade (real application-code migration, out of scope this sprint) given
+  scoped, reasoned `[advisories.ignore]` entries. `cargo deny check` now reports
+  `advisories ok, bans ok, licenses ok, sources ok`. Gate is hard.
+- **[Fix] `cargo audit` — hard gate, real verdict.** New `.cargo/audit.toml`
+  (auto-discovered, no CLI flag needed) with the same four sqlx-chain advisories
+  ignored for the same reason as `deny.toml`, plus `RUSTSEC-2023-0071` (rsa): `rsa` is
+  a transitive optional dependency of `sqlx-mysql`, a sqlx backend this workspace
+  never enables — `cargo tree -i rsa` and `-i sqlx-mysql` both resolve to nothing,
+  confirming it's an unreachable Cargo.lock entry, not a real exposure. Every other
+  finding was fixed by upgrading the affected crate directly: `anyhow` 1.0.102 ->
+  1.0.104 (RUSTSEC-2026-0190, unsound `downcast_mut`), `crossbeam-epoch` 0.9.18 ->
+  0.9.20 (RUSTSEC-2026-0204), `spin` 0.9.8 -> 0.9.9 (yanked), and `git2` 0.18 -> 0.21
+  (RUSTSEC-2026-0008/-0183/-0184, three unsound findings). The git2 major bump broke
+  one call site — `StatusEntry::path()` changed from `Option<&str>` to
+  `Result<&str, git2::Error>` in 0.21 — fixed with a one-line
+  `if let Some(rel)` -> `if let Ok(rel)` in `crates/lopi-git/src/manager.rs`,
+  behaviorally identical (skip the entry on a non-UTF8 path, same as the old `None`
+  case). `cargo audit` now exits 0.
 
 ## [0.26.1] — Sprint S2′: egress-allowlist re-verify + provenance surfacing
 

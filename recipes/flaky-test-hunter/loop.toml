@@ -1,0 +1,39 @@
+# Recipe: flaky-test-hunter — re-run a suspect test and characterize
+# intermittency, instead of trusting the first green run.
+#
+# Apply: copy this file to <repo>/.lopi/loop.toml, then:
+#   lopi run --goal "characterize the flakiness of <TEST_NAME>: run it repeatedly, report the pass rate, and only change code if you find and can explain a root cause" --repo <repo>
+# Full rationale: recipes/flaky-test-hunter/README.md
+
+autonomy_level = "report_only"  # F6 — L1: this recipe's job is a report (a pass-rate and,
+                                 # if found, a root-cause note), never a PR by itself. See
+                                 # the README for why a single passing "fix" attempt here is
+                                 # not trustworthy enough to draft-PR on its own.
+
+# F3 — three hard stops. `no_progress_limit` is the one that matters most for
+# this recipe (see README) — a flaky test can look like progress on every
+# single attempt (each one "passes" or plausibly "explains" the failure)
+# without the loop ever actually converging on a root cause.
+max_iterations = 8
+no_progress_limit = 3
+
+# Deliberately NOT set: no `until`. For every other recipe in this library,
+# `until` is the deterministic oracle that ends the loop early. Here, a
+# single green run is not evidence of anything — that's the entire premise
+# of a flaky test — so wiring `until` to "the test passes" would let the
+# loop declare victory on pure luck. The absence of `until` here is as
+# deliberate as its presence everywhere else.
+
+# S2 (Reflexion) + escalation: each retry should reflect on what the last
+# attempt's re-run pattern actually showed before trying again, and climb to
+# heavier self-prompting (Self-Refine, then Plan-Then-Act) if the pattern
+# still isn't converging on an explanation — appropriate here because
+# "characterize this" is a harder cognitive task than "make this one
+# assertion pass."
+self_prompt = "reflexion"
+escalate_strategy = true
+
+# NOTE: `[budget]` must come last — every key after a `[table]` header
+# belongs to that table in TOML, not the top level.
+[budget]
+preset = "quick"

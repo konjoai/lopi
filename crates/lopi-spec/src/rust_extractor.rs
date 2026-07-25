@@ -99,19 +99,23 @@ fn parse_fn_name(line: &str) -> Option<String> {
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
-    use std::fs;
-    use std::path::PathBuf;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
 
-    fn write_temp(content: &str) -> PathBuf {
-        let path = std::env::temp_dir().join(format!("lopi-spec-rust-{}.rs", nonce()));
-        fs::write(&path, content).unwrap();
-        path
-    }
-
-    fn nonce() -> u64 {
-        use std::sync::atomic::{AtomicU64, Ordering};
-        static C: AtomicU64 = AtomicU64::new(0);
-        C.fetch_add(1, Ordering::Relaxed)
+    /// A per-process atomic nonce used to be enough to keep concurrent
+    /// `write_temp` calls from colliding on the same path — true under
+    /// `cargo test`'s threaded parallelism, false under `cargo nextest`'s
+    /// one-process-per-test model, where every test's nonce counter starts
+    /// back at 0. Two unrelated tests running in concurrent processes could
+    /// both compute nonce 0 and race on `/tmp/lopi-spec-rust-0.rs`, one
+    /// clobbering the other's content before it was read (confirmed live:
+    /// intermittent CI failures under `cargo nextest run`).
+    /// `tempfile::NamedTempFile` sidesteps this — genuinely unique per call,
+    /// any runner, any process model — and self-deletes on drop.
+    fn write_temp(content: &str) -> NamedTempFile {
+        let mut f = NamedTempFile::new().unwrap();
+        f.write_all(content.as_bytes()).unwrap();
+        f
     }
 
     #[test]

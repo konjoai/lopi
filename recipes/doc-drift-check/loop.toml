@@ -1,0 +1,52 @@
+# Recipe: doc-drift-check — find `decays: state` docs whose `verified-against`
+# has fallen behind HEAD.
+#
+# Apply: copy this file to <repo>/.lopi/loop.toml. This recipe assumes your
+# repo uses the `decays: state` / `verified-against: <sha>` frontmatter
+# convention (see recipes/README.md's own frontmatter for an example); if it
+# doesn't yet, the goal below still works — the agent finds docs claiming to
+# describe "current state" and checks them against git history by name/content.
+#   lopi run --goal "find decays: state docs whose verified-against commit is more than 10 commits behind HEAD, and either update them to match current code or flag exactly what has drifted" --repo <repo>
+#
+# REQUIRED PREREQUISITE — confirmed live (see README): this recipe edits
+# doc files outside the default allowed_dirs (["src/", "tests/"]). Add to
+# <repo>/.lopi.toml (create it if absent) before running:
+#   allowed_dirs = ["src/", "tests/", "docs/"]
+# Full rationale: recipes/doc-drift-check/README.md
+
+autonomy_level = "report_only"  # F6 — L1: reconciling a stale doc's *claims* with what the
+                                 # code actually does now is a judgment call, not a mechanical
+                                 # edit — this recipe reports what's stale and why, a human
+                                 # decides how to fix the prose.
+
+# F3 — three hard stops, set explicitly.
+max_iterations = 6
+no_progress_limit = 2
+
+# F1 — the deterministic oracle: a self-contained staleness scan (no external
+# tool dependency — adjust the `10` commit-distance threshold to taste; the
+# live-run README used 10 to fit a small scratch repo, a real repo will
+# likely want something larger, e.g. 30-50). Exits 0 only when every
+# `decays: state` doc's `verified-against` is within the threshold of HEAD.
+# A TOML *literal* multi-line string (triple single-quotes) — no backslash
+# escaping, so the shell sees exactly this text, verbatim.
+until = '''
+stale=0
+for f in $(grep -rl "^decays: state" --include="*.md" .); do
+  sha=$(grep -m1 "^verified-against:" "$f" | awk '{print $2}')
+  if [ -n "$sha" ] && git cat-file -e "$sha" 2>/dev/null; then
+    dist=$(git rev-list --count "$sha"..HEAD)
+    if [ "$dist" -gt 10 ]; then echo "STALE ($dist commits behind): $f"; stale=1; fi
+  fi
+done
+exit $stale
+'''
+
+# F5 — a doc-drift scan is naturally cron-scheduled (see recipes/README.md's
+# "Applying a recipe" note on [[schedules]]) and can overlap manual runs.
+isolation = "worktree"
+
+# NOTE: `[budget]` must come last — every key after a `[table]` header
+# belongs to that table in TOML, not the top level.
+[budget]
+preset = "quick"
