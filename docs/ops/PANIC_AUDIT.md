@@ -1,12 +1,13 @@
 ---
 decays: state
-verified-against: 34a73d1
-verified-date: 2026-07-24
+verified-against: 4d8418c
+verified-date: 2026-07-25
 ---
 
 # Panic audit — the trustworthy count, and why grep couldn't give it to you
 
-Verified against: `34a73d1` (`main`, v0.25.0) · 2026-07-24
+Verified against: `4d8418c` · 2026-07-25 (re-verified; the workspace-wide zero-unwrap
+claim and per-crate deny/warn table still hold — no citation drift found)
 
 Konjo Forward **Pillar 1** (an honest starting position) and **F11** (a durable unattended
 loop should not die on an `unwrap`). This is the pre-flight kill-test for Sprint S5 and the

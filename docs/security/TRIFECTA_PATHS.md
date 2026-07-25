@@ -1,12 +1,16 @@
 ---
 decays: state
-verified-against: 3a8a2ff
-verified-date: 2026-07-24
+verified-against: 4d8418c
+verified-date: 2026-07-25
 ---
 
 # Trifecta paths — untrusted input → powerful tools → external comms
 
-Verified against: `3a8a2ff` (`main`, v0.24.0) · 2026-07-24
+Verified against: `4d8418c` · 2026-07-25 (re-verified; §5's "done" statuses still hold —
+§1's table and §4's `WebConfig.host` citation updated below after unrelated later sprints
+shifted line numbers in `github.rs`, `issue.rs`, `whatsapp.rs`, and `config.rs`. §0's and
+§2's citations describe the pre-Sprint-S2 baseline at `3a8a2ff` by design and are left
+as historical record — see §5 for what actually shipped)
 
 Konjo Forward **F10**: lopi has the lethal trifecta by construction — untrusted content in
 (webhooks), powerful tools (code execution, git, PR creation), external comms out (Telegram,
@@ -50,10 +54,10 @@ which is the correct one-way trade but still needs a fix to run at all).
 
 | # | Entry point | What it creates | Reaches `lopi-remote`? | Gate before this sprint |
 |---|---|---|---|---|
-| A | `crates/lopi-webhook/src/github.rs:155-163` `queue_ci_fix` — any CI-failure event on a watched repo | `Task` (`TaskSource::Webhook`), goal = "Investigate and fix CI failure on {repo}" | Yes — completion fires `notify_loop` | HMAC on the webhook itself (Phase 3, see below); **none** on task execution |
-| B | `crates/lopi-webhook/src/github.rs:167-198` `handle_pr_review` — a PR review with `changes_requested`, review **body text attacker-controlled** | `Task`, review body appended verbatim to `t.constraints` | Yes | Same as A |
-| C | `crates/lopi-webhook/src/issue.rs:157-181` — an opened/labeled GitHub issue, Haiku-triaged then auto-queued if `Bug` @ confidence ≥ 0.7 or `lopi:fix` label. **Issue body (attacker-controlled, up to 500 chars) injected as a task constraint** | `Task`, `TaskSource::Webhook` | Yes | Same as A |
-| D | `crates/lopi-remote/src/whatsapp.rs:104-111` — inbound `/task <goal>` over Twilio WhatsApp, **goal text is attacker/sender-controlled directly**, `TaskSource::Webhook { repo: "whatsapp", .. }` | `Task` | Yes | Optional Twilio signature (`signing_secret`); **but see §4 — this module is not wired to any CLI command and is unreachable in the built binary today** |
+| A | `crates/lopi-webhook/src/github.rs:157-167` `queue_ci_fix` — any CI-failure event on a watched repo | `Task` (`TaskSource::Webhook`), goal = "Investigate and fix CI failure on {repo}" | Yes — completion fires `notify_loop` | HMAC on the webhook itself (Phase 3, see below); **none** on task execution (pre-Phase-5; now gated by `gate_untrusted_source`, see §5) |
+| B | `crates/lopi-webhook/src/github.rs:184-221` `handle_pr_review` — a PR review with `changes_requested`, review **body text attacker-controlled** | `Task`, review body appended verbatim to `t.constraints` | Yes | Same as A |
+| C | `crates/lopi-webhook/src/issue.rs:159-181` — an opened/labeled GitHub issue, Haiku-triaged then auto-queued if `Bug` @ confidence ≥ 0.7 or `lopi:fix` label. **Issue body (attacker-controlled, up to 500 chars) injected as a task constraint** | `Task`, `TaskSource::Webhook` | Yes | Same as A |
+| D | `crates/lopi-remote/src/whatsapp.rs:110-122` — inbound `/task <goal>` over Twilio WhatsApp, **goal text is attacker/sender-controlled directly**, `TaskSource::Webhook { repo: "whatsapp", .. }` | `Task` | Yes | Optional Twilio signature (`signing_secret`); **but see §4 — this module is not wired to any CLI command and is unreachable in the built binary today** |
 | E | `crates/lopi-remote/src/telegram/handlers.rs:181-211` — `/task`, `/retry` etc. from an authenticated Telegram chat | `Task`, `TaskSource::Telegram` | Yes | `allowed_chat_ids` inbound authz (`telegram/mod.rs:114`, checked in `message_handler`/`text_message_handler`) — this is an authenticated operator using a different transport, not the "anyone who can file an issue" threat model A–D describe |
 
 All five converge on the same `TaskQueue` → `AgentPool` → `AgentRunner` pipeline
@@ -113,7 +117,7 @@ brief's own "no policy engine, most teams overshoot by one tier" caution.
   get the Phase 5 `require_plan_approval` gate (cheap, and `is_untrusted_source` already classifies
   its `TaskSource::Webhook` as untrusted), so at least that one containment travels with it whenever
   it's eventually wired up — the HMAC gap does not.
-- **`crates/lopi-core/src/config.rs:117-119`** (`WebConfig.host`) is dead configuration — parsed
+- **`crates/lopi-core/src/config.rs:135`** (`WebConfig.host`) is dead configuration — parsed
   from `lopi.toml` but never read anywhere (`grep -rn "\.web\.host"` matches nothing); `Sail`'s
   actual bind host only ever comes from the CLI `--host` flag. Not a security issue, just
   pre-existing drift noted in passing.

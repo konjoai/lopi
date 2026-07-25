@@ -1,12 +1,14 @@
 ---
 decays: state
-verified-against: 34a73d1
-verified-date: 2026-07-24
+verified-against: 4d8418c
+verified-date: 2026-07-25
 ---
 
 # Egress surface — the local-only remnant of Sprint S2
 
-Verified against: `34a73d1` (`main`, v0.25.0) · 2026-07-24
+Verified against: `4d8418c` · 2026-07-25 (re-verified; findings below unchanged since
+`34a73d1` — two citations fixed after `TaskRow` and `get_task_surfaces_provenance_marker`
+moved files in an unrelated later sprint)
 
 This is the pre-flight kill-test for Sprint S2′ ("Egress allowlist: bound the one
 trifecta leg that's still open locally"). The sprint brief cited a baseline of
@@ -92,7 +94,8 @@ constructed a provenance field. An operator looking at the dashboard or the JSON
 had no way to see, after the fact, whether a given run came from an authenticated
 human action (CLI, API, Telegram) or an unauthenticated webhook. Closed this sprint:
 
-- `TaskRow` (`crates/lopi-memory/src/store/mod.rs`) gained a `source` field (the raw
+- `TaskRow` (`crates/lopi-memory/src/store/task_row.rs` — split out of `mod.rs` by a
+  later, unrelated file-size-gate sprint) gained a `source` field (the raw
   JSON column) and a `provenance()` method returning `"operator"` / `"untrusted"` /
   `"unknown"` (the last only if the column fails to parse — logged, never silent).
   `"untrusted"` matches only `TaskSource::Webhook` — deliberately narrower than
@@ -125,9 +128,9 @@ returns and that gate is actually load-bearing. See `NEXT_SESSION_PROMPT.md`.
   deliberate narrowing described above: Telegram must classify as
   `"operator"`, not fall through to the broader `is_untrusted_source`
   predicate.
-- `get_task_surfaces_provenance_marker` (`crates/lopi-ui/src/web/task_field_tests.rs`)
-  — same distinction, observed through `GET /api/tasks/:id`'s actual JSON response,
-  not just the store layer.
+- `get_task_surfaces_provenance_marker` (`crates/lopi-ui/src/web/provenance_field_tests.rs`
+  — split out of `task_field_tests.rs` by a later, unrelated sprint) — same distinction,
+  observed through `GET /api/tasks/:id`'s actual JSON response, not just the store layer.
 - No behavior change: `cargo test --workspace` and `cargo clippy --workspace -- -D
   warnings` both stay green; nothing that previously succeeded now fails, and nothing
   that previously sent now gets blocked.

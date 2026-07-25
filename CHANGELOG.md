@@ -1,3 +1,34 @@
+## [Unreleased] — Doc-Integrity: re-verify all four stale `decays: state` docs, reset `G0`
+
+`G0 · Doc Staleness` went red, then stayed red one gate at a time: fixing
+`docs/LOOP_ENGINEERING_ROADMAP.md`'s stamp (below) revealed the gate scans **every**
+`decays: state` doc repo-wide, not just the one this PR started on, and three more —
+`docs/ops/PANIC_AUDIT.md`, `docs/security/EGRESS_SURFACE.md`, `docs/security/
+TRIFECTA_PATHS.md` — had independently drifted past the 20-commit cap. None of the
+four had been edited since their own sprints landed; all four are pure commit-count
+accumulation from unrelated PRs. Re-verified all four, not just re-stamped:
+
+- **[Doc]** `docs/LOOP_ENGINEERING_ROADMAP.md` — re-derived every file:line citation in
+  §1/§4 against `main` @ `4d8418c` (30 commits past the prior `63908a5` stamp). Two
+  citations had drifted from unrelated refactors landing in the same files — `crates/
+  lopi-ui/src/web/mod.rs`'s loop-route registration (`:307` → `:273`, after a CORS-layer
+  refactor) and `src/main.rs`'s `McpServe` registration (`:49,288` → `:50,299`, after
+  `--insecure-no-auth` was threaded through `main`) — fixed. No status cell changed.
+- **[Doc]** `docs/ops/PANIC_AUDIT.md` — re-confirmed the workspace-wide zero-`unwrap`/
+  `expect`/`panic` claim and the per-crate `#![deny]`/`#![warn]` table against `4d8418c`;
+  no citation drift found.
+- **[Doc]** `docs/security/EGRESS_SURFACE.md` — re-confirmed Sprint S2's findings hold;
+  fixed two citations after `TaskRow` and `get_task_surfaces_provenance_marker` moved
+  files (`store/mod.rs` → `store/task_row.rs`, `task_field_tests.rs` →
+  `provenance_field_tests.rs`) in a later, unrelated file-size-gate sprint.
+- **[Doc]** `docs/security/TRIFECTA_PATHS.md` — re-confirmed §5's "done" statuses hold;
+  fixed §1's entry-point table and §4's `WebConfig.host` citation after unrelated later
+  sprints shifted line numbers in `github.rs`, `issue.rs`, `whatsapp.rs`, and
+  `config.rs`. §0/§2's pre-Sprint-S2 baseline citations are left as historical record by
+  design.
+- **[Chore]** Bumped all four docs' `verified-against`/`verified-date` frontmatter to
+  `4d8418c` / 2026-07-25, resetting `G0`'s commit-distance counter to 0 for each.
+
 ## [Unreleased] — Sprint S9: the recipe library — canonical loops that teach the framework
 
 lopi's config surface is expressive but the gap was the blank page: nobody knows what a
