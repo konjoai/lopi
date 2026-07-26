@@ -28,6 +28,11 @@
 //!   schema-accurate but not pulled from a live table — noted here rather
 //!   than silently presented as production data.
 
+// A reporting harness, not a library — same convention as `src/main.rs`'s
+// `#![allow(clippy::print_stdout, ...)]` for CLI output that is the point
+// of the binary, not a diagnostic leak.
+#![allow(clippy::print_stdout)]
+
 use serde_json::Value;
 use std::fmt::Write as _;
 use std::fs;
