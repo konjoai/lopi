@@ -111,6 +111,17 @@ impl AgentRunner {
 
         match result {
             Ok((text, usage)) => {
+                // Sprint F2 Phase 4 — a model-deprecation response header
+                // turns a silent future hard-retirement into a visible
+                // warning now, instead of the run just failing once the
+                // model is actually retired.
+                if let Some(warning) = &usage.model_deprecation_warning {
+                    tracing::warn!(model, warning, "model deprecation warning from Anthropic API");
+                    self.bus.send(AgentEvent::warn(
+                        task_id,
+                        format!("⚠ model `{model}` deprecation warning: {warning}"),
+                    ));
+                }
                 let cost_usd = usage.estimated_cost(model);
 
                 // 5. Record success + cost on the breaker. Cost feeds the

@@ -1,0 +1,17 @@
+# Worker model IDs lopi routes to by task-complexity tier (see
+# `select_model` in `crates/lopi-agent/src/claude_model.rs`). Edit this file
+# to change which model a tier resolves to — lopi reads it at process start,
+# so no recompile is needed. An operator override at `<repo>/.lopi/models.toml`
+# or `~/.lopi/models.toml` may replace any subset of these three; unlisted
+# tiers keep the ID shipped here.
+#
+# Pinning note (Sprint F2 Phase 4): from the Sonnet/Opus 4.6 generation
+# onward, a dateless model ID (e.g. `claude-sonnet-5`) is itself a fixed
+# snapshot, not a "latest" alias — pinning a bare name here is safe and
+# reproducible for those. Haiku 4.5 predates that generation, so its dateless
+# form is still a rolling alias; `haiku` below stays on the explicit dated
+# snapshot for the same reason it always has been.
+
+haiku = "claude-haiku-4-5-20251001"
+sonnet = "claude-sonnet-5"
+opus = "claude-opus-5"

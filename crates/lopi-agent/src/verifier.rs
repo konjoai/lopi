@@ -4,7 +4,7 @@
 //! Opus to grade the diff against a developer-supplied rubric. The structured
 //! verdict drives constraint injection into the next retry's planning prompt.
 use crate::api_client::AnthropicClient;
-use crate::claude::{MODEL_OPUS, MODEL_SONNET};
+use crate::claude::{model_opus, model_sonnet};
 use anyhow::{Context, Result};
 use lopi_core::{safe_truncate, Rubric, VerifierVerdict};
 use std::sync::Arc;
@@ -21,8 +21,8 @@ next implementation attempt. `confidence` is 0.0–1.0.";
 /// pass (Verifier as Explicit Gate).
 ///
 /// "Never grade your own homework": when `verifier_model` is unset, the
-/// resolved model is chosen to differ from `worker_model` — [`MODEL_OPUS`]
-/// by default, falling back to [`MODEL_SONNET`] on the one case where the
+/// resolved model is chosen to differ from `worker_model` — [`model_opus`]
+/// by default, falling back to [`model_sonnet`] on the one case where the
 /// worker itself is already Opus (an escalated retry), so the checker is
 /// never the same model as the maker. An explicitly configured
 /// `verifier_model` is always honored as-is, even if it happens to match
@@ -37,10 +37,10 @@ pub fn resolve_verifier(
     verifier_effort: Option<&str>,
 ) -> (String, Option<String>) {
     let model = verifier_model.map(str::to_string).unwrap_or_else(|| {
-        if worker_model == MODEL_OPUS {
-            MODEL_SONNET.to_string()
+        if worker_model == model_opus() {
+            model_sonnet().to_string()
         } else {
-            MODEL_OPUS.to_string()
+            model_opus().to_string()
         }
     });
     (model, verifier_effort.map(str::to_string))
@@ -356,8 +356,8 @@ mod tests {
 
     #[test]
     fn resolve_verifier_defaults_to_opus_for_a_non_opus_worker() {
-        let (model, effort) = resolve_verifier(MODEL_SONNET, None, None);
-        assert_eq!(model, MODEL_OPUS);
+        let (model, effort) = resolve_verifier(model_sonnet(), None, None);
+        assert_eq!(model, model_opus());
         assert!(effort.is_none());
     }
 
@@ -366,20 +366,20 @@ mod tests {
         // The one case where the default (Opus) would equal the worker: an
         // escalated retry already running on Opus. The resolver must pick a
         // different model instead of silently grading itself.
-        let (model, _) = resolve_verifier(MODEL_OPUS, None, None);
-        assert_ne!(model, MODEL_OPUS);
-        assert_eq!(model, MODEL_SONNET);
+        let (model, _) = resolve_verifier(model_opus(), None, None);
+        assert_ne!(model, model_opus());
+        assert_eq!(model, model_sonnet());
     }
 
     #[test]
     fn resolve_verifier_honors_an_explicit_override() {
-        let (model, _) = resolve_verifier(MODEL_SONNET, Some(crate::claude::MODEL_HAIKU), None);
-        assert_eq!(model, crate::claude::MODEL_HAIKU);
+        let (model, _) = resolve_verifier(model_sonnet(), Some(crate::claude::model_haiku()), None);
+        assert_eq!(model, crate::claude::model_haiku());
     }
 
     #[test]
     fn resolve_verifier_passes_effort_through_unchanged() {
-        let (_, effort) = resolve_verifier(MODEL_SONNET, None, Some("high"));
+        let (_, effort) = resolve_verifier(model_sonnet(), None, Some("high"));
         assert_eq!(effort.as_deref(), Some("high"));
     }
 

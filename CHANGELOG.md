@@ -1,3 +1,89 @@
+## [0.28.0] — Sprint F2: Correctness Holes — stale generations, silent passes, and an unenforced escape hatch
+
+Four defects, one dependency risk, and a tokenizer problem, all rooted in the same
+pattern: lopi hardcodes things that move (model IDs, prices, tokenizers, test-runner
+assumptions) and every one had already drifted or was about to. Independent of Sprint
+F1 (different files); lands first, so this is `0.28.0` and F1 will take `0.29.0` per
+the coordination note in both sprints' briefs.
+
+**KT-2.1 — does the scorer really report a pass on an unrecognised stack?** CONFIRMED.
+A repo with no `Cargo.toml`/`package.json` (reproduced with a minimal Python-shaped
+repo — `app.py`, no manifest) scored `test_pass_rate = 1.0`, `passed() == true`, having
+run zero tests; the only signal was an unenforced string in `errors`. Verbatim pre-fix
+output and full repro steps: `.konjo/killtests/F2/KT-2.1.md` — also K1's must-FAIL
+G-POLARITY fixture.
+
+**KT-2.2 — does `estimate_tokens` gate spend anywhere?** PASS (expected). Traced every
+caller: feeds only `ContextWindow`'s internal eviction bookkeeping and
+`token_pressure`/`TurnMetrics.context_pressure` observability. Real budget
+accounting (`ProgressGate`, `tokens_used`, `TurnMetrics.estimated_cost_usd`) comes
+entirely from the CLI's own authoritative streamed usage. Phase 5 is a labelling
+fix, not an enforcement fix. `.konjo/killtests/F2/KT-2.2.md`.
+
+**KT-2.3 — does `--effort` still behave on the current generation?** PASS. Ran
+`claude -p --model claude-sonnet-5 --effort high` and `--effort max` against a real
+subscription; both completed normally. `--effort` is a CLI-level flag, unaffected by
+Sonnet 5's adaptive-thinking default. `normalize_effort`'s level list is unchanged.
+`.konjo/killtests/F2/KT-2.3.md`.
+
+**KT-2.4 — is there a Claude-accurate token count without an API key?** FAIL for
+`estimate_tokens`'s actual (pre-send, live) use case — no keyless tokenizer exists to
+replace `cl100k_base` for that role. A keyless *post-hoc* accurate count does exist
+(the CLI's own streamed usage, already captured in `TurnMetrics`), but that's a
+different job than the live pre-send estimate. Phase 5 relabels rather than replaces.
+`.konjo/killtests/F2/KT-2.4.md`.
+
+- **[Fix]** Phase 1 — `crates/lopi-agent/src/scorer_detect.rs` (new): stack detection
+  extended from Cargo/npm-only to pytest (`pyproject.toml`/`setup.py`/`setup.cfg`/
+  `pytest.ini`/`requirements.txt`), Go (`go.mod`), Gradle (`build.gradle(.kts)`), Maven
+  (`pom.xml`), and pnpm/yarn distinct from npm (by lockfile, pnpm > yarn > npm
+  precedence). Plus an explicit `test_command` escape hatch in `.lopi/loop.toml`,
+  wired through `AgentRunner`/`Scorer`, that always wins over detection. A pytest repo
+  with one failing test, and a Go repo with one failing test, now score as failing —
+  both verified with real `pytest`/`go test` invocations, not mocks.
+- **[Fix, ONE-WAY DOOR]** Phase 2 — `Score` gained `unevaluated_reason: Option<String>`
+  (`crates/lopi-core/src/agent.rs`). `Score::passed()` now returns `false` whenever
+  it's set, regardless of `test_pass_rate`. The "no test runner detected" fallback no
+  longer sets `test_pass_rate = 1.0`; it sets `0.0` plus a stated reason naming every
+  manifest lopi checked and pointing at the `test_command` override. A repo lopi
+  cannot evaluate now blocks finalize instead of passing it silently. See `LEDGER.md`.
+- **[Fix]** Phase 3 — `crates/lopi-agent/src/pricing.rs` (new): per-model USD rates
+  moved from a hardcoded match in `ApiUsage::estimated_cost` to `pricing.toml`
+  (bundled default) with an optional operator override at `.lopi/pricing.toml` or
+  `~/.lopi/pricing.toml` — either may set only the tiers it wants to change. Changing
+  a rate needs a restart, not a recompile. The CLI's own `total_cost_usd` still wins
+  wherever it's present; this table is the fallback/mid-stream-estimate input only,
+  unchanged in that role.
+- **[Fix]** Phase 4 — `crates/lopi-agent/src/model_config.rs` (new): `MODEL_HAIKU`/
+  `MODEL_SONNET`/`MODEL_OPUS` (hardcoded consts, two generations stale —
+  `claude-opus-4-7` while current is Opus 5) replaced by `model_haiku()`/
+  `model_sonnet()`/`model_opus()`, resolved at runtime from `models.toml` with the
+  same bundled-default-plus-override shape as pricing. Defaults updated to the current
+  lineup: `claude-opus-5`, `claude-sonnet-5`, `claude-haiku-4-5-20251001` (Haiku
+  predates the 4.6+ generation, so its dateless form is still a rolling alias —
+  stays on the dated snapshot). CI's G5 review header (`claude-opus-4-6`) reconciled
+  to `claude-opus-5` in this same PR. `crates/lopi-core/src/models.rs`'s fallback
+  catalog gained `claude-opus-5` (was missing it entirely, topped by 4.8).
+  `crates/lopi-agent/src/api_budget.rs`'s `supports_task_budget` gained `opus-5` and
+  `sonnet-5` (Sonnet 5 supports task budgets; Sonnet 4.6 never did — a real
+  correctness gap, not just a stale string). `AnthropicClient` now reads response
+  headers for a model-deprecation warning (substring-matched on the header *name*,
+  not one hardcoded string) and surfaces it as `AgentEvent::warn` — previously lopi
+  read no response headers at all.
+- **[Fix]** Phase 5 (KT-2.4) — relabeled rather than replaced. `TurnMetrics.
+  context_pressure`'s doc comment now names the instrument; the web dashboard's
+  "Context pressure" gauge is now "Context pressure (est.)" with a tooltip naming
+  `cl100k_base`; `events.ts`'s turn-metrics log line does the same. No new benchmark
+  measurement — KT-2.4 found no new instrument to measure against.
+- **[Fix]** Phase 6 — `apply_cli_caps` (the shared seam for all three `claude -p`
+  spawn sites) gained an explicit `bare: bool` parameter. All three current spawn
+  sites (`ClaudeCode::run`, `ClaudeCode::run_streamed`, `claude_stream::plan_streaming`
+  — all worker sessions) now pass `bare: false` explicitly, asserted by two new tests
+  (`apply_cli_caps_worker_sessions_never_pass_bare`,
+  `apply_cli_caps_bare_flag_present_when_requested`) in the shape of the existing
+  `apply_cli_caps_includes_every_configured_flag` test. `--bare` is slated to become
+  `-p`'s default; this pin means that flip is a no-op for lopi. See `LEDGER.md`.
+
 ## [0.27.1] — Sprint F0: Honesty Pass — measurement replaces overclaiming
 
 lopi shipped three performance numbers with no measurement behind them, advertised one

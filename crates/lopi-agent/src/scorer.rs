@@ -1,25 +1,47 @@
 use anyhow::Result;
 use lopi_core::Score;
+use scorer_detect::Runner;
 use std::path::{Path, PathBuf};
 use tokio::process::Command;
 use which::which;
 
+#[path = "scorer_detect.rs"]
+mod scorer_detect;
+
 /// Runs tests and linters against a repository and produces a `Score`.
 pub struct Scorer {
     repo_path: PathBuf,
+    /// Sprint F2 Phase 1 — `.lopi/loop.toml`'s `test_command` escape hatch.
+    /// When set, always wins over stack detection (see `scorer_detect::detect`).
+    test_command: Option<String>,
 }
 
 impl Scorer {
-    /// Create a scorer rooted at `repo_path`.
+    /// Create a scorer rooted at `repo_path`, with no `test_command` override.
     pub fn new(repo_path: impl AsRef<Path>) -> Self {
         Self {
             repo_path: repo_path.as_ref().to_path_buf(),
+            test_command: None,
         }
     }
 
+    /// Wire the repo's `.lopi/loop.toml` `test_command` override, if any —
+    /// an explicit escape hatch for stacks `scorer_detect::detect` can't
+    /// recognize. `None` (the default) leaves detection as the sole source.
+    #[must_use]
+    pub fn with_test_command(mut self, test_command: Option<String>) -> Self {
+        self.test_command = test_command;
+        self
+    }
+
     /// Run the project's test + lint commands and produce a Score.
-    /// Detection is intentionally simple: prefer `cargo` if Cargo.toml exists,
-    /// else fall back to `npm test`. Failures populate `Score.errors`.
+    ///
+    /// Detection (`scorer_detect::detect`) prefers an explicit
+    /// `test_command` override, then a recognized manifest (Rust, Node via
+    /// npm/pnpm/yarn, Python, Go, Gradle, Maven) in that order. A repo with
+    /// none of these gets a *blocking*, stated-reason
+    /// [`unevaluated_reason`](lopi_core::Score::unevaluated_reason) — Sprint
+    /// F2 Phase 2 — rather than the score reading as a pass.
     ///
     /// Skips test/lint entirely when every changed path is docs-only (see
     /// `changed_paths`/`is_docs_path`) — a goal that only touches `*.md`
@@ -41,69 +63,11 @@ impl Scorer {
         });
         let skip_build_check = should_skip_build_check(&changed);
 
-        let cargo_toml = self.repo_path.join("Cargo.toml");
         if skip_build_check {
             score.test_pass_rate = 1.0;
             tracing::info!(?changed, "no source changes to verify — skipping test/lint");
-        } else if cargo_toml.exists() {
-            // cargo test — use sccache if available to skip unchanged artifact recompilation
-            let mut cmd = Command::new("cargo");
-            if which("sccache").is_ok() {
-                cmd.env("RUSTC_WRAPPER", "sccache");
-            }
-            let out = cmd
-                .arg("test")
-                .arg("--quiet")
-                .current_dir(&self.repo_path)
-                .output()
-                .await?;
-            score.test_pass_rate = if out.status.success() { 1.0 } else { 0.0 };
-            if !out.status.success() {
-                score.errors.push(format!(
-                    "cargo test failed:\n{}",
-                    String::from_utf8_lossy(&out.stderr)
-                ));
-            }
-            // cargo clippy as the lint signal.
-            let mut cmd = Command::new("cargo");
-            if which("sccache").is_ok() {
-                cmd.env("RUSTC_WRAPPER", "sccache");
-            }
-            let lint = cmd
-                .arg("clippy")
-                .arg("--quiet")
-                .arg("--")
-                .arg("-D")
-                .arg("warnings")
-                .current_dir(&self.repo_path)
-                .output()
-                .await;
-            if let Ok(lint) = lint {
-                if !lint.status.success() {
-                    score.lint_errors = 1;
-                    score.errors.push(format!(
-                        "clippy failed:\n{}",
-                        String::from_utf8_lossy(&lint.stderr)
-                    ));
-                }
-            }
-        } else if self.repo_path.join("package.json").exists() {
-            let out = Command::new("npm")
-                .arg("test")
-                .current_dir(&self.repo_path)
-                .output()
-                .await?;
-            score.test_pass_rate = if out.status.success() { 1.0 } else { 0.0 };
-            if !out.status.success() {
-                score.errors.push(format!(
-                    "npm test failed:\n{}",
-                    String::from_utf8_lossy(&out.stderr)
-                ));
-            }
         } else {
-            // No detectable test runner — treat as passing with a warning.
-            score.test_pass_rate = 1.0;
-            score.errors.push("no test runner detected".into());
+            self.run_detected(&mut score).await?;
         }
 
         // Diff size estimate: tracked changes via `git diff --shortstat`,
@@ -135,6 +99,118 @@ impl Scorer {
         score.diff_lines = diff_lines;
 
         Ok(score)
+    }
+
+    /// Detect and run this repo's test runner, populating `score` in place.
+    /// Sprint F2 Phase 2 — a repo with no recognized runner (and no
+    /// `test_command` override) gets a blocking, stated
+    /// `unevaluated_reason` rather than `test_pass_rate = 1.0`: "I could not
+    /// evaluate this" must never read as "this passed".
+    async fn run_detected(&self, score: &mut Score) -> Result<()> {
+        let Some(runner) = scorer_detect::detect(&self.repo_path, self.test_command.as_deref())
+        else {
+            score.errors.push(scorer_detect::NO_RUNNER_REASON.to_string());
+            score.unevaluated_reason = Some(scorer_detect::NO_RUNNER_REASON.to_string());
+            return Ok(());
+        };
+        match runner {
+            Runner::Cargo => self.run_cargo(score).await,
+            Runner::Explicit(cmd) => {
+                self.run_command("sh", &["-c", &cmd], "configured test_command", score)
+                    .await
+            }
+            Runner::Gradle => {
+                let program = if self.repo_path.join("gradlew").exists() {
+                    "./gradlew"
+                } else {
+                    "gradle"
+                };
+                self.run_command(program, &["test"], "gradle test", score)
+                    .await
+            }
+            Runner::Npm => self.run_command("npm", &["test"], "npm test", score).await,
+            Runner::Pnpm => self.run_command("pnpm", &["test"], "pnpm test", score).await,
+            Runner::Yarn => self.run_command("yarn", &["test"], "yarn test", score).await,
+            Runner::Pytest => self.run_command("pytest", &[], "pytest", score).await,
+            Runner::Go => {
+                self.run_command("go", &["test", "./..."], "go test", score)
+                    .await
+            }
+            Runner::Maven => self.run_command("mvn", &["test"], "mvn test", score).await,
+        }
+    }
+
+    /// `cargo test` (the only runner with a paired lint signal, `cargo
+    /// clippy`) — moved verbatim from the pre-Phase-1 `score()` body.
+    async fn run_cargo(&self, score: &mut Score) -> Result<()> {
+        // cargo test — use sccache if available to skip unchanged artifact recompilation
+        let mut cmd = Command::new("cargo");
+        if which("sccache").is_ok() {
+            cmd.env("RUSTC_WRAPPER", "sccache");
+        }
+        let out = cmd
+            .arg("test")
+            .arg("--quiet")
+            .current_dir(&self.repo_path)
+            .output()
+            .await?;
+        score.test_pass_rate = if out.status.success() { 1.0 } else { 0.0 };
+        if !out.status.success() {
+            score.errors.push(format!(
+                "cargo test failed:\n{}",
+                String::from_utf8_lossy(&out.stderr)
+            ));
+        }
+        // cargo clippy as the lint signal.
+        let mut cmd = Command::new("cargo");
+        if which("sccache").is_ok() {
+            cmd.env("RUSTC_WRAPPER", "sccache");
+        }
+        let lint = cmd
+            .arg("clippy")
+            .arg("--quiet")
+            .arg("--")
+            .arg("-D")
+            .arg("warnings")
+            .current_dir(&self.repo_path)
+            .output()
+            .await;
+        if let Ok(lint) = lint {
+            if !lint.status.success() {
+                score.lint_errors = 1;
+                score.errors.push(format!(
+                    "clippy failed:\n{}",
+                    String::from_utf8_lossy(&lint.stderr)
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// Run a single test-runner invocation and record pass/fail on `score`.
+    /// Shared by every non-Cargo runner (npm/pnpm/yarn/pytest/go/gradle/maven
+    /// and the `test_command` escape hatch) — none of these have a paired
+    /// lint step, only `Score.test_pass_rate`.
+    async fn run_command(
+        &self,
+        program: &str,
+        args: &[&str],
+        label: &str,
+        score: &mut Score,
+    ) -> Result<()> {
+        let out = Command::new(program)
+            .args(args)
+            .current_dir(&self.repo_path)
+            .output()
+            .await?;
+        score.test_pass_rate = if out.status.success() { 1.0 } else { 0.0 };
+        if !out.status.success() {
+            score.errors.push(format!(
+                "{label} failed:\n{}",
+                String::from_utf8_lossy(&out.stderr)
+            ));
+        }
+        Ok(())
     }
 
     /// Paths with pending changes (staged, unstaged, or untracked) relative
@@ -236,6 +312,7 @@ fn parse_diff_lines(stat: &str) -> u32 {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
 
@@ -343,5 +420,105 @@ mod tests {
     #[test]
     fn parse_diff_lines_handles_empty_stat() {
         assert_eq!(parse_diff_lines(""), 0);
+    }
+
+    /// Init a real git repo at `repo` with one committed file, then modify
+    /// `tracked_file` (writing `content`) so `should_skip_build_check`
+    /// sees a real, non-docs, non-lockfile source change and `score()`
+    /// actually runs detection instead of taking the "nothing changed" exit.
+    fn init_repo_with_tracked_change(repo: &Path, tracked_file: &str, content: &str) {
+        std::process::Command::new("git")
+            .args(["init", "-q"])
+            .current_dir(repo)
+            .status()
+            .expect("git init");
+        std::process::Command::new("git")
+            .args(["config", "user.email", "t@t.com"])
+            .current_dir(repo)
+            .status()
+            .expect("git config email");
+        std::process::Command::new("git")
+            .args(["config", "user.name", "t"])
+            .current_dir(repo)
+            .status()
+            .expect("git config name");
+        std::fs::write(repo.join(".gitkeep"), "").expect("write .gitkeep");
+        std::process::Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .status()
+            .expect("git add");
+        std::process::Command::new("git")
+            .args(["commit", "-q", "-m", "init"])
+            .current_dir(repo)
+            .status()
+            .expect("git commit");
+        std::fs::write(repo.join(tracked_file), content).expect("write tracked file");
+    }
+
+    /// KT-2.1 (Sprint F2) — reproduces the pre-fix defect this repo's own
+    /// scorer had: a repo with no recognized manifest (no `Cargo.toml`,
+    /// `package.json`, pytest/go/gradle/maven marker) and a real tracked
+    /// source change scored `test_pass_rate = 1.0` — a perfect score having
+    /// run zero tests. See `.konjo/killtests/F2/KT-2.1.md` for the recorded
+    /// pre-fix output this test was built from.
+    #[tokio::test]
+    async fn unrecognized_stack_no_longer_reports_a_perfect_pass() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let repo = dir.path();
+        init_repo_with_tracked_change(repo, "app.py", "print('hi')\ndef foo(): pass\n");
+
+        let score = Scorer::new(repo).score().await.expect("score");
+
+        // Pre-fix (see KT-2.1.md): `test_pass_rate == 1.0`, `passed() ==
+        // true` — a passing score having run nothing. Post-Phase-2, an
+        // unevaluable repo must never read as a pass, and must carry a
+        // stated reason rather than a silent restriction.
+        assert!(
+            !score.passed(),
+            "an unrecognized stack must never score as passing"
+        );
+        assert!(
+            score.unevaluated_reason.is_some(),
+            "the unevaluable case must carry a stated reason, not just a low number"
+        );
+    }
+
+    /// Phase 1 verify — a pytest repo with a failing test scores as failing
+    /// (not as an unrecognized-stack pass). Real `pytest` binary, real repo,
+    /// per the anti-mocking rule for E2E coverage.
+    #[tokio::test]
+    async fn pytest_repo_with_a_failing_test_scores_as_failing() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let repo = dir.path();
+        std::fs::write(repo.join("pyproject.toml"), "[project]\nname = \"fixture\"\n")
+            .expect("write pyproject.toml");
+        init_repo_with_tracked_change(repo, "test_sample.py", "def test_fails():\n    assert False\n");
+
+        let score = Scorer::new(repo).score().await.expect("score");
+
+        assert!(!score.passed(), "a failing pytest run must not pass");
+        assert!(score.unevaluated_reason.is_none(), "pytest was detected and ran — not unevaluated");
+        assert_eq!(score.test_pass_rate, 0.0);
+    }
+
+    /// Phase 1 verify — a Go repo with a failing test scores as failing.
+    /// Real `go test` binary, real repo.
+    #[tokio::test]
+    async fn go_repo_with_a_failing_test_scores_as_failing() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let repo = dir.path();
+        std::fs::write(repo.join("go.mod"), "module fixture\n\ngo 1.21\n").expect("write go.mod");
+        init_repo_with_tracked_change(
+            repo,
+            "fixture_test.go",
+            "package fixture\n\nimport \"testing\"\n\nfunc TestFails(t *testing.T) {\n\tt.Fatal(\"boom\")\n}\n",
+        );
+
+        let score = Scorer::new(repo).score().await.expect("score");
+
+        assert!(!score.passed(), "a failing go test run must not pass");
+        assert!(score.unevaluated_reason.is_none(), "go.mod was detected and ran — not unevaluated");
+        assert_eq!(score.test_pass_rate, 0.0);
     }
 }

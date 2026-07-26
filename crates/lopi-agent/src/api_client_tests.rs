@@ -1,7 +1,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use super::*;
-use crate::claude::MODEL_SONNET;
+use crate::claude::{model_haiku, model_opus, model_sonnet};
 
 #[test]
 fn usage_cost_sonnet() {
@@ -9,14 +9,14 @@ fn usage_cost_sonnet() {
         input_tokens: 1_000_000,
         ..ApiUsage::default()
     };
-    let cost = u.estimated_cost(MODEL_SONNET);
+    let cost = u.estimated_cost(model_sonnet());
     assert!(
         (cost - 3.0).abs() < 0.01,
         "sonnet input rate should be $3/MTok"
     );
 }
 
-/// Part 4.1 — `MODEL_OPUS` (`claude-opus-4-7`, live) must price at the
+/// Part 4.1 — `model_opus()` (`claude-opus-5`, live) must price at the
 /// current $5/$25 rate, not the retired Opus 4.1 $15/$75 rate this
 /// estimator carried before — every burn chart computed against a real
 /// Opus session was over-reporting spend by roughly 3x.
@@ -31,11 +31,11 @@ fn usage_cost_opus_uses_current_not_retired_rate() {
         ..ApiUsage::default()
     };
     assert!(
-        (input.estimated_cost(crate::claude::MODEL_OPUS) - 5.0).abs() < 0.01,
+        (input.estimated_cost(model_opus()) - 5.0).abs() < 0.01,
         "opus input rate should be $5/MTok, not the retired $15/MTok"
     );
     assert!(
-        (output.estimated_cost(crate::claude::MODEL_OPUS) - 25.0).abs() < 0.01,
+        (output.estimated_cost(model_opus()) - 25.0).abs() < 0.01,
         "opus output rate should be $25/MTok, not the retired $75/MTok"
     );
 }
@@ -50,8 +50,8 @@ fn usage_cost_haiku_rate() {
         output_tokens: 1_000_000,
         ..ApiUsage::default()
     };
-    assert!((input.estimated_cost(MODEL_HAIKU) - 1.0).abs() < 0.01);
-    assert!((output.estimated_cost(MODEL_HAIKU) - 5.0).abs() < 0.01);
+    assert!((input.estimated_cost(model_haiku()) - 1.0).abs() < 0.01);
+    assert!((output.estimated_cost(model_haiku()) - 5.0).abs() < 0.01);
 }
 
 #[test]
@@ -60,7 +60,7 @@ fn usage_cost_sonnet_output_rate() {
         output_tokens: 1_000_000,
         ..ApiUsage::default()
     };
-    assert!((output.estimated_cost(MODEL_SONNET) - 15.0).abs() < 0.01);
+    assert!((output.estimated_cost(model_sonnet()) - 15.0).abs() < 0.01);
 }
 
 /// Cache rates scale off each model's own input rate (~10% read, ~1.25x
@@ -76,12 +76,12 @@ fn usage_cost_cache_rates_scale_with_model_input_rate() {
         cache_write_tokens: 1_000_000,
         ..ApiUsage::default()
     };
-    assert!((read.estimated_cost(crate::claude::MODEL_OPUS) - 0.50).abs() < 0.01);
-    assert!((write.estimated_cost(crate::claude::MODEL_OPUS) - 6.25).abs() < 0.01);
-    assert!((read.estimated_cost(MODEL_HAIKU) - 0.10).abs() < 0.01);
-    assert!((write.estimated_cost(MODEL_HAIKU) - 1.25).abs() < 0.01);
-    assert!((read.estimated_cost(MODEL_SONNET) - 0.30).abs() < 0.01);
-    assert!((write.estimated_cost(MODEL_SONNET) - 3.75).abs() < 0.01);
+    assert!((read.estimated_cost(model_opus()) - 0.50).abs() < 0.01);
+    assert!((write.estimated_cost(model_opus()) - 6.25).abs() < 0.01);
+    assert!((read.estimated_cost(model_haiku()) - 0.10).abs() < 0.01);
+    assert!((write.estimated_cost(model_haiku()) - 1.25).abs() < 0.01);
+    assert!((read.estimated_cost(model_sonnet()) - 0.30).abs() < 0.01);
+    assert!((write.estimated_cost(model_sonnet()) - 3.75).abs() < 0.01);
 }
 
 #[test]
@@ -95,7 +95,7 @@ fn usage_cost_cache_hit_cheaper() {
         ..ApiUsage::default()
     };
     assert!(
-        cached.estimated_cost(MODEL_SONNET) < full.estimated_cost(MODEL_SONNET),
+        cached.estimated_cost(model_sonnet()) < full.estimated_cost(model_sonnet()),
         "cache read must be cheaper than full input"
     );
 }
@@ -268,4 +268,28 @@ async fn decode_sse_stream_ignores_unhandled_event_types() {
         .await
         .unwrap();
     assert_eq!(text, "still works");
+}
+
+/// Sprint F2 Phase 4 — a response header whose *name* contains "deprecat"
+/// (case-insensitively) is detected, regardless of the exact header name
+/// Anthropic uses; this is deliberately a substring match, not an exact one.
+#[test]
+fn detect_deprecation_warning_matches_header_name_substring_case_insensitively() {
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert(
+        "anthropic-model-deprecated",
+        reqwest::header::HeaderValue::from_static("claude-opus-4-1 retires 2026-08-05"),
+    );
+    let warning = detect_deprecation_warning(&headers).expect("must detect the header");
+    assert!(warning.contains("retires 2026-08-05"));
+}
+
+#[test]
+fn detect_deprecation_warning_is_none_without_a_matching_header() {
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert(
+        "content-type",
+        reqwest::header::HeaderValue::from_static("application/json"),
+    );
+    assert!(detect_deprecation_warning(&headers).is_none());
 }

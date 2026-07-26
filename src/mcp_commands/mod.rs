@@ -139,7 +139,7 @@ fn tool_defs() -> Vec<McpTool> {
                     },
                     "model": {
                         "type": "string",
-                        "description": "Explicit worker-model override, e.g. \"claude-opus-4-7\". Defaults to lopi's own complexity-based selection.",
+                        "description": "Explicit worker-model override, e.g. \"claude-opus-5\". Defaults to lopi's own complexity-based selection.",
                     },
                     "effort": {
                         "type": "string",

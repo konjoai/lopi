@@ -5,6 +5,61 @@ the `lopi` repo. Newest first.
 
 ---
 
+## Next Session — after Sprint F2 (Correctness Holes) — Sprint F3 decouples logs; two inherited items for F1/F5
+
+**Sprint F2 closed four defects (scorer stack detection, the unevaluated-repo
+silent-pass, hardcoded pricing, stale model IDs), pinned `--bare` explicitly at
+every spawn site, and relabeled the token-pressure gauge rather than replacing it
+(no keyless Claude tokenizer exists for the job).** Read first, in order: `CLAUDE.md`,
+`CHANGELOG.md`'s `[0.28.0] — Sprint F2` entry, `LEDGER.md`'s two `Sprint F2` entries
+(the unevaluated-repo one-way door, and the model-config/`--bare` one-way door), all
+four `.konjo/killtests/F2/KT-2.*.md` files, then this file's own words below.
+
+Sprint F3 (log decoupling — named in this sprint's own brief, not otherwise
+detailed here) is next. Three things carry forward, not F3's own scope but worth
+knowing before touching adjacent code:
+
+1. **The scorer/nextest inconsistency, explicitly deferred to F5.** Phase 1 added
+   pytest/Go/Gradle/Maven/pnpm/yarn detection to `crates/lopi-agent/src/
+   scorer_detect.rs`, reusing lopi's own CI precedent where it made sense — but
+   `.github/workflows/konjo-gate.yml:170-175` runs `cargo-nextest` for the Rust
+   path while the scorer still runs `cargo test --quiet`. F2's brief was explicit
+   this alignment is F5's job, not F2's; this note is the handoff, not a new
+   finding. Whoever picks up F5 should also check whether the newly-added
+   pytest/Go/Gradle/Maven paths have their own CI-vs-scorer runner mismatches
+   worth aligning in the same pass.
+2. **KT-2.4's tokenizer finding — no keyless Claude-accurate tokenizer exists for
+   a live, pre-send estimate.** `crates/lopi-context/src/tokens.rs`'s
+   `estimate_tokens` still uses `cl100k_base` (OpenAI's GPT-4 BPE), now explicitly
+   labeled as an estimate everywhere it's displayed (`TurnMetrics.context_pressure`'s
+   doc comment, the web dashboard's "Context pressure (est.)" gauge + tooltip,
+   `events.ts`'s turn-metrics log line). This is not fixed, only honestly labeled —
+   if Anthropic ever publishes a keyless offline tokenizer for the current Claude
+   generation, or lopi's own architecture changes so a post-hoc real count (already
+   flowing through `TurnMetrics`/`UsageAccrual` from the CLI's streamed usage) could
+   feasibly substitute for the pre-send estimate, that's the trigger to revisit this
+   — see `.konjo/killtests/F2/KT-2.4.md` for the full reasoning on why post-hoc real
+   data can't serve the pre-send role today.
+3. **Phase 6's `--bare` policy, for F1 if F1 has not yet landed by the time you read
+   this.** `apply_cli_caps` (`crates/lopi-agent/src/claude_support.rs`) now takes an
+   explicit `bare: bool` parameter; all three current spawn sites (all worker
+   sessions) pass `false`. **If F1 adds a checker/post-mortem CLI spawn site, it
+   should pass `bare: true`** at that new site — per both sprints' coordination
+   note, whichever sprint lands second inherits the other's `--bare` decision rather
+   than re-deriving it. Check `git log`/`CHANGELOG.md` for whether F1 has landed
+   before assuming this note is still live; if F1's own KT-1.3 already found the
+   checker needs project context, that live finding wins over this default.
+
+Also worth knowing, not urgent: Phase 4's model-ID config
+(`crates/lopi-agent/src/model_config.rs`, `models.toml`) and Phase 3's pricing config
+(`crates/lopi-agent/src/pricing.rs`, `pricing.toml`) both read their override file
+once per process (cached via `OnceLock`) — a running `lopi sail` process needs a
+restart to pick up an edited `.lopi/models.toml`/`.lopi/pricing.toml`, not just a
+file save. If a future sprint wants live-reload, that's new scope, not a bug in this
+one — the brief only asked for "no recompile," not "no restart."
+
+---
+
 ## Next Session — after Sprint F0 (Honesty Pass) — Sprint F1 wires the verifier; two attended actions still owed; one security gap found
 
 **Sprint F0 made every TOON/token performance claim trace to a committed measurement or

@@ -14,7 +14,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, BufReader};
 
-use crate::claude::MODEL_HAIKU;
+use crate::claude::model_haiku;
 
 // ── Shared HTTP client (2.5) ──────────────────────────────────────────────────
 
@@ -183,36 +183,55 @@ pub struct ApiUsage {
     pub cache_read_tokens: u32,
     /// Prompt tokens written into Anthropic's KV cache this turn.
     pub cache_write_tokens: u32,
+    /// Sprint F2 Phase 4 — set when the response carried a model-deprecation
+    /// warning header (see [`detect_deprecation_warning`]). `None` on the
+    /// overwhelming majority of calls; callers with bus access (see
+    /// `runner/api_plan.rs`) surface a `Some` value as an
+    /// [`lopi_core::AgentEvent::warn`] so a future hard retirement shows up
+    /// as a visible warning well before it becomes a silent outage.
+    pub model_deprecation_warning: Option<String>,
+}
+
+/// Scan response headers for a model-deprecation warning. Anthropic signals
+/// an upcoming hard retirement via a response header before the retirement
+/// date arrives; lopi did not read response headers at all before Sprint F2
+/// Phase 4. Matches by substring on the header *name* (case-insensitive,
+/// containing `"deprecat"`) rather than one exact hardcoded name, since the
+/// precise header name is not itself a stable, hand-verifiable API contract
+/// worth pinning a single literal to — a substring match degrades gracefully
+/// if Anthropic's exact header name shifts, where an exact match would
+/// silently stop firing.
+#[must_use]
+pub fn detect_deprecation_warning(headers: &reqwest::header::HeaderMap) -> Option<String> {
+    headers.iter().find_map(|(name, value)| {
+        if name.as_str().to_ascii_lowercase().contains("deprecat") {
+            let value = value.to_str().unwrap_or("(unreadable header value)");
+            Some(format!("{name}: {value}"))
+        } else {
+            None
+        }
+    })
 }
 
 impl ApiUsage {
-    /// Estimated USD cost using Anthropic's 2026-07 pricing for the given model.
+    /// Estimated USD cost for the given model, using rates from
+    /// [`crate::pricing`] (Sprint F2 Phase 3 — externalized, no recompile
+    /// needed to change a rate).
     ///
-    /// Rates are per 1M tokens (input, output, cache-read, cache-write): Opus
-    /// $5/$25, Haiku $1/$5, Sonnet $3/$15 — cache-read at ~10% of the input
-    /// rate, cache-write at ~1.25x, matching Anthropic's published cache
-    /// pricing multipliers. `MODEL_OPUS`'s prior rate here ($15/$75) was
-    /// Opus 4.1, retired since — every burn chart computed against a live
-    /// Opus session was over-reporting spend by roughly 3x. Sonnet 5 ships an
-    /// introductory $2/$10 window; this estimator intentionally stays on the
-    /// standard $3/$15 rate (the sustained price after the window ends)
-    /// rather than tracking a promotional rate that expires out from under it.
+    /// This is a **fallback** estimate, not the primary cost source: prefer
+    /// the CLI's own authoritative `total_cost_usd`
+    /// (`ClaudeOutput::cost_usd`) wherever it's present. This estimator
+    /// backs only the direct-API planning path and the mid-stream
+    /// `--max-budget-usd` check, neither of which the CLI's reported cost
+    /// covers.
     #[must_use]
     pub fn estimated_cost(&self, model: &str) -> f64 {
-        let (input_rate, output_rate, cache_read_rate, cache_write_rate) = if model.contains("opus")
-        {
-            (5.00, 25.0, 0.50, 6.25)
-        } else if model.contains("haiku") {
-            (1.00, 5.00, 0.10, 1.25)
-        } else {
-            // sonnet default
-            (3.00, 15.0, 0.30, 3.75)
-        };
+        let rates = crate::pricing::rates_for(model);
         let mtok = 1_000_000.0_f64;
-        (f64::from(self.input_tokens) * input_rate
-            + f64::from(self.output_tokens) * output_rate
-            + f64::from(self.cache_read_tokens) * cache_read_rate
-            + f64::from(self.cache_write_tokens) * cache_write_rate)
+        (f64::from(self.input_tokens) * rates.input
+            + f64::from(self.output_tokens) * rates.output
+            + f64::from(self.cache_read_tokens) * rates.cache_read
+            + f64::from(self.cache_write_tokens) * rates.cache_write)
             / mtok
     }
 }
@@ -310,11 +329,14 @@ impl AnthropicClient {
             anyhow::bail!("Anthropic API {status}: {body}");
         }
 
+        let deprecation_warning = detect_deprecation_warning(resp.headers());
         let stream = resp.bytes_stream();
         let reader = BufReader::new(tokio_util::io::StreamReader::new(
             stream.map(|r: reqwest::Result<bytes::Bytes>| r.map_err(std::io::Error::other)),
         ));
-        decode_sse_stream(reader, &mut on_delta).await
+        let (text, mut usage) = decode_sse_stream(reader, &mut on_delta).await?;
+        usage.model_deprecation_warning = deprecation_warning;
+        Ok((text, usage))
     }
 
     /// Non-streaming single-turn call (for fix and score prompts).
@@ -356,6 +378,7 @@ impl AnthropicClient {
             anyhow::bail!("Anthropic API {status}: {text}");
         }
 
+        let deprecation_warning = detect_deprecation_warning(resp.headers());
         let r: CompleteResp = resp.json().await.context("parsing complete response")?;
         let text: String = r
             .content
@@ -369,6 +392,7 @@ impl AnthropicClient {
             output_tokens: r.usage.output_tokens.unwrap_or(0),
             cache_read_tokens: r.usage.cache_read_input_tokens.unwrap_or(0),
             cache_write_tokens: r.usage.cache_creation_input_tokens.unwrap_or(0),
+            model_deprecation_warning: deprecation_warning,
         };
 
         Ok((text, usage))
@@ -382,7 +406,7 @@ impl AnthropicClient {
     /// Returns an error if the probe request fails or returns an empty response.
     pub async fn canary_probe(&self) -> Result<()> {
         let (text, _) = self
-            .complete(MODEL_HAIKU, "You are a test probe.", "Respond with OK.", 10)
+            .complete(model_haiku(), "You are a test probe.", "Respond with OK.", 10)
             .await?;
         if text.trim().is_empty() {
             anyhow::bail!("canary probe returned empty response");

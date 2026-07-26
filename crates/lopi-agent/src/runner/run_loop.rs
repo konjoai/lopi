@@ -79,7 +79,7 @@ impl AgentRunner {
         let lessons_data = seed.lessons_data;
         let spec_constraints = seed.spec_constraints;
 
-        let scorer = Scorer::new(&self.repo_path);
+        let scorer = Scorer::new(&self.repo_path).with_test_command(self.test_command.clone());
 
         // Progress-Gating (A3) — the live gain gate + termination controls.
         // Keeps an iteration only when it is a genuine gain over best, halts

@@ -4,7 +4,7 @@
 //! The lower-level `run_postmortem_quiet()` lives in `postmortem.rs`.
 
 use super::{postmortem, AgentRunner};
-use crate::claude::MODEL_HAIKU;
+use crate::claude::model_haiku;
 
 impl AgentRunner {
     /// Run the failure post-mortem if both adaptive retry and a direct-API
@@ -24,7 +24,7 @@ impl AgentRunner {
             client,
             self.limiter.as_ref(),
             self.breaker.as_ref(),
-            MODEL_HAIKU,
+            model_haiku(),
             &self.task.goal,
             error_log,
         )

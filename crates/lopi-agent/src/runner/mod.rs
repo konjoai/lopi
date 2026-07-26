@@ -182,10 +182,15 @@ pub struct AgentRunner {
     /// `finalize::derive_and_stash_successor`, collected once `run()`
     /// returns. See `take_pending_successor`'s own doc comment.
     pub(super) pending_successor: Option<Task>,
+    /// Sprint F2 Phase 1 — `.lopi/loop.toml`'s `test_command` override,
+    /// forwarded to the `Scorer` so an operator-named command wins over
+    /// stack detection. `None` (the default) leaves detection as the sole
+    /// source.
+    pub(super) test_command: Option<String>,
 }
 
 impl AgentRunner {
-    /// Token budget for the context window — 75% of Claude claude-sonnet-4-6's 200K context.
+    /// Token budget for the context window — 75% of a 200K-context Claude model.
     const CONTEXT_BUDGET: usize = 150_000;
 
     /// Create a new runner wired into the given bus, store, and cancellation channel.
@@ -237,6 +242,7 @@ impl AgentRunner {
             tokens_used: Arc::new(AtomicU64::new(0)),
             reflect_cross_run: false,
             pending_successor: None,
+            test_command: None,
         }
     }
 
@@ -438,6 +444,15 @@ impl AgentRunner {
     pub fn with_tool_permissions(mut self, allow: Vec<String>, deny: Vec<String>) -> Self {
         self.permission_allow = allow;
         self.permission_deny = deny;
+        self
+    }
+
+    /// Sprint F2 Phase 1 — wire the repo's `.lopi/loop.toml` `test_command`
+    /// override. `None` (the default) leaves the `Scorer`'s stack detection
+    /// as the sole source.
+    #[must_use]
+    pub fn with_test_command(mut self, test_command: Option<String>) -> Self {
+        self.test_command = test_command;
         self
     }
 

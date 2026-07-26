@@ -107,6 +107,21 @@ pub(crate) fn normalize_effort(raw: &str) -> Option<&'static str> {
 /// [`lopi_core::PermissionMode::default()`] (`bypassPermissions`), so an
 /// unconfigured task reproduces the old unconditional
 /// `--dangerously-skip-permissions` behavior exactly.
+///
+/// `bare` is **never optional either, in the opposite sense from
+/// `permission_mode`** — Sprint F2 Phase 6. `--bare` skips hook/LSP/plugin
+/// sync/CLAUDE.md auto-discovery; every one of lopi's three current spawn
+/// sites is a *worker* session (plan/implement/fix), which must load the
+/// target repo's own `CLAUDE.md`/skills to behave like a normal Claude Code
+/// session on that repo — so all three call this with `bare: false`
+/// explicitly, not by leaving a flag unset and relying on today's default.
+/// Anthropic's own CLI help documents `--bare` as recommended for scripted
+/// calls and **slated to become the default** — the day it flips, every
+/// spawn site that never made a call either way would silently stop loading
+/// repo context with no error and no code change. Pinning `false` here now
+/// means that flip is a no-op for lopi. Checker/post-mortem sessions (F1)
+/// should construct a fourth spawn site — or extend this signature — with
+/// `bare: true`; see `LEDGER.md` for the full one-way-door writeup.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn apply_cli_caps(
     cmd: &mut Command,
@@ -117,7 +132,11 @@ pub(crate) fn apply_cli_caps(
     max_budget_usd: Option<f64>,
     allowed_tools: &[String],
     disallowed_tools: &[String],
+    bare: bool,
 ) {
+    if bare {
+        cmd.arg("--bare");
+    }
     let mode = permission_mode.unwrap_or(lopi_core::PermissionMode::default().as_str());
     cmd.arg("--permission-mode").arg(mode);
     if let Some(m) = model {
@@ -291,7 +310,7 @@ mod tests {
     #[test]
     fn apply_cli_caps_omits_optional_flags_for_none_and_empty() {
         let mut cmd = Command::new("true");
-        apply_cli_caps(&mut cmd, None, None, None, None, None, &[], &[]);
+        apply_cli_caps(&mut cmd, None, None, None, None, None, &[], &[], false);
         let argv: Vec<String> = cmd
             .as_std()
             .get_args()
@@ -314,6 +333,45 @@ mod tests {
         );
     }
 
+    /// Sprint F2 Phase 6 — every one of lopi's three worker spawn sites
+    /// (`ClaudeCode::run`, `ClaudeCode::run_streamed`,
+    /// `claude_stream::plan_streaming`) calls `apply_cli_caps` with
+    /// `bare: false` explicitly; this proves that choice at the shared seam
+    /// so all three inherit it correctly, in the same shape as
+    /// `apply_cli_caps_includes_every_configured_flag`.
+    #[test]
+    fn apply_cli_caps_worker_sessions_never_pass_bare() {
+        let mut cmd = Command::new("true");
+        apply_cli_caps(&mut cmd, None, None, None, None, None, &[], &[], false);
+        let argv: Vec<String> = cmd
+            .as_std()
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+        assert!(
+            !argv.contains(&"--bare".to_string()),
+            "worker sessions must load repo context — --bare must be absent, argv={argv:?}"
+        );
+    }
+
+    /// The other half of the same pin: when a caller (e.g. a future
+    /// checker/post-mortem spawn site, per F1's handoff) asks for `bare:
+    /// true`, `--bare` must actually appear, and as the *first* argument —
+    /// checked here rather than merely "somewhere in argv" so a future
+    /// refactor can't accidentally place it after a value it would then be
+    /// mistaken for.
+    #[test]
+    fn apply_cli_caps_bare_flag_present_when_requested() {
+        let mut cmd = Command::new("true");
+        apply_cli_caps(&mut cmd, None, None, None, None, None, &[], &[], true);
+        let argv: Vec<String> = cmd
+            .as_std()
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(argv.first(), Some(&"--bare".to_string()), "argv={argv:?}");
+    }
+
     #[test]
     fn normalize_effort_accepts_cli_levels_case_insensitively() {
         for (raw, want) in [
@@ -332,7 +390,17 @@ mod tests {
     #[test]
     fn apply_cli_caps_pins_subagent_model_to_the_session_model() {
         let mut cmd = Command::new("true");
-        apply_cli_caps(&mut cmd, Some("haiku"), None, None, None, None, &[], &[]);
+        apply_cli_caps(
+            &mut cmd,
+            Some("haiku"),
+            None,
+            None,
+            None,
+            None,
+            &[],
+            &[],
+            false,
+        );
         assert!(
             env_overrides(&cmd)
                 .iter()
@@ -347,13 +415,14 @@ mod tests {
         let mut cmd = Command::new("true");
         apply_cli_caps(
             &mut cmd,
-            Some("claude-opus-4-7"),
+            Some("claude-opus-5"),
             Some("high"),
             Some("dontAsk"),
             Some(5),
             Some(2.5),
             &["Bash".to_string()],
             &["Workflow".to_string()],
+            false,
         );
         let argv: Vec<String> = cmd
             .as_std()
@@ -366,7 +435,7 @@ mod tests {
                 "--permission-mode",
                 "dontAsk",
                 "--model",
-                "claude-opus-4-7",
+                "claude-opus-5",
                 "--effort",
                 "high",
                 "--max-turns",

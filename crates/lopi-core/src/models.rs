@@ -4,9 +4,13 @@
 //!
 //! This module owns the fallback list as the single Rust source of truth —
 //! it replaces three independently hand-maintained copies that had already
-//! drifted from each other (`lopi-agent::claude`'s `MODEL_*` constants stuck
-//! on `claude-opus-4-7`, web's `options.ts`, and macOS's
+//! drifted from each other (`lopi-agent::claude`'s worker-model config,
+//! formerly stuck on `claude-opus-4-7`, web's `options.ts`, and macOS's
 //! `LaunchControls`/`StackConfigTypes`, both on `claude-opus-4-8`).
+//!
+//! Sprint F2 Phase 4 — this list itself had drifted one generation behind:
+//! `claude-opus-4-8` led it while the current lineup is Opus 5. `claude-opus-5`
+//! is now first (current generation lists newest-first).
 
 use serde::{Deserialize, Serialize};
 
@@ -40,8 +44,9 @@ impl ModelInfo {
 /// usable offline or before the first successful live fetch, not to track
 /// every model Anthropic ships.
 pub fn fallback_models() -> Vec<ModelInfo> {
-    const TIERS: &[&str] = &["low", "medium", "high", "max"];
+    const TIERS: &[&str] = &["low", "medium", "high", "xhigh", "max"];
     vec![
+        ModelInfo::new("claude-opus-5", "Opus 5", TIERS),
         ModelInfo::new("claude-opus-4-8", "Opus 4.8", TIERS),
         ModelInfo::new("claude-sonnet-5", "Sonnet 5", TIERS),
         ModelInfo::new("claude-sonnet-4-6", "Sonnet 4.6", TIERS),

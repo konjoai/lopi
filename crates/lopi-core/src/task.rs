@@ -261,7 +261,7 @@ pub struct Task {
     /// default) omits the hint entirely.
     #[serde(default)]
     pub verifier_effort: Option<String>,
-    /// Explicit worker-model override (e.g. `"claude-opus-4-7"`). `None` (the
+    /// Explicit worker-model override (e.g. `"claude-opus-5"`). `None` (the
     /// default) leaves model selection to `claude::select_model`'s
     /// complexity/retry heuristic, unchanged from before this field existed.
     /// An explicit value is always honored verbatim, mirroring

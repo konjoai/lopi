@@ -129,6 +129,7 @@ mod tests {
             lint_errors: 0,
             diff_lines: 10,
             errors: vec![],
+            unevaluated_reason: None,
         });
         a.outcome = outcome.into();
         a

@@ -1,5 +1,5 @@
 use anyhow::Result;
-use lopi_agent::{AnthropicClient, MODEL_HAIKU};
+use lopi_agent::{model_haiku, AnthropicClient};
 use lopi_github::GitHubClient;
 use lopi_orchestrator::TaskQueue;
 use lopi_webhook::{serve as serve_webhooks, TriageConfig};
@@ -64,7 +64,7 @@ pub async fn run(
                 github,
                 limiter: None,
                 breaker: None,
-                model: MODEL_HAIKU.to_string(),
+                model: model_haiku().to_string(),
             })
         }
         _ => {

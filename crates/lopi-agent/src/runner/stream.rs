@@ -280,6 +280,7 @@ impl UsageAccrual {
             output_tokens: self.output.saturating_u32(),
             cache_read_tokens: self.cache_read.saturating_u32(),
             cache_write_tokens: self.cache_write.saturating_u32(),
+            model_deprecation_warning: None,
         };
         let estimated = usage.estimated_cost(model);
         if estimated < cap_usd * 0.8 {
@@ -311,6 +312,7 @@ impl UsageAccrual {
             output_tokens: self.output.saturating_u32(),
             cache_read_tokens: self.cache_read.saturating_u32(),
             cache_write_tokens: self.cache_write.saturating_u32(),
+            model_deprecation_warning: None,
         };
         let estimated = usage.estimated_cost(model);
         if estimated < cap_usd * HARD_STOP_MARGIN {

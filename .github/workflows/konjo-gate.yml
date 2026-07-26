@@ -568,7 +568,7 @@ jobs:
             }
 
             const header = `<!-- konjo-adversarial-review -->
-            > **Konjo Adversarial Review** — Wall 3 · Model: claude-opus-4-6
+            > **Konjo Adversarial Review** — Wall 3 · Model: claude-opus-5
             > Independent critic session. The builder wrote the code; this reviewer came in cold.
 
             `;

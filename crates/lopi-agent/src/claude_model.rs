@@ -2,22 +2,22 @@
 //! envelope — split out of `claude.rs` purely to keep that file under the
 //! 500-line CI file-size gate; every public item here is re-exported from
 //! `claude` by an explicit named `pub use` list (not a glob), so every
-//! existing `crate::claude::MODEL_*`/`select_model`/`ClaudeOutput` path
+//! existing `crate::claude::model_*`/`select_model`/`ClaudeOutput` path
 //! stays valid. Adding a new `pub` item to this module does NOT
 //! automatically make it visible at `crate::claude::*` — extend that list
 //! in `claude.rs` too.
 
+use crate::model_config::{model_haiku, model_opus, model_sonnet};
 use lopi_core::Task;
 use serde::Deserialize;
 
 // ── Model identifiers ─────────────────────────────────────────────────────────
-
-/// Claude Haiku model identifier — lowest cost, fast latency.
-pub const MODEL_HAIKU: &str = "claude-haiku-4-5-20251001";
-/// Claude Sonnet model identifier — default balanced model.
-pub const MODEL_SONNET: &str = "claude-sonnet-4-6";
-/// Claude Opus model identifier — highest capability, used for complex or retried tasks.
-pub const MODEL_OPUS: &str = "claude-opus-4-7";
+//
+// Sprint F2 Phase 4 — moved from hardcoded `pub const &str` (two generations
+// stale: `claude-opus-4-7` while the current lineup is Opus 5) to
+// `crate::model_config`'s runtime-read, operator-overridable config. See
+// that module's doc comment for the override file locations and the
+// dateless-ID pinning-semantics note.
 
 /// Sentinel substring used by the run loop to detect a non-retryable billing
 /// failure from the Anthropic API. Matched against the error chain so we don't
@@ -49,13 +49,13 @@ pub fn select_model(task: &Task, attempt: u8) -> String {
         return m.clone();
     }
     if attempt >= 2 {
-        return MODEL_OPUS.to_string(); // escalate on repeated failure
+        return model_opus().to_string(); // escalate on repeated failure
     }
     let size = task.constraints.len() + task.allowed_dirs.len();
     match size {
-        0..=2 => MODEL_HAIKU,
-        3..=6 => MODEL_SONNET,
-        _ => MODEL_OPUS,
+        0..=2 => model_haiku(),
+        3..=6 => model_sonnet(),
+        _ => model_opus(),
     }
     .to_string()
 }
@@ -160,7 +160,7 @@ mod tests {
     fn select_model_haiku_for_minimal_task() {
         // 0 constraints + 2 default allowed_dirs = size 2 → Haiku
         let t = Task::new("fix a typo");
-        assert_eq!(select_model(&t, 0), MODEL_HAIKU);
+        assert_eq!(select_model(&t, 0), model_haiku());
     }
 
     #[test]
@@ -168,7 +168,7 @@ mod tests {
         let mut t = Task::new("implement feature");
         t.constraints = vec!["no new deps".into(), "keep API stable".into()];
         // 2 constraints + 2 default dirs = size 4 → Sonnet
-        assert_eq!(select_model(&t, 0), MODEL_SONNET);
+        assert_eq!(select_model(&t, 0), model_sonnet());
     }
 
     #[test]
@@ -182,19 +182,19 @@ mod tests {
             "c5".into(),
         ];
         // 5 constraints + 2 dirs = size 7 → Opus
-        assert_eq!(select_model(&t, 0), MODEL_OPUS);
+        assert_eq!(select_model(&t, 0), model_opus());
     }
 
     #[test]
     fn select_model_escalates_to_opus_at_attempt_2() {
         let t = Task::new("simple task");
-        assert_eq!(select_model(&t, 2), MODEL_OPUS);
+        assert_eq!(select_model(&t, 2), model_opus());
     }
 
     #[test]
     fn select_model_escalates_to_opus_at_attempt_3() {
         let t = Task::new("simple task");
-        assert_eq!(select_model(&t, 3), MODEL_OPUS);
+        assert_eq!(select_model(&t, 3), model_opus());
     }
 
     #[test]
@@ -207,10 +207,10 @@ mod tests {
             "c4".into(),
             "c5".into(),
         ];
-        t.model = Some(MODEL_HAIKU.to_string());
+        t.model = Some(model_haiku().to_string());
         // Would heuristically resolve to Opus (size 7) and escalate at attempt
         // 2 — the explicit override wins over both, mirroring verifier_model.
-        assert_eq!(select_model(&t, 2), MODEL_HAIKU);
+        assert_eq!(select_model(&t, 2), model_haiku());
     }
 
     /// Regression test: the one-shot JSON envelope (`self.run()`, backing

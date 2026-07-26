@@ -84,7 +84,7 @@ export type AgentEvent =
   | {
       type: 'turn_metrics';
       task_id: string;
-      pressure: number; // 0..1, ContextWindow.token_pressure()
+      pressure: number; // 0..1, ContextWindow.token_pressure() — estimate, cl100k_base (not a Claude token count); see KT-2.4
       activity: number; // 0..1, normalized tokens/sec
       tokens_per_sec: number;
       cost_usd: number;

@@ -6,7 +6,7 @@ async fn create_task_with_loop_fields_returns_201() {
     let body = serde_json::to_string(&serde_json::json!({
         "goal": "verified capped loop",
         "verifier_required": true,
-        "verifier_model": "claude-opus-4-7",
+        "verifier_model": "claude-opus-5",
         "verifier_effort": "high",
         "report": "telegram",
         "max_iterations": 5,
@@ -146,12 +146,12 @@ fn apply_loop_fields_threads_model_and_effort_overrides() {
     let mut task = Task::new("overridden task");
     let req: CreateTaskRequest = serde_json::from_value(serde_json::json!({
         "goal": "overridden task",
-        "model": "claude-opus-4-7",
+        "model": "claude-opus-5",
         "effort": "max",
     }))
     .unwrap();
     apply_loop_fields(&mut task, &req).unwrap();
-    assert_eq!(task.model.as_deref(), Some("claude-opus-4-7"));
+    assert_eq!(task.model.as_deref(), Some("claude-opus-5"));
     assert_eq!(task.effort.as_deref(), Some("max"));
 }
 
@@ -175,7 +175,7 @@ fn apply_loop_fields_omitting_model_lets_select_models_heuristic_choose() {
     // `select_model_haiku_for_minimal_task` pins in lopi-agent::claude.
     assert_eq!(
         lopi_agent::select_model(&task, 0),
-        lopi_agent::MODEL_HAIKU,
+        lopi_agent::model_haiku(),
         "a task with no model override resolves through select_model's size heuristic"
     );
 }

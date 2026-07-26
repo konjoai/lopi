@@ -56,7 +56,7 @@ impl Default for StabilityConfig {
             n_samples: 5,
             stable_threshold: 0.15,
             warning_threshold: 0.35,
-            model: crate::claude::MODEL_SONNET.to_string(),
+            model: crate::claude::model_sonnet().to_string(),
         }
     }
 }

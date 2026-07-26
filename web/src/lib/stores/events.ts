@@ -84,7 +84,10 @@ export function describe(ev: AgentEvent): { summary: string; tier: PulseEntry['t
       };
     case 'turn_metrics':
       return {
-        summary: `turn · ${Math.round(ev.pressure * 100)}% pressure · ${Math.round(ev.tokens_per_sec)} tok/s · $${ev.cost_usd.toFixed(4)}`,
+        // "pressure" is an estimate (cl100k_base — OpenAI's GPT-4 BPE, not a
+        // Claude token count) — see KT-2.4, Sprint F2 — named here so a log
+        // line never reads as an authoritative Claude token count.
+        summary: `turn · ~${Math.round(ev.pressure * 100)}% pressure (est.) · ${Math.round(ev.tokens_per_sec)} tok/s · $${ev.cost_usd.toFixed(4)}`,
         tier: ev.pressure > 0.85 ? 'warn' : 'info'
       };
     case 'verifier_verdict':

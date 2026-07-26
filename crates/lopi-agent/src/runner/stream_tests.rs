@@ -133,7 +133,7 @@ fn accrual_has_usage_on_result_even_with_zero_tokens() {
 fn check_soft_warn_disabled_when_cap_is_zero() {
     let acc = UsageAccrual::default();
     acc.observe(&usage(1_000_000, 1_000_000, 0, 0));
-    assert_eq!(acc.check_soft_warn(crate::claude::MODEL_OPUS, 0.0), None);
+    assert_eq!(acc.check_soft_warn(crate::claude::model_opus(), 0.0), None);
 }
 
 #[test]
@@ -141,7 +141,7 @@ fn check_soft_warn_none_under_the_threshold() {
     let acc = UsageAccrual::default();
     // A trickle of tokens on a generous cap — nowhere near 80%.
     acc.observe(&usage(10, 10, 0, 0));
-    assert_eq!(acc.check_soft_warn(crate::claude::MODEL_SONNET, 10.0), None);
+    assert_eq!(acc.check_soft_warn(crate::claude::model_sonnet(), 10.0), None);
 }
 
 #[test]
@@ -149,7 +149,7 @@ fn check_soft_warn_fires_once_at_80_percent() {
     let acc = UsageAccrual::default();
     // Sonnet: 300K output tokens * $15/MTok = $4.50 — 90% of a $5 cap.
     acc.observe(&usage(300_000, 0, 0, 0));
-    let first = acc.check_soft_warn(crate::claude::MODEL_SONNET, 5.0);
+    let first = acc.check_soft_warn(crate::claude::model_sonnet(), 5.0);
     assert!(first.is_some(), "must fire once 80% of the cap is crossed");
     assert!((first.unwrap() - 4.5).abs() < 0.01);
 
@@ -157,7 +157,7 @@ fn check_soft_warn_fires_once_at_80_percent() {
     // re-fire — the warn latches per stream.
     acc.observe(&usage(10, 0, 0, 0));
     assert_eq!(
-        acc.check_soft_warn(crate::claude::MODEL_SONNET, 5.0),
+        acc.check_soft_warn(crate::claude::model_sonnet(), 5.0),
         None,
         "must not fire a second time for the same stream"
     );
@@ -190,7 +190,7 @@ fn emit_budget_soft_warn_sends_the_structured_event() {
 fn check_hard_stop_disabled_when_cap_is_zero() {
     let acc = UsageAccrual::default();
     acc.observe(&usage(1_000_000, 1_000_000, 0, 0));
-    assert_eq!(acc.check_hard_stop(crate::claude::MODEL_OPUS, 0.0), None);
+    assert_eq!(acc.check_hard_stop(crate::claude::model_opus(), 0.0), None);
 }
 
 #[test]
@@ -199,7 +199,7 @@ fn check_hard_stop_none_under_the_cap() {
     // 90% of cap (same fixture as the soft-warn test) must not hard-stop —
     // 80% and 100% are genuinely different thresholds.
     acc.observe(&usage(300_000, 0, 0, 0));
-    assert_eq!(acc.check_hard_stop(crate::claude::MODEL_SONNET, 5.0), None);
+    assert_eq!(acc.check_hard_stop(crate::claude::model_sonnet(), 5.0), None);
 }
 
 #[test]
@@ -211,7 +211,7 @@ fn check_hard_stop_fires_at_the_95_percent_margin_not_only_at_100() {
     // realized spend past the cap — pins that it fires here, not only once
     // the estimate reaches the cap outright.
     acc.observe(&usage(317_000, 0, 0, 0));
-    let first = acc.check_hard_stop(crate::claude::MODEL_SONNET, 5.0);
+    let first = acc.check_hard_stop(crate::claude::model_sonnet(), 5.0);
     assert!(
         first.is_some(),
         "must fire once the margin (95% of cap) is crossed, before 100%"
@@ -223,14 +223,14 @@ fn check_hard_stop_fires_once_at_100_percent() {
     let acc = UsageAccrual::default();
     // Sonnet: 400K output tokens * $15/MTok = $6.00 — over a $5 cap.
     acc.observe(&usage(400_000, 0, 0, 0));
-    let first = acc.check_hard_stop(crate::claude::MODEL_SONNET, 5.0);
+    let first = acc.check_hard_stop(crate::claude::model_sonnet(), 5.0);
     assert!(first.is_some(), "must fire once the cap is reached/crossed");
     assert!((first.unwrap() - 6.0).abs() < 0.01);
 
     // Latches — a second poll for the same stream (about to be killed)
     // must not re-request the abort.
     assert_eq!(
-        acc.check_hard_stop(crate::claude::MODEL_SONNET, 5.0),
+        acc.check_hard_stop(crate::claude::model_sonnet(), 5.0),
         None,
         "must not fire a second time for the same stream"
     );

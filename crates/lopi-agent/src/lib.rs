@@ -17,6 +17,9 @@ pub mod claude_events;
 /// Re-exported from `claude` — see that module's doc comment.
 mod claude_model;
 mod claude_stream;
+/// Sprint F2 Phase 4 — externalized worker model IDs (no recompile needed
+/// to change one). See that module's doc comment.
+pub mod model_config;
 /// Subprocess-env scrubbing and fix-prompt error compression.
 /// Re-exported from `claude` — see that module's doc comment.
 mod claude_support;
@@ -28,6 +31,9 @@ mod dag_rows;
 /// across execution-ok, shell-test, judge, and suite tiers, fail-closed.
 pub mod eval;
 mod prompt;
+/// Sprint F2 Phase 3 — externalized per-model token pricing (no recompile
+/// needed to change a rate). See that module's doc comment.
+pub mod pricing;
 /// MAXX kill-test prep — logs `rate_limit_event` cadence for a real session's
 /// eventual run, off by default (see `docs/ops/NEXT_SESSION_PROMPT.md`).
 pub mod quota_kill_log;
@@ -49,7 +55,7 @@ pub mod transcript_import;
 pub mod verifier;
 
 pub use api_client::{AnthropicClient, ApiUsage, LOPI_SYSTEM_PROMPT};
-pub use claude::{select_model, ClaudeCode, MODEL_HAIKU, MODEL_OPUS, MODEL_SONNET};
+pub use claude::{model_haiku, model_opus, model_sonnet, select_model, ClaudeCode};
 pub use dag::{AgentDag, DagNode, NodeKind, NodeStatus};
 pub use eval::{
     EvalContext, ExecutionOkEval, Judge, JudgeEval, ShellTestEval, SuiteEval, TierEvaluator,

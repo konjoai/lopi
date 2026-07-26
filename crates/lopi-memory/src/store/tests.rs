@@ -158,7 +158,7 @@ fn make_turn_metrics(task_id: TaskId) -> TurnMetrics {
         turn_id: Uuid::new_v4(),
         task_id,
         session_id: Uuid::new_v4(),
-        model: "claude-sonnet-4-6".into(),
+        model: "claude-sonnet-5".into(),
         attempt_number: 1,
         input_tokens: 500,
         output_tokens: 200,
