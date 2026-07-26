@@ -3,7 +3,12 @@
 //   implement_streamed() — allowed_dirs, forbidden_dirs arrays
 //   fix()                — allowed_dirs only (error text is free-form prose; TOON skipped)
 //
-// Token savings: ~17/prompt for dir/constraint arrays; ~158/attempt for pattern table.
+// Measured token savings (cl100k_base, vs. compact JSON, on real corpus —
+// see crates/lopi-toon/benches/results/2026-07-26_token_savings.md):
+// adding the constraint array to a dirs-only prompt costs ~2.0 tokens/prompt
+// (a small loss, not a saving); adding the pattern table saves ~5.0
+// tokens/attempt. Both replace unsourced "~17/prompt" and "~158/attempt"
+// figures that did not trace to any committed measurement.
 
 use crate::claude_events::{parse_line, StreamEvent};
 use anyhow::{Context, Result};

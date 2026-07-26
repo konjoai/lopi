@@ -1,3 +1,104 @@
+## [0.27.1] — Sprint F0: Honesty Pass — measurement replaces overclaiming
+
+lopi shipped three performance numbers with no measurement behind them, advertised one
+feature unreachable from the built binary, and had a benchmark harness that had never
+produced a committed result. This sprint made the claims true or removed them. No
+runtime behavior changed — docs, benchmarks, CI scope, and one advisory CI check only.
+
+**KT-0.1 — does the benchmark harness still run?** `./benchmarks/run.sh --dry-run`
+enumerated all ten T01–T10 tasks correctly; `--tasks T01` was not run against a real
+Claude subscription because doing so is explicitly an attended, hardware-required
+action (real money, real wall-clock, a human watching) — not something an unattended
+agent session can honestly perform. The harness itself is confirmed not bit-rotted, so
+Phases 1/2/4/5 did **not** defer to F0b. Phase 3 (the full corpus run) remains genuinely
+undone — see below and `NEXT_SESSION_PROMPT.md`.
+
+**KT-0.2 — is `whatsapp` genuinely unreachable from the binary?** Confirmed
+independently: `grep -rn "whatsapp\|twilio" src/` returns nothing, and
+`grep -n "lopi_remote" src/sail_commands.rs` shows only `lopi_remote::telegram::run`
+is ever called. `docs/security/TRIFECTA_PATHS.md` §1 row D's claim holds.
+
+- **[Bench]** Phase 1 — added `crates/lopi-toon/benches/token_savings.rs`, measuring
+  TOON vs. compact JSON on lopi's real prompt payload shapes (the three
+  `encode_task_context` call sites in `crates/lopi-agent/src/claude.rs`/`claude_support.rs`),
+  not synthetic data: 37 real task goals (27 from
+  `artifacts/diagnostics/20260717T113652Z/tasks.json`, 10 from `benchmarks/run.sh`) ×
+  2 real `allowed_dirs`/`forbidden_dirs` sets from `lopi.toml.example`, plus this repo's
+  own `CLAUDE.md` constraints and schema-conformant representative pattern/lesson rows
+  (no `lopi.db` was present to pull live rows from — noted in the harness rather than
+  silently presented as production data). No `ANTHROPIC_API_KEY` was available, so
+  tokens were counted with `tiktoken-rs` `cl100k_base` (OpenAI's GPT-4 BPE) — **not** a
+  Claude token count, labeled as such everywhere the number appears. Result committed
+  to `crates/lopi-toon/benches/results/2026-07-26_token_savings.md`: **3.3% fewer
+  tokens overall**, ranging from a small *loss* on constraint-array-only payloads to
+  ~6% on the pattern-memory table. The previously-stated "~40% fewer tokens than JSON"
+  in `crates/lopi-toon/src/lib.rs` and `README.md` did not trace to any measurement and
+  has been replaced with the real number.
+- **[Bench]** Phase 2 — `crates/lopi-agent/src/claude.rs:5-6`'s unsourced
+  "~17/prompt for dir/constraint arrays; ~158/attempt for pattern table" comment
+  replaced with the same harness's isolated marginal measurements: adding the
+  constraint array to a dirs-only prompt costs **~2.0 tokens/prompt** (a small loss, not
+  a saving) and adding the pattern table saves **~5.0 tokens/attempt** — both far below
+  the old, unsourced figures. Cites the committed result file directly.
+- **[Bench]** Phase 3 — **not completed.** Running the full T01–T10 corpus against a
+  real Claude subscription and committing `benchmarks/results/<ts>_corpus/` requires an
+  attended session per `.claude/rules/benchmarking.md` (≥5 warmup runs, documented
+  hardware, p50/p95/p99) and this sprint's own gate definition — it was not run rather
+  than faked. `benchmarks/corpus/README.md`'s "Expected Pass Rate" column is left as an
+  explicitly-labeled pre-registered estimate, not renamed to "Measured," with a note
+  pointing at this gap. Handed off in `NEXT_SESSION_PROMPT.md`.
+- **[Doc]** Phase 4 — README truth pass, every Highlights/Safety bullet checked against
+  the code (citations in the PR description):
+  - WhatsApp removed from the Highlights feature list per KT-0.2, with an explicit note
+    that `lopi-remote::whatsapp` is *not* being deleted — "unreachable from the binary
+    right now" and "safe to delete" are separate claims, and this sprint only
+    established the first. A later sprint deciding to delete it starts from that
+    finding, not from an inherited conclusion this sprint didn't earn.
+  - Fixed a stale branch-naming claim: README said `orka/<task_id>/<attempt>`; the code
+    (`crates/lopi-agent/src/runner/run_loop.rs:186`) has always produced
+    `lopi/<task_id>-attempt-<n>` — `orka` predates this project's current name and was
+    never updated in the README.
+  - Fixed "max-diff-line cap" — the code (`crates/lopi-core/src/agent.rs`) implements a
+    capped *scoring penalty* (0.10/1000 lines, capped at 0.30 total), not a hard
+    line-count limit that blocks a diff.
+  - Corrected the "runs on your existing Claude subscription, no separate API key
+    required" claim: true for plan/implement/fix, **not** true for the verifier
+    (`runner/verifier_runner.rs`), LLM-judge acceptance (`runner/eval_runner.rs`), or
+    post-mortem (`runner/run_loop.rs`) — all three require `Runner::with_api`, and
+    `grep -rn "with_api" crates/lopi-orchestrator/` and `src/` both come back empty, so
+    none of them ever run in the built binary regardless of CLI flags. The stability
+    gate is the one exception — `--stability-gate` wires its own separate client.
+  - Corrected three Safety-section claims found materially inaccurate on read-through:
+    branches are not "auto-deleted" on rollback (the worktree is; the branch ref
+    persists until a manual `lopi worktree gc`); `allow_self_modify: false` is enforced
+    on the CLI/REPL paths only, not the web dashboard's task-creation API or the
+    `lopi_submit_task` MCP tool (a real gap, now stated rather than implied away); and
+    "no retry allowed after a [safety] violation" is false as written — a diff-scope
+    violation sets `TaskStatus::RolledBack` but returns `TestPhaseOutcome::Continue`,
+    and the attempt loop retries with model escalation, same as any other failure
+    (`crates/lopi-agent/src/runner/test_phase.rs`, `runner/run_loop.rs`).
+  - Fixed a stale version badge (`v0.25.0` → `v0.27.1`) found while auditing the header.
+  - "Three UI surfaces," "Ships into Claude itself," "Self-improving," and "Event-driven"
+    were independently re-verified against the code and left unchanged — all four hold.
+- **[CI]** Phase 4 gate blind spot — added `.konjo/scripts/reachability_check.py` and a
+  new advisory (`continue-on-error: true`, `ADVISORY BY DESIGN`) G1 step. The existing
+  `dead_code` gate certifies *rustc* reachability (a `pub mod` in a library crate is
+  never dead by rustc's definition, whatever the shipped binary calls) — a different
+  property from "reachable when you run `lopi`," which is exactly how `whatsapp` passed
+  dead-code while being unreachable. The new check is a grep-shaped heuristic (own
+  docstring has the full method and known limitations), never blocking, that flags
+  `pub mod`s unreferenced anywhere else in the workspace — it correctly flags
+  `lopi-remote::whatsapp`/`egress` among ~20 results.
+- **[CI]** Phase 5 — read the file-size gate (`konjo-gate.yml:396`) before changing
+  anything: its scan is already `\.(rs|py)$`-scoped, so `web/src/lib/stores/stack.ts`
+  (~2,200 lines) was never in scope and is not a silently-passing violation. Per the
+  brief's two acceptable outcomes, chose to state the existing scope explicitly in the
+  step's own comment (with the reason) rather than extend it now — extending to
+  web/macos would immediately require the `stack.ts` split as a blocking prerequisite,
+  which is out of scope for a measurement/documentation sprint. Logged as follow-up.
+- **[Chore]** Version bumped `0.27.0` → `0.27.1` (root `Cargo.toml`, all
+  `version.workspace = true` crates) — patch, no behavior change.
+
 ## [Unreleased] — Doc-Integrity: re-verify all four stale `decays: state` docs, reset `G0`
 
 `G0 · Doc Staleness` went red, then stayed red one gate at a time: fixing
