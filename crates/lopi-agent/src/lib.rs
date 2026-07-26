@@ -53,6 +53,9 @@ mod test_support;
 pub mod transcript_import;
 /// Konjo Verifier — rubric-guided Opus second-score pass (Sprint S).
 pub mod verifier;
+/// CLI backend for the Konjo Verifier — drives `claude -p` on subscription
+/// auth (Sprint F1 Phase 1).
+mod verifier_cli;
 
 pub use api_client::{AnthropicClient, ApiUsage, LOPI_SYSTEM_PROMPT};
 pub use claude::{model_haiku, model_opus, model_sonnet, select_model, ClaudeCode};

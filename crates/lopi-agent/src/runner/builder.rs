@@ -67,6 +67,16 @@ impl AgentRunner {
         self.verifier_enabled
     }
 
+    /// Whether a direct-API client is configured (`with_api`). Sprint F1 —
+    /// `run_verifier_pass` uses this to select its backend (API when set,
+    /// the `claude` CLI otherwise); exposed so a cross-crate regression test
+    /// can assert it's reproducing the real "no client" deployment shape
+    /// rather than an accidental test fixture.
+    #[must_use]
+    pub const fn api_client_is_none_for_test(&self) -> bool {
+        self.api_client.is_none()
+    }
+
     /// Phase 5b — wire custom score weights for this task's retry loop.
     /// Allows the pool to adjust lint/diff penalties based on user-tuned
     /// preferences or derived from past attempt success patterns.

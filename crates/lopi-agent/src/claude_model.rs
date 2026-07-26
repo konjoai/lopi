@@ -84,6 +84,13 @@ pub struct ClaudeOutput {
     /// Raw stdout from the CLI process — fallback when JSON parsing fails.
     #[serde(skip)]
     pub raw: String,
+    /// Structured output conforming to a caller-supplied `--json-schema`,
+    /// when the invocation passed that flag and the CLI populated it
+    /// (Sprint F1 Phase 1 — `.konjo/killtests/F1/KT-1.1.md` measured this at
+    /// 30/30 for a `VerifierVerdict`-shaped schema). `None` for any
+    /// invocation that didn't request structured output.
+    #[serde(default)]
+    pub structured_output: Option<serde_json::Value>,
 }
 
 impl ClaudeOutput {
@@ -125,6 +132,7 @@ pub(crate) fn parse_claude_output(stdout: String, json_output: bool) -> ClaudeOu
                         duration_ms: None,
                         usage: None,
                         raw: stdout,
+                        structured_output: None,
                     },
                 }
             }
@@ -136,6 +144,7 @@ pub(crate) fn parse_claude_output(stdout: String, json_output: bool) -> ClaudeOu
                 duration_ms: None,
                 usage: None,
                 raw: stdout,
+                structured_output: None,
             },
         }
     } else {
@@ -147,6 +156,7 @@ pub(crate) fn parse_claude_output(stdout: String, json_output: bool) -> ClaudeOu
             duration_ms: None,
             usage: None,
             raw: stdout,
+            structured_output: None,
         }
     }
 }

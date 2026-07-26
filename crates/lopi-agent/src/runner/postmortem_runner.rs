@@ -3,32 +3,56 @@
 //! Separated from `run_loop.rs` to stay within the 500-line budget.
 //! The lower-level `run_postmortem_quiet()` lives in `postmortem.rs`.
 
-use super::{postmortem, AgentRunner};
+use super::{postmortem, postmortem_cli, AgentRunner};
 use crate::claude::model_haiku;
+use tracing::warn;
 
 impl AgentRunner {
-    /// Run the failure post-mortem if both adaptive retry and a direct-API
-    /// client are configured. Best-effort; on any error a warning is logged
-    /// and the agent loop continues normally. On success the derived
-    /// constraint is persisted as a pattern + a "recovery" lesson.
+    /// Run the failure post-mortem if adaptive retry produced a failure to
+    /// reflect on. Best-effort; on any error a warning is logged and the
+    /// agent loop continues normally. On success the derived constraint is
+    /// persisted as a pattern + a "recovery" lesson.
+    ///
+    /// Backend selection (Sprint F1 Phase 3) — same rule as
+    /// `run_verifier_pass`: an `AnthropicClient` when one is configured, the
+    /// `claude` CLI otherwise. Before this sprint this method required a
+    /// client and silently no-op'd without one — which, per `with_api` never
+    /// being wired in production, meant the post-mortem never ran at all.
     pub(super) async fn run_postmortem_if_configured(&self) {
-        let Some(client) = self.api_client.as_ref() else {
-            return;
-        };
         let Some(error_log) = self.last_error.as_deref() else {
             return;
         };
 
         self.log("🧠 running failure post-mortem…");
-        let outcome = postmortem::run_postmortem_quiet(
-            client,
-            self.limiter.as_ref(),
-            self.breaker.as_ref(),
-            model_haiku(),
-            &self.task.goal,
-            error_log,
-        )
-        .await;
+        let outcome = match self.api_client.as_ref() {
+            Some(client) => {
+                postmortem::run_postmortem_quiet(
+                    client,
+                    self.limiter.as_ref(),
+                    self.breaker.as_ref(),
+                    model_haiku(),
+                    &self.task.goal,
+                    error_log,
+                )
+                .await
+            }
+            None => {
+                match postmortem_cli::run_postmortem_cli(
+                    &self.repo_path,
+                    model_haiku(),
+                    &self.task.goal,
+                    error_log,
+                )
+                .await
+                {
+                    Ok(out) => Some(out),
+                    Err(e) => {
+                        warn!(error = %e, "post-mortem (cli) failed; no pattern derived");
+                        None
+                    }
+                }
+            }
+        };
 
         if let Some(out) = outcome {
             self.persist_postmortem_outcome(&out.constraint).await;

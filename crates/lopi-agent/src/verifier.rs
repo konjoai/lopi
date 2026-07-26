@@ -7,6 +7,7 @@ use crate::api_client::AnthropicClient;
 use crate::claude::{model_opus, model_sonnet};
 use anyhow::{Context, Result};
 use lopi_core::{safe_truncate, Rubric, VerifierVerdict};
+use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::process::Command;
 
@@ -107,9 +108,25 @@ pub fn default_rubric() -> Rubric {
     }
 }
 
-/// Calls Opus to grade an agent's diff against a rubric.
+/// Which transport a [`VerifierAgent`] grades over. Sprint F1 Phase 1 —
+/// before this sprint only [`Api`](Backend::Api) existed, and nothing in the
+/// built binary ever constructed one (`with_api` production-unwired), so the
+/// verifier returned `true` unconditionally on every run. [`Cli`](Backend::Cli)
+/// is the default (see `verifier_runner.rs`'s backend-selection point) because
+/// it is the path that actually runs, on subscription auth, with no API key.
+enum Backend {
+    /// Direct-API grading — the pre-F1 path. Kept as the escalation tier
+    /// (Phase 5) for when an operator has wired `with_api()`.
+    Api(Arc<AnthropicClient>),
+    /// `claude -p` subprocess grading (Sprint F1 Phase 1) —
+    /// `crate::verifier_cli::grade_via_cli`. `repo_path` is the worktree cwd
+    /// the checker reads the diff from, matching `get_repo_diff`.
+    Cli { repo_path: PathBuf },
+}
+
+/// Grades an agent's diff against a rubric — the Konjo Verifier.
 pub struct VerifierAgent {
-    client: Arc<AnthropicClient>,
+    backend: Backend,
     /// Maker/checker isolation: when `true` (the default), the verifier never
     /// sees the maker's plan/chain-of-thought — it grades the artifact (diff)
     /// against the goal and rubric on its own merits, so the checker is not
@@ -122,7 +139,23 @@ impl VerifierAgent {
     /// maker's plan is excluded from the verifier's context (true maker/checker).
     pub fn new(client: Arc<AnthropicClient>) -> Self {
         Self {
-            client,
+            backend: Backend::Api(client),
+            isolated: true,
+        }
+    }
+
+    /// Sprint F1 Phase 1 — grade via the `claude` CLI instead of a direct-API
+    /// client. `repo_path` is the worktree the checker treats as its cwd, so
+    /// it reads the same diff the worker just produced. Selected automatically
+    /// (not a config flag) whenever no `AnthropicClient` is configured — see
+    /// `verifier_runner.rs::run_verifier_pass`. Defaults to **isolated**
+    /// grading, same as [`new`](Self::new).
+    #[must_use]
+    pub fn new_cli(repo_path: impl Into<PathBuf>) -> Self {
+        Self {
+            backend: Backend::Cli {
+                repo_path: repo_path.into(),
+            },
             isolated: true,
         }
     }
@@ -161,12 +194,18 @@ impl VerifierAgent {
     ) -> Result<VerifierVerdict> {
         let prompt = build_prompt(goal, plan, diff, test_output, rubric, !self.isolated);
         let system = build_system_prompt(effort);
-        let (text, _) = self
-            .client
-            .complete(model, &system, &prompt, 1_024)
-            .await
-            .context("verifier API call")?;
-        parse_verdict(&text)
+        match &self.backend {
+            Backend::Api(client) => {
+                let (text, _) = client
+                    .complete(model, &system, &prompt, 1_024)
+                    .await
+                    .context("verifier API call")?;
+                parse_verdict(&text)
+            }
+            Backend::Cli { repo_path } => {
+                crate::verifier_cli::grade_via_cli(repo_path, &system, &prompt, model, effort).await
+            }
+        }
     }
 }
 
@@ -201,7 +240,12 @@ fn build_prompt(
     )
 }
 
-fn parse_verdict(text: &str) -> Result<VerifierVerdict> {
+/// Parse a verdict from free-text model output (fences stripped first).
+/// Shared by both backends: the API path always uses it; the CLI path
+/// (`verifier_cli.rs`) falls back to it only when `structured_output` is
+/// absent — see `.konjo/killtests/F1/KT-1.1.md` (0/30 malformed in that
+/// fallback role, measured against a real subscription).
+pub(crate) fn parse_verdict(text: &str) -> Result<VerifierVerdict> {
     let clean = strip_fences(text);
     serde_json::from_str(clean).with_context(|| format!("verifier JSON parse error — raw: {clean}"))
 }

@@ -5,6 +5,65 @@ the `lopi` repo. Newest first.
 
 ---
 
+## Next Session — after Sprint F1 (The Verifier Is Real) — F9 unblocked; three carried-forward items
+
+**Sprint F1 gave the verifier, the judge tier, and post-mortem a CLI backend
+(`claude -p` on subscription auth), so all three actually run in every real
+deployment instead of silently no-op'ing forever (`with_api` was never wired in
+production — confirmed again by this sprint's own `grep`).** Phases 1–4 shipped;
+Phases 5 (two-tier checker) and 6 (`--append-system-prompt` on the worker) did not —
+both are gated on a corpus measurement this session couldn't run, per the brief's own
+"ship without it" fallback. Read first, in order: `CHANGELOG.md`'s `[0.29.0] —
+Sprint F1` entry, `LEDGER.md`'s Sprint F1 entry, all four `.konjo/killtests/F1/KT-1.*.md`
+files, then this file's own words below. F1 was this repo's Sprint F1; Sprint F2
+(Correctness Holes) already landed independently before F1 did — see `CHANGELOG.md`'s
+`[0.28.0]` entry — so the two are not in the numeric order their briefs implied.
+
+Four things carry forward:
+
+1. **KT-1.3's `--bare` finding needs re-verification on a real (non-sandboxed) target
+   machine.** In this session's own container, `--bare` failed CLI authentication
+   6/6 times, reproducibly — `claude --help` documents it as skipping "keychain
+   reads," and this container's credential wiring appears to depend on one. The
+   checker ships without `--bare` as a result. **This may be specific to this
+   sandboxed session's credential proxying and not a general property of a real
+   user's subscription login** (which more commonly reads a plain on-disk token
+   under `~/.claude/`, not a keychain). Whoever next has access to a real machine
+   with a logged-in `claude` CLI should re-run KT-1.3's `--bare` vs. non-`--bare`
+   paired comparison for real. If `--bare` turns out to work there, re-add it to
+   `verifier_cli.rs`/`postmortem_cli.rs` for the cost/latency win KT-1.2 documented
+   (a non-`--bare` checker session loads hooks/`CLAUDE.md`/skills and can burn real
+   turns/spend on tool-discovery detours before concluding it's denied) — do not
+   assume the auth failure generalizes without checking, but do not assume it's
+   safe to add `--bare` back without checking either.
+2. **The T01–T10 corpus run is still outstanding — now blocking two sprints'
+   worth of work, not one.** F0's Phase 3 flagged it as attended, hardware-required,
+   and not runnable in an unattended session; F1's Phase 5 (two-tier checker cost/
+   agreement measurement) and Phase 6 (worker system-prompt pass-rate measurement)
+   both needed it too and both went unshipped as a result, per each brief's own
+   "measure first, or don't ship" instruction. Whoever picks this up should treat one
+   corpus run as unblocking three sprints' pending measurements at once, not run it
+   three separate times. Follow `benchmarks/corpus/README.md` §Measurement Protocol
+   and `.claude/rules/benchmarking.md`.
+3. **F4 (session continuity, not yet started as of this writing) must not resume the
+   checker session.** Phase 1's design constraint — "fresh session, never resumed" —
+   is what makes the checker a checker rather than a continuation of the maker's own
+   context. `verifier_cli.rs`/`postmortem_cli.rs` never pass `--resume`; a unit test
+   in each (`grade_via_cli_argv_never_includes_bare_or_resume`,
+   `postmortem_cli_argv_never_includes_bare_or_resume`) pins this. If F4 introduces a
+   shared session-continuity helper for worker spawns, it must not be reused for
+   these two call sites without deliberately re-deciding this constraint, not by
+   accident.
+4. **F9 (Evidence and answerability) is now unblocked** — F1's own brief named this as
+   the dependency ("An evidence bundle whose verifier verdict is always `true` is
+   worse than no bundle"). The verifier verdict is no longer always `true`; F9 can
+   proceed on that basis, though a real live confirmation (a `lopi sail` run, no
+   `ANTHROPIC_API_KEY`, a planted rubric violation actually rejected) is worth doing
+   once more on whatever machine ends up running F9, since this sprint's own live
+   confirmation ran in the same sandboxed container as KT-1.3's `--bare` finding.
+
+---
+
 ## Next Session — after Sprint F2 (Correctness Holes) — Sprint F3 decouples logs; two inherited items for F1/F5
 
 **Sprint F2 closed four defects (scorer stack detection, the unevaluated-repo
