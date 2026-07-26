@@ -9,12 +9,15 @@
 
 use anyhow::{Context, Result};
 use futures::StreamExt;
-use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::io::BufReader;
 
 use crate::claude::model_haiku;
+
+#[path = "api_client_wire.rs"]
+mod api_client_wire;
+use api_client_wire::{decode_sse_stream, CompleteResp, SystemBlock, UserMessage};
 
 // ── Shared HTTP client (2.5) ──────────────────────────────────────────────────
 
@@ -41,133 +44,6 @@ fn shared_http() -> Arc<reqwest::Client> {
         )
     })
     .clone()
-}
-
-// ── Wire types ────────────────────────────────────────────────────────────────
-
-#[derive(Debug, Serialize)]
-struct CacheControl {
-    #[serde(rename = "type")]
-    kind: &'static str,
-}
-
-impl CacheControl {
-    const fn ephemeral() -> Self {
-        Self { kind: "ephemeral" }
-    }
-}
-
-#[derive(Debug, Serialize)]
-struct SystemBlock<'a> {
-    #[serde(rename = "type")]
-    kind: &'static str,
-    text: &'a str,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    cache_control: Option<CacheControl>,
-}
-
-impl<'a> SystemBlock<'a> {
-    fn cached(text: &'a str) -> Self {
-        Self {
-            kind: "text",
-            text,
-            cache_control: Some(CacheControl::ephemeral()),
-        }
-    }
-}
-
-#[derive(Debug, Serialize)]
-struct UserMessage<'a> {
-    role: &'static str,
-    content: &'a str,
-}
-
-#[allow(clippy::struct_field_names)]
-#[derive(Debug, Deserialize)]
-struct UsageBlock {
-    input_tokens: Option<u32>,
-    output_tokens: Option<u32>,
-    cache_read_input_tokens: Option<u32>,
-    cache_creation_input_tokens: Option<u32>,
-}
-
-// ── SSE event types ───────────────────────────────────────────────────────────
-// Wire-format deserialization targets — fields populated by serde, not all read in code.
-
-#[allow(dead_code)]
-#[derive(Debug, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-enum SseEvent {
-    MessageStart {
-        message: SseMessageStart,
-    },
-    ContentBlockStart {
-        index: usize,
-        content_block: SseContentBlock,
-    },
-    ContentBlockDelta {
-        index: usize,
-        delta: SseDelta,
-    },
-    ContentBlockStop {
-        index: usize,
-    },
-    MessageDelta {
-        delta: SseMessageDeltaStop,
-        usage: Option<UsageBlock>,
-    },
-    MessageStop,
-    Ping,
-    Error {
-        error: SseErrorDetail,
-    },
-}
-
-#[allow(dead_code)]
-#[derive(Debug, Deserialize)]
-struct SseMessageStart {
-    usage: Option<UsageBlock>,
-}
-
-#[allow(dead_code)]
-#[derive(Debug, Deserialize)]
-struct SseContentBlock {
-    #[serde(rename = "type")]
-    kind: String,
-}
-
-#[allow(dead_code)]
-#[derive(Debug, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-enum SseDelta {
-    TextDelta { text: String },
-    InputJsonDelta { partial_json: String },
-}
-
-#[allow(dead_code)]
-#[derive(Debug, Deserialize)]
-struct SseMessageDeltaStop {
-    stop_reason: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct SseErrorDetail {
-    message: String,
-}
-
-// ── complete() response types ─────────────────────────────────────────────────
-
-#[derive(Deserialize)]
-struct CompleteResp {
-    content: Vec<CompleteContentItem>,
-    usage: UsageBlock,
-}
-
-#[derive(Deserialize)]
-struct CompleteContentItem {
-    #[serde(rename = "type")]
-    kind: String,
-    text: Option<String>,
 }
 
 // ── Usage record ──────────────────────────────────────────────────────────────
@@ -387,13 +263,7 @@ impl AnthropicClient {
             .filter_map(|c| c.text)
             .collect();
 
-        let usage = ApiUsage {
-            input_tokens: r.usage.input_tokens.unwrap_or(0),
-            output_tokens: r.usage.output_tokens.unwrap_or(0),
-            cache_read_tokens: r.usage.cache_read_input_tokens.unwrap_or(0),
-            cache_write_tokens: r.usage.cache_creation_input_tokens.unwrap_or(0),
-            model_deprecation_warning: deprecation_warning,
-        };
+        let usage = r.usage.into_api_usage(deprecation_warning);
 
         Ok((text, usage))
     }
@@ -413,73 +283,6 @@ impl AnthropicClient {
         }
         Ok(())
     }
-}
-
-/// Decode one SSE stream from Anthropic's streaming Messages API into the
-/// accumulated response text and token usage, invoking `on_delta` for each
-/// text delta as it arrives.
-///
-/// Split out of `stream_plan` so the parsing logic — `event:`/`data:` line
-/// dispatch, `[DONE]` handling, per-`SseEvent`-variant usage accounting, and
-/// the SSE `error` event — is testable against synthetic in-memory SSE
-/// bytes, independent of a real HTTP response (`stream_plan` builds `reader`
-/// from `resp.bytes_stream()`; a test can instead wrap a `Cursor` over a
-/// literal SSE payload).
-async fn decode_sse_stream<R>(
-    reader: R,
-    on_delta: &mut (dyn FnMut(&str) + Send),
-) -> Result<(String, ApiUsage)>
-where
-    R: tokio::io::AsyncBufRead + Unpin,
-{
-    let mut text = String::new();
-    let mut usage = ApiUsage::default();
-    let mut lines = reader.lines();
-
-    while let Some(line) = lines.next_line().await.context("reading SSE stream")? {
-        if line.starts_with("event:") {
-            continue;
-        }
-        let Some(data) = line.strip_prefix("data:") else {
-            continue;
-        };
-        let data = data.trim();
-        if data == "[DONE]" {
-            break;
-        }
-        let ev: SseEvent = match serde_json::from_str(data) {
-            Ok(e) => e,
-            Err(e) => {
-                tracing::warn!(error = %e, "failed to decode SSE data line; skipping");
-                continue;
-            }
-        };
-        match ev {
-            SseEvent::MessageStart { message } => {
-                if let Some(u) = message.usage {
-                    usage.input_tokens += u.input_tokens.unwrap_or(0);
-                    usage.cache_read_tokens += u.cache_read_input_tokens.unwrap_or(0);
-                    usage.cache_write_tokens += u.cache_creation_input_tokens.unwrap_or(0);
-                }
-            }
-            SseEvent::ContentBlockDelta {
-                delta: SseDelta::TextDelta { text: t },
-                ..
-            } => {
-                on_delta(&t);
-                text.push_str(&t);
-            }
-            SseEvent::MessageDelta { usage: Some(u), .. } => {
-                usage.output_tokens += u.output_tokens.unwrap_or(0);
-            }
-            SseEvent::Error { error } => {
-                anyhow::bail!("Anthropic SSE error: {}", error.message);
-            }
-            _ => {}
-        }
-    }
-
-    Ok((text, usage))
 }
 
 // ── Lopi system prompt (cached prefix) ───────────────────────────────────────
