@@ -13,13 +13,22 @@ impl AgentRunner {
     /// Run the Konjo Verifier second-score pass.
     ///
     /// Returns `true` when the runner should proceed to commit (verifier
-    /// passed, or is not configured, or encountered a non-fatal error).
-    /// Returns `false` when the verifier rejected the output; the caller
+    /// passed). Returns `false` when the verifier rejected the output, or
+    /// could not evaluate it at all (Sprint F1 Phase 4 — requested-but-
+    /// unavailable is now fail-closed, same as a configured backend that
+    /// errors; see `handle_verifier_error` and `LEDGER.md`); the caller
     /// must roll back and retry. Fix hints are already appended to
     /// `self.task.constraints` when `false` is returned.
+    ///
+    /// Backend selection (Sprint F1 Phase 1) — not a config flag: an
+    /// `AnthropicClient` when one is configured (`with_api`, currently never
+    /// wired in production), the `claude` CLI otherwise. The CLI path is the
+    /// default because, before this sprint, it was the only path that could
+    /// ever actually run.
     pub(super) async fn run_verifier_pass(&mut self, attempt: u8, test_errors: &[String]) -> bool {
-        let Some(client) = self.api_client.clone() else {
-            return true;
+        let verifier = match self.api_client.clone() {
+            Some(client) => VerifierAgent::new(client),
+            None => VerifierAgent::new_cli(self.repo_path.clone()),
         };
         let plan = self.last_plan.clone().unwrap_or_default();
         let rubric = resolve_rubric(self.task.rubric.clone(), &self.repo_path).await;
@@ -38,7 +47,7 @@ impl AgentRunner {
         self.log(format!(
             "🔬 verifier: grading output against rubric ({model})…"
         ));
-        let verdict = match VerifierAgent::new(client)
+        let verdict = match verifier
             .verify(
                 &self.task.goal,
                 &plan,
@@ -115,6 +124,20 @@ impl AgentRunner {
         );
         false
     }
+
+    /// Sprint F1 Phase 2 — test/integration seam. Drives exactly the
+    /// verifier pass `finalize.rs` runs internally on a passing attempt,
+    /// without running the full plan/implement/test loop. Exists so a
+    /// regression test built through the real pool-construction seam
+    /// (`lopi_orchestrator::pool::run_loop::build_runner`) can prove a
+    /// runner with no API client actually **executes** a verifier pass —
+    /// asserting on the emitted event or the persisted `verifier_verdicts`
+    /// row, not on `verifier_enabled()` — which is exactly the gap that let
+    /// the verifier return `true` unconditionally for its entire existence
+    /// while every existing test only ever checked the bool.
+    pub async fn run_verifier_pass_for_test(&mut self, test_errors: &[String]) -> bool {
+        self.run_verifier_pass(1, test_errors).await
+    }
 }
 
 /// Whether a verifier error should let the loop proceed to commit.
@@ -153,7 +176,7 @@ async fn persist_and_emit(
 
 #[cfg(test)]
 mod tests {
-    use super::verifier_error_proceeds;
+    use super::{verifier_error_proceeds, AgentRunner};
 
     #[test]
     fn verifier_error_is_fail_closed_by_default() {
@@ -161,6 +184,47 @@ mod tests {
         assert!(
             !verifier_error_proceeds(false),
             "a verifier error must NOT proceed to commit by default"
+        );
+    }
+
+    /// Sprint F1 Phase 4 — "requested but unavailable" must fail closed, the
+    /// same as a configured backend that errors. Before this sprint the
+    /// no-client branch returned `true` unconditionally (a silent pass) —
+    /// that branch no longer exists; this proves the replacement is
+    /// fail-closed without depending on a live `claude` binary or network:
+    /// pointing `repo_path` at a directory that cannot exist makes the CLI
+    /// spawn's `current_dir` fail deterministically, in any environment,
+    /// which is exactly the "no backend available" case the brief describes.
+    #[tokio::test]
+    async fn requested_but_unavailable_verifier_fails_closed() {
+        let task = lopi_core::Task::new("prove the gate can't silently pass");
+        let (mut runner, _bus) = AgentRunner::standalone(
+            task,
+            std::path::PathBuf::from("/nonexistent/path/that/cannot/possibly/exist/lopi-f1-kt"),
+        );
+        let passed = runner.run_verifier_pass_for_test(&[]).await;
+        assert!(
+            !passed,
+            "a verifier that could not even be spawned must block finalize, not pass it"
+        );
+    }
+
+    /// The one escape hatch from the above is explicit operator opt-in —
+    /// unchanged from the pre-existing `verifier_fail_open` semantics, now
+    /// reachable from the "unavailable" branch too (it used to only apply to
+    /// a *configured* backend that errored).
+    #[tokio::test]
+    async fn requested_but_unavailable_verifier_honors_explicit_fail_open() {
+        let mut task = lopi_core::Task::new("operator explicitly accepts the risk");
+        task.verifier_fail_open = true;
+        let (mut runner, _bus) = AgentRunner::standalone(
+            task,
+            std::path::PathBuf::from("/nonexistent/path/that/cannot/possibly/exist/lopi-f1-kt"),
+        );
+        let passed = runner.run_verifier_pass_for_test(&[]).await;
+        assert!(
+            passed,
+            "an explicit verifier_fail_open opt-in must still let the unavailable case proceed"
         );
     }
 

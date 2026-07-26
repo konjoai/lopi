@@ -8,6 +8,7 @@ mod lifecycle;
 mod plan_gate;
 mod plan_steps;
 pub mod postmortem;
+mod postmortem_cli;
 mod postmortem_runner;
 mod progress;
 mod reflection;
