@@ -1,7 +1,17 @@
 //! TOON — Token-Oriented Object Notation encoder/decoder.
 //!
-//! Encodes/decodes the JSON data model with ~40% fewer tokens than JSON.
-//! Key features: tabular arrays, minimal quoting, indentation over braces.
+//! Encodes/decodes the JSON data model. Key features: tabular arrays,
+//! minimal quoting, indentation over braces.
+//!
+//! **Measured savings vs. compact JSON, on lopi's real prompt payload
+//! shapes** (see `crates/lopi-toon/benches/token_savings.rs` and the
+//! committed result in `crates/lopi-toon/benches/results/`): **3.3% fewer
+//! tokens overall**, ranging from a small loss on constraint-array-only
+//! payloads to ~6% on the pattern-memory table, where TOON's tabular form
+//! helps most. This is a `cl100k_base` (OpenAI GPT-4 BPE) measurement, not a
+//! Claude token count — no `ANTHROPIC_API_KEY` was available when it was
+//! run. There is no support in this repo for the previously-stated "~40%"
+//! figure; it did not trace to any committed measurement.
 
 #![warn(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 

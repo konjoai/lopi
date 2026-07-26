@@ -5,6 +5,72 @@ the `lopi` repo. Newest first.
 
 ---
 
+## Next Session — after Sprint F0 (Honesty Pass) — Sprint F1 wires the verifier; two attended actions still owed; one security gap found
+
+**Sprint F0 made every TOON/token performance claim trace to a committed measurement or
+deleted it, confirmed `whatsapp` is unreachable (not deleted), corrected several
+README/Safety claims that turned out inaccurate on read-through, stated the file-size
+gate's scope explicitly, and added an advisory reachability check to G1.** No runtime
+behavior changed. Full detail in `CHANGELOG.md`'s `[0.27.1] — Sprint F0` entry and
+`LEDGER.md`'s Sprint F0 entry (the WhatsApp positioning call).
+
+**Two things F0 could not complete in an unattended agent session — do these first,
+attended, before trusting any pass-rate or benchmark number this repo publishes:**
+
+1. **KT-0.1's live component:** `./benchmarks/run.sh --tasks T01` against a real Claude
+   subscription. The dry-run passed (harness not bit-rotted), but a live single-task run
+   needs a human watching, per the sprint's own gate definition. Do this, confirm the
+   harness still produces a real result end-to-end, before Phase 3.
+2. **Phase 3 — run the T01–T10 corpus and commit `benchmarks/results/<ts>_corpus/`.**
+   Real money, real wall-clock, ten agent tasks. Follow
+   `benchmarks/corpus/README.md` §Measurement Protocol and `.claude/rules/
+   benchmarking.md` (≥5 warmup runs, documented hardware, p50/p95/p99, a new
+   timestamped directory, never overwrite). Once committed, rename "Expected Pass
+   Rate" → "Measured Pass Rate" in `benchmarks/corpus/README.md` and remove the
+   "Status (Sprint F0...)" note at the top of that file — state `n=1` explicitly unless
+   more than one run was done. If a task the table predicted at 100% fails, record that
+   as the finding; do not re-run silently until it passes.
+
+**Sprint F1 (named, not yet started) — wire the verifier/judge/post-mortem.** F0's README
+audit confirmed this precisely: `Runner::with_api` (`crates/lopi-agent/src/runner/mod.rs`)
+is never called anywhere in the built binary — `grep -rn "with_api" crates/
+lopi-orchestrator/` and `src/` both come back empty. That means the verifier
+(`runner/verifier_runner.rs`), LLM-judge acceptance (`runner/eval_runner.rs`), and
+post-mortem (`runner/run_loop.rs`, gated on `adaptive_retry`) all silently no-op on
+every run today, regardless of CLI flags or config — a task can complete "successfully"
+with none of them having run. `--stability-gate` is the one layer that does work,
+because `src/run_command.rs` wires its *own*, separate `AnthropicClient` outside
+`with_api`. F1's job: decide where `with_api` should be wired (the pool? `lopi run`
+directly? both?), wire it, and update the README's "no separate API key required"
+caveat (currently accurate as of F0, but only because these checkers are confirmed
+dead — F1 changes that on purpose).
+
+**Also found during F0's audit, not fixed (out of scope for a measurement/docs sprint,
+but real):** `allow_self_modify: false` (`crates/lopi-core/src/config.rs`) — meant to
+keep lopi from modifying its own `src/`/`crates/` — is enforced only on the `lopi run`
+CLI path and the REPL (`src/run_command.rs`, `src/repl/actions.rs`). The `lopi sail`
+web dashboard's task-creation API (`crates/lopi-ui/src/web/handlers.rs::create_task`)
+and the `lopi_submit_task` MCP tool (`src/mcp_commands/mod.rs`) never check it — a task
+submitted through either of those two paths, pointed at the lopi workspace itself, is
+not blocked. This is a real containment gap on two of the four task-entry points the
+README itself documents, not a documentation nuance. Whoever picks this up: add the
+same check those two paths are missing, or centralize it somewhere all four entry
+points share so it can't silently drift again.
+
+**Lower priority, tracked not blocking:**
+- `.konjo/scripts/reachability_check.py` (new, advisory) currently flags ~20 `pub mod`s
+  as unreferenced elsewhere in the workspace. Most are probably legitimate internal
+  surface (tests, future library use); triage the list once, decide which (if any)
+  should actually be `pub(crate)` or deleted, rather than leaving it as permanent noise.
+- Phase 5 (file-size gate) left `web/`/`macos/` unscoped by design — `web/src/lib/
+  stores/stack.ts` (~2,200 lines) would need to be split before the gate could safely
+  extend there. Someone should decide whether that split, and the gate extension after
+  it, is worth doing.
+- `LEDGER.md`'s Sprint F0 entry flags that whether WhatsApp gets *wired up* or
+  *deleted* is unresolved — this sprint only established it's currently unreachable.
+
+---
+
 ## Next Session — after Sprint S9 (the recipe library) — three confirmed runner gaps, HV-4 portability, deferred CLI
 
 **Sprint S9 shipped `recipes/`** — six documented, live-run-measured `.lopi/loop.toml`

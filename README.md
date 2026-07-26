@@ -5,9 +5,9 @@
 > Multi-agent Claude Code orchestrator, written in Rust. Runs concurrent
 > agents in git-isolated branches, with retry loops, persistent memory,
 > a TUI + web dashboard, a native macOS app, and remote control over
-> Telegram/WhatsApp.
+> Telegram.
 >
-> By [KonjoAI](https://github.com/konjoai) · MIT licensed · `v0.25.0`
+> By [KonjoAI](https://github.com/konjoai) · MIT licensed · `v0.27.1`
 > [![crates.io](https://img.shields.io/crates/v/lopi.svg)](https://crates.io/crates/lopi)
 
 ```
@@ -33,26 +33,42 @@ It's the Rust successor to the OpenClaw-style single-agent Python prototype
 [`LOPI_VS_OPENCLAW.md`](./LOPI_VS_OPENCLAW.md) for the full feature-by-feature
 comparison.
 
-**Runs on your existing Claude subscription.** lopi drives the official
-`claude` CLI as a subprocess (`claude -p`) and deliberately scrubs any
-inherited `ANTHROPIC_API_KEY`/`ANTHROPIC_BASE_URL` env vars before every
-spawn, so the CLI always falls back to your on-disk `~/.claude` subscription
-credentials rather than silently billing an API key. No separate API key is
-required to run agents. (A couple of standalone server components — see
-[Configuration](#configuration) — can *optionally* take a direct Anthropic
-API key for their own use, but the core agent loop never needs one.)
+**Runs on your existing Claude subscription — for the worker itself.** lopi
+drives the official `claude` CLI as a subprocess (`claude -p`) and
+deliberately scrubs any inherited `ANTHROPIC_API_KEY`/`ANTHROPIC_BASE_URL`
+env vars before every spawn, so the CLI always falls back to your on-disk
+`~/.claude` subscription credentials rather than silently billing an API
+key. No separate API key is required to plan, implement, or fix.
+
+That is **not** true of every check layer, though. The verifier
+(`crates/lopi-agent/src/runner/verifier_runner.rs`), LLM-judge acceptance
+(`runner/eval_runner.rs`), and post-mortem
+(`runner/run_loop.rs` — gated on `adaptive_retry`) all require a
+direct-API `AnthropicClient` (`Runner::with_api`,
+`crates/lopi-agent/src/runner/mod.rs`) — and nothing in the built binary
+ever calls `with_api`; `grep -rn "with_api" crates/lopi-orchestrator/` and
+`src/` both come back empty. Configured or not, they silently no-op rather
+than failing the run — so a task can complete "successfully" with the
+verifier/judge/post-mortem layers never having run. The one exception is
+the Layer 5 stability gate: `lopi run --stability-gate` wires its own,
+separate `AnthropicClient` from `ANTHROPIC_API_KEY` at the CLI layer
+(`src/run_command.rs`) and does work standalone. (A couple of standalone
+server components — see [Configuration](#configuration) — can *optionally*
+take a direct Anthropic API key for their own use; that's unrelated to the
+above.) Wiring `with_api` into the pool is tracked for a future sprint.
 
 ## Highlights
 
 - **Concurrent, git-isolated agents** — an `AgentPool` runs N agents at once
-  (default 4), each on its own `orka/<task_id>/<attempt>` branch and worktree.
-  Off-limits path globs, a max-diff-line cap, and automatic hard rollback on
-  any safety violation keep runs contained.
-- **Scored retry loop** — a weighted composite score (tests + lint + diff
-  size) decides accept / retry / rollback. Failed attempts feed a SQLite
-  pattern library so later re-plans are seeded with what already failed.
-  Optional Reflexion-style adaptive retry and a Layer 5 stability gate
-  (variance-checked plan sampling) are available per run.
+  (default 4), each on its own `lopi/<task_id>-attempt-<n>` branch and
+  worktree. Off-limits path globs and automatic hard rollback on any scope
+  violation keep runs contained.
+- **Scored retry loop** — a weighted composite score (tests + lint + a
+  capped per-1000-line diff-size penalty) decides accept / retry / rollback.
+  Failed attempts feed a SQLite pattern library so later re-plans are seeded
+  with what already failed. Optional Reflexion-style adaptive retry and a
+  Layer 5 stability gate (variance-checked plan sampling) are available per
+  run.
 - **Granular budget controls** — per-run USD caps (`--budget`), named
   presets (quick/standard/deep/unlimited), token budgets, and a repo-level
   `.lopi/loop.toml` — because an unwired budget is how a session turns into
@@ -61,9 +77,12 @@ API key for their own use, but the core agent loop never needs one.)
   SvelteKit web dashboard ("the Forge," served by `lopi sail`), and a native
   SwiftUI **macOS app** (in [`macos/`](./macos)) that talks to the same
   REST + WebSocket API.
-- **Remote control from your phone** — a Telegram bot and WhatsApp (via
-  Twilio) with an auth allowlist, phase-by-phase push notifications, and
-  inline approve/reject buttons for opened PRs.
+- **Remote control from your phone** — a Telegram bot with an auth
+  allowlist, phase-by-phase push notifications, and inline approve/reject
+  buttons for opened PRs. (A Twilio WhatsApp handler exists in
+  `lopi-remote::whatsapp` but is not wired to any CLI command and is
+  unreachable from the built binary today — see
+  `docs/security/TRIFECTA_PATHS.md` §1 row D and the CHANGELOG.)
 - **Event-driven, not just manual** — a GitHub webhook listener turns CI
   failures into auto-queued fix tasks; cron-style schedules
   (`[[schedules]]` in `lopi.toml`, editable live from the dashboard) handle
@@ -166,14 +185,14 @@ REPL. The full surface:
 | `lopi-memory` | SQLite-backed store for tasks, patterns, turn metrics, lessons |
 | `lopi-orchestrator` | Concurrent agent pool, priority task queue, scheduler |
 | `lopi-ui` | `ratatui` TUI + `axum` web/JSON API (the Forge) |
-| `lopi-remote` | Telegram bot + Twilio WhatsApp webhook |
+| `lopi-remote` | Telegram bot (wired); a Twilio WhatsApp webhook handler also lives here but isn't reachable from the built binary today |
 | `lopi-webhook` | GitHub webhook receiver — CI-failure/PR/issue triage → tasks |
 | `lopi-mcp` | MCP client — lopi agents discovering and calling external tools |
 | `lopi-tools` | Durable tool registry (specs, timeouts, retry budgets) |
 | `lopi-skill` | Runtime registry of `SKILL.md` project knowledge |
 | `lopi-spec` | Spec surface extractor (tests → machine-readable coverage inventory) |
 | `lopi-ratelimit` | Token-bucket rate limiting + Anthropic concurrency controls |
-| `lopi-toon` | Token-Oriented Object Notation encoder (~40% fewer tokens than JSON) |
+| `lopi-toon` | Token-Oriented Object Notation encoder (measured 3.3% fewer cl100k tokens than compact JSON on lopi's real prompt payloads — see `crates/lopi-toon/benches/results/`) |
 | `lopi-app` | Standalone GitHub App OAuth + Stripe webhook server |
 | `lopi-github` | Thin GitHub REST client for write operations (PRs, labels, comments) |
 
@@ -188,7 +207,9 @@ Copy `lopi.toml.example` to `lopi.toml` and edit. Key sections:
 - `[lopi]` — max concurrent agents, log level, SQLite DB path
 - `[claude]` — `claude` CLI path and per-call timeout
 - `[git]` — allowed/forbidden directories, auto-PR toggle
-- `[remote.telegram]` / `[remote.whatsapp]` — bot token / Twilio credentials
+- `[remote.telegram]` — bot token for the Telegram bot (wired and reachable).
+  `[remote.whatsapp]` / Twilio credentials exist as config surface but the
+  handler behind them is not wired to any CLI command — see Highlights above.
 - `[web]` — dashboard host/port/auth (see **Security** below)
 - `[[schedules]]` — cron-style recurring tasks (also editable live from the dashboard)
 
@@ -200,14 +221,28 @@ authenticates.
 
 ## Safety
 
-- Git-isolated branches per attempt, auto-deleted on rollback; base branch
-  is never touched.
-- `DiffChecker`: off-limits glob patterns, max-diff-line cap, full path scan
-  before any change is accepted.
-- `allow_self_modify: false` by default — lopi's own `src/` and `crates/`
-  are off-limits.
-- Hard rollback (`git reset --hard`) on any safety violation; no retry
-  allowed after a violation.
+- Git-isolated branches per attempt; base branch is never touched by
+  rollback. The attempt's **worktree** is torn down automatically
+  (`crates/lopi-git/src/worktree.rs`, RAII `Drop`), but the branch **ref**
+  itself is not auto-deleted — it's reclaimed by a separate, manual
+  `lopi worktree gc` sweep (`crates/lopi-git/src/worktree.rs`,
+  `WorktreeManager::gc`/`delete_stale_branches`).
+- `DiffChecker`: off-limits glob patterns, full path scan before any change
+  is accepted. Diff size itself is a capped scoring penalty (default 0.10
+  per 1 000 lines, capped at 0.30 total), not a hard line-count limit.
+- `allow_self_modify: false` by default (`crates/lopi-core/src/config.rs`)
+  blocks lopi from modifying its own `src/`/`crates/` — but only on the
+  `lopi run` CLI and REPL paths (`src/run_command.rs`, `src/repl/actions.rs`).
+  The `lopi sail` web dashboard's task-creation API and the
+  `lopi_submit_task` MCP tool do not currently check it; this is a real gap,
+  not a documentation nuance, and is tracked for a follow-up sprint rather
+  than silently left off this list.
+- A diff-scope violation triggers hard rollback (`git reset --hard`,
+  `crates/lopi-git/src/manager.rs`) and marks the attempt `RolledBack` —
+  but the task **is** retried afterward (with model escalation toward Opus
+  on repeated failure), up to `max_retries`, same as any other failed
+  attempt (`crates/lopi-agent/src/runner/test_phase.rs`,
+  `runner/run_loop.rs`). It is not a terminal stop condition.
 - lopi never auto-merges. Every PR requires human review — from the
   dashboard, the macOS app, or a Telegram approve button.
 - A task originating from an untrusted source — a GitHub webhook (issue, CI

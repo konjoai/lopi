@@ -2,6 +2,20 @@
 
 Ten canonical benchmark tasks (T01–T10) for measuring agent throughput, quality, and cost.
 
+**Status (Sprint F0, 2026-07-26):** the "Expected Pass Rate" column below is
+a pre-registered *estimate*, not a measurement — no run of this corpus has
+ever been committed (`benchmarks/results/` did not exist before this
+sprint). `./benchmarks/run.sh --dry-run` and `--tasks T01` were verified to
+work (KT-0.1), confirming the harness itself is not bit-rotted, but running
+the full ten-task corpus against a real Claude subscription is an attended,
+hardware-required action (real money, real wall-clock, needs a human
+watching) that an unattended agent session cannot perform — see
+`.claude/rules/benchmarking.md` for the protocol this requires (≥5 warmup
+runs, documented hardware, p50/p95/p99, a new timestamped results
+directory). **Do not rename this column to "Measured Pass Rate" until a
+real run has been committed to `benchmarks/results/` and this note is
+removed or updated to cite it.** See NEXT_SESSION_PROMPT.md.
+
 ## Task Definitions
 
 | ID  | Goal | Complexity | Expected Pass Rate |

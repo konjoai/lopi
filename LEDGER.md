@@ -5,6 +5,37 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## Sprint F0 — removing WhatsApp from the README is a positioning change, not just an accuracy fix
+
+Sprint F0's brief was explicit that most of its README corrections are pure accuracy
+fixes (wrong branch prefix, wrong diff-cap mechanism, stale version badge) that don't
+change what lopi claims to be. WhatsApp is different, and is logged here per the
+brief's own instruction: "if Phase 4's README audit surfaces a claim whose removal
+changes the product's positioning rather than its accuracy, that is a one-way door."
+
+lopi's README has advertised "remote control from your phone" via "a Telegram bot and
+WhatsApp (via Twilio)" since before this sprint — that's a marketed capability, not an
+implementation detail. KT-0.2 confirmed `lopi-remote::whatsapp` has no call path from
+`src/` (the binary) at all: `grep -rn "whatsapp\|twilio" src/` is empty, and the only
+`lopi_remote::` reference anywhere in `src/` is `lopi_remote::telegram::run`
+(`src/sail_commands.rs:350`). Removing WhatsApp from the Highlights list is not
+softening a number — it's retracting a feature claim the product made about itself.
+
+**Decision:** retract it now rather than defer to a later sprint or soften the wording
+(e.g. "experimental," "coming soon") to avoid the positioning hit. The alternative —
+leaving an unreachable feature in the README because removing it looks worse than
+leaving it — is precisely the overclaiming this sprint exists to stop, and softening
+language for a feature with zero call path would just be a slower version of the same
+lie. `lopi-remote::whatsapp` itself is not deleted (see CHANGELOG's "unreachable ≠ safe
+to delete" note) — a future sprint can wire it up and the feature claim can come back
+once it's true, with its own measurement-grade verification, same as this sprint
+required for TOON's token-savings number.
+
+**Not a decision made here, logged so it isn't silently inherited:** whether WhatsApp
+support should be *built* (wire `whatsapp.rs` to a CLI command) or *removed*
+(delete the module) is unresolved. This sprint's mandate was accuracy, not roadmap —
+see CHANGELOG's Phase 4 entry and `NEXT_SESSION_PROMPT.md`.
+
 ## Sprint S4 — the coverage floor is a one-way door; the soft-gate lint is a lopi-local divergence
 
 **The coverage floor gate is deliberately a one-way door.** Once `.konjo/coverage-floor.txt`

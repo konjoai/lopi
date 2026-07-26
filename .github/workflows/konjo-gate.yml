@@ -141,6 +141,23 @@ jobs:
             exit 1
           fi
 
+      - name: Reachability check (advisory) — pub mod not reachable from the binary
+        # ADVISORY BY DESIGN — Sprint F0. `dead_code` above certifies rustc
+        # reachability (a `pub` item in a library crate is never dead by
+        # rustc's definition, no matter whether the shipped binary calls
+        # it) — a different property from "reachable when you actually run
+        # `lopi`". Sprint F0 found `lopi-remote::whatsapp` passing the
+        # dead-code gate while being completely unreferenced anywhere else
+        # in the workspace (see CHANGELOG.md, docs/security/TRIFECTA_PATHS.md).
+        # This is a grep-shaped heuristic (see the script's own docstring
+        # for its exact definition and known false-positive/negative
+        # shapes), not a real call-graph analyzer — it must never fail the
+        # build on its own. It exists purely so the next feature that
+        # quietly becomes unreachable shows up here before it also lingers
+        # in the README.
+        continue-on-error: true
+        run: python3 .konjo/scripts/reachability_check.py
+
       - name: Soft-gate convention lint
         # HARD GATE — Sprint S4 Phase 2. Makes the `KNOWN DEBT, verified
         # <date>` / `ADVISORY BY DESIGN` convention this file already
@@ -393,7 +410,17 @@ jobs:
           fi
           echo "Cognitive complexity: all functions ≤ 15 ✓"
 
-      - name: File size gate (changed files on PR, all files on push)
+      - name: File size gate (changed files on PR, all files on push) — scoped to *.rs and *.py only
+        # Scope, stated explicitly per Sprint F0 (konjoai/lopi): this gate has
+        # only ever scanned Rust and Python (`\.(rs|py)$`). It does not cover
+        # `web/` (TypeScript/Svelte) or `macos/` (Swift) — those ecosystems
+        # have their own size conventions and were never audited against a
+        # 500-line limit. `web/src/lib/stores/stack.ts` is ~2,200 lines and
+        # is *not* a gate violation under the current scope; it is not
+        # silently passing a check that was meant to catch it. Extending
+        # this gate to web/macos, and the stack.ts split that would require
+        # first, is tracked as follow-up work, not done here (Sprint F0 is
+        # measurement/documentation only — see NEXT_SESSION_PROMPT.md).
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             SCAN_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD \
