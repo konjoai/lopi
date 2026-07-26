@@ -20,13 +20,19 @@ pub const TASK_BUDGET_MIN: u64 = 20_000;
 
 /// Whether `model` accepts the `task_budget` parameter.
 ///
-/// Task budgets are a beta feature limited to the most capable models
-/// (Opus 4.7 / 4.8 and Fable 5). Sending the parameter to any other model —
-/// e.g. the Haiku / Sonnet tiers lopi uses for cheap early attempts — is
-/// rejected with a 400, so the budget is silently dropped there.
+/// Task budgets are a beta feature limited to the most capable models —
+/// Opus 5, Opus 4.7 / 4.8, Sonnet 5, and Fable 5 (Sprint F2 Phase 4: Sonnet
+/// 5 gained task-budget support that Sonnet 4.6 never had, so this is not a
+/// pure superset of the pre-F2 opus/fable check). Sending the parameter to
+/// any other model — e.g. Haiku, or Sonnet 4.6 — is rejected with a 400, so
+/// the budget is silently dropped there.
 #[must_use]
 pub fn supports_task_budget(model: &str) -> bool {
-    model.contains("opus-4-7") || model.contains("opus-4-8") || model.contains("fable")
+    model.contains("opus-5")
+        || model.contains("opus-4-7")
+        || model.contains("opus-4-8")
+        || model.contains("sonnet-5")
+        || model.contains("fable")
 }
 
 /// Resolve the effective `task_budget.total` to send for a `(model, requested)`
@@ -62,11 +68,25 @@ mod tests {
         assert!(supports_task_budget("claude-fable-5"));
     }
 
+    /// Sprint F2 Phase 4 — current-generation Opus and Sonnet also support
+    /// task budgets; Sonnet 5 is the one that changed from its predecessor
+    /// (Sonnet 4.6 never supported this), so it gets its own assertion
+    /// rather than being folded into the pre-existing opus/fable test.
+    #[test]
+    fn opus_5_and_sonnet_5_support_budgets() {
+        assert!(supports_task_budget("claude-opus-5"));
+        assert!(supports_task_budget("claude-sonnet-5"));
+    }
+
     #[test]
     fn sonnet_and_haiku_do_not_support_budgets() {
         assert!(!supports_task_budget("claude-sonnet-4-6"));
         assert!(!supports_task_budget("claude-haiku-4-5-20251001"));
         assert!(!supports_task_budget("claude-opus-4-6"));
+        // Legacy dated snapshots must not false-positive on the new
+        // "opus-5"/"sonnet-5" substring checks.
+        assert!(!supports_task_budget("claude-opus-4-5-20251101"));
+        assert!(!supports_task_budget("claude-sonnet-4-5-20250929"));
     }
 
     #[test]

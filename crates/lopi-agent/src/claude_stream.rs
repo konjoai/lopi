@@ -85,6 +85,10 @@ pub fn plan_streaming(
             max_budget_usd,
             &allowed_tools,
             &disallowed_tools,
+            // Sprint F2 Phase 6 — a worker session (speculative-mode
+            // planning); must load the target repo's own CLAUDE.md/skills,
+            // so explicitly not `--bare`.
+            false,
         );
         // Same auth guard as the one-shot path: never let inherited routing
         // env (ANTHROPIC_API_KEY, ANTHROPIC_BASE_URL, etc.) silently switch

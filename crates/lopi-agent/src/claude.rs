@@ -19,19 +19,22 @@ use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, BufReader as AsyncBufReader};
 use tokio::process::Command;
 
-/// Re-exported so every existing `crate::claude::MODEL_*`/`select_model`/
+/// Re-exported so every existing `crate::claude::select_model`/
 /// `ClaudeOutput`/`ERR_CREDIT_EXHAUSTED` path stays valid — these moved to
 /// `claude_model.rs` purely to keep this file under the 500-line CI
 /// file-size gate; see that module's doc comment.
 pub use crate::claude_model::{
-    select_model, ClaudeOutput, ERR_BUDGET_HARD_STOP, ERR_CREDIT_EXHAUSTED, MODEL_HAIKU,
-    MODEL_OPUS, MODEL_SONNET,
+    select_model, ClaudeOutput, ERR_BUDGET_HARD_STOP, ERR_CREDIT_EXHAUSTED,
 };
 /// Re-exported so `crate::claude::scrub_inherited_anthropic_env` stays valid
 /// for `claude_stream.rs`'s call site — moved to `claude_support.rs` for the
 /// same file-size reason.
 pub(crate) use crate::claude_support::scrub_inherited_anthropic_env;
 use crate::claude_support::{apply_cli_caps, compress_errors};
+/// Re-exported so every existing `crate::claude::model_*` path stays valid —
+/// Sprint F2 Phase 4 moved these from hardcoded consts here to
+/// `crate::model_config`'s runtime-read, operator-overridable config.
+pub use crate::model_config::{model_haiku, model_opus, model_sonnet};
 
 /// Wrapper around the `claude` CLI — drives plan, implement, fix, and streaming calls.
 pub struct ClaudeCode {
@@ -152,6 +155,9 @@ impl ClaudeCode {
             self.max_budget_usd,
             &self.allowed_tools,
             &self.disallowed_tools,
+            // Sprint F2 Phase 6 — a worker session; must load the target
+            // repo's own CLAUDE.md/skills, so explicitly not `--bare`.
+            false,
         );
         cmd.stdout(Stdio::piped());
         cmd.stderr(Stdio::null());
@@ -359,6 +365,10 @@ impl ClaudeCode {
             self.max_budget_usd,
             &self.allowed_tools,
             &self.disallowed_tools,
+            // Sprint F2 Phase 6 — a worker session (backs `fix()` and
+            // `implement_step()`); must load the target repo's own
+            // CLAUDE.md/skills, so explicitly not `--bare`.
+            false,
         );
         cmd.current_dir(&self.repo_path);
         scrub_inherited_anthropic_env(&mut cmd);

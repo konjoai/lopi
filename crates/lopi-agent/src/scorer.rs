@@ -1,25 +1,47 @@
 use anyhow::Result;
 use lopi_core::Score;
+use scorer_detect::Runner;
 use std::path::{Path, PathBuf};
 use tokio::process::Command;
 use which::which;
 
+#[path = "scorer_detect.rs"]
+mod scorer_detect;
+
 /// Runs tests and linters against a repository and produces a `Score`.
 pub struct Scorer {
     repo_path: PathBuf,
+    /// Sprint F2 Phase 1 — `.lopi/loop.toml`'s `test_command` escape hatch.
+    /// When set, always wins over stack detection (see `scorer_detect::detect`).
+    test_command: Option<String>,
 }
 
 impl Scorer {
-    /// Create a scorer rooted at `repo_path`.
+    /// Create a scorer rooted at `repo_path`, with no `test_command` override.
     pub fn new(repo_path: impl AsRef<Path>) -> Self {
         Self {
             repo_path: repo_path.as_ref().to_path_buf(),
+            test_command: None,
         }
     }
 
+    /// Wire the repo's `.lopi/loop.toml` `test_command` override, if any —
+    /// an explicit escape hatch for stacks `scorer_detect::detect` can't
+    /// recognize. `None` (the default) leaves detection as the sole source.
+    #[must_use]
+    pub fn with_test_command(mut self, test_command: Option<String>) -> Self {
+        self.test_command = test_command;
+        self
+    }
+
     /// Run the project's test + lint commands and produce a Score.
-    /// Detection is intentionally simple: prefer `cargo` if Cargo.toml exists,
-    /// else fall back to `npm test`. Failures populate `Score.errors`.
+    ///
+    /// Detection (`scorer_detect::detect`) prefers an explicit
+    /// `test_command` override, then a recognized manifest (Rust, Node via
+    /// npm/pnpm/yarn, Python, Go, Gradle, Maven) in that order. A repo with
+    /// none of these gets a *blocking*, stated-reason
+    /// [`unevaluated_reason`](lopi_core::Score::unevaluated_reason) — Sprint
+    /// F2 Phase 2 — rather than the score reading as a pass.
     ///
     /// Skips test/lint entirely when every changed path is docs-only (see
     /// `changed_paths`/`is_docs_path`) — a goal that only touches `*.md`
@@ -41,69 +63,11 @@ impl Scorer {
         });
         let skip_build_check = should_skip_build_check(&changed);
 
-        let cargo_toml = self.repo_path.join("Cargo.toml");
         if skip_build_check {
             score.test_pass_rate = 1.0;
             tracing::info!(?changed, "no source changes to verify — skipping test/lint");
-        } else if cargo_toml.exists() {
-            // cargo test — use sccache if available to skip unchanged artifact recompilation
-            let mut cmd = Command::new("cargo");
-            if which("sccache").is_ok() {
-                cmd.env("RUSTC_WRAPPER", "sccache");
-            }
-            let out = cmd
-                .arg("test")
-                .arg("--quiet")
-                .current_dir(&self.repo_path)
-                .output()
-                .await?;
-            score.test_pass_rate = if out.status.success() { 1.0 } else { 0.0 };
-            if !out.status.success() {
-                score.errors.push(format!(
-                    "cargo test failed:\n{}",
-                    String::from_utf8_lossy(&out.stderr)
-                ));
-            }
-            // cargo clippy as the lint signal.
-            let mut cmd = Command::new("cargo");
-            if which("sccache").is_ok() {
-                cmd.env("RUSTC_WRAPPER", "sccache");
-            }
-            let lint = cmd
-                .arg("clippy")
-                .arg("--quiet")
-                .arg("--")
-                .arg("-D")
-                .arg("warnings")
-                .current_dir(&self.repo_path)
-                .output()
-                .await;
-            if let Ok(lint) = lint {
-                if !lint.status.success() {
-                    score.lint_errors = 1;
-                    score.errors.push(format!(
-                        "clippy failed:\n{}",
-                        String::from_utf8_lossy(&lint.stderr)
-                    ));
-                }
-            }
-        } else if self.repo_path.join("package.json").exists() {
-            let out = Command::new("npm")
-                .arg("test")
-                .current_dir(&self.repo_path)
-                .output()
-                .await?;
-            score.test_pass_rate = if out.status.success() { 1.0 } else { 0.0 };
-            if !out.status.success() {
-                score.errors.push(format!(
-                    "npm test failed:\n{}",
-                    String::from_utf8_lossy(&out.stderr)
-                ));
-            }
         } else {
-            // No detectable test runner — treat as passing with a warning.
-            score.test_pass_rate = 1.0;
-            score.errors.push("no test runner detected".into());
+            self.run_detected(&mut score).await?;
         }
 
         // Diff size estimate: tracked changes via `git diff --shortstat`,
@@ -135,6 +99,126 @@ impl Scorer {
         score.diff_lines = diff_lines;
 
         Ok(score)
+    }
+
+    /// Detect and run this repo's test runner, populating `score` in place.
+    /// Sprint F2 Phase 2 — a repo with no recognized runner (and no
+    /// `test_command` override) gets a blocking, stated
+    /// `unevaluated_reason` rather than `test_pass_rate = 1.0`: "I could not
+    /// evaluate this" must never read as "this passed".
+    async fn run_detected(&self, score: &mut Score) -> Result<()> {
+        let Some(runner) = scorer_detect::detect(&self.repo_path, self.test_command.as_deref())
+        else {
+            score
+                .errors
+                .push(scorer_detect::NO_RUNNER_REASON.to_string());
+            score.unevaluated_reason = Some(scorer_detect::NO_RUNNER_REASON.to_string());
+            return Ok(());
+        };
+        match runner {
+            Runner::Cargo => self.run_cargo(score).await,
+            Runner::Explicit(cmd) => {
+                self.run_command("sh", &["-c", &cmd], "configured test_command", score)
+                    .await
+            }
+            Runner::Gradle => {
+                let program = if self.repo_path.join("gradlew").exists() {
+                    "./gradlew"
+                } else {
+                    "gradle"
+                };
+                self.run_command(program, &["test"], "gradle test", score)
+                    .await
+            }
+            Runner::Npm => self.run_command("npm", &["test"], "npm test", score).await,
+            Runner::Pnpm => {
+                self.run_command("pnpm", &["test"], "pnpm test", score)
+                    .await
+            }
+            Runner::Yarn => {
+                self.run_command("yarn", &["test"], "yarn test", score)
+                    .await
+            }
+            Runner::Pytest => self.run_command("pytest", &[], "pytest", score).await,
+            Runner::Go => {
+                self.run_command("go", &["test", "./..."], "go test", score)
+                    .await
+            }
+            Runner::Maven => self.run_command("mvn", &["test"], "mvn test", score).await,
+        }
+    }
+
+    /// `cargo test` (the only runner with a paired lint signal, `cargo
+    /// clippy`) — moved verbatim from the pre-Phase-1 `score()` body.
+    async fn run_cargo(&self, score: &mut Score) -> Result<()> {
+        // cargo test — use sccache if available to skip unchanged artifact recompilation
+        let mut cmd = Command::new("cargo");
+        if which("sccache").is_ok() {
+            cmd.env("RUSTC_WRAPPER", "sccache");
+        }
+        let out = cmd
+            .arg("test")
+            .arg("--quiet")
+            .current_dir(&self.repo_path)
+            .output()
+            .await?;
+        score.test_pass_rate = if out.status.success() { 1.0 } else { 0.0 };
+        if !out.status.success() {
+            score.errors.push(format!(
+                "cargo test failed:\n{}",
+                String::from_utf8_lossy(&out.stderr)
+            ));
+        }
+        // cargo clippy as the lint signal.
+        let mut cmd = Command::new("cargo");
+        if which("sccache").is_ok() {
+            cmd.env("RUSTC_WRAPPER", "sccache");
+        }
+        let lint = cmd
+            .arg("clippy")
+            .arg("--quiet")
+            .arg("--")
+            .arg("-D")
+            .arg("warnings")
+            .current_dir(&self.repo_path)
+            .output()
+            .await;
+        if let Ok(lint) = lint {
+            if !lint.status.success() {
+                score.lint_errors = 1;
+                score.errors.push(format!(
+                    "clippy failed:\n{}",
+                    String::from_utf8_lossy(&lint.stderr)
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// Run a single test-runner invocation and record pass/fail on `score`.
+    /// Shared by every non-Cargo runner (npm/pnpm/yarn/pytest/go/gradle/maven
+    /// and the `test_command` escape hatch) — none of these have a paired
+    /// lint step, only `Score.test_pass_rate`.
+    async fn run_command(
+        &self,
+        program: &str,
+        args: &[&str],
+        label: &str,
+        score: &mut Score,
+    ) -> Result<()> {
+        let out = Command::new(program)
+            .args(args)
+            .current_dir(&self.repo_path)
+            .output()
+            .await?;
+        score.test_pass_rate = if out.status.success() { 1.0 } else { 0.0 };
+        if !out.status.success() {
+            score.errors.push(format!(
+                "{label} failed:\n{}",
+                String::from_utf8_lossy(&out.stderr)
+            ));
+        }
+        Ok(())
     }
 
     /// Paths with pending changes (staged, unstaged, or untracked) relative
@@ -236,112 +320,5 @@ fn parse_diff_lines(stat: &str) -> u32 {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn docs_paths_match_markdown_and_docs_dir() {
-        assert!(is_docs_path("research.md"));
-        assert!(is_docs_path("NOTES.MD"));
-        assert!(is_docs_path("docs/architecture.rst"));
-        assert!(is_docs_path("nested/docs/plan.txt"));
-        assert!(is_docs_path("README"));
-        assert!(is_docs_path("path/to/CHANGELOG"));
-    }
-
-    #[test]
-    fn non_docs_paths_are_rejected() {
-        assert!(!is_docs_path("src/main.rs"));
-        assert!(!is_docs_path("Cargo.toml"));
-        assert!(!is_docs_path("Cargo.lock"));
-        assert!(!is_docs_path("package.json"));
-        assert!(!is_docs_path("scripts/build.sh"));
-    }
-
-    #[test]
-    fn lockfile_paths_are_recognized() {
-        assert!(is_lockfile_path("Cargo.lock"));
-        assert!(is_lockfile_path("nested/Cargo.lock"));
-        assert!(is_lockfile_path("package-lock.json"));
-        assert!(is_lockfile_path("yarn.lock"));
-        assert!(is_lockfile_path("pnpm-lock.yaml"));
-        assert!(!is_lockfile_path("Cargo.toml"));
-        assert!(!is_lockfile_path("src/main.rs"));
-    }
-
-    #[test]
-    fn skip_build_check_when_nothing_changed() {
-        // The regression this guards: an attempt that halted before writing
-        // anything used to fall through to a real `cargo test`/`clippy` run
-        // against a target repo with no compilable code.
-        assert!(should_skip_build_check(&[]));
-    }
-
-    /// The regression this guards: a docs-only attempt (`research.md`) whose
-    /// working tree also carries a `Cargo.lock` regenerated by the Scorer's
-    /// own earlier `cargo test`/`clippy` invocation used to read as
-    /// source-touching — whole-tree `git status` can't distinguish "the
-    /// attempt changed this" from "a prior probe run touched this" — forcing
-    /// a real build check against a target repo whose broken/empty scaffold
-    /// guarantees a false `pass=0%`.
-    #[test]
-    fn skip_build_check_when_docs_and_lockfile_only() {
-        assert!(should_skip_build_check(&[
-            (true, "research.md".to_string()),
-            (false, "Cargo.lock".to_string()),
-        ]));
-    }
-
-    #[test]
-    fn skip_build_check_when_only_docs_changed() {
-        assert!(should_skip_build_check(&[
-            (true, "research.md".to_string()),
-            (false, "docs/notes.md".to_string()),
-        ]));
-    }
-
-    #[test]
-    fn does_not_skip_build_check_when_source_changed() {
-        assert!(!should_skip_build_check(&[
-            (true, "research.md".to_string()),
-            (false, "src/main.rs".to_string()),
-        ]));
-    }
-
-    #[test]
-    fn porcelain_line_parses_untracked() {
-        assert_eq!(
-            parse_porcelain_line("?? research.md"),
-            Some((true, "research.md".to_string()))
-        );
-    }
-
-    #[test]
-    fn porcelain_line_parses_modified_tracked() {
-        assert_eq!(
-            parse_porcelain_line(" M src/main.rs"),
-            Some((false, "src/main.rs".to_string()))
-        );
-    }
-
-    #[test]
-    fn porcelain_line_parses_rename_to_new_path() {
-        assert_eq!(
-            parse_porcelain_line("R  old.md -> new.md"),
-            Some((false, "new.md".to_string()))
-        );
-    }
-
-    #[test]
-    fn parse_diff_lines_sums_insertions_and_deletions() {
-        assert_eq!(
-            parse_diff_lines(" 3 files changed, 42 insertions(+), 7 deletions(-)"),
-            49
-        );
-    }
-
-    #[test]
-    fn parse_diff_lines_handles_empty_stat() {
-        assert_eq!(parse_diff_lines(""), 0);
-    }
-}
+#[path = "scorer_tests.rs"]
+mod tests;

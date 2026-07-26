@@ -100,7 +100,7 @@ fn estimate_within_10_percent_of_api() {
     let api_key = std::env::var("ANTHROPIC_API_KEY").expect("ANTHROPIC_API_KEY must be set");
     let client = reqwest::blocking::Client::new();
     let body = serde_json::json!({
-        "model": "claude-sonnet-4-6",
+        "model": "claude-sonnet-5",
         "messages": [{ "role": "user", "content": "test" }]
     });
     let response = client

@@ -40,6 +40,22 @@ impl AgentRunner {
         self.api_client.is_some()
     }
 
+    /// Sprint F2 Phase 4 — surface a model-deprecation response header as a
+    /// visible warning (log + `AgentEvent`) instead of the run just failing
+    /// once the model is actually retired. Split out of `plan_via_api` to
+    /// keep that function under clippy's cognitive-complexity gate.
+    fn log_deprecation_warning(&self, model: &str, task_id: lopi_core::TaskId, warning: &str) {
+        tracing::warn!(
+            model,
+            warning,
+            "model deprecation warning from Anthropic API"
+        );
+        self.bus.send(AgentEvent::warn(
+            task_id,
+            format!("⚠ model `{model}` deprecation warning: {warning}"),
+        ));
+    }
+
     /// Execute the planning step via the direct Anthropic API instead of
     /// the `claude` CLI. Returns the full plan text.
     ///
@@ -111,6 +127,9 @@ impl AgentRunner {
 
         match result {
             Ok((text, usage)) => {
+                if let Some(warning) = &usage.model_deprecation_warning {
+                    self.log_deprecation_warning(model, task_id, warning);
+                }
                 let cost_usd = usage.estimated_cost(model);
 
                 // 5. Record success + cost on the breaker. Cost feeds the

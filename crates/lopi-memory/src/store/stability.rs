@@ -164,7 +164,7 @@ mod tests {
         let id = store
             .save_stability_entry(StabilityRecord {
                 task_goal: "add retry logic to the HTTP client module",
-                model: "claude-sonnet-4-6",
+                model: "claude-sonnet-5",
                 n_samples: 5,
                 variance_score: 0.12,
                 verdict: "stable",
@@ -179,7 +179,7 @@ mod tests {
         assert_eq!(entries.len(), 1);
         let e = &entries[0];
         assert_eq!(e.id, id);
-        assert_eq!(e.model, "claude-sonnet-4-6");
+        assert_eq!(e.model, "claude-sonnet-5");
         assert_eq!(e.n_samples, 5);
         assert_eq!(e.verdict, "stable");
         assert_eq!(e.accepted, 1);
@@ -215,7 +215,7 @@ mod tests {
         store
             .save_stability_entry(StabilityRecord {
                 task_goal: "fix the parser",
-                model: "claude-sonnet-4-6",
+                model: "claude-sonnet-5",
                 n_samples: 5,
                 variance_score: 0.25,
                 verdict: "warning",

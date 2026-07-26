@@ -43,6 +43,7 @@ fn runner_for(task: Task) -> lopi_agent::AgentRunner {
         run_loop::RepoGuardrails::default(),
         false,
         plan_decision_rx,
+        None,
     )
 }
 
@@ -62,7 +63,7 @@ fn verifier_required_enables_the_gate_end_to_end() {
 fn an_explicit_verifier_model_also_enables_the_gate() {
     let mut task = Task::new("grade me with sonnet");
     task.autonomy_level = AutonomyLevel::DraftPr;
-    task.verifier_model = Some("claude-sonnet-4-6".into());
+    task.verifier_model = Some("claude-sonnet-5".into());
     let runner = runner_for(task);
     assert!(runner.verifier_enabled());
 }

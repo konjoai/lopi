@@ -99,14 +99,14 @@ mod tests {
             confidence: 0.85,
         };
         store
-            .save_verifier_verdict(task_id, 1, &verdict, "claude-opus-4-7")
+            .save_verifier_verdict(task_id, 1, &verdict, "claude-opus-5")
             .await
             .unwrap();
         let rows = store.load_verifier_verdicts(task_id).await.unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].passed, 0);
         assert_eq!(rows[0].attempt, 1);
-        assert_eq!(rows[0].model_used, "claude-opus-4-7");
+        assert_eq!(rows[0].model_used, "claude-opus-5");
         assert!((rows[0].confidence - 0.85).abs() < 1e-6);
     }
 
@@ -120,7 +120,7 @@ mod tests {
             confidence: 0.97,
         };
         store
-            .save_verifier_verdict("task-xyz", 2, &verdict, "claude-opus-4-7")
+            .save_verifier_verdict("task-xyz", 2, &verdict, "claude-opus-5")
             .await
             .unwrap();
         let rows = store.load_verifier_verdicts("task-xyz").await.unwrap();
@@ -147,7 +147,7 @@ mod tests {
                 confidence: f64::from(attempt) * 0.3,
             };
             store
-                .save_verifier_verdict(tid, attempt, &v, "claude-opus-4-7")
+                .save_verifier_verdict(tid, attempt, &v, "claude-opus-5")
                 .await
                 .unwrap();
         }

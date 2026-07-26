@@ -1,0 +1,35 @@
+# Per-million-token USD rates lopi falls back to when the CLI's own
+# authoritative `total_cost_usd` isn't available (the direct-API planning
+# path, and the mid-stream `--max-budget-usd` estimate). See
+# `crates/lopi-agent/src/pricing.rs`.
+#
+# Edit this file to change a rate — lopi reads it at process start, so no
+# recompile is needed. An operator override at `<repo>/.lopi/pricing.toml`
+# or `~/.lopi/pricing.toml` may replace any subset of these tiers; unlisted
+# tiers keep the rate shipped here.
+#
+# 2026-07 pricing. Opus 4.1's prior rate here ($15/$75) was three sprints
+# stale — Opus 4.1 retired 2026-08-05 — and over-reported every burn chart
+# computed against a live Opus session by roughly 3x (Sprint F0). Sonnet 5
+# ships an introductory $2/$10 window through 2026-08-31; this table
+# intentionally stays on the standard $3/$15 rate (the sustained price after
+# the window ends) rather than tracking a promotional rate that expires out
+# from under it.
+
+[opus]
+input = 5.00
+output = 25.0
+cache_read = 0.50
+cache_write = 6.25
+
+[haiku]
+input = 1.00
+output = 5.00
+cache_read = 0.10
+cache_write = 1.25
+
+[sonnet]
+input = 3.00
+output = 15.0
+cache_read = 0.30
+cache_write = 3.75

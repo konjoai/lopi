@@ -131,7 +131,7 @@ pub struct LoopConfig {
     /// field existed.
     #[serde(default)]
     pub verifier_required: bool,
-    /// Model used for the verifier's grading pass (e.g. `"claude-opus-4-7"`).
+    /// Model used for the verifier's grading pass (e.g. `"claude-opus-5"`).
     /// `None` (the default) resolves to a model that differs from the
     /// worker's, so the checker is never the same model as the maker
     /// ("never grade your own homework").
@@ -255,6 +255,14 @@ pub struct LoopConfig {
     /// to the `standard` preset with no overrides.
     #[serde(default)]
     pub budget: BudgetSection,
+    /// Sprint F2 Phase 1 — explicit test-command override, naming the exact
+    /// shell command the scorer should run instead of stack detection
+    /// (`crates/lopi-agent/src/scorer_detect.rs`). Always wins over
+    /// detection when set. `None` (the default) leaves detection as the
+    /// sole source — this is the escape hatch for any stack detection
+    /// doesn't recognize, not a replacement for it.
+    #[serde(default)]
+    pub test_command: Option<String>,
 }
 
 impl Default for LoopConfig {
@@ -282,6 +290,7 @@ impl Default for LoopConfig {
             on_fail: OnFail::default(),
             reflect_cross_run: false,
             budget: BudgetSection::default(),
+            test_command: None,
         }
     }
 }

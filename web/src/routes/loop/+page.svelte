@@ -279,8 +279,10 @@
             </div>
             <div>
               <div class="flex items-center justify-between mb-1.5">
-                <span class="font-mono text-[10px] uppercase tracking-widest opacity-40"
-                  >Context pressure</span
+                <span
+                  class="font-mono text-[10px] uppercase tracking-widest opacity-40"
+                  title="Estimated via cl100k_base (OpenAI's GPT-4 BPE) — not a Claude token count. See KT-2.4, Sprint F2."
+                  >Context pressure (est.)</span
                 >
                 <span class="font-mono text-[10px] text-konjo-ice"
                   >{pressureSeries.length ? pct(pressureSeries[pressureSeries.length - 1]) : '—'}</span

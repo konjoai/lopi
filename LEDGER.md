@@ -5,6 +5,68 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## Sprint F2 — the unevaluable-repo fix, and the same defect class as F1's verifier gap
+
+**Decision:** `Score::passed()` now returns `false` whenever `unevaluated_reason` is
+set, regardless of `test_pass_rate`. Before this sprint, a repo with no recognized
+test runner (anything that wasn't Rust or Node) scored `test_pass_rate = 1.0` — a
+perfect pass having run zero tests, confirmed live against this repo's own baseline
+commit (`5760da0`) in `.konjo/killtests/F2/KT-2.1.md`.
+
+**This changes the meaning of a passing score for every repo lopi has ever run
+against that is not Rust or Node.** A historical "success" on, say, a Python or Go
+target repo may have shipped without ever running that repo's tests. This sprint does
+not retroactively re-score anything — it only stops the pattern going forward. Any
+downstream tooling (the memory store's pattern-success stats, the loop-health
+dashboard) that treats a historical "success" outcome as evidence of a working change
+should be aware that pre-F2 successes on non-Rust/non-Node repos carry this caveat.
+
+**This is the same defect class as F1 Phase 4's verifier gap** (a verifier path that
+`return true`s when it cannot actually verify) — both are "I could not evaluate this,
+so it passes." Both sprints' LEDGER entries use this framing deliberately, so a future
+grep for "I could not evaluate" or "unevaluated" finds every instance of the pattern
+across sprints, not two entries that read as unrelated one-offs. kiban's Sprint K1
+G-POLARITY kill-test is built to catch a third instance the same way.
+
+**Anti-goal held:** the fix does not make the unknown case *quietly* restrictive.
+`unevaluated_reason` always carries a stated reason (which manifests were checked,
+and that `test_command` in `.lopi/loop.toml` is the escape hatch) — a blocked task
+with no stated reason would have been a different bad outcome from a passed task with
+no evaluation, and the brief was explicit that the reason string is the deliverable,
+not the block itself.
+
+## Sprint F2 — model IDs move to config; `--bare` pinned explicitly
+
+**Decision 1 — model IDs are now a runtime-read config (`models.toml` +
+`.lopi/models.toml`/`~/.lopi/models.toml` override), not compiled-in constants.**
+Mirrors Phase 3's pricing-table externalization exactly. Two generations of drift
+motivated this: `crates/lopi-agent/src/claude_model.rs` was pinned to
+`claude-opus-4-7` while the live lineup is Opus 5, and CI's G5 adversarial-review
+header separately drifted to `claude-opus-4-6` — two different stale generations in
+one repo, reconciled in this same PR per the brief's instruction not to fix one and
+leave the other. The config schema does not assume one pinning strategy for every
+tier: from the Sonnet/Opus 4.6 generation onward a dateless ID is itself a fixed
+snapshot (safe to pin bare), while Haiku 4.5 predates that generation and its
+dateless form is still a rolling alias (kept on the explicit dated snapshot, as it
+already was). This is a genuine schema change and a new fallback path — a future
+sprint reading `model_haiku()`/`model_sonnet()`/`model_opus()` should know these read
+from disk once (cached via `OnceLock`) rather than being free compile-time constants.
+
+**Decision 2 — `--bare` is pinned explicitly, in both directions, at every `claude -p`
+spawn site**, via a new `bare: bool` parameter on the shared `apply_cli_caps` seam.
+Anthropic's own CLI documents `--bare` as recommended for scripted calls and **slated
+to become `-p`'s default** — the day it flips, any spawn site that never passed the
+flag either way would silently stop loading the target repo's `CLAUDE.md`/skills, with
+no error and no code change. All three of lopi's current spawn sites are worker
+sessions (plan/implement/fix) and now pass `bare: false` explicitly, asserted by a
+dedicated test pair mirroring `apply_cli_caps_includes_every_configured_flag`.
+**This locks in today's behavior against tomorrow's default change** — if lopi had
+done nothing, the eventual flip would have been a silent regression instead of a
+no-op. Checker/post-mortem sessions (F1, not yet landed) should pass `bare: true` at
+whatever spawn site they add; this sprint's policy is the one F1 inherits, per both
+sprints' coordination note. If F1's own KT-1.3 already found the checker needs project
+context by the time F1 lands, that result wins over this default.
+
 ## Sprint F0 — removing WhatsApp from the README is a positioning change, not just an accuracy fix
 
 Sprint F0's brief was explicit that most of its README corrections are pure accuracy

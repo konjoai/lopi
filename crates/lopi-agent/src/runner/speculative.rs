@@ -190,7 +190,7 @@ mod tests {
         };
         let out = blank_output(Some(usage), Some(0.01));
         runner
-            .record_speculative_usage(&out, crate::claude::MODEL_SONNET, 0)
+            .record_speculative_usage(&out, crate::claude::model_sonnet(), 0)
             .await;
         assert_eq!(runner.tokens_used.load(Ordering::Relaxed), 150);
     }
@@ -205,7 +205,7 @@ mod tests {
         runner.store = Some(store.clone());
         let out = blank_output(None, None);
         runner
-            .record_speculative_usage(&out, crate::claude::MODEL_SONNET, 0)
+            .record_speculative_usage(&out, crate::claude::model_sonnet(), 0)
             .await;
         assert!(store.recent_turn_metrics(10).await.unwrap().is_empty());
     }
@@ -226,7 +226,7 @@ mod tests {
         };
         let out = blank_output(Some(usage), Some(0.05));
         runner
-            .record_speculative_usage(&out, crate::claude::MODEL_SONNET, 2)
+            .record_speculative_usage(&out, crate::claude::model_sonnet(), 2)
             .await;
         let rows = store.recent_turn_metrics(10).await.unwrap();
         assert_eq!(rows.len(), 1, "one turn_metrics row must be persisted");

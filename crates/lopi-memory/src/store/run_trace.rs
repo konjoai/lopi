@@ -147,7 +147,7 @@ mod tests {
             turn_id: Uuid::new_v4(),
             task_id: task,
             session_id: Uuid::new_v4(),
-            model: "claude-sonnet-4-6".into(),
+            model: "claude-sonnet-5".into(),
             attempt_number: attempt_no,
             input_tokens: input,
             output_tokens: 50,
@@ -179,6 +179,7 @@ mod tests {
             lint_errors: 1,
             diff_lines: 20,
             errors: vec!["boom".into()],
+            unevaluated_reason: None,
         });
         a.outcome = outcome.into();
         a

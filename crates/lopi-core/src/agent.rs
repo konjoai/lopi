@@ -12,7 +12,7 @@ pub struct TurnMetrics {
     pub task_id: TaskId,
     /// Claude session identifier for the enclosing agent run.
     pub session_id: Uuid,
-    /// Model name used for this turn (e.g. `claude-sonnet-4-6`).
+    /// Model name used for this turn (e.g. `claude-sonnet-5`).
     pub model: String,
     /// Attempt number within the parent task run.
     pub attempt_number: u8,
@@ -36,6 +36,14 @@ pub struct TurnMetrics {
     /// Total tokens currently in the context window.
     pub context_tokens: u32,
     /// Fraction of the context window currently in use (`0.0`–`1.0`).
+    ///
+    /// Sprint F2 Phase 5 (KT-2.4) — an **estimate**, not a Claude-accurate
+    /// count: sourced from [`ContextWindow::token_pressure`](lopi_context)
+    /// which estimates via `cl100k_base` (OpenAI's GPT-4 BPE — see
+    /// `lopi_context::tokens::estimate_tokens`), since no keyless
+    /// Claude-accurate tokenizer exists for the *pre-send* estimate this
+    /// number is computed from. Every UI surface displaying this field
+    /// names the instrument for the same reason.
     pub context_pressure: f32,
     /// Number of messages evicted from context during this turn.
     pub evictions_this_turn: u8,
@@ -105,10 +113,19 @@ pub struct Score {
     pub diff_lines: u32,
     /// Human-readable error messages collected during scoring.
     pub errors: Vec<String>,
+    /// Sprint F2 Phase 2 — set when the scorer could not evaluate this repo
+    /// at all (no recognized test runner, no `test_command` override): a
+    /// stated reason rather than a silent pass. `None` (the default) means
+    /// scoring genuinely ran. `Some(reason)` forces [`passed`](Self::passed)
+    /// to `false` regardless of `test_pass_rate` — this is a *blocking*
+    /// outcome, not a numeric one, per the one-way door recorded in
+    /// `LEDGER.md`: a repo lopi cannot evaluate must never read as a pass.
+    #[serde(default)]
+    pub unevaluated_reason: Option<String>,
 }
 
 impl Score {
-    /// Construct a new `Score` with an empty error list.
+    /// Construct a new `Score` with an empty error list and no unevaluated reason.
     #[must_use]
     pub fn new(test_pass_rate: f32, lint_errors: u32, diff_lines: u32) -> Self {
         Self {
@@ -116,13 +133,16 @@ impl Score {
             lint_errors,
             diff_lines,
             errors: vec![],
+            unevaluated_reason: None,
         }
     }
 
-    /// Returns `true` when all tests pass and there are zero lint errors.
+    /// Returns `true` when all tests pass, there are zero lint errors, and
+    /// the repo was actually evaluated (see
+    /// [`unevaluated_reason`](Self::unevaluated_reason)).
     #[must_use]
     pub fn passed(&self) -> bool {
-        self.test_pass_rate >= 1.0 && self.lint_errors == 0
+        self.unevaluated_reason.is_none() && self.test_pass_rate >= 1.0 && self.lint_errors == 0
     }
 
     /// Compute a composite quality score in `[0.0, 1.0]` using the given penalty weights.

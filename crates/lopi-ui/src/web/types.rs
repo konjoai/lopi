@@ -53,7 +53,7 @@ pub struct CreateTaskRequest {
     /// [`lopi_core::Task::verifier_required`].
     #[serde(default)]
     pub verifier_required: Option<bool>,
-    /// Explicit verifier model override, e.g. `"claude-opus-4-7"`. Mirrors
+    /// Explicit verifier model override, e.g. `"claude-opus-5"`. Mirrors
     /// [`lopi_core::Task::verifier_model`].
     #[serde(default)]
     pub verifier_model: Option<String>,

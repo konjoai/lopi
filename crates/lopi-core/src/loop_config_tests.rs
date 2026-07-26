@@ -203,7 +203,7 @@ fn loop_config_verifier_gate_defaults_off() {
 fn loop_config_verifier_gate_round_trips_through_toml() {
     let c = LoopConfig {
         verifier_required: true,
-        verifier_model: Some("claude-sonnet-4-6".into()),
+        verifier_model: Some("claude-sonnet-5".into()),
         verifier_effort: Some("high".into()),
         ..LoopConfig::default()
     };
