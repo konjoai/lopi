@@ -1,12 +1,13 @@
 ---
 decays: state
-verified-against: 4d8418c
-verified-date: 2026-07-25
+verified-against: 71a470b
+verified-date: 2026-07-26
 ---
 
 # Trifecta paths — untrusted input → powerful tools → external comms
 
-Verified against: `4d8418c` · 2026-07-25 (re-verified; §5's "done" statuses still hold —
+Verified against: `71a470b` · 2026-07-26 (re-verified through Sprint F1/F3, no new drift;
+§5's "done" statuses still hold —
 §1's table and §4's `WebConfig.host` citation updated below after unrelated later sprints
 shifted line numbers in `github.rs`, `issue.rs`, `whatsapp.rs`, and `config.rs`. §0's and
 §2's citations describe the pre-Sprint-S2 baseline at `3a8a2ff` by design and are left

@@ -1,13 +1,15 @@
 ---
 decays: state
-verified-against: 4d8418c
-verified-date: 2026-07-25
+verified-against: 71a470b
+verified-date: 2026-07-26
 ---
 
 # Panic audit — the trustworthy count, and why grep couldn't give it to you
 
-Verified against: `4d8418c` · 2026-07-25 (re-verified; the workspace-wide zero-unwrap
-claim and per-crate deny/warn table still hold — no citation drift found)
+Verified against: `71a470b` · 2026-07-26 (re-verified; the workspace-wide zero-unwrap
+claim and per-crate deny/warn table still hold, re-confirmed with a live clippy re-run —
+no citation drift found; the "17 files" `#[allow]` count below is stale and softened, see
+that section)
 
 Konjo Forward **Pillar 1** (an honest starting position) and **F11** (a durable unattended
 loop should not die on an `unwrap`). This is the pre-flight kill-test for Sprint S5 and the
@@ -78,9 +80,12 @@ which is exactly the structure line-based tools cannot parse and clippy parses b
 
 Every raw-grep hit above is inside test code (an inline `#[cfg(test)] mod tests`, a `tests.rs`
 submodule gated `#[cfg(test)]` in its parent, or a Criterion bench in `benches/`), each already
-carrying its own scoped `#[allow(clippy::unwrap_used, ...)]` where needed. Confirmed by hand for
-every occurrence of those `#[allow]` annotations in the repo (17 files) — none are in a
-production code path.
+carrying its own scoped `#[allow(clippy::unwrap_used, ...)]` where needed. Spot-checked on
+re-verification (2026-07-26): the `#[allow]` count has grown with the codebase (102 files as of
+this re-check, not the 17 at original write time) but every sample checked still attaches the
+`#[allow]` directly to a `#[cfg(test)]` module, not a production path — the load-bearing claim is
+Method 3's clippy gate staying at 0 production violations, re-confirmed live at re-verification
+time, not the file count, which is expected to keep growing and isn't itself the safety property.
 
 ## What was actually done this sprint
 

@@ -1,14 +1,14 @@
 ---
 decays: state
-verified-against: 4d8418c
-verified-date: 2026-07-25
+verified-against: 71a470b
+verified-date: 2026-07-26
 ---
 
 # Egress surface — the local-only remnant of Sprint S2
 
-Verified against: `4d8418c` · 2026-07-25 (re-verified; findings below unchanged since
+Verified against: `71a470b` · 2026-07-26 (re-verified; findings below unchanged since
 `34a73d1` — two citations fixed after `TaskRow` and `get_task_surfaces_provenance_marker`
-moved files in an unrelated later sprint)
+moved files in an unrelated later sprint; no further drift found through Sprint F1/F3)
 
 This is the pre-flight kill-test for Sprint S2′ ("Egress allowlist: bound the one
 trifecta leg that's still open locally"). The sprint brief cited a baseline of
