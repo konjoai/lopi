@@ -443,7 +443,7 @@ pub use schedule_chains::{
 };
 pub use schedules::{ScheduleInput, ScheduleRow, ScheduleRunRow};
 pub use stability::{StabilityEntry, StabilityRecord};
-pub use task_logs::{TaskLogRow, MAX_PER_TASK as TASK_LOG_MAX_PER_TASK};
+pub use task_logs::{TaskLogInsert, TaskLogRow, MAX_PER_TASK as TASK_LOG_MAX_PER_TASK};
 pub use verifier::VerifierVerdictRow;
 
 #[cfg(test)]

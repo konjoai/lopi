@@ -61,11 +61,23 @@ impl AgentPool {
         let counters_stats = self.counters.clone();
         let queue_stats = self.queue.clone();
         let started_at = self.started_at.clone();
+        // Sprint F3 Phase 5 — this tick used to broadcast `PoolStats`
+        // unconditionally, forever, even with zero agents and zero
+        // subscribers. That's harmless CPU-wise on its own, but it means
+        // the process is never truly idle, which blocks Fly.io autostop on
+        // an always-on deployment. Gate the broadcast (not the tick — a 1s
+        // sleep costs nothing on its own) on there being someone to tell:
+        // a live subscriber, or a pool that isn't sitting empty.
+        let stats_sender = bus_stats.sender();
         tokio::spawn(async move {
             loop {
                 tokio::time::sleep(std::time::Duration::from_secs(1)).await;
                 let running = counters_stats.running.load(Ordering::Relaxed);
                 let queued = queue_stats.len();
+                let idle = running == 0 && queued == 0;
+                if idle && stats_sender.receiver_count() == 0 {
+                    continue;
+                }
                 let succeeded = counters_stats.succeeded.load(Ordering::Relaxed);
                 let failed = counters_stats.failed.load(Ordering::Relaxed);
                 let uptime_secs = started_at.elapsed().as_secs();
@@ -76,6 +88,9 @@ impl AgentPool {
                     failed,
                     uptime_secs,
                 });
+                counters_stats
+                    .pool_stats_sent
+                    .fetch_add(1, Ordering::Relaxed);
             }
         });
 

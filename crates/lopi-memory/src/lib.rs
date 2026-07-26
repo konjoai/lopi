@@ -11,6 +11,6 @@ pub use store::{
     MaxxRow, MaxxRunRow, MemoryStore, OnboardingPattern, PatternRow, QualityRunRecord,
     QualityRunRow, QuotaObservationRow, RunAttemptRow, RunTurnAgg, ScheduleChainInput,
     ScheduleChainRow, ScheduleInput, ScheduleRow, ScheduleRunRow, ScorePoint, StabilityEntry,
-    StabilityRecord, TaskLogRow, TaskRow, TaskStatusCounts, VerifierVerdictRow,
+    StabilityRecord, TaskLogInsert, TaskLogRow, TaskRow, TaskStatusCounts, VerifierVerdictRow,
     TASK_LOG_MAX_PER_TASK,
 };

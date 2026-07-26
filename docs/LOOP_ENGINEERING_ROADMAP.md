@@ -1,13 +1,13 @@
 ---
 decays: state
-verified-against: 4d8418c
-verified-date: 2026-07-25
+verified-against: 71a470b
+verified-date: 2026-07-26
 ---
 
 # The Pentad — Loop Engineering Completion Roadmap
 
-Verified against: 4d8418c · 2026-07-25 (re-verified; no content drift found since the
-2026-07-24 kill-test — see §1's re-verification note)
+Verified against: 71a470b · 2026-07-26 (re-verified; two citations fixed after Sprint
+F1/F3 shifted line numbers — no status/substance drift found — see §1's re-verification note)
 
 > **North star:** lopi is no longer a thing you *prompt*. It is a loop you *design*.
 > This roadmap closes the five (+ one) building blocks of loop engineering to a
@@ -59,6 +59,19 @@ commit in the range touched `crates/lopi-remote`'s connector surface,
 `earned_trust` wiring, or the loop-health/writable-controls gaps this
 section calls out as still open.
 
+**2026-07-26 re-verification:** re-checked against `71a470b` (Sprint F1's
+verifier CLI backend + Sprint F3's log-persistence decoupling, merged
+together). Unlike the 2026-07-25 pass, this range *did* touch two cited
+files: F1 inserted a `Backend` enum ahead of `VerifierAgent` in
+`verifier.rs`, shifting `VerifierAgent::new`'s `isolated: true` from
+`:120-127` to **`:140-145`** and the isolation test from `:287` to
+**`:331`** (§ below, and the Sub-agents row above); F3's persistence
+decoupling shrank `run_loop.rs` by ~75 net lines, moving the
+`setup_worktree` call site from `:414-444` to **`:338`** (Worktrees row,
+above). Both fixed below/above. No status cell changed — the substance of
+every claim (maker/checker isolation still defaults on, worktree isolation
+still opt-in via `Branch`/`Worktree`) is unchanged, only citations moved.
+
 Legend: 🟢 solid · 🟡 partial · 🔴 missing.
 
 | Block | Status | What exists | The true gap |
@@ -67,7 +80,7 @@ Legend: 🟢 solid · 🟡 partial · 🔴 missing.
 | **Worktrees** | 🟢 | **Real `git worktree` isolation, shipped and wired.** `crates/lopi-git/src/worktree.rs:36-217` (`WorktreeManager` add/add_detached/prune/list/gc) with RAII `Drop` cleanup (`worktree.rs:295-330`); `crates/lopi-orchestrator/src/pool/worktree.rs:25-50` (`setup_worktree`) puts each task in its own detached worktree when `IsolationMode::Worktree` is set (`crates/lopi-core/src/loop_config.rs:29-35`), with per-worktree `CARGO_TARGET_DIR` (`worktree.rs:266-277`); `crates/lopi-git/src/rebase.rs:27-75` (`rebase_onto`/`rebase_onto_default`) rebases onto a moved default branch and maps conflicts to `TaskStatus::Conflict` (wired at `crates/lopi-agent/src/runner/finalize.rs:228-245`); GC exposed via `lopi worktree gc`/`list` (`src/worktree_commands.rs:18-51`) | Isolation mode defaults to `Branch`, not `Worktree` — a repo must opt in via `.lopi/loop.toml`. No mid-run snapshot |
 | **Skills** | 🟢 | **Runtime skill engine, shipped and wired.** `crates/lopi-skill/src/registry.rs:17-93` (`SkillRegistry::load_from_dirs`, dup-name validation) parses `SKILL.md` frontmatter into a typed registry; `crates/lopi-agent/src/runner/mod.rs:329` (`with_skills`) and `crates/lopi-agent/src/runner/seed.rs:210-241` (`seed_skills`/`record_skill_activation`) inject matching skills into the planning prompt and record activation | Lesson→skill promotion is **partial**: `crates/lopi-skill/src/promote.rs:37-60` (clustering) and `promoter.rs:40-60` (drafts to `.lopi/skills-pending/`, human-approval gate) exist and are reachable via `src/skill_commands.rs:64`, but drafting is a fixed string template, not "via a sub-agent" as originally scoped, and nothing triggers it automatically — it's a manual CLI-only path today |
 | **Plugins & connectors** | 🟢 | **MCP client + server, shipped and wired — both directions.** `crates/lopi-mcp/src/client.rs:36-65` + `config.rs:19-37` (`[[mcp.servers]]` in `.lopi/loop.toml`) + `bridge.rs:21-49` (merges discovered tools into `lopi-tools::ToolRegistry`) is the consuming side; `crates/lopi-mcp/src/server.rs:18-80` wired at `src/mcp_commands/mod.rs:117-243` exposes `lopi_submit_task`/`lopi_get_task`/`lopi_cancel_task`/`lopi_list_tasks`/`lopi_get_logs`/`lopi_get_agent_dag`/`lopi_get_stats` as MCP tools over stdio (`McpServe` registered at `src/main.rs:50,299`) — more surface than the original sprint scoped | `crates/lopi-remote/src/lib.rs:1-10` still has independent hardcoded `telegram`/`whatsapp` modules (plus a new `egress` allowlist module, unrelated to connector abstraction) — **no `Connector` trait, no durable outbound queue.** This part of the original claim ("connectors are hardcoded singletons") still holds |
-| **Sub-agents** | 🟢 | **Maker/checker split, shipped and wired.** `crates/lopi-agent/src/verifier.rs:120-127` — `VerifierAgent::new` defaults `isolated: true`; `resolve_verifier` (`verifier.rs:34`) forces a different model than the maker; test `verifier.rs:287` (`isolated_prompt_excludes_the_maker_plan`) asserts a maker's plan text never reaches the verifier's prompt | No parallel task decomposition: `crates/lopi-core/src/successor.rs:1-27` is a depth-capped (3) **sequential** one-hop successor chain, not a sub-task DAG dispatched through `AgentPool`. Earned-trust auto-promotion exists as an isolated, tested state machine (`crates/lopi-core/src/earned_trust.rs:31-101`) but has zero callers outside its own module — not wired into `schedule_manager.rs`, not persisted |
+| **Sub-agents** | 🟢 | **Maker/checker split, shipped and wired.** `crates/lopi-agent/src/verifier.rs:140-145` — `VerifierAgent::new` defaults `isolated: true`; `resolve_verifier` (`verifier.rs:34`) forces a different model than the maker; test `verifier.rs:331` (`isolated_prompt_excludes_the_maker_plan`) asserts a maker's plan text never reaches the verifier's prompt | No parallel task decomposition: `crates/lopi-core/src/successor.rs:1-27` is a depth-capped (3) **sequential** one-hop successor chain, not a sub-task DAG dispatched through `AgentPool`. Earned-trust auto-promotion exists as an isolated, tested state machine (`crates/lopi-core/src/earned_trust.rs:31-101`) but has zero callers outside its own module — not wired into `schedule_manager.rs`, not persisted |
 | **Memory / state** | 🟡 | `lopi-memory` SQLite (patterns, lessons, audit, schedules); `CLAUDE.md` + rules; `LoopConfig` → `.lopi/loop.toml`. Stall detection exists in a narrower form than originally claimed missing: `StopReason::NoProgress` (`crates/lopi-core/src/stop_reason.rs:27-28`) + `ProgressGate` (`crates/lopi-agent/src/runner/progress.rs:20-55`) halts on score-delta stagnation | Still genuinely open: no `AgentEvent::ProgressStall` variant (only a string-convention reason), no per-loop external markdown state file (Ralph), no `VISION.md` intent anchor |
 
 **Verdict (corrected 2026-07-24):** four of the five "loop-defining primitives"
@@ -144,7 +157,7 @@ the standing Three-Wall gates; only sprint-specific acceptance is spelled out.
   drops to *creation only*, not the whole run.
 
 **Sprint 1.2 — Pool runs in worktrees**
-- **Status: ✅ DONE.** `crates/lopi-orchestrator/src/pool/worktree.rs:25-50` (`setup_worktree`) wires per-task detached worktrees into the pool, called from `crates/lopi-orchestrator/src/pool/run_loop.rs:414-444`; per-worktree `CARGO_TARGET_DIR` at `crates/lopi-git/src/worktree.rs:266-277`.
+- **Status: ✅ DONE.** `crates/lopi-orchestrator/src/pool/worktree.rs:25-50` (`setup_worktree`) wires per-task detached worktrees into the pool, called from `crates/lopi-orchestrator/src/pool/run_loop.rs:338`; per-worktree `CARGO_TARGET_DIR` at `crates/lopi-git/src/worktree.rs:266-277`.
 - **Goal:** `AgentRunner` executes inside its worktree, not the shared root.
 - **Deliverables:** thread the worktree path through `run_loop.rs`; per-worktree
   `CARGO_TARGET_DIR`; remove the global serialization now made unnecessary.
@@ -245,7 +258,7 @@ the standing Three-Wall gates; only sprint-specific acceptance is spelled out.
 > fresh session**, then enable shallow decomposition.
 
 **Sprint 4.1 — True maker/checker split**
-- **Status: ✅ DONE.** `crates/lopi-agent/src/verifier.rs:120-127` — `VerifierAgent::new` defaults `isolated: true`; test `verifier.rs:287` (`isolated_prompt_excludes_the_maker_plan`) proves a maker's plan text never reaches the verifier's prompt.
+- **Status: ✅ DONE.** `crates/lopi-agent/src/verifier.rs:140-145` — `VerifierAgent::new` defaults `isolated: true`; test `verifier.rs:331` (`isolated_prompt_excludes_the_maker_plan`) proves a maker's plan text never reaches the verifier's prompt.
 - **Goal:** The checker never sees the maker's chain-of-thought.
 - **Deliverables:** verifier runs as a fresh sub-process/session against the
   maker's worktree diff only; structured verdict (pass/fail + reasons + score);

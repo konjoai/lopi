@@ -5,6 +5,59 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## Sprint F3 — log persistence becomes best-effort under pressure
+
+**Decision:** under sustained overload, the event bridge now drops
+`task_logs` persistence before it would ever drop a live broadcast event.
+The bridge's persistence handoff channel is bounded (4,096 rows); once
+full, `try_persist` drops the row and increments a counter
+(`lopi_task_log_persist_dropped_total`) rather than blocking the broadcast
+loop or growing without limit.
+
+**This is a one-way door on a durability characteristic.** Before this
+sprint, every `LogLine` was written to SQLite synchronously in the same
+await chain as the broadcast — slow, but lossless: if the write succeeded,
+the row existed. Now, a sustained burst above drain capacity can silently
+(from the emitting agent's perspective — the counter makes it *visible*,
+not *invisible*) lose log rows that never reach `task_logs` at all, not
+merely rows that get pruned later. **Anything that later needs guaranteed
+log persistence must add it back explicitly** (e.g. a backpressure mode, a
+larger buffer with an alert, or a durable spill-to-disk path) — it cannot
+assume today's behavior. This matters concretely for:
+
+- `lopi diag`'s export (`src/diag_commands.rs`) — its `task_logs.json`
+  snapshot is only as complete as what made it past the persist channel.
+- F9's evidence bundle, if and when it comes to depend on `task_logs` for
+  anything beyond display — it does not today (see `KT-3.3`), but a future
+  sprint reaching for `task_logs` as an audit source should re-check this
+  entry first.
+- `lopi replay` — unaffected today (reads `agent_dag_nodes`, a separate
+  table, confirmed in `KT-3.3`), but if replay's dependency set ever grows
+  to include `task_logs`, this door needs to be reopened, not assumed shut.
+
+**Why the ordering (drop persistence, not live events):** `KT-3.3` traced
+every consumer of `task_logs` and every consumer of the live `LogLine`
+broadcast. `task_logs` feeds only retrospective/inspection surfaces (web
+dashboard historical tail, Telegram `/tail`, MCP `lopi_get_logs`, `lopi
+diag`) — never a gate, a decision, or replay correctness. The live
+broadcast, by contrast, has **no replay path at all**: `lopi run`'s CLI
+output, the REPL, and the TUI all subscribe directly to the bus and never
+fall back to `task_logs` — a dropped live event is gone for them,
+permanently, with nothing to backfill it. Given that asymmetry, degrading
+the side with a fallback (retrospective reads can tolerate a lossy tail —
+`task_logs` was already capped at `MAX_PER_TASK` and pruned, i.e. lossy by
+design, before this sprint) over the side with none is the correct
+ordering, not merely the convenient one. This was the kill-test most likely
+to invert the design (per the brief's own instruction to run it first) —
+it didn't invert; it confirmed.
+
+**How to apply:** any future sprint touching this channel should keep the
+drop-persistence-before-live-events ordering as the default. If a use case
+emerges that needs `task_logs` for correctness or audit (not just display),
+that is the trigger to reopen this door — add backpressure or durable
+buffering explicitly, with its own kill-test, rather than assuming the
+current best-effort behavior already covers it.
+
 ## Sprint F1 — the verifier gets a real backend; requested-but-unavailable flips to fail-closed
 
 **Decision 1 (Phase 1) — the CLI backend becomes the default verifier transport; the

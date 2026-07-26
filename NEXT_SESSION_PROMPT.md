@@ -5,6 +5,62 @@ the `lopi` repo. Newest first.
 
 ---
 
+## Next Session — after Sprint F3 (decouple log persistence) — Sprint F4 (session continuity) is next
+
+**Sprint F3 decoupled the event bridge's live broadcast from `task_logs`
+persistence.** Read first, in order: `CLAUDE.md`, `CHANGELOG.md`'s
+`[0.30.0] — Sprint F3` entry, `LEDGER.md`'s `Sprint F3` entry (the
+best-effort-persistence one-way door), all four
+`.konjo/killtests/F3/KT-3.*.md` files, `benchmarks/results/
+20260726T205826Z_f3_bridge/summary.md`, then this file's own words below.
+
+**Version note:** F3 was developed against `6688d7d` (post-F2, `0.28.0`),
+before F1 had landed, and its own draft notes assumed it would take
+`0.29.0`. **F1 landed first instead** while F3's PR was in review (see the
+`Sprint F1` entry immediately below this one) and took `0.29.0` — so F3
+takes **`0.30.0`**.
+
+Sprint F4 (session continuity) is next. Three things carry forward, two
+from F3 and one inherited through F3 from F1's own handoff below:
+
+1. **`KT-3.4`'s volume estimate was made pre-F1; F1 has since landed, but
+   F3's *measurement* doesn't need a re-run — only a future live
+   measurement does.** F3's 30-run paired benchmark
+   (`benchmarks/results/20260726T205826Z_f3_bridge/`) uses a synthetic-load
+   harness (`event_bridge_bench.rs::bridge_load_bench`) that injects
+   `AgentEvent::LogLine` traffic directly onto the bus at a documented,
+   stated rate (~250 lines/sec/agent, 4 synthetic agents) — it never
+   exercises F1's verifier/judge/post-mortem code, so F1 landing changes
+   nothing about what that harness measures. What F1 *does* change is the
+   real production event rate a **live** (non-synthetic, real-agent)
+   re-measurement would see. That re-measurement was never attempted in F3
+   (out of scope, and this session's environment can't run one anyway —
+   see `KT-3.1`'s own environment-substitution note) but is now actionable
+   rather than merely estimated, since F1's verifier-session code exists to
+   profile. Whoever eventually runs a real four-agent M3 measurement of the
+   bridge should account for F1's added verifier-session traffic in the
+   observed rate, rather than assuming F3's synthetic rate still applies.
+2. **The durability one-way door — log persistence is now best-effort under
+   pressure.** `LEDGER.md`'s F3 entry: under sustained overload, the
+   bridge's persistence channel drops `task_logs` rows (counted, not
+   silent — `lopi_task_log_persist_dropped_total` at `/metrics`) rather
+   than blocking the live stream or growing unbounded. This was confirmed
+   safe by `KT-3.3`: nothing reads `task_logs` for correctness, replay, or
+   gating today — only display surfaces (web dashboard tail, Telegram
+   `/tail`, MCP `lopi_get_logs`, `lopi diag` export). **If session
+   continuity work (F4) or any later sprint starts treating `task_logs` as
+   more than a display/inspection surface** — e.g. reconstructing session
+   state from logged lines, or feeding an evidence bundle that needs
+   completeness guarantees — **that is the trigger to reopen this door**
+   and add backpressure or durable buffering back explicitly, rather than
+   assuming today's best-effort behavior already covers it.
+3. **F1's own item 3 below (F4 must not resume the checker session) still
+   applies and is worth reading in full** — it's about a different
+   subsystem (`verifier_cli.rs`/`postmortem_cli.rs`'s session isolation)
+   than F3 touched, but it's the same kind of constraint: a fresh-session
+   guarantee that a future session-continuity helper could accidentally
+   erase if it's applied blanket-wide instead of call-site-by-call-site.
+
 ## Next Session — after Sprint F1 (The Verifier Is Real) — F9 unblocked; three carried-forward items
 
 **Sprint F1 gave the verifier, the judge tier, and post-mortem a CLI backend

@@ -1,3 +1,137 @@
+## [0.30.0] — Sprint F3: decouple log persistence from the live event stream
+
+**Volume regime and version note:** this sprint was developed against `6688d7d`
+(post-F2, `0.28.0`), when F1 had not yet landed — `KT-3.4` recorded that as a
+deferred estimate and this sprint's own draft assumed F3 would preempt F1's
+`0.29.0`. In the time this sprint's PR was in review, **F1 landed first**
+(`[0.29.0]` below), so F3 takes `0.30.0` instead of the `0.29.0` its own
+notes originally claimed. This does not change F3's baseline validity: the
+30-run paired measurement below uses a synthetic-load harness
+(`event_bridge_bench.rs`) that injects `AgentEvent::LogLine` traffic
+directly onto the bus at a documented, stated rate — it does not exercise
+F1's verifier/judge/post-mortem code paths at all, so F1 landing first
+neither contaminates nor invalidates this measurement. What F1 *does* change
+is the real production event rate a live (non-synthetic) re-measurement
+would see, per `KT-3.4`'s original point — that re-measurement is now
+actionable (F1's code exists to profile) rather than merely estimated;
+handed off below rather than attempted in this same sprint, since it was
+out of scope for F3's own brief.
+
+The event bridge serialized every `AgentEvent` once for all WS/SSE
+subscribers, but persisted `LogLine`s to SQLite in the *same await chain* —
+database latency throttled the live UI stream. `KT-3.1` reproduced the cost
+(p99 latency ~47× p50 across a 30-run synthetic-load sample; explicit
+`RecvError::Lagged` warnings did not fire at this volume, so the pass
+condition was the p99≫p50 criterion, not the lag-count one).
+
+**Environment note:** this session cannot drive four concurrent live Claude
+Code agents on M3 hardware for a 30-run paired comparison. All four
+kill-tests and the paired measurement below substitute a synthetic-load
+harness (`crates/lopi-ui/src/web/event_bridge_bench.rs`) that drives the
+*real* bridge and store code at a stated, documented rate — recorded
+explicitly in `.konjo/killtests/F3/KT-3.1.md` rather than left implicit.
+
+**KT-3.1 — does lag reproduce?** PASS (via p99≫p50, not the lag-count
+criterion — explicit `Lagged` warnings never fired at this synthetic
+volume). `.konjo/killtests/F3/KT-3.1.md`.
+
+**KT-3.2 — is the 64-line prune a distinct spike?** PASS, but real-and-noisy
+rather than dramatic: prune-boundary p95 higher than steady-state p95 in
+22/30 pre-fix runs (median difference +2.60ms). Phase 3 targets it
+specifically without overselling the effect. `.konjo/killtests/F3/KT-3.2.md`.
+
+**KT-3.3 — which loss is acceptable?** CONFIRMED — the brief's expected
+asymmetry holds. `task_logs` is load-bearing only for retrospective/
+inspection surfaces (web dashboard tail, Telegram `/tail`, MCP
+`lopi_get_logs`, `lopi diag` export) — never for replay correctness
+(`lopi replay` reads `agent_dag_nodes`, a separate table) or any gate. CLI/
+REPL/TUI consume `LogLine` live off the bus and never read `task_logs` at
+all, so a dropped broadcast event is permanently lost for them with no
+fallback. Phase 4's drop-persistence-first policy is confirmed correct, not
+merely assumed. `.konjo/killtests/F3/KT-3.3.md`.
+
+**KT-3.4 — does F1 change the volume?** Deferred to measurement at the time
+it was run — F1 had not landed yet. Qualitative estimate only: a bounded,
+per-finalize-attempt addition, not a per-turn multiplier. F1 has since
+landed (`[0.29.0]` below) while this sprint's PR was in review; see the
+version note above for what that does and doesn't change.
+`.konjo/killtests/F3/KT-3.4.md`.
+
+- **[Fix]** Phase 1 — `crates/lopi-ui/src/web/event_bridge.rs`: the bridge's
+  `rx.recv()` loop no longer awaits any `MemoryStore` method. Each
+  `LogLine`'s persistence row is handed to a bounded `mpsc` channel via
+  non-blocking `try_send`; a separate spawned task owns every store write.
+  Asserted by `live_broadcast_is_never_blocked_by_a_full_persist_channel`
+  (forces the persist channel to a 1-slot bottleneck under a 2,000-event
+  burst; the live rebroadcast still delivers every event within 200ms).
+- **[Fix]** Phase 2 — the new drain task (`drain_persist_logs`) batches
+  inserts into `task_logs` via a new `MemoryStore::record_task_logs_batch`
+  (one transaction per batch, reusing the `write_pool.begin()` pattern
+  already established by `delete_task`), flushing at 100 rows or 50ms,
+  whichever comes first. Per-task insertion order preserved
+  (`batch_preserves_per_task_ordering`); a trickle below the row threshold
+  still lands within one timer tick, not stuck waiting for row 100
+  (`drain_task_flushes_a_trickle_on_the_timer`).
+- **[Fix]** Phase 3 (`KT-3.2`) — pruning moved off the bridge's broadcast
+  loop entirely and off the every-64-inserts counter: the drain task now
+  sweeps every dirty task's log tail on a 30s timer
+  (`prune_sweep_enforces_max_per_task_on_a_timer`, using a short injected
+  interval rather than the real 30s or paused virtual time — `tokio::time`
+  pause/advance doesn't mix safely with a real SQLite connection pool's own
+  internal timers, confirmed by a spurious pool-acquire timeout on the
+  first attempt). `MAX_PER_TASK` is still enforced; `prune_task_logs` is no
+  longer reachable from the bridge loop.
+- **[Fix, ONE-WAY DOOR]** Phase 4 (`KT-3.3`) — the persist channel is
+  bounded (4,096, sized above one batch); under overflow, `try_persist`
+  drops the row and increments a counter rather than blocking. Log
+  persistence now degrades before live events do, deliberately — see
+  `LEDGER.md`. The counter is surfaced at `/metrics` as
+  `lopi_task_log_persist_dropped_total`, alongside a new
+  `lopi_pool_stats_broadcast_total` (Phase 5's own visible counter). Both
+  follow the existing `lopi_schema_violations_total`-style pattern: a
+  measured drop, not a silent one.
+- **[Fix]** Phase 5 — `crates/lopi-orchestrator/src/pool/run_loop.rs`'s
+  `run()` no longer broadcasts `PoolStats` unconditionally every second.
+  The 1s tick continues (cheap: two atomic loads plus a
+  `receiver_count()` check), but the broadcast itself is gated on the pool
+  being non-idle (running or queued > 0) or having at least one live
+  subscriber. `PoolCounters` gained a `pool_stats_sent` field — scoped
+  per-pool rather than a process-wide static, so multi-repo mode's several
+  pools (and parallel tests spinning up several pools in one process) don't
+  share one counter. `idle_pool_with_no_subscribers_sends_no_pool_stats`
+  and `pool_stats_resume_once_a_subscriber_connects` cover both directions.
+- **Non-goals held**: did not raise the bus capacity from 512, did not
+  touch the dual-pool WAL configuration, did not add SQLite pragmas, no
+  `task_logs` schema changes. All as scoped in the brief, to keep the
+  paired measurement uncontaminated by an unrelated lever.
+
+### Measured
+
+30-run paired comparison, same compiled release binary per condition,
+`benchmarks/results/20260726T205826Z_f3_bridge/`:
+
+| Metric | Pre-fix median | Post-fix median | Wilcoxon p | Effect size r |
+|---|---|---|---|---|
+| p99 latency | 19.735 ms | 0.059 ms | 2×10⁻⁶ | 1.00 |
+| p95 latency | 6.845 ms | 0.042 ms | 2×10⁻⁶ | 1.00 |
+| p50 latency (must not regress) | 0.420 ms | 0.017 ms | 2×10⁻⁶ | 1.00 |
+| Dropped broadcast events | 0 / 30 runs | 0 / 30 runs | no signal in either condition | — |
+| Rows landed vs. lines emitted | ~4,208 / 12,000 (mid-run pruning) | 12,000 / 12,000 | correctness, not perf | — |
+
+All 30 pairs moved the same direction on every latency metric (`W_pos = 0`).
+**Merges** — dropped events flat, p99 and p95 down by 2-3 orders of
+magnitude, p50 not worse, no row loss under normal load.
+
+### Tests
+
+- `crates/lopi-ui/src/web/event_bridge.rs`: +6 tests (Phase 1 non-blocking
+  live path, Phase 2 batch ordering + trickle timer flush, Phase 3 prune
+  sweep, Phase 4 overflow-drop counter)
+- `crates/lopi-orchestrator/src/pool/tests.rs`: +2 tests (Phase 5 idle
+  gate, both directions)
+- `crates/lopi-memory/src/store/task_logs.rs`: `record_task_logs_batch`
+  reuses existing test module's fixtures
+
 ## [0.29.0] — Sprint F1: The Verifier Is Real — a CLI backend so the checker actually runs
 
 The maker-cannot-be-the-checker guarantee did not exist in the built binary before
