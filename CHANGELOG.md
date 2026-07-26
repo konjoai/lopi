@@ -1,11 +1,21 @@
-## [0.29.0] — Sprint F3: decouple log persistence from the live event stream
+## [0.30.0] — Sprint F3: decouple log persistence from the live event stream
 
-**Volume regime: pre-F1.** F1 has not landed as of this sprint (`grep -n
-"Sprint F1" CHANGELOG.md LEDGER.md` returns nothing) — F2's note assumed F1
-would take `0.29.0` next; F3 preempted it (zero file overlap, no semantic
-interaction per both briefs), so **F1 now takes `0.30.0`** when it lands,
-and per `KT-3.4` should re-run this sprint's benchmark rather than reuse
-these numbers, since F1 adds a verifier-session stream through the same bus.
+**Volume regime and version note:** this sprint was developed against `6688d7d`
+(post-F2, `0.28.0`), when F1 had not yet landed — `KT-3.4` recorded that as a
+deferred estimate and this sprint's own draft assumed F3 would preempt F1's
+`0.29.0`. In the time this sprint's PR was in review, **F1 landed first**
+(`[0.29.0]` below), so F3 takes `0.30.0` instead of the `0.29.0` its own
+notes originally claimed. This does not change F3's baseline validity: the
+30-run paired measurement below uses a synthetic-load harness
+(`event_bridge_bench.rs`) that injects `AgentEvent::LogLine` traffic
+directly onto the bus at a documented, stated rate — it does not exercise
+F1's verifier/judge/post-mortem code paths at all, so F1 landing first
+neither contaminates nor invalidates this measurement. What F1 *does* change
+is the real production event rate a live (non-synthetic) re-measurement
+would see, per `KT-3.4`'s original point — that re-measurement is now
+actionable (F1's code exists to profile) rather than merely estimated;
+handed off below rather than attempted in this same sprint, since it was
+out of scope for F3's own brief.
 
 The event bridge serialized every `AgentEvent` once for all WS/SSE
 subscribers, but persisted `LogLine`s to SQLite in the *same await chain* —
@@ -40,9 +50,12 @@ all, so a dropped broadcast event is permanently lost for them with no
 fallback. Phase 4's drop-persistence-first policy is confirmed correct, not
 merely assumed. `.konjo/killtests/F3/KT-3.3.md`.
 
-**KT-3.4 — does F1 change the volume?** Deferred to measurement — F1 hasn't
-landed. Qualitative estimate only: a bounded, per-finalize-attempt addition,
-not a per-turn multiplier. `.konjo/killtests/F3/KT-3.4.md`.
+**KT-3.4 — does F1 change the volume?** Deferred to measurement at the time
+it was run — F1 had not landed yet. Qualitative estimate only: a bounded,
+per-finalize-attempt addition, not a per-turn multiplier. F1 has since
+landed (`[0.29.0]` below) while this sprint's PR was in review; see the
+version note above for what that does and doesn't change.
+`.konjo/killtests/F3/KT-3.4.md`.
 
 - **[Fix]** Phase 1 — `crates/lopi-ui/src/web/event_bridge.rs`: the bridge's
   `rx.recv()` loop no longer awaits any `MemoryStore` method. Each
@@ -118,6 +131,108 @@ magnitude, p50 not worse, no row loss under normal load.
   gate, both directions)
 - `crates/lopi-memory/src/store/task_logs.rs`: `record_task_logs_batch`
   reuses existing test module's fixtures
+
+## [0.29.0] — Sprint F1: The Verifier Is Real — a CLI backend so the checker actually runs
+
+The maker-cannot-be-the-checker guarantee did not exist in the built binary before
+this sprint — not "disabled by default," did not exist. `Runner::with_api` was never
+called anywhere in production (`grep -rn "with_api" crates/lopi-orchestrator/ src/`
+came back empty), so `api_client` was `None` on every code path, in every binary,
+always, and `verifier_runner.rs::run_verifier_pass` returned `true`
+unconditionally — the verifier had been returning `true` for its entire existence,
+and every run was green. Composed with `autonomy.rs::requires_verifier()` forcing the
+gate on for L3/L4 regardless of config, and `earned_trust.rs` auto-promoting a loop to
+`AutoMerge`, a loop could climb to L4 and merge to main with no human sign-off, gated
+on a checker that had never run. This sprint's fix: give the verifier a second
+backend that drives the `claude` CLI on subscription auth, so the checker runs with
+no API key — the same fix the judge tier and post-mortem needed for the identical
+reason.
+
+**KT-1.1 — do structured verdicts (`--json-schema`) actually work?** PASS, 30/30
+schema-conforming against a real subscription. Two sub-findings en route: the flag
+takes the schema **inline**, not a file path (the brief's own example command does
+not work against CLI 2.1.220); and a `-p <prompt>` placed after a
+`<tools...>`-variadic flag (`--disallowedTools`) gets silently swallowed into that
+flag's argument list. `.konjo/killtests/F1/KT-1.1.md`.
+
+**KT-1.2 — does the read-only deny list actually hold?** PASS. A checker session
+explicitly instructed to modify a worktree file, denied
+`Write,Edit,MultiEdit,NotebookEdit,Bash`, refused and left the worktree
+byte-identical, twice. `Task,TodoWrite,ExitPlanMode,SlashCommand` added to the deny
+list beyond the brief's minimum — the first run, without them, spent ~67s/$0.55
+delegating to a sub-agent hunting for a workaround before giving up; adding them cut
+that to ~25s/$0.45 with no change to the (already-correct) outcome.
+`.konjo/killtests/F1/KT-1.2.md`.
+
+**KT-1.3 — can a `--bare` checker still grade?** FAIL, but not the failure mode
+anticipated. `--bare` never reached a grading-quality question — it failed
+**authentication** 6/6 times in this session (`claude --help` documents `--bare` as
+skipping "keychain reads"; this sandboxed session's credential wiring appears to
+depend on one). The checker ships without `--bare`, per the brief's own fallback,
+reached for a different and more serious reason. **Flagged as needing
+re-verification on a real target machine** — this may be an artifact of this
+specific container's credential proxying, not a general subscription-auth property.
+`.konjo/killtests/F1/KT-1.3.md`.
+
+**KT-1.4 — does model separation (checker ≠ worker) actually hold?** PASS, 4-for-4
+plus the `task.model` override case, confirmed by running (not re-deriving)
+`resolve_verifier`'s existing test suite. No change needed — this rule predates F1.
+`.konjo/killtests/F1/KT-1.4.md`.
+
+- **[Fix]** Phase 1 — `crates/lopi-agent/src/verifier_cli.rs` (new):
+  `VerifierAgent::new_cli(repo_path)` grades via `claude -p` with cwd set to the
+  worktree, `--json-schema` for structured verdicts (falling back to the existing
+  fence-strip parser), `--system-prompt` (full override, not `--append-system-prompt`
+  — the checker never inherits Claude Code's own coding-agent framing), the KT-1.2
+  deny list, `--permission-mode dontAsk`, and no `--resume` (fresh session, never
+  resumed — the isolation guarantee F4's session-continuity work must not reach).
+  `VerifierAgent` now holds a `Backend` enum (`Api`/`Cli`) behind its unchanged
+  `verify()` signature — same `VerifierVerdict`, same rubric resolution, same
+  persistence, same event emission; only the transport changed. `ClaudeOutput` gained
+  a `structured_output: Option<serde_json::Value>` field to carry `--json-schema`
+  responses through the existing CLI-output parsing path.
+- **[Fix]** Phase 2 — `crates/lopi-agent/src/runner/verifier_runner.rs`: backend
+  selection (API client when configured, CLI otherwise — not a config flag) replaces
+  the `let Some(client) = ... else { return true }` shortcut entirely. New regression
+  test `verifier_required_with_no_api_client_actually_executes_a_pass`
+  (`crates/lopi-orchestrator/src/pool/budget_tests.rs`) builds a runner through the
+  real `build_runner` pool-construction seam with no API client and asserts a
+  `verifier_verdicts` row is actually written — not that `verifier_enabled()` reads
+  `true`, which is exactly the assertion that let this defect ship undetected for the
+  verifier's entire existence (`budget_tests.rs`'s pre-existing tests only ever
+  checked the bool).
+- **[Fix]** Phase 3 — `crates/lopi-agent/src/eval/judge.rs`: `CliVerifierJudge`, the
+  judge tier's CLI-backed default. `runner/eval_runner.rs::build_judge` now always
+  returns a working judge instead of falling back to an always-failing
+  `ErroringJudge` when no client is configured; the dead "no client ⇒ skip the judge
+  check" branch (and its now-unreachable `acceptance_needs_judge` helper) are
+  removed. `crates/lopi-agent/src/runner/postmortem_cli.rs` (new): the same CLI
+  transport for failure post-mortems; `postmortem_runner.rs` no longer requires an
+  API client to run one.
+- **[Fix, ONE-WAY DOOR]** Phase 4 — the "verifier requested, no backend available at
+  all" branch no longer returns `true` (a silent pass); it is now unreachable by
+  construction (any CLI spawn/auth failure is already an `Err`, which routes through
+  the pre-existing fail-closed `handle_verifier_error` path) rather than a case that
+  needed its own new branch. Two new deterministic tests —
+  `requested_but_unavailable_verifier_fails_closed` /
+  `..._honors_explicit_fail_open` — prove this against a guaranteed-unspawnable
+  `repo_path`, without depending on a live `claude` binary or network. See
+  `LEDGER.md`.
+- **Not shipped, by design** — Phase 5 (two-tier checker: cheap first pass,
+  Opus escalation on low confidence/disagreement) and Phase 6
+  (`--append-system-prompt` reaching worker sessions) both require A/B corpus
+  measurement the brief itself gates them on. That measurement needs the same
+  T01–T10 corpus run Sprint F0's Phase 3 already flagged as attended,
+  hardware-required, and still outstanding (`benchmarks/corpus/README.md`) — running
+  it was out of reach in this unattended session for the same reason F0 recorded, not
+  a new finding. Per the brief's own fallback ("both, or tier one ships alone... a
+  negative result here is a complete outcome"), F1 ships Phases 1–4 only. See
+  `NEXT_SESSION_PROMPT.md`.
+- **Tests**: +6 in `lopi-agent` (`verifier_cli` module: argv assertion, structured/
+  fence-strip/error parsing), +2 fail-closed tests in `verifier_runner`, 1 CLI-backend
+  regression test replacing the removed no-client-skip test in `eval_runner`, +1
+  cross-crate regression test in `lopi-orchestrator`. Full workspace: `cargo test
+  --workspace` green, `cargo clippy --workspace --all-targets -- -D warnings` clean.
 
 ## [0.28.0] — Sprint F2: Correctness Holes — stale generations, silent passes, and an unenforced escape hatch
 

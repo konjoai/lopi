@@ -21,7 +21,7 @@
 mod judge;
 mod tiers;
 
-pub use judge::{ErroringJudge, Judge, JudgeEval, VerifierJudge};
+pub use judge::{CliVerifierJudge, ErroringJudge, Judge, JudgeEval, VerifierJudge};
 pub use tiers::{output_shows_failure, ExecutionOkEval, ShellTestEval, SuiteEval};
 
 use async_trait::async_trait;

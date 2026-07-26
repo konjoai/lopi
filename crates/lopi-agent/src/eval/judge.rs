@@ -19,6 +19,7 @@ use crate::verifier::VerifierAgent;
 use async_trait::async_trait;
 use lopi_core::acceptance::{AcceptanceCheck, CheckSpec, EvalTier, MetricGate};
 use lopi_core::{CheckResult, Rubric, VerifierVerdict};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 /// The pluggable judgment backend behind [`JudgeEval`].
@@ -60,6 +61,50 @@ impl Judge for VerifierJudge {
         // The full diff is handed in (input-completeness); the verifier applies
         // its own documented 6 KB bound internally — the honest judgment ceiling.
         VerifierAgent::new(self.client.clone())
+            .verify(
+                &ctx.goal,
+                "",
+                &ctx.diff,
+                &ctx.test_output,
+                rubric,
+                &self.model,
+                self.effort.as_deref(),
+            )
+            .await
+    }
+}
+
+/// Sprint F1 Phase 3 — the CLI-backed judge, the production default (see
+/// `runner::eval_runner::build_judge`): [`VerifierAgent::new_cli`] reused
+/// verbatim, exactly as [`VerifierJudge`] reuses the API-backed constructor.
+/// Before this sprint the judge tier had no working default at all —
+/// `build_judge` fell back to [`ErroringJudge`] whenever no `AnthropicClient`
+/// was configured, which (per `with_api` being production-unwired) was
+/// every real deployment; see `LEDGER.md`.
+pub struct CliVerifierJudge {
+    repo_path: PathBuf,
+    model: String,
+    effort: Option<String>,
+}
+
+impl CliVerifierJudge {
+    /// Build a CLI-backed judge grading with `model` (resolved via
+    /// `crate::verifier::resolve_verifier`, same as [`VerifierJudge`]) inside
+    /// `repo_path` — the worktree the checker treats as its cwd.
+    #[must_use]
+    pub fn new(repo_path: PathBuf, model: String, effort: Option<String>) -> Self {
+        Self {
+            repo_path,
+            model,
+            effort,
+        }
+    }
+}
+
+#[async_trait]
+impl Judge for CliVerifierJudge {
+    async fn judge(&self, ctx: &EvalContext, rubric: &Rubric) -> anyhow::Result<VerifierVerdict> {
+        VerifierAgent::new_cli(self.repo_path.clone())
             .verify(
                 &ctx.goal,
                 "",

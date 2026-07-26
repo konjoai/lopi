@@ -154,3 +154,81 @@ fn effective_task_budget_preset_override_replaces_the_repo_budget() {
     assert_eq!(resolved.tokens, 5_000_000);
     assert!(resolved.deny.is_empty(), "deep preset re-enables Workflow");
 }
+
+// ── Sprint F1 Phase 2 — the verifier gate actually executes ────────────────
+//
+// `verifier_required_enables_the_gate_end_to_end` (above) has existed since
+// before this sprint and only ever asserted `runner.verifier_enabled()` —
+// which was `true` the entire time the verifier itself returned `true`
+// unconditionally on every run (`api_client` was always `None` in
+// production; see `crates/lopi-agent/src/runner/verifier_runner.rs`'s
+// pre-F1 history and `README.md`). That bool proves the gate is *wired*; it
+// proves nothing about whether the gate *ran*. This test proves the second
+// thing: build a runner through the exact same `build_runner` seam
+// production uses, with **no API client** (matching every real deployment
+// today), and assert a `verifier_verdicts` row actually gets written —
+// which only happens if a real grading attempt (via the Sprint F1 CLI
+// backend) was made, regardless of whether that attempt's own network call
+// succeeds or fails in this test environment. Both outcomes persist a row
+// (`persist_and_emit` runs on the success path and on
+// `handle_verifier_error`'s fail-closed path alike) — the old code never
+// reached either one.
+#[tokio::test]
+async fn verifier_required_with_no_api_client_actually_executes_a_pass() {
+    let repo = tempfile::tempdir().expect("tempdir");
+    let store = lopi_memory::MemoryStore::open_in_memory()
+        .await
+        .expect("open in-memory store");
+
+    let mut task = Task::new("ship a change a real checker must grade");
+    task.verifier_required = true;
+    let task_id = task.id;
+
+    let bus: EventBus<AgentEvent> = EventBus::new(16);
+    let (_cancel_tx, cancel_rx) = tokio::sync::oneshot::channel();
+    let (_plan_tx, plan_decision_rx) = tokio::sync::oneshot::channel();
+    let mut runner = run_loop::build_runner(
+        task,
+        repo.path().to_path_buf(),
+        bus,
+        Some(store.clone()),
+        cancel_rx,
+        Arc::new(AtomicUsize::new(0)),
+        ScoreWeights::default(),
+        SelfPromptStrategy::default(),
+        false,
+        lopi_skill::SkillRegistry::default(),
+        0,
+        lopi_core::LoopConfig::default().resolved_budget().usd,
+        Vec::new(),
+        Vec::new(),
+        lopi_core::LoopConfig::default().max_iterations,
+        run_loop::RepoGuardrails::default(),
+        false,
+        plan_decision_rx,
+        None,
+    );
+    assert!(
+        runner.verifier_enabled(),
+        "precondition: verifier_required must still wire the gate on"
+    );
+    assert!(
+        runner.api_client_is_none_for_test(),
+        "precondition: no API client — this reproduces every real deployment, where \
+         `with_api` is never called in production"
+    );
+
+    runner.run_verifier_pass_for_test(&[]).await;
+
+    let rows = store
+        .load_verifier_verdicts(&task_id.to_string())
+        .await
+        .expect("load verifier verdicts");
+    assert!(
+        !rows.is_empty(),
+        "a verifier_required runner with no API client must still ATTEMPT a real \
+         grading pass (via the CLI backend) and persist its outcome — the pre-F1 \
+         behavior returned `true` before ever reaching this persistence call, so \
+         this table stayed empty for every run, forever"
+    );
+}

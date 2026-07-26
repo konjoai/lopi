@@ -58,6 +58,73 @@ that is the trigger to reopen this door — add backpressure or durable
 buffering explicitly, with its own kill-test, rather than assuming the
 current best-effort behavior already covers it.
 
+## Sprint F1 — the verifier gets a real backend; requested-but-unavailable flips to fail-closed
+
+**Decision 1 (Phase 1) — the CLI backend becomes the default verifier transport; the
+API client becomes the escalation tier.** Before this sprint `VerifierAgent` had one
+backend (`AnthropicClient`), and nothing in the built binary ever configured one
+(`with_api` production-unwired — confirmed by `grep -rn "with_api"
+crates/lopi-orchestrator/ src/` returning empty, same finding F0's README audit
+already made). `run_verifier_pass` therefore returned `true` unconditionally, always.
+This sprint adds a CLI backend (`verifier_cli.rs`, driving `claude -p` on
+subscription auth) and makes backend selection automatic — API client when
+configured, CLI otherwise — which **reverses which path is primary**: the CLI
+backend is now the one every real deployment exercises, and the API path (kept,
+unchanged, per the brief's own non-goal) becomes what a future sprint's Phase 5
+two-tier escalation would call into, not the default. Any future change to the API
+backend's behavior should be evaluated against "this is the escalation tier," not
+"this is the primary path" — that framing flipped in this sprint.
+
+**Decision 2 (Phase 4) — requested-but-unavailable changes from silent pass to
+fail-closed. This changes what a passing run means for every existing loop.** The
+table this replaces:
+
+| Case | Before F1 | After F1 |
+|---|---|---|
+| Verifier not requested (`verifier_enabled == false`, autonomy < L3) | never reaches `run_verifier_pass` | unchanged |
+| Verifier requested, no backend available at all | `return true` — silent pass | fail-closed, same path as a configured backend that errors |
+| Verifier requested, backend errored | already fail-closed (pre-F1) | unchanged |
+
+Before this sprint, **every** run with `verifier_required`/L3+/L4 that ever
+completed "successfully" did so with the verifier having silently passed
+unconditionally — the middle row above was not a rare edge case, it was the only
+row that could ever fire in production, for the verifier's entire existence. A
+historical "success" on any such run carries this caveat, the same way F2's
+unevaluated-repo LEDGER entry caveats pre-F2 successes on non-Rust/non-Node repos —
+**this is the same defect class**, deliberately using the same "I could not evaluate
+this, so it passes" framing F2 flagged as worth grepping for across sprints. The
+practical blast radius after F1 is expected to be small going forward: the CLI
+backend needs only a `claude` binary lopi already requires, so "no backend at all"
+should be close to impossible post-F1 — but the historical caveat stands for
+everything that ran before this sprint.
+
+**Anti-goal held:** `task.verifier_fail_open` is still the operator's explicit
+escape hatch from the new fail-closed branch too, exactly as it already was for a
+configured backend's error — an operator who opted out on purpose is not the same
+failure mode as a gate that was silently off, and this sprint does not conflate them
+(`requested_but_unavailable_verifier_honors_explicit_fail_open`,
+`verifier_runner.rs`).
+
+**Decision 3 (Phase 6, not shipped) — `LOPI_SYSTEM_PROMPT` reaching worker sessions
+did not ship this sprint.** The brief required Phase 6 to be measured against a real
+corpus run before shipping ("if pass rate does not improve, do not ship it on the
+grounds that it 'should' help") and explicitly allowed not shipping as a complete
+outcome. That corpus run needs the same T01–T10 attended/hardware-required session
+F0's Phase 3 already deferred (still outstanding — see `NEXT_SESSION_PROMPT.md`), so
+this is not a new gap Phase 6 introduced; it inherits F0's. `LOPI_SYSTEM_PROMPT`
+still reaches no worker session as of this sprint's end. Whoever picks this up next
+should measure before wiring `--append-system-prompt` into `apply_cli_caps`, not
+assume it helps because the verifier's own `--system-prompt` use (Phase 1, a
+different, non-measurement-gated decision) worked out.
+
+**How to apply:** any future sprint adding a third transport to `VerifierAgent`
+(or to the judge tier / post-mortem, which now mirror this same selection rule in
+`eval_runner.rs::build_judge` and `postmortem_runner.rs`) should extend the same
+`Backend`-enum-behind-an-unchanged-signature pattern rather than branching on
+`Option<Arc<AnthropicClient>>` at each call site — that branching-at-every-call-site
+shape is exactly what let the pre-F1 defect hide in three different files
+(`verifier_runner.rs`, `eval_runner.rs`, `postmortem_runner.rs`) instead of one.
+
 ## Sprint F2 — the unevaluable-repo fix, and the same defect class as F1's verifier gap
 
 **Decision:** `Score::passed()` now returns `false` whenever `unevaluated_reason` is

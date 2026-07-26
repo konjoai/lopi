@@ -9,30 +9,37 @@ the `lopi` repo. Newest first.
 
 **Sprint F3 decoupled the event bridge's live broadcast from `task_logs`
 persistence.** Read first, in order: `CLAUDE.md`, `CHANGELOG.md`'s
-`[0.29.0] — Sprint F3` entry, `LEDGER.md`'s `Sprint F3` entry (the
+`[0.30.0] — Sprint F3` entry, `LEDGER.md`'s `Sprint F3` entry (the
 best-effort-persistence one-way door), all four
 `.konjo/killtests/F3/KT-3.*.md` files, `benchmarks/results/
 20260726T205826Z_f3_bridge/summary.md`, then this file's own words below.
 
-**Version note:** F2's own handoff assumed F1 would land next and take
-`0.29.0`. F3 preempted it instead (zero file overlap with F1 or F2, per all
-three briefs) and took `0.29.0`. **F1 now takes `0.30.0`** when it lands.
+**Version note:** F3 was developed against `6688d7d` (post-F2, `0.28.0`),
+before F1 had landed, and its own draft notes assumed it would take
+`0.29.0`. **F1 landed first instead** while F3's PR was in review (see the
+`Sprint F1` entry immediately below this one) and took `0.29.0` — so F3
+takes **`0.30.0`**.
 
-Sprint F4 (session continuity) is next. Two things carry forward from F3,
-not F4's own scope but worth knowing:
+Sprint F4 (session continuity) is next. Three things carry forward, two
+from F3 and one inherited through F3 from F1's own handoff below:
 
-1. **`KT-3.4`'s volume estimate — F3's baseline is pre-F1.** F1 has not
-   landed as of F3 (confirmed by grepping `CHANGELOG.md`/`LEDGER.md` for a
-   `Sprint F1` heading — none exists yet). F3's 30-run paired benchmark
-   (`benchmarks/results/20260726T205826Z_f3_bridge/`) therefore describes
-   events-per-task *without* F1's verifier-session traffic. F3's fix
-   (decoupling the bridge from the DB) is correct regardless of F1's
-   volume, but **whoever lands F1 should re-run `KT-3.1`'s harness**
-   (`crates/lopi-ui/src/web/event_bridge_bench.rs::bridge_load_bench`,
-   `cargo test -p lopi-ui --release bridge_load_bench -- --ignored
-   --nocapture --test-threads=1`) rather than reuse F3's numbers — a
-   baseline measured against a system that has since changed volume is not
-   a baseline, per F3's own brief.
+1. **`KT-3.4`'s volume estimate was made pre-F1; F1 has since landed, but
+   F3's *measurement* doesn't need a re-run — only a future live
+   measurement does.** F3's 30-run paired benchmark
+   (`benchmarks/results/20260726T205826Z_f3_bridge/`) uses a synthetic-load
+   harness (`event_bridge_bench.rs::bridge_load_bench`) that injects
+   `AgentEvent::LogLine` traffic directly onto the bus at a documented,
+   stated rate (~250 lines/sec/agent, 4 synthetic agents) — it never
+   exercises F1's verifier/judge/post-mortem code, so F1 landing changes
+   nothing about what that harness measures. What F1 *does* change is the
+   real production event rate a **live** (non-synthetic, real-agent)
+   re-measurement would see. That re-measurement was never attempted in F3
+   (out of scope, and this session's environment can't run one anyway —
+   see `KT-3.1`'s own environment-substitution note) but is now actionable
+   rather than merely estimated, since F1's verifier-session code exists to
+   profile. Whoever eventually runs a real four-agent M3 measurement of the
+   bridge should account for F1's added verifier-session traffic in the
+   observed rate, rather than assuming F3's synthetic rate still applies.
 2. **The durability one-way door — log persistence is now best-effort under
    pressure.** `LEDGER.md`'s F3 entry: under sustained overload, the
    bridge's persistence channel drops `task_logs` rows (counted, not
@@ -47,6 +54,69 @@ not F4's own scope but worth knowing:
    completeness guarantees — **that is the trigger to reopen this door**
    and add backpressure or durable buffering back explicitly, rather than
    assuming today's best-effort behavior already covers it.
+3. **F1's own item 3 below (F4 must not resume the checker session) still
+   applies and is worth reading in full** — it's about a different
+   subsystem (`verifier_cli.rs`/`postmortem_cli.rs`'s session isolation)
+   than F3 touched, but it's the same kind of constraint: a fresh-session
+   guarantee that a future session-continuity helper could accidentally
+   erase if it's applied blanket-wide instead of call-site-by-call-site.
+
+## Next Session — after Sprint F1 (The Verifier Is Real) — F9 unblocked; three carried-forward items
+
+**Sprint F1 gave the verifier, the judge tier, and post-mortem a CLI backend
+(`claude -p` on subscription auth), so all three actually run in every real
+deployment instead of silently no-op'ing forever (`with_api` was never wired in
+production — confirmed again by this sprint's own `grep`).** Phases 1–4 shipped;
+Phases 5 (two-tier checker) and 6 (`--append-system-prompt` on the worker) did not —
+both are gated on a corpus measurement this session couldn't run, per the brief's own
+"ship without it" fallback. Read first, in order: `CHANGELOG.md`'s `[0.29.0] —
+Sprint F1` entry, `LEDGER.md`'s Sprint F1 entry, all four `.konjo/killtests/F1/KT-1.*.md`
+files, then this file's own words below. F1 was this repo's Sprint F1; Sprint F2
+(Correctness Holes) already landed independently before F1 did — see `CHANGELOG.md`'s
+`[0.28.0]` entry — so the two are not in the numeric order their briefs implied.
+
+Four things carry forward:
+
+1. **KT-1.3's `--bare` finding needs re-verification on a real (non-sandboxed) target
+   machine.** In this session's own container, `--bare` failed CLI authentication
+   6/6 times, reproducibly — `claude --help` documents it as skipping "keychain
+   reads," and this container's credential wiring appears to depend on one. The
+   checker ships without `--bare` as a result. **This may be specific to this
+   sandboxed session's credential proxying and not a general property of a real
+   user's subscription login** (which more commonly reads a plain on-disk token
+   under `~/.claude/`, not a keychain). Whoever next has access to a real machine
+   with a logged-in `claude` CLI should re-run KT-1.3's `--bare` vs. non-`--bare`
+   paired comparison for real. If `--bare` turns out to work there, re-add it to
+   `verifier_cli.rs`/`postmortem_cli.rs` for the cost/latency win KT-1.2 documented
+   (a non-`--bare` checker session loads hooks/`CLAUDE.md`/skills and can burn real
+   turns/spend on tool-discovery detours before concluding it's denied) — do not
+   assume the auth failure generalizes without checking, but do not assume it's
+   safe to add `--bare` back without checking either.
+2. **The T01–T10 corpus run is still outstanding — now blocking two sprints'
+   worth of work, not one.** F0's Phase 3 flagged it as attended, hardware-required,
+   and not runnable in an unattended session; F1's Phase 5 (two-tier checker cost/
+   agreement measurement) and Phase 6 (worker system-prompt pass-rate measurement)
+   both needed it too and both went unshipped as a result, per each brief's own
+   "measure first, or don't ship" instruction. Whoever picks this up should treat one
+   corpus run as unblocking three sprints' pending measurements at once, not run it
+   three separate times. Follow `benchmarks/corpus/README.md` §Measurement Protocol
+   and `.claude/rules/benchmarking.md`.
+3. **F4 (session continuity, not yet started as of this writing) must not resume the
+   checker session.** Phase 1's design constraint — "fresh session, never resumed" —
+   is what makes the checker a checker rather than a continuation of the maker's own
+   context. `verifier_cli.rs`/`postmortem_cli.rs` never pass `--resume`; a unit test
+   in each (`grade_via_cli_argv_never_includes_bare_or_resume`,
+   `postmortem_cli_argv_never_includes_bare_or_resume`) pins this. If F4 introduces a
+   shared session-continuity helper for worker spawns, it must not be reused for
+   these two call sites without deliberately re-deciding this constraint, not by
+   accident.
+4. **F9 (Evidence and answerability) is now unblocked** — F1's own brief named this as
+   the dependency ("An evidence bundle whose verifier verdict is always `true` is
+   worse than no bundle"). The verifier verdict is no longer always `true`; F9 can
+   proceed on that basis, though a real live confirmation (a `lopi sail` run, no
+   `ANTHROPIC_API_KEY`, a planted rubric violation actually rejected) is worth doing
+   once more on whatever machine ends up running F9, since this sprint's own live
+   confirmation ran in the same sandboxed container as KT-1.3's `--bare` finding.
 
 ---
 

@@ -160,6 +160,7 @@ mod tests {
             duration_ms: Some(42),
             usage,
             raw: String::new(),
+            structured_output: None,
         }
     }
 

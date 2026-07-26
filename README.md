@@ -40,22 +40,44 @@ env vars before every spawn, so the CLI always falls back to your on-disk
 `~/.claude` subscription credentials rather than silently billing an API
 key. No separate API key is required to plan, implement, or fix.
 
-That is **not** true of every check layer, though. The verifier
+**As of Sprint F1, that's also true of the checker layers.** The verifier
 (`crates/lopi-agent/src/runner/verifier_runner.rs`), LLM-judge acceptance
-(`runner/eval_runner.rs`), and post-mortem
-(`runner/run_loop.rs` — gated on `adaptive_retry`) all require a
-direct-API `AnthropicClient` (`Runner::with_api`,
-`crates/lopi-agent/src/runner/mod.rs`) — and nothing in the built binary
-ever calls `with_api`; `grep -rn "with_api" crates/lopi-orchestrator/` and
-`src/` both come back empty. Configured or not, they silently no-op rather
-than failing the run — so a task can complete "successfully" with the
-verifier/judge/post-mortem layers never having run. The one exception is
-the Layer 5 stability gate: `lopi run --stability-gate` wires its own,
-separate `AnthropicClient` from `ANTHROPIC_API_KEY` at the CLI layer
-(`src/run_command.rs`) and does work standalone. (A couple of standalone
-server components — see [Configuration](#configuration) — can *optionally*
-take a direct Anthropic API key for their own use; that's unrelated to the
-above.) Wiring `with_api` into the pool is tracked for a future sprint.
+(`runner/eval_runner.rs`), and post-mortem (`runner/postmortem_runner.rs`)
+all pick a backend automatically — a direct-API `AnthropicClient`
+(`Runner::with_api`) when one is configured, the `claude` CLI otherwise
+(`crates/lopi-agent/src/verifier_cli.rs`,
+`crates/lopi-agent/src/runner/postmortem_cli.rs`). Nothing in the built
+binary calls `with_api` (`grep -rn "with_api" crates/lopi-orchestrator/
+src/` still comes back empty), so the CLI backend is what every real
+deployment actually runs on — subscription auth, no separate API key,
+same as the worker. A checker session runs read-only (`Write`, `Edit`,
+`MultiEdit`, `NotebookEdit`, `Bash`, and sub-agent/plan-mode tools all
+denied — see `.konjo/killtests/F1/KT-1.2.md`) and as a fresh, never-resumed
+session, so it never sees the worker's own reasoning unless a caller
+explicitly opts into that (`VerifierAgent::with_plan_context`).
+
+A checker session does **not** currently pass `--bare` — a live test in
+this sprint's own sandboxed session found `--bare` fails authentication
+outright there (`.konjo/killtests/F1/KT-1.3.md`), a stronger reason than
+"needs project context," and one that has not yet been re-verified on a
+plain local install. Until that's confirmed, a checker session loads
+hooks/`CLAUDE.md`/skills like a normal session, which costs somewhat more
+per grading pass than the brief's original `--bare` design assumed.
+
+Two things sprint F1 explicitly did **not** ship, both gated on
+measurement the brief requires and this session couldn't run (see
+[Requirements](#requirements) for why — the same attended, hardware-required
+corpus run Sprint F0's Phase 3 already deferred): a cheaper two-tier
+checker (cheap first pass, Opus escalation only on low confidence), and
+`--append-system-prompt` reaching worker sessions. Both remain tracked in
+`NEXT_SESSION_PROMPT.md`.
+
+The one exception to all of the above is the Layer 5 stability gate:
+`lopi run --stability-gate` wires its own, separate `AnthropicClient` from
+`ANTHROPIC_API_KEY` at the CLI layer (`src/run_command.rs`) and requires a
+real API key for that specific gate. (A couple of standalone server
+components — see [Configuration](#configuration) — can *optionally* take a
+direct Anthropic API key for their own use; that's unrelated to the above.)
 
 ## Highlights
 
