@@ -159,12 +159,22 @@ fn task_context_value(
     );
     map.insert(
         "forbidden".into(),
-        Value::Array(forbidden.iter().map(|s| Value::String((*s).into())).collect()),
+        Value::Array(
+            forbidden
+                .iter()
+                .map(|s| Value::String((*s).into()))
+                .collect(),
+        ),
     );
     if !constraints.is_empty() {
         map.insert(
             "constraints".into(),
-            Value::Array(constraints.iter().map(|s| Value::String((*s).into())).collect()),
+            Value::Array(
+                constraints
+                    .iter()
+                    .map(|s| Value::String((*s).into()))
+                    .collect(),
+            ),
         );
     }
     if !patterns.is_empty() {
@@ -226,7 +236,11 @@ fn count_tokens(bpe: &CoreBPE, s: &str) -> usize {
 }
 
 fn all_goals() -> Vec<&'static str> {
-    REAL_GOALS.iter().chain(CORPUS_GOALS.iter()).copied().collect()
+    REAL_GOALS
+        .iter()
+        .chain(CORPUS_GOALS.iter())
+        .copied()
+        .collect()
 }
 
 /// Which optional fields a shape attaches to the base goal+allowed payload —
@@ -286,7 +300,10 @@ fn write_report(results: &[ShapeResult], date: &str) -> anyhow::Result<()> {
     writeln!(out, "**Tokenizer:** `tiktoken-rs` `cl100k_base` — OpenAI's GPT-4 BPE, **not** a Claude token count. No `ANTHROPIC_API_KEY` was available when this was run; see `crates/lopi-toon/src/lib.rs` and the README for this caveat.")?;
     writeln!(out, "**Corpus:** 37 real task goals (27 from `artifacts/diagnostics/20260717T113652Z/tasks.json`, 10 from `benchmarks/run.sh` T01-T10) × 2 real `allowed_dirs`/`forbidden_dirs` sets (shipped `lopi.toml.example` defaults; a crate-scoped set) = 74 samples for dir-only shapes. The full-context shape additionally attaches this repo's own 5 `CLAUDE.md` constraints and representative (schema-conformant, not live-table) pattern/lesson rows.")?;
     writeln!(out)?;
-    writeln!(out, "| Shape | Call site | n | JSON tokens | TOON tokens | Savings |")?;
+    writeln!(
+        out,
+        "| Shape | Call site | n | JSON tokens | TOON tokens | Savings |"
+    )?;
     writeln!(out, "|---|---|---|---|---|---|")?;
     for r in results {
         writeln!(
@@ -311,7 +328,10 @@ fn write_report(results: &[ShapeResult], date: &str) -> anyhow::Result<()> {
             (json as f64 - toon as f64) / json as f64 * 100.0
         }
     };
-    writeln!(out, "**Overall (cl100k, all shapes pooled): {overall:.1}% fewer tokens than compact JSON.**")?;
+    writeln!(
+        out,
+        "**Overall (cl100k, all shapes pooled): {overall:.1}% fewer tokens than compact JSON.**"
+    )?;
     writeln!(out)?;
     writeln!(out, "Note: `fix()` (`crates/lopi-agent/src/claude.rs`) does not call `encode_task_context` — it hand-rolls an `allowed[N]: a,b,c` line and the doc comment there states TOON is skipped for it (error text is free-form prose). The \"dirs-only\" shape above measures the same `encode_task_context(goal, allowed, &[], &[], &[], &[])` call used by `implement_step()`, which is structurally what `fix()` would produce if it adopted TOON — it is not currently exercised by `fix()` itself.")?;
 
@@ -320,9 +340,15 @@ fn write_report(results: &[ShapeResult], date: &str) -> anyhow::Result<()> {
     // can cite a number for each field independently instead of one bundled
     // "full context" figure.
     if let (Some(baseline), Some(dc), Some(dp)) = (
-        results.iter().find(|r| r.name == "implement_streamed (dirs only)"),
-        results.iter().find(|r| r.name == "dirs + constraint array (marginal)"),
-        results.iter().find(|r| r.name == "dirs + pattern table (marginal)"),
+        results
+            .iter()
+            .find(|r| r.name == "implement_streamed (dirs only)"),
+        results
+            .iter()
+            .find(|r| r.name == "dirs + constraint array (marginal)"),
+        results
+            .iter()
+            .find(|r| r.name == "dirs + pattern table (marginal)"),
     ) {
         #[allow(clippy::cast_precision_loss)]
         let per_prompt_constraints = {
@@ -337,7 +363,11 @@ fn write_report(results: &[ShapeResult], date: &str) -> anyhow::Result<()> {
             (dp_saved - base_saved) / dp.n as f64
         };
         writeln!(out)?;
-        writeln!(out, "## Phase 2 — per-field marginal savings (cl100k, vs. dirs-only baseline, n={})", baseline.n)?;
+        writeln!(
+            out,
+            "## Phase 2 — per-field marginal savings (cl100k, vs. dirs-only baseline, n={})",
+            baseline.n
+        )?;
         writeln!(out)?;
         writeln!(out, "- Adding the constraint array (5 real `CLAUDE.md` constraints) to a dirs-only prompt: **{per_prompt_constraints:.1} tokens/prompt**.")?;
         writeln!(out, "- Adding the pattern table (3 representative keyword/constraint rows) to a dirs-only prompt: **{per_attempt_patterns:.1} tokens/attempt**.")?;
@@ -372,19 +402,34 @@ fn main() -> anyhow::Result<()> {
         &bpe,
         "plan_streamed (full context)",
         "claude.rs plan_streamed()",
-        ShapeConfig { forbidden: true, constraints: true, patterns: true, lessons: true },
+        ShapeConfig {
+            forbidden: true,
+            constraints: true,
+            patterns: true,
+            lessons: true,
+        },
     );
     let implement = measure_shape(
         &bpe,
         "implement_streamed (dirs only)",
         "claude.rs implement_streamed()",
-        ShapeConfig { forbidden: true, constraints: false, patterns: false, lessons: false },
+        ShapeConfig {
+            forbidden: true,
+            constraints: false,
+            patterns: false,
+            lessons: false,
+        },
     );
     let allowed_only = measure_shape(
         &bpe,
         "allowed-dirs only",
         "claude.rs implement_step()",
-        ShapeConfig { forbidden: false, constraints: false, patterns: false, lessons: false },
+        ShapeConfig {
+            forbidden: false,
+            constraints: false,
+            patterns: false,
+            lessons: false,
+        },
     );
     // Isolated marginal shapes for Phase 2's per-field claims — same dirs
     // baseline as `implement`, with exactly one of constraints/patterns added.
@@ -392,16 +437,35 @@ fn main() -> anyhow::Result<()> {
         &bpe,
         "dirs + constraint array (marginal)",
         "claude_support.rs build_plan_prompt() constraints slice",
-        ShapeConfig { forbidden: true, constraints: true, patterns: false, lessons: false },
+        ShapeConfig {
+            forbidden: true,
+            constraints: true,
+            patterns: false,
+            lessons: false,
+        },
     );
     let dirs_plus_patterns = measure_shape(
         &bpe,
         "dirs + pattern table (marginal)",
         "claude_support.rs build_plan_prompt() patterns slice",
-        ShapeConfig { forbidden: true, constraints: false, patterns: true, lessons: false },
+        ShapeConfig {
+            forbidden: true,
+            constraints: false,
+            patterns: true,
+            lessons: false,
+        },
     );
 
     let date = std::env::var("LOPI_BENCH_DATE").unwrap_or_else(|_| "UNDATED".to_string());
-    write_report(&[full, implement, allowed_only, dirs_plus_constraints, dirs_plus_patterns], &date)?;
+    write_report(
+        &[
+            full,
+            implement,
+            allowed_only,
+            dirs_plus_constraints,
+            dirs_plus_patterns,
+        ],
+        &date,
+    )?;
     Ok(())
 }
