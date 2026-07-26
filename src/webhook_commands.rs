@@ -36,6 +36,37 @@ fn parse_allow_unverified(raw: Option<&str>) -> bool {
     raw == Some("1")
 }
 
+/// Build the optional issue-triage config from `run()`'s two credential
+/// inputs. `Some` only when both are present — a missing credential leaves
+/// triage disabled (logged, non-fatal) rather than failing the whole server,
+/// since issue triage is an optional feature of `serve-webhooks`, unlike the
+/// mandatory webhook-secret policy above.
+fn build_triage_config(
+    github_token: Option<String>,
+    anthropic_key: Option<String>,
+) -> Result<Option<TriageConfig>> {
+    match (github_token, anthropic_key) {
+        (Some(gh_token), Some(anth_key)) => {
+            let github = Arc::new(
+                GitHubClient::new(gh_token)
+                    .map_err(|e| anyhow::anyhow!("GitHub client error: {e}"))?,
+            );
+            let api_client = Arc::new(AnthropicClient::new(anth_key));
+            Ok(Some(TriageConfig {
+                api_client,
+                github,
+                limiter: None,
+                breaker: None,
+                model: model_haiku().to_string(),
+            }))
+        }
+        _ => {
+            tracing::warn!("GITHUB_TOKEN or ANTHROPIC_API_KEY missing — issue triage disabled");
+            Ok(None)
+        }
+    }
+}
+
 pub async fn run(
     port: u16,
     host: String,
@@ -52,26 +83,7 @@ pub async fn run(
         .map_err(|e| anyhow::anyhow!("invalid address: {e}"))?;
 
     let queue = TaskQueue::new();
-    let triage = match (github_token, anthropic_key) {
-        (Some(gh_token), Some(anth_key)) => {
-            let github = Arc::new(
-                GitHubClient::new(gh_token)
-                    .map_err(|e| anyhow::anyhow!("GitHub client error: {e}"))?,
-            );
-            let api_client = Arc::new(AnthropicClient::new(anth_key));
-            Some(TriageConfig {
-                api_client,
-                github,
-                limiter: None,
-                breaker: None,
-                model: model_haiku().to_string(),
-            })
-        }
-        _ => {
-            tracing::warn!("GITHUB_TOKEN or ANTHROPIC_API_KEY missing — issue triage disabled");
-            None
-        }
-    };
+    let triage = build_triage_config(github_token, anthropic_key)?;
 
     println!("🪝 lopi serve-webhooks on {addr}");
     if triage.is_some() {
@@ -84,6 +96,7 @@ pub async fn run(
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
 
@@ -124,5 +137,36 @@ mod tests {
         std::env::remove_var("LOPI_ALLOW_UNVERIFIED_WEBHOOK");
         let result = run(0, "127.0.0.1".to_string(), None, None, None).await;
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn build_triage_config_enables_when_both_credentials_present() {
+        let triage =
+            build_triage_config(Some("gh-token".to_string()), Some("anth-key".to_string()))
+                .expect("both credentials present should not error");
+        assert!(
+            triage.is_some(),
+            "triage must be enabled when both credentials are present"
+        );
+    }
+
+    #[test]
+    fn build_triage_config_disabled_when_github_token_missing() {
+        let triage = build_triage_config(None, Some("anth-key".to_string()))
+            .expect("missing credential is not an error");
+        assert!(triage.is_none());
+    }
+
+    #[test]
+    fn build_triage_config_disabled_when_anthropic_key_missing() {
+        let triage = build_triage_config(Some("gh-token".to_string()), None)
+            .expect("missing credential is not an error");
+        assert!(triage.is_none());
+    }
+
+    #[test]
+    fn build_triage_config_disabled_when_both_missing() {
+        let triage = build_triage_config(None, None).expect("missing credentials is not an error");
+        assert!(triage.is_none());
     }
 }

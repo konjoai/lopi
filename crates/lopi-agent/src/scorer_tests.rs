@@ -172,9 +172,16 @@ async fn unrecognized_stack_no_longer_reports_a_perfect_pass() {
 
 /// Phase 1 verify — a pytest repo with a failing test scores as failing
 /// (not as an unrecognized-stack pass). Real `pytest` binary, real repo,
-/// per the anti-mocking rule for E2E coverage.
+/// per the anti-mocking rule for E2E coverage. Skips (rather than mocking
+/// `pytest`) when the binary isn't on `PATH` — CI's Rust-only runner image
+/// has no guarantee of a Python test toolchain, unlike `go`, which the
+/// sibling test below relies on and which the runner does provide.
 #[tokio::test]
 async fn pytest_repo_with_a_failing_test_scores_as_failing() {
+    if which::which("pytest").is_err() {
+        tracing::warn!("pytest not found on PATH — skipping (environment-dependent E2E test)");
+        return;
+    }
     let dir = tempfile::tempdir().expect("tempdir");
     let repo = dir.path();
     std::fs::write(
