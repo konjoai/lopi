@@ -190,10 +190,7 @@ async fn flush_batch(store: &MemoryStore, batch: &mut Vec<TaskLogInsert>) {
         return;
     }
     if let Err(e) = store.record_task_logs_batch(batch).await {
-        tracing::warn!(
-            "task_log batch persist failed ({} rows): {e}",
-            batch.len()
-        );
+        tracing::warn!("task_log batch persist failed ({} rows): {e}", batch.len());
     }
     batch.clear();
 }
@@ -343,7 +340,13 @@ mod tests {
         let (tx, _sub_rx) = broadcast::channel::<Arc<str>>(4_096);
         let tx = Arc::new(tx);
         let short_prune_interval = Duration::from_millis(100);
-        spawn_with_tunables(&bus, tx, store.clone(), PERSIST_CHANNEL_CAPACITY, short_prune_interval);
+        spawn_with_tunables(
+            &bus,
+            tx,
+            store.clone(),
+            PERSIST_CHANNEL_CAPACITY,
+            short_prune_interval,
+        );
 
         let task_id = TaskId::new();
         let total = lopi_memory::TASK_LOG_MAX_PER_TASK as u64 + 50;

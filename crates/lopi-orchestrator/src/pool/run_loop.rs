@@ -88,7 +88,9 @@ impl AgentPool {
                     failed,
                     uptime_secs,
                 });
-                counters_stats.pool_stats_sent.fetch_add(1, Ordering::Relaxed);
+                counters_stats
+                    .pool_stats_sent
+                    .fetch_add(1, Ordering::Relaxed);
             }
         });
 

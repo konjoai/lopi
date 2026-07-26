@@ -93,12 +93,14 @@ async fn bridge_load_bench() {
                         if let Ok(AgentEvent::LogLine { ts, line, .. }) =
                             serde_json::from_str::<AgentEvent>(&json)
                         {
-                            let latency_ms = (chrono::Utc::now() - ts)
-                                .num_microseconds()
-                                .unwrap_or(0) as f64
-                                / 1000.0;
+                            let latency_ms =
+                                (chrono::Utc::now() - ts).num_microseconds().unwrap_or(0) as f64
+                                    / 1000.0;
                             let prune_boundary = line.ends_with("#PB");
-                            latencies.lock().expect("lock").push((latency_ms, prune_boundary));
+                            latencies
+                                .lock()
+                                .expect("lock")
+                                .push((latency_ms, prune_boundary));
                             received.fetch_add(1, Ordering::Relaxed);
                         }
                     }
@@ -143,12 +145,20 @@ async fn bridge_load_bench() {
     all_lat.sort_by(|a, b| a.0.total_cmp(&b.0));
     let sorted_ms: Vec<f64> = all_lat.iter().map(|(ms, _)| *ms).collect();
     let prune_ms: Vec<f64> = {
-        let mut v: Vec<f64> = all_lat.iter().filter(|(_, pb)| *pb).map(|(ms, _)| *ms).collect();
+        let mut v: Vec<f64> = all_lat
+            .iter()
+            .filter(|(_, pb)| *pb)
+            .map(|(ms, _)| *ms)
+            .collect();
         v.sort_by(f64::total_cmp);
         v
     };
     let steady_ms: Vec<f64> = {
-        let mut v: Vec<f64> = all_lat.iter().filter(|(_, pb)| !*pb).map(|(ms, _)| *ms).collect();
+        let mut v: Vec<f64> = all_lat
+            .iter()
+            .filter(|(_, pb)| !*pb)
+            .map(|(ms, _)| *ms)
+            .collect();
         v.sort_by(f64::total_cmp);
         v
     };
