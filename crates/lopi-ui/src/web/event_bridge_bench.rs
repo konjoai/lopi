@@ -18,7 +18,16 @@
 //! `benchmarks/results/` were collected by invoking the compiled release
 //! test binary directly in a loop (see that directory's `summary.md`).
 
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+// print_stdout: this bench's whole job is to print a `BENCH_RESULT {json}`
+// line for the collection scripts in `benchmarks/results/` to grep out of
+// `--nocapture` test output — that's a deliberate reporting mechanism, not
+// a stray debug print.
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::print_stdout
+)]
 
 use super::spawn;
 use lopi_core::{AgentEvent, EventBus, LogLevel, TaskId};
