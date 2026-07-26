@@ -17,6 +17,22 @@ use super::MemoryStore;
 /// so the table cannot grow without bound on a busy fleet.
 pub const MAX_PER_TASK: i64 = 1_000;
 
+/// One pending row for [`MemoryStore::record_task_logs_batch`].
+///
+/// Distinct from [`TaskLogRow`] (a read result carrying the assigned `id`):
+/// this is the write-side shape a drain task accumulates before flushing.
+#[derive(Debug, Clone)]
+pub struct TaskLogInsert {
+    /// Owning task UUID (stringified).
+    pub task_id: String,
+    /// Wall clock from the original `LogLine` event.
+    pub ts: DateTime<Utc>,
+    /// Lowercase log level — `info` / `warn` / `error` / `debug`.
+    pub level: String,
+    /// The log line itself, free-form text.
+    pub line: String,
+}
+
 /// One row from `task_logs`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskLogRow {
@@ -57,6 +73,38 @@ impl MemoryStore {
                 .await
                 .context("inserting task_logs row")?;
         Ok(res.last_insert_rowid())
+    }
+
+    /// Persist a batch of log lines in a single transaction.
+    ///
+    /// Sprint F3 Phase 2 — the bridge no longer inserts one row per
+    /// `LogLine` event; a drain task accumulates rows off the broadcast hot
+    /// path and flushes them here in insertion order, so per-task ordering
+    /// is preserved without a per-row round trip.
+    ///
+    /// # Errors
+    /// Returns `Err` if the transaction fails to begin, insert, or commit.
+    pub async fn record_task_logs_batch(&self, rows: &[TaskLogInsert]) -> Result<()> {
+        if rows.is_empty() {
+            return Ok(());
+        }
+        let mut tx = self
+            .write_pool
+            .begin()
+            .await
+            .context("beginning task_logs batch transaction")?;
+        for row in rows {
+            sqlx::query("INSERT INTO task_logs (task_id, ts, level, line) VALUES (?, ?, ?, ?)")
+                .bind(&row.task_id)
+                .bind(row.ts.to_rfc3339())
+                .bind(&row.level)
+                .bind(&row.line)
+                .execute(&mut *tx)
+                .await
+                .context("inserting task_logs batch row")?;
+        }
+        tx.commit().await.context("committing task_logs batch")?;
+        Ok(())
     }
 
     /// Read the most-recent `limit` log lines for `task_id`, oldest first.

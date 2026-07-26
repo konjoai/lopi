@@ -163,6 +163,16 @@ impl AgentPool {
         }
     }
 
+    /// Count of `PoolStats` events this pool has actually broadcast since
+    /// it started (Sprint F3 Phase 5). Idle ticks with no subscriber are
+    /// gated out of `run()`'s 1Hz loop and don't count here — this is the
+    /// number that should stay flat while the pool sits idle with nobody
+    /// watching.
+    #[must_use]
+    pub fn pool_stats_sent_count(&self) -> u64 {
+        self.counters.pool_stats_sent.load(Ordering::Relaxed)
+    }
+
     /// Snapshot of all currently running agents — suitable for fleet display.
     ///
     /// Uses non-blocking `try_read`; handles that cannot be locked are silently

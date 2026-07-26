@@ -2,7 +2,7 @@
 //! snapshot structs returned to the dashboard.
 
 use lopi_core::PlanDecision;
-use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::{AtomicU64, AtomicUsize};
 use std::sync::Arc;
 use tokio::sync::oneshot;
 
@@ -31,6 +31,12 @@ pub struct PoolCounters {
     pub succeeded: AtomicUsize,
     /// Cumulative count of tasks that exhausted all retries.
     pub failed: AtomicUsize,
+    /// Sprint F3 Phase 5 — count of `PoolStats` events this pool has
+    /// actually broadcast (idle ticks with no subscriber are skipped, not
+    /// counted). Scoped per-pool rather than a process-wide static so
+    /// multi-repo mode's several pools (and tests spinning up several
+    /// pools in the same process) don't share one counter.
+    pub pool_stats_sent: AtomicU64,
 }
 
 /// Point-in-time snapshot of pool counters, returned by `AgentPool::stats()`.

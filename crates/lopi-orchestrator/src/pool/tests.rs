@@ -254,6 +254,43 @@ async fn register_rejects_zero_per_minute() {
     assert!(pool.agent_rate_limit("bad").is_none());
 }
 
+// ─── Sprint F3 Phase 5 — idle 1Hz PoolStats wakeup ──────────────
+
+/// An idle pool (zero running, zero queued) with no `PoolStats` subscriber
+/// must not broadcast anything — the old unconditional 1s tick blocked
+/// Fly.io autostop by broadcasting to nobody, forever.
+#[tokio::test]
+async fn idle_pool_with_no_subscribers_sends_no_pool_stats() {
+    let pool = make_pool(2);
+    // Scoped to this pool's own counter (not a process-wide static) so a
+    // sibling test's pool running concurrently in the same test binary
+    // can't pollute this assertion.
+    let handle = tokio::spawn(pool.clone().run());
+    // Real wall-clock sleep spanning several 1s ticks of the stats loop.
+    tokio::time::sleep(std::time::Duration::from_millis(2_500)).await;
+    handle.abort();
+    assert_eq!(
+        pool.pool_stats_sent_count(),
+        0,
+        "an idle pool with no subscribers must not broadcast PoolStats"
+    );
+}
+
+/// The same idle pool, once something is actually listening, must resume
+/// broadcasting — the gate gives up nothing subscribers need.
+#[tokio::test]
+async fn pool_stats_resume_once_a_subscriber_connects() {
+    let pool = make_pool(2);
+    let _subscriber = pool.bus().subscribe();
+    let handle = tokio::spawn(pool.clone().run());
+    tokio::time::sleep(std::time::Duration::from_millis(2_500)).await;
+    handle.abort();
+    assert!(
+        pool.pool_stats_sent_count() > 0,
+        "a subscribed pool must still broadcast PoolStats even while idle"
+    );
+}
+
 // Verifier-as-explicit-gate, `Task.max_iterations` override, and Budget &
 // Guardrail Controls Part 2/3's `effective_task_budget` tests moved to
 // `budget_tests.rs` (sibling module) to keep this file under the 500-line

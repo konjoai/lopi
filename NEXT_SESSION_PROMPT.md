@@ -5,6 +5,51 @@ the `lopi` repo. Newest first.
 
 ---
 
+## Next Session — after Sprint F3 (decouple log persistence) — Sprint F4 (session continuity) is next
+
+**Sprint F3 decoupled the event bridge's live broadcast from `task_logs`
+persistence.** Read first, in order: `CLAUDE.md`, `CHANGELOG.md`'s
+`[0.29.0] — Sprint F3` entry, `LEDGER.md`'s `Sprint F3` entry (the
+best-effort-persistence one-way door), all four
+`.konjo/killtests/F3/KT-3.*.md` files, `benchmarks/results/
+20260726T205826Z_f3_bridge/summary.md`, then this file's own words below.
+
+**Version note:** F2's own handoff assumed F1 would land next and take
+`0.29.0`. F3 preempted it instead (zero file overlap with F1 or F2, per all
+three briefs) and took `0.29.0`. **F1 now takes `0.30.0`** when it lands.
+
+Sprint F4 (session continuity) is next. Two things carry forward from F3,
+not F4's own scope but worth knowing:
+
+1. **`KT-3.4`'s volume estimate — F3's baseline is pre-F1.** F1 has not
+   landed as of F3 (confirmed by grepping `CHANGELOG.md`/`LEDGER.md` for a
+   `Sprint F1` heading — none exists yet). F3's 30-run paired benchmark
+   (`benchmarks/results/20260726T205826Z_f3_bridge/`) therefore describes
+   events-per-task *without* F1's verifier-session traffic. F3's fix
+   (decoupling the bridge from the DB) is correct regardless of F1's
+   volume, but **whoever lands F1 should re-run `KT-3.1`'s harness**
+   (`crates/lopi-ui/src/web/event_bridge_bench.rs::bridge_load_bench`,
+   `cargo test -p lopi-ui --release bridge_load_bench -- --ignored
+   --nocapture --test-threads=1`) rather than reuse F3's numbers — a
+   baseline measured against a system that has since changed volume is not
+   a baseline, per F3's own brief.
+2. **The durability one-way door — log persistence is now best-effort under
+   pressure.** `LEDGER.md`'s F3 entry: under sustained overload, the
+   bridge's persistence channel drops `task_logs` rows (counted, not
+   silent — `lopi_task_log_persist_dropped_total` at `/metrics`) rather
+   than blocking the live stream or growing unbounded. This was confirmed
+   safe by `KT-3.3`: nothing reads `task_logs` for correctness, replay, or
+   gating today — only display surfaces (web dashboard tail, Telegram
+   `/tail`, MCP `lopi_get_logs`, `lopi diag` export). **If session
+   continuity work (F4) or any later sprint starts treating `task_logs` as
+   more than a display/inspection surface** — e.g. reconstructing session
+   state from logged lines, or feeding an evidence bundle that needs
+   completeness guarantees — **that is the trigger to reopen this door**
+   and add backpressure or durable buffering back explicitly, rather than
+   assuming today's best-effort behavior already covers it.
+
+---
+
 ## Next Session — after Sprint F2 (Correctness Holes) — Sprint F3 decouples logs; two inherited items for F1/F5
 
 **Sprint F2 closed four defects (scorer stack detection, the unevaluated-repo

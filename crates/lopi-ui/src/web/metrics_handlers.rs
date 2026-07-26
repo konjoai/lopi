@@ -132,6 +132,28 @@ pub(super) async fn metrics(State(s): State<AppState>) -> impl IntoResponse {
         Err(e) => tracing::warn!("count_audit failed: {e}"),
     }
 
+    // Sprint F3 Phase 4 — visible counter for the event bridge's overflow
+    // policy: log persistence sheds load under pressure before live events
+    // do, and that must be a measured drop, not a silent one.
+    body.push_str(
+        "# HELP lopi_task_log_persist_dropped_total Log lines dropped by the persistence handoff channel under overload\n",
+    );
+    body.push_str("# TYPE lopi_task_log_persist_dropped_total counter\n");
+    body.push_str(&format!(
+        "lopi_task_log_persist_dropped_total {}\n",
+        super::event_bridge::persist_dropped_count()
+    ));
+
+    // Sprint F3 Phase 5 — visible counter for the idle-wakeup gate: how many
+    // `PoolStats` broadcasts actually fired, as opposed to ticks skipped
+    // while idle with no subscriber.
+    body.push_str("# HELP lopi_pool_stats_broadcast_total PoolStats events actually broadcast (idle ticks with no subscriber are skipped)\n");
+    body.push_str("# TYPE lopi_pool_stats_broadcast_total counter\n");
+    body.push_str(&format!(
+        "lopi_pool_stats_broadcast_total {}\n",
+        s.pool.pool_stats_sent_count()
+    ));
+
     (
         StatusCode::OK,
         [(
