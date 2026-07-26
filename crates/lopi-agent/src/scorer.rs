@@ -109,7 +109,9 @@ impl Scorer {
     async fn run_detected(&self, score: &mut Score) -> Result<()> {
         let Some(runner) = scorer_detect::detect(&self.repo_path, self.test_command.as_deref())
         else {
-            score.errors.push(scorer_detect::NO_RUNNER_REASON.to_string());
+            score
+                .errors
+                .push(scorer_detect::NO_RUNNER_REASON.to_string());
             score.unevaluated_reason = Some(scorer_detect::NO_RUNNER_REASON.to_string());
             return Ok(());
         };
@@ -129,8 +131,14 @@ impl Scorer {
                     .await
             }
             Runner::Npm => self.run_command("npm", &["test"], "npm test", score).await,
-            Runner::Pnpm => self.run_command("pnpm", &["test"], "pnpm test", score).await,
-            Runner::Yarn => self.run_command("yarn", &["test"], "yarn test", score).await,
+            Runner::Pnpm => {
+                self.run_command("pnpm", &["test"], "pnpm test", score)
+                    .await
+            }
+            Runner::Yarn => {
+                self.run_command("yarn", &["test"], "yarn test", score)
+                    .await
+            }
             Runner::Pytest => self.run_command("pytest", &[], "pytest", score).await,
             Runner::Go => {
                 self.run_command("go", &["test", "./..."], "go test", score)

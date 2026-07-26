@@ -81,9 +81,15 @@ pub(crate) fn detect(repo_path: &Path, explicit: Option<&str>) -> Option<Runner>
 /// without packaging metadata (a plain `pytest.ini` + `requirements.txt`
 /// project) is still common enough to be worth detecting directly.
 fn is_python_project(repo_path: &Path) -> bool {
-    ["pyproject.toml", "setup.py", "setup.cfg", "pytest.ini", "requirements.txt"]
-        .iter()
-        .any(|f| repo_path.join(f).exists())
+    [
+        "pyproject.toml",
+        "setup.py",
+        "setup.cfg",
+        "pytest.ini",
+        "requirements.txt",
+    ]
+    .iter()
+    .any(|f| repo_path.join(f).exists())
 }
 
 /// Human-readable reason recorded on [`Score::unevaluated_reason`](lopi_core::Score::unevaluated_reason)

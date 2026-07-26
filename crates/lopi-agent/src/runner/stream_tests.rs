@@ -141,7 +141,10 @@ fn check_soft_warn_none_under_the_threshold() {
     let acc = UsageAccrual::default();
     // A trickle of tokens on a generous cap — nowhere near 80%.
     acc.observe(&usage(10, 10, 0, 0));
-    assert_eq!(acc.check_soft_warn(crate::claude::model_sonnet(), 10.0), None);
+    assert_eq!(
+        acc.check_soft_warn(crate::claude::model_sonnet(), 10.0),
+        None
+    );
 }
 
 #[test]
@@ -199,7 +202,10 @@ fn check_hard_stop_none_under_the_cap() {
     // 90% of cap (same fixture as the soft-warn test) must not hard-stop —
     // 80% and 100% are genuinely different thresholds.
     acc.observe(&usage(300_000, 0, 0, 0));
-    assert_eq!(acc.check_hard_stop(crate::claude::model_sonnet(), 5.0), None);
+    assert_eq!(
+        acc.check_hard_stop(crate::claude::model_sonnet(), 5.0),
+        None
+    );
 }
 
 #[test]

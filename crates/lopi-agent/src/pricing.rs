@@ -129,8 +129,14 @@ mod tests {
         let opus = rates_for("claude-opus-5");
         let haiku = rates_for("claude-haiku-4-5");
         let sonnet = rates_for("claude-sonnet-5");
-        assert!(opus.input > sonnet.input, "opus should be pricier than sonnet");
-        assert!(sonnet.input > haiku.input, "sonnet should be pricier than haiku");
+        assert!(
+            opus.input > sonnet.input,
+            "opus should be pricier than sonnet"
+        );
+        assert!(
+            sonnet.input > haiku.input,
+            "sonnet should be pricier than haiku"
+        );
     }
 
     #[test]
@@ -152,7 +158,10 @@ mod tests {
     /// compiled-in defaults with a partial override map.
     #[test]
     fn override_file_may_set_only_a_subset_of_tiers() {
-        let overrides = parse_or_warn("[sonnet]\ninput = 99.0\noutput = 1.0\ncache_read = 0.1\ncache_write = 0.2\n", "test override");
+        let overrides = parse_or_warn(
+            "[sonnet]\ninput = 99.0\noutput = 1.0\ncache_read = 0.1\ncache_write = 0.2\n",
+            "test override",
+        );
         assert_eq!(overrides.len(), 1);
         assert!((overrides["sonnet"].input - 99.0).abs() < f64::EPSILON);
     }

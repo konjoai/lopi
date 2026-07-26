@@ -177,14 +177,24 @@ async fn unrecognized_stack_no_longer_reports_a_perfect_pass() {
 async fn pytest_repo_with_a_failing_test_scores_as_failing() {
     let dir = tempfile::tempdir().expect("tempdir");
     let repo = dir.path();
-    std::fs::write(repo.join("pyproject.toml"), "[project]\nname = \"fixture\"\n")
-        .expect("write pyproject.toml");
-    init_repo_with_tracked_change(repo, "test_sample.py", "def test_fails():\n    assert False\n");
+    std::fs::write(
+        repo.join("pyproject.toml"),
+        "[project]\nname = \"fixture\"\n",
+    )
+    .expect("write pyproject.toml");
+    init_repo_with_tracked_change(
+        repo,
+        "test_sample.py",
+        "def test_fails():\n    assert False\n",
+    );
 
     let score = Scorer::new(repo).score().await.expect("score");
 
     assert!(!score.passed(), "a failing pytest run must not pass");
-    assert!(score.unevaluated_reason.is_none(), "pytest was detected and ran — not unevaluated");
+    assert!(
+        score.unevaluated_reason.is_none(),
+        "pytest was detected and ran — not unevaluated"
+    );
     assert_eq!(score.test_pass_rate, 0.0);
 }
 
@@ -204,6 +214,9 @@ async fn go_repo_with_a_failing_test_scores_as_failing() {
     let score = Scorer::new(repo).score().await.expect("score");
 
     assert!(!score.passed(), "a failing go test run must not pass");
-    assert!(score.unevaluated_reason.is_none(), "go.mod was detected and ran — not unevaluated");
+    assert!(
+        score.unevaluated_reason.is_none(),
+        "go.mod was detected and ran — not unevaluated"
+    );
     assert_eq!(score.test_pass_rate, 0.0);
 }

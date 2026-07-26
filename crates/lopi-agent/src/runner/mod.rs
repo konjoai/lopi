@@ -266,7 +266,6 @@ impl AgentRunner {
         );
         (runner, bus)
     }
-
 }
 
 #[cfg(test)]

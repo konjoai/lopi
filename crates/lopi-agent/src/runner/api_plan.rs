@@ -116,7 +116,11 @@ impl AgentRunner {
                 // warning now, instead of the run just failing once the
                 // model is actually retired.
                 if let Some(warning) = &usage.model_deprecation_warning {
-                    tracing::warn!(model, warning, "model deprecation warning from Anthropic API");
+                    tracing::warn!(
+                        model,
+                        warning,
+                        "model deprecation warning from Anthropic API"
+                    );
                     self.bus.send(AgentEvent::warn(
                         task_id,
                         format!("⚠ model `{model}` deprecation warning: {warning}"),

@@ -102,4 +102,3 @@ pub(super) struct RepoGuardrails {
     pub(super) until: Option<String>,
     pub(super) on_fail: lopi_core::loop_config::OnFail,
 }
-

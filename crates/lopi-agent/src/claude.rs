@@ -26,15 +26,15 @@ use tokio::process::Command;
 pub use crate::claude_model::{
     select_model, ClaudeOutput, ERR_BUDGET_HARD_STOP, ERR_CREDIT_EXHAUSTED,
 };
-/// Re-exported so every existing `crate::claude::model_*` path stays valid —
-/// Sprint F2 Phase 4 moved these from hardcoded consts here to
-/// `crate::model_config`'s runtime-read, operator-overridable config.
-pub use crate::model_config::{model_haiku, model_opus, model_sonnet};
 /// Re-exported so `crate::claude::scrub_inherited_anthropic_env` stays valid
 /// for `claude_stream.rs`'s call site — moved to `claude_support.rs` for the
 /// same file-size reason.
 pub(crate) use crate::claude_support::scrub_inherited_anthropic_env;
 use crate::claude_support::{apply_cli_caps, compress_errors};
+/// Re-exported so every existing `crate::claude::model_*` path stays valid —
+/// Sprint F2 Phase 4 moved these from hardcoded consts here to
+/// `crate::model_config`'s runtime-read, operator-overridable config.
+pub use crate::model_config::{model_haiku, model_opus, model_sonnet};
 
 /// Wrapper around the `claude` CLI — drives plan, implement, fix, and streaming calls.
 pub struct ClaudeCode {

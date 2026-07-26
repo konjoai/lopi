@@ -276,7 +276,12 @@ impl AnthropicClient {
     /// Returns an error if the probe request fails or returns an empty response.
     pub async fn canary_probe(&self) -> Result<()> {
         let (text, _) = self
-            .complete(model_haiku(), "You are a test probe.", "Respond with OK.", 10)
+            .complete(
+                model_haiku(),
+                "You are a test probe.",
+                "Respond with OK.",
+                10,
+            )
             .await?;
         if text.trim().is_empty() {
             anyhow::bail!("canary probe returned empty response");

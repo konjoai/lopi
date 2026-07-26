@@ -17,9 +17,6 @@ pub mod claude_events;
 /// Re-exported from `claude` — see that module's doc comment.
 mod claude_model;
 mod claude_stream;
-/// Sprint F2 Phase 4 — externalized worker model IDs (no recompile needed
-/// to change one). See that module's doc comment.
-pub mod model_config;
 /// Subprocess-env scrubbing and fix-prompt error compression.
 /// Re-exported from `claude` — see that module's doc comment.
 mod claude_support;
@@ -30,10 +27,13 @@ mod dag_rows;
 /// Eval-Execution-1 (A1) — the tiered eval executor: goal/acceptance scoring
 /// across execution-ok, shell-test, judge, and suite tiers, fail-closed.
 pub mod eval;
-mod prompt;
+/// Sprint F2 Phase 4 — externalized worker model IDs (no recompile needed
+/// to change one). See that module's doc comment.
+pub mod model_config;
 /// Sprint F2 Phase 3 — externalized per-model token pricing (no recompile
 /// needed to change a rate). See that module's doc comment.
 pub mod pricing;
+mod prompt;
 /// MAXX kill-test prep — logs `rate_limit_event` cadence for a real session's
 /// eventual run, off by default (see `docs/ops/NEXT_SESSION_PROMPT.md`).
 pub mod quota_kill_log;
