@@ -15,6 +15,14 @@ use tokio::io::AsyncBufReadExt;
 /// `claude -p` spawn site, and until these were threaded through it was the one
 /// path a `--speculative` run could still spend on with no cap at all, even when
 /// `.lopi/loop.toml` configured one.
+///
+/// `session` (Sprint F4) is threaded through so this seam stays uniform with
+/// the other two spawn sites, but [`ClaudeCode::plan_streaming`]'s only
+/// caller (`--speculative` mode) always passes `SessionMode::None` today —
+/// speculative streaming applies plan steps incrementally as separate
+/// `implement_step` calls per step, so "one session per attempt" doesn't map
+/// onto it without a larger redesign than this sprint's scope. See
+/// `runner/run_loop.rs`'s speculative branch.
 #[allow(clippy::too_many_arguments)]
 pub fn plan_streaming(
     repo_path: &Path,
@@ -29,6 +37,7 @@ pub fn plan_streaming(
     max_turns: Option<u32>,
     allowed_tools: &[String],
     disallowed_tools: &[String],
+    session: crate::claude_support::SessionMode<'_>,
 ) -> (
     tokio::task::JoinHandle<anyhow::Result<String>>,
     tokio::sync::mpsc::Receiver<String>,
@@ -45,6 +54,12 @@ pub fn plan_streaming(
     let permission_mode = permission_mode.map(str::to_string);
     let allowed_tools = allowed_tools.to_vec();
     let disallowed_tools = disallowed_tools.to_vec();
+    // `SessionMode` borrows a `&str`; own it for the `'static` spawned task.
+    let session_owned: Option<(bool, String)> = match session {
+        crate::claude_support::SessionMode::None => None,
+        crate::claude_support::SessionMode::New(id) => Some((true, id.to_string())),
+        crate::claude_support::SessionMode::Resume(id) => Some((false, id.to_string())),
+    };
 
     let handle = tokio::spawn(async move {
         let ctx = lopi_toon::encode_task_context(
@@ -76,6 +91,11 @@ pub fn plan_streaming(
         // `--permission-mode` (falling back to `PermissionMode::default()`,
         // `bypassPermissions`, when `permission_mode` is unset), so a tool
         // call needing approval never stalls this headless pipeline forever.
+        let session_mode = match &session_owned {
+            None => crate::claude_support::SessionMode::None,
+            Some((true, id)) => crate::claude_support::SessionMode::New(id),
+            Some((false, id)) => crate::claude_support::SessionMode::Resume(id),
+        };
         crate::claude_support::apply_cli_caps(
             &mut cmd,
             model.as_deref(),
@@ -89,6 +109,7 @@ pub fn plan_streaming(
             // planning); must load the target repo's own CLAUDE.md/skills,
             // so explicitly not `--bare`.
             false,
+            session_mode,
         );
         // Same auth guard as the one-shot path: never let inherited routing
         // env (ANTHROPIC_API_KEY, ANTHROPIC_BASE_URL, etc.) silently switch
@@ -185,6 +206,7 @@ mod tests {
             Some(7),
             &["Bash".to_string()],
             &["Workflow".to_string()],
+            crate::claude_support::SessionMode::New("62faafd1-ea12-445a-9961-89ed21a151b8"),
         );
         while rx.recv().await.is_some() {}
         handle.await.unwrap().unwrap();
@@ -197,6 +219,10 @@ mod tests {
         assert!(argv.contains("--max-turns\n7"), "argv={argv}");
         assert!(argv.contains("--allowedTools\nBash"), "argv={argv}");
         assert!(argv.contains("--disallowedTools\nWorkflow"), "argv={argv}");
+        assert!(
+            argv.contains("--session-id\n62faafd1-ea12-445a-9961-89ed21a151b8"),
+            "argv={argv}"
+        );
 
         std::fs::remove_file(&script).ok();
         std::fs::remove_file(&capture).ok();
@@ -229,6 +255,7 @@ mod tests {
             None,
             &[],
             &[],
+            crate::claude_support::SessionMode::None,
         );
         while rx.recv().await.is_some() {}
         handle.await.unwrap().unwrap();
@@ -239,6 +266,8 @@ mod tests {
         assert!(!argv.contains("--effort"));
         assert!(!argv.contains("--max-budget-usd"));
         assert!(!argv.contains("--max-turns"));
+        assert!(!argv.contains("--session-id"));
+        assert!(!argv.contains("--resume"));
         assert!(!argv.contains("--allowedTools"));
         assert!(!argv.contains("--disallowedTools"));
 

@@ -129,6 +129,7 @@ mod tests {
             parent_task: None,
             chain_depth: 0,
             source: "\"Cli\"".to_string(),
+            cli_session_id: None,
         }
     }
 

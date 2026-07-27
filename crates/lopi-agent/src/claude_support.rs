@@ -90,13 +90,78 @@ pub(crate) fn normalize_effort(raw: &str) -> Option<&'static str> {
     }
 }
 
-/// Apply the caps shared by all three `claude -p` spawn sites — `--model`,
+/// Session-continuity mode for a `claude -p` spawn (Sprint F4). An enum
+/// rather than two `Option<&str>` params because the three states are
+/// mutually exclusive by construction — a spawn either starts a fresh,
+/// unlabeled session (`None`), starts a fresh session under an explicit id
+/// (`New`, `--session-id`), or continues an existing one (`Resume`,
+/// `--resume`) — a type that cannot represent "both at once" needs no
+/// runtime check to keep that invariant.
+///
+/// `New(id)`: KT-4.2 (`.konjo/killtests/F4/KT-4.2.md`) confirmed live that
+/// the CLI accepts an arbitrary UUID (not just one it generated itself) and
+/// round-trips it unchanged into the `Init`/`Result` events
+/// `StreamEvent::session_id()` already parses. `AgentRunner` uses this to
+/// mint a fresh per-*attempt* UUID (never a reused `TaskId` — a retried
+/// attempt would collide with its predecessor's still-live session id) so
+/// the id is known before the first spawn even happens, for Phase 4
+/// correlation.
+///
+/// `Resume(id)`: KT-4.1 confirmed a resumed session — spawned in the same
+/// worktree cwd, `--permission-mode` set, no `--bare`, subscription auth —
+/// retains prior context and does not re-read files the first session
+/// already read (verified against the tool-call stream, not by asking the
+/// model). Keyed on the id a prior `New` (or the CLI's own generated id) set.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum SessionMode<'a> {
+    /// No session-continuity flag — every spawn site's behavior before this
+    /// sprint, and still the only mode the verifier/post-mortem checker
+    /// paths ever use (Phase 3 — a fresh, unlabeled session per call is what
+    /// makes them checkers rather than continuations of the maker's own
+    /// context).
+    None,
+    /// `--session-id <id>` — start a fresh session under a caller-chosen id.
+    New(&'a str),
+    /// `--resume <id>` — continue an existing session.
+    Resume(&'a str),
+}
+
+impl SessionMode<'_> {
+    fn apply(self, cmd: &mut Command) {
+        match self {
+            SessionMode::None => {}
+            SessionMode::New(id) => {
+                cmd.arg("--session-id").arg(id);
+            }
+            SessionMode::Resume(id) => {
+                cmd.arg("--resume").arg(id);
+            }
+        }
+    }
+}
+
+/// Whether a `claude -p` result envelope looks like the *session itself*
+/// failed to establish, rather than a genuine mid-session failure (a real
+/// implementation/test bug, a tool denial, a timeout after real work).
+/// Sprint F4's resume fallback (Phase 2) only wants to retry cold when a
+/// resumed session never got off the ground — confirmed live
+/// (`.konjo/killtests/F4/KT-4.1.md`): an unresumable `--resume <id>` exits
+/// non-zero with `is_error: true` and `num_turns: 0`, before a single turn
+/// runs. Retrying cold on *any* failure a resumed call happens to hit would
+/// silently double-spend on a genuine bug that has nothing to do with the
+/// session, which is not what "fall back on resume failure" is asking for.
+pub(crate) fn looks_like_session_establishment_failure(is_error: bool, num_turns: u32) -> bool {
+    is_error && num_turns == 0
+}
+
+/// Apply the caps shared by all `claude -p` spawn sites — `--model`,
 /// `--permission-mode`, `--max-turns`, `--max-budget-usd`, `--allowedTools`,
-/// `--disallowedTools` — to `cmd`. Each site still adds its own `-p <prompt>`
-/// (their positions/doc comments differ enough not to share), but the
-/// optional-cap block was identical copy-paste across `ClaudeCode::run`,
-/// `ClaudeCode::run_streamed`, and `claude_stream::plan_streaming` — a
-/// fourth spawn site could easily drop one by hand-copying the block again.
+/// `--disallowedTools`, and (Sprint F4) session continuity — to `cmd`. Each
+/// site still adds its own `-p <prompt>` (their positions/doc comments differ
+/// enough not to share), but the optional-cap block was identical copy-paste
+/// across `ClaudeCode::run`, `ClaudeCode::run_streamed`, and
+/// `claude_stream::plan_streaming` — a fourth spawn site could easily drop
+/// one by hand-copying the block again.
 ///
 /// `--permission-mode` folded in here (Permission-Modes-1), reversing this
 /// function's own prior doc comment that kept `--dangerously-skip-permissions`
@@ -133,12 +198,14 @@ pub(crate) fn apply_cli_caps(
     allowed_tools: &[String],
     disallowed_tools: &[String],
     bare: bool,
+    session: SessionMode<'_>,
 ) {
     if bare {
         cmd.arg("--bare");
     }
     let mode = permission_mode.unwrap_or(lopi_core::PermissionMode::default().as_str());
     cmd.arg("--permission-mode").arg(mode);
+    session.apply(cmd);
     if let Some(m) = model {
         cmd.arg("--model").arg(m);
         // Pin Task-tool sub-agents to the card's model too. `--model`
@@ -249,11 +316,27 @@ const ANTHROPIC_ROUTING_ENV: &[&str] = &[
     "CLAUDE_CODE_USE_VERTEX",
 ];
 
-/// Remove inherited Anthropic routing/auth env vars from a spawned-process
+/// Names of environment variables that carry a *parent* Claude Code
+/// session's own identity. Sprint F4's session-continuity spawns now pass
+/// `--session-id`/`--resume` explicitly, which should dominate any inherited
+/// env — but scrubbing this defensively closes a real, live-reproduced gap
+/// (`.konjo/killtests/F4/KT-4.1.md`): when lopi itself runs nested inside
+/// another Claude Code session (or a CI runner that sets these), an
+/// unscrubbed child `claude -p` process silently adopted the *parent's*
+/// session id instead of getting a fresh one — confirmed live, the child's
+/// `Init` event reported the exact same UUID as the outer session.
+const INHERITED_SESSION_ENV: &[&str] = &["CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_CHILD_SESSION"];
+
+/// Remove inherited Anthropic routing/auth env vars, and (Sprint F4) a
+/// parent Claude Code session's own identity, from a spawned-process
 /// command. Used for both the one-shot `run()` path and the streaming plan
-/// path so neither accidentally bills against a user's API credits.
+/// path so neither accidentally bills against a user's API credits or
+/// silently inherits a session id lopi never chose.
 pub(crate) fn scrub_inherited_anthropic_env(cmd: &mut Command) {
     for var in ANTHROPIC_ROUTING_ENV {
+        cmd.env_remove(var);
+    }
+    for var in INHERITED_SESSION_ENV {
         cmd.env_remove(var);
     }
 }
@@ -283,217 +366,5 @@ pub(crate) fn compress_errors(errors: &[String]) -> String {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
-mod tests {
-    use super::*;
-    use std::os::unix::process::ExitStatusExt;
-
-    fn status(code: i32) -> ExitStatus {
-        ExitStatus::from_raw(code << 8)
-    }
-
-    /// Collect the `(key, value)` env overrides set on a `Command`.
-    fn env_overrides(cmd: &Command) -> Vec<(String, String)> {
-        cmd.as_std()
-            .get_envs()
-            .filter_map(|(k, v)| {
-                v.map(|v| {
-                    (
-                        k.to_string_lossy().into_owned(),
-                        v.to_string_lossy().into_owned(),
-                    )
-                })
-            })
-            .collect()
-    }
-
-    #[test]
-    fn apply_cli_caps_omits_optional_flags_for_none_and_empty() {
-        let mut cmd = Command::new("true");
-        apply_cli_caps(&mut cmd, None, None, None, None, None, &[], &[], false);
-        let argv: Vec<String> = cmd
-            .as_std()
-            .get_args()
-            .map(|a| a.to_string_lossy().into_owned())
-            .collect();
-        // `--permission-mode` is never optional — it always falls back to
-        // `PermissionMode::default()` (`bypassPermissions`) — everything else
-        // stays a true no-op.
-        assert_eq!(
-            argv,
-            vec!["--permission-mode", "bypassPermissions"],
-            "argv={argv:?}"
-        );
-        // No model ⇒ no sub-agent pin: sub-agents inherit the CLI default.
-        assert!(
-            !env_overrides(&cmd)
-                .iter()
-                .any(|(k, _)| k == "CLAUDE_CODE_SUBAGENT_MODEL"),
-            "sub-agent model must not be pinned when no --model is set"
-        );
-    }
-
-    /// Sprint F2 Phase 6 — every one of lopi's three worker spawn sites
-    /// (`ClaudeCode::run`, `ClaudeCode::run_streamed`,
-    /// `claude_stream::plan_streaming`) calls `apply_cli_caps` with
-    /// `bare: false` explicitly; this proves that choice at the shared seam
-    /// so all three inherit it correctly, in the same shape as
-    /// `apply_cli_caps_includes_every_configured_flag`.
-    #[test]
-    fn apply_cli_caps_worker_sessions_never_pass_bare() {
-        let mut cmd = Command::new("true");
-        apply_cli_caps(&mut cmd, None, None, None, None, None, &[], &[], false);
-        let argv: Vec<String> = cmd
-            .as_std()
-            .get_args()
-            .map(|a| a.to_string_lossy().into_owned())
-            .collect();
-        assert!(
-            !argv.contains(&"--bare".to_string()),
-            "worker sessions must load repo context — --bare must be absent, argv={argv:?}"
-        );
-    }
-
-    /// The other half of the same pin: when a caller (e.g. a future
-    /// checker/post-mortem spawn site, per F1's handoff) asks for `bare:
-    /// true`, `--bare` must actually appear, and as the *first* argument —
-    /// checked here rather than merely "somewhere in argv" so a future
-    /// refactor can't accidentally place it after a value it would then be
-    /// mistaken for.
-    #[test]
-    fn apply_cli_caps_bare_flag_present_when_requested() {
-        let mut cmd = Command::new("true");
-        apply_cli_caps(&mut cmd, None, None, None, None, None, &[], &[], true);
-        let argv: Vec<String> = cmd
-            .as_std()
-            .get_args()
-            .map(|a| a.to_string_lossy().into_owned())
-            .collect();
-        assert_eq!(argv.first(), Some(&"--bare".to_string()), "argv={argv:?}");
-    }
-
-    #[test]
-    fn normalize_effort_accepts_cli_levels_case_insensitively() {
-        for (raw, want) in [
-            ("low", Some("low")),
-            ("  Medium ", Some("medium")),
-            ("HIGH", Some("high")),
-            ("xhigh", Some("xhigh")),
-            ("Max", Some("max")),
-            ("turbo", None),
-            ("", None),
-        ] {
-            assert_eq!(normalize_effort(raw), want, "raw={raw:?}");
-        }
-    }
-
-    #[test]
-    fn apply_cli_caps_pins_subagent_model_to_the_session_model() {
-        let mut cmd = Command::new("true");
-        apply_cli_caps(
-            &mut cmd,
-            Some("haiku"),
-            None,
-            None,
-            None,
-            None,
-            &[],
-            &[],
-            false,
-        );
-        assert!(
-            env_overrides(&cmd)
-                .iter()
-                .any(|(k, v)| k == "CLAUDE_CODE_SUBAGENT_MODEL" && v == "haiku"),
-            "sub-agents must be pinned to the card's model so a Haiku card \
-             can't fan out pricier sub-agents"
-        );
-    }
-
-    #[test]
-    fn apply_cli_caps_includes_every_configured_flag() {
-        let mut cmd = Command::new("true");
-        apply_cli_caps(
-            &mut cmd,
-            Some("claude-opus-5"),
-            Some("high"),
-            Some("dontAsk"),
-            Some(5),
-            Some(2.5),
-            &["Bash".to_string()],
-            &["Workflow".to_string()],
-            false,
-        );
-        let argv: Vec<String> = cmd
-            .as_std()
-            .get_args()
-            .map(|a| a.to_string_lossy().into_owned())
-            .collect();
-        assert_eq!(
-            argv,
-            vec![
-                "--permission-mode",
-                "dontAsk",
-                "--model",
-                "claude-opus-5",
-                "--effort",
-                "high",
-                "--max-turns",
-                "5",
-                "--max-budget-usd",
-                "2.5",
-                "--allowedTools",
-                "Bash",
-                "--disallowedTools",
-                "Workflow",
-            ]
-        );
-    }
-
-    #[test]
-    fn build_cli_error_hard_stops_on_credit_exhaustion() {
-        let stdout = r#"{"result":"Your credit balance is too low","api_error_status":402}"#;
-        let err = build_cli_error(stdout, "", status(1), Path::new("."), 10);
-        assert!(err
-            .to_string()
-            .contains(crate::claude::ERR_CREDIT_EXHAUSTED));
-    }
-
-    #[test]
-    fn build_cli_error_surfaces_the_parsed_api_message() {
-        let stdout = r#"{"result":"rate limited","api_error_status":429}"#;
-        let err = build_cli_error(stdout, "", status(1), Path::new("."), 10);
-        let msg = err.to_string();
-        assert!(msg.contains("rate limited"));
-        assert!(msg.contains("429"));
-    }
-
-    #[test]
-    fn build_cli_error_falls_back_to_raw_streams_when_unparseable() {
-        let err = build_cli_error("not json", "boom", status(1), Path::new("."), 10);
-        let msg = err.to_string();
-        assert!(msg.contains("boom"));
-        assert!(msg.contains("not json"));
-    }
-
-    #[test]
-    fn compress_errors_removes_backtrace_noise() {
-        let errors = vec![
-            "error[E0308]: mismatched types\n  at src/main.rs:10\nnote: run with RUST_BACKTRACE=1\nstack backtrace:\n  at src/foo.rs:5".to_string(),
-        ];
-        let out = compress_errors(&errors);
-        assert!(!out.contains("RUST_BACKTRACE"));
-        assert!(!out.contains("stack backtrace:"));
-        assert!(!out.contains("at src/"));
-        assert!(out.contains("mismatched types"));
-    }
-
-    #[test]
-    fn compress_errors_deduplicates_identical_blocks() {
-        let block = "error: cannot borrow as mutable".to_string();
-        let errors = vec![block.clone(), block.clone(), block.clone()];
-        let out = compress_errors(&errors);
-        // Only one copy should survive deduplication
-        assert_eq!(out.matches("cannot borrow").count(), 1);
-    }
-}
+#[path = "claude_support_tests.rs"]
+mod tests;

@@ -283,7 +283,7 @@ impl MemoryStore {
     pub async fn load_history(&self, limit: i64) -> Result<Vec<TaskRow>> {
         let rows = sqlx::query_as::<_, TaskRow>(
             "SELECT id, goal, status, created_at, completed_at, client_ref, branch, repo, \
-             parent_task, chain_depth, source FROM tasks \
+             parent_task, chain_depth, source, cli_session_id FROM tasks \
              ORDER BY created_at DESC LIMIT ?1",
         )
         .bind(limit)
@@ -403,6 +403,7 @@ mod audit;
 mod branch;
 mod budget;
 mod checkpoints;
+mod cli_session;
 mod dag;
 mod eval_outcomes;
 mod installations;

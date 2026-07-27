@@ -1,3 +1,199 @@
+## [0.31.0] — Sprint F4: session continuity — one CLI session per attempt, not per phase
+
+**Volume/version note:** this sprint was developed against a HEAD where
+both F1 (`0.29.0`) and F3 (`0.30.0`) had already landed. The brief's own
+`§Ordering` section anticipated "F4 takes `0.29.0` if F1 lands first" but
+not F3 landing *first* and *also* taking `0.30.0` — so F4 takes the next
+free slot, **`0.31.0`**, rather than either already-claimed number.
+
+Every phase of an attempt (plan, implement, fix) spawned an independent,
+cold `claude -p` process before this sprint — `lopi` parsed and documented
+the CLI's resumable session UUID (`claude_events.rs`) but never used it.
+This sprint wires `--session-id`/`--resume` through the shared
+`apply_cli_caps` seam and has the runner hold one session per attempt
+across all three phases, with a silent cold-spawn fallback on any resume
+failure.
+
+**The hypothesis, stated honestly (unchanged from the brief):** this is
+not "resuming saves tokens" — multi-turn sessions replay their full history
+each turn, so raw token counts are expected to rise, not fall. The actual
+claim is that resuming trades raw token count (up) for cache-read share
+(up) and redundant repo re-exploration (down), which may net out cheaper
+even though tokens rise. See the "Important caveat" note in the Measured
+section below — this sprint's own small benchmark shows raw tokens
+*falling*, which is a harness artifact, not evidence the general claim
+above is wrong; do not read it as a token reduction.
+
+### Pre-flight kill-tests
+
+All five run live, attended, against the real `claude` CLI (subscription
+auth, no `ANTHROPIC_API_KEY`) — full write-ups in `.konjo/killtests/F4/`.
+
+- **KT-4.1 (BLOCKING) — does resume survive lopi's actual spawn
+  conditions?** PASS: a resumed session (worktree cwd, `--permission-mode`
+  set, no `--bare`) retains prior context and makes zero tool calls to
+  re-derive it, confirmed against the decoded tool-call stream. One
+  environment-specific caveat: `--permission-mode bypassPermissions`
+  itself (which maps to `--dangerously-skip-permissions`) refuses to run
+  under root in this sandboxed container — every live call in this sprint
+  substitutes `acceptEdits`, the same class of finding as F1's KT-1.3 on
+  `--bare`. Also found and fixed along the way: an unscrubbed nested Claude
+  Code session's `CLAUDE_CODE_SESSION_ID` silently overrides the CLI's own
+  fresh-UUID assignment — added to `scrub_inherited_anthropic_env`'s scrub
+  list.
+- **KT-4.2 — does `--session-id` accept an arbitrary UUID?** PASS on the
+  mechanism (a fresh UUID round-trips exactly into `Init`/`Result`), but
+  the brief's literal proposal (use the raw `TaskId`) turned out unsafe
+  once combined with lopi's retry model — `TaskId` is stable across
+  retries, colliding with Phase 2's "new attempt means new session" rule.
+  Resolved: a fresh `Uuid::new_v4()` per *attempt*, not per task.
+- **KT-4.3 (BLOCKING for the design) — does `--model` still apply on
+  resume?** PASS, with a load-bearing mechanism finding: switching model on
+  a resumed call forces a complete cache miss for that turn (Anthropic's
+  prompt cache is model-scoped). lopi never hits this in practice because
+  `select_model` is called once per attempt and Phase 2's "new attempt,
+  new session" rule already cold-spawns at exactly the point escalation
+  could change the model — no new guard code needed; correctness falls out
+  of the existing per-attempt model selection.
+- **KT-4.4 — where is the cache TTL boundary?** PASS for the ~150s delay
+  actually measured; a real mechanism finding extends confidence further:
+  the `claude` CLI defaults to Anthropic's **1-hour** prompt-cache tier
+  (`ephemeral_1h_input_tokens`), not 5 minutes, measured directly from the
+  usage envelope across every call this sprint made. This is why both
+  transitions ship (see Phase 2 below), not just `plan → implement`.
+- **KT-4.5 — does resume re-load `CLAUDE.md`?** CONFIRMED YES — a resumed
+  session re-resolves the current on-disk `CLAUDE.md` on every turn (edited
+  it mid-session, the resumed turn reflected the new content, zero tool
+  calls). Direct input to the cost math, folded into the cache-ratio metric
+  rather than a separate line item.
+
+### Phases
+
+- **[Add]** Phase 1 — `claude_support.rs`'s `apply_cli_caps` gained a
+  `session: SessionMode` parameter (`None`/`New(id)`/`Resume(id)`,
+  mutually exclusive by construction), applied at every one of the five
+  spawn sites (`claude_spawn.rs`'s `run_streamed`/`run`,
+  `claude_stream::plan_streaming`, `verifier_cli.rs`, `runner/
+  postmortem_cli.rs`). `apply_cli_caps_passes_session_id_when_new`/
+  `apply_cli_caps_passes_resume_when_resuming` assert the new argv shape;
+  existing tests updated, not replaced. `scrub_inherited_anthropic_env`
+  also now scrubs `CLAUDE_CODE_SESSION_ID`/`CLAUDE_CODE_CHILD_SESSION`
+  (KT-4.1's finding).
+- **[Add, ONE-WAY DOOR]** Phase 2 — `ClaudeCode` gained `SessionState`
+  (`claude.rs`) and a `session_fell_back()` flag. `AgentRunner`
+  (`run_loop.rs`) mints one `Uuid::new_v4()` per attempt, starts the plan
+  phase under it (`--session-id`), and resumes it for implement and fix —
+  the same shared `ClaudeCode` value already threaded through all three
+  phases, so this is a two-line change at the call site, not a new
+  plumbing layer. A resume-establishment failure (detected via
+  `claude_support::looks_like_session_establishment_failure`, gated
+  specifically on the `is_error: true, num_turns: 0` signature KT-4.1's bad-
+  `--resume` repro produced — not on *any* failure a resumed call happens
+  to hit, which would silently double-spend on unrelated bugs) retries cold
+  automatically inside `claude_spawn.rs`'s `run`/`run_streamed`, and
+  `session_fell_back()` surfaces it as a visible log line
+  (`● session resume failed — continued with a cold spawn`), not a silent
+  one. New attempts always start cold (a fresh UUID each time) — retries
+  never inherit a failed attempt's context. Both `plan → implement` and
+  `implement → fix` ship, per KT-4.4's cache-boundary finding.
+  Speculative mode (`--speculative`) is explicitly out of scope — it stays
+  on `SessionMode::None` throughout; see `claude_stream.rs`'s doc comment.
+  `run_loop.rs` also tracks whether the plan phase actually spawned the CLI
+  under the new id (`used_cli_plan`) before resuming it for implement — the
+  direct-API planning path (Sprint G) never creates that CLI session at
+  all, so resuming it unconditionally would be a guaranteed
+  establishment-failure-then-fallback on every such attempt (harmless, but
+  a wasted round-trip). Unreachable in production today (`has_direct_api()`
+  is `false` on every real path — `with_api` is never called outside a
+  test, per F0/F1's own findings), but cheap to close now rather than leave
+  for whoever eventually wires the direct-API path in.
+- **[Add, ONE-WAY DOOR]** Phase 3 — the verifier (`verifier_cli.rs`) and
+  post-mortem (`runner/postmortem_cli.rs`) CLI backends now pass
+  `SessionMode::None` explicitly through `apply_cli_caps`'s new parameter,
+  making F1's existing "never resumed" convention structural rather than
+  just a convention. Both existing negative tests
+  (`grade_via_cli_argv_never_includes_bare_or_resume`,
+  `postmortem_cli_argv_never_includes_bare_or_resume`) extended to also
+  assert no `--session-id` leaks through, not just no `--resume` — same
+  test names, so they "survive F1 unchanged" per the brief's own
+  requirement (F1 had already landed these tests; F4 strengthens them
+  in place).
+- **[Add]** Phase 4 — `tasks.cli_session_id` (new column,
+  `crates/lopi-memory/src/schema.sql`), `MemoryStore::set_task_cli_session_id`
+  (`store/cli_session.rs`, mirrors `set_task_branch`/`set_task_repo`
+  exactly), `AgentRunner::persist_cli_session` (`runner/lifecycle.rs`,
+  same fire-and-forget pattern). Written the moment the per-attempt id is
+  minted — before the first spawn even happens, since lopi chooses the id
+  itself (KT-4.2) rather than waiting for the CLI to echo one back. Scoped
+  to "most recent attempt," matching `branch`/`repo`'s existing precedent.
+- **Non-goals held**: no persistent stdin process (`--input-format
+  stream-json`, explicitly deferred to a future sprint per the brief), no
+  resuming across attempts, no resuming the verifier, no changes to
+  `select_model` or the cold-worktree build (F5's job).
+
+### File-size housekeeping
+
+`claude.rs` and `claude_support.rs` were both pushed over the 500-line CI
+gate by this sprint's additions. `claude.rs`'s low-level spawn engine
+(`run_streamed`/`run_streamed_once`/`run`/`run_once` — roughly doubled in
+length by the resume-fallback wrapping) moved to a new sibling module,
+`claude_spawn.rs`, as a second `impl ClaudeCode` block (the same pattern
+`claude_builders.rs` already uses). `claude_support.rs`'s inline test module
+moved to `claude_support_tests.rs` via the `#[path = "..."]` pattern already
+established elsewhere in this repo (`claude_tests.rs`,
+`claude_events_tests.rs`). Pure code motion in both cases — no logic
+changed.
+
+### Measured
+
+Small (n=8, not the brief's own 30-run/T01–T10-corpus gate), real (not
+synthetic) paired sample using live `claude` CLI calls —
+`benchmarks/results/20260727T164006Z_f4_session/summary.md` has the full
+method and the honest scope caveat (this does **not** satisfy the sprint's
+own merge criterion, which requires the real corpus run — still outstanding
+per `NEXT_SESSION_PROMPT.md`).
+
+| Metric | Cold median | Resumed median | Wilcoxon p | Effect size r |
+|---|---|---|---|---|
+| Cost per completed plan+implement pair | $0.1236 | $0.0758 | 0.0143 | 0.87 |
+| `cache_read / (cache_read + cache_creation)` | 0.891 | 0.924 | 0.0143 | 0.87 |
+
+All 8/8 pairs moved the same direction on both metrics (`W_pos=0` for
+cost, `W_neg=0` for cache ratio). **Raw tokens fell in this specific
+harness (median 86,187 resumed vs. 114,200 cold) — this is a harness
+artifact** (the cold-condition `implement` call receives an artificially
+short prompt with no forced repo re-exploration, unlike lopi's real
+`build_implement_prompt`), documented in full in the summary, **not
+evidence that a real deployment's raw tokens fall** — this sprint's own
+anti-goal explicitly warns against that exact misreading, so: cost per
+completed call fell, cache-read share rose; raw-token direction in
+production is still an open question this small harness cannot answer.
+
+**Merge decision:** not made by this sprint. The code ships (fallback-safe
+by construction — a resume failure degrades to the pre-F4 cold-spawn
+behavior automatically, so shipping carries no correctness risk even
+without the full measurement), but the brief's own 30-run/T01–T10-corpus
+merge gate is not satisfied by an n=8 mechanism-level sample on a scratch
+repo. See `NEXT_SESSION_PROMPT.md` for what's still owed.
+
+### Tests
+
+- `crates/lopi-agent/src/claude_support_tests.rs`: +7 new (session-mode
+  argv assertions, the establishment-failure detector, the env-scrub
+  regression) alongside the existing suite, moved intact.
+- `crates/lopi-agent/src/claude_stream.rs`: existing `plan_streaming_*`
+  tests extended to assert the new `session` parameter's argv shape.
+- `crates/lopi-agent/src/verifier_cli.rs`,
+  `crates/lopi-agent/src/runner/postmortem_cli.rs`: existing
+  never-`--bare`-or-`--resume` tests extended to also assert no
+  `--session-id`.
+- `crates/lopi-memory/src/store/cli_session.rs`: +4 new (round-trip,
+  default-`None`, unknown-task no-op, later-attempt overwrite — same
+  shape as `branch.rs`/`task_repo.rs`).
+- `cargo build --workspace`, `cargo test --workspace` (all 51 crate test
+  suites), `cargo clippy --workspace --all-targets -- -D warnings`, and
+  `cargo fmt --check` all clean.
+
 ## [0.30.0] — Sprint F3: decouple log persistence from the live event stream
 
 **Volume regime and version note:** this sprint was developed against `6688d7d`

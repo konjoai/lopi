@@ -5,6 +5,81 @@ the `lopi` repo. Newest first.
 
 ---
 
+## Next Session — after Sprint F4 (session continuity) — Sprint F5 (build cache) is next
+
+**Sprint F4 gave one CLI session per attempt (plan → implement → fix, not
+one cold spawn per phase), with a silent cold-spawn fallback on any resume
+failure, structural checker isolation, and task-level correlation.** Read
+first, in order: `CLAUDE.md`, `CHANGELOG.md`'s `[0.31.0] — Sprint F4` entry,
+`LEDGER.md`'s `Sprint F4` entry in full (both one-way doors: the
+per-attempt session lifecycle, and the checker-isolation guarantee made
+structural), all five `.konjo/killtests/F4/KT-4.*.md` files, `benchmarks/
+results/<ts>_f4_session/summary.md`, then this file's own words below.
+
+**Version note:** F4 was developed against a HEAD where both F1
+(`0.29.0`) and F3 (`0.30.0`) had already landed — the brief's own
+`§Ordering` section anticipated this exact case ("F4 takes `0.30.0` if F1
+lands first, `0.29.0` otherwise") but didn't anticipate F3 landing *first*
+and also taking `0.30.0`. F4 takes **`0.31.0`**, the next free slot, rather
+than either already-claimed number.
+
+Sprint F5 (build cache) is next — the brief's own hand-off target. Four
+things carry forward:
+
+1. **KT-4.4's cache-boundary number is F5's own input.** F4 found the
+   `claude` CLI defaults to Anthropic's **1-hour** prompt-cache tier
+   (`ephemeral_1h_input_tokens`), not 5 minutes — measured directly from
+   the usage envelope across every kill-test and benchmark call this
+   sprint made, not inferred. This is *why* F4 shipped `implement → fix`
+   continuity, not just `plan → implement`: the boundary turned out to be
+   an order of magnitude wider than the brief's own worry assumed. **F5
+   should read this as: your build-cache speedup widens F4's viable window
+   further, it doesn't rescue a narrow one.** If F5's own measurement ever
+   shows a real `cargo test` phase taking close to an hour on a cold
+   worktree, that is the point F4's `implement → fix` continuity would
+   start losing its cache benefit — check the actual gap F5 measures
+   against KT-4.4's ~1-hour figure before assuming continuity still holds
+   at whatever speed F5 lands at.
+2. **The Phase 5 measurement in this sprint is NOT the full 30-run
+   T01–T10 corpus the brief's own gate asked for.** `benchmarks/corpus/
+   README.md`'s "Status (Sprint F0, 2026-07-26)" note is still accurate —
+   that corpus run has never happened, and is now blocking F4's own
+   headline hypothesis in addition to F0/F1's prior notes below. What F4
+   *did* run: a small (n=10), real (not synthetic — this session had live
+   `claude` CLI access, unlike prior sessions' recorded constraint) paired
+   sample directly measuring `plan → implement` cost/cache-share under
+   cold vs. resumed conditions on a scratch repo, not this repo's own
+   corpus. See `benchmarks/results/<ts>_f4_session/summary.md` for the
+   real numbers and the honest scope limit — do not read this as
+   confirming the brief's own 30-run/T01–T10 merge gate; that gate is
+   still open. Whoever eventually runs the T01–T10 corpus (now blocking
+   F0's own Phase 3, F1's Phases 5-6, and F4's own merge gate at once)
+   should treat F4's small-sample finding as a strong prior to check
+   against, not a substitute for the real run.
+3. **The per-attempt session id (not the raw `TaskId`) is now the shape
+   any future correlation work should build on.** `tasks.cli_session_id`
+   holds the *most recent attempt's* session id, matching
+   `tasks.branch`/`tasks.repo`'s existing "most recent attempt only"
+   precedent — see `KT-4.2.md` for why the raw `TaskId` doesn't work
+   here (it's stable across retries; CLI sessions are not).
+4. **F1's own checker-isolation guarantee is now structural, not just
+   conventional** — `verifier_cli.rs`/`postmortem_cli.rs` pass
+   `SessionMode::None` explicitly through `apply_cli_caps`'s new `session`
+   parameter, and both existing negative tests were extended to also
+   assert no `--session-id` (not just no `--resume`). Any future sprint
+   that adds a shared "give this spawn a session" helper must default
+   these two call sites' `SessionMode::None` explicitly, not inherit
+   whatever a generic helper does by default.
+
+Also worth knowing, not blocking: KT-4.1 found `--permission-mode
+bypassPermissions` itself fails in this sandboxed (root) container — the
+same class of finding as F1's KT-1.3 on `--bare`. Every live call this
+sprint substituted `acceptEdits` to verify the actual resume mechanics
+instead. Whoever next has a real, non-root machine with a logged-in
+`claude` CLI should re-run KT-4.1's specific `bypassPermissions` check.
+
+---
+
 ## Next Session — after Sprint F3 (decouple log persistence) — Sprint F4 (session continuity) is next
 
 **Sprint F3 decoupled the event bridge's live broadcast from `task_logs`

@@ -5,6 +5,106 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## Sprint F4 — session lifecycle moves into the runner; the checker's isolation becomes structural
+
+**Decision 1 (one-way door): the runner, not each phase, now owns the CLI
+session's lifecycle.** Before this sprint, every phase of an attempt
+(`plan`, `implement`, `fix`) spawned an independent, cold `claude -p`
+process — `ClaudeCode` carried no session concept at all. Sprint F4 gives
+`ClaudeCode` a `SessionState` (`None`/`New(id)`/`Resume(id)`,
+`claude.rs`) and has `AgentRunner` (`run_loop.rs`) mint one fresh
+`Uuid::new_v4()` per **attempt** (never per task — see KT-4.2's write-up
+for why the raw `TaskId` doesn't work here), start the plan phase under it
+(`--session-id`), and resume that same id for implement and fix. This is a
+one-way door in the same sense F2's `--bare` pinning was: every future
+worker spawn site inherits this session model by default unless it
+explicitly opts out. The fallback is silent-and-safe by construction — a
+resume-establishment failure (detected via
+`claude_support::looks_like_session_establishment_failure`, confirmed
+live in KT-4.1's bad-`--resume` repro: exits non-zero, `is_error: true`,
+`num_turns: 0`, before a single turn runs) retries cold automatically
+inside `ClaudeCode::run`/`run_streamed` (`claude_spawn.rs`), so a stale or
+expired session degrades to exactly the pre-F4 behavior rather than
+failing the attempt. `session_fell_back()` surfaces this as a visible log
+line (`● session resume failed — continued with a cold spawn`), not a
+silent one.
+
+**Why per-attempt, not per-task, session ids (KT-4.2's real finding):**
+the brief's own framing assumed `--session-id` could just be lopi's
+`TaskId`, for free correlation. `TaskId` is stable across every retry of a
+task; `Uuid::new_v4()`-per-attempt is not. Reusing the task id across
+attempts would either collide with a still-addressable prior session or
+silently fail to produce the fresh session Phase 2's "new attempt means
+new session" rule requires — untested territory this sprint deliberately
+avoided rather than assumed safe. Phase 4's correlation is unaffected: the
+id is still chosen by lopi before the first spawn, so `tasks.cli_session_id`
+still gets a real, immediately-persistable join key — it is scoped to
+"most recent attempt," matching `tasks.branch`'s existing precedent
+(`set_task_branch`), not to the task as a whole.
+
+**Decision 2 (one-way door, binds every future checker/verifier
+spawn): the verifier and post-mortem CLI backends structurally cannot
+receive a session id.** F1's own design (`verifier_cli.rs`,
+`runner/postmortem_cli.rs`) already asserted "no `--resume`" by
+convention and a negative test; this sprint makes it structural instead —
+both call sites now pass `crate::claude_support::SessionMode::None`
+explicitly to `apply_cli_caps`'s new `session` parameter, and both
+existing negative tests (`grade_via_cli_argv_never_includes_bare_or_resume`,
+`postmortem_cli_argv_never_includes_bare_or_resume`) were extended to also
+assert no `--session-id` leaks through, not just no `--resume`. Any future
+sprint that reaches for a shared "give this spawn a session" helper must
+not accidentally widen these two call sites' `SessionMode::None` to
+anything else — that would quietly turn the checker into a continuation of
+the maker's own context, which is the one thing F1's entire design existed
+to prevent. Speculative mode (`--speculative`, `claude_stream::plan_streaming`)
+is deliberately left on `SessionMode::None` too, but for a different,
+non-binding reason: applying step-by-step `implement_step` calls in
+speculative mode doesn't map cleanly onto "one session per attempt"
+without its own redesign, not because it's unsafe — a future sprint could
+revisit that scope without touching the checker guarantee at all.
+
+**Kill-test findings worth carrying forward, not just filed:**
+- **KT-4.3:** switching `--model` on a resumed call forces a complete
+  cache miss for that turn (Anthropic's prompt cache is keyed by model).
+  lopi never hits this in practice because `select_model` is called once
+  per attempt and Decision 1 already cold-spawns at attempt boundaries —
+  but any future code that resumes a session across a *model change within
+  one attempt* would silently re-introduce this cost. Don't add that
+  without re-reading KT-4.3 first.
+- **KT-4.4:** the `claude` CLI defaults to Anthropic's 1-hour prompt-cache
+  tier (`ephemeral_1h_input_tokens`), not the 5-minute tier — measured
+  directly from the usage envelope, not inferred. This is *why* Phase 2
+  ships `implement → fix` continuity too, not just `plan → implement`: the
+  brief worried the test-phase gap might fall outside a short cache
+  window, and the window turned out to be an order of magnitude longer
+  than that worry assumed. Re-verify this if a future sprint's own
+  measurements ever show the ratio collapsing sooner than expected — it
+  would mean either the CLI's default changed or a specific repo's test
+  phase is unusually slow, and either is worth knowing.
+- **KT-4.5:** a resumed session re-resolves `CLAUDE.md` from disk on every
+  turn, not just at creation. If `CLAUDE.md` changes mid-attempt (unusual
+  but now confirmed possible), the next resumed turn pays a real
+  cache-miss cost for it — this is folded into the cost numbers already,
+  not a separate thing to account for.
+
+**A scrub-list gap found and closed, not part of the main design:**
+`scrub_inherited_anthropic_env` (`claude_support.rs`) did not remove
+`CLAUDE_CODE_SESSION_ID`/`CLAUDE_CODE_CHILD_SESSION` before this sprint —
+confirmed live (KT-4.1) that a nested Claude Code session's own id leaks
+into an unscrubbed child `claude -p` spawn and silently overrides the
+CLI's own fresh-UUID assignment. Closed now; harmless for lopi's normal
+(non-nested) deployment, but would have quietly broken this sprint's own
+correlation guarantee (Phase 4) the day lopi itself runs inside a Claude
+Code session or CI runner that sets these.
+
+**How to apply:** any future sprint adding a fourth "worker-tier" spawn
+site should default to inheriting Decision 1's session model (thread
+`SessionState` through it) unless it has a specific, stated reason not to
+— and any sprint adding a checker/verifier-tier site must default to
+`SessionMode::None` and add its own negative test in the shape of
+`grade_via_cli_argv_never_includes_bare_or_resume`, not assume Decision 2
+covers a site it never touched.
+
 ## Sprint F3 — log persistence becomes best-effort under pressure
 
 **Decision:** under sustained overload, the event bridge now drops
