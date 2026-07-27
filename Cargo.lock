@@ -1787,6 +1787,7 @@ version = "0.31.0"
 dependencies = [
  "anyhow",
  "chrono",
+ "regex",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
