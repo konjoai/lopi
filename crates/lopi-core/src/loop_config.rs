@@ -9,6 +9,7 @@
 
 use crate::budget_preset::{BudgetSection, ResolvedBudget};
 use crate::self_prompt::SelfPromptStrategy;
+use anyhow::Context;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
@@ -310,15 +311,22 @@ impl LoopConfig {
 
     /// Load `<repo>/.lopi/loop.toml`. Returns [`Default`] if the file is absent.
     ///
+    /// Reads directly rather than checking existence first: `repo_path` is a
+    /// working tree a concurrent agent, checkout, or worktree-remove can be
+    /// mutating at the same time, so a prior `exists()` check can go stale
+    /// before the read runs. Treating a `NotFound` from the read itself as
+    /// "absent" (instead of trusting a separate check) closes that gap.
+    ///
     /// # Errors
     /// Returns `Err` if the file exists but cannot be read or parsed as TOML —
     /// a malformed loop config is surfaced loudly rather than silently ignored.
     pub fn load_from_repo(repo_path: &Path) -> anyhow::Result<Self> {
         let p = repo_path.join(Self::REL_PATH);
-        if !p.exists() {
-            return Ok(Self::default());
-        }
-        let text = std::fs::read_to_string(&p)?;
+        let text = match std::fs::read_to_string(&p) {
+            Ok(t) => t,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Self::default()),
+            Err(e) => return Err(e).context(format!("reading {}", p.display())),
+        };
         let cfg: Self = toml::from_str(&text)?;
         cfg.warn_on_budget_tokens_divergence();
         Ok(cfg)

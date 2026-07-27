@@ -48,6 +48,10 @@ pub struct AppState {
     auth_token: Option<Arc<str>>,
     /// Per-IP token-bucket rate limiter for API endpoints.
     rate_limiter: Arc<DashMap<IpAddr, TokenBucket>>,
+    /// Sprint S11, Phase 0 — single-use tickets minted by
+    /// `POST /api/ws-ticket`, redeemable on `/ws`, `/ws/tasks`, `/sse` in
+    /// place of a Bearer header (browsers can't set one on those upgrades).
+    ws_tickets: ws_ticket::TicketStore,
     /// The effective config the server was started with — from `--config` or
     /// the standard search — or `None` when no `lopi.toml` was loaded. Surfaced
     /// (secrets redacted) by `GET /api/config` so the endpoint reflects what is
@@ -122,6 +126,7 @@ impl AppState {
             serialized_tx,
             auth_token: auth_token.map(|t| Arc::from(t.as_str())),
             rate_limiter: Arc::new(DashMap::new()),
+            ws_tickets: ws_ticket::TicketStore::default(),
             config: None,
             cors_allowed_origins: Vec::new(),
             cors_permissive: false,
@@ -158,9 +163,20 @@ impl AppState {
 }
 
 /// Build the axum router with all routes wired to `state`.
+///
+/// Sprint S11, Phase 0: every route lives in exactly one of two places —
+/// `protected` (Bearer-or-ticket auth + per-IP rate limiting, via
+/// `route_layer` below) or the explicit public allowlist on the outer
+/// router (today: only the SPA/static-asset `fallback`). There is no third
+/// place a route can be registered, which is the actual fix: `/sse`, `/ws`,
+/// `/ws/tasks`, and `/metrics` were previously added to the *outer* router
+/// after `.merge(api)`, so they silently sat outside `api`'s auth layer.
+/// Moving them into `protected` alongside `/api/*` means a future route
+/// added to this same variable inherits both layers automatically; the only
+/// way to add an unauthenticated route now is to add it to the outer
+/// router's explicit public list, which is one line, not an easy accident.
 pub fn build_app(state: AppState) -> Router {
-    // /api/* routes — protected by Bearer auth and per-IP rate limiting.
-    let api = Router::new()
+    let protected = Router::new()
         .route("/api/health", get(health))
         .route("/api/tasks", get(list_tasks).post(create_task))
         .route("/api/tasks/:id", get(get_task).delete(cancel_task))
@@ -294,6 +310,18 @@ pub fn build_app(state: AppState) -> Router {
         .route("/api/config", get(config_handlers::get_config))
         .route("/api/version", get(config_handlers::get_version))
         .route("/api/models", get(model_handlers::get_models))
+        // Mints the ticket `/ws`, `/ws/tasks`, `/sse` accept in place of a
+        // Bearer header — see `api_middleware`'s module doc.
+        .route("/api/ws-ticket", axum::routing::post(mint_ws_ticket))
+        // The three streaming/observability routes S11 Phase 0 found living
+        // outside every auth layer. They belong here, in `protected`, for
+        // exactly the same reason `/api/*` does — not bolted on as special
+        // cases, just routes like any other in this router.
+        .route("/metrics", get(metrics))
+        .route("/sse", get(sse_handler))
+        .route("/ws", get(ws_handler))
+        // Legacy endpoint — kept for compat.
+        .route("/ws/tasks", get(ws_handler))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             rate_limit_middleware,
@@ -306,15 +334,11 @@ pub fn build_app(state: AppState) -> Router {
     let cors = cors_policy::resolve_cors_layer(&state.cors_allowed_origins, state.cors_permissive);
 
     Router::new()
-        .merge(api)
-        .route("/metrics", get(metrics))
-        .route("/sse", get(sse_handler))
-        .route("/ws", get(ws_handler))
-        // Legacy endpoint — kept for compat.
-        .route("/ws/tasks", get(ws_handler))
-        // Static handler catches /, /overview, /favicon.svg,
-        // /_app/**/*, and any SPA route fallthrough. Explicit routes above
-        // take precedence.
+        .merge(protected)
+        // The one explicit public entry: static SvelteKit build + SPA
+        // client-side routing fallthrough (/, /overview, /favicon.svg,
+        // /_app/**/*, any unknown path). Nothing that reads live task/agent
+        // data is reachable through this handler.
         .fallback(get(static_handler))
         .layer(cors)
         .with_state(state)
@@ -453,7 +477,7 @@ mod schedule_chain_handlers;
 mod schedule_handlers;
 mod static_assets;
 mod task_stream_handlers;
-use api_middleware::{auth_middleware, rate_limit_middleware};
+use api_middleware::{auth_middleware, mint_ws_ticket, rate_limit_middleware};
 use handlers::{
     approve_plan, cancel_task, checkpoint_agent, create_task, get_spec, get_stats, get_task,
     health, list_tasks, reject_plan,
@@ -462,6 +486,7 @@ use metrics_handlers::{get_agent_dag, get_plans, get_quality_trend, metrics};
 use static_assets::static_handler;
 mod streaming;
 pub(crate) mod types;
+mod ws_ticket;
 use streaming::{sse_handler, ws_handler};
 
 #[cfg(test)]
