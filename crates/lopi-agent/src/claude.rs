@@ -10,14 +10,12 @@
 // tokens/attempt. Both replace unsourced "~17/prompt" and "~158/attempt"
 // figures that did not trace to any committed measurement.
 
-use crate::claude_events::{parse_line, StreamEvent};
-use anyhow::{Context, Result};
+use crate::claude_events::StreamEvent;
+use anyhow::Result;
 use lopi_core::Task;
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
-use tokio::io::{AsyncBufReadExt, BufReader as AsyncBufReader};
-use tokio::process::Command;
 
 /// Re-exported so every existing `crate::claude::select_model`/
 /// `ClaudeOutput`/`ERR_CREDIT_EXHAUSTED` path stays valid — these moved to
@@ -26,15 +24,48 @@ use tokio::process::Command;
 pub use crate::claude_model::{
     select_model, ClaudeOutput, ERR_BUDGET_HARD_STOP, ERR_CREDIT_EXHAUSTED,
 };
+use crate::claude_support::compress_errors;
 /// Re-exported so `crate::claude::scrub_inherited_anthropic_env` stays valid
 /// for `claude_stream.rs`'s call site — moved to `claude_support.rs` for the
 /// same file-size reason.
 pub(crate) use crate::claude_support::scrub_inherited_anthropic_env;
-use crate::claude_support::{apply_cli_caps, compress_errors};
 /// Re-exported so every existing `crate::claude::model_*` path stays valid —
 /// Sprint F2 Phase 4 moved these from hardcoded consts here to
 /// `crate::model_config`'s runtime-read, operator-overridable config.
 pub use crate::model_config::{model_haiku, model_opus, model_sonnet};
+
+/// Session-continuity state carried on a `ClaudeCode` instance across the
+/// plan → implement → fix calls of a single attempt (Sprint F4 Phase 2 —
+/// "one session per attempt, not per phase"). Owned (unlike
+/// [`claude_support::SessionMode`](crate::claude_support::SessionMode),
+/// which borrows) because a `ClaudeCode` outlives any one spawned command.
+#[derive(Debug, Clone, Default)]
+pub(crate) enum SessionState {
+    /// No session-continuity flag — the default before this sprint, and
+    /// still what every checker/post-mortem spawn site uses unconditionally
+    /// (Phase 3) and what a `--speculative` run's per-step spawns use (out
+    /// of scope this sprint — see `run_loop.rs`'s speculative branch).
+    #[default]
+    None,
+    /// Start a fresh session under this caller-chosen id (`--session-id`).
+    New(String),
+    /// Continue the session with this id (`--resume`).
+    Resume(String),
+}
+
+impl SessionState {
+    pub(crate) fn as_mode(&self) -> crate::claude_support::SessionMode<'_> {
+        match self {
+            SessionState::None => crate::claude_support::SessionMode::None,
+            SessionState::New(id) => crate::claude_support::SessionMode::New(id),
+            SessionState::Resume(id) => crate::claude_support::SessionMode::Resume(id),
+        }
+    }
+
+    pub(crate) fn is_resume(&self) -> bool {
+        matches!(self, SessionState::Resume(_))
+    }
+}
 
 /// Wrapper around the `claude` CLI — drives plan, implement, fix, and streaming calls.
 pub struct ClaudeCode {
@@ -75,6 +106,17 @@ pub struct ClaudeCode {
     /// `--disallowedTools` — tool names explicitly denied. Wired from
     /// `LoopConfig::permission_deny`. Empty = nothing denied.
     pub(crate) disallowed_tools: Vec<String>,
+    /// Sprint F4 — session-continuity state for this attempt's spawns.
+    /// `None` (the default) reproduces every spawn site's pre-F4 behavior.
+    pub(crate) session: SessionState,
+    /// Sprint F4 Phase 2 — set when a `Resume` spawn failed to establish and
+    /// this instance silently fell back to a cold spawn (Phase 2's "fall
+    /// back silently on any resume failure" constraint). `&self`-mutable so
+    /// `run`/`run_streamed` can set it without a `&mut self` receiver;
+    /// callers check it once after a call returns to log the fallback as a
+    /// visible event rather than a silent one. `pub(crate)` (not private) so
+    /// `claude_spawn.rs`'s sibling-module `impl ClaudeCode` block can set it.
+    pub(crate) session_fell_back: AtomicBool,
 }
 
 impl ClaudeCode {
@@ -95,7 +137,19 @@ impl ClaudeCode {
             max_budget_usd: None,
             allowed_tools: vec![],
             disallowed_tools: vec![],
+            session: SessionState::None,
+            session_fell_back: AtomicBool::new(false),
         }
+    }
+
+    /// Sprint F4 Phase 2 — whether the most recent call on this instance
+    /// silently fell back from a resumed session to a cold spawn. Callers
+    /// (the runner) check this once after a call returns and log the
+    /// fallback as a visible event, per Phase 2's "recorded as an event, not
+    /// a silent one" verify criterion.
+    #[must_use]
+    pub(crate) fn session_fell_back(&self) -> bool {
+        self.session_fell_back.load(Ordering::Relaxed)
     }
 
     /// See [`claude_support::build_plan_prompt`](crate::claude_support::build_plan_prompt).
@@ -125,97 +179,6 @@ impl ClaudeCode {
     /// stops the CLI's *own* internal accounting, which is checked between
     /// turns and can let one expensive turn overshoot the cap before it
     /// fires. Returns the canonical final response text.
-    async fn run_streamed<F>(&self, prompt: &str, on_event: F) -> Result<String>
-    where
-        F: Fn(&StreamEvent) -> bool + Send,
-    {
-        let mut cmd = Command::new(&self.cli_path);
-        cmd.arg("-p")
-            .arg(prompt)
-            .arg("--output-format")
-            .arg("stream-json")
-            .arg("--verbose")
-            .arg("--include-partial-messages");
-        // `apply_cli_caps` always emits `--permission-mode` (falling back to
-        // `PermissionMode::default()`, `bypassPermissions`, when
-        // `self.permission_mode` is unset) — without a headless-safe mode, a
-        // tool call needing approval (e.g. a multi-part Bash command) stalls
-        // the session waiting on a prompt nothing in this pipeline can
-        // answer, burning turns until `--max-turns` cuts it off
-        // (`error_max_turns`) with the actual work half-done — see
-        // run_loop.rs's Planning/Implementing phases. The default preserves
-        // that unconditional bypass exactly; a task may now opt into a
-        // tighter mode via `Task::permission_mode`.
-        apply_cli_caps(
-            &mut cmd,
-            self.model.as_deref(),
-            self.effort.as_deref(),
-            self.permission_mode.as_deref(),
-            self.max_turns,
-            self.max_budget_usd,
-            &self.allowed_tools,
-            &self.disallowed_tools,
-            // Sprint F2 Phase 6 — a worker session; must load the target
-            // repo's own CLAUDE.md/skills, so explicitly not `--bare`.
-            false,
-        );
-        cmd.stdout(Stdio::piped());
-        cmd.stderr(Stdio::null());
-        cmd.current_dir(&self.repo_path);
-        scrub_inherited_anthropic_env(&mut cmd);
-
-        let mut child = cmd.spawn().context("spawning claude cli for streaming")?;
-        let stdout = child
-            .stdout
-            .take()
-            .ok_or_else(|| anyhow::anyhow!("claude cli: no stdout handle"))?;
-        let mut lines = AsyncBufReader::new(stdout).lines();
-        let mut final_text = String::new();
-        let mut fallback = String::new();
-
-        let deadline = tokio::time::Instant::now() + self.timeout;
-        loop {
-            match tokio::time::timeout_at(deadline, lines.next_line()).await {
-                Ok(Ok(Some(line))) => {
-                    let mut hard_stop = false;
-                    for ev in parse_line(&line) {
-                        if let Some(t) = ev.final_text() {
-                            final_text = t.to_string();
-                        } else if let Some(l) = ev.log_line() {
-                            fallback.push_str(&l);
-                            fallback.push('\n');
-                        }
-                        if !on_event(&ev) {
-                            hard_stop = true;
-                            break;
-                        }
-                    }
-                    if hard_stop {
-                        child.kill().await.ok();
-                        anyhow::bail!("{ERR_BUDGET_HARD_STOP}");
-                    }
-                }
-                Ok(Ok(None)) => break,
-                Ok(Err(e)) => anyhow::bail!("reading claude stdout: {e}"),
-                Err(_) => {
-                    child.kill().await.ok();
-                    anyhow::bail!("claude cli timed out after {:?}", self.timeout);
-                }
-            }
-        }
-
-        let status = child.wait().await.context("waiting for claude cli")?;
-        let text = if final_text.trim().is_empty() {
-            fallback
-        } else {
-            final_text
-        };
-        if !status.success() && text.trim().is_empty() {
-            anyhow::bail!("claude cli exited {status} with no output");
-        }
-        Ok(text)
-    }
-
     /// Plan the task with live streaming — each decoded [`StreamEvent`] (text,
     /// thinking, tool calls, token usage, status) is passed to `on_event` as it
     /// arrives, so the caller can emit both log lines and structured events.
@@ -319,6 +282,9 @@ impl ClaudeCode {
             self.max_turns,
             &self.allowed_tools,
             &self.disallowed_tools,
+            // Sprint F4 — speculative mode is out of scope this sprint; see
+            // `claude_stream::plan_streaming`'s doc comment.
+            crate::claude_support::SessionMode::None,
         )
     }
 
@@ -342,68 +308,6 @@ impl ClaudeCode {
             anyhow::bail!("step failed: {}", out.text());
         }
         Ok(out)
-    }
-
-    async fn run(&self, prompt: &str) -> Result<ClaudeOutput> {
-        let mut cmd = Command::new(&self.cli_path);
-        cmd.arg("-p").arg(prompt);
-        if self.json_output {
-            cmd.arg("--output-format").arg("json");
-        }
-        // Same caps as `run_streamed` — this one-shot path backs `fix()` and
-        // `implement_step()` (speculative mode), both real spend that was
-        // previously uncapped here regardless of what `run_streamed`'s caller
-        // configured. `apply_cli_caps` emits `--permission-mode`, falling
-        // back to `PermissionMode::default()` (`bypassPermissions`) when
-        // unset — the same unconditional bypass this site always used.
-        apply_cli_caps(
-            &mut cmd,
-            self.model.as_deref(),
-            self.effort.as_deref(),
-            self.permission_mode.as_deref(),
-            self.max_turns,
-            self.max_budget_usd,
-            &self.allowed_tools,
-            &self.disallowed_tools,
-            // Sprint F2 Phase 6 — a worker session (backs `fix()` and
-            // `implement_step()`); must load the target repo's own
-            // CLAUDE.md/skills, so explicitly not `--bare`.
-            false,
-        );
-        cmd.current_dir(&self.repo_path);
-        scrub_inherited_anthropic_env(&mut cmd);
-
-        let raw_out = tokio::time::timeout(self.timeout, cmd.output())
-            .await
-            .context("claude cli timed out")?
-            .context("invoking claude cli")?;
-
-        if !raw_out.status.success() {
-            let stderr = String::from_utf8_lossy(&raw_out.stderr);
-            let stdout = String::from_utf8_lossy(&raw_out.stdout);
-            tracing::error!(
-                cwd = %self.repo_path.display(),
-                model = self.model.as_deref().unwrap_or("<default>"),
-                prompt_bytes = prompt.len(),
-                status = %raw_out.status,
-                stderr = %stderr,
-                stdout = %stdout,
-                "claude cli failed"
-            );
-            return Err(crate::claude_support::build_cli_error(
-                &stdout,
-                &stderr,
-                raw_out.status,
-                &self.repo_path,
-                prompt.len(),
-            ));
-        }
-
-        let stdout = String::from_utf8_lossy(&raw_out.stdout).into_owned();
-        Ok(crate::claude_model::parse_claude_output(
-            stdout,
-            self.json_output,
-        ))
     }
 }
 

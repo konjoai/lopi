@@ -30,7 +30,9 @@
 //! different, measurement-gated decision (see `LEDGER.md`).
 
 use crate::claude_model::parse_claude_output;
-use crate::claude_support::{apply_cli_caps, build_cli_error, scrub_inherited_anthropic_env};
+use crate::claude_support::{
+    apply_cli_caps, build_cli_error, scrub_inherited_anthropic_env, SessionMode,
+};
 use crate::verifier::parse_verdict;
 use anyhow::{Context, Result};
 use lopi_core::{PermissionMode, VerifierVerdict};
@@ -79,7 +81,9 @@ const CHECKER_MAX_BUDGET_USD: f64 = 1.0;
 /// Fresh session, never resumed: no `--resume` flag is ever passed, which is
 /// what makes this a checker rather than a continuation of the maker's own
 /// context (Phase 1 design constraint — do not let session-continuity work
-/// reach this path).
+/// reach this path). Sprint F4 Phase 3 made this structural, not just
+/// convention: `apply_cli_caps` always receives `SessionMode::None` here, and
+/// `grade_via_cli_argv_never_includes_bare_or_resume` (below) asserts it.
 ///
 /// # Errors
 /// Returns `Err` on a CLI spawn failure, a non-zero exit, a timeout, or a
@@ -119,6 +123,9 @@ pub(crate) async fn grade_via_cli(
         // KT-1.3 — `--bare` fails authentication in the sandboxed session
         // this was verified in; see this module's doc comment.
         false,
+        // Sprint F4 Phase 3 — the checker is never resumed; see this
+        // function's doc comment.
+        SessionMode::None,
     );
     cmd.current_dir(repo_path);
     scrub_inherited_anthropic_env(&mut cmd);
@@ -256,6 +263,7 @@ mod tests {
             &[],
             &denied,
             false,
+            SessionMode::None,
         );
         let argv: Vec<String> = cmd
             .as_std()
@@ -264,6 +272,7 @@ mod tests {
             .collect();
         assert!(!argv.contains(&"--bare".to_string()), "argv={argv:?}");
         assert!(!argv.contains(&"--resume".to_string()), "argv={argv:?}");
+        assert!(!argv.contains(&"--session-id".to_string()), "argv={argv:?}");
         assert!(argv.contains(&"--json-schema".to_string()), "argv={argv:?}");
         assert!(
             argv.contains(&"dontAsk".to_string()),

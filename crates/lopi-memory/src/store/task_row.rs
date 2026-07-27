@@ -55,6 +55,10 @@ pub struct TaskRow {
     /// [`Self::provenance`] label, not the full enum. Use `provenance()`
     /// rather than matching on this directly.
     pub source: String,
+    /// Sprint F4 Phase 4 — the CLI's own resumable session id for this
+    /// task's most recent attempt, `None` until `AgentRunner::persist_cli_session`
+    /// first writes it.
+    pub cli_session_id: Option<String>,
 }
 
 impl TaskRow {

@@ -85,6 +85,31 @@ impl AgentRunner {
         });
     }
 
+    /// Sprint F4 Phase 4 — best-effort persist of the attempt's CLI session
+    /// id into `tasks.cli_session_id`, the moment it's minted (before the
+    /// first spawn even happens, since Phase 2 chooses the id itself rather
+    /// than waiting for the CLI to echo one back — see `run_loop.rs`). Gives
+    /// `lopi diag`, replay, and the CLI's own transcripts
+    /// (`transcript_import.rs`) a shared join key. Same fire-and-forget
+    /// shape as `persist_branch`/`persist_repo`: errors are logged, never
+    /// fatal to the run. A later attempt's id simply overwrites the earlier
+    /// one — only the most recent attempt's session is ever addressable.
+    pub(super) fn persist_cli_session(&self, cli_session_id: &str) {
+        let Some(store) = self.store.clone() else {
+            return;
+        };
+        let task_id = self.id();
+        let cli_session_id = cli_session_id.to_string();
+        tokio::spawn(async move {
+            if let Err(e) = store
+                .set_task_cli_session_id(&task_id, &cli_session_id)
+                .await
+            {
+                tracing::warn!(error = %e, "failed to persist task cli_session_id");
+            }
+        });
+    }
+
     /// Best-effort mirror of `TaskStatus` into the `agent_dag_nodes` table so
     /// `GET /api/agents/:id/dag` and `lopi replay` reflect real progress
     /// instead of an always-empty graph. This only *records* the DAG — the

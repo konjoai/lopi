@@ -13,7 +13,9 @@ use super::postmortem::{
     build_postmortem_prompt, extract_constraint, PostmortemOutcome, POSTMORTEM_SYSTEM_PROMPT,
 };
 use crate::claude_model::parse_claude_output;
-use crate::claude_support::{apply_cli_caps, build_cli_error, scrub_inherited_anthropic_env};
+use crate::claude_support::{
+    apply_cli_caps, build_cli_error, scrub_inherited_anthropic_env, SessionMode,
+};
 use anyhow::{Context, Result};
 use lopi_core::PermissionMode;
 use std::path::Path;
@@ -75,6 +77,8 @@ pub(crate) async fn run_postmortem_cli(
         &[],
         &denied,
         false, // KT-1.3 — see verifier_cli.rs's module doc.
+        // Sprint F4 Phase 3 — never resumed, same policy as verifier_cli.rs.
+        SessionMode::None,
     );
     cmd.current_dir(repo_path);
     scrub_inherited_anthropic_env(&mut cmd);
@@ -141,6 +145,7 @@ mod tests {
             &[],
             &denied,
             false,
+            SessionMode::None,
         );
         let argv: Vec<String> = cmd
             .as_std()
@@ -149,6 +154,7 @@ mod tests {
             .collect();
         assert!(!argv.contains(&"--bare".to_string()), "argv={argv:?}");
         assert!(!argv.contains(&"--resume".to_string()), "argv={argv:?}");
+        assert!(!argv.contains(&"--session-id".to_string()), "argv={argv:?}");
         for tool in POSTMORTEM_DISALLOWED_TOOLS {
             assert!(
                 argv.iter().any(|a| a == tool),

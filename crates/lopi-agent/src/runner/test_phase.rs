@@ -267,6 +267,12 @@ impl AgentRunner {
         if let Err(e) = claude.fix(&self.task, &score.errors).await {
             self.warn(format!("fix failed: {e}"));
         }
+        // Sprint F4 Phase 2 — same visible-fallback contract as the
+        // implement phase (`run_loop.rs`); `fix` shares the same `claude`
+        // value, so it resumed the plan→implement session too.
+        if claude.session_fell_back() {
+            self.log("● session resume failed — continued with a cold spawn");
+        }
 
         if git
             .check_diff_scope(&self.task.allowed_dirs, &self.task.forbidden_dirs)

@@ -86,6 +86,14 @@ ALTER TABLE tasks ADD COLUMN branch TEXT;
 -- fires, not at initial `save_task`.
 ALTER TABLE tasks ADD COLUMN repo TEXT;
 
+-- Sprint F4 Phase 4: the CLI's own resumable session id for the task's most
+-- recent attempt, so `lopi diag`, replay, and the CLI's own transcripts
+-- (`transcript_import.rs`) share a join key. Written by
+-- `AgentRunner::persist_cli_session` the moment the id is minted, before the
+-- plan phase's first spawn (lopi chooses the id itself — see `run_loop.rs` —
+-- rather than waiting for the CLI to echo one back).
+ALTER TABLE tasks ADD COLUMN cli_session_id TEXT;
+
 -- Sprint I: Layer 5 patch stability ledger.
 -- Accumulates empirical data on model-output variance per task class.
 -- Drives the research dataset for which task types are safe to self-ship.

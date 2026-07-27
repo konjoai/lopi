@@ -4,7 +4,7 @@
 //! `ClaudeCode` fields are `pub(crate)` so these can set them directly from
 //! this sibling module. No behavioral difference from being inline.
 
-use crate::claude::ClaudeCode;
+use crate::claude::{ClaudeCode, SessionState};
 use std::time::Duration;
 
 impl ClaudeCode {
@@ -122,6 +122,27 @@ impl ClaudeCode {
     #[must_use]
     pub fn with_lessons(mut self, lessons: Vec<(String, String)>) -> Self {
         self.lessons = lessons;
+        self
+    }
+
+    /// Sprint F4 — start this session under a caller-chosen id (KT-4.2
+    /// confirmed the CLI accepts an arbitrary UUID and round-trips it
+    /// unchanged into `Init`/`Result`). Only meaningful on the first
+    /// `claude -p` spawn of an attempt; see [`with_resume`](Self::with_resume)
+    /// for continuing it into later phases.
+    #[must_use]
+    pub(crate) fn with_new_session(mut self, id: impl Into<String>) -> Self {
+        self.session = SessionState::New(id.into());
+        self
+    }
+
+    /// Sprint F4 Phase 2 — continue an existing CLI session ("one session
+    /// per attempt, not per phase"). `id` is the id a prior
+    /// [`with_new_session`](Self::with_new_session) call set for this
+    /// attempt.
+    #[must_use]
+    pub(crate) fn with_resume(mut self, id: impl Into<String>) -> Self {
+        self.session = SessionState::Resume(id.into());
         self
     }
 }

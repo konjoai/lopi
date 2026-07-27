@@ -70,6 +70,14 @@ pub struct ClaudeOutput {
     pub result: Option<String>,
     /// `true` when the CLI reports an error outcome.
     pub is_error: Option<bool>,
+    /// Turns completed before the envelope closed. Sprint F4 — combined with
+    /// `is_error`, distinguishes a resumed session that never established
+    /// (`is_error: true`, `num_turns: 0`, confirmed live in
+    /// `.konjo/killtests/F4/KT-4.1.md`) from a genuine mid-session failure
+    /// (real turns ran first). `None` when the envelope predates this field
+    /// or omitted it.
+    #[serde(default)]
+    pub num_turns: Option<u32>,
     /// Estimated cost in USD as reported by the CLI.
     pub cost_usd: Option<f64>,
     /// Wall-clock duration of the CLI invocation in milliseconds.
@@ -104,6 +112,17 @@ impl ClaudeOutput {
     pub fn succeeded(&self) -> bool {
         !self.is_error.unwrap_or(false)
     }
+
+    /// Sprint F4 — whether this envelope looks like a resumed session that
+    /// never established, per
+    /// [`looks_like_session_establishment_failure`](crate::claude_support::looks_like_session_establishment_failure).
+    #[must_use]
+    pub(crate) fn looks_like_session_establishment_failure(&self) -> bool {
+        crate::claude_support::looks_like_session_establishment_failure(
+            self.is_error.unwrap_or(false),
+            self.num_turns.unwrap_or(0),
+        )
+    }
 }
 
 /// Parse a successful `claude` CLI invocation's stdout into a [`ClaudeOutput`].
@@ -128,6 +147,7 @@ pub(crate) fn parse_claude_output(stdout: String, json_output: bool) -> ClaudeOu
                         kind: None,
                         result: Some(stdout.clone()),
                         is_error: None,
+                        num_turns: None,
                         cost_usd: None,
                         duration_ms: None,
                         usage: None,
@@ -140,6 +160,7 @@ pub(crate) fn parse_claude_output(stdout: String, json_output: bool) -> ClaudeOu
                 kind: None,
                 result: Some(stdout.clone()),
                 is_error: None,
+                num_turns: None,
                 cost_usd: None,
                 duration_ms: None,
                 usage: None,
@@ -152,6 +173,7 @@ pub(crate) fn parse_claude_output(stdout: String, json_output: bool) -> ClaudeOu
             kind: None,
             result: Some(stdout.clone()),
             is_error: None,
+            num_turns: None,
             cost_usd: None,
             duration_ms: None,
             usage: None,

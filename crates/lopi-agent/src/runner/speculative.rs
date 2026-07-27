@@ -156,6 +156,7 @@ mod tests {
             kind: None,
             result: None,
             is_error: None,
+            num_turns: None,
             cost_usd,
             duration_ms: Some(42),
             usage,

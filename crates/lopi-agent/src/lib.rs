@@ -16,6 +16,10 @@ pub mod claude_events;
 /// Model identifiers, model-routing heuristic, and the CLI output envelope.
 /// Re-exported from `claude` — see that module's doc comment.
 mod claude_model;
+/// The low-level `claude -p` spawn engine (with Sprint F4's resume-fallback
+/// wrapping) — split out of `claude.rs` to keep it under the file-size gate.
+/// See that module's doc comment.
+mod claude_spawn;
 mod claude_stream;
 /// Subprocess-env scrubbing and fix-prompt error compression.
 /// Re-exported from `claude` — see that module's doc comment.

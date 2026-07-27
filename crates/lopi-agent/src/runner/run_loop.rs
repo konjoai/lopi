@@ -11,6 +11,7 @@ use lopi_core::{AgentEvent, StopReason, TaskStatus};
 use lopi_git::GitManager;
 use std::sync::atomic::Ordering;
 use tracing::Instrument as _;
+use uuid::Uuid;
 
 /// Tool-use turns allowed within a single `claude -p` session (planning or
 /// implementing). Deliberately independent of `AgentRunner::max_turns`
@@ -233,6 +234,20 @@ impl AgentRunner {
                     SpecFlow::Retry => continue,
                 }
             } else {
+                // Sprint F4 Phase 2 — one CLI session per attempt, not per
+                // phase. A fresh UUID per *attempt* (never a reused `TaskId`,
+                // which is stable across retries and would collide with a
+                // prior attempt's still-addressable session) — KT-4.2
+                // confirmed live that `--session-id` accepts an arbitrary
+                // UUID and round-trips it into `Init`/`Result` unchanged, so
+                // lopi's own choice of id is authoritative here, not merely
+                // a hope the CLI echoes back what was asked. Speculative
+                // mode (above) is out of scope this sprint — see
+                // `claude_stream::plan_streaming`'s doc comment.
+                let attempt_session_id = Uuid::new_v4().to_string();
+                claude = claude.with_new_session(attempt_session_id.clone());
+                self.persist_cli_session(&attempt_session_id);
+
                 // Standard mode: wait for full plan, then implement in one pass.
                 //
                 // Sprint G — direct-API planning path:
@@ -249,6 +264,18 @@ impl AgentRunner {
                     task_id = %self.id(),
                     attempt = attempt + 1,
                 );
+                // Sprint F4 — whether the plan phase actually spawned the
+                // CLI under `attempt_session_id` (`New`, above). A
+                // direct-API plan (Sprint G; `has_direct_api()` is `false`
+                // on every production path today per F0/F1's own findings —
+                // `with_api` is never called outside a test) never creates
+                // that CLI session at all, so resuming it for implement
+                // would be a guaranteed establishment failure (harmless —
+                // Phase 2's fallback degrades it to cold — but a wasted
+                // round-trip on every such attempt). Tracked explicitly so
+                // implement instead starts its own fresh session under the
+                // same id, exactly as `New` already does the first time.
+                let mut used_cli_plan = !self.has_direct_api();
                 let plan_result = async {
                     if self.has_direct_api() {
                         match self.plan_via_api(&model, attempt + 1).await {
@@ -267,6 +294,7 @@ impl AgentRunner {
                                 self.warn(format!(
                                     "direct API plan failed ({api_err}); falling back to CLI"
                                 ));
+                                used_cli_plan = true;
                                 self.stream_plan(&claude, &model, attempt + 1).await
                             }
                         }
@@ -330,6 +358,21 @@ impl AgentRunner {
                     return Ok(status);
                 }
 
+                // Sprint F4 Phase 2 — continue the plan phase's own CLI
+                // session into implementation instead of spawning cold, but
+                // only if the plan phase actually created one. `claude`
+                // already carries `New(attempt_session_id)` from before the
+                // plan call; if the CLI ran (the common case), the session
+                // now exists and can be resumed. If it didn't (a
+                // direct-API plan that succeeded without falling back —
+                // unreachable in production today, see `used_cli_plan`'s
+                // doc comment above), leave it as `New` so implement's own
+                // spawn creates that session for the first time instead of
+                // resuming one that was never established.
+                if used_cli_plan {
+                    claude = claude.with_resume(attempt_session_id.clone());
+                }
+
                 self.status(TaskStatus::Implementing, attempt + 1);
                 self.context.transition_phase(Phase::Implementation);
                 tracing::info!(
@@ -351,6 +394,13 @@ impl AgentRunner {
                     .stream_implement(&claude, &plan, &model, attempt + 1)
                     .instrument(act_span)
                     .await;
+                // Sprint F4 Phase 2 — a resume failure degrades to a cold
+                // spawn silently inside `ClaudeCode`; surface it as a
+                // visible (not silent) event per the phase's verify
+                // criterion.
+                if claude.session_fell_back() {
+                    self.log("● session resume failed — continued with a cold spawn");
+                }
                 if let Err(e) = act_result {
                     let err_chain = format!("{e:#}");
                     self.warn(format!("implement failed: {e}"));
