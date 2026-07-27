@@ -158,6 +158,16 @@ else
     warn "dry_check.py not found — skipping DRY check"
 fi
 
+banner "3b2. Scope assertion (staged files) — Sprint S12"
+if [[ -f "$REPO_ROOT/.konjo/scripts/scope_assert.py" ]] && command -v python3 &>/dev/null; then
+    if ! python3 "$REPO_ROOT/.konjo/scripts/scope_assert.py" --staged-only 2>&1; then
+        fail "Scope assertion: multi-tenant surface reappeared. See LEDGER.md."
+    fi
+    pass "scope assertion"
+else
+    warn "scope_assert.py not found — skipping scope assertion"
+fi
+
 banner "3c. TODO/FIXME in staged code"
 TODO_HITS=""
 while IFS= read -r f; do

@@ -146,6 +146,17 @@ jobs:
             exit 1
           fi
 
+      - name: Scope assertion — no multi-tenant surface (Sprint S12, Phase 6)
+        # HARD GATE. Sprint S12 removed lopi's multi-tenant surface (lopi-app,
+        # open_for_customer, github_installations, CustomerTier/Stripe) as a
+        # decision, not a fact the code enforces on its own — nothing stops a
+        # future PR from reintroducing it one file at a time. This mechanizes
+        # the decision so it can't drift back by omission. See
+        # .konjo/scripts/scope_assert.py's own docstring for the exact term
+        # list and why "installation" (the bare English word) is deliberately
+        # narrowed to the specific removed identifiers instead.
+        run: python3 .konjo/scripts/scope_assert.py
+
       - name: Reachability check (advisory) — pub mod not reachable from the binary
         # ADVISORY BY DESIGN — Sprint F0. `dead_code` above certifies rustc
         # reachability (a `pub` item in a library crate is never dead by
