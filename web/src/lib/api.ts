@@ -131,6 +131,23 @@ export interface CreateTaskOptions {
     usd?: number;
     tokens?: number;
   };
+  /** Trust level governing how far the loop may act without a human: L1
+   *  report-only … L4 auto-merge, sent as `'report_only'|'draft_pr'|
+   *  'verified_pr'|'auto_merge'`. Omit to leave the repo's `.lopi/loop.toml`
+   *  `autonomy_level` as the sole source — file is the base, this field is
+   *  the override, never the reverse. Mirrors
+   *  `crates/lopi-ui/src/web/types.rs::CreateTaskRequest.autonomy_level`.
+   *  Wired end to end, unlike the legacy `CardConfig.autonomy`/
+   *  `StackDefaults.autonomy` L1..L4 display value this is mapped from. */
+  autonomy_level?: 'report_only' | 'draft_pr' | 'verified_pr' | 'auto_merge';
+  /** Per-task override of the repo's `.lopi/loop.toml` `no_progress_limit`.
+   *  Omit to leave the repo's own value as the sole halt condition. Mirrors
+   *  `crates/lopi-ui/src/web/types.rs::CreateTaskRequest.no_progress_limit`. */
+  no_progress_limit?: number;
+  /** Per-task override of the repo's `.lopi/loop.toml` isolation mode. Omit
+   *  to leave the repo's own isolation mode as the sole source. Mirrors
+   *  `crates/lopi-ui/src/web/types.rs::CreateTaskRequest.isolation`. */
+  isolation?: 'branch' | 'worktree';
   /** Guardrail precondition — a shell command that must exit 0 before the loop starts. */
   gate?: string;
   /** Guardrail exit-condition — a shell command; exit 0 ends the loop early as a success. */

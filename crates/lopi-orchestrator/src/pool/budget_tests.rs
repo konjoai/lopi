@@ -50,7 +50,7 @@ fn runner_for(task: Task) -> lopi_agent::AgentRunner {
 #[test]
 fn verifier_required_enables_the_gate_end_to_end() {
     let mut task = Task::new("ship a verified change");
-    task.autonomy_level = AutonomyLevel::DraftPr; // L2 — would not force it alone
+    task.autonomy_level = Some(AutonomyLevel::DraftPr); // L2 — would not force it alone
     task.verifier_required = true;
     let runner = runner_for(task);
     assert!(
@@ -62,7 +62,7 @@ fn verifier_required_enables_the_gate_end_to_end() {
 #[test]
 fn an_explicit_verifier_model_also_enables_the_gate() {
     let mut task = Task::new("grade me with sonnet");
-    task.autonomy_level = AutonomyLevel::DraftPr;
+    task.autonomy_level = Some(AutonomyLevel::DraftPr);
     task.verifier_model = Some("claude-sonnet-5".into());
     let runner = runner_for(task);
     assert!(runner.verifier_enabled());
@@ -71,7 +71,7 @@ fn an_explicit_verifier_model_also_enables_the_gate() {
 #[test]
 fn without_the_flag_or_model_the_gate_stays_off_below_l3() {
     let mut task = Task::new("plain draft-pr loop");
-    task.autonomy_level = AutonomyLevel::DraftPr;
+    task.autonomy_level = Some(AutonomyLevel::DraftPr);
     let runner = runner_for(task);
     assert!(
         !runner.verifier_enabled(),

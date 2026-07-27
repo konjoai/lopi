@@ -72,6 +72,27 @@ pub struct CreateTaskRequest {
     /// Mirrors [`lopi_core::Task::max_iterations`].
     #[serde(default)]
     pub max_iterations: Option<u8>,
+    /// Trust level governing how far the loop may act without a human: L1
+    /// report-only … L4 auto-merge (serialized as `report_only`/`draft_pr`/
+    /// `verified_pr`/`auto_merge`). `None` (the default, and what an unset
+    /// composer control sends) leaves the repo's `.lopi/loop.toml`
+    /// `autonomy_level` as the sole source — file is the base, this field is
+    /// the override, never the other way around. Mirrors
+    /// [`lopi_core::Task::autonomy_level`].
+    #[serde(default)]
+    pub autonomy_level: Option<lopi_core::loop_config::AutonomyLevel>,
+    /// Per-task override of the repo's `.lopi/loop.toml`
+    /// `no_progress_limit`, taking precedence when set. `None` (the default)
+    /// leaves the repo's own value (or its own default) as the sole halt
+    /// condition. Mirrors [`lopi_core::Task::no_progress_limit`].
+    #[serde(default)]
+    pub no_progress_limit: Option<u8>,
+    /// Per-task override of the repo's `.lopi/loop.toml` `isolation`
+    /// (`"branch"` / `"worktree"`), taking precedence when set. `None` (the
+    /// default) leaves the repo's own isolation mode as the sole source.
+    /// Mirrors [`lopi_core::Task::isolation`].
+    #[serde(default)]
+    pub isolation: Option<lopi_core::loop_config::IsolationMode>,
     /// Explicit worker-model override. Mirrors [`lopi_core::Task::model`].
     #[serde(default)]
     pub model: Option<String>,

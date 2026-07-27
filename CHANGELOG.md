@@ -1,3 +1,127 @@
+## [0.32.0] — Web composer: wire the loop.toml surface end-to-end
+
+**User-visible behavior change:** the web composer's `autonomy` control
+(L1 · Report only … L4 · Auto-merge) now actually reaches the server. Before
+this sprint it was decorative — `stores/stackDefaults.ts` said so plainly
+("`autonomy` is client-only") — a user picking "L2 · Draft PR" got whatever
+autonomy `.lopi/loop.toml` or the hardcoded `Task::new()` default resolved
+to, never their own choice. That's the Pillar-1 violation this sprint fixes:
+a control that appears to configure something and silently doesn't.
+
+**Pre-flight found the bug was deeper than the UI.** Tracing the drop past
+the frontend surfaced a second, backend-only bug: `Task.autonomy_level` was
+a plain (non-`Option`) `AutonomyLevel`, defaulting to `DraftPr` via
+`Task::new()`. Nothing anywhere read the repo's `.lopi/loop.toml`
+`autonomy_level` into it — `finalize.rs`'s PR-decision logic
+(`let level = self.task.autonomy_level`) read only the hardcoded default.
+So even a fully-wired UI field would have had nowhere honest to land:
+sending an explicit override would work, but there was no way to represent
+"unset — inherit the file," which is exactly the CreateTaskRequest
+contract every other loop field (`max_iterations`/`gate`/`until`/`on_fail`)
+already follows via `Option<T>` + `.unwrap_or(repo_default)`. Wiring the UI
+without this fix would have meant every web-composer task silently
+overriding the repo's real `autonomy_level` the moment autonomy became
+"wired" — the single worst outcome this sprint's pre-flight was designed to
+catch.
+
+### The precedence contract (one-way door — see `LEDGER.md`)
+
+**File is the base; an explicit per-task/request value is the override.** A
+composer field left untouched must inherit `.lopi/loop.toml`, never clobber
+it with a hardcoded default. Applied to every new field this sprint touches:
+
+- `Task.autonomy_level` changed from `AutonomyLevel` to
+  `Option<AutonomyLevel>` (`crates/lopi-core/src/task.rs`). `None` means
+  "unset"; resolved once, in `pool::run_loop::run_one`, immediately after
+  loading the repo's `LoopConfig` — `task.autonomy_level =
+  Some(task.autonomy_level.unwrap_or(cfg.autonomy_level))` — mirroring the
+  pre-existing `gate`/`until`/`on_fail` resolution in the same function.
+  Every downstream reader (`finalize.rs`, successor derivation) sees an
+  already-resolved `Some` value.
+- New `Task.no_progress_limit: Option<u8>` and `Task.isolation:
+  Option<IsolationMode>`, resolved the same way: a task-level value wins,
+  otherwise the repo's `.lopi/loop.toml` value (or its own default) governs.
+- `Task.budget_override: Option<BudgetOverride>` already followed this
+  contract (an earlier sprint) — reused as-is for the composer's new budget
+  preset control, no backend change needed.
+
+### Phase 1 — `autonomy` wired end to end
+
+- `CreateTaskRequest.autonomy_level: Option<AutonomyLevel>`
+  (`crates/lopi-ui/src/web/types.rs`), applied in `apply_loop_fields`
+  (`handlers.rs`) only when `Some` — an absent field changes nothing.
+- Web: `stores/stackDefaults.ts::autonomyToWire` maps the composer's
+  `L1..L4` UI value to the real `report_only|draft_pr|verified_pr|
+  auto_merge` wire tag. A new `AUTO_AUTONOMY` ("auto") sentinel is the
+  cold-start default for both `DEFAULT_STACK_DEFAULTS.autonomy` and
+  `AUTONOMY_OPTIONS`'s first entry — mirroring `AUTO_MODEL`'s existing
+  convention exactly, because defaulting to a concrete `'L2'` would have
+  reproduced the precedence-inversion bug at the UI layer even with the
+  backend fixed (a fresh pane's untouched autonomy would otherwise always
+  serialize to `draft_pr` and clobber the repo's real value).
+  `cardToTaskPayload`/`GuardrailsPopover`/`ConfigDrawer` now send
+  `autonomy_level` only on a live `L1..L4` choice.
+- Tests: `crates/lopi-ui/src/web/task_field_tests.rs` (apply/omit/422 on bad
+  value), `web/src/lib/stores/stack.test.ts` and `stackRun.test.ts` (payload
+  round-trip + the "untouched ⇒ omitted" precedence proof).
+
+### Phase 2 — budget preset, `no_progress_limit`, `isolation` exposed
+
+Per `UI_PLAN.md`'s own triage — not every file-only field belongs in the
+composer, only the ones a user reasonably tunes per run:
+
+- **Budget preset** (`quick|standard|deep|unlimited` + USD cap) — the
+  backend field (`budget_override`) already existed; only the composer
+  control was missing. New `Guardrails.budgetPreset`/`budgetUsd` on
+  `StackCard`, a new "preset"/"usd" row in `GuardrailsPopover` (loop scope
+  only), compiled into one `CreateTaskOptions.budget_override` object.
+- **`no_progress_limit`** — new `Task`/`CreateTaskRequest` field;
+  `AgentRunner::no_progress_limit()` now checks `self.task.no_progress_limit`
+  before falling back to the repo's `.lopi/loop.toml` read. New
+  `Guardrails.noProgressLimit` control (a real `0` disables the guard —
+  distinct from `undefined`, which inherits).
+- **`isolation`** (branch/worktree) — new `Task`/`CreateTaskRequest` field;
+  `pool::run_loop::run_one` resolves `task.isolation.unwrap_or(cfg.isolation)`
+  before `setup_worktree`. New `Guardrails.isolation` control.
+- Left file-only, not exposed (per the sprint's own scope boundary):
+  `vision_path`, `trust_ceiling`, `self_prompt`, `skills_enabled`,
+  `rules_enabled`, `permission_allow` — structural/rarely-per-run. None of
+  these appear anywhere in the composer, so there is nothing to mark
+  read-only — "not shown" is the honest state for a field this sprint
+  doesn't wire (see `/loop`'s existing Loop Engineering cockpit for the
+  resolved values).
+
+### Phase 3 — the honesty pass (the real deliverable)
+
+Walked every composer control; the audit found one more live violation
+beyond the two above, in the opposite direction — a control that was
+**never going to be wired, but stayed editable and visible anyway**:
+`StackConfig`'s stack-scope (chain) `budget` segmented control
+(`'auto'|'200k'|'none'`) in `GuardrailsPopover`. A chain is N independent
+task creations with no server-side "whole chain" to apply a budget to (the
+same reasoning that already kept `gate`/`until` hidden at stack scope) —
+but unlike those two, this `budget` control rendered at *both* scopes,
+and at stack scope it drove nothing: no backend field, no client
+sequencer behavior, not even the "is this changed" dock indicator
+(`stackGuardActive` only ever checked `onFail`). `stackGuardSummary` printed
+it anyway (`"stop · budget:200k"`), so a user who touched it saw their
+choice echoed back with no way to know it was inert. Removed:
+`StackGuardrails.budget` field deleted; the row now renders only at loop
+scope (`{#if scope === 'loop'}`), where the legacy per-card `budget` control
+is genuinely wired to `budget_tokens`.
+
+Every control audited — wired, or correctly absent; none editable-but-dropped:
+
+| Control | Scope | Status |
+|---|---|---|
+| model / effort / repo / branch / autonomy / permission_mode | loop (ConfigDrawer) | WIRED |
+| gate / until / on_fail / budget (token cap) / max-iter | loop (Guardrails) | WIRED |
+| budgetPreset / budgetUsd / isolation / noProgressLimit | loop (Guardrails) | WIRED (new) |
+| on_fail | stack (chain sequencer) | WIRED (client-side, real) |
+| budget (token cap) | stack (chain) | REMOVED (was inert) |
+| model / effort / priority / repo / branch | bare pane (LaunchControls) | WIRED |
+| vision_path / trust_ceiling / self_prompt / skills_enabled / rules_enabled / permission_allow | — | not shown (file-only) |
+
 ## [0.31.0] — Sprint S10: hardening (security audit, breaking)
 
 **This is the audit, not a survey** — supersedes a rev. 1 that only

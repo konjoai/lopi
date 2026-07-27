@@ -1,5 +1,14 @@
 # Next — Track A + B are built; Track C is the horizon
 
+## Web-composer loop.toml sprint landed (`CHANGELOG.md` `[0.32.0]`, `LEDGER.md`, `NEXT_SESSION_PROMPT.md`) — what's owed
+
+`autonomy` is now wired end to end (was the sprint's severe finding — see
+`NEXT_SESSION_PROMPT.md`'s new top entry for the full pointer). Owed:
+a verifier-gate composer control (backend field already exists, no UI yet),
+and optionally surfacing the *effective* `.lopi/loop.toml` value next to
+file-sourced controls rather than just accepting overrides silently. Both
+named explicitly in `NEXT_SESSION_PROMPT.md`, not decided here.
+
 ## Loop-Stack-Connect-1 landed (`CHANGELOG.md` `[0.10.0]`, `LEDGER.md`) — what's owed
 
 Scoped as a "connect & test" sprint against a connectivity audit — re-read

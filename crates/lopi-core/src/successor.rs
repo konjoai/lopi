@@ -250,8 +250,15 @@ pub fn derive_successor_task(
 
     let mut child = Task::new(s.goal.clone());
 
-    // Gate 2 — autonomy ceiling.
-    child.autonomy_level = clamp_autonomy_to_parent(parent.autonomy_level, child.autonomy_level);
+    // Gate 2 — autonomy ceiling. `parent.autonomy_level` is always `Some` by
+    // the time a successor is derived — `run_loop::run_one` resolves it
+    // against the repo's `.lopi/loop.toml` before the runner ever starts —
+    // but `.unwrap_or_default()` is a safe, non-panicking fallback for any
+    // caller (e.g. a test fixture) that builds a `Task` directly.
+    child.autonomy_level = Some(clamp_autonomy_to_parent(
+        parent.autonomy_level.unwrap_or_default(),
+        child.autonomy_level.unwrap_or_default(),
+    ));
 
     // Gate 3 — directory inheritance.
     child.forbidden_dirs = union_dirs(&parent.forbidden_dirs, &child.forbidden_dirs);

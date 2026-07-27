@@ -272,7 +272,7 @@ async fn compute_weight_adjustments(_goal: &str, store: Option<&MemoryStore>) ->
 #[allow(clippy::too_many_arguments)]
 #[tracing::instrument(skip(bus, store, cancel_rx, plan_decision_rx, attempt_counter, pool), fields(task_id = %task.id, goal = %task.goal))]
 async fn run_one(
-    task: Task,
+    mut task: Task,
     repo: PathBuf,
     bus: EventBus<AgentEvent>,
     store: Option<MemoryStore>,
@@ -325,7 +325,17 @@ async fn run_one(
             )
         })
     };
-    let isolation = cfg.isolation;
+    // File-as-base, request-as-override precedence (the one-way door this
+    // whole loop-toml/web-composer wiring depends on): an explicit per-task
+    // value always wins; an unset one inherits the repo's `.lopi/loop.toml`
+    // rather than clobbering it with a hardcoded default. Mirrors the
+    // pre-existing `max_iterations`/`gate`/`until`/`on_fail` precedent
+    // (`run_loop_builder::build_runner`) — `autonomy_level` and `isolation`
+    // are resolved here, up front, so every downstream consumer (the
+    // finalize/successor logic in `lopi-agent`, `setup_worktree` below) sees
+    // a single already-resolved value instead of re-deriving it.
+    task.autonomy_level = Some(task.autonomy_level.unwrap_or(cfg.autonomy_level));
+    let isolation = task.isolation.unwrap_or(cfg.isolation);
 
     // Sprint S10, Phase 0 — repo-supplied `gate`/`until`/`test_command` are
     // shell commands (`run_guard_command`, `sh -c`) and are untrusted by

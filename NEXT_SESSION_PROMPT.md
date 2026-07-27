@@ -5,6 +5,55 @@ the `lopi` repo. Newest first.
 
 ---
 
+## Next Session — after the web-composer loop.toml sprint (`[0.32.0]`)
+
+**The web composer's `autonomy` control is now wired end to end** —
+`CreateTaskRequest.autonomy_level`, resolved against the repo's
+`.lopi/loop.toml` when unset (file = base, request = override — the
+one-way-door precedent every future loop-config field must follow, see
+`LEDGER.md`). `no_progress_limit` and `isolation` (branch/worktree) are new
+per-task overrides on the same contract. Budget preset (`quick|standard|
+deep|unlimited` + USD) now has a real composer control wired to the
+pre-existing `budget_override` field. Read first: `CHANGELOG.md`'s
+`[0.32.0]` entry, `LEDGER.md`'s entry for this sprint (both one-way doors —
+the precedence contract, and "no control renders unless it's wired or
+correctly absent"), `UI_PLAN.md`'s Backend Bindings table (corrected this
+sprint — several rows it called "Missing"/"Partial" were already done by
+earlier sprints; re-verify against `types.rs`/`task.rs` before trusting any
+row in it, this is now the second time it was found stale).
+
+**What's still file-only, deliberately, not by oversight:** `vision_path`,
+`trust_ceiling`, `self_prompt`, `skills_enabled`, `rules_enabled`,
+`permission_allow` — structural/rarely-per-run, per this sprint's own scope
+boundary. None of them render as composer controls (correctly — "not shown"
+is honest for a field that isn't wired, per Pillar 1). If a future sprint
+wants any of these in the composer, it needs its own scoping pass; this one
+deliberately didn't touch them.
+
+**What a future sprint should pick up:**
+1. **Verifier gate has a backend field but no composer control.** `Task.
+   verifier_required/verifier_model/verifier_effort` are all on
+   `CreateTaskRequest` already (an earlier sprint), but nothing in the
+   composer exposes them — `UI_PLAN.md`'s Gap Map named `VerifierToggle.svelte`
+   and it still doesn't exist. Small, well-scoped, not touched this sprint
+   (out of this sprint's stated scope).
+2. **Surfacing the resolved config, not just accepting an override.** Phase 3's
+   honesty rule was satisfied by "wired or correctly absent," but the sprint
+   brief's stronger suggestion — showing the *effective* `.lopi/loop.toml`
+   value next to an `auto`/inherit control (e.g. "Auto · from loop.toml (repo
+   is actually verified_pr)") — wasn't built; it needs a live per-repo config
+   fetch the composer doesn't currently make. The existing `/loop` Loop
+   Engineering cockpit already displays a repo's effective config in full;
+   consider reusing that fetch rather than inventing a second one.
+3. **`GuardrailsPopover`'s stack-scope `budget` row was removed** (Phase 3
+   honesty audit — it was inert, no backend or client consumer). If a
+   genuine chain-level budget concept is ever wanted, it needs its own design
+   (there's no server-side "whole chain" today — a chain is N independent
+   task creations) before any control reappears at that scope; don't
+   re-add the removed row without one.
+
+---
+
 ## Next Session — after Sprint F4 (session continuity) — Sprint F5 (build cache) is next
 
 **Sprint F4 gave one CLI session per attempt (plan → implement → fix, not

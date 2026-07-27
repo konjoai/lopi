@@ -344,6 +344,15 @@ pub(super) fn apply_loop_fields(
     if let Some(n) = req.max_iterations {
         task.max_iterations = Some(n);
     }
+    if let Some(a) = req.autonomy_level {
+        task.autonomy_level = Some(a);
+    }
+    if let Some(n) = req.no_progress_limit {
+        task.no_progress_limit = Some(n);
+    }
+    if let Some(i) = req.isolation {
+        task.isolation = Some(i);
+    }
     if let Some(m) = &req.model {
         task.model = Some(m.clone());
     }

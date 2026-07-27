@@ -89,7 +89,12 @@ impl AgentRunner {
         until_satisfied: bool,
         attempt: u8,
     ) -> Option<TaskStatus> {
-        let level = self.task.autonomy_level;
+        // Resolved (never `None`) by `run_loop::run_one` before this runner
+        // was ever built, against the repo's `.lopi/loop.toml` when the task
+        // didn't set one explicitly. `.unwrap_or_default()` is a safe,
+        // non-panicking fallback for a runner assembled directly (e.g. a
+        // test fixture) without going through that resolution step.
+        let level = self.task.autonomy_level.unwrap_or_default();
         // A1 — score the run against its explicit acceptance goal (if any)
         // *before* the autonomy-level verifier gate. Fail-closed: a non-passing
         // outcome rejects the finalize. Additive — a task with no acceptance is
@@ -318,10 +323,16 @@ impl AgentRunner {
         });
     }
 
-    /// Load the repo's `no_progress_limit` from `.lopi/loop.toml`, off the
-    /// async reactor. Returns `0` (guard disabled) on any read/parse error so a
-    /// malformed loop config can never wedge the retry loop.
+    /// This task's effective `no_progress_limit`: an explicit per-task
+    /// override always wins (same "explicit wins over repo default"
+    /// precedent as `max_iterations`/`gate`/`until`), otherwise the repo's
+    /// `.lopi/loop.toml` value, loaded off the async reactor. Returns `0`
+    /// (guard disabled) on any read/parse error so a malformed loop config
+    /// can never wedge the retry loop.
     pub(super) async fn no_progress_limit(&self) -> u8 {
+        if let Some(n) = self.task.no_progress_limit {
+            return n;
+        }
         let repo = self.repo_path.clone();
         tokio::task::spawn_blocking(move || {
             LoopConfig::load_from_repo(&repo)

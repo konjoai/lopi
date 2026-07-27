@@ -5,10 +5,12 @@
  * (`stores/stack.ts`), not a single global store — Stack-1 made this
  * per-pane so two panes can carry two different default configs (was a
  * single app-wide `writable` through UI-2/Backend-1). `model`/`effort`/
- * `repo`/`permission_mode` are real `CreateTaskRequest` fields; `autonomy` is
- * client-only — see UI_PLAN.md's Backend Bindings table. `branch` is not
- * inert despite having no `CreateTaskRequest` field of its own:
- * `paneSubmitPayload` turns it into a "Target branch: …" planning constraint.
+ * `repo`/`permission_mode`/`autonomy` are all real `CreateTaskRequest`
+ * fields as of the web-composer loop.toml sprint (`autonomy` reaches
+ * `CreateTaskRequest.autonomy_level` via `autonomyToWire`, below — see
+ * UI_PLAN.md's Backend Bindings table). `branch` is not inert despite
+ * having no `CreateTaskRequest` field of its own: `paneSubmitPayload` turns
+ * it into a "Target branch: …" planning constraint.
  */
 import { MODEL_OPTIONS, type Option } from '$lib/stores/options';
 
@@ -21,22 +23,60 @@ export interface StackDefaults {
   permission_mode: string;
 }
 
+/** The sentinel `StackDefaults.autonomy`/`CardConfig.autonomy` value meaning
+ *  "no live choice — inherit the repo's `.lopi/loop.toml` `autonomy_level`."
+ *  Mirrors `options.ts::AUTO_MODEL`'s exact convention: a fresh pane must
+ *  never default to a concrete rung (e.g. hardcoding `'L2'`) because that
+ *  value would then be sent on *every* task, silently overriding a repo's
+ *  real configured autonomy — the precedence inversion this whole sprint's
+ *  precedence contract exists to prevent. Only a live, deliberate user pick
+ *  of `L1..L4` produces a wire override; `autonomyToWire` omits everything
+ *  else, this sentinel included. */
+export const AUTO_AUTONOMY = 'auto';
+
 /** The real `AutonomyLevel` ladder (`crates/lopi-core/src/loop_config.rs`) —
  *  PR-flow semantics, not the mockup's mismatched "leash" copy (see
  *  UI_PLAN.md's flagged label mismatch). Mirrors `loop/+page.svelte`'s
- *  `ladderHint()` wording so the two surfaces read the same. */
+ *  `ladderHint()` wording so the two surfaces read the same. `auto` is
+ *  first and is the cold-start default (see `DEFAULT_STACK_DEFAULTS`) — it
+ *  reads as "inherit from the repo's `.lopi/loop.toml`," never a hidden L2. */
 export const AUTONOMY_OPTIONS: Option[] = [
+  { value: AUTO_AUTONOMY, label: 'Auto · from loop.toml', hint: "inherit the repo's .lopi/loop.toml autonomy_level" },
   { value: 'L1', label: 'L1 · Report only', hint: 'report only, no PR' },
   { value: 'L2', label: 'L2 · Draft PR', hint: 'draft PR, human approves' },
   { value: 'L3', label: 'L3 · Verified PR', hint: 'verify before PR' },
   { value: 'L4', label: 'L4 · Auto-merge', hint: 'auto-merge on pass' }
 ];
 
+/** The wire tag `CreateTaskRequest.autonomy_level` (and `Task::autonomy_level`
+ *  server-side) actually deserializes — mirrors
+ *  `lopi_core::loop_config::AutonomyLevel::tag_snake` exactly. */
+type AutonomyWireTag = 'report_only' | 'draft_pr' | 'verified_pr' | 'auto_merge';
+
+const AUTONOMY_WIRE_TAGS: Record<string, AutonomyWireTag> = {
+  L1: 'report_only',
+  L2: 'draft_pr',
+  L3: 'verified_pr',
+  L4: 'auto_merge'
+};
+
+/** Map an `AUTONOMY_OPTIONS` UI value (`'L1'..'L4'`, or the `AUTO_AUTONOMY`
+ *  sentinel) to the real `CreateTaskOptions.autonomy_level` wire tag.
+ *  Returns `undefined` for `AUTO_AUTONOMY`, `undefined`/empty input, or
+ *  anything else not a recognized `L1..L4` value — the caller must omit the
+ *  field entirely in every one of those cases (never send a garbage string
+ *  the server would 422 on), which is exactly the "inherit the repo's
+ *  `.lopi/loop.toml`" case a card/pane that never touched autonomy resolves
+ *  to. */
+export function autonomyToWire(level: string | undefined): AutonomyWireTag | undefined {
+  return level ? AUTONOMY_WIRE_TAGS[level] : undefined;
+}
+
 /** How much the `claude -p` worker session may act on tool calls without a
  *  human answering a prompt, passed to the CLI as `--permission-mode`.
  *  Mirrors `crates/lopi-core/src/permission_mode.rs::PermissionMode` — the
- *  wire value is the CLI's own literal string, unlike `autonomy` (which is
- *  client-only). Unlike `autonomy`, this one is wired end to end: it reaches
+ *  wire value is the CLI's own literal string, unlike `autonomy`'s `L1..L4`
+ *  UI value (mapped via `autonomyToWire`). Wired end to end: it reaches
  *  a real `CreateTaskRequest.permission_mode`. Only the four modes proven
  *  headless-safe by Permission-Modes-1's kill-tests are selectable — the
  *  CLI's own `plan`/`manual` need a live human relay every headless `-p` run
@@ -86,7 +126,7 @@ export const DEFAULT_STACK_DEFAULTS: StackDefaults = {
   effort: 'medium',
   repo: '',
   branch: SEED_BRANCH,
-  autonomy: 'L2',
+  autonomy: AUTO_AUTONOMY,
   permission_mode: DEFAULT_PERMISSION_MODE
 };
 
