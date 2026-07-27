@@ -574,18 +574,18 @@ jobs:
   # the S10 anti-goal in a different costume." A longer scheduled run
   # (cron, not wired here) is the place for deeper campaigns.
   #
-  # KNOWN DEBT, not silently soft-failed: continue-on-error is set because
-  # these harnesses (fuzz/, a separate cargo-fuzz workspace) were authored
-  # and reasoned through against the real parser APIs, but could not be
-  # compiled or run in the environment that wrote them (no nightly
-  # toolchain, no cargo-fuzz, no crates.io network access — see the commit
-  # that added this job). This is the first real run. Once it's confirmed
-  # green, remove continue-on-error and add `fuzz` to konjo-gate's `needs:`
-  # so a genuine crash actually blocks merge instead of being logged only.
   fuzz:
     name: "G4b · Fuzz (60s × 3 targets)"
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
+    # KNOWN DEBT, verified 2026-07-27: these harnesses (fuzz/, a separate
+    # cargo-fuzz workspace) were authored and reasoned through against the
+    # real parser APIs, but could not be compiled or run in the environment
+    # that wrote them (no nightly toolchain, no cargo-fuzz, no crates.io
+    # network access — see the commit that added this job). Next step: once
+    # a real CI run confirms all three targets compile and run clean, remove
+    # this continue-on-error and add `fuzz` to konjo-gate's `needs:` so a
+    # genuine crash actually blocks merge instead of being logged only.
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
