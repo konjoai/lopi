@@ -1,3 +1,128 @@
+## [0.32.0] — Sprint S12: scope lock and round 3 (security, breaking)
+
+Six phases, sequenced so Phase 0 removes surface before the rest audits it. Baseline
+`4b0c733` (post-F0/F1/F2/F3/F4); landed on top of Sprint S10's hardening, already merged to
+`main` by the time this sprint ran.
+
+### Phase 0 — scope lock: remove the multi-tenant surface
+
+**Decision: lopi is single-operator, single-machine by design.** Rather than harden the
+GitHub App OAuth + Stripe billing surface, this sprint deletes it outright:
+
+- `crates/lopi-app/` (618 LOC: `lib.rs`, `github.rs`, `stripe.rs`) and the `lopi serve-app`
+  CLI command — gone.
+- `MemoryStore::open_for_customer`, the `github_installations` table (`schema.sql` now
+  actively `DROP TABLE IF EXISTS`s it on every existing database's next open — see
+  `LEDGER.md` for the drop-vs-retain decision), `InstallationRow` — gone.
+- `CustomerTier`, the `GET /api/plans` pricing endpoint, and `sail_commands.rs`'s
+  `tier_capped_max_agents`/`LOPI_CUSTOMER_ID` gating — gone.
+- `fly.toml` and `Dockerfile` now run a single `lopi sail` process — the `app` process group
+  (GitHub App OAuth + Stripe, port 3002) is gone; the fly app itself was even named
+  `lopi-app`, renamed to `lopi`.
+- `README.md`/`SECURITY.md` state the scope explicitly (a new "Scope"/"Deployment model"
+  section in each) — that sentence is itself a security control, per the brief: it tells a
+  would-be deployer what lopi does not defend against.
+
+### Phase 1 — secrets in logs (highest-severity open item)
+
+KT-S12.1: confirmed agent stdout reaching `AgentEvent::LogLine` had nothing redacting it on
+the path to either `task_logs` (SQLite) or the live SSE/WS broadcast — a fake secret in five
+shapes (`sk-ant-…`, `ghp_…`, `AWS_SECRET_ACCESS_KEY=…`, a JWT, a `postgres://user:pass@host`
+URL) reached both sinks verbatim before this sprint. Fix: `lopi_core::redact::redact_secrets`,
+called once in `event_bridge.rs`'s bridge loop before the event fans out to either sink, so
+persistence and broadcast can't drift out of sync. Patterns live in a data file
+(`crates/lopi-core/redact_patterns.txt`, `label<TAB>regex`), not inline match arms. Documented
+as a mitigation, not a guarantee — known shapes only.
+
+Also confirmed (not built — already there): S10 Phase 1's env-allowlist conversion
+(`apply_env_allowlist`: `env_clear()` + explicit allowlist) is wired into every `claude` CLI
+spawn site in the current tree. DoD item 4 ("env scrubbing converted from denylist to
+allowlist") was already satisfied by the time this sprint ran.
+
+### Phase 2 — fuzz the three parsers (infrastructure; not run — see KT-S12.2)
+
+Three `cargo-fuzz` targets added under a detached `fuzz/` workspace: `jsonrpc_response_fuzz`
+(`lopi_mcp::jsonrpc::Response`), `claude_events_fuzz` (`lopi_agent::claude_events::parse_line`),
+`github_webhook_fuzz` (a new `pub fn fuzz_parse_and_extract` in `crates/lopi-webhook/src/github.rs`
+mirroring `handle`/`dispatch_event`'s field-extraction without needing an async `TaskQueue`).
+Corpus seeded from `artifacts/STREAM_CAPTURE.jsonl` (44 real captured lines) plus hand-written
+representative shapes. CI job in `konjo-gate.yml`: 60s/target, PR-only.
+
+**Recorded honestly, not glossed over:** the environment this sprint ran in had no nightly Rust
+toolchain, no `cargo-fuzz` binary, and no `crates.io` network access. The harnesses were
+authored against the real parser APIs (every signature read from source) and reasoned through
+carefully, but never compiled or run. The CI job is `continue-on-error: true` until its first
+real run confirms them green — see `fuzz/README.md` and `.konjo/killtests/S12/KT-S12.2.md`.
+
+### Phase 3 — task-scope confinement (reframed authorization review)
+
+KT-S12.3: full inventory in `docs/security/TRIFECTA_PATHS.md` §7. Not pass/fail by design —
+four of five rows came back unenforced or mixed, named rather than smoothed over:
+
+- Repo confinement against the operator's configured repo list — **unenforced** (no allowlist
+  exists to check `task.repo_path` against; `LopiConfig` has no `repo`/`extra_repos` field).
+- `allowed_dirs`/`forbidden_dirs` — **mixed**: the prompt/plan-review layer is advisory-only
+  (`stability_runner.rs`'s own comment: "advisory — the real diff is still enforced
+  separately"); `DiffChecker` is real, structural enforcement, but post-hoc (blocks the diff
+  from persisting, doesn't prevent the write).
+- Untrusted-source (webhook) task reaching an unauthorized repo — **unenforced**, same root
+  cause as repo confinement: webhook-originated tasks never set `repo_path` at all.
+- Worktree escape via symlink/absolute-path/`..` — **unenforced**; confinement is `current_dir`
+  convention only, no per-tool-call path validation. Named, not fixed — a real fix is a
+  sandboxing project, not a targeted patch (Non-goals: no policy engine).
+- `gate_untrusted_source` coverage — **enforced** for every TRIFECTA §6 row plus successor/
+  chained tasks. **New gap:** the `lopi_submit_task` MCP tool never checks source trust at
+  all. Left unpatched deliberately this sprint — see §7's "why row 5's MCP gap is named, not
+  patched" for the reasoning (it's reachable two ways needing opposite treatment, and lopi's
+  MCP transport can't currently tell them apart; a blanket fix would break the tool's own
+  legitimate operator-interactive use).
+
+Also fixed: `crates/lopi-core/src/config.rs`'s `bypass_permissions` doc comment implied real
+directory-access enforcement it never had (its only consumer, `src/repl/state.rs:67`, is TUI
+display state) — corrected.
+
+### Phase 4 — Swift review
+
+KT-S12.4: full inventory in `docs/security/TRIFECTA_PATHS.md` §8. All six areas (Keychain
+usage beyond `ServerConfig`, deep-link handling, agent-output rendering, ATS exceptions,
+entitlements, unencrypted disk writes) came back clean. One documentation-only comment added to
+`ServerConfig.swift` about its hardcoded `http`/`ws` scheme.
+
+### Phase 5 — `/api/*` handler review
+
+KT-S12.5: verified `POST /api/tasks`'s acceptance of `permission_mode`/`gate`/`until` directly
+is not a privilege-escalation bug in lopi's single-operator model — every caller reaching this
+bearer-token-gated endpoint already holds the operator's own credential (the trust boundary),
+`task.source` is hardcoded `TaskSource::Cli` and not client-settable, and
+`effective_permission_mode`/`resolve_guard_command` key their trust decision on `task.source`,
+not on which fields a request supplied. A different, correct outcome than a multi-tenant system
+would have — exactly why Phase 0's scope lock matters. Regression test added
+(`create_task_accepts_posture_fields_but_provenance_stays_operator`) to lock this in.
+
+### Phase 6 — keep it closed
+
+`.konjo/scripts/scope_assert.py`: fails if `stripe`, `customer_id`, `open_for_customer`,
+`CustomerTier`, or any of the removed `github_installations` table's specific identifiers
+reappear in non-test Rust source. Deliberately narrows the brief's own "installation" term to
+those specific identifiers, not the bare English word (which has real, unrelated, legitimate
+uses elsewhere in the tree — see the script's own docstring). Wired into both Wall 1
+(pre-commit, staged-files) and Wall 2 (`konjo-gate.yml`'s G1 job, full-tree, hard gate).
+Kill-tested against the real repo and four fixtures.
+
+**Not done, recorded rather than silently skipped:** no `gates:` block or kiban K1 config
+exists anywhere in this repository to register kill-tests into (grepped, none found); no npm
+audit gate exists yet to extend (S11 Phase 2 has not landed independently in this tree).
+
+### Post-flight
+
+- `docs/security/TRIFECTA_PATHS.md` — §7 (Phase 3) and §8 (Phase 4) added, `verified-against`
+  bumped to `5522447`.
+- `.konjo/killtests/S12/` — KT-S12.1 through KT-S12.5.
+- `LEDGER.md` — three one-way doors recorded (multi-tenant surface removed; `github_installations`
+  table dropped, not retained-dead; log redaction at the `LogLine` boundary with its stated
+  limits).
+- `VERSION`: `0.31.0` → `0.32.0` (minor bump; breaking — `lopi serve-app` is gone).
+
 ## [0.31.0] — Sprint S10: hardening (security audit, breaking)
 
 **This is the audit, not a survey** — supersedes a rev. 1 that only

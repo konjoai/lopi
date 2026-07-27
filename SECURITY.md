@@ -3,7 +3,7 @@
 ## Supported versions
 
 lopi is pre-1.0 and moves fast. Security fixes land on `main` and are
-supported only in the latest published release (`v0.31.0` and forward).
+supported only in the latest published release (`v0.32.0` and forward).
 There is no long-term-support branch and no backport policy for older
 tags — upgrade to the latest release to pick up a fix.
 

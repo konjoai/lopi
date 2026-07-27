@@ -5,6 +5,58 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## Sprint S12 — scope lock and round 3: three one-way doors
+
+**Decision 1 (one-way door, the largest in this repo's history): the multi-tenant surface is
+removed; lopi is single-operator, single-machine by design.** Not hardened — deleted. The
+`lopi-app` crate (GitHub App OAuth + Stripe webhook server, 618 LOC), `lopi serve-app`,
+`MemoryStore::open_for_customer`, `CustomerTier`/`GET /api/plans` pricing, and the
+`LOPI_CUSTOMER_ID`-driven tier-gating in `sail_commands.rs` are all gone, not merely disabled.
+This closes off the hosted-service direction (multiple customers behind one lopi instance)
+without a deliberate reversal — reopening it means re-deriving a real multi-tenant threat
+model from scratch, not flipping a flag back on. The reasoning, stated in `SECURITY.md`'s new
+"Deployment model" section: this is a security control, not just a product decision — it names
+what lopi does *not* defend against (isolation between multiple humans sharing one instance),
+so nobody deploys it assuming protection that was never built. What this decision does **not**
+retire: a malicious repository under management, a poisoned MCP server, a hostile pull
+request, or anyone who can reach the operator's own port — the threat model got narrower
+(one fewer attacker class: a second customer), not smaller.
+
+**Decision 2 (one-way door): the `github_installations` table is dropped, not retained-dead.**
+Unlike `TaskSource::Telegram` (Sprint S10, Decision 2 below) — a durable enum variant inside a
+JSON column, where retiring the transport but keeping the variant was the cheap, correct
+call — `github_installations` is a *table*. There is no formal migration system in this repo
+(`schema.sql` is re-applied idempotently on every `MemoryStore::open`, splitting on `;` and
+silently ignoring `ALTER TABLE` errors for duplicate columns). Given that, and given this is
+pre-1.0 software whose `github_installations` rows only ever held SaaS-onboarding metadata
+(subscription tier, GitHub account logins) with no operational value once the surface that
+wrote them is gone, `schema.sql` now carries an explicit `DROP TABLE IF EXISTS
+github_installations;` statement — it actively removes the table (and its data) from every
+existing database the next time it's opened, not just on fresh installs. The alternative
+(leave the `CREATE TABLE IF NOT EXISTS` in place, forever, for a table nothing writes to
+anymore) was rejected as the same silent-drift risk `.konjo/scripts/scope_assert.py` (Phase 6)
+exists to catch in code — a dead table is exactly the kind of debris that makes "is the scope
+lock actually held" a question instead of a fact.
+
+**Decision 3 (one-way door, with a stated limit): agent log output is redacted for known
+secret shapes at one boundary, before persistence and before broadcast — this is a mitigation,
+not a guarantee.** `lopi_core::redact::redact_secrets` is called exactly once, in
+`event_bridge.rs`'s bridge loop, on every `AgentEvent::LogLine` before it reaches either
+`task_logs` (SQLite) or the live SSE/WS broadcast. The alternative — redacting separately in
+the persister and the serializer — was rejected explicitly: two redaction sites drift, and a
+drifted redaction is worse than an honestly-documented gap because it looks covered. The
+limit is stated in the function's own doc comment, not left to be discovered: pattern-based
+redaction (`crates/lopi-core/redact_patterns.txt`) catches known secret shapes (confirmed via
+KT-S12.1 against five real shapes) and will miss a bespoke internal token format, a secret
+split across two log lines, or an unusual encoding. **This does not make the SSE/WS stream
+safe to expose to an unauthenticated subscriber** — that remains Sprint S11 Phase 0's job
+(SSE/WS authentication), confirmed during this sprint to still be genuinely unauthenticated in
+the current tree (`/sse`, `/ws`, `/ws/tasks` are registered outside the `api` router's
+`auth_middleware`/`rate_limit_middleware` layer — verified by reading the router construction
+in `crates/lopi-ui/src/web/mod.rs`, not assumed). Recording this explicitly rather than letting
+Decision 3 read as "the stream is now safe" — it narrows what a secret-shaped leak costs; it
+does not close the leak's reach.
+
 ## Sprint S10 — hardening: four one-way doors, all breaking on purpose
 
 **Decision 1 (one-way door): repo-supplied shell commands are untrusted by
