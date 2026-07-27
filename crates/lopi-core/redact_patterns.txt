@@ -1,0 +1,25 @@
+# Known secret shapes redacted from agent log output before it is persisted
+# or broadcast (Sprint S12, Phase 1). One pattern per non-blank, non-comment
+# line: `label<TAB>regex`. `label` becomes `[REDACTED:label]` in the output
+# and must be a bare identifier (letters/digits/underscore only).
+#
+# This is a mitigation, not a guarantee: it catches known secret shapes and
+# will miss novel ones (see `crates/lopi-core/src/redact.rs`'s doc comment).
+# Adding a pattern here does not require touching any matching logic — just
+# add a line and rebuild. lopi ships as a single static binary with no
+# plugin/dynamic-load mechanism, so "rebuild" cannot be avoided the way a
+# hot-reloaded config file would; what this format buys is that reviewing or
+# adding a pattern is a one-line diff, not a change to control flow.
+#
+# Patterns are applied in file order; each is anchored with word boundaries
+# where practical to reduce false positives against ordinary log prose.
+
+anthropic_key	sk-ant-[A-Za-z0-9_-]{20,}
+github_token	gh[pousr]_[A-Za-z0-9]{36,}
+aws_access_key_id	AKIA[0-9A-Z]{16}
+slack_token	xox[baprs]-[A-Za-z0-9-]{10,}
+jwt	eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}
+credentialed_url	[a-zA-Z][a-zA-Z0-9+.-]*://[^\s:/@'"]+:[^\s@'"]+@[^\s'"]+
+secret_env_assignment	\b[A-Z][A-Z0-9_]*(?:_SECRET|_TOKEN|_PASSWORD|_API_KEY|_PRIVATE_KEY|SECRET_KEY)[A-Z0-9_]*\s*[=:]\s*\S+
+bearer_header	(?i)bearer\s+[A-Za-z0-9\-_.=]{20,}
+private_key_marker	-----BEGIN [A-Z ]*PRIVATE KEY-----

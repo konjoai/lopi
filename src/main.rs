@@ -182,37 +182,6 @@ async fn main() -> Result<()> {
             dry_run,
         }) => replay_commands::run(task, from, dry_run).await?,
 
-        Some(Commands::ServeApp { port, host }) => {
-            let addr: std::net::SocketAddr = format!("{host}:{port}")
-                .parse()
-                .map_err(|e| anyhow::anyhow!("invalid address: {e}"))?;
-            let app_cfg = lopi_app::AppConfig::from_env();
-            println!("🔐 lopi serve-app on {addr}");
-            println!(
-                "   GitHub OAuth: {}",
-                if app_cfg.github_configured() {
-                    "✅ configured"
-                } else {
-                    "⚠️  missing (GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, GITHUB_REDIRECT_URI)"
-                }
-            );
-            println!(
-                "   Stripe:       {}",
-                if app_cfg.stripe_configured() {
-                    "✅ configured"
-                } else {
-                    "⚠️  missing (STRIPE_WEBHOOK_SECRET)"
-                }
-            );
-            println!();
-            let store = lopi_memory::MemoryStore::open(util::db_path()).await?;
-            let state = lopi_app::AppState {
-                cfg: app_cfg,
-                store,
-            };
-            lopi_app::serve(state, addr).await?;
-        }
-
         Some(Commands::GapFill {
             repo,
             sail_url,

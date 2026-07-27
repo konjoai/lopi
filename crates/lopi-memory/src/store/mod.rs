@@ -66,30 +66,6 @@ impl MemoryStore {
         })
     }
 
-    /// Open an isolated per-customer database.
-    ///
-    /// Creates `{base_dir}/{customer_id}/lopi.db` — each customer gets a
-    /// separate SQLite file so pattern stores, lessons, and quality runs
-    /// cannot bleed across tenants.
-    ///
-    /// # Errors
-    /// Returns `Err` if the directory cannot be created or the database cannot be opened.
-    pub async fn open_for_customer(base_dir: impl AsRef<Path>, customer_id: &str) -> Result<Self> {
-        // Sanitise: only alphanumeric + hyphen/underscore allowed in customer_id.
-        let safe_id: String = customer_id
-            .chars()
-            .map(|c| {
-                if c.is_alphanumeric() || c == '-' || c == '_' {
-                    c
-                } else {
-                    '_'
-                }
-            })
-            .collect();
-        let db_path = base_dir.as_ref().join(&safe_id).join("lopi.db");
-        Self::open(db_path).await
-    }
-
     /// Open an in-memory `SQLite` database — useful for tests.
     ///
     /// In-memory databases do not support WAL or multiple connections sharing state,
@@ -406,7 +382,6 @@ mod checkpoints;
 mod cli_session;
 mod dag;
 mod eval_outcomes;
-mod installations;
 mod learnings;
 mod lessons;
 mod lineage;
@@ -429,7 +404,6 @@ pub use audit::{AuditInput, AuditQuery, AuditRow};
 pub use checkpoints::{CheckpointInput, CheckpointRow};
 pub use dag::{current_stage, dag_graph_json, DagNodeRow};
 pub use eval_outcomes::{EvalOutcomeRow, ScorePoint};
-pub use installations::InstallationRow;
 pub use learnings::LearningRow;
 pub use lessons::LessonRow;
 pub use loop_health::{LoopAttemptRow, LoopTurnRow};

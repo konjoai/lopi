@@ -351,3 +351,38 @@ async fn pr_review_empty_body_no_constraint() {
     let resp = post_webhook(app, "pull_request_review", body_bytes, None).await;
     assert_eq!(resp.status(), StatusCode::OK);
 }
+
+/// Sprint S12, Phase 2 — `fuzz_parse_and_extract` is the entry point
+/// `fuzz/fuzz_targets/github_webhook_fuzz.rs` calls; these lock in that it
+/// never panics on the shapes fuzzing is most likely to hand it, without
+/// requiring the cargo-fuzz toolchain to run in CI.
+#[test]
+fn fuzz_parse_and_extract_does_not_panic_on_malformed_json() {
+    for body in [
+        b"".as_slice(),
+        b"not json",
+        b"{",
+        b"null",
+        b"[]",
+        b"{\"repository\": null}",
+        b"{\"repository\": {\"full_name\": 5}}",
+        b"{\"action\": 5}",
+        b"{\"check_run\": {\"conclusion\": 5}}",
+        b"{\"label\": \"not an object\"}",
+    ] {
+        super::fuzz_parse_and_extract(body, "issues");
+        super::fuzz_parse_and_extract(body, "push");
+    }
+}
+
+#[test]
+fn fuzz_parse_and_extract_accepts_well_formed_payloads() {
+    let body = serde_json::to_vec(&serde_json::json!({
+        "action": "labeled",
+        "repository": { "full_name": "org/repo" },
+        "label": { "name": "lopi:fix" },
+        "check_run": { "conclusion": "failure" },
+    }))
+    .unwrap();
+    super::fuzz_parse_and_extract(&body, "issues");
+}

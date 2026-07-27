@@ -50,6 +50,8 @@ pub mod models;
 /// Permission mode — how much a `claude -p` worker session may act on tool
 /// calls without a human answering a prompt.
 pub mod permission_mode;
+/// Pattern-based secret redaction for agent-produced log text.
+pub mod redact;
 /// Report on Finish (Loop Engineering primitive 6) — the `report` channel
 /// name a completed run's summary can be routed to.
 pub mod report;
@@ -76,8 +78,6 @@ pub mod task_source;
 pub mod template;
 /// UTF-8-safe string truncation for excerpting arbitrary text.
 pub mod text;
-/// Customer tier classification.
-pub mod tier;
 /// Orchestration topology hints (Sprint T).
 pub mod topology;
 
@@ -97,6 +97,7 @@ pub use gain::{GainDecision, GainRule, GainSample};
 pub use loop_config::{IsolationMode, LoopConfig};
 pub use models::{fallback_models, ModelInfo};
 pub use permission_mode::{effective_permission_mode, PermissionMode, PermissionModeError};
+pub use redact::redact_secrets;
 pub use report::{ReportChannel, ReportChannelError};
 pub use schema::{
     schema_violations_inc, schema_violations_snapshot, validate as validate_schema,
@@ -112,7 +113,6 @@ pub use successor::{
 pub use task::{Priority, Rubric, Task, TaskId, TaskSource, TaskStatus, VerifierVerdict};
 pub use template::{resolve as resolve_template, TemplateError};
 pub use text::safe_truncate;
-pub use tier::CustomerTier;
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]

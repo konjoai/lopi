@@ -3,7 +3,7 @@
 ## Supported versions
 
 lopi is pre-1.0 and moves fast. Security fixes land on `main` and are
-supported only in the latest published release (`v0.31.0` and forward).
+supported only in the latest published release (`v0.32.0` and forward).
 There is no long-term-support branch and no backport policy for older
 tags — upgrade to the latest release to pick up a fix.
 
@@ -59,6 +59,28 @@ lopi-specific exploitation path (report those upstream — `cargo audit`/
 `cargo deny check` run as blocking CI gates on every PR, and known
 advisories are triaged in `.cargo/audit.toml` / `.konjo/deny.toml`, each
 with a written reason, not a blanket suppression).
+
+## Deployment model
+
+**lopi is designed for one operator, on one machine, alongside a local
+Claude Code install.** It is not a hosted multi-tenant service: there is no
+per-customer data isolation, no subscription-tier gating, and no
+GitHub-App-installation onboarding flow. Sprint S12 removed that surface
+(`lopi serve-app`, `MemoryStore::open_for_customer`, the
+`github_installations` table, `CustomerTier`/Stripe billing) entirely rather
+than hardening it — see `LEDGER.md` for the decision record.
+
+This is a security control, not just a product decision: it tells you what
+lopi does **not** defend against. lopi does not authenticate or isolate
+between multiple humans sharing one instance, does not rate-limit per
+tenant, and does not sandbox one customer's repository from another's,
+because those cases cannot arise by design. If you deploy lopi so that more
+than one person can reach its dashboard/API, you are responsible for that
+isolation yourself — lopi provides none. The remaining threat model is:
+a malicious repository under management, a compromised or poisoned MCP
+server, a hostile pull request from an untrusted source, and anyone who can
+reach the operator's own port (see **What "secure" means for lopi
+specifically** below and `docs/security/TRIFECTA_PATHS.md`).
 
 ## What "secure" means for lopi specifically
 

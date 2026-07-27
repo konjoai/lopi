@@ -146,6 +146,17 @@ jobs:
             exit 1
           fi
 
+      - name: Scope assertion — no multi-tenant surface (Sprint S12, Phase 6)
+        # HARD GATE. Sprint S12 removed lopi's multi-tenant surface (lopi-app,
+        # open_for_customer, github_installations, CustomerTier/Stripe) as a
+        # decision, not a fact the code enforces on its own — nothing stops a
+        # future PR from reintroducing it one file at a time. This mechanizes
+        # the decision so it can't drift back by omission. See
+        # .konjo/scripts/scope_assert.py's own docstring for the exact term
+        # list and why "installation" (the bare English word) is deliberately
+        # narrowed to the specific removed identifiers instead.
+        run: python3 .konjo/scripts/scope_assert.py
+
       - name: Reachability check (advisory) — pub mod not reachable from the binary
         # ADVISORY BY DESIGN — Sprint F0. `dead_code` above certifies rustc
         # reachability (a `pub` item in a library crate is never dead by
@@ -171,6 +182,73 @@ jobs:
         # of quietly joining the pile of undocumented soft gates the
         # convention exists to prevent.
         run: python3 .konjo/scripts/soft_gate_lint.py .github/workflows/*.yml
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # Gate 1b — Static Analysis, web/ (Forge dashboard — SvelteKit, separate
+  # npm ecosystem from the Rust `static` job above, so it gets its own job
+  # rather than a step wedged into a Rust runner)
+  # ════════════════════════════════════════════════════════════════════════════
+  # Added Sprint S11, Phase 2 (2026-07-27): `web/` had zero `npm audit` CI
+  # gate at all before this — the Rust half of the repo has had `cargo
+  # audit`/`cargo deny` as hard gates since Sprint S4 Phase 3 (see `static`
+  # above), but a real `npm audit` on `web/` found 13 advisories (4 high, 7
+  # moderate, 2 low) with no CI step ever catching drift. This job mirrors
+  # `static`'s `cargo audit` step exactly: `npm ci` for a reproducible,
+  # lockfile-exact install (the `npm install` equivalent of `cargo audit`
+  # reading `Cargo.lock`), then a hard-fail audit at `--audit-level=high`.
+  #
+  # Phase 2 also upgraded every flagged runtime-shipped package to a patched
+  # version — `svelte` 4.2.0 -> 5.56.8 (the six SSR/XSS advisories, e.g.
+  # GHSA-rcqx-6q8c-2c42, GHSA-pr6f-5x2q-rwfp, all fixed only from 5.56.8;
+  # see `.konjo/killtests/S11/KT-S11.2.md` for the companion finding that no
+  # live sink in this app's component tree actually exercised those
+  # vulnerable capabilities — upgraded anyway as hygiene, not because an
+  # exploit path was closed), `@sveltejs/kit` 2.59.1 -> 2.70.1, `devalue`
+  # 5.8.0 -> 5.8.2, `@sveltejs/vite-plugin-svelte` 3.x -> 5.1.1 + `vite` 5.x
+  # -> 6.4.3 (paired major bumps — the moderate vite-plugin-svelte/vitefu
+  # chain and the high/moderate esbuild+vite path-traversal advisories both
+  # required leaving the vite 5 line), `svelte-check` 3.x -> 4.7.4 (clears a
+  # transitive `brace-expansion`/`glob`/`minimatch`/`rimraf`/`sander`/
+  # `sorcery`/`svelte-preprocess` chain, all high), and `cookie` pinned to
+  # `^0.7.0` via `package.json`'s `overrides` (GHSA-pxg6-pf52-xh8x —
+  # `@sveltejs/kit@2.70.1`, the latest stable line, still declares
+  # `cookie: ^0.6.0` itself; only the unstable `3.0.0-next` prerelease line
+  # bumps that to `cookie ^2.0.0`, so an override was the only way to get
+  # the patched `cookie` without adopting an unstable SvelteKit). Net
+  # result, re-verified with a clean `rm -rf node_modules && npm ci && npm
+  # audit`: 0 vulnerabilities — this gate does not need an ignore mechanism
+  # (npm audit has no scoped per-advisory allow-list the way
+  # `.cargo/audit.toml` does for cargo-audit; none was needed here since
+  # the audit is fully clean, not because one was swallowed).
+  web-audit:
+    name: "G1b · npm audit (web/)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: web/package-lock.json
+
+      - name: npm ci — reproducible, lockfile-exact install
+        working-directory: web
+        run: npm ci
+
+      - name: npm audit — zero high/critical advisories
+        # HARD GATE since Sprint S11, Phase 2. `--audit-level=high` matches
+        # this repo's Rust-side bar (`cargo audit` fails on ANY known
+        # advisory reachable in the build graph); `high` rather than `low`
+        # here because npm audit's low/moderate tier includes a much wider
+        # long tail of dev-toolchain-only findings (see the KT-S11.2
+        # comment above) that would make this gate noisy without adding
+        # real signal — runtime-shipped packages are held to the same
+        # standard as `cargo audit` via the upgrade work itself (0
+        # vulnerabilities at any severity as of Phase 2), not by loosening
+        # what this gate checks.
+        working-directory: web
+        run: npm audit --audit-level=high
 
   # ════════════════════════════════════════════════════════════════════════════
   # Gate 2 — Tests + Coverage (≥ 80% line coverage)
@@ -486,6 +564,62 @@ jobs:
           fi
 
   # ════════════════════════════════════════════════════════════════════════════
+  # Gate 4b — Fuzz (Sprint S12, Phase 2) — short budget, PR-only
+  # ════════════════════════════════════════════════════════════════════════════
+  # Three targets over the parsers that eat attacker-influenceable input:
+  # MCP server responses (jsonrpc.rs), the `claude` CLI's own stream-json
+  # output (claude_events.rs), and GitHub webhook bodies pre-HMAC (github.rs).
+  # 60s/target on PR, deliberately short — the sprint brief's own framing:
+  # "A fuzz gate that adds ten minutes to every PR gets disabled, which is
+  # the S10 anti-goal in a different costume." A longer scheduled run
+  # (cron, not wired here) is the place for deeper campaigns.
+  #
+  fuzz:
+    name: "G4b · Fuzz (60s × 3 targets)"
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    # KNOWN DEBT, verified 2026-07-27: these harnesses (fuzz/, a separate
+    # cargo-fuzz workspace) were authored and reasoned through against the
+    # real parser APIs, but could not be compiled or run in the environment
+    # that wrote them (no nightly toolchain, no cargo-fuzz, no crates.io
+    # network access — see the commit that added this job). Next step: once
+    # a real CI run confirms all three targets compile and run clean, remove
+    # this continue-on-error and add `fuzz` to konjo-gate's `needs:` so a
+    # genuine crash actually blocks merge instead of being logged only.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: konjo-fuzz-${{ github.repository }}
+          workspaces: fuzz -> target
+
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+
+      - name: Fuzz jsonrpc_response_fuzz (MCP server responses)
+        run: cargo fuzz run jsonrpc_response_fuzz -- -max_total_time=60
+        working-directory: fuzz
+
+      - name: Fuzz claude_events_fuzz (claude CLI stream-json)
+        run: cargo fuzz run claude_events_fuzz -- -max_total_time=60
+        working-directory: fuzz
+
+      - name: Fuzz github_webhook_fuzz (GitHub webhook bodies, pre-HMAC)
+        run: cargo fuzz run github_webhook_fuzz -- -max_total_time=60
+        working-directory: fuzz
+
+      - name: Upload crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crashes
+          path: fuzz/artifacts/
+          if-no-files-found: ignore
+
+  # ════════════════════════════════════════════════════════════════════════════
   # Gate 5 — Adversarial Review (Wall 3, PRs only)
   # Uses Claude Opus — distinct from builder model (Sonnet)
   # ════════════════════════════════════════════════════════════════════════════
@@ -613,7 +747,7 @@ jobs:
     # blocking merge. Both are added below; both are also legitimately
     # `skipped` on a push-to-main run (they're PR-only jobs), which must not
     # itself count as a failure.
-    needs: [doc-staleness, static, coverage, complexity, mutation, review]
+    needs: [doc-staleness, static, web-audit, coverage, complexity, mutation, review]
     steps:
       - name: Evaluate all required gates
         run: |
@@ -623,6 +757,7 @@ jobs:
           # expected to skip them, not fail them.
           DOC_STALENESS="${{ needs.doc-staleness.result }}"
           STATIC="${{ needs.static.result }}"
+          WEB_AUDIT="${{ needs.web-audit.result }}"
           COVERAGE="${{ needs.coverage.result }}"
           COMPLEXITY="${{ needs.complexity.result }}"
           MUTATION="${{ needs.mutation.result }}"
@@ -630,6 +765,7 @@ jobs:
 
           echo "doc-staleness: $DOC_STALENESS"
           echo "static:     $STATIC"
+          echo "web-audit:  $WEB_AUDIT"
           echo "coverage:   $COVERAGE"
           echo "complexity: $COMPLEXITY"
           echo "mutation:   $MUTATION"
@@ -638,6 +774,7 @@ jobs:
           FAILED=""
           [ "$DOC_STALENESS" != "success" ] && FAILED="$FAILED doc-staleness"
           [ "$STATIC"     != "success" ] && FAILED="$FAILED static"
+          [ "$WEB_AUDIT"  != "success" ] && FAILED="$FAILED web-audit"
           [ "$COVERAGE"   != "success" ] && FAILED="$FAILED coverage"
           [ "$COMPLEXITY" != "success" ] && FAILED="$FAILED complexity"
           [ "$MUTATION"   != "success" ] && [ "$MUTATION" != "skipped" ] && FAILED="$FAILED mutation"
