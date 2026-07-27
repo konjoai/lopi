@@ -238,6 +238,13 @@ lopi watch --remote ws://127.0.0.1:3000/ws  # attach to a running sail server (d
 terminal. Related terminal commands: `lopi dock` (task table), `lopi tail`
 (event stream), and bare `lopi` (interactive REPL cockpit).
 
+Sprint S11, Phase 0 moved `/ws` behind the server's normal auth. Against a
+`sail` server started with `[web].auth_token` set (anything other than local
+`--insecure-no-auth`), set `LOPI_WEB_AUTH_TOKEN` in the environment `lopi
+watch --remote` runs in — the same variable name `sail` reads server-side —
+and it's sent as the WebSocket handshake's `Authorization: Bearer` header.
+No flag needed against a local `--insecure-no-auth` server (unchanged).
+
 Screenshots live in [`screenshots/tui/`](screenshots/tui).
 
 ![lopi watch](screenshots/tui/lopi-watch.png)

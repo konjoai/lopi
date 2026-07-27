@@ -445,3 +445,5 @@ include!("permission_mode_field_tests.rs");
 include!("provenance_field_tests.rs");
 include!("claude_commands_tests.rs");
 include!("security_tests.rs");
+include!("streaming_auth_tests.rs");
+include!("route_coverage_tests.rs");

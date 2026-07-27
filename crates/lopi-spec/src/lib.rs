@@ -27,7 +27,7 @@ pub use python_extractor::extract_python;
 pub use rust_extractor::extract_rust;
 pub use test_runner::{coverage_gaps, run_tests, TestRunResult};
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -152,15 +152,22 @@ impl SpecSurface {
 
     /// Load from `.lopi/spec_surface.json`. Returns None if the file does not exist.
     ///
+    /// Reads directly rather than checking existence first: `repo_path` is a
+    /// working tree a concurrently running agent can be editing (including
+    /// its own `.lopi/` artifacts), so a prior `exists()` check can go stale
+    /// before the read runs. Treating a `NotFound` from the read itself as
+    /// "absent" closes that gap instead of trusting a separate check.
+    ///
     /// # Errors
     ///
     /// Returns an error if the file exists but cannot be parsed.
     pub fn load(repo_path: impl AsRef<Path>) -> Result<Option<Self>> {
         let path = repo_path.as_ref().join(".lopi").join("spec_surface.json");
-        if !path.exists() {
-            return Ok(None);
-        }
-        let raw = std::fs::read_to_string(&path)?;
+        let raw = match std::fs::read_to_string(&path) {
+            Ok(r) => r,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(e) => return Err(e).with_context(|| format!("reading {}", path.display())),
+        };
         Ok(Some(serde_json::from_str(&raw)?))
     }
 

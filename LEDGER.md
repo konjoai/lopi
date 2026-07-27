@@ -5,6 +5,71 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## Sprint S11 Round 2 — two one-way doors: streaming auth, macOS TLS default
+
+**Decision 1 (one-way door): `/sse`, `/ws`, `/ws/tasks`, `/metrics` require
+authentication.** Before this sprint, these four routes were reachable with
+no `Authorization` header at all — a router-construction bug
+(`crates/lopi-ui/src/web/mod.rs::build_app` registered them on the outer
+`Router` *after* the `api` sub-router's auth `route_layer` calls, so they
+sat outside that layer entirely), not a deliberate design choice, but the
+fix still breaks every existing client that connected to them
+unauthenticated. **This breaks any deployment where a client (curl script,
+custom dashboard, monitoring tool) was polling `/sse` or `/metrics` without
+a token** — it now needs either the real Bearer token or, for `/sse`/`/ws`/
+`/ws/tasks` specifically, a ticket minted via `POST /api/ws-ticket`. Not
+optional, not a config flag: an unauthenticated live event stream
+(task history, per-task cost, log lines, agent output) reachable by URL
+alone on a `--host 0.0.0.0` deployment is not a legitimate state to leave
+reachable behind a flag, the same class of trade S2's auth-required-by-
+default decision made. The three first-party clients (the SPA, the macOS
+app, and the TUI's `lopi watch --remote`) were updated in the same sprint
+so this doesn't strand them — see Decision 2 for the macOS side;
+`src/remote.rs::ws_request` reads `LOPI_WEB_AUTH_TOKEN` (the same env var
+`sail_commands::run` already reads server-side) and attaches it as a
+Bearer header on the TUI's WebSocket handshake; the SPA's `wsClient.ts`
+connects to `/ws` same-origin with no separate token step needed in the
+one mode it's actually deployed in today (loopback, `--insecure-no-auth`,
+`auth_token` is `None`, nothing is checked) — see the named gap below for
+the mode
+where that stops being true.
+
+**Decision 2 (one-way door): the macOS app defaults to `https`/`wss` for
+any non-loopback host.** `ServerConfig.swift` hardcoded `http://`/`ws://`
+before this sprint — cleartext was the *only* option, so there was no
+existing "secure by default" behavior to preserve, only a security bug to
+fix. The fix is still a one-way door in the sense that it changes default
+behavior for anyone who *was* pointing the app at a real remote host: that
+connection now expects a TLS-terminating server, and will fail outright
+against a plain-HTTP remote deployment unless the operator explicitly
+flips the new `allowInsecureHTTP` toggle. Loopback hosts are unaffected
+(`http`/`ws`, unchanged) — this is a decision that only bites the
+already-dangerous case (a real deployment with a Bearer token traveling
+over the network), which is exactly where a default should be allowed to
+break something.
+
+**Named gap, not resolved this sprint: the web dashboard has no working
+auth story against a non-loopback server.** `web/src/lib/api.ts`'s
+`fetch()` calls attach zero `Authorization` headers — confirmed by grep,
+not inferred. Every documented deployment path (`docs/RUNNING.md`) runs
+`lopi sail` with `--insecure-no-auth` on loopback, where `auth_token` is
+`None` and nothing is checked, so this has never been hit in practice. But
+it means: against a server with a real `auth_token` configured (the
+Fly.io / non-loopback case S2's own audit flagged as the dangerous
+default), the SPA's `/api/*` calls already return 401 today, *before* this
+sprint's ticket mechanism existed and unrelated to it. The ticket flow
+this sprint built for `/ws`/`/sse` doesn't fix this — minting a ticket
+itself requires the same Bearer header the SPA doesn't send. Decided not
+to solve this here: it's a materially different problem (the SPA needs
+*some* way to acquire and hold a credential — a login flow, a
+build-time-injected token, something) than "the four routes this sprint
+found lack the auth the rest of the API already has," and solving it
+inside Phase 0 would have meant redesigning the SPA's entire auth model as
+a side effect of a router bug fix. Recorded here so it isn't silently
+assumed solved by the ticket mechanism's existence — a future sprint
+picking up "make the SPA work against a non-loopback deployment" starts
+from this note, not from re-discovering the gap.
+
 ## Sprint S10 — hardening: four one-way doors, all breaking on purpose
 
 **Decision 1 (one-way door): repo-supplied shell commands are untrusted by
