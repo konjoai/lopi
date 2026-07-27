@@ -2,37 +2,36 @@
 # Run: cargo audit
 # Auto-discovered from the working directory; no --config flag needed.
 #
-# Sprint S4 triage (verified 2026-07-24): every crate `cargo audit` flagged
-# other than the ones below has been resolved by upgrading the affected
-# crate directly (anyhow, crossbeam-epoch, git2, spin — see git log). Two
-# categories remain, each triaged individually rather than silenced in bulk:
+# Sprint S10, Phase 2 (2026-07-27): the sqlx 0.7 -> 0.8.6 upgrade resolved
+# RUSTSEC-2026-0098/-0099/-0104 (rustls-webpki) and RUSTSEC-2024-0363 (sqlx
+# format-injection) outright — all four traced to sqlx 0.7.4's own pinned
+# rustls 0.21/rustls-webpki 0.101, gone once sqlx pulled rustls 0.23.42.
+# RUSTSEC-2023-0071 (rsa) is unaffected by the sqlx major bump and is kept
+# below, unchanged from before Phase 2.
 
 [advisories]
 ignore = [
     # RUSTSEC-2023-0071 (rsa, Marvin Attack timing sidechannel): `rsa` is a
     # transitive optional dependency of `sqlx-mysql`, which is itself an
     # optional sqlx backend this workspace never enables (`sqlx = { features
-    # = ["runtime-tokio-rustls", "sqlite"] }` — no "mysql" feature).
-    # `cargo tree -i rsa` and `cargo tree -i sqlx-mysql` both print "nothing
-    # to print": neither crate is reachable in the actual build graph.
-    # `cargo audit` scans Cargo.lock's raw package list regardless of
-    # feature-reachability, which is why it still flags a crate this
-    # workspace never compiles. No upgrade needed — nothing to fix, nothing
-    # to run.
+    # = ["runtime-tokio-rustls", "sqlite"] }` — no "mysql" feature). Both
+    # `rsa` and `sqlx-mysql` remain in Cargo.lock after the Phase 2 sqlx
+    # 0.8.6 upgrade (re-verified: `grep '^name = "rsa"' Cargo.lock` still
+    # matches) — `cargo audit` scans Cargo.lock's raw package list
+    # regardless of feature-reachability (confirmed by `cargo tree -i rsa`
+    # printing "nothing to print": neither crate is reachable in the actual
+    # build graph, on either sqlx major version). No upgrade fixes this —
+    # there is nothing this workspace compiles to fix.
     "RUSTSEC-2023-0071",
 
-    # RUSTSEC-2026-0098, -0099, -0104 (rustls-webpki) and RUSTSEC-2024-0363
-    # (sqlx): all four trace to `sqlx 0.7.4`'s own pinned `rustls 0.21`/
-    # `rustls-webpki 0.101`. `cargo update -p rustls-webpki` / `-p sqlx`
-    # both confirm no 0.7-compatible fix exists — resolving these means
-    # upgrading sqlx to a major version (0.7 -> 0.8+), which is real
-    # application-code migration work (sqlx's query/macro API changed
-    # between majors), not a config-scale fix. Out of scope for this
-    # CI-mechanism sprint; scheduled in NEXT_SESSION_PROMPT.md. Same
-    # reasoning, same four IDs, as `.konjo/deny.toml`'s `[[advisories.ignore]]`
-    # — keep the two lists in sync if either changes.
-    "RUSTSEC-2026-0098",
-    "RUSTSEC-2026-0099",
-    "RUSTSEC-2026-0104",
-    "RUSTSEC-2024-0363",
+    # Transitive-only unmaintained/unsound findings — none is a direct
+    # workspace dependency. `.konjo/deny.toml`'s `unmaintained = "workspace"`/
+    # `unsound = "workspace"` scope doesn't error on these for that reason;
+    # `cargo audit` has no such scope distinction, so it needs its own
+    # written exception for each. Re-verify at the next bump of the parent
+    # crate (ratatui, teloxide, reqwest) that pulls each one in.
+    "RUSTSEC-2024-0436", # paste — transitive via ratatui 0.26.3
+    "RUSTSEC-2024-0370", # proc-macro-error — transitive via teloxide 0.13.0 (aquamarine)
+    "RUSTSEC-2025-0134", # rustls-pemfile — transitive via reqwest 0.11.27
+    "RUSTSEC-2026-0002", # lru, unsound IterMut — transitive via ratatui 0.26.3
 ]

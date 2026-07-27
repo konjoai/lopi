@@ -34,6 +34,11 @@ pub mod event;
 /// Progress-Gating (A3) — the gain gate: accept an iteration only when it is a
 /// genuine gain over best, objective-primary so judge noise cannot lock.
 pub mod gain;
+/// Sprint S10, Phase 0 — repo-supplied guard-command trust resolution, split
+/// out of `loop_config` for the file-size gate. Re-exported from
+/// `loop_config` too, so both `lopi_core::guard_trust::*` and
+/// `lopi_core::loop_config::*` resolve the same items.
+pub mod guard_trust;
 /// Loop-engineering configuration: autonomy levels + the `LoopConfig` schema.
 pub mod loop_config;
 /// Claude model catalog types + the static fallback list `GET /api/models`
@@ -91,7 +96,7 @@ pub use event::{AgentEvent, EventBus, LogLevel, PlanDecision};
 pub use gain::{GainDecision, GainRule, GainSample};
 pub use loop_config::{IsolationMode, LoopConfig};
 pub use models::{fallback_models, ModelInfo};
-pub use permission_mode::{PermissionMode, PermissionModeError};
+pub use permission_mode::{effective_permission_mode, PermissionMode, PermissionModeError};
 pub use report::{ReportChannel, ReportChannelError};
 pub use schema::{
     schema_violations_inc, schema_violations_snapshot, validate as validate_schema,

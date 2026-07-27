@@ -81,6 +81,8 @@ pub fn plan_streaming(
         );
 
         let mut cmd = tokio::process::Command::new(&cli_path);
+        // Sprint S10, Phase 1 — must run before any other `.env()` call.
+        crate::claude_support::apply_env_allowlist(&mut cmd);
         cmd.arg("-p")
             .arg(&prompt)
             .current_dir(&repo_path)

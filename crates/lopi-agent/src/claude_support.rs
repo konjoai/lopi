@@ -341,6 +341,52 @@ pub(crate) fn scrub_inherited_anthropic_env(cmd: &mut Command) {
     }
 }
 
+/// Environment variables passed through to a spawned `claude` CLI child
+/// verbatim from lopi's own process environment, when set. Every other
+/// variable lopi's own process holds — `ANTHROPIC_API_KEY`,
+/// `LOPI_WEB_AUTH_TOKEN`, a configured GitHub token, the (now-removed)
+/// Telegram bot token, anything else lopi's operator has in their shell —
+/// is not passed through.
+///
+/// Sprint S10, Phase 1: before this function existed, every spawn site
+/// inherited the *entire* parent environment (`Command::new` inherits by
+/// default) and only [`scrub_inherited_anthropic_env`] removed a fixed
+/// blocklist of Anthropic-routing vars from it — anything not on that list
+/// (lopi's own web auth token, a GitHub token, ...) reached the child.
+/// Combined with Phase 0's finding (repository-controlled shell execution),
+/// an attacker who reached `sh -c` via a poisoned `.lopi/loop.toml` or a
+/// vetted-but-compromised MCP server dependency could read those directly
+/// out of the child's own environment. This is the allowlist that replaces
+/// that inherit-everything-minus-blocklist posture: nothing is inherited
+/// (`env_clear`) except what's explicitly named here.
+///
+/// The CLI's own on-disk credentials at `~/.claude/` (keyed by `HOME`) are
+/// what authenticates the child — no Anthropic API key or auth token is
+/// listed here, deliberately: [`scrub_inherited_anthropic_env`]'s own
+/// history (`.konjo/killtests/F4/KT-4.1.md`) is the reason lopi does not
+/// want any such variable reaching this process at all, inherited or
+/// allowlisted, so this list omits it entirely rather than re-opening that
+/// question.
+const CHILD_ENV_ALLOWLIST: &[&str] = &[
+    "PATH", "HOME", "TERM", "LANG", "LANGUAGE", "LC_ALL", "LC_CTYPE", "SHELL", "TMPDIR", "USER",
+    "LOGNAME",
+];
+
+/// Replace the child's inherited environment with exactly
+/// [`CHILD_ENV_ALLOWLIST`], read fresh from lopi's own process environment.
+/// Must be called before any other `.env(...)` call on `cmd` (e.g. inside
+/// [`apply_cli_caps`]) — `Command::env_clear` clears variables set via
+/// `.env()` before it runs, not only inherited ones, so every production
+/// spawn site calls this immediately after `Command::new`.
+pub(crate) fn apply_env_allowlist(cmd: &mut Command) {
+    cmd.env_clear();
+    for var in CHILD_ENV_ALLOWLIST {
+        if let Ok(val) = std::env::var(var) {
+            cmd.env(var, val);
+        }
+    }
+}
+
 /// Strip Rust backtrace noise and deduplicate repeated error blocks to reduce fix-prompt token count.
 /// Removes lines matching `at src/`, `note: run with RUST_BACKTRACE`, and limits each error to
 /// 30 lines. Identical adjacent blocks are collapsed to one copy.

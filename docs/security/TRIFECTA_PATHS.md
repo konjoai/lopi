@@ -1,7 +1,7 @@
 ---
 decays: state
-verified-against: 71a470b
-verified-date: 2026-07-26
+verified-against: a384f32
+verified-date: 2026-07-27
 ---
 
 # Trifecta paths — untrusted input → powerful tools → external comms
@@ -59,15 +59,15 @@ which is the correct one-way trade but still needs a fix to run at all).
 | B | `crates/lopi-webhook/src/github.rs:184-221` `handle_pr_review` — a PR review with `changes_requested`, review **body text attacker-controlled** | `Task`, review body appended verbatim to `t.constraints` | Yes | Same as A |
 | C | `crates/lopi-webhook/src/issue.rs:159-181` — an opened/labeled GitHub issue, Haiku-triaged then auto-queued if `Bug` @ confidence ≥ 0.7 or `lopi:fix` label. **Issue body (attacker-controlled, up to 500 chars) injected as a task constraint** | `Task`, `TaskSource::Webhook` | Yes | Same as A |
 | D | `crates/lopi-remote/src/whatsapp.rs:110-122` — inbound `/task <goal>` over Twilio WhatsApp, **goal text is attacker/sender-controlled directly**, `TaskSource::Webhook { repo: "whatsapp", .. }` | `Task` | Yes | Optional Twilio signature (`signing_secret`); **but see §4 — this module is not wired to any CLI command and is unreachable in the built binary today** |
-| E | `crates/lopi-remote/src/telegram/handlers.rs:181-211` — `/task`, `/retry` etc. from an authenticated Telegram chat | `Task`, `TaskSource::Telegram` | Yes | `allowed_chat_ids` inbound authz (`telegram/mod.rs:114`, checked in `message_handler`/`text_message_handler`) — this is an authenticated operator using a different transport, not the "anyone who can file an issue" threat model A–D describe |
+| E | ~~`crates/lopi-remote/src/telegram/handlers.rs:181-211`~~ — **transport removed, Sprint S10 Phase 4.** Historical rows with `TaskSource::Telegram` still deserialize and read as `provenance: "operator"` (`TaskRow::provenance()`); `is_untrusted_source` still classifies the variant as untrusted for chain-depth purposes (Successor-1) — a different, narrower notion of "untrusted" than this row ever used, see `LEDGER.md`. Nothing constructs this variant anymore. | (historical only) | — (no longer reachable) | Moot — removed rather than gated |
 
-All five converge on the same `TaskQueue` → `AgentPool` → `AgentRunner` pipeline
+Rows A–D converge on the same `TaskQueue` → `AgentPool` → `AgentRunner` pipeline
 (`crates/lopi-orchestrator/src/pool/`), which has full tool access (code execution, git, PR
-open) and, on completion, publishes `AgentEvent`s that `crates/lopi-remote/src/telegram/notify.rs`
-turns into outbound Telegram messages. **Rows A–D are the trifecta**: unauthenticated or
-weakly-authenticated content reaching an agent prompt, with a path to external comms on
-completion. Row E is inbound-authenticated and out of this sprint's threat model (see Phase 5
-below for why it's not gated the same way).
+open) and, on completion, publishes `AgentEvent`s. **Rows A–D are the trifecta**: unauthenticated
+or weakly-authenticated content reaching an agent prompt, with a path to external comms on
+completion (WhatsApp today; Telegram before Phase 4's removal). Row E was inbound-authenticated
+and out of Sprint S2's threat model even before Phase 4 removed the transport it described — see
+that sprint's Phase 5 note below for why it was never gated the same way as A–D.
 
 ## 2. Gap-table re-derivation (sprint brief's table, checked against `3a8a2ff`)
 
@@ -156,3 +156,32 @@ WhatsApp's dormant path still getting it).
 Verified against `3a8a2ff` for the pre-flight inventory (§0–§4); the phases above landed on top of
 that baseline in this same sprint. Re-run this kill-test before trusting any of it in a later
 sprint — `decays: state`.
+
+## 6. Sprint S10 — untrusted-source inventory (standing section)
+
+Phase 6's mandate: enumerate every path by which external text reaches an agent prompt, and
+record whether `gate_untrusted_source` (or an equivalent structural gate) applies. Not a
+point-in-time finding like §0–§5 — this section is meant to be extended, not re-derived from
+scratch, whenever a new external-input path is added. Agentjacking (13 June 2026, Tenet
+Security) is the general rule this section exists to keep honest: treat any output an agent
+reads from outside lopi's own trusted config as untrusted input, and name the ones that
+currently reach a prompt ungated rather than letting a clean-looking table imply full coverage.
+
+| # | Path | Reaches the agent as | Gated? |
+|---|---|---|---|
+| A–D | Webhook bodies, issue titles/bodies, PR review comments (see §1) | `Task.goal`/`Task.constraints` | Yes — `gate_untrusted_source` forces `require_plan_approval` before attempt 0 plans |
+| F | CI logs / `gh` output the agent fetches **during its own run** (e.g. investigating a failure `queue_ci_fix` queued) | Tool-call output folded into the CLI session's own context | **No.** `require_plan_approval` fires once, before planning starts — content the agent voluntarily pulls in in a later tool call (reading a CI log, `curl`-ing a URL if permitted, opening a linked issue) is not re-checked. Structural containment for this class is Phase 3's permission-mode coupling (`effective_permission_mode` forces `DontAsk` for untrusted-sourced tasks, narrowing what a poisoned log can talk the agent into doing) plus `DiffChecker`'s off-limits paths — not a content filter, since none exists at the model layer (see Non-goals). |
+| G | Repository file content (source files, `.lopi/loop.toml`, README, CI config) the agent reads as part of normal operation, including on a branch under evaluation | Tool-call (`Read`) output folded into context | **Inherent, not gated as a class.** A code-fixing agent must read the repo it's fixing; this is the tool doing its job, not a bypassable injection point. Two carve-outs *are* gated because they cross from "text the model reads" to "code lopi's own runtime executes": `.lopi/loop.toml`'s `gate`/`until`/`test_command`/`[[mcp.servers]]` (Phase 0, Phase 5 — see rows H/I) and `Task.acceptance`'s `Shell`/`Suite` checks (Phase 0). |
+| H | `.lopi/loop.toml` `gate`/`until`/`test_command` — a shell string, not model-read text | `sh -c` execution via `run_guard_command` | **Yes, Phase 0.** `resolve_guard_command` refuses a repo-supplied value unless the task's source is trusted (`!is_untrusted_source`) or the operator's own `~/.lopi/loop.toml` sets it. `Task.acceptance`'s `CheckSpec::Shell`/`Suite` gated the same way via `EvalContext.shell_commands_trusted`. |
+| I | `.lopi/loop.toml` `[[mcp.servers]]` — a `command`+`args` pair | `Command::new(command).args(args).spawn()` via `McpServerSpec::connect` | **Yes, Phase 5.** `check_mcp_server` refuses to spawn unless the exact `(name, command, args)` is in the operator's `~/.lopi/mcp_allowlist.toml` — deny-by-default, no fallback to "unrestricted" on an empty/missing file. |
+| J | MCP tool **response** content, from an allowlisted server | Tool-call output folded into context, same as any other tool result | **Not gated, named rather than implied.** Phase 5 pins *which* server binaries may run; it does not — and structurally cannot, without solving prompt injection at the model layer (Non-goals) — sanitize what an allowlisted server's tool call *returns*. A compromised update to an allowlisted binary (the postmark-mcp shape: fifteen clean releases, then one malicious line) still returns attacker-controlled content once spawned. Signature verification (noted, not built, in Phase 5) would catch a *changed* binary; it would not catch a legitimate server whose upstream API was itself compromised. |
+| K | WhatsApp inbound (row D) | `Task.goal` | Yes, same as A–D — and still dormant/unreachable from the built binary (§4) |
+
+Every row without a "Yes" is a deliberate, named gap — not an oversight this document is hiding.
+Rows F, G, and J are the ones with no realistic full gate short of solving prompt injection at
+the model layer; Phase 3's permission-mode coupling and `DiffChecker` reduce blast radius for
+all three without claiming to close them.
+
+Re-run this inventory whenever a new external-input path is added (a new webhook event type, a
+new MCP capability, a new `.lopi/loop.toml` field that can hold a command or spawn a process) —
+`decays: state`.

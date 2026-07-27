@@ -98,20 +98,6 @@ pub async fn run(
         std::process::exit(0);
     });
 
-    if let Ok(token) = std::env::var("TELOXIDE_TOKEN") {
-        let pool_for_tg = (*pool).clone();
-        let schedules_for_tg = schedules.clone();
-        spawn_telegram(
-            token,
-            queue.clone(),
-            store.clone(),
-            pool_for_tg,
-            bus.clone(),
-            schedules_for_tg,
-            cfg,
-        );
-    }
-
     // Open the dashboard in the user's browser once the server is up.
     // Honors LOPI_NO_BROWSER=1 for headless / remote deployments.
     if std::env::var("LOPI_NO_BROWSER").ok().as_deref() != Some("1") {
@@ -328,41 +314,6 @@ async fn seed_schedules(store: &MemoryStore, entries: &[lopi_core::ScheduleEntry
             Err(e) => tracing::warn!(schedule = %entry.name, "schedule lookup failed: {e:#}"),
         }
     }
-}
-
-fn spawn_telegram(
-    token: String,
-    queue: TaskQueue,
-    store: MemoryStore,
-    pool: AgentPool,
-    bus: EventBus<AgentEvent>,
-    schedules: Vec<lopi_core::ScheduleEntry>,
-    cfg: Option<&LopiConfig>,
-) {
-    let allowed_chat_ids = cfg
-        .map(|c| c.remote.telegram.allowed_chat_ids.clone())
-        .unwrap_or_default();
-    let egress_allowed_chat_ids = cfg
-        .map(|c| c.remote.telegram.egress_allowed_chat_ids.clone())
-        .unwrap_or_default();
-    let notify_chat_id = cfg.and_then(|c| c.remote.telegram.chat_id);
-    tokio::spawn(async move {
-        if let Err(e) = lopi_remote::telegram::run(
-            token,
-            queue,
-            store,
-            pool,
-            bus,
-            schedules,
-            notify_chat_id,
-            allowed_chat_ids,
-            egress_allowed_chat_ids,
-        )
-        .await
-        {
-            tracing::error!("telegram bot error: {e}");
-        }
-    });
 }
 
 #[cfg(test)]

@@ -1,3 +1,172 @@
+## [0.31.0] — Sprint S10: hardening (security audit, breaking)
+
+**This is the audit, not a survey** — supersedes a rev. 1 that only
+surveyed. Audit method: all 440 locked crates cross-referenced against the
+RustSec advisory database with semver matching (114 crates carried *some*
+advisory; 11 were actually affected at the locked version); targeted code
+review of shell invocation, subprocess environment, path handling, token
+comparison, secret redaction, webhook verification, MCP trust, permission
+posture. **Named gaps, not hidden ones:** no `cargo audit`/`cargo deny` run
+in the original audit environment (no toolchain there — re-run and fixed
+in this sprint's own CI, see Phase 2/7 below); no npm audit of `web/`'s
+resolved packages; no fuzzing; no per-route authorization review of all 48
+routes; no Swift app review; no TOCTOU analysis of the worktree lifecycle.
+Still gaps after this sprint — recorded, not silently expanded into new
+phases.
+
+**What was already correct — not rebuilt:** constant-time token comparison
+(`lopi_core::constant_time_eq`, API bearer token + GitHub webhook HMAC),
+secrets redacted from `GET /api/config`, S2's auth/CORS/egress/webhook-secret
+posture, `.konjo/deny.toml`'s `yanked = "deny"` / `unmaintained = "workspace"`.
+
+### Phase 0 (BLOCKING) — repository-controlled shell execution
+
+**The finding:** `run_guard_command` (`crates/lopi-core/src/loop_config.rs`)
+executed `.lopi/loop.toml`'s `gate`/`until`/`test_command` (plus eval-tier-1's
+`Task.acceptance` `Shell`/`Suite` checks) via `sh -c` with no trust check —
+a pull request could add a malicious `.lopi/loop.toml` and have lopi execute
+it against a webhook-dispatched task. KT-S10.0 (`.konjo/killtests/S10/KT-S10.0.md`)
+confirms the severity via a real repo-on-disk, real `TaskSource::Webhook`
+task, exercising the actual production call chain.
+
+**Fix:** `lopi_core::resolve_guard_command` (new, `loop_config.rs`) — a
+repo-supplied `gate`/`until`/`test_command` value is honored only when
+`!lopi_core::is_untrusted_source(&task.source)`, or when the operator's own
+`~/.lopi/loop.toml` (new: `LoopConfig::load_operator_overrides`) sets it,
+regardless of task source. Wired at the one place `.lopi/loop.toml` is
+loaded for dispatch (`crates/lopi-orchestrator/src/pool/run_loop.rs::run_one`).
+`Task.acceptance`'s `Shell`/`Suite` checks (not `LoopConfig`-sourced) gated
+the same way via a new `EvalContext.shell_commands_trusted` flag
+(`crates/lopi-agent/src/eval/{mod,tiers}.rs`, `runner/eval_runner.rs`).
+`run_guard_command`'s doc comment rewritten — the previous "not a
+network-exposed execution surface" comment was the wrongness the finding
+names; F2 Phase 1 (`test_command`) widened the surface without revisiting it,
+a process finding as much as a code one.
+
+### Phase 1 — agent subprocess environment isolation
+
+Every `claude -p` spawn site (`crates/lopi-agent/src/claude_spawn.rs` ×2,
+`claude_stream.rs`, `runner/postmortem_cli.rs`, `verifier_cli.rs` — five,
+not the three originally scoped, once `postmortem_cli.rs`/`verifier_cli.rs`
+were found) inherited the parent's full environment minus a fixed
+Anthropic-routing blocklist (`scrub_inherited_anthropic_env`). New
+`apply_env_allowlist` (`claude_support.rs`) replaces inherit-all-minus-
+blocklist with `env_clear()` + an explicit allowlist (`PATH`, `HOME`,
+`TERM`, locale vars, `SHELL`, `TMPDIR`, `USER`, `LOGNAME` — deliberately no
+Anthropic credential var; the CLI's on-disk `~/.claude/` credentials need
+none). Called before `apply_cli_caps` at all five sites so its `env_clear`
+never wipes `apply_cli_caps`'s own `CLAUDE_CODE_SUBAGENT_MODEL` var. Proven
+with a live child-process spawn test (`env`), not just `Command`
+introspection — `Command::env_clear`'s effect on inherited variables isn't
+observable via `Command::get_envs()` at all.
+
+### Phase 2 — supply chain
+
+sqlx `0.7.4` → `0.8.6` (zero application-code changes needed — lopi never
+used the compile-time `query!`/`query_as!` macros this major bump changes
+the API of). Resolves RUSTSEC-2026-0098/-0099/-0104 (rustls-webpki) and
+RUSTSEC-2024-0363 (sqlx format-injection) outright — sqlx 0.8.6 pulls
+rustls `0.23.42`, not the pinned `0.21.12` chain. `sqlx-mysql`/
+`sqlx-postgres`/`rsa` confirmed still unreachable (`cargo tree -i` empty)
+on both sqlx majors — never lopi's own exposure, `features = ["sqlite"]`
+only. Re-ran the full cross-reference rather than trusting the prior
+table: 4 real `unmaintained`/`unsound` findings remain (`paste`,
+`proc-macro-error`, `rustls-pemfile`, `lru`), all transitive-only (none a
+direct workspace dependency), each a named, individual exception in both
+`.cargo/audit.toml` and `.konjo/deny.toml` — not a blanket silence.
+`ring`/`dirs` advisories named in the original audit did not reproduce
+against the current advisory-db (`cargo audit` found nothing for either) —
+recorded as a correction, not silently dropped. License fallout from the
+upgrade fixed: `webpki-roots`'s newer version license changed from MPL-2.0
+to `CDLA-Permissive-2.0` (`.konjo/deny.toml` updated); three now-unused
+license allowances removed.
+
+**Correction to the original audit doc:** it hypothesized `teloxide`
+pinned the old TLS stack, making Telegram removal a supply-chain unblock.
+The dependency graph says otherwise — `teloxide` has no direct `reqwest`
+edge (only via `teloxide-core`, and the actual pin was `sqlx-core 0.7.4`).
+Telegram removal (Phase 4) is justified on its own merits; it does not fix
+the TLS chain. Recorded rather than deleted.
+
+### Phase 3 — permission posture coupled to source trust
+
+New `lopi_core::effective_permission_mode` (`permission_mode.rs`): an
+untrusted-sourced task (`is_untrusted_source`) is downgraded to
+`PermissionMode::DontAsk` unconditionally, regardless of what it requests
+— a task from an issue body doesn't get the same unattended tool posture
+as one a human typed. Wired at `crates/lopi-agent/src/runner/run_loop.rs`'s
+`ClaudeCode` builder, the single place `Task.permission_mode` reaches the
+subprocess. KT-S10.2: the brief's own live corpus benchmark (T01–T10 under
+the strictest completing mode) needs an attended session with real
+`claude` CLI/subscription access this sprint's environment didn't have —
+named as a gap rather than fabricated, per the brief's own escape hatch
+("ship the coupling anyway"). The structural coupling ships regardless,
+proven by a rejecting unit test.
+
+### Phase 4 — Telegram transport removed
+
+Deleted `crates/lopi-remote/src/telegram/` (8 files, 2,024 LOC — exact
+`wc -l` match to the brief's own figure) and its sole caller,
+`crates/lopi-remote/src/egress.rs` (68 LOC, orphaned once Telegram's gone;
+its deny-by-default shape reused for Phase 5, not carried forward as a
+dependency). Dropped the `teloxide` dependency (workspace + `lopi-remote`)
+and `sail_commands::spawn_telegram`/its `TELOXIDE_TOKEN` read. **Not
+removed:** the `TaskSource::Telegram { chat_id, message_id }` variant — a
+durable enum persisted in `tasks.source` — stays, deprecated but readable.
+`is_untrusted_source`, `TaskRow::provenance()`, and
+`pool::run_loop::task_source_label` all keep their `Telegram` read arms
+unchanged; KT-S10.3 (`.konjo/killtests/S10/KT-S10.3.md`) plus new/existing
+tests (`task_source_label_still_resolves_a_historical_telegram_sourced_task`,
+pre-existing `telegram_sourced_task_is_operator_provenance`) pin that a
+historical Telegram-sourced row still deserializes and labels correctly
+across the store layer and audit log. README updated in the same PR (the
+F0 lesson: removing code and leaving the claim would repeat it).
+
+### Phase 5 — MCP server allowlist
+
+New `crates/lopi-mcp/src/allowlist.rs`: `McpServerSpec::connect` (the one
+chokepoint every caller — `register_server_tools` included — shares) now
+refuses to spawn a server unless its exact `(name, command, args)` matches
+an entry in the operator's `~/.lopi/mcp_allowlist.toml`. Deny-by-default,
+mirrors the deleted `egress.rs`'s shape (empty allowlist denies, never
+falls through to unrestricted). Matches on the full spec, not just
+name+command, so a repo can't keep an approved binary's name while
+smuggling different flags. Signature verification (postmark-mcp: fifteen
+clean releases, then one malicious line) is noted as a real follow-on gap,
+not half-built.
+
+### Phase 6 — untrusted-source inventory
+
+`docs/security/TRIFECTA_PATHS.md` gained a standing §6 enumerating every
+path external text reaches an agent prompt — webhook bodies, CI logs the
+agent fetches mid-run, MCP tool response content, repository file content,
+and `.lopi/loop.toml`'s shell/MCP-spawn surfaces — with an honest "not
+gated" column for the three that have no realistic full gate short of
+solving prompt injection at the model layer (CI log fetch, repo file
+content, MCP tool response content). `docs/security/EGRESS_SURFACE.md`
+retired with a pointer, not silently left stale.
+
+### Phase 7 — CI gates + rejecting tests
+
+`cargo audit`/`cargo deny check` were already wired as blocking (no
+`continue-on-error`) steps in `.github/workflows/konjo-gate.yml`'s
+`static` job (Sprint S4) — re-verified rather than re-implemented, and
+their explanatory comments updated for Phase 2's actual current state.
+Every new control above ships with a rejecting test: `kt_s10_0_*`,
+`resolve_guard_command_refuses_repo_value_when_untrusted`,
+`shell_and_suite_tiers_refuse_when_untrusted` (Phase 0);
+`apply_env_allowlist_child_process_cannot_see_a_non_allowlisted_secret`
+(Phase 1); `untrusted_source_downgrades_*_to_dont_ask` (Phase 3);
+`connect_refuses_to_spawn_when_not_allowlisted`,
+`empty_allowlist_denies_rather_than_permits`,
+`same_name_and_command_but_different_args_is_denied` (Phase 5).
+
+### Post-flight
+
+`LEDGER.md` Sprint S10 entry records the four one-way doors. `SECURITY.md`
+added (was absent). `.konjo/killtests/S10/` holds KT-S10.0 through KT-S10.4
+with recorded output. `VERSION` file added, `0.31.0`.
+
 ## [0.31.0] — Sprint F4: session continuity — one CLI session per attempt, not per phase
 
 **Volume/version note:** this sprint was developed against a HEAD where

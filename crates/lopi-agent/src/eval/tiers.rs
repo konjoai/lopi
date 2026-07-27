@@ -86,6 +86,14 @@ impl TierEvaluator for ShellTestEval {
                 "shell check cannot run in an offline context",
             );
         }
+        if !ctx.shell_commands_trusted {
+            return CheckResult::error(
+                EvalTier::ShellTest,
+                check.weight,
+                check.required,
+                "shell check refused: task source is untrusted (Sprint S10, Phase 0)",
+            );
+        }
         match run_guard_command(cmd, &ctx.repo_path).await {
             Ok(true) => CheckResult::pass(EvalTier::ShellTest, check.weight, check.required),
             Ok(false) => CheckResult::fail(
@@ -133,6 +141,14 @@ impl TierEvaluator for SuiteEval {
                 "suite check cannot run in an offline context",
             );
         }
+        if !ctx.shell_commands_trusted {
+            return CheckResult::error(
+                EvalTier::Suite,
+                check.weight,
+                check.required,
+                "suite check refused: task source is untrusted (Sprint S10, Phase 0)",
+            );
+        }
         let cmd = format!("konjo {name}");
         match run_guard_command(&cmd, &ctx.repo_path).await {
             Ok(true) => CheckResult::pass(EvalTier::Suite, check.weight, check.required),
@@ -171,6 +187,7 @@ mod tests {
             execution_ok,
             metrics: BTreeMap::new(),
             live: false,
+            shell_commands_trusted: true,
         }
     }
 
@@ -243,6 +260,35 @@ mod tests {
             )
             .await;
         assert_eq!(fail.verdict, Verdict::Fail);
+    }
+
+    /// Sprint S10, Phase 0 — the rejecting test: an untrusted-sourced task's
+    /// shell/suite acceptance checks must never execute, live context or not.
+    #[tokio::test]
+    async fn shell_and_suite_tiers_refuse_when_untrusted() {
+        let mut ctx = offline_ctx("", None);
+        ctx.live = true;
+        ctx.shell_commands_trusted = false;
+
+        let shell = ShellTestEval
+            .evaluate(
+                &ctx,
+                &AcceptanceCheck::new(CheckSpec::Shell {
+                    cmd: "touch /tmp/kt-s10-0-should-not-run".into(),
+                }),
+            )
+            .await;
+        assert_eq!(shell.verdict, Verdict::Error);
+
+        let suite = SuiteEval
+            .evaluate(
+                &ctx,
+                &AcceptanceCheck::new(CheckSpec::Suite {
+                    name: "kcqf".into(),
+                }),
+            )
+            .await;
+        assert_eq!(suite.verdict, Verdict::Error);
     }
 
     #[tokio::test]

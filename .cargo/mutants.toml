@@ -21,24 +21,14 @@ exclude_re = [
     # `lopi sail` entry point — the async IO shell sibling of `run_command::run`
     # and `replay_commands::run`. It opens the store (honoring the unit-tested
     # `util::expand_home` / `util::db_path` for the path), builds the pool,
-    # seeds schedules, spawns the telegram/scheduler/ctrl-c tasks, and awaits
+    # seeds schedules, spawns the scheduler/ctrl-c tasks, and awaits
     # `serve_with_repo`. Its own status/config logic lives in unit-tested units
     # (`TaskStatus::db_status`, `expand_home`, the `AppState::with_config` +
     # `GET /api/config` handler tests); the shell only wires them together, so a
     # "replace body with Ok(())" mutant can only be killed by a live server harness.
+    # Sprint S10, Phase 4 removed the sibling `spawn_telegram` shell entirely
+    # (Telegram transport removal) along with its own exclusion entry here.
     "sail_commands\\.rs.*: replace run -> ",
-    # `sail_commands::spawn_telegram` — the specific IO shell `run`'s own
-    # exclusion comment above already names ("spawns the telegram/scheduler/
-    # ctrl-c tasks"). Its config-gathering lines (`allowed_chat_ids`,
-    # `egress_allowed_chat_ids`, `notify_chat_id`) are plain field reads with
-    # no branching to pin; the function's only real effect is a fire-and-
-    # forget `tokio::spawn` of `lopi_remote::telegram::run` against a live
-    # Telegram Bot connection, which a unit test cannot observe without a
-    # mocked bot. Surfaced by Sprint S2 only because that sprint's diff
-    # happened to land new lines inside this function's body, pulling its
-    # already-untestable whole-function mutant into `--in-diff` scope for
-    # the first time — not new debt, just newly visible.
-    "sail_commands\\.rs.*: replace spawn_telegram with ",
     # REPL goal-dispatch shell (`repl::dispatch_goal`) — spawns the runner and
     # the AgentEvent→ReplEvent bridge on background tasks and persists the
     # terminal status via the unit-tested `TaskStatus::db_status`. No

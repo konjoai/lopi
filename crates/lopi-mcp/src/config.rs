@@ -29,9 +29,29 @@ pub struct McpServerSpec {
 impl McpServerSpec {
     /// Spawn and connect to this server over its stdio.
     ///
+    /// Sprint S10, Phase 5 — gated by the operator's allowlist
+    /// (`~/.lopi/mcp_allowlist.toml`, [`crate::allowlist`]) before spawning
+    /// anything: `self` is built from a repo's `.lopi/loop.toml`, the same
+    /// trust class as Phase 0's `gate`/`until`, so it must not be spawned
+    /// merely because a repo names it. This is the one chokepoint every
+    /// caller of `connect` shares (`register_server_tools`, any future
+    /// caller) — checked here rather than at each call site, mirroring how
+    /// the deleted `lopi-remote::egress::check_egress` was checked once at
+    /// `notify_loop`'s entry rather than per-message.
+    ///
     /// # Errors
-    /// Returns `Err` if the process cannot be spawned or its stdio not captured.
+    /// Returns `Err` if `self` is not in the operator's allowlist, or if the
+    /// process cannot be spawned or its stdio not captured.
     pub fn connect(&self) -> anyhow::Result<StdioClient> {
+        let allowlist = crate::allowlist::load_operator_allowlist();
+        if !crate::allowlist::check_mcp_server(&allowlist, self) {
+            anyhow::bail!(
+                "mcp server `{}` ({}) is not in the operator allowlist \
+                 (~/.lopi/mcp_allowlist.toml) — refusing to spawn",
+                self.name,
+                self.command
+            );
+        }
         McpClient::spawn(&self.command, &self.args)
     }
 }
@@ -77,7 +97,7 @@ pub fn load_servers(repo: &Path) -> anyhow::Result<Vec<McpServerSpec>> {
 
 #[cfg(test)]
 mod tests {
-    #![allow(clippy::unwrap_used, clippy::expect_used)]
+    #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
     use super::{load_servers, parse_servers, McpServerSpec};
     use tempfile::TempDir;
 
@@ -157,17 +177,67 @@ command = "mcp-server-github"
         );
     }
 
+    /// Saves/restores `HOME` around a closure that needs a specific
+    /// `~/.lopi/mcp_allowlist.toml` on disk — shared by the `connect()`
+    /// gating tests below, which exercise the real Sprint S10, Phase 5
+    /// allowlist chokepoint rather than mocking it.
+    fn with_home_allowlist<T>(allowlist_toml: Option<&str>, f: impl FnOnce() -> T) -> T {
+        let original = std::env::var("HOME").ok();
+        let home = std::env::temp_dir().join(format!(
+            "lopi_mcp_connect_test_{:?}",
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&home);
+        std::fs::create_dir_all(home.join(".lopi")).unwrap();
+        if let Some(toml) = allowlist_toml {
+            std::fs::write(home.join(".lopi").join("mcp_allowlist.toml"), toml).unwrap();
+        }
+        std::env::set_var("HOME", &home);
+
+        let result = f();
+
+        match original {
+            Some(h) => std::env::set_var("HOME", h),
+            None => std::env::remove_var("HOME"),
+        }
+        let _ = std::fs::remove_dir_all(&home);
+        result
+    }
+
     #[tokio::test]
-    async fn connect_spawns_a_live_process() {
+    async fn connect_spawns_a_live_process_when_allowlisted() {
         // `cat` blocks reading stdin, so it stays alive long enough to observe a
         // pid; `kill_on_drop` reaps it when the client drops. Exercises the
-        // production spawn path end-to-end.
+        // production spawn path end-to-end, including the Sprint S10, Phase 5
+        // allowlist gate this test explicitly satisfies.
         let spec = McpServerSpec {
             name: "noop".into(),
             command: "cat".into(),
             args: vec![],
         };
-        let client = spec.connect().unwrap();
+        let client = with_home_allowlist(
+            Some("[[allowed]]\nname = \"noop\"\ncommand = \"cat\"\nargs = []\n"),
+            || spec.connect(),
+        )
+        .unwrap();
         assert!(client.server_pid().is_some(), "spawned server has a pid");
+    }
+
+    /// The rejecting test: a server not in the operator allowlist must never
+    /// be spawned, even though the underlying command is a harmless no-op.
+    #[test]
+    fn connect_refuses_to_spawn_when_not_allowlisted() {
+        let spec = McpServerSpec {
+            name: "noop".into(),
+            command: "cat".into(),
+            args: vec![],
+        };
+        match with_home_allowlist(None, || spec.connect()) {
+            Ok(_) => panic!("connect() must refuse an unallowlisted server"),
+            Err(err) => assert!(
+                err.to_string().contains("not in the operator allowlist"),
+                "{err}"
+            ),
+        }
     }
 }

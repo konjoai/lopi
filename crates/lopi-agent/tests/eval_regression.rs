@@ -113,6 +113,7 @@ fn case_context(case: &Case) -> EvalContext {
         execution_ok: None,
         metrics: BTreeMap::new(),
         live: false,
+        shell_commands_trusted: true,
     }
 }
 

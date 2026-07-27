@@ -277,6 +277,7 @@ mod tests {
             execution_ok: Some(true),
             metrics,
             live: false,
+            shell_commands_trusted: true,
         }
     }
 

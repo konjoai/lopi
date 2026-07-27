@@ -12,7 +12,9 @@
 use crate::claude::ClaudeCode;
 use crate::claude_events::{parse_line, StreamEvent};
 use crate::claude_model::{ClaudeOutput, ERR_BUDGET_HARD_STOP};
-use crate::claude_support::{apply_cli_caps, scrub_inherited_anthropic_env, SessionMode};
+use crate::claude_support::{
+    apply_cli_caps, apply_env_allowlist, scrub_inherited_anthropic_env, SessionMode,
+};
 use anyhow::{Context, Result};
 use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -86,6 +88,10 @@ impl ClaudeCode {
         F: Fn(&StreamEvent) -> bool + Send,
     {
         let mut cmd = Command::new(&self.cli_path);
+        // Sprint S10, Phase 1 — must run before any other `.env()`/`.arg()`
+        // call touches `cmd`: replaces the whole inherited environment with
+        // the explicit allowlist (see `apply_env_allowlist`'s doc comment).
+        apply_env_allowlist(&mut cmd);
         cmd.arg("-p")
             .arg(prompt)
             .arg("--output-format")
@@ -217,6 +223,7 @@ impl ClaudeCode {
     /// erased into an opaque `anyhow::Error` string.
     async fn run_once(&self, prompt: &str, session: SessionMode<'_>) -> Result<ClaudeOutput> {
         let mut cmd = Command::new(&self.cli_path);
+        apply_env_allowlist(&mut cmd);
         cmd.arg("-p").arg(prompt);
         if self.json_output {
             cmd.arg("--output-format").arg("json");

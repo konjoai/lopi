@@ -177,6 +177,80 @@ fn scrub_inherited_anthropic_env_removes_parent_claude_code_session_id() {
     }
 }
 
+/// Sprint S10, Phase 1 — enumerates exactly what `apply_env_allowlist` adds,
+/// so a future addition to `CHILD_ENV_ALLOWLIST` (or a regression back to
+/// blind inheritance) shows up as a deliberate diff in this list, not a
+/// silent behavior change.
+#[test]
+fn apply_env_allowlist_sets_only_the_allowlisted_vars_present_in_process_env() {
+    // A secret that must never appear on the child, set directly in *this*
+    // test process to prove it's excluded despite being present to inherit.
+    std::env::set_var("LOPI_KT_S10_1_SECRET", "do-not-leak");
+
+    let mut cmd = Command::new("true");
+    apply_env_allowlist(&mut cmd);
+    let overrides = env_overrides(&cmd);
+    let keys: std::collections::BTreeSet<&str> =
+        overrides.iter().map(|(k, _)| k.as_str()).collect();
+
+    // Every key `apply_env_allowlist` ever sets must come from the
+    // allowlist itself — nothing else, regardless of this process's env.
+    for key in &keys {
+        assert!(
+            CHILD_ENV_ALLOWLIST.contains(key),
+            "apply_env_allowlist set {key}, which is not in CHILD_ENV_ALLOWLIST: {overrides:?}"
+        );
+    }
+    assert!(
+        !keys.contains("LOPI_KT_S10_1_SECRET"),
+        "a non-allowlisted var must never be set on the child: {overrides:?}"
+    );
+
+    std::env::remove_var("LOPI_KT_S10_1_SECRET");
+}
+
+/// The rejecting test: an actual spawned child (not just `Command`
+/// introspection) must not see a secret that lopi's own process holds.
+/// Live rather than mocked — `Command::env_clear`'s effect on inherited
+/// variables isn't observable via `Command::get_envs()` at all (it only
+/// ever reports explicit overrides), so this is the only way to prove the
+/// child process itself doesn't see it.
+#[tokio::test]
+async fn apply_env_allowlist_child_process_cannot_see_a_non_allowlisted_secret() {
+    let original_api_key = std::env::var("ANTHROPIC_API_KEY").ok();
+    std::env::set_var("LOPI_KT_S10_1_SECRET", "do-not-leak");
+    std::env::set_var("ANTHROPIC_API_KEY", "sk-should-not-leak-either");
+
+    let mut cmd = tokio::process::Command::new("env");
+    apply_env_allowlist(&mut cmd);
+    let output = cmd.output().await.unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    assert!(
+        !stdout.contains("LOPI_KT_S10_1_SECRET"),
+        "child process env leaked a non-allowlisted var:\n{stdout}"
+    );
+    assert!(
+        !stdout.contains("ANTHROPIC_API_KEY"),
+        "child process env leaked ANTHROPIC_API_KEY:\n{stdout}"
+    );
+    // Sanity: PATH is almost always set in a test environment and IS
+    // allowlisted — if this fails too, the allowlist itself is broken, not
+    // just over-strict, and the two assertions above would be meaningless.
+    if std::env::var("PATH").is_ok() {
+        assert!(
+            stdout.contains("PATH="),
+            "PATH should pass through:\n{stdout}"
+        );
+    }
+
+    std::env::remove_var("LOPI_KT_S10_1_SECRET");
+    match original_api_key {
+        Some(v) => std::env::set_var("ANTHROPIC_API_KEY", v),
+        None => std::env::remove_var("ANTHROPIC_API_KEY"),
+    }
+}
+
 #[test]
 fn looks_like_session_establishment_failure_matches_the_live_kt_4_1_signature() {
     // .konjo/killtests/F4/KT-4.1.md: a bad --resume exits non-zero with
