@@ -486,6 +486,62 @@ jobs:
           fi
 
   # ════════════════════════════════════════════════════════════════════════════
+  # Gate 4b — Fuzz (Sprint S12, Phase 2) — short budget, PR-only
+  # ════════════════════════════════════════════════════════════════════════════
+  # Three targets over the parsers that eat attacker-influenceable input:
+  # MCP server responses (jsonrpc.rs), the `claude` CLI's own stream-json
+  # output (claude_events.rs), and GitHub webhook bodies pre-HMAC (github.rs).
+  # 60s/target on PR, deliberately short — the sprint brief's own framing:
+  # "A fuzz gate that adds ten minutes to every PR gets disabled, which is
+  # the S10 anti-goal in a different costume." A longer scheduled run
+  # (cron, not wired here) is the place for deeper campaigns.
+  #
+  # KNOWN DEBT, not silently soft-failed: continue-on-error is set because
+  # these harnesses (fuzz/, a separate cargo-fuzz workspace) were authored
+  # and reasoned through against the real parser APIs, but could not be
+  # compiled or run in the environment that wrote them (no nightly
+  # toolchain, no cargo-fuzz, no crates.io network access — see the commit
+  # that added this job). This is the first real run. Once it's confirmed
+  # green, remove continue-on-error and add `fuzz` to konjo-gate's `needs:`
+  # so a genuine crash actually blocks merge instead of being logged only.
+  fuzz:
+    name: "G4b · Fuzz (60s × 3 targets)"
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: konjo-fuzz-${{ github.repository }}
+          workspaces: fuzz -> target
+
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+
+      - name: Fuzz jsonrpc_response_fuzz (MCP server responses)
+        run: cargo fuzz run jsonrpc_response_fuzz -- -max_total_time=60
+        working-directory: fuzz
+
+      - name: Fuzz claude_events_fuzz (claude CLI stream-json)
+        run: cargo fuzz run claude_events_fuzz -- -max_total_time=60
+        working-directory: fuzz
+
+      - name: Fuzz github_webhook_fuzz (GitHub webhook bodies, pre-HMAC)
+        run: cargo fuzz run github_webhook_fuzz -- -max_total_time=60
+        working-directory: fuzz
+
+      - name: Upload crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crashes
+          path: fuzz/artifacts/
+          if-no-files-found: ignore
+
+  # ════════════════════════════════════════════════════════════════════════════
   # Gate 5 — Adversarial Review (Wall 3, PRs only)
   # Uses Claude Opus — distinct from builder model (Sonnet)
   # ════════════════════════════════════════════════════════════════════════════

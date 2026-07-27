@@ -1,0 +1,42 @@
+[package]
+name = "lopi-fuzz"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+lopi-mcp = { path = "../crates/lopi-mcp" }
+lopi-agent = { path = "../crates/lopi-agent" }
+lopi-webhook = { path = "../crates/lopi-webhook" }
+
+[[bin]]
+name = "jsonrpc_response_fuzz"
+path = "fuzz_targets/jsonrpc_response_fuzz.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "claude_events_fuzz"
+path = "fuzz_targets/claude_events_fuzz.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "github_webhook_fuzz"
+path = "fuzz_targets/github_webhook_fuzz.rs"
+test = false
+doc = false
+bench = false
+
+# Detached from the root workspace on purpose: cargo-fuzz/libfuzzer-sys
+# requires nightly, and this crate must never be picked up by
+# `cargo build --workspace`/`cargo test --workspace` on stable, which is
+# what every other gate in this repo runs against.
+[workspace]

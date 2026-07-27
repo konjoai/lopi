@@ -180,6 +180,37 @@ pub(crate) fn gate_untrusted_source(t: &mut Task) {
     }
 }
 
+/// Sprint S12, Phase 2 — fuzz entry point for the webhook body parsing and
+/// field-extraction path, exercised pre-HMAC-verification (this function
+/// takes no signature and does no queue side effect — it is not itself a
+/// route, just the parsing surface `handle`/`dispatch_event` run before any
+/// task is ever queued). Mirrors the exact field-access chains `handle` and
+/// `dispatch_event` use, minus the `TaskQueue` push, so a malformed or
+/// adversarial webhook body can be fuzzed without spinning up a full async
+/// server. Not part of the stable public API of this crate — kept solely so
+/// `fuzz/fuzz_targets/github_webhook_fuzz.rs` (a separate, non-workspace
+/// cargo-fuzz crate) can call it; any panic here is the bug fuzzing exists
+/// to catch.
+pub fn fuzz_parse_and_extract(body: &[u8], event_header: &str) {
+    let Ok(payload) = serde_json::from_slice::<Value>(body) else {
+        return;
+    };
+    let _repo = payload
+        .get("repository")
+        .and_then(|r| r.get("full_name"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+    let _conclusion = payload
+        .get("workflow_run")
+        .or_else(|| payload.get("check_run"))
+        .and_then(|w| w.get("conclusion"))
+        .and_then(|c| c.as_str());
+    let action = payload.get("action").and_then(|v| v.as_str()).unwrap_or("");
+    if event_header == "issues" {
+        let _ = should_triage_issue_event(action, &payload);
+    }
+}
+
 /// Re-queue a fix task when a reviewer requests changes on a PR.
 async fn handle_pr_review(payload: &Value, repo: &str, event: &str, queue: &TaskQueue) {
     let action = payload.get("action").and_then(|v| v.as_str()).unwrap_or("");
