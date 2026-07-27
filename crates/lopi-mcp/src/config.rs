@@ -7,6 +7,7 @@
 
 use crate::client::StdioClient;
 use crate::McpClient;
+use anyhow::Context;
 use serde::Deserialize;
 use std::path::Path;
 
@@ -82,16 +83,20 @@ pub fn parse_servers(loop_toml: &str) -> Result<Vec<McpServerSpec>, toml::de::Er
 /// Load the MCP servers configured for `repo` from `<repo>/.lopi/loop.toml`.
 ///
 /// Returns an empty vec when the file is absent; errors only when it exists but
-/// cannot be read or parsed.
+/// cannot be read or parsed. Reads directly rather than checking existence
+/// first — `repo` is a working tree a concurrent agent or checkout can be
+/// mutating, so a separate `exists()` check can go stale before the read
+/// runs; a `NotFound` from the read itself is treated as "absent" instead.
 ///
 /// # Errors
 /// Returns `Err` if the file exists but is unreadable or malformed.
 pub fn load_servers(repo: &Path) -> anyhow::Result<Vec<McpServerSpec>> {
     let path = repo.join(LOOP_TOML_REL);
-    if !path.exists() {
-        return Ok(Vec::new());
-    }
-    let text = std::fs::read_to_string(&path)?;
+    let text = match std::fs::read_to_string(&path) {
+        Ok(t) => t,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) => return Err(e).context(format!("reading {}", path.display())),
+    };
     parse_servers(&text).map_err(Into::into)
 }
 

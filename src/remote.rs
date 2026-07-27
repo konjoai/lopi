@@ -3,6 +3,31 @@
 use anyhow::{Context, Result};
 use lopi_core::{AgentEvent, EventBus};
 
+/// Build the WebSocket handshake request for `ws_url`, attaching
+/// `Authorization: Bearer <token>` when `token` is non-empty. Sprint S11,
+/// Phase 0 moved `/ws` behind the server's normal auth; before that, this
+/// client worked against any server because `/ws` checked nothing at all. A
+/// native process (unlike a browser `WebSocket`) can set arbitrary headers
+/// on the handshake, so no ticket dance is needed here — just the header.
+fn ws_request(
+    ws_url: &str,
+    token: Option<&str>,
+) -> Result<tokio_tungstenite::tungstenite::handshake::client::Request> {
+    use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+
+    let mut request = ws_url.into_client_request()?;
+    if let Some(token) = token.filter(|t| !t.is_empty()) {
+        let value = tokio_tungstenite::tungstenite::http::HeaderValue::from_str(&format!(
+            "Bearer {token}"
+        ))?;
+        request.headers_mut().insert(
+            tokio_tungstenite::tungstenite::http::header::AUTHORIZATION,
+            value,
+        );
+    }
+    Ok(request)
+}
+
 /// Connect to a running lopi sail WebSocket and drive the TUI from network events.
 pub async fn watch_remote(ws_url: String) -> Result<()> {
     use futures::StreamExt;
@@ -12,7 +37,11 @@ pub async fn watch_remote(ws_url: String) -> Result<()> {
     let bus_tx = bus.clone();
 
     // Try to connect; if it fails immediately, fall back to local mode.
-    let (mut ws, _) = match tokio_tungstenite::connect_async(&ws_url).await {
+    // `LOPI_WEB_AUTH_TOKEN` mirrors the env var `sail_commands::run` reads
+    // server-side — same credential, same name, both ends.
+    let token = std::env::var("LOPI_WEB_AUTH_TOKEN").ok();
+    let request = ws_request(&ws_url, token.as_deref())?;
+    let (mut ws, _) = match tokio_tungstenite::connect_async(request).await {
         Ok(pair) => pair,
         Err(e) => {
             println!("⚠️  Could not connect to {ws_url}: {e}");
@@ -86,5 +115,45 @@ pub async fn reqwest_cancel(url: &str) -> Result<String> {
                 .and_then(|v: &serde_json::Value| v.as_str())
                 .unwrap_or("unknown")
         ))
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn no_token_sends_no_authorization_header() {
+        let request = ws_request("ws://127.0.0.1:3000/ws", None).unwrap();
+        assert!(request
+            .headers()
+            .get(tokio_tungstenite::tungstenite::http::header::AUTHORIZATION)
+            .is_none());
+    }
+
+    #[test]
+    fn empty_token_sends_no_authorization_header() {
+        // `LOPI_WEB_AUTH_TOKEN=""` (set but empty) must behave the same as
+        // unset, matching `auth_middleware`'s own "no token configured"
+        // fail-open-to-dev-mode posture rather than sending a useless
+        // `Bearer `.
+        let request = ws_request("ws://127.0.0.1:3000/ws", Some("")).unwrap();
+        assert!(request
+            .headers()
+            .get(tokio_tungstenite::tungstenite::http::header::AUTHORIZATION)
+            .is_none());
+    }
+
+    #[test]
+    fn a_real_token_is_sent_as_a_bearer_header() {
+        let request = ws_request("ws://127.0.0.1:3000/ws", Some("secret-token")).unwrap();
+        assert_eq!(
+            request
+                .headers()
+                .get(tokio_tungstenite::tungstenite::http::header::AUTHORIZATION)
+                .unwrap(),
+            "Bearer secret-token"
+        );
     }
 }

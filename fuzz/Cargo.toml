@@ -9,6 +9,7 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
+serde_json = "1"
 
 lopi-mcp = { path = "../crates/lopi-mcp" }
 lopi-agent = { path = "../crates/lopi-agent" }

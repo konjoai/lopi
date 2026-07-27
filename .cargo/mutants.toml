@@ -72,4 +72,16 @@ exclude_re = [
     # consumes the SSE response — no unit-testable branching a mutant could pin
     # without a live API harness.
     "api_client\\.rs.*AnthropicClient::stream_plan\\b",
+    # Sprint S11 Round 2 — `lopi watch --remote`'s connect/fallback/TUI-driver
+    # shell, the same class as `sail_commands::run` and `actions::dispatch_goal`
+    # above. Its one unit-testable branch (does the handshake request carry
+    # `Authorization: Bearer <token>`) already lives in the pure, unit-tested
+    # `ws_request` helper (`no_token_sends_no_authorization_header`,
+    # `empty_token_sends_no_authorization_header`,
+    # `a_real_token_is_sent_as_a_bearer_header`) — those tests are exactly what
+    # caught 2 of this diff's 3 mutants. `watch_remote` itself only awaits a
+    # real WebSocket connect and then drives `lopi_ui::tui::run`, a live
+    # terminal event loop; a "replace body with Ok(())" mutant here can only be
+    # killed by a live-server-plus-real-terminal harness, not a unit test.
+    "remote\\.rs.*: replace watch_remote -> ",
 ]

@@ -49,7 +49,7 @@ pub async fn run(
     // task.repo_path, so tasks land on the right worktree.
     for extra in &extra_repos {
         let extra_pool = AgentPool::new(max_agents, extra.clone(), queue.clone(), bus.clone())
-        .with_store(store.clone());
+            .with_store(store.clone());
         tokio::spawn(async move {
             if let Err(e) = extra_pool.run().await {
                 tracing::error!("multi-repo pool error: {e}");

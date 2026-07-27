@@ -7,6 +7,39 @@ struct ServerConfig: Equatable {
     var host: String
     var port: Int
     var token: String?
+    /// Explicit opt-in to allow cleartext `http`/`ws` to a *non-loopback*
+    /// host. Ignored for loopback hosts (which always use `http`/`ws` — no
+    /// regression for local dev). Defaults to `false`: a non-loopback host
+    /// defaults to `https`/`wss` unless the operator explicitly opts out,
+    /// mirroring the fail-closed spirit of `lopi-ui`'s
+    /// `auth_policy::validate_auth_policy` (safe default, explicit opt-out).
+    var allowInsecureHTTP: Bool = false
+
+    /// Whether `host` is a loopback address. Mirrors `lopi-ui`'s
+    /// `auth_policy::is_loopback_host`: the literal string `"localhost"`
+    /// (case-insensitive), `::1`, or any `127.0.0.0/8` address — not just
+    /// `127.0.0.1`. Anything else, including an unparseable string, is
+    /// treated as non-loopback (the fail-closed default).
+    private var isLoopbackHost: Bool {
+        if host.caseInsensitiveCompare("localhost") == .orderedSame {
+            return true
+        }
+        if host == "::1" {
+            return true
+        }
+        let octets = host.split(separator: ".", omittingEmptySubsequences: false)
+        guard octets.count == 4 else { return false }
+        let parsed = octets.map { UInt8($0) }
+        guard parsed.allSatisfy({ $0 != nil }) else { return false }
+        return parsed[0] == 127
+    }
+
+    /// `true` when the scheme should be upgraded to `https`/`wss` — any
+    /// non-loopback host, unless the operator explicitly opted into
+    /// cleartext via `allowInsecureHTTP`.
+    private var useSecureScheme: Bool {
+        !isLoopbackHost && !allowInsecureHTTP
+    }
 
     // Plain http/ws, not https/wss. Fine against the default loopback
     // `host` — App Transport Security's own loopback exemption is what lets
@@ -16,11 +49,11 @@ struct ServerConfig: Equatable {
     // header would travel in cleartext should that ATS assumption not hold
     // — see docs/security/TRIFECTA_PATHS.md §8 (Sprint S12, Phase 4).
     var baseURL: URL? {
-        URL(string: "http://\(host):\(port)")
+        URL(string: "\(useSecureScheme ? "https" : "http")://\(host):\(port)")
     }
 
     var webSocketURL: URL? {
-        URL(string: "ws://\(host):\(port)/ws")
+        URL(string: "\(useSecureScheme ? "wss" : "ws")://\(host):\(port)/ws")
     }
 
     static let `default` = ServerConfig(host: "127.0.0.1", port: 3000, token: nil)
@@ -29,19 +62,27 @@ struct ServerConfig: Equatable {
 
     private static let hostKey = "lopi.server.host"
     private static let portKey = "lopi.server.port"
+    private static let allowInsecureHTTPKey = "lopi.server.allowInsecureHTTP"
     private static let keychainAccount = "lopi.server.token"
 
     static func load() -> ServerConfig {
         let defaults = UserDefaults.standard
         let host = defaults.string(forKey: hostKey) ?? `default`.host
         let port = defaults.object(forKey: portKey) as? Int ?? `default`.port
-        return ServerConfig(host: host, port: port, token: Keychain.read(keychainAccount))
+        let allowInsecureHTTP = defaults.bool(forKey: allowInsecureHTTPKey)
+        return ServerConfig(
+            host: host,
+            port: port,
+            token: Keychain.read(keychainAccount),
+            allowInsecureHTTP: allowInsecureHTTP
+        )
     }
 
     func save() {
         let defaults = UserDefaults.standard
         defaults.set(host, forKey: Self.hostKey)
         defaults.set(port, forKey: Self.portKey)
+        defaults.set(allowInsecureHTTP, forKey: Self.allowInsecureHTTPKey)
         if let token, !token.isEmpty {
             Keychain.write(token, account: Self.keychainAccount)
         } else {

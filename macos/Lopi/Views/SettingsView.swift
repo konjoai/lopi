@@ -8,6 +8,7 @@ struct SettingsView: View {
     @State private var host = ""
     @State private var port = ""
     @State private var token = ""
+    @State private var allowInsecureHTTP = false
 
     var body: some View {
         Form {
@@ -15,6 +16,8 @@ struct SettingsView: View {
                 TextField("Host", text: $host)
                 TextField("Port", text: $port)
                 SecureField("Bearer token (optional)", text: $token)
+                Toggle("Allow insecure HTTP for remote host", isOn: $allowInsecureHTTP)
+                    .help("Non-loopback hosts use https/wss by default. Only enable this if the remote server does not support TLS.")
             }
             Section("Status") {
                 LabeledContent("Connection", value: connectionLabel)
@@ -47,13 +50,15 @@ struct SettingsView: View {
         host = model.config.host
         port = String(model.config.port)
         token = model.config.token ?? ""
+        allowInsecureHTTP = model.config.allowInsecureHTTP
     }
 
     private func apply() {
         let cfg = ServerConfig(
             host: host.isEmpty ? "127.0.0.1" : host,
             port: Int(port) ?? 3000,
-            token: token.isEmpty ? nil : token
+            token: token.isEmpty ? nil : token,
+            allowInsecureHTTP: allowInsecureHTTP
         )
         model.updateConfig(cfg)
     }

@@ -379,7 +379,7 @@ final class AppModel {
                     Task { @MainActor in self?.ingest(event) }
                 }
             )
-            await stream.start(url: url)
+            await stream.start(url: url, token: config.token)
         }
     }
 

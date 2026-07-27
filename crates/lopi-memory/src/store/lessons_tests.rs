@@ -242,4 +242,3 @@ async fn compute_adjustments_signal_shifts_weights() {
     let defaults = ScoreWeights::default();
     assert_eq!(adjusted.lint_penalty_cap, defaults.lint_penalty_cap);
 }
-

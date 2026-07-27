@@ -1,6 +1,6 @@
 ---
 decays: state
-verified-against: 5522447
+verified-against: e29032f
 verified-date: 2026-07-27
 ---
 
@@ -186,7 +186,52 @@ Re-run this inventory whenever a new external-input path is added (a new webhook
 new MCP capability, a new `.lopi/loop.toml` field that can hold a command or spawn a process) —
 `decays: state`.
 
-## 7. Sprint S12, Phase 3 — task-scope confinement (reframed post-scope-lock)
+## 7. Sprint S11 Round 2 — the streaming/observability surface (standing addition)
+
+Not a trifecta path in §1's sense (no untrusted input reaches an agent prompt through it), but
+the same "reachable with nothing but the URL" exposure class §0 named for the bind address —
+recorded here because it's the same document's job: everything reachable on the listening port
+with less than the intended credential.
+
+**Finding (Phase 0, BLOCKING):** `/sse`, `/ws`, `/ws/tasks`, `/metrics` were registered on the
+*outer* `Router` in `crates/lopi-ui/src/web/mod.rs::build_app`, after `.merge(api)` — outside the
+`route_layer` calls that apply `auth_middleware`/`rate_limit_middleware` to everything registered
+*before* them on the same router instance. Live-verified against a real binary with a real
+`auth_token` configured (`.konjo/killtests/S11/KT-S11.0.md`): all three streamed in full —
+`/ws`'s connect-time snapshot includes the last 100 tasks, per-task cost, and status counts —
+with zero `Authorization` header, while `/api/health` on the same server correctly 401'd in the
+same run. On the documented Fly.io deployment (§0, still `--host 0.0.0.0`), this was reachable
+from the public internet by URL alone.
+
+**Fix:** structural, not four bolted-on checks — every route now lives in exactly one of two
+places: the single `protected` router (Bearer-or-ticket auth + per-IP rate limiting, via
+`route_layer`) or the outer router's one explicit public entry (the static/SPA `fallback`). A
+route added to `protected` inherits both layers automatically; there is no third place to
+register a route that skips them. `/ws`, `/ws/tasks`, `/sse` additionally accept a single-use,
+30-second ticket (`?ticket=`, minted by authenticated `POST /api/ws-ticket`,
+`crates/lopi-ui/src/web/ws_ticket.rs`) as a browser-compatible alternative to the header — a
+`WebSocket`/`EventSource` upgrade can't set custom headers, so the header-only design was itself
+part of why these routes were awkward to fold into the existing auth shape. `/metrics` accepts
+no ticket: a Prometheus scraper sets an `Authorization` header like any other HTTP client.
+
+**Verify:** `crates/lopi-ui/src/web/streaming_auth_tests.rs` (per-endpoint 401s, ticket mint/
+consume/single-use/scope), `crates/lopi-ui/src/web/route_coverage_tests.rs` (every registered
+route enumerated and asserted either 401-without-token or on the explicit public allowlist —
+the gate Phase 4 asked for, with its own hand-maintained-list limitation named in its doc
+comment), `.konjo/killtests/S11/KT-S11.0.md` (live pre-fix/post-fix curl evidence).
+
+**Named, not closed:** the web dashboard's own `fetch()` calls (`web/src/lib/api.ts`) attach no
+`Authorization` header at all — confirmed by grep, zero call sites. Every documented deployment
+path (`docs/RUNNING.md`) runs the SPA with `--insecure-no-auth` on loopback, where this doesn't
+matter (`auth_token` is `None`, nothing is checked). Against a server with a real `auth_token`
+configured (the Fly.io / non-loopback case §0 and this section both describe), the SPA's
+`/api/*` calls already 401 today — a pre-existing gap this sprint did not introduce and does not
+fix; see `LEDGER.md`'s Sprint S11 entry for why it's named here rather than silently assumed
+solved by the ticket mechanism.
+
+Re-run this section's kill-test whenever a new route is added to `build_app` — `decays: state`.
+
+## 8. Sprint S12, Phase 3 — task-scope confinement (reframed post-scope-lock)
 
 Sprint S12 locked lopi to one operator, one machine (see `LEDGER.md`). That retires
 cross-tenant IDOR as a question, but not authorization outright: lopi still has three
@@ -237,7 +282,7 @@ where it is read purely as TUI display state. It enforces nothing. Flagged as dr
 independent of the confinement questions above — a doc comment overstating what a config field
 does is itself a trap for the next person relying on it as a security control.
 
-## 8. Sprint S12, Phase 4 — Swift review (macOS/iOS app)
+## 9. Sprint S12, Phase 4 — Swift review (macOS/iOS app)
 
 `macos/` + `packages/LopiStacksKit/` (~19k LOC; not a static `.xcodeproj` — XcodeGen's
 `project.yml` generates `Info.plist`/`.entitlements` at build time, so those are the source of

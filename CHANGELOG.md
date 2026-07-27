@@ -1,8 +1,13 @@
-## [0.32.0] — Sprint S12: scope lock and round 3 (security, breaking)
+## [0.33.0] — Sprint S12: scope lock and round 3 (security, breaking)
 
 Six phases, sequenced so Phase 0 removes surface before the rest audits it. Baseline
-`4b0c733` (post-F0/F1/F2/F3/F4); landed on top of Sprint S10's hardening, already merged to
-`main` by the time this sprint ran.
+`4b0c733` (post-F0/F1/F2/F3/F4); developed against a tree that included Sprint S10's
+hardening. **Sprint S11 Round 2 landed independently on `main` while this sprint was in
+progress** — this branch was rebased onto it before merge (see the note at the end of this
+entry and the `[0.32.0]` entry immediately below for what S11 covers). Two claims below were
+written before that merge and have since been corrected in place, not silently left stale:
+Phase 1's characterization of the SSE/WS stream as still-unauthenticated, and this sprint's
+original `0.32.0` version number (S11 claimed it first).
 
 ### Phase 0 — scope lock: remove the multi-tenant surface
 
@@ -56,7 +61,7 @@ real run confirms them green — see `fuzz/README.md` and `.konjo/killtests/S12/
 
 ### Phase 3 — task-scope confinement (reframed authorization review)
 
-KT-S12.3: full inventory in `docs/security/TRIFECTA_PATHS.md` §7. Not pass/fail by design —
+KT-S12.3: full inventory in `docs/security/TRIFECTA_PATHS.md` §8. Not pass/fail by design —
 four of five rows came back unenforced or mixed, named rather than smoothed over:
 
 - Repo confinement against the operator's configured repo list — **unenforced** (no allowlist
@@ -72,7 +77,7 @@ four of five rows came back unenforced or mixed, named rather than smoothed over
   sandboxing project, not a targeted patch (Non-goals: no policy engine).
 - `gate_untrusted_source` coverage — **enforced** for every TRIFECTA §6 row plus successor/
   chained tasks. **New gap:** the `lopi_submit_task` MCP tool never checks source trust at
-  all. Left unpatched deliberately this sprint — see §7's "why row 5's MCP gap is named, not
+  all. Left unpatched deliberately this sprint — see §8's "why row 5's MCP gap is named, not
   patched" for the reasoning (it's reachable two ways needing opposite treatment, and lopi's
   MCP transport can't currently tell them apart; a blanket fix would break the tool's own
   legitimate operator-interactive use).
@@ -83,7 +88,7 @@ display state) — corrected.
 
 ### Phase 4 — Swift review
 
-KT-S12.4: full inventory in `docs/security/TRIFECTA_PATHS.md` §8. All six areas (Keychain
+KT-S12.4: full inventory in `docs/security/TRIFECTA_PATHS.md` §9. All six areas (Keychain
 usage beyond `ServerConfig`, deep-link handling, agent-output rendering, ATS exceptions,
 entitlements, unencrypted disk writes) came back clean. One documentation-only comment added to
 `ServerConfig.swift` about its hardcoded `http`/`ws` scheme.
@@ -110,18 +115,250 @@ uses elsewhere in the tree — see the script's own docstring). Wired into both 
 Kill-tested against the real repo and four fixtures.
 
 **Not done, recorded rather than silently skipped:** no `gates:` block or kiban K1 config
-exists anywhere in this repository to register kill-tests into (grepped, none found); no npm
-audit gate exists yet to extend (S11 Phase 2 has not landed independently in this tree).
+exists anywhere in this repository to register kill-tests into (grepped, none found). The npm
+audit gate this item originally described as missing (S11 Phase 2) landed independently via
+Sprint S11 Round 2, merged into this branch before this PR — see the merge note below.
 
 ### Post-flight
 
-- `docs/security/TRIFECTA_PATHS.md` — §7 (Phase 3) and §8 (Phase 4) added, `verified-against`
-  bumped to `5522447`.
+- `docs/security/TRIFECTA_PATHS.md` — §8 (Phase 3) and §9 (Phase 4) added (renumbered from
+  §7/§8 after Sprint S11 Round 2's own §7 merged in — see the merge note below),
+  `verified-against` bumped.
 - `.konjo/killtests/S12/` — KT-S12.1 through KT-S12.5.
 - `LEDGER.md` — three one-way doors recorded (multi-tenant surface removed; `github_installations`
   table dropped, not retained-dead; log redaction at the `LogLine` boundary with its stated
   limits).
-- `VERSION`: `0.31.0` → `0.32.0` (minor bump; breaking — `lopi serve-app` is gone).
+- `VERSION`: `0.32.0` → `0.33.0` (minor bump; breaking — `lopi serve-app` is gone).
+
+### Merge note — corrected in place after Sprint S11 Round 2 landed
+
+This sprint's branch was authored against a baseline where Sprint S11 Round 2 (the entry
+immediately below) had not yet merged. Two things needed correcting once it had, rather than
+being left to quietly read as still-accurate:
+
+- **Phase 1's "S11 Phase 0 remains the actual control" framing.** At the time it was written,
+  `/sse`/`/ws`/`/ws/tasks` were genuinely still unauthenticated in this branch's base tree —
+  confirmed live, not assumed. S11 Round 2 closed exactly that gap independently. This
+  sprint's log-redaction work (Phase 1) was never a substitute for stream auth and still isn't
+  — but the sentence implying stream auth was still an open problem is now wrong and has been
+  corrected in `LEDGER.md`'s Decision 3 and this entry's Phase 1 section above.
+- **The version number.** This sprint originally claimed `0.32.0`; S11 Round 2 claimed it
+  first. Renumbered to `0.33.0` throughout (`Cargo.toml`, `README.md`, `SECURITY.md`).
+
+`docs/security/TRIFECTA_PATHS.md`'s §7/§8 (this sprint's Phase 3/Phase 4 inventories) were
+renumbered to §8/§9 — S11 Round 2 added its own §7 (the streaming-endpoint exposure) first.
+
+## [0.32.0] — Sprint S11 Round 2: the surfaces S10 did not audit (security, breaking)
+
+Independent round covering the five gaps S10 named and did not close: the live event
+stream's auth coverage, macOS cleartext HTTP, `web/`'s missing supply-chain gate, a
+TOCTOU inventory, and the audit-methodology gap that produced two of S10's own false
+positives. Baseline `a384f32`; developed against a tree where S10 (`0.31.0`) had
+already landed.
+
+### Corrections to S10 — recorded, not silently edited
+
+S10's original audit doc (not anything committed — `CHANGELOG.md`'s own S10 Phase 2
+entry already stated the corrected facts by the time it shipped) carried two claims
+this round disproves:
+
+1. **`cargo audit`/`cargo deny` ARE enforced.** The claim that the eleven S10
+   advisories "were found by an external audit, not by lopi's own pipeline" and that
+   `.konjo/deny.toml` was "configured but apparently not enforced" does not match
+   `.github/workflows/konjo-gate.yml:104-136` — both have been hard gates (no
+   `continue-on-error`) since Sprint S4 Phase 3, re-verified rather than
+   re-implemented in S10 Phase 7.
+2. **`rsa` is not in the binary.** The claim that "a cryptographic library with an
+   unpatched timing side-channel compiles into the binary" doesn't hold up against
+   `.cargo/audit.toml`'s own documented reachability check: `cargo tree -i rsa` and
+   `cargo tree -i sqlx-mysql` both print nothing — neither crate is reachable in the
+   actual build graph, on either sqlx major version. A `Cargo.lock` scan finds
+   candidates; only a reachability check finds vulnerabilities. What survives from
+   S10 Phase 2: the sqlx 0.7 → 0.8 upgrade was real, resolved four advisories
+   outright, and was already scheduled work, not a discovery.
+
+### Phase 0 (BLOCKING) — the live event stream was unauthenticated
+
+**The finding:** `/sse`, `/ws`, `/ws/tasks`, `/metrics` (`crates/lopi-ui/src/web/mod.rs::build_app`)
+were registered on the *outer* `Router`, after `.merge(api)` — outside the
+`route_layer` calls that apply `auth_middleware`/`rate_limit_middleware` to
+everything registered *before* them on the `api` router instance. Live-verified
+against a real binary with a real `auth_token` configured
+(`.konjo/killtests/S11/KT-S11.0.md`): all three streamed in full — `/ws`'s
+connect-time snapshot includes the last 100 tasks, per-task cost, and status counts
+— with zero `Authorization` header, while `/api/health` on the same server correctly
+401'd in the same run. On the documented Fly.io deployment (`fly.toml`,
+`--host 0.0.0.0`), this was reachable from the public internet by URL alone. S2's two
+`UNAUTHORIZED` tests covered `/api/*`; nothing covered the routes sitting just
+outside that router.
+
+**Fix, structural rather than four bolted-on checks:** every route now lives in
+exactly one of two places — the single `protected` router (Bearer-or-ticket auth +
+per-IP rate limiting, applied via `route_layer`) or the outer router's one explicit
+public entry (the static/SPA `fallback`). `/metrics`, `/sse`, `/ws`, `/ws/tasks`
+moved into `protected` alongside every `/api/*` route; a route added there inherits
+both layers automatically, and the only way to register an unauthenticated route is
+to add it to the outer router's explicit allowlist — one line, documented, not an
+easy accident.
+
+`/ws`, `/ws/tasks`, `/sse` additionally accept a single-use, 30-second ticket
+(`?ticket=<value>`, minted by authenticated `POST /api/ws-ticket`) as an alternative
+to the `Authorization` header — new `crates/lopi-ui/src/web/ws_ticket.rs`
+(`TicketStore::mint`/`consume`, `DashMap`-backed, opportunistic expiry sweep on
+mint), because a browser `WebSocket`/`EventSource` upgrade cannot set custom
+headers. `/metrics` does **not** accept a ticket: a Prometheus scraper can set an
+`Authorization` header like any other HTTP client, so it gets the same credential
+every other caller uses rather than a browser-only bypass mechanism. The macOS app
+needs no ticket at all — `URLSessionWebSocketTask` supports a `URLRequest` overload
+that native code *can* set headers on
+(`macos/Lopi/Networking/EventStream.swift::start(url:token:)`, threaded from
+`AppModel.swift`'s Keychain-backed `config.token`). Same story for the TUI's
+`lopi watch --remote` (`src/remote.rs::ws_request`, new): before this sprint it
+worked against any server because `/ws` was unauthenticated; the fix reads
+`LOPI_WEB_AUTH_TOKEN` (the same env var `sail_commands::run` already reads
+server-side) and attaches it as a Bearer header on the `tokio-tungstenite`
+handshake request when set, no-op when not (matching today's local-dev default).
+
+**Verify:** `crates/lopi-ui/src/web/streaming_auth_tests.rs` (per-endpoint 401s,
+ticket mint/consume/single-use/scope-to-streaming-routes-only) and
+`crates/lopi-ui/src/web/route_coverage_tests.rs` — the route-coverage gate Phase 4
+asked for: 49 protected paths enumerated from the same list `build_app` registers,
+each asserted 401-without-token and non-401-with-the-right-token, plus the explicit
+public allowlist asserted never-401. axum 0.7 has no public router-introspection
+API, so this list is hand-maintained in lockstep with `build_app` — a documented
+limitation, not a hidden one. `.konjo/killtests/S11/KT-S11.0.md` records live
+pre-fix/post-fix curl evidence (the pre-fix run streamed all three; the post-fix run
+401'd all four, and the ticket round-trip — mint, first use 200, replay 401 — was
+verified against the same running binary).
+
+### Phase 1 — macOS app sent the bearer token over cleartext HTTP
+
+`macos/Lopi/Store/ServerConfig.swift` hardcoded `http://`/`ws://` — the app could not
+connect over TLS at all, so for any non-localhost server the Keychain-stored Bearer
+token traveled in cleartext. (The rest of that file — token in Keychain, host/port in
+`UserDefaults` — was already correct and untouched.)
+
+**Fix:** `ServerConfig` gained a private `isLoopbackHost` mirroring `lopi-ui`'s
+`auth_policy::is_loopback_host` (`"localhost"` case-insensitive, `::1`, any
+`127.0.0.0/8`) and a new `allowInsecureHTTP: Bool` (default `false`, persisted in
+`UserDefaults`). `baseURL`/`webSocketURL` use `https`/`wss` for any non-loopback host
+unless the operator explicitly opts out — loopback hosts are unaffected (still
+`http`/`ws`, zero local-dev regression). `SettingsView.swift` gained a toggle for the
+opt-out. `macos/LopiTests/ServerConfigTests.swift` (new) covers all four
+loopback/opt-in combinations plus loopback aliases. **Not build-verified** — no Xcode
+in this environment; needs `xcodebuild test` on macOS before merge.
+
+### Phase 2 — `web/`: 13 advisories, zero npm audit gate
+
+`npm audit` on `web/` found 4 high, 7 moderate, 2 low — confirmed against today's
+actual output, matching the sprint doc's count. No `npm audit` step existed anywhere
+in `.github/workflows/`, so the JS half of the product had no supply-chain gate while
+the Rust half has had two (`cargo audit`, `cargo deny`) since Sprint S4 Phase 3.
+
+**Upgraded:** `svelte` `^4.2.0` → `^5.56.8` (major bump — the six SSR/XSS advisories
+are only patched from 5.56.8; no fix exists on the 4.x line), `@sveltejs/vite-plugin-svelte`
+`^3.0.0` → `^5.1.1` paired with `vite` `^5.0.0` → `^6.4.3` (the vite path-traversal
+CVE is only patched at 6.4.2+, and vite-plugin-svelte 5.x is what supports vite 6 +
+svelte 5), `svelte-check` `^3.6.0` → `^4.7.4` (clears a transitive
+brace-expansion/glob/minimatch/rimraf/sander/sorcery/svelte-preprocess chain, all
+high), `@sveltejs/kit`/`devalue`/`postcss`/`dompurify` auto-bumped via `npm audit
+fix`. `cookie` pinned to `^0.7.0` via a `package.json` `overrides` entry —
+`@sveltejs/kit@2.70.1` (latest stable) still declares `cookie: ^0.6.0` itself; only
+the unstable `3.0.0-next` prerelease line bumps that, so an override was the only way
+to get the patched `cookie` without adopting an unstable SvelteKit. Final state:
+`npm audit` → **0 vulnerabilities** at any severity, re-verified with a clean
+`rm -rf node_modules && npm ci && npm audit`. Zero `.svelte`/`.ts` component changes
+were needed for the svelte 4→5 major bump. `npm run build`, `npm run test` (1000+
+assertions across every suite), and `npm run check` (svelte-check, 0 errors) all
+re-verified independently against the upgraded lockfile. `npm run test:e2e`: 6/8 pass;
+the 2 failures (`popover-visibility`, `stack-chain-schedule`) are pre-existing and
+environmental (no live `lopi sail` backend in this sandbox) — reproduced identically
+against the pre-upgrade dependencies, so not attributable to this change.
+
+**CI gate:** new `web-audit` job (`.github/workflows/konjo-gate.yml:174-240`)
+mirroring the `static` job's `cargo audit` step — `npm ci` for a reproducible,
+lockfile-exact install, then `npm audit --audit-level=high` as a hard gate. Wired
+into `konjo-gate`'s `needs` list and pass/fail evaluation, a real required check, not
+a decorative one-off.
+
+**KT-S11.2 — is any dashboard render path a genuine XSS sink for agent-supplied
+text?** No. The only two `{@html}` sites reachable by agent-supplied text —
+`Markdown.svelte:26` (Claude's assistant text/plan via `log_line`/`plan_proposed`)
+and `CodeBlock.svelte:67` (fenced code from that same source) — are already
+sanitized (DOMPurify's `html` profile; Shiki's escaping `codeToHtml`). Every other
+`{@html}` call site is a static, developer-authored SVG lookup with no data
+interpolation. `innerHTML`, dynamic `<svelte:element>` tag names, spread attributes
+on DOM elements, and `bind:innerText`/`bind:textContent` are entirely absent from
+`web/src`. The Svelte SSR/XSS advisories drop to routine dependency hygiene for this
+app, not a live exploit path closed — recorded in `.konjo/killtests/S11/KT-S11.2.md`
+rather than assumed either way.
+
+### Phase 3 — TOCTOU inventory: 27 `.exists()` sites, 3 fixed
+
+`.konjo/killtests/S11/KT-S11.3.md`: all 27 `.exists()` call sites outside
+`crates/lopi-ui/src/web/*` and test code enumerated and individually classified.
+4 turned out to be test code a filename-based filter missed; of the 23 production
+lines, **3 were TOCTOU-reachable and all 3 fixed** (check-then-open replaced with
+open-and-classify-`NotFound`, preserving each function's existing "exists but
+unreadable is a real error" contract): `LoopConfig::load_from_repo`
+(`crates/lopi-core/src/loop_config.rs` — the central `.lopi/loop.toml` load, called
+every agent attempt against a repo a concurrent agent/checkout/worktree-removal can
+be mutating — the sprint's own named example, and the highest-consequence fix here),
+`load_servers` (`crates/lopi-mcp/src/config.rs` — the same file's MCP-server list),
+and `SpecSurface::load` (`crates/lopi-spec/src/lib.rs` — `.lopi/spec_surface.json`,
+read during live agent seeding). The remaining 20 are Not-reachable or
+Benign-by-design — mostly stack/runner *detection* (`Cargo.toml`/`package.json`/etc.
+existence checks that pick which external test command to spawn next, with no
+subsequent read of the checked file). The two categories the brief named by
+reachability were checked directly rather than assumed in scope: worktree lifecycle
+(`crates/lopi-git/src/worktree.rs`, `crates/lopi-orchestrator/src/pool/worktree.rs`)
+already uses `tokio::fs::remove_dir_all`/`git worktree remove --force` with no
+preceding existence check — nothing to fix; `pricing.toml`/`models.toml` loaders
+already read directly with no `.exists()` call at all; no `.konjo/`-path `.exists()`
+site exists anywhere in the tree.
+
+### Phase 4 — closing the audit-methodology gap
+
+1. `npm audit --audit-level=high` now gates CI (Phase 2), so the JS half has the
+   supply-chain check the Rust half has had since Sprint S4.
+2. Route-coverage gate shipped (Phase 0's `route_coverage_tests.rs`) — the shape
+   kiban's G-CAN-FAIL wants: not "does auth work" but "is there any route where it
+   does not," with its own hand-maintained-list limitation named in its doc comment
+   rather than oversold as full router introspection.
+3. The reachability lesson recorded: `.cargo/audit.toml`'s `rsa`/`sqlx-mysql` entry
+   (§Corrections above) is the reference example for any future dependency gate —
+   lock-file presence is a candidate list, not a vulnerability list, unless paired
+   with a reachability check.
+
+### Still not covered
+
+Named as gaps, not passes — this round does not close them: no fuzzing (JSON-RPC
+parser, stream-event parser, webhook body parsing — all three parse
+attacker-influenceable input); no per-route *authorization* review (Phase 0 covers
+authentication coverage only — whether an authenticated caller can act on a repo/task
+it shouldn't is unreviewed; lopi is single-tenant today, which is why this hasn't
+bitten); no full Swift review beyond the two Phase 0/1 findings (14.5k LOC
+unreviewed); no review of the 48 `/api/*` handlers for injection/IDOR; no
+secrets-in-logs review — `task_logs` now flows to an authenticated (post-fix) SSE
+stream, but whether tokens ever reach `tracing` output or `task_logs` in the first
+place was checked only incidentally, not swept. Also named, not fixed: the web
+dashboard's `fetch()` calls (`web/src/lib/api.ts`) attach no `Authorization` header
+at all (zero call sites, confirmed by grep) — every documented deployment path
+(`docs/RUNNING.md`) runs the SPA with `--insecure-no-auth` on loopback, where this
+doesn't matter, but against a server with a real `auth_token` configured the SPA's
+`/api/*` calls already 401 today, independent of anything this round changed. See
+`LEDGER.md`.
+
+### Post-flight
+
+`LEDGER.md` gained a Sprint S11 entry recording the two one-way doors (streaming
+routes now require auth; macOS defaults to `https`/`wss` for remote hosts).
+`docs/security/TRIFECTA_PATHS.md` gained §7 (the streaming-endpoint exposure) and its
+`verified-against` bumped. `.konjo/killtests/S11/` holds KT-S11.0, KT-S11.2, KT-S11.3
+with recorded output (no KT-S11.1 — Phase 1's macOS fix had no numbered kill-test in
+the brief). `.cargo/audit.toml` unchanged — cited above as the reachability
+precedent. `VERSION` → `0.32.0`, breaking for any client of `/sse`, `/ws`,
+`/ws/tasks`, `/metrics`, including the SPA and the macOS app.
 
 ## [0.31.0] — Sprint S10: hardening (security audit, breaking)
 

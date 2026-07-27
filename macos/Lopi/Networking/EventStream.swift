@@ -33,11 +33,16 @@ actor EventStream {
         self.onEvent = onEvent
     }
 
-    /// Start the connect/receive/reconnect loop for `url`.
-    func start(url: URL) {
+    /// Start the connect/receive/reconnect loop for `url`. `token`, when
+    /// non-nil and non-empty, is sent as `Authorization: Bearer <token>` on
+    /// the WebSocket upgrade request — unlike a browser, this native client
+    /// can set arbitrary headers, so no ticket/query-param scheme is needed.
+    /// `nil` (no token configured, e.g. local dev with
+    /// `--insecure-no-auth`) sends no Authorization header at all.
+    func start(url: URL, token: String?) {
         guard !running else { return }
         running = true
-        Task { await loop(url: url) }
+        Task { await loop(url: url, token: token) }
     }
 
     func stop() {
@@ -47,11 +52,15 @@ actor EventStream {
         onState?(.offline)
     }
 
-    private func loop(url: URL) async {
+    private func loop(url: URL, token: String?) async {
         var backoff: UInt64 = 1_000_000_000 // 1s, capped at 8s
         while running {
             onState?(.connecting)
-            let socket = session.webSocketTask(with: url)
+            var request = URLRequest(url: url)
+            if let token, !token.isEmpty {
+                request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            }
+            let socket = session.webSocketTask(with: request)
             task = socket
             socket.resume()
             onState?(.live)
