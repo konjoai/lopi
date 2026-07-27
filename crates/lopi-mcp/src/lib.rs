@@ -14,6 +14,8 @@
 
 #![warn(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
+/// Deny-by-default allowlist gating which MCP servers may be spawned.
+pub mod allowlist;
 /// Bridge discovered MCP tools into lopi's `ToolRegistry`.
 pub mod bridge;
 /// The stdio transport + session client that drives a live MCP server.
@@ -27,6 +29,7 @@ pub mod protocol;
 /// Expose lopi as an MCP server — answer `initialize`/`tools/list`/`tools/call`.
 pub mod server;
 
+pub use allowlist::{check_mcp_server, is_allowed, load_operator_allowlist};
 pub use bridge::{discover_and_register, register_server_tools, register_tools, tool_spec};
 pub use client::{McpClient, StdioClient};
 pub use config::{load_servers, parse_servers, McpServerSpec};

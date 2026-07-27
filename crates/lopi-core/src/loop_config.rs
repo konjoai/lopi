@@ -17,6 +17,14 @@ use std::path::{Path, PathBuf};
 /// CI file-size gate; see that module's doc comment.
 pub use crate::autonomy::AutonomyLevel;
 
+/// Re-exported so `loop_config::{run_guard_command, resolve_guard_command}`
+/// stay valid — moved to their own module (`guard_trust.rs`, Sprint S10
+/// Phase 0) for the same file-size-gate reason as `AutonomyLevel` above.
+/// `LoopConfig::load_operator_overrides` also moved there (a second `impl
+/// LoopConfig` block in a different file — allowed, and the established
+/// pattern here).
+pub use crate::guard_trust::{resolve_guard_command, run_guard_command};
+
 /// How an agent's working copy is isolated from its peers.
 ///
 /// The two points on the loop-engineering isolation ladder. `Branch` (the
@@ -84,34 +92,6 @@ pub enum OnFail {
     /// ([`backoff_secs`](crate) equivalent in `lopi-agent`) — the same wait
     /// `Stop` already applies, offered as a named, user-selectable choice.
     Backoff,
-}
-
-/// Run a shell command in `cwd` and report whether it exited `0`.
-///
-/// Shared by the `gate` and `until` guardrails — the only two places a
-/// user-supplied shell string is executed. Invoked via `sh -c` (unlike the
-/// codebase's other shell-outs, which always run a fixed known binary with
-/// explicit args) since these are free-form command strings, not an argv
-/// array. Only the exit status is inspected — stdout/stderr are discarded,
-/// since the pass/fail decision this guards needs nothing else.
-///
-/// SECURITY: `cmd` is user-supplied config, run in the repo's own working
-/// directory — the same trust model as the existing git/gh shell-outs
-/// (a local dev tool operating on the user's own repo), not a
-/// network-exposed execution surface.
-///
-/// # Errors
-/// Returns `Err` only if the shell itself could not be spawned (e.g. `sh`
-/// missing from `PATH`). A command that runs and exits non-zero is a normal
-/// `Ok(false)`, not an error.
-pub async fn run_guard_command(cmd: &str, cwd: &Path) -> std::io::Result<bool> {
-    let status = tokio::process::Command::new("sh")
-        .arg("-c")
-        .arg(cmd)
-        .current_dir(cwd)
-        .status()
-        .await?;
-    Ok(status.success())
 }
 
 /// Declarative loop-engineering configuration for a repo.

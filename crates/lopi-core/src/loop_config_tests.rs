@@ -397,30 +397,7 @@ fn validate_accepts_a_real_gate_and_until_command() {
     assert!(c.validate(&dir).is_empty());
 }
 
-#[tokio::test]
-async fn run_guard_command_true_and_false() {
-    let dir = std::env::temp_dir();
-    assert!(run_guard_command("true", &dir).await.unwrap());
-    assert!(!run_guard_command("false", &dir).await.unwrap());
-}
-
-#[tokio::test]
-async fn run_guard_command_reflects_exit_code() {
-    let dir = std::env::temp_dir();
-    assert!(run_guard_command("exit 0", &dir).await.unwrap());
-    assert!(!run_guard_command("exit 1", &dir).await.unwrap());
-}
-
-#[tokio::test]
-async fn run_guard_command_runs_in_the_given_cwd() {
-    // A command that depends on cwd — proves `current_dir` is actually wired,
-    // not just a fixed invocation.
-    let dir = std::env::temp_dir();
-    let marker = dir.join("lopi_guard_cwd_marker");
-    let _ = std::fs::remove_file(&marker);
-    std::fs::write(&marker, "x").unwrap();
-    assert!(run_guard_command("test -f lopi_guard_cwd_marker", &dir)
-        .await
-        .unwrap());
-    let _ = std::fs::remove_file(&marker);
-}
+// `run_guard_command`/`resolve_guard_command`/`LoopConfig::load_operator_overrides`
+// tests (including KT-S10.0) moved to `guard_trust_tests.rs` alongside their
+// Sprint S10, Phase 0 implementation in `guard_trust.rs` — same file-size-gate
+// split as `autonomy.rs`/`autonomy_tests.rs`.

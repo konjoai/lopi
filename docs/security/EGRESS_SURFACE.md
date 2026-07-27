@@ -1,8 +1,25 @@
 ---
 decays: state
-verified-against: 71a470b
-verified-date: 2026-07-26
+verified-against: a384f32
+verified-date: 2026-07-27
 ---
+
+## Sprint S10, Phase 4 update (2026-07-27)
+
+**The transport this document is about no longer exists.** Sprint S10, Phase 4 removed the
+Telegram bot (`crates/lopi-remote/src/telegram/`, ~2,024 LOC) and, with it, `notify_loop` and
+`crates/lopi-remote/src/egress.rs` (its sole caller). §1's "exactly one live outbound transport
+(Telegram), and it is already gated" conclusion is now moot — there is currently **no live
+outbound transport at all** (WhatsApp remains inbound-only, per §1's own second row, unchanged).
+`TaskSource::Telegram` itself is not removed (durable enum, historical rows still deserialize —
+see `docs/security/TRIFECTA_PATHS.md` §1 row E and `LEDGER.md`), so §2's destination-provenance
+trace and §4's provenance-marker work remain historically accurate for reading old data; they are
+no longer live code paths for new sends. `egress.rs`'s deny-by-default allowlist *shape* was
+reused, not deleted-and-forgotten: Sprint S10 Phase 5 (`crates/lopi-mcp/src/allowlist.rs`) mirrors
+it for a different chokepoint — which MCP servers `McpServerSpec::connect` may spawn — since that
+module's only caller was gone anyway. See `docs/security/TRIFECTA_PATHS.md` §6 for the current
+(Sprint S10) untrusted-input inventory. Left below as historical record rather than deleted,
+consistent with this repo's `decays: state` convention — re-derive before trusting any of it.
 
 # Egress surface — the local-only remnant of Sprint S2
 

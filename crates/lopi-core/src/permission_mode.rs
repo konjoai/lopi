@@ -95,6 +95,36 @@ impl PermissionMode {
     }
 }
 
+/// Sprint S10, Phase 3 — couple permission posture to task-source trust.
+///
+/// A task from [`crate::is_untrusted_source`] (a GitHub webhook payload, an
+/// inbound Telegram message) never runs under [`PermissionMode::BypassPermissions`],
+/// regardless of what the task itself requests: a task a human typed at the
+/// CLI/dashboard and a task derived from an issue body do not deserve the
+/// same unattended tool posture, and the source that requested a mode is
+/// exactly what this coupling distrusts, so a permissive request from an
+/// untrusted source is not honored either. Downgrades unconditionally to
+/// [`PermissionMode::DontAsk`] — the strictest of the four headless-safe
+/// modes ("only pre-approved commands run, else denied") — rather than
+/// merely refusing `BypassPermissions` and falling back to the task's own
+/// second-choice request.
+///
+/// Trusted sources (`Cli`, `Api`, `SelfModify`, `SelfAuthored`) are
+/// unaffected: `requested` passes through unchanged, reproducing the
+/// pre-Phase-3 behavior exactly for every task an operator or an
+/// already-approved self-modification created.
+#[must_use]
+pub fn effective_permission_mode(
+    source: &crate::TaskSource,
+    requested: PermissionMode,
+) -> PermissionMode {
+    if crate::is_untrusted_source(source) {
+        PermissionMode::DontAsk
+    } else {
+        requested
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
@@ -133,6 +163,69 @@ mod tests {
         let err = PermissionMode::parse("plan").unwrap_err();
         assert_eq!(err, PermissionModeError::Unknown("plan".to_string()));
         assert!(err.to_string().contains("plan"));
+    }
+
+    // Sprint S10, Phase 3 — `effective_permission_mode`.
+
+    /// The rejecting test: an untrusted-sourced task's own request for
+    /// `BypassPermissions` must never be honored.
+    #[test]
+    fn untrusted_source_downgrades_bypass_permissions_to_dont_ask() {
+        let source = crate::TaskSource::Webhook {
+            repo: "attacker/repo".into(),
+            event: "pull_request".into(),
+        };
+        assert_eq!(
+            effective_permission_mode(&source, PermissionMode::BypassPermissions),
+            PermissionMode::DontAsk
+        );
+    }
+
+    #[test]
+    fn untrusted_source_downgrades_every_requested_mode_to_dont_ask() {
+        let source = crate::TaskSource::Telegram {
+            chat_id: 1,
+            message_id: 2,
+        };
+        for requested in [
+            PermissionMode::BypassPermissions,
+            PermissionMode::Auto,
+            PermissionMode::AcceptEdits,
+            PermissionMode::DontAsk,
+        ] {
+            assert_eq!(
+                effective_permission_mode(&source, requested),
+                PermissionMode::DontAsk,
+                "requested={requested:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn trusted_sources_pass_the_requested_mode_through_unchanged() {
+        for source in [
+            crate::TaskSource::Cli,
+            crate::TaskSource::Api,
+            crate::TaskSource::SelfModify {
+                approved_by: "operator".into(),
+            },
+            crate::TaskSource::SelfAuthored {
+                parent: crate::TaskId::new(),
+            },
+        ] {
+            for requested in [
+                PermissionMode::BypassPermissions,
+                PermissionMode::Auto,
+                PermissionMode::AcceptEdits,
+                PermissionMode::DontAsk,
+            ] {
+                assert_eq!(
+                    effective_permission_mode(&source, requested),
+                    requested,
+                    "source={source:?} requested={requested:?}"
+                );
+            }
+        }
     }
 
     #[test]

@@ -91,6 +91,7 @@ impl AgentRunner {
             test_output,
             self.repo_path.clone(),
             score.passed(),
+            !lopi_core::is_untrusted_source(&self.task.source),
         )
     }
 

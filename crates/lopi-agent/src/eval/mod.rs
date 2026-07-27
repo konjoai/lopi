@@ -58,6 +58,17 @@ pub struct EvalContext {
     /// Whether shelling out / calling the model is permitted. `false` in the
     /// offline regression suite: a tier that needs IO fails closed instead.
     pub live: bool,
+    /// Sprint S10, Phase 0 — whether `CheckSpec::Shell`/`CheckSpec::Suite`
+    /// commands (`task.acceptance`) may execute. `task.acceptance` is not
+    /// `LoopConfig`-sourced (it's set on the `Task` itself, currently only
+    /// via the authenticated web API), so it isn't covered by
+    /// `lopi_core::resolve_guard_command`'s `.lopi/loop.toml` filtering —
+    /// this field is the equivalent check for that vector, computed from
+    /// `!lopi_core::is_untrusted_source(&task.source)` at the one place
+    /// `EvalContext` is built for a live run ([`Self::live`]). `true` in
+    /// every test helper that doesn't specifically exercise the untrusted
+    /// path, matching those tests' pre-existing implicit trust.
+    pub shell_commands_trusted: bool,
 }
 
 impl EvalContext {
@@ -69,6 +80,7 @@ impl EvalContext {
         test_output: impl Into<String>,
         repo_path: PathBuf,
         execution_ok: bool,
+        shell_commands_trusted: bool,
     ) -> Self {
         Self {
             goal: goal.into(),
@@ -78,6 +90,7 @@ impl EvalContext {
             execution_ok: Some(execution_ok),
             metrics: BTreeMap::new(),
             live: true,
+            shell_commands_trusted,
         }
     }
 
@@ -198,6 +211,7 @@ mod tests {
             execution_ok: Some(execution_ok),
             metrics: BTreeMap::new(),
             live: false,
+            shell_commands_trusted: true,
         }
     }
 

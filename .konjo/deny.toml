@@ -18,16 +18,23 @@ allow = [
     "BSD-2-Clause",
     "BSD-3-Clause",
     "ISC",
-    "Unicode-DFS-2016",
     # The ICU/unicode-adjacent stack (icu_*, litemap, tinystr, writeable, yoke,
-    # zerofrom, zerovec, zerotrie, potential_utf, unicode-ident) moved to this
-    # newer SPDX id (2024) — same OSI-approved permissive terms as
-    # Unicode-DFS-2016 above, just the current identifier. Sprint S4 triage,
-    # verified 2026-07-24.
+    # zerofrom, zerovec, zerotrie, potential_utf, unicode-ident) uses this
+    # SPDX id (2024) — the current identifier for the same OSI-approved
+    # permissive terms the older "Unicode-DFS-2016" id covered. Sprint S4
+    # triage, verified 2026-07-24; "Unicode-DFS-2016" itself dropped from
+    # this list in Sprint S10 (2026-07-27) — cargo-deny flagged it
+    # `unmatched license allowance`, no crate in the tree carries it anymore.
     "Unicode-3.0",
-    "CC0-1.0",
     "Zlib",
-    "OpenSSL",
+    # `webpki-roots` (pulled in via sqlx 0.8's newer rustls chain, Sprint S10
+    # Phase 2) ships Mozilla's CA root bundle under this Linux Foundation
+    # data license instead of the MPL-2.0 its older version used — a
+    # permissive terms-of-use license for the bundled data, not copyleft
+    # source-license terms, so it belongs in the blanket allow list rather
+    # than a per-crate exception the way MPL-2.0 is scoped below. Verified
+    # 2026-07-27 against `webpki-roots` 1.0.9's own `Cargo.toml`.
+    "CDLA-Permissive-2.0",
 ]
 # Confidence threshold: crates whose license is ambiguous get denied
 confidence-threshold = 0.8
@@ -44,9 +51,11 @@ confidence-threshold = 0.8
 name = "option-ext"
 allow = ["MPL-2.0"]
 
-[[licenses.exceptions]]
-name = "webpki-roots"
-allow = ["MPL-2.0"]
+# `webpki-roots`'s MPL-2.0 exception (Sprint S4) dropped in Sprint S10
+# (2026-07-27): the sqlx 0.7 -> 0.8 upgrade (Phase 2) pulled a newer
+# `webpki-roots` that no longer carries MPL-2.0 — cargo-deny flagged the old
+# exception `unmatched license exception`. Re-add it, scoped the same way,
+# if a future `webpki-roots` version reintroduces MPL-2.0.
 
 [advisories]
 # rustsec/advisory-db is the Rust security advisory database
@@ -68,21 +77,33 @@ unsound = "workspace"
 # Yanked versions: hard block (yanked = the crate author pulled it for a reason)
 yanked = "deny"
 
-# Sprint S4 triage (verified 2026-07-24): every advisory found by this gate
-# has been resolved by upgrading the affected crate (anyhow, crossbeam-epoch,
-# git2, spin — see git log for this file's sprint), except the four below.
-# All four trace to `sqlx 0.7.4`'s own `rustls 0.21`/`rustls-webpki 0.101`
-# pin — fixing them means upgrading sqlx to a major version (0.7 -> 0.8+,
-# `cargo update -p sqlx`/`-p rustls-webpki` confirm no 0.7-compatible fix
-# exists), which is real application-code migration work (sqlx's query/macro
-# API changed between majors), not a config-scale fix — out of scope for a
-# CI-mechanism sprint. Scheduled in NEXT_SESSION_PROMPT.md. Not blanket-silenced:
-# each is named individually so a *new*, unrelated advisory still fails the gate.
+# Sprint S10, Phase 2 (2026-07-27): the sqlx 0.7 -> 0.8.6 upgrade resolved
+# the four advisories previously ignored here (RUSTSEC-2026-0098/-0099/-0104
+# rustls-webpki, RUSTSEC-2024-0363 sqlx format-injection) — all traced to
+# sqlx 0.7.4's own pinned rustls 0.21/rustls-webpki 0.101; sqlx 0.8.6 pulls
+# rustls 0.23.42/rustls-webpki 0.103.13, and none of those four IDs match
+# anything in the tree anymore (`cargo audit`/`cargo deny check` re-run
+# confirms `advisory-not-detected` for all four; removed rather than left as
+# dead entries, which would silently mask a *real* future re-introduction of
+# the same ID). `sqlx-mysql`/`sqlx-postgres`/`rsa` are gone from the lock
+# entirely — confirmed via `cargo tree -i {rsa,sqlx-mysql,sqlx-postgres}` —
+# lopi's `features = ["runtime-tokio-rustls", "sqlite"]` never activated
+# them; `RUSTSEC-2023-0071` (rsa Marvin timing attack) needed no entry here
+# even before Phase 2 for the same reason.
+#
+# The four below are `unmaintained`/`unsound` advisories on transitive deps
+# (none is a direct workspace dependency, so `unmaintained = "workspace"`/
+# `unsound = "workspace"` above don't error on them on their own — these
+# entries exist so `cargo audit`, which has no such scope distinction, has a
+# matching written exception for each rather than failing CI on a
+# transitive-only finding). Re-verify at the next dependency bump that pulls
+# any of these transitively, in case a newer release of the parent crate
+# drops them.
 ignore = [
-    { id = "RUSTSEC-2026-0098", reason = "rustls-webpki via sqlx 0.7's pinned rustls 0.21; fix requires sqlx 0.8+ major upgrade, scheduled separately" },
-    { id = "RUSTSEC-2026-0099", reason = "rustls-webpki via sqlx 0.7's pinned rustls 0.21; fix requires sqlx 0.8+ major upgrade, scheduled separately" },
-    { id = "RUSTSEC-2026-0104", reason = "rustls-webpki via sqlx 0.7's pinned rustls 0.21; fix requires sqlx 0.8+ major upgrade, scheduled separately" },
-    { id = "RUSTSEC-2024-0363", reason = "sqlx 0.7.4 binary-protocol cast issue; fix requires sqlx 0.8.1+ major upgrade, scheduled separately" },
+    { id = "RUSTSEC-2024-0436", reason = "paste, unmaintained — transitive via ratatui 0.26.3; not a direct workspace dependency" },
+    { id = "RUSTSEC-2024-0370", reason = "proc-macro-error, unmaintained — transitive via teloxide 0.13.0's aquamarine dep; not a direct workspace dependency" },
+    { id = "RUSTSEC-2025-0134", reason = "rustls-pemfile, unmaintained — transitive via reqwest 0.11.27; not a direct workspace dependency" },
+    { id = "RUSTSEC-2026-0002", reason = "lru, unsound (IterMut/Stacked Borrows) — transitive via ratatui 0.26.3; not a direct workspace dependency, and lopi never calls IterMut through this path" },
 ]
 
 [bans]

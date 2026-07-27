@@ -4,10 +4,9 @@
 
 > Multi-agent Claude Code orchestrator, written in Rust. Runs concurrent
 > agents in git-isolated branches, with retry loops, persistent memory,
-> a TUI + web dashboard, a native macOS app, and remote control over
-> Telegram.
+> a TUI + web dashboard, and a native macOS app.
 >
-> By [KonjoAI](https://github.com/konjoai) · MIT licensed · `v0.27.1`
+> By [KonjoAI](https://github.com/konjoai) · MIT licensed · `v0.31.0`
 > [![crates.io](https://img.shields.io/crates/v/lopi.svg)](https://crates.io/crates/lopi)
 
 ```
@@ -99,11 +98,11 @@ direct Anthropic API key for their own use; that's unrelated to the above.)
   SvelteKit web dashboard ("the Forge," served by `lopi sail`), and a native
   SwiftUI **macOS app** (in [`macos/`](./macos)) that talks to the same
   REST + WebSocket API.
-- **Remote control from your phone** — a Telegram bot with an auth
-  allowlist, phase-by-phase push notifications, and inline approve/reject
-  buttons for opened PRs. (A Twilio WhatsApp handler exists in
-  `lopi-remote::whatsapp` but is not wired to any CLI command and is
-  unreachable from the built binary today — see
+- **Remote control from your phone** — the native macOS/iOS app talks to the
+  same REST + WebSocket API `lopi sail` serves. (A Telegram bot previously
+  filled this role; removed in Sprint S10, Phase 4 — see `LEDGER.md`. A
+  Twilio WhatsApp handler exists in `lopi-remote::whatsapp` but is not wired
+  to any CLI command and is unreachable from the built binary today — see
   `docs/security/TRIFECTA_PATHS.md` §1 row D and the CHANGELOG.)
 - **Event-driven, not just manual** — a GitHub webhook listener turns CI
   failures into auto-queued fix tasks; cron-style schedules
@@ -207,7 +206,7 @@ REPL. The full surface:
 | `lopi-memory` | SQLite-backed store for tasks, patterns, turn metrics, lessons |
 | `lopi-orchestrator` | Concurrent agent pool, priority task queue, scheduler |
 | `lopi-ui` | `ratatui` TUI + `axum` web/JSON API (the Forge) |
-| `lopi-remote` | Telegram bot (wired); a Twilio WhatsApp webhook handler also lives here but isn't reachable from the built binary today |
+| `lopi-remote` | A Twilio WhatsApp webhook handler; not wired to any CLI command and isn't reachable from the built binary today (the Telegram bot that used to live here was removed in Sprint S10, Phase 4) |
 | `lopi-webhook` | GitHub webhook receiver — CI-failure/PR/issue triage → tasks |
 | `lopi-mcp` | MCP client — lopi agents discovering and calling external tools |
 | `lopi-tools` | Durable tool registry (specs, timeouts, retry budgets) |
@@ -229,9 +228,11 @@ Copy `lopi.toml.example` to `lopi.toml` and edit. Key sections:
 - `[lopi]` — max concurrent agents, log level, SQLite DB path
 - `[claude]` — `claude` CLI path and per-call timeout
 - `[git]` — allowed/forbidden directories, auto-PR toggle
-- `[remote.telegram]` — bot token for the Telegram bot (wired and reachable).
-  `[remote.whatsapp]` / Twilio credentials exist as config surface but the
-  handler behind them is not wired to any CLI command — see Highlights above.
+- `[remote.telegram]` — no longer wired to anything (Sprint S10, Phase 4);
+  the section still parses for backward compatibility with an existing
+  `lopi.toml`, but no code reads it. `[remote.whatsapp]` / Twilio
+  credentials exist as config surface but the handler behind them is not
+  wired to any CLI command — see Highlights above.
 - `[web]` — dashboard host/port/auth (see **Security** below)
 - `[[schedules]]` — cron-style recurring tasks (also editable live from the dashboard)
 
@@ -266,7 +267,7 @@ authenticates.
   attempt (`crates/lopi-agent/src/runner/test_phase.rs`,
   `runner/run_loop.rs`). It is not a terminal stop condition.
 - lopi never auto-merges. Every PR requires human review — from the
-  dashboard, the macOS app, or a Telegram approve button.
+  dashboard or the macOS app.
 - A task originating from an untrusted source — a GitHub webhook (issue, CI
   failure, PR review) — is held for plan approval before the runner acts on
   it, regardless of its configured autonomy level. See
@@ -282,13 +283,16 @@ allowlist (the local dev origins the web app uses); set
 `[web].cors_allowed_origins` for other origins, or `[web].cors_permissive =
 true` to opt out entirely. `lopi serve-webhooks` refuses to start without
 `LOPI_WEBHOOK_SECRET` unless `LOPI_ALLOW_UNVERIFIED_WEBHOOK=1` is set.
-Telegram's automated/proactive sends (completion notifications,
-report-on-finish) are deny-by-default — set
-`[remote.telegram].egress_allowed_chat_ids` to receive them. `GET /api/tasks`
-and `GET /api/tasks/:id` include a `provenance` field (`"operator"` or
-`"untrusted"`) showing whether a run came from an authenticated human action
-(CLI, API, Telegram) or an untrusted source (a GitHub webhook) — recorded and
-surfaced today, not yet gated on. Full inventory and rationale:
+`GET /api/tasks` and `GET /api/tasks/:id` include a `provenance` field
+(`"operator"` or `"untrusted"`) showing whether a run came from an
+authenticated human action (CLI, API, or a historical Telegram-sourced task
+— the transport was removed in Sprint S10, Phase 4, but old rows still
+deserialize and read as `"operator"`) or an untrusted source (a GitHub
+webhook) — recorded and surfaced today, not yet gated on. Repo-supplied
+shell commands (`.lopi/loop.toml` `gate`/`until`/`test_command`) are
+untrusted by default for the same reason and refuse to run for an
+untrusted-sourced task (Sprint S10, Phase 0); MCP servers are allowlisted
+deny-by-default (Sprint S10, Phase 5). Full inventory and rationale:
 `docs/security/TRIFECTA_PATHS.md` and `docs/security/EGRESS_SURFACE.md`.
 
 ## Contributing / feedback

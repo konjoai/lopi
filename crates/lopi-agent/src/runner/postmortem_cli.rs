@@ -14,7 +14,8 @@ use super::postmortem::{
 };
 use crate::claude_model::parse_claude_output;
 use crate::claude_support::{
-    apply_cli_caps, build_cli_error, scrub_inherited_anthropic_env, SessionMode,
+    apply_cli_caps, apply_env_allowlist, build_cli_error, scrub_inherited_anthropic_env,
+    SessionMode,
 };
 use anyhow::{Context, Result};
 use lopi_core::PermissionMode;
@@ -61,6 +62,7 @@ pub(crate) async fn run_postmortem_cli(
         .collect();
 
     let mut cmd = Command::new("claude");
+    apply_env_allowlist(&mut cmd);
     cmd.arg("-p")
         .arg(&prompt)
         .arg("--output-format")

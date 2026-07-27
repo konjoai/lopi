@@ -5,6 +5,103 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## Sprint S10 — hardening: four one-way doors, all breaking on purpose
+
+**Decision 1 (one-way door): repo-supplied shell commands are untrusted by
+default.** Before this sprint, any `.lopi/loop.toml` on disk — including
+one that arrived via a pull request under evaluation — had its `gate`/
+`until`/`test_command` executed unconditionally via `sh -c`
+(`run_guard_command`). This is remote code execution via pull request:
+`lopi serve-webhooks` dispatches a task against a PR branch; the branch
+can add or modify `.lopi/loop.toml`; lopi ran whatever that file said. The
+fix (`lopi_core::resolve_guard_command`) drops a repo-supplied value
+outright for a task from an untrusted source (`is_untrusted_source`)
+unless the operator's own `~/.lopi/loop.toml` sets it. **This breaks
+existing deployments**: a `.lopi/loop.toml` guard command that used to run
+for a webhook-dispatched task now silently doesn't, unless the operator
+adds the same value to `~/.lopi/loop.toml`. Breaking and correct, the same
+class of trade as S2's auth/CORS defaults — an unattended loop needs a
+safe default, not an opt-in one, and the alternative (silently keep
+executing attacker-reachable shell commands) is not a real option. Not a
+full fix: `--config`-flag and operator-pinned-commit override paths
+described in the original brief are **not implemented** — only the
+`~/.lopi/loop.toml` path is. Named as a gap, not silently assumed built.
+
+**Decision 2 (one-way door): the Telegram transport is gone; the
+`TaskSource::Telegram` variant is not.** `is_untrusted_source` classified
+`TaskSource::Telegram` as untrusted from the day Successor-1 shipped it,
+but S2 Phase 5's trifecta human-approval gate deliberately never extended
+to it (see the S2 entry below) — the one untrusted source classified
+untrusted and never gated, an asymmetry that sat unresolved across two
+sprints. Rather than resolve the asymmetry by *gating* Telegram, this
+sprint resolves it by *removing the transport entirely* — the iOS/macOS
+app now covers the remote-control use case, so the asymmetry's cost
+(an ungated untrusted surface) no longer buys anything. The **variant**
+survives, deprecated: `TaskSource::Telegram { chat_id, message_id }` is a
+durable enum persisted in `tasks.source`, and this repo's own prior
+guidance (removing a variant already in a durable column is the expensive
+direction) applies here exactly as written. `is_untrusted_source`,
+`TaskRow::provenance()`, and `task_source_label` all keep their `Telegram`
+read arms — deleting the transport did not touch any of them. Record the
+asymmetry rather than pretend it resolved cleanly: `is_untrusted_source`'s
+classification and the trifecta gate's scope were always two different
+notions of "untrusted" (S2's own entry below explains why), and Phase 4
+doesn't unify them — it just removes the one case where the gap mattered.
+
+**Decision 3 (one-way door): the spawned `claude` CLI subprocess gets an
+allowlisted environment, never the full inherited one.** Every worker
+spawn site (five, not the three originally scoped — `postmortem_cli.rs`
+and `verifier_cli.rs` were found during implementation, not named in the
+brief) used to inherit lopi's entire process environment minus a fixed
+Anthropic-routing blocklist. Combined with Decision 1, this used to mean:
+attacker-authored `sh -c` (before Decision 1) or a compromised MCP server
+dependency (before Decision 4) ran with visibility into
+`LOPI_WEB_AUTH_TOKEN`, a configured GitHub token, `ANTHROPIC_API_KEY` if
+set, anything else lopi's own operator had in their shell. Breaking in the
+narrow sense that a deployment relying on some inherited env var reaching
+the `claude` subprocess (undocumented, since nothing in this codebase ever
+named such a requirement) will need it added to `CHILD_ENV_ALLOWLIST`
+explicitly — a deliberate, visible diff, not silent breakage discovered in
+production.
+
+**Decision 4 (one-way door): MCP servers are spawned only from an
+operator allowlist, deny-by-default.** `.lopi/loop.toml`'s
+`[[mcp.servers]]` entries — a `command`+`args` pair, same repo-supplied
+trust class as Decision 1 — were spawned unconditionally
+(`Command::new(command).args(args).spawn()`), with no allowlist, pinning,
+or signature check anywhere in `crates/lopi-mcp/`. `McpServerSpec::connect`
+now refuses unless the exact `(name, command, args)` is in
+`~/.lopi/mcp_allowlist.toml`. This breaks any repo whose `.lopi/loop.toml`
+declares an MCP server the operator hasn't separately approved — by
+design; a repo declaring "use this tool" and an operator approving "yes,
+run this binary" are different trust decisions, and Decision 4 makes that
+split real instead of assumed. Signature verification (the postmark-mcp
+shape: fifteen clean releases, then one malicious line) is named as the
+natural follow-on and deliberately not half-built here.
+
+**What this sprint corrected rather than built:** the original audit
+hypothesized `teloxide` pinned the old rustls/rustls-webpki chain, making
+Telegram removal a supply-chain unblock as well as a trifecta-gap fix. The
+actual dependency graph (`cargo tree -i reqwest`) shows the pin was
+`sqlx-core 0.7.4`, not `teloxide` — `teloxide` has no direct `reqwest`
+edge at all, only via `teloxide-core`. Telegram removal (Decision 2)
+stands on its own merits; it did not fix the TLS chain, sqlx's major
+version bump (Phase 2) did. A wrong claim in a security document is the
+failure mode this repo has spent multiple sprints correcting (see S2's
+teloxide/reqwest note pattern below) — recorded here rather than quietly
+dropped from the final draft.
+
+**Known, named gaps this sprint did not close:** KT-S10.2 (permission-mode
+benchmark) needed a live, attended session against the real `claude` CLI
+this sprint's environment didn't have — the structural coupling
+(`effective_permission_mode`) shipped anyway, per the brief's own escape
+hatch, but the T01–T10 corpus pass-rate/wall-clock comparison against
+baseline is not measured. CI log content the agent fetches mid-run, MCP
+tool response content, and ordinary repository file content are all named
+in the new `docs/security/TRIFECTA_PATHS.md` §6 as untrusted-input paths
+with no realistic full gate short of solving prompt injection at the
+model layer — recorded as accepted risk, not implied coverage.
+
 ## Sprint F4 — session lifecycle moves into the runner; the checker's isolation becomes structural
 
 **Decision 1 (one-way door): the runner, not each phase, now owns the CLI

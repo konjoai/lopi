@@ -31,7 +31,8 @@
 
 use crate::claude_model::parse_claude_output;
 use crate::claude_support::{
-    apply_cli_caps, build_cli_error, scrub_inherited_anthropic_env, SessionMode,
+    apply_cli_caps, apply_env_allowlist, build_cli_error, scrub_inherited_anthropic_env,
+    SessionMode,
 };
 use crate::verifier::parse_verdict;
 use anyhow::{Context, Result};
@@ -103,6 +104,7 @@ pub(crate) async fn grade_via_cli(
         .collect();
 
     let mut cmd = Command::new("claude");
+    apply_env_allowlist(&mut cmd);
     cmd.arg("-p")
         .arg(user_prompt)
         .arg("--output-format")

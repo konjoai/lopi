@@ -102,30 +102,35 @@ jobs:
           echo "Pedantic lints above are advisory — fix over time."
 
       - name: cargo audit — zero known vulnerabilities
-        # HARD GATE — Sprint S4 Phase 3. Every finding triaged: anyhow,
-        # crossbeam-epoch, git2, and spin were upgraded to fixed versions
-        # (see this sprint's commits); RUSTSEC-2023-0071 (rsa) is an
-        # unreachable Cargo.lock entry (`cargo tree -i rsa` is empty — no
-        # code path pulls it in); RUSTSEC-2026-0098/-0099/-0104
-        # (rustls-webpki) and RUSTSEC-2024-0363 (sqlx) all trace to sqlx
-        # 0.7.4's pinned rustls 0.21 and require a sqlx 0.7->0.8+ major
-        # upgrade (real application-code migration, out of scope here) —
-        # scheduled in NEXT_SESSION_PROMPT.md. All five are scoped, reasoned
-        # `[advisories.ignore]` entries in `.cargo/audit.toml` (auto-
-        # discovered, no flag needed), not a blanket silence — a new,
-        # untriaged advisory still fails this step.
+        # HARD GATE since Sprint S4 Phase 3. Sprint S10, Phase 2 (2026-07-27)
+        # re-triaged this from scratch — an external audit found 11
+        # advisories affecting locked versions that this gate's own
+        # `.cargo/audit.toml` had drifted out of sync with (a supply-chain
+        # config that doesn't run cleanly is a decorative gate, per that
+        # sprint's own framing). The sqlx 0.7 -> 0.8.6 upgrade resolved the
+        # rustls-webpki/sqlx-format-injection chain outright (gone from the
+        # dependency graph, not just ignored). What remains, all named
+        # individually in `.cargo/audit.toml`: RUSTSEC-2023-0071 (rsa) — a
+        # Cargo.lock entry unreachable in the actual build graph (`cargo tree
+        # -i rsa` prints nothing) regardless of sqlx's major version; four
+        # `unmaintained`/`unsound` findings on crates none of which is a
+        # direct workspace dependency (paste/proc-macro-error/rustls-pemfile/
+        # lru, all 2+ hops transitive). A new, untriaged advisory still fails
+        # this step.
         run: |
           cargo install cargo-audit --locked --quiet 2>/dev/null || true
           cargo audit
 
       - name: cargo deny — license + advisory + bans
-        # HARD GATE — Sprint S4 Phase 3. `.konjo/deny.toml` migrated to the
-        # cargo-deny 0.19+ schema (`[advisories].unmaintained`/`unsound` are
-        # now scope selectors, not lint levels; `[licenses].copyleft`/
-        # `unlicensed` were removed — see the config file's own comments for
-        # the full migration notes and the per-crate exceptions/ignores this
-        # sprint added). `cargo deny check` now returns a real, clean
-        # verdict: advisories ok, bans ok, licenses ok, sources ok.
+        # HARD GATE since Sprint S4 Phase 3. `.konjo/deny.toml` re-verified
+        # in Sprint S10, Phase 2 (2026-07-27) after the sqlx upgrade changed
+        # the dependency graph's license set — `webpki-roots`'s newer version
+        # dropped its MPL-2.0 exception in favor of CDLA-Permissive-2.0
+        # (updated in `[licenses] allow`), and three now-unused license
+        # allowances (`CC0-1.0`/`OpenSSL`/`Unicode-DFS-2016`) were removed
+        # rather than left as dead config cargo-deny would otherwise flag
+        # `unmatched`. `cargo deny check` returns a clean verdict: advisories
+        # ok, bans ok, licenses ok, sources ok.
         run: |
           cargo install cargo-deny --locked --quiet 2>/dev/null || true
           cargo deny --config .konjo/deny.toml check

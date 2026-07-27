@@ -234,8 +234,12 @@ async fn persist_queued_dispatch(store: &MemoryStore, task: &Task) {
 }
 
 /// Stable wire label for `TaskSource` — used in the audit log `actor` field
-/// so dashboards can group by origin without re-parsing.
-fn task_source_label(task: &Task) -> String {
+/// so dashboards can group by origin without re-parsing. `pub(super)` (not
+/// private) so `pool::tests` can pin the Sprint S10, Phase 4 kill-test claim
+/// that a historical `TaskSource::Telegram` row still labels correctly in
+/// `audit_log` queries after the transport's removal — see
+/// `.konjo/killtests/S10/KT-S10.3.md`.
+pub(super) fn task_source_label(task: &Task) -> String {
     match &task.source {
         TaskSource::Cli => "cli".into(),
         TaskSource::Api => "api".into(),
@@ -322,9 +326,37 @@ async fn run_one(
         })
     };
     let isolation = cfg.isolation;
+
+    // Sprint S10, Phase 0 — repo-supplied `gate`/`until`/`test_command` are
+    // shell commands (`run_guard_command`, `sh -c`) and are untrusted by
+    // default: `.lopi/loop.toml` arrived with whatever's checked out, which
+    // for a webhook-dispatched task can be content from a branch under
+    // evaluation, not the operator's own configuration. The operator's own
+    // `~/.lopi/loop.toml` always wins; otherwise a repo-supplied value is
+    // honored only when the task's source is trusted. See
+    // `lopi_core::resolve_guard_command` and `docs/security/TRIFECTA_PATHS.md`.
+    let source_trusted = !lopi_core::is_untrusted_source(&task.source);
+    let operator_cfg = lopi_core::LoopConfig::load_operator_overrides();
+    let resolved_gate = lopi_core::loop_config::resolve_guard_command(
+        cfg.gate.as_deref(),
+        operator_cfg.as_ref().and_then(|o| o.gate.as_deref()),
+        source_trusted,
+    );
+    let resolved_until = lopi_core::loop_config::resolve_guard_command(
+        cfg.until.as_deref(),
+        operator_cfg.as_ref().and_then(|o| o.until.as_deref()),
+        source_trusted,
+    );
+    let resolved_test_command = lopi_core::loop_config::resolve_guard_command(
+        cfg.test_command.as_deref(),
+        operator_cfg
+            .as_ref()
+            .and_then(|o| o.test_command.as_deref()),
+        source_trusted,
+    );
     let repo_guardrails = RepoGuardrails {
-        gate: cfg.gate.clone(),
-        until: cfg.until.clone(),
+        gate: resolved_gate,
+        until: resolved_until,
         on_fail: cfg.on_fail,
     };
 
@@ -361,7 +393,7 @@ async fn run_one(
         repo_guardrails,
         cfg.reflect_cross_run,
         plan_decision_rx,
-        cfg.test_command.clone(),
+        resolved_test_command,
     );
     let outcome = runner.run().await?;
     // Reap the throwaway worktree now the run is done. The RAII drop is the

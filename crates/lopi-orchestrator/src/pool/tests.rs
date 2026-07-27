@@ -291,6 +291,21 @@ async fn pool_stats_resume_once_a_subscriber_connects() {
     );
 }
 
+// Sprint S10, Phase 4 (KT-S10.3) — a historical `TaskSource::Telegram` row
+// must still label correctly in `audit_log` queries after the transport's
+// removal; `task_source_label`'s `Telegram` arm is read-only, never a
+// construction site, so nothing here needs the removed `lopi-remote::telegram`
+// module.
+#[test]
+fn task_source_label_still_resolves_a_historical_telegram_sourced_task() {
+    let mut task = Task::new("legacy telegram task");
+    task.source = lopi_core::TaskSource::Telegram {
+        chat_id: 42,
+        message_id: 7,
+    };
+    assert_eq!(super::run_loop::task_source_label(&task), "telegram");
+}
+
 // Verifier-as-explicit-gate, `Task.max_iterations` override, and Budget &
 // Guardrail Controls Part 2/3's `effective_task_budget` tests moved to
 // `budget_tests.rs` (sibling module) to keep this file under the 500-line

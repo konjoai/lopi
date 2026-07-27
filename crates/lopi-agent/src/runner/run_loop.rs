@@ -114,10 +114,21 @@ impl AgentRunner {
                 // session. `with_permission_mode` validates against the
                 // CLI's four headless-safe values and drops anything else;
                 // `Task::permission_mode` defaults to `BypassPermissions`, so
-                // an unconfigured task reproduces the pre-existing
+                // an unconfigured *trusted* task reproduces the pre-existing
                 // unconditional `--dangerously-skip-permissions` behavior
-                // exactly.
-                .with_permission_mode(self.task.permission_mode.as_str())
+                // exactly. Sprint S10, Phase 3 — `effective_permission_mode`
+                // downgrades an untrusted-sourced task (a GitHub webhook
+                // payload, an inbound Telegram message) to `DontAsk`
+                // regardless of what it requests: a task a human typed and
+                // one derived from an issue body do not deserve the same
+                // unattended tool posture.
+                .with_permission_mode(
+                    lopi_core::effective_permission_mode(
+                        &self.task.source,
+                        self.task.permission_mode,
+                    )
+                    .as_str(),
+                )
                 // `ClaudeCode::new`'s own default (300s) was sized for a
                 // single-shot plan/implement call, not a session that fans
                 // out into several parallel research sub-agents (each doing
