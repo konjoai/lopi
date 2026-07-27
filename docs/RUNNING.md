@@ -99,7 +99,7 @@ cd ..
 | `lopi skill promote` | Promote recurring lessons into skill drafts |
 | `lopi gap-fill` / `lopi spec` / `lopi check` | Test-driven fix queue / spec surface / KCQF quality gate |
 | `lopi replay --task <uuid>` | Inspect a task's DAG trace + partial-restart plan |
-| `lopi serve-app` / `lopi serve-webhooks` | GitHub App OAuth + Stripe / GitHub webhook servers |
+| `lopi serve-webhooks` | Standalone GitHub webhook server |
 | `lopi watch-gap-fill` | Continuous gap-fill daemon (the "Kitchen Loop") |
 
 Run `lopi <cmd> --help` for the full flag set of any subcommand.

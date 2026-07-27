@@ -159,23 +159,14 @@ CREATE TABLE IF NOT EXISTS quality_check_runs (
 );
 CREATE INDEX IF NOT EXISTS idx_quality_repo_run ON quality_check_runs(repo_path, run_at DESC);
 
--- Sprint O: GitHub App installation ledger.
--- One row per customer per GitHub App installation event.
--- customer_id is derived from the GitHub account/org that installed the App.
-CREATE TABLE IF NOT EXISTS github_installations (
-    id              TEXT PRIMARY KEY,
-    installation_id INTEGER NOT NULL UNIQUE,
-    customer_id     TEXT NOT NULL,
-    account_login   TEXT NOT NULL,
-    account_type    TEXT NOT NULL CHECK(account_type IN ('User', 'Organization')),
-    access_token    TEXT,
-    token_expires   TEXT,
-    status          TEXT NOT NULL CHECK(status IN ('active', 'suspended', 'deleted')) DEFAULT 'active',
-    installed_at    TEXT NOT NULL,
-    updated_at      TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_installations_customer ON github_installations(customer_id);
-CREATE INDEX IF NOT EXISTS idx_installations_login ON github_installations(account_login);
+-- Sprint S12, Phase 0: the multi-tenant GitHub App installation ledger is
+-- removed as part of the scope lock (lopi is single-operator, single-machine).
+-- This statement actively drops the table (and its indexes, dropped
+-- implicitly with it) on every existing database the next time it is
+-- opened — see LEDGER.md for the retain-vs-drop decision. Safe to delete
+-- this line entirely once no database at or before v0.31.0 is expected to
+-- exist anymore.
+DROP TABLE IF EXISTS github_installations;
 
 -- P1.3 — Durable agent checkpoints. A snapshot taken before any action
 -- that can fail (plan, implement, score, PR). The CLI subcommand
@@ -196,10 +187,6 @@ CREATE TABLE IF NOT EXISTS agent_checkpoints (
 );
 CREATE INDEX IF NOT EXISTS idx_checkpoints_task_created
     ON agent_checkpoints(task_id, created_at DESC);
-
--- Sprint P — Add subscription tier to GitHub App installations.
--- ALTER TABLE is wrapped in the idempotent migration guard in apply_schema().
-ALTER TABLE github_installations ADD COLUMN tier TEXT NOT NULL DEFAULT 'free';
 
 -- P2 — Append-only audit log. One row per actionable event across the
 -- whole orchestrator: task submit/dispatch, breaker trips,

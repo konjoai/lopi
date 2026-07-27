@@ -1,7 +1,7 @@
 //! Observability + read-only reporting route handlers for the lopi web API.
 //!
 //! Split out of `handlers.rs` to keep that module within the 500-line budget:
-//! the quality trend, DAG trace, Q-value table, Prometheus metrics, and pricing
+//! the quality trend, DAG trace, Q-value table, and Prometheus metrics
 //! endpoints form one cohesive read-only surface. Imported into `mod.rs`
 //! alongside the core `handlers` module.
 
@@ -11,8 +11,7 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Json},
 };
-use lopi_core::CustomerTier;
-use serde_json::{json, Value};
+use serde_json::json;
 
 /// `GET /api/quality/trend?repo=<path>&limit=<n>` — quality check run history.
 pub(super) async fn get_quality_trend(
@@ -162,30 +161,4 @@ pub(super) async fn metrics(State(s): State<AppState>) -> impl IntoResponse {
         )],
         body,
     )
-}
-
-/// `GET /api/plans` — return available subscription tiers.
-///
-/// Returns a static list of all `CustomerTier` variants with their pricing
-/// and feature sets. Clients (the onboarding page, the Forge header) use
-/// this to render pricing tables without hardcoding values in the frontend.
-pub(super) async fn get_plans() -> Json<Value> {
-    let plans: Vec<Value> = [
-        CustomerTier::Free,
-        CustomerTier::Starter,
-        CustomerTier::Growth,
-        CustomerTier::Enterprise,
-    ]
-    .iter()
-    .map(|&tier| {
-        json!({
-            "id": tier.as_str(),
-            "name": tier.display_name(),
-            "price_usd_per_month": tier.price_usd_cents_per_month() / 100,
-            "max_agents": tier.max_agents(),
-            "features": tier.features(),
-        })
-    })
-    .collect();
-    Json(json!({ "plans": plans }))
 }

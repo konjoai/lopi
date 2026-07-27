@@ -76,8 +76,6 @@ pub mod task_source;
 pub mod template;
 /// UTF-8-safe string truncation for excerpting arbitrary text.
 pub mod text;
-/// Customer tier classification.
-pub mod tier;
 /// Orchestration topology hints (Sprint T).
 pub mod topology;
 
@@ -112,7 +110,6 @@ pub use successor::{
 pub use task::{Priority, Rubric, Task, TaskId, TaskSource, TaskStatus, VerifierVerdict};
 pub use template::{resolve as resolve_template, TemplateError};
 pub use text::safe_truncate;
-pub use tier::CustomerTier;
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]

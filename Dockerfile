@@ -4,7 +4,7 @@
 # Stage 2 — runtime: minimal Debian image with just the binary.
 #
 # Build:  docker build -t lopi .
-# Run:    docker run -p 3000:3000 -p 3002:3002 -e ANTHROPIC_API_KEY=... lopi sail
+# Run:    docker run -p 3000:3000 -e ANTHROPIC_API_KEY=... lopi sail
 
 # ─── Stage 1: build ────────────────────────────────────────────────────────────
 FROM rust:1.87-slim-bookworm AS builder
@@ -35,7 +35,6 @@ COPY crates/lopi-toon/Cargo.toml        crates/lopi-toon/Cargo.toml
 COPY crates/lopi-spec/Cargo.toml        crates/lopi-spec/Cargo.toml
 COPY crates/lopi-github/Cargo.toml      crates/lopi-github/Cargo.toml
 COPY crates/lopi-tools/Cargo.toml       crates/lopi-tools/Cargo.toml
-COPY crates/lopi-app/Cargo.toml         crates/lopi-app/Cargo.toml
 
 # Stub out every lib.rs and main.rs so `cargo fetch` + dependency compile
 # succeeds without the real source (speeds up layer caching).
@@ -76,16 +75,14 @@ WORKDIR /home/lopi
 
 COPY --from=builder /build/target/release/lopi /usr/local/bin/lopi
 
-# Persistent data volume — SQLite database and customer stores live here.
+# Persistent data volume — SQLite database lives here.
 VOLUME ["/home/lopi/.lopi"]
 
 # lopi sail (Forge dashboard + agent API)
 EXPOSE 3000
-# lopi serve-app (GitHub App OAuth + Stripe webhooks)
-EXPOSE 3002
 
 ENV RUST_LOG=lopi=info,tower_http=warn
 
-# Default: start the Forge dashboard.
-# Override with `docker run lopi serve-app` for the SaaS app server.
+# lopi is single-operator, single-machine by design — the only process this
+# image runs is the Forge dashboard.
 CMD ["lopi", "sail", "--port", "3000"]
