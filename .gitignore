@@ -26,3 +26,9 @@ artifacts/screenshots/
 .build/
 .swiftpm/
 *.mcpb
+
+# cargo-fuzz build output and crash artifacts (Sprint S12, Phase 2) — the
+# corpus under fuzz/corpus/ IS committed; these are not.
+/fuzz/target/
+/fuzz/artifacts/
+/fuzz/coverage/

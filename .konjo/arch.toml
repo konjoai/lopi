@@ -38,7 +38,7 @@ crates = ["lopi-agent", "lopi-orchestrator", "lopi-remote"]
 tier = 5
 name = "interface"
 description = "HTTP/API/UI surfaces. May depend on any tier."
-crates = ["lopi-ui", "lopi-webhook", "lopi-github", "lopi-app"]
+crates = ["lopi-ui", "lopi-webhook", "lopi-github"]
 
 [rules]
 no_upward_deps = true   # A crate cannot import from a higher-tier crate

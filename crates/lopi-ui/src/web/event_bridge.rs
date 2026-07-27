@@ -88,6 +88,12 @@ fn spawn_with_tunables(
         loop {
             match rx.recv().await {
                 Ok(ev) => {
+                    // Redact once, here, before the event fans out to either
+                    // sink (persistence and broadcast) — doing it separately
+                    // in each would let the two drift out of sync. See
+                    // `lopi_core::redact`'s doc comment for what this does
+                    // and does not catch.
+                    let ev = redact_log_line(ev);
                     if let Ok(json) = serde_json::to_string(&ev) {
                         let _ = tx.send(Arc::from(json.as_str()));
                     }
@@ -127,6 +133,26 @@ fn try_persist(persist_tx: &mpsc::Sender<TaskLogInsert>, insert: TaskLogInsert) 
     } else {
         PERSIST_DROPPED.fetch_add(1, Ordering::Relaxed);
         false
+    }
+}
+
+/// Redact known secret shapes out of a `LogLine`'s text before it reaches
+/// either sink. Every other `AgentEvent` variant carries structured data,
+/// not free-form agent stdout, so it passes through unchanged.
+fn redact_log_line(ev: AgentEvent) -> AgentEvent {
+    match ev {
+        AgentEvent::LogLine {
+            task_id,
+            line,
+            level,
+            ts,
+        } => AgentEvent::LogLine {
+            task_id,
+            line: lopi_core::redact_secrets(&line).into_owned(),
+            level,
+            ts,
+        },
+        other => other,
     }
 }
 
@@ -293,6 +319,45 @@ mod tests {
             .unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].line, "only one");
+    }
+
+    /// Sprint S12, Phase 1 — a secret in agent stdout must not reach either
+    /// sink unredacted: not the persisted `task_logs` row, and not the
+    /// broadcast the SSE stream re-emits from the same event.
+    #[tokio::test]
+    async fn secret_in_log_line_is_redacted_before_persist_and_broadcast() {
+        let store = MemoryStore::open_in_memory().await.unwrap();
+        let bus: EventBus<AgentEvent> = EventBus::new(64);
+        let (tx, mut sub_rx) = broadcast::channel::<Arc<str>>(64);
+        let tx = Arc::new(tx);
+        spawn(&bus, tx, store.clone());
+
+        let task_id = TaskId::new();
+        let secret_line =
+            "leaked: sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789 all good otherwise";
+        bus.send(AgentEvent::LogLine {
+            task_id,
+            line: secret_line.to_string(),
+            level: LogLevel::Info,
+            ts: Utc::now(),
+        });
+
+        let broadcast_json = tokio::time::timeout(Duration::from_millis(200), sub_rx.recv())
+            .await
+            .expect("broadcast must not stall")
+            .expect("broadcast channel closed unexpectedly");
+        assert!(!broadcast_json.contains("sk-ant-"));
+        assert!(broadcast_json.contains("[REDACTED:anthropic_key]"));
+
+        tokio::time::sleep(BATCH_INTERVAL * 4).await;
+        let rows = store
+            .load_task_logs(&task_id.0.to_string(), 10)
+            .await
+            .unwrap();
+        assert_eq!(rows.len(), 1);
+        assert!(!rows[0].line.contains("sk-ant-"));
+        assert!(rows[0].line.contains("[REDACTED:anthropic_key]"));
+        assert!(rows[0].line.contains("all good otherwise"));
     }
 
     /// Phase 2 — a burst above `BATCH_ROWS` for one task lands with

@@ -1,0 +1,1 @@
+{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_01REw3cTjdEbvPsXipDbvpsq","name":"Read","input":{},"caller":{"type":"direct"}}},"session_id":"4fa68a55-05cf-4878-aa2f-d0edaec6b8a6","parent_tool_use_id":null,"uuid":"6effd4b7-f6c3-4175-9a48-8a59400b10ad"}

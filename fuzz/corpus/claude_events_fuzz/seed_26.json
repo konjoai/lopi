@@ -1,0 +1,1 @@
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"file_path\": \"/private/tmp/lopi-scratch-Vtha/README.md"}},"session_id":"4fa68a55-05cf-4878-aa2f-d0edaec6b8a6","parent_tool_use_id":null,"uuid":"a7e8d439-59f0-48b9-8857-4390ffd63e02"}

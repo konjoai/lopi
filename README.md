@@ -6,7 +6,7 @@
 > agents in git-isolated branches, with retry loops, persistent memory,
 > a TUI + web dashboard, and a native macOS app.
 >
-> By [KonjoAI](https://github.com/konjoai) · MIT licensed · `v0.31.0`
+> By [KonjoAI](https://github.com/konjoai) · MIT licensed · `v0.32.0`
 > [![crates.io](https://img.shields.io/crates/v/lopi.svg)](https://crates.io/crates/lopi)
 
 ```
@@ -191,11 +191,10 @@ REPL. The full surface:
 | `lopi diag` | Export a diagnostic snapshot (tasks, logs, audit, stability) as committable JSON |
 | `lopi mcp-serve` | Serve lopi's MCP tools over stdio — the Claude Code / Desktop entry point |
 | `lopi serve-webhooks` | Standalone GitHub webhook server (CI-failure → task injection) |
-| `lopi serve-app` | GitHub App OAuth + Stripe webhook server |
 
 ## Architecture
 
-17 crates in a Cargo workspace:
+16 crates in a Cargo workspace:
 
 | Crate | Role |
 |---|---|
@@ -214,7 +213,6 @@ REPL. The full surface:
 | `lopi-spec` | Spec surface extractor (tests → machine-readable coverage inventory) |
 | `lopi-ratelimit` | Token-bucket rate limiting + Anthropic concurrency controls |
 | `lopi-toon` | Token-Oriented Object Notation encoder (measured 3.3% fewer cl100k tokens than compact JSON on lopi's real prompt payloads — see `crates/lopi-toon/benches/results/`) |
-| `lopi-app` | Standalone GitHub App OAuth + Stripe webhook server |
 | `lopi-github` | Thin GitHub REST client for write operations (PRs, labels, comments) |
 
 Plus [`macos/`](./macos) (native SwiftUI dashboard), [`web/`](./web)
@@ -237,10 +235,22 @@ Copy `lopi.toml.example` to `lopi.toml` and edit. Key sections:
 - `[[schedules]]` — cron-style recurring tasks (also editable live from the dashboard)
 
 Per-repo budget and safety policy lives in `.lopi/loop.toml` (see `lopi loop
-show|validate`). Two components — `lopi serve-webhooks` and `lopi serve-app`
-— accept an optional standalone `ANTHROPIC_API_KEY` for their own automated
-triage; this is separate from, and unrelated to, how the core agent loop
-authenticates.
+show|validate`). `lopi serve-webhooks` accepts an optional standalone
+`ANTHROPIC_API_KEY` for its own automated triage; this is separate from, and
+unrelated to, how the core agent loop authenticates.
+
+## Scope
+
+**lopi is built for one operator, on one machine, alongside your Claude Code
+install.** There is no multi-tenancy: no per-customer isolation, no
+subscription tiers, no hosted-service surface. `lopi sail`'s dashboard/API
+authenticates the operator, not a set of separate users — see **Security**
+below. Multi-tenant or hosted deployment (serving multiple customers from one
+lopi instance) is explicitly out of scope and unsupported; the GitHub App
+OAuth + Stripe billing server that once shipped for that purpose (`lopi
+serve-app`) was removed in Sprint S12 for exactly this reason — see
+`LEDGER.md`. If you need to run lopi for more than one person, run one
+instance per person.
 
 ## Safety
 

@@ -34,7 +34,6 @@ const PROTECTED_ROUTES: &[(&str, &str)] = &[
     ("POST", "/api/agents/x/checkpoint"),
     ("GET", "/api/stats"),
     ("GET", "/api/budget/breakdown"),
-    ("GET", "/api/plans"),
     ("GET", "/api/spec"),
     ("GET", "/api/quality/trend"),
     ("GET", "/api/agents/x/dag"),

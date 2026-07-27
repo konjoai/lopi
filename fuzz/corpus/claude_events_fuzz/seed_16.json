@@ -1,0 +1,1 @@
+{"type":"stream_event","event":{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"\"}"}},"session_id":"4fa68a55-05cf-4878-aa2f-d0edaec6b8a6","parent_tool_use_id":null,"uuid":"831dc45a-9020-4d99-be64-fbbe57cc1fd6"}

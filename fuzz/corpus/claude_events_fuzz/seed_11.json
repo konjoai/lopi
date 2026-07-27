@@ -1,0 +1,1 @@
+{"type":"stream_event","event":{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_01MLNYSrBNM7KD5HE7B8HnVf","name":"Bash","input":{},"caller":{"type":"direct"}}},"session_id":"4fa68a55-05cf-4878-aa2f-d0edaec6b8a6","parent_tool_use_id":null,"uuid":"b4e0a09a-ad86-444c-bb09-2fcf3b3b5e80"}

@@ -1,15 +1,16 @@
 # fly.toml — lopi deployment on fly.io
 #
 # Deploy: fly deploy
-# Secrets: fly secrets set GITHUB_CLIENT_SECRET=... STRIPE_WEBHOOK_SECRET=...
+# Secrets: fly secrets set LOPI_WEB_AUTH_TOKEN=...
 #
-# Two processes run in the same app:
-#   app  — lopi serve-app (GitHub App OAuth + Stripe, port 3002)
-#   web  — lopi sail (Forge dashboard + agent API, port 3000)
-#
-# Use `fly scale count app=1 web=1` to run one instance of each.
+# lopi is single-operator, single-machine by design (Sprint S12 scope
+# lock — see LEDGER.md and SECURITY.md's "Deployment model"). This config
+# runs exactly one process: `lopi sail`, the Forge dashboard + agent API.
+# The GitHub App OAuth + Stripe billing server (`lopi serve-app`) that used
+# to run alongside it here was removed, not hardened — there is no
+# multi-tenant surface left to deploy.
 
-app = "lopi-app"
+app = "lopi"
 primary_region = "iad"
 
 [build]
@@ -18,32 +19,9 @@ primary_region = "iad"
 # ─── Process groups ────────────────────────────────────────────────────────────
 
 [processes]
-  app = "lopi serve-app --port 3002 --host 0.0.0.0"
   web = "lopi sail --port 3000 --host 0.0.0.0"
 
 # ─── HTTP services ─────────────────────────────────────────────────────────────
-
-[[services]]
-  protocol    = "tcp"
-  internal_port = 3002
-  processes   = ["app"]
-
-  [[services.ports]]
-    port     = 443
-    handlers = ["tls", "http"]
-
-  [[services.ports]]
-    port     = 80
-    handlers = ["http"]
-
-  [services.http_checks]
-    interval      = "15s"
-    timeout       = "5s"
-    grace_period  = "10s"
-    method        = "GET"
-    path          = "/"
-    protocol      = "http"
-    tls_skip_verify = false
 
 [[services]]
   protocol    = "tcp"
@@ -72,21 +50,14 @@ primary_region = "iad"
 [[mounts]]
   source      = "lopi_data"
   destination = "/home/lopi/.lopi"
-  processes   = ["app", "web"]
+  processes   = ["web"]
 
 # ─── Environment ──────────────────────────────────────────────────────────────
 
 [env]
-  RUST_LOG              = "lopi=info,tower_http=warn"
-  LOPI_CUSTOMER_STORES  = "/home/lopi/.lopi/customers"
+  RUST_LOG = "lopi=info,tower_http=warn"
 
 # Secrets (set via `fly secrets set`):
-#   GITHUB_APP_ID
-#   GITHUB_CLIENT_ID
-#   GITHUB_CLIENT_SECRET
-#   GITHUB_REDIRECT_URI        — https://<app>.fly.dev/app/callback
-#   GITHUB_WEBHOOK_SECRET
-#   STRIPE_WEBHOOK_SECRET
 #   LOPI_WEB_AUTH_TOKEN        — Bearer token protecting /api/* on the Forge
 
 # ─── Compute ───────────────────────────────────────────────────────────────────

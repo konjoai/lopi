@@ -1,6 +1,6 @@
 ---
 decays: state
-verified-against: c10c73b
+verified-against: e29032f
 verified-date: 2026-07-27
 ---
 
@@ -230,3 +230,79 @@ fix; see `LEDGER.md`'s Sprint S11 entry for why it's named here rather than sile
 solved by the ticket mechanism.
 
 Re-run this section's kill-test whenever a new route is added to `build_app` — `decays: state`.
+
+## 8. Sprint S12, Phase 3 — task-scope confinement (reframed post-scope-lock)
+
+Sprint S12 locked lopi to one operator, one machine (see `LEDGER.md`). That retires
+cross-tenant IDOR as a question, but not authorization outright: lopi still has three
+principals — the operator (bearer token), the agent (runs with lopi's privileges, reads
+repo content it doesn't control), and an untrusted-source task (webhook/PR-originated,
+already tagged via `is_untrusted_source`). KT-S12.3's question: **can an untrusted-source
+task, or an agent acting on the operator's behalf, act on a repo/path/command the operator
+never authorized for it?** This is an inventory, not a pass/fail — every row below either
+names a real enforcement mechanism or is marked unenforced plainly, per the sprint's own
+instruction not to let a clean table imply coverage that isn't there.
+
+| # | Question | Enforcement | file:line | Verdict |
+|---|---|---|---|---|
+| 1 | Repo confinement — can a task run against a repo outside the operator's configured `repo`/`extra_repos`? | None. `task.repo_path` (if set) is used verbatim; if unset, whichever `AgentPool` dequeues the task supplies its own default. No allowlist exists to check against — `LopiConfig` has no `repo`/`extra_repos` field at all; those are CLI flags passed straight into `AgentPool::new` as *defaults*, never consulted again downstream. | `crates/lopi-orchestrator/src/pool/run_loop.rs:99-104` (resolution, no check); `src/mcp_commands/mod.rs:269-270` (`lopi_submit_task` sets `repo_path` from an untyped string, zero validation) | **Unenforced** |
+| 2 | `allowed_dirs`/`forbidden_dirs` — structural or advisory? | Two mechanisms at two pipeline stages. Pre-hoc: injected into the system prompt and checked by the stability harness's plan-sample review, which only warns (`stability_runner.rs`'s own comment: "advisory — the real diff is still enforced separately"). Post-hoc: `DiffChecker`/`check_diff_scope` inspects the actual worktree diff after implementation and rolls the attempt back (`TaskStatus::RolledBack`) on violation. | Advisory: `crates/lopi-agent/src/prompt.rs:27-38`, `crates/lopi-agent/src/runner/stability_runner.rs:54-60`. Structural: `crates/lopi-git/src/diff.rs:12-63`, `crates/lopi-git/src/manager.rs:100-127`, called from `crates/lopi-agent/src/runner/test_phase.rs:60-68,277-283` | **Mixed** — prompt/stability-harness layer is advisory-only; `DiffChecker` is real enforcement, but post-hoc (blocks the diff from persisting/PR-ing, does not prevent the write itself) |
+| 3 | Can an untrusted-source (webhook) task be routed to a repo the operator never associated with that source? | Webhook-originated tasks (`queue_ci_fix`, `handle_pr_review`, issue triage) never set `task.repo_path` — the attacker-controlled `repository.full_name` from the payload is stored only as `TaskSource::Webhook{repo,..}` metadata, never used to select or validate a filesystem path. The task lands on whichever repo the dequeuing pool defaults to (see row 1) — there is no per-repo webhook watch-list cross-checking the payload's claimed repo against the pool it's about to run in. | `crates/lopi-webhook/src/github.rs:157-167,184-221`, `crates/lopi-webhook/src/issue.rs:159-181` | **Unenforced** (repo targeting is provenance-blind in both directions — same root cause as row 1) |
+| 4 | Worktree escape via symlink, absolute path, or `..` in a tool call | None found. `crates/lopi-git/src/worktree.rs` sanitizes only the worktree's own directory name (flattening `/`/`\` in the task id) — it does not validate paths a tool call touches once inside the checkout. Confinement is entirely by convention: the spawned `claude` CLI gets `current_dir` set to the worktree, and (absent a tighter per-task mode) `--permission-mode bypassPermissions` by default. lopi does not intercept or path-validate individual tool calls — that would require proxying the CLI's own tool execution, which is out of this phase's scope (Non-goals: no policy engine). | `crates/lopi-git/src/worktree.rs:332-338` (`sanitize`, dir-name only); `crates/lopi-agent/src/claude_spawn.rs:127` (`cmd.current_dir(...)` is the entirety of the confinement); `crates/lopi-core/src/permission_mode.rs:29-53` (`BypassPermissions` is `#[default]`) | **Unenforced** — named, not fixed this sprint; a real fix is a sandboxing/proxying project, not a targeted patch |
+| 5 | `gate_untrusted_source` coverage — does every untrusted-input path in §6's table actually route through it? | Yes for every row already in §6 (A–D, K): defined once in `crates/lopi-webhook/src/github.rs:177-181`, called from `queue_ci_fix` (row A, `:164`), `handle_pr_review` (row B, `:218`), issue triage (row C, via the same function), and WhatsApp's inline equivalent (row D/K). Successor/chained tasks are separately and correctly gated via `derive_successor_task` (`crates/lopi-core/src/successor.rs:264-268` forces `require_plan_approval=true`/`successor_enabled=false` when the parent is untrusted; enforced at `crates/lopi-agent/src/runner/finalize.rs:161`). **New gap, not in §6 at all:** `lopi_submit_task` (the MCP tool) never calls `is_untrusted_source`/`gate_untrusted_source` — it builds `Task::new()` (source defaults `Cli`, i.e. trusted) directly from caller-supplied JSON, including an arbitrary `repo` and `permission_mode` (up to and including `bypassPermissions`), with no plan-approval gate. | Gap: `src/mcp_commands/mod.rs:266-313` (`submit_task`), `crates/lopi-core/src/task.rs:391-429` (`Task::new` defaults `source: TaskSource::Cli`) | **Enforced for A–D/K; unenforced for the `lopi_submit_task` MCP path** |
+
+### Why row 5's MCP gap is named, not patched, this sprint
+
+`lopi_submit_task` is reachable two ways that need opposite treatment, and lopi's MCP server
+cannot currently tell them apart:
+
+- **The operator, interactively, asking their own Claude Code session to submit a lopi
+  task.** This is the tool's whole purpose and is exactly as trusted as typing the goal into
+  `lopi run` directly — forcing `require_plan_approval` here would degrade a legitimate,
+  common workflow for no security benefit.
+- **A nested agent session, already running a task lopi itself queued, that got
+  prompt-injected by content it read** (a malicious code comment, a poisoned issue body) and
+  calls `lopi_submit_task` to spawn a *fresh* task with full trust and no plan-approval gate —
+  functionally an ungated alternate path to what `derive_successor_task` already handles
+  correctly for the chained-task case.
+
+Distinguishing these needs the MCP server to know the trust level of *whichever agent session
+called it*, which lopi's stdio MCP transport does not currently propagate. A blanket fix
+(always require plan approval) breaks the first, legitimate case for no benefit against the
+second; a correct fix needs actual session-provenance plumbing, which is a real feature, not a
+one-line patch — building it without that context is exactly the kind of policy-engine
+over-reach the sprint's Non-goals rule out. Recorded here as a deliberate, unfixed gap for a
+follow-up sprint that scopes the plumbing properly, not silently left off this table.
+
+### Documentation-drift finding
+
+`crates/lopi-core/src/config.rs`'s `[lopi].bypass_permissions` doc comment implies it drives
+real directory-access restriction. It does not: its only consumer is `src/repl/state.rs:67`,
+where it is read purely as TUI display state. It enforces nothing. Flagged as drift to fix
+independent of the confinement questions above — a doc comment overstating what a config field
+does is itself a trap for the next person relying on it as a security control.
+
+## 9. Sprint S12, Phase 4 — Swift review (macOS/iOS app)
+
+`macos/` + `packages/LopiStacksKit/` (~19k LOC; not a static `.xcodeproj` — XcodeGen's
+`project.yml` generates `Info.plist`/`.entitlements` at build time, so those are the source of
+truth, not files in the tree). Scoped to what can hurt on a single-user machine per the S12
+scope lock — no multi-tenant concerns apply here.
+
+| # | Area | Verdict | Detail |
+|---|---|---|---|
+| 1 | Keychain usage beyond `ServerConfig` | **Clean** | `Keychain` enum (`macos/Lopi/Store/ServerConfig.swift:47-85`) is the only Keychain call site in the tree — correct generic-password wrapper (`kSecClassGenericPassword`, fixed service, delete-before-write). Everything else persisted via `UserDefaults` (host/port, accent theme, pane layout, launch-controls defaults, budget alert numbers, the local stack-template library) is genuinely non-sensitive UI/config state — no token or credential reaches `UserDefaults`. |
+| 2 | URL / deep-link handling | **Clean — no surface exists** | No `CFBundleURLSchemes`, `onOpenURL`, `NSUserActivity`, or associated domains anywhere in `macos/` or `project.yml`. Both app entry points declare only plain `WindowGroup`/`MenuBarExtra`/`Settings` scenes. Nothing to trace. |
+| 3 | Rendering agent output | **Clean** | No `WKWebView`/`UIWebView`/`loadHTMLString`/HTML-mode `NSAttributedString` anywhere. `MarkdownLogView.swift:56-61` renders agent text via SwiftUI's native `AttributedString(markdown:)` (text-only, no HTML/script execution path), with a plain-text fallback on parse failure. Not the stored-XSS shape S11 Phase 2 found on the web side. |
+| 4 | App Transport Security exceptions | **Clean — strict default, no exceptions declared** | No `NSAppTransportSecurity`/`NSAllowsArbitraryLoads`/`NSExceptionDomains` anywhere; `project.yml` sets no ATS overrides. Default ATS should block plain `http://` to any non-loopback host outright (loopback is Apple's own built-in exemption, which is what makes the default `http://127.0.0.1:3000` config work). |
+| 5 | Entitlements | **Clean / minimal** | macOS target: sandboxed, `network.client: true`, `network.server: false` (correct — the app is a client of `lopi sail`, not a listener), no file-access entitlements requested (no file-picker/import-export feature exists). iOS target declares no extra entitlements. Nothing overbroad. |
+| 6 | Unencrypted disk writes | **Clean** | No production `FileManager`/`.write(to:)`/`Data(contentsOf:)` writes of sensitive content found. Task transcripts and live agent state are held purely in-memory (`@Observable` structs off the live WebSocket feed) — no disk-caching path for tokens, transcripts, or logs. |
+
+**One documentation note, not a fix:** `ServerConfig.baseURL`/`webSocketURL`
+(`macos/Lopi/Store/ServerConfig.swift:11-17`) are hardcoded `http://`/`ws://`. That's fine
+against the default loopback host — row 4's ATS default should block a non-loopback `http://`
+target outright — but if a user ever repoints `host` at a non-loopback address (e.g. iOS
+talking to a Mac over LAN) and ATS's loopback exemption doesn't apply the way assumed here,
+the `Authorization: Bearer` header would travel in cleartext. Worth a one-line comment in
+`ServerConfig.swift` for the next person who touches it; not a code change this sprint since
+the reachable case is exactly the one ATS already appears to block by default.

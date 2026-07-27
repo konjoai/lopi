@@ -40,8 +40,11 @@ pub struct CoreConfig {
     /// When `true`, agents may open self-modification PRs on this repo.
     #[serde(default)]
     pub allow_self_modify: bool,
-    /// When `true`, directory access restrictions are disabled for this session.
-    /// Equivalent to `lopi bypass` — use only in trusted environments.
+    /// REPL display state only (`src/repl/state.rs`'s status line) —
+    /// surfaces the operator's own `lopi bypass` intent in the TUI. Does
+    /// **not** itself gate or relax any directory-access check; nothing in
+    /// the runner reads this field. See `docs/security/TRIFECTA_PATHS.md`
+    /// §7 (Sprint S12, Phase 3) — flagged there as prior doc drift.
     #[serde(default)]
     pub bypass_permissions: bool,
 }

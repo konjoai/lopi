@@ -166,13 +166,6 @@ pub(crate) enum Commands {
         #[arg(long)]
         dry_run: bool,
     },
-    /// Start the GitHub App OAuth + Stripe webhook server.
-    ServeApp {
-        #[arg(short, long, default_value = "3002")]
-        port: u16,
-        #[arg(long, default_value = "127.0.0.1")]
-        host: String,
-    },
     /// Run tests, find failing spec items, and queue fix tasks.
     GapFill {
         #[arg(short, long, default_value = ".")]

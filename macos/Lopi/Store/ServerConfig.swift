@@ -41,6 +41,13 @@ struct ServerConfig: Equatable {
         !isLoopbackHost && !allowInsecureHTTP
     }
 
+    // Plain http/ws, not https/wss. Fine against the default loopback
+    // `host` — App Transport Security's own loopback exemption is what lets
+    // this work at all, and ATS should otherwise block a non-loopback
+    // `http://` target outright. But if `host` is ever repointed at a real
+    // LAN address (e.g. iOS talking to a Mac), the Authorization: Bearer
+    // header would travel in cleartext should that ATS assumption not hold
+    // — see docs/security/TRIFECTA_PATHS.md §8 (Sprint S12, Phase 4).
     var baseURL: URL? {
         URL(string: "\(useSecureScheme ? "https" : "http")://\(host):\(port)")
     }

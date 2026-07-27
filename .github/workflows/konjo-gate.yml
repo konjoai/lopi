@@ -146,6 +146,17 @@ jobs:
             exit 1
           fi
 
+      - name: Scope assertion — no multi-tenant surface (Sprint S12, Phase 6)
+        # HARD GATE. Sprint S12 removed lopi's multi-tenant surface (lopi-app,
+        # open_for_customer, github_installations, CustomerTier/Stripe) as a
+        # decision, not a fact the code enforces on its own — nothing stops a
+        # future PR from reintroducing it one file at a time. This mechanizes
+        # the decision so it can't drift back by omission. See
+        # .konjo/scripts/scope_assert.py's own docstring for the exact term
+        # list and why "installation" (the bare English word) is deliberately
+        # narrowed to the specific removed identifiers instead.
+        run: python3 .konjo/scripts/scope_assert.py
+
       - name: Reachability check (advisory) — pub mod not reachable from the binary
         # ADVISORY BY DESIGN — Sprint F0. `dead_code` above certifies rustc
         # reachability (a `pub` item in a library crate is never dead by
@@ -551,6 +562,62 @@ jobs:
             echo "::error::Missing documentation on public APIs. Add /// doc comments."
             exit 1
           fi
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # Gate 4b — Fuzz (Sprint S12, Phase 2) — short budget, PR-only
+  # ════════════════════════════════════════════════════════════════════════════
+  # Three targets over the parsers that eat attacker-influenceable input:
+  # MCP server responses (jsonrpc.rs), the `claude` CLI's own stream-json
+  # output (claude_events.rs), and GitHub webhook bodies pre-HMAC (github.rs).
+  # 60s/target on PR, deliberately short — the sprint brief's own framing:
+  # "A fuzz gate that adds ten minutes to every PR gets disabled, which is
+  # the S10 anti-goal in a different costume." A longer scheduled run
+  # (cron, not wired here) is the place for deeper campaigns.
+  #
+  fuzz:
+    name: "G4b · Fuzz (60s × 3 targets)"
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    # KNOWN DEBT, verified 2026-07-27: these harnesses (fuzz/, a separate
+    # cargo-fuzz workspace) were authored and reasoned through against the
+    # real parser APIs, but could not be compiled or run in the environment
+    # that wrote them (no nightly toolchain, no cargo-fuzz, no crates.io
+    # network access — see the commit that added this job). Next step: once
+    # a real CI run confirms all three targets compile and run clean, remove
+    # this continue-on-error and add `fuzz` to konjo-gate's `needs:` so a
+    # genuine crash actually blocks merge instead of being logged only.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: konjo-fuzz-${{ github.repository }}
+          workspaces: fuzz -> target
+
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+
+      - name: Fuzz jsonrpc_response_fuzz (MCP server responses)
+        run: cargo fuzz run jsonrpc_response_fuzz -- -max_total_time=60
+        working-directory: fuzz
+
+      - name: Fuzz claude_events_fuzz (claude CLI stream-json)
+        run: cargo fuzz run claude_events_fuzz -- -max_total_time=60
+        working-directory: fuzz
+
+      - name: Fuzz github_webhook_fuzz (GitHub webhook bodies, pre-HMAC)
+        run: cargo fuzz run github_webhook_fuzz -- -max_total_time=60
+        working-directory: fuzz
+
+      - name: Upload crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crashes
+          path: fuzz/artifacts/
+          if-no-files-found: ignore
 
   # ════════════════════════════════════════════════════════════════════════════
   # Gate 5 — Adversarial Review (Wall 3, PRs only)
