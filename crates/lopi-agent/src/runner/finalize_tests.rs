@@ -209,7 +209,7 @@ fn derive_and_stash_successor_does_nothing_without_a_fixture() {
 fn derive_and_stash_successor_stashes_a_gated_child_when_enabled_with_a_fixture() {
     let mut task = Task::new("parent task");
     task.successor_enabled = true;
-    task.autonomy_level = AutonomyLevel::DraftPr;
+    task.autonomy_level = Some(AutonomyLevel::DraftPr);
     task.forbidden_dirs = vec!["secrets/".to_string()];
     task.successor_fixture = Some(fixture_successor("follow-up work"));
     let parent_id = task.id;
@@ -222,7 +222,13 @@ fn derive_and_stash_successor_stashes_a_gated_child_when_enabled_with_a_fixture(
     assert_eq!(child.parent_task, Some(parent_id));
     assert_eq!(child.chain_depth, 1);
     assert!(child.forbidden_dirs.iter().any(|d| d == "secrets/"));
-    assert!(child.autonomy_level.rank() <= AutonomyLevel::DraftPr.rank());
+    assert!(
+        child
+            .autonomy_level
+            .expect("resolved by the containment gate")
+            .rank()
+            <= AutonomyLevel::DraftPr.rank()
+    );
 
     // Taken once — the pool must not enqueue the same successor twice.
     assert!(runner.take_pending_successor().is_none());

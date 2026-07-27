@@ -98,7 +98,14 @@ import {
   type StackConfig,
   type StackProposal
 } from './stack';
-import { DEFAULT_STACK_DEFAULTS, PERMISSION_MODE_OPTIONS, DEFAULT_PERMISSION_MODE } from './stackDefaults';
+import {
+  DEFAULT_STACK_DEFAULTS,
+  PERMISSION_MODE_OPTIONS,
+  DEFAULT_PERMISSION_MODE,
+  AUTONOMY_OPTIONS,
+  AUTO_AUTONOMY,
+  autonomyToWire
+} from './stackDefaults';
 import { AUTO_MODEL, MODEL_OPTIONS, EFFORT_OPTIONS } from './options';
 import { eq, eqIs, ok, namedSummary } from '$lib/test-harness';
 
@@ -414,7 +421,16 @@ eq(computeNextRuns('not a cron', new Date(), 3), [], 'a malformed cron expressio
   const defaults = { model: 'sonnet', effort: 'medium', repo: 'konjoai/lopi' };
   const guarded = buildCard('do the thing');
   guarded.config.repo = 'squish';
-  guarded.guardrails = { gate: true, gateCmd: './kill_test.sh', until: true, untilCmd: 'cargo test', onFail: 'backoff', budget: '200k' };
+  guarded.guardrails = {
+    gate: true,
+    gateCmd: './kill_test.sh',
+    until: true,
+    untilCmd: 'cargo test',
+    onFail: 'backoff',
+    budget: '200k',
+    budgetPreset: 'inherit',
+    isolation: 'inherit'
+  };
   const payload = cardToTaskPayload(guarded, defaults);
 
   // A3 — the '200k' budget preset compiles to the metered budget_tokens.
@@ -589,7 +605,16 @@ eqIs(buildCard(':ratchet "self improve"').preset, 'gain', 'a `:ratchet` composer
   // through unconverted instead of `on_fail`) would pass every value-level
   // assertion above yet still be wrong — assert the actual key set.
   const fullyGuarded = buildCard('x');
-  fullyGuarded.guardrails = { gate: true, gateCmd: 'g', until: true, untilCmd: 'u', onFail: 'stop', budget: 'auto' };
+  fullyGuarded.guardrails = {
+    gate: true,
+    gateCmd: 'g',
+    until: true,
+    untilCmd: 'u',
+    onFail: 'stop',
+    budget: 'auto',
+    budgetPreset: 'inherit',
+    isolation: 'inherit'
+  };
   const keys = Object.keys(cardToTaskPayload(fullyGuarded, defaults).options).sort();
   eq(
     keys,
@@ -673,11 +698,126 @@ eqIs(buildCard(':ratchet "self improve"').preset, 'gain', 'a `:ratchet` composer
   );
 }
 
-// ── Permission-Modes-1: `permission_mode` — wired end to end (unlike
-// `autonomy`), and the literal default (`bypassPermissions`) must never hit
-// the wire when the field wasn't touched — mirrors the `auto` model
-// sentinel-omission pattern above, but the "sentinel" here is the real
-// backend default itself. ─────────────────────────────────────────────────
+// ── Web-composer loop.toml sprint: `autonomy` — wired end to end via
+// `autonomy_level`. The severe gap this sprint fixes: `AUTO_AUTONOMY`
+// ("auto · from loop.toml") is the cold-start default so an untouched
+// composer never sends a hidden concrete rung that would silently clobber
+// the repo's own `.lopi/loop.toml` autonomy_level — mirrors the `auto`
+// model sentinel-omission pattern, but unlike `permission_mode`'s sentinel
+// (a real backend default value), `AUTO_AUTONOMY` maps to no wire tag at
+// all; there is no "default autonomy_level" the server could resolve a
+// literal client-sent value to safely. ─────────────────────────────────────
+{
+  eq(
+    AUTONOMY_OPTIONS.map((o) => o.value),
+    ['auto', 'L1', 'L2', 'L3', 'L4'],
+    'AUTONOMY_OPTIONS leads with the auto/inherit sentinel, then the four real rungs'
+  );
+  eqIs(DEFAULT_STACK_DEFAULTS.autonomy, AUTO_AUTONOMY, 'a fresh stack defaults autonomy to auto, not a hidden L2');
+
+  eqIs(autonomyToWire('L1'), 'report_only', 'L1 maps to report_only');
+  eqIs(autonomyToWire('L2'), 'draft_pr', 'L2 maps to draft_pr');
+  eqIs(autonomyToWire('L3'), 'verified_pr', 'L3 maps to verified_pr');
+  eqIs(autonomyToWire('L4'), 'auto_merge', 'L4 maps to auto_merge');
+  eqIs(autonomyToWire(AUTO_AUTONOMY), undefined, 'the auto sentinel maps to no wire tag — omitted, not sent literally');
+  eqIs(autonomyToWire(undefined), undefined, 'an unset autonomy maps to no wire tag');
+
+  const defaults = { model: 'sonnet', effort: 'medium', repo: 'konjoai/lopi' };
+  const untouchedCard = buildCard('x');
+  ok(
+    !('autonomy_level' in cardToTaskPayload(untouchedCard, defaults).options),
+    'no card override and no pane default ⇒ autonomy_level omitted entirely (repo .lopi/loop.toml governs)'
+  );
+
+  const autoDefaults = { ...defaults, autonomy: AUTO_AUTONOMY };
+  ok(
+    !('autonomy_level' in cardToTaskPayload(untouchedCard, autoDefaults).options),
+    'a pane default explicitly set to auto also omits autonomy_level'
+  );
+
+  const overriddenCard = buildCard('x');
+  overriddenCard.config.autonomy = 'L4';
+  eqIs(
+    cardToTaskPayload(overriddenCard, defaults).options.autonomy_level,
+    'auto_merge',
+    'a card override away from auto is sent on the wire as the real serde tag'
+  );
+
+  const nonAutoPaneDefaults = { ...defaults, autonomy: 'L3' };
+  const inheritingCard = buildCard('x');
+  eqIs(
+    cardToTaskPayload(inheritingCard, nonAutoPaneDefaults).options.autonomy_level,
+    'verified_pr',
+    'a pane default away from auto (no card override) is sent on the wire'
+  );
+
+  // A card override always wins over a non-auto pane default too.
+  const bothSetCard = buildCard('x');
+  bothSetCard.config.autonomy = 'L1';
+  eqIs(
+    cardToTaskPayload(bothSetCard, nonAutoPaneDefaults).options.autonomy_level,
+    'report_only',
+    'the card-level override wins over the pane default'
+  );
+}
+
+// ── Phase 2 (web-composer loop.toml sprint): budget preset/USD, isolation,
+// and no_progress_limit — all card-only (no pane default), all `'inherit'`/
+// `undefined` by default so an untouched card omits every field entirely
+// and the repo's `.lopi/loop.toml` governs. ────────────────────────────────
+{
+  const defaults = { model: 'sonnet', effort: 'medium', repo: 'konjoai/lopi' };
+  const untouched = buildCard('x');
+  const untouchedOptions = cardToTaskPayload(untouched, defaults).options;
+  ok(!('budget_override' in untouchedOptions), 'inherit preset + no usd ⇒ budget_override omitted');
+  ok(!('isolation' in untouchedOptions), 'inherit isolation ⇒ omitted');
+  ok(!('no_progress_limit' in untouchedOptions), 'unset no_progress_limit ⇒ omitted');
+
+  const presetOnly = buildCard('x');
+  presetOnly.guardrails = { ...presetOnly.guardrails, budgetPreset: 'deep' };
+  eq(
+    cardToTaskPayload(presetOnly, defaults).options.budget_override,
+    { preset: 'deep' },
+    'a budget preset alone sends { preset } with no usd key'
+  );
+
+  const usdOnly = buildCard('x');
+  usdOnly.guardrails = { ...usdOnly.guardrails, budgetUsd: 5 };
+  eq(
+    cardToTaskPayload(usdOnly, defaults).options.budget_override,
+    { usd: 5 },
+    'a usd cap alone sends { usd } with no preset key — never forces fan-out policy just for a dollar bump'
+  );
+
+  const both = buildCard('x');
+  both.guardrails = { ...both.guardrails, budgetPreset: 'unlimited', budgetUsd: 25 };
+  eq(
+    cardToTaskPayload(both, defaults).options.budget_override,
+    { preset: 'unlimited', usd: 25 },
+    'preset + usd combine into one budget_override object'
+  );
+
+  const worktreeCard = buildCard('x');
+  worktreeCard.guardrails = { ...worktreeCard.guardrails, isolation: 'worktree' };
+  eqIs(
+    cardToTaskPayload(worktreeCard, defaults).options.isolation,
+    'worktree',
+    'an explicit isolation override reaches the wire verbatim'
+  );
+
+  const noGainCard = buildCard('x');
+  noGainCard.guardrails = { ...noGainCard.guardrails, noProgressLimit: 0 };
+  eqIs(
+    cardToTaskPayload(noGainCard, defaults).options.no_progress_limit,
+    0,
+    'an explicit 0 (disable the guard) is a real override, not treated as unset'
+  );
+}
+
+// ── Permission-Modes-1: `permission_mode` — wired end to end, and the
+// literal default (`bypassPermissions`) must never hit the wire when the
+// field wasn't touched — mirrors the `auto` model sentinel-omission pattern
+// above, but the "sentinel" here is the real backend default itself. ──────
 {
   ok(
     PERMISSION_MODE_OPTIONS.some((o) => o.value === DEFAULT_PERMISSION_MODE),

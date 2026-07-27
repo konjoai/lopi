@@ -37,7 +37,7 @@ pub(crate) fn build_task_from_fields(
         task.repo_path = Some(repo.to_path_buf());
         RepoProfile::load_from_repo(repo).apply(&mut task);
     }
-    task.autonomy_level = autonomy_level;
+    task.autonomy_level = Some(autonomy_level);
     task
 }
 
@@ -102,7 +102,7 @@ mod tests {
                 repo: "org/repo".into(),
                 event: "check_run".into(),
             },
-            autonomy_level: AutonomyLevel::DraftPr,
+            autonomy_level: Some(AutonomyLevel::DraftPr),
             forbidden_dirs: vec!["infra/".to_string(), "secrets/".to_string()],
             ..Task::new("fix the failing check")
         };
@@ -122,13 +122,13 @@ mod tests {
             AutonomyLevel::AutoMerge, // wider than the parent's DraftPr
         );
 
-        assert_eq!(successor.autonomy_level, AutonomyLevel::AutoMerge);
+        assert_eq!(successor.autonomy_level, Some(AutonomyLevel::AutoMerge));
         assert!(
             !successor.forbidden_dirs.iter().any(|d| d == "secrets/"),
             "gap: the successor has no memory of the parent's `secrets/` restriction"
         );
         assert!(
-            successor.autonomy_level.rank() > parent.autonomy_level.rank(),
+            successor.autonomy_level.unwrap().rank() > parent.autonomy_level.unwrap().rank(),
             "gap: the successor can freely widen past the parent's autonomy level"
         );
     }

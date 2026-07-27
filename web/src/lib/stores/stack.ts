@@ -17,7 +17,8 @@ import {
   type StackDefaults,
   DEFAULT_STACK_DEFAULTS,
   DEFAULT_PERMISSION_MODE,
-  defaultStackDefaults
+  defaultStackDefaults,
+  autonomyToWire
 } from '$lib/stores/stackDefaults';
 import { AUTO_MODEL, MODEL_OPTIONS, labelFor, type Option } from '$lib/stores/options';
 import { resolveRepoToken } from '$lib/stores/repoMenu';
@@ -74,23 +75,62 @@ export function budgetToTokens(budget: Budget): number | undefined {
   return budget === '200k' ? 200_000 : undefined;
 }
 
-/** A card's run-limit guardrails. `gate`/`until`/`onFail` are WIRED to the
- *  real `CreateTaskOptions.gate` / `.until` / `.on_fail` fields
- *  (`crates/lopi-core/src/loop_config.rs`, landed PR #62). */
+/** The real `BudgetOverride.preset` vocabulary (`crates/lopi-core/src/
+ *  budget_preset.rs::BudgetPreset`), plus the `'inherit'` sentinel meaning
+ *  "no preset chosen — omit `budget_override.preset`, the repo's
+ *  `.lopi/loop.toml` `[budget]` section governs." Distinct from the legacy
+ *  `Budget` token-count enum above: this is the real preset system (also
+ *  governs the USD cap and the sub-agent fan-out tool allow/deny list),
+ *  wired via `CreateTaskOptions.budget_override`. */
+export type BudgetPresetChoice = 'inherit' | 'quick' | 'standard' | 'deep' | 'unlimited';
+
+/** Per-run isolation mode override (`crates/lopi-core/src/loop_config.rs::
+ *  IsolationMode`), plus the `'inherit'` sentinel meaning "omit `isolation`,
+ *  the repo's `.lopi/loop.toml` isolation mode governs." */
+export type IsolationChoice = 'inherit' | 'branch' | 'worktree';
+
+/** A card's run-limit guardrails. `gate`/`until`/`onFail`/`budgetPreset`/
+ *  `budgetUsd`/`isolation`/`noProgressLimit` are all WIRED to the real
+ *  `CreateTaskOptions.gate` / `.until` / `.on_fail` / `.budget_override` /
+ *  `.isolation` / `.no_progress_limit` fields. The legacy `budget` token-cap
+ *  enum stays WIRED to `.budget_tokens` alongside the newer `budgetPreset` —
+ *  the two are orthogonal backend knobs (a metered token ceiling vs. a
+ *  named cost-class preset) and can be set independently. */
 export interface Guardrails {
   gate: boolean;
   gateCmd: string;
   until: boolean;
   untilCmd: string;
   onFail: OnFail;
-  /** Backend gap: no budget field exists on `CreateTaskRequest` yet. */
   budget: Budget;
+  /** `'inherit'` (the default) omits `budget_override.preset` entirely. */
+  budgetPreset: BudgetPresetChoice;
+  /** Explicit USD cap, paired with `budgetPreset` into the same
+   *  `budget_override`. `undefined` (the default) omits it — no forced cap. */
+  budgetUsd?: number;
+  /** `'inherit'` (the default) omits `isolation` entirely. */
+  isolation: IsolationChoice;
+  /** `undefined` (the default) omits `no_progress_limit` entirely — the
+   *  repo's own value (or its own default) governs. `0` is a valid explicit
+   *  choice (disables the guard), distinct from "unset." */
+  noProgressLimit?: number;
 }
 
 /** Freshly-initialized guardrails — every card gets its own object (never a
  *  shared reference) so editing one card can't leak into another. */
 export function defaultGuardrails(): Guardrails {
-  return { gate: false, gateCmd: '', until: false, untilCmd: '', onFail: 'stop', budget: 'auto' };
+  return {
+    gate: false,
+    gateCmd: '',
+    until: false,
+    untilCmd: '',
+    onFail: 'stop',
+    budget: 'auto',
+    budgetPreset: 'inherit',
+    budgetUsd: undefined,
+    isolation: 'inherit',
+    noProgressLimit: undefined
+  };
 }
 
 /** Round 2, item 9 — a card's goal facet. See `StackCard.goal`'s doc comment
@@ -155,10 +195,12 @@ export function defaultCron(): CronConfig {
 
 /** Per-loop overrides of the pane defaults (model/effort/repo/branch/
  *  autonomy/permission_mode). `undefined` on any field means "inherit the
- *  pane default". `model`/`effort`/`repo`/`permission_mode` are WIRED (real
- *  `CreateTaskRequest` fields); `autonomy` is client-only — backend gap, not
- *  yet exposed. `branch` has no field of its own but still reaches the
- *  server: both `paneSubmitPayload` (bare-pane launch) and
+ *  pane default" (and for `autonomy`, `undefined` all the way down to the
+ *  wire means the repo's `.lopi/loop.toml` `autonomy_level` governs instead
+ *  — see `autonomyToWire`). `model`/`effort`/`repo`/`permission_mode`/
+ *  `autonomy` are all WIRED (real `CreateTaskRequest` fields as of the
+ *  web-composer loop.toml sprint). `branch` has no field of its own but
+ *  still reaches the server: both `paneSubmitPayload` (bare-pane launch) and
  *  `cardToTaskPayload` (run-stack execution) turn it into the same "Target
  *  branch: …" planning constraint. */
 export interface CardConfig {
@@ -166,11 +208,14 @@ export interface CardConfig {
   effort?: string;
   repo?: string;
   branch?: string;
+  /** `'L1'..'L4'` UI value — mapped to the real
+   *  `CreateTaskOptions.autonomy_level` wire tag by `autonomyToWire`
+   *  (`stores/stackDefaults.ts`) at submit time. */
   autonomy?: string;
   /** How much the `claude -p` worker session may act on tool calls without a
    *  human answering a prompt (see `stores/stackDefaults.ts::PERMISSION_MODE_OPTIONS`).
-   *  Unlike `autonomy` above, this one is wired end to end — it reaches a
-   *  real `CreateTaskRequest.permission_mode`, validated server-side. */
+   *  Wired end to end — reaches a real `CreateTaskRequest.permission_mode`,
+   *  validated server-side. */
   permission_mode?: string;
 }
 
@@ -1404,6 +1449,7 @@ export interface PaneDefaults {
   effort: string;
   repo: string;
   branch?: string;
+  autonomy?: string;
   permission_mode?: string;
 }
 
@@ -1477,12 +1523,35 @@ export function cardToTaskPayload(
   if (resolvedPermissionMode && resolvedPermissionMode !== DEFAULT_PERMISSION_MODE) {
     options.permission_mode = resolvedPermissionMode;
   }
+  // The web-composer loop.toml sprint — send only a live `L1..L4` choice;
+  // an unresolvable/unset value is omitted so the server keeps the repo's
+  // `.lopi/loop.toml` `autonomy_level` as the sole source (file = base, this
+  // is only ever an override, never a clobber).
+  const autonomyLevel = autonomyToWire(card.config.autonomy ?? defaults.autonomy);
+  if (autonomyLevel) options.autonomy_level = autonomyLevel;
   if (card.guardrails.gate) options.gate = card.guardrails.gateCmd;
   if (card.guardrails.until) options.until = card.guardrails.untilCmd;
   // A3 — a budget preset that sets a real cap flows to the metered
   // `budget_tokens`; inherit/unlimited presets omit it (no inert claim).
   const budgetTokens = budgetToTokens(card.guardrails.budget);
   if (budgetTokens !== undefined) options.budget_tokens = budgetTokens;
+  // The web-composer loop.toml sprint's budget preset — orthogonal to the
+  // token-cap `budget` above. `'inherit'` (untouched) omits the whole
+  // `budget_override` object rather than sending an empty one.
+  const { budgetPreset, budgetUsd } = card.guardrails;
+  if (budgetPreset !== 'inherit' || budgetUsd !== undefined) {
+    options.budget_override = {
+      ...(budgetPreset !== 'inherit' ? { preset: budgetPreset } : {}),
+      ...(budgetUsd !== undefined ? { usd: budgetUsd } : {})
+    };
+  }
+  // Per-run isolation override — `'inherit'` (untouched) omits it so the
+  // repo's `.lopi/loop.toml` isolation mode governs.
+  if (card.guardrails.isolation !== 'inherit') options.isolation = card.guardrails.isolation;
+  // Per-run no-progress-limit override — `undefined` (untouched) omits it.
+  if (card.guardrails.noProgressLimit !== undefined) {
+    options.no_progress_limit = card.guardrails.noProgressLimit;
+  }
   // A1 — compile the card's evals into a real acceptance goal so eval
   // execution finally happens; omitted when the card carries no checks.
   const acceptance = evalsToAcceptance(card.evals);
@@ -1675,16 +1744,23 @@ export function bumpInOrder(
  *  `onFail` is WIRED into the chain sequencer (`stores/stackRun.ts`'s
  *  `advance`) — a real, observable client behavior, just re-scoped from
  *  "how one task retries" to "what the chain does when a card fails."
- *  `budget` stays client-only/unenforced, same honesty rule as the per-loop
- *  budget (hidden from view — see `StackConnector.svelte`'s doc comment). */
+ *
+ *  Phase 3 (web-composer loop.toml sprint) removed the chain-scope `budget`
+ *  field that used to live here: a chain is N independent task creations
+ *  with no server-side "whole chain" to apply a budget to (same reasoning
+ *  as gate/until above), and unlike `onFail` it drove no real client
+ *  behavior either — `GuardrailsPopover`'s stack-scope budget row was a
+ *  fully inert, editable-but-nowhere-read control, exactly the Pillar-1
+ *  violation this sprint's honesty pass exists to catch. Per-card budget
+ *  (`Guardrails.budget`/`budgetPreset`/`budgetUsd` on `StackCard`) is
+ *  unaffected — that one is real. */
 export interface StackGuardrails {
   onFail: OnFail;
-  budget: Budget;
 }
 
 /** Freshly-initialized chain guardrails — every stack gets its own object. */
 export function defaultStackGuardrails(): StackGuardrails {
-  return { onFail: 'stop', budget: 'auto' };
+  return { onFail: 'stop' };
 }
 
 /** The stack control area's placement. `'dock'` is a collapsible strip
@@ -1838,7 +1914,7 @@ export function stackDefaultsActive(defaults: StackDefaults): boolean {
 /** The chain guardrails summary line: on-fail policy + budget preset,
  *  mirroring `guardSummary`'s "`part · part`" shape. */
 export function stackGuardSummary(g: StackGuardrails): string {
-  return `${g.onFail} · budget:${g.budget}`;
+  return g.onFail;
 }
 
 /** The chain evals summary line, mirroring `evalsSummary`'s phrasing but

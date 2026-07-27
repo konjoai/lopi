@@ -214,10 +214,33 @@ pub struct Task {
     #[serde(default)]
     pub require_plan_approval: bool,
     /// Phase 16 (Loop Engineering) — trust level governing how far the loop may
-    /// act without a human: L1 report-only … L4 auto-merge. Defaults to L2
-    /// (draft PR), the conservative level inherited from a schedule or config.
+    /// act without a human: L1 report-only … L4 auto-merge. `None` (the
+    /// default) means "unset" — the repo's `.lopi/loop.toml`
+    /// [`crate::loop_config::LoopConfig::autonomy_level`] governs instead
+    /// (file = base, an explicit task-level value = override, same
+    /// "explicit wins over repo default" precedent as `max_iterations`/
+    /// `gate`/`until`/`on_fail` below). Resolved once, early in the pool's
+    /// dispatch path (`lopi_orchestrator::pool::run_loop::run_one`), so by
+    /// the time [`crate::TaskStatus`] finalize logic reads this field it is
+    /// always `Some`. A schedule/MAXX-fired task sets this explicitly from
+    /// its own configured trust level, which is why it always wins over the
+    /// target repo's file.
     #[serde(default)]
-    pub autonomy_level: crate::loop_config::AutonomyLevel,
+    pub autonomy_level: Option<crate::loop_config::AutonomyLevel>,
+    /// Per-task override of the repo's
+    /// [`crate::loop_config::LoopConfig::no_progress_limit`], taking
+    /// precedence when set. Mirrors `max_iterations`'s "explicit task
+    /// override wins over repo default" precedent. `None` (the default)
+    /// leaves the repo's own `no_progress_limit` (or its own default) as the
+    /// sole halt condition.
+    #[serde(default)]
+    pub no_progress_limit: Option<u8>,
+    /// Per-task override of the repo's
+    /// [`crate::loop_config::LoopConfig::isolation`], taking precedence when
+    /// set. `None` (the default) leaves the repo's own `isolation` (or its
+    /// own default, shared-checkout `Branch`) as the sole isolation mode.
+    #[serde(default)]
+    pub isolation: Option<crate::loop_config::IsolationMode>,
     /// How much the `claude -p` worker session may act on tool calls without
     /// a human answering a prompt, passed through as `--permission-mode`.
     /// Defaults to [`PermissionMode::BypassPermissions`], so an absent field
@@ -405,7 +428,9 @@ impl Task {
             rubric: None,
             topology: None,
             require_plan_approval: false,
-            autonomy_level: crate::loop_config::AutonomyLevel::default(),
+            autonomy_level: None,
+            no_progress_limit: None,
+            isolation: None,
             permission_mode: crate::permission_mode::PermissionMode::default(),
             report: None,
             verifier_required: false,

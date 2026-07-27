@@ -57,7 +57,7 @@ pub async fn boot(entries: Vec<ScheduleEntry>, pool: AgentPool) -> Result<JobSch
                 // the task so the runner enforces it (report-only / draft PR /
                 // verified PR / auto-merge). Without this the trust dropdown
                 // would be cosmetic.
-                task.autonomy_level = entry.autonomy_level;
+                task.autonomy_level = Some(entry.autonomy_level);
 
                 // Report on Finish — carry the schedule's declared channel
                 // onto the task so the L1 report-only hook (or, once

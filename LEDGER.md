@@ -5,6 +5,64 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## Sprint web-composer/loop.toml — one-way door: file is the base, request is the override
+
+**Decision (one-way door): every loop-config field the web composer can set
+follows "file = base, request = override," never the reverse, and this is
+now load-bearing for every future field.** Before this sprint, the pattern
+already existed informally for `max_iterations`/`gate`/`until`/`on_fail` —
+each is `Option<T>` on `Task`, resolved in `pool::run_loop::run_one` (or
+`run_loop_builder::build_runner`) as `task.field.unwrap_or(repo_default)` —
+but `Task.autonomy_level` was the exception: a plain, non-`Option`
+`AutonomyLevel` defaulting to `DraftPr` via `Task::new()`, with nothing
+anywhere resolving it against the repo's `.lopi/loop.toml`
+`autonomy_level`. That gap is why wiring the composer's `autonomy` control
+straight to a new `CreateTaskRequest.autonomy_level` field would have been
+actively worse than leaving it client-only: an unset UI field and an
+explicit "L2" choice would have been indistinguishable on the wire, so
+*every* web-composer task would have silently overridden the repo's real
+configured autonomy the moment the field became wired — the fabricated-state
+failure this whole framework exists to catch, self-inflicted by the fix.
+
+**The fix, and why it's a one-way door:** `Task.autonomy_level` is now
+`Option<AutonomyLevel>`. `None` means "unset — the repo's `.lopi/loop.toml`
+value governs"; `Some(level)` is an explicit override, from a live UI
+choice, a fired schedule (`ScheduleEntry.autonomy_level`, always explicit),
+or a MAXX/successor-derived task. Resolution happens exactly once, in
+`pool::run_loop::run_one`, immediately after loading the repo's
+`LoopConfig`: `task.autonomy_level = Some(task.autonomy_level
+.unwrap_or(cfg.autonomy_level))` — the same seam `isolation` (also newly
+`Option<IsolationMode>` on `Task` this sprint) and `no_progress_limit`
+(checked first in `AgentRunner::no_progress_limit()` before its own repo
+read) resolve through. Every downstream reader — `finalize.rs`'s PR
+decision, successor autonomy-ceiling clamping — sees an already-resolved
+`Some` value; they never re-consult the repo file themselves. This is a
+one-way door because every future loop-config field the web/CLI/Telegram
+surface ever exposes must follow the identical shape: `Option<T>` on `Task`,
+`Option<T>` on `CreateTaskRequest`, resolved exactly once against the
+repo's `LoopConfig` at (or before) the point the runner is built, never
+resolved by falling back to a hardcoded default that isn't the file's own
+value. Inverting this — defaulting a request-level field to a concrete
+value and always sending it — silently reintroduces the exact bug this
+sprint exists to close, and would do so invisibly: the symptom is a repo's
+`.lopi/loop.toml` appearing to have no effect on web-composer-submitted
+tasks, with no error, no log line, nothing to grep for.
+
+**A second, narrower one-way door, found during the Phase 3 honesty audit:**
+a composer control that cannot be wired to anything — no backend field, no
+real client-side behavior — must not render as an editable control at all.
+`StackConfig`'s stack-scope (chain) `budget` row was exactly this: a chain
+is N independent task creations, so there is no server-side "whole chain
+budget" to bind to, and unlike stack-scope `onFail` (genuinely wired into
+the client-side chain sequencer, `stores/stackRun.ts`) this `budget` control
+drove nothing anywhere — not even the dock's "is this facet active"
+indicator, which only ever checked `onFail`. It was removed
+(`StackGuardrails.budget` field deleted; the row now renders only at loop
+scope, `{#if scope === 'loop'}`) rather than left in place unwired. Any
+future stack-scope control proposal must clear this same bar before it's
+added: either it binds to something real (a server field, or an observable
+client behavior like the sequencer's on-fail policy), or it doesn't render.
+
 ## Sprint S12 — scope lock and round 3: three one-way doors
 
 **Decision 1 (one-way door, the largest in this repo's history): the multi-tenant surface is

@@ -176,10 +176,10 @@ fn clamp_autonomy_never_exceeds_the_parent_rank() {
 #[test]
 fn derived_child_never_exceeds_the_parents_autonomy_rank() {
     let mut parent = parent_task();
-    parent.autonomy_level = AutonomyLevel::ReportOnly; // L1, the strictest level
+    parent.autonomy_level = Some(AutonomyLevel::ReportOnly); // L1, the strictest level
     let child = derive_successor_task(&parent, &sample("go further"), 5).unwrap();
-    assert!(child.autonomy_level.rank() <= parent.autonomy_level.rank());
-    assert_eq!(child.autonomy_level, AutonomyLevel::ReportOnly);
+    assert!(child.autonomy_level.unwrap().rank() <= parent.autonomy_level.unwrap().rank());
+    assert_eq!(child.autonomy_level, Some(AutonomyLevel::ReportOnly));
 }
 
 // ── Gate 3: directory inheritance ───────────────────────────────────
@@ -232,7 +232,7 @@ fn webhook_sourced_parent_forces_plan_approval_and_disables_the_chain() {
         repo: "org/repo".into(),
         event: "check_run".into(),
     };
-    parent.autonomy_level = AutonomyLevel::AutoMerge; // even at max trust
+    parent.autonomy_level = Some(AutonomyLevel::AutoMerge); // even at max trust
     let mut successor = sample("go further");
     successor.allowed_dirs = vec![];
     let child = derive_successor_task(&parent, &successor, 5).unwrap();
@@ -289,7 +289,7 @@ fn kt_a_inverted_derive_successor_task_blocks_the_escalation() {
             repo: "org/repo".into(),
             event: "check_run".into(),
         },
-        autonomy_level: AutonomyLevel::DraftPr, // L2
+        autonomy_level: Some(AutonomyLevel::DraftPr), // L2
         forbidden_dirs: vec!["infra/".to_string(), "secrets/".to_string()],
         successor_enabled: true,
         ..Task::new("fix the failing check")
@@ -303,7 +303,7 @@ fn kt_a_inverted_derive_successor_task_blocks_the_escalation() {
 
     // The autonomy ceiling holds: no widening past the parent's L2.
     assert!(
-        child.autonomy_level.rank() <= parent.autonomy_level.rank(),
+        child.autonomy_level.unwrap().rank() <= parent.autonomy_level.unwrap().rank(),
         "blocked: successor cannot widen past the parent's autonomy level"
     );
     // The parent's forbidden dir survives into the child.

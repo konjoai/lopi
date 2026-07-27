@@ -1,10 +1,12 @@
 <!--
   ConfigDrawer — the sliders-button inline drawer with per-loop overrides of
-  the pane defaults. `model`/`effort`/`repo`/`permission_mode` are WIRED (real
-  `CreateTaskRequest` fields); `autonomy` is client-only. `branch` reaches the
-  server as a planning constraint (`paneSubmitPayload`) and its options are the
-  selected repo's real branches, fetched via `stores/branches.ts`. Built on
-  `Dropdown.svelte`, not a popover.
+  the pane defaults. `model`/`effort`/`repo`/`permission_mode`/`autonomy` are
+  all WIRED (real `CreateTaskRequest` fields — `autonomy` reaches
+  `autonomy_level` via `autonomyToWire`, wired in the web-composer loop.toml
+  sprint). `branch` reaches the server as a planning constraint
+  (`paneSubmitPayload`) and its options are the selected repo's real
+  branches, fetched via `stores/branches.ts`. Built on `Dropdown.svelte`, not
+  a popover.
 -->
 <script lang="ts">
   import { type StackCard as StackCardT, type CardConfig, updateCardInPane } from '$lib/stores/stack';

@@ -960,10 +960,18 @@
     untilCmd={card.guardrails.untilCmd}
     onFail={card.guardrails.onFail}
     budget={card.guardrails.budget}
+    budgetPreset={card.guardrails.budgetPreset}
+    budgetUsd={card.guardrails.budgetUsd}
+    isolation={card.guardrails.isolation}
+    noProgressLimit={card.guardrails.noProgressLimit}
     onChangeGate={(patch) => writeCard({ guardrails: { ...card.guardrails, ...patch } })}
     onChangeUntil={(patch) => writeCard({ guardrails: { ...card.guardrails, ...patch } })}
     onChangeOnFail={(onFail) => writeCard({ guardrails: { ...card.guardrails, onFail } })}
     onChangeBudget={(budget) => writeCard({ guardrails: { ...card.guardrails, budget } })}
+    onChangeBudgetPreset={(budgetPreset) => writeCard({ guardrails: { ...card.guardrails, budgetPreset } })}
+    onChangeBudgetUsd={(budgetUsd) => writeCard({ guardrails: { ...card.guardrails, budgetUsd } })}
+    onChangeIsolation={(isolation) => writeCard({ guardrails: { ...card.guardrails, isolation } })}
+    onChangeNoProgressLimit={(noProgressLimit) => writeCard({ guardrails: { ...card.guardrails, noProgressLimit } })}
     maxIterations={card.maxIterations}
     onStep={step}
   />

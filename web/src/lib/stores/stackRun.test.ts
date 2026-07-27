@@ -450,7 +450,7 @@ async function main() {
   {
     resetPanes();
     seedPane('s1', [card('c'), card('b'), card('a')]);
-    seedStackConfig('s1', { loopCount: 2, guardrails: { onFail: 'continue', budget: 'auto' } });
+    seedStackConfig('s1', { loopCount: 2, guardrails: { onFail: 'continue' } });
     const statusSource: StatusStore = writable(new Map());
     const captured = mockBackend(statusSource, { a: 'completed', b: 'failed', c: 'completed' });
 
@@ -469,7 +469,7 @@ async function main() {
   {
     resetPanes();
     seedPane('s1', [card('c'), card('b'), card('a')]);
-    seedStackConfig('s1', { loopCount: 2, guardrails: { onFail: 'backoff', budget: 'auto' } });
+    seedStackConfig('s1', { loopCount: 2, guardrails: { onFail: 'backoff' } });
     const statusSource: StatusStore = writable(new Map());
     const captured = mockBackend(statusSource, { a: 'completed', b: 'failed', c: 'completed' });
 
@@ -722,6 +722,45 @@ async function main() {
     runBarePane('s2', defaults, statusSource as AgentStatusSource); // 2 cards
     await flush();
     eqIs(captured.length, 0, 'runBarePane is a no-op for 0-card and 2+-card panes');
+  }
+
+  // ── web-composer loop.toml sprint: `autonomy_level` reaches the wire,
+  //    and — the precedence contract this sprint exists to protect — an
+  //    untouched autonomy control omits the field entirely rather than
+  //    sending a hidden default that would clobber the repo's own
+  //    `.lopi/loop.toml` autonomy_level. ──────────────────────────────────
+  {
+    resetPanes();
+    seedPane('s1', [card('a')]);
+    const statusSource: StatusStore = writable(new Map());
+    const captured = mockBackend(statusSource, { a: 'completed' });
+    const autonomyDefaults: PaneDefaults = { ...defaults, autonomy: 'L3' };
+
+    runStack('s1', 'run', autonomyDefaults, statusSource as AgentStatusSource);
+    await flush();
+
+    eqIs(
+      captured[0]?.body.autonomy_level,
+      'verified_pr',
+      'a pane autonomy default of L3 reaches the wire as autonomy_level: verified_pr'
+    );
+  }
+  {
+    resetPanes();
+    seedPane('s1', [card('a')]);
+    const statusSource: StatusStore = writable(new Map());
+    const captured = mockBackend(statusSource, { a: 'completed' });
+
+    // No pane default and no card override — the composer's autonomy control
+    // was never touched (cold-start `defaults` here carries no `autonomy`
+    // key at all).
+    runStack('s1', 'run', defaults, statusSource as AgentStatusSource);
+    await flush();
+
+    ok(
+      !('autonomy_level' in captured[0].body),
+      'untouched autonomy omits autonomy_level from the wire so the repo .lopi/loop.toml value governs, never a hidden default'
+    );
   }
 
   namedSummary('stackRun');

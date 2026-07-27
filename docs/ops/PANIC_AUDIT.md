@@ -1,15 +1,18 @@
 ---
 decays: state
-verified-against: 71a470b
-verified-date: 2026-07-26
+verified-against: fcc4988
+verified-date: 2026-07-27
 ---
 
 # Panic audit — the trustworthy count, and why grep couldn't give it to you
 
-Verified against: `71a470b` · 2026-07-26 (re-verified; the workspace-wide zero-unwrap
-claim and per-crate deny/warn table still hold, re-confirmed with a live clippy re-run —
-no citation drift found; the "17 files" `#[allow]` count below is stale and softened, see
-that section)
+Verified against: `fcc4988` · 2026-07-27 (re-verified; the workspace-wide zero-unwrap
+claim still holds — re-confirmed with a live `cargo clippy --workspace --all-targets
+--all-features` re-run at the exact flag set cited below, 0 warnings/0 errors. One real
+citation drift found and fixed: Sprint S12 deleted the `lopi-app` crate entirely
+(multi-tenant surface removal — see `LEDGER.md`'s Sprint S12 entry), so its row is
+removed from the per-crate table below rather than left citing a crate that no longer
+exists. No other drift found.)
 
 Konjo Forward **Pillar 1** (an honest starting position) and **F11** (a durable unattended
 loop should not die on an `unwrap`). This is the pre-flight kill-test for Sprint S5 and the
@@ -73,10 +76,17 @@ which is exactly the structure line-based tools cannot parse and clippy parses b
 | `lopi-github` | 8 | **0** | `#![warn(...)]` |
 | `lopi-toon` | 2 | **0** | `#![warn(...)]` |
 | `lopi-ratelimit` | 2 | **0** | `#![warn(...)]` |
-| `lopi-app` | 3 | **0** | `#![warn(...)]` |
 | `lopi-git` | 0 | **0** | `#![warn(...)]` |
 | root binary (`src/`) | 94 | **0** | `#![warn(...)]` (CLI, low blast radius — see Out of scope) |
 | **Total** | **788** | **0** | — |
+
+`lopi-app` (previously listed here at 3 raw hits / 0 production violations) was deleted
+outright by Sprint S12 (the multi-tenant-surface removal, `LEDGER.md`) — not hardened,
+gone. The row is removed rather than left dangling; the total above is left as originally
+measured (a historical count, not re-summed) since re-deriving it would require re-running
+Method 1's raw grep against a tree state that no longer exists and gains nothing the
+still-valid Method 3 (0 production violations, workspace-wide, re-confirmed above) doesn't
+already cover.
 
 Every raw-grep hit above is inside test code (an inline `#[cfg(test)] mod tests`, a `tests.rs`
 submodule gated `#[cfg(test)]` in its parent, or a Criterion bench in `benches/`), each already

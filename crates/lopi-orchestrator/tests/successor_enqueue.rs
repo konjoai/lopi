@@ -46,7 +46,7 @@ async fn a_derived_successor_appears_in_the_queue_with_lineage_depth_and_gates_a
         repo: "org/repo".into(),
         event: "check_run".into(),
     };
-    parent.autonomy_level = AutonomyLevel::DraftPr;
+    parent.autonomy_level = Some(AutonomyLevel::DraftPr);
     parent.forbidden_dirs = vec!["secrets/".to_string()];
     parent.successor_enabled = true;
 
@@ -91,7 +91,7 @@ async fn a_derived_successor_appears_in_the_queue_with_lineage_depth_and_gates_a
     }
 
     // Gate 2 — autonomy ceiling: never wider than the parent's DraftPr.
-    assert!(enqueued.autonomy_level.rank() <= AutonomyLevel::DraftPr.rank());
+    assert!(enqueued.autonomy_level.unwrap().rank() <= AutonomyLevel::DraftPr.rank());
 
     // Gate 3 — directory inheritance: the parent's forbidden dir survives.
     assert!(enqueued.forbidden_dirs.iter().any(|d| d == "secrets/"));

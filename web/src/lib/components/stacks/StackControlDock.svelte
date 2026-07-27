@@ -832,9 +832,7 @@
   <GuardrailsPopover
     scope="stack"
     onFail={config.guardrails.onFail}
-    budget={config.guardrails.budget}
     onChangeOnFail={(onFail) => updateStackConfig(pane.key, { guardrails: { ...config.guardrails, onFail } })}
-    onChangeBudget={(budget) => updateStackConfig(pane.key, { guardrails: { ...config.guardrails, budget } })}
     maxIterations={config.loopCount}
     onStep={stepLoop}
     iterLabel="loop stacks"

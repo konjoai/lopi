@@ -1,6 +1,6 @@
 ---
 decays: state
-verified-against: a384f32
+verified-against: 41916ca
 verified-date: 2026-07-27
 ---
 
@@ -23,9 +23,16 @@ consistent with this repo's `decays: state` convention — re-derive before trus
 
 # Egress surface — the local-only remnant of Sprint S2
 
-Verified against: `71a470b` · 2026-07-26 (re-verified; findings below unchanged since
-`34a73d1` — two citations fixed after `TaskRow` and `get_task_surfaces_provenance_marker`
-moved files in an unrelated later sprint; no further drift found through Sprint F1/F3)
+Verified against: `41916ca` · 2026-07-27 (re-verified; front-matter stamp and this
+body line had drifted out of sync with each other at the prior pass — both now read
+the same commit. No content drift found: `TaskRow::provenance()` still exists
+(`crates/lopi-memory/src/store/task_row.rs`), `get_task_surfaces_provenance_marker`
+still exists in `crates/lopi-ui/src/web/provenance_field_tests.rs`, both §5 store-layer
+tests and the full `cargo test --workspace`/`cargo clippy --workspace --all-targets -- -D
+warnings` stay green. Findings below unchanged since `34a73d1` — two citations fixed
+after `TaskRow` and `get_task_surfaces_provenance_marker` moved files in an unrelated
+later sprint; no further drift found through Sprint F1/F3/S10/S11/S12 or this branch's
+own web-composer changes, none of which touched this doc's cited files)
 
 This is the pre-flight kill-test for Sprint S2′ ("Egress allowlist: bound the one
 trifecta leg that's still open locally"). The sprint brief cited a baseline of

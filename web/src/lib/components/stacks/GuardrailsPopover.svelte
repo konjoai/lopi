@@ -3,20 +3,35 @@
   sun guardrails button. At loop scope every field is WIRED: `gate`/`until`/
   `onFail` map onto the real `CreateTaskOptions.gate` / `.until` /
   `.on_fail` fields (landed PR #62), and the max-iter stepper edits the same
-  `maxIterations` the cardbar's iteration pill does. `budget` is the one
-  client-only field — not yet wired to a backend budget parameter.
+  `maxIterations` the cardbar's iteration pill does. `budget` (the legacy
+  token-cap enum) maps to `.budget_tokens`; `budgetPreset`/`budgetUsd` (the
+  web-composer loop.toml sprint) map to `.budget_override` — the real preset
+  system that also governs the sub-agent fan-out tool list. `isolation` and
+  `noProgressLimit` (same sprint) map to `.isolation`/`.no_progress_limit`.
 
   Generalized (Stack-1) to value + callback props instead of `card`/
-  `paneKey`, and a `scope` prop that hides the gate/until rows at stack
-  scope — there is no server-side "whole chain" for a shell precondition/
-  exit-condition to run against (see `stores/stack.ts::StackGuardrails`'s
-  doc comment), so showing those two fields there would be exactly the
-  "inert control that looks enforced" the brief rules out. `onFail` stays
-  wired at both scopes; scoped to the stack it drives the chain sequencer's
-  on-fail policy (`stores/stackRun.ts`) instead of one task's retry pacing.
+  `paneKey`, and a `scope` prop that hides the gate/until/budget/
+  budgetPreset/isolation/noProgressLimit rows at stack scope — there is no
+  server-side "whole chain" for a shell precondition/exit-condition, token
+  cap, budget preset, isolation mode, or no-progress ceiling to apply to (a
+  chain is N independent task creations; see `stores/stack.ts::
+  StackGuardrails`'s doc comment), so showing those there would be exactly
+  the "inert control that looks enforced" the brief rules out — the legacy
+  `budget` row used to render at both scopes despite reaching nothing at
+  stack scope; Phase 3 (web-composer loop.toml sprint) confined it to loop
+  scope like every other per-task-only field. `onFail` alone stays wired at
+  both scopes — it drives the chain sequencer's on-fail policy
+  (`stores/stackRun.ts`) at stack scope instead of one task's retry pacing.
 -->
 <script lang="ts">
-  import { type OnFail, type Budget, maxIterationsLabel, cardIterationsLabel } from '$lib/stores/stack';
+  import {
+    type OnFail,
+    type Budget,
+    type BudgetPresetChoice,
+    type IsolationChoice,
+    maxIterationsLabel,
+    cardIterationsLabel
+  } from '$lib/stores/stack';
   import { closePopover } from './Popover.svelte';
   import Toggle from './Toggle.svelte';
   import { ICONS } from './icons';
@@ -28,11 +43,21 @@
   export let until = false;
   export let untilCmd = '';
   export let onFail: OnFail;
-  export let budget: Budget;
+  /** Loop-scope only — see the component doc comment on why this no longer
+   *  renders at stack scope. Defaulted so a stack-scope caller need not pass it. */
+  export let budget: Budget = 'auto';
+  export let budgetPreset: BudgetPresetChoice = 'inherit';
+  export let budgetUsd: number | undefined = undefined;
+  export let isolation: IsolationChoice = 'inherit';
+  export let noProgressLimit: number | undefined = undefined;
   export let onChangeGate: (patch: { gate?: boolean; gateCmd?: string }) => void = () => {};
   export let onChangeUntil: (patch: { until?: boolean; untilCmd?: string }) => void = () => {};
   export let onChangeOnFail: (value: OnFail) => void;
-  export let onChangeBudget: (value: Budget) => void;
+  export let onChangeBudget: (value: Budget) => void = () => {};
+  export let onChangeBudgetPreset: (value: BudgetPresetChoice) => void = () => {};
+  export let onChangeBudgetUsd: (value: number | undefined) => void = () => {};
+  export let onChangeIsolation: (value: IsolationChoice) => void = () => {};
+  export let onChangeNoProgressLimit: (value: number | undefined) => void = () => {};
   /** Max-iter stepper — the same field the cardbar's iteration pill edits at
    *  loop scope, or the chain loop-count at stack scope. `label` lets the
    *  stack scope call it "loop stacks" instead of "max iter". */
@@ -42,12 +67,22 @@
 
   const ON_FAIL: OnFail[] = ['stop', 'continue', 'backoff'];
   const BUDGETS: Budget[] = ['auto', '200k', 'none'];
+  const BUDGET_PRESETS: BudgetPresetChoice[] = ['inherit', 'quick', 'standard', 'deep', 'unlimited'];
+  const ISOLATIONS: IsolationChoice[] = ['inherit', 'branch', 'worktree'];
 
   function onGateInput(e: Event) {
     onChangeGate({ gateCmd: (e.target as HTMLTextAreaElement).value });
   }
   function onUntilInput(e: Event) {
     onChangeUntil({ untilCmd: (e.target as HTMLTextAreaElement).value });
+  }
+  function onBudgetUsdInput(e: Event) {
+    const raw = (e.target as HTMLInputElement).value.trim();
+    onChangeBudgetUsd(raw === '' ? undefined : Number(raw));
+  }
+  function onNoProgressLimitInput(e: Event) {
+    const raw = (e.target as HTMLInputElement).value.trim();
+    onChangeNoProgressLimit(raw === '' ? undefined : Number(raw));
   }
 </script>
 
@@ -79,7 +114,7 @@
       ></textarea>
     </div>
   {/if}
-  <div class="gseg-row">
+  <div class="gseg-row" class:last={scope !== 'loop'}>
     <span class="lbl">on fail</span>
     <span class="seg">
       {#each ON_FAIL as f (f)}
@@ -89,16 +124,62 @@
       {/each}
     </span>
   </div>
-  <div class="gseg-row last">
-    <span class="lbl">budget</span>
-    <span class="seg">
-      {#each BUDGETS as b (b)}
-        <button type="button" class:on={budget === b} on:click={() => onChangeBudget(b)}>
-          {b}
-        </button>
-      {/each}
-    </span>
-  </div>
+  {#if scope === 'loop'}
+    <div class="gseg-row">
+      <span class="lbl">budget</span>
+      <span class="seg">
+        {#each BUDGETS as b (b)}
+          <button type="button" class:on={budget === b} on:click={() => onChangeBudget(b)}>
+            {b}
+          </button>
+        {/each}
+      </span>
+    </div>
+    <div class="gseg-row">
+      <span class="lbl">preset</span>
+      <span class="seg">
+        {#each BUDGET_PRESETS as p (p)}
+          <button type="button" class:on={budgetPreset === p} on:click={() => onChangeBudgetPreset(p)}>
+            {p}
+          </button>
+        {/each}
+      </span>
+    </div>
+    <div class="gline">
+      <span class="lbl">usd</span>
+      <input
+        class="numfield"
+        type="number"
+        min="0"
+        step="0.25"
+        value={budgetUsd ?? ''}
+        placeholder="inherit"
+        on:input={onBudgetUsdInput}
+      />
+    </div>
+    <div class="gseg-row">
+      <span class="lbl">isolation</span>
+      <span class="seg">
+        {#each ISOLATIONS as i (i)}
+          <button type="button" class:on={isolation === i} on:click={() => onChangeIsolation(i)}>
+            {i}
+          </button>
+        {/each}
+      </span>
+    </div>
+    <div class="gline last">
+      <span class="lbl">no-gain</span>
+      <input
+        class="numfield"
+        type="number"
+        min="0"
+        step="1"
+        value={noProgressLimit ?? ''}
+        placeholder="inherit"
+        on:input={onNoProgressLimitInput}
+      />
+    </div>
+  {/if}
 </div>
 <div class="gfoot">
   <div class="maxiter">
@@ -145,6 +226,22 @@
   }
   .gline textarea:disabled {
     opacity: 0.35;
+  }
+  .gline.last {
+    margin-bottom: 0;
+  }
+  .gline .numfield {
+    display: block;
+    flex: 1;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.11);
+    border-radius: 5px;
+    padding: 4px 8px;
+    color: var(--konjo-paper, #f5f5f5);
+    font-family: var(--font-mono, monospace);
+    font-size: 10px;
+    min-width: 0;
+    outline: none;
   }
   .gseg-row {
     display: flex;

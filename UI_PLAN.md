@@ -7,6 +7,31 @@ popovers, config drawer, live output, pane chrome) have since shipped — see
 recon's Gap Map fed into. `NEXT.md` has the current pointer: the two backend
 signals (pause/drain/bump; per-card `AgentEvent` routing) that unblock UI-3.
 
+**Stamp (web-composer loop.toml sprint, `CHANGELOG.md`'s `[0.32.0]` entry):**
+Section 3's Backend Bindings table below was stale in the other direction —
+it undersold what had shipped. Corrected rows: **autonomy** was still
+genuinely client-only as the table said, and is now wired
+(`CreateTaskRequest.autonomy_level`); **verifier gate + model + effort**,
+**report on finish**, and **gate/until/on-fail** were already marked
+"not exposed"/"Missing" here but had in fact already been added to
+`CreateTaskRequest` by an earlier sprint — this doc simply hadn't been
+updated to say so (re-verify against `crates/lopi-ui/src/web/types.rs`
+directly, not this table, before trusting any "Missing" row below); **budget**
+gained the real preset vocabulary (`quick|standard|deep|unlimited` + USD,
+via the pre-existing `budget_override` field) plus a composer control;
+**per-card model/effort/repo override** — done, `CreateTaskRequest` carries
+them. Two genuinely new fields this table never anticipated:
+**`no_progress_limit`** and **`isolation`** are now both `Option<T>` on
+`Task`/`CreateTaskRequest`, each resolved against the repo's
+`.lopi/loop.toml` value when unset (file = base, request = override — see
+`LEDGER.md`'s entry for this sprint). `vision_path`/`trust_ceiling`/
+`self_prompt`/`skills_enabled`/`rules_enabled`/`permission_allow` remain
+file-only by deliberate scope decision, not oversight — none render as
+composer controls. This doc's own lesson (Preflight, below) generalizes:
+**re-derive the Backend Bindings table fresh against `types.rs`/`task.rs`
+before starting any future sprint that reads it** — this is now the second
+time it was found meaningfully stale.
+
 **Scope:** reconnaissance only, no code. Written after discovering and fixing a
 repo-sync problem — see "Preflight" below before reading anything else.
 
@@ -104,13 +129,16 @@ Confirmed against `origin/main` (now local `main`), not the stale table in
 | Skill arg (`:kcqf vectro`) | `lopi_skill::parse_invocation`, `Skill::render_body` | **Done**, CLI-only (`src/run_command.rs::resolve_skill_invocation`). Same gap as templates. |
 | Loop ×N | `LoopConfig.max_iterations: u8` | **Partial** — finite only, no ∞. Needs a design decision: sentinel value vs. `Option<u8>`. |
 | Cron schedule | `ScheduleEntry.cron`, `next_run_times`, full CRUD in `api.ts` | **Done**, fully wired end to end already. |
-| Report on finish | `Task.report`/`ScheduleEntry.report`, `ReportChannel::parse`, `AgentEvent::ReportReady` | **Done** on backend (Telegram only; WhatsApp explicitly rejected, not silently dropped). **Not exposed** on `CreateTaskRequest` (web API) — small gap. |
-| Verifier gate + model + effort | `LoopConfig`/`Task.verifier_required/verifier_model/verifier_effort`, `verifier.rs::resolve_verifier` | **Done**, fully configurable, "never grade your own homework" default. **Not exposed** on `CreateTaskRequest` — small gap. |
-| Gate (must-pass-before-start shell command) | *(none)* | **Missing.** No `gate_cmd`/precondition concept anywhere in the codebase. |
-| Until (loop-until-exit-0 shell command) | *(none)* | **Missing.** Nothing named until/exit-condition found. |
-| On-fail (stop/continue/backoff) | *(none)* | **Missing** as a configurable policy. "Backoff" exists only as a fixed internal retry-timing constant (`runner/mod.rs`), not a user-selectable enum. |
-| Budget (auto/200k/none) | `LoopConfig.budget_tokens: u64` (0=inherit), fleet-wide USD budget in `budget.ts` | **Partial** — a scalar token ceiling exists; the three-preset vocabulary (auto/200k/none) doesn't exist at either layer. Cheapest fix: client-side enum → number mapping, no backend change needed if `0` already means "inherit/auto." |
-| Per-card model/effort/repo override | `Task.model`/`effort`/`repo_path` presumably exist on `Task` (verifier work proves the pattern) but **`CreateTaskRequest` (web API) doesn't expose them** | **Partial** — needs `CreateTaskRequest` extended; not a `Task`-level gap. |
+| Report on finish | `Task.report`/`ScheduleEntry.report`, `ReportChannel::parse`, `AgentEvent::ReportReady` | **Done**, including on `CreateTaskRequest.report` (web API) — corrected by an earlier sprint; this row understated it. |
+| Verifier gate + model + effort | `LoopConfig`/`Task.verifier_required/verifier_model/verifier_effort`, `verifier.rs::resolve_verifier` | **Done**, fully configurable, "never grade your own homework" default, including on `CreateTaskRequest.verifier_required/verifier_model/verifier_effort` — corrected by an earlier sprint; this row understated it. Still **no UI control** in the composer for it (a real gap, unlike the wire-level one this row used to describe). |
+| Autonomy (L1 report-only … L4 auto-merge) | `Task.autonomy_level: Option<AutonomyLevel>`, `LoopConfig.autonomy_level`, `CreateTaskRequest.autonomy_level: Option<AutonomyLevel>` | **Done** (web-composer loop.toml sprint). Was the sprint's severe finding: `Task.autonomy_level` used to be a non-`Option` field with no repo-file fallback at all — wiring the UI to it required first making it `Option<AutonomyLevel>` and resolving it against `LoopConfig.autonomy_level` in `pool::run_loop::run_one` (file = base, request = override; see `LEDGER.md`). `ConfigDrawer.svelte`'s autonomy dropdown now sends a live `L1..L4` choice via `autonomyToWire`; untouched (the `auto` sentinel) omits the field so the repo's value governs. |
+| Gate (must-pass-before-start shell command) | `Task.gate: Option<String>`, `CreateTaskRequest.gate`, `LoopConfig.gate` | **Done**, including on `CreateTaskRequest` — corrected by an earlier sprint (Sprint S10's guard-trust work); this row was stale, not current. `GuardrailsPopover.svelte` exposes it at loop scope. |
+| Until (loop-until-exit-0 shell command) | `Task.until: Option<String>`, `CreateTaskRequest.until`, `LoopConfig.until` | **Done**, same correction as Gate above. |
+| On-fail (stop/continue/backoff) | `Task.on_fail: Option<OnFail>`, `CreateTaskRequest.on_fail`, `LoopConfig.on_fail` | **Done**, same correction as Gate above — a real user-selectable enum, not just the internal backoff constant this row described. Exposed at both loop and stack scope in `GuardrailsPopover.svelte` (stack scope drives the client-side chain sequencer, `stores/stackRun.ts`). |
+| Budget (preset + token cap) | `LoopConfig.budget_tokens: u64` (0=inherit) → `CreateTaskRequest.budget_tokens`; `BudgetOverride{preset,usd,tokens}` → `CreateTaskRequest.budget_override` (preset vocabulary `quick\|standard\|deep\|unlimited`) | **Done** on both layers. The token-cap enum (`auto`/`200k`/`none` → `budget_tokens`) predates this sprint; the real preset vocabulary + USD cap (`budget_override`) was backend-only (an earlier sprint added the field but no composer control) until the web-composer loop.toml sprint added `Guardrails.budgetPreset`/`budgetUsd` and the "preset"/"usd" rows in `GuardrailsPopover.svelte` (loop scope). |
+| `no_progress_limit` (per-task halt-after-N-no-gain override) | `Task.no_progress_limit: Option<u8>`, `CreateTaskRequest.no_progress_limit`, `LoopConfig.no_progress_limit` | **Done** (web-composer loop.toml sprint) — new field, not anticipated by this doc's original recon. `AgentRunner::no_progress_limit()` checks the task override before its repo-file read. `GuardrailsPopover.svelte`'s "no-gain" field at loop scope. |
+| `isolation` (branch / worktree, per-task override) | `Task.isolation: Option<IsolationMode>`, `CreateTaskRequest.isolation`, `LoopConfig.isolation` | **Done** (web-composer loop.toml sprint) — new field. `pool::run_loop::run_one` resolves `task.isolation.unwrap_or(cfg.isolation)` before `setup_worktree`. `GuardrailsPopover.svelte`'s "isolation" row at loop scope. |
+| Per-card model/effort/repo override | `Task.model`/`effort`/`repo_path`, `CreateTaskRequest.model/effort/repo` | **Done**, including on `CreateTaskRequest` — corrected by an earlier sprint; this row was stale. `ConfigDrawer.svelte` exposes all three per-card. |
 | Duplicate / drag reorder / delete / insert (stack ops) | *(none — no stack concept exists server-side at all)* | **Missing entirely** — this is pure client-side stack-array manipulation until/unless a stack needs to persist server-side (e.g. surviving a page reload). Recommend starting client-only. |
 | Run split · dry run | `stores/stack.ts::dryRunStack` (client-only, pure) | **Done** (Backend-1) — validates every card's resolved config in execution order and flags empty goals/guardrail commands; never calls `createTask`. Deliberately client-only: there's no backend "stack plan" concept to dry-run against. |
 | Run split · run once / schedule stack | `stores/stack.ts::cardToTaskPayloadForRunOnce`; `stores/stackRun.ts::scheduleStack` + `ScheduleEntry`/`createSchedule` | **Done, "schedule stack" deliberately minimal** (Backend-1) — "run once" forces `max_iterations: 1` on the outgoing payload only. "Schedule stack" attaches one cron to the bottom-of-stack card only (`ScheduleBody.goal` is a single string, no multi-goal pipeline concept server-side); every other card is reported back as skipped, not silently dropped. |
