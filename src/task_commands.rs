@@ -70,15 +70,21 @@ pub async fn dock() -> Result<()> {
     Ok(())
 }
 
-pub async fn cancel(task_id: String) -> Result<()> {
+/// Cancel a task on the `lopi sail` server at `base_url`, returning the
+/// user-facing outcome message (never printing directly) so this is
+/// assertable in a test without capturing stdout — a mutation-testing kill
+/// test needs the real message, not just "did this return `Ok`."
+pub async fn cancel(base_url: &str, task_id: String) -> Result<String> {
     let token = lopi_ui::client::resolve_auth_token(None);
-    if let Ok(msg) = remote::cancel_task("http://127.0.0.1:3000", token, &task_id).await {
-        println!("{msg}");
-    } else {
-        println!("⚠️  No running lopi sail server on :3000.");
-        println!("   Start `lopi sail` first or use the web dashboard.");
-    }
-    Ok(())
+    Ok(
+        match remote::cancel_task(base_url, token, &task_id).await {
+            Ok(msg) => msg,
+            Err(_) => {
+                "⚠️  No running lopi sail server on :3000.\n   Start `lopi sail` first or use the web dashboard."
+                    .to_string()
+            }
+        },
+    )
 }
 
 /// P1.3 — `lopi resume --agent-id <uuid>`: load the most-recent checkpoint
@@ -125,4 +131,24 @@ pub async fn resume(agent_id: String) -> Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+
+    /// Mutation-testing kill test: pins `cancel`'s exact "not found"
+    /// message against a real server, so a mutant that stubs the return
+    /// value (`Ok(())`) fails instead of silently surviving — `cancel`
+    /// returns the message rather than printing it directly precisely so
+    /// this is assertable without capturing stdout.
+    #[tokio::test]
+    async fn cancel_unknown_id_reports_not_found() {
+        let base_url = crate::test_support::spawn_live_server(None).await;
+        let msg = cancel(&base_url, "not-a-real-task-id".to_string())
+            .await
+            .unwrap();
+        assert_eq!(msg, "ℹ️  task not found");
+    }
 }

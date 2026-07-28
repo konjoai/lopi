@@ -149,4 +149,17 @@ mod tests {
             "Bearer secret-token"
         );
     }
+
+    /// Mutation-testing kill test: pins `cancel_task`'s exact "not found"
+    /// message against a real server, so a mutant that stubs the return
+    /// value (`Ok(String::new())`, `Ok("xyzzy".into())`) fails instead of
+    /// silently surviving.
+    #[tokio::test]
+    async fn cancel_task_unknown_id_reports_not_found() {
+        let base_url = crate::test_support::spawn_live_server(None).await;
+        let msg = cancel_task(&base_url, None, "not-a-real-task-id")
+            .await
+            .unwrap();
+        assert_eq!(msg, "ℹ️  task not found");
+    }
 }

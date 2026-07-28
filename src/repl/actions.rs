@@ -51,7 +51,10 @@ pub(super) async fn handle_slash(
         }
         Ok(SlashCmd::Cancel { id }) => {
             restore_terminal_raw()?;
-            task_commands::cancel(id).await?;
+            println!(
+                "{}",
+                task_commands::cancel("http://127.0.0.1:3000", id).await?
+            );
             std::process::exit(0);
         }
         Ok(SlashCmd::Cost) => {

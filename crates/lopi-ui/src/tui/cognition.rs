@@ -19,7 +19,8 @@
 
 #![allow(dead_code)]
 
-use std::collections::VecDeque;
+use lopi_core::{AgentEvent, TaskId};
+use std::collections::{HashMap, VecDeque};
 
 /// How many streaming samples (turn metrics, phases, costs, tool calls) to
 /// retain per task before evicting the oldest. Mirrors `tui.rs::MAX_LOG_LINES`'s
@@ -159,6 +160,177 @@ impl AgentCognition {
         {
             call.result = Some(result);
         }
+    }
+}
+
+/// Route one of the six previously-dropped `AgentEvent` variants into the
+/// right task's retained cognition state. Split out of `tui.rs::AppState
+/// ::handle_event` to keep that file under the 500-line CI file-size gate.
+/// Returns `None` once `ev` has been fully handled here; returns `Some(ev)`
+/// unchanged for any variant this module doesn't own, so the caller's own
+/// match can continue processing it.
+pub(super) fn route_event(
+    cognition: &mut HashMap<TaskId, AgentCognition>,
+    ev: AgentEvent,
+) -> Option<AgentEvent> {
+    match ev {
+        AgentEvent::TurnMetrics {
+            task_id,
+            pressure,
+            activity,
+            tokens_per_sec,
+            cost_usd,
+        } => {
+            cognition
+                .entry(task_id)
+                .or_default()
+                .push_turn_metrics(TurnMetricsSample {
+                    pressure,
+                    activity,
+                    tokens_per_sec,
+                    cost_usd,
+                });
+            None
+        }
+        AgentEvent::BudgetExceeded {
+            task_id: Some(task_id),
+            limit_usd,
+            burned_usd,
+            ..
+        } => {
+            cognition.entry(task_id).or_default().last_budget_exceeded =
+                Some(BudgetExceededSample {
+                    limit_usd,
+                    burned_usd,
+                });
+            None
+        }
+        // Fleet-wide breaches (`task_id: None`) have no single task to key
+        // the retained state on; nothing to do at this layer.
+        AgentEvent::BudgetExceeded { task_id: None, .. } => None,
+        AgentEvent::BudgetSoftWarn {
+            task_id,
+            estimated_usd,
+            cap_usd,
+        } => {
+            cognition.entry(task_id).or_default().last_budget_soft_warn =
+                Some(BudgetSoftWarnSample {
+                    estimated_usd,
+                    cap_usd,
+                });
+            None
+        }
+        AgentEvent::VerifierVerdict {
+            task_id,
+            passed,
+            gaps,
+            fix_hints,
+            confidence,
+        } => {
+            cognition.entry(task_id).or_default().last_verifier_verdict =
+                Some(VerifierVerdictSample {
+                    passed,
+                    gaps,
+                    fix_hints,
+                    confidence,
+                });
+            None
+        }
+        AgentEvent::PlanProposed {
+            task_id,
+            attempt,
+            steps,
+            plan,
+        } => {
+            cognition.entry(task_id).or_default().last_plan = Some(PlanSample {
+                attempt,
+                steps,
+                plan,
+            });
+            None
+        }
+        AgentEvent::ToolCall {
+            task_id,
+            tool,
+            summary,
+        } => {
+            cognition
+                .entry(task_id)
+                .or_default()
+                .push_tool_call(ToolCallSample {
+                    tool,
+                    summary,
+                    result: None,
+                });
+            None
+        }
+        AgentEvent::ToolResult {
+            task_id,
+            tool,
+            is_error,
+            preview,
+        } => {
+            cognition
+                .entry(task_id)
+                .or_default()
+                .apply_tool_result(&tool, ToolResultSample { is_error, preview });
+            None
+        }
+        AgentEvent::TokenDelta {
+            task_id,
+            output_tokens,
+            input_tokens,
+            cache_read_tokens,
+        } => {
+            cognition.entry(task_id).or_default().last_token_delta = Some(TokenDeltaSample {
+                output_tokens,
+                input_tokens,
+                cache_read_tokens,
+            });
+            None
+        }
+        AgentEvent::ApiRetry {
+            task_id,
+            status,
+            limit_type,
+            utilization,
+            resets_at,
+        } => {
+            cognition.entry(task_id).or_default().last_api_retry = Some(ApiRetrySample {
+                status,
+                limit_type,
+                utilization,
+                resets_at,
+            });
+            None
+        }
+        AgentEvent::Cost {
+            task_id,
+            cost_usd,
+            num_turns,
+            session_id,
+        } => {
+            cognition.entry(task_id).or_default().push_cost(CostSample {
+                cost_usd,
+                num_turns,
+                session_id,
+            });
+            None
+        }
+        AgentEvent::Phase { task_id, phase } => {
+            cognition.entry(task_id).or_default().push_phase(phase);
+            None
+        }
+        // Report on Finish: the runner emits this once a task finishes,
+        // addressed to the channel declared on `Task::report`. Sprint S10
+        // deleted lopi-remote's Telegram bot transport, so — unlike when
+        // this comment was last accurate — nothing in the current codebase
+        // actually delivers a `ReportReady` event to its declared channel;
+        // the TUI still has no channel of its own to route it to either.
+        // Tracked as a real gap in `lopi_core::ReportChannel` (see
+        // `LEDGER.md`), not something this function can fix.
+        AgentEvent::ReportReady { .. } => None,
+        other => Some(other),
     }
 }
 
