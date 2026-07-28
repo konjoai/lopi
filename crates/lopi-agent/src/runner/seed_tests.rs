@@ -325,3 +325,91 @@ async fn live_check_backfilled_pattern_constraint_reaches_the_real_planning_prom
     let _ = std::fs::remove_file(format!("{}-wal", db_path.display()));
     let _ = std::fs::remove_file(format!("{}-shm", db_path.display()));
 }
+
+/// Finding #4 (Symbol Index) — the LEDGER's required A/B: same task, same
+/// repo, `context.mode = "index"` vs `"inject"`, measuring the real planning
+/// prompt `claude_support::build_plan_prompt` produces (not a stand-in) with
+/// the same `cl100k_base` estimator `lopi-context` already uses for context-
+/// window budgeting (`lopi_context::tokens::estimate_tokens`) — no
+/// bespoke one-off counting method.
+///
+/// Runs against *this checked-out repo itself* (`CARGO_MANIFEST_DIR/../..`),
+/// not a synthetic fixture — a tempdir repo's map would be too small to be a
+/// meaningful comparison. Deliberately asserts only the qualitative property
+/// (index mode costs strictly more prompt tokens than inject mode) rather
+/// than a fragile exact count, since the real repo's symbol count drifts
+/// over time; run with `--nocapture` to see the concrete numbers this
+/// sprint's LEDGER entry reports.
+///
+/// What this does *not* measure (documented, not silently skipped): a full
+/// multi-turn `lopi run` end to end, so it reports prompt-construction cost
+/// only, not wall-clock or cache-hit-ratio — see the LEDGER entry for why a
+/// live agentic run wasn't executed for this measurement.
+#[tokio::test]
+// The printed per-mode token/char counts are this test's actual
+// deliverable — the concrete numbers the LEDGER entry's A/B section
+// reports — not debug noise.
+#[allow(clippy::print_stderr)]
+async fn context_mode_index_vs_inject_prompt_token_ab() {
+    let repo_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .canonicalize()
+        .unwrap();
+
+    let goal = "fix a bug in the retry-loop backoff calculation";
+    let mut results = Vec::new();
+    for mode in [
+        lopi_core::ContextMode::Inject,
+        lopi_core::ContextMode::Index,
+    ] {
+        let bus: EventBus<AgentEvent> = EventBus::new(16);
+        let (_tx, rx) = tokio::sync::oneshot::channel();
+        let mut runner = AgentRunner::new(
+            Task::new(goal),
+            repo_root.clone(),
+            bus,
+            None,
+            rx,
+            Arc::new(AtomicUsize::new(0)),
+        )
+        .with_context_mode(mode);
+
+        let seed = runner.gather_seed().await;
+        let prompt = crate::claude_support::build_plan_prompt(
+            &runner.task,
+            None,
+            &seed.extra_constraints,
+            &seed.pattern_pairs,
+            &seed.lessons_data,
+        );
+        let tokens =
+            lopi_context::tokens::estimate_tokens(&[lopi_context::types::ContentBlock::Text(
+                prompt.clone(),
+            )]);
+        eprintln!(
+            "context.mode={:<7} prompt_tokens={tokens:<6} prompt_chars={}",
+            mode.tag(),
+            prompt.len()
+        );
+        results.push((mode, tokens, prompt));
+    }
+
+    let (inject_mode, inject_tokens, inject_prompt) = &results[0];
+    let (index_mode, index_tokens, index_prompt) = &results[1];
+    assert_eq!(*inject_mode, lopi_core::ContextMode::Inject);
+    assert_eq!(*index_mode, lopi_core::ContextMode::Index);
+    assert!(
+        !inject_prompt.contains("Repo map"),
+        "inject mode must reproduce pre-Finding-#4 behavior exactly: no repo map"
+    );
+    assert!(
+        index_prompt.contains("Repo map"),
+        "index mode must seed the repo map"
+    );
+    assert!(
+        index_tokens > inject_tokens,
+        "index mode costs strictly more prompt tokens than inject mode \
+         (inject={inject_tokens}, index={index_tokens}) — if this ever \
+         fails, the repo map stopped being seeded"
+    );
+}

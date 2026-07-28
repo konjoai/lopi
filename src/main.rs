@@ -6,6 +6,7 @@ mod cost_commands;
 mod demo_commands;
 mod diag_commands;
 mod gap_fill_commands;
+mod index_commands;
 mod learn_commands;
 mod loop_commands;
 mod mcp_commands;
@@ -52,7 +53,10 @@ async fn main() -> Result<()> {
     // default writer) corrupts the frame the MCP Apps host is trying to
     // parse. Every other command keeps stdout, matching prior behavior.
     let cli = Cli::parse();
-    let is_mcp_serve = matches!(cli.command, Some(Commands::McpServe { .. }));
+    let is_mcp_serve = matches!(
+        cli.command,
+        Some(Commands::McpServe { .. } | Commands::McpIndexServe { .. })
+    );
 
     let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn"));
@@ -294,6 +298,10 @@ async fn main() -> Result<()> {
         Some(Commands::McpServe { repo, max_agents }) => {
             mcp_commands::serve(repo, max_agents, cfg.as_ref()).await?;
         }
+
+        Some(Commands::Index { repo }) => index_commands::run_index(repo).await?,
+        Some(Commands::Map { repo }) => index_commands::run_map(repo).await?,
+        Some(Commands::McpIndexServe { repo }) => mcp_commands::serve_index(repo).await?,
 
         Some(Commands::Diag {
             out,

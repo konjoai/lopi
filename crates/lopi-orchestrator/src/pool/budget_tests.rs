@@ -44,6 +44,7 @@ fn runner_for(task: Task) -> lopi_agent::AgentRunner {
         false,
         plan_decision_rx,
         None,
+        lopi_core::ContextMode::default(),
     )
 }
 
@@ -207,6 +208,7 @@ async fn verifier_required_with_no_api_client_actually_executes_a_pass() {
         false,
         plan_decision_rx,
         None,
+        lopi_core::ContextMode::default(),
     );
     assert!(
         runner.verifier_enabled(),

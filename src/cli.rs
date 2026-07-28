@@ -258,6 +258,27 @@ pub(crate) enum Commands {
         #[arg(long)]
         check: bool,
     },
+    /// Build/refresh the per-repo symbol index (`.lopi/index.db`) and print
+    /// the resulting delta + wall time.
+    Index {
+        #[arg(short, long, default_value = ".")]
+        repo: PathBuf,
+    },
+    /// Print the deterministic repo map `context.mode = "index"` injects
+    /// into the planning prompt.
+    Map {
+        #[arg(short, long, default_value = ".")]
+        repo: PathBuf,
+    },
+    /// Serve `lopi_find`/`lopi_read`/`lopi_refs`/`lopi_query` — the Finding #4
+    /// symbol-index tool set — over stdio, deliberately separate from
+    /// `mcp-serve`'s curated task-management tools so a session that only
+    /// wants index navigation doesn't pay for the larger tool set's schema
+    /// tokens (see `LEDGER.md`'s Finding #4 entry on "deferred").
+    McpIndexServe {
+        #[arg(short, long, default_value = ".")]
+        repo: PathBuf,
+    },
     /// Start a dedicated GitHub webhook server.
     ServeWebhooks {
         #[arg(short, long, default_value = "3001")]
