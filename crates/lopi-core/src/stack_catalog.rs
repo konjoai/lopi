@@ -118,7 +118,14 @@ pub fn preset_catalog() -> HashMap<PresetKey, PresetDef> {
                 key: PresetKey::Research,
                 label: "research",
                 alias: ":research",
-                keywords: &["research", "investigate", "explore", "learn", "study", "survey"],
+                keywords: &[
+                    "research",
+                    "investigate",
+                    "explore",
+                    "learn",
+                    "study",
+                    "survey",
+                ],
                 evals: vec![base(), eval("code review", Judge)],
             },
         ),
@@ -128,7 +135,15 @@ pub fn preset_catalog() -> HashMap<PresetKey, PresetDef> {
                 key: PresetKey::Implement,
                 label: "implement",
                 alias: ":implement",
-                keywords: &["add", "build", "implement", "feature", "create", "gate", "wire"],
+                keywords: &[
+                    "add",
+                    "build",
+                    "implement",
+                    "feature",
+                    "create",
+                    "gate",
+                    "wire",
+                ],
                 evals: vec![
                     base(),
                     eval("unit", ShellTest),
@@ -145,7 +160,14 @@ pub fn preset_catalog() -> HashMap<PresetKey, PresetDef> {
                 key: PresetKey::Optimize,
                 label: "optimize",
                 alias: ":optimize",
-                keywords: &["optimize", "improve", "speed", "performance", "faster", "latency"],
+                keywords: &[
+                    "optimize",
+                    "improve",
+                    "speed",
+                    "performance",
+                    "faster",
+                    "latency",
+                ],
                 evals: vec![
                     base(),
                     eval("beats-best", Judge),
@@ -160,8 +182,18 @@ pub fn preset_catalog() -> HashMap<PresetKey, PresetDef> {
                 key: PresetKey::Gain,
                 label: "gain",
                 alias: ":gain",
-                keywords: &["gain", "ratchet", "self-improve", "self improve", "beats-best"],
-                evals: vec![base(), eval("beats-best", Judge), eval("adversarial", Suite)],
+                keywords: &[
+                    "gain",
+                    "ratchet",
+                    "self-improve",
+                    "self improve",
+                    "beats-best",
+                ],
+                evals: vec![
+                    base(),
+                    eval("beats-best", Judge),
+                    eval("adversarial", Suite),
+                ],
             },
         ),
         (
@@ -223,7 +255,15 @@ pub fn preset_catalog() -> HashMap<PresetKey, PresetDef> {
                 key: PresetKey::Report,
                 label: "report",
                 alias: ":report",
-                keywords: &["report", "summarize", "summary", "findings", "writeup", "write up", "docs"],
+                keywords: &[
+                    "report",
+                    "summarize",
+                    "summary",
+                    "findings",
+                    "writeup",
+                    "write up",
+                    "docs",
+                ],
                 evals: vec![base(), eval("code review", Judge)],
             },
         ),
@@ -242,17 +282,35 @@ pub fn preset_keys() -> Vec<PresetKey> {
 #[must_use]
 pub fn preset_descriptions() -> HashMap<PresetKey, &'static str> {
     HashMap::from([
-        (PresetKey::Research, "explore & investigate — judge-reviewed"),
-        (PresetKey::Implement, "build a feature — full test + review suite"),
-        (PresetKey::Optimize, "improve speed — beats-best + 30-run gate"),
+        (
+            PresetKey::Research,
+            "explore & investigate — judge-reviewed",
+        ),
+        (
+            PresetKey::Implement,
+            "build a feature — full test + review suite",
+        ),
+        (
+            PresetKey::Optimize,
+            "improve speed — beats-best + 30-run gate",
+        ),
         (PresetKey::Gain, "self-improve — ratchet on beats-best"),
-        (PresetKey::Benchmark, "measure variance — benchmark + 30-run gate"),
-        (PresetKey::Test, "verify it works — full test suite + review"),
+        (
+            PresetKey::Benchmark,
+            "measure variance — benchmark + 30-run gate",
+        ),
+        (
+            PresetKey::Test,
+            "verify it works — full test suite + review",
+        ),
         (
             PresetKey::Killtest,
             "try to break it — adversarial + vuln scan + 30-run gate",
         ),
-        (PresetKey::Report, "write up findings — .md summary, judge-reviewed"),
+        (
+            PresetKey::Report,
+            "write up findings — .md summary, judge-reviewed",
+        ),
     ])
 }
 

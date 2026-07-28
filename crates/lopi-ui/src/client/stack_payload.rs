@@ -33,7 +33,12 @@ const DEFAULT_PERMISSION_MODE: &str = "bypassPermissions";
 pub fn card_to_task_payload(card: &StackCard, defaults: &PaneDefaults) -> CreateTaskRequest {
     let mut req = CreateTaskRequest {
         goal: card.goal.clone(),
-        repo: Some(card.config.repo.clone().unwrap_or_else(|| defaults.repo.clone())),
+        repo: Some(
+            card.config
+                .repo
+                .clone()
+                .unwrap_or_else(|| defaults.repo.clone()),
+        ),
         priority: Some("normal".to_string()),
         constraints: None,
         allowed_dirs: None,
@@ -55,7 +60,11 @@ pub fn card_to_task_payload(card: &StackCard, defaults: &PaneDefaults) -> Create
         no_progress_limit: card.guardrails.no_progress_limit,
         isolation: card.guardrails.isolation.to_isolation_mode(),
         model: None,
-        effort: card.config.effort.clone().or_else(|| Some(defaults.effort.clone())),
+        effort: card
+            .config
+            .effort
+            .clone()
+            .or_else(|| Some(defaults.effort.clone())),
         permission_mode: None,
         deliverable: None,
         gate: None,
@@ -73,7 +82,11 @@ pub fn card_to_task_payload(card: &StackCard, defaults: &PaneDefaults) -> Create
     // `auto` means "no override" — omit `model` so the backend's
     // `select_model` size heuristic runs, instead of sending the literal
     // string `"auto"` through to `task.model`'s override check.
-    let resolved_model = card.config.model.clone().unwrap_or_else(|| defaults.model.clone());
+    let resolved_model = card
+        .config
+        .model
+        .clone()
+        .unwrap_or_else(|| defaults.model.clone());
     if !resolved_model.is_empty() && resolved_model != AUTO_MODEL {
         req.model = Some(resolved_model);
     }
@@ -93,7 +106,11 @@ pub fn card_to_task_payload(card: &StackCard, defaults: &PaneDefaults) -> Create
     // Send only a live L1..L4 choice; an unresolvable/unset value is
     // omitted so the server keeps the repo's `.lopi/loop.toml`
     // `autonomy_level` as the sole source.
-    let autonomy = card.config.autonomy.as_deref().or(defaults.autonomy.as_deref());
+    let autonomy = card
+        .config
+        .autonomy
+        .as_deref()
+        .or(defaults.autonomy.as_deref());
     req.autonomy_level = autonomy_to_wire(autonomy);
 
     if card.guardrails.gate {
@@ -144,7 +161,13 @@ pub fn pane_submit_payload(launch: &PaneLaunch) -> CreateTaskRequest {
     let mut req = CreateTaskRequest {
         goal: launch.goal.clone(),
         repo: Some(launch.repo.clone()),
-        priority: Some(launch.priority.clone().filter(|p| !p.is_empty()).unwrap_or_else(|| "normal".to_string())),
+        priority: Some(
+            launch
+                .priority
+                .clone()
+                .filter(|p| !p.is_empty())
+                .unwrap_or_else(|| "normal".to_string()),
+        ),
         constraints: None,
         allowed_dirs: None,
         forbidden_dirs: None,
@@ -172,7 +195,11 @@ pub fn pane_submit_payload(launch: &PaneLaunch) -> CreateTaskRequest {
         budget_override: None,
     };
 
-    if let Some(model) = launch.model.as_deref().filter(|m| !m.is_empty() && *m != AUTO_MODEL) {
+    if let Some(model) = launch
+        .model
+        .as_deref()
+        .filter(|m| !m.is_empty() && *m != AUTO_MODEL)
+    {
         req.model = Some(model.to_string());
     }
     if let Some(effort) = launch.effort.as_deref().filter(|e| !e.is_empty()) {
@@ -185,7 +212,12 @@ pub fn pane_submit_payload(launch: &PaneLaunch) -> CreateTaskRequest {
     {
         req.permission_mode = Some(mode.to_string());
     }
-    if let Some(branch) = launch.branch.as_deref().map(str::trim).filter(|b| !b.is_empty()) {
+    if let Some(branch) = launch
+        .branch
+        .as_deref()
+        .map(str::trim)
+        .filter(|b| !b.is_empty())
+    {
         req.constraints = Some(vec![format!("Target branch: {branch}")]);
     }
 

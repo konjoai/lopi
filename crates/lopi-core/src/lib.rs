@@ -61,14 +61,14 @@ pub mod schema;
 pub mod security;
 /// Self-prompting loop strategies — how an agent re-prompts itself on retry.
 pub mod self_prompt;
-/// Progress-Gating (A3) — the specific reason a loop terminated and the
-/// precedence among reasons when several trip at once.
-pub mod stop_reason;
 /// Sprint T0 (TUI Client Foundation) — the Rust port of the loop-stack
 /// domain model (`StackCard`, presets, evals, guardrails) shared with the
 /// web/macOS/iOS clients. See the module doc comment for why the wire-payload
 /// builders targeting `CreateTaskRequest` live in `lopi-ui` instead.
 pub mod stack;
+/// Progress-Gating (A3) — the specific reason a loop terminated and the
+/// precedence among reasons when several trip at once.
+pub mod stop_reason;
 /// Sprint Successor-1 — agent-authored, cross-task-boundary follow-up tasks:
 /// the `Successor` proposal type and its validation. Distinct from
 /// `self_prompt` (framework-authored, same-task retry reframing).

@@ -15,7 +15,7 @@ mod draw;
 
 use cognition::{
     AgentCognition, ApiRetrySample, BudgetExceededSample, BudgetSoftWarnSample, CostSample,
-    PlanSample, ToolCallSample, ToolResultSample, TokenDeltaSample, TurnMetricsSample,
+    PlanSample, TokenDeltaSample, ToolCallSample, ToolResultSample, TurnMetricsSample,
     VerifierVerdictSample,
 };
 
@@ -204,12 +204,15 @@ impl AppState {
                 tokens_per_sec,
                 cost_usd,
             } => {
-                self.cognition.entry(task_id).or_default().push_turn_metrics(TurnMetricsSample {
-                    pressure,
-                    activity,
-                    tokens_per_sec,
-                    cost_usd,
-                });
+                self.cognition
+                    .entry(task_id)
+                    .or_default()
+                    .push_turn_metrics(TurnMetricsSample {
+                        pressure,
+                        activity,
+                        tokens_per_sec,
+                        cost_usd,
+                    });
             }
             AgentEvent::BudgetExceeded {
                 task_id: Some(task_id),
@@ -217,8 +220,13 @@ impl AppState {
                 burned_usd,
                 ..
             } => {
-                self.cognition.entry(task_id).or_default().last_budget_exceeded =
-                    Some(BudgetExceededSample { limit_usd, burned_usd });
+                self.cognition
+                    .entry(task_id)
+                    .or_default()
+                    .last_budget_exceeded = Some(BudgetExceededSample {
+                    limit_usd,
+                    burned_usd,
+                });
             }
             // Fleet-wide breaches (`task_id: None`) have no single task to
             // key the retained state on; nothing to do at this layer.
@@ -228,8 +236,13 @@ impl AppState {
                 estimated_usd,
                 cap_usd,
             } => {
-                self.cognition.entry(task_id).or_default().last_budget_soft_warn =
-                    Some(BudgetSoftWarnSample { estimated_usd, cap_usd });
+                self.cognition
+                    .entry(task_id)
+                    .or_default()
+                    .last_budget_soft_warn = Some(BudgetSoftWarnSample {
+                    estimated_usd,
+                    cap_usd,
+                });
             }
             AgentEvent::VerifierVerdict {
                 task_id,
@@ -238,8 +251,15 @@ impl AppState {
                 fix_hints,
                 confidence,
             } => {
-                self.cognition.entry(task_id).or_default().last_verifier_verdict =
-                    Some(VerifierVerdictSample { passed, gaps, fix_hints, confidence });
+                self.cognition
+                    .entry(task_id)
+                    .or_default()
+                    .last_verifier_verdict = Some(VerifierVerdictSample {
+                    passed,
+                    gaps,
+                    fix_hints,
+                    confidence,
+                });
             }
             AgentEvent::PlanProposed {
                 task_id,
@@ -247,17 +267,32 @@ impl AppState {
                 steps,
                 plan,
             } => {
-                self.cognition.entry(task_id).or_default().last_plan =
-                    Some(PlanSample { attempt, steps, plan });
-            }
-            AgentEvent::ToolCall { task_id, tool, summary } => {
-                self.cognition.entry(task_id).or_default().push_tool_call(ToolCallSample {
-                    tool,
-                    summary,
-                    result: None,
+                self.cognition.entry(task_id).or_default().last_plan = Some(PlanSample {
+                    attempt,
+                    steps,
+                    plan,
                 });
             }
-            AgentEvent::ToolResult { task_id, tool, is_error, preview } => {
+            AgentEvent::ToolCall {
+                task_id,
+                tool,
+                summary,
+            } => {
+                self.cognition
+                    .entry(task_id)
+                    .or_default()
+                    .push_tool_call(ToolCallSample {
+                        tool,
+                        summary,
+                        result: None,
+                    });
+            }
+            AgentEvent::ToolResult {
+                task_id,
+                tool,
+                is_error,
+                preview,
+            } => {
                 self.cognition
                     .entry(task_id)
                     .or_default()
@@ -270,7 +305,11 @@ impl AppState {
                 cache_read_tokens,
             } => {
                 self.cognition.entry(task_id).or_default().last_token_delta =
-                    Some(TokenDeltaSample { output_tokens, input_tokens, cache_read_tokens });
+                    Some(TokenDeltaSample {
+                        output_tokens,
+                        input_tokens,
+                        cache_read_tokens,
+                    });
             }
             AgentEvent::ApiRetry {
                 task_id,
@@ -279,15 +318,27 @@ impl AppState {
                 utilization,
                 resets_at,
             } => {
-                self.cognition.entry(task_id).or_default().last_api_retry =
-                    Some(ApiRetrySample { status, limit_type, utilization, resets_at });
-            }
-            AgentEvent::Cost { task_id, cost_usd, num_turns, session_id } => {
-                self.cognition.entry(task_id).or_default().push_cost(CostSample {
-                    cost_usd,
-                    num_turns,
-                    session_id,
+                self.cognition.entry(task_id).or_default().last_api_retry = Some(ApiRetrySample {
+                    status,
+                    limit_type,
+                    utilization,
+                    resets_at,
                 });
+            }
+            AgentEvent::Cost {
+                task_id,
+                cost_usd,
+                num_turns,
+                session_id,
+            } => {
+                self.cognition
+                    .entry(task_id)
+                    .or_default()
+                    .push_cost(CostSample {
+                        cost_usd,
+                        num_turns,
+                        session_id,
+                    });
             }
             AgentEvent::Phase { task_id, phase } => {
                 self.cognition.entry(task_id).or_default().push_phase(phase);

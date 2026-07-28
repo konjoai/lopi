@@ -9,16 +9,18 @@ async fn build_client() -> LocalClient {
     let store = MemoryStore::open_in_memory().await.unwrap();
     let bus: EventBus<AgentEvent> = EventBus::new(64);
     let queue = TaskQueue::new();
-    let pool = Arc::new(
-        AgentPool::new(1, std::env::temp_dir(), queue, bus).with_store(store.clone()),
-    );
+    let pool =
+        Arc::new(AgentPool::new(1, std::env::temp_dir(), queue, bus).with_store(store.clone()));
     LocalClient::new(pool, store)
 }
 
 #[tokio::test]
 async fn create_then_get_then_cancel_round_trips() {
     let client = build_client().await;
-    let id = client.create_task(&bare_request("local client goal")).await.unwrap();
+    let id = client
+        .create_task(&bare_request("local client goal"))
+        .await
+        .unwrap();
     assert!(!id.is_empty());
 
     let fetched = client.get_task(&id).await.unwrap();
@@ -45,7 +47,10 @@ async fn get_task_unknown_id_is_not_found() {
 #[tokio::test]
 async fn approve_plan_on_non_awaiting_task_is_conflict() {
     let client = build_client().await;
-    let id = client.create_task(&bare_request("not awaiting plan")).await.unwrap();
+    let id = client
+        .create_task(&bare_request("not awaiting plan"))
+        .await
+        .unwrap();
     let err = client.approve_plan(&id).await.unwrap_err();
     assert!(matches!(err, ClientError::Conflict(_)), "got {err:?}");
 }
@@ -71,7 +76,10 @@ async fn chain_methods_are_unsupported() {
         ClientError::Unsupported(_)
     ));
     assert!(matches!(
-        client.create_chain(serde_json::json!({})).await.unwrap_err(),
+        client
+            .create_chain(serde_json::json!({}))
+            .await
+            .unwrap_err(),
         ClientError::Unsupported(_)
     ));
     assert!(matches!(

@@ -104,7 +104,10 @@ impl RemoteClient {
 #[async_trait]
 impl TuiClient for RemoteClient {
     async fn list_tasks(&self) -> Result<Vec<TaskSummary>, ClientError> {
-        let resp = self.authorize(self.http.get(self.url("/api/tasks"))).send().await;
+        let resp = self
+            .authorize(self.http.get(self.url("/api/tasks")))
+            .send()
+            .await;
         let body: serde_json::Value = self.parse(resp, "list_tasks").await?;
         let tasks = body.get("tasks").cloned().unwrap_or(json!([]));
         serde_json::from_value(tasks).map_err(|e| ClientError::Transport(e.to_string()))
@@ -133,12 +136,18 @@ impl TuiClient for RemoteClient {
             .send()
             .await;
         let body: serde_json::Value = self.parse(resp, "cancel_task").await?;
-        Ok(body.get("cancelled").and_then(serde_json::Value::as_bool).unwrap_or(false))
+        Ok(body
+            .get("cancelled")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false))
     }
 
     async fn approve_plan(&self, id: &str) -> Result<(), ClientError> {
         let resp = self
-            .authorize(self.http.post(self.url(&format!("/api/tasks/{id}/plan/approve"))))
+            .authorize(
+                self.http
+                    .post(self.url(&format!("/api/tasks/{id}/plan/approve"))),
+            )
             .send()
             .await;
         self.parse_unit(resp, "approve_plan").await
@@ -146,7 +155,10 @@ impl TuiClient for RemoteClient {
 
     async fn reject_plan(&self, id: &str) -> Result<(), ClientError> {
         let resp = self
-            .authorize(self.http.post(self.url(&format!("/api/tasks/{id}/plan/reject"))))
+            .authorize(
+                self.http
+                    .post(self.url(&format!("/api/tasks/{id}/plan/reject"))),
+            )
             .send()
             .await;
         self.parse_unit(resp, "reject_plan").await
@@ -164,7 +176,10 @@ impl TuiClient for RemoteClient {
 
     async fn get_chain(&self, id: &str) -> Result<ChainSummary, ClientError> {
         let resp = self
-            .authorize(self.http.get(self.url(&format!("/api/schedule-chains/{id}"))))
+            .authorize(
+                self.http
+                    .get(self.url(&format!("/api/schedule-chains/{id}"))),
+            )
             .send()
             .await;
         self.parse(resp, "get_chain").await
@@ -180,7 +195,10 @@ impl TuiClient for RemoteClient {
 
     async fn enable_chain(&self, id: &str) -> Result<(), ClientError> {
         let resp = self
-            .authorize(self.http.post(self.url(&format!("/api/schedule-chains/{id}/enable"))))
+            .authorize(
+                self.http
+                    .post(self.url(&format!("/api/schedule-chains/{id}/enable"))),
+            )
             .send()
             .await;
         self.parse_unit(resp, "enable_chain").await
@@ -188,7 +206,10 @@ impl TuiClient for RemoteClient {
 
     async fn disable_chain(&self, id: &str) -> Result<(), ClientError> {
         let resp = self
-            .authorize(self.http.post(self.url(&format!("/api/schedule-chains/{id}/disable"))))
+            .authorize(
+                self.http
+                    .post(self.url(&format!("/api/schedule-chains/{id}/disable"))),
+            )
             .send()
             .await;
         self.parse_unit(resp, "disable_chain").await
@@ -196,7 +217,10 @@ impl TuiClient for RemoteClient {
 
     async fn run_chain_now(&self, id: &str) -> Result<(), ClientError> {
         let resp = self
-            .authorize(self.http.post(self.url(&format!("/api/schedule-chains/{id}/run-now"))))
+            .authorize(
+                self.http
+                    .post(self.url(&format!("/api/schedule-chains/{id}/run-now"))),
+            )
             .send()
             .await;
         self.parse_unit(resp, "run_chain_now").await

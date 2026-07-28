@@ -44,7 +44,10 @@ mod tests {
             std::env::set_var("LOPI_WEB_AUTH_TOKEN", "from-env");
         }
         let cfg = cfg_with_token(Some("from-config"));
-        assert_eq!(resolve_auth_token(Some(&cfg)), Some("from-config".to_string()));
+        assert_eq!(
+            resolve_auth_token(Some(&cfg)),
+            Some("from-config".to_string())
+        );
         // SAFETY: serialized by ENV_LOCK for the duration of this test.
         unsafe {
             std::env::remove_var("LOPI_WEB_AUTH_TOKEN");

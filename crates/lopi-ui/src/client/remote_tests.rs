@@ -103,7 +103,10 @@ async fn kt_t0_1_live_round_trip_no_auth() {
     // bug. What this proves is the round trip itself: the DELETE request,
     // its JSON response, and `ClientError` mapping all work end to end.
     let cancel_result = client.cancel_task(&id).await;
-    assert!(cancel_result.is_ok(), "cancel request itself must round-trip cleanly: {cancel_result:?}");
+    assert!(
+        cancel_result.is_ok(),
+        "cancel request itself must round-trip cleanly: {cancel_result:?}"
+    );
 }
 
 /// KT-T0.2 — auth required: no `Authorization` header is rejected

@@ -9,7 +9,10 @@ fn bounded_push_evicts_oldest_past_max_samples() {
     assert_eq!(cog.phases.len(), MAX_SAMPLES);
     // The oldest 10 were evicted; the front is now phase-10.
     assert_eq!(cog.phases.front(), Some(&"phase-10".to_string()));
-    assert_eq!(cog.phases.back(), Some(&format!("phase-{}", MAX_SAMPLES + 9)));
+    assert_eq!(
+        cog.phases.back(),
+        Some(&format!("phase-{}", MAX_SAMPLES + 9))
+    );
 }
 
 #[test]

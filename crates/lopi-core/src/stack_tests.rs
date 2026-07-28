@@ -47,7 +47,12 @@ fn eval_suites_kcqf_matches_shipped_bundle() {
     let suites = eval_suites();
     assert_eq!(
         suites.get("kcqf"),
-        Some(&vec!["tests pass", "code review", "vuln scan", "adversarial"])
+        Some(&vec![
+            "tests pass",
+            "code review",
+            "vuln scan",
+            "adversarial"
+        ])
     );
 }
 
@@ -78,7 +83,10 @@ fn isolation_choice_inherit_omits_mode() {
 
 #[test]
 fn autonomy_to_wire_parses_l_tags_and_omits_junk() {
-    assert_eq!(autonomy_to_wire(Some("L1")), Some(AutonomyLevel::ReportOnly));
+    assert_eq!(
+        autonomy_to_wire(Some("L1")),
+        Some(AutonomyLevel::ReportOnly)
+    );
     assert_eq!(autonomy_to_wire(Some("L4")), Some(AutonomyLevel::AutoMerge));
     assert_eq!(autonomy_to_wire(None), None);
     assert_eq!(autonomy_to_wire(Some("")), None);
@@ -158,7 +166,10 @@ fn default_maxx_matches_shipped_defaults() {
     assert!(!maxx.enabled);
     assert_eq!(maxx.quiet_hours, [23, 7]);
     assert!(maxx.headroom_gate);
-    assert_eq!(maxx.windows, vec![LimitWindow::FiveHour, LimitWindow::SevenDay]);
+    assert_eq!(
+        maxx.windows,
+        vec![LimitWindow::FiveHour, LimitWindow::SevenDay]
+    );
 }
 
 #[test]

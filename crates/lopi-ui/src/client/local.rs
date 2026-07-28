@@ -234,7 +234,9 @@ impl TuiClient for LocalClient {
         if self.pool.decide_plan(&task_id, PlanDecision::Approve).await {
             Ok(())
         } else {
-            Err(ClientError::Conflict("task is not awaiting plan approval".to_string()))
+            Err(ClientError::Conflict(
+                "task is not awaiting plan approval".to_string(),
+            ))
         }
     }
 
@@ -243,32 +245,46 @@ impl TuiClient for LocalClient {
         if self.pool.decide_plan(&task_id, PlanDecision::Reject).await {
             Ok(())
         } else {
-            Err(ClientError::Conflict("task is not awaiting plan approval".to_string()))
+            Err(ClientError::Conflict(
+                "task is not awaiting plan approval".to_string(),
+            ))
         }
     }
 
     async fn list_chains(&self) -> Result<Vec<ChainSummary>, ClientError> {
-        Err(ClientError::Unsupported(CHAIN_METHODS_UNSUPPORTED.to_string()))
+        Err(ClientError::Unsupported(
+            CHAIN_METHODS_UNSUPPORTED.to_string(),
+        ))
     }
 
     async fn get_chain(&self, _id: &str) -> Result<ChainSummary, ClientError> {
-        Err(ClientError::Unsupported(CHAIN_METHODS_UNSUPPORTED.to_string()))
+        Err(ClientError::Unsupported(
+            CHAIN_METHODS_UNSUPPORTED.to_string(),
+        ))
     }
 
     async fn create_chain(&self, _body: serde_json::Value) -> Result<ChainSummary, ClientError> {
-        Err(ClientError::Unsupported(CHAIN_METHODS_UNSUPPORTED.to_string()))
+        Err(ClientError::Unsupported(
+            CHAIN_METHODS_UNSUPPORTED.to_string(),
+        ))
     }
 
     async fn enable_chain(&self, _id: &str) -> Result<(), ClientError> {
-        Err(ClientError::Unsupported(CHAIN_METHODS_UNSUPPORTED.to_string()))
+        Err(ClientError::Unsupported(
+            CHAIN_METHODS_UNSUPPORTED.to_string(),
+        ))
     }
 
     async fn disable_chain(&self, _id: &str) -> Result<(), ClientError> {
-        Err(ClientError::Unsupported(CHAIN_METHODS_UNSUPPORTED.to_string()))
+        Err(ClientError::Unsupported(
+            CHAIN_METHODS_UNSUPPORTED.to_string(),
+        ))
     }
 
     async fn run_chain_now(&self, _id: &str) -> Result<(), ClientError> {
-        Err(ClientError::Unsupported(CHAIN_METHODS_UNSUPPORTED.to_string()))
+        Err(ClientError::Unsupported(
+            CHAIN_METHODS_UNSUPPORTED.to_string(),
+        ))
     }
 
     async fn get_loop_config(&self) -> Result<serde_json::Value, ClientError> {

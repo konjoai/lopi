@@ -37,7 +37,13 @@ fn budget_exceeded_with_a_task_id_is_retained() {
         limit_usd: 5.0,
         burned_usd: 5.5,
     });
-    let sample = state.cognition.get(&id).unwrap().last_budget_exceeded.as_ref().unwrap();
+    let sample = state
+        .cognition
+        .get(&id)
+        .unwrap()
+        .last_budget_exceeded
+        .as_ref()
+        .unwrap();
     assert!((sample.limit_usd - 5.0).abs() < f64::EPSILON);
     assert!((sample.burned_usd - 5.5).abs() < f64::EPSILON);
 }
@@ -63,7 +69,12 @@ fn budget_soft_warn_is_retained() {
         estimated_usd: 0.8,
         cap_usd: 1.0,
     });
-    let sample = state.cognition.get(&id).unwrap().last_budget_soft_warn.unwrap();
+    let sample = state
+        .cognition
+        .get(&id)
+        .unwrap()
+        .last_budget_soft_warn
+        .unwrap();
     assert!((sample.estimated_usd - 0.8).abs() < f64::EPSILON);
     assert!((sample.cap_usd - 1.0).abs() < f64::EPSILON);
 }
@@ -79,7 +90,13 @@ fn verifier_verdict_is_retained() {
         fix_hints: vec!["add a test".to_string()],
         confidence: 0.9,
     });
-    let verdict = state.cognition.get(&id).unwrap().last_verifier_verdict.as_ref().unwrap();
+    let verdict = state
+        .cognition
+        .get(&id)
+        .unwrap()
+        .last_verifier_verdict
+        .as_ref()
+        .unwrap();
     assert!(!verdict.passed);
     assert_eq!(verdict.gaps, vec!["missing test".to_string()]);
     assert_eq!(verdict.fix_hints, vec!["add a test".to_string()]);
@@ -96,7 +113,13 @@ fn plan_proposed_is_retained() {
         steps: vec!["step one".to_string()],
         plan: "full plan text".to_string(),
     });
-    let plan = state.cognition.get(&id).unwrap().last_plan.as_ref().unwrap();
+    let plan = state
+        .cognition
+        .get(&id)
+        .unwrap()
+        .last_plan
+        .as_ref()
+        .unwrap();
     assert_eq!(plan.attempt, 1);
     assert_eq!(plan.steps, vec!["step one".to_string()]);
     assert_eq!(plan.plan, "full plan text");
@@ -144,7 +167,10 @@ fn token_delta_keeps_only_the_latest_value() {
         cache_read_tokens: 50,
     });
     let latest = state.cognition.get(&id).unwrap().last_token_delta.unwrap();
-    assert_eq!(latest.output_tokens, 20, "must overwrite, not accumulate a history");
+    assert_eq!(
+        latest.output_tokens, 20,
+        "must overwrite, not accumulate a history"
+    );
 }
 
 #[test]
@@ -158,7 +184,13 @@ fn api_retry_is_retained() {
         utilization: 0.9,
         resets_at: Some(12345),
     });
-    let retry = state.cognition.get(&id).unwrap().last_api_retry.as_ref().unwrap();
+    let retry = state
+        .cognition
+        .get(&id)
+        .unwrap()
+        .last_api_retry
+        .as_ref()
+        .unwrap();
     assert_eq!(retry.status, "allowed_warning");
     assert_eq!(retry.limit_type, "five_hour");
     assert!((retry.utilization - 0.9).abs() < f32::EPSILON);
