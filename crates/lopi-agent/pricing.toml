@@ -15,6 +15,14 @@
 # intentionally stays on the standard $3/$15 rate (the sustained price after
 # the window ends) rather than tracking a promotional rate that expires out
 # from under it.
+#
+# Sprint E (Finding #10) — `last_updated` backs `lopi rates --check`: every
+# cost surface that reads from this table is labeled an *estimate*, and
+# `--check` flags this date once it's stale, so a rate change moving faster
+# than this file gets caught instead of silently under/over-reporting spend.
+
+[meta]
+last_updated = "2026-07-01"
 
 [opus]
 input = 5.00

@@ -8,6 +8,7 @@ mod learn_commands;
 mod loop_commands;
 mod mcp_commands;
 mod onboarding_import_commands;
+mod rates_commands;
 mod remote;
 mod repl;
 mod replay_commands;
@@ -183,6 +184,7 @@ async fn main() -> Result<()> {
         }
 
         Some(Commands::Trust) => trust_commands::show().await?,
+        Some(Commands::Rates { check: _ }) => rates_commands::show(cfg.as_ref()),
         Some(Commands::Replay {
             task,
             from,

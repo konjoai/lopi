@@ -217,6 +217,16 @@ pub(crate) enum Commands {
         #[arg(long, default_value = "4")]
         max_agents: usize,
     },
+    /// Sprint E (Finding #10) — print the active per-token rate table and
+    /// configured spend pool, flagging a stale rate table instead of
+    /// silently trusting it.
+    Rates {
+        /// Present for symmetry with other `--check` subcommands; `lopi
+        /// rates` and `lopi rates --check` behave identically today (there
+        /// is nothing else to do with this command yet).
+        #[arg(long)]
+        check: bool,
+    },
     /// Start a dedicated GitHub webhook server.
     ServeWebhooks {
         #[arg(short, long, default_value = "3001")]

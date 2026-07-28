@@ -198,6 +198,56 @@ impl AppState {
             AgentEvent::PoolStats { queued, .. } => {
                 self.queued_count = queued;
             }
+            // Sprint E — surface every degradation/admission/runaway signal
+            // as a log line: "I want to know lopi throttled itself before I
+            // notice the throughput drop" (Sprint E brief, Part 3). These
+            // have no dedicated pane yet (see `budget/report.rs`'s TUI
+            // header follow-up), so the log pane is the one place an
+            // operator watching `lopi watch` sees them today.
+            AgentEvent::BudgetTier {
+                from, to, reason, ..
+            } => {
+                self.log_lines.push_back(LogEntry {
+                    task_id: TaskId::new(),
+                    line: format!(
+                        "⛽ budget tier {} → {}: {reason}",
+                        from.as_str(),
+                        to.as_str()
+                    ),
+                    level: LogLevel::Warn,
+                });
+                if self.log_lines.len() > MAX_LOG_LINES {
+                    self.log_lines.pop_front();
+                }
+            }
+            AgentEvent::AdmissionDeclined {
+                task_id,
+                goal,
+                alternative,
+                ..
+            } => {
+                let alt = alternative.unwrap_or_else(|| "no alternative fits right now".into());
+                self.log_lines.push_back(LogEntry {
+                    task_id,
+                    line: format!("🚫 admission declined for \"{goal}\" — {alt}"),
+                    level: LogLevel::Warn,
+                });
+                if self.log_lines.len() > MAX_LOG_LINES {
+                    self.log_lines.pop_front();
+                }
+            }
+            AgentEvent::RunawayPaused {
+                task_id, detector, ..
+            } => {
+                self.log_lines.push_back(LogEntry {
+                    task_id,
+                    line: format!("⏸️  runaway detector `{detector}` paused this session — awaiting operator decision"),
+                    level: LogLevel::Error,
+                });
+                if self.log_lines.len() > MAX_LOG_LINES {
+                    self.log_lines.pop_front();
+                }
+            }
             // `cognition::route_event` above always returns `None` (and this
             // match is never reached) for every one of these — kept here,
             // not folded into a `_` wildcard, purely so a newly-added
