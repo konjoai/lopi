@@ -68,6 +68,14 @@ impl PoolState {
         self.headroom().await.ratio_of(self.ceiling())
     }
 
+    /// Sum of every still-open reservation hold — should be exactly zero
+    /// once every admitted task has reconciled or released. The
+    /// exhaustion drill's core assertion (`LEDGER.md`) reads this at the
+    /// end of a batch to prove no hold leaked.
+    pub async fn reserved(&self) -> Money {
+        self.ledger.reserved().await
+    }
+
     /// Reserve `amount` for up to `ttl`. See [`ReservationLedger::try_reserve`].
     ///
     /// # Errors

@@ -38,11 +38,13 @@ async fn economics_reports_inactive_when_no_pool_configured() {
 
 #[tokio::test]
 async fn economics_reports_headroom_and_tier_when_pool_configured() {
-    let mut cfg = lopi_core::EconomicsConfig::default();
-    cfg.pool = Some(lopi_core::Pool::AgentSdkCredits {
-        monthly_allotment: lopi_core::Money::from_usd(50.0),
-        resets_on: chrono::NaiveDate::from_ymd_opt(2026, 9, 1).unwrap(),
-    });
+    let cfg = lopi_core::EconomicsConfig {
+        pool: Some(lopi_core::Pool::AgentSdkCredits {
+            monthly_allotment: lopi_core::Money::from_usd(50.0),
+            resets_on: chrono::NaiveDate::from_ymd_opt(2026, 9, 1).unwrap(),
+        }),
+        ..lopi_core::EconomicsConfig::default()
+    };
     let app = test_app_economics(Some(cfg)).await;
     let resp = app
         .oneshot(

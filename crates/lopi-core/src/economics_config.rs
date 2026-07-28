@@ -194,6 +194,7 @@ fn default_cold_start_cost() -> Money {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
     use chrono::NaiveDate;
@@ -233,11 +234,13 @@ mod tests {
 
     #[test]
     fn economics_config_round_trips_through_toml() {
-        let mut cfg = EconomicsConfig::default();
-        cfg.pool = Some(Pool::AgentSdkCredits {
-            monthly_allotment: Money::from_usd(100.0),
-            resets_on: NaiveDate::from_ymd_opt(2026, 8, 1).expect("valid date"),
-        });
+        let cfg = EconomicsConfig {
+            pool: Some(Pool::AgentSdkCredits {
+                monthly_allotment: Money::from_usd(100.0),
+                resets_on: NaiveDate::from_ymd_opt(2026, 8, 1).expect("valid date"),
+            }),
+            ..EconomicsConfig::default()
+        };
         let text = toml::to_string(&cfg).expect("serialize");
         let back: EconomicsConfig = toml::from_str(&text).expect("deserialize");
         assert_eq!(cfg, back);

@@ -140,12 +140,13 @@ mod tests {
     use std::path::PathBuf;
 
     fn cfg(usd: f64) -> EconomicsConfig {
-        let mut c = EconomicsConfig::default();
-        c.pool = Some(Pool::AgentSdkCredits {
-            monthly_allotment: Money::from_usd(usd),
-            resets_on: NaiveDate::from_ymd_opt(2026, 8, 1).expect("valid date"),
-        });
-        c
+        EconomicsConfig {
+            pool: Some(Pool::AgentSdkCredits {
+                monthly_allotment: Money::from_usd(usd),
+                resets_on: NaiveDate::from_ymd_opt(2026, 8, 1).expect("valid date"),
+            }),
+            ..EconomicsConfig::default()
+        }
     }
 
     async fn pool_with_economics(usd: f64) -> AgentPool {

@@ -445,11 +445,13 @@ mod tests {
     #[tokio::test]
     async fn cost_command_with_pool_configured_reports_headroom() {
         let store = MemoryStore::open_in_memory().await.unwrap();
-        let mut econ_cfg = EconomicsConfig::default();
-        econ_cfg.pool = Some(lopi_core::Pool::AgentSdkCredits {
-            monthly_allotment: lopi_core::Money::from_usd(50.0),
-            resets_on: chrono::NaiveDate::from_ymd_opt(2026, 9, 1).unwrap(),
-        });
+        let econ_cfg = EconomicsConfig {
+            pool: Some(lopi_core::Pool::AgentSdkCredits {
+                monthly_allotment: lopi_core::Money::from_usd(50.0),
+                resets_on: chrono::NaiveDate::from_ymd_opt(2026, 9, 1).unwrap(),
+            }),
+            ..EconomicsConfig::default()
+        };
         let queue = TaskQueue::new();
         let state = WhatsappState {
             queue,

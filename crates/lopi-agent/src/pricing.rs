@@ -189,6 +189,7 @@ pub fn rates_for(model: &str) -> TierRates {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
 

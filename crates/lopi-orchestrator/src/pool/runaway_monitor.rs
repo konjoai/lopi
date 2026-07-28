@@ -187,13 +187,14 @@ mod tests {
     use lopi_memory::MemoryStore;
 
     fn cfg(hard_ceiling_usd: f64) -> EconomicsConfig {
-        let mut c = EconomicsConfig::default();
-        c.pool = Some(Pool::AgentSdkCredits {
-            monthly_allotment: Money::from_usd(1000.0),
-            resets_on: NaiveDate::from_ymd_opt(2026, 8, 1).expect("valid date"),
-        });
-        c.hard_session_ceiling = Money::from_usd(hard_ceiling_usd);
-        c
+        EconomicsConfig {
+            pool: Some(Pool::AgentSdkCredits {
+                monthly_allotment: Money::from_usd(1000.0),
+                resets_on: NaiveDate::from_ymd_opt(2026, 8, 1).expect("valid date"),
+            }),
+            hard_session_ceiling: Money::from_usd(hard_ceiling_usd),
+            ..EconomicsConfig::default()
+        }
     }
 
     #[test]
