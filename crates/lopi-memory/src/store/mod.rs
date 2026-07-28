@@ -1,9 +1,9 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use chrono::Utc;
+use lopi_core::sqlite_pool::{open_in_memory_pool, open_read_pool, open_write_pool};
 use lopi_core::{Attempt, Task, TaskId, TurnMetrics};
-use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
+use sqlx::sqlite::SqlitePool;
 use std::path::Path;
-use std::str::FromStr;
 
 const SCHEMA: &str = include_str!("../schema.sql");
 
@@ -28,38 +28,15 @@ impl MemoryStore {
     /// Returns `Err` if the database cannot be created or the schema cannot be applied.
     pub async fn open(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref();
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).ok();
-        }
-        let url = format!("sqlite://{}", path.display());
-
-        // Write pool: single connection, full WAL + synchronous=NORMAL pragmas.
-        let write_opts = SqliteConnectOptions::from_str(&url)
-            .context("parsing sqlite path (write)")?
-            .create_if_missing(true)
-            .pragma("journal_mode", "WAL")
-            .pragma("synchronous", "NORMAL")
-            .pragma("busy_timeout", "5000");
-        let write_pool = SqlitePoolOptions::new()
-            .max_connections(1)
-            .connect_with(write_opts)
-            .await
-            .context("opening sqlite write pool")?;
-
+        // `foreign_keys: false` — this schema's one `REFERENCES` (audit
+        // rows -> tasks) predates FK enforcement ever being asked for here;
+        // turning it on would be a new, unreviewed constraint on existing
+        // data, not just a connection-setup refactor. See
+        // `lopi_core::sqlite_pool::open_write_pool`'s doc comment.
+        let write_pool = open_write_pool(path, false).await?;
         // Apply schema through the write connection before handing out reads.
         Self::apply_schema(&write_pool).await?;
-
-        // Read pool: up to 8 connections, read-only mode.
-        let read_opts = SqliteConnectOptions::from_str(&url)
-            .context("parsing sqlite path (read)")?
-            .read_only(true)
-            .pragma("busy_timeout", "5000");
-        let read_pool = SqlitePoolOptions::new()
-            .max_connections(8)
-            .connect_with(read_opts)
-            .await
-            .context("opening sqlite read pool")?;
-
+        let read_pool = open_read_pool(path, 8, false).await?;
         Ok(Self {
             write_pool,
             read_pool,
@@ -74,13 +51,7 @@ impl MemoryStore {
     /// # Errors
     /// Returns `Err` if the in-memory database cannot be opened or the schema cannot be applied.
     pub async fn open_in_memory() -> Result<Self> {
-        let opts = SqliteConnectOptions::from_str("sqlite::memory:")
-            .context("parsing in-memory sqlite")?;
-        let pool = SqlitePoolOptions::new()
-            .max_connections(1)
-            .connect_with(opts)
-            .await
-            .context("opening in-memory sqlite pool")?;
+        let pool = open_in_memory_pool(false).await?;
         Self::apply_schema(&pool).await?;
         // Use the same pool for both reads and writes — safe for single-connection in-memory DB.
         Ok(Self {
@@ -90,34 +61,7 @@ impl MemoryStore {
     }
 
     async fn apply_schema(pool: &SqlitePool) -> Result<()> {
-        for stmt in SCHEMA.split(';') {
-            let s = stmt.trim();
-            if s.is_empty() {
-                continue;
-            }
-            // Strip leading SQL line comments (`-- foo`) so the prefix check
-            // below correctly identifies ALTER TABLE statements that have
-            // documentation comments above them.
-            let body: String = s
-                .lines()
-                .filter(|l| !l.trim_start().starts_with("--"))
-                .collect::<Vec<_>>()
-                .join("\n")
-                .trim()
-                .to_string();
-            if body.is_empty() {
-                continue;
-            }
-
-            let result = sqlx::query(&body).execute(pool).await;
-            // ALTER TABLE ... ADD COLUMN errors on duplicate columns — silently ignore.
-            if let Err(e) = result {
-                if !body.to_lowercase().starts_with("alter table") {
-                    return Err(e).context("applying schema");
-                }
-            }
-        }
-        Ok(())
+        lopi_core::sqlite_pool::apply_schema(pool, SCHEMA).await
     }
 
     /// Save or upsert a task record.

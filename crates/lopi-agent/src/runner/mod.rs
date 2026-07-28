@@ -198,6 +198,11 @@ pub struct AgentRunner {
     /// stack detection. `None` (the default) leaves detection as the sole
     /// source.
     pub(super) test_command: Option<String>,
+    /// Symbol Index (Finding #4) — repo-map + index-tools vs. legacy
+    /// no-repo-map planning context (distinct from this file's other
+    /// "Sprint I", the unrelated Layer 5 stability gate). Defaults to
+    /// [`ContextMode::Index`](lopi_core::ContextMode).
+    pub(super) context_mode: lopi_core::ContextMode,
 }
 
 impl AgentRunner {
@@ -255,6 +260,7 @@ impl AgentRunner {
             reflect_cross_run: false,
             pending_successor: None,
             test_command: None,
+            context_mode: lopi_core::ContextMode::default(),
         }
     }
 

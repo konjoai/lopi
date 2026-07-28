@@ -4,6 +4,7 @@
 
 use super::*;
 use lopi_core::Task;
+use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use std::str::FromStr;
 use uuid::Uuid;
 

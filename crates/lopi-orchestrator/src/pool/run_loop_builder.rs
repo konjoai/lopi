@@ -38,6 +38,7 @@ pub(super) fn build_runner(
     reflect_cross_run: bool,
     plan_decision_rx: oneshot::Receiver<lopi_core::PlanDecision>,
     test_command: Option<String>,
+    context_mode: lopi_core::ContextMode,
 ) -> AgentRunner {
     let verifier_needed = task.verifier_required || task.verifier_model.is_some();
     // Loop-as-code: a task-level override always wins over the repo's
@@ -62,7 +63,8 @@ pub(super) fn build_runner(
         .with_tool_permissions(permission_allow, permission_deny)
         .with_cross_run_reflection(reflect_cross_run)
         .with_plan_gate(plan_decision_rx)
-        .with_test_command(test_command);
+        .with_test_command(test_command)
+        .with_context_mode(context_mode);
     runner.max_turns = max_turns;
     runner.gate = gate;
     runner.until = until;

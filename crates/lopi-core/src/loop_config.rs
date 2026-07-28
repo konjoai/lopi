@@ -26,6 +26,11 @@ pub use crate::autonomy::AutonomyLevel;
 /// pattern here).
 pub use crate::guard_trust::{resolve_guard_command, run_guard_command};
 
+/// Re-exported so `loop_config::ContextMode` stays valid — the type lives in
+/// its own module (`context_mode.rs`) for the same file-size-gate reason as
+/// `AutonomyLevel` above.
+pub use crate::context_mode::ContextMode;
+
 /// How an agent's working copy is isolated from its peers.
 ///
 /// The two points on the loop-engineering isolation ladder. `Branch` (the
@@ -244,6 +249,11 @@ pub struct LoopConfig {
     /// doesn't recognize, not a replacement for it.
     #[serde(default)]
     pub test_command: Option<String>,
+    /// Finding #4 — repo-map + index-tools vs. legacy no-repo-map behavior.
+    /// Defaults to [`ContextMode::Index`]. An A/B knob, not a rebuild —
+    /// see [`ContextMode`]'s doc comment.
+    #[serde(default)]
+    pub context_mode: ContextMode,
 }
 
 impl Default for LoopConfig {
@@ -272,6 +282,7 @@ impl Default for LoopConfig {
             reflect_cross_run: false,
             budget: BudgetSection::default(),
             test_command: None,
+            context_mode: ContextMode::default(),
         }
     }
 }

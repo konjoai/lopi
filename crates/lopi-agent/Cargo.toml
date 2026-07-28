@@ -14,6 +14,7 @@ lopi-git.workspace = true
 lopi-ratelimit.workspace = true
 lopi-spec.workspace = true
 lopi-skill.workspace = true
+lopi-index.workspace = true
 chrono.workspace = true
 uuid.workspace = true
 lopi-memory.workspace = true

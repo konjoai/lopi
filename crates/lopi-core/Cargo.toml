@@ -18,3 +18,7 @@ anyhow.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 regex.workspace = true
+sqlx.workspace = true
+
+[dev-dependencies]
+tempfile = "3"
