@@ -252,7 +252,7 @@ pub(crate) async fn write_patterns(store: &MemoryStore, rng: &mut StdRng) -> Res
             avg_attempts: rng.gen_range(1.0..3.0),
             success_rate: rng.gen_range(0.55..0.95),
             last_seen: Utc::now() - Duration::hours(rng.gen_range(1i64..72)),
-            derived_from_postmortem: i % 2 == 0,
+            derived_from_postmortem: i.is_multiple_of(2),
             toolchain,
             occurrence_count: rng.gen_range(3..40),
         };

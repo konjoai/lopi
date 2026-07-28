@@ -115,7 +115,7 @@ async fn launch_dashboard(demo_store: PathBuf, host: String, port: u16) -> Resul
 
     print_startup_banner(&demo_store, &host, port);
 
-    if std::env::var("LOPI_NO_BROWSER").ok().as_deref() != Some("1") {
+    if should_open_browser() {
         let url = dashboard_url(&host, port);
         tokio::spawn(async move {
             tokio::time::sleep(std::time::Duration::from_millis(350)).await;
@@ -136,6 +136,13 @@ async fn launch_dashboard(demo_store: PathBuf, host: String, port: u16) -> Resul
         None,
     )
     .await
+}
+
+/// Whether `launch_dashboard` should try to open a browser tab — `false`
+/// only when `LOPI_NO_BROWSER=1` is set (headless/remote deployments). Pure
+/// so the condition is unit-testable without spawning a real browser.
+fn should_open_browser() -> bool {
+    std::env::var("LOPI_NO_BROWSER").ok().as_deref() != Some("1")
 }
 
 fn dashboard_url(host: &str, port: u16) -> String {
@@ -176,6 +183,12 @@ fn print_startup_banner(demo_store: &Path, host: &str, port: u16) {
 mod tests {
     use super::*;
 
+    /// `HOME`/`LOPI_NO_BROWSER` are process-global; `cargo test` runs tests
+    /// as threads within one process, so every test that mutates either must
+    /// hold this guard for its whole body or a parallel thread's `set_var`
+    /// can interleave and read/write the wrong scratch state.
+    static ENV_GUARD: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
     #[test]
     fn remove_demo_store_deletes_main_and_sidecar_files_only() {
         let dir = tempfile::tempdir().unwrap();
@@ -211,6 +224,7 @@ mod tests {
 
     #[tokio::test]
     async fn run_off_never_touches_the_real_store() {
+        let _guard = ENV_GUARD.lock().await;
         let dir = tempfile::tempdir().unwrap();
         let real = dir.path().join("lopi.db");
         std::fs::write(&real, "real data — must survive").unwrap();
@@ -248,6 +262,7 @@ mod tests {
     /// never started.
     #[tokio::test]
     async fn serving_a_demo_store_never_dispatches_or_accepts_mutations() {
+        let _guard = ENV_GUARD.lock().await;
         let dir = tempfile::tempdir().unwrap();
         let demo = dir.path().join("demo.db");
         let real = dir.path().join("lopi.db");
@@ -319,5 +334,59 @@ mod tests {
     fn dashboard_url_maps_wildcard_hosts_to_loopback() {
         assert_eq!(dashboard_url("0.0.0.0", 3000), "http://127.0.0.1:3000");
         assert_eq!(dashboard_url("127.0.0.1", 3000), "http://127.0.0.1:3000");
+    }
+
+    /// Mutation-testing kill test for `should_open_browser`'s `!=`
+    /// comparison: pins both branches directly so a mutant flipping it to
+    /// `==` fails immediately, without needing to observe a real browser
+    /// launch attempt.
+    #[tokio::test]
+    async fn should_open_browser_only_false_when_explicitly_suppressed() {
+        let _guard = ENV_GUARD.lock().await;
+        std::env::set_var("LOPI_NO_BROWSER", "1");
+        assert!(!should_open_browser(), "suppressed via LOPI_NO_BROWSER=1");
+        std::env::set_var("LOPI_NO_BROWSER", "0");
+        assert!(should_open_browser(), "any other value does not suppress");
+        std::env::remove_var("LOPI_NO_BROWSER");
+        assert!(should_open_browser(), "unset does not suppress");
+    }
+
+    /// Mutation-testing kill test for `run`'s whole-body mutant (`replace
+    /// run -> Result<()> with Ok(())`): a non-loopback host makes
+    /// `launch_dashboard`'s `validate_auth_policy` call fail fast (demo mode
+    /// never passes real auth, so any non-loopback host is refused) instead
+    /// of blocking forever in `serve_with_repo` — so the full
+    /// generate-if-absent-then-launch path is exercisable synchronously.
+    /// Real `run` returns that `Err` and leaves the freshly-generated demo
+    /// store on disk; a `Ok(())`-stub mutant would return `Ok(())` and
+    /// (having never run the real body) leave no store behind either —
+    /// both observably distinguish it from the real function.
+    #[tokio::test]
+    async fn run_generates_then_surfaces_the_launch_failure_on_a_bad_host() {
+        let _guard = ENV_GUARD.lock().await;
+        let home = tempfile::tempdir().unwrap();
+        std::env::set_var("HOME", home.path());
+        let demo_store = lopi_demo::default_demo_store_path();
+        assert!(!demo_store.exists(), "clean scratch HOME");
+
+        let result = run(
+            Some(99),
+            false,
+            false,
+            false,
+            "203.0.113.1".into(), // TEST-NET-3, never loopback — refused fast
+            0,
+            None,
+        )
+        .await;
+
+        assert!(
+            result.is_err(),
+            "a non-loopback host must be refused, not silently succeed"
+        );
+        assert!(
+            demo_store.exists(),
+            "the demo store must have been generated before the launch attempt failed"
+        );
     }
 }

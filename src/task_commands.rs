@@ -177,6 +177,11 @@ pub async fn resume(agent_id: String) -> Result<()> {
 mod tests {
     use super::*;
 
+    /// `HOME` is process-global; guard every test below that mutates it so
+    /// parallel `cargo test` threads don't interleave and resolve
+    /// `lopi_demo::default_demo_store_path()` against the wrong scratch dir.
+    static HOME_GUARD: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
     /// Mutation-testing kill test: pins `cancel`'s exact "not found"
     /// message against a real server, so a mutant that stubs the return
     /// value (`Ok(())`) fails instead of silently surviving — `cancel`
@@ -189,5 +194,57 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(msg, "ℹ️  task not found");
+    }
+
+    /// Mutation-testing kill test for `watch_demo`'s `!demo_store.exists()`
+    /// guard (and, transitively, its whole-body `Ok(())` mutant): a scratch
+    /// `HOME` with no demo store must produce this exact refusal rather than
+    /// falling through toward the live TUI event loop.
+    #[tokio::test]
+    async fn watch_demo_bails_when_no_demo_store_exists() {
+        let _guard = HOME_GUARD.lock().await;
+        let home = tempfile::tempdir().unwrap();
+        std::env::set_var("HOME", home.path());
+
+        let err = watch_demo().await.unwrap_err();
+        assert!(
+            err.to_string().contains("no demo store found"),
+            "unexpected message: {err}"
+        );
+    }
+
+    /// Mutation-testing kill test for `watch_demo`'s
+    /// `!store.is_synthetic()...` guard: a store that exists but was never
+    /// marked synthetic must be refused, not treated as a demo store.
+    #[tokio::test]
+    async fn watch_demo_bails_when_store_is_not_synthetic() {
+        let _guard = HOME_GUARD.lock().await;
+        let home = tempfile::tempdir().unwrap();
+        std::env::set_var("HOME", home.path());
+        let demo_store = lopi_demo::default_demo_store_path();
+        // A real (non-demo) store at the demo path — never marked synthetic.
+        MemoryStore::open(&demo_store).await.unwrap();
+
+        let err = watch_demo().await.unwrap_err();
+        assert!(
+            err.to_string().contains("isn't marked synthetic"),
+            "unexpected message: {err}"
+        );
+    }
+
+    /// Mutation-testing kill test for `watch`'s whole-body `Ok(())` mutant:
+    /// `demo: true` must delegate to `watch_demo` (and surface its refusal),
+    /// not silently succeed.
+    #[tokio::test]
+    async fn watch_with_demo_flag_delegates_to_watch_demo() {
+        let _guard = HOME_GUARD.lock().await;
+        let home = tempfile::tempdir().unwrap();
+        std::env::set_var("HOME", home.path());
+
+        let err = watch(None, false, true).await.unwrap_err();
+        assert!(
+            err.to_string().contains("no demo store found"),
+            "unexpected message: {err}"
+        );
     }
 }

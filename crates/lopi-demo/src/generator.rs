@@ -25,7 +25,7 @@ use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 
 use crate::content;
-use crate::generator_content::{build_task_plans, TaskOutcome};
+use crate::generator_content::{build_task_plans, TaskOutcome, TaskPlan};
 use crate::generator_seed::{
     attempt_count_for, seeded_uuid, write_attempts, write_dag, write_dead_letter, write_lessons,
     write_patterns, write_quality_trend, write_task_logs, write_turn_metrics,
@@ -189,47 +189,8 @@ pub async fn generate(dest: &Path, real_store_path: &Path, seed: u64) -> Result<
     let mut failed_task_ids: Vec<String> = Vec::new();
 
     for (idx, plan) in plans.iter().enumerate() {
-        let mut task = Task::new(plan.goal.clone());
-        task.id = plan.id;
-        task.source = plan.source.clone();
-        task.max_retries = 3;
-        let offset_minutes: i64 = rng.gen_range(5..(60 * 24 * 10));
-        task.created_at = Utc::now() - Duration::minutes(offset_minutes);
+        let task_id_str = write_one_task(&store, &mut rng, plan, idx).await?;
 
-        store.save_task(&task, "queued").await?;
-        if plan.outcome != TaskOutcome::Queued {
-            store.mark_running(&task.id).await?;
-        }
-        let repo = &content::REPOS[plan.repo_index];
-        store.set_task_repo(&task.id, repo.path).await?;
-        if plan.outcome.is_terminal() {
-            store
-                .mark_completed(&task.id, plan.outcome.db_status())
-                .await?;
-        }
-
-        let attempt_count = attempt_count_for(plan.outcome, task.max_retries, &mut rng);
-        if attempt_count > 0 {
-            write_attempts(&store, &mut rng, &task, plan.outcome, attempt_count).await?;
-        }
-
-        if plan.outcome != TaskOutcome::Queued {
-            let session_id = seeded_uuid(&mut rng);
-            let today_bias = plan.outcome == TaskOutcome::Running
-                || (plan.outcome == TaskOutcome::Success && idx % 3 == 0);
-            write_turn_metrics(&store, &mut rng, task.id, session_id, today_bias).await?;
-            let task_id_str = task.id.0.to_string();
-            write_task_logs(
-                &store,
-                &mut rng,
-                &task_id_str,
-                task.created_at,
-                plan.outcome,
-            )
-            .await?;
-        }
-
-        let task_id_str = task.id.0.to_string();
         if plan.outcome == TaskOutcome::Success && !dag_written_success {
             write_dag(&store, &task_id_str, false).await?;
             dag_written_success = true;
@@ -238,7 +199,6 @@ pub async fn generate(dest: &Path, real_store_path: &Path, seed: u64) -> Result<
             write_dag(&store, &task_id_str, true).await?;
             dag_written_running = true;
         }
-
         if plan.outcome == TaskOutcome::Failed {
             failed_task_ids.push(task_id_str);
         }
@@ -247,17 +207,72 @@ pub async fn generate(dest: &Path, real_store_path: &Path, seed: u64) -> Result<
     write_patterns(&store, &mut rng).await?;
     write_lessons(&store, &mut rng).await?;
     write_quality_trend(&store, content::REPOS[0].path).await?;
-
-    for (i, task_id) in failed_task_ids.iter().take(2).enumerate() {
-        let blocker = content::BLOCKERS[i % content::BLOCKERS.len()];
-        write_dead_letter(&store, task_id, blocker).await?;
-    }
+    write_dead_letters(&store, &failed_task_ids).await?;
 
     Ok(GeneratedDemo {
         seed,
         repo_count: content::REPOS.len(),
         task_count,
     })
+}
+
+/// Persist one task plan — the row itself, its repo, its attempts, and (for
+/// anything past `Queued`) its turn metrics and log lines. Returns the
+/// task's stringified id, for the DAG/dead-letter bookkeeping the caller
+/// does across the whole plan list. Split out of [`generate`] purely to
+/// keep that function's cognitive complexity under this repo's CI gate.
+async fn write_one_task(
+    store: &MemoryStore,
+    rng: &mut StdRng,
+    plan: &TaskPlan,
+    idx: usize,
+) -> Result<String> {
+    let mut task = Task::new(plan.goal.clone());
+    task.id = plan.id;
+    task.source = plan.source.clone();
+    task.max_retries = 3;
+    let offset_minutes: i64 = rng.gen_range(5..(60 * 24 * 10));
+    task.created_at = Utc::now() - Duration::minutes(offset_minutes);
+
+    store.save_task(&task, "queued").await?;
+    if plan.outcome != TaskOutcome::Queued {
+        store.mark_running(&task.id).await?;
+    }
+    let repo = &content::REPOS[plan.repo_index];
+    store.set_task_repo(&task.id, repo.path).await?;
+    if plan.outcome.is_terminal() {
+        store
+            .mark_completed(&task.id, plan.outcome.db_status())
+            .await?;
+    }
+
+    let attempt_count = attempt_count_for(plan.outcome, task.max_retries, rng);
+    if attempt_count > 0 {
+        write_attempts(store, rng, &task, plan.outcome, attempt_count).await?;
+    }
+
+    let task_id_str = task.id.0.to_string();
+    if plan.outcome != TaskOutcome::Queued {
+        let session_id = seeded_uuid(rng);
+        let today_bias = plan.outcome == TaskOutcome::Running
+            || (plan.outcome == TaskOutcome::Success && idx.is_multiple_of(3));
+        write_turn_metrics(store, rng, task.id, session_id, today_bias).await?;
+        write_task_logs(store, rng, &task_id_str, task.created_at, plan.outcome).await?;
+    }
+
+    Ok(task_id_str)
+}
+
+/// Write dead-letter audit entries for up to 2 failed tasks — the demo's
+/// "at least one honest failure story" (per the ADR). Split out of
+/// [`generate`] for the same cognitive-complexity reason as
+/// [`write_one_task`].
+async fn write_dead_letters(store: &MemoryStore, failed_task_ids: &[String]) -> Result<()> {
+    for (i, task_id) in failed_task_ids.iter().take(2).enumerate() {
+        let blocker = content::BLOCKERS[i % content::BLOCKERS.len()];
+        write_dead_letter(store, task_id, blocker).await?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]

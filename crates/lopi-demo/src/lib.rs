@@ -12,6 +12,8 @@
 //! (`src/demo_commands.rs`) and integration/snapshot tests can depend on
 //! the same generator — see [`generate`].
 
+#![warn(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
 pub mod content;
 pub mod generator;
 mod generator_content;
