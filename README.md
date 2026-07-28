@@ -6,7 +6,7 @@
 > agents in git-isolated branches, with retry loops, persistent memory,
 > a TUI + web dashboard, and a native macOS app.
 >
-> By [KonjoAI](https://github.com/konjoai) · MIT licensed · `v0.32.0`
+> By [KonjoAI](https://github.com/konjoai) · MIT licensed · `v0.36.0`
 > [![crates.io](https://img.shields.io/crates/v/lopi.svg)](https://crates.io/crates/lopi)
 
 ```

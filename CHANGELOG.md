@@ -1,3 +1,45 @@
+## [0.36.0] — Sprint: `lopi demo` and the Honest Measurement Policy
+
+**Two features landed together because they share one surface: how lopi
+labels the numbers it shows.** `lopi demo` fabricates a complete,
+deterministic, self-consistent synthetic store — repos, tasks across every
+status, agent traffic, token counts, a quality trend, patterns, lessons, and
+an honest failure story — so someone can see a fully alive dashboard with
+zero setup and zero real-machine access. The honest measurement policy
+(`docs/MEASUREMENT.md`) makes every user-facing metric carry a
+`Provenance` (Measured/Reported/Estimated/Unavailable), states plainly what
+`/api/stats` and every other cost figure is and isn't (local token burn,
+never plan quota or a bill), and degrades a stale pricing table to a
+warning instead of a confident dollar figure. Full design record, including
+two corrected assumptions found during research (no live Telegram `/cost`
+command — removed Sprint S10; no `dead_letter` table — dead-lettering is an
+`audit_log` row): `docs/adr/0001-demo-mode-and-measurement.md`.
+
+- **New crate `lopi-demo`** — the seeded fixture generator (`generate`,
+  `scenario::replay_events`), depended on by both the CLI and (per its own
+  design goal) future test suites. Refuses to write to the configured real
+  store path, even when neither file exists yet. `~/.lopi/demo.db`, a
+  sibling of the real store's own `~/.lopi/lopi.db`.
+- **`lopi demo` / `lopi watch --demo`** — generate (if absent), launch the
+  web dashboard; the TUI (purely event-bus driven, never reads the store)
+  gets a one-time seed of synthetic `AgentEvent`s via the new
+  `lopi_ui::tui::run_with_seed`. Never spawns the agent pool's dispatch
+  loop, never activates the cron/chain/quota/MAXX warm-up.
+- **Synthetic marker everywhere** — a `store_metadata` table
+  (`MemoryStore::is_synthetic`) drives a `🧪 SYNTHETIC DATA` badge in the
+  TUI header, a non-dismissible banner in the web dashboard (fetched from
+  `/api/stats` on every route), a `synthetic` field in the MCP stack-status
+  widget payload, and a `403` refusal on `create_task`/`cancel_task`/
+  `approve_plan`/`reject_plan`.
+- **`lopi_core::Provenance`** — attached to `/api/stats` and
+  `/api/budget/breakdown` as `measurement_provenance` (never bare
+  `provenance`, which already carries `TaskRow::provenance()`'s unrelated
+  trust meaning); the `lopi run`/loop-runner "session cost" line and the
+  REPL's `/cost` command now state inline what the figure is and isn't.
+- **`lopi-agent::pricing`** — `pricing.toml` carries a versioned `as_of`
+  date; `is_stale`/`staleness_warning` degrade a dollar estimate once the
+  table is more than 90 days old.
+
 ## [0.35.0] — Sprint T0: TUI Client Foundation & Domain Port
 
 **The TUI gained a write-capable client layer — no new widgets yet, but the
