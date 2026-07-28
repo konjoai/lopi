@@ -89,6 +89,7 @@
   let guardBtn: HTMLButtonElement | undefined;
   let evalBtn: HTMLButtonElement | undefined;
   let goalBtn: HTMLButtonElement | undefined;
+  let overflowBtn: HTMLButtonElement | undefined;
   let cfgOpen = false;
   let summaryExpanded = false;
 
@@ -97,6 +98,23 @@
   $: guardId = `${card.id}:guard`;
   $: evalId = `${card.id}:eval`;
   $: goalId = `${card.id}:goal`;
+  $: overflowId = `${card.id}:overflow`;
+
+  // Claude-Desktop-style running view (UI-3): while a card is actively
+  // running, every facet/ops control (templates, copy, drag, delete, config,
+  // maxx, goal, evals, guardrails, schedule) and the "N configured" summary
+  // collapse behind a single "..." button — only the loop pill (and the live
+  // run-stats readout) stay inline. Gated on `card.status` alone, not
+  // `loopRunning` below (which also requires a real repeat) — a single-pass
+  // run declutters the same way.
+  $: isRunning = card.status === 'running';
+  // The config drawer (and the "N configured" summary toggle) have no home
+  // in the collapsed running view — auto-close rather than leave them
+  // floating open beneath a card that's otherwise gone flat.
+  $: if (isRunning) {
+    cfgOpen = false;
+    summaryExpanded = false;
+  }
 
   // ── draft branch (Creation-Flow-1) ──────────────────────────────────────────
   // The pane's pre-commit draft renders through this same component with a
@@ -548,6 +566,26 @@
   $: liveAgent = card.taskId ? $agents.get(card.taskId) : undefined;
   $: showRunStats = card.status === 'running' && !!liveAgent;
 
+  // ── running-view overflow menu (UI-3) ───────────────────────────────────
+  // Every facet/ops control folds behind this one "..." button while the
+  // card is running (see `isRunning` above) — its own buttons are the exact
+  // same elements/handlers as the normal cardbar row, just relocated into a
+  // small floating panel so their `bind:this` anchors (schedBtn/guardBtn/…)
+  // stay mounted and each facet's own `Popover` keeps working unchanged.
+  // Deliberately does NOT close on outside-click (unlike `Popover.svelte`):
+  // a click inside a facet popover it spawns (e.g. the schedule popover)
+  // renders outside this menu's own DOM subtree — `document`-level "outside"
+  // detection can't tell that apart from an actual dismiss click. Closes on
+  // its own toggle, Escape (global, like `Popover.svelte`'s own — a plain
+  // `<div>` keydown handler isn't a valid a11y target for this), or the run
+  // finishing.
+  let overflowOpen = false;
+  $: if (!isRunning) overflowOpen = false;
+
+  function onOverflowKeydown(e: KeyboardEvent): void {
+    if (overflowOpen && e.key === 'Escape') overflowOpen = false;
+  }
+
   /** Persist the popover's toggle outcome onto the card — independent of
    *  `scheduled`/`cron`; a card can have both on at once. */
   function onMaxxToggled(next: { enabled: boolean; entryId: string | undefined }): void {
@@ -645,6 +683,8 @@
     reorderInPaneRelative(paneKey, cur.index, index, before);
   }
 </script>
+
+<svelte:window on:keydown={onOverflowKeydown} />
 
 <div
   class="pc {card.status}"
@@ -757,7 +797,7 @@
     </div>
   {/if}
 
-  {#if showSep}
+  {#if showSep && !isRunning}
     <hr class="sep" />
     <button
       type="button"
@@ -841,91 +881,241 @@
         costUsd={liveAgent.cost}
       />
     {/if}
-    <button
-      class="ib sched"
-      class:act={scheduleActive}
-      bind:this={schedBtn}
-      on:click={() => togglePopover(schedId)}
-      title={scheduleGoverned ? 'schedule (governed by the stack)' : 'schedule'}
-    >
-      {@html ICONS.cron}
-    </button>
-    <button
-      class="ib guard"
-      class:act={guardsOn}
-      bind:this={guardBtn}
-      on:click={() => togglePopover(guardId)}
-      title="guardrails"
-    >
-      {@html ICONS.shield}
-    </button>
-    <button
-      class="ib eval"
-      class:act={evalsOn}
-      bind:this={evalBtn}
-      on:click={() => togglePopover(evalId)}
-      title="evals"
-    >
-      {@html ICONS.checkbox}<span class="cnt">{card.evals.length}</span>
-    </button>
-    <button
-      class="ib goal"
-      class:act={goalOn}
-      type="button"
-      bind:this={goalBtn}
-      on:click={() => togglePopover(goalId)}
-      aria-pressed={goalOn}
-      title="pursue this loop's own acceptance goal"
-    >
-      {@html ICONS.gauge}
-    </button>
-    <button
-      class="ib max"
-      class:act={card.maxx.enabled}
-      bind:this={maxBtn}
-      on:click={() => togglePopover(maxId)}
-      title="MAXX"
-    >
-      {@html ICONS.bolt}
-    </button>
-    <button class="ib config" class:act={configOn} on:click={() => (cfgOpen = !cfgOpen)} title="run config">
-      {@html ICONS.sliders}
-    </button>
-    <span class="sp"></span>
-    {#if isDraft}
-      <button class="ib add" disabled={!hot} on:click={commit} title="add to stack">
-        {@html ICONS.plus}<span class="addlbl">add</span>
-      </button>
+
+    {#if isRunning}
+      <!-- Claude-Desktop-style running view (UI-3): every facet/ops control
+           below collapses behind this one button — only the loop pill (and
+           the live run-stats pill above) stay inline while a card runs. -->
+      <span class="sp"></span>
+      <div class="overflowwrap">
+        <button
+          class="ib overflow"
+          class:act={overflowOpen}
+          bind:this={overflowBtn}
+          type="button"
+          aria-expanded={overflowOpen}
+          aria-label="more controls"
+          title="more controls"
+          on:click={() => (overflowOpen = !overflowOpen)}
+        >
+          {@html ICONS.more}
+        </button>
+        {#if overflowOpen}
+          <div class="overflowmenu" role="menu">
+            {#if showSep}
+              <div class="omsum">
+                {#if card.scheduled}
+                  <div class="sumln sched" class:governed={scheduleGoverned}>
+                    <span class="rl">{@html ICONS.cron}schedule</span>
+                    <span class="txt">
+                      {#if scheduleGoverned}
+                        governed by stack — won't fire on its own
+                      {:else}
+                        <b>{scheduleSummary(card)}</b>
+                      {/if}
+                    </span>
+                  </div>
+                {/if}
+                {#if card.maxx.enabled}
+                  <div class="sumln max">
+                    <span class="rl">{@html ICONS.bolt}MAXX</span>
+                    <span class="txt">on{#if maxxSummary(card)} · <b>{maxxSummary(card)}</b>{/if}</span>
+                  </div>
+                {/if}
+                {#if guardsOn}
+                  <div class="sumln guard">
+                    <span class="rl">{@html ICONS.shield}guards</span>
+                    <span class="txt">{guardSummary(card)}</span>
+                  </div>
+                {/if}
+                {#if evalsOn}
+                  <div class="sumln eval">
+                    <span class="rl">{@html ICONS.checkbox}evals</span>
+                    <span class="txt">{evalsSummary(card)}</span>
+                  </div>
+                {/if}
+                {#if showConfigSummary}
+                  <div class="sumln cfg">
+                    <span class="rl">{@html ICONS.sliders}config</span>
+                    <span class="txt">{configSummary(card, paneDefaults)}</span>
+                  </div>
+                {/if}
+              </div>
+              <hr class="omsep" />
+            {/if}
+            <div class="omrow">
+              <button
+                class="ib sched"
+                class:act={scheduleActive}
+                bind:this={schedBtn}
+                on:click={() => togglePopover(schedId)}
+                title={scheduleGoverned ? 'schedule (governed by the stack)' : 'schedule'}
+              >
+                {@html ICONS.cron}
+              </button>
+              <button
+                class="ib guard"
+                class:act={guardsOn}
+                bind:this={guardBtn}
+                on:click={() => togglePopover(guardId)}
+                title="guardrails"
+              >
+                {@html ICONS.shield}
+              </button>
+              <button
+                class="ib eval"
+                class:act={evalsOn}
+                bind:this={evalBtn}
+                on:click={() => togglePopover(evalId)}
+                title="evals"
+              >
+                {@html ICONS.checkbox}<span class="cnt">{card.evals.length}</span>
+              </button>
+              <button
+                class="ib goal"
+                class:act={goalOn}
+                type="button"
+                bind:this={goalBtn}
+                on:click={() => togglePopover(goalId)}
+                aria-pressed={goalOn}
+                title="pursue this loop's own acceptance goal"
+              >
+                {@html ICONS.gauge}
+              </button>
+              <button
+                class="ib max"
+                class:act={card.maxx.enabled}
+                bind:this={maxBtn}
+                on:click={() => togglePopover(maxId)}
+                title="MAXX"
+              >
+                {@html ICONS.bolt}
+              </button>
+              <button class="ib config" class:act={configOn} on:click={() => (cfgOpen = !cfgOpen)} title="run config">
+                {@html ICONS.sliders}
+              </button>
+            </div>
+            <div class="omrow">
+              <TemplatesMenu {card} {paneKey} />
+              {#if bumpState.visible}
+                <button
+                  class="ib bump"
+                  disabled={!bumpState.canSooner}
+                  on:click={() => bump('up')}
+                  title="run sooner — moves this card earlier in the active run's queue"
+                >
+                  {@html ICONS.chevup}
+                </button>
+                <button
+                  class="ib bump"
+                  disabled={!bumpState.canLater}
+                  on:click={() => bump('down')}
+                  title="run later — moves this card later in the active run's queue"
+                >
+                  {@html ICONS.chevdown}
+                </button>
+              {/if}
+              <button class="ib" on:click={dupCard} title="duplicate">{@html ICONS.dup}</button>
+              <button
+                class="ib drag"
+                title="drag to reorder"
+                on:mousedown={armDrag}
+                on:mouseup={disarmDrag}
+              >
+                {@html ICONS.drag}
+              </button>
+              <button class="ib danger" on:click={delCard} title="delete">{@html ICONS.trash}</button>
+            </div>
+          </div>
+        {/if}
+      </div>
     {:else}
-      <TemplatesMenu {card} {paneKey} />
-      {#if bumpState.visible}
-        <button
-          class="ib bump"
-          disabled={!bumpState.canSooner}
-          on:click={() => bump('up')}
-          title="run sooner — moves this card earlier in the active run's queue"
-        >
-          {@html ICONS.chevup}
-        </button>
-        <button
-          class="ib bump"
-          disabled={!bumpState.canLater}
-          on:click={() => bump('down')}
-          title="run later — moves this card later in the active run's queue"
-        >
-          {@html ICONS.chevdown}
-        </button>
-      {/if}
-      <button class="ib" on:click={dupCard} title="duplicate">{@html ICONS.dup}</button>
       <button
-        class="ib drag"
-        title="drag to reorder"
-        on:mousedown={armDrag}
-        on:mouseup={disarmDrag}
+        class="ib sched"
+        class:act={scheduleActive}
+        bind:this={schedBtn}
+        on:click={() => togglePopover(schedId)}
+        title={scheduleGoverned ? 'schedule (governed by the stack)' : 'schedule'}
       >
-        {@html ICONS.drag}
+        {@html ICONS.cron}
       </button>
-      <button class="ib danger" on:click={delCard} title="delete">{@html ICONS.trash}</button>
+      <button
+        class="ib guard"
+        class:act={guardsOn}
+        bind:this={guardBtn}
+        on:click={() => togglePopover(guardId)}
+        title="guardrails"
+      >
+        {@html ICONS.shield}
+      </button>
+      <button
+        class="ib eval"
+        class:act={evalsOn}
+        bind:this={evalBtn}
+        on:click={() => togglePopover(evalId)}
+        title="evals"
+      >
+        {@html ICONS.checkbox}<span class="cnt">{card.evals.length}</span>
+      </button>
+      <button
+        class="ib goal"
+        class:act={goalOn}
+        type="button"
+        bind:this={goalBtn}
+        on:click={() => togglePopover(goalId)}
+        aria-pressed={goalOn}
+        title="pursue this loop's own acceptance goal"
+      >
+        {@html ICONS.gauge}
+      </button>
+      <button
+        class="ib max"
+        class:act={card.maxx.enabled}
+        bind:this={maxBtn}
+        on:click={() => togglePopover(maxId)}
+        title="MAXX"
+      >
+        {@html ICONS.bolt}
+      </button>
+      <button class="ib config" class:act={configOn} on:click={() => (cfgOpen = !cfgOpen)} title="run config">
+        {@html ICONS.sliders}
+      </button>
+      <span class="sp"></span>
+      {#if isDraft}
+        <button class="ib add" disabled={!hot} on:click={commit} title="add to stack">
+          {@html ICONS.plus}<span class="addlbl">add</span>
+        </button>
+      {:else}
+        <TemplatesMenu {card} {paneKey} />
+        {#if bumpState.visible}
+          <button
+            class="ib bump"
+            disabled={!bumpState.canSooner}
+            on:click={() => bump('up')}
+            title="run sooner — moves this card earlier in the active run's queue"
+          >
+            {@html ICONS.chevup}
+          </button>
+          <button
+            class="ib bump"
+            disabled={!bumpState.canLater}
+            on:click={() => bump('down')}
+            title="run later — moves this card later in the active run's queue"
+          >
+            {@html ICONS.chevdown}
+          </button>
+        {/if}
+        <button class="ib" on:click={dupCard} title="duplicate">{@html ICONS.dup}</button>
+        <button
+          class="ib drag"
+          title="drag to reorder"
+          on:mousedown={armDrag}
+          on:mouseup={disarmDrag}
+        >
+          {@html ICONS.drag}
+        </button>
+        <button class="ib danger" on:click={delCard} title="delete">{@html ICONS.trash}</button>
+      {/if}
     {/if}
   </div>
 
@@ -1003,9 +1193,16 @@
       box-shadow 0.12s,
       border-color 0.12s;
   }
+  /* UI-3 — a running card sheds its "card" chrome entirely: no background,
+     no border, no shadow. The prompt + its cardbar sit straight on the
+     pane's own background instead of inside a boxed widget (Claude
+     Desktop's running-turn look); the runtag badge's own pulse is the sole
+     "this is alive" signal now that the border-flash animation is gone. */
   .pc.running {
-    border-color: color-mix(in srgb, var(--orb) 45%, transparent);
-    animation: edgeflash 5s ease-in-out infinite;
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+    animation: none;
   }
   .pc.queued {
     border-color: color-mix(in srgb, var(--orb) 40%, transparent);
@@ -1493,6 +1690,55 @@
   }
   .sp {
     flex: 1;
+  }
+  /* UI-3 running-view overflow — the "..." trigger + its floating menu.
+     Not a `Popover.svelte` instance: that component unmounts its slot
+     content whenever a *different* popover id becomes active, which would
+     tear down `schedBtn`/`guardBtn`/… (rendered inside this menu) the
+     instant one of their own facet popovers opened — this local toggle
+     keeps them mounted for as long as the menu itself stays open. */
+  .overflowwrap {
+    position: relative;
+    flex: 0 0 auto;
+  }
+  .ib.overflow.act {
+    color: #f5f5f5;
+    border-color: rgba(245, 245, 245, 0.5);
+    background: rgba(245, 245, 245, 0.1);
+  }
+  .overflowmenu {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 20;
+    width: max-content;
+    min-width: 220px;
+    max-width: 320px;
+    padding: 10px;
+    border-radius: 9px;
+    background: var(--konjo-panel, #0a0d0f);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    box-shadow: 0 14px 40px rgba(0, 0, 0, 0.6);
+  }
+  .overflowmenu .omsum {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .overflowmenu .omsep {
+    height: 1px;
+    background: rgba(255, 255, 255, 0.08);
+    border: none;
+    margin: 9px 0;
+  }
+  .overflowmenu .omrow {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .overflowmenu .omrow + .omrow {
+    margin-top: 8px;
   }
   .iterpill {
     display: inline-flex;

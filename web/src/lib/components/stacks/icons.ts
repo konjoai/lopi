@@ -77,7 +77,10 @@ export const ICONS = {
   // arc rather than the full double-arrow `loop` glyph, continuously rotated
   // in CSS — the classic indeterminate-spinner shape.
   spinner:
-    '<svg class="spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-3.5-7.1"/></svg>'
+    '<svg class="spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-3.5-7.1"/></svg>',
+  // Overflow ("...") trigger — collapses a running card's/dock's full control
+  // row into a single button once there's nothing left to configure mid-run.
+  more: '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2.2"/><circle cx="12" cy="12" r="2.2"/><circle cx="19" cy="12" r="2.2"/></svg>'
 } as const;
 
 /** Accent color per preset, keyed the same as `PRESET_CATALOG`. */

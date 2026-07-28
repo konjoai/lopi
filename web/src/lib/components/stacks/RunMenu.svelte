@@ -131,11 +131,13 @@
 </div>
 
 <style>
+  /* UI-3 — anchored below-right of the compact run/pause button now that it
+     lives in the dock's header row, not centered above the old full-width
+     bottom button. */
   .runmenu {
     position: absolute;
-    bottom: 72px;
-    left: 50%;
-    transform: translateX(-50%);
+    top: calc(100% + 8px);
+    right: 0;
     width: 320px;
     max-width: calc(100vw - 24px);
     background: var(--konjo-panel, #0a0d0f);
