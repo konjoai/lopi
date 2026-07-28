@@ -1,7 +1,7 @@
 ---
 decays: state
-verified-against: 41916ca
-verified-date: 2026-07-27
+verified-against: 8cc1694
+verified-date: 2026-07-28
 ---
 
 ## Sprint S10, Phase 4 update (2026-07-27)
@@ -23,16 +23,21 @@ consistent with this repo's `decays: state` convention — re-derive before trus
 
 # Egress surface — the local-only remnant of Sprint S2
 
-Verified against: `41916ca` · 2026-07-27 (re-verified; front-matter stamp and this
-body line had drifted out of sync with each other at the prior pass — both now read
-the same commit. No content drift found: `TaskRow::provenance()` still exists
-(`crates/lopi-memory/src/store/task_row.rs`), `get_task_surfaces_provenance_marker`
-still exists in `crates/lopi-ui/src/web/provenance_field_tests.rs`, both §5 store-layer
-tests and the full `cargo test --workspace`/`cargo clippy --workspace --all-targets -- -D
-warnings` stay green. Findings below unchanged since `34a73d1` — two citations fixed
-after `TaskRow` and `get_task_surfaces_provenance_marker` moved files in an unrelated
-later sprint; no further drift found through Sprint F1/F3/S10/S11/S12 or this branch's
-own web-composer changes, none of which touched this doc's cited files)
+Verified against: `8cc1694` · 2026-07-28 (re-verified; this doc only crossed the
+20-commit staleness cap because of this branch's own commit volume, not because
+anything it cites moved. Checked the one thing this sprint's own changes could
+plausibly have disturbed: `GET /api/tasks`/`GET /api/tasks/:id` still serialize
+`"provenance"` unchanged (`crates/lopi-ui/src/web/handlers.rs:86,114` —
+`t.provenance()`, exactly as §4 describes) — this sprint added a *different*,
+measurement-confidence field (`"measurement_provenance"`, deliberately a distinct
+JSON key so it can never collide with this doc's trust marker; see
+`docs/adr/0001-demo-mode-and-measurement.md`), never touching this one.
+`TaskRow::provenance()`, `get_task_surfaces_provenance_marker`
+(`crates/lopi-ui/src/web/provenance_field_tests.rs`),
+`operator_and_untrusted_sources_have_distinguishable_provenance`, and
+`telegram_sourced_task_is_operator_provenance` (both `crates/lopi-memory/src/store/tests.rs`)
+all still exist exactly as cited. No other citation re-checked this round — see the
+2026-07-27 pass below for the last full re-derivation.)
 
 This is the pre-flight kill-test for Sprint S2′ ("Egress allowlist: bound the one
 trifecta leg that's still open locally"). The sprint brief cited a baseline of
