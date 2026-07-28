@@ -52,6 +52,15 @@ CREATE TABLE IF NOT EXISTS turn_metrics (
 );
 CREATE INDEX IF NOT EXISTS idx_turn_metrics_task ON turn_metrics(task_id);
 CREATE INDEX IF NOT EXISTS idx_turn_metrics_ts ON turn_metrics(timestamp);
+-- Sprint E, Part 2 — CostEstimator's grouping key needs per-turn stage/
+-- effort, not just model. `stage` defaults to 'implement' (the dominant,
+-- always-present stage) so pre-Sprint-E rows and any write path that
+-- doesn't thread a real stage through yet still land in a sane bucket
+-- instead of a NULL that would silently drop out of every GROUP BY.
+ALTER TABLE turn_metrics ADD COLUMN stage TEXT NOT NULL DEFAULT 'implement';
+ALTER TABLE turn_metrics ADD COLUMN effort TEXT;
+CREATE INDEX IF NOT EXISTS idx_turn_metrics_estimate
+    ON turn_metrics(stage, model, effort);
 
 PRAGMA journal_mode=WAL;
 CREATE INDEX IF NOT EXISTS idx_tasks_created_at ON tasks(created_at DESC);

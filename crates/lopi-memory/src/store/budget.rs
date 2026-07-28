@@ -104,6 +104,8 @@ mod tests {
             tools_parallel: false,
             estimated_cost_usd: cost,
             timestamp,
+            stage: "implement".into(),
+            effort: None,
         }
     }
 

@@ -27,7 +27,7 @@ pub struct LopiConfig {
     /// degradation ladder thresholds, and runaway-detector tuning. Absent
     /// (`[economics]` table missing) means the layer is entirely inactive.
     #[serde(default)]
-    pub economics: crate::economics::EconomicsConfig,
+    pub economics: crate::economics_config::EconomicsConfig,
 }
 
 /// Core orchestrator settings (`[lopi]` table in `lopi.toml`).

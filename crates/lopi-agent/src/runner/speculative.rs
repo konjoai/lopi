@@ -106,6 +106,8 @@ impl AgentRunner {
             tools_parallel: false,
             estimated_cost_usd: out.cost_usd.unwrap_or(0.0),
             timestamp: Utc::now(),
+            stage: "implement".to_string(),
+            effort: self.task.effort.clone(),
         };
         if let Err(e) = store.save_turn_metrics(&metrics).await {
             tracing::warn!(error = %e, "failed to persist speculative turn metrics");

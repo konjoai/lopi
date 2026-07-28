@@ -341,9 +341,10 @@ impl MemoryStore {
               input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, \
               ttft_ms, turn_latency_ms, tool_execution_ms, \
               context_tokens, context_pressure, evictions, \
-              tool_calls, tools_parallel, estimated_cost_usd, timestamp) \
+              tool_calls, tools_parallel, estimated_cost_usd, timestamp, \
+              stage, effort) \
              VALUES \
-             (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19) \
+             (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21) \
              ON CONFLICT(turn_id) DO NOTHING",
         )
         .bind(m.turn_id.to_string())
@@ -366,6 +367,8 @@ impl MemoryStore {
         .bind(i64::from(m.tools_parallel))
         .bind(m.estimated_cost_usd)
         .bind(m.timestamp.to_rfc3339())
+        .bind(&m.stage)
+        .bind(&m.effort)
         .execute(&self.write_pool)
         .await?;
         Ok(())
@@ -382,6 +385,8 @@ mod checkpoints;
 mod cli_session;
 mod dag;
 mod dead_letter;
+mod economics;
+pub use economics::CachePricingSample;
 mod eval_outcomes;
 mod learnings;
 mod lessons;

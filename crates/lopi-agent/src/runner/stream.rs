@@ -56,7 +56,7 @@ impl AgentRunner {
                 true
             })
             .await?;
-        self.persist_turn(&accrual, model, attempt).await;
+        self.persist_turn(&accrual, model, attempt, "plan").await;
         Ok(text)
     }
 
@@ -91,7 +91,7 @@ impl AgentRunner {
                 true
             })
             .await?;
-        self.persist_turn(&accrual, model, attempt).await;
+        self.persist_turn(&accrual, model, attempt, "implement").await;
         Ok(text)
     }
 
@@ -99,7 +99,7 @@ impl AgentRunner {
     /// surface reflects real billed spend (bug #3). No-op when no store is
     /// attached or the stream reported no usage. Failures are logged, not
     /// fatal — a metrics-write hiccup must never fail the agent run.
-    async fn persist_turn(&self, accrual: &UsageAccrual, model: &str, attempt: u8) {
+    async fn persist_turn(&self, accrual: &UsageAccrual, model: &str, attempt: u8, stage: &str) {
         let Some(store) = &self.store else { return };
         if !accrual.has_usage() {
             return;
@@ -127,6 +127,8 @@ impl AgentRunner {
             // Authoritative billed cost from the terminal `result` envelope.
             estimated_cost_usd: accrual.cost_usd(),
             timestamp: Utc::now(),
+            stage: stage.to_string(),
+            effort: self.task.effort.clone(),
         };
         if let Err(e) = store.save_turn_metrics(&metrics).await {
             tracing::warn!(error = %e, "failed to persist CLI turn metrics");

@@ -163,6 +163,8 @@ mod tests {
             tools_parallel: false,
             estimated_cost_usd: cost,
             timestamp: Utc::now(),
+            stage: "implement".into(),
+            effort: None,
         }
     }
 

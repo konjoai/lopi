@@ -169,6 +169,8 @@ impl AgentRunner {
                     tools_parallel: false,
                     estimated_cost_usd: cost_usd,
                     timestamp: Utc::now(),
+                    stage: "plan".to_string(),
+                    effort: self.task.effort.clone(),
                 };
 
                 // 7. Emit live UI event — the Forge picks this up and

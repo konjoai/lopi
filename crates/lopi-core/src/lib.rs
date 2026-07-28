@@ -30,6 +30,10 @@ pub mod earned_trust;
 /// (integer minor-unit), `Pool` (the distinct spending resources lopi can
 /// draw from), and `BudgetTier` (the five-rung degradation ladder).
 pub mod economics;
+/// Sprint E — the `[economics]` table in `lopi.toml`: `LadderThresholds`
+/// and `EconomicsConfig`. Split out of `economics` to keep that file under
+/// the 500-line CI file-size gate.
+pub mod economics_config;
 /// Eval-Execution-1 (A1) — the one eval-result object (cross-cutting seam #3),
 /// shaped for its three consumers (A2 reflection, A3 ratchet, A3/B1 stop).
 pub mod eval_outcome;
@@ -100,7 +104,8 @@ pub use budget_preset::{
 pub use config::{LimitWindow, LopiConfig, MaxxEntry, RepoProfile, ScheduleEntry};
 pub use deliverable::Deliverable;
 pub use earned_trust::EarnedTrust;
-pub use economics::{BudgetTier, EconomicsConfig, LadderThresholds, Money, Period, Pool};
+pub use economics::{BudgetTier, Money, Period, Pool};
+pub use economics_config::{EconomicsConfig, LadderThresholds};
 pub use eval_outcome::{CheckResult, EvalOutcome, Verdict};
 pub use event::{AgentEvent, EventBus, LogLevel, PlanDecision};
 pub use gain::{GainDecision, GainRule, GainSample};
