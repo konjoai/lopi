@@ -43,6 +43,7 @@
     EVAL_SUITES,
     tokenizeGoalChips,
     claudeCommandAutocomplete,
+    type CommandSuggestion,
     type CommandValueSuggestion
   } from '$lib/stores/stack';
   import { repoAutocomplete, repoLabelForPath } from '$lib/stores/repoMenu';
@@ -57,7 +58,7 @@
   import { dragging } from './dnd';
   import { autoGrow } from './autoGrow';
   import { showToast } from '$lib/stores/toastStore';
-  import Popover, { togglePopover } from './Popover.svelte';
+  import Popover, { togglePopover, activePopoverId } from './Popover.svelte';
   import SchedulePopover from './SchedulePopover.svelte';
   import MaxxPopover from './MaxxPopover.svelte';
   import GuardrailsPopover from './GuardrailsPopover.svelte';
@@ -329,14 +330,33 @@
     else if (command === 'maxx') togglePopover(maxId);
   }
 
+  /** After a `;command/value` selection lands on `card.config`
+   *  (`applyCommandValue`), surface the same place pressing the config-gear
+   *  button would open — otherwise the only visible feedback was the gear
+   *  icon quietly turning "active" (the reported bug: the typed text
+   *  vanished and "only the config button is highlighted"). `eval` has no
+   *  `ConfigDrawer` field of its own — its home is the evals popover. */
+  function revealConfigSurfaceFor(command: string): void {
+    if (command === 'eval') activePopoverId.set(evalId);
+    else cfgOpen = true;
+  }
+
   function selectCommand(token: string): void {
     if (pendingCommand) {
       const valueMatches = cmdMatches as CommandValueSuggestion[];
       const suggestion = valueMatches.find((s) => s.token === token);
       const m = new RegExp(`(^|\\s);${pendingCommand}/(\\S*)$`).exec(card.goal);
       if (m && suggestion) {
-        writeCard({ goal: `${card.goal.slice(0, m.index)}${m[1]}` });
+        // Keep the resolved token in the text (plus a trailing space, same
+        // convention `selectRepo`/`selectAlias` already use) so it renders as
+        // a colored inline chip via `tokenizeGoalChips` instead of silently
+        // vanishing — the picked value already lives structurally on
+        // `card.config` via `applyCommandValue` below; `parseComposerInput`
+        // strips this same token back out at commit time so it never leaks
+        // into the real submitted goal.
+        writeCard({ goal: `${card.goal.slice(0, m.index)}${m[1]}${suggestion.token} ` });
         applyCommandValue(pendingCommand, suggestion.value);
+        revealConfigSurfaceFor(pendingCommand);
       }
       pendingCommand = null;
     } else {
@@ -689,28 +709,28 @@
       {#if showAliasSuggest}
         <AutocompleteSuggest
           anchor={goalInput}
-          items={aliasMatches.map((m) => ({ value: m.alias, label: m.label, hint: m.hint }))}
+          items={aliasMatches.map((m) => ({ value: m.alias, label: m.label, hint: m.hint, kind: 'alias' }))}
           activeIndex={aliasActiveIndex}
           onSelect={selectAlias}
         />
       {:else if showRepoSuggest}
         <AutocompleteSuggest
           anchor={goalInput}
-          items={repoMatches.map((m) => ({ value: m.token, label: m.label, hint: m.hint }))}
+          items={repoMatches.map((m) => ({ value: m.token, label: m.label, hint: m.hint, kind: 'repo' }))}
           activeIndex={repoActiveIndex}
           onSelect={selectRepo}
         />
       {:else if showCmdSuggest}
         <AutocompleteSuggest
           anchor={goalInput}
-          items={cmdMatches.map((m) => ({ value: m.token, label: m.label, hint: m.hint }))}
+          items={cmdMatches.map((m) => ({ value: m.token, label: m.label, hint: m.hint, kind: pendingCommand ?? (m as CommandSuggestion).command }))}
           activeIndex={cmdActiveIndex}
           onSelect={selectCommand}
         />
       {:else if showClaudeSuggest}
         <AutocompleteSuggest
           anchor={goalInput}
-          items={claudeMatches.map((m) => ({ value: m.token, label: m.name, hint: m.hint }))}
+          items={claudeMatches.map((m) => ({ value: m.token, label: m.name, hint: m.hint, kind: 'claude' }))}
           activeIndex={claudeActiveIndex}
           onSelect={selectClaudeCommand}
         />
@@ -1102,21 +1122,26 @@
     border-color: rgba(0, 212, 255, 0.7);
     background: rgba(0, 212, 255, 0.08);
   }
+  /* ice, not violet — matches ChipInput.svelte's `chip-model` (the same
+     color the resolved `;model/…` chip renders in once picked) and
+     ConfigDrawer.svelte's model accent. Was violet here only by drift. */
   .gchip.model {
-    border: 1px solid rgba(183, 155, 255, 0.4);
-    color: var(--stack-violet, #b79bff);
+    border: 1px solid rgba(0, 212, 255, 0.4);
+    color: var(--konjo-ice, #00d4ff);
   }
   .gchip.model:hover {
-    border-color: rgba(183, 155, 255, 0.7);
-    background: rgba(183, 155, 255, 0.08);
+    border-color: rgba(0, 212, 255, 0.7);
+    background: rgba(0, 212, 255, 0.08);
   }
+  /* ember, not flame — matches ChipInput.svelte's `chip-effort` and
+     ConfigDrawer.svelte's effort accent; was flame here only by drift. */
   .gchip.effort {
-    border: 1px solid rgba(255, 149, 0, 0.4);
-    color: var(--konjo-flame, #ff9500);
+    border: 1px solid rgba(255, 69, 0, 0.4);
+    color: var(--konjo-ember, #ff4500);
   }
   .gchip.effort:hover {
-    border-color: rgba(255, 149, 0, 0.7);
-    background: rgba(255, 149, 0, 0.08);
+    border-color: rgba(255, 69, 0, 0.7);
+    background: rgba(255, 69, 0, 0.08);
   }
   .gchip.loop {
     border: 1px solid rgba(255, 204, 0, 0.4);

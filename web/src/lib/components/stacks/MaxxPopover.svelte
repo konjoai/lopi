@@ -29,6 +29,17 @@
   let quota: QuotaSnapshot | null = null;
   let quotaError = '';
 
+  // MAXX fires this loop's own `goal` verbatim (`maxx_loop.rs::build_task`
+  // submits `spec.goal` as the real agent prompt) — there is no separate
+  // "MAXX goal" field for the popover to collect, by design (see the file
+  // doc: only the enable toggle is interactive). An empty goal used to reach
+  // `createMaxx` anyway and come back with the server's raw `"goal must not
+  // be empty"` 422 in `error` below, reading as MAXX itself demanding an
+  // extra field the popover never showed. Disabling the toggle up front and
+  // explaining why is the same constraint surfaced honestly instead of as a
+  // failed round-trip.
+  $: goalEmpty = !goal.trim();
+
   onMount(async () => {
     try {
       quota = await getQuota();
@@ -38,7 +49,7 @@
   });
 
   async function toggle() {
-    if (busy) return;
+    if (busy || (!maxx.enabled && goalEmpty)) return;
     busy = true;
     error = '';
     const next = !maxx.enabled;
@@ -106,9 +117,12 @@
 <div class="ph">{@html ICONS.bolt}MAXX</div>
 <div class="pbody">
   <div class="enrow">
-    <Toggle on={maxx.enabled} onToggle={toggle} accent="flame" />
+    <Toggle on={maxx.enabled} onToggle={toggle} accent="flame" disabled={!maxx.enabled && goalEmpty} />
     <span>enable MAXX</span>
   </div>
+  {#if !maxx.enabled && goalEmpty}
+    <p class="hint">add a goal to this loop first — MAXX dispatches that same prompt on favorable quota/hours, so there's nothing to fire yet.</p>
+  {/if}
   {#if error}<div class="err">{error}</div>{/if}
 
   <div class="fieldlbl">run</div>
@@ -148,6 +162,13 @@
     font-size: 9px;
     color: var(--konjo-rose, #ff0066);
     margin-bottom: 9px;
+  }
+  .hint {
+    margin: -4px 0 11px;
+    font-family: var(--font-mono, monospace);
+    font-size: 9px;
+    line-height: 1.5;
+    color: rgba(245, 245, 245, 0.46);
   }
   .fieldlbl {
     font-size: 8.5px;

@@ -84,6 +84,15 @@
     const raw = (e.target as HTMLInputElement).value.trim();
     onChangeNoProgressLimit(raw === '' ? undefined : Number(raw));
   }
+
+  /** Rounds away binary float noise (`0.1 + 0.25` etc.) — these are the
+   *  chevron buttons' click handlers, not the free-typed input path above. */
+  function stepBudgetUsd(delta: number): void {
+    onChangeBudgetUsd(Math.max(0, Number(((budgetUsd ?? 0) + delta).toFixed(2))));
+  }
+  function stepNoProgressLimit(delta: number): void {
+    onChangeNoProgressLimit(Math.max(0, (noProgressLimit ?? 0) + delta));
+  }
 </script>
 
 <div class="ph">{@html ICONS.shield}guardrails · {scope === 'stack' ? 'chain limits' : 'run limits'}</div>
@@ -147,15 +156,22 @@
     </div>
     <div class="gline">
       <span class="lbl">usd</span>
-      <input
-        class="numfield"
-        type="number"
-        min="0"
-        step="0.25"
-        value={budgetUsd ?? ''}
-        placeholder="inherit"
-        on:input={onBudgetUsdInput}
-      />
+      <span class="numstep">
+        <span class="prefix">$</span>
+        <input
+          class="numfield"
+          type="number"
+          min="0"
+          step="0.25"
+          value={budgetUsd ?? ''}
+          placeholder="inherit"
+          on:input={onBudgetUsdInput}
+        />
+        <span class="chevs">
+          <button type="button" on:click={() => stepBudgetUsd(0.25)} title="increase" aria-label="increase usd">{@html ICONS.chevup}</button>
+          <button type="button" on:click={() => stepBudgetUsd(-0.25)} title="decrease" aria-label="decrease usd">{@html ICONS.chevdown}</button>
+        </span>
+      </span>
     </div>
     <div class="gseg-row">
       <span class="lbl">isolation</span>
@@ -167,18 +183,25 @@
         {/each}
       </span>
     </div>
-    <div class="gline last">
-      <span class="lbl">no-gain</span>
-      <input
-        class="numfield"
-        type="number"
-        min="0"
-        step="1"
-        value={noProgressLimit ?? ''}
-        placeholder="inherit"
-        on:input={onNoProgressLimitInput}
-      />
+    <div class="gline">
+      <span class="lbl">stall limit</span>
+      <span class="numstep">
+        <input
+          class="numfield"
+          type="number"
+          min="0"
+          step="1"
+          value={noProgressLimit ?? ''}
+          placeholder="inherit"
+          on:input={onNoProgressLimitInput}
+        />
+        <span class="chevs">
+          <button type="button" on:click={() => stepNoProgressLimit(1)} title="increase" aria-label="increase stall limit">{@html ICONS.chevup}</button>
+          <button type="button" on:click={() => stepNoProgressLimit(-1)} title="decrease" aria-label="decrease stall limit">{@html ICONS.chevdown}</button>
+        </span>
+      </span>
     </div>
+    <p class="explain last">stop after this many consecutive runs with no score improvement; 0 (or "inherit") never stops on stall alone.</p>
   {/if}
 </div>
 <div class="gfoot">
@@ -205,7 +228,7 @@
   }
   .gline .lbl {
     color: var(--konjo-paper, #f5f5f5);
-    width: 38px;
+    width: 62px;
     flex: 0 0 auto;
   }
   .gline textarea {
@@ -227,21 +250,92 @@
   .gline textarea:disabled {
     opacity: 0.35;
   }
-  .gline.last {
-    margin-bottom: 0;
+  /* Bordered pill wrapping the bare input, colored chevrons instead of the
+     browser's own (inconsistently-styled across browsers, unstyleable to
+     match the rest of the popover) native number spinner — same bordered-
+     pill-plus-accent-icon language as `Combo.svelte`'s hour/minute fields. */
+  .numstep {
+    display: flex;
+    align-items: center;
+    flex: 1;
+    min-width: 0;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.11);
+    border-radius: 5px;
+    overflow: hidden;
+  }
+  .numstep:focus-within {
+    border-color: rgba(255, 204, 0, 0.55);
+    background: rgba(255, 204, 0, 0.05);
+  }
+  .numstep .prefix {
+    padding-left: 8px;
+    color: rgba(245, 245, 245, 0.46);
+    font-family: var(--font-mono, monospace);
+    font-size: 10px;
   }
   .gline .numfield {
     display: block;
     flex: 1;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.11);
-    border-radius: 5px;
-    padding: 4px 8px;
+    min-width: 0;
+    background: transparent;
+    border: none;
+    padding: 4px 4px 4px 8px;
     color: var(--konjo-paper, #f5f5f5);
     font-family: var(--font-mono, monospace);
     font-size: 10px;
-    min-width: 0;
     outline: none;
+  }
+  .numstep .prefix + .numfield {
+    padding-left: 2px;
+  }
+  .gline .numfield::-webkit-outer-spin-button,
+  .gline .numfield::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  .gline .numfield[type='number'] {
+    appearance: textfield;
+    -moz-appearance: textfield;
+  }
+  .numstep .chevs {
+    display: flex;
+    flex-direction: column;
+    flex: 0 0 auto;
+    border-left: 1px solid rgba(255, 255, 255, 0.11);
+    align-self: stretch;
+  }
+  .numstep .chevs button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 1 1 0;
+    width: 20px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    padding: 0;
+  }
+  .numstep .chevs button:first-child {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.11);
+  }
+  .numstep .chevs button:hover {
+    background: rgba(255, 204, 0, 0.12);
+  }
+  .numstep .chevs button :global(svg) {
+    width: 8px;
+    height: 8px;
+    color: var(--konjo-sun);
+  }
+  .explain {
+    margin: -3px 0 10px;
+    font-family: var(--font-mono, monospace);
+    font-size: 9px;
+    line-height: 1.5;
+    color: rgba(245, 245, 245, 0.4);
+  }
+  .explain.last {
+    margin-bottom: 0;
   }
   .gseg-row {
     display: flex;

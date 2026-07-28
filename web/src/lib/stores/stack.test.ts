@@ -549,13 +549,13 @@ eqIs(buildCard(':ratchet "self improve"').preset, 'gain', 'a `:ratchet` composer
 //    field resolve end-to-end: level-1 command name, level-2 pending-command
 //    detection, and the tokenizer's resolved chip kind ─────────────────────
 {
-  type Row = { token: string; command: string; chipKind: 'model' | 'effort' | 'branch' | 'command' };
+  type Row = { token: string; command: string; chipKind: 'model' | 'effort' | 'branch' | 'autonomy' | 'eval' };
   const rows: Row[] = [
     { token: ';model/sonnet', command: 'model', chipKind: 'model' },
     { token: ';effort/high', command: 'effort', chipKind: 'effort' },
     { token: ';branch/main', command: 'branch', chipKind: 'branch' },
-    { token: ';autonomy/L2', command: 'autonomy', chipKind: 'command' },
-    { token: ';eval/kcqf', command: 'eval', chipKind: 'command' }
+    { token: ';autonomy/L2', command: 'autonomy', chipKind: 'autonomy' },
+    { token: ';eval/kcqf', command: 'eval', chipKind: 'eval' }
   ];
   for (const row of rows) {
     eqIs(
@@ -1609,8 +1609,8 @@ eqIs(
   const segs = tokenizeGoalChips('do it ;autonomy/L2 now', CARD_COMMANDS);
   eq(
     segs,
-    [{ text: 'do it ' }, { text: ';autonomy/L2', chipKind: 'command' }, { text: ' now' }],
-    'a resolved ;command/value token chips (non-effort/model/branch command → generic command kind)'
+    [{ text: 'do it ' }, { text: ';autonomy/L2', chipKind: 'autonomy' }, { text: ' now' }],
+    'a resolved ;autonomy/value token chips with its own autonomy kind (no longer a generic command bucket)'
   );
 }
 {

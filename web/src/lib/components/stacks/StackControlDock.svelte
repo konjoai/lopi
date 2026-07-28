@@ -55,6 +55,7 @@
     tokenizeGoalChips,
     claudeCommandAutocomplete,
     type DryRunResult,
+    type CommandSuggestion,
     type CommandValueSuggestion
   } from '$lib/stores/stack';
   import {
@@ -77,7 +78,7 @@
   import { repoAutocomplete, repoLabelForPath } from '$lib/stores/repoMenu';
   import { draggingPane, armedPaneKey } from './dnd';
   import { ICONS } from './icons';
-  import Popover, { togglePopover } from './Popover.svelte';
+  import Popover, { togglePopover, activePopoverId } from './Popover.svelte';
   import SchedulePopover from './SchedulePopover.svelte';
   import GuardrailsPopover from './GuardrailsPopover.svelte';
   import EvalsPopover from './EvalsPopover.svelte';
@@ -242,6 +243,26 @@
     }
   }
 
+  // `×N` has no `applyCommandValue` case of its own — unlike `;model`/
+  // `;effort`, inserting/typing the literal token here (`chipLoopBar` or by
+  // hand) never actually reached `config.loopCount` (the real "chain
+  // repeats" field the dock's own stepper pill edits), so the chip rendered
+  // but the stack's loop count silently never changed — the reported bug.
+  // Detect a complete, word-bounded `xN`/`×N` token (the same pattern
+  // `tokenizeGoalChips` chips it with) and apply it the moment it resolves.
+  // Left visible in `cmdText` afterward, same as every other resolved token
+  // in this bar (`selectAliasFromBar`/`selectRepoFromBar`/
+  // `selectCommandFromBar` all leave their token in place rather than
+  // clearing it) — the guard against `config.loopCount` avoids re-writing
+  // the store on every unrelated keystroke once it already matches.
+  $: {
+    const loopMatch = /(^|\s)[×xX](\d+)(?=\s|$)/.exec(cmdText);
+    const n = loopMatch ? parseInt(loopMatch[2], 10) : null;
+    if (n && n > 0 && n !== config.loopCount) {
+      updateStackConfig(pane.key, { loopCount: n });
+    }
+  }
+
   function applyDefault(patch: Partial<typeof config.defaults>) {
     updateStackConfig(pane.key, { defaults: { ...config.defaults, ...patch } });
   }
@@ -302,11 +323,23 @@
     cmdDismissed = true;
   }
 
+  /** Same follow-through as `StackCard.svelte`'s identical
+   *  `revealConfigSurfaceFor` — surface the popover the picked value
+   *  actually landed in (`StackConfigPopover` for model/effort/branch/
+   *  autonomy, the evals popover for eval) instead of leaving the only
+   *  feedback to a quietly-highlighted icon. */
+  function revealConfigSurfaceFor(command: string): void {
+    activePopoverId.set(command === 'eval' ? evalId : cfgId);
+  }
+
   function selectCommandFromBar(token: string): void {
     if (pendingCommand) {
       const valueMatches = cmdMatches as CommandValueSuggestion[];
       const suggestion = valueMatches.find((s) => s.token === token);
-      if (suggestion) applyCommandValue(pendingCommand, suggestion.value);
+      if (suggestion) {
+        applyCommandValue(pendingCommand, suggestion.value);
+        revealConfigSurfaceFor(pendingCommand);
+      }
       cmdText = `;${pendingCommand}/${suggestion?.value ?? ''} `;
       pendingCommand = null;
       cmdDismissed = true;
@@ -615,28 +648,28 @@
         {#if showAliasBarSuggest}
           <AutocompleteSuggest
             anchor={cmdBarInput}
-            items={aliasMatches.map((m) => ({ value: m.alias, label: m.label, hint: m.hint }))}
+            items={aliasMatches.map((m) => ({ value: m.alias, label: m.label, hint: m.hint, kind: 'alias' }))}
             activeIndex={cmdActiveIndex}
             onSelect={selectAliasFromBar}
           />
         {:else if showRepoBarSuggest}
           <AutocompleteSuggest
             anchor={cmdBarInput}
-            items={repoMatches.map((m) => ({ value: m.token, label: m.label, hint: m.hint }))}
+            items={repoMatches.map((m) => ({ value: m.token, label: m.label, hint: m.hint, kind: 'repo' }))}
             activeIndex={cmdActiveIndex}
             onSelect={selectRepoFromBar}
           />
         {:else if showCmdBarSuggest}
           <AutocompleteSuggest
             anchor={cmdBarInput}
-            items={cmdMatches.map((m) => ({ value: m.token, label: m.label, hint: m.hint }))}
+            items={cmdMatches.map((m) => ({ value: m.token, label: m.label, hint: m.hint, kind: pendingCommand ?? (m as CommandSuggestion).command }))}
             activeIndex={cmdActiveIndex}
             onSelect={selectCommandFromBar}
           />
         {:else if showClaudeBarSuggest}
           <AutocompleteSuggest
             anchor={cmdBarInput}
-            items={claudeMatches.map((m) => ({ value: m.token, label: m.name, hint: m.hint }))}
+            items={claudeMatches.map((m) => ({ value: m.token, label: m.name, hint: m.hint, kind: 'claude' }))}
             activeIndex={cmdActiveIndex}
             onSelect={selectClaudeCommandFromBar}
           />
@@ -1028,21 +1061,23 @@
     border-color: rgba(0, 212, 255, 0.7);
     background: rgba(0, 212, 255, 0.08);
   }
+  /* ice, not violet — see StackCard.svelte's identical `.gchip.model` comment. */
   .gchip.model {
-    border: 1px solid rgba(183, 155, 255, 0.4);
-    color: var(--stack-violet, #b79bff);
+    border: 1px solid rgba(0, 212, 255, 0.4);
+    color: var(--konjo-ice, #00d4ff);
   }
   .gchip.model:hover {
-    border-color: rgba(183, 155, 255, 0.7);
-    background: rgba(183, 155, 255, 0.08);
+    border-color: rgba(0, 212, 255, 0.7);
+    background: rgba(0, 212, 255, 0.08);
   }
+  /* ember, not flame — see StackCard.svelte's identical `.gchip.effort` comment. */
   .gchip.effort {
-    border: 1px solid rgba(255, 149, 0, 0.4);
-    color: var(--konjo-flame, #ff9500);
+    border: 1px solid rgba(255, 69, 0, 0.4);
+    color: var(--konjo-ember, #ff4500);
   }
   .gchip.effort:hover {
-    border-color: rgba(255, 149, 0, 0.7);
-    background: rgba(255, 149, 0, 0.08);
+    border-color: rgba(255, 69, 0, 0.7);
+    background: rgba(255, 69, 0, 0.08);
   }
   .gchip.loop {
     border: 1px solid rgba(255, 204, 0, 0.4);
