@@ -1,18 +1,39 @@
 ---
 decays: state
-verified-against: e2f9362
+verified-against: b93e68f
 verified-date: 2026-07-28
 ---
 
 # Trifecta paths — untrusted input → powerful tools → external comms
 
-Verified against: `e2f9362` · 2026-07-28 (merge of three independent re-verifications in the same
-window, none of which touched another's cited files — no new drift from combining them. Sprint
-E/Finding #10 added a `/cost` command to `whatsapp.rs`'s handler, read-only and adding no new row
-to §1's table — see the note under §4; §1's row D citation updated after Sprint E shifted line
-numbers in `whatsapp.rs`. Finding #4's symbol-index sprint (`6a50c45`): §0's `ServeWebhooks`
-citation and §8 row 1/row 5's `submit_task` citations updated after `Index`/`Map`/`McpIndexServe`
-CLI commands and the `index_tools` module were inserted ahead of them in `src/cli.rs` and
+Verified against: `b93e68f` · 2026-07-28 (re-verified past the 20-commit staleness cap after
+Sprint E's economics layer landed. Of this doc's cited files, only five changed since the prior
+`e2f9362` checkpoint: `src/cli.rs` gained new `Cost`/`Rates` commands ahead of `Sail`/
+`ServeWebhooks`, shifting §0's `--host` citations to `src/cli.rs:92-96` (`Sail`) and
+`src/cli.rs:283-287` (`ServeWebhooks`) — content unchanged, both still default `127.0.0.1`.
+`src/sail_commands.rs` only wired the new economics pool into `AgentPool`; the
+`LOPI_WEB_AUTH_TOKEN`-then-`cfg.web.auth_token` read §5's Phase 1 note describes is untouched.
+`crates/lopi-core/src/config.rs` only added an `economics` field; `WebConfig.host` (dead) and
+`[lopi].bypass_permissions` (display-only) are unchanged. `crates/lopi-orchestrator/src/pool/
+run_loop.rs` only added reservation-cleanup calls well after the §8 row 1 repo-resolution block
+this doc cites — still unenforced, as before. `crates/lopi-remote/src/whatsapp.rs`'s only change
+is the `/cost` command already covered by the note below (added no new row, row D's `/task`
+handling unchanged in content, citation confirmed still accurate at `whatsapp.rs:120-134`). One
+new route, `/api/economics` (`crates/lopi-ui/src/web/mod.rs`), was added correctly inside the
+Sprint S11 Phase 0 `protected` router — inherits auth + rate-limiting automatically, reinforcing
+rather than undermining §7. No other cited file (`fly.toml`, the webhook/git/agent-runner crates,
+`lopi-ui/src/web/{auth_policy,cors_policy,ws_ticket}.rs`, `web/src/lib/api.ts`, `macos/`) changed.
+This same PR's own changes are `web/src/lib/components/stacks/*` (Loop Stacks composer/xN-grammar/
+logs-panel work) and `web/src/routes/+layout.svelte` — UI-only, touching none of this doc's cited
+paths.
+
+Prior verification (`e2f9362` · merge of three independent re-verifications in the same window,
+none of which touched another's cited files — no new drift from combining them. Sprint E/Finding
+#10 added a `/cost` command to `whatsapp.rs`'s handler, read-only and adding no new row to §1's
+table — see the note under §4; §1's row D citation updated after Sprint E shifted line numbers in
+`whatsapp.rs`. Finding #4's symbol-index sprint (`6a50c45`): §0's `ServeWebhooks` citation and §8
+row 1/row 5's `submit_task` citations updated after `Index`/`Map`/`McpIndexServe` CLI commands and
+the `index_tools` module were inserted ahead of them in `src/cli.rs` and
 `src/mcp_commands/mod.rs`; `Sail`'s citation was unaffected since the insertion landed after it;
 content at every updated citation is unchanged, only line numbers shifted. The demo-mode +
 measurement sprint (`d6e0f02`): no content drift — that sprint touched `lopi-core`, `lopi-memory`,
@@ -32,7 +53,7 @@ kill-test (don't trust these citations) before building on it in a later sprint.
 
 **Confirmed live exposure, found during pre-flight — not in the sprint brief's own gap table.**
 
-`src/cli.rs:88-91` (`Sail`) and `src/cli.rs:243-247` (`ServeWebhooks`) both default `--host` to
+`src/cli.rs:92-96` (`Sail`) and `src/cli.rs:283-287` (`ServeWebhooks`) both default `--host` to
 `127.0.0.1`. That default is correct and unchanged by this sprint.
 
 But `fly.toml:20-21` overrides it:
