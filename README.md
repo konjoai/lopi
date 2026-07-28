@@ -164,6 +164,17 @@ config, no credentials, no real repo touched; every surface is watermarked
 lopi demo
 ```
 
+<p align="center">
+  <img src="./docs/screenshots/web/demo-budget.png" width="49%" alt="lopi demo — Budget view, synthetic data, watermarked" />
+  <img src="./docs/screenshots/web/demo-stacks.png" width="49%" alt="lopi demo — Loop Stacks view, synthetic data, watermarked" />
+</p>
+
+Screenshots above are from `lopi demo --seed 42` — the seed is recorded so
+they're reproducible byte-for-byte. Every demo surface — including the
+`GET /api/stats`/`GET /api/budget/breakdown` JSON, the MCP widget payload,
+and the TUI (`lopi watch --demo`) — carries the same non-dismissible
+synthetic marker; see [`docs/MEASUREMENT.md`](./docs/MEASUREMENT.md).
+
 Building the web dashboard is optional but recommended (`cd web && npm
 install && npm run build`) — without it, `lopi sail` serves a placeholder
 page instead of the Forge UI (the Homebrew formula builds it for you; `cargo
