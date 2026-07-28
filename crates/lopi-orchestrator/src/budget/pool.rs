@@ -19,10 +19,28 @@ pub struct PoolState {
 
 impl PoolState {
     /// Build a `PoolState` for `pool`, with an empty ledger sized to its
-    /// `ceiling()`.
+    /// `ceiling()`. `committed` starts at zero — see [`Self::seeded`] when
+    /// this needs to reflect spend that already happened (a fresh
+    /// `PoolState` otherwise reports full headroom regardless of real
+    /// historical spend, since the reservation ledger's `committed`
+    /// counter is purely in-memory).
     #[must_use]
     pub fn new(pool: Pool) -> Self {
         let ledger = ReservationLedger::new(pool.ceiling());
+        Self { pool, ledger }
+    }
+
+    /// Build a `PoolState` seeded with `already_spent` committed against
+    /// the ceiling — for priming from the durable ledger's historical
+    /// total at process start (or per-CLI-invocation), rather than every
+    /// fresh `PoolState` starting as if no spend had ever happened.
+    /// Conservative in the fail-safe direction: seeding from *more* spend
+    /// than the current cycle technically owes (e.g. an `AgentSdkCredits`
+    /// pool's all-time total rather than just its current cycle) reports
+    /// *less* headroom than reality, never more.
+    #[must_use]
+    pub fn seeded(pool: Pool, already_spent: Money) -> Self {
+        let ledger = ReservationLedger::with_committed(pool.ceiling(), already_spent);
         Self { pool, ledger }
     }
 
@@ -101,6 +119,12 @@ mod tests {
             monthly_allotment: Money::from_usd(usd),
             resets_on: NaiveDate::from_ymd_opt(2026, 8, 1).expect("valid date"),
         }
+    }
+
+    #[tokio::test]
+    async fn seeded_pool_reports_reduced_headroom() {
+        let state = PoolState::seeded(sdk_pool(100.0), Money::from_usd(30.0));
+        assert_eq!(state.headroom().await, Money::from_usd(70.0));
     }
 
     #[tokio::test]

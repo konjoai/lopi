@@ -2,6 +2,7 @@
 #![allow(clippy::print_stdout, clippy::print_stderr)]
 #![warn(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod cli;
+mod cost_commands;
 mod diag_commands;
 mod gap_fill_commands;
 mod learn_commands;
@@ -185,6 +186,7 @@ async fn main() -> Result<()> {
 
         Some(Commands::Trust) => trust_commands::show().await?,
         Some(Commands::Rates { check: _ }) => rates_commands::show(cfg.as_ref()),
+        Some(Commands::Cost) => cost_commands::show(cfg.as_ref()).await?,
         Some(Commands::Replay {
             task,
             from,

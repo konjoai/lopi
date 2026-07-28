@@ -76,10 +76,21 @@ impl ReservationLedger {
     /// open holds.
     #[must_use]
     pub fn new(ceiling: Money) -> Self {
+        Self::with_committed(ceiling, Money::ZERO)
+    }
+
+    /// Build a ledger against `ceiling`, seeded with `committed` spend
+    /// already accounted for — no open holds. For priming a fresh
+    /// in-process `PoolState` from the durable ledger's historical spend
+    /// (see `budget::pool::PoolState::seeded`), since this ledger's
+    /// `committed` counter is otherwise purely in-memory and resets to
+    /// zero on every process restart.
+    #[must_use]
+    pub fn with_committed(ceiling: Money, committed: Money) -> Self {
         Self {
             ceiling,
             state: Mutex::new(LedgerState {
-                committed: Money::ZERO,
+                committed,
                 holds: HashMap::new(),
             }),
         }
@@ -187,6 +198,13 @@ fn sweep_expired(state: &mut LedgerState) {
 mod tests {
     use super::*;
     use std::sync::Arc;
+
+    #[tokio::test]
+    async fn with_committed_seeds_headroom_below_the_raw_ceiling() {
+        let ledger = ReservationLedger::with_committed(Money::from_usd(10.0), Money::from_usd(4.0));
+        assert_eq!(ledger.committed().await, Money::from_usd(4.0));
+        assert_eq!(ledger.headroom().await, Money::from_usd(6.0));
+    }
 
     #[tokio::test]
     async fn try_reserve_admits_when_it_fits() {

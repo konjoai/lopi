@@ -133,6 +133,14 @@ impl AgentPool {
         self.bus.clone()
     }
 
+    /// The economics layer facade, if `[economics]` configured a pool —
+    /// for surfaces (web `/api/economics`, `lopi cost`, WhatsApp `cost`)
+    /// that need to read current tier/headroom/runway.
+    #[must_use]
+    pub fn economics(&self) -> Option<Arc<Economics>> {
+        self.economics.clone()
+    }
+
     /// This pool's default repo path — the one `.lopi/loop.toml` (and hence
     /// [`LoopConfig::resolved_budget`](lopi_core::LoopConfig::resolved_budget))
     /// resolves against for a task with no per-task `repo_path` override.

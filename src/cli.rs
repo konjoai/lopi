@@ -217,6 +217,10 @@ pub(crate) enum Commands {
         #[arg(long, default_value = "4")]
         max_agents: usize,
     },
+    /// Sprint E (Finding #10) — unit economics: cost per merged PR
+    /// (proxy), cost per gate pass, cost on retries, cache-attributed
+    /// saving, and pool runway.
+    Cost,
     /// Sprint E (Finding #10) — print the active per-token rate table and
     /// configured spend pool, flagging a stale rate table instead of
     /// silently trusting it.

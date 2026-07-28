@@ -91,11 +91,40 @@ pub struct Economics {
 impl Economics {
     /// Build the facade from config + a store handle, or `None` if no
     /// pool is configured — the deliberate opt-in the brief calls for.
+    /// Starts with a **zero-seeded** pool (`PoolState::new`) — real
+    /// callers (`AgentPool`'s builder, `lopi cost`) should prefer
+    /// [`Self::new_seeded`], which primes committed spend from the
+    /// durable ledger instead of reporting full headroom on every fresh
+    /// process. Kept for tests and any caller that genuinely wants a
+    /// clean-slate pool.
     #[must_use]
     pub fn new(cfg: &EconomicsConfig, store: MemoryStore) -> Option<Self> {
         let pool_cfg = cfg.pool.clone()?;
-        Some(Self {
-            pool: PoolState::new(pool_cfg),
+        Some(Self::build(PoolState::new(pool_cfg), cfg, store))
+    }
+
+    /// Build the facade with its pool seeded from real historical spend
+    /// (`MemoryStore::total_spend_all_time`) — see
+    /// [`pool::PoolState::seeded`] for why a fresh, unseeded `PoolState`
+    /// undercounts committed spend on every process restart.
+    ///
+    /// # Errors
+    /// Never fails outright — a seed-query failure logs a warning and
+    /// falls back to a zero seed rather than blocking startup on it.
+    #[must_use]
+    pub async fn new_seeded(cfg: &EconomicsConfig, store: MemoryStore) -> Option<Self> {
+        let pool_cfg = cfg.pool.clone()?;
+        let already_spent = store.total_spend_all_time().await.unwrap_or_else(|e| {
+            tracing::warn!("failed to seed pool committed spend from ledger: {e:#}; starting from zero");
+            0.0
+        });
+        let pool = PoolState::seeded(pool_cfg, Money::from_usd(already_spent));
+        Some(Self::build(pool, cfg, store))
+    }
+
+    fn build(pool: PoolState, cfg: &EconomicsConfig, store: MemoryStore) -> Self {
+        Self {
+            pool,
             ladder: Ladder::new(),
             estimator: CostEstimator::new(
                 store,
@@ -105,7 +134,7 @@ impl Economics {
             detectors: RunawayDetectors::new(cfg.hard_session_ceiling, cfg.cost_per_progress_multiplier),
             thresholds: cfg.ladder,
             reservation_ttl: Duration::from_secs(cfg.reservation_ttl_secs),
-        })
+        }
     }
 
     /// Re-derive the ladder tier from current headroom. Returns
@@ -210,6 +239,42 @@ mod tests {
     async fn no_pool_configured_disables_the_layer() {
         let store = MemoryStore::open_in_memory().await.unwrap();
         assert!(Economics::new(&EconomicsConfig::default(), store).is_none());
+    }
+
+    #[tokio::test]
+    async fn new_seeded_primes_committed_from_historical_ledger_spend() {
+        let store = MemoryStore::open_in_memory().await.unwrap();
+        let t = lopi_core::Task::new("history fixture");
+        store.save_task(&t, "queued").await.unwrap();
+        store
+            .save_turn_metrics(&lopi_core::TurnMetrics {
+                turn_id: uuid::Uuid::new_v4(),
+                task_id: t.id,
+                session_id: uuid::Uuid::new_v4(),
+                model: "claude-sonnet-5".into(),
+                attempt_number: 1,
+                input_tokens: 0,
+                output_tokens: 0,
+                cache_read_input_tokens: 0,
+                cache_write_input_tokens: 0,
+                ttft_ms: 0,
+                turn_latency_ms: 0,
+                tool_execution_ms: 0,
+                context_tokens: 0,
+                context_pressure: 0.0,
+                evictions_this_turn: 0,
+                tool_calls: 0,
+                tools_parallel: false,
+                estimated_cost_usd: 12.0,
+                timestamp: chrono::Utc::now(),
+                stage: "implement".into(),
+                effort: None,
+            })
+            .await
+            .unwrap();
+
+        let econ = Economics::new_seeded(&cfg(100.0), store).await.unwrap();
+        assert_eq!(econ.pool.headroom().await, Money::from_usd(88.0));
     }
 
     #[tokio::test]
