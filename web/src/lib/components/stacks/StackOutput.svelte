@@ -1,15 +1,21 @@
 <!--
   StackOutput — live output attachment fused under the single running card.
   Genuinely wired to `stores/transcript.ts`'s per-`task_id` block feed (the
-  same store the Forge transcript uses), filtered into the mockup's four
-  categories. Renders nothing when the task has no blocks yet — per §3 of
-  the UI-2 brief, a stream with nothing real to show must stay empty, never
-  fabricate a ticker. Backend-1 wired real `taskId`s onto running cards
-  (`stores/stackRun.ts`), so this component needed no changes at all to
-  start lighting up for real — it was already reading the right store,
-  keyed the right way, waiting for a real id to show up.
+  same store the Forge transcript uses), filtered by kind. Renders nothing
+  when the task has no blocks yet — per §3 of the UI-2 brief, a stream with
+  nothing real to show must stay empty, never fabricate a ticker.
+
+  UI-3 consolidated the old four-section (thinking/actions/tools/output)
+  accordion into a single chronological stream — one continuous transcript,
+  Claude-Desktop-style, rather than several independently-collapsible
+  sub-panels a user had to open one at a time. The kind filter chips still
+  narrow the same stream instead of toggling separate sections. The stream
+  itself is a fixed-but-expandable size: a compact default height while
+  running, and a "grow" toggle for reading back through a longer run without
+  losing the fixed-height default the rest of the time.
 -->
 <script lang="ts">
+  import { afterUpdate } from 'svelte';
   import { transcripts, type TranscriptBlock } from '$lib/stores/transcript';
   import { ICONS } from './icons';
 
@@ -24,21 +30,22 @@
   type Filter = 'all' | Kind;
 
   const FILTERS: Filter[] = ['all', 'thinking', 'actions', 'tools', 'output'];
-  const SECTIONS: { kind: Kind; icon: string; label: string }[] = [
-    { kind: 'thinking', icon: ICONS.bulb, label: 'thinking' },
-    { kind: 'actions', icon: ICONS.zap, label: 'actions' },
-    { kind: 'tools', icon: ICONS.wrench, label: 'tools' },
-    { kind: 'output', icon: ICONS.list, label: 'output' }
-  ];
+  const KIND_ICON: Record<Kind, string> = {
+    thinking: ICONS.bulb,
+    actions: ICONS.zap,
+    tools: ICONS.wrench,
+    output: ICONS.list
+  };
 
   let expanded = false;
+  // The stream's "fixed but expandable" size toggle — independent of
+  // `expanded` (which switches between the one-line strip and the full
+  // stream at all): `big` just grows the already-open stream's own
+  // max-height, so a long run stays readable without abandoning the fixed
+  // default the rest of the time.
+  let big = false;
   let filter: Filter = 'all';
-  let openSections: Record<Kind, boolean> = {
-    thinking: true,
-    actions: false,
-    tools: false,
-    output: false
-  };
+  let streamEl: HTMLDivElement | undefined;
 
   function categorize(b: TranscriptBlock): Kind {
     switch (b.kind) {
@@ -75,19 +82,17 @@
     return b.kind === 'status' ? b.tier : null;
   }
 
-  function toggleSection(kind: Kind) {
-    openSections = { ...openSections, [kind]: !openSections[kind] };
-  }
-
   $: blocks = $transcripts.get(taskId) ?? [];
-  $: byKind = {
-    thinking: blocks.filter((b) => categorize(b) === 'thinking'),
-    actions: blocks.filter((b) => categorize(b) === 'actions'),
-    tools: blocks.filter((b) => categorize(b) === 'tools'),
-    output: blocks.filter((b) => categorize(b) === 'output')
-  };
+  $: filtered = filter === 'all' ? blocks : blocks.filter((b) => categorize(b) === filter);
   $: latest = blocks[blocks.length - 1];
   $: latestKind = latest ? categorize(latest) : null;
+
+  // A live transcript that silently scrolls itself away from the newest
+  // line reads as stalled, not streaming — pin the consolidated stream to
+  // its bottom as blocks arrive, same as any chat/terminal transcript.
+  afterUpdate(() => {
+    if (expanded && streamEl) streamEl.scrollTop = streamEl.scrollHeight;
+  });
 </script>
 
 {#if blocks.length}
@@ -111,36 +116,31 @@
             <button type="button" class="fchip" class:on={filter === f} on:click={() => (filter = f)}>{f}</button>
           {/each}
         </div>
+        <button
+          type="button"
+          class="omini osizebtn"
+          on:click={() => (big = !big)}
+          title={big ? 'shrink output' : 'grow output'}
+          aria-pressed={big}
+        >
+          {@html big ? ICONS.chevup : ICONS.chevdown}
+        </button>
         <button type="button" class="omini ocolbtn" on:click={() => (expanded = false)} title="collapse">
           {@html ICONS.collapse}
         </button>
       </div>
-      <div class="osecs">
-        {#each SECTIONS as s (s.kind)}
-          {#if filter === 'all' || filter === s.kind}
-            {@const open = filter === s.kind || openSections[s.kind]}
-            <div class="osec {s.kind}" class:open>
-              <button type="button" class="osh" on:click={() => toggleSection(s.kind)}>
-                <span class="chev">{@html ICONS.chevdown}</span>
-                {@html s.icon}<span class="olabel">{s.label}</span>
-                <span class="ometa">{byKind[s.kind].length}</span>
-              </button>
-              <div class="osbody">
-                <div class="inner">
-                  {#each byKind[s.kind] as b (b.id)}
-                    <div
-                      class="oline"
-                      class:tier-good={tierOf(b) === 'good'}
-                      class:tier-warn={tierOf(b) === 'warn'}
-                      class:tier-bad={tierOf(b) === 'bad'}
-                    >
-                      {textOf(b)}
-                    </div>
-                  {/each}
-                </div>
-              </div>
-            </div>
-          {/if}
+      <div class="stream" class:big bind:this={streamEl}>
+        {#each filtered as b (b.id)}
+          {@const kind = categorize(b)}
+          <div
+            class="sline {kind}"
+            class:tier-good={tierOf(b) === 'good'}
+            class:tier-warn={tierOf(b) === 'warn'}
+            class:tier-bad={tierOf(b) === 'bad'}
+          >
+            <span class="sicon">{@html KIND_ICON[kind]}</span>
+            <span class="stext">{textOf(b)}</span>
+          </div>
         {/each}
       </div>
     {/if}
@@ -238,6 +238,13 @@
   .omini.oexpbtn:hover {
     background: rgba(0, 212, 255, 0.1);
   }
+  .omini.osizebtn {
+    color: var(--stack-violet, #b79bff);
+    border-color: rgba(183, 155, 255, 0.35);
+  }
+  .omini.osizebtn:hover {
+    background: rgba(183, 155, 255, 0.1);
+  }
   .omini.ocolbtn {
     color: var(--konjo-flame);
     border-color: rgba(255, 149, 0, 0.45);
@@ -283,111 +290,80 @@
     border-color: rgba(0, 212, 255, 0.3);
     background: rgba(0, 212, 255, 0.06);
   }
-  .osecs {
-    /* +25% over the original 340px. This is the ONLY scrollbar for the
-       whole live-output section — `.osbody` below must never grow its own
-       (that was the nested-scrollbar bug: an inner scrollable section
-       inside this already-scrollable list). */
-    max-height: 425px;
+  /* The consolidated stream (UI-3) — one chronological feed, fixed height by
+     default and scrolled to bottom as blocks arrive, growing only when the
+     `big` toggle is on. This is the ONLY scrollbar for the whole live-output
+     section; nothing nested inside it may grow its own. */
+  .stream {
+    max-height: 300px;
     overflow-y: auto;
+    padding: 10px 12px;
+    scroll-behavior: smooth;
   }
-  .osec {
-    border-top: 1px solid rgba(0, 212, 255, 0.06);
+  .stream.big {
+    max-height: 70vh;
   }
-  .osec:first-child {
-    border-top: none;
-  }
-  .osh {
+  .sline {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 8px;
-    padding: 9px 12px;
-    font-size: 10.5px;
-    cursor: pointer;
-    width: 100%;
-    background: transparent;
-    border: none;
-    text-align: left;
-    font-family: var(--font-mono, monospace);
-  }
-  .osh .chev {
-    transition: transform 0.18s;
-    color: rgba(245, 245, 245, 0.28);
-    display: inline-flex;
-  }
-  .osh .chev :global(svg) {
-    width: 11px;
-    height: 11px;
-  }
-  .osec.open .osh .chev {
-    transform: rotate(180deg);
-  }
-  .osh :global(svg) {
-    width: 13px;
-    height: 13px;
-  }
-  .osh .olabel {
-    flex: 0 0 auto;
-  }
-  .osh .ometa {
-    margin-left: auto;
-    color: rgba(245, 245, 245, 0.28);
-    font-size: 9px;
-    text-transform: none;
-  }
-  .osec.thinking .osh {
-    color: var(--stack-violet, #b79bff);
-  }
-  .osec.actions .osh {
-    color: var(--konjo-sun);
-  }
-  .osec.tools .osh {
-    color: var(--konjo-ice);
-  }
-  .osec.output .osh {
-    color: var(--konjo-jade);
-  }
-  .osbody {
-    max-height: 0;
-    overflow: hidden;
-    transition: max-height 0.22s ease;
-  }
-  .osec.open .osbody {
-    /* A generous ceiling for the expand transition, not a scroll viewport —
-       `.osecs` is the single scrollbar for the whole panel. */
-    max-height: 4000px;
-  }
-  .osbody .inner {
-    padding: 2px 12px 11px 32px;
-  }
-  .oline {
     font-size: 10.5px;
     line-height: 1.6;
-    margin-bottom: 4px;
+    padding: 3px 0;
   }
-  .osec.thinking .oline {
+  .sicon {
+    flex: 0 0 auto;
+    display: inline-flex;
+    margin-top: 2px;
+    opacity: 0.85;
+  }
+  .sicon :global(svg) {
+    width: 12px;
+    height: 12px;
+  }
+  .stext {
+    flex: 1;
+    min-width: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .sline.thinking {
     color: rgba(183, 155, 255, 0.72);
     font-style: italic;
   }
-  .osec.actions .oline,
-  .osec.tools .oline {
+  .sline.thinking .sicon {
+    color: var(--stack-violet, #b79bff);
+  }
+  .sline.actions {
     color: rgba(245, 245, 245, 0.46);
   }
-  .osec.output .oline {
+  .sline.actions .sicon {
+    color: var(--konjo-sun);
+  }
+  .sline.tools {
+    color: rgba(245, 245, 245, 0.46);
+  }
+  .sline.tools .sicon {
+    color: var(--konjo-ice);
+  }
+  .sline.output {
     color: rgba(0, 255, 157, 0.75);
   }
-  /* Severity tier wins over the section's plain color — a `bad` verifier
+  .sline.output .sicon {
+    color: var(--konjo-jade);
+  }
+  /* Severity tier wins over the kind's plain color — a `bad` verifier
      error or `good` score pass must read distinctly from routine `info`
      status, matching StatusChip.svelte's jade/flame/rose language. */
-  .oline.tier-good,
+  .sline.tier-good,
   .ol.tier-good {
     color: var(--konjo-jade);
   }
-  .oline.tier-warn,
+  .sline.tier-warn,
   .ol.tier-warn {
     color: var(--konjo-flame);
   }
-  .oline.tier-bad,
+  .sline.tier-bad,
   .ol.tier-bad {
     color: var(--konjo-rose);
   }
@@ -395,8 +371,8 @@
     .live i {
       animation: none;
     }
-    .osbody {
-      transition: none;
+    .stream {
+      scroll-behavior: auto;
     }
   }
 </style>

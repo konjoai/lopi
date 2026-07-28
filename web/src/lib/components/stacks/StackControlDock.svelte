@@ -621,6 +621,40 @@
         <span class="costtotal"><span class="costlbl">running total:</span> ${runningTotal.toFixed(2)}</span>
       {/if}
       <span class="dsum">{dockSummary}</span>
+      <!-- UI-3 — the stack/model/loop summary, the ^ open toggle and the
+           run/pause action now all live in this single header row: the dock
+           minimizes to one thin strip instead of a header row plus a
+           separate full-width run button underneath. -->
+      <div class="hrun">
+        <button
+          class="hrunbtn"
+          type="button"
+          on:click={runMain}
+          disabled={phase === 'draining'}
+          title="run this stack"
+        >
+          {@html runIcon}<span class="hrunlbl">{runLabel}</span>
+        </button>
+        <button
+          class="runchev hrunchev"
+          type="button"
+          on:click={() => (runMenuOpen = !runMenuOpen)}
+          aria-expanded={runMenuOpen}
+          title="run options"
+        >
+          {@html ICONS.chevdown}
+        </button>
+        {#if runMenuOpen}
+          <RunMenu
+            paneKey={pane.key}
+            defaults={config.defaults}
+            {phase}
+            onDryRun={(r) => (dryRunResult = r)}
+            onClose={() => (runMenuOpen = false)}
+            onRunNow={runMain}
+          />
+        {/if}
+      </div>
       <button class="exp" type="button" on:click={() => (dockOpen = !dockOpen)} aria-expanded={dockOpen} title="stack controls">
         {@html ICONS.chevup}
       </button>
@@ -629,6 +663,50 @@
     <div class="sctop">
       <span class="stag">stack</span>
       <span class="sp"></span>
+    </div>
+  {/if}
+
+  {#if costConfirmOpen || stopReason || runError || dryRunResult}
+    <div class="dockbanners">
+      {#if costConfirmOpen}
+        <div class="costconfirm">
+          <span class="ccmsg">
+            {@html ICONS.zap}
+            {#if config.loopCount === 0}
+              <b>×∞</b> on <b>{modelLabel}</b> — unbounded, no cost ceiling to estimate
+            {:else if costEst}
+              <b>×{config.loopCount}</b> on <b>{modelLabel}</b> ≈ <b>${costEst.low.toFixed(2)}–${costEst.high.toFixed(2)}</b>
+              estimated (approximate)
+            {/if}
+          </span>
+          <div class="ccactions">
+            <button type="button" on:click={confirmRunAnyway}>run anyway</button>
+            <button type="button" on:click={confirmLowerAndRun}>lower to ×10</button>
+          </div>
+        </div>
+      {:else if stopReason}
+        <div class="runbanner" class:err={stopReason !== 'goal_met'} class:ok={stopReason === 'goal_met'}>
+          <span>{stackStopLabel(stopReason)}</span>
+          <button type="button" on:click={dismissRunError}>{@html ICONS.x}</button>
+        </div>
+      {:else if runError}
+        <div class="runbanner err">
+          <span>{runError}</span>
+          <button type="button" on:click={dismissRunError}>{@html ICONS.x}</button>
+        </div>
+      {:else if dryRunResult}
+        <div class="runbanner" class:err={!dryRunResult.valid}>
+          <span>
+            {#if dryRunResult.valid}
+              dry run: {dryRunResult.plan.length} loop{dryRunResult.plan.length === 1 ? '' : 's'} would run, in order
+            {:else}
+              dry run found {dryRunResult.issues.length} issue{dryRunResult.issues.length === 1 ? '' : 's'}: {dryRunResult
+                .issues[0].message}
+            {/if}
+          </span>
+          <button type="button" on:click={() => (dryRunResult = null)}>{@html ICONS.x}</button>
+        </div>
+      {/if}
     </div>
   {/if}
 
@@ -784,66 +862,6 @@
         <button class="ib danger" type="button" on:click={delStack} title="delete stack">{@html ICONS.trash}</button>
       </div>
     </div>
-  </div>
-
-  <div class="dockrun">
-    {#if costConfirmOpen}
-      <div class="costconfirm">
-        <span class="ccmsg">
-          {@html ICONS.zap}
-          {#if config.loopCount === 0}
-            <b>×∞</b> on <b>{modelLabel}</b> — unbounded, no cost ceiling to estimate
-          {:else if costEst}
-            <b>×{config.loopCount}</b> on <b>{modelLabel}</b> ≈ <b>${costEst.low.toFixed(2)}–${costEst.high.toFixed(2)}</b>
-            estimated (approximate)
-          {/if}
-        </span>
-        <div class="ccactions">
-          <button type="button" on:click={confirmRunAnyway}>run anyway</button>
-          <button type="button" on:click={confirmLowerAndRun}>lower to ×10</button>
-        </div>
-      </div>
-    {:else if stopReason}
-      <div class="runbanner" class:err={stopReason !== 'goal_met'} class:ok={stopReason === 'goal_met'}>
-        <span>{stackStopLabel(stopReason)}</span>
-        <button type="button" on:click={dismissRunError}>{@html ICONS.x}</button>
-      </div>
-    {:else if runError}
-      <div class="runbanner err">
-        <span>{runError}</span>
-        <button type="button" on:click={dismissRunError}>{@html ICONS.x}</button>
-      </div>
-    {:else if dryRunResult}
-      <div class="runbanner" class:err={!dryRunResult.valid}>
-        <span>
-          {#if dryRunResult.valid}
-            dry run: {dryRunResult.plan.length} loop{dryRunResult.plan.length === 1 ? '' : 's'} would run, in order
-          {:else}
-            dry run found {dryRunResult.issues.length} issue{dryRunResult.issues.length === 1 ? '' : 's'}: {dryRunResult
-              .issues[0].message}
-          {/if}
-        </span>
-        <button type="button" on:click={() => (dryRunResult = null)}>{@html ICONS.x}</button>
-      </div>
-    {/if}
-    <div class="runsplit">
-      <button class="runmain" type="button" on:click={runMain} disabled={phase === 'draining'} title="run this stack">
-        {@html runIcon} {runLabel}
-      </button>
-      <button class="runchev" type="button" on:click={() => (runMenuOpen = !runMenuOpen)} aria-expanded={runMenuOpen}>
-        {@html ICONS.chevup}
-      </button>
-    </div>
-    {#if runMenuOpen}
-      <RunMenu
-        paneKey={pane.key}
-        defaults={config.defaults}
-        {phase}
-        onDryRun={(r) => (dryRunResult = r)}
-        onClose={() => (runMenuOpen = false)}
-        onRunNow={runMain}
-      />
-    {/if}
   </div>
 </div>
 
@@ -1330,12 +1348,13 @@
       transform: rotate(360deg);
     }
   }
-  .dockrun {
-    padding-top: 13px;
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
+  /* UI-3 — banners (cost confirm / stop reason / error / dry run) used to
+     live inside `.dockrun`, stacked above the old full-width run button.
+     That button now lives in `.dockhead` (see `.hrun` below), so these
+     render in their own strip right under the header instead — always
+     visible regardless of `dockOpen`, same as before. */
+  .dockbanners {
+    padding: 0 0 11px;
   }
   .runbanner {
     display: flex;
@@ -1343,7 +1362,6 @@
     gap: 10px;
     width: 100%;
     padding: 8px 12px;
-    margin-bottom: 9px;
     border-radius: 8px;
     background: rgba(0, 0, 0, 0.2);
     border: 1px solid rgba(255, 255, 255, 0.16);
@@ -1425,49 +1443,55 @@
   .costconfirm .ccactions button:hover {
     background: rgba(255, 204, 0, 0.22);
   }
-  .runsplit {
-    width: clamp(220px, 62%, 420px);
+  /* UI-3 — the compact run/pause control that now lives in `.dockhead`
+     itself, replacing the old full-width `.runsplit` button that sat in its
+     own row underneath. `position:relative` so `RunMenu` (an `.runmenu`
+     absolutely-positioned child) anchors off this pair, not the whole dock. */
+  .hrun {
+    position: relative;
+    flex: 0 0 auto;
+    margin-left: auto;
     display: inline-flex;
-    border-radius: 9px;
+    border-radius: 7px;
     overflow: hidden;
-    box-shadow: 0 5px 18px rgba(255, 149, 0, 0.28);
+    box-shadow: 0 3px 10px rgba(255, 149, 0, 0.25);
   }
-  .runmain {
-    flex: 1 1 auto;
+  .hrunbtn {
     display: inline-flex;
     align-items: center;
-    justify-content: center;
-    gap: 8px;
+    gap: 6px;
+    height: 34px;
     background: linear-gradient(180deg, #ffb648, #ff9500);
     color: #231000;
     border: none;
-    padding: 12px 26px;
-    font-size: 13px;
+    padding: 0 14px;
+    font-family: var(--font-mono, 'JetBrains Mono', monospace);
+    font-size: 11px;
     font-weight: 700;
     cursor: pointer;
     white-space: nowrap;
   }
-  .runmain :global(svg) {
-    width: 15px;
-    height: 15px;
+  .hrunbtn :global(svg) {
+    width: 13px;
+    height: 13px;
   }
-  .runmain:disabled {
+  .hrunbtn:disabled {
     opacity: 0.6;
     cursor: not-allowed;
   }
-  .runchev {
+  .hrunchev {
     background: linear-gradient(180deg, #ffa733, #f08600);
     border: none;
     border-left: 1px solid rgba(0, 0, 0, 0.28);
     color: #231000;
-    padding: 0 13px;
+    padding: 0 9px;
     cursor: pointer;
     display: inline-flex;
     align-items: center;
   }
-  .runchev :global(svg) {
-    width: 14px;
-    height: 14px;
+  .hrunchev :global(svg) {
+    width: 12px;
+    height: 12px;
   }
   .sctrl.drop-before {
     box-shadow: 0 -3px 0 var(--stack-violet, #b79bff);

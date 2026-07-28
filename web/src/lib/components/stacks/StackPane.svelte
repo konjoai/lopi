@@ -315,9 +315,12 @@
   .loopwrap.hasout.blocked {
     border: 1px solid rgba(255, 0, 102, 0.45);
   }
+  /* UI-3 — mirrors StackCard.svelte's `.pc.running` flattening: a running
+     loop's wrapper sheds its outline too, so nothing draws a box around the
+     prompt + its live output while it's actively running. */
   .loopwrap.hasout.running {
-    border: 1px solid color-mix(in srgb, var(--orb) 45%, transparent);
-    animation: edgeflash 5s ease-in-out infinite;
+    border: none;
+    animation: none;
   }
   /* Kept byte-for-byte identical to StackCard.svelte's own `edgeflash` (its
      copy still drives borderless-output cards, i.e. `.pc.running` with no

@@ -37,7 +37,7 @@
    *  inline drawer, not a popover — `'config'` exists for the stack control
    *  dock's default-config popover (Stack-1), which has no inline-drawer
    *  equivalent since there's no card to expand underneath. */
-  export let kind: 'sched' | 'guard' | 'eval' | 'config' | 'max' | 'goal' = 'sched';
+  export let kind: 'sched' | 'guard' | 'eval' | 'config' | 'max' | 'goal' | 'overflow' = 'sched';
 
   $: open = $activePopoverId === id;
 
@@ -255,6 +255,9 @@
   }
   .pop.goal :global(.ph) {
     color: var(--konjo-flame);
+  }
+  .pop.overflow :global(.ph) {
+    color: rgba(245, 245, 245, 0.7);
   }
   .pop :global(.pbody) {
     padding: 11px 13px;
