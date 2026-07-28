@@ -346,6 +346,10 @@ async fn live_check_backfilled_pattern_constraint_reaches_the_real_planning_prom
 /// only, not wall-clock or cache-hit-ratio — see the LEDGER entry for why a
 /// live agentic run wasn't executed for this measurement.
 #[tokio::test]
+// The printed per-mode token/char counts are this test's actual
+// deliverable — the concrete numbers the LEDGER entry's A/B section
+// reports — not debug noise.
+#[allow(clippy::print_stderr)]
 async fn context_mode_index_vs_inject_prompt_token_ab() {
     let repo_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
