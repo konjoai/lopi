@@ -8,6 +8,9 @@
 //! - `worktree` — per-task `git worktree` isolation setup/teardown.
 
 mod dead_letter;
+/// Sprint E — budget-aware admission (`submit_economically`) and
+/// reservation reconciliation on task completion.
+mod economics_admit;
 mod registry;
 mod run_loop;
 mod run_loop_builder;
@@ -24,8 +27,11 @@ use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock, Semaphore};
 use tokio::task::JoinSet;
 
+use crate::budget::reserve::ReservationId;
+use crate::budget::Economics;
 use crate::queue::TaskQueue;
 
+pub use economics_admit::AdmissionOutcome;
 pub use run_loop::effective_topology;
 pub use types::{AgentHandle, PoolCounters, PoolStats, RunningAgentInfo};
 
@@ -51,6 +57,14 @@ pub struct AgentPool {
     /// P2 — per-agent rate limits (token bucket + concurrency cap),
     /// manageable via the `/api/agents/:id/rate-limit` REST surface.
     agent_rate_limits: Arc<DashMap<String, crate::agent_rate_limit::AgentRateState>>,
+    /// Sprint E — the economics layer facade. `None` unless `[economics]`
+    /// configures a pool (opt-in, per the brief).
+    economics: Option<Arc<Economics>>,
+    /// Sprint E — open reservations awaiting reconciliation, keyed by task.
+    /// A reservation is inserted on successful `submit_economically` and
+    /// removed (reconciled or released) at the task's one terminal choke
+    /// point in `run_one` — never left to leak.
+    economics_reservations: Arc<DashMap<TaskId, ReservationId>>,
 }
 
 impl AgentPool {
@@ -75,6 +89,8 @@ impl AgentPool {
             started_at: Arc::new(std::time::Instant::now()),
             join_set: Arc::new(Mutex::new(JoinSet::new())),
             agent_rate_limits: Arc::new(DashMap::new()),
+            economics: None,
+            economics_reservations: Arc::new(DashMap::new()),
         }
     }
 
@@ -84,6 +100,15 @@ impl AgentPool {
         let mut js = self.join_set.lock().await;
         js.abort_all();
         while js.join_next().await.is_some() {}
+    }
+
+    /// Sprint E — attach the economics layer facade. No-op-equivalent
+    /// (`submit_economically` falls back to plain `submit`) unless
+    /// `[economics]` configured a pool.
+    #[must_use]
+    pub fn with_economics(mut self, economics: Economics) -> Self {
+        self.economics = Some(Arc::new(economics));
+        self
     }
 
     /// Attach a memory store; enables pattern persistence and cost tracking.

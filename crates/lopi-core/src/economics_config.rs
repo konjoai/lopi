@@ -147,6 +147,11 @@ pub struct EconomicsConfig {
     /// treated as confident rather than cold-start-widened.
     #[serde(default = "default_cold_start_sample_min")]
     pub cold_start_sample_min: usize,
+    /// Conservative per-run cost assumed for a `(repo, stage, model,
+    /// effort)` bucket with zero history — "cold start with conservative
+    /// defaults from config," never a literal buried in `CostEstimator`.
+    #[serde(default = "default_cold_start_cost")]
+    pub cold_start_default_cost: Money,
 }
 
 impl Default for EconomicsConfig {
@@ -164,6 +169,7 @@ impl Default for EconomicsConfig {
             burn_rate_window_secs: default_burn_rate_window_secs(),
             cost_per_progress_multiplier: default_cost_per_progress_multiplier(),
             cold_start_sample_min: default_cold_start_sample_min(),
+            cold_start_default_cost: default_cold_start_cost(),
         }
     }
 }
@@ -182,6 +188,9 @@ fn default_cost_per_progress_multiplier() -> f64 {
 }
 fn default_cold_start_sample_min() -> usize {
     5
+}
+fn default_cold_start_cost() -> Money {
+    Money::from_usd(1.0)
 }
 
 #[cfg(test)]
