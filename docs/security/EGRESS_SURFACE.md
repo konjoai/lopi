@@ -1,6 +1,6 @@
 ---
 decays: state
-verified-against: 8cc1694
+verified-against: 28dd4cf
 verified-date: 2026-07-28
 ---
 
@@ -23,16 +23,16 @@ consistent with this repo's `decays: state` convention — re-derive before trus
 
 # Egress surface — the local-only remnant of Sprint S2
 
-Verified against: `8cc1694` · 2026-07-28 (re-verified; this doc only crossed the
-20-commit staleness cap because of this branch's own commit volume, not because
-anything it cites moved. Checked the one thing this sprint's own changes could
-plausibly have disturbed: `GET /api/tasks`/`GET /api/tasks/:id` still serialize
+Verified against: `28dd4cf` · 2026-07-28 (re-verified again; this doc keeps crossing
+the 20-commit staleness cap purely on Sprint E/Finding #10's own merge-commit volume
+(two reconciliations with `main`), not on anything it cites losing accuracy.
+Re-checked the same citations as the prior (`8cc1694`) pass, since none of the
+intervening commits (the symbol-index sprint, this sprint's own reservation-cleanup
+wiring) touched `lopi-ui::web::handlers`, `provenance_field_tests.rs`, or
+`lopi-memory::store::tests`: `GET /api/tasks`/`GET /api/tasks/:id` still serialize
 `"provenance"` unchanged (`crates/lopi-ui/src/web/handlers.rs:86,114` —
-`t.provenance()`, exactly as §4 describes) — this sprint added a *different*,
-measurement-confidence field (`"measurement_provenance"`, deliberately a distinct
-JSON key so it can never collide with this doc's trust marker; see
-`docs/adr/0001-demo-mode-and-measurement.md`), never touching this one.
-`TaskRow::provenance()`, `get_task_surfaces_provenance_marker`
+`t.provenance()`, exactly as §4 describes). `TaskRow::provenance()`,
+`get_task_surfaces_provenance_marker`
 (`crates/lopi-ui/src/web/provenance_field_tests.rs`),
 `operator_and_untrusted_sources_have_distinguishable_provenance`, and
 `telegram_sourced_task_is_operator_provenance` (both `crates/lopi-memory/src/store/tests.rs`)

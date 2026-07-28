@@ -1,26 +1,25 @@
 ---
 decays: state
-verified-against: ca8e980
+verified-against: 28dd4cf
 verified-date: 2026-07-28
 ---
 
 # Panic audit — the trustworthy count, and why grep couldn't give it to you
 
-Verified against: `ca8e980` · 2026-07-28 (re-verified; the workspace-wide zero-unwrap
-claim still holds — re-confirmed with a live `cargo clippy --workspace --all-targets
---all-features` re-run at the exact flag set cited below, 0 warnings/0 errors, now
-covering both Sprint G's new files (`crates/lopi-agent/src/runner/retry_guard.rs`,
-`secrets_gate.rs`, `crates/lopi-memory/src/store/dead_letter.rs`,
-`crates/lopi-orchestrator/src/pool/dead_letter.rs`) and the new `lopi-demo` crate added
-this round. One real gap found and fixed, not just citation drift: `lopi-demo`'s
-`lib.rs` shipped without the `#![warn(clippy::unwrap_used, clippy::expect_used,
-clippy::panic)]` inner attribute every other crate in this repo carries — the CI-flag
-gate still caught it (0 violations either way, this crate has none), but the
-defense-in-depth property this doc's own "What was actually done" section below
-describes (the lint showing up locally without a special command) didn't hold for this
-one crate until now. Added; row added to the per-crate table. Sprint G's four new files
-were spot-checked directly (not just via the aggregate clippy run) — no unwrap/expect/
-panic outside `#[cfg(test)]` in any of them. No other drift found.)
+Verified against: `28dd4cf` · 2026-07-28 (re-verified again; this doc keeps crossing
+the 20-commit staleness cap purely on Sprint E/Finding #10's own merge-commit volume,
+not on the zero-unwrap claim losing accuracy — re-confirmed live with the exact
+deny-flag `cargo clippy --workspace --all-targets --all-features` invocation cited
+below, 0 warnings/0 errors, now also covering the new `lopi-index` crate (Finding #4,
+symbol-index sprint) and Sprint E/Finding #10's own new modules
+(`lopi-orchestrator::budget::*`, `lopi-core::economics`/`economics_config`). One real
+gap found and fixed, the same class as the `lopi-demo` gap the prior round caught:
+`lopi-index`'s `lib.rs` shipped without the `#![warn(clippy::unwrap_used,
+clippy::expect_used, clippy::panic)]` inner attribute every other crate in this repo
+carries — the CI-flag gate still caught it (0 violations either way, this crate has
+none), but the defense-in-depth property this doc's own "What was actually done"
+section below describes didn't hold for this one crate until now. Added; row added to
+the per-crate table below. No other drift found.)
 
 Konjo Forward **Pillar 1** (an honest starting position) and **F11** (a durable unattended
 loop should not die on an `unwrap`). This is the pre-flight kill-test for Sprint S5 and the
@@ -85,9 +84,10 @@ which is exactly the structure line-based tools cannot parse and clippy parses b
 | `lopi-toon` | 2 | **0** | `#![warn(...)]` |
 | `lopi-ratelimit` | 2 | **0** | `#![warn(...)]` |
 | `lopi-git` | 0 | **0** | `#![warn(...)]` |
-| `lopi-demo` (added 2026-07-28) | 0 | **0** | `#![warn(...)]` (added this re-verification — see note above) |
+| `lopi-demo` (added 2026-07-28) | 0 | **0** | `#![warn(...)]` |
+| `lopi-index` (added 2026-07-28, Finding #4) | 89 | **0** | `#![warn(...)]` (added this re-verification — see note above) |
 | root binary (`src/`) | 94 | **0** | `#![warn(...)]` (CLI, low blast radius — see Out of scope) |
-| **Total** | **788** | **0** | — |
+| **Total** | **877** | **0** | — |
 
 `lopi-app` (previously listed here at 3 raw hits / 0 production violations) was deleted
 outright by Sprint S12 (the multi-tenant-surface removal, `LEDGER.md`) — not hardened,
