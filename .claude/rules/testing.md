@@ -1,9 +1,9 @@
 ---
 paths:
-  - "**/*_test.rs"
+  - "**/*_tests.rs"
   - "**/tests/**"
   - "**/test_*.rs"
-  - "**/spec/**"
+  - "**/lopi-spec/**"
 ---
 # Testing Rules
 

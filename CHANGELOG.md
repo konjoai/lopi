@@ -1,3 +1,47 @@
+## [0.38.0] — Sprint S13, Phase 0: Quality-claim honesty pass (STOPPED at Phase 0)
+
+**The brief's own stop rule fired: Phase 0 found 5 self-claims with no real
+enforcing step (>3), so this sprint stopped after Phase 0 rather than
+building Phases 1–4's determinism/panic-surface/error-taxonomy/
+enforcement-from-first-prompt substrate on top of an inaccurate inventory.
+Full audit trail: `.konjo/killtests/S13/PHASE0-STOP-RULE.md`.**
+
+- **Re-verified the sprint brief's baseline evidence table** against a clean
+  `origin/main` checkout. Two real drifts found beyond the brief's numbers:
+  a second production unbounded channel at `src/repl/mod.rs:76` (brief only
+  named `lopi-agent/src/quota_kill_log.rs:151`), and `anyhow::` usage grew
+  from 106 to 131 files since the baseline was recorded. Everything else
+  (unsafe-block count, raw-index count, `select!` site count, Mutex count,
+  MSRV/lints/overflow-checks absence, crate count) matched.
+- **Deleted 2 of 3 `.konjo/rubrics/*.toml` files** — `refactor_safety.toml`
+  and `security_audit.toml` had no code path anywhere that ever loaded them
+  by name (`.konjo/scripts/konjo_review.py` and the rest of `.konjo/scripts/`
+  contain zero references to `rubric` at all; the real loader is
+  `crates/lopi-agent/src/verifier.rs`, whose only wired call resolves to
+  `feature_completeness.toml`). Corrected the "three canonical rubrics"
+  claim in `KONJO_VERIFIER.md` and `PLAN.md` in the same commit.
+- **Corrected 3 of 8 `CLAUDE.md` "Additional Hard Rules" bullets** that
+  described themselves as CI-hard-blocked but were actually
+  `continue-on-error` soft gates or had no mechanical check at all: the
+  80%/95% coverage bullet (the real hard gate is a lower locked floor in
+  `.konjo/coverage-floor.txt`), the zero-undocumented-public-APIs bullet
+  (soft, known doc-link debt), and the 50-line function-body bullet (no
+  mechanical check exists — only a WARNING-tier LLM review question that
+  cannot block merge). Also fixed two smaller inaccuracies found in the same
+  audit: the file-size gate's `*.rs`/`*.py`-only scope, and the DRY-check
+  bullet's stated threshold (10 lines) vs. the actual CI-enforced value (20).
+- **Fixed 4 dead path globs** across `.claude/rules/benchmarking.md` and
+  `.claude/rules/testing.md` that matched zero files in the current repo
+  (`bench_*.rs`, `perf/**`, `*_test.rs` singular, `spec/**`) — these two rule
+  files never loaded under their stated trigger condition. Replaced with
+  globs verified against the real repo layout (`*_bench.rs`, `benches/**`,
+  `*_tests.rs` plural, `lopi-spec/**`).
+
+Not done this sprint (stop rule; see `.konjo/killtests/S13/PHASE0-STOP-RULE.md`
+for the full "what didn't run and why"): pre-flight kill-tests KT-S13.1/
+KT-S13.2, and Phases 1–4 (determinism substrate, panic/resource surface,
+error taxonomy, enforcement-from-first-prompt).
+
 ## [0.37.0] — Sprint E: The Economics Layer (Finding #10)
 
 **Turned the budget governor from a kill-switch into a first-class economic

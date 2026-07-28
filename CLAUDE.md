@@ -48,18 +48,19 @@ bash .konjo/scripts/install-hooks.sh        # install pre-commit hooks
 This repo runs the **Konjo Three-Wall Quality Framework**. See `KONJO_QUALITY_FRAMEWORK.md`.
 
 - **Wall 1** (pre-commit): `bash .konjo/scripts/install-hooks.sh` — installs `.konjo/hooks/pre-commit`
-- **Wall 2** (CI): `.github/workflows/konjo-gate.yml` — coverage ≥ 80%, mutation ≤ 10%, complexity ≤ 15, dead code = 0, zero undocumented public APIs
+- **Wall 2** (CI): `.github/workflows/konjo-gate.yml` — coverage floor locked (soft 80%/95% targets), mutation ≤ 10%, complexity ≤ 15, dead code = 0, doc coverage tracked (soft)
 - **Wall 3** (adversarial review): `claude-opus-4-6` reviews every PR against 10 mandatory questions
 
 ### Additional Hard Rules (enforced by CI — not in global CLAUDE.md)
-- Coverage ≥ 80% (hard block); target ≥ 95%
-- Zero cognitive complexity > 15 per function (`clippy::cognitive_complexity`)
-- Zero dead code (`RUSTFLAGS="-W dead_code" cargo check`)
-- Zero undocumented public APIs (`RUSTDOCFLAGS="-D missing_docs" cargo doc`)
-- Function body ≤ 50 lines (30 target) — split before hitting 40
-- File ≤ 500 lines (300 target) — create a new module before hitting 400
-- No duplicate blocks > 10 lines at > 85% similarity (`dry_check.py`)
-- `cargo audit` zero advisories; `cargo deny check` zero violations
+Corrected in Sprint S13 Phase 0 (the Konjo honesty pass) — see `LEDGER.md` for the audit that found 3 of these 8 bullets were not actually hard-enforced.
+- Coverage floor locked via `.konjo/coverage-floor.txt` (hard block on regression below the locked value, currently below the 80% claimed here); 80% and 95% are `continue-on-error` soft targets, not hard blocks (`konjo-gate.yml` `coverage` job)
+- Zero cognitive complexity > 15 per function (`clippy::cognitive_complexity`) — hard, `complexity` job
+- Zero dead code (`RUSTFLAGS="-W dead_code" cargo check`) — hard, `static` job
+- Undocumented public APIs (`RUSTDOCFLAGS="-D missing_docs" cargo doc`) — currently `continue-on-error` soft (known doc-link debt in `lopi-agent`/`lopi-orchestrator`), not yet a hard block (`konjo-gate.yml` `complexity` job, "Documentation gate (rustdoc)" step)
+- Function body ≤ 50 lines (30 target) — not mechanically enforced anywhere; only a WARNING-tier question (Q7) in the Wall-3 LLM review, which cannot block merge
+- File ≤ 500 lines (300 target) — create a new module before hitting 400 — hard, `complexity` job, scoped to `*.rs`/`*.py` only (not `web/` or `macos/`)
+- No duplicate blocks > 20 lines at > 85% similarity (`dry_check.py`, CI-enforced `--min-lines 20`, script default is 10) — hard, `complexity` job
+- `cargo audit` zero advisories; `cargo deny check` zero violations — hard, `static` job
 
 ## Live Dashboard (Browser Pane)
 When asked to check on running stacks/tasks ("what's lopi running right now", "show me the stacks"), in a Claude Code Desktop session with a Browser pane:

@@ -57,13 +57,18 @@ let runner = AgentRunner::new(task, repo_path, bus, store, cancel_rx, counter)
 
 ## Rubrics
 
-Three canonical rubrics ship with lopi at `.konjo/rubrics/`:
+One canonical rubric ships with lopi at `.konjo/rubrics/`:
 
 | File | When to use |
 |------|-------------|
 | `feature_completeness.toml` | New feature implementation tasks (default fallback) |
-| `refactor_safety.toml` | Refactoring tasks where no public API should change |
-| `security_audit.toml` | Security hardening tasks and webhook/auth changes |
+
+`refactor_safety.toml` and `security_audit.toml` were documented here as
+shipping but had no code path that ever loaded them by name — deleted in
+Sprint S13 Phase 0 (the Konjo honesty pass). See `LEDGER.md`'s S13 entry.
+`verifier::load_rubric_file` is a generic loader and can load any
+correctly-named `.konjo/rubrics/<name>.toml`; author a new file there and
+wire a real call site (or set it on `Task::rubric`) to bring a rubric back.
 
 ### Resolution chain
 
@@ -75,8 +80,10 @@ For each verifier pass the rubric is resolved in order — first match wins:
    non-fatal (`tracing::warn!` then fall through).
 3. **`verifier::default_rubric()`** — the hardcoded workspace fallback.
 
-Call `verifier::load_rubric_file(repo, "refactor_safety")` to load any named
-rubric from `.konjo/rubrics/` and attach it to a task's `rubric` field.
+`verifier::load_rubric_file(repo, name)` loads any named rubric from
+`.konjo/rubrics/` and can be attached to a task's `rubric` field, but today
+only `resolve_rubric`'s hardcoded `"feature_completeness"` call
+(`crates/lopi-agent/src/verifier.rs:131`) is wired to a production caller.
 
 ### Rubric format
 
