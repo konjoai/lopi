@@ -92,15 +92,9 @@ fn fixture_b_guarded_card_with_repo_override() {
     assert_eq!(payload.on_fail, Some(OnFail::Backoff));
 }
 
-/// Fixture C (`stack.test.ts:607-628`) — key-set completeness. In TS this
-/// asserts `Object.keys(payload.options).sort()`; the Rust `CreateTaskRequest`
-/// has no `options` sub-object (every field is flat), so the equivalent
-/// assertion is: exactly this set of optional fields is `Some`, everything
-/// else is `None`. `goal`/`repo`/`priority` are excluded from both sides —
-/// TS keeps them outside `options`; Rust always populates them regardless
-/// of guardrail state, so they carry no signal for this test.
-#[test]
-fn fixture_c_key_set_completeness() {
+/// Fixture C's card: `guardrails` set (gate/until on, everything else
+/// inherited), used by both key-set-completeness tests below.
+fn fixture_c_card() -> StackCard {
     let mut card = build_card("card-c", "x");
     card.guardrails = Guardrails {
         gate: true,
@@ -114,8 +108,20 @@ fn fixture_c_key_set_completeness() {
         isolation: IsolationChoice::Inherit,
         no_progress_limit: None,
     };
+    card
+}
 
-    let payload = card_to_task_payload(&card, &plain_defaults());
+/// Fixture C (`stack.test.ts:607-628`) — key-set completeness, the "present"
+/// half. In TS this asserts `Object.keys(payload.options).sort()`; the Rust
+/// `CreateTaskRequest` has no `options` sub-object (every field is flat), so
+/// the equivalent assertion is split across two tests: this one pins which
+/// optional fields are `Some`, [`fixture_c_absent_fields_stay_none`] pins
+/// that everything else is `None`. `goal`/`repo`/`priority` are excluded
+/// from both — TS keeps them outside `options`; Rust always populates them
+/// regardless of guardrail state, so they carry no signal for this test.
+#[test]
+fn fixture_c_key_set_completeness() {
+    let payload = card_to_task_payload(&fixture_c_card(), &plain_defaults());
 
     assert!(payload.acceptance.is_some(), "acceptance");
     assert_eq!(payload.client_ref, Some("card-c".to_string()), "client_ref");
@@ -125,9 +131,15 @@ fn fixture_c_key_set_completeness() {
     assert_eq!(payload.model, Some("sonnet".to_string()), "model");
     assert_eq!(payload.on_fail, Some(OnFail::Stop), "on_fail");
     assert_eq!(payload.until, Some("u".to_string()), "until");
+}
 
-    // Everything else must be None — pins the "no field leaks onto the wire
-    // unless the card actually touched it" contract.
+/// Fixture C, the "absent" half — pins the "no field leaks onto the wire
+/// unless the card actually touched it" contract for every optional field
+/// not asserted `Some` in [`fixture_c_key_set_completeness`].
+#[test]
+fn fixture_c_absent_fields_stay_none() {
+    let payload = card_to_task_payload(&fixture_c_card(), &plain_defaults());
+
     assert_eq!(payload.constraints, None, "constraints");
     assert_eq!(payload.allowed_dirs, None, "allowed_dirs");
     assert_eq!(payload.forbidden_dirs, None, "forbidden_dirs");

@@ -238,3 +238,61 @@ pub(super) fn restore_terminal_raw() -> Result<()> {
     execute!(io::stdout(), LeaveAlternateScreen, DisableMouseCapture)?;
     Ok(())
 }
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+    use crate::repl::state::LineStyle;
+
+    fn test_state() -> ReplState {
+        ReplState::new(&std::path::PathBuf::from("."), "claude-sonnet-5", None)
+    }
+
+    /// Mutation-testing kill test: `handle_slash` has several branches
+    /// (`Quit`/`Watch`/`Dock`/`Cancel`) that call `std::process::exit`,
+    /// which a test process must never invoke — so this exercises only the
+    /// non-exiting branches, but that's enough: a mutant replacing the
+    /// whole function body with `Ok(())` would leave `state.show_help`
+    /// unset, failing this assertion.
+    #[tokio::test]
+    async fn help_command_sets_show_help() {
+        let mut state = test_state();
+        let (tx, _rx) = mpsc::unbounded_channel();
+        assert!(!state.show_help);
+        handle_slash("/help", &mut state, std::path::Path::new("."), None, &tx)
+            .await
+            .unwrap();
+        assert!(state.show_help);
+    }
+
+    #[tokio::test]
+    async fn clear_command_empties_output_and_resets_scroll() {
+        let mut state = test_state();
+        let (tx, _rx) = mpsc::unbounded_channel();
+        state.push("some prior output", LineStyle::Normal);
+        state.scroll_offset = 5;
+        handle_slash("/clear", &mut state, std::path::Path::new("."), None, &tx)
+            .await
+            .unwrap();
+        assert!(state.output_lines.is_empty());
+        assert_eq!(state.scroll_offset, 0);
+    }
+
+    #[tokio::test]
+    async fn unrecognized_command_pushes_an_error_line() {
+        let mut state = test_state();
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let before = state.output_lines.len();
+        handle_slash(
+            "/not-a-real-command",
+            &mut state,
+            std::path::Path::new("."),
+            None,
+            &tx,
+        )
+        .await
+        .unwrap();
+        assert!(state.output_lines.len() > before);
+    }
+}
