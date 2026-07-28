@@ -20,7 +20,8 @@ pub mod pool;
 pub mod report;
 pub mod reserve;
 
-use detect::RunawayDetectors;
+pub use detect::RunawayDetectors;
+
 use estimate::CostEstimator;
 use ladder::Ladder;
 use lopi_core::{BudgetTier, EconomicsConfig, Money};

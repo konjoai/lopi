@@ -14,6 +14,9 @@ mod economics_admit;
 mod registry;
 mod run_loop;
 mod run_loop_builder;
+/// Sprint E, Part 4 — subscribes to the event bus, tracks live per-session
+/// spend/progress, and pauses (cancel + handoff) any session a detector trips.
+mod runaway_monitor;
 mod skills;
 mod types;
 mod worktree;
