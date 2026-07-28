@@ -24,12 +24,36 @@ use std::path::{Path, PathBuf};
 /// One blocking hop covers the scan and the per-repo config reads. Decorating
 /// *after* the scan's sort/dedup means each surviving repo is read once,
 /// rather than every candidate the walk considered.
+///
+/// A synthetic (`lopi demo`) store never reaches the scan at all — see
+/// [`demo_repos_json`] — because demo mode must never touch the real
+/// filesystem (`docs/adr/0001-demo-mode-and-measurement.md`, point 4).
 pub async fn repos_json(state: &AppState) -> Value {
+    if state.store.is_synthetic().await.unwrap_or(false) {
+        return demo_repos_json(state).await;
+    }
     let base = state.repo_path.clone();
     let extras = state.extra_repos.clone();
     let repos = tokio::task::spawn_blocking(move || describe_repos(scan_repos(&base, &extras)))
         .await
         .unwrap_or_default();
+    json!({ "repos": repos })
+}
+
+/// The repo list for a synthetic store: the `demo_repos` table's rows,
+/// shaped to match what `describe_repos` would emit for a real repo. Never
+/// calls `describe_repos` itself — that reads real git config off disk,
+/// which demo mode must not touch — so each row is built directly with a
+/// fixed synthetic-appropriate `owner`.
+async fn demo_repos_json(state: &AppState) -> Value {
+    let repos: Vec<Value> = state
+        .store
+        .load_demo_repos()
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .map(|r| json!({ "owner": "demo", "name": r.name, "path": r.path }))
+        .collect();
     json!({ "repos": repos })
 }
 
@@ -49,7 +73,14 @@ pub(super) struct BranchQuery {
 /// Local branch names of `repo` (empty falls back to the server's primary
 /// repo), plus its default (current HEAD) branch — shared by
 /// `GET /api/branches` and the `lopi_list_branches` MCP tool.
+///
+/// A synthetic (`lopi demo`) store returns a fixed, obviously-synthetic
+/// result without shelling out to `git` — demo mode must never touch the
+/// real filesystem or spawn a real process.
 pub async fn branches_json(state: &AppState, repo: &str) -> Value {
+    if state.store.is_synthetic().await.unwrap_or(false) {
+        return json!({ "branches": ["main"], "default": "main" });
+    }
     let repo = if repo.trim().is_empty() {
         state.repo_path.display().to_string()
     } else {
@@ -84,10 +115,17 @@ pub(super) struct ClaudeCommandsQuery {
 /// [`lopi_skill::discover_claude_commands`] for the full precedence order.
 /// Feeds the composer's `/`-triggered autocomplete (Composer-Grammar-2).
 /// Mirrors [`list_branches`]'s repo-scoped query shape exactly.
+///
+/// A synthetic (`lopi demo`) store returns an empty command list without
+/// calling [`lopi_skill::discover_claude_commands`], which touches the real
+/// filesystem and `$HOME`.
 pub(super) async fn list_claude_commands(
     State(s): State<AppState>,
     Query(q): Query<ClaudeCommandsQuery>,
 ) -> impl IntoResponse {
+    if s.store.is_synthetic().await.unwrap_or(false) {
+        return (StatusCode::OK, Json(json!({ "commands": [] }))).into_response();
+    }
     let repo = if q.repo.trim().is_empty() {
         s.repo_path.display().to_string()
     } else {
@@ -247,194 +285,5 @@ fn current_branch(repo: &str) -> Option<String> {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
-mod tests {
-    use super::*;
-
-    /// `set_current_dir` is process-global, and `cargo test` runs tests as
-    /// threads within one process — the cwd-dependent cases must not overlap.
-    static CWD: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
-    /// Create `root/name` with a `.git` inside, and return its resolved path.
-    fn git_repo(root: &Path, name: &str) -> String {
-        let p = root.join(name);
-        std::fs::create_dir_all(p.join(".git")).unwrap();
-        p.canonicalize().unwrap().display().to_string()
-    }
-
-    /// The regression: `sail --repo` defaults to a relative `"."`, whose
-    /// `parent()` is the empty path. Sibling discovery used to `read_dir("")`,
-    /// fail silently, and offer only the primary repo.
-    #[test]
-    fn relative_primary_discovers_siblings() {
-        let guard = CWD.lock().unwrap_or_else(|e| e.into_inner());
-        let tmp = tempfile::tempdir().unwrap();
-        let root = tmp.path();
-        let a = git_repo(root, "repo-a");
-        let b = git_repo(root, "repo-b");
-        std::fs::create_dir_all(root.join("not-a-repo")).unwrap();
-
-        let restore = std::env::current_dir().unwrap();
-        std::env::set_current_dir(root.join("repo-a")).unwrap();
-        let got = scan_repos(Path::new("."), &[]);
-        std::env::set_current_dir(restore).unwrap();
-        drop(guard);
-
-        assert_eq!(got, vec![a, b], "siblings discovered, non-repo excluded");
-    }
-
-    #[test]
-    fn extras_are_included_and_deduped_against_siblings() {
-        let tmp = tempfile::tempdir().unwrap();
-        let a = git_repo(tmp.path(), "repo-a");
-        let b = git_repo(tmp.path(), "repo-b");
-        // A dispatch target living nowhere near the primary.
-        let far = tempfile::tempdir().unwrap();
-        let f = git_repo(far.path(), "far-repo");
-
-        let extras = vec![
-            PathBuf::from(&f),
-            PathBuf::from(&b),         // already found as a sibling
-            far.path().join("no-git"), // not a repo — dropped
-        ];
-        let got = scan_repos(&PathBuf::from(&a), &extras);
-
-        assert!(
-            got.contains(&f),
-            "extra outside the primary's tree is listed"
-        );
-        assert_eq!(
-            got.iter().filter(|r| **r == b).count(),
-            1,
-            "an extra that is also a sibling appears once"
-        );
-        assert!(
-            !got.iter().any(|r| r.ends_with("no-git")),
-            "a non-repo extra is dropped"
-        );
-    }
-
-    /// A primary that cannot be resolved must degrade to an empty list, not
-    /// panic — `absolutize` falls back to the path as-is.
-    #[test]
-    fn unresolvable_primary_yields_no_repos() {
-        let tmp = tempfile::tempdir().unwrap();
-        let missing = tmp.path().join("does-not-exist");
-        assert!(scan_repos(&missing, &[]).is_empty());
-    }
-
-    fn git(repo: &Path, args: &[&str]) {
-        let ok = std::process::Command::new("git")
-            .arg("-C")
-            .arg(repo)
-            .args(args)
-            .output()
-            .unwrap()
-            .status
-            .success();
-        assert!(ok, "git {args:?} failed");
-    }
-
-    /// A repo on `head`, carrying every branch in `branches`.
-    fn repo_with_branches(root: &Path, head: &str, branches: &[&str]) -> String {
-        std::fs::create_dir_all(root).unwrap();
-        git(root, &["init", "-q", "-b", "base"]);
-        git(root, &["config", "user.email", "t@t.t"]);
-        git(root, &["config", "user.name", "t"]);
-        std::fs::write(root.join("f"), "x").unwrap();
-        git(root, &["add", "-A"]);
-        git(root, &["commit", "-qm", "init"]);
-        for b in branches {
-            git(root, &["branch", b]);
-        }
-        git(root, &["checkout", "-q", head]);
-        root.display().to_string()
-    }
-
-    #[test]
-    fn generated_branches_are_hidden() {
-        let tmp = tempfile::tempdir().unwrap();
-        let repo = repo_with_branches(
-            &tmp.path().join("r"),
-            "main",
-            &[
-                "main",
-                "feat/x",
-                "lopi/fe125cc0-63b6-43e4-a273-52f1dc84d1e4-attempt-1",
-                "claude/forge-polish-m3",
-            ],
-        );
-        let (branches, default) = git_branches(&repo);
-
-        assert_eq!(
-            branches,
-            vec!["base", "feat/x", "main"],
-            "lopi/* and claude/* are dropped"
-        );
-        assert_eq!(
-            default, "main",
-            "HEAD is reported when it survives the filter"
-        );
-    }
-
-    /// Regression: `.take(100)` used to cap the branch list with no signal
-    /// that anything was hidden. Assert the cap still applies (unchanged
-    /// behavior) now that it's a logged `truncate` — a real repo can easily
-    /// carry more than 100 local branches, unlike the 500-repo cap.
-    #[test]
-    fn truncates_past_max_branches() {
-        let tmp = tempfile::tempdir().unwrap();
-        let extra: Vec<String> = (0..(MAX_BRANCHES + 5)).map(|i| format!("b{i}")).collect();
-        let extra_refs: Vec<&str> = extra.iter().map(String::as_str).collect();
-        let repo = repo_with_branches(&tmp.path().join("r"), "base", &extra_refs);
-        let (branches, _default) = git_branches(&repo);
-        assert_eq!(
-            branches.len(),
-            MAX_BRANCHES,
-            "must cap at MAX_BRANCHES, not return every branch"
-        );
-    }
-
-    /// A run can leave the repo checked out on a generated branch. The reported
-    /// default must still be a branch the dropdown actually offers.
-    #[test]
-    fn default_falls_back_when_head_is_generated() {
-        let tmp = tempfile::tempdir().unwrap();
-        let repo = repo_with_branches(
-            &tmp.path().join("r"),
-            "lopi/abc-attempt-2",
-            &["main", "lopi/abc-attempt-2"],
-        );
-        let (branches, default) = git_branches(&repo);
-
-        assert!(!branches.iter().any(|b| b.starts_with("lopi/")));
-        assert_eq!(
-            default, "main",
-            "a filtered HEAD falls back to main, not itself"
-        );
-        assert!(
-            branches.contains(&default),
-            "the default is always selectable"
-        );
-    }
-
-    #[test]
-    fn branch_names_merely_containing_the_prefix_are_kept() {
-        let tmp = tempfile::tempdir().unwrap();
-        let repo = repo_with_branches(
-            &tmp.path().join("r"),
-            "main",
-            &["main", "lopi-ui-refactor", "feat/claude-integration"],
-        );
-        let (branches, _) = git_branches(&repo);
-
-        assert!(
-            branches.contains(&"lopi-ui-refactor".to_string()),
-            "only the `lopi/` path prefix is generated, not `lopi-*`"
-        );
-        assert!(
-            branches.contains(&"feat/claude-integration".to_string()),
-            "`claude` mid-name is not a `claude/` prefix"
-        );
-    }
-}
+#[path = "repos_handlers_tests.rs"]
+mod tests;

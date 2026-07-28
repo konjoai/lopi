@@ -15,6 +15,12 @@
 # intentionally stays on the standard $3/$15 rate (the sustained price after
 # the window ends) rather than tracking a promotional rate that expires out
 # from under it.
+#
+# `as_of` is the date these rates were last verified current — the first of
+# the month referenced by the "2026-07 pricing" comment above, since the
+# prose doesn't commit to a specific day. See `STALENESS_THRESHOLD_DAYS` in
+# `pricing.rs` for how this date is used to degrade stale-looking estimates.
+as_of = "2026-07-01"
 
 [opus]
 input = 5.00

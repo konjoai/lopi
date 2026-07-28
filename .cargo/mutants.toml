@@ -84,4 +84,26 @@ exclude_re = [
     # terminal event loop; a "replace body with Ok(())" mutant here can only be
     # killed by a live-server-plus-real-terminal harness, not a unit test.
     "remote\\.rs.*: replace watch_remote -> ",
+    # Demo Mode Sprint — `lopi demo`'s OS-side-effect shells. The one branch
+    # with real logic (whether to try opening a browser tab) was extracted
+    # into the pure, unit-tested `should_open_browser` — see
+    # `should_open_browser_only_false_when_explicitly_suppressed`. These two
+    # functions only perform a `Command::new(...).status()` (OS-dependent,
+    # environment-dependent, and its result is deliberately discarded — a
+    # failed `open`/`xdg-open` must never fail the dashboard launch) or
+    # `println!` calls with no branching; a "replace body with ()" mutant on
+    # either can never be killed by a unit test, same class as
+    # `sail_commands::print_startup_banner` (never itself in a diff mutation
+    # testing has run against, but the same rationale would apply).
+    "demo_commands\\.rs.*: replace open_dashboard ",
+    "demo_commands\\.rs.*: replace print_startup_banner ",
+    # REPL ratatui rendering functions (`draw_repl` and its `draw_*` helpers,
+    # including `draw_header`) only build `ratatui::text::Line`/`Span` trees
+    # and render them into a `Frame` — no branching a unit test can assert
+    # against without a `ratatui::backend::TestBackend` harness, which this
+    # module has never had (no `mod tests` in `repl/draw.rs` before or after
+    # this sprint's cost-label wording change). A "replace body with ()"
+    # mutant here is the same permanent false-positive class as the IO
+    # shells above.
+    "repl/draw\\.rs.*: replace draw_header ",
 ]

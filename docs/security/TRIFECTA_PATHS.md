@@ -1,19 +1,23 @@
 ---
 decays: state
-verified-against: 6a50c45
+verified-against: 6b69e30
 verified-date: 2026-07-28
 ---
 
 # Trifecta paths — untrusted input → powerful tools → external comms
 
-Verified against: `6a50c45` · 2026-07-28 (re-verified after Finding #4's symbol-index sprint,
-no new drift; §5's "done" statuses still hold —
-§0's `ServeWebhooks` citation and §8 row 1/row 5's `submit_task` citations updated below after
-Finding #4 inserted `Index`/`Map`/`McpIndexServe` CLI commands and the `index_tools` module ahead
-of them in `src/cli.rs` and `src/mcp_commands/mod.rs`; `Sail`'s citation was unaffected since the
-insertion landed after it. Content at every updated citation is unchanged — only line numbers
-shifted. §0's other citations and §2's citations describe the pre-Sprint-S2 baseline at `3a8a2ff`
-by design and are left as historical record — see §5 for what actually shipped)
+Verified against: `6b69e30` · 2026-07-28 (merge of two independent re-verifications, neither of
+which touched the other's cited files — no new drift from combining them. Finding #4's
+symbol-index sprint (`6a50c45`): §0's `ServeWebhooks` citation and §8 row 1/row 5's
+`submit_task` citations updated after `Index`/`Map`/`McpIndexServe` CLI commands and the
+`index_tools` module were inserted ahead of them in `src/cli.rs` and `src/mcp_commands/mod.rs`;
+`Sail`'s citation was unaffected since the insertion landed after it; content at every updated
+citation is unchanged, only line numbers shifted. The demo-mode + measurement sprint (`d6e0f02`):
+no content drift — that sprint touched `lopi-core`, `lopi-memory`, `lopi-agent::pricing`, and
+`lopi-ui`'s repo-discovery/handlers, none of which change the webhook/WhatsApp trust boundaries
+this doc describes. §5's "done" statuses still hold. §0's other citations and §2's citations
+describe the pre-Sprint-S2 baseline at `3a8a2ff` by design and are left as historical record —
+see §5 for what actually shipped)
 
 Konjo Forward **F10**: lopi has the lethal trifecta by construction — untrusted content in
 (webhooks), powerful tools (code execution, git, PR creation), external comms out (Telegram,

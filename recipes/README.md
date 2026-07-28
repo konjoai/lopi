@@ -1,8 +1,18 @@
 ---
 decays: state
-verified-against: a93d776
-verified-date: 2026-07-27
+verified-against: ca8e980
+verified-date: 2026-07-28
 ---
+
+Verified against: `ca8e980` · 2026-07-28 (re-verified; this document carries no
+line-number citations to check for drift — it's a conceptual F-principle-to-`LoopConfig`
+mapping, not a status/citation ledger. Confirmed every field the table below names
+(`gate`, `until`, `verifier_required`, `verifier_model`, `verifier_effort`,
+`max_iterations`, `no_progress_limit`, `[budget]`, `vision_path`, `skills_enabled`,
+`rules_enabled`, `isolation`, `autonomy_level`, `promote_after`, `trust_ceiling`,
+`permission_allow`, `permission_deny`) still exists on `LoopConfig`
+(`crates/lopi-core/src/loop_config.rs`) with the same name. No drift found; neither
+Sprint G nor the demo/measurement sprint touched `loop_config.rs` or `recipes/`.)
 
 # lopi recipe library
 
