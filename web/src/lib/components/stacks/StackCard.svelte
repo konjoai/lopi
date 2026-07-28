@@ -43,6 +43,7 @@
     EVAL_SUITES,
     tokenizeGoalChips,
     claudeCommandAutocomplete,
+    loopAutocomplete,
     type CommandSuggestion,
     type CommandValueSuggestion
   } from '$lib/stores/stack';
@@ -155,6 +156,7 @@
     repoDismissed = false;
     cmdDismissed = false;
     claudeDismissed = false;
+    loopDismissed = false;
   }
 
   /** Commit the draft: mints a real card at the top of the stack and a fresh
@@ -411,6 +413,27 @@
     void tick().then(() => goalInput?.focus());
   }
 
+  // ── ×N loop-count autocomplete (`xN`/`XN`/`×N`) ──────────────────────────
+  // Same trailing-word shape as the other suggestion lists — offers ×1-×10
+  // as soon as an `x`/`X`/`×` trigger character appears, filtered by any
+  // digits typed so far. Picking one resolves the same way `x2 ` typed by
+  // hand does (see `ChipInput.svelte`'s trailing-space chip resolution) —
+  // splices in the full token plus a trailing space.
+  let loopActiveIndex = 0;
+  let loopDismissed = false;
+
+  $: loopMatches = loopAutocomplete(card.goal);
+  $: showLoopSuggest = isDraft && goalFocused && !loopDismissed && loopMatches.length > 0;
+  $: if (loopActiveIndex >= loopMatches.length) loopActiveIndex = Math.max(0, loopMatches.length - 1);
+
+  function selectLoop(token: string): void {
+    const m = /(^|\s)[×xX](\d*)$/.exec(card.goal);
+    if (!m) return;
+    writeCard({ goal: `${card.goal.slice(0, m.index)}${m[1]}${token} ` });
+    loopActiveIndex = 0;
+    void tick().then(() => goalInput?.focus());
+  }
+
   // ── grammar chips (always-visible entry points into the autocomplete
   //    above) ────────────────────────────────────────────────────────────
   // Each chip inserts the same trigger token a user would type by hand, then
@@ -552,6 +575,28 @@
         return;
       }
     }
+    if (showLoopSuggest) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        loopActiveIndex = (loopActiveIndex + 1) % loopMatches.length;
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        loopActiveIndex = (loopActiveIndex - 1 + loopMatches.length) % loopMatches.length;
+        return;
+      }
+      if (e.key === 'Tab' || e.key === 'Enter') {
+        e.preventDefault();
+        selectLoop(loopMatches[loopActiveIndex].token);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        loopDismissed = true;
+        return;
+      }
+    }
     if (e.key === 'Enter') {
       e.preventDefault();
       commit();
@@ -604,6 +649,10 @@
 
   function onOverflowKeydown(e: KeyboardEvent): void {
     if (overflowOpen && e.key === 'Escape') overflowOpen = false;
+    // A component may only have one `<svelte:window>`, so the ×N dropdown's
+    // Escape-to-close rides this same top-level listener rather than
+    // mounting a second one of its own.
+    if (iterMenuOpen && e.key === 'Escape') iterMenuOpen = false;
   }
 
   /** Persist the popover's toggle outcome onto the card — independent of
@@ -627,6 +676,25 @@
 
   function step(delta: number) {
     writeCard({ maxIterations: stepCardIterations(card.maxIterations, delta) });
+  }
+
+  // ×N direct-pick dropdown — the steppers are fine for nudging by one, but
+  // dialing "off" up to 10 took nine clicks with no other way in. Values
+  // 1-10 plus "off" cover the common range directly; anything higher still
+  // only reachable via the `+` stepper, which the dropdown doesn't replace.
+  const ITER_PICK_VALUES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+  let iterMenuOpen = false;
+
+  function pickIterations(n: number): void {
+    writeCard({ maxIterations: n });
+    iterMenuOpen = false;
+  }
+
+  function onIterMenuOutside(e: MouseEvent): void {
+    if (!iterMenuOpen) return;
+    const el = e.target as HTMLElement;
+    if (el.closest('.iterpill')) return;
+    iterMenuOpen = false;
   }
 
   function dupCard() {
@@ -705,6 +773,7 @@
 </script>
 
 <svelte:window on:keydown={onOverflowKeydown} />
+<svelte:body on:mousedown|capture={onIterMenuOutside} />
 
 <div
   class="pc {card.status}"
@@ -773,6 +842,13 @@
           items={claudeMatches.map((m) => ({ value: m.token, label: m.name, hint: m.hint, kind: 'claude' }))}
           activeIndex={claudeActiveIndex}
           onSelect={selectClaudeCommand}
+        />
+      {:else if showLoopSuggest}
+        <AutocompleteSuggest
+          anchor={goalInput}
+          items={loopMatches.map((m) => ({ value: m.token, label: m.label, hint: m.hint, kind: 'loop' }))}
+          activeIndex={loopActiveIndex}
+          onSelect={selectLoop}
         />
       {/if}
     </div>
@@ -880,19 +956,42 @@
           ? 'off · runs once, no repeat'
           : undefined}
     >
-      <span class="lb"
-        >{@html loopRunning ? ICONS.spinner : ICONS.loop}<span class="val"
-          >{loopRunning
-            ? `${card.iteration?.current}/${card.iteration?.total}`
-            : card.maxIterations === 0
-              ? 'off'
-              : '×' + cardIterationsLabel(card.maxIterations)}</span
-        ></span
-      >
-      <span class="steppers">
-        <button class="sb" on:click={() => step(-1)} title="fewer iterations">−</button>
-        <button class="sb" on:click={() => step(1)} title="more iterations">+</button>
+      <span class="iterbody">
+        <button
+          type="button"
+          class="lb"
+          disabled={loopRunning}
+          aria-haspopup="listbox"
+          aria-expanded={iterMenuOpen}
+          title="pick iteration count"
+          on:click={() => (iterMenuOpen = !iterMenuOpen)}
+          >{@html loopRunning ? ICONS.spinner : ICONS.loop}<span class="val"
+            >{loopRunning
+              ? `${card.iteration?.current}/${card.iteration?.total}`
+              : card.maxIterations === 0
+                ? 'off'
+                : '×' + cardIterationsLabel(card.maxIterations)}</span
+          ></button
+        >
+        <span class="steppers">
+          <button class="sb" on:click={() => step(-1)} title="fewer iterations">−</button>
+          <button class="sb" on:click={() => step(1)} title="more iterations">+</button>
+        </span>
       </span>
+      {#if iterMenuOpen}
+        <ul class="itermenu" role="listbox">
+          <li role="option" aria-selected={card.maxIterations === 0}>
+            <button type="button" class:sel={card.maxIterations === 0} on:click={() => pickIterations(0)}>off</button>
+          </li>
+          {#each ITER_PICK_VALUES as n (n)}
+            <li role="option" aria-selected={card.maxIterations === n}>
+              <button type="button" class:sel={card.maxIterations === n} on:click={() => pickIterations(n)}
+                >×{n}</button
+              >
+            </li>
+          {/each}
+        </ul>
+      {/if}
     </span>
     {#if showRunStats && liveAgent}
       <RunStatsPill
@@ -1319,34 +1418,37 @@
     border-color: rgba(0, 212, 255, 0.7);
     background: rgba(0, 212, 255, 0.08);
   }
-  /* ice, not violet — matches ChipInput.svelte's `chip-model` (the same
-     color the resolved `;model/…` chip renders in once picked) and
-     ConfigDrawer.svelte's model accent. Was violet here only by drift. */
+  /* violet — matches ChipInput.svelte's `chip-model` (the same color the
+     resolved `;model/…` chip renders in once picked) and ConfigDrawer.svelte's
+     model accent. */
   .gchip.model {
-    border: 1px solid rgba(0, 212, 255, 0.4);
-    color: var(--konjo-ice, #00d4ff);
+    border: 1px solid rgba(183, 155, 255, 0.4);
+    color: var(--stack-violet, #b79bff);
   }
   .gchip.model:hover {
-    border-color: rgba(0, 212, 255, 0.7);
-    background: rgba(0, 212, 255, 0.08);
+    border-color: rgba(183, 155, 255, 0.7);
+    background: rgba(183, 155, 255, 0.08);
   }
-  /* ember, not flame — matches ChipInput.svelte's `chip-effort` and
-     ConfigDrawer.svelte's effort accent; was flame here only by drift. */
+  /* sun, not ember — matches ChipInput.svelte's `chip-effort` and
+     ConfigDrawer.svelte's effort accent. */
   .gchip.effort {
-    border: 1px solid rgba(255, 69, 0, 0.4);
-    color: var(--konjo-ember, #ff4500);
-  }
-  .gchip.effort:hover {
-    border-color: rgba(255, 69, 0, 0.7);
-    background: rgba(255, 69, 0, 0.08);
-  }
-  .gchip.loop {
     border: 1px solid rgba(255, 204, 0, 0.4);
     color: var(--konjo-sun, #ffcc00);
   }
-  .gchip.loop:hover {
+  .gchip.effort:hover {
     border-color: rgba(255, 204, 0, 0.7);
     background: rgba(255, 204, 0, 0.08);
+  }
+  /* flame, not sun — matches ChipInput.svelte's `chip-loop` and the card's
+     own `.iterpill` (the "actual loop button"), so the ×N grammar chip and
+     the loop control it feeds read as the same color. */
+  .gchip.loop {
+    border: 1px solid rgba(255, 149, 0, 0.4);
+    color: var(--konjo-flame, #ff9500);
+  }
+  .gchip.loop:hover {
+    border-color: rgba(255, 149, 0, 0.7);
+    background: rgba(255, 149, 0, 0.08);
   }
   .gchip.claude {
     border: 1px solid rgba(255, 0, 102, 0.4);
@@ -1772,10 +1874,21 @@
     border: 1px solid rgba(255, 149, 0, 0.5);
     background: rgba(255, 69, 0, 0.09);
     border-radius: 6px;
-    overflow: hidden;
+    /* Position context for `.itermenu` below, and no clip of its own — the
+       pill's rounded-rect clip moved onto `.iterbody` (which is exactly
+       `.iterpill`'s own size), so the dropdown it hosts can escape past the
+       pill's edge instead of being cut off by it. */
+    position: relative;
     font-size: 11px;
     color: var(--konjo-flame);
     font-weight: 700;
+  }
+  .iterbody {
+    display: inline-flex;
+    align-items: center;
+    height: 100%;
+    border-radius: inherit;
+    overflow: hidden;
   }
   .iterpill .lb {
     display: inline-flex;
@@ -1783,6 +1896,15 @@
     gap: 5px;
     padding: 0 9px;
     height: 100%;
+    border: none;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .iterpill .lb:disabled {
+    cursor: default;
   }
   .iterpill .lb :global(svg) {
     width: 14px;
@@ -1814,6 +1936,46 @@
   }
   .iterpill .sb:hover {
     background: rgba(255, 149, 0, 0.2);
+  }
+  /* The ×N direct-pick dropdown — off + 1 through 10 in a small floating
+     list under the pill, same flame accent as the pill itself. */
+  .itermenu {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    z-index: 40;
+    margin: 0;
+    padding: 4px;
+    list-style: none;
+    min-width: 88px;
+    max-height: 220px;
+    overflow-y: auto;
+    background: var(--konjo-panel, #0a0d0f);
+    border: 1px solid rgba(255, 149, 0, 0.35);
+    border-radius: 9px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+  }
+  .itermenu button {
+    display: block;
+    width: 100%;
+    padding: 6px 10px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: rgba(245, 245, 245, 0.7);
+    font-family: var(--font-mono, monospace);
+    font-size: 11px;
+    font-weight: 700;
+    text-align: left;
+    cursor: pointer;
+  }
+  .itermenu button:hover {
+    background: rgba(255, 149, 0, 0.14);
+    color: var(--konjo-flame);
+  }
+  .itermenu button.sel {
+    color: var(--konjo-flame);
+    background: rgba(255, 149, 0, 0.1);
   }
   .iterpill.off {
     border-color: rgba(245, 245, 245, 0.22);

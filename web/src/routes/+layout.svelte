@@ -102,7 +102,7 @@
         type="button"
         on:click={() => window.dispatchEvent(new CustomEvent('lopi:add-pane'))}
         aria-label="Add pane"
-        class="press w-8 h-8 flex items-center justify-center rounded-md border border-konjo-flame/40 bg-konjo-flame/15 text-konjo-flame text-base leading-none hover:bg-konjo-flame/25 hover:border-konjo-flame/60 transition-colors flex-shrink-0"
+        class="press w-8 h-8 flex items-center justify-center rounded-md border-none bg-[linear-gradient(180deg,#ffb648,#ff9500)] text-[#231000] text-base leading-none font-bold hover:bg-[linear-gradient(180deg,#ffc670,#ffa11a)] transition-[filter] flex-shrink-0"
         title="Add pane"
       >
         +

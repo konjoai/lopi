@@ -1,18 +1,19 @@
 <!--
   StackOutput — live output attachment fused under the single running card.
   Genuinely wired to `stores/transcript.ts`'s per-`task_id` block feed (the
-  same store the Forge transcript uses), filtered by kind. Renders nothing
-  when the task has no blocks yet — per §3 of the UI-2 brief, a stream with
-  nothing real to show must stay empty, never fabricate a ticker.
+  same store the Forge transcript uses). Renders nothing when the task has no
+  blocks yet — per §3 of the UI-2 brief, a stream with nothing real to show
+  must stay empty, never fabricate a ticker.
 
   UI-3 consolidated the old four-section (thinking/actions/tools/output)
   accordion into a single chronological stream — one continuous transcript,
-  Claude-Desktop-style, rather than several independently-collapsible
-  sub-panels a user had to open one at a time. The kind filter chips still
-  narrow the same stream instead of toggling separate sections. The stream
-  itself is a fixed-but-expandable size: a compact default height while
-  running, and a "grow" toggle for reading back through a longer run without
-  losing the fixed-height default the rest of the time.
+  Claude-Desktop-style. UI-4 dropped the kind-filter tabs entirely (every log
+  shows, always) and the running-vs-idle "live output"/"logs" distinction —
+  the stream now always reads as plain "logs", flat text with no card
+  background, matching the prompt above it. The stream itself is a
+  fixed-but-expandable size: ~10 lines by default (expanded, not collapsed,
+  out of the gate) and a "grow" toggle for reading back through a longer run
+  without losing that fixed default the rest of the time.
 -->
 <script lang="ts">
   import { afterUpdate } from 'svelte';
@@ -20,16 +21,9 @@
   import { ICONS } from './icons';
 
   export let taskId: string;
-  /** Whether the attached card is still running. Drives the "live output"
-   *  (pulsing dot) vs "logs" (static) label — the panel itself stays
-   *  reachable either way; only the framing changes once nothing new is
-   *  actually streaming in. */
-  export let isRunning: boolean = true;
 
   type Kind = 'thinking' | 'actions' | 'tools' | 'output';
-  type Filter = 'all' | Kind;
 
-  const FILTERS: Filter[] = ['all', 'thinking', 'actions', 'tools', 'output'];
   const KIND_ICON: Record<Kind, string> = {
     thinking: ICONS.bulb,
     actions: ICONS.zap,
@@ -37,14 +31,15 @@
     output: ICONS.list
   };
 
-  let expanded = false;
+  // Expanded by default (UI-4) — a collapsed one-line strip is still reachable
+  // via the collapse button, it just isn't the initial state anymore.
+  let expanded = true;
   // The stream's "fixed but expandable" size toggle — independent of
   // `expanded` (which switches between the one-line strip and the full
   // stream at all): `big` just grows the already-open stream's own
   // max-height, so a long run stays readable without abandoning the fixed
-  // default the rest of the time.
+  // ~10-line default the rest of the time.
   let big = false;
-  let filter: Filter = 'all';
   let streamEl: HTMLDivElement | undefined;
 
   function categorize(b: TranscriptBlock): Kind {
@@ -72,18 +67,7 @@
     }
   }
 
-  /** A status block's severity tier drives its line color (see `.tier-*`
-   *  below); every other kind has no tier of its own, so its line keeps the
-   *  section's plain color. Without this a `bad` verifier error and a
-   *  `good` score pass rendered in the exact same dim gray — the tier
-   *  `transcript.ts` computes was reaching this component and being
-   *  silently discarded. */
-  function tierOf(b: TranscriptBlock): string | null {
-    return b.kind === 'status' ? b.tier : null;
-  }
-
   $: blocks = $transcripts.get(taskId) ?? [];
-  $: filtered = filter === 'all' ? blocks : blocks.filter((b) => categorize(b) === filter);
   $: latest = blocks[blocks.length - 1];
   $: latestKind = latest ? categorize(latest) : null;
 
@@ -99,23 +83,16 @@
   <div class="output">
     {#if !expanded}
       <div class="ostrip">
-        <span class="live" class:idle={!isRunning}><i></i></span>
+        <span class="live"><i></i></span>
         {#if latestKind}<span class="ok">{latestKind}</span>{/if}
-        <span class="ol" class:tier-good={latest && tierOf(latest) === 'good'} class:tier-warn={latest && tierOf(latest) === 'warn'} class:tier-bad={latest && tierOf(latest) === 'bad'}
-          >{latest ? textOf(latest) : ''}</span
-        >
+        <span class="ol">{latest ? textOf(latest) : ''}</span>
         <button type="button" class="omini oexpbtn" on:click={() => (expanded = true)} title="expand">
           {@html ICONS.expand}
         </button>
       </div>
     {:else}
       <div class="obar">
-        <span class="live" class:idle={!isRunning}><i></i>{isRunning ? 'live output' : 'logs'}</span>
-        <div class="filters">
-          {#each FILTERS as f (f)}
-            <button type="button" class="fchip" class:on={filter === f} on:click={() => (filter = f)}>{f}</button>
-          {/each}
-        </div>
+        <span class="live"><i></i>logs</span>
         <button
           type="button"
           class="omini osizebtn"
@@ -130,14 +107,9 @@
         </button>
       </div>
       <div class="stream" class:big bind:this={streamEl}>
-        {#each filtered as b (b.id)}
+        {#each blocks as b (b.id)}
           {@const kind = categorize(b)}
-          <div
-            class="sline {kind}"
-            class:tier-good={tierOf(b) === 'good'}
-            class:tier-warn={tierOf(b) === 'warn'}
-            class:tier-bad={tierOf(b) === 'bad'}
-          >
+          <div class="sline {kind}">
             <span class="sicon">{@html KIND_ICON[kind]}</span>
             <span class="stext">{textOf(b)}</span>
           </div>
@@ -148,16 +120,11 @@
 {/if}
 
 <style>
-  /* No border/animation here — `.loopwrap.hasout` in StackPane.svelte owns
-     the entire outline (and, while running, its single animation) for a
-     card with output attached; this panel is always borderless. Radius
-     stays for background-clipping (the wrapper's own border-radius clips
-     the outline, but each child's background still needs its own matching
-     corners underneath it). */
+  /* No border/animation/background here — `.loopwrap.hasout` in
+     StackPane.svelte owns the card's own outline, and UI-4 dropped this
+     panel's own card treatment entirely: flat text, same as the prompt
+     above it, no boxed-in "card" look of its own. */
   .output {
-    background: var(--stack-outbg, #0c1417);
-    border-radius: 0 0 9px 9px;
-    overflow: hidden;
     font-family: var(--font-mono, monospace);
   }
   .ostrip {
@@ -173,40 +140,20 @@
     display: inline-flex;
     flex: 0 0 auto;
   }
+  /* Always a static, greyed-out dot (UI-4) — no pulsing, no blue "live"
+     glow, and no running-vs-idle distinction. The stream is just logs. */
   .live i {
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: var(--konjo-ice);
-    box-shadow: 0 0 6px var(--konjo-ice);
-    animation: pulse 1.4s infinite;
-  }
-  /* Once the card isn't running anymore, this is a static log, not a live
-     stream — the dot stops pulsing and dims instead of implying new
-     content could still arrive. */
-  .live.idle i {
     background: rgba(245, 245, 245, 0.28);
-    box-shadow: none;
-    animation: none;
-  }
-  .obar .live.idle {
-    color: rgba(245, 245, 245, 0.46);
-  }
-  @keyframes pulse {
-    0%,
-    100% {
-      opacity: 1;
-    }
-    50% {
-      opacity: 0.4;
-    }
   }
   .ok {
     color: var(--stack-violet, #b79bff);
     flex: 0 0 auto;
   }
   .ol {
-    color: rgba(245, 245, 245, 0.46);
+    color: rgba(245, 245, 245, 0.72);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -239,6 +186,7 @@
     background: rgba(0, 212, 255, 0.1);
   }
   .omini.osizebtn {
+    margin-left: auto;
     color: var(--stack-violet, #b79bff);
     border-color: rgba(183, 155, 255, 0.35);
   }
@@ -258,7 +206,6 @@
     align-items: center;
     gap: 8px;
     padding: 7px 12px;
-    border-bottom: 1px solid rgba(0, 212, 255, 0.1);
     font-size: 9px;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -267,35 +214,14 @@
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    color: var(--konjo-ice);
-  }
-  .filters {
-    margin-left: auto;
-    display: flex;
-    gap: 3px;
-  }
-  .fchip {
-    padding: 2px 7px;
-    border-radius: 3px;
-    color: rgba(245, 245, 245, 0.28);
-    cursor: pointer;
-    border: 1px solid transparent;
-    text-transform: uppercase;
-    background: transparent;
-    font-family: var(--font-mono, monospace);
-    font-size: 9px;
-  }
-  .fchip.on {
-    color: var(--konjo-ice);
-    border-color: rgba(0, 212, 255, 0.3);
-    background: rgba(0, 212, 255, 0.06);
+    color: rgba(245, 245, 245, 0.46);
   }
   /* The consolidated stream (UI-3) — one chronological feed, fixed height by
-     default and scrolled to bottom as blocks arrive, growing only when the
-     `big` toggle is on. This is the ONLY scrollbar for the whole live-output
-     section; nothing nested inside it may grow its own. */
+     default (~10 lines, UI-4) and scrolled to bottom as blocks arrive,
+     growing only when the `big` toggle is on. This is the ONLY scrollbar for
+     the whole output section; nothing nested inside it may grow its own. */
   .stream {
-    max-height: 300px;
+    max-height: 200px;
     overflow-y: auto;
     padding: 10px 12px;
     scroll-behavior: smooth;
@@ -321,58 +247,27 @@
     width: 12px;
     height: 12px;
   }
+  /* One uniform, easy-to-read text color for every log line regardless of
+     kind or severity (UI-4) — only the leading icon still carries a
+     per-kind color; per-kind/per-tier text colors read as noisy/distracting
+     once there are more than a couple lines on screen. */
   .stext {
     flex: 1;
     min-width: 0;
     white-space: pre-wrap;
     word-break: break-word;
-  }
-  .sline.thinking {
-    color: rgba(183, 155, 255, 0.72);
-    font-style: italic;
+    color: rgba(245, 245, 245, 0.82);
   }
   .sline.thinking .sicon {
     color: var(--stack-violet, #b79bff);
   }
-  .sline.actions {
-    color: rgba(245, 245, 245, 0.46);
-  }
   .sline.actions .sicon {
     color: var(--konjo-sun);
-  }
-  .sline.tools {
-    color: rgba(245, 245, 245, 0.46);
   }
   .sline.tools .sicon {
     color: var(--konjo-ice);
   }
-  .sline.output {
-    color: rgba(0, 255, 157, 0.75);
-  }
   .sline.output .sicon {
     color: var(--konjo-jade);
-  }
-  /* Severity tier wins over the kind's plain color — a `bad` verifier
-     error or `good` score pass must read distinctly from routine `info`
-     status, matching StatusChip.svelte's jade/flame/rose language. */
-  .sline.tier-good,
-  .ol.tier-good {
-    color: var(--konjo-jade);
-  }
-  .sline.tier-warn,
-  .ol.tier-warn {
-    color: var(--konjo-flame);
-  }
-  .sline.tier-bad,
-  .ol.tier-bad {
-    color: var(--konjo-rose);
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .live i {
-      animation: none;
-    }
-    .stream {
-      scroll-behavior: auto;
-    }
   }
 </style>
