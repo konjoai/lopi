@@ -12,8 +12,10 @@ mod postmortem_cli;
 mod postmortem_runner;
 mod progress;
 mod reflection;
+mod retry_guard;
 mod run_loop;
 mod schema_gate;
+mod secrets_gate;
 mod seed;
 mod speculative;
 mod stability_runner;
@@ -103,6 +105,13 @@ pub struct AgentRunner {
     /// Sprint H — stash the most recent attempt failure context so the
     /// next attempt's prompt can include it. Cleared on success.
     pub(super) last_error: Option<String>,
+    /// Verification gate — duplicate-retry-prompt guard (Finding #1;
+    /// `retry_guard.rs`). What `last_error` held at the top of the *previous*
+    /// attempt, so this attempt can detect "the evidence handed to me is
+    /// byte-identical to what the previous attempt got" and warn instead of
+    /// silently burning the retry. `None` until the first attempt with
+    /// evidence completes.
+    pub(super) prev_loop_top_error: Option<String>,
     /// Phase 16.4 — self-prompting strategy: how a failed attempt is reframed
     /// into the next attempt's self-prompt. [`Direct`](SelfPromptStrategy::Direct)
     /// reproduces the legacy raw-failure injection; richer strategies add a
@@ -220,6 +229,7 @@ impl AgentRunner {
             consensus_plan_hint: None,
             adaptive_retry: false,
             last_error: None,
+            prev_loop_top_error: None,
             self_prompt: SelfPromptStrategy::default(),
             escalate_strategy: false,
             task_budget: None,

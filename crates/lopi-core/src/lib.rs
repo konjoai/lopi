@@ -110,7 +110,7 @@ pub use loop_config::{IsolationMode, LoopConfig};
 pub use models::{fallback_models, ModelInfo};
 pub use permission_mode::{effective_permission_mode, PermissionMode, PermissionModeError};
 pub use provenance::Provenance;
-pub use redact::redact_secrets;
+pub use redact::{redact_secrets, scan_for_secrets};
 pub use report::{ReportChannel, ReportChannelError};
 pub use schema::{
     schema_violations_inc, schema_violations_snapshot, validate as validate_schema,

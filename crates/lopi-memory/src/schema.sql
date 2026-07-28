@@ -256,6 +256,25 @@ CREATE TABLE IF NOT EXISTS eval_outcomes (
 );
 CREATE INDEX IF NOT EXISTS idx_eval_outcomes_task ON eval_outcomes(task_id, attempt);
 
+-- Verification gate (Finding #1) — the dead-letter ledger. A task that
+-- exhausted its retry budget without meeting its goal (StopReason::
+-- MaxIterations / NoProgress / Budget, never GoalMet — see
+-- lopi_core::StopReason::parse_from_failure_reason) gets a durable, queryable
+-- row here instead of silently becoming an unremarkable TaskStatus::Failed.
+-- One row per exhausted task. `detail` is the full failure-reason string the
+-- row was parsed from, kept verbatim for operator follow-up.
+CREATE TABLE IF NOT EXISTS dead_letters (
+    id          TEXT PRIMARY KEY,
+    task_id     TEXT NOT NULL,
+    goal        TEXT NOT NULL,
+    stop_reason TEXT NOT NULL,
+    attempts    INTEGER NOT NULL,
+    detail      TEXT NOT NULL,
+    ts          TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_dead_letters_task ON dead_letters(task_id);
+CREATE INDEX IF NOT EXISTS idx_dead_letters_ts ON dead_letters(ts);
+
 -- macOS-UI Phase 0 — Durable cron schedules. The static `[[schedules]]`
 -- list in `lopi.toml` is loaded once at boot and cannot be edited at
 -- runtime. This table backs the OpenClaw-style cron UI: schedules are

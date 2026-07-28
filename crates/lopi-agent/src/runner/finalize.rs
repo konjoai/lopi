@@ -16,6 +16,7 @@
 //! IO-bearing methods thin.
 
 use super::AgentRunner;
+use crate::verifier::get_repo_diff;
 use lopi_core::loop_config::AutonomyLevel;
 use lopi_core::{AgentEvent, Deliverable, LoopConfig, Score, TaskStatus};
 use lopi_git::GitManager;
@@ -95,6 +96,17 @@ impl AgentRunner {
         // non-panicking fallback for a runner assembled directly (e.g. a
         // test fixture) without going through that resolution step.
         let level = self.task.autonomy_level.unwrap_or_default();
+
+        // Verification gate, check 0 — secrets scan on the diff (Finding
+        // #1's fixed check order: a deterministic, no-model-call check
+        // always runs before the model-driven review). A leaked credential
+        // must never reach the verifier's prompt, let alone a commit — so
+        // this runs first, ahead of the acceptance/verifier gate below.
+        let diff = get_repo_diff(&self.repo_path).await;
+        if self.secrets_gate(&diff, git, attempt).await {
+            return None;
+        }
+
         // A1 — score the run against its explicit acceptance goal (if any)
         // *before* the autonomy-level verifier gate. Fail-closed: a non-passing
         // outcome rejects the finalize. Additive — a task with no acceptance is

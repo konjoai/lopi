@@ -270,6 +270,30 @@ pub enum AgentEvent {
         /// Rendered plain-text summary.
         summary: String,
     },
+    /// Verification gate (Finding #1) — a task exhausted its retry budget
+    /// without ever meeting its goal: [`crate::StopReason::MaxIterations`],
+    /// [`NoProgress`](crate::StopReason::NoProgress), or
+    /// [`Budget`](crate::StopReason::Budget) tripped instead of
+    /// [`GoalMet`](crate::StopReason::GoalMet). Emitted once, at the same
+    /// choke point as [`TaskCompleted`](Self::TaskCompleted)
+    /// (`AgentPool::run_one`), alongside the durable `dead_letters` row —
+    /// never a silent `TaskStatus::Failed` with no queryable trace. A run
+    /// that fails for any *other* reason (cancellation, a non-retryable API
+    /// error, a dry run) does not emit this — see
+    /// [`crate::StopReason::parse_from_failure_reason`].
+    TaskDeadLettered {
+        /// The exhausted task.
+        task_id: TaskId,
+        /// Which cutoff fired — the stable [`crate::StopReason::as_str`] tag.
+        stop_reason: String,
+        /// Total attempts made before giving up.
+        attempts: u8,
+        /// The task's goal, for a notification/log line that doesn't need a
+        /// second lookup to be meaningful.
+        goal: String,
+        /// The full `TaskStatus::Failed` reason string this was parsed from.
+        detail: String,
+    },
 }
 
 /// Severity level attached to [`AgentEvent::LogLine`] events.

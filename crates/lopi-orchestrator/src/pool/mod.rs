@@ -7,6 +7,7 @@
 //! - `run_loop` — `submit`, the dispatch `run` loop, and single-task execution.
 //! - `worktree` — per-task `git worktree` isolation setup/teardown.
 
+mod dead_letter;
 mod registry;
 mod run_loop;
 mod run_loop_builder;
