@@ -36,11 +36,22 @@ pub async fn reindex(store: &IndexStore, repo_id: &str, repo_root: &Path) -> Res
     let mut touched = TouchTracker::default();
     let mut delta = match (grammar_current, stored_commit) {
         (true, Some(stored_commit)) => {
-            incremental_reindex(store, repo_id, repo_root, &stored_commit, current_commit.as_deref(), &mut touched).await?
+            incremental_reindex(
+                store,
+                repo_id,
+                repo_root,
+                &stored_commit,
+                current_commit.as_deref(),
+                &mut touched,
+            )
+            .await?
         }
         _ => full_reindex(store, repo_id, repo_root, &mut touched).await?,
     };
-    tracing::debug!(elapsed_ms = t0.elapsed().as_secs_f64() * 1000.0, "reindex: file pass done");
+    tracing::debug!(
+        elapsed_ms = t0.elapsed().as_secs_f64() * 1000.0,
+        "reindex: file pass done"
+    );
 
     // Scoped resolution (not the full-repo `resolve_refs`): only refs from
     // files this pass touched, or previously-unresolved refs whose target
@@ -110,7 +121,8 @@ async fn incremental_reindex(
 
     if let Some(current_commit) = current_commit {
         if current_commit != stored_commit {
-            for (status, rel_path) in git_diff_name_status(repo_root, stored_commit, current_commit) {
+            for (status, rel_path) in git_diff_name_status(repo_root, stored_commit, current_commit)
+            {
                 candidates.insert(rel_path.clone());
                 if status == 'D' {
                     if let Some(path_str) = rel_path.to_str() {
@@ -158,7 +170,15 @@ async fn incremental_reindex(
                 continue; // already handled above
             }
         }
-        reindex_one_file(store, repo_id, repo_root, &rel_path, &mut delta, touched_out).await?;
+        reindex_one_file(
+            store,
+            repo_id,
+            repo_root,
+            &rel_path,
+            &mut delta,
+            touched_out,
+        )
+        .await?;
     }
     Ok(delta)
 }
@@ -210,7 +230,9 @@ async fn reindex_one_file(
         .with_context(|| format!("inserting refs for {path_str}"))?;
 
     touched.paths.push(path_str.to_string());
-    touched.new_names.extend(parsed.symbols.iter().map(|s| s.name.clone()));
+    touched
+        .new_names
+        .extend(parsed.symbols.iter().map(|s| s.name.clone()));
 
     delta.files_indexed += 1;
     delta.symbols_removed += removed;
@@ -218,7 +240,6 @@ async fn reindex_one_file(
     delta.refs_added += refs_added;
     Ok(())
 }
-
 
 fn git_diff_status_is_delete(
     repo_root: &Path,
@@ -290,7 +311,9 @@ fn git_head(repo_root: &Path) -> Option<String> {
     if !output.status.success() {
         return None;
     }
-    String::from_utf8(output.stdout).ok().map(|s| s.trim().to_string())
+    String::from_utf8(output.stdout)
+        .ok()
+        .map(|s| s.trim().to_string())
 }
 
 /// `(status_char, repo-relative-path)` pairs from `git diff --name-status`.

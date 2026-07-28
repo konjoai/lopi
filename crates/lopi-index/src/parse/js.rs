@@ -14,9 +14,16 @@ use anyhow::{Context, Result};
 pub fn extract(source: &str) -> Result<ParsedFile> {
     let mut parser = tree_sitter::Parser::new();
     let lang: tree_sitter::Language = tree_sitter_javascript::LANGUAGE.into();
-    parser.set_language(&lang).context("loading javascript grammar")?;
+    parser
+        .set_language(&lang)
+        .context("loading javascript grammar")?;
     let tree = parse_tree(&mut parser, source)?;
-    Ok(walk_tree(tree.root_node(), source.as_bytes(), Language::JavaScript, false))
+    Ok(walk_tree(
+        tree.root_node(),
+        source.as_bytes(),
+        Language::JavaScript,
+        false,
+    ))
 }
 
 #[cfg(test)]
@@ -29,7 +36,10 @@ mod tests {
     fn extracts_function_and_class() {
         let src = "function greet(name) {\n  return `hi ${name}`;\n}\n\nclass Widget {\n  render() {}\n}\n";
         let out = extract(src).unwrap();
-        assert!(out.symbols.iter().any(|s| s.name == "greet" && s.kind == SymbolKind::Fn));
+        assert!(out
+            .symbols
+            .iter()
+            .any(|s| s.name == "greet" && s.kind == SymbolKind::Fn));
         let render = out.symbols.iter().find(|s| s.name == "render").unwrap();
         assert_eq!(render.kind, SymbolKind::Method);
         assert_eq!(render.qualified_name, "Widget.render");

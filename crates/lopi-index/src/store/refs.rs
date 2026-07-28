@@ -50,7 +50,9 @@ impl super::IndexStore {
     ) -> Result<usize> {
         let mut tx = self.write_pool().begin().await?;
         for r in refs {
-            let from_id = r.from_local_id.and_then(|lid| local_to_db.get(&lid).copied());
+            let from_id = r
+                .from_local_id
+                .and_then(|lid| local_to_db.get(&lid).copied());
             sqlx::query(
                 "INSERT INTO refs (repo_id, from_symbol_id, to_name, to_symbol_id, path, line)
                  VALUES (?, ?, ?, NULL, ?, ?)",
@@ -117,8 +119,12 @@ impl super::IndexStore {
         if touched_paths.is_empty() && new_symbol_names.is_empty() {
             return Ok(0);
         }
-        let path_ph = std::iter::repeat_n("?", touched_paths.len()).collect::<Vec<_>>().join(", ");
-        let name_ph = std::iter::repeat_n("?", new_symbol_names.len()).collect::<Vec<_>>().join(", ");
+        let path_ph = std::iter::repeat_n("?", touched_paths.len())
+            .collect::<Vec<_>>()
+            .join(", ");
+        let name_ph = std::iter::repeat_n("?", new_symbol_names.len())
+            .collect::<Vec<_>>()
+            .join(", ");
         let mut clauses = Vec::new();
         if !touched_paths.is_empty() {
             clauses.push(format!("path IN ({path_ph})"));
@@ -160,7 +166,8 @@ impl super::IndexStore {
         let placeholders = std::iter::repeat_n("?", distinct_names.len())
             .collect::<Vec<_>>()
             .join(", ");
-        let sql = format!("SELECT name, id FROM symbols WHERE repo_id = ? AND name IN ({placeholders})");
+        let sql =
+            format!("SELECT name, id FROM symbols WHERE repo_id = ? AND name IN ({placeholders})");
         let mut q = sqlx::query_as::<_, (String, i64)>(&sql).bind(repo_id);
         for name in &distinct_names {
             q = q.bind(*name);

@@ -32,7 +32,13 @@ pub fn extract(source: &str) -> Result<ParsedFile> {
     Ok(out)
 }
 
-fn walk(node: Node, src: &[u8], enclosing_fn: Option<usize>, out: &mut ParsedFile, next_id: &mut usize) {
+fn walk(
+    node: Node,
+    src: &[u8],
+    enclosing_fn: Option<usize>,
+    out: &mut ParsedFile,
+    next_id: &mut usize,
+) {
     if node.kind() == "call_expression" {
         super::push_call_ref(node, src, enclosing_fn, out);
     }
@@ -40,7 +46,14 @@ fn walk(node: Node, src: &[u8], enclosing_fn: Option<usize>, out: &mut ParsedFil
     let mut child_enclosing = enclosing_fn;
     match node.kind() {
         "function_declaration" => {
-            if let Some(local_id) = push_named(node, src, SymbolKind::Fn, node.utf8_text(src).ok(), out, next_id) {
+            if let Some(local_id) = push_named(
+                node,
+                src,
+                SymbolKind::Fn,
+                node.utf8_text(src).ok(),
+                out,
+                next_id,
+            ) {
                 child_enclosing = Some(local_id);
             }
         }
@@ -70,7 +83,15 @@ fn push_named(
     next_id: &mut usize,
 ) -> Option<usize> {
     let name = node.child_by_field_name("name")?.utf8_text(src).ok()?;
-    Some(push_symbol(node, src, kind, None, name.to_string(), out, next_id))
+    Some(push_symbol(
+        node,
+        src,
+        kind,
+        None,
+        name.to_string(),
+        out,
+        next_id,
+    ))
 }
 
 fn push_method(node: Node, src: &[u8], out: &mut ParsedFile, next_id: &mut usize) -> Option<usize> {
@@ -81,14 +102,25 @@ fn push_method(node: Node, src: &[u8], out: &mut ParsedFile, next_id: &mut usize
     let qualified = receiver_type
         .as_ref()
         .map_or_else(|| name.to_string(), |t| format!("{t}.{name}"));
-    Some(push_symbol(node, src, SymbolKind::Method, Some(qualified), name.to_string(), out, next_id))
+    Some(push_symbol(
+        node,
+        src,
+        SymbolKind::Method,
+        Some(qualified),
+        name.to_string(),
+        out,
+        next_id,
+    ))
 }
 
 /// A `type_declaration` can carry multiple `type_spec` children
 /// (`type ( A struct{}; B int )`); each becomes its own symbol.
 fn push_type_specs(node: Node, src: &[u8], out: &mut ParsedFile, next_id: &mut usize) {
     let mut cursor = node.walk();
-    for spec in node.named_children(&mut cursor).filter(|c| c.kind() == "type_spec") {
+    for spec in node
+        .named_children(&mut cursor)
+        .filter(|c| c.kind() == "type_spec")
+    {
         let Some(name_node) = spec.child_by_field_name("name") else {
             continue;
         };
@@ -109,14 +141,25 @@ fn push_type_specs(node: Node, src: &[u8], out: &mut ParsedFile, next_id: &mut u
 /// A `const_declaration` can carry multiple `const_spec` children.
 fn push_const_specs(node: Node, src: &[u8], out: &mut ParsedFile, next_id: &mut usize) {
     let mut cursor = node.walk();
-    for spec in node.named_children(&mut cursor).filter(|c| c.kind() == "const_spec") {
+    for spec in node
+        .named_children(&mut cursor)
+        .filter(|c| c.kind() == "const_spec")
+    {
         let Some(name_node) = spec.child_by_field_name("name") else {
             continue;
         };
         let Ok(name) = name_node.utf8_text(src) else {
             continue;
         };
-        push_symbol(spec, src, SymbolKind::Const, None, name.to_string(), out, next_id);
+        push_symbol(
+            spec,
+            src,
+            SymbolKind::Const,
+            None,
+            name.to_string(),
+            out,
+            next_id,
+        );
     }
 }
 
@@ -163,7 +206,6 @@ fn find_type_identifier(node: Node, src: &[u8]) -> Option<String> {
     found
 }
 
-
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used)]
@@ -191,8 +233,14 @@ mod tests {
     fn struct_interface_and_const_extracted() {
         let src = "package main\n\ntype Shape interface{ Area() int }\n\nconst Max = 1\n\nfunc lower() {}\n";
         let out = extract(src).unwrap();
-        assert!(out.symbols.iter().any(|s| s.kind == SymbolKind::Trait && s.name == "Shape"));
-        assert!(out.symbols.iter().any(|s| s.kind == SymbolKind::Const && s.name == "Max"));
+        assert!(out
+            .symbols
+            .iter()
+            .any(|s| s.kind == SymbolKind::Trait && s.name == "Shape"));
+        assert!(out
+            .symbols
+            .iter()
+            .any(|s| s.kind == SymbolKind::Const && s.name == "Max"));
         let lower = out.symbols.iter().find(|s| s.name == "lower").unwrap();
         assert!(!lower.is_public, "lowercase Go identifiers are unexported");
     }

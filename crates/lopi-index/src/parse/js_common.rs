@@ -11,12 +11,7 @@ const COMMENT_KINDS: &[&str] = &["comment"];
 const DOC_PREFIXES: &[&str] = &["/**", "/*", "//"];
 
 /// Run the shared TS/JS walk over an already-parsed tree.
-pub(super) fn walk_tree(
-    root: Node,
-    src: &[u8],
-    lang: Language,
-    ts_extras: bool,
-) -> ParsedFile {
+pub(super) fn walk_tree(root: Node, src: &[u8], lang: Language, ts_extras: bool) -> ParsedFile {
     let mut out = ParsedFile::default();
     let mut next_id = 0usize;
     let ctx = Ctx {
@@ -51,15 +46,18 @@ fn walk(
     }
 
     let child_ctx = match node.kind() {
-        "function_declaration" => {
-            named(node, src, lang, SymbolKind::Fn, false, ctx, out, next_id)
-        }
-        "class_declaration" => {
-            named(node, src, lang, SymbolKind::Class, true, ctx, out, next_id)
-        }
-        "method_definition" if ctx.in_class => {
-            named(node, src, lang, SymbolKind::Method, false, ctx, out, next_id)
-        }
+        "function_declaration" => named(node, src, lang, SymbolKind::Fn, false, ctx, out, next_id),
+        "class_declaration" => named(node, src, lang, SymbolKind::Class, true, ctx, out, next_id),
+        "method_definition" if ctx.in_class => named(
+            node,
+            src,
+            lang,
+            SymbolKind::Method,
+            false,
+            ctx,
+            out,
+            next_id,
+        ),
         "interface_declaration" if ts_extras => {
             named(node, src, lang, SymbolKind::Trait, true, ctx, out, next_id)
         }
@@ -120,9 +118,7 @@ fn named(
 /// `const`/`let` declarators at any scope — only `const` becomes a symbol
 /// (the brief's kind set has no binding-mutability distinction beyond that).
 fn const_declarators(lexical_decl: Node) -> Vec<Node> {
-    let is_const = lexical_decl
-        .child(0)
-        .is_some_and(|kw| kw.kind() == "const");
+    let is_const = lexical_decl.child(0).is_some_and(|kw| kw.kind() == "const");
     if !is_const {
         return Vec::new();
     }
@@ -147,7 +143,16 @@ fn push_const(
     let Ok(name) = name_node.utf8_text(src) else {
         return;
     };
-    push_symbol(declarator, src, lang, ctx, SymbolKind::Const, name, out, next_id);
+    push_symbol(
+        declarator,
+        src,
+        lang,
+        ctx,
+        SymbolKind::Const,
+        name,
+        out,
+        next_id,
+    );
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -195,4 +200,3 @@ fn is_exported(node: Node) -> bool {
         }
     }
 }
-

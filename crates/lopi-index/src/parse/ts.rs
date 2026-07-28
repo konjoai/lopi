@@ -17,9 +17,16 @@ use anyhow::{Context, Result};
 pub fn extract(source: &str) -> Result<ParsedFile> {
     let mut parser = tree_sitter::Parser::new();
     let lang: tree_sitter::Language = tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into();
-    parser.set_language(&lang).context("loading typescript grammar")?;
+    parser
+        .set_language(&lang)
+        .context("loading typescript grammar")?;
     let tree = parse_tree(&mut parser, source)?;
-    Ok(walk_tree(tree.root_node(), source.as_bytes(), Language::TypeScript, true))
+    Ok(walk_tree(
+        tree.root_node(),
+        source.as_bytes(),
+        Language::TypeScript,
+        true,
+    ))
 }
 
 #[cfg(test)]
@@ -45,8 +52,14 @@ mod tests {
     fn interface_and_type_alias_extracted() {
         let src = "interface Shape { area(): number; }\ntype Id = string;\n";
         let out = extract(src).unwrap();
-        assert!(out.symbols.iter().any(|s| s.kind == SymbolKind::Trait && s.name == "Shape"));
-        assert!(out.symbols.iter().any(|s| s.kind == SymbolKind::Type && s.name == "Id"));
+        assert!(out
+            .symbols
+            .iter()
+            .any(|s| s.kind == SymbolKind::Trait && s.name == "Shape"));
+        assert!(out
+            .symbols
+            .iter()
+            .any(|s| s.kind == SymbolKind::Type && s.name == "Id"));
     }
 
     #[test]

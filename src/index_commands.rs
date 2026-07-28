@@ -60,7 +60,11 @@ pub async fn run_map(repo: PathBuf) -> Result<()> {
     let lint_cmd = profile
         .lint_command
         .unwrap_or_else(|| "cargo clippy -- -D warnings".to_string());
-    let cmds = [("build", build_cmd.as_str()), ("test", test_cmd.as_str()), ("lint", lint_cmd.as_str())];
+    let cmds = [
+        ("build", build_cmd.as_str()),
+        ("test", test_cmd.as_str()),
+        ("lint", lint_cmd.as_str()),
+    ];
 
     let map = RepoMap::build(
         &store,
@@ -86,4 +90,61 @@ async fn open_store(repo: &Path) -> Result<IndexStore> {
 /// gitignored, never shared), only stable across repeated calls on this one.
 fn repo_id_for(repo: &Path) -> String {
     repo.to_string_lossy().to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+    use super::*;
+    use std::process::Command;
+
+    fn init_git_repo(dir: &Path) {
+        let run = |args: &[&str]| {
+            Command::new("git")
+                .args(args)
+                .current_dir(dir)
+                .status()
+                .unwrap();
+        };
+        run(&["init", "-q"]);
+        run(&["config", "user.email", "t@example.com"]);
+        run(&["config", "user.name", "t"]);
+        std::fs::write(dir.join("lib.rs"), "pub fn run() {}\n").unwrap();
+        run(&["add", "-A"]);
+        run(&["commit", "-q", "-m", "init"]);
+    }
+
+    #[test]
+    fn repo_id_for_is_the_canonical_path_string() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let canonical = dir.path().canonicalize().unwrap();
+        assert_eq!(repo_id_for(&canonical), canonical.to_string_lossy());
+        assert_ne!(repo_id_for(&canonical), "");
+        assert_ne!(repo_id_for(&canonical), "xyzzy");
+    }
+
+    #[tokio::test]
+    async fn run_index_creates_the_db_and_indexes_the_fixture_symbol() {
+        let dir = tempfile::TempDir::new().unwrap();
+        init_git_repo(dir.path());
+
+        run_index(dir.path().to_path_buf()).await.unwrap();
+
+        let repo = dir.path().canonicalize().unwrap();
+        assert!(repo.join(INDEX_DB_REL_PATH).exists());
+        let store = open_store(&repo).await.unwrap();
+        assert_eq!(store.symbol_count(&repo_id_for(&repo)).await.unwrap(), 1);
+    }
+
+    #[tokio::test]
+    async fn run_map_creates_the_db_and_populates_it_on_first_use() {
+        let dir = tempfile::TempDir::new().unwrap();
+        init_git_repo(dir.path());
+        let repo = dir.path().canonicalize().unwrap();
+        assert!(!repo.join(INDEX_DB_REL_PATH).exists());
+
+        run_map(dir.path().to_path_buf()).await.unwrap();
+
+        assert!(repo.join(INDEX_DB_REL_PATH).exists());
+    }
 }

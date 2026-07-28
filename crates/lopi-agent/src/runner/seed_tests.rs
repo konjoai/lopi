@@ -354,7 +354,10 @@ async fn context_mode_index_vs_inject_prompt_token_ab() {
 
     let goal = "fix a bug in the retry-loop backoff calculation";
     let mut results = Vec::new();
-    for mode in [lopi_core::ContextMode::Inject, lopi_core::ContextMode::Index] {
+    for mode in [
+        lopi_core::ContextMode::Inject,
+        lopi_core::ContextMode::Index,
+    ] {
         let bus: EventBus<AgentEvent> = EventBus::new(16);
         let (_tx, rx) = tokio::sync::oneshot::channel();
         let mut runner = AgentRunner::new(
@@ -375,9 +378,10 @@ async fn context_mode_index_vs_inject_prompt_token_ab() {
             &seed.pattern_pairs,
             &seed.lessons_data,
         );
-        let tokens = lopi_context::tokens::estimate_tokens(&[
-            lopi_context::types::ContentBlock::Text(prompt.clone()),
-        ]);
+        let tokens =
+            lopi_context::tokens::estimate_tokens(&[lopi_context::types::ContentBlock::Text(
+                prompt.clone(),
+            )]);
         eprintln!(
             "context.mode={:<7} prompt_tokens={tokens:<6} prompt_chars={}",
             mode.tag(),

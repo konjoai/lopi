@@ -70,24 +70,72 @@ fn walk(node: Node, src: &[u8], ctx: &Ctx, out: &mut ParsedFile, next_id: &mut u
             out,
             next_id,
         ),
-        "struct_item" => {
-            symbol_ctx(node, src, ctx, SymbolKind::Struct, "name", false, false, out, next_id)
-        }
-        "enum_item" => {
-            symbol_ctx(node, src, ctx, SymbolKind::Enum, "name", false, false, out, next_id)
-        }
-        "trait_item" => {
-            symbol_ctx(node, src, ctx, SymbolKind::Trait, "name", true, true, out, next_id)
-        }
-        "const_item" => {
-            symbol_ctx(node, src, ctx, SymbolKind::Const, "name", false, false, out, next_id)
-        }
-        "type_item" => {
-            symbol_ctx(node, src, ctx, SymbolKind::Type, "name", false, false, out, next_id)
-        }
-        "mod_item" => {
-            symbol_ctx(node, src, ctx, SymbolKind::Module, "name", true, false, out, next_id)
-        }
+        "struct_item" => symbol_ctx(
+            node,
+            src,
+            ctx,
+            SymbolKind::Struct,
+            "name",
+            false,
+            false,
+            out,
+            next_id,
+        ),
+        "enum_item" => symbol_ctx(
+            node,
+            src,
+            ctx,
+            SymbolKind::Enum,
+            "name",
+            false,
+            false,
+            out,
+            next_id,
+        ),
+        "trait_item" => symbol_ctx(
+            node,
+            src,
+            ctx,
+            SymbolKind::Trait,
+            "name",
+            true,
+            true,
+            out,
+            next_id,
+        ),
+        "const_item" => symbol_ctx(
+            node,
+            src,
+            ctx,
+            SymbolKind::Const,
+            "name",
+            false,
+            false,
+            out,
+            next_id,
+        ),
+        "type_item" => symbol_ctx(
+            node,
+            src,
+            ctx,
+            SymbolKind::Type,
+            "name",
+            false,
+            false,
+            out,
+            next_id,
+        ),
+        "mod_item" => symbol_ctx(
+            node,
+            src,
+            ctx,
+            SymbolKind::Module,
+            "name",
+            true,
+            false,
+            out,
+            next_id,
+        ),
         "impl_item" => impl_ctx(node, src, ctx, out, next_id),
         _ => ctx.clone(),
     };
@@ -224,7 +272,11 @@ mod tests {
         let bar = out.symbols.iter().find(|s| s.name == "bar").unwrap();
         assert_eq!(bar.kind, SymbolKind::Method);
         assert_eq!(bar.qualified_name, "Foo::bar");
-        let imp = out.symbols.iter().find(|s| s.kind == SymbolKind::Impl).unwrap();
+        let imp = out
+            .symbols
+            .iter()
+            .find(|s| s.kind == SymbolKind::Impl)
+            .unwrap();
         assert_eq!(bar.local_parent, Some(imp.local_id));
     }
 
@@ -277,6 +329,9 @@ mod m { fn inner() {} }
     #[test]
     fn syntax_error_does_not_panic() {
         let src = "fn broken(x: {{{ ??? \n";
-        assert!(extract(src).is_ok(), "tree-sitter error recovery, never a hard failure");
+        assert!(
+            extract(src).is_ok(),
+            "tree-sitter error recovery, never a hard failure"
+        );
     }
 }

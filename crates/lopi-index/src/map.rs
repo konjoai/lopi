@@ -101,9 +101,17 @@ fn render_budgeted(sections: &[(String, String, bool)], budget_tokens: u32) -> R
 
     let truncated = !dropped.is_empty();
     if truncated {
-        out.push_str(&format!("[map truncated: dropped {} of {} sections for budget: {}]\n", dropped.len(), sections.len(), dropped.join(", ")));
+        out.push_str(&format!(
+            "[map truncated: dropped {} of {} sections for budget: {}]\n",
+            dropped.len(),
+            sections.len(),
+            dropped.join(", ")
+        ));
     }
-    RepoMap { text: out, truncated }
+    RepoMap {
+        text: out,
+        truncated,
+    }
 }
 
 /// Directory skeleton to `depth`, file counts only past the cap — never
@@ -212,7 +220,12 @@ fn render_public_surface(by_module: &BTreeMap<String, Vec<Symbol>>) -> String {
 fn render_most_referenced(entries: &[(Symbol, i64)]) -> String {
     entries
         .iter()
-        .map(|(sym, count)| format!("{} ({count} inbound refs) — {}", sym.qualified_name, sym.path))
+        .map(|(sym, count)| {
+            format!(
+                "{} ({count} inbound refs) — {}",
+                sym.qualified_name, sym.path
+            )
+        })
         .collect::<Vec<_>>()
         .join("\n")
 }
@@ -253,11 +266,23 @@ mod tests {
     async fn build_twice_is_byte_identical() {
         let store = IndexStore::open_in_memory().await.unwrap();
         store
-            .replace_file_symbols("repo", "crates/a/lib.rs", Language::Rust, "h1", &[pub_fn(0, "one")])
+            .replace_file_symbols(
+                "repo",
+                "crates/a/lib.rs",
+                Language::Rust,
+                "h1",
+                &[pub_fn(0, "one")],
+            )
             .await
             .unwrap();
         store
-            .replace_file_symbols("repo", "crates/b/lib.rs", Language::Rust, "h2", &[pub_fn(0, "two")])
+            .replace_file_symbols(
+                "repo",
+                "crates/b/lib.rs",
+                Language::Rust,
+                "h2",
+                &[pub_fn(0, "two")],
+            )
             .await
             .unwrap();
 
@@ -272,14 +297,23 @@ mod tests {
         let b = RepoMap::build(&store, "repo", dir.path(), 3, 15, &cmds, 2_500)
             .await
             .unwrap();
-        assert_eq!(a.text, b.text, "same commit must produce byte-identical output");
+        assert_eq!(
+            a.text, b.text,
+            "same commit must produce byte-identical output"
+        );
     }
 
     #[tokio::test]
     async fn map_contains_no_absolute_paths_or_bodies() {
         let store = IndexStore::open_in_memory().await.unwrap();
         store
-            .replace_file_symbols("repo", "crates/a/lib.rs", Language::Rust, "h1", &[pub_fn(0, "one")])
+            .replace_file_symbols(
+                "repo",
+                "crates/a/lib.rs",
+                Language::Rust,
+                "h1",
+                &[pub_fn(0, "one")],
+            )
             .await
             .unwrap();
         let dir = tempfile::TempDir::new().unwrap();
@@ -322,7 +356,13 @@ mod tests {
     async fn generous_budget_is_not_truncated() {
         let store = IndexStore::open_in_memory().await.unwrap();
         store
-            .replace_file_symbols("repo", "crates/a/lib.rs", Language::Rust, "h1", &[pub_fn(0, "one")])
+            .replace_file_symbols(
+                "repo",
+                "crates/a/lib.rs",
+                Language::Rust,
+                "h1",
+                &[pub_fn(0, "one")],
+            )
             .await
             .unwrap();
         let dir = tempfile::TempDir::new().unwrap();

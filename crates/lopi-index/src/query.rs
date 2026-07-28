@@ -56,7 +56,11 @@ pub async fn find(
     path_glob: Option<&str>,
     limit: u32,
 ) -> Result<Envelope<FindHit>> {
-    let filter = SymbolFilter { kind, lang, path_glob };
+    let filter = SymbolFilter {
+        kind,
+        lang,
+        path_glob,
+    };
     let candidates = store.list(repo_id, &filter).await?;
     let matcher = SkimMatcherV2::default();
     let mut scored: Vec<(i64, Symbol)> = candidates
@@ -77,7 +81,10 @@ pub async fn find(
         })
         .collect();
     // Deterministic ordering: score desc, then qualified_name asc as a tiebreak.
-    scored.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.qualified_name.cmp(&b.1.qualified_name)));
+    scored.sort_by(|a, b| {
+        b.0.cmp(&a.0)
+            .then_with(|| a.1.qualified_name.cmp(&b.1.qualified_name))
+    });
 
     let total_matches = scored.len();
     let limit = limit.max(1) as usize;
@@ -153,7 +160,11 @@ pub async fn read(
     max_lines: u32,
 ) -> Result<ReadResult> {
     let (path, line_start, line_end) = match target {
-        ReadTarget::Span { path, line_start, line_end } => (path, line_start, line_end),
+        ReadTarget::Span {
+            path,
+            line_start,
+            line_end,
+        } => (path, line_start, line_end),
         ReadTarget::QualifiedName(qname) => {
             let sym = store
                 .get_by_qualified_name(repo_id, &qname)
@@ -173,7 +184,14 @@ pub async fn read(
     let span_len = end.saturating_sub(start) + 1;
     if span_len <= max_lines || max_lines == 0 {
         let text = slice_lines(&lines, start, end);
-        return Ok(ReadResult { path, line_start: start, line_end: end, text, truncated: false, continue_from: None });
+        return Ok(ReadResult {
+            path,
+            line_start: start,
+            line_end: end,
+            text,
+            truncated: false,
+            continue_from: None,
+        });
     }
 
     let head_len = max_lines / 2;

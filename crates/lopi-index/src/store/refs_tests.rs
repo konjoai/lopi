@@ -3,6 +3,7 @@
 use super::RefHit;
 use crate::store::IndexStore;
 use crate::types::{Language, NewRef, NewSymbol, SymbolKind};
+use std::collections::HashMap;
 
 fn fn_symbol(local_id: usize, name: &str) -> NewSymbol {
     NewSymbol {
@@ -22,15 +23,25 @@ fn fn_symbol(local_id: usize, name: &str) -> NewSymbol {
     }
 }
 
+/// Index one file containing a single top-level fn symbol named `name`,
+/// returning its `local_id -> db_id` map — the shared setup step every test
+/// below builds its ref graph on top of.
+async fn seed_symbol(
+    store: &IndexStore,
+    path: &str,
+    hash: &str,
+    name: &str,
+) -> HashMap<usize, i64> {
+    let (_, map) = store
+        .replace_file_symbols("repo", path, Language::Rust, hash, &[fn_symbol(0, name)])
+        .await
+        .unwrap();
+    map
+}
+
 async fn seed_a_calls_b(store: &IndexStore) -> (i64, i64) {
-    let (_, map_a) = store
-        .replace_file_symbols("repo", "src/a.rs", Language::Rust, "h1", &[fn_symbol(0, "a")])
-        .await
-        .unwrap();
-    let (_, map_b) = store
-        .replace_file_symbols("repo", "src/b.rs", Language::Rust, "h2", &[fn_symbol(0, "b")])
-        .await
-        .unwrap();
+    let map_a = seed_symbol(store, "src/a.rs", "h1", "a").await;
+    let map_b = seed_symbol(store, "src/b.rs", "h2", "b").await;
     let refs = vec![NewRef {
         from_local_id: Some(0),
         to_name: "b".into(),
@@ -84,18 +95,9 @@ async fn callers_of_b_include_a() {
 #[tokio::test]
 async fn ambiguous_name_stays_unresolved() {
     let store = IndexStore::open_in_memory().await.unwrap();
-    store
-        .replace_file_symbols("repo", "src/a.rs", Language::Rust, "h1", &[fn_symbol(0, "dup")])
-        .await
-        .unwrap();
-    store
-        .replace_file_symbols("repo", "src/b.rs", Language::Rust, "h2", &[fn_symbol(0, "dup")])
-        .await
-        .unwrap();
-    let (_, map_c) = store
-        .replace_file_symbols("repo", "src/c.rs", Language::Rust, "h3", &[fn_symbol(0, "caller")])
-        .await
-        .unwrap();
+    seed_symbol(&store, "src/a.rs", "h1", "dup").await;
+    seed_symbol(&store, "src/b.rs", "h2", "dup").await;
+    let map_c = seed_symbol(&store, "src/c.rs", "h3", "caller").await;
     let refs = vec![NewRef {
         from_local_id: Some(0),
         to_name: "dup".into(),
@@ -124,18 +126,9 @@ async fn depth_zero_returns_nothing() {
 #[tokio::test]
 async fn multi_hop_traversal_reaches_depth_two() {
     let store = IndexStore::open_in_memory().await.unwrap();
-    let (_, map_a) = store
-        .replace_file_symbols("repo", "src/a.rs", Language::Rust, "h1", &[fn_symbol(0, "a")])
-        .await
-        .unwrap();
-    let (_, map_b) = store
-        .replace_file_symbols("repo", "src/b.rs", Language::Rust, "h2", &[fn_symbol(0, "b")])
-        .await
-        .unwrap();
-    store
-        .replace_file_symbols("repo", "src/c.rs", Language::Rust, "h3", &[fn_symbol(0, "c")])
-        .await
-        .unwrap();
+    let map_a = seed_symbol(&store, "src/a.rs", "h1", "a").await;
+    let map_b = seed_symbol(&store, "src/b.rs", "h2", "b").await;
+    seed_symbol(&store, "src/c.rs", "h3", "c").await;
 
     // a -> b -> c
     store
@@ -177,19 +170,17 @@ async fn multi_hop_traversal_reaches_depth_two() {
 #[tokio::test]
 async fn resolve_refs_for_scoped_by_touched_path() {
     let store = IndexStore::open_in_memory().await.unwrap();
-    let (_, map_a) = store
-        .replace_file_symbols("repo", "src/a.rs", Language::Rust, "h1", &[fn_symbol(0, "a")])
-        .await
-        .unwrap();
-    store
-        .replace_file_symbols("repo", "src/b.rs", Language::Rust, "h2", &[fn_symbol(0, "b")])
-        .await
-        .unwrap();
+    let map_a = seed_symbol(&store, "src/a.rs", "h1", "a").await;
+    seed_symbol(&store, "src/b.rs", "h2", "b").await;
     store
         .insert_file_refs(
             "repo",
             "src/a.rs",
-            &[NewRef { from_local_id: Some(0), to_name: "b".into(), line: 2 }],
+            &[NewRef {
+                from_local_id: Some(0),
+                to_name: "b".into(),
+                line: 2,
+            }],
             &map_a,
         )
         .await
@@ -205,16 +196,17 @@ async fn resolve_refs_for_scoped_by_touched_path() {
 #[tokio::test]
 async fn resolve_refs_for_scoped_by_new_name_catches_target_added_later() {
     let store = IndexStore::open_in_memory().await.unwrap();
-    let (_, map_a) = store
-        .replace_file_symbols("repo", "src/a.rs", Language::Rust, "h1", &[fn_symbol(0, "a")])
-        .await
-        .unwrap();
+    let map_a = seed_symbol(&store, "src/a.rs", "h1", "a").await;
     // "b" doesn't exist yet — the ref is inserted unresolved.
     store
         .insert_file_refs(
             "repo",
             "src/a.rs",
-            &[NewRef { from_local_id: Some(0), to_name: "b".into(), line: 2 }],
+            &[NewRef {
+                from_local_id: Some(0),
+                to_name: "b".into(),
+                line: 2,
+            }],
             &map_a,
         )
         .await
@@ -226,31 +218,32 @@ async fn resolve_refs_for_scoped_by_new_name_catches_target_added_later() {
 
     // Now "b" appears, in a different file the caller correctly lists
     // as this pass's only new symbol name (not a touched path).
-    store
-        .replace_file_symbols("repo", "src/b.rs", Language::Rust, "h2", &[fn_symbol(0, "b")])
-        .await
-        .unwrap();
+    seed_symbol(&store, "src/b.rs", "h2", "b").await;
     let resolved = store
         .resolve_refs_for("repo", &["src/b.rs".to_string()], &["b".to_string()])
         .await
         .unwrap();
-    assert_eq!(resolved, 1, "the pre-existing dangling ref to `b` resolves once `b` exists");
+    assert_eq!(
+        resolved, 1,
+        "the pre-existing dangling ref to `b` resolves once `b` exists"
+    );
 }
 
 #[tokio::test]
 async fn resolve_refs_for_ignores_unrelated_unresolved_backlog() {
     let store = IndexStore::open_in_memory().await.unwrap();
-    let (_, map_a) = store
-        .replace_file_symbols("repo", "src/a.rs", Language::Rust, "h1", &[fn_symbol(0, "a")])
-        .await
-        .unwrap();
+    let map_a = seed_symbol(&store, "src/a.rs", "h1", "a").await;
     // A permanently-unresolvable ref (calls something never indexed) —
     // simulates the external-crate/stdlib-call backlog.
     store
         .insert_file_refs(
             "repo",
             "src/a.rs",
-            &[NewRef { from_local_id: Some(0), to_name: "external_fn".into(), line: 2 }],
+            &[NewRef {
+                from_local_id: Some(0),
+                to_name: "external_fn".into(),
+                line: 2,
+            }],
             &map_a,
         )
         .await
@@ -259,13 +252,13 @@ async fn resolve_refs_for_ignores_unrelated_unresolved_backlog() {
     // An unrelated later pass touches a different file and adds an
     // unrelated symbol — must not re-scan (or spuriously resolve) the
     // unrelated backlog entry.
-    store
-        .replace_file_symbols("repo", "src/z.rs", Language::Rust, "h9", &[fn_symbol(0, "z")])
-        .await
-        .unwrap();
+    seed_symbol(&store, "src/z.rs", "h9", "z").await;
     let resolved = store
         .resolve_refs_for("repo", &["src/z.rs".to_string()], &["z".to_string()])
         .await
         .unwrap();
-    assert_eq!(resolved, 0, "unrelated pass touches nothing that could resolve external_fn");
+    assert_eq!(
+        resolved, 0,
+        "unrelated pass touches nothing that could resolve external_fn"
+    );
 }

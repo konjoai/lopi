@@ -89,9 +89,10 @@ impl super::IndexStore {
         }
         for sym in symbols {
             if let Some(local_parent) = sym.local_parent {
-                if let (Some(&child_id), Some(&parent_id)) =
-                    (local_to_db.get(&sym.local_id), local_to_db.get(&local_parent))
-                {
+                if let (Some(&child_id), Some(&parent_id)) = (
+                    local_to_db.get(&sym.local_id),
+                    local_to_db.get(&local_parent),
+                ) {
                     sqlx::query("UPDATE symbols SET parent_id = ? WHERE id = ?")
                         .bind(parent_id)
                         .bind(child_id)
@@ -170,13 +171,12 @@ impl super::IndexStore {
         repo_id: &str,
         qualified_name: &str,
     ) -> Result<Option<Symbol>> {
-        let row = sqlx::query(
-            "SELECT * FROM symbols WHERE repo_id = ? AND qualified_name = ? LIMIT 1",
-        )
-        .bind(repo_id)
-        .bind(qualified_name)
-        .fetch_optional(self.read_pool())
-        .await?;
+        let row =
+            sqlx::query("SELECT * FROM symbols WHERE repo_id = ? AND qualified_name = ? LIMIT 1")
+                .bind(repo_id)
+                .bind(qualified_name)
+                .fetch_optional(self.read_pool())
+                .await?;
         Ok(row.map(|r| symbol_from_row(&r)))
     }
 
@@ -325,11 +325,23 @@ mod tests {
     async fn reindexing_a_file_replaces_its_symbols() {
         let store = IndexStore::open_in_memory().await.unwrap();
         store
-            .replace_file_symbols("repo", "src/lib.rs", Language::Rust, "hash1", &[sample_symbol(0, "old")])
+            .replace_file_symbols(
+                "repo",
+                "src/lib.rs",
+                Language::Rust,
+                "hash1",
+                &[sample_symbol(0, "old")],
+            )
             .await
             .unwrap();
         let (removed, _) = store
-            .replace_file_symbols("repo", "src/lib.rs", Language::Rust, "hash2", &[sample_symbol(0, "new")])
+            .replace_file_symbols(
+                "repo",
+                "src/lib.rs",
+                Language::Rust,
+                "hash2",
+                &[sample_symbol(0, "new")],
+            )
             .await
             .unwrap();
         assert_eq!(removed, 1, "the stale symbol was counted as removed");
@@ -349,7 +361,13 @@ mod tests {
         child.local_parent = Some(0);
 
         store
-            .replace_file_symbols("repo", "src/lib.rs", Language::Rust, "hash1", &[parent, child])
+            .replace_file_symbols(
+                "repo",
+                "src/lib.rs",
+                Language::Rust,
+                "hash1",
+                &[parent, child],
+            )
             .await
             .unwrap();
 
@@ -363,7 +381,13 @@ mod tests {
     async fn remove_file_deletes_its_symbols() {
         let store = IndexStore::open_in_memory().await.unwrap();
         store
-            .replace_file_symbols("repo", "src/lib.rs", Language::Rust, "hash1", &[sample_symbol(0, "run")])
+            .replace_file_symbols(
+                "repo",
+                "src/lib.rs",
+                Language::Rust,
+                "hash1",
+                &[sample_symbol(0, "run")],
+            )
             .await
             .unwrap();
         let removed = store.remove_file("repo", "src/lib.rs").await.unwrap();
@@ -425,7 +449,13 @@ mod tests {
     async fn get_by_qualified_name_exact_match_only() {
         let store = IndexStore::open_in_memory().await.unwrap();
         store
-            .replace_file_symbols("repo", "src/lib.rs", Language::Rust, "hash1", &[sample_symbol(0, "run")])
+            .replace_file_symbols(
+                "repo",
+                "src/lib.rs",
+                Language::Rust,
+                "hash1",
+                &[sample_symbol(0, "run")],
+            )
             .await
             .unwrap();
         assert!(store

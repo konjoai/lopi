@@ -1,17 +1,19 @@
 ---
 decays: state
-verified-against: e29032f
-verified-date: 2026-07-27
+verified-against: 6a50c45
+verified-date: 2026-07-28
 ---
 
 # Trifecta paths — untrusted input → powerful tools → external comms
 
-Verified against: `71a470b` · 2026-07-26 (re-verified through Sprint F1/F3, no new drift;
-§5's "done" statuses still hold —
-§1's table and §4's `WebConfig.host` citation updated below after unrelated later sprints
-shifted line numbers in `github.rs`, `issue.rs`, `whatsapp.rs`, and `config.rs`. §0's and
-§2's citations describe the pre-Sprint-S2 baseline at `3a8a2ff` by design and are left
-as historical record — see §5 for what actually shipped)
+Verified against: `6a50c45` · 2026-07-28 (re-verified after Finding #4's symbol-index sprint,
+no new drift; §5's "done" statuses still hold —
+§0's `ServeWebhooks` citation and §8 row 1/row 5's `submit_task` citations updated below after
+Finding #4 inserted `Index`/`Map`/`McpIndexServe` CLI commands and the `index_tools` module ahead
+of them in `src/cli.rs` and `src/mcp_commands/mod.rs`; `Sail`'s citation was unaffected since the
+insertion landed after it. Content at every updated citation is unchanged — only line numbers
+shifted. §0's other citations and §2's citations describe the pre-Sprint-S2 baseline at `3a8a2ff`
+by design and are left as historical record — see §5 for what actually shipped)
 
 Konjo Forward **F10**: lopi has the lethal trifecta by construction — untrusted content in
 (webhooks), powerful tools (code execution, git, PR creation), external comms out (Telegram,
@@ -24,7 +26,7 @@ kill-test (don't trust these citations) before building on it in a later sprint.
 
 **Confirmed live exposure, found during pre-flight — not in the sprint brief's own gap table.**
 
-`src/cli.rs:88-91` (`Sail`) and `src/cli.rs:222-226` (`ServeWebhooks`) both default `--host` to
+`src/cli.rs:88-91` (`Sail`) and `src/cli.rs:243-247` (`ServeWebhooks`) both default `--host` to
 `127.0.0.1`. That default is correct and unchanged by this sprint.
 
 But `fly.toml:20-21` overrides it:
@@ -245,11 +247,11 @@ instruction not to let a clean table imply coverage that isn't there.
 
 | # | Question | Enforcement | file:line | Verdict |
 |---|---|---|---|---|
-| 1 | Repo confinement — can a task run against a repo outside the operator's configured `repo`/`extra_repos`? | None. `task.repo_path` (if set) is used verbatim; if unset, whichever `AgentPool` dequeues the task supplies its own default. No allowlist exists to check against — `LopiConfig` has no `repo`/`extra_repos` field at all; those are CLI flags passed straight into `AgentPool::new` as *defaults*, never consulted again downstream. | `crates/lopi-orchestrator/src/pool/run_loop.rs:99-104` (resolution, no check); `src/mcp_commands/mod.rs:269-270` (`lopi_submit_task` sets `repo_path` from an untyped string, zero validation) | **Unenforced** |
+| 1 | Repo confinement — can a task run against a repo outside the operator's configured `repo`/`extra_repos`? | None. `task.repo_path` (if set) is used verbatim; if unset, whichever `AgentPool` dequeues the task supplies its own default. No allowlist exists to check against — `LopiConfig` has no `repo`/`extra_repos` field at all; those are CLI flags passed straight into `AgentPool::new` as *defaults*, never consulted again downstream. | `crates/lopi-orchestrator/src/pool/run_loop.rs:99-104` (resolution, no check); `src/mcp_commands/mod.rs:297-298` (`lopi_submit_task` sets `repo_path` from an untyped string, zero validation) | **Unenforced** |
 | 2 | `allowed_dirs`/`forbidden_dirs` — structural or advisory? | Two mechanisms at two pipeline stages. Pre-hoc: injected into the system prompt and checked by the stability harness's plan-sample review, which only warns (`stability_runner.rs`'s own comment: "advisory — the real diff is still enforced separately"). Post-hoc: `DiffChecker`/`check_diff_scope` inspects the actual worktree diff after implementation and rolls the attempt back (`TaskStatus::RolledBack`) on violation. | Advisory: `crates/lopi-agent/src/prompt.rs:27-38`, `crates/lopi-agent/src/runner/stability_runner.rs:54-60`. Structural: `crates/lopi-git/src/diff.rs:12-63`, `crates/lopi-git/src/manager.rs:100-127`, called from `crates/lopi-agent/src/runner/test_phase.rs:60-68,277-283` | **Mixed** — prompt/stability-harness layer is advisory-only; `DiffChecker` is real enforcement, but post-hoc (blocks the diff from persisting/PR-ing, does not prevent the write itself) |
 | 3 | Can an untrusted-source (webhook) task be routed to a repo the operator never associated with that source? | Webhook-originated tasks (`queue_ci_fix`, `handle_pr_review`, issue triage) never set `task.repo_path` — the attacker-controlled `repository.full_name` from the payload is stored only as `TaskSource::Webhook{repo,..}` metadata, never used to select or validate a filesystem path. The task lands on whichever repo the dequeuing pool defaults to (see row 1) — there is no per-repo webhook watch-list cross-checking the payload's claimed repo against the pool it's about to run in. | `crates/lopi-webhook/src/github.rs:157-167,184-221`, `crates/lopi-webhook/src/issue.rs:159-181` | **Unenforced** (repo targeting is provenance-blind in both directions — same root cause as row 1) |
 | 4 | Worktree escape via symlink, absolute path, or `..` in a tool call | None found. `crates/lopi-git/src/worktree.rs` sanitizes only the worktree's own directory name (flattening `/`/`\` in the task id) — it does not validate paths a tool call touches once inside the checkout. Confinement is entirely by convention: the spawned `claude` CLI gets `current_dir` set to the worktree, and (absent a tighter per-task mode) `--permission-mode bypassPermissions` by default. lopi does not intercept or path-validate individual tool calls — that would require proxying the CLI's own tool execution, which is out of this phase's scope (Non-goals: no policy engine). | `crates/lopi-git/src/worktree.rs:332-338` (`sanitize`, dir-name only); `crates/lopi-agent/src/claude_spawn.rs:127` (`cmd.current_dir(...)` is the entirety of the confinement); `crates/lopi-core/src/permission_mode.rs:29-53` (`BypassPermissions` is `#[default]`) | **Unenforced** — named, not fixed this sprint; a real fix is a sandboxing/proxying project, not a targeted patch |
-| 5 | `gate_untrusted_source` coverage — does every untrusted-input path in §6's table actually route through it? | Yes for every row already in §6 (A–D, K): defined once in `crates/lopi-webhook/src/github.rs:177-181`, called from `queue_ci_fix` (row A, `:164`), `handle_pr_review` (row B, `:218`), issue triage (row C, via the same function), and WhatsApp's inline equivalent (row D/K). Successor/chained tasks are separately and correctly gated via `derive_successor_task` (`crates/lopi-core/src/successor.rs:264-268` forces `require_plan_approval=true`/`successor_enabled=false` when the parent is untrusted; enforced at `crates/lopi-agent/src/runner/finalize.rs:161`). **New gap, not in §6 at all:** `lopi_submit_task` (the MCP tool) never calls `is_untrusted_source`/`gate_untrusted_source` — it builds `Task::new()` (source defaults `Cli`, i.e. trusted) directly from caller-supplied JSON, including an arbitrary `repo` and `permission_mode` (up to and including `bypassPermissions`), with no plan-approval gate. | Gap: `src/mcp_commands/mod.rs:266-313` (`submit_task`), `crates/lopi-core/src/task.rs:391-429` (`Task::new` defaults `source: TaskSource::Cli`) | **Enforced for A–D/K; unenforced for the `lopi_submit_task` MCP path** |
+| 5 | `gate_untrusted_source` coverage — does every untrusted-input path in §6's table actually route through it? | Yes for every row already in §6 (A–D, K): defined once in `crates/lopi-webhook/src/github.rs:177-181`, called from `queue_ci_fix` (row A, `:164`), `handle_pr_review` (row B, `:218`), issue triage (row C, via the same function), and WhatsApp's inline equivalent (row D/K). Successor/chained tasks are separately and correctly gated via `derive_successor_task` (`crates/lopi-core/src/successor.rs:264-268` forces `require_plan_approval=true`/`successor_enabled=false` when the parent is untrusted; enforced at `crates/lopi-agent/src/runner/finalize.rs:161`). **New gap, not in §6 at all:** `lopi_submit_task` (the MCP tool) never calls `is_untrusted_source`/`gate_untrusted_source` — it builds `Task::new()` (source defaults `Cli`, i.e. trusted) directly from caller-supplied JSON, including an arbitrary `repo` and `permission_mode` (up to and including `bypassPermissions`), with no plan-approval gate. | Gap: `src/mcp_commands/mod.rs:294-341` (`submit_task`), `crates/lopi-core/src/task.rs:391-429` (`Task::new` defaults `source: TaskSource::Cli`) | **Enforced for A–D/K; unenforced for the `lopi_submit_task` MCP path** |
 
 ### Why row 5's MCP gap is named, not patched, this sprint
 

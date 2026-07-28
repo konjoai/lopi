@@ -24,7 +24,9 @@ const DOC_PREFIXES: &[&str] = &["#"];
 pub fn extract(source: &str) -> Result<ParsedFile> {
     let mut parser = tree_sitter::Parser::new();
     let lang: tree_sitter::Language = tree_sitter_python::LANGUAGE.into();
-    parser.set_language(&lang).context("loading python grammar")?;
+    parser
+        .set_language(&lang)
+        .context("loading python grammar")?;
     let tree = parse_tree(&mut parser, source)?;
     let bytes = source.as_bytes();
 
@@ -55,7 +57,11 @@ fn walk(node: Node, src: &[u8], ctx: &Ctx, out: &mut ParsedFile, next_id: &mut u
 
     let child_ctx = match node.kind() {
         "function_definition" => {
-            let kind = if ctx.in_class { SymbolKind::Method } else { SymbolKind::Fn };
+            let kind = if ctx.in_class {
+                SymbolKind::Method
+            } else {
+                SymbolKind::Fn
+            };
             named(node, src, kind, false, ctx, out, next_id)
         }
         "class_definition" => named(node, src, SymbolKind::Class, true, ctx, out, next_id),
@@ -108,11 +114,14 @@ fn named(
             ctx.qual_prefix.clone()
         },
         parent_local: Some(local_id),
-        enclosing_fn: if is_fn_like { Some(local_id) } else { ctx.enclosing_fn },
+        enclosing_fn: if is_fn_like {
+            Some(local_id)
+        } else {
+            ctx.enclosing_fn
+        },
         in_class: is_container,
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -122,7 +131,8 @@ mod tests {
 
     #[test]
     fn extracts_function_with_doc() {
-        let src = "def inc(x):\n    \"\"\"docstring not handled as # comment\"\"\"\n    return x + 1\n";
+        let src =
+            "def inc(x):\n    \"\"\"docstring not handled as # comment\"\"\"\n    return x + 1\n";
         let out = extract(src).unwrap();
         assert_eq!(out.symbols.len(), 1);
         assert_eq!(out.symbols[0].name, "inc");

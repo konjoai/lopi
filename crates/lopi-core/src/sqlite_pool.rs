@@ -56,7 +56,11 @@ pub async fn open_write_pool(path: &Path, foreign_keys: bool) -> Result<SqlitePo
 /// # Errors
 /// Returns `Err` if the path can't be parsed as a `SQLite` URL or the pool
 /// can't be opened.
-pub async fn open_read_pool(path: &Path, max_connections: u32, foreign_keys: bool) -> Result<SqlitePool> {
+pub async fn open_read_pool(
+    path: &Path,
+    max_connections: u32,
+    foreign_keys: bool,
+) -> Result<SqlitePool> {
     let url = format!("sqlite://{}", path.display());
     let mut opts = SqliteConnectOptions::from_str(&url)
         .context("parsing sqlite path (read)")?

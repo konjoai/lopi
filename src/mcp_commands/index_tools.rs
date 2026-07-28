@@ -35,8 +35,18 @@ pub(super) struct IndexToolHandler {
 }
 
 impl IndexToolHandler {
-    pub(super) fn new(store: IndexStore, repo_root: PathBuf, repo_id: String, cfg: IndexConfig) -> Self {
-        Self { store, repo_root, repo_id, cfg }
+    pub(super) fn new(
+        store: IndexStore,
+        repo_root: PathBuf,
+        repo_id: String,
+        cfg: IndexConfig,
+    ) -> Self {
+        Self {
+            store,
+            repo_root,
+            repo_id,
+            cfg,
+        }
     }
 }
 
@@ -45,7 +55,11 @@ impl lopi_mcp::ToolHandler for IndexToolHandler {
         tool_defs()
     }
 
-    fn call(&self, name: &str, arguments: Value) -> impl std::future::Future<Output = Result<String>> + Send {
+    fn call(
+        &self,
+        name: &str,
+        arguments: Value,
+    ) -> impl std::future::Future<Output = Result<String>> + Send {
         let store = self.store.clone();
         let repo_root = self.repo_root.clone();
         let repo_id = self.repo_id.clone();
@@ -136,7 +150,10 @@ fn tool_defs() -> Vec<McpTool> {
 }
 
 fn kind_names() -> Vec<&'static str> {
-    ["fn", "method", "struct", "enum", "trait", "impl", "class", "const", "type", "module"].to_vec()
+    [
+        "fn", "method", "struct", "enum", "trait", "impl", "class", "const", "type", "module",
+    ]
+    .to_vec()
 }
 
 fn lang_names() -> Vec<&'static str> {
@@ -161,12 +178,26 @@ async fn dispatch(
     Ok(result.to_string())
 }
 
-async fn call_find(store: &IndexStore, repo_id: &str, cfg: &IndexConfig, args: &Value) -> Result<Value> {
+async fn call_find(
+    store: &IndexStore,
+    repo_id: &str,
+    cfg: &IndexConfig,
+    args: &Value,
+) -> Result<Value> {
     let query_text = args.get("query").and_then(Value::as_str).unwrap_or("");
-    let kind = args.get("kind").and_then(Value::as_str).and_then(SymbolKind::parse);
-    let lang = args.get("lang").and_then(Value::as_str).and_then(Language::parse);
+    let kind = args
+        .get("kind")
+        .and_then(Value::as_str)
+        .and_then(SymbolKind::parse);
+    let lang = args
+        .get("lang")
+        .and_then(Value::as_str)
+        .and_then(Language::parse);
     let path_glob = args.get("path_glob").and_then(Value::as_str);
-    let limit = args.get("limit").and_then(Value::as_u64).map_or(cfg.max_results, |n| n as u32);
+    let limit = args
+        .get("limit")
+        .and_then(Value::as_u64)
+        .map_or(cfg.max_results, |n| n as u32);
 
     let env = query::find(store, repo_id, query_text, kind, lang, path_glob, limit).await?;
     Ok(json!({
@@ -193,14 +224,38 @@ async fn call_read(
     let target = if let Some(qname) = args.get("qualified_name").and_then(Value::as_str) {
         ReadTarget::QualifiedName(qname.to_string())
     } else {
-        let path = args.get("path").and_then(Value::as_str).context("missing path")?;
-        let line_start = args.get("line_start").and_then(Value::as_u64).context("missing line_start")? as u32;
-        let line_end = args.get("line_end").and_then(Value::as_u64).context("missing line_end")? as u32;
-        ReadTarget::Span { path: path.to_string(), line_start, line_end }
+        let path = args
+            .get("path")
+            .and_then(Value::as_str)
+            .context("missing path")?;
+        let line_start = args
+            .get("line_start")
+            .and_then(Value::as_u64)
+            .context("missing line_start")? as u32;
+        let line_end = args
+            .get("line_end")
+            .and_then(Value::as_u64)
+            .context("missing line_end")? as u32;
+        ReadTarget::Span {
+            path: path.to_string(),
+            line_start,
+            line_end,
+        }
     };
-    let context_lines = args.get("context_lines").and_then(Value::as_u64).unwrap_or(0) as u32;
+    let context_lines = args
+        .get("context_lines")
+        .and_then(Value::as_u64)
+        .unwrap_or(0) as u32;
 
-    let result = query::read(store, repo_id, repo_root, target, context_lines, cfg.max_read_lines).await?;
+    let result = query::read(
+        store,
+        repo_id,
+        repo_root,
+        target,
+        context_lines,
+        cfg.max_read_lines,
+    )
+    .await?;
     Ok(json!({
         "path": result.path,
         "line_start": result.line_start,
@@ -211,8 +266,16 @@ async fn call_read(
     }))
 }
 
-async fn call_refs(store: &IndexStore, repo_id: &str, cfg: &IndexConfig, args: &Value) -> Result<Value> {
-    let qname = args.get("qualified_name").and_then(Value::as_str).context("missing qualified_name")?;
+async fn call_refs(
+    store: &IndexStore,
+    repo_id: &str,
+    cfg: &IndexConfig,
+    args: &Value,
+) -> Result<Value> {
+    let qname = args
+        .get("qualified_name")
+        .and_then(Value::as_str)
+        .context("missing qualified_name")?;
     let direction = match args.get("direction").and_then(Value::as_str) {
         Some("callers") => RefDirection::Callers,
         Some("callees") => RefDirection::Callees,
@@ -235,13 +298,34 @@ async fn call_refs(store: &IndexStore, repo_id: &str, cfg: &IndexConfig, args: &
     }))
 }
 
-async fn call_query(store: &IndexStore, repo_id: &str, cfg: &IndexConfig, args: &Value) -> Result<Value> {
+async fn call_query(
+    store: &IndexStore,
+    repo_id: &str,
+    cfg: &IndexConfig,
+    args: &Value,
+) -> Result<Value> {
     let find = args.get("find").context("missing find")?;
-    let find_text = find.get("query").and_then(Value::as_str).unwrap_or("").to_string();
-    let kind = find.get("kind").and_then(Value::as_str).and_then(SymbolKind::parse);
-    let lang = find.get("lang").and_then(Value::as_str).and_then(Language::parse);
-    let path_glob = find.get("path_glob").and_then(Value::as_str).map(str::to_string);
-    let limit = find.get("limit").and_then(Value::as_u64).map_or(cfg.max_results, |n| n as u32);
+    let find_text = find
+        .get("query")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    let kind = find
+        .get("kind")
+        .and_then(Value::as_str)
+        .and_then(SymbolKind::parse);
+    let lang = find
+        .get("lang")
+        .and_then(Value::as_str)
+        .and_then(Language::parse);
+    let path_glob = find
+        .get("path_glob")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    let limit = find
+        .get("limit")
+        .and_then(Value::as_u64)
+        .map_or(cfg.max_results, |n| n as u32);
 
     let (then_refs, refs_depth) = match args.get("then_refs") {
         Some(tr) => {
@@ -250,13 +334,24 @@ async fn call_query(store: &IndexStore, repo_id: &str, cfg: &IndexConfig, args: 
                 Some("callees") => RefDirection::Callees,
                 _ => anyhow::bail!("then_refs.direction must be \"callers\" or \"callees\""),
             };
-            let depth = tr.get("depth").and_then(Value::as_u64).map_or(cfg.refs_depth(), |d| (d as u32).min(3));
+            let depth = tr
+                .get("depth")
+                .and_then(Value::as_u64)
+                .map_or(cfg.refs_depth(), |d| (d as u32).min(3));
             (Some(dir), depth)
         }
         None => (None, 0),
     };
 
-    let spec = QuerySpec { find_text, kind, lang, path_glob, limit, then_refs, refs_depth };
+    let spec = QuerySpec {
+        find_text,
+        kind,
+        lang,
+        path_glob,
+        limit,
+        then_refs,
+        refs_depth,
+    };
     let env = query::composite_query(store, repo_id, &spec).await?;
     Ok(json!({
         "truncated": env.truncated,
@@ -282,3 +377,7 @@ async fn call_query(store: &IndexStore, repo_id: &str, cfg: &IndexConfig, args: 
         })).collect::<Vec<_>>(),
     }))
 }
+
+#[cfg(test)]
+#[path = "index_tools_tests.rs"]
+mod tests;
