@@ -60,6 +60,10 @@ const CHECKER_DISALLOWED_TOOLS: &[&str] = &[
 /// `--json-schema` value for a [`VerifierVerdict`] (KT-1.1).
 const VERDICT_JSON_SCHEMA: &str = r#"{"type":"object","properties":{"passed":{"type":"boolean"},"gaps":{"type":"array","items":{"type":"string"}},"fix_hints":{"type":"array","items":{"type":"string"}},"confidence":{"type":"number"}},"required":["passed","gaps","fix_hints","confidence"],"additionalProperties":false}"#;
 
+/// `--json-schema` value for [`crate::verifier::VerifierAgent::derive_checklist`]
+/// (Finding #1 — checklist-before-diff).
+const CHECKLIST_JSON_SCHEMA: &str = r#"{"type":"object","properties":{"checklist":{"type":"array","items":{"type":"string"}}},"required":["checklist"],"additionalProperties":false}"#;
+
 /// A single grading turn should conclude quickly; this bounds a wedged CLI
 /// process rather than tuning typical latency (observed 6-25s per call).
 const CHECKER_TIMEOUT: Duration = Duration::from_secs(180);
@@ -168,6 +172,94 @@ fn parse_cli_verdict(stdout: String) -> Result<VerifierVerdict> {
     parse_verdict(out.text())
 }
 
+/// Derive the checker's own checklist via the `claude` CLI (Finding #1 —
+/// checklist-before-diff): same headless-safe argv shape as
+/// [`grade_via_cli`] (denied tools, no `--bare`/`--resume`, `--json-schema`
+/// for a schema-conforming response first), a fresh never-resumed session,
+/// and the same fail-closed error surface — the only differences are the
+/// schema and `user_prompt`'s content (goal + rubric only, built by
+/// [`crate::verifier::VerifierAgent::derive_checklist`]'s caller, never a
+/// diff).
+///
+/// # Errors
+/// Returns `Err` on a CLI spawn failure, a non-zero exit, a timeout, or a
+/// response that is neither valid `structured_output` nor fence-strip
+/// parseable.
+pub(crate) async fn derive_checklist_via_cli(
+    repo_path: &Path,
+    system_prompt: &str,
+    user_prompt: &str,
+    model: &str,
+    effort: Option<&str>,
+) -> Result<Vec<String>> {
+    let denied: Vec<String> = CHECKER_DISALLOWED_TOOLS
+        .iter()
+        .map(ToString::to_string)
+        .collect();
+
+    let mut cmd = Command::new("claude");
+    apply_env_allowlist(&mut cmd);
+    cmd.arg("-p")
+        .arg(user_prompt)
+        .arg("--output-format")
+        .arg("json")
+        .arg("--json-schema")
+        .arg(CHECKLIST_JSON_SCHEMA)
+        .arg("--system-prompt")
+        .arg(system_prompt);
+    apply_cli_caps(
+        &mut cmd,
+        Some(model),
+        effort,
+        Some(PermissionMode::DontAsk.as_str()),
+        Some(CHECKER_MAX_TURNS),
+        Some(CHECKER_MAX_BUDGET_USD),
+        &[],
+        &denied,
+        false,
+        SessionMode::None,
+    );
+    cmd.current_dir(repo_path);
+    scrub_inherited_anthropic_env(&mut cmd);
+
+    let raw = tokio::time::timeout(CHECKER_TIMEOUT, cmd.output())
+        .await
+        .context("checklist cli timed out")?
+        .context("spawning checklist cli")?;
+
+    if !raw.status.success() {
+        let stderr = String::from_utf8_lossy(&raw.stderr);
+        let stdout = String::from_utf8_lossy(&raw.stdout);
+        return Err(build_cli_error(
+            &stdout,
+            &stderr,
+            raw.status,
+            repo_path,
+            user_prompt.len(),
+        ));
+    }
+
+    let stdout = String::from_utf8_lossy(&raw.stdout).into_owned();
+    parse_cli_checklist(stdout)
+}
+
+/// Parse a checklist CLI response: `structured_output` first, the existing
+/// fence-strip parser (`crate::verifier::parse_checklist`) as fallback —
+/// mirrors [`parse_cli_verdict`]'s two-tier shape.
+fn parse_cli_checklist(stdout: String) -> Result<Vec<String>> {
+    let out = parse_claude_output(stdout, true);
+    if !out.succeeded() {
+        anyhow::bail!("checklist cli reported an error result: {}", out.text());
+    }
+    if let Some(structured) = out.structured_output.clone() {
+        if let Ok(payload) = serde_json::from_value::<crate::verifier::ChecklistPayload>(structured)
+        {
+            return Ok(payload.checklist);
+        }
+    }
+    crate::verifier::parse_checklist(out.text())
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
@@ -227,6 +319,71 @@ mod tests {
         assert!(parse_cli_verdict(stdout).is_err());
     }
 
+    // ── Finding #1 — checklist-before-diff CLI parsing ──────────────────────
+
+    #[test]
+    fn parse_cli_checklist_prefers_structured_output() {
+        let stdout = serde_json::json!({
+            "type": "result",
+            "is_error": false,
+            "result": "not json at all — should be ignored",
+            "structured_output": {
+                "checklist": ["one criterion", "another criterion"]
+            }
+        })
+        .to_string();
+        let items = parse_cli_checklist(stdout).unwrap();
+        assert_eq!(
+            items,
+            vec!["one criterion".to_string(), "another criterion".to_string()]
+        );
+    }
+
+    #[test]
+    fn parse_cli_checklist_falls_back_to_fence_strip_parser() {
+        let stdout = serde_json::json!({
+            "type": "result",
+            "is_error": false,
+            "result": "```json\n{\"checklist\":[\"fenced criterion\"]}\n```"
+        })
+        .to_string();
+        let items = parse_cli_checklist(stdout).unwrap();
+        assert_eq!(items, vec!["fenced criterion".to_string()]);
+    }
+
+    #[test]
+    fn parse_cli_checklist_errors_on_is_error_true() {
+        let stdout = serde_json::json!({
+            "type": "result",
+            "is_error": true,
+            "result": "Authentication error"
+        })
+        .to_string();
+        assert!(parse_cli_checklist(stdout).is_err());
+    }
+
+    #[test]
+    fn parse_cli_checklist_errors_when_neither_form_parses() {
+        let stdout = serde_json::json!({
+            "type": "result",
+            "is_error": false,
+            "result": "I refuse to answer in JSON today."
+        })
+        .to_string();
+        assert!(parse_cli_checklist(stdout).is_err());
+    }
+
+    #[test]
+    fn derive_checklist_via_cli_argv_uses_the_checklist_schema_never_bare_or_resume() {
+        let argv = checker_argv_for_schema(CHECKLIST_JSON_SCHEMA);
+        assert!(!argv.contains(&"--bare".to_string()), "argv={argv:?}");
+        assert!(!argv.contains(&"--resume".to_string()), "argv={argv:?}");
+        assert!(
+            argv.contains(&CHECKLIST_JSON_SCHEMA.to_string()),
+            "must carry the checklist schema, not the verdict schema; argv={argv:?}"
+        );
+    }
+
     #[test]
     fn checker_disallowed_tools_covers_the_briefs_minimum() {
         for must_deny in ["Write", "Edit", "MultiEdit", "NotebookEdit", "Bash"] {
@@ -237,18 +394,19 @@ mod tests {
         }
     }
 
-    /// Argv assertion in the same shape as `claude_support.rs`'s
-    /// `apply_cli_caps_includes_every_configured_flag` — asserts the
-    /// constructed argv directly rather than trusting a live spawn.
-    #[test]
-    fn grade_via_cli_argv_never_includes_bare_or_resume() {
+    /// Build the argv a checker-session `Command` would carry for a given
+    /// `--json-schema` value, without spawning anything — shared by the
+    /// verdict-schema and checklist-schema argv assertions below so the two
+    /// checker call shapes (`grade_via_cli`/`derive_checklist_via_cli`)
+    /// can't silently drift out of sync with each other.
+    fn checker_argv_for_schema(schema: &str) -> Vec<String> {
         let mut cmd = Command::new("true");
         cmd.arg("-p")
             .arg("prompt")
             .arg("--output-format")
             .arg("json")
             .arg("--json-schema")
-            .arg(VERDICT_JSON_SCHEMA)
+            .arg(schema)
             .arg("--system-prompt")
             .arg("system");
         let denied: Vec<String> = CHECKER_DISALLOWED_TOOLS
@@ -267,11 +425,18 @@ mod tests {
             false,
             SessionMode::None,
         );
-        let argv: Vec<String> = cmd
-            .as_std()
+        cmd.as_std()
             .get_args()
             .map(|a| a.to_string_lossy().into_owned())
-            .collect();
+            .collect()
+    }
+
+    /// Argv assertion in the same shape as `claude_support.rs`'s
+    /// `apply_cli_caps_includes_every_configured_flag` — asserts the
+    /// constructed argv directly rather than trusting a live spawn.
+    #[test]
+    fn grade_via_cli_argv_never_includes_bare_or_resume() {
+        let argv = checker_argv_for_schema(VERDICT_JSON_SCHEMA);
         assert!(!argv.contains(&"--bare".to_string()), "argv={argv:?}");
         assert!(!argv.contains(&"--resume".to_string()), "argv={argv:?}");
         assert!(!argv.contains(&"--session-id".to_string()), "argv={argv:?}");

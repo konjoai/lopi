@@ -5,6 +5,159 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## Sprint G (Verification Gate, Finding #1) — re-scoped against the real architecture, not the brief's file-level sketch
+
+**KT — current stage-transition flow, read before any of this was written.**
+There is no table-driven stage machine. `TaskStatus` (`lopi-core/src/task.rs`)
+names the stages; the live transitions are plain sequential Rust control flow
+inside `AgentRunner::run()` (`lopi-agent/src/runner/run_loop.rs`) →
+`run_test_phase` (`test_phase.rs`) → `finalize` (`finalize.rs`). A parallel
+`AgentDag`/`NodeKind::PIPELINE` (`lopi-agent/src/dag.rs`) exists for
+partial-restart bookkeeping but is advisory only — nothing outside `dag.rs`
+itself reads or drives it during a real run. `AgentPool` (`lopi-orchestrator`)
+is a pure dispatcher: it resolves config, spawns, and reacts to the
+`TaskStatus` the runner returns; every gate/score/retry decision lives in
+`lopi-agent`, not the pool.
+
+**The brief's literal `gate.rs`/`GateOutcome`/`FailureRecord` design was not
+built — building it would have duplicated a materially more mature system
+that already exists.** Before writing any code, `crates/lopi-core/src/{
+acceptance,eval_outcome,stop_reason,guard_trust}.rs` and
+`crates/lopi-agent/src/{verifier.rs,scorer.rs,runner/{test_phase,finalize,
+progress}.rs}` were read in full. What's there already:
+
+- `Acceptance`/`AcceptanceCheck`/`CheckSpec`/`EvalTier` — a tiered
+  (`ExecutionOk` → `ShellTest` → `Judge` → `Suite`), short-circuiting check
+  pipeline, ordered cheapest-first.
+- `EvalOutcome`/`CheckResult`/`Verdict` — fail-closed aggregation
+  (`Error` > `Fail` > `Pass` among required checks; a check that errors is
+  *never* a silent pass), persisted per-attempt to `eval_outcomes`
+  (`task_id`, `attempt`, `verdict`, `score`, `per_check_json`,
+  `critique_json`) — this **is** the brief's `GateOutcome`/`FailureRecord`,
+  already schema-stable, already unit-tested exhaustively.
+- `VerifierAgent` (`verifier.rs`) — a maker/checker-isolated, model-differing
+  (`resolve_verifier`: never grades with the worker's own model), fail-closed
+  (a verifier error blocks finalize unless `verifier_fail_open` is explicitly
+  set) adversarial reviewer, already wired into `finalize()`.
+- `resolve_guard_command`/`run_guard_command` (`guard_trust.rs`) — a
+  security-hardened (Sprint S10 Phase 0: a repo-supplied shell command from
+  an untrusted task source is refused, not merely warned about) shell-gate
+  primitive already backing `gate`/`until`/`Shell` acceptance checks.
+- `StopReason` (ranked `GoalMet > Budget > NoProgress > MaxIterations`),
+  `ProgressGate`'s gain/no-progress/budget termination logic, and Sprint H's
+  adaptive-retry evidence forwarding (`last_error`, self-prompt escalation
+  ladder) — the retry loop already carries structured failure evidence into
+  the next attempt's prompt.
+
+Re-implementing a second, parallel gate abstraction on top of all of this
+would have meant genuine duplication (this repo's `dry_check.py` gate exists
+specifically to catch that), contradicted the seam architecture each of
+those modules' own doc comments describe, and produced a strictly *less*
+mature system than the one already merged. So this sprint targets the actual
+gaps against Finding #1's claims instead:
+
+**1. Secrets-on-diff gate (new).** No check anywhere scanned a diff for
+leaked credentials before commit — `redact.rs`'s pattern list only ever
+redacted *log* text. Added `lopi_core::scan_for_secrets` (reuses the same
+`redact_patterns.txt`, one canonical list for both), wired into
+`finalize()` as check 0 — before the acceptance/verifier gate, since a
+leaked credential must never even reach the verifier's prompt. Evidence
+carried into the next attempt names only the pattern *label*
+(`anthropic_key`, `aws_access_key_id`, …), never the matched value — a
+retry-evidence channel that leaked the secret it exists to prevent would
+defeat the point. `runner/secrets_gate.rs`.
+
+**2. Duplicate-retry-prompt guard (new).** Finding #1: "never re-send an
+identical prompt... that is a bug." Nothing detected this. Added a pure
+comparison (`runner/retry_guard.rs`) run once per attempt, before
+`self.last_error` is used to build that attempt's planning prompt: if it's
+byte-identical to what the *previous* attempt saw, warn instead of silently
+burning the retry. Deliberately does not abort the loop on a single repeat
+(a legitimately intermittent failure can recur once) — it makes the
+repetition visible, which is what was missing.
+
+**3. Dead-letter ledger + `TaskDeadLettered` event (new).** A task that
+exhausted `MaxIterations`/`NoProgress`/`Budget` without ever reaching
+`GoalMet` became an unremarkable `TaskStatus::Failed` with no durable,
+queryable trace — there was no `dead_letters` table at all (confirmed by
+grep before writing anything; `LEDGER.md`'s own prior mentions of the
+concept were aspirational). Added `lopi_core::StopReason::
+parse_from_failure_reason` (parses the `"StopReason::{tag} { ... }"` strings
+`record_progress_stop`/the `MaxIterations` backstop already build — one
+canonical string, parsed back rather than threading a second signal across
+the runner/pool boundary), a `dead_letters` table + `lopi-memory::store::
+dead_letter`, and `AgentEvent::TaskDeadLettered`. Wired at the single choke
+point every terminal task outcome already passes through
+(`AgentPool::run_one`, right after `TaskCompleted` — split into
+`pool/dead_letter.rs` to keep `run_loop.rs` under the file-size gate).
+`GoalMet` never round-trips through the parser — a goal-met run only ever
+terminates as `Success`, so only genuine exhaustion is ever dead-lettered;
+a cancellation, a non-retryable API error, or a dry run is left alone.
+**Known gap:** `run_one`'s full I/O path (real git checkout + `claude` CLI
+spawn) is not exercised end-to-end in a test — no existing test in this file
+does that either (`budget_tests.rs`'s own doc comment explains why: it tests
+through the `build_runner` seam instead, since mocking the `claude` CLI
+subprocess isn't a pattern this codebase has). The glue itself
+(`pool/dead_letter.rs::record_if_exhausted`) is fully unit-tested in
+isolation, including the "no store configured" and "GoalMet/cancellation
+never dead-letters" cases.
+
+**4. Two-phase adversarial verifier — checklist before diff (new, the
+headline fix).** Finding #1's exact claim: "a reviewer shown the diff first
+rationalises it... this ordering is the whole point." Before this sprint,
+`VerifierAgent::verify` built one prompt containing goal + plan + diff +
+rubric together — a single LLM call sees its entire context before
+producing any output, so *within-prompt* ordering (diff placed after the
+rubric, say) cannot prevent anchoring; only a genuinely separate call, with
+the diff structurally absent from its context, can. Added
+`VerifierAgent::derive_checklist(goal, rubric, ...)` — a distinct call, own
+system prompt (`CHECKLIST_SYSTEM`), own CLI schema
+(`derive_checklist_via_cli` in `verifier_cli.rs`, mirroring `grade_via_cli`'s
+headless-safe argv shape), whose prompt-builder (`build_checklist_prompt`)
+takes no `diff`/`plan` parameter at all — not merely "chooses not to use
+one." `verify()` now always calls it first and folds the resulting
+checklist into the grading prompt as its own labelled section, ahead of the
+diff. No flag to turn this off, per the brief's own instruction ("if you
+find yourself adding one, stop") — this doubles the call count (and
+roughly the cost) of every verifier pass; that is the deliberate trade the
+finding calls for, not a regression to hide behind an opt-in.
+Checklist-derivation failure is non-fatal to grading (falls back to an
+empty checklist, warns) — the rubric alone still gates, so this is a
+strict improvement on ordering, not a new single point of failure that can
+block every verifier pass. `verifier.rs`'s test module was split out to
+`verifier_tests.rs` (pure code motion) to stay under the file-size gate
+while adding checklist coverage: prompt-shape tests, `parse_checklist`
+round-trip/fence-strip/invalid-JSON, checklist-section placement (must
+precede `DIFF (excerpt)` in the rendered prompt), and an end-to-end
+fail-closed check (`VerifierAgent::new_cli` against an unreachable repo path
+still surfaces an overall `Err`, proving the two-call restructure didn't
+open a silent-pass gap).
+
+**How to apply:** any future "verification gate" work in this repo should
+extend `Acceptance`/`EvalOutcome`/`VerifierAgent` — the existing seam — not
+introduce a second gate vocabulary. Read the actual current architecture
+before trusting a brief's remembered file paths; this one (correctly)
+warned "file paths are stated from memory... the first instruction... is to
+verify them" and the repo had grown well past what the brief's mental model
+assumed.
+
+**Sprint C (Cache Affinity) and Sprint F (Flow Primitives) are deliberately
+not attempted in this pass.** The three-finding brief's own sequencing note
+says why: "Running F first would scale an unverified, cache-hostile loop...
+the expensive way to discover that findings #1 and #2 were ranked where
+they were for a reason." The same logic applies one level down — Sprint G
+alone required this much architectural discovery to avoid duplicating
+~2,000 lines of existing, well-tested gate infrastructure; Sprint C
+(`WorkspaceRegistry`/lease-based worktree-vs-shared scheduling, a
+`PrefixBuilder` with a determinism test, a token/cache-hit ledger) and
+Sprint F (a `Step<S,R>` DAG, journaled fan-out, `lopi audit`/`lopi
+tournament`) are each independently sized work against a codebase whose
+real crate boundaries (`lopi-orchestrator::pool`, `lopi-memory::store`,
+`lopi-agent::runner`) will need the same "verify before trusting the brief's
+remembered paths" discovery pass Sprint G just did. Attempting either in the
+same sitting as G, rushed, would reproduce exactly the failure mode Finding
+#1 describes — a stage that can fail but nothing actually gates it.
+
 ## Sprint T0 (TUI Client Foundation & Domain Port) — one-way doors
 
 **`lopi_core::stack` is the canonical Rust port target for stack-aware

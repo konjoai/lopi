@@ -91,6 +91,12 @@ impl AgentRunner {
         let mut gate = ProgressGate::new(no_progress_limit, self.effective_budget_tokens());
 
         for attempt in 0..self.task.max_retries {
+            // Verification gate — duplicate-retry-prompt guard (Finding #1,
+            // `retry_guard.rs`): warn if the evidence carried into this
+            // attempt's prompt is byte-identical to what the previous
+            // attempt got, before it's used to build that prompt below.
+            self.check_duplicate_retry_prompt(attempt);
+
             // Model routing (4.5): route to cheapest model capable of this task's complexity.
             // Escalates to Opus after the first retry failure.
             let model = select_model(&self.task, attempt);

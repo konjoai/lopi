@@ -214,7 +214,8 @@ impl AppState {
             | AgentEvent::Phase { .. }
             | AgentEvent::BudgetExceeded { .. }
             | AgentEvent::BudgetSoftWarn { .. }
-            | AgentEvent::ReportReady { .. } => {}
+            | AgentEvent::ReportReady { .. }
+            | AgentEvent::TaskDeadLettered { .. } => {}
         }
     }
 

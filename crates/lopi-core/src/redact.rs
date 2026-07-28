@@ -66,6 +66,26 @@ pub fn redact_secrets(line: &str) -> Cow<'_, str> {
     current
 }
 
+/// Verification-gate secrets check (Finding #1) — scan `text` (a diff, not a
+/// log line) against the same known secret shapes [`redact_secrets`] uses,
+/// returning the distinct labels found, in pattern-file order, without
+/// exposing the matched value anywhere in the return. `Vec::is_empty()` means
+/// clean.
+///
+/// Deliberately reuses [`PATTERNS`] rather than a second pattern set — a
+/// shape that would be redacted from a log line is exactly a shape that must
+/// never reach a commit either; keeping one canonical list means adding a
+/// pattern to `redact_patterns.txt` protects both the log stream and the
+/// gate in the same one-line diff.
+#[must_use]
+pub fn scan_for_secrets(text: &str) -> Vec<&'static str> {
+    PATTERNS
+        .iter()
+        .filter(|p| p.re.is_match(text))
+        .map(|p| p.label)
+        .collect()
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
@@ -157,5 +177,53 @@ mod tests {
     fn line_without_tab_is_skipped() {
         let src = "no_tab_here_at_all";
         assert!(parse_patterns(src).is_empty());
+    }
+
+    // ── scan_for_secrets (verification-gate diff check) ─────────────────────
+
+    #[test]
+    fn scan_clean_diff_finds_nothing() {
+        let diff =
+            "diff --git a/src/lib.rs b/src/lib.rs\n+pub fn add(a: i32, b: i32) -> i32 { a + b }\n";
+        assert!(scan_for_secrets(diff).is_empty());
+    }
+
+    #[test]
+    fn scan_flags_a_leaked_key_by_label() {
+        let diff = "+const KEY: &str = \"sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789\";";
+        let labels = scan_for_secrets(diff);
+        assert_eq!(labels, vec!["anthropic_key"]);
+    }
+
+    #[test]
+    fn scan_never_exposes_the_matched_value() {
+        let secret = "AKIAABCDEFGHIJKLMNOP";
+        let diff = format!("+aws_access_key_id = \"{secret}\"");
+        let labels = scan_for_secrets(&diff);
+        assert_eq!(labels, vec!["aws_access_key_id"]);
+        // The return type is `Vec<&'static str>` of pattern labels only — it
+        // is structurally impossible for a label to equal the scanned value,
+        // but assert the obvious anyway as a regression guard.
+        assert!(!labels.contains(&secret));
+    }
+
+    #[test]
+    fn scan_deduplicates_a_label_matched_multiple_times() {
+        let diff = "+key1=sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789\n+key2=sk-ant-api03-zyxwvutsrqponmlkjihgfedcba9876543210";
+        assert_eq!(scan_for_secrets(diff), vec!["anthropic_key"]);
+    }
+
+    #[test]
+    fn scan_reports_multiple_distinct_labels() {
+        let diff = "+a=sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789\n+b=ghp_abcdefghijklmnopqrstuvwxyz0123456789AB";
+        let labels = scan_for_secrets(diff);
+        assert!(labels.contains(&"anthropic_key"));
+        assert!(labels.contains(&"github_token"));
+        assert_eq!(labels.len(), 2);
+    }
+
+    #[test]
+    fn scan_empty_text_is_clean() {
+        assert!(scan_for_secrets("").is_empty());
     }
 }

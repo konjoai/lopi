@@ -74,6 +74,37 @@ impl StopReason {
     pub const fn is_success(self) -> bool {
         matches!(self, Self::GoalMet)
     }
+
+    /// Parse the `StopReason` back out of a `TaskStatus::Failed { reason }`
+    /// string built with the `"StopReason::{tag} {{ ... }}"` convention
+    /// (`runner/progress.rs::record_progress_stop`, `runner/run_loop.rs`'s
+    /// `MaxIterations` backstop). Verification gate (Finding #1) — the
+    /// single choke point every terminal task outcome passes through
+    /// (`AgentPool::run_one`) uses this to detect "did this task exhaust its
+    /// retry budget without meeting its goal" without a second, parallel
+    /// signal threaded through the runner/pool boundary: the reason string
+    /// already carries the answer, once.
+    ///
+    /// `GoalMet` never round-trips through this — a goal-met run terminates
+    /// as `TaskStatus::Success`, never `Failed`, so a reason string can only
+    /// ever encode one of the three non-success reasons. Any string that
+    /// doesn't match the `"StopReason::{tag} "` prefix (a cancellation, a
+    /// dry-run, a non-retryable API error, a plan/implement spawn failure)
+    /// returns `None` — those are not retry exhaustion and must not be
+    /// dead-lettered as if they were.
+    #[must_use]
+    pub fn parse_from_failure_reason(reason: &str) -> Option<Self> {
+        let tag = reason.strip_prefix("StopReason::")?;
+        let tag = tag.split(' ').next()?;
+        [
+            Self::MaxIterations,
+            Self::NoProgress,
+            Self::Budget,
+            Self::GoalMet,
+        ]
+        .into_iter()
+        .find(|r| r.as_str() == tag)
+    }
 }
 
 #[cfg(test)]
@@ -128,6 +159,52 @@ mod tests {
         assert_eq!(StopReason::Budget.as_str(), "budget");
         assert_eq!(StopReason::NoProgress.as_str(), "no_progress");
         assert_eq!(StopReason::MaxIterations.as_str(), "max_iterations");
+    }
+
+    // ── parse_from_failure_reason (verification gate — dead-letter) ─────────
+
+    #[test]
+    fn parses_every_non_success_reason_out_of_its_own_string() {
+        for r in [
+            StopReason::MaxIterations,
+            StopReason::NoProgress,
+            StopReason::Budget,
+        ] {
+            let encoded = format!("StopReason::{} {{ some detail here }}", r.as_str());
+            assert_eq!(StopReason::parse_from_failure_reason(&encoded), Some(r));
+        }
+    }
+
+    #[test]
+    fn parses_the_bare_max_iterations_backstop_string() {
+        // The exact string `run_loop.rs`'s bottom-of-loop backstop builds.
+        let encoded = "StopReason::max_iterations { Max retries exceeded }";
+        assert_eq!(
+            StopReason::parse_from_failure_reason(encoded),
+            Some(StopReason::MaxIterations)
+        );
+    }
+
+    #[test]
+    fn unrelated_failure_reasons_do_not_parse() {
+        for reason in [
+            "Cancelled",
+            "dry-run complete",
+            "TurnLimitExceeded { limit: 25, task_id: t }",
+            "NonRetryableApiError: insufficient credits",
+        ] {
+            assert_eq!(StopReason::parse_from_failure_reason(reason), None);
+        }
+    }
+
+    #[test]
+    fn empty_and_malformed_strings_do_not_parse() {
+        assert_eq!(StopReason::parse_from_failure_reason(""), None);
+        assert_eq!(StopReason::parse_from_failure_reason("StopReason::"), None);
+        assert_eq!(
+            StopReason::parse_from_failure_reason("StopReason::not_a_real_tag { x }"),
+            None
+        );
     }
 
     #[test]
