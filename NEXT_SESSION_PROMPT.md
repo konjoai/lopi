@@ -5,6 +5,57 @@ the `lopi` repo. Newest first.
 
 ---
 
+## Next Session — T1 (Input & Command Layer), after Sprint T0 (`[0.35.0]`)
+
+Sprint T0 (TUI Client Foundation & Domain Port) landed at `0.35.0`. The TUI
+now has a write-capable client (`lopi_ui::client::TuiClient` +
+`RemoteClient`/`LocalClient`) and a single Rust port of the loop-stack
+domain model (`lopi_core::stack`) — but **no new widgets were built**. T1 is
+the first sprint that actually renders anything: an always-focused
+`InputBar` widget plus a `:`-prefixed command palette with preset-alias
+autocomplete off `lopi_core::stack::preset_catalog()`. Goal submission goes
+through the TUI via `TuiClient::create_task`, using
+`lopi_ui::client::stack_payload::pane_submit_payload` for the bare-prompt
+case.
+
+**Read first:** `CHANGELOG.md`'s `[0.35.0]` entry and `LEDGER.md`'s Sprint T0
+section — both one-way doors (the `lopi-core`/`lopi-ui` split for the
+domain port vs. wire-payload builders, and `RemoteClient` as authoritative
+over `LocalClient`).
+
+**Carrying forward from T0, so T1 doesn't have to re-derive it:**
+
+- `LocalClient`'s chain methods (`list_chains`/`get_chain`/`create_chain`/
+  `enable_chain`/`disable_chain`/`run_chain_now`) are stubbed to return
+  `ClientError::Unsupported` — `ChainScheduleManager` isn't reachable
+  outside the axum `AppState` today, and building a second one from
+  `LocalClient`'s own `AgentPool`/`MemoryStore` would race the real one
+  inside `lopi sail`. Not T1's problem (T1 doesn't touch chains at all),
+  but T3 (Loop Stack Builder) will hit this directly and should re-verify
+  the finding rather than assume it's still accurate.
+- `LocalClient` has no real caller yet — `lopi watch --local` still
+  constructs an empty, disconnected `EventBus`. If T1 (or any later sprint)
+  wants an embedded-TUI-inside-`sail` mode, that wiring doesn't exist yet
+  and is new scope, not something T0 half-built.
+- KT-T0.3's fixture set (`crates/lopi-ui/src/client/stack_payload_tests.rs`
+  — three cases lifted from `stack.test.ts`) is a permanent regression
+  test, not a throwaway. T1 doesn't need to touch it (it doesn't add new
+  `cardToTaskPayload` fields), but T2 (Prompt Loop Builder) and T3 should
+  extend it rather than write a parallel fixture set when they port more of
+  `stack.ts`.
+- `AppState::cognition` (`crates/lopi-ui/src/tui/cognition.rs`) now retains
+  the six previously-dropped event variants, but nothing renders it — T5
+  (Live Cognition Surface) is still the first sprint to build that panel,
+  not T1.
+
+**Kill test for T1:** typing `:implement fix the thing` in the TUI attaches
+the same eval set the web composer attaches for the same input — i.e. the
+resulting `CreateTaskRequest.acceptance` matches what
+`lopi_core::stack::preset_catalog()[&PresetKey::Implement].evals` compiles
+to via `evals_to_acceptance`.
+
+---
+
 ## Next Session — after the web-composer loop.toml sprint (`[0.32.0]`)
 
 **The web composer's `autonomy` control is now wired end to end** —

@@ -19,6 +19,8 @@ mod skill_commands;
 mod spec_commands;
 mod stability_commands;
 mod task_commands;
+#[cfg(test)]
+mod test_support;
 mod toolchain_detect;
 mod trust_commands;
 mod util;
@@ -162,7 +164,12 @@ async fn main() -> Result<()> {
             )
             .await?;
         }
-        Some(Commands::Cancel { task_id }) => task_commands::cancel(task_id).await?,
+        Some(Commands::Cancel { task_id }) => {
+            println!(
+                "{}",
+                task_commands::cancel("http://127.0.0.1:3000", task_id).await?
+            );
+        }
         Some(Commands::Resume { agent_id }) => task_commands::resume(agent_id).await?,
 
         // ── lopi watch-gap-fill ─────────────────────────────────

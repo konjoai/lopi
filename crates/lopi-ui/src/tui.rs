@@ -10,7 +10,10 @@ use std::collections::{HashMap, VecDeque};
 use std::io;
 use std::time::{Duration, Instant};
 
+mod cognition;
 mod draw;
+
+use cognition::AgentCognition;
 
 const MAX_LOG_LINES: usize = 200;
 const DISPLAY_LOGS: usize = 20;
@@ -69,6 +72,15 @@ pub(super) struct AppState {
     pub(super) succeeded: usize,
     pub(super) failed: usize,
     started_at: Instant,
+    /// Sprint T0, Phase 4 — retained state for the event variants that used
+    /// to be silently dropped (`TurnMetrics`, `Phase`, `Cost`, `ToolCall`/
+    /// `ToolResult`, `TokenDelta`, `ApiRetry`, `PlanProposed`,
+    /// `VerifierVerdict`, `BudgetExceeded`, `BudgetSoftWarn`). No widget
+    /// reads this yet — T5 (Live Cognition Surface) is the first to render
+    /// it. Private (like `log_lines` above), not `pub(super)`: `AgentCognition`
+    /// itself is only visible within `tui` and its descendants, so a wider
+    /// field visibility here would be inconsistent with its type.
+    cognition: HashMap<TaskId, AgentCognition>,
 }
 
 #[derive(Debug)]
@@ -91,10 +103,22 @@ impl AppState {
             succeeded: 0,
             failed: 0,
             started_at: Instant::now(),
+            cognition: HashMap::new(),
         }
     }
 
     fn handle_event(&mut self, ev: AgentEvent) {
+        // Sprint T0, Phase 4 — the six previously-dropped event variants
+        // (`TurnMetrics`, `BudgetExceeded`, `BudgetSoftWarn`,
+        // `VerifierVerdict`, `PlanProposed`, and the `ToolCall`/
+        // `ToolResult`/`TokenDelta`/`ApiRetry`/`Cost`/`Phase` cluster, plus
+        // `ReportReady`) now retain state in `self.cognition` instead of
+        // being silently consumed here — routed through `cognition.rs` to
+        // keep this match statement under the file-size gate.
+        let ev = match cognition::route_event(&mut self.cognition, ev) {
+            Some(ev) => ev,
+            None => return,
+        };
         match ev {
             AgentEvent::TaskQueued { task_id, goal, .. } => {
                 self.queued_count += 1;
@@ -174,33 +198,23 @@ impl AppState {
             AgentEvent::PoolStats { queued, .. } => {
                 self.queued_count = queued;
             }
-            // TurnMetrics drives the web UI's Forge shader. The TUI doesn't
-            // visualize per-turn pressure/activity — silently consume.
-            AgentEvent::TurnMetrics { .. } => {}
-            // BudgetExceeded is shown in the web Forge with a flashing pill
-            // and surfaced via /metrics — the TUI is read-only, no action needed.
-            AgentEvent::BudgetExceeded { .. } => {}
-            // BudgetSoftWarn (Part 4.2) is surfaced via a tracing::warn! log
-            // line and Telegram — the read-only TUI has no dedicated panel.
-            AgentEvent::BudgetSoftWarn { .. } => {}
-            // VerifierVerdict is surfaced via the task log stream; TUI doesn't
-            // render a separate panel for it.
-            AgentEvent::VerifierVerdict { .. } => {}
-            // PlanProposed is reflected by the AwaitingPlanApproval status the
-            // runner emits alongside it; the read-only TUI shows that label.
-            AgentEvent::PlanProposed { .. } => {}
-            // The stream-json pane events (tool calls, token/cost/phase/rate
-            // limit) drive the web Forge's gauges. The read-only TUI surfaces
-            // the same activity through the LogLine stream, so consume silently.
-            AgentEvent::ToolCall { .. }
+            // `cognition::route_event` above always returns `None` (and this
+            // match is never reached) for every one of these — kept here,
+            // not folded into a `_` wildcard, purely so a newly-added
+            // `AgentEvent` variant still forces a compile error at this
+            // match instead of silently falling through unhandled.
+            AgentEvent::PlanProposed { .. }
+            | AgentEvent::TurnMetrics { .. }
+            | AgentEvent::VerifierVerdict { .. }
+            | AgentEvent::ToolCall { .. }
             | AgentEvent::ToolResult { .. }
             | AgentEvent::TokenDelta { .. }
             | AgentEvent::ApiRetry { .. }
             | AgentEvent::Cost { .. }
-            | AgentEvent::Phase { .. } => {}
-            // Report on Finish is delivered by lopi-remote's Telegram
-            // notifier; the read-only TUI has no channel to route it to.
-            AgentEvent::ReportReady { .. } => {}
+            | AgentEvent::Phase { .. }
+            | AgentEvent::BudgetExceeded { .. }
+            | AgentEvent::BudgetSoftWarn { .. }
+            | AgentEvent::ReportReady { .. } => {}
         }
     }
 
@@ -376,3 +390,7 @@ fn run_loop<B: ratatui::backend::Backend>(
 #[cfg(test)]
 #[path = "tui_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "tui_cognition_event_tests.rs"]
+mod cognition_event_tests;

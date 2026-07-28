@@ -24,7 +24,15 @@ pub(super) fn reject_control_chars(goal: &str) -> Result<(), String> {
 }
 
 /// Request body for `POST /api/tasks`.
-#[derive(Debug, Deserialize)]
+///
+/// Sprint T0 added `Serialize` alongside the pre-existing `Deserialize` —
+/// this type used to be consumed only server-side (the axum handler
+/// deserializing an incoming body), but is now also *produced* client-side
+/// by `lopi_ui::client::stack_payload`'s `StackCard`/`PaneLaunch` → wire
+/// builders, which need to serialize it to POST over HTTP from
+/// `RemoteClient`. Every field type already implemented `Serialize`, so
+/// this is an additive, behavior-preserving derive.
+#[derive(Debug, Deserialize, Serialize)]
 pub struct CreateTaskRequest {
     /// Natural-language goal for the agent (max 2 000 chars).
     pub goal: String,
@@ -163,7 +171,12 @@ pub struct CreateTaskRequest {
 }
 
 /// Response body for `POST /api/tasks`.
-#[derive(Debug, Serialize)]
+///
+/// Sprint T0 added `Deserialize` alongside the pre-existing `Serialize` —
+/// symmetric with `CreateTaskRequest` above: `RemoteClient::create_task`
+/// now parses this response client-side, not just serializes it
+/// server-side. Every field type already implemented `Deserialize`.
+#[derive(Debug, Serialize, Deserialize)]
 pub struct CreateTaskResponse {
     /// UUID of the created (or existing) task. When `duplicate_of` is set,
     /// this is the id generated for *this* request, which was never

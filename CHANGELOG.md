@@ -1,3 +1,65 @@
+## [0.35.0] — Sprint T0: TUI Client Foundation & Domain Port
+
+**The TUI gained a write-capable client layer — no new widgets yet, but the
+foundation every later TUI sprint (input bar, command palette, card editor,
+stack builder, loop config editor, live cognition panel) builds on.** Before
+this sprint the TUI was strictly read-only: `AppState` consumed
+`AgentEvent`s and rendered a table + log tail, and the only write operation
+anywhere in the CLI's remote path was a bespoke one-off
+`reqwest::Client::new().delete(url)` call (`reqwest_cancel`) behind `lopi
+cancel`. Six event variants (`TurnMetrics`, `BudgetExceeded`,
+`BudgetSoftWarn`, `VerifierVerdict`, `PlanProposed`, and the
+`ToolCall`/`ToolResult`/`TokenDelta`/`ApiRetry`/`Cost`/`Phase` cluster) were
+explicitly no-op'd with comments pointing at the web Forge instead.
+
+**`lopi_core::stack`** — a new module porting the loop-stack domain model
+(`StackCard`, `CardConfig`, `Guardrails`, `CronConfig`, `MaxxConfig`, the
+eval/preset catalogs) from `StackTypes.swift`/`stack.ts`, so the TUI becomes
+a fourth client of one Rust source of truth instead of a third independent
+reimplementation. Reuses `lopi_core::loop_config::OnFail` and
+`lopi_core::config::LimitWindow` rather than redefining either. Split across
+`stack.rs`/`stack_catalog.rs`/`stack_schedule.rs` to stay under the 500-line
+file-size gate.
+
+**`lopi_ui::client`** — a new `TuiClient` trait (`list_tasks`, `get_task`,
+`create_task`, `cancel_task`, `approve_plan`, `reject_plan`,
+`list_chains`/`get_chain`/`create_chain`/`enable_chain`/`disable_chain`/
+`run_chain_now`, `get_loop_config`) with two implementations:
+- **`RemoteClient`** — HTTP against a running `lopi sail`, resolving its
+  bearer token the same way `sail_commands::run` resolves it server-side
+  (`[web].auth_token` config, then `LOPI_WEB_AUTH_TOKEN` env var). Replaces
+  the old `reqwest_cancel` free function; `lopi cancel` now goes through it.
+- **`LocalClient`** — in-process over an `Arc<AgentPool>` + `MemoryStore`,
+  for a TUI embedded inside a running `lopi sail`. Its chain methods
+  (`list_chains` etc.) return an explicit `Unsupported` error rather than a
+  silently-empty list: `ChainScheduleManager` is not reachable outside the
+  axum `AppState` today (see `LEDGER.md`).
+
+`lopi_ui::client::stack_payload` ports `cardToTaskPayload`/
+`cardToTaskPayloadForRunOnce`/`paneSubmitPayload` from `stack.ts`, targeting
+`CreateTaskRequest` directly (no new intermediate DTO) — pinned by a
+permanent fixture-parity regression test against three cases lifted from
+`stack.test.ts`. `CreateTaskRequest`/`CreateTaskResponse` gained the
+missing `Serialize`/`Deserialize` half of their derives (they only ever had
+one side before, since nothing previously needed to build one client-side
+and parse the other) and `web::types` widened from `pub(crate)` to `pub` so
+the client layer can name them from outside `lopi-ui`.
+
+**The six previously-dropped `AgentEvent` variants now mutate real state**
+(`AppState::cognition`, `crates/lopi-ui/src/tui/cognition.rs`) instead of
+being silently consumed. No widget renders any of it yet — that's T5 (Live
+Cognition Surface) — but T1-T3's widget work never has to re-touch
+`AppState::handle_event`'s match statement to add this retention. Also
+fixed `ReportReady`'s stale comment, which still attributed delivery to
+"lopi-remote's Telegram notifier" — deleted in Sprint S10.
+
+**Kill tests:** KT-T0.1 (live round trip, no auth) and KT-T0.2 (live round
+trip, auth required — fail-closed with no token, succeeds with the correct
+bearer) both run against a real `lopi_ui::web::serve_with_repo` server
+(the same function `lopi sail` calls), not a mock — see `LEDGER.md` for why
+in-process rather than a child process. KT-T0.3 (fixture parity) is a
+permanent test at `crates/lopi-ui/src/client/stack_payload_tests.rs`.
+
 ## [0.34.0] — Web composer: wire the loop.toml surface end-to-end
 
 **User-visible behavior change:** the web composer's `autonomy` control
