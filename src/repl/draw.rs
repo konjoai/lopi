@@ -89,7 +89,10 @@ fn draw_header(f: &mut Frame, area: Rect, state: &ReplState) {
     ]);
 
     let cost_line = Line::from(vec![
-        Span::styled("  session cost: ", Style::default().fg(KONJO_DIM)),
+        Span::styled(
+            "  session cost (local, not plan quota): ",
+            Style::default().fg(KONJO_DIM),
+        ),
         Span::styled(
             format!("${:.4}", state.session_cost_usd),
             Style::default().fg(Color::DarkGray),

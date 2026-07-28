@@ -1,17 +1,20 @@
 ---
 decays: state
-verified-against: 8d26835
+verified-against: 6b69e30
 verified-date: 2026-07-28
 ---
 
 # Trifecta paths — untrusted input → powerful tools → external comms
 
-Verified against: `8d26835` · 2026-07-28 (re-verified through Sprint E/Finding #10, no new
-drift — the sprint added a `/cost` command to `whatsapp.rs`'s handler, read-only and adding no
-new row to §1's table; see the note under §4. §1's row D citation updated below after Sprint E
-shifted line numbers in `whatsapp.rs`. §0's and §2's citations describe the pre-Sprint-S2
-baseline at `3a8a2ff` by design and are left as historical record — see §5 for what actually
-shipped)
+Verified against: `6b69e30` · 2026-07-28 (re-verified twice in the same window, no drift either
+time, merged here into one banner. Sprint E/Finding #10 added a `/cost` command to
+`whatsapp.rs`'s handler, read-only and adding no new row to §1's table — see the note under §4;
+§1's row D citation updated below after Sprint E shifted line numbers in `whatsapp.rs`. The
+demo-mode + measurement sprint (merged as `6b69e30`) separately touched `lopi-core`,
+`lopi-memory`, `lopi-agent::pricing`, and `lopi-ui`'s repo-discovery/handlers, none of which
+change the webhook/WhatsApp trust boundaries this doc describes. §5's "done" statuses still
+hold. §0's and §2's citations describe the pre-Sprint-S2 baseline at `3a8a2ff` by design and are
+left as historical record — see §5 for what actually shipped)
 
 Konjo Forward **F10**: lopi has the lethal trifecta by construction — untrusted content in
 (webhooks), powerful tools (code execution, git, PR creation), external comms out (Telegram,

@@ -73,6 +73,11 @@ pub(crate) enum Commands {
         /// Use a local bus only (ignore any running sail server).
         #[arg(long)]
         local: bool,
+        /// Show the `lopi demo` synthetic store instead of live data. Fails
+        /// if no demo store exists yet — run `lopi demo` first. Takes
+        /// precedence over `--remote`/`--local` if both are given.
+        #[arg(long, conflicts_with_all = ["remote", "local"])]
+        demo: bool,
     },
     /// Tail agent events (history or live)
     Tail {
@@ -101,6 +106,28 @@ pub(crate) enum Commands {
         /// default everywhere else.
         #[arg(long)]
         insecure_no_auth: bool,
+    },
+    /// Generate (if absent) and open a fully synthetic dashboard — zero
+    /// setup, zero real-machine access. See docs/MEASUREMENT.md and
+    /// docs/adr/0001-demo-mode-and-measurement.md.
+    Demo {
+        /// Deterministic content seed. Omit for the fixed default seed
+        /// (reproducible across runs with no flags).
+        #[arg(long)]
+        seed: Option<u64>,
+        /// Regenerate the demo store from scratch, even if one already exists.
+        #[arg(long)]
+        reset: bool,
+        /// Delete the demo store entirely and exit. Never touches the real store.
+        #[arg(long)]
+        off: bool,
+        /// Print the demo store path and exit.
+        #[arg(long)]
+        path: bool,
+        #[arg(short, long, default_value = "3000")]
+        port: u16,
+        #[arg(long, default_value = "127.0.0.1")]
+        host: String,
     },
     /// Cancel a running task by ID prefix
     Cancel {

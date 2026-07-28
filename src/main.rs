@@ -3,6 +3,7 @@
 #![warn(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod cli;
 mod cost_commands;
+mod demo_commands;
 mod diag_commands;
 mod gap_fill_commands;
 mod learn_commands;
@@ -143,10 +144,24 @@ async fn main() -> Result<()> {
             .await?;
         }
 
-        // ── lopi watch / tail / dock / sail / cancel / resume ───
-        Some(Commands::Watch { remote, local }) => task_commands::watch(remote, local).await?,
+        // ── lopi watch / tail / dock / sail / demo / cancel / resume ───
+        Some(Commands::Watch {
+            remote,
+            local,
+            demo,
+        }) => task_commands::watch(remote, local, demo).await?,
         Some(Commands::Tail { task_id, history }) => task_commands::tail(task_id, history).await?,
         Some(Commands::Dock) => task_commands::dock().await?,
+        Some(Commands::Demo {
+            seed,
+            reset,
+            off,
+            path,
+            port,
+            host,
+        }) => {
+            demo_commands::run(seed, reset, off, path, host, port, cfg.as_ref()).await?;
+        }
         Some(Commands::Sail {
             port,
             host,

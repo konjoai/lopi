@@ -16,12 +16,12 @@ pub fn render(report: &RatesReport, pool: Option<&Pool>) -> String {
         Some(d) if report.stale => {
             out.push_str(&format!(
                 "  ⚠️  rates last set {d} — older than {} days, treat every cost on this table as an ESTIMATE and verify against current Anthropic pricing\n",
-                pricing::DEFAULT_MAX_AGE_DAYS
+                pricing::STALENESS_THRESHOLD_DAYS
             ));
         }
         Some(d) => out.push_str(&format!("  rates last set: {d}\n")),
         None => out.push_str(
-            "  ⚠️  no [meta] last_updated found — treat every cost on this table as an ESTIMATE\n",
+            "  ⚠️  no as_of date found — treat every cost on this table as an ESTIMATE\n",
         ),
     }
     out.push('\n');
@@ -70,7 +70,7 @@ pub fn render(report: &RatesReport, pool: Option<&Pool>) -> String {
 #[must_use]
 pub fn show(config: Option<&LopiConfig>) -> String {
     let today = Utc::now().date_naive();
-    let report = pricing::describe(today, pricing::DEFAULT_MAX_AGE_DAYS);
+    let report = pricing::describe(today);
     let pool = config.and_then(|c| c.economics.pool.as_ref());
     render(&report, pool)
 }
@@ -127,7 +127,7 @@ mod tests {
             stale: true,
         };
         let out = render(&report, None);
-        assert!(out.contains("no [meta] last_updated found"));
+        assert!(out.contains("no as_of date found"));
     }
 
     #[test]

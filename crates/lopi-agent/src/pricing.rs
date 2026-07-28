@@ -11,6 +11,12 @@
 //! always wins when present. This table backs only the direct-API planning
 //! path and the mid-stream `--max-budget-usd` estimate, neither of which the
 //! CLI's own reported cost covers.
+//!
+//! Staleness tracking (`as_of`/[`is_stale`]/[`staleness_warning`]) is the
+//! canonical mechanism `docs/MEASUREMENT.md` documents — every dollar
+//! estimate derived from this table should be labeled against it. Sprint E
+//! (Finding #10)'s `lopi rates --check` (`src/rates_commands.rs`) is built
+//! on top via [`describe`], which adds the full resolved tier breakdown.
 
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -30,25 +36,17 @@ pub struct TierRates {
     pub cache_write: f64,
 }
 
-/// A pricing file's shape: an optional `[meta]` table plus a flat map of
+/// A pricing file's shape: an `as_of` freshness date plus a flat map of
 /// tier name to rates, matching the `[opus]`/`[haiku]`/`[sonnet]` tables in
-/// `pricing.toml`. `meta` is a named field (not part of the flattened map),
-/// so it never gets mistaken for a fourth pricing tier.
+/// `pricing.toml`.
 #[derive(Debug, Deserialize)]
 struct PriceFile {
-    #[serde(default)]
-    meta: Option<PriceMeta>,
+    /// ISO-8601 date (`YYYY-MM-DD`) this table's rates were last verified
+    /// current. Absent (e.g. an older or partial operator override file)
+    /// is treated as "unknown freshness" — see [`table_as_of`].
+    as_of: Option<chrono::NaiveDate>,
     #[serde(flatten)]
     tiers: HashMap<String, TierRates>,
-}
-
-/// `[meta]` table — Sprint E, Part 1: "provide a `lopi rates --check`
-/// command that prints what lopi believes the current per-token prices...
-/// are, with the date they were last set, so a stale rate table is visible
-/// rather than silently wrong."
-#[derive(Debug, Clone, Copy, Deserialize)]
-struct PriceMeta {
-    last_updated: chrono::NaiveDate,
 }
 
 /// Compiled-in default rates, always available even with no override file
@@ -57,15 +55,19 @@ struct PriceMeta {
 /// operator override" is the same file shape.
 const DEFAULT_PRICING_TOML: &str = include_str!("../pricing.toml");
 
-fn parse_or_warn(text: &str, source: &str) -> PriceFile {
+/// Parse a pricing TOML string into its tier-rate map and `as_of` date,
+/// warning (and falling back to an empty map / unknown date) on a parse
+/// failure rather than panicking — a malformed operator override file
+/// shouldn't take down a cost-estimate path.
+fn parse_price_file(
+    text: &str,
+    source: &str,
+) -> (HashMap<String, TierRates>, Option<chrono::NaiveDate>) {
     match toml::from_str::<PriceFile>(text) {
-        Ok(file) => file,
+        Ok(file) => (file.tiers, file.as_of),
         Err(err) => {
             tracing::warn!(source, %err, "pricing file failed to parse — ignoring");
-            PriceFile {
-                meta: None,
-                tiers: HashMap::new(),
-            }
+            (HashMap::new(), None)
         }
     }
 }
@@ -81,13 +83,13 @@ fn override_candidates() -> Vec<PathBuf> {
     candidates
 }
 
-/// The effective, cached table: tiers plus the `last_updated` date of
-/// whichever file last set it (an override's own `[meta]` wins over the
-/// bundled default's, since the operator presumably set it when they
-/// edited their override).
+/// The effective, cached table: tiers plus the `as_of` date of whichever
+/// file last set it (an override's own `as_of` wins over the bundled
+/// default's, since the operator presumably set it when they edited their
+/// override).
 struct EffectiveTable {
     tiers: HashMap<String, TierRates>,
-    last_updated: Option<chrono::NaiveDate>,
+    as_of: Option<chrono::NaiveDate>,
 }
 
 static TABLE: OnceLock<EffectiveTable> = OnceLock::new();
@@ -96,71 +98,34 @@ static TABLE: OnceLock<EffectiveTable> = OnceLock::new();
 /// override file's tiers layered on top. Read once and cached — lopi is a
 /// long-lived process, so picking up a rate change takes a restart, the
 /// same as any other config file it reads at startup.
+///
+/// The effective `as_of` follows the same "override replaces what it sets"
+/// rule as the tier rates: the bundled default's `as_of` is used unless an
+/// override file also sets its own `as_of`, in which case the override's
+/// date wins outright (it isn't merged field-by-field — an override either
+/// asserts a fresher date for the whole table or it doesn't).
 fn table() -> &'static EffectiveTable {
     TABLE.get_or_init(|| {
-        let base = parse_or_warn(DEFAULT_PRICING_TOML, "bundled default pricing.toml");
-        let mut rates = base.tiers;
-        let mut last_updated = base.meta.map(|m| m.last_updated);
+        let (mut rates, mut as_of) =
+            parse_price_file(DEFAULT_PRICING_TOML, "bundled default pricing.toml");
         for path in override_candidates() {
             if let Ok(text) = std::fs::read_to_string(&path) {
-                let overrides = parse_or_warn(&text, &path.display().to_string());
-                if !overrides.tiers.is_empty() {
-                    tracing::info!(path = %path.display(), tiers = ?overrides.tiers.keys().collect::<Vec<_>>(), "loaded pricing override");
+                let (overrides, override_as_of) =
+                    parse_price_file(&text, &path.display().to_string());
+                if !overrides.is_empty() {
+                    tracing::info!(path = %path.display(), tiers = ?overrides.keys().collect::<Vec<_>>(), "loaded pricing override");
                 }
-                rates.extend(overrides.tiers);
-                if let Some(meta) = overrides.meta {
-                    last_updated = Some(meta.last_updated);
+                rates.extend(overrides);
+                if let Some(date) = override_as_of {
+                    as_of = Some(date);
                 }
             }
         }
-        EffectiveTable { tiers: rates, last_updated }
+        EffectiveTable {
+            tiers: rates,
+            as_of,
+        }
     })
-}
-
-/// Sprint E, Part 1 — `lopi rates --check`'s payload: the resolved rate for
-/// every tier, when the table backing them was last set, and whether that
-/// date has aged past `max_age_days` (a stale table should be *visible*,
-/// never a silent wrong number).
-#[derive(Debug, Clone)]
-pub struct RatesReport {
-    /// Resolved rates for `opus`/`haiku`/`sonnet`, in stable sorted order.
-    pub tiers: Vec<(String, TierRates)>,
-    /// The date whichever file set the active table's rates was last
-    /// edited. `None` if neither the bundled default nor any override
-    /// declared a `[meta]` table (a pre-Sprint-E override file, e.g.).
-    pub last_updated: Option<chrono::NaiveDate>,
-    /// `true` once `last_updated` is more than `max_age_days` in the past,
-    /// or entirely absent — both cases mean "don't trust this number
-    /// without checking," which is exactly what a stale/undated table is.
-    pub stale: bool,
-}
-
-/// Default staleness horizon — 90 days. Anthropic pricing has moved on a
-/// timescale of single-digit months historically (see `pricing.toml`'s own
-/// doc comment on the Opus 4.1 staleness incident), so a table older than a
-/// quarter is treated as needing a human look, not silently trusted.
-pub const DEFAULT_MAX_AGE_DAYS: i64 = 90;
-
-/// Build a [`RatesReport`] for `lopi rates --check` (or any other cost
-/// surface that wants to label its numbers estimate-vs-stale). Pure over
-/// the cached [`table`] — takes `today` as a parameter rather than calling
-/// `Utc::now()` internally so it's unit-testable without wall-clock
-/// dependence.
-#[must_use]
-pub fn describe(today: chrono::NaiveDate, max_age_days: i64) -> RatesReport {
-    let t = table();
-    let mut tiers: Vec<(String, TierRates)> =
-        t.tiers.iter().map(|(k, v)| (k.clone(), *v)).collect();
-    tiers.sort_by(|a, b| a.0.cmp(&b.0));
-    let stale = match t.last_updated {
-        Some(d) => (today - d).num_days() > max_age_days,
-        None => true,
-    };
-    RatesReport {
-        tiers,
-        last_updated: t.last_updated,
-        stale,
-    }
 }
 
 /// Resolve the rates for `model` by the same substring match
@@ -188,26 +153,127 @@ pub fn rates_for(model: &str) -> TierRates {
     })
 }
 
+/// How stale a pricing estimate's basis is allowed to be before lopi
+/// degrades the estimate to an explicit warning instead of a confident
+/// figure. 90 days — long enough that a routine rate check doesn't nag,
+/// short enough that a table nobody has looked at in a quarter doesn't
+/// silently keep pricing sessions.
+pub const STALENESS_THRESHOLD_DAYS: i64 = 90;
+
+/// The pricing table's effective `as_of` date, if known (a hand-authored
+/// bundled/override TOML predating this field entirely has no date to
+/// report).
+#[must_use]
+pub fn table_as_of() -> Option<chrono::NaiveDate> {
+    table().as_of
+}
+
+/// Whether the pricing table is older than [`STALENESS_THRESHOLD_DAYS`] as
+/// of `today` — or has no known `as_of` at all (treated as stale, since an
+/// unknown freshness date is the more conservative assumption for a
+/// confident-looking dollar figure). Takes `today` as a parameter rather
+/// than calling `chrono::Utc::now()` internally so it's unit-testable
+/// without a wall-clock dependency.
+#[must_use]
+pub fn is_stale(today: chrono::NaiveDate) -> bool {
+    is_stale_given(table_as_of(), today)
+}
+
+/// A one-line warning suitable for a CLI/TUI status line when [`is_stale`]
+/// is true, naming the table's age or its absent `as_of`. `None` when the
+/// table isn't stale as of `today`.
+#[must_use]
+pub fn staleness_warning(today: chrono::NaiveDate) -> Option<String> {
+    staleness_warning_given(table_as_of(), today)
+}
+
+/// Pure staleness check taking an explicit `as_of` rather than reading the
+/// process-global [`table`], so tests can exercise both the "known old
+/// date" and "no `as_of` at all" cases without needing a second
+/// `OnceLock`-backed table per test binary. [`is_stale`] is a thin wrapper
+/// over this using the real table's `as_of`.
+fn is_stale_given(as_of: Option<chrono::NaiveDate>, today: chrono::NaiveDate) -> bool {
+    match as_of {
+        None => true,
+        Some(date) => today.signed_duration_since(date).num_days() > STALENESS_THRESHOLD_DAYS,
+    }
+}
+
+/// Pure warning-message builder taking an explicit `as_of`; see
+/// [`is_stale_given`] for why this is split out from [`staleness_warning`].
+fn staleness_warning_given(
+    as_of: Option<chrono::NaiveDate>,
+    today: chrono::NaiveDate,
+) -> Option<String> {
+    if !is_stale_given(as_of, today) {
+        return None;
+    }
+    Some(match as_of {
+        Some(date) => {
+            let days = today.signed_duration_since(date).num_days();
+            format!(
+                "pricing table is stale: {days} days old (as of {date}) — dollar estimates may be inaccurate"
+            )
+        }
+        None => {
+            "pricing table is stale: no as_of date recorded — dollar estimates may be inaccurate"
+                .to_string()
+        }
+    })
+}
+
+/// Sprint E, Part 1 — `lopi rates --check`'s payload: the resolved rate for
+/// every tier plus the table's freshness, built on top of the same
+/// `as_of`/[`is_stale_given`] mechanism [`is_stale`]/[`staleness_warning`]
+/// use.
+#[derive(Debug, Clone)]
+pub struct RatesReport {
+    /// Resolved rates for `opus`/`haiku`/`sonnet`, in stable sorted order.
+    pub tiers: Vec<(String, TierRates)>,
+    /// The table's effective `as_of` date, if known.
+    pub last_updated: Option<chrono::NaiveDate>,
+    /// `true` once `last_updated` is more than [`STALENESS_THRESHOLD_DAYS`]
+    /// in the past, or entirely absent — both cases mean "don't trust this
+    /// number without checking."
+    pub stale: bool,
+}
+
+/// Build a [`RatesReport`] for `lopi rates --check` (or any other cost
+/// surface that wants to label its numbers estimate-vs-stale). Pure over
+/// the cached [`table`] — takes `today` as a parameter rather than calling
+/// `Utc::now()` internally so it's unit-testable without wall-clock
+/// dependence.
+#[must_use]
+pub fn describe(today: chrono::NaiveDate) -> RatesReport {
+    let t = table();
+    let mut tiers: Vec<(String, TierRates)> =
+        t.tiers.iter().map(|(k, v)| (k.clone(), *v)).collect();
+    tiers.sort_by(|a, b| a.0.cmp(&b.0));
+    RatesReport {
+        tiers,
+        last_updated: t.as_of,
+        stale: is_stale_given(t.as_of, today),
+    }
+}
+
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
+
+    /// Test-only convenience wrapper matching the pre-`as_of` call shape
+    /// used throughout this module's tests: parse a pricing TOML string and
+    /// return just its tier-rate map, discarding `as_of`.
+    fn parse_or_warn(text: &str, source: &str) -> HashMap<String, TierRates> {
+        parse_price_file(text, source).0
+    }
 
     #[test]
     fn bundled_default_covers_all_three_tiers() {
         let defaults = parse_or_warn(DEFAULT_PRICING_TOML, "test");
         for tier in ["opus", "haiku", "sonnet"] {
-            assert!(defaults.tiers.contains_key(tier), "missing tier: {tier}");
+            assert!(defaults.contains_key(tier), "missing tier: {tier}");
         }
-    }
-
-    #[test]
-    fn bundled_default_declares_last_updated() {
-        let defaults = parse_or_warn(DEFAULT_PRICING_TOML, "test");
-        assert!(
-            defaults.meta.is_some(),
-            "shipped pricing.toml must declare [meta] last_updated"
-        );
     }
 
     #[test]
@@ -235,8 +301,7 @@ mod tests {
     #[test]
     fn malformed_override_file_falls_back_without_panicking() {
         let empty = parse_or_warn("not valid toml [[[", "test");
-        assert!(empty.tiers.is_empty());
-        assert!(empty.meta.is_none());
+        assert!(empty.is_empty());
     }
 
     /// An override file — the mechanism `.lopi/pricing.toml` /
@@ -249,30 +314,65 @@ mod tests {
             "[sonnet]\ninput = 99.0\noutput = 1.0\ncache_read = 0.1\ncache_write = 0.2\n",
             "test override",
         );
-        assert_eq!(overrides.tiers.len(), 1);
-        assert!((overrides.tiers["sonnet"].input - 99.0).abs() < f64::EPSILON);
+        assert_eq!(overrides.len(), 1);
+        assert!((overrides["sonnet"].input - 99.0).abs() < f64::EPSILON);
     }
 
+    /// The bundled `pricing.toml`'s `as_of` should parse and match the date
+    /// recorded in the file's own prose comment ("2026-07 pricing").
     #[test]
-    fn override_file_meta_is_parsed_independently_of_tiers() {
-        let file = parse_or_warn(
-            "[meta]\nlast_updated = \"2026-01-15\"\n[sonnet]\ninput = 1.0\noutput = 1.0\ncache_read = 1.0\ncache_write = 1.0\n",
-            "test override",
-        );
+    fn bundled_default_has_as_of() {
+        let (_, as_of) = parse_price_file(DEFAULT_PRICING_TOML, "test");
         assert_eq!(
-            file.meta.map(|m| m.last_updated),
-            chrono::NaiveDate::from_ymd_opt(2026, 1, 15)
+            as_of,
+            Some(chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap())
         );
-        // `meta` must not leak into the flattened tier map as a bogus tier.
-        assert!(!file.tiers.contains_key("meta"));
     }
 
     #[test]
-    fn describe_reports_shipped_last_updated_and_is_not_stale_relative_to_itself() {
-        let report = describe(
-            chrono::NaiveDate::from_ymd_opt(2026, 7, 2).expect("valid date"),
-            DEFAULT_MAX_AGE_DAYS,
+    fn is_stale_given_false_within_threshold_true_past_it() {
+        let as_of = chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap();
+        let just_inside = as_of + chrono::Duration::days(STALENESS_THRESHOLD_DAYS);
+        let just_outside = as_of + chrono::Duration::days(STALENESS_THRESHOLD_DAYS + 1);
+        assert!(!is_stale_given(Some(as_of), just_inside));
+        assert!(is_stale_given(Some(as_of), just_outside));
+    }
+
+    /// A hand-constructed override-shaped TOML string with no `as_of` key
+    /// parses without error (backward compat with a pre-`as_of` override
+    /// file) and its missing date is treated as the conservative "stale"
+    /// case rather than as an error.
+    #[test]
+    fn missing_as_of_parses_fine_and_is_treated_as_stale() {
+        let (tiers, as_of) = parse_price_file(
+            "[sonnet]\ninput = 1.0\noutput = 2.0\ncache_read = 0.1\ncache_write = 0.2\n",
+            "test",
         );
+        assert_eq!(tiers.len(), 1);
+        assert_eq!(as_of, None);
+
+        let today = chrono::NaiveDate::from_ymd_opt(2026, 7, 2).unwrap();
+        assert!(is_stale_given(as_of, today));
+    }
+
+    #[test]
+    fn staleness_warning_none_when_fresh_some_and_mentions_stale_when_old() {
+        let as_of = chrono::NaiveDate::from_ymd_opt(2026, 7, 1).unwrap();
+        let fresh = as_of + chrono::Duration::days(1);
+        assert_eq!(staleness_warning_given(Some(as_of), fresh), None);
+
+        let old = as_of + chrono::Duration::days(STALENESS_THRESHOLD_DAYS + 1);
+        let warning = staleness_warning_given(Some(as_of), old).expect("should warn when stale");
+        assert!(warning.to_lowercase().contains("stale"));
+
+        let unknown_warning =
+            staleness_warning_given(None, old).expect("missing as_of should also warn");
+        assert!(unknown_warning.to_lowercase().contains("stale"));
+    }
+
+    #[test]
+    fn describe_reports_shipped_as_of_and_is_not_stale_relative_to_itself() {
+        let report = describe(chrono::NaiveDate::from_ymd_opt(2026, 7, 2).expect("valid date"));
         assert_eq!(
             report.last_updated,
             chrono::NaiveDate::from_ymd_opt(2026, 7, 1)
@@ -285,9 +385,9 @@ mod tests {
     }
 
     #[test]
-    fn describe_flags_a_table_older_than_max_age_as_stale() {
+    fn describe_flags_a_table_older_than_the_threshold_as_stale() {
         let far_future = chrono::NaiveDate::from_ymd_opt(2030, 1, 1).expect("valid date");
-        let report = describe(far_future, DEFAULT_MAX_AGE_DAYS);
+        let report = describe(far_future);
         assert!(report.stale, "a multi-year-old table must be flagged stale");
     }
 }

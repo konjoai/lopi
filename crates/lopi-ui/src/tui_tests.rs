@@ -17,7 +17,7 @@ fn queued(task_id: TaskId, goal: &str) -> AgentEvent {
 
 #[test]
 fn task_queued_inserts_a_row_and_increments_queued_count() {
-    let mut state = AppState::new();
+    let mut state = AppState::new(false);
     let id = TaskId::new();
     state.handle_event(queued(id, "fix the bug"));
     assert_eq!(state.queued_count, 1);
@@ -28,7 +28,7 @@ fn task_queued_inserts_a_row_and_increments_queued_count() {
 
 #[test]
 fn task_started_updates_an_existing_row() {
-    let mut state = AppState::new();
+    let mut state = AppState::new(false);
     let id = TaskId::new();
     state.handle_event(queued(id, "fix the bug"));
     state.handle_event(AgentEvent::TaskStarted {
@@ -44,7 +44,7 @@ fn task_started_updates_an_existing_row() {
 
 #[test]
 fn task_started_for_unknown_id_is_a_silent_no_op() {
-    let mut state = AppState::new();
+    let mut state = AppState::new(false);
     state.handle_event(AgentEvent::TaskStarted {
         task_id: TaskId::new(),
         attempt: 1,
@@ -56,7 +56,7 @@ fn task_started_for_unknown_id_is_a_silent_no_op() {
 
 #[test]
 fn status_changed_updates_status_and_attempt() {
-    let mut state = AppState::new();
+    let mut state = AppState::new(false);
     let id = TaskId::new();
     state.handle_event(queued(id, "fix the bug"));
     state.handle_event(AgentEvent::StatusChanged {
@@ -71,7 +71,7 @@ fn status_changed_updates_status_and_attempt() {
 
 #[test]
 fn score_updated_sets_the_row_score() {
-    let mut state = AppState::new();
+    let mut state = AppState::new(false);
     let id = TaskId::new();
     state.handle_event(queued(id, "fix the bug"));
     state.handle_event(AgentEvent::ScoreUpdated {
@@ -85,7 +85,7 @@ fn score_updated_sets_the_row_score() {
 
 #[test]
 fn log_line_ring_buffer_caps_at_max_log_lines() {
-    let mut state = AppState::new();
+    let mut state = AppState::new(false);
     let id = TaskId::new();
     for i in 0..(MAX_LOG_LINES + 10) {
         state.handle_event(AgentEvent::info(id, format!("line {i}")));
@@ -102,7 +102,7 @@ fn log_line_ring_buffer_caps_at_max_log_lines() {
 
 #[test]
 fn task_completed_updates_row_and_increments_succeeded() {
-    let mut state = AppState::new();
+    let mut state = AppState::new(false);
     let id = TaskId::new();
     state.handle_event(queued(id, "fix the bug"));
     state.handle_event(AgentEvent::TaskCompleted {
@@ -124,7 +124,7 @@ fn task_completed_updates_row_and_increments_succeeded() {
 
 #[test]
 fn task_completed_increments_failed_on_failure_outcome() {
-    let mut state = AppState::new();
+    let mut state = AppState::new(false);
     let id = TaskId::new();
     state.handle_event(queued(id, "fix the bug"));
     state.handle_event(AgentEvent::TaskCompleted {
@@ -144,7 +144,7 @@ fn task_completed_increments_failed_on_failure_outcome() {
 /// before its terminal event arrives must still count.
 #[test]
 fn task_completed_increments_counters_even_for_an_unknown_task_id() {
-    let mut state = AppState::new();
+    let mut state = AppState::new(false);
     state.handle_event(AgentEvent::TaskCompleted {
         task_id: TaskId::new(),
         outcome: TaskStatus::Success {
@@ -160,7 +160,7 @@ fn task_completed_increments_counters_even_for_an_unknown_task_id() {
 
 #[test]
 fn task_cancelled_removes_the_row() {
-    let mut state = AppState::new();
+    let mut state = AppState::new(false);
     let id = TaskId::new();
     state.handle_event(queued(id, "fix the bug"));
     state.handle_event(AgentEvent::TaskCancelled { task_id: id });
@@ -169,7 +169,7 @@ fn task_cancelled_removes_the_row() {
 
 #[test]
 fn pool_stats_overwrites_queued_count_rather_than_incrementing() {
-    let mut state = AppState::new();
+    let mut state = AppState::new(false);
     let id = TaskId::new();
     state.handle_event(queued(id, "a"));
     state.handle_event(queued(TaskId::new(), "b"));
@@ -189,7 +189,7 @@ fn pool_stats_overwrites_queued_count_rather_than_incrementing() {
 
 #[test]
 fn sorted_agents_orders_oldest_first() {
-    let mut state = AppState::new();
+    let mut state = AppState::new(false);
     let first = TaskId::new();
     state.handle_event(queued(first, "first"));
     std::thread::sleep(std::time::Duration::from_millis(5));
@@ -208,7 +208,7 @@ fn sorted_agents_orders_oldest_first() {
 
 #[test]
 fn visible_logs_filters_by_log_filter_when_set() {
-    let mut state = AppState::new();
+    let mut state = AppState::new(false);
     let a = TaskId::new();
     let b = TaskId::new();
     state.handle_event(AgentEvent::info(a, "from a"));
@@ -222,7 +222,7 @@ fn visible_logs_filters_by_log_filter_when_set() {
 
 #[test]
 fn visible_logs_shows_everything_when_no_filter() {
-    let mut state = AppState::new();
+    let mut state = AppState::new(false);
     state.handle_event(AgentEvent::info(TaskId::new(), "a"));
     state.handle_event(AgentEvent::info(TaskId::new(), "b"));
     assert_eq!(state.visible_logs().len(), 2);
@@ -230,7 +230,7 @@ fn visible_logs_shows_everything_when_no_filter() {
 
 #[test]
 fn visible_logs_caps_at_display_logs_and_keeps_the_most_recent_in_order() {
-    let mut state = AppState::new();
+    let mut state = AppState::new(false);
     let id = TaskId::new();
     for i in 0..(DISPLAY_LOGS + 5) {
         state.handle_event(AgentEvent::info(id, format!("line {i}")));
@@ -247,7 +247,7 @@ fn visible_logs_caps_at_display_logs_and_keeps_the_most_recent_in_order() {
 
 #[test]
 fn select_next_and_prev_are_no_ops_with_no_agents() {
-    let mut state = AppState::new();
+    let mut state = AppState::new(false);
     state.select_next();
     assert!(state.table_state.selected().is_none());
     state.select_prev();
@@ -256,7 +256,7 @@ fn select_next_and_prev_are_no_ops_with_no_agents() {
 
 #[test]
 fn select_next_wraps_from_last_to_first() {
-    let mut state = AppState::new();
+    let mut state = AppState::new(false);
     for i in 0..3 {
         state.handle_event(queued(TaskId::new(), &format!("t{i}")));
     }
@@ -267,7 +267,7 @@ fn select_next_wraps_from_last_to_first() {
 
 #[test]
 fn select_next_advances_by_one_when_not_at_the_end() {
-    let mut state = AppState::new();
+    let mut state = AppState::new(false);
     for i in 0..3 {
         state.handle_event(queued(TaskId::new(), &format!("t{i}")));
     }
@@ -278,7 +278,7 @@ fn select_next_advances_by_one_when_not_at_the_end() {
 
 #[test]
 fn select_prev_wraps_from_first_to_last() {
-    let mut state = AppState::new();
+    let mut state = AppState::new(false);
     for i in 0..3 {
         state.handle_event(queued(TaskId::new(), &format!("t{i}")));
     }
@@ -289,7 +289,7 @@ fn select_prev_wraps_from_first_to_last() {
 
 #[test]
 fn select_prev_retreats_by_one_when_not_at_the_start() {
-    let mut state = AppState::new();
+    let mut state = AppState::new(false);
     for i in 0..3 {
         state.handle_event(queued(TaskId::new(), &format!("t{i}")));
     }
@@ -300,15 +300,43 @@ fn select_prev_retreats_by_one_when_not_at_the_start() {
 
 #[test]
 fn select_next_starts_at_zero_when_nothing_selected() {
-    let mut state = AppState::new();
+    let mut state = AppState::new(false);
     state.handle_event(queued(TaskId::new(), "t"));
     state.select_next();
     assert_eq!(state.table_state.selected(), Some(0));
 }
 
+/// `run_with_seed`'s own behavior — construct with `synthetic: true`, fold
+/// seed events through the same `handle_event` path a live bus event would
+/// take. The actual terminal I/O loop isn't unit-tested for the existing
+/// `run`/`run_loop` either (crossterm needs a real terminal), so this stops
+/// at what `run_with_seed` does to `AppState` before the interactive loop.
+#[test]
+fn new_true_marks_synthetic_and_seed_events_populate_agents() {
+    let mut state = AppState::new(true);
+    assert!(state.synthetic, "constructed with synthetic: true");
+
+    let initial_events = vec![
+        queued(TaskId::new(), "seeded task one"),
+        queued(TaskId::new(), "seeded task two"),
+    ];
+    for ev in initial_events {
+        state.handle_event(ev);
+    }
+
+    assert_eq!(state.agents.len(), 2, "seed events populate agents");
+    assert_eq!(state.queued_count, 2);
+}
+
+#[test]
+fn new_false_leaves_synthetic_unset() {
+    let state = AppState::new(false);
+    assert!(!state.synthetic);
+}
+
 #[test]
 fn uptime_formats_seconds_minutes_and_hours() {
-    let state = AppState::new();
+    let state = AppState::new(false);
     // started_at is "now" — elapsed is ~0s, so this only exercises the
     // sub-60s branch directly; the minute/hour branches are pure string
     // formatting on the same `s` value, verified independently below.

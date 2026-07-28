@@ -1,13 +1,23 @@
-//! Best-effort server startup steps, split out of `mod.rs` to keep that
-//! file under the 500-line CI file-size gate (Sprint E's `/api/economics`
-//! route pushed it over).
+//! Best-effort server-startup steps for [`super::AppState`] — split out of
+//! `web/mod.rs` to keep that file under the 500-line CI file-size gate.
 
 use super::AppState;
 
 /// Best-effort startup steps that should not abort the server on failure:
 /// start the cron scheduler. Failure is logged and swallowed so the HTTP
 /// server still comes up.
+///
+/// Skipped entirely on a synthetic (`lopi demo`) store — demo mode is
+/// read-only theater (see `docs/adr/0001-demo-mode-and-measurement.md`,
+/// A.5: "no webhook registration, no scheduler activation"). A demo store's
+/// `schedules`/`schedule_chains`/`maxx_entries` tables are always empty, so
+/// this is also a no-op in practice, but the point is not to structurally
+/// depend on that — activation itself must not happen.
 pub(super) async fn warm_up_state(state: &mut AppState) {
+    if state.store.is_synthetic().await.unwrap_or(false) {
+        tracing::info!("synthetic store — skipping scheduler/quota/MAXX warm-up");
+        return;
+    }
     start_schedules(state).await;
     start_schedule_chains(state).await;
     start_quota(state).await;

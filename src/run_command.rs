@@ -127,9 +127,16 @@ pub(crate) async fn run_with_live_print(
 /// nothing was billed (a `$0.0000` line is noise, not signal — e.g. a
 /// dry-run, or every attempt used the direct-API path instead of a streamed
 /// `claude -p` call).
+///
+/// Carries its own provenance disclosure inline (see `docs/MEASUREMENT.md`):
+/// this is local token burn lopi counted from this run's own `turn_metrics`
+/// rows — not plan quota, not account usage, not a bill, and not inclusive
+/// of any Claude Code session run by hand outside lopi.
 fn format_session_cost_line(cost_usd: f64) -> Option<String> {
     if cost_usd > 0.0 {
-        Some(format!("💵 session cost: ${cost_usd:.4}"))
+        Some(format!(
+            "💵 session cost: ${cost_usd:.4} (measured from this run's own token usage — not your plan quota or a bill)"
+        ))
     } else {
         None
     }
@@ -307,9 +314,11 @@ mod tests {
 
     #[test]
     fn format_session_cost_line_shows_nonzero_spend() {
-        assert_eq!(
-            format_session_cost_line(0.0421),
-            Some("💵 session cost: $0.0421".to_string())
+        let line = format_session_cost_line(0.0421).expect("nonzero spend produces a line");
+        assert!(line.contains("$0.0421"));
+        assert!(
+            line.contains("not your plan quota"),
+            "must disclose what this figure is not, per docs/MEASUREMENT.md"
         );
     }
 

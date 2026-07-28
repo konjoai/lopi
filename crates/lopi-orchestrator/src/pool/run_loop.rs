@@ -481,7 +481,10 @@ async fn run_one(
                 tracing::info!(task_id = %task_id, cost_usd, total_attempts, "run complete");
                 bus.send(AgentEvent::info(
                     task_id,
-                    format!("💵 session cost: ${cost_usd:.4} over {total_attempts} attempt(s)"),
+                    format!(
+                        "💵 session cost: ${cost_usd:.4} over {total_attempts} attempt(s) \
+                         (measured from this run's own token usage — not your plan quota or a bill)"
+                    ),
                 ));
                 actual_cost = Some(lopi_core::Money::from_usd(cost_usd));
             }

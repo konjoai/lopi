@@ -375,9 +375,6 @@ pub async fn serve(
 /// same fail-closed auth policy — see `auth_policy`'s module docs.
 pub use auth_policy::validate_auth_policy;
 
-mod startup;
-use startup::warm_up_state;
-
 /// Variant that also wires the repo path for `/api/spec` serving, plus any
 /// extra dispatch repos for `/api/repos`.
 #[allow(clippy::too_many_arguments)]
@@ -398,7 +395,7 @@ pub async fn serve_with_repo(
         .with_extra_repos(extra_repos)
         .with_config(config)
         .with_cors(cors_origins, cors_permissive);
-    warm_up_state(&mut state).await;
+    warmup::warm_up_state(&mut state).await;
     let app = build_app(state);
 
     let addr: SocketAddr = format!("{host}:{port}").parse()?;
@@ -421,6 +418,7 @@ mod auth_policy;
 mod budget_handlers;
 mod config_handlers;
 mod cors_policy;
+mod demo_guard;
 mod event_bridge;
 mod handlers;
 mod loop_handlers;
@@ -435,6 +433,7 @@ pub mod repos_handlers;
 mod schedule_chain_handlers;
 mod schedule_handlers;
 mod static_assets;
+mod task_fields;
 mod task_stream_handlers;
 use api_middleware::{auth_middleware, mint_ws_ticket, rate_limit_middleware};
 use handlers::{
@@ -444,14 +443,12 @@ use handlers::{
 use metrics_handlers::{get_agent_dag, get_quality_trend, metrics};
 use static_assets::static_handler;
 mod streaming;
-/// Wire types for the task-submission API — `CreateTaskRequest`/
-/// `CreateTaskResponse`. Sprint T0 widened this module from `pub(crate)` to
-/// `pub`: `CreateTaskRequest` is now also the client-side wire target
-/// `lopi_ui::client::stack_payload` builds and `RemoteClient::create_task`
-/// serializes, not just a server-side `Deserialize` body type, so it must
-/// be nameable from outside this crate (e.g. the `lopi` CLI binary calling
-/// through the `TuiClient` trait).
+/// Wire types for the task-submission API — `CreateTaskRequest`/`CreateTaskResponse`.
+/// `pub`, not `pub(crate)`: also the client-side wire target
+/// `lopi_ui::client::stack_payload` builds and `RemoteClient::create_task` serializes,
+/// so it must be nameable from outside this crate (e.g. the `lopi` CLI's `TuiClient`).
 pub mod types;
+mod warmup;
 mod ws_ticket;
 use streaming::{sse_handler, ws_handler};
 

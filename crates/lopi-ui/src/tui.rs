@@ -81,6 +81,14 @@ pub(super) struct AppState {
     /// itself is only visible within `tui` and its descendants, so a wider
     /// field visibility here would be inconsistent with its type.
     cognition: HashMap<TaskId, AgentCognition>,
+    /// Whether this session is showing `lopi demo` fixture data rather than
+    /// live agent runs — set once at construction from the caller-supplied
+    /// flag (`lopi watch --demo`), read by `tui/draw.rs`'s header banner. See
+    /// `docs/adr/0001-demo-mode-and-measurement.md`, point 7: the TUI never
+    /// reads the store itself, so this can't be store-driven the way the
+    /// web/MCP surfaces' `is_synthetic()` checks are — the caller reads it
+    /// once and passes the result in.
+    pub(super) synthetic: bool,
 }
 
 #[derive(Debug)]
@@ -91,7 +99,11 @@ pub(super) struct LogEntry {
 }
 
 impl AppState {
-    fn new() -> Self {
+    /// Construct an empty session state. `synthetic` marks whether this
+    /// session is showing `lopi demo` fixture data (`lopi watch --demo`) —
+    /// see the field's own doc for why it's a constructor param rather than
+    /// a store lookup.
+    fn new(synthetic: bool) -> Self {
         Self {
             agents: HashMap::new(),
             log_lines: VecDeque::new(),
@@ -104,6 +116,7 @@ impl AppState {
             failed: 0,
             started_at: Instant::now(),
             cognition: HashMap::new(),
+            synthetic,
         }
     }
 
@@ -334,6 +347,27 @@ impl AppState {
 ///
 /// Returns an error if the terminal cannot be initialized or the event loop fails.
 pub async fn run(bus: EventBus<AgentEvent>) -> Result<()> {
+    run_with_seed(bus, Vec::new(), false).await
+}
+
+/// Like [`run`], but seeds `AppState` with `initial_events` (folded in via
+/// the same `handle_event` path as any live event) before the interactive
+/// loop starts, and marks the session as showing synthetic (`lopi demo`)
+/// data. Used by `lopi watch --demo` — the initial events come from
+/// `lopi_demo::scenario::replay_events`, a separate crate this one has no
+/// dependency on (the CLI layer passes the already-built `Vec<AgentEvent>`
+/// in). Feeding them directly into `AppState` here, rather than
+/// broadcasting them on `bus` before this function subscribes, avoids a
+/// subscribe-timing race: `EventBus::send` silently drops events with no
+/// current subscriber.
+///
+/// # Errors
+/// Returns an error if the terminal cannot be initialized or the event loop fails.
+pub async fn run_with_seed(
+    bus: EventBus<AgentEvent>,
+    initial_events: Vec<AgentEvent>,
+    synthetic: bool,
+) -> Result<()> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
@@ -348,7 +382,7 @@ pub async fn run(bus: EventBus<AgentEvent>) -> Result<()> {
     // concurrently with this on the same bus). Run it on the blocking pool.
     let (mut terminal, res) = tokio::task::spawn_blocking(move || {
         let mut terminal = terminal;
-        let res = run_loop(&mut terminal, &bus);
+        let res = run_loop(&mut terminal, &bus, initial_events, synthetic);
         (terminal, res)
     })
     .await
@@ -367,10 +401,15 @@ pub async fn run(bus: EventBus<AgentEvent>) -> Result<()> {
 fn run_loop<B: ratatui::backend::Backend>(
     terminal: &mut Terminal<B>,
     bus: &EventBus<AgentEvent>,
+    initial_events: Vec<AgentEvent>,
+    synthetic: bool,
 ) -> Result<()> {
     // Elapsed timers in AgentRow update every second — refresh at that cadence when idle.
     const TIMER_INTERVAL: Duration = Duration::from_secs(1);
-    let mut state = AppState::new();
+    let mut state = AppState::new(synthetic);
+    for ev in initial_events {
+        state.handle_event(ev);
+    }
     let mut rx = bus.subscribe();
     let mut needs_redraw = true;
     let mut last_timer_redraw = Instant::now();

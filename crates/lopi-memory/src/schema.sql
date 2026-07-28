@@ -515,3 +515,29 @@ CREATE TABLE IF NOT EXISTS onboarding_imports (
 -- so one inside a `--` line would silently fracture this ALTER TABLE
 -- statement in two.
 ALTER TABLE patterns ADD COLUMN occurrence_count INTEGER NOT NULL DEFAULT 1;
+
+-- Demo-1: generic store-level key/value metadata. Not demo-specific in
+-- spirit — any future feature needing a single durable flag on the store
+-- itself (rather than a per-row column) can use this table — but today
+-- only `lopi demo`'s fixture generator writes to it, setting the
+-- `"synthetic"` key so every rendering surface can ask
+-- `MemoryStore::is_synthetic` before presenting demo data as real.
+CREATE TABLE IF NOT EXISTS store_metadata (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
+-- Demo-1: synthetic repo descriptors written by `lopi demo`'s fixture
+-- generator. Real repos are discovered by filesystem scan in `lopi-ui`
+-- (there is no `repos` table for them) — demo mode must never touch the
+-- real filesystem, so its "repo list" is this table instead. Empty on
+-- every real store. `sort_order` is caller-assigned so
+-- `load_demo_repos` can return rows in a stable, deterministic order
+-- (`ORDER BY sort_order`) regardless of SQLite's default row order.
+CREATE TABLE IF NOT EXISTS demo_repos (
+    name        TEXT PRIMARY KEY,
+    stack       TEXT NOT NULL,
+    path        TEXT NOT NULL,
+    description TEXT NOT NULL,
+    sort_order  INTEGER NOT NULL DEFAULT 0
+);
