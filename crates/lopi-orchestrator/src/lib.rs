@@ -3,6 +3,9 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 pub mod agent_rate_limit;
+/// Sprint E (Finding #10) — the economics layer: reservation ledger, cost
+/// estimator, degradation ladder, runaway detectors, unit economics.
+pub mod budget;
 /// Stack-Chain-1 — server-side whole-stack cron scheduling: fires an ordered
 /// sequence of independent goals, one per stack card, entirely server-side.
 pub mod chain_schedule_manager;
