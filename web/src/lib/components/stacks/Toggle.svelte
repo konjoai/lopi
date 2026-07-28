@@ -5,9 +5,22 @@
   export let on: boolean;
   export let onToggle: () => void;
   export let accent: 'ice' | 'sun' | 'flame' = 'sun';
+  /** Blocks the toggle (e.g. `MaxxPopover` disables enabling until the
+   *  loop has a goal to actually dispatch) — greys it out and stops
+   *  `onToggle` from firing rather than letting the click go through and
+   *  surface a server-side rejection instead. */
+  export let disabled = false;
 </script>
 
-<button type="button" class="gtog {accent}" class:on on:click={onToggle} aria-pressed={on}>
+<button
+  type="button"
+  class="gtog {accent}"
+  class:on
+  class:disabled
+  {disabled}
+  on:click={onToggle}
+  aria-pressed={on}
+>
   <span class="knob"></span>
 </button>
 
@@ -23,6 +36,10 @@
     flex: 0 0 30px;
     border: none;
     padding: 0;
+  }
+  .gtog.disabled {
+    cursor: not-allowed;
+    opacity: 0.4;
   }
   .gtog .knob {
     position: absolute;

@@ -388,8 +388,14 @@
   .kdrop-item.active {
     background: rgb(var(--konjo-accent-rgb) / 0.12);
   }
+  /* Per-field accent, not the ambient global `--konjo-accent` — this dropdown
+     mounts once per config field (model/effort/repo/branch/…), each of which
+     already sets its own `--konjo-accent-rgb` on an ancestor `.chip`/`.cfgrow`
+     (see ConfigDrawer.svelte/StackConfigPopover.svelte). Reading the global
+     var here made every field's selected value render identically ice-blue
+     regardless of which field it was. */
   .kdrop-item.selected .kdrop-item-label {
-    color: var(--konjo-accent);
+    color: rgb(var(--konjo-accent-rgb, 0 212 255));
   }
   .kdrop-item-label {
     overflow: hidden;

@@ -576,6 +576,17 @@ export const STACK_COMMANDS: InlineCommandDef[] = [
   { command: 'goal', hint: 'open run-until-goal', isValuePicker: false }
 ];
 
+/** Every value-picker command name, shared by `CARD_COMMANDS` and
+ *  `STACK_COMMANDS` (the two scopes differ only in their non-value-picker
+ *  tail — `maxx` vs `goal`) — used by `parseComposerInput` to strip a
+ *  resolved `;command/value` token out of the final submitted goal, the
+ *  same way it already strips `:alias`/`@repo`/`×N`. Hardcoded rather than
+ *  derived from either catalog at call time since `parseComposerInput` runs
+ *  ahead of knowing which scope's catalog applies (it's the raw-string
+ *  parser both `buildCard` and templates funnel through) and the vocabulary
+ *  itself is identical either way. */
+const VALUE_PICKER_TOKEN_RE = /;(?:model|effort|branch|autonomy|eval)\/\S+/g;
+
 /** A level-1 `;command` suggestion — the bare command name, not yet a value. */
 export interface CommandSuggestion {
   token: string;
@@ -681,14 +692,17 @@ export function claudeCommandAutocomplete(goalText: string, commands: Option[]):
 /** One segment of tokenized goal/cmdbar text — either a plain-text run
  *  (`chipKind` unset) or a resolved token to render as an inline chip.
  *  `chipKind` picks the accent color, reusing `ConfigDrawer.svelte`'s exact
- *  per-field hues (`:alias` teal, `@repo` ice, `;effort` ember, `;model`
- *  cyan, `;branch` green, `;autonomy`/everything else `;command/value`
- *  violet, `×N` sun) plus its own rose for a real Claude Code `/name`
- *  command (Composer-Grammar-2) — deliberately distinct from every `;`
- *  color so a real Claude command never reads as one of lopi's own verbs. */
+ *  per-field hues (`:alias` teal, `@repo`/`;model` ice, `;effort` ember,
+ *  `;branch` jade, `;autonomy` violet) plus a distinct one per remaining
+ *  `;` verb (`;eval` mint, `×N` sun) and its own rose for a real Claude Code
+ *  `/name` command (Composer-Grammar-2) — deliberately distinct from every
+ *  `;` color so a real Claude command never reads as one of lopi's own
+ *  verbs. `autonomy`/`eval` used to share one generic `'command'` bucket
+ *  (both rendered violet); split so `;eval/kcqf` reads as its own color
+ *  instead of looking like an autonomy override. */
 export interface GoalSegment {
   text: string;
-  chipKind?: 'alias' | 'repo' | 'effort' | 'command' | 'loop' | 'model' | 'branch' | 'claude';
+  chipKind?: 'alias' | 'repo' | 'effort' | 'model' | 'branch' | 'autonomy' | 'eval' | 'loop' | 'claude';
 }
 
 function escapeRegExp(s: string): string {
@@ -737,7 +751,16 @@ export function tokenizeGoalChips(
     else if (token.startsWith('@')) kind = 'repo';
     else if (token.startsWith(';')) {
       const cmd = token.slice(1, token.indexOf('/', 1));
-      kind = cmd === 'effort' ? 'effort' : cmd === 'model' ? 'model' : cmd === 'branch' ? 'branch' : 'command';
+      kind =
+        cmd === 'effort'
+          ? 'effort'
+          : cmd === 'model'
+            ? 'model'
+            : cmd === 'branch'
+              ? 'branch'
+              : cmd === 'eval'
+                ? 'eval'
+                : 'autonomy';
     } else if (token.startsWith('/')) kind = 'claude';
     else kind = 'loop';
     segments.push({ text: token, chipKind: kind });
@@ -791,6 +814,15 @@ export function parseComposerInput(raw: string): ParsedInput {
     loopN = parseInt(loopMatch[1], 10);
     text = (text.slice(0, loopMatch.index) + text.slice(loopMatch.index + loopMatch[0].length)).trim();
   }
+
+  // Strip any resolved `;command/value` tokens left in the text by
+  // `selectCommand`/`selectCommandFromBar` — those now stay visible as
+  // inline chips while editing (see `tokenizeGoalChips`'s doc comment) so
+  // the picked value stays legible in the composer, but the value itself
+  // already landed on `card.config`/`pane.config.defaults` at selection
+  // time (`applyCommandValue`); the raw `;model/opus` syntax must never
+  // reach the real agent goal any more than `:alias`/`@repo`/`×N` do.
+  text = text.replace(VALUE_PICKER_TOKEN_RE, ' ').replace(/\s+/g, ' ').trim();
 
   const quoted = text.match(/^"(.*)"$/);
   const goal = (quoted ? quoted[1] : text).trim();

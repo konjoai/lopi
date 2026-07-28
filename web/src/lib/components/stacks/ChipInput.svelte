@@ -53,11 +53,11 @@
     effort: 'chip-effort',
     model: 'chip-model',
     branch: 'chip-branch',
-    // Generic bucket for `;autonomy` and the non-value/suite-toggle commands
-    // (`;eval`/`;guard`/`;schedule`/`;maxx`/`;goal`) — `ConfigDrawer.svelte`'s
-    // real autonomy violet already happens to be this bucket's existing
-    // color, so it doubles as both without a distinct `chipKind`.
-    command: 'chip-autonomy',
+    autonomy: 'chip-autonomy',
+    // Its own mint, distinct from `chip-autonomy`'s violet — the two used to
+    // share one generic bucket, so `;eval/kcqf` rendered identically to an
+    // autonomy override.
+    eval: 'chip-eval',
     loop: 'chip-loop',
     // A real Claude Code `/name` command (Composer-Grammar-2) — deliberately
     // its own color, not a reuse of any `;`-verb hue: the brief's suggestion
@@ -235,6 +235,11 @@
     border: 1px solid rgba(183, 155, 255, 0.4);
     background: rgba(183, 155, 255, 0.1);
     color: var(--stack-violet, #b79bff);
+  }
+  .chipinput :global(.chip.chip-eval) {
+    border: 1px solid rgba(59, 230, 200, 0.4);
+    background: rgba(59, 230, 200, 0.1);
+    color: var(--konjo-mint, #3be6c8);
   }
   .chipinput :global(.chip.chip-loop) {
     border: 1px solid rgba(255, 204, 0, 0.4);

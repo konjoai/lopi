@@ -1,18 +1,21 @@
 ---
 decays: state
-verified-against: 6b69e30
+verified-against: bbe9db7
 verified-date: 2026-07-28
 ---
 
-Verified against: `6b69e30` · 2026-07-28 (re-verified; this document carries no
+Verified against: `bbe9db7` · 2026-07-28 (re-verified; this document carries no
 line-number citations to check for drift — it's a conceptual F-principle-to-`LoopConfig`
 mapping, not a status/citation ledger. Confirmed every field the table below names
 (`gate`, `until`, `verifier_required`, `verifier_model`, `verifier_effort`,
 `max_iterations`, `no_progress_limit`, `[budget]`, `vision_path`, `skills_enabled`,
 `rules_enabled`, `isolation`, `autonomy_level`, `promote_after`, `trust_ceiling`,
 `permission_allow`, `permission_deny`) still exists on `LoopConfig`
-(`crates/lopi-core/src/loop_config.rs`) with the same name. No drift found; neither
-Sprint G nor the demo/measurement sprint touched `loop_config.rs` or `recipes/`.)
+(`crates/lopi-core/src/loop_config.rs`) with the same name — the only change since
+the last verification added a new `context_mode` field (Finding #4's context-mode
+A/B knob); it doesn't touch or rename anything this table cites. No drift found;
+this sprint's changes are web-composer-only and never touch `loop_config.rs` or
+`recipes/`.)
 
 # lopi recipe library
 
