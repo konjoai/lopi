@@ -7,7 +7,10 @@ use crate::{
     util::{db_path, fmt_status},
 };
 
-pub async fn watch(ws_url: Option<String>, local: bool) -> Result<()> {
+pub async fn watch(ws_url: Option<String>, local: bool, demo: bool) -> Result<()> {
+    if demo {
+        return watch_demo().await;
+    }
     if local {
         let bus: EventBus<AgentEvent> = EventBus::new(512);
         println!("👁  lopi watch (local bus — no running sail server)");
@@ -18,6 +21,42 @@ pub async fn watch(ws_url: Option<String>, local: bool) -> Result<()> {
         remote::watch_remote(url).await?;
     }
     Ok(())
+}
+
+/// `lopi watch --demo` — seed the (purely event-driven) TUI from the
+/// already-generated `lopi demo` store's own seed, so it shows the same
+/// picture as the web dashboard. Never touches the real store. See
+/// `docs/adr/0001-demo-mode-and-measurement.md` point 7 for why this reads
+/// the demo store just once (for its `demo_seed` metadata) rather than
+/// polling it — the TUI itself stays store-free, like every other session.
+async fn watch_demo() -> Result<()> {
+    let demo_store = lopi_demo::default_demo_store_path();
+    if !demo_store.exists() {
+        anyhow::bail!(
+            "no demo store found at {} — run `lopi demo` first",
+            demo_store.display()
+        );
+    }
+    let store = MemoryStore::open(&demo_store).await?;
+    if !store.is_synthetic().await.unwrap_or(false) {
+        anyhow::bail!(
+            "{} exists but isn't marked synthetic — refusing to treat it as a demo store",
+            demo_store.display()
+        );
+    }
+    let seed = store
+        .get_metadata("demo_seed")
+        .await
+        .ok()
+        .flatten()
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(lopi_demo::DEFAULT_DEMO_SEED);
+    drop(store);
+
+    println!("👁  lopi watch --demo — synthetic data (seed {seed})");
+    let bus: EventBus<AgentEvent> = EventBus::new(512);
+    let events = lopi_demo::replay_events(seed);
+    lopi_ui::tui::run_with_seed(bus, events, true).await
 }
 
 pub async fn tail(task_id: Option<String>, history: bool) -> Result<()> {

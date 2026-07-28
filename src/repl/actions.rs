@@ -41,7 +41,7 @@ pub(super) async fn handle_slash(
         }
         Ok(SlashCmd::Watch) => {
             restore_terminal_raw()?;
-            task_commands::watch(None, true).await?;
+            task_commands::watch(None, true, false).await?;
             std::process::exit(0);
         }
         Ok(SlashCmd::Dock) => {
