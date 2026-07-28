@@ -2,6 +2,7 @@
 
 use anyhow::{Context, Result};
 use lopi_core::{AgentEvent, EventBus};
+use lopi_ui::client::{ClientError, RemoteClient, TuiClient};
 
 /// Build the WebSocket handshake request for `ws_url`, attaching
 /// `Authorization: Bearer <token>` when `token` is non-empty. Sprint S11,
@@ -94,27 +95,19 @@ pub async fn watch_remote(ws_url: String) -> Result<()> {
     Ok(())
 }
 
-pub async fn reqwest_cancel(url: &str) -> Result<String> {
-    let client = reqwest::Client::new();
-    let resp = client
-        .delete(url)
-        .send()
-        .await
-        .context("HTTP DELETE failed")?;
-    let body = resp.json::<serde_json::Value>().await?;
-    if body
-        .get("cancelled")
-        .and_then(|v: &serde_json::Value| v.as_bool())
-        .unwrap_or(false)
-    {
-        Ok("⛔ Task cancelled.".into())
-    } else {
-        Ok(format!(
-            "ℹ️  {}",
-            body.get("reason")
-                .and_then(|v: &serde_json::Value| v.as_str())
-                .unwrap_or("unknown")
-        ))
+/// Cancel a task on a running `lopi sail` server through the `TuiClient`
+/// trait, replacing the bespoke `reqwest::Client::new().delete(url)` call
+/// this used to be (Sprint T0, Phase 2.3). `base_url` is the server's root
+/// (e.g. `"http://127.0.0.1:3000"`); `token` is resolved the same way
+/// `RemoteClient` resolves it elsewhere — see
+/// `lopi_ui::client::resolve_auth_token`.
+pub async fn cancel_task(base_url: &str, token: Option<String>, task_id: &str) -> Result<String> {
+    let client = RemoteClient::new(base_url, token);
+    match client.cancel_task(task_id).await {
+        Ok(true) => Ok("⛔ Task cancelled.".into()),
+        Ok(false) => Ok("ℹ️  task not found or already finished".into()),
+        Err(ClientError::NotFound(_)) => Ok("ℹ️  task not found".into()),
+        Err(e) => Err(e).context("cancel request failed"),
     }
 }
 

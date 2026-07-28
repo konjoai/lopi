@@ -71,8 +71,8 @@ pub async fn dock() -> Result<()> {
 }
 
 pub async fn cancel(task_id: String) -> Result<()> {
-    let url = format!("http://127.0.0.1:3000/api/tasks/{task_id}");
-    if let Ok(msg) = remote::reqwest_cancel(&url).await {
+    let token = lopi_ui::client::resolve_auth_token(None);
+    if let Ok(msg) = remote::cancel_task("http://127.0.0.1:3000", token, &task_id).await {
         println!("{msg}");
     } else {
         println!("⚠️  No running lopi sail server on :3000.");

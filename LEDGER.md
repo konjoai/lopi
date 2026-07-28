@@ -5,6 +5,98 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## Sprint T0 (TUI Client Foundation & Domain Port) — one-way doors
+
+**`lopi_core::stack` is the canonical Rust port target for stack-aware
+code.** Every prior client of the loop-stack model (web `stores/stack.ts`,
+macOS/iOS `LopiStacksKit`) is its own reimplementation of the same domain
+types and catalogs. `lopi_core::stack` is now a fourth, and — per this
+sprint's design principle — the *last* one that should ever independently
+redefine `StackCard`/`Guardrails`/the eval-preset catalogs from scratch.
+Server-side handlers that currently build ad hoc JSON for stack-shaped data
+could migrate to construct `CreateTaskRequest` through this module too,
+though that migration is not done in this sprint — flagging it here so it
+isn't re-derived as a fresh idea later.
+
+**`StackCard::to_create_task_request`-equivalent logic lives in `lopi-ui`,
+not `lopi-core` — a placement forced by the crate graph, not preference.**
+Phase 1.4 of this sprint's brief asked for the wire-payload builders
+(`cardToTaskPayload` etc.) to target `lopi_ui::web::types::CreateTaskRequest`
+directly, with no new intermediate DTO. `CreateTaskRequest` is defined in
+`lopi-ui`; `lopi-core` cannot depend on `lopi-ui` (that dependency already
+runs the other way — `lopi-ui` depends on `lopi-core`), so a function that
+*returns* `CreateTaskRequest` cannot live in `lopi-core` without either
+introducing a cycle or building the exact banned intermediate DTO. The
+resolution: `lopi_core::stack` owns the pure domain types, the static
+catalogs, and the pure helpers that only touch `lopi-core` types
+(`evals_to_acceptance`, `budget_to_tokens`, `autonomy_to_wire`);
+`lopi_ui::client::stack_payload` owns the three wire-payload builders
+(`card_to_task_payload`, `card_to_task_payload_for_run_once`,
+`pane_submit_payload`), which is the one place both `StackCard` and
+`CreateTaskRequest` are reachable without a cycle. Any future sprint
+porting more of `stack.ts` should follow the same split: pure
+domain/logic in `lopi-core::stack`, anything targeting a `lopi-ui`-owned
+wire type in `lopi_ui::client`.
+
+**`CreateTaskRequest`/`CreateTaskResponse` gained the missing half of their
+serde derives.** Both types only ever needed one direction before this
+sprint — `CreateTaskRequest` was `Deserialize`-only (the axum handler
+parsing an incoming body), `CreateTaskResponse` was `Serialize`-only (the
+handler producing a response). `RemoteClient` is the first code to need the
+other direction on each (serializing a request to POST, deserializing a
+response it receives), so both now derive both. Purely additive — every
+field type already implemented the missing trait, so this changes no
+existing behavior.
+
+**`ChainScheduleManager` is confirmed *not* reachable in-process outside the
+axum `AppState`, as of this sprint.** It is constructed only inside
+`AppState::new_with_repo` from an `AgentPool` clone + a `MemoryStore`
+(`crates/lopi-ui/src/web/mod.rs`), and nothing hands that instance — or the
+means to build an equivalent live one — to code outside the web layer.
+`LocalClient` *could* construct its own `ChainScheduleManager` from the same
+`AgentPool`/`MemoryStore` it already holds (`ChainScheduleManager::new` is a
+public constructor), but doing so today would spin up a second, independent
+chain scheduler racing against `lopi sail`'s own — a correctness hazard, not
+a convenience. So `LocalClient`'s six chain methods
+(`list_chains`/`get_chain`/`create_chain`/`enable_chain`/`disable_chain`/
+`run_chain_now`) all return `ClientError::Unsupported` with a message
+naming the reason, rather than silently stubbing an empty list. Whoever
+picks up T3 (Loop Stack Builder) should re-check this finding before
+assuming `LocalClient` can drive chain scheduling — it can't, without
+either a real cross-process handle being added or `LocalClient` accepting
+the second-scheduler risk explicitly.
+
+**`RemoteClient` is authoritative when `RemoteClient`/`LocalClient`
+behavior would ever diverge.** `RemoteClient` talks to the same
+`POST /api/tasks` (etc.) surface the web/macOS/iOS clients already use, so
+its behavior *is* the shipped behavior by construction. `LocalClient` is a
+convenience for an embedded-TUI-inside-`sail` mode that doesn't exist yet
+(see below) and mirrors the HTTP handler's request→`Task` mapping by hand
+(`local.rs::request_to_task`); if the two ever disagree, treat
+`RemoteClient`'s behavior as correct and fix `LocalClient` to match, not the
+other way around.
+
+**`LocalClient` has no real caller yet — `lopi watch --local` is not it.**
+`lopi watch --local` constructs a brand-new, empty `EventBus` with no
+`AgentPool`/`MemoryStore` behind it; `LocalClient` cannot retrofit onto that
+path as-is. It exists for a future "embedded TUI inside `sail`" mode that
+shares the same `pool`/`store` `sail` already constructs, the same way
+`AppState` does — that mode is not built in this sprint (no new widgets, no
+CLI wiring beyond `lopi cancel`'s refactor).
+
+**KT-T0.1/KT-T0.2 spawn the live server in-process, not as a child
+process, deviating from the sprint brief's literal instruction.** The brief
+asked for a real `lopi sail` **child process**. This sprint's kill tests
+(`crates/lopi-ui/src/client/remote_tests.rs`) instead call
+`lopi_ui::web::serve_with_repo` directly — the exact function
+`src/sail_commands.rs::run` calls, wired to the real `auth_middleware`/
+`validate_auth_policy` and the real axum router, bound to a real OS TCP
+port, driven over real HTTP. Genuinely live, nothing mocked — just no
+subprocess boundary, which keeps the test self-contained within
+`cargo test -p lopi-ui` instead of depending on the workspace-root `lopi`
+binary being built first. Recorded here as a stated deviation, not a
+silent reinterpretation.
+
 ## Sprint web-composer/loop.toml — one-way door: file is the base, request is the override
 
 **Decision (one-way door): every loop-config field the web composer can set
