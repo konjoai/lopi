@@ -134,6 +134,25 @@ async fn get_stack_status_empty_roster_is_an_empty_array_not_an_error() {
     assert!(result["tasks"].as_array().unwrap().is_empty());
 }
 
+/// `docs/adr/0001-demo-mode-and-measurement.md` — every widget payload
+/// carries `synthetic` so a `lopi demo` screenshot cannot be mistaken for a
+/// real stack.
+#[tokio::test]
+async fn get_stack_status_reports_synthetic_true_on_a_demo_store() {
+    let (state, store) = test_state().await;
+    store.set_metadata("synthetic", "true").await.unwrap();
+    let result = get_stack_status(&state).await;
+    assert_eq!(result["synthetic"], true);
+}
+
+/// Regression: a real store reports `synthetic: false`.
+#[tokio::test]
+async fn get_stack_status_reports_synthetic_false_on_a_real_store() {
+    let (state, _store) = test_state().await;
+    let result = get_stack_status(&state).await;
+    assert_eq!(result["synthetic"], false);
+}
+
 #[test]
 fn ui_resources_advertises_the_stack_status_widget() {
     let resources = ui_resources();

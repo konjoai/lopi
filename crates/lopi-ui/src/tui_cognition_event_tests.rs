@@ -9,7 +9,7 @@ use super::*;
 
 #[test]
 fn turn_metrics_is_retained_per_task() {
-    let mut state = AppState::new();
+    let mut state = AppState::new(false);
     let id = TaskId::new();
     state.handle_event(AgentEvent::TurnMetrics {
         task_id: id,
@@ -29,7 +29,7 @@ fn turn_metrics_is_retained_per_task() {
 
 #[test]
 fn budget_exceeded_with_a_task_id_is_retained() {
-    let mut state = AppState::new();
+    let mut state = AppState::new(false);
     let id = TaskId::new();
     state.handle_event(AgentEvent::BudgetExceeded {
         task_id: Some(id),
@@ -50,7 +50,7 @@ fn budget_exceeded_with_a_task_id_is_retained() {
 
 #[test]
 fn budget_exceeded_fleet_wide_has_no_task_to_key_on() {
-    let mut state = AppState::new();
+    let mut state = AppState::new(false);
     state.handle_event(AgentEvent::BudgetExceeded {
         task_id: None,
         scope: lopi_core::budget::BudgetScope::Fleet,
@@ -62,7 +62,7 @@ fn budget_exceeded_fleet_wide_has_no_task_to_key_on() {
 
 #[test]
 fn budget_soft_warn_is_retained() {
-    let mut state = AppState::new();
+    let mut state = AppState::new(false);
     let id = TaskId::new();
     state.handle_event(AgentEvent::BudgetSoftWarn {
         task_id: id,
@@ -81,7 +81,7 @@ fn budget_soft_warn_is_retained() {
 
 #[test]
 fn verifier_verdict_is_retained() {
-    let mut state = AppState::new();
+    let mut state = AppState::new(false);
     let id = TaskId::new();
     state.handle_event(AgentEvent::VerifierVerdict {
         task_id: id,
@@ -105,7 +105,7 @@ fn verifier_verdict_is_retained() {
 
 #[test]
 fn plan_proposed_is_retained() {
-    let mut state = AppState::new();
+    let mut state = AppState::new(false);
     let id = TaskId::new();
     state.handle_event(AgentEvent::PlanProposed {
         task_id: id,
@@ -127,7 +127,7 @@ fn plan_proposed_is_retained() {
 
 #[test]
 fn tool_call_and_tool_result_are_retained_and_linked() {
-    let mut state = AppState::new();
+    let mut state = AppState::new(false);
     let id = TaskId::new();
     state.handle_event(AgentEvent::ToolCall {
         task_id: id,
@@ -152,7 +152,7 @@ fn tool_call_and_tool_result_are_retained_and_linked() {
 
 #[test]
 fn token_delta_keeps_only_the_latest_value() {
-    let mut state = AppState::new();
+    let mut state = AppState::new(false);
     let id = TaskId::new();
     state.handle_event(AgentEvent::TokenDelta {
         task_id: id,
@@ -175,7 +175,7 @@ fn token_delta_keeps_only_the_latest_value() {
 
 #[test]
 fn api_retry_is_retained() {
-    let mut state = AppState::new();
+    let mut state = AppState::new(false);
     let id = TaskId::new();
     state.handle_event(AgentEvent::ApiRetry {
         task_id: id,
@@ -199,7 +199,7 @@ fn api_retry_is_retained() {
 
 #[test]
 fn cost_events_accumulate_as_a_bounded_stream() {
-    let mut state = AppState::new();
+    let mut state = AppState::new(false);
     let id = TaskId::new();
     state.handle_event(AgentEvent::Cost {
         task_id: id,
@@ -220,7 +220,7 @@ fn cost_events_accumulate_as_a_bounded_stream() {
 
 #[test]
 fn phase_events_accumulate_as_a_bounded_stream() {
-    let mut state = AppState::new();
+    let mut state = AppState::new(false);
     let id = TaskId::new();
     state.handle_event(AgentEvent::Phase {
         task_id: id,
@@ -237,7 +237,7 @@ fn phase_events_accumulate_as_a_bounded_stream() {
 
 #[test]
 fn report_ready_remains_a_no_op_but_does_not_panic() {
-    let mut state = AppState::new();
+    let mut state = AppState::new(false);
     state.handle_event(AgentEvent::ReportReady {
         task_id: TaskId::new(),
         channel: "telegram".to_string(),

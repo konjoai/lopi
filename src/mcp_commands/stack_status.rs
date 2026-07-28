@@ -69,6 +69,7 @@ pub(super) fn ui_resource_contents(uri: &str) -> Result<McpResourceContents> {
 /// and this is a status view polled on an interval, not a hot path —
 /// simplicity over a hand-rolled join query.
 pub(super) async fn get_stack_status(state: &AppState) -> Value {
+    let synthetic = state.store.is_synthetic().await.unwrap_or(false);
     let rows = state.store.load_history(100).await.unwrap_or_default();
     let mut tasks = Vec::with_capacity(rows.len());
     for t in rows {
@@ -89,7 +90,7 @@ pub(super) async fn get_stack_status(state: &AppState) -> Value {
             "completed_at": t.completed_at,
         }));
     }
-    json!({ "tasks": tasks })
+    json!({ "tasks": tasks, "synthetic": synthetic })
 }
 
 #[cfg(test)]

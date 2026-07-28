@@ -12,10 +12,23 @@
   import LopiWordmark from '$lib/components/LopiWordmark.svelte';
   import { SHELL_ICONS } from '$lib/components/icons';
 
+  // Demo-mode banner (Sprint: demo-measurement). `/api/stats.synthetic` is
+  // the single source of truth — driven by the open store's own metadata
+  // (`MemoryStore::is_synthetic()`), never a client-side flag, so this
+  // reflects reality even on a hard refresh. See
+  // docs/adr/0001-demo-mode-and-measurement.md.
+  let synthetic = false;
+
   onMount(() => {
     applyTheme();
     init();
     installKeyboardShortcuts();
+    fetch('/api/stats')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((s) => {
+        if (s && s.synthetic === true) synthetic = true;
+      })
+      .catch(() => {});
   });
 
   function indicatorColor(s: string): string {
@@ -39,9 +52,21 @@
   $: immersive = isImmersiveRoute(pathname);
 </script>
 
+<!-- Demo-mode watermark — visible and non-dismissible on every route, per
+     docs/adr/0001-demo-mode-and-measurement.md A.4. Deliberately has no
+     close button: a screenshot of demo data must never read as real. -->
+{#if synthetic}
+  <div
+    class="fixed top-0 inset-x-0 z-40 flex items-center justify-center gap-2 py-1 bg-konjo-sun/90 text-konjo-deep font-mono text-[11px] font-bold uppercase tracking-widest"
+  >
+    🧪 synthetic data — fabricated by `lopi demo`, not a real run
+  </div>
+{/if}
+
 <!-- Top bar — minimal, always visible. Hamburger opens the nav sidebar. -->
 <header
-  class="fixed top-0 inset-x-0 z-30 flex items-center justify-between px-6 py-3 bg-konjo-deep/80 backdrop-blur-md border-b border-white/5"
+  class="fixed inset-x-0 z-30 flex items-center justify-between px-6 py-3 bg-konjo-deep/80 backdrop-blur-md border-b border-white/5"
+  style:top={synthetic ? '24px' : '0'}
 >
   <div class="flex items-center gap-4 min-w-0">
     <button
@@ -90,11 +115,19 @@
 
 <!-- Immersive views fill the viewport; data tabs get a scrollable canvas. -->
 {#if immersive}
-  <main class="relative pt-12 z-10" style="height: 100vh; overflow: hidden;">
+  <main
+    class="relative z-10"
+    style:padding-top={synthetic ? '72px' : '48px'}
+    style:height="100vh"
+    style:overflow="hidden"
+  >
     <slot />
   </main>
 {:else}
-  <main class="relative pt-12 z-10 min-h-screen overflow-y-auto">
+  <main
+    class="relative z-10 min-h-screen overflow-y-auto"
+    style:padding-top={synthetic ? '72px' : '48px'}
+  >
     <slot />
   </main>
 {/if}

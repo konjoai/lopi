@@ -1,18 +1,26 @@
 ---
 decays: state
-verified-against: fcc4988
-verified-date: 2026-07-27
+verified-against: ca8e980
+verified-date: 2026-07-28
 ---
 
 # Panic audit — the trustworthy count, and why grep couldn't give it to you
 
-Verified against: `fcc4988` · 2026-07-27 (re-verified; the workspace-wide zero-unwrap
+Verified against: `ca8e980` · 2026-07-28 (re-verified; the workspace-wide zero-unwrap
 claim still holds — re-confirmed with a live `cargo clippy --workspace --all-targets
---all-features` re-run at the exact flag set cited below, 0 warnings/0 errors. One real
-citation drift found and fixed: Sprint S12 deleted the `lopi-app` crate entirely
-(multi-tenant surface removal — see `LEDGER.md`'s Sprint S12 entry), so its row is
-removed from the per-crate table below rather than left citing a crate that no longer
-exists. No other drift found.)
+--all-features` re-run at the exact flag set cited below, 0 warnings/0 errors, now
+covering both Sprint G's new files (`crates/lopi-agent/src/runner/retry_guard.rs`,
+`secrets_gate.rs`, `crates/lopi-memory/src/store/dead_letter.rs`,
+`crates/lopi-orchestrator/src/pool/dead_letter.rs`) and the new `lopi-demo` crate added
+this round. One real gap found and fixed, not just citation drift: `lopi-demo`'s
+`lib.rs` shipped without the `#![warn(clippy::unwrap_used, clippy::expect_used,
+clippy::panic)]` inner attribute every other crate in this repo carries — the CI-flag
+gate still caught it (0 violations either way, this crate has none), but the
+defense-in-depth property this doc's own "What was actually done" section below
+describes (the lint showing up locally without a special command) didn't hold for this
+one crate until now. Added; row added to the per-crate table. Sprint G's four new files
+were spot-checked directly (not just via the aggregate clippy run) — no unwrap/expect/
+panic outside `#[cfg(test)]` in any of them. No other drift found.)
 
 Konjo Forward **Pillar 1** (an honest starting position) and **F11** (a durable unattended
 loop should not die on an `unwrap`). This is the pre-flight kill-test for Sprint S5 and the
@@ -77,6 +85,7 @@ which is exactly the structure line-based tools cannot parse and clippy parses b
 | `lopi-toon` | 2 | **0** | `#![warn(...)]` |
 | `lopi-ratelimit` | 2 | **0** | `#![warn(...)]` |
 | `lopi-git` | 0 | **0** | `#![warn(...)]` |
+| `lopi-demo` (added 2026-07-28) | 0 | **0** | `#![warn(...)]` (added this re-verification — see note above) |
 | root binary (`src/`) | 94 | **0** | `#![warn(...)]` (CLI, low blast radius — see Out of scope) |
 | **Total** | **788** | **0** | — |
 

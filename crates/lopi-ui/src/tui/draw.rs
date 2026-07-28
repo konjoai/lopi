@@ -50,7 +50,7 @@ fn draw_header(f: &mut Frame, area: Rect, state: &AppState) {
             )
         })
         .count();
-    let title = Line::from(vec![
+    let mut spans = vec![
         Span::styled(
             "⛵ lopi",
             Style::default()
@@ -72,7 +72,20 @@ fn draw_header(f: &mut Frame, area: Rect, state: &AppState) {
             format!("⏱ {}", state.uptime()),
             Style::default().fg(Color::DarkGray),
         ),
-    ]);
+    ];
+    // `lopi watch --demo` — a clearly visible, non-dismissible marker so a
+    // screenshot of a demo session cannot be mistaken for a real one. See
+    // `docs/adr/0001-demo-mode-and-measurement.md`, point 7.
+    if state.synthetic {
+        spans.push(Span::raw("  │  "));
+        spans.push(Span::styled(
+            "🧪 SYNTHETIC DATA",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        ));
+    }
+    let title = Line::from(spans);
     let p = Paragraph::new(title).block(
         Block::default()
             .borders(Borders::ALL)
