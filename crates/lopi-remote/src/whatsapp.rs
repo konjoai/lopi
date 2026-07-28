@@ -7,7 +7,8 @@ use axum::{
     routing::post,
     Router,
 };
-use lopi_core::{Task, TaskSource};
+use lopi_core::{EconomicsConfig, Task, TaskSource};
+use lopi_memory::MemoryStore;
 use lopi_orchestrator::TaskQueue;
 use serde::Deserialize;
 use std::net::SocketAddr;
@@ -24,6 +25,11 @@ pub struct WhatsappState {
     /// `URL + sorted(params)`, so this must match Twilio's console config
     /// exactly. Required whenever `signing_secret` is set.
     pub webhook_url: Option<String>,
+    /// Sprint E — backs the `/cost` command. `None` disables it (replies
+    /// with a short explanation instead of a report).
+    pub store: Option<MemoryStore>,
+    /// Sprint E — the `[economics]` config `/cost` reports against.
+    pub economics_config: EconomicsConfig,
 }
 
 /// Inbound message payload from Twilio's `WhatsApp` webhook.
@@ -41,16 +47,21 @@ pub struct TwilioInbound {
 ///
 /// # Errors
 /// Returns an error if the TCP listener cannot be bound or if the server exits unexpectedly.
+#[allow(clippy::too_many_arguments)]
 pub async fn serve(
     queue: TaskQueue,
     signing_secret: Option<String>,
     webhook_url: Option<String>,
     addr: SocketAddr,
+    store: Option<MemoryStore>,
+    economics_config: EconomicsConfig,
 ) -> Result<()> {
     let state = WhatsappState {
         queue,
         signing_secret,
         webhook_url,
+        store,
+        economics_config,
     };
     let app = Router::new()
         .route("/webhook/whatsapp", post(handle))
@@ -120,9 +131,63 @@ async fn handle(
             t.require_plan_approval = true;
         }
         s.queue.push(t).await;
+        // Twilio expects 200 with TwiML; an empty 200 is fine.
+        return (StatusCode::OK, EMPTY_TWIML).into_response();
     }
-    // Twilio expects 200 with TwiML; an empty 200 is fine.
+    if text == "/cost" {
+        let reply = cost_reply(&s).await;
+        return (StatusCode::OK, twiml_message(&reply)).into_response();
+    }
     (StatusCode::OK, EMPTY_TWIML).into_response()
+}
+
+/// Sprint E, Part 5 — rebuilds what a Telegram `/cost` command would have
+/// returned (Telegram was removed in Sprint S10; see `LEDGER.md`'s Sprint E
+/// entry). Twilio delivers a `<Message>` in the webhook's own TwiML
+/// response synchronously — no separate outbound API call needed.
+async fn cost_reply(s: &WhatsappState) -> String {
+    let Some(pool_cfg) = s.economics_config.pool.clone() else {
+        return "no [economics] pool configured — nothing to report".to_string();
+    };
+    let Some(store) = &s.store else {
+        return "cost reporting is unavailable (no store attached)".to_string();
+    };
+    let already_spent = match store.total_spend_all_time().await {
+        Ok(v) => v,
+        Err(e) => return format!("cost query failed: {e}"),
+    };
+    let pool_state = lopi_orchestrator::budget::pool::PoolState::seeded(
+        pool_cfg,
+        lopi_core::Money::from_usd(already_spent),
+    );
+    match lopi_orchestrator::budget::report::compute(store, &pool_state, 7, 7).await {
+        Ok(r) => format!(
+            "💵 lopi cost\nper merged PR*: {}\nper gate pass: {}\non retries: {}\ncache saved: {}\nrunway: {}\nheadroom: {}\n*proxy: cost per completed task",
+            r.cost_per_merged_pr.map_or_else(|| "—".to_string(), |m| m.to_string()),
+            r.cost_per_gate_pass.map_or_else(|| "—".to_string(), |m| m.to_string()),
+            r.cost_per_retry,
+            r.cache_attributed_saving,
+            if r.pool_runway_days.is_finite() {
+                format!("{:.1}d", r.pool_runway_days)
+            } else {
+                "n/a".to_string()
+            },
+            pool_state.headroom().await,
+        ),
+        Err(e) => format!("cost query failed: {e}"),
+    }
+}
+
+/// Escape `body` for safe embedding in an XML text node — TwiML is XML, and
+/// `body` here is derived from cost figures/error text this process itself
+/// formats, but escaping unconditionally costs nothing and closes off any
+/// future caller that starts passing through less trusted text.
+fn twiml_message(body: &str) -> String {
+    let escaped = body
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;");
+    format!("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response><Message>{escaped}</Message></Response>")
 }
 
 /// Verify a Twilio webhook signature.
@@ -203,6 +268,8 @@ mod tests {
             queue,
             signing_secret: signing_secret.map(ToString::to_string),
             webhook_url: Some(TEST_URL.to_string()),
+            store: None,
+            economics_config: lopi_core::EconomicsConfig::default(),
         };
         Router::new()
             .route("/webhook/whatsapp", post(handle))
@@ -356,5 +423,49 @@ mod tests {
         let sig = make_signature(secret.as_bytes(), TEST_URL, body.as_bytes());
         let resp = post_webhook(app, body, Some(&sig)).await;
         assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    async fn body_text(resp: axum::response::Response) -> String {
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        String::from_utf8(bytes.to_vec()).unwrap()
+    }
+
+    #[tokio::test]
+    async fn cost_command_with_no_pool_configured_says_so() {
+        let app = make_test_router(None);
+        let body = "Body=%2Fcost&From=whatsapp%3A%2B15551234567";
+        let resp = post_webhook(app, body, None).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        let text = body_text(resp).await;
+        assert!(text.contains("no [economics] pool configured"));
+    }
+
+    #[tokio::test]
+    async fn cost_command_with_pool_configured_reports_headroom() {
+        let store = MemoryStore::open_in_memory().await.unwrap();
+        let mut econ_cfg = EconomicsConfig::default();
+        econ_cfg.pool = Some(lopi_core::Pool::AgentSdkCredits {
+            monthly_allotment: lopi_core::Money::from_usd(50.0),
+            resets_on: chrono::NaiveDate::from_ymd_opt(2026, 9, 1).unwrap(),
+        });
+        let queue = TaskQueue::new();
+        let state = WhatsappState {
+            queue,
+            signing_secret: None,
+            webhook_url: Some(TEST_URL.to_string()),
+            store: Some(store),
+            economics_config: econ_cfg,
+        };
+        let app = Router::new()
+            .route("/webhook/whatsapp", post(handle))
+            .with_state(state);
+        let body = "Body=%2Fcost&From=whatsapp%3A%2B15551234567";
+        let resp = post_webhook(app, body, None).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        let text = body_text(resp).await;
+        assert!(text.contains("lopi cost"));
+        assert!(text.contains("headroom"));
     }
 }
