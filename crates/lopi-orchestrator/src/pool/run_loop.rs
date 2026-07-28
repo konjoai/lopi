@@ -431,6 +431,17 @@ async fn run_one(
         successor: successor_id,
     });
 
+    // Verification gate (Finding #1) — see `pool/dead_letter.rs`.
+    super::dead_letter::record_if_exhausted(
+        &bus,
+        store.as_ref(),
+        task_id,
+        &goal,
+        total_attempts,
+        &outcome,
+    )
+    .await;
+
     if let Some(store) = store {
         // Canonical status token — one vocabulary shared with the API and the
         // web snapshot bucketing. `db_status` covers every variant, so there's

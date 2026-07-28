@@ -1,3 +1,32 @@
+## [0.36.0] — Sprint G: Verification Gate (Finding #1)
+
+**Hardened the existing verification gate rather than building a parallel
+one — see `LEDGER.md` for why the brief's literal `gate.rs`/`GateOutcome`
+sketch would have duplicated `Acceptance`/`EvalOutcome`/`VerifierAgent`,
+which already implement it more rigorously.** Four real, previously-missing
+gaps closed:
+
+- **Secrets-on-diff gate** — `lopi_core::scan_for_secrets` (reuses
+  `redact_patterns.txt`) now runs before every commit; a leaked credential
+  blocks finalize and rolls back, naming only the pattern label in retry
+  evidence, never the value.
+- **Duplicate-retry-prompt guard** — a byte-identical retry-evidence repeat
+  across consecutive attempts now warns instead of silently burning the
+  attempt.
+- **Dead-letter ledger** — a task that exhausts `MaxIterations`/
+  `NoProgress`/`Budget` without meeting its goal now gets a durable
+  `dead_letters` row and an `AgentEvent::TaskDeadLettered`, instead of an
+  unremarkable `Failed` with no queryable trace.
+- **Two-phase adversarial verifier** — `VerifierAgent::derive_checklist`
+  derives the checker's own grading checklist from goal + rubric in a
+  *separate* call, before it is ever shown the diff, then folds that
+  checklist into the grading prompt. Fixes the exact failure mode Finding #1
+  names ("a reviewer shown the diff first rationalises it"); no config flag
+  to disable it.
+
+Sprint C (Cache Affinity) and Sprint F (Flow Primitives) are intentionally
+not part of this release — see `LEDGER.md`'s Sprint G entry.
+
 ## [0.35.0] — Sprint T0: TUI Client Foundation & Domain Port
 
 **The TUI gained a write-capable client layer — no new widgets yet, but the

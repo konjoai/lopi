@@ -189,7 +189,8 @@ fn event_task_id(ev: &AgentEvent) -> Option<lopi_core::TaskId> {
         | AgentEvent::ApiRetry { task_id, .. }
         | AgentEvent::Cost { task_id, .. }
         | AgentEvent::Phase { task_id, .. }
-        | AgentEvent::ReportReady { task_id, .. } => Some(*task_id),
+        | AgentEvent::ReportReady { task_id, .. }
+        | AgentEvent::TaskDeadLettered { task_id, .. } => Some(*task_id),
         AgentEvent::PoolStats { .. } => None,
         AgentEvent::BudgetExceeded { task_id, .. } => *task_id,
         AgentEvent::VerifierVerdict { task_id, .. } => Some(*task_id),

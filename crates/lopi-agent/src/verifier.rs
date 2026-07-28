@@ -18,6 +18,18 @@ Respond ONLY with a JSON object. No prose, no markdown fences. Schema: \
 `gaps` lists unmet criteria. `fix_hints` are imperative instructions for the \
 next implementation attempt. `confidence` is 0.0–1.0.";
 
+/// System prompt for [`VerifierAgent::derive_checklist`] — Finding #1's fix
+/// for "a reviewer shown the diff first rationalises it". This call never
+/// receives a diff at all, so there is nothing to rationalize yet.
+const CHECKLIST_SYSTEM: &str = "\
+You are a strict code reviewer about to grade an agent's diff against a goal \
+and a rubric. You have NOT been shown any code or diff yet — only the goal \
+and the rubric. Before you see any implementation, write your own checklist \
+of concrete, checkable criteria a correct and complete change must satisfy. \
+Do not invent implementation details you cannot know yet; write criteria a \
+diff could later be checked against. Respond ONLY with a JSON object. No \
+prose, no markdown fences. Schema: {\"checklist\":[string]}.";
+
 /// Resolve the effective verifier model + reasoning-effort hint for a grading
 /// pass (Verifier as Explicit Gate).
 ///
@@ -55,6 +67,50 @@ fn build_system_prompt(effort: Option<&str>) -> String {
         Some(e) => format!("{VERIFIER_SYSTEM}\n\nReasoning effort: {e}"),
         None => VERIFIER_SYSTEM.to_string(),
     }
+}
+
+/// Same effort-folding as [`build_system_prompt`], for
+/// [`VerifierAgent::derive_checklist`]'s system prompt.
+fn build_checklist_system_prompt(effort: Option<&str>) -> String {
+    match effort {
+        Some(e) => format!("{CHECKLIST_SYSTEM}\n\nReasoning effort: {e}"),
+        None => CHECKLIST_SYSTEM.to_string(),
+    }
+}
+
+/// Build the checklist-derivation prompt from goal + rubric alone.
+///
+/// Deliberately has no `diff`/`plan` parameter at all — not merely "chooses
+/// not to use one" — so it is structurally impossible for this prompt to
+/// leak any implementation detail into the checker's own checklist.
+fn build_checklist_prompt(goal: &str, rubric: &Rubric) -> String {
+    let criteria = rubric.criteria.join("\n- ");
+    format!(
+        "GOAL:\n{goal}\n\n\
+         RUBRIC ({}):\n- {criteria}\n\n\
+         Write your own checklist of concrete, checkable criteria a correct, \
+         complete change would need to satisfy. You have not been shown any \
+         code or diff — do not reference implementation details you cannot \
+         know yet.",
+        rubric.name,
+    )
+}
+
+/// The `{"checklist": [...]}` payload both backends parse
+/// [`VerifierAgent::derive_checklist`]'s response into.
+#[derive(Debug, serde::Deserialize)]
+pub(crate) struct ChecklistPayload {
+    pub(crate) checklist: Vec<String>,
+}
+
+/// Parse a checklist from free-text model output (fences stripped first) —
+/// the CLI backend's fallback when `structured_output` is absent, mirroring
+/// [`parse_verdict`]'s role for the grading call.
+pub(crate) fn parse_checklist(text: &str) -> Result<Vec<String>> {
+    let clean = strip_fences(text);
+    let payload: ChecklistPayload = serde_json::from_str(clean)
+        .with_context(|| format!("checklist JSON parse error — raw: {clean}"))?;
+    Ok(payload.checklist)
 }
 
 /// Directory, relative to the repo root, where canonical rubric files live.
@@ -169,6 +225,48 @@ impl VerifierAgent {
         self
     }
 
+    /// Derive the checker's own checklist from `goal` + `rubric` alone —
+    /// Finding #1's fix for "a reviewer shown the diff first rationalises
+    /// it". No diff, no plan, nothing the maker produced is in this call's
+    /// context at all: an LLM sees its whole context before producing any
+    /// output, so within-prompt ordering cannot prevent anchoring — only a
+    /// genuinely separate call, with the diff structurally absent, can. Must
+    /// be called (and must return) before [`verify`](Self::verify) grades.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if the API/CLI call fails or the response cannot be
+    /// parsed. [`verify`](Self::verify) treats a checklist-derivation
+    /// failure as non-fatal (falls back to grading without a self-derived
+    /// checklist, warns) rather than blocking the whole gate on it — the
+    /// rubric alone still gates; this is a strict improvement on ordering,
+    /// not a new single point of failure.
+    pub async fn derive_checklist(
+        &self,
+        goal: &str,
+        rubric: &Rubric,
+        model: &str,
+        effort: Option<&str>,
+    ) -> Result<Vec<String>> {
+        let prompt = build_checklist_prompt(goal, rubric);
+        let system = build_checklist_system_prompt(effort);
+        match &self.backend {
+            Backend::Api(client) => {
+                let (text, _) = client
+                    .complete(model, &system, &prompt, 512)
+                    .await
+                    .context("checklist API call")?;
+                parse_checklist(&text)
+            }
+            Backend::Cli { repo_path } => {
+                crate::verifier_cli::derive_checklist_via_cli(
+                    repo_path, &system, &prompt, model, effort,
+                )
+                .await
+            }
+        }
+    }
+
     /// Grade `diff` against `rubric`.
     ///
     /// `plan` provides intent context; `test_output` gives the heuristic scorer
@@ -177,6 +275,13 @@ impl VerifierAgent {
     /// callers must not grade with the same model that produced the diff.
     /// `effort` is an optional reasoning-effort hint folded into the system
     /// prompt.
+    ///
+    /// Finding #1 — before grading, this always calls
+    /// [`derive_checklist`](Self::derive_checklist) first (goal + rubric
+    /// only, no diff) and folds the checker's own resulting checklist into
+    /// the grading prompt. This doubles the call count (and roughly the
+    /// cost) of a verifier pass; that is the deliberate trade this fixes —
+    /// there is no flag to turn it off.
     ///
     /// # Errors
     ///
@@ -192,7 +297,25 @@ impl VerifierAgent {
         model: &str,
         effort: Option<&str>,
     ) -> Result<VerifierVerdict> {
-        let prompt = build_prompt(goal, plan, diff, test_output, rubric, !self.isolated);
+        let checklist = match self.derive_checklist(goal, rubric, model, effort).await {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!(
+                    "verifier checklist derivation failed ({e}); grading without a \
+                     self-derived checklist"
+                );
+                Vec::new()
+            }
+        };
+        let prompt = build_prompt(
+            goal,
+            plan,
+            diff,
+            test_output,
+            rubric,
+            !self.isolated,
+            &checklist,
+        );
         let system = build_system_prompt(effort);
         match &self.backend {
             Backend::Api(client) => {
@@ -215,6 +338,14 @@ impl VerifierAgent {
 /// omitted entirely — the checker grades the diff against the goal and rubric
 /// without ever seeing the maker's reasoning. Excerpt bounds match the original
 /// inline construction. Pure, so the isolation guarantee is unit-testable.
+///
+/// `checklist` is the checker's own, pre-diff-derived checklist (Finding #1,
+/// [`VerifierAgent::derive_checklist`]) — folded in as its own labelled
+/// section, right after `GOAL`/`PLAN` and before the diff, so the model
+/// grades against criteria it already committed to instead of retrofitting
+/// a rationale to whatever the diff happens to contain. An empty slice
+/// (checklist derivation failed or was skipped) omits the section entirely.
+#[allow(clippy::too_many_arguments)]
 fn build_prompt(
     goal: &str,
     plan: &str,
@@ -222,6 +353,7 @@ fn build_prompt(
     test_output: &str,
     rubric: &Rubric,
     include_plan: bool,
+    checklist: &[String],
 ) -> String {
     let criteria = rubric.criteria.join("\n- ");
     let diff_excerpt = safe_truncate(diff, 6_000);
@@ -231,8 +363,16 @@ fn build_prompt(
     } else {
         String::new()
     };
+    let checklist_section = if checklist.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "YOUR OWN CHECKLIST (written before you saw any code):\n- {}\n\n",
+            checklist.join("\n- ")
+        )
+    };
     format!(
-        "GOAL:\n{goal}\n\n{plan_section}\
+        "GOAL:\n{goal}\n\n{plan_section}{checklist_section}\
          DIFF (excerpt):\n{diff_excerpt}\n\n\
          TEST OUTPUT:\n{test_excerpt}\n\n\
          RUBRIC ({}):\n- {criteria}",
@@ -278,203 +418,5 @@ pub async fn get_repo_diff(repo_path: &std::path::Path) -> String {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn strip_fences_removes_markdown_wrapper() {
-        assert_eq!(
-            strip_fences("```json\n{\"passed\":true}\n```"),
-            "{\"passed\":true}"
-        );
-    }
-
-    #[test]
-    fn strip_fences_passthrough_for_clean_json() {
-        assert_eq!(strip_fences("{\"passed\":false}"), "{\"passed\":false}");
-    }
-
-    #[test]
-    fn parse_verdict_valid_json() {
-        let raw = r#"{"passed":true,"gaps":[],"fix_hints":[],"confidence":0.9}"#;
-        let v = parse_verdict(raw).unwrap();
-        assert!(v.passed);
-        assert!(v.gaps.is_empty());
-        assert!((v.confidence - 0.9).abs() < 1e-6);
-    }
-
-    #[test]
-    fn parse_verdict_failed_with_hints() {
-        let raw = r#"{"passed":false,"gaps":["tests do not cover new branch"],"fix_hints":["add test for the else branch"],"confidence":0.8}"#;
-        let v = parse_verdict(raw).unwrap();
-        assert!(!v.passed);
-        assert_eq!(v.gaps.len(), 1);
-        assert_eq!(v.fix_hints[0], "add test for the else branch");
-    }
-
-    #[test]
-    fn parse_verdict_invalid_json_returns_err() {
-        assert!(parse_verdict("not json").is_err());
-    }
-
-    fn sample_rubric() -> Rubric {
-        Rubric {
-            name: "safety".into(),
-            criteria: vec!["tests pass".into(), "no scope creep".into()],
-        }
-    }
-
-    /// Maker/checker isolation (Pentad M4.1): the isolated prompt must NOT
-    /// contain the maker's plan, so the checker cannot be anchored to it.
-    #[test]
-    fn isolated_prompt_excludes_the_maker_plan() {
-        let plan = "MAKER SECRET REASONING: I hacked the test to pass";
-        let prompt = build_prompt(
-            "fix the bug",
-            plan,
-            "diff --git a b",
-            "ok",
-            &sample_rubric(),
-            false, // isolated
-        );
-        assert!(!prompt.contains("MAKER SECRET REASONING"), "plan excluded");
-        assert!(!prompt.contains("PLAN (excerpt)"), "no plan section header");
-        // The artifact + intent + rubric are still present.
-        assert!(prompt.contains("GOAL:\nfix the bug"));
-        assert!(prompt.contains("DIFF (excerpt):\ndiff --git a b"));
-        assert!(prompt.contains("RUBRIC (safety):"));
-        assert!(prompt.contains("- no scope creep"));
-    }
-
-    #[test]
-    fn plan_context_mode_includes_the_plan() {
-        let prompt = build_prompt(
-            "fix the bug",
-            "MAKER REASONING here",
-            "diff",
-            "ok",
-            &sample_rubric(),
-            true, // include plan (legacy)
-        );
-        assert!(prompt.contains("PLAN (excerpt):\nMAKER REASONING here"));
-    }
-
-    /// A diff/plan/test-output whose excerpt cutoff lands mid-multibyte-char
-    /// must not panic ("byte index N is not a char boundary").
-    #[test]
-    fn build_prompt_does_not_panic_on_multibyte_boundary() {
-        // "🦀" is 4 bytes; pad so the excerpt cutoffs (6000/1500/1000) fall
-        // squarely inside the emoji rather than before or after it.
-        let diff = format!("{}🦀{}", "d".repeat(5_999), "e".repeat(50));
-        let plan = format!("{}🦀{}", "p".repeat(1_499), "q".repeat(50));
-        let test_output = format!("{}🦀{}", "t".repeat(999), "u".repeat(50));
-        let prompt = build_prompt("goal", &plan, &diff, &test_output, &sample_rubric(), true);
-        // Must not panic, and must not contain a truncated (invalid) partial
-        // emoji — Rust's `String` type guarantees well-formed UTF-8, so if
-        // this compiles and runs it already proves no mid-char slice occurred.
-        assert!(prompt.contains("GOAL:\ngoal"));
-    }
-
-    #[test]
-    fn new_verifier_is_isolated_by_default_and_builder_opts_out() {
-        let client = std::sync::Arc::new(crate::api_client::AnthropicClient::new("test-key"));
-        assert!(
-            VerifierAgent::new(client.clone()).isolated,
-            "isolated by default"
-        );
-        assert!(
-            !VerifierAgent::new(client).with_plan_context().isolated,
-            "builder opts back into plan context"
-        );
-    }
-
-    #[test]
-    fn default_rubric_has_criteria() {
-        let r = default_rubric();
-        assert!(!r.criteria.is_empty());
-        assert_eq!(r.name, "default");
-    }
-
-    // ── Verifier as Explicit Gate — model/effort resolver ───────────────────
-
-    #[test]
-    fn resolve_verifier_defaults_to_opus_for_a_non_opus_worker() {
-        let (model, effort) = resolve_verifier(model_sonnet(), None, None);
-        assert_eq!(model, model_opus());
-        assert!(effort.is_none());
-    }
-
-    #[test]
-    fn resolve_verifier_never_grades_its_own_homework() {
-        // The one case where the default (Opus) would equal the worker: an
-        // escalated retry already running on Opus. The resolver must pick a
-        // different model instead of silently grading itself.
-        let (model, _) = resolve_verifier(model_opus(), None, None);
-        assert_ne!(model, model_opus());
-        assert_eq!(model, model_sonnet());
-    }
-
-    #[test]
-    fn resolve_verifier_honors_an_explicit_override() {
-        let (model, _) = resolve_verifier(model_sonnet(), Some(crate::claude::model_haiku()), None);
-        assert_eq!(model, crate::claude::model_haiku());
-    }
-
-    #[test]
-    fn resolve_verifier_passes_effort_through_unchanged() {
-        let (_, effort) = resolve_verifier(model_sonnet(), None, Some("high"));
-        assert_eq!(effort.as_deref(), Some("high"));
-    }
-
-    #[test]
-    fn build_system_prompt_appends_effort_hint_when_set() {
-        let prompt = build_system_prompt(Some("high"));
-        assert!(prompt.starts_with(VERIFIER_SYSTEM));
-        assert!(prompt.contains("Reasoning effort: high"));
-    }
-
-    #[test]
-    fn build_system_prompt_is_unchanged_when_effort_absent() {
-        assert_eq!(build_system_prompt(None), VERIFIER_SYSTEM);
-    }
-
-    #[tokio::test]
-    async fn resolve_rubric_prefers_inline_task_rubric() {
-        let inline = Rubric {
-            name: "inline".into(),
-            criteria: vec!["only this".into()],
-        };
-        let resolved = resolve_rubric(Some(inline), std::path::Path::new("/nonexistent")).await;
-        assert_eq!(resolved.name, "inline");
-    }
-
-    #[tokio::test]
-    async fn resolve_rubric_loads_file_when_no_inline() {
-        let dir = std::env::temp_dir().join(format!("lopi-rubric-{}", std::process::id()));
-        let rubric_dir = dir.join(RUBRIC_DIR);
-        tokio::fs::create_dir_all(&rubric_dir).await.unwrap();
-        tokio::fs::write(
-            rubric_dir.join("feature_completeness.toml"),
-            "name = \"from_disk\"\ncriteria = [\"loaded from file\"]\n",
-        )
-        .await
-        .unwrap();
-        let resolved = resolve_rubric(None, &dir).await;
-        assert_eq!(resolved.name, "from_disk");
-        tokio::fs::remove_dir_all(&dir).await.ok();
-    }
-
-    #[tokio::test]
-    async fn resolve_rubric_falls_back_to_default_when_file_absent() {
-        let resolved = resolve_rubric(None, std::path::Path::new("/nonexistent")).await;
-        assert_eq!(resolved.name, "default");
-    }
-
-    #[tokio::test]
-    async fn load_rubric_file_returns_none_for_missing() {
-        assert!(load_rubric_file(std::path::Path::new("/nonexistent"), "x")
-            .await
-            .is_none());
-    }
-}
+#[path = "verifier_tests.rs"]
+mod tests;
