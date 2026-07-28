@@ -461,6 +461,7 @@ mod auth_policy;
 mod budget_handlers;
 mod config_handlers;
 mod cors_policy;
+mod demo_guard;
 mod event_bridge;
 mod handlers;
 mod loop_handlers;
