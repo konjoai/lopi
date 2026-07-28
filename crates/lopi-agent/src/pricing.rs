@@ -11,6 +11,12 @@
 //! always wins when present. This table backs only the direct-API planning
 //! path and the mid-stream `--max-budget-usd` estimate, neither of which the
 //! CLI's own reported cost covers.
+//!
+//! Staleness tracking (`as_of`/[`is_stale`]/[`staleness_warning`]) is the
+//! canonical mechanism `docs/MEASUREMENT.md` documents — every dollar
+//! estimate derived from this table should be labeled against it. Sprint E
+//! (Finding #10)'s `lopi rates --check` (`src/rates_commands.rs`) is built
+//! on top via [`describe`], which adds the full resolved tier breakdown.
 
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -37,7 +43,7 @@ pub struct TierRates {
 struct PriceFile {
     /// ISO-8601 date (`YYYY-MM-DD`) this table's rates were last verified
     /// current. Absent (e.g. an older or partial operator override file)
-    /// is treated as "unknown freshness" — see `table_as_of`.
+    /// is treated as "unknown freshness" — see [`table_as_of`].
     as_of: Option<chrono::NaiveDate>,
     #[serde(flatten)]
     tiers: HashMap<String, TierRates>,
@@ -52,9 +58,7 @@ const DEFAULT_PRICING_TOML: &str = include_str!("../pricing.toml");
 /// Parse a pricing TOML string into its tier-rate map and `as_of` date,
 /// warning (and falling back to an empty map / unknown date) on a parse
 /// failure rather than panicking — a malformed operator override file
-/// shouldn't take down a cost-estimate path. Tests exercise this directly
-/// (via the `parse_or_warn` test helper below) rather than going through
-/// the process-global `OnceLock` in [`table`].
+/// shouldn't take down a cost-estimate path.
 fn parse_price_file(
     text: &str,
     source: &str,
@@ -79,7 +83,16 @@ fn override_candidates() -> Vec<PathBuf> {
     candidates
 }
 
-static TABLE: OnceLock<(HashMap<String, TierRates>, Option<chrono::NaiveDate>)> = OnceLock::new();
+/// The effective, cached table: tiers plus the `as_of` date of whichever
+/// file last set it (an override's own `as_of` wins over the bundled
+/// default's, since the operator presumably set it when they edited their
+/// override).
+struct EffectiveTable {
+    tiers: HashMap<String, TierRates>,
+    as_of: Option<chrono::NaiveDate>,
+}
+
+static TABLE: OnceLock<EffectiveTable> = OnceLock::new();
 
 /// The effective pricing table: compiled-in defaults with any operator
 /// override file's tiers layered on top. Read once and cached — lopi is a
@@ -91,7 +104,7 @@ static TABLE: OnceLock<(HashMap<String, TierRates>, Option<chrono::NaiveDate>)> 
 /// override file also sets its own `as_of`, in which case the override's
 /// date wins outright (it isn't merged field-by-field — an override either
 /// asserts a fresher date for the whole table or it doesn't).
-fn table() -> &'static (HashMap<String, TierRates>, Option<chrono::NaiveDate>) {
+fn table() -> &'static EffectiveTable {
     TABLE.get_or_init(|| {
         let (mut rates, mut as_of) =
             parse_price_file(DEFAULT_PRICING_TOML, "bundled default pricing.toml");
@@ -108,7 +121,10 @@ fn table() -> &'static (HashMap<String, TierRates>, Option<chrono::NaiveDate>) {
                 }
             }
         }
-        (rates, as_of)
+        EffectiveTable {
+            tiers: rates,
+            as_of,
+        }
     })
 }
 
@@ -129,7 +145,7 @@ pub fn rates_for(model: &str) -> TierRates {
     // falls through if an override file replaced the whole table and
     // dropped the tier being looked up — a hard-coded conservative
     // fallback here is safer than a panic on a cost-estimate path.
-    table().0.get(tier).copied().unwrap_or(TierRates {
+    table().tiers.get(tier).copied().unwrap_or(TierRates {
         input: 3.00,
         output: 15.0,
         cache_read: 0.30,
@@ -149,7 +165,7 @@ pub const STALENESS_THRESHOLD_DAYS: i64 = 90;
 /// report).
 #[must_use]
 pub fn table_as_of() -> Option<chrono::NaiveDate> {
-    table().1
+    table().as_of
 }
 
 /// Whether the pricing table is older than [`STALENESS_THRESHOLD_DAYS`] as
@@ -204,6 +220,40 @@ fn staleness_warning_given(
                 .to_string()
         }
     })
+}
+
+/// Sprint E, Part 1 — `lopi rates --check`'s payload: the resolved rate for
+/// every tier plus the table's freshness, built on top of the same
+/// `as_of`/[`is_stale_given`] mechanism [`is_stale`]/[`staleness_warning`]
+/// use.
+#[derive(Debug, Clone)]
+pub struct RatesReport {
+    /// Resolved rates for `opus`/`haiku`/`sonnet`, in stable sorted order.
+    pub tiers: Vec<(String, TierRates)>,
+    /// The table's effective `as_of` date, if known.
+    pub last_updated: Option<chrono::NaiveDate>,
+    /// `true` once `last_updated` is more than [`STALENESS_THRESHOLD_DAYS`]
+    /// in the past, or entirely absent — both cases mean "don't trust this
+    /// number without checking."
+    pub stale: bool,
+}
+
+/// Build a [`RatesReport`] for `lopi rates --check` (or any other cost
+/// surface that wants to label its numbers estimate-vs-stale). Pure over
+/// the cached [`table`] — takes `today` as a parameter rather than calling
+/// `Utc::now()` internally so it's unit-testable without wall-clock
+/// dependence.
+#[must_use]
+pub fn describe(today: chrono::NaiveDate) -> RatesReport {
+    let t = table();
+    let mut tiers: Vec<(String, TierRates)> =
+        t.tiers.iter().map(|(k, v)| (k.clone(), *v)).collect();
+    tiers.sort_by(|a, b| a.0.cmp(&b.0));
+    RatesReport {
+        tiers,
+        last_updated: t.as_of,
+        stale: is_stale_given(t.as_of, today),
+    }
 }
 
 #[cfg(test)]
@@ -318,5 +368,26 @@ mod tests {
         let unknown_warning =
             staleness_warning_given(None, old).expect("missing as_of should also warn");
         assert!(unknown_warning.to_lowercase().contains("stale"));
+    }
+
+    #[test]
+    fn describe_reports_shipped_as_of_and_is_not_stale_relative_to_itself() {
+        let report = describe(chrono::NaiveDate::from_ymd_opt(2026, 7, 2).expect("valid date"));
+        assert_eq!(
+            report.last_updated,
+            chrono::NaiveDate::from_ymd_opt(2026, 7, 1)
+        );
+        assert!(!report.stale, "one day old must not be flagged stale");
+        assert_eq!(report.tiers.len(), 3);
+        // Sorted order, per the doc comment on `RatesReport::tiers`.
+        let names: Vec<&str> = report.tiers.iter().map(|(k, _)| k.as_str()).collect();
+        assert_eq!(names, vec!["haiku", "opus", "sonnet"]);
+    }
+
+    #[test]
+    fn describe_flags_a_table_older_than_the_threshold_as_stale() {
+        let far_future = chrono::NaiveDate::from_ymd_opt(2030, 1, 1).expect("valid date");
+        let report = describe(far_future);
+        assert!(report.stale, "a multi-year-old table must be flagged stale");
     }
 }

@@ -203,6 +203,7 @@ pub fn build_app(state: AppState) -> Router {
             "/api/budget/breakdown",
             get(budget_handlers::get_budget_breakdown),
         )
+        .route("/api/economics", get(budget_handlers::get_economics))
         .route("/api/spec", get(get_spec))
         .route("/api/quality/trend", get(get_quality_trend))
         .route("/api/agents/:id/dag", get(get_agent_dag))

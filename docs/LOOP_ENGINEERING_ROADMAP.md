@@ -1,28 +1,26 @@
 ---
 decays: state
-verified-against: ca8e980
+verified-against: 28dd4cf
 verified-date: 2026-07-28
 ---
 
 # The Pentad — Loop Engineering Completion Roadmap
 
-Verified against: ca8e980 · 2026-07-28 (re-verified; Sprint G's verification-gate work
-(secrets-on-diff gate, dead-letter ledger, two-phase adversarial verifier — see
-`LEDGER.md`'s Sprint G entry) landed on `main` since the prior 2026-07-27 check and
-rewrote `crates/lopi-agent/src/verifier.rs`, adding a new `verifier_tests.rs`. Checked
-every citation into files that sprint touched (`verifier.rs`, `verifier_cli.rs`,
-`runner/finalize.rs`, `runner/mod.rs`, `pool/run_loop.rs`) — this round did not
-re-check the full document, only citations into files changed since the prior
-verification, same scope as that prior round's own check. Three line-number citations
-had drifted (§1 "Sub-agents" row: `VerifierAgent::new`/`resolve_verifier` moved within
-`verifier.rs`, and the `isolated_prompt_excludes_the_maker_plan` test moved to the new
-`verifier_tests.rs`; §1 "Worktrees" row: `finalize.rs`'s conflict-mapping function
-shifted ~15 lines) — fixed, no substance drift. `pool/run_loop.rs:380`'s
-`setup_worktree` citation and `stop_reason.rs:27-28`'s `NoProgress` citation were
-checked and are still exact. No DONE/PARTIAL/NOT-STARTED verdict changed anywhere in
-§1 or §4. Prior round's own findings (nine citations, `with_skills`'s move to
-`runner/builder.rs`, the `lopi-remote`/telegram description) still stand — see the
-in-body history this line replaces in git blame.)
+Verified against: `28dd4cf` · 2026-07-28 (re-verified; this doc only crossed the
+20-commit staleness cap because of Sprint E/Finding #10's own commit volume (two
+merge commits reconciling with `main`), not because anything it cites lost
+accuracy. Checked every citation into files that changed since the prior
+(`ca8e980`) verification: Sprint E added a `context_mode` field to `AgentRunner`
+(`runner/mod.rs`) and threaded `cfg.context_mode`/reservation-cleanup calls through
+`pool/run_loop.rs` — both additive, no existing citation's *content* affected,
+but one line-number citation drifted as a result: §"Sprint 1.2 — Pool runs in
+worktrees"'s `pool/run_loop.rs:380` (`setup_worktree` call site) moved to `:391` —
+fixed. `stop_reason.rs:27-28`'s `NoProgress` citation, `verifier.rs:196-199`'s
+`VerifierAgent::new`/`isolated: true`, and `verifier_tests.rs:54`'s
+`isolated_prompt_excludes_the_maker_plan` were all re-checked and are still exact.
+No DONE/PARTIAL/NOT-STARTED verdict changed anywhere in §1 or §4. Prior rounds'
+own findings still stand — see the in-body history this line replaces in git
+blame.)
 
 > **North star:** lopi is no longer a thing you *prompt*. It is a loop you *design*.
 > This roadmap closes the five (+ one) building blocks of loop engineering to a
@@ -192,7 +190,7 @@ the standing Three-Wall gates; only sprint-specific acceptance is spelled out.
   drops to *creation only*, not the whole run.
 
 **Sprint 1.2 — Pool runs in worktrees**
-- **Status: ✅ DONE.** `crates/lopi-orchestrator/src/pool/worktree.rs:25-50` (`setup_worktree`) wires per-task detached worktrees into the pool, called from `crates/lopi-orchestrator/src/pool/run_loop.rs:380`; per-worktree `CARGO_TARGET_DIR` at `crates/lopi-git/src/worktree.rs:266-277`.
+- **Status: ✅ DONE.** `crates/lopi-orchestrator/src/pool/worktree.rs:25-50` (`setup_worktree`) wires per-task detached worktrees into the pool, called from `crates/lopi-orchestrator/src/pool/run_loop.rs:391`; per-worktree `CARGO_TARGET_DIR` at `crates/lopi-git/src/worktree.rs:266-277`.
 - **Goal:** `AgentRunner` executes inside its worktree, not the shared root.
 - **Deliverables:** thread the worktree path through `run_loop.rs`; per-worktree
   `CARGO_TARGET_DIR`; remove the global serialization now made unnecessary.

@@ -20,6 +20,11 @@
 # the month referenced by the "2026-07 pricing" comment above, since the
 # prose doesn't commit to a specific day. See `STALENESS_THRESHOLD_DAYS` in
 # `pricing.rs` for how this date is used to degrade stale-looking estimates.
+# Sprint E (Finding #10) — also backs `lopi rates --check` via `describe()`:
+# every cost surface that reads from this table is labeled an *estimate*,
+# and `--check` flags this date once it's stale, so a rate change moving
+# faster than this file gets caught instead of silently under/over-reporting
+# spend.
 as_of = "2026-07-01"
 
 [opus]

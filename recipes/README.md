@@ -1,10 +1,10 @@
 ---
 decays: state
-verified-against: ca8e980
+verified-against: 6b69e30
 verified-date: 2026-07-28
 ---
 
-Verified against: `ca8e980` · 2026-07-28 (re-verified; this document carries no
+Verified against: `6b69e30` · 2026-07-28 (re-verified; this document carries no
 line-number citations to check for drift — it's a conceptual F-principle-to-`LoopConfig`
 mapping, not a status/citation ledger. Confirmed every field the table below names
 (`gate`, `until`, `verifier_required`, `verifier_model`, `verifier_effort`,

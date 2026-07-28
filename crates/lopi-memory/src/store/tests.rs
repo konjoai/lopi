@@ -174,6 +174,8 @@ fn make_turn_metrics(task_id: TaskId) -> TurnMetrics {
         tools_parallel: false,
         estimated_cost_usd: 0.003,
         timestamp: Utc::now(),
+        stage: "implement".into(),
+        effort: None,
     }
 }
 

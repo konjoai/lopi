@@ -154,6 +154,8 @@ pub(crate) async fn write_turn_metrics(
             tools_parallel: rng.gen_bool(0.3),
             estimated_cost_usd,
             timestamp,
+            stage: "implement".to_string(),
+            effort: None,
         };
         store.save_turn_metrics(&m).await?;
     }

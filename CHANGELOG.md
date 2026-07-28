@@ -1,3 +1,55 @@
+## [0.37.0] — Sprint E: The Economics Layer (Finding #10)
+
+**Turned the budget governor from a kill-switch into a first-class economic
+layer — predicts spend before committing it, degrades in stages instead of
+dying, and reports unit economics. See `LEDGER.md` for why this is built
+fresh in a new `lopi-orchestrator::budget` module rather than wiring up
+`lopi_ratelimit::BudgetGovernor` (confirmed unwired dead code — zero
+production call sites).**
+
+- **`Money`/`Pool`/`BudgetTier`** (`lopi-core::economics`) — integer
+  micro-USD accounting (never `f64` on the reservation path), the three
+  distinct spending resources (`AgentSdkCredits`/`ApiKey`/`ExtraUsage`),
+  and the five-rung degradation ladder (`Full → Conserve → Essential →
+  Drain → Halt`).
+- **Reservation ledger** (`budget::reserve`) — single-writer, TTL-bounded
+  holds; concurrent admissions against a thin pool never oversubscribe;
+  a leaked hold recovers automatically on its next sweep.
+- **`CostEstimator`** (`budget::estimate`) — median/p90 total cost per
+  (repo, stage, model, effort) from `turn_metrics` history (`stage`/
+  `effort` are new columns, populated at every real turn-persist site);
+  cold start uses a configured default and widens/flags a small sample.
+- **Degradation ladder + handoff writer** (`budget::ladder`) — effort
+  drops one level on implement/optimize under `Conserve` only; every
+  stop path from `Essential` on writes a real handoff artifact before
+  refusing a task's next stage. No agent is ever killed mid-stage.
+- **Runaway detectors** (`budget::detect`) — burn rate, cost-since-last-
+  gate-pass, and an unconditional hard session ceiling; the live monitor
+  (`pool::runaway_monitor`) pauses (cancel + handoff) and broadcasts
+  evidence on a trip.
+- **Unit economics** (`budget::report`) — cost per completed task (labeled
+  proxy for "merged PR" — lopi has no merge signal), cost per
+  first-attempt gate pass, retry spend, cache-attributed saving, and pool
+  runway. Surfaced via `lopi rates --check`, `lopi cost`,
+  `GET /api/economics`, and WhatsApp's `/cost`.
+- **Admission wiring** — `AgentPool::submit_economically` (additive, opt-in
+  — every existing `submit()` caller is unchanged) reserves a task's p90
+  cost before queuing it and reconciles against actual spend on
+  completion.
+
+Two drills recorded in `LEDGER.md` with real numbers: an exhaustion drill
+(5 tasks, a ceiling breached on the 4th admission, zero leaked reservation
+balance) and a runaway drill (the cost-per-progress detector stops a
+looping session at $1.26 — 5.0× less than the pre-Sprint-E behavior of
+running to `max_iterations` would have spent).
+
+Not done this sprint (see `LEDGER.md` for why): the live runaway monitor
+only drives the hard-ceiling detector, not cost-per-progress (needs a
+cached live p90 baseline); no TUI header tile for tier/runway/spend (needs
+a new periodic broadcast event, and `pool/run_loop.rs` has no size-gate
+headroom left to grow); `lopi-remote`'s WhatsApp server has no caller in
+the actual `lopi` binary today, independent of this sprint.
+
 ## [0.37.0] — Sprint: `lopi demo` and the Honest Measurement Policy
 
 **Two features landed together because they share one surface: how lopi

@@ -1,23 +1,25 @@
 ---
 decays: state
-verified-against: 6b69e30
+verified-against: e2f9362
 verified-date: 2026-07-28
 ---
 
 # Trifecta paths — untrusted input → powerful tools → external comms
 
-Verified against: `6b69e30` · 2026-07-28 (merge of two independent re-verifications, neither of
-which touched the other's cited files — no new drift from combining them. Finding #4's
-symbol-index sprint (`6a50c45`): §0's `ServeWebhooks` citation and §8 row 1/row 5's
-`submit_task` citations updated after `Index`/`Map`/`McpIndexServe` CLI commands and the
-`index_tools` module were inserted ahead of them in `src/cli.rs` and `src/mcp_commands/mod.rs`;
-`Sail`'s citation was unaffected since the insertion landed after it; content at every updated
-citation is unchanged, only line numbers shifted. The demo-mode + measurement sprint (`d6e0f02`):
-no content drift — that sprint touched `lopi-core`, `lopi-memory`, `lopi-agent::pricing`, and
-`lopi-ui`'s repo-discovery/handlers, none of which change the webhook/WhatsApp trust boundaries
-this doc describes. §5's "done" statuses still hold. §0's other citations and §2's citations
-describe the pre-Sprint-S2 baseline at `3a8a2ff` by design and are left as historical record —
-see §5 for what actually shipped)
+Verified against: `e2f9362` · 2026-07-28 (merge of three independent re-verifications in the same
+window, none of which touched another's cited files — no new drift from combining them. Sprint
+E/Finding #10 added a `/cost` command to `whatsapp.rs`'s handler, read-only and adding no new row
+to §1's table — see the note under §4; §1's row D citation updated after Sprint E shifted line
+numbers in `whatsapp.rs`. Finding #4's symbol-index sprint (`6a50c45`): §0's `ServeWebhooks`
+citation and §8 row 1/row 5's `submit_task` citations updated after `Index`/`Map`/`McpIndexServe`
+CLI commands and the `index_tools` module were inserted ahead of them in `src/cli.rs` and
+`src/mcp_commands/mod.rs`; `Sail`'s citation was unaffected since the insertion landed after it;
+content at every updated citation is unchanged, only line numbers shifted. The demo-mode +
+measurement sprint (`d6e0f02`): no content drift — that sprint touched `lopi-core`, `lopi-memory`,
+`lopi-agent::pricing`, and `lopi-ui`'s repo-discovery/handlers, none of which change the
+webhook/WhatsApp trust boundaries this doc describes. §5's "done" statuses still hold. §0's other
+citations and §2's citations describe the pre-Sprint-S2 baseline at `3a8a2ff` by design and are
+left as historical record — see §5 for what actually shipped)
 
 Konjo Forward **F10**: lopi has the lethal trifecta by construction — untrusted content in
 (webhooks), powerful tools (code execution, git, PR creation), external comms out (Telegram,
@@ -64,7 +66,7 @@ which is the correct one-way trade but still needs a fix to run at all).
 | A | `crates/lopi-webhook/src/github.rs:157-167` `queue_ci_fix` — any CI-failure event on a watched repo | `Task` (`TaskSource::Webhook`), goal = "Investigate and fix CI failure on {repo}" | Yes — completion fires `notify_loop` | HMAC on the webhook itself (Phase 3, see below); **none** on task execution (pre-Phase-5; now gated by `gate_untrusted_source`, see §5) |
 | B | `crates/lopi-webhook/src/github.rs:184-221` `handle_pr_review` — a PR review with `changes_requested`, review **body text attacker-controlled** | `Task`, review body appended verbatim to `t.constraints` | Yes | Same as A |
 | C | `crates/lopi-webhook/src/issue.rs:159-181` — an opened/labeled GitHub issue, Haiku-triaged then auto-queued if `Bug` @ confidence ≥ 0.7 or `lopi:fix` label. **Issue body (attacker-controlled, up to 500 chars) injected as a task constraint** | `Task`, `TaskSource::Webhook` | Yes | Same as A |
-| D | `crates/lopi-remote/src/whatsapp.rs:110-122` — inbound `/task <goal>` over Twilio WhatsApp, **goal text is attacker/sender-controlled directly**, `TaskSource::Webhook { repo: "whatsapp", .. }` | `Task` | Yes | Optional Twilio signature (`signing_secret`); **but see §4 — this module is not wired to any CLI command and is unreachable in the built binary today** |
+| D | `crates/lopi-remote/src/whatsapp.rs:120-134` — inbound `/task <goal>` over Twilio WhatsApp, **goal text is attacker/sender-controlled directly**, `TaskSource::Webhook { repo: "whatsapp", .. }` | `Task` | Yes | Optional Twilio signature (`signing_secret`); **but see §4 — this module is not wired to any CLI command and is unreachable in the built binary today** |
 | E | ~~`crates/lopi-remote/src/telegram/handlers.rs:181-211`~~ — **transport removed, Sprint S10 Phase 4.** Historical rows with `TaskSource::Telegram` still deserialize and read as `provenance: "operator"` (`TaskRow::provenance()`); `is_untrusted_source` still classifies the variant as untrusted for chain-depth purposes (Successor-1) — a different, narrower notion of "untrusted" than this row ever used, see `LEDGER.md`. Nothing constructs this variant anymore. | (historical only) | — (no longer reachable) | Moot — removed rather than gated |
 
 Rows A–D converge on the same `TaskQueue` → `AgentPool` → `AgentRunner` pipeline
@@ -124,6 +126,9 @@ brief's own "no policy engine, most teams overshoot by one tier" caution.
   get the Phase 5 `require_plan_approval` gate (cheap, and `is_untrusted_source` already classifies
   its `TaskSource::Webhook` as untrusted), so at least that one containment travels with it whenever
   it's eventually wired up — the HMAC gap does not.
+  Sprint E (Finding #10) added a `/cost` command to this same handler — read-only (formats a
+  unit-economics report from the local ledger, no `Task` construction, no external call), so it
+  adds no new row to this table and doesn't change the "dormant, no CLI wrapper" status above.
 - **`crates/lopi-core/src/config.rs:135`** (`WebConfig.host`) is dead configuration — parsed
   from `lopi.toml` but never read anywhere (`grep -rn "\.web\.host"` matches nothing); `Sail`'s
   actual bind host only ever comes from the CLI `--host` flag. Not a security issue, just

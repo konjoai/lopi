@@ -294,6 +294,65 @@ pub enum AgentEvent {
         /// The full `TaskStatus::Failed` reason string this was parsed from.
         detail: String,
     },
+    /// Sprint E, Part 3 — the degradation ladder moved to a different rung.
+    /// Emitted once per real transition (never on a no-op re-check at the
+    /// same tier) and pushed to every configured remote surface, so an
+    /// operator learns lopi throttled itself before they notice the
+    /// throughput drop.
+    BudgetTier {
+        /// The rung the pool was on before this transition.
+        from: crate::BudgetTier,
+        /// The rung the pool is on now.
+        to: crate::BudgetTier,
+        /// Headroom remaining on the active pool at the moment of
+        /// transition, in micro-USD (`Money::micros()`).
+        remaining_micros: i64,
+        /// One-line human reason, e.g. `"pool headroom 8% < 10% conserve
+        /// threshold"`.
+        reason: String,
+    },
+    /// Sprint E, Part 2 — admission was refused because the task's p90 cost
+    /// reservation would breach the active pool's headroom. Always carries
+    /// an alternative that *would* fit, per the brief's "a refusal that
+    /// offers no alternative just moves the decision to the operator at the
+    /// worst moment."
+    AdmissionDeclined {
+        /// The task that was refused (never queued).
+        task_id: TaskId,
+        /// The task's goal, for a notification that doesn't need a lookup.
+        goal: String,
+        /// p90 cost estimate that was declined, in micro-USD.
+        p90_micros: i64,
+        /// Headroom available on the active pool at decline time, in
+        /// micro-USD.
+        headroom_micros: i64,
+        /// A concrete alternative the operator could take instead (e.g. a
+        /// lower effort level that would fit), or `None` if nothing on the
+        /// ladder would fit right now.
+        alternative: Option<String>,
+    },
+    /// Sprint E, Part 4 — a runaway detector tripped and the session paused
+    /// at its next safe checkpoint awaiting an operator decision (resume /
+    /// downshift / stop-and-hand-off). Carries the evidence a remote
+    /// surface needs to render the decision prompt without a second query.
+    RunawayPaused {
+        /// The paused task.
+        task_id: TaskId,
+        /// Which detector tripped: `"burn_rate"`, `"cost_per_progress"`, or
+        /// `"hard_ceiling"`.
+        detector: String,
+        /// Tokens/minute burn rate observed for this session.
+        burn_rate_tokens_per_min: f64,
+        /// Total spend for this session so far, in micro-USD.
+        spend_micros: i64,
+        /// Outcome of the last gate/eval pass, if any (`"pass"`, `"fail"`,
+        /// or `"none"` when this session hasn't reached one yet).
+        last_gate_result: String,
+        /// Short SHA or ref of the last commit this session made, if any.
+        last_commit: Option<String>,
+        /// Current pipeline stage (`"plan"`, `"implement"`, …).
+        stage: String,
+    },
 }
 
 /// Severity level attached to [`AgentEvent::LogLine`] events.

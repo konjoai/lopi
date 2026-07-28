@@ -475,6 +475,7 @@ include!("schedule_chains_tests.rs");
 include!("task_stream_tests.rs");
 include!("loop_tests.rs");
 include!("quota_tests.rs");
+include!("economics_tests.rs");
 include!("maxx_tests.rs");
 include!("task_create_tests.rs");
 include!("task_field_tests.rs");

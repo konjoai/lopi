@@ -57,6 +57,24 @@ pub struct TurnMetrics {
     pub estimated_cost_usd: f64,
     /// Wall-clock time when this turn was recorded.
     pub timestamp: DateTime<Utc>,
+    /// Sprint E, Part 2 — pipeline stage this turn ran in (`"plan"`,
+    /// `"implement"`), the grouping key `CostEstimator`
+    /// (`lopi_orchestrator::budget::estimate`) needs to estimate cost
+    /// per-stage rather than per-task. Not an `Option` — every real call
+    /// site knows which stage it's in; `"implement"` is the conservative
+    /// default for pre-Sprint-E rows read back by older code paths.
+    #[serde(default = "default_stage")]
+    pub stage: String,
+    /// Reasoning-effort level in force for this turn, mirroring
+    /// [`crate::task::Task::effort`]. `None` when the task set no explicit
+    /// effort override — a real, distinct bucket from any named level, not
+    /// a missing value to paper over.
+    #[serde(default)]
+    pub effort: Option<String>,
+}
+
+fn default_stage() -> String {
+    "implement".to_string()
 }
 
 /// Tunable penalties applied by [`Score::weighted`] to derive a composite quality score.

@@ -23,6 +23,11 @@ pub struct LopiConfig {
     #[serde(default)]
     /// Cron-scheduled task entries.
     pub schedules: Vec<ScheduleEntry>,
+    /// Sprint E (Finding #10) — the economics layer: active spending pool,
+    /// degradation ladder thresholds, and runaway-detector tuning. Absent
+    /// (`[economics]` table missing) means the layer is entirely inactive.
+    #[serde(default)]
+    pub economics: crate::economics_config::EconomicsConfig,
 }
 
 /// Core orchestrator settings (`[lopi]` table in `lopi.toml`).

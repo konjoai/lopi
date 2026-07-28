@@ -151,6 +151,11 @@ impl AgentPool {
                 let _permit = permit;
                 let _repo_permit = repo_permit;
                 let max_retries = attempt.load(Ordering::Relaxed); // 0 here, updated in runner
+                                                                   // Sprint E — a clone kept outside `run_one` so a reservation
+                                                                   // this task opened via `submit_economically` still gets
+                                                                   // released on the early-`?`-return error path below, which
+                                                                   // never reaches `run_one`'s own terminal reconciliation call.
+                let pool_for_reservation_cleanup = pool.clone();
                 let outcome = run_one(
                     task,
                     repo,
@@ -198,6 +203,12 @@ impl AgentPool {
                             warn!(task_id = %task_id, "mark_completed(failed) failed: {e}");
                         }
                     }
+                    // No cost was ever recorded for this run — release, not
+                    // reconcile, so the reservation's hold vanishes without
+                    // attributing spend it never actually incurred.
+                    pool_for_reservation_cleanup
+                        .finish_economics_reservation(task_id, None)
+                        .await;
                 }
             });
         }
@@ -443,6 +454,10 @@ async fn run_one(
     )
     .await;
 
+    // Sprint E — reconciled below against whatever `task_cost` finds (or
+    // released with no spend attributed if the store lookup never runs).
+    let mut actual_cost = None;
+
     if let Some(store) = store {
         // Canonical status token — one vocabulary shared with the API and the
         // web snapshot bucketing. `db_status` covers every variant, so there's
@@ -472,10 +487,13 @@ async fn run_one(
                          (measured from this run's own token usage — not your plan quota or a bill)"
                     ),
                 ));
+                actual_cost = Some(lopi_core::Money::from_usd(cost_usd));
             }
             Err(e) => warn!(task_id = %task_id, "failed to load session cost: {e}"),
         }
     }
+    pool.finish_economics_reservation(task_id, actual_cost)
+        .await;
 
     Ok(outcome)
 }

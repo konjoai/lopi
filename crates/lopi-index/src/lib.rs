@@ -13,6 +13,8 @@
 //! the brief), and that Sprint C's `PrefixBuilder`/cached-prefix
 //! infrastructure this crate was meant to depend on was never built.
 
+#![warn(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
 mod config;
 mod hash;
 pub mod map;
