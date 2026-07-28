@@ -59,7 +59,12 @@ pub(super) async fn handle_slash(
         }
         Ok(SlashCmd::Cost) => {
             state.push(
-                format!("  session cost: ${:.4}", state.session_cost_usd),
+                format!(
+                    "  session cost: ${:.4} — local token burn, counted by lopi from this \
+                     session's own runs. Not your plan quota, not account usage, not a bill, \
+                     and not inclusive of any Claude Code session run by hand outside lopi.",
+                    state.session_cost_usd
+                ),
                 LineStyle::Info,
             );
         }

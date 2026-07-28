@@ -238,6 +238,83 @@ mod tests {
         );
     }
 
+    /// End-to-end proof of A.5/A.9's "no agent spawn, git call, or network
+    /// call occurs in demo mode": generate a real demo store, serve it
+    /// in-process (the exact `launch_dashboard` path `lopi demo` uses,
+    /// never `AgentPool::run`), attempt a mutation over HTTP, and confirm
+    /// the store's task/attempt counts are unchanged afterward — nothing
+    /// consumed the (refused) request, and nothing in the demo store's
+    /// content silently grew from a background dispatch loop that was
+    /// never started.
+    #[tokio::test]
+    async fn serving_a_demo_store_never_dispatches_or_accepts_mutations() {
+        let dir = tempfile::tempdir().unwrap();
+        let demo = dir.path().join("demo.db");
+        let real = dir.path().join("lopi.db");
+        lopi_demo::generate(&demo, &real, 7).await.unwrap();
+
+        let store = MemoryStore::open(&demo).await.unwrap();
+        assert!(store.is_synthetic().await.unwrap());
+        let tasks_before = store.task_count().await.unwrap();
+        let attempts_before = store.status_counts().await.unwrap();
+
+        let port = {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            listener.local_addr().unwrap().port()
+        };
+        std::env::set_var("LOPI_NO_BROWSER", "1");
+        tokio::spawn(launch_dashboard(demo.clone(), "127.0.0.1".into(), port));
+
+        let base = format!("http://127.0.0.1:{port}");
+        let client = reqwest::Client::new();
+        for _ in 0..100 {
+            if client
+                .get(format!("{base}/api/health"))
+                .send()
+                .await
+                .is_ok()
+            {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+
+        let resp = client
+            .post(format!("{base}/api/tasks"))
+            .json(&serde_json::json!({ "goal": "an attacker-controlled goal string" }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 403, "demo mode must refuse task creation");
+        let body: serde_json::Value = resp.json().await.unwrap();
+        assert_eq!(body["synthetic"], true);
+
+        // Give any (hypothetical) background dispatch loop a real chance to
+        // act, then confirm nothing changed — the strongest available
+        // evidence short of asserting `claude`/`git` were never on $PATH.
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        let store2 = MemoryStore::open(&demo).await.unwrap();
+        assert_eq!(
+            store2.task_count().await.unwrap(),
+            tasks_before,
+            "no task was created despite the (refused) POST"
+        );
+        let attempts_after = store2.status_counts().await.unwrap();
+        assert_eq!(
+            (
+                attempts_before.running,
+                attempts_before.succeeded,
+                attempts_before.failed
+            ),
+            (
+                attempts_after.running,
+                attempts_after.succeeded,
+                attempts_after.failed
+            ),
+            "no background dispatch changed any task's lifecycle bucket"
+        );
+    }
+
     #[test]
     fn dashboard_url_maps_wildcard_hosts_to_loopback() {
         assert_eq!(dashboard_url("0.0.0.0", 3000), "http://127.0.0.1:3000");
