@@ -16,6 +16,7 @@ members = [
     "crates/lopi-tools",
     "crates/lopi-skill",
     "crates/lopi-mcp",
+    "crates/lopi-demo",
 ]
 resolver = "2"
 
@@ -69,6 +70,7 @@ tokio-cron-scheduler = { version = "0.10", features = ["signal"] }
 tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 mimalloc = { version = "0.1", default-features = false }
+rand = "0.8"
 
 lopi-core = { path = "crates/lopi-core", version = "0.35.0" }
 lopi-context = { path = "crates/lopi-context", version = "0.35.0" }
@@ -86,6 +88,7 @@ lopi-spec = { path = "crates/lopi-spec", version = "0.35.0" }
 lopi-tools = { path = "crates/lopi-tools", version = "0.35.0" }
 lopi-skill = { path = "crates/lopi-skill", version = "0.35.0" }
 lopi-mcp = { path = "crates/lopi-mcp", version = "0.35.0" }
+lopi-demo = { path = "crates/lopi-demo", version = "0.35.0" }
 
 [package]
 name = "lopi"
@@ -125,6 +128,7 @@ lopi-github.workspace = true
 lopi-spec.workspace = true
 lopi-skill.workspace = true
 lopi-mcp.workspace = true
+lopi-demo.workspace = true
 reqwest.workspace = true
 serde_json.workspace = true
 tokio-cron-scheduler.workspace = true

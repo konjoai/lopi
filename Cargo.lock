@@ -1729,6 +1729,7 @@ dependencies = [
  "futures",
  "lopi-agent",
  "lopi-core",
+ "lopi-demo",
  "lopi-git",
  "lopi-github",
  "lopi-mcp",
@@ -1817,6 +1818,21 @@ dependencies = [
  "thiserror 1.0.69",
  "tokio",
  "toml",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "lopi-demo"
+version = "0.35.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "lopi-core",
+ "lopi-memory",
+ "rand",
+ "serde_json",
+ "tempfile",
  "tracing",
  "uuid",
 ]

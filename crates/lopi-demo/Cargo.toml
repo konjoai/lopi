@@ -1,0 +1,21 @@
+[package]
+name = "lopi-demo"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Deterministic, seeded synthetic-store generator behind `lopi demo` — also used as a test fixture"
+
+[dependencies]
+lopi-core.workspace = true
+lopi-memory.workspace = true
+anyhow.workspace = true
+chrono.workspace = true
+rand.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tempfile = "3"

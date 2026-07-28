@@ -154,6 +154,16 @@ cp lopi.toml.example lopi.toml
 ./target/release/lopi run --goal "fix the failing test in src/foo.rs" --repo .
 ```
 
+**Just want to look around first?** `lopi demo` fabricates a complete,
+synthetic dashboard — repos, tasks in every status, agent traffic, token
+counts, a quality trend, a couple of honest failures — and opens it. No
+config, no credentials, no real repo touched; every surface is watermarked
+`🧪 SYNTHETIC DATA`.
+
+```bash
+lopi demo
+```
+
 Building the web dashboard is optional but recommended (`cd web && npm
 install && npm run build`) — without it, `lopi sail` serves a placeholder
 page instead of the Forge UI (the Homebrew formula builds it for you; `cargo
@@ -177,8 +187,9 @@ REPL. The full surface:
 |---|---|
 | `lopi run --goal "<g>" --repo <path>` | Run one agent task, stream status to stdout |
 | `lopi bypass <goal…>` | Run with directory restrictions disabled (trusted envs only) |
-| `lopi watch` | Live TUI — agent status (`--remote <ws>` or `--local`) |
+| `lopi watch` | Live TUI — agent status (`--remote <ws>`, `--local`, or `--demo`) |
 | `lopi sail` | Web dashboard + agent pool (single- or multi-repo) |
+| `lopi demo` | Generate (if absent) and open a fully synthetic dashboard — zero setup (`--seed`, `--reset`, `--off`, `--path`) |
 | `lopi tail` / `lopi dock` | Stream events / list all tasks |
 | `lopi cancel <id>` / `lopi resume --agent-id <id>` | Cancel / resume a task |
 | `lopi learn` / `lopi stability` / `lopi trust` | Browse mined patterns / stability ledger / trust stats |
@@ -194,7 +205,7 @@ REPL. The full surface:
 
 ## Architecture
 
-16 crates in a Cargo workspace:
+17 crates in a Cargo workspace:
 
 | Crate | Role |
 |---|---|
@@ -214,6 +225,7 @@ REPL. The full surface:
 | `lopi-ratelimit` | Token-bucket rate limiting + Anthropic concurrency controls |
 | `lopi-toon` | Token-Oriented Object Notation encoder (measured 3.3% fewer cl100k tokens than compact JSON on lopi's real prompt payloads — see `crates/lopi-toon/benches/results/`) |
 | `lopi-github` | Thin GitHub REST client for write operations (PRs, labels, comments) |
+| `lopi-demo` | Deterministic, seeded synthetic-store generator behind `lopi demo` — also used as a test fixture |
 
 Plus [`macos/`](./macos) (native SwiftUI dashboard), [`web/`](./web)
 (SvelteKit source for the Forge), [`mcpb/`](./mcpb) (Claude Desktop
@@ -304,6 +316,16 @@ untrusted by default for the same reason and refuse to run for an
 untrusted-sourced task (Sprint S10, Phase 0); MCP servers are allowlisted
 deny-by-default (Sprint S10, Phase 5). Full inventory and rationale:
 `docs/security/TRIFECTA_PATHS.md` and `docs/security/EGRESS_SURFACE.md`.
+
+## Measurement
+
+Every number lopi displays states what it measures and where it came from —
+lopi reports what it can observe directly, and says so plainly when a
+number is unavailable rather than estimating without saying so or obtaining
+it through means the source didn't intend. No bypassing bot protection, no
+undocumented internal APIs, no stored third-party session credentials, ever,
+for a nicer statistic. Full policy, including how dollar estimates are
+versioned and degrade when stale: [`docs/MEASUREMENT.md`](./docs/MEASUREMENT.md).
 
 ## Contributing / feedback
 

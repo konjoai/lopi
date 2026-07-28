@@ -50,6 +50,13 @@ pub mod models;
 /// Permission mode — how much a `claude -p` worker session may act on tool
 /// calls without a human answering a prompt.
 pub mod permission_mode;
+/// Machine-checkable label for where a user-facing metric's value came from
+/// (measured / reported / estimated / unavailable) — see
+/// [`provenance::Provenance`]. Distinct from
+/// `lopi_memory::store::task_row::TaskRow::provenance()`, a *trust*
+/// classification for task sources; see that type's doc comment for the
+/// disambiguation this module's own doc comment also states.
+pub mod provenance;
 /// Pattern-based secret redaction for agent-produced log text.
 pub mod redact;
 /// Report on Finish (Loop Engineering primitive 6) — the `report` channel
@@ -102,6 +109,7 @@ pub use gain::{GainDecision, GainRule, GainSample};
 pub use loop_config::{IsolationMode, LoopConfig};
 pub use models::{fallback_models, ModelInfo};
 pub use permission_mode::{effective_permission_mode, PermissionMode, PermissionModeError};
+pub use provenance::Provenance;
 pub use redact::redact_secrets;
 pub use report::{ReportChannel, ReportChannelError};
 pub use schema::{
