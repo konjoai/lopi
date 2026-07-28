@@ -142,7 +142,14 @@ impl MemoryStore {
         Ok(rows
             .into_iter()
             .map(
-                |(model, input_tokens, cache_read_tokens, cache_write_tokens, output_tokens, actual_cost_usd)| {
+                |(
+                    model,
+                    input_tokens,
+                    cache_read_tokens,
+                    cache_write_tokens,
+                    output_tokens,
+                    actual_cost_usd,
+                )| {
                     CachePricingSample {
                         model,
                         input_tokens,
@@ -243,9 +250,16 @@ mod tests {
         let s = store().await;
         for i in 0..5 {
             let t = seed_task(&s, None).await;
-            s.save_turn_metrics(&turn(t, "claude-sonnet-5", "implement", None, 1, f64::from(i)))
-                .await
-                .unwrap();
+            s.save_turn_metrics(&turn(
+                t,
+                "claude-sonnet-5",
+                "implement",
+                None,
+                1,
+                f64::from(i),
+            ))
+            .await
+            .unwrap();
         }
         let samples = s
             .stage_cost_samples(None, "implement", "claude-sonnet-5", None, 3)
@@ -259,9 +273,16 @@ mod tests {
         let s = store().await;
         let t1 = seed_task(&s, None).await;
         let t2 = seed_task(&s, None).await;
-        s.save_turn_metrics(&turn(t1, "claude-sonnet-5", "implement", Some("high"), 1, 1.0))
-            .await
-            .unwrap();
+        s.save_turn_metrics(&turn(
+            t1,
+            "claude-sonnet-5",
+            "implement",
+            Some("high"),
+            1,
+            1.0,
+        ))
+        .await
+        .unwrap();
         s.save_turn_metrics(&turn(t2, "claude-sonnet-5", "implement", None, 1, 2.0))
             .await
             .unwrap();

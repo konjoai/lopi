@@ -80,7 +80,11 @@ impl PoolState {
     ///
     /// # Errors
     /// Returns [`Decline`] when `amount` doesn't fit in current headroom.
-    pub async fn try_reserve(&self, amount: Money, ttl: Duration) -> Result<ReservationId, Decline> {
+    pub async fn try_reserve(
+        &self,
+        amount: Money,
+        ttl: Duration,
+    ) -> Result<ReservationId, Decline> {
         self.ledger.try_reserve(amount, ttl).await
     }
 

@@ -198,8 +198,7 @@ fn event_task_id(ev: &AgentEvent) -> Option<lopi_core::TaskId> {
         // Sprint E — a tier transition is fleet/pool-wide, not scoped to any
         // one task, matching `PoolStats` above.
         AgentEvent::BudgetTier { .. } => None,
-        AgentEvent::AdmissionDeclined { task_id, .. } | AgentEvent::RunawayPaused { task_id, .. } => {
-            Some(*task_id)
-        }
+        AgentEvent::AdmissionDeclined { task_id, .. }
+        | AgentEvent::RunawayPaused { task_id, .. } => Some(*task_id),
     }
 }

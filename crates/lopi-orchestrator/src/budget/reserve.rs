@@ -105,7 +105,11 @@ impl ReservationLedger {
     /// # Errors
     /// Returns [`Decline`] with the headroom that *was* available when
     /// `amount` doesn't fit.
-    pub async fn try_reserve(&self, amount: Money, ttl: Duration) -> Result<ReservationId, Decline> {
+    pub async fn try_reserve(
+        &self,
+        amount: Money,
+        ttl: Duration,
+    ) -> Result<ReservationId, Decline> {
         let mut state = self.state.lock().await;
         sweep_expired(&mut state);
         let headroom = self.headroom_locked(&state);
@@ -177,7 +181,8 @@ impl ReservationLedger {
     }
 
     fn headroom_locked(&self, state: &LedgerState) -> Money {
-        self.ceiling.saturating_sub(state.committed + sum_holds(state))
+        self.ceiling
+            .saturating_sub(state.committed + sum_holds(state))
     }
 }
 

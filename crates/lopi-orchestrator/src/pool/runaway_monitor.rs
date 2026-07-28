@@ -63,12 +63,16 @@ fn apply_event(trackers: &DashMap<TaskId, SessionTracker>, event: &AgentEvent) {
                 t.goal = goal.clone();
             }
         }
-        AgentEvent::Cost { task_id, cost_usd, .. } => {
+        AgentEvent::Cost {
+            task_id, cost_usd, ..
+        } => {
             if let Some(mut t) = trackers.get_mut(task_id) {
                 t.spend_total = Money::from_usd(*cost_usd);
             }
         }
-        AgentEvent::VerifierVerdict { task_id, passed, .. } => {
+        AgentEvent::VerifierVerdict {
+            task_id, passed, ..
+        } => {
             if let Some(mut t) = trackers.get_mut(task_id) {
                 t.last_gate_result = if *passed { "pass" } else { "fail" }.to_string();
                 if *passed {
@@ -145,7 +149,8 @@ async fn sweep_once(
     let tripped: Vec<(TaskId, SessionTracker, RunawayVerdict)> = trackers
         .iter()
         .filter_map(|entry| {
-            evaluate(&econ.detectors, entry.value()).map(|v| (*entry.key(), entry.value().clone(), v))
+            evaluate(&econ.detectors, entry.value())
+                .map(|v| (*entry.key(), entry.value().clone(), v))
         })
         .collect();
 
@@ -318,8 +323,8 @@ mod tests {
         let store = MemoryStore::open_in_memory().await.unwrap();
         let econ = Arc::new(Economics::new(&cfg(1.0), store.clone()).unwrap());
         let bus: EventBus<AgentEvent> = EventBus::new(16);
-        let pool = AgentPool::new(4, PathBuf::from("."), TaskQueue::new(), bus.clone())
-            .with_store(store);
+        let pool =
+            AgentPool::new(4, PathBuf::from("."), TaskQueue::new(), bus.clone()).with_store(store);
         let mut sub = bus.subscribe();
 
         let trackers: Arc<DashMap<TaskId, SessionTracker>> = Arc::new(DashMap::new());
@@ -345,7 +350,10 @@ mod tests {
 
         sweep_once(&pool, &econ, &trackers).await;
 
-        assert!(trackers.get(&task_id).is_none(), "tripped tracker must clear");
+        assert!(
+            trackers.get(&task_id).is_none(),
+            "tripped tracker must clear"
+        );
         let event = tokio::time::timeout(Duration::from_secs(1), sub.recv())
             .await
             .expect("must receive an event")

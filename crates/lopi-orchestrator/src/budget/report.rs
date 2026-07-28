@@ -105,7 +105,12 @@ async fn cache_saving(store: &MemoryStore, days: i64) -> Result<Money> {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::cast_precision_loss)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::cast_precision_loss
+)]
 mod tests {
     use super::*;
     use chrono::{NaiveDate, Utc};

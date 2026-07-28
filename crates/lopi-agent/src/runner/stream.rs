@@ -91,7 +91,8 @@ impl AgentRunner {
                 true
             })
             .await?;
-        self.persist_turn(&accrual, model, attempt, "implement").await;
+        self.persist_turn(&accrual, model, attempt, "implement")
+            .await;
         Ok(text)
     }
 

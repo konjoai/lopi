@@ -72,7 +72,10 @@ impl AgentPool {
             .and_then(|p| p.to_str())
             .map(str::to_string)
             .unwrap_or_else(|| self.repo_path().display().to_string());
-        let model = task.model.clone().unwrap_or_else(|| "claude-sonnet-5".into());
+        let model = task
+            .model
+            .clone()
+            .unwrap_or_else(|| "claude-sonnet-5".into());
         let effort = task.effort.clone();
 
         match econ.try_admit(Some(&repo), &model, effort.as_deref()).await {
@@ -113,7 +116,11 @@ impl AgentPool {
     /// recorded (released with no spend attributed). A task with no open
     /// reservation (never went through `submit_economically`, or the
     /// economics layer is inactive) is a no-op — never an error.
-    pub(super) async fn finish_economics_reservation(&self, task_id: TaskId, actual: Option<Money>) {
+    pub(super) async fn finish_economics_reservation(
+        &self,
+        task_id: TaskId,
+        actual: Option<Money>,
+    ) {
         let Some((_, reservation)) = self.economics_reservations.remove(&task_id) else {
             return;
         };

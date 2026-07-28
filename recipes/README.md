@@ -1,7 +1,7 @@
 ---
 decays: state
-verified-against: a93d776
-verified-date: 2026-07-27
+verified-against: 8d26835
+verified-date: 2026-07-28
 ---
 
 # lopi recipe library

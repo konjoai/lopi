@@ -55,7 +55,11 @@ impl CostEstimator {
     /// module (per the brief's "rate tables live in config, never in
     /// code" spirit — this is the analogous rule for cost *estimates*).
     #[must_use]
-    pub const fn new(store: MemoryStore, cold_start_sample_min: usize, cold_start_default: Money) -> Self {
+    pub const fn new(
+        store: MemoryStore,
+        cold_start_sample_min: usize,
+        cold_start_default: Money,
+    ) -> Self {
         Self {
             store,
             cold_start_sample_min,
@@ -110,7 +114,11 @@ impl CostEstimator {
 /// 1.0]`. Empty input returns `0.0` — callers handle the empty case before
 /// reaching here (the cold-start branch above), so this is a defensive
 /// fallback, not a real code path.
-#[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss
+)]
 fn percentile(sorted: &[f64], p: f64) -> f64 {
     if sorted.is_empty() {
         return 0.0;

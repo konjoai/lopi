@@ -37,15 +37,16 @@ pub async fn run(
     let bus: EventBus<AgentEvent> = EventBus::new(512);
     let queue = TaskQueue::new();
 
-    let mut pool_builder =
-        AgentPool::new(max_agents, repo.clone(), queue.clone(), bus.clone())
-            .with_store(store.clone());
+    let mut pool_builder = AgentPool::new(max_agents, repo.clone(), queue.clone(), bus.clone())
+        .with_store(store.clone());
     // Sprint E (Finding #10) — opt-in: only active when [economics] names
     // a pool. `new_seeded` primes committed spend from the durable ledger
     // so headroom reflects real historical spend, not a clean slate on
     // every restart.
     if let Some(econ_cfg) = cfg.map(|c| c.economics.clone()) {
-        if let Some(econ) = lopi_orchestrator::budget::Economics::new_seeded(&econ_cfg, store.clone()).await {
+        if let Some(econ) =
+            lopi_orchestrator::budget::Economics::new_seeded(&econ_cfg, store.clone()).await
+        {
             pool_builder = pool_builder.with_economics(econ);
         }
     }

@@ -115,7 +115,9 @@ impl Economics {
     pub async fn new_seeded(cfg: &EconomicsConfig, store: MemoryStore) -> Option<Self> {
         let pool_cfg = cfg.pool.clone()?;
         let already_spent = store.total_spend_all_time().await.unwrap_or_else(|e| {
-            tracing::warn!("failed to seed pool committed spend from ledger: {e:#}; starting from zero");
+            tracing::warn!(
+                "failed to seed pool committed spend from ledger: {e:#}; starting from zero"
+            );
             0.0
         });
         let pool = PoolState::seeded(pool_cfg, Money::from_usd(already_spent));
@@ -131,7 +133,10 @@ impl Economics {
                 cfg.cold_start_sample_min,
                 cfg.cold_start_default_cost,
             ),
-            detectors: RunawayDetectors::new(cfg.hard_session_ceiling, cfg.cost_per_progress_multiplier),
+            detectors: RunawayDetectors::new(
+                cfg.hard_session_ceiling,
+                cfg.cost_per_progress_multiplier,
+            ),
             thresholds: cfg.ladder,
             reservation_ttl: Duration::from_secs(cfg.reservation_ttl_secs),
         }
@@ -166,7 +171,9 @@ impl Economics {
         match self.pool.try_reserve(p90, self.reservation_ttl).await {
             Ok(id) => Ok((id, p90)),
             Err(decline) => {
-                let alternative = self.find_fitting_effort(repo, model, decline.headroom).await;
+                let alternative = self
+                    .find_fitting_effort(repo, model, decline.headroom)
+                    .await;
                 Err(AdmissionDecline {
                     p90,
                     headroom: decline.headroom,
@@ -208,7 +215,12 @@ impl Economics {
     /// Try each effort level from `high` down to `low` and report the
     /// first whose p90 estimate fits `headroom` — the brief's "say what
     /// would fit" requirement. `None` if nothing fits.
-    async fn find_fitting_effort(&self, repo: Option<&str>, model: &str, headroom: Money) -> Option<String> {
+    async fn find_fitting_effort(
+        &self,
+        repo: Option<&str>,
+        model: &str,
+        headroom: Money,
+    ) -> Option<String> {
         for level in ["low", "medium", "high"] {
             let p90 = self.task_p90(repo, model, Some(level)).await;
             if p90 <= headroom {
@@ -311,7 +323,11 @@ mod tests {
     async fn recheck_ladder_reports_transitions_as_headroom_shrinks() {
         let store = MemoryStore::open_in_memory().await.unwrap();
         let econ = Economics::new(&cfg(10.0), store).expect("pool configured");
-        assert_eq!(econ.recheck_ladder().await, None, "starts at Full, ratio 1.0");
+        assert_eq!(
+            econ.recheck_ladder().await,
+            None,
+            "starts at Full, ratio 1.0"
+        );
         let (id, _) = econ
             .try_admit(None, "claude-sonnet-5", None)
             .await

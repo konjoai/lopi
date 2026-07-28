@@ -36,7 +36,8 @@ pub(super) async fn get_economics(State(s): State<AppState>) -> impl IntoRespons
     let Some(econ) = s.pool.economics() else {
         return Json(json!({ "active": false }));
     };
-    let report = match lopi_orchestrator::budget::report::compute(&s.store, &econ.pool, 7, 7).await {
+    let report = match lopi_orchestrator::budget::report::compute(&s.store, &econ.pool, 7, 7).await
+    {
         Ok(r) => r,
         Err(e) => {
             tracing::warn!("economics report query failed: {e}");

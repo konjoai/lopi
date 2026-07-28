@@ -93,8 +93,16 @@ async fn exhaustion_drill_five_tasks_ceiling_breached_on_the_fifth() {
     }
 
     // Every unstarted task is queued, not lost.
-    assert_eq!(admitted.len(), 4, "exactly 4 of 5 tasks should have been admitted");
-    assert_eq!(declined, vec![4], "only the 5th task should have been declined");
+    assert_eq!(
+        admitted.len(),
+        4,
+        "exactly 4 of 5 tasks should have been admitted"
+    );
+    assert_eq!(
+        declined,
+        vec![4],
+        "only the 5th task should have been declined"
+    );
 
     // Tier transitions appear in the event log in order — Full -> Conserve
     // -> Essential, monotonically more severe, never skipped or reordered.
@@ -125,7 +133,10 @@ async fn exhaustion_drill_five_tasks_ceiling_breached_on_the_fifth() {
         )
         .await
         .unwrap();
-        assert!(handoff_path.exists(), "task {i} must have a handoff artifact");
+        assert!(
+            handoff_path.exists(),
+            "task {i} must have a handoff artifact"
+        );
 
         // Reconcile at (a bit less than) the reserved p90 — real spend,
         // never a leaked hold.
@@ -174,7 +185,9 @@ async fn runaway_drill_detector_two_trips_before_the_hard_ceiling() {
         spend_since_gate += turn_cost;
         total_spend += turn_cost;
 
-        if let Some(verdict) = detectors.check_all(0.0, 0.0, spend_since_gate, stage_p90, total_spend) {
+        if let Some(verdict) =
+            detectors.check_all(0.0, 0.0, spend_since_gate, stage_p90, total_spend)
+        {
             break (turns, verdict);
         }
         assert!(turns < 1000, "detector never tripped — test is broken");

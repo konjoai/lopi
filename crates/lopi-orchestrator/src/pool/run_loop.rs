@@ -151,10 +151,10 @@ impl AgentPool {
                 let _permit = permit;
                 let _repo_permit = repo_permit;
                 let max_retries = attempt.load(Ordering::Relaxed); // 0 here, updated in runner
-                // Sprint E — a clone kept outside `run_one` so a reservation
-                // this task opened via `submit_economically` still gets
-                // released on the early-`?`-return error path below, which
-                // never reaches `run_one`'s own terminal reconciliation call.
+                                                                   // Sprint E — a clone kept outside `run_one` so a reservation
+                                                                   // this task opened via `submit_economically` still gets
+                                                                   // released on the early-`?`-return error path below, which
+                                                                   // never reaches `run_one`'s own terminal reconciliation call.
                 let pool_for_reservation_cleanup = pool.clone();
                 let outcome = run_one(
                     task,
@@ -488,7 +488,8 @@ async fn run_one(
             Err(e) => warn!(task_id = %task_id, "failed to load session cost: {e}"),
         }
     }
-    pool.finish_economics_reservation(task_id, actual_cost).await;
+    pool.finish_economics_reservation(task_id, actual_cost)
+        .await;
 
     Ok(outcome)
 }

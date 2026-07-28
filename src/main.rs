@@ -185,8 +185,8 @@ async fn main() -> Result<()> {
         }
 
         Some(Commands::Trust) => trust_commands::show().await?,
-        Some(Commands::Rates { check: _ }) => rates_commands::show(cfg.as_ref()),
-        Some(Commands::Cost) => cost_commands::show(cfg.as_ref()).await?,
+        Some(Commands::Rates { check: _ }) => print!("{}", rates_commands::show(cfg.as_ref())),
+        Some(Commands::Cost) => print!("{}", cost_commands::show(cfg.as_ref()).await?),
         Some(Commands::Replay {
             task,
             from,
