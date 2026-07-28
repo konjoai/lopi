@@ -85,6 +85,15 @@ impl AgentRunner {
             extra_constraints.push(consensus_plan_constraint(&consensus_plan));
         }
 
+        // Finding #4 (Symbol Index) — seed the deterministic repo map when
+        // `context_mode` opts in. `None` on any failure (index open,
+        // reindex, or map build) — the repo map is orientation, never a
+        // hard requirement to plan at all, so a failure here degrades to
+        // the pre-existing no-repo-map behavior rather than blocking the run.
+        if let Some(repo_map) = self.seed_repo_map().await {
+            extra_constraints.push(repo_map);
+        }
+
         // Store lessons for use in the API planning path.
         self.task_lessons = lessons_data
             .iter()
@@ -230,6 +239,88 @@ impl AgentRunner {
         skill_constraint_blocks(&relevant)
     }
 
+    /// Finding #4 (Symbol Index) — build/refresh the repo's symbol index and
+    /// render its deterministic repo map. `None` when `context_mode !=
+    /// Index`, or on any failure along the way (index open, reindex, map
+    /// build) — logged via [`Self::warn`], never fatal to the run.
+    ///
+    /// Known cost: a repo with no `.lopi/index.db` yet pays a full-repo
+    /// parse on this call (seconds, not milliseconds, on a large repo — see
+    /// `LEDGER.md`'s Finding #4 entry). A subsequent call on the same repo
+    /// only reindexes what changed. Pre-warming the index out of band
+    /// (before the loop starts, not on the seeding critical path) is
+    /// flagged there as follow-up work, not attempted in this pass.
+    pub(super) async fn seed_repo_map(&self) -> Option<String> {
+        if self.context_mode != lopi_core::ContextMode::Index {
+            return None;
+        }
+        // Canonicalize before deriving `repo_id` — must match `lopi index`/
+        // `lopi mcp-index-serve`'s own `repo.canonicalize()` exactly, or a
+        // pre-warmed index (`lopi index --repo .` run out of band) would
+        // silently land under a different `repo_id` than this call reads,
+        // splitting one physical repo's symbols across two disjoint
+        // partitions of the same `.lopi/index.db`.
+        let repo_root = match self.repo_path.canonicalize() {
+            Ok(p) => p,
+            Err(e) => {
+                self.warn(format!("repo map: failed to canonicalize repo path: {e}"));
+                return None;
+            }
+        };
+        let db_path = repo_root.join(lopi_index::INDEX_DB_REL_PATH);
+        let store = match lopi_index::IndexStore::open(&db_path).await {
+            Ok(s) => s,
+            Err(e) => {
+                self.warn(format!("repo map: failed to open index store: {e}"));
+                return None;
+            }
+        };
+        let repo_id = repo_root.to_string_lossy().to_string();
+        if let Err(e) = lopi_index::reindex::reindex(&store, &repo_id, &repo_root).await {
+            self.warn(format!("repo map: reindex failed: {e}"));
+            return None;
+        }
+
+        let profile = lopi_core::RepoProfile::load_from_repo(&repo_root);
+        let cfg = lopi_index::IndexConfig::default();
+        let test_cmd = profile
+            .test_command
+            .unwrap_or_else(|| "cargo test --workspace".to_string());
+        let lint_cmd = profile
+            .lint_command
+            .unwrap_or_else(|| "cargo clippy -- -D warnings".to_string());
+        let cmds = [
+            ("build", "cargo build"),
+            ("test", test_cmd.as_str()),
+            ("lint", lint_cmd.as_str()),
+        ];
+
+        match lopi_index::RepoMap::build(
+            &store,
+            &repo_id,
+            &repo_root,
+            cfg.skeleton_depth,
+            cfg.top_referenced_symbols,
+            &cmds,
+            cfg.map_token_budget,
+        )
+        .await
+        {
+            Ok(map) => {
+                self.log(format!(
+                    "🗺️ repo map seeded: {} chars{}",
+                    map.text.len(),
+                    if map.truncated { " (truncated)" } else { "" }
+                ));
+                Some(repo_map_constraint(&map.text))
+            }
+            Err(e) => {
+                self.warn(format!("repo map: build failed: {e}"));
+                None
+            }
+        }
+    }
+
     /// Record a single skill activation in the audit trail (best-effort).
     async fn record_skill_activation(&self, skill: &lopi_skill::Skill) {
         let Some(store) = &self.store else {
@@ -268,6 +359,20 @@ fn skill_constraint_blocks(skills: &[&lopi_skill::Skill]) -> Vec<String> {
 /// it as a prior failure to avoid, not a fresh instruction.
 fn reflection_constraint(critique: &str) -> String {
     format!("Past learning — a prior attempt failed because: {critique}")
+}
+
+/// Frame the repo map as a planning-prompt constraint. Pure, so the framing
+/// is unit-testable without a store or filesystem. Explicitly tells the
+/// worker to navigate by pointer (`lopi_find`/`lopi_read`/`lopi_refs`/
+/// `lopi_query`) rather than reading whole files — the map orients, it
+/// doesn't replace looking things up.
+fn repo_map_constraint(map_text: &str) -> String {
+    format!(
+        "Repo map (context.mode = \"index\"): the shape of this repo, not its \
+         full contents. Use the lopi_find/lopi_read/lopi_refs/lopi_query tools \
+         to navigate to specific symbols by pointer rather than reading whole \
+         files blind.\n{map_text}"
+    )
 }
 
 /// Frame the stability gate's consensus plan as a planning-prompt

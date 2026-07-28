@@ -404,6 +404,7 @@ async fn run_one(
         cfg.reflect_cross_run,
         plan_decision_rx,
         resolved_test_command,
+        cfg.context_mode,
     );
     let outcome = runner.run().await?;
     // Reap the throwaway worktree now the run is done. The RAII drop is the

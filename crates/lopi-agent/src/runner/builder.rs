@@ -116,6 +116,17 @@ impl AgentRunner {
         self.reflect_cross_run
     }
 
+    /// Symbol Index (Finding #4) — set the repo-map + index-tools vs.
+    /// legacy no-repo-map planning-context mode. Not the same "Sprint I" as
+    /// the Layer 5 patch stability gate below — an unrelated feature that
+    /// happened to claim the same letter first. Defaults to
+    /// [`ContextMode::Index`](lopi_core::ContextMode) in [`AgentRunner::new`].
+    #[must_use]
+    pub const fn with_context_mode(mut self, mode: lopi_core::ContextMode) -> Self {
+        self.context_mode = mode;
+        self
+    }
+
     /// Phase 16.4 — set the self-prompting strategy used to reframe a failed
     /// attempt into the next attempt's planning prompt. Only takes effect when
     /// adaptive retry is enabled (the strategy reframes the injected failure).

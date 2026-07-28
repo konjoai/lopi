@@ -21,6 +21,9 @@ pub mod budget;
 pub mod budget_preset;
 /// Global and per-repo configuration structures.
 pub mod config;
+/// Finding #4 (Symbol Index) — repo-map + index-tools vs. legacy
+/// no-repo-map planning-context mode. Re-exported from `loop_config`.
+pub mod context_mode;
 /// Goal-intent classification (file-changes vs review-only) for intent-aware
 /// success — see [`deliverable::Deliverable`].
 pub mod deliverable;
@@ -68,6 +71,10 @@ pub mod schema;
 pub mod security;
 /// Self-prompting loop strategies — how an agent re-prompts itself on retry.
 pub mod self_prompt;
+/// Shared `SQLite` dual-pool WAL connection setup — the one place
+/// `lopi-memory::MemoryStore` and `lopi-index::IndexStore` both source
+/// their "single writer, many readers" pool-opening logic from.
+pub mod sqlite_pool;
 /// Sprint T0 (TUI Client Foundation) — the Rust port of the loop-stack
 /// domain model (`StackCard`, presets, evals, guardrails) shared with the
 /// web/macOS/iOS clients. See the module doc comment for why the wire-payload
@@ -106,7 +113,7 @@ pub use earned_trust::EarnedTrust;
 pub use eval_outcome::{CheckResult, EvalOutcome, Verdict};
 pub use event::{AgentEvent, EventBus, LogLevel, PlanDecision};
 pub use gain::{GainDecision, GainRule, GainSample};
-pub use loop_config::{IsolationMode, LoopConfig};
+pub use loop_config::{ContextMode, IsolationMode, LoopConfig};
 pub use models::{fallback_models, ModelInfo};
 pub use permission_mode::{effective_permission_mode, PermissionMode, PermissionModeError};
 pub use provenance::Provenance;

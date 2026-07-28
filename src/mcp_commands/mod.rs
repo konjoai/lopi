@@ -35,6 +35,34 @@ use crate::util::{db_path, expand_home};
 /// CI gate; see `stack_status.rs`'s module doc for why the tool exists.
 mod stack_status;
 
+/// Finding #4 — the symbol-index tool set (`lopi_find`/`lopi_read`/
+/// `lopi_refs`/`lopi_query`), served by [`serve_index`] as its own process
+/// rather than folded into this file's curated tool set. See
+/// `index_tools`'s module doc for why.
+mod index_tools;
+
+/// Start `lopi mcp-index-serve`: open (or build) `repo`'s symbol index and
+/// serve the four Finding #4 tools over stdio until the peer closes the
+/// connection.
+///
+/// # Errors
+/// Returns an error if the index database can't be opened or the stdio
+/// transport fails.
+pub async fn serve_index(repo: PathBuf) -> Result<()> {
+    let repo = repo.canonicalize().context("resolving repo path")?;
+    let store = lopi_index::IndexStore::open(repo.join(lopi_index::INDEX_DB_REL_PATH))
+        .await
+        .context("opening lopi-index store for mcp-index-serve")?;
+    let repo_id = repo.to_string_lossy().to_string();
+    let cfg = lopi_index::IndexConfig::default();
+    let handler = index_tools::IndexToolHandler::new(store, repo, repo_id, cfg);
+
+    tracing::info!("lopi mcp-index-serve: ready, awaiting JSON-RPC requests on stdin");
+    let reader = BufReader::new(stdin());
+    let writer = stdout();
+    lopi_mcp::serve(&handler, reader, writer).await
+}
+
 /// Start `lopi mcp-serve`: build a standalone in-process orchestrator (own
 /// pool + queue, shared SQLite store) and serve the curated tool set over
 /// stdio until the peer closes the connection.

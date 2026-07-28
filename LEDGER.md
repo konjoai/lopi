@@ -5,7 +5,382 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
-## Sprint G (Verification Gate, Finding #1) — re-scoped against the real architecture, not the brief's file-level sketch
+## Symbol Index (Finding #4) — no `PrefixBuilder` to depend on, no injection site to rip out, a real perf bug found along the way
+
+**Naming collision, flagged up front.** The brief's own document titles this
+sprint "Sprint I." This codebase already has an unrelated feature called
+"Sprint I" in five files (`lopi-memory::store::stability`, its schema, and
+three spots in `lopi-agent::runner`) — the Layer 5 patch-stability
+pre-flight gate, nothing to do with symbol indexing. Every reference to this
+sprint in new code below uses "Finding #4" instead, to avoid two unrelated
+features answering to the same search term. Where a doc comment sits next
+to the *other* Sprint I (`runner/mod.rs`, `runner/builder.rs`), it says so
+explicitly.
+
+**KT — two of the brief's load-bearing assumptions don't hold in this
+codebase; both changed the shape of the work materially.**
+
+1. **Sprint C (`PrefixBuilder`, the cached-prefix infrastructure this
+   sprint was written to depend on) was never built.** Sprint G's own KT
+   said so explicitly: `WorkspaceRegistry`/lease-based scheduling, a
+   `PrefixBuilder` with a determinism test, and a token/cache-hit ledger
+   were named as "deliberately not attempted" in that pass, sized as their
+   own sprint. `rg -l "PrefixBuilder|byte-stability|cached prefix"` across
+   `crates/`/`src/` before writing any code confirmed it: zero hits outside
+   this sprint's own new code. There is no cached prefix for `RepoMap`'s
+   output to slot into, and no ledger to attach the "tool roster changing
+   invalidates the prefix" concern to. `RepoMap::build` still obeys the
+   determinism contract the brief specifies (sorted, no timestamps, no
+   absolute paths, byte-identical for the same commit — proven by
+   `map::tests::build_twice_is_byte_identical`) so it's ready to slot into
+   Sprint C's prefix whenever that sprint lands; until then its only
+   consumer is `lopi-agent`'s planning-prompt seed, wired directly.
+
+2. **This codebase has no site that injects raw file content into an LLM
+   prompt.** The brief's Part 4 ("rip out the injection") assumes one
+   exists. `rg -n "read_to_string|fs::read|file_contents|inject"
+   crates/ src/ --type rust` and a manual read of every hit found none: the
+   worker isn't fed file bodies by lopi's Rust code at all — the spawned
+   `claude -p` subprocess does its own file reading via its own built-in
+   Read/Grep/Glob, which is already "context by pointer," the exact pattern
+   this sprint's brief argues for, just implemented one layer down from
+   where the brief expected to find (and remove) it. What lopi's Rust code
+   *does* inject into the planning prompt is already small and curated:
+   `seed.rs`'s pattern/lesson/skill/spec-surface constraints — none of them
+   a file body, none of them worth replacing. So Part 4 has no target here.
+   What this sprint adds is purely additive: a genuinely new capability
+   (symbol-aware find/refs navigation) the worker's built-in tools don't
+   have, not a replacement for a costly pattern that was never present.
+   This directly shapes the A/B section below — there is no "before" state
+   where lopi's Rust code stuffed file bodies into the prompt to measure a
+   reduction against.
+
+### Part 1 — the index (`crates/lopi-index`, new crate)
+
+`symbols`/`refs` tables (plus a `files` table not in the brief's literal
+schema — see the performance KT below for why) in a per-repo,
+gitignored `.lopi/index.db`, separate from `lopi-memory`'s `lopi.db` per
+the brief's instruction (that schema feeds the pattern miner and must stay
+stable). Connection setup shares `lopi-memory::store::MemoryStore::open`'s
+dual-pool WAL pattern (`store/mod.rs`) — not a copy anymore: the repo's
+own `dry_check.py` (Wall 1) flagged the first draft's byte-identical
+`open`/`open_in_memory`/`apply_schema` bodies as a DRY violation against
+`lopi-memory`'s, correctly, so both now call a new
+`lopi_core::sqlite_pool` module (`open_write_pool`/`open_read_pool`/
+`open_in_memory_pool`/`apply_schema`) instead of each carrying its own
+copy. One deliberate behavioral difference preserved through the
+extraction: `foreign_keys` is an explicit `bool` parameter, not defaulted
+on — `lopi-memory`'s schema predates FK enforcement ever being asked for
+(one `REFERENCES`, no `ON DELETE`), so turning it on unconditionally
+would have silently started rejecting inserts that pragma had never
+enforced before; `lopi-memory` passes `false` (unchanged behavior),
+`lopi-index` passes `true` (its `ON DELETE SET NULL`/`CASCADE` are inert
+without it). `parse/mod.rs`'s `push_call_ref` got the same treatment for
+a second DRY hit — the "look up the call's callee, push a ref" tail was
+byte-identical across all four language parsers; now every `parse/<lang>.rs`
+calls one shared function instead of each defining its own `record_call`.
+
+**Grammars: all five in the first pass** (Rust, TypeScript, JavaScript,
+Python, Go) — `tree-sitter 0.25` plus the five `tree-sitter-<lang>` crates
+all resolve and build together cleanly (verified in a scratch project
+before committing to the dependency list). `parse/mod.rs` holds the shared
+helpers (`signature_of` — text up to the `body` field, generalizes across
+every grammar since they all name it `body`; `doc_first_line`;
+`callee_name` — recursive rightmost-identifier descent, handles
+`foo()`/`obj.method()`/`Type::assoc()`/`pkg.Func()` uniformly). TypeScript
+and JavaScript share one walker (`parse/js_common.rs`) parameterized by
+`ts_extras: bool`, since TS's grammar is JS's plus
+`interface_declaration`/`type_alias_declaration`. Each language still gets
+its own ~150–250 line file for the parts that don't generalize (Rust's
+`impl_item` has no `name` field, just `type`; Go's `method_declaration`
+carries its own `receiver` field instead of a container node; Python's
+grammar has no dedicated const-declaration syntax at all — see that file's
+module doc for why const extraction is out of scope there). "Adding a
+grammar is a config entry plus one match arm" from the brief is not
+literally true (Rust's impl/trait handling needed real branches) but the
+spirit holds: a new language is a new enum variant, one arm each in
+`Language::from_path`/`parse::parse_file`, and a new file — never a
+refactor of the shared helpers or the schema.
+
+**Incremental reindex** (`reindex.rs`): `git diff --name-status
+<indexed_commit> HEAD` for tracked changes, a `blake3` hash-mismatch sweep
+for a dirty working tree, full reindex only on first run or a
+grammar-version bump. Fixture-repo tests (`reindex::tests`) cover: adding a
+symbol, renaming one, deleting a file, a dirty uncommitted edit, and two
+regression cases the performance work below surfaced (zero-symbol files,
+clean-tree scoping).
+
+### Part 2 — the repo map (`map.rs`)
+
+`RepoMap::build` — directory skeleton (file counts past the depth cap,
+never file names), public surface grouped by top-level module (signatures
++ doc first lines, never bodies — `map::tests::map_contains_no_absolute_paths_or_bodies`
+checks both properties), the N most-inbound-referenced symbols, and
+build/test/lint commands (sourced from `.lopi.toml`'s `RepoProfile` where
+set, `cargo build`/`cargo test --workspace`/`cargo clippy -- -D warnings`
+otherwise). Hard token budget (default 2,500 — actually a byte/4 estimate
+in `map.rs`, not the real BPE counter Part 4's A/B uses; the map builder
+doesn't have `lopi-context` as a dependency and pulling it in for one
+estimate wasn't worth the new edge in the dependency graph). Sections drop
+from the bottom under budget pressure, never mid-item, with an explicit
+`[map truncated: dropped N of M sections: ...]` line —
+`map::tests::tight_budget_truncates_and_says_so`. Determinism:
+`map::tests::build_twice_is_byte_identical` builds the same repo state
+twice and asserts byte equality.
+
+### Part 3 — the tools, and what "deferred" means here
+
+Four operations in `query.rs` (`find`/`read`/`refs`/`composite_query`),
+pure against `IndexStore` — no MCP/JSON-RPC concern lives there, so
+they're unit-tested without a transport. Every envelope carries
+`truncated`/`total_matches`. `read` bounds to `max_read_lines` (default
+400) and elides head+tail with an explicit continuation line-number rather
+than a silent cut. `refs` clamps depth to the brief's hard cap of 3
+(`IndexConfig::refs_depth`) regardless of what's configured.
+
+**Registration: a new `lopi mcp-index-serve` subcommand, not four more
+entries in the existing `lopi mcp-serve`.** `mcp-serve`
+(`src/mcp_commands/mod.rs`, pre-existing, MCPB-App-1/2/3) already states
+the exact discipline this sprint's "deferred" requirement is about: *"every
+additional tool is context budget spent on every turn a plugin user has
+installed."* Folding `lopi_find`/`lopi_read`/`lopi_refs`/`lopi_query` into
+that curated tool set would mean every `mcp-serve` session — including a
+human's Claude Code Desktop session that never touches code navigation —
+pays their schema tokens on every turn. `index_tools.rs` is a second,
+separate `ToolHandler`, served by its own subcommand, so a session opts
+into symbol navigation specifically (a human's `.mcp.json`, or lopi's own
+spawned worker via `--mcp-config` when `context.mode = "index"`) instead of
+getting it whether it wants it or not.
+
+What "deferred" does *not* mean here: true per-tool schema deferral (a
+client fetching a name+description stub now, the full `inputSchema` only
+when it decides to call the tool — the behavior visible in *this very
+agent's own tool list this session*, via `ToolSearch`) is a client-side MCP
+behavior. The MCP spec requires `inputSchema` on every `tools/list` entry;
+a server has no protocol-level lever to withhold it. `lopi-mcp`'s
+`ToolHandler` trait (`tools() -> Vec<McpTool>`) is a thin, faithful
+implementation of that spec — building a second, non-compliant "stub now,
+schema later" wire format on top of it would be exactly the kind of
+duplication `dry_check.py` exists to catch, and would only work with a
+client written to expect it. What lopi controls, and what this sprint
+delivers: these four schemas never enter `--allowedTools`/the system
+prompt text (the only channel lopi's spawned-worker tool list uses today),
+and they only reach a session that explicitly connects to this server.
+Whether the connecting client additionally defers schema loading itself
+(as this session's own harness does) is that client's decision, not
+`lopi-mcp`'s to make.
+
+### Part 4 — the "rip-out" that had nothing to rip out
+
+Per the KT above, there was no raw-file-injection site to replace. What
+*does* exist: `lopi_core::LoopConfig::context_mode` (`ContextMode::Index`
+default, `Inject` explicit opt-out — `.lopi/loop.toml`, an A/B knob without
+a rebuild, matching the brief's letter even though its target moved).
+Threaded `LoopConfig` → `pool::run_loop::build_runner` →
+`AgentRunner.context_mode` → `runner::seed::gather_seed` (mirrors how
+`cfg.reflect_cross_run` already threads through the same path). In `Index`
+mode, `seed_repo_map()` opens/reindexes `.lopi/index.db` and pushes the
+rendered map as one more planning constraint, framed to point the worker at
+`lopi_find`/`lopi_read`/`lopi_refs`/`lopi_query` instead of reading files
+blind. In `Inject` mode `seed_repo_map()` returns `None` immediately — the
+planning prompt is byte-for-byte what it was before this sprint. Any
+failure along the way (index open, reindex, map build) also returns `None`
+and logs a `tracing::warn!` — the repo map is orientation, never a hard
+requirement to plan at all.
+
+**Known cost, not hidden:** a repo with no `.lopi/index.db` yet pays a
+full-repo parse the first time `seed_repo_map()` runs (seconds on a large
+repo — see the performance section below). Pre-warming the index out of
+band, before the loop starts rather than on the seeding critical path, is
+flagged here as follow-up work, not attempted in this pass.
+
+### A real performance bug, found while trying to hit the brief's own target
+
+The brief's target — "reindexing lopi itself after a one-file change
+completes in under 150ms" — caught three real bugs during measurement, not
+just a number to report:
+
+1. **Zero-symbol files never got a hash recorded, so they looked "changed"
+   on every single incremental pass.** The original design (per the
+   brief's literal schema) stored `file_hash` only on `symbols` rows. A
+   file that parses to zero symbols (a re-export-only module, for example)
+   had nothing to compare a fresh hash against, so the dirty-tree sweep
+   treated it as dirty forever. Fixed by adding a `files` table (one row
+   per indexed file, independent of symbol count) — not in the brief's
+   schema sketch, added because the brief's own schema had this gap.
+   Regression test: `reindex::tests::zero_symbol_file_does_not_get_reindexed_forever`.
+
+2. **The dirty-working-tree hash sweep ran unconditionally, even on a
+   clean, fully-committed tree** — defeating the whole point of the
+   `git diff`-based fast path for the exact scenario the brief's target
+   describes (commit one file, reindex). Fixed by checking `git status
+   --porcelain` first and skipping the O(repo) sweep entirely when nothing
+   is dirty; `git diff --name-status` alone already covers everything
+   committed. Regression test:
+   `reindex::tests::clean_tree_one_file_commit_reindexes_only_that_file`.
+
+3. **The big one: `resolve_refs` re-scanned the repo's entire unresolved-ref
+   backlog on every call, and on this repo most refs are permanently
+   unresolved.** Measured directly: 20,524 of 26,758 refs (77%) are calls
+   into external crates/the standard library or genuinely ambiguous
+   same-named methods — they will never resolve, but the original
+   `SELECT id, to_name FROM refs WHERE ... to_symbol_id IS NULL` fetched
+   all of them, every pass, just to re-check. This was the dominant cost of
+   a one-file reindex (~207ms of ~290ms total in the first working version,
+   confirmed with `tracing::debug!` timing checkpoints around each phase).
+   Fixed two ways: (a) the resolution candidate lookup itself now queries
+   only the *distinct names actually appearing* among unresolved refs
+   (`SELECT name, id FROM symbols WHERE name IN (...)`), never the whole
+   `symbols` table; (b) a new `resolve_refs_for(repo_id, touched_paths,
+   new_symbol_names)` scopes the unresolved-ref fetch to exactly the two
+   ways a ref can become newly resolvable in one pass — a fresh ref from a
+   touched file, or a pre-existing dangling ref whose target symbol just
+   appeared — instead of the whole backlog. `resolve_refs` (unscoped) stays
+   available for a future manual full-resolve pass; `reindex()` always
+   calls the scoped version. Correctness note, documented in
+   `resolve_refs_for`'s doc comment: an old ambiguous ref that becomes
+   resolvable because a *duplicate* name was *removed* elsewhere (not
+   added) won't be caught by the scoped path — an accepted, narrow gap
+   under the brief's own "best-effort... do not build a type checker"
+   license, not a silent one.
+
+   A fourth, smaller fix in the same pass: `symbols.parent_id`'s `ON DELETE
+   SET NULL` and `refs.{from,to}_symbol_id`'s FK actions each issue a bare
+   `WHERE <fk_column> = ?` with no `repo_id` predicate — the original
+   indexes all led with `repo_id`, which SQLite's FK-cascade lookup can't
+   use. A single reindexed file's `DELETE FROM symbols WHERE repo_id = ?
+   AND path = ?` (46 rows) was measured taking **1.2 seconds** before
+   FK-column-leading indexes were added (`idx_symbols_parent_id`,
+   `idx_refs_from_symbol_fk`, `idx_refs_to_symbol_fk` — new, alongside the
+   pre-existing `repo_id`-leading indexes the actual queries use).
+
+**Measured result, real repo, real numbers** (`RUST_LOG=lopi_index=debug`,
+a committed one-file change to `crates/lopi-core/src/lib.rs`, isolated in a
+tar-copied worktree so this branch's own history stays clean):
+
+| Build | Cold full index (435 files) | One-file incremental (5 runs) |
+|---|---|---|
+| debug | ~15–19s | 106–123ms |
+| release (LTO, `codegen-units=1`) | — | 64–67ms (after first-access cache warm-up) |
+
+Both builds land under the brief's 150ms target for the measured scenario
+once the three bugs above were fixed; the unfixed version measured
+~290–420ms in debug — over budget, and the honest number this entry would
+have reported without the detour into `resolve_refs`.
+
+### Sanity check: symbol count against `rg`
+
+Indexing `lopi-index` itself: **171 `fn`+`method` symbols vs. `rg -c
+"^\s*(pub(\(\w+\))? )?(async )?fn " --type rust` = 171 — exact match.**
+Indexing the whole repo's Rust source: 3,721 vs. 3,703 (0.5% over),
+explained: `rg`'s pattern requires `fn` to directly follow an optional
+`pub`/`async`, so it misses `const fn`/`pub const fn` (34 such lines
+confirmed separately) while tree-sitter's `function_item` node correctly
+includes them; the residual few-line gap is other pattern-vs-grammar edge
+cases (e.g. `pub(in some::path)` visibility, which `rg`'s
+`\(\w+\)` doesn't match since `::` isn't `\w`). A **naive whole-repo**
+comparison (`rg --type rust` vs. the index's total across all five
+languages) looked like a 384-symbol, 10% gap at first — fully explained
+once language-filtered: this repo has a 78-file TypeScript web dashboard
+(`web/`) the index also parses (1,582 symbols, 354 `fn`+`method`) that a
+`--type rust` grep never counted. Rust-only-vs-Rust-only is the correct
+comparison, and it's a near-exact match.
+
+### The A/B — what it actually measures, and why it isn't "75% fewer tokens"
+
+The brief's "Done means" section asks for total input tokens, cache hit
+ratio, tool call count, wall time, and first-attempt gate pass, run once
+per `context.mode`, and warns that a small measured improvement means the
+measurement or the implementation is wrong. That warning is calibrated to
+a scenario this codebase doesn't have: **there was no prior state where
+lopi's Rust code stuffed file bodies into the prompt, so "index" mode
+cannot show a token *reduction* against it — Part 4's KT above is the
+reason.** What the A/B here actually measures is the real, opposite-direction
+number: the planning prompt's token cost of *adding* the repo map, since
+that's the actual, isolated effect this sprint has on the seeded prompt.
+
+Method: `crates/lopi-agent/src/runner/seed_tests.rs`'s
+`context_mode_index_vs_inject_prompt_token_ab` runs the same goal
+("fix a bug in the retry-loop backoff calculation") against this checked-out
+repo through the real `gather_seed()` → `claude_support::build_plan_prompt`
+path (the exact function the CLI-spawning code calls, not a stand-in), for
+both `context.mode` values, and counts tokens with `lopi_context::tokens::
+estimate_tokens` — the same `cl100k_base` BPE estimator `lopi-context`
+already uses for context-window budgeting elsewhere, not a bespoke one-off.
+
+```
+context.mode=inject  prompt_tokens=67    prompt_chars=249
+context.mode=index   prompt_tokens=1574  prompt_chars=4972
+```
+
+Index mode costs ~1,507 more planning-prompt tokens than inject mode for
+this goal against this repo — the repo map itself, comfortably inside its
+2,500-token budget. The test asserts the qualitative property (index
+strictly exceeds inject, and only index mode's prompt contains the map)
+rather than these exact counts, since the real repo's symbol count drifts
+over time; run it with `--nocapture` to see current numbers.
+
+**What this does not measure, and why not**: `total_tokens`/`cache hit
+ratio`/`tool call count`/`wall time`/`gate pass on first attempt` all
+require a live, multi-turn `lopi run` — plan, implement, test, possibly
+retry — which spends real API budget per run and takes minutes, not
+milliseconds. Running that twice (once per mode) against this repo,
+autonomously, without the operator in the loop for a token-accounting
+exercise, wasn't a decision to make unilaterally (see `CLAUDE.md`'s
+guidance on hard-to-reverse, costly actions). Instead, a concrete
+illustrative example of where the token savings this pattern promises
+would actually land, in downstream tool-call behavior rather than the
+static seed: `crates/lopi-agent/src/runner/mod.rs` is 290 lines; the
+`AgentRunner` struct it defines spans lines 57–206 (149 lines). A worker
+without index tools that wants to see `AgentRunner`'s fields has one
+option — `Read` the whole file, 290 lines. `lopi_read` on the qualified
+symbol name returns exactly the struct's own span. That gap, repeated
+across every symbol lookup a real implementation attempt makes, is where
+this pattern's savings materialize — in the worker's own tool-call stream,
+not in a single static prompt this test can capture. A live three-arm
+comparison (mirroring how Sprint G's reflection feature is flagged pending
+one) is the natural follow-up once there's budget allocated for it, not
+something this pass fabricates a number for.
+
+### Constraints followed / scope notes
+
+- No embeddings (per the brief) — exact + fuzzy (`fuzzy-matcher`,
+  `SkimMatcherV2`) matching only.
+- No language-server integration (per the brief) — noted as future work,
+  not attempted.
+- New workspace dependencies, justified: `tree-sitter` + five
+  `tree-sitter-<lang>` grammar crates, `blake3` (file hashing — matches the
+  brief's own schema field), `fuzzy-matcher` (`lopi_find`'s ranking). All
+  verified to build together in a scratch project before being added to
+  any `Cargo.toml`. License check against `.konjo/deny.toml`'s allow list
+  done by hand (`cargo metadata`, since neither `cargo-audit` nor
+  `cargo-deny` is installed in this sandbox and installing either from
+  source takes longer than this pass's time budget): every new crate
+  reports `MIT` except `blake3` (`CC0-1.0 OR Apache-2.0 OR Apache-2.0 WITH
+  LLVM-exception`) — both already in the allow list, no new exception
+  needed. `cargo audit`'s advisory-database check wasn't run locally;
+  `.github/workflows/konjo-gate.yml` runs both on every PR, so this is
+  covered before merge, not skipped outright.
+- No `unwrap`/`expect` outside tests; every tree-sitter parse failure is
+  logged (`tracing::warn!`) and skipped — `parse::rust::tests::syntax_error_does_not_panic`
+  and `IndexDelta::parse_failures` cover this. Every tool response is
+  bounded; large files are read once via `std::fs::read`, not streamed —
+  acceptable for source files, would need revisiting for the brief's "200MB
+  generated file" case, which this pass didn't hit in practice and didn't
+  add streaming for speculatively.
+- Pre-existing, unrelated flake noticed while confirming a clean
+  `cargo test --workspace`: `lopi-mcp::allowlist::tests::
+  load_operator_allowlist_reads_configured_servers` intermittently fails
+  under full-workspace parallel test execution (passes 100% of repeated
+  runs in isolation, `-p lopi-mcp`). Root cause: the test mutates the
+  process-wide `HOME` env var, which is inherently racy against any other
+  concurrently-running test doing the same across the whole workspace test
+  binary set — confirmed pre-existing (reproduces identically on `git
+  stash` back to this branch's base commit, unrelated to any file this
+  sprint touches). Not fixed here — out of scope, flagged for whoever picks
+  up test-isolation hardening next.
+
+
 
 **KT — current stage-transition flow, read before any of this was written.**
 There is no table-driven stage machine. `TaskStatus` (`lopi-core/src/task.rs`)
