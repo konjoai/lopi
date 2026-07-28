@@ -6,6 +6,7 @@
 
 use super::AppState;
 use axum::{extract::State, response::IntoResponse, response::Json};
+use lopi_core::Provenance;
 use serde_json::json;
 
 pub(super) async fn get_budget_breakdown(State(s): State<AppState>) -> impl IntoResponse {
@@ -17,6 +18,16 @@ pub(super) async fn get_budget_breakdown(State(s): State<AppState>) -> impl Into
         tracing::warn!("daily_cost_trend query failed: {e}");
         Vec::new()
     });
+    // See `docs/MEASUREMENT.md` — named `measurement_provenance`, never bare
+    // `"provenance"`, to avoid colliding with `TaskRow::provenance()`'s
+    // unrelated trust field elsewhere on the wire.
+    let measurement_provenance = serde_json::to_value(Provenance::measured(
+        "turn_metrics table, by model",
+    ))
+    .unwrap_or_else(|e| {
+        tracing::warn!(error = %e, "measurement_provenance serialization failed");
+        serde_json::Value::Null
+    });
     Json(json!({
         "by_model": by_model.into_iter().map(|(model, cost)| json!({
             "model": model, "cost_usd": cost,
@@ -24,5 +35,6 @@ pub(super) async fn get_budget_breakdown(State(s): State<AppState>) -> impl Into
         "trend": trend.into_iter().map(|(date, cost)| json!({
             "date": date, "cost_usd": cost,
         })).collect::<Vec<_>>(),
+        "measurement_provenance": measurement_provenance,
     }))
 }

@@ -1,17 +1,17 @@
 ---
 decays: state
-verified-against: e29032f
-verified-date: 2026-07-27
+verified-against: d6e0f02
+verified-date: 2026-07-28
 ---
 
 # Trifecta paths — untrusted input → powerful tools → external comms
 
-Verified against: `71a470b` · 2026-07-26 (re-verified through Sprint F1/F3, no new drift;
-§5's "done" statuses still hold —
-§1's table and §4's `WebConfig.host` citation updated below after unrelated later sprints
-shifted line numbers in `github.rs`, `issue.rs`, `whatsapp.rs`, and `config.rs`. §0's and
-§2's citations describe the pre-Sprint-S2 baseline at `3a8a2ff` by design and are left
-as historical record — see §5 for what actually shipped)
+Verified against: `d6e0f02` · 2026-07-28 (re-verified during the demo-mode +
+measurement sprint; no content drift — that sprint touched `lopi-core`,
+`lopi-memory`, `lopi-agent::pricing`, and `lopi-ui`'s repo-discovery/handlers,
+none of which change the webhook/WhatsApp trust boundaries this doc
+describes. §5's "done" statuses still hold. Front-matter stamp and this body
+line kept in sync with each other)
 
 Konjo Forward **F10**: lopi has the lethal trifecta by construction — untrusted content in
 (webhooks), powerful tools (code execution, git, PR creation), external comms out (Telegram,

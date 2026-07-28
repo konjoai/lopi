@@ -3,20 +3,30 @@
 //! Separated from `web/mod.rs` to keep that file within the 500-line budget.
 //! All functions are imported into `mod.rs` via `use handlers::*`.
 
-use super::types::{CreateTaskRequest, CreateTaskResponse, MAX_GOAL_LENGTH};
+use super::demo_guard;
+use super::task_fields;
+use super::types::{CreateTaskRequest, CreateTaskResponse};
 use super::AppState;
 use axum::{
     extract::{Path, State},
     http::StatusCode,
     response::{IntoResponse, Json},
 };
-use lopi_core::{
-    PermissionMode, PermissionModeError, Priority, ReportChannel, ReportChannelError, Task, TaskId,
-};
+use lopi_core::{Priority, Provenance, Task, TaskId};
 use lopi_memory::CheckpointInput;
 use lopi_spec::SpecSurface;
 use serde::Deserialize;
 use serde_json::{json, Value};
+
+// Re-exported so external test modules (`crate::web::handlers::apply_loop_fields`
+// et al.) keep working unchanged after this sprint split the field-mapping
+// helpers out into their own module to stay under the file-size gate.
+pub(super) use task_fields::{apply_loop_fields, validate_goal};
+// Only referenced by name (`crate::web::handlers::ApplyLoopFieldsError`) from
+// test modules — `create_task` below only calls `.to_string()` on the error,
+// so a non-test build never names the type itself.
+#[cfg(test)]
+pub(super) use task_fields::ApplyLoopFieldsError;
 
 pub(super) async fn health() -> impl IntoResponse {
     Json(json!({ "status": "ok", "service": "lopi" }))
@@ -39,12 +49,26 @@ pub(super) async fn get_stats(State(s): State<AppState>) -> impl IntoResponse {
             tracing::warn!("daily_token_totals query failed: {e}");
             (0, 0.0)
         });
+    let synthetic = s.store.is_synthetic().await.unwrap_or(false);
+    // See `docs/MEASUREMENT.md`: `total_cost_usd_today`/`total_tokens_today`
+    // are counted by lopi itself from its own `turn_metrics` rows — never
+    // named bare `"provenance"`, which already carries `TaskRow::provenance()`'s
+    // unrelated trust meaning elsewhere on the wire.
+    let measurement_provenance = serde_json::to_value(Provenance::measured(
+        "turn_metrics table — lopi's own agent runs, this process",
+    ))
+    .unwrap_or_else(|e| {
+        tracing::warn!(error = %e, "measurement_provenance serialization failed");
+        Value::Null
+    });
     Json(json!({
         "running": counts.running, "queued": counts.queued,
         "succeeded": counts.succeeded, "failed": counts.failed,
         "uptime_secs": uptime_secs,
         "total_tokens_today": total_tokens_today,
         "total_cost_usd_today": total_cost_usd_today,
+        "synthetic": synthetic,
+        "measurement_provenance": measurement_provenance,
     }))
 }
 
@@ -188,6 +212,9 @@ pub(super) async fn cancel_task(
     Path(id): Path<String>,
     State(s): State<AppState>,
 ) -> impl IntoResponse {
+    if demo_guard::is_demo(&s).await {
+        return demo_guard::refuse_mutation("cancel a task").into_response();
+    }
     let rows = s.store.load_history(500).await.unwrap_or_default();
     let t = match find_by_id_prefix(rows, &id, |t| t.id.as_str()) {
         PrefixMatch::Unique(t) => t,
@@ -235,6 +262,9 @@ pub(super) async fn approve_plan(
     Path(id): Path<String>,
     State(s): State<AppState>,
 ) -> impl IntoResponse {
+    if demo_guard::is_demo(&s).await {
+        return demo_guard::refuse_mutation("approve a plan").into_response();
+    }
     decide_plan(&s, &id, lopi_core::PlanDecision::Approve).await
 }
 
@@ -243,6 +273,9 @@ pub(super) async fn reject_plan(
     Path(id): Path<String>,
     State(s): State<AppState>,
 ) -> impl IntoResponse {
+    if demo_guard::is_demo(&s).await {
+        return demo_guard::refuse_mutation("reject a plan").into_response();
+    }
     decide_plan(&s, &id, lopi_core::PlanDecision::Reject).await
 }
 
@@ -295,123 +328,13 @@ async fn resolve_task_id(s: &AppState, id: &str) -> PrefixMatch<TaskId> {
     }
 }
 
-/// Why [`apply_loop_fields`] rejected a `CreateTaskRequest` — every variant
-/// maps to a 422, never a silent drop or coercion of the offending field.
-#[derive(Debug, thiserror::Error, PartialEq, Eq)]
-pub(super) enum ApplyLoopFieldsError {
-    /// `req.report` named an unknown or currently-unreachable channel.
-    #[error(transparent)]
-    Report(#[from] ReportChannelError),
-    /// `req.permission_mode` named anything other than the four headless-safe
-    /// modes [`PermissionMode`] exposes.
-    #[error(transparent)]
-    PermissionMode(#[from] PermissionModeError),
-}
-
-/// Apply the loop/verifier/report/override fields exposed on
-/// [`CreateTaskRequest`] onto a freshly constructed `Task`. Kept separate
-/// from [`create_task`] so the field-mapping contract is unit-testable
-/// without an HTTP round-trip.
-///
-/// # Errors
-/// Returns [`ApplyLoopFieldsError::Report`] when `req.report` names an
-/// unknown or currently-unreachable channel (e.g. `"whatsapp"`) — reuses
-/// [`ReportChannel::parse`], the same validator `Task`/`ScheduleEntry`
-/// already use, rather than a second report-channel parser. Returns
-/// [`ApplyLoopFieldsError::PermissionMode`] when `req.permission_mode` names
-/// anything other than the four headless-safe modes, reusing
-/// [`PermissionMode::parse`] the same way.
-pub(super) fn apply_loop_fields(
-    task: &mut Task,
-    req: &CreateTaskRequest,
-) -> Result<(), ApplyLoopFieldsError> {
-    if let Some(report) = &req.report {
-        ReportChannel::parse(report)?;
-        task.report = Some(report.clone());
-    }
-    if let Some(mode) = &req.permission_mode {
-        task.permission_mode = PermissionMode::parse(mode)?;
-    }
-    if let Some(v) = req.verifier_required {
-        task.verifier_required = v;
-    }
-    if let Some(m) = &req.verifier_model {
-        task.verifier_model = Some(m.clone());
-    }
-    if let Some(e) = &req.verifier_effort {
-        task.verifier_effort = Some(e.clone());
-    }
-    if let Some(n) = req.max_iterations {
-        task.max_iterations = Some(n);
-    }
-    if let Some(a) = req.autonomy_level {
-        task.autonomy_level = Some(a);
-    }
-    if let Some(n) = req.no_progress_limit {
-        task.no_progress_limit = Some(n);
-    }
-    if let Some(i) = req.isolation {
-        task.isolation = Some(i);
-    }
-    if let Some(m) = &req.model {
-        task.model = Some(m.clone());
-    }
-    if let Some(e) = &req.effort {
-        task.effort = Some(e.clone());
-    }
-    if let Some(d) = req.deliverable {
-        task.deliverable = Some(d);
-    }
-    if let Some(g) = &req.gate {
-        task.gate = Some(g.clone());
-    }
-    if let Some(u) = &req.until {
-        task.until = Some(u.clone());
-    }
-    if let Some(f) = req.on_fail {
-        task.on_fail = Some(f);
-    }
-    if let Some(a) = &req.acceptance {
-        task.acceptance = Some(a.clone());
-    }
-    if let Some(fo) = req.verifier_fail_open {
-        task.verifier_fail_open = fo;
-    }
-    if let Some(b) = req.budget_tokens {
-        task.budget_tokens = b;
-    }
-    if let Some(bo) = &req.budget_override {
-        task.budget_override = Some(bo.clone());
-    }
-    Ok(())
-}
-
-/// Validate a submitted goal at the API boundary, per `.claude/rules/security.md`
-/// ("max goal length, character set constraints"). Rejects:
-/// - empty or whitespace-only goals (Ops-2 bug #5 — `{"goal":""}` spawned a real
-///   agent),
-/// - goals longer than [`MAX_GOAL_LENGTH`] characters,
-/// - goals carrying C0/C1 control characters other than the ordinary
-///   `\n` / `\r` / `\t` whitespace — NUL and ANSI escape sequences have no place
-///   in a natural-language goal and are a log-poisoning / injection vector.
-///
-/// Pure and separate from [`create_task`] so the boundary contract is
-/// table-testable without an HTTP round-trip. Returns the human-readable
-/// rejection reason on failure.
-pub(super) fn validate_goal(goal: &str) -> Result<(), String> {
-    if goal.trim().is_empty() {
-        return Err("goal must not be empty".to_string());
-    }
-    if goal.chars().count() > MAX_GOAL_LENGTH {
-        return Err(format!("goal too long (max {MAX_GOAL_LENGTH} chars)"));
-    }
-    super::types::reject_control_chars(goal)
-}
-
 pub(super) async fn create_task(
     State(s): State<AppState>,
     Json(req): Json<CreateTaskRequest>,
 ) -> impl IntoResponse {
+    if demo_guard::is_demo(&s).await {
+        return demo_guard::refuse_mutation("create a task").into_response();
+    }
     if let Err(reason) = validate_goal(&req.goal) {
         return (
             StatusCode::UNPROCESSABLE_ENTITY,

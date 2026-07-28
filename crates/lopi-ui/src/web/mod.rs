@@ -476,6 +476,7 @@ pub mod repos_handlers;
 mod schedule_chain_handlers;
 mod schedule_handlers;
 mod static_assets;
+mod task_fields;
 mod task_stream_handlers;
 use api_middleware::{auth_middleware, mint_ws_ticket, rate_limit_middleware};
 use handlers::{
@@ -485,13 +486,10 @@ use handlers::{
 use metrics_handlers::{get_agent_dag, get_quality_trend, metrics};
 use static_assets::static_handler;
 mod streaming;
-/// Wire types for the task-submission API — `CreateTaskRequest`/
-/// `CreateTaskResponse`. Sprint T0 widened this module from `pub(crate)` to
-/// `pub`: `CreateTaskRequest` is now also the client-side wire target
-/// `lopi_ui::client::stack_payload` builds and `RemoteClient::create_task`
-/// serializes, not just a server-side `Deserialize` body type, so it must
-/// be nameable from outside this crate (e.g. the `lopi` CLI binary calling
-/// through the `TuiClient` trait).
+/// Wire types for the task-submission API — `CreateTaskRequest`/`CreateTaskResponse`.
+/// `pub`, not `pub(crate)`: also the client-side wire target
+/// `lopi_ui::client::stack_payload` builds and `RemoteClient::create_task` serializes,
+/// so it must be nameable from outside this crate (e.g. the `lopi` CLI's `TuiClient`).
 pub mod types;
 mod ws_ticket;
 use streaming::{sse_handler, ws_handler};

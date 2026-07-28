@@ -13,3 +13,12 @@
 //! the same generator — see [`generate`].
 
 pub mod content;
+pub mod generator;
+mod generator_content;
+mod generator_seed;
+pub mod scenario;
+
+pub use generator::{
+    default_demo_store_path, generate, GeneratedDemo, DEFAULT_DEMO_SEED, DEMO_DB_FILENAME,
+};
+pub use scenario::replay_events;
