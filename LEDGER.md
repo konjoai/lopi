@@ -89,7 +89,9 @@ confirm 0 unmapped claims before resuming the original Phase 1-4 work.
   Acknowledged: the version bump is a real, intentional release marker for this
   sprint's work, not an accident; the `rm -rf` sites are scoped exactly as described,
   confirmed by reading both scripts in full before acknowledging rather than
-  pattern-matching the classifier's own flag.
+  pattern-matching the classifier's own flag. (The fingerprint is keyed on the sorted
+  changed-file set, so it shifted once more when a later commit in this same PR added
+  `recipes/README.md` to that set — same reasoning, updated trailer in that commit.)
 
 **Kiban-1.8-Bump-1: the pin moves, and so does what CI absorbs with it.**
 `.konjo/kiban.ref` and `KIBAN_REF` (`konjo-gate.yml`, both the `doc-staleness` job and
