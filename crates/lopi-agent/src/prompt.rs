@@ -44,8 +44,7 @@ pub(crate) fn build_user_prompt(
     }
     if let Some(err) = last_error {
         parts.push(format!(
-            "\n# Previous attempt failed\nAnalyze this error and adjust your approach:\n{}",
-            err
+            "\n# Previous attempt failed\nAnalyze this error and adjust your approach:\n{err}"
         ));
     }
     parts.push(

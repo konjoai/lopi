@@ -5,7 +5,7 @@ pub(super) const MAX_GOAL_LENGTH: usize = 2000;
 /// Reject goal text carrying C0/C1 control characters other than ordinary
 /// `\n`/`\r`/`\t` whitespace — NUL and ANSI escape sequences have no place
 /// in a natural-language goal and are a log-poisoning/injection vector (see
-/// `.claude/rules/security.md`). Shared by every handler that persists a
+/// `.claude/rules/security-invariants.md`). Shared by every handler that persists a
 /// goal string (`handlers::validate_goal`, `ScheduleBody::validate`,
 /// `MaxxBody::validate`, `ScheduleChainBody::validate`'s per-step check) so
 /// a scheduled/MAXX/chain path can't reopen the vector `POST /api/tasks`

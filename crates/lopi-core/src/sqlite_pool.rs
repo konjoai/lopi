@@ -7,10 +7,43 @@
 //! the one place that pattern is written down, so a third caller never has
 //! to copy it by hand again.
 
-use anyhow::{Context, Result};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
 use std::path::Path;
 use std::str::FromStr;
+use thiserror::Error;
+
+/// Errors opening a `SQLite` dual-pool (Sprint S13R, Phase E — the error-taxonomy
+/// pass: `lopi-core` is a library crate, so its fallible public API takes a typed
+/// error per `rust-conventions.md` rather than `anyhow::Error`; a caller stitching
+/// this into an `anyhow::Result` still just uses `?`, since `anyhow::Error`
+/// implements `From<E: std::error::Error>` automatically).
+#[derive(Debug, Error)]
+pub enum SqlitePoolError {
+    /// The connect-options string wasn't a valid `SQLite` URL.
+    #[error("parsing sqlite path ({context}): {source}")]
+    InvalidUrl {
+        /// Which pool-open call this came from, for the error message.
+        context: &'static str,
+        #[source]
+        source: sqlx::Error,
+    },
+    /// The pool itself failed to open (file permissions, disk, corruption).
+    #[error("opening sqlite pool ({context}): {source}")]
+    Connect {
+        /// Which pool-open call this came from, for the error message.
+        context: &'static str,
+        #[source]
+        source: sqlx::Error,
+    },
+    /// A non-`ALTER TABLE` schema statement failed (an `ALTER` failure is
+    /// swallowed by [`apply_schema`] as an idempotent re-run, per its own doc
+    /// comment; this variant is for every other statement kind).
+    #[error("applying schema: {0}")]
+    SchemaApply(#[source] sqlx::Error),
+}
+
+/// Result alias for this module's pool-opening functions.
+pub type Result<T> = std::result::Result<T, SqlitePoolError>;
 
 /// Open a single-connection write pool for `path`, WAL + `synchronous =
 /// NORMAL`, creating the file (and its parent directory, if missing) on
@@ -34,7 +67,10 @@ pub async fn open_write_pool(path: &Path, foreign_keys: bool) -> Result<SqlitePo
     }
     let url = format!("sqlite://{}", path.display());
     let mut opts = SqliteConnectOptions::from_str(&url)
-        .context("parsing sqlite path (write)")?
+        .map_err(|source| SqlitePoolError::InvalidUrl {
+            context: "write",
+            source,
+        })?
         .create_if_missing(true)
         .pragma("journal_mode", "WAL")
         .pragma("synchronous", "NORMAL")
@@ -46,7 +82,10 @@ pub async fn open_write_pool(path: &Path, foreign_keys: bool) -> Result<SqlitePo
         .max_connections(1)
         .connect_with(opts)
         .await
-        .context("opening sqlite write pool")
+        .map_err(|source| SqlitePoolError::Connect {
+            context: "write",
+            source,
+        })
 }
 
 /// Open an up-to-`max_connections` read-only pool for `path`. Call after
@@ -63,7 +102,10 @@ pub async fn open_read_pool(
 ) -> Result<SqlitePool> {
     let url = format!("sqlite://{}", path.display());
     let mut opts = SqliteConnectOptions::from_str(&url)
-        .context("parsing sqlite path (read)")?
+        .map_err(|source| SqlitePoolError::InvalidUrl {
+            context: "read",
+            source,
+        })?
         .read_only(true)
         .pragma("busy_timeout", "5000");
     if foreign_keys {
@@ -73,7 +115,10 @@ pub async fn open_read_pool(
         .max_connections(max_connections)
         .connect_with(opts)
         .await
-        .context("opening sqlite read pool")
+        .map_err(|source| SqlitePoolError::Connect {
+            context: "read",
+            source,
+        })
 }
 
 /// Open a single shared in-memory pool — one connection, serving both reads
@@ -85,8 +130,12 @@ pub async fn open_read_pool(
 /// # Errors
 /// Returns `Err` if the in-memory pool can't be opened.
 pub async fn open_in_memory_pool(foreign_keys: bool) -> Result<SqlitePool> {
-    let mut opts =
-        SqliteConnectOptions::from_str("sqlite::memory:").context("parsing in-memory sqlite")?;
+    let mut opts = SqliteConnectOptions::from_str("sqlite::memory:").map_err(|source| {
+        SqlitePoolError::InvalidUrl {
+            context: "in-memory",
+            source,
+        }
+    })?;
     if foreign_keys {
         opts = opts.pragma("foreign_keys", "ON");
     }
@@ -94,7 +143,10 @@ pub async fn open_in_memory_pool(foreign_keys: bool) -> Result<SqlitePool> {
         .max_connections(1)
         .connect_with(opts)
         .await
-        .context("opening in-memory sqlite pool")
+        .map_err(|source| SqlitePoolError::Connect {
+            context: "in-memory",
+            source,
+        })
 }
 
 /// Apply a schema file's `CREATE TABLE IF NOT EXISTS`/`ALTER TABLE ... ADD
@@ -134,7 +186,7 @@ pub async fn apply_schema(pool: &SqlitePool, schema_sql: &str) -> Result<()> {
         let result = sqlx::query(&body).execute(pool).await;
         if let Err(e) = result {
             if !body.to_lowercase().starts_with("alter table") {
-                return Err(e).context("applying schema");
+                return Err(SqlitePoolError::SchemaApply(e));
             }
         }
     }

@@ -176,7 +176,7 @@ fn draw_output(f: &mut Frame, area: Rect, state: &ReplState) {
         let frame = spinner_frame(state.anim_tick);
         let step_line = Line::from(vec![
             Span::styled(
-                format!("  {} ", frame),
+                format!("  {frame} "),
                 Style::default()
                     .fg(Color::Yellow)
                     .add_modifier(Modifier::BOLD),
@@ -335,4 +335,42 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
         Constraint::Percentage((100 - percent_x) / 2),
     ])
     .split(vert[1])[1]
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+    use ratatui::{backend::TestBackend, Terminal};
+
+    /// Mutation-testing kill test: a mutant replacing `draw_output`'s body with `()`
+    /// would render nothing, leaving the test backend's buffer blank. Runs the state
+    /// in `ReplMode::Running` specifically, since that's the branch this sprint's own
+    /// edit touched (the spinner-frame format string).
+    #[test]
+    fn draw_output_renders_the_running_spinner_line() {
+        let backend = TestBackend::new(40, 10);
+        let mut terminal = Terminal::new(backend).unwrap();
+        let mut state = ReplState::new(&std::path::PathBuf::from("."), "claude-sonnet-5", None);
+        state.mode = ReplMode::Running;
+
+        terminal
+            .draw(|f| {
+                let area = f.size();
+                draw_output(f, area, &state);
+            })
+            .unwrap();
+
+        let rendered: String = terminal
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|c| c.symbol())
+            .collect();
+        assert!(
+            rendered.contains("working"),
+            "expected the spinner's \"working…\" label in:\n{rendered}"
+        );
+    }
 }

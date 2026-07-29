@@ -96,7 +96,7 @@ pub(super) fn apply_loop_fields(
     Ok(())
 }
 
-/// Validate a submitted goal at the API boundary, per `.claude/rules/security.md`
+/// Validate a submitted goal at the API boundary, per `.claude/rules/security-invariants.md`
 /// ("max goal length, character set constraints"). Rejects:
 /// - empty or whitespace-only goals (Ops-2 bug #5 — `{"goal":""}` spawned a real
 ///   agent),

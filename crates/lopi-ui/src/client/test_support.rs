@@ -2,7 +2,10 @@
 //! `local_tests.rs` and `remote_tests.rs` don't each hand-write an
 //! identical all-`None` `CreateTaskRequest` literal (a DRY violation the
 //! pre-commit hook's duplicate-block check caught).
-#![cfg(test)]
+//!
+//! No `#![cfg(test)]` here: `mod.rs`'s `#[cfg(test)] mod test_support;`
+//! already gates the whole module, and a second inner attribute duplicating
+//! it is itself a clippy `duplicated_attributes` hard error under `-D warnings`.
 
 use crate::web::types::CreateTaskRequest;
 

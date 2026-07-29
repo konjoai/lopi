@@ -1,0 +1,9 @@
+# Konjo Forward Pillar 2 ratchet (never regress). Seeded Sprint S13R, Phase D, from
+# indexing_floor_check.py's real measured count against this branch: 211 raw `[0]`/`[1]`
+# indexing sites in production Rust code (crates/ + src/, tests/benches excluded).
+# This does not match the informal "202" figure the original S13 brief carried forward
+# from an earlier, less precisely specified count -- see LEDGER.md's
+# `Indexing-Floor-Seed-1` for why, and this script's own docstring for the exact method
+# used here. Lower this file as sites get converted to `.first()`/`.get(n)`; a PR must
+# never raise it without a recorded reason.
+211

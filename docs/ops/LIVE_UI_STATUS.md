@@ -80,7 +80,7 @@ actually returns **200** and the redirect is client-side (SPA). Minor.
    behind bug #1's mis-bucketing.
 5. **[Med] `POST /api/tasks` accepts an empty goal.** `{"goal":""}` → `201 Created` and **spawns a
    real agent** (`task_started` on `/sse`). Violates the input-validation rule
-   (`.claude/rules/security.md`: "max goal length, character-set constraints"). No max-length or
+   (`.claude/rules/security-invariants.md`: "max goal length, character-set constraints"). No max-length or
    non-empty check at the boundary.
 6. **[Med] `sail` ignores `db_path` from `--config`.** `sail_commands.rs:18` opens
    `crate::util::db_path()` unconditionally; the `LopiConfig.db_path` I set was silently ignored

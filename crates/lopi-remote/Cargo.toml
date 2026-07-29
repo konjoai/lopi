@@ -26,3 +26,6 @@ serde_urlencoded = "0.7"
 tower.workspace = true
 tokio = { workspace = true, features = ["full"] }
 chrono.workspace = true
+
+[lints]
+workspace = true

@@ -106,4 +106,24 @@ exclude_re = [
     # mutant here is the same permanent false-positive class as the IO
     # shells above.
     "repl/draw\\.rs.*: replace draw_header ",
+    # Sprint S13R, Phase D — the panic/resource surface pass introduced
+    # `EventSource` (`repl/mod.rs`) so `repl_loop`'s dispatch logic could be
+    # unit-tested via a scripted fake (see `repl::tests::
+    # repl_loop_exits_cleanly_on_escape_while_idle`, which does exercise the
+    # real branching). `CrosstermEvents::next_event`, the production
+    # implementation, is a thin two-line delegation to
+    # `crossterm::event::poll`/`event::read` with no branching of its own to
+    # verify — same class as the IO shells above. Unlike `setup_terminal`'s
+    # `enable_raw_mode()?` (which reliably errors with no controlling
+    # terminal, and so is unit-tested directly in `run_repl_fails_fast_with_
+    # no_controlling_terminal`), `event::poll` returns a normal `Ok(false)` on
+    # a non-tty stdin within its timeout — indistinguishable by return value
+    # from the "replace with Ok(None)" mutant without a real keyboard or a
+    # raw-mode-dependent injected byte stream, which no test in this module
+    # sets up.
+    # `<impl EventSource for CrosstermEvents>::next_event` — cargo-mutants renders
+    # the impl-trait qualifier with a closing `>` right before the `::`, so the
+    # pattern matches on the method name alone (unique within this file) rather
+    # than spelling out the exact `<impl ... for Type>` bracket text.
+    "repl/mod\\.rs.*next_event",
 ]

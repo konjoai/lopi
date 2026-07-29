@@ -9,9 +9,36 @@
 
 use crate::budget_preset::{BudgetSection, ResolvedBudget};
 use crate::self_prompt::SelfPromptStrategy;
-use anyhow::Context;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+use thiserror::Error;
+
+/// Errors reading or writing `.lopi/loop.toml` (Sprint S13R, Phase E — the
+/// error-taxonomy pass).
+#[derive(Debug, Error)]
+pub enum LoopConfigError {
+    /// The file exists but couldn't be read (a genuinely absent file is not an
+    /// error — [`LoopConfig::load_from_repo`] returns the default config for that).
+    #[error("reading {path}: {source}")]
+    Read {
+        /// The path that failed to read.
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+    /// The file's content isn't valid TOML, or doesn't match [`LoopConfig`]'s shape.
+    #[error("parsing loop.toml: {0}")]
+    Parse(#[source] toml::de::Error),
+    /// `.lopi/` couldn't be created.
+    #[error("creating .lopi directory: {0}")]
+    CreateDir(#[source] std::io::Error),
+    /// The config couldn't be serialized back to TOML.
+    #[error("serializing loop.toml: {0}")]
+    Serialize(#[source] toml::ser::Error),
+    /// The serialized TOML couldn't be written to disk.
+    #[error("writing loop.toml: {0}")]
+    Write(#[source] std::io::Error),
+}
 
 /// Re-exported so `loop_config::AutonomyLevel` stays valid — the type moved to
 /// its own module (`autonomy.rs`) purely to keep this file under the 500-line
@@ -331,14 +358,14 @@ impl LoopConfig {
     /// # Errors
     /// Returns `Err` if the file exists but cannot be read or parsed as TOML —
     /// a malformed loop config is surfaced loudly rather than silently ignored.
-    pub fn load_from_repo(repo_path: &Path) -> anyhow::Result<Self> {
+    pub fn load_from_repo(repo_path: &Path) -> Result<Self, LoopConfigError> {
         let p = repo_path.join(Self::REL_PATH);
         let text = match std::fs::read_to_string(&p) {
             Ok(t) => t,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Self::default()),
-            Err(e) => return Err(e).context(format!("reading {}", p.display())),
+            Err(source) => return Err(LoopConfigError::Read { path: p, source }),
         };
-        let cfg: Self = toml::from_str(&text)?;
+        let cfg: Self = toml::from_str(&text).map_err(LoopConfigError::Parse)?;
         cfg.warn_on_budget_tokens_divergence();
         Ok(cfg)
     }
@@ -376,11 +403,11 @@ impl LoopConfig {
     /// # Errors
     /// Returns `Err` if the directory cannot be created, the config cannot be
     /// serialized to TOML, or the file cannot be written.
-    pub fn save_to_repo(&self, repo_path: &Path) -> anyhow::Result<()> {
+    pub fn save_to_repo(&self, repo_path: &Path) -> Result<(), LoopConfigError> {
         let dir = repo_path.join(".lopi");
-        std::fs::create_dir_all(&dir)?;
-        let text = toml::to_string_pretty(self)?;
-        std::fs::write(dir.join("loop.toml"), text)?;
+        std::fs::create_dir_all(&dir).map_err(LoopConfigError::CreateDir)?;
+        let text = toml::to_string_pretty(self).map_err(LoopConfigError::Serialize)?;
+        std::fs::write(dir.join("loop.toml"), text).map_err(LoopConfigError::Write)?;
         Ok(())
     }
 

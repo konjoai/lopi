@@ -1,0 +1,6 @@
+# Konjo Forward Pillar 2 ratchet (never regress). Seeded Sprint S13R, Phase B,
+# decision item 3, from function_length_check.py's real measured count against
+# this branch: 74 functions over the 50-line hard limit, workspace-wide,
+# excluding tests/benches. Lower this file as functions get split; a PR must
+# never raise it without a recorded reason.
+74

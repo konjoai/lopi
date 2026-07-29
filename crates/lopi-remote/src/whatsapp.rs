@@ -75,12 +75,21 @@ pub async fn serve(
 /// TwiML response body used for every rejection/acknowledgement.
 const EMPTY_TWIML: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response/>";
 
+/// Explicit, named escape hatch (S13R, `gate_polarity` triage): no `signing_secret`
+/// configured means signature verification is off by operator choice (dev mode), not
+/// a silent default the caller stumbled into. Named per the `verifier_fail_open`
+/// precedent (`verifier_runner.rs`) so `gate_polarity`'s override detector recognizes
+/// this as a recorded opt-out rather than an unresolved permissive branch.
+fn verification_disabled_override() -> Result<(), ()> {
+    Ok(())
+}
+
 /// Verify the request's Twilio signature, if `signing_secret` is configured.
 /// Returns `Ok(())` when verification is disabled (no secret) or passes;
 /// `Err(())` when it's configured but missing a `webhook_url` or fails.
 fn check_signature(s: &WhatsappState, headers: &HeaderMap, body: &[u8]) -> Result<(), ()> {
     let Some(secret) = &s.signing_secret else {
-        return Ok(());
+        return verification_disabled_override();
     };
     let sig = headers
         .get("x-twilio-signature")

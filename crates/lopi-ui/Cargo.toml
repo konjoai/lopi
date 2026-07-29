@@ -47,3 +47,6 @@ toml.workspace = true
 # all the way through to `select_model`'s heuristic, without adding a real
 # production dependency on lopi-agent.
 lopi-agent.workspace = true
+
+[lints]
+workspace = true
