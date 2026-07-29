@@ -93,7 +93,9 @@ confirm 0 unmapped claims before resuming the original Phase 1-4 work.
   changed-file set, so it shifted once more when a later commit in this same PR added
   `recipes/README.md` to that set — same reasoning, updated trailer in that commit. It
   shifted a third time when the G3 mutation-testing fix commit added `src/repl/state.rs`
-  to the set — same acknowledgment, same threat model, current trailer in that commit.)
+  to the set — same acknowledgment, same threat model, current trailer in that commit.
+  Shifted a fourth and fifth time as the G3 follow-up commits added
+  `.cargo/mutants.toml` — same acknowledgment, same threat model, current trailer below.)
 
 **Kiban-1.8-Bump-1: the pin moves, and so does what CI absorbs with it.**
 `.konjo/kiban.ref` and `KIBAN_REF` (`konjo-gate.yml`, both the `doc-staleness` job and
