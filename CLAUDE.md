@@ -48,18 +48,21 @@ bash .konjo/scripts/install-hooks.sh        # install pre-commit hooks
 This repo runs the **Konjo Three-Wall Quality Framework**. See `KONJO_QUALITY_FRAMEWORK.md`.
 
 - **Wall 1** (pre-commit): `bash .konjo/scripts/install-hooks.sh` — installs `.konjo/hooks/pre-commit`
-- **Wall 2** (CI): `.github/workflows/konjo-gate.yml` — coverage ≥ 80%, mutation ≤ 10%, complexity ≤ 15, dead code = 0, zero undocumented public APIs
+- **Wall 2** (CI): `.github/workflows/konjo-gate.yml` — coverage floor never regresses (see below, not 80%/95% — that step is soft), mutation ≤ 10%, complexity ≤ 15, dead code = 0; doc coverage is checked but soft
 - **Wall 3** (adversarial review): `claude-opus-4-6` reviews every PR against 10 mandatory questions
 
 ### Additional Hard Rules (enforced by CI — not in global CLAUDE.md)
-- Coverage ≥ 80% (hard block); target ≥ 95%
-- Zero cognitive complexity > 15 per function (`clippy::cognitive_complexity`)
-- Zero dead code (`RUSTFLAGS="-W dead_code" cargo check`)
-- Zero undocumented public APIs (`RUSTDOCFLAGS="-D missing_docs" cargo doc`)
-- Function body ≤ 50 lines (30 target) — split before hitting 40
-- File ≤ 500 lines (300 target) — create a new module before hitting 400
-- No duplicate blocks > 10 lines at > 85% similarity (`dry_check.py`)
-- `cargo audit` zero advisories; `cargo deny check` zero violations
+Each bullet below is honest about its actual `konjo-gate.yml` job:step per the S13 Phase 0
+audit (`.konjo/killtests/S13/`) — a bullet with no genuine enforcing step is stated as such
+rather than left to imply one exists.
+- Coverage never regresses below the locked floor in `.konjo/coverage-floor.txt` — `coverage:"Coverage floor gate"`, hard. The 80%/95% step (`coverage:"Coverage gate"`) is `continue-on-error: true` — soft, not a hard block, despite the name.
+- Zero cognitive complexity > 15 per function — `complexity:"Cognitive complexity gate (clippy)"`, hard.
+- Zero dead code — `static:"dead code — zero tolerance"`, hard.
+- Zero undocumented public APIs — `complexity:"Documentation gate (rustdoc)"` runs `-D missing_docs` but is `continue-on-error: true` — **soft only**, known doc-link debt in `lopi-agent`/`lopi-orchestrator`.
+- Function body ≤ 50 lines (30 target) — **no mechanical gate exists.** Only a WARNING-tier question (Q7) in the Wall 3 LLM review, which cannot block merge.
+- File ≤ 500 lines (300 target) — `complexity:"File size gate"`, hard, but scoped to `*.rs`/`*.py` only; `web/` (TS/Svelte) and `macos/` (Swift) are not covered.
+- No duplicate blocks > 20 lines at > 85% similarity (`dry_check.py`) — `complexity:"DRY check"`, hard. CI's actual threshold is 20 lines, not 10.
+- `cargo audit` zero advisories; `cargo deny check` zero violations — `static` job, both hard.
 
 ## Live Dashboard (Browser Pane)
 When asked to check on running stacks/tasks ("what's lopi running right now", "show me the stacks"), in a Claude Code Desktop session with a Browser pane:

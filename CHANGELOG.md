@@ -1,3 +1,44 @@
+## [0.38.0] — Sprint S13, Phase 0: Quality-claim honesty pass (stopped per stop rule)
+
+**Sprint S13 ("Quality Substrate and Continuous Enforcement") opens with a
+hard pre-flight rule: Phase 0 audits every quality claim this repo makes
+about itself, and if more than 3 self-claims have no genuine enforcing step,
+the sprint stops after Phase 0 rather than building Phases 1–4 (determinism
+substrate, panic/resource surface, error taxonomy, enforcement-from-first-
+prompt) on top of an inaccurate inventory. The audit found 5 unmapped claims
+— the stop rule fired and the sprint halted as designed. Full audit trail:
+`.konjo/killtests/S13/PHASE0-STOP-RULE.md`.**
+
+- **Rubrics.** `.konjo/rubrics/refactor_safety.toml` and `security_audit.toml`
+  had no code path loading them by name anywhere in the workspace (only
+  `feature_completeness.toml` is a live default in
+  `verifier::resolve_rubric`) — both deleted; `KONJO_VERIFIER.md` and
+  `PLAN.md` corrected to stop claiming three rubrics ship.
+- **`CLAUDE.md` "Additional Hard Rules."** 3 of 8 bullets had no genuine
+  `konjo-gate.yml` enforcing step (coverage ≥80%/95% — the real hard gate is
+  a lower locked floor; zero undocumented public APIs — `continue-on-error:
+  true`; function body ≤50 lines — no mechanical check exists anywhere, only
+  a WARNING-tier LLM review question). Corrected to state the real
+  enforcement, not struck outright — the gates themselves may be wired live
+  in a future sprint (tracked separately as Wave 1 work), not silently
+  reintroduced as an accurate-sounding bullet. Two more bullets (file size,
+  DRY check) are genuinely hard but were stated with the wrong scope/
+  threshold; corrected alongside.
+- **Rule-file path globs.** `.claude/rules/benchmarking.md` and `testing.md`
+  each carried two globs that matched zero files under the current crate
+  layout (`bench_*.rs` vs. the real `*_bench.rs` suffix convention,
+  `perf/**` with no such directory, `*_test.rs` singular vs. the real
+  `_tests.rs` plural convention, `spec/**` with no such directory) — fixed
+  to globs verified against the real file tree.
+- **Baseline evidence.** Every command in the brief's baseline table
+  re-run against a clean checkout; two real drifts found beyond the brief's
+  own numbers — a second production unbounded channel at `src/repl/mod.rs:76`
+  (brief only named `lopi-agent/src/quota_kill_log.rs:151`), and `anyhow::`
+  usage grown from 106 to 131 files since the baseline was last recorded.
+- **What did not run:** pre-flight kill-tests KT-S13.1/KT-S13.2 (both scoped
+  to gates Phase 1 would introduce), and Phases 1–4 in full. See
+  `NEXT_SESSION_PROMPT.md` for the resume point.
+
 ## [0.37.0] — Sprint E: The Economics Layer (Finding #10)
 
 **Turned the budget governor from a kill-switch into a first-class economic

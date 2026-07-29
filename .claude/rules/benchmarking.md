@@ -1,8 +1,8 @@
 ---
 paths:
   - "**/benchmarks/**"
-  - "**/bench_*.rs"
-  - "**/perf/**"
+  - "**/*_bench.rs"
+  - "**/benches/**"
 ---
 # Benchmarking Rules
 

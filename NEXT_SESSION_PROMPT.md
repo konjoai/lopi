@@ -5,6 +5,57 @@ the `lopi` repo. Newest first.
 
 ---
 
+## Next Session — Sprint S13, Phase 1+ (Determinism Substrate), after Phase 0 stopped (`[0.38.0]`)
+
+Sprint S13 ("Quality Substrate and Continuous Enforcement") stopped after
+Phase 0 per its own stop rule: the honesty-pass audit found 5 self-claims
+with no genuine enforcing step (2 dark rubrics, 3 unenforced `CLAUDE.md`
+hard-rule bullets) — more than the 3-claim threshold that halts the sprint.
+Full audit: `.konjo/killtests/S13/PHASE0-STOP-RULE.md`. This is the second
+independent run to reach that exact verdict against the same base commit
+(`b93e68f`) — see that document's §6 for the sibling run on
+`claude/s13-quality-substrate-e7e92y` (PR #182).
+
+**Before resuming Phase 1, do not skip straight in on the strength of this
+prompt.** Re-run Phase 0's baseline table (§1 of the audit doc) against
+whatever `main` HEAD is at resume time — numbers may have moved — and
+confirm the unmapped-claims tally (§5) is still ≤ 3. If a third audit still
+finds >3, this sprint remains stopped and that verdict should be recorded as
+a third data point, not silently overridden.
+
+If the tally comes back ≤ 3 (e.g. because Wave 1 work wired some of the
+3 unenforced bullets live in the meantime), the next concrete steps are:
+
+1. **KT-S13.1** — before wiring any new gate, build its bad/good fixture
+   pair under `.konjo/fixtures/S13/` and prove the gate rejects the bad one
+   and accepts the good one. No fixture pair, no gate.
+2. **KT-S13.2** — add a temporary `#[test]` in `lopi-core` doing
+   `u64::MAX + 1` via a value the optimizer can't constant-fold; confirm it
+   wraps silently under `--release` today and panics after
+   `overflow-checks = true` lands in `[profile.release]`. Remove the test
+   before the phase closes.
+3. **Phase 1** — `rust-toolchain.toml`, MSRV bisection (record the
+   bisection result, don't guess), resolve the `edition = "2021"` vs.
+   Rust-2024-shaped `unsafe { std::env::set_var }` blocks in
+   `crates/lopi-ui/src/client/auth.rs` question, `[workspace.lints]` +
+   `lints.workspace = true` on all 18 crates, `overflow-checks = true`,
+   `[profile.bench]`.
+
+**Open discrepancy carried forward, not resolved:** the "raw indexing sites"
+baseline number could not be independently reproduced — three defensible
+filter definitions gave 341, 194, and 185, none matching the brief's stated
+202. Whoever seeds Phase 2's `.konjo/indexing-floor.txt` must pick one exact
+methodology, encode it in `index_floor_check.py` itself, and use that
+script's own output as the floor — not try to reconcile it against this
+sprint's table. See `LEDGER.md`'s S13 Phase 0 entry.
+
+**Crates remaining unmigrated for Phase 3 (error taxonomy), when it runs:**
+all 18 — Phase 3 has not started. Seed order per the brief:
+`lopi-core`, `lopi-git`, `lopi-memory` first (highest external-caller count),
+three crates only in this sprint, not all 18.
+
+---
+
 ## Next Session — T1 (Input & Command Layer), after Sprint T0 (`[0.35.0]`)
 
 Sprint T0 (TUI Client Foundation & Domain Port) landed at `0.35.0`. The TUI
