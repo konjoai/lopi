@@ -14,7 +14,7 @@ pub struct OutputLine {
 }
 
 /// Visual style for an output line.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum LineStyle {
     Normal,
     Success,
@@ -119,6 +119,7 @@ impl ReplState {
 }
 
 /// Events flowing from a background agent run back to the REPL loop.
+#[derive(Debug)]
 pub enum ReplEvent {
     AgentLog { line: String, style: LineStyle },
     TaskDone { label: String, success: bool },

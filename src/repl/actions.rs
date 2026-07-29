@@ -85,6 +85,51 @@ pub(super) async fn handle_slash(
     Ok(())
 }
 
+/// Translate one `AgentEvent` (or a broadcast-channel error) into the `ReplEvent` the
+/// bridge loop should forward, if any, plus whether the loop should stop after this.
+/// Pure and synchronous so the four event shapes below are unit-tested directly rather
+/// than only reachable through a full `AgentRunner` run.
+fn translate_agent_event(
+    ev: std::result::Result<AgentEvent, tokio::sync::broadcast::error::RecvError>,
+) -> (Option<ReplEvent>, bool) {
+    match ev {
+        Ok(AgentEvent::StatusChanged {
+            status, attempt, ..
+        }) => {
+            let label = status_label(&status);
+            let style = match &status {
+                TaskStatus::Success { .. } => LineStyle::Success,
+                TaskStatus::Failed { .. } | TaskStatus::RolledBack => LineStyle::Error,
+                _ => LineStyle::AgentLog,
+            };
+            (
+                Some(ReplEvent::AgentLog {
+                    line: format!("  [{attempt}] → {label}"),
+                    style,
+                }),
+                false,
+            )
+        }
+        Ok(AgentEvent::LogLine { line, .. }) => (
+            Some(ReplEvent::AgentLog {
+                line: format!("       {line}"),
+                style: LineStyle::AgentLog,
+            }),
+            false,
+        ),
+        Ok(AgentEvent::TurnMetrics { cost_usd, .. }) => {
+            (Some(ReplEvent::CostAccrued(cost_usd)), false)
+        }
+        Ok(AgentEvent::TaskCompleted { outcome, .. }) => {
+            let label = status_label(&outcome);
+            let success = matches!(outcome, TaskStatus::Success { .. });
+            (Some(ReplEvent::TaskDone { label, success }), true)
+        }
+        Err(_) => (None, true),
+        _ => (None, false),
+    }
+}
+
 /// Spawn an agent run and bridge its events back to the REPL loop via `ev_tx`.
 pub(super) async fn dispatch_goal(
     goal: String,
@@ -127,47 +172,19 @@ pub(super) async fn dispatch_goal(
     runner.store = Some(store.clone());
     let bus = runner.bus.clone();
 
-    // Bridge AgentEvent → ReplEvent on a background task.
+    // Bridge AgentEvent → ReplEvent on a background task. The translation itself is
+    // `translate_agent_event`, a pure function unit-tested below — this loop is just
+    // the async plumbing around it (subscribe, send, stop on completion/lag).
     let tx = ev_tx.clone();
     let mut rx = bus.subscribe();
     tokio::spawn(async move {
         loop {
-            match rx.recv().await {
-                Ok(AgentEvent::StatusChanged {
-                    status, attempt, ..
-                }) => {
-                    let label = status_label(&status);
-                    let style = match &status {
-                        TaskStatus::Success { .. } => LineStyle::Success,
-                        TaskStatus::Failed { .. } | TaskStatus::RolledBack => LineStyle::Error,
-                        _ => LineStyle::AgentLog,
-                    };
-                    let _ = tx
-                        .send(ReplEvent::AgentLog {
-                            line: format!("  [{attempt}] → {label}"),
-                            style,
-                        })
-                        .await;
-                }
-                Ok(AgentEvent::LogLine { line, .. }) => {
-                    let _ = tx
-                        .send(ReplEvent::AgentLog {
-                            line: format!("       {line}"),
-                            style: LineStyle::AgentLog,
-                        })
-                        .await;
-                }
-                Ok(AgentEvent::TurnMetrics { cost_usd, .. }) => {
-                    let _ = tx.send(ReplEvent::CostAccrued(cost_usd)).await;
-                }
-                Ok(AgentEvent::TaskCompleted { outcome, .. }) => {
-                    let label = status_label(&outcome);
-                    let success = matches!(outcome, TaskStatus::Success { .. });
-                    let _ = tx.send(ReplEvent::TaskDone { label, success }).await;
-                    break;
-                }
-                Err(_) => break,
-                _ => {}
+            let (out, stop) = translate_agent_event(rx.recv().await);
+            if let Some(ev) = out {
+                let _ = tx.send(ev).await;
+            }
+            if stop {
+                break;
             }
         }
     });
@@ -305,5 +322,80 @@ mod tests {
         .await
         .unwrap();
         assert!(state.output_lines.len() > before);
+    }
+
+    fn recv_err() -> std::result::Result<AgentEvent, tokio::sync::broadcast::error::RecvError> {
+        Err(tokio::sync::broadcast::error::RecvError::Closed)
+    }
+
+    #[test]
+    fn translate_status_changed_forwards_agent_log_and_continues() {
+        let (out, stop) = translate_agent_event(Ok(AgentEvent::StatusChanged {
+            task_id: lopi_core::TaskId::new(),
+            status: TaskStatus::Implementing,
+            attempt: 2,
+        }));
+        assert!(!stop);
+        assert!(matches!(&out, Some(ReplEvent::AgentLog { .. })));
+        if let Some(ReplEvent::AgentLog { line, style }) = out {
+            assert!(line.contains("[2]"), "line: {line}");
+            assert!(matches!(style, LineStyle::AgentLog));
+        }
+    }
+
+    #[test]
+    fn translate_log_line_forwards_agent_log_and_continues() {
+        let (out, stop) = translate_agent_event(Ok(AgentEvent::LogLine {
+            task_id: lopi_core::TaskId::new(),
+            line: "building...".into(),
+            level: lopi_core::LogLevel::Info,
+            ts: chrono::Utc::now(),
+        }));
+        assert!(!stop);
+        assert!(matches!(&out, Some(ReplEvent::AgentLog { .. })));
+        if let Some(ReplEvent::AgentLog { line, .. }) = out {
+            assert!(line.contains("building..."), "line: {line}");
+        }
+    }
+
+    #[test]
+    fn translate_turn_metrics_forwards_cost_accrued_and_continues() {
+        let (out, stop) = translate_agent_event(Ok(AgentEvent::TurnMetrics {
+            task_id: lopi_core::TaskId::new(),
+            pressure: 0.1,
+            activity: 0.2,
+            tokens_per_sec: 10.0,
+            cost_usd: 0.5,
+        }));
+        assert!(!stop);
+        assert!(matches!(&out, Some(ReplEvent::CostAccrued(_))));
+        if let Some(ReplEvent::CostAccrued(cost)) = out {
+            assert!((cost - 0.5).abs() < f32::EPSILON);
+        }
+    }
+
+    #[test]
+    fn translate_task_completed_forwards_task_done_and_stops() {
+        let (out, stop) = translate_agent_event(Ok(AgentEvent::TaskCompleted {
+            task_id: lopi_core::TaskId::new(),
+            outcome: TaskStatus::Success {
+                branch: "lopi/attempt-1".into(),
+                pr_url: None,
+            },
+            total_attempts: 1,
+            successor: None,
+        }));
+        assert!(stop, "TaskCompleted must stop the bridge loop");
+        assert!(matches!(&out, Some(ReplEvent::TaskDone { .. })));
+        if let Some(ReplEvent::TaskDone { success, .. }) = out {
+            assert!(success);
+        }
+    }
+
+    #[test]
+    fn translate_recv_error_stops_with_no_event() {
+        let (out, stop) = translate_agent_event(recv_err());
+        assert!(stop, "a closed/lagged bus must stop the bridge loop");
+        assert!(out.is_none());
     }
 }
