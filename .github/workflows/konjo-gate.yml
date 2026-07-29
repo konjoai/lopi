@@ -118,7 +118,7 @@ jobs:
         # lru, all 2+ hops transitive). A new, untriaged advisory still fails
         # this step.
         run: |
-          cargo install cargo-audit --locked --quiet 2>/dev/null || true
+          cargo +stable install cargo-audit --locked --quiet 2>/dev/null || true
           cargo audit
 
       - name: cargo deny — license + advisory + bans
@@ -132,7 +132,7 @@ jobs:
         # `unmatched`. `cargo deny check` returns a clean verdict: advisories
         # ok, bans ok, licenses ok, sources ok.
         run: |
-          cargo install cargo-deny --locked --quiet 2>/dev/null || true
+          cargo +stable install cargo-deny --locked --quiet 2>/dev/null || true
           cargo deny --config .konjo/deny.toml check
 
       - name: dead code — zero tolerance
@@ -269,8 +269,8 @@ jobs:
 
       - name: Install cargo-nextest + cargo-llvm-cov
         run: |
-          cargo install cargo-nextest --locked --quiet 2>/dev/null || true
-          cargo install cargo-llvm-cov --locked --quiet 2>/dev/null || true
+          cargo +stable install cargo-nextest --locked --quiet 2>/dev/null || true
+          cargo +stable install cargo-llvm-cov --locked --quiet 2>/dev/null || true
 
       - name: Eval-executor regression suite (A1 — HARD GATE, 24 fixtures)
         # The Research-1 reliability probe's 24 labelled fixtures (real
@@ -386,7 +386,7 @@ jobs:
           shared-key: konjo-${{ github.repository }}
 
       - name: Install cargo-mutants
-        run: cargo install cargo-mutants --locked --quiet 2>/dev/null || true
+        run: cargo +stable install cargo-mutants --locked --quiet 2>/dev/null || true
 
       - name: Identify changed Rust files
         id: changed
@@ -711,7 +711,7 @@ jobs:
           KIBAN_REF: "v1.8.0"
         run: |
           pip install --quiet pyyaml
-          cargo install cargo-audit --locked --quiet 2>/dev/null || true
+          cargo +stable install cargo-audit --locked --quiet 2>/dev/null || true
           git clone --quiet --depth 1 --branch "$KIBAN_REF" https://github.com/konjoai/kiban.git /tmp/kiban
 
       - name: Run konjo-gates against .konjo/profile.yml
