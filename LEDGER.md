@@ -5,6 +5,55 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## Sprint S13, Phase 0 (Quality-claim honesty pass) — stopped after Phase 0 per the brief's own stop rule
+
+**One-way doors, all recorded before the sprint's Phase-0 stop rule fired (5
+unmapped claims found, >3 threshold):**
+
+1. **A rubric documented as "shipping" now requires both the `.toml` file
+   under `.konjo/rubrics/` *and* a real call site that loads it by name —
+   not just the file's presence.** `refactor_safety.toml` and
+   `security_audit.toml` shipped since at least Sprint S (per `PLAN.md`'s
+   checklist and `KONJO_VERIFIER.md`) with zero code anywhere ever calling
+   `verifier::load_rubric_file(repo, "refactor_safety")` or `"security_audit"`
+   — the only wired call resolves `"feature_completeness"` and nothing else
+   (`crates/lopi-agent/src/runner/verifier_runner.rs:34` →
+   `verifier::resolve_rubric`, `crates/lopi-agent/src/verifier.rs:127-134`).
+   Both files deleted this sprint. **Constrains future work:** a rubric file
+   dropped into `.konjo/rubrics/` with no matching `load_rubric_file` call
+   (or `Task::rubric` assignment) is not a shipped feature — don't check it
+   off in `PLAN.md` or list it in `KONJO_VERIFIER.md`'s table until a real
+   caller exists. If a future sprint wants task-type-specific rubrics again,
+   it needs to build the dispatch (task kind → rubric name) that never
+   existed, not just restore the files.
+2. **`CLAUDE.md`'s "Additional Hard Rules" section is not self-auditing —
+   it drifted false for at least 3 of 8 bullets with no CI signal catching
+   it.** The 80%/95% coverage bullet, the zero-undocumented-public-APIs
+   bullet, and the 50-line-function-body bullet all read as CI-hard-blocked
+   but were `continue-on-error` soft gates (coverage, docs) or had no
+   mechanical check at all (function length — only a WARNING-tier LLM
+   question). **Constrains future work:** adding a new bullet to that
+   section without also pointing at its exact `konjo-gate.yml` job:step (as
+   this sprint's audit now does for all 8) is how this drift happens again.
+   Any future sprint that makes the 80% coverage gate or the doc-coverage
+   gate genuinely hard should flip its `continue-on-error: true` to `false`
+   in the same commit that updates the `CLAUDE.md` bullet, not before.
+3. **The Phase-0 stop rule is real and fired.** 5 self-claims with no
+   enforcing step were found (2 dark rubrics + 3 hard-rule bullets), against
+   a threshold of 3. Per the brief: *"A repo that misdescribes its own gates
+   should not have more gates added to it until the description is true."*
+   Phases 1–4 (determinism substrate, panic/resource surface, error
+   taxonomy, enforcement-from-first-prompt) and the pre-flight kill-tests
+   KT-S13.1/KT-S13.2 (both scoped to gates Phase 1 would introduce) did not
+   run this sprint. **Constrains future work:** the next session resuming
+   this sprint should re-run the Phase-0 audit (or verify no new drift
+   independently) before starting Phase 1 — see
+   `.konjo/killtests/S13/PHASE0-STOP-RULE.md` for the full audit and
+   `NEXT_SESSION_PROMPT.md` for the resume point.
+
+Full audit trail, corrected baseline table, and per-bullet enforcing-step
+citations: `.konjo/killtests/S13/PHASE0-STOP-RULE.md`.
+
 ## Sprint E (The Economics Layer, Finding #10) — re-scoped against the real architecture, not the brief's file-level sketch
 
 **KT-E — current governor behavior on limit trip, read before any of this was written.** The brief opens: "I have already lost an entire quota to a single runaway agent session. The current governor exists because of that." Before writing any code, every file the brief names was read and `rg -n "budget|ceiling|max_tokens|limit" crates/` was walked in full (via a dedicated research pass — 1345 matches). What's actually there differs from what the brief assumes in three load-bearing ways:

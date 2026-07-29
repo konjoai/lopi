@@ -1,25 +1,35 @@
 ---
 decays: state
-verified-against: e2f9362
+verified-against: b93e68f
 verified-date: 2026-07-28
 ---
 
 # Trifecta paths — untrusted input → powerful tools → external comms
 
-Verified against: `e2f9362` · 2026-07-28 (merge of three independent re-verifications in the same
-window, none of which touched another's cited files — no new drift from combining them. Sprint
-E/Finding #10 added a `/cost` command to `whatsapp.rs`'s handler, read-only and adding no new row
-to §1's table — see the note under §4; §1's row D citation updated after Sprint E shifted line
-numbers in `whatsapp.rs`. Finding #4's symbol-index sprint (`6a50c45`): §0's `ServeWebhooks`
-citation and §8 row 1/row 5's `submit_task` citations updated after `Index`/`Map`/`McpIndexServe`
-CLI commands and the `index_tools` module were inserted ahead of them in `src/cli.rs` and
-`src/mcp_commands/mod.rs`; `Sail`'s citation was unaffected since the insertion landed after it;
-content at every updated citation is unchanged, only line numbers shifted. The demo-mode +
-measurement sprint (`d6e0f02`): no content drift — that sprint touched `lopi-core`, `lopi-memory`,
-`lopi-agent::pricing`, and `lopi-ui`'s repo-discovery/handlers, none of which change the
-webhook/WhatsApp trust boundaries this doc describes. §5's "done" statuses still hold. §0's other
-citations and §2's citations describe the pre-Sprint-S2 baseline at `3a8a2ff` by design and are
-left as historical record — see §5 for what actually shipped)
+Verified against: `b93e68f` · 2026-07-28 (re-verified; G0 flagged this doc stale — 20+ commits
+past `e2f9362` — after an unrelated Sprint S13 Phase 0 PR landed a commit on top of it. Diffed
+every commit `e2f9362..b93e68f` against every file this doc cites: `crates/lopi-core/src/config.rs`,
+`crates/lopi-remote/src/whatsapp.rs`, `crates/lopi-orchestrator/src/pool/`, `crates/lopi-ui/src/web/mod.rs`,
+`src/cli.rs`, and `src/sail_commands.rs` all changed (Sprint E's economics layer + `lopi cost`/
+`lopi rates` CLI commands); every other cited file (`github.rs`, `issue.rs`, `task.rs`,
+`successor.rs`, `permission_mode.rs`, `diff.rs`, `manager.rs`, `worktree.rs`, `prompt.rs`,
+`stability_runner.rs`, `test_phase.rs`, `claude_spawn.rs`, `api_middleware.rs`, `auth_policy.rs`,
+`cors_policy.rs`, `ws_ticket.rs`, `src/mcp_commands/mod.rs`) is untouched since `e2f9362` — no
+drift possible there. Of the changed files: two real line-citation drifts found and fixed —
+`src/cli.rs`'s `Sail`/`ServeWebhooks` `--host` citations (§0) and `config.rs`'s `WebConfig.host`
+citation (§4) had drifted (the `Sail`/`ServeWebhooks` citations were already stale even at the
+`e2f9362` checkpoint, predating this window — corrected now regardless). `whatsapp.rs`'s row-D
+`/task` handler citation (§1, §6 row K) is unchanged (Sprint E's `/cost` addition landed after it,
+not before). `crates/lopi-orchestrator/src/pool/`'s new `economics_admit.rs`/`runaway_monitor.rs`
+gate budget admission, not tool access or trust classification — §1's "full tool access" claim is
+unaffected. `web/mod.rs`'s one-line change adds `/api/economics` to the `protected` router — live
+confirmation §7's structural fix (every route lives in `protected` or the public fallback, no
+third place) is still holding. No content-level drift found in any changed file; only the two
+line-number citations above needed correcting. (Superseded prior banner covered `e2f9362` and
+below; the Finding #4 symbol-index, Sprint E `/cost`, and demo-mode reconciliation history it
+recorded still holds — nothing here revisits it.) §0's other citations and §2's citations
+describe the pre-Sprint-S2 baseline at `3a8a2ff` by design and are left as historical record —
+see §5 for what actually shipped)
 
 Konjo Forward **F10**: lopi has the lethal trifecta by construction — untrusted content in
 (webhooks), powerful tools (code execution, git, PR creation), external comms out (Telegram,
@@ -32,7 +42,7 @@ kill-test (don't trust these citations) before building on it in a later sprint.
 
 **Confirmed live exposure, found during pre-flight — not in the sprint brief's own gap table.**
 
-`src/cli.rs:88-91` (`Sail`) and `src/cli.rs:243-247` (`ServeWebhooks`) both default `--host` to
+`src/cli.rs:95-96` (`Sail`) and `src/cli.rs:286-287` (`ServeWebhooks`) both default `--host` to
 `127.0.0.1`. That default is correct and unchanged by this sprint.
 
 But `fly.toml:20-21` overrides it:
@@ -129,7 +139,7 @@ brief's own "no policy engine, most teams overshoot by one tier" caution.
   Sprint E (Finding #10) added a `/cost` command to this same handler — read-only (formats a
   unit-economics report from the local ledger, no `Task` construction, no external call), so it
   adds no new row to this table and doesn't change the "dormant, no CLI wrapper" status above.
-- **`crates/lopi-core/src/config.rs:135`** (`WebConfig.host`) is dead configuration — parsed
+- **`crates/lopi-core/src/config.rs:143`** (`WebConfig.host`) is dead configuration — parsed
   from `lopi.toml` but never read anywhere (`grep -rn "\.web\.host"` matches nothing); `Sail`'s
   actual bind host only ever comes from the CLI `--host` flag. Not a security issue, just
   pre-existing drift noted in passing.

@@ -5,6 +5,59 @@ the `lopi` repo. Newest first.
 
 ---
 
+## Next Session — Resume Sprint S13 at Phase 1, after the Phase 0 stop (`[0.38.0]`)
+
+Sprint S13 (Quality Substrate and Continuous Enforcement) ran Phase 0 (the
+honesty pass on quality claims) and then **stopped**, per the sprint's own
+stop rule: Phase 0 found 5 self-claims with no genuine enforcing step
+(2 dark `.konjo/rubrics/*.toml` files with zero code consumer, 3 of
+`CLAUDE.md`'s 8 "Additional Hard Rules" bullets that were actually soft
+`continue-on-error` gates or had no mechanical check at all) against a
+threshold of 3. Full audit: `.konjo/killtests/S13/PHASE0-STOP-RULE.md`.
+One-way-door decisions: `LEDGER.md`'s S13 Phase 0 entry.
+
+**What's already done and should not be re-derived:** the two dark rubrics
+(`refactor_safety.toml`, `security_audit.toml`) are deleted and every doc
+that claimed "three canonical rubrics ship" (`KONJO_VERIFIER.md`, `PLAN.md`)
+is corrected; the 3 false-hard `CLAUDE.md` bullets (coverage 80%/95%, doc
+coverage, function length) now correctly describe their real enforcement
+status, each cited to its exact `konjo-gate.yml` job:step; 4 dead path
+globs in `.claude/rules/benchmarking.md` and `.claude/rules/testing.md` are
+fixed and verified against the real repo layout; the sprint brief's baseline
+evidence table is re-verified with two real drifts corrected (a second
+production unbounded channel at `src/repl/mod.rs:76` the original baseline
+missed, and `anyhow::` usage grown from 106 to 131 files).
+
+**First thing to do:** before writing any Phase 1 code, re-verify Phase 0's
+claim-mapping table is still accurate (nothing should have drifted since —
+this repo's `main` doesn't move fast enough for that — but the brief's own
+discipline is "verify, don't assume"). If it still holds at ≤3 unmapped
+claims, proceed straight to Phase 1: `rust-toolchain.toml`, MSRV bisection
+(record the bisection result, don't guess), the edition/`unsafe`-2024
+question in `crates/lopi-ui/src/client/auth.rs` (resolve why CI is currently
+green before touching it), `[workspace.lints.rust]`/`[workspace.lints.clippy]`
+on the root `Cargo.toml` + `lints.workspace = true` on all 18 crates, and
+`overflow-checks = true` in `[profile.release]` — gated by **KT-S13.2**
+(add a temp `#[test]` in `lopi-core` doing `u64::MAX + 1` via a runtime
+value, confirm it panics under `--release` only after the profile change,
+then delete the temp test). Phase 1 is the first phase to introduce a real
+gate, so **KT-S13.1** (a bad+good fixture pair under `.konjo/fixtures/S13/`
+for every new gate, proven to reject/accept before it's wired into CI)
+starts applying from here forward — it did not apply to Phase 0 since Phase
+0 introduced no gates, only corrected/deleted existing claims.
+
+Then Phase 2 (indexing floor ratchet — seed `.konjo/indexing-floor.txt` at
+the current count, which needs re-measuring since Phase 0 found the
+production-indexing-site count (202) unchanged from baseline but did not
+re-verify it post-Phase-0-edits), Phase 3 (error taxonomy — `lopi-core`,
+`lopi-git`, `lopi-memory` only, `LEDGER.md`-tracked), Phase 4 (the actual
+enforcement-from-first-prompt wiring — `CLAUDE.md` security/resource lines,
+`security.md` split into invariants/sinks, `SessionStart` hook, the
+hardcoded macOS path in `.claude/settings.json`, `post-edit.sh` extension,
+CI wiring for every new gate).
+
+---
+
 ## Next Session — T1 (Input & Command Layer), after Sprint T0 (`[0.35.0]`)
 
 Sprint T0 (TUI Client Foundation & Domain Port) landed at `0.35.0`. The TUI
