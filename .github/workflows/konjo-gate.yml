@@ -711,7 +711,16 @@ jobs:
           KIBAN_REF: "v1.8.0"
         run: |
           pip install --quiet pyyaml
+          # .konjo/profile.yml's contract_gates also names cargo-deny and its mutation
+          # field names cargo-mutants — both are genuine _TOOL_SCOPE entries in
+          # konjo_gates_py's dispatcher (unlike e.g. dead-code/complexity, which are
+          # documentation-only names konjo-gates can't run), so it really does invoke
+          # them, not just document that lopi's own CI checks them too. Install
+          # alongside cargo-audit so those two gates actually run instead of ERROR-ing
+          # as "not installed" (confirmed live: PR #184's first run on this job).
           cargo +stable install cargo-audit --locked --quiet 2>/dev/null || true
+          cargo +stable install cargo-deny --locked --quiet 2>/dev/null || true
+          cargo +stable install cargo-mutants --locked --quiet 2>/dev/null || true
           git clone --quiet --depth 1 --branch "$KIBAN_REF" https://github.com/konjoai/kiban.git /tmp/kiban
 
       - name: Run konjo-gates against .konjo/profile.yml

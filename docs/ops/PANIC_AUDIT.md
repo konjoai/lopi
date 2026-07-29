@@ -1,12 +1,24 @@
 ---
 decays: state
-verified-against: 28dd4cf
-verified-date: 2026-07-28
+verified-against: 1dd471d
+verified-date: 2026-07-29
 ---
 
 # Panic audit — the trustworthy count, and why grep couldn't give it to you
 
-Verified against: `28dd4cf` · 2026-07-28 (re-verified again; this doc keeps crossing
+Verified against: `1dd471d` · 2026-07-29 (re-verified again; Sprint S13R's own 9-commit
+volume pushed this past the 20-commit cap, not the zero-unwrap claim losing accuracy.
+Re-confirmed live, not assumed: this sprint ran the exact cited deny-flag `cargo clippy
+--workspace --all-targets --all-features -- -D warnings -D clippy::unwrap_used
+-D clippy::expect_used ...` command repeatedly while verifying its own new
+`[workspace.lints]` wiring (Phase C) — clean, 0 unwrap/expect/panic violations,
+across every crate including the 4 error-taxonomy conversions Phase E made
+(`lopi-core`'s `sqlite_pool.rs`/`config.rs`/`loop_config.rs`/`task.rs`, `lopi-git`'s
+`diff.rs`) and the bounded-channel changes in Phase D. The 5 pre-existing violations
+this sprint did find and fix under that same command
+(`clippy::uninlined_format_args`/`clippy::duplicated_attributes`, see `LEDGER.md`'s
+`Workspace-Lints-1`) are a different lint family entirely, not this doc's zero-unwrap
+claim. Prior banner (`28dd4cf` · 2026-07-28, re-verified again; this doc keeps crossing
 the 20-commit staleness cap purely on Sprint E/Finding #10's own merge-commit volume,
 not on the zero-unwrap claim losing accuracy — re-confirmed live with the exact
 deny-flag `cargo clippy --workspace --all-targets --all-features` invocation cited

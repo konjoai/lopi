@@ -1,12 +1,20 @@
 ---
 decays: state
-verified-against: 28dd4cf
-verified-date: 2026-07-28
+verified-against: 1dd471d
+verified-date: 2026-07-29
 ---
 
 # The Pentad — Loop Engineering Completion Roadmap
 
-Verified against: `28dd4cf` · 2026-07-28 (re-verified; this doc only crossed the
+Verified against: `1dd471d` · 2026-07-29 (re-verified; Sprint S13R's own commit volume
+(9 commits) pushed this past the 20-commit cap again, not because a citation lost
+accuracy. Of this doc's cited files, S13R touched `crates/lopi-core/src/config.rs`
+and `crates/lopi-core/src/task.rs`: `config.rs` gained a `ConfigLoadError` enum before
+its existing content (an anyhow -> typed-error conversion, no line citation of this
+doc's points into that file); `task.rs`'s only change was a like-for-like 3-line
+replacement in `Rubric::from_toml_str` with zero net line delta, confirmed
+`Task::from_template` is still exactly at `:467-472` as cited below. No other cited
+file changed. Prior banner (`28dd4cf` · 2026-07-28, re-verified; this doc only crossed the
 20-commit staleness cap because of Sprint E/Finding #10's own commit volume (two
 merge commits reconciling with `main`), not because anything it cites lost
 accuracy. Checked every citation into files that changed since the prior
