@@ -19,3 +19,6 @@ anyhow = "1"
 [[bench]]
 name = "token_savings"
 harness = false
+
+[lints]
+workspace = true

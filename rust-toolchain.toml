@@ -1,0 +1,10 @@
+[toolchain]
+# MSRV, by bisection (Sprint S13R, Phase C) — not guessed. `cargo +X check --workspace`
+# against the real Cargo.lock: 1.87.0 fails (`home@0.5.12 requires rustc 1.88`, pulled in
+# transitively via `which` <- lopi-agent/lopi-spec, `cargo tree -i home`), 1.88.0 builds
+# clean. lopi's own code would tolerate a lower floor on language features alone
+# (`std::sync::LazyLock`, used in lopi-git/lopi-core, needs only 1.80.0), but the real,
+# buildable MSRV with this lockfile is set by a transitive dependency, not lopi's code —
+# recorded as the honest number, not the lower one. See LEDGER.md's `MSRV-Bisection-1`.
+channel = "1.88.0"
+components = ["rustfmt", "clippy"]
