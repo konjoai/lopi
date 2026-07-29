@@ -617,6 +617,17 @@ jobs:
     # a real CI run confirms all three targets compile and run clean, remove
     # this continue-on-error and add `fuzz` to konjo-gate's `needs:` so a
     # genuine crash actually blocks merge instead of being logged only.
+    #
+    # Sprint S13R, Phase C added a repo-root `rust-toolchain.toml` pinning
+    # 1.88.0 for the MSRV gate — rustup resolves that file for ANY cargo
+    # invocation anywhere under this checkout, which silently overrode
+    # `dtolnay/rust-toolchain@nightly`'s default and broke `cargo install
+    # cargo-fuzz` here (`cargo-platform@0.3.3 requires rustc 1.91`, confirmed
+    # via a real CI failure on PR #184 the day this job first exercised the
+    # new pin). Every cargo invocation below now pins `+nightly` explicitly —
+    # a `+toolchain` CLI override outranks a `rust-toolchain.toml` file in
+    # rustup's resolution order, so this job keeps using nightly regardless
+    # of the repo-root MSRV pin.
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
@@ -628,18 +639,18 @@ jobs:
           workspaces: fuzz -> target
 
       - name: Install cargo-fuzz
-        run: cargo install cargo-fuzz --locked
+        run: cargo +nightly install cargo-fuzz --locked
 
       - name: Fuzz jsonrpc_response_fuzz (MCP server responses)
-        run: cargo fuzz run jsonrpc_response_fuzz -- -max_total_time=60
+        run: cargo +nightly fuzz run jsonrpc_response_fuzz -- -max_total_time=60
         working-directory: fuzz
 
       - name: Fuzz claude_events_fuzz (claude CLI stream-json)
-        run: cargo fuzz run claude_events_fuzz -- -max_total_time=60
+        run: cargo +nightly fuzz run claude_events_fuzz -- -max_total_time=60
         working-directory: fuzz
 
       - name: Fuzz github_webhook_fuzz (GitHub webhook bodies, pre-HMAC)
-        run: cargo fuzz run github_webhook_fuzz -- -max_total_time=60
+        run: cargo +nightly fuzz run github_webhook_fuzz -- -max_total_time=60
         working-directory: fuzz
 
       - name: Upload crash artifacts
