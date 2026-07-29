@@ -1,3 +1,34 @@
+## [0.40.0] -- Track C: error-taxonomy ratchet, finish lopi-git's anyhow migration
+
+**Sprint S13R migrated `lopi-core` and part of `lopi-git` off `anyhow::` onto typed
+(`thiserror`) errors but shipped no gate holding that migration in place -- nothing
+stopped `anyhow` walking back into an already-migrated crate. This track closes that
+gap and finishes what S13R started in `lopi-git`.**
+
+### Added
+- **`.konjo/scripts/error_taxonomy_check.py` + `.konjo/error-taxonomy.txt`**: a
+  per-crate ratchet on non-test `anyhow::` file counts (one floor row per crate under
+  `crates/`, not a single workspace-wide total -- see `LEDGER.md` for why a shared
+  total can't tell "regression in a migrated crate" apart from "no change in an
+  unmigrated one"). Wired into `konjo-gate.yml` as a hard gate and registered in
+  `.konjo/profile.yml`'s `gates:` with a `rejects_test` kill-test
+  (`.konjo/scripts/test_error_taxonomy_killtest.sh`, KT-C.1), proven against both a
+  planted regression (rejected) and an unchanged unmigrated crate (accepted) in the
+  same run.
+
+### Changed
+- **`crates/lopi-git/src/manager.rs`, `rebase.rs`, `worktree.rs`** migrated off
+  `anyhow::` onto typed errors (`GitManagerError`, `WorktreeError`), matching the
+  `thiserror` pattern `diff.rs` and `lopi-core`'s config/loop-config/sqlite-pool
+  modules already established. `lopi-git`'s `anyhow` dependency dropped from
+  `Cargo.toml` -- no source file in the crate references it anymore.
+- **Error-taxonomy floor seeded from real measurement, not the S13R brief's carried-
+  forward figures**: `lopi-core` measures 1 (not 2 -- `sqlite_pool.rs`'s only
+  `anyhow::` text is a doc comment, correctly excluded), `lopi-git` measured 3 and is
+  now fully migrated to 0, `lopi-memory` measures 30 and is unchanged (deferred, see
+  `NEXT_SESSION_PROMPT.md`). All 18 crates under `crates/` get a floor row, including
+  the 5 already at 0.
+
 ## [0.39.0] — Sprint S13R: connect the kiban pilot, clear the stop rule, resume S13 (Phases A–F)
 
 **Phase 0's corrections (0.38.0) cleared its own stop rule on re-run this sprint: 0
