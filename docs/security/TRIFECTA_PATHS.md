@@ -1,12 +1,18 @@
 ---
 decays: state
-verified-against: ef41e7f
+verified-against: a2f6f78
 verified-date: 2026-07-29
 ---
 
 # Trifecta paths — untrusted input → powerful tools → external comms
 
-Verified against: `ef41e7f` · 2026-07-29 (re-verified; Sprint S13R's Phases C-E touched four
+Verified against: `a2f6f78` · 2026-07-29 (re-verified again; this sprint's own commit volume
+crossed the 20-commit cap a second time, not from new content drift. One more citation
+shifted since the `ef41e7f` pass below: the `gate_polarity` triage's fix to
+`whatsapp.rs`'s `check_signature` (naming the no-secret branch's `Ok(())` via
+`verification_disabled_override()`) added one line above row D's `/task` handler, so
+`128-142` → `129-142`, corrected above. No other citation moved. Prior banner (`ef41e7f` ·
+2026-07-29 (re-verified; Sprint S13R's Phases C-E touched four
 files this doc cites — `crates/lopi-core/src/config.rs`, `crates/lopi-core/src/task.rs`,
 `crates/lopi-git/src/diff.rs`, `crates/lopi-git/src/manager.rs`, and
 `crates/lopi-remote/src/whatsapp.rs` — while converting `anyhow` call sites to typed errors
@@ -94,7 +100,7 @@ which is the correct one-way trade but still needs a fix to run at all).
 | A | `crates/lopi-webhook/src/github.rs:157-167` `queue_ci_fix` — any CI-failure event on a watched repo | `Task` (`TaskSource::Webhook`), goal = "Investigate and fix CI failure on {repo}" | Yes — completion fires `notify_loop` | HMAC on the webhook itself (Phase 3, see below); **none** on task execution (pre-Phase-5; now gated by `gate_untrusted_source`, see §5) |
 | B | `crates/lopi-webhook/src/github.rs:184-221` `handle_pr_review` — a PR review with `changes_requested`, review **body text attacker-controlled** | `Task`, review body appended verbatim to `t.constraints` | Yes | Same as A |
 | C | `crates/lopi-webhook/src/issue.rs:159-181` — an opened/labeled GitHub issue, Haiku-triaged then auto-queued if `Bug` @ confidence ≥ 0.7 or `lopi:fix` label. **Issue body (attacker-controlled, up to 500 chars) injected as a task constraint** | `Task`, `TaskSource::Webhook` | Yes | Same as A |
-| D | `crates/lopi-remote/src/whatsapp.rs:128-142` — inbound `/task <goal>` over Twilio WhatsApp, **goal text is attacker/sender-controlled directly**, `TaskSource::Webhook { repo: "whatsapp", .. }` | `Task` | Yes | Optional Twilio signature (`signing_secret`); **but see §4 — this module is not wired to any CLI command and is unreachable in the built binary today** |
+| D | `crates/lopi-remote/src/whatsapp.rs:129-142` — inbound `/task <goal>` over Twilio WhatsApp, **goal text is attacker/sender-controlled directly**, `TaskSource::Webhook { repo: "whatsapp", .. }` | `Task` | Yes | Optional Twilio signature (`signing_secret`); **but see §4 — this module is not wired to any CLI command and is unreachable in the built binary today** |
 | E | ~~`crates/lopi-remote/src/telegram/handlers.rs:181-211`~~ — **transport removed, Sprint S10 Phase 4.** Historical rows with `TaskSource::Telegram` still deserialize and read as `provenance: "operator"` (`TaskRow::provenance()`); `is_untrusted_source` still classifies the variant as untrusted for chain-depth purposes (Successor-1) — a different, narrower notion of "untrusted" than this row ever used, see `LEDGER.md`. Nothing constructs this variant anymore. | (historical only) | — (no longer reachable) | Moot — removed rather than gated |
 
 Rows A–D converge on the same `TaskQueue` → `AgentPool` → `AgentRunner` pipeline
