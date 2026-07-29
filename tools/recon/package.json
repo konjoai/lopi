@@ -1,0 +1,13 @@
+{
+  "name": "lopi-recon",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Sprint U-0 dashboard recon — throwaway Playwright tooling, not part of the lopi workspace.",
+  "type": "module",
+  "scripts": {
+    "capture": "node scripts/capture.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1"
+  }
+}
