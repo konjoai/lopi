@@ -85,9 +85,19 @@ contract_gates:
   - unsafe-budget          # kiban-native, diff-only (already generic; genuinely active here)
 
 # Confirmed from konjo-gate.yml G3: `cargo mutants --in-diff <(git diff)`, survival <= 10%
-# on changed files. Kept repo-native for the percentage-survival reporting step; the
-# underlying tool is the same `cargo-mutants` konjo-gates already runs diff-scoped.
-mutation: cargo-mutants
+# on changed files. Sprint S13R, Phase A3's own first live run found this profile's
+# original `cargo-mutants` value here is genuinely dispatched (`_gate_plan` appends any
+# non-"none"-prefixed `mutation:` value to `repo_tools` the same as a `contract_gates`
+# entry), not just documented — same class of gap the `cargo-deny` entry above had (which
+# genuinely needed installing), except `cargo mutants`'s own stdout is a build/test log
+# carrying wall-clock timings on every line, not stable per-finding output the way a
+# linter's is, so `newonly.net_new`'s line-diff treats almost every run as "net-new
+# findings" regardless of whether anything mutation-relevant changed (confirmed live:
+# PR #184's first run here failed with 3 "findings" that were just timing-varying log
+# lines). `none` is the field's own documented escape hatch for "kept repo-native" (G3
+# already runs the real survival-rate check); using it instead of a comment that the
+# dispatcher ignores.
+mutation: "none — kept repo-native (G3's survival-rate gate); newonly's line-diff can't scope cargo-mutants' timing-carrying log output"
 
 # kiban-native review lanes. lopi's defect history (per .claude/rules/security.md's
 # sprint-cited lines, see LEDGER.md and Phase 5) is concentrated in exactly these shapes:
