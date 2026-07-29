@@ -44,7 +44,7 @@ pub(super) async fn static_handler(uri: Uri) -> Response {
 
     // 2. .html fallback for prerendered routes
     if !path.is_empty() && !path.contains('.') {
-        let html_path = format!("{}.html", path);
+        let html_path = format!("{path}.html");
         if let Some(file) = WebAssets::get(&html_path) {
             return file_response(file, &html_path);
         }

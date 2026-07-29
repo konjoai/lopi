@@ -176,7 +176,7 @@ fn draw_output(f: &mut Frame, area: Rect, state: &ReplState) {
         let frame = spinner_frame(state.anim_tick);
         let step_line = Line::from(vec![
             Span::styled(
-                format!("  {} ", frame),
+                format!("  {frame} "),
                 Style::default()
                     .fg(Color::Yellow)
                     .add_modifier(Modifier::BOLD),

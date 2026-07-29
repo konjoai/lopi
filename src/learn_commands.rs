@@ -128,7 +128,7 @@ pub async fn run(cmd: LearnCmd, db_path: PathBuf) -> Result<()> {
                     );
                 }
                 None => {
-                    eprintln!("❌ pattern not found for id prefix: {}", id);
+                    eprintln!("❌ pattern not found for id prefix: {id}");
                     std::process::exit(1);
                 }
             }
