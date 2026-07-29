@@ -13,12 +13,56 @@
 //! removes its checkout, so a panicking attempt cannot leak a checkout or a
 //! dangling `git worktree list` entry.
 
-use anyhow::{Context, Result};
 use git2::Repository;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock};
+use thiserror::Error;
 use tokio::sync::Mutex;
+
+/// Errors from [`WorktreeManager`] and [`Worktree`] operations (Track C --
+/// the error-taxonomy pass finishing what Sprint S13R, Phase E started in
+/// `diff.rs`).
+#[derive(Debug, Error)]
+pub enum WorktreeError {
+    /// Opening the repository at `path` failed.
+    #[error("opening git repo at {path}: {source}")]
+    OpenRepo {
+        /// The path that failed to open as a git repository.
+        path: PathBuf,
+        #[source]
+        source: git2::Error,
+    },
+    /// Creating the worktree root directory failed.
+    #[error("creating worktree root {path}: {source}")]
+    CreateRoot {
+        /// The directory that could not be created.
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+    /// A `git` subprocess could not be spawned or its output read.
+    #[error("invoking git: {0}")]
+    Spawn(#[source] std::io::Error),
+    /// A `git` subprocess ran but exited non-zero.
+    #[error("git {args:?} failed: {stderr}")]
+    CommandFailed {
+        /// The `git` argument vector that failed.
+        args: Vec<String>,
+        /// Its captured stderr.
+        stderr: String,
+    },
+    /// A named operation wrapping an inner `WorktreeError`, giving the
+    /// original message a caller-relevant label (e.g. which branch or task
+    /// an `add` was for) without needing a bespoke variant per call site.
+    #[error("{context}: {source}")]
+    Context {
+        /// What this repo was doing when `source` occurred.
+        context: String,
+        #[source]
+        source: Box<WorktreeError>,
+    },
+}
 
 /// Directory, relative to the repo root, that holds all lopi worktrees.
 const WORKTREE_ROOT: &str = ".lopi/worktrees";
@@ -42,10 +86,12 @@ impl WorktreeManager {
     ///
     /// # Errors
     /// Returns `Err` if the path is not a valid git repository.
-    pub fn new(repo_path: impl AsRef<Path>) -> Result<Self> {
+    pub fn new(repo_path: impl AsRef<Path>) -> Result<Self, WorktreeError> {
         let p = repo_path.as_ref().to_path_buf();
-        let _ =
-            Repository::open(&p).with_context(|| format!("opening git repo at {}", p.display()))?;
+        Repository::open(&p).map_err(|source| WorktreeError::OpenRepo {
+            path: p.clone(),
+            source,
+        })?;
         Ok(Self { repo_path: p })
     }
 
@@ -64,7 +110,12 @@ impl WorktreeManager {
     /// # Errors
     /// Returns `Err` if `git worktree add` fails (e.g. the branch already exists
     /// at a different commit, or the path is occupied).
-    pub async fn add(&self, task_id: &str, attempt: u32, branch: &str) -> Result<Worktree> {
+    pub async fn add(
+        &self,
+        task_id: &str,
+        attempt: u32,
+        branch: &str,
+    ) -> Result<Worktree, WorktreeError> {
         let slug = worktree_slug(task_id, attempt);
         let path = self.root().join(&slug);
         self.ensure_parent(&path).await?;
@@ -73,7 +124,10 @@ impl WorktreeManager {
             let _guard = WT_META_LOCK.lock().await;
             run_git(&self.repo_path, &args)
                 .await
-                .with_context(|| format!("git worktree add for branch {branch}"))?;
+                .map_err(|source| WorktreeError::Context {
+                    context: format!("git worktree add for branch {branch}"),
+                    source: Box::new(source),
+                })?;
         }
         Ok(Worktree::new(
             self.repo_path.clone(),
@@ -93,7 +147,7 @@ impl WorktreeManager {
     /// # Errors
     /// Returns `Err` if `git worktree add --detach` fails (e.g. the path is
     /// occupied by a stale checkout).
-    pub async fn add_detached(&self, task_id: &str) -> Result<Worktree> {
+    pub async fn add_detached(&self, task_id: &str) -> Result<Worktree, WorktreeError> {
         let path = self.root().join(sanitize(task_id));
         self.ensure_parent(&path).await?;
         let args = add_detached_args(&path);
@@ -101,18 +155,24 @@ impl WorktreeManager {
             let _guard = WT_META_LOCK.lock().await;
             run_git(&self.repo_path, &args)
                 .await
-                .with_context(|| format!("git worktree add --detach for {task_id}"))?;
+                .map_err(|source| WorktreeError::Context {
+                    context: format!("git worktree add --detach for {task_id}"),
+                    source: Box::new(source),
+                })?;
         }
         Ok(Worktree::new(self.repo_path.clone(), path, String::new()))
     }
 
     /// Create the worktree's parent directory if needed (`git worktree add`
     /// requires the parent to exist but the leaf not to).
-    async fn ensure_parent(&self, path: &Path) -> Result<()> {
+    async fn ensure_parent(&self, path: &Path) -> Result<(), WorktreeError> {
         if let Some(parent) = path.parent() {
-            tokio::fs::create_dir_all(parent)
-                .await
-                .with_context(|| format!("creating worktree root {}", parent.display()))?;
+            tokio::fs::create_dir_all(parent).await.map_err(|source| {
+                WorktreeError::CreateRoot {
+                    path: parent.to_path_buf(),
+                    source,
+                }
+            })?;
         }
         Ok(())
     }
@@ -121,7 +181,7 @@ impl WorktreeManager {
     ///
     /// # Errors
     /// Returns `Err` if `git worktree prune` fails.
-    pub async fn prune(&self) -> Result<()> {
+    pub async fn prune(&self) -> Result<(), WorktreeError> {
         let _guard = WT_META_LOCK.lock().await;
         run_git(&self.repo_path, &["worktree".into(), "prune".into()]).await
     }
@@ -131,7 +191,7 @@ impl WorktreeManager {
     ///
     /// # Errors
     /// Returns `Err` if `git worktree list` fails.
-    pub async fn list(&self) -> Result<Vec<PathBuf>> {
+    pub async fn list(&self) -> Result<Vec<PathBuf>, WorktreeError> {
         let out = run_git_stdout(
             &self.repo_path,
             &["worktree".into(), "list".into(), "--porcelain".into()],
@@ -154,7 +214,7 @@ impl WorktreeManager {
     ///
     /// # Errors
     /// Returns `Err` only if the initial `git worktree prune`/`list` fails.
-    pub async fn gc(&self, branch_prefix: &str) -> Result<GcReport> {
+    pub async fn gc(&self, branch_prefix: &str) -> Result<GcReport, WorktreeError> {
         let _guard = WT_META_LOCK.lock().await;
         run_git(&self.repo_path, &["worktree".into(), "prune".into()]).await?;
         let porcelain = run_git_stdout(
@@ -199,7 +259,11 @@ impl WorktreeManager {
 
     /// Delete local branches matching `prefix` that are not checked out in any
     /// live worktree. Returns the count deleted.
-    async fn delete_stale_branches(&self, prefix: &str, live: &[String]) -> Result<usize> {
+    async fn delete_stale_branches(
+        &self,
+        prefix: &str,
+        live: &[String],
+    ) -> Result<usize, WorktreeError> {
         let listed = run_git_stdout(&self.repo_path, &for_each_ref_args()).await?;
         let mut removed = 0;
         for name in listed
@@ -284,7 +348,7 @@ impl Worktree {
     /// # Errors
     /// Returns `Err` if `git worktree remove` fails for a reason other than the
     /// checkout already being gone.
-    pub async fn cleanup(&self) -> Result<()> {
+    pub async fn cleanup(&self) -> Result<(), WorktreeError> {
         if !self.armed.swap(false, Ordering::SeqCst) {
             return Ok(());
         }
@@ -293,7 +357,10 @@ impl Worktree {
         if let Err(e) = run_git(&self.repo_path, &args).await {
             // Re-arm so a later drop still attempts cleanup if this was transient.
             self.armed.store(true, Ordering::SeqCst);
-            return Err(e).context("git worktree remove");
+            return Err(WorktreeError::Context {
+                context: "git worktree remove".to_string(),
+                source: Box::new(e),
+            });
         }
         run_git(&self.repo_path, &["worktree".into(), "prune".into()]).await
     }
@@ -412,25 +479,24 @@ fn branch_delete_args(name: &str) -> Vec<String> {
 }
 
 /// Run `git -C <repo> <args>`, returning `Err` with stderr on a non-zero exit.
-async fn run_git(repo: &Path, args: &[String]) -> Result<()> {
+async fn run_git(repo: &Path, args: &[String]) -> Result<(), WorktreeError> {
     run_git_stdout(repo, args).await.map(|_| ())
 }
 
 /// Run `git -C <repo> <args>` and return its stdout as a `String`.
-async fn run_git_stdout(repo: &Path, args: &[String]) -> Result<String> {
+async fn run_git_stdout(repo: &Path, args: &[String]) -> Result<String, WorktreeError> {
     let out = tokio::process::Command::new("git")
         .arg("-C")
         .arg(repo)
         .args(args)
         .output()
         .await
-        .context("invoking git")?;
+        .map_err(WorktreeError::Spawn)?;
     if !out.status.success() {
-        anyhow::bail!(
-            "git {:?} failed: {}",
-            args,
-            String::from_utf8_lossy(&out.stderr)
-        );
+        return Err(WorktreeError::CommandFailed {
+            args: args.to_vec(),
+            stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
+        });
     }
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
