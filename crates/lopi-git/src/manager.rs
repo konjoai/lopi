@@ -119,7 +119,8 @@ impl GitManager {
                 None,
             )?;
             let checker = DiffChecker::new(allowed, forbidden);
-            checker.validate(&paths)
+            checker.validate(&paths)?;
+            Ok(())
         })
         .await
         .context("join error in check_diff_scope")??;

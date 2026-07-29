@@ -1,5 +1,22 @@
-use anyhow::{bail, Result};
 use glob::Pattern;
+use thiserror::Error;
+
+/// Errors from [`DiffChecker::validate`] (Sprint S13R, Phase E — the
+/// error-taxonomy pass).
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum DiffScopeError {
+    /// A changed path matched a forbidden glob/prefix.
+    #[error("diff touches forbidden path: {0}")]
+    Forbidden(String),
+    /// A changed path is outside every allowed glob/prefix.
+    #[error("diff touches path outside allowed scope: {path} (allowed: {allowed:?})")]
+    OutsideScope {
+        /// The offending path.
+        path: String,
+        /// The configured allow-list, for the error message.
+        allowed: Vec<String>,
+    },
+}
 
 /// Validates changed file paths against configured allow and deny glob patterns.
 pub struct DiffChecker {
@@ -27,16 +44,16 @@ impl DiffChecker {
     ///
     /// # Errors
     /// Returns `Err` if any path touches a forbidden directory or lies outside the allowed scope.
-    pub fn validate(&self, paths: &[String]) -> Result<()> {
+    pub fn validate(&self, paths: &[String]) -> Result<(), DiffScopeError> {
         for p in paths {
             if self.is_forbidden(p) {
-                bail!("diff touches forbidden path: {p}");
+                return Err(DiffScopeError::Forbidden(p.clone()));
             }
             if !self.is_allowed(p) {
-                bail!(
-                    "diff touches path outside allowed scope: {p} (allowed: {:?})",
-                    self.raw_allowed
-                );
+                return Err(DiffScopeError::OutsideScope {
+                    path: p.clone(),
+                    allowed: self.raw_allowed.clone(),
+                });
             }
         }
         Ok(())

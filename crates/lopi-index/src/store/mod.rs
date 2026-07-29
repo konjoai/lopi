@@ -68,7 +68,8 @@ impl IndexStore {
     }
 
     async fn apply_schema(pool: &SqlitePool) -> Result<()> {
-        lopi_core::sqlite_pool::apply_schema(pool, SCHEMA).await
+        lopi_core::sqlite_pool::apply_schema(pool, SCHEMA).await?;
+        Ok(())
     }
 
     /// Read one meta key (`indexed_commit`, `schema_version`, …).
