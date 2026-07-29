@@ -64,6 +64,33 @@ adopts kiban's prepared `profiles/lopi.yml` + `CLAUDE.md` conversion (authored
 read-only against this repo in kiban's own Phase 13), and re-runs Phase 0's audit to
 confirm 0 unmapped claims before resuming the original Phase 1-4 work.
 
+**PR #184 threat model + one-way-door acknowledgment (`gate_threat_model`/
+`gate_one_way_door`, first real run against this PR):**
+
+- **Threat model** (`crates/lopi-remote/src/whatsapp.rs`, a `security_globs`-matched
+  path). Boundary: the WhatsApp webhook's signature-verification bypass when
+  `signing_secret` is unset. This PR did not change the bypass's *behavior* — only
+  named it as an explicit override (`verification_disabled_override()`) instead of a
+  bare `Ok(())`, per `gate_polarity`'s triage. Abuse case: an operator who forgets to
+  set `signing_secret` in a production deployment silently runs with no Twilio
+  signature verification at all, accepting unauthenticated `/task <goal>` commands
+  from anyone who can reach the webhook URL. Mitigation: the struct field's own doc
+  comment already states "`None` = verification disabled (dev mode)" — this PR makes
+  that state machine-visible to `gate_polarity`'s override detector without changing
+  who can reach it; the actual mitigation (never deploy with `signing_secret` unset)
+  is an operator runbook concern, not something this PR's diff closes. Filed, not
+  fixed: see `NEXT_SESSION_PROMPT.md`'s carried item on `eval_runner.rs`'s sibling
+  fail-open gap for the same class of future work.
+- **One-way door**: `path:release-version` (the `VERSION` 0.38.0 -> 0.39.0 bump) and
+  `diff:destructive-shell` (the two new kill-test scripts'
+  `cleanup() { rm -rf "$TMP" "$FIXTURE_DIR"; }` traps — `$TMP` is this script's own
+  `mktemp -d` output, `$FIXTURE_DIR` a path this same script created earlier in the
+  run; neither touches anything outside a directory the script itself owns).
+  Acknowledged: the version bump is a real, intentional release marker for this
+  sprint's work, not an accident; the `rm -rf` sites are scoped exactly as described,
+  confirmed by reading both scripts in full before acknowledging rather than
+  pattern-matching the classifier's own flag.
+
 **Kiban-1.8-Bump-1: the pin moves, and so does what CI absorbs with it.**
 `.konjo/kiban.ref` and `KIBAN_REF` (`konjo-gate.yml`, both the `doc-staleness` job and
 the new `konjo-gates` job below) move from `v1.4.0` to `v1.8.0` together, per the
