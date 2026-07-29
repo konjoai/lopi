@@ -121,5 +121,9 @@ exclude_re = [
     # from the "replace with Ok(None)" mutant without a real keyboard or a
     # raw-mode-dependent injected byte stream, which no test in this module
     # sets up.
-    "repl/mod\\.rs.*CrosstermEvents::next_event",
+    # `<impl EventSource for CrosstermEvents>::next_event` — cargo-mutants renders
+    # the impl-trait qualifier with a closing `>` right before the `::`, so the
+    # pattern matches on the method name alone (unique within this file) rather
+    # than spelling out the exact `<impl ... for Type>` bracket text.
+    "repl/mod\\.rs.*next_event",
 ]
