@@ -1,35 +1,53 @@
 ---
 decays: state
-verified-against: b93e68f
-verified-date: 2026-07-28
+verified-against: ef41e7f
+verified-date: 2026-07-29
 ---
 
 # Trifecta paths — untrusted input → powerful tools → external comms
 
-Verified against: `b93e68f` · 2026-07-28 (re-verified; G0 flagged this doc stale — 20+ commits
-past `e2f9362` — after an unrelated Sprint S13 Phase 0 PR landed a commit on top of it. Diffed
-every commit `e2f9362..b93e68f` against every file this doc cites: `crates/lopi-core/src/config.rs`,
-`crates/lopi-remote/src/whatsapp.rs`, `crates/lopi-orchestrator/src/pool/`, `crates/lopi-ui/src/web/mod.rs`,
-`src/cli.rs`, and `src/sail_commands.rs` all changed (Sprint E's economics layer + `lopi cost`/
-`lopi rates` CLI commands); every other cited file (`github.rs`, `issue.rs`, `task.rs`,
-`successor.rs`, `permission_mode.rs`, `diff.rs`, `manager.rs`, `worktree.rs`, `prompt.rs`,
-`stability_runner.rs`, `test_phase.rs`, `claude_spawn.rs`, `api_middleware.rs`, `auth_policy.rs`,
-`cors_policy.rs`, `ws_ticket.rs`, `src/mcp_commands/mod.rs`) is untouched since `e2f9362` — no
-drift possible there. Of the changed files: two real line-citation drifts found and fixed —
-`src/cli.rs`'s `Sail`/`ServeWebhooks` `--host` citations (§0) and `config.rs`'s `WebConfig.host`
-citation (§4) had drifted (the `Sail`/`ServeWebhooks` citations were already stale even at the
-`e2f9362` checkpoint, predating this window — corrected now regardless). `whatsapp.rs`'s row-D
-`/task` handler citation (§1, §6 row K) is unchanged (Sprint E's `/cost` addition landed after it,
-not before). `crates/lopi-orchestrator/src/pool/`'s new `economics_admit.rs`/`runaway_monitor.rs`
-gate budget admission, not tool access or trust classification — §1's "full tool access" claim is
-unaffected. `web/mod.rs`'s one-line change adds `/api/economics` to the `protected` router — live
-confirmation §7's structural fix (every route lives in `protected` or the public fallback, no
-third place) is still holding. No content-level drift found in any changed file; only the two
-line-number citations above needed correcting. (Superseded prior banner covered `e2f9362` and
-below; the Finding #4 symbol-index, Sprint E `/cost`, and demo-mode reconciliation history it
-recorded still holds — nothing here revisits it.) §0's other citations and §2's citations
-describe the pre-Sprint-S2 baseline at `3a8a2ff` by design and are left as historical record —
-see §5 for what actually shipped)
+Verified against: `ef41e7f` · 2026-07-29 (re-verified; Sprint S13R's Phases C-E touched four
+files this doc cites — `crates/lopi-core/src/config.rs`, `crates/lopi-core/src/task.rs`,
+`crates/lopi-git/src/diff.rs`, `crates/lopi-git/src/manager.rs`, and
+`crates/lopi-remote/src/whatsapp.rs` — while converting `anyhow` call sites to typed errors
+(Phase E) and resolving a `gate_polarity` finding (Phase A). Diffed each against this doc's
+citations: no content-level drift in any of them (every changed function's *behavior* is
+unchanged — `check_signature`'s no-secret branch still returns the same `Ok(())`, just via a
+newly named `verification_disabled_override()`; `check_diff_scope`/`DiffChecker::validate` still
+enforce the same allow/forbid logic, just with a typed `DiffScopeError` instead of `anyhow`), but
+four line-citations drifted and are corrected here: `whatsapp.rs`'s row-D `/task` handler
+(§1, §6 row K) `120-134` → `128-142` (an 8-line insertion above it); `config.rs`'s `WebConfig.host`
+(§4) `143` → `163` (a 20-line insertion above it); `diff.rs`'s `DiffChecker` citation (§8 row 2)
+`12-63` → `29-80` (a 17-line insertion above it); `manager.rs`'s `check_diff_scope` citation
+(§8 row 2) `100-127` → `100-128` (the function itself grew by one line). `task.rs`'s
+`from_toml_str` change (a like-for-like 3-line replacement, zero net line delta) touches no cited
+range. No other cited file changed since `b93e68f`. Superseded prior banner (`b93e68f` ·
+2026-07-28) covered `e2f9362..b93e68f` and is left as historical record below — see that entry for
+the Sprint E economics-layer citation fixes it made; nothing here revisits it. §0's other
+citations and §2's citations describe the pre-Sprint-S2 baseline at `3a8a2ff` by design and are
+left as historical record — see §5 for what actually shipped.
+
+Prior verification banner (`b93e68f` · 2026-07-28): Verified against: `b93e68f` · 2026-07-28
+(re-verified; G0 flagged this doc stale — 20+ commits past `e2f9362` — after an unrelated Sprint
+S13 Phase 0 PR landed a commit on top of it. Diffed every commit `e2f9362..b93e68f` against every
+file this doc cites: `crates/lopi-core/src/config.rs`, `crates/lopi-remote/src/whatsapp.rs`,
+`crates/lopi-orchestrator/src/pool/`, `crates/lopi-ui/src/web/mod.rs`, `src/cli.rs`, and
+`src/sail_commands.rs` all changed (Sprint E's economics layer + `lopi cost`/`lopi rates` CLI
+commands); every other cited file (`github.rs`, `issue.rs`, `task.rs`, `successor.rs`,
+`permission_mode.rs`, `diff.rs`, `manager.rs`, `worktree.rs`, `prompt.rs`, `stability_runner.rs`,
+`test_phase.rs`, `claude_spawn.rs`, `api_middleware.rs`, `auth_policy.rs`, `cors_policy.rs`,
+`ws_ticket.rs`, `src/mcp_commands/mod.rs`) is untouched since `e2f9362` — no drift possible there.
+Of the changed files: two real line-citation drifts found and fixed — `src/cli.rs`'s
+`Sail`/`ServeWebhooks` `--host` citations (§0) and `config.rs`'s `WebConfig.host` citation (§4) had
+drifted (the `Sail`/`ServeWebhooks` citations were already stale even at the `e2f9362` checkpoint,
+predating this window — corrected now regardless). `whatsapp.rs`'s row-D `/task` handler citation
+(§1, §6 row K) is unchanged (Sprint E's `/cost` addition landed after it, not before).
+`crates/lopi-orchestrator/src/pool/`'s new `economics_admit.rs`/`runaway_monitor.rs` gate budget
+admission, not tool access or trust classification — §1's "full tool access" claim is unaffected.
+`web/mod.rs`'s one-line change adds `/api/economics` to the `protected` router — live confirmation
+§7's structural fix (every route lives in `protected` or the public fallback, no third place) is
+still holding. No content-level drift found in any changed file; only the two line-number
+citations above needed correcting.)
 
 Konjo Forward **F10**: lopi has the lethal trifecta by construction — untrusted content in
 (webhooks), powerful tools (code execution, git, PR creation), external comms out (Telegram,
@@ -76,7 +94,7 @@ which is the correct one-way trade but still needs a fix to run at all).
 | A | `crates/lopi-webhook/src/github.rs:157-167` `queue_ci_fix` — any CI-failure event on a watched repo | `Task` (`TaskSource::Webhook`), goal = "Investigate and fix CI failure on {repo}" | Yes — completion fires `notify_loop` | HMAC on the webhook itself (Phase 3, see below); **none** on task execution (pre-Phase-5; now gated by `gate_untrusted_source`, see §5) |
 | B | `crates/lopi-webhook/src/github.rs:184-221` `handle_pr_review` — a PR review with `changes_requested`, review **body text attacker-controlled** | `Task`, review body appended verbatim to `t.constraints` | Yes | Same as A |
 | C | `crates/lopi-webhook/src/issue.rs:159-181` — an opened/labeled GitHub issue, Haiku-triaged then auto-queued if `Bug` @ confidence ≥ 0.7 or `lopi:fix` label. **Issue body (attacker-controlled, up to 500 chars) injected as a task constraint** | `Task`, `TaskSource::Webhook` | Yes | Same as A |
-| D | `crates/lopi-remote/src/whatsapp.rs:120-134` — inbound `/task <goal>` over Twilio WhatsApp, **goal text is attacker/sender-controlled directly**, `TaskSource::Webhook { repo: "whatsapp", .. }` | `Task` | Yes | Optional Twilio signature (`signing_secret`); **but see §4 — this module is not wired to any CLI command and is unreachable in the built binary today** |
+| D | `crates/lopi-remote/src/whatsapp.rs:128-142` — inbound `/task <goal>` over Twilio WhatsApp, **goal text is attacker/sender-controlled directly**, `TaskSource::Webhook { repo: "whatsapp", .. }` | `Task` | Yes | Optional Twilio signature (`signing_secret`); **but see §4 — this module is not wired to any CLI command and is unreachable in the built binary today** |
 | E | ~~`crates/lopi-remote/src/telegram/handlers.rs:181-211`~~ — **transport removed, Sprint S10 Phase 4.** Historical rows with `TaskSource::Telegram` still deserialize and read as `provenance: "operator"` (`TaskRow::provenance()`); `is_untrusted_source` still classifies the variant as untrusted for chain-depth purposes (Successor-1) — a different, narrower notion of "untrusted" than this row ever used, see `LEDGER.md`. Nothing constructs this variant anymore. | (historical only) | — (no longer reachable) | Moot — removed rather than gated |
 
 Rows A–D converge on the same `TaskQueue` → `AgentPool` → `AgentRunner` pipeline
@@ -123,7 +141,7 @@ brief's own "no policy engine, most teams overshoot by one tier" caution.
   a keyboard is only ever sent to a chat that already passed the inbound check (every
   keyboard-sending call site is downstream of `message_handler`'s gate), so this wasn't reachable
   by an unauthorized chat — but it directly violates the standing rule in
-  `.claude/rules/security.md` ("Telegram bot: validate `chat_id` against config allowlist before
+  `.claude/rules/security-invariants.md` ("Telegram bot: validate `chat_id` against config allowlist before
   executing any command"), and it's cheap and adjacent to Phase 4's inbound/outbound authz work on
   the same file tree. **Fixed as part of Phase 4** rather than deferred — see `CHANGELOG.md`.
 - **`crates/lopi-remote/src/whatsapp.rs`** — `whatsapp::serve` is a real inbound webhook handler
@@ -139,7 +157,7 @@ brief's own "no policy engine, most teams overshoot by one tier" caution.
   Sprint E (Finding #10) added a `/cost` command to this same handler — read-only (formats a
   unit-economics report from the local ledger, no `Task` construction, no external call), so it
   adds no new row to this table and doesn't change the "dormant, no CLI wrapper" status above.
-- **`crates/lopi-core/src/config.rs:143`** (`WebConfig.host`) is dead configuration — parsed
+- **`crates/lopi-core/src/config.rs:163`** (`WebConfig.host`) is dead configuration — parsed
   from `lopi.toml` but never read anywhere (`grep -rn "\.web\.host"` matches nothing); `Sail`'s
   actual bind host only ever comes from the CLI `--host` flag. Not a security issue, just
   pre-existing drift noted in passing.
@@ -165,7 +183,7 @@ WhatsApp's dormant path still getting it).
 - **Phase 4 (egress allowlist):** done. `crates/lopi-remote/src/egress.rs` (new) —
   `is_allowed_destination` / `check_egress`, deny-by-default, wired into `notify_loop`. Bundled the
   §4 `callback_query_handler` inbound-authz fix in the same phase (same file tree, same
-  `.claude/rules/security.md` rule).
+  `.claude/rules/security-invariants.md` rule).
 - **Phase 5 (trifecta human gate):** done. `crates/lopi-webhook/src/github.rs::gate_untrusted_source`
   (shared by `queue_ci_fix`, `handle_pr_review`, and `issue.rs`'s auto-queue via
   `crate::github::gate_untrusted_source`), plus the same one-line gate inlined in
@@ -267,7 +285,7 @@ instruction not to let a clean table imply coverage that isn't there.
 | # | Question | Enforcement | file:line | Verdict |
 |---|---|---|---|---|
 | 1 | Repo confinement — can a task run against a repo outside the operator's configured `repo`/`extra_repos`? | None. `task.repo_path` (if set) is used verbatim; if unset, whichever `AgentPool` dequeues the task supplies its own default. No allowlist exists to check against — `LopiConfig` has no `repo`/`extra_repos` field at all; those are CLI flags passed straight into `AgentPool::new` as *defaults*, never consulted again downstream. | `crates/lopi-orchestrator/src/pool/run_loop.rs:99-104` (resolution, no check); `src/mcp_commands/mod.rs:297-298` (`lopi_submit_task` sets `repo_path` from an untyped string, zero validation) | **Unenforced** |
-| 2 | `allowed_dirs`/`forbidden_dirs` — structural or advisory? | Two mechanisms at two pipeline stages. Pre-hoc: injected into the system prompt and checked by the stability harness's plan-sample review, which only warns (`stability_runner.rs`'s own comment: "advisory — the real diff is still enforced separately"). Post-hoc: `DiffChecker`/`check_diff_scope` inspects the actual worktree diff after implementation and rolls the attempt back (`TaskStatus::RolledBack`) on violation. | Advisory: `crates/lopi-agent/src/prompt.rs:27-38`, `crates/lopi-agent/src/runner/stability_runner.rs:54-60`. Structural: `crates/lopi-git/src/diff.rs:12-63`, `crates/lopi-git/src/manager.rs:100-127`, called from `crates/lopi-agent/src/runner/test_phase.rs:60-68,277-283` | **Mixed** — prompt/stability-harness layer is advisory-only; `DiffChecker` is real enforcement, but post-hoc (blocks the diff from persisting/PR-ing, does not prevent the write itself) |
+| 2 | `allowed_dirs`/`forbidden_dirs` — structural or advisory? | Two mechanisms at two pipeline stages. Pre-hoc: injected into the system prompt and checked by the stability harness's plan-sample review, which only warns (`stability_runner.rs`'s own comment: "advisory — the real diff is still enforced separately"). Post-hoc: `DiffChecker`/`check_diff_scope` inspects the actual worktree diff after implementation and rolls the attempt back (`TaskStatus::RolledBack`) on violation. | Advisory: `crates/lopi-agent/src/prompt.rs:27-38`, `crates/lopi-agent/src/runner/stability_runner.rs:54-60`. Structural: `crates/lopi-git/src/diff.rs:29-80`, `crates/lopi-git/src/manager.rs:100-128`, called from `crates/lopi-agent/src/runner/test_phase.rs:60-68,277-283` | **Mixed** — prompt/stability-harness layer is advisory-only; `DiffChecker` is real enforcement, but post-hoc (blocks the diff from persisting/PR-ing, does not prevent the write itself) |
 | 3 | Can an untrusted-source (webhook) task be routed to a repo the operator never associated with that source? | Webhook-originated tasks (`queue_ci_fix`, `handle_pr_review`, issue triage) never set `task.repo_path` — the attacker-controlled `repository.full_name` from the payload is stored only as `TaskSource::Webhook{repo,..}` metadata, never used to select or validate a filesystem path. The task lands on whichever repo the dequeuing pool defaults to (see row 1) — there is no per-repo webhook watch-list cross-checking the payload's claimed repo against the pool it's about to run in. | `crates/lopi-webhook/src/github.rs:157-167,184-221`, `crates/lopi-webhook/src/issue.rs:159-181` | **Unenforced** (repo targeting is provenance-blind in both directions — same root cause as row 1) |
 | 4 | Worktree escape via symlink, absolute path, or `..` in a tool call | None found. `crates/lopi-git/src/worktree.rs` sanitizes only the worktree's own directory name (flattening `/`/`\` in the task id) — it does not validate paths a tool call touches once inside the checkout. Confinement is entirely by convention: the spawned `claude` CLI gets `current_dir` set to the worktree, and (absent a tighter per-task mode) `--permission-mode bypassPermissions` by default. lopi does not intercept or path-validate individual tool calls — that would require proxying the CLI's own tool execution, which is out of this phase's scope (Non-goals: no policy engine). | `crates/lopi-git/src/worktree.rs:332-338` (`sanitize`, dir-name only); `crates/lopi-agent/src/claude_spawn.rs:127` (`cmd.current_dir(...)` is the entirety of the confinement); `crates/lopi-core/src/permission_mode.rs:29-53` (`BypassPermissions` is `#[default]`) | **Unenforced** — named, not fixed this sprint; a real fix is a sandboxing/proxying project, not a targeted patch |
 | 5 | `gate_untrusted_source` coverage — does every untrusted-input path in §6's table actually route through it? | Yes for every row already in §6 (A–D, K): defined once in `crates/lopi-webhook/src/github.rs:177-181`, called from `queue_ci_fix` (row A, `:164`), `handle_pr_review` (row B, `:218`), issue triage (row C, via the same function), and WhatsApp's inline equivalent (row D/K). Successor/chained tasks are separately and correctly gated via `derive_successor_task` (`crates/lopi-core/src/successor.rs:264-268` forces `require_plan_approval=true`/`successor_enabled=false` when the parent is untrusted; enforced at `crates/lopi-agent/src/runner/finalize.rs:161`). **New gap, not in §6 at all:** `lopi_submit_task` (the MCP tool) never calls `is_untrusted_source`/`gate_untrusted_source` — it builds `Task::new()` (source defaults `Cli`, i.e. trusted) directly from caller-supplied JSON, including an arbitrary `repo` and `permission_mode` (up to and including `bypassPermissions`), with no plan-approval gate. | Gap: `src/mcp_commands/mod.rs:294-341` (`submit_task`), `crates/lopi-core/src/task.rs:391-429` (`Task::new` defaults `source: TaskSource::Cli`) | **Enforced for A–D/K; unenforced for the `lopi_submit_task` MCP path** |
