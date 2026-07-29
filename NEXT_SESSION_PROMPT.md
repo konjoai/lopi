@@ -54,6 +54,13 @@ starting something new:**
    `evaluate_acceptance_gate` proceeds when no `Acceptance` is configured -- unchanged
    by this track, still needs the explicit opt-in redesign
    `verifier_error_proceeds(fail_open: bool)` already got.
+4. **Human confirm needed on PR #185**: `konjo-oneway confirm` for change id
+   `28173e350401` -- `.konjo/scripts/test_error_taxonomy_killtest.sh`'s
+   `cleanup() { rm -rf "$TMP" "$CORE_FIXTURE"; }` trips `_DIFF_RULES`'s
+   `destructive-shell` pattern (a benign `mktemp`-scoped test-fixture teardown, the
+   same idiom `test_coverage_floor_killtest.sh` already uses). See `LEDGER.md`'s
+   "Track C" entry for the exact command; the session's safety classifier blocks an
+   agent from completing the interactive confirm autonomously by design.
 
 **Non-goals, correctly not attempted:** migrating all 18 crates; touching the
 indexing or coverage ratchet floors/checkers; anything referencing S14 or later
