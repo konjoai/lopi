@@ -46,7 +46,7 @@ jobs:
         env:
           # Pinned deliberately — matches .konjo/kiban.ref (the session-plane pin).
           # Bump both together; a kiban change should not silently reach this gate.
-          KIBAN_REF: "v1.4.0"
+          KIBAN_REF: "v1.8.0"
         run: |
           pip install --quiet pyyaml
           git clone --quiet --depth 1 --branch "$KIBAN_REF" https://github.com/konjoai/kiban.git /tmp/kiban
@@ -538,22 +538,53 @@ jobs:
             exit 1
           fi
 
+      - name: Function length gate (<= 50 lines, ratchet against the locked ceiling)
+        # HARD GATE — Sprint S13R, Phase B, decision item 3. CLAUDE.md's "function
+        # body <= 50 lines" claim had zero mechanical enforcement before this (only a
+        # WARNING-tier Wall-3 LLM review question that cannot block a merge — see
+        # `PHASE0-STOP-RULE.md`). Real measured count against this branch: 74
+        # functions over 50 lines, workspace-wide. Hard-failing at 0 immediately
+        # would block every PR on pre-existing debt unrelated to it, so this ratchets
+        # the same way the coverage floor does: `.konjo/function-length-ceiling.txt`
+        # locks the current count, and only a rise above it fails. Lower the ceiling
+        # file as functions get split; never raise it without a recorded reason.
+        run: |
+          python3 .konjo/scripts/function_length_check.py \
+            --ceiling-file .konjo/function-length-ceiling.txt
+
+      - name: Indexing floor gate (raw `[0]`/`[1]` sites, ratchet against the locked ceiling)
+        # HARD GATE — Sprint S13R, Phase D. A raw index panics on an out-of-bounds
+        # slice; this ratchets the standing count the same way the coverage floor and
+        # function-length ceiling do. `.konjo/indexing-floor.txt` locks the current
+        # count (211, re-measured this sprint with a precisely stated method — see
+        # that file's own comment for why it doesn't match the S13 brief's earlier,
+        # less precisely specified "202"). Never regresses above it; ratchet down as
+        # sites convert to `.first()`/`.get(n)`.
+        run: |
+          python3 .konjo/scripts/indexing_floor_check.py \
+            --ceiling-file .konjo/indexing-floor.txt
+
       - name: Documentation gate (rustdoc)
-        # KNOWN DEBT, verified 2026-07 (backend-1 Phase 0), not a silent
-        # soft-fail: with both -D missing_docs and
-        # -D rustdoc::broken_intra_doc_links, `lopi-core` now builds clean
-        # (fixed its one broken link, topology.rs, this sprint) but
-        # `lopi-agent` (StreamEvent x4) and `lopi-orchestrator` (types,
-        # JobScheduler, TopologyHint) still have broken intra-doc links —
-        # a systemic pattern of bare `[Type]` links inside module-level
-        # (//!) doc comments not resolving, pre-existing and unrelated to
-        # this PR. Hard-failing now would abort the doc build on links, not
-        # missing docs, before missing_docs coverage is even checked
-        # workspace-wide. Next step: grep for `//!` comments with bare
-        # `[Type]` links across lopi-agent/lopi-orchestrator (and any other
-        # crate), qualify each with its full path per lopi-core's fix,
-        # confirm -D missing_docs also passes clean workspace-wide, then
-        # remove this line.
+        # KNOWN DEBT, verified 2026-07-29 (Sprint S13R, Phase B — decision item 2):
+        # re-measured rather than assumed. The debt grew past what backend-1 Phase 0
+        # named: `lopi-agent` now has 11 unresolved links (StreamEvent x4, parse_line,
+        # Self::from_str, is_stale, staleness_warning, describe x2, TranscriptEvent::Other),
+        # `lopi-orchestrator` has 8 (reserve, estimate, ladder, detect, report,
+        # is_favorable, types, JobScheduler, TopologyHint), and a new one appeared in
+        # `lopi-mcp` (crate::config::LoopConfig in allowlist.rs) that Phase 0 never
+        # named at all — the same systemic pattern (bare `[Type]`/`[func]` links inside
+        # doc comments not resolving), just wider than last measured. Decision (Phase B):
+        # this is real, scattered, multi-crate work, not a small fix-now item, so it
+        # stays soft rather than a rushed hard-flip that would just move the debt to a
+        # bypass. Owner: whichever sprint next touches `lopi-agent`/`lopi-orchestrator`
+        # docs; target: before Sprint S14 closes, re-measure with the exact command
+        # below and either clear it or re-file with a new date, so this marker can't
+        # silently go stale itself. Hard-failing now would abort the doc build on
+        # links, not missing docs, before missing_docs coverage is even checked
+        # workspace-wide. Next step: grep for `//!`/`///` comments with bare
+        # `[Type]`/`[func]` links in the three crates named above, qualify each with
+        # its full path per lopi-core's already-fixed precedent, confirm
+        # -D missing_docs also passes clean workspace-wide, then remove this line.
         continue-on-error: true
         run: |
           RUSTDOCFLAGS="-D missing_docs -D rustdoc::broken_intra_doc_links" \
@@ -618,6 +649,66 @@ jobs:
           name: fuzz-crashes
           path: fuzz/artifacts/
           if-no-files-found: ignore
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # Gate K — konjo-gates (Sprint S13R, Phase A3 — "connect the pilot")
+  # ════════════════════════════════════════════════════════════════════════════
+  # Runs kiban's own CI-plane orchestrator (`bin/konjo-gates`) against
+  # `.konjo/profile.yml` (authored in kiban as `profiles/lopi.yml`, Phase 13 —
+  # see LEDGER.md's `Lopi-Gate-Reconciliation-1`). Deliberately additive, not a
+  # replacement for G0-G5 above: per that reconciliation, most of lopi's real
+  # checks stay repo-native (kiban has no detector for coverage-floor parsing,
+  # cognitive-complexity-from-clippy-JSON, the DRY scanner, or the soft-gate
+  # lint) — this job runs kiban-native gates lopi never had at all (G-POLARITY,
+  # the CLAUDE.md section contract, the security-glob threat-model gate, the
+  # one-way-door/prove trailer checks) plus one genuinely promoted repo-native
+  # check (`cargo-audit`, now dispatched through kiban's generic tool runner
+  # too — redundant with G1's own `cargo audit` step by design, the same
+  # "double-check" precedent `profiles/squish.yml`/`profiles/vectro.yml` set).
+  # `--no-self-test`: the self-test/eval-corpus gate needs a cassette recorded
+  # against a live model for this profile's specialist set, which no session
+  # has done yet for lopi (recorded in NEXT_SESSION_PROMPT.md as carried work).
+  # G-POLARITY and the CLAUDE.md contract both ship `advisory: true` in the
+  # profile (WARN, not FAIL) — the standard adoption ramp for a repo with an
+  # existing baseline (see the standing count recorded in LEDGER.md) — so this
+  # job is a HARD gate on its other checks (secrets, one-way-door, threat
+  # model, can-fail, the promoted cargo-audit dispatch) without retroactively
+  # blocking merges on the pre-existing polarity/contract baseline.
+  konjo-gates:
+    name: "GK · konjo-gates (kiban profile)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # one_way_door/prove/threat_model read commit trailers from git log
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: konjo-${{ github.repository }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install kiban at the pinned ref
+        env:
+          # Matches .konjo/kiban.ref and G0's KIBAN_REF — bump all three together.
+          KIBAN_REF: "v1.8.0"
+        run: |
+          pip install --quiet pyyaml
+          cargo install cargo-audit --locked --quiet 2>/dev/null || true
+          git clone --quiet --depth 1 --branch "$KIBAN_REF" https://github.com/konjoai/kiban.git /tmp/kiban
+
+      - name: Run konjo-gates against .konjo/profile.yml
+        run: |
+          PYTHONPATH=/tmp/kiban python3 /tmp/kiban/bin/konjo-gates \
+            --profile .konjo/profile.yml \
+            --base "origin/${{ github.base_ref || 'main' }}" \
+            --no-self-test
 
   # ════════════════════════════════════════════════════════════════════════════
   # Gate 5 — Adversarial Review (Wall 3, PRs only)
@@ -747,7 +838,7 @@ jobs:
     # blocking merge. Both are added below; both are also legitimately
     # `skipped` on a push-to-main run (they're PR-only jobs), which must not
     # itself count as a failure.
-    needs: [doc-staleness, static, web-audit, coverage, complexity, mutation, review]
+    needs: [doc-staleness, static, web-audit, coverage, complexity, mutation, review, konjo-gates]
     steps:
       - name: Evaluate all required gates
         run: |
@@ -762,6 +853,7 @@ jobs:
           COMPLEXITY="${{ needs.complexity.result }}"
           MUTATION="${{ needs.mutation.result }}"
           REVIEW="${{ needs.review.result }}"
+          KONJO_GATES="${{ needs.konjo-gates.result }}"
 
           echo "doc-staleness: $DOC_STALENESS"
           echo "static:     $STATIC"
@@ -770,6 +862,7 @@ jobs:
           echo "complexity: $COMPLEXITY"
           echo "mutation:   $MUTATION"
           echo "review:     $REVIEW"
+          echo "konjo-gates: $KONJO_GATES"
 
           FAILED=""
           [ "$DOC_STALENESS" != "success" ] && FAILED="$FAILED doc-staleness"
@@ -779,6 +872,7 @@ jobs:
           [ "$COMPLEXITY" != "success" ] && FAILED="$FAILED complexity"
           [ "$MUTATION"   != "success" ] && [ "$MUTATION" != "skipped" ] && FAILED="$FAILED mutation"
           [ "$REVIEW"     != "success" ] && [ "$REVIEW" != "skipped" ] && FAILED="$FAILED review"
+          [ "$KONJO_GATES" != "success" ] && FAILED="$FAILED konjo-gates"
 
           if [ -n "$FAILED" ]; then
             echo "::error::Gate(s) failed:$FAILED — merge blocked."

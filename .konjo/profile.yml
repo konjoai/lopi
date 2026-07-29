@@ -1,0 +1,156 @@
+# .konjo/profile.yml (placed here per Sprint S13R, Phase A3)
+# Authored in kiban as `profiles/lopi.yml` (Phase 13, "The Authoring Gate") against
+# konjoai/lopi at `b93e68f`, then re-verified field-by-field on this branch
+# (`claude/s13-quality-substrate-e7e92y`, kiban pinned at v1.8.0) before being copied here --
+# not symlinked, per the `profiles/vectro.yml`/`profiles/squish.yml` convention: the profile
+# is authored in kiban, placed in the consuming repo by that repo's own maintainers/session.
+# No field changed on re-verification: every referenced script, threshold, and CI job name
+# below still matches this repo's real state. See `LEDGER.md`'s `Lopi-Gate-Reconciliation-1`
+# (kiban side) for the full per-check promote/keep/delete table.
+#
+# Two local additions past the kiban-authored version, made directly in this copy (this
+# session has no push access to kiban to land them upstream first): the
+# `function-length` entry (Phase B, alongside `.konjo/scripts/function_length_check.py` +
+# `.konjo/function-length-ceiling.txt`) and the `indexing-floor` entry (Phase D,
+# alongside `.konjo/scripts/indexing_floor_check.py` + `.konjo/indexing-floor.txt`) in
+# `contract_gates` and `gates:` below. Everything else in this file is the unedited
+# kiban original.
+#
+# Original kiban header follows, unedited:
+#
+# profiles/lopi.yml
+# Reconciled against the real lopi repo (Phase 13, "The Authoring Gate"): konjoai/lopi was
+# added to the session read-only and cloned at `b93e68f` (main). Its actual state was read
+# (CLAUDE.md, .konjo/{kiban.ref,arch.toml,coverage-floor.txt,deny.toml,scripts/,hooks/},
+# .github/workflows/konjo-gate.yml [789 lines, jobs G0-G5], .claude/rules/*.md). The lopi
+# checkout was NOT modified -- this session has read-only access to it. Fields below are
+# confirmed against that state unless marked UNVERIFIED. lopi is the Phase 0 pilot: the repo
+# was pinned to kiban (`.konjo/kiban.ref` = v1.4.0) but never ran `konjo-gates` and never
+# imported the org CLAUDE.md rules; this profile is the missing half of that connection.
+#
+# lopi is a Rust agent orchestrator: tokio async runtime, axum web/API surface, ratatui TUI,
+# sqlx/SQLite persistence, teloxide (Telegram) and a WhatsApp/Twilio webhook, git2-driven
+# git-isolated agent branches. A `web/` directory carries a TypeScript dashboard front end.
+
+repo: lopi
+
+stack:
+  - rust
+  - typescript
+
+packs:
+  - lang/rust
+  - lang/typescript
+
+# Confirmed from konjo-gate.yml's "static" job: `cargo fmt --all -- --check` and
+# `cargo clippy` (hard: 8 explicit -D flags incl. unwrap_used/expect_used/panic/todo/
+# dbg_macro, matching CLAUDE.md's "no unwrap()/expect() outside tests"). `npm audit` runs
+# in web/ under the separate "web-audit" job.
+format_lint:
+  - fmt-check
+  - clippy
+  - npm-audit
+
+# Reconciliation decision (recorded in full in LEDGER.md, "Lopi-Gate-Reconciliation-1"):
+# `cargo-audit` is genuinely PROMOTED this sprint (added to konjo-gates-py's generic
+# _TOOL_SCOPE/_TOOL_BIN dispatcher -- a real code change, not just a profile declaration,
+# since the mechanism to run it did not exist in kiban before this sprint).
+#
+# Everything else below is KEPT REPO-NATIVE: still enforced by lopi's own
+# `.github/workflows/konjo-gate.yml`, which stays in place unchanged. Declaring these here
+# documents the enforcement kiban is aware of without silently dropping it (per Phase 0's
+# explicit instruction) and without kiban's dispatcher re-running it a second time --
+# exactly the precedent already set by `profiles/squish.yml` (`complexity-radon`,
+# `docs-interrogate-80`, `dry`, `file-size-500`, `coverage-80`) and `profiles/vectro.yml`
+# (`complexity`, `dry`, `file-size-500`, `rustdoc`, `cargo-audit` before this sprint wired
+# it), none of which konjo-gates' repo-native dispatcher can run either. A tool name here
+# that konjo-gates cannot run is not a claim that konjo-gates enforces it -- it is a record
+# that lopi's own CI still does, until a future sprint promotes the detector for real
+# (Non-goal for Phase 0: "improving any gate. This phase connects what exists.").
+contract_gates:
+  - cargo-audit          # G1: PROMOTED this sprint, real dispatcher support added
+  - cargo-deny           # G1: .konjo/deny.toml, kept repo-native (dispatcher-ready, unwired here on purpose -- see LEDGER)
+  - dead-code             # G1: RUSTFLAGS=-W dead_code, kept repo-native
+  - soft-gate-lint         # G1: .konjo/scripts/soft_gate_lint.py, kept repo-native
+  - scope-assert           # G1: .konjo/scripts/scope_assert.py, kept repo-native (lopi-specific term list)
+  - reachability           # G1: .konjo/scripts/reachability_check.py, kept repo-native, advisory
+  - coverage-80            # G2: cargo llvm-cov nextest --fail-under-lines 80, kept repo-native
+  - coverage-floor-ratchet # G2: .konjo/scripts/coverage_floor_check.py + .konjo/coverage-floor.txt, kept repo-native
+  - complexity             # G4: cognitive_complexity via clippy JSON, threshold 15, kept repo-native
+  - file-size-500          # G4: 500-line hard limit, kept repo-native
+  - dry                    # G4: .konjo/scripts/dry_check.py, threshold 0.85/20 lines, kept repo-native
+  - rustdoc                # G4: RUSTDOCFLAGS=-D missing_docs, kept repo-native
+  - function-length        # G4: .konjo/scripts/function_length_check.py + ceiling file, added Sprint S13R Phase B, kept repo-native
+  - indexing-floor         # G4: .konjo/scripts/indexing_floor_check.py + ceiling file, added Sprint S13R Phase D, kept repo-native
+  - unsafe-budget          # kiban-native, diff-only (already generic; genuinely active here)
+
+# Confirmed from konjo-gate.yml G3: `cargo mutants --in-diff <(git diff)`, survival <= 10%
+# on changed files. Kept repo-native for the percentage-survival reporting step; the
+# underlying tool is the same `cargo-mutants` konjo-gates already runs diff-scoped.
+mutation: cargo-mutants
+
+# kiban-native review lanes. lopi's defect history (per .claude/rules/security.md's
+# sprint-cited lines, see LEDGER.md and Phase 5) is concentrated in exactly these shapes:
+# untrusted repo-supplied commands reaching exec (ownership/error-handling), unbounded
+# subprocess environments (error-handling), webhook signature verification (api-surface),
+# and the orchestrator's concurrent agent pool (concurrency). Order follows the same
+# lang/rust + _base convention as profiles/vectro.yml (no cassettes recorded yet for lopi,
+# so no ordering constraint is broken by picking this now).
+specialists:
+  - ownership-lifetimes
+  - error-handling
+  - perf-alloc
+  - concurrency
+  - api-surface
+
+# No perf-prove claim for lopi in this sprint -- Phase 13's non-goals explicitly exclude
+# any performance claim ("a perf claim needs a konjo-prove MERGE verdict"). Left disabled
+# rather than guessing a baseline.
+prove:
+  enabled: false
+
+# G-POLARITY (K1): lopi is adopting this gate for the first time -- ships advisory (WARN,
+# not FAIL) per the standard adoption ramp, so the existing baseline can be cleaned up
+# before flipping to blocking in a follow-up sprint.
+polarity:
+  enabled: true
+  advisory: true
+
+# G-CAN-FAIL (K1): lopi already has real, named, passing rejects_test scripts for three of
+# its repo-native checks -- pointing at them here gives G-CAN-FAIL real teeth immediately,
+# with zero new detector code.
+gates:
+  - name: scope-assert
+    rejects_test: ".konjo/scripts/test_scope_assert_killtest.sh"
+  - name: coverage-floor-ratchet
+    rejects_test: ".konjo/scripts/test_coverage_floor_killtest.sh"
+  - name: soft-gate-lint
+    rejects_test: ".konjo/scripts/test_soft_gate_lint_killtest.sh"
+  - name: function-length
+    rejects_test: ".konjo/scripts/test_function_length_killtest.sh"
+  - name: indexing-floor
+    rejects_test: ".konjo/scripts/test_indexing_floor_killtest.sh"
+
+# Phase 13, Phase 3: lifted verbatim from the `paths:` front-matter already prototyped in
+# lopi's `.claude/rules/security.md` -- one declaration now serves both the CLAUDE.md rules
+# file's own scoping and konjo-gates' `security_globs`-routed `gate_threat_model`.
+security_globs:
+  - "**/lopi-ui/**"
+  - "**/lopi-webhook/**"
+  - "**/lopi-remote/**"
+  - "**/api*"
+  - "**/server*"
+  - "**/webhook*"
+  - "**/auth*"
+
+killtest: true
+
+# Confirmed from CLAUDE.md's Commands block: `cargo test --workspace` is named as "the
+# standard runner -- what CI + hooks use" (cargo nextest is offered as an optional faster
+# alternative, not the default).
+verify_cmd: "cargo test --workspace"
+
+# Confirmed from CLAUDE.md's Commands block.
+format_cmd: "cargo fmt --all"
+
+overrides: {}
