@@ -1,10 +1,16 @@
 ---
 decays: state
-verified-against: bbe9db7
-verified-date: 2026-07-28
+verified-against: c4f1fdb
+verified-date: 2026-07-29
 ---
 
-Verified against: `bbe9db7` · 2026-07-28 (re-verified; this document carries no
+Verified against: `c4f1fdb` · 2026-07-29 (re-verified; Sprint S13R's own commit volume
+crossed the 20-commit cap again. This sprint touched `loop_config.rs` (Phase E:
+`load_from_repo`/`save_to_repo` converted from `anyhow::Result` to a typed
+`LoopConfigError`) but this document cites it and `budget_preset.rs` only by bare
+filename, no line numbers, and neither the `LoopConfig` struct shape nor
+`budget_preset.rs`'s `FAN_OUT_DENY` changed — no content drift. Prior banner
+(`bbe9db7` · 2026-07-28, re-verified; this document carries no
 line-number citations to check for drift — it's a conceptual F-principle-to-`LoopConfig`
 mapping, not a status/citation ledger. Confirmed every field the table below names
 (`gate`, `until`, `verifier_required`, `verifier_model`, `verifier_effort`,
