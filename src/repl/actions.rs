@@ -343,6 +343,56 @@ mod tests {
         }
     }
 
+    /// Mutation-testing kill test: `translate_agent_event`'s inner `status ->
+    /// style` match has its own `Success`/`Failed|RolledBack` arms, distinct from
+    /// the outer event-kind match above — this covers those directly.
+    #[test]
+    fn translate_status_changed_maps_success_and_failure_to_their_own_styles() {
+        let (out, _) = translate_agent_event(Ok(AgentEvent::StatusChanged {
+            task_id: lopi_core::TaskId::new(),
+            status: TaskStatus::Success {
+                branch: "lopi/attempt-1".into(),
+                pr_url: None,
+            },
+            attempt: 1,
+        }));
+        assert!(matches!(
+            out,
+            Some(ReplEvent::AgentLog {
+                style: LineStyle::Success,
+                ..
+            })
+        ));
+
+        let (out, _) = translate_agent_event(Ok(AgentEvent::StatusChanged {
+            task_id: lopi_core::TaskId::new(),
+            status: TaskStatus::Failed {
+                reason: "boom".into(),
+            },
+            attempt: 1,
+        }));
+        assert!(matches!(
+            out,
+            Some(ReplEvent::AgentLog {
+                style: LineStyle::Error,
+                ..
+            })
+        ));
+
+        let (out, _) = translate_agent_event(Ok(AgentEvent::StatusChanged {
+            task_id: lopi_core::TaskId::new(),
+            status: TaskStatus::RolledBack,
+            attempt: 1,
+        }));
+        assert!(matches!(
+            out,
+            Some(ReplEvent::AgentLog {
+                style: LineStyle::Error,
+                ..
+            })
+        ));
+    }
+
     #[test]
     fn translate_log_line_forwards_agent_log_and_continues() {
         let (out, stop) = translate_agent_event(Ok(AgentEvent::LogLine {

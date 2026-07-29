@@ -322,5 +322,31 @@ mod tests {
         .expect("repl_loop did not return within 5s — likely stuck in an event-poll loop");
 
         assert!(result.is_ok());
+        // A whole-body "replace repl_loop with Ok(())" mutant would also satisfy the
+        // assertion above without ever touching `events` — this is the assertion that
+        // actually distinguishes it: only real processing drains the scripted queue.
+        assert!(
+            events.0.is_empty(),
+            "the scripted Esc event was never consumed"
+        );
+    }
+
+    /// Mutation-testing kill test for `run_repl` (a "replace with Ok(())" mutant):
+    /// only runs when stdout has no real controlling terminal (true for every
+    /// automated runner — CI, `cargo mutants`, this workspace's own pre-commit
+    /// hook — confirmed empirically: `enable_raw_mode()` returns `ENXIO` there),
+    /// in which case `setup_terminal()`'s `enable_raw_mode()?` genuinely fails
+    /// fast, which the mutant would not. Skips itself rather than actually
+    /// entering raw mode when a real terminal IS attached (a developer running
+    /// `cargo test` from an interactive shell), so it can never hang or clobber
+    /// someone's live terminal session.
+    #[tokio::test]
+    async fn run_repl_fails_fast_with_no_controlling_terminal() {
+        use std::io::IsTerminal;
+        if std::io::stdout().is_terminal() {
+            return;
+        }
+        let result = run_repl(PathBuf::from("."), "claude-sonnet-5".to_string(), None).await;
+        assert!(result.is_err());
     }
 }
