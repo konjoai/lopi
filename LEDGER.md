@@ -54,6 +54,275 @@ unmapped claims found, >3 threshold):**
 Full audit trail, corrected baseline table, and per-bullet enforcing-step
 citations: `.konjo/killtests/S13/PHASE0-STOP-RULE.md`.
 
+## Sprint S13R, Phase A+B — connect the pilot (kiban v1.4.0 -> v1.8.0), then clear the stop rule
+
+**Context:** Phase 0 (above) corrected the three false-hard `CLAUDE.md` bullets and
+deleted the two dark rubrics — the corrections that were needed to clear its own stop
+rule on re-run. Separately, kiban shipped four releases (v1.5.0-v1.8.0) while this
+branch sat at v1.4.0, three of which matter directly here. This sprint bumps the pin,
+adopts kiban's prepared `profiles/lopi.yml` + `CLAUDE.md` conversion (authored
+read-only against this repo in kiban's own Phase 13), and re-runs Phase 0's audit to
+confirm 0 unmapped claims before resuming the original Phase 1-4 work.
+
+**Kiban-1.8-Bump-1: the pin moves, and so does what CI absorbs with it.**
+`.konjo/kiban.ref` and `KIBAN_REF` (`konjo-gate.yml`, both the `doc-staleness` job and
+the new `konjo-gates` job below) move from `v1.4.0` to `v1.8.0` together, per the
+workflow's own comment. Read what each intervening release changes before treating the
+bump as a no-op:
+- **1.5.0** made kiban's own specialist review gate (`bin/konjo-review`,
+  `lib/review.py`'s `ReviewBackend.dispatch`) fail closed on a dispatch failure
+  (`INCOMPLETE`, not a silent pass) — **does not affect lopi today**: lopi's Wall-3 G5
+  job calls its own bespoke `.konjo/scripts/konjo_review.py`, never kiban's
+  `bin/konjo-review` (confirmed by grep — zero references). This bump changes nothing
+  about that job's behavior or cost. Recorded here so a future sprint doesn't assume
+  otherwise, or accidentally invoke `bin/konjo-review` believing it's already wired.
+- **1.6.0** raised `bin/konjo-review`'s default live-review sampling to
+  `DEFAULT_LIVE_RUNS = 3` (~3x model-call cost) — **same reasoning: not on lopi's
+  blocking path**, since G5 never calls that binary. If a future sprint's "consolidate
+  Wall 3 onto kiban's own review engine" idea (flagged, not started, in
+  `Lopi-Gate-Reconciliation-1` below) ever lands, that sprint must re-decide `--runs`
+  cost at that time, not inherit this bump's silence on it.
+- **1.7.0** shipped `gate_polarity` (G-POLARITY) — adopted this sprint, `advisory: true`
+  in `.konjo/profile.yml`. Standing baseline: `Gate-Polarity-Baseline-1` below.
+- **1.8.0** shipped `konjo-threat`/`gate_threat_model`, `gate_claude_contract`, and the
+  CLAUDE.md section-contract template — adopted this sprint (`.konjo/profile.yml`,
+  `CLAUDE.md` conversion, `security-invariants.md`/`security-sinks.md` split).
+
+**Gate-Polarity-Baseline-1: 9 standing full-tree findings, one real defect filed, not
+fixed.** Ran kiban's `lib.polarity` scanner (not the diff-scoped CI gate — a one-off
+full-tree pass) against every `.rs`/`.py`/`.ts` file, 476 files scanned. Found 10 raw
+hits; fixed one during triage (see below), leaving **9** as the standing baseline —
+record this as the floor for the next full-tree comparison:
+- **1 real defect, matching the exact shape kiban's own docstring names as the
+  motivating fixture** (`verifier_runner.rs`'s and `scorer.rs`'s now-fixed
+  fail-open-by-default sites): `crates/lopi-agent/src/runner/eval_runner.rs:29`,
+  `evaluate_acceptance_gate` returns `true` (proceed) when no `Acceptance` is
+  configured. Documented as deliberate backward-compatibility, not an oversight — but
+  it is the same shape. **Not fixed this sprint**: doing so properly means the same
+  kind of explicit-opt-in redesign `verifier_error_proceeds(fail_open: bool)` got
+  (see Sprint F1's ledger entry), which is a real behavior decision (does an existing
+  task with no acceptance start failing?), not a small patch. Filed for a future sprint
+  rather than rushed.
+- **1 fixed this sprint** (small, non-behavior-changing):
+  `crates/lopi-remote/src/whatsapp.rs`'s `check_signature` returned a bare `Ok(())`
+  when `signing_secret` is unset — already documented as intentional ("dev mode") in
+  the struct's own doc comment, but not detector-visible as an explicit override.
+  Renamed the branch to call a new, honestly-named `verification_disabled_override()`
+  fn, following the exact `verifier_fail_open` precedent kiban's own `polarity.py`
+  cites as the resolution pattern. No behavior change; the finding resolves because the
+  literal `Ok(())` is no longer inline.
+- **8 false positives, triaged and documented rather than waived (no trailer added —
+  these are not net-new findings on any real diff, this was a full-tree audit)**:
+  `web/src/lib/stores/modelCatalog.ts:42`, `crates/lopi-ui/src/tui.rs:430`,
+  `crates/lopi-spec/src/lib.rs:244`, and four sites in `crates/lopi-index/src/reindex.rs`
+  are all a benign "skip this one item, continue the batch" shape (a per-file/per-request
+  fallback in a loop, not a gating decision) — the engine's condition-shape match is
+  correct, but `Ok(())`/graceful-loop-exit here doesn't mean "gate passed," it means
+  "this one item didn't parse, move on." **`crates/lopi-agent/src/pricing.rs:197`
+  (`is_stale_given`'s `None => true`) is a more interesting false positive worth
+  reporting upstream to kiban**: the engine assumes any bare `true` is the *permissive*
+  end of a boolean's range, but here `true` means "flag as stale" — the cautious,
+  restrictive answer, not a permissive bypass. The engine's own docstring already
+  concedes it "cannot judge a threshold"; this is the same blind spot one level up, for
+  a boolean whose polarity is inverted from the gate/verifier convention the tool was
+  designed around. Worth a kill-test fixture in kiban itself if a future session has
+  push access there.
+
+**Lopi-Gate-Reconciliation-1 (kiban side), applied here:** `.konjo/profile.yml` is
+`profiles/lopi.yml` copied verbatim from kiban (not symlinked, matching the
+`vectro.yml`/`squish.yml` precedent), re-verified field-by-field against this branch
+rather than trusted from its `b93e68f` authoring point — no field needed to change.
+One local addition past the kiban original: `function-length` (see decision item 3
+below), added directly to this copy since this session has no push access to land it
+in kiban first. A new `konjo-gates` CI job runs it (`konjo-gate.yml`), added to
+`konjo-gate`'s `needs:`, without deleting any of G0-G5 — every repo-native check kiban
+decided to keep (per that reconciliation's own promote/keep/delete table) stays exactly
+where it was.
+
+**CLAUDE-Contract-1: `CLAUDE.md` converted to the Phase-13 section contract, reconciled
+against Phase 0's corrections.** Applied kiban's `docs/pilots/lopi-claude-md.proposed.md`
+(prepared read-only against `b93e68f`, so it predates Phase 0's own edits to this file).
+No real conflict arose: the proposal replaces the "Additional Hard Rules" bullet block
+entirely with a pointer to `.konjo/profile.yml`'s `contract_gates` (closing the same DRY
+gap Phase 0's corrections were narrowing, one level further), so Phase 0's specific
+threshold corrections became moot rather than contradicted. New finding the proposal
+surfaced that Phase 0 never audited (out of that phase's stated scope): **5 of the 6
+original "Critical Constraints" have no mechanical enforcement at all** — only
+`unwrap`/`expect` is real (`repo:clippy`). Converted to an `## Invariants` section where
+every bullet names `repo:clippy`, `gate_polarity`, or `ADVISORY` explicitly — verified
+against the real `check_contract()` output (`ok=True`, zero unmapped bullets), not
+assumed. **Constrains future work:** a new invariant bullet added without one of those
+three markers fails `gate_claude_contract` (advisory today; see decision item 1's sibling
+question for when to flip it hard).
+
+**Security-Rules-Split-1: `.claude/rules/security.md` -> `security-invariants.md` +
+`security-sinks.md`.** Split class rules (timeless, what to check) from call-site
+provenance (where + which sprint fixed it, citations kept). Both keep the same 7
+`security_globs` path patterns Phase 0 already confirmed all matched real paths (that
+document's own tally of "6" patterns was a miscount — corrected via an appended note,
+not a rewrite, in `PHASE0-STOP-RULE.md`). Four stale in-code/doc references to the old
+filename fixed (`lopi-ui/src/web/types.rs`, `task_fields.rs`,
+`docs/ops/LIVE_UI_STATUS.md`, `docs/security/TRIFECTA_PATHS.md` x2) — all now point at
+`security-invariants.md`, the file that actually carries the class rule each one cites.
+**Constrains future work:** a new security call-site fix belongs in `-sinks.md` with its
+sprint citation; a new class rule belongs in `-invariants.md` with none. Don't
+recombine them — that's the incident-log shape this split exists to prevent.
+
+**Phase B decisions (the three items Phase 0 left open, re-verified rather than
+guessed):**
+
+1. **Coverage stays soft; the floor stays the only hard gate.** Real measured coverage
+   (68.34%, per Phase 0's own table) is still below the 80% the soft gate names —
+   promoting it to hard today blocks every PR on a pre-existing gap, not a newly-met
+   bar. Revisit only once real coverage has actually reached 80%.
+2. **Doc coverage stays soft, re-measured rather than left stale.** The real broken
+   intra-doc-link count grew past what Phase 0 named: `lopi-agent` now has 11
+   (not the 4 Phase 0's audit listed), `lopi-orchestrator` 8 (not 3), plus a new one in
+   `lopi-mcp` Phase 0 never scanned at all. Named owner: whichever sprint next touches
+   docs in those three crates. Target: re-measured before Sprint S14 closes (the
+   `konjo-gate.yml` comment carries the exact re-check command) — either cleared, or
+   re-filed with a new date, so this marker can't itself go stale silently.
+3. **Function length: wrote the gate.** `.konjo/scripts/function_length_check.py` is a
+   real hard gate in `konjo-gate.yml`'s `complexity` job now, ratcheted against
+   `.konjo/function-length-ceiling.txt` (seeded at **74**, the real measured count of
+   functions over 50 lines workspace-wide, tests/benches excluded) the same way the
+   coverage floor ratchets — never regress above it, ratchet down as functions split.
+   Has a passing `rejects_test` (`test_function_length_killtest.sh`), wired into
+   `.konjo/profile.yml`'s `gates:` for real `gate_can_fail` teeth (verified: the test
+   fails on a synthetic oversized fixture and passes once the ceiling accounts for it,
+   not just declared).
+
+**Re-run verdict:** 0 unmapped claims (down from 5), well under the <= 3 threshold.
+Full re-audit table: `.konjo/killtests/S13/PHASE0-STOP-RULE.md`'s 2026-07-29 append.
+Phases C-F (originally Phases 1-4) proceed on this branch.
+
+## Sprint S13R, Phases C-F — determinism substrate, panic/resource surface, error taxonomy, enforcement-from-first-prompt
+
+Continuation of the same branch/session as the Phase A+B entry above, after its 0-unmapped-claims
+verdict cleared the stop rule. Pre-flight kill-tests KT-S13.1 (fixture-pair proof per new gate —
+satisfied per-gate below, not as one separate artifact) and KT-S13.2 (below) ran first, per the
+brief.
+
+**MSRV-Bisection-1: 1.88.0, by real bisection, driven by a transitive dependency, not lopi's own
+code.** `rust-toolchain.toml` now pins `channel = "1.88.0"`; `rust-version = "1.88.0"` added to
+`[workspace.package]`. Bisected, not guessed: `cargo +1.87.0 check --workspace` fails
+(`home@0.5.12 requires rustc 1.88`, via `which` <- `lopi-agent`/`lopi-spec`, confirmed with
+`cargo tree -i home`); `cargo +1.88.0 check --workspace` builds clean. lopi's own code would
+tolerate a lower floor on language features alone (`std::sync::LazyLock`, used in
+`lopi-git`/`lopi-core`, needs only 1.80.0) — recorded as the honest, higher, actually-buildable
+number instead. **Constrains future work:** bumping any dependency that raises its own MSRV
+(`cargo update` pulling a newer `which`/`home`, or any other transitive) should re-bisect and
+update both files together, not silently let the toolchain pin drift stale.
+
+**Workspace-Lints-1: the existing hard CI clippy flags, now also declared in `Cargo.toml`.**
+`[workspace.lints.clippy]` mirrors exactly the `-D` flags `konjo-gate.yml`'s `static` job already
+passes on the command line (`unwrap_used`, `expect_used`, `panic`, `todo`, `unimplemented`,
+`dbg_macro`, `print_stdout`, `print_stderr` deny; `cognitive_complexity` warn, matching the
+existing `-W`). All 18 workspace crates + the root `lopi` binary opt in via `[lints]
+workspace = true`. Verified before adding, not after: a full `cargo clippy --workspace
+--all-targets --all-features` with no CLI flags at all (relying solely on the new
+`[workspace.lints]`) reported zero new errors, only pre-existing style warnings unrelated to this
+change. **Deliberately no `[workspace.lints.rust]` `unsafe_code` entry** — that's a plain rustc
+lint (fires on every `cargo build`, unlike the clippy-only lints above), and would turn the 5
+existing test-only `unsafe` blocks in `lopi-ui/src/client/auth.rs` (already `SAFETY`-commented,
+confirmed clean by Phase 0) into new warnings the static job's `-D warnings` flag would then
+hard-fail on during the clippy pass — not worth the regression risk for a lint with no production
+`unsafe` to catch in this workspace anyway.
+
+**Found while verifying, fixed rather than left as a live gap:** running the `static` job's
+*actual* full command (`-D warnings` included, not the bare workspace-lints check above) against
+a clean `cargo clean` build surfaced 5 pre-existing errors across `lopi-agent`, `lopi-ui`, and the
+root `lopi` binary — none touched by this sprint before this finding, all present unchanged since
+`b93e68f` (confirmed via `git diff --stat` showing no prior diff on each file): two duplicate
+`#![cfg(test)]` module attributes (`lopi-ui/src/client/test_support.rs`,
+`src/test_support.rs` — both already redundant with a `#[cfg(test)]` on their `mod` declaration one
+level up) and three `format!`/`eprintln!` calls with an inlineable argument
+(`lopi-agent/src/prompt.rs`, `lopi-ui/src/web/static_assets.rs`, `src/learn_commands.rs`,
+`src/repl/draw.rs`). All five are `clippy::duplicated_attributes`/`clippy::uninlined_format_args`,
+both warn-by-default lints that `-D warnings` promotes to hard errors — meaning the `static` job's
+literal command, as written in `konjo-gate.yml` before this sprint, would fail on `main` today
+independent of anything else in S13R. Fixed all five (mechanical, zero behavior change, full
+`cargo test --workspace` re-confirmed green after) rather than leaving a newly-discovered
+CI-breaking gap unaddressed while landing an unrelated sprint on top of it — the same call Phase 0
+made about not adding gates to a repo that misdescribes itself, applied here to not adding commits
+on top of a build that would not actually pass its own CI command.
+
+**Overflow-Checks-1: KT-S13.2 run for real, not assumed.** `[profile.release]` gains
+`overflow-checks = true`. Verified before wiring: a temporary `#[test]` in `lopi-core` computing
+`u64::MAX + x` (`x` a runtime value via `std::env::args().count()`, not const-folded) was built
+under `cargo test --release` — panicked with "attempt to add with overflow" once the profile line
+was in place (the pre-change silent-wrap behavior was not independently re-verified by a second
+build, since it is standard, undisputed Rust release-profile semantics, not something this
+sprint's evidence needed to re-derive at the cost of another 3+ minute LTO=fat rebuild). The temp
+test was deleted after confirming. `[profile.bench]` added (`inherits = "release"`) — no `panic`
+override: cargo ignores one for `bench` (its own build warning said so when tried), since
+libtest/criterion harnesses always unwind regardless of `release`'s `panic = "abort"`.
+
+**Bounded-Channels-1: both production unbounded channels converted, not one.** Phase 0's
+corrected baseline named two (`quota_kill_log.rs:151` and `src/repl/mod.rs:76`); both close here.
+`quota_kill_log.rs`'s `QuotaKillLogSink` (sync callback context, so it must never `.await`) moved
+from `unbounded_channel` to a bounded `channel(4096)` with `try_send`, warning distinctly on a
+dead writer task vs. a full queue — matches the module's own stated "best-effort diagnostic
+sidecar, never blocks" design exactly, just bounded now. `src/repl/mod.rs`'s `ReplEvent` channel
+(async contexts throughout — every `send` site is inside a `tokio::spawn`ed future) moved to a
+bounded `channel(1024)` with `.send(...).await`, so a slow REPL redraw backpressures the
+background bridge task instead of letting an unbounded queue grow. **Constrains future work:** a
+new inter-task channel in either module should default to bounded with an explicit capacity
+comment justifying the number, not `unbounded_channel` — the panic/resource-surface pass exists
+specifically because "just make it unbounded" was the default up to this sprint.
+
+**Indexing-Floor-Seed-1: seeded at 211, not the brief's carried-forward 202 — re-measured, not
+assumed, and the discrepancy is recorded rather than silently absorbed.** `.konjo/indexing-floor.txt`
+locks 211 via a newly precise, stated method (`.konjo/scripts/indexing_floor_check.py`): raw
+`[0]`/`[1]` occurrences in `crates/`+`src/` `.rs` files, excluding `/tests/`+`/benches/` dir
+segments, `tests.rs`/`*_tests.rs`/`*_test.rs`/`*_bench.rs` filenames, and comment-only lines. Two
+independent looser greps first returned 231 and 341 before this exact method was nailed down and
+written into the script rather than kept as an ad hoc one-off command — the same lesson Phase 0's
+own baseline table already demonstrated once (a count that doesn't reproduce under a slightly
+different filter is not really a fixed number until the filter is written down). Wired as a hard
+CI gate (`konjo-gate.yml`'s `complexity` job) ratcheting the same way the coverage floor and
+function-length ceiling do, with a passing `rejects_test`
+(`test_indexing_floor_killtest.sh`) for `gate_can_fail` teeth.
+
+**Error-Taxonomy-1: `lopi-core` fully converted; `lopi-git` one of four files; `lopi-memory` not
+started — recorded honestly as partial, not claimed as done.** Per `rust-conventions.md`'s own
+rule ("thiserror for library crates, anyhow for binary/glue code"), all three seed crates are
+libraries whose fallible public API should be typed, not `anyhow`. What actually landed this
+sprint, verified by a full `cargo build --workspace --all-targets` and the affected crates' test
+suites, all green:
+- `lopi-core`: all 4 production (non-test-only) `anyhow` sites converted —
+  `sqlite_pool.rs` (`SqlitePoolError`: `InvalidUrl`/`Connect`/`SchemaApply`), `config.rs`
+  (`ConfigLoadError`: `Read`/`Parse`/`InvalidSchedule`, wrapping the existing
+  `ReportChannelError`), `loop_config.rs` (`LoopConfigError`: `Read`/`Parse`/`CreateDir`/
+  `Serialize`/`Write`), `task.rs`'s `Rubric::from_toml_str` (now returns the concrete
+  `toml::de::Error` directly — no new enum needed for a single failure mode). `models.rs`'s one
+  `anyhow` reference is inside a `#[cfg(test)]` fn and was left alone, matching the existing
+  test-code exemption.
+- `lopi-git`: `diff.rs`'s `DiffChecker::validate` converted (`DiffScopeError`:
+  `Forbidden`/`OutsideScope`) — the smallest, most self-contained of its four `anyhow` files.
+  `manager.rs` (18 fallible fns), `rebase.rs` (4), `worktree.rs` (11) are **not** converted this
+  sprint — real remaining scope, not silently dropped. A future session's starting design sketch:
+  `GitManagerError` wrapping `git2::Error` + `std::io::Error` + a `CommandFailed { context,
+  stderr }` variant for the `anyhow::bail!` shell-out-failure sites (`git push`, rebase abort,
+  etc.), since those are string-formatted today with no structured source error to wrap.
+- `lopi-memory`: **0 of 30 `anyhow` files converted.** Not attempted this sprint — converting a
+  crate this size safely needs dedicated time this sprint's remaining scope (Phases C-F plus
+  post-flight, all in one session) did not have left to spend without risking a rushed,
+  under-verified mechanical refactor across 30 files. Carried to `NEXT_SESSION_PROMPT.md`
+  explicitly, not silently absorbed into "Phase E done."
+
+**Session-Enforcement-1: the framework is now visible from the first prompt, not partway through.**
+Three concrete fixes: (1) a new `SessionStart` hook (`.claude/hooks/session-start.sh`) prints the
+standing coverage floor, function-length ceiling, indexing floor, and warns if `.konjo/kiban.ref`
+and `konjo-gate.yml`'s `KIBAN_REF` have drifted apart — report-only, never blocks session start,
+never fails on a missing floor file. (2) The hardcoded `/Users/wesleyscholl/lopi/` paths in
+`.claude/settings.json` and `.claude/hooks/post-edit.sh` are gone, replaced with
+`$CLAUDE_PROJECT_DIR` (falling back to resolving from the script's own location if unset) — this
+repo's hooks no longer assume one contributor's home directory. (3) `post-edit.sh` extended to
+cover `web/` (TypeScript/Svelte) edits via `svelte-check --tsconfig ./tsconfig.json`, matching
+this repo's actual two-language stack (Rust + TypeScript per `CLAUDE.md`) instead of only
+checking `.rs`/`.py`/`.mojo`.
+
 ## Sprint E (The Economics Layer, Finding #10) — re-scoped against the real architecture, not the brief's file-level sketch
 
 **KT-E — current governor behavior on limit trip, read before any of this was written.** The brief opens: "I have already lost an entire quota to a single runaway agent session. The current governor exists because of that." Before writing any code, every file the brief names was read and `rg -n "budget|ceiling|max_tokens|limit" crates/` was walked in full (via a dedicated research pass — 1345 matches). What's actually there differs from what the brief assumes in three load-bearing ways:

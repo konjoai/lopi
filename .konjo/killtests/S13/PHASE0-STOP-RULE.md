@@ -128,3 +128,76 @@ them, #6's scope caveat and #7's actual 20-line CI threshold); repair of the
 Re-run this same audit (or a scoped subset) before resuming Phase 1 — the
 sprint should not proceed past Phase 0 until a re-run finds ≤ 3 unmapped
 claims, per the brief's own rule. See `NEXT_SESSION_PROMPT.md`.
+
+---
+
+## 2026-07-29 — Sprint S13R, Phase B re-run: verdict PROCEED (0 unmapped claims)
+
+Per the brief's own rule ("the sprint should not proceed past Phase 0 until a re-run
+finds <= 3 unmapped claims"), re-ran the same two-item tally against this branch as it
+now stands, after Sprint S13R's Phase A ("connect the pilot") landed on top of this
+document's original findings.
+
+### Rubric consumer audit, re-run
+
+Unchanged from the original finding above: `feature_completeness.toml` is the only
+rubric file present, still genuinely wired through `verifier::resolve_rubric`
+(`crates/lopi-agent/src/verifier.rs:127-134`). `refactor_safety.toml`/`security_audit.toml`
+stay deleted; no new rubric file was added this sprint. **0 unmapped.**
+
+### `CLAUDE.md` hard-rule audit, re-run
+
+Phase A4 replaced the entire "Additional Hard Rules" bullet list (this document's
+original 8-bullet table above) with a `## Invariants` section under the new Phase-13
+section contract, converted per `gate_claude_contract` (`crates/kiban`
+`lib/claude_contract.py`, wired into `konjo-gate.yml`'s new `konjo-gates` job this
+sprint — see `LEDGER.md`'s `Kiban-1.8-Bump-1`). Every bullet now names its enforcement
+or says `ADVISORY` explicitly; re-verified against the real state, not assumed:
+
+| Invariant | Enforcement claimed | Re-verified |
+|---|---|---|
+| No `unwrap()`/`expect()` outside tests | `repo:clippy` — `-D clippy::unwrap_used -D clippy::expect_used` | **Genuine.** Confirmed live in `konjo-gate.yml`'s `static` job. |
+| No blocking I/O on async paths | ADVISORY | Confirmed: no gate checks this. |
+| No silent failures | ADVISORY | Confirmed: no gate checks this. |
+| `cargo build` must stay green | ADVISORY (CI build step) | Confirmed: not a gated diff assertion, correctly not claimed as one. |
+| Stay inside `crates/`/`src/` | ADVISORY | Confirmed: no gate checks this. |
+| Tokio is the only async runtime | ADVISORY | Confirmed: no gate checks this. |
+| No unconfigured/failed-evaluation branch returns a permissive value | `gate_polarity` | **Genuine.** Wired via `konjo-gates` this sprint (Phase A3); full-tree standing count (9 findings, 1 filed real defect, 8 documented false-positive/benign) recorded in `LEDGER.md`'s `Gate-Polarity-Baseline-1`. Ships `advisory: true` (WARN, not FAIL) per the adoption ramp, itself named honestly in the bullet text ("advisory ramp"), not overclaimed as blocking. |
+
+Ran `gate_claude_contract.check_contract` against the real converted file:
+`ok=True, missing_sections=[], out_of_order=[], has_org_import=True,
+unenforced_bullets=[]`. **0 unmapped.**
+
+### Total: 0 unmapped claims (down from 5) — well under the <= 3 threshold. Verdict: PROCEED to Phases C-F.
+
+### Three items Phase 0 left undecided, resolved this session (full reasoning in `LEDGER.md`)
+
+1. **Coverage.** Left as-is: the `.konjo/coverage-floor.txt` ratchet stays the only hard
+   gate. Real measured coverage (68.34% per this document's original table) is still
+   below the 80% claim the soft gate names; promoting 80% to hard today would block
+   every PR on a pre-existing gap unrelated to it, not enforce a newly-met bar.
+2. **Doc coverage.** Kept soft, but re-measured rather than left stale: the real broken
+   intra-doc-link count grew past what this document's original Phase 0 audit named
+   (`lopi-agent` 11, `lopi-orchestrator` 8, plus a new one in `lopi-mcp` this document
+   never scanned) — scattered, multi-crate work, not a small fix-now item. Named owner:
+   whichever sprint next touches those three crates' docs. Target: re-measured before
+   Sprint S14 closes, per the updated `KNOWN DEBT` comment in `konjo-gate.yml`.
+3. **Function length.** Written, not dropped: `.konjo/scripts/function_length_check.py`
+   is now a real hard gate in `konjo-gate.yml`'s `complexity` job, ratcheted against
+   `.konjo/function-length-ceiling.txt` (seeded at 74, the real measured count of
+   functions over 50 lines workspace-wide) the same way the coverage floor ratchets.
+   Has a passing `rejects_test` (`test_function_length_killtest.sh`) wired into
+   `.konjo/profile.yml`'s `gates:` for `gate_can_fail` teeth.
+
+### One correction to this document's own Section 4, found while re-verifying for Phase B
+
+This document's Section 4 table states `.claude/rules/security.md` had "none — all 6
+patterns matched." The real file has **7** glob patterns in its `paths:` front matter,
+not 6 (`**/lopi-ui/**`, `**/lopi-webhook/**`, `**/lopi-remote/**`, `**/api*`,
+`**/server*`, `**/webhook*`, `**/auth*`) — a miscount in the original audit, not a defect
+in the globs themselves (all 7 still matched real paths, re-confirmed this session).
+Noted here per this document's own append-only rule rather than silently corrected in
+the original table above. `security.md` itself no longer exists as of Sprint S13R,
+Phase A5 — split into `security-invariants.md` (class rules, 0% citation ratio) and
+`security-sinks.md` (call sites, citations kept as provenance), both carrying the same
+7 globs unchanged. See `LEDGER.md`'s `Security-Rules-Split-1`.

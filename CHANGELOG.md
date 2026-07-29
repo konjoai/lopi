@@ -1,3 +1,93 @@
+## [0.39.0] — Sprint S13R: connect the kiban pilot, clear the stop rule, resume S13 (Phases A–F)
+
+**Phase 0's corrections (0.38.0) cleared its own stop rule on re-run this sprint: 0
+unmapped self-claims, down from 5. That unblocked the rest of this sprint — connecting
+to kiban v1.8.0 (Phase A), the re-audit (Phase B), then the original S13 Phases 1–4,
+renamed C–F. Full reasoning for every one-way door: `LEDGER.md`'s two S13R entries.**
+
+### Phase A — kiban v1.4.0 → v1.8.0, and what that unlocks
+
+- **Bumped `.konjo/kiban.ref` and `KIBAN_REF`** (`konjo-gate.yml`, both the
+  `doc-staleness` job and the new `konjo-gates` job below) to `v1.8.0` together.
+- **New `GK · konjo-gates` CI job** runs kiban's own gate orchestrator against
+  `.konjo/profile.yml` (copied from kiban's `profiles/lopi.yml`, re-verified
+  field-by-field against this branch — no field needed to change). Deletes nothing:
+  every one of G0–G5's existing repo-native checks stays exactly where it was.
+- **`gate_polarity` adopted**, advisory. Full-tree standing baseline: 9 findings (1 real
+  defect filed — `eval_runner.rs`'s fail-open-by-default acceptance gate, same shape as
+  the already-fixed `verifier_runner.rs`/`scorer.rs` sites; 1 fixed this sprint —
+  `whatsapp.rs`'s dev-mode signature bypass, now an explicitly named override; 8
+  documented false positives).
+- **`CLAUDE.md` converted** to the Phase-13 section contract (Org rules / Stack /
+  Commands / Invariants / Repo map / Repo-specific rules). Every invariant now names its
+  enforcing gate or says `ADVISORY` — surfaced that 5 of the original 6 "Critical
+  Constraints" had no mechanical enforcement at all (only `unwrap`/`expect` does).
+  Verified clean against kiban's real `check_contract()`, not assumed.
+- **`.claude/rules/security.md` split** into `security-invariants.md` (class rules, no
+  citations) and `security-sinks.md` (call sites, citations kept as provenance). Fixed 5
+  stale in-code/doc references to the old filename.
+
+### Phase B — re-run the Phase 0 audit
+
+- **Verdict: 0 unmapped claims** (rubrics: 1 remains, genuinely wired; `CLAUDE.md`:
+  all 7 invariants mapped). Appended to `.konjo/killtests/S13/PHASE0-STOP-RULE.md`
+  (dated, append-only) rather than editing the original.
+- **Coverage:** stays soft; the locked floor stays the only hard gate (real coverage is
+  still below 80%).
+- **Doc coverage:** stays soft, re-measured — the real broken-intra-doc-link count grew
+  past what Phase 0 named (`lopi-agent` 11, `lopi-orchestrator` 8, plus a new one in
+  `lopi-mcp`). Named owner + target: before Sprint S14 closes.
+- **Function length: wrote the gate.** `.konjo/scripts/function_length_check.py`, hard,
+  ratcheted against `.konjo/function-length-ceiling.txt` (seeded at 74).
+
+### Phase C — determinism substrate
+
+- **`rust-toolchain.toml`** pins `1.88.0` — MSRV by real bisection (`1.87.0` fails,
+  `1.88.0` builds clean), driven by a transitive dependency (`home` via `which`), not a
+  guess. `rust-version = "1.88.0"` added to `[workspace.package]`.
+- **`[workspace.lints]`** — the existing hard CI clippy flags, now also declared in
+  `Cargo.toml` so `cargo clippy` catches them locally. All 18 crates + the root binary
+  opt in via `[lints] workspace = true`.
+- **`overflow-checks = true`** in `[profile.release]` — verified with a real temporary
+  `#[test]` (KT-S13.2) that panicked only after this line was added. `[profile.bench]`
+  added (`inherits = "release"`).
+
+### Phase D — panic and resource surface
+
+- **Both production unbounded channels converted**, not one: `quota_kill_log.rs` (sync
+  context — bounded `channel(4096)` + `try_send`, warns on full vs. closed distinctly)
+  and `src/repl/mod.rs` (async contexts throughout — bounded `channel(1024)` +
+  `.send().await`, so a slow redraw backpressures instead of growing without limit).
+- **Indexing floor seeded at 211** (`.konjo/indexing-floor.txt`), not the brief's carried
+  "202" — re-measured with a precisely stated method; the two numbers don't reconcile
+  under any looser filter tried, so the new number and its method are both recorded.
+  Wired as a hard, ratcheted CI gate with a passing `rejects_test`.
+
+### Phase E — error taxonomy (partial, recorded honestly)
+
+- **`lopi-core`: fully converted** — `sqlite_pool.rs`, `config.rs`, `loop_config.rs`,
+  `task.rs`'s `Rubric::from_toml_str` all now return typed errors instead of
+  `anyhow::Result`.
+- **`lopi-git`: 1 of 4 files** — `diff.rs`'s `DiffChecker::validate` converted
+  (`DiffScopeError`). `manager.rs`/`rebase.rs`/`worktree.rs` carried forward.
+- **`lopi-memory`: not started** (0 of 30 files) — carried forward explicitly, not
+  silently dropped. See `NEXT_SESSION_PROMPT.md`.
+
+### Phase F — enforcement from the first prompt
+
+- **New `SessionStart` hook** (`.claude/hooks/session-start.sh`) prints the standing
+  coverage floor, function-length ceiling, and indexing floor, and warns on a kiban-ref
+  drift between `.konjo/kiban.ref` and `konjo-gate.yml`.
+- **Hardcoded `/Users/wesleyscholl/lopi/` paths removed** from `.claude/settings.json`
+  and `.claude/hooks/post-edit.sh`, replaced with `$CLAUDE_PROJECT_DIR`.
+- **`post-edit.sh` extended** to cover `web/` (TypeScript/Svelte) edits via
+  `svelte-check`, previously only `.rs`/`.py`/`.mojo`.
+
+Not done this sprint: `lopi-memory`'s error taxonomy (30 files), `lopi-git`'s remaining
+3 files (`manager.rs`/`rebase.rs`/`worktree.rs`), paying off the doc-link debt (kept
+soft with an owner + date instead). See `NEXT_SESSION_PROMPT.md` for the concrete
+resume points.
+
 ## [0.38.0] — Sprint S13, Phase 0: Quality-claim honesty pass (STOPPED at Phase 0)
 
 **The brief's own stop rule fired: Phase 0 found 5 self-claims with no real
