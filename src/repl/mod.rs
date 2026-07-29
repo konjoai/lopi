@@ -73,7 +73,11 @@ async fn repl_loop<B: ratatui::backend::Backend>(
     cfg: Option<&LopiConfig>,
 ) -> Result<()> {
     let mut state = ReplState::new(&repo, &model, cfg);
-    let (ev_tx, mut ev_rx) = mpsc::unbounded_channel::<ReplEvent>();
+    // Bounded (Sprint S13R, Phase D — the panic/resource surface pass): an unbounded
+    // channel here meant an agent run logging faster than the REPL redraws could grow
+    // this queue without limit. 1024 is generous for interactive log-line volume — a
+    // background sender backpressures via `.await` on `send`, never drops silently.
+    let (ev_tx, mut ev_rx) = mpsc::channel::<ReplEvent>(1024);
 
     // First paint — without this the screen stays blank until the first event.
     terminal.draw(|f| {

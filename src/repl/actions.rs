@@ -26,7 +26,7 @@ pub(super) async fn handle_slash(
     state: &mut ReplState,
     repo: &std::path::Path,
     cfg: Option<&LopiConfig>,
-    ev_tx: &mpsc::UnboundedSender<ReplEvent>,
+    ev_tx: &mpsc::Sender<ReplEvent>,
 ) -> Result<()> {
     match parse_slash(text) {
         Err(msg) => state.push(msg, LineStyle::Error),
@@ -92,7 +92,7 @@ pub(super) async fn dispatch_goal(
     repo: PathBuf,
     bypass: bool,
     _cfg: Option<&LopiConfig>,
-    ev_tx: mpsc::UnboundedSender<ReplEvent>,
+    ev_tx: mpsc::Sender<ReplEvent>,
 ) -> Result<()> {
     if matches!(state.mode, ReplMode::Running) {
         state.push(
@@ -142,24 +142,28 @@ pub(super) async fn dispatch_goal(
                         TaskStatus::Failed { .. } | TaskStatus::RolledBack => LineStyle::Error,
                         _ => LineStyle::AgentLog,
                     };
-                    let _ = tx.send(ReplEvent::AgentLog {
-                        line: format!("  [{attempt}] → {label}"),
-                        style,
-                    });
+                    let _ = tx
+                        .send(ReplEvent::AgentLog {
+                            line: format!("  [{attempt}] → {label}"),
+                            style,
+                        })
+                        .await;
                 }
                 Ok(AgentEvent::LogLine { line, .. }) => {
-                    let _ = tx.send(ReplEvent::AgentLog {
-                        line: format!("       {line}"),
-                        style: LineStyle::AgentLog,
-                    });
+                    let _ = tx
+                        .send(ReplEvent::AgentLog {
+                            line: format!("       {line}"),
+                            style: LineStyle::AgentLog,
+                        })
+                        .await;
                 }
                 Ok(AgentEvent::TurnMetrics { cost_usd, .. }) => {
-                    let _ = tx.send(ReplEvent::CostAccrued(cost_usd));
+                    let _ = tx.send(ReplEvent::CostAccrued(cost_usd)).await;
                 }
                 Ok(AgentEvent::TaskCompleted { outcome, .. }) => {
                     let label = status_label(&outcome);
                     let success = matches!(outcome, TaskStatus::Success { .. });
-                    let _ = tx.send(ReplEvent::TaskDone { label, success });
+                    let _ = tx.send(ReplEvent::TaskDone { label, success }).await;
                     break;
                 }
                 Err(_) => break,
@@ -188,10 +192,12 @@ pub(super) async fn dispatch_goal(
         let _ = store
             .mine_patterns(&task_id, &task.goal, success_constraint.as_deref())
             .await;
-        let _ = tx2.send(ReplEvent::TaskDone {
-            label: "⚓ done".into(),
-            success: false,
-        });
+        let _ = tx2
+            .send(ReplEvent::TaskDone {
+                label: "⚓ done".into(),
+                success: false,
+            })
+            .await;
     });
 
     Ok(())
@@ -263,7 +269,7 @@ mod tests {
     #[tokio::test]
     async fn help_command_sets_show_help() {
         let mut state = test_state();
-        let (tx, _rx) = mpsc::unbounded_channel();
+        let (tx, _rx) = mpsc::channel(16);
         assert!(!state.show_help);
         handle_slash("/help", &mut state, std::path::Path::new("."), None, &tx)
             .await
@@ -274,7 +280,7 @@ mod tests {
     #[tokio::test]
     async fn clear_command_empties_output_and_resets_scroll() {
         let mut state = test_state();
-        let (tx, _rx) = mpsc::unbounded_channel();
+        let (tx, _rx) = mpsc::channel(16);
         state.push("some prior output", LineStyle::Normal);
         state.scroll_offset = 5;
         handle_slash("/clear", &mut state, std::path::Path::new("."), None, &tx)
@@ -287,7 +293,7 @@ mod tests {
     #[tokio::test]
     async fn unrecognized_command_pushes_an_error_line() {
         let mut state = test_state();
-        let (tx, _rx) = mpsc::unbounded_channel();
+        let (tx, _rx) = mpsc::channel(16);
         let before = state.output_lines.len();
         handle_slash(
             "/not-a-real-command",

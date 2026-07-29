@@ -139,8 +139,15 @@ pub const ENV_VAR: &str = "LOPI_QUOTA_KILL_TEST_LOG";
 /// `plan_streamed`) never touches a file descriptor itself; a background
 /// task does the actual `tokio::fs` append. No blocking I/O reaches the
 /// async path this hooks into, per the workspace's I/O rule.
+/// Bound on the writer queue (Sprint S13R, Phase D — the panic/resource surface
+/// pass): this sidecar is opt-in diagnostic logging fed from every decoded stream
+/// event, so an unbounded channel could grow without limit if the writer task ever
+/// falls behind the event rate. 4096 lines is generous headroom for a single `lopi
+/// run` invocation's stream-event volume.
+const WRITER_QUEUE_CAPACITY: usize = 4096;
+
 struct QuotaKillLogSink {
-    tx: tokio::sync::mpsc::UnboundedSender<String>,
+    tx: tokio::sync::mpsc::Sender<String>,
 }
 
 impl QuotaKillLogSink {
@@ -148,7 +155,7 @@ impl QuotaKillLogSink {
     /// Returns `None` — a pure no-op — when the var is absent, the default.
     fn from_env() -> Option<Self> {
         let path = std::env::var(ENV_VAR).ok()?;
-        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<String>(WRITER_QUEUE_CAPACITY);
         tokio::spawn(async move {
             use tokio::io::AsyncWriteExt;
             let file = tokio::fs::OpenOptions::new()
@@ -173,12 +180,23 @@ impl QuotaKillLogSink {
     }
 
     /// Hand off one already-serialized line to the writer task. Never
-    /// blocks; a dead writer task (channel closed) just drops the line —
-    /// this is a best-effort diagnostic sidecar, never allowed to affect the
-    /// agent run it's observing.
+    /// blocks — a dead writer task, or a queue at [`WRITER_QUEUE_CAPACITY`]
+    /// because the writer fell behind, just drops the line — this is a
+    /// best-effort diagnostic sidecar, never allowed to affect the agent run
+    /// it's observing.
     fn send(&self, line: String) {
-        if self.tx.send(line).is_err() {
-            tracing::warn!("quota_kill_log: writer task gone, dropping observation");
+        use tokio::sync::mpsc::error::TrySendError;
+        match self.tx.try_send(line) {
+            Ok(()) => {}
+            Err(TrySendError::Closed(_)) => {
+                tracing::warn!("quota_kill_log: writer task gone, dropping observation");
+            }
+            Err(TrySendError::Full(_)) => {
+                tracing::warn!(
+                    "quota_kill_log: writer queue full ({WRITER_QUEUE_CAPACITY} lines), \
+                     dropping observation"
+                );
+            }
         }
     }
 }
