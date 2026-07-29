@@ -1,0 +1,48 @@
+# Konjo Forward Pillar 2 ratchet (never regress) -- per-crate, not workspace-total.
+# Seeded Track C, from error_taxonomy_check.py's real measured count against this
+# branch: number of non-test `.rs` files per crate under `crates/` containing at
+# least one non-comment-line `anyhow::` occurrence (files, not occurrences -- see
+# that script's own docstring for the exact method).
+#
+# Sprint S13R's brief carried forward informal counts of 2 (lopi-core), 3
+# (lopi-git), 30 (lopi-memory) -- lopi-git and lopi-memory reproduce exactly under
+# this script's method; lopi-core measures 1, not 2: `sqlite_pool.rs`'s only
+# `anyhow::` text is inside a doc comment (`/// ... anyhow::Error ...`), which this
+# script's comment-line stripping correctly excludes as non-code, and `models.rs`'s
+# only occurrence is inside a `#[cfg(test)] mod tests { ... }` block -- a real usage
+# by this script's file-path-only test exclusion (it does not parse `#[cfg(test)]`
+# bodies, the same limitation `indexing_floor_check.py` and
+# `function_length_check.py` already carry), so the file still counts. Per the
+# brief's own instruction ("if a number here disagrees with what you measure, the
+# measurement wins"), 1 is what's recorded below, not 2.
+#
+# Every crate under `crates/` gets a row, including ones already at 0 -- a crate
+# that already hit zero can regress just as easily as one still migrating, and a
+# single workspace-wide total (the shape the indexing/function-length ratchets use)
+# can't tell "regression in a clean crate" apart from "no change in a dirty one".
+# Lower a row's count as that crate migrates off `anyhow::`; a PR must never raise
+# any row without a recorded reason.
+#
+# `lopi-git` lowered 3 -> 0 in this same PR: `manager.rs`, `rebase.rs`, and
+# `worktree.rs` (the three files this track's brief named) converted to
+# `GitManagerError`/`WorktreeError`, matching `diff.rs`'s already-migrated
+# `DiffScopeError` pattern -- see `crates/lopi-git/src/manager.rs` and
+# `worktree.rs` for the enums, and `LEDGER.md`'s "Track C" entry for why.
+lopi-agent: 19
+lopi-context: 0
+lopi-core: 1
+lopi-demo: 2
+lopi-git: 0
+lopi-github: 1
+lopi-index: 12
+lopi-mcp: 4
+lopi-memory: 30
+lopi-orchestrator: 9
+lopi-ratelimit: 0
+lopi-remote: 1
+lopi-skill: 0
+lopi-spec: 4
+lopi-tools: 1
+lopi-toon: 0
+lopi-ui: 8
+lopi-webhook: 3

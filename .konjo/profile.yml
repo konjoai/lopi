@@ -8,13 +8,14 @@
 # below still matches this repo's real state. See `LEDGER.md`'s `Lopi-Gate-Reconciliation-1`
 # (kiban side) for the full per-check promote/keep/delete table.
 #
-# Two local additions past the kiban-authored version, made directly in this copy (this
+# Three local additions past the kiban-authored version, made directly in this copy (this
 # session has no push access to kiban to land them upstream first): the
 # `function-length` entry (Phase B, alongside `.konjo/scripts/function_length_check.py` +
-# `.konjo/function-length-ceiling.txt`) and the `indexing-floor` entry (Phase D,
-# alongside `.konjo/scripts/indexing_floor_check.py` + `.konjo/indexing-floor.txt`) in
-# `contract_gates` and `gates:` below. Everything else in this file is the unedited
-# kiban original.
+# `.konjo/function-length-ceiling.txt`), the `indexing-floor` entry (Phase D,
+# alongside `.konjo/scripts/indexing_floor_check.py` + `.konjo/indexing-floor.txt`), and
+# the `error-taxonomy` entry (Track C, alongside `.konjo/scripts/error_taxonomy_check.py`
+# + `.konjo/error-taxonomy.txt`) in `contract_gates` and `gates:` below. Everything else
+# in this file is the unedited kiban original.
 #
 # Original kiban header follows, unedited:
 #
@@ -82,6 +83,7 @@ contract_gates:
   - rustdoc                # G4: RUSTDOCFLAGS=-D missing_docs, kept repo-native
   - function-length        # G4: .konjo/scripts/function_length_check.py + ceiling file, added Sprint S13R Phase B, kept repo-native
   - indexing-floor         # G4: .konjo/scripts/indexing_floor_check.py + ceiling file, added Sprint S13R Phase D, kept repo-native
+  - error-taxonomy         # G4: .konjo/scripts/error_taxonomy_check.py + per-crate floor file, added Track C, kept repo-native
   - unsafe-budget          # kiban-native, diff-only (already generic; genuinely active here)
 
 # Confirmed from konjo-gate.yml G3: `cargo mutants --in-diff <(git diff)`, survival <= 10%
@@ -140,6 +142,8 @@ gates:
     rejects_test: ".konjo/scripts/test_function_length_killtest.sh"
   - name: indexing-floor
     rejects_test: ".konjo/scripts/test_indexing_floor_killtest.sh"
+  - name: error-taxonomy
+    rejects_test: ".konjo/scripts/test_error_taxonomy_killtest.sh"
 
 # Phase 13, Phase 3: lifted verbatim from the `paths:` front-matter already prototyped in
 # lopi's `.claude/rules/security.md` -- one declaration now serves both the CLAUDE.md rules

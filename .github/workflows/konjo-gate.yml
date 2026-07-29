@@ -564,6 +564,19 @@ jobs:
           python3 .konjo/scripts/indexing_floor_check.py \
             --ceiling-file .konjo/indexing-floor.txt
 
+      - name: Error-taxonomy gate (anyhow:: usage, per-crate ratchet against locked floors)
+        # HARD GATE -- Track C. Sprint S13R migrated lopi-core and part of lopi-git off
+        # anyhow:: onto typed (thiserror) errors but shipped no gate holding that in
+        # place -- a single workspace-wide ratchet (the shape indexing/function-length
+        # use) can't tell "regression in an already-migrated crate" apart from "no
+        # change in a still-unmigrated one", so this ratchet is per-crate:
+        # `.konjo/error-taxonomy.txt` locks one anyhow::-file-count floor per crate.
+        # Never regresses any single crate's row above its floor; ratchet a row down
+        # as that crate migrates off anyhow::.
+        run: |
+          python3 .konjo/scripts/error_taxonomy_check.py \
+            --floor-file .konjo/error-taxonomy.txt
+
       - name: Documentation gate (rustdoc)
         # KNOWN DEBT, verified 2026-07-29 (Sprint S13R, Phase B — decision item 2):
         # re-measured rather than assumed. The debt grew past what backend-1 Phase 0
