@@ -1,12 +1,26 @@
 ---
 decays: state
-verified-against: 1dd471d
+verified-against: e930642
 verified-date: 2026-07-29
 ---
 
 # The Pentad — Loop Engineering Completion Roadmap
 
-Verified against: `1dd471d` · 2026-07-29 (re-verified; Sprint S13R's own commit volume
+Verified against: `e930642` · 2026-07-29 (re-verified; Track C's error-taxonomy migration
+(anyhow -> thiserror) pushed this past the 20-commit cap and, unlike the prior rounds
+below, did touch one of this doc's cited files for real: `crates/lopi-git/src/worktree.rs`
+was split to extract `worktree/error.rs` (the 500-line file-size gate) and both
+`worktree.rs`/`rebase.rs` gained typed `WorktreeError`/`GitManagerError` returns in place
+of `anyhow::Result`. Architecture and every DONE verdict in the Worktrees row/Sprint
+1.1-1.3 are unchanged, same `WorktreeManager`/`Worktree` split, same RAII `Drop`, same
+rebase-then-map-conflicts flow, but the extraction shifted line numbers throughout.
+Re-derived every `worktree.rs`/`rebase.rs` citation against this branch's actual line
+numbers (not assumed): `WorktreeManager` impl `36-217` -> `42-263`, `Drop` cleanup
+`295-330` -> `327-355`, `.lopi/worktrees` root constant `:24` -> `:26`, `CARGO_TARGET_DIR`
+(`env()`) `266-277` -> `288-298`, `rebase_onto`/`rebase_onto_default` `27-75` -> `26-78`,
+`gc()` `157-216` -> `175-191`. No other cited file in this doc changed this sprint (Track
+C's diff is scoped to `crates/lopi-git/`, `.konjo/`, and root docs). Prior banner
+(`1dd471d` · 2026-07-29, re-verified; Sprint S13R's own commit volume
 (9 commits) pushed this past the 20-commit cap again, not because a citation lost
 accuracy. Of this doc's cited files, S13R touched `crates/lopi-core/src/config.rs`
 and `crates/lopi-core/src/task.rs`: `config.rs` gained a `ConfigLoadError` enum before
@@ -118,7 +132,7 @@ Legend: 🟢 solid · 🟡 partial · 🔴 missing.
 | Block | Status | What exists | The true gap |
 |-------|--------|-------------|--------------|
 | **Automations** | 🟢 | `lopi-orchestrator` (`scheduler.rs`, `schedule_manager.rs`) cron; `lopi-webhook` CI-failure → task with HMAC verify; per-schedule autonomy L1–L4; run-history persistence | `crates/lopi-webhook/src/github.rs:36-60` — no delivery-id **dedup**, no **dead-letter queue**, triage is synchronous, no schedule-change audit trail. `crates/lopi-core/src/template.rs:44` has a generic `{name}`-hole templating primitive and `Task::from_template` (`crates/lopi-core/src/task.rs:467-472`) exists, but neither is called outside tests — event-payload templating is unwired scaffolding, not shipped |
-| **Worktrees** | 🟢 | **Real `git worktree` isolation, shipped and wired.** `crates/lopi-git/src/worktree.rs:36-217` (`WorktreeManager` add/add_detached/prune/list/gc) with RAII `Drop` cleanup (`worktree.rs:295-330`); `crates/lopi-orchestrator/src/pool/worktree.rs:25-50` (`setup_worktree`) puts each task in its own detached worktree when `IsolationMode::Worktree` is set (`crates/lopi-core/src/loop_config.rs:38-44`), with per-worktree `CARGO_TARGET_DIR` (`worktree.rs:266-277`); `crates/lopi-git/src/rebase.rs:27-75` (`rebase_onto`/`rebase_onto_default`) rebases onto a moved default branch and maps conflicts to `TaskStatus::Conflict` (wired at `crates/lopi-agent/src/runner/finalize.rs:243-264`, `rebase_before_pr` — line drift from the Sprint G verification-gate work touching this file); GC exposed via `lopi worktree gc`/`list` (`src/worktree_commands.rs:18-51`) | Isolation mode defaults to `Branch`, not `Worktree` — a repo must opt in via `.lopi/loop.toml`. No mid-run snapshot |
+| **Worktrees** | 🟢 | **Real `git worktree` isolation, shipped and wired.** `crates/lopi-git/src/worktree.rs:42-263` (`WorktreeManager` add/add_detached/prune/list/gc) with RAII `Drop` cleanup (`worktree.rs:327-355`); `crates/lopi-orchestrator/src/pool/worktree.rs:25-50` (`setup_worktree`) puts each task in its own detached worktree when `IsolationMode::Worktree` is set (`crates/lopi-core/src/loop_config.rs:38-44`), with per-worktree `CARGO_TARGET_DIR` (`worktree.rs:288-298`); `crates/lopi-git/src/rebase.rs:26-78` (`rebase_onto`/`rebase_onto_default`) rebases onto a moved default branch and maps conflicts to `TaskStatus::Conflict` (wired at `crates/lopi-agent/src/runner/finalize.rs:243-264`, `rebase_before_pr` — line drift from the Sprint G verification-gate work touching this file); GC exposed via `lopi worktree gc`/`list` (`src/worktree_commands.rs:18-51`) | Isolation mode defaults to `Branch`, not `Worktree` — a repo must opt in via `.lopi/loop.toml`. No mid-run snapshot |
 | **Skills** | 🟢 | **Runtime skill engine, shipped and wired.** `crates/lopi-skill/src/registry.rs:17-93` (`SkillRegistry::load_from_dirs`, dup-name validation) parses `SKILL.md` frontmatter into a typed registry; `crates/lopi-agent/src/runner/builder.rs:92` (`with_skills` — moved out of `runner/mod.rs` since the last verification, file-size split) and `crates/lopi-agent/src/runner/seed.rs:210-241` (`seed_skills`/`record_skill_activation`) inject matching skills into the planning prompt and record activation | Lesson→skill promotion is **partial**: `crates/lopi-skill/src/promote.rs:37-60` (clustering) and `promoter.rs:40-60` (drafts to `.lopi/skills-pending/`, human-approval gate) exist and are reachable via `src/skill_commands.rs:64`, but drafting is a fixed string template, not "via a sub-agent" as originally scoped, and nothing triggers it automatically — it's a manual CLI-only path today |
 | **Plugins & connectors** | 🟢 | **MCP client + server, shipped and wired — both directions.** `crates/lopi-mcp/src/client.rs:36-65` + `config.rs:19-37` (`[[mcp.servers]]` in `.lopi/loop.toml`) + `bridge.rs:21-49` (merges discovered tools into `lopi-tools::ToolRegistry`) is the consuming side; `crates/lopi-mcp/src/server.rs:18-80` wired at `src/mcp_commands/mod.rs:117-243` exposes `lopi_submit_task`/`lopi_get_task`/`lopi_cancel_task`/`lopi_list_tasks`/`lopi_get_logs`/`lopi_get_agent_dag`/`lopi_get_stats` as MCP tools over stdio (`McpServe` registered at `src/main.rs:50,268`) — more surface than the original sprint scoped | `crates/lopi-remote/src/lib.rs:1-19` is now down to a single hardcoded `whatsapp` module — Sprint S10 Phase 4 removed the `telegram` transport entirely (the iOS/macOS app covers that use case now; the `TaskSource::Telegram` variant itself survives as a durable persisted enum, see `LEDGER.md`), and the `egress` allowlist module cited here previously has also since been deleted. Neither removal changes the verdict: **no `Connector` trait exists anywhere in the crate, no durable outbound queue.** The original claim ("connectors are hardcoded singletons") still holds, just with one fewer singleton than when this was last checked |
 | **Sub-agents** | 🟢 | **Maker/checker split, shipped and wired.** `crates/lopi-agent/src/verifier.rs:196-199` — `VerifierAgent::new` defaults `isolated: true`; `resolve_verifier` (`verifier.rs:47`) forces a different model than the maker; test `isolated_prompt_excludes_the_maker_plan` moved to the new `crates/lopi-agent/src/verifier_tests.rs:54` when Sprint G split verifier's tests into their own file — still asserts a maker's plan text never reaches the verifier's prompt | No parallel task decomposition: `crates/lopi-core/src/successor.rs:1-27` is a depth-capped (3) **sequential** one-hop successor chain, not a sub-task DAG dispatched through `AgentPool`. Earned-trust auto-promotion exists as an isolated, tested state machine (`crates/lopi-core/src/earned_trust.rs:31-101`) but has zero callers outside its own module — not wired into `schedule_manager.rs`, not persisted |
@@ -186,7 +200,7 @@ the standing Three-Wall gates; only sprint-specific acceptance is spelled out.
 > physical checkouts. This is the single highest-leverage gap.
 
 **Sprint 1.1 — `WorktreeManager` core**
-- **Status: ✅ DONE.** `crates/lopi-git/src/worktree.rs:36-217` (add/add_detached/prune/list/gc), RAII `Drop` cleanup at `worktree.rs:295-330`, rooted under `.lopi/worktrees` (`worktree.rs:24`); `IsolationMode::{Branch,Worktree}` at `crates/lopi-core/src/loop_config.rs:38-44`.
+- **Status: ✅ DONE.** `crates/lopi-git/src/worktree.rs:42-263` (add/add_detached/prune/list/gc), RAII `Drop` cleanup at `worktree.rs:327-355`, rooted under `.lopi/worktrees` (`worktree.rs:26`); `IsolationMode::{Branch,Worktree}` at `crates/lopi-core/src/loop_config.rs:38-44`.
 - **Goal:** First-class git-worktree lifecycle in `lopi-git`.
 - **Deliverables:** `git worktree add <path> -b <branch>` / `remove` / `prune`;
   worktrees rooted under `.lopi/worktrees/{task_id}-{attempt}`; auto-clean on
@@ -198,7 +212,7 @@ the standing Three-Wall gates; only sprint-specific acceptance is spelled out.
   drops to *creation only*, not the whole run.
 
 **Sprint 1.2 — Pool runs in worktrees**
-- **Status: ✅ DONE.** `crates/lopi-orchestrator/src/pool/worktree.rs:25-50` (`setup_worktree`) wires per-task detached worktrees into the pool, called from `crates/lopi-orchestrator/src/pool/run_loop.rs:391`; per-worktree `CARGO_TARGET_DIR` at `crates/lopi-git/src/worktree.rs:266-277`.
+- **Status: ✅ DONE.** `crates/lopi-orchestrator/src/pool/worktree.rs:25-50` (`setup_worktree`) wires per-task detached worktrees into the pool, called from `crates/lopi-orchestrator/src/pool/run_loop.rs:391`; per-worktree `CARGO_TARGET_DIR` at `crates/lopi-git/src/worktree.rs:288-298`.
 - **Goal:** `AgentRunner` executes inside its worktree, not the shared root.
 - **Deliverables:** thread the worktree path through `run_loop.rs`; per-worktree
   `CARGO_TARGET_DIR`; remove the global serialization now made unnecessary.
@@ -208,7 +222,7 @@ the standing Three-Wall gates; only sprint-specific acceptance is spelled out.
   `target/` contention; wall-clock for 4 parallel tasks ≤ 1.6× a single task.
 
 **Sprint 1.3 — Rebase-on-moved-main + branch GC**
-- **Status: ✅ DONE.** `crates/lopi-git/src/rebase.rs:27-75` (`rebase_onto`/`rebase_onto_default`), conflicts mapped to `TaskStatus::Conflict` at `crates/lopi-agent/src/runner/finalize.rs:228-245`; GC at `crates/lopi-git/src/worktree.rs:157-216`; CLI at `src/worktree_commands.rs:18-51` (`lopi worktree gc`/`list`).
+- **Status: ✅ DONE.** `crates/lopi-git/src/rebase.rs:26-78` (`rebase_onto`/`rebase_onto_default`), conflicts mapped to `TaskStatus::Conflict` at `crates/lopi-agent/src/runner/finalize.rs:228-245`; GC at `crates/lopi-git/src/worktree.rs:175-191`; CLI at `src/worktree_commands.rs:18-51` (`lopi worktree gc`/`list`).
 - **Goal:** Loops survive a moving `main`; no branch litter.
 - **Deliverables:** pre-PR `git rebase origin/main` with conflict → structured
   `TaskStatus::Conflict` (not silent fail); post-merge worktree+branch GC;
