@@ -1,0 +1,731 @@
+{
+  "S10": {
+    "total": 0.008643201713405027,
+    "worst": [
+      {
+        "value": 0.0015079282407407409,
+        "time": 342,
+        "sources": [
+          {
+            "node": "BUTTON.gutter.v",
+            "previousRect": {
+              "x": 396,
+              "y": 48,
+              "width": 12,
+              "height": 852,
+              "top": 48,
+              "right": 408,
+              "bottom": 900,
+              "left": 396
+            },
+            "currentRect": {
+              "x": 533,
+              "y": 48,
+              "width": 12,
+              "height": 852,
+              "top": 48,
+              "right": 545,
+              "bottom": 900,
+              "left": 533
+            }
+          }
+        ]
+      },
+      {
+        "value": 0.0014632450810185187,
+        "time": 297.10000000009313,
+        "sources": [
+          {
+            "node": "BUTTON.gutter.v",
+            "previousRect": {
+              "x": 158,
+              "y": 48,
+              "width": 12,
+              "height": 852,
+              "top": 48,
+              "right": 170,
+              "bottom": 900,
+              "left": 158
+            },
+            "currentRect": {
+              "x": 292,
+              "y": 48,
+              "width": 12,
+              "height": 852,
+              "top": 48,
+              "right": 304,
+              "bottom": 900,
+              "left": 292
+            }
+          }
+        ]
+      },
+      {
+        "value": 0.0013469147858796297,
+        "time": 279.3000000002794,
+        "sources": [
+          {
+            "node": "BUTTON.gutter.v",
+            "previousRect": {
+              "x": 0,
+              "y": 48,
+              "width": 6,
+              "height": 852,
+              "top": 48,
+              "right": 6,
+              "bottom": 900,
+              "left": 0
+            },
+            "currentRect": {
+              "x": 158,
+              "y": 48,
+              "width": 12,
+              "height": 852,
+              "top": 48,
+              "right": 170,
+              "bottom": 900,
+              "left": 158
+            }
+          }
+        ]
+      },
+      {
+        "value": 0.0013259673946678884,
+        "time": 852.8000000002794,
+        "sources": [
+          {
+            "node": "DIV.hrun.svelte-fnt6jk",
+            "previousRect": {
+              "x": 1000,
+              "y": 704,
+              "width": 166,
+              "height": 64,
+              "top": 704,
+              "right": 1166,
+              "bottom": 768,
+              "left": 1000
+            },
+            "currentRect": {
+              "x": 1007,
+              "y": 704,
+              "width": 155,
+              "height": 64,
+              "top": 704,
+              "right": 1162,
+              "bottom": 768,
+              "left": 1007
+            }
+          },
+          {
+            "node": "SPAN.runtag.draft",
+            "previousRect": {
+              "x": 600,
+              "y": 132,
+              "width": 81,
+              "height": 20,
+              "top": 132,
+              "right": 681,
+              "bottom": 152,
+              "left": 600
+            },
+            "currentRect": {
+              "x": 592,
+              "y": 132,
+              "width": 89,
+              "height": 20,
+              "top": 132,
+              "right": 681,
+              "bottom": 152,
+              "left": 592
+            }
+          },
+          {
+            "node": "BUTTON.gchip.effort",
+            "previousRect": {
+              "x": 220,
+              "y": 246,
+              "width": 57,
+              "height": 22,
+              "top": 246,
+              "right": 277,
+              "bottom": 268,
+              "left": 220
+            },
+            "currentRect": {
+              "x": 202,
+              "y": 246,
+              "width": 41,
+              "height": 22,
+              "top": 246,
+              "right": 243,
+              "bottom": 268,
+              "left": 202
+            }
+          },
+          {
+            "node": "SPAN.runtag.draft",
+            "previousRect": {
+              "x": 1305,
+              "y": 132,
+              "width": 81,
+              "height": 20,
+              "top": 132,
+              "right": 1386,
+              "bottom": 152,
+              "left": 1305
+            },
+            "currentRect": {
+              "x": 1297,
+              "y": 132,
+              "width": 89,
+              "height": 20,
+              "top": 132,
+              "right": 1386,
+              "bottom": 152,
+              "left": 1297
+            }
+          },
+          {
+            "node": "DIV.hrun.svelte-fnt6jk",
+            "previousRect": {
+              "x": 295,
+              "y": 704,
+              "width": 166,
+              "height": 64,
+              "top": 704,
+              "right": 461,
+              "bottom": 768,
+              "left": 295
+            },
+            "currentRect": {
+              "x": 302,
+              "y": 704,
+              "width": 155,
+              "height": 64,
+              "top": 704,
+              "right": 457,
+              "bottom": 768,
+              "left": 302
+            }
+          }
+        ]
+      },
+      {
+        "value": 0.0011425877700617284,
+        "time": 317.89999999990687,
+        "sources": [
+          {
+            "node": "BUTTON.gutter.v",
+            "previousRect": {
+              "x": 292,
+              "y": 48,
+              "width": 12,
+              "height": 852,
+              "top": 48,
+              "right": 304,
+              "bottom": 900,
+              "left": 292
+            },
+            "currentRect": {
+              "x": 396,
+              "y": 48,
+              "width": 12,
+              "height": 852,
+              "top": 48,
+              "right": 408,
+              "bottom": 900,
+              "left": 396
+            }
+          }
+        ]
+      }
+    ],
+    "count": 13
+  },
+  "S4": {
+    "total": 0.00805802074793435,
+    "worst": [
+      {
+        "value": 0.0033060402199074075,
+        "time": 260.5,
+        "sources": [
+          {
+            "node": "BUTTON.gutter.v",
+            "previousRect": {
+              "x": 0,
+              "y": 48,
+              "width": 6,
+              "height": 852,
+              "top": 48,
+              "right": 6,
+              "bottom": 900,
+              "left": 0
+            },
+            "currentRect": {
+              "x": 396,
+              "y": 48,
+              "width": 12,
+              "height": 852,
+              "top": 48,
+              "right": 408,
+              "bottom": 900,
+              "left": 396
+            }
+          }
+        ]
+      },
+      {
+        "value": 0.0013259673946678884,
+        "time": 841.6999999997206,
+        "sources": [
+          {
+            "node": "DIV.hrun.svelte-fnt6jk",
+            "previousRect": {
+              "x": 1000,
+              "y": 704,
+              "width": 166,
+              "height": 64,
+              "top": 704,
+              "right": 1166,
+              "bottom": 768,
+              "left": 1000
+            },
+            "currentRect": {
+              "x": 1007,
+              "y": 704,
+              "width": 155,
+              "height": 64,
+              "top": 704,
+              "right": 1162,
+              "bottom": 768,
+              "left": 1007
+            }
+          },
+          {
+            "node": "SPAN.runtag.draft",
+            "previousRect": {
+              "x": 600,
+              "y": 132,
+              "width": 81,
+              "height": 20,
+              "top": 132,
+              "right": 681,
+              "bottom": 152,
+              "left": 600
+            },
+            "currentRect": {
+              "x": 592,
+              "y": 132,
+              "width": 89,
+              "height": 20,
+              "top": 132,
+              "right": 681,
+              "bottom": 152,
+              "left": 592
+            }
+          },
+          {
+            "node": "BUTTON.gchip.effort",
+            "previousRect": {
+              "x": 220,
+              "y": 246,
+              "width": 57,
+              "height": 22,
+              "top": 246,
+              "right": 277,
+              "bottom": 268,
+              "left": 220
+            },
+            "currentRect": {
+              "x": 202,
+              "y": 246,
+              "width": 41,
+              "height": 22,
+              "top": 246,
+              "right": 243,
+              "bottom": 268,
+              "left": 202
+            }
+          },
+          {
+            "node": "SPAN.runtag.draft",
+            "previousRect": {
+              "x": 1305,
+              "y": 132,
+              "width": 81,
+              "height": 20,
+              "top": 132,
+              "right": 1386,
+              "bottom": 152,
+              "left": 1305
+            },
+            "currentRect": {
+              "x": 1297,
+              "y": 132,
+              "width": 89,
+              "height": 20,
+              "top": 132,
+              "right": 1386,
+              "bottom": 152,
+              "left": 1297
+            }
+          },
+          {
+            "node": "DIV.hrun.svelte-fnt6jk",
+            "previousRect": {
+              "x": 295,
+              "y": 704,
+              "width": 166,
+              "height": 64,
+              "top": 704,
+              "right": 461,
+              "bottom": 768,
+              "left": 295
+            },
+            "currentRect": {
+              "x": 302,
+              "y": 704,
+              "width": 155,
+              "height": 64,
+              "top": 704,
+              "right": 457,
+              "bottom": 768,
+              "left": 302
+            }
+          }
+        ]
+      },
+      {
+        "value": 0.001123926986882716,
+        "time": 313.89999999990687,
+        "sources": [
+          {
+            "node": "BUTTON.gutter.v",
+            "previousRect": {
+              "x": 475,
+              "y": 48,
+              "width": 12,
+              "height": 852,
+              "top": 48,
+              "right": 487,
+              "bottom": 900,
+              "left": 475
+            },
+            "currentRect": {
+              "x": 578,
+              "y": 48,
+              "width": 12,
+              "height": 852,
+              "top": 48,
+              "right": 590,
+              "bottom": 900,
+              "left": 578
+            }
+          }
+        ]
+      },
+      {
+        "value": 0.0008613064236111112,
+        "time": 281.6999999997206,
+        "sources": [
+          {
+            "node": "BUTTON.gutter.v",
+            "previousRect": {
+              "x": 396,
+              "y": 48,
+              "width": 12,
+              "height": 852,
+              "top": 48,
+              "right": 408,
+              "bottom": 900,
+              "left": 396
+            },
+            "currentRect": {
+              "x": 475,
+              "y": 48,
+              "width": 12,
+              "height": 852,
+              "top": 48,
+              "right": 487,
+              "bottom": 900,
+              "left": 475
+            }
+          }
+        ]
+      },
+      {
+        "value": 0.0006394314236111112,
+        "time": 346.10000000009313,
+        "sources": [
+          {
+            "node": "BUTTON.gutter.v",
+            "previousRect": {
+              "x": 578,
+              "y": 48,
+              "width": 12,
+              "height": 852,
+              "top": 48,
+              "right": 590,
+              "bottom": 900,
+              "left": 578
+            },
+            "currentRect": {
+              "x": 636,
+              "y": 48,
+              "width": 12,
+              "height": 852,
+              "top": 48,
+              "right": 648,
+              "bottom": 900,
+              "left": 636
+            }
+          }
+        ]
+      }
+    ],
+    "count": 16
+  },
+  "S9": {
+    "total": 0.008674267352068867,
+    "worst": [
+      {
+        "value": 0.0015012514467592595,
+        "time": 345.10000000009313,
+        "sources": [
+          {
+            "node": "BUTTON.gutter.v",
+            "previousRect": {
+              "x": 397,
+              "y": 48,
+              "width": 12,
+              "height": 852,
+              "top": 48,
+              "right": 409,
+              "bottom": 900,
+              "left": 397
+            },
+            "currentRect": {
+              "x": 534,
+              "y": 48,
+              "width": 12,
+              "height": 852,
+              "top": 48,
+              "right": 546,
+              "bottom": 900,
+              "left": 534
+            }
+          }
+        ]
+      },
+      {
+        "value": 0.0014605058834876545,
+        "time": 301.70000000018626,
+        "sources": [
+          {
+            "node": "BUTTON.gutter.v",
+            "previousRect": {
+              "x": 159,
+              "y": 48,
+              "width": 12,
+              "height": 852,
+              "top": 48,
+              "right": 171,
+              "bottom": 900,
+              "left": 159
+            },
+            "currentRect": {
+              "x": 292,
+              "y": 48,
+              "width": 12,
+              "height": 852,
+              "top": 48,
+              "right": 304,
+              "bottom": 900,
+              "left": 292
+            }
+          }
+        ]
+      },
+      {
+        "value": 0.0013571867766203703,
+        "time": 285.70000000018626,
+        "sources": [
+          {
+            "node": "BUTTON.gutter.v",
+            "previousRect": {
+              "x": 0,
+              "y": 48,
+              "width": 6,
+              "height": 852,
+              "top": 48,
+              "right": 6,
+              "bottom": 900,
+              "left": 0
+            },
+            "currentRect": {
+              "x": 159,
+              "y": 48,
+              "width": 12,
+              "height": 852,
+              "top": 48,
+              "right": 171,
+              "bottom": 900,
+              "left": 159
+            }
+          }
+        ]
+      },
+      {
+        "value": 0.0013259673946678884,
+        "time": 879.2000000001863,
+        "sources": [
+          {
+            "node": "DIV.hrun.svelte-fnt6jk",
+            "previousRect": {
+              "x": 1000,
+              "y": 704,
+              "width": 166,
+              "height": 64,
+              "top": 704,
+              "right": 1166,
+              "bottom": 768,
+              "left": 1000
+            },
+            "currentRect": {
+              "x": 1007,
+              "y": 704,
+              "width": 155,
+              "height": 64,
+              "top": 704,
+              "right": 1162,
+              "bottom": 768,
+              "left": 1007
+            }
+          },
+          {
+            "node": "SPAN.runtag.draft",
+            "previousRect": {
+              "x": 600,
+              "y": 132,
+              "width": 81,
+              "height": 20,
+              "top": 132,
+              "right": 681,
+              "bottom": 152,
+              "left": 600
+            },
+            "currentRect": {
+              "x": 592,
+              "y": 132,
+              "width": 89,
+              "height": 20,
+              "top": 132,
+              "right": 681,
+              "bottom": 152,
+              "left": 592
+            }
+          },
+          {
+            "node": "BUTTON.gchip.effort",
+            "previousRect": {
+              "x": 220,
+              "y": 246,
+              "width": 57,
+              "height": 22,
+              "top": 246,
+              "right": 277,
+              "bottom": 268,
+              "left": 220
+            },
+            "currentRect": {
+              "x": 202,
+              "y": 246,
+              "width": 41,
+              "height": 22,
+              "top": 246,
+              "right": 243,
+              "bottom": 268,
+              "left": 202
+            }
+          },
+          {
+            "node": "SPAN.runtag.draft",
+            "previousRect": {
+              "x": 1305,
+              "y": 132,
+              "width": 81,
+              "height": 20,
+              "top": 132,
+              "right": 1386,
+              "bottom": 152,
+              "left": 1305
+            },
+            "currentRect": {
+              "x": 1297,
+              "y": 132,
+              "width": 89,
+              "height": 20,
+              "top": 132,
+              "right": 1386,
+              "bottom": 152,
+              "left": 1297
+            }
+          },
+          {
+            "node": "DIV.hrun.svelte-fnt6jk",
+            "previousRect": {
+              "x": 295,
+              "y": 704,
+              "width": 166,
+              "height": 64,
+              "top": 704,
+              "right": 461,
+              "bottom": 768,
+              "left": 295
+            },
+            "currentRect": {
+              "x": 302,
+              "y": 704,
+              "width": 155,
+              "height": 64,
+              "top": 704,
+              "right": 457,
+              "bottom": 768,
+              "left": 302
+            }
+          }
+        ]
+      },
+      {
+        "value": 0.0011401909722222223,
+        "time": 311.89999999990687,
+        "sources": [
+          {
+            "node": "BUTTON.gutter.v",
+            "previousRect": {
+              "x": 292,
+              "y": 48,
+              "width": 12,
+              "height": 852,
+              "top": 48,
+              "right": 304,
+              "bottom": 900,
+              "left": 292
+            },
+            "currentRect": {
+              "x": 397,
+              "y": 48,
+              "width": 12,
+              "height": 852,
+              "top": 48,
+              "right": 409,
+              "bottom": 900,
+              "left": 397
+            }
+          }
+        ]
+      }
+    ],
+    "count": 14
+  }
+}

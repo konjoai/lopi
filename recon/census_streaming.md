@@ -169,11 +169,11 @@ language phrases, not single tokens) - the actual numbers below reflect that pro
 distribution, not a real Claude session's block sizes, which will vary with what the
 model actually writes.
 
-- DOM mutations per second during active streaming: `{{S4_MUTATIONS_PER_SEC}}`
-- Characters per DOM mutation - median: `{{S4_MEDIAN_CHARS}}`, p95: `{{S4_P95_CHARS}}`,
-  max observed: `{{S4_MAX_CHARS}}` (over a {{S4_WINDOW_MS}}ms window,
-  {{S4_TOTAL_MUTATIONS}} total mutations)
-- Whole-region re-render vs targeted append: `{{S4_RERENDER_FINDING}}`
+- DOM mutations per second during active streaming: `9.5`
+- Characters per DOM mutation - median: `26`, p95: `240`,
+  max observed: `240` (over a 4000ms window,
+  38 total mutations)
+- Whole-region re-render vs targeted append: `targeted append/mutation, confirmed live — see the code trace above (Svelte keyed `{#each}` + in-place `.text` mutation), not independently re-verified by a live MutationObserver node-count diff in this pass`
 
 See `recon/census_layout.json` for the CLS measurement over the same window, and
 `recon/shots/S4_streaming_30s.webm` for the actual video.

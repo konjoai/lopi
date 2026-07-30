@@ -1,0 +1,2060 @@
+{
+  "byState": {
+    "S1": {
+      "1920x1080": {
+        "runningCount": 1,
+        "running": [
+          {
+            "target": "body.bg-konjo-black.text-konjo-paper",
+            "animationName": "void-drift",
+            "playState": "running",
+            "duration": 38000,
+            "iterations": null
+          }
+        ],
+        "reducedMotionRespected": false
+      },
+      "1440x900": {
+        "runningCount": 1,
+        "running": [
+          {
+            "target": "body.bg-konjo-black.text-konjo-paper",
+            "animationName": "void-drift",
+            "playState": "running",
+            "duration": 38000,
+            "iterations": null
+          }
+        ],
+        "reducedMotionRespected": false
+      },
+      "1280x800": {
+        "runningCount": 1,
+        "running": [
+          {
+            "target": "body.bg-konjo-black.text-konjo-paper",
+            "animationName": "void-drift",
+            "playState": "running",
+            "duration": 38000,
+            "iterations": null
+          }
+        ],
+        "reducedMotionRespected": false
+      },
+      "768x1024": {
+        "runningCount": 1,
+        "running": [
+          {
+            "target": "body.bg-konjo-black.text-konjo-paper",
+            "animationName": "void-drift",
+            "playState": "running",
+            "duration": 38000,
+            "iterations": null
+          }
+        ],
+        "reducedMotionRespected": false
+      },
+      "390x844": {
+        "runningCount": 1,
+        "running": [
+          {
+            "target": "body.bg-konjo-black.text-konjo-paper",
+            "animationName": "void-drift",
+            "playState": "running",
+            "duration": 38000,
+            "iterations": null
+          }
+        ],
+        "reducedMotionRespected": false
+      }
+    },
+    "S10": {
+      "1920x1080": {
+        "runningCount": 3,
+        "running": [
+          {
+            "target": "body.bg-konjo-black.text-konjo-paper",
+            "animationName": "void-drift",
+            "playState": "running",
+            "duration": 38000,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          }
+        ],
+        "reducedMotionRespected": false
+      },
+      "1440x900": {
+        "runningCount": 3,
+        "running": [
+          {
+            "target": "body.bg-konjo-black.text-konjo-paper",
+            "animationName": "void-drift",
+            "playState": "running",
+            "duration": 38000,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          }
+        ],
+        "reducedMotionRespected": false
+      },
+      "1280x800": {
+        "runningCount": 3,
+        "running": [
+          {
+            "target": "body.bg-konjo-black.text-konjo-paper",
+            "animationName": "void-drift",
+            "playState": "running",
+            "duration": 38000,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          }
+        ],
+        "reducedMotionRespected": false
+      },
+      "768x1024": {
+        "runningCount": 3,
+        "running": [
+          {
+            "target": "body.bg-konjo-black.text-konjo-paper",
+            "animationName": "void-drift",
+            "playState": "running",
+            "duration": 38000,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          }
+        ],
+        "reducedMotionRespected": false
+      },
+      "390x844": {
+        "runningCount": 3,
+        "running": [
+          {
+            "target": "body.bg-konjo-black.text-konjo-paper",
+            "animationName": "void-drift",
+            "playState": "running",
+            "duration": 38000,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          }
+        ],
+        "reducedMotionRespected": false
+      }
+    },
+    "S11": {
+      "1920x1080": {
+        "runningCount": 3,
+        "running": [
+          {
+            "target": "body.bg-konjo-black.text-konjo-paper",
+            "animationName": "void-drift",
+            "playState": "running",
+            "duration": 38000,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          }
+        ],
+        "reducedMotionRespected": false
+      },
+      "1440x900": {
+        "runningCount": 3,
+        "running": [
+          {
+            "target": "body.bg-konjo-black.text-konjo-paper",
+            "animationName": "void-drift",
+            "playState": "running",
+            "duration": 38000,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          }
+        ],
+        "reducedMotionRespected": false
+      },
+      "1280x800": {
+        "runningCount": 3,
+        "running": [
+          {
+            "target": "body.bg-konjo-black.text-konjo-paper",
+            "animationName": "void-drift",
+            "playState": "running",
+            "duration": 38000,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          }
+        ],
+        "reducedMotionRespected": false
+      },
+      "768x1024": {
+        "runningCount": 3,
+        "running": [
+          {
+            "target": "body.bg-konjo-black.text-konjo-paper",
+            "animationName": "void-drift",
+            "playState": "running",
+            "duration": 38000,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          }
+        ],
+        "reducedMotionRespected": false
+      },
+      "390x844": {
+        "runningCount": 3,
+        "running": [
+          {
+            "target": "body.bg-konjo-black.text-konjo-paper",
+            "animationName": "void-drift",
+            "playState": "running",
+            "duration": 38000,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          }
+        ],
+        "reducedMotionRespected": false
+      }
+    },
+    "S12": {
+      "1920x1080": {
+        "runningCount": 12,
+        "running": [
+          {
+            "target": "body.bg-konjo-black.text-konjo-paper",
+            "animationName": "void-drift",
+            "playState": "running",
+            "duration": 38000,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          },
+          {
+            "target": "i.svelte-1flxs5",
+            "animationName": "svelte-1flxs5-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          },
+          {
+            "target": "i.svelte-1flxs5",
+            "animationName": "svelte-1flxs5-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          },
+          {
+            "target": "i.svelte-1flxs5",
+            "animationName": "svelte-1flxs5-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          }
+        ],
+        "reducedMotionRespected": false
+      },
+      "1440x900": {
+        "runningCount": 12,
+        "running": [
+          {
+            "target": "body.bg-konjo-black.text-konjo-paper",
+            "animationName": "void-drift",
+            "playState": "running",
+            "duration": 38000,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          },
+          {
+            "target": "i.svelte-1flxs5",
+            "animationName": "svelte-1flxs5-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          },
+          {
+            "target": "i.svelte-1flxs5",
+            "animationName": "svelte-1flxs5-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          },
+          {
+            "target": "i.svelte-1flxs5",
+            "animationName": "svelte-1flxs5-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          }
+        ],
+        "reducedMotionRespected": false
+      },
+      "1280x800": {
+        "runningCount": 12,
+        "running": [
+          {
+            "target": "body.bg-konjo-black.text-konjo-paper",
+            "animationName": "void-drift",
+            "playState": "running",
+            "duration": 38000,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          },
+          {
+            "target": "i.svelte-1flxs5",
+            "animationName": "svelte-1flxs5-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          },
+          {
+            "target": "i.svelte-1flxs5",
+            "animationName": "svelte-1flxs5-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          },
+          {
+            "target": "i.svelte-1flxs5",
+            "animationName": "svelte-1flxs5-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          }
+        ],
+        "reducedMotionRespected": false
+      },
+      "768x1024": {
+        "runningCount": 12,
+        "running": [
+          {
+            "target": "body.bg-konjo-black.text-konjo-paper",
+            "animationName": "void-drift",
+            "playState": "running",
+            "duration": 38000,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          },
+          {
+            "target": "i.svelte-1flxs5",
+            "animationName": "svelte-1flxs5-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          },
+          {
+            "target": "i.svelte-1flxs5",
+            "animationName": "svelte-1flxs5-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          },
+          {
+            "target": "i.svelte-1flxs5",
+            "animationName": "svelte-1flxs5-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          }
+        ],
+        "reducedMotionRespected": false
+      },
+      "390x844": {
+        "runningCount": 12,
+        "running": [
+          {
+            "target": "body.bg-konjo-black.text-konjo-paper",
+            "animationName": "void-drift",
+            "playState": "running",
+            "duration": 38000,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          },
+          {
+            "target": "i.svelte-1flxs5",
+            "animationName": "svelte-1flxs5-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          },
+          {
+            "target": "i.svelte-1flxs5",
+            "animationName": "svelte-1flxs5-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          },
+          {
+            "target": "i.svelte-1flxs5",
+            "animationName": "svelte-1flxs5-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          }
+        ],
+        "reducedMotionRespected": false
+      }
+    },
+    "S2": {
+      "1920x1080": {
+        "runningCount": 4,
+        "running": [
+          {
+            "target": "body.bg-konjo-black.text-konjo-paper",
+            "animationName": "void-drift",
+            "playState": "running",
+            "duration": 38000,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          },
+          {
+            "target": "i.svelte-1flxs5",
+            "animationName": "svelte-1flxs5-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          }
+        ],
+        "reducedMotionRespected": false
+      },
+      "1440x900": {
+        "runningCount": 4,
+        "running": [
+          {
+            "target": "body.bg-konjo-black.text-konjo-paper",
+            "animationName": "void-drift",
+            "playState": "running",
+            "duration": 38000,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          },
+          {
+            "target": "i.svelte-1flxs5",
+            "animationName": "svelte-1flxs5-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          }
+        ],
+        "reducedMotionRespected": false
+      },
+      "1280x800": {
+        "runningCount": 4,
+        "running": [
+          {
+            "target": "body.bg-konjo-black.text-konjo-paper",
+            "animationName": "void-drift",
+            "playState": "running",
+            "duration": 38000,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          },
+          {
+            "target": "i.svelte-1flxs5",
+            "animationName": "svelte-1flxs5-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          }
+        ],
+        "reducedMotionRespected": false
+      },
+      "768x1024": {
+        "runningCount": 4,
+        "running": [
+          {
+            "target": "body.bg-konjo-black.text-konjo-paper",
+            "animationName": "void-drift",
+            "playState": "running",
+            "duration": 38000,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          },
+          {
+            "target": "i.svelte-1flxs5",
+            "animationName": "svelte-1flxs5-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          }
+        ],
+        "reducedMotionRespected": false
+      },
+      "390x844": {
+        "runningCount": 4,
+        "running": [
+          {
+            "target": "body.bg-konjo-black.text-konjo-paper",
+            "animationName": "void-drift",
+            "playState": "running",
+            "duration": 38000,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          },
+          {
+            "target": "i.svelte-1flxs5",
+            "animationName": "svelte-1flxs5-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          }
+        ],
+        "reducedMotionRespected": false
+      }
+    },
+    "S3": {
+      "1920x1080": {
+        "runningCount": 13,
+        "running": [
+          {
+            "target": "body.bg-konjo-black.text-konjo-paper",
+            "animationName": "void-drift",
+            "playState": "running",
+            "duration": 38000,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          },
+          {
+            "target": "i.svelte-1flxs5",
+            "animationName": "svelte-1flxs5-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          },
+          {
+            "target": "i.svelte-1flxs5",
+            "animationName": "svelte-1flxs5-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          },
+          {
+            "target": "i.svelte-1flxs5",
+            "animationName": "svelte-1flxs5-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          },
+          {
+            "target": "i.svelte-1flxs5",
+            "animationName": "svelte-1flxs5-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          }
+        ],
+        "reducedMotionRespected": false
+      },
+      "1440x900": {
+        "runningCount": 13,
+        "running": [
+          {
+            "target": "body.bg-konjo-black.text-konjo-paper",
+            "animationName": "void-drift",
+            "playState": "running",
+            "duration": 38000,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          },
+          {
+            "target": "i.svelte-1flxs5",
+            "animationName": "svelte-1flxs5-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          },
+          {
+            "target": "i.svelte-1flxs5",
+            "animationName": "svelte-1flxs5-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          },
+          {
+            "target": "i.svelte-1flxs5",
+            "animationName": "svelte-1flxs5-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          },
+          {
+            "target": "i.svelte-1flxs5",
+            "animationName": "svelte-1flxs5-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          }
+        ],
+        "reducedMotionRespected": false
+      },
+      "1280x800": {
+        "runningCount": 13,
+        "running": [
+          {
+            "target": "body.bg-konjo-black.text-konjo-paper",
+            "animationName": "void-drift",
+            "playState": "running",
+            "duration": 38000,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          },
+          {
+            "target": "i.svelte-1flxs5",
+            "animationName": "svelte-1flxs5-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          },
+          {
+            "target": "i.svelte-1flxs5",
+            "animationName": "svelte-1flxs5-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          },
+          {
+            "target": "i.svelte-1flxs5",
+            "animationName": "svelte-1flxs5-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          },
+          {
+            "target": "i.svelte-1flxs5",
+            "animationName": "svelte-1flxs5-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          }
+        ],
+        "reducedMotionRespected": false
+      },
+      "768x1024": {
+        "runningCount": 13,
+        "running": [
+          {
+            "target": "body.bg-konjo-black.text-konjo-paper",
+            "animationName": "void-drift",
+            "playState": "running",
+            "duration": 38000,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          },
+          {
+            "target": "i.svelte-1flxs5",
+            "animationName": "svelte-1flxs5-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          },
+          {
+            "target": "i.svelte-1flxs5",
+            "animationName": "svelte-1flxs5-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          },
+          {
+            "target": "i.svelte-1flxs5",
+            "animationName": "svelte-1flxs5-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          },
+          {
+            "target": "i.svelte-1flxs5",
+            "animationName": "svelte-1flxs5-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          }
+        ],
+        "reducedMotionRespected": false
+      },
+      "390x844": {
+        "runningCount": 13,
+        "running": [
+          {
+            "target": "body.bg-konjo-black.text-konjo-paper",
+            "animationName": "void-drift",
+            "playState": "running",
+            "duration": 38000,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          },
+          {
+            "target": "i.svelte-1flxs5",
+            "animationName": "svelte-1flxs5-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          },
+          {
+            "target": "i.svelte-1flxs5",
+            "animationName": "svelte-1flxs5-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          },
+          {
+            "target": "i.svelte-1flxs5",
+            "animationName": "svelte-1flxs5-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          },
+          {
+            "target": "i.svelte-1flxs5",
+            "animationName": "svelte-1flxs5-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          }
+        ],
+        "reducedMotionRespected": false
+      }
+    },
+    "S4": {
+      "1920x1080": {
+        "runningCount": 4,
+        "running": [
+          {
+            "target": "body.bg-konjo-black.text-konjo-paper",
+            "animationName": "void-drift",
+            "playState": "running",
+            "duration": 38000,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          },
+          {
+            "target": "i.svelte-1flxs5",
+            "animationName": "svelte-1flxs5-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          }
+        ],
+        "reducedMotionRespected": false
+      },
+      "1440x900": {
+        "runningCount": 4,
+        "running": [
+          {
+            "target": "body.bg-konjo-black.text-konjo-paper",
+            "animationName": "void-drift",
+            "playState": "running",
+            "duration": 38000,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          },
+          {
+            "target": "i.svelte-1flxs5",
+            "animationName": "svelte-1flxs5-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          }
+        ],
+        "reducedMotionRespected": false
+      },
+      "1280x800": {
+        "runningCount": 4,
+        "running": [
+          {
+            "target": "body.bg-konjo-black.text-konjo-paper",
+            "animationName": "void-drift",
+            "playState": "running",
+            "duration": 38000,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          },
+          {
+            "target": "i.svelte-1flxs5",
+            "animationName": "svelte-1flxs5-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          }
+        ],
+        "reducedMotionRespected": false
+      },
+      "768x1024": {
+        "runningCount": 4,
+        "running": [
+          {
+            "target": "body.bg-konjo-black.text-konjo-paper",
+            "animationName": "void-drift",
+            "playState": "running",
+            "duration": 38000,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          },
+          {
+            "target": "i.svelte-1flxs5",
+            "animationName": "svelte-1flxs5-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          }
+        ],
+        "reducedMotionRespected": false
+      },
+      "390x844": {
+        "runningCount": 4,
+        "running": [
+          {
+            "target": "body.bg-konjo-black.text-konjo-paper",
+            "animationName": "void-drift",
+            "playState": "running",
+            "duration": 38000,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          },
+          {
+            "target": "i.svelte-1flxs5",
+            "animationName": "svelte-1flxs5-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          }
+        ],
+        "reducedMotionRespected": false
+      }
+    },
+    "S5": {
+      "1920x1080": {
+        "runningCount": 3,
+        "running": [
+          {
+            "target": "body.bg-konjo-black.text-konjo-paper",
+            "animationName": "void-drift",
+            "playState": "running",
+            "duration": 38000,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          }
+        ],
+        "reducedMotionRespected": false
+      },
+      "1440x900": {
+        "runningCount": 3,
+        "running": [
+          {
+            "target": "body.bg-konjo-black.text-konjo-paper",
+            "animationName": "void-drift",
+            "playState": "running",
+            "duration": 38000,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          }
+        ],
+        "reducedMotionRespected": false
+      },
+      "1280x800": {
+        "runningCount": 3,
+        "running": [
+          {
+            "target": "body.bg-konjo-black.text-konjo-paper",
+            "animationName": "void-drift",
+            "playState": "running",
+            "duration": 38000,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          }
+        ],
+        "reducedMotionRespected": false
+      },
+      "768x1024": {
+        "runningCount": 3,
+        "running": [
+          {
+            "target": "body.bg-konjo-black.text-konjo-paper",
+            "animationName": "void-drift",
+            "playState": "running",
+            "duration": 38000,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          }
+        ],
+        "reducedMotionRespected": false
+      },
+      "390x844": {
+        "runningCount": 3,
+        "running": [
+          {
+            "target": "body.bg-konjo-black.text-konjo-paper",
+            "animationName": "void-drift",
+            "playState": "running",
+            "duration": 38000,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          }
+        ],
+        "reducedMotionRespected": false
+      }
+    },
+    "S9": {
+      "1920x1080": {
+        "runningCount": 3,
+        "running": [
+          {
+            "target": "body.bg-konjo-black.text-konjo-paper",
+            "animationName": "void-drift",
+            "playState": "running",
+            "duration": 38000,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          }
+        ],
+        "reducedMotionRespected": false
+      },
+      "1440x900": {
+        "runningCount": 3,
+        "running": [
+          {
+            "target": "body.bg-konjo-black.text-konjo-paper",
+            "animationName": "void-drift",
+            "playState": "running",
+            "duration": 38000,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          }
+        ],
+        "reducedMotionRespected": false
+      },
+      "1280x800": {
+        "runningCount": 3,
+        "running": [
+          {
+            "target": "body.bg-konjo-black.text-konjo-paper",
+            "animationName": "void-drift",
+            "playState": "running",
+            "duration": 38000,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          }
+        ],
+        "reducedMotionRespected": false
+      },
+      "768x1024": {
+        "runningCount": 3,
+        "running": [
+          {
+            "target": "body.bg-konjo-black.text-konjo-paper",
+            "animationName": "void-drift",
+            "playState": "running",
+            "duration": 38000,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          }
+        ],
+        "reducedMotionRespected": false
+      },
+      "390x844": {
+        "runningCount": 3,
+        "running": [
+          {
+            "target": "body.bg-konjo-black.text-konjo-paper",
+            "animationName": "void-drift",
+            "playState": "running",
+            "duration": 38000,
+            "iterations": null
+          },
+          {
+            "target": "span.runtag.running",
+            "animationName": "svelte-i4vt88-pulse",
+            "playState": "running",
+            "duration": 1400,
+            "iterations": null
+          },
+          {
+            "target": "svg",
+            "animationName": "svelte-e9bin1-spin",
+            "playState": "running",
+            "duration": 1100,
+            "iterations": null
+          }
+        ],
+        "reducedMotionRespected": false
+      }
+    }
+  },
+  "keyframesInventory": [
+    {
+      "name": "pulse",
+      "frameCount": 1
+    },
+    {
+      "name": "void-drift",
+      "frameCount": 3
+    },
+    {
+      "name": "shimmer",
+      "frameCount": 2
+    },
+    {
+      "name": "count-roll",
+      "frameCount": 2
+    },
+    {
+      "name": "svelte-12qhfyh-toast-in",
+      "frameCount": 2
+    },
+    {
+      "name": "svelte-12qhfyh-toast-shake",
+      "frameCount": 3
+    },
+    {
+      "name": "svelte-x6k6te-kdrop-in",
+      "frameCount": 2
+    },
+    {
+      "name": "svelte-1cpok13-toastin",
+      "frameCount": 2
+    },
+    {
+      "name": "svelte-e9bin1-spin",
+      "frameCount": 1
+    },
+    {
+      "name": "svelte-i4vt88-edgeflash",
+      "frameCount": 2
+    },
+    {
+      "name": "svelte-i4vt88-pulse",
+      "frameCount": 2
+    },
+    {
+      "name": "svelte-i4vt88-iterglow",
+      "frameCount": 2
+    },
+    {
+      "name": "svelte-i4vt88-spin",
+      "frameCount": 1
+    },
+    {
+      "name": "svelte-1flxs5-pulse",
+      "frameCount": 2
+    },
+    {
+      "name": "svelte-fnt6jk-iterglow",
+      "frameCount": 2
+    },
+    {
+      "name": "svelte-fnt6jk-spin",
+      "frameCount": 1
+    },
+    {
+      "name": "svelte-1418rz4-focusflash",
+      "frameCount": 2
+    },
+    {
+      "name": "svelte-1418rz4-edgeflash",
+      "frameCount": 2
+    }
+  ],
+  "transitionsInventory": [
+    {
+      "property": "transform",
+      "duration": "0.14s",
+      "easing": "cubic-bezier(0.16, 1, 0.3, 1)"
+    },
+    {
+      "property": "color, background-color, border-color, text-decoration-color, fill, stroke",
+      "duration": "0.15s",
+      "easing": "cubic-bezier(0.4, 0, 0.2, 1)"
+    },
+    {
+      "property": "opacity",
+      "duration": "0.22s",
+      "easing": "ease"
+    },
+    {
+      "property": "transform",
+      "duration": "0.24s",
+      "easing": "cubic-bezier(0.16, 1, 0.3, 1)"
+    },
+    {
+      "property": "background-color, color",
+      "duration": "0.12s, 0.12s",
+      "easing": "ease, ease"
+    },
+    {
+      "property": "color",
+      "duration": "0.12s",
+      "easing": "ease"
+    },
+    {
+      "property": "opacity",
+      "duration": "0.12s",
+      "easing": "ease"
+    },
+    {
+      "property": "box-shadow, border-color",
+      "duration": "0.12s, 0.12s",
+      "easing": "ease, ease"
+    },
+    {
+      "property": "all",
+      "duration": "0.12s",
+      "easing": "ease"
+    },
+    {
+      "property": "border-color, background",
+      "duration": "0.12s, 0.12s",
+      "easing": "ease, ease"
+    },
+    {
+      "property": "max-width",
+      "duration": "0.24s",
+      "easing": "cubic-bezier(0.5, 0, 0.2, 1)"
+    },
+    {
+      "property": "transform",
+      "duration": "0.2s",
+      "easing": "ease"
+    },
+    {
+      "property": "max-height",
+      "duration": "0.26s",
+      "easing": "ease"
+    },
+    {
+      "property": "background, left, top",
+      "duration": "0.12s, 0.42s, 0.42s",
+      "easing": "ease, cubic-bezier(0.16, 1, 0.3, 1), cubic-bezier(0.16, 1, 0.3, 1)"
+    },
+    {
+      "property": "border-color, background, color",
+      "duration": "0.12s, 0.12s, 0.12s",
+      "easing": "ease, ease, ease"
+    },
+    {
+      "property": "opacity",
+      "duration": "0.13s",
+      "easing": "ease"
+    }
+  ],
+  "concurrentMotionDuringRunningPrompt": 13,
+  "prefersReducedMotionRespectedAnywhereObserved": false
+}

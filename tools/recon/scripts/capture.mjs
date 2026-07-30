@@ -83,11 +83,17 @@ function spawnFixture(port) {
 }
 
 async function pump(port, taskId, scenario) {
-  await fetch(`http://127.0.0.1:${port}/recon/pump`, {
+  if (!taskId) {
+    throw new Error(`pump(${scenario}) called with no task id — a waitForIds() call is missing upstream`);
+  }
+  const res = await fetch(`http://127.0.0.1:${port}/recon/pump`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ task_id: taskId, scenario })
   });
+  if (!res.ok) {
+    throw new Error(`pump(${scenario}, ${taskId}) failed: ${res.status} ${await res.text()}`);
+  }
 }
 
 async function blockWebfonts(page) {
@@ -109,6 +115,26 @@ function trackCreatedIds(page) {
   return ids;
 }
 
+/** Block until `ids` (populated asynchronously by the `response` listener
+ * above) has at least `count` entries. A fixed sleep here was a race: the
+ * POST /api/tasks round trip does not reliably finish within any single
+ * fixed delay, and calling /recon/pump with an undefined task_id fails
+ * Json<PumpRequest> deserialization silently from this script's point of
+ * view (capture.mjs never checked the pump response status) — the
+ * fixture-server never even runs the scenario, so the state settles with 0
+ * tokens and no live-output panel at all. Explicitly waiting for the id
+ * removes the race outright, instead of hoping the timing window is wide
+ * enough on every run. */
+async function waitForIds(ids, count, timeoutMs = 8000) {
+  const start = Date.now();
+  while (ids.length < count && Date.now() - start < timeoutMs) {
+    await sleep(50);
+  }
+  if (ids.length < count) {
+    throw new Error(`expected ${count} created task id(s), only observed ${ids.length} after ${timeoutMs}ms`);
+  }
+}
+
 async function addPane(page) {
   await page.evaluate(() => window.dispatchEvent(new Event('lopi:add-pane')));
   await sleep(100);
@@ -122,23 +148,44 @@ function goalInput(page, paneIndex) {
 }
 
 /** Add one card to pane `paneIndex` (0-based) with `goal`, then run that pane's stack. */
+// `force: true` skips Playwright's actionability "stable for two samples"
+// wait — some ambient CSS motion (Census D territory) keeps these
+// composer/dock elements' bounding boxes shifting by sub-pixel amounts
+// indefinitely, so the natural-stability wait alone was timing out at
+// 4-pane layouts. Elements are already on-screen at every viewport this
+// script uses, so no explicit scroll is needed.
 async function addCard(page, paneIndex, goal) {
   const ci = goalInput(page, paneIndex);
-  await ci.scrollIntoViewIfNeeded();
-  await ci.click();
+  await ci.click({ force: true, timeout: 15000 });
   await page.keyboard.type(goal);
   await sleep(150);
   const addBtn = page.getByRole('button', { name: 'add', exact: true }).nth(paneIndex);
-  await addBtn.scrollIntoViewIfNeeded();
-  await addBtn.click();
+  await addBtn.click({ force: true, timeout: 15000 });
   await sleep(150);
 }
 
 async function runPane(page, paneIndex) {
   const runBtn = page.getByRole('button', { name: 'run stack' }).nth(paneIndex);
-  await runBtn.scrollIntoViewIfNeeded();
-  await runBtn.click({ timeout: 10000 });
+  await runBtn.click({ force: true, timeout: 15000 });
   await sleep(200);
+}
+
+/** Once a pane starts running, its "run stack" button relabels to "pause" —
+ * the collection of matching buttons shrinks by one on every click. Index-
+ * based `.nth(i)` therefore drifts after the first run; always taking
+ * `.first()` in a loop is the correct, order-independent way to run every
+ * pane once. Same applies to `expandFirstOutput` below ("expand" becomes
+ * "collapse" once clicked). */
+async function runFirstPane(page) {
+  await page.getByRole('button', { name: 'run stack' }).first().click({ force: true, timeout: 15000 });
+  await sleep(200);
+}
+
+async function expandFirstOutput(page) {
+  const btn = page.locator('button[title="expand"]').first();
+  if (await btn.count()) {
+    await btn.click({ force: true, timeout: 15000 });
+  }
 }
 
 /** Add one card to pane `paneIndex` (0-based) with `goal`, then run that
@@ -154,7 +201,7 @@ async function addAndRunCard(page, paneIndex, goal) {
 async function expandOutput(page, paneIndex) {
   const btn = page.locator('button[title="expand"]').nth(paneIndex);
   if (await btn.count()) {
-    await btn.click();
+    await btn.click({ force: true, timeout: 15000 });
   }
 }
 
@@ -171,7 +218,7 @@ const BUILDERS = {
   async S2(page) {
     const ids = trackCreatedIds(page);
     await addAndRunCard(page, 0, 'Add retry backoff to the webhook dispatcher');
-    await sleep(300);
+    await waitForIds(ids, 1);
     await pump(PORT, ids[0], 'implementing');
     await sleep(2500);
     await expandOutput(page, 0);
@@ -191,20 +238,21 @@ const BUILDERS = {
       await addCard(page, i, goals[i]);
     }
     for (let i = 0; i < 4; i++) {
-      await runPane(page, i);
+      await runFirstPane(page);
     }
+    await waitForIds(ids, 4);
     for (let i = 0; i < 4; i++) {
       await pump(PORT, ids[i], 'implementing');
       await sleep(150);
     }
     await sleep(2500);
-    for (let i = 0; i < 4; i++) await expandOutput(page, i);
+    for (let i = 0; i < 4; i++) await expandFirstOutput(page);
     return { settleMs: 800 };
   },
   async S4(page) {
     const ids = trackCreatedIds(page);
     await addAndRunCard(page, 0, 'Add a Redis-backed semantic cache to the retrieval path');
-    await sleep(300);
+    await waitForIds(ids, 1);
     await pump(PORT, ids[0], 'streaming');
     await sleep(2000);
     await expandOutput(page, 0);
@@ -213,7 +261,7 @@ const BUILDERS = {
   async S5(page) {
     const ids = trackCreatedIds(page);
     await addAndRunCard(page, 0, 'Refactor scorer thresholds for the Konjo Verifier');
-    await sleep(300);
+    await waitForIds(ids, 1);
     await pump(PORT, ids[0], 'gate-failure');
     await sleep(1800);
     await expandOutput(page, 0);
@@ -222,7 +270,7 @@ const BUILDERS = {
   async S9(page) {
     const ids = trackCreatedIds(page);
     await addAndRunCard(page, 0, 'Backfill task_logs pruning for the S9 recon load test');
-    await sleep(300);
+    await waitForIds(ids, 1);
     await pump(PORT, ids[0], 'scrollback');
     await sleep(500);
     await expandOutput(page, 0);
@@ -232,7 +280,7 @@ const BUILDERS = {
   async S10(page) {
     const ids = trackCreatedIds(page);
     await addAndRunCard(page, 0, 'Ingest a malformed vendor log export');
-    await sleep(300);
+    await waitForIds(ids, 1);
     await pump(PORT, ids[0], 'pathological');
     await sleep(1800);
     await expandOutput(page, 0);
@@ -255,7 +303,7 @@ const BUILDERS = {
     await page.getByRole('button', { name: 'add', exact: true }).nth(0).click();
     await sleep(150);
     await page.getByRole('button', { name: 'run stack' }).nth(0).click();
-    await sleep(400);
+    await waitForIds(ids, 1);
     await pump(PORT, ids[0], 'success');
     await sleep(1000);
     return { settleMs: 500 };
@@ -274,8 +322,9 @@ const BUILDERS = {
       await addCard(page, i, goals[i]);
     }
     for (let i = 0; i < 4; i++) {
-      await runPane(page, i);
+      await runFirstPane(page);
     }
+    await waitForIds(ids, 4);
     for (let i = 0; i < 4; i++) {
       await pump(PORT, ids[i], 'success');
       await sleep(150);
