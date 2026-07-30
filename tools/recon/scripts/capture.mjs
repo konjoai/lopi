@@ -353,7 +353,27 @@ const BUILDERS = {
     const ids = trackCreatedIds(page);
     await addAndRunCard(page, 0, 'Refactor scorer thresholds for the Konjo Verifier');
     await waitForIds(ids, 1);
-    await pumpUntil(PORT, ids[0], 'gate-failure', () => waitForText(page, 'Retrying · attempt', 8000));
+    // This specific goal reproducibly causes a second, real POST /api/tasks
+    // ~700-900ms after the first (server-side response carries
+    // duplicate_of: <first-id> — confirmed via direct inspection, not
+    // conjecture). Some client-side resubmission is genuinely firing twice;
+    // which of the two ids ends up bound to the visible card isn't something
+    // this read-only harness can control. Wait long enough to catch the
+    // straggler, then pump every id seen so far — pumping a stale/orphaned
+    // id is inert (broadcasts to a task_id nobody's subscribed to), so this
+    // is safe regardless of which id the UI actually renders.
+    await sleep(1500);
+    let lastErr;
+    for (const id of ids) {
+      try {
+        await pumpUntil(PORT, id, 'gate-failure', () => waitForText(page, 'Retrying · attempt', 8000));
+        lastErr = null;
+        break;
+      } catch (e) {
+        lastErr = e;
+      }
+    }
+    if (lastErr) throw lastErr;
     await expandOutput(page, 0);
     return { settleMs: 500 };
   },
