@@ -205,6 +205,52 @@ async function expandOutput(page, paneIndex) {
   }
 }
 
+/** Poll for real evidence that a scenario's pumped events actually reached
+ * the DOM, instead of trusting a fixed sleep. A fixed sleep here is not
+ * just a race (like the missing-id bug above) — this repo's own CI-adjacent
+ * sandbox showed the *same* one-shot scenario settle correctly every time
+ * in isolation, but go dark once run back-to-back after S1-S4 inside one
+ * long batch, purely from accumulated system load slowing down the tokio
+ * task that fires the pump. A fixed delay picked against a quiet system is
+ * not long enough under load; polling for the actual signal (the
+ * live-output panel existing) is correct regardless of how slow the
+ * system gets. */
+async function waitForExpandButtons(page, count, timeoutMs = 15000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const n = await page.locator('button[title="expand"]').count();
+    if (n >= count) return;
+    await sleep(100);
+  }
+  throw new Error(`expected ${count} expand button(s) (live-output panel), only saw ${await page.locator('button[title="expand"]').count()} after ${timeoutMs}ms`);
+}
+
+/** Poll for `text` to appear anywhere on the page — used to wait for a
+ * scenario's terminal marker instead of guessing how long it takes under
+ * whatever load the system is under at capture time. */
+async function waitForText(page, text, timeoutMs = 20000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const count = await page.getByText(text).count();
+    if (count > 0) return;
+    await sleep(150);
+  }
+  throw new Error(`expected text "${text}" to appear, timed out after ${timeoutMs}ms`);
+}
+
+/** Poll until every "RUNNING" badge is gone — the signal a pumped
+ * `task_completed` (success/failure) actually reached the card, instead of
+ * a fixed sleep that can undershoot under system load. */
+async function waitForNoRunningBadges(page, timeoutMs = 15000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const n = await page.getByText('RUNNING', { exact: true }).count();
+    if (n === 0) return;
+    await sleep(150);
+  }
+  throw new Error(`expected all RUNNING badges to clear, timed out after ${timeoutMs}ms`);
+}
+
 const PORT = 4150;
 
 /** One builder per reachable state: creates real card(s), pumps a
@@ -220,7 +266,8 @@ const BUILDERS = {
     await addAndRunCard(page, 0, 'Add retry backoff to the webhook dispatcher');
     await waitForIds(ids, 1);
     await pump(PORT, ids[0], 'implementing');
-    await sleep(2500);
+    await waitForExpandButtons(page, 1);
+    await sleep(1500); // let a couple of the infinite loop's cycles land, for a fuller transcript
     await expandOutput(page, 0);
     return { settleMs: 800 };
   },
@@ -245,7 +292,8 @@ const BUILDERS = {
       await pump(PORT, ids[i], 'implementing');
       await sleep(150);
     }
-    await sleep(2500);
+    await waitForExpandButtons(page, 4);
+    await sleep(1500);
     for (let i = 0; i < 4; i++) await expandFirstOutput(page);
     return { settleMs: 800 };
   },
@@ -254,7 +302,8 @@ const BUILDERS = {
     await addAndRunCard(page, 0, 'Add a Redis-backed semantic cache to the retrieval path');
     await waitForIds(ids, 1);
     await pump(PORT, ids[0], 'streaming');
-    await sleep(2000);
+    await waitForExpandButtons(page, 1);
+    await sleep(1000);
     await expandOutput(page, 0);
     return { settleMs: 500, streamingTaskId: ids[0] };
   },
@@ -263,7 +312,7 @@ const BUILDERS = {
     await addAndRunCard(page, 0, 'Refactor scorer thresholds for the Konjo Verifier');
     await waitForIds(ids, 1);
     await pump(PORT, ids[0], 'gate-failure');
-    await sleep(1800);
+    await waitForText(page, 'Retrying · attempt', 15000); // gate-failure's terminal marker
     await expandOutput(page, 0);
     return { settleMs: 500 };
   },
@@ -272,9 +321,9 @@ const BUILDERS = {
     await addAndRunCard(page, 0, 'Backfill task_logs pruning for the S9 recon load test');
     await waitForIds(ids, 1);
     await pump(PORT, ids[0], 'scrollback');
-    await sleep(500);
+    await waitForExpandButtons(page, 1);
     await expandOutput(page, 0);
-    await sleep(9500); // ~2200 lines @ 4ms
+    await waitForText(page, '[done] 2200 lines emitted for S9 scrollback census', 25000);
     return { settleMs: 500 };
   },
   async S10(page) {
@@ -282,7 +331,7 @@ const BUILDERS = {
     await addAndRunCard(page, 0, 'Ingest a malformed vendor log export');
     await waitForIds(ids, 1);
     await pump(PORT, ids[0], 'pathological');
-    await sleep(1800);
+    await waitForText(page, 'Recovered after 2 malformed records', 15000);
     await expandOutput(page, 0);
     return { settleMs: 500 };
   },
@@ -305,7 +354,7 @@ const BUILDERS = {
     await page.getByRole('button', { name: 'run stack' }).nth(0).click();
     await waitForIds(ids, 1);
     await pump(PORT, ids[0], 'success');
-    await sleep(1000);
+    await waitForNoRunningBadges(page);
     return { settleMs: 500 };
   },
   async S12(page) {
@@ -329,7 +378,7 @@ const BUILDERS = {
       await pump(PORT, ids[i], 'success');
       await sleep(150);
     }
-    await sleep(1200);
+    await waitForNoRunningBadges(page);
     return { settleMs: 500 };
   }
 };
@@ -494,13 +543,23 @@ async function run() {
   const browser = await chromium.launch({ executablePath: CHROME_PATH });
 
   const states = Object.keys(BUILDERS);
-  const child = spawnFixture(PORT);
-  try {
-    await waitForHealth(PORT);
 
-    for (const state of states) {
-      console.log(`\n=== ${state} ===`);
-      const raw = { state, viewports: {} };
+  for (const state of states) {
+    console.log(`\n=== ${state} ===`);
+    const raw = { state, viewports: {} };
+
+    // Fresh fixture-server per state — S2/S3/S4's "implementing"/"streaming"
+    // scenarios are infinite loops that never get cancelled when a page
+    // context closes. Sharing one server across the whole batch let those
+    // ghost loops keep broadcasting for the rest of the run: by the time a
+    // later one-shot state's pump fired, the WS channel was carrying enough
+    // ambient traffic from earlier states' still-running loops to lag/drop
+    // frames (tokio::sync::broadcast's bounded-capacity semantics), so S5
+    // onward settled with zero tokens and no live-output panel at all —
+    // not a timing race, an actual accumulated-load bug in this harness.
+    const child = spawnFixture(PORT);
+    try {
+      await waitForHealth(PORT);
 
       for (const viewport of VIEWPORTS) {
         console.log(`  viewport ${viewport.name}`);
@@ -572,9 +631,10 @@ async function run() {
       }
 
       await writeFile(path.join(RAW_DIR, `${state}.json`), JSON.stringify(raw, null, 2));
+    } finally {
+      child.kill('SIGTERM');
+      await sleep(300); // let the OS release the port before the next state's spawn
     }
-  } finally {
-    child.kill('SIGTERM');
   }
 
   await browser.close();
