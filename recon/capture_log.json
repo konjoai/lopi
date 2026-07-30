@@ -1,0 +1,32 @@
+[
+  {
+    "state": "S9_long_scrollback",
+    "viewport": "1920x1080",
+    "status": "ok",
+    "file": "recon/shots/pages/S9_long_scrollback_1920x1080.png"
+  },
+  {
+    "state": "S9_long_scrollback",
+    "viewport": "1440x900",
+    "status": "ok",
+    "file": "recon/shots/pages/S9_long_scrollback_1440x900.png"
+  },
+  {
+    "state": "S9_long_scrollback",
+    "viewport": "1280x800",
+    "status": "ok",
+    "file": "recon/shots/pages/S9_long_scrollback_1280x800.png"
+  },
+  {
+    "state": "S9_long_scrollback",
+    "viewport": "768x1024",
+    "status": "ok",
+    "file": "recon/shots/pages/S9_long_scrollback_768x1024.png"
+  },
+  {
+    "state": "S9_long_scrollback",
+    "viewport": "390x844",
+    "status": "error",
+    "note": "page.screenshot: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - taking page screenshot\u001b[22m\n"
+  }
+]
