@@ -45,11 +45,15 @@ packs:
 # Confirmed from konjo-gate.yml's "static" job: `cargo fmt --all -- --check` and
 # `cargo clippy` (hard: 8 explicit -D flags incl. unwrap_used/expect_used/panic/todo/
 # dbg_macro, matching CLAUDE.md's "no unwrap()/expect() outside tests"). `npm audit` runs
-# in web/ under the separate "web-audit" job.
+# in web/ under the separate "web-audit" job (G1b) -- kept off this list because
+# konjo-gates' generic npm-audit dispatcher runs from the repo root, and lopi's TypeScript
+# lives in web/, not root; the root has no package.json/lockfile at all, so the dispatcher
+# fails outright (ENOLOCK) rather than reporting a real finding. Found live on PR #187,
+# the first PR to touch web/ since this profile started gating on SCOPE_TS -- G1b already
+# covers this correctly with the right cwd.
 format_lint:
   - fmt-check
   - clippy
-  - npm-audit
 
 # Reconciliation decision (recorded in full in LEDGER.md, "Lopi-Gate-Reconciliation-1"):
 # `cargo-audit` is genuinely PROMOTED this sprint (added to konjo-gates-py's generic
