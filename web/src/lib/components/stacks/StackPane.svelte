@@ -148,7 +148,7 @@
             style="--orb:{orb.glowColor}"
           >
             <StackCard {card} paneKey={pane.key} index={i} {paneDefaults} {repoOptions} {scheduleGoverned} />
-            <StackOutput taskId={card.taskId} isRunning={card.status === 'running'} />
+            <StackOutput taskId={card.taskId} />
           </div>
         {:else}
           <div class="loopwrap" style="--orb:{orb.glowColor}">

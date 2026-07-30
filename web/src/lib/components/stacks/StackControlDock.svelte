@@ -1079,31 +1079,32 @@
     border-color: rgba(0, 212, 255, 0.7);
     background: rgba(0, 212, 255, 0.08);
   }
-  /* ice, not violet — see StackCard.svelte's identical `.gchip.model` comment. */
+  /* violet — see StackCard.svelte's identical `.gchip.model` comment. */
   .gchip.model {
-    border: 1px solid rgba(0, 212, 255, 0.4);
-    color: var(--konjo-ice, #00d4ff);
+    border: 1px solid rgba(183, 155, 255, 0.4);
+    color: var(--stack-violet, #b79bff);
   }
   .gchip.model:hover {
-    border-color: rgba(0, 212, 255, 0.7);
-    background: rgba(0, 212, 255, 0.08);
+    border-color: rgba(183, 155, 255, 0.7);
+    background: rgba(183, 155, 255, 0.08);
   }
-  /* ember, not flame — see StackCard.svelte's identical `.gchip.effort` comment. */
+  /* sun — see StackCard.svelte's identical `.gchip.effort` comment. */
   .gchip.effort {
-    border: 1px solid rgba(255, 69, 0, 0.4);
-    color: var(--konjo-ember, #ff4500);
-  }
-  .gchip.effort:hover {
-    border-color: rgba(255, 69, 0, 0.7);
-    background: rgba(255, 69, 0, 0.08);
-  }
-  .gchip.loop {
     border: 1px solid rgba(255, 204, 0, 0.4);
     color: var(--konjo-sun, #ffcc00);
   }
-  .gchip.loop:hover {
+  .gchip.effort:hover {
     border-color: rgba(255, 204, 0, 0.7);
     background: rgba(255, 204, 0, 0.08);
+  }
+  /* flame — see StackCard.svelte's identical `.gchip.loop` comment. */
+  .gchip.loop {
+    border: 1px solid rgba(255, 149, 0, 0.4);
+    color: var(--konjo-flame, #ff9500);
+  }
+  .gchip.loop:hover {
+    border-color: rgba(255, 149, 0, 0.7);
+    background: rgba(255, 149, 0, 0.08);
   }
   .gchip.claude {
     border: 1px solid rgba(255, 0, 102, 0.4);

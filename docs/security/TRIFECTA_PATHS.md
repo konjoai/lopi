@@ -6,12 +6,24 @@ verified-date: 2026-07-29
 
 # Trifecta paths — untrusted input → powerful tools → external comms
 
-Verified against: `a2f6f78` · 2026-07-29 (re-verified again; this sprint's own commit volume
-crossed the 20-commit cap a second time, not from new content drift. One more citation
+Verified against: `a2f6f78` · 2026-07-29 (merge of two independent re-verifications, neither of
+which touched the other's cited files — no new drift from combining them. This sprint's own commit
+volume crossed the 20-commit cap a second time, not from new content drift. One more citation
 shifted since the `ef41e7f` pass below: the `gate_polarity` triage's fix to
 `whatsapp.rs`'s `check_signature` (naming the no-secret branch's `Ok(())` via
 `verification_disabled_override()`) added one line above row D's `/task` handler, so
-`128-142` → `129-142`, corrected above. No other citation moved. Prior banner (`ef41e7f` ·
+`128-142` → `129-142`, corrected above. No other citation moved. The other re-verification
+(`b93e68f` · 2026-07-28, this PR's own): of this doc's cited files, only five had changed since the
+prior `e2f9362` checkpoint — `src/cli.rs` gained new `Cost`/`Rates` commands ahead of `Sail`/
+`ServeWebhooks` (citation unaffected, see §0), `src/sail_commands.rs` only wired the new economics
+pool into `AgentPool`, `crates/lopi-core/src/config.rs` only added an `economics` field,
+`crates/lopi-orchestrator/src/pool/run_loop.rs` only added reservation-cleanup calls after the §8
+row 1 repo-resolution block, and `crates/lopi-remote/src/whatsapp.rs`'s only change was the
+`/cost` command (no new row; row D's citation is tracked by the `gate_polarity` shift above, not
+this change) — none of it drifted this doc's content. This PR's own changes are
+`web/src/lib/components/stacks/*` (Loop Stacks composer/xN-grammar/logs-panel work) and
+`web/src/routes/+layout.svelte` — UI-only, touching none of this doc's cited paths. Prior banner
+(`ef41e7f` ·
 2026-07-29 (re-verified; Sprint S13R's Phases C-E touched four
 files this doc cites — `crates/lopi-core/src/config.rs`, `crates/lopi-core/src/task.rs`,
 `crates/lopi-git/src/diff.rs`, `crates/lopi-git/src/manager.rs`, and

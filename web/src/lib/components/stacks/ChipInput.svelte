@@ -145,8 +145,47 @@
     return out;
   }
 
+  /** True when the caret sits at the very end of the field's content —
+   *  the only place a rebuild-triggered `placeCaretAtEnd()` (see `resync`)
+   *  is invisible rather than a jump. */
+  function caretAtEnd(): boolean {
+    if (!rootEl) return false;
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || !sel.getRangeAt(0).collapsed) return false;
+    const { endContainer, endOffset } = sel.getRangeAt(0);
+    const last = rootEl.lastChild;
+    // `buildDom` always leaves a (possibly empty) trailing text node — a
+    // chip is never the last child on its own — so the end-of-field
+    // boundary is always "end of that text node's content", not some
+    // ancestor/descendant boundary-point pair `compareBoundaryPoints` would
+    // need to reconcile (it doesn't treat "(parent, childCount)" and "(that
+    // child's own text node, its length)" as equal, even though they're the
+    // same visual caret position).
+    if (!last) return true;
+    if (last.nodeType === Node.TEXT_NODE) {
+      return endContainer === last && endOffset === (last.textContent?.length ?? 0);
+    }
+    return endContainer === rootEl && endOffset === rootEl.childNodes.length;
+  }
+
   function handleInput() {
     const next = serialize();
+    // A trailing space right at the tail is the trigger to resolve a
+    // just-completed token (`:alias`, `@repo`, `;cmd/value`, `xN`) into a
+    // chip while still typing — mirrors mention-style editors (Slack/
+    // Notion resolve on the delimiter, not on every keystroke). Resolving
+    // eagerly on every keystroke instead would lock `x1` in as an atomic,
+    // non-editable chip before the user finishes typing `x10` — there'd be
+    // nowhere for the next digit to land. Leaving `lastEmitted` stale here
+    // (rather than the usual `lastEmitted = next`) is what lets the
+    // `resync()` guard below fire once `value` flows back through the
+    // caller; gated on `caretAtEnd()` so a space typed mid-document (fixing
+    // an earlier word) never jumps the caret away from where it actually
+    // is.
+    if (/\s$/.test(next) && caretAtEnd()) {
+      onInput(next);
+      return;
+    }
     lastEmitted = next;
     onInput(next);
   }
@@ -217,14 +256,14 @@
     color: var(--konjo-ice, #00d4ff);
   }
   .chipinput :global(.chip.chip-effort) {
-    border: 1px solid rgba(255, 69, 0, 0.4);
-    background: rgba(255, 69, 0, 0.1);
-    color: rgb(255, 69, 0);
+    border: 1px solid rgba(255, 204, 0, 0.4);
+    background: rgba(255, 204, 0, 0.1);
+    color: var(--konjo-sun, #ffcc00);
   }
   .chipinput :global(.chip.chip-model) {
-    border: 1px solid rgba(0, 212, 255, 0.4);
-    background: rgba(0, 212, 255, 0.1);
-    color: rgb(0, 212, 255);
+    border: 1px solid rgba(183, 155, 255, 0.4);
+    background: rgba(183, 155, 255, 0.1);
+    color: var(--stack-violet, #b79bff);
   }
   .chipinput :global(.chip.chip-branch) {
     border: 1px solid rgba(0, 255, 157, 0.4);
@@ -232,9 +271,10 @@
     color: rgb(0, 255, 157);
   }
   .chipinput :global(.chip.chip-autonomy) {
-    border: 1px solid rgba(183, 155, 255, 0.4);
-    background: rgba(183, 155, 255, 0.1);
-    color: var(--stack-violet, #b79bff);
+    /* Flame orange — same accent as `.chip-loop`/the iteration pill. */
+    border: 1px solid rgba(255, 149, 0, 0.4);
+    background: rgba(255, 149, 0, 0.1);
+    color: var(--konjo-flame, #ff9500);
   }
   .chipinput :global(.chip.chip-eval) {
     border: 1px solid rgba(59, 230, 200, 0.4);
@@ -242,9 +282,9 @@
     color: var(--konjo-mint, #3be6c8);
   }
   .chipinput :global(.chip.chip-loop) {
-    border: 1px solid rgba(255, 204, 0, 0.4);
-    background: rgba(255, 204, 0, 0.1);
-    color: var(--konjo-sun, #ffcc00);
+    border: 1px solid rgba(255, 149, 0, 0.4);
+    background: rgba(255, 149, 0, 0.1);
+    color: var(--konjo-flame, #ff9500);
   }
   .chipinput :global(.chip.chip-claude) {
     border: 1px solid rgba(255, 0, 102, 0.4);

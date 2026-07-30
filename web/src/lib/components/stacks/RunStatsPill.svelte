@@ -38,12 +38,9 @@
     gap: 5px;
     height: 29px;
     padding: 0 9px;
-    border: 1px solid rgba(0, 212, 255, 0.35);
-    background: rgba(0, 212, 255, 0.06);
-    border-radius: 6px;
     font-size: 10.5px;
     font-family: var(--font-mono, monospace);
-    color: var(--konjo-ice);
+    color: var(--konjo-flame, #ff9500);
     font-weight: 600;
     white-space: nowrap;
   }
@@ -61,10 +58,10 @@
     }
   }
   .sep {
-    color: rgba(0, 212, 255, 0.3);
+    color: rgba(255, 149, 0, 0.35);
   }
   .v.cost {
-    color: var(--konjo-jade);
+    color: var(--konjo-flame, #ff9500);
   }
   @media (prefers-reduced-motion: reduce) {
     .statpill :global(svg.spin) {

@@ -139,19 +139,20 @@
   /* Each selector's accent matches the mockup's per-field icon color —
      Dropdown.svelte reads --konjo-accent-rgb for its hover/open state. */
   .chip.model {
-    --konjo-accent-rgb: 0 212 255;
+    --konjo-accent-rgb: 183 155 255;
   }
   .chip.effort {
-    --konjo-accent-rgb: 255 69 0;
+    --konjo-accent-rgb: 255 204 0;
   }
   .chip.repo {
-    --konjo-accent-rgb: 255 204 0;
+    --konjo-accent-rgb: 0 212 255;
   }
   .chip.branch {
     --konjo-accent-rgb: 0 255 157;
   }
   .chip.autonomy {
-    --konjo-accent-rgb: 183 155 255;
+    /* Flame orange — same accent as the ×N loop pill/chip. */
+    --konjo-accent-rgb: 255 149 0;
   }
   .chip.permission-mode {
     --konjo-accent-rgb: 255 90 90;

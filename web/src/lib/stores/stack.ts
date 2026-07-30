@@ -673,6 +673,30 @@ export function claudeCommandAutocomplete(goalText: string, commands: Option[]):
     .map((c) => ({ token: `/${c.value}`, name: c.value, hint: c.hint ?? '' }));
 }
 
+/** A `×N` loop-count suggestion — same shape as the other trailing-word
+ *  suggestion lists (`token` ready to splice straight into the goal). */
+export interface LoopSuggestion {
+  token: string;
+  label: string;
+  hint: string;
+}
+
+/** Filtered `×1`-`×10` suggestions for a trailing `xN`/`XN`/`×N` token still
+ *  being typed (digits optional or partial — `x`, `x1`, `x10` all match).
+ *  Deliberately capped at 10, same range as the iteration pill's own
+ *  direct-pick dropdown (`ITER_PICK_VALUES` in `StackCard.svelte`) — higher
+ *  counts stay reachable by typing the full number and a space (resolves via
+ *  `tokenizeGoalChips`) or the pill's `+` stepper, neither of which this
+ *  list needs to cover. */
+export function loopAutocomplete(goalText: string): LoopSuggestion[] {
+  const match = /(?:^|\s)[×xX](\d*)$/.exec(goalText);
+  if (!match) return [];
+  const q = match[1];
+  return Array.from({ length: 10 }, (_, i) => i + 1)
+    .filter((n) => String(n).startsWith(q))
+    .map((n) => ({ token: `×${n}`, label: `×${n}`, hint: `${n} iteration${n === 1 ? '' : 's'}` }));
+}
+
 // ── Inline chip tokenizer (round 2, item 2) ───────────────────────────────────
 // Splits goal/cmdbar text into plain-text runs and *resolved* token chips for
 // inline rendering — the corrected direction from the first (wrong) demo,
@@ -809,7 +833,12 @@ export function parseComposerInput(raw: string): ParsedInput {
     text = (text.slice(0, repoMatch.index) + text.slice(repoMatch.index + repoMatch[0].length)).trim();
   }
 
-  const loopMatch = text.match(/\bx(\d+)\b/i);
+  // Matches the exact same `×`/`x`/`X` + word-boundary grammar
+  // `tokenizeGoalChips` uses to chip-render this token live — `×` (the
+  // symbol the composer's own chips/autocomplete/pill all actually insert)
+  // isn't a `\w` character, so a plain `\bx(\d+)\b` never matched it; only
+  // hand-typed lowercase/uppercase `x`/`X` happened to work before.
+  const loopMatch = text.match(/(?:^|\s)[×xX](\d+)(?=\s|$)/);
   if (loopMatch && loopMatch.index !== undefined) {
     loopN = parseInt(loopMatch[1], 10);
     text = (text.slice(0, loopMatch.index) + text.slice(loopMatch.index + loopMatch[0].length)).trim();

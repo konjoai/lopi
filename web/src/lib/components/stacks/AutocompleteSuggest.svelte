@@ -63,7 +63,7 @@
     schedule: '#5ee6ff',
     maxx: '#ff9500',
     goal: '#ff9500',
-    loop: '#ffcc00',
+    loop: '#ff9500',
     claude: '#ff0066'
   };
 
