@@ -276,9 +276,14 @@ async function waitForNoRunningBadges(page, timeoutMs = 15000) {
   throw new Error(`expected all RUNNING badges to clear, timed out after ${timeoutMs}ms`);
 }
 
-// Reassigned per state in run() below (unique port per state) — declared
-// with `let` so the BUILDERS closures, which read PORT at call time rather
-// than at closure-creation time, pick up whichever port is current.
+// Fixed state -> port map (not index-based) so a single-state process
+// invocation (see --state below) doesn't need to know the full state order
+// to pick the same port a full-batch run would have used for that state.
+const STATE_PORTS = { S1: 4150, S2: 4151, S3: 4152, S4: 4153, S5: 4154, S9: 4155, S10: 4156, S11: 4157, S12: 4158 };
+
+// Reassigned per state in run() below — declared with `let` so the BUILDERS
+// closures, which read PORT at call time rather than at closure-creation
+// time, pick up whichever port is current.
 let PORT = 4150;
 
 /** One builder per reachable state: creates real card(s), pumps a
@@ -581,31 +586,37 @@ async function measureMutations(page, windowMs) {
   }, windowMs);
 }
 
+// --state <name> restricts a single invocation to one state, run to
+// completion in its own node process. Unique-port-per-state (fixing the
+// S5 zombie-server false-positive health check) still left one flake
+// (a "0 task ids observed" race at S3, never before seen in ~5 prior
+// full-batch runs that always failed at S5 specifically) — pointing at
+// cumulative resource contention across the whole long-running node/V8
+// process rather than anything port- or server-specific. Running each
+// state as a separate process, orchestrated by run-states.sh, gives every
+// state a fully fresh OS process, heap, and event loop, with a real
+// process-exit boundary between states instead of just a browser/server
+// teardown inside one continuously running process.
+const stateArgIdx = process.argv.indexOf('--state');
+const requestedState = stateArgIdx !== -1 ? process.argv[stateArgIdx + 1] : null;
+
 async function run() {
   await mkdir(SHOTS_DIR, { recursive: true });
   await mkdir(RAW_DIR, { recursive: true });
 
-  const states = Object.keys(BUILDERS);
+  const states = requestedState ? [requestedState] : Object.keys(BUILDERS);
+  if (requestedState && !BUILDERS[requestedState]) {
+    throw new Error(`unknown --state ${requestedState}`);
+  }
 
-  for (let i = 0; i < states.length; i++) {
-    const state = states[i];
+  for (const state of states) {
     console.log(`\n=== ${state} ===`);
     const raw = { state, viewports: {} };
 
-    // Fresh fixture-server, fresh browser, AND a unique port per state.
-    // Same-port reuse across states was the real remaining bug: SIGTERM'ing
-    // the previous state's server (esp. after S4's dense "streaming" infinite
-    // loop, never cancelled) doesn't guarantee the OS has released the port
-    // by the time the next spawnFixture binds. If the next bind fails, the
-    // *previous* (zombie, still-flooding) server keeps answering /api/health
-    // on that port, so waitForHealth() gives a false-positive: the new
-    // browser then talks to the old server, whose broadcast channel is still
-    // saturated with the prior scenario's events, and the new scenario's
-    // events (e.g. S5's "Retrying · attempt") get lagged out before the
-    // fresh page's websocket subscriber ever sees them. A unique port per
-    // state makes that class of collision structurally impossible instead of
-    // racing a teardown sleep against it.
-    PORT = 4150 + i;
+    // Fresh fixture-server and fresh browser per state, on a port unique to
+    // this state (STATE_PORTS above) so a not-yet-torn-down previous
+    // server's /api/health can never be mistaken for this state's server.
+    PORT = STATE_PORTS[state];
     const browser = await chromium.launch({ executablePath: CHROME_PATH });
     const child = spawnFixture(PORT);
     try {
