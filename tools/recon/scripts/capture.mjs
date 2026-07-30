@@ -276,7 +276,10 @@ async function waitForNoRunningBadges(page, timeoutMs = 15000) {
   throw new Error(`expected all RUNNING badges to clear, timed out after ${timeoutMs}ms`);
 }
 
-const PORT = 4150;
+// Reassigned per state in run() below (unique port per state) — declared
+// with `let` so the BUILDERS closures, which read PORT at call time rather
+// than at closure-creation time, pick up whichever port is current.
+let PORT = 4150;
 
 /** One builder per reachable state: creates real card(s), pumps a
  * deterministic event scenario, expands the live-output panel, and returns
@@ -584,19 +587,25 @@ async function run() {
 
   const states = Object.keys(BUILDERS);
 
-  for (const state of states) {
+  for (let i = 0; i < states.length; i++) {
+    const state = states[i];
     console.log(`\n=== ${state} ===`);
     const raw = { state, viewports: {} };
 
-    // Fresh fixture-server AND fresh browser per state. The server-per-state
-    // isolation (below) fixed one real bug (ghost infinite-loop scenarios
-    // from S2/S3/S4 keeping the WS channel busy for the rest of the batch),
-    // but S5 kept failing even with that fix, every time, only ever inside
-    // the full 9-state run — the exact same builder code always worked when
-    // reproduced standalone with a freshly-launched browser. One `browser`
-    // instance was being reused across all ~90 contexts in the batch;
-    // launching fresh per state matches the one condition every working
-    // repro shared and every failing run didn't.
+    // Fresh fixture-server, fresh browser, AND a unique port per state.
+    // Same-port reuse across states was the real remaining bug: SIGTERM'ing
+    // the previous state's server (esp. after S4's dense "streaming" infinite
+    // loop, never cancelled) doesn't guarantee the OS has released the port
+    // by the time the next spawnFixture binds. If the next bind fails, the
+    // *previous* (zombie, still-flooding) server keeps answering /api/health
+    // on that port, so waitForHealth() gives a false-positive: the new
+    // browser then talks to the old server, whose broadcast channel is still
+    // saturated with the prior scenario's events, and the new scenario's
+    // events (e.g. S5's "Retrying · attempt") get lagged out before the
+    // fresh page's websocket subscriber ever sees them. A unique port per
+    // state makes that class of collision structurally impossible instead of
+    // racing a teardown sleep against it.
+    PORT = 4150 + i;
     const browser = await chromium.launch({ executablePath: CHROME_PATH });
     const child = spawnFixture(PORT);
     try {
