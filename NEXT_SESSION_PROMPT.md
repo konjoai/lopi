@@ -5,6 +5,133 @@ the `lopi` repo. Newest first.
 
 ---
 
+## Next Session — after Sprint S13R (Phases A–F, `[0.39.0]`)
+
+Sprint S13R connected lopi to kiban v1.8.0 (Phase A), re-ran the Phase 0 audit and
+cleared its stop rule at 0 unmapped claims (Phase B), then resumed and completed the
+original S13 Phases 1–4 (renamed C–F: determinism substrate, panic/resource surface,
+error taxonomy, enforcement-from-first-prompt). Read first: `CHANGELOG.md`'s `[0.39.0]`
+entry, `LEDGER.md`'s two S13R entries, and `.konjo/killtests/S13/PHASE0-STOP-RULE.md`'s
+2026-07-29 append.
+
+**What's already done and should not be re-derived:** kiban pinned at v1.8.0
+(`.konjo/kiban.ref` + `KIBAN_REF` in both CI jobs that reference it);
+`.konjo/profile.yml` wired via a new `konjo-gates` CI job; `CLAUDE.md` converted to the
+Phase-13 section contract; `.claude/rules/security.md` split into
+`security-invariants.md`/`security-sinks.md`; `rust-toolchain.toml` pinned to `1.88.0`
+(real bisection, not guessed); `[workspace.lints]` + `lints.workspace = true` on all 18
+crates + the root binary; `overflow-checks = true` in `[profile.release]` (KT-S13.2
+verified) + `[profile.bench]` added; both production unbounded channels converted to
+bounded; the indexing floor seeded at 211 (`.konjo/indexing-floor.txt`, re-measured —
+does not match the brief's earlier "202", see `LEDGER.md` for why); the function-length
+gate written and wired (`.konjo/function-length-ceiling.txt`, seeded at 74);
+`lopi-core`'s error taxonomy fully converted to `thiserror`; a `SessionStart` hook added;
+the hardcoded `/Users/wesleyscholl/lopi/` paths in `.claude/settings.json` and
+`post-edit.sh` fixed; `post-edit.sh` extended to cover `web/` TypeScript/Svelte edits.
+
+**First thing to do:** confirm `Cargo.toml`'s version (`0.39.0`) still matches
+`CHANGELOG.md`'s top entry and `VERSION` before touching anything.
+
+**Carried forward, explicitly not silently dropped — pick one and finish it rather than
+starting something new:**
+
+1. **`lopi-git`'s error taxonomy** — only `diff.rs` (1 of 4 `anyhow` files) converted.
+   `manager.rs` (18 fallible fns), `rebase.rs` (4), `worktree.rs` (11) remain. Starting
+   design sketch recorded in `LEDGER.md`'s `Error-Taxonomy-1`: a `GitManagerError`
+   wrapping `git2::Error` + `std::io::Error` + a `CommandFailed { context, stderr }`
+   variant for the `anyhow::bail!` shell-out sites (git push, rebase abort). Convert one
+   file at a time, running that file's test suite plus a full `cargo build --workspace`
+   after each — this crate is used everywhere (`lopi-agent`, `lopi-orchestrator`), so a
+   rushed multi-file conversion in one pass is exactly the risk this note exists to head
+   off.
+2. **`lopi-memory`'s error taxonomy** — 0 of 30 `anyhow` files converted. The largest
+   remaining piece of Phase E by far. Needs its own dedicated session, not a squeeze-in
+   at the end of another sprint. Look for a natural seam (the `store/` module's
+   sub-files likely share a shape) before picking a per-file or a unified-enum approach.
+3. **Doc-link debt** (the rustdoc gate, kept soft this sprint with a named owner —
+   "whichever sprint next touches `lopi-agent`/`lopi-orchestrator`/`lopi-mcp` docs" — and
+   a target of before Sprint S14 closes). Re-run
+   `RUSTDOCFLAGS="-D missing_docs -D rustdoc::broken_intra_doc_links" cargo doc
+   --workspace --no-deps` to get the current exact list (it grew past what this
+   sprint's own re-measurement found — `lopi-agent` 11, `lopi-orchestrator` 8,
+   `lopi-mcp` 1 — by the time a future session gets to it) before starting; qualify
+   each bare `[Type]`/`[func]` link with its full path, following `lopi-core`'s
+   already-fixed precedent.
+4. **`gate_polarity`'s one filed real defect**: `eval_runner.rs:29`'s
+   `evaluate_acceptance_gate` proceeds when no `Acceptance` is configured — the same
+   shape as the already-fixed `verifier_runner.rs`/`scorer.rs` sites, but deliberately
+   not fixed this sprint since doing it properly means the same kind of explicit
+   opt-in redesign `verifier_error_proceeds(fail_open: bool)` got, a real behavior
+   decision (does an existing task with no acceptance start failing?), not a small
+   patch.
+5. **Report the `pricing.rs` false positive to kiban** if a future session gets push
+   access there: `is_stale_given`'s `None => true` is flagged by `gate_polarity` as a
+   permissive default, but `true` here means "flag as stale" — the restrictive,
+   cautious answer, not a permissive bypass. A real blind spot in the engine's
+   bare-literal heuristic (it assumes any literal `true`/`1.0`/`Ok(())` is inherently the
+   permissive end of range, which breaks for a boolean whose polarity runs the other
+   way), worth a kill-test fixture in kiban itself.
+
+**Non-goals, correctly not attempted:** squish/vectro's own CLAUDE.md conversions
+(kiban's `Lopi-Gate-Reconciliation-1` explicitly defers these, lopi was the named
+pilot); `cargo-semver-checks`/`cargo-udeps`/flake budget/fuzz-in-CI (still S14 per the
+original S13R brief); wiring the Konjo Verifier onto the `sail` path (still Wave 1/F1).
+
+---
+
+## Next Session — Resume Sprint S13 at Phase 1, after the Phase 0 stop (`[0.38.0]`)
+
+Sprint S13 (Quality Substrate and Continuous Enforcement) ran Phase 0 (the
+honesty pass on quality claims) and then **stopped**, per the sprint's own
+stop rule: Phase 0 found 5 self-claims with no genuine enforcing step
+(2 dark `.konjo/rubrics/*.toml` files with zero code consumer, 3 of
+`CLAUDE.md`'s 8 "Additional Hard Rules" bullets that were actually soft
+`continue-on-error` gates or had no mechanical check at all) against a
+threshold of 3. Full audit: `.konjo/killtests/S13/PHASE0-STOP-RULE.md`.
+One-way-door decisions: `LEDGER.md`'s S13 Phase 0 entry.
+
+**What's already done and should not be re-derived:** the two dark rubrics
+(`refactor_safety.toml`, `security_audit.toml`) are deleted and every doc
+that claimed "three canonical rubrics ship" (`KONJO_VERIFIER.md`, `PLAN.md`)
+is corrected; the 3 false-hard `CLAUDE.md` bullets (coverage 80%/95%, doc
+coverage, function length) now correctly describe their real enforcement
+status, each cited to its exact `konjo-gate.yml` job:step; 4 dead path
+globs in `.claude/rules/benchmarking.md` and `.claude/rules/testing.md` are
+fixed and verified against the real repo layout; the sprint brief's baseline
+evidence table is re-verified with two real drifts corrected (a second
+production unbounded channel at `src/repl/mod.rs:76` the original baseline
+missed, and `anyhow::` usage grown from 106 to 131 files).
+
+**First thing to do:** before writing any Phase 1 code, re-verify Phase 0's
+claim-mapping table is still accurate (nothing should have drifted since —
+this repo's `main` doesn't move fast enough for that — but the brief's own
+discipline is "verify, don't assume"). If it still holds at ≤3 unmapped
+claims, proceed straight to Phase 1: `rust-toolchain.toml`, MSRV bisection
+(record the bisection result, don't guess), the edition/`unsafe`-2024
+question in `crates/lopi-ui/src/client/auth.rs` (resolve why CI is currently
+green before touching it), `[workspace.lints.rust]`/`[workspace.lints.clippy]`
+on the root `Cargo.toml` + `lints.workspace = true` on all 18 crates, and
+`overflow-checks = true` in `[profile.release]` — gated by **KT-S13.2**
+(add a temp `#[test]` in `lopi-core` doing `u64::MAX + 1` via a runtime
+value, confirm it panics under `--release` only after the profile change,
+then delete the temp test). Phase 1 is the first phase to introduce a real
+gate, so **KT-S13.1** (a bad+good fixture pair under `.konjo/fixtures/S13/`
+for every new gate, proven to reject/accept before it's wired into CI)
+starts applying from here forward — it did not apply to Phase 0 since Phase
+0 introduced no gates, only corrected/deleted existing claims.
+
+Then Phase 2 (indexing floor ratchet — seed `.konjo/indexing-floor.txt` at
+the current count, which needs re-measuring since Phase 0 found the
+production-indexing-site count (202) unchanged from baseline but did not
+re-verify it post-Phase-0-edits), Phase 3 (error taxonomy — `lopi-core`,
+`lopi-git`, `lopi-memory` only, `LEDGER.md`-tracked), Phase 4 (the actual
+enforcement-from-first-prompt wiring — `CLAUDE.md` security/resource lines,
+`security.md` split into invariants/sinks, `SessionStart` hook, the
+hardcoded macOS path in `.claude/settings.json`, `post-edit.sh` extension,
+CI wiring for every new gate).
+
+---
+
 ## Next Session — T1 (Input & Command Layer), after Sprint T0 (`[0.35.0]`)
 
 Sprint T0 (TUI Client Foundation & Domain Port) landed at `0.35.0`. The TUI

@@ -22,11 +22,37 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "0.37.0"
+version = "0.39.0"
 edition = "2021"
+# MSRV, by bisection — see rust-toolchain.toml's comment for the exact method
+# and the transitive dependency (`home` via `which`) that sets it.
+rust-version = "1.88.0"
 authors = ["KonjoAI"]
 license = "MIT"
 repository = "https://github.com/konjoai/lopi"
+
+# Sprint S13R, Phase C (determinism substrate): the same hard clippy flags
+# `konjo-gate.yml`'s `static` job already passes on the command line, now also
+# declared here so `cargo clippy` catches them locally, not just in CI. Every
+# workspace member crate opts in via `[lints] workspace = true` in its own
+# Cargo.toml. Deliberately no `[workspace.lints.rust]` `unsafe_code` entry: that's
+# a plain rustc lint (unlike the clippy lints below, which only fire under
+# `cargo clippy`), so it would also fire on every `cargo build`/`cargo check` —
+# and would turn the 5 existing test-only `unsafe` blocks in
+# `lopi-ui/src/client/auth.rs` (each already `// SAFETY:`-commented, confirmed
+# clean by Phase 0's audit) into new warnings the static job's `-D warnings`
+# flag would then hard-fail on on the clippy pass. Not worth the regression risk
+# for a lint this workspace has no production `unsafe` to catch anyway.
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+dbg_macro = "deny"
+print_stdout = "deny"
+print_stderr = "deny"
+cognitive_complexity = "warn"
 
 [workspace.dependencies]
 tokio = { version = "1", features = ["full"] }
@@ -73,24 +99,24 @@ tokio-util = { version = "0.7", features = ["rt"] }
 mimalloc = { version = "0.1", default-features = false }
 rand = "0.8"
 
-lopi-core = { path = "crates/lopi-core", version = "0.37.0" }
-lopi-context = { path = "crates/lopi-context", version = "0.37.0" }
-lopi-git = { path = "crates/lopi-git", version = "0.37.0" }
-lopi-agent = { path = "crates/lopi-agent", version = "0.37.0" }
-lopi-memory = { path = "crates/lopi-memory", version = "0.37.0" }
-lopi-orchestrator = { path = "crates/lopi-orchestrator", version = "0.37.0" }
-lopi-ui = { path = "crates/lopi-ui", version = "0.37.0" }
-lopi-remote = { path = "crates/lopi-remote", version = "0.37.0" }
-lopi-webhook = { path = "crates/lopi-webhook", version = "0.37.0" }
-lopi-toon = { path = "crates/lopi-toon", version = "0.37.0" }
-lopi-ratelimit = { path = "crates/lopi-ratelimit", version = "0.37.0" }
-lopi-github = { path = "crates/lopi-github", version = "0.37.0" }
-lopi-spec = { path = "crates/lopi-spec", version = "0.37.0" }
-lopi-tools = { path = "crates/lopi-tools", version = "0.37.0" }
-lopi-skill = { path = "crates/lopi-skill", version = "0.37.0" }
-lopi-mcp = { path = "crates/lopi-mcp", version = "0.37.0" }
-lopi-index = { path = "crates/lopi-index", version = "0.37.0" }
-lopi-demo = { path = "crates/lopi-demo", version = "0.37.0" }
+lopi-core = { path = "crates/lopi-core", version = "0.39.0" }
+lopi-context = { path = "crates/lopi-context", version = "0.39.0" }
+lopi-git = { path = "crates/lopi-git", version = "0.39.0" }
+lopi-agent = { path = "crates/lopi-agent", version = "0.39.0" }
+lopi-memory = { path = "crates/lopi-memory", version = "0.39.0" }
+lopi-orchestrator = { path = "crates/lopi-orchestrator", version = "0.39.0" }
+lopi-ui = { path = "crates/lopi-ui", version = "0.39.0" }
+lopi-remote = { path = "crates/lopi-remote", version = "0.39.0" }
+lopi-webhook = { path = "crates/lopi-webhook", version = "0.39.0" }
+lopi-toon = { path = "crates/lopi-toon", version = "0.39.0" }
+lopi-ratelimit = { path = "crates/lopi-ratelimit", version = "0.39.0" }
+lopi-github = { path = "crates/lopi-github", version = "0.39.0" }
+lopi-spec = { path = "crates/lopi-spec", version = "0.39.0" }
+lopi-tools = { path = "crates/lopi-tools", version = "0.39.0" }
+lopi-skill = { path = "crates/lopi-skill", version = "0.39.0" }
+lopi-mcp = { path = "crates/lopi-mcp", version = "0.39.0" }
+lopi-index = { path = "crates/lopi-index", version = "0.39.0" }
+lopi-demo = { path = "crates/lopi-demo", version = "0.39.0" }
 
 [package]
 name = "lopi"
@@ -165,9 +191,23 @@ otel = [
 cargo-husky = { version = "1", default-features = false, features = ["user-hooks"] }
 tempfile = "3"
 
+[lints]
+workspace = true
+
 [profile.release]
 lto = "fat"
 codegen-units = 1
 panic = "abort"
 opt-level = 3
 strip = "symbols"
+# Sprint S13R, Phase C — KT-S13.2 verified this before wiring: a temp #[test] in
+# lopi-core doing `u64::MAX.wrapping_add(1)` via a runtime (not const-folded) value
+# panicked under `cargo test --release` only after this line was added, confirmed
+# silent (wrapped) before it. Deleted after confirming; not a permanent test.
+overflow-checks = true
+
+[profile.bench]
+inherits = "release"
+# No `panic` override: cargo ignores one for `bench` (confirmed by its own build
+# warning when this was tried) — libtest/criterion harnesses always unwind, regardless
+# of the `release` profile's `panic = "abort"` this otherwise inherits from.

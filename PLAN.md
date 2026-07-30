@@ -255,7 +255,7 @@ Anthropic Outcomes beta validates it. Ships lopi as "the orchestrator that grade
 - [x] On verifier failure: `fix_hints` appended to `Task::constraints`, task retries with them as hard requirements
 - [x] `AgentEvent::VerifierVerdict { task_id, passed, gaps, fix_hints, confidence }` on event bus
 - [x] SQLite: `verifier_verdicts` table (id, task_id, attempt, passed, gaps_json, fix_hints_json, confidence, model_used, ts)
-- [x] Three canonical rubric files in `.konjo/rubrics/`: `refactor_safety.toml`, `feature_completeness.toml`, `security_audit.toml`
+- [x] One canonical rubric file in `.konjo/rubrics/`: `feature_completeness.toml`. *Correction (S13 Phase 0):* `refactor_safety.toml` and `security_audit.toml` shipped alongside it but had zero code path loading them by name — deleted; see `LEDGER.md`.
 - [x] `KONJO_VERIFIER.md` — documents the rubric format and the brand position
 - [x] Verifier verdict surfaced in web Pulse feed, macOS cockpit, and Telegram `/dock` marker (🔬✅/🔬❌)
 - [x] ≥ 12 tests across `verifier.rs` + `verifier_runner.rs` + `store/verifier.rs`

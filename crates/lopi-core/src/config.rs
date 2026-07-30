@@ -1,6 +1,26 @@
 use crate::agent::ScoreWeights;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use thiserror::Error;
+
+/// Errors loading `lopi.toml` (Sprint S13R, Phase E — the error-taxonomy pass).
+#[derive(Debug, Error)]
+pub enum ConfigLoadError {
+    /// The file couldn't be read.
+    #[error("reading config file: {0}")]
+    Read(#[source] std::io::Error),
+    /// The file's content isn't valid TOML, or doesn't match [`LopiConfig`]'s shape.
+    #[error("parsing config TOML: {0}")]
+    Parse(#[source] toml::de::Error),
+    /// A `[[schedules]]` entry's `report` channel is unrecognized.
+    #[error("schedule `{name}`: {source}")]
+    InvalidSchedule {
+        /// The offending schedule entry's name.
+        name: String,
+        #[source]
+        source: crate::report::ReportChannelError,
+    },
+}
 
 /// Root configuration loaded from `lopi.toml`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -425,13 +445,16 @@ impl LopiConfig {
     /// [`ScheduleEntry::validate_report`] — a typo'd or unreachable channel
     /// (e.g. `"whatsapp"`) fails the load loudly rather than silently never
     /// sending a report.
-    pub fn load(path: &std::path::Path) -> anyhow::Result<Self> {
-        let text = std::fs::read_to_string(path)?;
-        let cfg: Self = toml::from_str(&text)?;
+    pub fn load(path: &std::path::Path) -> Result<Self, ConfigLoadError> {
+        let text = std::fs::read_to_string(path).map_err(ConfigLoadError::Read)?;
+        let cfg: Self = toml::from_str(&text).map_err(ConfigLoadError::Parse)?;
         for entry in &cfg.schedules {
             entry
                 .validate_report()
-                .map_err(|e| anyhow::anyhow!("schedule `{}`: {e}", entry.name))?;
+                .map_err(|source| ConfigLoadError::InvalidSchedule {
+                    name: entry.name.clone(),
+                    source,
+                })?;
         }
         Ok(cfg)
     }

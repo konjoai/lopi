@@ -3,7 +3,10 @@
 //! `lopi_ui::web::serve_with_repo` function `sail_commands::run` calls) so
 //! mutation-testing kill tests assert against real server behavior instead
 //! of a mock. Split out to avoid duplicating this setup in both files.
-#![cfg(test)]
+//!
+//! No `#![cfg(test)]` here: `main.rs`'s `#[cfg(test)] mod test_support;`
+//! already gates the whole module, and a second inner attribute duplicating
+//! it is itself a clippy `duplicated_attributes` hard error under `-D warnings`.
 #![allow(clippy::unwrap_used)]
 
 use lopi_core::{AgentEvent, EventBus};

@@ -128,11 +128,57 @@ pub async fn run(cmd: LearnCmd, db_path: PathBuf) -> Result<()> {
                     );
                 }
                 None => {
-                    eprintln!("❌ pattern not found for id prefix: {}", id);
+                    eprintln!("❌ pattern not found for id prefix: {id}");
                     std::process::exit(1);
                 }
             }
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+    use crate::LearnCmd;
+
+    #[tokio::test]
+    async fn run_list_on_a_fresh_db_returns_ok() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("learn.sqlite");
+        let result = run(
+            LearnCmd::List {
+                limit: 20,
+                postmortem_only: false,
+            },
+            db_path,
+        )
+        .await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn run_returns_err_when_the_db_path_cannot_be_opened() {
+        // `MemoryStore::open` auto-creates missing parent directories, so a merely
+        // absent path doesn't force an error (confirmed empirically running as root
+        // in CI-like sandboxes). Using a regular *file* as the parent instead: SQLite
+        // cannot create `<file>/learn.sqlite` inside a non-directory, which reliably
+        // exercises the real early-return `?` rather than ever reaching a `println!`
+        // — catches a "run always returns Ok(())" mutant, which a merely-missing path
+        // would not.
+        let dir = tempfile::tempdir().unwrap();
+        let not_a_dir = dir.path().join("this-is-a-file");
+        std::fs::write(&not_a_dir, b"not a directory").unwrap();
+        let db_path = not_a_dir.join("learn.sqlite");
+        let result = run(
+            LearnCmd::List {
+                limit: 20,
+                postmortem_only: false,
+            },
+            db_path,
+        )
+        .await;
+        assert!(result.is_err());
+    }
 }

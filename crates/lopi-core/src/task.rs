@@ -141,8 +141,8 @@ impl Rubric {
     ///
     /// Returns `Err` when the TOML is malformed or is missing the `name` /
     /// `criteria` fields.
-    pub fn from_toml_str(s: &str) -> anyhow::Result<Self> {
-        toml::from_str(s).map_err(Into::into)
+    pub fn from_toml_str(s: &str) -> Result<Self, toml::de::Error> {
+        toml::from_str(s)
     }
 }
 
