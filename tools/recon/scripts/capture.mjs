@@ -96,6 +96,31 @@ async function pump(port, taskId, scenario) {
   }
 }
 
+/** Call pump(), then wait for `waitFn` to confirm the events actually
+ * landed; re-pump and retry if it doesn't, up to `retries` times. Even
+ * with the earlier missing-id race fixed and per-state server isolation,
+ * a one-shot pump occasionally still doesn't settle within a generous
+ * polling window deep into a long batch — root cause not fully pinned
+ * down (this harness's own tokio task scheduling under whatever load the
+ * capture host is under at that moment, most likely). Re-firing the
+ * scenario is safe (it only ever appends more of the same fixed-content
+ * log lines) and makes the harness self-healing against whatever the
+ * exact cause is, rather than chasing one more timeout number. */
+async function pumpUntil(port, taskId, scenario, waitFn, retries = 3) {
+  let lastErr;
+  for (let i = 0; i < retries; i++) {
+    await pump(port, taskId, scenario);
+    try {
+      await waitFn();
+      return;
+    } catch (e) {
+      lastErr = e;
+      console.log(`  pump(${scenario}) attempt ${i + 1}/${retries} did not settle: ${e.message}`);
+    }
+  }
+  throw lastErr;
+}
+
 async function blockWebfonts(page) {
   await page.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.abort());
 }
@@ -265,8 +290,7 @@ const BUILDERS = {
     const ids = trackCreatedIds(page);
     await addAndRunCard(page, 0, 'Add retry backoff to the webhook dispatcher');
     await waitForIds(ids, 1);
-    await pump(PORT, ids[0], 'implementing');
-    await waitForExpandButtons(page, 1);
+    await pumpUntil(PORT, ids[0], 'implementing', () => waitForExpandButtons(page, 1, 8000));
     await sleep(1500); // let a couple of the infinite loop's cycles land, for a fuller transcript
     await expandOutput(page, 0);
     return { settleMs: 800 };
@@ -288,11 +312,22 @@ const BUILDERS = {
       await runFirstPane(page);
     }
     await waitForIds(ids, 4);
-    for (let i = 0; i < 4; i++) {
-      await pump(PORT, ids[i], 'implementing');
-      await sleep(150);
+    let lastErr;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      for (let i = 0; i < 4; i++) {
+        await pump(PORT, ids[i], 'implementing');
+        await sleep(150);
+      }
+      try {
+        await waitForExpandButtons(page, 4, 8000);
+        lastErr = null;
+        break;
+      } catch (e) {
+        lastErr = e;
+        console.log(`  S3 pump attempt ${attempt + 1}/3 did not settle: ${e.message}`);
+      }
     }
-    await waitForExpandButtons(page, 4);
+    if (lastErr) throw lastErr;
     await sleep(1500);
     for (let i = 0; i < 4; i++) await expandFirstOutput(page);
     return { settleMs: 800 };
@@ -301,8 +336,7 @@ const BUILDERS = {
     const ids = trackCreatedIds(page);
     await addAndRunCard(page, 0, 'Add a Redis-backed semantic cache to the retrieval path');
     await waitForIds(ids, 1);
-    await pump(PORT, ids[0], 'streaming');
-    await waitForExpandButtons(page, 1);
+    await pumpUntil(PORT, ids[0], 'streaming', () => waitForExpandButtons(page, 1, 8000));
     await sleep(1000);
     await expandOutput(page, 0);
     return { settleMs: 500, streamingTaskId: ids[0] };
@@ -311,8 +345,7 @@ const BUILDERS = {
     const ids = trackCreatedIds(page);
     await addAndRunCard(page, 0, 'Refactor scorer thresholds for the Konjo Verifier');
     await waitForIds(ids, 1);
-    await pump(PORT, ids[0], 'gate-failure');
-    await waitForText(page, 'Retrying · attempt', 15000); // gate-failure's terminal marker
+    await pumpUntil(PORT, ids[0], 'gate-failure', () => waitForText(page, 'Retrying · attempt', 8000));
     await expandOutput(page, 0);
     return { settleMs: 500 };
   },
@@ -320,8 +353,7 @@ const BUILDERS = {
     const ids = trackCreatedIds(page);
     await addAndRunCard(page, 0, 'Backfill task_logs pruning for the S9 recon load test');
     await waitForIds(ids, 1);
-    await pump(PORT, ids[0], 'scrollback');
-    await waitForExpandButtons(page, 1);
+    await pumpUntil(PORT, ids[0], 'scrollback', () => waitForExpandButtons(page, 1, 8000));
     await expandOutput(page, 0);
     await waitForText(page, '[done] 2200 lines emitted for S9 scrollback census', 25000);
     return { settleMs: 500 };
@@ -330,8 +362,7 @@ const BUILDERS = {
     const ids = trackCreatedIds(page);
     await addAndRunCard(page, 0, 'Ingest a malformed vendor log export');
     await waitForIds(ids, 1);
-    await pump(PORT, ids[0], 'pathological');
-    await waitForText(page, 'Recovered after 2 malformed records', 15000);
+    await pumpUntil(PORT, ids[0], 'pathological', () => waitForText(page, 'Recovered after 2 malformed records', 8000));
     await expandOutput(page, 0);
     return { settleMs: 500 };
   },
@@ -353,8 +384,7 @@ const BUILDERS = {
     await sleep(150);
     await page.getByRole('button', { name: 'run stack' }).nth(0).click();
     await waitForIds(ids, 1);
-    await pump(PORT, ids[0], 'success');
-    await waitForNoRunningBadges(page);
+    await pumpUntil(PORT, ids[0], 'success', () => waitForNoRunningBadges(page, 8000));
     return { settleMs: 500 };
   },
   async S12(page) {
@@ -374,11 +404,22 @@ const BUILDERS = {
       await runFirstPane(page);
     }
     await waitForIds(ids, 4);
-    for (let i = 0; i < 4; i++) {
-      await pump(PORT, ids[i], 'success');
-      await sleep(150);
+    let lastErr;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      for (let i = 0; i < 4; i++) {
+        await pump(PORT, ids[i], 'success');
+        await sleep(150);
+      }
+      try {
+        await waitForNoRunningBadges(page, 8000);
+        lastErr = null;
+        break;
+      } catch (e) {
+        lastErr = e;
+        console.log(`  S12 pump attempt ${attempt + 1}/3 did not settle: ${e.message}`);
+      }
     }
-    await waitForNoRunningBadges(page);
+    if (lastErr) throw lastErr;
     return { settleMs: 500 };
   }
 };
