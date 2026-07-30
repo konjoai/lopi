@@ -581,7 +581,6 @@ async function measureMutations(page, windowMs) {
 async function run() {
   await mkdir(SHOTS_DIR, { recursive: true });
   await mkdir(RAW_DIR, { recursive: true });
-  const browser = await chromium.launch({ executablePath: CHROME_PATH });
 
   const states = Object.keys(BUILDERS);
 
@@ -589,15 +588,16 @@ async function run() {
     console.log(`\n=== ${state} ===`);
     const raw = { state, viewports: {} };
 
-    // Fresh fixture-server per state — S2/S3/S4's "implementing"/"streaming"
-    // scenarios are infinite loops that never get cancelled when a page
-    // context closes. Sharing one server across the whole batch let those
-    // ghost loops keep broadcasting for the rest of the run: by the time a
-    // later one-shot state's pump fired, the WS channel was carrying enough
-    // ambient traffic from earlier states' still-running loops to lag/drop
-    // frames (tokio::sync::broadcast's bounded-capacity semantics), so S5
-    // onward settled with zero tokens and no live-output panel at all —
-    // not a timing race, an actual accumulated-load bug in this harness.
+    // Fresh fixture-server AND fresh browser per state. The server-per-state
+    // isolation (below) fixed one real bug (ghost infinite-loop scenarios
+    // from S2/S3/S4 keeping the WS channel busy for the rest of the batch),
+    // but S5 kept failing even with that fix, every time, only ever inside
+    // the full 9-state run — the exact same builder code always worked when
+    // reproduced standalone with a freshly-launched browser. One `browser`
+    // instance was being reused across all ~90 contexts in the batch;
+    // launching fresh per state matches the one condition every working
+    // repro shared and every failing run didn't.
+    const browser = await chromium.launch({ executablePath: CHROME_PATH });
     const child = spawnFixture(PORT);
     try {
       await waitForHealth(PORT);
@@ -673,12 +673,11 @@ async function run() {
 
       await writeFile(path.join(RAW_DIR, `${state}.json`), JSON.stringify(raw, null, 2));
     } finally {
+      await browser.close();
       child.kill('SIGTERM');
       await sleep(300); // let the OS release the port before the next state's spawn
     }
   }
-
-  await browser.close();
 }
 
 run().catch((e) => {
