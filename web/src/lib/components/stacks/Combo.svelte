@@ -69,20 +69,20 @@
     position: relative;
     display: inline-flex;
     align-items: center;
-    border: 1px solid rgba(255, 255, 255, 0.11);
+    border: 1px solid rgb(var(--k-wash-rgb) / 0.11);
     border-radius: 5px;
     overflow: hidden;
-    background: rgba(255, 255, 255, 0.04);
+    background: rgb(var(--k-wash-rgb) / 0.04);
   }
   .combo:focus-within {
-    border-color: rgba(0, 212, 255, 0.55);
-    background: rgba(0, 212, 255, 0.05);
+    border-color: rgb(var(--k-chip-repo-rgb) / 0.55);
+    background: rgb(var(--k-chip-repo-rgb) / 0.05);
   }
   .cin {
     width: 26px;
     background: transparent;
     border: none;
-    color: var(--konjo-paper, #f5f5f5);
+    color: var(--konjo-paper, var(--k-text-primary));
     font-family: var(--font-mono, monospace);
     font-size: 10.5px;
     text-align: center;
@@ -94,7 +94,7 @@
     cursor: pointer;
     display: inline-flex;
     align-items: center;
-    border-left: 1px solid rgba(255, 255, 255, 0.11);
+    border-left: 1px solid rgb(var(--k-wash-rgb) / 0.11);
     background: transparent;
     border-top: none;
     border-right: none;
@@ -107,16 +107,16 @@
   }
   .cdd:hover,
   .cdd.open {
-    background: rgba(0, 212, 255, 0.1);
+    background: rgb(var(--k-chip-repo-rgb) / 0.1);
   }
   .dmenu {
     position: absolute;
     top: calc(100% + 4px);
     left: 0;
-    background: var(--konjo-panel, #0a0d0f);
-    border: 1px solid rgba(255, 255, 255, 0.11);
+    background: var(--konjo-panel, var(--k-surface-raised));
+    border: 1px solid rgb(var(--k-wash-rgb) / 0.11);
     border-radius: 6px;
-    box-shadow: 0 12px 34px rgba(0, 0, 0, 0.72);
+    box-shadow: 0 12px 34px rgb(var(--k-shadow-rgb) / 0.72);
     z-index: 80;
     max-height: 180px;
     overflow-y: auto;
@@ -128,7 +128,7 @@
     padding: 6px 13px;
     font-family: var(--font-mono, monospace);
     font-size: 10.5px;
-    color: rgba(245, 245, 245, 0.46);
+    color: rgb(var(--k-text-primary-rgb) / 0.46);
     cursor: pointer;
     border-radius: 4px;
     white-space: nowrap;
@@ -137,11 +137,11 @@
     text-align: left;
   }
   .dopt:hover {
-    background: rgba(0, 212, 255, 0.1);
+    background: rgb(var(--k-chip-repo-rgb) / 0.1);
     color: var(--konjo-ice);
   }
   .dopt.on {
     color: var(--konjo-ice);
-    background: rgba(0, 212, 255, 0.16);
+    background: rgb(var(--k-chip-repo-rgb) / 0.16);
   }
 </style>

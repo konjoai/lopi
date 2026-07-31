@@ -131,7 +131,7 @@
     justify-content: flex-start;
     margin-top: 12px;
     padding-top: 12px;
-    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    border-top: 1px solid rgb(var(--k-wash-rgb) / 0.05);
   }
   .chip {
     flex: 0 0 auto;

@@ -142,7 +142,7 @@
     gap: 9px;
     margin-bottom: 11px;
     font-size: 11px;
-    color: var(--konjo-paper, #f5f5f5);
+    color: var(--konjo-paper, var(--k-text-primary));
   }
   .freqrow {
     display: flex;
@@ -153,17 +153,17 @@
   .freq {
     font-family: var(--font-mono, monospace);
     font-size: 10px;
-    color: rgba(245, 245, 245, 0.46);
-    border: 1px solid rgba(255, 255, 255, 0.11);
+    color: rgb(var(--k-text-primary-rgb) / 0.46);
+    border: 1px solid rgb(var(--k-wash-rgb) / 0.11);
     border-radius: 16px;
     padding: 5px 11px;
     cursor: pointer;
     background: transparent;
   }
   .freq.on {
-    background: rgba(0, 212, 255, 0.14);
+    background: rgb(var(--k-chip-repo-rgb) / 0.14);
     color: var(--konjo-ice);
-    border-color: rgba(0, 212, 255, 0.45);
+    border-color: rgb(var(--k-chip-repo-rgb) / 0.45);
   }
   .detrow {
     display: flex;
@@ -172,26 +172,26 @@
     margin-bottom: 11px;
     font-family: var(--font-mono, monospace);
     font-size: 10px;
-    color: rgba(245, 245, 245, 0.66);
+    color: rgb(var(--k-text-primary-rgb) / 0.66);
     flex-wrap: wrap;
   }
   .colon {
-    color: rgba(245, 245, 245, 0.66);
+    color: rgb(var(--k-text-primary-rgb) / 0.66);
     font-weight: 700;
   }
   .ampm {
     display: inline-flex;
-    border: 1px solid rgba(255, 255, 255, 0.11);
+    border: 1px solid rgb(var(--k-wash-rgb) / 0.11);
     border-radius: 20px;
     overflow: hidden;
-    background: rgba(255, 255, 255, 0.03);
+    background: rgb(var(--k-wash-rgb) / 0.03);
     position: relative;
   }
   .ampm .ap {
     padding: 5px 11px;
     font-family: var(--font-mono, monospace);
     font-size: 10px;
-    color: rgba(245, 245, 245, 0.66);
+    color: rgb(var(--k-text-primary-rgb) / 0.66);
     cursor: pointer;
     transition: 0.16s;
     position: relative;
@@ -200,7 +200,7 @@
     background: transparent;
   }
   .ampm .ap.on {
-    color: #04141c;
+    color: var(--k-ext-sched-dark-teal);
   }
   .ampm::before {
     content: '';
@@ -228,15 +228,15 @@
     font-size: 8px;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: rgba(245, 245, 245, 0.66);
+    color: rgb(var(--k-text-primary-rgb) / 0.66);
     flex: 0 0 auto;
   }
   .rawrow textarea {
     display: block;
     resize: none;
     overflow: hidden;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.11);
+    background: rgb(var(--k-wash-rgb) / 0.03);
+    border: 1px solid rgb(var(--k-wash-rgb) / 0.11);
     border-radius: 5px;
     padding: 5px 8px;
     color: var(--konjo-ice);
@@ -248,12 +248,12 @@
   }
   .rawrow textarea:focus {
     outline: none;
-    border-color: rgba(0, 212, 255, 0.5);
+    border-color: rgb(var(--k-chip-repo-rgb) / 0.5);
   }
   .human {
     font-family: var(--font-mono, monospace);
     font-size: 9px;
-    color: rgba(245, 245, 245, 0.46);
+    color: rgb(var(--k-text-primary-rgb) / 0.46);
     margin-top: 7px;
   }
   .human :global(b) {
@@ -265,15 +265,15 @@
     align-items: flex-end;
     gap: 14px;
     padding: 10px 13px;
-    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    border-top: 1px solid rgb(var(--k-wash-rgb) / 0.05);
   }
   .nextruns {
     font-family: var(--font-mono, monospace);
     font-size: 9px;
-    color: rgba(245, 245, 245, 0.46);
+    color: rgb(var(--k-text-primary-rgb) / 0.46);
   }
   .nextruns .nrl {
-    color: rgba(245, 245, 245, 0.66);
+    color: rgb(var(--k-text-primary-rgb) / 0.66);
   }
   .nextruns ul {
     list-style: none;
@@ -284,7 +284,7 @@
     position: relative;
     padding-left: 12px;
     line-height: 1.7;
-    color: rgba(245, 245, 245, 0.46);
+    color: rgb(var(--k-text-primary-rgb) / 0.46);
   }
   .nextruns li::before {
     content: '–';

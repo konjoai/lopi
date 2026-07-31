@@ -156,11 +156,11 @@
     gap: 9px;
     margin-bottom: 11px;
     font-size: 11px;
-    color: var(--konjo-paper, #f5f5f5);
+    color: var(--konjo-paper, var(--k-text-primary));
   }
   .err {
     font-size: 9px;
-    color: var(--konjo-rose, #ff0066);
+    color: var(--konjo-rose, var(--k-danger));
     margin-bottom: 9px;
   }
   .hint {
@@ -168,13 +168,13 @@
     font-family: var(--font-mono, monospace);
     font-size: 9px;
     line-height: 1.5;
-    color: rgba(245, 245, 245, 0.46);
+    color: rgb(var(--k-text-primary-rgb) / 0.46);
   }
   .fieldlbl {
     font-size: 8.5px;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: rgba(245, 245, 245, 0.4);
+    color: rgb(var(--k-text-primary-rgb) / 0.4);
     margin: 10px 0 5px;
   }
   .fieldlbl:first-of-type {
@@ -188,7 +188,7 @@
   .runlist li {
     position: relative;
     font-size: 9px;
-    color: rgba(245, 245, 245, 0.6);
+    color: rgb(var(--k-text-primary-rgb) / 0.6);
     line-height: 1.7;
   }
   .runlist li::before {
@@ -208,13 +208,13 @@
     display: flex;
     justify-content: space-between;
     font-size: 8.5px;
-    color: rgba(245, 245, 245, 0.46);
+    color: rgb(var(--k-text-primary-rgb) / 0.46);
     margin-bottom: 4px;
   }
   .qbar-track {
     height: 5px;
     border-radius: 3px;
-    background: rgba(255, 255, 255, 0.08);
+    background: rgb(var(--k-wash-rgb) / 0.08);
     overflow: hidden;
   }
   .qbar-fill {

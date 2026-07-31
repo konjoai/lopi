@@ -63,11 +63,11 @@
 
 <style>
   .tool {
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid rgb(var(--k-wash-rgb) / 0.08);
     border-radius: 8px;
     margin: 0.4rem 0;
     overflow: hidden;
-    background: rgba(255, 255, 255, 0.02);
+    background: rgb(var(--k-wash-rgb) / 0.02);
   }
   .tool.err {
     border-color: color-mix(in srgb, var(--konjo-rose) 45%, transparent);
@@ -84,7 +84,7 @@
     transition: background var(--dur-fast) var(--ease-out-expo);
   }
   .tool-head:hover {
-    background: rgba(255, 255, 255, 0.04);
+    background: rgb(var(--k-wash-rgb) / 0.04);
   }
   .chev {
     opacity: 0.5;
@@ -140,7 +140,7 @@
   }
   .tool-body {
     padding: 0.4rem 0.6rem 0.55rem;
-    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    border-top: 1px solid rgb(var(--k-wash-rgb) / 0.06);
     font-family: var(--font-mono, monospace);
     font-size: 0.7rem;
   }

@@ -33,7 +33,7 @@
       {/each}
     </div>
   </div>
-  <div class="meta" style:color={card.lifecycle === 'queued' ? 'rgba(245,245,245,0.35)' : card.metaRightColor}>
+  <div class="meta" style:color={card.lifecycle === 'queued' ? 'rgb(var(--k-text-primary-rgb) / 0.35)' : card.metaRightColor}>
     {card.lifecycle === 'queued' ? card.repo : card.metaRight}
   </div>
 </button>
@@ -47,7 +47,7 @@
     padding: 12px 10px;
     border: none;
     border-left: 3px solid var(--accent);
-    background: color-mix(in srgb, var(--accent) 6%, #101013);
+    background: color-mix(in srgb, var(--accent) 6%, var(--k-ext-surface-card));
     border-radius: 0 8px 8px 0;
     text-align: left;
     cursor: pointer;
@@ -57,7 +57,7 @@
   }
   .scard:hover,
   .scard:focus-visible {
-    background: color-mix(in srgb, var(--accent) 12%, #101013);
+    background: color-mix(in srgb, var(--accent) 12%, var(--k-ext-surface-card));
     outline: none;
   }
   .body {
@@ -71,7 +71,7 @@
     margin-bottom: 4px;
   }
   .name {
-    color: var(--konjo-paper, #f5f5f5);
+    color: var(--konjo-paper, var(--k-text-primary));
     font-weight: 600;
     font-size: 12.5px;
   }
@@ -83,7 +83,7 @@
     animation: cardpulse 1.8s ease-in-out infinite;
   }
   .goal {
-    color: rgba(245, 245, 245, 0.65);
+    color: rgb(var(--k-text-primary-rgb) / 0.65);
     font-size: 11px;
     white-space: nowrap;
     overflow: hidden;

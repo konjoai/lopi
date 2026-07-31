@@ -5,6 +5,181 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## Sprint U1 (Colour theme implementation)
+
+**Pre-flight.** `main` @ `043ca18470de6a4ce49e626822abf4c590778fdb` (confirmed
+current via `git fetch` + `git rev-parse HEAD`, matches PR #188's own base
+sha). `cd web && npm ci && npm run build` green, `web/dist` real (not the
+placeholder). All seven canary selectors resolved live in the DOM against the
+S13-populated fixture: `.gchip` 20, `.runtag` 5, `.sctrl` 2, `.chipinput` 4,
+`.pc` 5, `.sumln` 1, `.iterpill` 7.
+
+**Recon harness reuse.** PR #188 (`claude/dashboard-recon-sprint-u0-rfy9tl`)
+is still open/draft, based on the exact same main sha this sprint started
+from, so `tools/recon/` was merged in via `git merge` rather than rebuilt —
+zero rewrite, per the brief's "reuse it" instruction. Extended it minimally
+with `tools/recon/u1-capture.js` (parameterized output root so U1 captures
+land under `recon/u1/<name>/` instead of clobbering the U-0 census already
+committed under `recon/`) and `tools/recon/check-selectors.js` (the Step 0.3
+canary check as a reusable script, not a one-off).
+
+**Step 1 baseline.** `recon/u1/before/`: all 11 reachable Loop-Stacks fixture
+states (S1-S6, S9-S13; S7/S8 remain unreachable per U-0's own finding — no
+web consumer for `/api/economics` or cache-hit-ratio degradation) × 2
+viewports (1440×900, 390×844), motion off, plus the 4 existing U-0 component
+grids (config-button, schedule popover, config popover, chip token) at both
+viewports. Fixture seed: static, no PRNG (`tools/recon/fixtures/states.js`'s
+own determinism contract — fixed task ids, fixed WireMessage timestamps,
+clock frozen at `2026-07-30T12:00:00.000Z` via `lib/browser.js`).
+Playwright `1.62.0`, Chromium `141.0.7390.37` (`browser.version()`, not
+assumed from the package version). One capture (`S9_long_scrollback` @
+390×844) needed a 120s screenshot timeout instead of Playwright's 30s
+default — 2200 log lines re-flowing at a 390px width is genuinely slow to
+settle, not flaky; documented in `recon/u1/before/capture_log.json` rather
+than silently retried away.
+
+**Scope decision — full `web/src`, not Loop-Stacks-only (checked with the
+human before proceeding).** The brief's own screenshot list and recon sample
+center on the Loop Stacks page, but `check-tokens.mjs`'s no-raw-colour lint
+is written to cover all of `web/src`. A full grep found **782 raw
+colour-literal call sites across ~50 files** — Budget, Overview, Config,
+Onboard, Schedules, and a `Forge`/orb-visualization subsystem, not just Loop
+Stacks — roughly 4x the file footprint the U-0 recon's 21-colour/7-state
+sample covered. Given the size of that gap, this was raised as a real
+scope decision rather than resolved silently; the human chose full-scope
+(option: tokenize everything, with a narrow documented lint exemption for
+browser-DOM-free constant maps rather than breaking their design).
+
+**The `phase-colors.ts` / `orbState.ts` exemption.** `PHASE_COLORS`
+(`web/src/lib/stores/phase-colors.ts`) is deliberately a leaf module with no
+`$app`/Svelte imports, "importable from pure, browser-free code" per its own
+doc comment — and `ORB_PALETTE` (`web/src/lib/forge/orbState.ts`) is the same
+pattern, with `orbState.test.ts` asserting `glowColor` equals literal hex
+strings directly (`eq(o.glowColor, '#5ee6ff', ...)`) in plain Node, no DOM.
+Routing either through `var(--k-*)` would make those assertions compare a
+CSS-variable string against a hex string and fail, and reading the resolved
+colour via `getComputedStyle` would require a DOM these modules are
+explicitly designed not to need. Both get a narrow, named exemption in
+`check-tokens.mjs` (see Step 6) rather than a broken test suite or a silently
+weakened lint. Their hex values still live nowhere but these two files and
+`app.css`'s mirrored `--phase-*`/`--konjo-{plasma,violet,violet-bright,mint,
+rose-muted}` custom properties — not expanded, not duplicated further.
+
+**Real finding: the brief's `PRESET_ACCENT` → `--k-preset-*` mapping doesn't
+hold for `gain`.** Checking each of the five `PRESET_ACCENT` entries
+(`web/src/lib/components/stacks/icons.ts`) against the commit-1 chip values
+the brief hands down: `research`→ice `#00d4ff` = chip-repo exactly,
+`implement`→flame `#ff9500` = chip-loop exactly, `optimize`→sun `#ffcc00` =
+chip-effort exactly, `benchmark`→jade `#00ff9d` = the commit-1
+`--k-preset-benchmark` override exactly. But `gain`→`--konjo-violet`
+(`#7c3aed`, the same saturated violet used for the "Testing" phase and the
+orb-state map) does **not** match `--k-chip-model`'s commit-1 value
+(`#b79bff`, a much lighter pastel violet) — two genuinely different violets,
+not a rounding difference. Mechanically repointing `gain` to
+`var(--k-preset-gain)` as the brief's prose suggests would have changed a
+real rendered pixel and failed commit 1's zero-diff gate. Kept `gain`'s
+existing `#7c3aed` on its own token (not consolidated onto chip-model) for
+commit 1; whether commit 2 should recolour `gain` to the lighter chip-model
+target or keep its distinct violet identity is an open design call, not
+resolved unilaterally here.
+
+**Real finding: a 6th chip hue already exists.** `ChipInput.svelte`'s
+`.chip-eval` (an `;eval` grammar chip) renders `rgba(59, 230, 200, ...)`, a
+mint distinct from both `--k-chip-alias` (teal, `#00ffd4`) and
+`--konjo-jade`/`--k-preset-benchmark` (`#00ff9d`) — not a near-duplicate of
+either, a third hue in the mint/teal/jade family. The brief's constraint is
+explicit: "if a component seems to need a sixth chip hue... stop and report
+it rather than inventing one." Not eliminated or merged into an existing
+hue; kept on its own literal token, flagged here for a real design decision.
+
+**Step 3 mechanical substitution: 782 raw colour-literal call sites routed
+across 51 files.** `web/scripts/u1-codemod.mjs` did the bulk exact-value
+substitution (228 hex + 487 rgba/rgb, one deterministic pass); the
+remaining ambiguous cluster (`rgba(183,155,255,*)`, used for both the
+chip-model hue and generic interactive-control borders — same RGB triple,
+two different roles) was hand-classified per call site by CSS selector
+context and applied separately. `tools/recon/lib/browser.js` fixed the
+one broken cross-file reference the codemod couldn't safely touch itself
+(`orbState.test.ts` asserts literal hex strings against the intentionally
+browser-DOM-free `orbState.ts`; the codemod rewrote both sides to
+`var(--k-*)` and desynced them — reverted the test file by hand, added it
+to the exemption list alongside its source). `tokens.css` ends the sprint
+at 104 distinct custom properties (the ~20 "official" swap tokens plus
+every near-duplicate/other-subsystem literal discovered); `web/src` carries
+746 `var(--k-*)` references. `npm run build`, `npm run check`
+(svelte-check, 0 errors), and `npm run test` (all suites) are green.
+
+**Step 3 gate: capture-harness non-determinism, not a missed literal —
+verified, not assumed.** The first pixel-diff runs against `recon/u1/before/`
+came back non-zero and non-reproducible: the specific states and diff
+magnitudes changed between successive runs of the *same* commit-1 build,
+which a real missed-literal bug cannot do (that would be deterministic).
+Proved this with a same-content control — captured clean `main` twice in a
+row and diffed those against each other: identical non-zero diffs on the
+identical states (`S11_blocked_on_dependency`, matching magnitude to the
+decimal). Root-caused to three independent sources in
+`tools/recon/lib/seed.js`'s scripted UI seeding (add-pane / type-goal /
+run-stack via real Playwright clicks, needed because stacks are 100%
+client-side — no server state to seed via the API):
+1. **Dev-server compile jitter.** `vite dev` lazily transforms each route
+   on first request; capture switched to `vite preview` (serves the actual
+   production build, matching what the app ships) via a new
+   `RECON_BASE_URL` override in `lib/browser.js`.
+2. **Residual `:focus-visible`.** The dock-toggle click `runPane` performs
+   to seed a running card leaves a real focus ring on whichever element it
+   last landed on. Added an opt-in `suppressFocusRing` context option
+   (page-state shots only — the U-0 component-grid captures that
+   deliberately photograph focus-visible cells do not set it).
+3. **Residual `:hover` + Svelte-transition-driven pane mount.** Playwright's
+   synthetic mouse cursor stays parked at the last click's coordinates
+   (`page.mouse.move` is not automatic), and multi-pane states add a pane
+   mid-sequence via a Svelte `transition:` directive — inline-style-driven,
+   so `transition: none !important` in `MOTION_OFF_CSS` doesn't touch it,
+   leaving a real timing window where a later scripted click can land on a
+   dropdown/menu toggle instead of its intended target. Added
+   `page.mouse.move(0, 0)` before every page-state screenshot and a settle
+   + `Escape` after `seedState()`.
+   
+   These three closed most of it (`S1/S2/S5/S6` and the four U-0 component
+   grids: exactly zero diff across every rerun). **Multi-pane states
+   (`S3`, `S9`, `S10`, `S11`, `S12`, `S13`) still show a small residual**
+   (0.0005%–1.2%, see `recon/u1/after-mechanical-vs-before.json`) — every
+   one individually opened in `recon/u1/after-mechanical-diff/` and
+   confirmed by eye to be the same interaction-state class each time
+   (a duplicated/collapsed composer section, a `pause` vs `run stack`
+   label, a stray highlighted control), never a wrong hue. No single
+   diff repeats at the same magnitude on the same state across reruns —
+   the opposite of what a real missed-literal bug would produce. Judgment
+   call, not silently assumed: **commit 1 is accepted as visually correct
+   on this evidence**, with the capture harness's remaining multi-pane
+   race left as a known, documented tooling limitation (root cause
+   identified — Playwright scripted interaction racing a Svelte-store-driven
+   reactive re-render — fix would mean instrumenting `seed.js` to await a
+   concrete DOM/store signal per action instead of a fixed wait, out of
+   scope for a colour-token sprint). If a future sprint needs genuinely
+   zero-tolerance pixel diffing on these specific states, that
+   `seed.js` rework is the prerequisite, not another timeout bump.
+
+**Near-duplicate clusters found beyond U-0's original sample (same pattern,
+larger surface).** `--konjo-black` (`#0a0a0a`, app.css) is close to but not
+equal to `--k-surface-raised`'s commit-1 value (`#0a0d0f`); today's
+`--konjo-border-subtle` and `-strong` render as the *same* `#1b2125` per the
+brief's own commit-1 table (they only diverge into two shades in commit 2);
+`ProvenanceChips.svelte`'s `.chip.repo` uses `#66b3ff`, a lighter blue than
+`--k-chip-repo`'s `#00d4ff`; `StackConnector.svelte`'s `.connbadge.budget`
+uses `#b388ff`, yet another violet distinct from both chip-model and
+`gain`'s `#7c3aed`; `StackControlDock.svelte`'s `.sctrl` dock chrome and
+`.runbanner` status colours use several more one-off RGB triples not equal
+to any of the 20 official tokens. Policy applied consistently: an **exact**
+literal match to an official token routes straight to that token's
+`var()`; anything else gets its own extension token in `tokens.css`
+(preserving the exact pixel for commit 1's zero-diff gate) rather than
+being force-merged onto the nearest official colour, which would be an
+uninstructed design decision. `transcript/CodeBlock.svelte`'s diff
+highlighting (`#3fb950`/`#f85149`, GitHub's own diff-view green/red) is a
+deliberately separate convention, not Loop-Stacks chip/danger drift — kept
+permanently separate, never consolidated.
+
 ## Sprint S13, Phase 0 (Quality-claim honesty pass) — stopped after Phase 0 per the brief's own stop rule
 
 **One-way doors, all recorded before the sprint's Phase-0 stop rule fired (5

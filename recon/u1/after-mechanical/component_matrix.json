@@ -1,0 +1,42 @@
+[
+  {
+    "component": "config-button",
+    "viewport": "1440x900",
+    "grid": "components/config_button_1440x900.png"
+  },
+  {
+    "component": "schedule popover",
+    "viewport": "1440x900",
+    "grid": "components/schedule_popover_1440x900.png"
+  },
+  {
+    "component": "config popover",
+    "viewport": "1440x900",
+    "grid": "components/config_popover_1440x900.png"
+  },
+  {
+    "component": "chip token",
+    "viewport": "1440x900",
+    "grid": "components/chip_token_1440x900.png"
+  },
+  {
+    "component": "config-button",
+    "viewport": "390x844",
+    "grid": "components/config_button_390x844.png"
+  },
+  {
+    "component": "schedule popover",
+    "viewport": "390x844",
+    "grid": "components/schedule_popover_390x844.png"
+  },
+  {
+    "component": "config popover",
+    "viewport": "390x844",
+    "grid": "components/config_popover_390x844.png"
+  },
+  {
+    "component": "chip token",
+    "viewport": "390x844",
+    "grid": "components/chip_token_390x844.png"
+  }
+]

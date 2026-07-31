@@ -29,7 +29,7 @@
     width: 30px;
     height: 17px;
     border-radius: 10px;
-    background: rgba(255, 255, 255, 0.1);
+    background: rgb(var(--k-wash-rgb) / 0.1);
     position: relative;
     cursor: pointer;
     transition: 0.16s;
@@ -48,25 +48,25 @@
     width: 13px;
     height: 13px;
     border-radius: 50%;
-    background: rgba(245, 245, 245, 0.46);
+    background: rgb(var(--k-text-primary-rgb) / 0.46);
     transition: 0.16s;
   }
   .gtog.sun.on {
-    background: rgba(255, 204, 0, 0.28);
+    background: rgb(var(--k-chip-effort-rgb) / 0.28);
   }
   .gtog.sun.on .knob {
     left: 15px;
     background: var(--konjo-sun);
   }
   .gtog.ice.on {
-    background: rgba(0, 212, 255, 0.28);
+    background: rgb(var(--k-chip-repo-rgb) / 0.28);
   }
   .gtog.ice.on .knob {
     left: 15px;
     background: var(--konjo-ice);
   }
   .gtog.flame.on {
-    background: rgba(255, 149, 0, 0.28);
+    background: rgb(var(--k-chip-loop-rgb) / 0.28);
   }
   .gtog.flame.on .knob {
     left: 15px;

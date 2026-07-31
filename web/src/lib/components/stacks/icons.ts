@@ -12,7 +12,7 @@ export const ICONS = {
   // not a themeable glyph. Scoped to the Stacks nav item and each pane
   // header (not the favicon or wordmark, which keep the plain boxed/bare
   // loop glyph).
-  mark: '<svg viewBox="0 0 52 52" fill="none"><path d="M12.5,15.5 V14 A6,6 0 0 1 18.5,8 H39.5" stroke="#ff9e12" stroke-width="2.85" stroke-linecap="round"/><polyline points="33.5,2 39.5,8 33.5,14" stroke="#ff9e12" stroke-width="2.85" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M39.5,18.5 V20 A6,6 0 0 1 33.5,26 H12.5" stroke="#ff9e12" stroke-width="2.85" stroke-linecap="round"/><polyline points="18.5,32 12.5,26 18.5,20" stroke="#ff9e12" stroke-width="2.85" stroke-linecap="round" stroke-linejoin="round" fill="none"/><rect x="8" y="34" width="36" height="4" rx="2" fill="#ff9e12" opacity="0.9"/><rect x="8" y="40" width="36" height="4" rx="2" fill="#ff9e12" opacity="0.65"/><rect x="8" y="46" width="36" height="4" rx="2" fill="#ff9e12" opacity="0.4"/></svg>',
+  mark: '<svg viewBox="0 0 52 52" fill="none"><path d="M12.5,15.5 V14 A6,6 0 0 1 18.5,8 H39.5" stroke="var(--k-ext-mark-logo)" stroke-width="2.85" stroke-linecap="round"/><polyline points="33.5,2 39.5,8 33.5,14" stroke="var(--k-ext-mark-logo)" stroke-width="2.85" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M39.5,18.5 V20 A6,6 0 0 1 33.5,26 H12.5" stroke="var(--k-ext-mark-logo)" stroke-width="2.85" stroke-linecap="round"/><polyline points="18.5,32 12.5,26 18.5,20" stroke="var(--k-ext-mark-logo)" stroke-width="2.85" stroke-linecap="round" stroke-linejoin="round" fill="none"/><rect x="8" y="34" width="36" height="4" rx="2" fill="var(--k-ext-mark-logo)" opacity="0.9"/><rect x="8" y="40" width="36" height="4" rx="2" fill="var(--k-ext-mark-logo)" opacity="0.65"/><rect x="8" y="46" width="36" height="4" rx="2" fill="var(--k-ext-mark-logo)" opacity="0.4"/></svg>',
   cron: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
   shield:
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z"/></svg>',
@@ -93,9 +93,15 @@ export const PRESET_ICON: Record<string, string> = {
 };
 
 export const PRESET_ACCENT: Record<string, string> = {
-  research: 'var(--konjo-ice)',
-  implement: 'var(--konjo-flame)',
-  optimize: 'var(--konjo-sun)',
-  gain: 'var(--konjo-violet)',
-  benchmark: 'var(--konjo-jade)'
+  research: 'var(--k-preset-research)',
+  implement: 'var(--k-preset-implement)',
+  optimize: 'var(--k-preset-optimize)',
+  // NOT --k-preset-gain: today's gain accent is --k-ext-violet-testing
+  // (var(--k-ext-violet-testing)), a different, more saturated violet than --k-chip-model
+  // (var(--k-chip-model)) that --k-preset-gain resolves to. Routing to --k-preset-gain
+  // would recolor this preset and fail the commit-1 zero-diff gate — see
+  // LEDGER.md Sprint U1 "the brief's PRESET_ACCENT mapping doesn't hold for
+  // gain". Left as an open design call, not resolved here.
+  gain: 'var(--k-ext-violet-testing)',
+  benchmark: 'var(--k-preset-benchmark)'
 };

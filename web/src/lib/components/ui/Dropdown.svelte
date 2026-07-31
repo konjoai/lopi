@@ -229,9 +229,9 @@
     gap: 6px;
     padding: 5px 8px;
     border-radius: 7px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    background: rgba(255, 255, 255, 0.025);
-    color: var(--konjo-paper, #f5f5f5);
+    border: 1px solid rgb(var(--k-wash-rgb) / 0.08);
+    background: rgb(var(--k-wash-rgb) / 0.025);
+    color: var(--konjo-paper, var(--k-text-primary));
     font-family: var(--font-mono, monospace);
     font-size: 11px;
     cursor: pointer;
@@ -310,10 +310,10 @@
        this can stay narrow. */
     max-width: 20rem;
     border-radius: 9px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    background: rgba(8, 8, 10, 0.96);
+    border: 1px solid rgb(var(--k-wash-rgb) / 0.1);
+    background: rgb(var(--k-ext-surface-dropdown-rgb) / 0.96);
     backdrop-filter: blur(12px);
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+    box-shadow: 0 12px 40px rgb(var(--k-shadow-rgb) / 0.6);
     animation: kdrop-in 0.14s cubic-bezier(0.16, 1, 0.3, 1);
     overflow: hidden;
   }
@@ -323,9 +323,9 @@
     box-sizing: border-box;
     padding: 7px 10px;
     border: none;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-    background: rgba(255, 255, 255, 0.03);
-    color: var(--konjo-paper, #f5f5f5);
+    border-bottom: 1px solid rgb(var(--k-wash-rgb) / 0.08);
+    background: rgb(var(--k-wash-rgb) / 0.03);
+    color: var(--konjo-paper, var(--k-text-primary));
     font-family: var(--font-mono, monospace);
     font-size: 11px;
     outline: none;
@@ -378,7 +378,7 @@
     border: none;
     border-radius: 6px;
     background: transparent;
-    color: var(--konjo-paper, #f5f5f5);
+    color: var(--konjo-paper, var(--k-text-primary));
     font-family: var(--font-mono, monospace);
     font-size: 11px;
     text-align: left;

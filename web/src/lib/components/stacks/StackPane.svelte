@@ -176,9 +176,9 @@
 
 <style>
   .pane {
-    border: 1px solid rgba(255, 255, 255, 0.11);
+    border: 1px solid rgb(var(--k-wash-rgb) / 0.11);
     border-radius: 14px;
-    background: var(--konjo-panel, #0a0d0f);
+    background: var(--konjo-panel, var(--k-surface-raised));
     position: relative;
     transition: opacity 0.12s;
     /* Fills its auto-tiling TileGrid cell; the card stack scrolls internally so
@@ -197,10 +197,10 @@
   }
   @keyframes focusflash {
     0% {
-      box-shadow: 0 0 0 2px rgba(0, 212, 255, 0.9);
+      box-shadow: 0 0 0 2px rgb(var(--k-chip-repo-rgb) / 0.9);
     }
     100% {
-      box-shadow: 0 0 0 2px rgba(0, 212, 255, 0);
+      box-shadow: 0 0 0 2px rgb(var(--k-chip-repo-rgb) / 0);
     }
   }
   @media (prefers-reduced-motion: reduce) {
@@ -216,7 +216,7 @@
     align-items: center;
     gap: 11px;
     padding: 14px 18px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    border-bottom: 1px solid rgb(var(--k-wash-rgb) / 0.05);
   }
   .panehead .logo {
     color: var(--konjo-flame);
@@ -231,7 +231,7 @@
     font-size: 12px;
     letter-spacing: 0.16em;
     text-transform: uppercase;
-    color: var(--konjo-paper, #f5f5f5);
+    color: var(--konjo-paper, var(--k-text-primary));
   }
   .panehead .hsp {
     flex: 1;
@@ -240,12 +240,12 @@
     width: 7px;
     height: 7px;
     border-radius: 50%;
-    background: rgba(245, 245, 245, 0.28);
+    background: rgb(var(--k-text-primary-rgb) / 0.28);
   }
   .panehead .hx {
     background: none;
     border: none;
-    color: rgba(245, 245, 245, 0.28);
+    color: rgb(var(--k-text-primary-rgb) / 0.28);
     cursor: not-allowed;
     display: inline-flex;
   }
@@ -253,7 +253,7 @@
     cursor: pointer;
   }
   .panehead .hx.live:hover {
-    color: var(--konjo-rose, #ff0066);
+    color: var(--konjo-rose, var(--k-danger));
   }
   .panehead .hx :global(svg) {
     width: 16px;
@@ -277,7 +277,7 @@
     left: 50%;
     top: 0;
     bottom: 0;
-    border-left: 2px dashed rgba(245, 245, 245, 0.28);
+    border-left: 2px dashed rgb(var(--k-text-primary-rgb) / 0.28);
     transform: translateX(-1px);
   }
   /* `.loopwrap.hasout` owns the ENTIRE border for a card with output
@@ -313,7 +313,7 @@
      `StackCard.svelte`'s identical `.pc.blocked` fixed-color rationale
      (durable `card.status`, not a live `--orb` lookup). */
   .loopwrap.hasout.blocked {
-    border: 1px solid rgba(255, 0, 102, 0.45);
+    border: 1px solid rgb(var(--k-danger-rgb) / 0.45);
   }
   /* UI-3 — mirrors StackCard.svelte's `.pc.running` flattening: a running
      loop's wrapper sheds its outline too, so nothing draws a box around the

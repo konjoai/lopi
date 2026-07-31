@@ -6,7 +6,13 @@
 const { chromium } = require('playwright');
 
 const CHROMIUM_PATH = '/opt/pw-browsers/chromium';
-const BASE_URL = 'http://localhost:5173';
+// Overridable so Sprint U1's capture scripts can point at `vite preview`
+// (a built, statically-served app — no per-route dev-server compile-on-
+// first-request latency) instead of `vite dev`. See LEDGER.md Sprint U1
+// "capture timing non-determinism": the dev server's lazy Vite transform
+// made first-paint latency inconsistent across capture runs, producing
+// spurious pixel diffs unrelated to any CSS change.
+const BASE_URL = process.env.RECON_BASE_URL || 'http://localhost:5173';
 
 // Fixed instant so every relative timestamp ("3m ago", clocks, etc.) renders
 // identically across runs. 2026-07-30T12:00:00Z — mid-day UTC, arbitrary but
@@ -18,6 +24,21 @@ const MOTION_OFF_CSS = `
     animation: none !important;
     transition: none !important;
     caret-color: transparent !important;
+  }
+`;
+
+// Sprint U1 finding (LEDGER.md "capture timing non-determinism"): multi-pane
+// fixture states seed via several scripted clicks (addPane/typeGoalAndAdd/
+// runPane), and whichever element that sequence last focuses keeps a real
+// :focus-visible ring into the screenshot — non-deterministic run to run,
+// confirmed via a same-content before-vs-before control capture that
+// reproduced the exact same diff magnitude with zero CSS changed. Not a
+// motion source (no animation), so MOTION_OFF_CSS doesn't touch it; this is
+// capture-determinism scaffolding, not a real accessibility statement.
+const FOCUS_RING_OFF_CSS = `
+  *:focus, *:focus-visible {
+    outline: none !important;
+    box-shadow: none !important;
   }
 `;
 
@@ -44,7 +65,7 @@ async function launchBrowser() {
  * New browser context with the clock frozen at FROZEN_NOW_MS, dsf=2, and
  * (optionally) motion disabled. `viewport` is {width, height}.
  */
-async function newContext(browser, { viewport, motion = 'off', recordVideo = undefined }) {
+async function newContext(browser, { viewport, motion = 'off', recordVideo = undefined, suppressFocusRing = false }) {
   const ctx = await browser.newContext({
     viewport,
     deviceScaleFactor: 2,
@@ -66,6 +87,9 @@ async function newContext(browser, { viewport, motion = 'off', recordVideo = und
   await page.addStyleTag({ content: FONT_OVERRIDE_CSS });
   if (motion === 'off') {
     await page.addStyleTag({ content: MOTION_OFF_CSS });
+  }
+  if (suppressFocusRing) {
+    await page.addStyleTag({ content: FOCUS_RING_OFF_CSS });
   }
   return { ctx, page };
 }

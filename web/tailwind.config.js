@@ -5,25 +5,25 @@ export default {
     extend: {
       colors: {
         konjo: {
-          black: '#0a0a0a',
-          deep: '#050505',
-          paper: '#f5f5f5',
-          ice: '#00d4ff',
-          'ice-deep': '#0088aa',
-          ember: '#ff4500',
-          flame: '#ff9500',
-          jade: '#00ff9d',
-          sun: '#ffcc00',
-          rose: '#ff0066',
+          black: 'rgb(var(--k-ext-surface-black-rgb) / <alpha-value>)',
+          deep: 'rgb(var(--k-surface-base-rgb) / <alpha-value>)',
+          paper: 'rgb(var(--k-text-primary-rgb) / <alpha-value>)',
+          ice: 'rgb(var(--k-chip-repo-rgb) / <alpha-value>)',
+          'ice-deep': 'rgb(var(--k-ext-ice-deep-rgb) / <alpha-value>)',
+          ember: 'rgb(var(--k-ext-ember-rgb) / <alpha-value>)',
+          flame: 'rgb(var(--k-chip-loop-rgb) / <alpha-value>)',
+          jade: 'rgb(var(--k-preset-benchmark-rgb) / <alpha-value>)',
+          sun: 'rgb(var(--k-chip-effort-rgb) / <alpha-value>)',
+          rose: 'rgb(var(--k-danger-rgb) / <alpha-value>)',
           // Budget page (Phase 10 redesign) — a brighter teal than `ice` and a
           // lighter violet than the existing phase-testing `violet`, plus the
           // slightly-darker-than-`deep` card background the notch-badge stat
           // cards sit on. Distinct keys so they don't recolor existing usages.
-          teal: '#00ffd4',
-          'violet-light': '#b79bff',
-          card: '#0e1214',
-          mist: 'rgba(255,255,255,0.04)',
-          veil: 'rgba(255,255,255,0.08)',
+          teal: 'rgb(var(--k-chip-alias-rgb) / <alpha-value>)',
+          'violet-light': 'rgb(var(--k-chip-model-rgb) / <alpha-value>)',
+          card: 'rgb(var(--k-ext-surface-panel-rgb) / <alpha-value>)',
+          mist: 'rgb(var(--k-wash-rgb) / 0.04)',
+          veil: 'rgb(var(--k-wash-rgb) / 0.08)',
           accent: 'rgb(var(--konjo-accent-rgb) / <alpha-value>)'
         }
       },

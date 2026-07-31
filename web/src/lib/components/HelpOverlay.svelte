@@ -37,7 +37,7 @@
       role="presentation"
       in:scale={{ duration: 320, start: 0.92, opacity: 0, easing: cubicOut }}
       out:scale={{ duration: 160, start: 0.96, opacity: 0, easing: cubicOut }}
-      style="box-shadow: 0 24px 64px -16px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.04), var(--glow-md);"
+      style="box-shadow: 0 24px 64px -16px rgb(var(--k-shadow-rgb) / 0.8), 0 0 0 1px rgb(var(--k-wash-rgb) / 0.04), var(--glow-md);"
     >
       <div class="font-display text-xl mb-1">Keyboard</div>
       <div class="font-mono text-[10px] uppercase tracking-widest opacity-50 mb-5">

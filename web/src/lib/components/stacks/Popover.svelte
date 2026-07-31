@@ -165,15 +165,15 @@
   .sheet-scrim {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.5);
+    background: rgb(var(--k-shadow-rgb) / 0.5);
     z-index: 55;
   }
   .pop {
     position: fixed;
-    background: var(--konjo-panel, #0a0d0f);
-    border: 1px solid rgba(255, 255, 255, 0.11);
+    background: var(--konjo-panel, var(--k-surface-raised));
+    border: 1px solid rgb(var(--k-wash-rgb) / 0.11);
     border-radius: 9px;
-    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.75);
+    box-shadow: 0 18px 50px rgb(var(--k-shadow-rgb) / 0.75);
     width: 300px;
     max-width: calc(100vw - 20px);
     overflow: hidden;
@@ -189,9 +189,9 @@
     top: -7px;
     width: 12px;
     height: 12px;
-    background: var(--konjo-panel, #0a0d0f);
-    border-left: 1px solid rgba(255, 255, 255, 0.11);
-    border-top: 1px solid rgba(255, 255, 255, 0.11);
+    background: var(--konjo-panel, var(--k-surface-raised));
+    border-left: 1px solid rgb(var(--k-wash-rgb) / 0.11);
+    border-top: 1px solid rgb(var(--k-wash-rgb) / 0.11);
     transform: rotate(45deg);
   }
   .pop.tailLeft::before {
@@ -223,7 +223,7 @@
     letter-spacing: 0.1em;
     text-transform: uppercase;
     padding: 11px 13px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    border-bottom: 1px solid rgb(var(--k-wash-rgb) / 0.05);
     display: flex;
     align-items: center;
     gap: 7px;
@@ -242,7 +242,7 @@
     color: var(--konjo-jade);
   }
   .pop.config :global(.ph) {
-    color: var(--stack-violet, #b79bff);
+    color: var(--stack-violet, var(--k-chip-model));
   }
   .pop.max :global(.ph) {
     color: var(--konjo-flame);
@@ -257,7 +257,7 @@
     color: var(--konjo-flame);
   }
   .pop.overflow :global(.ph) {
-    color: rgba(245, 245, 245, 0.7);
+    color: rgb(var(--k-text-primary-rgb) / 0.7);
   }
   .pop :global(.pbody) {
     padding: 11px 13px;
@@ -266,7 +266,7 @@
   }
   .pop :global(.popfoot) {
     padding: 9px 13px;
-    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    border-top: 1px solid rgb(var(--k-wash-rgb) / 0.05);
     display: flex;
     justify-content: flex-end;
     align-items: center;
@@ -281,39 +281,39 @@
     cursor: pointer;
     border: 1px solid;
     box-shadow:
-      0 2px 5px rgba(0, 0, 0, 0.4),
-      0 1px 0 rgba(255, 255, 255, 0.04) inset;
+      0 2px 5px rgb(var(--k-shadow-rgb) / 0.4),
+      0 1px 0 rgb(var(--k-wash-rgb) / 0.04) inset;
     transition: none;
   }
   .pop.sched :global(.apply) {
-    background: rgba(0, 212, 255, 0.15);
+    background: rgb(var(--k-chip-repo-rgb) / 0.15);
     color: var(--konjo-ice);
-    border-color: rgba(0, 212, 255, 0.5);
+    border-color: rgb(var(--k-chip-repo-rgb) / 0.5);
   }
   .pop.guard :global(.apply) {
-    background: rgba(255, 204, 0, 0.15);
+    background: rgb(var(--k-chip-effort-rgb) / 0.15);
     color: var(--konjo-sun);
-    border-color: rgba(255, 204, 0, 0.5);
+    border-color: rgb(var(--k-chip-effort-rgb) / 0.5);
   }
   .pop.eval :global(.apply) {
-    background: rgba(0, 255, 157, 0.15);
+    background: rgb(var(--k-preset-benchmark-rgb) / 0.15);
     color: var(--konjo-jade);
-    border-color: rgba(0, 255, 157, 0.5);
+    border-color: rgb(var(--k-preset-benchmark-rgb) / 0.5);
   }
   .pop.config :global(.apply) {
-    background: rgba(183, 155, 255, 0.15);
-    color: var(--stack-violet, #b79bff);
-    border-color: rgba(183, 155, 255, 0.5);
+    background: rgb(var(--k-border-interactive-rgb) / 0.15);
+    color: var(--stack-violet, var(--k-chip-model));
+    border-color: rgb(var(--k-border-interactive-rgb) / 0.5);
   }
   .pop.max :global(.apply) {
-    background: rgba(255, 149, 0, 0.15);
+    background: rgb(var(--k-chip-loop-rgb) / 0.15);
     color: var(--konjo-flame);
-    border-color: rgba(255, 149, 0, 0.4);
+    border-color: rgb(var(--k-chip-loop-rgb) / 0.4);
   }
   .pop.goal :global(.apply) {
-    background: rgba(255, 149, 0, 0.15);
+    background: rgb(var(--k-chip-loop-rgb) / 0.15);
     color: var(--konjo-flame);
-    border-color: rgba(255, 149, 0, 0.4);
+    border-color: rgb(var(--k-chip-loop-rgb) / 0.4);
   }
   @media (prefers-reduced-motion: reduce) {
     .pop {
