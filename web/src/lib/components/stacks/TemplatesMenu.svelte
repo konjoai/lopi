@@ -202,9 +202,9 @@
     height: 29px;
     padding: 0 10px;
     border-radius: 7px;
-    border: 1px solid rgba(255, 255, 255, 0.11);
+    border: 1px solid rgb(var(--k-wash-rgb) / 0.11);
     background: transparent;
-    color: rgba(245, 245, 245, 0.66);
+    color: rgb(var(--k-text-primary-rgb) / 0.66);
     cursor: pointer;
     font-family: var(--font-mono, monospace);
     font-size: 11.5px;
@@ -212,8 +212,8 @@
   }
   .tmbtn.labeled:hover,
   .tmbtn.labeled.open {
-    color: var(--konjo-paper, #f5f5f5);
-    border-color: rgba(245, 245, 245, 0.46);
+    color: var(--konjo-paper, var(--k-text-primary));
+    border-color: rgb(var(--k-text-primary-rgb) / 0.46);
   }
   .tmbtn.labeled :global(svg) {
     width: 13px;
@@ -222,18 +222,19 @@
   .tmbtn.labeled .lbl {
     letter-spacing: 0.02em;
   }
-  /* Icon-only, committed-card rendering: matches StackCard's `.ib` sizing
-     exactly but always carries the sun accent (Stack-Templates-1 §2a) — not
-     conditional on `open`, unlike sched/guard/eval which are dim until active. */
+  /* Icon-only, committed-card rendering: matches StackCard's `.ib` sizing.
+     Sprint U1 4c: this is a control edge (--tplbtn in the brief's own list),
+     so --k-border-interactive like every other .ib/.omini/.sb — the sun
+     accent this used to carry unconditionally is gone. */
   .ib.tplib {
     position: relative;
     height: 29px;
     min-width: 29px;
     padding: 0 7px;
     border-radius: 6px;
-    border: 1px solid rgba(255, 204, 0, 0.45);
-    background: rgba(255, 204, 0, 0.08);
-    color: var(--konjo-sun, #ffcc00);
+    border: 1px solid var(--k-border-interactive);
+    background: transparent;
+    color: rgb(var(--k-text-primary-rgb) / 0.28);
     cursor: pointer;
     display: inline-flex;
     align-items: center;
@@ -247,8 +248,8 @@
   }
   .ib.tplib:hover,
   .ib.tplib.on {
-    border-color: rgba(255, 204, 0, 0.85);
-    background: rgba(255, 204, 0, 0.18);
+    background: rgb(var(--k-wash-rgb) / 0.08);
+    color: var(--k-text-primary);
   }
   /* `fixed`, not `absolute` — escapes the pane's `.panestack{overflow-y:auto}`
      and the dock's `.dockbody{overflow:hidden}` collapse animation, exactly
@@ -261,10 +262,10 @@
     max-width: min(288px, calc(100vw - 24px));
     max-height: 60vh;
     overflow-y: auto;
-    background: var(--konjo-panel, #0a0d0f);
-    border: 1px solid rgba(255, 255, 255, 0.11);
+    background: var(--konjo-panel, var(--k-surface-raised));
+    border: 1px solid rgb(var(--k-wash-rgb) / 0.11);
     border-radius: 10px;
-    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.75);
+    box-shadow: 0 18px 50px rgb(var(--k-shadow-rgb) / 0.75);
     padding: 6px;
     visibility: hidden;
   }
@@ -275,7 +276,7 @@
     padding: 4px 0;
   }
   .sec + .sec {
-    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    border-top: 1px solid rgb(var(--k-wash-rgb) / 0.05);
     margin-top: 2px;
   }
   .sechd {
@@ -292,14 +293,13 @@
     width: 11px;
     height: 11px;
   }
-  .sec.presets .sechd {
-    color: var(--stack-teal, #00ffd4);
-  }
+  /* Sprint U1 4a: section headers are --k-text-muted labels, no per-section hue. */
+  .sec.presets .sechd,
   .sec.prompts .sechd {
-    color: var(--konjo-sun, #ffcc00);
+    color: var(--k-text-muted);
   }
   .sec.save .sechd {
-    color: rgba(245, 245, 245, 0.46);
+    color: rgb(var(--k-text-primary-rgb) / 0.46);
   }
   .row {
     display: flex;
@@ -317,7 +317,7 @@
   }
   .row:hover:not(:disabled),
   .row:focus-visible {
-    background: rgba(255, 255, 255, 0.04);
+    background: rgb(var(--k-wash-rgb) / 0.04);
     outline: none;
   }
   .row:disabled {
@@ -327,24 +327,21 @@
   .row .nm {
     font-family: var(--font-mono, monospace);
     font-size: 12px;
-    color: var(--konjo-paper, #f5f5f5);
+    color: var(--konjo-paper, var(--k-text-primary));
   }
   .row .ds {
     font-family: var(--font-mono, monospace);
     font-size: 10px;
-    color: rgba(245, 245, 245, 0.46);
+    color: rgb(var(--k-text-primary-rgb) / 0.46);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
     max-width: 100%;
   }
-  .sec.presets .row .nm {
-    color: var(--stack-teal, #00ffd4);
-  }
   .empty {
     font-family: var(--font-mono, monospace);
     font-size: 10.5px;
-    color: rgba(245, 245, 245, 0.28);
+    color: rgb(var(--k-text-primary-rgb) / 0.28);
     padding: 4px 8px;
   }
 </style>

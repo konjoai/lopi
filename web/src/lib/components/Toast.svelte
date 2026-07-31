@@ -43,12 +43,12 @@
     gap: 14px;
     padding: 11px 16px;
     border-radius: 9px;
-    background: var(--konjo-panel, #0a0d0f);
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+    background: var(--konjo-panel, var(--k-surface-raised));
+    border: 1px solid rgb(var(--k-wash-rgb) / 0.14);
+    box-shadow: 0 12px 32px rgb(var(--k-shadow-rgb) / 0.5);
     font-family: var(--font-mono, 'JetBrains Mono', monospace);
     font-size: 12px;
-    color: var(--konjo-paper, #f5f5f5);
+    color: var(--konjo-paper, var(--k-text-primary));
     animation: toastin 0.16s ease-out;
   }
   .toast .msg {
@@ -58,7 +58,7 @@
     background: none;
     border: none;
     padding: 0;
-    color: var(--konjo-ice, #00d4ff);
+    color: var(--konjo-ice, var(--k-chip-repo));
     font-family: inherit;
     font-size: 12px;
     font-weight: 700;
@@ -66,7 +66,7 @@
     white-space: nowrap;
   }
   .toast .undo:hover {
-    color: #5ee6ff;
+    color: var(--k-ext-plasma);
   }
   @keyframes toastin {
     from {

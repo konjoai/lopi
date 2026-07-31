@@ -82,12 +82,12 @@
 <style>
   .pc {
     position: relative;
-    background: var(--konjo-card, #0e1214);
-    border: 1.5px dashed rgba(124, 58, 237, 0.55);
+    background: var(--konjo-card, var(--k-ext-surface-panel));
+    border: 1.5px dashed rgb(var(--k-ext-violet-testing-rgb) / 0.55);
     border-radius: 9px;
     padding: 13px 14px;
     font-family: var(--font-mono, 'JetBrains Mono', monospace);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    box-shadow: inset 0 1px 0 rgb(var(--k-wash-rgb) / 0.08);
   }
   .runtag {
     position: absolute;
@@ -96,13 +96,13 @@
     font-size: 9px;
     letter-spacing: 0.1em;
     text-transform: uppercase;
-    background: var(--konjo-black, #0b0e10);
-    border: 1px solid rgba(124, 58, 237, 0.5);
+    background: var(--konjo-black, var(--k-ext-black-fallback));
+    border: 1px solid var(--k-border-subtle);
     border-radius: 3px;
     padding: 2px 8px;
     display: inline-flex;
     align-items: center;
-    color: var(--stack-violet-deep, #9d5cff);
+    color: var(--k-text-muted);
     z-index: 2;
   }
   .spec {
@@ -129,7 +129,7 @@
     border-radius: 5px;
     margin: -3px -6px;
     padding: 2px 6px;
-    color: rgba(245, 245, 245, 0.46);
+    color: rgb(var(--k-text-primary-rgb) / 0.46);
     font-family: inherit;
     font-size: inherit;
     line-height: inherit;
@@ -140,13 +140,13 @@
       color 0.12s;
   }
   .spec .mdinput:hover {
-    border-color: rgba(255, 255, 255, 0.11);
-    background: rgba(255, 255, 255, 0.02);
+    border-color: rgb(var(--k-wash-rgb) / 0.11);
+    background: rgb(var(--k-wash-rgb) / 0.02);
   }
   .spec .mdinput:focus {
-    border-color: rgba(0, 255, 212, 0.4);
-    background: rgba(0, 255, 212, 0.03);
-    color: var(--konjo-paper, #f5f5f5);
+    border-color: rgb(var(--k-chip-alias-rgb) / 0.4);
+    background: rgb(var(--k-chip-alias-rgb) / 0.03);
+    color: var(--konjo-paper, var(--k-text-primary));
   }
   .cardbar {
     display: flex;
@@ -161,7 +161,7 @@
     height: 29px;
     padding: 0 12px;
     border-radius: 6px;
-    border: 1px solid rgba(255, 255, 255, 0.11);
+    border: 1px solid var(--k-border-interactive);
     background: transparent;
     cursor: pointer;
     display: inline-flex;
@@ -176,23 +176,23 @@
     height: 14px;
   }
   .ib.accept {
-    color: var(--konjo-jade, #00ff9d);
-    border-color: rgba(0, 255, 157, 0.4);
-    background: rgba(0, 255, 157, 0.1);
+    color: var(--konjo-jade, var(--k-preset-benchmark));
+    border-color: rgb(var(--k-preset-benchmark-rgb) / 0.4);
+    background: rgb(var(--k-preset-benchmark-rgb) / 0.1);
   }
   .ib.accept:hover {
-    border-color: rgba(0, 255, 157, 0.7);
-    background: rgba(0, 255, 157, 0.16);
+    border-color: rgb(var(--k-preset-benchmark-rgb) / 0.7);
+    background: rgb(var(--k-preset-benchmark-rgb) / 0.16);
   }
   .ib.discard {
-    color: rgba(255, 110, 150, 0.8);
-    border-color: rgba(255, 0, 102, 0.3);
+    color: rgb(var(--k-ext-rose-soft-rgb) / 0.8);
+    border-color: rgb(var(--k-danger-rgb) / 0.3);
     background: transparent;
   }
   .ib.discard:hover {
-    color: var(--konjo-rose, #ff0066);
-    border-color: rgba(255, 0, 102, 0.6);
-    background: rgba(255, 0, 102, 0.08);
+    color: var(--konjo-rose, var(--k-danger));
+    border-color: rgb(var(--k-danger-rgb) / 0.6);
+    background: rgb(var(--k-danger-rgb) / 0.08);
   }
   /* Discarded — collapses to a one-line strip, dashed outline echoing the
      proposal's own border style so it still reads as "part of this gap"
@@ -203,19 +203,19 @@
     justify-content: center;
     gap: 8px;
     height: 34px;
-    border: 1px dashed rgba(255, 255, 255, 0.14);
+    border: 1px dashed rgb(var(--k-wash-rgb) / 0.14);
     border-radius: 9px;
     font-family: var(--font-mono, 'JetBrains Mono', monospace);
     font-size: 11px;
   }
   .propstrip .txt {
-    color: rgba(245, 245, 245, 0.4);
+    color: rgb(var(--k-text-primary-rgb) / 0.4);
   }
   .propstrip .undo {
     background: none;
     border: none;
     padding: 0;
-    color: var(--konjo-ice, #00d4ff);
+    color: var(--konjo-ice, var(--k-chip-repo));
     cursor: pointer;
     font-family: inherit;
     font-size: inherit;
@@ -223,6 +223,6 @@
     text-underline-offset: 2px;
   }
   .propstrip .undo:hover {
-    color: var(--konjo-paper, #f5f5f5);
+    color: var(--konjo-paper, var(--k-text-primary));
   }
 </style>

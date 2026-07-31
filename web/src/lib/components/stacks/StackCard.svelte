@@ -84,7 +84,7 @@
    *  run on its own. */
   export let scheduleGoverned = false;
 
-  $: accent = card.preset ? PRESET_ACCENT[card.preset] : 'var(--konjo-dim2, rgba(245,245,245,.28))';
+  $: accent = card.preset ? PRESET_ACCENT[card.preset] : 'var(--konjo-dim2, rgb(var(--k-text-primary-rgb) / .28))';
 
   let schedBtn: HTMLButtonElement | undefined;
   let maxBtn: HTMLButtonElement | undefined;
@@ -674,6 +674,12 @@
       ? `running · iter ${card.iteration.current}/${card.iteration.total}`
       : card.status;
 
+  // Sprint U1 4b — status is now lightness plus a marker; hue is gone from
+  // every status but blocked. `running`'s own pulsing dot (`.runtag.running
+  // ::before`) is its marker, so it needs no glyph here.
+  $: runtagMarker =
+    card.status === 'queued' ? '◷ ' : card.status === 'done' ? '✓ ' : card.status === 'blocked' ? '✕ ' : '';
+
   function step(delta: number) {
     writeCard({ maxIterations: stepCardIterations(card.maxIterations, delta) });
   }
@@ -791,7 +797,7 @@
   on:dragleave={onDragLeave}
   on:drop={onDrop}
 >
-  <span class="runtag {card.status}">{isDraft ? 'new prompt' : statusLabel}</span>
+  <span class="runtag {card.status}">{runtagMarker}{isDraft ? 'new prompt' : statusLabel}</span>
 
   {#if isDraft}
     <div class="spec draftspec">
@@ -1300,14 +1306,14 @@
 <style>
   .pc {
     position: relative;
-    background: var(--konjo-card, #0e1214);
-    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: var(--konjo-card, var(--k-ext-surface-panel));
+    border: 1px solid rgb(var(--k-wash-rgb) / 0.14);
     border-radius: 9px;
     padding: 13px 14px;
     font-family: var(--font-mono, 'JetBrains Mono', monospace);
     box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.08),
-      0 1px 2px rgba(0, 0, 0, 0.4);
+      inset 0 1px 0 rgb(var(--k-wash-rgb) / 0.08),
+      0 1px 2px rgb(var(--k-shadow-rgb) / 0.4);
     transition:
       box-shadow 0.12s,
       border-color 0.12s;
@@ -1336,25 +1342,27 @@
      `taskId` into the `agents` store — one that goes stale/empty on reload
      long before the card itself stops reading `'blocked'`. */
   .pc.blocked {
-    border-color: rgba(255, 0, 102, 0.45);
+    border-color: rgb(var(--k-danger-rgb) / 0.45);
   }
   /* Draft card (Creation-Flow-1): dashed until it carries content, then a
      teal "hot" border signalling it's ready to commit. */
   .pc.draft {
     border-style: dashed;
-    border-color: rgba(255, 255, 255, 0.18);
+    border-color: rgb(var(--k-wash-rgb) / 0.18);
   }
   .pc.draft.hot {
     border-style: solid;
-    border-color: rgba(0, 255, 212, 0.5);
-    box-shadow: 0 0 18px rgba(0, 255, 212, 0.08);
+    border-color: rgb(var(--k-chip-alias-rgb) / 0.5);
+    box-shadow: 0 0 18px rgb(var(--k-chip-alias-rgb) / 0.08);
   }
+  /* Sprint U1 4b: draft is --k-text-disabled, no marker, no exception for
+     the "hot" (recently-edited) sub-state — hue is gone here too. */
   .runtag.draft {
-    color: rgba(245, 245, 245, 0.46);
+    color: var(--k-text-disabled);
   }
   .pc.draft.hot .runtag.draft {
-    color: var(--stack-teal, #00ffd4);
-    border-color: rgba(0, 255, 212, 0.45);
+    color: var(--k-text-secondary);
+    border-color: var(--k-border-interactive);
   }
   .draftspec {
     row-gap: 7px;
@@ -1370,19 +1378,19 @@
      every other `ChipInput` instance on the page (e.g. the stack dock's
      cmdbar, which wants its own orange-focus/smaller-font treatment). */
   :global(.goalwrap .chipinput) {
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(255, 255, 255, 0.11);
+    background: rgb(var(--k-wash-rgb) / 0.02);
+    border: 1px solid rgb(var(--k-wash-rgb) / 0.11);
     border-radius: 7px;
     padding: 9px 11px;
-    color: var(--konjo-paper, #f5f5f5);
+    color: var(--konjo-paper, var(--k-text-primary));
     font-size: 14px;
     transition:
       border-color 0.12s,
       background 0.12s;
   }
   :global(.goalwrap .chipinput:focus) {
-    border-color: rgba(0, 255, 212, 0.4);
-    background: rgba(0, 255, 212, 0.03);
+    border-color: rgb(var(--k-chip-alias-rgb) / 0.4);
+    background: rgb(var(--k-chip-alias-rgb) / 0.03);
   }
   .grammarchips {
     display: flex;
@@ -1403,65 +1411,65 @@
     transition: 0.12s;
   }
   .gchip.alias {
-    border: 1px solid rgba(0, 255, 212, 0.4);
-    color: var(--stack-teal, #00ffd4);
+    border: 1px solid rgb(var(--k-chip-alias-rgb) / 0.4);
+    color: var(--stack-teal, var(--k-chip-alias));
   }
   .gchip.alias:hover {
-    border-color: rgba(0, 255, 212, 0.7);
-    background: rgba(0, 255, 212, 0.08);
+    border-color: rgb(var(--k-chip-alias-rgb) / 0.7);
+    background: rgb(var(--k-chip-alias-rgb) / 0.08);
   }
   .gchip.repo {
-    border: 1px solid rgba(0, 212, 255, 0.4);
-    color: var(--konjo-ice, #00d4ff);
+    border: 1px solid rgb(var(--k-chip-repo-rgb) / 0.4);
+    color: var(--konjo-ice, var(--k-chip-repo));
   }
   .gchip.repo:hover {
-    border-color: rgba(0, 212, 255, 0.7);
-    background: rgba(0, 212, 255, 0.08);
+    border-color: rgb(var(--k-chip-repo-rgb) / 0.7);
+    background: rgb(var(--k-chip-repo-rgb) / 0.08);
   }
   /* violet — matches ChipInput.svelte's `chip-model` (the same color the
      resolved `;model/…` chip renders in once picked) and ConfigDrawer.svelte's
      model accent. */
   .gchip.model {
-    border: 1px solid rgba(183, 155, 255, 0.4);
-    color: var(--stack-violet, #b79bff);
+    border: 1px solid rgb(var(--k-chip-model-rgb) / 0.4);
+    color: var(--stack-violet, var(--k-chip-model));
   }
   .gchip.model:hover {
-    border-color: rgba(183, 155, 255, 0.7);
-    background: rgba(183, 155, 255, 0.08);
+    border-color: rgb(var(--k-chip-model-rgb) / 0.7);
+    background: rgb(var(--k-chip-model-rgb) / 0.08);
   }
   /* sun, not ember — matches ChipInput.svelte's `chip-effort` and
      ConfigDrawer.svelte's effort accent. */
   .gchip.effort {
-    border: 1px solid rgba(255, 204, 0, 0.4);
-    color: var(--konjo-sun, #ffcc00);
+    border: 1px solid rgb(var(--k-chip-effort-rgb) / 0.4);
+    color: var(--konjo-sun, var(--k-chip-effort));
   }
   .gchip.effort:hover {
-    border-color: rgba(255, 204, 0, 0.7);
-    background: rgba(255, 204, 0, 0.08);
+    border-color: rgb(var(--k-chip-effort-rgb) / 0.7);
+    background: rgb(var(--k-chip-effort-rgb) / 0.08);
   }
   /* flame, not sun — matches ChipInput.svelte's `chip-loop` and the card's
      own `.iterpill` (the "actual loop button"), so the ×N grammar chip and
      the loop control it feeds read as the same color. */
   .gchip.loop {
-    border: 1px solid rgba(255, 149, 0, 0.4);
-    color: var(--konjo-flame, #ff9500);
+    border: 1px solid rgb(var(--k-chip-loop-rgb) / 0.4);
+    color: var(--konjo-flame, var(--k-chip-loop));
   }
   .gchip.loop:hover {
-    border-color: rgba(255, 149, 0, 0.7);
-    background: rgba(255, 149, 0, 0.08);
+    border-color: rgb(var(--k-chip-loop-rgb) / 0.7);
+    background: rgb(var(--k-chip-loop-rgb) / 0.08);
   }
   .gchip.claude {
-    border: 1px solid rgba(255, 0, 102, 0.4);
-    color: var(--konjo-rose, #ff0066);
+    border: 1px solid rgb(var(--k-danger-rgb) / 0.4);
+    color: var(--konjo-rose, var(--k-danger));
   }
   .gchip.claude:hover {
-    border-color: rgba(255, 0, 102, 0.7);
-    background: rgba(255, 0, 102, 0.08);
+    border-color: rgb(var(--k-danger-rgb) / 0.7);
+    background: rgb(var(--k-danger-rgb) / 0.08);
   }
   .ib.add {
-    color: var(--konjo-jade, #00ff9d);
-    border-color: rgba(0, 255, 157, 0.5);
-    background: rgba(0, 255, 157, 0.08);
+    color: var(--konjo-jade, var(--k-preset-benchmark));
+    border-color: rgb(var(--k-preset-benchmark-rgb) / 0.5);
+    background: rgb(var(--k-preset-benchmark-rgb) / 0.08);
     font-weight: 700;
     padding: 0 12px;
   }
@@ -1469,15 +1477,15 @@
     font-size: 11px;
   }
   .ib.add:hover:not(:disabled) {
-    color: var(--konjo-jade, #00ff9d);
-    border-color: rgba(0, 255, 157, 0.8);
-    background: rgba(0, 255, 157, 0.14);
+    color: var(--konjo-jade, var(--k-preset-benchmark));
+    border-color: rgb(var(--k-preset-benchmark-rgb) / 0.8);
+    background: rgb(var(--k-preset-benchmark-rgb) / 0.14);
   }
   .ib.add:disabled {
     opacity: 0.4;
     cursor: not-allowed;
-    color: rgba(245, 245, 245, 0.28);
-    border-color: rgba(255, 255, 255, 0.11);
+    color: rgb(var(--k-text-primary-rgb) / 0.28);
+    border-color: rgb(var(--k-wash-rgb) / 0.11);
     background: transparent;
   }
   .pc.dragging {
@@ -1516,40 +1524,43 @@
     font-size: 9px;
     letter-spacing: 0.1em;
     text-transform: uppercase;
-    background: var(--konjo-black, #0b0e10);
-    border: 1px solid rgba(255, 255, 255, 0.11);
+    background: var(--konjo-black, var(--k-ext-black-fallback));
+    border: 1px solid rgb(var(--k-wash-rgb) / 0.11);
     border-radius: 3px;
     padding: 2px 8px;
     display: inline-flex;
     align-items: center;
     gap: 5px;
-    color: rgba(245, 245, 245, 0.46);
+    color: rgb(var(--k-text-primary-rgb) / 0.46);
     z-index: 2;
   }
+  /* Sprint U1 4b: status runtag drops hue everywhere but blocked — lightness
+     plus a marker instead (◷ queued, the existing pulsing dot for running,
+     ✓ done, ✕ blocked). */
   .runtag.running {
-    color: var(--konjo-flame, #ff9500);
-    border-color: rgba(255, 149, 0, 0.5);
+    color: var(--k-text-primary);
+    border-color: var(--k-border-interactive);
   }
   .runtag.running::before {
     content: '';
     width: 5px;
     height: 5px;
     border-radius: 50%;
-    background: var(--konjo-flame, #ff9500);
-    box-shadow: 0 0 5px var(--konjo-ember, #ff4500);
+    background: var(--k-text-primary);
+    box-shadow: 0 0 5px rgb(var(--k-text-primary-rgb) / 0.6);
     animation: pulse 1.4s infinite;
   }
   .runtag.queued {
-    color: var(--konjo-ice, #00d4ff);
-    border-color: rgba(0, 212, 255, 0.45);
+    color: var(--k-text-muted);
+    border-color: var(--k-border-subtle);
   }
   .runtag.done {
-    color: var(--konjo-jade, #00ff9d);
-    border-color: rgba(0, 255, 157, 0.45);
+    color: var(--k-text-muted);
+    border-color: var(--k-border-subtle);
   }
   .runtag.blocked {
-    color: var(--konjo-rose, #ff0066);
-    border-color: rgba(255, 0, 102, 0.5);
+    color: var(--k-danger);
+    border-color: rgb(var(--k-danger-rgb) / 0.5);
   }
   /* Blocked-run inline reason (round 2, item 3) — only rendered when the
      card actually carries a failure message, immediately under the goal
@@ -1561,8 +1572,8 @@
     margin-top: 9px;
     padding: 8px 10px;
     border-radius: 7px;
-    background: rgba(255, 0, 102, 0.08);
-    color: #ffaacb;
+    background: rgb(var(--k-danger-rgb) / 0.08);
+    color: var(--k-ext-stackcard-pink);
     font-size: 10px;
     line-height: 1.4;
   }
@@ -1570,7 +1581,7 @@
     width: 12px;
     height: 12px;
     flex: 0 0 auto;
-    color: var(--konjo-rose, #ff0066);
+    color: var(--konjo-rose, var(--k-danger));
   }
   .spec {
     font-size: 14px;
@@ -1582,7 +1593,7 @@
     flex-wrap: wrap;
   }
   .spec .md {
-    color: rgba(245, 245, 245, 0.46);
+    color: rgb(var(--k-text-primary-rgb) / 0.46);
   }
   /* Committed cards' goal is editable (as long as the card isn't running) —
      styled to read as plain text at rest and reveal an input affordance on
@@ -1602,7 +1613,7 @@
     border-radius: 5px;
     margin: -3px -6px;
     padding: 2px 6px;
-    color: rgba(245, 245, 245, 0.46);
+    color: rgb(var(--k-text-primary-rgb) / 0.46);
     font-family: inherit;
     font-size: inherit;
     line-height: inherit;
@@ -1613,13 +1624,13 @@
       color 0.12s;
   }
   .spec .mdinput:hover {
-    border-color: rgba(255, 255, 255, 0.11);
-    background: rgba(255, 255, 255, 0.02);
+    border-color: rgb(var(--k-wash-rgb) / 0.11);
+    background: rgb(var(--k-wash-rgb) / 0.02);
   }
   .spec .mdinput:focus {
-    border-color: rgba(0, 255, 212, 0.4);
-    background: rgba(0, 255, 212, 0.03);
-    color: var(--konjo-paper, #f5f5f5);
+    border-color: rgb(var(--k-chip-alias-rgb) / 0.4);
+    background: rgb(var(--k-chip-alias-rgb) / 0.03);
+    color: var(--konjo-paper, var(--k-text-primary));
   }
   .iterbar {
     display: flex;
@@ -1630,7 +1641,7 @@
     height: 3px;
     width: 22px;
     border-radius: 2px;
-    background: rgba(255, 255, 255, 0.11);
+    background: rgb(var(--k-wash-rgb) / 0.11);
   }
   .iterbar i.done {
     background: var(--konjo-jade);
@@ -1651,7 +1662,7 @@
   }
   .sep {
     height: 1px;
-    background: rgba(255, 255, 255, 0.05);
+    background: rgb(var(--k-wash-rgb) / 0.05);
     border: none;
     margin-top: 11px;
   }
@@ -1663,17 +1674,17 @@
     margin-top: 9px;
     padding: 0 10px;
     border-radius: 12px;
-    border: 1px solid rgba(255, 255, 255, 0.16);
-    background: rgba(255, 255, 255, 0.04);
-    color: rgba(245, 245, 245, 0.7);
+    border: 1px solid rgb(var(--k-wash-rgb) / 0.16);
+    background: rgb(var(--k-wash-rgb) / 0.04);
+    color: rgb(var(--k-text-primary-rgb) / 0.7);
     font-family: var(--font-mono, 'JetBrains Mono', monospace);
     font-size: 10px;
     cursor: pointer;
     transition: 0.12s;
   }
   .sumchip:hover {
-    border-color: rgba(255, 255, 255, 0.32);
-    background: rgba(255, 255, 255, 0.08);
+    border-color: rgb(var(--k-wash-rgb) / 0.32);
+    background: rgb(var(--k-wash-rgb) / 0.08);
   }
   .sumchip :global(svg) {
     width: 11px;
@@ -1702,22 +1713,22 @@
     height: 11px;
   }
   .sumln.sched .rl {
-    color: rgba(245, 245, 245, 0.6);
+    color: rgb(var(--k-text-primary-rgb) / 0.6);
   }
   .sumln.max .rl {
-    color: rgba(245, 245, 245, 0.6);
+    color: rgb(var(--k-text-primary-rgb) / 0.6);
   }
   .sumln.guard .rl {
-    color: rgba(245, 245, 245, 0.6);
+    color: rgb(var(--k-text-primary-rgb) / 0.6);
   }
   .sumln.eval .rl {
-    color: rgba(245, 245, 245, 0.6);
+    color: rgb(var(--k-text-primary-rgb) / 0.6);
   }
   .sumln.cfg .rl {
-    color: rgba(245, 245, 245, 0.6);
+    color: rgb(var(--k-text-primary-rgb) / 0.6);
   }
   .sumln .txt {
-    color: rgba(245, 245, 245, 0.46);
+    color: rgb(var(--k-text-primary-rgb) / 0.46);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1728,7 +1739,7 @@
     color: var(--konjo-ice);
   }
   .sumln.sched.governed .rl {
-    color: rgba(245, 245, 245, 0.28);
+    color: rgb(var(--k-text-primary-rgb) / 0.28);
   }
   .sumln.max .txt b {
     color: var(--konjo-flame);
@@ -1745,9 +1756,9 @@
     min-width: 29px;
     padding: 0 7px;
     border-radius: 6px;
-    border: 1px solid rgba(255, 255, 255, 0.11);
+    border: 1px solid var(--k-border-interactive);
     background: transparent;
-    color: rgba(245, 245, 245, 0.28);
+    color: rgb(var(--k-text-primary-rgb) / 0.28);
     cursor: pointer;
     display: inline-flex;
     align-items: center;
@@ -1761,46 +1772,46 @@
     height: 14px;
   }
   .ib:hover {
-    color: var(--konjo-paper, #f5f5f5);
-    border-color: rgba(245, 245, 245, 0.46);
+    color: var(--konjo-paper, var(--k-text-primary));
+    border-color: rgb(var(--k-text-primary-rgb) / 0.46);
   }
   .ib .cnt {
     font-size: 9px;
     font-weight: 700;
   }
   .ib.sched.act {
-    color: #f5f5f5;
-    border-color: rgba(255, 255, 255, 0.5);
-    background: rgba(255, 255, 255, 0.1);
+    color: var(--k-text-primary);
+    border-color: rgb(var(--k-wash-rgb) / 0.5);
+    background: rgb(var(--k-wash-rgb) / 0.1);
   }
   .ib.max.act {
-    color: #f5f5f5;
-    border-color: rgba(255, 255, 255, 0.5);
-    background: rgba(255, 255, 255, 0.1);
+    color: var(--k-text-primary);
+    border-color: rgb(var(--k-wash-rgb) / 0.5);
+    background: rgb(var(--k-wash-rgb) / 0.1);
   }
   .ib.danger:hover {
-    color: var(--konjo-rose, #ff0066);
-    border-color: rgba(255, 0, 102, 0.4);
+    color: var(--konjo-rose, var(--k-danger));
+    border-color: rgb(var(--k-danger-rgb) / 0.4);
   }
   .ib.guard.act {
-    color: #f5f5f5;
-    border-color: rgba(255, 255, 255, 0.5);
-    background: rgba(255, 255, 255, 0.1);
+    color: var(--k-text-primary);
+    border-color: rgb(var(--k-wash-rgb) / 0.5);
+    background: rgb(var(--k-wash-rgb) / 0.1);
   }
   .ib.eval.act {
-    color: #f5f5f5;
-    border-color: rgba(255, 255, 255, 0.5);
-    background: rgba(255, 255, 255, 0.1);
+    color: var(--k-text-primary);
+    border-color: rgb(var(--k-wash-rgb) / 0.5);
+    background: rgb(var(--k-wash-rgb) / 0.1);
   }
   .ib.goal.act {
-    color: #f5f5f5;
-    border-color: rgba(255, 255, 255, 0.5);
-    background: rgba(255, 255, 255, 0.1);
+    color: var(--k-text-primary);
+    border-color: rgb(var(--k-wash-rgb) / 0.5);
+    background: rgb(var(--k-wash-rgb) / 0.1);
   }
   .ib.config.act {
-    color: #f5f5f5;
-    border-color: rgba(255, 255, 255, 0.5);
-    background: rgba(255, 255, 255, 0.1);
+    color: var(--k-text-primary);
+    border-color: rgb(var(--k-wash-rgb) / 0.5);
+    background: rgb(var(--k-wash-rgb) / 0.1);
   }
   .ib.drag {
     cursor: grab;
@@ -1829,9 +1840,9 @@
     flex: 0 0 auto;
   }
   .ib.overflow.act {
-    color: #f5f5f5;
-    border-color: rgba(245, 245, 245, 0.5);
-    background: rgba(245, 245, 245, 0.1);
+    color: var(--k-text-primary);
+    border-color: rgb(var(--k-text-primary-rgb) / 0.5);
+    background: rgb(var(--k-text-primary-rgb) / 0.1);
   }
   .overflowmenu {
     position: absolute;
@@ -1843,9 +1854,9 @@
     max-width: 320px;
     padding: 10px;
     border-radius: 9px;
-    background: var(--konjo-panel, #0a0d0f);
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    box-shadow: 0 14px 40px rgba(0, 0, 0, 0.6);
+    background: var(--konjo-panel, var(--k-surface-raised));
+    border: 1px solid rgb(var(--k-wash-rgb) / 0.14);
+    box-shadow: 0 14px 40px rgb(var(--k-shadow-rgb) / 0.6);
   }
   .overflowmenu .omsum {
     display: flex;
@@ -1854,7 +1865,7 @@
   }
   .overflowmenu .omsep {
     height: 1px;
-    background: rgba(255, 255, 255, 0.08);
+    background: rgb(var(--k-wash-rgb) / 0.08);
     border: none;
     margin: 9px 0;
   }
@@ -1871,8 +1882,8 @@
     display: inline-flex;
     align-items: center;
     height: 29px;
-    border: 1px solid rgba(255, 149, 0, 0.5);
-    background: rgba(255, 69, 0, 0.09);
+    border: 1px solid rgb(var(--k-chip-loop-rgb) / 0.5);
+    background: rgb(var(--k-ext-ember-rgb) / 0.09);
     border-radius: 6px;
     /* Position context for `.itermenu` below, and no clip of its own — the
        pill's rounded-rect clip moved onto `.iterbody` (which is exactly
@@ -1925,7 +1936,7 @@
     width: 28px;
     height: 29px;
     border: none;
-    border-left: 1px solid rgba(255, 149, 0, 0.35);
+    border-left: 1px solid rgb(var(--k-chip-loop-rgb) / 0.35);
     background: transparent;
     color: var(--konjo-flame);
     font-size: 15px;
@@ -1935,7 +1946,7 @@
     justify-content: center;
   }
   .iterpill .sb:hover {
-    background: rgba(255, 149, 0, 0.2);
+    background: rgb(var(--k-chip-loop-rgb) / 0.2);
   }
   /* The ×N direct-pick dropdown — off + 1 through 10 in a small floating
      list under the pill, same flame accent as the pill itself. */
@@ -1950,10 +1961,10 @@
     min-width: 88px;
     max-height: 220px;
     overflow-y: auto;
-    background: var(--konjo-panel, #0a0d0f);
-    border: 1px solid rgba(255, 149, 0, 0.35);
+    background: var(--konjo-panel, var(--k-surface-raised));
+    border: 1px solid rgb(var(--k-chip-loop-rgb) / 0.35);
     border-radius: 9px;
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+    box-shadow: 0 12px 40px rgb(var(--k-shadow-rgb) / 0.6);
   }
   .itermenu button {
     display: block;
@@ -1962,7 +1973,7 @@
     border: none;
     border-radius: 6px;
     background: transparent;
-    color: rgba(245, 245, 245, 0.7);
+    color: rgb(var(--k-text-primary-rgb) / 0.7);
     font-family: var(--font-mono, monospace);
     font-size: 11px;
     font-weight: 700;
@@ -1970,50 +1981,50 @@
     cursor: pointer;
   }
   .itermenu button:hover {
-    background: rgba(255, 149, 0, 0.14);
+    background: rgb(var(--k-chip-loop-rgb) / 0.14);
     color: var(--konjo-flame);
   }
   .itermenu button.sel {
     color: var(--konjo-flame);
-    background: rgba(255, 149, 0, 0.1);
+    background: rgb(var(--k-chip-loop-rgb) / 0.1);
   }
   .iterpill.off {
-    border-color: rgba(245, 245, 245, 0.22);
-    background: rgba(245, 245, 245, 0.05);
-    color: rgba(245, 245, 245, 0.4);
+    border-color: rgb(var(--k-text-primary-rgb) / 0.22);
+    background: rgb(var(--k-text-primary-rgb) / 0.05);
+    color: rgb(var(--k-text-primary-rgb) / 0.4);
   }
   .iterpill.off .sb {
-    border-left-color: rgba(245, 245, 245, 0.16);
-    color: rgba(245, 245, 245, 0.4);
+    border-left-color: rgb(var(--k-text-primary-rgb) / 0.16);
+    color: rgb(var(--k-text-primary-rgb) / 0.4);
   }
   .iterpill.off .sb:hover {
-    background: rgba(245, 245, 245, 0.08);
+    background: rgb(var(--k-text-primary-rgb) / 0.08);
   }
   /* ×N color ramp (round 2, item 5) — untagged pill stays the pre-ramp
      orange baseline; these two classes are the only overrides needed. */
   .iterpill.tier-yellow {
-    border-color: rgba(255, 204, 0, 0.5);
-    background: rgba(255, 204, 0, 0.08);
-    color: #ffcc00;
+    border-color: rgb(var(--k-chip-effort-rgb) / 0.5);
+    background: rgb(var(--k-chip-effort-rgb) / 0.08);
+    color: var(--k-chip-effort);
   }
   .iterpill.tier-yellow .sb {
-    border-left-color: rgba(255, 204, 0, 0.35);
-    color: #ffcc00;
+    border-left-color: rgb(var(--k-chip-effort-rgb) / 0.35);
+    color: var(--k-chip-effort);
   }
   .iterpill.tier-yellow .sb:hover {
-    background: rgba(255, 204, 0, 0.2);
+    background: rgb(var(--k-chip-effort-rgb) / 0.2);
   }
   .iterpill.tier-red {
-    border-color: rgba(255, 0, 102, 0.5);
-    background: rgba(255, 0, 102, 0.1);
-    color: #ff0066;
+    border-color: rgb(var(--k-danger-rgb) / 0.5);
+    background: rgb(var(--k-danger-rgb) / 0.1);
+    color: var(--k-danger);
   }
   .iterpill.tier-red .sb {
-    border-left-color: rgba(255, 0, 102, 0.35);
-    color: #ff0066;
+    border-left-color: rgb(var(--k-danger-rgb) / 0.35);
+    color: var(--k-danger);
   }
   .iterpill.tier-red .sb:hover {
-    background: rgba(255, 0, 102, 0.2);
+    background: rgb(var(--k-danger-rgb) / 0.2);
   }
   /* Running-loop chrome (card.status === 'running' with a real repeat
      configured): a slow glow on the pill itself, distinct from the card's own
@@ -2025,12 +2036,12 @@
   @keyframes iterglow {
     0%,
     100% {
-      box-shadow: 0 0 0 0 rgba(255, 149, 0, 0);
-      border-color: rgba(255, 149, 0, 0.5);
+      box-shadow: 0 0 0 0 rgb(var(--k-chip-loop-rgb) / 0);
+      border-color: rgb(var(--k-chip-loop-rgb) / 0.5);
     }
     50% {
-      box-shadow: 0 0 14px 1px rgba(255, 149, 0, 0.45);
-      border-color: rgba(255, 149, 0, 0.95);
+      box-shadow: 0 0 14px 1px rgb(var(--k-chip-loop-rgb) / 0.45);
+      border-color: rgb(var(--k-chip-loop-rgb) / 0.95);
     }
   }
   .iterpill .lb :global(svg.spin) {

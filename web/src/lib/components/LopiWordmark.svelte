@@ -33,7 +33,7 @@
   .mark {
     display: inline-flex;
     flex: 0 0 auto;
-    color: var(--konjo-flame, #ff9500);
+    color: var(--konjo-flame, var(--k-chip-loop));
   }
   .mark :global(svg) {
     width: 100%;

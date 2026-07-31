@@ -31,6 +31,6 @@ eq(statusColor('Implementing'), 'var(--konjo-ice)', 'in-flight is ice');
 eq(levelColor('error'), 'var(--konjo-rose)', 'error is rose');
 eq(levelColor('warn'), 'var(--konjo-flame)', 'warn is flame');
 eq(levelColor('info'), 'var(--konjo-ice)', 'info is ice');
-eq(levelColor('debug'), 'rgba(245,245,245,0.4)', 'debug is dim paper');
+eq(levelColor('debug'), 'rgb(var(--k-text-primary-rgb) / 0.4)', 'debug is dim paper');
 
 summary();

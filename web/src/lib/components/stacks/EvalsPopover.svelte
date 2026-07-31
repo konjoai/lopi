@@ -76,13 +76,13 @@
     text-align: left;
   }
   .echk:hover {
-    background: rgba(255, 255, 255, 0.02);
+    background: rgb(var(--k-wash-rgb) / 0.02);
   }
   .echk .box {
     width: 16px;
     height: 16px;
     border-radius: 4px;
-    border: 1.5px solid rgba(255, 255, 255, 0.11);
+    border: 1.5px solid rgb(var(--k-wash-rgb) / 0.11);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -91,12 +91,12 @@
   .echk .box :global(svg) {
     width: 11px;
     height: 11px;
-    color: #04120c;
+    color: var(--k-ext-evals-dark-green);
     opacity: 0;
   }
   .echk.on .box {
-    background: var(--konjo-jade);
-    border-color: var(--konjo-jade);
+    background: var(--k-text-primary);
+    border-color: var(--k-text-primary);
   }
   .echk.on .box :global(svg) {
     opacity: 1;
@@ -105,10 +105,10 @@
     flex: 1;
     font-family: var(--font-mono, monospace);
     font-size: 11.5px;
-    color: rgba(245, 245, 245, 0.46);
+    color: rgb(var(--k-text-primary-rgb) / 0.46);
   }
   .echk.on .en {
-    color: var(--konjo-paper, #f5f5f5);
+    color: var(--konjo-paper, var(--k-text-primary));
   }
   .echk .tier {
     font-family: var(--font-mono, monospace);
@@ -122,19 +122,19 @@
   }
   .tier-base {
     color: var(--konjo-jade);
-    border-color: rgba(0, 255, 157, 0.3);
+    border-color: rgb(var(--k-preset-benchmark-rgb) / 0.3);
   }
   .tier-test {
     color: var(--konjo-ice);
-    border-color: rgba(0, 212, 255, 0.3);
+    border-color: rgb(var(--k-chip-repo-rgb) / 0.3);
   }
   .tier-judge {
-    color: var(--stack-violet, #b79bff);
-    border-color: rgba(183, 155, 255, 0.3);
+    color: var(--stack-violet, var(--k-chip-model));
+    border-color: rgb(var(--k-chip-model-rgb) / 0.3);
   }
   .tier-suite {
     color: var(--konjo-sun);
-    border-color: rgba(255, 204, 0, 0.3);
+    border-color: rgb(var(--k-chip-effort-rgb) / 0.3);
   }
   .echk.locked {
     opacity: 0.6;
@@ -146,7 +146,7 @@
     align-items: center;
     gap: 14px;
     padding: 10px 13px;
-    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    border-top: 1px solid rgb(var(--k-wash-rgb) / 0.05);
   }
   .suitecol {
     display: flex;
@@ -154,7 +154,7 @@
     gap: 7px;
     font-family: var(--font-mono, monospace);
     font-size: 10px;
-    color: rgba(245, 245, 245, 0.66);
+    color: rgb(var(--k-text-primary-rgb) / 0.66);
     min-width: 0;
   }
   .suitecol .nrl {
@@ -167,10 +167,10 @@
     gap: 6px;
   }
   .sbtn {
-    border: 1px dashed rgba(255, 255, 255, 0.28);
+    border: 1px dashed rgb(var(--k-wash-rgb) / 0.28);
     border-radius: 11px;
     padding: 3px 10px;
-    color: var(--konjo-paper, #f5f5f5);
+    color: var(--konjo-paper, var(--k-text-primary));
     cursor: pointer;
     transition: 0.12s;
     font-family: var(--font-mono, monospace);
@@ -178,12 +178,8 @@
     background: transparent;
   }
   .sbtn:hover {
-    color: var(--konjo-jade);
-    border-color: rgba(0, 255, 157, 0.55);
-    background: rgba(0, 255, 157, 0.06);
-  }
-  .sbtn.kcqf {
-    color: var(--konjo-sun);
-    border-color: rgba(255, 204, 0, 0.4);
+    color: var(--k-text-primary);
+    border-color: var(--k-border-interactive);
+    background: rgb(var(--k-wash-rgb) / 0.06);
   }
 </style>

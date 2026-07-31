@@ -250,6 +250,21 @@ jobs:
         working-directory: web
         run: npm audit --audit-level=high
 
+      - name: npm run build — colour tokens (check-tokens.mjs) + production build
+        # HARD GATE since Sprint U1. `npm run build` now runs
+        # `scripts/check-tokens.mjs` before `vite build`: no raw hex/rgb/
+        # rgba/hsl/oklch literal anywhere in web/src outside
+        # `lib/styles/tokens.css` (the palette-drift lint PR #188's recon
+        # found no CI enforcement for — 43% token traceability on a narrow
+        # sample), every text/border token at its required WCAG contrast
+        # ratio against every surface it renders on, and no two of the
+        # five chip hues (plus danger) colliding under deuteranopia/
+        # protanopia/tritanopia simulation. This job already has `web/`'s
+        # npm ecosystem set up (see `npm ci` above), so the build runs here
+        # rather than in a third, redundant job-setup.
+        working-directory: web
+        run: npm run build
+
   # ════════════════════════════════════════════════════════════════════════════
   # Gate 2 — Tests + Coverage (≥ 80% line coverage)
   # ════════════════════════════════════════════════════════════════════════════

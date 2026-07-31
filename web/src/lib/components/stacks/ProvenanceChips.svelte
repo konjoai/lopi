@@ -59,23 +59,23 @@
     height: 12px;
   }
   .chip.alias {
-    color: var(--stack-teal, #00ffd4);
-    border: 1px solid rgba(0, 255, 212, 0.4);
-    background: rgba(0, 255, 212, 0.07);
+    color: var(--stack-teal, var(--k-chip-alias));
+    border: 1px solid rgb(var(--k-chip-alias-rgb) / 0.4);
+    background: rgb(var(--k-chip-alias-rgb) / 0.07);
   }
   .chip.prompt {
-    color: var(--konjo-sun, #ffcc00);
-    border: 1px solid rgba(255, 204, 0, 0.4);
-    background: rgba(255, 204, 0, 0.08);
+    color: var(--konjo-sun, var(--k-chip-effort));
+    border: 1px solid rgb(var(--k-chip-effort-rgb) / 0.4);
+    background: rgb(var(--k-chip-effort-rgb) / 0.08);
   }
   .chip.stack {
-    color: var(--stack-violet, #b79bff);
-    border: 1px solid rgba(183, 155, 255, 0.4);
-    background: rgba(183, 155, 255, 0.08);
+    color: var(--stack-violet, var(--k-chip-model));
+    border: 1px solid rgb(var(--k-chip-model-rgb) / 0.4);
+    background: rgb(var(--k-chip-model-rgb) / 0.08);
   }
   .chip.repo {
-    color: var(--stack-sky, #66b3ff);
-    border: 1px solid rgba(102, 179, 255, 0.4);
-    background: rgba(102, 179, 255, 0.08);
+    color: var(--stack-sky, var(--k-ext-repo-light));
+    border: 1px solid rgb(var(--k-ext-repo-light-rgb) / 0.4);
+    background: rgb(var(--k-ext-repo-light-rgb) / 0.08);
   }
 </style>

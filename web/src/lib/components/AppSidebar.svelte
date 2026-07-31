@@ -106,7 +106,7 @@
   .scrim {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.55);
+    background: rgb(var(--k-shadow-rgb) / 0.55);
     z-index: 38;
     opacity: 0;
     pointer-events: none;
@@ -124,13 +124,13 @@
     bottom: 0;
     width: 250px;
     z-index: 39;
-    background: var(--konjo-panel, #0a0d0f);
-    border-right: 1px solid rgba(255, 255, 255, 0.11);
+    background: var(--konjo-panel, var(--k-surface-raised));
+    border-right: 1px solid rgb(var(--k-wash-rgb) / 0.11);
     transform: translateX(-100%);
     transition: transform 0.24s cubic-bezier(0.16, 1, 0.3, 1);
     display: flex;
     flex-direction: column;
-    box-shadow: 24px 0 60px rgba(0, 0, 0, 0.5);
+    box-shadow: 24px 0 60px rgb(var(--k-shadow-rgb) / 0.5);
   }
   .sidebar.open {
     transform: translateX(0);
@@ -156,21 +156,21 @@
     align-items: center;
     gap: 10px;
     padding: 16px 18px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    border-bottom: 1px solid rgb(var(--k-wash-rgb) / 0.05);
   }
   .shead .brand {
     font-family: var(--font-mono, monospace);
     font-size: 16px;
-    color: var(--konjo-paper, #f5f5f5);
+    color: var(--konjo-paper, var(--k-text-primary));
   }
   .sclose {
     margin-left: auto;
     width: 28px;
     height: 28px;
     border-radius: 6px;
-    border: 1px solid rgba(255, 255, 255, 0.11);
+    border: 1px solid rgb(var(--k-wash-rgb) / 0.11);
     background: transparent;
-    color: rgba(245, 245, 245, 0.28);
+    color: rgb(var(--k-text-primary-rgb) / 0.28);
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -178,7 +178,7 @@
   }
   .sclose:hover {
     color: var(--konjo-rose);
-    border-color: rgba(255, 45, 120, 0.4);
+    border-color: rgb(var(--k-ext-rose-hover-rgb) / 0.4);
   }
   .sclose :global(svg) {
     width: 14px;
@@ -199,7 +199,7 @@
     font-family: var(--font-mono, monospace);
     font-size: 12.5px;
     letter-spacing: 0.02em;
-    color: rgba(245, 245, 245, 0.66);
+    color: rgb(var(--k-text-primary-rgb) / 0.66);
     text-decoration: none;
     margin-bottom: 2px;
     transition: background-color 0.12s, color 0.12s;
@@ -209,20 +209,20 @@
     width: 16px;
     height: 16px;
     flex: 0 0 auto;
-    color: rgba(245, 245, 245, 0.28);
+    color: rgb(var(--k-text-primary-rgb) / 0.28);
     transition: color 0.12s;
   }
   .snav a:hover {
-    background: rgba(255, 255, 255, 0.05);
-    color: var(--konjo-paper, #f5f5f5);
+    background: rgb(var(--k-wash-rgb) / 0.05);
+    color: var(--konjo-paper, var(--k-text-primary));
   }
   .snav a:hover svg {
     color: var(--konjo-flame);
   }
   .snav a.active {
-    background: rgba(255, 149, 0, 0.09);
+    background: rgb(var(--k-chip-loop-rgb) / 0.09);
     color: var(--konjo-flame);
-    border-color: rgba(255, 149, 0, 0.25);
+    border-color: rgb(var(--k-chip-loop-rgb) / 0.25);
   }
   .snav a.active svg {
     color: var(--konjo-flame);

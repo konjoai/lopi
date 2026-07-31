@@ -131,30 +131,12 @@
     justify-content: flex-start;
     margin-top: 12px;
     padding-top: 12px;
-    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    border-top: 1px solid rgb(var(--k-wash-rgb) / 0.05);
   }
   .chip {
     flex: 0 0 auto;
   }
-  /* Each selector's accent matches the mockup's per-field icon color —
-     Dropdown.svelte reads --konjo-accent-rgb for its hover/open state. */
-  .chip.model {
-    --konjo-accent-rgb: 183 155 255;
-  }
-  .chip.effort {
-    --konjo-accent-rgb: 255 204 0;
-  }
-  .chip.repo {
-    --konjo-accent-rgb: 0 212 255;
-  }
-  .chip.branch {
-    --konjo-accent-rgb: 0 255 157;
-  }
-  .chip.autonomy {
-    /* Flame orange — same accent as the ×N loop pill/chip. */
-    --konjo-accent-rgb: 255 149 0;
-  }
-  .chip.permission-mode {
-    --konjo-accent-rgb: 255 90 90;
-  }
+  /* Sprint U1 4a: the per-field --konjo-accent-rgb mechanism Dropdown.svelte
+     used to read for its hover/open/selected state is removed — every field
+     renders with the same neutral chrome now, no per-field hue. */
 </style>

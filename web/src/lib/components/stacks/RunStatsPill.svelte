@@ -40,7 +40,7 @@
     padding: 0 9px;
     font-size: 10.5px;
     font-family: var(--font-mono, monospace);
-    color: var(--konjo-flame, #ff9500);
+    color: var(--konjo-flame, var(--k-chip-loop));
     font-weight: 600;
     white-space: nowrap;
   }
@@ -58,10 +58,10 @@
     }
   }
   .sep {
-    color: rgba(255, 149, 0, 0.35);
+    color: rgb(var(--k-chip-loop-rgb) / 0.35);
   }
   .v.cost {
-    color: var(--konjo-flame, #ff9500);
+    color: var(--konjo-flame, var(--k-chip-loop));
   }
   @media (prefers-reduced-motion: reduce) {
     .statpill :global(svg.spin) {

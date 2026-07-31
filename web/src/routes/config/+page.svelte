@@ -97,7 +97,7 @@
           on:click={() => setTheme(t.id)}
           class="flex items-center gap-2.5 px-4 py-2.5 rounded-lg border transition-all duration-200"
           class:scale-105={$theme === t.id}
-          style:border-color={$theme === t.id ? t.swatch : 'rgba(255,255,255,0.1)'}
+          style:border-color={$theme === t.id ? t.swatch : 'rgb(var(--k-wash-rgb) / 0.1)'}
           style:box-shadow={$theme === t.id ? `0 0 16px ${t.swatch}33` : 'none'}
         >
           <span
@@ -124,7 +124,7 @@
           class="px-2 py-1 rounded border transition-colors"
           class:text-konjo-accent={view === 'tree'}
           class:opacity-40={view !== 'tree'}
-          style:border-color={view === 'tree' ? 'var(--konjo-accent)' : 'rgba(255,255,255,0.1)'}
+          style:border-color={view === 'tree' ? 'var(--konjo-accent)' : 'rgb(var(--k-wash-rgb) / 0.1)'}
         >
           tree
         </button>
@@ -134,7 +134,7 @@
           class="px-2 py-1 rounded border transition-colors"
           class:text-konjo-accent={view === 'raw'}
           class:opacity-40={view !== 'raw'}
-          style:border-color={view === 'raw' ? 'var(--konjo-accent)' : 'rgba(255,255,255,0.1)'}
+          style:border-color={view === 'raw' ? 'var(--konjo-accent)' : 'rgb(var(--k-wash-rgb) / 0.1)'}
         >
           raw
         </button>

@@ -48,44 +48,44 @@
     {
       label: 'spent',
       value: `$${$fleetBudget.spent.toFixed(4)}`,
-      color: '#00ffd4',
-      border: 'rgba(0,255,212,0.32)',
-      badge: 'rgba(0,255,212,0.4)'
+      color: 'var(--k-chip-alias)',
+      border: 'rgb(var(--k-chip-alias-rgb) / 0.32)',
+      badge: 'rgb(var(--k-chip-alias-rgb) / 0.4)'
     },
     {
       label: 'burn/h',
       value: `$${$fleetBudget.burnPerHour.toFixed(2)}`,
-      color: '#b79bff',
-      border: 'rgba(183,155,255,0.32)',
-      badge: 'rgba(183,155,255,0.4)'
+      color: 'var(--k-chip-model)',
+      border: 'rgb(var(--k-chip-model-rgb) / 0.32)',
+      badge: 'rgb(var(--k-chip-model-rgb) / 0.4)'
     },
     {
       label: 'cap/h',
       value: `$${$hourlyCap % 1 === 0 ? $hourlyCap : $hourlyCap.toFixed(2)}`,
-      color: '#00d4ff',
-      border: 'rgba(0,212,255,0.28)',
-      badge: 'rgba(0,212,255,0.35)'
+      color: 'var(--k-chip-repo)',
+      border: 'rgb(var(--k-chip-repo-rgb) / 0.28)',
+      badge: 'rgb(var(--k-chip-repo-rgb) / 0.35)'
     },
     {
       label: 'to cap',
       value: fmtMins($fleetBudget.minutesToCap),
-      color: '#ff9500',
-      border: 'rgba(255,149,0,0.32)',
-      badge: 'rgba(255,149,0,0.4)'
+      color: 'var(--k-chip-loop)',
+      border: 'rgb(var(--k-chip-loop-rgb) / 0.32)',
+      badge: 'rgb(var(--k-chip-loop-rgb) / 0.4)'
     },
     {
       label: 'tokens',
       value: tokensDisplay,
-      color: '#ffcc00',
-      border: 'rgba(255,204,0,0.32)',
-      badge: 'rgba(255,204,0,0.4)'
+      color: 'var(--k-chip-effort)',
+      border: 'rgb(var(--k-chip-effort-rgb) / 0.32)',
+      badge: 'rgb(var(--k-chip-effort-rgb) / 0.4)'
     },
     {
       label: 'running',
       value: String($fleetBudget.running),
-      color: '#00ff9d',
-      border: 'rgba(0,255,157,0.3)',
-      badge: 'rgba(0,255,157,0.4)'
+      color: 'var(--k-preset-benchmark)',
+      border: 'rgb(var(--k-preset-benchmark-rgb) / 0.3)',
+      badge: 'rgb(var(--k-preset-benchmark-rgb) / 0.4)'
     }
   ];
 
@@ -181,7 +181,7 @@
         {#each trendBars as bar, i (i)}
           <div
             class="flex-1 rounded-t-[3px]"
-            style:background={bar.isToday ? '#00ffd4' : 'rgba(0,255,212,0.35)'}
+            style:background={bar.isToday ? 'var(--k-chip-alias)' : 'rgb(var(--k-chip-alias-rgb) / 0.35)'}
             style:height={`${bar.heightPct}%`}
           ></div>
         {/each}
@@ -197,7 +197,7 @@
   <!-- Burn vs cap -->
   <div
     class="relative bg-konjo-card border border-white/[0.14] rounded-[10px] pt-[22px] px-5 pb-5"
-    style="box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);"
+    style="box-shadow: inset 0 1px 0 rgb(var(--k-wash-rgb) / 0.06);"
   >
     <span
       class="absolute -top-[9px] left-4 bg-konjo-deep border border-konjo-teal/40 rounded-[3px] px-[9px] py-0.5 flex items-center gap-1.5 font-mono text-[9.5px] tracking-[0.1em] uppercase text-konjo-teal"
@@ -213,7 +213,7 @@
       <div
         class="h-full rounded-full transition-all duration-500"
         style:width={`${Math.min(100, $fleetBudget.fraction * 100)}%`}
-        style="background:#00ffd4; box-shadow:0 0 12px #00ffd4;"
+        style="background:var(--k-chip-alias); box-shadow:0 0 12px var(--k-chip-alias);"
       ></div>
       <div class="absolute top-0 bottom-0 w-px bg-white/30" style="left: 75%"></div>
     </div>
@@ -233,8 +233,8 @@
           type="button"
           on:click={() => hourlyCap.set(p)}
           class="press font-mono text-[10.5px] px-3 py-1.5 rounded-[11px] border transition-colors"
-          style:border-color={$hourlyCap === p ? '#00d4ff' : 'rgba(255,255,255,0.12)'}
-          style:color={$hourlyCap === p ? '#00d4ff' : 'rgba(245,245,245,0.55)'}
+          style:border-color={$hourlyCap === p ? 'var(--k-chip-repo)' : 'rgb(var(--k-wash-rgb) / 0.12)'}
+          style:color={$hourlyCap === p ? 'var(--k-chip-repo)' : 'rgb(var(--k-text-primary-rgb) / 0.55)'}
         >
           ${p}
         </button>
@@ -338,13 +338,13 @@
         {#each spenders as a (a.id)}
           <div
             class="flex items-center gap-3 px-3 py-2.5 rounded-r-[7px]"
-            style:border-left={`3px solid ${a.status === 'running' ? '#00ff9d' : 'rgba(255,255,255,0.14)'}`}
-            style:background={a.status === 'running' ? 'rgba(0,255,157,0.04)' : 'rgba(255,255,255,0.015)'}
+            style:border-left={`3px solid ${a.status === 'running' ? 'var(--k-preset-benchmark)' : 'rgb(var(--k-wash-rgb) / 0.14)'}`}
+            style:background={a.status === 'running' ? 'rgb(var(--k-preset-benchmark-rgb) / 0.04)' : 'rgb(var(--k-wash-rgb) / 0.015)'}
           >
             <span
               class="w-[7px] h-[7px] rounded-full flex-shrink-0"
               class:animate-pulse={a.status === 'running'}
-              style:background={a.status === 'running' ? '#00ff9d' : 'rgba(245,245,245,0.25)'}
+              style:background={a.status === 'running' ? 'var(--k-preset-benchmark)' : 'rgb(var(--k-text-primary-rgb) / 0.25)'}
             ></span>
             <div class="flex-1 min-w-0">
               <div class="font-mono text-xs text-white/85 truncate">{a.goal}</div>
@@ -363,8 +363,8 @@
               on:click={() => cancelTask(a.id)}
               disabled={a.status !== 'running'}
               class="press w-[26px] h-[26px] flex items-center justify-center rounded-md border text-[9px] flex-shrink-0 transition-colors"
-              style:border-color={a.status === 'running' ? 'rgba(255,0,102,0.4)' : 'rgba(255,255,255,0.1)'}
-              style:color={a.status === 'running' ? '#ff0066' : 'rgba(245,245,245,0.2)'}
+              style:border-color={a.status === 'running' ? 'rgb(var(--k-danger-rgb) / 0.4)' : 'rgb(var(--k-wash-rgb) / 0.1)'}
+              style:color={a.status === 'running' ? 'var(--k-danger)' : 'rgb(var(--k-text-primary-rgb) / 0.2)'}
               title="Stop"
             >◼</button>
           </div>

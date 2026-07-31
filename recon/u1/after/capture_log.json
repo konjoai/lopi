@@ -1,0 +1,158 @@
+[
+  {
+    "state": "S1_cold_start_empty",
+    "viewport": "1440x900",
+    "status": "ok",
+    "file": "pages/S1_cold_start_empty_1440x900.png"
+  },
+  {
+    "state": "S1_cold_start_empty",
+    "viewport": "390x844",
+    "status": "ok",
+    "file": "pages/S1_cold_start_empty_390x844.png"
+  },
+  {
+    "state": "S2_one_agent_running",
+    "viewport": "1440x900",
+    "status": "ok",
+    "file": "pages/S2_one_agent_running_1440x900.png"
+  },
+  {
+    "state": "S2_one_agent_running",
+    "viewport": "390x844",
+    "status": "ok",
+    "file": "pages/S2_one_agent_running_390x844.png"
+  },
+  {
+    "state": "S3_four_agents_running",
+    "viewport": "1440x900",
+    "status": "ok",
+    "file": "pages/S3_four_agents_running_1440x900.png"
+  },
+  {
+    "state": "S3_four_agents_running",
+    "viewport": "390x844",
+    "status": "ok",
+    "file": "pages/S3_four_agents_running_390x844.png"
+  },
+  {
+    "state": "S4_streaming_now",
+    "viewport": "1440x900",
+    "status": "ok",
+    "file": "pages/S4_streaming_now_1440x900.png"
+  },
+  {
+    "state": "S4_streaming_now",
+    "viewport": "390x844",
+    "status": "ok",
+    "file": "pages/S4_streaming_now_390x844.png"
+  },
+  {
+    "state": "S5_gate_failure",
+    "viewport": "1440x900",
+    "status": "ok",
+    "file": "pages/S5_gate_failure_1440x900.png"
+  },
+  {
+    "state": "S5_gate_failure",
+    "viewport": "390x844",
+    "status": "ok",
+    "file": "pages/S5_gate_failure_390x844.png"
+  },
+  {
+    "state": "S6_dead_letter",
+    "viewport": "1440x900",
+    "status": "ok",
+    "file": "pages/S6_dead_letter_1440x900.png"
+  },
+  {
+    "state": "S6_dead_letter",
+    "viewport": "390x844",
+    "status": "ok",
+    "file": "pages/S6_dead_letter_390x844.png"
+  },
+  {
+    "state": "S7_budget_degraded",
+    "viewport": "1440x900",
+    "status": "unreachable",
+    "note": "No component under web/src reads /api/economics (grep confirmed zero references). The tier ladder has no web surface to photograph — see REPORT.md §9/§11."
+  },
+  {
+    "state": "S7_budget_degraded",
+    "viewport": "390x844",
+    "status": "unreachable",
+    "note": "No component under web/src reads /api/economics (grep confirmed zero references). The tier ladder has no web surface to photograph — see REPORT.md §9/§11."
+  },
+  {
+    "state": "S8_cache_degraded",
+    "viewport": "1440x900",
+    "status": "unreachable",
+    "note": "No cache-hit-ratio degradation banner/component found anywhere under web/src (grep for cache-hit/degrad concepts found no UI consumer). See REPORT.md §9/§11."
+  },
+  {
+    "state": "S8_cache_degraded",
+    "viewport": "390x844",
+    "status": "unreachable",
+    "note": "No cache-hit-ratio degradation banner/component found anywhere under web/src (grep for cache-hit/degrad concepts found no UI consumer). See REPORT.md §9/§11."
+  },
+  {
+    "state": "S9_long_scrollback",
+    "viewport": "1440x900",
+    "status": "ok",
+    "file": "pages/S9_long_scrollback_1440x900.png"
+  },
+  {
+    "state": "S9_long_scrollback",
+    "viewport": "390x844",
+    "status": "ok",
+    "file": "pages/S9_long_scrollback_390x844.png"
+  },
+  {
+    "state": "S10_pathological_content",
+    "viewport": "1440x900",
+    "status": "ok",
+    "file": "pages/S10_pathological_content_1440x900.png"
+  },
+  {
+    "state": "S10_pathological_content",
+    "viewport": "390x844",
+    "status": "ok",
+    "file": "pages/S10_pathological_content_390x844.png"
+  },
+  {
+    "state": "S11_blocked_on_dependency",
+    "viewport": "1440x900",
+    "status": "ok",
+    "file": "pages/S11_blocked_on_dependency_1440x900.png"
+  },
+  {
+    "state": "S11_blocked_on_dependency",
+    "viewport": "390x844",
+    "status": "ok",
+    "file": "pages/S11_blocked_on_dependency_390x844.png"
+  },
+  {
+    "state": "S12_all_finished_green",
+    "viewport": "1440x900",
+    "status": "ok",
+    "file": "pages/S12_all_finished_green_1440x900.png"
+  },
+  {
+    "state": "S12_all_finished_green",
+    "viewport": "390x844",
+    "status": "ok",
+    "file": "pages/S12_all_finished_green_390x844.png"
+  },
+  {
+    "state": "S13_loop_stacks_populated",
+    "viewport": "1440x900",
+    "status": "ok",
+    "file": "pages/S13_loop_stacks_populated_1440x900.png"
+  },
+  {
+    "state": "S13_loop_stacks_populated",
+    "viewport": "390x844",
+    "status": "ok",
+    "file": "pages/S13_loop_stacks_populated_390x844.png"
+  }
+]

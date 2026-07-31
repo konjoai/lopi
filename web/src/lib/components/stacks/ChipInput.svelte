@@ -231,7 +231,7 @@
   }
   .chipinput.empty::before {
     content: attr(data-placeholder);
-    color: rgba(245, 245, 245, 0.28);
+    color: rgb(var(--k-text-primary-rgb) / 0.28);
     pointer-events: none;
   }
   .chipinput :global(.chip) {
@@ -246,49 +246,49 @@
     user-select: none;
   }
   .chipinput :global(.chip.chip-alias) {
-    border: 1px solid rgba(0, 255, 212, 0.4);
-    background: rgba(0, 255, 212, 0.1);
-    color: var(--stack-teal, #00ffd4);
+    border: 1px solid rgb(var(--k-chip-alias-rgb) / 0.4);
+    background: rgb(var(--k-chip-alias-rgb) / 0.1);
+    color: var(--stack-teal, var(--k-chip-alias));
   }
   .chipinput :global(.chip.chip-repo) {
-    border: 1px solid rgba(0, 212, 255, 0.4);
-    background: rgba(0, 212, 255, 0.1);
-    color: var(--konjo-ice, #00d4ff);
+    border: 1px solid rgb(var(--k-chip-repo-rgb) / 0.4);
+    background: rgb(var(--k-chip-repo-rgb) / 0.1);
+    color: var(--konjo-ice, var(--k-chip-repo));
   }
   .chipinput :global(.chip.chip-effort) {
-    border: 1px solid rgba(255, 204, 0, 0.4);
-    background: rgba(255, 204, 0, 0.1);
-    color: var(--konjo-sun, #ffcc00);
+    border: 1px solid rgb(var(--k-chip-effort-rgb) / 0.4);
+    background: rgb(var(--k-chip-effort-rgb) / 0.1);
+    color: var(--konjo-sun, var(--k-chip-effort));
   }
   .chipinput :global(.chip.chip-model) {
-    border: 1px solid rgba(183, 155, 255, 0.4);
-    background: rgba(183, 155, 255, 0.1);
-    color: var(--stack-violet, #b79bff);
+    border: 1px solid rgb(var(--k-chip-model-rgb) / 0.4);
+    background: rgb(var(--k-chip-model-rgb) / 0.1);
+    color: var(--stack-violet, var(--k-chip-model));
   }
   .chipinput :global(.chip.chip-branch) {
-    border: 1px solid rgba(0, 255, 157, 0.4);
-    background: rgba(0, 255, 157, 0.1);
-    color: rgb(0, 255, 157);
+    border: 1px solid rgb(var(--k-preset-benchmark-rgb) / 0.4);
+    background: rgb(var(--k-preset-benchmark-rgb) / 0.1);
+    color: rgb(var(--k-preset-benchmark-rgb));
   }
   .chipinput :global(.chip.chip-autonomy) {
     /* Flame orange — same accent as `.chip-loop`/the iteration pill. */
-    border: 1px solid rgba(255, 149, 0, 0.4);
-    background: rgba(255, 149, 0, 0.1);
-    color: var(--konjo-flame, #ff9500);
+    border: 1px solid rgb(var(--k-chip-loop-rgb) / 0.4);
+    background: rgb(var(--k-chip-loop-rgb) / 0.1);
+    color: var(--konjo-flame, var(--k-chip-loop));
   }
   .chipinput :global(.chip.chip-eval) {
-    border: 1px solid rgba(59, 230, 200, 0.4);
-    background: rgba(59, 230, 200, 0.1);
-    color: var(--konjo-mint, #3be6c8);
+    border: 1px solid rgb(var(--k-ext-mint-rgb) / 0.4);
+    background: rgb(var(--k-ext-mint-rgb) / 0.1);
+    color: var(--konjo-mint, var(--k-ext-mint));
   }
   .chipinput :global(.chip.chip-loop) {
-    border: 1px solid rgba(255, 149, 0, 0.4);
-    background: rgba(255, 149, 0, 0.1);
-    color: var(--konjo-flame, #ff9500);
+    border: 1px solid rgb(var(--k-chip-loop-rgb) / 0.4);
+    background: rgb(var(--k-chip-loop-rgb) / 0.1);
+    color: var(--konjo-flame, var(--k-chip-loop));
   }
   .chipinput :global(.chip.chip-claude) {
-    border: 1px solid rgba(255, 0, 102, 0.4);
-    background: rgba(255, 0, 102, 0.1);
-    color: var(--konjo-rose, #ff0066);
+    border: 1px solid rgb(var(--k-danger-rgb) / 0.4);
+    background: rgb(var(--k-danger-rgb) / 0.1);
+    color: var(--konjo-rose, var(--k-danger));
   }
 </style>

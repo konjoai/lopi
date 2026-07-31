@@ -107,10 +107,10 @@
     font-family: var(--font-mono, monospace);
     font-size: 10px;
     letter-spacing: 0.1em;
-    color: var(--konjo-jade, #00ff9d);
+    color: var(--konjo-jade, var(--k-preset-benchmark));
   }
   .live.offline {
-    color: rgba(245, 245, 245, 0.35);
+    color: rgb(var(--k-text-primary-rgb) / 0.35);
   }
   .livedot {
     width: 6px;
@@ -135,24 +135,24 @@
     gap: 18px;
     font-family: var(--font-mono, monospace);
     font-size: 11px;
-    color: rgba(245, 245, 245, 0.5);
+    color: rgb(var(--k-text-primary-rgb) / 0.5);
     margin: 0;
   }
   .subtitle b {
-    color: var(--konjo-paper, #f5f5f5);
+    color: var(--konjo-paper, var(--k-text-primary));
     font-weight: 700;
   }
   .subtitle b.ice {
-    color: var(--konjo-ice, #00d4ff);
+    color: var(--konjo-ice, var(--k-chip-repo));
   }
   .banner {
     font-family: var(--font-mono, monospace);
     font-size: 12px;
     padding: 24px;
     text-align: center;
-    border: 1px dashed rgba(255, 255, 255, 0.14);
+    border: 1px dashed rgb(var(--k-wash-rgb) / 0.14);
     border-radius: 10px;
-    color: rgba(245, 245, 245, 0.5);
+    color: rgb(var(--k-text-primary-rgb) / 0.5);
   }
   .board {
     display: grid;
@@ -171,7 +171,7 @@
     border-bottom: 2px solid;
     position: sticky;
     top: 0;
-    background: var(--konjo-black, #0a0a0a);
+    background: var(--konjo-black, var(--k-ext-surface-black));
     z-index: 1;
   }
   .cdot {
@@ -180,7 +180,7 @@
     border-radius: 50%;
   }
   .clabel {
-    color: var(--konjo-paper, #f5f5f5);
+    color: var(--konjo-paper, var(--k-text-primary));
     font-weight: 600;
     font-size: 12px;
     letter-spacing: 0.06em;
@@ -202,10 +202,10 @@
   .empty {
     font-family: var(--font-mono, monospace);
     font-size: 10.5px;
-    color: rgba(245, 245, 245, 0.25);
+    color: rgb(var(--k-text-primary-rgb) / 0.25);
     padding: 10px 4px;
     text-align: center;
-    border: 1px dashed rgba(255, 255, 255, 0.08);
+    border: 1px dashed rgb(var(--k-wash-rgb) / 0.08);
     border-radius: 8px;
   }
 </style>

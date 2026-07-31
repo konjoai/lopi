@@ -1,0 +1,15 @@
+{
+  "name": "lopi-recon",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Sprint U-0 dev-only recon tooling — screenshots, fixtures, censuses. Never imported by the lopi workspace.",
+  "type": "commonjs",
+  "scripts": {
+    "capture": "node capture.js"
+  },
+  "devDependencies": {
+    "pixelmatch": "^5.3.0",
+    "playwright": "1.62.0",
+    "pngjs": "^7.0.0"
+  }
+}

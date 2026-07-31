@@ -913,12 +913,12 @@
   .sctrl {
     position: relative;
     flex: 0 0 auto;
-    background: linear-gradient(180deg, rgba(150, 120, 230, 0.22), rgba(120, 92, 205, 0.14));
-    border: 1px solid rgba(183, 155, 255, 0.4);
-    border-top: 1.5px solid rgba(183, 155, 255, 0.55);
+    background: linear-gradient(180deg, rgb(var(--k-ext-violet-dock-a-rgb) / 0.22), rgb(var(--k-ext-violet-dock-b-rgb) / 0.14));
+    border: 1px solid rgb(var(--k-border-interactive-rgb) / 0.4);
+    border-top: 1.5px solid rgb(var(--k-border-interactive-rgb) / 0.55);
     box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.1),
-      0 -10px 30px rgba(120, 90, 200, 0.14);
+      inset 0 1px 0 rgb(var(--k-wash-rgb) / 0.1),
+      0 -10px 30px rgb(var(--k-ext-violet-dock-c-rgb) / 0.14);
     padding: 14px 16px 16px;
     font-family: var(--font-mono, 'JetBrains Mono', monospace);
   }
@@ -928,10 +928,10 @@
   /* Sticky mode's CSS ships unused while STACK_CONTROL_MODE === 'dock' — see
      the constant's doc comment in stores/stack.ts. */
   .sctrl.sticky {
-    border: 1.5px solid rgba(183, 155, 255, 0.5);
+    border: 1.5px solid rgb(var(--k-border-interactive-rgb) / 0.5);
     border-radius: 11px;
     margin-top: 14px;
-    box-shadow: 0 6px 26px rgba(120, 90, 200, 0.18);
+    box-shadow: 0 6px 26px rgb(var(--k-ext-violet-dock-c-rgb) / 0.18);
   }
   .sctrl.sticky .dockbody {
     max-height: none;
@@ -941,8 +941,8 @@
     font-size: 9px;
     letter-spacing: 0.18em;
     text-transform: uppercase;
-    color: #1a1030;
-    background: var(--stack-violet, #b79bff);
+    color: var(--k-ext-dock-plum);
+    background: var(--stack-violet, var(--k-chip-model));
     border-radius: 4px;
     padding: 3px 10px;
     font-weight: 700;
@@ -965,19 +965,19 @@
   }
   .dockhead .costtotal {
     font-size: 11px;
-    color: var(--konjo-paper, #f5f5f5);
+    color: var(--konjo-paper, var(--k-text-primary));
     font-weight: 700;
     white-space: nowrap;
     flex: 0 0 auto;
   }
   .dockhead .costtotal .costlbl {
-    color: rgba(245, 245, 245, 0.6);
+    color: rgb(var(--k-text-primary-rgb) / 0.6);
     font-weight: 400;
     margin-right: 3px;
   }
   .dockhead .dsum {
     font-size: 10px;
-    color: rgba(245, 245, 245, 0.66);
+    color: rgb(var(--k-text-primary-rgb) / 0.66);
     flex: 1;
     white-space: nowrap;
     overflow: hidden;
@@ -989,10 +989,10 @@
   .dockhead .exp {
     width: 34px;
     height: 34px;
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    border: 1px solid rgb(var(--k-wash-rgb) / 0.2);
     border-radius: 7px;
-    background: rgba(0, 0, 0, 0.2);
-    color: var(--stack-violet, #b79bff);
+    background: rgb(var(--k-shadow-rgb) / 0.2);
+    color: var(--stack-violet, var(--k-chip-model));
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1031,19 +1031,19 @@
      reaches into a child's internal DOM in Svelte; see the identical note in
      `StackCard.svelte`'s `.goalwrap .chipinput` rule. */
   :global(.cmdbarwrap .chipinput) {
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(255, 255, 255, 0.11);
+    background: rgb(var(--k-wash-rgb) / 0.02);
+    border: 1px solid rgb(var(--k-wash-rgb) / 0.11);
     border-radius: 7px;
     padding: 8px 10px;
-    color: var(--konjo-paper, #f5f5f5);
+    color: var(--konjo-paper, var(--k-text-primary));
     font-size: 12px;
     transition:
       border-color 0.12s,
       background 0.12s;
   }
   :global(.cmdbarwrap .chipinput:focus) {
-    border-color: var(--konjo-flame, #ff9500);
-    background: rgba(255, 149, 0, 0.06);
+    border-color: var(--konjo-flame, var(--k-chip-loop));
+    background: rgb(var(--k-chip-loop-rgb) / 0.06);
   }
   .grammarchips {
     display: flex;
@@ -1064,59 +1064,59 @@
     transition: 0.12s;
   }
   .gchip.alias {
-    border: 1px solid rgba(0, 255, 212, 0.4);
-    color: var(--stack-teal, #00ffd4);
+    border: 1px solid rgb(var(--k-chip-alias-rgb) / 0.4);
+    color: var(--stack-teal, var(--k-chip-alias));
   }
   .gchip.alias:hover {
-    border-color: rgba(0, 255, 212, 0.7);
-    background: rgba(0, 255, 212, 0.08);
+    border-color: rgb(var(--k-chip-alias-rgb) / 0.7);
+    background: rgb(var(--k-chip-alias-rgb) / 0.08);
   }
   .gchip.repo {
-    border: 1px solid rgba(0, 212, 255, 0.4);
-    color: var(--konjo-ice, #00d4ff);
+    border: 1px solid rgb(var(--k-chip-repo-rgb) / 0.4);
+    color: var(--konjo-ice, var(--k-chip-repo));
   }
   .gchip.repo:hover {
-    border-color: rgba(0, 212, 255, 0.7);
-    background: rgba(0, 212, 255, 0.08);
+    border-color: rgb(var(--k-chip-repo-rgb) / 0.7);
+    background: rgb(var(--k-chip-repo-rgb) / 0.08);
   }
   /* violet — see StackCard.svelte's identical `.gchip.model` comment. */
   .gchip.model {
-    border: 1px solid rgba(183, 155, 255, 0.4);
-    color: var(--stack-violet, #b79bff);
+    border: 1px solid rgb(var(--k-chip-model-rgb) / 0.4);
+    color: var(--stack-violet, var(--k-chip-model));
   }
   .gchip.model:hover {
-    border-color: rgba(183, 155, 255, 0.7);
-    background: rgba(183, 155, 255, 0.08);
+    border-color: rgb(var(--k-chip-model-rgb) / 0.7);
+    background: rgb(var(--k-chip-model-rgb) / 0.08);
   }
   /* sun — see StackCard.svelte's identical `.gchip.effort` comment. */
   .gchip.effort {
-    border: 1px solid rgba(255, 204, 0, 0.4);
-    color: var(--konjo-sun, #ffcc00);
+    border: 1px solid rgb(var(--k-chip-effort-rgb) / 0.4);
+    color: var(--konjo-sun, var(--k-chip-effort));
   }
   .gchip.effort:hover {
-    border-color: rgba(255, 204, 0, 0.7);
-    background: rgba(255, 204, 0, 0.08);
+    border-color: rgb(var(--k-chip-effort-rgb) / 0.7);
+    background: rgb(var(--k-chip-effort-rgb) / 0.08);
   }
   /* flame — see StackCard.svelte's identical `.gchip.loop` comment. */
   .gchip.loop {
-    border: 1px solid rgba(255, 149, 0, 0.4);
-    color: var(--konjo-flame, #ff9500);
+    border: 1px solid rgb(var(--k-chip-loop-rgb) / 0.4);
+    color: var(--konjo-flame, var(--k-chip-loop));
   }
   .gchip.loop:hover {
-    border-color: rgba(255, 149, 0, 0.7);
-    background: rgba(255, 149, 0, 0.08);
+    border-color: rgb(var(--k-chip-loop-rgb) / 0.7);
+    background: rgb(var(--k-chip-loop-rgb) / 0.08);
   }
   .gchip.claude {
-    border: 1px solid rgba(255, 0, 102, 0.4);
-    color: var(--konjo-rose, #ff0066);
+    border: 1px solid rgb(var(--k-danger-rgb) / 0.4);
+    color: var(--konjo-rose, var(--k-danger));
   }
   .gchip.claude:hover {
-    border-color: rgba(255, 0, 102, 0.7);
-    background: rgba(255, 0, 102, 0.08);
+    border-color: rgb(var(--k-danger-rgb) / 0.7);
+    background: rgb(var(--k-danger-rgb) / 0.08);
   }
   .hintrow {
     font-size: 9px;
-    color: rgba(245, 245, 245, 0.28);
+    color: rgb(var(--k-text-primary-rgb) / 0.28);
     padding: 4px 0 0 71px;
   }
   .sumln {
@@ -1144,25 +1144,25 @@
     height: 11px;
   }
   .sumln.sched .rl {
-    color: rgba(245, 245, 245, 0.6);
+    color: rgb(var(--k-text-primary-rgb) / 0.6);
   }
   .sumln.guard .rl {
-    color: rgba(245, 245, 245, 0.6);
+    color: rgb(var(--k-text-primary-rgb) / 0.6);
   }
   .sumln.eval .rl {
-    color: rgba(245, 245, 245, 0.6);
+    color: rgb(var(--k-text-primary-rgb) / 0.6);
   }
   .sumln.goal .rl {
-    color: rgba(245, 245, 245, 0.6);
+    color: rgb(var(--k-text-primary-rgb) / 0.6);
   }
   .sumln.cfg .rl {
-    color: rgba(245, 245, 245, 0.6);
+    color: rgb(var(--k-text-primary-rgb) / 0.6);
   }
   .sumln .txt {
-    color: rgba(245, 245, 245, 0.66);
+    color: rgb(var(--k-text-primary-rgb) / 0.66);
   }
   .sumln .txt b {
-    color: var(--konjo-paper, #f5f5f5);
+    color: var(--konjo-paper, var(--k-text-primary));
   }
   .sumln.sched .txt b {
     color: var(--konjo-ice);
@@ -1182,9 +1182,9 @@
     min-width: 29px;
     padding: 0 7px;
     border-radius: 6px;
-    border: 1px solid rgba(255, 255, 255, 0.16);
-    background: rgba(0, 0, 0, 0.18);
-    color: rgba(245, 245, 245, 0.66);
+    border: 1px solid var(--k-border-interactive);
+    background: rgb(var(--k-shadow-rgb) / 0.18);
+    color: rgb(var(--k-text-primary-rgb) / 0.66);
     cursor: pointer;
     display: inline-flex;
     align-items: center;
@@ -1198,41 +1198,41 @@
     height: 14px;
   }
   .ib:hover {
-    color: var(--konjo-paper, #f5f5f5);
-    border-color: rgba(255, 255, 255, 0.32);
+    color: var(--konjo-paper, var(--k-text-primary));
+    border-color: rgb(var(--k-wash-rgb) / 0.32);
   }
   .ib .cnt {
     font-size: 9px;
     font-weight: 700;
   }
   .ib.sched.act {
-    color: #f5f5f5;
-    border-color: rgba(255, 255, 255, 0.5);
-    background: rgba(255, 255, 255, 0.1);
+    color: var(--k-text-primary);
+    border-color: rgb(var(--k-wash-rgb) / 0.5);
+    background: rgb(var(--k-wash-rgb) / 0.1);
   }
   .ib.guard.act {
-    color: #f5f5f5;
-    border-color: rgba(255, 255, 255, 0.5);
-    background: rgba(255, 255, 255, 0.1);
+    color: var(--k-text-primary);
+    border-color: rgb(var(--k-wash-rgb) / 0.5);
+    background: rgb(var(--k-wash-rgb) / 0.1);
   }
   .ib.eval.act {
-    color: #f5f5f5;
-    border-color: rgba(255, 255, 255, 0.5);
-    background: rgba(255, 255, 255, 0.1);
+    color: var(--k-text-primary);
+    border-color: rgb(var(--k-wash-rgb) / 0.5);
+    background: rgb(var(--k-wash-rgb) / 0.1);
   }
   .ib.config.act {
-    color: #f5f5f5;
-    border-color: rgba(255, 255, 255, 0.5);
-    background: rgba(255, 255, 255, 0.1);
+    color: var(--k-text-primary);
+    border-color: rgb(var(--k-wash-rgb) / 0.5);
+    background: rgb(var(--k-wash-rgb) / 0.1);
   }
   .ib.goal.act {
-    color: #f5f5f5;
-    border-color: rgba(255, 255, 255, 0.5);
-    background: rgba(255, 255, 255, 0.1);
+    color: var(--k-text-primary);
+    border-color: rgb(var(--k-wash-rgb) / 0.5);
+    background: rgb(var(--k-wash-rgb) / 0.1);
   }
   .ib.danger:hover {
-    color: var(--konjo-rose, #ff0066);
-    border-color: rgba(255, 0, 102, 0.4);
+    color: var(--konjo-rose, var(--k-danger));
+    border-color: rgb(var(--k-danger-rgb) / 0.4);
   }
   .ib.drag {
     cursor: grab;
@@ -1244,8 +1244,8 @@
     display: inline-flex;
     align-items: center;
     height: 29px;
-    border: 1px solid rgba(255, 149, 0, 0.6);
-    background: rgba(255, 120, 0, 0.16);
+    border: 1px solid rgb(var(--k-chip-loop-rgb) / 0.6);
+    background: rgb(var(--k-ext-orange-warn-rgb) / 0.16);
     border-radius: 6px;
     overflow: hidden;
     font-size: 11px;
@@ -1278,52 +1278,52 @@
     width: 28px;
     height: 29px;
     border: none;
-    border-left: 1px solid rgba(255, 149, 0, 0.4);
+    border-left: 1px solid rgb(var(--k-chip-loop-rgb) / 0.4);
     background: transparent;
     color: var(--konjo-flame);
     font-size: 15px;
     cursor: pointer;
   }
   .iterpill .sb:hover {
-    background: rgba(255, 149, 0, 0.24);
+    background: rgb(var(--k-chip-loop-rgb) / 0.24);
   }
   .iterpill.off {
-    border-color: rgba(245, 245, 245, 0.22);
-    background: rgba(245, 245, 245, 0.05);
-    color: rgba(245, 245, 245, 0.4);
+    border-color: rgb(var(--k-text-primary-rgb) / 0.22);
+    background: rgb(var(--k-text-primary-rgb) / 0.05);
+    color: rgb(var(--k-text-primary-rgb) / 0.4);
   }
   .iterpill.off .sb {
-    border-left-color: rgba(245, 245, 245, 0.16);
-    color: rgba(245, 245, 245, 0.4);
+    border-left-color: rgb(var(--k-text-primary-rgb) / 0.16);
+    color: rgb(var(--k-text-primary-rgb) / 0.4);
   }
   .iterpill.off .sb:hover {
-    background: rgba(245, 245, 245, 0.08);
+    background: rgb(var(--k-text-primary-rgb) / 0.08);
   }
   /* ×N color ramp (round 2, item 5) — mirrors StackCard.svelte's identical
      ramp, scoped to the stack pill instead of a card's. */
   .iterpill.tier-yellow {
-    border-color: rgba(255, 204, 0, 0.5);
-    background: rgba(255, 204, 0, 0.08);
-    color: #ffcc00;
+    border-color: rgb(var(--k-chip-effort-rgb) / 0.5);
+    background: rgb(var(--k-chip-effort-rgb) / 0.08);
+    color: var(--k-chip-effort);
   }
   .iterpill.tier-yellow .sb {
-    border-left-color: rgba(255, 204, 0, 0.4);
-    color: #ffcc00;
+    border-left-color: rgb(var(--k-chip-effort-rgb) / 0.4);
+    color: var(--k-chip-effort);
   }
   .iterpill.tier-yellow .sb:hover {
-    background: rgba(255, 204, 0, 0.24);
+    background: rgb(var(--k-chip-effort-rgb) / 0.24);
   }
   .iterpill.tier-red {
-    border-color: rgba(255, 0, 102, 0.5);
-    background: rgba(255, 0, 102, 0.1);
-    color: #ff0066;
+    border-color: rgb(var(--k-danger-rgb) / 0.5);
+    background: rgb(var(--k-danger-rgb) / 0.1);
+    color: var(--k-danger);
   }
   .iterpill.tier-red .sb {
-    border-left-color: rgba(255, 0, 102, 0.4);
-    color: #ff0066;
+    border-left-color: rgb(var(--k-danger-rgb) / 0.4);
+    color: var(--k-danger);
   }
   .iterpill.tier-red .sb:hover {
-    background: rgba(255, 0, 102, 0.24);
+    background: rgb(var(--k-danger-rgb) / 0.24);
   }
   /* Running-loop chrome — mirrors `StackCard.svelte`'s identical pill glow +
      spinner, scoped to the whole stack instead of one card. */
@@ -1333,12 +1333,12 @@
   @keyframes iterglow {
     0%,
     100% {
-      box-shadow: 0 0 0 0 rgba(255, 149, 0, 0);
-      border-color: rgba(255, 149, 0, 0.6);
+      box-shadow: 0 0 0 0 rgb(var(--k-chip-loop-rgb) / 0);
+      border-color: rgb(var(--k-chip-loop-rgb) / 0.6);
     }
     50% {
-      box-shadow: 0 0 14px 1px rgba(255, 149, 0, 0.45);
-      border-color: rgba(255, 149, 0, 1);
+      box-shadow: 0 0 14px 1px rgb(var(--k-chip-loop-rgb) / 0.45);
+      border-color: rgb(var(--k-chip-loop-rgb) / 1);
     }
   }
   .iterpill .lb :global(svg.spin) {
@@ -1364,9 +1364,9 @@
     width: 100%;
     padding: 8px 12px;
     border-radius: 8px;
-    background: rgba(0, 0, 0, 0.2);
-    border: 1px solid rgba(255, 255, 255, 0.16);
-    color: rgba(245, 245, 245, 0.72);
+    background: rgb(var(--k-shadow-rgb) / 0.2);
+    border: 1px solid rgb(var(--k-wash-rgb) / 0.16);
+    color: rgb(var(--k-text-primary-rgb) / 0.72);
     font-size: 11px;
   }
   .runbanner span {
@@ -1386,14 +1386,14 @@
     height: 12px;
   }
   .runbanner.err {
-    background: rgba(255, 90, 90, 0.1);
-    border-color: rgba(255, 90, 90, 0.4);
-    color: rgba(255, 170, 170, 0.95);
+    background: rgb(var(--k-ext-red-banner-rgb) / 0.1);
+    border-color: rgb(var(--k-ext-red-banner-rgb) / 0.4);
+    color: rgb(var(--k-ext-red-banner-light-rgb) / 0.95);
   }
   .runbanner.ok {
-    background: rgba(0, 255, 157, 0.1);
-    border-color: rgba(0, 255, 157, 0.4);
-    color: rgba(150, 255, 210, 0.95);
+    background: rgb(var(--k-preset-benchmark-rgb) / 0.1);
+    border-color: rgb(var(--k-preset-benchmark-rgb) / 0.4);
+    color: rgb(var(--k-ext-green-banner-light-rgb) / 0.95);
   }
   /* Cost-estimate confirm (round 2, item 6) — non-blocking, two explicit
      actions instead of a single dismiss X like the banners above. */
@@ -1405,24 +1405,24 @@
     padding: 10px 12px;
     margin-bottom: 9px;
     border-radius: 8px;
-    background: rgba(255, 204, 0, 0.08);
-    border: 1px solid rgba(255, 204, 0, 0.35);
+    background: rgb(var(--k-chip-effort-rgb) / 0.08);
+    border: 1px solid rgb(var(--k-chip-effort-rgb) / 0.35);
     font-size: 11px;
   }
   .costconfirm .ccmsg {
     display: flex;
     align-items: center;
     gap: 6px;
-    color: rgba(245, 245, 245, 0.8);
+    color: rgb(var(--k-text-primary-rgb) / 0.8);
   }
   .costconfirm .ccmsg :global(svg) {
     width: 13px;
     height: 13px;
     flex: 0 0 auto;
-    color: #ffcc00;
+    color: var(--k-chip-effort);
   }
   .costconfirm .ccmsg b {
-    color: #ffcc00;
+    color: var(--k-chip-effort);
     font-weight: 700;
   }
   .costconfirm .ccactions {
@@ -1433,16 +1433,16 @@
     flex: 1;
     padding: 7px 10px;
     border-radius: 6px;
-    border: 1px solid rgba(255, 204, 0, 0.4);
-    background: rgba(255, 204, 0, 0.12);
-    color: #ffcc00;
+    border: 1px solid rgb(var(--k-chip-effort-rgb) / 0.4);
+    background: rgb(var(--k-chip-effort-rgb) / 0.12);
+    color: var(--k-chip-effort);
     font-family: var(--font-mono, 'JetBrains Mono', monospace);
     font-size: 10.5px;
     font-weight: 700;
     cursor: pointer;
   }
   .costconfirm .ccactions button:hover {
-    background: rgba(255, 204, 0, 0.22);
+    background: rgb(var(--k-chip-effort-rgb) / 0.22);
   }
   /* UI-3 — the compact run/pause control that now lives in `.dockhead`
      itself, replacing the old full-width `.runsplit` button that sat in its
@@ -1455,15 +1455,15 @@
     display: inline-flex;
     border-radius: 7px;
     overflow: hidden;
-    box-shadow: 0 3px 10px rgba(255, 149, 0, 0.25);
+    box-shadow: 0 3px 10px rgb(var(--k-chip-loop-rgb) / 0.25);
   }
   .hrunbtn {
     display: inline-flex;
     align-items: center;
     gap: 6px;
     height: 34px;
-    background: linear-gradient(180deg, #ffb648, #ff9500);
-    color: #231000;
+    background: linear-gradient(180deg, var(--k-ext-flame-grad-a), var(--k-chip-loop));
+    color: var(--k-text-secondary);
     border: none;
     padding: 0 14px;
     font-family: var(--font-mono, 'JetBrains Mono', monospace);
@@ -1481,10 +1481,10 @@
     cursor: not-allowed;
   }
   .hrunchev {
-    background: linear-gradient(180deg, #ffa733, #f08600);
+    background: linear-gradient(180deg, var(--k-ext-flame-grad-c), var(--k-ext-flame-grad-d));
     border: none;
-    border-left: 1px solid rgba(0, 0, 0, 0.28);
-    color: #231000;
+    border-left: 1px solid rgb(var(--k-shadow-rgb) / 0.28);
+    color: var(--k-text-secondary);
     padding: 0 9px;
     cursor: pointer;
     display: inline-flex;
@@ -1495,10 +1495,10 @@
     height: 12px;
   }
   .sctrl.drop-before {
-    box-shadow: 0 -3px 0 var(--stack-violet, #b79bff);
+    box-shadow: 0 -3px 0 var(--stack-violet, var(--k-chip-model));
   }
   .sctrl.drop-after {
-    box-shadow: 0 3px 0 var(--stack-violet, #b79bff);
+    box-shadow: 0 3px 0 var(--stack-violet, var(--k-chip-model));
   }
   @media (prefers-reduced-motion: reduce) {
     .dockbody {

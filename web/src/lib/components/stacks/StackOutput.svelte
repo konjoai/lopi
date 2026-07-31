@@ -133,7 +133,7 @@
     gap: 8px;
     padding: 8px 12px;
     font-size: 10px;
-    color: rgba(245, 245, 245, 0.46);
+    color: rgb(var(--k-text-primary-rgb) / 0.46);
     min-width: 0;
   }
   .live {
@@ -146,14 +146,14 @@
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: rgba(245, 245, 245, 0.28);
+    background: rgb(var(--k-text-primary-rgb) / 0.28);
   }
   .ok {
-    color: var(--stack-violet, #b79bff);
+    color: var(--stack-violet, var(--k-chip-model));
     flex: 0 0 auto;
   }
   .ol {
-    color: rgba(245, 245, 245, 0.72);
+    color: rgb(var(--k-text-primary-rgb) / 0.72);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -164,9 +164,9 @@
     width: 24px;
     height: 22px;
     border-radius: 5px;
-    border: 1px solid rgba(255, 255, 255, 0.11);
+    border: 1px solid var(--k-border-interactive);
     background: transparent;
-    color: rgba(245, 245, 245, 0.28);
+    color: rgb(var(--k-text-primary-rgb) / 0.28);
     cursor: pointer;
     display: inline-flex;
     align-items: center;
@@ -180,26 +180,26 @@
   .omini.oexpbtn {
     margin-left: auto;
     color: var(--konjo-ice);
-    border-color: rgba(0, 212, 255, 0.35);
+    border-color: rgb(var(--k-chip-repo-rgb) / 0.35);
   }
   .omini.oexpbtn:hover {
-    background: rgba(0, 212, 255, 0.1);
+    background: rgb(var(--k-chip-repo-rgb) / 0.1);
   }
   .omini.osizebtn {
     margin-left: auto;
-    color: var(--stack-violet, #b79bff);
-    border-color: rgba(183, 155, 255, 0.35);
+    color: var(--stack-violet, var(--k-chip-model));
+    border-color: rgb(var(--k-border-interactive-rgb) / 0.35);
   }
   .omini.osizebtn:hover {
-    background: rgba(183, 155, 255, 0.1);
+    background: rgb(var(--k-border-interactive-rgb) / 0.1);
   }
   .omini.ocolbtn {
     color: var(--konjo-flame);
-    border-color: rgba(255, 149, 0, 0.45);
-    background: rgba(255, 149, 0, 0.08);
+    border-color: rgb(var(--k-chip-loop-rgb) / 0.45);
+    background: rgb(var(--k-chip-loop-rgb) / 0.08);
   }
   .omini.ocolbtn:hover {
-    background: rgba(255, 149, 0, 0.16);
+    background: rgb(var(--k-chip-loop-rgb) / 0.16);
   }
   .obar {
     display: flex;
@@ -214,7 +214,7 @@
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    color: rgba(245, 245, 245, 0.46);
+    color: rgb(var(--k-text-primary-rgb) / 0.46);
   }
   /* The consolidated stream (UI-3) — one chronological feed, fixed height by
      default (~10 lines, UI-4) and scrolled to bottom as blocks arrive,
@@ -256,10 +256,10 @@
     min-width: 0;
     white-space: pre-wrap;
     word-break: break-word;
-    color: rgba(245, 245, 245, 0.82);
+    color: rgb(var(--k-text-primary-rgb) / 0.82);
   }
   .sline.thinking .sicon {
-    color: var(--stack-violet, #b79bff);
+    color: var(--stack-violet, var(--k-chip-model));
   }
   .sline.actions .sicon {
     color: var(--konjo-sun);

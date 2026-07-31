@@ -224,10 +224,10 @@
     margin-bottom: 10px;
     font-family: var(--font-mono, monospace);
     font-size: 11px;
-    color: rgba(245, 245, 245, 0.46);
+    color: rgb(var(--k-text-primary-rgb) / 0.46);
   }
   .gline .lbl {
-    color: var(--konjo-paper, #f5f5f5);
+    color: var(--konjo-paper, var(--k-text-primary));
     width: 62px;
     flex: 0 0 auto;
   }
@@ -236,11 +236,11 @@
     flex: 1;
     resize: none;
     overflow: hidden;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.11);
+    background: rgb(var(--k-wash-rgb) / 0.03);
+    border: 1px solid rgb(var(--k-wash-rgb) / 0.11);
     border-radius: 5px;
     padding: 4px 8px;
-    color: var(--konjo-paper, #f5f5f5);
+    color: var(--konjo-paper, var(--k-text-primary));
     font-family: var(--font-mono, monospace);
     font-size: 10px;
     line-height: 1.5;
@@ -259,18 +259,18 @@
     align-items: center;
     flex: 1;
     min-width: 0;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.11);
+    background: rgb(var(--k-wash-rgb) / 0.03);
+    border: 1px solid rgb(var(--k-wash-rgb) / 0.11);
     border-radius: 5px;
     overflow: hidden;
   }
   .numstep:focus-within {
-    border-color: rgba(255, 204, 0, 0.55);
-    background: rgba(255, 204, 0, 0.05);
+    border-color: rgb(var(--k-border-interactive-rgb) / 0.55);
+    background: rgb(var(--k-border-interactive-rgb) / 0.05);
   }
   .numstep .prefix {
     padding-left: 8px;
-    color: rgba(245, 245, 245, 0.46);
+    color: rgb(var(--k-text-primary-rgb) / 0.46);
     font-family: var(--font-mono, monospace);
     font-size: 10px;
   }
@@ -281,7 +281,7 @@
     background: transparent;
     border: none;
     padding: 4px 4px 4px 8px;
-    color: var(--konjo-paper, #f5f5f5);
+    color: var(--konjo-paper, var(--k-text-primary));
     font-family: var(--font-mono, monospace);
     font-size: 10px;
     outline: none;
@@ -302,7 +302,7 @@
     display: flex;
     flex-direction: column;
     flex: 0 0 auto;
-    border-left: 1px solid rgba(255, 255, 255, 0.11);
+    border-left: 1px solid rgb(var(--k-wash-rgb) / 0.11);
     align-self: stretch;
   }
   .numstep .chevs button {
@@ -317,22 +317,22 @@
     padding: 0;
   }
   .numstep .chevs button:first-child {
-    border-bottom: 1px solid rgba(255, 255, 255, 0.11);
+    border-bottom: 1px solid rgb(var(--k-wash-rgb) / 0.11);
   }
   .numstep .chevs button:hover {
-    background: rgba(255, 204, 0, 0.12);
+    background: rgb(var(--k-border-interactive-rgb) / 0.12);
   }
   .numstep .chevs button :global(svg) {
     width: 8px;
     height: 8px;
-    color: var(--konjo-sun);
+    color: var(--k-text-primary);
   }
   .explain {
     margin: -3px 0 10px;
     font-family: var(--font-mono, monospace);
     font-size: 9px;
     line-height: 1.5;
-    color: rgba(245, 245, 245, 0.4);
+    color: rgb(var(--k-text-primary-rgb) / 0.4);
   }
   .explain.last {
     margin-bottom: 0;
@@ -354,21 +354,21 @@
     text-transform: uppercase;
     font-size: 8.5px;
     letter-spacing: 0.06em;
-    color: rgba(245, 245, 245, 0.66);
+    color: rgb(var(--k-text-primary-rgb) / 0.66);
   }
   .seg {
     display: inline-flex;
-    border: 1px solid rgba(255, 255, 255, 0.11);
+    border: 1px solid rgb(var(--k-wash-rgb) / 0.11);
     border-radius: 6px;
     overflow: hidden;
   }
   .seg button {
     padding: 4px 10px;
     font-size: 10px;
-    color: rgba(245, 245, 245, 0.66);
+    color: rgb(var(--k-text-primary-rgb) / 0.66);
     cursor: pointer;
     border: none;
-    border-right: 1px solid rgba(255, 255, 255, 0.11);
+    border-right: 1px solid rgb(var(--k-wash-rgb) / 0.11);
     background: transparent;
     font-family: var(--font-mono, monospace);
   }
@@ -376,8 +376,8 @@
     border-right: none;
   }
   .seg button.on {
-    background: rgba(255, 204, 0, 0.16);
-    color: var(--konjo-sun);
+    background: rgb(var(--k-border-interactive-rgb) / 0.16);
+    color: var(--k-text-primary);
   }
   .gfoot {
     display: flex;
@@ -385,7 +385,7 @@
     align-items: center;
     gap: 12px;
     padding: 10px 13px;
-    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    border-top: 1px solid rgb(var(--k-wash-rgb) / 0.05);
   }
   .gfoot .maxiter {
     display: flex;
@@ -398,12 +398,12 @@
     text-transform: uppercase;
     font-size: 8.5px;
     letter-spacing: 0.06em;
-    color: rgba(245, 245, 245, 0.66);
+    color: rgb(var(--k-text-primary-rgb) / 0.66);
   }
   .stepper {
     display: inline-flex;
     align-items: center;
-    border: 1px solid rgba(255, 255, 255, 0.11);
+    border: 1px solid rgb(var(--k-wash-rgb) / 0.11);
     border-radius: 6px;
     overflow: hidden;
   }
@@ -412,7 +412,7 @@
     height: 25px;
     border: none;
     background: transparent;
-    color: var(--konjo-sun);
+    color: var(--k-text-primary);
     font-size: 14px;
     cursor: pointer;
   }
@@ -421,9 +421,9 @@
     text-align: center;
     font-family: var(--font-mono, monospace);
     font-size: 11px;
-    color: var(--konjo-paper, #f5f5f5);
-    border-left: 1px solid rgba(255, 255, 255, 0.11);
-    border-right: 1px solid rgba(255, 255, 255, 0.11);
+    color: var(--konjo-paper, var(--k-text-primary));
+    border-left: 1px solid rgb(var(--k-wash-rgb) / 0.11);
+    border-right: 1px solid rgb(var(--k-wash-rgb) / 0.11);
     line-height: 25px;
   }
 </style>

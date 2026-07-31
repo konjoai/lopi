@@ -75,7 +75,7 @@
   .prose :global(code) {
     font-family: var(--font-mono, monospace);
     font-size: 0.74rem;
-    background: rgba(255, 255, 255, 0.08);
+    background: rgb(var(--k-wash-rgb) / 0.08);
     padding: 0.05rem 0.3rem;
     border-radius: 4px;
   }
@@ -85,7 +85,7 @@
     text-underline-offset: 2px;
   }
   .prose :global(blockquote) {
-    border-left: 2px solid rgba(255, 255, 255, 0.18);
+    border-left: 2px solid rgb(var(--k-wash-rgb) / 0.18);
     margin: 0.35rem 0;
     padding-left: 0.6rem;
     opacity: 0.8;
@@ -97,7 +97,7 @@
   }
   .prose :global(th),
   .prose :global(td) {
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    border: 1px solid rgb(var(--k-wash-rgb) / 0.12);
     padding: 0.2rem 0.45rem;
   }
   .prose {

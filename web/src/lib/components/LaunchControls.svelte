@@ -74,9 +74,9 @@
   .field input {
     padding: 5px 8px;
     border-radius: 7px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    background: rgba(255, 255, 255, 0.025);
-    color: var(--konjo-paper, #f5f5f5);
+    border: 1px solid rgb(var(--k-wash-rgb) / 0.08);
+    background: rgb(var(--k-wash-rgb) / 0.025);
+    color: var(--konjo-paper, var(--k-text-primary));
     font-family: var(--font-mono, monospace);
     font-size: 11px;
     outline: none;

@@ -1,0 +1,264 @@
+[
+  {
+    "label": "S4_streaming_now (log lines arriving)",
+    "unsupported": null,
+    "total_cls": 0.006,
+    "entry_count": 4,
+    "top_shifts": [
+      {
+        "value": 0.004793809678819444,
+        "time": 13400.5,
+        "sources": [
+          {
+            "node": "button.gutter",
+            "prevRect": {
+              "x": 0,
+              "y": 48,
+              "width": 6,
+              "height": 852,
+              "top": 48,
+              "right": 6,
+              "bottom": 900,
+              "left": 0
+            },
+            "curRect": {
+              "x": 577,
+              "y": 48,
+              "width": 12,
+              "height": 852,
+              "top": 48,
+              "right": 589,
+              "bottom": 900,
+              "left": 577
+            }
+          }
+        ]
+      },
+      {
+        "value": 0.0005195944787379972,
+        "time": 16695.600000000093,
+        "sources": [
+          {
+            "node": "div.hrun",
+            "prevRect": {
+              "x": 308,
+              "y": 704,
+              "width": 140,
+              "height": 64,
+              "top": 704,
+              "right": 448,
+              "bottom": 768,
+              "left": 308
+            },
+            "curRect": {
+              "x": 379,
+              "y": 704,
+              "width": 141,
+              "height": 64,
+              "top": 704,
+              "right": 520,
+              "bottom": 768,
+              "left": 379
+            }
+          }
+        ]
+      },
+      {
+        "value": 0.0003641420717592593,
+        "time": 13413.600000000093,
+        "sources": [
+          {
+            "node": "button.gutter",
+            "prevRect": {
+              "x": 577,
+              "y": 48,
+              "width": 12,
+              "height": 852,
+              "top": 48,
+              "right": 589,
+              "bottom": 900,
+              "left": 577
+            },
+            "curRect": {
+              "x": 611,
+              "y": 48,
+              "width": 12,
+              "height": 852,
+              "top": 48,
+              "right": 623,
+              "bottom": 900,
+              "left": 611
+            }
+          }
+        ]
+      },
+      {
+        "value": 0.0002744333526234568,
+        "time": 13428.80000000028,
+        "sources": [
+          {
+            "node": "button.gutter",
+            "prevRect": {
+              "x": 611,
+              "y": 48,
+              "width": 12,
+              "height": 852,
+              "top": 48,
+              "right": 623,
+              "bottom": 900,
+              "left": 611
+            },
+            "curRect": {
+              "x": 636,
+              "y": 48,
+              "width": 12,
+              "height": 852,
+              "top": 48,
+              "right": 648,
+              "bottom": 900,
+              "left": 636
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "label": "S9_long_scrollback (manual scroll up mid-tail)",
+    "unsupported": null,
+    "total_cls": 0.0014,
+    "entry_count": 2,
+    "top_shifts": [
+      {
+        "value": 0.001352949580439815,
+        "time": 14265.100000000093,
+        "sources": [
+          {
+            "node": "button.gutter",
+            "prevRect": {
+              "x": 0,
+              "y": 48,
+              "width": 6,
+              "height": 852,
+              "top": 48,
+              "right": 6,
+              "bottom": 900,
+              "left": 0
+            },
+            "curRect": {
+              "x": 159,
+              "y": 48,
+              "width": 12,
+              "height": 852,
+              "top": 48,
+              "right": 171,
+              "bottom": 900,
+              "left": 159
+            }
+          }
+        ]
+      },
+      {
+        "value": 0.000019455697016460905,
+        "time": 14248.200000000186,
+        "sources": [
+          {
+            "node": "div.flex",
+            "prevRect": {
+              "x": 1269,
+              "y": 12,
+              "width": 147,
+              "height": 32,
+              "top": 12,
+              "right": 1416,
+              "bottom": 44,
+              "left": 1269
+            },
+            "curRect": {
+              "x": 1277,
+              "y": 12,
+              "width": 139,
+              "height": 32,
+              "top": 12,
+              "right": 1416,
+              "bottom": 44,
+              "left": 1277
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "label": "S9 scroll-anchoring check",
+    "scrollTopBefore": 0,
+    "scrollTopAfter": 0,
+    "followTailFoughtManualScroll": false
+  },
+  {
+    "label": "S13_loop_stacks_populated (open config popover)",
+    "unsupported": null,
+    "total_cls": 0.0014,
+    "entry_count": 2,
+    "top_shifts": [
+      {
+        "value": 0.0013457591869212961,
+        "time": 14249,
+        "sources": [
+          {
+            "node": "button.gutter",
+            "prevRect": {
+              "x": 0,
+              "y": 48,
+              "width": 6,
+              "height": 852,
+              "top": 48,
+              "right": 6,
+              "bottom": 900,
+              "left": 0
+            },
+            "curRect": {
+              "x": 158,
+              "y": 48,
+              "width": 12,
+              "height": 852,
+              "top": 48,
+              "right": 170,
+              "bottom": 900,
+              "left": 158
+            }
+          }
+        ]
+      },
+      {
+        "value": 0.000019455697016460905,
+        "time": 14226.799999999814,
+        "sources": [
+          {
+            "node": "div.flex",
+            "prevRect": {
+              "x": 1269,
+              "y": 12,
+              "width": 147,
+              "height": 32,
+              "top": 12,
+              "right": 1416,
+              "bottom": 44,
+              "left": 1269
+            },
+            "curRect": {
+              "x": 1277,
+              "y": 12,
+              "width": 139,
+              "height": 32,
+              "top": 12,
+              "right": 1416,
+              "bottom": 44,
+              "left": 1277
+            }
+          }
+        ]
+      }
+    ]
+  }
+]
