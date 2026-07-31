@@ -161,9 +161,9 @@
     background: transparent;
   }
   .freq.on {
-    background: rgb(var(--k-chip-repo-rgb) / 0.14);
-    color: var(--konjo-ice);
-    border-color: rgb(var(--k-chip-repo-rgb) / 0.45);
+    background: rgb(var(--k-border-interactive-rgb) / 0.14);
+    color: var(--k-text-primary);
+    border-color: rgb(var(--k-border-interactive-rgb) / 0.45);
   }
   .detrow {
     display: flex;
@@ -210,7 +210,7 @@
     left: 2px;
     width: calc(50% - 2px);
     border-radius: 18px;
-    background: var(--konjo-ice);
+    background: var(--k-text-primary);
     transition: transform 0.18s cubic-bezier(0.4, 0, 0.2, 1);
     z-index: 0;
   }
@@ -239,7 +239,7 @@
     border: 1px solid rgb(var(--k-wash-rgb) / 0.11);
     border-radius: 5px;
     padding: 5px 8px;
-    color: var(--konjo-ice);
+    color: var(--k-text-primary);
     font-family: var(--font-mono, monospace);
     font-size: 10.5px;
     line-height: 1.4;
@@ -248,7 +248,7 @@
   }
   .rawrow textarea:focus {
     outline: none;
-    border-color: rgb(var(--k-chip-repo-rgb) / 0.5);
+    border-color: rgb(var(--k-border-interactive-rgb) / 0.5);
   }
   .human {
     font-family: var(--font-mono, monospace);
@@ -257,7 +257,7 @@
     margin-top: 7px;
   }
   .human :global(b) {
-    color: var(--konjo-ice);
+    color: var(--k-text-primary);
   }
   .schedfoot {
     display: flex;
@@ -290,6 +290,6 @@
     content: '–';
     position: absolute;
     left: 0;
-    color: var(--konjo-ice);
+    color: var(--k-text-primary);
   }
 </style>

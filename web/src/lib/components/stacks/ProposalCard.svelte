@@ -97,12 +97,12 @@
     letter-spacing: 0.1em;
     text-transform: uppercase;
     background: var(--konjo-black, var(--k-ext-black-fallback));
-    border: 1px solid rgb(var(--k-ext-violet-testing-rgb) / 0.5);
+    border: 1px solid var(--k-border-subtle);
     border-radius: 3px;
     padding: 2px 8px;
     display: inline-flex;
     align-items: center;
-    color: var(--stack-violet-deep, var(--k-ext-violet-bright));
+    color: var(--k-text-muted);
     z-index: 2;
   }
   .spec {
@@ -161,7 +161,7 @@
     height: 29px;
     padding: 0 12px;
     border-radius: 6px;
-    border: 1px solid rgb(var(--k-wash-rgb) / 0.11);
+    border: 1px solid var(--k-border-interactive);
     background: transparent;
     cursor: pointer;
     display: inline-flex;

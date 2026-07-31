@@ -265,8 +265,8 @@
     overflow: hidden;
   }
   .numstep:focus-within {
-    border-color: rgb(var(--k-chip-effort-rgb) / 0.55);
-    background: rgb(var(--k-chip-effort-rgb) / 0.05);
+    border-color: rgb(var(--k-border-interactive-rgb) / 0.55);
+    background: rgb(var(--k-border-interactive-rgb) / 0.05);
   }
   .numstep .prefix {
     padding-left: 8px;
@@ -320,12 +320,12 @@
     border-bottom: 1px solid rgb(var(--k-wash-rgb) / 0.11);
   }
   .numstep .chevs button:hover {
-    background: rgb(var(--k-chip-effort-rgb) / 0.12);
+    background: rgb(var(--k-border-interactive-rgb) / 0.12);
   }
   .numstep .chevs button :global(svg) {
     width: 8px;
     height: 8px;
-    color: var(--konjo-sun);
+    color: var(--k-text-primary);
   }
   .explain {
     margin: -3px 0 10px;
@@ -376,8 +376,8 @@
     border-right: none;
   }
   .seg button.on {
-    background: rgb(var(--k-chip-effort-rgb) / 0.16);
-    color: var(--konjo-sun);
+    background: rgb(var(--k-border-interactive-rgb) / 0.16);
+    color: var(--k-text-primary);
   }
   .gfoot {
     display: flex;
@@ -412,7 +412,7 @@
     height: 25px;
     border: none;
     background: transparent;
-    color: var(--konjo-sun);
+    color: var(--k-text-primary);
     font-size: 14px;
     cursor: pointer;
   }

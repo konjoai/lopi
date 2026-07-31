@@ -195,11 +195,11 @@
     content: '·';
     position: absolute;
     left: -12px;
-    color: var(--konjo-flame);
+    color: var(--k-text-primary);
     font-weight: 700;
   }
   .runlist :global(b) {
-    color: var(--konjo-flame);
+    color: var(--k-text-primary);
   }
   .qbar-row {
     margin: 8px 0;

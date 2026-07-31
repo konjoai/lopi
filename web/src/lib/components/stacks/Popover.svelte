@@ -170,8 +170,10 @@
   }
   .pop {
     position: fixed;
-    background: var(--konjo-panel, var(--k-surface-raised));
-    border: 1px solid rgb(var(--k-wash-rgb) / 0.11);
+    /* Sprint U1 4a: every popover's chrome is --k-surface-overlay on
+       --k-border-subtle, full stop — no per-instance colour. */
+    background: var(--k-surface-overlay);
+    border: 1px solid var(--k-border-subtle);
     border-radius: 9px;
     box-shadow: 0 18px 50px rgb(var(--k-shadow-rgb) / 0.75);
     width: 300px;
@@ -232,32 +234,16 @@
     width: 12px;
     height: 12px;
   }
-  .pop.sched :global(.ph) {
-    color: var(--konjo-ice);
-  }
-  .pop.guard :global(.ph) {
-    color: var(--konjo-sun);
-  }
-  .pop.eval :global(.ph) {
-    color: var(--konjo-jade);
-  }
-  .pop.config :global(.ph) {
-    color: var(--stack-violet, var(--k-chip-model));
-  }
-  .pop.max :global(.ph) {
-    color: var(--konjo-flame);
+  /* Sprint U1 4a: every popover header is --k-text-primary — no per-type
+     hue (was: sched=ice, guard=sun, eval=jade, config=violet, max/goal=flame). */
+  .pop :global(.ph) {
+    color: var(--k-text-primary);
   }
   /* Explicit size — an earlier draft left this SVG unsized and it rendered
      at the browser's ~300px intrinsic default. */
   .pop.max :global(.ph svg) {
     width: 13px;
     height: 13px;
-  }
-  .pop.goal :global(.ph) {
-    color: var(--konjo-flame);
-  }
-  .pop.overflow :global(.ph) {
-    color: rgb(var(--k-text-primary-rgb) / 0.7);
   }
   .pop :global(.pbody) {
     padding: 11px 13px;
@@ -285,35 +271,13 @@
       0 1px 0 rgb(var(--k-wash-rgb) / 0.04) inset;
     transition: none;
   }
-  .pop.sched :global(.apply) {
-    background: rgb(var(--k-chip-repo-rgb) / 0.15);
-    color: var(--konjo-ice);
-    border-color: rgb(var(--k-chip-repo-rgb) / 0.5);
-  }
-  .pop.guard :global(.apply) {
-    background: rgb(var(--k-chip-effort-rgb) / 0.15);
-    color: var(--konjo-sun);
-    border-color: rgb(var(--k-chip-effort-rgb) / 0.5);
-  }
-  .pop.eval :global(.apply) {
-    background: rgb(var(--k-preset-benchmark-rgb) / 0.15);
-    color: var(--konjo-jade);
-    border-color: rgb(var(--k-preset-benchmark-rgb) / 0.5);
-  }
-  .pop.config :global(.apply) {
-    background: rgb(var(--k-border-interactive-rgb) / 0.15);
-    color: var(--stack-violet, var(--k-chip-model));
-    border-color: rgb(var(--k-border-interactive-rgb) / 0.5);
-  }
-  .pop.max :global(.apply) {
-    background: rgb(var(--k-chip-loop-rgb) / 0.15);
-    color: var(--konjo-flame);
-    border-color: rgb(var(--k-chip-loop-rgb) / 0.4);
-  }
-  .pop.goal :global(.apply) {
-    background: rgb(var(--k-chip-loop-rgb) / 0.15);
-    color: var(--konjo-flame);
-    border-color: rgb(var(--k-chip-loop-rgb) / 0.4);
+  /* Sprint U1 4a: the apply button loses its per-type hue too (was:
+     sched=ice, guard=sun, eval=jade, config=violet, max/goal=flame) — same
+     neutral interactive-control treatment as every other control edge. */
+  .pop :global(.apply) {
+    background: rgb(var(--k-wash-rgb) / 0.06);
+    color: var(--k-text-primary);
+    border-color: var(--k-border-interactive);
   }
   @media (prefers-reduced-motion: reduce) {
     .pop {

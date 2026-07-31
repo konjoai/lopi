@@ -134,7 +134,7 @@
     height: 25px;
     border: none;
     background: transparent;
-    color: var(--konjo-flame);
+    color: var(--k-text-primary);
     font-size: 14px;
     cursor: pointer;
   }

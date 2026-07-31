@@ -168,9 +168,9 @@
     min-width: 29px;
     padding: 0 7px;
     border-radius: 6px;
-    border: 1px solid rgb(var(--k-border-interactive-rgb) / 0.45);
-    background: rgb(var(--k-border-interactive-rgb) / 0.1);
-    color: var(--stack-violet, var(--k-chip-model));
+    border: 1px solid var(--k-border-interactive);
+    background: transparent;
+    color: rgb(var(--k-text-primary-rgb) / 0.28);
     cursor: pointer;
     display: inline-flex;
     align-items: center;
@@ -184,8 +184,8 @@
   }
   .ib.tplib:hover,
   .ib.tplib.on {
-    border-color: rgb(var(--k-border-interactive-rgb) / 0.85);
-    background: rgb(var(--k-border-interactive-rgb) / 0.2);
+    background: rgb(var(--k-wash-rgb) / 0.08);
+    color: var(--k-text-primary);
   }
   .stmenu {
     position: fixed;
@@ -226,7 +226,7 @@
     height: 11px;
   }
   .sec.stacks .sechd {
-    color: var(--stack-violet, var(--k-chip-model));
+    color: var(--k-text-muted);
   }
   .sec.saved .sechd {
     color: rgb(var(--k-text-primary-rgb) / 0.66);
@@ -272,7 +272,7 @@
     max-width: 100%;
   }
   .sec.stacks .row .nm {
-    color: var(--stack-violet, var(--k-chip-model));
+    color: var(--k-text-primary);
   }
   .empty {
     font-family: var(--font-mono, monospace);

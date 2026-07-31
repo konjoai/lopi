@@ -95,8 +95,8 @@
     opacity: 0;
   }
   .echk.on .box {
-    background: var(--konjo-jade);
-    border-color: var(--konjo-jade);
+    background: var(--k-text-primary);
+    border-color: var(--k-text-primary);
   }
   .echk.on .box :global(svg) {
     opacity: 1;
@@ -178,12 +178,8 @@
     background: transparent;
   }
   .sbtn:hover {
-    color: var(--konjo-jade);
-    border-color: rgb(var(--k-preset-benchmark-rgb) / 0.55);
-    background: rgb(var(--k-preset-benchmark-rgb) / 0.06);
-  }
-  .sbtn.kcqf {
-    color: var(--konjo-sun);
-    border-color: rgb(var(--k-chip-effort-rgb) / 0.4);
+    color: var(--k-text-primary);
+    border-color: var(--k-border-interactive);
+    background: rgb(var(--k-wash-rgb) / 0.06);
   }
 </style>

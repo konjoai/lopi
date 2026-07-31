@@ -180,6 +180,134 @@ highlighting (`#3fb950`/`#f85149`, GitHub's own diff-view green/red) is a
 deliberately separate convention, not Loop-Stacks chip/danger drift — kept
 permanently separate, never consolidated.
 
+**Sprint scope, confirmed with the human before commit 2.** The brief's own
+screenshot/token examples center on Loop Stacks, but `check-tokens.mjs`'s
+no-raw-colour lint (Step 6) is written to cover all of `web/src` — 4x+ the
+file footprint PR #188's recon actually sampled (Budget, Overview, Config,
+Onboard, Schedules, and the `Forge` orb-visualization subsystem, none of
+which the recon touched). Asked rather than silently narrowing scope or
+silently absorbing the larger footprint: chose full `web/src`, with a
+narrow documented exemption for `phase-colors.ts`'s browser-DOM-free
+constant map (mirrors `app.css`'s `--phase-*` vars by design, asserted
+against by literal-string unit tests that would break if it read
+`getComputedStyle` instead — see `check-tokens.mjs`'s `EXEMPT_FILES`).
+
+**Commit 2 — palette swap.** `tokens.css`'s "official swap tokens" block
+moved from commit 1's today's-exact-value state to the target palette:
+surfaces (`#050505`→unchanged, `#0a0d0f`→`#111314`, `#0b0f11`→`#1a1c1e`),
+borders (`#1b2125`→`#2e3133`/`#44484b` split into subtle/strong,
+`rgba(183,155,255,.5)`→solid `#5a5f63`, see contrast finding below), text
+(`#f5f5f5`→`#eceff1`/`#b3b8bc`/`#888d91` for primary/secondary/muted,
+`--k-text-disabled` unchanged at `#65696d`), the five chip hues (teal
+`#00ffd4`→`#60d6b9`, ice `#00d4ff`→`#5fcdf5`, violet `#b79bff`→`#c9adfd`,
+sun `#ffcc00`→`#dbc368`, flame `#ff9500`→`#f7a974`), danger
+(`#ff0066`→`#f47b74`), and `--k-preset-benchmark` folded from its
+commit-1 literal override (`#00ff9d`) into the `var(--k-chip-alias)` alias
+the Step 2 spec always intended.
+
+**`--k-border-interactive` contrast gap found and fixed — the brief's own
+spec value, not a self-introduced bug.** `check-tokens.mjs`'s contrast
+check (3:1 floor for control-edge borders) failed on the swapped palette:
+`#5a5f63` (the brief's literal Step 2 value, cited there as "3.05:1
+against base") is 3.16:1 against `--k-surface-base` but only 2.89:1
+against `--k-surface-raised` and 2.65:1 against `--k-surface-overlay` —
+both surfaces 4c's own control-border instruction puts this exact token
+on. The brief's cited number was real but scoped to one surface out of
+three the token actually renders against. Raised with the human rather
+than silently picking a fix (three live options: lighten the border,
+lighten the two surfaces, or scope the check to base-only and document
+the gap) — chose lightening the border token, `#5a5f63` → `#686d71`
+(same hue family, uniform +14 per channel), which clears 3:1 against all
+three surfaces with margin (3.78 / 3.56 / 3.27 vs base/raised/overlay).
+Surfaces stay exactly as specified; only the one token that was actually
+under-verified moved.
+
+**Commit 2 — the four structural changes.**
+- **4a, popover accent removal.** `Dropdown.svelte`'s
+  `--konjo-accent-rgb`-per-field read (icon colour, trigger hover/open,
+  search-focus border, section-header colour, selected-item colour) is
+  gone — replaced with flat `--k-text-muted`/`--k-border-interactive`/
+  `--k-text-primary` throughout, and the selected item now signals via
+  `font-weight: 700` instead of colour. The parent side of the mechanism —
+  `ConfigDrawer.svelte`'s and `StackConfigPopover.svelte`'s six
+  `--konjo-accent-rgb: <hue>` assignments per field (`.chip.model`,
+  `.chip.effort`, `.chip.repo`, `.chip.branch`, `.chip.autonomy`,
+  `.chip.permission-mode`) — deleted outright, not overridden.
+  `Popover.svelte`'s shared `.ph` (header) and `.apply` (confirm button)
+  rules, inherited by all twelve named popovers/menus, collapsed from
+  five per-type hues (sched=ice, guard=sun, eval=jade, config=violet,
+  max/goal=flame) to one flat `--k-text-primary`/neutral-interactive
+  treatment. Each individual popover's own internal chrome accent —
+  `SchedulePopover`'s frequency toggle/AM-PM slider/raw-cron textarea
+  (ice), `GuardrailsPopover`'s numeric-stepper focus/chevron-hover (sun),
+  `MaxxPopover`'s bullet/bold accent (flame), `GoalPopover`'s stepper
+  icon (flame), `EvalsPopover`'s checkbox-checked state and one
+  special-cased suite button (jade/sun), `TemplatesMenu`/
+  `StackTemplatesMenu`'s trigger button and section headers (sun/violet),
+  `RunMenu`'s item icon (flame), `Combo`'s focus/hover/selected states
+  (ice) — neutralized the same way. Two categories deliberately kept
+  their hue, both content not chrome: `EvalsPopover`'s four `.tier-*`
+  badges (base/test/judge/suite are a real typed-category system, exactly
+  like the carve-out's "chips inside a popover keep their type colour"),
+  and `MaxxPopover`'s `.qbar-fill.ice`/`.jade` quota-bar fill (a semantic
+  state indicator, not decorative chrome).
+- **4b, status tags drop hue.** `StackCard.svelte`'s `.runtag`: `running`
+  → `--k-text-primary` (unchanged pulsing dot, the existing sole motion
+  budget); `queued`/`done` → `--k-text-muted` plus a new `◷`/`✓` marker
+  (`runtagMarker`, a small reactive template addition); `blocked` →
+  `--k-danger` plus `✕` (the one status that keeps hue, per spec);
+  `draft` → `--k-text-disabled`, no marker; the `draft.hot` sub-state
+  (not in the brief's table, but explicitly in its Step 5 screenshot
+  list) lost its teal accent too — `--k-text-secondary` instead, "no
+  exceptions" read literally. `ProposalCard.svelte`'s own `.runtag`
+  ("proposed" state, a different card type reusing the class name) got
+  the same neutral treatment for consistency, though it's not one of the
+  five canonical statuses.
+- **4c, control borders.** `.ib`/`.omini`'s base (rest-state) border moved
+  from the generic `rgb(var(--k-wash-rgb) / 0.11-0.16)` white wash onto
+  `var(--k-border-interactive)` in `StackCard.svelte`, `ProposalCard.svelte`,
+  `StackOutput.svelte`, `StackControlDock.svelte`. `TemplatesMenu`'s and
+  `StackTemplatesMenu`'s `.ib.tplib` trigger button — literally
+  4c's `tplbtn` — lost its persistent sun/violet highlight for the same
+  neutral `--k-border-interactive` treatment; its comment claiming
+  "always carries the sun accent...not conditional" was the exact
+  pre-existing design 4c's own "no exceptions" instruction overrides.
+- **4d, the `#231000` bug.** `button.press.w-8` (`+layout.svelte`) and
+  `.hrunbtn`/`.hrunchev` (`StackControlDock.svelte`, covers the recon's
+  named `span.hrunlbl` — a child span with no rule of its own, inheriting
+  `.hrunbtn`'s colour) — all three sites recolored to `--k-text-secondary`
+  (10.19:1, was ~1.1:1). Grepped the whole tree for the literal after the
+  fix: zero remaining. The dead `--k-ext-bug-231000` token was removed
+  from `tokens.css` rather than left as an orphan.
+
+**Token count.** `tokens.css`: 104 distinct custom properties by the end
+of commit 2 (the ~20 "official" swap tokens, the alpha constants, ~20 near-
+duplicate extension tokens found while routing literals, and the "other
+subsystems" diff/Forge palette left untouched). `web/src`: 746 `var(--k-*)`
+references, zero raw hex/rgb/rgba/hsl/oklch literals outside `tokens.css`
+and the two documented exemptions (`check-tokens.mjs`'s own check, which
+now runs clean).
+
+**`check-tokens.mjs` wired into CI, not just `npm run build`.** `web/`'s
+only existing CI job (`G1b · npm audit`, added Sprint S11 Phase 2) ran
+`npm audit` but never `npm run build` — the web app had zero build/type/
+colour CI coverage of any kind before this sprint. Added an `npm run
+build` step to that same job (already has `web/`'s npm ecosystem set up
+via `npm ci`, so no third redundant job) rather than a new job, since
+`package.json`'s `build` script now runs `check-tokens.mjs` before `vite
+build`.
+
+**Gate results.** `check-tokens.mjs`: contrast, CVD-collapse (Machado/
+Oliveira/Fernandes 2009 matrices, 18-unit Euclidean sRGB threshold
+matching the recon's own near-duplicate-cluster threshold; the five chip
+sigils — `:` `@` `;model` `;effort` `×` — plus danger's `✕` all carry
+distinct glyphs, so a CVD collapse would still need to fail this gate on
+its own, not lean on sigils to pass by default), and no-raw-colour all
+pass clean. `npm run build`/`npm run check` (0 errors)/`npm run test`
+(all suites) green after every structural change. `recon/u1/DIFF.md` has
+the full before/after evidence and the honest list of what Step 5's full
+per-control-state matrix this pass didn't reach.
+
 ## Sprint S13, Phase 0 (Quality-claim honesty pass) — stopped after Phase 0 per the brief's own stop rule
 
 **One-way doors, all recorded before the sprint's Phase-0 stop rule fired (5

@@ -75,8 +75,8 @@
     background: rgb(var(--k-wash-rgb) / 0.04);
   }
   .combo:focus-within {
-    border-color: rgb(var(--k-chip-repo-rgb) / 0.55);
-    background: rgb(var(--k-chip-repo-rgb) / 0.05);
+    border-color: var(--k-border-interactive);
+    background: rgb(var(--k-wash-rgb) / 0.05);
   }
   .cin {
     width: 26px;
@@ -103,11 +103,11 @@
   .cdd :global(svg) {
     width: 9px;
     height: 9px;
-    color: var(--konjo-ice);
+    color: var(--k-text-muted);
   }
   .cdd:hover,
   .cdd.open {
-    background: rgb(var(--k-chip-repo-rgb) / 0.1);
+    background: rgb(var(--k-wash-rgb) / 0.08);
   }
   .dmenu {
     position: absolute;
@@ -137,11 +137,11 @@
     text-align: left;
   }
   .dopt:hover {
-    background: rgb(var(--k-chip-repo-rgb) / 0.1);
-    color: var(--konjo-ice);
+    background: rgb(var(--k-wash-rgb) / 0.08);
+    color: var(--k-text-primary);
   }
   .dopt.on {
-    color: var(--konjo-ice);
-    background: rgb(var(--k-chip-repo-rgb) / 0.16);
+    color: var(--k-text-primary);
+    background: rgb(var(--k-wash-rgb) / 0.12);
   }
 </style>

@@ -7,52 +7,59 @@
  * and as a space-separated RGB triplet so Tailwind / rgb(var(...) / alpha)
  * call sites can apply alpha without a second literal.
  *
- * Commit 1 (this file's current state) sets every "official" token to
- * TODAY'S exact rendered value — mechanical routing only, zero visual
- * change. Commit 2 swaps the values in the "official swap tokens" block to
- * their target palette and performs the four structural changes (LEDGER.md,
- * Sprint U1). Everything below that block is either a near-duplicate
- * discovered while routing literals (kept distinct rather than force-merged
- * — see LEDGER.md) or a genuinely different subsystem's palette (Forge orb
- * states, code-diff highlighting) that this sprint does not redesign.
+ * Commit 1 set every "official" token to today's exact rendered value —
+ * mechanical routing only, zero visual change (see git history / LEDGER.md
+ * for that state). Commit 2 (this file's current state) swaps the "official
+ * swap tokens" block to the target palette and performs the four
+ * structural changes (LEDGER.md, Sprint U1). Everything below that block is
+ * either a near-duplicate discovered while routing literals (kept distinct
+ * rather than force-merged — see LEDGER.md) or a genuinely different
+ * subsystem's palette (Forge orb states, code-diff highlighting) that this
+ * sprint does not redesign.
  */
 :root {
   /* ── surfaces ────────────────────────────────────────────────────────── */
   --k-surface-base:      #050505;  --k-surface-base-rgb:      5 5 5;
-  --k-surface-raised:    #0a0d0f;  --k-surface-raised-rgb:    10 13 15;
-  --k-surface-overlay:   #0b0f11;  --k-surface-overlay-rgb:   11 15 17;
+  --k-surface-raised:    #111314;  --k-surface-raised-rgb:    17 19 20;
+  --k-surface-overlay:   #1a1c1e;  --k-surface-overlay-rgb:   26 28 30;
 
   /* ── borders ─────────────────────────────────────────────────────────── */
-  --k-border-subtle:     #1b2125;  --k-border-subtle-rgb:     27 33 37;
-  --k-border-strong:     #1b2125;  --k-border-strong-rgb:     27 33 37;
-  --k-border-interactive:     rgba(183, 155, 255, 0.5);
-  --k-border-interactive-rgb: 183 155 255;
-  --k-border-interactive-a:   0.5;
+  --k-border-subtle:     #2e3133;  --k-border-subtle-rgb:     46 49 51;
+  --k-border-strong:     #44484b;  --k-border-strong-rgb:     68 72 75;
+  /* Brief spec was #5a5f63 (3.05:1 vs --k-surface-base per its own text) —
+     verified only against base, not raised/overlay, where 4c's own control
+     borders also render: 2.89:1 / 2.65:1 there, both under the 3:1 floor.
+     Lightened to clear 3:1 against all three surfaces (raised the tightest
+     at 3.27:1); same hue family, human-approved over the alternative of
+     lightening the surfaces instead. See LEDGER.md. */
+  --k-border-interactive:     #686d71;
+  --k-border-interactive-rgb: 104 109 113;
 
   /* ── text ────────────────────────────────────────────────────────────── */
   --k-text-disabled:     #65696d;  --k-text-disabled-rgb:     101 105 109;
-  --k-text-muted:        #7c8b94;  --k-text-muted-rgb:        124 139 148;
-  --k-text-secondary:    #f5f5f5;  --k-text-secondary-rgb:    245 245 245;
-  --k-text-primary:      #f5f5f5;  --k-text-primary-rgb:      245 245 245;
+  --k-text-muted:        #888d91;  --k-text-muted-rgb:        136 141 145;
+  --k-text-secondary:    #b3b8bc;  --k-text-secondary-rgb:    179 184 188;
+  --k-text-primary:      #eceff1;  --k-text-primary-rgb:      236 239 241;
 
   /* ── the colour allowlist — the five chip hues + danger + focus ring ──── */
-  --k-chip-alias:        #00ffd4;  --k-chip-alias-rgb:        0 255 212;
-  --k-chip-repo:         #00d4ff;  --k-chip-repo-rgb:         0 212 255;
-  --k-chip-model:        #b79bff;  --k-chip-model-rgb:        183 155 255;
-  --k-chip-effort:       #ffcc00;  --k-chip-effort-rgb:       255 204 0;
-  --k-chip-loop:         #ff9500;  --k-chip-loop-rgb:         255 149 0;
-  --k-danger:            #ff0066;  --k-danger-rgb:            255 0 102;
+  --k-chip-alias:        #60d6b9;  --k-chip-alias-rgb:        96 214 185;
+  --k-chip-repo:         #5fcdf5;  --k-chip-repo-rgb:         95 205 245;
+  --k-chip-model:        #c9adfd;  --k-chip-model-rgb:        201 173 253;
+  --k-chip-effort:       #dbc368;  --k-chip-effort-rgb:       219 195 104;
+  --k-chip-loop:         #f7a974;  --k-chip-loop-rgb:         247 169 116;
+  --k-danger:            #f47b74;  --k-danger-rgb:            244 123 116;
   --k-focus-ring:        #85e4e4;  --k-focus-ring-rgb:        133 228 228;
 
   /* preset accents reuse the chip hues — a second channel, not a second
-     palette. benchmark is a literal override in commit 1 (today's jade is
-     NOT chip-alias's teal) and becomes the var() alias below in commit 2. */
+     palette. benchmark was a literal override in commit 1 (today's jade did
+     not match chip-alias's teal); commit 2 folds it into the var() alias,
+     per Step 2's original design — benchmark takes on chip-alias's teal. */
   --k-preset-research:   var(--k-chip-repo);
   --k-preset-implement:  var(--k-chip-loop);
   --k-preset-optimize:   var(--k-chip-effort);
   --k-preset-gain:       var(--k-chip-model);
-  --k-preset-benchmark:       #00ff9d;
-  --k-preset-benchmark-rgb:   0 255 157;
+  --k-preset-benchmark:       var(--k-chip-alias);
+  --k-preset-benchmark-rgb:   var(--k-chip-alias-rgb);
 
   /* standard alphas — chip/tag fills and borders only. Do not invent new
      ones; existing non-chip/tag call sites keep their own literal alpha
@@ -102,10 +109,6 @@
   --k-ext-flame-grad-c:        #ffa733;                                              /* StackControlDock second flame gradient */
   --k-ext-flame-grad-d:        #f08600;                                              /* second flame gradient */
   --k-ext-flame-grad-e:        #ffa11a;                                              /* xN stepper gradient (hover, second stop) */
-  /* Step 4d fix target — button.press.w-8 / span.hrunlbl render this on a
-     near-black gradient at ~1.1:1 contrast (recon/REPORT.md §3). Preserved
-     exactly for commit 1; commit 2 recolors both to --k-text-secondary. */
-  --k-ext-bug-231000:          #231000;  --k-ext-bug-231000-rgb: 35 16 0;
   --k-ext-code-text:           #e6edf3;                                              /* CodeBlock.svelte — GitHub-dark code fg */
   --k-ext-code-bg:             #0d1117;                                              /* CodeBlock.svelte — GitHub-dark canvas */
   --k-ext-dock-plum:           #1a1030;                                              /* StackControlDock — dark text-on-badge */

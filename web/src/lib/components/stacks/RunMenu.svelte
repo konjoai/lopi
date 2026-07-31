@@ -170,7 +170,7 @@
   .rm :global(svg) {
     width: 16px;
     height: 16px;
-    color: var(--konjo-flame);
+    color: var(--k-text-muted);
     flex: 0 0 auto;
   }
   .rm .rmn {

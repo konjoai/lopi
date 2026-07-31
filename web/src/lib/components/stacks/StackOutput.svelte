@@ -164,7 +164,7 @@
     width: 24px;
     height: 22px;
     border-radius: 5px;
-    border: 1px solid rgb(var(--k-wash-rgb) / 0.11);
+    border: 1px solid var(--k-border-interactive);
     background: transparent;
     color: rgb(var(--k-text-primary-rgb) / 0.28);
     cursor: pointer;

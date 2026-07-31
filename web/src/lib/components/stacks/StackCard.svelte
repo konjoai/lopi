@@ -674,6 +674,12 @@
       ? `running · iter ${card.iteration.current}/${card.iteration.total}`
       : card.status;
 
+  // Sprint U1 4b — status is now lightness plus a marker; hue is gone from
+  // every status but blocked. `running`'s own pulsing dot (`.runtag.running
+  // ::before`) is its marker, so it needs no glyph here.
+  $: runtagMarker =
+    card.status === 'queued' ? '◷ ' : card.status === 'done' ? '✓ ' : card.status === 'blocked' ? '✕ ' : '';
+
   function step(delta: number) {
     writeCard({ maxIterations: stepCardIterations(card.maxIterations, delta) });
   }
@@ -791,7 +797,7 @@
   on:dragleave={onDragLeave}
   on:drop={onDrop}
 >
-  <span class="runtag {card.status}">{isDraft ? 'new prompt' : statusLabel}</span>
+  <span class="runtag {card.status}">{runtagMarker}{isDraft ? 'new prompt' : statusLabel}</span>
 
   {#if isDraft}
     <div class="spec draftspec">
@@ -1349,12 +1355,14 @@
     border-color: rgb(var(--k-chip-alias-rgb) / 0.5);
     box-shadow: 0 0 18px rgb(var(--k-chip-alias-rgb) / 0.08);
   }
+  /* Sprint U1 4b: draft is --k-text-disabled, no marker, no exception for
+     the "hot" (recently-edited) sub-state — hue is gone here too. */
   .runtag.draft {
-    color: rgb(var(--k-text-primary-rgb) / 0.46);
+    color: var(--k-text-disabled);
   }
   .pc.draft.hot .runtag.draft {
-    color: var(--stack-teal, var(--k-chip-alias));
-    border-color: rgb(var(--k-chip-alias-rgb) / 0.45);
+    color: var(--k-text-secondary);
+    border-color: var(--k-border-interactive);
   }
   .draftspec {
     row-gap: 7px;
@@ -1526,29 +1534,32 @@
     color: rgb(var(--k-text-primary-rgb) / 0.46);
     z-index: 2;
   }
+  /* Sprint U1 4b: status runtag drops hue everywhere but blocked — lightness
+     plus a marker instead (◷ queued, the existing pulsing dot for running,
+     ✓ done, ✕ blocked). */
   .runtag.running {
-    color: var(--konjo-flame, var(--k-chip-loop));
-    border-color: rgb(var(--k-chip-loop-rgb) / 0.5);
+    color: var(--k-text-primary);
+    border-color: var(--k-border-interactive);
   }
   .runtag.running::before {
     content: '';
     width: 5px;
     height: 5px;
     border-radius: 50%;
-    background: var(--konjo-flame, var(--k-chip-loop));
-    box-shadow: 0 0 5px var(--konjo-ember, var(--k-ext-ember));
+    background: var(--k-text-primary);
+    box-shadow: 0 0 5px rgb(var(--k-text-primary-rgb) / 0.6);
     animation: pulse 1.4s infinite;
   }
   .runtag.queued {
-    color: var(--konjo-ice, var(--k-chip-repo));
-    border-color: rgb(var(--k-chip-repo-rgb) / 0.45);
+    color: var(--k-text-muted);
+    border-color: var(--k-border-subtle);
   }
   .runtag.done {
-    color: var(--konjo-jade, var(--k-preset-benchmark));
-    border-color: rgb(var(--k-preset-benchmark-rgb) / 0.45);
+    color: var(--k-text-muted);
+    border-color: var(--k-border-subtle);
   }
   .runtag.blocked {
-    color: var(--konjo-rose, var(--k-danger));
+    color: var(--k-danger);
     border-color: rgb(var(--k-danger-rgb) / 0.5);
   }
   /* Blocked-run inline reason (round 2, item 3) — only rendered when the
@@ -1745,7 +1756,7 @@
     min-width: 29px;
     padding: 0 7px;
     border-radius: 6px;
-    border: 1px solid rgb(var(--k-wash-rgb) / 0.11);
+    border: 1px solid var(--k-border-interactive);
     background: transparent;
     color: rgb(var(--k-text-primary-rgb) / 0.28);
     cursor: pointer;

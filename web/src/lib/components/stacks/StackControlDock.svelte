@@ -1182,7 +1182,7 @@
     min-width: 29px;
     padding: 0 7px;
     border-radius: 6px;
-    border: 1px solid rgb(var(--k-wash-rgb) / 0.16);
+    border: 1px solid var(--k-border-interactive);
     background: rgb(var(--k-shadow-rgb) / 0.18);
     color: rgb(var(--k-text-primary-rgb) / 0.66);
     cursor: pointer;
@@ -1463,7 +1463,7 @@
     gap: 6px;
     height: 34px;
     background: linear-gradient(180deg, var(--k-ext-flame-grad-a), var(--k-chip-loop));
-    color: var(--k-ext-bug-231000);
+    color: var(--k-text-secondary);
     border: none;
     padding: 0 14px;
     font-family: var(--font-mono, 'JetBrains Mono', monospace);
@@ -1484,7 +1484,7 @@
     background: linear-gradient(180deg, var(--k-ext-flame-grad-c), var(--k-ext-flame-grad-d));
     border: none;
     border-left: 1px solid rgb(var(--k-shadow-rgb) / 0.28);
-    color: var(--k-ext-bug-231000);
+    color: var(--k-text-secondary);
     padding: 0 9px;
     cursor: pointer;
     display: inline-flex;

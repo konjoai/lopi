@@ -222,18 +222,19 @@
   .tmbtn.labeled .lbl {
     letter-spacing: 0.02em;
   }
-  /* Icon-only, committed-card rendering: matches StackCard's `.ib` sizing
-     exactly but always carries the sun accent (Stack-Templates-1 §2a) — not
-     conditional on `open`, unlike sched/guard/eval which are dim until active. */
+  /* Icon-only, committed-card rendering: matches StackCard's `.ib` sizing.
+     Sprint U1 4c: this is a control edge (--tplbtn in the brief's own list),
+     so --k-border-interactive like every other .ib/.omini/.sb — the sun
+     accent this used to carry unconditionally is gone. */
   .ib.tplib {
     position: relative;
     height: 29px;
     min-width: 29px;
     padding: 0 7px;
     border-radius: 6px;
-    border: 1px solid rgb(var(--k-chip-effort-rgb) / 0.45);
-    background: rgb(var(--k-chip-effort-rgb) / 0.08);
-    color: var(--konjo-sun, var(--k-chip-effort));
+    border: 1px solid var(--k-border-interactive);
+    background: transparent;
+    color: rgb(var(--k-text-primary-rgb) / 0.28);
     cursor: pointer;
     display: inline-flex;
     align-items: center;
@@ -247,8 +248,8 @@
   }
   .ib.tplib:hover,
   .ib.tplib.on {
-    border-color: rgb(var(--k-chip-effort-rgb) / 0.85);
-    background: rgb(var(--k-chip-effort-rgb) / 0.18);
+    background: rgb(var(--k-wash-rgb) / 0.08);
+    color: var(--k-text-primary);
   }
   /* `fixed`, not `absolute` — escapes the pane's `.panestack{overflow-y:auto}`
      and the dock's `.dockbody{overflow:hidden}` collapse animation, exactly
@@ -292,11 +293,10 @@
     width: 11px;
     height: 11px;
   }
-  .sec.presets .sechd {
-    color: var(--stack-teal, var(--k-chip-alias));
-  }
+  /* Sprint U1 4a: section headers are --k-text-muted labels, no per-section hue. */
+  .sec.presets .sechd,
   .sec.prompts .sechd {
-    color: var(--konjo-sun, var(--k-chip-effort));
+    color: var(--k-text-muted);
   }
   .sec.save .sechd {
     color: rgb(var(--k-text-primary-rgb) / 0.46);
@@ -337,9 +337,6 @@
     overflow: hidden;
     text-overflow: ellipsis;
     max-width: 100%;
-  }
-  .sec.presets .row .nm {
-    color: var(--stack-teal, var(--k-chip-alias));
   }
   .empty {
     font-family: var(--font-mono, monospace);
