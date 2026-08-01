@@ -5,6 +5,69 @@ the `lopi` repo. Newest first.
 
 ---
 
+## Next Session -- after Track C (error-taxonomy ratchet + lopi-git migration, `[0.40.0]`)
+
+Track C shipped the gate S13R's error-taxonomy migration never got: a per-crate
+`anyhow::`-usage ratchet (`.konjo/error-taxonomy.txt` + `error_taxonomy_check.py`,
+wired hard into `konjo-gate.yml` and registered in `.konjo/profile.yml`'s `gates:`
+with a real kill-test), and finished converting `lopi-git`'s three remaining files
+(`manager.rs`, `rebase.rs`, `worktree.rs`) off `anyhow::` onto typed errors. Read
+first: `CHANGELOG.md`'s `[0.40.0]` entry, `LEDGER.md`'s "Track C" entry.
+
+**What's already done and should not be re-derived:** `.konjo/error-taxonomy.txt`
+holds a locked floor row for all 18 crates under `crates/` (seeded from a real
+measurement, not the S13R brief's carried-forward numbers -- `lopi-core` measures 1,
+not 2, see `LEDGER.md` for why); `error_taxonomy_check.py` kill-tested (KT-C.1)
+against both a planted regression in an already-migrated crate (rejected) and an
+unchanged unmigrated crate (accepted) in the same run
+(`.konjo/scripts/test_error_taxonomy_killtest.sh`); `lopi-git` is now fully migrated
+(`GitManagerError` in `manager.rs`, shared by `rebase.rs`; `WorktreeError` in
+`worktree.rs`; both exported from `lopi_git`'s crate root) and its `anyhow` dependency
+dropped from `Cargo.toml`; `lopi-git`'s error-taxonomy floor row is now 0.
+
+**First thing to do:** confirm `Cargo.toml`'s version (`0.40.0`) still matches
+`CHANGELOG.md`'s top entry before touching anything.
+
+**Carried forward, explicitly not silently dropped -- pick this up rather than
+starting something new:**
+
+1. **`lopi-memory`'s error taxonomy** -- 0 of 30 `anyhow` files converted (floor row
+   unchanged at 30). This was explicitly optional for Track C (deferred per that
+   track's own brief: "the ratchet itself is the deliverable, migration progress is a
+   bonus") and still needs its own dedicated session, not a squeeze-in. Look for a
+   natural seam first -- the `store/` module's ~30 sub-files (one file per table,
+   `crates/lopi-memory/src/store/*.rs`) likely share a shape (a `sqlx::Error` source,
+   maybe a `serde_json` parse source) that argues for one shared `MemoryStoreError`
+   enum rather than 30 bespoke ones; check whether `sqlite_pool.rs`'s
+   `SqlitePoolError` in `lopi-core` (the dual-pool connection-open error) is the right
+   thing to wrap or compose with, since `lopi-memory` almost certainly calls into it.
+   Convert a handful of files, run `cargo test -p lopi-memory` plus a full
+   `cargo build --workspace`, then lower `.konjo/error-taxonomy.txt`'s `lopi-memory`
+   row to match in the same commit -- never migrate files without also lowering the
+   floor, and never lower the floor without the migration backing it up.
+2. **Doc-link debt** (the rustdoc gate, still soft, named owner "whichever sprint
+   next touches `lopi-agent`/`lopi-orchestrator`/`lopi-mcp` docs," target "before
+   Sprint S14 closes" -- unchanged by this track). Re-run
+   `RUSTDOCFLAGS="-D missing_docs -D rustdoc::broken_intra_doc_links" cargo doc
+   --workspace --no-deps` to get the current exact list before starting.
+3. **`gate_polarity`'s one filed real defect**: `eval_runner.rs:29`'s
+   `evaluate_acceptance_gate` proceeds when no `Acceptance` is configured -- unchanged
+   by this track, still needs the explicit opt-in redesign
+   `verifier_error_proceeds(fail_open: bool)` already got.
+4. **Human confirm needed on PR #185**: `konjo-oneway confirm` for change id
+   `28173e350401` -- `.konjo/scripts/test_error_taxonomy_killtest.sh`'s
+   `cleanup() { rm -rf "$TMP" "$CORE_FIXTURE"; }` trips `_DIFF_RULES`'s
+   `destructive-shell` pattern (a benign `mktemp`-scoped test-fixture teardown, the
+   same idiom `test_coverage_floor_killtest.sh` already uses). See `LEDGER.md`'s
+   "Track C" entry for the exact command; the session's safety classifier blocks an
+   agent from completing the interactive confirm autonomously by design.
+
+**Non-goals, correctly not attempted:** migrating all 18 crates; touching the
+indexing or coverage ratchet floors/checkers; anything referencing S14 or later
+sprint work.
+
+---
+
 ## Next Session — after Sprint S13R (Phases A–F, `[0.39.0]`)
 
 Sprint S13R connected lopi to kiban v1.8.0 (Phase A), re-ran the Phase 0 audit and

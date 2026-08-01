@@ -1,9 +1,54 @@
 use crate::diff::DiffChecker;
-use anyhow::{Context, Result};
 use git2::{BranchType, Repository, ResetType};
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
+use thiserror::Error;
 use tokio::sync::Mutex;
+
+/// Errors from [`GitManager`] operations (Track C -- the error-taxonomy pass
+/// finishing what Sprint S13R, Phase E started in `diff.rs`; also used by
+/// `rebase.rs`, which extends `GitManager` from a sibling module).
+#[derive(Debug, Error)]
+pub enum GitManagerError {
+    /// Opening the repository at `path` failed.
+    #[error("opening git repo at {path}: {source}")]
+    OpenRepo {
+        /// The path that failed to open as a git repository.
+        path: PathBuf,
+        #[source]
+        source: git2::Error,
+    },
+    /// A git2 operation (branch, checkout, commit, reset, diff, status...) failed.
+    #[error("git operation failed: {0}")]
+    Git2(#[from] git2::Error),
+    /// A `tokio::task::spawn_blocking` closure panicked before returning.
+    #[error("join error in {context}: {source}")]
+    Join {
+        /// Which blocking operation this join failure came from.
+        context: &'static str,
+        #[source]
+        source: tokio::task::JoinError,
+    },
+    /// A subprocess (`git`, `gh`) could not be spawned or its output read.
+    #[error("invoking {command}: {source}")]
+    Spawn {
+        /// The command that failed to spawn, for the error message.
+        command: &'static str,
+        #[source]
+        source: std::io::Error,
+    },
+    /// A subprocess ran but exited non-zero.
+    #[error("{command} failed: {stderr}")]
+    CommandFailed {
+        /// The command that exited non-zero.
+        command: String,
+        /// Its captured stderr.
+        stderr: String,
+    },
+    /// The working-tree diff touched a forbidden or out-of-scope path.
+    #[error("diff scope: {0}")]
+    DiffScope(#[from] crate::diff::DiffScopeError),
+}
 
 /// Workspace-level mutex that serialises worktree creation.
 ///
@@ -22,11 +67,13 @@ impl GitManager {
     ///
     /// # Errors
     /// Returns `Err` if the path is not a valid git repository.
-    pub fn new(repo_path: impl AsRef<Path>) -> Result<Self> {
+    pub fn new(repo_path: impl AsRef<Path>) -> Result<Self, GitManagerError> {
         let p = repo_path.as_ref().to_path_buf();
         // Sanity-check that this is a real repo.
-        let _ =
-            Repository::open(&p).with_context(|| format!("opening git repo at {}", p.display()))?;
+        Repository::open(&p).map_err(|source| GitManagerError::OpenRepo {
+            path: p.clone(),
+            source,
+        })?;
         Ok(Self { repo_path: p })
     }
 
@@ -34,8 +81,11 @@ impl GitManager {
     ///
     /// # Errors
     /// Returns `Err` if the repository cannot be opened.
-    pub fn repo(&self) -> Result<Repository> {
-        Repository::open(&self.repo_path).context("opening git repo")
+    pub fn repo(&self) -> Result<Repository, GitManagerError> {
+        Repository::open(&self.repo_path).map_err(|source| GitManagerError::OpenRepo {
+            path: self.repo_path.clone(),
+            source,
+        })
     }
 
     /// Path to the repository this manager operates on. Used by sibling modules
@@ -48,7 +98,7 @@ impl GitManager {
     ///
     /// # Errors
     /// Returns `Err` if HEAD cannot be resolved or the commit cannot be read.
-    pub fn head_oid(&self) -> Result<String> {
+    pub fn head_oid(&self) -> Result<String, GitManagerError> {
         let repo = self.repo()?;
         let head = repo.head()?.peel_to_commit()?;
         Ok(head.id().to_string())
@@ -62,11 +112,11 @@ impl GitManager {
     ///
     /// # Errors
     /// Returns `Err` if the branch cannot be created or checked out.
-    pub async fn checkout_new_branch(&self, name: &str) -> Result<()> {
+    pub async fn checkout_new_branch(&self, name: &str) -> Result<(), GitManagerError> {
         let name = name.to_string();
         let repo_path = self.repo_path.clone();
         let _guard = WORKTREE_LOCK.lock().await;
-        tokio::task::spawn_blocking(move || -> Result<()> {
+        tokio::task::spawn_blocking(move || -> Result<(), GitManagerError> {
             let repo = Repository::open(&repo_path)?;
             let head_commit = repo.head()?.peel_to_commit()?;
             // If branch already exists, just check it out.
@@ -80,7 +130,10 @@ impl GitManager {
             Ok(())
         })
         .await
-        .context("join error in checkout_new_branch")??;
+        .map_err(|source| GitManagerError::Join {
+            context: "checkout_new_branch",
+            source,
+        })??;
         Ok(())
     }
 
@@ -97,11 +150,15 @@ impl GitManager {
     ///
     /// # Errors
     /// Returns `Err` if the diff touches forbidden or out-of-scope paths.
-    pub async fn check_diff_scope(&self, allowed: &[String], forbidden: &[String]) -> Result<()> {
+    pub async fn check_diff_scope(
+        &self,
+        allowed: &[String],
+        forbidden: &[String],
+    ) -> Result<(), GitManagerError> {
         let allowed = allowed.to_vec();
         let forbidden = forbidden.to_vec();
         let repo_path = self.repo_path.clone();
-        tokio::task::spawn_blocking(move || -> Result<()> {
+        tokio::task::spawn_blocking(move || -> Result<(), GitManagerError> {
             let repo = Repository::open(&repo_path)?;
             let mut paths: Vec<String> = vec![];
             // Diff workdir vs HEAD tree; if there's no HEAD yet, treat all index entries as additions.
@@ -123,7 +180,10 @@ impl GitManager {
             Ok(())
         })
         .await
-        .context("join error in check_diff_scope")??;
+        .map_err(|source| GitManagerError::Join {
+            context: "check_diff_scope",
+            source,
+        })??;
         Ok(())
     }
 
@@ -131,9 +191,9 @@ impl GitManager {
     ///
     /// # Errors
     /// Returns `Err` if the reset operation fails.
-    pub async fn hard_rollback(&self) -> Result<()> {
+    pub async fn hard_rollback(&self) -> Result<(), GitManagerError> {
         let repo_path = self.repo_path.clone();
-        tokio::task::spawn_blocking(move || -> Result<()> {
+        tokio::task::spawn_blocking(move || -> Result<(), GitManagerError> {
             let repo = Repository::open(&repo_path)?;
             let head = repo.head()?.peel_to_commit()?;
             repo.reset(head.as_object(), ResetType::Hard, None)?;
@@ -156,7 +216,10 @@ impl GitManager {
             Ok(())
         })
         .await
-        .context("join error in hard_rollback")??;
+        .map_err(|source| GitManagerError::Join {
+            context: "hard_rollback",
+            source,
+        })??;
         Ok(())
     }
 
@@ -164,9 +227,9 @@ impl GitManager {
     ///
     /// # Errors
     /// Returns `Err` if the checkout operation fails.
-    pub async fn checkout_default(&self) -> Result<()> {
+    pub async fn checkout_default(&self) -> Result<(), GitManagerError> {
         let repo_path = self.repo_path.clone();
-        tokio::task::spawn_blocking(move || -> Result<()> {
+        tokio::task::spawn_blocking(move || -> Result<(), GitManagerError> {
             let repo = Repository::open(&repo_path)?;
             for candidate in ["main", "master"] {
                 let refname = format!("refs/heads/{candidate}");
@@ -179,7 +242,10 @@ impl GitManager {
             Ok(())
         })
         .await
-        .context("join error in checkout_default")??;
+        .map_err(|source| GitManagerError::Join {
+            context: "checkout_default",
+            source,
+        })??;
         Ok(())
     }
 
@@ -187,10 +253,10 @@ impl GitManager {
     ///
     /// # Errors
     /// Returns `Err` if staging, tree writing, or committing fails.
-    pub async fn commit_all(&self, message: &str) -> Result<String> {
+    pub async fn commit_all(&self, message: &str) -> Result<String, GitManagerError> {
         let message = message.to_string();
         let repo_path = self.repo_path.clone();
-        let oid = tokio::task::spawn_blocking(move || -> Result<String> {
+        let oid = tokio::task::spawn_blocking(move || -> Result<String, GitManagerError> {
             let repo = Repository::open(&repo_path)?;
             let mut index = repo.index()?;
             index.add_all(["*"].iter(), git2::IndexAddOption::DEFAULT, None)?;
@@ -206,7 +272,10 @@ impl GitManager {
             Ok(oid.to_string())
         })
         .await
-        .context("join error in commit_all")??;
+        .map_err(|source| GitManagerError::Join {
+            context: "commit_all",
+            source,
+        })??;
         Ok(oid)
     }
 
@@ -214,7 +283,7 @@ impl GitManager {
     ///
     /// # Errors
     /// Returns `Err` if `git push` fails.
-    pub async fn push_branch(&self, branch: &str) -> Result<()> {
+    pub async fn push_branch(&self, branch: &str) -> Result<(), GitManagerError> {
         let push = tokio::process::Command::new("git")
             .arg("-C")
             .arg(&self.repo_path)
@@ -224,9 +293,15 @@ impl GitManager {
             .arg(branch)
             .output()
             .await
-            .context("invoking git push")?;
+            .map_err(|source| GitManagerError::Spawn {
+                command: "git push",
+                source,
+            })?;
         if !push.status.success() {
-            anyhow::bail!("git push failed: {}", String::from_utf8_lossy(&push.stderr));
+            return Err(GitManagerError::CommandFailed {
+                command: "git push".to_string(),
+                stderr: String::from_utf8_lossy(&push.stderr).into_owned(),
+            });
         }
         Ok(())
     }
@@ -235,7 +310,7 @@ impl GitManager {
     ///
     /// # Errors
     /// Returns `Err` if `git push` or `gh pr create` fails.
-    pub async fn open_pr(&self, branch: &str, title: &str) -> Result<String> {
+    pub async fn open_pr(&self, branch: &str, title: &str) -> Result<String, GitManagerError> {
         self.create_pr(branch, title, false).await
     }
 
@@ -246,13 +321,22 @@ impl GitManager {
     ///
     /// # Errors
     /// Returns `Err` if `git push` or `gh pr create` fails.
-    pub async fn open_draft_pr(&self, branch: &str, title: &str) -> Result<String> {
+    pub async fn open_draft_pr(
+        &self,
+        branch: &str,
+        title: &str,
+    ) -> Result<String, GitManagerError> {
         self.create_pr(branch, title, true).await
     }
 
     /// Push the branch and create a PR. When `draft` is set the PR is opened
     /// as a draft (`gh pr create --draft`).
-    async fn create_pr(&self, branch: &str, title: &str, draft: bool) -> Result<String> {
+    async fn create_pr(
+        &self,
+        branch: &str,
+        title: &str,
+        draft: bool,
+    ) -> Result<String, GitManagerError> {
         self.push_branch(branch).await?;
         let body = format!("Automated PR opened by lopi.\n\nBranch: `{branch}`\n");
         let args = pr_create_args(title, &body, branch, draft);
@@ -261,12 +345,15 @@ impl GitManager {
             .current_dir(&self.repo_path)
             .output()
             .await
-            .context("invoking gh pr create")?;
+            .map_err(|source| GitManagerError::Spawn {
+                command: "gh pr create",
+                source,
+            })?;
         if !out.status.success() {
-            anyhow::bail!(
-                "gh pr create failed: {}",
-                String::from_utf8_lossy(&out.stderr)
-            );
+            return Err(GitManagerError::CommandFailed {
+                command: "gh pr create".to_string(),
+                stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
+            });
         }
         let url = String::from_utf8_lossy(&out.stdout).trim().to_string();
         Ok(url)
@@ -280,19 +367,22 @@ impl GitManager {
     ///
     /// # Errors
     /// Returns `Err` if `gh pr merge` fails.
-    pub async fn auto_merge(&self, branch: &str) -> Result<()> {
+    pub async fn auto_merge(&self, branch: &str) -> Result<(), GitManagerError> {
         let args = pr_merge_args(branch);
         let out = tokio::process::Command::new("gh")
             .args(&args)
             .current_dir(&self.repo_path)
             .output()
             .await
-            .context("invoking gh pr merge")?;
+            .map_err(|source| GitManagerError::Spawn {
+                command: "gh pr merge",
+                source,
+            })?;
         if !out.status.success() {
-            anyhow::bail!(
-                "gh pr merge failed: {}",
-                String::from_utf8_lossy(&out.stderr)
-            );
+            return Err(GitManagerError::CommandFailed {
+                command: "gh pr merge".to_string(),
+                stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
+            });
         }
         Ok(())
     }

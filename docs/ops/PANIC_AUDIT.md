@@ -1,12 +1,21 @@
 ---
 decays: state
-verified-against: 1dd471d
+verified-against: e930642
 verified-date: 2026-07-29
 ---
 
 # Panic audit — the trustworthy count, and why grep couldn't give it to you
 
-Verified against: `1dd471d` · 2026-07-29 (re-verified again; Sprint S13R's own 9-commit
+Verified against: `e930642` · 2026-07-29 (re-verified again; Track C's error-taxonomy
+migration (anyhow -> thiserror, `lopi-git`'s `manager.rs`/`rebase.rs`/`worktree.rs`)
+pushed this past the 20-commit cap, not the zero-unwrap claim losing accuracy.
+Re-confirmed live, not assumed: this PR's own CI ran the exact cited deny-flag `cargo
+clippy --workspace --all-targets -- -D warnings -D clippy::unwrap_used
+-D clippy::expect_used -D clippy::panic -D clippy::todo -D clippy::dbg_macro` (`repo:clippy`
+in `konjo-gate.yml`'s G1) clean, 0 net-new findings, across every crate including the
+3 newly-converted `lopi-git` files; a typed-error conversion away from `anyhow::` removes
+`.unwrap()`/`.expect()` call sites, it does not add them. Prior banner (`1dd471d` ·
+2026-07-29, re-verified again; Sprint S13R's own 9-commit
 volume pushed this past the 20-commit cap, not the zero-unwrap claim losing accuracy.
 Re-confirmed live, not assumed: this sprint ran the exact cited deny-flag `cargo clippy
 --workspace --all-targets --all-features -- -D warnings -D clippy::unwrap_used

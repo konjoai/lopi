@@ -5,6 +5,74 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## Track C -- Error-taxonomy ratchet + `lopi-git` anyhow migration
+
+**Decision 1: the error-taxonomy ratchet is per-crate, not a single
+workspace-wide total like `indexing-floor.txt`/`function-length-ceiling.txt`.**
+`.konjo/error-taxonomy.txt` holds one `crate-name: N` row per crate under
+`crates/`, and `error_taxonomy_check.py` compares each crate's measured count
+against its own locked row independently. **Why:** kill-tested (KT-C.1)
+against the alternative first -- a single summed total cannot distinguish "a
+regression in an already-migrated crate" from "zero progress in a crate that
+was never migrated," because both cases just move one shared number up or
+down by the same net amount from the checker's point of view. A per-crate
+floor makes `lopi-core` (floor 1) unable to regress even while `lopi-memory`
+(floor 30, untouched) sits exactly where it's always been -- proven live: see
+`.konjo/scripts/test_error_taxonomy_killtest.sh`, which fails a same-run
+regression in `lopi-core` while accepting `lopi-memory`'s unchanged count in
+the same invocation. **Constrains future work:** a future sprint adding a new
+crate must add its row to `.konjo/error-taxonomy.txt` in the same PR -- the
+checker already treats an unrecorded crate with nonzero `anyhow::` usage as a
+hard failure (`unrecorded` list in `error_taxonomy_check.py`), so this isn't
+optional, but don't "fix" that by collapsing back to one workspace total.
+
+**Decision 2: the ratchet counts files, not `anyhow::` occurrences, per
+crate, and strips comment-only lines the same way `indexing_floor_check.py`
+does -- it does not look inside `#[cfg(test)] mod tests { ... }` blocks.**
+This is a deliberate consistency choice with the existing ratchets, not an
+oversight: `lopi-core/src/models.rs`'s only `anyhow::` reference lives inside
+a `#[cfg(test)]` block and still counts (floor seeded at 1, not the
+S13R-brief-carried "2" -- `sqlite_pool.rs`'s only match is a doc comment,
+correctly excluded by comment stripping). **Why:** matching the established
+method exactly means all three per-crate/per-workspace ratchets
+(`indexing-floor`, `function-length`, `error-taxonomy`) agree on what "test
+code" means, rather than each inventing its own boundary. **Constrains
+future work:** don't add `#[cfg(test)]`-aware parsing to only this checker
+without doing the same to the other two -- if that precision is ever worth
+adding, add it to all three floor scripts' shared filtering convention at
+once, or the three ratchets will silently disagree on what they're counting.
+
+**Decision 3: kept the `error-taxonomy` gate at G4/repo-native, mirroring
+`indexing-floor` and `function-length` rather than promoting it into kiban's
+dispatcher.** Same reasoning those two already recorded: no generic
+`newonly`/`contract_gates` mechanism in kiban currently runs a custom
+per-crate Python ratchet, and building that promotion path is out of scope
+for this track. Registered as a real `gates:` `rejects_test` entry
+(`.konjo/scripts/test_error_taxonomy_killtest.sh`) so `gate_can_fail` has
+real teeth on it immediately, same as `function-length`/`indexing-floor`.
+
+**CI-triage note (PR #185): `one_way_door` fires on a benign kill-test
+cleanup trap, not fabricated around.** `konjo-gates`' real GitHub Actions
+run flags `diff:destructive-shell` (change id `28173e350401`) on
+`.konjo/scripts/test_error_taxonomy_killtest.sh`'s
+`cleanup() { rm -rf "$TMP" "$CORE_FIXTURE"; }` -- the same `mktemp`-scoped
+test-fixture teardown idiom `.konjo/scripts/test_coverage_floor_killtest.sh`
+already uses, matched by `_DIFF_RULES`'s literal `rm -rf` substring pattern
+with no scope awareness of "temp-dir cleanup" vs. a real destructive repo
+action. `konjo-oneway confirm` needs a human-typed `CONFIRM` token plus
+justification by design; the session's safety classifier correctly blocked
+an attempt to complete that flow autonomously here (same shape hit on
+`squish`/`vectro`'s Track A2/A1 PRs this same work order). Needs a human to
+run, from this branch:
+```
+FILES=$(git diff --name-only origin/main...HEAD | sort)
+python3 <kiban-clone>/bin/konjo-oneway confirm --files $FILES --diff <(git diff origin/main...HEAD)
+```
+and add the resulting `Konjo-Acknowledged-Oneway: 28173e350401` trailer to
+a commit. Everything else in this run passed (`repo:clippy`,
+`repo:cargo-audit`, `repo:cargo-deny`, `repo:fmt-check`, `polarity`,
+`can_fail` -- confirming KT-C.1's `rejects_test` registration is real).
+
 ## Sprint S13, Phase 0 (Quality-claim honesty pass) — stopped after Phase 0 per the brief's own stop rule
 
 **One-way doors, all recorded before the sprint's Phase-0 stop rule fired (5

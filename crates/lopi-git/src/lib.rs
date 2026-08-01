@@ -12,5 +12,5 @@ pub mod rebase;
 pub mod worktree;
 
 pub use diff::DiffChecker;
-pub use manager::GitManager;
-pub use worktree::{GcReport, Worktree, WorktreeManager};
+pub use manager::{GitManager, GitManagerError};
+pub use worktree::{GcReport, Worktree, WorktreeError, WorktreeManager};

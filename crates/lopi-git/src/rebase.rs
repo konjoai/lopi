@@ -10,28 +10,30 @@
 //! path through its `repo_path()` accessor. They shell out to `git` (consistent
 //! with the manager's push/PR helpers) rather than using libgit2's rebase API.
 
-use crate::manager::GitManager;
-use anyhow::{Context, Result};
+use crate::manager::{GitManager, GitManagerError};
 
 impl GitManager {
     /// Rebase the current branch onto `base` (e.g. `"origin/main"`).
     ///
     /// Returns the conflicting repo-relative paths when the rebase hits
-    /// conflicts — **aborting** the rebase so the worktree is left clean — or an
+    /// conflicts -- **aborting** the rebase so the worktree is left clean -- or an
     /// empty vec on a clean rebase. The empty/non-empty split lets the caller map
     /// a conflict to a structured status instead of silently failing.
     ///
     /// # Errors
     /// Returns `Err` if the rebase fails for a non-conflict reason (e.g. `base`
     /// does not exist), or if git cannot be invoked.
-    pub async fn rebase_onto(&self, base: &str) -> Result<Vec<String>> {
+    pub async fn rebase_onto(&self, base: &str) -> Result<Vec<String>, GitManagerError> {
         let out = tokio::process::Command::new("git")
             .arg("-C")
             .arg(self.repo_path())
             .args(rebase_args(base))
             .output()
             .await
-            .context("invoking git rebase")?;
+            .map_err(|source| GitManagerError::Spawn {
+                command: "git rebase",
+                source,
+            })?;
         if out.status.success() {
             return Ok(Vec::new());
         }
@@ -41,10 +43,10 @@ impl GitManager {
             tracing::warn!("git rebase --abort failed: {e}");
         }
         if conflicts.is_empty() {
-            anyhow::bail!(
-                "git rebase {base} failed: {}",
-                String::from_utf8_lossy(&out.stderr)
-            );
+            return Err(GitManagerError::CommandFailed {
+                command: format!("git rebase {base}"),
+                stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
+            });
         }
         Ok(conflicts)
     }
@@ -60,7 +62,7 @@ impl GitManager {
     ///
     /// # Errors
     /// Returns `Err` only if a resolvable rebase fails for a non-conflict reason.
-    pub async fn rebase_onto_default(&self) -> Result<Vec<String>> {
+    pub async fn rebase_onto_default(&self) -> Result<Vec<String>, GitManagerError> {
         // Best-effort refresh; offline / no-remote repos just skip it.
         let _ = tokio::process::Command::new("git")
             .arg("-C")
@@ -97,14 +99,17 @@ impl GitManager {
     }
 
     /// Repo-relative paths currently in an unmerged (conflicted) state.
-    async fn unmerged_paths(&self) -> Result<Vec<String>> {
+    async fn unmerged_paths(&self) -> Result<Vec<String>, GitManagerError> {
         let out = tokio::process::Command::new("git")
             .arg("-C")
             .arg(self.repo_path())
             .args(["diff", "--name-only", "--diff-filter=U"])
             .output()
             .await
-            .context("invoking git diff for conflicts")?;
+            .map_err(|source| GitManagerError::Spawn {
+                command: "git diff (conflicts)",
+                source,
+            })?;
         Ok(String::from_utf8_lossy(&out.stdout)
             .lines()
             .map(str::trim)
@@ -114,16 +119,22 @@ impl GitManager {
     }
 
     /// Abort an in-progress rebase, restoring the pre-rebase worktree state.
-    async fn rebase_abort(&self) -> Result<()> {
+    async fn rebase_abort(&self) -> Result<(), GitManagerError> {
         let out = tokio::process::Command::new("git")
             .arg("-C")
             .arg(self.repo_path())
             .args(["rebase", "--abort"])
             .output()
             .await
-            .context("invoking git rebase --abort")?;
+            .map_err(|source| GitManagerError::Spawn {
+                command: "git rebase --abort",
+                source,
+            })?;
         if !out.status.success() {
-            anyhow::bail!("{}", String::from_utf8_lossy(&out.stderr));
+            return Err(GitManagerError::CommandFailed {
+                command: "git rebase --abort".to_string(),
+                stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
+            });
         }
         Ok(())
     }
