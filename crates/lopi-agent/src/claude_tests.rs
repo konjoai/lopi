@@ -198,6 +198,17 @@ fn with_permission_mode_drops_unrecognized_values() {
     assert_eq!(c.permission_mode, None);
 }
 
+// Sprint P1 PF-3/section 1 kill-test — confirmed live (outside this suite,
+// costs a real `claude -p` call, same discipline `verifier_cli.rs`'s
+// KT-1.1/1.2/1.3 doc comments use): a `ClaudeCode` built exactly the way
+// `ToolProfile::Readonly` configures it (`with_permission_mode("dontAsk")`
+// + `with_allowed_tools(lopi_core::READONLY_ALLOWED_TOOLS)`), instructed to
+// write a file, had the `Write` call denied
+// (`permission_denials: [{"tool_name":"Write",...}]`) and terminated
+// cleanly (`terminal_reason: "completed"`) rather than stalling — the file
+// was never created. See `LEDGER.md`'s Review-Pipeline-Phase-1 entry for
+// the full transcript.
+
 #[test]
 fn with_permission_mode_accepts_every_headless_safe_value() {
     for mode in ["bypassPermissions", "auto", "acceptEdits", "dontAsk"] {

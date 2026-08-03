@@ -5,6 +5,64 @@ the `lopi` repo. Newest first.
 
 ---
 
+## Next Session, after Sprint P1 (Planner/Executor split, `[0.41.0]`)
+
+Sprint P1 (kiban's `KONJO_REVIEW_PIPELINE_PLAN.md` Phase 1 companion doc) built
+`ToolProfile` (`Readonly`/`Mutating` on `Task`, centrally enforced at `run_loop.rs`'s
+one `ClaudeCode` construction site), `PlanArtifact` (schema in kiban's
+`schemas/plan_artifact.schema.json`, mirrored structurally in `lopi_core::PlanArtifact`
+so an empty `scope` cannot be constructed by any path), and
+`lopi_agent::planner_executor` (a readonly Planner spawn, an Executor spawn that
+receives only the plan artifact and never the raw goal, both live-confirmed end to
+end). Read first: `CHANGELOG.md`'s `[0.41.0]` entry and `LEDGER.md`'s
+`Review-Pipeline-Phase-1` entry (the full PF-1 entry-point table lives there).
+
+**What's already done and should not be re-derived:** the PF-1 entry-point audit (12
+Task-construction paths, 6 live in the deployed binary, `permission_mode` already
+centralized, `RepoProfile` confirmed inconsistent and pre-existing, `allow_self_modify`
+confirmed enforced at only 2 of 12 paths); PF-2 and PF-3 both passed (central
+`ToolProfile` enforcement is reachable without the broader `ClaudeCode` refactor that
+still blocks the cost-circuit-breaker; `DontAsk` plus the read-only allow-list
+genuinely denies writes, confirmed live twice); `PlanArtifact`'s TOON round-trip;
+kiban's `pr_telemetry.py` four new fields (`predicted_tier`, `planner_scope`,
+`planner_model`, `planner_commit`), populated and verified with one real end-to-end
+record.
+
+**First thing to do:** confirm `VERSION` (`0.41.0`) still matches `CHANGELOG.md`'s top
+entry before touching anything, same as every prior sprint's handoff.
+
+**Explicitly not done this sprint, carried forward:**
+
+1. **Wiring `planner_executor` into `AgentRunner::run()`'s default retry loop.** The
+   module is new, additive, and independently tested (including one live end-to-end
+   run), but `run_loop.rs`'s existing plan/implement/test/score/retry machinery
+   (progress gates, stability harness, verifier, adaptive retry, successor tasks) is
+   substantial. A future sprint should design this integration deliberately: does the
+   Planner replace the existing `plan_via_api`/`plan_streamed` step outright, or run
+   as an optional mode gated by a new `Task` field? Read `LEDGER.md`'s
+   `Review-Pipeline-Phase-1` entry before starting.
+2. **`RepoProfile` inconsistency across entry points** (MCP `lopi_submit_task` and the
+   web `POST /api/tasks` handler both skip it entirely, and both mis-set/omit
+   `task.source`, defaulting to `Cli`). Pre-existing, surfaced by this sprint's audit,
+   not fixed. `allowed_dirs`/`forbidden_dirs` were never a hard boundary anywhere
+   regardless (advisory prompt text plus a post-hoc, detect-not-block diff-scope
+   check), so closing this gap alone would not make directory scope enforced; that
+   needs its own design, not a quick patch.
+3. **`allow_self_modify` enforced at only 2 of ~12 entry points** (`lopi run`, `lopi
+   bypass`), `pub(crate)` to the `src/` binary so no library crate can call it. A
+   future sprint deciding to close this needs to decide first whether the check
+   becomes library-crate-visible at all, or stays a binary-only convention documented
+   as such.
+4. **Keeping `planner_executor.rs`'s `PLAN_ARTIFACT_JSON_SCHEMA` literal in sync with
+   kiban's `schemas/plan_artifact.schema.json` by hand.** No fixture suite checks the
+   two match yet (Phase 3, section 7.3's second level); a schema-shape change in
+   kiban must be mirrored here by hand until then.
+
+Any critic, router, or gate remains Phase 3 scope; do not start that work from this
+sprint's code.
+
+---
+
 ## Next Session — after Sprint S13R (Phases A–F, `[0.39.0]`)
 
 Sprint S13R connected lopi to kiban v1.8.0 (Phase A), re-ran the Phase 0 audit and

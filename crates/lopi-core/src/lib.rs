@@ -66,6 +66,10 @@ pub mod models;
 /// Permission mode — how much a `claude -p` worker session may act on tool
 /// calls without a human answering a prompt.
 pub mod permission_mode;
+/// Sprint P1 (review-pipeline plan, Phase 1, section 2) — the structured
+/// plan artifact a readonly Planner emits and the Executor consumes as its
+/// system prompt. Schema source of truth: `kiban/schemas/plan_artifact.schema.json`.
+pub mod plan_artifact;
 /// Machine-checkable label for where a user-facing metric's value came from
 /// (measured / reported / estimated / unavailable) — see
 /// [`provenance::Provenance`]. Distinct from
@@ -110,6 +114,10 @@ pub mod task_source;
 pub mod template;
 /// UTF-8-safe string truncation for excerpting arbitrary text.
 pub mod text;
+/// Sprint P1 (review-pipeline plan, Phase 1) — restricts which tools an agent
+/// spawn may call. Orthogonal to `permission_mode` (how much) and
+/// `RepoProfile` (directory scope, never a hard boundary in this codebase).
+pub mod tool_profile;
 /// Orchestration topology hints (Sprint T).
 pub mod topology;
 
@@ -131,6 +139,7 @@ pub use gain::{GainDecision, GainRule, GainSample};
 pub use loop_config::{ContextMode, IsolationMode, LoopConfig};
 pub use models::{fallback_models, ModelInfo};
 pub use permission_mode::{effective_permission_mode, PermissionMode, PermissionModeError};
+pub use plan_artifact::{PlanArtifact, PlanArtifactError};
 pub use provenance::Provenance;
 pub use redact::{redact_secrets, scan_for_secrets};
 pub use report::{ReportChannel, ReportChannelError};
@@ -148,6 +157,7 @@ pub use successor::{
 pub use task::{Priority, Rubric, Task, TaskId, TaskSource, TaskStatus, VerifierVerdict};
 pub use template::{resolve as resolve_template, TemplateError};
 pub use text::safe_truncate;
+pub use tool_profile::{ToolProfile, READONLY_ALLOWED_TOOLS};
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
