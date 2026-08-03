@@ -5,6 +5,30 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## Review-Pipeline-Phase-2 -- PF-0: full-workspace mutation baseline launched
+
+Sprint P2 (kiban's `KONJO_REVIEW_PIPELINE_PLAN.md` Phase 2 companion doc), pre-flight
+PF-0. First launch attempt (`--timeout 60`, 2026-08-03T21:28:24Z) **failed outright**:
+`--timeout` bounds every cargo command cargo-mutants runs, including the one-time
+baseline (unmutated-tree) test pass used to calibrate per-mutant timing, and lopi's
+own full-workspace `cargo test` takes longer than 60s cold -- confirmed from
+`mutants.out/debug.log`: `*** result: Timeout` on the baseline pass at the 60s mark,
+followed by `ERROR ... cargo test failed in an unmutated tree, so no mutants were
+tested`. Zero mutants ran; the run exited before producing anything. Relaunched
+immediately, `--timeout` omitted entirely so cargo-mutants measures the real baseline
+test time itself and auto-scales the per-mutant timeout from it (its own documented
+behavior), 2026-08-03T21:35:25Z: `cargo mutants --workspace --jobs 4 -o
+bench_results/lopi/20260803T213525Z_full_baseline`.
+
+**5,315 mutants found** -- not the 1,500-2,000 the plan's own §0.1 estimated from the
+109-mutant partial sample. No completion estimate is recorded here yet (the corrected
+run just started); this entry will be updated with actual wall-clock once it finishes,
+or with elapsed-time-and-mutant-count-so-far if this session ends before it does. Per
+the brief's own instruction: a session that ends before completion must not report the
+partial as the baseline, and this run -- ~49x the prior 109-mutant sample -- makes that
+discipline count for more than usual; KT-D (Phase 2's own kill-test) is blocked on this
+run's completion, not on the P0 partial.
+
 ## Review-Pipeline-Phase-1 -- Planner/Executor split: tool profiles, plan artifact, handoff
 
 Sprint P1, the companion doc to kiban's `KONJO_REVIEW_PIPELINE_PLAN.md` Phase 1.
