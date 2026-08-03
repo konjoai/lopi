@@ -5,6 +5,212 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## Review-Pipeline-Phase-1 -- Planner/Executor split: tool profiles, plan artifact, handoff
+
+Sprint P1, the companion doc to kiban's `KONJO_REVIEW_PIPELINE_PLAN.md` Phase 1.
+Measured against kiban `da11801`, lopi `6b5743`, both 2026-08-03. No critic, router,
+or gate in this sprint (Phase 3 scope); scope is the readonly Planner, the plan
+artifact, and central tool-profile enforcement.
+
+### PF-1: entry-point inventory (the deliverable, not a warm-up)
+
+Every path that constructs a `Task` and reaches an agent spawn, traced file:line.
+
+**Core types confirmed:** `Task` (`crates/lopi-core/src/task.rs:164`, ~35 fields, no
+`allow_self_modify` field; that lives on `LopiConfig.lopi.allow_self_modify: bool`,
+`config.rs:66-67`, default false, a process/global knob not a per-task one).
+`RepoProfile` (`config.rs:356-403`) has no `permission_mode` field and no
+`allow_self_modify` field; `.apply()` only ever touches `allowed_dirs`,
+`forbidden_dirs`, `constraints`, `max_retries`. `PermissionMode::parse`
+(`permission_mode.rs:75-83`) confirmed rejecting `"plan"`/`"manual"`, unit-tested.
+`effective_permission_mode` (`permission_mode.rs:117-126`) downgrades to `DontAsk`
+unconditionally for `is_untrusted_source` (true only for `Webhook`/`Telegram`).
+
+**The one real choke point, before this sprint: `permission_mode`, and only
+`permission_mode`.** `ClaudeCode` (`crates/lopi-agent/src/claude.rs:71-120`) has no
+`allowed_dirs`/`forbidden_dirs`/`allow_self_modify` field at all. Its only production
+construction site is `crates/lopi-agent/src/runner/run_loop.rs:109-147`, inside
+`AgentRunner::run()`'s per-attempt loop (confirmed: zero other `ClaudeCode::new` call
+sites outside tests), which already applies
+`effective_permission_mode(&self.task.source, self.task.permission_mode)` at line
+131-137. `allowed_dirs`/`forbidden_dirs` were never a hard boundary anywhere: tracing
+`apply_cli_caps` (`claude_support.rs:191-260`) shows only `permission_mode`, `model`,
+`effort`, `max_turns`, `max_budget_usd`, `allowed_tools`/`disallowed_tools` cross into
+the spawned process's real arguments. `Task.allowed_dirs`/`forbidden_dirs` only ever
+reach the planning-prompt text (advisory) and a post-hoc diff-scope flag (detects
+after the fact, never blocks).
+
+| # | Entry point | Task construction | Via shared builder | RepoProfile applied | `permission_mode` set | `task.source` set | Reaches a live spawn today |
+|---|---|---|---|---|---|---|---|
+| 1 | `task_build.rs` shared builder | `crates/lopi-orchestrator/src/task_build.rs:14-42` | (is the builder) | Yes, if `repo` is `Some` | No (`Task::new` default) | `TaskSource::Api` always | Yes, via callers below |
+| 1a | Schedule manager | `schedule_manager.rs:68-77` -> `build_task_from_fields` | Yes | Yes (inherited) | No | `Api` (inherited) | Yes, `lopi sail` |
+| 1b | MAXX loop | `maxx_loop.rs:95-104` -> same builder | Yes | Yes (inherited) | No | `Api` (inherited) | Yes |
+| 1c | Chain schedule manager | `chain_schedule_manager.rs:255-262` -> same builder | Yes | Yes (inherited) | No | `Api` (inherited) | Yes |
+| 1d | Legacy TOML `[[schedules]]` boot scheduler | `scheduler.rs:37-67` | No, ad hoc duplicate | Yes, ad hoc | No | `Api` hardcoded | No, dead code (`boot_scheduler` has zero callers) |
+| 2 | MCP `lopi_submit_task` | `src/mcp_commands/mod.rs:294-341` | No, ad hoc | No, never calls `RepoProfile` | Yes, honored verbatim from caller input | Not set, stays `Cli` (max trust) | Yes, `lopi mcp-serve` |
+| 3 | Web/sail `POST /api/tasks` | `crates/lopi-ui/src/web/handlers.rs:331-389` | No, ad hoc | No | Yes, verbatim from request body | Not set, stays `Cli` (should be `Api`) | Yes, the real `lopi sail` process |
+| 3b | `LocalClient` (duplicate of #3) | `crates/lopi-ui/src/client/local.rs:86-113` | No | No | Yes | `Api` (correct, unlike #3) | No, dead code, zero callers |
+| 4 | TUI/REPL (bare `lopi`) | `src/repl/actions.rs:134-221` | No, ad hoc | Yes, normal path; bypass path skips it | Not set | Not set, stays `Cli` | Yes |
+| 4b | `lopi bypass <goal>` | `src/repl/actions.rs:224-261` | No, ad hoc | No (bypass by design) | Not set, explicitly cleared | `Cli` | Yes; the one path that DOES check `allow_self_modify` |
+| 4c | `lopi run <goal>` | `src/run_command.rs:170-260` | No, ad hoc | Yes | Not set | `SelfModify` on self-modify branch only | Yes; the other of exactly two `allow_self_modify` checks |
+| 5 | Telegram | (removed) | | | | | Removed entirely, Sprint S10 Phase 4; `TaskSource::Telegram` kept only for back-compat |
+| 6 | WhatsApp | `crates/lopi-remote/src/whatsapp.rs:112-151` | No, ad hoc | No | Downgraded centrally via `Webhook` source | `Webhook` | No, unreachable: zero callers of `whatsapp::serve`, not in `fly.toml`/`Dockerfile` |
+| 9 | GitHub webhook | `crates/lopi-webhook/src/github.rs`, `issue.rs` (3 sites) | No, none | No, none | Downgraded centrally via `Webhook` source | `Webhook`, correctly gated | No: `lopi serve-webhooks` is wired but not deployed, and even standalone never constructs an `AgentPool` to drain the queue |
+
+**Recipes** (`recipes/*/loop.toml`) are not a Task-construction site: worked examples
+of `.lopi/loop.toml` (`LoopConfig`), consumed at dispatch time, with no
+`permission_mode`/`allowed_dirs` field of their own.
+
+**Headline numbers:** 12 entry points inventoried; 6 are live spawn paths in the
+deployed binary today (`lopi run`, `lopi bypass`, TUI/REPL, MCP `mcp-serve`, web
+`sail`, and the schedule/MAXX/chain-schedule trio, which share one RepoProfile-applying
+builder). `permission_mode` enforcement was already real across all 6: every live path
+funnels through the one `run_loop.rs` choke point. `RepoProfile` is not a choke point:
+MCP and web skip it entirely, and it was never a hard boundary regardless of whether
+it ran. `allow_self_modify` is enforced at exactly 2 of the 12 (`lopi run`, `lopi
+bypass`), not checked anywhere in MCP, web, the TUI's normal path, the schedule/MAXX/
+chain trio, GitHub webhook, or WhatsApp; it is `pub(crate)` to the `src/` binary, so no
+library crate could call it even if it tried. `CostCircuitBreaker::check` and
+`AgentPool::submit_economically` are confirmed still fully unwired, zero call sites
+outside their own unit tests.
+
+**These last three findings are real, pre-existing security gaps, unrelated to this
+sprint's build.** They are recorded here as this sprint's audit deliverable, not fixed
+here: fixing `RepoProfile` consistency or `allow_self_modify`'s coverage would each be
+its own scoped sprint (the former needs the same kind of `ClaudeCode`-construction
+refactor already blocking the cost-circuit-breaker; the latter needs a decision on
+whether `allow_self_modify` becomes a library-crate-visible check at all). Constrains
+future work: a future sprint that wants to close either gap should start from this
+table, not re-discover it.
+
+### PF-2 (KT-1A): is central enforcement reachable this sprint? Yes, for `ToolProfile`.
+
+The plan's framing risked conflating two different mechanisms: `RepoProfile`
+(directory scope, confirmed above to be construction-site-dependent and never a hard
+boundary) and tool-call gating (`permission_mode` plus `allowed_tools`/
+`disallowed_tools`, confirmed above to be genuinely centralized at one `ClaudeCode`
+construction site). Since `ToolProfile` is a brand-new field, its default enforcement
+question is not "does the existing inconsistent mechanism now cover every entry
+point," it is "does every live-spawning path pass through the one place a new field
+can be read." It does: all 6 live entry points construct an `AgentRunner` and call
+`.run()` (via the pool or `AgentRunner::standalone`), and `run_loop.rs`'s per-attempt
+`ClaudeCode` construction is inside that one method, in the `lopi-agent` crate, not
+duplicated per entry point. `ToolProfile` is therefore centrally enforced by
+extending that exact site (`lopi_core::tool_profile::effective_permission_mode_for_
+profile`, called at `run_loop.rs`'s permission-mode line, plus a forced-allow-list
+override at its tool-permission line) with no need for the broader
+`ClaudeCode`-holds-cross-cutting-state refactor that still blocks the
+cost-circuit-breaker (that refactor is about giving `ClaudeCode` a persistent handle
+*across* spawns in a session; this is a per-attempt field already present on the
+`Task` the same construction reads every other field from). **PF-2 passed.**
+
+### PF-3 (KT-1B): does `DontAsk` plus a read-only allow-list actually deny writes? Yes, confirmed live, twice.
+
+Live test, not inspection, per the brief's own requirement.
+
+1. **Raw CLI**, no lopi code involved: `claude -p ... --permission-mode dontAsk
+   --allowedTools Read Grep Glob WebFetch WebSearch`, instructed to write a file in a
+   throwaway git repo. Result: `permission_denials: [{"tool_name":"Write",...}]`,
+   `terminal_reason: "completed"`, exit 0. Filesystem/git status independently
+   confirmed the file was never created.
+2. **Through lopi's own `ClaudeCode` wrapper** (`with_permission_mode("dontAsk")` +
+   `with_allowed_tools(lopi_core::READONLY_ALLOWED_TOOLS)`), same throwaway-repo setup,
+   same instruction. Result: identical clean denial (`permission_denials` on `Write`,
+   `terminal_reason: "completed"`), file confirmed absent on disk.
+
+Neither run stalled waiting on a prompt nothing in a headless pipeline could answer.
+**PF-3 passed.** Per this codebase's own KT-recording convention
+(`verifier_cli.rs`'s KT-1.1/1.2/1.3), the live test itself is not committed as an
+always-run test (it costs a real API call); the result is recorded here and as a
+comment at `crates/lopi-agent/src/claude_tests.rs` next to
+`with_permission_mode_accepts_every_headless_safe_value`.
+
+### PF-4: no prior plan-artifact implementation existed
+
+Checked `lopi-spec` (a test-suite spec-surface extractor: `#[test]`/`def test_*`
+inventory for coverage-gap detection, unrelated concern) and `lopi-context` (KV-cache
+eviction; its `Phase::Planning` enum variant is the agent's own internal lifecycle
+phase, not a plan artifact). Also checked the existing "plan text" mechanism
+(`plan_via_api`/`plan_streamed`, gated by the Phase 11 `plan_gate`): this is the
+*same* agent's own free-form planning step, ungated by any tool profile, with no
+structured schema and no separate Executor identity, best-effort parsed into markdown
+bullets for the UI. It is a different thing in kind from `PlanArtifact`, not a
+duplicate. Confirmed clean: nothing to reconcile.
+
+### What this sprint built, given the above
+
+**Section 1, `ToolProfile`:** `Readonly` (`DontAsk` plus the fixed allow-list) or
+`Mutating` (default) on `Task.tool_profile`, wired at `run_loop.rs`'s one choke point,
+authoritative over any other configured tool permission when set. Not touching
+`.claude/agents/*.md` frontmatter, a separate system (Claude Code subagent scope);
+`researcher.md`'s `permissionMode: plan` there is unrelated to and unaffected by
+`Task::permission_mode`, which rejects `"plan"` outright.
+
+**Section 2, plan artifact:** schema lives in kiban (`schemas/plan_artifact.schema.json`,
+JSON Schema, `scope.minItems: 1`, all eight fields required), with a hand-written
+Python validator (`lib/plan_artifact_schema.py`, not a generic JSON Schema engine;
+that would be premature machinery for one schema) reading the schema file's own
+declared constraints rather than duplicating them as literals, so a schema edit that
+loosened `minItems` would be caught by
+`test_schema_still_declares_scope_min_items_one`. The Rust mirror
+(`lopi_core::PlanArtifact`) enforces the same non-empty-scope constraint structurally:
+`#[serde(try_from = "RawPlanArtifact")]` means there is no code path, including
+deserialization, that can produce a `PlanArtifact` with an empty scope. Round-trip
+through TOON (`lopi-toon::encode`/`decode`) confirmed to preserve every field
+(`plan_artifact_round_trips_through_toon_preserving_every_field`).
+
+**Section 3, Planner -> Executor handoff:** `lopi_agent::planner_executor` module,
+modeled on `verifier_cli.rs`'s direct-`Command`-plus-`apply_cli_caps` pattern rather
+than `ClaudeCode`'s plan/implement/fix lifecycle (which is shaped around the
+single-agent retry loop and always carries the raw goal on a `Task`).
+`build_executor_system_prompt(plan: &PlanArtifact)` takes no raw-goal parameter, so
+there is no argument through which the raw goal could reach the Executor's prompt;
+asserted structurally by `executor_prompt_never_contains_the_raw_goal` (using a
+sentinel raw-goal string distinct from the plan's own paraphrased `goal` field, so the
+assertion is not vacuously true from the two strings matching by chance). **Confirmed
+live end-to-end:** a readonly Planner spawned against a throwaway repo (a trivial
+`add(a, b)` Python function), asked to add a `subtract` function, returned a
+schema-valid `PlanArtifact` with `scope: ["add.py"]`; the assembled Executor prompt
+was confirmed free of the raw-goal sentinel; the Executor (mutating,
+`AcceptEdits`) then correctly added `subtract` to `add.py`, matching the plan's
+invariants exactly. **Not wired into `AgentRunner::run()`'s default retry loop this
+sprint.** That loop's plan/implement/test/score/retry machinery (progress gates,
+stability harness, verifier, adaptive retry, successor tasks) is substantial; folding
+the Planner/Executor split into it is a separate, larger integration a future sprint
+should scope deliberately, not a same-session addendum. This module ships new,
+additive, and independently tested, exactly the shape Sprint P0 shipped the
+cost-circuit-breaker's decision logic in.
+
+**Section 4, telemetry:** kiban's `PrTelemetryRecord` gained `predicted_tier`,
+`planner_scope`, `planner_model`, `planner_commit`. Named `planner_scope`, not
+`scope`: the record already has a `scope` field meaning ledger scope (`org` versus
+`repo:<name>`), and reusing that name for the plan artifact's file/glob scope would
+have silently collided two unrelated meanings under one key. `apply_plan_artifact`
+reuses `lib.plan_artifact_schema.validate` rather than re-validating by hand, so a
+telemetry record can never carry a scope value that did not pass schema validation.
+One real end-to-end record, built from the live Planner run's actual output above
+(`goal`, `scope: ["add.py"]`, `predicted_tier: "low"`, `planner_model:
+"claude-sonnet-5"`, `planner_commit: "6b57438"`), round-tripped through the JSONL
+store with all four fields non-null and every critic field still null, confirmed in
+`test_one_real_end_to_end_record_has_all_four_fields_non_null`.
+
+### Constrains future work
+
+- A future sprint building the Phase 3 router must read `PF-1`'s table before
+  assuming any entry point's `task.source`/`RepoProfile` state; MCP and web both
+  default to `Cli` today, and neither applies `RepoProfile`.
+- Wiring `planner_executor` into `AgentRunner::run()`'s default loop is unscoped and
+  undesigned; do not assume it is a small patch onto the existing plan/implement
+  boundary without re-reading `run_loop.rs`'s progress-gate/stability/verifier
+  interactions first.
+- `RepoProfile` consistency and `allow_self_modify` coverage are real gaps this
+  sprint's audit surfaced but did not fix; do not describe either as closed in a
+  future sprint's changelog without doing the work.
+- `PLAN_ARTIFACT_JSON_SCHEMA` (the Rust-side literal in `planner_executor.rs`) is kept
+  in sync with kiban's `schemas/plan_artifact.schema.json` by hand this sprint; a
+  fixture suite checking the two never drift (section 7.3, Phase 3) should supersede
+  this by hand-check.
+
 ## Sprint S13, Phase 0 (Quality-claim honesty pass) — stopped after Phase 0 per the brief's own stop rule
 
 **One-way doors, all recorded before the sprint's Phase-0 stop rule fired (5

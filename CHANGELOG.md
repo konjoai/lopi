@@ -1,3 +1,61 @@
+## [0.41.0] - Sprint P1: Planner/Executor split (tool profiles, plan artifact, handoff)
+
+Cross-repo work order from kiban's `KONJO_REVIEW_PIPELINE_PLAN.md` Phase 1 (Sprint P1
+companion doc). Pre-flight entry-point audit (PF-1): **12 live/latent Task-construction
+paths inventoried, of which 6 are live spawn paths in the deployed binary today** (`lopi
+run`, `lopi bypass`, the TUI/REPL, MCP `mcp-serve`, the web `sail` API, and the
+schedule/MAXX/chain-schedule trio, which share one builder). Central `permission_mode`
+enforcement was already real: every live path funnels through one `ClaudeCode`
+construction site, `run_loop.rs`. This sprint's `ToolProfile` extends that exact choke
+point rather than requiring the broader `ClaudeCode`-holds-cross-cutting-state refactor
+that still blocks the cost-circuit-breaker. `RepoProfile` (directory scope) is a
+separate, still-inconsistent mechanism this sprint does not fix; see `LEDGER.md`'s
+Review-Pipeline-Phase-1 entry for the full PF-1 table and why that gap doesn't block
+`ToolProfile`.
+
+Both PF-2 (central enforcement reachable) and PF-3 (`DontAsk` plus allow-list denies
+writes live) passed. Full reasoning: kiban's `LEDGER.md` (`Review-Pipeline-Phase-1`).
+
+### Added
+
+- **`lopi_core::ToolProfile`** (`crates/lopi-core/src/tool_profile.rs`): `Readonly` or
+  `Mutating` (default), on `Task.tool_profile`. `Readonly` forces
+  `PermissionMode::DontAsk` plus a fixed allow-list (`Read`, `Grep`, `Glob`, `WebFetch`,
+  `WebSearch`), authoritative over any other configured allow/deny list. Wired into the
+  one production `ClaudeCode` construction site (`lopi-agent`'s `run_loop.rs`), so it
+  applies regardless of which entry point built the `Task`. **Confirmed live, twice:**
+  a raw `claude -p` spawn and a spawn through lopi's own `ClaudeCode` wrapper, both
+  under this exact profile, both had the `Write` tool call denied and terminated
+  cleanly rather than stalling (see `LEDGER.md` for the transcripts).
+- **`lopi_core::PlanArtifact`** (`crates/lopi-core/src/plan_artifact.rs`): `goal`,
+  `scope`, `invariants`, `test_strategy`, `non_goals`, `predicted_tier`,
+  `planner_model`, `planner_commit`. `scope` cannot be constructed empty by any path
+  (JSON deserialize or direct construction): a `#[serde(try_from = ...)]` validated
+  type, not a comment-enforced convention. `predicted_tier` grants no routing authority
+  (logged only). Schema source of truth: kiban's `schemas/plan_artifact.schema.json`.
+- **`lopi_agent::planner_executor`** (`crates/lopi-agent/src/planner_executor.rs`):
+  `spawn_planner` (readonly, produces a schema-valid `PlanArtifact`),
+  `build_executor_system_prompt` (assembled from the artifact alone, with no raw-goal
+  parameter, so the omission is structural, asserted by
+  `executor_prompt_never_contains_the_raw_goal`), `spawn_executor` (mutating, receives
+  only that prompt). **Confirmed live end-to-end:** a real Planner run against a
+  throwaway repo produced a valid plan (non-empty scope), the raw goal never reached
+  the Executor's prompt, and the Executor correctly implemented exactly the plan's
+  scope. Not wired into `AgentRunner::run()`'s default retry loop this sprint; that
+  loop's plan/implement/test/score/retry machinery is substantial enough that
+  replacing its planning step wholesale is scoped as its own future sprint, so this
+  module is new, additive, and independently tested instead.
+- TOON round-trip (`lopi-toon`) for the plan artifact preserves every field, tested.
+
+### Not done this sprint (see `LEDGER.md`)
+
+- `RepoProfile` inconsistency across entry points (MCP/web skip it; directory scope
+  was never a hard boundary anywhere regardless): pre-existing, out of scope.
+- `allow_self_modify` enforced at only 2 of ~12 entry points: pre-existing, out of
+  scope.
+- Wiring `PlanArtifact`/`planner_executor` into the default `AgentRunner::run()` loop.
+- Any critic, router, or gate (Phase 3 scope, per the plan).
+
 ## [0.40.0] — Sprint P0 (kiban): cost circuit breaker, pure decision logic + config surface
 
 Cross-repo work order from kiban's `KONJO_REVIEW_PIPELINE_PLAN.md` Phase 0 (Sprint P0,
