@@ -1,11 +1,16 @@
 ---
 decays: state
-verified-against: c4f1fdb
-verified-date: 2026-07-29
+verified-against: 9fce495
+verified-date: 2026-08-03
 ---
 
-Verified against: `c4f1fdb` · 2026-07-29 (re-verified; Sprint S13R's own commit volume
-crossed the 20-commit cap again. This sprint touched `loop_config.rs` (Phase E:
+Verified against: `9fce495` · 2026-08-03 (re-verified; Sprint P0's commit volume on this
+PR crossed the 20-commit cap again. P0 touched `crates/lopi-core/src/economics_config.rs`,
+`crates/lopi-core/src/lib.rs` (module declaration only), and added
+`crates/lopi-core/src/cost_breaker.rs`; it never touches `loop_config.rs` or `recipes/`,
+so nothing this document cites changed. Prior banner (`c4f1fdb` · 2026-07-29, re-verified;
+Sprint S13R's own commit volume crossed the 20-commit cap again. This sprint touched
+`loop_config.rs` (Phase E:
 `load_from_repo`/`save_to_repo` converted from `anyhow::Result` to a typed
 `LoopConfigError`) but this document cites it and `budget_preset.rs` only by bare
 filename, no line numbers, and neither the `LoopConfig` struct shape nor
