@@ -24,6 +24,11 @@ pub mod config;
 /// Finding #4 (Symbol Index) — repo-map + index-tools vs. legacy
 /// no-repo-map planning-context mode. Re-exported from `loop_config`.
 pub mod context_mode;
+/// Sprint P0 (review-pipeline plan, section 4) — the cost circuit breaker's pure
+/// decision logic (per-task/per-day token ceilings). See `LEDGER.md`'s
+/// Cost-Circuit-Breaker-1 entry for why live wiring into `lopi-agent`'s call sites
+/// is a work order, not shipped here.
+pub mod cost_breaker;
 /// Goal-intent classification (file-changes vs review-only) for intent-aware
 /// success — see [`deliverable::Deliverable`].
 pub mod deliverable;
