@@ -1,12 +1,19 @@
 ---
 decays: state
-verified-against: 1dd471d
-verified-date: 2026-07-29
+verified-against: 6919a1d
+verified-date: 2026-08-03
 ---
 
 # Panic audit — the trustworthy count, and why grep couldn't give it to you
 
-Verified against: `1dd471d` · 2026-07-29 (re-verified again; Sprint S13R's own 9-commit
+Verified against: `6919a1d` · 2026-08-03 (re-verified; Sprint P0's commit volume on this
+PR pushed this past the 20-commit cap, not the zero-unwrap claim losing accuracy.
+Re-confirmed live, not assumed: this sprint's new `crates/lopi-core/src/cost_breaker.rs`
+and its edits to `economics_config.rs` were checked with the exact cited deny-flag
+command (`cargo clippy -p lopi-core -- -D warnings -D clippy::unwrap_used
+-D clippy::expect_used -D clippy::panic ...`), clean, and the full-workspace
+`repo:clippy` gate this PR's own CI ran (`konjo-gates`, all 18 crates) also passed clean.
+Prior banner (`1dd471d` · 2026-07-29, re-verified again; Sprint S13R's own 9-commit
 volume pushed this past the 20-commit cap, not the zero-unwrap claim losing accuracy.
 Re-confirmed live, not assumed: this sprint ran the exact cited deny-flag `cargo clippy
 --workspace --all-targets --all-features -- -D warnings -D clippy::unwrap_used

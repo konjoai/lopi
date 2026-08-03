@@ -1,3 +1,28 @@
+## [0.40.0] — Sprint P0 (kiban): cost circuit breaker, pure decision logic + config surface
+
+Cross-repo work order from kiban's `KONJO_REVIEW_PIPELINE_PLAN.md` Phase 0 (Sprint P0,
+section 4). Ships the pure `CostCircuitBreaker` decision logic and the two new
+`EconomicsConfig` token-ceiling fields; wiring the check into `lopi-agent`'s actual
+Anthropic-API call sites (`claude_spawn.rs`, `api_client.rs`) is tracked as a work order
+(`docs/work-orders/cost-circuit-breaker.md`), not shipped here — `ClaudeCode` holds no
+config/DB handle today, so live wiring is a cross-cutting change to its builder chain
+across `lopi-agent`, not a same-file patch. Full reasoning in kiban's `LEDGER.md`
+(`Review-Pipeline-Phase-0-1`).
+
+### Added
+
+- **`crates/lopi-core/src/cost_breaker.rs`** — `CostCircuitBreaker::check(task_tokens_so_far,
+  day_tokens_so_far)`, pure/I/O-free, returns `CeilingExceeded` naming which ceiling
+  (per-task or per-day) tripped. No retry, no silent degrade, no fallback model built into
+  the type — the caller must hard-stop. 6 unit tests with stubbed counters.
+- **`EconomicsConfig::per_task_token_ceiling`/`daily_token_ceiling`** (`Option<u64>`, both
+  `None` by default — opt-in, no behavior change for any existing install).
+- **`docs/work-orders/cost-circuit-breaker.md`** — the exact integration points
+  (`claude_spawn.rs:130`/`:255`, `api_client.rs:196`/`:240`), why `lopi_ratelimit::
+  BudgetGovernor` must stay untouched (already-unwired dead code by prior decision), and
+  the recommended error-propagation shape (reusing the `ERR_BUDGET_HARD_STOP`/
+  `terminal_errors.rs` terminal-classification precedent).
+
 ## [0.39.0] — Sprint S13R: connect the kiban pilot, clear the stop rule, resume S13 (Phases A–F)
 
 **Phase 0's corrections (0.38.0) cleared its own stop rule on re-run this sprint: 0
