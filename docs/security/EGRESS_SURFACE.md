@@ -1,7 +1,7 @@
 ---
 decays: state
-verified-against: 1dd471d
-verified-date: 2026-07-29
+verified-against: 6919a1d
+verified-date: 2026-08-03
 ---
 
 ## Sprint S10, Phase 4 update (2026-07-27)
@@ -23,13 +23,19 @@ consistent with this repo's `decays: state` convention — re-derive before trus
 
 # Egress surface — the local-only remnant of Sprint S2
 
-Verified against: `1dd471d` · 2026-07-29 (re-verified again; Sprint S13R's own 9-commit
+Verified against: `6919a1d` · 2026-08-03 (re-verified; Sprint P0's commit volume on this
+PR pushed this past the 20-commit cap again, not on anything it cites losing accuracy.
+P0 is a pure Rust logic addition (`crates/lopi-core/src/cost_breaker.rs`, a token-count
+ceiling check with no I/O) plus config/docs changes; none of this doc's cited files
+(`lopi-ui::web::handlers`, `provenance_field_tests.rs`, `lopi-memory::store::tests`,
+`whatsapp.rs`) were touched, and P0 adds no new outbound transport of any kind. Prior
+banner (`1dd471d` · 2026-07-29, re-verified again; Sprint S13R's own 9-commit
 volume pushed this past the 20-commit cap again, not on anything it cites losing
 accuracy. None of its cited files (`lopi-ui::web::handlers`, `provenance_field_tests.rs`,
 `lopi-memory::store::tests`) changed this sprint; `whatsapp.rs`'s only S13R edit named an
-existing dev-mode signature bypass as an explicit override — same "inbound-only, no
+existing dev-mode signature bypass as an explicit override, same "inbound-only, no
 outbound send call anywhere in the file" fact this doc's §1 second row already states,
-re-confirmed with the same grep this sprint. Prior banner (`28dd4cf` · 2026-07-28,
+re-confirmed with the same grep this sprint. Earlier banner (`28dd4cf` · 2026-07-28,
 re-verified again; this doc keeps crossing
 the 20-commit staleness cap purely on Sprint E/Finding #10's own merge-commit volume
 (two reconciliations with `main`), not on anything it cites losing accuracy.
