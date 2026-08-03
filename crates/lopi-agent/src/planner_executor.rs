@@ -108,13 +108,31 @@ pub async fn spawn_planner(
         false,
         SessionMode::None,
     );
+
+    let stdout =
+        run_cli_to_completion(cmd, repo_path, PLANNER_TIMEOUT, "planner", &user_prompt).await?;
+    parse_plan_artifact(stdout)
+}
+
+/// Shared spawn/timeout/error-handling tail for [`spawn_planner`] and
+/// [`spawn_executor`] — both configure `cmd` differently but finish the same
+/// way (run under `timeout`, surface a `build_cli_error` on non-zero exit,
+/// decode stdout). `label` names the caller in the timeout/spawn error
+/// context so a failure still says which of the two spawned.
+async fn run_cli_to_completion(
+    mut cmd: Command,
+    repo_path: &Path,
+    timeout: Duration,
+    label: &str,
+    prompt_for_error: &str,
+) -> Result<String> {
     cmd.current_dir(repo_path);
     crate::claude::scrub_inherited_anthropic_env(&mut cmd);
 
-    let raw = tokio::time::timeout(PLANNER_TIMEOUT, cmd.output())
+    let raw = tokio::time::timeout(timeout, cmd.output())
         .await
-        .context("planner cli timed out")?
-        .context("spawning planner cli")?;
+        .with_context(|| format!("{label} cli timed out"))?
+        .with_context(|| format!("spawning {label} cli"))?;
 
     if !raw.status.success() {
         let stderr = String::from_utf8_lossy(&raw.stderr);
@@ -124,12 +142,11 @@ pub async fn spawn_planner(
             &stderr,
             raw.status,
             repo_path,
-            user_prompt.len(),
+            prompt_for_error.len(),
         ));
     }
 
-    let stdout = String::from_utf8_lossy(&raw.stdout).into_owned();
-    parse_plan_artifact(stdout)
+    Ok(String::from_utf8_lossy(&raw.stdout).into_owned())
 }
 
 fn parse_plan_artifact(stdout: String) -> Result<PlanArtifact> {
@@ -213,27 +230,8 @@ pub async fn spawn_executor(
         false,
         SessionMode::None,
     );
-    cmd.current_dir(repo_path);
-    crate::claude::scrub_inherited_anthropic_env(&mut cmd);
 
-    let raw = tokio::time::timeout(timeout, cmd.output())
-        .await
-        .context("executor cli timed out")?
-        .context("spawning executor cli")?;
-
-    if !raw.status.success() {
-        let stderr = String::from_utf8_lossy(&raw.stderr);
-        let stdout = String::from_utf8_lossy(&raw.stdout);
-        return Err(build_cli_error(
-            &stdout,
-            &stderr,
-            raw.status,
-            repo_path,
-            user_prompt.len(),
-        ));
-    }
-
-    let stdout = String::from_utf8_lossy(&raw.stdout).into_owned();
+    let stdout = run_cli_to_completion(cmd, repo_path, timeout, "executor", user_prompt).await?;
     let out = parse_claude_output(stdout, true);
     if !out.succeeded() {
         anyhow::bail!("executor cli reported an error result: {}", out.text());
