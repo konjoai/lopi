@@ -44,6 +44,49 @@ top entry before touching anything, same as every prior sprint's handoff.
 
 ---
 
+## Next Session, after Oracle-Preflight (kill-tests + quota sampler start)
+
+The Oracle-Preflight sprint ran the three pre-registered `lopi-oracle` kill-tests and
+started the quota-history sampler. Read `KILL_TEST_REGISTER.md` in full before touching
+any of this — it has the raw data, not just the verdicts, and the reasoning behind the
+conditional go/no-go matters more than the pass/fail row.
+
+**Verdict: CONDITIONAL GO, textual-only first.** KT-1 (retrospective replay) passed
+14/14 on real historical conflicts replayed via `git merge-tree`. KT-3 (snapshot cost)
+passed at p95 135ms, well under the 300ms gate. KT-2 (noise floor) failed as literally
+specified — but the failure is a metric-definition gap (a naive poll-and-count metric
+re-alerts on the same still-open conflict every cycle; only 1 distinct collision onset
+happened in the whole measured session, not 12), not evidence the approach is
+unworkable. **This sprint is the crate-scaffolding sprint for `lopi-oracle` — do not
+skip the de-duplication requirement below, it is the one hard precondition this
+pre-flight surfaced.**
+
+**Scope for this sprint:**
+1. Scaffold `lopi-oracle` crate: `GitManager`-adjacent, textual layer only (`git
+   merge-tree --write-tree` snapshots between live worktrees). No tree-sitter, no
+   semantic layer — KT-1's classification split came back empty on both textual-only-vs-
+   semantic-needed evidence, so there is no basis to front-load it (see the register's
+   "honest limitation" section for why the search method couldn't answer that question
+   either way, not why it answered "textual is enough").
+2. **Trigger must de-duplicate on conflict signature (same file set + same base commit)
+   before alerting a second time on a still-open conflict.** This is the direct fix for
+   KT-2's 120/hour naive noise floor. Debounce or backoff after the first alert; only a
+   *new* signature should re-alert. Do not ship the naive poll-and-count design KT-2
+   tested — it will alarm-fatigue in production exactly as measured.
+3. Re-run KT-2 for real once the crate exists and a genuine live multi-agent session is
+   available (this pre-flight's KT-2 used a disclosed compressed proxy, not a real
+   working session — see the register's environment caveat). Confirm the de-duplicated
+   distinct-collision rate stays under whatever gate gets re-registered for it.
+4. No conflict-resolution logic yet — detection only, same non-goal as this pre-flight.
+
+**What NOT to re-derive:** the 14 real historical conflict pairs and their file lists
+(`KILL_TEST_REGISTER.md`'s KT-1 table), the KT-3 timing methodology and result (p95
+135ms on `lopi` itself, the confirmed-largest konjoai repo in scope), and the KT-2
+mechanism finding (poll-count conflates alert volume with conflict duration). All three
+are settled facts from this sprint, not things to re-measure from scratch.
+
+---
+
 ## Next Session, after Sprint P1 (Planner/Executor split, `[0.41.0]`)
 
 Sprint P1 (kiban's `KONJO_REVIEW_PIPELINE_PLAN.md` Phase 1 companion doc) built

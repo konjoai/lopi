@@ -119,6 +119,57 @@ correct argv, uses the same `ANTHROPIC_API_KEY` secret convention the existing
 containing sections 1/3/4 and this repo's three pins are bumped together -- recorded
 here as the honest state, not silently assumed working the moment this merges.
 
+## Oracle-Preflight — Part A go/no-go + Part B sampler start timestamp
+
+Full data and reasoning: `KILL_TEST_REGISTER.md`. Two one-way-door facts recorded here
+because both gate or inform future sprints and neither can be reconstructed later.
+
+**Part A — `lopi-oracle` go/no-go: CONDITIONAL GO, textual-only first.** KT-1
+(retrospective replay) passed 14/14 on real historical merge conflicts found via git's
+own `# Conflicts:` trailer and replayed with `git merge-tree` today. KT-3 (snapshot
+cost) passed at p95 135ms against the 300ms gate, measured on `lopi` itself (confirmed
+the largest konjoai repo in scope, not assumed). KT-2 (noise floor) failed as literally
+specified — 120 red-verdicts/hour naive rate, 24x the <5/hour gate — but the mechanism
+is a metric-definition gap, not a detection-quality problem: a poll-and-count metric
+re-alerts on the same still-open conflict every cycle, and only 1 distinct collision
+onset happened in the whole measured session. **Binding decision for the next sprint:**
+build textual-only (KT-1's classification split came back with zero real evidence either
+way on semantic necessity, so there is no basis to front-load tree-sitter), and the
+trigger must de-duplicate on conflict signature before it ever runs against real
+worktrees — this is the one hard precondition this pre-flight surfaced, not a
+nice-to-have. `NEXT_SESSION_PROMPT.md` scopes the crate-scaffolding sprint against this.
+
+**Part B — quota-history sampler started 2026-08-04T11:08:25Z.** `quota_samples`
+(`crates/lopi-memory/src/schema.sql`) is a new append-only table alongside the existing
+MAXX Phase 0 `quota_observations` upsert table — same `AgentEvent::ApiRetry` subscriber
+in `QuotaTracker::start` (`crates/lopi-orchestrator/src/quota_tracker.rs`) now writes
+both, no new subscriber, no polling loop added: `rate_limit_event` is push-based (arrives
+inline in the CLI's own NDJSON stream during an active turn, confirmed by
+`crates/lopi-agent/src/claude_events.rs`'s existing parser and `quota_kill_log.rs`'s
+doc comments), so there is no separate quota-status endpoint to poll on a timer.
+Confirmed live: `lopi sail --repo .` started as a real detached background process
+(pid, not a foreground one-shot), `/api/health` returned `ok`, and `quota_samples`
+exists in `/root/.lopi/lopi.db` with the correct schema, verified directly against the
+SQLite file. Empty at verification time — expected, since no real agent task ran in
+this session to emit a real `rate_limit_event`; the wiring is confirmed end-to-end by
+a unit test (`quota_tracker.rs`'s `every_observation_also_lands_a_history_sample`) that
+asserts three synthetic `ApiRetry` events land three separate rows, not one upserted row.
+**Caveat this session cannot avoid:** this specific `lopi sail` process will not survive
+this container's reclaim — the timestamp above marks when the code went live and started
+being *capable* of recording, not a guarantee this exact process ran for any particular
+duration. History starts accruing for real the next time `lopi sail` or `lopi run` runs
+in a persistent environment. No retroactive backfill is possible before this point, by
+design (Part B's own non-goal) — this is the fact worth not losing.
+
+**Also confirmed, not assumed, before writing any Part B code:** `resets_at` is not
+dropped. The Part B brief's own "confirm before writing new code" instruction flagged a
+prior audit's claim that the CLI sends `resetsAt` but the parser discards it — reading
+`crates/lopi-agent/src/claude_events.rs` (`parse_rate_limit`, `StreamEvent::RateLimit`,
+`structured_events`'s `AgentEvent::ApiRetry` arm) shows `resets_at` already threaded end
+to end, and `crates/lopi-memory/src/store/quota.rs`'s existing MAXX Phase 0 upsert
+already persists it. That prior audit finding is stale — recorded here so a future
+sprint doesn't re-open a "fix" for something already correct.
+
 ## Review-Pipeline-Phase-2 -- PF-0: full-workspace mutation baseline launched
 
 Sprint P2 (kiban's `KONJO_REVIEW_PIPELINE_PLAN.md` Phase 2 companion doc), pre-flight
