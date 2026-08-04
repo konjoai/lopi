@@ -237,9 +237,9 @@ mod tests {
 
         let seven_day = store.list_quota_samples("seven_day").await.unwrap();
         assert_eq!(seven_day.len(), 2, "both seven_day readings must survive");
-        assert!((seven_day[0].utilization - 0.10).abs() < 1e-6);
-        assert!((seven_day[1].utilization - 0.80).abs() < 1e-6);
-        assert_eq!(seven_day[1].resets_at, Some(42));
+        assert!((seven_day.first().unwrap().utilization - 0.10).abs() < 1e-6);
+        assert!((seven_day.get(1).unwrap().utilization - 0.80).abs() < 1e-6);
+        assert_eq!(seven_day.get(1).unwrap().resets_at, Some(42));
 
         let five_hour = store.list_quota_samples("five_hour").await.unwrap();
         assert_eq!(five_hour.len(), 1);

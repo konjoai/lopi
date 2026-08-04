@@ -117,22 +117,14 @@ impl QuotaTracker {
                                 observed_at: Utc::now().to_rfc3339(),
                             },
                         );
-                        if let Err(e) = inner
-                            .store
-                            .upsert_quota_observation(&limit_type, &status, utilization, resets_at)
-                            .await
-                        {
-                            warn!("quota observation persist failed: {e:#}");
-                        }
-                        // Oracle-Preflight Part B: append to history too, never
-                        // overwriting — the upsert above is current-state only.
-                        if let Err(e) = inner
-                            .store
-                            .insert_quota_sample(&limit_type, &status, utilization, resets_at)
-                            .await
-                        {
-                            warn!("quota sample persist failed: {e:#}");
-                        }
+                        persist_observation(
+                            &inner.store,
+                            &limit_type,
+                            &status,
+                            utilization,
+                            resets_at,
+                        )
+                        .await;
                     }
                     Ok(_) => {}
                     Err(broadcast::error::RecvError::Lagged(n)) => {
@@ -152,6 +144,31 @@ impl QuotaTracker {
     #[must_use]
     pub fn snapshot(&self, limit_type: &str) -> Option<QuotaObservation> {
         self.inner.cache.get(limit_type).map(|r| r.value().clone())
+    }
+}
+
+/// Persist one observation to both the current-state table and the
+/// Oracle-Preflight Part B history table. Split out of [`QuotaTracker::start`]'s
+/// event loop purely to keep that function under the function-length gate —
+/// no behavior change from having it inline.
+async fn persist_observation(
+    store: &MemoryStore,
+    limit_type: &str,
+    status: &str,
+    utilization: f32,
+    resets_at: Option<i64>,
+) {
+    if let Err(e) = store
+        .upsert_quota_observation(limit_type, status, utilization, resets_at)
+        .await
+    {
+        warn!("quota observation persist failed: {e:#}");
+    }
+    if let Err(e) = store
+        .insert_quota_sample(limit_type, status, utilization, resets_at)
+        .await
+    {
+        warn!("quota sample persist failed: {e:#}");
     }
 }
 
@@ -242,9 +259,9 @@ mod tests {
             3,
             "the current-state upsert must not suppress history rows"
         );
-        assert!((samples[0].utilization - 0.10).abs() < 1e-6);
-        assert!((samples[1].utilization - 0.20).abs() < 1e-6);
-        assert!((samples[2].utilization - 0.30).abs() < 1e-6);
+        assert!((samples.first().unwrap().utilization - 0.10).abs() < 1e-6);
+        assert!((samples.get(1).unwrap().utilization - 0.20).abs() < 1e-6);
+        assert!((samples.get(2).unwrap().utilization - 0.30).abs() < 1e-6);
     }
 
     #[tokio::test]
