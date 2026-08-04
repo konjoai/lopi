@@ -5,6 +5,26 @@ on:
     branches: [main]
   push:
     branches: [main]
+  # Opt-in only -- review-pipeline Sprint P2b, section 4's real call site for
+  # `konjo/mutation-hunt`. Not a default gate on every PR: the loop spends real model
+  # tokens per round (see .konjo/kiban's plugins/konjo/skills/mutation-hunt/SKILL.md),
+  # so it runs only when a human explicitly dispatches it against one crate.
+  workflow_dispatch:
+    inputs:
+      crate:
+        description: "Crate to run the mutation-hunt loop against (e.g. lopi-ratelimit)"
+        required: true
+        type: string
+      round_cap:
+        description: "Max rounds before the loop stops and suggests a waiver"
+        required: false
+        default: "3"
+        type: string
+      diff_base_ref:
+        description: "Branch the production change under test is diffed against (cargo mutants --in-diff scope) -- must NOT be the same commit as the checked-out branch, or --in-diff sees no production lines changed"
+        required: false
+        default: "main"
+        type: string
 
 concurrency:
   group: konjo-${{ github.ref }}
@@ -906,3 +926,73 @@ jobs:
 
           echo "All required Konjo quality gates passed ✓"
           echo "The code is seaworthy."
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # Mutation Hunt (opt-in) — review-pipeline Sprint P2b, section 4's real call site
+  # for `konjo/mutation-hunt`. Deliberately NOT in `konjo-gate`'s `needs:` above and
+  # not triggered by pull_request/push — see the plan's own non-goals (no router, no
+  # new default gate this sprint) and the workflow_dispatch trigger's comment.
+  # ════════════════════════════════════════════════════════════════════════════
+  mutation-hunt:
+    name: "Mutation Hunt (opt-in, manual dispatch only)"
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: konjo-${{ github.repository }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Clone kiban (pinned)
+        env:
+          # Matches .konjo/kiban.ref and G0/konjo-gates' own KIBAN_REF — bump all
+          # three together (see this repo's CLAUDE.md "Pinning" section). NOTE: this
+          # job's own bin/kiban-mutation-hunt call site landed on kiban's
+          # review-pipeline Sprint P2b branch and needs a kiban release cut plus a
+          # pin bump before this job is live-runnable — recorded in LEDGER.md rather
+          # than silently assumed working the moment this file merges.
+          KIBAN_REF: "v1.8.0"
+        run: git clone --quiet --depth 1 --branch "$KIBAN_REF" https://github.com/konjoai/kiban.git /tmp/kiban
+
+      - name: Install cargo-llvm-cov, cargo-mutants, and the claude CLI
+        run: |
+          cargo install cargo-llvm-cov cargo-mutants --locked --quiet 2>/dev/null || true
+          npm install -g @anthropic-ai/claude-code --silent
+
+      - name: Build konjo-ast-diff
+        run: cargo build --release --manifest-path /tmp/kiban/packages/konjo-ast-diff-rs/Cargo.toml
+
+      - name: Generate coverage for the target crate
+        run: cargo llvm-cov -p "${{ inputs.crate }}" --lcov --output-path lcov.info
+
+      - name: Run the mutation-hunt loop
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          mkdir -p bench_results/mutation-hunt
+          git fetch --quiet origin "${{ inputs.diff_base_ref }}"
+          python3 /tmp/kiban/bin/kiban-mutation-hunt run \
+            --repo "$(pwd)" --base-ref "$(git rev-parse HEAD)" \
+            --diff-base-ref "origin/${{ inputs.diff_base_ref }}" --lcov lcov.info \
+            --crate "${{ inputs.crate }}" --path-prefix "crates/${{ inputs.crate }}/" \
+            --round-cap "${{ inputs.round_cap }}" \
+            --out bench_results/mutation-hunt
+
+      - name: Upload result artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-hunt-result
+          path: bench_results/mutation-hunt/mutation_hunt_result.json
+          if-no-files-found: warn
