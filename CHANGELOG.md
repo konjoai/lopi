@@ -1,3 +1,44 @@
+## [0.42.0] - Sprint P2b: mutation-hunt fixture, CI call site, per-crate baseline resumed
+
+Cross-repo work order from kiban's `KONJO_REVIEW_PIPELINE_PLAN.md` Phase 2, finishing
+sections P2 deferred. kiban's scope is the loop itself; lopi's scope here is the
+fixture the loop was verified against, the CI call site, and the per-crate mutation
+baseline P2's full-workspace run couldn't finish. Full reasoning and the real
+end-to-end run's numbers in `LEDGER.md`'s `Review-Pipeline-Phase-2b` entry.
+
+### Added
+
+- **`evals/fixtures/rust/undertested/`** - a new, deliberately under-tested workspace
+  member crate (two functions with real branch/boundary logic, one weak test) so
+  kiban's mutation-hunt loop has a small, fast, real target to verify against
+  end-to-end. 15 mutants, runs in seconds. Not consumed by any other crate.
+- **`.github/workflows/konjo-gate.yml`**: a new opt-in `mutation-hunt` job
+  (`workflow_dispatch` only, `crate`/`round_cap`/`diff_base_ref` inputs) -- clones
+  kiban (pinned), builds `konjo-ast-diff`, generates coverage for one crate, and runs
+  `bin/kiban-mutation-hunt`. Deliberately not in the required `konjo-gate` summary
+  job's `needs:` and not triggered by `pull_request`/`push`: the loop spends real
+  model tokens per round, and Phase 2's own plan explicitly does not add a new
+  default gate this sprint. **Not live-runnable yet** -- the pinned kiban ref
+  predates the loop's own code; see `LEDGER.md` for the pin-bump follow-up.
+- **`scripts/pf0b_mutation_baseline.sh`**: resumes PF-0's stalled full-workspace
+  `cargo mutants --workspace` baseline (died twice in an interactive session, see the
+  Review-Pipeline-Phase-2 ledger entry) as 18 independently-timed per-crate runs,
+  smallest-by-LOC first. Resumable by design -- a dead session loses one crate's
+  progress, not the whole run.
+
+### Findings (no code)
+
+- **PF-0b baseline progress this sprint**: see `LEDGER.md`'s `Review-Pipeline-Phase-2b`
+  entry for the exact per-crate list, caught/missed/unviable/timeout counts, and
+  which crates remain. This session never went idle between turns (there was always
+  foreground work to do), so it did not hit the idle-suspend failure mode that killed
+  P2's full-workspace attempts twice.
+- **Section 3's real end-to-end run used this crate as its live target**: 3 rounds,
+  8/5/0 mutants killed per round, 23,162 tokens total, 0 clean-tree failures,
+  terminated at the round cap on 2 mutants that are genuinely equivalent at this
+  fixture's chosen boundary values (not a loop defect -- see kiban's `LEDGER.md` for
+  the full mechanism).
+
 ## [0.41.0] - Sprint P1: Planner/Executor split (tool profiles, plan artifact, handoff)
 
 Cross-repo work order from kiban's `KONJO_REVIEW_PIPELINE_PLAN.md` Phase 1 (Sprint P1
