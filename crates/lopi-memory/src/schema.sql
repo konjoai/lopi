@@ -356,6 +356,23 @@ CREATE TABLE IF NOT EXISTS quota_observations (
     observed_at  TEXT NOT NULL
 );
 
+-- Oracle-Preflight Part B — passive quota history sampler. Append-only
+-- counterpart to quota_observations above: that table is one upserted row
+-- per limit_type (current state only), which is all the MAXX governor needs
+-- but cannot answer "what did utilization look like over time" for a future
+-- forecasting sprint. Every AgentEvent::ApiRetry seen also lands a new row
+-- here, so history survives past the next observation for the same window.
+CREATE TABLE IF NOT EXISTS quota_samples (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    limit_type   TEXT NOT NULL,
+    status       TEXT NOT NULL,
+    utilization  REAL NOT NULL,
+    resets_at    INTEGER,
+    observed_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_quota_samples_limit_type_observed_at
+    ON quota_samples (limit_type, observed_at);
+
 -- MAXX Phase 1 — Opportunistic backlog dispatch entries. Mirrors `schedules`
 -- (same CRUD conventions, `/api/maxx` instead of `/api/schedules`) minus
 -- `cron`, plus quiet_hours/headroom_gate/windows_json — a MAXX entry fires on
