@@ -1,4 +1,5 @@
-//! MAXX Phase 0 — quota headroom tracking.
+//! MAXX Phase 0 — quota headroom tracking, plus the Oracle-Preflight Part B
+//! passive quota-history sampler.
 //!
 //! Subscribes to the same `AgentEvent` bus [`crate::pool::AgentPool`]
 //! broadcasts on. Every `AgentEvent::ApiRetry`, from any in-flight task,
@@ -6,6 +7,18 @@
 //! independent observations, never a shared "last event wins" scalar, since
 //! both window types arrive through the same event variant. `maxx_loop` and
 //! `GET /api/quota` are the readers, via [`QuotaTracker::snapshot`].
+//!
+//! Push-based, not polled: `rate_limit_event` is a line the `claude` CLI
+//! emits inline in its own NDJSON stream during an active turn (decoded by
+//! `claude_events::parse_rate_limit`, forwarded here as `AgentEvent::ApiRetry`
+//! — see `crates/lopi-agent/src/claude_events.rs`). There is no separate
+//! quota-status API to poll on a timer; whether the CLI emits this every turn
+//! or only past a utilization threshold is an open question of the CLI's own
+//! behavior (tracked separately as MAXX kill test 1,
+//! `.konjo/scripts/quota-kill-test-log.sh`), not something a sampler here can
+//! change by polling faster. So this subscriber is the entire sampler: one
+//! more `store.insert_quota_sample` call alongside the existing upsert,
+//! same event, same subscriber loop, no new polling loop.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -111,6 +124,15 @@ impl QuotaTracker {
                         {
                             warn!("quota observation persist failed: {e:#}");
                         }
+                        // Oracle-Preflight Part B: append to history too, never
+                        // overwriting — the upsert above is current-state only.
+                        if let Err(e) = inner
+                            .store
+                            .insert_quota_sample(&limit_type, &status, utilization, resets_at)
+                            .await
+                        {
+                            warn!("quota sample persist failed: {e:#}");
+                        }
                     }
                     Ok(_) => {}
                     Err(broadcast::error::RecvError::Lagged(n)) => {
@@ -184,6 +206,45 @@ mod tests {
         // Persisted, independent rows too — not just the in-memory cache.
         let rows = tracker.inner.store.list_quota_observations().await.unwrap();
         assert_eq!(rows.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn every_observation_also_lands_a_history_sample() {
+        let store = MemoryStore::open_in_memory().await.unwrap();
+        let tracker = QuotaTracker::new(store);
+        let bus: EventBus<AgentEvent> = EventBus::new(16);
+        tracker.start(&bus).await.unwrap();
+
+        bus.send(retry("seven_day", 0.10, None));
+        bus.send(retry("seven_day", 0.20, None));
+        bus.send(retry("seven_day", 0.30, None));
+
+        // Wait for all three to land in the cache (last-write-wins there),
+        // then assert the append-only table kept all three separately.
+        for _ in 0..100 {
+            if tracker
+                .snapshot("seven_day")
+                .is_some_and(|s| (s.utilization - 0.30).abs() < 1e-6)
+            {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+
+        let samples = tracker
+            .inner
+            .store
+            .list_quota_samples("seven_day")
+            .await
+            .unwrap();
+        assert_eq!(
+            samples.len(),
+            3,
+            "the current-state upsert must not suppress history rows"
+        );
+        assert!((samples[0].utilization - 0.10).abs() < 1e-6);
+        assert!((samples[1].utilization - 0.20).abs() < 1e-6);
+        assert!((samples[2].utilization - 0.30).abs() < 1e-6);
     }
 
     #[tokio::test]
