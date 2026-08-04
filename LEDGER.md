@@ -5,6 +5,68 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## Review-Pipeline-Phase-2 -- PF-0: full-workspace mutation baseline launched
+
+Sprint P2 (kiban's `KONJO_REVIEW_PIPELINE_PLAN.md` Phase 2 companion doc), pre-flight
+PF-0. First launch attempt (`--timeout 60`, 2026-08-03T21:28:24Z) **failed outright**:
+`--timeout` bounds every cargo command cargo-mutants runs, including the one-time
+baseline (unmutated-tree) test pass used to calibrate per-mutant timing, and lopi's
+own full-workspace `cargo test` takes longer than 60s cold -- confirmed from
+`mutants.out/debug.log`: `*** result: Timeout` on the baseline pass at the 60s mark,
+followed by `ERROR ... cargo test failed in an unmutated tree, so no mutants were
+tested`. Zero mutants ran; the run exited before producing anything. Relaunched
+immediately, `--timeout` omitted entirely so cargo-mutants measures the real baseline
+test time itself and auto-scales the per-mutant timeout from it (its own documented
+behavior), 2026-08-03T21:35:25Z: `cargo mutants --workspace --jobs 4 -o
+bench_results/lopi/20260803T213525Z_full_baseline`.
+
+**5,315 mutants found** -- not the 1,500-2,000 the plan's own §0.1 estimated from the
+109-mutant partial sample. No completion estimate is recorded here yet (the corrected
+run just started); this entry will be updated with actual wall-clock once it finishes,
+or with elapsed-time-and-mutant-count-so-far if this session ends before it does. Per
+the brief's own instruction: a session that ends before completion must not report the
+partial as the baseline, and this run -- ~49x the prior 109-mutant sample -- makes that
+discipline count for more than usual; KT-D (Phase 2's own kill-test) is blocked on this
+run's completion, not on the P0 partial.
+
+**Confirmed, not just anticipated: the container does not survive to let this run
+finish.** Last live progress before a container restart: 544 of 5,315 tested (10.2%,
+258 caught / 236 missed / 41 unviable / 9 timeout) as of 2026-08-03T23:28Z. The restart
+wiped the entire `bench_results/` scratch tree (gitignored by design, per the earlier
+paragraph in this entry) along with the `cargo-mutants` binary itself -- nothing to
+recover, exactly the failure mode this entry's own `NEXT_SESSION_PROMPT.md` companion
+warned the next session about, except it happened inside this same sprint rather than
+between sessions. Reinstalled `cargo-mutants` and relaunched
+(`bench_results/lopi/20260804T013835Z_full_baseline`, 2026-08-04T01:38:35Z) rather than
+leave it dead, on the reasoning that partial further progress is strictly better than
+none even knowing a second restart is equally possible -- but this is now the third
+launch of the same measurement, and whoever next depends on a completed baseline should
+not assume this container-hosted attempt is the one that gets there. The 20-hour
+extrapolated completion time was already longer than one interactive session before
+this restart; it is now confirmed longer than this container's own uptime.
+
+**Second death, more precisely diagnosed -- this is a session-lifecycle mismatch, not bad
+luck, and relaunching a fourth time will not fix it.** The relaunch above ran for 330
+seconds (finished the unmutated-baseline build+test, auto-set a 697s per-mutant timeout,
+started dispatching parallel workers against the first mutants) and then stopped writing
+to any log file entirely -- no panic, no `Killed`, no OOM (`free -h` immediately after
+showed 14 GiB free), just silence. `stat` on the log files pins the last write at
+2026-08-04T01:44Z, close to where this session's own tool calls paused between one
+check-in turn and the next scheduled wake-up; the process was demonstrably still healthy
+while this session was actively working, and this is the second launch in a row to die
+within roughly an hour of starting, both times near a between-turn idle gap rather than
+at a random point mid-run. The likelier mechanism: this session's environment suspends
+(preserving disk, killing live processes) when idle between turns, rather than the
+earlier hypothesis of a full container wipe-and-restart -- consistent with the binary
+and the run's own directory/log files surviving this second death intact, unlike the
+first. **If that diagnosis is right, no number of relaunches from inside this same
+session will ever let the run finish** -- it will keep dying a few minutes after each
+check-in turn ends, regardless of how many times it's restarted. Not relaunching a
+fourth time on that basis; leaving the baseline stopped rather than repeating a failure
+this entry has now demonstrated twice. `NEXT_SESSION_PROMPT.md`'s existing
+recommendation (a runner that can actually stay running unattended -- dedicated CI,
+persistent infrastructure) is now the confirmed requirement, not a precaution.
+
 ## Review-Pipeline-Phase-1 -- Planner/Executor split: tool profiles, plan artifact, handoff
 
 Sprint P1, the companion doc to kiban's `KONJO_REVIEW_PIPELINE_PLAN.md` Phase 1.
