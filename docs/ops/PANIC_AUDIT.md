@@ -1,12 +1,23 @@
 ---
 decays: state
-verified-against: 6919a1d
-verified-date: 2026-08-03
+verified-against: 2b7aa29
+verified-date: 2026-08-04
 ---
 
 # Panic audit — the trustworthy count, and why grep couldn't give it to you
 
-Verified against: `6919a1d` · 2026-08-03 (re-verified; Sprint P0's commit volume on this
+Verified against: `2b7aa29` · 2026-08-04 (re-verified; Sprint P2b's commit volume
+(review-pipeline sections 1/3/4 plus a parallel Oracle-Preflight sprint's merge) pushed
+this past the 20-commit cap, not the zero-unwrap claim losing accuracy. Re-confirmed
+live, not assumed: ran the exact cited deny-flag command workspace-wide (`cargo clippy
+--workspace --all-targets --all-features -- -D warnings -D clippy::unwrap_used
+-D clippy::expect_used -D clippy::panic -D clippy::todo -D clippy::unimplemented
+-D clippy::dbg_macro -D clippy::print_stdout -D clippy::print_stderr
+-W clippy::cognitive_complexity`), clean -- covering this sprint's new files
+(`tool_profile.rs`, `plan_artifact.rs`, `planner_executor.rs`, the new
+`lopi-fixture-undertested` crate) and the parallel sprint's `quota.rs`/
+`quota_tracker.rs`/`schema.sql` changes, not just the files this sprint's own diff
+touched. Prior banner (`6919a1d` · 2026-08-03, re-verified; Sprint P0's commit volume on this
 PR pushed this past the 20-commit cap, not the zero-unwrap claim losing accuracy.
 Re-confirmed live, not assumed: this sprint's new `crates/lopi-core/src/cost_breaker.rs`
 and its edits to `economics_config.rs` were checked with the exact cited deny-flag
@@ -38,7 +49,7 @@ clippy::expect_used, clippy::panic)]` inner attribute every other crate in this 
 carries — the CI-flag gate still caught it (0 violations either way, this crate has
 none), but the defense-in-depth property this doc's own "What was actually done"
 section below describes didn't hold for this one crate until now. Added; row added to
-the per-crate table below. No other drift found.)
+the per-crate table below. No other drift found.))
 
 Konjo Forward **Pillar 1** (an honest starting position) and **F11** (a durable unattended
 loop should not die on an `unwrap`). This is the pre-flight kill-test for Sprint S5 and the

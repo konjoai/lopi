@@ -1,14 +1,23 @@
 ---
 decays: state
-verified-against: 6919a1d
-verified-date: 2026-08-03
+verified-against: 2b7aa29
+verified-date: 2026-08-04
 ---
 
 # The Pentad — Loop Engineering Completion Roadmap
 
-Verified against: `6919a1d` · 2026-08-03 (re-verified; Sprint P0's commit volume on this
-PR pushed this past the 20-commit cap again, not because a citation lost accuracy. P0
-touched `crates/lopi-core/src/economics_config.rs`, `crates/lopi-core/src/lib.rs` (added
+Verified against: `2b7aa29` · 2026-08-04 (re-verified; Sprint P2b's commit volume
+(review-pipeline sections 1/3/4 plus a parallel Oracle-Preflight sprint's merge) pushed
+this past the 20-commit cap again. One real citation drift found and fixed this time,
+not just commit volume: Sprint P1 (Planner/Executor split) added a `tool_profile` field
+to `Task` before `Task::from_template`, shifting it from `:467-472` to `:475-480` --
+confirmed by reading the current file, not assumed from the line-count delta. Every
+other file this doc cites into (`config.rs`, `template.rs`, `run_loop.rs`,
+`lopi-orchestrator`/`lopi-webhook` paths) either didn't change in this window or changed
+only in ways this doc doesn't cite specific lines into. Prior banner (`6919a1d` ·
+2026-08-03, re-verified; Sprint P0's commit volume on this PR pushed this past the
+20-commit cap again, not because a citation lost accuracy. P0 touched
+`crates/lopi-core/src/economics_config.rs`, `crates/lopi-core/src/lib.rs` (added
 a `cost_breaker` module declaration), and added `crates/lopi-core/src/cost_breaker.rs` --
 none of this doc's cited files or line ranges. Checked every citation this doc makes into
 files P0 touched: none exist. Prior banner (`1dd471d` · 2026-07-29, re-verified; Sprint
@@ -33,7 +42,7 @@ fixed. `stop_reason.rs:27-28`'s `NoProgress` citation, `verifier.rs:196-199`'s
 `isolated_prompt_excludes_the_maker_plan` were all re-checked and are still exact.
 No DONE/PARTIAL/NOT-STARTED verdict changed anywhere in §1 or §4. Prior rounds'
 own findings still stand — see the in-body history this line replaces in git
-blame.)
+blame.))
 
 > **North star:** lopi is no longer a thing you *prompt*. It is a loop you *design*.
 > This roadmap closes the five (+ one) building blocks of loop engineering to a
@@ -122,7 +131,7 @@ Legend: 🟢 solid · 🟡 partial · 🔴 missing.
 
 | Block | Status | What exists | The true gap |
 |-------|--------|-------------|--------------|
-| **Automations** | 🟢 | `lopi-orchestrator` (`scheduler.rs`, `schedule_manager.rs`) cron; `lopi-webhook` CI-failure → task with HMAC verify; per-schedule autonomy L1–L4; run-history persistence | `crates/lopi-webhook/src/github.rs:36-60` — no delivery-id **dedup**, no **dead-letter queue**, triage is synchronous, no schedule-change audit trail. `crates/lopi-core/src/template.rs:44` has a generic `{name}`-hole templating primitive and `Task::from_template` (`crates/lopi-core/src/task.rs:467-472`) exists, but neither is called outside tests — event-payload templating is unwired scaffolding, not shipped |
+| **Automations** | 🟢 | `lopi-orchestrator` (`scheduler.rs`, `schedule_manager.rs`) cron; `lopi-webhook` CI-failure → task with HMAC verify; per-schedule autonomy L1–L4; run-history persistence | `crates/lopi-webhook/src/github.rs:36-60` — no delivery-id **dedup**, no **dead-letter queue**, triage is synchronous, no schedule-change audit trail. `crates/lopi-core/src/template.rs:44` has a generic `{name}`-hole templating primitive and `Task::from_template` (`crates/lopi-core/src/task.rs:475-480`) exists, but neither is called outside tests — event-payload templating is unwired scaffolding, not shipped |
 | **Worktrees** | 🟢 | **Real `git worktree` isolation, shipped and wired.** `crates/lopi-git/src/worktree.rs:36-217` (`WorktreeManager` add/add_detached/prune/list/gc) with RAII `Drop` cleanup (`worktree.rs:295-330`); `crates/lopi-orchestrator/src/pool/worktree.rs:25-50` (`setup_worktree`) puts each task in its own detached worktree when `IsolationMode::Worktree` is set (`crates/lopi-core/src/loop_config.rs:38-44`), with per-worktree `CARGO_TARGET_DIR` (`worktree.rs:266-277`); `crates/lopi-git/src/rebase.rs:27-75` (`rebase_onto`/`rebase_onto_default`) rebases onto a moved default branch and maps conflicts to `TaskStatus::Conflict` (wired at `crates/lopi-agent/src/runner/finalize.rs:243-264`, `rebase_before_pr` — line drift from the Sprint G verification-gate work touching this file); GC exposed via `lopi worktree gc`/`list` (`src/worktree_commands.rs:18-51`) | Isolation mode defaults to `Branch`, not `Worktree` — a repo must opt in via `.lopi/loop.toml`. No mid-run snapshot |
 | **Skills** | 🟢 | **Runtime skill engine, shipped and wired.** `crates/lopi-skill/src/registry.rs:17-93` (`SkillRegistry::load_from_dirs`, dup-name validation) parses `SKILL.md` frontmatter into a typed registry; `crates/lopi-agent/src/runner/builder.rs:92` (`with_skills` — moved out of `runner/mod.rs` since the last verification, file-size split) and `crates/lopi-agent/src/runner/seed.rs:210-241` (`seed_skills`/`record_skill_activation`) inject matching skills into the planning prompt and record activation | Lesson→skill promotion is **partial**: `crates/lopi-skill/src/promote.rs:37-60` (clustering) and `promoter.rs:40-60` (drafts to `.lopi/skills-pending/`, human-approval gate) exist and are reachable via `src/skill_commands.rs:64`, but drafting is a fixed string template, not "via a sub-agent" as originally scoped, and nothing triggers it automatically — it's a manual CLI-only path today |
 | **Plugins & connectors** | 🟢 | **MCP client + server, shipped and wired — both directions.** `crates/lopi-mcp/src/client.rs:36-65` + `config.rs:19-37` (`[[mcp.servers]]` in `.lopi/loop.toml`) + `bridge.rs:21-49` (merges discovered tools into `lopi-tools::ToolRegistry`) is the consuming side; `crates/lopi-mcp/src/server.rs:18-80` wired at `src/mcp_commands/mod.rs:117-243` exposes `lopi_submit_task`/`lopi_get_task`/`lopi_cancel_task`/`lopi_list_tasks`/`lopi_get_logs`/`lopi_get_agent_dag`/`lopi_get_stats` as MCP tools over stdio (`McpServe` registered at `src/main.rs:50,268`) — more surface than the original sprint scoped | `crates/lopi-remote/src/lib.rs:1-19` is now down to a single hardcoded `whatsapp` module — Sprint S10 Phase 4 removed the `telegram` transport entirely (the iOS/macOS app covers that use case now; the `TaskSource::Telegram` variant itself survives as a durable persisted enum, see `LEDGER.md`), and the `egress` allowlist module cited here previously has also since been deleted. Neither removal changes the verdict: **no `Connector` trait exists anywhere in the crate, no durable outbound queue.** The original claim ("connectors are hardcoded singletons") still holds, just with one fewer singleton than when this was last checked |
@@ -348,7 +357,7 @@ the standing Three-Wall gates; only sprint-specific acceptance is spelled out.
   lands in the DLQ and is replayable.
 
 **Sprint 5.2 — Event-payload templating**
-- **Status: 🟡 PARTIAL.** `crates/lopi-core/src/template.rs:44` (`resolve`) is a generic `{name}`-hole templating primitive (single-brace, not `{{issue.title}}` syntax), and `Task::from_template` (`crates/lopi-core/src/task.rs:467-472`) exists — but neither has a caller outside `task_tests.rs`. Not wired into schedules or `lopi-webhook`.
+- **Status: 🟡 PARTIAL.** `crates/lopi-core/src/template.rs:44` (`resolve`) is a generic `{name}`-hole templating primitive (single-brace, not `{{issue.title}}` syntax), and `Task::from_template` (`crates/lopi-core/src/task.rs:475-480`) exists — but neither has a caller outside `task_tests.rs`. Not wired into schedules or `lopi-webhook`.
 - **Goal:** Schedules/webhooks parameterize goals from the event.
 - **Deliverables:** safe template (`{{issue.title}}`, `{{ci.failed_job}}`) with
   injection-safe rendering.

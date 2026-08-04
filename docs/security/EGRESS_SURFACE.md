@@ -1,7 +1,7 @@
 ---
 decays: state
-verified-against: 6919a1d
-verified-date: 2026-08-03
+verified-against: 2b7aa29
+verified-date: 2026-08-04
 ---
 
 ## Sprint S10, Phase 4 update (2026-07-27)
@@ -23,7 +23,17 @@ consistent with this repo's `decays: state` convention — re-derive before trus
 
 # Egress surface — the local-only remnant of Sprint S2
 
-Verified against: `6919a1d` · 2026-08-03 (re-verified; Sprint P0's commit volume on this
+Verified against: `2b7aa29` · 2026-08-04 (re-verified; Sprint P2b's commit volume
+(review-pipeline sections 1/3/4 plus a parallel Oracle-Preflight sprint's merge) pushed
+this past the 20-commit cap again, not on anything it cites losing accuracy. Oracle-
+Preflight touched `crates/lopi-memory/src/store/quota.rs` -- a different file from this
+doc's cited `crates/lopi-memory/src/store/tests.rs` -- and `crates/lopi-orchestrator/
+src/quota_tracker.rs`/`schema.sql`, none of which this doc cites. P2b itself added only
+`evals/fixtures/rust/undertested/`, CI workflow config, and docs -- no touch to any
+transport/provenance path. None of this doc's cited files (`lopi-ui::web::handlers`,
+`provenance_field_tests.rs`, `lopi-memory::store::tests`, `whatsapp.rs`) changed, and
+neither sprint adds a new outbound transport of any kind. Prior banner (`6919a1d` ·
+2026-08-03, re-verified; Sprint P0's commit volume on this
 PR pushed this past the 20-commit cap again, not on anything it cites losing accuracy.
 P0 is a pure Rust logic addition (`crates/lopi-core/src/cost_breaker.rs`, a token-count
 ceiling check with no I/O) plus config/docs changes; none of this doc's cited files
@@ -50,7 +60,7 @@ wiring) touched `lopi-ui::web::handlers`, `provenance_field_tests.rs`, or
 `operator_and_untrusted_sources_have_distinguishable_provenance`, and
 `telegram_sourced_task_is_operator_provenance` (both `crates/lopi-memory/src/store/tests.rs`)
 all still exist exactly as cited. No other citation re-checked this round — see the
-2026-07-27 pass below for the last full re-derivation.)
+2026-07-27 pass below for the last full re-derivation.))
 
 This is the pre-flight kill-test for Sprint S2′ ("Egress allowlist: bound the one
 trifecta leg that's still open locally"). The sprint brief cited a baseline of
