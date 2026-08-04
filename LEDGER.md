@@ -29,6 +29,22 @@ partial as the baseline, and this run -- ~49x the prior 109-mutant sample -- mak
 discipline count for more than usual; KT-D (Phase 2's own kill-test) is blocked on this
 run's completion, not on the P0 partial.
 
+**Confirmed, not just anticipated: the container does not survive to let this run
+finish.** Last live progress before a container restart: 544 of 5,315 tested (10.2%,
+258 caught / 236 missed / 41 unviable / 9 timeout) as of 2026-08-03T23:28Z. The restart
+wiped the entire `bench_results/` scratch tree (gitignored by design, per the earlier
+paragraph in this entry) along with the `cargo-mutants` binary itself -- nothing to
+recover, exactly the failure mode this entry's own `NEXT_SESSION_PROMPT.md` companion
+warned the next session about, except it happened inside this same sprint rather than
+between sessions. Reinstalled `cargo-mutants` and relaunched
+(`bench_results/lopi/20260804T013835Z_full_baseline`, 2026-08-04T01:38:35Z) rather than
+leave it dead, on the reasoning that partial further progress is strictly better than
+none even knowing a second restart is equally possible -- but this is now the third
+launch of the same measurement, and whoever next depends on a completed baseline should
+not assume this container-hosted attempt is the one that gets there. The 20-hour
+extrapolated completion time was already longer than one interactive session before
+this restart; it is now confirmed longer than this container's own uptime.
+
 ## Review-Pipeline-Phase-1 -- Planner/Executor split: tool profiles, plan artifact, handoff
 
 Sprint P1, the companion doc to kiban's `KONJO_REVIEW_PIPELINE_PLAN.md` Phase 1.
