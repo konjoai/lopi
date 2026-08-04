@@ -45,6 +45,28 @@ not assume this container-hosted attempt is the one that gets there. The 20-hour
 extrapolated completion time was already longer than one interactive session before
 this restart; it is now confirmed longer than this container's own uptime.
 
+**Second death, more precisely diagnosed -- this is a session-lifecycle mismatch, not bad
+luck, and relaunching a fourth time will not fix it.** The relaunch above ran for 330
+seconds (finished the unmutated-baseline build+test, auto-set a 697s per-mutant timeout,
+started dispatching parallel workers against the first mutants) and then stopped writing
+to any log file entirely -- no panic, no `Killed`, no OOM (`free -h` immediately after
+showed 14 GiB free), just silence. `stat` on the log files pins the last write at
+2026-08-04T01:44Z, close to where this session's own tool calls paused between one
+check-in turn and the next scheduled wake-up; the process was demonstrably still healthy
+while this session was actively working, and this is the second launch in a row to die
+within roughly an hour of starting, both times near a between-turn idle gap rather than
+at a random point mid-run. The likelier mechanism: this session's environment suspends
+(preserving disk, killing live processes) when idle between turns, rather than the
+earlier hypothesis of a full container wipe-and-restart -- consistent with the binary
+and the run's own directory/log files surviving this second death intact, unlike the
+first. **If that diagnosis is right, no number of relaunches from inside this same
+session will ever let the run finish** -- it will keep dying a few minutes after each
+check-in turn ends, regardless of how many times it's restarted. Not relaunching a
+fourth time on that basis; leaving the baseline stopped rather than repeating a failure
+this entry has now demonstrated twice. `NEXT_SESSION_PROMPT.md`'s existing
+recommendation (a runner that can actually stay running unattended -- dedicated CI,
+persistent infrastructure) is now the confirmed requirement, not a precaution.
+
 ## Review-Pipeline-Phase-1 -- Planner/Executor split: tool profiles, plan artifact, handoff
 
 Sprint P1, the companion doc to kiban's `KONJO_REVIEW_PIPELINE_PLAN.md` Phase 1.
