@@ -5,6 +5,45 @@ the `lopi` repo. Newest first.
 
 ---
 
+## Next Session, after Sprint P2b (mutation-hunt fixture + CI call site, `[0.42.0]`)
+
+Sprint P2b (kiban's `KONJO_REVIEW_PIPELINE_PLAN.md` Phase 2 companion doc, finishing
+what Sprint P2 deferred). kiban is the primary repo for this sprint's code (sections
+1/3/4 of the mutation-hunt loop); lopi's scope is the `evals/fixtures/rust/
+undertested/` fixture the loop was verified against end-to-end, PF-0b's resumed
+per-crate baseline, and an opt-in CI call site. Read `CHANGELOG.md`'s `[0.42.0]`
+entry and `LEDGER.md`'s `Review-Pipeline-Phase-2b` entry first.
+
+**What's already done and should not be re-derived:** the fixture crate (2 functions,
+15 mutants, one deliberately weak test -- clean build/test/clippy); the
+`mutation-hunt` `workflow_dispatch` job in `konjo-gate.yml`; PF-0b's per-crate
+baseline mechanism (`scripts/pf0b_mutation_baseline.sh`) and exactly which crates it
+completed this sprint (see `LEDGER.md` for the table -- do not re-derive from
+`bench_results/lopi/pf0b_summary.jsonl`, gitignored, does not survive a container
+restart). kiban's own `LEDGER.md` has the real end-to-end verify run's numbers (3
+rounds, 8/5/0 mutants killed, 23,162 tokens, $0.84, 0 clean-tree failures) -- not
+duplicated here.
+
+**First thing to do:** confirm `VERSION` (`0.42.0`) still matches `CHANGELOG.md`'s
+top entry before touching anything, same as every prior sprint's handoff.
+
+**Explicitly not done this sprint, carried forward:**
+
+1. **The `mutation-hunt` CI job is not live-runnable yet.** It clones kiban at the
+   pinned `v1.8.0` tag, which predates this sprint's `bin/kiban-mutation-hunt`. Once
+   kiban cuts a release containing sections 1/3/4, bump `.konjo/kiban.ref` and
+   `konjo-gate.yml`'s two `KIBAN_REF` values together (this file's own "Pinning"
+   section in `CLAUDE.md`), then manually trigger the job once against a real crate
+   (`lopi-ratelimit` is a good first target -- Sprint P2's PF-3 pilot already found
+   real surviving mutants there) before trusting it further.
+2. **PF-0b's remaining crates.** See `LEDGER.md` for exactly which of the 18
+   completed this sprint. Resume with `scripts/pf0b_mutation_baseline.sh`, trimming
+   the `CRATES` array to whatever's left first (it re-runs completed crates too if
+   left as-is). The full-workspace baseline (kiban's KT-D control) stays blocked
+   until all 18 are done.
+
+---
+
 ## Next Session, after Oracle-Preflight (kill-tests + quota sampler start)
 
 The Oracle-Preflight sprint ran the three pre-registered `lopi-oracle` kill-tests and

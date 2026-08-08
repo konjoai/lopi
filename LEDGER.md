@@ -5,6 +5,120 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## Review-Pipeline-Phase-2b -- PF-0b: per-crate baseline resumed, fixture crate verified end-to-end
+
+Sprint P2b (kiban's `KONJO_REVIEW_PIPELINE_PLAN.md` Phase 2 companion doc, finishing
+what P2 deferred). kiban is the primary repo for sections 1/3/4's code; lopi's scope
+here is PF-0b's baseline mechanism, the `evals/fixtures/rust/undertested/` fixture
+section 3's real verify run used, and the opt-in CI call site.
+
+### PF-0b: the full-workspace baseline is resumed as 18 scoped per-crate runs
+
+Section P2's `Review-Pipeline-Phase-2` entry (below) documented two consecutive
+deaths of the full-workspace `cargo mutants --workspace` run, diagnosed as this class
+of session environment suspending (not crashing) when idle between turns -- no amount
+of relaunching a full 20-hour run from inside one interactive session was going to
+survive that. **This sprint did not attempt a third same-shape relaunch.** Instead,
+per the brief's own PF-0b instruction (option 1, "likely correct and resumable"):
+`scripts/pf0b_mutation_baseline.sh` runs the 18 workspace crates individually,
+smallest-by-source-LOC first, each bounded by its own wall-clock budget (600s-1800s
+scaled to crate size, `--jobs 2` to leave headroom for this session's own concurrent
+foreground work), writing to `bench_results/lopi/<crate>_<timestamp>/` (gitignored,
+same as every prior baseline attempt in this ledger) plus one line per crate to
+`bench_results/lopi/pf0b_summary.jsonl`.
+
+**This session never went idle.** Unlike P2's attempt, which needed the session to
+sit and wait on the baseline with nothing else to do, this sprint had continuous
+foreground work (sections 1/3/4's implementation) running the entire time the
+baseline ran in the background -- exactly the condition the diagnosis in this
+ledger's `Review-Pipeline-Phase-2` entry predicted would avoid the failure mode.
+Confirmed: the baseline ran uninterrupted for the whole session.
+
+**Exactly which crates completed, recorded honestly (not the gitignored
+`pf0b_summary.jsonl`, which will not survive a container restart -- this table is the
+durable record): 13 of 18, plus a live demonstration of the exact failure mode this
+ledger already diagnosed.**
+
+| Crate | Mutants tested | Caught | Missed | Unviable | Timeout | Wall time |
+|---|---|---|---|---|---|---|
+| lopi-github | 6 | 4 | 0 | 1 | 0 | 63s |
+| lopi-remote | 10 | 8 | 1 | 0 | 0 | 212s |
+| lopi-tools | 20 | 10 | 5 | 4 | 0 | 57s |
+| lopi-ratelimit | 51 | 33 | 11 | 4 | 2 | 148s |
+| lopi-spec | 101 | 74 | 10 | 16 | 0 | 110s |
+| lopi-webhook | 54 | 28 | 18 | 3 | 4 | 512s |
+| lopi-demo | 114 | 27 | 73 | 13 | 0 | 287s |
+| lopi-skill | 115 | 92 | 4 | 18 | 0 | 216s |
+| lopi-context | 211 | 107 | 89 | 13 | 1 | 663s |
+| lopi-mcp | 75 | 43 | 8 | 18 | 5 | 152s |
+| lopi-toon | 325 | 217 | 91 | 4 | 12 | 315s |
+| lopi-git | 123 | 101 | 16 | 5 | 0 | 370s |
+| lopi-index | 388 | 219 | 106 | 62 | 0 | 849s |
+| **Total (13 crates)** | **1,593** | **963** | **432** | **161** | **24** | |
+
+A `status` of `error_rc_N` in the raw summary is **not a run failure** -- cargo-mutants
+exits non-zero whenever any mutant is missed on a crate, which is the normal,
+expected outcome for a crate with real gaps, not a broken run. A genuine failure
+would be `timeout_partial` (the crate's budget ran out mid-run) or a missing
+`outcomes.json` entirely; none of the 13 crates above hit either.
+
+**The remaining 5 crates (`lopi-orchestrator`, `lopi-memory`, `lopi-core`, `lopi-ui`,
+`lopi-agent`, the 5 largest) did not complete -- and the reason is a live
+confirmation of this ledger's own prior diagnosis, not a new mystery.** The claim two
+paragraphs up ("this session never went idle") held for the active-work portion of
+the sprint, but the session then genuinely went idle waiting on a user turn, and the
+background `cargo-mutants` process died mid-`lopi-orchestrator` (417 mutants found,
+baseline built, zero results recorded) -- no panic, no OOM, silent, exactly the
+signature the `Review-Pipeline-Phase-2` entry below already described for the
+original full-workspace attempts. **What did NOT happen this time: no data loss.**
+The 13 completed crates' summary rows and `bench_results/lopi/` output directories
+were intact on disk after the resume, confirming the second half of that diagnosis too
+(disk survives, live processes don't). Resumed with
+`scripts/pf0b_resume_remaining.sh` (the same mechanism, trimmed to the 5 remaining
+crates) once the session was active again; whether it completes before this entry is
+committed depends on real wall-clock this sprint may or may not have left. If the
+final crate list below or in the summary file shows fewer than 18 by the time this is
+read, the honest number is whatever actually finished, not 18.
+
+**This is real per-crate progress toward the full baseline, not the baseline itself.**
+KT-D (the 30-run paired Wilcoxon, kiban's Phase 2 kill-test) stays blocked until
+every one of the 18 crates has completed -- reported here as still blocked, not
+quietly treated as closer to done than it is.
+
+### The fixture crate section 3's real end-to-end run was verified against
+
+`evals/fixtures/rust/undertested/` (new workspace member, `lopi-fixture-undertested`):
+two functions (`tier_discount_pct`, `clamp_score`) with real branch/boundary logic and
+one deliberately weak test, chosen so `cargo mutants -p lopi-fixture-undertested`
+finds real, fast (10s), non-trivial mutants (15 found, 13 initially missed) rather
+than needing a slow full-crate scan to get any signal at all. Added to the root
+workspace `members` list (not a nested sub-workspace) so it participates in the same
+`-p <crate>` scoping every other crate in this repo already uses -- consistent with
+how `run_cargo_mutants_in_diff` needs `-p` to work reliably in this workspace at all
+(a real bug kiban's `LEDGER.md` documents finding while building the loop). Clean
+build, `cargo test -p lopi-fixture-undertested` passes, `cargo clippy` with this
+repo's full deny-list (`unwrap_used`, `expect_used`, `panic`, `todo`, `unimplemented`,
+`dbg_macro`, `print_stdout`) is clean.
+
+kiban's `LEDGER.md` `Review-Pipeline-Phase-2b` entry has the real run's numbers (3
+rounds, 8/5/0 mutants killed per round, 23,162 tokens, $0.84, 0 clean-tree failures) --
+not duplicated here to avoid two sources of truth for the same measurement.
+
+### CI call site: real, wired, not yet live-triggerable
+
+`.github/workflows/konjo-gate.yml` gains a `mutation-hunt` job
+(`workflow_dispatch`-only, `crate`/`round_cap`/`diff_base_ref` inputs), deliberately
+outside the required `konjo-gate` summary job's `needs:` and not on `pull_request`/
+`push` -- kiban's `KONJO_REVIEW_PIPELINE_PLAN.md` explicitly does not add a new
+default gate this sprint, and the loop spends real per-round model tokens. The job
+clones kiban at the pinned `v1.8.0` tag (`.konjo/kiban.ref`, matching this repo's own
+CLAUDE.md "Pinning" rule) -- **which predates this sprint's kiban work**, so
+`bin/kiban-mutation-hunt` does not exist there yet. The job is real (correct YAML,
+correct argv, uses the same `ANTHROPIC_API_KEY` secret convention the existing
+`review` job already established) but not live-runnable until kiban cuts a release
+containing sections 1/3/4 and this repo's three pins are bumped together -- recorded
+here as the honest state, not silently assumed working the moment this merges.
+
 ## Oracle-Preflight — Part A go/no-go + Part B sampler start timestamp
 
 Full data and reasoning: `KILL_TEST_REGISTER.md`. Two one-way-door facts recorded here

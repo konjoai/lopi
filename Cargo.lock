@@ -1884,6 +1884,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "lopi-fixture-undertested"
+version = "0.1.0"
+
+[[package]]
 name = "lopi-git"
 version = "0.40.0"
 dependencies = [

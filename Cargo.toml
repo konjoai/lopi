@@ -18,6 +18,7 @@ members = [
     "crates/lopi-mcp",
     "crates/lopi-index",
     "crates/lopi-demo",
+    "evals/fixtures/rust/undertested",
 ]
 resolver = "2"
 

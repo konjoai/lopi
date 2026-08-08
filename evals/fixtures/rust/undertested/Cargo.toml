@@ -1,0 +1,6 @@
+[package]
+name = "lopi-fixture-undertested"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Deliberately under-tested fixture crate for the mutation-hunt loop's real end-to-end verify run (review-pipeline Sprint P2b, section 3). Not consumed by any other crate."
