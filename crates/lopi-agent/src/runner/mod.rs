@@ -6,6 +6,7 @@ mod finalize;
 mod guardrails;
 mod lifecycle;
 mod plan_gate;
+mod plan_readonly;
 mod plan_steps;
 pub mod postmortem;
 mod postmortem_cli;
@@ -142,6 +143,12 @@ pub struct AgentRunner {
     /// Sprint S — plan text from the most recent planning step, used by the
     /// verifier to provide intent context when grading the diff.
     pub(super) last_plan: Option<String>,
+    /// Sprint P3a — the readonly Planner's schema-valid `PlanArtifact` for
+    /// the most recent attempt, when the Planner call succeeded on this path
+    /// (Path A, see `run_loop.rs`). `None` on every attempt whose Planner
+    /// call was skipped, failed, or returned unparseable output — absent,
+    /// never synthesized or backfilled from `last_plan`/the diff.
+    pub(super) last_plan_artifact: Option<lopi_core::PlanArtifact>,
     /// Stable session id used by `TurnMetrics.session_id`.
     pub(super) session_id: Uuid,
     pub(super) cancel_rx: Option<oneshot::Receiver<()>>,
@@ -243,6 +250,7 @@ impl AgentRunner {
             permission_deny: Vec::new(),
             verifier_enabled: false,
             last_plan: None,
+            last_plan_artifact: None,
             session_id: Uuid::new_v4(),
             cancel_rx: Some(cancel_rx),
             plan_decision_rx: None,
