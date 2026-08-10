@@ -110,6 +110,31 @@ impl AgentRunner {
         });
     }
 
+    /// Sprint P3a — best-effort persist of a successful readonly-Planner
+    /// call's `PlanArtifact` into `tasks.plan_artifact`, the moment it's
+    /// produced (before the Executor spawns) — same "before use,
+    /// git-independent" shape as `persist_cli_session`, confirmed by reading
+    /// `abort_attempt`'s git2 implementation to have zero interaction with
+    /// this store, so a crashed Executor still leaves the plan on record.
+    /// Never called for a failed/unparseable Planner response — section 2's
+    /// "absent, never synthesized" rule starts here: nothing calls this with
+    /// a placeholder value.
+    pub(super) fn persist_plan_artifact(&self, plan: &lopi_core::PlanArtifact) {
+        let Some(store) = self.store.clone() else {
+            return;
+        };
+        let task_id = self.id();
+        let Ok(json) = serde_json::to_string(plan) else {
+            tracing::warn!("failed to serialize plan artifact for persistence");
+            return;
+        };
+        tokio::spawn(async move {
+            if let Err(e) = store.set_task_plan_artifact(&task_id, &json).await {
+                tracing::warn!(error = %e, "failed to persist task plan_artifact");
+            }
+        });
+    }
+
     /// Best-effort mirror of `TaskStatus` into the `agent_dag_nodes` table so
     /// `GET /api/agents/:id/dag` and `lopi replay` reflect real progress
     /// instead of an always-empty graph. This only *records* the DAG — the
