@@ -25,11 +25,31 @@ from __future__ import annotations
 
 import argparse
 import re
+import subprocess
 import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 _SCAN_DIRS = ("crates", "src")
+
+
+def _diffed_rs_files(base_ref: str) -> list[Path]:
+    """Files changed vs `base_ref` (Gate-Tiering-1, A4), scoped to _SCAN_DIRS.
+    See function_length_check.py's `_diffed_rs_files` for the same convention."""
+    result = subprocess.run(
+        ["git", "diff", "--name-only", f"{base_ref}...HEAD"],
+        cwd=REPO_ROOT, capture_output=True, text=True, check=False,
+    )
+    out = []
+    for line in result.stdout.splitlines():
+        if not line.endswith(".rs"):
+            continue
+        if not any(line == d or line.startswith(f"{d}/") for d in _SCAN_DIRS):
+            continue
+        path = REPO_ROOT / line
+        if path.is_file():
+            out.append(path)
+    return out
 _INDEX_RE = re.compile(r"\[0\]|\[1\]")
 _TEST_DIR_MARKERS = ("/tests/", "/benches/")
 _TEST_FILE_NAMES = {"tests.rs"}
@@ -43,28 +63,32 @@ def _is_test_path(rel: str) -> bool:
     return name in _TEST_FILE_NAMES or name.endswith(_TEST_FILE_SUFFIXES)
 
 
-def count_indexing_sites() -> tuple[int, list[str]]:
+def count_indexing_sites(base_ref: str | None = None) -> tuple[int, list[str]]:
     total = 0
     hits: list[str] = []
-    for scan_dir in _SCAN_DIRS:
-        base = REPO_ROOT / scan_dir
-        if not base.exists():
+    if base_ref:
+        candidates = sorted(_diffed_rs_files(base_ref))
+    else:
+        candidates = []
+        for scan_dir in _SCAN_DIRS:
+            base = REPO_ROOT / scan_dir
+            if base.exists():
+                candidates.extend(sorted(base.rglob("*.rs")))
+    for path in candidates:
+        rel = str(path.relative_to(REPO_ROOT))
+        if "target" in Path(rel).parts or _is_test_path(rel):
             continue
-        for path in sorted(base.rglob("*.rs")):
-            rel = str(path.relative_to(REPO_ROOT))
-            if "target" in Path(rel).parts or _is_test_path(rel):
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        for lineno, line in enumerate(text.splitlines(), start=1):
+            if line.strip().startswith("//"):
                 continue
-            try:
-                text = path.read_text(encoding="utf-8")
-            except (OSError, UnicodeDecodeError):
-                continue
-            for lineno, line in enumerate(text.splitlines(), start=1):
-                if line.strip().startswith("//"):
-                    continue
-                n = len(_INDEX_RE.findall(line))
-                if n:
-                    total += n
-                    hits.append(f"{rel}:{lineno} (+{n})")
+            n = len(_INDEX_RE.findall(line))
+            if n:
+                total += n
+                hits.append(f"{rel}:{lineno} (+{n})")
     return total, hits
 
 
@@ -80,9 +104,17 @@ def _read_ceiling(ceiling_path: Path) -> int:
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--ceiling-file", type=Path, default=None)
+    parser.add_argument(
+        "--base-ref",
+        default=None,
+        help="Gate-Tiering-1, A4: scope the scan to files changed vs this ref "
+        "(git diff --name-only <base-ref>...HEAD) instead of the whole tree. "
+        "See function_length_check.py's --base-ref for the same tradeoff "
+        "against a full-tree-calibrated ceiling file.",
+    )
     args = parser.parse_args(argv)
 
-    total, hits = count_indexing_sites()
+    total, hits = count_indexing_sites(args.base_ref)
     print(f"indexing_floor: {total} raw `[0]`/`[1]` site(s) in production code")
 
     if args.ceiling_file is None:

@@ -134,9 +134,9 @@ def _staged_files(root: Path, extensions: set[str]) -> list[Path]:
     return paths
 
 
-def _changed_files(root: Path, extensions: set[str]) -> list[Path]:
+def _changed_files(root: Path, extensions: set[str], base_ref: str = "origin/main") -> list[Path]:
     result = subprocess.run(
-        ["git", "diff", "--name-only", "origin/main...HEAD"],
+        ["git", "diff", "--name-only", f"{base_ref}...HEAD"],
         cwd=root, capture_output=True, text=True, check=False
     )
     paths = []
@@ -221,7 +221,14 @@ def main() -> int:
     parser.add_argument("--min-lines", type=int, default=10, help="Minimum block size in lines")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--staged-only", action="store_true", help="Scan only git-staged files")
-    mode.add_argument("--changed-only", action="store_true", help="Scan files changed vs origin/main")
+    mode.add_argument("--changed-only", action="store_true", help="Scan files changed vs --base-ref")
+    parser.add_argument(
+        "--base-ref",
+        default="origin/main",
+        help="Gate-Tiering-1, A4: base ref for --changed-only's diff "
+        "(git diff --name-only <base-ref>...HEAD). Defaults to origin/main "
+        "for a push-to-main run; CI passes the PR's real base on a PR run.",
+    )
     parser.add_argument("--json", action="store_true", dest="json_out", help="JSON output")
     parser.add_argument("--report", help="Write JSON report to file")
     parser.add_argument("--warn-only", action="store_true", help="Exit 0 even when violations found")
@@ -254,7 +261,7 @@ def main() -> int:
                 print("[dry-check] No staged source files to check.")
             return 0
     elif args.changed_only:
-        scan_targets = _changed_files(root, extensions)
+        scan_targets = _changed_files(root, extensions, args.base_ref)
         if not scan_targets:
             if not args.json_out:
                 print("[dry-check] No changed source files to check.")

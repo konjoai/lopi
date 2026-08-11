@@ -5,6 +5,93 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## Gate-Tiering-1 — BLOCKING vs ADVISORY tiers, review demoted, break-glass added
+
+Sprint "Gate Tiering and the Adoption Ramp", Part A. `konjo-gate.yml`'s aggregator
+(`konjo-gate`, the `"Konjo Gate — All Walls Clear"` required check) required all eight
+upstream jobs — roughly twenty distinct checks — to return `success`, with no adoption
+ramp, no diff-scoping on most repo-native checks, and no break-glass. Quality tooling
+built to catch defects was blocking all merges, including merges that fix the tooling
+itself. This sprint gives the framework the ramp `soft_gate_lint.py`, `konjo-gates-py`'s
+`advisory:` field, and `bin/konjo-newonly` already supported but that was never applied
+past `gate_polarity`/`claude_contract`. Decision logged: `konjo-decision decide` id
+`8b7592098d16`, scope `repo:lopi`.
+
+### A0 — the failure set found before any demotion
+
+`gh` was unavailable in this session's environment; diagnosis used the equivalent GitHub
+MCP tools (`pull_request_read` `get_check_runs` / `get_job_logs`) against the three most
+recently active open PRs against `main` at the time of authoring (#196, #195, #185,
+2026-07-29 through 2026-08-11). All three failed the aggregator; the per-job pattern was
+identical across all three runs:
+
+| Job | Step | Failure reason | Category |
+|---|---|---|---|
+| `G1b · npm audit (web/)` | `npm audit --audit-level=high` | 3 pre-existing transitive-dep advisories (`@sveltejs/kit` ReDoS, `dompurify` XSS, `nanoid` infinite-loop), none introduced by the PRs' own diffs (none touched `web/`) | (b) pre-existing/legacy |
+| `GK · konjo-gates (kiban profile)` | `repo:cargo-deny` | kiban's `newonly.net_new` line-diff produced 26 "net-new" lines that are garbled `cargo deny`-tree fragments (`lopi-oracle v0.N` repeated dozens of times) — a dispatcher/diffing artifact on the dependency tree's own version-placeholder text, not a real license/advisory/ban violation | (c) flaky/tooling defect, not a real finding |
+
+No category (a) real defect was found in any of the three diffs examined — the
+aggregator was blocking merges on legacy findings and a tooling bug, not on genuine
+breakage introduced by those PRs. This confirms the sprint's own framing: the fix is
+tiering, not detector work (out of scope per the brief's non-goals).
+
+This branch (`claude/gate-tiering-adoption-ramp-92nqz6`) itself carries no product-code
+diff — Part A's changes are entirely to `.github/workflows/konjo-gate.yml`,
+`.konjo/scripts/`, `.konjo/profile.yml`, `LEDGER.md`, and `CLAUDE.md` — so there was no
+category (a) defect of its own to fix in this PR.
+
+### Per-job tier assignment
+
+**BLOCKING** (deterministic, fast, catches real breakage):
+
+| Job / step | Reason |
+|---|---|
+| `static` (fmt, clippy w/ deny flags, cargo audit, cargo deny, dead-code, scope-assert, soft-gate-lint) | Deterministic Rust-toolchain checks; the A0 diagnosis found zero false positives from this job across all three sampled PRs |
+| `coverage` → `Eval-executor regression suite` | Already non-negotiable pre-sprint: a gate that could pass when it errors is the one thing an evaluator can't do |
+| `coverage` → `Run tests with coverage` | "The tests pass" is not negotiable — decoupled from the 80%-floor flag (`--fail-under-lines 80` removed from this step) so a low coverage percentage can no longer masquerade as a compile/test failure and vice versa |
+
+**ADVISORY** (reports, annotates, never blocks):
+
+| Job / step | Reason |
+|---|---|
+| `doc-staleness` | Not touched by A0's sample failures; demoted per the brief's explicit tier list — kiban's doc-staleness scanner has no measured false-positive rate on lopi yet |
+| `web-audit` | A0 found this failing on pre-existing transitive-dep advisories unrelated to the PR's own diff on 2 of 3 sampled PRs |
+| `coverage` → `Coverage gate (80% floor, 95% target)` | Real measured coverage is 68.34%, below floor by a real but non-catastrophic margin; already `continue-on-error: true` pre-sprint, comment re-verified and re-dated |
+| `coverage` → `Coverage floor gate (never regress below the locked value)` | Was the one HARD sub-step inside `coverage` pre-sprint; demoted alongside the 80%-floor gate it ratchets, since a floor is only meaningful once the thing it floors is enforced again — promotes back to BLOCKING alongside it |
+| `complexity` (cognitive complexity, file-size-500, DRY, function length, indexing floor, rustdoc) | No BLOCKING sub-step here had a measured false-positive rate before this sprint; several (function-length, indexing-floor, rustdoc) were already ratchets/soft, not fresh demotions |
+| `mutation` | PR-only, `cargo mutants --in-diff` survival rate has no measured false-positive rate on lopi yet |
+| `review` | A single nondeterministic LLM verdict (Claude Opus) with no measured false-positive rate must not hold unappealable authority over merge — the verdict stays fully visible in the posted PR comment and `REVIEW_EXIT` |
+| `konjo-gates` | A0 found this failing on a kiban tooling defect (cargo-deny newonly diffing bug) on all three sampled PRs, not a real finding |
+
+### Break-glass
+
+A `gate:override` PR label plus a mandatory `Konjo-Override: <reason>` trailer in the PR
+body bypasses a BLOCKING failure — `.konjo/scripts/gate_verdict.sh` (extracted out of the
+aggregator step so it's testable outside Actions, see
+`test_gate_tiering_killtest.sh`). The label alone is not enough: the trailer requirement
+is checked before anything else and fails the aggregator outright if missing, whether or
+not a BLOCKING job actually failed. `OVERRIDDEN`, the label, and the actor are all printed;
+the step also emits a `::warning::` reminding the actor to record a `LEDGER.md` entry for
+the specific override used.
+
+### Promotion criteria back to BLOCKING
+
+Defined in Part B (kiban): a gate may be declared `tier: blocking` only if it has **both**
+a passing kill-test (`gates[].rejects_test`) **and** a recorded false-positive rate below
+a stated ceiling, measured over at least N runs (`lib/gate_stats.py`'s
+`BLOCKING_READY`/`ADVISORY_ONLY`/`INSUFFICIENT_DATA` classification, fed by
+`ledger/pr_telemetry.py`). Until a gate meets both, it stays ADVISORY. `konjo-gates`'
+meta-gate fails a profile that declares `blocking` without a passing `rejects_test`, so
+the criteria are mechanically enforced, not just documented.
+
+### What was NOT done
+
+No gate, script, kill-test, or job was deleted — every check listed above still runs and
+still reports; only its authority to block merge changed. No detector threshold was
+tuned. `.konjo/kiban.ref` was not bumped (still `v1.8.0`) — Part A is self-contained in
+lopi. Branch protection was not touched. The aggregator's required check name
+(`"Konjo Gate — All Walls Clear"`) is byte-identical to before this sprint.
+
 ## Review-Pipeline-Phase-2b -- PF-0b: per-crate baseline resumed, fixture crate verified end-to-end
 
 Sprint P2b (kiban's `KONJO_REVIEW_PIPELINE_PLAN.md` Phase 2 companion doc, finishing
