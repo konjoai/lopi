@@ -5,6 +5,22 @@ the `lopi` repo. Newest first.
 
 ---
 
+## Branch triage (2026-08-11) — read `BRANCH_TRIAGE.md`, no action taken
+
+Findings-only sprint (Part E of the combined P3a-closeout/Collision-Oracle/
+RepoProfile-parity/mutation-hunt/branch-triage session). Full per-branch table with
+verified PR state in `BRANCH_TRIAGE.md`. Headline: 5 lopi branches have an open PR
+(active), 4 are already fully merged into `main` (safe deletion candidates), 12 have
+a closed-but-unmerged PR (a real prior review decision, not neglect — reopening is
+an owner call), and only 3 never had a PR at all. kiban's
+`claude/sign-distribution-channel-heg41d` (release-tag signing) is real, tested,
+non-superseded work with a closed-not-merged PR (#29) and only bookkeeping-file
+merge conflicts against current `main` — a mechanical rebase away from re-opening,
+pending an owner decision on why it was closed. **No branches were deleted** — that
+stays a separate, explicit decision.
+
+---
+
 ## Next Session, after Collision-Oracle-Build (`lopi-oracle` scaffold, `[0.43.0]`)
 
 Read `CHANGELOG.md`'s `[0.43.0]` entry and `LEDGER.md`'s `Collision-Oracle-Build`
