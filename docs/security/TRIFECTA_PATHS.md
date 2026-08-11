@@ -1,10 +1,24 @@
 ---
 decays: state
-verified-against: 824ba65
-verified-date: 2026-08-03
+verified-against: 9d1162e
+verified-date: 2026-08-11
 ---
 
 # Trifecta paths — untrusted input → powerful tools → external comms
+
+Verified against: `9d1162e` · 2026-08-11 (re-verified; the combined P3a-closeout/
+Collision-Oracle/RepoProfile-parity/branch-triage sprint's own commit volume
+crossed the 20-commit cap. That sprint's one touch inside this doc's cited
+`crates/lopi-ui/src/web/*.rs` glob is `handlers.rs::create_task` (adds
+`RepoProfile::load_from_repo(&effective_repo).apply(&mut task)` before submit) —
+checked against every citation in this document by name, not just the glob:
+`crates/lopi-ui/src/web/handlers.rs` carries no line-specific claim anywhere in
+this doc's body (the only `handlers.rs` citations, e.g. `handlers.rs:22`/`:112`
+below, are `crates/lopi-remote/src/telegram/handlers.rs` — a different, already-
+removed file per Sprint S10 Phase 4). No other file this sprint touched
+(`lopi-oracle`, `lopi-agent/src/runner/{builder,collision_seed,mod,seed}.rs`,
+`mcp_commands/{mod,tool_defs,repo_profile_tests}.rs`) appears in this doc's cited
+list at all. No content-level drift found.
 
 Verified against: `824ba65` · 2026-08-03 (re-verified; G0 flagged this doc stale again — the
 review-pipeline Sprint P2 branch's own single commit, a `.gitignore`/`LEDGER.md`-only change
