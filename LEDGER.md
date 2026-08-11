@@ -5,6 +5,88 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## PR-196-Gate-Response -- one-way-door ack, threat model, and a confirmed cargo-deny false positive
+
+`konjo-gates` (`GK`, kiban profile) ran against this combined sprint's real diff
+(`d2402af2c7dc`, 23 changed files vs. `origin/main`) and found three things. Two are
+real and acknowledged properly, not rubber-stamped; the third is a confirmed tooling
+false positive, documented rather than silently worked around.
+
+### One-way door: acknowledged
+
+`gate_one_way_door` fired on `path:release-version` — this sprint's two real `VERSION`
+bumps (`0.42.0` → `0.43.0` → `0.44.0`, `Collision-Oracle-Build` and
+`RepoProfile-EntryPoint-Parity`). Both are real, already-shipped sprint entries with
+their own `LEDGER.md`/`CHANGELOG.md` records, not placeholder bumps. Ran
+`konjo-oneway confirm` for real (not skipped): `Konjo-Acknowledged-Oneway: d2402af2c7dc`.
+
+### Threat model: recorded, one boundary, real reasoning
+
+`gate_threat_model` fired on `network_ingress` (path heuristic:
+`crates/lopi-ui/src/web/handlers.rs` matches kiban's `handler` path pattern). The
+actual change there (Part C, `RepoProfile-EntryPoint-Parity`) adds
+`RepoProfile::load_from_repo(&effective_repo).apply(&mut task)` to `create_task`.
+
+**Mitigation:** reads only `.lopi.toml` from a repo path that was already fully
+trusted before this change — the same `task.repo_path` (request-supplied or the
+pool's own bound repo) is the directory `AgentPool`'s run loop then checks out,
+builds, and executes an agent inside. Reading one additional config file from it is
+strictly narrower than the write/execute access that path already receives.
+`load_from_repo` no-ops (`RepoProfile::default()`) on a missing or unparseable file
+— a malformed `.lopi.toml` cannot crash the request.
+
+**Abuse case:** an attacker who can already submit a task with an arbitrary `repo`
+path (a pre-existing capability of this endpoint, unchanged by this PR) could point
+`.lopi.toml` to set `allowed_dirs`/`forbidden_dirs`/`constraints`/`max_retries` on
+their own submitted task — but `allowed_dirs`/`forbidden_dirs` are advisory-only
+everywhere in this codebase (confirmed live, this file's own PF-1 entry-point audit)
+and `constraints`/`max_retries` only affect the attacker's own task's own
+planning/retry behavior, not another task's isolation. No cross-task or
+privilege-escalation path found.
+
+Recorded via `konjo-threat record`: `Konjo-Threat-Model: d2402af2c7dc`.
+
+### `repo:cargo-deny`: confirmed false positive, not fixed, documented
+
+`GK` also reported 26 "net-new" `repo:cargo-deny` findings, all rendered as
+`cargo tree`-style duplicate-version dump lines mentioning `lopi-oracle`. Verified,
+not assumed:
+
+```
+git -C /workspace/lopi worktree add /tmp/lopi_main_check origin/main
+cd /tmp/lopi_main_check && cargo deny check bans 2>&1 | grep -c 'warning\[duplicate\]'   # 33
+cd /workspace/lopi          && cargo deny check bans 2>&1 | grep -c 'warning\[duplicate\]'   # 33
+```
+
+**Identical count, 33 = 33.** No new duplicate-version pair exists on this branch
+that didn't already exist on `main` (pre-existing splits: `base64` 0.21/0.22,
+`bitflags` 1/2, etc. — none touch `lopi-oracle`, all unrelated to this sprint).
+`lopi-oracle` itself resolves to exactly one version everywhere.
+
+The real cause: kiban's `lib/newonly.py` diffs scanner output **line-by-line**
+between a HEAD scan and a base-ref scan, not finding-by-finding. `cargo deny check
+bans`'s duplicate report is a recursive dependency tree per duplicated crate;
+`lopi-agent` (now depending on the new `lopi-oracle` crate) appears throughout
+nearly every one of those 33 pre-existing trees, since it's central to this
+workspace's dependency graph. Adding one new edge (`lopi-agent -> lopi-oracle`)
+injects a `lopi-oracle vN` tree line into most of those already-existing WARN
+blocks. `newonly`'s line-diff has no way to recognize "same finding, one new
+cosmetic line inside it" — every such line reads as net-new, even though the
+finding it belongs to (that specific crate pair's duplicate-version WARN) already
+existed on `main`, unchanged. The same structural false-positive class this file's
+own `Review-Pipeline-Phase-2b` entry already documented for `cargo mutants`' timing
+output (`newonly.net_new`'s line-diff can't distinguish "genuinely new" from
+"cosmetically shifted") — this is that same gap hitting a different tool's output
+shape.
+
+**Not fixed here.** The fix belongs in kiban's `lib/newonly.py` (a finding-block-aware
+diff, not a raw line diff, for tree-structured tool output) or in `cargo-deny`'s own
+duplicate-report format — kiban is read-only reference in this session, out of scope
+to patch. No change to this sprint's own diff would remove the false positive: it is
+a property of the gate's comparison mechanism, not of any duplicate-version problem
+this sprint introduced. Flagged to the repo owner via the PR thread rather than
+worked around silently.
+
 ## RepoProfile-EntryPoint-Parity -- web + MCP task submission now apply `.lopi.toml`
 
 Part C of the same combined session as `Collision-Oracle-Build` (above). Confirmed
