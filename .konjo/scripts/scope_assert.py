@@ -127,10 +127,27 @@ def find_violations(files: list[Path]) -> list[tuple[Path, int, str, str]]:
     return violations
 
 
-def collect_files(staged_only: bool) -> list[Path]:
+def collect_files(staged_only: bool, base_ref: str | None = None) -> list[Path]:
     if staged_only:
         result = subprocess.run(
             ["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return [
+            REPO_ROOT / line
+            for line in result.stdout.splitlines()
+            if line.endswith(".rs") and (line.startswith("crates/") or line.startswith("src/"))
+        ]
+    if base_ref:
+        # Gate-Tiering-1, A4: PR-time scope, diffed against base_ref instead
+        # of --staged-only's index-relative diff. scope_assert is BLOCKING
+        # tier (static job) — this keeps it from failing a PR over a
+        # pre-existing forbidden term the PR itself never touched.
+        result = subprocess.run(
+            ["git", "diff", "--name-only", f"{base_ref}...HEAD"],
             cwd=REPO_ROOT,
             capture_output=True,
             text=True,
@@ -152,9 +169,16 @@ def collect_files(staged_only: bool) -> list[Path]:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--staged-only", action="store_true")
+    parser.add_argument(
+        "--base-ref",
+        default=None,
+        help="Scope the scan to files changed vs this ref "
+        "(git diff --name-only <base-ref>...HEAD) instead of the whole tree. "
+        "Ignored if --staged-only is also given.",
+    )
     args = parser.parse_args()
 
-    files = collect_files(args.staged_only)
+    files = collect_files(args.staged_only, args.base_ref)
     violations = find_violations(files)
 
     if not violations:

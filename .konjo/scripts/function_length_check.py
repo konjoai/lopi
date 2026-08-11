@@ -22,10 +22,27 @@ from __future__ import annotations
 
 import argparse
 import re
+import subprocess
 import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+
+
+def _diffed_rs_files(base_ref: str) -> list[Path]:
+    """Files changed vs `base_ref` (Gate-Tiering-1, A4): scopes the scan to the
+    PR's own diff instead of the whole tree. Mirrors dry_check.py's
+    `_changed_files` / scope_assert.py's `--staged-only` convention -- a
+    plain `git diff --name-only`, no detector-logic change."""
+    result = subprocess.run(
+        ["git", "diff", "--name-only", f"{base_ref}...HEAD"],
+        cwd=REPO_ROOT, capture_output=True, text=True, check=False,
+    )
+    return [
+        REPO_ROOT / line
+        for line in result.stdout.splitlines()
+        if line.endswith(".rs") and (REPO_ROOT / line).is_file()
+    ]
 
 # Same test-file exclusion convention as the coverage/DRY/scope checkers: a test file's
 # function-length is not a production-code-quality signal.
@@ -136,11 +153,25 @@ def main(argv: list[str]) -> int:
         "flag, any function over --hard-limit fails outright -- use --ceiling-file "
         "for an existing repo's pre-adoption baseline.",
     )
+    parser.add_argument(
+        "--base-ref",
+        default=None,
+        help="Gate-Tiering-1, A4: scope the scan to files changed vs this ref "
+        "(git diff --name-only <base-ref>...HEAD) instead of the whole tree. "
+        "The ceiling file still holds the full-tree ratchet value -- a "
+        "diff-scoped count compared against it is a PR-time signal, not a "
+        "replacement for the whole-tree count `main` ratchets on push.",
+    )
     args = parser.parse_args(argv)
+
+    if args.base_ref:
+        scan_paths: list[Path] = sorted(_diffed_rs_files(args.base_ref))
+    else:
+        scan_paths = sorted(REPO_ROOT.rglob("*.rs"))
 
     offenders: list[tuple[str, str, int, int]] = []
     warnings: list[tuple[str, str, int, int]] = []
-    for path in sorted(REPO_ROOT.rglob("*.rs")):
+    for path in scan_paths:
         rel = path.relative_to(REPO_ROOT)
         if "target" in rel.parts:
             continue

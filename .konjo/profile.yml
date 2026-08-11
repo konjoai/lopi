@@ -144,6 +144,8 @@ gates:
     rejects_test: ".konjo/scripts/test_function_length_killtest.sh"
   - name: indexing-floor
     rejects_test: ".konjo/scripts/test_indexing_floor_killtest.sh"
+  - name: gate-tiering
+    rejects_test: ".konjo/scripts/test_gate_tiering_killtest.sh"
 
 # Phase 13, Phase 3: lifted verbatim from the `paths:` front-matter already prototyped in
 # lopi's `.claude/rules/security.md` -- one declaration now serves both the CLAUDE.md rules

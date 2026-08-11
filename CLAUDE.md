@@ -44,18 +44,27 @@ bash .konjo/scripts/install-hooks.sh        # install pre-commit hooks
 ```
 
 ## Invariants
-- No `unwrap()`/`expect()` outside tests (enforced: `repo:clippy` — `-D clippy::unwrap_used -D clippy::expect_used`)
-- No blocking I/O on async paths — use `spawn_blocking` for synchronous ops (ADVISORY)
-- No silent failures — log via `tracing::warn!` if a fallback swallows an error (ADVISORY)
-- `cargo build` must stay green — fix before doing anything else (ADVISORY; the repo's CI build step is the actual check, not a gated diff assertion)
-- Stay inside `crates/` and `src/` — never touch root `Cargo.lock` deliberately (ADVISORY)
-- Tokio is the only async runtime — never introduce another (ADVISORY)
-- No unconfigured or failed-evaluation branch returns a permissive value (enforced: `gate_polarity`, advisory ramp — standing baseline recorded in `LEDGER.md`)
+
+Each bullet names its enforcing gate and that gate's tier (Gate-Tiering-1 — see
+`LEDGER.md` — BLOCKING blocks merge, ADVISORY reports and never blocks). A bullet with no
+dedicated mechanical gate says so explicitly as ADVISORY convention-only, rather than
+silently implying coverage it doesn't have.
+
+- No `unwrap()`/`expect()` outside tests (enforced: `static` → `repo:clippy` — `-D clippy::unwrap_used -D clippy::expect_used` — BLOCKING)
+- No blocking I/O on async paths — use `spawn_blocking` for synchronous ops (ADVISORY — no dedicated gate, convention only)
+- No silent failures — log via `tracing::warn!` if a fallback swallows an error (ADVISORY — no dedicated gate, convention only)
+- `cargo build` must stay green — fix before doing anything else (ADVISORY — no standalone gate; a build failure surfaces as a failure in `static`'s `repo:clippy`/`repo:fmt-check` steps or `coverage`'s BLOCKING test step, not a dedicated gated diff assertion of its own)
+- Stay inside `crates/` and `src/` — never touch root `Cargo.lock` deliberately (ADVISORY — no dedicated gate, convention only)
+- Tokio is the only async runtime — never introduce another (ADVISORY — no dedicated gate, convention only)
+- No unconfigured or failed-evaluation branch returns a permissive value (enforced: `konjo-gates` → `gate_polarity` — ADVISORY, standing baseline recorded in `LEDGER.md`)
 
 Gate thresholds (coverage, complexity, dead code, docs, DRY, file size) are declared once
 in `.konjo/profile.yml`'s `contract_gates`, not duplicated here — see that file for the
-current list and `konjo-gates` (wired in `konjo-gate.yml`) for what's mechanically
-double-checked today versus kept repo-native in `konjo-gate.yml`'s own G0-G5 jobs.
+current list and `konjo-gates` (wired in `konjo-gate.yml`, ADVISORY tier as a whole job —
+see `LEDGER.md`'s `Gate-Tiering-1` entry) for what's mechanically double-checked today
+versus kept repo-native in `konjo-gate.yml`'s own G0-G5 jobs. The aggregator's own
+BLOCKING/ADVISORY split per job is in `.konjo/scripts/gate_verdict.sh` and
+`LEDGER.md`'s `Gate-Tiering-1` entry, not restated per-bullet here.
 
 ## Repo map
 | Crate | Role |
