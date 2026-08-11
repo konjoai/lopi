@@ -18,7 +18,11 @@ impl MemoryStore {
     ///
     /// # Errors
     /// Returns `Err` if the database update fails.
-    pub async fn set_task_plan_artifact(&self, id: &TaskId, plan_artifact_json: &str) -> Result<()> {
+    pub async fn set_task_plan_artifact(
+        &self,
+        id: &TaskId,
+        plan_artifact_json: &str,
+    ) -> Result<()> {
         sqlx::query("UPDATE tasks SET plan_artifact = ?1 WHERE id = ?2")
             .bind(plan_artifact_json)
             .bind(id.0.to_string())
@@ -91,6 +95,9 @@ mod tests {
             .unwrap();
 
         let row = store.get_task(&task.id).await.unwrap().unwrap();
-        assert_eq!(row.plan_artifact.as_deref(), Some(r#"{"goal":"attempt 2"}"#));
+        assert_eq!(
+            row.plan_artifact.as_deref(),
+            Some(r#"{"goal":"attempt 2"}"#)
+        );
     }
 }
