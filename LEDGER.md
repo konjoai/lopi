@@ -5,7 +5,118 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
-## Review-Pipeline-Phase-2b -- PF-0b: per-crate baseline resumed, fixture crate verified end-to-end
+## Collision-Oracle-Build -- `lopi-oracle` crate scaffold, textual-only, wired advisory-only
+
+Sprint scope per `NEXT_SESSION_PROMPT.md`'s "Next Session, after Oracle-Preflight"
+entry and `KILL_TEST_REGISTER.md`'s CONDITIONAL GO. Built this sprint as one of five
+independent parts in a combined session; Part A (P3a closeout, `claude/sprint-p3a-planner-wiring`)
+was explicitly out of scope for this session -- owned by a separate concurrent
+session -- so this branch bases off `main` at `0.42.0` directly, not off a
+hypothetical post-Part-A `0.43.0`. **Version-numbering note, so a future merge isn't
+surprised:** the combined sprint brief assumed A merges first and numbered B/C as
+`0.44.0`/`0.45.0`; since A stayed on its own branch, this work bumps `VERSION` to
+`0.43.0` instead. Whichever of A's or this branch's PR merges second will hit a real
+`VERSION`/`CHANGELOG.md` merge conflict -- expected, not a bug, and trivial to resolve
+by re-numbering on rebase.
+
+### What shipped
+
+`crates/lopi-oracle` (`crates/lopi-oracle/src/{lib,signature,snapshot,tracker}.rs`,
+15 tests, all real git operations against real temp repos, no mocks):
+
+- **`snapshot_pair`** -- the exact `git merge-tree --write-tree <a> <b>` invocation
+  KT-3 timed (p95 135ms on `lopi` itself). Never mutates the repo (`--write-tree`
+  writes a loose tree object, touches no ref, no working tree). Parses conflicted
+  files from the real `CONFLICT (...): ... in <path>` message lines -- verified
+  against real git 2.43.0 output captured live during this sprint, not assumed from
+  docs.
+- **`ConflictSignature`** -- conflicted file set (order-independent) + merge-base
+  commit. Two polls of the same still-open collision produce the same signature by
+  construction; either side advancing changes the merge-base, which is correctly
+  treated as new information.
+- **`CollisionOracle::poll`** -- the hard precondition from `KILL_TEST_REGISTER.md`:
+  alerts once per signature, forgets a signature once it stops appearing in a poll
+  (so a resolved-then-recurring collision alerts again). Direct fix for KT-2's
+  120/hour naive noise floor.
+- **Textual-only.** No tree-sitter, no semantic layer -- KT-1's classification split
+  came back with zero real evidence either way on semantic necessity, so there is no
+  basis to front-load it. Unchanged decision, restated per the sprint's own
+  instruction not to silently drop it.
+- **Detection only, advisory-only, no hard deny.** `Alert::advisory_text` renders a
+  labeled heads-up string; there is no conflict-resolution logic and no
+  `permissionDecision: deny`-equivalent path anywhere in this crate. This follows the
+  precedent already established in this codebase for `allowed_dirs`/`forbidden_dirs`
+  (detect-after-the-fact, never block -- `LEDGER.md`'s PF-1 entry-point audit,
+  `crates/lopi-agent/src/claude_support.rs`'s `apply_cli_caps`) and for the existing
+  `lopi-agent` planning-seed injection pattern (`reflection_constraint`,
+  `crates/lopi-agent/src/runner/seed.rs`). **Correction to the sprint brief:** the
+  brief cited this as "the one-way-door decision already logged" as if a prior
+  `LEDGER.md` entry existed under that name -- a targeted search (`additionalContext`,
+  `permissionDecision`, `one-way-door`) found no such entry. Treating it as new
+  ground and logging it here for the first time, rather than citing a source that
+  doesn't exist, per this org's evidence-first rule.
+
+### Wiring: real, bounded, not the full orchestrator integration
+
+Wired into `lopi-agent`'s existing planning-seed path
+(`crates/lopi-agent/src/runner/collision_seed.rs`, new file, split out of `seed.rs`
+to stay under the 500-line file-size gate) -- `AgentRunner::seed_collision_alerts`,
+called from `gather_seed` alongside the existing pattern/reflection/skill seeding.
+`AgentRunner` gained three new optional fields (`collision_oracle`,
+`collision_peers`, `collision_self_ref`), all `None` by default -- unwired is
+behavior-identical to before this sprint. Opt-in via a new builder method
+`with_collision_oracle(oracle, peers)`, mirroring the existing
+`with_cross_run_reflection` pattern. 3 tests in `collision_seed.rs` cover: an unwired
+runner seeds nothing; two sibling runners sharing an oracle + peer list on colliding
+branches produce exactly one advisory (and the second poll produces none, the direct
+KT-2 regression check); two runners on a non-colliding branch pair seed nothing.
+
+**Explicitly NOT done this sprint, and why:** the pool (`AgentPool`,
+`crates/lopi-orchestrator/src/pool/`) does not automatically construct a shared
+oracle or register every real running task's worktree into a shared peer list. That
+would touch `pool/run_loop.rs` and `pool/registry.rs` -- the same area Part C's
+`RepoProfile` parity fix touches in this same combined sprint -- and building full
+live orchestrator wiring is more than a "scaffold" sprint should absorb in one
+sitting. The crate and its `AgentRunner` integration are real and independently
+tested; only the last mile (the pool auto-registering real concurrent tasks) is
+deferred. **Known fairness gap, disclosed rather than hidden:** because
+`CollisionOracle::poll` is a single shared mutable-state check, whichever of two
+colliding runners polls first is the one that receives the `Alert` for a fresh
+signature -- the other side's next poll on the same still-open signature returns
+nothing (already deduped). Only one side of a pair is guaranteed to see the advisory
+per onset, not both. The sprint's own bar ("advisory context injected into the
+colliding agent's next turn is the minimum bar") is satisfied by this, but a future
+sprint wiring the pool for real should decide explicitly whether both sides need a
+copy of the alert or one is sufficient by design.
+
+### KT-2 re-run: real (uncompressed) cadence confirmed; genuine live multi-agent session still not available
+
+The pre-flight's KT-2 used a disclosed *compressed* proxy (~5.6 real minutes standing
+in for a sustained session). This sprint re-ran the identical contention pattern (two
+worktrees editing `CHANGELOG.md`'s same insertion point, a third untouched) at real,
+uncompressed 30-second cadence against a real throwaway repo: 12 cycles, 2026-08-11
+03:37:44Z through 03:43:15Z (5m31s wall clock, not simulated). Raw `git merge-tree`
+result: **exit 1 (conflict) on all 12 polls, identical merge-base and identical file
+set (`CHANGELOG.md`) every time** -- 12 raw polls, 1 distinct collision signature.
+Confirms the mechanism finding holds at real cadence, not just compressed: a
+poll-and-count metric would report 120/hour off this single onset, while the
+signature-based count correctly reports 1. Cross-validated against
+`collision_seed.rs`'s `two_sibling_runners_on_colliding_branches_produce_one_advisory`
+test, which encodes the identical dedup logic in the actual `AgentRunner` integration
+path, not just the raw-git mechanism.
+
+**Still not done, and still the same honest limitation the pre-flight disclosed:** no
+genuine live multi-agent working session (real concurrent `lopi run`/`lopi sail`
+agents generating real write traffic) was available in this session either -- this
+re-run upgrades the proxy from *compressed* to *real-cadence*, it does not remove the
+proxy. `NEXT_SESSION_PROMPT.md` carries this forward as still-open.
+
+### Dashboard surfacing: not attempted, stretch goal per the sprint brief
+
+The sprint brief explicitly scoped a dashboard indicator as "a stretch goal, not
+required this sprint." Not attempted -- the `AgentRunner`-level advisory injection
+above is the sprint's real, tested minimum-bar surface.
+
 
 Sprint P2b (kiban's `KONJO_REVIEW_PIPELINE_PLAN.md` Phase 2 companion doc, finishing
 what P2 deferred). kiban is the primary repo for sections 1/3/4's code; lopi's scope

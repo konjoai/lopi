@@ -1,3 +1,36 @@
+## [0.43.0] - Collision-Oracle-Build: `lopi-oracle` crate scaffold, textual-only
+
+Crate-scaffolding sprint for `lopi-oracle`, scoped by `KILL_TEST_REGISTER.md`'s
+CONDITIONAL GO and `NEXT_SESSION_PROMPT.md`'s "Next Session, after Oracle-Preflight"
+entry. One of five independent parts run in a combined session; Part A (P3a closeout)
+was owned by a separate concurrent session and is not included here — see
+`LEDGER.md`'s `Collision-Oracle-Build` entry for the resulting version-numbering note.
+
+### Added
+
+- **`crates/lopi-oracle`** — textual cross-agent collision detection via
+  `git merge-tree --write-tree`, the exact invocation KT-3 timed (p95 135ms on `lopi`
+  itself). `CollisionOracle::poll` de-duplicates on `ConflictSignature` (conflicted
+  file set + merge-base), the hard precondition `KILL_TEST_REGISTER.md` required —
+  direct fix for KT-2's 120/hour naive noise floor. Textual-only, no tree-sitter — no
+  real evidence a semantic-only collision exists in this codebase's history. Detection
+  only: `Alert::advisory_text` is the only output, no conflict-resolution logic, no
+  hard-deny path. 15 tests, all against real git operations on real temp repos.
+- **`crates/lopi-agent/src/runner/collision_seed.rs`** — wires the oracle into
+  `AgentRunner`'s existing planning-seed path (`gather_seed`). New optional fields
+  (`collision_oracle`, `collision_peers`, `collision_self_ref`, all `None` by default)
+  and a `with_collision_oracle` builder method mirroring `with_cross_run_reflection`.
+  Unwired is behavior-identical to before this sprint.
+
+### Findings (no code)
+
+- KT-2 re-run at real, uncompressed 30-second cadence (vs. the pre-flight's
+  compressed proxy): 12 polls over 5m31s wall clock against a real throwaway repo,
+  all 12 the same signature — confirms the mechanism finding holds at real cadence.
+  A genuine live multi-agent working session remains unavailable in this environment;
+  full detail and the honest scope of what this does and doesn't close in
+  `LEDGER.md`.
+
 ## [0.42.0] - Sprint P2b: mutation-hunt fixture, CI call site, per-crate baseline resumed
 
 Cross-repo work order from kiban's `KONJO_REVIEW_PIPELINE_PLAN.md` Phase 2, finishing

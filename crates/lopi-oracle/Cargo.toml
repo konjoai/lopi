@@ -1,0 +1,19 @@
+[package]
+name = "lopi-oracle"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Textual cross-agent collision detection for lopi (git merge-tree, dedup'd on conflict signature)"
+
+[dependencies]
+anyhow.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

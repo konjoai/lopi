@@ -15,6 +15,7 @@ lopi-ratelimit.workspace = true
 lopi-spec.workspace = true
 lopi-skill.workspace = true
 lopi-index.workspace = true
+lopi-oracle.workspace = true
 chrono.workspace = true
 uuid.workspace = true
 lopi-memory.workspace = true

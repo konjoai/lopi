@@ -5,6 +5,44 @@ the `lopi` repo. Newest first.
 
 ---
 
+## Next Session, after Collision-Oracle-Build (`lopi-oracle` scaffold, `[0.43.0]`)
+
+Read `CHANGELOG.md`'s `[0.43.0]` entry and `LEDGER.md`'s `Collision-Oracle-Build`
+entry first — both explain the version-numbering divergence from the original
+combined-sprint brief (Part A, P3a closeout, was owned by a separate concurrent
+session and did not land in this branch's lineage).
+
+**What's already done and should not be re-derived:** the `lopi-oracle` crate
+(`snapshot_pair`, `ConflictSignature`, `CollisionOracle::poll`), textual-only, 15
+tests against real git operations; the `AgentRunner` wiring
+(`crates/lopi-agent/src/runner/collision_seed.rs`, opt-in via
+`with_collision_oracle`, unwired-by-default); the KT-2 re-run at real 30-second
+cadence (12 polls / 5m31s wall clock, 1 distinct signature, matching the pre-flight's
+finding).
+
+**What's still open:**
+
+1. **A genuine live multi-agent working session KT-2 re-run.** Every KT-2 run so far
+   (the original pre-flight and this sprint's follow-up) has used a proxy — first
+   compressed, now real-cadence but still synthetic edits, not real concurrent
+   `lopi run`/`lopi sail` agents generating real write traffic. Needs an environment
+   where that's actually available.
+2. **Pool-level orchestrator wiring.** `AgentPool` does not yet construct a shared
+   `CollisionOracle` or auto-register every real running task's worktree into a
+   shared peer list — `AgentRunner`'s side of the integration is real and tested, but
+   nothing in `crates/lopi-orchestrator/src/pool/` calls `with_collision_oracle` yet.
+   This also needs a decision on the fairness gap flagged in the ledger entry
+   (only one side of a colliding pair is guaranteed to see a given alert — decide
+   whether both sides need a copy).
+3. **Dashboard indicator.** Explicitly a stretch goal the combined sprint brief did
+   not require; still not built.
+4. **`VERSION`/`CHANGELOG.md` reconciliation with Part A.** Whichever of the P3a
+   closeout PR or this sprint's PR merges second will hit a real merge conflict on
+   `VERSION`/`CHANGELOG.md` (both branches based off `0.42.0`) — expected, resolve by
+   re-numbering on rebase, not by picking one side's number arbitrarily.
+
+---
+
 ## Next Session, after Sprint P2b (mutation-hunt fixture + CI call site, `[0.42.0]`)
 
 Sprint P2b (kiban's `KONJO_REVIEW_PIPELINE_PLAN.md` Phase 2 companion doc, finishing

@@ -6,10 +6,12 @@ use super::AgentRunner;
 use crate::api_client::AnthropicClient;
 use crate::stability::{StabilityConfig, StabilityHarness};
 use lopi_core::{PlanDecision, ScoreWeights, SelfPromptStrategy};
+use lopi_oracle::CollisionOracle;
+use lopi_oracle::WatchedRef;
 use lopi_ratelimit::{AnthropicLimiter, CircuitBreaker};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use tokio::sync::oneshot;
+use tokio::sync::{oneshot, Mutex as AsyncMutex};
 use tokio_util::sync::CancellationToken;
 
 impl AgentRunner {
@@ -273,5 +275,22 @@ impl AgentRunner {
     #[must_use]
     pub fn tokens_used(&self) -> u64 {
         self.tokens_used.load(Ordering::Relaxed)
+    }
+
+    /// Collision-Oracle-Build — opt this runner into cross-agent textual
+    /// collision detection. `oracle` and `peers` are shared with every
+    /// sibling runner the pool wants checked against each other — this
+    /// runner registers its own [`WatchedRef`] into `peers` on first seed
+    /// and polls `oracle` on every attempt's planning pass. `None` (the
+    /// default, unset) is behavior-identical to before this existed.
+    #[must_use]
+    pub fn with_collision_oracle(
+        mut self,
+        oracle: Arc<AsyncMutex<CollisionOracle>>,
+        peers: Arc<AsyncMutex<Vec<WatchedRef>>>,
+    ) -> Self {
+        self.collision_oracle = Some(oracle);
+        self.collision_peers = Some(peers);
+        self
     }
 }
