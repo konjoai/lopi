@@ -46,6 +46,21 @@ privilege-escalation path found.
 
 Recorded via `konjo-threat record`: `Konjo-Threat-Model: d2402af2c7dc`.
 
+**Fingerprint update — the change id is the changed-file set, so it moves as commits
+land.** `oneway.fingerprint`/`threat`'s change id is `sha256(sorted(changed_files))`,
+not a commit hash — every commit that adds a genuinely new file to the diff (not a
+re-edit of an already-changed file) recomputes it. The `docs/security/
+TRIFECTA_PATHS.md` doc-staleness fix (below) touched a file not previously in this
+PR's diff, so the id moved from `d2402af2c7dc` to **`317c903d2754`** (25 files now,
+was 23). Re-ran both tools for real against the updated, now-stable file list (no
+further new files expected) rather than leaving the stale trailers in place:
+
+- `Konjo-Acknowledged-Oneway: 317c903d2754`
+- `Konjo-Threat-Model: 317c903d2754`
+
+Same reasoning as above in both cases — nothing about the underlying VERSION-bump or
+`network_ingress` analysis changed, only the id the file-set hash produces.
+
 ### `repo:cargo-deny`: confirmed false positive, not fixed, documented
 
 `GK` also reported 26 "net-new" `repo:cargo-deny` findings, all rendered as
