@@ -179,7 +179,7 @@ mod tests {
             runner_on_branch(&repo, "task-a").with_collision_oracle(oracle.clone(), peers.clone());
         let alerts = runner_a.seed_collision_alerts().await;
         assert_eq!(alerts.len(), 1, "a's poll now sees the a/b collision");
-        assert!(alerts[0].contains("f.txt"));
+        assert!(alerts.first().unwrap().contains("f.txt"));
 
         // A second poll from either side must not re-inject the same
         // still-open collision (the direct KT-2 regression check).

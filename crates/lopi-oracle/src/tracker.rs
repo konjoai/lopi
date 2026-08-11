@@ -179,9 +179,10 @@ mod tests {
 
         let alerts = oracle.poll(&refs).await.unwrap();
         assert_eq!(alerts.len(), 1, "only the a/b pair collides");
-        assert_eq!(alerts[0].files, vec!["f.txt".to_string()]);
-        assert!(alerts[0].advisory_text().contains("task-a"));
-        assert!(alerts[0].advisory_text().contains("task-b"));
+        let alert = alerts.first().unwrap();
+        assert_eq!(alert.files, vec!["f.txt".to_string()]);
+        assert!(alert.advisory_text().contains("task-a"));
+        assert!(alert.advisory_text().contains("task-b"));
         assert_eq!(oracle.open_count(), 1);
     }
 
