@@ -1,13 +1,26 @@
 ---
 decays: state
-verified-against: 824ba65
-verified-date: 2026-08-03
+verified-against: 13a0990
+verified-date: 2026-08-11
 ---
 
 # Trifecta paths — untrusted input → powerful tools → external comms
 
-Verified against: `824ba65` · 2026-08-03 (re-verified; G0 flagged this doc stale again — the
-review-pipeline Sprint P2 branch's own single commit, a `.gitignore`/`LEDGER.md`-only change
+Verified against: `13a0990` · 2026-08-11 (re-verified; G0 flagged this doc stale again — the
+review-pipeline Sprint P3a-Closeout branch's own commit volume (9 commits: 8 building the
+Planner/Executor wiring, 1 documenting it) crossed `824ba65` past the 20-commit cap via the
+PR's merge ref, the same "commit volume, not content drift" trigger noted repeatedly below.
+Diffed every commit `824ba65..13a0990` against every file this doc cites (the same full list
+in the superseded banner just below). Exactly one touched: `crates/lopi-ui/src/web/
+streaming.rs` gained one line inside a `#[cfg(test)]` fixture struct literal
+(`plan_artifact: None`), a mechanical consequence of this same branch adding a
+`plan_artifact` field to `TaskRow` (Sprint P3a's plan-artifact persistence) — not a claim
+this doc makes any assertion about (§7's streaming-auth section concerns route registration
+and ticket auth, not `TaskRow`'s field list). No other cited file changed; no content-level
+drift found anywhere.
+
+Superseded prior banner (`824ba65` · 2026-08-03 — re-verified; G0 flagged this doc stale
+again — the review-pipeline Sprint P2 branch's own single commit, a `.gitignore`/`LEDGER.md`-only change
 recording a mutation-testing baseline launch, pushed the commit count crossing `a2f6f78` past the
 20-commit cap via the PR's merge ref, the same "commit volume, not content drift" trigger noted
 twice below. Diffed every commit `a2f6f78..824ba65` against every file this doc cites (full list:

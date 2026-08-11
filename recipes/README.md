@@ -1,11 +1,18 @@
 ---
 decays: state
-verified-against: 9fce495
-verified-date: 2026-08-03
+verified-against: 13a0990
+verified-date: 2026-08-11
 ---
 
-Verified against: `9fce495` · 2026-08-03 (re-verified; Sprint P0's commit volume on this
-PR crossed the 20-commit cap again. P0 touched `crates/lopi-core/src/economics_config.rs`,
+Verified against: `13a0990` · 2026-08-11 (re-verified; Sprint P3a-Closeout's commit volume
+on this PR (9 commits: 8 building the Planner/Executor wiring, 1 documenting it) crossed
+the 20-commit cap again. P3a touched `crates/lopi-agent/src/runner/{plan_readonly.rs,
+lifecycle.rs,run_loop.rs}`, `crates/lopi-agent/src/planner_executor.rs`,
+`crates/lopi-memory/src/{schema.sql,store/plan_artifact.rs}`, `.konjo/kiban.ref`, and
+`.github/workflows/konjo-gate.yml`; it never touches `loop_config.rs`, `budget_preset.rs`,
+or `recipes/`, so nothing this document cites changed. Prior banner (`9fce495` ·
+2026-08-03, re-verified; Sprint P0's commit volume on this PR crossed the 20-commit cap
+again. P0 touched `crates/lopi-core/src/economics_config.rs`,
 `crates/lopi-core/src/lib.rs` (module declaration only), and added
 `crates/lopi-core/src/cost_breaker.rs`; it never touches `loop_config.rs` or `recipes/`,
 so nothing this document cites changed. Prior banner (`c4f1fdb` · 2026-07-29, re-verified;
