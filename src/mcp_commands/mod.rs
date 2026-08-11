@@ -210,17 +210,7 @@ async fn submit_task(state: &AppState, args: &Value) -> Result<Value> {
                 .map_err(|_| anyhow::anyhow!("max_iterations must be between 0 and 255"))?,
         );
     }
-    // Parity fix (Collision-Oracle-Build sprint's Part C): every other entry
-    // point applies the repo's `.lopi.toml` profile before submitting; this
-    // one didn't. Matches `task_build.rs::build_task_from_fields`'s exact
-    // pattern — profile applied last, after the request-level fields above,
-    // using the same effective-repo resolution `AgentPool`'s run loop uses
-    // (`task.repo_path` or the pool's bound repo).
-    let effective_repo = task
-        .repo_path
-        .clone()
-        .unwrap_or_else(|| state.repo_path.clone());
-    RepoProfile::load_from_repo(&effective_repo).apply(&mut task);
+    apply_repo_profile(&mut task, state);
 
     let task_id = task.id.0.to_string();
     let duplicate_of = state.pool.submit(task).await.map(|id| id.0.to_string());
@@ -230,6 +220,20 @@ async fn submit_task(state: &AppState, args: &Value) -> Result<Value> {
         "queued": duplicate_of.is_none(),
         "duplicate_of": duplicate_of,
     }))
+}
+
+/// Parity fix (Collision-Oracle-Build sprint's Part C): every other entry
+/// point applies the repo's `.lopi.toml` profile before submitting; this one
+/// didn't. Matches `task_build.rs::build_task_from_fields`'s exact pattern —
+/// profile applied last, after every other request-level field, using the
+/// same effective-repo resolution `AgentPool`'s run loop uses (`task.repo_path`
+/// or the pool's bound repo).
+fn apply_repo_profile(task: &mut Task, state: &AppState) {
+    let effective_repo = task
+        .repo_path
+        .clone()
+        .unwrap_or_else(|| state.repo_path.clone());
+    RepoProfile::load_from_repo(&effective_repo).apply(task);
 }
 
 /// Mirrors `handlers::list_tasks`.

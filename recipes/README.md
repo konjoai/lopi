@@ -1,8 +1,15 @@
 ---
 decays: state
-verified-against: 9fce495
-verified-date: 2026-08-03
+verified-against: b5af2a3
+verified-date: 2026-08-11
 ---
+
+Verified against: `b5af2a3` · 2026-08-11 (re-verified; the combined P3a-closeout/
+Collision-Oracle/RepoProfile-parity/branch-triage sprint's commit volume crossed the
+20-commit cap again. That sprint's `lopi-oracle` scaffold, RepoProfile parity fix,
+and branch-triage doc never touch `loop_config.rs`, `budget_preset.rs`, or
+`recipes/` — confirmed via `git diff --stat` against every commit in the range,
+empty output. No drift found.)
 
 Verified against: `9fce495` · 2026-08-03 (re-verified; Sprint P0's commit volume on this
 PR crossed the 20-commit cap again. P0 touched `crates/lopi-core/src/economics_config.rs`,
