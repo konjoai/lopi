@@ -5,6 +5,62 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## RepoProfile-EntryPoint-Parity -- web + MCP task submission now apply `.lopi.toml`
+
+Part C of the same combined session as `Collision-Oracle-Build` (above). Confirmed
+live against current source, matching the PF-1 entry-point audit table already in
+this file (`Review-Pipeline-Phase-1` entry): `AgentPool::submit()` -- the one choke
+point every entry point funnels through -- does not itself apply `RepoProfile`; each
+*caller* is responsible for calling it first. CLI paths do (`task_build.rs`'s shared
+builder, `scheduler.rs`, REPL `actions.rs`, `runner/seed.rs`), but
+`crates/lopi-ui/src/web/handlers.rs::create_task` (`POST /api/tasks`) and
+`src/mcp_commands/mod.rs::submit_task` (`lopi_submit_task`) both built a `Task` from
+raw request args and called `pool.submit()` directly -- no
+`RepoProfile::load_from_repo(...).apply(&mut task)` in either. A task submitted via
+the web dashboard or an MCP client got no repo-configured directory scope, test
+command, default constraints, or max-retries override; a CLI-submitted task did.
+
+### Fix: one line at each site, matching `task_build.rs`'s exact pattern
+
+Both sites now call `RepoProfile::load_from_repo(&effective_repo).apply(&mut task)`
+as the last step before `pool.submit()` -- after every other request-level field
+assignment, same win-order as `task_build.rs` (profile applied last, so a
+non-empty profile field overwrites a request-level default the same way it already
+overwrites a CLI spec's default). `effective_repo` is `task.repo_path.clone()` if the
+request specified one, else the pool's own bound repo
+(`AppState.repo_path`/`state.repo_path`) -- the same fallback `AgentPool`'s run loop
+itself already uses to resolve which repo a task actually executes against
+(`crates/lopi-orchestrator/src/pool/run_loop.rs`: `task.repo_path.clone().unwrap_or_else(|| self.repo_path.clone())`).
+This matters: without this fallback, a request that omits `repo` (the common case for
+both the dashboard and an MCP client bound to one repo) would apply a profile from
+`Task::new`'s empty default repo context, not the repo the task will actually run in.
+
+### Explicit non-goal, unchanged
+
+Does not make `allowed_dirs`/`forbidden_dirs` a hard enforcement boundary --
+confirmed still advisory-only everywhere in this codebase (planning-prompt text +
+post-hoc diff-scope detection, `apply_cli_caps`). That is a separate, larger design
+decision flagged but not decided in Sprint P1's own handoff, and stays out of scope
+for a parity fix, per this sprint's own instruction.
+
+### Tests
+
+Both regressions follow the same real shape: submit through the actual HTTP/MCP
+entry point against an `AgentPool` with no dispatch loop running (submitted tasks
+sit in `queue`, never picked up by a runner), then `queue.pop().await` the exact
+submitted `Task` and assert on `allowed_dirs` -- the response body/store round-trip
+exposes neither `allowed_dirs` nor `constraints` (confirmed live: `tasks` table only
+persists `id/goal/status/created_at/source/client_ref/parent_task/chain_depth`), so
+this is the only real verification path, not a workaround.
+
+- `crates/lopi-ui/src/web/task_repo_profile_tests.rs` (2 tests): a bound-repo
+  `.lopi.toml`'s `allowed_dirs` applies when the request omits `repo`; an explicit
+  request-level `repo`'s profile wins over the bound default.
+- `src/mcp_commands/repo_profile_tests.rs` (3 tests): the same two cases for
+  `lopi_submit_task`, plus a no-`.lopi.toml` case confirming `Task::new`'s own
+  default (`["src/", "tests/"]`, not empty -- verified live, not assumed) survives
+  untouched when `RepoProfile::apply` is a no-op.
+
 ## Collision-Oracle-Build -- `lopi-oracle` crate scaffold, textual-only, wired advisory-only
 
 Sprint scope per `NEXT_SESSION_PROMPT.md`'s "Next Session, after Oracle-Preflight"

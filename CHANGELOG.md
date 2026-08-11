@@ -1,3 +1,34 @@
+## [0.44.0] - RepoProfile-EntryPoint-Parity: web + MCP task submission now apply `.lopi.toml`
+
+Part C of the same combined session as `[0.43.0]`. Fixes a confirmed cross-surface
+inconsistency: CLI task-submission paths already applied a repo's `.lopi.toml`
+profile before `pool.submit()`; the web dashboard (`POST /api/tasks`) and MCP
+(`lopi_submit_task`) did not. Full reasoning in `LEDGER.md`'s
+`RepoProfile-EntryPoint-Parity` entry.
+
+### Fixed
+
+- **`crates/lopi-ui/src/web/handlers.rs::create_task`** and
+  **`src/mcp_commands/mod.rs::submit_task`** now call
+  `RepoProfile::load_from_repo(&effective_repo).apply(&mut task)` before
+  submitting — matching `task_build.rs::build_task_from_fields`'s exact pattern and
+  win-order (profile applied last). `effective_repo` falls back to the server's
+  bound repo when the request omits one, the same fallback `AgentPool`'s run loop
+  already uses to resolve which repo a task executes against.
+
+### Added
+
+- 5 regression tests (`crates/lopi-ui/src/web/task_repo_profile_tests.rs`,
+  `src/mcp_commands/repo_profile_tests.rs`) submitting through the real HTTP/MCP
+  entry point and inspecting the actual queued `Task`, not the response body (which
+  exposes neither `allowed_dirs` nor `constraints`).
+
+### Non-goal
+
+Does not make `allowed_dirs`/`forbidden_dirs` a hard enforcement boundary — still
+advisory-only everywhere in this codebase, unchanged from before this fix. Separate,
+larger, undecided design question (Sprint P1's own handoff).
+
 ## [0.43.0] - Collision-Oracle-Build: `lopi-oracle` crate scaffold, textual-only
 
 Crate-scaffolding sprint for `lopi-oracle`, scoped by `KILL_TEST_REGISTER.md`'s

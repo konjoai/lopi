@@ -12,7 +12,7 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Json},
 };
-use lopi_core::{Priority, Provenance, Task, TaskId};
+use lopi_core::{Priority, Provenance, RepoProfile, Task, TaskId};
 use lopi_memory::CheckpointInput;
 use lopi_spec::SpecSurface;
 use serde::Deserialize;
@@ -374,6 +374,18 @@ pub(super) async fn create_task(
     }
     task.require_plan_approval = req.require_plan_approval.unwrap_or(false);
     task.client_ref = req.client_ref.clone();
+
+    // Parity fix (Collision-Oracle-Build sprint's Part C): every other entry
+    // point applies the repo's `.lopi.toml` profile before submitting; this
+    // one didn't. Matches `task_build.rs::build_task_from_fields`'s exact
+    // pattern — profile applied last, after request-level overrides, using
+    // the same effective-repo resolution `AgentPool`'s run loop uses
+    // (`task.repo_path` or the pool's bound repo).
+    let effective_repo = task
+        .repo_path
+        .clone()
+        .unwrap_or_else(|| s.repo_path.clone());
+    RepoProfile::load_from_repo(&effective_repo).apply(&mut task);
 
     let task_id = task.id.0.to_string();
     let client_ref = task.client_ref.clone();

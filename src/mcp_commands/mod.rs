@@ -17,7 +17,9 @@
 //! separately-running `sail`'s. See `LEDGER.md` for the full write-up.
 
 use anyhow::{Context, Result};
-use lopi_core::{AgentEvent, EventBus, LopiConfig, PermissionMode, Priority, Task, TaskId};
+use lopi_core::{
+    AgentEvent, EventBus, LopiConfig, PermissionMode, Priority, RepoProfile, Task, TaskId,
+};
 use lopi_mcp::{McpResource, McpResourceContents, McpTool, ToolHandler};
 use lopi_memory::MemoryStore;
 use lopi_orchestrator::{AgentPool, TaskQueue};
@@ -330,6 +332,18 @@ async fn submit_task(state: &AppState, args: &Value) -> Result<Value> {
                 .map_err(|_| anyhow::anyhow!("max_iterations must be between 0 and 255"))?,
         );
     }
+    // Parity fix (Collision-Oracle-Build sprint's Part C): every other entry
+    // point applies the repo's `.lopi.toml` profile before submitting; this
+    // one didn't. Matches `task_build.rs::build_task_from_fields`'s exact
+    // pattern — profile applied last, after the request-level fields above,
+    // using the same effective-repo resolution `AgentPool`'s run loop uses
+    // (`task.repo_path` or the pool's bound repo).
+    let effective_repo = task
+        .repo_path
+        .clone()
+        .unwrap_or_else(|| state.repo_path.clone());
+    RepoProfile::load_from_repo(&effective_repo).apply(&mut task);
+
     let task_id = task.id.0.to_string();
     let duplicate_of = state.pool.submit(task).await.map(|id| id.0.to_string());
     Ok(json!({
@@ -488,6 +502,10 @@ async fn get_stats(state: &AppState) -> Value {
 #[cfg(test)]
 #[path = "mod_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "repo_profile_tests.rs"]
+mod repo_profile_tests;
 
 /// Regression coverage at the real `lopi_mcp` JSON-RPC surface (MCPB-App-2
 /// Phase 2) — see the module doc there for why this is separate from
