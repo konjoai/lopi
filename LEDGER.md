@@ -7,6 +7,18 @@ newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 
 ## Gate-Tiering-1 — BLOCKING vs ADVISORY tiers, review demoted, break-glass added
 
+**Addendum, live CI on PR #197**: `konjo-gates`' `one_way_door` gate flagged
+`diff:public-api-removal` (change id `607fa5c46ecb`) on this PR — its `_REMOVED_DEF`
+heuristic matches any diff line starting `-def `/`-class `, and `dry_check.py`'s
+`_changed_files(root, extensions)` signature gained a new `base_ref` parameter with a
+default value (`-def _changed_files(root, extensions)` / `+def _changed_files(root,
+extensions, base_ref="origin/main")`), which the line-level heuristic cannot tell apart
+from a real breaking removal. Backward-compatible in fact (every existing call site
+still resolves; the new parameter is optional) — acknowledged per the framework's own
+mechanism rather than silently ignored, since `one_way_door` is a genuine gate (not the
+cargo-deny newonly-diffing artifact this same run also hit): commit trailer
+`Konjo-Acknowledged-Oneway: 607fa5c46ecb`.
+
 Sprint "Gate Tiering and the Adoption Ramp", Part A. `konjo-gate.yml`'s aggregator
 (`konjo-gate`, the `"Konjo Gate — All Walls Clear"` required check) required all eight
 upstream jobs — roughly twenty distinct checks — to return `success`, with no adoption
