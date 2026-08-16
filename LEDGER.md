@@ -15,10 +15,12 @@ false positive, documented rather than silently worked around.
 ### One-way door: acknowledged
 
 `gate_one_way_door` fired on `path:release-version` — this sprint's two real `VERSION`
-bumps (`0.42.0` → `0.43.0` → `0.44.0`, `Collision-Oracle-Build` and
-`RepoProfile-EntryPoint-Parity`). Both are real, already-shipped sprint entries with
-their own `LEDGER.md`/`CHANGELOG.md` records, not placeholder bumps. Ran
-`konjo-oneway confirm` for real (not skipped): `Konjo-Acknowledged-Oneway: d2402af2c7dc`.
+bumps (on this branch, at the time: `0.42.0` → `0.43.0` → `0.44.0`, `Collision-Oracle-Build`
+and `RepoProfile-EntryPoint-Parity`; renumbered to `0.44.0`/`0.45.0` on Sprint P4's
+merge once `claude/sprint-p3a-planner-wiring` kept `0.43.0` — see
+`Collision-Oracle-Build`'s version-numbering note below). Both are real, already-shipped
+sprint entries with their own `LEDGER.md`/`CHANGELOG.md` records, not placeholder bumps.
+Ran `konjo-oneway confirm` for real (not skipped): `Konjo-Acknowledged-Oneway: d2402af2c7dc`.
 
 ### Threat model: recorded, one boundary, real reasoning
 
@@ -165,12 +167,16 @@ entry and `KILL_TEST_REGISTER.md`'s CONDITIONAL GO. Built this sprint as one of 
 independent parts in a combined session; Part A (P3a closeout, `claude/sprint-p3a-planner-wiring`)
 was explicitly out of scope for this session -- owned by a separate concurrent
 session -- so this branch bases off `main` at `0.42.0` directly, not off a
-hypothetical post-Part-A `0.43.0`. **Version-numbering note, so a future merge isn't
-surprised:** the combined sprint brief assumed A merges first and numbered B/C as
-`0.44.0`/`0.45.0`; since A stayed on its own branch, this work bumps `VERSION` to
-`0.43.0` instead. Whichever of A's or this branch's PR merges second will hit a real
-`VERSION`/`CHANGELOG.md` merge conflict -- expected, not a bug, and trivial to resolve
-by re-numbering on rebase.
+hypothetical post-Part-A `0.43.0`. **Version-numbering note, and how it actually
+resolved:** the combined sprint brief assumed A merges first and numbered B/C as
+`0.44.0`/`0.45.0`; since A stayed on its own branch at authoring time, this branch
+originally bumped `VERSION` to `0.43.0` instead, predicting a real merge conflict
+whichever of A's or this branch's PR landed second. That predicted conflict is
+exactly what happened: Sprint P4 ("close the loop") merged Branch A first, which
+kept `0.43.0` (already shipped by the time this branch's PR merged), so this
+branch's own two entries were renumbered to `0.44.0` (this entry) and `0.45.0`
+(`RepoProfile-EntryPoint-Parity`) as part of that merge -- `CHANGELOG.md` and
+`VERSION` reflect the final, renumbered values, not this branch's original guess.
 
 ### What shipped
 

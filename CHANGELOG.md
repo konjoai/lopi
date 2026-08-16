@@ -1,6 +1,9 @@
-## [0.44.0] - RepoProfile-EntryPoint-Parity: web + MCP task submission now apply `.lopi.toml`
+## [0.45.0] - RepoProfile-EntryPoint-Parity: web + MCP task submission now apply `.lopi.toml`
 
-Part C of the same combined session as `[0.43.0]`. Fixes a confirmed cross-surface
+Part C of the same combined session as `[0.44.0]` (Sprint P4 renumbered this from
+this branch's own `[0.43.0]`/`[0.44.0]` guess once `claude/sprint-p3a-planner-wiring`
+merged first and kept `0.43.0` — see `LEDGER.md`'s `Collision-Oracle-Build` entry).
+Fixes a confirmed cross-surface
 inconsistency: CLI task-submission paths already applied a repo's `.lopi.toml`
 profile before `pool.submit()`; the web dashboard (`POST /api/tasks`) and MCP
 (`lopi_submit_task`) did not. Full reasoning in `LEDGER.md`'s
@@ -29,12 +32,12 @@ Does not make `allowed_dirs`/`forbidden_dirs` a hard enforcement boundary — st
 advisory-only everywhere in this codebase, unchanged from before this fix. Separate,
 larger, undecided design question (Sprint P1's own handoff).
 
-## [0.43.0] - Collision-Oracle-Build: `lopi-oracle` crate scaffold, textual-only
+## [0.44.0] - Collision-Oracle-Build: `lopi-oracle` crate scaffold, textual-only
 
 Crate-scaffolding sprint for `lopi-oracle`, scoped by `KILL_TEST_REGISTER.md`'s
 CONDITIONAL GO and `NEXT_SESSION_PROMPT.md`'s "Next Session, after Oracle-Preflight"
-entry. One of five independent parts run in a combined session; Part A (P3a closeout)
-was owned by a separate concurrent session and is not included here — see
+entry. One of five independent parts run in a combined session; Part A (P3a closeout,
+shipped separately as `[0.43.0]` by a concurrent session) is not included here — see
 `LEDGER.md`'s `Collision-Oracle-Build` entry for the resulting version-numbering note.
 
 ### Added
