@@ -5,6 +5,83 @@ the `lopi` repo. Newest first.
 
 ---
 
+## Next Session, after Sprint P4 ("close the loop," `[0.45.0]`)
+
+Sprint P4 verified, merged, and shipped two parked sprints (`0.43.0` Planner/Executor
+wiring, `0.44.0`/`0.45.0` Collision-Oracle + RepoProfile parity), resolved the
+version-numbering collision between them, and classified the remaining 23 branches
+(the brief said 24; `git ls-remote --heads` returns 26 total including `main`, minus
+`main` minus the two merged branches = 23 — noted plainly, not padded to match).
+**No branch was merged, rebased, or deleted in Phase 3** — classification only, per
+the brief's own scope limit.
+
+### Branch triage table (verified 2026-08-16, re-checked against `BRANCH_TRIAGE.md`'s
+2026-08-11 findings — main moved exactly 3 commits since then before Sprint P4 started,
+so every branch's ahead-count below was re-confirmed unchanged, not copied blind)
+
+| Branch | Ahead / behind `main` | PR state | Verdict |
+|---|---|---|---|
+| `claude/colour-theme-implementation-ncnpf5` | 4 / 27 | #189 open, draft | REWORK — active WIP |
+| `claude/dashboard-recon-sprint-u0-rfy9tl` | 1 / 27 | #188 open, draft | REWORK — active WIP |
+| `claude/lopi-dashboard-recon-rnvvg7` | 37 / 32 | #186 open, draft | REWORK — active WIP, largest open |
+| `claude/konjo-cross-repo-work-6914op` | 8 / 32 | #185 open, not draft | REWORK — active, ready for real review |
+| `claude/s13-quality-substrate-cua8oa` | 2 / 57 | #183 closed, not merged | CLOSE — explicitly reviewed and rejected/superseded |
+| `claude/budget-judge-hardening` | 1 / 384 | #112 closed, not merged | CLOSE — real prior decision |
+| `lopi/50cb6637-...-attempt-2` | 1 / 462 | #85 closed, not merged | CLOSE — self-generated attempt branch |
+| `claude/prompt-templates-sprint-1` | 0 / 550 | #54 closed, not merged | CLOSE — already merged into `main` via another path |
+| `feat/macos-app-icon` | 1 / 570 | #43 closed, not merged | CLOSE |
+| `claude/pentad-m3-mcp-cli` | 1 / 591 | #50 closed, not merged | CLOSE |
+| `claude/konjo-lopi-aaju8e` | 1 / 673 | 10 closed PRs (#27-#37) | CLOSE — reused name, 10 rejected cycles |
+| `wesley/forge-ui-overhaul` | 6 / 706 | never had a PR | REWORK — real, substantial (23 files, 1431 lines, `web/` dashboard overhaul), never reviewed; too stale to merge as-is, worth a design-relevance check before write-off |
+| `lopi/macos-web-parity` | 2 / 707 | never had a PR | REWORK — real, substantial (29 files, 668 lines, macOS parity), same shape |
+| `lopi/1f5dfb7e-...-attempt-1` | 2 / 713 | #19 closed, not merged | CLOSE — self-generated attempt branch |
+| `lopi/a437ae4f-...-attempt-1` | 1 / 713 | never had a PR | CLOSE — self-generated, 2-line diff, no real content |
+| `lopi/a5d80420-...-attempt-2` | 1 / 718 | #18 closed, not merged | CLOSE — self-generated attempt branch |
+| `claude/telegram-bot-overhaul-8iJpe` | 0 / 724 | 4 closed PRs (#14-#17) | **CLOSE — the gateway question is settled, not merely redundant. See `LEDGER.md`'s `Telegram-Gateway-Non-Goal` entry.** |
+| `claude/konjo-lopi-Ad8Ch` | 1 / 746 | #13 closed, not merged | CLOSE |
+| `claude/plan-konjo-self-modify-6LyQv` | 23 / 757 | #8 closed, not merged | CLOSE |
+| `claude/elastic-merkle-385c20` | 8 / 776 | never had a PR | REWORK — never reviewed, no rejection on record; flag for a design-relevance check rather than assume dead |
+| `claude/sprint-i-memory` | 0 / 788 | #6 closed, not merged | CLOSE — already merged into `main` via another path |
+| `claude/advance-all-repos-T5j3q` | 1 / 791 | #2 closed, not merged | CLOSE |
+| `claude/add-lopi-tests-SqAUe` | 0 / 804 | 4 closed PRs (#1,#3,#4,#5) | CLOSE — already merged into `main` via another path |
+
+**Summary: 7 REWORK, 16 CLOSE, 0 MERGE** (the two that qualified — Branch A and Branch
+B — are Sprint P4's own Phases 1-2, not part of this 23). 4 of the 16 CLOSE verdicts
+are "already merged elsewhere" (0 ahead — safe deletion candidates, content already
+live), 8 are closed-PR (a real prior human review decision, not neglect), 3 are
+trivial self-generated `lopi/<uuid>-attempt-N` throwaways, and 1
+(`claude/telegram-bot-overhaul-8iJpe`) is closed for a settled-non-goal reason
+recorded in `LEDGER.md`, not merely because it's redundant.
+
+**The "identify the other combined-session parts among the 24" check: done, answer is
+none.** Branch B's own PR #196 title and `CHANGELOG.md`/`LEDGER.md` are explicit:
+Branch A (`claude/sprint-p3a-planner-wiring`) is Part A alone; Branch B
+(`claude/sprint-p3a-collision-oracle-q5zayq`) is Parts B/C/D/E (Collision-Oracle,
+RepoProfile parity, the `mutation-hunt` CI call site, and `BRANCH_TRIAGE.md` itself,
+all in the same branch). All five parts are accounted for across exactly these two
+branches — nothing among the 23 triaged above is a missing sixth part.
+
+### What a future session should actually do with this table
+
+- The 4 REWORK-active branches (`colour-theme`, `dashboard-recon-sprint-u0`,
+  `lopi-dashboard-recon`, `konjo-cross-repo-work`) need normal PR review, not a
+  special session — they're already in the queue.
+- `wesley/forge-ui-overhaul`, `lopi/macos-web-parity`, and `claude/elastic-merkle-385c20`
+  are real, substantial, never-reviewed work with no rejection on record. Before
+  either merging or closing any of them, someone (Wes) should confirm the design
+  direction is still wanted — a 700-commit-stale rebase is a real cost, not a
+  formality, and shouldn't be spent speculatively.
+- The 16 CLOSE verdicts are a recommendation, not an action taken — no branch was
+  deleted this sprint. Branch cleanup (deleting the 4 already-merged-elsewhere refs
+  and formally closing the 12 closed-PR/attempt/telegram branches' any-still-open
+  artifacts) is a separate, explicit task for whoever owns repo hygiene next.
+- kiban's `claude/sign-distribution-channel-heg41d` (release-tag signing) was
+  triaged in a companion session (kiban Sprint K2): real, tested, non-superseded
+  work, mechanical rebase, closed unmerged this cycle because Wes chose not to
+  adopt signing yet — not a lopi concern, noted here only for cross-reference.
+
+---
+
 ## Next Session, after Sprint P3a (Planner/Executor wired into `AgentRunner::run()`, `[0.43.0]`)
 
 Sprint P3a-Closeout verified and documented `claude/sprint-p3a-planner-wiring` -- the
