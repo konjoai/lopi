@@ -5,6 +5,29 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## Telegram-Gateway-Non-Goal — `claude/telegram-bot-overhaul-8iJpe` closed, the gateway question is settled
+
+Sprint P4 ("close the loop"), Phase 3 branch triage. `claude/telegram-bot-overhaul-8iJpe`
+(71 days stale, 0 commits ahead of `main` — its content already reached `main` via a
+different path than any of its own four closed PRs' merge buttons) is closed here with
+a decision recorded, not just deleted as redundant.
+
+**The design question it answers: no.** A subscription-driven, always-on Telegram bot
+gateway is not lopi's job. This repo's own non-goals (restated explicitly by Sprint
+P4's brief, not reopened by this entry) already exclude `RemoteGateway`, any messaging
+transport, and specifically Telegram — a standing decision, not a new one made here.
+Whatever remote-control surface lopi exposes stays request/response (web dashboard,
+MCP, CLI), not a persistent bot process holding its own connection and
+polling/webhooking for inbound messages. Recording this now, against the actual
+branch that raised it, so the question is not silently rediscovered and re-litigated
+by a future session that finds an old Telegram branch in the remote list and assumes
+neglect rather than a decision.
+
+No code from this branch is adopted. The branch itself is left in place (Sprint P4's
+own non-goal: no branch is deleted in Phase 3), safe to delete by whoever next does
+branch cleanup — its content already lives on `main`, and its design direction is
+closed.
+
 ## PR-196-Gate-Response -- one-way-door ack, threat model, and a confirmed cargo-deny false positive
 
 `konjo-gates` (`GK`, kiban profile) ran against this combined sprint's real diff
