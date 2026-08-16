@@ -1,23 +1,41 @@
 ---
 decays: state
-verified-against: 13a0990
-verified-date: 2026-08-11
+verified-against: f5c55ce
+verified-date: 2026-08-16
 ---
 
 # Trifecta paths — untrusted input → powerful tools → external comms
 
-Verified against: `13a0990` · 2026-08-11 (re-verified; G0 flagged this doc stale again — the
-review-pipeline Sprint P3a-Closeout branch's own commit volume (9 commits: 8 building the
-Planner/Executor wiring, 1 documenting it) crossed `824ba65` past the 20-commit cap via the
-PR's merge ref, the same "commit volume, not content drift" trigger noted repeatedly below.
-Diffed every commit `824ba65..13a0990` against every file this doc cites (the same full list
-in the superseded banner just below). Exactly one touched: `crates/lopi-ui/src/web/
-streaming.rs` gained one line inside a `#[cfg(test)]` fixture struct literal
-(`plan_artifact: None`), a mechanical consequence of this same branch adding a
-`plan_artifact` field to `TaskRow` (Sprint P3a's plan-artifact persistence) — not a claim
-this doc makes any assertion about (§7's streaming-auth section concerns route registration
-and ticket auth, not `TaskRow`'s field list). No other cited file changed; no content-level
-drift found anywhere.
+Verified against: `f5c55ce` · 2026-08-16 (re-verified; Sprint P4 Phase 2's
+merge of `claude/sprint-p3a-collision-oracle-q5zayq` onto a `main` that already
+carried Phase 1's merge crossed the 20-commit cap again. Combines both branches'
+own independent verifications rather than re-deriving from scratch: Branch A
+(P3a-closeout, verified against `13a0990`) touched only
+`crates/lopi-ui/src/web/streaming.rs` inside this doc's cited scope — one
+mechanical `plan_artifact: None` line in a `#[cfg(test)]` fixture struct literal,
+not a claim this doc asserts anything about. Branch B (verified against `9d1162e`)
+touched only `crates/lopi-ui/src/web/handlers.rs::create_task` inside this doc's
+cited scope — the only `handlers.rs` citations in this doc's body
+(`handlers.rs:22`/`:112` below) are `crates/lopi-remote/src/telegram/handlers.rs`,
+a different, already-removed file per Sprint S10 Phase 4, so `create_task`'s new
+`RepoProfile::load_from_repo(&effective_repo).apply(&mut task)` line touches
+nothing this doc cites. The merge itself (this banner's own re-verification
+commit plus the two branches' merge commits) adds no further production-code
+lines beyond what both sides already contributed. No content-level drift found
+anywhere across the combined diff.
+
+Superseded prior banner (`13a0990` · 2026-08-11 — re-verified; G0 flagged this doc stale
+again — the review-pipeline Sprint P3a-Closeout branch's own commit volume (9 commits: 8
+building the Planner/Executor wiring, 1 documenting it) crossed `824ba65` past the
+20-commit cap via the PR's merge ref, the same "commit volume, not content drift" trigger
+noted repeatedly below. Diffed every commit `824ba65..13a0990` against every file this doc
+cites (the same full list in the superseded banner just below). Exactly one touched:
+`crates/lopi-ui/src/web/streaming.rs` gained one line inside a `#[cfg(test)]` fixture
+struct literal (`plan_artifact: None`), a mechanical consequence of this same branch
+adding a `plan_artifact` field to `TaskRow` (Sprint P3a's plan-artifact persistence) —
+not a claim this doc makes any assertion about (§7's streaming-auth section concerns
+route registration and ticket auth, not `TaskRow`'s field list). No other cited file
+changed; no content-level drift found anywhere.
 
 Superseded prior banner (`824ba65` · 2026-08-03 — re-verified; G0 flagged this doc stale
 again — the review-pipeline Sprint P2 branch's own single commit, a `.gitignore`/`LEDGER.md`-only change

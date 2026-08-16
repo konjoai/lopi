@@ -1815,6 +1815,7 @@ dependencies = [
  "lopi-git",
  "lopi-index",
  "lopi-memory",
+ "lopi-oracle",
  "lopi-ratelimit",
  "lopi-skill",
  "lopi-spec",
@@ -1967,6 +1968,16 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "lopi-oracle"
+version = "0.40.0"
+dependencies = [
+ "anyhow",
+ "tempfile",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

@@ -1,3 +1,69 @@
+## [0.45.0] - RepoProfile-EntryPoint-Parity: web + MCP task submission now apply `.lopi.toml`
+
+Part C of the same combined session as `[0.44.0]` (Sprint P4 renumbered this from
+this branch's own `[0.43.0]`/`[0.44.0]` guess once `claude/sprint-p3a-planner-wiring`
+merged first and kept `0.43.0` — see `LEDGER.md`'s `Collision-Oracle-Build` entry).
+Fixes a confirmed cross-surface
+inconsistency: CLI task-submission paths already applied a repo's `.lopi.toml`
+profile before `pool.submit()`; the web dashboard (`POST /api/tasks`) and MCP
+(`lopi_submit_task`) did not. Full reasoning in `LEDGER.md`'s
+`RepoProfile-EntryPoint-Parity` entry.
+
+### Fixed
+
+- **`crates/lopi-ui/src/web/handlers.rs::create_task`** and
+  **`src/mcp_commands/mod.rs::submit_task`** now call
+  `RepoProfile::load_from_repo(&effective_repo).apply(&mut task)` before
+  submitting — matching `task_build.rs::build_task_from_fields`'s exact pattern and
+  win-order (profile applied last). `effective_repo` falls back to the server's
+  bound repo when the request omits one, the same fallback `AgentPool`'s run loop
+  already uses to resolve which repo a task executes against.
+
+### Added
+
+- 5 regression tests (`crates/lopi-ui/src/web/task_repo_profile_tests.rs`,
+  `src/mcp_commands/repo_profile_tests.rs`) submitting through the real HTTP/MCP
+  entry point and inspecting the actual queued `Task`, not the response body (which
+  exposes neither `allowed_dirs` nor `constraints`).
+
+### Non-goal
+
+Does not make `allowed_dirs`/`forbidden_dirs` a hard enforcement boundary — still
+advisory-only everywhere in this codebase, unchanged from before this fix. Separate,
+larger, undecided design question (Sprint P1's own handoff).
+
+## [0.44.0] - Collision-Oracle-Build: `lopi-oracle` crate scaffold, textual-only
+
+Crate-scaffolding sprint for `lopi-oracle`, scoped by `KILL_TEST_REGISTER.md`'s
+CONDITIONAL GO and `NEXT_SESSION_PROMPT.md`'s "Next Session, after Oracle-Preflight"
+entry. One of five independent parts run in a combined session; Part A (P3a closeout,
+shipped separately as `[0.43.0]` by a concurrent session) is not included here — see
+`LEDGER.md`'s `Collision-Oracle-Build` entry for the resulting version-numbering note.
+
+### Added
+
+- **`crates/lopi-oracle`** — textual cross-agent collision detection via
+  `git merge-tree --write-tree`, the exact invocation KT-3 timed (p95 135ms on `lopi`
+  itself). `CollisionOracle::poll` de-duplicates on `ConflictSignature` (conflicted
+  file set + merge-base), the hard precondition `KILL_TEST_REGISTER.md` required —
+  direct fix for KT-2's 120/hour naive noise floor. Textual-only, no tree-sitter — no
+  real evidence a semantic-only collision exists in this codebase's history. Detection
+  only: `Alert::advisory_text` is the only output, no conflict-resolution logic, no
+  hard-deny path. 15 tests, all against real git operations on real temp repos.
+- **`crates/lopi-agent/src/runner/collision_seed.rs`** — wires the oracle into
+  `AgentRunner`'s existing planning-seed path (`gather_seed`). New optional fields
+  (`collision_oracle`, `collision_peers`, `collision_self_ref`, all `None` by default)
+  and a `with_collision_oracle` builder method mirroring `with_cross_run_reflection`.
+  Unwired is behavior-identical to before this sprint.
+
+### Findings (no code)
+
+- KT-2 re-run at real, uncompressed 30-second cadence (vs. the pre-flight's
+  compressed proxy): 12 polls over 5m31s wall clock against a real throwaway repo,
+  all 12 the same signature — confirms the mechanism finding holds at real cadence.
+  A genuine live multi-agent working session remains unavailable in this environment;
+  full detail and the honest scope of what this does and doesn't close in
+  `LEDGER.md`.
 ## [0.43.0] - Sprint P3a: wire the Planner/Executor split into `AgentRunner::run()`
 
 Closeout sprint for `claude/sprint-p3a-planner-wiring` -- verify, document, and merge
@@ -27,6 +93,12 @@ architectural decision record: `LEDGER.md`'s `Review-Pipeline-Phase-3a` entry.
 - `crates/lopi-memory/src/store/plan_artifact.rs` failed `cargo fmt --all -- --check`
   (the CI `static` job's `rustfmt` step) -- the file this branch introduced was never
   run through `cargo fmt`. Reformatted; no behavior change.
+- Sprint P4 Phase 1 (merging this entry to `main`): `konjo-gates`' `one_way_door`
+  (VERSION bump + new `plan_artifact` schema column) and `threat_model`
+  (`crates/lopi-ui/` touch, zero real boundary -- the only change there is one
+  mechanical `plan_artifact: None` line in a `#[cfg(test)]` fixture) both
+  acknowledged for real: `Konjo-Acknowledged-Oneway: 4a89a1b613fa`,
+  `Konjo-Threat-Model: 4a89a1b613fa`.
 
 ## [0.42.0] - Sprint P2b: mutation-hunt fixture, CI call site, per-crate baseline resumed
 
