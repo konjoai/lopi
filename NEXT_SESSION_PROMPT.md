@@ -53,6 +53,57 @@ entry before touching anything, same as every prior sprint's handoff.
    sprint, unrelated to this branch's diff.
 4. **KT-1/KT-2/KT-3 (collision oracle) and the mutation-hunt baseline stay settled/out of
    scope** -- do not re-open either from this sprint's work.
+## Branch triage (2026-08-11) — read `BRANCH_TRIAGE.md`, no action taken
+
+Findings-only sprint (Part E of the combined P3a-closeout/Collision-Oracle/
+RepoProfile-parity/mutation-hunt/branch-triage session). Full per-branch table with
+verified PR state in `BRANCH_TRIAGE.md`. Headline: 5 lopi branches have an open PR
+(active), 4 are already fully merged into `main` (safe deletion candidates), 12 have
+a closed-but-unmerged PR (a real prior review decision, not neglect — reopening is
+an owner call), and only 3 never had a PR at all. kiban's
+`claude/sign-distribution-channel-heg41d` (release-tag signing) is real, tested,
+non-superseded work with a closed-not-merged PR (#29) and only bookkeeping-file
+merge conflicts against current `main` — a mechanical rebase away from re-opening,
+pending an owner decision on why it was closed. **No branches were deleted** — that
+stays a separate, explicit decision.
+
+---
+
+## Next Session, after Collision-Oracle-Build (`lopi-oracle` scaffold, `[0.43.0]`)
+
+Read `CHANGELOG.md`'s `[0.43.0]` entry and `LEDGER.md`'s `Collision-Oracle-Build`
+entry first — both explain the version-numbering divergence from the original
+combined-sprint brief (Part A, P3a closeout, was owned by a separate concurrent
+session and did not land in this branch's lineage).
+
+**What's already done and should not be re-derived:** the `lopi-oracle` crate
+(`snapshot_pair`, `ConflictSignature`, `CollisionOracle::poll`), textual-only, 15
+tests against real git operations; the `AgentRunner` wiring
+(`crates/lopi-agent/src/runner/collision_seed.rs`, opt-in via
+`with_collision_oracle`, unwired-by-default); the KT-2 re-run at real 30-second
+cadence (12 polls / 5m31s wall clock, 1 distinct signature, matching the pre-flight's
+finding).
+
+**What's still open:**
+
+1. **A genuine live multi-agent working session KT-2 re-run.** Every KT-2 run so far
+   (the original pre-flight and this sprint's follow-up) has used a proxy — first
+   compressed, now real-cadence but still synthetic edits, not real concurrent
+   `lopi run`/`lopi sail` agents generating real write traffic. Needs an environment
+   where that's actually available.
+2. **Pool-level orchestrator wiring.** `AgentPool` does not yet construct a shared
+   `CollisionOracle` or auto-register every real running task's worktree into a
+   shared peer list — `AgentRunner`'s side of the integration is real and tested, but
+   nothing in `crates/lopi-orchestrator/src/pool/` calls `with_collision_oracle` yet.
+   This also needs a decision on the fairness gap flagged in the ledger entry
+   (only one side of a colliding pair is guaranteed to see a given alert — decide
+   whether both sides need a copy).
+3. **Dashboard indicator.** Explicitly a stretch goal the combined sprint brief did
+   not require; still not built.
+4. **`VERSION`/`CHANGELOG.md` reconciliation with Part A.** Whichever of the P3a
+   closeout PR or this sprint's PR merges second will hit a real merge conflict on
+   `VERSION`/`CHANGELOG.md` (both branches based off `0.42.0`) — expected, resolve by
+   re-numbering on rebase, not by picking one side's number arbitrarily.
 
 ---
 

@@ -1,18 +1,25 @@
 ---
 decays: state
-verified-against: 13a0990
-verified-date: 2026-08-11
+verified-against: PHASE2_MERGE_SHA
+verified-date: 2026-08-16
 ---
 
-Verified against: `13a0990` · 2026-08-11 (re-verified; Sprint P3a-Closeout's commit volume
-on this PR (9 commits: 8 building the Planner/Executor wiring, 1 documenting it) crossed
-the 20-commit cap again. P3a touched `crates/lopi-agent/src/runner/{plan_readonly.rs,
-lifecycle.rs,run_loop.rs}`, `crates/lopi-agent/src/planner_executor.rs`,
-`crates/lopi-memory/src/{schema.sql,store/plan_artifact.rs}`, `.konjo/kiban.ref`, and
-`.github/workflows/konjo-gate.yml`; it never touches `loop_config.rs`, `budget_preset.rs`,
-or `recipes/`, so nothing this document cites changed. Prior banner (`9fce495` ·
-2026-08-03, re-verified; Sprint P0's commit volume on this PR crossed the 20-commit cap
-again. P0 touched `crates/lopi-core/src/economics_config.rs`,
+Verified against: `PHASE2_MERGE_SHA` · 2026-08-16 (re-verified; Sprint P4 Phase 2's
+merge of `claude/sprint-p3a-collision-oracle-q5zayq` onto a `main` that already
+carried Phase 1's merge crossed the 20-commit cap again. Combines both branches'
+own independent verifications: Branch A (P3a-closeout, verified against `13a0990`)
+touched `crates/lopi-agent/src/runner/{plan_readonly.rs,lifecycle.rs,run_loop.rs}`,
+`crates/lopi-agent/src/planner_executor.rs`,
+`crates/lopi-memory/src/{schema.sql,store/plan_artifact.rs}`, `.konjo/kiban.ref`,
+and `.github/workflows/konjo-gate.yml` — never `loop_config.rs`, `budget_preset.rs`,
+or `recipes/`. Branch B (verified against `b5af2a3`) added the `lopi-oracle`
+scaffold, the RepoProfile parity fix, and the branch-triage doc — confirmed via
+`git diff --stat` against every commit in its range, empty output for this doc's
+cited paths. Neither branch's diff, nor the merge itself, touches anything this
+document cites. No drift found.
+
+Prior banner (`9fce495` · 2026-08-03, re-verified; Sprint P0's commit volume on this
+PR crossed the 20-commit cap again. P0 touched `crates/lopi-core/src/economics_config.rs`,
 `crates/lopi-core/src/lib.rs` (module declaration only), and added
 `crates/lopi-core/src/cost_breaker.rs`; it never touches `loop_config.rs` or `recipes/`,
 so nothing this document cites changed. Prior banner (`c4f1fdb` · 2026-07-29, re-verified;
