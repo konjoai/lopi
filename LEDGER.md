@@ -104,6 +104,142 @@ tuned. `.konjo/kiban.ref` was not bumped (still `v1.8.0`) — Part A is self-con
 lopi. Branch protection was not touched. The aggregator's required check name
 (`"Konjo Gate — All Walls Clear"`) is byte-identical to before this sprint.
 
+## Review-Pipeline-Phase-3a -- Planner/Executor wired into `AgentRunner::run()`, KT-3A confirmed live
+
+Sprint P3a-Closeout, verifying and documenting `claude/sprint-p3a-planner-wiring`
+(8 commits, `e5ca9c2`). This is a closeout, not a build: the wiring itself -- Path A,
+below -- shipped on that branch already; this entry is the citation four call sites in
+that branch's own diff already point at (`plan_readonly.rs`'s module doc and its
+`plan_via_readonly_planner` doc comment, `run_loop.rs`'s resume call site, `schema.sql`'s
+`plan_artifact` column comment), and none of them resolved to anything before this
+entry existed.
+
+### The architectural decision: Path A, not a gated optional mode
+
+Sprint P1's own handoff (`NEXT_SESSION_PROMPT.md`'s "after Sprint P1" entry, item 1)
+left this fork explicitly open: does the readonly Planner replace the existing
+`stream_plan`/`plan_via_api` step outright, or run as an optional mode gated by a new
+`Task` field? This sprint's branch chose **Path A -- outright replacement.**
+`run_loop.rs`'s plan-phase call site (`AgentRunner::run()`'s per-attempt loop) now
+calls `self.plan_via_readonly_planner(&model, &attempt_session_id)` in the branch that
+used to call `self.stream_plan(...)`, unconditionally whenever `self.has_direct_api()`
+is false -- which per Sprint P1's own PF-1 audit (`Review-Pipeline-Phase-1` entry above)
+is every production path today (`with_api` is never called outside a test). No new
+`Task` field gates this; a normal task run gets the readonly-Planner-then-resume shape
+by default, not as an opt-in. `plan_via_api`'s direct-API branch (Sprint G, also
+unreachable in production per the same audit) is untouched and still exists as the
+first-choice path with a CLI fallback -- Path A only replaced the CLI plan step, not the
+direct-API one.
+
+### KT-3A, confirmed live on this exact branch, not assumed from the code comments
+
+`plan_readonly.rs`'s and `planner_executor.rs`'s doc comments both assert that a
+resumed session honors a freshly-passed, widened `--allowedTools`/`--disallowedTools`
+pair even though `--permission-mode` alone is not re-applied by the CLI on `--resume`.
+This pre-flight re-ran that claim live against this branch's actual code, not the prior
+Sprint P1-era version, using a shim on `PATH` that logs every `claude` subprocess argv
+before execing the real binary, driving a real `lopi run` against a throwaway repo
+(`fn add(a: i32, b: i32) -> i32 { a + b }` in a bare `math.rs`, goal: add `subtract`).
+
+**Captured argv, plan phase (attempt 3, the one whose session was pushed all the way
+through):** `--permission-mode dontAsk --session-id 361780c1-... --allowedTools Read
+Grep Glob WebFetch WebSearch` -- no write-capable tool in the list, so the Planner
+cannot write regardless of permission mode; this is `ToolProfile::Readonly`'s forced
+allow-list, structural not merely policy.
+
+**Captured argv, implement phase, same attempt:** `--permission-mode bypassPermissions
+--resume 361780c1-... --disallowedTools Workflow Task Agent` -- same session ID,
+different (mutating) permission mode, and no `--allowedTools` restriction at all (only
+the task's own three-item deny-list). This confirms `run_loop.rs`'s claim exactly:
+`claude` (built with the task's real permission posture) resumes the session
+`spawn_planner`'s internal `Command` established, and its own caps -- not the Planner's
+-- govern from that point.
+
+**The `bypassPermissions` leg of that exact call then failed in this sandbox** --
+`claude cli exited exit status: 1 with no output`. Root cause, confirmed by hand:
+`--dangerously-skip-permissions cannot be used with root/sudo privileges for security
+reasons`. This container runs the CLI as root; `bypassPermissions` is a true drop-in of
+`--dangerously-skip-permissions` including that refusal, already documented as
+confirmed behavior by an earlier sprint's KT3 (`permission_mode.rs`'s own doc comment
+on `PermissionMode::BypassPermissions`) -- an existing, sandbox-specific CLI safety
+check unrelated to this branch's session-resume wiring, and not something this
+closeout sprint should or does work around in production code.
+
+**To close the loop past that sandbox limitation, the same session was resumed a
+second time by hand** (raw CLI, no lopi code involved -- same evidentiary shape as
+Sprint P1's own PF-3), swapping only `--permission-mode` to `acceptEdits` and dropping
+the `--allowedTools` restriction: `claude -p "Add a subtract(...) function..." --resume
+361780c1-... --permission-mode acceptEdits`. Result: `terminal_reason: "completed"`,
+the `Edit` tool auto-approved, `Bash` correctly gated (`permission_denials` on three
+`Bash` calls -- `acceptEdits`'s documented shape, edits auto-approved, everything else
+needs an allow-list entry), and `math.rs` on disk gained exactly one line:
+`fn subtract(a: i32, b: i32) -> i32 { a - b }`, `add()` untouched. **The same session
+ID that was capped to `Read`/`Grep`/`Glob`/`WebFetch`/`WebSearch` under the Planner's
+own spawn went on, under nothing but a freshly-passed, more permissive resume call, to
+actually mutate the working tree.** KT-3A passed, live, on this branch. **PF-2 passed.**
+
+### The "absent, never synthesized" invariant
+
+`plan_via_readonly_planner` (`plan_readonly.rs`) has exactly one path that sets
+`self.last_plan_artifact = Some(plan)`, immediately after `persist_plan_artifact`, both
+gated behind `spawn_planner(...).await?` succeeding. Every failure mode -- CLI spawn
+failure, non-zero exit, timeout, or a response that fails schema validation -- returns
+`Err` before either line runs, confirmed by
+`plan_via_readonly_planner_leaves_last_plan_artifact_none_on_spawn_failure` (asserts
+`last_plan_artifact` stays `None` after a spawn against a nonexistent repo path). There
+is no placeholder-construction branch anywhere in this module. `schema.sql`'s
+`plan_artifact` column is nullable with no default and no backfill migration
+(confirmed: `git diff main HEAD -- crates/lopi-memory/src/schema.sql` shows only the
+new column, no `UPDATE` statement touching existing rows) -- so for kiban's Phase 4+
+router, `plan_artifact IS NULL` means *this attempt genuinely had no successful Planner
+call*, never "the column existed before this row was written." This is the invariant
+`schema.sql`'s own comment and this entry both assert as fact from here on.
+
+### Pre-flight results (PF-1 through PF-4)
+
+- **PF-1 (hard gate): full workspace build + test, clean.** `cargo build --workspace`
+  and `cargo test --workspace` both green across every crate -- 0 failures, 0 crates
+  with build errors. `lopi-agent` (430 tests) and `lopi-memory` (186 tests), the two
+  crates carrying this sprint's new code, both fully green.
+- **PF-2 (hard gate): KT-3A confirmed live, above.** Passed.
+- **PF-3: clippy and the file-size/function-length gates.** `cargo clippy --workspace
+  -- -D warnings` clean. `function_length_check.py --ceiling-file
+  .konjo/function-length-ceiling.txt` at count 74, at the locked ceiling, not over it
+  (`run_loop.rs`'s `run()` itself is 444 lines and already carries
+  `#[allow(clippy::too_many_lines)]`, pre-existing from Sprint F4, not new this
+  sprint). Every new/touched file (`plan_readonly.rs` 233, `planner_executor.rs` 349,
+  `lifecycle.rs` 348, `plan_artifact.rs` 96, `run_loop.rs` 500) under the 500-line hard
+  cap. One real, if minor, gate miss found and fixed: `cargo fmt --all -- --check`
+  (the CI `static` job's `rustfmt` step) failed on `plan_artifact.rs` -- the diff this
+  branch introduced was never run through `cargo fmt`. Fixed with `cargo fmt --all`
+  (touches only that one file); build/test/clippy re-verified green after.
+- **PF-4: no open PR existed for `claude/sprint-p3a-planner-wiring`** -- opened this
+  sprint, see `NEXT_SESSION_PROMPT.md` and the PR itself for the link.
+
+### What this unblocks
+
+kiban's `KONJO_REVIEW_PIPELINE_PLAN.md` §2.4 (the scope-escape rule) and §7.4 (the
+predicted-tier signal) were both gated on a real `PlanArtifact` producer existing in
+lopi's default agent loop, not a standalone module a future sprint would still need to
+wire in. That producer now exists and is confirmed live end-to-end (PF-2 above) -- the
+router itself (kiban's Phase 3 proper) is not built by this sprint and remains a
+separate, future sprint's scope.
+
+### Constrains future work
+
+- Do not re-litigate Path A vs. a gated optional mode -- that decision is made and
+  live in production (every non-direct-API task run gets the readonly-Planner-then-
+  resume shape). Reopening it means editing `run_loop.rs`'s plan-phase branch, not
+  adding a new `Task` field alongside it.
+- `plan_artifact IS NULL` is load-bearing for kiban's router: treat it as "genuinely
+  absent," never backfill or synthesize a placeholder for a NULL row, in this repo or
+  in any code that reads this column from kiban's side.
+- `bypassPermissions` cannot be live-tested end-to-end inside a root-privileged
+  sandbox (this container, confirmed again this sprint). A future live confirmation
+  needing the *task's actual default* permission mode (not `acceptEdits`'s substitute)
+  needs a non-root runner. See `KILL_TEST_REGISTER.md`'s `KT-3A` entry
+  (added Sprint P4) for the full substitute-leg writeup.
+
 ## Review-Pipeline-Phase-2b -- PF-0b: per-crate baseline resumed, fixture crate verified end-to-end
 
 Sprint P2b (kiban's `KONJO_REVIEW_PIPELINE_PLAN.md` Phase 2 companion doc, finishing

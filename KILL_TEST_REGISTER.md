@@ -257,3 +257,72 @@ de-duplicate on conflict signature before it ever runs against real worktrees. B
 `lopi-oracle` with the naive "poll and alert" design KT-2 tested would reproduce KT-2's
 120/hour noise floor in production and get disabled within the week, exactly as the
 brief warned. See `NEXT_SESSION_PROMPT.md` for the scoped follow-on sprint.
+
+---
+
+## KT-3A — session-resume permission widening (Review-Pipeline-Phase-3a, a different sprint's finding)
+
+Not part of the Collision-Oracle Pre-Flight run above — a different subsystem
+(`AgentRunner::run()`'s Planner/Executor wiring, `claude/sprint-p3a-planner-wiring`),
+registered here per Sprint P4's own pre-flight (PF-3) because it landed a
+security-relevant claim with an untested leg that neither branch shipping this
+sprint recorded in this file. Filed retroactively rather than silently left as a
+branch-handoff-only note.
+
+**Claim tested:** a CLI session established under the readonly Planner's forced
+`ToolProfile::Readonly` allow-list (no write-capable tool, regardless of
+`--permission-mode`) can be resumed later under a more permissive posture and
+actually mutate the working tree — because `--permission-mode` alone is not
+re-applied by the CLI on `--resume`, but a freshly-passed `--allowedTools` /
+`--disallowedTools` pair is honored fresh every call, including a resume.
+
+**Confirmed live, `dontAsk`→`bypassPermissions` leg, argv captured via a `PATH` shim
+logging every `claude` subprocess call, real `lopi run` against a throwaway repo:**
+plan phase spawned `--permission-mode dontAsk --session-id 361780c1-...
+--allowedTools Read Grep Glob WebFetch WebSearch`; the same attempt's implement
+phase resumed with `--permission-mode bypassPermissions --resume 361780c1-...
+--disallowedTools Workflow Task Agent` — same session id, no `--allowedTools`
+restriction at all. This much is measured, not inferred.
+
+**Untested leg: `bypassPermissions` mutating the tree end-to-end.** That exact
+captured call then failed in-sandbox: `claude cli exited exit status: 1 with no
+output`, root cause `--dangerously-skip-permissions cannot be used with root/sudo
+privileges for security reasons`. This container runs the CLI as root — a CLI
+safety check unrelated to the resume-widening finding itself, but it means the
+*specific* permission mode most tasks actually run under in production was never
+the one proven to mutate the tree live.
+
+**Substitute used to close the loop:** the same session id was resumed a second
+time by hand (raw CLI, no lopi code involved), swapping only `--permission-mode`
+to `acceptEdits` and dropping the `--allowedTools` restriction. Result:
+`terminal_reason: "completed"`, `Edit` auto-approved, three `Bash` calls correctly
+denied (`acceptEdits`'s documented shape), and the target file gained exactly the
+one intended line. This proves the *mechanism* (a resume honors a freshly-passed,
+widened permission posture regardless of the session's original caps) but not the
+literal `bypassPermissions` mode's own behavior on resume — `acceptEdits` still
+gates `Bash`, `bypassPermissions` gates nothing, and no root-privileged sandbox can
+observe that difference for a resumed session because `bypassPermissions` refuses
+to run at all under root.
+
+**Why this environment structurally cannot settle it:** every sandbox this register
+has run in so far (this one included) executes the CLI as root/sudo for other,
+unrelated reasons (build tooling, package installs). `--dangerously-skip-permissions`
+refuses under root by the CLI's own design — not a lopi bug, not something to patch
+around, and not something a future run of this same environment will ever pass
+differently.
+
+**What would settle it:** a non-root runner (a real user-privileged CI runner or
+workstation, not a root container) running the exact same shimmed-argv method above,
+confirming a `dontAsk`→`bypassPermissions` resume mutates the tree the same way the
+`acceptEdits` substitute did. Until that runs, any claim resting on "a resumed
+session under `bypassPermissions` specifically can mutate the tree" should cite this
+entry's substitute-leg caveat, not treat `acceptEdits`'s result as interchangeable
+with it.
+
+**Verdict: PASS on the mechanism (permission widening survives a resume), with one
+leg (`bypassPermissions` itself, root-sandbox-untestable) substituted rather than
+directly confirmed.** Not re-tested this sprint (Sprint P4) — re-testing
+`bypassPermissions` in a sandbox that structurally cannot run it would not produce
+new information, per Sprint P4's own brief. Registered here so the substitution is
+visible to anyone reading this file, not only to someone who happens to read
+`claude/sprint-p3a-planner-wiring`'s branch handoff before it merges.

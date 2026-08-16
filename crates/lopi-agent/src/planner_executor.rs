@@ -63,15 +63,26 @@ const PLANNER_MAX_TURNS: u32 = 20;
 /// configuration — the same authoritative-override precedent
 /// `run_loop.rs`'s per-attempt spawn uses for a task's `tool_profile`.
 ///
+/// `session` is the CLI session-continuity mode for this call. Sprint P3a's
+/// `run_loop.rs` call site passes `SessionMode::New(attempt_session_id)` so
+/// the implement phase can later `--resume` the same session with the
+/// task's normal (mutating) tool caps — confirmed live (KT-3A,
+/// `LEDGER.md`'s Review-Pipeline-Phase-3a entry) that a resumed session
+/// honors a freshly-passed, widened `--allowedTools`/`--disallowedTools`
+/// pair even though `--permission-mode` alone is not re-applied on resume.
+/// Standalone callers (this module's own tests) pass `SessionMode::None`,
+/// unchanged from before this parameter existed.
+///
 /// # Errors
 /// Returns `Err` on a CLI spawn failure, non-zero exit, timeout, or a
 /// response that fails to parse into a schema-valid [`PlanArtifact`] (empty
 /// `scope` included — see [`lopi_core::PlanArtifactError`]).
-pub async fn spawn_planner(
+pub(crate) async fn spawn_planner(
     repo_path: &Path,
     raw_goal: &str,
     model: &str,
     planner_commit: &str,
+    session: SessionMode<'_>,
 ) -> Result<PlanArtifact> {
     let denied: Vec<String> = vec![]; // Readonly is allow-listed, not deny-listed.
     let allowed: Vec<String> = ToolProfile::Readonly
@@ -106,7 +117,7 @@ pub async fn spawn_planner(
         &allowed,
         &denied,
         false,
-        SessionMode::None,
+        session,
     );
 
     let stdout =
