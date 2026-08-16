@@ -5,7 +5,70 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
-## PR-196-Gate-Response -- one-way-door ack, threat model, and a confirmed cargo-deny false positive
+## Mutation-Hunt-Live-Trigger -- pin bump confirmed fixed; a separate, real blocker found
+
+Part D of the combined sprint. Gated on Part A (kiban `KIBAN_REF` bump to `v1.14.0`,
+confirmed live at all four pin sites on `main` post-merge) and Part B/C (this
+session's own PR). Both merged (`f5c55ce`, `2a4babc`); triggered the real
+`mutation-hunt` `workflow_dispatch` job against `lopi-ratelimit` as instructed — the
+PF-3/PF-0b baseline's own known-non-trivial target (11 real surviving mutants out of
+51 tested in the full-crate baseline). No version bump — verification run, not a
+code change.
+
+### Run 1 (`31950963613`): a real, self-inflicted argument bug, not a pin problem
+
+Dispatched with `diff_base_ref: 97c75a2` (short SHA of the commit immediately before
+`crates/lopi-ratelimit` was created, chosen so `--in-diff` scopes the whole crate —
+881 lines, matching the baseline's real target rather than an empty self-diff).
+Failed instantly: `fatal: couldn't find remote ref 97c75a2` — the job's own
+`git fetch origin "$diff_base_ref"` needs a name GitHub can resolve as a ref, and a
+short SHA isn't one. Not a job bug; a dispatch-input mistake on my part.
+
+### Run 2 (`31951537127`): the pin bump is confirmed fixed
+
+Re-dispatched with the full 40-character SHA
+(`97c75a20dec1e87f4556d41ce044ec964f327e93` — GitHub resolves a full commit SHA as a
+fetchable ref even off the default branch). This time the job ran for real: kiban
+`v1.14.0` cloned clean, `bin/kiban-mutation-hunt` exists and imported (the exact gap
+`v1.8.0` had — confirmed fixed, this was the whole point of Part D), `cargo-llvm-cov`
+generated coverage for `lopi-ratelimit`, and the loop **started and found a real
+target**:
+
+```
+round 1 [uncovered_item]: surviving=None killed=n/a truncated=False tokens=0 cost=$0.0000 clean_tree=ok
+total_tokens: 0  clean_tree_failures: 0
+terminated: generation_failed  gate_pass: False
+```
+
+### A second, separate, real blocker: `ANTHROPIC_API_KEY` does not reach this job
+
+`tokens=0 cost=$0.0000` on a `generation_failed` termination means the loop never
+successfully called the model at all — round 1's own env dump shows
+`ANTHROPIC_API_KEY: ` (empty). This is not the pin problem Part D set out to test;
+it's a second, independent gap. Checked before concluding: this repo's other
+`ANTHROPIC_API_KEY` consumer, the `review` job (`G5 · Adversarial Review`), is
+explicitly designed to soft-fail-safe on a missing key (`_load_anthropic()` raises
+`ImportError`, caught and treated as a WARNING, exit 0) — so `G5`'s own "success" on
+every run so far is not evidence the secret is actually configured; it succeeds
+identically either way. `kiban-mutation-hunt` has no such soft path — a missing key
+surfaces immediately and honestly as `generation_failed`, which is the correct
+failure mode, just not the one this verification run was chasing.
+
+**Not fixed here** — adding or checking a GitHub Actions repository secret is outside
+what this session can do (no admin access to repo settings, and it shouldn't be
+guessed at rather than confirmed by whoever manages that secret). Flagged as the real
+remaining blocker before `mutation-hunt` is live-runnable for its actual purpose:
+finding and fixing real surviving mutants, not just proving the pin resolves.
+
+### Verdict
+
+**Part D's own question — "does the pin bump make the job runnable end-to-end
+against `v1.14.0`?" — is answered yes, confirmed live, not assumed.** Every step up
+through model invocation succeeded: clone, script existence, coverage generation,
+loop start, real mutant target identified. The job still can't complete a full round
+today, but for a reason Part D didn't set out to test and doesn't touch: the
+`ANTHROPIC_API_KEY` secret isn't reaching this job. `NEXT_SESSION_PROMPT.md` carries
+this forward as the next blocker to clear.
 
 `konjo-gates` (`GK`, kiban profile) ran against this combined sprint's real diff
 (`d2402af2c7dc`, 23 changed files vs. `origin/main`) and found three things. Two are
