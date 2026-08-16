@@ -1,12 +1,12 @@
 ---
 decays: state
-verified-against: PHASE2_MERGE_SHA
+verified-against: f5c55ce
 verified-date: 2026-08-16
 ---
 
 # Trifecta paths — untrusted input → powerful tools → external comms
 
-Verified against: `PHASE2_MERGE_SHA` · 2026-08-16 (re-verified; Sprint P4 Phase 2's
+Verified against: `f5c55ce` · 2026-08-16 (re-verified; Sprint P4 Phase 2's
 merge of `claude/sprint-p3a-collision-oracle-q5zayq` onto a `main` that already
 carried Phase 1's merge crossed the 20-commit cap again. Combines both branches'
 own independent verifications rather than re-deriving from scratch: Branch A
