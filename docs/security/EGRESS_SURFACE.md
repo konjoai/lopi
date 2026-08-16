@@ -1,7 +1,7 @@
 ---
 decays: state
-verified-against: 2b7aa29
-verified-date: 2026-08-04
+verified-against: d00b87e
+verified-date: 2026-08-16
 ---
 
 ## Sprint S10, Phase 4 update (2026-07-27)
@@ -23,7 +23,21 @@ consistent with this repo's `decays: state` convention — re-derive before trus
 
 # Egress surface — the local-only remnant of Sprint S2
 
-Verified against: `2b7aa29` · 2026-08-04 (re-verified; Sprint P2b's commit volume
+Verified against: `d00b87e` · 2026-08-16 (re-verified; the combined P3a-closeout/
+Collision-Oracle/RepoProfile-parity/mutation-hunt/branch-triage sprint (plus Sprint
+P4's own merge and branch-triage work) crossed the 20-commit cap again. Of this
+doc's cited files (`lopi-ui::web::handlers`, `provenance_field_tests.rs`,
+`lopi-memory::store::tests`, `whatsapp.rs`), only `handlers.rs` changed —
+Part C's `RepoProfile` parity fix added a `RepoProfile::load_from_repo(...).apply(...)`
+call inside `create_task`, well after this doc's cited lines
+(`handlers.rs:86,114` — the `"provenance": t.provenance()` citations in
+`get_task`/`list_tasks`). Confirmed live: both cited lines are unshifted and
+byte-identical to what this doc quotes — `create_task`'s new call doesn't touch
+`get_task`/`list_tasks` at all. No new outbound transport added by any sprint in
+this window. This entry's own diff (`LEDGER.md`/`NEXT_SESSION_PROMPT.md` only)
+touches no production Rust.
+
+Prior banner (`2b7aa29` · 2026-08-04, re-verified; Sprint P2b's commit volume
 (review-pipeline sections 1/3/4 plus a parallel Oracle-Preflight sprint's merge) pushed
 this past the 20-commit cap again, not on anything it cites losing accuracy. Oracle-
 Preflight touched `crates/lopi-memory/src/store/quota.rs` -- a different file from this
