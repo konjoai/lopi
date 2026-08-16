@@ -5,6 +5,57 @@ the `lopi` repo. Newest first.
 
 ---
 
+## Next Session, after Sprint P3a (Planner/Executor wired into `AgentRunner::run()`, `[0.43.0]`)
+
+Sprint P3a-Closeout verified and documented `claude/sprint-p3a-planner-wiring` -- the
+wiring itself was already built; this sprint's job was pre-flight verification plus the
+`LEDGER.md`/`CHANGELOG.md`/`VERSION`/PR paperwork four call sites in that branch's own
+diff already cited and none of them resolved to anything. Read first: `CHANGELOG.md`'s
+`[0.43.0]` entry and `LEDGER.md`'s `Review-Pipeline-Phase-3a` entry (the full KT-3A live
+evidence and the Path A decision record live there).
+
+**What shipped, already done, do not re-derive:**
+- `AgentRunner::run()`'s Planning phase calls `plan_via_readonly_planner`
+  (`crates/lopi-agent/src/runner/plan_readonly.rs`) instead of `stream_plan` -- Path A,
+  outright replacement, not a gated optional mode. Live in production for every
+  non-direct-API task run (which per Sprint P1's own audit is every production path
+  today).
+- `PlanArtifact` persists to `tasks.plan_artifact` before the Executor spawns
+  (`lifecycle.rs::persist_plan_artifact`); `NULL` means genuinely absent, no backfill,
+  no placeholder -- confirmed structurally, no code path can construct one.
+- KT-3A confirmed live on this exact branch: a session established under the Planner's
+  readonly caps (`dontAsk`, `Read`/`Grep`/`Glob`/`WebFetch`/`WebSearch` only) was
+  resumed under a freshly-passed, more permissive posture and actually mutated the
+  working tree -- `--permission-mode` is not itself re-applied on `--resume`, but a
+  freshly-passed `--allowedTools`/`--disallowedTools` pair is honored fresh every time.
+  `bypassPermissions` itself could not be live-tested end-to-end in this root-privileged
+  sandbox (pre-existing CLI safety check, unrelated to this wiring); `acceptEdits` stood
+  in for that leg, same evidentiary shape Sprint P1's own PF-3 used.
+- All four `KIBAN_REF` pin sites bumped `v1.8.0` -> `v1.14.0`, unblocking the
+  `mutation-hunt` CI job's stale-pin problem.
+- One real gate miss found and fixed this sprint: `plan_artifact.rs` had never been run
+  through `cargo fmt`; fixed, re-verified green.
+
+**First thing to do:** confirm `VERSION` (`0.43.0`) still matches `CHANGELOG.md`'s top
+entry before touching anything, same as every prior sprint's handoff.
+
+**Explicitly not done this sprint, carried forward:**
+
+1. **The router itself (kiban's Phase 3 proper) is not built.** This sprint's `PlanArtifact`
+   producer unblocks kiban's `KONJO_REVIEW_PIPELINE_PLAN.md` §2.4 (scope-escape rule) and
+   §7.4 (predicted-tier signal) -- it does not implement either. Section 2's mechanical
+   routing framework and the critic panel remain entirely untouched.
+2. **`lopi-oracle` is a separate, already-scoped, unstarted sprint** (see the
+   Oracle-Preflight entry below) -- do not conflate it with this sprint just because both
+   are "next" candidates.
+3. **The `RepoProfile` web/MCP entry-point parity gap** (Sprint P1's PF-1 audit,
+   `Review-Pipeline-Phase-1` entry) is real, confirmed, and still unfixed -- a separate
+   sprint, unrelated to this branch's diff.
+4. **KT-1/KT-2/KT-3 (collision oracle) and the mutation-hunt baseline stay settled/out of
+   scope** -- do not re-open either from this sprint's work.
+
+---
+
 ## Next Session, after Sprint P2b (mutation-hunt fixture + CI call site, `[0.42.0]`)
 
 Sprint P2b (kiban's `KONJO_REVIEW_PIPELINE_PLAN.md` Phase 2 companion doc, finishing
@@ -115,14 +166,11 @@ entry before touching anything, same as every prior sprint's handoff.
 
 **Explicitly not done this sprint, carried forward:**
 
-1. **Wiring `planner_executor` into `AgentRunner::run()`'s default retry loop.** The
-   module is new, additive, and independently tested (including one live end-to-end
-   run), but `run_loop.rs`'s existing plan/implement/test/score/retry machinery
-   (progress gates, stability harness, verifier, adaptive retry, successor tasks) is
-   substantial. A future sprint should design this integration deliberately: does the
-   Planner replace the existing `plan_via_api`/`plan_streamed` step outright, or run
-   as an optional mode gated by a new `Task` field? Read `LEDGER.md`'s
-   `Review-Pipeline-Phase-1` entry before starting.
+1. **RESOLVED by Sprint P3a (`[0.43.0]`).** Wiring `planner_executor` into
+   `AgentRunner::run()`'s default retry loop is done -- Path A, outright replacement of
+   `stream_plan`, not a gated optional mode. See `LEDGER.md`'s `Review-Pipeline-Phase-3a`
+   entry and this file's own "after Sprint P3a" entry above for the decision record and
+   live KT-3A confirmation. Left here, marked resolved, so this history isn't lost.
 2. **`RepoProfile` inconsistency across entry points** (MCP `lopi_submit_task` and the
    web `POST /api/tasks` handler both skip it entirely, and both mis-set/omit
    `task.source`, defaulting to `Cli`). Pre-existing, surfaced by this sprint's audit,

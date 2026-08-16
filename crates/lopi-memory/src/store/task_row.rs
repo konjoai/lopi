@@ -59,6 +59,12 @@ pub struct TaskRow {
     /// task's most recent attempt, `None` until `AgentRunner::persist_cli_session`
     /// first writes it.
     pub cli_session_id: Option<String>,
+    /// Sprint P3a — the readonly Planner's schema-valid `PlanArtifact` for
+    /// this task's most recent attempt, JSON-serialized. `None` until
+    /// `AgentRunner::persist_plan_artifact` first writes it, and stays
+    /// `None` forever on an attempt whose Planner call failed or returned
+    /// unparseable output — absent, never synthesized or backfilled.
+    pub plan_artifact: Option<String>,
 }
 
 impl TaskRow {

@@ -130,6 +130,7 @@ mod tests {
             chain_depth: 0,
             source: "\"Cli\"".to_string(),
             cli_session_id: None,
+            plan_artifact: None,
         }
     }
 

@@ -1,3 +1,33 @@
+## [0.43.0] - Sprint P3a: wire the Planner/Executor split into `AgentRunner::run()`
+
+Closeout sprint for `claude/sprint-p3a-planner-wiring` -- verify, document, and merge
+work that was already built. Full reasoning, the live KT-3A confirmation, and the
+architectural decision record: `LEDGER.md`'s `Review-Pipeline-Phase-3a` entry.
+
+### Added
+
+- **`crates/lopi-agent/src/runner/plan_readonly.rs`**: `AgentRunner::run()`'s Planning
+  phase now calls `plan_via_readonly_planner` instead of `stream_plan` -- Path A of the
+  fork Sprint P1's handoff left open: the readonly Planner call *is* the plan phase, a
+  direct replacement, not an optional mode gated by a new `Task` field. Persists the
+  resulting `PlanArtifact` before the Executor spawns
+  (`lifecycle.rs::persist_plan_artifact`) and renders it to the plain-text `plan` string
+  every existing downstream consumer already expects.
+- **`tasks.plan_artifact` column** (`crates/lopi-memory/src/schema.sql`,
+  `store/plan_artifact.rs`): nullable, no backfill migration. `NULL` means a genuinely
+  absent Planner call on that attempt, never "not yet synthesized" -- no code path
+  constructs a placeholder value.
+- **`KIBAN_REF` bumped `v1.8.0` -> `v1.14.0`** at all four pin sites (`.konjo/kiban.ref`,
+  `konjo-gate.yml`'s `doc-staleness`, `konjo-gates`, and `mutation-hunt` jobs) -- this
+  unblocks the `mutation-hunt` CI job, previously stuck on a pinned kiban ref that
+  predated the loop's own code (see `NEXT_SESSION_PROMPT.md`'s prior entry).
+
+### Fixed
+
+- `crates/lopi-memory/src/store/plan_artifact.rs` failed `cargo fmt --all -- --check`
+  (the CI `static` job's `rustfmt` step) -- the file this branch introduced was never
+  run through `cargo fmt`. Reformatted; no behavior change.
+
 ## [0.42.0] - Sprint P2b: mutation-hunt fixture, CI call site, per-crate baseline resumed
 
 Cross-repo work order from kiban's `KONJO_REVIEW_PIPELINE_PLAN.md` Phase 2, finishing

@@ -35,14 +35,14 @@ env:
   RUST_BACKTRACE: 1
   CARGO_INCREMENTAL: 0   # disable for reproducible CI builds
 
-# ── Gate summary job — all other jobs must pass before merge ──────────────────
+# ── Gate summary job — all other jobs must pass before merge ────────────────────────────────────────────────────
 # Added at the bottom; listed here for visibility.
 
 jobs:
 
-  # ════════════════════════════════════════════════════════════════════════════
+  # ═══════════════════════════════════════════════════════════════════════════════════
   # Gate 0 — Doc Staleness (kiban's `decays:` convention)
-  # ════════════════════════════════════════════════════════════════════════════
+  # ═══════════════════════════════════════════════════════════════════════════════════
   # Doc-Integrity sprint (2026-07-24): `docs/LOOP_ENGINEERING_ROADMAP.md` asserted
   # four capability gaps that were already closed on `main` — caught by a kill-test,
   # not by CI, because no gate checked whether a "current state" doc still matched
@@ -66,7 +66,7 @@ jobs:
         env:
           # Pinned deliberately — matches .konjo/kiban.ref (the session-plane pin).
           # Bump both together; a kiban change should not silently reach this gate.
-          KIBAN_REF: "v1.8.0"
+          KIBAN_REF: "v1.14.0"
         run: |
           pip install --quiet pyyaml
           git clone --quiet --depth 1 --branch "$KIBAN_REF" https://github.com/konjoai/kiban.git /tmp/kiban
@@ -74,9 +74,9 @@ jobs:
       - name: "Scan for stale decays: state docs"
         run: python3 /tmp/kiban/bin/konjo-doc-staleness scan --repo .
 
-  # ════════════════════════════════════════════════════════════════════════════
+  # ═══════════════════════════════════════════════════════════════════════════════════
   # Gate 1 — Static Analysis (format + lint + audit + deny)
-  # ════════════════════════════════════════════════════════════════════════════
+  # ═══════════════════════════════════════════════════════════════════════════════════
   static:
     name: "G1 · Static Analysis"
     runs-on: ubuntu-latest
@@ -215,11 +215,11 @@ jobs:
         # convention exists to prevent.
         run: python3 .konjo/scripts/soft_gate_lint.py .github/workflows/*.yml
 
-  # ════════════════════════════════════════════════════════════════════════════
+  # ═══════════════════════════════════════════════════════════════════════════════════
   # Gate 1b — Static Analysis, web/ (Forge dashboard — SvelteKit, separate
   # npm ecosystem from the Rust `static` job above, so it gets its own job
   # rather than a step wedged into a Rust runner)
-  # ════════════════════════════════════════════════════════════════════════════
+  # ═══════════════════════════════════════════════════════════════════════════════════
   # Added Sprint S11, Phase 2 (2026-07-27): `web/` had zero `npm audit` CI
   # gate at all before this — the Rust half of the repo has had `cargo
   # audit`/`cargo deny` as hard gates since Sprint S4 Phase 3 (see `static`
@@ -282,9 +282,9 @@ jobs:
         working-directory: web
         run: npm audit --audit-level=high
 
-  # ════════════════════════════════════════════════════════════════════════════
+  # ═══════════════════════════════════════════════════════════════════════════════════
   # Gate 2 — Tests + Coverage (≥ 80% line coverage)
-  # ════════════════════════════════════════════════════════════════════════════
+  # ═══════════════════════════════════════════════════════════════════════════════════
   coverage:
     name: "G2 · Tests + Coverage"
     runs-on: ubuntu-latest
@@ -415,10 +415,10 @@ jobs:
           name: coverage-lcov
           path: lcov.info
 
-  # ════════════════════════════════════════════════════════════════════════════
+  # ═══════════════════════════════════════════════════════════════════════════════════
   # Gate 3 — Mutation Testing (≤ 10% survival on changed files)
   # Runs only on pull requests (too slow for push to main)
-  # ════════════════════════════════════════════════════════════════════════════
+  # ═══════════════════════════════════════════════════════════════════════════════════
   mutation:
     name: "G3 · Mutation Testing"
     runs-on: ubuntu-latest
@@ -494,9 +494,9 @@ jobs:
           name: mutation-report
           path: mutation_report.txt
 
-  # ════════════════════════════════════════════════════════════════════════════
+  # ═══════════════════════════════════════════════════════════════════════════════════
   # Gate 4 — Complexity + Size + DRY
-  # ════════════════════════════════════════════════════════════════════════════
+  # ═══════════════════════════════════════════════════════════════════════════════════
   complexity:
     name: "G4 · Complexity + Size + DRY"
     runs-on: ubuntu-latest
@@ -683,9 +683,9 @@ jobs:
             exit 1
           fi
 
-  # ════════════════════════════════════════════════════════════════════════════
+  # ═══════════════════════════════════════════════════════════════════════════════════
   # Gate 4b — Fuzz (Sprint S12, Phase 2) — short budget, PR-only
-  # ════════════════════════════════════════════════════════════════════════════
+  # ═══════════════════════════════════════════════════════════════════════════════════
   # Three targets over the parsers that eat attacker-influenceable input:
   # MCP server responses (jsonrpc.rs), the `claude` CLI's own stream-json
   # output (claude_events.rs), and GitHub webhook bodies pre-HMAC (github.rs).
@@ -750,9 +750,9 @@ jobs:
           path: fuzz/artifacts/
           if-no-files-found: ignore
 
-  # ════════════════════════════════════════════════════════════════════════════
+  # ═══════════════════════════════════════════════════════════════════════════════════
   # Gate K — konjo-gates (Sprint S13R, Phase A3 — "connect the pilot")
-  # ════════════════════════════════════════════════════════════════════════════
+  # ═══════════════════════════════════════════════════════════════════════════════════
   # Runs kiban's own CI-plane orchestrator (`bin/konjo-gates`) against
   # `.konjo/profile.yml` (authored in kiban as `profiles/lopi.yml`, Phase 13 —
   # see LEDGER.md's `Lopi-Gate-Reconciliation-1`). Deliberately additive, not a
@@ -797,7 +797,7 @@ jobs:
       - name: Install kiban at the pinned ref
         env:
           # Matches .konjo/kiban.ref and G0's KIBAN_REF — bump all three together.
-          KIBAN_REF: "v1.8.0"
+          KIBAN_REF: "v1.14.0"
         run: |
           pip install --quiet pyyaml
           # .konjo/profile.yml's contract_gates names cargo-deny, a genuine
@@ -824,10 +824,10 @@ jobs:
             --base "origin/${{ github.base_ref || 'main' }}" \
             --no-self-test
 
-  # ════════════════════════════════════════════════════════════════════════════
+  # ═══════════════════════════════════════════════════════════════════════════════════
   # Gate 5 — Adversarial Review (Wall 3, PRs only)
   # Uses Claude Opus — distinct from builder model (Sonnet)
-  # ════════════════════════════════════════════════════════════════════════════
+  # ═══════════════════════════════════════════════════════════════════════════════════
   review:
     name: "G5 · Adversarial Review (Wall 3)"
     runs-on: ubuntu-latest
@@ -957,11 +957,11 @@ jobs:
   # a push-to-main run (they're PR-only jobs), which must not itself count as
   # a failure.
   #
-  # Gate-Tiering-1 (this sprint): that all-eight-must-succeed rule is exactly
-  # the problem this sprint fixes. `needs:` is unchanged on purpose — every
-  # job below still *runs* and is still visible in the checks UI — but the
-  # step's verdict logic (now `.konjo/scripts/gate_verdict.sh`, extracted so
-  # it's testable outside Actions — see `test_gate_tiering_killtest.sh`) now
+  # Gate-Tiering-1: that all-eight-must-succeed rule is exactly the problem
+  # that sprint fixed. `needs:` is unchanged on purpose — every job below
+  # still *runs* and is still visible in the checks UI — but the step's
+  # verdict logic (now `.konjo/scripts/gate_verdict.sh`, extracted so it's
+  # testable outside Actions — see `test_gate_tiering_killtest.sh`) now
   # reads two named tiers instead of one flat list:
   #
   #   BLOCKING — deterministic, fast, catches real breakage:
@@ -999,12 +999,12 @@ jobs:
           ACTOR: ${{ github.actor }}
         run: bash .konjo/scripts/gate_verdict.sh
 
-  # ════════════════════════════════════════════════════════════════════════════
+  # ═══════════════════════════════════════════════════════════════════════════════════
   # Mutation Hunt (opt-in) — review-pipeline Sprint P2b, section 4's real call site
   # for `konjo/mutation-hunt`. Deliberately NOT in `konjo-gate`'s `needs:` above and
   # not triggered by pull_request/push — see the plan's own non-goals (no router, no
   # new default gate this sprint) and the workflow_dispatch trigger's comment.
-  # ════════════════════════════════════════════════════════════════════════════
+  # ═══════════════════════════════════════════════════════════════════════════════════
   mutation-hunt:
     name: "Mutation Hunt (opt-in, manual dispatch only)"
     runs-on: ubuntu-latest
@@ -1034,7 +1034,7 @@ jobs:
           # review-pipeline Sprint P2b branch and needs a kiban release cut plus a
           # pin bump before this job is live-runnable — recorded in LEDGER.md rather
           # than silently assumed working the moment this file merges.
-          KIBAN_REF: "v1.8.0"
+          KIBAN_REF: "v1.14.0"
         run: git clone --quiet --depth 1 --branch "$KIBAN_REF" https://github.com/konjoai/kiban.git /tmp/kiban
 
       - name: Install cargo-llvm-cov, cargo-mutants, and the claude CLI

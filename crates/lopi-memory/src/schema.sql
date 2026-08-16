@@ -92,7 +92,7 @@ ALTER TABLE tasks ADD COLUMN branch TEXT;
 -- read a permanent "—" placeholder. Same shape and same write-site timing as
 -- `branch` above: unresolved until dequeue (pool default vs. task override),
 -- so it's written by `AgentRunner::persist_repo` the moment `TaskStarted`
--- fires, not at initial `save_task`.
+-- fires, not at initial `save_task` time.
 ALTER TABLE tasks ADD COLUMN repo TEXT;
 
 -- Sprint F4 Phase 4: the CLI's own resumable session id for the task's most
@@ -102,6 +102,21 @@ ALTER TABLE tasks ADD COLUMN repo TEXT;
 -- plan phase's first spawn (lopi chooses the id itself — see `run_loop.rs` —
 -- rather than waiting for the CLI to echo one back).
 ALTER TABLE tasks ADD COLUMN cli_session_id TEXT;
+
+-- Sprint P3a (review-pipeline plan, Phase 3 prerequisite): the readonly
+-- Planner's schema-valid PlanArtifact for the task's most recent attempt,
+-- JSON-serialized (lopi_core::PlanArtifact's own Serialize impl), NULL when
+-- no attempt has produced one yet (never attempted, or the Planner call
+-- failed/returned unparseable output -- absent, never synthesized or
+-- backfilled, see LEDGER.md's Review-Pipeline-Phase-3a entry section 2).
+-- Written by `AgentRunner::persist_plan_artifact` immediately after a
+-- successful Planner call, before the Executor spawns -- same "before use,
+-- git-independent SQLite write" shape as `cli_session_id` above, so a
+-- crashed Executor still leaves the plan on record (`abort_attempt`'s
+-- `hard_rollback`/`checkout_default` are pure git2 filesystem operations,
+-- confirmed by reading their implementation, with zero interaction with
+-- this store).
+ALTER TABLE tasks ADD COLUMN plan_artifact TEXT;
 
 -- Sprint I: Layer 5 patch stability ledger.
 -- Accumulates empirical data on model-output variance per task class.
