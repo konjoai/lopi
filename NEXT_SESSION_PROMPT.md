@@ -5,6 +5,24 @@ the `lopi` repo. Newest first.
 
 ---
 
+## Next Session, after Mutation-Hunt-Live-Trigger (Part D verification run)
+
+Read `LEDGER.md`'s `Mutation-Hunt-Live-Trigger` entry first. The `KIBAN_REF` pin
+bump to `v1.14.0` is confirmed fixed by a real live dispatch against
+`lopi-ratelimit`: kiban clones clean, `bin/kiban-mutation-hunt` exists and runs,
+coverage generates, the loop starts and correctly identifies a real uncovered
+mutant. **What's still blocking a full round:** `ANTHROPIC_API_KEY` doesn't reach
+the `mutation-hunt` job — round 1 terminated `generation_failed` at `tokens=0
+cost=$0.0000`. This is a GitHub Actions repository-secret question, not a code
+question — needs whoever manages this repo's Actions secrets to confirm the secret
+exists and is named exactly `ANTHROPIC_API_KEY`, then re-dispatch. Once that's
+sorted, re-run with `crate: lopi-ratelimit`, `diff_base_ref:` a **full 40-character
+commit SHA** (a short SHA fails `git fetch origin <ref>` — confirmed live, not a
+guess) — `97c75a20dec1e87f4556d41ce044ec964f327e93` (the commit immediately before
+`lopi-ratelimit` was created) still gives the whole-crate diff scope this needs.
+
+---
+
 ## Next Session, after Sprint P4 ("close the loop," `[0.45.0]`)
 
 Sprint P4 verified, merged, and shipped two parked sprints (`0.43.0` Planner/Executor

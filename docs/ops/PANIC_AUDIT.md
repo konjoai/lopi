@@ -1,12 +1,25 @@
 ---
 decays: state
-verified-against: 2b7aa29
-verified-date: 2026-08-04
+verified-against: d00b87e
+verified-date: 2026-08-16
 ---
 
 # Panic audit — the trustworthy count, and why grep couldn't give it to you
 
-Verified against: `2b7aa29` · 2026-08-04 (re-verified; Sprint P2b's commit volume
+Verified against: `d00b87e` · 2026-08-16 (re-verified; the combined P3a-closeout/
+Collision-Oracle/RepoProfile-parity/mutation-hunt/branch-triage sprint (plus Sprint
+P4's own merge and branch-triage work) crossed the 20-commit cap again. Re-confirmed
+live, not assumed: re-ran the exact cited deny-flag command
+(`cargo clippy --workspace --all-targets --all-features -- -D warnings
+-D clippy::unwrap_used -D clippy::expect_used -D clippy::panic -D clippy::todo
+-D clippy::unimplemented -D clippy::dbg_macro -D clippy::print_stdout
+-D clippy::print_stderr -W clippy::cognitive_complexity`) against the current
+workspace — clean, covering every crate this window's sprints added or touched,
+including the new `lopi-oracle` crate and its `AgentRunner` wiring
+(`crates/lopi-agent/src/runner/collision_seed.rs`). This entry's own diff
+(`LEDGER.md`/`NEXT_SESSION_PROMPT.md` only) touches no production Rust.
+
+Prior banner (`2b7aa29` · 2026-08-04, re-verified; Sprint P2b's commit volume
 (review-pipeline sections 1/3/4 plus a parallel Oracle-Preflight sprint's merge) pushed
 this past the 20-commit cap, not the zero-unwrap claim losing accuracy. Re-confirmed
 live, not assumed: ran the exact cited deny-flag command workspace-wide (`cargo clippy

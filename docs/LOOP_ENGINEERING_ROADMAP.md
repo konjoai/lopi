@@ -1,12 +1,26 @@
 ---
 decays: state
-verified-against: 2b7aa29
-verified-date: 2026-08-04
+verified-against: d00b87e
+verified-date: 2026-08-16
 ---
 
 # The Pentad — Loop Engineering Completion Roadmap
 
-Verified against: `2b7aa29` · 2026-08-04 (re-verified; Sprint P2b's commit volume
+Verified against: `d00b87e` · 2026-08-16 (re-verified; the combined P3a-closeout/
+Collision-Oracle/RepoProfile-parity/mutation-hunt/branch-triage sprint (plus Sprint
+P4's own merge and branch-triage work) crossed the 20-commit cap. Two real citation
+drifts found and fixed this time, not just commit volume: the Collision-Oracle-Build
+sprint's `AgentRunner` wiring (a `with_collision_oracle` builder method, two new
+`lopi_oracle` imports) shifted `with_skills` from `runner/builder.rs:92` to `:94`,
+and the same sprint's `seed_collision_alerts` addition to `gather_seed` shifted
+`seed_skills` from `runner/seed.rs:210-241` to `:230-244` (`record_skill_activation`
+moved further, to `:330-343`, from other changes in this window) — both corrected
+above, confirmed by reading the current file, not assumed from a line-count delta.
+Content unchanged: `with_skills`, `seed_skills`, and `record_skill_activation` still
+do exactly what this doc describes. Every other cited file either didn't change in
+this window or changed only in ways this doc doesn't cite specific lines into.
+
+Prior banner (`2b7aa29` · 2026-08-04, re-verified; Sprint P2b's commit volume
 (review-pipeline sections 1/3/4 plus a parallel Oracle-Preflight sprint's merge) pushed
 this past the 20-commit cap again. One real citation drift found and fixed this time,
 not just commit volume: Sprint P1 (Planner/Executor split) added a `tool_profile` field
@@ -118,7 +132,7 @@ new `no_progress_limit`/`isolation` fields); `src/main.rs:50,299` → **`:50,268
 (`McpServe`, file shrank); `web/mod.rs:273` → **`:288`** (route registration);
 `pool/run_loop.rs:338` → **`:380`** (`setup_worktree` call site, pushed down by the
 new autonomy/isolation resolution block); `runner/mod.rs:329` (`with_skills`) moved
-entirely to **`runner/builder.rs:92`** (file-size split); and
+entirely to **`runner/builder.rs:94`** (file-size split); and
 `crates/lopi-remote/src/lib.rs:1-10`'s description named `telegram`/`egress` modules
 that have since been deleted (crate is now `whatsapp`-only at `:1-19`) — the
 underlying verdict (no `Connector` trait, no durable outbound queue) is unchanged.
@@ -133,7 +147,7 @@ Legend: 🟢 solid · 🟡 partial · 🔴 missing.
 |-------|--------|-------------|--------------|
 | **Automations** | 🟢 | `lopi-orchestrator` (`scheduler.rs`, `schedule_manager.rs`) cron; `lopi-webhook` CI-failure → task with HMAC verify; per-schedule autonomy L1–L4; run-history persistence | `crates/lopi-webhook/src/github.rs:36-60` — no delivery-id **dedup**, no **dead-letter queue**, triage is synchronous, no schedule-change audit trail. `crates/lopi-core/src/template.rs:44` has a generic `{name}`-hole templating primitive and `Task::from_template` (`crates/lopi-core/src/task.rs:475-480`) exists, but neither is called outside tests — event-payload templating is unwired scaffolding, not shipped |
 | **Worktrees** | 🟢 | **Real `git worktree` isolation, shipped and wired.** `crates/lopi-git/src/worktree.rs:36-217` (`WorktreeManager` add/add_detached/prune/list/gc) with RAII `Drop` cleanup (`worktree.rs:295-330`); `crates/lopi-orchestrator/src/pool/worktree.rs:25-50` (`setup_worktree`) puts each task in its own detached worktree when `IsolationMode::Worktree` is set (`crates/lopi-core/src/loop_config.rs:38-44`), with per-worktree `CARGO_TARGET_DIR` (`worktree.rs:266-277`); `crates/lopi-git/src/rebase.rs:27-75` (`rebase_onto`/`rebase_onto_default`) rebases onto a moved default branch and maps conflicts to `TaskStatus::Conflict` (wired at `crates/lopi-agent/src/runner/finalize.rs:243-264`, `rebase_before_pr` — line drift from the Sprint G verification-gate work touching this file); GC exposed via `lopi worktree gc`/`list` (`src/worktree_commands.rs:18-51`) | Isolation mode defaults to `Branch`, not `Worktree` — a repo must opt in via `.lopi/loop.toml`. No mid-run snapshot |
-| **Skills** | 🟢 | **Runtime skill engine, shipped and wired.** `crates/lopi-skill/src/registry.rs:17-93` (`SkillRegistry::load_from_dirs`, dup-name validation) parses `SKILL.md` frontmatter into a typed registry; `crates/lopi-agent/src/runner/builder.rs:92` (`with_skills` — moved out of `runner/mod.rs` since the last verification, file-size split) and `crates/lopi-agent/src/runner/seed.rs:210-241` (`seed_skills`/`record_skill_activation`) inject matching skills into the planning prompt and record activation | Lesson→skill promotion is **partial**: `crates/lopi-skill/src/promote.rs:37-60` (clustering) and `promoter.rs:40-60` (drafts to `.lopi/skills-pending/`, human-approval gate) exist and are reachable via `src/skill_commands.rs:64`, but drafting is a fixed string template, not "via a sub-agent" as originally scoped, and nothing triggers it automatically — it's a manual CLI-only path today |
+| **Skills** | 🟢 | **Runtime skill engine, shipped and wired.** `crates/lopi-skill/src/registry.rs:17-93` (`SkillRegistry::load_from_dirs`, dup-name validation) parses `SKILL.md` frontmatter into a typed registry; `crates/lopi-agent/src/runner/builder.rs:94` (`with_skills` — moved out of `runner/mod.rs` since the last verification, file-size split) and `crates/lopi-agent/src/runner/seed.rs:230-244` (`seed_skills`; `record_skill_activation` moved to `:330-343`) inject matching skills into the planning prompt and record activation | Lesson→skill promotion is **partial**: `crates/lopi-skill/src/promote.rs:37-60` (clustering) and `promoter.rs:40-60` (drafts to `.lopi/skills-pending/`, human-approval gate) exist and are reachable via `src/skill_commands.rs:64`, but drafting is a fixed string template, not "via a sub-agent" as originally scoped, and nothing triggers it automatically — it's a manual CLI-only path today |
 | **Plugins & connectors** | 🟢 | **MCP client + server, shipped and wired — both directions.** `crates/lopi-mcp/src/client.rs:36-65` + `config.rs:19-37` (`[[mcp.servers]]` in `.lopi/loop.toml`) + `bridge.rs:21-49` (merges discovered tools into `lopi-tools::ToolRegistry`) is the consuming side; `crates/lopi-mcp/src/server.rs:18-80` wired at `src/mcp_commands/mod.rs:117-243` exposes `lopi_submit_task`/`lopi_get_task`/`lopi_cancel_task`/`lopi_list_tasks`/`lopi_get_logs`/`lopi_get_agent_dag`/`lopi_get_stats` as MCP tools over stdio (`McpServe` registered at `src/main.rs:50,268`) — more surface than the original sprint scoped | `crates/lopi-remote/src/lib.rs:1-19` is now down to a single hardcoded `whatsapp` module — Sprint S10 Phase 4 removed the `telegram` transport entirely (the iOS/macOS app covers that use case now; the `TaskSource::Telegram` variant itself survives as a durable persisted enum, see `LEDGER.md`), and the `egress` allowlist module cited here previously has also since been deleted. Neither removal changes the verdict: **no `Connector` trait exists anywhere in the crate, no durable outbound queue.** The original claim ("connectors are hardcoded singletons") still holds, just with one fewer singleton than when this was last checked |
 | **Sub-agents** | 🟢 | **Maker/checker split, shipped and wired.** `crates/lopi-agent/src/verifier.rs:196-199` — `VerifierAgent::new` defaults `isolated: true`; `resolve_verifier` (`verifier.rs:47`) forces a different model than the maker; test `isolated_prompt_excludes_the_maker_plan` moved to the new `crates/lopi-agent/src/verifier_tests.rs:54` when Sprint G split verifier's tests into their own file — still asserts a maker's plan text never reaches the verifier's prompt | No parallel task decomposition: `crates/lopi-core/src/successor.rs:1-27` is a depth-capped (3) **sequential** one-hop successor chain, not a sub-task DAG dispatched through `AgentPool`. Earned-trust auto-promotion exists as an isolated, tested state machine (`crates/lopi-core/src/earned_trust.rs:31-101`) but has zero callers outside its own module — not wired into `schedule_manager.rs`, not persisted |
 | **Memory / state** | 🟡 | `lopi-memory` SQLite (patterns, lessons, audit, schedules); `CLAUDE.md` + rules; `LoopConfig` → `.lopi/loop.toml`. Stall detection exists in a narrower form than originally claimed missing: `StopReason::NoProgress` (`crates/lopi-core/src/stop_reason.rs:27-28`) + `ProgressGate` (`crates/lopi-agent/src/runner/progress.rs:20-55`) halts on score-delta stagnation | Still genuinely open: no `AgentEvent::ProgressStall` variant (only a string-convention reason), no per-loop external markdown state file (Ralph), no `VISION.md` intent anchor |
@@ -249,7 +263,7 @@ the standing Three-Wall gates; only sprint-specific acceptance is spelled out.
   file+line, never silently.
 
 **Sprint 2.2 — Relevance injection into the loop**
-- **Status: ✅ DONE.** `crates/lopi-agent/src/runner/builder.rs:92` (`with_skills` — moved out of `runner/mod.rs` since the last verification, file-size split); `crates/lopi-agent/src/runner/seed.rs:210-241` (`seed_skills`/`record_skill_activation`). Activation is recorded through the generic audit trail rather than a dedicated `lopi-memory/src/store/skills.rs` (that file doesn't exist) — functionally equivalent, different location than originally scoped.
+- **Status: ✅ DONE.** `crates/lopi-agent/src/runner/builder.rs:94` (`with_skills` — moved out of `runner/mod.rs` since the last verification, file-size split); `crates/lopi-agent/src/runner/seed.rs:230-244` (`seed_skills`; `record_skill_activation` moved to `:330-343`). Activation is recorded through the generic audit trail rather than a dedicated `lopi-memory/src/store/skills.rs` (that file doesn't exist) — functionally equivalent, different location than originally scoped.
 - **Goal:** The right skills enter the planning prompt automatically.
 - **Deliverables:** trigger-match (keyword now, embedding-ready interface) →
   inject skill body into `AgentRunner` context; per-task **activation record**

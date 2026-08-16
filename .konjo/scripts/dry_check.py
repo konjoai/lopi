@@ -214,6 +214,28 @@ def find_duplicates(
     return violations
 
 
+def _write_empty_report(args: argparse.Namespace) -> None:
+    """Write a zero-violation report when there's nothing to scan.
+
+    ``--changed-only``/``--staged-only`` return early before the normal
+    report-writing path when there's no scan target at all — a real,
+    legitimate outcome (a docs-only PR), not an error. Without this, a
+    caller that unconditionally reads ``--report``'s output file (as
+    ``konjo-gate.yml``'s DRY check step does) crashes on a missing file
+    instead of seeing the true, empty result.
+    """
+    if not args.report:
+        return
+    report = {
+        "duplicates": [],
+        "count": 0,
+        "threshold": args.threshold,
+        "min_lines": args.min_lines,
+        "scanned": 0,
+    }
+    Path(args.report).write_text(json.dumps(report, indent=2))
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Konjo DRY Checker")
     parser.add_argument("--root", default=None, help="Repo root (default: git toplevel)")
@@ -259,12 +281,14 @@ def main() -> int:
         if not scan_targets:
             if not args.json_out:
                 print("[dry-check] No staged source files to check.")
+            _write_empty_report(args)
             return 0
     elif args.changed_only:
         scan_targets = _changed_files(root, extensions, args.base_ref)
         if not scan_targets:
             if not args.json_out:
                 print("[dry-check] No changed source files to check.")
+            _write_empty_report(args)
             return 0
     else:
         scan_targets = all_files
