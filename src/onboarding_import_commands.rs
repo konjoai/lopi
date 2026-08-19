@@ -247,6 +247,7 @@ mod tests {
 
     #[test]
     fn default_claude_dir_resolves_under_home() {
+        let _guard = crate::util::HOME_GUARD.blocking_lock();
         std::env::set_var("HOME", "/tmp/lopi-onboarding-import-test-home");
         assert_eq!(
             default_claude_dir(),

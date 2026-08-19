@@ -180,7 +180,7 @@ mod tests {
     /// `HOME` is process-global; guard every test below that mutates it so
     /// parallel `cargo test` threads don't interleave and resolve
     /// `lopi_demo::default_demo_store_path()` against the wrong scratch dir.
-    static HOME_GUARD: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+    use crate::util::HOME_GUARD;
 
     /// Mutation-testing kill test: pins `cancel`'s exact "not found"
     /// message against a real server, so a mutant that stubs the return
