@@ -401,6 +401,13 @@ pub struct Task {
     /// proposed. `None` (the default) — every existing task is unaffected.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub successor_fixture: Option<crate::successor::Successor>,
+    /// Sprint P1 (review-pipeline plan, Phase 1) — restricts which tools this
+    /// task's worker session may call. `Mutating` (the default) leaves
+    /// `permission_mode`/`allowed_tools`/`disallowed_tools` as the sole
+    /// tool-gating mechanism, unchanged from before this field existed. See
+    /// [`crate::tool_profile::ToolProfile`].
+    #[serde(default)]
+    pub tool_profile: crate::tool_profile::ToolProfile,
 }
 
 /// Re-exported so `task::TaskSource` stays valid — the type moved to its own
@@ -452,6 +459,7 @@ impl Task {
             chain_depth: 0,
             successor_enabled: false,
             successor_fixture: None,
+            tool_profile: crate::tool_profile::ToolProfile::default(),
         }
     }
 

@@ -34,6 +34,12 @@ pub mod eval;
 /// Sprint F2 Phase 4 — externalized worker model IDs (no recompile needed
 /// to change one). See that module's doc comment.
 pub mod model_config;
+/// Sprint P1 (review-pipeline plan, Phase 1, section 3) — the Planner →
+/// Executor handoff: a readonly Planner spawn producing a `PlanArtifact`,
+/// and an Executor spawn that receives only that artifact, never the raw
+/// goal (the first injection boundary). See the module doc comment for why
+/// this is additive rather than wired into `AgentRunner::run()` this sprint.
+pub mod planner_executor;
 /// Sprint F2 Phase 3 — externalized per-model token pricing (no recompile
 /// needed to change a rate). See that module's doc comment.
 pub mod pricing;

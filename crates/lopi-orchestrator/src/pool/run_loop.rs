@@ -13,7 +13,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::sync::oneshot;
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 
 /// The task's effective topology: its explicit hint, or the heuristic
 /// classification of its goal when unset (Sprint T). Pure — no side effects.
@@ -156,6 +156,9 @@ impl AgentPool {
                                                                    // released on the early-`?`-return error path below, which
                                                                    // never reaches `run_one`'s own terminal reconciliation call.
                 let pool_for_reservation_cleanup = pool.clone();
+                // `run_one` takes `repo` by value; the terminal path still
+                // needs it to key this task's collision-oracle peer entry.
+                let repo_for_terminal = repo.clone();
                 let outcome = run_one(
                     task,
                     repo,
@@ -167,49 +170,20 @@ impl AgentPool {
                     pool,
                 )
                 .await;
-                handles.remove(&task_id);
-                counters.running.fetch_sub(1, Ordering::Relaxed);
                 let _ = max_retries; // hint for future per-task cap reporting
-
-                // Tally the terminal outcome. `run_one` has already persisted
-                // the task's final status (success/failed/rolled-back/conflict);
-                // this only advances the in-memory pool counters.
-                match &outcome {
-                    Ok(TaskStatus::Success { .. }) => {
-                        counters.succeeded.fetch_add(1, Ordering::Relaxed);
-                    }
-                    Ok(
-                        TaskStatus::Failed { .. }
-                        | TaskStatus::RolledBack
-                        | TaskStatus::Conflict { .. },
-                    )
-                    | Err(_) => {
-                        counters.failed.fetch_add(1, Ordering::Relaxed);
-                    }
-                    _ => {}
-                }
-
-                if let Err(e) = &outcome {
-                    error!(task_id = %task_id, "agent run error: {e}");
-                    let reason = format!("{e}");
-                    bus.send(AgentEvent::TaskCompleted {
+                super::terminal::finish_task(
+                    super::terminal::TerminalContext {
                         task_id,
-                        outcome: TaskStatus::Failed { reason },
-                        total_attempts: 1,
-                        successor: None,
-                    });
-                    if let Some(store) = &store {
-                        if let Err(e) = store.mark_completed(&task_id, "failed").await {
-                            warn!(task_id = %task_id, "mark_completed(failed) failed: {e}");
-                        }
-                    }
-                    // No cost was ever recorded for this run — release, not
-                    // reconcile, so the reservation's hold vanishes without
-                    // attributing spend it never actually incurred.
-                    pool_for_reservation_cleanup
-                        .finish_economics_reservation(task_id, None)
-                        .await;
-                }
+                        repo: repo_for_terminal,
+                        handles,
+                        counters,
+                        bus,
+                        store,
+                        pool: pool_for_reservation_cleanup,
+                    },
+                    &outcome,
+                )
+                .await;
             });
         }
     }
@@ -416,6 +390,9 @@ async fn run_one(
         plan_decision_rx,
         resolved_test_command,
         cfg.context_mode,
+        // Keyed on the shared repo, not `work_repo`: a worktree checkout is
+        // per-task, and siblings must share one oracle and one peer roster.
+        pool.collision_wiring(&repo),
     );
     let outcome = runner.run().await?;
     // Reap the throwaway worktree now the run is done. The RAII drop is the

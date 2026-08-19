@@ -5,6 +5,26 @@ on:
     branches: [main]
   push:
     branches: [main]
+  # Opt-in only -- review-pipeline Sprint P2b, section 4's real call site for
+  # `konjo/mutation-hunt`. Not a default gate on every PR: the loop spends real model
+  # tokens per round (see .konjo/kiban's plugins/konjo/skills/mutation-hunt/SKILL.md),
+  # so it runs only when a human explicitly dispatches it against one crate.
+  workflow_dispatch:
+    inputs:
+      crate:
+        description: "Crate to run the mutation-hunt loop against (e.g. lopi-ratelimit)"
+        required: true
+        type: string
+      round_cap:
+        description: "Max rounds before the loop stops and suggests a waiver"
+        required: false
+        default: "3"
+        type: string
+      diff_base_ref:
+        description: "Branch the production change under test is diffed against (cargo mutants --in-diff scope) -- must NOT be the same commit as the checked-out branch, or --in-diff sees no production lines changed"
+        required: false
+        default: "main"
+        type: string
 
 concurrency:
   group: konjo-${{ github.ref }}
@@ -15,14 +35,14 @@ env:
   RUST_BACKTRACE: 1
   CARGO_INCREMENTAL: 0   # disable for reproducible CI builds
 
-# ── Gate summary job — all other jobs must pass before merge ──────────────────
+# ── Gate summary job — all other jobs must pass before merge ────────────────────────────────────────────────────
 # Added at the bottom; listed here for visibility.
 
 jobs:
 
-  # ════════════════════════════════════════════════════════════════════════════
+  # ═══════════════════════════════════════════════════════════════════════════════════
   # Gate 0 — Doc Staleness (kiban's `decays:` convention)
-  # ════════════════════════════════════════════════════════════════════════════
+  # ═══════════════════════════════════════════════════════════════════════════════════
   # Doc-Integrity sprint (2026-07-24): `docs/LOOP_ENGINEERING_ROADMAP.md` asserted
   # four capability gaps that were already closed on `main` — caught by a kill-test,
   # not by CI, because no gate checked whether a "current state" doc still matched
@@ -46,7 +66,7 @@ jobs:
         env:
           # Pinned deliberately — matches .konjo/kiban.ref (the session-plane pin).
           # Bump both together; a kiban change should not silently reach this gate.
-          KIBAN_REF: "v1.8.0"
+          KIBAN_REF: "v1.19.0"
         run: |
           pip install --quiet pyyaml
           git clone --quiet --depth 1 --branch "$KIBAN_REF" https://github.com/konjoai/kiban.git /tmp/kiban
@@ -54,14 +74,16 @@ jobs:
       - name: "Scan for stale decays: state docs"
         run: python3 /tmp/kiban/bin/konjo-doc-staleness scan --repo .
 
-  # ════════════════════════════════════════════════════════════════════════════
+  # ═══════════════════════════════════════════════════════════════════════════════════
   # Gate 1 — Static Analysis (format + lint + audit + deny)
-  # ════════════════════════════════════════════════════════════════════════════
+  # ═══════════════════════════════════════════════════════════════════════════════════
   static:
     name: "G1 · Static Analysis"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # Gate-Tiering-1, A4: scope_assert.py's --base-ref needs the real merge-base
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -155,7 +177,17 @@ jobs:
         # .konjo/scripts/scope_assert.py's own docstring for the exact term
         # list and why "installation" (the bare English word) is deliberately
         # narrowed to the specific removed identifiers instead.
-        run: python3 .konjo/scripts/scope_assert.py
+        #
+        # Gate-Tiering-1, A4: diff-scoped to the PR's own changed files via
+        # --base-ref on a pull_request run — a BLOCKING gate must not fail a
+        # PR over a pre-existing term elsewhere in the tree that PR never
+        # touched. Push-to-main runs (no base ref) keep the full-tree scan.
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            python3 .konjo/scripts/scope_assert.py --base-ref "origin/${{ github.base_ref }}"
+          else
+            python3 .konjo/scripts/scope_assert.py
+          fi
 
       - name: Reachability check (advisory) — pub mod not reachable from the binary
         # ADVISORY BY DESIGN — Sprint F0. `dead_code` above certifies rustc
@@ -183,11 +215,11 @@ jobs:
         # convention exists to prevent.
         run: python3 .konjo/scripts/soft_gate_lint.py .github/workflows/*.yml
 
-  # ════════════════════════════════════════════════════════════════════════════
+  # ═══════════════════════════════════════════════════════════════════════════════════
   # Gate 1b — Static Analysis, web/ (Forge dashboard — SvelteKit, separate
   # npm ecosystem from the Rust `static` job above, so it gets its own job
   # rather than a step wedged into a Rust runner)
-  # ════════════════════════════════════════════════════════════════════════════
+  # ═══════════════════════════════════════════════════════════════════════════════════
   # Added Sprint S11, Phase 2 (2026-07-27): `web/` had zero `npm audit` CI
   # gate at all before this — the Rust half of the repo has had `cargo
   # audit`/`cargo deny` as hard gates since Sprint S4 Phase 3 (see `static`
@@ -265,9 +297,9 @@ jobs:
         working-directory: web
         run: npm run build
 
-  # ════════════════════════════════════════════════════════════════════════════
+  # ═══════════════════════════════════════════════════════════════════════════════════
   # Gate 2 — Tests + Coverage (≥ 80% line coverage)
-  # ════════════════════════════════════════════════════════════════════════════
+  # ═══════════════════════════════════════════════════════════════════════════════════
   coverage:
     name: "G2 · Tests + Coverage"
     runs-on: ubuntu-latest
@@ -298,19 +330,21 @@ jobs:
         run: cargo test -p lopi-agent --test eval_regression --locked
 
       - name: Run tests with coverage
-        # KNOWN DEBT, verified 2026-07 (backend-1 Phase 0): `--fail-under-lines
-        # 80` makes this step itself exit nonzero below the 80% floor. Real
-        # measured coverage is 68.34% — see "Coverage gate" below for the
-        # number, method, and next step. Kept soft here too so this step's
-        # own exit code doesn't duplicate that gate's verdict.
-        continue-on-error: true
+        # HARD GATE — Gate-Tiering-1. Previously carried `--fail-under-lines
+        # 80` and `continue-on-error: true` together (backend-1 Phase 0),
+        # which meant a genuine compile/test failure here was ALSO swallowed
+        # by the same softness that was only meant to cover the coverage
+        # percentage being below floor — "the tests pass" is not negotiable
+        # (A3, this sprint) and must block on its own exit code. The 80%/95%
+        # threshold check is `--fail-under-lines`'s job; it now lives only in
+        # the "Coverage gate" step below, which stays soft, so a low
+        # percentage can't masquerade as a build/test break here.
         run: |
           cargo llvm-cov nextest \
             --workspace \
             --all-features \
             --lcov \
-            --output-path lcov.info \
-            --fail-under-lines 80
+            --output-path lcov.info
 
       - name: Upload coverage to Codecov
         if: always()
@@ -320,21 +354,26 @@ jobs:
           fail_ci_if_error: false  # don't fail CI on Codecov outage
 
       - name: Coverage gate (80% floor, 95% target)
-        # KNOWN DEBT, verified 2026-07 (backend-1 Phase 0): real workspace
-        # line coverage, measured correctly (see the LF/LH fix below), is
-        # 68.34% (23355 lines found, 15960 hit) — below the 80% floor, but
-        # not by a catastrophic margin. Not yet triaged into which crates
-        # need tests. Next step: identify the lowest-coverage crates from
-        # lcov.info, add tests until ≥80%, then remove this line.
+        # KNOWN DEBT, verified 2026-08-11 (Gate-Tiering-1, re-verifying
+        # backend-1 Phase 0's original finding): real workspace line
+        # coverage, measured correctly (see the LF/LH fix below), is 68.34%
+        # (23355 lines found, 15960 hit) — below the 80% floor, but not by a
+        # catastrophic margin. Not yet triaged into which crates need tests.
+        # Next step: identify the lowest-coverage crates from lcov.info, add
+        # tests until >=80%, then promote this step back to BLOCKING once
+        # kiban's B2 promotion criteria (passing kill-test + a measured
+        # false-positive rate below its stated ceiling) are met for it —
+        # until then it stays ADVISORY tier per LEDGER.md's Gate-Tiering-1
+        # entry.
         #
-        # Also fixed this sprint, independent of the soft/hard question:
-        # `cargo llvm-cov report --json` does NOT support `--workspace` (it
-        # errors outright if you pass it) and silently defaults to the root
-        # binary crate's own package scope — 24 files, ~26%, nowhere near
-        # the real number. The previous version of this step was reading
-        # that undercounted report and would have graded coverage on ~1/7th
-        # of the workspace even after being flipped to hard-fail. Parsing
-        # the `--workspace`-scoped lcov.info the prior step already wrote
+        # Also fixed independent of the soft/hard question: `cargo llvm-cov
+        # report --json` does NOT support `--workspace` (it errors outright
+        # if you pass it) and silently defaults to the root binary crate's
+        # own package scope — 24 files, ~26%, nowhere near the real number.
+        # The previous version of this step was reading that undercounted
+        # report and would have graded coverage on ~1/7th of the workspace
+        # even after being flipped to hard-fail. Parsing the
+        # `--workspace`-scoped lcov.info the prior step already wrote
         # (summing LF/LH directly) is the correct source of truth.
         continue-on-error: true
         run: |
@@ -362,15 +401,24 @@ jobs:
           "
 
       - name: Coverage floor gate (never regress below the locked value)
-        # HARD GATE — Konjo Forward Pillar 2: main is truth, gates only move up.
-        # The 80%/95% step above stays soft (real coverage isn't there yet), but
-        # the bar lopi HAS cleared (locked in .konjo/coverage-floor.txt, 68.34%
-        # as of Sprint S4) must never be allowed to slide back down un-noticed.
+        # KNOWN DEBT, verified 2026-08-11 (Gate-Tiering-1): was a HARD GATE
+        # under Konjo Forward Pillar 2 ("main is truth, gates only move up")
+        # — that principle is unchanged, but A3 of this sprint's brief
+        # explicitly scopes `coverage`'s BLOCKING authority down to "the
+        # tests pass" only, so this percentage-based ratchet moves to
+        # ADVISORY tier alongside the 80%/95% gate above, not because the
+        # ratchet itself is wrong. Next step: once the 80%/95% gate above is
+        # promoted back to BLOCKING (kiban B2 criteria: passing kill-test +
+        # measured false-positive rate under the stated ceiling), promote
+        # this floor-ratchet alongside it — a floor is only meaningful once
+        # the thing it floors is enforced again.
+        #
         # Reuses the same LF:/LH: summation as the soft gate above — see that
         # step's comment for why `cargo llvm-cov report --json` cannot be used
         # instead (it silently under-scopes to ~1/7th of the workspace).
         # Ratcheting up is allowed and expected: a PR that raises coverage may
         # bump .konjo/coverage-floor.txt to the new value in the same PR.
+        continue-on-error: true
         run: |
           python3 .konjo/scripts/coverage_floor_check.py \
             --lcov lcov.info \
@@ -382,10 +430,10 @@ jobs:
           name: coverage-lcov
           path: lcov.info
 
-  # ════════════════════════════════════════════════════════════════════════════
+  # ═══════════════════════════════════════════════════════════════════════════════════
   # Gate 3 — Mutation Testing (≤ 10% survival on changed files)
   # Runs only on pull requests (too slow for push to main)
-  # ════════════════════════════════════════════════════════════════════════════
+  # ═══════════════════════════════════════════════════════════════════════════════════
   mutation:
     name: "G3 · Mutation Testing"
     runs-on: ubuntu-latest
@@ -461,14 +509,16 @@ jobs:
           name: mutation-report
           path: mutation_report.txt
 
-  # ════════════════════════════════════════════════════════════════════════════
+  # ═══════════════════════════════════════════════════════════════════════════════════
   # Gate 4 — Complexity + Size + DRY
-  # ════════════════════════════════════════════════════════════════════════════
+  # ═══════════════════════════════════════════════════════════════════════════════════
   complexity:
     name: "G4 · Complexity + Size + DRY"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # Gate-Tiering-1, A4: dry_check.py/function_length_check.py/indexing_floor_check.py's --base-ref need the real merge-base (also fixes the pre-existing file-size gate's own base-ref diff below, which needed this all along)
 
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
@@ -542,11 +592,23 @@ jobs:
           echo "File sizes: all within 500-line limit ✓"
 
       - name: DRY check
+        # ADVISORY tier as of Gate-Tiering-1 (this job, G4, is entirely
+        # advisory — see LEDGER.md and konjo-gate.yml's aggregator comment).
+        # Diff-scoped on PR runs (A4): `--changed-only --base-ref` instead of
+        # a full-tree scan, so the report reflects what the PR touched.
         run: |
-          python3 .konjo/scripts/dry_check.py \
-            --threshold 0.85 \
-            --min-lines 20 \
-            --report dry_report.json 2>&1
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            python3 .konjo/scripts/dry_check.py \
+              --threshold 0.85 \
+              --min-lines 20 \
+              --changed-only --base-ref "origin/${{ github.base_ref }}" \
+              --report dry_report.json 2>&1
+          else
+            python3 .konjo/scripts/dry_check.py \
+              --threshold 0.85 \
+              --min-lines 20 \
+              --report dry_report.json 2>&1
+          fi
           COUNT=$(python3 -c "import json; d=json.load(open('dry_report.json')); print(d['count'])")
           if [ "$COUNT" -gt 0 ]; then
             echo "::error::$COUNT DRY violation(s). Abstract duplicate code into shared functions."
@@ -554,30 +616,57 @@ jobs:
           fi
 
       - name: Function length gate (<= 50 lines, ratchet against the locked ceiling)
-        # HARD GATE — Sprint S13R, Phase B, decision item 3. CLAUDE.md's "function
-        # body <= 50 lines" claim had zero mechanical enforcement before this (only a
-        # WARNING-tier Wall-3 LLM review question that cannot block a merge — see
-        # `PHASE0-STOP-RULE.md`). Real measured count against this branch: 74
-        # functions over 50 lines, workspace-wide. Hard-failing at 0 immediately
-        # would block every PR on pre-existing debt unrelated to it, so this ratchets
-        # the same way the coverage floor does: `.konjo/function-length-ceiling.txt`
-        # locks the current count, and only a rise above it fails. Lower the ceiling
-        # file as functions get split; never raise it without a recorded reason.
+        # ADVISORY tier as of Gate-Tiering-1 (this job, G4, is entirely
+        # advisory). Sprint S13R, Phase B, decision item 3's original
+        # reasoning is unchanged below; only the tier changed. CLAUDE.md's
+        # "function body <= 50 lines" claim had zero mechanical enforcement
+        # before this (only a WARNING-tier Wall-3 LLM review question that
+        # cannot block a merge — see `PHASE0-STOP-RULE.md`). Real measured
+        # count against this branch: 74 functions over 50 lines,
+        # workspace-wide. This ratchets the same way the coverage floor does:
+        # `.konjo/function-length-ceiling.txt` locks the current count, and
+        # only a rise above it fails. Lower the ceiling file as functions get
+        # split; never raise it without a recorded reason.
+        #
+        # A4: diff-scoped to the PR's own changed files via --base-ref on a
+        # pull_request run — the ceiling file still holds the full-tree
+        # ratchet value that `main` continues to update on push, so a
+        # diff-scoped PR count compared against it is a lighter-weight
+        # PR-time signal, not the authoritative ratchet check.
         run: |
-          python3 .konjo/scripts/function_length_check.py \
-            --ceiling-file .konjo/function-length-ceiling.txt
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            python3 .konjo/scripts/function_length_check.py \
+              --ceiling-file .konjo/function-length-ceiling.txt \
+              --base-ref "origin/${{ github.base_ref }}"
+          else
+            python3 .konjo/scripts/function_length_check.py \
+              --ceiling-file .konjo/function-length-ceiling.txt
+          fi
 
       - name: Indexing floor gate (raw `[0]`/`[1]` sites, ratchet against the locked ceiling)
-        # HARD GATE — Sprint S13R, Phase D. A raw index panics on an out-of-bounds
-        # slice; this ratchets the standing count the same way the coverage floor and
-        # function-length ceiling do. `.konjo/indexing-floor.txt` locks the current
-        # count (211, re-measured this sprint with a precisely stated method — see
-        # that file's own comment for why it doesn't match the S13 brief's earlier,
-        # less precisely specified "202"). Never regresses above it; ratchet down as
-        # sites convert to `.first()`/`.get(n)`.
+        # ADVISORY tier as of Gate-Tiering-1 (this job, G4, is entirely
+        # advisory). Sprint S13R, Phase D's original reasoning is unchanged
+        # below; only the tier changed. A raw index panics on an
+        # out-of-bounds slice; this ratchets the standing count the same way
+        # the coverage floor and function-length ceiling do.
+        # `.konjo/indexing-floor.txt` locks the current count (211,
+        # re-measured this sprint with a precisely stated method — see that
+        # file's own comment for why it doesn't match the S13 brief's
+        # earlier, less precisely specified "202"). Ratchet down as sites
+        # convert to `.first()`/`.get(n)`.
+        #
+        # A4: diff-scoped to the PR's own changed files via --base-ref on a
+        # pull_request run — see the function-length gate's comment above
+        # for the same tradeoff against the full-tree-calibrated ceiling.
         run: |
-          python3 .konjo/scripts/indexing_floor_check.py \
-            --ceiling-file .konjo/indexing-floor.txt
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            python3 .konjo/scripts/indexing_floor_check.py \
+              --ceiling-file .konjo/indexing-floor.txt \
+              --base-ref "origin/${{ github.base_ref }}"
+          else
+            python3 .konjo/scripts/indexing_floor_check.py \
+              --ceiling-file .konjo/indexing-floor.txt
+          fi
 
       - name: Documentation gate (rustdoc)
         # KNOWN DEBT, verified 2026-07-29 (Sprint S13R, Phase B — decision item 2):
@@ -609,9 +698,9 @@ jobs:
             exit 1
           fi
 
-  # ════════════════════════════════════════════════════════════════════════════
+  # ═══════════════════════════════════════════════════════════════════════════════════
   # Gate 4b — Fuzz (Sprint S12, Phase 2) — short budget, PR-only
-  # ════════════════════════════════════════════════════════════════════════════
+  # ═══════════════════════════════════════════════════════════════════════════════════
   # Three targets over the parsers that eat attacker-influenceable input:
   # MCP server responses (jsonrpc.rs), the `claude` CLI's own stream-json
   # output (claude_events.rs), and GitHub webhook bodies pre-HMAC (github.rs).
@@ -676,9 +765,9 @@ jobs:
           path: fuzz/artifacts/
           if-no-files-found: ignore
 
-  # ════════════════════════════════════════════════════════════════════════════
+  # ═══════════════════════════════════════════════════════════════════════════════════
   # Gate K — konjo-gates (Sprint S13R, Phase A3 — "connect the pilot")
-  # ════════════════════════════════════════════════════════════════════════════
+  # ═══════════════════════════════════════════════════════════════════════════════════
   # Runs kiban's own CI-plane orchestrator (`bin/konjo-gates`) against
   # `.konjo/profile.yml` (authored in kiban as `profiles/lopi.yml`, Phase 13 —
   # see LEDGER.md's `Lopi-Gate-Reconciliation-1`). Deliberately additive, not a
@@ -723,7 +812,7 @@ jobs:
       - name: Install kiban at the pinned ref
         env:
           # Matches .konjo/kiban.ref and G0's KIBAN_REF — bump all three together.
-          KIBAN_REF: "v1.8.0"
+          KIBAN_REF: "v1.19.0"
         run: |
           pip install --quiet pyyaml
           # .konjo/profile.yml's contract_gates names cargo-deny, a genuine
@@ -750,10 +839,10 @@ jobs:
             --base "origin/${{ github.base_ref || 'main' }}" \
             --no-self-test
 
-  # ════════════════════════════════════════════════════════════════════════════
+  # ═══════════════════════════════════════════════════════════════════════════════════
   # Gate 5 — Adversarial Review (Wall 3, PRs only)
   # Uses Claude Opus — distinct from builder model (Sonnet)
-  # ════════════════════════════════════════════════════════════════════════════
+  # ═══════════════════════════════════════════════════════════════════════════════════
   review:
     name: "G5 · Adversarial Review (Wall 3)"
     runs-on: ubuntu-latest
@@ -851,73 +940,146 @@ jobs:
             });
 
       - name: Fail if BLOCKER verdict
-        # Non-negotiable per backend-1 Phase 0: a genuine BLOCKER must hard
-        # block. Distinguishes REVIEW_EXIT == 1 (the script ran to
-        # completion and found a real blocker — see konjo_review.py's
-        # main(), which is the actual source of truth, not its stale exit
-        # code docstring) from any other nonzero (API/config/script
-        # failure), which the script already treats as a soft
-        # "WARNING — could not reach API" and returns 0 for. That means
-        # this step firing at all now only happens on a genuine blocker, so
-        # it must not itself be soft.
+        # ADVISORY BY DESIGN — Gate-Tiering-1: demoted from a hard block
+        # (backend-1 Phase 0's "non-negotiable" framing, kept below for
+        # history). A single nondeterministic LLM verdict with no measured
+        # false-positive rate must not hold unappealable authority over
+        # merge; the verdict is still fully visible in the posted PR comment
+        # above and in REVIEW_EXIT, and `review` is still named in the
+        # aggregator's ADVISORY report (see gate_verdict.sh) whenever it
+        # doesn't succeed.
+        #
+        # Original backend-1 Phase 0 reasoning, preserved: distinguishes
+        # REVIEW_EXIT == 1 (the script ran to completion and found a real
+        # blocker — see konjo_review.py's main(), which is the actual source
+        # of truth, not its stale exit code docstring) from any other
+        # nonzero (API/config/script failure), which the script already
+        # treats as a soft "WARNING — could not reach API" and returns 0
+        # for.
+        continue-on-error: true
         if: env.REVIEW_EXIT == '1'
         run: |
           echo "::error::Konjo Adversarial Review found BLOCKER(s). Fix them before merging."
           exit 1
 
   # ════════════════════════════════════════════════════════════════════════════
-  # Final gate — merge requires ALL jobs to pass
+  # Final gate — merge requires all BLOCKING-tier jobs to pass
   # ════════════════════════════════════════════════════════════════════════════
+  # backend-1 Phase 0 fix: this used to omit `mutation` and `review` entirely,
+  # so G3 (mutation testing) and G5 (Wall 3 adversarial review — including the
+  # BLOCKER hard-fail in that job) could fail outright without blocking merge.
+  # Both were added to `needs:` below; both are also legitimately `skipped` on
+  # a push-to-main run (they're PR-only jobs), which must not itself count as
+  # a failure.
+  #
+  # Gate-Tiering-1: that all-eight-must-succeed rule is exactly the problem
+  # that sprint fixed. `needs:` is unchanged on purpose — every job below
+  # still *runs* and is still visible in the checks UI — but the step's
+  # verdict logic (now `.konjo/scripts/gate_verdict.sh`, extracted so it's
+  # testable outside Actions — see `test_gate_tiering_killtest.sh`) now
+  # reads two named tiers instead of one flat list:
+  #
+  #   BLOCKING — deterministic, fast, catches real breakage:
+  #     static (fmt/clippy/audit/deny/dead-code/scope/soft-gate-lint),
+  #     coverage (test-failure only — see that job's own comments for why the
+  #     80%-floor and floor-ratchet steps inside it are now soft)
+  #
+  #   ADVISORY — reports, annotates, never blocks:
+  #     doc-staleness, web-audit, complexity, mutation, review, konjo-gates
+  #
+  # A `gate:override` PR label plus a `Konjo-Override: <reason>` trailer in
+  # the PR body is the documented break-glass past a BLOCKING failure — see
+  # gate_verdict.sh's own header. LEDGER.md's `Gate-Tiering-1` entry has the
+  # full per-job tier rationale and the promotion criteria back to BLOCKING.
   konjo-gate:
     name: "Konjo Gate — All Walls Clear"
     runs-on: ubuntu-latest
     if: always()
-    # backend-1 Phase 0 fix: this used to omit `mutation` and `review`
-    # entirely, so G3 (mutation testing) and G5 (Wall 3 adversarial review —
-    # including the BLOCKER hard-fail above) could fail outright without
-    # blocking merge. Both are added below; both are also legitimately
-    # `skipped` on a push-to-main run (they're PR-only jobs), which must not
-    # itself count as a failure.
     needs: [doc-staleness, static, web-audit, coverage, complexity, mutation, review, konjo-gates]
     steps:
+      - uses: actions/checkout@v4
+
       - name: Evaluate all required gates
+        env:
+          DOC_STALENESS: ${{ needs.doc-staleness.result }}
+          STATIC: ${{ needs.static.result }}
+          WEB_AUDIT: ${{ needs.web-audit.result }}
+          COVERAGE: ${{ needs.coverage.result }}
+          COMPLEXITY: ${{ needs.complexity.result }}
+          MUTATION: ${{ needs.mutation.result }}
+          REVIEW: ${{ needs.review.result }}
+          KONJO_GATES: ${{ needs.konjo-gates.result }}
+          GATE_OVERRIDE_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'gate:override') }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          ACTOR: ${{ github.actor }}
+        run: bash .konjo/scripts/gate_verdict.sh
+
+  # ═══════════════════════════════════════════════════════════════════════════════════
+  # Mutation Hunt (opt-in) — review-pipeline Sprint P2b, section 4's real call site
+  # for `konjo/mutation-hunt`. Deliberately NOT in `konjo-gate`'s `needs:` above and
+  # not triggered by pull_request/push — see the plan's own non-goals (no router, no
+  # new default gate this sprint) and the workflow_dispatch trigger's comment.
+  # ═══════════════════════════════════════════════════════════════════════════════════
+  mutation-hunt:
+    name: "Mutation Hunt (opt-in, manual dispatch only)"
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: konjo-${{ github.repository }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Clone kiban (pinned)
+        env:
+          # Matches .konjo/kiban.ref and G0/konjo-gates' own KIBAN_REF — bump all
+          # three together (see this repo's CLAUDE.md "Pinning" section). The Sprint
+          # P2b blocker noted below is now resolved: kiban v1.19.0 ships
+          # bin/kiban-mutation-hunt (see kiban LEDGER.md's Review-Pipeline-Phase-2b
+          # entry), so this job is live-runnable at this pin — still
+          # workflow_dispatch-only, not part of the required konjo-gate summary.
+          KIBAN_REF: "v1.19.0"
+        run: git clone --quiet --depth 1 --branch "$KIBAN_REF" https://github.com/konjoai/kiban.git /tmp/kiban
+
+      - name: Install cargo-llvm-cov, cargo-mutants, and the claude CLI
         run: |
-          # Map job results to pass/fail. `skipped` is only acceptable for
-          # mutation/review, and only because they're gated on
-          # `github.event_name == 'pull_request'` — a push-to-main run is
-          # expected to skip them, not fail them.
-          DOC_STALENESS="${{ needs.doc-staleness.result }}"
-          STATIC="${{ needs.static.result }}"
-          WEB_AUDIT="${{ needs.web-audit.result }}"
-          COVERAGE="${{ needs.coverage.result }}"
-          COMPLEXITY="${{ needs.complexity.result }}"
-          MUTATION="${{ needs.mutation.result }}"
-          REVIEW="${{ needs.review.result }}"
-          KONJO_GATES="${{ needs.konjo-gates.result }}"
+          cargo install cargo-llvm-cov cargo-mutants --locked --quiet 2>/dev/null || true
+          npm install -g @anthropic-ai/claude-code --silent
 
-          echo "doc-staleness: $DOC_STALENESS"
-          echo "static:     $STATIC"
-          echo "web-audit:  $WEB_AUDIT"
-          echo "coverage:   $COVERAGE"
-          echo "complexity: $COMPLEXITY"
-          echo "mutation:   $MUTATION"
-          echo "review:     $REVIEW"
-          echo "konjo-gates: $KONJO_GATES"
+      - name: Build konjo-ast-diff
+        run: cargo build --release --manifest-path /tmp/kiban/packages/konjo-ast-diff-rs/Cargo.toml
 
-          FAILED=""
-          [ "$DOC_STALENESS" != "success" ] && FAILED="$FAILED doc-staleness"
-          [ "$STATIC"     != "success" ] && FAILED="$FAILED static"
-          [ "$WEB_AUDIT"  != "success" ] && FAILED="$FAILED web-audit"
-          [ "$COVERAGE"   != "success" ] && FAILED="$FAILED coverage"
-          [ "$COMPLEXITY" != "success" ] && FAILED="$FAILED complexity"
-          [ "$MUTATION"   != "success" ] && [ "$MUTATION" != "skipped" ] && FAILED="$FAILED mutation"
-          [ "$REVIEW"     != "success" ] && [ "$REVIEW" != "skipped" ] && FAILED="$FAILED review"
-          [ "$KONJO_GATES" != "success" ] && FAILED="$FAILED konjo-gates"
+      - name: Generate coverage for the target crate
+        run: cargo llvm-cov -p "${{ inputs.crate }}" --lcov --output-path lcov.info
 
-          if [ -n "$FAILED" ]; then
-            echo "::error::Gate(s) failed:$FAILED — merge blocked."
-            exit 1
-          fi
+      - name: Run the mutation-hunt loop
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          mkdir -p bench_results/mutation-hunt
+          git fetch --quiet origin "${{ inputs.diff_base_ref }}"
+          python3 /tmp/kiban/bin/kiban-mutation-hunt run \
+            --repo "$(pwd)" --base-ref "$(git rev-parse HEAD)" \
+            --diff-base-ref "origin/${{ inputs.diff_base_ref }}" --lcov lcov.info \
+            --crate "${{ inputs.crate }}" --path-prefix "crates/${{ inputs.crate }}/" \
+            --round-cap "${{ inputs.round_cap }}" \
+            --out bench_results/mutation-hunt
 
-          echo "All required Konjo quality gates passed ✓"
-          echo "The code is seaworthy."
+      - name: Upload result artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-hunt-result
+          path: bench_results/mutation-hunt/mutation_hunt_result.json
+          if-no-files-found: warn

@@ -308,6 +308,1301 @@ pass clean. `npm run build`/`npm run check` (0 errors)/`npm run test`
 the full before/after evidence and the honest list of what Step 5's full
 per-control-state matrix this pass didn't reach.
 
+## Kiban-Pin-Bump-v1.19.0 -- five-version pin bump, and the drift check that would have caught it sooner
+
+Cross-repo audit (`konjo-cortex` sprint "kiban adoption and enforcement") found lopi's
+three `KIBAN_REF` sites plus `.konjo/kiban.ref` sitting at `v1.14.0` while kiban had shipped
+to `v1.19.0` -- five releases, the largest gap this repo has carried. Bumped all four
+together (`konjo-gate.yml` lines 69/800/1037, `.konjo/kiban.ref`), per this repo's own
+CLAUDE.md "Pinning" rule.
+
+**Why this happened silently:** `.claude/hooks/session-start.sh` only ever compared
+`.konjo/kiban.ref` against `konjo-gate.yml`'s own `KIBAN_REF` -- it warns when the two
+local pins disagree with each other, never when both agree and are simply stale. Both sat
+at `v1.14.0` in perfect internal agreement the entire time. Same shape as `Gate-Tiering-1`'s
+Finding 3 (a gate that cannot fail in the case that matters isn't really checking anything):
+here it's a drift check, not a gate, but the failure mode is identical.
+
+**Fix:** the hook now also resolves kiban's actual newest tag via
+`git ls-remote --tags --refs https://github.com/konjoai/kiban.git 'v*'` (no GitHub API
+token needed, matches the same git-clone path the CI jobs already use) and warns,
+report-only, when the local pin trails it. `timeout 5` and `command -v git` guards keep it
+non-blocking if the network or git binary is unavailable -- consistent with the hook's
+existing "never fails" contract. Verified against both the current (`v1.19.0`, silent) and
+a synthetic stale (`v1.14.0`, warns) pin.
+
+**A version bump is a one-way door.** Gates that did not exist at `v1.14.0` now run on
+every PR. The mutation-hunt job's Sprint P2b blocker (`bin/kiban-mutation-hunt` not existing
+at the pinned ref) is resolved by this bump -- kiban shipped it on the way to `v1.19.0` --
+so that job is now live-runnable, though it remains `workflow_dispatch`-only and outside the
+required `konjo-gate` summary, unchanged from `Gate-Tiering-1`'s original wiring.
+
+**CI triage:** PR #203's first run flagged `GK - konjo-gates`' `one_way_door` gate on
+`path:release-version` (this PR bumps `VERSION`), and `G4 - Complexity + Size + DRY`
+crashed on a pre-existing bug in `.konjo/scripts/dry_check.py` -- its `--changed-only`
+early-exit path returned before writing `--report`, and this PR's all-YAML/MD/sh diff
+(zero `.rs`/`.py` files) hit that path for the first time. `G0 - Doc Staleness` also
+went red once the PR's own commit volume crossed the 20-commit cap on `docs/security/
+TRIFECTA_PATHS.md` and `recipes/README.md`, coincidentally, not from anything this PR's
+diff touches -- both re-verified clean. All three addressed in this PR: `dry_check.py`
+now always writes the report file even on an empty scan (`_write_empty_report`); both
+docs re-stamped past the cap; the version-bump one-way-door acknowledged below, per the
+same protocol `PR-202-Gate-Response` used -- twice, since adding the two doc files to
+the diff shifted the change id from `2e540bd7ffd8` to `7f373009ae7c` (the change id is
+`sha256(sorted(changed_files))`, so any new file in the diff re-derives it; this is the
+same behavior `PR-202-Gate-Response` already documented). No `continue-on-error` added
+anywhere.
+
+**How to apply:** the drift check pattern (resolve the real upstream state, not just
+cross-check two local copies of a claim) generalizes to any other pinned dependency this
+repo takes on. If a second pin shows up, replicate this block rather than writing a
+special case.
+
+## PR-202-Gate-Response -- every gate traced to a root cause, then fixed
+
+Sprint P5's PR (#202) came back with five red checks. Each was traced against `main`'s own
+last run (`31951537127`, `37b5fa0`, 2026-08-16) before any fix, because "not my failure" is
+exactly the claim that deserves evidence. Three of the five were failing on `main` too.
+Tracing them to root causes rather than stopping at that attribution turned out to matter:
+all three were fixable, and two had been red on every PR for weeks.
+
+| Check | Tier | Was | Root cause | Now |
+|---|---|---|---|---|
+| `G0 - Doc Staleness` | ADVISORY | red on `main` too | 3 `decays: state` docs past the 20-commit / 14-day cap | re-verified and re-stamped |
+| `G1b - npm audit (web/)` | ADVISORY | red on `main` too | 3 transitive advisories, all with non-breaking fixes | clean |
+| `G1 - Static Analysis` | BLOCKING | red | RUSTSEC-2026-0258, `h2`, published 2026-08-17 | clean |
+| `GK - konjo-gates` | ADVISORY | red | `one_way_door` (real) + `repo:cargo-deny` (tooling defect) | ack'd; artifact remains |
+| `Konjo Gate` | required | red | `G1` | follows `G1` |
+
+### `one_way_door` -- real, acknowledged, and it caught something different than expected
+
+Rule `path:release-version`, correct because this PR bumps
+`VERSION` and the workspace version. Acknowledged with a `Konjo-Acknowledged-Oneway`
+trailer; confirmed live on the next run, where `konjo-gates` dropped from "2 gate(s)
+failed" to 1 and `one_way_door` no longer appears in the failure list.
+
+**The change id moved twice, which is the documented behavior and worth spelling out.**
+It is `sha256(sorted(changed_files))`, not a commit hash (`PR-196-Gate-Response`), so it
+re-derives whenever a genuinely new file enters the diff -- not when the door itself
+changes. This PR walked through three ids: `8f8d7918cb21` (the original 19-file diff),
+`1724fa77d5b9` (29 files, after the three re-verified docs and the HOME-guard files), and
+`bec0399084fe` (30 files, after `.konjo/deny.toml`). Same single door throughout: the
+version bump. The practical consequence, for whoever hits this next: **acknowledge from a
+commit that touches only files already in the diff**, or the ack invalidates itself the
+moment it lands. A `LEDGER.md`-only trailer commit converges; adding any new file does not.
+
+Worth recording because the prediction was wrong: the PR body expected this gate to fire on
+`CollisionOracle::poll` becoming `poll_for`, a genuine public-API signature change. It fired
+on the version bump instead, and **the API change went unflagged entirely**. A gate that
+catches a different thing than you expected is worth knowing about before relying on it to
+catch the thing you expected.
+
+### `cargo audit` -- one advisory, two `h2` copies, one real root
+
+RUSTSEC-2026-0258 (`h2`, unbounded empty DATA frames) was published 2026-08-17, the day
+after `main`'s last green run. Confirmed not caused by this PR three ways before touching
+anything: the `Cargo.lock` diff touched no `h2` entry; `konjo-gates`' own `repo:cargo-audit`
+sub-gate **passed** on the same PR with "no net-new findings" because it diffs against base;
+and `main` would fail identically if re-run today. Two gates reading the same advisory and
+disagreeing is itself the evidence -- the disagreement is precisely "pre-existing" versus
+"present".
+
+`h2 0.4.15 -> 0.4.16` was a straight lockfile bump. `h2 0.3.27` had no patched `0.3.x`, so
+it had to lose its dependents. The first trace found `reqwest 0.11` and stopped there, which
+would have been a wrong and incomplete fix; the full trace found **two** roots:
+
+```
+reqwest 0.11.27        -> hyper-tls 0.5 -> hyper 0.14 -> h2 0.3.27
+opentelemetry-otlp 0.15 -> tonic 0.11    -> hyper 0.14 -> h2 0.3.27
+                                         -> axum 0.6.20  (a second axum copy, alongside
+                                            the 0.7.9 the workspace actually declares)
+```
+
+Both moved to hyper 1.x. `reqwest 0.11 -> 0.12` needed no call-site edits -- the workspace's
+surface (`Client`, `header::*`, `Response`, `RequestBuilder`, `Error`, `StatusCode`,
+`blocking::Client`) is unchanged across that boundary. The OpenTelemetry stack
+(`0.22 -> 0.27`, `otlp 0.15 -> 0.27`, `tracing-opentelemetry 0.23 -> 0.28`) is gated behind
+the non-default `otel` feature and has exactly one call site, rewritten for 0.27's
+exporter-plus-provider builder.
+
+`cargo audit` now reports zero vulnerabilities, leaving only the pre-existing allowed `lru`
+unsoundness warning. The duplicate `axum 0.6.20` disappearing is a free side effect worth
+noting: the workspace had been carrying two axum major versions without declaring the older
+one anywhere.
+
+**On the standing rule against touching root `Cargo.lock`:** that rule guards against
+casual or incidental lock churn. Clearing a published advisory on the BLOCKING gate is the
+deliberate, traced case it exists to permit, and the change is declared in `Cargo.toml`
+rather than made by hand in the lock.
+
+### `npm audit` -- red on every PR for weeks, and all three were one-line fixes
+
+`nanoid` <3.3.18 (high, infinite loop), `@sveltejs/kit` <=2.70.1 (ReDoS via the Accept
+header), `dompurify` <=3.4.12 (XSS via IN_PLACE hook removal). `LEDGER.md`'s A0 entry
+recorded these as pre-existing and left them; nobody re-checked whether they were still
+unfixable. All three now have non-breaking fixes inside the existing semver ranges, so
+`npm audit fix` clears every one with `package.json` unchanged and a nine-line lockfile diff.
+Verified past the audit itself, since a lockfile bump can still break a build: `npm run
+build` and `npm test` both pass.
+
+The lesson is about the attribution, not the packages: "pre-existing, also red on `main`" is
+a correct answer to *whose failure is this* and a bad answer to *should it stay red*.
+
+### Doc staleness -- re-verified, not date-bumped
+
+Three `decays: state` docs were past the 20-commit / 14-day cap:
+`docs/LOOP_ENGINEERING_ROADMAP.md`, `docs/ops/PANIC_AUDIT.md`,
+`docs/security/EGRESS_SURFACE.md`. The cap is a prompt to re-check a claim, so each doc's
+own cited commands were re-run against this commit rather than the stamp being advanced:
+
+- **`PANIC_AUDIT.md`** -- ran the exact cited deny-flag clippy invocation workspace-wide:
+  **0 findings**, including P5's new files and the rewritten OTel init.
+- **`EGRESS_SURFACE.md`** -- re-ran both greps it cites; both still empty. P5 adds no
+  outbound transport (`lopi-oracle` shells out to `git merge-tree`, a local read-only
+  subprocess), and the `reqwest`/OTel bumps change client versions, not the transport set.
+- **`LOOP_ENGINEERING_ROADMAP.md`** -- re-checked four load-bearing citations. Three hold
+  exactly (`setup_worktree` at `pool/worktree.rs:25`; `EarnedTrust` still has zero callers
+  outside its module; `Task::from_template` still has none outside `task_tests.rs`); one had
+  drifted (`with_skills` from `builder.rs:92` to `:94`) and is corrected. One row's context
+  genuinely changed and is now recorded there: P5 makes collision detection between
+  concurrent worktrees reachable from the binary. It does not move any verdict.
+
+### Two follow-on effects of the dependency work, recorded rather than left to be found
+
+**A now-dead advisory ignore, removed.** `.konjo/deny.toml` carried
+`RUSTSEC-2025-0134` ignored with the reason "rustls-pemfile, unmaintained -- transitive via
+reqwest 0.11.27". The `reqwest 0.12` upgrade drops `rustls-pemfile` from the tree entirely,
+so that entry was suppressing an advisory for a crate the workspace no longer builds. Dead
+config that silently widens what a gate tolerates is worse than no config, so it is gone.
+`RUSTSEC-2026-0002` (`lru` via `ratatui`) is unaffected and stays.
+
+**A new duplicate, disclosed.** `reqwest 0.12` brings `tower-http 0.6.11` alongside the
+`0.5.2` that `axum 0.7` already pulled, so `cargo-deny` now warns about duplicate
+`tower-http`. Not hidden and not a regression in kind: `main` already carried duplicate
+`tower` (`0.4.13` and `0.5.3`), and `.konjo/deny.toml` sets `multiple-versions = "warn"`
+deliberately -- "blocking on transitive version drift would be too disruptive". `G1`'s own
+repo-native `cargo deny check` passes. Unifying it means `axum 0.7 -> 0.8`, a web-layer
+migration with no advisory forcing it, so it is not bundled into a security fix.
+
+### `repo:cargo-deny` -- the tree-art artifact, second confirmed occurrence
+
+Reports "5 net-new finding(s)" whose text is literal dependency-tree drawing characters.
+This is the kiban `newonly.net_new` line-diff defect already recorded in
+`PR-196-Gate-Response`: the differ cannot scope `cargo-deny`'s tree output, so any change to
+the dependency graph registers redrawn tree rows as findings. P5 adds a `lopi-oracle` edge,
+which redraws exactly those rows.
+
+**This one is genuinely not fixable from this side** -- it is a defect in how kiban diffs a
+tool's output, not in this repo's dependencies or config. Recorded as a second occurrence on
+an unrelated diff rather than re-diagnosed: a defect seen twice that way is the same defect,
+not a coincidence. It is ADVISORY and does not block. If a future session gets push access
+to kiban, this and the `pricing.rs` false positive are the two to report.
+
+### Follow-up, same session: the one real line inside the noise was fixable, and cheaply
+
+The tree-art noise is a genuine kiban-side defect (above). But one real signal was
+underneath it -- `reqwest 0.12` pulls `tower-http 0.6.11` for its `follow-redirect`
+feature, alongside the `tower-http = "0.5"` this workspace pins at `Cargo.toml:63` for
+`lopi-ui`'s CORS/trace layers. Earlier in this same response the fix was assessed as
+"unifying it means `axum 0.7 -> 0.8`" and deliberately not bundled into the security PR.
+**That assessment was wrong, and checking it rather than repeating it is why this
+follow-up exists.** `axum` itself has no `tower-http` dependency at all -- the `"0.5"` pin
+was always this workspace's own choice, unrelated to axum's version. Bumping it to
+`"0.6"` needed no code changes: `cors_policy.rs`'s `CorsLayer`/`AllowOrigin` surface is
+unchanged across the boundary, confirmed by a clean build and by the three CORS behavior
+tests (`cors_allows_default_dev_origin_with_no_config`,
+`cors_denies_non_allowlisted_origin`, `cors_permissive_opt_out_allows_any_origin`) passing
+unmodified.
+
+The duplicate-crate list is back to exactly what `main` already carried before this PR --
+`tower` itself stays duplicated (a real but separate, still-deferred `axum` decision).
+`GK`'s `repo:cargo-deny` should now report only the tree-art artifact on files this PR
+never touches, not a new one of its own making.
+
+**Confirmed on the next CI run, decisively: the tree-art count did not move.** `GK`'s
+`repo:cargo-deny` still reports "121 net-new finding(s)" -- byte-identical to the count
+before this fix -- but the `warning[duplicate]: found N duplicate entries for crate
+'tower-http'` line that prefixed it before is now gone from the raw output, and `G1`'s own
+direct `cargo deny check` passed clean both times. Eliminating the one real duplicate
+changed nothing about the noise. That settles it: the 121 was never meaningfully counting
+findings -- it is `.konjo/deny.toml`'s `highlight = "simplest-path"` printing dependency-path
+trees for tracked crates as routine, non-violation output, and `newonly`'s line-level diff
+treating any textual shift in that output (which any `Cargo.lock` touch causes) as net-new.
+There is no further dependency change that will quiet this gate; the fix is in kiban's
+differ, not in this repo.
+
+**The lesson, stated plainly:** the first assessment reached for the familiar-sounding fix
+(a major-version bump) without checking whether the dependency was actually pinned by
+something else. It wasn't. Reflexive severity-matching -- assuming a fix must be as large
+as the problem sounds -- is its own failure mode, the mirror image of the "pre-existing,
+not my problem" one earlier in this entry.
+
+## Collision-Oracle-Pool-Wiring -- the oracle gets a production call site, and both sides get told
+
+Sprint P5. Closes carried-forward item 2 of the `Collision-Oracle-Build` handoff.
+`lopi-oracle` had been merged for three commits with no production consumer:
+`AgentRunner::with_collision_oracle` was called only from its own tests, so a
+556-line crate shipped as `[0.44.0]` could not affect a single real task. This
+entry records the two load-bearing calls made while wiring it.
+
+### Decision 1 -- alert delivery is per recipient, not per signature
+
+The gap the prior entry flagged, resolved rather than carried forward again.
+
+`CollisionOracle::poll` de-duplicated on `ConflictSignature` alone and returned
+each newly-seen signature once; `collision_seed.rs` then filtered the result to
+alerts naming the caller. Composed, those two correct-looking steps made delivery
+a race. On an A-B collision, whichever side polled first received the alert, the
+signature moved into `seen`, and the other side's poll returned nothing. The
+agent that lost the race never learned it was colliding at all.
+
+**Both sides get a copy.** Neither agent can coordinate on information only its
+counterpart holds, and there is no principled basis for picking which one is
+told -- poll order is an artifact of scheduling, not of who needs to know.
+
+Mechanically: `seen: HashSet<ConflictSignature>` becomes
+`delivered: HashMap<ConflictSignature, HashSet<String>>`, and `poll(refs)` becomes
+`poll_for(requester_label, refs)`, returning only collisions the requester is a
+side of and only those not already delivered to that label. Still-open pruning is
+untouched, so a resolved-then-recurring collision still re-alerts every side
+afresh.
+
+**This does not reopen KT-2.** KT-2's finding was that a poll-and-count design
+re-alerts on every cycle -- 120 red verdicts/hour off one collision that never
+changed. The property that fixes it is "alert on distinct onsets, not on polls,"
+and that is preserved exactly: still one alert per side per signature. The bound
+moves from one-alert-per-collision to one-alert-per-participant-per-collision,
+which is at most two for a pairwise oracle and is the correct denominator.
+
+Kill-tested, not assumed: forcing the ledger back to a single shared key makes
+`both_sides_of_a_collision_each_receive_the_alert_exactly_once` fail.
+
+The self-filter moves out of `collision_seed.rs` into the oracle. Filtering
+caller-side was the actual defect -- the shared oracle had already spent the alert
+before the filter ever ran.
+
+**One-way door:** `poll` is a `pub` fn in a `#![warn(missing_docs)]` crate, and
+its signature changed. Accepted deliberately: the crate has exactly one non-test
+consumer today, so the cost of changing it will never again be this low.
+
+### Decision 2 -- oracle state is keyed per repo, and the peer roster is a live roster
+
+**Per repo, not per pool.** A pool dispatches against several repos (a task's own
+`repo_path` overrides the pool default; `repo_permits` is already keyed that way).
+Two tasks can only collide when they run against the same repo, and
+`git merge-tree` needs both refs resolvable in one object store. The key is always
+the *shared* repo path, never a per-task worktree checkout -- worktrees share the
+repo's refs and object database, so every task's branch resolves there whichever
+checkout created it.
+
+**A finished task must leave the roster.** This is the part that makes pool wiring
+different in kind from runner wiring, not merely larger. `collision_seed.rs` only
+ever registers; per-runner, with a list that dies with the test, that is harmless.
+Pool-wide the roster is process-lifetime and shared, so a task that never
+deregisters is not inert: the oracle keeps `merge-tree`-ing its dead branch
+against every live one on every poll. Poll cost then grows with tasks *ever* run
+rather than tasks running, and agents are warned about collisions with work that
+already merged -- the oracle degrades into exactly the noise floor KT-2 named,
+by a different route.
+
+Deregistration goes at the pool's single terminal choke point. `run_loop.rs` was
+at 499 lines against the 500-line gate, so the post-`run_one` terminal block moved
+to a new `pool/terminal.rs` first -- the same "split purely to stay under the CI
+gate" idiom `run_loop_builder.rs` and `collision_seed.rs` already document.
+Every path a task can leave `run_one` by passes through it, which is what makes it
+the right place rather than a convenient one.
+
+Kill-tested: removing the deregistration call makes
+`retiring_a_task_drops_it_from_the_repo_peer_roster` fail.
+
+### Verified, not assumed
+
+`WorktreeManager::add_detached` creates worktrees **detached**, and
+`collision_seed.rs::current_branch` deliberately opts out on a detached `HEAD`.
+That combination would have silently disabled the oracle for every task under
+`isolation = "worktree"` -- the exact mode the oracle exists to serve. It does not,
+because `run_loop.rs:239` runs `checkout_new_branch` before the Planning phase at
+`:250`, so `HEAD` is on a named branch by the time the oracle seeds. Checked
+against the code rather than reasoned about, because the failure would have been
+silent.
+
+### Explicitly not done
+
+- **The dashboard indicator.** A stretch goal the original brief did not require.
+  Alerts surface as log lines today; a real indicator needs a new `AgentEvent`
+  variant plus web types and Svelte.
+- **A live multi-agent KT-2 re-run.** Still needs real concurrent `lopi run`/
+  `lopi sail` agents. The standing sandbox constraint is unchanged.
+- **Detection semantics.** Textual-only, detection-only, never blocks -- all
+  settled in `Collision-Oracle-Build` and untouched here.
+- **The other two unreachable tiers.** The direct-Anthropic-API path (~2,000 LOC
+  behind `with_api()`, test-only call site, shadowed by ~622 LOC of CLI fallbacks
+  that exist only to cover for it) and `lopi-remote` (unreachable since S10) are a
+  separate wire-or-delete decision with a real one-way door in it. Named here so
+  the next session inherits the finding, not deferred silently.
+
+## Telegram-Gateway-Non-Goal — `claude/telegram-bot-overhaul-8iJpe` closed, the gateway question is settled
+
+Sprint P4 ("close the loop"), Phase 3 branch triage. `claude/telegram-bot-overhaul-8iJpe`
+(71 days stale, 0 commits ahead of `main` — its content already reached `main` via a
+different path than any of its own four closed PRs' merge buttons) is closed here with
+a decision recorded, not just deleted as redundant.
+
+**The design question it answers: no.** A subscription-driven, always-on Telegram bot
+gateway is not lopi's job. This repo's own non-goals (restated explicitly by Sprint
+P4's brief, not reopened by this entry) already exclude `RemoteGateway`, any messaging
+transport, and specifically Telegram — a standing decision, not a new one made here.
+Whatever remote-control surface lopi exposes stays request/response (web dashboard,
+MCP, CLI), not a persistent bot process holding its own connection and
+polling/webhooking for inbound messages. Recording this now, against the actual
+branch that raised it, so the question is not silently rediscovered and re-litigated
+by a future session that finds an old Telegram branch in the remote list and assumes
+neglect rather than a decision.
+
+No code from this branch is adopted. The branch itself is left in place (Sprint P4's
+own non-goal: no branch is deleted in Phase 3), safe to delete by whoever next does
+branch cleanup — its content already lives on `main`, and its design direction is
+closed.
+
+## PR-196-Gate-Response -- one-way-door ack, threat model, and a confirmed cargo-deny false positive
+
+`konjo-gates` (`GK`, kiban profile) ran against this combined sprint's real diff
+(`d2402af2c7dc`, 23 changed files vs. `origin/main`) and found three things. Two are
+real and acknowledged properly, not rubber-stamped; the third is a confirmed tooling
+false positive, documented rather than silently worked around.
+
+### One-way door: acknowledged
+
+`gate_one_way_door` fired on `path:release-version` — this sprint's two real `VERSION`
+bumps (on this branch, at the time: `0.42.0` → `0.43.0` → `0.44.0`, `Collision-Oracle-Build`
+and `RepoProfile-EntryPoint-Parity`; renumbered to `0.44.0`/`0.45.0` on Sprint P4's
+merge once `claude/sprint-p3a-planner-wiring` kept `0.43.0` — see
+`Collision-Oracle-Build`'s version-numbering note below). Both are real, already-shipped
+sprint entries with their own `LEDGER.md`/`CHANGELOG.md` records, not placeholder bumps.
+Ran `konjo-oneway confirm` for real (not skipped): `Konjo-Acknowledged-Oneway: d2402af2c7dc`.
+
+### Threat model: recorded, one boundary, real reasoning
+
+`gate_threat_model` fired on `network_ingress` (path heuristic:
+`crates/lopi-ui/src/web/handlers.rs` matches kiban's `handler` path pattern). The
+actual change there (Part C, `RepoProfile-EntryPoint-Parity`) adds
+`RepoProfile::load_from_repo(&effective_repo).apply(&mut task)` to `create_task`.
+
+**Mitigation:** reads only `.lopi.toml` from a repo path that was already fully
+trusted before this change — the same `task.repo_path` (request-supplied or the
+pool's own bound repo) is the directory `AgentPool`'s run loop then checks out,
+builds, and executes an agent inside. Reading one additional config file from it is
+strictly narrower than the write/execute access that path already receives.
+`load_from_repo` no-ops (`RepoProfile::default()`) on a missing or unparseable file
+— a malformed `.lopi.toml` cannot crash the request.
+
+**Abuse case:** an attacker who can already submit a task with an arbitrary `repo`
+path (a pre-existing capability of this endpoint, unchanged by this PR) could point
+`.lopi.toml` to set `allowed_dirs`/`forbidden_dirs`/`constraints`/`max_retries` on
+their own submitted task — but `allowed_dirs`/`forbidden_dirs` are advisory-only
+everywhere in this codebase (confirmed live, this file's own PF-1 entry-point audit)
+and `constraints`/`max_retries` only affect the attacker's own task's own
+planning/retry behavior, not another task's isolation. No cross-task or
+privilege-escalation path found.
+
+Recorded via `konjo-threat record`: `Konjo-Threat-Model: d2402af2c7dc`.
+
+**Fingerprint update — the change id is the changed-file set, so it moves as commits
+land.** `oneway.fingerprint`/`threat`'s change id is `sha256(sorted(changed_files))`,
+not a commit hash — every commit that adds a genuinely new file to the diff (not a
+re-edit of an already-changed file) recomputes it. The `docs/security/
+TRIFECTA_PATHS.md` doc-staleness fix (below) touched a file not previously in this
+PR's diff, so the id moved from `d2402af2c7dc` to **`317c903d2754`** (25 files now,
+was 23). Re-ran both tools for real against the updated, now-stable file list (no
+further new files expected) rather than leaving the stale trailers in place:
+
+- `Konjo-Acknowledged-Oneway: 317c903d2754`
+- `Konjo-Threat-Model: 317c903d2754`
+
+Same reasoning as above in both cases — nothing about the underlying VERSION-bump or
+`network_ingress` analysis changed, only the id the file-set hash produces.
+
+### `repo:cargo-deny`: confirmed false positive, not fixed, documented
+
+`GK` also reported 26 "net-new" `repo:cargo-deny` findings, all rendered as
+`cargo tree`-style duplicate-version dump lines mentioning `lopi-oracle`. Verified,
+not assumed:
+
+```
+git -C /workspace/lopi worktree add /tmp/lopi_main_check origin/main
+cd /tmp/lopi_main_check && cargo deny check bans 2>&1 | grep -c 'warning\[duplicate\]'   # 33
+cd /workspace/lopi          && cargo deny check bans 2>&1 | grep -c 'warning\[duplicate\]'   # 33
+```
+
+**Identical count, 33 = 33.** No new duplicate-version pair exists on this branch
+that didn't already exist on `main` (pre-existing splits: `base64` 0.21/0.22,
+`bitflags` 1/2, etc. — none touch `lopi-oracle`, all unrelated to this sprint).
+`lopi-oracle` itself resolves to exactly one version everywhere.
+
+The real cause: kiban's `lib/newonly.py` diffs scanner output **line-by-line**
+between a HEAD scan and a base-ref scan, not finding-by-finding. `cargo deny check
+bans`'s duplicate report is a recursive dependency tree per duplicated crate;
+`lopi-agent` (now depending on the new `lopi-oracle` crate) appears throughout
+nearly every one of those 33 pre-existing trees, since it's central to this
+workspace's dependency graph. Adding one new edge (`lopi-agent -> lopi-oracle`)
+injects a `lopi-oracle vN` tree line into most of those already-existing WARN
+blocks. `newonly`'s line-diff has no way to recognize "same finding, one new
+cosmetic line inside it" — every such line reads as net-new, even though the
+finding it belongs to (that specific crate pair's duplicate-version WARN) already
+existed on `main`, unchanged. The same structural false-positive class this file's
+own `Review-Pipeline-Phase-2b` entry already documented for `cargo mutants`' timing
+output (`newonly.net_new`'s line-diff can't distinguish "genuinely new" from
+"cosmetically shifted") — this is that same gap hitting a different tool's output
+shape.
+
+**Not fixed here.** The fix belongs in kiban's `lib/newonly.py` (a finding-block-aware
+diff, not a raw line diff, for tree-structured tool output) or in `cargo-deny`'s own
+duplicate-report format — kiban is read-only reference in this session, out of scope
+to patch. No change to this sprint's own diff would remove the false positive: it is
+a property of the gate's comparison mechanism, not of any duplicate-version problem
+this sprint introduced. Flagged to the repo owner via the PR thread rather than
+worked around silently.
+
+## RepoProfile-EntryPoint-Parity -- web + MCP task submission now apply `.lopi.toml`
+
+Part C of the same combined session as `Collision-Oracle-Build` (above). Confirmed
+live against current source, matching the PF-1 entry-point audit table already in
+this file (`Review-Pipeline-Phase-1` entry): `AgentPool::submit()` -- the one choke
+point every entry point funnels through -- does not itself apply `RepoProfile`; each
+*caller* is responsible for calling it first. CLI paths do (`task_build.rs`'s shared
+builder, `scheduler.rs`, REPL `actions.rs`, `runner/seed.rs`), but
+`crates/lopi-ui/src/web/handlers.rs::create_task` (`POST /api/tasks`) and
+`src/mcp_commands/mod.rs::submit_task` (`lopi_submit_task`) both built a `Task` from
+raw request args and called `pool.submit()` directly -- no
+`RepoProfile::load_from_repo(...).apply(&mut task)` in either. A task submitted via
+the web dashboard or an MCP client got no repo-configured directory scope, test
+command, default constraints, or max-retries override; a CLI-submitted task did.
+
+### Fix: one line at each site, matching `task_build.rs`'s exact pattern
+
+Both sites now call `RepoProfile::load_from_repo(&effective_repo).apply(&mut task)`
+as the last step before `pool.submit()` -- after every other request-level field
+assignment, same win-order as `task_build.rs` (profile applied last, so a
+non-empty profile field overwrites a request-level default the same way it already
+overwrites a CLI spec's default). `effective_repo` is `task.repo_path.clone()` if the
+request specified one, else the pool's own bound repo
+(`AppState.repo_path`/`state.repo_path`) -- the same fallback `AgentPool`'s run loop
+itself already uses to resolve which repo a task actually executes against
+(`crates/lopi-orchestrator/src/pool/run_loop.rs`: `task.repo_path.clone().unwrap_or_else(|| self.repo_path.clone())`).
+This matters: without this fallback, a request that omits `repo` (the common case for
+both the dashboard and an MCP client bound to one repo) would apply a profile from
+`Task::new`'s empty default repo context, not the repo the task will actually run in.
+
+### Explicit non-goal, unchanged
+
+Does not make `allowed_dirs`/`forbidden_dirs` a hard enforcement boundary --
+confirmed still advisory-only everywhere in this codebase (planning-prompt text +
+post-hoc diff-scope detection, `apply_cli_caps`). That is a separate, larger design
+decision flagged but not decided in Sprint P1's own handoff, and stays out of scope
+for a parity fix, per this sprint's own instruction.
+
+### Tests
+
+Both regressions follow the same real shape: submit through the actual HTTP/MCP
+entry point against an `AgentPool` with no dispatch loop running (submitted tasks
+sit in `queue`, never picked up by a runner), then `queue.pop().await` the exact
+submitted `Task` and assert on `allowed_dirs` -- the response body/store round-trip
+exposes neither `allowed_dirs` nor `constraints` (confirmed live: `tasks` table only
+persists `id/goal/status/created_at/source/client_ref/parent_task/chain_depth`), so
+this is the only real verification path, not a workaround.
+
+- `crates/lopi-ui/src/web/task_repo_profile_tests.rs` (2 tests): a bound-repo
+  `.lopi.toml`'s `allowed_dirs` applies when the request omits `repo`; an explicit
+  request-level `repo`'s profile wins over the bound default.
+- `src/mcp_commands/repo_profile_tests.rs` (3 tests): the same two cases for
+  `lopi_submit_task`, plus a no-`.lopi.toml` case confirming `Task::new`'s own
+  default (`["src/", "tests/"]`, not empty -- verified live, not assumed) survives
+  untouched when `RepoProfile::apply` is a no-op.
+
+## Collision-Oracle-Build -- `lopi-oracle` crate scaffold, textual-only, wired advisory-only
+
+Sprint scope per `NEXT_SESSION_PROMPT.md`'s "Next Session, after Oracle-Preflight"
+entry and `KILL_TEST_REGISTER.md`'s CONDITIONAL GO. Built this sprint as one of five
+independent parts in a combined session; Part A (P3a closeout, `claude/sprint-p3a-planner-wiring`)
+was explicitly out of scope for this session -- owned by a separate concurrent
+session -- so this branch bases off `main` at `0.42.0` directly, not off a
+hypothetical post-Part-A `0.43.0`. **Version-numbering note, and how it actually
+resolved:** the combined sprint brief assumed A merges first and numbered B/C as
+`0.44.0`/`0.45.0`; since A stayed on its own branch at authoring time, this branch
+originally bumped `VERSION` to `0.43.0` instead, predicting a real merge conflict
+whichever of A's or this branch's PR landed second. That predicted conflict is
+exactly what happened: Sprint P4 ("close the loop") merged Branch A first, which
+kept `0.43.0` (already shipped by the time this branch's PR merged), so this
+branch's own two entries were renumbered to `0.44.0` (this entry) and `0.45.0`
+(`RepoProfile-EntryPoint-Parity`) as part of that merge -- `CHANGELOG.md` and
+`VERSION` reflect the final, renumbered values, not this branch's original guess.
+
+### What shipped
+
+`crates/lopi-oracle` (`crates/lopi-oracle/src/{lib,signature,snapshot,tracker}.rs`,
+15 tests, all real git operations against real temp repos, no mocks):
+
+- **`snapshot_pair`** -- the exact `git merge-tree --write-tree <a> <b>` invocation
+  KT-3 timed (p95 135ms on `lopi` itself). Never mutates the repo (`--write-tree`
+  writes a loose tree object, touches no ref, no working tree). Parses conflicted
+  files from the real `CONFLICT (...): ... in <path>` message lines -- verified
+  against real git 2.43.0 output captured live during this sprint, not assumed from
+  docs.
+- **`ConflictSignature`** -- conflicted file set (order-independent) + merge-base
+  commit. Two polls of the same still-open collision produce the same signature by
+  construction; either side advancing changes the merge-base, which is correctly
+  treated as new information.
+- **`CollisionOracle::poll`** -- the hard precondition from `KILL_TEST_REGISTER.md`:
+  alerts once per signature, forgets a signature once it stops appearing in a poll
+  (so a resolved-then-recurring collision alerts again). Direct fix for KT-2's
+  120/hour naive noise floor.
+- **Textual-only.** No tree-sitter, no semantic layer -- KT-1's classification split
+  came back with zero real evidence either way on semantic necessity, so there is no
+  basis to front-load it. Unchanged decision, restated per the sprint's own
+  instruction not to silently drop it.
+- **Detection only, advisory-only, no hard deny.** `Alert::advisory_text` renders a
+  labeled heads-up string; there is no conflict-resolution logic and no
+  `permissionDecision: deny`-equivalent path anywhere in this crate. This follows the
+  precedent already established in this codebase for `allowed_dirs`/`forbidden_dirs`
+  (detect-after-the-fact, never block -- `LEDGER.md`'s PF-1 entry-point audit,
+  `crates/lopi-agent/src/claude_support.rs`'s `apply_cli_caps`) and for the existing
+  `lopi-agent` planning-seed injection pattern (`reflection_constraint`,
+  `crates/lopi-agent/src/runner/seed.rs`). **Correction to the sprint brief:** the
+  brief cited this as "the one-way-door decision already logged" as if a prior
+  `LEDGER.md` entry existed under that name -- a targeted search (`additionalContext`,
+  `permissionDecision`, `one-way-door`) found no such entry. Treating it as new
+  ground and logging it here for the first time, rather than citing a source that
+  doesn't exist, per this org's evidence-first rule.
+
+### Wiring: real, bounded, not the full orchestrator integration
+
+Wired into `lopi-agent`'s existing planning-seed path
+(`crates/lopi-agent/src/runner/collision_seed.rs`, new file, split out of `seed.rs`
+to stay under the 500-line file-size gate) -- `AgentRunner::seed_collision_alerts`,
+called from `gather_seed` alongside the existing pattern/reflection/skill seeding.
+`AgentRunner` gained three new optional fields (`collision_oracle`,
+`collision_peers`, `collision_self_ref`), all `None` by default -- unwired is
+behavior-identical to before this sprint. Opt-in via a new builder method
+`with_collision_oracle(oracle, peers)`, mirroring the existing
+`with_cross_run_reflection` pattern. 3 tests in `collision_seed.rs` cover: an unwired
+runner seeds nothing; two sibling runners sharing an oracle + peer list on colliding
+branches produce exactly one advisory (and the second poll produces none, the direct
+KT-2 regression check); two runners on a non-colliding branch pair seed nothing.
+
+**Explicitly NOT done this sprint, and why:** the pool (`AgentPool`,
+`crates/lopi-orchestrator/src/pool/`) does not automatically construct a shared
+oracle or register every real running task's worktree into a shared peer list. That
+would touch `pool/run_loop.rs` and `pool/registry.rs` -- the same area Part C's
+`RepoProfile` parity fix touches in this same combined sprint -- and building full
+live orchestrator wiring is more than a "scaffold" sprint should absorb in one
+sitting. The crate and its `AgentRunner` integration are real and independently
+tested; only the last mile (the pool auto-registering real concurrent tasks) is
+deferred. **Known fairness gap, disclosed rather than hidden:** because
+`CollisionOracle::poll` is a single shared mutable-state check, whichever of two
+colliding runners polls first is the one that receives the `Alert` for a fresh
+signature -- the other side's next poll on the same still-open signature returns
+nothing (already deduped). Only one side of a pair is guaranteed to see the advisory
+per onset, not both. The sprint's own bar ("advisory context injected into the
+colliding agent's next turn is the minimum bar") is satisfied by this, but a future
+sprint wiring the pool for real should decide explicitly whether both sides need a
+copy of the alert or one is sufficient by design.
+
+### KT-2 re-run: real (uncompressed) cadence confirmed; genuine live multi-agent session still not available
+
+The pre-flight's KT-2 used a disclosed *compressed* proxy (~5.6 real minutes standing
+in for a sustained session). This sprint re-ran the identical contention pattern (two
+worktrees editing `CHANGELOG.md`'s same insertion point, a third untouched) at real,
+uncompressed 30-second cadence against a real throwaway repo: 12 cycles, 2026-08-11
+03:37:44Z through 03:43:15Z (5m31s wall clock, not simulated). Raw `git merge-tree`
+result: **exit 1 (conflict) on all 12 polls, identical merge-base and identical file
+set (`CHANGELOG.md`) every time** -- 12 raw polls, 1 distinct collision signature.
+Confirms the mechanism finding holds at real cadence, not just compressed: a
+poll-and-count metric would report 120/hour off this single onset, while the
+signature-based count correctly reports 1. Cross-validated against
+`collision_seed.rs`'s `two_sibling_runners_on_colliding_branches_produce_one_advisory`
+test, which encodes the identical dedup logic in the actual `AgentRunner` integration
+path, not just the raw-git mechanism.
+
+**Still not done, and still the same honest limitation the pre-flight disclosed:** no
+genuine live multi-agent working session (real concurrent `lopi run`/`lopi sail`
+agents generating real write traffic) was available in this session either -- this
+re-run upgrades the proxy from *compressed* to *real-cadence*, it does not remove the
+proxy. `NEXT_SESSION_PROMPT.md` carries this forward as still-open.
+
+### Dashboard surfacing: not attempted, stretch goal per the sprint brief
+
+The sprint brief explicitly scoped a dashboard indicator as "a stretch goal, not
+required this sprint." Not attempted -- the `AgentRunner`-level advisory injection
+above is the sprint's real, tested minimum-bar surface.
+
+## Gate-Tiering-1 — BLOCKING vs ADVISORY tiers, review demoted, break-glass added
+
+**Addendum, live CI on PR #197**: `konjo-gates`' `one_way_door` gate flagged
+`diff:public-api-removal` (change id `607fa5c46ecb`) on this PR — its `_REMOVED_DEF`
+heuristic matches any diff line starting `-def `/`-class `, and `dry_check.py`'s
+`_changed_files(root, extensions)` signature gained a new `base_ref` parameter with a
+default value (`-def _changed_files(root, extensions)` / `+def _changed_files(root,
+extensions, base_ref="origin/main")`), which the line-level heuristic cannot tell apart
+from a real breaking removal. Backward-compatible in fact (every existing call site
+still resolves; the new parameter is optional) — acknowledged per the framework's own
+mechanism rather than silently ignored, since `one_way_door` is a genuine gate (not the
+cargo-deny newonly-diffing artifact this same run also hit): commit trailer
+`Konjo-Acknowledged-Oneway: 607fa5c46ecb`.
+
+Sprint "Gate Tiering and the Adoption Ramp", Part A. `konjo-gate.yml`'s aggregator
+(`konjo-gate`, the `"Konjo Gate — All Walls Clear"` required check) required all eight
+upstream jobs — roughly twenty distinct checks — to return `success`, with no adoption
+ramp, no diff-scoping on most repo-native checks, and no break-glass. Quality tooling
+built to catch defects was blocking all merges, including merges that fix the tooling
+itself. This sprint gives the framework the ramp `soft_gate_lint.py`, `konjo-gates-py`'s
+`advisory:` field, and `bin/konjo-newonly` already supported but that was never applied
+past `gate_polarity`/`claude_contract`. Decision logged: `konjo-decision decide` id
+`8b7592098d16`, scope `repo:lopi`.
+
+### A0 — the failure set found before any demotion
+
+`gh` was unavailable in this session's environment; diagnosis used the equivalent GitHub
+MCP tools (`pull_request_read` `get_check_runs` / `get_job_logs`) against the three most
+recently active open PRs against `main` at the time of authoring (#196, #195, #185,
+2026-07-29 through 2026-08-11). All three failed the aggregator; the per-job pattern was
+identical across all three runs:
+
+| Job | Step | Failure reason | Category |
+|---|---|---|---|
+| `G1b · npm audit (web/)` | `npm audit --audit-level=high` | 3 pre-existing transitive-dep advisories (`@sveltejs/kit` ReDoS, `dompurify` XSS, `nanoid` infinite-loop), none introduced by the PRs' own diffs (none touched `web/`) | (b) pre-existing/legacy |
+| `GK · konjo-gates (kiban profile)` | `repo:cargo-deny` | kiban's `newonly.net_new` line-diff produced 26 "net-new" lines that are garbled `cargo deny`-tree fragments (`lopi-oracle v0.N` repeated dozens of times) — a dispatcher/diffing artifact on the dependency tree's own version-placeholder text, not a real license/advisory/ban violation | (c) flaky/tooling defect, not a real finding |
+
+No category (a) real defect was found in any of the three diffs examined — the
+aggregator was blocking merges on legacy findings and a tooling bug, not on genuine
+breakage introduced by those PRs. This confirms the sprint's own framing: the fix is
+tiering, not detector work (out of scope per the brief's non-goals).
+
+This branch (`claude/gate-tiering-adoption-ramp-92nqz6`) itself carries no product-code
+diff — Part A's changes are entirely to `.github/workflows/konjo-gate.yml`,
+`.konjo/scripts/`, `.konjo/profile.yml`, `LEDGER.md`, and `CLAUDE.md` — so there was no
+category (a) defect of its own to fix in this PR.
+
+### Per-job tier assignment
+
+**BLOCKING** (deterministic, fast, catches real breakage):
+
+| Job / step | Reason |
+|---|---|
+| `static` (fmt, clippy w/ deny flags, cargo audit, cargo deny, dead-code, scope-assert, soft-gate-lint) | Deterministic Rust-toolchain checks; the A0 diagnosis found zero false positives from this job across all three sampled PRs |
+| `coverage` → `Eval-executor regression suite` | Already non-negotiable pre-sprint: a gate that could pass when it errors is the one thing an evaluator can't do |
+| `coverage` → `Run tests with coverage` | "The tests pass" is not negotiable — decoupled from the 80%-floor flag (`--fail-under-lines 80` removed from this step) so a low coverage percentage can no longer masquerade as a compile/test failure and vice versa |
+
+**ADVISORY** (reports, annotates, never blocks):
+
+| Job / step | Reason |
+|---|---|
+| `doc-staleness` | Not touched by A0's sample failures; demoted per the brief's explicit tier list — kiban's doc-staleness scanner has no measured false-positive rate on lopi yet |
+| `web-audit` | A0 found this failing on pre-existing transitive-dep advisories unrelated to the PR's own diff on 2 of 3 sampled PRs |
+| `coverage` → `Coverage gate (80% floor, 95% target)` | Real measured coverage is 68.34%, below floor by a real but non-catastrophic margin; already `continue-on-error: true` pre-sprint, comment re-verified and re-dated |
+| `coverage` → `Coverage floor gate (never regress below the locked value)` | Was the one HARD sub-step inside `coverage` pre-sprint; demoted alongside the 80%-floor gate it ratchets, since a floor is only meaningful once the thing it floors is enforced again — promotes back to BLOCKING alongside it |
+| `complexity` (cognitive complexity, file-size-500, DRY, function length, indexing floor, rustdoc) | No BLOCKING sub-step here had a measured false-positive rate before this sprint; several (function-length, indexing-floor, rustdoc) were already ratchets/soft, not fresh demotions |
+| `mutation` | PR-only, `cargo mutants --in-diff` survival rate has no measured false-positive rate on lopi yet |
+| `review` | A single nondeterministic LLM verdict (Claude Opus) with no measured false-positive rate must not hold unappealable authority over merge — the verdict stays fully visible in the posted PR comment and `REVIEW_EXIT` |
+| `konjo-gates` | A0 found this failing on a kiban tooling defect (cargo-deny newonly diffing bug) on all three sampled PRs, not a real finding |
+
+### Break-glass
+
+A `gate:override` PR label plus a mandatory `Konjo-Override: <reason>` trailer in the PR
+body bypasses a BLOCKING failure — `.konjo/scripts/gate_verdict.sh` (extracted out of the
+aggregator step so it's testable outside Actions, see
+`test_gate_tiering_killtest.sh`). The label alone is not enough: the trailer requirement
+is checked before anything else and fails the aggregator outright if missing, whether or
+not a BLOCKING job actually failed. `OVERRIDDEN`, the label, and the actor are all printed;
+the step also emits a `::warning::` reminding the actor to record a `LEDGER.md` entry for
+the specific override used.
+
+### Promotion criteria back to BLOCKING
+
+Defined in Part B (kiban): a gate may be declared `tier: blocking` only if it has **both**
+a passing kill-test (`gates[].rejects_test`) **and** a recorded false-positive rate below
+a stated ceiling, measured over at least N runs (`lib/gate_stats.py`'s
+`BLOCKING_READY`/`ADVISORY_ONLY`/`INSUFFICIENT_DATA` classification, fed by
+`ledger/pr_telemetry.py`). Until a gate meets both, it stays ADVISORY. `konjo-gates`'
+meta-gate fails a profile that declares `blocking` without a passing `rejects_test`, so
+the criteria are mechanically enforced, not just documented.
+
+### What was NOT done
+
+No gate, script, kill-test, or job was deleted — every check listed above still runs and
+still reports; only its authority to block merge changed. No detector threshold was
+tuned. `.konjo/kiban.ref` was not bumped (still `v1.8.0`) — Part A is self-contained in
+lopi. Branch protection was not touched. The aggregator's required check name
+(`"Konjo Gate — All Walls Clear"`) is byte-identical to before this sprint.
+
+## Review-Pipeline-Phase-3a -- Planner/Executor wired into `AgentRunner::run()`, KT-3A confirmed live
+
+Sprint P3a-Closeout, verifying and documenting `claude/sprint-p3a-planner-wiring`
+(8 commits, `e5ca9c2`). This is a closeout, not a build: the wiring itself -- Path A,
+below -- shipped on that branch already; this entry is the citation four call sites in
+that branch's own diff already point at (`plan_readonly.rs`'s module doc and its
+`plan_via_readonly_planner` doc comment, `run_loop.rs`'s resume call site, `schema.sql`'s
+`plan_artifact` column comment), and none of them resolved to anything before this
+entry existed.
+
+### The architectural decision: Path A, not a gated optional mode
+
+Sprint P1's own handoff (`NEXT_SESSION_PROMPT.md`'s "after Sprint P1" entry, item 1)
+left this fork explicitly open: does the readonly Planner replace the existing
+`stream_plan`/`plan_via_api` step outright, or run as an optional mode gated by a new
+`Task` field? This sprint's branch chose **Path A -- outright replacement.**
+`run_loop.rs`'s plan-phase call site (`AgentRunner::run()`'s per-attempt loop) now
+calls `self.plan_via_readonly_planner(&model, &attempt_session_id)` in the branch that
+used to call `self.stream_plan(...)`, unconditionally whenever `self.has_direct_api()`
+is false -- which per Sprint P1's own PF-1 audit (`Review-Pipeline-Phase-1` entry above)
+is every production path today (`with_api` is never called outside a test). No new
+`Task` field gates this; a normal task run gets the readonly-Planner-then-resume shape
+by default, not as an opt-in. `plan_via_api`'s direct-API branch (Sprint G, also
+unreachable in production per the same audit) is untouched and still exists as the
+first-choice path with a CLI fallback -- Path A only replaced the CLI plan step, not the
+direct-API one.
+
+### KT-3A, confirmed live on this exact branch, not assumed from the code comments
+
+`plan_readonly.rs`'s and `planner_executor.rs`'s doc comments both assert that a
+resumed session honors a freshly-passed, widened `--allowedTools`/`--disallowedTools`
+pair even though `--permission-mode` alone is not re-applied by the CLI on `--resume`.
+This pre-flight re-ran that claim live against this branch's actual code, not the prior
+Sprint P1-era version, using a shim on `PATH` that logs every `claude` subprocess argv
+before execing the real binary, driving a real `lopi run` against a throwaway repo
+(`fn add(a: i32, b: i32) -> i32 { a + b }` in a bare `math.rs`, goal: add `subtract`).
+
+**Captured argv, plan phase (attempt 3, the one whose session was pushed all the way
+through):** `--permission-mode dontAsk --session-id 361780c1-... --allowedTools Read
+Grep Glob WebFetch WebSearch` -- no write-capable tool in the list, so the Planner
+cannot write regardless of permission mode; this is `ToolProfile::Readonly`'s forced
+allow-list, structural not merely policy.
+
+**Captured argv, implement phase, same attempt:** `--permission-mode bypassPermissions
+--resume 361780c1-... --disallowedTools Workflow Task Agent` -- same session ID,
+different (mutating) permission mode, and no `--allowedTools` restriction at all (only
+the task's own three-item deny-list). This confirms `run_loop.rs`'s claim exactly:
+`claude` (built with the task's real permission posture) resumes the session
+`spawn_planner`'s internal `Command` established, and its own caps -- not the Planner's
+-- govern from that point.
+
+**The `bypassPermissions` leg of that exact call then failed in this sandbox** --
+`claude cli exited exit status: 1 with no output`. Root cause, confirmed by hand:
+`--dangerously-skip-permissions cannot be used with root/sudo privileges for security
+reasons`. This container runs the CLI as root; `bypassPermissions` is a true drop-in of
+`--dangerously-skip-permissions` including that refusal, already documented as
+confirmed behavior by an earlier sprint's KT3 (`permission_mode.rs`'s own doc comment
+on `PermissionMode::BypassPermissions`) -- an existing, sandbox-specific CLI safety
+check unrelated to this branch's session-resume wiring, and not something this
+closeout sprint should or does work around in production code.
+
+**To close the loop past that sandbox limitation, the same session was resumed a
+second time by hand** (raw CLI, no lopi code involved -- same evidentiary shape as
+Sprint P1's own PF-3), swapping only `--permission-mode` to `acceptEdits` and dropping
+the `--allowedTools` restriction: `claude -p "Add a subtract(...) function..." --resume
+361780c1-... --permission-mode acceptEdits`. Result: `terminal_reason: "completed"`,
+the `Edit` tool auto-approved, `Bash` correctly gated (`permission_denials` on three
+`Bash` calls -- `acceptEdits`'s documented shape, edits auto-approved, everything else
+needs an allow-list entry), and `math.rs` on disk gained exactly one line:
+`fn subtract(a: i32, b: i32) -> i32 { a - b }`, `add()` untouched. **The same session
+ID that was capped to `Read`/`Grep`/`Glob`/`WebFetch`/`WebSearch` under the Planner's
+own spawn went on, under nothing but a freshly-passed, more permissive resume call, to
+actually mutate the working tree.** KT-3A passed, live, on this branch. **PF-2 passed.**
+
+### The "absent, never synthesized" invariant
+
+`plan_via_readonly_planner` (`plan_readonly.rs`) has exactly one path that sets
+`self.last_plan_artifact = Some(plan)`, immediately after `persist_plan_artifact`, both
+gated behind `spawn_planner(...).await?` succeeding. Every failure mode -- CLI spawn
+failure, non-zero exit, timeout, or a response that fails schema validation -- returns
+`Err` before either line runs, confirmed by
+`plan_via_readonly_planner_leaves_last_plan_artifact_none_on_spawn_failure` (asserts
+`last_plan_artifact` stays `None` after a spawn against a nonexistent repo path). There
+is no placeholder-construction branch anywhere in this module. `schema.sql`'s
+`plan_artifact` column is nullable with no default and no backfill migration
+(confirmed: `git diff main HEAD -- crates/lopi-memory/src/schema.sql` shows only the
+new column, no `UPDATE` statement touching existing rows) -- so for kiban's Phase 4+
+router, `plan_artifact IS NULL` means *this attempt genuinely had no successful Planner
+call*, never "the column existed before this row was written." This is the invariant
+`schema.sql`'s own comment and this entry both assert as fact from here on.
+
+### Pre-flight results (PF-1 through PF-4)
+
+- **PF-1 (hard gate): full workspace build + test, clean.** `cargo build --workspace`
+  and `cargo test --workspace` both green across every crate -- 0 failures, 0 crates
+  with build errors. `lopi-agent` (430 tests) and `lopi-memory` (186 tests), the two
+  crates carrying this sprint's new code, both fully green.
+- **PF-2 (hard gate): KT-3A confirmed live, above.** Passed.
+- **PF-3: clippy and the file-size/function-length gates.** `cargo clippy --workspace
+  -- -D warnings` clean. `function_length_check.py --ceiling-file
+  .konjo/function-length-ceiling.txt` at count 74, at the locked ceiling, not over it
+  (`run_loop.rs`'s `run()` itself is 444 lines and already carries
+  `#[allow(clippy::too_many_lines)]`, pre-existing from Sprint F4, not new this
+  sprint). Every new/touched file (`plan_readonly.rs` 233, `planner_executor.rs` 349,
+  `lifecycle.rs` 348, `plan_artifact.rs` 96, `run_loop.rs` 500) under the 500-line hard
+  cap. One real, if minor, gate miss found and fixed: `cargo fmt --all -- --check`
+  (the CI `static` job's `rustfmt` step) failed on `plan_artifact.rs` -- the diff this
+  branch introduced was never run through `cargo fmt`. Fixed with `cargo fmt --all`
+  (touches only that one file); build/test/clippy re-verified green after.
+- **PF-4: no open PR existed for `claude/sprint-p3a-planner-wiring`** -- opened this
+  sprint, see `NEXT_SESSION_PROMPT.md` and the PR itself for the link.
+
+### What this unblocks
+
+kiban's `KONJO_REVIEW_PIPELINE_PLAN.md` §2.4 (the scope-escape rule) and §7.4 (the
+predicted-tier signal) were both gated on a real `PlanArtifact` producer existing in
+lopi's default agent loop, not a standalone module a future sprint would still need to
+wire in. That producer now exists and is confirmed live end-to-end (PF-2 above) -- the
+router itself (kiban's Phase 3 proper) is not built by this sprint and remains a
+separate, future sprint's scope.
+
+### Constrains future work
+
+- Do not re-litigate Path A vs. a gated optional mode -- that decision is made and
+  live in production (every non-direct-API task run gets the readonly-Planner-then-
+  resume shape). Reopening it means editing `run_loop.rs`'s plan-phase branch, not
+  adding a new `Task` field alongside it.
+- `plan_artifact IS NULL` is load-bearing for kiban's router: treat it as "genuinely
+  absent," never backfill or synthesize a placeholder for a NULL row, in this repo or
+  in any code that reads this column from kiban's side.
+- `bypassPermissions` cannot be live-tested end-to-end inside a root-privileged
+  sandbox (this container, confirmed again this sprint). A future live confirmation
+  needing the *task's actual default* permission mode (not `acceptEdits`'s substitute)
+  needs a non-root runner. See `KILL_TEST_REGISTER.md`'s `KT-3A` entry
+  (added Sprint P4) for the full substitute-leg writeup.
+
+## Review-Pipeline-Phase-2b -- PF-0b: per-crate baseline resumed, fixture crate verified end-to-end
+
+Sprint P2b (kiban's `KONJO_REVIEW_PIPELINE_PLAN.md` Phase 2 companion doc, finishing
+what P2 deferred). kiban is the primary repo for sections 1/3/4's code; lopi's scope
+here is PF-0b's baseline mechanism, the `evals/fixtures/rust/undertested/` fixture
+section 3's real verify run used, and the opt-in CI call site.
+
+### PF-0b: the full-workspace baseline is resumed as 18 scoped per-crate runs
+
+Section P2's `Review-Pipeline-Phase-2` entry (below) documented two consecutive
+deaths of the full-workspace `cargo mutants --workspace` run, diagnosed as this class
+of session environment suspending (not crashing) when idle between turns -- no amount
+of relaunching a full 20-hour run from inside one interactive session was going to
+survive that. **This sprint did not attempt a third same-shape relaunch.** Instead,
+per the brief's own PF-0b instruction (option 1, "likely correct and resumable"):
+`scripts/pf0b_mutation_baseline.sh` runs the 18 workspace crates individually,
+smallest-by-source-LOC first, each bounded by its own wall-clock budget (600s-1800s
+scaled to crate size, `--jobs 2` to leave headroom for this session's own concurrent
+foreground work), writing to `bench_results/lopi/<crate>_<timestamp>/` (gitignored,
+same as every prior baseline attempt in this ledger) plus one line per crate to
+`bench_results/lopi/pf0b_summary.jsonl`.
+
+**This session never went idle.** Unlike P2's attempt, which needed the session to
+sit and wait on the baseline with nothing else to do, this sprint had continuous
+foreground work (sections 1/3/4's implementation) running the entire time the
+baseline ran in the background -- exactly the condition the diagnosis in this
+ledger's `Review-Pipeline-Phase-2` entry predicted would avoid the failure mode.
+Confirmed: the baseline ran uninterrupted for the whole session.
+
+**Exactly which crates completed, recorded honestly (not the gitignored
+`pf0b_summary.jsonl`, which will not survive a container restart -- this table is the
+durable record): 13 of 18, plus a live demonstration of the exact failure mode this
+ledger already diagnosed.**
+
+| Crate | Mutants tested | Caught | Missed | Unviable | Timeout | Wall time |
+|---|---|---|---|---|---|---|
+| lopi-github | 6 | 4 | 0 | 1 | 0 | 63s |
+| lopi-remote | 10 | 8 | 1 | 0 | 0 | 212s |
+| lopi-tools | 20 | 10 | 5 | 4 | 0 | 57s |
+| lopi-ratelimit | 51 | 33 | 11 | 4 | 2 | 148s |
+| lopi-spec | 101 | 74 | 10 | 16 | 0 | 110s |
+| lopi-webhook | 54 | 28 | 18 | 3 | 4 | 512s |
+| lopi-demo | 114 | 27 | 73 | 13 | 0 | 287s |
+| lopi-skill | 115 | 92 | 4 | 18 | 0 | 216s |
+| lopi-context | 211 | 107 | 89 | 13 | 1 | 663s |
+| lopi-mcp | 75 | 43 | 8 | 18 | 5 | 152s |
+| lopi-toon | 325 | 217 | 91 | 4 | 12 | 315s |
+| lopi-git | 123 | 101 | 16 | 5 | 0 | 370s |
+| lopi-index | 388 | 219 | 106 | 62 | 0 | 849s |
+| **Total (13 crates)** | **1,593** | **963** | **432** | **161** | **24** | |
+
+A `status` of `error_rc_N` in the raw summary is **not a run failure** -- cargo-mutants
+exits non-zero whenever any mutant is missed on a crate, which is the normal,
+expected outcome for a crate with real gaps, not a broken run. A genuine failure
+would be `timeout_partial` (the crate's budget ran out mid-run) or a missing
+`outcomes.json` entirely; none of the 13 crates above hit either.
+
+**The remaining 5 crates (`lopi-orchestrator`, `lopi-memory`, `lopi-core`, `lopi-ui`,
+`lopi-agent`, the 5 largest) did not complete -- and the reason is a live
+confirmation of this ledger's own prior diagnosis, not a new mystery.** The claim two
+paragraphs up ("this session never went idle") held for the active-work portion of
+the sprint, but the session then genuinely went idle waiting on a user turn, and the
+background `cargo-mutants` process died mid-`lopi-orchestrator` (417 mutants found,
+baseline built, zero results recorded) -- no panic, no OOM, silent, exactly the
+signature the `Review-Pipeline-Phase-2` entry below already described for the
+original full-workspace attempts. **What did NOT happen this time: no data loss.**
+The 13 completed crates' summary rows and `bench_results/lopi/` output directories
+were intact on disk after the resume, confirming the second half of that diagnosis too
+(disk survives, live processes don't). Resumed with
+`scripts/pf0b_resume_remaining.sh` (the same mechanism, trimmed to the 5 remaining
+crates) once the session was active again; whether it completes before this entry is
+committed depends on real wall-clock this sprint may or may not have left. If the
+final crate list below or in the summary file shows fewer than 18 by the time this is
+read, the honest number is whatever actually finished, not 18.
+
+**This is real per-crate progress toward the full baseline, not the baseline itself.**
+KT-D (the 30-run paired Wilcoxon, kiban's Phase 2 kill-test) stays blocked until
+every one of the 18 crates has completed -- reported here as still blocked, not
+quietly treated as closer to done than it is.
+
+### The fixture crate section 3's real end-to-end run was verified against
+
+`evals/fixtures/rust/undertested/` (new workspace member, `lopi-fixture-undertested`):
+two functions (`tier_discount_pct`, `clamp_score`) with real branch/boundary logic and
+one deliberately weak test, chosen so `cargo mutants -p lopi-fixture-undertested`
+finds real, fast (10s), non-trivial mutants (15 found, 13 initially missed) rather
+than needing a slow full-crate scan to get any signal at all. Added to the root
+workspace `members` list (not a nested sub-workspace) so it participates in the same
+`-p <crate>` scoping every other crate in this repo already uses -- consistent with
+how `run_cargo_mutants_in_diff` needs `-p` to work reliably in this workspace at all
+(a real bug kiban's `LEDGER.md` documents finding while building the loop). Clean
+build, `cargo test -p lopi-fixture-undertested` passes, `cargo clippy` with this
+repo's full deny-list (`unwrap_used`, `expect_used`, `panic`, `todo`, `unimplemented`,
+`dbg_macro`, `print_stdout`) is clean.
+
+kiban's `LEDGER.md` `Review-Pipeline-Phase-2b` entry has the real run's numbers (3
+rounds, 8/5/0 mutants killed per round, 23,162 tokens, $0.84, 0 clean-tree failures) --
+not duplicated here to avoid two sources of truth for the same measurement.
+
+### CI call site: real, wired, not yet live-triggerable
+
+`.github/workflows/konjo-gate.yml` gains a `mutation-hunt` job
+(`workflow_dispatch`-only, `crate`/`round_cap`/`diff_base_ref` inputs), deliberately
+outside the required `konjo-gate` summary job's `needs:` and not on `pull_request`/
+`push` -- kiban's `KONJO_REVIEW_PIPELINE_PLAN.md` explicitly does not add a new
+default gate this sprint, and the loop spends real per-round model tokens. The job
+clones kiban at the pinned `v1.8.0` tag (`.konjo/kiban.ref`, matching this repo's own
+CLAUDE.md "Pinning" rule) -- **which predates this sprint's kiban work**, so
+`bin/kiban-mutation-hunt` does not exist there yet. The job is real (correct YAML,
+correct argv, uses the same `ANTHROPIC_API_KEY` secret convention the existing
+`review` job already established) but not live-runnable until kiban cuts a release
+containing sections 1/3/4 and this repo's three pins are bumped together -- recorded
+here as the honest state, not silently assumed working the moment this merges.
+
+## Oracle-Preflight — Part A go/no-go + Part B sampler start timestamp
+
+Full data and reasoning: `KILL_TEST_REGISTER.md`. Two one-way-door facts recorded here
+because both gate or inform future sprints and neither can be reconstructed later.
+
+**Part A — `lopi-oracle` go/no-go: CONDITIONAL GO, textual-only first.** KT-1
+(retrospective replay) passed 14/14 on real historical merge conflicts found via git's
+own `# Conflicts:` trailer and replayed with `git merge-tree` today. KT-3 (snapshot
+cost) passed at p95 135ms against the 300ms gate, measured on `lopi` itself (confirmed
+the largest konjoai repo in scope, not assumed). KT-2 (noise floor) failed as literally
+specified — 120 red-verdicts/hour naive rate, 24x the <5/hour gate — but the mechanism
+is a metric-definition gap, not a detection-quality problem: a poll-and-count metric
+re-alerts on the same still-open conflict every cycle, and only 1 distinct collision
+onset happened in the whole measured session. **Binding decision for the next sprint:**
+build textual-only (KT-1's classification split came back with zero real evidence either
+way on semantic necessity, so there is no basis to front-load tree-sitter), and the
+trigger must de-duplicate on conflict signature before it ever runs against real
+worktrees — this is the one hard precondition this pre-flight surfaced, not a
+nice-to-have. `NEXT_SESSION_PROMPT.md` scopes the crate-scaffolding sprint against this.
+
+**Part B — quota-history sampler started 2026-08-04T11:08:25Z.** `quota_samples`
+(`crates/lopi-memory/src/schema.sql`) is a new append-only table alongside the existing
+MAXX Phase 0 `quota_observations` upsert table — same `AgentEvent::ApiRetry` subscriber
+in `QuotaTracker::start` (`crates/lopi-orchestrator/src/quota_tracker.rs`) now writes
+both, no new subscriber, no polling loop added: `rate_limit_event` is push-based (arrives
+inline in the CLI's own NDJSON stream during an active turn, confirmed by
+`crates/lopi-agent/src/claude_events.rs`'s existing parser and `quota_kill_log.rs`'s
+doc comments), so there is no separate quota-status endpoint to poll on a timer.
+Confirmed live: `lopi sail --repo .` started as a real detached background process
+(pid, not a foreground one-shot), `/api/health` returned `ok`, and `quota_samples`
+exists in `/root/.lopi/lopi.db` with the correct schema, verified directly against the
+SQLite file. Empty at verification time — expected, since no real agent task ran in
+this session to emit a real `rate_limit_event`; the wiring is confirmed end-to-end by
+a unit test (`quota_tracker.rs`'s `every_observation_also_lands_a_history_sample`) that
+asserts three synthetic `ApiRetry` events land three separate rows, not one upserted row.
+**Caveat this session cannot avoid:** this specific `lopi sail` process will not survive
+this container's reclaim — the timestamp above marks when the code went live and started
+being *capable* of recording, not a guarantee this exact process ran for any particular
+duration. History starts accruing for real the next time `lopi sail` or `lopi run` runs
+in a persistent environment. No retroactive backfill is possible before this point, by
+design (Part B's own non-goal) — this is the fact worth not losing.
+
+**Also confirmed, not assumed, before writing any Part B code:** `resets_at` is not
+dropped. The Part B brief's own "confirm before writing new code" instruction flagged a
+prior audit's claim that the CLI sends `resetsAt` but the parser discards it — reading
+`crates/lopi-agent/src/claude_events.rs` (`parse_rate_limit`, `StreamEvent::RateLimit`,
+`structured_events`'s `AgentEvent::ApiRetry` arm) shows `resets_at` already threaded end
+to end, and `crates/lopi-memory/src/store/quota.rs`'s existing MAXX Phase 0 upsert
+already persists it. That prior audit finding is stale — recorded here so a future
+sprint doesn't re-open a "fix" for something already correct.
+
+## Review-Pipeline-Phase-2 -- PF-0: full-workspace mutation baseline launched
+
+Sprint P2 (kiban's `KONJO_REVIEW_PIPELINE_PLAN.md` Phase 2 companion doc), pre-flight
+PF-0. First launch attempt (`--timeout 60`, 2026-08-03T21:28:24Z) **failed outright**:
+`--timeout` bounds every cargo command cargo-mutants runs, including the one-time
+baseline (unmutated-tree) test pass used to calibrate per-mutant timing, and lopi's
+own full-workspace `cargo test` takes longer than 60s cold -- confirmed from
+`mutants.out/debug.log`: `*** result: Timeout` on the baseline pass at the 60s mark,
+followed by `ERROR ... cargo test failed in an unmutated tree, so no mutants were
+tested`. Zero mutants ran; the run exited before producing anything. Relaunched
+immediately, `--timeout` omitted entirely so cargo-mutants measures the real baseline
+test time itself and auto-scales the per-mutant timeout from it (its own documented
+behavior), 2026-08-03T21:35:25Z: `cargo mutants --workspace --jobs 4 -o
+bench_results/lopi/20260803T213525Z_full_baseline`.
+
+**5,315 mutants found** -- not the 1,500-2,000 the plan's own §0.1 estimated from the
+109-mutant partial sample. No completion estimate is recorded here yet (the corrected
+run just started); this entry will be updated with actual wall-clock once it finishes,
+or with elapsed-time-and-mutant-count-so-far if this session ends before it does. Per
+the brief's own instruction: a session that ends before completion must not report the
+partial as the baseline, and this run -- ~49x the prior 109-mutant sample -- makes that
+discipline count for more than usual; KT-D (Phase 2's own kill-test) is blocked on this
+run's completion, not on the P0 partial.
+
+**Confirmed, not just anticipated: the container does not survive to let this run
+finish.** Last live progress before a container restart: 544 of 5,315 tested (10.2%,
+258 caught / 236 missed / 41 unviable / 9 timeout) as of 2026-08-03T23:28Z. The restart
+wiped the entire `bench_results/` scratch tree (gitignored by design, per the earlier
+paragraph in this entry) along with the `cargo-mutants` binary itself -- nothing to
+recover, exactly the failure mode this entry's own `NEXT_SESSION_PROMPT.md` companion
+warned the next session about, except it happened inside this same sprint rather than
+between sessions. Reinstalled `cargo-mutants` and relaunched
+(`bench_results/lopi/20260804T013835Z_full_baseline`, 2026-08-04T01:38:35Z) rather than
+leave it dead, on the reasoning that partial further progress is strictly better than
+none even knowing a second restart is equally possible -- but this is now the third
+launch of the same measurement, and whoever next depends on a completed baseline should
+not assume this container-hosted attempt is the one that gets there. The 20-hour
+extrapolated completion time was already longer than one interactive session before
+this restart; it is now confirmed longer than this container's own uptime.
+
+**Second death, more precisely diagnosed -- this is a session-lifecycle mismatch, not bad
+luck, and relaunching a fourth time will not fix it.** The relaunch above ran for 330
+seconds (finished the unmutated-baseline build+test, auto-set a 697s per-mutant timeout,
+started dispatching parallel workers against the first mutants) and then stopped writing
+to any log file entirely -- no panic, no `Killed`, no OOM (`free -h` immediately after
+showed 14 GiB free), just silence. `stat` on the log files pins the last write at
+2026-08-04T01:44Z, close to where this session's own tool calls paused between one
+check-in turn and the next scheduled wake-up; the process was demonstrably still healthy
+while this session was actively working, and this is the second launch in a row to die
+within roughly an hour of starting, both times near a between-turn idle gap rather than
+at a random point mid-run. The likelier mechanism: this session's environment suspends
+(preserving disk, killing live processes) when idle between turns, rather than the
+earlier hypothesis of a full container wipe-and-restart -- consistent with the binary
+and the run's own directory/log files surviving this second death intact, unlike the
+first. **If that diagnosis is right, no number of relaunches from inside this same
+session will ever let the run finish** -- it will keep dying a few minutes after each
+check-in turn ends, regardless of how many times it's restarted. Not relaunching a
+fourth time on that basis; leaving the baseline stopped rather than repeating a failure
+this entry has now demonstrated twice. `NEXT_SESSION_PROMPT.md`'s existing
+recommendation (a runner that can actually stay running unattended -- dedicated CI,
+persistent infrastructure) is now the confirmed requirement, not a precaution.
+
+## Review-Pipeline-Phase-1 -- Planner/Executor split: tool profiles, plan artifact, handoff
+
+Sprint P1, the companion doc to kiban's `KONJO_REVIEW_PIPELINE_PLAN.md` Phase 1.
+Measured against kiban `da11801`, lopi `6b5743`, both 2026-08-03. No critic, router,
+or gate in this sprint (Phase 3 scope); scope is the readonly Planner, the plan
+artifact, and central tool-profile enforcement.
+
+### PF-1: entry-point inventory (the deliverable, not a warm-up)
+
+Every path that constructs a `Task` and reaches an agent spawn, traced file:line.
+
+**Core types confirmed:** `Task` (`crates/lopi-core/src/task.rs:164`, ~35 fields, no
+`allow_self_modify` field; that lives on `LopiConfig.lopi.allow_self_modify: bool`,
+`config.rs:66-67`, default false, a process/global knob not a per-task one).
+`RepoProfile` (`config.rs:356-403`) has no `permission_mode` field and no
+`allow_self_modify` field; `.apply()` only ever touches `allowed_dirs`,
+`forbidden_dirs`, `constraints`, `max_retries`. `PermissionMode::parse`
+(`permission_mode.rs:75-83`) confirmed rejecting `"plan"`/`"manual"`, unit-tested.
+`effective_permission_mode` (`permission_mode.rs:117-126`) downgrades to `DontAsk`
+unconditionally for `is_untrusted_source` (true only for `Webhook`/`Telegram`).
+
+**The one real choke point, before this sprint: `permission_mode`, and only
+`permission_mode`.** `ClaudeCode` (`crates/lopi-agent/src/claude.rs:71-120`) has no
+`allowed_dirs`/`forbidden_dirs`/`allow_self_modify` field at all. Its only production
+construction site is `crates/lopi-agent/src/runner/run_loop.rs:109-147`, inside
+`AgentRunner::run()`'s per-attempt loop (confirmed: zero other `ClaudeCode::new` call
+sites outside tests), which already applies
+`effective_permission_mode(&self.task.source, self.task.permission_mode)` at line
+131-137. `allowed_dirs`/`forbidden_dirs` were never a hard boundary anywhere: tracing
+`apply_cli_caps` (`claude_support.rs:191-260`) shows only `permission_mode`, `model`,
+`effort`, `max_turns`, `max_budget_usd`, `allowed_tools`/`disallowed_tools` cross into
+the spawned process's real arguments. `Task.allowed_dirs`/`forbidden_dirs` only ever
+reach the planning-prompt text (advisory) and a post-hoc diff-scope flag (detects
+after the fact, never blocks).
+
+| # | Entry point | Task construction | Via shared builder | RepoProfile applied | `permission_mode` set | `task.source` set | Reaches a live spawn today |
+|---|---|---|---|---|---|---|---|
+| 1 | `task_build.rs` shared builder | `crates/lopi-orchestrator/src/task_build.rs:14-42` | (is the builder) | Yes, if `repo` is `Some` | No (`Task::new` default) | `TaskSource::Api` always | Yes, via callers below |
+| 1a | Schedule manager | `schedule_manager.rs:68-77` -> `build_task_from_fields` | Yes | Yes (inherited) | No | `Api` (inherited) | Yes, `lopi sail` |
+| 1b | MAXX loop | `maxx_loop.rs:95-104` -> same builder | Yes | Yes (inherited) | No | `Api` (inherited) | Yes |
+| 1c | Chain schedule manager | `chain_schedule_manager.rs:255-262` -> same builder | Yes | Yes (inherited) | No | `Api` (inherited) | Yes |
+| 1d | Legacy TOML `[[schedules]]` boot scheduler | `scheduler.rs:37-67` | No, ad hoc duplicate | Yes, ad hoc | No | `Api` hardcoded | No, dead code (`boot_scheduler` has zero callers) |
+| 2 | MCP `lopi_submit_task` | `src/mcp_commands/mod.rs:294-341` | No, ad hoc | No, never calls `RepoProfile` | Yes, honored verbatim from caller input | Not set, stays `Cli` (max trust) | Yes, `lopi mcp-serve` |
+| 3 | Web/sail `POST /api/tasks` | `crates/lopi-ui/src/web/handlers.rs:331-389` | No, ad hoc | No | Yes, verbatim from request body | Not set, stays `Cli` (should be `Api`) | Yes, the real `lopi sail` process |
+| 3b | `LocalClient` (duplicate of #3) | `crates/lopi-ui/src/client/local.rs:86-113` | No | No | Yes | `Api` (correct, unlike #3) | No, dead code, zero callers |
+| 4 | TUI/REPL (bare `lopi`) | `src/repl/actions.rs:134-221` | No, ad hoc | Yes, normal path; bypass path skips it | Not set | Not set, stays `Cli` | Yes |
+| 4b | `lopi bypass <goal>` | `src/repl/actions.rs:224-261` | No, ad hoc | No (bypass by design) | Not set, explicitly cleared | `Cli` | Yes; the one path that DOES check `allow_self_modify` |
+| 4c | `lopi run <goal>` | `src/run_command.rs:170-260` | No, ad hoc | Yes | Not set | `SelfModify` on self-modify branch only | Yes; the other of exactly two `allow_self_modify` checks |
+| 5 | Telegram | (removed) | | | | | Removed entirely, Sprint S10 Phase 4; `TaskSource::Telegram` kept only for back-compat |
+| 6 | WhatsApp | `crates/lopi-remote/src/whatsapp.rs:112-151` | No, ad hoc | No | Downgraded centrally via `Webhook` source | `Webhook` | No, unreachable: zero callers of `whatsapp::serve`, not in `fly.toml`/`Dockerfile` |
+| 9 | GitHub webhook | `crates/lopi-webhook/src/github.rs`, `issue.rs` (3 sites) | No, none | No, none | Downgraded centrally via `Webhook` source | `Webhook`, correctly gated | No: `lopi serve-webhooks` is wired but not deployed, and even standalone never constructs an `AgentPool` to drain the queue |
+
+**Recipes** (`recipes/*/loop.toml`) are not a Task-construction site: worked examples
+of `.lopi/loop.toml` (`LoopConfig`), consumed at dispatch time, with no
+`permission_mode`/`allowed_dirs` field of their own.
+
+**Headline numbers:** 12 entry points inventoried; 6 are live spawn paths in the
+deployed binary today (`lopi run`, `lopi bypass`, TUI/REPL, MCP `mcp-serve`, web
+`sail`, and the schedule/MAXX/chain-schedule trio, which share one RepoProfile-applying
+builder). `permission_mode` enforcement was already real across all 6: every live path
+funnels through the one `run_loop.rs` choke point. `RepoProfile` is not a choke point:
+MCP and web skip it entirely, and it was never a hard boundary regardless of whether
+it ran. `allow_self_modify` is enforced at exactly 2 of the 12 (`lopi run`, `lopi
+bypass`), not checked anywhere in MCP, web, the TUI's normal path, the schedule/MAXX/
+chain trio, GitHub webhook, or WhatsApp; it is `pub(crate)` to the `src/` binary, so no
+library crate could call it even if it tried. `CostCircuitBreaker::check` and
+`AgentPool::submit_economically` are confirmed still fully unwired, zero call sites
+outside their own unit tests.
+
+**These last three findings are real, pre-existing security gaps, unrelated to this
+sprint's build.** They are recorded here as this sprint's audit deliverable, not fixed
+here: fixing `RepoProfile` consistency or `allow_self_modify`'s coverage would each be
+its own scoped sprint (the former needs the same kind of `ClaudeCode`-construction
+refactor already blocking the cost-circuit-breaker; the latter needs a decision on
+whether `allow_self_modify` becomes a library-crate-visible check at all). Constrains
+future work: a future sprint that wants to close either gap should start from this
+table, not re-discover it.
+
+### PF-2 (KT-1A): is central enforcement reachable this sprint? Yes, for `ToolProfile`.
+
+The plan's framing risked conflating two different mechanisms: `RepoProfile`
+(directory scope, confirmed above to be construction-site-dependent and never a hard
+boundary) and tool-call gating (`permission_mode` plus `allowed_tools`/
+`disallowed_tools`, confirmed above to be genuinely centralized at one `ClaudeCode`
+construction site). Since `ToolProfile` is a brand-new field, its default enforcement
+question is not "does the existing inconsistent mechanism now cover every entry
+point," it is "does every live-spawning path pass through the one place a new field
+can be read." It does: all 6 live entry points construct an `AgentRunner` and call
+`.run()` (via the pool or `AgentRunner::standalone`), and `run_loop.rs`'s per-attempt
+`ClaudeCode` construction is inside that one method, in the `lopi-agent` crate, not
+duplicated per entry point. `ToolProfile` is therefore centrally enforced by
+extending that exact site (`lopi_core::tool_profile::effective_permission_mode_for_
+profile`, called at `run_loop.rs`'s permission-mode line, plus a forced-allow-list
+override at its tool-permission line) with no need for the broader
+`ClaudeCode`-holds-cross-cutting-state refactor that still blocks the
+cost-circuit-breaker (that refactor is about giving `ClaudeCode` a persistent handle
+*across* spawns in a session; this is a per-attempt field already present on the
+`Task` the same construction reads every other field from). **PF-2 passed.**
+
+### PF-3 (KT-1B): does `DontAsk` plus a read-only allow-list actually deny writes? Yes, confirmed live, twice.
+
+Live test, not inspection, per the brief's own requirement.
+
+1. **Raw CLI**, no lopi code involved: `claude -p ... --permission-mode dontAsk
+   --allowedTools Read Grep Glob WebFetch WebSearch`, instructed to write a file in a
+   throwaway git repo. Result: `permission_denials: [{"tool_name":"Write",...}]`,
+   `terminal_reason: "completed"`, exit 0. Filesystem/git status independently
+   confirmed the file was never created.
+2. **Through lopi's own `ClaudeCode` wrapper** (`with_permission_mode("dontAsk")` +
+   `with_allowed_tools(lopi_core::READONLY_ALLOWED_TOOLS)`), same throwaway-repo setup,
+   same instruction. Result: identical clean denial (`permission_denials` on `Write`,
+   `terminal_reason: "completed"`), file confirmed absent on disk.
+
+Neither run stalled waiting on a prompt nothing in a headless pipeline could answer.
+**PF-3 passed.** Per this codebase's own KT-recording convention
+(`verifier_cli.rs`'s KT-1.1/1.2/1.3), the live test itself is not committed as an
+always-run test (it costs a real API call); the result is recorded here and as a
+comment at `crates/lopi-agent/src/claude_tests.rs` next to
+`with_permission_mode_accepts_every_headless_safe_value`.
+
+### PF-4: no prior plan-artifact implementation existed
+
+Checked `lopi-spec` (a test-suite spec-surface extractor: `#[test]`/`def test_*`
+inventory for coverage-gap detection, unrelated concern) and `lopi-context` (KV-cache
+eviction; its `Phase::Planning` enum variant is the agent's own internal lifecycle
+phase, not a plan artifact). Also checked the existing "plan text" mechanism
+(`plan_via_api`/`plan_streamed`, gated by the Phase 11 `plan_gate`): this is the
+*same* agent's own free-form planning step, ungated by any tool profile, with no
+structured schema and no separate Executor identity, best-effort parsed into markdown
+bullets for the UI. It is a different thing in kind from `PlanArtifact`, not a
+duplicate. Confirmed clean: nothing to reconcile.
+
+### What this sprint built, given the above
+
+**Section 1, `ToolProfile`:** `Readonly` (`DontAsk` plus the fixed allow-list) or
+`Mutating` (default) on `Task.tool_profile`, wired at `run_loop.rs`'s one choke point,
+authoritative over any other configured tool permission when set. Not touching
+`.claude/agents/*.md` frontmatter, a separate system (Claude Code subagent scope);
+`researcher.md`'s `permissionMode: plan` there is unrelated to and unaffected by
+`Task::permission_mode`, which rejects `"plan"` outright.
+
+**Section 2, plan artifact:** schema lives in kiban (`schemas/plan_artifact.schema.json`,
+JSON Schema, `scope.minItems: 1`, all eight fields required), with a hand-written
+Python validator (`lib/plan_artifact_schema.py`, not a generic JSON Schema engine;
+that would be premature machinery for one schema) reading the schema file's own
+declared constraints rather than duplicating them as literals, so a schema edit that
+loosened `minItems` would be caught by
+`test_schema_still_declares_scope_min_items_one`. The Rust mirror
+(`lopi_core::PlanArtifact`) enforces the same non-empty-scope constraint structurally:
+`#[serde(try_from = "RawPlanArtifact")]` means there is no code path, including
+deserialization, that can produce a `PlanArtifact` with an empty scope. Round-trip
+through TOON (`lopi-toon::encode`/`decode`) confirmed to preserve every field
+(`plan_artifact_round_trips_through_toon_preserving_every_field`).
+
+**Section 3, Planner -> Executor handoff:** `lopi_agent::planner_executor` module,
+modeled on `verifier_cli.rs`'s direct-`Command`-plus-`apply_cli_caps` pattern rather
+than `ClaudeCode`'s plan/implement/fix lifecycle (which is shaped around the
+single-agent retry loop and always carries the raw goal on a `Task`).
+`build_executor_system_prompt(plan: &PlanArtifact)` takes no raw-goal parameter, so
+there is no argument through which the raw goal could reach the Executor's prompt;
+asserted structurally by `executor_prompt_never_contains_the_raw_goal` (using a
+sentinel raw-goal string distinct from the plan's own paraphrased `goal` field, so the
+assertion is not vacuously true from the two strings matching by chance). **Confirmed
+live end-to-end:** a readonly Planner spawned against a throwaway repo (a trivial
+`add(a, b)` Python function), asked to add a `subtract` function, returned a
+schema-valid `PlanArtifact` with `scope: ["add.py"]`; the assembled Executor prompt
+was confirmed free of the raw-goal sentinel; the Executor (mutating,
+`AcceptEdits`) then correctly added `subtract` to `add.py`, matching the plan's
+invariants exactly. **Not wired into `AgentRunner::run()`'s default retry loop this
+sprint.** That loop's plan/implement/test/score/retry machinery (progress gates,
+stability harness, verifier, adaptive retry, successor tasks) is substantial; folding
+the Planner/Executor split into it is a separate, larger integration a future sprint
+should scope deliberately, not a same-session addendum. This module ships new,
+additive, and independently tested, exactly the shape Sprint P0 shipped the
+cost-circuit-breaker's decision logic in.
+
+**Section 4, telemetry:** kiban's `PrTelemetryRecord` gained `predicted_tier`,
+`planner_scope`, `planner_model`, `planner_commit`. Named `planner_scope`, not
+`scope`: the record already has a `scope` field meaning ledger scope (`org` versus
+`repo:<name>`), and reusing that name for the plan artifact's file/glob scope would
+have silently collided two unrelated meanings under one key. `apply_plan_artifact`
+reuses `lib.plan_artifact_schema.validate` rather than re-validating by hand, so a
+telemetry record can never carry a scope value that did not pass schema validation.
+One real end-to-end record, built from the live Planner run's actual output above
+(`goal`, `scope: ["add.py"]`, `predicted_tier: "low"`, `planner_model:
+"claude-sonnet-5"`, `planner_commit: "6b57438"`), round-tripped through the JSONL
+store with all four fields non-null and every critic field still null, confirmed in
+`test_one_real_end_to_end_record_has_all_four_fields_non_null`.
+
+### Constrains future work
+
+- A future sprint building the Phase 3 router must read `PF-1`'s table before
+  assuming any entry point's `task.source`/`RepoProfile` state; MCP and web both
+  default to `Cli` today, and neither applies `RepoProfile`.
+- Wiring `planner_executor` into `AgentRunner::run()`'s default loop is unscoped and
+  undesigned; do not assume it is a small patch onto the existing plan/implement
+  boundary without re-reading `run_loop.rs`'s progress-gate/stability/verifier
+  interactions first.
+- `RepoProfile` consistency and `allow_self_modify` coverage are real gaps this
+  sprint's audit surfaced but did not fix; do not describe either as closed in a
+  future sprint's changelog without doing the work.
+- `PLAN_ARTIFACT_JSON_SCHEMA` (the Rust-side literal in `planner_executor.rs`) is kept
+  in sync with kiban's `schemas/plan_artifact.schema.json` by hand this sprint; a
+  fixture suite checking the two never drift (section 7.3, Phase 3) should supersede
+  this by hand-check.
+
 ## Sprint S13, Phase 0 (Quality-claim honesty pass) — stopped after Phase 0 per the brief's own stop rule
 
 **One-way doors, all recorded before the sprint's Phase-0 stop rule fired (5

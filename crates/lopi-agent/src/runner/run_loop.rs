@@ -127,9 +127,18 @@ impl AgentRunner {
                 // payload, an inbound Telegram message) to `DontAsk`
                 // regardless of what it requests: a task a human typed and
                 // one derived from an issue body do not deserve the same
-                // unattended tool posture.
+                // unattended tool posture. Sprint P1 — `ToolProfile::Readonly`
+                // (`self.task.tool_profile`) forces `DontAsk` on top of that,
+                // unconditionally: a readonly Planner does not get a more
+                // permissive posture just because a trusted source asked for
+                // one. This is the one production `ClaudeCode` construction
+                // site (confirmed by Sprint P1's entry-point audit,
+                // `LEDGER.md`'s Review-Pipeline-Phase-1 entry), so a task's
+                // `tool_profile` is enforced here regardless of which entry
+                // point built the `Task`.
                 .with_permission_mode(
-                    lopi_core::effective_permission_mode(
+                    lopi_core::tool_profile::effective_permission_mode_for_profile(
+                        self.task.tool_profile,
                         &self.task.source,
                         self.task.permission_mode,
                     )
@@ -162,7 +171,16 @@ impl AgentRunner {
             if let Some(usd) = self.cli_budget_usd {
                 claude = claude.with_max_budget_usd(usd);
             }
-            if !self.permission_allow.is_empty() || !self.permission_deny.is_empty() {
+            // Sprint P1 — `ToolProfile::Readonly`'s allow-list is
+            // authoritative: it replaces whatever `permission_allow`/
+            // `permission_deny` the repo/task configured rather than merging
+            // with it, so a readonly spawn can never end up with one extra
+            // caller-supplied tool that would make the profile decorative.
+            if let Some(forced_allow) = self.task.tool_profile.forced_allowed_tools() {
+                claude = claude
+                    .with_allowed_tools(forced_allow)
+                    .with_disallowed_tools(vec![]);
+            } else if !self.permission_allow.is_empty() || !self.permission_deny.is_empty() {
                 claude = claude
                     .with_allowed_tools(self.permission_allow.clone())
                     .with_disallowed_tools(self.permission_deny.clone());
@@ -316,7 +334,15 @@ impl AgentRunner {
                             }
                         }
                     } else {
-                        self.stream_plan(&claude, &model, attempt + 1).await
+                        // Sprint P3a — Path A: the readonly Planner call *is*
+                        // this attempt's plan phase. It establishes the CLI
+                        // session under `attempt_session_id` itself (its own
+                        // internal, readonly-capped `Command`); `claude`
+                        // (built above with the task's real mutating
+                        // permissions) resumes that same id for implement
+                        // below rather than creating a second session.
+                        self.plan_via_readonly_planner(&model, &attempt_session_id)
+                            .await
                     }
                 }
                 .instrument(think_span)
@@ -380,12 +406,19 @@ impl AgentRunner {
                 // only if the plan phase actually created one. `claude`
                 // already carries `New(attempt_session_id)` from before the
                 // plan call; if the CLI ran (the common case), the session
-                // now exists and can be resumed. If it didn't (a
-                // direct-API plan that succeeded without falling back —
-                // unreachable in production today, see `used_cli_plan`'s
-                // doc comment above), leave it as `New` so implement's own
-                // spawn creates that session for the first time instead of
-                // resuming one that was never established.
+                // now exists and can be resumed. Sprint P3a — in the common
+                // case that session was established by
+                // `plan_via_readonly_planner`'s own internal, readonly-capped
+                // `Command` (`spawn_planner`'s `SessionMode::New`), not by
+                // `claude` itself; `claude` resumes it here under its own
+                // (mutating) permission mode and allow-list, which KT-3A
+                // confirmed a resume honors fresh regardless of which
+                // `Command` established the session. If plan didn't run the
+                // CLI at all (a direct-API plan that succeeded without
+                // falling back — unreachable in production today, see
+                // `used_cli_plan`'s doc comment above), leave it as `New` so
+                // implement's own spawn creates that session for the first
+                // time instead of resuming one that was never established.
                 if used_cli_plan {
                     claude = claude.with_resume(attempt_session_id.clone());
                 }

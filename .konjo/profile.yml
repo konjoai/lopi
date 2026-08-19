@@ -29,7 +29,7 @@
 # imported the org CLAUDE.md rules; this profile is the missing half of that connection.
 #
 # lopi is a Rust agent orchestrator: tokio async runtime, axum web/API surface, ratatui TUI,
-# sqlx/SQLite persistence, teloxide (Telegram) and a WhatsApp/Twilio webhook, git2-driven
+# sqlx/SQLite persistence, a WhatsApp/Twilio webhook, git2-driven
 # git-isolated agent branches. A `web/` directory carries a TypeScript dashboard front end.
 
 repo: lopi
@@ -144,6 +144,8 @@ gates:
     rejects_test: ".konjo/scripts/test_function_length_killtest.sh"
   - name: indexing-floor
     rejects_test: ".konjo/scripts/test_indexing_floor_killtest.sh"
+  - name: gate-tiering
+    rejects_test: ".konjo/scripts/test_gate_tiering_killtest.sh"
 
 # Phase 13, Phase 3: lifted verbatim from the `paths:` front-matter already prototyped in
 # lopi's `.claude/rules/security.md` -- one declaration now serves both the CLAUDE.md rules

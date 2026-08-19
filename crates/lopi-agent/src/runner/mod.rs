@@ -1,11 +1,13 @@
 mod api_plan;
 mod builder;
 mod capture;
+mod collision_seed;
 mod eval_runner;
 mod finalize;
 mod guardrails;
 mod lifecycle;
 mod plan_gate;
+mod plan_readonly;
 mod plan_steps;
 pub mod postmortem;
 mod postmortem_cli;
@@ -30,12 +32,13 @@ use lopi_context::ContextWindow;
 use lopi_core::loop_config::OnFail;
 use lopi_core::{AgentEvent, EventBus, PlanDecision, ScoreWeights, SelfPromptStrategy, Task};
 use lopi_memory::MemoryStore;
+use lopi_oracle::{CollisionOracle, WatchedRef};
 use lopi_ratelimit::{AnthropicLimiter, CircuitBreaker};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, AtomicUsize};
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::oneshot;
+use tokio::sync::{oneshot, Mutex as AsyncMutex};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
@@ -142,6 +145,12 @@ pub struct AgentRunner {
     /// Sprint S — plan text from the most recent planning step, used by the
     /// verifier to provide intent context when grading the diff.
     pub(super) last_plan: Option<String>,
+    /// Sprint P3a — the readonly Planner's schema-valid `PlanArtifact` for
+    /// the most recent attempt, when the Planner call succeeded on this path
+    /// (Path A, see `run_loop.rs`). `None` on every attempt whose Planner
+    /// call was skipped, failed, or returned unparseable output — absent,
+    /// never synthesized or backfilled from `last_plan`/the diff.
+    pub(super) last_plan_artifact: Option<lopi_core::PlanArtifact>,
     /// Stable session id used by `TurnMetrics.session_id`.
     pub(super) session_id: Uuid,
     pub(super) cancel_rx: Option<oneshot::Receiver<()>>,
@@ -203,6 +212,21 @@ pub struct AgentRunner {
     /// "Sprint I", the unrelated Layer 5 stability gate). Defaults to
     /// [`ContextMode::Index`](lopi_core::ContextMode).
     pub(super) context_mode: lopi_core::ContextMode,
+    /// Collision-Oracle-Build — a `lopi-oracle` instance shared with sibling
+    /// runners watching the same repo, when the pool wires one in. `None`
+    /// (the default) is behavior-identical to before this field existed: no
+    /// polling, no injection. Detection-only, advisory — see
+    /// `lopi-oracle`'s crate docs for why this never blocks a turn.
+    pub(super) collision_oracle: Option<Arc<AsyncMutex<CollisionOracle>>>,
+    /// Collision-Oracle-Build — the shared list of sibling runners' current
+    /// worktree refs this runner's own ref is registered into, so a poll can
+    /// check this task's branch against every other concurrently-running
+    /// task's branch. `None` unless the pool opts a run into oracle wiring.
+    pub(super) collision_peers: Option<Arc<AsyncMutex<Vec<WatchedRef>>>>,
+    /// Collision-Oracle-Build — this runner's own watched ref (task label +
+    /// branch), registered into `collision_peers` on first seed and reused
+    /// on every retry rather than rebuilt each time.
+    pub(super) collision_self_ref: Option<WatchedRef>,
 }
 
 impl AgentRunner {
@@ -243,6 +267,7 @@ impl AgentRunner {
             permission_deny: Vec::new(),
             verifier_enabled: false,
             last_plan: None,
+            last_plan_artifact: None,
             session_id: Uuid::new_v4(),
             cancel_rx: Some(cancel_rx),
             plan_decision_rx: None,
@@ -261,6 +286,9 @@ impl AgentRunner {
             pending_successor: None,
             test_command: None,
             context_mode: lopi_core::ContextMode::default(),
+            collision_oracle: None,
+            collision_peers: None,
+            collision_self_ref: None,
         }
     }
 

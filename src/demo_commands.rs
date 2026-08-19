@@ -233,6 +233,7 @@ mod tests {
         // Point HOME at a scratch dir so `default_demo_store_path()` doesn't
         // touch the developer's actual `~/.lopi/demo.db`.
         let home = tempfile::tempdir().unwrap();
+        let _home_guard = crate::util::HOME_GUARD.lock().await;
         std::env::set_var("HOME", home.path());
 
         let cfg: LopiConfig = serde_json::from_value(serde_json::json!({
@@ -365,6 +366,7 @@ mod tests {
     async fn run_generates_then_surfaces_the_launch_failure_on_a_bad_host() {
         let _guard = ENV_GUARD.lock().await;
         let home = tempfile::tempdir().unwrap();
+        let _home_guard = crate::util::HOME_GUARD.lock().await;
         std::env::set_var("HOME", home.path());
         let demo_store = lopi_demo::default_demo_store_path();
         assert!(!demo_store.exists(), "clean scratch HOME");

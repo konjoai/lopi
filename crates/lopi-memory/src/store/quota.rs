@@ -1,10 +1,18 @@
-//! Quota headroom observations (MAXX Phase 0).
+//! Quota headroom observations (MAXX Phase 0) plus the Oracle-Preflight
+//! Part B passive history sampler.
 //!
-//! Every `AgentEvent::ApiRetry` seen system-wide is upserted here, keyed by
-//! `limit_type` so a `five_hour` observation never clobbers a `seven_day`
-//! one — they arrive through the same event variant. `lopi-orchestrator`'s
-//! `QuotaTracker` is the only writer; `GET /api/quota` and the `maxx_loop`
-//! tick are the readers.
+//! Every `AgentEvent::ApiRetry` seen system-wide is upserted into
+//! `quota_observations`, keyed by `limit_type` so a `five_hour` observation
+//! never clobbers a `seven_day` one — they arrive through the same event
+//! variant. `lopi-orchestrator`'s `QuotaTracker` is the only writer;
+//! `GET /api/quota` and the `maxx_loop` tick are the readers.
+//!
+//! The same event also lands an append-only row in `quota_samples` — see
+//! [`insert_quota_sample`](MemoryStore::insert_quota_sample). That table has
+//! no reader in this sprint (no forecasting, no governor — see the
+//! Oracle-Preflight brief's Part B non-goals); it exists purely so a future
+//! quota-governor sprint has utilization history to build on instead of
+//! starting from zero.
 
 use anyhow::{Context, Result};
 use chrono::Utc;
@@ -93,6 +101,53 @@ impl MemoryStore {
         .context("listing quota observations")?;
         Ok(rows.into_iter().map(observation_from_row).collect())
     }
+
+    /// Append one quota reading to the history table. Unlike
+    /// [`upsert_quota_observation`](Self::upsert_quota_observation), this
+    /// never overwrites a prior row — every observed `AgentEvent::ApiRetry`
+    /// gets its own row, so utilization-over-time survives past the next
+    /// event for the same `limit_type`.
+    ///
+    /// # Errors
+    /// Returns `Err` if the write fails.
+    pub async fn insert_quota_sample(
+        &self,
+        limit_type: &str,
+        status: &str,
+        utilization: f32,
+        resets_at: Option<i64>,
+    ) -> Result<()> {
+        sqlx::query(
+            "INSERT INTO quota_samples (limit_type, status, utilization, resets_at, observed_at)
+             VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind(limit_type)
+        .bind(status)
+        .bind(f64::from(utilization))
+        .bind(resets_at)
+        .bind(Utc::now().to_rfc3339())
+        .execute(&self.write_pool)
+        .await
+        .context("inserting quota sample")?;
+        Ok(())
+    }
+
+    /// List every recorded quota sample, oldest first — the full history for
+    /// `limit_type`.
+    ///
+    /// # Errors
+    /// Returns `Err` if the query fails.
+    pub async fn list_quota_samples(&self, limit_type: &str) -> Result<Vec<QuotaObservationRow>> {
+        let rows = sqlx::query(
+            "SELECT limit_type, status, utilization, resets_at, observed_at
+             FROM quota_samples WHERE limit_type = ? ORDER BY id ASC",
+        )
+        .bind(limit_type)
+        .fetch_all(&self.read_pool)
+        .await
+        .context("listing quota samples")?;
+        Ok(rows.into_iter().map(observation_from_row).collect())
+    }
 }
 
 fn observation_from_row(row: sqlx::sqlite::SqliteRow) -> QuotaObservationRow {
@@ -162,6 +217,32 @@ mod tests {
             .await
             .unwrap()
             .is_none());
+    }
+
+    #[tokio::test]
+    async fn quota_samples_accumulate_instead_of_overwriting() {
+        let store = MemoryStore::open_in_memory().await.unwrap();
+        store
+            .insert_quota_sample("seven_day", "allowed", 0.10, None)
+            .await
+            .unwrap();
+        store
+            .insert_quota_sample("seven_day", "allowed_warning", 0.80, Some(42))
+            .await
+            .unwrap();
+        store
+            .insert_quota_sample("five_hour", "allowed", 0.05, None)
+            .await
+            .unwrap();
+
+        let seven_day = store.list_quota_samples("seven_day").await.unwrap();
+        assert_eq!(seven_day.len(), 2, "both seven_day readings must survive");
+        assert!((seven_day.first().unwrap().utilization - 0.10).abs() < 1e-6);
+        assert!((seven_day.get(1).unwrap().utilization - 0.80).abs() < 1e-6);
+        assert_eq!(seven_day.get(1).unwrap().resets_at, Some(42));
+
+        let five_hour = store.list_quota_samples("five_hour").await.unwrap();
+        assert_eq!(five_hour.len(), 1);
     }
 
     #[tokio::test]

@@ -6,7 +6,12 @@
 //! - `registry` — per-agent rate limiting.
 //! - `run_loop` — `submit`, the dispatch `run` loop, and single-task execution.
 //! - `worktree` — per-task `git worktree` isolation setup/teardown.
+//! - `collision` — per-repo `lopi-oracle` wiring and peer-roster lifecycle.
+//! - `terminal` — the single choke point every dispatched task retires through.
 
+/// Sprint P5 — pool-level `lopi-oracle` wiring: per-repo shared oracle,
+/// peer roster, and the terminal deregistration that keeps it live.
+mod collision;
 mod dead_letter;
 /// Sprint E — budget-aware admission (`submit_economically`) and
 /// reservation reconciliation on task completion.
@@ -18,6 +23,8 @@ mod run_loop_builder;
 /// spend/progress, and pauses (cancel + handoff) any session a detector trips.
 mod runaway_monitor;
 mod skills;
+/// The single terminal choke point every dispatched task retires through.
+mod terminal;
 mod types;
 mod worktree;
 
@@ -63,6 +70,17 @@ pub struct AgentPool {
     /// Sprint E — the economics layer facade. `None` unless `[economics]`
     /// configures a pool (opt-in, per the brief).
     economics: Option<Arc<Economics>>,
+    /// Sprint P5 — set by `with_collision_oracle`. When false, no oracle or
+    /// peer list is ever constructed and runner assembly is unchanged.
+    collision_enabled: bool,
+    /// Sprint P5 — one `CollisionOracle` per repo, created on first use.
+    /// Keyed by the shared repo path, never a task's worktree checkout.
+    collision_oracles: Arc<DashMap<PathBuf, Arc<Mutex<lopi_oracle::CollisionOracle>>>>,
+    /// Sprint P5 — the live roster of branches under way on each repo. A
+    /// task registers itself on its first planning pass and is retired at
+    /// the pool's terminal choke point, so this tracks tasks *running*, not
+    /// tasks ever run.
+    collision_peers: Arc<DashMap<PathBuf, Arc<Mutex<Vec<lopi_oracle::WatchedRef>>>>>,
     /// Sprint E — open reservations awaiting reconciliation, keyed by task.
     /// A reservation is inserted on successful `submit_economically` and
     /// removed (reconciled or released) at the task's one terminal choke
@@ -93,6 +111,9 @@ impl AgentPool {
             join_set: Arc::new(Mutex::new(JoinSet::new())),
             agent_rate_limits: Arc::new(DashMap::new()),
             economics: None,
+            collision_enabled: false,
+            collision_oracles: Arc::new(DashMap::new()),
+            collision_peers: Arc::new(DashMap::new()),
             economics_reservations: Arc::new(DashMap::new()),
         }
     }

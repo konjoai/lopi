@@ -1,11 +1,39 @@
 ---
 decays: state
-verified-against: c4f1fdb
-verified-date: 2026-07-29
+verified-against: b323d6c
+verified-date: 2026-08-19
 ---
 
-Verified against: `c4f1fdb` · 2026-07-29 (re-verified; Sprint S13R's own commit volume
-crossed the 20-commit cap again. This sprint touched `loop_config.rs` (Phase E:
+Verified against: `b323d6c` · 2026-08-19 (re-verified; cross-repo kiban adoption
+sprint's `claude/kiban-adoption-enforcement-7hq0t0` branch (PR #203) crossed the
+20-commit cap via commit volume, not content drift -- the branch's changes are all
+CI/meta: `.claude/hooks/session-start.sh`, `.github/workflows/konjo-gate.yml`,
+`.konjo/kiban.ref`, `.konjo/scripts/dry_check.py`, `CHANGELOG.md`, `CLAUDE.md`,
+`LEDGER.md`, `VERSION`. None of this document's cited files (`economics_config.rs`,
+`loop_config.rs`, `budget_preset.rs`, the `lopi-agent/src/runner/` files named in the
+superseded banners below) intersect that diff. No drift found.
+
+Superseded prior banner (`f5c55ce` · 2026-08-16 — re-verified; Sprint P4 Phase 2's
+merge of `claude/sprint-p3a-collision-oracle-q5zayq` onto a `main` that already
+carried Phase 1's merge crossed the 20-commit cap again. Combines both branches'
+own independent verifications: Branch A (P3a-closeout, verified against `13a0990`)
+touched `crates/lopi-agent/src/runner/{plan_readonly.rs,lifecycle.rs,run_loop.rs}`,
+`crates/lopi-agent/src/planner_executor.rs`,
+`crates/lopi-memory/src/{schema.sql,store/plan_artifact.rs}`, `.konjo/kiban.ref`,
+and `.github/workflows/konjo-gate.yml` — never `loop_config.rs`, `budget_preset.rs`,
+or `recipes/`. Branch B (verified against `b5af2a3`) added the `lopi-oracle`
+scaffold, the RepoProfile parity fix, and the branch-triage doc — confirmed via
+`git diff --stat` against every commit in its range, empty output for this doc's
+cited paths. Neither branch's diff, nor the merge itself, touches anything this
+document cites. No drift found.
+
+Prior banner (`9fce495` · 2026-08-03, re-verified; Sprint P0's commit volume on this
+PR crossed the 20-commit cap again. P0 touched `crates/lopi-core/src/economics_config.rs`,
+`crates/lopi-core/src/lib.rs` (module declaration only), and added
+`crates/lopi-core/src/cost_breaker.rs`; it never touches `loop_config.rs` or `recipes/`,
+so nothing this document cites changed. Prior banner (`c4f1fdb` · 2026-07-29, re-verified;
+Sprint S13R's own commit volume crossed the 20-commit cap again. This sprint touched
+`loop_config.rs` (Phase E:
 `load_from_repo`/`save_to_repo` converted from `anyhow::Result` to a typed
 `LoopConfigError`) but this document cites it and `budget_preset.rs` only by bare
 filename, no line numbers, and neither the `LoopConfig` struct shape nor

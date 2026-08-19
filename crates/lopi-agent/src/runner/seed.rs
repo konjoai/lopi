@@ -76,6 +76,11 @@ impl AgentRunner {
         // mode) can't bloat the prompt.
         extra_constraints.extend(self.seed_reflection_learnings().await);
 
+        // Collision-Oracle-Build — advisory heads-up if this task's branch
+        // textually collides with a sibling runner's. No-op unless the pool
+        // wired a shared oracle in (`with_collision_oracle`); never blocks.
+        extra_constraints.extend(self.seed_collision_alerts().await);
+
         // Sprint I — seed the stability gate's consensus plan (if one was
         // computed by `run_stability_preflight`) as a planning constraint,
         // so the samples generated to gate stability also inform the real

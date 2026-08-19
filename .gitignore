@@ -13,6 +13,13 @@ Cargo.lock.bak
 lopi.toml
 mutants.out/
 
+# Scratch output from ad hoc/in-progress `cargo mutants` runs (Sprint P2 pre-flight
+# PF-0/PF-3). mutants.out/ above already covers the raw per-mutant directory; this also
+# excludes this directory's own top-level .log redirects. The committed artifact from a
+# completed baseline run is a compact summary (kiban's `bench_results/<repo>/*.json`
+# convention, see kiban's lib/bench.py), not this raw working directory.
+/bench_results/
+
 # E2E screenshots are delivered separately, not committed (binary blobs)
 artifacts/screenshots/
 

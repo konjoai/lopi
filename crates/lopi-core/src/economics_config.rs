@@ -152,6 +152,21 @@ pub struct EconomicsConfig {
     /// defaults from config," never a literal buried in `CostEstimator`.
     #[serde(default = "default_cold_start_cost")]
     pub cold_start_default_cost: Money,
+    /// Sprint P0 (review-pipeline plan, section 4) — total token ceiling for
+    /// one task, summed across every retry attempt. `None` (the default)
+    /// leaves the ceiling unset: no per-task token cap, distinct from
+    /// `hard_session_ceiling` above (a USD cost cap, not a token count, and
+    /// scoped to one CLI session/spawn rather than one task's full retry
+    /// loop). See [`crate::cost_breaker::CostCircuitBreaker`] for the
+    /// enforcement logic; wiring the check into the actual call sites
+    /// (`lopi-agent`'s `claude_spawn.rs`/`api_client.rs`) is tracked as a
+    /// work order, not shipped in this sprint — see `LEDGER.md`.
+    #[serde(default)]
+    pub per_task_token_ceiling: Option<u64>,
+    /// Sprint P0 — total token ceiling across all tasks in one UTC day.
+    /// `None` (the default) leaves the ceiling unset.
+    #[serde(default)]
+    pub daily_token_ceiling: Option<u64>,
 }
 
 impl Default for EconomicsConfig {
@@ -170,6 +185,8 @@ impl Default for EconomicsConfig {
             cost_per_progress_multiplier: default_cost_per_progress_multiplier(),
             cold_start_sample_min: default_cold_start_sample_min(),
             cold_start_default_cost: default_cold_start_cost(),
+            per_task_token_ceiling: None,
+            daily_token_ceiling: None,
         }
     }
 }
