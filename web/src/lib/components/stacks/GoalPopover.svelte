@@ -85,18 +85,18 @@
     font-family: var(--font-mono, monospace);
     font-size: 10px;
     line-height: 1.5;
-    color: rgba(245, 245, 245, 0.6);
+    color: rgb(var(--k-text-primary-rgb) / 0.6);
   }
   .explain.small {
     margin: 8px 0 0;
     font-size: 9px;
-    color: rgba(245, 245, 245, 0.4);
+    color: rgb(var(--k-text-primary-rgb) / 0.4);
   }
   .hint {
     margin: -4px 0 10px;
     font-family: var(--font-mono, monospace);
     font-size: 9px;
-    color: rgba(245, 245, 245, 0.4);
+    color: rgb(var(--k-text-primary-rgb) / 0.4);
   }
   .gline {
     display: flex;
@@ -107,7 +107,7 @@
   .gline .lbl {
     font-family: var(--font-mono, monospace);
     font-size: 11px;
-    color: var(--konjo-paper, #f5f5f5);
+    color: var(--konjo-paper, var(--k-text-primary));
   }
   .gseg-row {
     display: flex;
@@ -120,12 +120,12 @@
     font-size: 8.5px;
     letter-spacing: 0.06em;
     font-family: var(--font-mono, monospace);
-    color: rgba(245, 245, 245, 0.66);
+    color: rgb(var(--k-text-primary-rgb) / 0.66);
   }
   .stepper {
     display: inline-flex;
     align-items: center;
-    border: 1px solid rgba(255, 255, 255, 0.11);
+    border: 1px solid rgb(var(--k-wash-rgb) / 0.11);
     border-radius: 6px;
     overflow: hidden;
   }
@@ -134,7 +134,7 @@
     height: 25px;
     border: none;
     background: transparent;
-    color: var(--konjo-flame);
+    color: var(--k-text-primary);
     font-size: 14px;
     cursor: pointer;
   }
@@ -144,9 +144,9 @@
     padding: 0 4px;
     font-family: var(--font-mono, monospace);
     font-size: 11px;
-    color: var(--konjo-paper, #f5f5f5);
-    border-left: 1px solid rgba(255, 255, 255, 0.11);
-    border-right: 1px solid rgba(255, 255, 255, 0.11);
+    color: var(--konjo-paper, var(--k-text-primary));
+    border-left: 1px solid rgb(var(--k-wash-rgb) / 0.11);
+    border-right: 1px solid rgb(var(--k-wash-rgb) / 0.11);
     line-height: 25px;
   }
 </style>

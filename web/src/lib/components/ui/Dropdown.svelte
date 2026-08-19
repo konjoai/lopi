@@ -229,9 +229,9 @@
     gap: 6px;
     padding: 5px 8px;
     border-radius: 7px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    background: rgba(255, 255, 255, 0.025);
-    color: var(--konjo-paper, #f5f5f5);
+    border: 1px solid rgb(var(--k-wash-rgb) / 0.08);
+    background: rgb(var(--k-wash-rgb) / 0.025);
+    color: var(--konjo-paper, var(--k-text-primary));
     font-family: var(--font-mono, monospace);
     font-size: 11px;
     cursor: pointer;
@@ -245,8 +245,9 @@
     font-size: 10px;
   }
   /* Horizontal config-drawer chip: [icon] LABEL value ⌄ (matches the mockup's
-     .cfgchip). The parent sets --konjo-accent-rgb per field, colouring the
-     leading icon exactly like the design's per-field accent. */
+     .cfgchip). Sprint U1 4a: the per-field accent mechanism this used to read
+     from an ancestor `.chip`/`.cfgrow`'s `--konjo-accent-rgb` is removed —
+     every field's icon is --k-text-muted, no exceptions. */
   .kdrop-trigger.chip {
     gap: 6px;
     padding: 7px 11px;
@@ -259,7 +260,7 @@
   .kdrop-icon :global(svg) {
     width: 12px;
     height: 12px;
-    color: rgb(var(--konjo-accent-rgb, 245 245 245));
+    color: var(--k-text-muted);
   }
   .kdrop-cl {
     font-size: 8px;
@@ -270,8 +271,8 @@
   }
   .kdrop-trigger:hover,
   .kdrop-trigger.open {
-    border-color: rgb(var(--konjo-accent-rgb) / 0.5);
-    background: rgb(var(--konjo-accent-rgb) / 0.06);
+    border-color: var(--k-border-interactive);
+    background: rgb(var(--k-wash-rgb) / 0.06);
   }
   .kdrop-value {
     overflow: hidden;
@@ -310,10 +311,12 @@
        this can stay narrow. */
     max-width: 20rem;
     border-radius: 9px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    background: rgba(8, 8, 10, 0.96);
+    /* Sprint U1 4a: popover/dropdown chrome is --k-surface-overlay on
+       --k-border-subtle everywhere, no per-instance colour. */
+    border: 1px solid var(--k-border-subtle);
+    background: var(--k-surface-overlay);
     backdrop-filter: blur(12px);
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+    box-shadow: 0 12px 40px rgb(var(--k-shadow-rgb) / 0.6);
     animation: kdrop-in 0.14s cubic-bezier(0.16, 1, 0.3, 1);
     overflow: hidden;
   }
@@ -323,9 +326,9 @@
     box-sizing: border-box;
     padding: 7px 10px;
     border: none;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-    background: rgba(255, 255, 255, 0.03);
-    color: var(--konjo-paper, #f5f5f5);
+    border-bottom: 1px solid rgb(var(--k-wash-rgb) / 0.08);
+    background: rgb(var(--k-wash-rgb) / 0.03);
+    color: var(--konjo-paper, var(--k-text-primary));
     font-family: var(--font-mono, monospace);
     font-size: 11px;
     outline: none;
@@ -334,7 +337,7 @@
     opacity: 0.35;
   }
   .kdrop-search:focus {
-    border-bottom-color: rgb(var(--konjo-accent-rgb) / 0.5);
+    border-bottom-color: var(--k-border-interactive);
   }
   .kdrop-section {
     padding: 6px 8px 3px;
@@ -342,7 +345,7 @@
     font-size: 8px;
     letter-spacing: 0.12em;
     text-transform: uppercase;
-    color: rgb(var(--konjo-accent-rgb, 245 245 245));
+    color: var(--k-text-muted);
     opacity: 0.75;
   }
   .kdrop-empty {
@@ -378,7 +381,7 @@
     border: none;
     border-radius: 6px;
     background: transparent;
-    color: var(--konjo-paper, #f5f5f5);
+    color: var(--konjo-paper, var(--k-text-primary));
     font-family: var(--font-mono, monospace);
     font-size: 11px;
     text-align: left;
@@ -386,16 +389,14 @@
     white-space: nowrap;
   }
   .kdrop-item.active {
-    background: rgb(var(--konjo-accent-rgb) / 0.12);
+    background: rgb(var(--k-wash-rgb) / 0.08);
   }
-  /* Per-field accent, not the ambient global `--konjo-accent` — this dropdown
-     mounts once per config field (model/effort/repo/branch/…), each of which
-     already sets its own `--konjo-accent-rgb` on an ancestor `.chip`/`.cfgrow`
-     (see ConfigDrawer.svelte/StackConfigPopover.svelte). Reading the global
-     var here made every field's selected value render identically ice-blue
-     regardless of which field it was. */
+  /* Sprint U1 4a: no per-field (or global) accent hue on selection — the
+     mechanism this used to read (`--konjo-accent-rgb`, set per field by an
+     ancestor `.chip`/`.cfgrow`) is gone. Weight is the selected cue now. */
   .kdrop-item.selected .kdrop-item-label {
-    color: rgb(var(--konjo-accent-rgb, 0 212 255));
+    color: var(--k-text-primary);
+    font-weight: 700;
   }
   .kdrop-item-label {
     overflow: hidden;

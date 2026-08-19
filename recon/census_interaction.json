@@ -1,0 +1,79 @@
+{
+  "z_index_inventory": [
+    {
+      "selector": "header.fixed",
+      "zIndex": "30",
+      "position": "fixed"
+    },
+    {
+      "selector": "div.scrim",
+      "zIndex": "38",
+      "position": "fixed"
+    },
+    {
+      "selector": "nav.sidebar",
+      "zIndex": "39",
+      "position": "fixed"
+    },
+    {
+      "selector": "main.relative",
+      "zIndex": "10",
+      "position": "relative"
+    },
+    {
+      "selector": "span.runtag",
+      "zIndex": "2",
+      "position": "absolute"
+    },
+    {
+      "selector": "span.runtag",
+      "zIndex": "2",
+      "position": "absolute"
+    },
+    {
+      "selector": "button.cinsert",
+      "zIndex": "3",
+      "position": "absolute"
+    },
+    {
+      "selector": "span.runtag",
+      "zIndex": "2",
+      "position": "absolute"
+    },
+    {
+      "selector": "button.cinsert",
+      "zIndex": "3",
+      "position": "absolute"
+    },
+    {
+      "selector": "span.runtag",
+      "zIndex": "2",
+      "position": "absolute"
+    },
+    {
+      "selector": "span.runtag",
+      "zIndex": "2",
+      "position": "absolute"
+    },
+    {
+      "selector": "button.gutter",
+      "zIndex": "20",
+      "position": "absolute"
+    },
+    {
+      "selector": "div.toaststack",
+      "zIndex": "200",
+      "position": "fixed"
+    }
+  ],
+  "distinct_z_index_values": [
+    "2",
+    "3",
+    "10",
+    "20",
+    "30",
+    "38",
+    "39",
+    "200"
+  ]
+}

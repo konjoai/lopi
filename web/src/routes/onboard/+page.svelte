@@ -98,7 +98,7 @@
           class="rounded-lg border bg-konjo-deep/60 backdrop-blur-sm p-5"
           class:border-konjo-ice={plan.featured}
           class:border-white-5={!plan.featured}
-          style:border-color={plan.featured ? 'var(--konjo-ice)' : 'rgba(255,255,255,0.05)'}
+          style:border-color={plan.featured ? 'var(--konjo-ice)' : 'rgb(var(--k-wash-rgb) / 0.05)'}
         >
           <div class="font-display text-2xl">
             {plan.price}<span class="font-mono text-xs opacity-40">/mo</span>

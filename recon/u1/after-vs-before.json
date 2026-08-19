@@ -1,0 +1,212 @@
+[
+  {
+    "file": "components/chip_token_1440x900.png",
+    "status": "diff",
+    "diffPixels": 6513,
+    "totalPixels": 554400,
+    "diffPct": 1.1748
+  },
+  {
+    "file": "components/chip_token_390x844.png",
+    "status": "diff",
+    "diffPixels": 6513,
+    "totalPixels": 554400,
+    "diffPct": 1.1748
+  },
+  {
+    "file": "components/config_button_1440x900.png",
+    "status": "identical",
+    "diffPixels": 0,
+    "totalPixels": 632800,
+    "diffPct": 0
+  },
+  {
+    "file": "components/config_button_390x844.png",
+    "status": "identical",
+    "diffPixels": 0,
+    "totalPixels": 632800,
+    "diffPct": 0
+  },
+  {
+    "file": "components/config_popover_1440x900.png",
+    "status": "diff",
+    "diffPixels": 2616,
+    "totalPixels": 2408000,
+    "diffPct": 0.1086
+  },
+  {
+    "file": "components/config_popover_390x844.png",
+    "status": "diff",
+    "diffPixels": 1327,
+    "totalPixels": 1926400,
+    "diffPct": 0.0689
+  },
+  {
+    "file": "components/schedule_popover_1440x900.png",
+    "status": "diff",
+    "diffPixels": 2957,
+    "totalPixels": 1142400,
+    "diffPct": 0.2588
+  },
+  {
+    "file": "components/schedule_popover_390x844.png",
+    "status": "diff",
+    "diffPixels": 2304,
+    "totalPixels": 952000,
+    "diffPct": 0.242
+  },
+  {
+    "file": "pages/S10_pathological_content_1440x900.png",
+    "status": "diff",
+    "diffPixels": 37158,
+    "totalPixels": 5184000,
+    "diffPct": 0.7168
+  },
+  {
+    "file": "pages/S10_pathological_content_390x844.png",
+    "status": "diff",
+    "diffPixels": 38161,
+    "totalPixels": 1316640,
+    "diffPct": 2.8984
+  },
+  {
+    "file": "pages/S11_blocked_on_dependency_1440x900.png",
+    "status": "diff",
+    "diffPixels": 42038,
+    "totalPixels": 5184000,
+    "diffPct": 0.8109
+  },
+  {
+    "file": "pages/S11_blocked_on_dependency_390x844.png",
+    "status": "diff",
+    "diffPixels": 18730,
+    "totalPixels": 1316640,
+    "diffPct": 1.4226
+  },
+  {
+    "file": "pages/S12_all_finished_green_1440x900.png",
+    "status": "diff",
+    "diffPixels": 67031,
+    "totalPixels": 5184000,
+    "diffPct": 1.293
+  },
+  {
+    "file": "pages/S12_all_finished_green_390x844.png",
+    "status": "diff",
+    "diffPixels": 17791,
+    "totalPixels": 1316640,
+    "diffPct": 1.3512
+  },
+  {
+    "file": "pages/S13_loop_stacks_populated_1440x900.png",
+    "status": "diff",
+    "diffPixels": 40572,
+    "totalPixels": 5184000,
+    "diffPct": 0.7826
+  },
+  {
+    "file": "pages/S13_loop_stacks_populated_390x844.png",
+    "status": "diff",
+    "diffPixels": 18764,
+    "totalPixels": 1316640,
+    "diffPct": 1.4251
+  },
+  {
+    "file": "pages/S1_cold_start_empty_1440x900.png",
+    "status": "diff",
+    "diffPixels": 33911,
+    "totalPixels": 5184000,
+    "diffPct": 0.6541
+  },
+  {
+    "file": "pages/S1_cold_start_empty_390x844.png",
+    "status": "diff",
+    "diffPixels": 20279,
+    "totalPixels": 1316640,
+    "diffPct": 1.5402
+  },
+  {
+    "file": "pages/S2_one_agent_running_1440x900.png",
+    "status": "diff",
+    "diffPixels": 37339,
+    "totalPixels": 5184000,
+    "diffPct": 0.7203
+  },
+  {
+    "file": "pages/S2_one_agent_running_390x844.png",
+    "status": "diff",
+    "diffPixels": 15091,
+    "totalPixels": 1316640,
+    "diffPct": 1.1462
+  },
+  {
+    "file": "pages/S3_four_agents_running_1440x900.png",
+    "status": "diff",
+    "diffPixels": 67952,
+    "totalPixels": 5184000,
+    "diffPct": 1.3108
+  },
+  {
+    "file": "pages/S3_four_agents_running_390x844.png",
+    "status": "diff",
+    "diffPixels": 27784,
+    "totalPixels": 1316640,
+    "diffPct": 2.1102
+  },
+  {
+    "file": "pages/S4_streaming_now_1440x900.png",
+    "status": "diff",
+    "diffPixels": 37340,
+    "totalPixels": 5184000,
+    "diffPct": 0.7203
+  },
+  {
+    "file": "pages/S4_streaming_now_390x844.png",
+    "status": "diff",
+    "diffPixels": 15088,
+    "totalPixels": 1316640,
+    "diffPct": 1.1459
+  },
+  {
+    "file": "pages/S5_gate_failure_1440x900.png",
+    "status": "diff",
+    "diffPixels": 103550,
+    "totalPixels": 5184000,
+    "diffPct": 1.9975
+  },
+  {
+    "file": "pages/S5_gate_failure_390x844.png",
+    "status": "diff",
+    "diffPixels": 19823,
+    "totalPixels": 1316640,
+    "diffPct": 1.5056
+  },
+  {
+    "file": "pages/S6_dead_letter_1440x900.png",
+    "status": "diff",
+    "diffPixels": 45006,
+    "totalPixels": 5184000,
+    "diffPct": 0.8682
+  },
+  {
+    "file": "pages/S6_dead_letter_390x844.png",
+    "status": "diff",
+    "diffPixels": 19231,
+    "totalPixels": 1316640,
+    "diffPct": 1.4606
+  },
+  {
+    "file": "pages/S9_long_scrollback_1440x900.png",
+    "status": "diff",
+    "diffPixels": 37170,
+    "totalPixels": 5184000,
+    "diffPct": 0.717
+  },
+  {
+    "file": "pages/S9_long_scrollback_390x844.png",
+    "status": "diff",
+    "diffPixels": 19481,
+    "totalPixels": 1316640,
+    "diffPct": 1.4796
+  }
+]

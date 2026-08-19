@@ -22,7 +22,7 @@ export function levelColor(level: string): string {
     case 'warn':
       return 'var(--konjo-flame)';
     case 'debug':
-      return 'rgba(245,245,245,0.4)';
+      return 'rgb(var(--k-text-primary-rgb) / 0.4)';
     default:
       return 'var(--konjo-ice)';
   }

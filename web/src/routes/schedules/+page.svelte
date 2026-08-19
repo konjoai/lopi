@@ -154,7 +154,7 @@
           <div
             class="rounded border px-3 py-2.5 transition-colors"
             class:border-white={false}
-            style:border-color={s.enabled ? 'rgb(var(--konjo-accent-rgb) / 0.25)' : 'rgba(255,255,255,0.08)'}
+            style:border-color={s.enabled ? 'rgb(var(--konjo-accent-rgb) / 0.25)' : 'rgb(var(--k-wash-rgb) / 0.08)'}
             style:opacity={s.enabled ? 1 : 0.55}
           >
             <div class="flex items-start gap-3">

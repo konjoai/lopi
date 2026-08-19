@@ -23,8 +23,8 @@
     padding: 0.15rem 0.5rem;
     margin: 0.25rem 0;
     border-radius: 999px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgb(var(--k-wash-rgb) / 0.1);
+    background: rgb(var(--k-wash-rgb) / 0.03);
     opacity: 0.85;
   }
   .mark {

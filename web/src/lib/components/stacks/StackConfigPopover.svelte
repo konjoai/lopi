@@ -75,26 +75,6 @@
   .cfgrow:last-child {
     margin-bottom: 0;
   }
-  /* Per-field accent for the leading icon — matches the mockup's icon colours
-     and the loop-scope ConfigDrawer. */
-  .cfgrow.model {
-    --konjo-accent-rgb: 183 155 255;
-  }
-  .cfgrow.effort {
-    --konjo-accent-rgb: 255 204 0;
-  }
-  .cfgrow.repo {
-    --konjo-accent-rgb: 0 212 255;
-  }
-  .cfgrow.branch {
-    --konjo-accent-rgb: 0 255 157;
-  }
-  .cfgrow.autonomy {
-    /* Flame orange — see ConfigDrawer.svelte's identical `.chip.autonomy`
-       comment: same accent as the ×N loop pill/chip. */
-    --konjo-accent-rgb: 255 149 0;
-  }
-  .cfgrow.permission-mode {
-    --konjo-accent-rgb: 255 90 90;
-  }
+  /* Sprint U1 4a: per-field --konjo-accent-rgb removed — StackConfigPopover
+     is one of the twelve named popovers; its chrome carries no colour. */
 </style>

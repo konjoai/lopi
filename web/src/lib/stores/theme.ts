@@ -11,9 +11,9 @@ import { browser } from '$app/environment';
 export type Theme = 'ice' | 'ember' | 'jade';
 
 export const THEMES: { id: Theme; label: string; swatch: string }[] = [
-  { id: 'ice', label: 'Ice', swatch: '#00d4ff' },
-  { id: 'ember', label: 'Ember', swatch: '#ff9500' },
-  { id: 'jade', label: 'Jade', swatch: '#00ff9d' }
+  { id: 'ice', label: 'Ice', swatch: 'var(--k-chip-repo)' },
+  { id: 'ember', label: 'Ember', swatch: 'var(--k-chip-loop)' },
+  { id: 'jade', label: 'Jade', swatch: 'var(--k-preset-benchmark)' }
 ];
 
 const STORAGE_KEY = 'lopi-theme';

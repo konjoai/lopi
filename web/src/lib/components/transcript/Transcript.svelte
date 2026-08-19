@@ -127,7 +127,7 @@
     white-space: pre-wrap;
     word-break: break-word;
     opacity: 0.7;
-    border-left: 1px solid rgba(255, 255, 255, 0.12);
+    border-left: 1px solid rgb(var(--k-wash-rgb) / 0.12);
   }
   /* Right-floated circle at the flow's tail — `shape-outside` reflows the
      transcript text around the orb sitting in the bottom-right corner. */
@@ -152,7 +152,7 @@
     background: var(--konjo-ice);
     padding: 0.2rem 0.7rem;
     border-radius: 999px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 2px 10px rgb(var(--k-shadow-rgb) / 0.4);
     opacity: 0.92;
   }
   .jump:hover {

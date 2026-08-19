@@ -67,7 +67,7 @@
     transform: translateX(-1px);
   }
   .connector.sched .cline-full {
-    border-left: 2px dashed rgba(245, 245, 245, 0.46);
+    border-left: 2px dashed rgb(var(--k-text-primary-rgb) / 0.46);
     opacity: 0.55;
   }
   .connbadge {
@@ -83,7 +83,7 @@
     border: 1px solid;
     border-radius: 20px;
     padding: 4px 12px;
-    background: var(--konjo-black, #0b0e10);
+    background: var(--konjo-black, var(--k-ext-black-fallback));
     white-space: nowrap;
     z-index: 2;
   }
@@ -93,11 +93,11 @@
   }
   .connbadge.sched {
     color: var(--konjo-ice);
-    border-color: rgba(0, 212, 255, 0.45);
+    border-color: rgb(var(--k-chip-repo-rgb) / 0.45);
   }
   .connbadge.budget {
-    color: var(--konjo-violet, #b388ff);
-    border-color: rgba(179, 136, 255, 0.45);
+    color: var(--konjo-violet, var(--k-ext-violet-connbadge));
+    border-color: rgb(var(--k-ext-violet-connbadge-rgb) / 0.45);
   }
   .cinsert {
     position: absolute;
@@ -106,9 +106,9 @@
     top: 50%;
     transform: translateY(-50%);
     height: 30px;
-    border: 1.5px dashed rgba(0, 212, 255, 0.5);
+    border: 1.5px dashed rgb(var(--k-chip-repo-rgb) / 0.5);
     border-radius: 8px;
-    background: rgba(0, 212, 255, 0.05);
+    background: rgb(var(--k-chip-repo-rgb) / 0.05);
     color: var(--konjo-ice);
     display: flex;
     align-items: center;

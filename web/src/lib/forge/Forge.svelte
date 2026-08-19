@@ -30,7 +30,7 @@
 
   // ── Public props ────────────────────────────────────────────────────────────
   export let pressure: number = 0.4;          // 0..1 — context fill
-  export let phaseColor: string = '#00d4ff';  // CSS hex
+  export let phaseColor: string = 'var(--k-chip-repo)';  // CSS hex
   export let activity: number = 0.5;          // 0..1 — generation intensity
   export let health: number = 0.85;           // 0..1 — recent success rate
   export let size: number = 320;              // px

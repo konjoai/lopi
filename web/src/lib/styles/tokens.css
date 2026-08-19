@@ -1,0 +1,125 @@
+/**
+ * Sprint U1 colour tokens. The ONLY file in web/src permitted to contain a
+ * colour literal (hex, rgb(), rgba(), hsl(), oklch()) — enforced by
+ * web/scripts/check-tokens.mjs, wired into `npm run build` and CI.
+ *
+ * Every colour is emitted twice: as a hex custom property for direct use,
+ * and as a space-separated RGB triplet so Tailwind / rgb(var(...) / alpha)
+ * call sites can apply alpha without a second literal.
+ *
+ * Commit 1 set every "official" token to today's exact rendered value —
+ * mechanical routing only, zero visual change (see git history / LEDGER.md
+ * for that state). Commit 2 (this file's current state) swaps the "official
+ * swap tokens" block to the target palette and performs the four
+ * structural changes (LEDGER.md, Sprint U1). Everything below that block is
+ * either a near-duplicate discovered while routing literals (kept distinct
+ * rather than force-merged — see LEDGER.md) or a genuinely different
+ * subsystem's palette (Forge orb states, code-diff highlighting) that this
+ * sprint does not redesign.
+ */
+:root {
+  /* ── surfaces ────────────────────────────────────────────────────────── */
+  --k-surface-base:      #050505;  --k-surface-base-rgb:      5 5 5;
+  --k-surface-raised:    #111314;  --k-surface-raised-rgb:    17 19 20;
+  --k-surface-overlay:   #1a1c1e;  --k-surface-overlay-rgb:   26 28 30;
+
+  /* ── borders ─────────────────────────────────────────────────────────── */
+  --k-border-subtle:     #2e3133;  --k-border-subtle-rgb:     46 49 51;
+  --k-border-strong:     #44484b;  --k-border-strong-rgb:     68 72 75;
+  /* Brief spec was #5a5f63 (3.05:1 vs --k-surface-base per its own text) —
+     verified only against base, not raised/overlay, where 4c's own control
+     borders also render: 2.89:1 / 2.65:1 there, both under the 3:1 floor.
+     Lightened to clear 3:1 against all three surfaces (raised the tightest
+     at 3.27:1); same hue family, human-approved over the alternative of
+     lightening the surfaces instead. See LEDGER.md. */
+  --k-border-interactive:     #686d71;
+  --k-border-interactive-rgb: 104 109 113;
+
+  /* ── text ────────────────────────────────────────────────────────────── */
+  --k-text-disabled:     #65696d;  --k-text-disabled-rgb:     101 105 109;
+  --k-text-muted:        #888d91;  --k-text-muted-rgb:        136 141 145;
+  --k-text-secondary:    #b3b8bc;  --k-text-secondary-rgb:    179 184 188;
+  --k-text-primary:      #eceff1;  --k-text-primary-rgb:      236 239 241;
+
+  /* ── the colour allowlist — the five chip hues + danger + focus ring ──── */
+  --k-chip-alias:        #60d6b9;  --k-chip-alias-rgb:        96 214 185;
+  --k-chip-repo:         #5fcdf5;  --k-chip-repo-rgb:         95 205 245;
+  --k-chip-model:        #c9adfd;  --k-chip-model-rgb:        201 173 253;
+  --k-chip-effort:       #dbc368;  --k-chip-effort-rgb:       219 195 104;
+  --k-chip-loop:         #f7a974;  --k-chip-loop-rgb:         247 169 116;
+  --k-danger:            #f47b74;  --k-danger-rgb:            244 123 116;
+  --k-focus-ring:        #85e4e4;  --k-focus-ring-rgb:        133 228 228;
+
+  /* preset accents reuse the chip hues — a second channel, not a second
+     palette. benchmark was a literal override in commit 1 (today's jade did
+     not match chip-alias's teal); commit 2 folds it into the var() alias,
+     per Step 2's original design — benchmark takes on chip-alias's teal. */
+  --k-preset-research:   var(--k-chip-repo);
+  --k-preset-implement:  var(--k-chip-loop);
+  --k-preset-optimize:   var(--k-chip-effort);
+  --k-preset-gain:       var(--k-chip-model);
+  --k-preset-benchmark:       var(--k-chip-alias);
+  --k-preset-benchmark-rgb:   var(--k-chip-alias-rgb);
+
+  /* standard alphas — chip/tag fills and borders only. Do not invent new
+     ones; existing non-chip/tag call sites keep their own literal alpha
+     against the RGB triplet var() (alpha doesn't change the zero-diff
+     gate — only the RGB channels do). */
+  --k-a-fill: 0.08;
+  --k-a-edge: 0.42;
+  --k-a-danger-edge: 0.45;
+
+  /* ── generic washes (pure white / pure black, not the paper/deep brand
+     tones) — pervasive border/shadow/scrollbar chrome that predates any
+     semantic token. Distinct RGB base from --k-text-primary (245 245 245)
+     and --k-surface-base (5 5 5), so aliasing either would shift pixels. */
+  --k-wash-rgb:   255 255 255;
+  --k-shadow-rgb: 0 0 0;
+
+  /* ── near-duplicate extension tokens (LEDGER.md "near-duplicate clusters"
+     entry) — each one is a real, already-shipped pixel this sprint routes
+     through a token rather than force-merging onto the nearest official
+     colour, which would be an uninstructed recolour. ────────────────────── */
+  --k-ext-surface-black:      #0a0a0a;  --k-ext-surface-black-rgb:      10 10 10;
+  --k-ext-surface-panel:      #0e1214;  --k-ext-surface-panel-rgb:      14 18 20;
+  --k-ext-surface-card:       #101013;  --k-ext-surface-card-rgb:       16 16 19;
+  --k-ext-violet-testing:     #7c3aed;  --k-ext-violet-testing-rgb:     124 58 237;   /* --konjo-violet / PRESET_ACCENT.gain (LEDGER: does not match --k-chip-model) */
+  --k-ext-violet-bright:      #9d5cff;  --k-ext-violet-bright-rgb:      157 92 255;   /* --konjo-violet-bright */
+  --k-ext-violet-connbadge:   #b388ff;  --k-ext-violet-connbadge-rgb:   179 136 255;  /* StackConnector .connbadge.budget */
+  --k-ext-violet-dock-a-rgb:  150 120 230;  /* StackControlDock .sctrl gradient stop */
+  --k-ext-violet-dock-b-rgb:  120 92 205;   /* StackControlDock .sctrl gradient stop */
+  --k-ext-violet-dock-c-rgb:  120 90 200;   /* StackControlDock .sctrl box-shadow */
+  --k-ext-plasma:             #5ee6ff;  --k-ext-plasma-rgb:             94 230 255;   /* --konjo-plasma (orb: Implementing) */
+  --k-ext-mint:                #3be6c8; --k-ext-mint-rgb:               59 230 200;   /* --konjo-mint (orb: Opening PR) / ChipInput .chip-eval — 6th hue, see LEDGER */
+  --k-ext-rose-muted:          #b04a6a; --k-ext-rose-muted-rgb:         176 74 106;   /* --konjo-rose-muted (orb: Cancelled) */
+  --k-ext-ice-deep:            #0088aa; --k-ext-ice-deep-rgb:           0 136 170;    /* --konjo-ice-deep */
+  --k-ext-ember:                #ff4500; --k-ext-ember-rgb:             255 69 0;     /* --konjo-ember / --konjo-accent-2 */
+  --k-ext-repo-light:          #66b3ff; --k-ext-repo-light-rgb:         102 179 255;  /* ProvenanceChips .chip.repo — lighter than --k-chip-repo */
+  --k-ext-rose-hover:          #ff2d78; --k-ext-rose-hover-rgb:         255 45 120;   /* AppSidebar .sclose:hover border */
+  --k-ext-rose-soft:           #ff6e96; --k-ext-rose-soft-rgb:          255 110 150; /* ProposalCard .ib.discard */
+  --k-ext-red-banner:          #ff5a5a; --k-ext-red-banner-rgb:         255 90 90;    /* StackControlDock .runbanner.err */
+  --k-ext-red-banner-light-rgb: 255 170 170;                                         /* StackControlDock .runbanner.err text */
+  --k-ext-green-banner-light-rgb: 150 255 210;                                       /* StackControlDock .runbanner.ok text */
+  --k-ext-orange-warn-rgb:     255 120 0;                                            /* StackControlDock xN chain-repeat warn fill */
+  --k-ext-mark-logo:            #ff9e12; --k-ext-mark-logo-rgb:         255 158 18;  /* icons.ts brand mark — hardcoded on purpose (logo, not themeable) */
+  --k-ext-surface-dropdown-rgb: 8 8 10;                                              /* Dropdown.svelte menu background */
+  --k-ext-black-fallback:      #0b0e10;                                              /* var(--konjo-black, #0b0e10) fallback in ProposalCard/StackCard/ProposalConnector — unreachable in practice, --konjo-black is always defined, kept exact anyway */
+  --k-ext-flame-grad-a:        #ffb648;                                              /* StackControlDock/+layout.svelte xN stepper gradient (rest) */
+  --k-ext-flame-grad-b:        #ffc670;                                              /* xN stepper gradient (hover) */
+  --k-ext-flame-grad-c:        #ffa733;                                              /* StackControlDock second flame gradient */
+  --k-ext-flame-grad-d:        #f08600;                                              /* second flame gradient */
+  --k-ext-flame-grad-e:        #ffa11a;                                              /* xN stepper gradient (hover, second stop) */
+  --k-ext-code-text:           #e6edf3;                                              /* CodeBlock.svelte — GitHub-dark code fg */
+  --k-ext-code-bg:             #0d1117;                                              /* CodeBlock.svelte — GitHub-dark canvas */
+  --k-ext-dock-plum:           #1a1030;                                              /* StackControlDock — dark text-on-badge */
+  --k-ext-sched-dark-teal:     #04141c;                                              /* SchedulePopover — dark text-on-badge */
+  --k-ext-evals-dark-green:    #04120c;                                              /* EvalsPopover — dark text-on-badge */
+  --k-ext-stackcard-pink:      #ffaacb;                                              /* StackCard — text colour */
+
+  /* ── other subsystems — not part of the Loop Stacks palette swap; kept
+     tokenized to satisfy the no-raw-colour lint, values unchanged by this
+     sprint. ─────────────────────────────────────────────────────────────── */
+  --k-diff-add:       #3fb950;  --k-diff-add-rgb:   63 185 80;    /* CodeBlock.svelte, GitHub diff-view green (text) */
+  --k-diff-add-bg-rgb: 46 160 67;                                 /* CodeBlock.svelte diff-add background wash — a darker green than the text colour, not an alpha variant of it */
+  --k-diff-del:       #f85149;  --k-diff-del-rgb:   248 81 73;    /* CodeBlock.svelte, GitHub diff-view red (text) */
+}

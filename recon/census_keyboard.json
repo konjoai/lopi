@@ -1,0 +1,547 @@
+{
+  "tab_order": [
+    {
+      "step": 1,
+      "selector": "div.chipinput",
+      "title": "",
+      "x": 38,
+      "y": 732,
+      "outlineColor": "rgb(245, 245, 245)",
+      "outlineWidth": "0px",
+      "outlineStyle": "none",
+      "boxShadow": "rgb(10, 10, 10) 0px 0px 0px 2px, rgba(255, 149, 0, 0.7) 0px 0px 0px 3.5px",
+      "backgroundColor": "rgba(255, 255, 255, 0.02)"
+    },
+    {
+      "step": 2,
+      "selector": "button.gchip",
+      "title": ":alias",
+      "x": 38,
+      "y": 776,
+      "outlineColor": "rgb(0, 255, 212)",
+      "outlineWidth": "0px",
+      "outlineStyle": "none",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+      "backgroundColor": "rgba(0, 0, 0, 0)"
+    },
+    {
+      "step": 3,
+      "selector": "button.gchip",
+      "title": "@repo",
+      "x": 95,
+      "y": 776,
+      "outlineColor": "rgb(0, 212, 255)",
+      "outlineWidth": "0px",
+      "outlineStyle": "none",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+      "backgroundColor": "rgba(0, 0, 0, 0)"
+    },
+    {
+      "step": 4,
+      "selector": "button.gchip",
+      "title": ";model",
+      "x": 147,
+      "y": 776,
+      "outlineColor": "rgb(183, 155, 255)",
+      "outlineWidth": "0px",
+      "outlineStyle": "none",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+      "backgroundColor": "rgba(0, 0, 0, 0)"
+    },
+    {
+      "step": 5,
+      "selector": "button.gchip",
+      "title": ";effort",
+      "x": 204,
+      "y": 776,
+      "outlineColor": "rgb(255, 204, 0)",
+      "outlineWidth": "0px",
+      "outlineStyle": "none",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+      "backgroundColor": "rgba(0, 0, 0, 0)"
+    },
+    {
+      "step": 6,
+      "selector": "button.gchip",
+      "title": "×N",
+      "x": 267,
+      "y": 776,
+      "outlineColor": "rgb(255, 149, 0)",
+      "outlineWidth": "0px",
+      "outlineStyle": "none",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+      "backgroundColor": "rgba(0, 0, 0, 0)"
+    },
+    {
+      "step": 7,
+      "selector": "button.sb",
+      "title": "fewer chain repeats",
+      "x": 95,
+      "y": 833,
+      "outlineColor": "rgba(245, 245, 245, 0.4)",
+      "outlineWidth": "0px",
+      "outlineStyle": "none",
+      "boxShadow": "rgb(10, 10, 10) 0px 0px 0px 2px, rgba(0, 212, 255, 0.7) 0px 0px 0px 3.5px",
+      "backgroundColor": "rgba(0, 0, 0, 0)"
+    },
+    {
+      "step": 8,
+      "selector": "button.sb",
+      "title": "more chain repeats",
+      "x": 90,
+      "y": 833,
+      "outlineColor": "rgba(245, 245, 245, 0.4)",
+      "outlineWidth": "0px",
+      "outlineStyle": "none",
+      "boxShadow": "rgb(10, 10, 10) 0px 0px 0px 2px, rgba(0, 212, 255, 0.7) 0px 0px 0px 3.5px",
+      "backgroundColor": "rgba(0, 0, 0, 0)"
+    },
+    {
+      "step": 9,
+      "selector": "button.ib",
+      "title": "schedule the stack",
+      "x": 102,
+      "y": 833,
+      "outlineColor": "rgba(245, 245, 245, 0.66)",
+      "outlineWidth": "0px",
+      "outlineStyle": "none",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+      "backgroundColor": "rgba(0, 0, 0, 0.18)"
+    },
+    {
+      "step": 10,
+      "selector": "button.ib",
+      "title": "stack guardrails",
+      "x": 138,
+      "y": 833,
+      "outlineColor": "rgba(245, 245, 245, 0.66)",
+      "outlineWidth": "0px",
+      "outlineStyle": "none",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+      "backgroundColor": "rgba(0, 0, 0, 0.18)"
+    },
+    {
+      "step": 11,
+      "selector": "button.ib",
+      "title": "stack evals",
+      "x": 174,
+      "y": 833,
+      "outlineColor": "rgba(245, 245, 245, 0.66)",
+      "outlineWidth": "0px",
+      "outlineStyle": "none",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+      "backgroundColor": "rgba(0, 0, 0, 0.18)"
+    },
+    {
+      "step": 12,
+      "selector": "button.ib",
+      "title": "run until the stack acceptance passes (goal-directed)",
+      "x": 221,
+      "y": 833,
+      "outlineColor": "rgba(245, 245, 245, 0.66)",
+      "outlineWidth": "0px",
+      "outlineStyle": "none",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+      "backgroundColor": "rgba(0, 0, 0, 0.18)"
+    },
+    {
+      "step": 13,
+      "selector": "button.ib",
+      "title": "stack default config",
+      "x": 257,
+      "y": 833,
+      "outlineColor": "rgb(245, 245, 245)",
+      "outlineWidth": "0px",
+      "outlineStyle": "none",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+      "backgroundColor": "rgba(255, 255, 255, 0.1)"
+    },
+    {
+      "step": 14,
+      "selector": "button.ib",
+      "title": "stack templates",
+      "x": 559,
+      "y": 833,
+      "outlineColor": "rgb(183, 155, 255)",
+      "outlineWidth": "0px",
+      "outlineStyle": "none",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+      "backgroundColor": "rgba(183, 155, 255, 0.1)"
+    },
+    {
+      "step": 15,
+      "selector": "button.ib",
+      "title": "duplicate stack",
+      "x": 595,
+      "y": 833,
+      "outlineColor": "rgba(245, 245, 245, 0.66)",
+      "outlineWidth": "0px",
+      "outlineStyle": "none",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+      "backgroundColor": "rgba(0, 0, 0, 0.18)"
+    },
+    {
+      "step": 16,
+      "selector": "button.ib",
+      "title": "drag to reorder stacks",
+      "x": 631,
+      "y": 833,
+      "outlineColor": "rgba(245, 245, 245, 0.66)",
+      "outlineWidth": "0px",
+      "outlineStyle": "none",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+      "backgroundColor": "rgba(0, 0, 0, 0.18)"
+    },
+    {
+      "step": 17,
+      "selector": "button.ib",
+      "title": "delete stack",
+      "x": 667,
+      "y": 833,
+      "outlineColor": "rgb(255, 0, 102)",
+      "outlineWidth": "0px",
+      "outlineStyle": "none",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+      "backgroundColor": "rgba(0, 0, 0, 0.18)"
+    },
+    {
+      "step": 18,
+      "selector": "button.hx",
+      "title": "close pane",
+      "x": 1385,
+      "y": 85,
+      "outlineColor": "rgba(245, 245, 245, 0.28)",
+      "outlineWidth": "0px",
+      "outlineStyle": "none",
+      "boxShadow": "rgb(10, 10, 10) 0px 0px 0px 2px, rgba(0, 212, 255, 0.7) 0px 0px 0px 3.5px",
+      "backgroundColor": "rgba(0, 0, 0, 0)"
+    },
+    {
+      "step": 19,
+      "selector": "button.tmbtn",
+      "title": "templates",
+      "x": 759,
+      "y": 158,
+      "outlineColor": "rgba(245, 245, 245, 0.66)",
+      "outlineWidth": "0px",
+      "outlineStyle": "none",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+      "backgroundColor": "rgba(0, 0, 0, 0)"
+    },
+    {
+      "step": 20,
+      "selector": "div.chipinput",
+      "title": "",
+      "x": 759,
+      "y": 197,
+      "outlineColor": "rgb(245, 245, 245)",
+      "outlineWidth": "0px",
+      "outlineStyle": "none",
+      "boxShadow": "rgb(10, 10, 10) 0px 0px 0px 2px, rgba(0, 212, 255, 0.7) 0px 0px 0px 3.5px",
+      "backgroundColor": "rgba(255, 255, 255, 0.02)"
+    },
+    {
+      "step": 21,
+      "selector": "button.gchip",
+      "title": ":alias",
+      "x": 759,
+      "y": 246,
+      "outlineColor": "rgb(0, 255, 212)",
+      "outlineWidth": "0px",
+      "outlineStyle": "none",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+      "backgroundColor": "rgba(0, 0, 0, 0)"
+    },
+    {
+      "step": 22,
+      "selector": "button.gchip",
+      "title": "@repo",
+      "x": 816,
+      "y": 246,
+      "outlineColor": "rgb(0, 212, 255)",
+      "outlineWidth": "0px",
+      "outlineStyle": "none",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+      "backgroundColor": "rgba(0, 0, 0, 0)"
+    },
+    {
+      "step": 23,
+      "selector": "button.gchip",
+      "title": ";model",
+      "x": 868,
+      "y": 246,
+      "outlineColor": "rgb(183, 155, 255)",
+      "outlineWidth": "0px",
+      "outlineStyle": "none",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+      "backgroundColor": "rgba(0, 0, 0, 0)"
+    },
+    {
+      "step": 24,
+      "selector": "button.gchip",
+      "title": ";effort",
+      "x": 925,
+      "y": 246,
+      "outlineColor": "rgb(255, 204, 0)",
+      "outlineWidth": "0px",
+      "outlineStyle": "none",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+      "backgroundColor": "rgba(0, 0, 0, 0)"
+    },
+    {
+      "step": 25,
+      "selector": "button.gchip",
+      "title": "×N",
+      "x": 988,
+      "y": 246,
+      "outlineColor": "rgb(255, 149, 0)",
+      "outlineWidth": "0px",
+      "outlineStyle": "none",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+      "backgroundColor": "rgba(0, 0, 0, 0)"
+    }
+  ],
+  "out_of_visual_order_jumps": [],
+  "focus_indicator_contrast": [
+    {
+      "selector": "div.chipinput",
+      "title": "",
+      "hasVisibleOutline": false,
+      "outlineWidth": "0px",
+      "boxShadow": "rgb(10, 10, 10) 0px 0px 0px 2px, rgba(255, 149, 0, 0.7) 0px 0px 0px 3.5px",
+      "ratioVsOwnBackground": null
+    },
+    {
+      "selector": "button.gchip",
+      "title": ":alias",
+      "hasVisibleOutline": false,
+      "outlineWidth": "0px",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+      "ratioVsOwnBackground": null
+    },
+    {
+      "selector": "button.gchip",
+      "title": "@repo",
+      "hasVisibleOutline": false,
+      "outlineWidth": "0px",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+      "ratioVsOwnBackground": null
+    },
+    {
+      "selector": "button.gchip",
+      "title": ";model",
+      "hasVisibleOutline": false,
+      "outlineWidth": "0px",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+      "ratioVsOwnBackground": null
+    },
+    {
+      "selector": "button.gchip",
+      "title": ";effort",
+      "hasVisibleOutline": false,
+      "outlineWidth": "0px",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+      "ratioVsOwnBackground": null
+    },
+    {
+      "selector": "button.gchip",
+      "title": "×N",
+      "hasVisibleOutline": false,
+      "outlineWidth": "0px",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+      "ratioVsOwnBackground": null
+    },
+    {
+      "selector": "button.sb",
+      "title": "fewer chain repeats",
+      "hasVisibleOutline": false,
+      "outlineWidth": "0px",
+      "boxShadow": "rgb(10, 10, 10) 0px 0px 0px 2px, rgba(0, 212, 255, 0.7) 0px 0px 0px 3.5px",
+      "ratioVsOwnBackground": null
+    },
+    {
+      "selector": "button.sb",
+      "title": "more chain repeats",
+      "hasVisibleOutline": false,
+      "outlineWidth": "0px",
+      "boxShadow": "rgb(10, 10, 10) 0px 0px 0px 2px, rgba(0, 212, 255, 0.7) 0px 0px 0px 3.5px",
+      "ratioVsOwnBackground": null
+    },
+    {
+      "selector": "button.ib",
+      "title": "schedule the stack",
+      "hasVisibleOutline": false,
+      "outlineWidth": "0px",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+      "ratioVsOwnBackground": null
+    },
+    {
+      "selector": "button.ib",
+      "title": "stack guardrails",
+      "hasVisibleOutline": false,
+      "outlineWidth": "0px",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+      "ratioVsOwnBackground": null
+    },
+    {
+      "selector": "button.ib",
+      "title": "stack evals",
+      "hasVisibleOutline": false,
+      "outlineWidth": "0px",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+      "ratioVsOwnBackground": null
+    },
+    {
+      "selector": "button.ib",
+      "title": "run until the stack acceptance passes (goal-directed)",
+      "hasVisibleOutline": false,
+      "outlineWidth": "0px",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+      "ratioVsOwnBackground": null
+    },
+    {
+      "selector": "button.ib",
+      "title": "stack default config",
+      "hasVisibleOutline": false,
+      "outlineWidth": "0px",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+      "ratioVsOwnBackground": null
+    },
+    {
+      "selector": "button.ib",
+      "title": "stack templates",
+      "hasVisibleOutline": false,
+      "outlineWidth": "0px",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+      "ratioVsOwnBackground": null
+    },
+    {
+      "selector": "button.ib",
+      "title": "duplicate stack",
+      "hasVisibleOutline": false,
+      "outlineWidth": "0px",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+      "ratioVsOwnBackground": null
+    },
+    {
+      "selector": "button.ib",
+      "title": "drag to reorder stacks",
+      "hasVisibleOutline": false,
+      "outlineWidth": "0px",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+      "ratioVsOwnBackground": null
+    },
+    {
+      "selector": "button.ib",
+      "title": "delete stack",
+      "hasVisibleOutline": false,
+      "outlineWidth": "0px",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+      "ratioVsOwnBackground": null
+    },
+    {
+      "selector": "button.hx",
+      "title": "close pane",
+      "hasVisibleOutline": false,
+      "outlineWidth": "0px",
+      "boxShadow": "rgb(10, 10, 10) 0px 0px 0px 2px, rgba(0, 212, 255, 0.7) 0px 0px 0px 3.5px",
+      "ratioVsOwnBackground": null
+    },
+    {
+      "selector": "button.tmbtn",
+      "title": "templates",
+      "hasVisibleOutline": false,
+      "outlineWidth": "0px",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+      "ratioVsOwnBackground": null
+    },
+    {
+      "selector": "div.chipinput",
+      "title": "",
+      "hasVisibleOutline": false,
+      "outlineWidth": "0px",
+      "boxShadow": "rgb(10, 10, 10) 0px 0px 0px 2px, rgba(0, 212, 255, 0.7) 0px 0px 0px 3.5px",
+      "ratioVsOwnBackground": null
+    },
+    {
+      "selector": "button.gchip",
+      "title": ":alias",
+      "hasVisibleOutline": false,
+      "outlineWidth": "0px",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+      "ratioVsOwnBackground": null
+    },
+    {
+      "selector": "button.gchip",
+      "title": "@repo",
+      "hasVisibleOutline": false,
+      "outlineWidth": "0px",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+      "ratioVsOwnBackground": null
+    },
+    {
+      "selector": "button.gchip",
+      "title": ";model",
+      "hasVisibleOutline": false,
+      "outlineWidth": "0px",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+      "ratioVsOwnBackground": null
+    },
+    {
+      "selector": "button.gchip",
+      "title": ";effort",
+      "hasVisibleOutline": false,
+      "outlineWidth": "0px",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+      "ratioVsOwnBackground": null
+    },
+    {
+      "selector": "button.gchip",
+      "title": "×N",
+      "hasVisibleOutline": false,
+      "outlineWidth": "0px",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+      "ratioVsOwnBackground": null
+    }
+  ],
+  "elements_with_no_visible_focus_indicator": [],
+  "popover_focus_management": {
+    "focus_moved_into_popover_on_open": false,
+    "focus_after_open": {
+      "selector": "button.ib",
+      "title": "schedule the stack",
+      "x": 102,
+      "y": 833,
+      "outlineColor": "rgb(245, 245, 245)",
+      "outlineWidth": "0px",
+      "outlineStyle": "none",
+      "boxShadow": null,
+      "backgroundColor": "rgba(0, 0, 0, 0.18)"
+    },
+    "tab_stayed_inside_popover": false,
+    "focus_after_tab_inside": {
+      "selector": "button.ib",
+      "title": "stack guardrails",
+      "x": 138,
+      "y": 833,
+      "outlineColor": "rgba(245, 245, 245, 0.66)",
+      "outlineWidth": "0px",
+      "outlineStyle": "none",
+      "boxShadow": "rgba(0, 0, 0, 0) 0px 0px 0px 0px, rgba(0, 0, 0, 0) 0px 0px 0px 0px",
+      "backgroundColor": "rgba(0, 0, 0, 0.18)"
+    },
+    "escape_closed_popover": true,
+    "focus_returned_to_trigger_after_escape": false,
+    "focus_after_escape": {
+      "selector": "button.ib",
+      "title": "stack guardrails",
+      "x": 138,
+      "y": 833,
+      "outlineColor": "rgba(245, 245, 245, 0.66)",
+      "outlineWidth": "0px",
+      "outlineStyle": "none",
+      "boxShadow": "rgb(10, 10, 10) 0px 0px 0px 2px, rgba(0, 212, 255, 0.7) 0px 0px 0px 3.5px",
+      "backgroundColor": "rgba(0, 0, 0, 0.18)"
+    }
+  }
+}

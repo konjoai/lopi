@@ -1,0 +1,103 @@
+{
+  "running_prompt_concurrent_motion": {
+    "samples": [
+      {
+        "atMs": 0,
+        "count": 1,
+        "items": [
+          {
+            "selector": "svg.[object",
+            "name": "s-y2inzdg2f9b9-spin",
+            "duration": "1.1s",
+            "iterationCount": "infinite",
+            "timing": "linear"
+          }
+        ]
+      },
+      {
+        "atMs": 400,
+        "count": 1,
+        "items": [
+          {
+            "selector": "svg.[object",
+            "name": "s-y2inzdg2f9b9-spin",
+            "duration": "1.1s",
+            "iterationCount": "infinite",
+            "timing": "linear"
+          }
+        ]
+      },
+      {
+        "atMs": 800,
+        "count": 1,
+        "items": [
+          {
+            "selector": "svg.[object",
+            "name": "s-y2inzdg2f9b9-spin",
+            "duration": "1.1s",
+            "iterationCount": "infinite",
+            "timing": "linear"
+          }
+        ]
+      },
+      {
+        "atMs": 1200,
+        "count": 1,
+        "items": [
+          {
+            "selector": "svg.[object",
+            "name": "s-y2inzdg2f9b9-spin",
+            "duration": "1.1s",
+            "iterationCount": "infinite",
+            "timing": "linear"
+          }
+        ]
+      },
+      {
+        "atMs": 1600,
+        "count": 1,
+        "items": [
+          {
+            "selector": "svg.[object",
+            "name": "s-y2inzdg2f9b9-spin",
+            "duration": "1.1s",
+            "iterationCount": "infinite",
+            "timing": "linear"
+          }
+        ]
+      },
+      {
+        "atMs": 2000,
+        "count": 1,
+        "items": [
+          {
+            "selector": "svg.[object",
+            "name": "s-y2inzdg2f9b9-spin",
+            "duration": "1.1s",
+            "iterationCount": "infinite",
+            "timing": "linear"
+          }
+        ]
+      }
+    ],
+    "max_concurrent_css_animations": 1,
+    "distinct_animation_names": [
+      "s-y2inzdg2f9b9-spin"
+    ]
+  },
+  "single_row_hover": {
+    "new_css_animations_on_hover": [],
+    "transitions_on_hover": [
+      {
+        "property": "box-shadow",
+        "duration": "0.12s"
+      },
+      {
+        "property": "border-color",
+        "duration": "0.12s"
+      }
+    ],
+    "total_things_in_motion_on_hover": 2
+  },
+  "prefers_reduced_motion_respected_anywhere": true
+}

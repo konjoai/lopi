@@ -1,36 +1,43 @@
+@import './lib/styles/tokens.css';
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  --konjo-black: #0a0a0a;
-  --konjo-deep: #050505;
-  --konjo-paper: #f5f5f5;
-  --konjo-ice: #00d4ff;
-  --konjo-ice-deep: #0088aa;
-  --konjo-ember: #ff4500;
-  --konjo-flame: #ff9500;
-  --konjo-jade: #00ff9d;
-  --konjo-sun: #ffcc00;
-  --konjo-rose: #ff0066;
+  /* @deprecated — aliases onto the Sprint U1 --k-* tokens (web/src/lib/styles/tokens.css).
+     Kept for one release so nothing breaks; new code should reference --k-* directly. */
+  --konjo-black: var(--k-ext-surface-black);
+  --konjo-deep: var(--k-surface-base);
+  --konjo-paper: var(--k-text-primary);
+  --konjo-ice: var(--k-chip-repo);
+  --konjo-ice-deep: var(--k-ext-ice-deep);
+  --konjo-ember: var(--k-ext-ember);
+  --konjo-flame: var(--k-chip-loop);
+  --konjo-jade: var(--k-preset-benchmark);
+  --konjo-sun: var(--k-chip-effort);
+  --konjo-rose: var(--k-danger);
 
   /* ── Orb-state palette (living-orb status map) ──────────────────────────
      The few new hues the orb state map names, layered on the Konjo base.
      Yellow/orange is reserved for the awaiting state, green for success, so
-     Testing is recolored violet and Planning realigned to ice (K-collision). */
-  --konjo-plasma: #5ee6ff;       /* Implementing — plasma cyan */
-  --konjo-violet: #7c3aed;       /* Testing — violet (was sun yellow) */
-  --konjo-violet-bright: #9d5cff;/* Scoring / verifying */
-  --konjo-mint: #3be6c8;         /* Opening PR — pre-success mint */
-  --konjo-rose-muted: #b04a6a;   /* Cancelled — muted rose */
+     Testing is recolored violet and Planning realigned to ice (K-collision).
+     @deprecated aliases — see web/src/lib/styles/tokens.css. */
+  --konjo-plasma: var(--k-ext-plasma);       /* Implementing — plasma cyan */
+  --konjo-violet: var(--k-ext-violet-testing); /* Testing — violet (was sun yellow) */
+  --konjo-violet-bright: var(--k-ext-violet-bright);/* Scoring / verifying */
+  --konjo-mint: var(--k-ext-mint);         /* Opening PR — pre-success mint */
+  --konjo-rose-muted: var(--k-ext-rose-muted);   /* Cancelled — muted rose */
 
   /* Accent — themeable highlight used by navigation + interactive chrome.
      Defaults to ice; [data-theme] variants below remap it (Konjo theme
-     switcher in the Config tab). RGB triplet feeds Tailwind alpha values. */
-  --konjo-accent: #00d4ff;
-  --konjo-accent-rgb: 0 212 255;
-  --konjo-accent-2: #ff4500;     /* ambient counter-tone for the void glow */
-  --konjo-accent-2-rgb: 255 69 0;
+     switcher in the Config tab). RGB triplet feeds Tailwind alpha values.
+     Not part of the Sprint U1 swap (runtime-switchable, not a fixed brand
+     colour) — the default and each [data-theme] variant happen to exactly
+     match an official/near-duplicate token, so they route through var(). */
+  --konjo-accent: var(--k-chip-repo);
+  --konjo-accent-rgb: var(--k-chip-repo-rgb);
+  --konjo-accent-2: var(--k-ext-ember);     /* ambient counter-tone for the void glow */
+  --konjo-accent-2-rgb: var(--k-ext-ember-rgb);
 
   /* ── Motion system ──────────────────────────────────────────────────────
      Shared easing + duration tokens so every surface moves with one voice.
@@ -46,17 +53,17 @@
      Reusable shadow ladder. Glows are accent-aware via the RGB triplet. */
   --glow-sm: 0 0 12px rgb(var(--konjo-accent-rgb) / 0.25);
   --glow-md: 0 0 24px rgb(var(--konjo-accent-rgb) / 0.3);
-  --shadow-pane: 0 8px 28px -8px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.04);
+  --shadow-pane: 0 8px 28px -8px rgb(var(--k-shadow-rgb) / 0.7), 0 0 0 1px rgb(var(--k-wash-rgb) / 0.04);
 }
 
 /* Theme variants — accent recolor only; the void stays black. */
 [data-theme='ember'] {
-  --konjo-accent: #ff9500;
-  --konjo-accent-rgb: 255 149 0;
+  --konjo-accent: var(--k-chip-loop);
+  --konjo-accent-rgb: var(--k-chip-loop-rgb);
 }
 [data-theme='jade'] {
-  --konjo-accent: #00ff9d;
-  --konjo-accent-rgb: 0 255 157;
+  --konjo-accent: var(--k-preset-benchmark);
+  --konjo-accent-rgb: var(--k-preset-benchmark-rgb);
 }
 
 :root {
@@ -106,7 +113,7 @@ body::after {
   inset: 0;
   pointer-events: none;
   z-index: 0;
-  background: radial-gradient(120% 90% at 50% 0%, transparent 55%, rgba(0, 0, 0, 0.5) 100%);
+  background: radial-gradient(120% 90% at 50% 0%, transparent 55%, rgb(var(--k-shadow-rgb) / 0.5) 100%);
 }
 @keyframes void-drift {
   0%,
@@ -130,7 +137,7 @@ body::after {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgb(var(--k-wash-rgb) / 0.08);
   border-radius: 4px;
   border: 2px solid transparent;
   background-clip: padding-box;
@@ -142,7 +149,7 @@ body::after {
 }
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
+  scrollbar-color: rgb(var(--k-wash-rgb) / 0.12) transparent;
 }
 
 /* ── Focus visibility ──────────────────────────────────────────────────────
@@ -178,9 +185,9 @@ body::after {
 .shimmer {
   background: linear-gradient(
     100deg,
-    rgba(255, 255, 255, 0.03) 30%,
-    rgba(255, 255, 255, 0.08) 50%,
-    rgba(255, 255, 255, 0.03) 70%
+    rgb(var(--k-wash-rgb) / 0.03) 30%,
+    rgb(var(--k-wash-rgb) / 0.08) 50%,
+    rgb(var(--k-wash-rgb) / 0.03) 70%
   );
   background-size: 200% 100%;
   animation: shimmer 1.4s ease-in-out infinite;

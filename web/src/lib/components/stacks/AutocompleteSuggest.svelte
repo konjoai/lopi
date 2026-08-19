@@ -52,23 +52,23 @@
    *  as component-local literals, and this one has no chip class to reuse
    *  since a suggestion row isn't a chip yet). */
   const KIND_COLOR: Record<string, string> = {
-    alias: '#00ffd4',
-    repo: '#00d4ff',
-    model: '#00d4ff',
-    effort: '#ff4500',
-    branch: '#00ff9d',
-    autonomy: '#b79bff',
-    eval: '#3be6c8',
-    guard: '#ffcc00',
-    schedule: '#5ee6ff',
-    maxx: '#ff9500',
-    goal: '#ff9500',
-    loop: '#ff9500',
-    claude: '#ff0066'
+    alias: 'var(--k-chip-alias)',
+    repo: 'var(--k-chip-repo)',
+    model: 'var(--k-chip-repo)',
+    effort: 'var(--k-ext-ember)',
+    branch: 'var(--k-preset-benchmark)',
+    autonomy: 'var(--k-chip-model)',
+    eval: 'var(--k-ext-mint)',
+    guard: 'var(--k-chip-effort)',
+    schedule: 'var(--k-ext-plasma)',
+    maxx: 'var(--k-chip-loop)',
+    goal: 'var(--k-chip-loop)',
+    loop: 'var(--k-chip-loop)',
+    claude: 'var(--k-danger)'
   };
 
   function accentFor(kind: string | undefined): string {
-    return KIND_COLOR[kind ?? ''] ?? '#00ffd4';
+    return KIND_COLOR[kind ?? ''] ?? 'var(--k-chip-alias)';
   }
 
   let left = 0;
@@ -122,10 +122,10 @@
   .autosuggest {
     position: fixed;
     z-index: 70;
-    background: var(--konjo-panel, #0a0d0f);
-    border: 1px solid rgba(255, 255, 255, 0.11);
+    background: var(--konjo-panel, var(--k-surface-raised));
+    border: 1px solid rgb(var(--k-wash-rgb) / 0.11);
     border-radius: 8px;
-    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.6);
+    box-shadow: 0 14px 34px rgb(var(--k-shadow-rgb) / 0.6);
     overflow: hidden;
     padding: 4px;
     max-height: 56vh;
@@ -145,24 +145,24 @@
   }
   .asrow.active,
   .asrow:hover {
-    background: color-mix(in srgb, var(--row-accent, #00ffd4) 9%, transparent);
+    background: color-mix(in srgb, var(--row-accent, var(--k-chip-alias)) 9%, transparent);
   }
   .aname {
     font-family: var(--font-mono, monospace);
     font-size: 12px;
     font-weight: 700;
-    color: var(--row-accent, #00ffd4);
+    color: var(--row-accent, var(--k-chip-alias));
   }
   .alabel {
     font-family: var(--font-sans, sans-serif);
     font-size: 11px;
-    color: var(--konjo-paper, #f5f5f5);
+    color: var(--konjo-paper, var(--k-text-primary));
   }
   .ahint {
     margin-left: auto;
     font-family: var(--font-mono, monospace);
     font-size: 9px;
-    color: rgba(245, 245, 245, 0.4);
+    color: rgb(var(--k-text-primary-rgb) / 0.4);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;

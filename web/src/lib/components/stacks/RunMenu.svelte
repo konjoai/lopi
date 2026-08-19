@@ -140,10 +140,10 @@
     right: 0;
     width: 320px;
     max-width: calc(100vw - 24px);
-    background: var(--konjo-panel, #0a0d0f);
-    border: 1px solid rgba(255, 255, 255, 0.11);
+    background: var(--konjo-panel, var(--k-surface-raised));
+    border: 1px solid rgb(var(--k-wash-rgb) / 0.11);
     border-radius: 11px;
-    box-shadow: 0 20px 55px rgba(0, 0, 0, 0.8);
+    box-shadow: 0 20px 55px rgb(var(--k-shadow-rgb) / 0.8);
     overflow: hidden;
     z-index: 40;
   }
@@ -153,7 +153,7 @@
     gap: 13px;
     padding: 13px 17px;
     cursor: pointer;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    border-bottom: 1px solid rgb(var(--k-wash-rgb) / 0.05);
     width: 100%;
     background: transparent;
     border-left: none;
@@ -165,23 +165,23 @@
     border-bottom: none;
   }
   .rm:hover {
-    background: rgba(255, 255, 255, 0.03);
+    background: rgb(var(--k-wash-rgb) / 0.03);
   }
   .rm :global(svg) {
     width: 16px;
     height: 16px;
-    color: var(--konjo-flame);
+    color: var(--k-text-muted);
     flex: 0 0 auto;
   }
   .rm .rmn {
     font-family: var(--font-sans, 'Space Grotesk', sans-serif);
     font-size: 14px;
-    color: var(--konjo-paper, #f5f5f5);
+    color: var(--konjo-paper, var(--k-text-primary));
     flex: 1;
   }
   .rm .rms {
     font-family: var(--font-mono, monospace);
     font-size: 10px;
-    color: rgba(245, 245, 245, 0.28);
+    color: rgb(var(--k-text-primary-rgb) / 0.28);
   }
 </style>

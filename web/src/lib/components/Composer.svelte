@@ -47,8 +47,8 @@
 
 <style>
   .composer {
-    border-top: 1px solid rgba(255, 255, 255, 0.06);
-    background: rgba(0, 0, 0, 0.18);
+    border-top: 1px solid rgb(var(--k-wash-rgb) / 0.06);
+    background: rgb(var(--k-shadow-rgb) / 0.18);
     padding: 0.5rem 0.6rem;
     flex-shrink: 0;
   }
@@ -68,8 +68,8 @@
     min-width: 0;
     resize: none;
     max-height: 7rem;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgb(var(--k-wash-rgb) / 0.04);
+    border: 1px solid rgb(var(--k-wash-rgb) / 0.1);
     border-radius: 10px;
     padding: 0.45rem 0.6rem;
     font-family: var(--font-mono, monospace);

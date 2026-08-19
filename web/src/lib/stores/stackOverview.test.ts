@@ -83,7 +83,7 @@ eq(buildStackOverviewCards([mkPane('bare', [])], new Map()), [], 'a cardless pan
   eqIs(card.lifecycle, 'done', 'blocked-only stack still lands in done');
   ok(card.failed, 'a blocked card marks the stack failed');
   eqIs(card.metaRight, 'failed', 'failed meta text overrides cost');
-  eqIs(card.accentColor, '#ff0066', 'failed accent overrides jade with rose');
+  eqIs(card.accentColor, 'var(--k-danger)', 'failed accent overrides jade with rose');
 }
 
 // ── loop dots: jade/rose/accent/dim per card status ────────────────────────
@@ -97,8 +97,8 @@ eq(buildStackOverviewCards([mkPane('bare', [])], new Map()), [], 'a cardless pan
   const [card] = buildStackOverviewCards([pane], agents);
   // executionOrder reverses pane.cards, so l3 (oldest/bottom) runs first.
   const colors = card.loops.map((l) => l.color);
-  eq(colors.includes('#00ff9d'), true, 'a done loop is jade');
-  eq(colors.includes('rgba(245,245,245,0.15)'), true, 'an untouched loop is dim');
+  eq(colors.includes('var(--k-preset-benchmark)'), true, 'a done loop is jade');
+  eq(colors.includes('rgb(var(--k-text-primary-rgb) / 0.15)'), true, 'an untouched loop is dim');
   ok(card.loops.some((l) => l.pulsing), 'the running loop pulses');
 }
 

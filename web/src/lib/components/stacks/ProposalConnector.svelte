@@ -25,7 +25,7 @@
     left: 50%;
     top: 0;
     bottom: 0;
-    border-left: 2px dashed rgba(157, 92, 255, 0.5);
+    border-left: 2px dashed rgb(var(--k-ext-violet-bright-rgb) / 0.5);
     transform: translateX(-1px);
   }
   .ppill {
@@ -37,11 +37,11 @@
     align-items: center;
     font-family: var(--font-mono, 'JetBrains Mono', monospace);
     font-size: 9.5px;
-    color: var(--stack-violet-deep, #9d5cff);
-    border: 1px solid rgba(157, 92, 255, 0.45);
+    color: var(--stack-violet-deep, var(--k-ext-violet-bright));
+    border: 1px solid rgb(var(--k-ext-violet-bright-rgb) / 0.45);
     border-radius: 20px;
     padding: 4px 12px;
-    background: var(--konjo-black, #0b0e10);
+    background: var(--konjo-black, var(--k-ext-black-fallback));
     white-space: nowrap;
     z-index: 2;
   }

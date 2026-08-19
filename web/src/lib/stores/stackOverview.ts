@@ -32,15 +32,15 @@ export const LIFECYCLE_LABEL: Record<StackLifecycle, string> = {
  *  used app-wide for these exact lifecycle meanings (ice=running,
  *  violet=testing, jade=done); queued gets the neutral paper-at-half tone. */
 export const LIFECYCLE_COLOR: Record<StackLifecycle, string> = {
-  queued: 'rgba(245,245,245,0.5)',
-  running: '#00d4ff',
-  testing: '#7c3aed',
-  done: '#00ff9d'
+  queued: 'rgb(var(--k-text-primary-rgb) / 0.5)',
+  running: 'var(--k-chip-repo)',
+  testing: 'var(--k-ext-violet-testing)',
+  done: 'var(--k-preset-benchmark)'
 };
 
-const JADE = '#00ff9d';
-const ROSE = '#ff0066';
-const DIM = 'rgba(245,245,245,0.15)';
+const JADE = 'var(--k-preset-benchmark)';
+const ROSE = 'var(--k-danger)';
+const DIM = 'rgb(var(--k-text-primary-rgb) / 0.15)';
 
 /** One loop's mini-progress-bar segment. */
 export interface StackLoopDot {
@@ -122,9 +122,9 @@ function metaFor(
   if (lifecycle === 'done') {
     if (failed) return { text: 'failed', color: ROSE };
     const total = order.reduce((sum, c) => sum + (agentFor(c, agents)?.cost ?? 0), 0);
-    return { text: `$${total.toFixed(4)}`, color: 'rgba(245,245,245,0.4)' };
+    return { text: `$${total.toFixed(4)}`, color: 'rgb(var(--k-text-primary-rgb) / 0.4)' };
   }
-  return { text: 'queued', color: 'rgba(245,245,245,0.4)' };
+  return { text: 'queued', color: 'rgb(var(--k-text-primary-rgb) / 0.4)' };
 }
 
 /** Project every non-bare pane into one board card. Panes with no cards yet

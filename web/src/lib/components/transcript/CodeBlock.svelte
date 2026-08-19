@@ -72,19 +72,19 @@
 
 <style>
   .code-block {
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid rgb(var(--k-wash-rgb) / 0.08);
     border-radius: 8px;
     overflow: hidden;
     margin: 0.5rem 0;
-    background: #0d1117; /* github-dark canvas, matches Shiki theme */
+    background: var(--k-ext-code-bg); /* github-dark canvas, matches Shiki theme */
   }
   .code-head {
     display: flex;
     align-items: center;
     justify-content: space-between;
     padding: 0.25rem 0.6rem;
-    background: rgba(255, 255, 255, 0.04);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    background: rgb(var(--k-wash-rgb) / 0.04);
+    border-bottom: 1px solid rgb(var(--k-wash-rgb) / 0.06);
   }
   .lang {
     font-family: var(--font-mono, monospace);
@@ -104,7 +104,7 @@
   }
   .copy:hover {
     opacity: 1;
-    background: rgba(0, 212, 255, 0.12);
+    background: rgb(var(--k-chip-repo-rgb) / 0.12);
   }
   .code-body {
     margin: 0;
@@ -113,7 +113,7 @@
     font-family: var(--font-mono, monospace);
     font-size: 0.72rem;
     line-height: 1.5;
-    color: #e6edf3;
+    color: var(--k-ext-code-text);
   }
   .shiki-host :global(pre.shiki) {
     margin: 0;
@@ -128,13 +128,13 @@
     white-space: pre;
   }
   .diff-add {
-    color: #3fb950;
-    background: rgba(46, 160, 67, 0.15);
+    color: var(--k-diff-add);
+    background: rgb(var(--k-diff-add-bg-rgb) / 0.15);
     display: block;
   }
   .diff-del {
-    color: #f85149;
-    background: rgba(248, 81, 73, 0.15);
+    color: var(--k-diff-del);
+    background: rgb(var(--k-diff-del-rgb) / 0.15);
     display: block;
   }
   .diff-hunk {
