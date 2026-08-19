@@ -5,6 +5,87 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## Stack-MAXX-1 -- opportunistic backlog dispatch for a whole stack, not just one card
+
+**Decision (dispatch reuses `ChainScheduleManager`, not a second execution path).** MAXX
+(`maxx_loop.rs`) has only ever fired exactly one ad-hoc task per entry, built straight from
+a `goal`/`repo` pair. A stack is an ordered sequence of independent goals — the same shape
+`schedule_chains`/`ChainScheduleManager` (Stack-Chain-1) already models for cron-triggered
+whole-stack runs, including its step-sequencing and restart-orphan resume machinery. Rather
+than teach `maxx_loop` to walk a list of goals itself (duplicating that machinery, and
+inheriting its own restart-safety burden a second time), a `MaxxEntry` gained an optional
+`chain_id` (`maxx_entries.chain_id`, nullable, `None` for every pre-existing single-goal
+row): when set, `fire` calls `ChainScheduleManager::run_now(chain_id)` — the exact method
+the dashboard's "run now" button already calls — instead of building a task from `goal`.
+`goal` becomes descriptive-only in chain mode; the DB column stays `NOT NULL` (empty string
+satisfies it) rather than adding a second schema shape for what is still fundamentally one
+entry with two dispatch modes.
+
+**The chain row is shared infra with cron scheduling, not new infra.** `StackConfig.chainId`
+already exists (Stack-Chain-1's "schedule the entire stack" toggle). Enabling stack-level
+MAXX for the first time reuses that same field — `stackRun.ts::ensureChainForMaxx` creates
+the chain only if `chainId` is still unset, with `enabled: false` (a syntactically-valid but
+otherwise-inert cron, `'0 0 * * *'`, since the server validates `cron` as a real 5-field
+expression regardless of `enabled`) so it never self-fires; MAXX only ever reaches it via
+`run_now`. Whichever of "scheduled" or "MAXX" turns on first creates the row; each feature's
+own enable state governs itself independently — MAXX never touches `enableScheduleChain`,
+cron ticking never calls `run_now`.
+
+**`maxx_runs.task_id` reused loosely for chain fires.** A chain fire has no single task id —
+`schedule_chain_runs.id` (the run row `run_now` starts) is stored in that column instead.
+No new column added for this: the existing one is a bare `TEXT` with no FK, and the two id
+kinds are never compared, only displayed. `fire_chain`/`load_chain`/`run_chain_now` are three
+functions, not one nested match, purely to stay under the cognitive-complexity gate (25) —
+the original single-function version measured 39.
+
+**Reopens, deliberately, a previously-closed design boundary.** `stores/stack.ts`'s
+`STACK_COMMANDS` doc comment used to read "No `maxx` (per-card only)" — true until this
+sprint gave the stack scope its own real MAXX. `;maxx` was added to `STACK_COMMANDS` and the
+doc comment corrected rather than left stale; `MaxxPopover.svelte` gained a `chain`-mode
+branch (`ensureChain`/`isEmpty`/`emptyHint` props) alongside its original per-card `goal`
+mode instead of a forked second component, since everything but the create-payload shape and
+the empty-state gate (goal text vs. card count) is identical between the two.
+
+**Found and deferred, not fixed:** `duplicateStack` (`stores/stack.ts`) already leaked
+`config.chainId` into a cloned stack's config before this sprint — a duplicate would edit the
+*original* stack's schedule-chain row the moment its own cron or MAXX got toggled. Out of
+scope here (pre-existing, unrelated to what this sprint touched); this sprint's own new
+`maxx`/`maxxEntryId` fields ARE reset on duplicate (mirroring `duplicateCard`'s established
+per-card reset), so the same bug does not exist for MAXX specifically. Flagged as a follow-up
+task, not fixed inline, to keep this sprint's diff scoped to what it actually set out to do.
+
+**Not run:** the guard_trust `load_operator_overrides_*` tests in `lopi-core` flake under a
+full `cargo test --workspace` (a different one fails each run) but pass every time in
+isolation — confirmed identical on `main` before this sprint's changes, so it's pre-existing
+test-isolation flakiness (almost certainly a `$HOME`/env-var race between parallel test
+threads in the same binary), not a regression from this work. Flagged as a follow-up task
+rather than fixed inline, same reasoning as the `duplicateStack` finding above.
+
+**CI triage, post-merge.** PR #204's `GK · konjo-gates` run (ADVISORY tier — see
+`Gate-Tiering-1`; all BLOCKING gates G0-G5 passed, so the PR merged) flagged two findings
+that needed acknowledgment, not a code fix: `one_way_door` on `path:schema-or-migration`
+(the `maxx_entries.chain_id` `ALTER TABLE`) and `threat_model` on the `network_ingress`
+boundary (`crates/lopi-ui` touched by `maxx_handlers.rs`/`warmup.rs`). Re-deriving the
+change id locally against the PR's exact 39-file diff (`base a07b5aa...head ef53283`,
+verified via `gh api repos/.../pulls/204` — `origin/main` had moved between PR-open and
+this job running, same "any new file in the diff re-shifts `sha256(sorted(changed_files))`"
+dynamic `PR-202-Gate-Response`/the kiban-pin-bump entry above already documented) produced
+`386ed0a3228c`, not CI's reported `2c4372fca2fc` — expected drift, not a discrepancy to
+chase further, since the PR is already merged and this specific historical CI run can never
+re-execute against this diff again. Acknowledging from a commit that touches only `LEDGER.md`
+(already one of the 39 files) keeps the file set — and so the id — stable from here.
+One-way-door: additive-only column, `NULL` default, zero migration burden on existing rows
+(unchanged single-goal MAXX behavior). Threat model: the new `chain_id` field is validated
+at the boundary exactly like the pre-existing `goal` field (200-char cap, control-char
+rejection), only ever reaches storage as a bound `sqlx` parameter (never interpolated into
+SQL/shell/a path), and this app has no multi-tenant surface (confirmed by the repo's own
+`scope_assert` gate) — so a chain_id naming an unrelated real chain fires the same user's
+own other stack, not cross-tenant IDOR. The `polarity` WARN on `stackRun.test.ts`'s two
+`catch { threw = true; }` blocks is a static-analysis false positive on test code (asserting
+an expected rejection, not a production fallback swallowing an error) — left as-is; WARN
+tier doesn't block and the pattern is correct as written. Both acknowledgments' trailers
+(`Konjo-Acknowledged-Oneway`/`Konjo-Threat-Model: 386ed0a3228c`) are on this commit.
+
 ## Kiban-Pin-Bump-v1.19.0 -- five-version pin bump, and the drift check that would have caught it sooner
 
 Cross-repo audit (`konjo-cortex` sprint "kiban adoption and enforcement") found lopi's

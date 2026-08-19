@@ -18,17 +18,27 @@
 
   export let maxx: MaxxConfig;
   export let entryId: string | undefined;
-  export let goal: string;
-  export let repo: string | undefined;
+  export let goal: string = '';
+  export let repo: string | undefined = undefined;
   /** Called after a toggle's CRUD call settles — patches the card with the
    *  new `enabled` state and (on first enable) the freshly created entry id. */
   export let onToggled: (next: { enabled: boolean; entryId: string | undefined }) => void;
+  /** Stack-MAXX-1 — when provided, this popover is in "chain mode": firing
+   *  dispatches the whole stack chain (via `ensureChain()`, called lazily on
+   *  first enable) instead of building a single task from `goal`. `isEmpty`/
+   *  `emptyHint` replace the goal-empty gate below in this mode — chain mode
+   *  has no `goal` to check, only "does this stack have any cards yet". */
+  export let ensureChain: (() => Promise<string>) | undefined = undefined;
+  export let isEmpty = false;
+  export let emptyHint =
+    "add a goal to this loop first — MAXX dispatches that same prompt on favorable quota/hours, so there's nothing to fire yet.";
 
   let busy = false;
   let error = '';
   let quota: QuotaSnapshot | null = null;
   let quotaError = '';
 
+  $: chainMode = ensureChain !== undefined;
   // MAXX fires this loop's own `goal` verbatim (`maxx_loop.rs::build_task`
   // submits `spec.goal` as the real agent prompt) — there is no separate
   // "MAXX goal" field for the popover to collect, by design (see the file
@@ -37,8 +47,9 @@
   // be empty"` 422 in `error` below, reading as MAXX itself demanding an
   // extra field the popover never showed. Disabling the toggle up front and
   // explaining why is the same constraint surfaced honestly instead of as a
-  // failed round-trip.
-  $: goalEmpty = !goal.trim();
+  // failed round-trip. Chain mode has no `goal`; `isEmpty` (set by the
+  // caller from its own "any cards?" check) plays the identical role.
+  $: goalEmpty = chainMode ? isEmpty : !goal.trim();
 
   onMount(async () => {
     try {
@@ -58,6 +69,20 @@
       if (next) {
         if (id) {
           await enableMaxx(id);
+        } else if (chainMode) {
+          // `ensureChain` throws on failure (e.g. no cards) — caught below,
+          // same as any other create-on-first-enable failure.
+          const chainId = await (ensureChain as () => Promise<string>)();
+          const created = await createMaxx({
+            name: 'stack maxx',
+            goal: '',
+            chain_id: chainId,
+            headroom_gate: maxx.headroomGate,
+            quiet_hours: maxx.quietHours,
+            windows: maxx.windows,
+            enabled: true
+          });
+          id = created.id;
         } else {
           const created = await createMaxx({
             name: goal.trim() ? goal.slice(0, 60) : 'maxx entry',
@@ -121,7 +146,7 @@
     <span>enable MAXX</span>
   </div>
   {#if !maxx.enabled && goalEmpty}
-    <p class="hint">add a goal to this loop first — MAXX dispatches that same prompt on favorable quota/hours, so there's nothing to fire yet.</p>
+    <p class="hint">{emptyHint}</p>
   {/if}
   {#if error}<div class="err">{error}</div>{/if}
 

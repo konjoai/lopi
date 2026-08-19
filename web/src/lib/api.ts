@@ -395,6 +395,10 @@ export interface MaxxEntry {
   quiet_hours: [number, number] | null;
   headroom_gate: boolean;
   windows: string[];
+  /** Stack-MAXX-1 — the `/api/schedule-chains` row this entry fires
+   *  instead of a single ad-hoc task, when set. `null` for a plain
+   *  single-goal entry (every entry created before this field existed). */
+  chain_id: string | null;
   created_at: string;
   updated_at: string;
   last_run: MaxxEntryRun | null;
@@ -412,6 +416,11 @@ export interface MaxxBody {
   quiet_hours?: [number, number];
   headroom_gate?: boolean;
   windows?: string[];
+  /** Stack-MAXX-1 — set to fire a whole chain instead of a single task.
+   *  `goal` is not required server-side when this is set (see
+   *  `maxx_handlers.rs::MaxxBody::validate`), but still typed as required
+   *  above for callers that don't use chain mode — pass `''` in chain mode. */
+  chain_id?: string;
 }
 
 export const listMaxx = () => request<{ maxx: MaxxEntry[] }>('/api/maxx');

@@ -28,9 +28,11 @@
     stackDefaultsActive,
     stackGoalActive,
     stackPursuesGoal,
+    stackMaxxActive,
     stackGuardSummary,
     stackEvalsSummary,
     stackGoalSummary,
+    maxxSummary,
     maxIterationsLabel,
     stepMaxIterations,
     loopCountTier,
@@ -64,6 +66,7 @@
     pauseStack,
     resumeStack,
     syncStackSchedule,
+    ensureChainForMaxx,
     type RunPhase
   } from '$lib/stores/stackRun';
   import { stackStopLabel } from '$lib/stores/stackGoal';
@@ -84,6 +87,7 @@
   import EvalsPopover from './EvalsPopover.svelte';
   import StackConfigPopover from './StackConfigPopover.svelte';
   import GoalPopover from './GoalPopover.svelte';
+  import MaxxPopover from './MaxxPopover.svelte';
   import StackTemplatesMenu from './StackTemplatesMenu.svelte';
   import RunMenu from './RunMenu.svelte';
   import AutocompleteSuggest from './AutocompleteSuggest.svelte';
@@ -107,12 +111,14 @@
   let evalBtn: HTMLButtonElement | undefined;
   let cfgBtn: HTMLButtonElement | undefined;
   let goalBtn: HTMLButtonElement | undefined;
+  let maxBtn: HTMLButtonElement | undefined;
 
   $: schedId = `${pane.key}:stack:sched`;
   $: guardId = `${pane.key}:stack:guard`;
   $: evalId = `${pane.key}:stack:eval`;
   $: cfgId = `${pane.key}:stack:config`;
   $: goalId = `${pane.key}:stack:goal`;
+  $: maxId = `${pane.key}:stack:max`;
 
   $: scheduledOn = config.scheduled;
   $: guardsOn = stackGuardActive(config.guardrails);
@@ -122,10 +128,23 @@
   // will actually drive run-until-goal (toggle on *and* real acceptance).
   $: goalOn = stackGoalActive(config);
   $: pursues = stackPursuesGoal(config);
-  $: showSummary = scheduledOn || guardsOn || evalsOn || configOn || goalOn;
+  // Stack-MAXX-1 — mirrors `StackCard.svelte`'s identical `card.maxx.enabled`
+  // reading, one level up (whole-chain fire instead of one card's goal).
+  $: maxxOn = stackMaxxActive(config);
+  $: showSummary = scheduledOn || guardsOn || evalsOn || configOn || goalOn || maxxOn;
 
   function toggleGoal() {
     updateStackConfig(pane.key, { goal: { ...config.goal, pursue: !config.goal.pursue } });
+  }
+
+  /** `MaxxPopover`'s toggle-result handler — same write path every other
+   *  facet popover uses (`updateStackConfig`), mirroring `StackCard.svelte`'s
+   *  identical `onMaxxToggled` one level up. */
+  function onMaxxToggled(next: { enabled: boolean; entryId: string | undefined }): void {
+    updateStackConfig(pane.key, {
+      maxx: { ...config.maxx, enabled: next.enabled },
+      maxxEntryId: next.entryId
+    });
   }
 
   $: void ensureModelCatalog();
@@ -314,6 +333,7 @@
     if (command === 'guard') togglePopover(guardId);
     else if (command === 'schedule') togglePopover(schedId);
     else if (command === 'goal') togglePopover(goalId);
+    else if (command === 'maxx') togglePopover(maxId);
   }
 
   // A picked preset alias has no dedicated stack-level field to land on (no
@@ -835,6 +855,12 @@
             <span class="txt">model <b>{modelLabel}</b>{#if repoLabel}{' · repo '}<b>{repoLabel}</b>{/if} · every loop inherits</span>
           </div>
         {/if}
+        {#if maxxOn}
+          <div class="sumln max">
+            <span class="rl">{@html ICONS.bolt}MAXX</span>
+            <span class="txt">on · <b>{maxxSummary(config)}</b></span>
+          </div>
+        {/if}
       {/if}
 
       <div class="cardbar">
@@ -881,6 +907,16 @@
           title="run until the stack acceptance passes (goal-directed)"
         >
           {@html ICONS.gauge}
+        </button>
+        <button
+          class="ib max"
+          class:act={maxxOn}
+          type="button"
+          bind:this={maxBtn}
+          on:click={() => togglePopover(maxId)}
+          title="MAXX — opportunistically run the whole stack on favorable quota"
+        >
+          {@html ICONS.bolt}
         </button>
         <button class="ib config" class:act={configOn} bind:this={cfgBtn} on:click={() => togglePopover(cfgId)} title="stack default config">
           {@html ICONS.sliders}
@@ -944,6 +980,16 @@
     {pursues}
     onTogglePursue={toggleGoal}
     onChangeNoProgressLimit={(noProgressLimit) => updateStackConfig(pane.key, { goal: { ...config.goal, noProgressLimit } })}
+  />
+</Popover>
+<Popover id={maxId} anchor={maxBtn ?? null} kind="max">
+  <MaxxPopover
+    maxx={config.maxx}
+    entryId={config.maxxEntryId}
+    ensureChain={() => ensureChainForMaxx(pane.key, config.defaults)}
+    isEmpty={pane.cards.length === 0}
+    emptyHint="add at least one card to this stack first — MAXX runs the whole chain on favorable quota/hours, so there's nothing to fire yet."
+    onToggled={onMaxxToggled}
   />
 </Popover>
 
@@ -1205,6 +1251,10 @@
   .sumln.cfg .txt b {
     color: var(--stack-violet, #b79bff);
   }
+  .sumln.max .rl,
+  .sumln.max .txt b {
+    color: var(--konjo-flame);
+  }
   .sumln .txt {
     color: rgba(245, 245, 245, 0.66);
   }
@@ -1270,6 +1320,11 @@
     background: rgba(183, 155, 255, 0.1);
   }
   .ib.goal.act {
+    color: var(--konjo-flame);
+    border-color: rgba(255, 149, 0, 0.5);
+    background: rgba(255, 149, 0, 0.1);
+  }
+  .ib.max.act {
     color: var(--konjo-flame);
     border-color: rgba(255, 149, 0, 0.5);
     background: rgba(255, 149, 0, 0.1);
