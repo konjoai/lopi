@@ -23,10 +23,20 @@ all three were fixable, and two had been red on every PR for weeks.
 
 ### `one_way_door` -- real, acknowledged, and it caught something different than expected
 
-Change id `8f8d7918cb21`, rule `path:release-version`, correct because this PR bumps
+Rule `path:release-version`, correct because this PR bumps
 `VERSION` and the workspace version. Acknowledged with a `Konjo-Acknowledged-Oneway`
 trailer; confirmed live on the next run, where `konjo-gates` dropped from "2 gate(s)
 failed" to 1 and `one_way_door` no longer appears in the failure list.
+
+**The change id moved twice, which is the documented behavior and worth spelling out.**
+It is `sha256(sorted(changed_files))`, not a commit hash (`PR-196-Gate-Response`), so it
+re-derives whenever a genuinely new file enters the diff -- not when the door itself
+changes. This PR walked through three ids: `8f8d7918cb21` (the original 19-file diff),
+`1724fa77d5b9` (29 files, after the three re-verified docs and the HOME-guard files), and
+`bec0399084fe` (30 files, after `.konjo/deny.toml`). Same single door throughout: the
+version bump. The practical consequence, for whoever hits this next: **acknowledge from a
+commit that touches only files already in the diff**, or the ack invalidates itself the
+moment it lands. A `LEDGER.md`-only trailer commit converges; adding any new file does not.
 
 Worth recording because the prediction was wrong: the PR body expected this gate to fire on
 `CollisionOracle::poll` becoming `poll_for`, a genuine public-API signature change. It fired
