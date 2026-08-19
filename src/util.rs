@@ -101,6 +101,20 @@ pub(crate) fn is_self_modify_attempt(repo: &Path) -> bool {
     false
 }
 
+/// Serializes every test that mutates the process-global `HOME`.
+///
+/// `set_var` is process-wide, so a test that points `HOME` at a scratch dir
+/// races every *other* test that reads it, across the whole binary and not
+/// just its own file. This guard previously lived private to
+/// `task_commands.rs`, which left the `HOME` writers in `util.rs`,
+/// `demo_commands.rs`, and `onboarding_import_commands.rs` uncoordinated:
+/// `expand_home_resolves_tilde_and_leaves_other_paths` sets `HOME` to
+/// `/home/tester`, and `watch_demo_bails_when_store_is_not_synthetic` was
+/// observed failing with a demo path resolved under exactly that value.
+/// Every `HOME`-mutating test in this crate must take this lock.
+#[cfg(test)]
+pub(crate) static HOME_GUARD: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
@@ -108,6 +122,7 @@ mod tests {
 
     #[test]
     fn expand_home_resolves_tilde_and_leaves_other_paths() {
+        let _guard = super::HOME_GUARD.blocking_lock();
         std::env::set_var("HOME", "/home/tester");
         assert_eq!(
             expand_home(PathBuf::from("~/.lopi/lopi.db")),

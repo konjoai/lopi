@@ -71,18 +71,22 @@ async fn main() -> Result<()> {
     if std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").is_ok() {
         let service_name =
             std::env::var("OTEL_SERVICE_NAME").unwrap_or_else(|_| "lopi".to_string());
-        let otlp_exporter = opentelemetry_otlp::new_exporter().tonic();
-        let tracer = opentelemetry_otlp::new_pipeline()
-            .tracing()
-            .with_exporter(otlp_exporter)
-            .with_trace_config(opentelemetry_sdk::trace::config().with_resource(
-                opentelemetry_sdk::Resource::new(vec![opentelemetry::KeyValue::new(
-                    "service.name",
-                    service_name,
-                )]),
-            ))
-            .install_batch(opentelemetry_sdk::runtime::Tokio)
-            .map_err(|e| anyhow::anyhow!("failed to install OTel tracer: {e}"))?;
+        // opentelemetry 0.27 replaced the `new_pipeline()` builder with an
+        // explicit exporter + provider pair. Same behavior as before: batch
+        // export over OTLP/gRPC, resource tagged with `service.name`.
+        use opentelemetry::trace::TracerProvider as _;
+        let otlp_exporter = opentelemetry_otlp::SpanExporter::builder()
+            .with_tonic()
+            .build()
+            .map_err(|e| anyhow::anyhow!("failed to build OTel exporter: {e}"))?;
+        let provider = opentelemetry_sdk::trace::TracerProvider::builder()
+            .with_batch_exporter(otlp_exporter, opentelemetry_sdk::runtime::Tokio)
+            .with_resource(opentelemetry_sdk::Resource::new(vec![
+                opentelemetry::KeyValue::new("service.name", service_name),
+            ]))
+            .build();
+        let tracer = provider.tracer("lopi");
+        opentelemetry::global::set_tracer_provider(provider);
         let otel_layer = tracing_opentelemetry::layer().with_tracer(tracer);
         tracing_subscriber::registry()
             .with(env_filter)

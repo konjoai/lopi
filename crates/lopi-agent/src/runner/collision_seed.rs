@@ -43,10 +43,15 @@ impl AgentRunner {
             self.collision_self_ref = Some(self_ref);
         }
 
+        let Some(self_ref) = &self.collision_self_ref else {
+            return vec![];
+        };
+        let label = self_ref.label.clone();
+
         let refs = { peers.lock().await.clone() };
         let alerts = {
             let mut oracle = oracle.lock().await;
-            match oracle.poll(&refs).await {
+            match oracle.poll_for(&label, &refs).await {
                 Ok(alerts) => alerts,
                 Err(e) => {
                     self.warn(format!("collision-oracle: poll failed: {e}"));
@@ -55,12 +60,13 @@ impl AgentRunner {
             }
         };
 
-        let Some(self_ref) = &self.collision_self_ref else {
-            return vec![];
-        };
+        // No self-filter here any more: `poll_for` returns only collisions
+        // this label is a side of, and only those it has not already been
+        // told about. Filtering caller-side is what starved the second side
+        // of a colliding pair -- the shared oracle had already spent the
+        // alert on whichever side polled first.
         let mine: Vec<String> = alerts
             .iter()
-            .filter(|a| a.a_label == self_ref.label || a.b_label == self_ref.label)
             .map(lopi_oracle::Alert::advisory_text)
             .collect();
         if !mine.is_empty() {
@@ -162,7 +168,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn two_sibling_runners_on_colliding_branches_produce_one_advisory() {
+    async fn two_sibling_runners_on_colliding_branches_each_get_one_advisory() {
         let (_dir, repo) = conflicting_repo();
         let oracle = Arc::new(Mutex::new(CollisionOracle::new(&repo)));
         let peers = Arc::new(Mutex::new(Vec::new()));
@@ -181,9 +187,19 @@ mod tests {
         assert_eq!(alerts.len(), 1, "a's poll now sees the a/b collision");
         assert!(alerts.first().unwrap().contains("f.txt"));
 
+        // b must be told too, on its next poll. Before the per-side
+        // delivery ledger the shared oracle had already spent this
+        // signature on a's poll, so b -- an equal party to the same
+        // collision -- was never warned at all.
+        git(&repo, &["checkout", "lopi/b"]);
+        let b_alerts = runner_b.seed_collision_alerts().await;
+        assert_eq!(b_alerts.len(), 1, "b's poll must see the same collision");
+        assert!(b_alerts.first().unwrap().contains("f.txt"));
+
         // A second poll from either side must not re-inject the same
         // still-open collision (the direct KT-2 regression check).
         assert!(runner_a.seed_collision_alerts().await.is_empty());
+        assert!(runner_b.seed_collision_alerts().await.is_empty());
     }
 
     #[tokio::test]

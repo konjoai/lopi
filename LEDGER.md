@@ -5,6 +5,289 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## PR-202-Gate-Response -- every gate traced to a root cause, then fixed
+
+Sprint P5's PR (#202) came back with five red checks. Each was traced against `main`'s own
+last run (`31951537127`, `37b5fa0`, 2026-08-16) before any fix, because "not my failure" is
+exactly the claim that deserves evidence. Three of the five were failing on `main` too.
+Tracing them to root causes rather than stopping at that attribution turned out to matter:
+all three were fixable, and two had been red on every PR for weeks.
+
+| Check | Tier | Was | Root cause | Now |
+|---|---|---|---|---|
+| `G0 - Doc Staleness` | ADVISORY | red on `main` too | 3 `decays: state` docs past the 20-commit / 14-day cap | re-verified and re-stamped |
+| `G1b - npm audit (web/)` | ADVISORY | red on `main` too | 3 transitive advisories, all with non-breaking fixes | clean |
+| `G1 - Static Analysis` | BLOCKING | red | RUSTSEC-2026-0258, `h2`, published 2026-08-17 | clean |
+| `GK - konjo-gates` | ADVISORY | red | `one_way_door` (real) + `repo:cargo-deny` (tooling defect) | ack'd; artifact remains |
+| `Konjo Gate` | required | red | `G1` | follows `G1` |
+
+### `one_way_door` -- real, acknowledged, and it caught something different than expected
+
+Rule `path:release-version`, correct because this PR bumps
+`VERSION` and the workspace version. Acknowledged with a `Konjo-Acknowledged-Oneway`
+trailer; confirmed live on the next run, where `konjo-gates` dropped from "2 gate(s)
+failed" to 1 and `one_way_door` no longer appears in the failure list.
+
+**The change id moved twice, which is the documented behavior and worth spelling out.**
+It is `sha256(sorted(changed_files))`, not a commit hash (`PR-196-Gate-Response`), so it
+re-derives whenever a genuinely new file enters the diff -- not when the door itself
+changes. This PR walked through three ids: `8f8d7918cb21` (the original 19-file diff),
+`1724fa77d5b9` (29 files, after the three re-verified docs and the HOME-guard files), and
+`bec0399084fe` (30 files, after `.konjo/deny.toml`). Same single door throughout: the
+version bump. The practical consequence, for whoever hits this next: **acknowledge from a
+commit that touches only files already in the diff**, or the ack invalidates itself the
+moment it lands. A `LEDGER.md`-only trailer commit converges; adding any new file does not.
+
+Worth recording because the prediction was wrong: the PR body expected this gate to fire on
+`CollisionOracle::poll` becoming `poll_for`, a genuine public-API signature change. It fired
+on the version bump instead, and **the API change went unflagged entirely**. A gate that
+catches a different thing than you expected is worth knowing about before relying on it to
+catch the thing you expected.
+
+### `cargo audit` -- one advisory, two `h2` copies, one real root
+
+RUSTSEC-2026-0258 (`h2`, unbounded empty DATA frames) was published 2026-08-17, the day
+after `main`'s last green run. Confirmed not caused by this PR three ways before touching
+anything: the `Cargo.lock` diff touched no `h2` entry; `konjo-gates`' own `repo:cargo-audit`
+sub-gate **passed** on the same PR with "no net-new findings" because it diffs against base;
+and `main` would fail identically if re-run today. Two gates reading the same advisory and
+disagreeing is itself the evidence -- the disagreement is precisely "pre-existing" versus
+"present".
+
+`h2 0.4.15 -> 0.4.16` was a straight lockfile bump. `h2 0.3.27` had no patched `0.3.x`, so
+it had to lose its dependents. The first trace found `reqwest 0.11` and stopped there, which
+would have been a wrong and incomplete fix; the full trace found **two** roots:
+
+```
+reqwest 0.11.27        -> hyper-tls 0.5 -> hyper 0.14 -> h2 0.3.27
+opentelemetry-otlp 0.15 -> tonic 0.11    -> hyper 0.14 -> h2 0.3.27
+                                         -> axum 0.6.20  (a second axum copy, alongside
+                                            the 0.7.9 the workspace actually declares)
+```
+
+Both moved to hyper 1.x. `reqwest 0.11 -> 0.12` needed no call-site edits -- the workspace's
+surface (`Client`, `header::*`, `Response`, `RequestBuilder`, `Error`, `StatusCode`,
+`blocking::Client`) is unchanged across that boundary. The OpenTelemetry stack
+(`0.22 -> 0.27`, `otlp 0.15 -> 0.27`, `tracing-opentelemetry 0.23 -> 0.28`) is gated behind
+the non-default `otel` feature and has exactly one call site, rewritten for 0.27's
+exporter-plus-provider builder.
+
+`cargo audit` now reports zero vulnerabilities, leaving only the pre-existing allowed `lru`
+unsoundness warning. The duplicate `axum 0.6.20` disappearing is a free side effect worth
+noting: the workspace had been carrying two axum major versions without declaring the older
+one anywhere.
+
+**On the standing rule against touching root `Cargo.lock`:** that rule guards against
+casual or incidental lock churn. Clearing a published advisory on the BLOCKING gate is the
+deliberate, traced case it exists to permit, and the change is declared in `Cargo.toml`
+rather than made by hand in the lock.
+
+### `npm audit` -- red on every PR for weeks, and all three were one-line fixes
+
+`nanoid` <3.3.18 (high, infinite loop), `@sveltejs/kit` <=2.70.1 (ReDoS via the Accept
+header), `dompurify` <=3.4.12 (XSS via IN_PLACE hook removal). `LEDGER.md`'s A0 entry
+recorded these as pre-existing and left them; nobody re-checked whether they were still
+unfixable. All three now have non-breaking fixes inside the existing semver ranges, so
+`npm audit fix` clears every one with `package.json` unchanged and a nine-line lockfile diff.
+Verified past the audit itself, since a lockfile bump can still break a build: `npm run
+build` and `npm test` both pass.
+
+The lesson is about the attribution, not the packages: "pre-existing, also red on `main`" is
+a correct answer to *whose failure is this* and a bad answer to *should it stay red*.
+
+### Doc staleness -- re-verified, not date-bumped
+
+Three `decays: state` docs were past the 20-commit / 14-day cap:
+`docs/LOOP_ENGINEERING_ROADMAP.md`, `docs/ops/PANIC_AUDIT.md`,
+`docs/security/EGRESS_SURFACE.md`. The cap is a prompt to re-check a claim, so each doc's
+own cited commands were re-run against this commit rather than the stamp being advanced:
+
+- **`PANIC_AUDIT.md`** -- ran the exact cited deny-flag clippy invocation workspace-wide:
+  **0 findings**, including P5's new files and the rewritten OTel init.
+- **`EGRESS_SURFACE.md`** -- re-ran both greps it cites; both still empty. P5 adds no
+  outbound transport (`lopi-oracle` shells out to `git merge-tree`, a local read-only
+  subprocess), and the `reqwest`/OTel bumps change client versions, not the transport set.
+- **`LOOP_ENGINEERING_ROADMAP.md`** -- re-checked four load-bearing citations. Three hold
+  exactly (`setup_worktree` at `pool/worktree.rs:25`; `EarnedTrust` still has zero callers
+  outside its module; `Task::from_template` still has none outside `task_tests.rs`); one had
+  drifted (`with_skills` from `builder.rs:92` to `:94`) and is corrected. One row's context
+  genuinely changed and is now recorded there: P5 makes collision detection between
+  concurrent worktrees reachable from the binary. It does not move any verdict.
+
+### Two follow-on effects of the dependency work, recorded rather than left to be found
+
+**A now-dead advisory ignore, removed.** `.konjo/deny.toml` carried
+`RUSTSEC-2025-0134` ignored with the reason "rustls-pemfile, unmaintained -- transitive via
+reqwest 0.11.27". The `reqwest 0.12` upgrade drops `rustls-pemfile` from the tree entirely,
+so that entry was suppressing an advisory for a crate the workspace no longer builds. Dead
+config that silently widens what a gate tolerates is worse than no config, so it is gone.
+`RUSTSEC-2026-0002` (`lru` via `ratatui`) is unaffected and stays.
+
+**A new duplicate, disclosed.** `reqwest 0.12` brings `tower-http 0.6.11` alongside the
+`0.5.2` that `axum 0.7` already pulled, so `cargo-deny` now warns about duplicate
+`tower-http`. Not hidden and not a regression in kind: `main` already carried duplicate
+`tower` (`0.4.13` and `0.5.3`), and `.konjo/deny.toml` sets `multiple-versions = "warn"`
+deliberately -- "blocking on transitive version drift would be too disruptive". `G1`'s own
+repo-native `cargo deny check` passes. Unifying it means `axum 0.7 -> 0.8`, a web-layer
+migration with no advisory forcing it, so it is not bundled into a security fix.
+
+### `repo:cargo-deny` -- the tree-art artifact, second confirmed occurrence
+
+Reports "5 net-new finding(s)" whose text is literal dependency-tree drawing characters.
+This is the kiban `newonly.net_new` line-diff defect already recorded in
+`PR-196-Gate-Response`: the differ cannot scope `cargo-deny`'s tree output, so any change to
+the dependency graph registers redrawn tree rows as findings. P5 adds a `lopi-oracle` edge,
+which redraws exactly those rows.
+
+**This one is genuinely not fixable from this side** -- it is a defect in how kiban diffs a
+tool's output, not in this repo's dependencies or config. Recorded as a second occurrence on
+an unrelated diff rather than re-diagnosed: a defect seen twice that way is the same defect,
+not a coincidence. It is ADVISORY and does not block. If a future session gets push access
+to kiban, this and the `pricing.rs` false positive are the two to report.
+
+### Follow-up, same session: the one real line inside the noise was fixable, and cheaply
+
+The tree-art noise is a genuine kiban-side defect (above). But one real signal was
+underneath it -- `reqwest 0.12` pulls `tower-http 0.6.11` for its `follow-redirect`
+feature, alongside the `tower-http = "0.5"` this workspace pins at `Cargo.toml:63` for
+`lopi-ui`'s CORS/trace layers. Earlier in this same response the fix was assessed as
+"unifying it means `axum 0.7 -> 0.8`" and deliberately not bundled into the security PR.
+**That assessment was wrong, and checking it rather than repeating it is why this
+follow-up exists.** `axum` itself has no `tower-http` dependency at all -- the `"0.5"` pin
+was always this workspace's own choice, unrelated to axum's version. Bumping it to
+`"0.6"` needed no code changes: `cors_policy.rs`'s `CorsLayer`/`AllowOrigin` surface is
+unchanged across the boundary, confirmed by a clean build and by the three CORS behavior
+tests (`cors_allows_default_dev_origin_with_no_config`,
+`cors_denies_non_allowlisted_origin`, `cors_permissive_opt_out_allows_any_origin`) passing
+unmodified.
+
+The duplicate-crate list is back to exactly what `main` already carried before this PR --
+`tower` itself stays duplicated (a real but separate, still-deferred `axum` decision).
+`GK`'s `repo:cargo-deny` should now report only the tree-art artifact on files this PR
+never touches, not a new one of its own making.
+
+**Confirmed on the next CI run, decisively: the tree-art count did not move.** `GK`'s
+`repo:cargo-deny` still reports "121 net-new finding(s)" -- byte-identical to the count
+before this fix -- but the `warning[duplicate]: found N duplicate entries for crate
+'tower-http'` line that prefixed it before is now gone from the raw output, and `G1`'s own
+direct `cargo deny check` passed clean both times. Eliminating the one real duplicate
+changed nothing about the noise. That settles it: the 121 was never meaningfully counting
+findings -- it is `.konjo/deny.toml`'s `highlight = "simplest-path"` printing dependency-path
+trees for tracked crates as routine, non-violation output, and `newonly`'s line-level diff
+treating any textual shift in that output (which any `Cargo.lock` touch causes) as net-new.
+There is no further dependency change that will quiet this gate; the fix is in kiban's
+differ, not in this repo.
+
+**The lesson, stated plainly:** the first assessment reached for the familiar-sounding fix
+(a major-version bump) without checking whether the dependency was actually pinned by
+something else. It wasn't. Reflexive severity-matching -- assuming a fix must be as large
+as the problem sounds -- is its own failure mode, the mirror image of the "pre-existing,
+not my problem" one earlier in this entry.
+
+## Collision-Oracle-Pool-Wiring -- the oracle gets a production call site, and both sides get told
+
+Sprint P5. Closes carried-forward item 2 of the `Collision-Oracle-Build` handoff.
+`lopi-oracle` had been merged for three commits with no production consumer:
+`AgentRunner::with_collision_oracle` was called only from its own tests, so a
+556-line crate shipped as `[0.44.0]` could not affect a single real task. This
+entry records the two load-bearing calls made while wiring it.
+
+### Decision 1 -- alert delivery is per recipient, not per signature
+
+The gap the prior entry flagged, resolved rather than carried forward again.
+
+`CollisionOracle::poll` de-duplicated on `ConflictSignature` alone and returned
+each newly-seen signature once; `collision_seed.rs` then filtered the result to
+alerts naming the caller. Composed, those two correct-looking steps made delivery
+a race. On an A-B collision, whichever side polled first received the alert, the
+signature moved into `seen`, and the other side's poll returned nothing. The
+agent that lost the race never learned it was colliding at all.
+
+**Both sides get a copy.** Neither agent can coordinate on information only its
+counterpart holds, and there is no principled basis for picking which one is
+told -- poll order is an artifact of scheduling, not of who needs to know.
+
+Mechanically: `seen: HashSet<ConflictSignature>` becomes
+`delivered: HashMap<ConflictSignature, HashSet<String>>`, and `poll(refs)` becomes
+`poll_for(requester_label, refs)`, returning only collisions the requester is a
+side of and only those not already delivered to that label. Still-open pruning is
+untouched, so a resolved-then-recurring collision still re-alerts every side
+afresh.
+
+**This does not reopen KT-2.** KT-2's finding was that a poll-and-count design
+re-alerts on every cycle -- 120 red verdicts/hour off one collision that never
+changed. The property that fixes it is "alert on distinct onsets, not on polls,"
+and that is preserved exactly: still one alert per side per signature. The bound
+moves from one-alert-per-collision to one-alert-per-participant-per-collision,
+which is at most two for a pairwise oracle and is the correct denominator.
+
+Kill-tested, not assumed: forcing the ledger back to a single shared key makes
+`both_sides_of_a_collision_each_receive_the_alert_exactly_once` fail.
+
+The self-filter moves out of `collision_seed.rs` into the oracle. Filtering
+caller-side was the actual defect -- the shared oracle had already spent the alert
+before the filter ever ran.
+
+**One-way door:** `poll` is a `pub` fn in a `#![warn(missing_docs)]` crate, and
+its signature changed. Accepted deliberately: the crate has exactly one non-test
+consumer today, so the cost of changing it will never again be this low.
+
+### Decision 2 -- oracle state is keyed per repo, and the peer roster is a live roster
+
+**Per repo, not per pool.** A pool dispatches against several repos (a task's own
+`repo_path` overrides the pool default; `repo_permits` is already keyed that way).
+Two tasks can only collide when they run against the same repo, and
+`git merge-tree` needs both refs resolvable in one object store. The key is always
+the *shared* repo path, never a per-task worktree checkout -- worktrees share the
+repo's refs and object database, so every task's branch resolves there whichever
+checkout created it.
+
+**A finished task must leave the roster.** This is the part that makes pool wiring
+different in kind from runner wiring, not merely larger. `collision_seed.rs` only
+ever registers; per-runner, with a list that dies with the test, that is harmless.
+Pool-wide the roster is process-lifetime and shared, so a task that never
+deregisters is not inert: the oracle keeps `merge-tree`-ing its dead branch
+against every live one on every poll. Poll cost then grows with tasks *ever* run
+rather than tasks running, and agents are warned about collisions with work that
+already merged -- the oracle degrades into exactly the noise floor KT-2 named,
+by a different route.
+
+Deregistration goes at the pool's single terminal choke point. `run_loop.rs` was
+at 499 lines against the 500-line gate, so the post-`run_one` terminal block moved
+to a new `pool/terminal.rs` first -- the same "split purely to stay under the CI
+gate" idiom `run_loop_builder.rs` and `collision_seed.rs` already document.
+Every path a task can leave `run_one` by passes through it, which is what makes it
+the right place rather than a convenient one.
+
+Kill-tested: removing the deregistration call makes
+`retiring_a_task_drops_it_from_the_repo_peer_roster` fail.
+
+### Verified, not assumed
+
+`WorktreeManager::add_detached` creates worktrees **detached**, and
+`collision_seed.rs::current_branch` deliberately opts out on a detached `HEAD`.
+That combination would have silently disabled the oracle for every task under
+`isolation = "worktree"` -- the exact mode the oracle exists to serve. It does not,
+because `run_loop.rs:239` runs `checkout_new_branch` before the Planning phase at
+`:250`, so `HEAD` is on a named branch by the time the oracle seeds. Checked
+against the code rather than reasoned about, because the failure would have been
+silent.
+
+### Explicitly not done
+
+- **The dashboard indicator.** A stretch goal the original brief did not require.
+  Alerts surface as log lines today; a real indicator needs a new `AgentEvent`
+  variant plus web types and Svelte.
+- **A live multi-agent KT-2 re-run.** Still needs real concurrent `lopi run`/
+  `lopi sail` agents. The standing sandbox constraint is unchanged.
+- **Detection semantics.** Textual-only, detection-only, never blocks -- all
+  settled in `Collision-Oracle-Build` and untouched here.
+- **The other two unreachable tiers.** The direct-Anthropic-API path (~2,000 LOC
+  behind `with_api()`, test-only call site, shadowed by ~622 LOC of CLI fallbacks
+  that exist only to cover for it) and `lopi-remote` (unreachable since S10) are a
+  separate wire-or-delete decision with a real one-way door in it. Named here so
+  the next session inherits the finding, not deferred silently.
+
 ## Telegram-Gateway-Non-Goal — `claude/telegram-bot-overhaul-8iJpe` closed, the gateway question is settled
 
 Sprint P4 ("close the loop"), Phase 3 branch triage. `claude/telegram-bot-overhaul-8iJpe`

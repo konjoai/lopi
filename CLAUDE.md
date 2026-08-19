@@ -1,6 +1,6 @@
 # lopi
 
-High-performance Rust agent orchestrator for Claude Code — runs Claude agents concurrently in git-isolated branches with retry loops, SQLite memory, TUI+web dashboard, and Telegram/WhatsApp remote control.
+High-performance Rust agent orchestrator for Claude Code — runs Claude agents concurrently in git-isolated branches with retry loops, SQLite memory, TUI+web dashboard, and a WhatsApp/Twilio webhook.
 
 ## Org rules
 
@@ -25,7 +25,7 @@ pre-implementation trust-boundary contract. `verify_cmd` is declared in
 `.konjo/profile.yml`.
 
 ## Stack
-Rust 2021 · tokio · axum · ratatui · sqlx/SQLite · teloxide · git2 · clap
+Rust 2021 · tokio · axum · ratatui · sqlx/SQLite · git2 · clap
 
 ## Commands
 ```bash
@@ -76,10 +76,18 @@ BLOCKING/ADVISORY split per job is in `.konjo/scripts/gate_verdict.sh` and
 | `lopi-memory` | SQLite via sqlx |
 | `lopi-orchestrator` | `AgentPool` + priority `TaskQueue` |
 | `lopi-ui` | ratatui dashboard + axum web/JSON API |
-| `lopi-remote` | teloxide Telegram bot + Twilio WhatsApp |
+| `lopi-remote` | Twilio WhatsApp webhook handler. Not reachable from the built binary — the Telegram transport was removed in Sprint S10 Phase 4 and the gateway question is settled (`LEDGER.md`'s `Telegram-Gateway-Non-Goal`) |
 | `lopi-webhook` | GitHub CI-failure → task injection |
 | `lopi-toon` | TOON (Token-Oriented Object Notation) |
-| `lopi-ratelimit` | Rate limiting primitives |
+| `lopi-ratelimit` | Rate limiting primitives. `BudgetGovernor` is unwired — the orchestrator owns budgets in `lopi-orchestrator/src/budget/` |
+| `lopi-oracle` | Textual cross-agent collision detection via `git merge-tree`. Advisory, detection-only |
+| `lopi-index` | Symbol index + code map |
+| `lopi-mcp` | MCP server/bridge surface |
+| `lopi-skill` | Runtime skill registry + promotion |
+| `lopi-spec` | Spec surface |
+| `lopi-tools` | Shared tool helpers |
+| `lopi-github` | GitHub REST client (write path) |
+| `lopi-demo` | Demo/scripted-run fixtures |
 
 ## Repo-specific rules
 

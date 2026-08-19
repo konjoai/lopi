@@ -2,6 +2,7 @@
 //! CI gate — the [`AgentRunner`] builder assembly and its budget-resolution
 //! helper have no dependency on `run_one`'s dispatch logic.
 
+use super::collision::CollisionWiring;
 use lopi_agent::AgentRunner;
 use lopi_core::{AgentEvent, EventBus, ScoreWeights, Task};
 use lopi_memory::MemoryStore;
@@ -39,6 +40,7 @@ pub(super) fn build_runner(
     plan_decision_rx: oneshot::Receiver<lopi_core::PlanDecision>,
     test_command: Option<String>,
     context_mode: lopi_core::ContextMode,
+    collision: Option<CollisionWiring>,
 ) -> AgentRunner {
     let verifier_needed = task.verifier_required || task.verifier_model.is_some();
     // Loop-as-code: a task-level override always wins over the repo's
@@ -65,6 +67,12 @@ pub(super) fn build_runner(
         .with_plan_gate(plan_decision_rx)
         .with_test_command(test_command)
         .with_context_mode(context_mode);
+    // Sprint P5 — `None` unless the pool was opted in via
+    // `AgentPool::with_collision_oracle`, in which case runner assembly is
+    // byte-identical to before this argument existed.
+    if let Some(CollisionWiring { oracle, peers }) = collision {
+        runner = runner.with_collision_oracle(oracle, peers);
+    }
     runner.max_turns = max_turns;
     runner.gate = gate;
     runner.until = until;

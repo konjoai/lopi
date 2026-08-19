@@ -1,7 +1,7 @@
 ---
 decays: state
-verified-against: 2b7aa29
-verified-date: 2026-08-04
+verified-against: 0fe75c0
+verified-date: 2026-08-19
 ---
 
 # The Pentad — Loop Engineering Completion Roadmap
@@ -126,6 +126,8 @@ Every other citation checked (worktree.rs, rebase.rs, verifier.rs, successor.rs,
 earned_trust.rs, the MCP client/server files, the loop-health/writable-controls
 citations) matched exactly. No DONE/PARTIAL/NOT-STARTED verdict changed anywhere in
 §1 or §4.
+
+**Re-verified 2026-08-19 against `0fe75c0`** (Sprint P5). Past the cap on commit volume; four load-bearing citations were re-checked live rather than date-bumped: `setup_worktree` is still at `pool/worktree.rs:25`; `EarnedTrust` still has zero callers outside its own module (only the `lib.rs` declaration and re-export); `Task::from_template` still has no caller outside `task_tests.rs`; `with_skills` has drifted from `builder.rs:92` to `:94`. One row's context genuinely changed: P5 wired `lopi-oracle` into `AgentPool` (`pool/collision.rs`), so cross-agent textual collision detection between concurrent worktrees is now reachable from the binary rather than test-only. That sharpens the **Worktrees** and **Sub-agents** rows without moving either verdict -- it is advisory detection, still not parallel task decomposition, and the "no mid-run snapshot" and "no sub-task DAG" gaps below are untouched.
 
 Legend: 🟢 solid · 🟡 partial · 🔴 missing.
 
