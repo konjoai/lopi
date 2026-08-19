@@ -166,6 +166,18 @@ The duplicate-crate list is back to exactly what `main` already carried before t
 `GK`'s `repo:cargo-deny` should now report only the tree-art artifact on files this PR
 never touches, not a new one of its own making.
 
+**Confirmed on the next CI run, decisively: the tree-art count did not move.** `GK`'s
+`repo:cargo-deny` still reports "121 net-new finding(s)" -- byte-identical to the count
+before this fix -- but the `warning[duplicate]: found N duplicate entries for crate
+'tower-http'` line that prefixed it before is now gone from the raw output, and `G1`'s own
+direct `cargo deny check` passed clean both times. Eliminating the one real duplicate
+changed nothing about the noise. That settles it: the 121 was never meaningfully counting
+findings -- it is `.konjo/deny.toml`'s `highlight = "simplest-path"` printing dependency-path
+trees for tracked crates as routine, non-violation output, and `newonly`'s line-level diff
+treating any textual shift in that output (which any `Cargo.lock` touch causes) as net-new.
+There is no further dependency change that will quiet this gate; the fix is in kiban's
+differ, not in this repo.
+
 **The lesson, stated plainly:** the first assessment reached for the familiar-sounding fix
 (a major-version bump) without checking whether the dependency was actually pinned by
 something else. It wasn't. Reflexive severity-matching -- assuming a fix must be as large
