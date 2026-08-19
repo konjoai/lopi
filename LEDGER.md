@@ -38,10 +38,17 @@ required `konjo-gate` summary, unchanged from `Gate-Tiering-1`'s original wiring
 `path:release-version` (this PR bumps `VERSION`), and `G4 - Complexity + Size + DRY`
 crashed on a pre-existing bug in `.konjo/scripts/dry_check.py` -- its `--changed-only`
 early-exit path returned before writing `--report`, and this PR's all-YAML/MD/sh diff
-(zero `.rs`/`.py` files) hit that path for the first time. Both are addressed in this
-PR: `dry_check.py` now always writes the report file, even on an empty scan (see
-`_write_empty_report`); the version-bump one-way-door is acknowledged below, per the
-same protocol `PR-202-Gate-Response` used. No `continue-on-error` added anywhere.
+(zero `.rs`/`.py` files) hit that path for the first time. `G0 - Doc Staleness` also
+went red once the PR's own commit volume crossed the 20-commit cap on `docs/security/
+TRIFECTA_PATHS.md` and `recipes/README.md`, coincidentally, not from anything this PR's
+diff touches -- both re-verified clean. All three addressed in this PR: `dry_check.py`
+now always writes the report file even on an empty scan (`_write_empty_report`); both
+docs re-stamped past the cap; the version-bump one-way-door acknowledged below, per the
+same protocol `PR-202-Gate-Response` used -- twice, since adding the two doc files to
+the diff shifted the change id from `2e540bd7ffd8` to `7f373009ae7c` (the change id is
+`sha256(sorted(changed_files))`, so any new file in the diff re-derives it; this is the
+same behavior `PR-202-Gate-Response` already documented). No `continue-on-error` added
+anywhere.
 
 **How to apply:** the drift check pattern (resolve the real upstream state, not just
 cross-check two local copies of a claim) generalizes to any other pinned dependency this
