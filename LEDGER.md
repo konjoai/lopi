@@ -104,6 +104,23 @@ own cited commands were re-run against this commit rather than the stamp being a
   genuinely changed and is now recorded there: P5 makes collision detection between
   concurrent worktrees reachable from the binary. It does not move any verdict.
 
+### Two follow-on effects of the dependency work, recorded rather than left to be found
+
+**A now-dead advisory ignore, removed.** `.konjo/deny.toml` carried
+`RUSTSEC-2025-0134` ignored with the reason "rustls-pemfile, unmaintained -- transitive via
+reqwest 0.11.27". The `reqwest 0.12` upgrade drops `rustls-pemfile` from the tree entirely,
+so that entry was suppressing an advisory for a crate the workspace no longer builds. Dead
+config that silently widens what a gate tolerates is worse than no config, so it is gone.
+`RUSTSEC-2026-0002` (`lru` via `ratatui`) is unaffected and stays.
+
+**A new duplicate, disclosed.** `reqwest 0.12` brings `tower-http 0.6.11` alongside the
+`0.5.2` that `axum 0.7` already pulled, so `cargo-deny` now warns about duplicate
+`tower-http`. Not hidden and not a regression in kind: `main` already carried duplicate
+`tower` (`0.4.13` and `0.5.3`), and `.konjo/deny.toml` sets `multiple-versions = "warn"`
+deliberately -- "blocking on transitive version drift would be too disruptive". `G1`'s own
+repo-native `cargo deny check` passes. Unifying it means `axum 0.7 -> 0.8`, a web-layer
+migration with no advisory forcing it, so it is not bundled into a security fix.
+
 ### `repo:cargo-deny` -- the tree-art artifact, second confirmed occurrence
 
 Reports "5 net-new finding(s)" whose text is literal dependency-tree drawing characters.
