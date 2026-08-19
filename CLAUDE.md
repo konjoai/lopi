@@ -106,7 +106,7 @@ Run `/konjo-retrofit` to apply the framework to another repo.
 
 ## Pinning
 
-This repo pins a kiban ref in `.konjo/kiban.ref` (currently `v1.14.0`) and `KIBAN_REF` in
+This repo pins a kiban ref in `.konjo/kiban.ref` (currently `v1.19.0`) and `KIBAN_REF` in
 `.github/workflows/konjo-gate.yml`'s `doc-staleness`, `konjo-gates`, and `mutation-hunt`
 jobs (four pin sites total) — bump all four together; a kiban change should not silently
 reach any of the three gates.

@@ -1,3 +1,18 @@
+## [0.46.1] - kiban pin bump v1.14.0 -> v1.19.0
+
+`.konjo/kiban.ref` and `konjo-gate.yml`'s three `KIBAN_REF` sites (doc-staleness,
+konjo-gates, mutation-hunt) were five releases behind, the largest gap this repo has
+carried. Bumped all four together per this repo's CLAUDE.md "Pinning" rule. Full
+rationale, CI triage outcome, and the drift-check hook change in `LEDGER.md`'s
+`Kiban-Pin-Bump-v1.19.0` entry.
+
+### Changed
+
+- `.konjo/kiban.ref`, `konjo-gate.yml` lines 69/800/1037: `v1.14.0` -> `v1.19.0`
+- `.claude/hooks/session-start.sh` now resolves kiban's actual latest tag (not just
+  cross-checking the two local pin sites against each other) and warns, report-only,
+  when the local pin trails it
+
 ## [0.46.0] - Sprint P5: pool-level collision-oracle wiring, and alerts that reach both sides
 
 `lopi-oracle` shipped in `[0.44.0]` with its runner-side integration built and
