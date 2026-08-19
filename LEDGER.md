@@ -5,6 +5,83 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## PR-202-Gate-Response -- one-way-door ack, a recurring cargo-deny artifact, and an advisory-DB event
+
+Sprint P5's PR (#202) came back with five red checks. Each was traced against `main`'s own
+last run (`31951537127`, `37b5fa0`, 2026-08-16) rather than assumed, because "not my
+failure" is exactly the claim that deserves evidence.
+
+| Check | Tier | State on `main` | Verdict |
+|---|---|---|---|
+| `G0 - Doc Staleness` | ADVISORY | already red, same job and step | not this PR's |
+| `G1b - npm audit (web/)` | ADVISORY | already red, same run | not this PR's |
+| `G1 - Static Analysis` | BLOCKING | green 2026-08-16 | not this PR's, see below |
+| `GK - konjo-gates` | ADVISORY | green 2026-08-16 | one real item, one known artifact |
+| `Konjo Gate` | required | green | red only because `G1` is |
+
+`main`'s aggregator passed on 2026-08-16 while `G0` and `G1b` were both red, which is the
+tiering working as `Gate-Tiering-1` designed it. Neither is a P5 regression and neither
+blocks.
+
+### `one_way_door` -- real, acknowledged
+
+Change id `8f8d7918cb21`, rule `path:release-version`. This PR bumps `VERSION` and
+`Cargo.toml`'s workspace version, so the flag is correct and expected. Acknowledged with a
+`Konjo-Acknowledged-Oneway` trailer on this entry's own commit, the same remedy
+`PR-196-Gate-Response` used.
+
+Worth recording because the prediction was wrong: the PR body expected this gate to fire on
+`CollisionOracle::poll` becoming `poll_for`, a genuine public-API signature change. It fired
+on the version bump instead. The API change went unflagged. Noted rather than quietly
+corrected -- a gate that catches a different thing than you expected is worth knowing about
+before relying on it to catch the thing you expected.
+
+### `repo:cargo-deny` -- the tree-art artifact, again
+
+Reported "5 net-new finding(s)" whose text is literal dependency-tree drawing characters:
+`|   |       |   \-- lopi-orchestrator v0.N (*)` and four more of the same shape. This is
+the kiban `newonly.net_new` line-diff defect already recorded in `PR-196-Gate-Response`:
+the differ cannot scope `cargo-deny`'s tree output, so any change to the dependency graph
+registers redrawn tree rows as findings. P5 adds a `lopi-oracle` edge to
+`lopi-orchestrator`, which redraws exactly those rows.
+
+No fix exists on this side. Recorded as a second confirmed occurrence rather than
+re-diagnosed from scratch, since a defect seen twice on unrelated diffs is the same defect,
+not a coincidence.
+
+### `cargo audit` -- RUSTSEC-2026-0258, and why it is not fixed here
+
+`G1` is the only BLOCKING failure, and it is an advisory-database event, not a code change.
+RUSTSEC-2026-0258 (`h2`, unbounded empty DATA frames) was **published 2026-08-17** -- the
+day after `main`'s last green run. Three independent checks, because this is the kind of
+claim that is convenient to believe:
+
+1. `git diff 37b5fa0 HEAD -- Cargo.lock` touches no `h2` entry. This PR's lock diff is
+   `lopi-*` version strings plus the new `lopi-oracle` edge, nothing else.
+2. `konjo-gates`' own `repo:cargo-audit` sub-gate **passes** on this same PR with "no
+   net-new findings". It diffs against base, so it sees the advisory as pre-existing. Only
+   the repo-native full-tree `cargo audit` in `G1` fails. Two gates reading the same
+   advisory and disagreeing is itself the evidence: the disagreement is precisely
+   "pre-existing" versus "present".
+3. `main` re-run today would fail identically.
+
+**Not fixed here, and not cheap to fix anywhere.** `h2 0.3.27` arrives through
+`reqwest 0.11.27 -> hyper-tls 0.5 -> hyper 0.14.32`. The advisory's stated remedy is
+`>= 0.4.16` and there is no patched `0.3.x`, so clearing it means migrating
+`reqwest 0.11 -> 0.12` (and with it `hyper 0.14 -> 1.x`) across every HTTP call site in the
+workspace. That is its own sprint. `CLAUDE.md`'s standing rule against deliberately editing
+root `Cargo.lock` points the same way.
+
+The three ways forward are all standing policy calls, not engineering ones, so none was
+taken unilaterally: do the `reqwest` migration; add a scoped
+`cargo audit --ignore RUSTSEC-2026-0258` with an expiry, which is a decision to accept a
+known advisory; or use the documented break-glass (`gate:override` plus a
+`Konjo-Override:` trailer). Carried forward in `NEXT_SESSION_PROMPT.md`.
+
+**Consequence, stated plainly:** #202 cannot show a green required check until one of those
+is chosen. `G2 - Tests + Coverage`, the other BLOCKING job and the one that actually
+exercises this sprint's code, is green.
+
 ## Collision-Oracle-Pool-Wiring -- the oracle gets a production call site, and both sides get told
 
 Sprint P5. Closes carried-forward item 2 of the `Collision-Oracle-Build` handoff.
