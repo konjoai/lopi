@@ -1,12 +1,26 @@
 ---
 decays: state
-verified-against: 0fe75c0
+verified-against: 2c767bd
 verified-date: 2026-08-19
 ---
 
 # The Pentad — Loop Engineering Completion Roadmap
 
-Verified against: `2b7aa29` · 2026-08-04 (re-verified; Sprint P2b's commit volume
+Verified against: `2c767bd` · 2026-08-19 (re-verified; 21 commits since the prior
+`0fe75c0` banner pushed this past the 20-commit cap — Stack-MAXX-1 (`chain_id` dispatch:
+`schema.sql`, `store/maxx.rs`, `orchestrator/maxx_loop.rs`, `web/maxx_handlers.rs`,
+`web/warmup.rs`), a following composer-bugs frontend PR, and an unrelated iOS-parity
+commit (`src/demo_commands.rs`/`onboarding_import_commands.rs`/`task_commands.rs`/
+`util.rs`, plus the `macos/LopiIOS` tree). Checked every one of those changed files
+against this doc's full citation list (`config.rs`, `template.rs`, `task.rs`,
+`run_loop.rs`, `worktree.rs`, `mod.rs`, and the rest) — zero overlap, so this is pure
+commit-volume staleness, not a citation losing accuracy; `Task::from_template` is still
+exactly at `:475-480` as cited below. Note: the frontmatter's prior `verified-against`
+(`0fe75c0`) had no matching body banner below it — that sprint (P5) stamped this doc's
+frontmatter without adding its own citation-check paragraph here, an inconsistency this
+banner doesn't try to paper over; the last real citation check in this doc's own prose is
+the `2b7aa29` banner directly below. Prior banner (`2b7aa29` ·
+2026-08-04, re-verified; Sprint P2b's commit volume
 (review-pipeline sections 1/3/4 plus a parallel Oracle-Preflight sprint's merge) pushed
 this past the 20-commit cap again. One real citation drift found and fixed this time,
 not just commit volume: Sprint P1 (Planner/Executor split) added a `tool_profile` field

@@ -1,8 +1,24 @@
 ---
 decays: state
-verified-against: 0fe75c0
+verified-against: 2c767bd
 verified-date: 2026-08-19
 ---
+
+## Stack-MAXX-1 re-verification (2026-08-19, `2c767bd`)
+
+Past the staleness cap on commit volume, not on the conclusion changing. Both of this doc's own cited greps were re-run live against this commit rather than assumed:
+
+- `grep -rn "bot.send|Client::new|twilio.*send" crates/lopi-remote/src/whatsapp.rs` -- no match. WhatsApp is still inbound-only.
+- `grep -rln "reqwest::Client|ureq::" crates/lopi-remote/src crates/lopi-webhook/src` -- no match. Still no outbound HTTP notifier.
+
+**Stack-MAXX-1 adds no outbound transport.** The new `chain_id` dispatch path
+(`crates/lopi-orchestrator/src/maxx_loop.rs`'s `fire_chain`/`run_chain_now`,
+`crates/lopi-ui/src/web/maxx_handlers.rs`, `crates/lopi-ui/src/web/warmup.rs`,
+`crates/lopi-memory/src/store/maxx.rs`) fires a `ChainScheduleManager::run_now` call —
+entirely in-process (an `AgentPool::submit` plus a `sqlx` write), no network client of any
+kind. Grepped these four files directly for `reqwest`/`Client::new`/`http://`/`https://`/
+`ureq::` -- no match, confirming this by reading the actual new code rather than inferring
+it from the feature's description.
 
 ## Sprint P5 re-verification (2026-08-19, `0fe75c0`)
 
