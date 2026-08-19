@@ -573,3 +573,19 @@ CREATE TABLE IF NOT EXISTS demo_repos (
     description TEXT NOT NULL,
     sort_order  INTEGER NOT NULL DEFAULT 0
 );
+
+-- Stack-MAXX-1 — lets a MAXX entry opportunistically fire an entire
+-- schedule_chains row (Stack-Chain-1) instead of a single ad-hoc task, so
+-- "run the whole stack when quota headroom is favorable" reuses the chain's
+-- existing step-sequencing/resume machinery rather than reinventing it.
+-- NULL (the default, and every pre-existing row) means "single-goal MAXX",
+-- unchanged from before this column existed — `goal` drives the fire as it
+-- always has. Non-NULL means "chain MAXX" — `maxx_loop::fire` dispatches via
+-- `ChainScheduleManager::run_now(chain_id)` instead of building a task from
+-- `goal`/`repo`, and `goal` on that row is descriptive-only (not read on
+-- fire). No FK constraint: this schema doesn't declare FKs anywhere else
+-- either (see `schedule_chain_steps.chain_id`'s equivalent bare TEXT
+-- reference), so a dangling chain_id (its chain deleted) is handled in Rust,
+-- not by SQLite — `fire` treats a missing chain the same as any other
+-- dispatch failure (`record_maxx_run` outcome "error"), never a panic.
+ALTER TABLE maxx_entries ADD COLUMN chain_id TEXT;

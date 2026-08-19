@@ -5,6 +5,62 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## Stack-MAXX-1 -- opportunistic backlog dispatch for a whole stack, not just one card
+
+**Decision (dispatch reuses `ChainScheduleManager`, not a second execution path).** MAXX
+(`maxx_loop.rs`) has only ever fired exactly one ad-hoc task per entry, built straight from
+a `goal`/`repo` pair. A stack is an ordered sequence of independent goals — the same shape
+`schedule_chains`/`ChainScheduleManager` (Stack-Chain-1) already models for cron-triggered
+whole-stack runs, including its step-sequencing and restart-orphan resume machinery. Rather
+than teach `maxx_loop` to walk a list of goals itself (duplicating that machinery, and
+inheriting its own restart-safety burden a second time), a `MaxxEntry` gained an optional
+`chain_id` (`maxx_entries.chain_id`, nullable, `None` for every pre-existing single-goal
+row): when set, `fire` calls `ChainScheduleManager::run_now(chain_id)` — the exact method
+the dashboard's "run now" button already calls — instead of building a task from `goal`.
+`goal` becomes descriptive-only in chain mode; the DB column stays `NOT NULL` (empty string
+satisfies it) rather than adding a second schema shape for what is still fundamentally one
+entry with two dispatch modes.
+
+**The chain row is shared infra with cron scheduling, not new infra.** `StackConfig.chainId`
+already exists (Stack-Chain-1's "schedule the entire stack" toggle). Enabling stack-level
+MAXX for the first time reuses that same field — `stackRun.ts::ensureChainForMaxx` creates
+the chain only if `chainId` is still unset, with `enabled: false` (a syntactically-valid but
+otherwise-inert cron, `'0 0 * * *'`, since the server validates `cron` as a real 5-field
+expression regardless of `enabled`) so it never self-fires; MAXX only ever reaches it via
+`run_now`. Whichever of "scheduled" or "MAXX" turns on first creates the row; each feature's
+own enable state governs itself independently — MAXX never touches `enableScheduleChain`,
+cron ticking never calls `run_now`.
+
+**`maxx_runs.task_id` reused loosely for chain fires.** A chain fire has no single task id —
+`schedule_chain_runs.id` (the run row `run_now` starts) is stored in that column instead.
+No new column added for this: the existing one is a bare `TEXT` with no FK, and the two id
+kinds are never compared, only displayed. `fire_chain`/`load_chain`/`run_chain_now` are three
+functions, not one nested match, purely to stay under the cognitive-complexity gate (25) —
+the original single-function version measured 39.
+
+**Reopens, deliberately, a previously-closed design boundary.** `stores/stack.ts`'s
+`STACK_COMMANDS` doc comment used to read "No `maxx` (per-card only)" — true until this
+sprint gave the stack scope its own real MAXX. `;maxx` was added to `STACK_COMMANDS` and the
+doc comment corrected rather than left stale; `MaxxPopover.svelte` gained a `chain`-mode
+branch (`ensureChain`/`isEmpty`/`emptyHint` props) alongside its original per-card `goal`
+mode instead of a forked second component, since everything but the create-payload shape and
+the empty-state gate (goal text vs. card count) is identical between the two.
+
+**Found and deferred, not fixed:** `duplicateStack` (`stores/stack.ts`) already leaked
+`config.chainId` into a cloned stack's config before this sprint — a duplicate would edit the
+*original* stack's schedule-chain row the moment its own cron or MAXX got toggled. Out of
+scope here (pre-existing, unrelated to what this sprint touched); this sprint's own new
+`maxx`/`maxxEntryId` fields ARE reset on duplicate (mirroring `duplicateCard`'s established
+per-card reset), so the same bug does not exist for MAXX specifically. Flagged as a follow-up
+task, not fixed inline, to keep this sprint's diff scoped to what it actually set out to do.
+
+**Not run:** the guard_trust `load_operator_overrides_*` tests in `lopi-core` flake under a
+full `cargo test --workspace` (a different one fails each run) but pass every time in
+isolation — confirmed identical on `main` before this sprint's changes, so it's pre-existing
+test-isolation flakiness (almost certainly a `$HOME`/env-var race between parallel test
+threads in the same binary), not a regression from this work. Flagged as a follow-up task
+rather than fixed inline, same reasoning as the `duplicateStack` finding above.
+
 ## Kiban-Pin-Bump-v1.19.0 -- five-version pin bump, and the drift check that would have caught it sooner
 
 Cross-repo audit (`konjo-cortex` sprint "kiban adoption and enforcement") found lopi's

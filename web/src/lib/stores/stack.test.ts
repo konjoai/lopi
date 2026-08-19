@@ -57,6 +57,7 @@ import {
   stackEvalActive,
   stackDefaultsActive,
   stackDefaultsSummary,
+  stackMaxxActive,
   stackGoalActive,
   stackPursuesGoal,
   stackGoalSummary,
@@ -1171,6 +1172,17 @@ eqIs(
   const untouched = duplicateStack(state, 'missing');
   ok(untouched === state, 'duplicateStack on an unknown key is a total no-op');
 }
+// Stack-MAXX-1: a clone never shares its original's backend /api/maxx row.
+{
+  const state = [pane('s1', [card('a')])];
+  state[0].config.maxx = { ...state[0].config.maxx, enabled: true, headroomGate: true };
+  state[0].config.maxxEntryId = 'maxx-entry-original';
+  const dup = duplicateStack(state, 's1');
+  ok(!dup[1].config.maxx.enabled, 'the clone starts with MAXX disabled, even though the original had it on');
+  eqIs(dup[1].config.maxxEntryId, undefined, 'the clone gets no backend maxx entry id — it must create its own on first enable');
+  eqIs(dup[1].config.maxx.headroomGate, true, 'non-enabled maxx policy fields (headroomGate) still carry over to the clone');
+  ok(dup[1].config.maxx !== dup[0].config.maxx, 'the clone gets its own maxx object, not a shared reference');
+}
 
 // ── Stack-Templates-1: "saved stacks" — copy another open pane's cards ───────
 {
@@ -1236,6 +1248,24 @@ eqIs(
   ok(
     stackDefaultsActive({ ...DEFAULT_STACK_DEFAULTS, model: 'claude-sonnet-4-6' }),
     'a defaults field moved off the app-wide baseline reads as active'
+  );
+}
+
+// ── Stack-MAXX-1: stack-level MAXX — default, active predicate, summary ──────
+{
+  const config = defaultStackConfig();
+  ok(!config.maxx.enabled, 'a fresh stack does not have MAXX enabled by default');
+  eqIs(config.maxxEntryId, undefined, 'a fresh stack has no backend maxx entry yet');
+  ok(!stackMaxxActive(config), "a fresh stack's maxx facet reads inactive");
+  ok(stackMaxxActive({ ...config, maxx: { ...config.maxx, enabled: true } }), 'enabling maxx reads as active');
+  eqIs(
+    maxxSummary(config),
+    maxxSummary({ maxx: config.maxx }),
+    'maxxSummary is structurally typed over { maxx } — a StackConfig and a bare { maxx } object read identically'
+  );
+  ok(
+    maxxSummary({ maxx: { ...config.maxx, headroomGate: true } }).includes('headroom'),
+    'headroomGate on is reflected in the summary'
   );
 }
 

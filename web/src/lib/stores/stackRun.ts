@@ -710,3 +710,31 @@ export async function syncStackSchedule(paneKey: string, defaults: PaneDefaults)
     // toggle) retries against the same not-yet-created/updated chain.
   }
 }
+
+/** A syntactically-valid but otherwise meaningless cron expression for
+ * MAXX-only chains — created with `enabled: false`, so `ChainScheduleManager`
+ * never registers it as a live cron job (see `start()`'s enabled-only
+ * filter); the chain only ever fires via `maxx_loop`'s `run_now` call. The
+ * server validates `cron` as a real 5-field expression regardless of
+ * `enabled`, so this can't be an empty or placeholder string. */
+const MAXX_ONLY_CRON = '0 0 * * *';
+
+/** Stack-MAXX-1: returns the pane's `/api/schedule-chains` row id, creating
+ *  one if this stack has never been scheduled or MAXX-enabled before —
+ *  shared infra with `syncStackSchedule`'s `config.chainId` (see that
+ *  field's doc comment in `stores/stack.ts`). Thrown errors surface to
+ *  `MaxxPopover`'s own `error` state via its `toggle()` catch, same as any
+ *  other create-on-first-enable failure.
+ *
+ * @throws {Error} if the pane is gone or has no cards to run.
+ */
+export async function ensureChainForMaxx(paneKey: string, defaults: PaneDefaults): Promise<string> {
+  const pane = get(panes).find((p) => p.key === paneKey);
+  if (!pane) throw new Error('stack no longer exists');
+  if (pane.config.chainId) return pane.config.chainId;
+  const body = buildChainBody(pane, paneKey, MAXX_ONLY_CRON, defaults);
+  if (!body) throw new Error('add at least one card before enabling MAXX');
+  const chain = await createScheduleChain({ ...body, enabled: false });
+  updateStackConfig(paneKey, { chainId: chain.id });
+  return chain.id;
+}

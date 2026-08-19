@@ -54,6 +54,7 @@ fn spawn_maxx_loop(state: &AppState) {
         state.store.clone(),
         state.quota.clone(),
         (*state.pool).clone(),
+        state.schedule_chains.clone(),
     )
     .spawn();
 }
