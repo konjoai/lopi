@@ -57,9 +57,12 @@ bumping only `[workspace.package]` breaks resolution.
    that had a root cause on this side: RUSTSEC-2026-0258 (`h2`) via a
    `reqwest 0.11 -> 0.12` plus OpenTelemetry `0.22 -> 0.27` bump that drops the whole
    `hyper 0.14` tree; the three `web/` npm advisories via `npm audit fix`; and the three
-   stale `decays: state` docs by re-running their own cited commands. `GK`'s
-   `repo:cargo-deny` still reports dependency-tree drawing characters as "net-new
-   findings" -- the kiban `newonly` line-diff defect, second confirmed occurrence, ADVISORY
+   stale `decays: state` docs by re-running their own cited commands; and the one real
+   duplicate (`tower-http`) the `reqwest` bump introduced, by bumping the workspace's own
+   `tower-http = "0.5"` pin to `"0.6"` -- no code changes, no `axum` version involved,
+   despite that being the first (wrong) guess. `GK`'s `repo:cargo-deny` still reports
+   dependency-tree drawing characters as "net-new findings" on files this PR never
+   touched -- the kiban `newonly` line-diff defect, second confirmed occurrence, ADVISORY
    and not fixable from this repo. **If a future session gets push access to kiban, that
    and the `pricing.rs` false positive are the two to report.** Details in `LEDGER.md`'s
    `PR-202-Gate-Response`.

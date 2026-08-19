@@ -145,6 +145,33 @@ an unrelated diff rather than re-diagnosed: a defect seen twice that way is the 
 not a coincidence. It is ADVISORY and does not block. If a future session gets push access
 to kiban, this and the `pricing.rs` false positive are the two to report.
 
+### Follow-up, same session: the one real line inside the noise was fixable, and cheaply
+
+The tree-art noise is a genuine kiban-side defect (above). But one real signal was
+underneath it -- `reqwest 0.12` pulls `tower-http 0.6.11` for its `follow-redirect`
+feature, alongside the `tower-http = "0.5"` this workspace pins at `Cargo.toml:63` for
+`lopi-ui`'s CORS/trace layers. Earlier in this same response the fix was assessed as
+"unifying it means `axum 0.7 -> 0.8`" and deliberately not bundled into the security PR.
+**That assessment was wrong, and checking it rather than repeating it is why this
+follow-up exists.** `axum` itself has no `tower-http` dependency at all -- the `"0.5"` pin
+was always this workspace's own choice, unrelated to axum's version. Bumping it to
+`"0.6"` needed no code changes: `cors_policy.rs`'s `CorsLayer`/`AllowOrigin` surface is
+unchanged across the boundary, confirmed by a clean build and by the three CORS behavior
+tests (`cors_allows_default_dev_origin_with_no_config`,
+`cors_denies_non_allowlisted_origin`, `cors_permissive_opt_out_allows_any_origin`) passing
+unmodified.
+
+The duplicate-crate list is back to exactly what `main` already carried before this PR --
+`tower` itself stays duplicated (a real but separate, still-deferred `axum` decision).
+`GK`'s `repo:cargo-deny` should now report only the tree-art artifact on files this PR
+never touches, not a new one of its own making.
+
+**The lesson, stated plainly:** the first assessment reached for the familiar-sounding fix
+(a major-version bump) without checking whether the dependency was actually pinned by
+something else. It wasn't. Reflexive severity-matching -- assuming a fix must be as large
+as the problem sounds -- is its own failure mode, the mirror image of the "pre-existing,
+not my problem" one earlier in this entry.
+
 ## Collision-Oracle-Pool-Wiring -- the oracle gets a production call site, and both sides get told
 
 Sprint P5. Closes carried-forward item 2 of the `Collision-Oracle-Build` handoff.
