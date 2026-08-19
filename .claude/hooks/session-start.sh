@@ -19,4 +19,20 @@ if [ -n "$PINNED" ] && [ -n "$CI_REF" ] && [ "$PINNED" != "$CI_REF" ]; then
   echo "::warning:: .konjo/kiban.ref ($PINNED) and konjo-gate.yml's KIBAN_REF ($CI_REF) have drifted apart -- bump both together."
 fi
 
+# The check above only catches the two local pins disagreeing with each other --
+# both can sit on the same stale ref indefinitely and it stays silent. Resolve
+# kiban's actual newest tag and warn if the local pin trails it. Best-effort: no
+# network, no `git`, or a slow remote must never block or fail session start.
+if [ -n "$PINNED" ] && command -v git >/dev/null 2>&1; then
+  LATEST=$(timeout 5 git ls-remote --tags --refs https://github.com/konjoai/kiban.git 'v*' 2>/dev/null \
+    | grep -oE 'refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$' | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' \
+    | sort -t. -k1.2,1n -k2,2n -k3,3n | tail -1)
+  if [ -n "$LATEST" ] && [ "$LATEST" != "$PINNED" ]; then
+    HIGHEST=$(printf '%s\n%s\n' "$PINNED" "$LATEST" | sort -t. -k1.2,1n -k2,2n -k3,3n | tail -1)
+    if [ "$HIGHEST" = "$LATEST" ]; then
+      echo "::warning:: .konjo/kiban.ref ($PINNED) trails kiban's latest tag ($LATEST) -- consider bumping."
+    fi
+  fi
+fi
+
 exit 0

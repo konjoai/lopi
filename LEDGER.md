@@ -5,6 +5,56 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## Kiban-Pin-Bump-v1.19.0 -- five-version pin bump, and the drift check that would have caught it sooner
+
+Cross-repo audit (`konjo-cortex` sprint "kiban adoption and enforcement") found lopi's
+three `KIBAN_REF` sites plus `.konjo/kiban.ref` sitting at `v1.14.0` while kiban had shipped
+to `v1.19.0` -- five releases, the largest gap this repo has carried. Bumped all four
+together (`konjo-gate.yml` lines 69/800/1037, `.konjo/kiban.ref`), per this repo's own
+CLAUDE.md "Pinning" rule.
+
+**Why this happened silently:** `.claude/hooks/session-start.sh` only ever compared
+`.konjo/kiban.ref` against `konjo-gate.yml`'s own `KIBAN_REF` -- it warns when the two
+local pins disagree with each other, never when both agree and are simply stale. Both sat
+at `v1.14.0` in perfect internal agreement the entire time. Same shape as `Gate-Tiering-1`'s
+Finding 3 (a gate that cannot fail in the case that matters isn't really checking anything):
+here it's a drift check, not a gate, but the failure mode is identical.
+
+**Fix:** the hook now also resolves kiban's actual newest tag via
+`git ls-remote --tags --refs https://github.com/konjoai/kiban.git 'v*'` (no GitHub API
+token needed, matches the same git-clone path the CI jobs already use) and warns,
+report-only, when the local pin trails it. `timeout 5` and `command -v git` guards keep it
+non-blocking if the network or git binary is unavailable -- consistent with the hook's
+existing "never fails" contract. Verified against both the current (`v1.19.0`, silent) and
+a synthetic stale (`v1.14.0`, warns) pin.
+
+**A version bump is a one-way door.** Gates that did not exist at `v1.14.0` now run on
+every PR. The mutation-hunt job's Sprint P2b blocker (`bin/kiban-mutation-hunt` not existing
+at the pinned ref) is resolved by this bump -- kiban shipped it on the way to `v1.19.0` --
+so that job is now live-runnable, though it remains `workflow_dispatch`-only and outside the
+required `konjo-gate` summary, unchanged from `Gate-Tiering-1`'s original wiring.
+
+**CI triage:** PR #203's first run flagged `GK - konjo-gates`' `one_way_door` gate on
+`path:release-version` (this PR bumps `VERSION`), and `G4 - Complexity + Size + DRY`
+crashed on a pre-existing bug in `.konjo/scripts/dry_check.py` -- its `--changed-only`
+early-exit path returned before writing `--report`, and this PR's all-YAML/MD/sh diff
+(zero `.rs`/`.py` files) hit that path for the first time. `G0 - Doc Staleness` also
+went red once the PR's own commit volume crossed the 20-commit cap on `docs/security/
+TRIFECTA_PATHS.md` and `recipes/README.md`, coincidentally, not from anything this PR's
+diff touches -- both re-verified clean. All three addressed in this PR: `dry_check.py`
+now always writes the report file even on an empty scan (`_write_empty_report`); both
+docs re-stamped past the cap; the version-bump one-way-door acknowledged below, per the
+same protocol `PR-202-Gate-Response` used -- twice, since adding the two doc files to
+the diff shifted the change id from `2e540bd7ffd8` to `7f373009ae7c` (the change id is
+`sha256(sorted(changed_files))`, so any new file in the diff re-derives it; this is the
+same behavior `PR-202-Gate-Response` already documented). No `continue-on-error` added
+anywhere.
+
+**How to apply:** the drift check pattern (resolve the real upstream state, not just
+cross-check two local copies of a claim) generalizes to any other pinned dependency this
+repo takes on. If a second pin shows up, replicate this block rather than writing a
+special case.
+
 ## PR-202-Gate-Response -- every gate traced to a root cause, then fixed
 
 Sprint P5's PR (#202) came back with five red checks. Each was traced against `main`'s own
