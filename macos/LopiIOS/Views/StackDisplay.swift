@@ -150,10 +150,11 @@ struct CardIconButton: View {
     let systemImage: String
     var active: Bool = false
     var count: Int?
+    var disabled: Bool = false
     var action: () -> Void = {}
 
     var body: some View {
-        Button(action: action) {
+        Button(action: { Haptics.tap(); action() }) {
             HStack(spacing: 4) {
                 Image(systemName: systemImage).font(.system(size: 11))
                 if let count {
@@ -173,6 +174,8 @@ struct CardIconButton: View {
             )
         }
         .buttonStyle(.plain)
+        .disabled(disabled)
+        .opacity(disabled ? 0.35 : 1)
     }
 }
 

@@ -15,9 +15,10 @@ use std::time::Duration;
 use anyhow::Result;
 use chrono::{DateTime, Timelike, Utc};
 use lopi_core::{AutonomyLevel, LimitWindow, Task};
-use lopi_memory::{MaxxRow, MemoryStore};
+use lopi_memory::{MaxxRow, MemoryStore, ScheduleChainRow};
 use tracing::{info, warn};
 
+use crate::chain_schedule_manager::ChainScheduleManager;
 use crate::pool::AgentPool;
 use crate::quota_tracker::QuotaTracker;
 
@@ -62,6 +63,11 @@ pub struct MaxxSpec {
     pub headroom_gate: bool,
     /// Windows `headroom_gate` checks.
     pub windows: Vec<LimitWindow>,
+    /// Stack-MAXX-1 — when set, `fire` dispatches the whole
+    /// `schedule_chains` row via [`ChainScheduleManager::run_now`] instead
+    /// of building a single task from `goal`/`repo`. See
+    /// [`lopi_memory::MaxxRow::chain_id`] for the design rationale.
+    pub chain_id: Option<String>,
 }
 
 impl From<MaxxRow> for MaxxSpec {
@@ -84,6 +90,7 @@ impl From<MaxxRow> for MaxxSpec {
                 .iter()
                 .filter_map(|w| LimitWindow::parse(w))
                 .collect(),
+            chain_id: r.chain_id,
         }
     }
 }
@@ -185,17 +192,27 @@ pub struct MaxxLoop {
     store: MemoryStore,
     quota: QuotaTracker,
     pool: AgentPool,
+    chains: ChainScheduleManager,
     interval: Duration,
 }
 
 impl MaxxLoop {
-    /// Construct a tick with the default interval.
+    /// Construct a tick with the default interval. `chains` is the same
+    /// [`ChainScheduleManager`] instance `AppState` starts — a chain-scoped
+    /// entry's fire is just a `run_now` call on it, sharing that manager's
+    /// existing step-sequencing/resume machinery rather than duplicating it.
     #[must_use]
-    pub fn new(store: MemoryStore, quota: QuotaTracker, pool: AgentPool) -> Self {
+    pub fn new(
+        store: MemoryStore,
+        quota: QuotaTracker,
+        pool: AgentPool,
+        chains: ChainScheduleManager,
+    ) -> Self {
         Self {
             store,
             quota,
             pool,
+            chains,
             interval: DEFAULT_TICK_INTERVAL,
         }
     }
@@ -227,7 +244,7 @@ impl MaxxLoop {
             if self.in_cooldown(&spec.id, now).await {
                 continue;
             }
-            fire(&self.pool, &self.store, &spec).await;
+            fire(&self.pool, &self.store, &self.chains, &spec).await;
             fired += 1;
         }
         Ok(fired)
@@ -261,21 +278,89 @@ impl MaxxLoop {
     }
 }
 
-/// Submit a task for `spec` and append a run-history row.
-async fn fire(pool: &AgentPool, store: &MemoryStore, spec: &MaxxSpec) {
+/// Dispatch `spec` — a single ad-hoc task built from `goal`/`repo` for a
+/// plain entry, or the whole chain via [`ChainScheduleManager::run_now`] for
+/// a chain-scoped one (see [`MaxxSpec::chain_id`]) — then append a
+/// run-history row recording the outcome.
+async fn fire(
+    pool: &AgentPool,
+    store: &MemoryStore,
+    chains: &ChainScheduleManager,
+    spec: &MaxxSpec,
+) {
+    let (task_id, outcome) = match &spec.chain_id {
+        Some(chain_id) => fire_chain(chains, store, chain_id).await,
+        None => fire_task(pool, spec).await,
+    };
+    if let Err(e) = store
+        .record_maxx_run(&spec.id, task_id.as_deref(), outcome)
+        .await
+    {
+        warn!(maxx = %spec.id, "failed to record maxx run: {e:#}");
+    }
+}
+
+/// Submit a single ad-hoc task built from `spec.goal`/`spec.repo`.
+async fn fire_task(pool: &AgentPool, spec: &MaxxSpec) -> (Option<String>, &'static str) {
     info!(maxx = %spec.id, "firing maxx task: {}", spec.goal);
     let task = build_task(spec);
     let new_id = task.id.0.to_string();
     let duplicate = pool.submit(task).await;
-    let (task_id, outcome) = match &duplicate {
-        Some(existing) => (existing.0.to_string(), "duplicate"),
-        None => (new_id, "queued"),
+    match duplicate {
+        Some(existing) => (Some(existing.0.to_string()), "duplicate"),
+        None => (Some(new_id), "queued"),
+    }
+}
+
+/// Fire the whole chain `chain_id` names, reusing
+/// [`ChainScheduleManager::run_now`] exactly as the dashboard's "run now"
+/// button does. The chain row's own `task_id` column stores the resulting
+/// `schedule_chain_runs.id` (there is no single task id for a multi-step
+/// fire) — reusing the column loosely rather than adding a second one, since
+/// it's a plain `TEXT` with no FK and the two ids are never compared, only
+/// displayed. Split into `load_chain`/`run_chain_now` (rather than one
+/// nested match) to stay under the cognitive-complexity gate.
+async fn fire_chain(
+    chains: &ChainScheduleManager,
+    store: &MemoryStore,
+    chain_id: &str,
+) -> (Option<String>, &'static str) {
+    let Some(chain_row) = load_chain(store, chain_id).await else {
+        return (None, "error");
     };
-    if let Err(e) = store
-        .record_maxx_run(&spec.id, Some(&task_id), outcome)
-        .await
-    {
-        warn!(maxx = %spec.id, "failed to record maxx run: {e:#}");
+    info!(chain = %chain_id, "firing maxx chain");
+    run_chain_now(chains, chain_id, chain_row).await
+}
+
+async fn load_chain(store: &MemoryStore, chain_id: &str) -> Option<ScheduleChainRow> {
+    match store.get_schedule_chain(chain_id).await {
+        Ok(Some(row)) => Some(row),
+        Ok(None) => {
+            warn!(chain = %chain_id, "maxx chain_id not found; skipping fire");
+            None
+        }
+        Err(e) => {
+            warn!(chain = %chain_id, "failed to load maxx chain: {e:#}");
+            None
+        }
+    }
+}
+
+async fn run_chain_now(
+    chains: &ChainScheduleManager,
+    chain_id: &str,
+    chain_row: ScheduleChainRow,
+) -> (Option<String>, &'static str) {
+    match chains.run_now(chain_row.into()).await {
+        Ok(Some(run_id)) => (Some(run_id), "queued"),
+        Ok(None) => {
+            warn!(chain = %chain_id, "maxx chain has no steps; nothing to fire");
+            (None, "error")
+        }
+        Err(e) => {
+            warn!(chain = %chain_id, "failed to fire maxx chain: {e:#}");
+            (None, "error")
+        }
     }
 }
 

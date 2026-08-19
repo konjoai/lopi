@@ -4,8 +4,10 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use super::*;
+use crate::chain_schedule_manager::ChainScheduleManager;
 use crate::queue::TaskQueue;
 use lopi_core::{AgentEvent, EventBus};
+use lopi_memory::{ChainStepInput, ScheduleChainInput};
 
 fn spec(id: &str) -> MaxxSpec {
     MaxxSpec {
@@ -19,6 +21,7 @@ fn spec(id: &str) -> MaxxSpec {
         quiet_hours: None,
         headroom_gate: false,
         windows: vec![],
+        chain_id: None,
     }
 }
 
@@ -203,12 +206,16 @@ async fn is_favorable_ors_quiet_hours_and_headroom() {
 
 // ── tick / cooldown ──────────────────────────────────────────────────
 
-async fn pool_with_store() -> (AgentPool, MemoryStore) {
+async fn pool_with_store() -> (AgentPool, MemoryStore, ChainScheduleManager) {
     let store = MemoryStore::open_in_memory().await.unwrap();
     let queue = TaskQueue::new();
     let bus: EventBus<AgentEvent> = EventBus::new(16);
     let pool = AgentPool::new(1, PathBuf::from("."), queue, bus).with_store(store.clone());
-    (pool, store)
+    // `run_now` (the only thing `fire_chain` calls) doesn't touch the cron
+    // `JobScheduler` at all — see `chain_schedule_manager_tests.rs`'s own
+    // `run_now_submits_only_step_zero`, which also skips `.start()`.
+    let chains = ChainScheduleManager::new(pool.clone(), store.clone());
+    (pool, store, chains)
 }
 
 fn maxx_input(name: &str, quiet_hours: Option<(u8, u8)>) -> lopi_memory::MaxxInput {
@@ -227,12 +234,35 @@ fn maxx_input(name: &str, quiet_hours: Option<(u8, u8)>) -> lopi_memory::MaxxInp
         quiet_hours_end: quiet_hours.map(|(_, e)| e),
         headroom_gate: false,
         windows: vec![],
+        chain_id: None,
+    }
+}
+
+/// A minimal single-step chain, so a chain-scoped MAXX entry has something
+/// real to fire — `ChainScheduleManager::run_now` returns `Ok(None)`
+/// (no-op) for a chain with zero steps, which would make a chain-fire test
+/// indistinguishable from a broken one.
+fn chain_input() -> ScheduleChainInput {
+    ScheduleChainInput {
+        id: None,
+        name: "maxx-chain-test".into(),
+        cron: "0 2 * * *".into(),
+        repo: None,
+        priority: "normal".into(),
+        autonomy_level: "draft_pr".into(),
+        on_fail: "stop".into(),
+        enabled: false,
+        steps: vec![ChainStepInput {
+            goal: "chain step one".into(),
+            allowed_dirs: vec![],
+            forbidden_dirs: vec![],
+        }],
     }
 }
 
 #[tokio::test]
 async fn tick_fires_only_favorable_enabled_entries() {
-    let (pool, store) = pool_with_store().await;
+    let (pool, store, chains) = pool_with_store().await;
     let quota = QuotaTracker::new(store.clone());
     let bus: EventBus<AgentEvent> = EventBus::new(4);
     quota.start(&bus).await.unwrap();
@@ -252,14 +282,14 @@ async fn tick_fires_only_favorable_enabled_entries() {
     disabled.enabled = false;
     store.upsert_maxx_entry(&disabled).await.unwrap();
 
-    let tick = MaxxLoop::new(store.clone(), quota, pool);
+    let tick = MaxxLoop::new(store.clone(), quota, pool, chains);
     let fired = tick.tick().await.unwrap();
     assert_eq!(fired, 1, "only the always-on entry should fire");
 }
 
 #[tokio::test]
 async fn tick_respects_cooldown_on_repeat_ticks() {
-    let (pool, store) = pool_with_store().await;
+    let (pool, store, chains) = pool_with_store().await;
     let quota = QuotaTracker::new(store.clone());
     let bus: EventBus<AgentEvent> = EventBus::new(4);
     quota.start(&bus).await.unwrap();
@@ -268,7 +298,7 @@ async fn tick_respects_cooldown_on_repeat_ticks() {
         .await
         .unwrap();
 
-    let tick = MaxxLoop::new(store, quota, pool);
+    let tick = MaxxLoop::new(store, quota, pool, chains);
     assert_eq!(tick.tick().await.unwrap(), 1, "first tick fires");
     assert_eq!(
         tick.tick().await.unwrap(),
@@ -279,7 +309,7 @@ async fn tick_respects_cooldown_on_repeat_ticks() {
 
 #[tokio::test]
 async fn in_cooldown_false_once_interval_elapsed() {
-    let (pool, store) = pool_with_store().await;
+    let (pool, store, chains) = pool_with_store().await;
     let entry = store
         .upsert_maxx_entry(&maxx_input("e", None))
         .await
@@ -289,7 +319,7 @@ async fn in_cooldown_false_once_interval_elapsed() {
         .await
         .unwrap();
     let quota = QuotaTracker::new(store.clone());
-    let tick = MaxxLoop::new(store, quota, pool);
+    let tick = MaxxLoop::new(store, quota, pool, chains);
 
     let just_now = Utc::now();
     assert!(tick.in_cooldown(&entry.id, just_now).await, "just fired");
@@ -299,4 +329,57 @@ async fn in_cooldown_false_once_interval_elapsed() {
         !tick.in_cooldown(&entry.id, well_past).await,
         "cooldown elapsed"
     );
+}
+
+// ── chain-scoped MAXX (Stack-MAXX-1) ───────────────────────────────────
+
+#[tokio::test]
+async fn tick_fires_favorable_chain_scoped_entry_via_run_now() {
+    let (pool, store, chains) = pool_with_store().await;
+    let quota = QuotaTracker::new(store.clone());
+    let bus: EventBus<AgentEvent> = EventBus::new(4);
+    quota.start(&bus).await.unwrap();
+
+    let chain = store.upsert_schedule_chain(&chain_input()).await.unwrap();
+    let mut entry = maxx_input("chain-fires", Some((0, 23)));
+    entry.chain_id = Some(chain.id.clone());
+    let row = store.upsert_maxx_entry(&entry).await.unwrap();
+
+    let tick = MaxxLoop::new(store.clone(), quota, pool, chains);
+    assert_eq!(
+        tick.tick().await.unwrap(),
+        1,
+        "the chain-scoped entry fires"
+    );
+
+    let runs = store.list_maxx_runs(&row.id, 1).await.unwrap();
+    assert_eq!(runs[0].outcome, "queued");
+    // Firing via `run_now` created a real `schedule_chain_runs` row —
+    // `task_id` on the maxx_runs row holds that run's id, not a task id.
+    let chain_run = store
+        .get_chain_run(runs[0].task_id.as_ref().unwrap())
+        .await
+        .unwrap();
+    assert!(chain_run.is_some(), "run_now must have started a chain run");
+}
+
+#[tokio::test]
+async fn tick_records_error_when_chain_id_does_not_resolve() {
+    let (pool, store, chains) = pool_with_store().await;
+    let quota = QuotaTracker::new(store.clone());
+    let bus: EventBus<AgentEvent> = EventBus::new(4);
+    quota.start(&bus).await.unwrap();
+
+    let mut entry = maxx_input("dangling-chain", Some((0, 23)));
+    entry.chain_id = Some("does-not-exist".into());
+    let row = store.upsert_maxx_entry(&entry).await.unwrap();
+
+    let tick = MaxxLoop::new(store.clone(), quota, pool, chains);
+    // `is_favorable` still counts this as "fired" (a fire attempt was made)
+    // even though the dispatch itself failed — the failure is recorded as
+    // an "error" run outcome, not silently dropped or panicked on.
+    assert_eq!(tick.tick().await.unwrap(), 1);
+    let runs = store.list_maxx_runs(&row.id, 1).await.unwrap();
+    assert_eq!(runs[0].outcome, "error");
+    assert!(runs[0].task_id.is_none());
 }

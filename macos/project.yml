@@ -96,10 +96,28 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: ai.konjo.lopi.ios
         GENERATE_INFOPLIST_FILE: YES
+        # Pinned so a fresh `xcodegen generate` doesn't wipe device-build
+        # signing back to the project-wide default (empty) — this is
+        # Wesley's personal team, needed for on-device (not simulator) runs.
+        DEVELOPMENT_TEAM: CNBGVNBR39
+        INFOPLIST_KEY_CFBundleDisplayName: Lopi
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
         INFOPLIST_KEY_NSHumanReadableCopyright: "Konjo AI"
         TARGETED_DEVICE_FAMILY: "1" # iPhone only for the first pass; iPad later
+
+  LopiIOSUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: LopiIOSUITests
+    dependencies:
+      - target: LopiIOS
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: ai.konjo.lopi.ios.uitests
+        TEST_TARGET_NAME: LopiIOS
 
 schemes:
   Lopi:
@@ -114,3 +132,6 @@ schemes:
     build:
       targets:
         LopiIOS: all
+    test:
+      targets:
+        - LopiIOSUITests

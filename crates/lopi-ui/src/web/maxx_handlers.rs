@@ -52,7 +52,18 @@ pub(super) struct MaxxBody {
     /// Window tags: `"five_hour"` / `"seven_day"`.
     #[serde(default)]
     pub windows: Vec<String>,
+    /// Stack-MAXX-1 — the `/api/schedule-chains` row id to fire instead of
+    /// building a single task from `goal`/`repo`. See
+    /// [`lopi_memory::MaxxRow::chain_id`] for the design rationale. When
+    /// set, `goal` is not required (it's not read on fire in chain mode).
+    #[serde(default)]
+    pub chain_id: Option<String>,
 }
+
+/// Longer than any real chain id (a UUID) needs, but short enough that a
+/// client bug can't wedge an unbounded string into every future query that
+/// binds `chain_id` — same reasoning as `MAX_GOAL_LENGTH`.
+const MAX_CHAIN_ID_LENGTH: usize = 200;
 
 impl MaxxBody {
     /// Validate inputs at the API boundary. Returns an error message on failure.
@@ -60,13 +71,25 @@ impl MaxxBody {
         if self.name.trim().is_empty() {
             return Err("name must not be empty".into());
         }
-        if self.goal.trim().is_empty() {
-            return Err("goal must not be empty".into());
+        let chain_id = self.chain_id.as_deref().filter(|c| !c.trim().is_empty());
+        // `goal` drives a plain fire; `chain_id` drives a chain fire. Exactly
+        // one purpose applies per entry — requiring `goal` unconditionally
+        // (the pre-Stack-MAXX-1 behavior) would force a throwaway string on
+        // every chain-scoped entry for a field `fire_chain` never reads.
+        if chain_id.is_none() {
+            if self.goal.trim().is_empty() {
+                return Err("goal must not be empty (or set chain_id)".into());
+            }
+            if self.goal.chars().count() > MAX_GOAL_LENGTH {
+                return Err(format!("goal exceeds {MAX_GOAL_LENGTH} chars"));
+            }
+            reject_control_chars(&self.goal)?;
+        } else if let Some(chain_id) = chain_id {
+            if chain_id.chars().count() > MAX_CHAIN_ID_LENGTH {
+                return Err(format!("chain_id exceeds {MAX_CHAIN_ID_LENGTH} chars"));
+            }
+            reject_control_chars(chain_id)?;
         }
-        if self.goal.chars().count() > MAX_GOAL_LENGTH {
-            return Err(format!("goal exceeds {MAX_GOAL_LENGTH} chars"));
-        }
-        reject_control_chars(&self.goal)?;
         if let Some((start, end)) = self.quiet_hours {
             if start > 23 || end > 23 {
                 return Err("quiet_hours must be within 0..=23".into());
@@ -100,6 +123,7 @@ impl MaxxBody {
             quiet_hours_end: self.quiet_hours.map(|(_, e)| e),
             headroom_gate: self.headroom_gate,
             windows: self.windows,
+            chain_id: self.chain_id.filter(|c| !c.trim().is_empty()),
         }
     }
 }
@@ -220,6 +244,7 @@ async fn maxx_to_json(s: &AppState, row: MaxxRow) -> Value {
             _ => Value::Null,
         },
         "headroom_gate": row.headroom_gate, "windows": row.windows,
+        "chain_id": row.chain_id,
         "created_at": row.created_at, "updated_at": row.updated_at, "last_run": last_run,
     })
 }
@@ -267,6 +292,7 @@ mod tests {
             quiet_hours: None,
             headroom_gate: false,
             windows: vec![],
+            chain_id: None,
         }
     }
 
@@ -282,5 +308,46 @@ mod tests {
     #[test]
     fn validate_accepts_a_well_formed_body() {
         assert!(valid_body().validate().is_ok());
+    }
+
+    #[test]
+    fn validate_rejects_empty_goal_without_chain_id() {
+        let mut body = valid_body();
+        body.goal = String::new();
+        assert!(body.validate().is_err());
+    }
+
+    #[test]
+    fn validate_accepts_empty_goal_when_chain_id_set() {
+        let mut body = valid_body();
+        body.goal = String::new();
+        body.chain_id = Some("chain-abc".into());
+        assert!(body.validate().is_ok());
+    }
+
+    #[test]
+    fn validate_rejects_control_char_in_chain_id() {
+        let mut body = valid_body();
+        body.goal = String::new();
+        body.chain_id = Some("chain\u{0007}abc".into());
+        assert!(body.validate().is_err());
+    }
+
+    #[test]
+    fn validate_rejects_blank_chain_id_falls_back_to_goal_requirement() {
+        let mut body = valid_body();
+        body.goal = String::new();
+        body.chain_id = Some("   ".into());
+        assert!(
+            body.validate().is_err(),
+            "whitespace-only chain_id must not exempt goal"
+        );
+    }
+
+    #[test]
+    fn into_input_normalizes_blank_chain_id_to_none() {
+        let mut body = valid_body();
+        body.chain_id = Some("   ".into());
+        assert_eq!(body.into_input(None).chain_id, None);
     }
 }

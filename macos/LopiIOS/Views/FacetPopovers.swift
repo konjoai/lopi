@@ -71,7 +71,7 @@ struct FacetPopoverContent: View {
     private var tabStrip: some View {
         HStack(spacing: 0) {
             ForEach(CardFacet.allCases) { facet in
-                Button { tab = facet } label: {
+                Button { Haptics.selection(); tab = facet } label: {
                     Image(systemName: facet.systemImage)
                         .font(.system(size: 13))
                         .foregroundStyle(tab == facet ? Konjo.fg : Konjo.fgMute)
@@ -148,7 +148,7 @@ private struct ScheduleFacetView: View {
                         timeRow
                     case .hourly:
                         Stepper("at :\(String(format: "%02d", cron.min))", value: Binding(
-                            get: { cron.min }, set: { v in write { $0.cron.min = v } }
+                            get: { cron.min }, set: { v in Haptics.selection(); write { $0.cron.min = v } }
                         ), in: 0...59)
                         .font(Konjo.mono(11)).foregroundStyle(Konjo.fgDim)
                     case .everyMinute:
@@ -180,7 +180,7 @@ private struct ScheduleFacetView: View {
 
     private var timeRow: some View {
         Stepper("\(cron.hour12):\(String(format: "%02d", cron.min)) \(cron.ampm.rawValue)", value: Binding(
-            get: { cron.hour12 }, set: { v in write { $0.cron.hour12 = ((v - 1 + 12) % 12) + 1 } }
+            get: { cron.hour12 }, set: { v in Haptics.selection(); write { $0.cron.hour12 = ((v - 1 + 12) % 12) + 1 } }
         ), in: 1...12)
         .font(Konjo.mono(11)).foregroundStyle(Konjo.fgDim)
     }
@@ -216,7 +216,7 @@ private struct GuardrailsFacetView: View {
                 HStack {
                     Text("max iter").font(Konjo.mono(10.5)).foregroundStyle(Konjo.fgDim)
                     Stepper("", value: Binding(
-                        get: { card.maxIterations }, set: { v in write { $0.maxIterations = max(0, v) } }
+                        get: { card.maxIterations }, set: { v in Haptics.selection(); write { $0.maxIterations = max(0, v) } }
                     ), in: 0...50).labelsHidden()
                     Text(cardIterationsLabel(card.maxIterations)).font(Konjo.mono(11)).foregroundStyle(Konjo.fg)
                     Spacer()
@@ -238,7 +238,7 @@ private struct GuardrailsFacetView: View {
     ) -> some View where T.RawValue == String {
         HStack(spacing: 6) {
             ForEach(options, id: \.self) { opt in
-                Button(opt.rawValue) { onSelect(opt) }
+                Button(opt.rawValue) { Haptics.selection(); onSelect(opt) }
                     .font(Konjo.mono(10))
                     .foregroundStyle(opt == selected ? Konjo.sun : Konjo.fgMute)
                     .padding(.horizontal, 8).padding(.vertical, 4)
@@ -252,7 +252,7 @@ private struct GuardrailsFacetView: View {
                             toggle: @escaping () -> Void, setText: @escaping (String) -> Void) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
-                Toggle("", isOn: Binding(get: { on }, set: { _ in toggle() })).labelsHidden().tint(Konjo.sun)
+                Toggle("", isOn: Binding(get: { on }, set: { _ in Haptics.selection(); toggle() })).labelsHidden().tint(Konjo.sun)
                 Text(label).font(Konjo.mono(11.5)).foregroundStyle(Konjo.fg)
             }
             TextField(placeholder, text: Binding(get: { text }, set: setText))

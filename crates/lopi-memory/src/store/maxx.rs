@@ -43,6 +43,10 @@ pub struct MaxxRow {
     pub headroom_gate: bool,
     /// `LimitWindow` tags `headroom_gate` checks, e.g. `["five_hour"]`.
     pub windows: Vec<String>,
+    /// Stack-MAXX-1 — when set, this entry fires the whole
+    /// `schedule_chains` row instead of a single ad-hoc task from `goal`.
+    /// `None` (the default) is unchanged single-goal MAXX.
+    pub chain_id: Option<String>,
     /// ISO-8601 creation timestamp.
     pub created_at: String,
     /// ISO-8601 timestamp of the last edit.
@@ -80,6 +84,8 @@ pub struct MaxxInput {
     pub headroom_gate: bool,
     /// `LimitWindow` tags `headroom_gate` checks.
     pub windows: Vec<String>,
+    /// Stack-MAXX-1 — see [`MaxxRow::chain_id`].
+    pub chain_id: Option<String>,
 }
 
 /// One row from a MAXX entry's fire history.
@@ -144,8 +150,8 @@ impl MemoryStore {
             "INSERT INTO maxx_entries
                (id, name, goal, repo, priority, allowed_dirs, forbidden_dirs, enabled,
                 autonomy_level, report, quiet_hours_start, quiet_hours_end, headroom_gate,
-                windows_json, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                windows_json, chain_id, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(id) DO UPDATE SET
                name = excluded.name, goal = excluded.goal, repo = excluded.repo,
                priority = excluded.priority, allowed_dirs = excluded.allowed_dirs,
@@ -154,7 +160,7 @@ impl MemoryStore {
                quiet_hours_start = excluded.quiet_hours_start,
                quiet_hours_end = excluded.quiet_hours_end,
                headroom_gate = excluded.headroom_gate, windows_json = excluded.windows_json,
-               updated_at = excluded.updated_at",
+               chain_id = excluded.chain_id, updated_at = excluded.updated_at",
         )
         .bind(&id)
         .bind(&input.name)
@@ -170,6 +176,7 @@ impl MemoryStore {
         .bind(input.quiet_hours_end.map(i64::from))
         .bind(i64::from(input.headroom_gate))
         .bind(&windows)
+        .bind(&input.chain_id)
         .bind(&now)
         .bind(&now)
         .execute(&self.write_pool)
@@ -262,7 +269,7 @@ impl MemoryStore {
 
 const SELECT_COLS: &str = "SELECT id, name, goal, repo, priority, allowed_dirs, forbidden_dirs, \
      enabled, autonomy_level, report, quiet_hours_start, quiet_hours_end, headroom_gate, \
-     windows_json, created_at, updated_at FROM maxx_entries";
+     windows_json, chain_id, created_at, updated_at FROM maxx_entries";
 
 fn maxx_from_row(row: sqlx::sqlite::SqliteRow) -> MaxxRow {
     MaxxRow {
@@ -284,6 +291,7 @@ fn maxx_from_row(row: sqlx::sqlite::SqliteRow) -> MaxxRow {
             .map(|v| v as u8),
         headroom_gate: row.get::<i64, _>("headroom_gate") != 0,
         windows: parse_json_array(&row.get::<String, _>("windows_json")),
+        chain_id: row.get("chain_id"),
         created_at: row.get("created_at"),
         updated_at: row.get("updated_at"),
     }
@@ -334,7 +342,26 @@ mod tests {
             quiet_hours_end: Some(7),
             headroom_gate: true,
             windows: vec!["five_hour".into(), "seven_day".into()],
+            chain_id: None,
         }
+    }
+
+    #[tokio::test]
+    async fn upsert_round_trips_chain_id() {
+        let store = MemoryStore::open_in_memory().await.unwrap();
+        let mut chained = input("chain-fired");
+        chained.chain_id = Some("chain-abc".into());
+        let row = store.upsert_maxx_entry(&chained).await.unwrap();
+        assert_eq!(row.chain_id.as_deref(), Some("chain-abc"));
+        let fetched = store.get_maxx_entry(&row.id).await.unwrap().unwrap();
+        assert_eq!(fetched.chain_id.as_deref(), Some("chain-abc"));
+    }
+
+    #[tokio::test]
+    async fn upsert_defaults_chain_id_to_none() {
+        let store = MemoryStore::open_in_memory().await.unwrap();
+        let row = store.upsert_maxx_entry(&input("no-chain")).await.unwrap();
+        assert_eq!(row.chain_id, None);
     }
 
     #[tokio::test]

@@ -302,14 +302,3 @@ struct ScheduleEditor: View {
         }
     }
 }
-
-/// Trims ISO-8601 timestamps to a compact display form.
-enum DateFormatting {
-    static func short(_ iso: String) -> String {
-        // Show "MM-dd HH:mm" from an RFC3339 string without heavy parsing.
-        guard iso.count >= 16 else { return iso }
-        let datePart = iso.prefix(10).suffix(5) // MM-dd
-        let timePart = iso.dropFirst(11).prefix(5) // HH:mm
-        return "\(datePart) \(timePart)"
-    }
-}

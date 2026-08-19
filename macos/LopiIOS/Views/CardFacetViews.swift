@@ -18,6 +18,7 @@ struct EvalsFacetView: View {
                     let isBaseline = ref.tier == .base
                     let on = card.evals.contains(ref)
                     Button {
+                        Haptics.selection()
                         write { c in
                             if let idx = c.evals.firstIndex(of: ref) { c.evals.remove(at: idx) }
                             else { c.evals.append(ref) }
@@ -47,6 +48,7 @@ struct EvalsFacetView: View {
                 HStack(spacing: 6) {
                     ForEach(EVAL_SUITES.keys.sorted(), id: \.self) { key in
                         Button(key) {
+                            Haptics.selection()
                             write { c in
                                 for name in EVAL_SUITES[key] ?? [] {
                                     guard let ref = EVAL_CATALOG.first(where: { $0.name == name }),
@@ -100,7 +102,7 @@ struct GoalFacetView: View {
 
             HStack(spacing: 8) {
                 Toggle("", isOn: Binding(
-                    get: { goal.pursue }, set: { v in write { $0.goal.pursue = v } }
+                    get: { goal.pursue }, set: { v in Haptics.selection(); write { $0.goal.pursue = v } }
                 )).labelsHidden().tint(Konjo.flame)
                 Text("pursue").font(Konjo.mono(11.5)).foregroundStyle(Konjo.fg)
             }
@@ -109,7 +111,7 @@ struct GoalFacetView: View {
                 Text("no-progress limit").font(Konjo.mono(10.5)).foregroundStyle(Konjo.fgDim)
                 Spacer()
                 Stepper("", value: Binding(
-                    get: { goal.noProgressLimit }, set: { v in write { $0.goal.noProgressLimit = max(0, v) } }
+                    get: { goal.noProgressLimit }, set: { v in Haptics.selection(); write { $0.goal.noProgressLimit = max(0, v) } }
                 ), in: 0...20).labelsHidden()
                 Text(goal.noProgressLimit == 0 ? "off" : "\(goal.noProgressLimit)")
                     .font(Konjo.mono(11)).foregroundStyle(Konjo.fg)
@@ -137,7 +139,7 @@ struct MaxxFacetView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 8) {
-                    Toggle("", isOn: Binding(get: { card.maxx.enabled }, set: { _ in Task { await toggle() } }))
+                    Toggle("", isOn: Binding(get: { card.maxx.enabled }, set: { _ in Haptics.selection(); Task { await toggle() } }))
                         .labelsHidden().tint(Konjo.flame).disabled(busy)
                     Text("enable MAXX").font(Konjo.mono(11.5)).foregroundStyle(Konjo.fg)
                 }
@@ -272,7 +274,7 @@ struct ConfigFacetView: View {
             Spacer()
             Menu {
                 ForEach(options, id: \.value) { opt in
-                    Button(opt.label) { onSelect(opt.value) }
+                    Button(opt.label) { Haptics.selection(); onSelect(opt.value) }
                 }
             } label: {
                 HStack(spacing: 4) {

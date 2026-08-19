@@ -3,15 +3,15 @@ import LopiStacksKit
 
 /// "Stack Loops" overview — every stack pane grouped by lifecycle phase, the
 /// iOS mobile counterpart to `web/src/routes/stacks` (production layout; see
-/// the design handoff's `OverviewProduction`): swipe-to-manage on each card,
-/// and a "+ New Stack" FAB that opens a blank pane full-screen. Tapping a
-/// card pushes into that pane's `StackDetailScreen`.
+/// the design handoff's `OverviewProduction`): swipe-to-manage on each card.
+/// Tapping a card pushes into that pane's `StackDetailScreen`. The "Stacks"
+/// tab of `RootTabView` — Budget/Schedule/Config live in their own tabs now,
+/// not sheets opened from this header, and "new stack" is `RootTabView`'s
+/// own center tab-bar button (not a FAB owned by this screen) since it needs
+/// to work from any tab, matching the reference design.
 struct StackOverviewScreen: View {
     @Environment(AppModel.self) private var model
-    @State private var configOpen = false
     @State private var path = NavigationPath()
-    @State private var showNewStack = false
-    @State private var newStackKey: String?
 
     private var panes: [StackPaneState] { model.stackStore.panes }
 
@@ -25,25 +25,16 @@ struct StackOverviewScreen: View {
 
     var body: some View {
         NavigationStack(path: $path) {
-            ZStack(alignment: .bottomTrailing) {
-                list
-                NewStackFAB(action: startNewStack)
-                    .padding(.trailing, 18)
-                    .padding(.bottom, 26)
-            }
-            .background(Konjo.deep)
-            .navigationTitle("")
-            .toolbar(.hidden, for: .navigationBar)
-            .safeAreaInset(edge: .top) { header }
-            .navigationDestination(for: String.self) { key in
-                if let pane = model.stackStore.pane(for: key) {
-                    StackDetailScreen(paneKey: pane.key)
+            list
+                .background(Konjo.deep)
+                .navigationTitle("")
+                .toolbar(.hidden, for: .navigationBar)
+                .safeAreaInset(edge: .top) { header }
+                .navigationDestination(for: String.self) { key in
+                    if let pane = model.stackStore.pane(for: key) {
+                        StackDetailScreen(paneKey: pane.key)
+                    }
                 }
-            }
-            .sheet(isPresented: $configOpen) { ServerConfigScreen() }
-            .fullScreenCover(isPresented: $showNewStack, onDismiss: cleanupNewStackIfEmpty) {
-                if let key = newStackKey { StackDetailScreen(paneKey: key) }
-            }
         }
     }
 
@@ -56,14 +47,14 @@ struct StackOverviewScreen: View {
                 if !items.isEmpty {
                     Section {
                         ForEach(items) { pane in
-                            StackOverviewCard(pane: pane)
+                            StackOverviewCardRow(pane: pane)
                                 .contentShape(Rectangle())
-                                .onTapGesture { path.append(pane.key) }
+                                .onTapGesture { Haptics.tap(); path.append(pane.key) }
                                 .listRowInsets(EdgeInsets(top: 5, leading: 18, bottom: 5, trailing: 18))
                                 .listRowBackground(Konjo.deep)
                                 .listRowSeparator(.hidden)
                                 .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                    Button(role: .destructive) { deleteStack(pane.key) } label: {
+                                    Button(role: .destructive) { Haptics.warning(); deleteStack(pane.key) } label: {
                                         Label("Delete", systemImage: "trash.fill")
                                     }
                                     .tint(Konjo.rose)
@@ -84,6 +75,7 @@ struct StackOverviewScreen: View {
     private func pauseResumeButton(for pane: StackPaneState) -> some View {
         let paused = model.stackEngine.run(for: pane.key)?.phase == .paused
         return Button {
+            Haptics.impact()
             if paused {
                 model.stackEngine.resumeStack(pane.key, PaneDefaults(pane.config.defaults))
             } else {
@@ -102,23 +94,6 @@ struct StackOverviewScreen: View {
 
     /// Creates the blank pane immediately (mirrors macOS `ForgeView`'s
     /// always-materialized empty pane) and opens it full-screen.
-    private func startNewStack() {
-        model.stackStore.addStackPane()
-        newStackKey = model.stackStore.panes.last?.key
-        showNewStack = true
-    }
-
-    /// Tears the pane back down if the user backed out without committing a
-    /// card, so cancelling never litters the Overview with empty stacks.
-    private func cleanupNewStackIfEmpty() {
-        defer { newStackKey = nil }
-        guard let key = newStackKey else { return }
-        if model.stackStore.pane(for: key)?.cards.isEmpty ?? true {
-            model.stackEngine.clearRun(key)
-            model.stackStore.deleteStackFromPanes(key)
-        }
-    }
-
     private var connectionLabel: String {
         switch model.connection {
         case .live: return "LIVE"
@@ -142,10 +117,6 @@ struct StackOverviewScreen: View {
                     .font(Konjo.sans(22, weight: .heavy))
                     .foregroundStyle(Konjo.fg)
                 Spacer()
-                Button { configOpen = true } label: {
-                    Image(systemName: "gearshape").font(.system(size: 15)).foregroundStyle(Konjo.fgMute)
-                }
-                .buttonStyle(.plain)
                 HStack(spacing: 5) {
                     Circle().fill(connectionColor).frame(width: 6, height: 6)
                     Text(connectionLabel).font(Konjo.mono(10)).foregroundStyle(connectionColor)
@@ -188,7 +159,7 @@ struct StackOverviewScreen: View {
 /// status dot in the pane's phase accent; loop-count badge; a representative
 /// prompt line; a per-loop mini progress bar; a repo/branch + elapsed-cost
 /// (or state word) meta line.
-private struct StackOverviewCard: View {
+private struct StackOverviewCardRow: View {
     @Environment(AppModel.self) private var model
     let pane: StackPaneState
 
@@ -274,12 +245,13 @@ private struct StackOverviewCard: View {
 struct PulsingDot: View {
     let color: Color
     var pulsing: Bool = false
+    var size: CGFloat = 7
     @State private var dim = false
 
     var body: some View {
         Circle()
             .fill(color)
-            .frame(width: 7, height: 7)
+            .frame(width: size, height: size)
             .opacity(pulsing ? (dim ? 0.4 : 1) : 1)
             .onAppear {
                 guard pulsing else { return }
