@@ -57,7 +57,6 @@
   import { agents } from '$lib/stores/agents';
   import { ICONS, PRESET_ACCENT } from './icons';
   import { dragging } from './dnd';
-  import { autoGrow } from './autoGrow';
   import { showToast } from '$lib/stores/toastStore';
   import Popover, { togglePopover, activePopoverId } from './Popover.svelte';
   import SchedulePopover from './SchedulePopover.svelte';
@@ -142,9 +141,15 @@
 
   /** The committed (non-draft) card's own goal edit — no autocomplete, no
    *  alias/repo/command re-parsing, just a direct text patch; those tokens
-   *  only ever apply once, at commit time, via the draft's `onGoalInput`. */
-  function onCommittedGoalInput(e: Event): void {
-    writeCard({ goal: (e.currentTarget as HTMLTextAreaElement).value });
+   *  only ever apply once, at commit time, via the draft's `onGoalInput`.
+   *  Still renders through `ChipInput` (see the template below) purely for
+   *  its `goalSegments`-driven chip *coloring* — a `;model/opus` a user
+   *  types directly into an already-committed card (or one a `literal:true`
+   *  commit left in place, having had no alias/repo/×N to strip) should
+   *  still read as a colored chip, not silently go back to being flat text
+   *  the moment the card leaves draft state (the reported bug). */
+  function onCommittedGoalInput(value: string): void {
+    writeCard({ goal: value });
   }
 
   /** `ChipInput`'s `onInput` hands back the plain serialized string directly
@@ -469,7 +474,7 @@
 
   async function chipLoop(): Promise<void> {
     goalFocused = true;
-    writeCard({ goal: `${card.goal}${chipSpacer(card.goal)}x3 ` });
+    writeCard({ goal: `${card.goal}${chipSpacer(card.goal)}x2 ` });
     await tick();
     goalInput?.focus();
   }
@@ -674,19 +679,49 @@
       ? `running · iter ${card.iteration.current}/${card.iteration.total}`
       : card.status;
 
+  /** Keeps a typed `×N` token already in the draft's own goal text (if any)
+   *  showing the same count the pill just changed to. Without this, typing
+   *  `×3` then clicking the pill to, say, 5 left `card.maxIterations` at 5
+   *  but the text still reading `×3` — and committing re-parses the goal
+   *  text from scratch (`finalizeDraft`/`buildCard`), so that stale `×3`
+   *  silently overwrote the pill's more recent choice back to 3 at commit
+   *  time (the reported bug). `n <= 1` ("off") removes the token instead of
+   *  writing `×1`/`×0` — a single run has no `×N` grammar of its own (see
+   *  `ITER_PICK_VALUES`'s doc comment). No-op for a committed (non-draft)
+   *  card, whose goal text is never re-parsed, and a no-op when the text has
+   *  no `×N` token to begin with — this only ever keeps an *existing* token
+   *  in sync, never inserts one into free-form prose the pill alone can't
+   *  know the right place for. */
+  function syncLoopTokenInGoal(n: number): void {
+    if (!isDraft) return;
+    const m = /(^|\s)[×xX](\d+)(?=\s|$)/.exec(card.goal);
+    if (!m) return;
+    const end = m.index + m[0].length;
+    const next =
+      n > 1
+        ? `${card.goal.slice(0, m.index)}${m[1]}×${n}${card.goal.slice(end)}`
+        : `${card.goal.slice(0, m.index)}${card.goal.slice(end)}`.replace(/ {2,}/g, ' ').trimStart();
+    writeCard({ goal: next });
+  }
+
   function step(delta: number) {
-    writeCard({ maxIterations: stepCardIterations(card.maxIterations, delta) });
+    const next = stepCardIterations(card.maxIterations, delta);
+    writeCard({ maxIterations: next });
+    syncLoopTokenInGoal(next);
   }
 
   // ×N direct-pick dropdown — the steppers are fine for nudging by one, but
   // dialing "off" up to 10 took nine clicks with no other way in. Values
-  // 1-10 plus "off" cover the common range directly; anything higher still
-  // only reachable via the `+` stepper, which the dropdown doesn't replace.
-  const ITER_PICK_VALUES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+  // 2-10 plus "off" (its own separate list item, above) cover the common
+  // range directly — no ×1 entry, since a single run is already "off", not
+  // a distinct ×1 state; anything higher than 10 still only reachable via
+  // the `+` stepper, which the dropdown doesn't replace.
+  const ITER_PICK_VALUES = [2, 3, 4, 5, 6, 7, 8, 9, 10];
   let iterMenuOpen = false;
 
   function pickIterations(n: number): void {
     writeCard({ maxIterations: n });
+    syncLoopTokenInGoal(n);
     iterMenuOpen = false;
   }
 
@@ -866,15 +901,15 @@
     <div class="spec">
       <ProvenanceChips alias={card.alias} tpl={card.tpl} tplKind={card.tplKind} repoLabel={cardRepoLabel} />
       {#if card.status !== 'running'}
-        <textarea
-          class="md mdinput"
-          value={card.goal}
-          on:input={onCommittedGoalInput}
-          use:autoGrow
-          rows="1"
-          spellcheck="false"
-          aria-label="edit prompt"
-        ></textarea>
+        <div class="goalwrap committedgoalwrap">
+          <ChipInput
+            bind:rootEl={goalInput}
+            value={card.goal}
+            segments={goalSegments}
+            onInput={onCommittedGoalInput}
+            placeholder=""
+          />
+        </div>
       {:else}
         <span class="md">"{card.goal}"</span>
       {/if}
@@ -1376,6 +1411,11 @@
     padding: 9px 11px;
     color: var(--konjo-paper, #f5f5f5);
     font-size: 14px;
+    /* `ChipInput`'s own base rule ships 1.5 — too tight once a prompt wraps
+       to a second line, the reported "crowded two lines" bug; a chip's own
+       pill padding/border also needs a bit more room than plain text does
+       to avoid looking cramped against the line above/below it. */
+    line-height: 1.75;
     transition:
       border-color 0.12s,
       background 0.12s;
@@ -1585,41 +1625,19 @@
     color: rgba(245, 245, 245, 0.46);
   }
   /* Committed cards' goal is editable (as long as the card isn't running) —
-     styled to read as plain text at rest and reveal an input affordance on
-     hover/focus, rather than looking like a form field all the time.
-     `<textarea>`, not `<input>`, so a long prompt wraps and stays fully
-     visible (the auto-grow action above sizes it to content) instead of
-     scrolling off sideways in a single line. */
-  .spec .mdinput {
+     a `ChipInput`, not a plain `<textarea>`, so any grammar token still in
+     the text (a `literal:true` commit that had nothing to strip, or one
+     hand-typed after commit) keeps its colored-chip rendering instead of
+     going flat the moment the card leaves draft state. `.goalwrap`'s own
+     `:global()` rule (below) supplies the border/background/focus
+     treatment — same visual language as the draft, deliberately, so a
+     prompt doesn't change appearance the instant it's added to the stack.
+     `flex: 1 1 100%` replaces the old textarea's identical sizing so a long
+     prompt wraps and stays fully visible rather than scrolling sideways. */
+  .committedgoalwrap {
     flex: 1 1 100%;
     width: 100%;
     min-width: 120px;
-    display: block;
-    resize: none;
-    overflow: hidden;
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: 5px;
-    margin: -3px -6px;
-    padding: 2px 6px;
-    color: rgba(245, 245, 245, 0.46);
-    font-family: inherit;
-    font-size: inherit;
-    line-height: inherit;
-    outline: none;
-    transition:
-      border-color 0.12s,
-      background 0.12s,
-      color 0.12s;
-  }
-  .spec .mdinput:hover {
-    border-color: rgba(255, 255, 255, 0.11);
-    background: rgba(255, 255, 255, 0.02);
-  }
-  .spec .mdinput:focus {
-    border-color: rgba(0, 255, 212, 0.4);
-    background: rgba(0, 255, 212, 0.03);
-    color: var(--konjo-paper, #f5f5f5);
   }
   .iterbar {
     display: flex;
@@ -1701,20 +1719,31 @@
     width: 11px;
     height: 11px;
   }
-  .sumln.sched .rl {
-    color: rgba(245, 245, 245, 0.6);
+  /* Each facet's label + bolded value share the exact accent its own
+     popover uses (`SchedulePopover` ice, `GuardrailsPopover` sun,
+     `EvalsPopover` jade, `MaxxPopover`/`GoalPopover` flame,
+     `StackConfigPopover` violet) — previously only `sched`/`max` carried
+     color here and the rest read flat gray, an inconsistency the icon row
+     below repeats for the same five facets (the reported bug covers both). */
+  .sumln.sched .rl,
+  .sumln.sched .txt b {
+    color: var(--konjo-ice);
   }
-  .sumln.max .rl {
-    color: rgba(245, 245, 245, 0.6);
+  .sumln.guard .rl,
+  .sumln.guard .txt {
+    color: var(--konjo-sun);
   }
-  .sumln.guard .rl {
-    color: rgba(245, 245, 245, 0.6);
+  .sumln.eval .rl,
+  .sumln.eval .txt {
+    color: var(--konjo-jade);
   }
-  .sumln.eval .rl {
-    color: rgba(245, 245, 245, 0.6);
+  .sumln.max .rl,
+  .sumln.max .txt b {
+    color: var(--konjo-flame);
   }
-  .sumln.cfg .rl {
-    color: rgba(245, 245, 245, 0.6);
+  .sumln.cfg .rl,
+  .sumln.cfg .txt {
+    color: var(--stack-violet, #b79bff);
   }
   .sumln .txt {
     color: rgba(245, 245, 245, 0.46);
@@ -1724,14 +1753,8 @@
     flex: 1;
     min-width: 0;
   }
-  .sumln.sched .txt b {
-    color: var(--konjo-ice);
-  }
   .sumln.sched.governed .rl {
     color: rgba(245, 245, 245, 0.28);
-  }
-  .sumln.max .txt b {
-    color: var(--konjo-flame);
   }
   .cardbar {
     display: flex;
@@ -1768,39 +1791,44 @@
     font-size: 9px;
     font-weight: 700;
   }
+  /* Active state gets the same per-facet accent as its popover and its
+     `.sumln` summary line above — a flat `#f5f5f5` white for every button
+     regardless of facet (the old rule here) is what made the ×N loop pill's
+     own orange look out of place next to them; giving every button its own
+     color is the fix, not flattening the pill to match. */
   .ib.sched.act {
-    color: #f5f5f5;
-    border-color: rgba(255, 255, 255, 0.5);
-    background: rgba(255, 255, 255, 0.1);
+    color: var(--konjo-ice);
+    border-color: rgba(0, 212, 255, 0.5);
+    background: rgba(0, 212, 255, 0.1);
   }
   .ib.max.act {
-    color: #f5f5f5;
-    border-color: rgba(255, 255, 255, 0.5);
-    background: rgba(255, 255, 255, 0.1);
+    color: var(--konjo-flame);
+    border-color: rgba(255, 149, 0, 0.5);
+    background: rgba(255, 149, 0, 0.1);
   }
   .ib.danger:hover {
     color: var(--konjo-rose, #ff0066);
     border-color: rgba(255, 0, 102, 0.4);
   }
   .ib.guard.act {
-    color: #f5f5f5;
-    border-color: rgba(255, 255, 255, 0.5);
-    background: rgba(255, 255, 255, 0.1);
+    color: var(--konjo-sun);
+    border-color: rgba(255, 204, 0, 0.5);
+    background: rgba(255, 204, 0, 0.1);
   }
   .ib.eval.act {
-    color: #f5f5f5;
-    border-color: rgba(255, 255, 255, 0.5);
-    background: rgba(255, 255, 255, 0.1);
+    color: var(--konjo-jade);
+    border-color: rgba(0, 255, 157, 0.5);
+    background: rgba(0, 255, 157, 0.1);
   }
   .ib.goal.act {
-    color: #f5f5f5;
-    border-color: rgba(255, 255, 255, 0.5);
-    background: rgba(255, 255, 255, 0.1);
+    color: var(--konjo-flame);
+    border-color: rgba(255, 149, 0, 0.5);
+    background: rgba(255, 149, 0, 0.1);
   }
   .ib.config.act {
-    color: #f5f5f5;
-    border-color: rgba(255, 255, 255, 0.5);
-    background: rgba(255, 255, 255, 0.1);
+    color: var(--stack-violet, #b79bff);
+    border-color: rgba(183, 155, 255, 0.5);
+    background: rgba(183, 155, 255, 0.1);
   }
   .ib.drag {
     cursor: grab;

@@ -167,8 +167,31 @@
   // final cost still counts toward what this stack actually spent.
   $: runningTotal = pane.cards.reduce((sum, c) => sum + (c.taskId ? ($agents.get(c.taskId)?.cost ?? 0) : 0), 0);
 
+  /** Keeps a typed `×N` token already in the bar's own `cmdText` (if any)
+   *  showing the same count the pill just changed to — the reverse
+   *  direction of the forward `cmdText` → `config.loopCount` sync below.
+   *  Without this, stepping the pill after typing `×N` in the bar left the
+   *  bar's text stuck on the old number even though the pill (and the real
+   *  `config.loopCount`) had moved on — the two falling out of sync (the
+   *  reported bug). `n <= 1` (`loopCount === 1` is "off", `0` is
+   *  "unlimited" — see `dockSummary`) removes the token instead of writing
+   *  `×1`/`×0`, neither of which is real `×N` grammar. No-op when the bar
+   *  has no `×N` token to begin with — the pill's own display already
+   *  covers that case independently. */
+  function syncLoopTokenInBar(n: number): void {
+    const m = /(^|\s)[×xX](\d+)(?=\s|$)/.exec(cmdText);
+    if (!m) return;
+    const end = m.index + m[0].length;
+    cmdText =
+      n > 1
+        ? `${cmdText.slice(0, m.index)}${m[1]}×${n}${cmdText.slice(end)}`
+        : `${cmdText.slice(0, m.index)}${cmdText.slice(end)}`.replace(/ {2,}/g, ' ').trimStart();
+  }
+
   function stepLoop(delta: number) {
-    updateStackConfig(pane.key, { loopCount: stepMaxIterations(config.loopCount, delta) });
+    const next = stepMaxIterations(config.loopCount, delta);
+    updateStackConfig(pane.key, { loopCount: next });
+    syncLoopTokenInBar(next);
   }
 
   // ── stack command bar (`@repo` / `;command`) ────────────────────────────────
@@ -336,9 +359,13 @@
   // its own just-inserted token and stay open); typing further clears it via
   // `onCmdBarInput`.
   function selectRepoFromBar(token: string): void {
+    // Slice-preserve, matching `StackCard.svelte`'s real `selectRepo` (the
+    // doc comment above already claimed this — the code didn't do it).
+    const m = /(^|\s)@(\S*)$/.exec(cmdText);
+    if (!m) return;
     const suggestion = repoMatches.find((s) => s.token === token);
     if (suggestion) applyDefault({ repo: suggestion.value });
-    cmdText = `${token} `;
+    cmdText = `${cmdText.slice(0, m.index)}${m[1]}${token} `;
     cmdActiveIndex = 0;
     cmdDismissed = true;
   }
@@ -356,22 +383,30 @@
     if (pendingCommand) {
       const valueMatches = cmdMatches as CommandValueSuggestion[];
       const suggestion = valueMatches.find((s) => s.token === token);
-      if (suggestion) {
+      // Slice up to the trailing `;command/` match and re-append, mirroring
+      // `StackCard.svelte`'s `selectCommand` — a bare `cmdText = ...`
+      // replacement here wiped out anything typed before this token, which
+      // was invisible on a first use (nothing to lose yet) but broke a
+      // second `;command` use in the same bar outright (the reported bug).
+      const m = new RegExp(`(^|\\s);${pendingCommand}/(\\S*)$`).exec(cmdText);
+      if (m && suggestion) {
+        cmdText = `${cmdText.slice(0, m.index)}${m[1]}${suggestion.token} `;
         applyCommandValue(pendingCommand, suggestion.value);
         revealConfigSurfaceFor(pendingCommand);
       }
-      cmdText = `;${pendingCommand}/${suggestion?.value ?? ''} `;
       pendingCommand = null;
       cmdDismissed = true;
     } else {
       const command = token.slice(1);
       const def = STACK_COMMANDS.find((c) => c.command === command);
+      const m = /(^|\s);(\S*)$/.exec(cmdText);
+      if (!m) return;
       if (def?.isValuePicker) {
-        cmdText = `;${command}/`;
+        cmdText = `${cmdText.slice(0, m.index)}${m[1]};${command}/`;
         pendingCommand = command;
       } else {
+        cmdText = `${cmdText.slice(0, m.index)}${m[1]}`;
         fireCommandAction(command);
-        cmdText = '';
         cmdDismissed = true;
       }
     }
@@ -382,7 +417,10 @@
    *  Claude command carries no lopi-side facet, see `StackCard.svelte`'s
    *  identical `selectClaudeCommand` doc comment. */
   function selectClaudeCommandFromBar(token: string): void {
-    cmdText = `${token} `;
+    // Slice-preserve, matching `StackCard.svelte`'s real `selectClaudeCommand`.
+    const m = /(^|\s)\/(\S*)$/.exec(cmdText);
+    if (!m) return;
+    cmdText = `${cmdText.slice(0, m.index)}${m[1]}${token} `;
     cmdActiveIndex = 0;
     cmdDismissed = true;
   }
@@ -420,7 +458,7 @@
   function chipLoopBar(): void {
     cmdBarFocused = true;
     cmdDismissed = false;
-    cmdText = `${cmdText}${chipSpacer(cmdText)}x3 `;
+    cmdText = `${cmdText}${chipSpacer(cmdText)}x2 `;
     void tick().then(() => cmdBarInput?.focus());
   }
 
@@ -1189,38 +1227,39 @@
     width: 11px;
     height: 11px;
   }
-  .sumln.sched .rl {
-    color: rgba(245, 245, 245, 0.6);
+  /* Each facet's label + bolded value share the exact accent its own
+     popover uses — mirrors `StackCard.svelte`'s identical fix; previously
+     only `sched`/`guard` carried color here and `eval`/`goal`/`cfg` read
+     flat gray (the reported bug). */
+  .sumln.sched .rl,
+  .sumln.sched .txt b {
+    color: var(--konjo-ice);
   }
-  .sumln.guard .rl {
-    color: rgba(245, 245, 245, 0.6);
+  .sumln.guard .rl,
+  .sumln.guard .txt {
+    color: var(--konjo-sun);
   }
-  .sumln.eval .rl {
-    color: rgba(245, 245, 245, 0.6);
+  .sumln.eval .rl,
+  .sumln.eval .txt {
+    color: var(--konjo-jade);
   }
-  .sumln.goal .rl {
-    color: rgba(245, 245, 245, 0.6);
+  .sumln.goal .rl,
+  .sumln.goal .txt {
+    color: var(--konjo-flame);
   }
-  .sumln.cfg .rl {
-    color: rgba(245, 245, 245, 0.6);
+  .sumln.cfg .rl,
+  .sumln.cfg .txt b {
+    color: var(--stack-violet, #b79bff);
   }
-  .sumln.max .rl {
-    color: rgba(245, 245, 245, 0.6);
+  .sumln.max .rl,
+  .sumln.max .txt b {
+    color: var(--konjo-flame);
   }
   .sumln .txt {
     color: rgba(245, 245, 245, 0.66);
   }
   .sumln .txt b {
     color: var(--konjo-paper, #f5f5f5);
-  }
-  .sumln.sched .txt b {
-    color: var(--konjo-ice);
-  }
-  .sumln.guard .txt b {
-    color: var(--konjo-sun);
-  }
-  .sumln.max .txt b {
-    color: var(--konjo-flame);
   }
   .cardbar {
     display: flex;
@@ -1257,35 +1296,38 @@
     font-size: 9px;
     font-weight: 700;
   }
+  /* Mirrors `StackCard.svelte`'s identical per-facet accent fix — every
+     button now carries its own popover's color when active, instead of a
+     flat white that made the loop pill's own orange the odd one out. */
   .ib.sched.act {
-    color: #f5f5f5;
-    border-color: rgba(255, 255, 255, 0.5);
-    background: rgba(255, 255, 255, 0.1);
+    color: var(--konjo-ice);
+    border-color: rgba(0, 212, 255, 0.5);
+    background: rgba(0, 212, 255, 0.1);
   }
   .ib.guard.act {
-    color: #f5f5f5;
-    border-color: rgba(255, 255, 255, 0.5);
-    background: rgba(255, 255, 255, 0.1);
+    color: var(--konjo-sun);
+    border-color: rgba(255, 204, 0, 0.5);
+    background: rgba(255, 204, 0, 0.1);
   }
   .ib.eval.act {
-    color: #f5f5f5;
-    border-color: rgba(255, 255, 255, 0.5);
-    background: rgba(255, 255, 255, 0.1);
+    color: var(--konjo-jade);
+    border-color: rgba(0, 255, 157, 0.5);
+    background: rgba(0, 255, 157, 0.1);
   }
   .ib.config.act {
-    color: #f5f5f5;
-    border-color: rgba(255, 255, 255, 0.5);
-    background: rgba(255, 255, 255, 0.1);
+    color: var(--stack-violet, #b79bff);
+    border-color: rgba(183, 155, 255, 0.5);
+    background: rgba(183, 155, 255, 0.1);
   }
   .ib.goal.act {
-    color: #f5f5f5;
-    border-color: rgba(255, 255, 255, 0.5);
-    background: rgba(255, 255, 255, 0.1);
+    color: var(--konjo-flame);
+    border-color: rgba(255, 149, 0, 0.5);
+    background: rgba(255, 149, 0, 0.1);
   }
   .ib.max.act {
-    color: #f5f5f5;
-    border-color: rgba(255, 255, 255, 0.5);
-    background: rgba(255, 255, 255, 0.1);
+    color: var(--konjo-flame);
+    border-color: rgba(255, 149, 0, 0.5);
+    background: rgba(255, 149, 0, 0.1);
   }
   .ib.danger:hover {
     color: var(--konjo-rose, #ff0066);

@@ -684,9 +684,13 @@ export interface LoopSuggestion {
   hint: string;
 }
 
-/** Filtered `×1`-`×10` suggestions for a trailing `xN`/`XN`/`×N` token still
- *  being typed (digits optional or partial — `x`, `x1`, `x10` all match).
- *  Deliberately capped at 10, same range as the iteration pill's own
+/** Filtered `×2`-`×10` suggestions for a trailing `xN`/`XN`/`×N` token still
+ *  being typed (digits optional or partial — `x`, `x1`, `x10` all match; `x1`
+ *  itself still resolves to a literal `×1` chip if typed in full, it just
+ *  isn't offered as a suggestion). No `×1` entry — a card already reads
+ *  "off" (not "×1") for a single run, so offering "×1 · 1 iteration" as a
+ *  distinct suggestion is a confusing duplicate of "off", not a real second
+ *  option. Deliberately capped at 10, same range as the iteration pill's own
  *  direct-pick dropdown (`ITER_PICK_VALUES` in `StackCard.svelte`) — higher
  *  counts stay reachable by typing the full number and a space (resolves via
  *  `tokenizeGoalChips`) or the pill's `+` stepper, neither of which this
@@ -695,9 +699,9 @@ export function loopAutocomplete(goalText: string): LoopSuggestion[] {
   const match = /(?:^|\s)[×xX](\d*)$/.exec(goalText);
   if (!match) return [];
   const q = match[1];
-  return Array.from({ length: 10 }, (_, i) => i + 1)
+  return Array.from({ length: 9 }, (_, i) => i + 2)
     .filter((n) => String(n).startsWith(q))
-    .map((n) => ({ token: `×${n}`, label: `×${n}`, hint: `${n} iteration${n === 1 ? '' : 's'}` }));
+    .map((n) => ({ token: `×${n}`, label: `×${n}`, hint: `${n} iterations` }));
 }
 
 // ── Inline chip tokenizer (round 2, item 2) ───────────────────────────────────

@@ -82,6 +82,7 @@ import {
   evalSuiteOptions,
   tokenizeGoalChips,
   claudeCommandAutocomplete,
+  loopAutocomplete,
   loopCountTier,
   estimateRunCost,
   cardGoalActive,
@@ -512,6 +513,22 @@ eqIs(buildCard(':ratchet "self improve"').preset, 'gain', 'a `:ratchet` composer
     CARD_COMMANDS.some((c) => c.command === 'guard') && STACK_COMMANDS.some((c) => c.command === 'guard'),
     '`guard` exists at both scopes, opening the card’s or the stack’s own guardrails popover'
   );
+
+  // ── loopAutocomplete: ×2-×10, no ×1 (a single run is "off", not a
+  //    distinct ×1 state — offering it as a suggestion duplicates "off") ──
+  {
+    const bare = loopAutocomplete('fix the bug x');
+    eqIs(bare.length, 9, 'a bare trigger offers ×2 through ×10 — nine suggestions, not ten');
+    ok(!bare.some((s) => s.token === '×1'), 'no ×1 suggestion — off already covers a single run');
+    ok(bare.some((s) => s.token === '×2'), '×2 is the lowest suggested count');
+    eqIs(bare[0].token, '×2', '×2 sorts first');
+    eqIs(loopAutocomplete('fix the bug x1').length, 1, 'typing "x1" still matches ×10 (starts with "1"), just not a bare ×1');
+    eqIs(loopAutocomplete('fix the bug x1')[0].token, '×10', 'the one match for "x1" is ×10');
+    eqIs(loopAutocomplete('fix the bug x2').length, 1, 'typing "x2" narrows to exactly ×2');
+    eqIs(loopAutocomplete('fix the bug x2')[0].token, '×2', 'the one match for "x2" is ×2 itself');
+    eqIs(loopAutocomplete('fix the bug').length, 0, 'no trigger character means no suggestions');
+    eqIs(loopAutocomplete('fix the bug x2')[0].hint, '2 iterations', 'the hint is always plural now — no ×1 singular case left to special-case');
+  }
 
   eqIs(
     commandValueAutocomplete(';model/op', 'model', MODEL_OPTIONS).length,
