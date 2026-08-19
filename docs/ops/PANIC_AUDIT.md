@@ -1,12 +1,12 @@
 ---
 decays: state
-verified-against: 2b7aa29
-verified-date: 2026-08-04
+verified-against: 0fe75c0
+verified-date: 2026-08-19
 ---
 
 # Panic audit — the trustworthy count, and why grep couldn't give it to you
 
-Verified against: `2b7aa29` · 2026-08-04 (re-verified; Sprint P2b's commit volume
+Verified against: `0fe75c0` · 2026-08-19 (re-verified; Sprint P5's collision-oracle wiring plus the `reqwest 0.11 -> 0.12` / OpenTelemetry `0.22 -> 0.27` dependency bump that cleared RUSTSEC-2026-0258 pushed this past the 20-commit / 14-day cap, not the zero-panic claim losing accuracy. Re-confirmed live, not assumed: ran the exact cited deny-flag command workspace-wide again against this commit -- `cargo clippy --workspace --all-targets --all-features -- -D warnings -D clippy::unwrap_used -D clippy::expect_used -D clippy::panic` -- **0 findings**, covering P5's new files (`pool/collision.rs`, `pool/terminal.rs`) and the rewritten OTel tracer init in `src/main.rs`. Prior banner (`2b7aa29` · 2026-08-04, re-verified; Sprint P2b's commit volume
 (review-pipeline sections 1/3/4 plus a parallel Oracle-Preflight sprint's merge) pushed
 this past the 20-commit cap, not the zero-unwrap claim losing accuracy. Re-confirmed
 live, not assumed: ran the exact cited deny-flag command workspace-wide (`cargo clippy

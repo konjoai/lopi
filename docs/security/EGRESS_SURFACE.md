@@ -1,8 +1,17 @@
 ---
 decays: state
-verified-against: 2b7aa29
-verified-date: 2026-08-04
+verified-against: 0fe75c0
+verified-date: 2026-08-19
 ---
+
+## Sprint P5 re-verification (2026-08-19, `0fe75c0`)
+
+Past the staleness cap on commit volume, not on the conclusion changing. Both of this doc's own cited greps were re-run live against this commit rather than assumed:
+
+- `grep -rn "bot.send|Client::new|twilio.*send" crates/lopi-remote/src/whatsapp.rs` -- no match. WhatsApp is still inbound-only.
+- `grep -rln "reqwest::Client|ureq::" crates/lopi-remote/src crates/lopi-webhook/src` -- no match. Still no outbound HTTP notifier.
+
+**Sprint P5 adds no outbound transport.** `lopi-oracle` shells out to `git merge-tree`, a local read-only subprocess with no network surface, and the pool wiring added around it is in-process state. The `reqwest 0.11 -> 0.12` and OpenTelemetry `0.22 -> 0.27` bumps in the same sprint change the version of existing clients, not the set of transports: OTLP export stays behind the non-default `otel` feature and is still the only thing that ships telemetry off-box, unchanged in reach.
 
 ## Sprint S10, Phase 4 update (2026-07-27)
 

@@ -53,15 +53,16 @@ bumping only `[workspace.package]` breaks resolution.
    what a session can fix -- repo-settings access.
 5. **PF-0b's remaining crates**, and the branch-cleanup recommendation from P4 Phase 3
    (16 CLOSE verdicts, no branch deleted). Both unchanged.
-6. **RUSTSEC-2026-0258 (`h2`) blocks `G1 · Static Analysis`, the BLOCKING gate.** Published
-   2026-08-17, after `main`'s last green run, and unrelated to any recent diff. `h2 0.3.27`
-   arrives via `reqwest 0.11.27` -> `hyper-tls 0.5` -> `hyper 0.14.32`; the advisory's only
-   remedy is `>= 0.4.16` with no patched `0.3.x`, so clearing it means a
-   `reqwest 0.11 -> 0.12` migration across every HTTP call site. Three ways forward, all
-   standing policy calls rather than engineering ones: do the migration, accept the advisory
-   with a scoped `cargo audit --ignore` plus an expiry, or use the documented break-glass.
-   **Every PR is red on `G1` until one is chosen.** Full evidence in `LEDGER.md`'s
-   `PR-202-Gate-Response` entry.
+6. **CI is green apart from one kiban-side tooling defect.** Sprint P5 cleared every gate
+   that had a root cause on this side: RUSTSEC-2026-0258 (`h2`) via a
+   `reqwest 0.11 -> 0.12` plus OpenTelemetry `0.22 -> 0.27` bump that drops the whole
+   `hyper 0.14` tree; the three `web/` npm advisories via `npm audit fix`; and the three
+   stale `decays: state` docs by re-running their own cited commands. `GK`'s
+   `repo:cargo-deny` still reports dependency-tree drawing characters as "net-new
+   findings" -- the kiban `newonly` line-diff defect, second confirmed occurrence, ADVISORY
+   and not fixable from this repo. **If a future session gets push access to kiban, that
+   and the `pricing.rs` false positive are the two to report.** Details in `LEDGER.md`'s
+   `PR-202-Gate-Response`.
 7. **The zero-margin ratchets.** Coverage 68.34/68.34, function-length 74/74, indexing
    floor 211/211 -- all three still sit exactly at their locked values, so any sprint
    that adds code without tests trips one. Worth a dedicated paydown sprint before the

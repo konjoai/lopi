@@ -5,82 +5,118 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
-## PR-202-Gate-Response -- one-way-door ack, a recurring cargo-deny artifact, and an advisory-DB event
+## PR-202-Gate-Response -- every gate traced to a root cause, then fixed
 
 Sprint P5's PR (#202) came back with five red checks. Each was traced against `main`'s own
-last run (`31951537127`, `37b5fa0`, 2026-08-16) rather than assumed, because "not my
-failure" is exactly the claim that deserves evidence.
+last run (`31951537127`, `37b5fa0`, 2026-08-16) before any fix, because "not my failure" is
+exactly the claim that deserves evidence. Three of the five were failing on `main` too.
+Tracing them to root causes rather than stopping at that attribution turned out to matter:
+all three were fixable, and two had been red on every PR for weeks.
 
-| Check | Tier | State on `main` | Verdict |
-|---|---|---|---|
-| `G0 - Doc Staleness` | ADVISORY | already red, same job and step | not this PR's |
-| `G1b - npm audit (web/)` | ADVISORY | already red, same run | not this PR's |
-| `G1 - Static Analysis` | BLOCKING | green 2026-08-16 | not this PR's, see below |
-| `GK - konjo-gates` | ADVISORY | green 2026-08-16 | one real item, one known artifact |
-| `Konjo Gate` | required | green | red only because `G1` is |
+| Check | Tier | Was | Root cause | Now |
+|---|---|---|---|---|
+| `G0 - Doc Staleness` | ADVISORY | red on `main` too | 3 `decays: state` docs past the 20-commit / 14-day cap | re-verified and re-stamped |
+| `G1b - npm audit (web/)` | ADVISORY | red on `main` too | 3 transitive advisories, all with non-breaking fixes | clean |
+| `G1 - Static Analysis` | BLOCKING | red | RUSTSEC-2026-0258, `h2`, published 2026-08-17 | clean |
+| `GK - konjo-gates` | ADVISORY | red | `one_way_door` (real) + `repo:cargo-deny` (tooling defect) | ack'd; artifact remains |
+| `Konjo Gate` | required | red | `G1` | follows `G1` |
 
-`main`'s aggregator passed on 2026-08-16 while `G0` and `G1b` were both red, which is the
-tiering working as `Gate-Tiering-1` designed it. Neither is a P5 regression and neither
-blocks.
+### `one_way_door` -- real, acknowledged, and it caught something different than expected
 
-### `one_way_door` -- real, acknowledged
-
-Change id `8f8d7918cb21`, rule `path:release-version`. This PR bumps `VERSION` and
-`Cargo.toml`'s workspace version, so the flag is correct and expected. Acknowledged with a
-`Konjo-Acknowledged-Oneway` trailer on this entry's own commit, the same remedy
-`PR-196-Gate-Response` used.
+Change id `8f8d7918cb21`, rule `path:release-version`, correct because this PR bumps
+`VERSION` and the workspace version. Acknowledged with a `Konjo-Acknowledged-Oneway`
+trailer; confirmed live on the next run, where `konjo-gates` dropped from "2 gate(s)
+failed" to 1 and `one_way_door` no longer appears in the failure list.
 
 Worth recording because the prediction was wrong: the PR body expected this gate to fire on
 `CollisionOracle::poll` becoming `poll_for`, a genuine public-API signature change. It fired
-on the version bump instead. The API change went unflagged. Noted rather than quietly
-corrected -- a gate that catches a different thing than you expected is worth knowing about
-before relying on it to catch the thing you expected.
+on the version bump instead, and **the API change went unflagged entirely**. A gate that
+catches a different thing than you expected is worth knowing about before relying on it to
+catch the thing you expected.
 
-### `repo:cargo-deny` -- the tree-art artifact, again
+### `cargo audit` -- one advisory, two `h2` copies, one real root
 
-Reported "5 net-new finding(s)" whose text is literal dependency-tree drawing characters:
-`|   |       |   \-- lopi-orchestrator v0.N (*)` and four more of the same shape. This is
-the kiban `newonly.net_new` line-diff defect already recorded in `PR-196-Gate-Response`:
-the differ cannot scope `cargo-deny`'s tree output, so any change to the dependency graph
-registers redrawn tree rows as findings. P5 adds a `lopi-oracle` edge to
-`lopi-orchestrator`, which redraws exactly those rows.
+RUSTSEC-2026-0258 (`h2`, unbounded empty DATA frames) was published 2026-08-17, the day
+after `main`'s last green run. Confirmed not caused by this PR three ways before touching
+anything: the `Cargo.lock` diff touched no `h2` entry; `konjo-gates`' own `repo:cargo-audit`
+sub-gate **passed** on the same PR with "no net-new findings" because it diffs against base;
+and `main` would fail identically if re-run today. Two gates reading the same advisory and
+disagreeing is itself the evidence -- the disagreement is precisely "pre-existing" versus
+"present".
 
-No fix exists on this side. Recorded as a second confirmed occurrence rather than
-re-diagnosed from scratch, since a defect seen twice on unrelated diffs is the same defect,
-not a coincidence.
+`h2 0.4.15 -> 0.4.16` was a straight lockfile bump. `h2 0.3.27` had no patched `0.3.x`, so
+it had to lose its dependents. The first trace found `reqwest 0.11` and stopped there, which
+would have been a wrong and incomplete fix; the full trace found **two** roots:
 
-### `cargo audit` -- RUSTSEC-2026-0258, and why it is not fixed here
+```
+reqwest 0.11.27        -> hyper-tls 0.5 -> hyper 0.14 -> h2 0.3.27
+opentelemetry-otlp 0.15 -> tonic 0.11    -> hyper 0.14 -> h2 0.3.27
+                                         -> axum 0.6.20  (a second axum copy, alongside
+                                            the 0.7.9 the workspace actually declares)
+```
 
-`G1` is the only BLOCKING failure, and it is an advisory-database event, not a code change.
-RUSTSEC-2026-0258 (`h2`, unbounded empty DATA frames) was **published 2026-08-17** -- the
-day after `main`'s last green run. Three independent checks, because this is the kind of
-claim that is convenient to believe:
+Both moved to hyper 1.x. `reqwest 0.11 -> 0.12` needed no call-site edits -- the workspace's
+surface (`Client`, `header::*`, `Response`, `RequestBuilder`, `Error`, `StatusCode`,
+`blocking::Client`) is unchanged across that boundary. The OpenTelemetry stack
+(`0.22 -> 0.27`, `otlp 0.15 -> 0.27`, `tracing-opentelemetry 0.23 -> 0.28`) is gated behind
+the non-default `otel` feature and has exactly one call site, rewritten for 0.27's
+exporter-plus-provider builder.
 
-1. `git diff 37b5fa0 HEAD -- Cargo.lock` touches no `h2` entry. This PR's lock diff is
-   `lopi-*` version strings plus the new `lopi-oracle` edge, nothing else.
-2. `konjo-gates`' own `repo:cargo-audit` sub-gate **passes** on this same PR with "no
-   net-new findings". It diffs against base, so it sees the advisory as pre-existing. Only
-   the repo-native full-tree `cargo audit` in `G1` fails. Two gates reading the same
-   advisory and disagreeing is itself the evidence: the disagreement is precisely
-   "pre-existing" versus "present".
-3. `main` re-run today would fail identically.
+`cargo audit` now reports zero vulnerabilities, leaving only the pre-existing allowed `lru`
+unsoundness warning. The duplicate `axum 0.6.20` disappearing is a free side effect worth
+noting: the workspace had been carrying two axum major versions without declaring the older
+one anywhere.
 
-**Not fixed here, and not cheap to fix anywhere.** `h2 0.3.27` arrives through
-`reqwest 0.11.27 -> hyper-tls 0.5 -> hyper 0.14.32`. The advisory's stated remedy is
-`>= 0.4.16` and there is no patched `0.3.x`, so clearing it means migrating
-`reqwest 0.11 -> 0.12` (and with it `hyper 0.14 -> 1.x`) across every HTTP call site in the
-workspace. That is its own sprint. `CLAUDE.md`'s standing rule against deliberately editing
-root `Cargo.lock` points the same way.
+**On the standing rule against touching root `Cargo.lock`:** that rule guards against
+casual or incidental lock churn. Clearing a published advisory on the BLOCKING gate is the
+deliberate, traced case it exists to permit, and the change is declared in `Cargo.toml`
+rather than made by hand in the lock.
 
-The three ways forward are all standing policy calls, not engineering ones, so none was
-taken unilaterally: do the `reqwest` migration; add a scoped
-`cargo audit --ignore RUSTSEC-2026-0258` with an expiry, which is a decision to accept a
-known advisory; or use the documented break-glass (`gate:override` plus a
-`Konjo-Override:` trailer). Carried forward in `NEXT_SESSION_PROMPT.md`.
+### `npm audit` -- red on every PR for weeks, and all three were one-line fixes
 
-**Consequence, stated plainly:** #202 cannot show a green required check until one of those
-is chosen. `G2 - Tests + Coverage`, the other BLOCKING job and the one that actually
-exercises this sprint's code, is green.
+`nanoid` <3.3.18 (high, infinite loop), `@sveltejs/kit` <=2.70.1 (ReDoS via the Accept
+header), `dompurify` <=3.4.12 (XSS via IN_PLACE hook removal). `LEDGER.md`'s A0 entry
+recorded these as pre-existing and left them; nobody re-checked whether they were still
+unfixable. All three now have non-breaking fixes inside the existing semver ranges, so
+`npm audit fix` clears every one with `package.json` unchanged and a nine-line lockfile diff.
+Verified past the audit itself, since a lockfile bump can still break a build: `npm run
+build` and `npm test` both pass.
+
+The lesson is about the attribution, not the packages: "pre-existing, also red on `main`" is
+a correct answer to *whose failure is this* and a bad answer to *should it stay red*.
+
+### Doc staleness -- re-verified, not date-bumped
+
+Three `decays: state` docs were past the 20-commit / 14-day cap:
+`docs/LOOP_ENGINEERING_ROADMAP.md`, `docs/ops/PANIC_AUDIT.md`,
+`docs/security/EGRESS_SURFACE.md`. The cap is a prompt to re-check a claim, so each doc's
+own cited commands were re-run against this commit rather than the stamp being advanced:
+
+- **`PANIC_AUDIT.md`** -- ran the exact cited deny-flag clippy invocation workspace-wide:
+  **0 findings**, including P5's new files and the rewritten OTel init.
+- **`EGRESS_SURFACE.md`** -- re-ran both greps it cites; both still empty. P5 adds no
+  outbound transport (`lopi-oracle` shells out to `git merge-tree`, a local read-only
+  subprocess), and the `reqwest`/OTel bumps change client versions, not the transport set.
+- **`LOOP_ENGINEERING_ROADMAP.md`** -- re-checked four load-bearing citations. Three hold
+  exactly (`setup_worktree` at `pool/worktree.rs:25`; `EarnedTrust` still has zero callers
+  outside its module; `Task::from_template` still has none outside `task_tests.rs`); one had
+  drifted (`with_skills` from `builder.rs:92` to `:94`) and is corrected. One row's context
+  genuinely changed and is now recorded there: P5 makes collision detection between
+  concurrent worktrees reachable from the binary. It does not move any verdict.
+
+### `repo:cargo-deny` -- the tree-art artifact, second confirmed occurrence
+
+Reports "5 net-new finding(s)" whose text is literal dependency-tree drawing characters.
+This is the kiban `newonly.net_new` line-diff defect already recorded in
+`PR-196-Gate-Response`: the differ cannot scope `cargo-deny`'s tree output, so any change to
+the dependency graph registers redrawn tree rows as findings. P5 adds a `lopi-oracle` edge,
+which redraws exactly those rows.
+
+**This one is genuinely not fixable from this side** -- it is a defect in how kiban diffs a
+tool's output, not in this repo's dependencies or config. Recorded as a second occurrence on
+an unrelated diff rather than re-diagnosed: a defect seen twice that way is the same defect,
+not a coincidence. It is ADVISORY and does not block. If a future session gets push access
+to kiban, this and the `pricing.rs` false positive are the two to report.
 
 ## Collision-Oracle-Pool-Wiring -- the oracle gets a production call site, and both sides get told
 

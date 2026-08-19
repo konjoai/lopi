@@ -54,6 +54,27 @@ reasoning in `LEDGER.md`'s `Collision-Oracle-Pool-Wiring` entry.
   ~40 versions stale (Phase 4 / v0.5.0, 9 crates, 46 tests). Corrected, and
   marked as not-for-planning with a pointer to the authoritative sources.
 
+### Security
+
+- **RUSTSEC-2026-0258 (`h2`, unbounded empty DATA frames)** cleared. `h2 0.4.15 -> 0.4.16`
+  is a lockfile bump; `h2 0.3.27` had no patched `0.3.x` and needed its two dependents off
+  `hyper 0.14`: `reqwest 0.11 -> 0.12` (no call-site changes -- the workspace's surface is
+  unchanged across that boundary) and the `otel`-gated OpenTelemetry stack
+  (`0.22 -> 0.27`, `opentelemetry-otlp 0.15 -> 0.27`, `tracing-opentelemetry 0.23 -> 0.28`,
+  one call site rewritten for the new builder API). Drops the duplicate `axum 0.6.20` the
+  workspace had been carrying undeclared. `cargo audit` now reports zero vulnerabilities.
+- **Three `web/` advisories** cleared via `npm audit fix`, all inside existing semver
+  ranges with `package.json` unchanged: `nanoid` <3.3.18 (high), `@sveltejs/kit` <=2.70.1
+  ReDoS, `dompurify` <=3.4.12 XSS. `npm run build` and `npm test` verified after.
+
+### Documentation
+
+- Three `decays: state` docs past the staleness cap re-verified by re-running their own
+  cited commands, not date-bumped: `docs/ops/PANIC_AUDIT.md` (deny-flag clippy, 0
+  findings), `docs/security/EGRESS_SURFACE.md` (both cited greps still empty), and
+  `docs/LOOP_ENGINEERING_ROADMAP.md` (four citations re-checked, one line-number drift
+  corrected).
+
 ### Non-goal
 
 No change to detection semantics: still textual-only, still detection-only, still
