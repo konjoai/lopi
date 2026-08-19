@@ -29,6 +29,7 @@ import {
   bumpCard,
   bumpUiState,
   scheduleStack,
+  ensureChainForMaxx,
   runs,
   type AgentStatusSource,
   type StackRunState
@@ -405,6 +406,54 @@ async function main() {
       ['a', 'b', 'c'],
       'every card is submitted as a step, in bottom-of-stack-first execution order'
     );
+  }
+
+  // ── Stack-MAXX-1: ensureChainForMaxx — lazy chain creation/reuse ────────
+  {
+    resetPanes();
+    seedPane('s1', [card('a')]);
+    const statusSource: StatusStore = writable(new Map());
+    const captured = mockBackend(statusSource, {});
+
+    const chainId = await ensureChainForMaxx('s1', defaults);
+    eqIs(chainId, 'chain-1', 'a fresh stack creates a new chain and returns its id');
+    eqIs(captured.length, 1, 'exactly one POST /api/schedule-chains is made');
+    eqIs(captured[0]?.body.enabled, false, 'the MAXX-only chain is created disabled — it must never cron-fire on its own');
+    eqIs(get(panes).find((p) => p.key === 's1')?.config.chainId, 'chain-1', 'the pane config is updated with the new chain id');
+  }
+  {
+    resetPanes();
+    seedPane('s1', [card('a')]);
+    seedStackConfig('s1', { chainId: 'chain-existing' });
+    const statusSource: StatusStore = writable(new Map());
+    const captured = mockBackend(statusSource, {});
+
+    const chainId = await ensureChainForMaxx('s1', defaults);
+    eqIs(chainId, 'chain-existing', 'a stack already scheduled/maxx-enabled reuses its existing chain id');
+    eqIs(captured.length, 0, 'no new chain is created when one already exists');
+  }
+  {
+    resetPanes();
+    seedPane('s1', []);
+    const statusSource: StatusStore = writable(new Map());
+    mockBackend(statusSource, {});
+
+    let threw = false;
+    try {
+      await ensureChainForMaxx('s1', defaults);
+    } catch {
+      threw = true;
+    }
+    ok(threw, 'ensureChainForMaxx on an empty stack (no cards) rejects rather than creating a useless empty chain');
+  }
+  {
+    let threw = false;
+    try {
+      await ensureChainForMaxx('does-not-exist', defaults);
+    } catch {
+      threw = true;
+    }
+    ok(threw, 'ensureChainForMaxx on an unknown pane key rejects');
   }
 
   // ── chain loop: a 3-card stack looped ×2 runs 6 launches in order ───────

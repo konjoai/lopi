@@ -51,7 +51,7 @@ struct StackDetailScreen: View {
                 .foregroundStyle(Konjo.fg)
             Spacer()
             Circle().fill(Konjo.fgMute).frame(width: 7, height: 7)
-            Button { dismiss() } label: {
+            Button { Haptics.tap(); dismiss() } label: {
                 Image(systemName: "xmark").font(.system(size: 13)).foregroundStyle(Konjo.fgMute)
             }
             .buttonStyle(.plain)
@@ -94,7 +94,7 @@ private struct ComposerCardView: View {
         VStack(alignment: .leading, spacing: 10) {
             RunTag(label: "new prompt", color: Konjo.fgMute, background: Konjo.panel)
 
-            Button { templatesOpen = true } label: {
+            Button { Haptics.tap(); templatesOpen = true } label: {
                 HStack(spacing: 5) {
                     Image(systemName: "list.bullet.rectangle").font(.system(size: 10))
                     Text("templates").font(Konjo.mono(10.5))
@@ -128,13 +128,14 @@ private struct ComposerCardView: View {
             .alert("Name this prompt template", isPresented: $savePromptAlert) {
                 TextField("name", text: $nameInput)
                 Button("Save") {
+                    Haptics.tap()
                     let name = nameInput.trimmingCharacters(in: .whitespacesAndNewlines)
                     if !name.isEmpty, let draft = model.stackStore.pane(for: paneKey)?.draft {
                         model.stackTemplateStore.savePrompt(promptTemplate(from: draft, name: name))
                     }
                     nameInput = ""
                 }
-                Button("Cancel", role: .cancel) { nameInput = "" }
+                Button("Cancel", role: .cancel) { Haptics.tap(); nameInput = "" }
             }
 
             TextField("describe the prompt or goal...", text: draftGoal, axis: .vertical)
@@ -155,7 +156,7 @@ private struct ComposerCardView: View {
 
             HStack(spacing: 6) {
                 IterationPill(label: "off")
-                Button { popoverOpen = true } label: {
+                Button { Haptics.tap(); popoverOpen = true } label: {
                     Text("•••")
                         .font(Konjo.mono(10.5))
                         .foregroundStyle(Konjo.fgDim)
@@ -172,6 +173,7 @@ private struct ComposerCardView: View {
                 }
                 Spacer()
                 Button {
+                    Haptics.impact()
                     model.stackStore.commitDraft(paneKey, repoOptions: repoOptions(model.repos))
                 } label: {
                     Text("+ add")
@@ -256,7 +258,7 @@ private struct TemplatesMenuContent: View {
         name: String, nameColor: Color = Konjo.fg, desc: String? = nil,
         disabled: Bool = false, action: @escaping () -> Void
     ) -> some View {
-        Button(action: action) {
+        Button(action: { Haptics.selection(); action() }) {
             VStack(alignment: .leading, spacing: 1) {
                 Text(name).font(Konjo.mono(12)).foregroundStyle(disabled ? Konjo.fgMute : nameColor)
                 if let desc {
@@ -286,6 +288,12 @@ private struct LoopCardView: View {
         StackDisplay.cardStatus(card, liveAgents: model.liveAgents)
     }
 
+    /// Mirrors macOS's `StackCardView.bumpState` — only visible for a card
+    /// belonging to an active run, `.draft` cards never see it.
+    private var bumpState: (visible: Bool, canSooner: Bool, canLater: Bool) {
+        model.stackEngine.bumpUiState(paneKey, card.id)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             RunTag(label: status.label, color: status.color, background: Color(hex: 0x0E1214))
@@ -307,7 +315,7 @@ private struct LoopCardView: View {
 
             HStack(spacing: 6) {
                 IterationPill(label: card.maxIterations == 0 ? "off" : "×\(card.maxIterations)")
-                Button { popoverOpen = true } label: {
+                Button { Haptics.tap(); popoverOpen = true } label: {
                     HStack(spacing: 4) {
                         Text("•••").font(Konjo.mono(10.5))
                         if facetCount > 0 {
@@ -328,6 +336,14 @@ private struct LoopCardView: View {
                         .presentationCompactAdaptation(.popover)
                 }
                 Spacer()
+                if bumpState.visible {
+                    CardIconButton(systemImage: "chevron.up", disabled: !bumpState.canSooner) {
+                        _ = model.stackEngine.bumpCard(paneKey, card.id, .up)
+                    }
+                    CardIconButton(systemImage: "chevron.down", disabled: !bumpState.canLater) {
+                        _ = model.stackEngine.bumpCard(paneKey, card.id, .down)
+                    }
+                }
                 CardIconButton(systemImage: "square.on.square") {
                     model.stackStore.duplicateInPane(paneKey, card.id)
                 }

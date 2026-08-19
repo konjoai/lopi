@@ -82,3 +82,15 @@ struct CronSpec: Equatable {
 
     private func clamp(_ v: Int, _ lo: Int, _ hi: Int) -> Int { min(max(v, lo), hi) }
 }
+
+/// Trims ISO-8601 timestamps to a compact display form. Used by both the
+/// Scheduling screen's list rows and (macOS) `ConfigView`'s "oldest" metric.
+enum DateFormatting {
+    static func short(_ iso: String) -> String {
+        // Show "MM-dd HH:mm" from an RFC3339 string without heavy parsing.
+        guard iso.count >= 16 else { return iso }
+        let datePart = iso.prefix(10).suffix(5) // MM-dd
+        let timePart = iso.dropFirst(11).prefix(5) // HH:mm
+        return "\(datePart) \(timePart)"
+    }
+}

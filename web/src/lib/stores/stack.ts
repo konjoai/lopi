@@ -562,9 +562,11 @@ export const CARD_COMMANDS: InlineCommandDef[] = [
 
 /** Stack-scope commands, typed into the stack's own command bar
  *  (`StackControlDock.svelte`) — same vocabulary, writes to `pane.config`
- *  instead of a card's `config`. No `maxx` (per-card only); adds `goal`
- *  (run-until-goal), which has no card-level analog. Chain loop count has no
- *  `;loop/N` command — `xN` is the sole loop-count grammar. */
+ *  instead of a card's `config`. `maxx` here fires the whole chain
+ *  (Stack-MAXX-1), not one card's goal — see `MaxxPopover.svelte`'s
+ *  chain-mode doc comment. Adds `goal` (run-until-goal), which has no
+ *  card-level analog. Chain loop count has no `;loop/N` command — `xN` is
+ *  the sole loop-count grammar. */
 export const STACK_COMMANDS: InlineCommandDef[] = [
   { command: 'model', hint: 'stack default model', isValuePicker: true },
   { command: 'effort', hint: 'stack default effort', isValuePicker: true },
@@ -573,7 +575,8 @@ export const STACK_COMMANDS: InlineCommandDef[] = [
   { command: 'eval', hint: 'toggle a stack eval suite', isValuePicker: true },
   { command: 'guard', hint: 'open stack guardrails', isValuePicker: false },
   { command: 'schedule', hint: 'open the stack schedule', isValuePicker: false },
-  { command: 'goal', hint: 'open run-until-goal', isValuePicker: false }
+  { command: 'goal', hint: 'open run-until-goal', isValuePicker: false },
+  { command: 'maxx', hint: 'open stack MAXX backlog dispatch', isValuePicker: false }
 ];
 
 /** Every value-picker command name, shared by `CARD_COMMANDS` and
@@ -1448,13 +1451,16 @@ export function scheduleSummary(card: StackCard): string {
 
 /** The bolded descriptor half of the MAXX summary line — e.g. "quiet hours +
  *  headroom", matching the locked design's "on · **quiet hours + headroom**"
- *  sample text (the "on ·" prefix is rendered unbolded by the caller). */
-export function maxxSummary(card: StackCard): string {
-  // `quietHours` is a fixed policy field, always present once MAXX exists on
-  // a card — there's no UI to unset it independently of `enabled` in this
-  // sprint (see `MaxxPopover.svelte`'s doc comment), so it's always listed.
+ *  sample text (the "on ·" prefix is rendered unbolded by the caller).
+ *  Structurally typed over `{ maxx }` (not `StackCard` specifically) so
+ *  `StackConfig` — the stack-level MAXX facet added by Stack-MAXX-1 — reuses
+ *  it too, rather than a near-duplicate stack-scoped copy. */
+export function maxxSummary(entity: { maxx: MaxxConfig }): string {
+  // `quietHours` is a fixed policy field, always present once MAXX exists —
+  // there's no UI to unset it independently of `enabled` in this sprint (see
+  // `MaxxPopover.svelte`'s doc comment), so it's always listed.
   const parts: string[] = ['quiet hours'];
-  if (card.maxx.headroomGate) parts.push('headroom');
+  if (entity.maxx.headroomGate) parts.push('headroom');
   return parts.join(' + ');
 }
 
@@ -1899,8 +1905,20 @@ export interface StackConfig {
   /** Stack-Chain-1 — the server-side `/api/schedule-chains` row backing this
    *  stack's "schedule the entire stack" toggle, once one has been created.
    *  `undefined` until the first successful sync (`stackRun.ts::syncStackSchedule`)
-   *  — a stack that has never been scheduled has no chain to enable/disable/edit. */
+   *  — a stack that has never been scheduled has no chain to enable/disable/edit.
+   *  Stack-MAXX-1 shares this same row/field: whichever of "scheduled" or
+   *  "maxx" turns on first creates it via `stackRun.ts::ensureChainForMaxx`
+   *  or `syncStackSchedule`; each feature's own enable state governs itself
+   *  independently — MAXX never touches `enableScheduleChain`, and cron
+   *  ticking never calls `runScheduleChainNow`. */
   chainId?: string;
+  /** Stack-MAXX-1 — per-card MAXX (`StackCard.maxx`) fires that one card's
+   *  own goal; this fires the whole `chainId` chain instead, so `goal`
+   *  never applies here (see `MaxxPopover.svelte`'s chain-mode branch). */
+  maxx: MaxxConfig;
+  /** The `/api/maxx` row id backing `maxx`, once created — mirrors
+   *  `StackCard.maxxEntryId` one level up. */
+  maxxEntryId?: string;
 }
 
 /** Freshly-initialized stack config — every pane gets its own objects
@@ -1914,7 +1932,8 @@ export function defaultStackConfig(): StackConfig {
     guardrails: defaultStackGuardrails(),
     evals: [BASELINE_EVAL],
     defaults: defaultStackDefaults(),
-    goal: defaultStackGoal()
+    goal: defaultStackGoal(),
+    maxx: defaultMaxx()
   };
 }
 
@@ -1931,6 +1950,12 @@ export function stackGuardActive(g: StackGuardrails): boolean {
 
 export function stackEvalActive(config: StackConfig): boolean {
   return config.evals.length > 1;
+}
+
+/** Mirrors `card.maxx.enabled`'s per-card reading — active once the whole
+ *  stack's MAXX toggle is on. */
+export function stackMaxxActive(config: StackConfig): boolean {
+  return config.maxx.enabled;
 }
 
 /** B1 — the goal facet reads "active" once run-until-goal is switched on. The
@@ -2127,7 +2152,11 @@ export function duplicateStack(state: StackPaneState[], key: string): StackPaneS
       guardrails: { ...original.config.guardrails },
       evals: [...original.config.evals],
       defaults: { ...original.config.defaults },
-      goal: { ...original.config.goal }
+      goal: { ...original.config.goal },
+      // A clone never shares its original's backend `/api/maxx` row —
+      // mirrors `duplicateCard`'s identical per-card reset.
+      maxx: { ...original.config.maxx, enabled: false },
+      maxxEntryId: undefined
     },
     // A duplicated stack starts with its own empty draft — the original's
     // in-progress draft is not part of what "duplicate" means to copy.

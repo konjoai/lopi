@@ -13,7 +13,7 @@ struct LopiIOSApp: App {
 
     var body: some Scene {
         WindowGroup {
-            StackOverviewScreen()
+            RootTabView()
                 .environment(model)
                 .preferredColorScheme(.dark)
                 .tint(Konjo.ice)
