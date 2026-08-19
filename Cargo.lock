@@ -1760,7 +1760,7 @@ checksum = "0ceec5bc11778974d1bcb055b18002eba7f4b3518b6a0081b3af5f21666da9ad"
 
 [[package]]
 name = "lopi"
-version = "0.40.0"
+version = "0.46.0"
 dependencies = [
  "anyhow",
  "cargo-husky",
@@ -1803,7 +1803,7 @@ dependencies = [
 
 [[package]]
 name = "lopi-agent"
-version = "0.40.0"
+version = "0.46.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1836,7 +1836,7 @@ dependencies = [
 
 [[package]]
 name = "lopi-context"
-version = "0.40.0"
+version = "0.46.0"
 dependencies = [
  "criterion",
  "lopi-core",
@@ -1852,7 +1852,7 @@ dependencies = [
 
 [[package]]
 name = "lopi-core"
-version = "0.40.0"
+version = "0.46.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1870,7 +1870,7 @@ dependencies = [
 
 [[package]]
 name = "lopi-demo"
-version = "0.40.0"
+version = "0.46.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1890,7 +1890,7 @@ version = "0.1.0"
 
 [[package]]
 name = "lopi-git"
-version = "0.40.0"
+version = "0.46.0"
 dependencies = [
  "anyhow",
  "git2",
@@ -1905,7 +1905,7 @@ dependencies = [
 
 [[package]]
 name = "lopi-github"
-version = "0.40.0"
+version = "0.46.0"
 dependencies = [
  "anyhow",
  "reqwest",
@@ -1918,7 +1918,7 @@ dependencies = [
 
 [[package]]
 name = "lopi-index"
-version = "0.40.0"
+version = "0.46.0"
 dependencies = [
  "anyhow",
  "blake3",
@@ -1941,7 +1941,7 @@ dependencies = [
 
 [[package]]
 name = "lopi-mcp"
-version = "0.40.0"
+version = "0.46.0"
 dependencies = [
  "anyhow",
  "lopi-tools",
@@ -1956,7 +1956,7 @@ dependencies = [
 
 [[package]]
 name = "lopi-memory"
-version = "0.40.0"
+version = "0.46.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1972,7 +1972,7 @@ dependencies = [
 
 [[package]]
 name = "lopi-oracle"
-version = "0.40.0"
+version = "0.46.0"
 dependencies = [
  "anyhow",
  "tempfile",
@@ -1982,7 +1982,7 @@ dependencies = [
 
 [[package]]
 name = "lopi-orchestrator"
-version = "0.40.0"
+version = "0.46.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1992,6 +1992,7 @@ dependencies = [
  "lopi-core",
  "lopi-git",
  "lopi-memory",
+ "lopi-oracle",
  "lopi-skill",
  "serde",
  "tempfile",
@@ -2005,7 +2006,7 @@ dependencies = [
 
 [[package]]
 name = "lopi-ratelimit"
-version = "0.40.0"
+version = "0.46.0"
 dependencies = [
  "lopi-core",
  "serde",
@@ -2017,7 +2018,7 @@ dependencies = [
 
 [[package]]
 name = "lopi-remote"
-version = "0.40.0"
+version = "0.46.0"
 dependencies = [
  "anyhow",
  "axum 0.7.9",
@@ -2038,7 +2039,7 @@ dependencies = [
 
 [[package]]
 name = "lopi-skill"
-version = "0.40.0"
+version = "0.46.0"
 dependencies = [
  "anyhow",
  "lopi-core",
@@ -2050,7 +2051,7 @@ dependencies = [
 
 [[package]]
 name = "lopi-spec"
-version = "0.40.0"
+version = "0.46.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2065,7 +2066,7 @@ dependencies = [
 
 [[package]]
 name = "lopi-tools"
-version = "0.40.0"
+version = "0.46.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2079,7 +2080,7 @@ dependencies = [
 
 [[package]]
 name = "lopi-toon"
-version = "0.40.0"
+version = "0.46.0"
 dependencies = [
  "anyhow",
  "serde_json",
@@ -2089,7 +2090,7 @@ dependencies = [
 
 [[package]]
 name = "lopi-ui"
-version = "0.40.0"
+version = "0.46.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2125,7 +2126,7 @@ dependencies = [
 
 [[package]]
 name = "lopi-webhook"
-version = "0.40.0"
+version = "0.46.0"
 dependencies = [
  "anyhow",
  "axum 0.7.9",

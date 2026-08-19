@@ -29,7 +29,7 @@
 # imported the org CLAUDE.md rules; this profile is the missing half of that connection.
 #
 # lopi is a Rust agent orchestrator: tokio async runtime, axum web/API surface, ratatui TUI,
-# sqlx/SQLite persistence, teloxide (Telegram) and a WhatsApp/Twilio webhook, git2-driven
+# sqlx/SQLite persistence, a WhatsApp/Twilio webhook, git2-driven
 # git-isolated agent branches. A `web/` directory carries a TypeScript dashboard front end.
 
 repo: lopi

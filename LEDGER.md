@@ -5,6 +5,110 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## Collision-Oracle-Pool-Wiring -- the oracle gets a production call site, and both sides get told
+
+Sprint P5. Closes carried-forward item 2 of the `Collision-Oracle-Build` handoff.
+`lopi-oracle` had been merged for three commits with no production consumer:
+`AgentRunner::with_collision_oracle` was called only from its own tests, so a
+556-line crate shipped as `[0.44.0]` could not affect a single real task. This
+entry records the two load-bearing calls made while wiring it.
+
+### Decision 1 -- alert delivery is per recipient, not per signature
+
+The gap the prior entry flagged, resolved rather than carried forward again.
+
+`CollisionOracle::poll` de-duplicated on `ConflictSignature` alone and returned
+each newly-seen signature once; `collision_seed.rs` then filtered the result to
+alerts naming the caller. Composed, those two correct-looking steps made delivery
+a race. On an A-B collision, whichever side polled first received the alert, the
+signature moved into `seen`, and the other side's poll returned nothing. The
+agent that lost the race never learned it was colliding at all.
+
+**Both sides get a copy.** Neither agent can coordinate on information only its
+counterpart holds, and there is no principled basis for picking which one is
+told -- poll order is an artifact of scheduling, not of who needs to know.
+
+Mechanically: `seen: HashSet<ConflictSignature>` becomes
+`delivered: HashMap<ConflictSignature, HashSet<String>>`, and `poll(refs)` becomes
+`poll_for(requester_label, refs)`, returning only collisions the requester is a
+side of and only those not already delivered to that label. Still-open pruning is
+untouched, so a resolved-then-recurring collision still re-alerts every side
+afresh.
+
+**This does not reopen KT-2.** KT-2's finding was that a poll-and-count design
+re-alerts on every cycle -- 120 red verdicts/hour off one collision that never
+changed. The property that fixes it is "alert on distinct onsets, not on polls,"
+and that is preserved exactly: still one alert per side per signature. The bound
+moves from one-alert-per-collision to one-alert-per-participant-per-collision,
+which is at most two for a pairwise oracle and is the correct denominator.
+
+Kill-tested, not assumed: forcing the ledger back to a single shared key makes
+`both_sides_of_a_collision_each_receive_the_alert_exactly_once` fail.
+
+The self-filter moves out of `collision_seed.rs` into the oracle. Filtering
+caller-side was the actual defect -- the shared oracle had already spent the alert
+before the filter ever ran.
+
+**One-way door:** `poll` is a `pub` fn in a `#![warn(missing_docs)]` crate, and
+its signature changed. Accepted deliberately: the crate has exactly one non-test
+consumer today, so the cost of changing it will never again be this low.
+
+### Decision 2 -- oracle state is keyed per repo, and the peer roster is a live roster
+
+**Per repo, not per pool.** A pool dispatches against several repos (a task's own
+`repo_path` overrides the pool default; `repo_permits` is already keyed that way).
+Two tasks can only collide when they run against the same repo, and
+`git merge-tree` needs both refs resolvable in one object store. The key is always
+the *shared* repo path, never a per-task worktree checkout -- worktrees share the
+repo's refs and object database, so every task's branch resolves there whichever
+checkout created it.
+
+**A finished task must leave the roster.** This is the part that makes pool wiring
+different in kind from runner wiring, not merely larger. `collision_seed.rs` only
+ever registers; per-runner, with a list that dies with the test, that is harmless.
+Pool-wide the roster is process-lifetime and shared, so a task that never
+deregisters is not inert: the oracle keeps `merge-tree`-ing its dead branch
+against every live one on every poll. Poll cost then grows with tasks *ever* run
+rather than tasks running, and agents are warned about collisions with work that
+already merged -- the oracle degrades into exactly the noise floor KT-2 named,
+by a different route.
+
+Deregistration goes at the pool's single terminal choke point. `run_loop.rs` was
+at 499 lines against the 500-line gate, so the post-`run_one` terminal block moved
+to a new `pool/terminal.rs` first -- the same "split purely to stay under the CI
+gate" idiom `run_loop_builder.rs` and `collision_seed.rs` already document.
+Every path a task can leave `run_one` by passes through it, which is what makes it
+the right place rather than a convenient one.
+
+Kill-tested: removing the deregistration call makes
+`retiring_a_task_drops_it_from_the_repo_peer_roster` fail.
+
+### Verified, not assumed
+
+`WorktreeManager::add_detached` creates worktrees **detached**, and
+`collision_seed.rs::current_branch` deliberately opts out on a detached `HEAD`.
+That combination would have silently disabled the oracle for every task under
+`isolation = "worktree"` -- the exact mode the oracle exists to serve. It does not,
+because `run_loop.rs:239` runs `checkout_new_branch` before the Planning phase at
+`:250`, so `HEAD` is on a named branch by the time the oracle seeds. Checked
+against the code rather than reasoned about, because the failure would have been
+silent.
+
+### Explicitly not done
+
+- **The dashboard indicator.** A stretch goal the original brief did not require.
+  Alerts surface as log lines today; a real indicator needs a new `AgentEvent`
+  variant plus web types and Svelte.
+- **A live multi-agent KT-2 re-run.** Still needs real concurrent `lopi run`/
+  `lopi sail` agents. The standing sandbox constraint is unchanged.
+- **Detection semantics.** Textual-only, detection-only, never blocks -- all
+  settled in `Collision-Oracle-Build` and untouched here.
+- **The other two unreachable tiers.** The direct-Anthropic-API path (~2,000 LOC
+  behind `with_api()`, test-only call site, shadowed by ~622 LOC of CLI fallbacks
+  that exist only to cover for it) and `lopi-remote` (unreachable since S10) are a
+  separate wire-or-delete decision with a real one-way door in it. Named here so
+  the next session inherits the finding, not deferred silently.
+
 ## Telegram-Gateway-Non-Goal — `claude/telegram-bot-overhaul-8iJpe` closed, the gateway question is settled
 
 Sprint P4 ("close the loop"), Phase 3 branch triage. `claude/telegram-bot-overhaul-8iJpe`

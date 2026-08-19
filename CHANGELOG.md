@@ -1,3 +1,66 @@
+## [0.46.0] - Sprint P5: pool-level collision-oracle wiring, and alerts that reach both sides
+
+`lopi-oracle` shipped in `[0.44.0]` with its runner-side integration built and
+tested, but `AgentRunner::with_collision_oracle` had no production call site --
+nothing in `crates/lopi-orchestrator/src/pool/` ever constructed a
+`CollisionOracle`, so cross-agent collision detection could not run for a real
+dispatched task. This closes carried-forward item 2 of `NEXT_SESSION_PROMPT.md`'s
+Collision-Oracle-Build handoff, including the fairness decision it flagged. Full
+reasoning in `LEDGER.md`'s `Collision-Oracle-Pool-Wiring` entry.
+
+### Fixed
+
+- **`crates/lopi-oracle/src/tracker.rs`** now records alert delivery per
+  *recipient*, not per signature. `CollisionOracle::poll(refs)` becomes
+  `poll_for(requester_label, refs)`, and the ledger becomes
+  `HashMap<ConflictSignature, HashSet<String>>`. Previously the first side of a
+  colliding pair to poll consumed the alert and the second was told nothing --
+  delivery was a race between two agents that both needed the warning. KT-2's
+  noise-floor property is unchanged: one alert per side per signature, not one
+  per poll.
+- **`crates/lopi-agent/src/runner/collision_seed.rs`** drops its caller-side
+  self-filter; `poll_for` returns only collisions the requester is a side of.
+
+### Added
+
+- **`crates/lopi-orchestrator/src/pool/collision.rs`** -- `AgentPool::with_collision_oracle`
+  (opt-in, mirroring `with_economics`), plus a per-repo oracle and peer roster
+  created on first use. Keyed by the shared repo path, never a per-task worktree:
+  worktrees share the repo's refs and object database, so every task's branch
+  resolves there whichever checkout created it.
+- **`crates/lopi-orchestrator/src/pool/terminal.rs`** -- the single choke point
+  every dispatched task retires through, extracted from `run_loop.rs`, now also
+  deregistering the task from its repo's peer roster. The runner side only ever
+  registers; without this a finished task's branch is checked against every live
+  one forever, so poll cost grows with tasks *ever* run rather than tasks
+  running, and agents are warned about collisions with work that already merged.
+- 9 tests: per-side delivery and third-party non-delivery (`tracker.rs`), oracle
+  and roster sharing/isolation per repo, deregistration through the real terminal
+  path, and unwired-pool no-ops. Both new behaviors are kill-tested -- forcing the
+  ledger back to one shared key, and removing the deregistration call, each make
+  the corresponding test fail.
+
+### Changed
+
+- `Cargo.toml`'s `[workspace.package] version` was `0.40.0` while `VERSION` and
+  `CHANGELOG.md` said `0.45.0` -- five sprints of bumps never reached it. Bumped,
+  along with all 19 internal path-dependency `version` pins, which must move as a
+  set or resolution fails.
+- `CLAUDE.md` no longer advertises Telegram remote control or `teloxide`
+  (`teloxide` is not in `Cargo.toml`; the transport was removed in Sprint S10
+  Phase 4), and its repo map covers all 19 crates rather than 11.
+  `.konjo/profile.yml` carried the same stale sentence.
+- `.claude/skills/lopi-context/SKILL.md`'s phase table and health block were
+  ~40 versions stale (Phase 4 / v0.5.0, 9 crates, 46 tests). Corrected, and
+  marked as not-for-planning with a pointer to the authoritative sources.
+
+### Non-goal
+
+No change to detection semantics: still textual-only, still detection-only, still
+never blocks. The dashboard indicator remains unbuilt (a stretch goal the original
+brief did not require), and a live multi-agent KT-2 re-run still needs an
+environment with real concurrent agents.
+
 ## [0.45.0] - RepoProfile-EntryPoint-Parity: web + MCP task submission now apply `.lopi.toml`
 
 Part C of the same combined session as `[0.44.0]` (Sprint P4 renumbered this from

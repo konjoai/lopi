@@ -7,34 +7,46 @@ user-invocable: false
 
 ## Phase Plan
 
+Phases 1-9 below are the original v0 plan and are all long shipped or superseded.
+The live numbering is the **P-series** (review-pipeline sprints). `CHANGELOG.md` and
+`LEDGER.md` are authoritative for what shipped and why; `NEXT_SESSION_PROMPT.md`
+(newest first) is authoritative for what is next. Do not plan from this table.
+
 | Phase | Status | What Shipped |
 |-------|--------|--------------|
-| 1 — MVP Core | ✅ v0.1.0 | Cargo workspace, all 8 crates, CLI verbs |
+| 1 — MVP Core | ✅ v0.1.0 | Cargo workspace, CLI verbs |
 | 2 — N Parallel Agents + Live Dashboard | ✅ v0.4.0 | AgentPool, EventBus, ratatui TUI, web dashboard, WebSocket |
-| 3 — Remote Control + Pattern Mining | ✅ v0.3.0 | Telegram bot, GitHub webhook HMAC, pattern miner |
+| 3 — Remote Control + Pattern Mining | ✅ v0.3.0 | GitHub webhook HMAC, pattern miner (the Telegram transport shipped here and was removed again in S10 Phase 4) |
 | 4 — Scheduled Tasks + Repo Profiles | ✅ v0.5.0 | cron scheduler, RepoProfile, `lopi watch --remote` |
-| 5 — Self-Improvement Engine | 🔲 Next | Pattern learning, failure post-mortem, adaptive retry |
-| 6 — GitHub Webhooks + CI Integration | 🔲 Planned | lopi-webhook end-to-end, GitHub App mode |
-| 7 — Production Web UI | 🔲 Planned | React/Svelte frontend, auth, mobile-responsive |
-| 8 — Native Mobile App | 🔲 Planned | React Native, push notifications, voice input |
-| 9 — Intelligence + Evolution | 🔲 Ongoing | Multi-agent roles, goal decomposition, embedding memory |
+| 5 — Self-Improvement Engine | ✅ v0.10.0 / v0.11.0 | `lopi learn`, failure post-mortem, pattern learning |
+| 6 — GitHub Webhooks + CI Integration | ◐ partial | `lopi-webhook` end-to-end; GitHub App mode and full-event HMAC still open |
+| 7 — Production Web UI | ✅ | SvelteKit dashboard under `web/` |
+| 8 — Native Mobile App | ◐ | macOS/iOS app under `macos/`; React Native never started |
+| 9 — Intelligence + Evolution | ◐ ongoing | Sprints H-S, then the P-series |
 
-## Current Health (Phase 4 / v0.5.0)
-- Tests: 46 passing, 0 failing
-- Build: Clean (0 warnings)
-- Crates: 9 (lopi-core, lopi-git, lopi-agent, lopi-memory, lopi-orchestrator, lopi-ui, lopi-remote, lopi-webhook, lopi-toon)
-- CLI: `run`, `watch`, `tail`, `dock`, `sail`, `schedules`
-- API: GET /api/tasks, POST /api/tasks, GET /api/tasks/:id, GET /api/patterns, GET /api/health, GET /ws/tasks
+Sprints H through S (v0.10.0-v0.19.0) and the P-series (P0-P4, v0.40.0-v0.45.0) all
+postdate this table. See `PLAN.md` for the alphabetic sprint log (itself current only
+to v0.19.0) and `docs/LOOP_ENGINEERING_ROADMAP.md` for the freshest verified roadmap.
 
-## Phase 5 — Self-Improvement Engine (Next Sprint)
+## Current Health
 
-Priority items:
-1. **Pattern learning**: before running a new task, query similar past tasks → suggest constraints that worked → pre-load into system prompt
-2. **`lopi learn` CLI** — show pattern library, success rates, top constraints
-3. **Failure post-mortem**: when all retries fail, run a "post-mortem" Claude session → analyze error log → generate constraint/approach suggestion → store as pattern
-4. **Adaptive retry**: if attempt N failed with error type X, adjust prompt strategy for attempt N+1 (pass error + suggest different approach)
-5. **Self-modification loop (guarded)**: `allow_self_modify = true` in config + same git isolation + PR workflow applies
-6. **Scoring evolution**: score weights configurable and tunable based on which metrics correlate with user-approved vs rejected PRs
+Re-measure rather than trusting these; they drift. Verified 2026-08-19 at `0.46.0`.
+
+- Crates: 19 under `crates/`, plus the root binary at `src/` and a SvelteKit front end at `web/`
+- Tests: ~2196 `#[test]`/`#[tokio::test]` sites across `crates/` + `src/`
+- Coverage: 68.34% (`.konjo/coverage-floor.txt`), against a soft 80% gate
+- Ratchets at zero margin: function-length 74, indexing floor 211
+- CLI: 31 subcommands (see `src/cli.rs`) — `run`, `sail`, `watch`, `learn`, `spec`, `index`, `mcp-serve` and more
+- Gate tiers: only `G1 · static` and two `G2 · coverage` steps are BLOCKING; everything
+  else is ADVISORY (`LEDGER.md`'s `Gate-Tiering-1`)
+
+### Known unreachable code — real, documented, not hidden
+
+- The direct-Anthropic-API tier (`with_api()`) has no production call site; the CLI
+  fallbacks (`verifier_cli.rs`, `postmortem_cli.rs`) cover for it. `--adaptive-retry`
+  is inert on the shipped binary.
+- `lopi-remote` is unreachable (README says so outright).
+- `lopi replay` reports a plan; live re-execution is not wired.
 
 ## Standing Rules for Agents on lopi
 - Stay inside `crates/` and `src/` — never touch `.github/`, `infra/`, root `Cargo.lock` deliberately

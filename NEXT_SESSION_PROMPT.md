@@ -5,6 +5,62 @@ the `lopi` repo. Newest first.
 
 ---
 
+## Next Session, after Sprint P5 ("wire the oracle," `[0.46.0]`)
+
+Sprint P5 gave `lopi-oracle` its first production call site and closed the fairness
+gap the Collision-Oracle-Build handoff carried forward. Read `CHANGELOG.md`'s
+`[0.46.0]` entry and `LEDGER.md`'s `Collision-Oracle-Pool-Wiring` entry first --
+both load-bearing decisions and both kill-tests are recorded there.
+
+**First thing to do:** confirm `VERSION` (`0.46.0`), `CHANGELOG.md`'s top entry, and
+`Cargo.toml`'s `[workspace.package] version` all agree. This sprint fixed a real
+five-version drift between them (`Cargo.toml` had sat at `0.40.0` since P0), so the
+long-standing "confirm `VERSION` matches `CHANGELOG.md`" check now has a third
+member. All 19 internal path-dependency `version` pins move with it as a set --
+bumping only `[workspace.package]` breaks resolution.
+
+**What shipped, already done, do not re-derive:**
+
+- `AgentPool::with_collision_oracle()` (opt-in, mirrors `with_economics`), a per-repo
+  oracle and peer roster in `crates/lopi-orchestrator/src/pool/collision.rs`, and
+  `CollisionWiring` threaded through `build_runner` as one bundled argument.
+- `crates/lopi-orchestrator/src/pool/terminal.rs` -- the terminal block extracted out
+  of `run_loop.rs` (which was at 499/500 against the file-size gate), now also
+  deregistering the finished task from its repo's peer roster.
+- `CollisionOracle::poll` -> `poll_for(requester_label, refs)`, with delivery recorded
+  per recipient. Both sides of a colliding pair are now warned; previously whichever
+  polled first consumed the alert.
+- The stale-doc pass: `CLAUDE.md` (Telegram/`teloxide` claims, 11 -> 19 crate repo
+  map), `.konjo/profile.yml`, and `.claude/skills/lopi-context/SKILL.md`'s phase table
+  and health block, which were ~40 versions behind.
+
+**Explicitly not done this sprint, carried forward:**
+
+1. **The two remaining unreachable tiers.** The direct-Anthropic-API path is roughly
+   2,000 LOC behind `with_api()`, whose only call site is a test, and it is shadowed
+   by ~622 LOC of CLI fallbacks (`verifier_cli.rs`, `postmortem_cli.rs`) that exist
+   solely to cover for it -- so the repo maintains two implementations of four
+   subsystems and ships neither primary one. `lopi run --adaptive-retry` is an inert
+   flag on the shipped binary as a direct consequence. `lopi-remote` (501 LOC) has
+   been unreachable since S10. This is one wire-or-delete decision with a real
+   one-way door in it and wants an owner call, not a sprint that guesses.
+2. **A genuine live multi-agent KT-2 re-run.** Unchanged: needs real concurrent
+   `lopi run`/`lopi sail` agents generating write traffic. Every run so far has used
+   a disclosed proxy.
+3. **The dashboard collision indicator.** Still a stretch goal, still unbuilt. Needs a
+   new `AgentEvent` variant plus web types and Svelte; alerts are log lines today.
+4. **`ANTHROPIC_API_KEY` does not reach the `mutation-hunt` job** (PR #201). Outside
+   what a session can fix -- repo-settings access.
+5. **PF-0b's remaining crates**, and the branch-cleanup recommendation from P4 Phase 3
+   (16 CLOSE verdicts, no branch deleted). Both unchanged.
+6. **The zero-margin ratchets.** Coverage 68.34/68.34, function-length 74/74, indexing
+   floor 211/211 -- all three still sit exactly at their locked values, so any sprint
+   that adds code without tests trips one. Worth a dedicated paydown sprint before the
+   coverage gate can be promoted back to BLOCKING (which additionally needs the
+   false-positive-rate telemetry no gate on lopi has recorded yet).
+
+---
+
 ## Next Session, after Sprint P4 ("close the loop," `[0.45.0]`)
 
 Sprint P4 verified, merged, and shipped two parked sprints (`0.43.0` Planner/Executor

@@ -45,6 +45,9 @@ fn runner_for(task: Task) -> lopi_agent::AgentRunner {
         plan_decision_rx,
         None,
         lopi_core::ContextMode::default(),
+        // Sprint P5 — unwired, the default. Assembly here must stay
+        // identical to before the collision argument existed.
+        None,
     )
 }
 
@@ -209,6 +212,7 @@ async fn verifier_required_with_no_api_client_actually_executes_a_pass() {
         plan_decision_rx,
         None,
         lopi_core::ContextMode::default(),
+        None,
     );
     assert!(
         runner.verifier_enabled(),
