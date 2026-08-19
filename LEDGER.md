@@ -61,6 +61,31 @@ test-isolation flakiness (almost certainly a `$HOME`/env-var race between parall
 threads in the same binary), not a regression from this work. Flagged as a follow-up task
 rather than fixed inline, same reasoning as the `duplicateStack` finding above.
 
+**CI triage, post-merge.** PR #204's `GK · konjo-gates` run (ADVISORY tier — see
+`Gate-Tiering-1`; all BLOCKING gates G0-G5 passed, so the PR merged) flagged two findings
+that needed acknowledgment, not a code fix: `one_way_door` on `path:schema-or-migration`
+(the `maxx_entries.chain_id` `ALTER TABLE`) and `threat_model` on the `network_ingress`
+boundary (`crates/lopi-ui` touched by `maxx_handlers.rs`/`warmup.rs`). Re-deriving the
+change id locally against the PR's exact 39-file diff (`base a07b5aa...head ef53283`,
+verified via `gh api repos/.../pulls/204` — `origin/main` had moved between PR-open and
+this job running, same "any new file in the diff re-shifts `sha256(sorted(changed_files))`"
+dynamic `PR-202-Gate-Response`/the kiban-pin-bump entry above already documented) produced
+`386ed0a3228c`, not CI's reported `2c4372fca2fc` — expected drift, not a discrepancy to
+chase further, since the PR is already merged and this specific historical CI run can never
+re-execute against this diff again. Acknowledging from a commit that touches only `LEDGER.md`
+(already one of the 39 files) keeps the file set — and so the id — stable from here.
+One-way-door: additive-only column, `NULL` default, zero migration burden on existing rows
+(unchanged single-goal MAXX behavior). Threat model: the new `chain_id` field is validated
+at the boundary exactly like the pre-existing `goal` field (200-char cap, control-char
+rejection), only ever reaches storage as a bound `sqlx` parameter (never interpolated into
+SQL/shell/a path), and this app has no multi-tenant surface (confirmed by the repo's own
+`scope_assert` gate) — so a chain_id naming an unrelated real chain fires the same user's
+own other stack, not cross-tenant IDOR. The `polarity` WARN on `stackRun.test.ts`'s two
+`catch { threw = true; }` blocks is a static-analysis false positive on test code (asserting
+an expected rejection, not a production fallback swallowing an error) — left as-is; WARN
+tier doesn't block and the pattern is correct as written. Both acknowledgments' trailers
+(`Konjo-Acknowledged-Oneway`/`Konjo-Threat-Model: 386ed0a3228c`) are on this commit.
+
 ## Kiban-Pin-Bump-v1.19.0 -- five-version pin bump, and the drift check that would have caught it sooner
 
 Cross-repo audit (`konjo-cortex` sprint "kiban adoption and enforcement") found lopi's
