@@ -68,7 +68,7 @@ serde_json = "1"
 toml = "0.8"
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite"] }
 git2 = "0.21"
-reqwest = { version = "0.11", features = ["json", "stream"] }
+reqwest = { version = "0.12", features = ["json", "stream"] }
 regex = "1"
 bytes = "1"
 rust-embed = { version = "8", features = ["interpolate-folder-path"] }
@@ -80,10 +80,10 @@ uuid = { version = "1", features = ["v4", "serde"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 dashmap = "5"
-opentelemetry = { version = "0.22", features = ["trace"] }
-opentelemetry_sdk = { version = "0.22", features = ["rt-tokio"] }
-opentelemetry-otlp = { version = "0.15", features = ["tonic"] }
-tracing-opentelemetry = "0.23"
+opentelemetry = { version = "0.27", features = ["trace"] }
+opentelemetry_sdk = { version = "0.27", features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "0.27", features = ["grpc-tonic"] }
+tracing-opentelemetry = "0.28"
 tokio-stream = { version = "0.1", features = ["sync"] }
 futures = "0.3"
 async-trait = "0.1"
