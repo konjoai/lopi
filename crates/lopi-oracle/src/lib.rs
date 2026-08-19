@@ -17,9 +17,12 @@
 //! naive poll-and-count design re-alerts on the same still-open conflict
 //! every cycle — 120 red verdicts/hour off a single collision that never
 //! actually changed. [`CollisionOracle`] alerts once per
-//! [`ConflictSignature`] (conflicted file set + merge-base) and forgets a
-//! signature once it stops appearing, so a poll only ever surfaces genuinely
-//! new information: a fresh collision, or a resolved one recurring.
+//! [`ConflictSignature`] (conflicted file set + merge-base) *per notified
+//! side*, and forgets a signature once it stops appearing, so a poll only
+//! ever surfaces genuinely new information: a fresh collision, or a resolved
+//! one recurring. Keying the ledger by signature alone would make delivery a
+//! race between the two colliding agents — whichever polled first consumed
+//! the alert and the other never learned it was colliding.
 //!
 //! **Detection only.** This crate reports; it never blocks. There is no
 //! conflict-resolution logic and no hard-deny path — callers surface
