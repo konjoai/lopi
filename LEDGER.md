@@ -34,7 +34,14 @@ at the pinned ref) is resolved by this bump -- kiban shipped it on the way to `v
 so that job is now live-runnable, though it remains `workflow_dispatch`-only and outside the
 required `konjo-gate` summary, unchanged from `Gate-Tiering-1`'s original wiring.
 
-**CI triage:** see the addendum below once the first post-bump PR run completes.
+**CI triage:** PR #203's first run flagged `GK - konjo-gates`' `one_way_door` gate on
+`path:release-version` (this PR bumps `VERSION`), and `G4 - Complexity + Size + DRY`
+crashed on a pre-existing bug in `.konjo/scripts/dry_check.py` -- its `--changed-only`
+early-exit path returned before writing `--report`, and this PR's all-YAML/MD/sh diff
+(zero `.rs`/`.py` files) hit that path for the first time. Both are addressed in this
+PR: `dry_check.py` now always writes the report file, even on an empty scan (see
+`_write_empty_report`); the version-bump one-way-door is acknowledged below, per the
+same protocol `PR-202-Gate-Response` used. No `continue-on-error` added anywhere.
 
 **How to apply:** the drift check pattern (resolve the real upstream state, not just
 cross-check two local copies of a claim) generalizes to any other pinned dependency this
