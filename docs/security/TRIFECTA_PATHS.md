@@ -1,12 +1,20 @@
 ---
 decays: state
-verified-against: f5c55ce
-verified-date: 2026-08-16
+verified-against: b323d6c
+verified-date: 2026-08-19
 ---
 
 # Trifecta paths — untrusted input → powerful tools → external comms
 
-Verified against: `f5c55ce` · 2026-08-16 (re-verified; Sprint P4 Phase 2's
+Verified against: `b323d6c` · 2026-08-19 (re-verified; cross-repo kiban adoption
+sprint's `claude/kiban-adoption-enforcement-7hq0t0` branch (PR #203) crossed the
+20-commit cap via commit volume, not content drift -- the branch's changes are all
+CI/meta: `.claude/hooks/session-start.sh`, `.github/workflows/konjo-gate.yml`,
+`.konjo/kiban.ref`, `.konjo/scripts/dry_check.py`, `CHANGELOG.md`, `CLAUDE.md`,
+`LEDGER.md`, `VERSION`. None of this doc's cited files (the Rust source list in the
+superseded banner below) intersect that diff. No content-level drift found.
+
+Superseded prior banner (`f5c55ce` · 2026-08-16 — re-verified; Sprint P4 Phase 2's
 merge of `claude/sprint-p3a-collision-oracle-q5zayq` onto a `main` that already
 carried Phase 1's merge crossed the 20-commit cap again. Combines both branches'
 own independent verifications rather than re-deriving from scratch: Branch A
