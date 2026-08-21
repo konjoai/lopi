@@ -88,6 +88,15 @@ pub(super) async fn get_stack_status(state: &AppState) -> Value {
             "stage": stage,
             "created_at": t.created_at,
             "completed_at": t.completed_at,
+            // AVO-Supervisor-2 (Feature 2) — a separate axis from `status`:
+            // whether the stall detector fired for this task's most recent
+            // attempt. `status` stays "running" the whole time a task is
+            // in flight (only `mark_running`/`mark_completed` touch that
+            // durable column); `stuck` is how a polling widget sees a live
+            // thrash/plateau without subscribing to the event bus.
+            "stuck": t.stuck_reason.is_some(),
+            "stuck_reason": t.stuck_reason,
+            "stuck_at": t.stuck_at,
         }));
     }
     json!({ "tasks": tasks, "synthetic": synthetic })

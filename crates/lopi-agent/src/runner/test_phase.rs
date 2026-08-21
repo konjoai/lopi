@@ -4,7 +4,7 @@
 
 use super::progress::ProgressGate;
 use super::run_loop::abort_attempt;
-use super::{schema_gate, AgentRunner};
+use super::{schema_gate, stall, AgentRunner};
 use crate::claude::ClaudeCode;
 use crate::scorer::Scorer;
 use anyhow::Result;
@@ -124,7 +124,14 @@ impl AgentRunner {
         // fix lifts it. Drives the no-progress stall guard below.
         let mut attempt_weighted = weighted;
 
-        // Persist attempt.
+        // Persist attempt. AVO-Supervisor-1 (Feature 1) — a passing score is
+        // promoted to the task's result immediately below
+        // (`finalize_on_pass`), without ever going through the gain gate, so
+        // its comparator verdict is known right here. A non-passing score's
+        // verdict isn't known until the in-place fix has had its chance and
+        // the gate has actually run (below) — that path backfills
+        // `gain_decision` via `attempt_row_id` once the decision exists.
+        let mut attempt_row_id: Option<uuid::Uuid> = None;
         if let Some(store) = &self.store {
             let mut a = Attempt::new(self.id(), attempt + 1, branch);
             a.score = Some(score.clone());
@@ -133,6 +140,8 @@ impl AgentRunner {
             } else {
                 "retry".into()
             };
+            a.gain_decision = score.passed().then(|| "promoted".to_string());
+            attempt_row_id = Some(a.id);
             store.save_attempt(&a).await.ok();
         }
 
@@ -193,10 +202,31 @@ impl AgentRunner {
         // specific `StopReason` when budget or no-progress trips. The
         // rejected (non-gaining) iteration's work is discarded by
         // `abort_and_mark_retrying` below — A1's rollback path, unchanged.
-        if let Some(status) = self
+        let (decision, stop) = self
             .observe_and_check_stop(gate, attempt_weighted, git, attempt + 1)
-            .await
-        {
+            .await;
+        // AVO-Supervisor-1 (Feature 1) — backfill the comparator verdict
+        // this attempt's row was inserted without (it wasn't known until
+        // the gate ran, just above).
+        if let (Some(store), Some(id)) = (&self.store, attempt_row_id) {
+            store
+                .update_attempt_gain_decision(id, decision.as_str())
+                .await
+                .ok();
+        }
+
+        // AVO-Supervisor-2 (Feature 2) — stall/thrash detection, layered
+        // under the gain gate's own termination guard (which just ran
+        // above and is unaffected by this). Only worth checking when the
+        // loop is actually continuing (`stop.is_none()`) — a task that's
+        // about to stop for budget/no-progress doesn't need a `Stuck`
+        // detour on its way out.
+        if stop.is_none() {
+            self.detect_and_steer_stall(branch, attempt, attempt_weighted, gate.streak())
+                .await;
+        }
+
+        if let Some(status) = stop {
             return Ok(TestPhaseOutcome::Terminal(status));
         }
 
@@ -208,6 +238,49 @@ impl AgentRunner {
         self.abort_and_mark_retrying(git, attempt).await;
         self.apply_on_fail_delay(attempt).await;
         Ok(TestPhaseOutcome::Continue)
+    }
+
+    /// AVO-Supervisor-2 (Feature 2) — capture this attempt's diff, compare
+    /// it against the previous attempt's, and mark the task `Stuck` (plus
+    /// steer the next attempt's prompt) when the stall detector fires.
+    /// Always updates `prev_attempt_diff` for the next comparison,
+    /// regardless of whether this round was flagged.
+    async fn detect_and_steer_stall(
+        &mut self,
+        branch: &str,
+        attempt: u8,
+        weighted: f32,
+        streak: u8,
+    ) {
+        let current_diff = stall::capture_diff(&self.repo_path).await;
+        let similarity = match (&current_diff, &self.prev_attempt_diff) {
+            (Some(c), Some(p)) => stall::line_overlap_ratio(c, p),
+            _ => 0.0,
+        };
+        let signal = stall::detect(streak, similarity);
+        if signal.is_stuck() {
+            let reason = signal.reason();
+            self.warn(format!(
+                "🧭 attempt {} on {branch} looks stuck ({reason}, weighted={weighted:.3})",
+                attempt + 1
+            ));
+            self.status(
+                TaskStatus::Stuck {
+                    attempt: attempt + 1,
+                    reason: reason.to_string(),
+                },
+                attempt + 1,
+            );
+            self.persist_stuck(attempt + 1, reason);
+            if self.adaptive_retry {
+                let steering = stall::steering_constraint(attempt + 1, signal, streak);
+                self.last_error = Some(match self.last_error.take() {
+                    Some(existing) => format!("{existing}\n\n{steering}"),
+                    None => steering,
+                });
+            }
+        }
+        self.prev_attempt_diff = current_diff;
     }
 
     /// The `score.passed() || until_satisfied` finalize path: forces the

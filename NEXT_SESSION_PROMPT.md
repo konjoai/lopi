@@ -5,6 +5,72 @@ the `lopi` repo. Newest first.
 
 ---
 
+## Next Session, after Sprint AVO-Supervisor-1 ("attempt scoring, stall detection, candidate-set view," `[0.47.0]`)
+
+Sprint AVO-Supervisor-1 shipped the three AVO-inspired features from the scoping brief
+that started this sprint. Read `CHANGELOG.md`'s `[0.47.0]` entry and `LEDGER.md`'s
+`AVO-Supervisor-1` entry first — the entry explains why the sprint ended up narrower
+than the brief: most of the "gap" the brief described (attempt-local scoring, a
+gain/regression comparator) already existed under different sprint names
+(Progress-Gating A3, Eval-Execution-1), just uncommitted to durable storage.
+
+**First thing to do:** confirm `VERSION` (`0.47.0`), `CHANGELOG.md`'s top entry, and
+`Cargo.toml`'s `[workspace.package] version` all agree (this repo has a confirmed
+history of these drifting — Sprint P5 found a five-version gap, and this very sprint's
+first move was fixing a smaller one-version drift). All 19 internal path-dependency
+`version` pins move with `[workspace.package]` as a set.
+
+**What shipped, already done, do not re-derive:**
+
+- `attempts.gain_decision` (new column) persists the gain-gate's live comparator
+  verdict per attempt — `"promoted"` on an outright pass, else
+  `gain`/`within_noise`/`regression`/`judge_unconfirmed` from
+  `crates/lopi-agent/src/runner/progress.rs`'s `ProgressGate`, backfilled via
+  `MemoryStore::update_attempt_gain_decision` once the gate has actually run.
+- `TaskStatus::Stuck { attempt, reason }` (`crates/lopi-core/src/task_status.rs`,
+  split out of `task.rs` to stay under the file-size gate) — fires on diff-thrash
+  (line-overlap ratio, `crates/lopi-agent/src/runner/stall.rs`) or an early
+  non-gain-streak threshold, *underneath* the existing `no_progress_limit`
+  termination guard (unchanged). Steers the next attempt's prompt via the existing
+  `self.last_error` adaptive-retry channel. Persisted to `tasks.stuck_at`/
+  `tasks.stuck_reason`, surfaced in `lopi_get_stack_status`/`lopi_get_task`/
+  `lopi_list_tasks` as a `stuck`/`stuck_reason` field independent of `status`.
+- `GET /api/loop-engineering/runs/:id` now includes `gain_decision` per attempt —
+  the existing run-trace endpoint doubles as the candidate-set view; no new MCP tool.
+
+**Explicitly not done this sprint, carried forward:**
+
+1. **The web dashboard's TS/Svelte frontend doesn't know about `Stuck` yet.**
+   `web/src/lib/parser.ts` has status-label switches (around lines 103/117/145/150)
+   and a terminal-status check (`isTerminal`-shaped, ~line 172) that were not
+   touched this sprint — only the Rust-side TUI (`crates/lopi-ui/src/tui.rs`) and
+   the MCP JSON surface got a `stuck` case. `web/src/lib/forge/orbState.ts` (the
+   card-orb animation state) and `web/src/lib/components/ui/badges` likely also
+   need a `stuck` case for the web UI to actually show the badge a human would see
+   day to day, not just what an MCP client or the terminal TUI sees. Scope this as
+   its own small pass — find the existing status-bucketing tests
+   (`orbState.test.ts`, `badges.test.ts`, `parser.test.ts`) first and follow their
+   existing pattern for each new status the way `retrying`/`rolled_back` are
+   already handled.
+2. **No frontend surfacing for the candidate-set view.** `GET
+   /api/loop-engineering/runs/:id`'s `gain_decision` field is real and tested, but
+   nothing in `web/src/routes` renders it yet — the Loop Health / Run Trace panel
+   shows attempts today without this new column. Confirm there's a real user need
+   before adding UI for it; `LEDGER.md`'s `AVO-Supervisor-1` entry explains why
+   Feature 3 stayed backend-only this sprint (no MCP tool sprawl without a concrete
+   widget need — the same discipline likely applies to frontend surface area).
+3. **`PLATEAU_STREAK_THRESHOLD = 2` and `THRASH_SIMILARITY_THRESHOLD = 0.8`**
+   (`crates/lopi-agent/src/runner/stall.rs`) are starting points, not tuned against
+   real usage data — this repo has none to tune against yet, same situation
+   `seed.rs`'s `MIN_PATTERN_OCCURRENCES`/`MIN_PATTERN_SUCCESS_RATE` were in when
+   they were set. Revisit once real `Stuck` firings accumulate.
+4. **The stall detector's diff capture is a plain `git diff`, not scoped to
+   `allowed_dirs`/`forbidden_dirs`.** Consistent with `Scorer::score`'s own
+   `git diff --shortstat` call, but worth a second look if thrash detection ever
+   proves noisy on tasks with a large diff-scope allowlist.
+
+---
+
 ## Next Session, after Sprint P5 ("wire the oracle," `[0.46.0]`)
 
 Sprint P5 gave `lopi-oracle` its first production call site and closed the fairness

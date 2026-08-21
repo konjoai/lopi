@@ -131,6 +131,8 @@ mod tests {
             source: "\"Cli\"".to_string(),
             cli_session_id: None,
             plan_artifact: None,
+            stuck_at: None,
+            stuck_reason: None,
         }
     }
 

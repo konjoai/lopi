@@ -110,6 +110,45 @@ async fn get_stack_status_joins_roster_branch_and_stage_for_concurrent_tasks() {
     assert_eq!(testing["status"], "running");
 }
 
+/// AVO-Supervisor-2 (Feature 2) — the roster surfaces `stuck`/`stuck_reason`
+/// as a separate axis from `status`, which stays "running" the whole time a
+/// task is in flight regardless of a stall.
+#[tokio::test]
+async fn get_stack_status_surfaces_stuck_marker_independently_of_status() {
+    let (state, store) = test_state().await;
+    let task = Task::new("refactor the parser");
+    let task_id = task.id;
+    store.save_task(&task, "running").await.unwrap();
+    store.set_task_stuck(&task_id, 3, "thrash").await.unwrap();
+
+    let result = get_stack_status(&state).await;
+    let tasks = result["tasks"].as_array().unwrap();
+    let row = tasks
+        .iter()
+        .find(|t| t["id"] == task_id.0.to_string())
+        .expect("task in roster");
+    assert_eq!(row["status"], "running", "status is unaffected by stuck");
+    assert_eq!(row["stuck"], true);
+    assert_eq!(row["stuck_reason"], "thrash");
+    assert_eq!(row["stuck_at"], 3);
+}
+
+/// A task that never stalled reports `stuck: false` with null reason/attempt,
+/// not an absent key — a polling widget can rely on the field always
+/// existing.
+#[tokio::test]
+async fn get_stack_status_reports_stuck_false_when_never_flagged() {
+    let (state, store) = test_state().await;
+    let task = Task::new("just queued");
+    store.save_task(&task, "queued").await.unwrap();
+
+    let result = get_stack_status(&state).await;
+    let tasks = result["tasks"].as_array().unwrap();
+    assert_eq!(tasks[0]["stuck"], false);
+    assert!(tasks[0]["stuck_reason"].is_null());
+    assert!(tasks[0]["stuck_at"].is_null());
+}
+
 #[tokio::test]
 async fn get_stack_status_reports_queued_before_any_dag_node_or_branch() {
     let (state, store) = test_state().await;

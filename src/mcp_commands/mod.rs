@@ -248,6 +248,7 @@ async fn list_tasks(state: &AppState) -> Value {
                 "id": t.id, "goal": t.goal, "status": t.status,
                 "created_at": t.created_at, "completed_at": t.completed_at,
                 "client_ref": t.client_ref, "cost": cost,
+                "stuck": t.stuck_reason.is_some(), "stuck_reason": t.stuck_reason,
             })
         })
         .collect();
@@ -272,6 +273,8 @@ async fn get_task(state: &AppState, args: &Value) -> Result<Value> {
                 "id": t.id, "goal": t.goal, "status": t.status,
                 "created_at": t.created_at, "completed_at": t.completed_at,
                 "client_ref": t.client_ref, "cost": cost,
+                "stuck": t.stuck_reason.is_some(), "stuck_reason": t.stuck_reason,
+                "stuck_at": t.stuck_at,
             })
         }
         None => json!({ "error": "task not found" }),

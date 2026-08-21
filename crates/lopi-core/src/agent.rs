@@ -193,6 +193,13 @@ pub struct Attempt {
     pub score: Option<Score>,
     /// Final outcome string (e.g. `"pending"`, `"success"`, `"failed"`).
     pub outcome: String,
+    /// AVO-Supervisor-1 (Feature 1) — the gain-gate's comparator verdict for
+    /// this attempt against the prior best: one of
+    /// [`crate::GainDecision::as_str`]'s values for a non-passing attempt,
+    /// or the literal `"promoted"` when the attempt's score passed outright
+    /// and became the task's result without going through the comparator.
+    /// `None` for an attempt that never reached scoring.
+    pub gain_decision: Option<String>,
     /// Timestamp when this attempt was created.
     pub created_at: DateTime<Utc>,
 }
@@ -207,6 +214,7 @@ impl Attempt {
             branch: branch.into(),
             score: None,
             outcome: "pending".into(),
+            gain_decision: None,
             created_at: Utc::now(),
         }
     }

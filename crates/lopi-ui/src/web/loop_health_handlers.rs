@@ -148,6 +148,7 @@ mod tests {
             lint_errors: Some(0),
             diff_lines: Some(10),
             outcome: outcome.into(),
+            gain_decision: None,
             created_at: format!("2026-06-21T00:0{n}:00Z"),
         }
     }

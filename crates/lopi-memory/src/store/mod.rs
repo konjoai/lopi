@@ -140,8 +140,9 @@ impl MemoryStore {
             .unwrap_or_default();
         sqlx::query(
             "INSERT INTO attempts (id, task_id, attempt_num, branch, \
-             score_test_pass_rate, score_lint_errors, score_diff_lines, outcome, errors, created_at) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+             score_test_pass_rate, score_lint_errors, score_diff_lines, outcome, errors, \
+             gain_decision, created_at) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
         )
         .bind(attempt.id.to_string())
         .bind(attempt.task_id.0.to_string())
@@ -152,9 +153,33 @@ impl MemoryStore {
         .bind(diff)
         .bind(&attempt.outcome)
         .bind(errors)
+        .bind(&attempt.gain_decision)
         .bind(attempt.created_at.to_rfc3339())
         .execute(&self.write_pool)
         .await?;
+        Ok(())
+    }
+
+    /// AVO-Supervisor-1 (Feature 1) — backfill an attempt's gain-gate
+    /// comparator verdict once it's known. `save_attempt` above writes the
+    /// row as soon as the attempt is scored (a passing score already knows
+    /// its verdict is `"promoted"` and sets it directly); a non-passing
+    /// score's verdict isn't known until the in-place fix has had its
+    /// chance and the gain gate has actually run, so that path backfills
+    /// here instead of delaying the initial insert.
+    ///
+    /// # Errors
+    /// Returns `Err` if the database update fails.
+    pub async fn update_attempt_gain_decision(
+        &self,
+        attempt_id: uuid::Uuid,
+        decision: &str,
+    ) -> Result<()> {
+        sqlx::query("UPDATE attempts SET gain_decision = ?1 WHERE id = ?2")
+            .bind(decision)
+            .bind(attempt_id.to_string())
+            .execute(&self.write_pool)
+            .await?;
         Ok(())
     }
 
@@ -204,7 +229,8 @@ impl MemoryStore {
     pub async fn load_history(&self, limit: i64) -> Result<Vec<TaskRow>> {
         let rows = sqlx::query_as::<_, TaskRow>(
             "SELECT id, goal, status, created_at, completed_at, client_ref, branch, repo, \
-             parent_task, chain_depth, source, cli_session_id, plan_artifact FROM tasks \
+             parent_task, chain_depth, source, cli_session_id, plan_artifact, \
+             stuck_at, stuck_reason FROM tasks \
              ORDER BY created_at DESC LIMIT ?1",
         )
         .bind(limit)
@@ -351,6 +377,7 @@ mod run_trace;
 mod schedule_chains;
 mod schedules;
 mod stability;
+mod stall;
 mod task_logs;
 mod task_repo;
 mod verifier;

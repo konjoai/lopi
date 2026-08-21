@@ -30,6 +30,7 @@ pub(crate) fn fmt_status(s: &str) -> &str {
         "implementing" => "🔨 implementing",
         "testing" => "🧪 testing",
         "scoring" => "📊 scoring",
+        "stuck" => "🧭 stuck",
         "success" => "✅ success",
         "failed" => "❌ failed",
         "rolled_back" => "⏪ rolled back",
@@ -49,6 +50,9 @@ pub(crate) fn status_label(s: &TaskStatus) -> String {
         TaskStatus::Testing => "testing".into(),
         TaskStatus::Scoring => "scoring".into(),
         TaskStatus::Retrying { attempt } => format!("retrying (attempt {attempt})"),
+        TaskStatus::Stuck { attempt, reason } => {
+            format!("stuck 🧭 attempt {attempt} ({reason})")
+        }
         TaskStatus::Success { branch, pr_url } => format!(
             "success ✅ branch={branch}{}",
             pr_url
@@ -192,5 +196,12 @@ mod tests {
         assert_eq!(fmt_status("failed"), "❌ failed");
         assert_eq!(fmt_status("rolled_back"), "⏪ rolled back");
         assert_eq!(fmt_status("anything-else"), "anything-else");
+    }
+
+    #[test]
+    fn fmt_status_decorates_stuck() {
+        // AVO-Supervisor-2 (Feature 2) — "stuck" must resolve to its own
+        // decorated arm, not fall through to the passthrough default.
+        assert_eq!(fmt_status("stuck"), "🧭 stuck");
     }
 }

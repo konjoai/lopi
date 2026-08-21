@@ -103,6 +103,15 @@ fn attempt_json(
         "diff_lines": a.diff_lines.unwrap_or(0),
         "outcome": a.outcome,
         "errors": a.errors.as_deref().map(parse_str_array).unwrap_or_default(),
+        // AVO-Supervisor-1/3 — the gain-gate's comparator verdict for this
+        // attempt (see `RunAttemptRow::gain_decision`'s doc comment), so
+        // this endpoint already IS the "candidate-set view" the AVO brief's
+        // Feature 3 asked for: every scored attempt for a task, side by
+        // side, each carrying whether it beat the prior best or was
+        // promoted outright. No new tool or subsystem needed — this route
+        // already returns the full attempt list, this just stops dropping
+        // the one field Feature 1 added.
+        "gain_decision": a.gain_decision,
         "verifier": verifier,
         "tokens": agg.map_or(0, |t| t.tokens),
         "cost_usd": agg.map_or(0.0, |t| t.cost_usd),
@@ -128,6 +137,7 @@ mod tests {
             diff_lines: Some(30),
             outcome: outcome.into(),
             errors: errors.map(Into::into),
+            gain_decision: None,
             created_at: "2026-06-21T00:00:00Z".into(),
         }
     }
@@ -179,5 +189,21 @@ mod tests {
         assert_eq!(v["tokens"], 0);
         assert_eq!(v["cost_usd"], 0.0);
         assert!(v["errors"].as_array().unwrap().is_empty());
+    }
+
+    /// AVO-Supervisor-3 (Feature 3) — this route is the candidate-set view:
+    /// each attempt's comparator verdict must round-trip so a client can
+    /// tell "beat the prior best" apart from "failed outright" without a
+    /// second call.
+    #[test]
+    fn attempt_json_surfaces_the_gain_decision() {
+        let mut with_gain = row(1, "retry", None);
+        with_gain.gain_decision = Some("regression".into());
+        let v = attempt_json(&with_gain, &[], &[]);
+        assert_eq!(v["gain_decision"], "regression");
+
+        let never_compared = row(2, "success", None);
+        let v = attempt_json(&never_compared, &[], &[]);
+        assert!(v["gain_decision"].is_null());
     }
 }

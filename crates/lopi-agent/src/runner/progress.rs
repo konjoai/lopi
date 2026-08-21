@@ -12,7 +12,8 @@
 
 use super::run_loop::abort_attempt;
 use super::AgentRunner;
-use lopi_core::{GainDecision, GainRule, GainSample, StopReason, TaskStatus};
+pub(super) use lopi_core::GainDecision;
+use lopi_core::{GainRule, GainSample, StopReason, TaskStatus};
 use lopi_git::GitManager;
 
 /// Live progress state for one loop: the gain rule, the best sample so far, and
@@ -128,8 +129,12 @@ impl AgentRunner {
     }
 
     /// Feed this attempt's best objective `weighted` score to the gain gate,
-    /// log the decision, and return a terminal status when a termination guard
-    /// trips — budget outranks no-progress on precedence. `None` keeps looping.
+    /// log the decision, and return it alongside a terminal status when a
+    /// termination guard trips — budget outranks no-progress on precedence.
+    /// `None` in the second slot keeps looping. AVO-Supervisor-1 (Feature 1)
+    /// — the caller persists the returned [`GainDecision`] onto the
+    /// attempt's durable record; before this it was observed here and
+    /// discarded once `run()` returned.
     ///
     /// A non-gaining iteration is not accepted here: its work is discarded by
     /// the caller's rollback path (A1's finalize rollback) just as before, and
@@ -140,23 +145,25 @@ impl AgentRunner {
         weighted: f32,
         git: &GitManager,
         attempt: u8,
-    ) -> Option<TaskStatus> {
+    ) -> (GainDecision, Option<TaskStatus>) {
         let decision = gate.observe(GainSample::objective_only(weighted));
         self.log(format!(
             "📈 gain gate: {} (weighted={weighted:.3})",
             decision.as_str()
         ));
-        let reason = gate.tripped_reason(self.tokens_used())?;
+        let Some(reason) = gate.tripped_reason(self.tokens_used()) else {
+            return (decision, None);
+        };
         let detail = match reason {
             StopReason::Budget => {
                 format!("tokens: {}, budget: {}", self.tokens_used(), gate.budget())
             }
             _ => format!("streak: {}, limit: {}", gate.streak(), gate.limit()),
         };
-        Some(
-            self.record_progress_stop(reason, &detail, git, attempt)
-                .await,
-        )
+        let status = self
+            .record_progress_stop(reason, &detail, git, attempt)
+            .await;
+        (decision, Some(status))
     }
 
     /// Abort the current attempt (rollback + checkout) and mark it `Retrying` —
