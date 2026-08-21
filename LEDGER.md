@@ -85,6 +85,29 @@ branching (separate goals on separate branches, one `AgentPool`) already covers 
 substance AVO's own paper left as future work; this sprint's contribution is making
 the one axis genuinely missing — same-task attempt comparison — durable and visible.
 
+**CI triage (`GK · konjo-gates`, ADVISORY tier — see `Gate-Tiering-1`; BLOCKING gates
+G1/G2 passed, so this PR was mergeable regardless).** Flagged two findings needing
+acknowledgment, not a code fix, same shape as `Kiban-Pin-Bump-v1.19.0`'s entry above and
+PR #204/#205's precedent for this exact gate: `one_way_door` on `path:schema-or-migration`
+(this sprint's three `ALTER TABLE` additions — `attempts.gain_decision`,
+`tasks.stuck_at`/`stuck_reason`) and `path:release-version` (the `[0.47.0]` bump), plus
+`threat_model` on the `**/lopi-ui/**` security glob (`crates/lopi-ui/src/{tui.rs,web/
+loop_health_handlers.rs,web/loop_runs_handlers.rs,web/streaming.rs}` all touched, per
+`.konjo/profile.yml`'s `security_globs`). One-way-door: every new column is additive,
+nullable/NULL-defaulted, applied through `apply_schema()`'s existing duplicate-column
+guard — zero migration burden on any pre-existing row, identical shape to
+`maxx_entries.chain_id`'s prior acknowledgment. Threat model: none of the `lopi-ui`
+touches add a route, an input, or a trust boundary — every change is an additive output
+field (`gain_decision`, `stuck`/`stuck_reason`/`stuck_at`) on already-authenticated,
+already-existing read paths (the web API's Bearer-auth + rate-limit middleware, the MCP
+server's own stdio transport); the values themselves are internally-computed diagnostic
+strings (the gain gate's verdict, the stall detector's reason tag), never derived from
+untrusted external input. No new attack surface. Change id `22e3b7ff537b` (CI's own
+report, run `32507026342`/job `96849384640`) is the trailer below; re-deriving it locally
+against kiban's exact diff hash isn't attempted for the same reason PR #205's entry
+gives — `origin/main` moves between a job running and this commit landing, so a locally
+recomputed id would legitimately differ without indicating a real discrepancy.
+
 **File-size gate consequence.** `TaskStatus` gained a `Stuck` variant, pushing
 `crates/lopi-core/src/task.rs` over the 500-line CI gate even after trimming its doc
 comment. Split into `task_status.rs`, mirroring the existing `task_source.rs` split
