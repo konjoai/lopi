@@ -197,4 +197,11 @@ mod tests {
         assert_eq!(fmt_status("rolled_back"), "⏪ rolled back");
         assert_eq!(fmt_status("anything-else"), "anything-else");
     }
+
+    #[test]
+    fn fmt_status_decorates_stuck() {
+        // AVO-Supervisor-2 (Feature 2) — "stuck" must resolve to its own
+        // decorated arm, not fall through to the passthrough default.
+        assert_eq!(fmt_status("stuck"), "🧭 stuck");
+    }
 }
