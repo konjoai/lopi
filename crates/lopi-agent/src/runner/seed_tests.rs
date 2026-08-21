@@ -46,6 +46,7 @@ async fn save_high_score_attempt(store: &MemoryStore, task: &Task) {
             branch: "test/branch".into(),
             score: Some(Score::new(1.0, 0, 10)),
             outcome: "success".into(),
+            gain_decision: Some("promoted".into()),
             created_at: chrono::Utc::now(),
         })
         .await

@@ -25,6 +25,9 @@ pub struct LoopAttemptRow {
     pub diff_lines: Option<i64>,
     /// Outcome tag: `success` / `retry` / etc.
     pub outcome: String,
+    /// AVO-Supervisor-1 (Feature 1) — the gain-gate's comparator verdict
+    /// against the prior best; see `RunAttemptRow::gain_decision`.
+    pub gain_decision: Option<String>,
     /// ISO-8601 timestamp the attempt was recorded.
     pub created_at: String,
 }
@@ -53,7 +56,7 @@ impl MemoryStore {
         let rows = sqlx::query_as::<_, LoopAttemptRow>(
             "SELECT task_id, attempt_num, score_test_pass_rate AS test_pass_rate, \
              score_lint_errors AS lint_errors, score_diff_lines AS diff_lines, \
-             outcome, created_at \
+             outcome, gain_decision, created_at \
              FROM attempts ORDER BY created_at DESC LIMIT ?1",
         )
         .bind(limit)

@@ -42,6 +42,7 @@ impl AgentRow {
             TaskStatus::Testing => ("🧪 Testing", Color::Magenta),
             TaskStatus::Scoring => ("📊 Scoring", Color::Cyan),
             TaskStatus::Retrying { .. } => ("♻️ Retrying", Color::LightYellow),
+            TaskStatus::Stuck { .. } => ("🧭 Stuck", Color::LightRed),
             TaskStatus::Success { .. } => ("✅ Done", Color::Green),
             TaskStatus::Failed { .. } => ("❌ Failed", Color::Red),
             TaskStatus::RolledBack => ("⏪ Rolled back", Color::Red),

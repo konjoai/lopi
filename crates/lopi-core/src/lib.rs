@@ -109,6 +109,9 @@ pub mod task;
 /// [`TaskSource`] — split out of `task.rs` to keep it under the 500-line CI
 /// file-size gate; re-exported from `task` unchanged.
 pub mod task_source;
+/// [`task_status::TaskStatus`] — split out of `task.rs` to keep it under the
+/// 500-line CI file-size gate; re-exported from `task` unchanged.
+pub mod task_status;
 /// Literal-string prompt templates with named `{hole}` markers, resolved
 /// against a variable map at enqueue time (Prompt Templates, Sprint 1).
 pub mod template;

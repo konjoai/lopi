@@ -21,6 +21,7 @@ mod secrets_gate;
 mod seed;
 mod speculative;
 mod stability_runner;
+mod stall;
 mod stream;
 mod terminal_errors;
 mod test_phase;
@@ -227,6 +228,14 @@ pub struct AgentRunner {
     /// branch), registered into `collision_peers` on first seed and reused
     /// on every retry rather than rebuilt each time.
     pub(super) collision_self_ref: Option<WatchedRef>,
+    /// AVO-Supervisor-2 (Feature 2) — the previous attempt's unified diff
+    /// text (`git diff`, changed lines only), captured before that attempt's
+    /// rollback discarded it. `None` on the first attempt, or whenever the
+    /// previous attempt produced no diff. Compared against the current
+    /// attempt's diff (`stall::line_overlap_ratio`) to detect thrash — a
+    /// near-identical resubmission — alongside the gain gate's own flat-score
+    /// plateau signal.
+    pub(super) prev_attempt_diff: Option<String>,
 }
 
 impl AgentRunner {
@@ -289,6 +298,7 @@ impl AgentRunner {
             collision_oracle: None,
             collision_peers: None,
             collision_self_ref: None,
+            prev_attempt_diff: None,
         }
     }
 

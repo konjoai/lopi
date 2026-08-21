@@ -1,3 +1,50 @@
+## [0.47.0] - AVO-inspired supervisor upgrades: attempt scoring, stall detection, candidate-set view
+
+Three features scoped from a Claude.ai conversation reacting to NVIDIA's AVO paper
+(ARC-AGI-3 100% result), mapped onto lopi's existing retry-loop architecture. The
+scoping brief assumed a clean slate; discovery found lopi already had most of the
+underlying machinery (Progress-Gating A3's `ProgressGate`/`GainDecision` comparator,
+Eval-Execution-1's per-attempt scoring) under different sprint names, so this sprint's
+real work was narrower than the brief assumed — persist what was already computed
+live, add the one genuinely new signal (diff-thrash), and reuse the existing run-trace
+API rather than adding a new MCP tool. Full reasoning in `LEDGER.md`'s
+`AVO-Supervisor-1` entry.
+
+### Added
+
+- **Feature 1 — task-local attempt scoring.** `attempts.gain_decision` (new column,
+  `crates/lopi-memory/src/schema.sql`) durably records the gain-gate's comparator
+  verdict per attempt — `"promoted"` for an attempt whose score passed outright,
+  or the A3 gain gate's own `gain`/`within_noise`/`regression`/`judge_unconfirmed`
+  for a non-passing one. Previously computed live by `ProgressGate` and discarded
+  when `run()` returned (`crates/lopi-agent/src/runner/progress.rs`,
+  `test_phase.rs`). "Failed to beat the prior attempt" is now a distinct, queryable
+  outcome from "failed outright."
+- **Feature 2 — stall/thrash detection (`TaskStatus::Stuck`).** New status variant
+  (`crates/lopi-core/src/task_status.rs`), orthogonal to `Retrying`/`Failed`: fires
+  when an attempt's diff is near-identical to the previous one (line-overlap ratio,
+  `crates/lopi-agent/src/runner/stall.rs`) or the gain gate's non-gain streak hits a
+  small threshold — both softer, earlier signals than A3's existing
+  `no_progress_limit` termination guard, which is unchanged. Steers the *next*
+  attempt's planning prompt with a summary of what plateaued (appended to the
+  existing adaptive-retry evidence, gated the same way behind
+  `AgentRunner::adaptive_retry`) instead of resending the bare goal string.
+  Persisted to `tasks.stuck_at`/`tasks.stuck_reason` and surfaced in
+  `lopi_get_stack_status`'s roster (and `lopi_get_task`/`lopi_list_tasks`) as a
+  `stuck`/`stuck_reason` field independent of `status`, which stays `"running"` the
+  whole time a task is in flight.
+- **Feature 3 — candidate-set view.** `GET /api/loop-engineering/runs/:id` (the
+  existing Loop Health run-trace endpoint) now includes each attempt's
+  `gain_decision`, so the attempt-by-attempt trace it already returns doubles as the
+  scored candidate-set view — no new MCP tool or archive subsystem added; see the
+  LEDGER entry for why that was scoped out.
+
+### Changed
+
+- `crates/lopi-core/src/task.rs` (512 lines with the new variant) split `TaskStatus`
+  out into `task_status.rs`, mirroring the existing `task_source.rs` split, to stay
+  under the 500-line CI file-size gate.
+
 ## [0.46.1] - kiban pin bump v1.14.0 -> v1.19.0
 
 `.konjo/kiban.ref` and `konjo-gate.yml`'s three `KIBAN_REF` sites (doc-staleness,

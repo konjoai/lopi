@@ -164,6 +164,7 @@ fn make_high_score_attempt(task_id: TaskId) -> Attempt {
         branch: "test/h-1".into(),
         score: Some(lopi_core::Score::new(1.0, 0, 50)),
         outcome: "success".into(),
+        gain_decision: Some("promoted".into()),
         created_at: Utc::now(),
     }
 }

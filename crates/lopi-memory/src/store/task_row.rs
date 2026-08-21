@@ -65,6 +65,14 @@ pub struct TaskRow {
     /// `None` forever on an attempt whose Planner call failed or returned
     /// unparseable output — absent, never synthesized or backfilled.
     pub plan_artifact: Option<String>,
+    /// AVO-Supervisor-2 (Feature 2) — attempt number the stall detector last
+    /// fired on for this task, `None` when never stuck (or cleared back to
+    /// `None` on a subsequent goal-met success).
+    pub stuck_at: Option<i64>,
+    /// AVO-Supervisor-2 (Feature 2) — short machine tag for the stall
+    /// reason (`"plateau"` / `"thrash"` / `"plateau+thrash"`), paired with
+    /// `stuck_at`.
+    pub stuck_reason: Option<String>,
 }
 
 impl TaskRow {

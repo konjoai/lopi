@@ -5,6 +5,92 @@ expensive to silently re-litigate in a later sprint. One entry per sprint,
 newest first. Not a changelog (that's `CHANGELOG.md`) — this is *why*, not
 *what*.
 
+## AVO-Supervisor-1 -- attempt scoring, stall detection, candidate-set view; task-local scoring chosen over cross-task lineage
+
+**Context.** `NEXT_SESSION_PROMPT.md`'s entry for this sprint was a scoping pass done
+outside the repo (a Claude.ai conversation reacting to NVIDIA's AVO paper), written
+from the MCP-observable behavior of `lopi_get_stack_status`/`lopi_get_task` rather
+than the source, and it explicitly flagged that risk: "this scoping assumed a clean
+slate from the outside and may be re-deriving something already settled." It was
+re-deriving something already settled. Before writing any code, a recall pass against
+this ledger plus a direct read of `crates/lopi-agent/src/runner/{progress.rs,run_loop.rs}`
+and `crates/lopi-memory/src/schema.sql` found lopi already had, under different sprint
+names: Progress-Gating (A3) — a `ProgressGate` with `GainSample`/`GainRule`/
+`GainDecision` that already compares every non-passing attempt's weighted score
+against the best seen so far and classifies it `Gain`/`WithinNoise`/`Regression`/
+`JudgeUnconfirmed`, plus `StopReason::NoProgress` (a consecutive-non-gain streak
+guard); Eval-Execution-1 (A1) — an `eval_outcomes` table scoring every
+`task_id`+`attempt`; and the `attempts` table already persisting a `Score` per
+attempt. None of this was reachable from the MCP surface the brief was written
+against, which is exactly why the brief's own three "features" read as gaps from
+outside and mostly weren't.
+
+**Decision 1 (task-local scoring, not cross-task lineage) — confirmed, not
+re-litigated.** The brief's own framing already anticipated this call and the ledger
+recall confirmed it rather than surfacing a conflict: `Successor-1`
+(`crates/lopi-core/src/{successor.rs,task.rs,task_source.rs}`) is lopi's existing
+lineage mechanism, and it is *cross-task* — a completed task deriving and enqueuing a
+follow-up task, tracked via `parent_task`/`chain_depth`. What this sprint needed is
+*intra-task*: comparing attempt N against attempt N-1 of the *same* task, inside one
+`AgentRunner::run()` loop. Reusing `Successor-1`'s lineage columns for that would have
+conflated two different relationships (derived-follow-up-task vs. retry-of-the-same-
+task) under one `parent_task` pointer. `ProgressGate`'s `GainDecision` already models
+the intra-task comparison correctly; the actual gap was that its verdict was RAM-only,
+computed live and discarded the moment `run()` returned. So this sprint's Feature 1 is
+persistence, not new comparison logic: `attempts.gain_decision` (new column) records
+that same live verdict — `"promoted"` for an attempt whose score passed outright
+(finalize runs immediately, never touches the gate), or the gate's own
+`gain`/`within_noise`/`regression`/`judge_unconfirmed` for a non-passing one, written
+via a backfill (`MemoryStore::update_attempt_gain_decision`) once the gate has
+actually run, since the row is inserted right after scoring but the verdict isn't
+known until after the in-place-fix attempt. "Failed to beat the prior attempt" is now
+a distinct, queryable outcome from "failed outright" (a schema violation, a
+diff-scope violation, a non-retryable API error) — exactly the brief's ask, built on
+data that already existed rather than a new eval mechanism.
+
+**Decision 2 (Stuck is a soft, informational signal layered under `no_progress_limit`,
+never a second termination guard).** `StopReason::NoProgress` already stops the loop
+early — before `max_retries` — once the gain gate's non-gain streak hits a configured
+limit, an intentional cost-saving early-exit. The brief's "stuck" status could have
+been read as replacing that with "keep going and steer instead of stopping," but that
+would silently remove an existing cost guard and change `no_progress_limit`'s
+semantics for every existing caller. Instead `TaskStatus::Stuck` fires *underneath*
+that guard, at a lower threshold (`PLATEAU_STREAK_THRESHOLD = 2`,
+`crates/lopi-agent/src/runner/stall.rs`) that never changes how many attempts a task
+gets or when the loop actually terminates — it only marks the live status and appends
+a steering note to the *existing* adaptive-retry evidence (`self.last_error`, gated
+behind `AgentRunner::adaptive_retry` exactly like every other evidence-forwarding site
+in this runner — `secrets_gate.rs`, `schema_gate`'s violation path, the base-failure
+framing in `test_phase.rs` itself). The one genuinely new signal is diff-thrash
+(line-overlap ratio between attempt N's and N-1's `git diff`, no ML, per the brief's
+own "cheapest viable version") — there was no prior art for that anywhere in the repo
+(`lopi-oracle`'s `git merge-tree` collision detection answers a different question:
+textual conflict between two concurrent *sibling* tasks' branches, not similarity
+between two sequential attempts of the *same* task).
+
+**Decision 3 (Feature 3 shipped as a field on an existing endpoint, not a new MCP
+tool).** `src/mcp_commands/tool_defs.rs`'s own module doc states the standing
+discipline this sprint deliberately did not override: "Not extended beyond that
+without a concrete widget need — every additional tool is context budget spent on
+every turn a plugin user has installed." No widget asked for a candidate-set tool, and
+`GET /api/loop-engineering/runs/:id` (Loop Health's existing run-trace endpoint,
+`crates/lopi-ui/src/web/loop_runs_handlers.rs`) already returns every attempt for a
+task, scored, in order — it just didn't serialize the `gain_decision` Feature 1 added.
+Adding one field there is the "query change on top of #1's scoring, not new
+orchestration logic" the brief called for; a new MCP tool would not have been. The
+brief's own hedge on this feature ("confirm it's worth doing at all... arguably
+covers the substance of what AVO's paper scoped out as future work") is accepted:
+no MAP-Elites archive subsystem, no cross-task candidate pool. Lopi's multi-agent
+branching (separate goals on separate branches, one `AgentPool`) already covers the
+substance AVO's own paper left as future work; this sprint's contribution is making
+the one axis genuinely missing — same-task attempt comparison — durable and visible.
+
+**File-size gate consequence.** `TaskStatus` gained a `Stuck` variant, pushing
+`crates/lopi-core/src/task.rs` over the 500-line CI gate even after trimming its doc
+comment. Split into `task_status.rs`, mirroring the existing `task_source.rs` split
+(same file, same rationale, same re-export-unchanged pattern) rather than inventing a
+new precedent.
+
 ## Stack-MAXX-1 -- opportunistic backlog dispatch for a whole stack, not just one card
 
 **Decision (dispatch reuses `ChainScheduleManager`, not a second execution path).** MAXX

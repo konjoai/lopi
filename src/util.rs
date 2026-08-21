@@ -30,6 +30,7 @@ pub(crate) fn fmt_status(s: &str) -> &str {
         "implementing" => "🔨 implementing",
         "testing" => "🧪 testing",
         "scoring" => "📊 scoring",
+        "stuck" => "🧭 stuck",
         "success" => "✅ success",
         "failed" => "❌ failed",
         "rolled_back" => "⏪ rolled back",
@@ -49,6 +50,9 @@ pub(crate) fn status_label(s: &TaskStatus) -> String {
         TaskStatus::Testing => "testing".into(),
         TaskStatus::Scoring => "scoring".into(),
         TaskStatus::Retrying { attempt } => format!("retrying (attempt {attempt})"),
+        TaskStatus::Stuck { attempt, reason } => {
+            format!("stuck 🧭 attempt {attempt} ({reason})")
+        }
         TaskStatus::Success { branch, pr_url } => format!(
             "success ✅ branch={branch}{}",
             pr_url

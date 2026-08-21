@@ -589,3 +589,27 @@ CREATE TABLE IF NOT EXISTS demo_repos (
 -- not by SQLite — `fire` treats a missing chain the same as any other
 -- dispatch failure (`record_maxx_run` outcome "error"), never a panic.
 ALTER TABLE maxx_entries ADD COLUMN chain_id TEXT;
+
+-- AVO-Supervisor-1 (Feature 1) — persists the gain-gate's live comparator
+-- verdict (crates/lopi-agent/src/runner/progress.rs's ProgressGate — the
+-- GainDecision it already computes every non-passing attempt was RAM-only,
+-- discarded when run() returned) onto the attempt record. Values mirror
+-- lopi_core::GainDecision::as_str() ("gain" | "within_noise" | "regression"
+-- | "judge_unconfirmed") for a non-passing attempt, or the literal
+-- "promoted" for an attempt whose score passed outright and became the
+-- task's result without going through the comparator. NULL for every
+-- attempt written before this column existed and for any attempt that
+-- never reached scoring (a diff-scope or output-schema violation returns
+-- before save_attempt is called at all) — absent, not zero, matching this
+-- schema's existing convention for pre-migration/never-scored rows.
+ALTER TABLE attempts ADD COLUMN gain_decision TEXT;
+
+-- AVO-Supervisor-2 (Feature 2) — first-class stall/thrash status on the
+-- task record, distinct from TaskStatus::Failed. `stuck_at` is the attempt
+-- number the stall was detected on (NULL when never stuck) and `stuck_reason`
+-- is a short machine string ("plateau" | "thrash" | "plateau+thrash") the
+-- dashboard can render as a badge. Both are cleared back to NULL by
+-- `finalize` on a goal-met success, so a task that eventually recovers from
+-- a stall does not carry a stale badge into its Success row.
+ALTER TABLE tasks ADD COLUMN stuck_at INTEGER;
+ALTER TABLE tasks ADD COLUMN stuck_reason TEXT;

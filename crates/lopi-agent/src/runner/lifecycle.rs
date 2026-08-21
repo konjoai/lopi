@@ -34,6 +34,7 @@ impl AgentRunner {
             TaskStatus::Testing => 0.55_f32,
             TaskStatus::Scoring => 0.30_f32,
             TaskStatus::Retrying { .. } => 0.40_f32,
+            TaskStatus::Stuck { .. } => 0.20_f32,
             TaskStatus::Success { .. }
             | TaskStatus::Failed { .. }
             | TaskStatus::RolledBack
@@ -81,6 +82,41 @@ impl AgentRunner {
         tokio::spawn(async move {
             if let Err(e) = store.set_task_repo(&task_id, &repo).await {
                 tracing::warn!(error = %e, "failed to persist task repo");
+            }
+        });
+    }
+
+    /// AVO-Supervisor-2 (Feature 2) — best-effort persist of the stall
+    /// detector's verdict into `tasks.stuck_at`/`tasks.stuck_reason` the
+    /// moment `TaskStatus::Stuck` is set, so a polling reader (the MCP
+    /// `lopi_get_stack_status`/`lopi_get_task` tools) sees it without
+    /// needing to subscribe to the live event bus. Same fire-and-forget
+    /// shape as `persist_branch`.
+    pub(super) fn persist_stuck(&self, attempt: u8, reason: &str) {
+        let Some(store) = self.store.clone() else {
+            return;
+        };
+        let task_id = self.id();
+        let reason = reason.to_string();
+        tokio::spawn(async move {
+            if let Err(e) = store.set_task_stuck(&task_id, attempt, &reason).await {
+                tracing::warn!(error = %e, "failed to persist task stuck marker");
+            }
+        });
+    }
+
+    /// AVO-Supervisor-2 (Feature 2) — clear a task's stall marker on a
+    /// goal-met success, so a task that recovered doesn't carry a stale
+    /// `stuck` badge into its `Success` row. Same fire-and-forget shape as
+    /// `persist_branch`.
+    pub(super) fn clear_stuck(&self) {
+        let Some(store) = self.store.clone() else {
+            return;
+        };
+        let task_id = self.id();
+        tokio::spawn(async move {
+            if let Err(e) = store.clear_task_stuck(&task_id).await {
+                tracing::warn!(error = %e, "failed to clear task stuck marker");
             }
         });
     }
@@ -198,6 +234,10 @@ impl AgentRunner {
         score: &Score,
         attempt: u8,
     ) -> TaskStatus {
+        // AVO-Supervisor-2 (Feature 2) — a finalized attempt passed scoring,
+        // so any earlier stall marker on this task is stale regardless of
+        // whether finalize itself lands as Success or Conflict.
+        self.clear_stuck();
         if !matches!(status, TaskStatus::Conflict { .. }) {
             self.context.pin_conclusion(
                 format!(

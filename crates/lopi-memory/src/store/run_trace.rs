@@ -44,6 +44,12 @@ pub struct RunAttemptRow {
     pub outcome: String,
     /// JSON array of error strings captured during scoring, if any.
     pub errors: Option<String>,
+    /// AVO-Supervisor-1 (Feature 1) — the gain-gate's comparator verdict
+    /// against the prior best (`gain`/`within_noise`/`regression`/
+    /// `judge_unconfirmed`), or `"promoted"` when the attempt passed
+    /// outright. `None` for an attempt that never reached scoring or was
+    /// written before this column existed.
+    pub gain_decision: Option<String>,
     /// ISO-8601 timestamp the attempt was recorded.
     pub created_at: String,
 }
@@ -89,7 +95,7 @@ impl MemoryStore {
         let rows = sqlx::query_as::<_, RunAttemptRow>(
             "SELECT attempt_num, score_test_pass_rate AS test_pass_rate, \
              score_lint_errors AS lint_errors, score_diff_lines AS diff_lines, \
-             outcome, errors, created_at \
+             outcome, errors, gain_decision, created_at \
              FROM attempts WHERE task_id = ?1 ORDER BY attempt_num ASC",
         )
         .bind(task_id)
