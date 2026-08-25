@@ -1,0 +1,148 @@
+[
+  {
+    "component": "config-button (add to stack)",
+    "viewport": "1440x900",
+    "states_captured": [
+      "rest",
+      "hover",
+      "focus-visible",
+      "disabled"
+    ],
+    "states_not_captured": [
+      "active",
+      "pending/loading",
+      "success confirmation",
+      "error",
+      "destructive-confirm"
+    ],
+    "grid": "recon/shots/components/config_button_1440x900.png",
+    "notes": "add-to-stack has no pending/error/confirm states in this client-only composer — it either enables or is disabled; see REPORT.md dead-controls note."
+  },
+  {
+    "component": "schedule popover",
+    "viewport": "1440x900",
+    "states_captured": [
+      "trigger rest",
+      "trigger hover",
+      "open and positioned",
+      "open with content grown",
+      "dismissed by Escape"
+    ],
+    "states_not_captured": [
+      "open near each viewport edge",
+      "open while parent list re-renders",
+      "dismissed by outside click",
+      "dismissed by re-clicking trigger"
+    ],
+    "grid": "recon/shots/components/schedule_popover_1440x900.png",
+    "notes": "Escape dismissal confirmed working (see census_keyboard.json); focus after Escape does NOT return to the trigger — see Census F."
+  },
+  {
+    "component": "stack default config popover",
+    "viewport": "1440x900",
+    "states_captured": [
+      "trigger rest",
+      "open and positioned"
+    ],
+    "states_not_captured": [
+      "trigger hover/focus-visible",
+      "open near viewport edges",
+      "dismissed variants"
+    ],
+    "grid": "recon/shots/components/config_popover_1440x900.png",
+    "notes": "Canary selector .cfgrow — confirmed 6 rows live (model/effort/repo/branch/autonomy/permission-mode)."
+  },
+  {
+    "component": "quick-insert chip token (:alias/@repo/;model/;effort)",
+    "viewport": "1440x900",
+    "states_captured": [
+      "rest",
+      "hover",
+      "focus-visible"
+    ],
+    "states_not_captured": [
+      "selected",
+      "removable with x",
+      "mid-removal",
+      "disabled",
+      "30 chips wrap/scroll",
+      "long label",
+      "empty state"
+    ],
+    "grid": "recon/shots/components/chip_token_1440x900.png",
+    "notes": "These are quick-insert TOKENS (click to insert grammar into the composer), not the committed alias/repo CHIPS that appear after a card is added — the two are visually similar but functionally distinct; committed chips were not separately captured this pass."
+  },
+  {
+    "component": "config-button (add to stack)",
+    "viewport": "390x844",
+    "states_captured": [
+      "rest",
+      "hover",
+      "focus-visible",
+      "disabled"
+    ],
+    "states_not_captured": [
+      "active",
+      "pending/loading",
+      "success confirmation",
+      "error",
+      "destructive-confirm"
+    ],
+    "grid": "recon/shots/components/config_button_390x844.png",
+    "notes": "add-to-stack has no pending/error/confirm states in this client-only composer — it either enables or is disabled; see REPORT.md dead-controls note."
+  },
+  {
+    "component": "schedule popover",
+    "viewport": "390x844",
+    "states_captured": [
+      "trigger rest",
+      "trigger hover",
+      "open and positioned",
+      "open with content grown",
+      "dismissed by Escape"
+    ],
+    "states_not_captured": [
+      "open near each viewport edge",
+      "open while parent list re-renders",
+      "dismissed by outside click",
+      "dismissed by re-clicking trigger"
+    ],
+    "grid": "recon/shots/components/schedule_popover_390x844.png",
+    "notes": "Escape dismissal confirmed working (see census_keyboard.json); focus after Escape does NOT return to the trigger — see Census F."
+  },
+  {
+    "component": "stack default config popover",
+    "viewport": "390x844",
+    "states_captured": [
+      "trigger rest",
+      "open and positioned"
+    ],
+    "states_not_captured": [
+      "trigger hover/focus-visible",
+      "open near viewport edges",
+      "dismissed variants"
+    ],
+    "grid": "recon/shots/components/config_popover_390x844.png",
+    "notes": "Canary selector .cfgrow — confirmed 6 rows live (model/effort/repo/branch/autonomy/permission-mode)."
+  },
+  {
+    "component": "quick-insert chip token (:alias/@repo/;model/;effort)",
+    "viewport": "390x844",
+    "states_captured": [
+      "rest",
+      "hover",
+      "focus-visible"
+    ],
+    "states_not_captured": [
+      "selected",
+      "removable with x",
+      "mid-removal",
+      "disabled",
+      "30 chips wrap/scroll",
+      "long label",
+      "empty state"
+    ],
+    "grid": "recon/shots/components/chip_token_390x844.png",
+    "notes": "These are quick-insert TOKENS (click to insert grammar into the composer), not the committed alias/repo CHIPS that appear after a card is added — the two are visually similar but functionally distinct; committed chips were not separately captured this pass."
+  }
+]
