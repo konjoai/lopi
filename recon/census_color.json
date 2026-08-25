@@ -1,0 +1,1135 @@
+{
+  "distinctColorCount": 18,
+  "colors": [
+    {
+      "hex": "#f5f5f5",
+      "count": 19867,
+      "states": [
+        "S1",
+        "S10",
+        "S11",
+        "S12",
+        "S2",
+        "S3",
+        "S4",
+        "S5",
+        "S9"
+      ]
+    },
+    {
+      "hex": "#00d4ff",
+      "count": 3476,
+      "states": [
+        "S1",
+        "S10",
+        "S11",
+        "S12",
+        "S2",
+        "S3",
+        "S4",
+        "S5",
+        "S9"
+      ]
+    },
+    {
+      "hex": "#ff9500",
+      "count": 2361,
+      "states": [
+        "S1",
+        "S10",
+        "S11",
+        "S12",
+        "S2",
+        "S3",
+        "S4",
+        "S5",
+        "S9"
+      ]
+    },
+    {
+      "hex": "#00ff9d",
+      "count": 1428,
+      "states": [
+        "S1",
+        "S10",
+        "S11",
+        "S12",
+        "S2",
+        "S3",
+        "S4",
+        "S5",
+        "S9"
+      ]
+    },
+    {
+      "hex": "#b79bff",
+      "count": 1103,
+      "states": [
+        "S1",
+        "S10",
+        "S11",
+        "S12",
+        "S2",
+        "S3",
+        "S4",
+        "S5",
+        "S9"
+      ]
+    },
+    {
+      "hex": "#000000",
+      "count": 1035,
+      "states": [
+        "S1",
+        "S10",
+        "S11",
+        "S12",
+        "S2",
+        "S3",
+        "S4",
+        "S5",
+        "S9"
+      ]
+    },
+    {
+      "hex": "#231000",
+      "count": 839,
+      "states": [
+        "S1",
+        "S10",
+        "S11",
+        "S12",
+        "S2",
+        "S3",
+        "S4",
+        "S5",
+        "S9"
+      ]
+    },
+    {
+      "hex": "#ffffff",
+      "count": 355,
+      "states": [
+        "S1",
+        "S10",
+        "S11",
+        "S12",
+        "S2",
+        "S3",
+        "S4",
+        "S5",
+        "S9"
+      ]
+    },
+    {
+      "hex": "#0c1417",
+      "count": 311,
+      "states": [
+        "S10",
+        "S11",
+        "S12",
+        "S2",
+        "S3",
+        "S4",
+        "S5"
+      ]
+    },
+    {
+      "hex": "#ffcc00",
+      "count": 298,
+      "states": [
+        "S1",
+        "S10",
+        "S11",
+        "S12",
+        "S2",
+        "S3",
+        "S4",
+        "S5",
+        "S9"
+      ]
+    },
+    {
+      "hex": "#00ffd4",
+      "count": 220,
+      "states": [
+        "S1",
+        "S10",
+        "S11",
+        "S12",
+        "S2",
+        "S3",
+        "S4",
+        "S5",
+        "S9"
+      ]
+    },
+    {
+      "hex": "#ff4500",
+      "count": 220,
+      "states": [
+        "S1",
+        "S10",
+        "S11",
+        "S12",
+        "S2",
+        "S3",
+        "S4",
+        "S5",
+        "S9"
+      ]
+    },
+    {
+      "hex": "#ff0066",
+      "count": 220,
+      "states": [
+        "S1",
+        "S10",
+        "S11",
+        "S12",
+        "S2",
+        "S3",
+        "S4",
+        "S5",
+        "S9"
+      ]
+    },
+    {
+      "hex": "#0a0a0a",
+      "count": 185,
+      "states": [
+        "S1",
+        "S10",
+        "S11",
+        "S12",
+        "S2",
+        "S3",
+        "S4",
+        "S5",
+        "S9"
+      ]
+    },
+    {
+      "hex": "#0a0d0f",
+      "count": 155,
+      "states": [
+        "S1",
+        "S10",
+        "S11",
+        "S12",
+        "S2",
+        "S3",
+        "S4",
+        "S5",
+        "S9"
+      ]
+    },
+    {
+      "hex": "#0e1214",
+      "count": 116,
+      "states": [
+        "S1",
+        "S10",
+        "S11",
+        "S12",
+        "S2",
+        "S3",
+        "S4",
+        "S5",
+        "S9"
+      ]
+    },
+    {
+      "hex": "#1a1030",
+      "count": 110,
+      "states": [
+        "S1",
+        "S10",
+        "S11",
+        "S12",
+        "S2",
+        "S3",
+        "S4",
+        "S5",
+        "S9"
+      ]
+    },
+    {
+      "hex": "#050505",
+      "count": 45,
+      "states": [
+        "S1",
+        "S10",
+        "S11",
+        "S12",
+        "S2",
+        "S3",
+        "S4",
+        "S5",
+        "S9"
+      ]
+    }
+  ],
+  "nearDuplicateClusters": [
+    {
+      "members": [
+        {
+          "hex": "#f5f5f5",
+          "count": 19867
+        },
+        {
+          "hex": "#ffffff",
+          "count": 355
+        }
+      ],
+      "totalCount": 20222
+    },
+    {
+      "members": [
+        {
+          "hex": "#000000",
+          "count": 1035
+        },
+        {
+          "hex": "#0a0a0a",
+          "count": 185
+        },
+        {
+          "hex": "#0a0d0f",
+          "count": 155
+        },
+        {
+          "hex": "#0e1214",
+          "count": 116
+        },
+        {
+          "hex": "#050505",
+          "count": 45
+        }
+      ],
+      "totalCount": 1536
+    }
+  ],
+  "contrastPairsSampled": 372,
+  "contrastFailureCount": 77,
+  "contrastFailures": [
+    {
+      "state": "S1",
+      "viewport": "1920x1080",
+      "selector": "button.press.w-8",
+      "fg": "#ff9500",
+      "bg": "#ff9500",
+      "fontSize": 16,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S1",
+      "viewport": "1440x900",
+      "selector": "button.press.w-8",
+      "fg": "#ff9500",
+      "bg": "#ff9500",
+      "fontSize": 16,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S1",
+      "viewport": "1280x800",
+      "selector": "button.press.w-8",
+      "fg": "#ff9500",
+      "bg": "#ff9500",
+      "fontSize": 16,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S1",
+      "viewport": "768x1024",
+      "selector": "button.press.w-8",
+      "fg": "#ff9500",
+      "bg": "#ff9500",
+      "fontSize": 16,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S1",
+      "viewport": "390x844",
+      "selector": "button.press.w-8",
+      "fg": "#ff9500",
+      "bg": "#ff9500",
+      "fontSize": 16,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S10",
+      "viewport": "1920x1080",
+      "selector": "button.press.w-8",
+      "fg": "#ff9500",
+      "bg": "#ff9500",
+      "fontSize": 16,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S10",
+      "viewport": "1920x1080",
+      "selector": "button.fchip.svelte-1flxs5",
+      "fg": "#00d4ff",
+      "bg": "#00d4ff",
+      "fontSize": 9,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S10",
+      "viewport": "1440x900",
+      "selector": "button.press.w-8",
+      "fg": "#ff9500",
+      "bg": "#ff9500",
+      "fontSize": 16,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S10",
+      "viewport": "1280x800",
+      "selector": "button.press.w-8",
+      "fg": "#ff9500",
+      "bg": "#ff9500",
+      "fontSize": 16,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S10",
+      "viewport": "768x1024",
+      "selector": "button.press.w-8",
+      "fg": "#ff9500",
+      "bg": "#ff9500",
+      "fontSize": 16,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S10",
+      "viewport": "390x844",
+      "selector": "button.press.w-8",
+      "fg": "#ff9500",
+      "bg": "#ff9500",
+      "fontSize": 16,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S11",
+      "viewport": "1920x1080",
+      "selector": "button.press.w-8",
+      "fg": "#ff9500",
+      "bg": "#ff9500",
+      "fontSize": 16,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S11",
+      "viewport": "1440x900",
+      "selector": "button.press.w-8",
+      "fg": "#ff9500",
+      "bg": "#ff9500",
+      "fontSize": 16,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S11",
+      "viewport": "1280x800",
+      "selector": "button.press.w-8",
+      "fg": "#ff9500",
+      "bg": "#ff9500",
+      "fontSize": 16,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S11",
+      "viewport": "768x1024",
+      "selector": "button.press.w-8",
+      "fg": "#ff9500",
+      "bg": "#ff9500",
+      "fontSize": 16,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S11",
+      "viewport": "390x844",
+      "selector": "button.press.w-8",
+      "fg": "#ff9500",
+      "bg": "#ff9500",
+      "fontSize": 16,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S12",
+      "viewport": "1920x1080",
+      "selector": "button.press.w-8",
+      "fg": "#ff9500",
+      "bg": "#ff9500",
+      "fontSize": 16,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S12",
+      "viewport": "1440x900",
+      "selector": "button.press.w-8",
+      "fg": "#ff9500",
+      "bg": "#ff9500",
+      "fontSize": 16,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S12",
+      "viewport": "1280x800",
+      "selector": "button.press.w-8",
+      "fg": "#ff9500",
+      "bg": "#ff9500",
+      "fontSize": 16,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S12",
+      "viewport": "768x1024",
+      "selector": "button.press.w-8",
+      "fg": "#ff9500",
+      "bg": "#ff9500",
+      "fontSize": 16,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S12",
+      "viewport": "390x844",
+      "selector": "button.press.w-8",
+      "fg": "#ff9500",
+      "bg": "#ff9500",
+      "fontSize": 16,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S2",
+      "viewport": "1920x1080",
+      "selector": "button.press.w-8",
+      "fg": "#ff9500",
+      "bg": "#ff9500",
+      "fontSize": 16,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S2",
+      "viewport": "1920x1080",
+      "selector": "button.fchip.svelte-1flxs5",
+      "fg": "#00d4ff",
+      "bg": "#00d4ff",
+      "fontSize": 9,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S2",
+      "viewport": "1440x900",
+      "selector": "button.press.w-8",
+      "fg": "#ff9500",
+      "bg": "#ff9500",
+      "fontSize": 16,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S2",
+      "viewport": "1440x900",
+      "selector": "button.fchip.svelte-1flxs5",
+      "fg": "#00d4ff",
+      "bg": "#00d4ff",
+      "fontSize": 9,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S2",
+      "viewport": "1280x800",
+      "selector": "button.press.w-8",
+      "fg": "#ff9500",
+      "bg": "#ff9500",
+      "fontSize": 16,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S2",
+      "viewport": "1280x800",
+      "selector": "button.fchip.svelte-1flxs5",
+      "fg": "#00d4ff",
+      "bg": "#00d4ff",
+      "fontSize": 9,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S2",
+      "viewport": "768x1024",
+      "selector": "button.press.w-8",
+      "fg": "#ff9500",
+      "bg": "#ff9500",
+      "fontSize": 16,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S2",
+      "viewport": "768x1024",
+      "selector": "button.fchip.svelte-1flxs5",
+      "fg": "#00d4ff",
+      "bg": "#00d4ff",
+      "fontSize": 9,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S2",
+      "viewport": "390x844",
+      "selector": "button.press.w-8",
+      "fg": "#ff9500",
+      "bg": "#ff9500",
+      "fontSize": 16,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S2",
+      "viewport": "390x844",
+      "selector": "button.fchip.svelte-1flxs5",
+      "fg": "#00d4ff",
+      "bg": "#00d4ff",
+      "fontSize": 9,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S3",
+      "viewport": "1920x1080",
+      "selector": "button.press.w-8",
+      "fg": "#ff9500",
+      "bg": "#ff9500",
+      "fontSize": 16,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S3",
+      "viewport": "1920x1080",
+      "selector": "button.fchip.svelte-1flxs5",
+      "fg": "#00d4ff",
+      "bg": "#00d4ff",
+      "fontSize": 9,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S3",
+      "viewport": "1920x1080",
+      "selector": "button.fchip.svelte-1flxs5",
+      "fg": "#00d4ff",
+      "bg": "#00d4ff",
+      "fontSize": 9,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S3",
+      "viewport": "1920x1080",
+      "selector": "button.fchip.svelte-1flxs5",
+      "fg": "#00d4ff",
+      "bg": "#00d4ff",
+      "fontSize": 9,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S3",
+      "viewport": "1920x1080",
+      "selector": "button.fchip.svelte-1flxs5",
+      "fg": "#00d4ff",
+      "bg": "#00d4ff",
+      "fontSize": 9,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S3",
+      "viewport": "1440x900",
+      "selector": "button.press.w-8",
+      "fg": "#ff9500",
+      "bg": "#ff9500",
+      "fontSize": 16,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S3",
+      "viewport": "1440x900",
+      "selector": "button.fchip.svelte-1flxs5",
+      "fg": "#00d4ff",
+      "bg": "#00d4ff",
+      "fontSize": 9,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S3",
+      "viewport": "1440x900",
+      "selector": "button.fchip.svelte-1flxs5",
+      "fg": "#00d4ff",
+      "bg": "#00d4ff",
+      "fontSize": 9,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S3",
+      "viewport": "1440x900",
+      "selector": "button.fchip.svelte-1flxs5",
+      "fg": "#00d4ff",
+      "bg": "#00d4ff",
+      "fontSize": 9,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S3",
+      "viewport": "1440x900",
+      "selector": "button.fchip.svelte-1flxs5",
+      "fg": "#00d4ff",
+      "bg": "#00d4ff",
+      "fontSize": 9,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S3",
+      "viewport": "1280x800",
+      "selector": "button.press.w-8",
+      "fg": "#ff9500",
+      "bg": "#ff9500",
+      "fontSize": 16,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S3",
+      "viewport": "1280x800",
+      "selector": "button.fchip.svelte-1flxs5",
+      "fg": "#00d4ff",
+      "bg": "#00d4ff",
+      "fontSize": 9,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S3",
+      "viewport": "1280x800",
+      "selector": "button.fchip.svelte-1flxs5",
+      "fg": "#00d4ff",
+      "bg": "#00d4ff",
+      "fontSize": 9,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S3",
+      "viewport": "1280x800",
+      "selector": "button.fchip.svelte-1flxs5",
+      "fg": "#00d4ff",
+      "bg": "#00d4ff",
+      "fontSize": 9,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S3",
+      "viewport": "1280x800",
+      "selector": "button.fchip.svelte-1flxs5",
+      "fg": "#00d4ff",
+      "bg": "#00d4ff",
+      "fontSize": 9,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S3",
+      "viewport": "768x1024",
+      "selector": "button.press.w-8",
+      "fg": "#ff9500",
+      "bg": "#ff9500",
+      "fontSize": 16,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S3",
+      "viewport": "768x1024",
+      "selector": "button.fchip.svelte-1flxs5",
+      "fg": "#00d4ff",
+      "bg": "#00d4ff",
+      "fontSize": 9,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S3",
+      "viewport": "768x1024",
+      "selector": "button.fchip.svelte-1flxs5",
+      "fg": "#00d4ff",
+      "bg": "#00d4ff",
+      "fontSize": 9,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S3",
+      "viewport": "768x1024",
+      "selector": "button.fchip.svelte-1flxs5",
+      "fg": "#00d4ff",
+      "bg": "#00d4ff",
+      "fontSize": 9,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S3",
+      "viewport": "768x1024",
+      "selector": "button.fchip.svelte-1flxs5",
+      "fg": "#00d4ff",
+      "bg": "#00d4ff",
+      "fontSize": 9,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S3",
+      "viewport": "390x844",
+      "selector": "button.press.w-8",
+      "fg": "#ff9500",
+      "bg": "#ff9500",
+      "fontSize": 16,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S3",
+      "viewport": "390x844",
+      "selector": "button.fchip.svelte-1flxs5",
+      "fg": "#00d4ff",
+      "bg": "#00d4ff",
+      "fontSize": 9,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S3",
+      "viewport": "390x844",
+      "selector": "button.fchip.svelte-1flxs5",
+      "fg": "#00d4ff",
+      "bg": "#00d4ff",
+      "fontSize": 9,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S3",
+      "viewport": "390x844",
+      "selector": "button.fchip.svelte-1flxs5",
+      "fg": "#00d4ff",
+      "bg": "#00d4ff",
+      "fontSize": 9,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S3",
+      "viewport": "390x844",
+      "selector": "button.fchip.svelte-1flxs5",
+      "fg": "#00d4ff",
+      "bg": "#00d4ff",
+      "fontSize": 9,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S4",
+      "viewport": "1920x1080",
+      "selector": "button.press.w-8",
+      "fg": "#ff9500",
+      "bg": "#ff9500",
+      "fontSize": 16,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S4",
+      "viewport": "1920x1080",
+      "selector": "button.fchip.svelte-1flxs5",
+      "fg": "#00d4ff",
+      "bg": "#00d4ff",
+      "fontSize": 9,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S4",
+      "viewport": "1440x900",
+      "selector": "button.press.w-8",
+      "fg": "#ff9500",
+      "bg": "#ff9500",
+      "fontSize": 16,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S4",
+      "viewport": "1440x900",
+      "selector": "button.fchip.svelte-1flxs5",
+      "fg": "#00d4ff",
+      "bg": "#00d4ff",
+      "fontSize": 9,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S4",
+      "viewport": "1280x800",
+      "selector": "button.press.w-8",
+      "fg": "#ff9500",
+      "bg": "#ff9500",
+      "fontSize": 16,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S4",
+      "viewport": "1280x800",
+      "selector": "button.fchip.svelte-1flxs5",
+      "fg": "#00d4ff",
+      "bg": "#00d4ff",
+      "fontSize": 9,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S4",
+      "viewport": "768x1024",
+      "selector": "button.press.w-8",
+      "fg": "#ff9500",
+      "bg": "#ff9500",
+      "fontSize": 16,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S4",
+      "viewport": "768x1024",
+      "selector": "button.fchip.svelte-1flxs5",
+      "fg": "#00d4ff",
+      "bg": "#00d4ff",
+      "fontSize": 9,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S4",
+      "viewport": "390x844",
+      "selector": "button.press.w-8",
+      "fg": "#ff9500",
+      "bg": "#ff9500",
+      "fontSize": 16,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S4",
+      "viewport": "390x844",
+      "selector": "button.fchip.svelte-1flxs5",
+      "fg": "#00d4ff",
+      "bg": "#00d4ff",
+      "fontSize": 9,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S5",
+      "viewport": "1920x1080",
+      "selector": "button.press.w-8",
+      "fg": "#ff9500",
+      "bg": "#ff9500",
+      "fontSize": 16,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S5",
+      "viewport": "1920x1080",
+      "selector": "button.fchip.svelte-1flxs5",
+      "fg": "#00d4ff",
+      "bg": "#00d4ff",
+      "fontSize": 9,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S5",
+      "viewport": "1440x900",
+      "selector": "button.press.w-8",
+      "fg": "#ff9500",
+      "bg": "#ff9500",
+      "fontSize": 16,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S5",
+      "viewport": "1280x800",
+      "selector": "button.press.w-8",
+      "fg": "#ff9500",
+      "bg": "#ff9500",
+      "fontSize": 16,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S5",
+      "viewport": "768x1024",
+      "selector": "button.press.w-8",
+      "fg": "#ff9500",
+      "bg": "#ff9500",
+      "fontSize": 16,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S5",
+      "viewport": "390x844",
+      "selector": "button.press.w-8",
+      "fg": "#ff9500",
+      "bg": "#ff9500",
+      "fontSize": 16,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S9",
+      "viewport": "1920x1080",
+      "selector": "button.press.w-8",
+      "fg": "#ff9500",
+      "bg": "#ff9500",
+      "fontSize": 16,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S9",
+      "viewport": "1440x900",
+      "selector": "button.press.w-8",
+      "fg": "#ff9500",
+      "bg": "#ff9500",
+      "fontSize": 16,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S9",
+      "viewport": "1280x800",
+      "selector": "button.press.w-8",
+      "fg": "#ff9500",
+      "bg": "#ff9500",
+      "fontSize": 16,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S9",
+      "viewport": "768x1024",
+      "selector": "button.press.w-8",
+      "fg": "#ff9500",
+      "bg": "#ff9500",
+      "fontSize": 16,
+      "fontWeight": "400",
+      "contrast": 1
+    },
+    {
+      "state": "S9",
+      "viewport": "390x844",
+      "selector": "button.press.w-8",
+      "fg": "#ff9500",
+      "bg": "#ff9500",
+      "fontSize": 16,
+      "fontWeight": "400",
+      "contrast": 1
+    }
+  ],
+  "saturationCensusPerStateViewport": {
+    "S1_1920x1080": 8,
+    "S1_1440x900": 8,
+    "S1_1280x800": 8,
+    "S1_768x1024": 8,
+    "S1_390x844": 8,
+    "S10_1920x1080": 8,
+    "S10_1440x900": 8,
+    "S10_1280x800": 8,
+    "S10_768x1024": 8,
+    "S10_390x844": 8,
+    "S11_1920x1080": 8,
+    "S11_1440x900": 8,
+    "S11_1280x800": 8,
+    "S11_768x1024": 8,
+    "S11_390x844": 8,
+    "S12_1920x1080": 8,
+    "S12_1440x900": 8,
+    "S12_1280x800": 8,
+    "S12_768x1024": 8,
+    "S12_390x844": 8,
+    "S2_1920x1080": 8,
+    "S2_1440x900": 8,
+    "S2_1280x800": 8,
+    "S2_768x1024": 8,
+    "S2_390x844": 8,
+    "S3_1920x1080": 8,
+    "S3_1440x900": 8,
+    "S3_1280x800": 8,
+    "S3_768x1024": 8,
+    "S3_390x844": 8,
+    "S4_1920x1080": 8,
+    "S4_1440x900": 8,
+    "S4_1280x800": 8,
+    "S4_768x1024": 8,
+    "S4_390x844": 8,
+    "S5_1920x1080": 8,
+    "S5_1440x900": 8,
+    "S5_1280x800": 8,
+    "S5_768x1024": 8,
+    "S5_390x844": 8,
+    "S9_1920x1080": 8,
+    "S9_1440x900": 8,
+    "S9_1280x800": 8,
+    "S9_768x1024": 8,
+    "S9_390x844": 8
+  },
+  "maxSaturatedHuesSimultaneous": 8
+}
